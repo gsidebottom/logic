@@ -164,25 +164,28 @@ function Legend() {
 
 // ─── Examples ─────────────────────────────────────────────────────────────────
 const EXAMPLES = [
-  { label: "From image",   f: "((A·B) + (A'+B')) · ((A'+B') + (A·B))" },
+  { label: "CLP(B) #1",    f: "((A·B) + (A'+B')) · ((A'+B') + (A·B))" },
+  { label: "CLP(B) #2",   f: "A (R' + S') + A' (R S) + B T + B' T' + A X'" },
   { label: "Simple AND",   f: "A · B · C" },
   { label: "Simple OR",    f: "A + B + C" },
   { label: "Mixed",        f: "(A·B) + (C·D)" },
   { label: "XOR-like",     f: "(A·B') + (A'·B)" },
   { label: "Distributive", f: "A · (B + C)" },
   { label: "De Morgan",    f: "(A'+B') · (A+B)" },
+  { label: "Matings",      f: "L K' + L' M + M' + K + L K" },
 ];
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [input,      setInput]      = useState(EXAMPLES[0].f);
-  const [ast,        setAst]        = useState(null);
-  const [error,      setError]      = useState('');
-  const [simplifyMsg, setSimplifyMsg] = useState(null); // {text, ok}
-  const [loading,    setLoading]    = useState(false);
+  const [input,         setInput]         = useState(EXAMPLES[0].f);
+  const [ast,           setAst]           = useState(null);
+  const [error,         setError]         = useState('');
+  const [simplified,    setSimplified]    = useState(null); // {formula, ast}
+  const [simplifyMsg,   setSimplifyMsg]   = useState(null); // {text, ok}
+  const [loading,       setLoading]       = useState(false);
   const inputRef = useRef(null);
 
-  // Live redraw on every keystroke
+  // Live redraw on every keystroke; clear simplified result when input changes
   useEffect(() => {
     try {
       setAst(parse(input));
@@ -190,6 +193,7 @@ export default function App() {
     } catch (e) {
       setError(e.message);
     }
+    setSimplified(null);
   }, [input]);
 
   // Insert a character at the cursor position
@@ -219,9 +223,10 @@ export default function App() {
         const resultNorm = result.replace(/\s+/g, '');
         if (inputNorm === resultNorm) {
           setSimplifyMsg({ text: '✓ Already in minimal SOP form', ok: true });
+          setSimplified(null);
         } else {
           setSimplifyMsg({ text: '✓ Simplified!', ok: true });
-          setInput(result);
+          setSimplified({ formula: result, ast: parse(result) });
         }
       }
     } catch (e) {
@@ -328,19 +333,37 @@ export default function App() {
         ))}
       </div>
 
-      {/* Diagram */}
+      {/* Diagrams */}
       {ast && (
         <>
           <div style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
-            Diagram{error ? ' (last valid formula)' : ''} — border colors show nesting depth:
+            {simplified ? 'Original' : 'Diagram'}{error ? ' (last valid formula)' : ''} — border colors show nesting depth:
           </div>
           <div style={{
             background: '#f8f9fc', border: '1px solid #dde', borderRadius: 8,
-            padding: 28, display: 'inline-block', minWidth: '100%',
+            padding: 28, display: 'flex', justifyContent: 'center', alignItems: 'center',
             boxSizing: 'border-box', opacity: error ? 0.5 : 1, transition: 'opacity 0.15s',
           }}>
             <BoxNode node={ast} depth={0} />
           </div>
+
+          {simplified && (
+            <>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 20, marginBottom: 10 }}>
+                Simplified — <span style={{ fontFamily: 'Georgia, serif' }}>{simplified.formula}</span>
+              </div>
+              <div style={{
+                background: '#f0fff4', border: '1px solid #b2e0b2', borderRadius: 8,
+                padding: 28, display: 'flex', justifyContent: 'center', alignItems: 'center',
+                boxSizing: 'border-box',
+              }}>
+                <BoxNode node={simplified.ast} depth={0} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
+                {btn('Use simplified formula', () => setInput(simplified.formula), '#2a7a2a')}
+              </div>
+            </>
+          )}
         </>
       )}
 

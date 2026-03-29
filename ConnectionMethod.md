@@ -104,13 +104,3 @@ graph TD
       F --> b4["b"]                     
 ```
 
-```mermaid
-treemap-beta
-"Section 1"
-    "Leaf 1.1": 12
-    "Section 1.2"
-      "Leaf 1.2.1": 12
-"Section 2"
-    "Leaf 2.1": 20
-    "Leaf 2.2": 25
-```

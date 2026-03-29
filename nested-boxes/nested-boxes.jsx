@@ -11,8 +11,9 @@ function tokenize(str) {
     else if (ch === ')')          { tokens.push(')'); i++; }
     else if (ch === '+')          { tokens.push('+'); i++; }
     else if ('·*.⋅'.includes(ch)) { tokens.push('·'); i++; }
-    else if (/[A-Za-z0-9]/.test(ch)) {
+    else if (/[A-Za-z]/.test(ch)) {
       let name = ch; i++;
+      while (i < str.length && /[A-Za-z0-9_]/.test(str[i])) { name += str[i]; i++; }
       while (i < str.length && str[i] === "'") { name += "'"; i++; }
       tokens.push({ v: name });
     } else { i++; }

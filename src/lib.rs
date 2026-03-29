@@ -31,9 +31,13 @@ fn tokenize(s: &str) -> Vec<Token> {
             ')' => { tokens.push(Token::RParen); i += 1; }
             '+' => { tokens.push(Token::Plus); i += 1; }
             '·' | '*' | '.' | '⋅' => { tokens.push(Token::Dot); i += 1; }
-            c if c.is_alphanumeric() => {
+            c if c.is_ascii_alphabetic() => {
                 let mut name = c.to_string();
                 i += 1;
+                while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                    name.push(chars[i]);
+                    i += 1;
+                }
                 while i < chars.len() && chars[i] == '\'' {
                     name.push('\'');
                     i += 1;

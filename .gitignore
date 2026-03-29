@@ -2,3 +2,5 @@ target/
 .idea/
 Cargo.lock
 .claude/
+.pids
+.logs

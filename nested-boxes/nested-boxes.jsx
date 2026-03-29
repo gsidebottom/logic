@@ -84,135 +84,6 @@ function parse(str) {
   return result;
 }
 
-// ─── Boolean Simplification via Quine-McCluskey ───────────────────────────────
-
-function getBaseName(s)    { return s.replace(/'/g, ''); }
-function countPrimes(s)    { return (s.match(/'/g) || []).length; }
-
-function extractBaseVars(node) {
-  if (node.t === 'VAR') return new Set([getBaseName(node.n)]);
-  const s = new Set();
-  (node.c || []).forEach(c => extractBaseVars(c).forEach(v => s.add(v)));
-  return s;
-}
-
-function evaluate(node, asgn) {
-  if (node.t === 'VAR') {
-    let val = asgn[getBaseName(node.n)] ?? 0;
-    if (countPrimes(node.n) % 2 === 1) val = 1 - val;
-    return val;
-  }
-  if (node.t === 'AND') return node.c.every(c => evaluate(c, asgn)) ? 1 : 0;
-  if (node.t === 'OR')  return node.c.some(c  => evaluate(c, asgn)) ? 1 : 0;
-  return 0;
-}
-
-// Try to merge two implicant strings (0/1/dash). Returns merged string or null.
-function combine(a, b) {
-  let diffs = 0, pos = -1;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) {
-      if (a[i] === '-' || b[i] === '-') return null; // different dash patterns
-      if (++diffs > 1) return null;
-      pos = i;
-    }
-  }
-  return diffs === 1 ? a.slice(0, pos) + '-' + a.slice(pos + 1) : null;
-}
-
-function qmc(minterms, n) {
-  const dedup = arr => {
-    const seen = new Set();
-    return arr.filter(x => seen.has(x.term) ? false : (seen.add(x.term), true));
-  };
-
-  let current = dedup(minterms.map(m => ({
-    term: m.toString(2).padStart(n, '0'),
-    covered: new Set([m]),
-  })));
-
-  const primes = [];
-
-  while (current.length > 0) {
-    const used = new Set();
-    const next = [];
-
-    for (let i = 0; i < current.length; i++) {
-      for (let j = i + 1; j < current.length; j++) {
-        const c = combine(current[i].term, current[j].term);
-        if (c !== null) {
-          next.push({ term: c, covered: new Set([...current[i].covered, ...current[j].covered]) });
-          used.add(i); used.add(j);
-        }
-      }
-    }
-
-    current.forEach((imp, i) => { if (!used.has(i)) primes.push(imp); });
-    current = dedup(next);
-  }
-
-  return primes;
-}
-
-function minimalCover(primes, minterms) {
-  const result = [];
-  const covered = new Set();
-
-  // Essential prime implicants (only one prime implicant covers this minterm)
-  for (const m of minterms) {
-    const covering = primes.filter(p => p.covered.has(m));
-    if (covering.length === 1 && !result.includes(covering[0])) {
-      result.push(covering[0]);
-      covering[0].covered.forEach(x => covered.add(x));
-    }
-  }
-
-  // Greedily cover remaining minterms
-  let uncovered = new Set(minterms.filter(m => !covered.has(m)));
-  while (uncovered.size > 0) {
-    let best = null, bestCount = 0;
-    for (const p of primes) {
-      if (result.includes(p)) continue;
-      const count = [...p.covered].filter(m => uncovered.has(m)).length;
-      if (count > bestCount) { bestCount = count; best = p; }
-    }
-    if (!best) break;
-    result.push(best);
-    best.covered.forEach(m => uncovered.delete(m));
-  }
-
-  return result;
-}
-
-function simplifyFormula(formulaStr) {
-  const ast = parse(formulaStr);
-  const vars = [...extractBaseVars(ast)].sort();
-  const n = vars.length;
-
-  if (n === 0) return formulaStr;
-  if (n > 10)  throw new Error("Too many variables to simplify (max 10)");
-
-  // Build truth table
-  const minterms = [];
-  for (let i = 0; i < (1 << n); i++) {
-    const asgn = {};
-    vars.forEach((v, j) => { asgn[v] = (i >> (n - 1 - j)) & 1; });
-    if (evaluate(ast, asgn)) minterms.push(i);
-  }
-
-  if (minterms.length === 0)      return '0';
-  if (minterms.length === 1 << n) return '1';
-
-  const cover = minimalCover(qmc(minterms, n), minterms);
-
-  return cover.map(({ term }) => {
-    const lits = vars
-      .map((v, i) => term[i] === '1' ? v : term[i] === '0' ? v + "'" : null)
-      .filter(Boolean);
-    return lits.length === 0 ? '1' : lits.join('·');
-  }).join(' + ');
-}
-
 // ─── Box Renderer ─────────────────────────────────────────────────────────────
 const PAD = 10, GAP = 8;
 const BORDER_COLORS = ['#111', '#1a6bcc', '#b35000', '#2a7a2a', '#7a1a7a'];
@@ -295,6 +166,7 @@ export default function App() {
   const [ast,        setAst]        = useState(null);
   const [error,      setError]      = useState('');
   const [simplifyMsg, setSimplifyMsg] = useState(null); // {text, ok}
+  const [loading,    setLoading]    = useState(false);
   const inputRef = useRef(null);
 
   // Live redraw on every keystroke
@@ -317,21 +189,32 @@ export default function App() {
     setTimeout(() => { el.selectionStart = el.selectionEnd = s + char.length; el.focus(); }, 0);
   };
 
-  const handleSimplify = () => {
+  const handleSimplify = async () => {
+    setLoading(true);
     try {
-      const result = simplifyFormula(input);
-      const inputNorm = input.replace(/\s+/g, '');
-      const resultNorm = result.replace(/\s+/g, '');
-
-      if (inputNorm === resultNorm) {
-        setSimplifyMsg({ text: '✓ Already in minimal SOP form', ok: true });
+      const res = await fetch('http://localhost:3001/simplify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formula: input }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setSimplifyMsg({ text: `✗ ${data.error}`, ok: false });
       } else {
-        setSimplifyMsg({ text: `✓ Simplified!`, ok: true });
-        setInput(result);
+        const result = data.result;
+        const inputNorm = input.replace(/\s+/g, '');
+        const resultNorm = result.replace(/\s+/g, '');
+        if (inputNorm === resultNorm) {
+          setSimplifyMsg({ text: '✓ Already in minimal SOP form', ok: true });
+        } else {
+          setSimplifyMsg({ text: '✓ Simplified!', ok: true });
+          setInput(result);
+        }
       }
     } catch (e) {
-      setSimplifyMsg({ text: `✗ ${e.message}`, ok: false });
+      setSimplifyMsg({ text: '✗ Could not reach Rust service — is it running? (cargo run)', ok: false });
     }
+    setLoading(false);
     setTimeout(() => setSimplifyMsg(null), 3500);
   };
 
@@ -380,7 +263,7 @@ export default function App() {
         {btn('·',   () => insertAt('·'),   '#555', false, "Insert AND (·)")}
         {btn("'",   () => insertAt("'"),   '#555', false, "Insert complement (')")}
         {btn('✕',   () => setInput(''),    '#a00', false, "Clear")}
-        {btn('⚡ Simplify', handleSimplify, '#1a6bcc', !ast, !ast ? "Fix syntax errors first" : "Simplify to minimal SOP")}
+        {btn('⚡ Simplify', handleSimplify, '#1a6bcc', !ast || loading, !ast ? "Fix syntax errors first" : loading ? "Simplifying..." : "Simplify to minimal SOP")}
       </div>
 
       {/* Tip */}

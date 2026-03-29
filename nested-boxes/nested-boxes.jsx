@@ -14,8 +14,18 @@ function tokenize(str) {
     else if (/[A-Za-z]/.test(ch)) {
       let name = ch; i++;
       while (i < str.length && /[A-Za-z0-9_]/.test(str[i])) { name += str[i]; i++; }
+      while (i < str.length && /\s/.test(str[i])) { i++; }
       while (i < str.length && str[i] === "'") { name += "'"; i++; }
       tokens.push({ v: name });
+    } else if (ch === '0' || ch === '1') {
+      let name = ch; i++;
+      while (i < str.length && /\s/.test(str[i])) { i++; }
+      while (i < str.length && str[i] === "'") { name += "'"; i++; }
+      tokens.push({ v: name });
+    } else if (/[0-9]/.test(ch)) {
+      throw new Error(`Variable names cannot start with a digit: '${ch}'`);
+    } else if (ch === "'") {
+      throw new Error("Unexpected ' — complement must follow a variable name");
     } else { i++; }
   }
   return tokens;
@@ -47,9 +57,11 @@ function parse(str) {
 
   function parseTerm() {
     let left = parseFactor();
-    while (peek() === '·') {
-      eat();
-      if (peek() === undefined) throw new Error("Expected factor after '·'");
+    while (true) {
+      const t = peek();
+      if (t === '·') { eat(); }                                    // explicit ·
+      else if (t !== undefined && (typeof t === 'object' || t === '(')) {} // implicit AND
+      else break;
       const right = parseFactor();
       left = left.t === 'AND'
         ? { t: 'AND', c: [...left.c, right] }

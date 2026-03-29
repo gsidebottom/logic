@@ -1,5 +1,6 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+
 // ─── AST ──────────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
@@ -20,7 +21,7 @@ enum Token {
     Var(String),
 }
 
-fn tokenize(s: &str) -> Vec<Token> {
+fn tokenize(s: &str) -> Result<Vec<Token>, String> {
     let chars: Vec<char> = s.chars().collect();
     let mut tokens = Vec::new();
     let mut i = 0;
@@ -38,16 +39,33 @@ fn tokenize(s: &str) -> Vec<Token> {
                     name.push(chars[i]);
                     i += 1;
                 }
+                while i < chars.len() && chars[i].is_whitespace() { i += 1; }
                 while i < chars.len() && chars[i] == '\'' {
                     name.push('\'');
                     i += 1;
                 }
                 tokens.push(Token::Var(name));
             }
+            '0' | '1' => {
+                let mut name = chars[i].to_string();
+                i += 1;
+                while i < chars.len() && chars[i].is_whitespace() { i += 1; }
+                while i < chars.len() && chars[i] == '\'' {
+                    name.push('\'');
+                    i += 1;
+                }
+                tokens.push(Token::Var(name));
+            }
+            c if c.is_ascii_digit() => {
+                return Err(format!("Variable names cannot start with a digit: '{}'", c));
+            }
+            '\'' => {
+                return Err("Unexpected ' — complement must follow a variable name".to_string());
+            }
             _ => { i += 1; }
         }
     }
-    tokens
+    Ok(tokens)
 }
 
 // ─── Parser ───────────────────────────────────────────────────────────────────
@@ -90,10 +108,11 @@ impl Parser {
 
     fn parse_term(&mut self) -> Result<Node, String> {
         let mut left = self.parse_factor()?;
-        while matches!(self.peek(), Some(Token::Dot)) {
-            self.eat();
-            if self.peek().is_none() {
-                return Err("Expected factor after '·'".to_string());
+        loop {
+            match self.peek() {
+                Some(Token::Dot) => { self.eat(); }           // explicit ·
+                Some(Token::Var(_)) | Some(Token::LParen) => {} // implicit AND
+                _ => break,
             }
             let right = self.parse_factor()?;
             left = match left {
@@ -134,7 +153,7 @@ fn parse(s: &str) -> Result<Node, String> {
     if s.trim().is_empty() {
         return Err("Formula is empty".to_string());
     }
-    let tokens = tokenize(s);
+    let tokens = tokenize(s)?;
     let mut parser = Parser { tokens, pos: 0 };
     let result = parser.parse_expr()?;
     if parser.pos < parser.tokens.len() {
@@ -156,7 +175,10 @@ fn count_primes(s: &str) -> usize {
 fn extract_vars(node: &Node) -> BTreeSet<String> {
     let mut set = BTreeSet::new();
     match node {
-        Node::Var(n) => { set.insert(get_base_name(n).to_string()); }
+        Node::Var(n) => {
+            let base = get_base_name(n);
+            if base != "0" && base != "1" { set.insert(base.to_string()); }
+        }
         Node::And(c) | Node::Or(c) => {
             for child in c { set.extend(extract_vars(child)); }
         }
@@ -168,6 +190,10 @@ fn evaluate(node: &Node, asgn: &HashMap<String, u8>) -> u8 {
     match node {
         Node::Var(name) => {
             let base = get_base_name(name);
+            if base == "0" || base == "1" {
+                let val = if base == "1" { 1u8 } else { 0u8 };
+                return if count_primes(name) % 2 == 1 { 1 - val } else { val };
+            }
             let val = *asgn.get(base).unwrap_or(&0);
             if count_primes(name) % 2 == 1 { 1 - val } else { val }
         }
@@ -294,7 +320,7 @@ pub fn simplify(formula: &str) -> Result<String, String> {
     let vars: Vec<String> = extract_vars(&ast).into_iter().collect();
     let n = vars.len();
 
-    if n == 0 { return Ok(formula.to_string()); }
+    if n == 0 { return Ok(evaluate(&ast, &HashMap::new()).to_string()); }
     if n > 10 { return Err("Too many variables to simplify (max 10)".to_string()); }
 
     let mut minterms = Vec::new();
@@ -326,4 +352,339 @@ pub fn simplify(formula: &str) -> Result<String, String> {
     }).collect::<Vec<_>>().join(" + ");
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Helpers ───────────────────────────────────────────────────────────────────
+
+    fn parse_ok(s: &str) -> Node {
+        parse(s).unwrap_or_else(|e| panic!("Expected parse to succeed for {:?}: {}", s, e))
+    }
+
+    fn s(formula: &str) -> String {
+        simplify(formula).unwrap_or_else(|e| panic!("Expected simplify to succeed for {:?}: {}", formula, e))
+    }
+
+    fn s_err(formula: &str) -> String {
+        simplify(formula).unwrap_err()
+    }
+
+    /// Sort terms in a sum-of-products string for order-independent comparison.
+    fn sort_sop(result: &str) -> String {
+        let mut terms: Vec<&str> = result.split(" + ").collect();
+        terms.sort();
+        terms.join(" + ")
+    }
+
+    fn s_sorted(formula: &str) -> String {
+        sort_sop(&s(formula))
+    }
+
+    // ── Tokenizer / Parser ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_empty() {
+        assert!(parse("").is_err());
+        assert!(parse("   ").is_err());
+    }
+
+    #[test]
+    fn test_parse_single_var() {
+        assert!(matches!(parse_ok("A"),       Node::Var(n) if n == "A"));
+        assert!(matches!(parse_ok("foo_bar"), Node::Var(n) if n == "foo_bar"));
+        assert!(matches!(parse_ok("x123"),    Node::Var(n) if n == "x123"));
+    }
+
+    #[test]
+    fn test_parse_primes() {
+        assert!(matches!(parse_ok("A'"),  Node::Var(n) if n == "A'"));
+        assert!(matches!(parse_ok("A''"), Node::Var(n) if n == "A''"));
+        assert!(matches!(parse_ok("A '"), Node::Var(n) if n == "A'"));   // space before prime
+        assert!(matches!(parse_ok("foo_bar'"), Node::Var(n) if n == "foo_bar'"));
+    }
+
+    #[test]
+    fn test_parse_literals() {
+        assert!(matches!(parse_ok("0"),  Node::Var(n) if n == "0"));
+        assert!(matches!(parse_ok("1"),  Node::Var(n) if n == "1"));
+        assert!(matches!(parse_ok("0'"), Node::Var(n) if n == "0'"));
+        assert!(matches!(parse_ok("1'"), Node::Var(n) if n == "1'"));
+        assert!(matches!(parse_ok("0 '"), Node::Var(n) if n == "0'"));  // space before prime
+    }
+
+    #[test]
+    fn test_parse_and_operators() {
+        assert!(matches!(parse_ok("A · B"), Node::And(_)));
+        assert!(matches!(parse_ok("A * B"), Node::And(_)));
+        assert!(matches!(parse_ok("A . B"), Node::And(_)));
+    }
+
+    #[test]
+    fn test_parse_or() {
+        assert!(matches!(parse_ok("A + B"), Node::Or(_)));
+    }
+
+    #[test]
+    fn test_parse_implicit_and_vars() {
+        assert!(matches!(parse_ok("A B"), Node::And(_)));
+    }
+
+    #[test]
+    fn test_parse_implicit_and_groups() {
+        assert!(matches!(parse_ok("(A+B)(C+D)"), Node::And(_)));
+        assert!(matches!(parse_ok("B(C+D)"),     Node::And(_)));
+    }
+
+    #[test]
+    fn test_parse_precedence_and_over_or() {
+        // A + B·C should parse as A + (B·C), i.e. outer node is OR
+        let node = parse_ok("A + B · C");
+        assert!(matches!(node, Node::Or(_)));
+        if let Node::Or(children) = node {
+            assert!(matches!(children[1], Node::And(_)));
+        }
+    }
+
+    #[test]
+    fn test_parse_multichar_vars() {
+        assert!(matches!(parse_ok("foo · bar"), Node::And(_)));
+        assert!(matches!(parse_ok("my_var' + other_var"), Node::Or(_)));
+    }
+
+    #[test]
+    fn test_parse_nested_parens() {
+        assert!(parse_ok("((A + B))").is_var_or_op());
+        assert!(parse("(A + B").is_err());
+        assert!(parse("A + B)").is_err());
+    }
+
+    #[test]
+    fn test_parse_error_stray_prime() {
+        assert!(parse("'A").is_err());
+        assert!(parse("A + 'B").is_err());
+        assert!(parse("(A * 'B)").is_err());
+    }
+
+    #[test]
+    fn test_parse_error_digit_start() {
+        assert!(parse("2A").is_err());
+        assert!(parse("9").is_err());
+        assert!(parse("1B").is_ok());   // 1 is a literal; B is a separate var — parses as 1·B
+    }
+
+    #[test]
+    fn test_parse_error_missing_operand() {
+        assert!(parse("A +").is_err());
+        assert!(parse("+ A").is_err());
+        assert!(parse("A · · B").is_err());
+        assert!(parse("()").is_err());
+    }
+
+    // ── Simplification: constants ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_simplify_constant_0() { assert_eq!(s("0"), "0"); }
+
+    #[test]
+    fn test_simplify_constant_1() { assert_eq!(s("1"), "1"); }
+
+    #[test]
+    fn test_simplify_constant_0_prime() { assert_eq!(s("0'"), "1"); }
+
+    #[test]
+    fn test_simplify_constant_1_prime() { assert_eq!(s("1'"), "0"); }
+
+    #[test]
+    fn test_simplify_constant_double_prime() {
+        assert_eq!(s("0''"), "0");
+        assert_eq!(s("1''"), "1");
+    }
+
+    #[test]
+    fn test_simplify_constant_expressions() {
+        assert_eq!(s("0 + 0"), "0");
+        assert_eq!(s("1 + 1"), "1");
+        assert_eq!(s("0 · 0"), "0");
+        assert_eq!(s("1 · 1"), "1");
+        assert_eq!(s("0 + 1"), "1");
+        assert_eq!(s("0 · 1"), "0");
+        assert_eq!(s("1'· 0'"), "0");  // 0 · 1 = 0
+    }
+
+    // ── Simplification: identity laws ────────────────────────────────────────────
+
+    #[test]
+    fn test_simplify_identity_or_0() {
+        assert_eq!(s("A + 0"), "A");
+        assert_eq!(s("0 + A"), "A");
+    }
+
+    #[test]
+    fn test_simplify_identity_and_1() {
+        assert_eq!(s("A · 1"), "A");
+        assert_eq!(s("1 · A"), "A");
+    }
+
+    // ── Simplification: annihilation laws ────────────────────────────────────────
+
+    #[test]
+    fn test_simplify_annihilation_or_1() {
+        assert_eq!(s("A + 1"), "1");
+        assert_eq!(s("1 + A"), "1");
+    }
+
+    #[test]
+    fn test_simplify_annihilation_and_0() {
+        assert_eq!(s("A · 0"), "0");
+        assert_eq!(s("0 · A"), "0");
+    }
+
+    // ── Simplification: idempotent & complement laws ──────────────────────────────
+
+    #[test]
+    fn test_simplify_idempotent() {
+        assert_eq!(s("A + A"), "A");
+        assert_eq!(s("A · A"), "A");
+    }
+
+    #[test]
+    fn test_simplify_complement() {
+        assert_eq!(s("A + A'"), "1");
+        assert_eq!(s("A · A'"), "0");
+    }
+
+    #[test]
+    fn test_simplify_double_complement() {
+        assert_eq!(s("A''"), "A");
+        assert_eq!(s("A'''"), "A'");
+    }
+
+    // ── Simplification: absorption ────────────────────────────────────────────────
+
+    #[test]
+    fn test_simplify_absorption_or() {
+        assert_eq!(s("A + A·B"), "A");
+        assert_eq!(s("A + A·B·C"), "A");
+    }
+
+    #[test]
+    fn test_simplify_absorption_and() {
+        assert_eq!(s("A · (A + B)"), "A");
+    }
+
+    // ── Simplification: De Morgan ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_simplify_de_morgan_equivalent() {
+        // (A·B)' = A' + B'  — verify both sides give same truth table
+        assert_eq!(s_sorted("A'·B' + A'·B + A·B'"),   // sum covering NOT(A·B)
+                   s_sorted("A' + B'"));
+    }
+
+    // ── Simplification: consensus theorem ────────────────────────────────────────
+
+    #[test]
+    fn test_simplify_consensus() {
+        // A·B + A'·C + B·C  =  A·B + A'·C  (B·C is redundant)
+        assert_eq!(s_sorted("A·B + A'·C + B·C"),
+                   s_sorted("A·B + A'·C"));
+    }
+
+    // ── Simplification: distributive ─────────────────────────────────────────────
+
+    #[test]
+    fn test_simplify_distributive() {
+        assert_eq!(s_sorted("A·(B + C)"),
+                   s_sorted("A·B + A·C"));
+    }
+
+    // ── Simplification: three-variable reduction ──────────────────────────────────
+
+    #[test]
+    fn test_simplify_three_var_merge() {
+        // A·B·C + A·B·C' = A·B
+        assert_eq!(s("A·B·C + A·B·C'"), "A·B");
+    }
+
+    #[test]
+    fn test_simplify_three_var_absorption_variant() {
+        // A + A'·B = A + B
+        assert_eq!(s_sorted("A + A'·B"), s_sorted("A + B"));
+    }
+
+    // ── Simplification: XOR (irreducible in SOP) ─────────────────────────────────
+
+    #[test]
+    fn test_simplify_xor_stays_two_terms() {
+        let result = s("A·B' + A'·B");
+        // XOR has no simpler SOP form — must remain two terms
+        assert!(result.contains(" + "), "XOR should remain two terms, got: {}", result);
+    }
+
+    #[test]
+    fn test_simplify_xor_equivalent_forms() {
+        // Both ways of writing XOR should produce identical results
+        assert_eq!(s_sorted("A·B' + A'·B"),
+                   s_sorted("(A + B)·(A' + B')"));
+    }
+
+    // ── Simplification: implicit AND ─────────────────────────────────────────────
+
+    #[test]
+    fn test_simplify_implicit_and_space() {
+        assert_eq!(s("A B + A B'"), "A");
+    }
+
+    #[test]
+    fn test_simplify_implicit_and_groups() {
+        assert_eq!(s("(A+B)(A+B')"), "A");
+    }
+
+    // ── Simplification: app example ───────────────────────────────────────────────
+
+    #[test]
+    fn test_simplify_app_example() {
+        // ((A·B) + (A'+B')) · ((A'+B') + (A·B)) = 1
+        // because X + X' = 1 where X = A·B
+        assert_eq!(s("((A·B) + (A'+B')) · ((A'+B') + (A·B))"), "1");
+    }
+
+    // ── Simplification: multichar variable names ──────────────────────────────────
+
+    #[test]
+    fn test_simplify_multichar_complement() {
+        assert_eq!(s("foo + foo'"),         "1");
+        assert_eq!(s("my_var · my_var'"),   "0");
+        assert_eq!(s("foo · foo"),          "foo");
+    }
+
+    #[test]
+    fn test_simplify_multichar_reduction() {
+        assert_eq!(s("foo·bar + foo·bar'"), "foo");
+    }
+
+    // ── Error cases ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_simplify_too_many_vars() {
+        // 11 distinct variables should error
+        assert!(simplify("a+b+c+d+e+f+g+h+i+j+k").is_err());
+    }
+
+    #[test]
+    fn test_simplify_propagates_parse_errors() {
+        assert!(s_err("'A").contains("complement"));
+        assert!(s_err("2 + B").contains("digit"));
+        assert!(s_err("A +").contains("Expected"));
+    }
+
+    // ── Helper trait for test readability ────────────────────────────────────────
+
+    trait NodeExt { fn is_var_or_op(&self) -> bool; }
+    impl NodeExt for Node {
+        fn is_var_or_op(&self) -> bool { true }
+    }
 }

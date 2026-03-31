@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useMemo } from "react";
 
 // ─── Tokenizer ────────────────────────────────────────────────────────────────
 function tokenize(str) {
@@ -120,21 +120,47 @@ function astToString(node) {
   return '';
 }
 
+// ─── Cover context (for highlighting complementary pairs in diagrams) ──────────
+const CoverContext = createContext(null);
+
+const PAIR_COLORS = ['#e63946', '#1d7cc4', '#2a9d8f', '#e07c00', '#8e44ad', '#555'];
+
+function parseCoveringPairs(pairs) {
+  // Each pair string looks like "{A, A'}" — extract the two names
+  return pairs.map(p => {
+    const inner = p.replace(/^\{|\}$/g, '');
+    return inner.split(',').map(s => s.trim());
+  });
+}
+
 // ─── Box Renderer ─────────────────────────────────────────────────────────────
 const PAD = 10, GAP = 8;
 const BORDER_COLORS = ['#111', '#1a6bcc', '#b35000', '#2a7a2a', '#7a1a7a'];
 
 function BoxNode({ node, depth = 0 }) {
+  const cover = useContext(CoverContext);
   if (!node) return null;
 
   if (node.t === 'VAR') {
+    const pairIdx = cover?.varToPairIdx?.[node.n];
+    const highlighted = pairIdx !== undefined;
+    const hColor = highlighted ? PAIR_COLORS[pairIdx % PAIR_COLORS.length] : null;
     return (
-      <div style={{
-        minWidth: 26, display: 'flex', alignItems: 'center',
-        justifyContent: 'center', padding: '4px 6px',
-        fontSize: 17, fontFamily: 'Georgia, serif',
-        fontWeight: 'bold', lineHeight: 1, userSelect: 'none',
-      }}>
+      <div
+        data-var={node.n}
+        style={{
+          minWidth: 26, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', padding: '4px 6px',
+          fontSize: 17, fontFamily: 'Georgia, serif',
+          fontWeight: 'bold', lineHeight: 1, userSelect: 'none',
+          ...(highlighted ? {
+            background: hColor + '28',
+            borderRadius: 3,
+            outline: `2.5px solid ${hColor}`,
+            outlineOffset: 1,
+          } : {}),
+        }}
+      >
         {node.n}
       </div>
     );
@@ -153,6 +179,90 @@ function BoxNode({ node, depth = 0 }) {
     }}>
       {node.c.map((child, i) => <BoxNode key={i} node={child} depth={depth + 1} />)}
     </div>
+  );
+}
+
+// ─── Diagram with SVG arc connections for covering pairs ──────────────────────
+function DiagramWithConnections({ node, coveringPairs }) {
+  const containerRef = useRef(null);
+  const [arcs, setArcs] = useState([]);
+
+  const parsed = useMemo(
+    () => (coveringPairs?.length ? parseCoveringPairs(coveringPairs) : []),
+    [coveringPairs]
+  );
+
+  const varToPairIdx = useMemo(() => {
+    const m = {};
+    parsed.forEach((pair, i) => pair.forEach(v => { m[v] = i; }));
+    return m;
+  }, [parsed]);
+
+  // Recompute arc positions after every render (DOM may have changed)
+  useLayoutEffect(() => {
+    if (!containerRef.current || !parsed.length) {
+      // Use functional update to avoid re-rendering when already empty
+      setArcs(prev => prev.length === 0 ? prev : []);
+      return;
+    }
+    const container = containerRef.current;
+    const cr = container.getBoundingClientRect();
+    const newArcs = [];
+    parsed.forEach((pair, pairIdx) => {
+      if (pair.length !== 2) return;
+      const [a, b] = pair;
+      const da = container.querySelector(`[data-var="${a}"]`);
+      const db = container.querySelector(`[data-var="${b}"]`);
+      if (!da || !db) return;
+      const ra = da.getBoundingClientRect();
+      const rb = db.getBoundingClientRect();
+      newArcs.push({
+        x1: ra.left + ra.width / 2 - cr.left,
+        y1: ra.top + ra.height / 2 - cr.top,
+        x2: rb.left + rb.width / 2 - cr.left,
+        y2: rb.top + rb.height / 2 - cr.top,
+        pairIdx,
+      });
+    });
+    setArcs(prev => JSON.stringify(prev) === JSON.stringify(newArcs) ? prev : newArcs);
+  });
+
+  return (
+    <CoverContext.Provider value={parsed.length ? { varToPairIdx } : null}>
+      <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
+        <BoxNode node={node} depth={0} />
+        {arcs.length > 0 && (
+          <svg style={{
+            position: 'absolute', top: 0, left: 0,
+            width: '100%', height: '100%',
+            pointerEvents: 'none', overflow: 'visible',
+          }}>
+            {arcs.map((arc, i) => {
+              const mx = (arc.x1 + arc.x2) / 2;
+              const miny = Math.min(arc.y1, arc.y2);
+              const dx = arc.x2 - arc.x1, dy = arc.y2 - arc.y1;
+              const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+              const voff = Math.max(28, dist * 0.4);
+              // Control point: above both endpoints
+              const qcx = mx;
+              const qcy = miny - voff;
+              const color = PAIR_COLORS[arc.pairIdx % PAIR_COLORS.length];
+              return (
+                <g key={i}>
+                  <path
+                    d={`M ${arc.x1} ${arc.y1} Q ${qcx} ${qcy} ${arc.x2} ${arc.y2}`}
+                    fill="none" stroke={color} strokeWidth={2}
+                    strokeOpacity={0.8} strokeDasharray="6 3"
+                  />
+                  <circle cx={arc.x1} cy={arc.y1} r={3.5} fill={color} fillOpacity={0.85} />
+                  <circle cx={arc.x2} cy={arc.y2} r={3.5} fill={color} fillOpacity={0.85} />
+                </g>
+              );
+            })}
+          </svg>
+        )}
+      </div>
+    </CoverContext.Provider>
   );
 }
 
@@ -196,6 +306,7 @@ const EXAMPLES = [
   { label: "Distributive", f: "A · (B + C)" },
   { label: "De Morgan",    f: "(A'+B') · (A+B)" },
   { label: "Matings",      f: "L K' + L' M + M' + K + L K" },
+  { label: "Full Adder",  f: "X Y U1 + (X' + Y') U1' + U3 C1 U2 + (U3' + C1') U2' + (U1+U3) C + U1' U2' C' + ((X·Y') + (X'·Y)) U3 + (X' + Y) (X + Y') U3' + ((U3·C1') + (U3'·C1)) Z3 + (U3' + C1) (U3 + C1') Z3'" },
 ];
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
@@ -295,8 +406,16 @@ export default function App() {
         body: JSON.stringify({ formula: input }),
       });
       const data = await res.json();
-      if (data.error) setSatResult({ error: data.error });
-      else            setSatResult({ satisfiable: data.satisfiable, path: data.path, coveringPairs: data.covering_pairs });
+      if (data.error) {
+        setSatResult({ error: data.error });
+      } else {
+        setSatResult({ satisfiable: data.satisfiable, path: data.path, coveringPairs: data.covering_pairs });
+        // Covering pairs are from the complement — auto-show it for annotation
+        if (!data.satisfiable && ast) {
+          const cAst = complementAst(ast);
+          setComplementData({ formula: astToString(cAst), ast: cAst });
+        }
+      }
     } catch (e) {
       setSatResult({ error: 'Could not reach Rust service' });
     }
@@ -470,7 +589,10 @@ export default function App() {
             padding: 28, display: 'flex', justifyContent: 'center', alignItems: 'center',
             boxSizing: 'border-box', opacity: error ? 0.5 : 1, transition: 'opacity 0.15s',
           }}>
-            <BoxNode node={ast} depth={0} />
+            <DiagramWithConnections
+              node={ast}
+              coveringPairs={validResult?.valid ? validResult.coveringPairs : null}
+            />
           </div>
 
           {simplified && (
@@ -483,7 +605,7 @@ export default function App() {
                 padding: 28, display: 'flex', justifyContent: 'center', alignItems: 'center',
                 boxSizing: 'border-box',
               }}>
-                <BoxNode node={simplified.ast} depth={0} />
+                <DiagramWithConnections node={simplified.ast} coveringPairs={null} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
                 {btn('Use simplified formula', () => setInput(simplified.formula), '#2a7a2a')}
@@ -501,7 +623,10 @@ export default function App() {
                 padding: 28, display: 'flex', justifyContent: 'center', alignItems: 'center',
                 boxSizing: 'border-box',
               }}>
-                <BoxNode node={complementData.ast} depth={0} />
+                <DiagramWithConnections
+                  node={complementData.ast}
+                  coveringPairs={satResult && !satResult.satisfiable ? satResult.coveringPairs : null}
+                />
               </div>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
                 {btn('Use complement as formula', () => setInput(complementData.formula), '#2a6a6a')}

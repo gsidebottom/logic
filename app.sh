@@ -33,6 +33,16 @@ parse_port() {
     done
 }
 
+# Kill any processes listening on the Rust service port (catches orphaned instances)
+kill_rust_orphans() {
+    local pids
+    pids=$(lsof -ti:3001 2>/dev/null)
+    if [[ -n "$pids" ]]; then
+        echo "$pids" | xargs kill 2>/dev/null
+        sleep 0.3
+    fi
+}
+
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 needs_build() {
@@ -65,6 +75,9 @@ cmd_start() {
         echo "Already running. Use restart or stop first."; exit 1
     fi
 
+    # Kill any orphaned instances from previous sessions before starting
+    kill_rust_orphans
+
     cmd_build "$force"
 
     echo "Starting web_app..."
@@ -87,13 +100,15 @@ cmd_start() {
 
 cmd_stop() {
     read_pids
-    if [[ -z "$RUST_PID" ]]; then echo "Not running."; return; fi
 
     for pid in "$RUST_PID" "$VITE_PID"; do
         if [[ -n "$pid" ]] && pid_running "$pid"; then
             kill "$pid" && echo "Stopped PID $pid"
         fi
     done
+
+    # Also kill any orphaned instances not tracked by .pids
+    kill_rust_orphans
 
     rm -f "$PID_FILE"
 }

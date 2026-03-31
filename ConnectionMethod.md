@@ -85,6 +85,15 @@ $
 \end{cases}
 $
 
+A path $P$ is uncomplimentary if it contains no complimentary pair of literals, $\{l, l'\} \not\subseteq P$.
+
+$\hat{\rho}(M) = \{P \in \rho(M) :  \nexists l \in \mathbb{L}: \{l, l'\} \not\subseteq P\}$
+
+A matrix $M$ is valid if and only if it has no uncomplimentary paths $\hat{\rho}(M) = \varnothing$.  
+
+A matrix $M$ is satisfiable if its compliment $M'$ contains no uncomplimentary paths.  
+
+
 ```mermaid
 graph TD                                                                                                        
       R["·"]                                                                                                      

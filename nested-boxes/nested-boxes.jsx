@@ -97,6 +97,29 @@ function parse(str) {
   return result;
 }
 
+// ─── Complement & display helpers ─────────────────────────────────────────────
+
+function complementAst(node) {
+  if (node.t === 'VAR') {
+    const n = node.n.endsWith("'") ? node.n.slice(0, -1) : node.n + "'";
+    return { t: 'VAR', n };
+  }
+  if (node.t === 'AND') return { t: 'OR',  c: node.c.map(complementAst) };
+  if (node.t === 'OR')  return { t: 'AND', c: node.c.map(complementAst) };
+  return node;
+}
+
+function astToString(node) {
+  if (node.t === 'VAR') return node.n;
+  if (node.t === 'AND') return node.c.map(c =>
+    c.t === 'OR' ? `(${astToString(c)})` : astToString(c)
+  ).join('·');
+  if (node.t === 'OR')  return node.c.map(c =>
+    c.t === 'AND' ? astToString(c) : astToString(c)
+  ).join(' + ');
+  return '';
+}
+
 // ─── Box Renderer ─────────────────────────────────────────────────────────────
 const PAD = 10, GAP = 8;
 const BORDER_COLORS = ['#111', '#1a6bcc', '#b35000', '#2a7a2a', '#7a1a7a'];
@@ -182,6 +205,9 @@ export default function App() {
   const [error,         setError]         = useState('');
   const [simplified,    setSimplified]    = useState(null); // {formula, ast}
   const [simplifyMsg,   setSimplifyMsg]   = useState(null); // {text, ok}
+  const [complementData, setComplementData] = useState(null); // {formula, ast}
+  const [validResult,   setValidResult]   = useState(null); // {valid, path}
+  const [satResult,     setSatResult]     = useState(null); // {satisfiable, path, coveringPairs}
   const [loading,       setLoading]       = useState(false);
   const inputRef = useRef(null);
 
@@ -194,6 +220,9 @@ export default function App() {
       setError(e.message);
     }
     setSimplified(null);
+    setComplementData(null);
+    setValidResult(null);
+    setSatResult(null);
   }, [input]);
 
   // Insert a character at the cursor position
@@ -234,6 +263,44 @@ export default function App() {
     }
     setLoading(false);
     setTimeout(() => setSimplifyMsg(null), 3500);
+  };
+
+  const handleComplement = () => {
+    if (!ast) return;
+    const cAst = complementAst(ast);
+    setComplementData({ formula: astToString(cAst), ast: cAst });
+  };
+
+  const handleValid = async () => {
+    setLoading(true);
+    try {
+      const res  = await fetch('http://localhost:3001/valid', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formula: input }),
+      });
+      const data = await res.json();
+      if (data.error) setValidResult({ error: data.error });
+      else            setValidResult({ valid: data.valid, path: data.path, coveringPairs: data.covering_pairs });
+    } catch (e) {
+      setValidResult({ error: 'Could not reach Rust service' });
+    }
+    setLoading(false);
+  };
+
+  const handleSatisfiable = async () => {
+    setLoading(true);
+    try {
+      const res  = await fetch('http://localhost:3001/satisfiable', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formula: input }),
+      });
+      const data = await res.json();
+      if (data.error) setSatResult({ error: data.error });
+      else            setSatResult({ satisfiable: data.satisfiable, path: data.path, coveringPairs: data.covering_pairs });
+    } catch (e) {
+      setSatResult({ error: 'Could not reach Rust service' });
+    }
+    setLoading(false);
   };
 
   const btn = (label, onClick, color = '#333', disabled = false, title = '') => (
@@ -281,7 +348,10 @@ export default function App() {
         {btn('·',   () => insertAt('·'),   '#555', false, "Insert AND (·)")}
         {btn("'",   () => insertAt("'"),   '#555', false, "Insert complement (')")}
         {btn('✕',   () => setInput(''),    '#a00', false, "Clear")}
-        {btn('⚡ Simplify', handleSimplify, '#1a6bcc', !ast || loading, !ast ? "Fix syntax errors first" : loading ? "Simplifying..." : "Simplify to minimal SOP")}
+        {btn('⚡ Simplify',    handleSimplify,    '#1a6bcc', !ast || loading, !ast ? "Fix syntax errors first" : "Simplify to minimal SOP")}
+        {btn('✓ Valid?',       handleValid,       '#6a2a9a', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula is a tautology")}
+        {btn('? Satisfiable?', handleSatisfiable, '#7a4a00', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula has a satisfying assignment")}
+        {btn("A'  Complement", handleComplement,  '#2a6a6a', !ast,            !ast ? "Fix syntax errors first" : "Show the complement as a nested box diagram")}
       </div>
 
       {/* Tip */}
@@ -316,6 +386,62 @@ export default function App() {
           animation: 'fadeIn 0.2s ease',
         }}>
           {simplifyMsg.text}
+        </div>
+      )}
+
+      {/* Valid result */}
+      {validResult && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          color: validResult.error ? '#8b0000' : validResult.valid ? '#1a5c1a' : '#6a2a9a',
+          background: validResult.error ? '#fff5f5' : validResult.valid ? '#f0fff0' : '#f8f0ff',
+          border: `1.5px solid ${validResult.error ? '#f5c2c2' : validResult.valid ? '#b2e0b2' : '#d4a0f0'}`,
+          padding: '9px 14px', borderRadius: 6, fontSize: 13, marginBottom: 12,
+        }}>
+          {validResult.error
+            ? `✗ ${validResult.error}`
+            : validResult.valid
+              ? <span>
+                  ✓ Valid — tautology (all paths are complementary)
+                  {validResult.coveringPairs?.length > 0 && (
+                    <span>
+                      <br />
+                      <span style={{ fontWeight: 'normal' }}>Covering complementary pairs: </span>
+                      <b style={{ fontFamily: 'Georgia, serif' }}>
+                        {validResult.coveringPairs.join(',  ')}
+                      </b>
+                    </span>
+                  )}
+                </span>
+              : <span>✗ Not valid — uncomplimentary path: <b style={{ fontFamily: 'Georgia, serif' }}>{validResult.path}</b></span>}
+        </div>
+      )}
+
+      {/* Satisfiable result */}
+      {satResult && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          color: satResult.error ? '#8b0000' : satResult.satisfiable ? '#1a5c1a' : '#7a4a00',
+          background: satResult.error ? '#fff5f5' : satResult.satisfiable ? '#f0fff0' : '#fffaf0',
+          border: `1.5px solid ${satResult.error ? '#f5c2c2' : satResult.satisfiable ? '#b2e0b2' : '#e0c870'}`,
+          padding: '9px 14px', borderRadius: 6, fontSize: 13, marginBottom: 12,
+        }}>
+          {satResult.error
+            ? `✗ ${satResult.error}`
+            : satResult.satisfiable
+              ? <span>✓ Satisfiable — uncomplimentary path in complement: <b style={{ fontFamily: 'Georgia, serif' }}>{satResult.path}</b></span>
+              : <span>
+                  ✗ Unsatisfiable — complement is a tautology (all paths are complementary)
+                  {satResult.coveringPairs?.length > 0 && (
+                    <span>
+                      <br />
+                      <span style={{ fontWeight: 'normal' }}>Covering complementary pairs: </span>
+                      <b style={{ fontFamily: 'Georgia, serif' }}>
+                        {satResult.coveringPairs.join(',  ')}
+                      </b>
+                    </span>
+                  )}
+                </span>}
         </div>
       )}
 
@@ -361,6 +487,24 @@ export default function App() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
                 {btn('Use simplified formula', () => setInput(simplified.formula), '#2a7a2a')}
+              </div>
+            </>
+          )}
+
+          {complementData && (
+            <>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 20, marginBottom: 10 }}>
+                Complement — <span style={{ fontFamily: 'Georgia, serif' }}>{complementData.formula}</span>
+              </div>
+              <div style={{
+                background: '#f0fafa', border: '1px solid #a0d4d4', borderRadius: 8,
+                padding: 28, display: 'flex', justifyContent: 'center', alignItems: 'center',
+                boxSizing: 'border-box',
+              }}>
+                <BoxNode node={complementData.ast} depth={0} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
+                {btn('Use complement as formula', () => setInput(complementData.formula), '#2a6a6a')}
               </div>
             </>
           )}

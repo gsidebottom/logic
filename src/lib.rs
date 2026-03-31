@@ -1,5 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+pub mod matrix;
+
 
 // ─── AST ──────────────────────────────────────────────────────────────────────
 
@@ -313,6 +315,44 @@ fn minimal_cover(primes: &[Implicant], minterms: &[usize]) -> Vec<Implicant> {
     result
 }
 
+// ─── Matrix conversion ────────────────────────────────────────────────────────
+
+fn node_to_matrix(node: &Node, var_index: &HashMap<String, u32>) -> matrix::Matrix {
+    match node {
+        Node::Var(name) => {
+            let base = get_base_name(name);
+            let neg  = count_primes(name) % 2 == 1;
+            match base {
+                "0" => if neg { matrix::Matrix::Prod(vec![]) } else { matrix::Matrix::Sum(vec![]) },
+                "1" => if neg { matrix::Matrix::Sum(vec![]) } else { matrix::Matrix::Prod(vec![]) },
+                _   => matrix::Matrix::Lit(matrix::Lit { var: *var_index.get(base).unwrap(), neg }),
+            }
+        }
+        Node::And(ch) => matrix::Matrix::Prod(ch.iter().map(|c| node_to_matrix(c, var_index)).collect()),
+        Node::Or(ch)  => matrix::Matrix::Sum(ch.iter().map(|c| node_to_matrix(c, var_index)).collect()),
+    }
+}
+
+fn format_path(path: &matrix::Path, var_names: &[String]) -> String {
+    if path.is_empty() { return "∅".to_string(); }
+    let mut lits: Vec<String> = path.iter().map(|l| {
+        let name = &var_names[l.var as usize];
+        if l.neg { format!("{}'", name) } else { name.clone() }
+    }).collect();
+    lits.sort();
+    format!("{{{}}}", lits.join(", "))
+}
+
+fn parse_to_matrix(formula: &str) -> Result<(matrix::Matrix, Vec<String>), String> {
+    let ast  = parse(formula)?;
+    let vars: Vec<String> = extract_vars(&ast).into_iter().collect();
+    if vars.len() > 20 {
+        return Err("Too many variables for matrix analysis (max 20)".to_string());
+    }
+    let idx: HashMap<String, u32> = vars.iter().enumerate().map(|(i, v)| (v.clone(), i as u32)).collect();
+    Ok((node_to_matrix(&ast, &idx), vars))
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 pub fn simplify(formula: &str) -> Result<String, String> {
@@ -352,6 +392,74 @@ pub fn simplify(formula: &str) -> Result<String, String> {
     }).collect::<Vec<_>>().join(" + ");
 
     Ok(result)
+}
+
+/// Greedy set cover: find a small set of variables whose complementary pairs
+/// collectively appear in every path. Returns variable indices in cover order.
+fn greedy_cover(paths: &[matrix::Path], n_vars: usize) -> Vec<usize> {
+    // For each variable, precompute which paths it covers (contains both polarities).
+    let covers: Vec<Vec<usize>> = (0..n_vars as u32).map(|var| {
+        let pos = matrix::Lit { var, neg: false };
+        let neg = matrix::Lit { var, neg: true  };
+        paths.iter().enumerate()
+            .filter(|(_, p)| p.contains(&pos) && p.contains(&neg))
+            .map(|(i, _)| i)
+            .collect()
+    }).collect();
+
+    let mut uncovered: BTreeSet<usize> = (0..paths.len()).collect();
+    let mut used      = vec![false; n_vars];
+    let mut result    = Vec::new();
+
+    while !uncovered.is_empty() {
+        let best = (0..n_vars)
+            .filter(|&v| !used[v])
+            .max_by_key(|&v| covers[v].iter().filter(|i| uncovered.contains(i)).count());
+        match best {
+            Some(v) => {
+                covers[v].iter().for_each(|i| { uncovered.remove(i); });
+                used[v] = true;
+                result.push(v);
+            }
+            None => break,
+        }
+    }
+    result
+}
+
+/// Returns `(true, None, pairs)` if valid (with a greedy cover of complementary
+/// pairs), or `(false, Some(path), [])` with the first uncomplimentary path.
+pub fn check_valid(formula: &str) -> Result<(bool, Option<String>, Vec<String>), String> {
+    let (m, vars) = parse_to_matrix(formula)?;
+    let all_paths = matrix::paths(&m);
+    match all_paths.iter().find(|p| !matrix::is_complementary(p)) {
+        Some(path) => Ok((false, Some(format_path(path, &vars)), vec![])),
+        None => {
+            let cover = greedy_cover(&all_paths, vars.len());
+            let pairs = cover.iter()
+                .map(|&v| format!("{{{}, {}'}}", vars[v], vars[v]))
+                .collect();
+            Ok((true, None, pairs))
+        }
+    }
+}
+
+/// Returns `(true, Some(path), [])` with first uncomplimentary path in the
+/// complement if satisfiable, or `(false, None, pairs)` with a greedy cover of
+/// complementary pairs in the complement if unsatisfiable.
+pub fn check_satisfiable(formula: &str) -> Result<(bool, Option<String>, Vec<String>), String> {
+    let (m, vars) = parse_to_matrix(formula)?;
+    let comp_paths = matrix::paths(&m.complement());
+    match comp_paths.iter().find(|p| !matrix::is_complementary(p)) {
+        Some(path) => Ok((true, Some(format_path(path, &vars)), vec![])),
+        None => {
+            let cover = greedy_cover(&comp_paths, vars.len());
+            let pairs = cover.iter()
+                .map(|&v| format!("{{{}, {}'}}", vars[v], vars[v]))
+                .collect();
+            Ok((false, None, pairs))
+        }
+    }
 }
 
 #[cfg(test)]

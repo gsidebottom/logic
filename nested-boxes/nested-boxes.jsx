@@ -11,30 +11,37 @@ function tokenize(str) {
     else if (ch === ')')          { tokens.push(')'); i++; }
     else if (ch === '+')          { tokens.push('+'); i++; }
     else if ('·*.⋅'.includes(ch)) { tokens.push('·'); i++; }
+    else if (ch === '⇒')                          { tokens.push('⇒'); i++; }
+    else if ('⇔⊙'.includes(ch) || ch === '=')    { tokens.push('⇔'); i++; }
+    else if ('⊕≠'.includes(ch))                   { tokens.push('⊕'); i++; }
     else if (/[A-Za-z]/.test(ch)) {
       let name = ch; i++;
       while (i < str.length && /[A-Za-z0-9_]/.test(str[i])) { name += str[i]; i++; }
       while (i < str.length && /\s/.test(str[i])) { i++; }
-      while (i < str.length && str[i] === "'") { name += "'"; i++; }
-      tokens.push({ v: name });
+      let primes = 0;
+      while (i < str.length && str[i] === "'") { primes++; i++; }
+      tokens.push({ v: name + (primes % 2 ? "'" : "") });
     } else if (ch === '0' || ch === '1') {
       let name = ch; i++;
       while (i < str.length && /\s/.test(str[i])) { i++; }
-      while (i < str.length && str[i] === "'") { name += "'"; i++; }
-      tokens.push({ v: name });
+      let primes = 0;
+      while (i < str.length && str[i] === "'") { primes++; i++; }
+      tokens.push({ v: name + (primes % 2 ? "'" : "") });
     } else if (/[0-9]/.test(ch)) {
       throw new Error(`Variable names cannot start with a digit: '${ch}'`);
-    } else if (ch === "'") {
-      throw new Error("Unexpected ' — complement must follow a variable name");
+    } else if (ch === "'") { tokens.push("'"); i++;
     } else { i++; }
   }
   return tokens;
 }
 
 // ─── Recursive Descent Parser ─────────────────────────────────────────────────
+// equiv  := xor  ('⇔' xor)*           x⇔y  = x·y + x'·y'
+// xor    := impl ('⊕' impl)*          x⊕y  = x·y' + x'·y
+// impl   := expr ('⇒' impl)?          x⇒y  = x' + y   (right-assoc)
 // expr   := term ('+' term)*
 // term   := factor ('·' factor)*
-// factor := '(' expr ')' | VAR
+// factor := '(' equiv ')' "'"* | VAR
 function parse(str) {
   if (!str.trim()) throw new Error("Formula is empty");
   const tokens = tokenize(str);
@@ -70,24 +77,63 @@ function parse(str) {
     return left;
   }
 
+  function parseImpl() {
+    const left = parseExpr();
+    if (peek() !== '⇒') return left;
+    eat();
+    const right = parseImpl(); // right-associative
+    return { t: 'OR', c: [complementAst(left), right] };
+  }
+
+  function parseXor() {
+    let left = parseImpl();
+    while (peek() === '⊕') {
+      eat();
+      const right = parseImpl();
+      left = { t: 'OR', c: [
+        { t: 'AND', c: [left,                complementAst(right)] },
+        { t: 'AND', c: [complementAst(left),  right              ] },
+      ]};
+    }
+    return left;
+  }
+
+  function parseEquiv() {
+    let left = parseXor();
+    while (peek() === '⇔') {
+      eat();
+      const right = parseXor();
+      left = { t: 'OR', c: [
+        { t: 'AND', c: [left,                right               ] },
+        { t: 'AND', c: [complementAst(left),  complementAst(right)] },
+      ]};
+    }
+    return left;
+  }
+
   function parseFactor() {
     const t = peek();
     if (t === undefined)  throw new Error("Unexpected end of formula");
     if (t === ')')        throw new Error("Unexpected ')'");
     if (t === '+')        throw new Error("Unexpected '+' — missing left operand?");
     if (t === '·')        throw new Error("Unexpected '·' — missing left operand?");
+    if (t === "'") throw new Error("Unexpected ' — complement must follow a variable or closing ')'");
+    if (t === '⇒' || t === '⇔' || t === '⊕') throw new Error(`Unexpected '${t}' — missing left operand`);
     if (t === '(') {
       eat();
-      const expr = parseExpr();
+      const expr = parseEquiv();
       if (peek() !== ')') throw new Error("Missing closing ')'");
       eat();
-      return expr;
+      // Apply any trailing complement operators, pushing negation inward (De Morgan)
+      let result = expr;
+      while (peek() === "'") { eat(); result = complementAst(result); }
+      return result;
     }
     if (typeof t === 'object') { eat(); return { t: 'VAR', n: t.v }; }
     throw new Error(`Unexpected token: ${JSON.stringify(t)}`);
   }
 
-  const result = parseExpr();
+  const result = parseEquiv();
   if (pos < tokens.length) {
     const leftover = tokens[pos];
     throw new Error(
@@ -206,7 +252,13 @@ function DiagramWithConnections({ node, coveringPairs }) {
       return;
     }
     const container = containerRef.current;
-    const cr = container.getBoundingClientRect();
+    // Walk offsetParent chain to get layout coords relative to container.
+    // This works correctly under any external CSS transform (e.g. zoom/pan).
+    const centerOf = el => {
+      let x = 0, y = 0, cur = el;
+      while (cur && cur !== container) { x += cur.offsetLeft; y += cur.offsetTop; cur = cur.offsetParent; }
+      return { x: x + el.offsetWidth / 2, y: y + el.offsetHeight / 2 };
+    };
     const newArcs = [];
     parsed.forEach((pair, pairIdx) => {
       if (pair.length !== 2) return;
@@ -214,15 +266,8 @@ function DiagramWithConnections({ node, coveringPairs }) {
       const da = container.querySelector(`[data-var="${a}"]`);
       const db = container.querySelector(`[data-var="${b}"]`);
       if (!da || !db) return;
-      const ra = da.getBoundingClientRect();
-      const rb = db.getBoundingClientRect();
-      newArcs.push({
-        x1: ra.left + ra.width / 2 - cr.left,
-        y1: ra.top + ra.height / 2 - cr.top,
-        x2: rb.left + rb.width / 2 - cr.left,
-        y2: rb.top + rb.height / 2 - cr.top,
-        pairIdx,
-      });
+      const ca = centerOf(da), cb = centerOf(db);
+      newArcs.push({ x1: ca.x, y1: ca.y, x2: cb.x, y2: cb.y, pairIdx });
     });
     setArcs(prev => JSON.stringify(prev) === JSON.stringify(newArcs) ? prev : newArcs);
   });
@@ -263,6 +308,114 @@ function DiagramWithConnections({ node, coveringPairs }) {
         )}
       </div>
     </CoverContext.Provider>
+  );
+}
+
+// ─── Zoom / Pan wrapper ────────────────────────────────────────────────────────
+function ZoomPanWrapper({ children, bg = '#f8f9fc', border = '1px solid #dde', opacity = 1 }) {
+  const viewRef    = useRef(null);
+  const contentRef = useRef(null);
+  const scaleRef   = useRef(1);
+  const txRef      = useRef(0);
+  const tyRef      = useRef(0);
+  const dragRef    = useRef(null);
+  const fitRef     = useRef({ scale: 1, x: 0, y: 0 }); // saved fit-to-window transform
+  const [display, setDisplay]   = useState({ scale: 1, x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+
+  const commit = (s, x, y) => {
+    scaleRef.current = s; txRef.current = x; tyRef.current = y;
+    setDisplay({ scale: s, x, y });
+  };
+
+  // On mount: scale content to fit the viewport, centered
+  useLayoutEffect(() => {
+    const view = viewRef.current, content = contentRef.current;
+    if (!view || !content) return;
+    const vw = view.offsetWidth,  vh = view.offsetHeight;
+    const cw = content.offsetWidth, ch = content.offsetHeight;
+    if (!cw || !ch) return;
+    const s  = Math.min(vw / cw, vh / ch, 1);
+    const tx = (vw - cw * s) / 2;
+    const ty = (vh - ch * s) / 2;
+    fitRef.current = { scale: s, x: tx, y: ty };
+    commit(s, tx, ty);
+  }, []); // runs once on mount; key prop remounts on formula change
+
+  // Non-passive wheel for zoom-to-cursor
+  useEffect(() => {
+    const el = viewRef.current;
+    if (!el) return;
+    const onWheel = e => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const s  = scaleRef.current;
+      const ns = Math.max(0.1, Math.min(10, s * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+      commit(ns, mx - (mx - txRef.current) * (ns / s), my - (my - tyRef.current) * (ns / s));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const onMouseDown = e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: txRef.current, oy: tyRef.current };
+    setDragging(true);
+  };
+  const onMouseMove = e => {
+    if (!dragRef.current) return;
+    const { sx, sy, ox, oy } = dragRef.current;
+    commit(scaleRef.current, ox + (e.clientX - sx), oy + (e.clientY - sy));
+  };
+  const onMouseUp = () => { dragRef.current = null; setDragging(false); };
+
+  const zoomBy = f => commit(Math.max(0.1, Math.min(10, scaleRef.current * f)), txRef.current, tyRef.current);
+  const reset  = () => { const { scale, x, y } = fitRef.current; commit(scale, x, y); };
+
+  const cBtn = (label, fn, title) => (
+    <button onClick={fn} title={title} style={{
+      padding: '1px 7px', fontSize: 13, fontWeight: 'bold', lineHeight: 1.6,
+      border: '1px solid #ccc', borderRadius: 3,
+      background: 'rgba(255,255,255,0.92)', cursor: 'pointer', color: '#333',
+    }}>{label}</button>
+  );
+
+  return (
+    <div style={{ position: 'relative', borderRadius: 8, border, background: bg,
+                  opacity, transition: 'opacity 0.15s' }}>
+      <div
+        ref={viewRef}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+        style={{ overflow: 'hidden', cursor: dragging ? 'grabbing' : 'grab',
+                 userSelect: 'none', position: 'relative', height: 360 }}
+      >
+        <div ref={contentRef} style={{
+          position: 'absolute', top: 0, left: 0, width: 'max-content',
+          transformOrigin: '0 0',
+          transform: `translate(${display.x}px, ${display.y}px) scale(${display.scale})`,
+          padding: '50px 28px 28px',  // extra top padding so arc curves aren't clipped
+        }}>
+          {children}
+        </div>
+      </div>
+      <div style={{
+        position: 'absolute', top: 6, right: 6,
+        display: 'flex', gap: 3, alignItems: 'center',
+        background: 'rgba(255,255,255,0.85)', borderRadius: 4, padding: '2px 5px',
+      }}>
+        {cBtn('+', () => zoomBy(1.25), 'Zoom in')}
+        {cBtn('−', () => zoomBy(1 / 1.25), 'Zoom out')}
+        {cBtn('↺', reset, 'Reset')}
+        <span style={{ fontSize: 11, color: '#666', minWidth: 30, textAlign: 'right' }}>
+          {Math.round(display.scale * 100)}%
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -311,29 +464,29 @@ const EXAMPLES = [
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [input,         setInput]         = useState(EXAMPLES[0].f);
-  const [ast,           setAst]           = useState(null);
-  const [error,         setError]         = useState('');
-  const [simplified,    setSimplified]    = useState(null); // {formula, ast}
-  const [simplifyMsg,   setSimplifyMsg]   = useState(null); // {text, ok}
+  const [input,          setInput]          = useState(EXAMPLES[0].f);
+  const [simplified,     setSimplified]     = useState(null); // {formula, ast}
+  const [simplifyMsg,    setSimplifyMsg]    = useState(null); // {text, ok}
   const [complementData, setComplementData] = useState(null); // {formula, ast}
-  const [validResult,   setValidResult]   = useState(null); // {valid, path}
-  const [satResult,     setSatResult]     = useState(null); // {satisfiable, path, coveringPairs}
-  const [loading,       setLoading]       = useState(false);
+  const [validResult,    setValidResult]    = useState(null); // {valid, path}
+  const [satResult,      setSatResult]      = useState(null); // {satisfiable, path, coveringPairs}
+  const [pathsResult,    setPathsResult]    = useState(null); // {paths, complementary} | {error}
+  const [loading,        setLoading]        = useState(false);
   const inputRef = useRef(null);
 
-  // Live redraw on every keystroke; clear simplified result when input changes
+  // Parse synchronously so ast is always current on the same render as input
+  const [ast, error] = useMemo(() => {
+    try { return [parse(input), '']; }
+    catch (e) { return [null, e.message]; }
+  }, [input]);
+
+  // Clear derived state when input changes
   useEffect(() => {
-    try {
-      setAst(parse(input));
-      setError('');
-    } catch (e) {
-      setError(e.message);
-    }
     setSimplified(null);
     setComplementData(null);
     setValidResult(null);
     setSatResult(null);
+    setPathsResult(null);
   }, [input]);
 
   // Insert a character at the cursor position
@@ -374,6 +527,22 @@ export default function App() {
     }
     setLoading(false);
     setTimeout(() => setSimplifyMsg(null), 3500);
+  };
+
+  const handlePaths = async () => {
+    setLoading(true);
+    try {
+      const res  = await fetch('http://localhost:3001/paths', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formula: input }),
+      });
+      const data = await res.json();
+      if (data.error) setPathsResult({ error: data.error });
+      else setPathsResult({ paths: data.paths, complementary: data.complementary });
+    } catch (e) {
+      setPathsResult({ error: 'Could not reach Rust service' });
+    }
+    setLoading(false);
   };
 
   const handleComplement = () => {
@@ -448,35 +617,45 @@ export default function App() {
 
       <Legend />
 
-      {/* Input row */}
+      {/* Input */}
+      <textarea
+        ref={inputRef}
+        value={input}
+        onChange={e => setInput(e.target.value)}
+        rows={3}
+        style={{
+          width: '100%', padding: '9px 13px', fontSize: 15,
+          fontFamily: 'Georgia, serif',
+          border: `1.5px solid ${error ? '#c00' : '#bbb'}`,
+          borderRadius: 5, outline: 'none', transition: 'border-color 0.2s',
+          resize: 'vertical', boxSizing: 'border-box', marginBottom: 8,
+          lineHeight: 1.5,
+        }}
+        placeholder={"Type a formula, e.g. (A·B) + (A'+B')"}
+        spellCheck={false}
+        autoFocus
+      />
+
+      {/* Button row */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-        <input
-          ref={inputRef}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          style={{
-            flex: '1 1 380px', padding: '9px 13px', fontSize: 15,
-            fontFamily: 'Georgia, serif',
-            border: `1.5px solid ${error ? '#c00' : '#bbb'}`,
-            borderRadius: 5, outline: 'none', transition: 'border-color 0.2s',
-          }}
-          placeholder="Type a formula, e.g. (A·B) + (A'+B')"
-          spellCheck={false}
-          autoFocus
-        />
-        {btn('·',   () => insertAt('·'),   '#555', false, "Insert AND (·)")}
-        {btn("'",   () => insertAt("'"),   '#555', false, "Insert complement (')")}
-        {btn('✕',   () => setInput(''),    '#a00', false, "Clear")}
+        {btn('·',  () => insertAt('·'),   '#555', false, "Insert AND (·)")}
+        {btn("'",  () => insertAt("'"),   '#555', false, "Insert complement (')")}
+        {btn('⇒',  () => insertAt(' ⇒ '), '#555', false, "Insert implication (x ⇒ y = x' + y)")}
+        {btn('⇔',  () => insertAt(' ⇔ '), '#555', false, "Insert equivalence (x ⇔ y = x·y + x'·y')")}
+        {btn('⊕',  () => insertAt(' ⊕ '), '#555', false, "Insert XOR (x ⊕ y = x·y' + x'·y)")}
+        {btn('✕',  () => setInput(''),    '#a00', false, "Clear")}
         {btn('⚡ Simplify',    handleSimplify,    '#1a6bcc', !ast || loading, !ast ? "Fix syntax errors first" : "Simplify to minimal SOP")}
         {btn('✓ Valid?',       handleValid,       '#6a2a9a', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula is a tautology")}
         {btn('? Satisfiable?', handleSatisfiable, '#7a4a00', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula has a satisfying assignment")}
         {btn("A'  Complement", handleComplement,  '#2a6a6a', !ast,            !ast ? "Fix syntax errors first" : "Show the complement as a nested box diagram")}
+        {btn('ρ  Paths',       handlePaths,       '#4a4a8a', !ast || loading, !ast ? "Fix syntax errors first" : "Show all paths through the matrix")}
       </div>
 
       {/* Tip */}
       <div style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
         <code>·</code> or <code>*</code> = AND &nbsp;·&nbsp; <code>+</code> = OR &nbsp;·&nbsp;
-        <code>'</code> after variable = complement &nbsp;·&nbsp; parentheses for grouping
+        <code>'</code> = complement &nbsp;·&nbsp; <code>⇒</code> = implication &nbsp;·&nbsp;
+        <code>⇔</code> or <code>=</code> = equivalence &nbsp;·&nbsp; <code>⊕</code> or <code>≠</code> = XOR
       </div>
 
       {/* Syntax error box */}
@@ -584,29 +763,21 @@ export default function App() {
           <div style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
             {simplified ? 'Original' : 'Diagram'}{error ? ' (last valid formula)' : ''} — border colors show nesting depth:
           </div>
-          <div style={{
-            background: '#f8f9fc', border: '1px solid #dde', borderRadius: 8,
-            padding: 28, display: 'flex', justifyContent: 'center', alignItems: 'center',
-            boxSizing: 'border-box', opacity: error ? 0.5 : 1, transition: 'opacity 0.15s',
-          }}>
+          <ZoomPanWrapper key={input} bg='#f8f9fc' border='1px solid #dde' opacity={error ? 0.5 : 1}>
             <DiagramWithConnections
               node={ast}
               coveringPairs={validResult?.valid ? validResult.coveringPairs : null}
             />
-          </div>
+          </ZoomPanWrapper>
 
           {simplified && (
             <>
               <div style={{ fontSize: 12, color: '#888', marginTop: 20, marginBottom: 10 }}>
                 Simplified — <span style={{ fontFamily: 'Georgia, serif' }}>{simplified.formula}</span>
               </div>
-              <div style={{
-                background: '#f0fff4', border: '1px solid #b2e0b2', borderRadius: 8,
-                padding: 28, display: 'flex', justifyContent: 'center', alignItems: 'center',
-                boxSizing: 'border-box',
-              }}>
+              <ZoomPanWrapper key={simplified.formula} bg='#f0fff4' border='1px solid #b2e0b2'>
                 <DiagramWithConnections node={simplified.ast} coveringPairs={null} />
-              </div>
+              </ZoomPanWrapper>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
                 {btn('Use simplified formula', () => setInput(simplified.formula), '#2a7a2a')}
               </div>
@@ -618,22 +789,55 @@ export default function App() {
               <div style={{ fontSize: 12, color: '#888', marginTop: 20, marginBottom: 10 }}>
                 Complement — <span style={{ fontFamily: 'Georgia, serif' }}>{complementData.formula}</span>
               </div>
-              <div style={{
-                background: '#f0fafa', border: '1px solid #a0d4d4', borderRadius: 8,
-                padding: 28, display: 'flex', justifyContent: 'center', alignItems: 'center',
-                boxSizing: 'border-box',
-              }}>
+              <ZoomPanWrapper key={complementData.formula} bg='#f0fafa' border='1px solid #a0d4d4'>
                 <DiagramWithConnections
                   node={complementData.ast}
                   coveringPairs={satResult && !satResult.satisfiable ? satResult.coveringPairs : null}
                 />
-              </div>
+              </ZoomPanWrapper>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
                 {btn('Use complement as formula', () => setInput(complementData.formula), '#2a6a6a')}
               </div>
             </>
           )}
         </>
+      )}
+
+      {pathsResult && (
+        <div style={{ marginTop: 20, padding: '14px 18px', borderRadius: 8,
+                      border: '1px solid #c8c8e8', background: '#f7f7fd' }}>
+          <div style={{ fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
+            Paths through the matrix
+            {pathsResult.paths && (
+              <span style={{ fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
+                ({pathsResult.paths.length} total —{' '}
+                {pathsResult.complementary.filter(Boolean).length} complementary,{' '}
+                {pathsResult.complementary.filter(c => !c).length} non-complementary)
+              </span>
+            )}
+          </div>
+          {pathsResult.error ? (
+            <div style={{ color: '#c00' }}>{pathsResult.error}</div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {pathsResult.paths.map((path, i) => {
+                const comp = pathsResult.complementary[i];
+                return (
+                  <span key={i} style={{
+                    fontFamily: 'Georgia, serif', fontSize: 14,
+                    padding: '3px 9px', borderRadius: 4,
+                    background: comp ? '#e8f5e9' : '#fff3e0',
+                    border: `1px solid ${comp ? '#81c784' : '#ffb74d'}`,
+                    color: comp ? '#1b5e20' : '#7a3a00',
+                    title: comp ? 'Complementary' : 'Non-complementary',
+                  }}>
+                    {comp ? '✓' : '✗'} {path}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }`}</style>

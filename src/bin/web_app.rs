@@ -22,6 +22,13 @@ struct ValidResponse {
 }
 
 #[derive(Serialize)]
+struct PathsResponse {
+    paths:         Option<Vec<String>>,
+    complementary: Option<Vec<bool>>,
+    error:         Option<String>,
+}
+
+#[derive(Serialize)]
 struct SatisfiableResponse {
     satisfiable:    Option<bool>,
     path:           Option<String>,
@@ -47,6 +54,13 @@ async fn valid_handler(Json(req): Json<FormulaRequest>) -> Json<ValidResponse> {
     }
 }
 
+async fn paths_handler(Json(req): Json<FormulaRequest>) -> Json<PathsResponse> {
+    match logic::get_paths(&req.formula) {
+        Ok((paths, comp)) => Json(PathsResponse { paths: Some(paths), complementary: Some(comp), error: None }),
+        Err(e)            => Json(PathsResponse { paths: None, complementary: None, error: Some(e) }),
+    }
+}
+
 async fn satisfiable_handler(Json(req): Json<FormulaRequest>) -> Json<SatisfiableResponse> {
     match logic::check_satisfiable(&req.formula) {
         Ok((s, path, pairs)) => Json(SatisfiableResponse {
@@ -69,6 +83,7 @@ async fn main() {
         .route("/simplify",    post(simplify_handler))
         .route("/valid",       post(valid_handler))
         .route("/satisfiable", post(satisfiable_handler))
+        .route("/paths",       post(paths_handler))
         .layer(cors);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await.unwrap();

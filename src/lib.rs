@@ -355,6 +355,14 @@ fn parse_to_matrix(formula: &str) -> Result<(matrix::Matrix, Vec<String>), Strin
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
+    let (m, vars) = parse_to_matrix(formula)?;
+    let all_paths = matrix::paths(&m);
+    let formatted  = all_paths.iter().map(|p| format_path(p, &vars)).collect();
+    let comp_flags = all_paths.iter().map(|p| matrix::is_complementary(p)).collect();
+    Ok((formatted, comp_flags))
+}
+
 pub fn simplify(formula: &str) -> Result<String, String> {
     let ast = parse(formula)?;
     let vars: Vec<String> = extract_vars(&ast).into_iter().collect();

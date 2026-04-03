@@ -1,0 +1,54 @@
+[
+  {
+    "label": "CLP(B) #1",
+    "f": "((A·B) + (A'+B')) · ((A'+B') + (A·B))"
+  },
+  {
+    "label": "CLP(B) #2",
+    "f": "A (R' + S') + A' (R S) + B T + B' T' + A X'"
+  },
+  {
+    "label": "Simple AND",
+    "f": "A · B · C"
+  },
+  {
+    "label": "Simple OR",
+    "f": "A + B + C"
+  },
+  {
+    "label": "Mixed",
+    "f": "(A·B) + (C·D)"
+  },
+  {
+    "label": "XOR-like",
+    "f": "(A·B') + (A'·B)"
+  },
+  {
+    "label": "Distributive",
+    "f": "A · (B + C)"
+  },
+  {
+    "label": "De Morgan",
+    "f": "(A'+B') · (A+B)"
+  },
+  {
+    "label": "Matings",
+    "f": "L K' + L' M + M' + K + L K"
+  },
+  {
+    "label": "Full Adder",
+    "f": "X Y U1 + (X' + Y') U1' + U3 C1 U2 + (U3' + C1') U2' + (U1+U3) C + U1' U2' C' + ((X·Y') + (X'·Y)) U3 + (X' + Y) (X + Y') U3' + ((U3·C1') + (U3'·C1)) Z3 + (U3' + C1) (U3 + C1') Z3'"
+  },
+  {
+    "label": "R",
+    "f": "(a+b+c')(b+c+d')(c+d+a)(d+a'+b)(a'+b'+c)(b'+c'+d)(c'+d'+a')(d'+a+b')"
+  },
+  {
+    "label": "R-prime",
+    "f": "(a+b+c')(b+c+d')(c+d+a)(d+a'+b)(a'+b'+c)(b'+c'+d)(c'+d'+a')"
+  },
+  {
+    "label": "w(3,3,9)",
+    "f": "(x_0 + x_1 + x_2) (x_0 + x_1 + x_2) (x_0 + x_1 + x_2) (x_0 + x_1 + x_2) (x_0 + x_1 + x_2) (x_0 + x_1 + x_2) (x_0 + x_1 + x_2) (x_0 + x_2 + x_4) (x_0 + x_2 + x_4) (x_0 + x_2 + x_4) (x_0 + x_2 + x_4) (x_0 + x_2 + x_4) (x_0 + x_3 + x_6) (x_0 + x_3 + x_6) (x_0 + x_3 + x_6) (x_0 + x_4 + x_8) (x_0' + x_1' + x_2') (x_0' + x_1' + x_2') (x_0' + x_1' + x_2') (x_0' + x_1' + x_2') (x_0' + x_1' + x_2') (x_0' + x_1' + x_2') (x_0' + x_1' + x_2') (x_0' + x_2' + x_4') (x_0' + x_2' + x_4') (x_0' + x_2' + x_4') (x_0' + x_2' + x_4') (x_0' + x_2' + x_4') (x_0' + x_3' + x_6') (x_0' + x_3' + x_6') (x_0' + x_3' + x_6') (x_0' + x_4' + x_8')"
+  }
+]

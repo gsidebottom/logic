@@ -113,3 +113,50 @@ graph TD
       F --> b4["b"]                     
 ```
 
+### Examples
+
+$waerden(j,k;n)$
+
+```jq
+# variable n_i
+def v(n;i): "\(n)_\(i)";
+
+# complement formula .'
+def c: "\(.)'";
+
+# positive literal n_i
+def p(n;i): v(n;i);
+
+# negative literal n_i'
+def n(n;i): v(n;i) | c;
+
+def x: "x";
+def x(i): v(x;i);
+
+# brackets around formula (.)
+def b(f): "(\(f))";
+
+def sum(s): 
+     [s] | join(" + ")
+;
+
+def prod(p): 
+     [p] | join(" ")
+;
+
+def w(j; k; n): 
+  prod(
+    (
+      (range(n) + 1) as $d |
+      (range(n - ((j-1) * $d)) + 1) as $i |
+      b(sum(range(j) | p("x";$i+(.*$d))))
+    ),
+    (
+      (range(n) + 1) as $d |
+      (range(n - ((k-1) * $d)) + 1) as $i |
+      b(sum(range(k) | n("x";$i+(.*$d))))
+    )
+  )
+;
+w(3; 3; 9)
+```

@@ -179,6 +179,16 @@ function parseCoveringPairs(pairs) {
   });
 }
 
+// ─── Variable label with subscript support ────────────────────────────────────
+// Renders "x_1'" as x<sub>1</sub>' (splits on first underscore).
+function VarLabel({ name }) {
+  const primes = name.match(/'+$/)?.[0] ?? '';
+  const base   = name.slice(0, name.length - primes.length);
+  const uscore = base.indexOf('_');
+  if (uscore === -1) return <>{name}</>;
+  return <>{base.slice(0, uscore)}<span style={{ fontSize: '0.55em', position: 'relative', top: '0.5em' }}>{base.slice(uscore + 1)}</span>{primes}</>;
+}
+
 // ─── Box Renderer ─────────────────────────────────────────────────────────────
 const PAD = 10, GAP = 8;
 const BORDER_COLORS = ['#111', '#1a6bcc', '#b35000', '#2a7a2a', '#7a1a7a'];
@@ -207,7 +217,7 @@ function BoxNode({ node, depth = 0 }) {
           } : {}),
         }}
       >
-        {node.n}
+        <VarLabel name={node.n} />
       </div>
     );
   }
@@ -460,10 +470,15 @@ const EXAMPLES = [
   { label: "De Morgan",    f: "(A'+B') · (A+B)" },
   { label: "Matings",      f: "L K' + L' M + M' + K + L K" },
   { label: "Full Adder",  f: "X Y U1 + (X' + Y') U1' + U3 C1 U2 + (U3' + C1') U2' + (U1+U3) C + U1' U2' C' + ((X·Y') + (X'·Y)) U3 + (X' + Y) (X + Y') U3' + ((U3·C1') + (U3'·C1)) Z3 + (U3' + C1) (U3 + C1') Z3'" },
+  { label: "R",           f: "(a+b+c')(b+c+d')(c+d+a)(d+a'+b)(a'+b'+c)(b'+c'+d)(c'+d'+a')(d'+a+b')" },
+  { label: "R-prime",     f: "(a+b+c')(b+c+d')(c+d+a)(d+a'+b)(a'+b'+c)(b'+c'+d)(c'+d'+a')" },
 ];
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
+  const [examples,       setExamples]       = useState(EXAMPLES);
+  const [addingLabel,    setAddingLabel]    = useState('');   // '' = not adding
+  const [saveMsg,        setSaveMsg]        = useState('');
   const [input,          setInput]          = useState(EXAMPLES[0].f);
   const [simplified,     setSimplified]     = useState(null); // {formula, ast}
   const [simplifyMsg,    setSimplifyMsg]    = useState(null); // {text, ok}
@@ -472,6 +487,8 @@ export default function App() {
   const [satResult,      setSatResult]      = useState(null); // {satisfiable, path, coveringPairs}
   const [pathsResult,    setPathsResult]    = useState(null); // {paths, complementary} | {error}
   const [loading,        setLoading]        = useState(false);
+  const [jqFilter,       setJqFilter]       = useState('');
+  const [jqError,        setJqError]        = useState('');
   const inputRef = useRef(null);
 
   // Parse synchronously so ast is always current on the same render as input
@@ -479,6 +496,35 @@ export default function App() {
     try { return [parse(input), '']; }
     catch (e) { return [null, e.message]; }
   }, [input]);
+
+  // Run jq filter live as it is typed; push result into formula input
+  useEffect(() => {
+    if (!jqFilter.trim()) { setJqError(''); return; }
+    const id = setTimeout(async () => {
+      try {
+        const res  = await fetch('http://localhost:3001/jq', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filter: jqFilter }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          setJqError(data.error);
+        } else {
+          const out = data.results;
+          if (out && out.length > 0) {
+            const val = out[0];
+            setInput(typeof val === 'string' ? val : JSON.stringify(val));
+            setJqError('');
+          } else {
+            setJqError('Filter produced no output');
+          }
+        }
+      } catch {
+        setJqError('Could not reach Rust service');
+      }
+    }, 300);
+    return () => clearTimeout(id);
+  }, [jqFilter]);
 
   // Clear derived state when input changes
   useEffect(() => {
@@ -488,6 +534,35 @@ export default function App() {
     setSatResult(null);
     setPathsResult(null);
   }, [input]);
+
+  // Load examples from file on mount
+  useEffect(() => {
+    fetch('http://localhost:3001/examples')
+      .then(r => r.json())
+      .then(data => { if (data.examples) setExamples(data.examples); })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveExamples = async () => {
+    try {
+      const res  = await fetch('http://localhost:3001/examples', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(examples),
+      });
+      const data = await res.json();
+      setSaveMsg(data.ok ? '✓ Saved' : `✗ ${data.error}`);
+    } catch {
+      setSaveMsg('✗ Could not reach service');
+    }
+    setTimeout(() => setSaveMsg(''), 2500);
+  };
+
+  const handleAddExample = () => {
+    const label = addingLabel.trim();
+    if (!label) return;
+    setExamples(prev => [...prev, { label, f: input }]);
+    setAddingLabel('');
+  };
 
   // Insert a character at the cursor position
   const insertAt = (char) => {
@@ -617,6 +692,31 @@ export default function App() {
 
       <Legend />
 
+      {/* jq filter input */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>
+          jq filter <span style={{ color: '#aaa' }}>(result replaces formula)</span>
+        </div>
+        <textarea
+          value={jqFilter}
+          onChange={e => setJqFilter(e.target.value)}
+          rows={2}
+          style={{
+            width: '100%', padding: '7px 11px', fontSize: 13,
+            fontFamily: 'monospace',
+            border: `1.5px solid ${jqError ? '#c00' : '#ccc'}`,
+            borderRadius: 5, outline: 'none', resize: 'vertical',
+            boxSizing: 'border-box', lineHeight: 1.5,
+            background: jqFilter.trim() ? '#fffef8' : '#fafafa',
+          }}
+          placeholder={'e.g. "A + B + C"  or  ["A","B","C"] | join(" + ")'}
+          spellCheck={false}
+        />
+        {jqError && (
+          <div style={{ fontSize: 12, color: '#c00', marginTop: 2 }}>{jqError}</div>
+        )}
+      </div>
+
       {/* Input */}
       <textarea
         ref={inputRef}
@@ -744,17 +844,63 @@ export default function App() {
       )}
 
       {/* Examples */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24 }}>
-        <span style={{ fontSize: 12, color: '#888', alignSelf: 'center', marginRight: 4 }}>Examples:</span>
-        {EXAMPLES.map(({ label, f }) => (
-          <button key={f} onClick={() => setInput(f)} style={{
-            padding: '4px 11px', fontSize: 12, fontFamily: 'Georgia, serif',
-            border: '1px solid #ccc', borderRadius: 4, cursor: 'pointer',
-            background: input === f ? '#e8eeff' : '#fafafa', color: '#333',
-          }}>
-            {label}
-          </button>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+        <span style={{ fontSize: 12, color: '#888', marginRight: 4 }}>Examples:</span>
+        {examples.map(({ label, f }, i) => (
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <button onClick={() => setInput(f)} style={{
+              padding: '4px 11px', fontSize: 12, fontFamily: 'Georgia, serif',
+              border: '1px solid #ccc', borderRadius: '4px 0 0 4px', cursor: 'pointer',
+              background: input === f ? '#e8eeff' : '#fafafa', color: '#333',
+            }}>
+              {label}
+            </button>
+            <button
+              onClick={() => setExamples(prev => prev.filter((_, j) => j !== i))}
+              title="Remove example"
+              style={{
+                padding: '4px 6px', fontSize: 11, border: '1px solid #ccc',
+                borderLeft: 'none', borderRadius: '0 4px 4px 0',
+                cursor: 'pointer', background: '#fafafa', color: '#999',
+                lineHeight: 1,
+              }}
+            >✕</button>
+          </span>
         ))}
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24, alignItems: 'center' }}>
+        {addingLabel !== null && (
+          <>
+            <input
+              value={addingLabel}
+              onChange={e => setAddingLabel(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddExample(); if (e.key === 'Escape') setAddingLabel(''); }}
+              placeholder="Label for current formula…"
+              autoFocus
+              style={{
+                padding: '4px 8px', fontSize: 12, border: '1px solid #bbb',
+                borderRadius: 4, outline: 'none', width: 200,
+              }}
+            />
+            <button onClick={handleAddExample} disabled={!addingLabel.trim()} style={{
+              padding: '4px 10px', fontSize: 12, border: '1px solid #aaa',
+              borderRadius: 4, cursor: 'pointer', background: '#f0f4ff',
+            }}>Add</button>
+            <button onClick={() => setAddingLabel('')} style={{
+              padding: '4px 8px', fontSize: 12, border: '1px solid #ccc',
+              borderRadius: 4, cursor: 'pointer', background: '#fafafa', color: '#666',
+            }}>Cancel</button>
+          </>
+        )}
+        <button onClick={() => setAddingLabel(prev => prev === '' ? ' ' : '')} title="Add current formula as example" style={{
+          padding: '4px 10px', fontSize: 12, border: '1px solid #bbb',
+          borderRadius: 4, cursor: 'pointer', background: '#fafafa', color: '#444',
+        }}>＋ Add example</button>
+        <button onClick={handleSaveExamples} style={{
+          padding: '4px 10px', fontSize: 12, border: '1px solid #bbb',
+          borderRadius: 4, cursor: 'pointer', background: '#fafafa', color: '#444',
+        }}>💾 Save</button>
+        {saveMsg && <span style={{ fontSize: 12, color: saveMsg.startsWith('✓') ? '#2a7a2a' : '#c00' }}>{saveMsg}</span>}
       </div>
 
       {/* Diagrams */}

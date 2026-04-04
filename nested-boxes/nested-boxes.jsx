@@ -754,7 +754,7 @@ export default function App() {
                   {validResult.coveringPairs?.length > 0 && ast && (
                     <span>
                       <br />
-                      <span style={{ fontWeight: 'normal' }}>Covering complementary pairs: </span>
+                      <span style={{ fontWeight: 'normal' }}>{validResult.coveringPairs.length} covering complementary pairs: </span>
                       <b style={{ fontFamily: 'Georgia, serif' }}>
                         {validResult.coveringPairs.map(([posA, posB]) => {
                           const a = resolvePosition(ast, posA)?.n ?? posA.join(',');
@@ -787,7 +787,7 @@ export default function App() {
                   {satResult.coveringPairs?.length > 0 && complementData?.ast && (
                     <span>
                       <br />
-                      <span style={{ fontWeight: 'normal' }}>Covering complementary pairs: </span>
+                      <span style={{ fontWeight: 'normal' }}>{satResult.coveringPairs.length} covering complementary pairs: </span>
                       <b style={{ fontFamily: 'Georgia, serif' }}>
                         {satResult.coveringPairs.map(([posA, posB]) => {
                           const a = resolvePosition(complementData.ast, posA)?.n ?? posA.join(',');

@@ -314,6 +314,7 @@ export default function App() {
   const [jqLibError,     setJqLibError]     = useState('');
   const [jqLibViewing,   setJqLibViewing]   = useState(null); // {name, content} | null
   const [jqLibFiles,     setJqLibFiles]     = useState([]);   // available .jq filenames
+  const [jqOpen,         setJqOpen]         = useState(false);
   const inputRef = useRef(null);
 
   // Parse synchronously so ast is always current on the same render as input
@@ -564,107 +565,119 @@ export default function App() {
 
       {/* jq filter input */}
       <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <span style={{ color: '#aaa' }}>jq library:</span>
-            <input
-              value={jqLibPath}
-              onChange={e => { setJqLibPath(e.target.value); setJqLibError(''); }}
-              onKeyDown={e => e.key === 'Enter' && handleLoadJqLib()}
-              placeholder="lib.jq"
-              list="jq-lib-files"
-              style={{
-                padding: '2px 7px', fontSize: 12, fontFamily: 'monospace',
-                border: `1px solid ${jqLibError ? '#c00' : '#ccc'}`,
-                borderRadius: 4, outline: 'none', width: 220,
-              }}
-            />
-            <datalist id="jq-lib-files">
-              {jqLibFiles.map(f => <option key={f} value={f} />)}
-            </datalist>
-            <button onClick={handleLoadJqLib} disabled={jqLibLoading || !jqLibFiles.includes(jqLibPath.trim())} style={{
-              padding: '2px 8px', fontSize: 12, border: '1px solid #bbb',
-              borderRadius: 4, cursor: 'pointer', background: '#f5f5f5',
-            }}>{jqLibLoading ? '…' : 'Load'}</button>
-            {jqLibError && (
-              <span style={{ color: '#c00' }} title={jqLibError}>✗ {jqLibError}</span>
-            )}
-          </div>
-          {jqLibs.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
-              {jqLibs.map(lib => (
-                <span key={lib.path} style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                  background: '#e8f5e9', border: '1px solid #a5d6a7',
-                  borderRadius: 4, padding: '1px 6px', fontSize: 11,
-                }}>
-                  <button onClick={() => setJqLibViewing(lib)} title={lib.path} style={{
-                    border: 'none', background: 'none', cursor: 'pointer',
-                    fontFamily: 'monospace', color: '#2a7a2a', padding: 0,
-                    fontSize: 11, textDecoration: 'underline dotted',
-                  }}>{lib.name}</button>
-                  <button onClick={() => handleUnloadJqLib(lib.path)} style={{
-                    border: 'none', background: 'none', cursor: 'pointer',
-                    color: '#888', padding: 0, fontSize: 11, lineHeight: 1,
-                  }}>✕</button>
-                </span>
-              ))}
-            </div>
-          )}
-
-          {jqLibViewing && (
-            <div onClick={() => setJqLibViewing(null)} style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-              zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <div onClick={e => e.stopPropagation()} style={{
-                background: '#fff', borderRadius: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
-                width: 'min(700px, 90vw)', maxHeight: '80vh',
-                display: 'flex', flexDirection: 'column', overflow: 'hidden',
-              }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '10px 16px', borderBottom: '1px solid #e0e0e0',
-                }}>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 14 }}>
-                    {jqLibViewing.name}.jq
-                  </span>
-                  <span style={{ fontSize: 11, color: '#999', flex: 1, marginLeft: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {jqLibViewing.path}
-                  </span>
-                  <button onClick={() => setJqLibViewing(null)} style={{
-                    border: 'none', background: 'none', cursor: 'pointer',
-                    fontSize: 18, color: '#888', marginLeft: 12, lineHeight: 1,
-                  }}>✕</button>
-                </div>
-                <pre style={{
-                  margin: 0, padding: '14px 16px', overflow: 'auto',
-                  fontFamily: 'monospace', fontSize: 13, lineHeight: 1.6,
-                  background: '#fafafa', color: '#222', whiteSpace: 'pre',
-                }}>{jqLibViewing.content}</pre>
-              </div>
-            </div>
-          )}
-          <span>jq filter <span style={{ color: '#aaa' }}>(result replaces formula)</span></span>
-        </div>
-        <textarea
-          value={jqFilter}
-          onChange={e => setJqFilter(e.target.value)}
-          rows={2}
+        <div
+          onClick={() => setJqOpen(o => !o)}
           style={{
-            width: '100%', padding: '7px 11px', fontSize: 13,
-            fontFamily: 'monospace',
-            border: `1.5px solid ${jqError ? '#c00' : '#ccc'}`,
-            borderRadius: 5, outline: 'none', resize: 'vertical',
-            boxSizing: 'border-box', lineHeight: 1.5,
-            background: jqFilter.trim() ? '#fffef8' : '#fafafa',
+            display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+            userSelect: 'none', fontSize: 13, color: '#555', marginBottom: jqOpen ? 6 : 0,
           }}
-          placeholder={'e.g. "A + B + C"  or  ["A","B","C"] | join(" + ")'}
-          spellCheck={false}
-        />
-        {jqError && (
-          <div style={{ fontSize: 12, color: '#c00', marginTop: 2 }}>{jqError}</div>
-        )}
+        >
+          <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#999' }}>{jqOpen ? '▼' : '▶'}</span>
+          <span style={{ fontWeight: 500 }}>jq</span>
+        </div>
+        {jqOpen && <>
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <span style={{ color: '#aaa' }}>jq library:</span>
+              <input
+                value={jqLibPath}
+                onChange={e => { setJqLibPath(e.target.value); setJqLibError(''); }}
+                onKeyDown={e => e.key === 'Enter' && handleLoadJqLib()}
+                placeholder="lib.jq"
+                list="jq-lib-files"
+                style={{
+                  padding: '2px 7px', fontSize: 12, fontFamily: 'monospace',
+                  border: `1px solid ${jqLibError ? '#c00' : '#ccc'}`,
+                  borderRadius: 4, outline: 'none', width: 220,
+                }}
+              />
+              <datalist id="jq-lib-files">
+                {jqLibFiles.map(f => <option key={f} value={f} />)}
+              </datalist>
+              <button onClick={handleLoadJqLib} disabled={jqLibLoading || !jqLibFiles.includes(jqLibPath.trim())} style={{
+                padding: '2px 8px', fontSize: 12, border: '1px solid #bbb',
+                borderRadius: 4, cursor: 'pointer', background: '#f5f5f5',
+              }}>{jqLibLoading ? '…' : 'Load'}</button>
+              {jqLibError && (
+                <span style={{ color: '#c00' }} title={jqLibError}>✗ {jqLibError}</span>
+              )}
+            </div>
+            {jqLibs.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+                {jqLibs.map(lib => (
+                  <span key={lib.path} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    background: '#e8f5e9', border: '1px solid #a5d6a7',
+                    borderRadius: 4, padding: '1px 6px', fontSize: 11,
+                  }}>
+                    <button onClick={() => setJqLibViewing(lib)} title={lib.path} style={{
+                      border: 'none', background: 'none', cursor: 'pointer',
+                      fontFamily: 'monospace', color: '#2a7a2a', padding: 0,
+                      fontSize: 11, textDecoration: 'underline dotted',
+                    }}>{lib.name}</button>
+                    <button onClick={() => handleUnloadJqLib(lib.path)} style={{
+                      border: 'none', background: 'none', cursor: 'pointer',
+                      color: '#888', padding: 0, fontSize: 11, lineHeight: 1,
+                    }}>✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {jqLibViewing && (
+              <div onClick={() => setJqLibViewing(null)} style={{
+                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+                zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <div onClick={e => e.stopPropagation()} style={{
+                  background: '#fff', borderRadius: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+                  width: 'min(700px, 90vw)', maxHeight: '80vh',
+                  display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                }}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 16px', borderBottom: '1px solid #e0e0e0',
+                  }}>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 14 }}>
+                      {jqLibViewing.name}.jq
+                    </span>
+                    <span style={{ fontSize: 11, color: '#999', flex: 1, marginLeft: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {jqLibViewing.path}
+                    </span>
+                    <button onClick={() => setJqLibViewing(null)} style={{
+                      border: 'none', background: 'none', cursor: 'pointer',
+                      fontSize: 18, color: '#888', marginLeft: 12, lineHeight: 1,
+                    }}>✕</button>
+                  </div>
+                  <pre style={{
+                    margin: 0, padding: '14px 16px', overflow: 'auto',
+                    fontFamily: 'monospace', fontSize: 13, lineHeight: 1.6,
+                    background: '#fafafa', color: '#222', whiteSpace: 'pre',
+                  }}>{jqLibViewing.content}</pre>
+                </div>
+              </div>
+            )}
+            <span>jq filter <span style={{ color: '#aaa' }}>(result replaces formula)</span></span>
+          </div>
+          <textarea
+            value={jqFilter}
+            onChange={e => setJqFilter(e.target.value)}
+            rows={2}
+            style={{
+              width: '100%', padding: '7px 11px', fontSize: 13,
+              fontFamily: 'monospace',
+              border: `1.5px solid ${jqError ? '#c00' : '#ccc'}`,
+              borderRadius: 5, outline: 'none', resize: 'vertical',
+              boxSizing: 'border-box', lineHeight: 1.5,
+              background: jqFilter.trim() ? '#fffef8' : '#fafafa',
+            }}
+            placeholder={'e.g. "A + B + C"  or  ["A","B","C"] | join(" + ")'}
+            spellCheck={false}
+          />
+          {jqError && (
+            <div style={{ fontSize: 12, color: '#c00', marginTop: 2 }}>{jqError}</div>
+          )}
+        </>}
       </div>
 
       {/* Input */}
@@ -754,7 +767,7 @@ export default function App() {
                   {validResult.coveringPairs?.length > 0 && ast && (
                     <span>
                       <br />
-                      <span style={{ fontWeight: 'normal' }}>{validResult.coveringPairs.length} covering complementary pairs: </span>
+                      <span style={{ fontWeight: 'normal' }}>{validResult.coveringPairs.length} pairs in the complementary cover:</span>
                       <b style={{ fontFamily: 'Georgia, serif' }}>
                         {validResult.coveringPairs.map(([posA, posB]) => {
                           const a = resolvePosition(ast, posA)?.n ?? posA.join(',');
@@ -787,7 +800,7 @@ export default function App() {
                   {satResult.coveringPairs?.length > 0 && complementData?.ast && (
                     <span>
                       <br />
-                      <span style={{ fontWeight: 'normal' }}>{satResult.coveringPairs.length} covering complementary pairs: </span>
+                      <span style={{ fontWeight: 'normal' }}>{satResult.coveringPairs.length} pairs in the complementary cover:</span>
                       <b style={{ fontFamily: 'Georgia, serif' }}>
                         {satResult.coveringPairs.map(([posA, posB]) => {
                           const a = resolvePosition(complementData.ast, posA)?.n ?? posA.join(',');

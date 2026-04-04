@@ -1,6 +1,6 @@
-use crate::matrix::{format_path, parse_to_matrix, CoverPairs};
+use crate::matrix::{format_path, parse_to_matrix, Cover, Proof};
 
-type ProveResult = Result<(bool, Option<String>, CoverPairs), String>;
+type ProveResult = Result<(bool, Option<String>, Cover), String>;
 
 pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
     let (m, vars) = parse_to_matrix(formula)?;
@@ -14,13 +14,10 @@ pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
 /// pairs), or `(false, Some(path), [])` with the first uncomplimentary path.
 pub fn check_valid(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
-    let all_paths = m.paths();
-    match all_paths.iter().find(|p| !m.is_complementary(p)) {
-        Some(path) => Ok((false, Some(format_path(path, &m, &vars)), vec![])),
-        None => {
-            let pairs = m.greedy_cover(&all_paths);
-            Ok((true, None, pairs))
-        }
+    let Proof { cover, first_uncovered_path } = m.check_valid();
+    match first_uncovered_path {
+        Some(path) => Ok((false, Some(format_path(&path, &m, &vars)), vec![])),
+        None       => Ok((true, None, cover)),
     }
 }
 
@@ -30,13 +27,10 @@ pub fn check_valid(formula: &str) -> ProveResult {
 pub fn check_satisfiable(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
     let comp = m.complement();
-    let comp_paths = comp.paths();
-    match comp_paths.iter().find(|p| !comp.is_complementary(p)) {
-        Some(path) => Ok((true, Some(format_path(path, &comp, &vars)), vec![])),
-        None => {
-            let pairs = comp.greedy_cover(&comp_paths);
-            Ok((false, None, pairs))
-        }
+    let Proof { cover, first_uncovered_path } = comp.check_valid();
+    match first_uncovered_path {
+        Some(path) => Ok((true, Some(format_path(&path, &comp, &vars)), vec![])),
+        None       => Ok((false, None, cover)),
     }
 }
 

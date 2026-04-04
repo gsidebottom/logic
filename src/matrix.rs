@@ -214,12 +214,12 @@ impl Matrix {
     /// its positions in the path, the path is already covered. Otherwise,
     /// finds the first complementary literal pair within the path and adds it
     /// to the cover.
-    pub fn greedy_cover(&self, paths: &[Path]) -> CoverPairs {
+    pub fn cover(&self, paths: &[Path]) -> Cover {
         let resolved: Vec<Vec<Position>> = paths.iter()
             .map(|p| self.positions_on_path(p))
             .collect();
 
-        let mut result: CoverPairs = Vec::new();
+        let mut result: Cover = Vec::new();
 
         'path: for positions in &resolved {
             for (pa, pb) in &result {
@@ -243,6 +243,20 @@ impl Matrix {
 
         result
     }
+
+    /// Check validity by examining all paths.
+    ///
+    /// Returns a `Proof` whose `first_uncovered_path` is `None` when every
+    /// path is complementary (valid / tautology), with `cover` holding the
+    /// greedy covering pairs.  Otherwise `first_uncovered_path` is the first
+    /// non-complementary path and `cover` is empty.
+    pub fn check_valid(&self) -> Proof {
+        let all_paths = self.paths();
+        match all_paths.iter().find(|p| !self.is_complementary(p)) {
+            Some(path) => Proof { cover: vec![], first_uncovered_path: Some(path.clone()) },
+            None       => Proof { cover: self.cover(&all_paths), first_uncovered_path: None },
+        }
+    }
 }
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
@@ -257,7 +271,17 @@ impl Matrix {
 pub type Path = Vec<usize>;
 
 /// A set of complementary literal pairs identified by their `Position`s.
-pub type CoverPairs = Vec<(Position, Position)>;
+pub type Cover = Vec<(Position, Position)>;
+
+/// Result of checking validity of a matrix.
+///
+/// If `first_uncovered_path` is `None`, every path is complementary and `cover`
+/// contains a greedy set of covering pairs. Otherwise `first_uncovered_path`
+/// holds the first non-complementary path and `cover` is empty.
+pub struct Proof {
+    pub cover: Cover,
+    pub first_uncovered_path: Option<Path>,
+}
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 

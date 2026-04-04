@@ -17,18 +17,22 @@ pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
 /// positions in the path, the path is already covered. Otherwise, finds the
 /// first complementary literal pair within the path and adds it to the cover.
 fn greedy_cover(m: &matrix::Matrix, paths: &[matrix::Path]) -> CoverPairs {
+    let resolved: Vec<Vec<matrix::Position>> = paths.iter()
+        .map(|p| matrix::positions_on_path(m, p))
+        .collect();
+
     let mut result: CoverPairs = Vec::new();
 
-    'path: for path in paths {
+    'path: for positions in &resolved {
         for (pa, pb) in &result {
-            if path.contains(pa) && path.contains(pb) {
+            if positions.contains(pa) && positions.contains(pb) {
                 continue 'path;
             }
         }
         // Path not yet covered — find the first complementary pair within it.
-        'found: for pos_a in path {
+        'found: for pos_a in positions {
             if let Some(lit_a) = matrix::lit_at(m, pos_a) {
-                for pos_b in path {
+                for pos_b in positions {
                     if let Some(lit_b) = matrix::lit_at(m, pos_b) {
                         if lit_a.is_complement_of(lit_b) {
                             result.push((pos_a.clone(), pos_b.clone()));

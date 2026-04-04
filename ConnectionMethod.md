@@ -93,26 +93,6 @@ A matrix $M$ is valid if and only if it has no uncomplimentary paths $\hat{\rho}
 
 A matrix $M$ is satisfiable if its compliment $M'$ contains no uncomplimentary paths.  
 
-
-```mermaid
-graph TD                                                                                                        
-      R["·"]                                                                                                      
-      R --> A["+"]                                                                                                
-      R --> B["+"]
-      A --> C["·"]                                                                                                
-      A --> D["+"]
-      C --> a1["a"]
-      C --> b1["b"]
-      D --> a2["a'"]                                                                                              
-      D --> b2["b'"]
-      B --> E["+"]                                                                                                
-      B --> F["·"]
-      E --> a3["a'"]
-      E --> b3["b'"]
-      F --> a4["a"]
-      F --> b4["b"]                     
-```
-
 ### Examples
 
 $waerden(j,k;n)$
@@ -164,19 +144,21 @@ w(3; 3; 9)
 
 From [Matings in Matrices](https://dl.acm.org/doi/epdf/10.1145/182.183)
 
-![img_1.png](img_1.png)
+![img_1.png](img/matings/img_1.png)
 
-![img_2.png](img_2.png)
+![img_2.png](img/matings/img_2.png)
 
-![img_3.png](img_3.png)
+![img_3.png](img/matings/img_3.png)
 
-![img_4.png](img_4.png)
+![img_4.png](img/matings/img_4.png)
 
 From [Issues in Theorem Proving Based on the Connection Method](https://www.researchgate.net/publication/226541694_Issues_in_Theorem_Proving_Based_on_the_Connection_Method)
 
-![img.png](img.png)
+![img.png](img/issues/img.png)
 
-Also [A Proof Procedure Using Connection Graphs](https://www.researchgate.net/publication/220432420_A_Proof_Procedure_Using_Connection_Graphs)
+## Some References
+
+[A Proof Procedure Using Connection Graphs](https://www.researchgate.net/publication/220432420_A_Proof_Procedure_Using_Connection_Graphs)
 
 [A survey of SAT solver](https://watermark02.silverchair.com/020059_1_online.pdf?token=AQECAHi208BE49Ooan9kkhW_Ercy7Dm3ZL_9Cf3qfKAc485ysgAABZswggWXBgkqhkiG9w0BBwagggWIMIIFhAIBADCCBX0GCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMM9-2n9qZLwsnt-sFAgEQgIIFTmzaJ3xS6UXQQu6QBuUfpH7DGIpM1Ce-wgUwpKcxnWKtuvHyarORYKNlrEVvDynxKehbDfS0hTJbFSaNomkSzt2wBDWVLsLtizZFOuoI56fy5p3_kMeV8vOjLdIvvHrO54Z8QgiI0fBm86jVju7irJygPYUACNurxhkJailJJ9BOM0G4VkFMl5TcuLqMBR9ETWbeXDY8vv-UwRUZNmiJJ0ghBnFVYLs-2dQpLfHVcQKn_qn2jmqp8IhL9WbbxSSTXW1OIA010OpCxvVWYahqYcvybdt8XgENXq-2syyuipOydoIZF39K1aHCUfouu92kngG1JjATBIaiBsh4CEuFuZZZ8bTKuJZnlQ1rC7w73X63gA2GCDx2TrfgFJ93PFxxGqCgI0YP5MmilwTn3j7JydzrHwPMxWCalzGiV-LCe31NZ5P2ylUZzU_sl2EqeydqiI8lnnZGn19jB8tdCMaHwbjb8Gn7aDG_so6fx7c8bbAG77ANumWh85EERQ3joGxMsVEq4xnclpGxsuuy91DaSM332VvfguDQGUFIfLTsozD5T2POnpwnMtaj9QO-DR68IAlG_7iVgPEsf9OIWPTuYIBuHWp2jkmR2dFXtkboMIdIk4xp_O3oAGscakZqJgGmx3IHcVhxEUnyP5jOHHo8aiKFKWmxVckub3e-e5DAJ-boZzWa7nUNdiY1r-1Gbd8cT0-1DrDqFoUskxqpmYHiaMOy0Qy3WF_2Nx1TSJtkbarxweJ943PdH7TUhCID0391uuKUhfgmVYG6AzXhtdufX6UV_o_Z6Wg7NdSwZMTfT2ws8hWlxgV85qmiZJBv5hRO1IZng0Kd78qLcIolOY3v_tyFcUxmDSPzkPoJawHzo0O6MAGdOId_zoElKxVAnLQ9FC-St8fAdR-sTDw9a4sWilSAurjmFJBPSGgZ4jNUjLYq1RUlQyxR_P4GQxZ6zFtfTt6DUzcWPNqRo3_oEJ4sVFM8Q7K8anznYN5v7hzq_IWq6rdLLsrlwdyiaNUSLHodJRNBH7f__T4A7_FKgJC4WUP7VN4FFpL784ask7YCA3NEEBX0P0XhZObCW-k2CFrcnIt9UFPCX7rywEy2UUPbsljJSSLjYQoXMrkX99agmljHAqQf1wSgSLREknYpi3HGwbOFFA0voY7xyXlmZFBmXk7jetxtUQPhdxBWdtVH3YVLtayJuXo23Vlxs6ybNDAHvdtczsiZAk_cch-3gCR7nzvk5S6dZQFFiNL09eg6tmgaaFe5Gwlzf1eYVL3IKyB8UKrihul6eRbhO7aWuJClwDlH1merd-lSOx6nlucziNr6JvqndFfYUerQfyplucsnw2OFt7Pshk3vY8h9KPIqIARm74ultsjH3XyuN9VYmZF7TIjetcyDkCgwTkOwBRo01DmT8KA9hnF6RjdrHB1TYsZd4Xzs_6YRZ8bCvBsCbPAvFXY-9lc3pipexEepgXEd_kBHl5t6pwMNpxjMMj-8MpnS6C4cuR4KtydWo1xmRRrTRJpXoMUOl8wgN4gdHDXWkF07Mv-GxnmVW3GtqpkYl8zycgPZQgU5nBp2Q5O4tdhcb2wpcCHLceUCZO2P_98vHBMd4kxCPoDddOtVyzrW-u0notJd2UjIrbnYiTCs1Wou93coHXD3c46D01JVFnqY5SnQDcRMKY71FI3PyFqVVhsA0kA3_eThybcnI0V2jA-1Yz5rk8cglL_JHU_Tft-dkl6T2EGXX4PPFP0xb9NUv47XMcHLWEuI8QC9Nnt1aG2GmPOo96oKCh8ehAQyAiENTyOmSfq4blGYSXz3cFWT)
 
@@ -184,3 +166,24 @@ Also [A Proof Procedure Using Connection Graphs](https://www.researchgate.net/pu
 
 [Knuth SAT draft](https://yurichev.com/mirrors/Donald%20Knuth/TAOCP%206a%207.2.2.2%20(SAT)/fasc6a.pdf)
 [implementations in C](https://github.com/aaw/sat/blob/master/README.md)
+
+## Mermaid Matrix Structure
+
+```mermaid
+graph TD                                                                                                        
+      R["·"]                                                                                                      
+      R --> A["+"]                                                                                                
+      R --> B["+"]
+      A --> C["·"]                                                                                                
+      A --> D["+"]
+      C --> a1["a"]
+      C --> b1["b"]
+      D --> a2["a'"]                                                                                              
+      D --> b2["b'"]
+      B --> E["+"]                                                                                                
+      B --> F["·"]
+      E --> a3["a'"]
+      E --> b3["b'"]
+      F --> a4["a"]
+      F --> b4["b"]                     
+```

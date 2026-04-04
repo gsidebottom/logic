@@ -61,29 +61,32 @@ impl Matrix {
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
-/// A path through a matrix: a sequence of `Position`s, one drawn from each
-/// disjunct at every `Sum` node encountered on the way down.
-pub type Path = Vec<Position>;
-
-/// Compute every path through `m`, where each path is a sequence of positions
-/// identifying the literals selected during the cross-product traversal.
+/// A path through a matrix: a sequence of `Prod` member selections, one for
+/// each `Prod` node encountered during depth-first traversal.
 ///
-/// - `Sum`  (OR):  cross-product — each path picks one position from **each** child.
-/// - `Prod` (AND): union         — each path picks positions from **any one** child.
-/// - `Lit`:        a single-element path containing the literal's own position.
+/// For example, in `Sum([Prod([A, Sum([B, C'])]), Prod([E, F', Sum([G, Prod([H, I])])])])`:
+/// - `[0, 0]` = `{A, E}` (Prod0→A, Prod1→E)
+/// - `[1, 0]` = `{B, C', E}` (Prod0→Sum[B,C'], Prod1→E)
+/// - `[1, 2, 0]` = `{B, C', G, H}` (Prod0→Sum, Prod1→Sum→Prod[H,I]→H)
+pub type Path = Vec<usize>;
+
+/// Compute every path through `m`, where each path is a sequence of `Prod`
+/// member selections identifying which child was chosen at each `Prod` node.
+///
+/// - `Sum`  (OR):  cross-product — each path picks one sub-path from **each** child.
+/// - `Prod` (AND): union         — each path picks one child, prepending its index.
+/// - `Lit`:        an empty path (no `Prod` selection needed).
 pub fn paths(m: &Matrix) -> Vec<Path> {
-    paths_from(m, vec![])
+    paths_from(m)
 }
 
-fn paths_from(m: &Matrix, pos: Position) -> Vec<Path> {
+fn paths_from(m: &Matrix) -> Vec<Path> {
     match m {
-        Matrix::Lit(_) => vec![vec![pos]],
+        Matrix::Lit(_) => vec![vec![]],
 
         Matrix::Sum(children) => {
-            children.iter().enumerate().fold(vec![vec![]], |acc, (i, child)| {
-                let mut child_pos = pos.clone();
-                child_pos.push(i);
-                let cp = paths_from(child, child_pos);
+            children.iter().fold(vec![vec![]], |acc, child| {
+                let cp = paths_from(child);
                 acc.into_iter()
                     .flat_map(|p| cp.iter().map(move |q| {
                         let mut combined = p.clone();
@@ -96,10 +99,78 @@ fn paths_from(m: &Matrix, pos: Position) -> Vec<Path> {
 
         Matrix::Prod(children) => {
             children.iter().enumerate().flat_map(|(i, child)| {
-                let mut child_pos = pos.clone();
-                child_pos.push(i);
-                paths_from(child, child_pos)
+                paths_from(child).into_iter().map(move |mut p| {
+                    p.insert(0, i);
+                    p
+                })
             }).collect()
+        }
+    }
+}
+
+/// Resolve a path to the literals it collects.
+///
+/// Follows the path's `Prod` member selections depth-first, collecting every
+/// `Lit` encountered (including those reached via `Sum` cross-products).
+pub fn lits_on_path<'a>(m: &'a Matrix, path: &[usize]) -> Vec<&'a Lit> {
+    lits_on_path_inner(m, path).0
+}
+
+fn lits_on_path_inner<'a>(m: &'a Matrix, path: &[usize]) -> (Vec<&'a Lit>, usize) {
+    match m {
+        Matrix::Lit(l) => (vec![l], 0),
+        Matrix::Prod(children) => {
+            let sel = path[0];
+            let (lits, consumed) = lits_on_path_inner(&children[sel], &path[1..]);
+            (lits, 1 + consumed)
+        }
+        Matrix::Sum(children) => {
+            let mut all_lits = Vec::new();
+            let mut total = 0;
+            for child in children {
+                let (lits, consumed) = lits_on_path_inner(child, &path[total..]);
+                all_lits.extend(lits);
+                total += consumed;
+            }
+            (all_lits, total)
+        }
+    }
+}
+
+/// Resolve a path to the `Position`s (absolute tree addresses) of its literals.
+pub fn positions_on_path(m: &Matrix, path: &[usize]) -> Vec<Position> {
+    let mut result = Vec::new();
+    positions_on_path_inner(m, path, &mut Vec::new(), &mut result);
+    result
+}
+
+fn positions_on_path_inner(
+    m: &Matrix,
+    path: &[usize],
+    pos: &mut Vec<usize>,
+    out: &mut Vec<Position>,
+) -> usize {
+    match m {
+        Matrix::Lit(_) => {
+            out.push(pos.clone());
+            0
+        }
+        Matrix::Prod(children) => {
+            let sel = path[0];
+            pos.push(sel);
+            let consumed = positions_on_path_inner(&children[sel], &path[1..], pos, out);
+            pos.pop();
+            1 + consumed
+        }
+        Matrix::Sum(children) => {
+            let mut total = 0;
+            for (i, child) in children.iter().enumerate() {
+                pos.push(i);
+                let consumed = positions_on_path_inner(child, &path[total..], pos, out);
+                pos.pop();
+                total += consumed;
+            }
+            total
         }
     }
 }
@@ -123,7 +194,7 @@ pub fn lit_at<'a>(m: &'a Matrix, pos: &[usize]) -> Option<&'a Lit> {
 /// A path is *complementary* if it contains at least one complementary literal
 /// pair `{l, l'}` (resolved via `m`).
 pub fn is_complementary(path: &Path, m: &Matrix) -> bool {
-    let lits: Vec<&Lit> = path.iter().filter_map(|pos| lit_at(m, pos)).collect();
+    let lits = lits_on_path(m, path);
     lits.iter().any(|l| lits.iter().any(|l2| l.is_complement_of(l2)))
 }
 
@@ -174,13 +245,13 @@ mod tests {
     fn sum(ch: Vec<Matrix>) -> Matrix { Matrix::Sum(ch) }
     fn prod(ch: Vec<Matrix>) -> Matrix { Matrix::Prod(ch) }
 
-    // Resolve each path's positions to (var, neg) pairs, sort for deterministic comparison.
+    // Resolve each path's literals to (var, neg) pairs, sort for deterministic comparison.
     fn sorted_paths(m: &Matrix) -> Vec<Vec<(Var, bool)>> {
         let mut ps: Vec<Vec<(Var, bool)>> = paths(m)
             .into_iter()
             .map(|path| {
-                let mut lits: Vec<(Var, bool)> = path.iter()
-                    .filter_map(|pos| lit_at(m, pos))
+                let mut lits: Vec<(Var, bool)> = lits_on_path(m, &path)
+                    .into_iter()
                     .map(|l| (l.var, l.neg))
                     .collect();
                 lits.sort();
@@ -246,6 +317,36 @@ mod tests {
         ];
         exp.sort();
         assert_eq!(got, exp);
+    }
+
+    // ── Path encoding ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_path_encoding() {
+        // A (B + C') + E F' (G + H I)
+        // = Sum([Prod([A, Sum([B, C'])]), Prod([E, F', Sum([G, Prod([H, I])])])])
+        let a = v(0); let b = v(1); let cn = vn(2); let e = v(3);
+        let fn_ = vn(4); let g = v(5); let h = v(6); let i = v(7);
+        let m = sum(vec![
+            prod(vec![a, sum(vec![b, cn])]),
+            prod(vec![e, fn_, sum(vec![g, prod(vec![h, i])])]),
+        ]);
+
+        // [0, 0] = {A, E}
+        assert_eq!(lits_on_path(&m, &[0, 0]).iter().map(|l| l.var).collect::<Vec<_>>(),
+                   vec![0, 3]);
+        // [0, 1] = {A, F'}
+        assert_eq!(lits_on_path(&m, &[0, 1]).iter().map(|l| (l.var, l.neg)).collect::<Vec<_>>(),
+                   vec![(0, false), (4, true)]);
+        // [1, 0] = {B, C', E}
+        assert_eq!(lits_on_path(&m, &[1, 0]).iter().map(|l| l.var).collect::<Vec<_>>(),
+                   vec![1, 2, 3]);
+        // [1, 2, 0] = {B, C', G, H}
+        assert_eq!(lits_on_path(&m, &[1, 2, 0]).iter().map(|l| l.var).collect::<Vec<_>>(),
+                   vec![1, 2, 5, 6]);
+        // [1, 2, 1] = {B, C', G, I}
+        assert_eq!(lits_on_path(&m, &[1, 2, 1]).iter().map(|l| l.var).collect::<Vec<_>>(),
+                   vec![1, 2, 5, 7]);
     }
 
     // ── Complement ────────────────────────────────────────────────────────────
@@ -358,9 +459,9 @@ pub fn node_to_matrix(node: &Node, var_index: &HashMap<String, u32>) -> Matrix {
 }
 
 pub fn format_path(path: &Path, m: &Matrix, var_names: &[String]) -> String {
-    if path.is_empty() { return "∅".to_string(); }
-    let mut lits: Vec<String> = path.iter()
-        .filter_map(|pos| lit_at(m, pos))
+    let resolved = lits_on_path(m, path);
+    if resolved.is_empty() { return "∅".to_string(); }
+    let mut lits: Vec<String> = resolved.iter()
         .map(|l| {
             let name = &var_names[l.var as usize];
             if l.neg { format!("{}'", name) } else { name.clone() }

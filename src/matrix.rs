@@ -268,18 +268,143 @@ impl Matrix {
         result
     }
 
-    /// Check validity by examining all paths.
+    /// Resolve a path prefix to the literals it *guarantees* and whether
+    /// the prefix is a complete path (all `Prod` nodes resolved).
+    fn resolve_prefix(&self, path: &[usize]) -> (Vec<&Lit>, bool) {
+        fn inner<'a>(m: &'a Matrix, path: &[usize]) -> (Vec<&'a Lit>, usize, bool) {
+            match m {
+                Matrix::Lit(l) => (vec![l], 0, true),
+                Matrix::Prod(children) => {
+                    if path.is_empty() {
+                        return (vec![], 0, false);
+                    }
+                    let sel = path[0];
+                    let (lits, consumed, complete) = inner(&children[sel], &path[1..]);
+                    (lits, 1 + consumed, complete)
+                }
+                Matrix::Sum(children) => {
+                    let mut all_lits = Vec::new();
+                    let mut total = 0;
+                    let mut all_complete = true;
+                    for child in children {
+                        let (lits, consumed, complete) = inner(child, &path[total..]);
+                        all_lits.extend(lits);
+                        total += consumed;
+                        all_complete = all_complete && complete;
+                    }
+                    (all_lits, total, all_complete)
+                }
+            }
+        }
+        let (lits, _, complete) = inner(self, path);
+        (lits, complete)
+    }
+
+    /// Check validity using prefix-pruned depth-first search.
+    ///
+    /// Uses `for_each_path_prefix` to prune paths whose prefix already
+    /// contains a complementary pair. For invalid matrices this finds the
+    /// first non-complementary path without enumerating all paths.
+    pub fn check_valid(&self) -> Proof {
+        let mut first_uncovered: Option<Path> = None;
+
+        self.for_each_path_prefix(|prefix| {
+            if first_uncovered.is_some() {
+                return false;
+            }
+            let (lits, complete) = self.resolve_prefix(prefix);
+            let complementary = lits.iter()
+                .any(|l| lits.iter().any(|l2| l.is_complement_of(l2)));
+            if complementary {
+                false // prune — all extensions are also complementary
+            } else if complete {
+                first_uncovered = Some(prefix.to_vec());
+                false
+            } else {
+                true // keep extending
+            }
+        });
+
+        // Handle matrices with no Prod nodes (the empty path [] is the only
+        // path but for_each_path_prefix never calls the callback for it).
+        if first_uncovered.is_none() {
+            let (lits, complete) = self.resolve_prefix(&[]);
+            if complete && !lits.iter().any(|l| lits.iter().any(|l2| l.is_complement_of(l2))) {
+                first_uncovered = Some(vec![]);
+            }
+        }
+
+        match first_uncovered {
+            Some(path) => Proof { cover: vec![], first_uncovered_path: Some(path) },
+            None => {
+                let all_paths: Vec<Path> = self.paths_iter().collect();
+                Proof { cover: self.cover(&all_paths), first_uncovered_path: None }
+            }
+        }
+    }
+
+    /// Reference implementation: check validity by examining all paths.
     ///
     /// Returns a `Proof` whose `first_uncovered_path` is `None` when every
     /// path is complementary (valid / tautology), with `cover` holding the
     /// greedy covering pairs.  Otherwise `first_uncovered_path` is the first
     /// non-complementary path and `cover` is empty.
-    pub fn check_valid(&self) -> Proof {
+    pub fn check_valid_reference(&self) -> Proof {
         let all_paths: Vec<Path> = self.paths_iter().collect();
         match all_paths.iter().find(|p| !self.is_complementary(p)) {
             Some(path) => Proof { cover: vec![], first_uncovered_path: Some(path.clone()) },
             None       => Proof { cover: self.cover(&all_paths), first_uncovered_path: None },
         }
+    }
+
+    /// Depth-first traversal of all path prefixes, with pruning.
+    ///
+    /// Calls `f` with each path prefix (including full paths) built by
+    /// selecting `Prod` members depth-first. If `f` returns `true`,
+    /// traversal continues forward on the current path; if `false`, it
+    /// backtracks to the last `Prod` member choice.
+    pub fn for_each_path_prefix(&self, mut f: impl FnMut(&Path) -> bool) {
+        fn traverse<F: FnMut(&Path) -> bool>(
+            m: &Matrix,
+            path: &mut Path,
+            f: &mut F,
+            then: &mut dyn FnMut(&mut Path, &mut F),
+        ) {
+            match m {
+                Matrix::Lit(_) => then(path, f),
+                Matrix::Prod(children) => {
+                    for (i, child) in children.iter().enumerate() {
+                        path.push(i);
+                        if f(path) {
+                            traverse(child, path, f, then);
+                        }
+                        path.pop();
+                    }
+                }
+                Matrix::Sum(children) => {
+                    traverse_sum(children, 0, path, f, then);
+                }
+            }
+        }
+
+        fn traverse_sum<F: FnMut(&Path) -> bool>(
+            children: &[Matrix],
+            idx: usize,
+            path: &mut Path,
+            f: &mut F,
+            then: &mut dyn FnMut(&mut Path, &mut F),
+        ) {
+            if idx >= children.len() {
+                then(path, f);
+            } else {
+                traverse(&children[idx], path, f, &mut |path, f| {
+                    traverse_sum(children, idx + 1, path, f, then);
+                });
+            }
+        }
+
+        let mut path = Path::new();
+        traverse(self, &mut path, &mut f, &mut |_, _| {});
     }
 }
 
@@ -397,6 +522,132 @@ mod tests {
         // [1, 2, 1] = {B, C', G, I}
         assert_eq!(m.lits_on_path(&[1, 2, 1]).iter().map(|l| l.var).collect::<Vec<_>>(),
                    vec![1, 2, 5, 7]);
+    }
+
+    // ── for_each_path_prefix ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_for_each_path_prefix_collects_all_paths() {
+        // (a · b) + (c · d) — full paths have length 2 (one selection per Prod)
+        let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
+        let mut full_paths = Vec::new();
+        let expected: Vec<Path> = m.paths_iter().collect();
+        m.for_each_path_prefix(|prefix| {
+            if prefix.len() == 2 {
+                full_paths.push(prefix.to_vec());
+            }
+            true
+        });
+        assert_eq!(full_paths, expected);
+    }
+
+    #[test]
+    fn test_for_each_path_prefix_includes_prefixes() {
+        // A (B + C') + E F' (G + H I)
+        let m = sum(vec![
+            prod(vec![v(0), sum(vec![v(1), vn(2)])]),
+            prod(vec![v(3), vn(4), sum(vec![v(5), prod(vec![v(6), v(7)])])]),
+        ]);
+        let mut all_prefixes = Vec::new();
+        m.for_each_path_prefix(|prefix| {
+            all_prefixes.push(prefix.to_vec());
+            true
+        });
+        // Should include intermediate prefixes like [0], [1], [0,0], etc.
+        assert!(all_prefixes.contains(&vec![0]));
+        assert!(all_prefixes.contains(&vec![1]));
+        assert!(all_prefixes.contains(&vec![0, 0]));
+        assert!(all_prefixes.contains(&vec![0, 1]));
+        assert!(all_prefixes.contains(&vec![1, 2, 0]));
+    }
+
+    #[test]
+    fn test_for_each_path_prefix_pruning() {
+        // (a · b) + (c · d) — prune when prefix starts with [1]
+        let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
+        let mut visited = Vec::new();
+        m.for_each_path_prefix(|prefix| {
+            visited.push(prefix.to_vec());
+            // Prune: don't continue if first Prod selected member 1
+            prefix[0] != 1
+        });
+        // Should see [0] (continue), [0,0], [0,1], [1] (pruned — no [1,*])
+        assert!(visited.contains(&vec![0]));
+        assert!(visited.contains(&vec![0, 0]));
+        assert!(visited.contains(&vec![0, 1]));
+        assert!(visited.contains(&vec![1]));
+        assert!(!visited.contains(&vec![1, 0]));
+        assert!(!visited.contains(&vec![1, 1]));
+    }
+
+    // ── check_valid vs check_valid_reference ─────────────────────────────────
+
+    fn assert_check_valid_matches(m: &Matrix) {
+        let fast = m.check_valid();
+        let reference = m.check_valid_reference();
+        assert_eq!(fast.first_uncovered_path, reference.first_uncovered_path);
+        assert_eq!(fast.cover, reference.cover);
+    }
+
+    #[test]
+    fn test_check_valid_tautology_a_or_not_a() {
+        assert_check_valid_matches(&sum(vec![v(0), vn(0)]));
+    }
+
+    #[test]
+    fn test_check_valid_not_valid_simple_var() {
+        assert_check_valid_matches(&v(0));
+    }
+
+    #[test]
+    fn test_check_valid_not_valid_a_or_b() {
+        assert_check_valid_matches(&sum(vec![v(0), v(1)]));
+    }
+
+    #[test]
+    fn test_check_valid_document_example() {
+        // ((a·b) + (a'+b')) · ((a'+b') + (a·b))
+        let ab   = prod(vec![v(0), v(1)]);
+        let nanb = sum(vec![vn(0), vn(1)]);
+        let left  = sum(vec![ab.clone(), nanb.clone()]);
+        let right = sum(vec![nanb, ab]);
+        assert_check_valid_matches(&prod(vec![left, right]));
+    }
+
+    #[test]
+    fn test_check_valid_complement_tautology() {
+        // check on complement (used by check_satisfiable)
+        let m = prod(vec![v(0), vn(0)]); // a · a' — unsatisfiable
+        let comp = m.complement();        // a' + a — tautology
+        assert_check_valid_matches(&comp);
+    }
+
+    #[test]
+    fn test_check_valid_cnf_unsatisfiable_complement() {
+        // (a+b)·(a+b')·(a'+b)·(a'+b') — unsatisfiable
+        let m = prod(vec![
+            sum(vec![v(0), v(1)]),
+            sum(vec![v(0), vn(1)]),
+            sum(vec![vn(0), v(1)]),
+            sum(vec![vn(0), vn(1)]),
+        ]);
+        let comp = m.complement();
+        assert_check_valid_matches(&comp);
+    }
+
+    #[test]
+    fn test_check_valid_larger_tautology() {
+        // R'H' + L H R' + L' + R
+        let (m, _) = parse_to_matrix("R'H' + L H R' + L' + R").unwrap();
+        assert_check_valid_matches(&m);
+    }
+
+    #[test]
+    fn test_check_valid_four_var() {
+        let (m, _) = parse_to_matrix(
+            "a'·b'·c + b'·c'·d + c'·d'·a' + d'·a·b' + a·b·c' + b·c·d' + c·d·a + d·a'·b"
+        ).unwrap();
+        assert_check_valid_matches(&m);
     }
 
     // ── Complement ────────────────────────────────────────────────────────────

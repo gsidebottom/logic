@@ -57,6 +57,156 @@ impl Matrix {
             Matrix::Prod(ch)    => Matrix::Sum(ch.iter().map(|c| c.complement()).collect()),
         }
     }
+
+    /// Resolve a path to the literals it collects.
+    ///
+    /// Follows the path's `Prod` member selections depth-first, collecting every
+    /// `Lit` encountered (including those reached via `Sum` cross-products).
+    pub fn lits_on_path(&self, path: &[usize]) -> Vec<&Lit> {
+        fn inner<'a>(m: &'a Matrix, path: &[usize]) -> (Vec<&'a Lit>, usize) {
+            match m {
+                Matrix::Lit(l) => (vec![l], 0),
+                Matrix::Prod(children) => {
+                    let sel = path[0];
+                    let (lits, consumed) = inner(&children[sel], &path[1..]);
+                    (lits, 1 + consumed)
+                }
+                Matrix::Sum(children) => {
+                    let mut all_lits = Vec::new();
+                    let mut total = 0;
+                    for child in children {
+                        let (lits, consumed) = inner(child, &path[total..]);
+                        all_lits.extend(lits);
+                        total += consumed;
+                    }
+                    (all_lits, total)
+                }
+            }
+        }
+        inner(self, path).0
+    }
+
+    /// Compute every path through this matrix, where each path is a sequence
+    /// of `Prod` member selections identifying which child was chosen at each
+    /// `Prod` node.
+    ///
+    /// - `Sum`  (OR):  cross-product — each path picks one sub-path from **each** child.
+    /// - `Prod` (AND): union         — each path picks one child, prepending its index.
+    /// - `Lit`:        an empty path (no `Prod` selection needed).
+    pub fn paths(&self) -> Vec<Path> {
+        fn inner(m: &Matrix) -> Vec<Path> {
+            match m {
+                Matrix::Lit(_) => vec![vec![]],
+                Matrix::Sum(children) => {
+                    children.iter().fold(vec![vec![]], |acc, child| {
+                        let cp = inner(child);
+                        acc.into_iter()
+                            .flat_map(|p| cp.iter().map(move |q| {
+                                let mut combined = p.clone();
+                                combined.extend_from_slice(q);
+                                combined
+                            }))
+                            .collect()
+                    })
+                }
+                Matrix::Prod(children) => {
+                    children.iter().enumerate().flat_map(|(i, child)| {
+                        inner(child).into_iter().map(move |mut p| {
+                            p.insert(0, i);
+                            p
+                        })
+                    }).collect()
+                }
+            }
+        }
+        inner(self)
+    }
+
+    /// Resolve a path to the `Position`s (absolute tree addresses) of its literals.
+    pub fn positions_on_path(&self, path: &[usize]) -> Vec<Position> {
+        fn inner(m: &Matrix, path: &[usize], pos: &mut Vec<usize>, out: &mut Vec<Position>) -> usize {
+            match m {
+                Matrix::Lit(_) => {
+                    out.push(pos.clone());
+                    0
+                }
+                Matrix::Prod(children) => {
+                    let sel = path[0];
+                    pos.push(sel);
+                    let consumed = inner(&children[sel], &path[1..], pos, out);
+                    pos.pop();
+                    1 + consumed
+                }
+                Matrix::Sum(children) => {
+                    let mut total = 0;
+                    for (i, child) in children.iter().enumerate() {
+                        pos.push(i);
+                        let consumed = inner(child, &path[total..], pos, out);
+                        pos.pop();
+                        total += consumed;
+                    }
+                    total
+                }
+            }
+        }
+        let mut result = Vec::new();
+        inner(self, path, &mut Vec::new(), &mut result);
+        result
+    }
+
+    /// Return every `Position` at which `target` appears.
+    pub fn literal_positions(&self, target: &Lit) -> Vec<Position> {
+        fn inner(m: &Matrix, target: &Lit, prefix: &mut Position, out: &mut Vec<Position>) {
+            match m {
+                Matrix::Lit(l) => if l == target { out.push(prefix.clone()); }
+                Matrix::Sum(ch) | Matrix::Prod(ch) => {
+                    for (i, child) in ch.iter().enumerate() {
+                        prefix.push(i);
+                        inner(child, target, prefix, out);
+                        prefix.pop();
+                    }
+                }
+            }
+        }
+        let mut result = Vec::new();
+        inner(self, target, &mut Vec::new(), &mut result);
+        result
+    }
+
+    /// Resolve a position to the `Lit` it points to, or `None` if the
+    /// position is out of bounds or does not end at a `Lit`.
+    pub fn lit_at(&self, pos: &[usize]) -> Option<&Lit> {
+        let mut node = self;
+        for &i in pos {
+            match node {
+                Matrix::Lit(_) => return None,
+                Matrix::Sum(ch) | Matrix::Prod(ch) => node = ch.get(i)?,
+            }
+        }
+        match node {
+            Matrix::Lit(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    /// A path is *complementary* if it contains at least one complementary
+    /// literal pair `{l, l'}`.
+    pub fn is_complementary(&self, path: &Path) -> bool {
+        let lits = self.lits_on_path(path);
+        lits.iter().any(|l| lits.iter().any(|l2| l.is_complement_of(l2)))
+    }
+
+    /// A matrix is *valid* (tautology) iff every path is complementary.
+    pub fn is_valid(&self) -> bool {
+        self.paths().iter().all(|p| self.is_complementary(p))
+    }
+
+    /// A matrix is *satisfiable* iff its complement has at least one
+    /// non-complementary path (i.e. the complement is not a tautology).
+    pub fn is_satisfiable(&self) -> bool {
+        let comp = self.complement();
+        comp.paths().iter().any(|p| !comp.is_complementary(p))
+    }
 }
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
@@ -69,168 +219,6 @@ impl Matrix {
 /// - `[1, 0]` = `{B, C', E}` (Prod0→Sum[B,C'], Prod1→E)
 /// - `[1, 2, 0]` = `{B, C', G, H}` (Prod0→Sum, Prod1→Sum→Prod[H,I]→H)
 pub type Path = Vec<usize>;
-
-/// Compute every path through `m`, where each path is a sequence of `Prod`
-/// member selections identifying which child was chosen at each `Prod` node.
-///
-/// - `Sum`  (OR):  cross-product — each path picks one sub-path from **each** child.
-/// - `Prod` (AND): union         — each path picks one child, prepending its index.
-/// - `Lit`:        an empty path (no `Prod` selection needed).
-pub fn paths(m: &Matrix) -> Vec<Path> {
-    paths_from(m)
-}
-
-fn paths_from(m: &Matrix) -> Vec<Path> {
-    match m {
-        Matrix::Lit(_) => vec![vec![]],
-
-        Matrix::Sum(children) => {
-            children.iter().fold(vec![vec![]], |acc, child| {
-                let cp = paths_from(child);
-                acc.into_iter()
-                    .flat_map(|p| cp.iter().map(move |q| {
-                        let mut combined = p.clone();
-                        combined.extend_from_slice(q);
-                        combined
-                    }))
-                    .collect()
-            })
-        }
-
-        Matrix::Prod(children) => {
-            children.iter().enumerate().flat_map(|(i, child)| {
-                paths_from(child).into_iter().map(move |mut p| {
-                    p.insert(0, i);
-                    p
-                })
-            }).collect()
-        }
-    }
-}
-
-/// Resolve a path to the literals it collects.
-///
-/// Follows the path's `Prod` member selections depth-first, collecting every
-/// `Lit` encountered (including those reached via `Sum` cross-products).
-pub fn lits_on_path<'a>(m: &'a Matrix, path: &[usize]) -> Vec<&'a Lit> {
-    lits_on_path_inner(m, path).0
-}
-
-fn lits_on_path_inner<'a>(m: &'a Matrix, path: &[usize]) -> (Vec<&'a Lit>, usize) {
-    match m {
-        Matrix::Lit(l) => (vec![l], 0),
-        Matrix::Prod(children) => {
-            let sel = path[0];
-            let (lits, consumed) = lits_on_path_inner(&children[sel], &path[1..]);
-            (lits, 1 + consumed)
-        }
-        Matrix::Sum(children) => {
-            let mut all_lits = Vec::new();
-            let mut total = 0;
-            for child in children {
-                let (lits, consumed) = lits_on_path_inner(child, &path[total..]);
-                all_lits.extend(lits);
-                total += consumed;
-            }
-            (all_lits, total)
-        }
-    }
-}
-
-/// Resolve a path to the `Position`s (absolute tree addresses) of its literals.
-pub fn positions_on_path(m: &Matrix, path: &[usize]) -> Vec<Position> {
-    let mut result = Vec::new();
-    positions_on_path_inner(m, path, &mut Vec::new(), &mut result);
-    result
-}
-
-fn positions_on_path_inner(
-    m: &Matrix,
-    path: &[usize],
-    pos: &mut Vec<usize>,
-    out: &mut Vec<Position>,
-) -> usize {
-    match m {
-        Matrix::Lit(_) => {
-            out.push(pos.clone());
-            0
-        }
-        Matrix::Prod(children) => {
-            let sel = path[0];
-            pos.push(sel);
-            let consumed = positions_on_path_inner(&children[sel], &path[1..], pos, out);
-            pos.pop();
-            1 + consumed
-        }
-        Matrix::Sum(children) => {
-            let mut total = 0;
-            for (i, child) in children.iter().enumerate() {
-                pos.push(i);
-                let consumed = positions_on_path_inner(child, &path[total..], pos, out);
-                pos.pop();
-                total += consumed;
-            }
-            total
-        }
-    }
-}
-
-/// Resolve a position to the `Lit` it points to in `m`, or `None` if the
-/// position is out of bounds or does not end at a `Lit`.
-pub fn lit_at<'a>(m: &'a Matrix, pos: &[usize]) -> Option<&'a Lit> {
-    let mut node = m;
-    for &i in pos {
-        match node {
-            Matrix::Lit(_) => return None,
-            Matrix::Sum(ch) | Matrix::Prod(ch) => node = ch.get(i)?,
-        }
-    }
-    match node {
-        Matrix::Lit(l) => Some(l),
-        _ => None,
-    }
-}
-
-/// A path is *complementary* if it contains at least one complementary literal
-/// pair `{l, l'}` (resolved via `m`).
-pub fn is_complementary(path: &Path, m: &Matrix) -> bool {
-    let lits = lits_on_path(m, path);
-    lits.iter().any(|l| lits.iter().any(|l2| l.is_complement_of(l2)))
-}
-
-/// A matrix is *valid* (tautology) iff every path is complementary.
-pub fn is_valid(m: &Matrix) -> bool {
-    paths(m).iter().all(|p| is_complementary(p, m))
-}
-
-/// A matrix is *satisfiable* iff its complement has at least one non-complementary path
-/// (i.e. the complement is not a tautology).
-pub fn is_satisfiable(m: &Matrix) -> bool {
-    let comp = m.complement();
-    paths(&comp).iter().any(|p| !is_complementary(p, &comp))
-}
-
-// ─── Literal positions ────────────────────────────────────────────────────────
-
-/// Return every `Position` in `m` at which `target` appears.
-pub fn literal_positions(m: &Matrix, target: &Lit) -> Vec<Position> {
-    let mut result = Vec::new();
-    collect_positions(m, target, &mut Vec::new(), &mut result);
-    result
-}
-
-fn collect_positions(m: &Matrix, target: &Lit, prefix: &mut Position, out: &mut Vec<Position>) {
-    match m {
-        Matrix::Lit(l) => if l == target { out.push(prefix.clone()); }
-        Matrix::Sum(ch) | Matrix::Prod(ch) => {
-            for (i, child) in ch.iter().enumerate() {
-                prefix.push(i);
-                collect_positions(child, target, prefix, out);
-                prefix.pop();
-            }
-        }
-    }
-}
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -247,10 +235,10 @@ mod tests {
 
     // Resolve each path's literals to (var, neg) pairs, sort for deterministic comparison.
     fn sorted_paths(m: &Matrix) -> Vec<Vec<(Var, bool)>> {
-        let mut ps: Vec<Vec<(Var, bool)>> = paths(m)
+        let mut ps: Vec<Vec<(Var, bool)>> = m.paths()
             .into_iter()
             .map(|path| {
-                let mut lits: Vec<(Var, bool)> = lits_on_path(m, &path)
+                let mut lits: Vec<(Var, bool)> = m.lits_on_path(&path)
                     .into_iter()
                     .map(|l| (l.var, l.neg))
                     .collect();
@@ -333,19 +321,19 @@ mod tests {
         ]);
 
         // [0, 0] = {A, E}
-        assert_eq!(lits_on_path(&m, &[0, 0]).iter().map(|l| l.var).collect::<Vec<_>>(),
+        assert_eq!(m.lits_on_path(&[0, 0]).iter().map(|l| l.var).collect::<Vec<_>>(),
                    vec![0, 3]);
         // [0, 1] = {A, F'}
-        assert_eq!(lits_on_path(&m, &[0, 1]).iter().map(|l| (l.var, l.neg)).collect::<Vec<_>>(),
+        assert_eq!(m.lits_on_path(&[0, 1]).iter().map(|l| (l.var, l.neg)).collect::<Vec<_>>(),
                    vec![(0, false), (4, true)]);
         // [1, 0] = {B, C', E}
-        assert_eq!(lits_on_path(&m, &[1, 0]).iter().map(|l| l.var).collect::<Vec<_>>(),
+        assert_eq!(m.lits_on_path(&[1, 0]).iter().map(|l| l.var).collect::<Vec<_>>(),
                    vec![1, 2, 3]);
         // [1, 2, 0] = {B, C', G, H}
-        assert_eq!(lits_on_path(&m, &[1, 2, 0]).iter().map(|l| l.var).collect::<Vec<_>>(),
+        assert_eq!(m.lits_on_path(&[1, 2, 0]).iter().map(|l| l.var).collect::<Vec<_>>(),
                    vec![1, 2, 5, 6]);
         // [1, 2, 1] = {B, C', G, I}
-        assert_eq!(lits_on_path(&m, &[1, 2, 1]).iter().map(|l| l.var).collect::<Vec<_>>(),
+        assert_eq!(m.lits_on_path(&[1, 2, 1]).iter().map(|l| l.var).collect::<Vec<_>>(),
                    vec![1, 2, 5, 7]);
     }
 
@@ -377,19 +365,19 @@ mod tests {
     fn test_valid_tautology_a_or_not_a() {
         // a + a'  is a tautology
         let m = sum(vec![v(0), vn(0)]);
-        assert!(is_valid(&m));
+        assert!(m.is_valid());
     }
 
     #[test]
     fn test_not_valid_simple_var() {
         // a alone is not a tautology
-        assert!(!is_valid(&v(0)));
+        assert!(!v(0).is_valid());
     }
 
     #[test]
     fn test_not_valid_a_or_b() {
         // a + b is not a tautology (a=0, b=0 falsifies it)
-        assert!(!is_valid(&sum(vec![v(0), v(1)])));
+        assert!(!sum(vec![v(0), v(1)]).is_valid());
     }
 
     #[test]
@@ -400,31 +388,31 @@ mod tests {
         let left  = sum(vec![ab.clone(), nanb.clone()]);
         let right = sum(vec![nanb, ab]);
         let m = prod(vec![left, right]);
-        assert!(is_valid(&m));
+        assert!(m.is_valid());
     }
 
     // ── Satisfiability ────────────────────────────────────────────────────────
 
     #[test]
     fn test_satisfiable_simple_var() {
-        assert!(is_satisfiable(&v(0)));
+        assert!(v(0).is_satisfiable());
     }
 
     #[test]
     fn test_satisfiable_tautology() {
         // a + a'  is satisfiable (any assignment works)
-        assert!(is_satisfiable(&sum(vec![v(0), vn(0)])));
+        assert!(sum(vec![v(0), vn(0)]).is_satisfiable());
     }
 
     #[test]
     fn test_unsatisfiable_contradiction() {
         // a · a'  is unsatisfiable
-        assert!(!is_satisfiable(&prod(vec![v(0), vn(0)])));
+        assert!(!prod(vec![v(0), vn(0)]).is_satisfiable());
     }
 
     #[test]
     fn test_satisfiable_a_or_b() {
-        assert!(is_satisfiable(&sum(vec![v(0), v(1)])));
+        assert!(sum(vec![v(0), v(1)]).is_satisfiable());
     }
 
     #[test]
@@ -436,7 +424,7 @@ mod tests {
             sum(vec![vn(0), v(1)]),
             sum(vec![vn(0), vn(1)]),
         ]);
-        assert!(!is_satisfiable(&m));
+        assert!(!m.is_satisfiable());
     }
 }
 
@@ -459,7 +447,7 @@ pub fn node_to_matrix(node: &Node, var_index: &HashMap<String, u32>) -> Matrix {
 }
 
 pub fn format_path(path: &Path, m: &Matrix, var_names: &[String]) -> String {
-    let resolved = lits_on_path(m, path);
+    let resolved = m.lits_on_path(path);
     if resolved.is_empty() { return "∅".to_string(); }
     let mut lits: Vec<String> = resolved.iter()
         .map(|l| {

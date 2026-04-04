@@ -5,9 +5,9 @@ type ProveResult = Result<(bool, Option<String>, CoverPairs), String>;
 
 pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
     let (m, vars) = parse_to_matrix(formula)?;
-    let all_paths = matrix::paths(&m);
+    let all_paths = m.paths();
     let formatted  = all_paths.iter().map(|p| format_path(p, &m, &vars)).collect();
-    let comp_flags = all_paths.iter().map(|p| matrix::is_complementary(p, &m)).collect();
+    let comp_flags = all_paths.iter().map(|p| m.is_complementary(p)).collect();
     Ok((formatted, comp_flags))
 }
 
@@ -18,7 +18,7 @@ pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
 /// first complementary literal pair within the path and adds it to the cover.
 fn greedy_cover(m: &matrix::Matrix, paths: &[matrix::Path]) -> CoverPairs {
     let resolved: Vec<Vec<matrix::Position>> = paths.iter()
-        .map(|p| matrix::positions_on_path(m, p))
+        .map(|p| m.positions_on_path(p))
         .collect();
 
     let mut result: CoverPairs = Vec::new();
@@ -31,9 +31,9 @@ fn greedy_cover(m: &matrix::Matrix, paths: &[matrix::Path]) -> CoverPairs {
         }
         // Path not yet covered — find the first complementary pair within it.
         'found: for pos_a in positions {
-            if let Some(lit_a) = matrix::lit_at(m, pos_a) {
+            if let Some(lit_a) = m.lit_at(pos_a) {
                 for pos_b in positions {
-                    if let Some(lit_b) = matrix::lit_at(m, pos_b) {
+                    if let Some(lit_b) = m.lit_at(pos_b) {
                         if lit_a.is_complement_of(lit_b) {
                             result.push((pos_a.clone(), pos_b.clone()));
                             break 'found;
@@ -51,8 +51,8 @@ fn greedy_cover(m: &matrix::Matrix, paths: &[matrix::Path]) -> CoverPairs {
 /// pairs), or `(false, Some(path), [])` with the first uncomplimentary path.
 pub fn check_valid(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
-    let all_paths = matrix::paths(&m);
-    match all_paths.iter().find(|p| !matrix::is_complementary(p, &m)) {
+    let all_paths = m.paths();
+    match all_paths.iter().find(|p| !m.is_complementary(p)) {
         Some(path) => Ok((false, Some(format_path(path, &m, &vars)), vec![])),
         None => {
             let pairs = greedy_cover(&m, &all_paths);
@@ -67,8 +67,8 @@ pub fn check_valid(formula: &str) -> ProveResult {
 pub fn check_satisfiable(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
     let comp = m.complement();
-    let comp_paths = matrix::paths(&comp);
-    match comp_paths.iter().find(|p| !matrix::is_complementary(p, &comp)) {
+    let comp_paths = comp.paths();
+    match comp_paths.iter().find(|p| !comp.is_complementary(p)) {
         Some(path) => Ok((true, Some(format_path(path, &comp, &vars)), vec![])),
         None => {
             let pairs = greedy_cover(&comp, &comp_paths);

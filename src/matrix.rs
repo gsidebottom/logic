@@ -308,7 +308,7 @@ impl Matrix {
     pub fn check_valid(&self) -> Proof {
         let mut first_uncovered: Option<Path> = None;
 
-        self.for_each_path_prefix(|prefix| {
+        self.for_each_path_prefix(|prefix, _prefix_lits| {
             if first_uncovered.is_some() {
                 return false;
             }
@@ -359,52 +359,61 @@ impl Matrix {
 
     /// Depth-first traversal of all path prefixes, with pruning.
     ///
-    /// Calls `f` with each path prefix (including full paths) built by
-    /// selecting `Prod` members depth-first. If `f` returns `true`,
-    /// traversal continues forward on the current path; if `false`, it
-    /// backtracks to the last `Prod` member choice.
-    pub fn for_each_path_prefix(&self, mut f: impl FnMut(&Path) -> bool) {
-        fn traverse<F: FnMut(&Path) -> bool>(
-            m: &Matrix,
+    /// Calls `f` with each path prefix (including full paths) and the
+    /// literals guaranteed to be on any path extending that prefix.
+    /// If `f` returns `true`, traversal continues forward on the current
+    /// path; if `false`, it backtracks to the last `Prod` member choice.
+    pub fn for_each_path_prefix(&self, mut f: impl FnMut(&Path, &Vec<&Lit>) -> bool) {
+        type Lits<'a> = Vec<&'a Lit>;
+
+        fn traverse<'a, F: FnMut(&Path, &Lits<'a>) -> bool>(
+            m: &'a Matrix,
             path: &mut Path,
+            lits: &mut Lits<'a>,
             f: &mut F,
-            then: &mut dyn FnMut(&mut Path, &mut F),
+            then: &mut dyn FnMut(&mut Path, &mut Lits<'a>, &mut F),
         ) {
             match m {
-                Matrix::Lit(_) => then(path, f),
+                Matrix::Lit(l) => {
+                    lits.push(l);
+                    then(path, lits, f);
+                    lits.pop();
+                }
                 Matrix::Prod(children) => {
                     for (i, child) in children.iter().enumerate() {
                         path.push(i);
-                        if f(path) {
-                            traverse(child, path, f, then);
+                        if f(path, lits) {
+                            traverse(child, path, lits, f, then);
                         }
                         path.pop();
                     }
                 }
                 Matrix::Sum(children) => {
-                    traverse_sum(children, 0, path, f, then);
+                    traverse_sum(children, 0, path, lits, f, then);
                 }
             }
         }
 
-        fn traverse_sum<F: FnMut(&Path) -> bool>(
-            children: &[Matrix],
+        fn traverse_sum<'a, F: FnMut(&Path, &Lits<'a>) -> bool>(
+            children: &'a [Matrix],
             idx: usize,
             path: &mut Path,
+            lits: &mut Lits<'a>,
             f: &mut F,
-            then: &mut dyn FnMut(&mut Path, &mut F),
+            then: &mut dyn FnMut(&mut Path, &mut Lits<'a>, &mut F),
         ) {
             if idx >= children.len() {
-                then(path, f);
+                then(path, lits, f);
             } else {
-                traverse(&children[idx], path, f, &mut |path, f| {
-                    traverse_sum(children, idx + 1, path, f, then);
+                traverse(&children[idx], path, lits, f, &mut |path, lits, f| {
+                    traverse_sum(children, idx + 1, path, lits, f, then);
                 });
             }
         }
 
         let mut path = Path::new();
-        traverse(self, &mut path, &mut f, &mut |_, _| {});
+        let mut lits = Vec::new();
+        traverse(self, &mut path, &mut lits, &mut f, &mut |_, _, _| {});
     }
 }
 
@@ -532,7 +541,7 @@ mod tests {
         let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
         let mut full_paths = Vec::new();
         let expected: Vec<Path> = m.paths_iter().collect();
-        m.for_each_path_prefix(|prefix| {
+        m.for_each_path_prefix(|prefix, _lits| {
             if prefix.len() == 2 {
                 full_paths.push(prefix.to_vec());
             }
@@ -549,7 +558,7 @@ mod tests {
             prod(vec![v(3), vn(4), sum(vec![v(5), prod(vec![v(6), v(7)])])]),
         ]);
         let mut all_prefixes = Vec::new();
-        m.for_each_path_prefix(|prefix| {
+        m.for_each_path_prefix(|prefix, _lits| {
             all_prefixes.push(prefix.to_vec());
             true
         });
@@ -566,7 +575,7 @@ mod tests {
         // (a · b) + (c · d) — prune when prefix starts with [1]
         let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
         let mut visited = Vec::new();
-        m.for_each_path_prefix(|prefix| {
+        m.for_each_path_prefix(|prefix, _lits| {
             visited.push(prefix.to_vec());
             // Prune: don't continue if first Prod selected member 1
             prefix[0] != 1

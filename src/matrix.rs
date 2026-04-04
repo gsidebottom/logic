@@ -207,6 +207,42 @@ impl Matrix {
         let comp = self.complement();
         comp.paths().iter().any(|p| !comp.is_complementary(p))
     }
+
+    /// Covering pairs for all paths.
+    ///
+    /// Iterates through each path. If any pair already in the cover has both
+    /// its positions in the path, the path is already covered. Otherwise,
+    /// finds the first complementary literal pair within the path and adds it
+    /// to the cover.
+    pub fn greedy_cover(&self, paths: &[Path]) -> CoverPairs {
+        let resolved: Vec<Vec<Position>> = paths.iter()
+            .map(|p| self.positions_on_path(p))
+            .collect();
+
+        let mut result: CoverPairs = Vec::new();
+
+        'path: for positions in &resolved {
+            for (pa, pb) in &result {
+                if positions.contains(pa) && positions.contains(pb) {
+                    continue 'path;
+                }
+            }
+            'found: for pos_a in positions {
+                if let Some(lit_a) = self.lit_at(pos_a) {
+                    for pos_b in positions {
+                        if let Some(lit_b) = self.lit_at(pos_b) {
+                            if lit_a.is_complement_of(lit_b) {
+                                result.push((pos_a.clone(), pos_b.clone()));
+                                break 'found;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        result
+    }
 }
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
@@ -219,6 +255,9 @@ impl Matrix {
 /// - `[1, 0]` = `{B, C', E}` (Prod0→Sum[B,C'], Prod1→E)
 /// - `[1, 2, 0]` = `{B, C', G, H}` (Prod0→Sum, Prod1→Sum→Prod[H,I]→H)
 pub type Path = Vec<usize>;
+
+/// A set of complementary literal pairs identified by their `Position`s.
+pub type CoverPairs = Vec<(Position, Position)>;
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 

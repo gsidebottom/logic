@@ -4,7 +4,7 @@ type ProveResult = Result<(bool, Option<String>, Cover), String>;
 
 pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
     let (m, vars) = parse_to_matrix(formula)?;
-    let all_paths = m.paths();
+    let all_paths: Vec<_> = m.paths_iter().collect();
     let formatted  = all_paths.iter().map(|p| format_path(p, &m, &vars)).collect();
     let comp_flags = all_paths.iter().map(|p| m.is_complementary(p)).collect();
     Ok((formatted, comp_flags))

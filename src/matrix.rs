@@ -35,6 +35,30 @@ impl Lit {
 /// - `Lit(c)` is at `[1]`
 pub type Position = Vec<usize>;
 
+// ─── Path / Cover / Proof ────────────────────────────────────────────────────
+
+/// A path through a matrix: a sequence of `Prod` member selections, one for
+/// each `Prod` node encountered during depth-first traversal.
+///
+/// For example, in `Sum([Prod([A, Sum([B, C'])]), Prod([E, F', Sum([G, Prod([H, I])])])])`:
+/// - `[0, 0]` = `{A, E}` (Prod0→A, Prod1→E)
+/// - `[1, 0]` = `{B, C', E}` (Prod0→Sum[B,C'], Prod1→E)
+/// - `[1, 2, 0]` = `{B, C', G, H}` (Prod0→Sum, Prod1→Sum→Prod[H,I]→H)
+pub type Path = Vec<usize>;
+
+/// A set of complementary literal pairs identified by their `Position`s.
+pub type Cover = Vec<(Position, Position)>;
+
+/// Result of checking validity of a matrix.
+///
+/// If `first_uncovered_path` is `None`, every path is complementary and `cover`
+/// contains a greedy set of covering pairs. Otherwise `first_uncovered_path`
+/// holds the first non-complementary path and `cover` is empty.
+pub struct Proof {
+    pub cover: Cover,
+    pub first_uncovered_path: Option<Path>,
+}
+
 // ─── Matrix ───────────────────────────────────────────────────────────────────
 
 /// A formula in negation normal form (NNF / Matrix).
@@ -93,13 +117,13 @@ impl Matrix {
     /// - `Sum`  (OR):  cross-product — each path picks one sub-path from **each** child.
     /// - `Prod` (AND): union         — each path picks one child, prepending its index.
     /// - `Lit`:        an empty path (no `Prod` selection needed).
-    pub fn paths(&self) -> Vec<Path> {
-        fn inner(m: &Matrix) -> Vec<Path> {
+    pub fn paths_iter(&self) -> impl Iterator<Item = Path> {
+        fn collect(m: &Matrix) -> Vec<Path> {
             match m {
                 Matrix::Lit(_) => vec![vec![]],
                 Matrix::Sum(children) => {
                     children.iter().fold(vec![vec![]], |acc, child| {
-                        let cp = inner(child);
+                        let cp = collect(child);
                         acc.into_iter()
                             .flat_map(|p| cp.iter().map(move |q| {
                                 let mut combined = p.clone();
@@ -111,7 +135,7 @@ impl Matrix {
                 }
                 Matrix::Prod(children) => {
                     children.iter().enumerate().flat_map(|(i, child)| {
-                        inner(child).into_iter().map(move |mut p| {
+                        collect(child).into_iter().map(move |mut p| {
                             p.insert(0, i);
                             p
                         })
@@ -119,7 +143,7 @@ impl Matrix {
                 }
             }
         }
-        inner(self)
+        collect(self).into_iter()
     }
 
     /// Resolve a path to the `Position`s (absolute tree addresses) of its literals.
@@ -198,14 +222,14 @@ impl Matrix {
 
     /// A matrix is *valid* (tautology) iff every path is complementary.
     pub fn is_valid(&self) -> bool {
-        self.paths().iter().all(|p| self.is_complementary(p))
+        self.paths_iter().all(|p| self.is_complementary(&p))
     }
 
     /// A matrix is *satisfiable* iff its complement has at least one
     /// non-complementary path (i.e. the complement is not a tautology).
     pub fn is_satisfiable(&self) -> bool {
         let comp = self.complement();
-        comp.paths().iter().any(|p| !comp.is_complementary(p))
+        comp.paths_iter().any(|p| !comp.is_complementary(&p))
     }
 
     /// Covering pairs for all paths.
@@ -251,36 +275,12 @@ impl Matrix {
     /// greedy covering pairs.  Otherwise `first_uncovered_path` is the first
     /// non-complementary path and `cover` is empty.
     pub fn check_valid(&self) -> Proof {
-        let all_paths = self.paths();
+        let all_paths: Vec<Path> = self.paths_iter().collect();
         match all_paths.iter().find(|p| !self.is_complementary(p)) {
             Some(path) => Proof { cover: vec![], first_uncovered_path: Some(path.clone()) },
             None       => Proof { cover: self.cover(&all_paths), first_uncovered_path: None },
         }
     }
-}
-
-// ─── Paths ────────────────────────────────────────────────────────────────────
-
-/// A path through a matrix: a sequence of `Prod` member selections, one for
-/// each `Prod` node encountered during depth-first traversal.
-///
-/// For example, in `Sum([Prod([A, Sum([B, C'])]), Prod([E, F', Sum([G, Prod([H, I])])])])`:
-/// - `[0, 0]` = `{A, E}` (Prod0→A, Prod1→E)
-/// - `[1, 0]` = `{B, C', E}` (Prod0→Sum[B,C'], Prod1→E)
-/// - `[1, 2, 0]` = `{B, C', G, H}` (Prod0→Sum, Prod1→Sum→Prod[H,I]→H)
-pub type Path = Vec<usize>;
-
-/// A set of complementary literal pairs identified by their `Position`s.
-pub type Cover = Vec<(Position, Position)>;
-
-/// Result of checking validity of a matrix.
-///
-/// If `first_uncovered_path` is `None`, every path is complementary and `cover`
-/// contains a greedy set of covering pairs. Otherwise `first_uncovered_path`
-/// holds the first non-complementary path and `cover` is empty.
-pub struct Proof {
-    pub cover: Cover,
-    pub first_uncovered_path: Option<Path>,
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -298,8 +298,7 @@ mod tests {
 
     // Resolve each path's literals to (var, neg) pairs, sort for deterministic comparison.
     fn sorted_paths(m: &Matrix) -> Vec<Vec<(Var, bool)>> {
-        let mut ps: Vec<Vec<(Var, bool)>> = m.paths()
-            .into_iter()
+        let mut ps: Vec<Vec<(Var, bool)>> = m.paths_iter()
             .map(|path| {
                 let mut lits: Vec<(Var, bool)> = m.lits_on_path(&path)
                     .into_iter()

@@ -23,6 +23,18 @@ impl Lit {
     }
 }
 
+// ─── Position ─────────────────────────────────────────────────────────────────
+
+/// A position of a literal within a matrix: a sequence of child indices,
+/// each indexing into the `Vec` of a `Sum` or `Prod` node encountered on the
+/// way down, terminating at a `Lit`.
+///
+/// For example, in `Sum([Prod([Lit(a), Lit(b)]), Lit(c)])`:
+/// - `Lit(a)` is at `[0, 0]`
+/// - `Lit(b)` is at `[0, 1]`
+/// - `Lit(c)` is at `[1]`
+pub type Position = Vec<usize>;
+
 // ─── Matrix ───────────────────────────────────────────────────────────────────
 
 /// A formula in negation normal form (NNF / Matrix).

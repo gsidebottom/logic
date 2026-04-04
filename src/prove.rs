@@ -75,3 +75,67 @@ pub fn check_satisfiable(formula: &str) -> Result<(bool, Option<String>, Vec<Str
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Formula: R'H' + L H R' + L' + R
+    // Variables alphabetically: H(0), L(1), R(2)
+    // This is a tautology — every path through the matrix is complementary.
+    const F: &str = "R'H' + L H R' + L' + R";
+
+    #[test]
+    fn test_get_paths_count_and_complementarity() {
+        let (paths, comp) = get_paths(F).unwrap();
+        assert_eq!(paths.len(), 6);
+        assert!(comp.iter().all(|&c| c), "all paths should be complementary");
+    }
+
+    #[test]
+    fn test_get_paths_contents() {
+        let (paths, _) = get_paths(F).unwrap();
+        assert!(paths.contains(&"{L, L', R, R'}".to_string()));
+        assert!(paths.contains(&"{H, L', R, R'}".to_string()));
+        assert!(paths.contains(&"{L', R, R'}".to_string()));
+        assert!(paths.contains(&"{H', L, L', R}".to_string()));
+        assert!(paths.contains(&"{H, H', L', R}".to_string()));
+        assert!(paths.contains(&"{H', L', R, R'}".to_string()));
+    }
+
+    #[test]
+    fn test_check_valid() {
+        let (valid, path, pairs) = check_valid(F).unwrap();
+        assert!(valid);
+        assert!(path.is_none());
+        // Greedy cover picks R first (covers 4 paths), then L, then H.
+        assert!(pairs.contains(&"{R, R'}".to_string()));
+        assert!(pairs.contains(&"{L, L'}".to_string()));
+        assert!(pairs.contains(&"{H, H'}".to_string()));
+    }
+
+    #[test]
+    fn test_check_satisfiable_tautology_is_satisfiable() {
+        let (sat, path, pairs) = check_satisfiable(F).unwrap();
+        // A tautology is satisfiable; complement has non-complementary paths.
+        assert!(sat);
+        assert_eq!(path.as_deref(), Some("{H, R}"));
+        assert!(pairs.is_empty());
+    }
+
+    #[test]
+    fn test_check_valid_non_tautology() {
+        // Simple variable is not a tautology.
+        let (valid, path, _) = check_valid("A").unwrap();
+        assert!(!valid);
+        assert_eq!(path.as_deref(), Some("{A}"));
+    }
+
+    #[test]
+    fn test_check_satisfiable_contradiction() {
+        // A · A' is unsatisfiable.
+        let (sat, path, _) = check_satisfiable("A · A'").unwrap();
+        assert!(!sat);
+        assert!(path.is_none());
+    }
+}

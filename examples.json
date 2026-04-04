@@ -50,5 +50,9 @@
   {
     "label": "R'",
     "f": "a'·b'·c + b'·c'·d + c'·d'·a' + d'·a·b' + a·b·c' + b·c·d' + c·d·a + d·a'·b"
+  },
+  {
+    "label": "LHR",
+    "f": "R'H' + L H R' + L' + R"
   }
 ]

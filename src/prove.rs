@@ -4,36 +4,54 @@ use crate::matrix::{self, format_path, parse_to_matrix};
 pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
     let (m, vars) = parse_to_matrix(formula)?;
     let all_paths = matrix::paths(&m);
-    let formatted  = all_paths.iter().map(|p| format_path(p, &vars)).collect();
-    let comp_flags = all_paths.iter().map(matrix::is_complementary).collect();
+    let formatted  = all_paths.iter().map(|p| format_path(p, &m, &vars)).collect();
+    let comp_flags = all_paths.iter().map(|p| matrix::is_complementary(p, &m)).collect();
     Ok((formatted, comp_flags))
 }
 
-/// Greedy set cover: find a small set of variables whose complementary pairs
-/// collectively appear in every path. Returns variable indices in cover order.
-fn greedy_cover(paths: &[matrix::Path], n_vars: usize) -> Vec<usize> {
-    let covers: Vec<Vec<usize>> = (0..n_vars as u32).map(|var| {
-        let pos = matrix::Lit { var, neg: false };
-        let neg = matrix::Lit { var, neg: true  };
+/// Greedy set cover over complementary literal pairs.
+///
+/// Enumerates every `(posA, posB)` pair where the literals at those positions
+/// are complements of each other. A pair *covers* a path when the path contains
+/// both positions. Returns a minimal covering set of such pairs.
+fn greedy_cover(
+    m: &matrix::Matrix,
+    paths: &[matrix::Path],
+    n_vars: usize,
+) -> Vec<(matrix::Position, matrix::Position)> {
+    // Enumerate every complementary pair present in the matrix.
+    let mut all_pairs: Vec<(matrix::Position, matrix::Position)> = Vec::new();
+    for var in 0..n_vars as u32 {
+        let pos_lits = matrix::literal_positions(m, &matrix::Lit { var, neg: false });
+        let neg_lits = matrix::literal_positions(m, &matrix::Lit { var, neg: true  });
+        for p in &pos_lits {
+            for n in &neg_lits {
+                all_pairs.push((p.clone(), n.clone()));
+            }
+        }
+    }
+
+    // For each pair, which paths contain both positions?
+    let covers: Vec<Vec<usize>> = all_pairs.iter().map(|(pa, pb)| {
         paths.iter().enumerate()
-            .filter(|(_, p)| p.contains(&pos) && p.contains(&neg))
+            .filter(|(_, path)| path.contains(pa) && path.contains(pb))
             .map(|(i, _)| i)
             .collect()
     }).collect();
 
     let mut uncovered: BTreeSet<usize> = (0..paths.len()).collect();
-    let mut used      = vec![false; n_vars];
+    let mut used      = vec![false; all_pairs.len()];
     let mut result    = Vec::new();
 
     while !uncovered.is_empty() {
-        let best = (0..n_vars)
-            .filter(|&v| !used[v])
-            .max_by_key(|&v| covers[v].iter().filter(|i| uncovered.contains(i)).count());
+        let best = (0..all_pairs.len())
+            .filter(|&i| !used[i])
+            .max_by_key(|&i| covers[i].iter().filter(|&&j| uncovered.contains(&j)).count());
         match best {
-            Some(v) => {
-                covers[v].iter().for_each(|i| { uncovered.remove(i); });
-                used[v] = true;
-                result.push(v);
+            Some(i) => {
+                covers[i].iter().for_each(|&j| { uncovered.remove(&j); });
+                used[i] = true;
+                result.push(all_pairs[i].clone());
             }
             None => break,
         }
@@ -43,16 +61,15 @@ fn greedy_cover(paths: &[matrix::Path], n_vars: usize) -> Vec<usize> {
 
 /// Returns `(true, None, pairs)` if valid (with a greedy cover of complementary
 /// pairs), or `(false, Some(path), [])` with the first uncomplimentary path.
-pub fn check_valid(formula: &str) -> Result<(bool, Option<String>, Vec<String>), String> {
+pub fn check_valid(
+    formula: &str,
+) -> Result<(bool, Option<String>, Vec<(matrix::Position, matrix::Position)>), String> {
     let (m, vars) = parse_to_matrix(formula)?;
     let all_paths = matrix::paths(&m);
-    match all_paths.iter().find(|p| !matrix::is_complementary(p)) {
-        Some(path) => Ok((false, Some(format_path(path, &vars)), vec![])),
+    match all_paths.iter().find(|p| !matrix::is_complementary(p, &m)) {
+        Some(path) => Ok((false, Some(format_path(path, &m, &vars)), vec![])),
         None => {
-            let cover = greedy_cover(&all_paths, vars.len());
-            let pairs = cover.iter()
-                .map(|&v| format!("{{{}, {}'}}", vars[v], vars[v]))
-                .collect();
+            let pairs = greedy_cover(&m, &all_paths, vars.len());
             Ok((true, None, pairs))
         }
     }
@@ -61,16 +78,16 @@ pub fn check_valid(formula: &str) -> Result<(bool, Option<String>, Vec<String>),
 /// Returns `(true, Some(path), [])` with first uncomplimentary path in the
 /// complement if satisfiable, or `(false, None, pairs)` with a greedy cover of
 /// complementary pairs in the complement if unsatisfiable.
-pub fn check_satisfiable(formula: &str) -> Result<(bool, Option<String>, Vec<String>), String> {
+pub fn check_satisfiable(
+    formula: &str,
+) -> Result<(bool, Option<String>, Vec<(matrix::Position, matrix::Position)>), String> {
     let (m, vars) = parse_to_matrix(formula)?;
-    let comp_paths = matrix::paths(&m.complement());
-    match comp_paths.iter().find(|p| !matrix::is_complementary(p)) {
-        Some(path) => Ok((true, Some(format_path(path, &vars)), vec![])),
+    let comp = m.complement();
+    let comp_paths = matrix::paths(&comp);
+    match comp_paths.iter().find(|p| !matrix::is_complementary(p, &comp)) {
+        Some(path) => Ok((true, Some(format_path(path, &comp, &vars)), vec![])),
         None => {
-            let cover = greedy_cover(&comp_paths, vars.len());
-            let pairs = cover.iter()
-                .map(|&v| format!("{{{}, {}'}}", vars[v], vars[v]))
-                .collect();
+            let pairs = greedy_cover(&comp, &comp_paths, vars.len());
             Ok((false, None, pairs))
         }
     }
@@ -97,7 +114,7 @@ mod tests {
         let (paths, _) = get_paths(F).unwrap();
         assert!(paths.contains(&"{L, L', R, R'}".to_string()));
         assert!(paths.contains(&"{H, L', R, R'}".to_string()));
-        assert!(paths.contains(&"{L', R, R'}".to_string()));
+        assert!(paths.contains(&"{L', R, R', R'}".to_string()));
         assert!(paths.contains(&"{H', L, L', R}".to_string()));
         assert!(paths.contains(&"{H, H', L', R}".to_string()));
         assert!(paths.contains(&"{H', L', R, R'}".to_string()));
@@ -108,10 +125,16 @@ mod tests {
         let (valid, path, pairs) = check_valid(F).unwrap();
         assert!(valid);
         assert!(path.is_none());
-        // Greedy cover picks R first (covers 4 paths), then L, then H.
-        assert!(pairs.contains(&"{R, R'}".to_string()));
-        assert!(pairs.contains(&"{L, L'}".to_string()));
-        assert!(pairs.contains(&"{H, H'}".to_string()));
+        // Matrix: Sum([Prod([R'@[0,0], H'@[0,1]]), Prod([L@[1,0], H@[1,1], R'@[1,2]]), L'@[2], R@[3]])
+        // R' appears at [0,0] and [1,2], yielding two R/R' pairs.
+        // Greedy: (R@[3], R'@[0,0]) covers paths {0,1,2}; then (R@[3], R'@[1,2]) covers {5};
+        // then (L@[1,0], L'@[2]) covers {3}; then (H@[1,1], H'@[0,1]) covers {4}.
+        assert_eq!(pairs, vec![
+            (vec![3],    vec![0, 0]),
+            (vec![3],    vec![1, 2]),
+            (vec![1, 0], vec![2]),
+            (vec![1, 1], vec![0, 1]),
+        ]);
     }
 
     #[test]

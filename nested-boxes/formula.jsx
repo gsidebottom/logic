@@ -164,12 +164,19 @@ export function astToString(node) {
   return '';
 }
 
+// pairs is [[posA, posB], ...] where posA/posB are index arrays from the server.
 export function parseCoveringPairs(pairs) {
-  // Each pair string looks like "{A, A'}" — extract the two names
-  return pairs.map(p => {
-    const inner = p.replace(/^\{|\}$/g, '');
-    return inner.split(',').map(s => s.trim());
-  });
+  return pairs; // already parsed by JSON.parse; each element is [posA, posB]
+}
+
+// Walk ast by position (array of child indices); returns the node or null.
+export function resolvePosition(ast, pos) {
+  let node = ast;
+  for (const i of pos) {
+    if (!node?.c) return null;
+    node = node.c[i];
+  }
+  return node;
 }
 
 // ─── Variable label with subscript support ────────────────────────────────────

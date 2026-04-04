@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useMemo } from "react";
-import { parse, complementAst, astToString, parseCoveringPairs, VarLabel } from "./formula.jsx";
+import { parse, complementAst, astToString, parseCoveringPairs, resolvePosition, VarLabel } from "./formula.jsx";
 
 // ─── Cover context (for highlighting complementary pairs in diagrams) ──────────
 const CoverContext = createContext(null);
@@ -10,17 +10,18 @@ const PAIR_COLORS = ['#e63946', '#1d7cc4', '#2a9d8f', '#e07c00', '#8e44ad', '#55
 const PAD = 10, GAP = 8;
 const BORDER_COLORS = ['#111', '#1a6bcc', '#b35000', '#2a7a2a', '#7a1a7a'];
 
-function BoxNode({ node, depth = 0 }) {
+function BoxNode({ node, depth = 0, position = [] }) {
   const cover = useContext(CoverContext);
   if (!node) return null;
 
   if (node.t === 'VAR') {
-    const pairIdx = cover?.varToPairIdx?.[node.n];
+    const posKey = position.join(',');
+    const pairIdx = cover?.posToPairIdx?.[posKey];
     const highlighted = pairIdx !== undefined;
     const hColor = highlighted ? PAIR_COLORS[pairIdx % PAIR_COLORS.length] : null;
     return (
       <div
-        data-var={node.n}
+        data-position={posKey}
         style={{
           minWidth: 26, display: 'flex', alignItems: 'center',
           justifyContent: 'center', padding: '4px 6px',
@@ -50,7 +51,7 @@ function BoxNode({ node, depth = 0 }) {
       alignItems: 'center', justifyContent: 'center',
       gap: GAP, boxSizing: 'border-box',
     }}>
-      {node.c.map((child, i) => <BoxNode key={i} node={child} depth={depth + 1} />)}
+      {node.c.map((child, i) => <BoxNode key={i} node={child} depth={depth + 1} position={[...position, i]} />)}
     </div>
   );
 }
@@ -65,9 +66,12 @@ function DiagramWithConnections({ node, coveringPairs }) {
     [coveringPairs]
   );
 
-  const varToPairIdx = useMemo(() => {
+  const posToPairIdx = useMemo(() => {
     const m = {};
-    parsed.forEach((pair, i) => pair.forEach(v => { m[v] = i; }));
+    parsed.forEach(([posA, posB], i) => {
+      m[posA.join(',')] = i;
+      m[posB.join(',')] = i;
+    });
     return m;
   }, [parsed]);
 
@@ -87,11 +91,9 @@ function DiagramWithConnections({ node, coveringPairs }) {
       return { x: x + el.offsetWidth / 2, y: y + el.offsetHeight / 2 };
     };
     const newArcs = [];
-    parsed.forEach((pair, pairIdx) => {
-      if (pair.length !== 2) return;
-      const [a, b] = pair;
-      const da = container.querySelector(`[data-var="${a}"]`);
-      const db = container.querySelector(`[data-var="${b}"]`);
+    parsed.forEach(([posA, posB], pairIdx) => {
+      const da = container.querySelector(`[data-position="${posA.join(',')}"]`);
+      const db = container.querySelector(`[data-position="${posB.join(',')}"]`);
       if (!da || !db) return;
       const ca = centerOf(da), cb = centerOf(db);
       newArcs.push({ x1: ca.x, y1: ca.y, x2: cb.x, y2: cb.y, pairIdx });
@@ -100,7 +102,7 @@ function DiagramWithConnections({ node, coveringPairs }) {
   });
 
   return (
-    <CoverContext.Provider value={parsed.length ? { varToPairIdx } : null}>
+    <CoverContext.Provider value={parsed.length ? { posToPairIdx } : null}>
       <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
         <BoxNode node={node} depth={0} />
         {arcs.length > 0 && (
@@ -749,12 +751,16 @@ export default function App() {
             : validResult.valid
               ? <span>
                   ✓ Valid — tautology (all paths are complementary)
-                  {validResult.coveringPairs?.length > 0 && (
+                  {validResult.coveringPairs?.length > 0 && ast && (
                     <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>Covering complementary pairs: </span>
                       <b style={{ fontFamily: 'Georgia, serif' }}>
-                        {validResult.coveringPairs.join(',  ')}
+                        {validResult.coveringPairs.map(([posA, posB]) => {
+                          const a = resolvePosition(ast, posA)?.n ?? posA.join(',');
+                          const b = resolvePosition(ast, posB)?.n ?? posB.join(',');
+                          return `{${a}, ${b}}`;
+                        }).join(',  ')}
                       </b>
                     </span>
                   )}
@@ -778,12 +784,16 @@ export default function App() {
               ? <span>✓ Satisfiable — uncomplimentary path in complement: <b style={{ fontFamily: 'Georgia, serif' }}>{satResult.path}</b></span>
               : <span>
                   ✗ Unsatisfiable — complement is a tautology (all paths are complementary)
-                  {satResult.coveringPairs?.length > 0 && (
+                  {satResult.coveringPairs?.length > 0 && complementData?.ast && (
                     <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>Covering complementary pairs: </span>
                       <b style={{ fontFamily: 'Georgia, serif' }}>
-                        {satResult.coveringPairs.join(',  ')}
+                        {satResult.coveringPairs.map(([posA, posB]) => {
+                          const a = resolvePosition(complementData.ast, posA)?.n ?? posA.join(',');
+                          const b = resolvePosition(complementData.ast, posB)?.n ?? posB.join(',');
+                          return `{${a}, ${b}}`;
+                        }).join(',  ')}
                       </b>
                     </span>
                   )}

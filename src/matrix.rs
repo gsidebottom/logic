@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use crate::formula::{count_primes, extract_vars, get_base_name, parse, Node};
 
 // ─── Literal ──────────────────────────────────────────────────────────────────
@@ -61,49 +61,104 @@ impl Matrix {
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
-/// A path through a matrix: a set of literals, one drawn from each disjunct at
-/// every Sum node encountered on the way down.
-pub type Path = BTreeSet<Lit>;
+/// A path through a matrix: a sequence of `Position`s, one drawn from each
+/// disjunct at every `Sum` node encountered on the way down.
+pub type Path = Vec<Position>;
 
-/// Compute every path through `m`.
+/// Compute every path through `m`, where each path is a sequence of positions
+/// identifying the literals selected during the cross-product traversal.
 ///
-/// - `Sum`  (OR):  cross-product — a path merges one sub-path from **each** child.
-/// - `Prod` (AND): union         — a path passes through **any one** child.
-/// - `Lit`:        a single singleton path.
+/// - `Sum`  (OR):  cross-product — each path picks one position from **each** child.
+/// - `Prod` (AND): union         — each path picks positions from **any one** child.
+/// - `Lit`:        a single-element path containing the literal's own position.
 pub fn paths(m: &Matrix) -> Vec<Path> {
+    paths_from(m, vec![])
+}
+
+fn paths_from(m: &Matrix, pos: Position) -> Vec<Path> {
     match m {
-        Matrix::Lit(l) => vec![std::iter::once(l.clone()).collect()],
+        Matrix::Lit(_) => vec![vec![pos]],
 
         Matrix::Sum(children) => {
-            // Start with one empty path; extend it by cross-producting each child.
-            children.iter().fold(vec![Path::new()], |acc, child| {
-                let cp = paths(child);
+            children.iter().enumerate().fold(vec![vec![]], |acc, (i, child)| {
+                let mut child_pos = pos.clone();
+                child_pos.push(i);
+                let cp = paths_from(child, child_pos);
                 acc.into_iter()
-                    .flat_map(|p| cp.iter().map(move |q| p.iter().chain(q).cloned().collect()))
+                    .flat_map(|p| cp.iter().map(move |q| {
+                        let mut combined = p.clone();
+                        combined.extend_from_slice(q);
+                        combined
+                    }))
                     .collect()
             })
         }
 
         Matrix::Prod(children) => {
-            children.iter().flat_map(paths).collect()
+            children.iter().enumerate().flat_map(|(i, child)| {
+                let mut child_pos = pos.clone();
+                child_pos.push(i);
+                paths_from(child, child_pos)
+            }).collect()
         }
     }
 }
 
-/// A path is *complementary* if it contains at least one complementary literal pair `{l, l'}`.
-pub fn is_complementary(path: &Path) -> bool {
-    path.iter().any(|l| path.contains(&l.complement()))
+/// Resolve a position to the `Lit` it points to in `m`, or `None` if the
+/// position is out of bounds or does not end at a `Lit`.
+pub fn lit_at<'a>(m: &'a Matrix, pos: &[usize]) -> Option<&'a Lit> {
+    let mut node = m;
+    for &i in pos {
+        match node {
+            Matrix::Lit(_) => return None,
+            Matrix::Sum(ch) | Matrix::Prod(ch) => node = ch.get(i)?,
+        }
+    }
+    match node {
+        Matrix::Lit(l) => Some(l),
+        _ => None,
+    }
+}
+
+/// A path is *complementary* if it contains at least one complementary literal
+/// pair `{l, l'}` (resolved via `m`).
+pub fn is_complementary(path: &Path, m: &Matrix) -> bool {
+    let lits: Vec<&Lit> = path.iter().filter_map(|pos| lit_at(m, pos)).collect();
+    lits.iter().any(|l| lits.iter().any(|l2| l.is_complement_of(l2)))
 }
 
 /// A matrix is *valid* (tautology) iff every path is complementary.
 pub fn is_valid(m: &Matrix) -> bool {
-    paths(m).iter().all(is_complementary)
+    paths(m).iter().all(|p| is_complementary(p, m))
 }
 
 /// A matrix is *satisfiable* iff its complement has at least one non-complementary path
 /// (i.e. the complement is not a tautology).
 pub fn is_satisfiable(m: &Matrix) -> bool {
-    paths(&m.complement()).iter().any(|p| !is_complementary(p))
+    let comp = m.complement();
+    paths(&comp).iter().any(|p| !is_complementary(p, &comp))
+}
+
+// ─── Literal positions ────────────────────────────────────────────────────────
+
+/// Return every `Position` in `m` at which `target` appears.
+pub fn literal_positions(m: &Matrix, target: &Lit) -> Vec<Position> {
+    let mut result = Vec::new();
+    collect_positions(m, target, &mut Vec::new(), &mut result);
+    result
+}
+
+fn collect_positions(m: &Matrix, target: &Lit, prefix: &mut Position, out: &mut Vec<Position>) {
+    match m {
+        Matrix::Lit(l) => if l == target { out.push(prefix.clone()); }
+        Matrix::Sum(ch) | Matrix::Prod(ch) => {
+            for (i, child) in ch.iter().enumerate() {
+                prefix.push(i);
+                collect_positions(child, target, prefix, out);
+                prefix.pop();
+            }
+        }
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -119,13 +174,19 @@ mod tests {
     fn sum(ch: Vec<Matrix>) -> Matrix { Matrix::Sum(ch) }
     fn prod(ch: Vec<Matrix>) -> Matrix { Matrix::Prod(ch) }
 
-    // Sort paths for deterministic comparison.
+    // Resolve each path's positions to (var, neg) pairs, sort for deterministic comparison.
     fn sorted_paths(m: &Matrix) -> Vec<Vec<(Var, bool)>> {
         let mut ps: Vec<Vec<(Var, bool)>> = paths(m)
             .into_iter()
-            .map(|p| p.into_iter().map(|l| (l.var, l.neg)).collect())
+            .map(|path| {
+                let mut lits: Vec<(Var, bool)> = path.iter()
+                    .filter_map(|pos| lit_at(m, pos))
+                    .map(|l| (l.var, l.neg))
+                    .collect();
+                lits.sort();
+                lits
+            })
             .collect();
-        ps.iter_mut().for_each(|p| p.sort());
         ps.sort();
         ps
     }
@@ -296,12 +357,15 @@ pub fn node_to_matrix(node: &Node, var_index: &HashMap<String, u32>) -> Matrix {
     }
 }
 
-pub fn format_path(path: &Path, var_names: &[String]) -> String {
+pub fn format_path(path: &Path, m: &Matrix, var_names: &[String]) -> String {
     if path.is_empty() { return "∅".to_string(); }
-    let mut lits: Vec<String> = path.iter().map(|l| {
-        let name = &var_names[l.var as usize];
-        if l.neg { format!("{}'", name) } else { name.clone() }
-    }).collect();
+    let mut lits: Vec<String> = path.iter()
+        .filter_map(|pos| lit_at(m, pos))
+        .map(|l| {
+            let name = &var_names[l.var as usize];
+            if l.neg { format!("{}'", name) } else { name.clone() }
+        })
+        .collect();
     lits.sort();
     format!("{{{}}}", lits.join(", "))
 }

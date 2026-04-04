@@ -185,7 +185,7 @@ struct SimplifyResponse {
 struct ValidResponse {
     valid:          Option<bool>,
     path:           Option<String>,
-    covering_pairs: Option<Vec<String>>,
+    covering_pairs: Option<Vec<(Vec<usize>, Vec<usize>)>>,
     error:          Option<String>,
 }
 
@@ -200,7 +200,7 @@ struct PathsResponse {
 struct SatisfiableResponse {
     satisfiable:    Option<bool>,
     path:           Option<String>,
-    covering_pairs: Option<Vec<String>>,
+    covering_pairs: Option<Vec<(Vec<usize>, Vec<usize>)>>,
     error:          Option<String>,
 }
 

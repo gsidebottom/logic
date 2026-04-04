@@ -376,7 +376,9 @@ impl Matrix {
             match m {
                 Matrix::Lit(l) => {
                     lits.push(l);
-                    then(path, lits, f);
+                    if f(path, lits) {
+                        then(path, lits, f);
+                    }
                     lits.pop();
                 }
                 Matrix::Prod(children) => {
@@ -537,12 +539,12 @@ mod tests {
 
     #[test]
     fn test_for_each_path_prefix_collects_all_paths() {
-        // (a · b) + (c · d) — full paths have length 2 (one selection per Prod)
+        // (a · b) + (c · d) — full paths have 2 literals
         let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
         let mut full_paths = Vec::new();
         let expected: Vec<Path> = m.paths_iter().collect();
-        m.for_each_path_prefix(|prefix, _lits| {
-            if prefix.len() == 2 {
+        m.for_each_path_prefix(|prefix, lits| {
+            if lits.len() == 2 {
                 full_paths.push(prefix.to_vec());
             }
             true

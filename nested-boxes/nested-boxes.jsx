@@ -23,43 +23,47 @@ function BoxNode({ node, depth = 0, position = [] }) {
     const hasPair = pairIndices.length > 0;
     const hasPrefix = prefixIndices.length > 0;
 
-    // Build stacked box-shadows: each pair/prefix gets a ring at increasing offset
-    const shadows = [];
-    let offset = 2;
-    for (const idx of pairIndices) {
-      const c = PAIR_COLORS[idx % PAIR_COLORS.length];
-      shadows.push(`0 0 0 ${offset}px ${c}`);
-      offset += 2.5;
-    }
-    for (const idx of prefixIndices) {
-      const c = PAIR_COLORS[idx % PAIR_COLORS.length] + '88';
-      shadows.push(`0 0 0 ${offset}px ${c}`);
-      offset += 2;
-    }
+    // Sort all indices by original cover index for consistent stacking
+    const pairSet = new Set(pairIndices);
+    const sorted = [...allIndices].sort((a, b) => a - b);
 
-    // Background: blend all colors
-    const bgColor = allIndices.length === 1
-      ? PAIR_COLORS[allIndices[0] % PAIR_COLORS.length] + (hasPair ? '28' : '18')
-      : allIndices.length > 1
-        ? (hasPair ? '#ffeebb44' : '#eeeeff33')
-        : null;
+    // Build colored underline bars — one per cover, stacked below the element
+    const barHeight = 3;
+    const bars = sorted.map((idx, r) => {
+      const color = PAIR_COLORS[idx % PAIR_COLORS.length];
+      const dashed = !pairSet.has(idx);
+      return (
+        <div key={`bar-${idx}`} style={{
+          position: 'absolute',
+          left: -1, right: -1, bottom: -(2 + r * (barHeight + 1)),
+          height: barHeight,
+          background: dashed ? undefined : color,
+          backgroundImage: dashed ? `repeating-linear-gradient(90deg, ${color} 0px, ${color} 4px, transparent 4px, transparent 8px)` : undefined,
+          borderRadius: 1,
+          pointerEvents: 'none',
+        }} />
+      );
+    });
+
+    // Background tint using the first selected cover's color
+    const firstColor = PAIR_COLORS[sorted[0] % PAIR_COLORS.length];
+    const bgColor = hasPair ? firstColor + '20' : firstColor + '12';
 
     return (
       <div
         data-position={posKey}
         style={{
+          position: 'relative',
           minWidth: 26, display: 'flex', alignItems: 'center',
-          justifyContent: 'center', padding: '4px 6px',
+          justifyContent: 'center',
+          padding: '4px 6px',
           fontSize: 17, fontFamily: 'Georgia, serif',
           fontWeight: 'bold', lineHeight: 1, userSelect: 'none',
-          ...((hasPair || hasPrefix) ? {
-            background: bgColor,
-            borderRadius: 3,
-            boxShadow: shadows.join(', '),
-            margin: Math.max(0, offset - 2),
-          } : {}),
+          background: bgColor,
+          borderRadius: 3,
         }}
       >
+        {bars}
         <VarLabel name={node.n} />
       </div>
     );
@@ -75,6 +79,7 @@ function BoxNode({ node, depth = 0, position = [] }) {
       flexDirection: isOR ? 'row' : 'column',
       alignItems: 'center', justifyContent: 'center',
       gap: GAP, boxSizing: 'border-box',
+      overflow: 'visible',
     }}>
       {node.c.map((child, i) => <BoxNode key={i} node={child} depth={depth + 1} position={[...position, i]} />)}
     </div>
@@ -82,7 +87,7 @@ function BoxNode({ node, depth = 0, position = [] }) {
 }
 
 // ─── Diagram with SVG arc connections for covering pairs ──────────────────────
-function DiagramWithConnections({ node, coveringPairs, coveredPrefixes }) {
+function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selectedIndices }) {
   const containerRef = useRef(null);
   const [arcs, setArcs] = useState([]);
 
@@ -91,20 +96,25 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes }) {
     [coveringPairs]
   );
 
+  // Only include selected indices; preserve original index for consistent colors
+  const selected = selectedIndices;
+
   const posToPairIndices = useMemo(() => {
     const m = {};
     parsed.forEach(([posA, posB], i) => {
+      if (!selected.has(i)) return;
       const ka = posA.join(','), kb = posB.join(',');
       (m[ka] ??= []).push(i);
       (m[kb] ??= []).push(i);
     });
     return m;
-  }, [parsed]);
+  }, [parsed, selected]);
 
   const posToPrefixIndices = useMemo(() => {
     const m = {};
     if (coveredPrefixes) {
       coveredPrefixes.forEach((positions, i) => {
+        if (!selected.has(i)) return;
         positions.forEach(pos => {
           const key = pos.join(',');
           (m[key] ??= []).push(i);
@@ -112,7 +122,7 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes }) {
       });
     }
     return m;
-  }, [coveredPrefixes]);
+  }, [coveredPrefixes, selected]);
 
   // Recompute arc positions after every render (DOM may have changed)
   useLayoutEffect(() => {
@@ -131,6 +141,7 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes }) {
     };
     const newArcs = [];
     parsed.forEach(([posA, posB], pairIdx) => {
+      if (!selected.has(pairIdx)) return;
       const da = container.querySelector(`[data-position="${posA.join(',')}"]`);
       const db = container.querySelector(`[data-position="${posB.join(',')}"]`);
       if (!da || !db) return;
@@ -141,7 +152,7 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes }) {
   });
 
   return (
-    <CoverContext.Provider value={(parsed.length || Object.keys(posToPrefixIndices).length) ? { posToPairIndices, posToPrefixIndices } : null}>
+    <CoverContext.Provider value={(Object.keys(posToPairIndices).length || Object.keys(posToPrefixIndices).length) ? { posToPairIndices, posToPrefixIndices } : null}>
       <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
         <BoxNode node={node} depth={0} />
         {arcs.length > 0 && (
@@ -240,7 +251,18 @@ function ZoomPanWrapper({ children, bg = '#f8f9fc', border = '1px solid #dde', o
   const onMouseUp = () => { dragRef.current = null; setDragging(false); };
 
   const zoomBy = f => commit(Math.max(0.1, Math.min(10, scaleRef.current * f)), txRef.current, tyRef.current);
-  const reset  = () => { const { scale, x, y } = fitRef.current; commit(scale, x, y); };
+  const reset  = () => {
+    const view = viewRef.current, content = contentRef.current;
+    if (!view || !content) { const { scale, x, y } = fitRef.current; commit(scale, x, y); return; }
+    const vw = view.offsetWidth,  vh = view.offsetHeight;
+    const cw = content.offsetWidth, ch = content.offsetHeight;
+    if (!cw || !ch) return;
+    const s  = Math.min(vw / cw, vh / ch, 1);
+    const tx = (vw - cw * s) / 2;
+    const ty = (vh - ch * s) / 2;
+    fitRef.current = { scale: s, x: tx, y: ty };
+    commit(s, tx, ty);
+  };
 
   const cBtn = (label, fn, title) => (
     <button onClick={fn} title={title} style={{
@@ -266,7 +288,7 @@ function ZoomPanWrapper({ children, bg = '#f8f9fc', border = '1px solid #dde', o
           position: 'absolute', top: 0, left: 0, width: 'max-content',
           transformOrigin: '0 0',
           transform: `translate(${display.x}px, ${display.y}px) scale(${display.scale})`,
-          padding: '50px 28px 28px',  // extra top padding so arc curves aren't clipped
+          padding: '50px 40px 40px',  // extra padding so arc curves and box-shadow rings aren't clipped
         }}>
           {children}
         </div>
@@ -992,8 +1014,9 @@ export default function App() {
           <ZoomPanWrapper key={input} bg='#f8f9fc' border='1px solid #dde' opacity={error ? 0.5 : 1}>
             <DiagramWithConnections
               node={ast}
-              coveringPairs={validResult?.valid ? validResult.coveringPairs?.filter((_, i) => validSelected.has(i)) : null}
-              coveredPrefixes={validResult?.valid ? validResult.coveredPrefixes?.filter((_, i) => validSelected.has(i)) : null}
+              coveringPairs={validResult?.valid ? validResult.coveringPairs : null}
+              coveredPrefixes={validResult?.valid ? validResult.coveredPrefixes : null}
+              selectedIndices={validSelected}
             />
           </ZoomPanWrapper>
 
@@ -1003,7 +1026,7 @@ export default function App() {
                 Simplified — <span style={{ fontFamily: 'Georgia, serif' }}>{simplified.formula}</span>
               </div>
               <ZoomPanWrapper key={simplified.formula} bg='#f0fff4' border='1px solid #b2e0b2'>
-                <DiagramWithConnections node={simplified.ast} coveringPairs={null} />
+                <DiagramWithConnections node={simplified.ast} coveringPairs={null} coveredPrefixes={null} selectedIndices={new Set()} />
               </ZoomPanWrapper>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
                 {btn('Use simplified formula', () => setInput(simplified.formula), '#2a7a2a')}
@@ -1019,8 +1042,9 @@ export default function App() {
               <ZoomPanWrapper key={complementData.formula} bg='#f0fafa' border='1px solid #a0d4d4'>
                 <DiagramWithConnections
                   node={complementData.ast}
-                  coveringPairs={satResult && !satResult.satisfiable ? satResult.coveringPairs?.filter((_, i) => satSelected.has(i)) : null}
-                  coveredPrefixes={satResult && !satResult.satisfiable ? satResult.coveredPrefixes?.filter((_, i) => satSelected.has(i)) : null}
+                  coveringPairs={satResult && !satResult.satisfiable ? satResult.coveringPairs : null}
+                  coveredPrefixes={satResult && !satResult.satisfiable ? satResult.coveredPrefixes : null}
+                  selectedIndices={satSelected}
                 />
               </ZoomPanWrapper>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>

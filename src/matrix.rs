@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::formula::{count_primes, extract_vars, get_base_name, parse, Node};
+use crate::formula::{count_primes, get_base_name, Ast, Node};
 
 // ─── Literal ──────────────────────────────────────────────────────────────────
 
@@ -758,19 +758,42 @@ mod tests {
 
 // ─── Formula → Matrix conversion ──────────────────────────────────────────────
 
-pub fn node_to_matrix(node: &Node, var_index: &HashMap<String, u32>) -> Matrix {
-    match node {
-        Node::Var(name) => {
-            let base = get_base_name(name);
-            let neg  = count_primes(name) % 2 == 1;
-            match base {
-                "0" => if neg { Matrix::Prod(vec![]) } else { Matrix::Sum(vec![]) },
-                "1" => if neg { Matrix::Sum(vec![]) } else { Matrix::Prod(vec![]) },
-                _   => Matrix::Lit(Lit { var: *var_index.get(base).unwrap(), neg }),
+impl From<&Ast> for Matrix {
+    fn from(ast: &Ast) -> Self {
+        fn convert(node: &Node, var_index: &HashMap<String, u32>) -> Matrix {
+            match node {
+                Node::Var(name) => {
+                    let base = get_base_name(name);
+                    let neg  = count_primes(name) % 2 == 1;
+                    match base {
+                        "0" => if neg { Matrix::Prod(vec![]) } else { Matrix::Sum(vec![]) },
+                        "1" => if neg { Matrix::Sum(vec![]) } else { Matrix::Prod(vec![]) },
+                        _   => Matrix::Lit(Lit { var: *var_index.get(base).unwrap(), neg }),
+                    }
+                }
+                Node::And(ch) => {
+                    let mut members = Vec::new();
+                    for c in ch {
+                        match convert(c, var_index) {
+                            Matrix::Prod(inner) => members.extend(inner),
+                            other => members.push(other),
+                        }
+                    }
+                    Matrix::Prod(members)
+                }
+                Node::Or(ch) => {
+                    let mut members = Vec::new();
+                    for c in ch {
+                        match convert(c, var_index) {
+                            Matrix::Sum(inner) => members.extend(inner),
+                            other => members.push(other),
+                        }
+                    }
+                    Matrix::Sum(members)
+                }
             }
         }
-        Node::And(ch) => Matrix::Prod(ch.iter().map(|c| node_to_matrix(c, var_index)).collect()),
-        Node::Or(ch)  => Matrix::Sum(ch.iter().map(|c| node_to_matrix(c, var_index)).collect()),
+        convert(&ast.root, &ast.var_index)
     }
 }
 
@@ -788,12 +811,7 @@ pub fn format_path(path: &Path, m: &Matrix, var_names: &[String]) -> String {
 }
 
 pub fn parse_to_matrix(formula: &str) -> Result<(Matrix, Vec<String>), String> {
-    let ast  = parse(formula)?;
-    let vars: Vec<String> = extract_vars(&ast).into_iter().collect();
-    if vars.len() > 20 {
-        return Err("Too many variables for matrix analysis (max 20)".to_string());
-    }
-    let idx: HashMap<String, u32> = vars.iter().enumerate().map(|(i, v)| (v.clone(), i as u32)).collect();
-    Ok((node_to_matrix(&ast, &idx), vars))
+    let ast = Ast::try_from(formula)?;
+    Ok((Matrix::from(&ast), ast.vars))
 }
 

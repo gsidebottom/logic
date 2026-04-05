@@ -9,6 +9,64 @@ pub enum Node {
     Or(Vec<Node>),
 }
 
+impl Node {
+    /// Return the set of base variable names (excluding constants 0 and 1).
+    pub fn extract_vars(&self) -> BTreeSet<String> {
+        let mut set = BTreeSet::new();
+        fn collect(node: &Node, set: &mut BTreeSet<String>) {
+            match node {
+                Node::Var(n) => {
+                    let base = get_base_name(n);
+                    if base != "0" && base != "1" { set.insert(base.to_string()); }
+                }
+                Node::And(c) | Node::Or(c) => {
+                    for child in c { collect(child, set); }
+                }
+            }
+        }
+        collect(self, &mut set);
+        set
+    }
+
+    pub fn evaluate(&self, variable_assignment: &HashMap<String, u8>) -> u8 {
+        match self {
+            Node::Var(name) => {
+                let base = get_base_name(name);
+                if base == "0" || base == "1" {
+                    let val = if base == "1" { 1u8 } else { 0u8 };
+                    return if count_primes(name) % 2 == 1 { 1 - val } else { val };
+                }
+                let val = *variable_assignment.get(base).unwrap_or(&0);
+                if count_primes(name) % 2 == 1 { 1 - val } else { val }
+            }
+            Node::And(c) => if c.iter().all(|ch| ch.evaluate(variable_assignment) == 1) { 1 } else { 0 },
+            Node::Or(c)  => if c.iter().any(|ch| ch.evaluate(variable_assignment) == 1) { 1 } else { 0 },
+        }
+    }
+}
+
+// ─── Ast ─────────────────────────────────────────────────────────────────────
+
+pub struct Ast {
+    pub root: Node,
+    pub vars: Vec<String>,
+    pub var_index: HashMap<String, u32>,
+}
+
+impl TryFrom<&str> for Ast {
+    type Error = String;
+
+    fn try_from(formula: &str) -> Result<Self, String> {
+        let root = Node::try_from(formula)?;
+        let vars: Vec<String> = root.extract_vars().into_iter().collect();
+        let var_index: HashMap<String, u32> = vars.iter()
+            .enumerate()
+            .map(|(i, v)| (v.clone(), i as u32))
+            .collect();
+        Ok(Ast { root, vars, var_index })
+    }
+}
+
 // ─── Tokenizer ────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
@@ -148,17 +206,21 @@ impl Parser {
     }
 }
 
-pub fn parse(s: &str) -> Result<Node, String> {
-    if s.trim().is_empty() {
-        return Err("Formula is empty".to_string());
+impl TryFrom<&str> for Node {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, String> {
+        if s.trim().is_empty() {
+            return Err("Formula is empty".to_string());
+        }
+        let tokens = tokenize(s)?;
+        let mut parser = Parser { tokens, pos: 0 };
+        let result = parser.parse_expr()?;
+        if parser.pos < parser.tokens.len() {
+            return Err("Unexpected content after formula".to_string());
+        }
+        Ok(result)
     }
-    let tokens = tokenize(s)?;
-    let mut parser = Parser { tokens, pos: 0 };
-    let result = parser.parse_expr()?;
-    if parser.pos < parser.tokens.len() {
-        return Err("Unexpected content after formula".to_string());
-    }
-    Ok(result)
 }
 
 // ─── AST helpers ──────────────────────────────────────────────────────────────
@@ -171,32 +233,113 @@ pub fn count_primes(s: &str) -> usize {
     s.chars().filter(|&c| c == '\'').count()
 }
 
-pub fn extract_vars(node: &Node) -> BTreeSet<String> {
-    let mut set = BTreeSet::new();
-    match node {
-        Node::Var(n) => {
-            let base = get_base_name(n);
-            if base != "0" && base != "1" { set.insert(base.to_string()); }
-        }
-        Node::And(c) | Node::Or(c) => {
-            for child in c { set.extend(extract_vars(child)); }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_ok(s: &str) -> Node {
+        Node::try_from(s).unwrap_or_else(|e| panic!("Expected parse to succeed for {:?}: {}", s, e))
+    }
+
+    trait NodeExt { fn is_var_or_op(&self) -> bool; }
+    impl NodeExt for Node {
+        fn is_var_or_op(&self) -> bool { true }
+    }
+
+    #[test]
+    fn test_parse_empty() {
+        assert!(Node::try_from("").is_err());
+        assert!(Node::try_from("   ").is_err());
+    }
+
+    #[test]
+    fn test_parse_single_var() {
+        assert!(matches!(parse_ok("A"),       Node::Var(n) if n == "A"));
+        assert!(matches!(parse_ok("foo_bar"), Node::Var(n) if n == "foo_bar"));
+        assert!(matches!(parse_ok("x123"),    Node::Var(n) if n == "x123"));
+    }
+
+    #[test]
+    fn test_parse_primes() {
+        assert!(matches!(parse_ok("A'"),  Node::Var(n) if n == "A'"));
+        assert!(matches!(parse_ok("A''"), Node::Var(n) if n == "A''"));
+        assert!(matches!(parse_ok("A '"), Node::Var(n) if n == "A'"));
+        assert!(matches!(parse_ok("foo_bar'"), Node::Var(n) if n == "foo_bar'"));
+    }
+
+    #[test]
+    fn test_parse_literals() {
+        assert!(matches!(parse_ok("0"),  Node::Var(n) if n == "0"));
+        assert!(matches!(parse_ok("1"),  Node::Var(n) if n == "1"));
+        assert!(matches!(parse_ok("0'"), Node::Var(n) if n == "0'"));
+        assert!(matches!(parse_ok("1'"), Node::Var(n) if n == "1'"));
+        assert!(matches!(parse_ok("0 '"), Node::Var(n) if n == "0'"));
+    }
+
+    #[test]
+    fn test_parse_and_operators() {
+        assert!(matches!(parse_ok("A · B"), Node::And(_)));
+        assert!(matches!(parse_ok("A * B"), Node::And(_)));
+        assert!(matches!(parse_ok("A . B"), Node::And(_)));
+    }
+
+    #[test]
+    fn test_parse_or() {
+        assert!(matches!(parse_ok("A + B"), Node::Or(_)));
+    }
+
+    #[test]
+    fn test_parse_implicit_and_vars() {
+        assert!(matches!(parse_ok("A B"), Node::And(_)));
+    }
+
+    #[test]
+    fn test_parse_implicit_and_groups() {
+        assert!(matches!(parse_ok("(A+B)(C+D)"), Node::And(_)));
+        assert!(matches!(parse_ok("B(C+D)"),     Node::And(_)));
+    }
+
+    #[test]
+    fn test_parse_precedence_and_over_or() {
+        let node = parse_ok("A + B · C");
+        assert!(matches!(node, Node::Or(_)));
+        if let Node::Or(children) = node {
+            assert!(matches!(children[1], Node::And(_)));
         }
     }
-    set
-}
 
-pub fn evaluate(node: &Node, asgn: &HashMap<String, u8>) -> u8 {
-    match node {
-        Node::Var(name) => {
-            let base = get_base_name(name);
-            if base == "0" || base == "1" {
-                let val = if base == "1" { 1u8 } else { 0u8 };
-                return if count_primes(name) % 2 == 1 { 1 - val } else { val };
-            }
-            let val = *asgn.get(base).unwrap_or(&0);
-            if count_primes(name) % 2 == 1 { 1 - val } else { val }
-        }
-        Node::And(c) => if c.iter().all(|ch| evaluate(ch, asgn) == 1) { 1 } else { 0 },
-        Node::Or(c)  => if c.iter().any(|ch| evaluate(ch, asgn) == 1) { 1 } else { 0 },
+    #[test]
+    fn test_parse_multichar_vars() {
+        assert!(matches!(parse_ok("foo · bar"), Node::And(_)));
+        assert!(matches!(parse_ok("my_var' + other_var"), Node::Or(_)));
+    }
+
+    #[test]
+    fn test_parse_nested_parens() {
+        assert!(parse_ok("((A + B))").is_var_or_op());
+        assert!(Node::try_from("(A + B").is_err());
+        assert!(Node::try_from("A + B)").is_err());
+    }
+
+    #[test]
+    fn test_parse_error_stray_prime() {
+        assert!(Node::try_from("'A").is_err());
+        assert!(Node::try_from("A + 'B").is_err());
+        assert!(Node::try_from("(A * 'B)").is_err());
+    }
+
+    #[test]
+    fn test_parse_error_digit_start() {
+        assert!(Node::try_from("2A").is_err());
+        assert!(Node::try_from("9").is_err());
+        assert!(Node::try_from("1B").is_ok());
+    }
+
+    #[test]
+    fn test_parse_error_missing_operand() {
+        assert!(Node::try_from("A +").is_err());
+        assert!(Node::try_from("+ A").is_err());
+        assert!(Node::try_from("A · · B").is_err());
+        assert!(Node::try_from("()").is_err());
     }
 }

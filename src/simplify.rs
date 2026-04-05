@@ -1,5 +1,5 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
-use crate::formula::{evaluate, extract_vars, parse};
+use crate::formula::Node;
 
 // term values: 0=false, 1=true, 2=don't-care
 #[derive(Clone)]
@@ -74,12 +74,11 @@ pub fn qmc(minterms: &[usize], n: usize) -> Vec<Implicant> {
 }
 
 pub fn simplify(formula: &str) -> Result<String, String> {
-    let ast = parse(formula)?;
-    let vars: Vec<String> = extract_vars(&ast).into_iter().collect();
+    let ast = Node::try_from(formula)?;
+    let vars: Vec<String> = ast.extract_vars().into_iter().collect();
     let n = vars.len();
 
-    if n == 0 { return Ok(evaluate(&ast, &HashMap::new()).to_string()); }
-    if n > 10 { return Err("Too many variables to simplify (max 10)".to_string()); }
+    if n == 0 { return Ok(ast.evaluate(&HashMap::new()).to_string()); }
 
     let mut minterms = Vec::new();
     for i in 0..(1usize << n) {
@@ -87,7 +86,7 @@ pub fn simplify(formula: &str) -> Result<String, String> {
         for (j, v) in vars.iter().enumerate() {
             asgn.insert(v.clone(), ((i >> (n - 1 - j)) & 1) as u8);
         }
-        if evaluate(&ast, &asgn) == 1 {
+        if ast.evaluate(&asgn) == 1 {
             minterms.push(i);
         }
     }
@@ -147,4 +146,211 @@ pub fn minimal_cover(primes: &[Implicant], minterms: &[usize]) -> Vec<Implicant>
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s(formula: &str) -> String {
+        simplify(formula).unwrap_or_else(|e| panic!("Expected simplify to succeed for {:?}: {}", formula, e))
+    }
+
+    fn s_err(formula: &str) -> String {
+        simplify(formula).unwrap_err()
+    }
+
+    fn sort_sop(result: &str) -> String {
+        let mut terms: Vec<&str> = result.split(" + ").collect();
+        terms.sort();
+        terms.join(" + ")
+    }
+
+    fn s_sorted(formula: &str) -> String {
+        sort_sop(&s(formula))
+    }
+
+    // ── Constants ────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_constant_0() { assert_eq!(s("0"), "0"); }
+
+    #[test]
+    fn test_constant_1() { assert_eq!(s("1"), "1"); }
+
+    #[test]
+    fn test_constant_0_prime() { assert_eq!(s("0'"), "1"); }
+
+    #[test]
+    fn test_constant_1_prime() { assert_eq!(s("1'"), "0"); }
+
+    #[test]
+    fn test_constant_double_prime() {
+        assert_eq!(s("0''"), "0");
+        assert_eq!(s("1''"), "1");
+    }
+
+    #[test]
+    fn test_constant_expressions() {
+        assert_eq!(s("0 + 0"), "0");
+        assert_eq!(s("1 + 1"), "1");
+        assert_eq!(s("0 · 0"), "0");
+        assert_eq!(s("1 · 1"), "1");
+        assert_eq!(s("0 + 1"), "1");
+        assert_eq!(s("0 · 1"), "0");
+        assert_eq!(s("1'· 0'"), "0");
+    }
+
+    // ── Identity laws ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_identity_or_0() {
+        assert_eq!(s("A + 0"), "A");
+        assert_eq!(s("0 + A"), "A");
+    }
+
+    #[test]
+    fn test_identity_and_1() {
+        assert_eq!(s("A · 1"), "A");
+        assert_eq!(s("1 · A"), "A");
+    }
+
+    // ── Annihilation laws ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_annihilation_or_1() {
+        assert_eq!(s("A + 1"), "1");
+        assert_eq!(s("1 + A"), "1");
+    }
+
+    #[test]
+    fn test_annihilation_and_0() {
+        assert_eq!(s("A · 0"), "0");
+        assert_eq!(s("0 · A"), "0");
+    }
+
+    // ── Idempotent & complement laws ─────────────────────────────────────────────
+
+    #[test]
+    fn test_idempotent() {
+        assert_eq!(s("A + A"), "A");
+        assert_eq!(s("A · A"), "A");
+    }
+
+    #[test]
+    fn test_complement() {
+        assert_eq!(s("A + A'"), "1");
+        assert_eq!(s("A · A'"), "0");
+    }
+
+    #[test]
+    fn test_double_complement() {
+        assert_eq!(s("A''"), "A");
+        assert_eq!(s("A'''"), "A'");
+    }
+
+    // ── Absorption ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_absorption_or() {
+        assert_eq!(s("A + A·B"), "A");
+        assert_eq!(s("A + A·B·C"), "A");
+    }
+
+    #[test]
+    fn test_absorption_and() {
+        assert_eq!(s("A · (A + B)"), "A");
+    }
+
+    // ── De Morgan ────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_de_morgan_equivalent() {
+        assert_eq!(s_sorted("A'·B' + A'·B + A·B'"),
+                   s_sorted("A' + B'"));
+    }
+
+    // ── Consensus theorem ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_consensus() {
+        assert_eq!(s_sorted("A·B + A'·C + B·C"),
+                   s_sorted("A·B + A'·C"));
+    }
+
+    // ── Distributive ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_distributive() {
+        assert_eq!(s_sorted("A·(B + C)"),
+                   s_sorted("A·B + A·C"));
+    }
+
+    // ── Three-variable reduction ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_three_var_merge() {
+        assert_eq!(s("A·B·C + A·B·C'"), "A·B");
+    }
+
+    #[test]
+    fn test_three_var_absorption_variant() {
+        assert_eq!(s_sorted("A + A'·B"), s_sorted("A + B"));
+    }
+
+    // ── XOR (irreducible in SOP) ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_xor_stays_two_terms() {
+        let result = s("A·B' + A'·B");
+        assert!(result.contains(" + "), "XOR should remain two terms, got: {}", result);
+    }
+
+    #[test]
+    fn test_xor_equivalent_forms() {
+        assert_eq!(s_sorted("A·B' + A'·B"),
+                   s_sorted("(A + B)·(A' + B')"));
+    }
+
+    // ── Implicit AND ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_implicit_and_space() {
+        assert_eq!(s("A B + A B'"), "A");
+    }
+
+    #[test]
+    fn test_implicit_and_groups() {
+        assert_eq!(s("(A+B)(A+B')"), "A");
+    }
+
+    // ── App example ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_app_example() {
+        assert_eq!(s("((A·B) + (A'+B')) · ((A'+B') + (A·B))"), "1");
+    }
+
+    // ── Multichar variable names ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_multichar_complement() {
+        assert_eq!(s("foo + foo'"),         "1");
+        assert_eq!(s("my_var · my_var'"),   "0");
+        assert_eq!(s("foo · foo"),          "foo");
+    }
+
+    #[test]
+    fn test_multichar_reduction() {
+        assert_eq!(s("foo·bar + foo·bar'"), "foo");
+    }
+
+    // ── Error cases ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_propagates_parse_errors() {
+        assert!(s_err("'A").contains("complement"));
+        assert!(s_err("2 + B").contains("digit"));
+        assert!(s_err("A +").contains("Expected"));
+    }
 }

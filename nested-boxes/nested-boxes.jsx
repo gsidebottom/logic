@@ -23,22 +23,28 @@ function BoxNode({ node, depth = 0, position = [] }) {
     const hasPair = pairIndices.length > 0;
     const hasPrefix = prefixIndices.length > 0;
 
+    const highlighted = allIndices.length > 0;
+
     // Sort all indices by original cover index for consistent stacking
     const pairSet = new Set(pairIndices);
-    const sorted = [...allIndices].sort((a, b) => a - b);
+    const sorted = highlighted ? [...allIndices].sort((a, b) => a - b) : [];
 
     // Build colored underline bars — one per cover, stacked below the element
-    const barHeight = 3;
+    // Use global maxBarCount for consistent scaling across all positions
+    const globalMax = cover?.maxBarCount ?? sorted.length;
+    const maxSlots = 4;
+    const barHeight = globalMax <= maxSlots ? 3 : Math.max(1, Math.floor(3 * maxSlots / globalMax));
+    const barGap = globalMax <= maxSlots ? 1 : 0;
     const bars = sorted.map((idx, r) => {
       const color = PAIR_COLORS[idx % PAIR_COLORS.length];
       const dashed = !pairSet.has(idx);
       return (
         <div key={`bar-${idx}`} style={{
           position: 'absolute',
-          left: -1, right: -1, bottom: -(2 + r * (barHeight + 1)),
+          left: -1, right: -1, bottom: -(2 + r * (barHeight + barGap)),
           height: barHeight,
           background: dashed ? undefined : color,
-          backgroundImage: dashed ? `repeating-linear-gradient(90deg, ${color} 0px, ${color} 4px, transparent 4px, transparent 8px)` : undefined,
+          backgroundImage: dashed ? `repeating-linear-gradient(90deg, ${color} 0px, ${color} ${barHeight + 1}px, transparent ${barHeight + 1}px, transparent ${2 * (barHeight + 1)}px)` : undefined,
           borderRadius: 1,
           pointerEvents: 'none',
         }} />
@@ -46,8 +52,10 @@ function BoxNode({ node, depth = 0, position = [] }) {
     });
 
     // Background tint using the first selected cover's color
-    const firstColor = PAIR_COLORS[sorted[0] % PAIR_COLORS.length];
-    const bgColor = hasPair ? firstColor + '20' : firstColor + '12';
+    const bgColor = highlighted
+      ? (hasPair ? PAIR_COLORS[sorted[0] % PAIR_COLORS.length] + '20'
+                 : PAIR_COLORS[sorted[0] % PAIR_COLORS.length] + '12')
+      : undefined;
 
     return (
       <div
@@ -59,8 +67,7 @@ function BoxNode({ node, depth = 0, position = [] }) {
           padding: '4px 6px',
           fontSize: 17, fontFamily: 'Georgia, serif',
           fontWeight: 'bold', lineHeight: 1, userSelect: 'none',
-          background: bgColor,
-          borderRadius: 3,
+          ...(bgColor ? { background: bgColor, borderRadius: 3 } : {}),
         }}
       >
         {bars}
@@ -124,6 +131,20 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
     return m;
   }, [coveredPrefixes, selected]);
 
+  // Compute max bar count across all positions for consistent scaling
+  const maxBarCount = useMemo(() => {
+    const counts = {};
+    for (const [key, indices] of Object.entries(posToPairIndices)) {
+      counts[key] = (counts[key] ?? 0) + indices.length;
+    }
+    for (const [key, indices] of Object.entries(posToPrefixIndices)) {
+      // Only count prefix indices not already counted as pairs
+      const pairSet = new Set(posToPairIndices[key] ?? []);
+      counts[key] = (counts[key] ?? 0) + indices.filter(i => !pairSet.has(i)).length;
+    }
+    return Math.max(0, ...Object.values(counts));
+  }, [posToPairIndices, posToPrefixIndices]);
+
   // Recompute arc positions after every render (DOM may have changed)
   useLayoutEffect(() => {
     if (!containerRef.current || !parsed.length) {
@@ -152,7 +173,7 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
   });
 
   return (
-    <CoverContext.Provider value={(Object.keys(posToPairIndices).length || Object.keys(posToPrefixIndices).length) ? { posToPairIndices, posToPrefixIndices } : null}>
+    <CoverContext.Provider value={(Object.keys(posToPairIndices).length || Object.keys(posToPrefixIndices).length) ? { posToPairIndices, posToPrefixIndices, maxBarCount } : null}>
       <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
         <BoxNode node={node} depth={0} />
         {arcs.length > 0 && (

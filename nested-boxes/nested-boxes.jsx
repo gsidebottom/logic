@@ -296,6 +296,7 @@ const EXAMPLES = [
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [examples,       setExamples]       = useState(EXAMPLES);
+  const [examplesOpen,   setExamplesOpen]   = useState(true);
   const [addingLabel,    setAddingLabel]    = useState('');   // '' = not adding
   const [saveMsg,        setSaveMsg]        = useState('');
   const [input,          setInput]          = useState(EXAMPLES[0].f);
@@ -506,7 +507,7 @@ export default function App() {
       });
       const data = await res.json();
       if (data.error) setValidResult({ error: data.error });
-      else            setValidResult({ valid: data.valid, path: data.path, coveringPairs: data.covering_pairs });
+      else            setValidResult({ valid: data.valid, path: data.path, coveringPairs: data.covering_pairs, coveredPrefixes: data.covered_path_prefixes });
     } catch (e) {
       setValidResult({ error: 'Could not reach Rust service' });
     }
@@ -524,7 +525,7 @@ export default function App() {
       if (data.error) {
         setSatResult({ error: data.error });
       } else {
-        setSatResult({ satisfiable: data.satisfiable, path: data.path, coveringPairs: data.covering_pairs });
+        setSatResult({ satisfiable: data.satisfiable, path: data.path, coveringPairs: data.covering_pairs, coveredPrefixes: data.covered_path_prefixes });
         // Covering pairs are from the complement — auto-show it for annotation
         if (!data.satisfiable && ast) {
           const cAst = complementAst(ast);
@@ -680,6 +681,81 @@ export default function App() {
         </>}
       </div>
 
+      {/* Examples */}
+      <div style={{ marginBottom: 10 }}>
+        <div
+          onClick={() => setExamplesOpen(prev => !prev)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+            userSelect: 'none', fontSize: 13, color: '#555', marginBottom: examplesOpen ? 6 : 0,
+          }}
+        >
+          <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#999' }}>{examplesOpen ? '▼' : '▶'}</span>
+          <span style={{ fontWeight: 500 }}>Examples</span>
+        </div>
+        {examplesOpen && (
+          <>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6, alignItems: 'center' }}>
+              {examples.map(({ label, f }, i) => (
+                <span key={i} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  <button onClick={() => setInput(f)} style={{
+                    padding: '4px 11px', fontSize: 12, fontFamily: 'Georgia, serif',
+                    border: '1px solid #ccc', borderRadius: '4px 0 0 4px', cursor: 'pointer',
+                    background: input === f ? '#e8eeff' : '#fafafa', color: '#333',
+                  }}>
+                    {label}
+                  </button>
+                  <button
+                    onClick={() => setExamples(prev => prev.filter((_, j) => j !== i))}
+                    title="Remove example"
+                    style={{
+                      padding: '4px 6px', fontSize: 11, border: '1px solid #ccc',
+                      borderLeft: 'none', borderRadius: '0 4px 4px 0',
+                      cursor: 'pointer', background: '#fafafa', color: '#999',
+                      lineHeight: 1,
+                    }}
+                  >✕</button>
+                </span>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              {addingLabel !== null && (
+                <>
+                  <input
+                    value={addingLabel}
+                    onChange={e => setAddingLabel(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleAddExample(); if (e.key === 'Escape') setAddingLabel(''); }}
+                    placeholder="Label for current formula…"
+                    autoFocus
+                    style={{
+                      padding: '4px 8px', fontSize: 12, border: '1px solid #bbb',
+                      borderRadius: 4, outline: 'none', width: 200,
+                    }}
+                  />
+                  <button onClick={handleAddExample} disabled={!addingLabel.trim()} style={{
+                    padding: '4px 10px', fontSize: 12, border: '1px solid #aaa',
+                    borderRadius: 4, cursor: 'pointer', background: '#f0f4ff',
+                  }}>Add</button>
+                  <button onClick={() => setAddingLabel('')} style={{
+                    padding: '4px 8px', fontSize: 12, border: '1px solid #ccc',
+                    borderRadius: 4, cursor: 'pointer', background: '#fafafa', color: '#666',
+                  }}>Cancel</button>
+                </>
+              )}
+              <button onClick={() => setAddingLabel(prev => prev === '' ? ' ' : '')} title="Add current formula as example" style={{
+                padding: '4px 10px', fontSize: 12, border: '1px solid #bbb',
+                borderRadius: 4, cursor: 'pointer', background: '#fafafa', color: '#444',
+              }}>＋ Add example</button>
+              <button onClick={handleSaveExamples} style={{
+                padding: '4px 10px', fontSize: 12, border: '1px solid #bbb',
+                borderRadius: 4, cursor: 'pointer', background: '#fafafa', color: '#444',
+              }}>💾 Save</button>
+              {saveMsg && <span style={{ fontSize: 12, color: saveMsg.startsWith('✓') ? '#2a7a2a' : '#c00' }}>{saveMsg}</span>}
+            </div>
+          </>
+        )}
+      </div>
+
       {/* Input */}
       <textarea
         ref={inputRef}
@@ -768,13 +844,23 @@ export default function App() {
                     <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>{validResult.coveringPairs.length} pairs in the complementary cover:</span>
-                      <b style={{ fontFamily: 'Georgia, serif' }}>
-                        {validResult.coveringPairs.map(([posA, posB]) => {
+                      <div style={{
+                        ...(validResult.coveringPairs.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
+                        marginTop: 4,
+                      }}>
+                        {validResult.coveringPairs.map(([posA, posB], idx) => {
                           const a = resolvePosition(ast, posA)?.n ?? posA.join(',');
                           const b = resolvePosition(ast, posB)?.n ?? posB.join(',');
-                          return `{${a}, ${b}}`;
-                        }).join(',  ')}
-                      </b>
+                          const prefix = validResult.coveredPrefixes?.[idx];
+                          const prefixLits = prefix
+                            ? prefix.map(p => resolvePosition(ast, p)?.n ?? p.join(',')).join(', ')
+                            : null;
+                          return <div key={idx} style={{ fontWeight: 'normal' }}>
+                            <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                            {prefixLits && <span style={{ color: '#666', fontSize: 12 }}>{` covers {${prefixLits}}`}</span>}
+                          </div>;
+                        })}
+                      </div>
                     </span>
                   )}
                 </span>
@@ -801,78 +887,28 @@ export default function App() {
                     <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>{satResult.coveringPairs.length} pairs in the complementary cover:</span>
-                      <b style={{ fontFamily: 'Georgia, serif' }}>
-                        {satResult.coveringPairs.map(([posA, posB]) => {
+                      <div style={{
+                        ...(satResult.coveringPairs.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
+                        marginTop: 4,
+                      }}>
+                        {satResult.coveringPairs.map(([posA, posB], idx) => {
                           const a = resolvePosition(complementData.ast, posA)?.n ?? posA.join(',');
                           const b = resolvePosition(complementData.ast, posB)?.n ?? posB.join(',');
-                          return `{${a}, ${b}}`;
-                        }).join(',  ')}
-                      </b>
+                          const prefix = satResult.coveredPrefixes?.[idx];
+                          const prefixLits = prefix
+                            ? prefix.map(p => resolvePosition(complementData.ast, p)?.n ?? p.join(',')).join(', ')
+                            : null;
+                          return <div key={idx} style={{ fontWeight: 'normal' }}>
+                            <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                            {prefixLits && <span style={{ color: '#666', fontSize: 12 }}>{` covers {${prefixLits}}`}</span>}
+                          </div>;
+                        })}
+                      </div>
                     </span>
                   )}
                 </span>}
         </div>
       )}
-
-      {/* Examples */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
-        <span style={{ fontSize: 12, color: '#888', marginRight: 4 }}>Examples:</span>
-        {examples.map(({ label, f }, i) => (
-          <span key={i} style={{ display: 'inline-flex', alignItems: 'center' }}>
-            <button onClick={() => setInput(f)} style={{
-              padding: '4px 11px', fontSize: 12, fontFamily: 'Georgia, serif',
-              border: '1px solid #ccc', borderRadius: '4px 0 0 4px', cursor: 'pointer',
-              background: input === f ? '#e8eeff' : '#fafafa', color: '#333',
-            }}>
-              {label}
-            </button>
-            <button
-              onClick={() => setExamples(prev => prev.filter((_, j) => j !== i))}
-              title="Remove example"
-              style={{
-                padding: '4px 6px', fontSize: 11, border: '1px solid #ccc',
-                borderLeft: 'none', borderRadius: '0 4px 4px 0',
-                cursor: 'pointer', background: '#fafafa', color: '#999',
-                lineHeight: 1,
-              }}
-            >✕</button>
-          </span>
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24, alignItems: 'center' }}>
-        {addingLabel !== null && (
-          <>
-            <input
-              value={addingLabel}
-              onChange={e => setAddingLabel(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleAddExample(); if (e.key === 'Escape') setAddingLabel(''); }}
-              placeholder="Label for current formula…"
-              autoFocus
-              style={{
-                padding: '4px 8px', fontSize: 12, border: '1px solid #bbb',
-                borderRadius: 4, outline: 'none', width: 200,
-              }}
-            />
-            <button onClick={handleAddExample} disabled={!addingLabel.trim()} style={{
-              padding: '4px 10px', fontSize: 12, border: '1px solid #aaa',
-              borderRadius: 4, cursor: 'pointer', background: '#f0f4ff',
-            }}>Add</button>
-            <button onClick={() => setAddingLabel('')} style={{
-              padding: '4px 8px', fontSize: 12, border: '1px solid #ccc',
-              borderRadius: 4, cursor: 'pointer', background: '#fafafa', color: '#666',
-            }}>Cancel</button>
-          </>
-        )}
-        <button onClick={() => setAddingLabel(prev => prev === '' ? ' ' : '')} title="Add current formula as example" style={{
-          padding: '4px 10px', fontSize: 12, border: '1px solid #bbb',
-          borderRadius: 4, cursor: 'pointer', background: '#fafafa', color: '#444',
-        }}>＋ Add example</button>
-        <button onClick={handleSaveExamples} style={{
-          padding: '4px 10px', fontSize: 12, border: '1px solid #bbb',
-          borderRadius: 4, cursor: 'pointer', background: '#fafafa', color: '#444',
-        }}>💾 Save</button>
-        {saveMsg && <span style={{ fontSize: 12, color: saveMsg.startsWith('✓') ? '#2a7a2a' : '#c00' }}>{saveMsg}</span>}
-      </div>
 
       {/* Diagrams */}
       {ast && (

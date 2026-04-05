@@ -1,6 +1,7 @@
-use crate::matrix::{format_path, parse_to_matrix, Cover, Proof};
+use crate::matrix::{format_path, parse_to_matrix, Cover, Position, Proof};
 
-type ProveResult = Result<(bool, Option<String>, Cover), String>;
+type CoveredPrefixes = Vec<Vec<Position>>;
+type ProveResult = Result<(bool, Option<String>, Cover, CoveredPrefixes), String>;
 
 pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
     let (m, vars) = parse_to_matrix(formula)?;
@@ -10,27 +11,28 @@ pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
     Ok((formatted, comp_flags))
 }
 
-/// Returns `(true, None, pairs)` if valid (with a greedy cover of complementary
-/// pairs), or `(false, Some(path), [])` with the first uncomplimentary path.
+/// Returns `(true, None, cover, prefixes)` if valid, or
+/// `(false, Some(path), [], [])` with the first non-complementary path.
 pub fn check_valid(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
-    let Proof { cover, first_uncovered_path } = m.check_valid();
-    match first_uncovered_path {
-        Some(path) => Ok((false, Some(format_path(&path, &m, &vars)), vec![])),
-        None       => Ok((true, None, cover)),
+    let Proof { cover, covered_path_prefixes, uncovered_paths } = m.check_valid();
+    if let Some(path) = uncovered_paths.first() {
+        Ok((false, Some(format_path(path, &m, &vars)), vec![], vec![]))
+    } else {
+        Ok((true, None, cover, covered_path_prefixes))
     }
 }
 
-/// Returns `(true, Some(path), [])` with first uncomplimentary path in the
-/// complement if satisfiable, or `(false, None, pairs)` with a greedy cover of
-/// complementary pairs in the complement if unsatisfiable.
+/// Returns `(true, Some(path), [], [])` if satisfiable, or
+/// `(false, None, cover, prefixes)` if unsatisfiable.
 pub fn check_satisfiable(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
     let comp = m.complement();
-    let Proof { cover, first_uncovered_path } = comp.check_valid();
-    match first_uncovered_path {
-        Some(path) => Ok((true, Some(format_path(&path, &comp, &vars)), vec![])),
-        None       => Ok((false, None, cover)),
+    let Proof { cover, covered_path_prefixes, uncovered_paths } = comp.check_valid();
+    if let Some(path) = uncovered_paths.first() {
+        Ok((true, Some(format_path(path, &comp, &vars)), vec![], vec![]))
+    } else {
+        Ok((false, None, cover, covered_path_prefixes))
     }
 }
 
@@ -63,7 +65,7 @@ mod tests {
 
     #[test]
     fn test_check_valid() {
-        let (valid, path, pairs) = check_valid(F).unwrap();
+        let (valid, path, pairs, prefixes) = check_valid(F).unwrap();
         assert!(valid);
         assert!(path.is_none());
         // Every pair in the cover must consist of complementary literals.
@@ -74,18 +76,20 @@ mod tests {
             assert!(la.is_complement_of(lb), "{:?} and {:?} should be complementary", pa, pb);
         }
         // Every path must be covered by at least one pair.
-        let all_paths: Vec<crate::matrix::Path> = m.paths_iter().collect();
+        let all_paths: Vec<crate::matrix::ProdPath> = m.paths_iter().collect();
         for path in &all_paths {
             let positions = m.positions_on_path(path);
             assert!(pairs.iter().any(|(pa, pb)|
                 positions.contains(pa) && positions.contains(pb)),
                 "cover misses path {:?}", path);
         }
+        // Each cover pair has a corresponding prefix.
+        assert_eq!(pairs.len(), prefixes.len());
     }
 
     #[test]
     fn test_check_satisfiable_tautology_is_satisfiable() {
-        let (sat, path, pairs) = check_satisfiable(F).unwrap();
+        let (sat, path, pairs, _prefixes) = check_satisfiable(F).unwrap();
         // A tautology is satisfiable; complement has non-complementary paths.
         assert!(sat);
         assert_eq!(path.as_deref(), Some("{H, R}"));
@@ -95,7 +99,7 @@ mod tests {
     #[test]
     fn test_check_valid_non_tautology() {
         // Simple variable is not a tautology.
-        let (valid, path, _) = check_valid("A").unwrap();
+        let (valid, path, _, _) = check_valid("A").unwrap();
         assert!(!valid);
         assert_eq!(path.as_deref(), Some("{A}"));
     }
@@ -103,7 +107,7 @@ mod tests {
     #[test]
     fn test_check_satisfiable_contradiction() {
         // A · A' is unsatisfiable.
-        let (sat, path, _) = check_satisfiable("A · A'").unwrap();
+        let (sat, path, _, _) = check_satisfiable("A · A'").unwrap();
         assert!(!sat);
         assert!(path.is_none());
     }

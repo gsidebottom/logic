@@ -29,19 +29,20 @@ function BoxNode({ node, depth = 0, position = [] }) {
     const pairSet = new Set(pairIndices);
     const sorted = highlighted ? [...allIndices].sort((a, b) => a - b) : [];
 
-    // Build colored underline bars — one per cover, stacked below the element
-    // Use global maxBarCount for consistent scaling across all positions
+    // Build colored underline bars — one per cover, stacked below the element.
+    // Use global maxBarCount for consistent scaling across all positions.
+    // Total stack height is capped at 16px (4 × 4px slots).
     const globalMax = cover?.maxBarCount ?? sorted.length;
-    const maxSlots = 4;
-    const barHeight = globalMax <= maxSlots ? 3 : Math.max(1, Math.floor(3 * maxSlots / globalMax));
-    const barGap = globalMax <= maxSlots ? 1 : 0;
+    const maxStack = 16;
+    const barStep = globalMax <= 4 ? 4 : Math.max(1, maxStack / globalMax);
+    const barHeight = barStep;
     const bars = sorted.map((idx, r) => {
       const color = PAIR_COLORS[idx % PAIR_COLORS.length];
       const dashed = !pairSet.has(idx);
       return (
         <div key={`bar-${idx}`} style={{
           position: 'absolute',
-          left: -1, right: -1, bottom: -(2 + r * (barHeight + barGap)),
+          left: -1, right: -1, bottom: -(2 + r * barStep),
           height: barHeight,
           background: dashed ? undefined : color,
           backgroundImage: dashed ? `repeating-linear-gradient(90deg, ${color} 0px, ${color} ${barHeight + 1}px, transparent ${barHeight + 1}px, transparent ${2 * (barHeight + 1)}px)` : undefined,

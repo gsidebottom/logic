@@ -268,38 +268,6 @@ impl Matrix {
         result
     }
 
-    /// Resolve a path prefix to the literals it *guarantees* and whether
-    /// the prefix is a complete path (all `Prod` nodes resolved).
-    fn resolve_prefix(&self, path: &[usize]) -> (Vec<&Lit>, bool) {
-        fn inner<'a>(m: &'a Matrix, path: &[usize]) -> (Vec<&'a Lit>, usize, bool) {
-            match m {
-                Matrix::Lit(l) => (vec![l], 0, true),
-                Matrix::Prod(children) => {
-                    if path.is_empty() {
-                        return (vec![], 0, false);
-                    }
-                    let sel = path[0];
-                    let (lits, consumed, complete) = inner(&children[sel], &path[1..]);
-                    (lits, 1 + consumed, complete)
-                }
-                Matrix::Sum(children) => {
-                    let mut all_lits = Vec::new();
-                    let mut total = 0;
-                    let mut all_complete = true;
-                    for child in children {
-                        let (lits, consumed, complete) = inner(child, &path[total..]);
-                        all_lits.extend(lits);
-                        total += consumed;
-                        all_complete = all_complete && complete;
-                    }
-                    (all_lits, total, all_complete)
-                }
-            }
-        }
-        let (lits, _, complete) = inner(self, path);
-        (lits, complete)
-    }
-
     /// Check validity using prefix-pruned depth-first search.
     ///
     /// Uses `for_each_path_prefix` to prune paths whose prefix already
@@ -307,39 +275,32 @@ impl Matrix {
     /// first non-complementary path without enumerating all paths.
     pub fn check_valid(&self) -> Proof {
         let mut first_uncovered: Option<Path> = None;
+        let mut cover = Cover::new();
 
-        self.for_each_path_prefix(|prefix, _prefix_lits| {
+        self.for_each_path_prefix(|prefix, lits, positions, complete| {
             if first_uncovered.is_some() {
                 return false;
             }
-            let (lits, complete) = self.resolve_prefix(prefix);
-            let complementary = lits.iter()
-                .any(|l| lits.iter().any(|l2| l.is_complement_of(l2)));
-            if complementary {
-                false // prune — all extensions are also complementary
-            } else if complete {
+            if complete {
                 first_uncovered = Some(prefix.to_vec());
-                false
-            } else {
-                true // keep extending
+                return false;
             }
+            // Check if the newest literal has a complement among prior ones.
+            if let Some(new_lit) = lits.last() {
+                let new_pos = positions.last().unwrap();
+                for (j, prior) in lits[..lits.len() - 1].iter().enumerate() {
+                    if prior.is_complement_of(new_lit) {
+                        cover.push((positions[j].clone(), new_pos.clone()));
+                        return false; // prune
+                    }
+                }
+            }
+            true
         });
-
-        // Handle matrices with no Prod nodes (the empty path [] is the only
-        // path but for_each_path_prefix never calls the callback for it).
-        if first_uncovered.is_none() {
-            let (lits, complete) = self.resolve_prefix(&[]);
-            if complete && !lits.iter().any(|l| lits.iter().any(|l2| l.is_complement_of(l2))) {
-                first_uncovered = Some(vec![]);
-            }
-        }
 
         match first_uncovered {
             Some(path) => Proof { cover: vec![], first_uncovered_path: Some(path) },
-            None => {
-                let all_paths: Vec<Path> = self.paths_iter().collect();
-                Proof { cover: self.cover(&all_paths), first_uncovered_path: None }
-            }
+            None       => Proof { cover, first_uncovered_path: None },
         }
     }
 
@@ -359,63 +320,96 @@ impl Matrix {
 
     /// Depth-first traversal of all path prefixes, with pruning.
     ///
-    /// Calls `f` with each path prefix (including full paths) and the
-    /// literals guaranteed to be on any path extending that prefix.
-    /// If `f` returns `true`, traversal continues forward on the current
-    /// path; if `false`, it backtracks to the last `Prod` member choice.
-    pub fn for_each_path_prefix(&self, mut f: impl FnMut(&Path, &Vec<&Lit>) -> bool) {
+    /// Calls `f(path, lits, positions, complete)` at each step of the traversal:
+    /// - When a `Prod` member is selected (new path element, `complete = false`)
+    /// - When a `Lit` is reached (new literal + position in `lits`/`positions`, `complete = false`)
+    /// - When a full path is completed (`complete = true`)
+    ///
+    /// `lits` and `positions` are parallel vectors: `positions[i]` is the
+    /// absolute tree address of `lits[i]`.
+    ///
+    /// If `f` returns `true`, traversal continues forward; if `false`, it
+    /// backtracks to the last `Prod` member choice.
+    pub fn for_each_path_prefix(
+        &self,
+        mut f: impl FnMut(&Path, &Vec<&Lit>, &Vec<Position>, bool) -> bool,
+    ) {
         type Lits<'a> = Vec<&'a Lit>;
+        type Positions = Vec<Position>;
 
-        fn traverse<'a, F: FnMut(&Path, &Lits<'a>) -> bool>(
+        fn traverse<'a, F: FnMut(&Path, &Lits<'a>, &Positions, bool) -> bool>(
             m: &'a Matrix,
             path: &mut Path,
             lits: &mut Lits<'a>,
+            positions: &mut Positions,
+            pos: &mut Position,
             f: &mut F,
-            then: &mut dyn FnMut(&mut Path, &mut Lits<'a>, &mut F),
+            then: &mut dyn FnMut(&mut Path, &mut Lits<'a>, &mut Positions, &mut Position, &mut F),
         ) {
             match m {
                 Matrix::Lit(l) => {
                     lits.push(l);
-                    if f(path, lits) {
-                        then(path, lits, f);
+                    positions.push(pos.clone());
+                    if f(path, lits, positions, false) {
+                        then(path, lits, positions, pos, f);
                     }
+                    positions.pop();
                     lits.pop();
                 }
                 Matrix::Prod(children) => {
                     for (i, child) in children.iter().enumerate() {
                         path.push(i);
-                        if f(path, lits) {
-                            traverse(child, path, lits, f, then);
+                        pos.push(i);
+                        if f(path, lits, positions, false) {
+                            traverse(child, path, lits, positions, pos, f, then);
                         }
+                        pos.pop();
                         path.pop();
                     }
                 }
                 Matrix::Sum(children) => {
-                    traverse_sum(children, 0, path, lits, f, then);
+                    traverse_sum(children, 0, path, lits, positions, pos, f, then);
                 }
             }
         }
 
-        fn traverse_sum<'a, F: FnMut(&Path, &Lits<'a>) -> bool>(
+        #[allow(clippy::too_many_arguments)]
+        fn traverse_sum<'a, F: FnMut(&Path, &Lits<'a>, &Positions, bool) -> bool>(
             children: &'a [Matrix],
             idx: usize,
             path: &mut Path,
             lits: &mut Lits<'a>,
+            positions: &mut Positions,
+            pos: &mut Position,
             f: &mut F,
-            then: &mut dyn FnMut(&mut Path, &mut Lits<'a>, &mut F),
+            then: &mut dyn FnMut(&mut Path, &mut Lits<'a>, &mut Positions, &mut Position, &mut F),
         ) {
             if idx >= children.len() {
-                then(path, lits, f);
+                then(path, lits, positions, pos, f);
             } else {
-                traverse(&children[idx], path, lits, f, &mut |path, lits, f| {
-                    traverse_sum(children, idx + 1, path, lits, f, then);
-                });
+                let pos_len = pos.len();
+                pos.push(idx);
+                traverse(&children[idx], path, lits, positions, pos, f,
+                    &mut |path, lits, positions, pos, f| {
+                        let saved_pos = pos.clone();
+                        pos.truncate(pos_len);
+                        traverse_sum(children, idx + 1, path, lits, positions, pos, f, then);
+                        *pos = saved_pos;
+                    },
+                );
+                pos.truncate(pos_len);
             }
         }
 
         let mut path = Path::new();
         let mut lits = Vec::new();
-        traverse(self, &mut path, &mut lits, &mut f, &mut |_, _, _| {});
+        let mut positions = Vec::new();
+        let mut pos = Vec::new();
+        traverse(self, &mut path, &mut lits, &mut positions, &mut pos, &mut f,
+            &mut |path, lits, positions, _pos, f| {
+                f(path, lits, positions, true);
+            },
+        );
     }
 }
 
@@ -543,8 +537,8 @@ mod tests {
         let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
         let mut full_paths = Vec::new();
         let expected: Vec<Path> = m.paths_iter().collect();
-        m.for_each_path_prefix(|prefix, lits| {
-            if lits.len() == 2 {
+        m.for_each_path_prefix(|prefix, _lits, _pos, complete| {
+            if complete {
                 full_paths.push(prefix.to_vec());
             }
             true
@@ -560,7 +554,7 @@ mod tests {
             prod(vec![v(3), vn(4), sum(vec![v(5), prod(vec![v(6), v(7)])])]),
         ]);
         let mut all_prefixes = Vec::new();
-        m.for_each_path_prefix(|prefix, _lits| {
+        m.for_each_path_prefix(|prefix, _lits, _pos, _complete| {
             all_prefixes.push(prefix.to_vec());
             true
         });
@@ -577,7 +571,7 @@ mod tests {
         // (a · b) + (c · d) — prune when prefix starts with [1]
         let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
         let mut visited = Vec::new();
-        m.for_each_path_prefix(|prefix, _lits| {
+        m.for_each_path_prefix(|prefix, _lits, _pos, _complete| {
             visited.push(prefix.to_vec());
             // Prune: don't continue if first Prod selected member 1
             prefix[0] != 1
@@ -597,7 +591,17 @@ mod tests {
         let fast = m.check_valid();
         let reference = m.check_valid_reference();
         assert_eq!(fast.first_uncovered_path, reference.first_uncovered_path);
-        assert_eq!(fast.cover, reference.cover);
+        // Covers may differ in structure but must both be valid: every path
+        // must contain at least one pair from the cover.
+        if reference.first_uncovered_path.is_none() {
+            let all_paths: Vec<Path> = m.paths_iter().collect();
+            for path in &all_paths {
+                let positions = m.positions_on_path(path);
+                assert!(fast.cover.iter().any(|(pa, pb)|
+                    positions.contains(pa) && positions.contains(pb)),
+                    "fast cover misses path {:?}", path);
+            }
+        }
     }
 
     #[test]

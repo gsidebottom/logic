@@ -66,19 +66,21 @@ mod tests {
         let (valid, path, pairs) = check_valid(F).unwrap();
         assert!(valid);
         assert!(path.is_none());
-        // Matrix: Sum([Prod([R'@[0,0], H'@[0,1]]), Prod([L@[1,0], H@[1,1], R'@[1,2]]), L'@[2], R@[3]])
-        // Path 0 ([0,0]R',[1,0]L,[2]L',[3]R): first comp pair = (R'@[0,0], R@[3])
-        // Path 1 covered by ([0,0],[3])
-        // Path 2 covered by ([0,0],[3])
-        // Path 3 ([0,1]H',[1,0]L,[2]L',[3]R): first comp pair = (L@[1,0], L'@[2])
-        // Path 4 ([0,1]H',[1,1]H,[2]L',[3]R): first comp pair = (H'@[0,1], H@[1,1])
-        // Path 5 ([0,1]H',[1,2]R',[2]L',[3]R): first comp pair = (R'@[1,2], R@[3])
-        assert_eq!(pairs, vec![
-            (vec![0, 0], vec![3]),
-            (vec![1, 0], vec![2]),
-            (vec![0, 1], vec![1, 1]),
-            (vec![1, 2], vec![3]),
-        ]);
+        // Every pair in the cover must consist of complementary literals.
+        let (m, _) = parse_to_matrix(F).unwrap();
+        for (pa, pb) in &pairs {
+            let la = m.lit_at(pa).expect("position a should resolve");
+            let lb = m.lit_at(pb).expect("position b should resolve");
+            assert!(la.is_complement_of(lb), "{:?} and {:?} should be complementary", pa, pb);
+        }
+        // Every path must be covered by at least one pair.
+        let all_paths: Vec<crate::matrix::Path> = m.paths_iter().collect();
+        for path in &all_paths {
+            let positions = m.positions_on_path(path);
+            assert!(pairs.iter().any(|(pa, pb)|
+                positions.contains(pa) && positions.contains(pb)),
+                "cover misses path {:?}", path);
+        }
     }
 
     #[test]

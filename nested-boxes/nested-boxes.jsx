@@ -30,19 +30,27 @@ function BoxNode({ node, depth = 0, position = [] }) {
     const sorted = highlighted ? [...allIndices].sort((a, b) => a - b) : [];
 
     // Build colored underline bars — one per cover, stacked below the element.
-    // Use global maxBarCount for consistent scaling across all positions.
-    // Total stack height is capped at 16px (4 × 4px slots).
+    // Use global maxBarCount for consistent scaling. Bars split into columns
+    // of 8, each column offset horizontally.
     const globalMax = cover?.maxBarCount ?? sorted.length;
+    const barsPerCol = 8;
+    const colCount = Math.ceil(globalMax / barsPerCol);
+    const effectiveMax = Math.min(globalMax, barsPerCol);
     const maxStack = 16;
-    const barStep = globalMax <= 4 ? 4 : Math.max(1, maxStack / globalMax);
+    const barStep = effectiveMax <= 4 ? 4 : Math.max(1, maxStack / effectiveMax);
     const barHeight = barStep;
+    const colWidth = colCount > 1 ? `${100 / colCount}%` : undefined;
     const bars = sorted.map((idx, r) => {
+      const col = Math.floor(r / barsPerCol);
+      const row = r % barsPerCol;
       const color = PAIR_COLORS[idx % PAIR_COLORS.length];
       const dashed = !pairSet.has(idx);
       return (
         <div key={`bar-${idx}`} style={{
           position: 'absolute',
-          left: -1, right: -1, bottom: -(2 + r * barStep),
+          left: colCount > 1 ? `${(col / colCount) * 100}%` : -1,
+          right: colCount > 1 ? `${((colCount - col - 1) / colCount) * 100}%` : -1,
+          bottom: -(2 + row * barStep),
           height: barHeight,
           background: dashed ? undefined : color,
           backgroundImage: dashed ? `repeating-linear-gradient(90deg, ${color} 0px, ${color} ${barHeight + 1}px, transparent ${barHeight + 1}px, transparent ${2 * (barHeight + 1)}px)` : undefined,

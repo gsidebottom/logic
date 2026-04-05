@@ -155,9 +155,11 @@ impl Parser {
                 return Err("Expected term after '+'".to_string());
             }
             let right = self.parse_term()?;
-            left = match left {
-                Node::Or(mut c) => { c.push(right); Node::Or(c) }
-                other => Node::Or(vec![other, right]),
+            left = match (left, right) {
+                (Node::Or(mut c), Node::Or(r)) => { c.extend(r); Node::Or(c) }
+                (Node::Or(mut c), right)       => { c.push(right); Node::Or(c) }
+                (other, Node::Or(mut c))        => { c.insert(0, other); Node::Or(c) }
+                (other, right)                  => Node::Or(vec![other, right]),
             };
         }
         Ok(left)
@@ -172,9 +174,11 @@ impl Parser {
                 _ => break,
             }
             let right = self.parse_factor()?;
-            left = match left {
-                Node::And(mut c) => { c.push(right); Node::And(c) }
-                other => Node::And(vec![other, right]),
+            left = match (left, right) {
+                (Node::And(mut c), Node::And(r)) => { c.extend(r); Node::And(c) }
+                (Node::And(mut c), right)        => { c.push(right); Node::And(c) }
+                (other, Node::And(mut c))         => { c.insert(0, other); Node::And(c) }
+                (other, right)                    => Node::And(vec![other, right]),
             };
         }
         Ok(left)

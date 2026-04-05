@@ -499,6 +499,34 @@ mod tests {
         assert_eq!(got, exp);
     }
 
+    // ── Formula-to-matrix flattening ────────────────────────────────────────
+
+    #[test]
+    fn test_parse_prod_flattening() {
+        // (A B) (C D) should produce Prod(A, B, C, D), not Prod(A, B, Prod(C, D))
+        let (m, _) = parse_to_matrix("(A B) (C D)").unwrap();
+        match &m {
+            Matrix::Prod(children) => {
+                assert_eq!(children.len(), 4, "expected 4 children, got {:?}", m);
+                assert!(children.iter().all(|c| matches!(c, Matrix::Lit(_))));
+            }
+            _ => panic!("expected Prod, got {:?}", m),
+        }
+    }
+
+    #[test]
+    fn test_parse_sum_flattening() {
+        // (A + B) + (C + D) should produce Sum(A, B, C, D), not Sum(A, B, Sum(C, D))
+        let (m, _) = parse_to_matrix("(A + B) + (C + D)").unwrap();
+        match &m {
+            Matrix::Sum(children) => {
+                assert_eq!(children.len(), 4, "expected 4 children, got {:?}", m);
+                assert!(children.iter().all(|c| matches!(c, Matrix::Lit(_))));
+            }
+            _ => panic!("expected Sum, got {:?}", m),
+        }
+    }
+
     // ── Path encoding ─────────────────────────────────────────────────────────
 
     #[test]

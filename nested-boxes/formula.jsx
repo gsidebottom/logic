@@ -53,9 +53,9 @@ export function parse(str) {
       eat();
       if (peek() === undefined) throw new Error("Expected term after '+'");
       const right = parseTerm();
-      left = left.t === 'OR'
-        ? { t: 'OR',  c: [...left.c, right] }
-        : { t: 'OR',  c: [left, right] };
+      const lc = left.t  === 'OR' ? left.c  : [left];
+      const rc = right.t === 'OR' ? right.c : [right];
+      left = { t: 'OR', c: [...lc, ...rc] };
     }
     return left;
   }
@@ -68,9 +68,9 @@ export function parse(str) {
       else if (t !== undefined && (typeof t === 'object' || t === '(')) {} // implicit AND
       else break;
       const right = parseFactor();
-      left = left.t === 'AND'
-        ? { t: 'AND', c: [...left.c, right] }
-        : { t: 'AND', c: [left, right] };
+      const lc = left.t  === 'AND' ? left.c  : [left];
+      const rc = right.t === 'AND' ? right.c : [right];
+      left = { t: 'AND', c: [...lc, ...rc] };
     }
     return left;
   }

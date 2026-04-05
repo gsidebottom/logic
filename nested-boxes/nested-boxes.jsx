@@ -16,9 +16,34 @@ function BoxNode({ node, depth = 0, position = [] }) {
 
   if (node.t === 'VAR') {
     const posKey = position.join(',');
-    const pairIdx = cover?.posToPairIdx?.[posKey];
-    const highlighted = pairIdx !== undefined;
-    const hColor = highlighted ? PAIR_COLORS[pairIdx % PAIR_COLORS.length] : null;
+    const pairIndices = cover?.posToPairIndices?.[posKey] ?? [];
+    const prefixIndices = (cover?.posToPrefixIndices?.[posKey] ?? [])
+      .filter(i => !pairIndices.includes(i)); // don't double-show
+    const allIndices = [...pairIndices, ...prefixIndices];
+    const hasPair = pairIndices.length > 0;
+    const hasPrefix = prefixIndices.length > 0;
+
+    // Build stacked box-shadows: each pair/prefix gets a ring at increasing offset
+    const shadows = [];
+    let offset = 2;
+    for (const idx of pairIndices) {
+      const c = PAIR_COLORS[idx % PAIR_COLORS.length];
+      shadows.push(`0 0 0 ${offset}px ${c}`);
+      offset += 2.5;
+    }
+    for (const idx of prefixIndices) {
+      const c = PAIR_COLORS[idx % PAIR_COLORS.length] + '88';
+      shadows.push(`0 0 0 ${offset}px ${c}`);
+      offset += 2;
+    }
+
+    // Background: blend all colors
+    const bgColor = allIndices.length === 1
+      ? PAIR_COLORS[allIndices[0] % PAIR_COLORS.length] + (hasPair ? '28' : '18')
+      : allIndices.length > 1
+        ? (hasPair ? '#ffeebb44' : '#eeeeff33')
+        : null;
+
     return (
       <div
         data-position={posKey}
@@ -27,11 +52,11 @@ function BoxNode({ node, depth = 0, position = [] }) {
           justifyContent: 'center', padding: '4px 6px',
           fontSize: 17, fontFamily: 'Georgia, serif',
           fontWeight: 'bold', lineHeight: 1, userSelect: 'none',
-          ...(highlighted ? {
-            background: hColor + '28',
+          ...((hasPair || hasPrefix) ? {
+            background: bgColor,
             borderRadius: 3,
-            outline: `2.5px solid ${hColor}`,
-            outlineOffset: 1,
+            boxShadow: shadows.join(', '),
+            margin: Math.max(0, offset - 2),
           } : {}),
         }}
       >
@@ -57,7 +82,7 @@ function BoxNode({ node, depth = 0, position = [] }) {
 }
 
 // ─── Diagram with SVG arc connections for covering pairs ──────────────────────
-function DiagramWithConnections({ node, coveringPairs }) {
+function DiagramWithConnections({ node, coveringPairs, coveredPrefixes }) {
   const containerRef = useRef(null);
   const [arcs, setArcs] = useState([]);
 
@@ -66,14 +91,28 @@ function DiagramWithConnections({ node, coveringPairs }) {
     [coveringPairs]
   );
 
-  const posToPairIdx = useMemo(() => {
+  const posToPairIndices = useMemo(() => {
     const m = {};
     parsed.forEach(([posA, posB], i) => {
-      m[posA.join(',')] = i;
-      m[posB.join(',')] = i;
+      const ka = posA.join(','), kb = posB.join(',');
+      (m[ka] ??= []).push(i);
+      (m[kb] ??= []).push(i);
     });
     return m;
   }, [parsed]);
+
+  const posToPrefixIndices = useMemo(() => {
+    const m = {};
+    if (coveredPrefixes) {
+      coveredPrefixes.forEach((positions, i) => {
+        positions.forEach(pos => {
+          const key = pos.join(',');
+          (m[key] ??= []).push(i);
+        });
+      });
+    }
+    return m;
+  }, [coveredPrefixes]);
 
   // Recompute arc positions after every render (DOM may have changed)
   useLayoutEffect(() => {
@@ -102,7 +141,7 @@ function DiagramWithConnections({ node, coveringPairs }) {
   });
 
   return (
-    <CoverContext.Provider value={parsed.length ? { posToPairIdx } : null}>
+    <CoverContext.Provider value={(parsed.length || Object.keys(posToPrefixIndices).length) ? { posToPairIndices, posToPrefixIndices } : null}>
       <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
         <BoxNode node={node} depth={0} />
         {arcs.length > 0 && (
@@ -304,7 +343,9 @@ export default function App() {
   const [simplifyMsg,    setSimplifyMsg]    = useState(null); // {text, ok}
   const [complementData, setComplementData] = useState(null); // {formula, ast}
   const [validResult,    setValidResult]    = useState(null); // {valid, path}
+  const [validSelected,  setValidSelected]  = useState(new Set()); // Set<number> of selected pair indices
   const [satResult,      setSatResult]      = useState(null); // {satisfiable, path, coveringPairs}
+  const [satSelected,    setSatSelected]    = useState(new Set()); // Set<number> of selected pair indices
   const [pathsResult,    setPathsResult]    = useState(null); // {paths, complementary} | {error}
   const [loading,        setLoading]        = useState(false);
   const [jqFilter,       setJqFilter]       = useState('');
@@ -394,7 +435,9 @@ export default function App() {
     setSimplified(null);
     setComplementData(null);
     setValidResult(null);
+    setValidSelected(new Set());
     setSatResult(null);
+    setSatSelected(new Set());
     setPathsResult(null);
   }, [input]);
 
@@ -843,7 +886,15 @@ export default function App() {
                   {validResult.coveringPairs?.length > 0 && ast && (
                     <span>
                       <br />
-                      <span style={{ fontWeight: 'normal' }}>{validResult.coveringPairs.length} pairs in the complementary cover:</span>
+                      <span style={{ fontWeight: 'normal' }}>
+                        {validResult.coveringPairs.length} pairs in the complementary cover:
+                        {' '}
+                        <a href="#" onClick={e => { e.preventDefault(); setValidSelected(new Set(validResult.coveringPairs.map((_, i) => i))); }}
+                           style={{ fontSize: 11, color: '#888' }}>all</a>
+                        {' · '}
+                        <a href="#" onClick={e => { e.preventDefault(); setValidSelected(new Set()); }}
+                           style={{ fontSize: 11, color: '#888' }}>none</a>
+                      </span>
                       <div style={{
                         ...(validResult.coveringPairs.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
                         marginTop: 4,
@@ -855,7 +906,14 @@ export default function App() {
                           const prefixLits = prefix
                             ? prefix.map(p => resolvePosition(ast, p)?.n ?? p.join(',')).join(', ')
                             : null;
-                          return <div key={idx} style={{ fontWeight: 'normal' }}>
+                          const selected = validSelected.has(idx);
+                          return <div key={idx}
+                            onClick={() => setValidSelected(prev => {
+                              const s = new Set(prev);
+                              if (s.has(idx)) s.delete(idx); else s.add(idx);
+                              return s;
+                            })}
+                            style={{ fontWeight: 'normal', cursor: 'pointer', opacity: selected ? 1 : 0.35 }}>
                             <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
                             {prefixLits && <span style={{ color: '#666', fontSize: 12 }}>{` covers {${prefixLits}}`}</span>}
                           </div>;
@@ -886,7 +944,15 @@ export default function App() {
                   {satResult.coveringPairs?.length > 0 && complementData?.ast && (
                     <span>
                       <br />
-                      <span style={{ fontWeight: 'normal' }}>{satResult.coveringPairs.length} pairs in the complementary cover:</span>
+                      <span style={{ fontWeight: 'normal' }}>
+                        {satResult.coveringPairs.length} pairs in the complementary cover:
+                        {' '}
+                        <a href="#" onClick={e => { e.preventDefault(); setSatSelected(new Set(satResult.coveringPairs.map((_, i) => i))); }}
+                           style={{ fontSize: 11, color: '#888' }}>all</a>
+                        {' · '}
+                        <a href="#" onClick={e => { e.preventDefault(); setSatSelected(new Set()); }}
+                           style={{ fontSize: 11, color: '#888' }}>none</a>
+                      </span>
                       <div style={{
                         ...(satResult.coveringPairs.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
                         marginTop: 4,
@@ -898,7 +964,14 @@ export default function App() {
                           const prefixLits = prefix
                             ? prefix.map(p => resolvePosition(complementData.ast, p)?.n ?? p.join(',')).join(', ')
                             : null;
-                          return <div key={idx} style={{ fontWeight: 'normal' }}>
+                          const selected = satSelected.has(idx);
+                          return <div key={idx}
+                            onClick={() => setSatSelected(prev => {
+                              const s = new Set(prev);
+                              if (s.has(idx)) s.delete(idx); else s.add(idx);
+                              return s;
+                            })}
+                            style={{ fontWeight: 'normal', cursor: 'pointer', opacity: selected ? 1 : 0.35 }}>
                             <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
                             {prefixLits && <span style={{ color: '#666', fontSize: 12 }}>{` covers {${prefixLits}}`}</span>}
                           </div>;
@@ -919,7 +992,8 @@ export default function App() {
           <ZoomPanWrapper key={input} bg='#f8f9fc' border='1px solid #dde' opacity={error ? 0.5 : 1}>
             <DiagramWithConnections
               node={ast}
-              coveringPairs={validResult?.valid ? validResult.coveringPairs : null}
+              coveringPairs={validResult?.valid ? validResult.coveringPairs?.filter((_, i) => validSelected.has(i)) : null}
+              coveredPrefixes={validResult?.valid ? validResult.coveredPrefixes?.filter((_, i) => validSelected.has(i)) : null}
             />
           </ZoomPanWrapper>
 
@@ -945,7 +1019,8 @@ export default function App() {
               <ZoomPanWrapper key={complementData.formula} bg='#f0fafa' border='1px solid #a0d4d4'>
                 <DiagramWithConnections
                   node={complementData.ast}
-                  coveringPairs={satResult && !satResult.satisfiable ? satResult.coveringPairs : null}
+                  coveringPairs={satResult && !satResult.satisfiable ? satResult.coveringPairs?.filter((_, i) => satSelected.has(i)) : null}
+                  coveredPrefixes={satResult && !satResult.satisfiable ? satResult.coveredPrefixes?.filter((_, i) => satSelected.has(i)) : null}
                 />
               </ZoomPanWrapper>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>

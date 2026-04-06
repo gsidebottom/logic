@@ -36,7 +36,7 @@ impl Lit {
 /// - `Lit(c)` is at `[1]`
 pub type Position = Vec<usize>;
 
-// ─── Path / Cover / Proof ────────────────────────────────────────────────────
+// ─── Path / Cover / Paths ────────────────────────────────────────────────────
 
 /// A path through a matrix: a sequence of `Prod` member selections, one for
 /// each `Prod` node encountered during depth-first traversal.
@@ -52,28 +52,35 @@ pub type Cover = Vec<(Position, Position)>;
 
 /// Parameters controlling proof search.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ProofParams {
-    #[serde(default = "ProofParams::default_complete_path_limit")]
-    pub complete_path_limit: usize,
+pub struct PathParams {
+    #[serde(default = "PathParams::default_paths_limit")]
+    pub paths_limit: usize,
+    #[serde(default)]
+    pub collect_covered_paths: bool,
 }
 
-impl ProofParams {
-    fn default_complete_path_limit() -> usize { 1 }
+impl PathParams {
+    fn default_paths_limit() -> usize { 1 }
 }
 
-impl Default for ProofParams {
+impl Default for PathParams {
     fn default() -> Self {
-        ProofParams { complete_path_limit: Self::default_complete_path_limit() }
+        PathParams {
+            paths_limit: Self::default_paths_limit(),
+            collect_covered_paths: false,
+        }
     }
 }
 
 /// Result of checking validity of a matrix.
 ///
 /// The matrix is valid (a tautology) iff `uncovered_paths` is empty.
-/// `cover` and `covered_path_prefixes` are always populated by `check_valid`.
-pub struct Proof {
+/// `cover` and `covered_path_prefixes` are always populated.
+/// `covered_paths` is populated only when `PathParams::collect_covered_paths` is true.
+pub struct Paths {
     pub cover: Cover,
     pub covered_path_prefixes: Vec<Vec<Position>>,
+    pub covered_paths: Vec<ProdPath>,
     pub uncovered_paths: Vec<ProdPath>,
 }
 
@@ -289,48 +296,77 @@ impl Matrix {
     /// Check validity using prefix-pruned depth-first search.
     ///
     /// Uses `for_each_path_prefix` to prune paths whose prefix already
-    /// contains a complementary pair. For invalid matrices this finds the
-    /// first non-complementary path without enumerating all paths.
-    pub fn check_valid(&self) -> Proof {
+    /// contains a complementary pair. For invalid matrices this finds
+    /// non-complementary paths (up to `paths_limit`) without
+    /// enumerating all paths.
+    pub fn paths(&self, params: Option<PathParams>) -> Paths {
+        let params = params.unwrap_or_default();
         let mut uncovered_paths = Vec::new();
+        let mut covered_paths = Vec::new();
         let mut cover = Cover::new();
         let mut covered_path_prefixes = Vec::new();
+        let mut covered_at_depth: Option<usize> = None;
+        let mut path_count: usize = 0;
 
         self.for_each_path_prefix(|lits, positions, prod_path| {
+            if path_count >= params.paths_limit {
+                return false;
+            }
+            // Detect backtrack: if we shrunk past the depth where we found
+            // a complementary pair, we're no longer in a covered subtree.
+            if let Some(d) = covered_at_depth {
+                if lits.len() < d {
+                    covered_at_depth = None;
+                }
+            }
             if let Some(path) = prod_path {
-                uncovered_paths.push(path.clone());
-                return true;
+                if covered_at_depth.is_some() {
+                    if params.collect_covered_paths {
+                        covered_paths.push(path.clone());
+                        path_count += 1;
+                    }
+                } else {
+                    uncovered_paths.push(path.clone());
+                    path_count += 1;
+                }
+                return path_count < params.paths_limit;
             }
             // Check if the newest literal has a complement among prior ones.
-            if let Some(new_lit) = lits.last() {
-                let new_pos = positions.last().unwrap();
-                for (j, prior) in lits[..lits.len() - 1].iter().enumerate() {
-                    if prior.is_complement_of(new_lit) {
-                        cover.push((positions[j].clone(), new_pos.clone()));
-                        covered_path_prefixes.push(positions.clone());
-                        return false; // prune
+            if covered_at_depth.is_none() {
+                if let Some(new_lit) = lits.last() {
+                    let new_pos = positions.last().unwrap();
+                    for (j, prior) in lits[..lits.len() - 1].iter().enumerate() {
+                        if prior.is_complement_of(new_lit) {
+                            cover.push((positions[j].clone(), new_pos.clone()));
+                            covered_path_prefixes.push(positions.clone());
+                            covered_at_depth = Some(lits.len());
+                            if !params.collect_covered_paths {
+                                return false; // prune
+                            }
+                            return true;
+                        }
                     }
                 }
             }
             true
         });
 
-        Proof { cover, covered_path_prefixes, uncovered_paths }
+        Paths { cover, covered_path_prefixes, covered_paths, uncovered_paths }
     }
 
     /// Reference implementation: check validity by examining all paths.
     ///
     /// Reference implementation: check validity by examining all paths.
-    pub fn check_valid_reference(&self) -> Proof {
+    pub fn paths_reference(&self) -> Paths {
         let all_paths: Vec<ProdPath> = self.paths_iter().collect();
         let uncovered_paths: Vec<ProdPath> = all_paths.iter()
             .filter(|p| !self.is_complementary(p))
             .cloned()
             .collect();
         if uncovered_paths.is_empty() {
-            Proof { cover: self.cover(&all_paths), covered_path_prefixes: vec![], uncovered_paths }
+            Paths { cover: self.cover(&all_paths), covered_path_prefixes: vec![], covered_paths: vec![], uncovered_paths }
         } else {
-            Proof { cover: vec![], covered_path_prefixes: vec![], uncovered_paths }
+            Paths { cover: vec![], covered_path_prefixes: vec![], covered_paths: vec![], uncovered_paths }
         }
     }
 
@@ -682,11 +718,11 @@ mod tests {
         assert!(completed_paths.iter().all(|p| p[0] == 0));
     }
 
-    // ── check_valid vs check_valid_reference ─────────────────────────────────
+    // ── paths vs paths_reference ─────────────────────────────────
 
-    fn assert_check_valid_matches(m: &Matrix) {
-        let fast = m.check_valid();
-        let reference = m.check_valid_reference();
+    fn assert_paths_matches(m: &Matrix) {
+        let fast = m.paths(None);
+        let reference = m.paths_reference();
         assert_eq!(fast.uncovered_paths, reference.uncovered_paths);
         // Covers may differ in structure but must both be valid: every path
         // must contain at least one pair from the cover.
@@ -702,40 +738,40 @@ mod tests {
     }
 
     #[test]
-    fn test_check_valid_tautology_a_or_not_a() {
-        assert_check_valid_matches(&sum(vec![v(0), vn(0)]));
+    fn test_paths_tautology_a_or_not_a() {
+        assert_paths_matches(&sum(vec![v(0), vn(0)]));
     }
 
     #[test]
-    fn test_check_valid_not_valid_simple_var() {
-        assert_check_valid_matches(&v(0));
+    fn test_paths_not_valid_simple_var() {
+        assert_paths_matches(&v(0));
     }
 
     #[test]
-    fn test_check_valid_not_valid_a_or_b() {
-        assert_check_valid_matches(&sum(vec![v(0), v(1)]));
+    fn test_paths_not_valid_a_or_b() {
+        assert_paths_matches(&sum(vec![v(0), v(1)]));
     }
 
     #[test]
-    fn test_check_valid_document_example() {
+    fn test_paths_document_example() {
         // ((a·b) + (a'+b')) · ((a'+b') + (a·b))
         let ab   = prod(vec![v(0), v(1)]);
         let nanb = sum(vec![vn(0), vn(1)]);
         let left  = sum(vec![ab.clone(), nanb.clone()]);
         let right = sum(vec![nanb, ab]);
-        assert_check_valid_matches(&prod(vec![left, right]));
+        assert_paths_matches(&prod(vec![left, right]));
     }
 
     #[test]
-    fn test_check_valid_complement_tautology() {
+    fn test_paths_complement_tautology() {
         // check on complement (used by check_satisfiable)
         let m = prod(vec![v(0), vn(0)]); // a · a' — unsatisfiable
         let comp = m.complement();        // a' + a — tautology
-        assert_check_valid_matches(&comp);
+        assert_paths_matches(&comp);
     }
 
     #[test]
-    fn test_check_valid_cnf_unsatisfiable_complement() {
+    fn test_paths_cnf_unsatisfiable_complement() {
         // (a+b)·(a+b')·(a'+b)·(a'+b') — unsatisfiable
         let m = prod(vec![
             sum(vec![v(0), v(1)]),
@@ -744,22 +780,74 @@ mod tests {
             sum(vec![vn(0), vn(1)]),
         ]);
         let comp = m.complement();
-        assert_check_valid_matches(&comp);
+        assert_paths_matches(&comp);
     }
 
     #[test]
-    fn test_check_valid_larger_tautology() {
+    fn test_paths_larger_tautology() {
         // R'H' + L H R' + L' + R
         let (m, _) = parse_to_matrix("R'H' + L H R' + L' + R").unwrap();
-        assert_check_valid_matches(&m);
+        assert_paths_matches(&m);
     }
 
     #[test]
-    fn test_check_valid_four_var() {
+    fn test_paths_four_var() {
         let (m, _) = parse_to_matrix(
             "a'·b'·c + b'·c'·d + c'·d'·a' + d'·a·b' + a·b·c' + b·c·d' + c·d·a + d·a'·b"
         ).unwrap();
-        assert_check_valid_matches(&m);
+        assert_paths_matches(&m);
+    }
+
+    #[test]
+    fn test_paths_paths_limit() {
+        // (A·B) + (C·D) has 4 non-complementary paths: {A,C}, {A,D}, {B,C}, {B,D}
+        let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
+
+        // Limit 3: should return exactly 3 uncovered paths
+        let p3 = m.paths(Some(PathParams { paths_limit: 3, ..Default::default() }));
+        assert_eq!(p3.uncovered_paths.len(), 3);
+
+        // Limit 5 (more than total): should return all 4 uncovered paths
+        let p5 = m.paths(Some(PathParams { paths_limit: 5, ..Default::default() }));
+        assert_eq!(p5.uncovered_paths.len(), 4);
+
+        // Default limit (1): should return exactly 1 uncovered path
+        let p1 = m.paths(None);
+        assert_eq!(p1.uncovered_paths.len(), 1);
+    }
+
+    #[test]
+    fn test_paths_collect_covered() {
+        // a + a' is a tautology — all paths are covered
+        let m = sum(vec![v(0), vn(0)]);
+
+        // Without collect_covered_paths: covered_paths is empty
+        let p = m.paths(None);
+        assert!(p.uncovered_paths.is_empty());
+        assert!(p.covered_paths.is_empty());
+
+        // With collect_covered_paths: covered_paths has all paths
+        let p = m.paths(Some(PathParams {
+            paths_limit: usize::MAX,
+            collect_covered_paths: true,
+        }));
+        assert!(p.uncovered_paths.is_empty());
+        assert!(!p.covered_paths.is_empty());
+        // All paths from paths_iter should appear in covered_paths
+        let all: Vec<ProdPath> = m.paths_iter().collect();
+        assert_eq!(p.covered_paths.len(), all.len());
+    }
+
+    #[test]
+    fn test_paths_collect_covered_mixed() {
+        // (A·B) + (C·D) — all 4 paths are uncovered (no complementary pairs)
+        let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
+        let p = m.paths(Some(PathParams {
+            paths_limit: 10,
+            collect_covered_paths: true,
+        }));
+        assert_eq!(p.uncovered_paths.len(), 4);
+        assert_eq!(p.covered_paths.len(), 0);
     }
 
     // ── Complement ────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-use crate::matrix::{format_path, parse_to_matrix, Cover, Position, Proof};
+use crate::matrix::{format_path, parse_to_matrix, Cover, Paths, Position};
 
 type CoveredPrefixes = Vec<Vec<Position>>;
 type ProveResult = Result<(bool, Option<String>, Cover, CoveredPrefixes), String>;
@@ -15,7 +15,7 @@ pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
 /// `(false, Some(path), [], [])` with the first non-complementary path.
 pub fn check_valid(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
-    let Proof { cover, covered_path_prefixes, uncovered_paths } = m.check_valid();
+    let Paths { cover, covered_path_prefixes, uncovered_paths, .. } = m.paths(None);
     if let Some(path) = uncovered_paths.first() {
         Ok((false, Some(format_path(path, &m, &vars)), vec![], vec![]))
     } else {
@@ -28,7 +28,7 @@ pub fn check_valid(formula: &str) -> ProveResult {
 pub fn check_satisfiable(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
     let comp = m.complement();
-    let Proof { cover, covered_path_prefixes, uncovered_paths } = comp.check_valid();
+    let Paths { cover, covered_path_prefixes, uncovered_paths, .. } = comp.paths(None);
     if let Some(path) = uncovered_paths.first() {
         Ok((true, Some(format_path(path, &comp, &vars)), vec![], vec![]))
     } else {

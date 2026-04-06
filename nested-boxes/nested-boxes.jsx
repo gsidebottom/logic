@@ -871,18 +871,24 @@ export default function App() {
       />
 
       {/* Button row */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-        {btn('·',  () => insertAt('·'),   '#555', false, "Insert AND (·)")}
-        {btn("'",  () => insertAt("'"),   '#555', false, "Insert complement (')")}
-        {btn('⇒',  () => insertAt(' ⇒ '), '#555', false, "Insert implication (x ⇒ y = x' + y)")}
-        {btn('⇔',  () => insertAt(' ⇔ '), '#555', false, "Insert equivalence (x ⇔ y = x·y + x'·y')")}
-        {btn('⊕',  () => insertAt(' ⊕ '), '#555', false, "Insert XOR (x ⊕ y = x·y' + x'·y)")}
-        {btn('✕',  () => setInput(''),    '#a00', false, "Clear")}
-        {btn('⚡ Simplify',    handleSimplify,    '#1a6bcc', !ast || loading, !ast ? "Fix syntax errors first" : "Simplify to minimal SOP")}
-        {btn('✓ Valid?',       handleValid,       '#6a2a9a', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula is a tautology")}
-        {btn('? Satisfiable?', handleSatisfiable, '#7a4a00', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula has a satisfying assignment")}
-        {btn("A'  Complement", handleComplement,  '#2a6a6a', !ast,            !ast ? "Fix syntax errors first" : "Show the complement as a nested box diagram")}
-        {btn('ρ  Paths',       handlePaths,       '#4a4a8a', !ast || loading, !ast ? "Fix syntax errors first" : "Show all paths through the matrix")}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {btn('·',  () => insertAt('·'),   '#555', false, "Insert AND (·)")}
+          {btn("'",  () => insertAt("'"),   '#555', false, "Insert complement (')")}
+          {btn('⇒',  () => insertAt(' ⇒ '), '#555', false, "Insert implication (x ⇒ y = x' + y)")}
+          {btn('⇔',  () => insertAt(' ⇔ '), '#555', false, "Insert equivalence (x ⇔ y = x·y + x'·y')")}
+          {btn('⊕',  () => insertAt(' ⊕ '), '#555', false, "Insert XOR (x ⊕ y = x·y' + x'·y)")}
+          {btn('✕',  () => setInput(''),    '#a00', false, "Clear")}
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {btn('⚡ Simplify',    handleSimplify,    '#1a6bcc', !ast || loading, !ast ? "Fix syntax errors first" : "Simplify to minimal SOP")}
+          {btn("A'  Complement", handleComplement,  '#2a6a6a', !ast,            !ast ? "Fix syntax errors first" : "Show the complement as a nested box diagram")}
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {btn('✓ Valid?',       handleValid,       '#6a2a9a', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula is a tautology")}
+          {btn('? Satisfiable?', handleSatisfiable, '#7a4a00', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula has a satisfying assignment")}
+          {btn('ρ  Paths',       handlePaths,       '#4a4a8a', !ast || loading, !ast ? "Fix syntax errors first" : "Show all paths through the matrix")}
+        </div>
       </div>
 
       {/* Tip */}
@@ -934,7 +940,7 @@ export default function App() {
             ? `✗ ${validResult.error}`
             : validResult.valid
               ? <span>
-                  ✓ Valid — tautology (all paths are complementary)
+                  ✓ Valid — all paths are covered
                   {validResult.coveringPairs?.length > 0 && ast && (
                     <span>
                       <br />
@@ -1007,7 +1013,7 @@ export default function App() {
                     </span>
                   )}
                 </span>
-              : <span>✗ Not valid — uncomplimentary path: <b style={{ fontFamily: 'Georgia, serif' }}>{validResult.path}</b></span>}
+              : <span>✗ Not valid — uncovered path: <b style={{ fontFamily: 'Georgia, serif' }}>{validResult.path}</b></span>}
         </div>
       )}
 
@@ -1023,9 +1029,9 @@ export default function App() {
           {satResult.error
             ? `✗ ${satResult.error}`
             : satResult.satisfiable
-              ? <span>✓ Satisfiable — uncomplimentary path in complement: <b style={{ fontFamily: 'Georgia, serif' }}>{satResult.path}</b></span>
+              ? <span>✓ Satisfiable — uncovered path in complement: <b style={{ fontFamily: 'Georgia, serif' }}>{satResult.path}</b></span>
               : <span>
-                  ✗ Unsatisfiable — complement is a tautology (all paths are complementary)
+                  ✗ Unsatisfiable — all paths in the complement are covered
                   {satResult.coveringPairs?.length > 0 && complementData?.ast && (
                     <span>
                       <br />

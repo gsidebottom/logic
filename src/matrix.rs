@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 use crate::formula::{count_primes, get_base_name, Ast, Node};
 
 // ─── Literal ──────────────────────────────────────────────────────────────────
@@ -48,6 +49,23 @@ pub type ProdPath = Vec<usize>;
 
 /// A set of complementary literal pairs identified by their `Position`s.
 pub type Cover = Vec<(Position, Position)>;
+
+/// Parameters controlling proof search.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProofParams {
+    #[serde(default = "ProofParams::default_complete_path_limit")]
+    pub complete_path_limit: usize,
+}
+
+impl ProofParams {
+    fn default_complete_path_limit() -> usize { 1 }
+}
+
+impl Default for ProofParams {
+    fn default() -> Self {
+        ProofParams { complete_path_limit: Self::default_complete_path_limit() }
+    }
+}
 
 /// Result of checking validity of a matrix.
 ///

@@ -946,6 +946,39 @@ export default function App() {
                         {' · '}
                         <a href="#" onClick={e => { e.preventDefault(); setValidSelected(new Set()); }}
                            style={{ fontSize: 11, color: '#888' }}>none</a>
+                        {(() => {
+                          // Build variable→cover-indices map (strip primes to get base variable)
+                          const varIndices = {};
+                          validResult.coveringPairs.forEach(([posA, posB], i) => {
+                            const a = resolvePosition(ast, posA)?.n ?? posA.join(',');
+                            const base = a.replace(/'$/,'');
+                            (varIndices[base] ??= new Set()).add(i);
+                          });
+                          const vars = Object.keys(varIndices).sort();
+                          return <>
+                            {' · '}
+                            {vars.map((v, j) => {
+                              const indices = [...varIndices[v]];
+                              const allOn = indices.every(i => validSelected.has(i));
+                              return <span key={v}>
+                                {j > 0 && ' '}
+                                <a href="#" onClick={e => {
+                                  e.preventDefault();
+                                  setValidSelected(prev => {
+                                    const s = new Set(prev);
+                                    if (allOn) indices.forEach(i => s.delete(i));
+                                    else indices.forEach(i => s.add(i));
+                                    return s;
+                                  });
+                                }} style={{
+                                  fontSize: 11, fontFamily: 'Georgia, serif',
+                                  color: allOn ? '#333' : '#888',
+                                  fontWeight: allOn ? 'bold' : 'normal',
+                                }}>{v}</a>
+                              </span>;
+                            })}
+                          </>;
+                        })()}
                       </span>
                       <div style={{
                         ...(validResult.coveringPairs.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
@@ -1004,6 +1037,38 @@ export default function App() {
                         {' · '}
                         <a href="#" onClick={e => { e.preventDefault(); setSatSelected(new Set()); }}
                            style={{ fontSize: 11, color: '#888' }}>none</a>
+                        {(() => {
+                          const varIndices = {};
+                          satResult.coveringPairs.forEach(([posA, posB], i) => {
+                            const a = resolvePosition(complementData.ast, posA)?.n ?? posA.join(',');
+                            const base = a.replace(/'$/,'');
+                            (varIndices[base] ??= new Set()).add(i);
+                          });
+                          const vars = Object.keys(varIndices).sort();
+                          return <>
+                            {' · '}
+                            {vars.map((v, j) => {
+                              const indices = [...varIndices[v]];
+                              const allOn = indices.every(i => satSelected.has(i));
+                              return <span key={v}>
+                                {j > 0 && ' '}
+                                <a href="#" onClick={e => {
+                                  e.preventDefault();
+                                  setSatSelected(prev => {
+                                    const s = new Set(prev);
+                                    if (allOn) indices.forEach(i => s.delete(i));
+                                    else indices.forEach(i => s.add(i));
+                                    return s;
+                                  });
+                                }} style={{
+                                  fontSize: 11, fontFamily: 'Georgia, serif',
+                                  color: allOn ? '#333' : '#888',
+                                  fontWeight: allOn ? 'bold' : 'normal',
+                                }}>{v}</a>
+                              </span>;
+                            })}
+                          </>;
+                        })()}
                       </span>
                       <div style={{
                         ...(satResult.coveringPairs.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),

@@ -175,6 +175,15 @@ struct FormulaRequest {
     formula: String,
 }
 
+#[derive(Deserialize)]
+struct PathsRequest {
+    formula: String,
+    #[serde(default = "default_paths_limit")]
+    paths_limit: usize,
+}
+
+fn default_paths_limit() -> usize { 100 }
+
 #[derive(Serialize)]
 struct SimplifyResponse {
     result: Option<String>,
@@ -192,9 +201,11 @@ struct ValidResponse {
 
 #[derive(Serialize)]
 struct PathsResponse {
-    paths:         Option<Vec<String>>,
-    complementary: Option<Vec<bool>>,
-    error:         Option<String>,
+    covered_paths:          Option<Vec<String>>,
+    uncovered_paths:        Option<Vec<String>>,
+    covering_pairs:         Option<Vec<(Vec<usize>, Vec<usize>)>>,
+    covered_path_prefixes:  Option<Vec<Vec<Vec<usize>>>>,
+    error:                  Option<String>,
 }
 
 #[derive(Serialize)]
@@ -225,10 +236,28 @@ async fn valid_handler(Json(req): Json<FormulaRequest>) -> Json<ValidResponse> {
     }
 }
 
-async fn paths_handler(Json(req): Json<FormulaRequest>) -> Json<PathsResponse> {
-    match logic::get_paths(&req.formula) {
-        Ok((paths, comp)) => Json(PathsResponse { paths: Some(paths), complementary: Some(comp), error: None }),
-        Err(e)            => Json(PathsResponse { paths: None, complementary: None, error: Some(e) }),
+async fn paths_handler(Json(req): Json<PathsRequest>) -> Json<PathsResponse> {
+    use logic::matrix::{parse_to_matrix, format_path, PathParams};
+    match parse_to_matrix(&req.formula) {
+        Ok((m, vars)) => {
+            let result = m.paths(Some(PathParams {
+                paths_limit: req.paths_limit,
+                collect_covered_paths: true,
+            }));
+            let fmt = |p: &Vec<usize>| format_path(p, &m, &vars);
+            Json(PathsResponse {
+                covered_paths:         Some(result.covered_paths.iter().map(fmt).collect()),
+                uncovered_paths:       Some(result.uncovered_paths.iter().map(fmt).collect()),
+                covering_pairs:        Some(result.cover),
+                covered_path_prefixes: Some(result.covered_path_prefixes),
+                error: None,
+            })
+        }
+        Err(e) => Json(PathsResponse {
+            covered_paths: None, uncovered_paths: None,
+            covering_pairs: None, covered_path_prefixes: None,
+            error: Some(e),
+        }),
     }
 }
 

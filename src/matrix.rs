@@ -508,13 +508,12 @@ impl From<&Ast> for Matrix {
 pub fn format_path(path: &ProdPath, m: &Matrix, var_names: &[String]) -> String {
     let resolved = m.lits_on_path(path);
     if resolved.is_empty() { return "∅".to_string(); }
-    let mut lits: Vec<String> = resolved.iter()
+    let lits: Vec<String> = resolved.iter()
         .map(|l| {
             let name = &var_names[l.var as usize];
             if l.neg { format!("{}'", name) } else { name.clone() }
         })
         .collect();
-    lits.sort();
     format!("{{{}}}", lits.join(", "))
 }
 
@@ -850,6 +849,18 @@ mod tests {
         assert_eq!(p.covered_paths.len(), 0);
     }
 
+    #[test]
+    fn test_paths_covered_and_uncovered() {
+        // a + a' b + c b' + a b + a a' b b'
+        let (m, _) = parse_to_matrix("a + a' b + c b' + a b + a a' b b'").unwrap();
+        let p = m.paths(Some(PathParams {
+            paths_limit: 20,
+            collect_covered_paths: true,
+        }));
+        assert_eq!(p.covered_paths.len(), 18);
+        assert_eq!(p.uncovered_paths.len(), 2);
+    }
+
     // ── Complement ────────────────────────────────────────────────────────────
 
     #[test]
@@ -940,4 +951,3 @@ mod tests {
         assert!(!m.is_satisfiable());
     }
 }
-

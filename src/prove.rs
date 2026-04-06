@@ -55,12 +55,12 @@ mod tests {
     #[test]
     fn test_get_paths_contents() {
         let (paths, _) = get_paths(F).unwrap();
-        assert!(paths.contains(&"{L, L', R, R'}".to_string()));
-        assert!(paths.contains(&"{H, L', R, R'}".to_string()));
-        assert!(paths.contains(&"{L', R, R', R'}".to_string()));
+        assert!(paths.contains(&"{R', L, L', R}".to_string()));
+        assert!(paths.contains(&"{R', H, L', R}".to_string()));
+        assert!(paths.contains(&"{R', R', L', R}".to_string()));
         assert!(paths.contains(&"{H', L, L', R}".to_string()));
-        assert!(paths.contains(&"{H, H', L', R}".to_string()));
-        assert!(paths.contains(&"{H', L', R, R'}".to_string()));
+        assert!(paths.contains(&"{H', H, L', R}".to_string()));
+        assert!(paths.contains(&"{H', R', L', R}".to_string()));
     }
 
     #[test]
@@ -92,7 +92,7 @@ mod tests {
         let (sat, path, pairs, _prefixes) = check_satisfiable(F).unwrap();
         // A tautology is satisfiable; complement has non-complementary paths.
         assert!(sat);
-        assert_eq!(path.as_deref(), Some("{H, R}"));
+        assert_eq!(path.as_deref(), Some("{R, H}"));
         assert!(pairs.is_empty());
     }
 

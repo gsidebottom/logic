@@ -398,7 +398,8 @@ export default function App() {
   const [validSelected,  setValidSelected]  = useState(new Set()); // Set<number> of selected pair indices
   const [satResult,      setSatResult]      = useState(null); // {satisfiable, path, coveringPairs}
   const [satSelected,    setSatSelected]    = useState(new Set()); // Set<number> of selected pair indices
-  const [pathsResult,    setPathsResult]    = useState(null); // {paths, complementary} | {error}
+  const [pathsResult,    setPathsResult]    = useState(null); // {coveredPaths, uncoveredPaths, ...} | {error}
+  const [pathsLimit,     setPathsLimit]     = useState(100);
   const [loading,        setLoading]        = useState(false);
   const [jqFilter,       setJqFilter]       = useState('');
   const [jqError,        setJqError]        = useState('');
@@ -576,11 +577,16 @@ export default function App() {
     try {
       const res  = await fetch('http://localhost:3001/paths', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input }),
+        body: JSON.stringify({ formula: input, paths_limit: pathsLimit }),
       });
       const data = await res.json();
       if (data.error) setPathsResult({ error: data.error });
-      else setPathsResult({ paths: data.paths, complementary: data.complementary });
+      else setPathsResult({
+        coveredPaths: data.covered_paths,
+        uncoveredPaths: data.uncovered_paths,
+        coveringPairs: data.covering_pairs,
+        coveredPrefixes: data.covered_path_prefixes,
+      });
     } catch (e) {
       setPathsResult({ error: 'Could not reach Rust service' });
     }
@@ -887,7 +893,16 @@ export default function App() {
         <div style={{ display: 'flex', gap: 4 }}>
           {btn('✓ Valid?',       handleValid,       '#6a2a9a', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula is a tautology")}
           {btn('? Satisfiable?', handleSatisfiable, '#7a4a00', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula has a satisfying assignment")}
-          {btn('ρ  Paths',       handlePaths,       '#4a4a8a', !ast || loading, !ast ? "Fix syntax errors first" : "Show all paths through the matrix")}
+          {btn('ρ  Paths',       handlePaths,       '#4a4a8a', !ast || loading, !ast ? "Fix syntax errors first" : "Show paths through the matrix")}
+          <input
+            type="number" min={1} value={pathsLimit}
+            onChange={e => setPathsLimit(Math.max(1, parseInt(e.target.value) || 1))}
+            title="Maximum number of paths to enumerate"
+            style={{
+              width: 50, padding: '4px 6px', fontSize: 12, border: '1px solid #bbb',
+              borderRadius: 4, textAlign: 'center',
+            }}
+          />
         </div>
       </div>
 
@@ -1161,11 +1176,11 @@ export default function App() {
                       border: '1px solid #c8c8e8', background: '#f7f7fd' }}>
           <div style={{ fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
             Paths through the matrix
-            {pathsResult.paths && (
+            {!pathsResult.error && (
               <span style={{ fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
-                ({pathsResult.paths.length} total —{' '}
-                {pathsResult.complementary.filter(Boolean).length} complementary,{' '}
-                {pathsResult.complementary.filter(c => !c).length} non-complementary)
+                ({pathsResult.coveredPaths.length + pathsResult.uncoveredPaths.length} shown —{' '}
+                {pathsResult.coveredPaths.length} covered,{' '}
+                {pathsResult.uncoveredPaths.length} uncovered)
               </span>
             )}
           </div>
@@ -1173,21 +1188,24 @@ export default function App() {
             <div style={{ color: '#c00' }}>{pathsResult.error}</div>
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {pathsResult.paths.map((path, i) => {
-                const comp = pathsResult.complementary[i];
-                return (
-                  <span key={i} style={{
-                    fontFamily: 'Georgia, serif', fontSize: 14,
-                    padding: '3px 9px', borderRadius: 4,
-                    background: comp ? '#e8f5e9' : '#fff3e0',
-                    border: `1px solid ${comp ? '#81c784' : '#ffb74d'}`,
-                    color: comp ? '#1b5e20' : '#7a3a00',
-                    title: comp ? 'Complementary' : 'Non-complementary',
-                  }}>
-                    {comp ? '✓' : '✗'} {path}
-                  </span>
-                );
-              })}
+              {pathsResult.uncoveredPaths.map((path, i) => (
+                <span key={`u${i}`} style={{
+                  fontFamily: 'Georgia, serif', fontSize: 14,
+                  padding: '3px 9px', borderRadius: 4,
+                  background: '#fff3e0', border: '1px solid #ffb74d', color: '#7a3a00',
+                }} title="Uncovered">
+                  ✗ {path}
+                </span>
+              ))}
+              {pathsResult.coveredPaths.map((path, i) => (
+                <span key={`c${i}`} style={{
+                  fontFamily: 'Georgia, serif', fontSize: 14,
+                  padding: '3px 9px', borderRadius: 4,
+                  background: '#e8f5e9', border: '1px solid #81c784', color: '#1b5e20',
+                }} title="Covered">
+                  ✓ {path}
+                </span>
+              ))}
             </div>
           )}
         </div>

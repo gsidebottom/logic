@@ -573,6 +573,7 @@ export default function App() {
   };
 
   const handlePaths = async () => {
+    if (pathsResult && !pathsResult.error) { setPathsResult(null); return; }
     setLoading(true);
     try {
       const res  = await fetch('http://localhost:3001/paths', {
@@ -595,11 +596,13 @@ export default function App() {
 
   const handleComplement = () => {
     if (!ast) return;
+    if (complementData) { setComplementData(null); return; }
     const cAst = complementAst(ast);
     setComplementData({ formula: astToString(cAst), ast: cAst });
   };
 
   const handleValid = async () => {
+    if (validResult && !validResult.error) { setValidResult(null); return; }
     setLoading(true);
     try {
       const res  = await fetch('http://localhost:3001/valid', {
@@ -616,6 +619,7 @@ export default function App() {
   };
 
   const handleSatisfiable = async () => {
+    if (satResult && !satResult.error) { setSatResult(null); return; }
     setLoading(true);
     try {
       const res  = await fetch('http://localhost:3001/satisfiable', {
@@ -1121,6 +1125,61 @@ export default function App() {
         </div>
       )}
 
+      {/* Paths through the matrix */}
+      {pathsResult && (
+        <div style={{ padding: '14px 18px', borderRadius: 8,
+                      border: '1px solid #c8c8e8', background: '#f7f7fd', marginBottom: 12 }}>
+          <div style={{ fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
+            Paths through the matrix
+            {!pathsResult.error && (
+              <span style={{ fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
+                ({pathsResult.coveredPaths.length + pathsResult.uncoveredPaths.length} shown —{' '}
+                {pathsResult.coveredPaths.length} covered,{' '}
+                {pathsResult.uncoveredPaths.length} uncovered)
+              </span>
+            )}
+          </div>
+          {pathsResult.error ? (
+            <div style={{ color: '#c00' }}>{pathsResult.error}</div>
+          ) : (
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, color: '#1b5e20', fontWeight: 600, marginBottom: 4 }}>
+                  ✓ Covered ({pathsResult.coveredPaths.length})
+                </div>
+                <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: 4, alignContent: 'flex-start' }}>
+                  {pathsResult.coveredPaths.map((path, i) => (
+                    <span key={`c${i}`} style={{
+                      fontFamily: 'Georgia, serif', fontSize: 13,
+                      padding: '2px 8px', borderRadius: 4,
+                      background: '#e8f5e9', border: '1px solid #81c784', color: '#1b5e20',
+                    }}>
+                      {path}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, color: '#7a3a00', fontWeight: 600, marginBottom: 4 }}>
+                  ✗ Uncovered ({pathsResult.uncoveredPaths.length})
+                </div>
+                <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: 4, alignContent: 'flex-start' }}>
+                  {pathsResult.uncoveredPaths.map((path, i) => (
+                    <span key={`u${i}`} style={{
+                      fontFamily: 'Georgia, serif', fontSize: 13,
+                      padding: '2px 8px', borderRadius: 4,
+                      background: '#fff3e0', border: '1px solid #ffb74d', color: '#7a3a00',
+                    }}>
+                      {path}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Diagrams */}
       {ast && (
         <>
@@ -1169,46 +1228,6 @@ export default function App() {
             </>
           )}
         </>
-      )}
-
-      {pathsResult && (
-        <div style={{ marginTop: 20, padding: '14px 18px', borderRadius: 8,
-                      border: '1px solid #c8c8e8', background: '#f7f7fd' }}>
-          <div style={{ fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
-            Paths through the matrix
-            {!pathsResult.error && (
-              <span style={{ fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
-                ({pathsResult.coveredPaths.length + pathsResult.uncoveredPaths.length} shown —{' '}
-                {pathsResult.coveredPaths.length} covered,{' '}
-                {pathsResult.uncoveredPaths.length} uncovered)
-              </span>
-            )}
-          </div>
-          {pathsResult.error ? (
-            <div style={{ color: '#c00' }}>{pathsResult.error}</div>
-          ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {pathsResult.uncoveredPaths.map((path, i) => (
-                <span key={`u${i}`} style={{
-                  fontFamily: 'Georgia, serif', fontSize: 14,
-                  padding: '3px 9px', borderRadius: 4,
-                  background: '#fff3e0', border: '1px solid #ffb74d', color: '#7a3a00',
-                }} title="Uncovered">
-                  ✗ {path}
-                </span>
-              ))}
-              {pathsResult.coveredPaths.map((path, i) => (
-                <span key={`c${i}`} style={{
-                  fontFamily: 'Georgia, serif', fontSize: 14,
-                  padding: '3px 9px', borderRadius: 4,
-                  background: '#e8f5e9', border: '1px solid #81c784', color: '#1b5e20',
-                }} title="Covered">
-                  ✓ {path}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
       )}
 
       <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }`}</style>

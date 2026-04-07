@@ -308,15 +308,32 @@ impl Matrix {
         let mut covered_at_depth: Option<usize> = None;
         let mut path_count: usize = 0;
 
+        let mut last_lits_len: usize = 0;
+
         self.for_each_path_prefix(|lits, positions, prod_path| {
             if path_count >= params.paths_limit {
                 return false;
             }
-            // Detect backtrack: if we shrunk past the depth where we found
+            // Detect backtrack: if lits shrunk past the depth where we found
             // a complementary pair, we're no longer in a covered subtree.
             if let Some(d) = covered_at_depth {
                 if lits.len() < d {
                     covered_at_depth = None;
+                }
+            }
+            // Check new literals for complementary pairs.
+            if covered_at_depth.is_none() && lits.len() > last_lits_len {
+                for new_idx in last_lits_len..lits.len() {
+                    let new_lit = lits[new_idx];
+                    for (j, prior) in lits[..new_idx].iter().enumerate() {
+                        if prior.is_complement_of(new_lit) {
+                            cover.push((positions[j].clone(), positions[new_idx].clone()));
+                            covered_path_prefixes.push(positions.clone());
+                            covered_at_depth = Some(lits.len());
+                            break;
+                        }
+                    }
+                    if covered_at_depth.is_some() { break; }
                 }
             }
             if let Some(path) = prod_path {
@@ -329,25 +346,15 @@ impl Matrix {
                     uncovered_paths.push(path.clone());
                     path_count += 1;
                 }
+                last_lits_len = lits.len();
                 return path_count < params.paths_limit;
             }
-            // Check if the newest literal has a complement among prior ones.
-            if covered_at_depth.is_none() {
-                if let Some(new_lit) = lits.last() {
-                    let new_pos = positions.last().unwrap();
-                    for (j, prior) in lits[..lits.len() - 1].iter().enumerate() {
-                        if prior.is_complement_of(new_lit) {
-                            cover.push((positions[j].clone(), new_pos.clone()));
-                            covered_path_prefixes.push(positions.clone());
-                            covered_at_depth = Some(lits.len());
-                            if !params.collect_covered_paths {
-                                return false; // prune
-                            }
-                            return true;
-                        }
-                    }
-                }
+            // Prod selection — prune if covered and not collecting.
+            if covered_at_depth.is_some() && !params.collect_covered_paths {
+                last_lits_len = lits.len();
+                return false;
             }
+            last_lits_len = lits.len();
             true
         });
 
@@ -401,9 +408,7 @@ impl Matrix {
                 Matrix::Lit(l) => {
                     lits.push(l);
                     positions.push(pos.clone());
-                    if f(lits, positions, None) {
-                        then(path, lits, positions, pos, f);
-                    }
+                    then(path, lits, positions, pos, f);
                     positions.pop();
                     lits.pop();
                 }
@@ -715,6 +720,53 @@ mod tests {
         // Path [1] selects b, which gets pruned. Only paths selecting a (var 0) complete.
         assert_eq!(completed_paths.len(), 2); // [0,0] and [0,1]
         assert!(completed_paths.iter().all(|p| p[0] == 0));
+    }
+
+    #[test]
+    fn test_for_each_path_prefix_full_trace() {
+        // a + b + b' c' + c d + e
+        // Matrix: Sum([a, b, Prod([b', c']), Prod([c, d]), e])
+        // Variables alphabetically: a=0, b=1, c=2, d=3, e=4
+        let (m, _) = parse_to_matrix("a + b + b' c' + c d + e").unwrap();
+        let mut trace: Vec<(Vec<(Var, bool)>, Option<ProdPath>)> = Vec::new();
+        m.for_each_path_prefix(|lits, _positions, prod_path| {
+            trace.push((
+                lits.iter().map(|l| (l.var, l.neg)).collect(),
+                prod_path.cloned(),
+            ));
+            true
+        });
+
+        let a  = (0, false);
+        let b  = (1, false);
+        let bn = (1, true);
+        let c  = (2, false);
+        let cn = (2, true);
+        let d  = (3, false);
+        let e  = (4, false);
+
+        assert_eq!(trace, vec![
+            // Prod2 select member 0 (b'), lits has [a, b] from Sum children 0,1
+            (vec![a, b],             None),
+            // Prod3 select member 0 (c), lits has [a, b, b'] from Lit(b')
+            (vec![a, b, bn],         None),
+            // Complete path [0, 0]: lits = [a, b, b', c, e]
+            (vec![a, b, bn, c, e],   Some(vec![0, 0])),
+            // Prod3 select member 1 (d)
+            (vec![a, b, bn],         None),
+            // Complete path [0, 1]: lits = [a, b, b', d, e]
+            (vec![a, b, bn, d, e],   Some(vec![0, 1])),
+            // Prod2 select member 1 (c')
+            (vec![a, b],             None),
+            // Prod3 select member 0 (c)
+            (vec![a, b, cn],         None),
+            // Complete path [1, 0]: lits = [a, b, c', c, e]
+            (vec![a, b, cn, c, e],   Some(vec![1, 0])),
+            // Prod3 select member 1 (d)
+            (vec![a, b, cn],         None),
+            // Complete path [1, 1]: lits = [a, b, c', d, e]
+            (vec![a, b, cn, d, e],   Some(vec![1, 1])),
+        ]);
     }
 
     // ── paths vs paths_reference ─────────────────────────────────

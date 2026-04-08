@@ -11,29 +11,21 @@ pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
     Ok((formatted, comp_flags))
 }
 
-/// Returns `(true, None, cover, prefixes)` if valid, or
-/// `(false, Some(path), [], [])` with the first non-complementary path.
+/// Returns `(valid, uncovered_path, cover, prefixes)`.
 pub fn check_valid(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
     let Paths { cover, covered_path_prefixes, uncovered_paths, .. } = m.paths(None);
-    if let Some(path) = uncovered_paths.first() {
-        Ok((false, Some(format_path(path, &m, &vars)), vec![], vec![]))
-    } else {
-        Ok((true, None, cover, covered_path_prefixes))
-    }
+    let path = uncovered_paths.first().map(|p| format_path(p, &m, &vars));
+    Ok((uncovered_paths.is_empty(), path, cover, covered_path_prefixes))
 }
 
-/// Returns `(true, Some(path), [], [])` if satisfiable, or
-/// `(false, None, cover, prefixes)` if unsatisfiable.
+/// Returns `(satisfiable, uncovered_path_in_complement, cover, prefixes)`.
 pub fn check_satisfiable(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
     let comp = m.complement();
     let Paths { cover, covered_path_prefixes, uncovered_paths, .. } = comp.paths(None);
-    if let Some(path) = uncovered_paths.first() {
-        Ok((true, Some(format_path(path, &comp, &vars)), vec![], vec![]))
-    } else {
-        Ok((false, None, cover, covered_path_prefixes))
-    }
+    let path = uncovered_paths.first().map(|p| format_path(p, &comp, &vars));
+    Ok((!uncovered_paths.is_empty(), path, cover, covered_path_prefixes))
 }
 
 #[cfg(test)]
@@ -89,11 +81,10 @@ mod tests {
 
     #[test]
     fn test_check_satisfiable_tautology_is_satisfiable() {
-        let (sat, path, pairs, _prefixes) = check_satisfiable(F).unwrap();
+        let (sat, path, _pairs, _prefixes) = check_satisfiable(F).unwrap();
         // A tautology is satisfiable; complement has non-complementary paths.
         assert!(sat);
         assert_eq!(path.as_deref(), Some("{R, H}"));
-        assert!(pairs.is_empty());
     }
 
     #[test]

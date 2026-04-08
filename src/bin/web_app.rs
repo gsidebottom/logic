@@ -228,8 +228,8 @@ async fn valid_handler(Json(req): Json<FormulaRequest>) -> Json<ValidResponse> {
     match logic::check_valid(&req.formula) {
         Ok((v, path, pairs, prefixes)) => Json(ValidResponse {
             valid: Some(v), path,
-            covering_pairs: if v { Some(pairs) } else { None },
-            covered_path_prefixes: if v { Some(prefixes) } else { None },
+            covering_pairs: Some(pairs),
+            covered_path_prefixes: Some(prefixes),
             error: None,
         }),
         Err(e) => Json(ValidResponse { valid: None, path: None, covering_pairs: None, covered_path_prefixes: None, error: Some(e) }),
@@ -265,8 +265,8 @@ async fn satisfiable_handler(Json(req): Json<FormulaRequest>) -> Json<Satisfiabl
     match logic::check_satisfiable(&req.formula) {
         Ok((s, path, pairs, prefixes)) => Json(SatisfiableResponse {
             satisfiable: Some(s), path,
-            covering_pairs: if !s { Some(pairs) } else { None },
-            covered_path_prefixes: if !s { Some(prefixes) } else { None },
+            covering_pairs: Some(pairs),
+            covered_path_prefixes: Some(prefixes),
             error: None,
         }),
         Err(e) => Json(SatisfiableResponse { satisfiable: None, path: None, covering_pairs: None, covered_path_prefixes: None, error: Some(e) }),

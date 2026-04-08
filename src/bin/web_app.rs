@@ -192,11 +192,12 @@ struct SimplifyResponse {
 
 #[derive(Serialize)]
 struct ValidResponse {
-    valid:                  Option<bool>,
-    path:                   Option<String>,
-    covering_pairs:         Option<Vec<(Vec<usize>, Vec<usize>)>>,
-    covered_path_prefixes:  Option<Vec<Vec<Vec<usize>>>>,
-    error:                  Option<String>,
+    valid:                      Option<bool>,
+    path:                       Option<String>,
+    uncovered_path_positions:   Option<Vec<Vec<usize>>>,
+    covering_pairs:             Option<Vec<(Vec<usize>, Vec<usize>)>>,
+    covered_path_prefixes:      Option<Vec<Vec<Vec<usize>>>>,
+    error:                      Option<String>,
 }
 
 #[derive(Serialize)]
@@ -211,11 +212,12 @@ struct PathsResponse {
 
 #[derive(Serialize)]
 struct SatisfiableResponse {
-    satisfiable:            Option<bool>,
-    path:                   Option<String>,
-    covering_pairs:         Option<Vec<(Vec<usize>, Vec<usize>)>>,
-    covered_path_prefixes:  Option<Vec<Vec<Vec<usize>>>>,
-    error:                  Option<String>,
+    satisfiable:                Option<bool>,
+    path:                       Option<String>,
+    uncovered_path_positions:   Option<Vec<Vec<usize>>>,
+    covering_pairs:             Option<Vec<(Vec<usize>, Vec<usize>)>>,
+    covered_path_prefixes:      Option<Vec<Vec<Vec<usize>>>>,
+    error:                      Option<String>,
 }
 
 async fn simplify_handler(Json(req): Json<FormulaRequest>) -> Json<SimplifyResponse> {
@@ -227,13 +229,14 @@ async fn simplify_handler(Json(req): Json<FormulaRequest>) -> Json<SimplifyRespo
 
 async fn valid_handler(Json(req): Json<FormulaRequest>) -> Json<ValidResponse> {
     match logic::check_valid(&req.formula) {
-        Ok((v, path, pairs, prefixes)) => Json(ValidResponse {
+        Ok((v, path, positions, pairs, prefixes)) => Json(ValidResponse {
             valid: Some(v), path,
+            uncovered_path_positions: positions,
             covering_pairs: Some(pairs),
             covered_path_prefixes: Some(prefixes),
             error: None,
         }),
-        Err(e) => Json(ValidResponse { valid: None, path: None, covering_pairs: None, covered_path_prefixes: None, error: Some(e) }),
+        Err(e) => Json(ValidResponse { valid: None, path: None, uncovered_path_positions: None, covering_pairs: None, covered_path_prefixes: None, error: Some(e) }),
     }
 }
 
@@ -268,13 +271,14 @@ async fn paths_handler(Json(req): Json<PathsRequest>) -> Json<PathsResponse> {
 
 async fn satisfiable_handler(Json(req): Json<FormulaRequest>) -> Json<SatisfiableResponse> {
     match logic::check_satisfiable(&req.formula) {
-        Ok((s, path, pairs, prefixes)) => Json(SatisfiableResponse {
+        Ok((s, path, positions, pairs, prefixes)) => Json(SatisfiableResponse {
             satisfiable: Some(s), path,
+            uncovered_path_positions: positions,
             covering_pairs: Some(pairs),
             covered_path_prefixes: Some(prefixes),
             error: None,
         }),
-        Err(e) => Json(SatisfiableResponse { satisfiable: None, path: None, covering_pairs: None, covered_path_prefixes: None, error: Some(e) }),
+        Err(e) => Json(SatisfiableResponse { satisfiable: None, path: None, uncovered_path_positions: None, covering_pairs: None, covered_path_prefixes: None, error: Some(e) }),
     }
 }
 

@@ -1,7 +1,8 @@
 use crate::matrix::{format_path, parse_to_matrix, Cover, PathParams, Paths, Position};
 
 type CoveredPrefixes = Vec<Vec<Position>>;
-type ProveResult = Result<(bool, Option<String>, Cover, CoveredPrefixes), String>;
+type UncoveredPositions = Option<Vec<Position>>;
+type ProveResult = Result<(bool, Option<String>, UncoveredPositions, Cover, CoveredPrefixes), String>;
 
 pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
     let (m, vars) = parse_to_matrix(formula)?;
@@ -11,21 +12,23 @@ pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
     Ok((formatted, comp_flags))
 }
 
-/// Returns `(valid, uncovered_path, cover, prefixes)`.
+/// Returns `(valid, uncovered_path, uncovered_positions, cover, prefixes)`.
 pub fn check_valid(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
     let Paths { cover, covered_path_prefixes, uncovered_paths, .. } = m.paths(Some(PathParams { paths_limit: usize::MAX }));
     let path = uncovered_paths.first().map(|p| format_path(p, &m, &vars));
-    Ok((uncovered_paths.is_empty(), path, cover, covered_path_prefixes))
+    let positions = uncovered_paths.first().map(|p| m.positions_on_path(p));
+    Ok((uncovered_paths.is_empty(), path, positions, cover, covered_path_prefixes))
 }
 
-/// Returns `(satisfiable, uncovered_path_in_complement, cover, prefixes)`.
+/// Returns `(satisfiable, uncovered_path_in_complement, uncovered_positions, cover, prefixes)`.
 pub fn check_satisfiable(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
     let comp = m.complement();
     let Paths { cover, covered_path_prefixes, uncovered_paths, .. } = comp.paths(Some(PathParams { paths_limit: usize::MAX }));
     let path = uncovered_paths.first().map(|p| format_path(p, &comp, &vars));
-    Ok((!uncovered_paths.is_empty(), path, cover, covered_path_prefixes))
+    let positions = uncovered_paths.first().map(|p| comp.positions_on_path(p));
+    Ok((!uncovered_paths.is_empty(), path, positions, cover, covered_path_prefixes))
 }
 
 #[cfg(test)]
@@ -57,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_check_valid() {
-        let (valid, path, pairs, prefixes) = check_valid(F).unwrap();
+        let (valid, path, _positions, pairs, prefixes) = check_valid(F).unwrap();
         assert!(valid);
         assert!(path.is_none());
         // Every pair in the cover must consist of complementary literals.
@@ -81,7 +84,7 @@ mod tests {
 
     #[test]
     fn test_check_satisfiable_tautology_is_satisfiable() {
-        let (sat, path, _pairs, _prefixes) = check_satisfiable(F).unwrap();
+        let (sat, path, _, _pairs, _prefixes) = check_satisfiable(F).unwrap();
         // A tautology is satisfiable; complement has non-complementary paths.
         assert!(sat);
         assert_eq!(path.as_deref(), Some("{R, H}"));
@@ -90,7 +93,7 @@ mod tests {
     #[test]
     fn test_check_valid_non_tautology() {
         // Simple variable is not a tautology.
-        let (valid, path, _, _) = check_valid("A").unwrap();
+        let (valid, path, _, _, _) = check_valid("A").unwrap();
         assert!(!valid);
         assert_eq!(path.as_deref(), Some("{A}"));
     }
@@ -98,7 +101,7 @@ mod tests {
     #[test]
     fn test_check_satisfiable_contradiction() {
         // A · A' is unsatisfiable.
-        let (sat, path, _, _) = check_satisfiable("A · A'").unwrap();
+        let (sat, path, _, _, _) = check_satisfiable("A · A'").unwrap();
         assert!(!sat);
         assert!(path.is_none());
     }

@@ -504,9 +504,11 @@ export default function App() {
   const [validResult,    setValidResult]    = useState(null); // {valid, path}
   const [validSelected,  setValidSelected]  = useState(new Set()); // Set<number> of selected pair indices
   const [validExpanded,  setValidExpanded]  = useState(new Set()); // Set<number> of expanded group indices
+  const [validUncovOn,   setValidUncovOn]   = useState(false);     // toggle uncovered path highlight
   const [satResult,      setSatResult]      = useState(null); // {satisfiable, path, coveringPairs}
   const [satSelected,    setSatSelected]    = useState(new Set()); // Set<number> of selected pair indices
   const [satExpanded,    setSatExpanded]    = useState(new Set()); // Set<number> of expanded group indices
+  const [satUncovOn,     setSatUncovOn]     = useState(false);     // toggle uncovered path highlight
   const [pathsResult,    setPathsResult]    = useState(null); // {uncoveredPaths, coveringPairs, coveredPrefixes} | {error}
   const [pathsLimit,     setPathsLimit]     = useState(100);
   const [pathsSelected,  setPathsSelected]  = useState(new Set());
@@ -602,9 +604,11 @@ export default function App() {
     setValidResult(null);
     setValidSelected(new Set());
     setValidExpanded(new Set());
+    setValidUncovOn(false);
     setSatResult(null);
     setSatSelected(new Set());
     setSatExpanded(new Set());
+    setSatUncovOn(false);
     setPathsResult(null);
     setPathsSelected(new Set());
     setPathsExpanded(new Set());
@@ -738,7 +742,7 @@ export default function App() {
       });
       const data = await res.json();
       if (data.error) setValidResult({ error: data.error });
-      else            setValidResult({ valid: data.valid, path: data.path, coveringPairs: data.covering_pairs, coveredPrefixes: data.covered_path_prefixes });
+      else            setValidResult({ valid: data.valid, path: data.path, uncoveredPositions: data.uncovered_path_positions, coveringPairs: data.covering_pairs, coveredPrefixes: data.covered_path_prefixes });
     } catch (e) {
       setValidResult({ error: 'Could not reach Rust service' });
     }
@@ -757,9 +761,9 @@ export default function App() {
       if (data.error) {
         setSatResult({ error: data.error });
       } else {
-        setSatResult({ satisfiable: data.satisfiable, path: data.path, coveringPairs: data.covering_pairs, coveredPrefixes: data.covered_path_prefixes });
-        // Covering pairs are from the complement — auto-show it for annotation
-        if (!data.satisfiable && ast) {
+        setSatResult({ satisfiable: data.satisfiable, path: data.path, uncoveredPositions: data.uncovered_path_positions, coveringPairs: data.covering_pairs, coveredPrefixes: data.covered_path_prefixes });
+        // Cover and uncovered paths are from the complement — auto-show it
+        if (ast) {
           const cAst = complementAst(ast);
           setComplementData({ formula: astToString(cAst), ast: cAst });
         }
@@ -1190,7 +1194,11 @@ export default function App() {
                   )}
                 </span>
               : <span>
-                  ✗ Not valid — uncovered path: <b style={{ fontFamily: 'Georgia, serif' }}>{validResult.path}</b>
+                  ✗ Not valid — uncovered path: <span
+                    onClick={() => setValidUncovOn(prev => !prev)}
+                    style={{ cursor: 'pointer', opacity: validUncovOn ? 1 : 0.35 }}>
+                    <b style={{ fontFamily: 'Georgia, serif' }}>{validResult.path}</b>
+                  </span>
                   {validResult.coveringPairs?.length > 0 && ast && (
                     <span>
                       <br />
@@ -1307,7 +1315,11 @@ export default function App() {
             ? `✗ ${satResult.error}`
             : satResult.satisfiable
               ? <span>
-                  ✓ Satisfiable — uncovered path in complement: <b style={{ fontFamily: 'Georgia, serif' }}>{satResult.path}</b>
+                  ✓ Satisfiable — uncovered path in complement: <span
+                    onClick={() => setSatUncovOn(prev => !prev)}
+                    style={{ cursor: 'pointer', opacity: satUncovOn ? 1 : 0.35 }}>
+                    <b style={{ fontFamily: 'Georgia, serif' }}>{satResult.path}</b>
+                  </span>
                   {satResult.coveringPairs?.length > 0 && complementData?.ast && (
                     <span>
                       <br />
@@ -1660,7 +1672,13 @@ export default function App() {
               coveringPairs={pathsResult?.coveringPairs ?? validResult?.coveringPairs ?? null}
               coveredPrefixes={pathsResult?.coveredPrefixes ?? validResult?.coveredPrefixes ?? null}
               selectedIndices={pathsResult?.coveringPairs ? pathsSelected : validSelected}
-              highlightedPaths={pathsResult?.uncoveredPositions?.filter((_, i) => pathsUncovSel.has(i)) ?? null}
+              highlightedPaths={[
+                ...(pathsResult?.uncoveredPositions?.filter((_, i) => pathsUncovSel.has(i)) ?? []),
+                ...(validUncovOn && validResult?.uncoveredPositions ? [validResult.uncoveredPositions] : []),
+              ].length ? [
+                ...(pathsResult?.uncoveredPositions?.filter((_, i) => pathsUncovSel.has(i)) ?? []),
+                ...(validUncovOn && validResult?.uncoveredPositions ? [validResult.uncoveredPositions] : []),
+              ] : null}
             />
           </ZoomPanWrapper>
 
@@ -1689,7 +1707,7 @@ export default function App() {
                   coveringPairs={satResult?.coveringPairs ?? null}
                   coveredPrefixes={satResult?.coveredPrefixes ?? null}
                   selectedIndices={satSelected}
-                  highlightedPaths={null}
+                  highlightedPaths={satUncovOn && satResult?.uncoveredPositions ? [satResult.uncoveredPositions] : null}
                 />
               </ZoomPanWrapper>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>

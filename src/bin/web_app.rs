@@ -201,11 +201,12 @@ struct ValidResponse {
 
 #[derive(Serialize)]
 struct PathsResponse {
-    uncovered_paths:        Option<Vec<String>>,
-    covering_pairs:         Option<Vec<(Vec<usize>, Vec<usize>)>>,
-    covered_path_prefixes:  Option<Vec<Vec<Vec<usize>>>>,
-    hit_limit:              Option<bool>,
-    error:                  Option<String>,
+    uncovered_paths:            Option<Vec<String>>,
+    uncovered_path_positions:   Option<Vec<Vec<Vec<usize>>>>,
+    covering_pairs:             Option<Vec<(Vec<usize>, Vec<usize>)>>,
+    covered_path_prefixes:      Option<Vec<Vec<Vec<usize>>>>,
+    hit_limit:                  Option<bool>,
+    error:                      Option<String>,
 }
 
 #[derive(Serialize)]
@@ -244,16 +245,20 @@ async fn paths_handler(Json(req): Json<PathsRequest>) -> Json<PathsResponse> {
                 paths_limit: req.paths_limit,
             }));
             let fmt = |p: &Vec<usize>| format_path(p, &m, &vars);
+            let uncov_positions: Vec<Vec<Vec<usize>>> = result.uncovered_paths.iter()
+                .map(|p| m.positions_on_path(p))
+                .collect();
             Json(PathsResponse {
-                uncovered_paths:       Some(result.uncovered_paths.iter().map(fmt).collect()),
-                covering_pairs:        Some(result.cover),
-                covered_path_prefixes: Some(result.covered_path_prefixes),
-                hit_limit:             Some(result.hit_limit),
+                uncovered_paths:          Some(result.uncovered_paths.iter().map(fmt).collect()),
+                uncovered_path_positions: Some(uncov_positions),
+                covering_pairs:           Some(result.cover),
+                covered_path_prefixes:    Some(result.covered_path_prefixes),
+                hit_limit:                Some(result.hit_limit),
                 error: None,
             })
         }
         Err(e) => Json(PathsResponse {
-            uncovered_paths: None,
+            uncovered_paths: None, uncovered_path_positions: None,
             covering_pairs: None, covered_path_prefixes: None,
             hit_limit: None,
             error: Some(e),

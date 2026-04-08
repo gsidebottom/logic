@@ -19,15 +19,17 @@ function BoxNode({ node, depth = 0, position = [] }) {
     const pairIndices = cover?.posToPairIndices?.[posKey] ?? [];
     const prefixIndices = (cover?.posToPrefixIndices?.[posKey] ?? [])
       .filter(i => !pairIndices.includes(i)); // don't double-show
+    const highlightIndices = cover?.posToHighlightIndices?.[posKey] ?? [];
     const allIndices = [...pairIndices, ...prefixIndices];
     const hasPair = pairIndices.length > 0;
     const hasPrefix = prefixIndices.length > 0;
+    const hasHighlight = highlightIndices.length > 0;
 
-    const highlighted = allIndices.length > 0;
+    const highlighted = allIndices.length > 0 || hasHighlight;
 
     // Sort all indices by original cover index for consistent stacking
     const pairSet = new Set(pairIndices);
-    const sorted = highlighted ? [...allIndices].sort((a, b) => a - b) : [];
+    const sorted = allIndices.length > 0 ? [...allIndices].sort((a, b) => a - b) : [];
 
     // Build colored underline bars — one per cover, stacked below the element.
     // Use global maxBarCount for consistent scaling. Bars split into columns
@@ -60,9 +62,31 @@ function BoxNode({ node, depth = 0, position = [] }) {
       );
     });
 
-    // Background tint using the first selected cover's group color
-    const firstColor = cover?.idxToGroupColor?.[sorted[0]] ?? PAIR_COLORS[sorted[0] % PAIR_COLORS.length];
-    const bgColor = highlighted
+    // Uncovered path highlight bars (dashed, red tones)
+    const UNCOV_COLORS = ['#d32f2f', '#f57c00', '#7b1fa2', '#00838f', '#c2185b', '#4e342e'];
+    const uncovBars = highlightIndices.map((hi, r) => {
+      const color = UNCOV_COLORS[hi % UNCOV_COLORS.length];
+      const col = Math.floor((sorted.length + r) / barsPerCol);
+      const row = (sorted.length + r) % barsPerCol;
+      return (
+        <div key={`hl-${hi}`} style={{
+          position: 'absolute',
+          left: colCount > 1 ? `${(col / colCount) * 100}%` : -1,
+          right: colCount > 1 ? `${((colCount - col - 1) / colCount) * 100}%` : -1,
+          bottom: -(2 + row * barStep),
+          height: barHeight,
+          backgroundImage: `repeating-linear-gradient(90deg, ${color} 0px, ${color} ${barHeight + 1}px, transparent ${barHeight + 1}px, transparent ${2 * (barHeight + 1)}px)`,
+          borderRadius: 1,
+          pointerEvents: 'none',
+        }} />
+      );
+    });
+
+    // Background tint
+    const firstColor = sorted.length > 0
+      ? (cover?.idxToGroupColor?.[sorted[0]] ?? PAIR_COLORS[sorted[0] % PAIR_COLORS.length])
+      : hasHighlight ? UNCOV_COLORS[highlightIndices[0] % UNCOV_COLORS.length] : null;
+    const bgColor = highlighted && firstColor
       ? (hasPair ? firstColor + '20' : firstColor + '12')
       : undefined;
 
@@ -80,6 +104,7 @@ function BoxNode({ node, depth = 0, position = [] }) {
         }}
       >
         {bars}
+        {uncovBars}
         <VarLabel name={node.n} />
       </div>
     );
@@ -103,7 +128,7 @@ function BoxNode({ node, depth = 0, position = [] }) {
 }
 
 // ─── Diagram with SVG arc connections for covering pairs ──────────────────────
-function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selectedIndices }) {
+function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selectedIndices, highlightedPaths }) {
   const containerRef = useRef(null);
   const [arcs, setArcs] = useState([]);
   const [pathLines, setPathLines] = useState([]);
@@ -156,6 +181,20 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
     return m;
   }, [parsed]);
 
+  // Build set of positions highlighted by uncovered paths
+  const posToHighlightIndices = useMemo(() => {
+    const m = {};
+    if (highlightedPaths) {
+      highlightedPaths.forEach((positions, i) => {
+        positions.forEach(pos => {
+          const key = pos.join(',');
+          (m[key] ??= []).push(i);
+        });
+      });
+    }
+    return m;
+  }, [highlightedPaths]);
+
   // Compute max bar count across all positions for consistent scaling
   const maxBarCount = useMemo(() => {
     const counts = {};
@@ -163,12 +202,14 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
       counts[key] = (counts[key] ?? 0) + indices.length;
     }
     for (const [key, indices] of Object.entries(posToPrefixIndices)) {
-      // Only count prefix indices not already counted as pairs
       const pairSet = new Set(posToPairIndices[key] ?? []);
       counts[key] = (counts[key] ?? 0) + indices.filter(i => !pairSet.has(i)).length;
     }
+    for (const [key, indices] of Object.entries(posToHighlightIndices)) {
+      counts[key] = (counts[key] ?? 0) + indices.length;
+    }
     return Math.max(0, ...Object.values(counts));
-  }, [posToPairIndices, posToPrefixIndices]);
+  }, [posToPairIndices, posToPrefixIndices, posToHighlightIndices]);
 
   // Recompute arc positions and path lines after every render (DOM may have changed)
   useLayoutEffect(() => {
@@ -218,13 +259,31 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
         }
       });
     }
+    // Highlighted uncovered path lines
+    if (highlightedPaths) {
+      const UNCOV_COLORS = ['#d32f2f', '#f57c00', '#7b1fa2', '#00838f', '#c2185b', '#4e342e'];
+      highlightedPaths.forEach((positions, hi) => {
+        const color = UNCOV_COLORS[hi % UNCOV_COLORS.length];
+        for (let k = 0; k < positions.length - 1; k++) {
+          const da = container.querySelector(`[data-position="${positions[k].join(',')}"]`);
+          const db = container.querySelector(`[data-position="${positions[k + 1].join(',')}"]`);
+          if (!da || !db) continue;
+          const ba = boundsOf(da), bb = boundsOf(db);
+          newPathLines.push({
+            x1: ba.x + ba.w, y1: ba.y + ba.h + 3,
+            x2: bb.x,        y2: bb.y + bb.h + 3,
+            color,
+          });
+        }
+      });
+    }
 
     setArcs(prev => JSON.stringify(prev) === JSON.stringify(newArcs) ? prev : newArcs);
     setPathLines(prev => JSON.stringify(prev) === JSON.stringify(newPathLines) ? prev : newPathLines);
   });
 
   return (
-    <CoverContext.Provider value={(Object.keys(posToPairIndices).length || Object.keys(posToPrefixIndices).length) ? { posToPairIndices, posToPrefixIndices, maxBarCount, idxToGroupColor } : null}>
+    <CoverContext.Provider value={(Object.keys(posToPairIndices).length || Object.keys(posToPrefixIndices).length || Object.keys(posToHighlightIndices).length) ? { posToPairIndices, posToPrefixIndices, posToHighlightIndices, maxBarCount, idxToGroupColor } : null}>
       <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
         <BoxNode node={node} depth={0} />
         {(arcs.length > 0 || pathLines.length > 0) && (
@@ -452,6 +511,7 @@ export default function App() {
   const [pathsLimit,     setPathsLimit]     = useState(100);
   const [pathsSelected,  setPathsSelected]  = useState(new Set());
   const [pathsExpanded,  setPathsExpanded]  = useState(new Set());
+  const [pathsUncovSel,  setPathsUncovSel]  = useState(new Set()); // selected uncovered path indices
   const [loading,        setLoading]        = useState(false);
   const [jqFilter,       setJqFilter]       = useState('');
   const [jqError,        setJqError]        = useState('');
@@ -548,6 +608,7 @@ export default function App() {
     setPathsResult(null);
     setPathsSelected(new Set());
     setPathsExpanded(new Set());
+    setPathsUncovSel(new Set());
   }, [input]);
 
   // Load examples from file on mount
@@ -639,6 +700,7 @@ export default function App() {
       if (data.error) setPathsResult({ error: data.error });
       else setPathsResult({
         uncoveredPaths: data.uncovered_paths,
+        uncoveredPositions: data.uncovered_path_positions,
         coveringPairs: data.covering_pairs,
         coveredPrefixes: data.covered_path_prefixes,
         hitLimit: data.hit_limit,
@@ -1469,12 +1531,12 @@ export default function App() {
                     <br />
                     <span style={{ fontWeight: 'normal' }}>{pathsResult.uncoveredPaths.length} uncovered {pathsResult.uncoveredPaths.length === 1 ? 'path' : 'paths'}: </span>
                     {pathsResult.uncoveredPaths.map((path, i) => (
-                      <span key={`u${i}`} style={{
-                        fontFamily: 'Georgia, serif', fontSize: 13, fontWeight: 'normal',
-                        padding: '1px 6px', borderRadius: 3, marginRight: 4,
-                        background: '#fff3e0', border: '1px solid #ffb74d', color: '#7a3a00',
-                      }}>
-                        {path}
+                      <span key={`u${i}`}
+                        onClick={() => setPathsUncovSel(prev => {
+                          const s = new Set(prev); if (s.has(i)) s.delete(i); else s.add(i); return s;
+                        })}
+                        style={{ cursor: 'pointer', opacity: pathsUncovSel.has(i) ? 1 : 0.35 }}>
+                        <b style={{ fontFamily: 'Georgia, serif' }}>{path}</b>
                       </span>
                     ))}
                   </span>
@@ -1598,6 +1660,7 @@ export default function App() {
               coveringPairs={pathsResult?.coveringPairs ?? validResult?.coveringPairs ?? null}
               coveredPrefixes={pathsResult?.coveredPrefixes ?? validResult?.coveredPrefixes ?? null}
               selectedIndices={pathsResult?.coveringPairs ? pathsSelected : validSelected}
+              highlightedPaths={pathsResult?.uncoveredPositions?.filter((_, i) => pathsUncovSel.has(i)) ?? null}
             />
           </ZoomPanWrapper>
 
@@ -1607,7 +1670,7 @@ export default function App() {
                 Simplified — <span style={{ fontFamily: 'Georgia, serif' }}>{simplified.formula}</span>
               </div>
               <ZoomPanWrapper key={simplified.formula} bg='#f0fff4' border='1px solid #b2e0b2'>
-                <DiagramWithConnections node={simplified.ast} coveringPairs={null} coveredPrefixes={null} selectedIndices={new Set()} />
+                <DiagramWithConnections node={simplified.ast} coveringPairs={null} coveredPrefixes={null} selectedIndices={new Set()} highlightedPaths={null} />
               </ZoomPanWrapper>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
                 {btn('Use simplified formula', () => setInput(simplified.formula), '#2a7a2a')}
@@ -1626,6 +1689,7 @@ export default function App() {
                   coveringPairs={satResult?.coveringPairs ?? null}
                   coveredPrefixes={satResult?.coveredPrefixes ?? null}
                   selectedIndices={satSelected}
+                  highlightedPaths={null}
                 />
               </ZoomPanWrapper>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>

@@ -448,8 +448,10 @@ export default function App() {
   const [satResult,      setSatResult]      = useState(null); // {satisfiable, path, coveringPairs}
   const [satSelected,    setSatSelected]    = useState(new Set()); // Set<number> of selected pair indices
   const [satExpanded,    setSatExpanded]    = useState(new Set()); // Set<number> of expanded group indices
-  const [pathsResult,    setPathsResult]    = useState(null); // {coveredPaths, uncoveredPaths, ...} | {error}
+  const [pathsResult,    setPathsResult]    = useState(null); // {uncoveredPaths, coveringPairs, coveredPrefixes} | {error}
   const [pathsLimit,     setPathsLimit]     = useState(100);
+  const [pathsSelected,  setPathsSelected]  = useState(new Set());
+  const [pathsExpanded,  setPathsExpanded]  = useState(new Set());
   const [loading,        setLoading]        = useState(false);
   const [jqFilter,       setJqFilter]       = useState('');
   const [jqError,        setJqError]        = useState('');
@@ -544,6 +546,8 @@ export default function App() {
     setSatSelected(new Set());
     setSatExpanded(new Set());
     setPathsResult(null);
+    setPathsSelected(new Set());
+    setPathsExpanded(new Set());
   }, [input]);
 
   // Load examples from file on mount
@@ -635,7 +639,6 @@ export default function App() {
       const data = await res.json();
       if (data.error) setPathsResult({ error: data.error });
       else setPathsResult({
-        coveredPaths: data.covered_paths,
         uncoveredPaths: data.uncovered_paths,
         coveringPairs: data.covering_pairs,
         coveredPrefixes: data.covered_path_prefixes,
@@ -1440,56 +1443,137 @@ export default function App() {
 
       {/* Paths through the matrix */}
       {pathsResult && (
-        <div style={{ padding: '14px 18px', borderRadius: 8,
-                      border: '1px solid #c8c8e8', background: '#f7f7fd', marginBottom: 12 }}>
-          <div style={{ fontWeight: 'bold', marginBottom: 8, color: '#333' }}>
-            Paths through the matrix
-            {!pathsResult.error && (
-              <span style={{ fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
-                ({pathsResult.coveredPaths.length + pathsResult.uncoveredPaths.length} shown —{' '}
-                {pathsResult.coveredPaths.length} covered,{' '}
-                {pathsResult.uncoveredPaths.length} uncovered)
-              </span>
-            )}
-          </div>
-          {pathsResult.error ? (
-            <div style={{ color: '#c00' }}>{pathsResult.error}</div>
-          ) : (
-            <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, color: '#1b5e20', fontWeight: 600, marginBottom: 4 }}>
-                  ✓ Covered ({pathsResult.coveredPaths.length})
-                </div>
-                <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: 4, alignContent: 'flex-start' }}>
-                  {pathsResult.coveredPaths.map((path, i) => (
-                    <span key={`c${i}`} style={{
-                      fontFamily: 'Georgia, serif', fontSize: 13,
-                      padding: '2px 8px', borderRadius: 4,
-                      background: '#e8f5e9', border: '1px solid #81c784', color: '#1b5e20',
-                    }}>
-                      {path}
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          color: pathsResult.error ? '#8b0000' : pathsResult.uncoveredPaths?.length ? '#4a4a8a' : '#1a5c1a',
+          background: pathsResult.error ? '#fff5f5' : '#f7f7fd',
+          border: `1.5px solid ${pathsResult.error ? '#f5c2c2' : '#c8c8e8'}`,
+          padding: '9px 14px', borderRadius: 6, fontSize: 13, marginBottom: 12,
+        }}>
+          {pathsResult.error
+            ? `✗ ${pathsResult.error}`
+            : <span>
+                Paths through the matrix
+                <span style={{ fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
+                  ({(pathsResult.coveredPrefixes?.length ?? 0) + pathsResult.uncoveredPaths.length} shown —{' '}
+                  {pathsResult.coveredPrefixes?.length ?? 0} covered,{' '}
+                  {pathsResult.uncoveredPaths.length} uncovered)
+                </span>
+                {pathsResult.uncoveredPaths.length > 0 && (
+                  <span>
+                    <br />
+                    <span style={{ fontWeight: 'normal' }}>uncovered paths: </span>
+                    {pathsResult.uncoveredPaths.map((path, i) => (
+                      <span key={`u${i}`} style={{
+                        fontFamily: 'Georgia, serif', fontSize: 13, fontWeight: 'normal',
+                        padding: '1px 6px', borderRadius: 3, marginRight: 4,
+                        background: '#fff3e0', border: '1px solid #ffb74d', color: '#7a3a00',
+                      }}>
+                        {path}
+                      </span>
+                    ))}
+                  </span>
+                )}
+                {pathsResult.coveringPairs?.length > 0 && ast && (
+                  <span>
+                    <br />
+                    <span style={{ fontWeight: 'normal' }}>
+                      {pathsResult.uncoveredPaths.length > 0 ? 'partial ' : ''}{new Set(pathsResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size} pairs in the cover:
+                      {' '}
+                      <a href="#" onClick={e => { e.preventDefault(); setPathsSelected(new Set(pathsResult.coveringPairs.map((_, i) => i))); }}
+                         style={{ fontSize: 11, color: '#888' }}>all</a>
+                      {' · '}
+                      <a href="#" onClick={e => { e.preventDefault(); setPathsSelected(new Set()); }}
+                         style={{ fontSize: 11, color: '#888' }}>none</a>
+                      {(() => {
+                        const varIndices = {};
+                        pathsResult.coveringPairs.forEach(([posA], i) => {
+                          const a = resolvePosition(ast, posA)?.n ?? posA.join(',');
+                          const base = a.replace(/'$/,'');
+                          (varIndices[base] ??= new Set()).add(i);
+                        });
+                        const vars = Object.keys(varIndices).sort();
+                        return <>
+                          {' · '}
+                          {vars.map((v, j) => {
+                            const indices = [...varIndices[v]];
+                            const allOn = indices.every(i => pathsSelected.has(i));
+                            return <span key={v}>
+                              {j > 0 && ' '}
+                              <a href="#" onClick={e => {
+                                e.preventDefault();
+                                setPathsSelected(prev => {
+                                  const s = new Set(prev);
+                                  if (allOn) indices.forEach(i => s.delete(i));
+                                  else indices.forEach(i => s.add(i));
+                                  return s;
+                                });
+                              }} style={{
+                                fontSize: 11, fontFamily: 'Georgia, serif',
+                                color: allOn ? '#333' : '#888',
+                                fontWeight: allOn ? 'bold' : 'normal',
+                              }}>{v}</a>
+                            </span>;
+                          })}
+                        </>;
+                      })()}
                     </span>
-                  ))}
-                </div>
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, color: '#7a3a00', fontWeight: 600, marginBottom: 4 }}>
-                  ✗ Uncovered ({pathsResult.uncoveredPaths.length})
-                </div>
-                <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: 4, alignContent: 'flex-start' }}>
-                  {pathsResult.uncoveredPaths.map((path, i) => (
-                    <span key={`u${i}`} style={{
-                      fontFamily: 'Georgia, serif', fontSize: 13,
-                      padding: '2px 8px', borderRadius: 4,
-                      background: '#fff3e0', border: '1px solid #ffb74d', color: '#7a3a00',
-                    }}>
-                      {path}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+                    {(() => {
+                      const groups = [];
+                      const groupMap = {};
+                      pathsResult.coveringPairs.forEach(([posA, posB], idx) => {
+                        const key = posA.join(',') + '|' + posB.join(',');
+                        if (!(key in groupMap)) {
+                          groupMap[key] = groups.length;
+                          groups.push({ posA, posB, indices: [] });
+                        }
+                        groups[groupMap[key]].indices.push(idx);
+                      });
+                      return <div style={{
+                        ...(groups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
+                        marginTop: 4,
+                      }}>
+                        {groups.map((group, gi) => {
+                          const a = resolvePosition(ast, group.posA)?.n ?? group.posA.join(',');
+                          const b = resolvePosition(ast, group.posB)?.n ?? group.posB.join(',');
+                          const allSelected = group.indices.every(i => pathsSelected.has(i));
+                          const prefixes = group.indices.map(idx => {
+                            const prefix = pathsResult.coveredPrefixes?.[idx];
+                            return prefix
+                              ? '{' + prefix.map(p => resolvePosition(ast, p)?.n ?? p.join(',')).join(', ') + '}'
+                              : null;
+                          }).filter(Boolean);
+                          const expanded = pathsExpanded.has(gi);
+                          return <div key={gi} style={{ fontWeight: 'normal' }}>
+                            <span
+                              onClick={() => setPathsSelected(prev => {
+                                const s = new Set(prev);
+                                if (allSelected) group.indices.forEach(i => s.delete(i));
+                                else group.indices.forEach(i => s.add(i));
+                                return s;
+                              })}
+                              style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
+                              <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                            </span>
+                            {prefixes.length > 0 && <>
+                              <span
+                                onClick={e => { e.stopPropagation(); setPathsExpanded(prev => {
+                                  const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                                }); }}
+                                style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
+                                title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
+                              >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'path' : 'paths'}</span>
+                              {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
+                                {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
+                              </div>}
+                            </>}
+                          </div>;
+                        })}
+                      </div>;
+                    })()}
+                  </span>
+                )}
+              </span>}
         </div>
       )}
 
@@ -1502,9 +1586,9 @@ export default function App() {
           <ZoomPanWrapper key={input} bg='#f8f9fc' border='1px solid #dde' opacity={error ? 0.5 : 1}>
             <DiagramWithConnections
               node={ast}
-              coveringPairs={validResult?.coveringPairs ?? null}
-              coveredPrefixes={validResult?.coveredPrefixes ?? null}
-              selectedIndices={validSelected}
+              coveringPairs={pathsResult?.coveringPairs ?? validResult?.coveringPairs ?? null}
+              coveredPrefixes={pathsResult?.coveredPrefixes ?? validResult?.coveredPrefixes ?? null}
+              selectedIndices={pathsResult?.coveringPairs ? pathsSelected : validSelected}
             />
           </ZoomPanWrapper>
 

@@ -55,8 +55,6 @@ pub type Cover = Vec<(Position, Position)>;
 pub struct PathParams {
     #[serde(default = "PathParams::default_paths_limit")]
     pub paths_limit: usize,
-    #[serde(default)]
-    pub collect_covered_paths: bool,
 }
 
 impl PathParams {
@@ -65,22 +63,17 @@ impl PathParams {
 
 impl Default for PathParams {
     fn default() -> Self {
-        PathParams {
-            paths_limit: Self::default_paths_limit(),
-            collect_covered_paths: false,
-        }
+        PathParams { paths_limit: Self::default_paths_limit() }
     }
 }
 
 /// Result of checking validity of a matrix.
 ///
 /// The matrix is valid (a tautology) iff `uncovered_paths` is empty.
-/// `cover` and `covered_path_prefixes` are always populated.
-/// `covered_paths` is populated only when `PathParams::collect_covered_paths` is true.
+/// `paths_limit` limits `covered_path_prefixes.len() + uncovered_paths.len()`.
 pub struct Paths {
     pub cover: Cover,
     pub covered_path_prefixes: Vec<Vec<Position>>,
-    pub covered_paths: Vec<ProdPath>,
     pub uncovered_paths: Vec<ProdPath>,
 }
 
@@ -302,7 +295,6 @@ impl Matrix {
     pub fn paths(&self, params: Option<PathParams>) -> Paths {
         let params = params.unwrap_or_default();
         let mut uncovered_paths = Vec::new();
-        let mut covered_paths = Vec::new();
         let mut cover = Cover::new();
         let mut covered_path_prefixes = Vec::new();
         let mut covered_at_depth: Option<usize> = None;
@@ -330,6 +322,7 @@ impl Matrix {
                             cover.push((positions[j].clone(), positions[new_idx].clone()));
                             covered_path_prefixes.push(positions.clone());
                             covered_at_depth = Some(lits.len());
+                            path_count += 1;
                             break;
                         }
                     }
@@ -337,20 +330,15 @@ impl Matrix {
                 }
             }
             if let Some(path) = prod_path {
-                if covered_at_depth.is_some() {
-                    if params.collect_covered_paths {
-                        covered_paths.push(path.clone());
-                        path_count += 1;
-                    }
-                } else {
+                if covered_at_depth.is_none() {
                     uncovered_paths.push(path.clone());
                     path_count += 1;
                 }
                 last_lits_len = lits.len();
                 return path_count < params.paths_limit;
             }
-            // Prod selection — prune if covered and not collecting.
-            if covered_at_depth.is_some() && !params.collect_covered_paths {
+            // Prod selection — prune if covered.
+            if covered_at_depth.is_some() {
                 last_lits_len = lits.len();
                 return false;
             }
@@ -358,7 +346,7 @@ impl Matrix {
             true
         });
 
-        Paths { cover, covered_path_prefixes, covered_paths, uncovered_paths }
+        Paths { cover, covered_path_prefixes, uncovered_paths }
     }
 
     /// Reference implementation: check validity by examining all paths.
@@ -371,9 +359,9 @@ impl Matrix {
             .cloned()
             .collect();
         if uncovered_paths.is_empty() {
-            Paths { cover: self.cover(&all_paths), covered_path_prefixes: vec![], covered_paths: vec![], uncovered_paths }
+            Paths { cover: self.cover(&all_paths), covered_path_prefixes: vec![], uncovered_paths }
         } else {
-            Paths { cover: vec![], covered_path_prefixes: vec![], covered_paths: vec![], uncovered_paths }
+            Paths { cover: vec![], covered_path_prefixes: vec![], uncovered_paths }
         }
     }
 
@@ -772,7 +760,7 @@ mod tests {
     // ── paths vs paths_reference ─────────────────────────────────
 
     fn assert_paths_matches(m: &Matrix) {
-        let fast = m.paths(None);
+        let fast = m.paths(Some(PathParams { paths_limit: usize::MAX }));
         let reference = m.paths_reference();
         assert_eq!(fast.uncovered_paths, reference.uncovered_paths);
         // Covers may differ in structure but must both be valid: every path
@@ -855,11 +843,11 @@ mod tests {
         let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
 
         // Limit 3: should return exactly 3 uncovered paths
-        let p3 = m.paths(Some(PathParams { paths_limit: 3, ..Default::default() }));
+        let p3 = m.paths(Some(PathParams { paths_limit: 3 }));
         assert_eq!(p3.uncovered_paths.len(), 3);
 
         // Limit 5 (more than total): should return all 4 uncovered paths
-        let p5 = m.paths(Some(PathParams { paths_limit: 5, ..Default::default() }));
+        let p5 = m.paths(Some(PathParams { paths_limit: 5 }));
         assert_eq!(p5.uncovered_paths.len(), 4);
 
         // Default limit (1): should return exactly 1 uncovered path
@@ -868,49 +856,14 @@ mod tests {
     }
 
     #[test]
-    fn test_paths_collect_covered() {
-        // a + a' is a tautology — all paths are covered
-        let m = sum(vec![v(0), vn(0)]);
-
-        // Without collect_covered_paths: covered_paths is empty
-        let p = m.paths(None);
-        assert!(p.uncovered_paths.is_empty());
-        assert!(p.covered_paths.is_empty());
-
-        // With collect_covered_paths: covered_paths has all paths
-        let p = m.paths(Some(PathParams {
-            paths_limit: usize::MAX,
-            collect_covered_paths: true,
-        }));
-        assert!(p.uncovered_paths.is_empty());
-        assert!(!p.covered_paths.is_empty());
-        // All paths from paths_iter should appear in covered_paths
-        let all: Vec<ProdPath> = m.paths_iter().collect();
-        assert_eq!(p.covered_paths.len(), all.len());
-    }
-
-    #[test]
-    fn test_paths_collect_covered_mixed() {
-        // (A·B) + (C·D) — all 4 paths are uncovered (no complementary pairs)
-        let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
-        let p = m.paths(Some(PathParams {
-            paths_limit: 10,
-            collect_covered_paths: true,
-        }));
-        assert_eq!(p.uncovered_paths.len(), 4);
-        assert_eq!(p.covered_paths.len(), 0);
-    }
-
-    #[test]
     fn test_paths_covered_and_uncovered() {
         // a + a' b + c b' + a b + a a' b b'
+        // 6 covered path prefixes + 4 uncovered paths = 10
         let (m, _) = parse_to_matrix("a + a' b + c b' + a b + a a' b b'").unwrap();
-        let p = m.paths(Some(PathParams {
-            paths_limit: 20,
-            collect_covered_paths: true,
-        }));
-        assert_eq!(p.covered_paths.len(), 18);
-        assert_eq!(p.uncovered_paths.len(), 2);
+        let p = m.paths(Some(PathParams { paths_limit: 20 }));
+        assert_eq!(p.covered_path_prefixes.len(), 6);
+        assert_eq!(p.uncovered_paths.len(), 4);
+        assert_eq!(p.cover.len(), 6);
     }
 
     // ── Complement ────────────────────────────────────────────────────────────

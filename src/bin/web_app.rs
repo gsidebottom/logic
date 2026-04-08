@@ -201,7 +201,6 @@ struct ValidResponse {
 
 #[derive(Serialize)]
 struct PathsResponse {
-    covered_paths:          Option<Vec<String>>,
     uncovered_paths:        Option<Vec<String>>,
     covering_pairs:         Option<Vec<(Vec<usize>, Vec<usize>)>>,
     covered_path_prefixes:  Option<Vec<Vec<Vec<usize>>>>,
@@ -242,11 +241,9 @@ async fn paths_handler(Json(req): Json<PathsRequest>) -> Json<PathsResponse> {
         Ok((m, vars)) => {
             let result = m.paths(Some(PathParams {
                 paths_limit: req.paths_limit,
-                collect_covered_paths: true,
             }));
             let fmt = |p: &Vec<usize>| format_path(p, &m, &vars);
             Json(PathsResponse {
-                covered_paths:         Some(result.covered_paths.iter().map(fmt).collect()),
                 uncovered_paths:       Some(result.uncovered_paths.iter().map(fmt).collect()),
                 covering_pairs:        Some(result.cover),
                 covered_path_prefixes: Some(result.covered_path_prefixes),
@@ -254,7 +251,7 @@ async fn paths_handler(Json(req): Json<PathsRequest>) -> Json<PathsResponse> {
             })
         }
         Err(e) => Json(PathsResponse {
-            covered_paths: None, uncovered_paths: None,
+            uncovered_paths: None,
             covering_pairs: None, covered_path_prefixes: None,
             error: Some(e),
         }),

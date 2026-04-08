@@ -204,6 +204,7 @@ struct PathsResponse {
     uncovered_paths:        Option<Vec<String>>,
     covering_pairs:         Option<Vec<(Vec<usize>, Vec<usize>)>>,
     covered_path_prefixes:  Option<Vec<Vec<Vec<usize>>>>,
+    hit_limit:              Option<bool>,
     error:                  Option<String>,
 }
 
@@ -247,12 +248,14 @@ async fn paths_handler(Json(req): Json<PathsRequest>) -> Json<PathsResponse> {
                 uncovered_paths:       Some(result.uncovered_paths.iter().map(fmt).collect()),
                 covering_pairs:        Some(result.cover),
                 covered_path_prefixes: Some(result.covered_path_prefixes),
+                hit_limit:             Some(result.hit_limit),
                 error: None,
             })
         }
         Err(e) => Json(PathsResponse {
             uncovered_paths: None,
             covering_pairs: None, covered_path_prefixes: None,
+            hit_limit: None,
             error: Some(e),
         }),
     }

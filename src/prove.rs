@@ -14,7 +14,7 @@ pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
 /// Returns `(valid, uncovered_path, cover, prefixes)`.
 pub fn check_valid(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
-    let Paths { cover, covered_path_prefixes, uncovered_paths } = m.paths(Some(PathParams { paths_limit: usize::MAX }));
+    let Paths { cover, covered_path_prefixes, uncovered_paths, .. } = m.paths(Some(PathParams { paths_limit: usize::MAX }));
     let path = uncovered_paths.first().map(|p| format_path(p, &m, &vars));
     Ok((uncovered_paths.is_empty(), path, cover, covered_path_prefixes))
 }
@@ -23,7 +23,7 @@ pub fn check_valid(formula: &str) -> ProveResult {
 pub fn check_satisfiable(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
     let comp = m.complement();
-    let Paths { cover, covered_path_prefixes, uncovered_paths } = comp.paths(Some(PathParams { paths_limit: usize::MAX }));
+    let Paths { cover, covered_path_prefixes, uncovered_paths, .. } = comp.paths(Some(PathParams { paths_limit: usize::MAX }));
     let path = uncovered_paths.first().map(|p| format_path(p, &comp, &vars));
     Ok((!uncovered_paths.is_empty(), path, cover, covered_path_prefixes))
 }

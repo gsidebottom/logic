@@ -75,6 +75,7 @@ pub struct Paths {
     pub cover: Cover,
     pub covered_path_prefixes: Vec<Vec<Position>>,
     pub uncovered_paths: Vec<ProdPath>,
+    pub hit_limit: bool,
 }
 
 // ─── Matrix ───────────────────────────────────────────────────────────────────
@@ -346,7 +347,7 @@ impl Matrix {
             true
         });
 
-        Paths { cover, covered_path_prefixes, uncovered_paths }
+        Paths { cover, covered_path_prefixes, uncovered_paths, hit_limit: path_count >= params.paths_limit }
     }
 
     /// Reference implementation: check validity by examining all paths.
@@ -359,9 +360,9 @@ impl Matrix {
             .cloned()
             .collect();
         if uncovered_paths.is_empty() {
-            Paths { cover: self.cover(&all_paths), covered_path_prefixes: vec![], uncovered_paths }
+            Paths { cover: self.cover(&all_paths), covered_path_prefixes: vec![], uncovered_paths, hit_limit: false }
         } else {
-            Paths { cover: vec![], covered_path_prefixes: vec![], uncovered_paths }
+            Paths { cover: vec![], covered_path_prefixes: vec![], uncovered_paths, hit_limit: false }
         }
     }
 

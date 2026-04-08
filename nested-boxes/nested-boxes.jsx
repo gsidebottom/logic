@@ -628,8 +628,7 @@ export default function App() {
     setTimeout(() => setSimplifyMsg(null), 3500);
   };
 
-  const handlePaths = async () => {
-    if (pathsResult && !pathsResult.error) { setPathsResult(null); return; }
+  const fetchPaths = async () => {
     setLoading(true);
     try {
       const res  = await fetch('http://localhost:3001/paths', {
@@ -642,12 +641,23 @@ export default function App() {
         uncoveredPaths: data.uncovered_paths,
         coveringPairs: data.covering_pairs,
         coveredPrefixes: data.covered_path_prefixes,
+        hitLimit: data.hit_limit,
       });
     } catch (e) {
       setPathsResult({ error: 'Could not reach Rust service' });
     }
     setLoading(false);
   };
+
+  const handlePaths = () => {
+    if (pathsResult && !pathsResult.error) { setPathsResult(null); return; }
+    fetchPaths();
+  };
+
+  // Re-fetch paths when the limit changes while the display is open
+  useEffect(() => {
+    if (pathsResult && !pathsResult.error) fetchPaths();
+  }, [pathsLimit]);
 
   const handleComplement = () => {
     if (!ast) return;
@@ -1105,7 +1115,7 @@ export default function App() {
                                   }); }}
                                   style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
                                   title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'path' : 'paths'}</span>
+                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}</span>
                                 {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
                                   {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
                                 </div>}
@@ -1207,7 +1217,7 @@ export default function App() {
                                   }); }}
                                   style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
                                   title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'path' : 'paths'}</span>
+                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}</span>
                                 {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
                                   {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
                                 </div>}
@@ -1324,7 +1334,7 @@ export default function App() {
                                   }); }}
                                   style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
                                   title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'path' : 'paths'}</span>
+                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}</span>
                                 {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
                                   {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
                                 </div>}
@@ -1426,7 +1436,7 @@ export default function App() {
                                   }); }}
                                   style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
                                   title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'path' : 'paths'}</span>
+                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}</span>
                                 {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
                                   {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
                                 </div>}
@@ -1453,16 +1463,11 @@ export default function App() {
           {pathsResult.error
             ? `✗ ${pathsResult.error}`
             : <span>
-                Paths through the matrix
-                <span style={{ fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
-                  ({(pathsResult.coveredPrefixes?.length ?? 0) + pathsResult.uncoveredPaths.length} shown —{' '}
-                  {pathsResult.coveredPrefixes?.length ?? 0} covered,{' '}
-                  {pathsResult.uncoveredPaths.length} uncovered)
-                </span>
+                {pathsResult.hitLimit ? 'Some' : 'All'} paths through the matrix
                 {pathsResult.uncoveredPaths.length > 0 && (
                   <span>
                     <br />
-                    <span style={{ fontWeight: 'normal' }}>uncovered paths: </span>
+                    <span style={{ fontWeight: 'normal' }}>{pathsResult.uncoveredPaths.length} uncovered {pathsResult.uncoveredPaths.length === 1 ? 'path' : 'paths'}: </span>
                     {pathsResult.uncoveredPaths.map((path, i) => (
                       <span key={`u${i}`} style={{
                         fontFamily: 'Georgia, serif', fontSize: 13, fontWeight: 'normal',
@@ -1478,7 +1483,11 @@ export default function App() {
                   <span>
                     <br />
                     <span style={{ fontWeight: 'normal' }}>
-                      {pathsResult.uncoveredPaths.length > 0 ? 'partial ' : ''}{new Set(pathsResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size} pairs in the cover:
+                      {(() => {
+                        const isPartial = pathsResult.uncoveredPaths.length > 0 || pathsResult.hitLimit;
+                        const n = new Set(pathsResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size;
+                        return `${n} ${n === 1 ? 'pair' : 'pairs'} in the ${isPartial ? 'partial ' : ''}cover:`;
+                      })()}
                       {' '}
                       <a href="#" onClick={e => { e.preventDefault(); setPathsSelected(new Set(pathsResult.coveringPairs.map((_, i) => i))); }}
                          style={{ fontSize: 11, color: '#888' }}>all</a>
@@ -1562,7 +1571,7 @@ export default function App() {
                                 }); }}
                                 style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
                                 title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                              >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'path' : 'paths'}</span>
+                              >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}</span>
                               {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
                                 {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
                               </div>}

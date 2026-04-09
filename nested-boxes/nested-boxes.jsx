@@ -55,15 +55,23 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
       const row = r % barsPerCol;
       const color = cover?.idxToGroupColor?.[idx] ?? PAIR_COLORS[idx % PAIR_COLORS.length];
       const dashed = !pairSet.has(idx);
+      const dashGrad = `repeating-linear-gradient(${compView ? '180deg' : '90deg'}, ${color} 0px, ${color} ${barHeight + 1}px, transparent ${barHeight + 1}px, transparent ${2 * (barHeight + 1)}px)`;
       return (
         <div key={`bar-${idx}`} style={{
           position: 'absolute',
-          left: colCount > 1 ? `${(col / colCount) * 100}%` : -1,
-          right: colCount > 1 ? `${((colCount - col - 1) / colCount) * 100}%` : -1,
-          bottom: -(2 + row * barStep),
-          height: barHeight,
+          ...(compView ? {
+            top: colCount > 1 ? `${(col / colCount) * 100}%` : -1,
+            bottom: colCount > 1 ? `${((colCount - col - 1) / colCount) * 100}%` : -1,
+            right: -(2 + row * barStep),
+            width: barHeight,
+          } : {
+            left: colCount > 1 ? `${(col / colCount) * 100}%` : -1,
+            right: colCount > 1 ? `${((colCount - col - 1) / colCount) * 100}%` : -1,
+            bottom: -(2 + row * barStep),
+            height: barHeight,
+          }),
           background: dashed ? undefined : color,
-          backgroundImage: dashed ? `repeating-linear-gradient(90deg, ${color} 0px, ${color} ${barHeight + 1}px, transparent ${barHeight + 1}px, transparent ${2 * (barHeight + 1)}px)` : undefined,
+          backgroundImage: dashed ? dashGrad : undefined,
           borderRadius: 1,
           pointerEvents: 'none',
         }} />
@@ -76,14 +84,22 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
       const color = UNCOV_COLORS[hi % UNCOV_COLORS.length];
       const col = Math.floor((sorted.length + r) / barsPerCol);
       const row = (sorted.length + r) % barsPerCol;
+      const dashGrad = `repeating-linear-gradient(${compView ? '180deg' : '90deg'}, ${color} 0px, ${color} ${barHeight + 1}px, transparent ${barHeight + 1}px, transparent ${2 * (barHeight + 1)}px)`;
       return (
         <div key={`hl-${hi}`} style={{
           position: 'absolute',
-          left: colCount > 1 ? `${(col / colCount) * 100}%` : -1,
-          right: colCount > 1 ? `${((colCount - col - 1) / colCount) * 100}%` : -1,
-          bottom: -(2 + row * barStep),
-          height: barHeight,
-          backgroundImage: `repeating-linear-gradient(90deg, ${color} 0px, ${color} ${barHeight + 1}px, transparent ${barHeight + 1}px, transparent ${2 * (barHeight + 1)}px)`,
+          ...(compView ? {
+            top: colCount > 1 ? `${(col / colCount) * 100}%` : -1,
+            bottom: colCount > 1 ? `${((colCount - col - 1) / colCount) * 100}%` : -1,
+            right: -(2 + row * barStep),
+            width: barHeight,
+          } : {
+            left: colCount > 1 ? `${(col / colCount) * 100}%` : -1,
+            right: colCount > 1 ? `${((colCount - col - 1) / colCount) * 100}%` : -1,
+            bottom: -(2 + row * barStep),
+            height: barHeight,
+          }),
+          backgroundImage: dashGrad,
           borderRadius: 1,
           pointerEvents: 'none',
         }} />
@@ -103,19 +119,25 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
         data-position={posKey}
         style={{
           position: 'relative',
-          minWidth: 26, display: 'flex', alignItems: 'center',
+          minWidth: compView ? undefined : 26,
+          minHeight: compView ? 26 : undefined,
+          display: 'flex', alignItems: 'center',
           justifyContent: 'center',
-          padding: '4px 6px',
+          padding: compView ? '6px 4px' : '4px 6px',
           fontSize: 17, fontFamily: 'Georgia, serif',
           fontWeight: 'bold', lineHeight: 1, userSelect: 'none',
-          transform: compView ? 'rotate(-90deg)' : 'rotate(0deg)',
-          transition: 'transform 0.4s ease',
           ...(bgColor ? { background: bgColor, borderRadius: 3 } : {}),
         }}
       >
         {bars}
         {uncovBars}
-        <VarLabel name={displayName} />
+        <span style={{
+          display: 'inline-block',
+          transform: compView ? 'rotate(-90deg)' : 'rotate(0deg)',
+          transition: 'transform 0.4s ease',
+        }}>
+          <VarLabel name={displayName} />
+        </span>
       </div>
     );
   }
@@ -226,7 +248,8 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
 
   // Recompute arc positions and path lines after every render (DOM may have changed)
   useLayoutEffect(() => {
-    if (!containerRef.current || !parsed.length) {
+    if (!containerRef.current) return;
+    if (!parsed.length && !highlightedPaths?.length) {
       setArcs(prev => prev.length === 0 ? prev : []);
       setPathLines(prev => prev.length === 0 ? prev : []);
       return;
@@ -253,22 +276,62 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
       });
     });
 
-    // Path connection lines: connect consecutive positions in each prefix
+    // Compute bar layout params (must match BoxNode logic)
+    const barsPerCol = 8;
+    const globalMax = maxBarCount;
+    const effectiveMax = Math.min(globalMax, barsPerCol);
+    const maxStack = 16;
+    const barStep = effectiveMax <= 4 ? 4 : Math.max(1, maxStack / effectiveMax);
+
+    // Get the bar offset for a cover/highlight index at a position.
+    // Normal: offset below element. Complement: offset to the right.
+    const barOffset = (posKey, coverIdx, isHighlight) => {
+      const pairs = posToPairIndices[posKey] ?? [];
+      const prefixes = (posToPrefixIndices[posKey] ?? []).filter(i => !pairs.includes(i));
+      const sorted = [...pairs, ...prefixes].sort((a, b) => a - b);
+      const highlights = posToHighlightIndices[posKey] ?? [];
+      let ringIdx;
+      if (isHighlight) {
+        ringIdx = sorted.length + highlights.indexOf(coverIdx);
+      } else {
+        ringIdx = sorted.indexOf(coverIdx);
+        if (ringIdx === -1) ringIdx = 0;
+      }
+      const row = ringIdx % barsPerCol;
+      return 2 + row * barStep - barStep / 2; // center of the bar
+    };
+
+    // Compute line endpoints for a connection between two positions
+    const lineEndpoints = (ba, bb, offA, offB) => {
+      if (complementView) {
+        // Bars on right side; after 90° CW rotation, layout top=visual right, bottom=visual left
+        return {
+          x1: ba.x + ba.w + offA, y1: ba.y,
+          x2: bb.x + bb.w + offB, y2: bb.y + bb.h,
+        };
+      }
+      // Bars on bottom; connect right→left with y offset
+      return {
+        x1: ba.x + ba.w, y1: ba.y + ba.h + offA,
+        x2: bb.x,        y2: bb.y + bb.h + offB,
+      };
+    };
+
+    // Path connection lines: connect consecutive positions via their specific bars
     const newPathLines = [];
     if (coveredPrefixes) {
       coveredPrefixes.forEach((positions, idx) => {
         if (!selected.has(idx)) return;
         const color = idxToGroupColor[idx] ?? PAIR_COLORS[idx % PAIR_COLORS.length];
         for (let k = 0; k < positions.length - 1; k++) {
-          const da = container.querySelector(`[data-position="${positions[k].join(',')}"]`);
-          const db = container.querySelector(`[data-position="${positions[k + 1].join(',')}"]`);
+          const keyA = positions[k].join(','), keyB = positions[k + 1].join(',');
+          const da = container.querySelector(`[data-position="${keyA}"]`);
+          const db = container.querySelector(`[data-position="${keyB}"]`);
           if (!da || !db) continue;
           const ba = boundsOf(da), bb = boundsOf(db);
-          newPathLines.push({
-            x1: ba.x + ba.w, y1: ba.y + ba.h + 3,
-            x2: bb.x,        y2: bb.y + bb.h + 3,
-            color,
-          });
+          const offA = barOffset(keyA, idx, false);
+          const offB = barOffset(keyB, idx, false);
+          newPathLines.push({ ...lineEndpoints(ba, bb, offA, offB), color });
         }
       });
     }
@@ -278,15 +341,14 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
       highlightedPaths.forEach((positions, hi) => {
         const color = UNCOV_COLORS[hi % UNCOV_COLORS.length];
         for (let k = 0; k < positions.length - 1; k++) {
-          const da = container.querySelector(`[data-position="${positions[k].join(',')}"]`);
-          const db = container.querySelector(`[data-position="${positions[k + 1].join(',')}"]`);
+          const keyA = positions[k].join(','), keyB = positions[k + 1].join(',');
+          const da = container.querySelector(`[data-position="${keyA}"]`);
+          const db = container.querySelector(`[data-position="${keyB}"]`);
           if (!da || !db) continue;
           const ba = boundsOf(da), bb = boundsOf(db);
-          newPathLines.push({
-            x1: ba.x + ba.w, y1: ba.y + ba.h + 3,
-            x2: bb.x,        y2: bb.y + bb.h + 3,
-            color,
-          });
+          const offA = barOffset(keyA, hi, true);
+          const offB = barOffset(keyB, hi, true);
+          newPathLines.push({ ...lineEndpoints(ba, bb, offA, offB), color });
         }
       });
     }
@@ -317,13 +379,14 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
             ))}
             {arcs.map((arc, i) => {
               const mx = (arc.x1 + arc.x2) / 2;
-              const miny = Math.min(arc.y1, arc.y2);
+              const my = (arc.y1 + arc.y2) / 2;
               const dx = arc.x2 - arc.x1, dy = arc.y2 - arc.y1;
               const dist = Math.sqrt(dx * dx + dy * dy) || 1;
               const voff = Math.max(28, dist * 0.4);
-              // Control point: above both endpoints
-              const qcx = mx;
-              const qcy = miny - voff;
+              // Normal: control point above. Complement: control point to the left
+              // (after 90° CW rotation, "left in layout" = "above visually")
+              const qcx = complementView ? Math.min(arc.x1, arc.x2) - voff : mx;
+              const qcy = complementView ? my : Math.min(arc.y1, arc.y2) - voff;
               const color = idxToGroupColor[arc.pairIdx] ?? PAIR_COLORS[arc.pairIdx % PAIR_COLORS.length];
               return (
                 <g key={i}>

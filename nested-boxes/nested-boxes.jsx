@@ -349,7 +349,7 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
 }
 
 // ─── Zoom / Pan wrapper ────────────────────────────────────────────────────────
-function ZoomPanWrapper({ children, bg = '#f8f9fc', border = '1px solid #dde', opacity = 1 }) {
+function ZoomPanWrapper({ children, bg = '#f8f9fc', border = '1px solid #dde', opacity = 1, rotated = false }) {
   const viewRef    = useRef(null);
   const contentRef = useRef(null);
   const scaleRef   = useRef(1);
@@ -413,11 +413,15 @@ function ZoomPanWrapper({ children, bg = '#f8f9fc', border = '1px solid #dde', o
     const view = viewRef.current, content = contentRef.current;
     if (!view || !content) { const { scale, x, y } = fitRef.current; commit(scale, x, y); return; }
     const vw = view.offsetWidth,  vh = view.offsetHeight;
-    const cw = content.offsetWidth, ch = content.offsetHeight;
+    const rawW = content.offsetWidth, rawH = content.offsetHeight;
+    // When rotated 90°, effective width and height swap
+    const cw = rotated ? rawH : rawW;
+    const ch = rotated ? rawW : rawH;
     if (!cw || !ch) return;
     const s  = Math.min(vw / cw, vh / ch, 1);
-    const tx = (vw - cw * s) / 2;
-    const ty = (vh - ch * s) / 2;
+    // Center the visual content: place (rawW/2, rawH/2) at viewport center
+    const tx = vw / 2 - (rawW / 2) * s;
+    const ty = vh / 2 - (rawH / 2) * s;
     fitRef.current = { scale: s, x: tx, y: ty };
     commit(s, tx, ty);
   };
@@ -516,6 +520,7 @@ const EXAMPLES = [
 export default function App() {
   const [examples,       setExamples]       = useState(EXAMPLES);
   const [examplesOpen,   setExamplesOpen]   = useState(true);
+  const [helpOpen,       setHelpOpen]       = useState(false);
   const [addingLabel,    setAddingLabel]    = useState('');   // '' = not adding
   const [saveMsg,        setSaveMsg]        = useState('');
   const [input,          setInput]          = useState(EXAMPLES[0].f);
@@ -819,7 +824,19 @@ export default function App() {
         Diagram updates live as you type. Use <b>Simplify</b> to reduce to minimal sum-of-products form.
       </p>
 
-      <Legend />
+      <div style={{ marginBottom: 10 }}>
+        <div
+          onClick={() => setHelpOpen(prev => !prev)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+            userSelect: 'none', fontSize: 13, color: '#555', marginBottom: helpOpen ? 6 : 0,
+          }}
+        >
+          <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#999' }}>{helpOpen ? '▼' : '▶'}</span>
+          <span style={{ fontWeight: 500 }}>Legend</span>
+        </div>
+        {helpOpen && <Legend />}
+      </div>
 
       {/* jq filter input */}
       <div style={{ marginBottom: 8 }}>
@@ -1046,20 +1063,6 @@ export default function App() {
           {btn('⚡ Simplify',    handleSimplify,    '#1a6bcc', !ast || loading, !ast ? "Fix syntax errors first" : "Simplify to minimal SOP")}
           {btn("A'  Complement", handleComplement,  '#2a6a6a', !ast,            !ast ? "Fix syntax errors first" : "Show the complement as a nested box diagram")}
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {btn('✓ Valid?',       handleValid,       '#6a2a9a', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula is a tautology")}
-          {btn('? Satisfiable?', handleSatisfiable, '#7a4a00', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula has a satisfying assignment")}
-          {btn('ρ  Paths',       handlePaths,       '#4a4a8a', !ast || loading, !ast ? "Fix syntax errors first" : "Show paths through the matrix")}
-          <input
-            type="number" min={1} value={pathsLimit}
-            onChange={e => setPathsLimit(Math.max(1, parseInt(e.target.value) || 1))}
-            title="Maximum number of paths to enumerate"
-            style={{
-              width: 50, padding: '4px 6px', fontSize: 12, border: '1px solid #bbb',
-              borderRadius: 4, textAlign: 'center',
-            }}
-          />
-        </div>
       </div>
 
       {/* Tip */}
@@ -1068,6 +1071,7 @@ export default function App() {
         <code>'</code> = complement &nbsp;·&nbsp; <code>⇒</code> = implication &nbsp;·&nbsp;
         <code>⇔</code> or <code>=</code> = equivalence &nbsp;·&nbsp; <code>⊕</code> or <code>≠</code> = XOR
       </div>
+
 
       {/* Syntax error box */}
       {error && (
@@ -1097,6 +1101,66 @@ export default function App() {
           {simplifyMsg.text}
         </div>
       )}
+
+      {/* Diagrams */}
+      {ast && (
+        <>
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
+            {complementData ? 'Complement' : simplified ? 'Original' : 'Diagram'}{error ? ' (last valid formula)' : ''} — border colors show nesting depth:
+          </div>
+          <ZoomPanWrapper key={input} bg={complementData ? '#f0fafa' : '#f8f9fc'} border={complementData ? '1px solid #a0d4d4' : '1px solid #dde'} opacity={error ? 0.5 : 1} rotated={!!complementData}>
+            <DiagramWithConnections
+              node={ast}
+              complementView={!!complementData}
+              coveringPairs={complementData
+                ? (satResult?.coveringPairs ?? null)
+                : (pathsResult?.coveringPairs ?? validResult?.coveringPairs ?? null)}
+              coveredPrefixes={complementData
+                ? (satResult?.coveredPrefixes ?? null)
+                : (pathsResult?.coveredPrefixes ?? validResult?.coveredPrefixes ?? null)}
+              selectedIndices={complementData
+                ? satSelected
+                : (pathsResult?.coveringPairs ? pathsSelected : validSelected)}
+              highlightedPaths={(() => {
+                const paths = [
+                  ...(pathsResult?.uncoveredPositions?.filter((_, i) => pathsUncovSel.has(i)) ?? []),
+                  ...(validUncovOn && validResult?.uncoveredPositions ? [validResult.uncoveredPositions] : []),
+                  ...(satUncovOn && satResult?.uncoveredPositions ? [satResult.uncoveredPositions] : []),
+                ];
+                return paths.length ? paths : null;
+              })()}
+            />
+          </ZoomPanWrapper>
+
+          {simplified && (
+            <>
+              <div style={{ fontSize: 12, color: '#888', marginTop: 20, marginBottom: 10 }}>
+                Simplified — <span style={{ fontFamily: 'Georgia, serif' }}>{simplified.formula}</span>
+              </div>
+              <ZoomPanWrapper key={simplified.formula} bg='#f0fff4' border='1px solid #b2e0b2'>
+                <DiagramWithConnections node={simplified.ast} coveringPairs={null} coveredPrefixes={null} selectedIndices={new Set()} highlightedPaths={null} />
+              </ZoomPanWrapper>
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
+                {btn('Use simplified formula', () => setInput(simplified.formula), '#2a7a2a')}
+              </div>
+            </>
+          )}
+
+      {/* Analysis buttons */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 4, marginTop: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+        {btn('✓ Valid?',       handleValid,       '#6a2a9a', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula is a tautology")}
+        {btn('? Satisfiable?', handleSatisfiable, '#7a4a00', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula has a satisfying assignment")}
+        {btn('ρ  Paths',       handlePaths,       '#4a4a8a', !ast || loading, !ast ? "Fix syntax errors first" : "Show paths through the matrix")}
+        <input
+          type="number" min={1} value={pathsLimit}
+          onChange={e => setPathsLimit(Math.max(1, parseInt(e.target.value) || 1))}
+          title="Maximum number of paths to enumerate"
+          style={{
+            width: 50, padding: '4px 6px', fontSize: 12, border: '1px solid #bbb',
+            borderRadius: 4, textAlign: 'center',
+          }}
+        />
+      </div>
 
       {/* Valid result */}
       {validResult && (
@@ -1681,49 +1745,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Diagrams */}
-      {ast && (
-        <>
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
-            {complementData ? 'Complement' : simplified ? 'Original' : 'Diagram'}{error ? ' (last valid formula)' : ''} — border colors show nesting depth:
-          </div>
-          <ZoomPanWrapper key={input} bg={complementData ? '#f0fafa' : '#f8f9fc'} border={complementData ? '1px solid #a0d4d4' : '1px solid #dde'} opacity={error ? 0.5 : 1}>
-            <DiagramWithConnections
-              node={ast}
-              complementView={!!complementData}
-              coveringPairs={complementData
-                ? (satResult?.coveringPairs ?? null)
-                : (pathsResult?.coveringPairs ?? validResult?.coveringPairs ?? null)}
-              coveredPrefixes={complementData
-                ? (satResult?.coveredPrefixes ?? null)
-                : (pathsResult?.coveredPrefixes ?? validResult?.coveredPrefixes ?? null)}
-              selectedIndices={complementData
-                ? satSelected
-                : (pathsResult?.coveringPairs ? pathsSelected : validSelected)}
-              highlightedPaths={(() => {
-                const paths = [
-                  ...(pathsResult?.uncoveredPositions?.filter((_, i) => pathsUncovSel.has(i)) ?? []),
-                  ...(validUncovOn && validResult?.uncoveredPositions ? [validResult.uncoveredPositions] : []),
-                  ...(satUncovOn && satResult?.uncoveredPositions ? [satResult.uncoveredPositions] : []),
-                ];
-                return paths.length ? paths : null;
-              })()}
-            />
-          </ZoomPanWrapper>
 
-          {simplified && (
-            <>
-              <div style={{ fontSize: 12, color: '#888', marginTop: 20, marginBottom: 10 }}>
-                Simplified — <span style={{ fontFamily: 'Georgia, serif' }}>{simplified.formula}</span>
-              </div>
-              <ZoomPanWrapper key={simplified.formula} bg='#f0fff4' border='1px solid #b2e0b2'>
-                <DiagramWithConnections node={simplified.ast} coveringPairs={null} coveredPrefixes={null} selectedIndices={new Set()} highlightedPaths={null} />
-              </ZoomPanWrapper>
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
-                {btn('Use simplified formula', () => setInput(simplified.formula), '#2a7a2a')}
-              </div>
-            </>
-          )}
 
         </>
       )}

@@ -108,18 +108,14 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
           padding: '4px 6px',
           fontSize: 17, fontFamily: 'Georgia, serif',
           fontWeight: 'bold', lineHeight: 1, userSelect: 'none',
+          transform: compView ? 'rotate(-90deg)' : 'rotate(0deg)',
+          transition: 'transform 0.4s ease',
           ...(bgColor ? { background: bgColor, borderRadius: 3 } : {}),
         }}
       >
         {bars}
         {uncovBars}
-        <span style={{
-          display: 'inline-block',
-          transform: compView ? 'rotate(-90deg)' : 'rotate(0deg)',
-          transition: 'transform 0.4s ease',
-        }}>
-          <VarLabel name={displayName} />
-        </span>
+        <VarLabel name={displayName} />
       </div>
     );
   }

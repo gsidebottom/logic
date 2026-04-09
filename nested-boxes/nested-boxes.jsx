@@ -6,15 +6,23 @@ const CoverContext = createContext(null);
 
 const PAIR_COLORS = ['#e63946', '#1d7cc4', '#2a9d8f', '#e07c00', '#8e44ad', '#555'];
 
+// Complement a literal name: a → a', a' → a
+const compName = n => n?.endsWith("'") ? n.slice(0, -1) : (n ? n + "'" : n);
+
 // ─── Box Renderer ─────────────────────────────────────────────────────────────
 const PAD = 10, GAP = 8;
 const BORDER_COLORS = ['#111', '#1a6bcc', '#b35000', '#2a7a2a', '#7a1a7a'];
 
-function BoxNode({ node, depth = 0, position = [] }) {
+function BoxNode({ node, depth = 0, position = [], complementView = false }) {
   const cover = useContext(CoverContext);
+  const compView = cover?.complementView ?? complementView;
   if (!node) return null;
 
   if (node.t === 'VAR') {
+    // In complement view, swap the displayed literal name
+    const displayName = compView
+      ? (node.n.endsWith("'") ? node.n.slice(0, -1) : node.n + "'")
+      : node.n;
     const posKey = position.join(',');
     const pairIndices = cover?.posToPairIndices?.[posKey] ?? [];
     const prefixIndices = (cover?.posToPrefixIndices?.[posKey] ?? [])
@@ -105,7 +113,13 @@ function BoxNode({ node, depth = 0, position = [] }) {
       >
         {bars}
         {uncovBars}
-        <VarLabel name={node.n} />
+        <span style={{
+          display: 'inline-block',
+          transform: compView ? 'rotate(-90deg)' : 'rotate(0deg)',
+          transition: 'transform 0.4s ease',
+        }}>
+          <VarLabel name={displayName} />
+        </span>
       </div>
     );
   }
@@ -122,13 +136,16 @@ function BoxNode({ node, depth = 0, position = [] }) {
       gap: GAP, boxSizing: 'border-box',
       overflow: 'visible',
     }}>
-      {node.c.map((child, i) => <BoxNode key={i} node={child} depth={depth + 1} position={[...position, i]} />)}
+      {(compView && !isOR ? [...node.c].reverse().map((child, ri) => {
+        const i = node.c.length - 1 - ri;
+        return <BoxNode key={i} node={child} depth={depth + 1} position={[...position, i]} complementView={compView} />;
+      }) : node.c.map((child, i) => <BoxNode key={i} node={child} depth={depth + 1} position={[...position, i]} complementView={compView} />))}
     </div>
   );
 }
 
 // ─── Diagram with SVG arc connections for covering pairs ──────────────────────
-function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selectedIndices, highlightedPaths }) {
+function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selectedIndices, highlightedPaths, complementView = false }) {
   const containerRef = useRef(null);
   const [arcs, setArcs] = useState([]);
   const [pathLines, setPathLines] = useState([]);
@@ -283,9 +300,13 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
   });
 
   return (
-    <CoverContext.Provider value={(Object.keys(posToPairIndices).length || Object.keys(posToPrefixIndices).length || Object.keys(posToHighlightIndices).length) ? { posToPairIndices, posToPrefixIndices, posToHighlightIndices, maxBarCount, idxToGroupColor } : null}>
-      <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
-        <BoxNode node={node} depth={0} />
+    <CoverContext.Provider value={(Object.keys(posToPairIndices).length || Object.keys(posToPrefixIndices).length || Object.keys(posToHighlightIndices).length || complementView) ? { posToPairIndices, posToPrefixIndices, posToHighlightIndices, maxBarCount, idxToGroupColor, complementView } : null}>
+      <div ref={containerRef} style={{
+        position: 'relative', display: 'inline-block',
+        transform: complementView ? 'rotate(90deg)' : 'rotate(0deg)',
+        transition: 'transform 0.4s ease',
+      }}>
+        <BoxNode node={node} depth={0} complementView={complementView} />
         {(arcs.length > 0 || pathLines.length > 0) && (
           <svg style={{
             position: 'absolute', top: 0, left: 0,
@@ -411,7 +432,7 @@ function ZoomPanWrapper({ children, bg = '#f8f9fc', border = '1px solid #dde', o
 
   return (
     <div style={{ position: 'relative', borderRadius: 8, border, background: bg,
-                  opacity, transition: 'opacity 0.15s' }}>
+                  opacity, transition: 'opacity 0.15s, background 0.4s ease, border-color 0.4s ease' }}>
       <div
         ref={viewRef}
         onMouseDown={onMouseDown}
@@ -500,7 +521,7 @@ export default function App() {
   const [input,          setInput]          = useState(EXAMPLES[0].f);
   const [simplified,     setSimplified]     = useState(null); // {formula, ast}
   const [simplifyMsg,    setSimplifyMsg]    = useState(null); // {text, ok}
-  const [complementData, setComplementData] = useState(null); // {formula, ast}
+  const [complementData, setComplementData] = useState(null); // truthy = show complement view
   const [validResult,    setValidResult]    = useState(null); // {valid, path}
   const [validSelected,  setValidSelected]  = useState(new Set()); // Set<number> of selected pair indices
   const [validExpanded,  setValidExpanded]  = useState(new Set()); // Set<number> of expanded group indices
@@ -717,6 +738,7 @@ export default function App() {
 
   const handlePaths = () => {
     if (pathsResult && !pathsResult.error) { setPathsResult(null); return; }
+    setValidResult(null); setSatResult(null); setComplementData(false);
     fetchPaths();
   };
 
@@ -727,13 +749,12 @@ export default function App() {
 
   const handleComplement = () => {
     if (!ast) return;
-    if (complementData) { setComplementData(null); return; }
-    const cAst = complementAst(ast);
-    setComplementData({ formula: astToString(cAst), ast: cAst });
+    setComplementData(prev => !prev);
   };
 
   const handleValid = async () => {
     if (validResult && !validResult.error) { setValidResult(null); return; }
+    setSatResult(null); setPathsResult(null); setComplementData(false);
     setLoading(true);
     try {
       const res  = await fetch('http://localhost:3001/valid', {
@@ -750,7 +771,8 @@ export default function App() {
   };
 
   const handleSatisfiable = async () => {
-    if (satResult && !satResult.error) { setSatResult(null); return; }
+    if (satResult && !satResult.error) { setSatResult(null); setComplementData(false); return; }
+    setValidResult(null); setPathsResult(null);
     setLoading(true);
     try {
       const res  = await fetch('http://localhost:3001/satisfiable', {
@@ -764,8 +786,7 @@ export default function App() {
         setSatResult({ satisfiable: data.satisfiable, path: data.path, uncoveredPositions: data.uncovered_path_positions, coveringPairs: data.covering_pairs, coveredPrefixes: data.covered_path_prefixes });
         // Cover and uncovered paths are from the complement — auto-show it
         if (ast) {
-          const cAst = complementAst(ast);
-          setComplementData({ formula: astToString(cAst), ast: cAst });
+          setComplementData(true);
         }
       }
     } catch (e) {
@@ -1320,7 +1341,7 @@ export default function App() {
                     style={{ cursor: 'pointer', opacity: satUncovOn ? 1 : 0.35 }}>
                     <b style={{ fontFamily: 'Georgia, serif' }}>{satResult.path}</b>
                   </span>
-                  {satResult.coveringPairs?.length > 0 && complementData?.ast && (
+                  {satResult.coveringPairs?.length > 0 && ast && (
                     <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
@@ -1334,7 +1355,7 @@ export default function App() {
                         {(() => {
                           const varIndices = {};
                           satResult.coveringPairs.forEach(([posA, posB], i) => {
-                            const a = resolvePosition(complementData.ast, posA)?.n ?? posA.join(',');
+                            const a = compName(resolvePosition(ast, posA)?.n) ?? posA.join(',');
                             const base = a.replace(/'$/,'');
                             (varIndices[base] ??= new Set()).add(i);
                           });
@@ -1380,13 +1401,13 @@ export default function App() {
                           marginTop: 4,
                         }}>
                           {groups.map((group, gi) => {
-                            const a = resolvePosition(complementData.ast, group.posA)?.n ?? group.posA.join(',');
-                            const b = resolvePosition(complementData.ast, group.posB)?.n ?? group.posB.join(',');
+                            const a = compName(resolvePosition(ast, group.posA)?.n) ?? group.posA.join(',');
+                            const b = compName(resolvePosition(ast, group.posB)?.n) ?? group.posB.join(',');
                             const allSelected = group.indices.every(i => satSelected.has(i));
                             const prefixes = group.indices.map(idx => {
                               const prefix = satResult.coveredPrefixes?.[idx];
                               return prefix
-                                ? '{' + prefix.map(p => resolvePosition(complementData.ast, p)?.n ?? p.join(',')).join(', ') + '}'
+                                ? '{' + prefix.map(p => compName(resolvePosition(ast, p)?.n) ?? p.join(',')).join(', ') + '}'
                                 : null;
                             }).filter(Boolean);
                             const expanded = satExpanded.has(gi);
@@ -1422,7 +1443,7 @@ export default function App() {
                 </span>
               : <span>
                   ✗ Unsatisfiable — all paths in the complement are covered
-                  {satResult.coveringPairs?.length > 0 && complementData?.ast && (
+                  {satResult.coveringPairs?.length > 0 && ast && (
                     <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
@@ -1436,7 +1457,7 @@ export default function App() {
                         {(() => {
                           const varIndices = {};
                           satResult.coveringPairs.forEach(([posA, posB], i) => {
-                            const a = resolvePosition(complementData.ast, posA)?.n ?? posA.join(',');
+                            const a = compName(resolvePosition(ast, posA)?.n) ?? posA.join(',');
                             const base = a.replace(/'$/,'');
                             (varIndices[base] ??= new Set()).add(i);
                           });
@@ -1482,13 +1503,13 @@ export default function App() {
                           marginTop: 4,
                         }}>
                           {groups.map((group, gi) => {
-                            const a = resolvePosition(complementData.ast, group.posA)?.n ?? group.posA.join(',');
-                            const b = resolvePosition(complementData.ast, group.posB)?.n ?? group.posB.join(',');
+                            const a = compName(resolvePosition(ast, group.posA)?.n) ?? group.posA.join(',');
+                            const b = compName(resolvePosition(ast, group.posB)?.n) ?? group.posB.join(',');
                             const allSelected = group.indices.every(i => satSelected.has(i));
                             const prefixes = group.indices.map(idx => {
                               const prefix = satResult.coveredPrefixes?.[idx];
                               return prefix
-                                ? '{' + prefix.map(p => resolvePosition(complementData.ast, p)?.n ?? p.join(',')).join(', ') + '}'
+                                ? '{' + prefix.map(p => compName(resolvePosition(ast, p)?.n) ?? p.join(',')).join(', ') + '}'
                                 : null;
                             }).filter(Boolean);
                             const expanded = satExpanded.has(gi);
@@ -1664,21 +1685,29 @@ export default function App() {
       {ast && (
         <>
           <div style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
-            {simplified ? 'Original' : 'Diagram'}{error ? ' (last valid formula)' : ''} — border colors show nesting depth:
+            {complementData ? 'Complement' : simplified ? 'Original' : 'Diagram'}{error ? ' (last valid formula)' : ''} — border colors show nesting depth:
           </div>
-          <ZoomPanWrapper key={input} bg='#f8f9fc' border='1px solid #dde' opacity={error ? 0.5 : 1}>
+          <ZoomPanWrapper key={input} bg={complementData ? '#f0fafa' : '#f8f9fc'} border={complementData ? '1px solid #a0d4d4' : '1px solid #dde'} opacity={error ? 0.5 : 1}>
             <DiagramWithConnections
               node={ast}
-              coveringPairs={pathsResult?.coveringPairs ?? validResult?.coveringPairs ?? null}
-              coveredPrefixes={pathsResult?.coveredPrefixes ?? validResult?.coveredPrefixes ?? null}
-              selectedIndices={pathsResult?.coveringPairs ? pathsSelected : validSelected}
-              highlightedPaths={[
-                ...(pathsResult?.uncoveredPositions?.filter((_, i) => pathsUncovSel.has(i)) ?? []),
-                ...(validUncovOn && validResult?.uncoveredPositions ? [validResult.uncoveredPositions] : []),
-              ].length ? [
-                ...(pathsResult?.uncoveredPositions?.filter((_, i) => pathsUncovSel.has(i)) ?? []),
-                ...(validUncovOn && validResult?.uncoveredPositions ? [validResult.uncoveredPositions] : []),
-              ] : null}
+              complementView={!!complementData}
+              coveringPairs={complementData
+                ? (satResult?.coveringPairs ?? null)
+                : (pathsResult?.coveringPairs ?? validResult?.coveringPairs ?? null)}
+              coveredPrefixes={complementData
+                ? (satResult?.coveredPrefixes ?? null)
+                : (pathsResult?.coveredPrefixes ?? validResult?.coveredPrefixes ?? null)}
+              selectedIndices={complementData
+                ? satSelected
+                : (pathsResult?.coveringPairs ? pathsSelected : validSelected)}
+              highlightedPaths={(() => {
+                const paths = [
+                  ...(pathsResult?.uncoveredPositions?.filter((_, i) => pathsUncovSel.has(i)) ?? []),
+                  ...(validUncovOn && validResult?.uncoveredPositions ? [validResult.uncoveredPositions] : []),
+                  ...(satUncovOn && satResult?.uncoveredPositions ? [satResult.uncoveredPositions] : []),
+                ];
+                return paths.length ? paths : null;
+              })()}
             />
           </ZoomPanWrapper>
 
@@ -1696,25 +1725,6 @@ export default function App() {
             </>
           )}
 
-          {complementData && (
-            <>
-              <div style={{ fontSize: 12, color: '#888', marginTop: 20, marginBottom: 10 }}>
-                Complement — <span style={{ fontFamily: 'Georgia, serif' }}>{complementData.formula}</span>
-              </div>
-              <ZoomPanWrapper key={complementData.formula} bg='#f0fafa' border='1px solid #a0d4d4'>
-                <DiagramWithConnections
-                  node={complementData.ast}
-                  coveringPairs={satResult?.coveringPairs ?? null}
-                  coveredPrefixes={satResult?.coveredPrefixes ?? null}
-                  selectedIndices={satSelected}
-                  highlightedPaths={satUncovOn && satResult?.uncoveredPositions ? [satResult.uncoveredPositions] : null}
-                />
-              </ZoomPanWrapper>
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
-                {btn('Use complement as formula', () => setInput(complementData.formula), '#2a6a6a')}
-              </div>
-            </>
-          )}
         </>
       )}
 

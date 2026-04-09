@@ -180,6 +180,8 @@ struct PathsRequest {
     formula: String,
     #[serde(default = "default_paths_limit")]
     paths_limit: usize,
+    #[serde(default)]
+    complement: bool,
 }
 
 fn default_paths_limit() -> usize { 100 }
@@ -244,12 +246,13 @@ async fn paths_handler(Json(req): Json<PathsRequest>) -> Json<PathsResponse> {
     use logic::matrix::{parse_to_matrix, format_path, PathParams};
     match parse_to_matrix(&req.formula) {
         Ok((m, vars)) => {
-            let result = m.paths(Some(PathParams {
+            let target = if req.complement { m.complement() } else { m };
+            let result = target.paths(Some(PathParams {
                 paths_limit: req.paths_limit,
             }));
-            let fmt = |p: &Vec<usize>| format_path(p, &m, &vars);
+            let fmt = |p: &Vec<usize>| format_path(p, &target, &vars);
             let uncov_positions: Vec<Vec<Vec<usize>>> = result.uncovered_paths.iter()
-                .map(|p| m.positions_on_path(p))
+                .map(|p| target.positions_on_path(p))
                 .collect();
             Json(PathsResponse {
                 uncovered_paths:          Some(result.uncovered_paths.iter().map(fmt).collect()),

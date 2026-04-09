@@ -596,6 +596,7 @@ export default function App() {
   const [satUncovOn,     setSatUncovOn]     = useState(false);     // toggle uncovered path highlight
   const [pathsResult,    setPathsResult]    = useState(null); // {uncoveredPaths, coveringPairs, coveredPrefixes} | {error}
   const [pathsLimit,     setPathsLimit]     = useState(100);
+  const [pathsComp,      setPathsComp]      = useState(false); // show paths of complement
   const [pathsSelected,  setPathsSelected]  = useState(new Set());
   const [pathsExpanded,  setPathsExpanded]  = useState(new Set());
   const [pathsUncovSel,  setPathsUncovSel]  = useState(new Set()); // selected uncovered path indices
@@ -783,17 +784,21 @@ export default function App() {
     try {
       const res  = await fetch('http://localhost:3001/paths', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input, paths_limit: pathsLimit }),
+        body: JSON.stringify({ formula: input, paths_limit: pathsLimit, complement: pathsComp }),
       });
       const data = await res.json();
       if (data.error) setPathsResult({ error: data.error });
-      else setPathsResult({
-        uncoveredPaths: data.uncovered_paths,
-        uncoveredPositions: data.uncovered_path_positions,
-        coveringPairs: data.covering_pairs,
-        coveredPrefixes: data.covered_path_prefixes,
-        hitLimit: data.hit_limit,
-      });
+      else {
+        setPathsResult({
+          uncoveredPaths: data.uncovered_paths,
+          uncoveredPositions: data.uncovered_path_positions,
+          coveringPairs: data.covering_pairs,
+          coveredPrefixes: data.covered_path_prefixes,
+          hitLimit: data.hit_limit,
+          isComplement: pathsComp,
+        });
+        setComplementData(pathsComp);
+      }
     } catch (e) {
       setPathsResult({ error: 'Could not reach Rust service' });
     }
@@ -801,15 +806,15 @@ export default function App() {
   };
 
   const handlePaths = () => {
-    if (pathsResult && !pathsResult.error) { setPathsResult(null); return; }
-    setValidResult(null); setSatResult(null); setComplementData(false);
+    if (pathsResult && !pathsResult.error) { setPathsResult(null); setComplementData(false); return; }
+    setValidResult(null); setSatResult(null);
     fetchPaths();
   };
 
-  // Re-fetch paths when the limit changes while the display is open
+  // Re-fetch paths when the limit or complement checkbox changes while the display is open
   useEffect(() => {
     if (pathsResult && !pathsResult.error) fetchPaths();
-  }, [pathsLimit]);
+  }, [pathsLimit, pathsComp]);
 
   const handleComplement = () => {
     if (!ast) return;
@@ -1171,15 +1176,9 @@ export default function App() {
             <DiagramWithConnections
               node={ast}
               complementView={!!complementData}
-              coveringPairs={complementData
-                ? (satResult?.coveringPairs ?? null)
-                : (pathsResult?.coveringPairs ?? validResult?.coveringPairs ?? null)}
-              coveredPrefixes={complementData
-                ? (satResult?.coveredPrefixes ?? null)
-                : (pathsResult?.coveredPrefixes ?? validResult?.coveredPrefixes ?? null)}
-              selectedIndices={complementData
-                ? satSelected
-                : (pathsResult?.coveringPairs ? pathsSelected : validSelected)}
+              coveringPairs={pathsResult?.coveringPairs ?? (complementData ? satResult?.coveringPairs : validResult?.coveringPairs) ?? null}
+              coveredPrefixes={pathsResult?.coveredPrefixes ?? (complementData ? satResult?.coveredPrefixes : validResult?.coveredPrefixes) ?? null}
+              selectedIndices={pathsResult?.coveringPairs ? pathsSelected : (complementData ? satSelected : validSelected)}
               highlightedPaths={(() => {
                 const paths = [
                   ...(pathsResult?.uncoveredPositions?.filter((_, i) => pathsUncovSel.has(i)) ?? []),
@@ -1210,6 +1209,11 @@ export default function App() {
         {btn('✓ Valid?',       handleValid,       '#6a2a9a', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula is a tautology")}
         {btn('? Satisfiable?', handleSatisfiable, '#7a4a00', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula has a satisfying assignment")}
         {btn('ρ  Paths',       handlePaths,       '#4a4a8a', !ast || loading, !ast ? "Fix syntax errors first" : "Show paths through the matrix")}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 13 }}
+               title="Show paths of the complement">
+          <input type="checkbox" checked={pathsComp} onChange={e => setPathsComp(e.target.checked)} />
+          <span style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold' }}>'</span>
+        </label>
         <input
           type="number" min={1} value={pathsLimit}
           onChange={e => setPathsLimit(Math.max(1, parseInt(e.target.value) || 1))}
@@ -1681,7 +1685,7 @@ export default function App() {
           {pathsResult.error
             ? `✗ ${pathsResult.error}`
             : <span>
-                {pathsResult.hitLimit ? 'Some' : 'All'} paths through the matrix
+                {pathsResult.hitLimit ? 'Some' : 'All'} paths through the {pathsResult.isComplement ? 'complement ' : ''}matrix
                 {pathsResult.uncoveredPaths.length > 0 && (
                   <span>
                     <br />
@@ -1697,8 +1701,12 @@ export default function App() {
                     ))}
                   </span>
                 )}
-                {pathsResult.coveringPairs?.length > 0 && ast && (
-                  <span>
+                {pathsResult.coveringPairs?.length > 0 && ast && (() => {
+                  const resName = pos => {
+                    const n = resolvePosition(ast, pos)?.n ?? pos.join(',');
+                    return pathsResult.isComplement ? compName(n) : n;
+                  };
+                  return <span>
                     <br />
                     <span style={{ fontWeight: 'normal' }}>
                       {(() => {
@@ -1715,7 +1723,7 @@ export default function App() {
                       {(() => {
                         const varIndices = {};
                         pathsResult.coveringPairs.forEach(([posA], i) => {
-                          const a = resolvePosition(ast, posA)?.n ?? posA.join(',');
+                          const a = resName(posA);
                           const base = a.replace(/'$/,'');
                           (varIndices[base] ??= new Set()).add(i);
                         });
@@ -1761,13 +1769,13 @@ export default function App() {
                         marginTop: 4,
                       }}>
                         {groups.map((group, gi) => {
-                          const a = resolvePosition(ast, group.posA)?.n ?? group.posA.join(',');
-                          const b = resolvePosition(ast, group.posB)?.n ?? group.posB.join(',');
+                          const a = resName(group.posA);
+                          const b = resName(group.posB);
                           const allSelected = group.indices.every(i => pathsSelected.has(i));
                           const prefixes = group.indices.map(idx => {
                             const prefix = pathsResult.coveredPrefixes?.[idx];
                             return prefix
-                              ? '{' + prefix.map(p => resolvePosition(ast, p)?.n ?? p.join(',')).join(', ') + '}'
+                              ? '{' + prefix.map(p => resName(p)).join(', ') + '}'
                               : null;
                           }).filter(Boolean);
                           const expanded = pathsExpanded.has(gi);
@@ -1798,8 +1806,8 @@ export default function App() {
                         })}
                       </div>;
                     })()}
-                  </span>
-                )}
+                  </span>;
+                })()}
               </span>}
         </div>
       )}

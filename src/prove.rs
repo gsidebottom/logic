@@ -1,7 +1,7 @@
-use crate::matrix::{format_path, parse_to_matrix, Cover, PathParams, Paths, Position};
+use crate::matrix::{format_path, parse_to_matrix, Cover, PathParams, PathPrefix};
 
-type CoveredPrefixes = Vec<Vec<Position>>;
-type UncoveredPositions = Option<Vec<Position>>;
+type CoveredPrefixes = Vec<PathPrefix>;
+type UncoveredPositions = Option<PathPrefix>;
 type ProveResult = Result<(bool, Option<String>, UncoveredPositions, Cover, CoveredPrefixes), String>;
 
 pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
@@ -15,20 +15,26 @@ pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
 /// Returns `(valid, uncovered_path, uncovered_positions, cover, prefixes)`.
 pub fn check_valid(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
-    let Paths { cover, covered_path_prefixes, uncovered_paths, .. } = m.paths(Some(PathParams { paths_limit: usize::MAX }));
-    let path = uncovered_paths.first().map(|p| format_path(p, &m, &vars));
-    let positions = uncovered_paths.first().map(|p| m.positions_on_path(p));
-    Ok((uncovered_paths.is_empty(), path, positions, cover, covered_path_prefixes))
+    let result = m.paths(Some(PathParams { paths_limit: usize::MAX }));
+    let cover = result.cover();
+    let prefixes: Vec<PathPrefix> = result.covered_path_prefixes().map(|cp| cp.prefix.clone()).collect();
+    let first_uncovered = result.uncovered_paths().next();
+    let path = first_uncovered.map(|p| format_path(p, &m, &vars));
+    let positions = first_uncovered.map(|p| m.positions_on_path(p));
+    Ok((first_uncovered.is_none(), path, positions, cover, prefixes))
 }
 
 /// Returns `(satisfiable, uncovered_path_in_complement, uncovered_positions, cover, prefixes)`.
 pub fn check_satisfiable(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
     let comp = m.complement();
-    let Paths { cover, covered_path_prefixes, uncovered_paths, .. } = comp.paths(Some(PathParams { paths_limit: usize::MAX }));
-    let path = uncovered_paths.first().map(|p| format_path(p, &comp, &vars));
-    let positions = uncovered_paths.first().map(|p| comp.positions_on_path(p));
-    Ok((!uncovered_paths.is_empty(), path, positions, cover, covered_path_prefixes))
+    let result = comp.paths(Some(PathParams { paths_limit: usize::MAX }));
+    let cover = result.cover();
+    let prefixes: Vec<PathPrefix> = result.covered_path_prefixes().map(|cp| cp.prefix.clone()).collect();
+    let first_uncovered = result.uncovered_paths().next();
+    let path = first_uncovered.map(|p| format_path(p, &comp, &vars));
+    let positions = first_uncovered.map(|p| comp.positions_on_path(p));
+    Ok((first_uncovered.is_some(), path, positions, cover, prefixes))
 }
 
 #[cfg(test)]

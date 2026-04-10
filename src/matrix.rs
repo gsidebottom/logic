@@ -36,6 +36,9 @@ impl Lit {
 /// - `Lit(c)` is at `[1]`
 pub type Position = Vec<usize>;
 
+/// A sequence of literal `Position`s — the literals collected on a path or path prefix.
+pub type PathPrefix = Vec<Position>;
+
 // ─── Path / Cover / Paths ────────────────────────────────────────────────────
 
 /// A path through a matrix: a sequence of `Prod` member selections, one for
@@ -47,8 +50,11 @@ pub type Position = Vec<usize>;
 /// - `[1, 2, 0]` = `{B, C', G, H}` (Prod0→Sum, Prod1→Sum→Prod[H,I]→H)
 pub type ProdPath = Vec<usize>;
 
+/// A complementary literal pair identified by their `Position`s.
+pub type Pair = (Position, Position);
+
 /// A set of complementary literal pairs identified by their `Position`s.
-pub type Cover = Vec<(Position, Position)>;
+pub type Cover = Vec<Pair>;
 
 /// Parameters controlling proof search.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -67,15 +73,51 @@ impl Default for PathParams {
     }
 }
 
+/// A complementary pair together with the path prefix it covers.
+pub struct CoveredPathPrefix {
+    pub cover: Pair,
+    pub prefix: PathPrefix,
+}
+
+/// Classification of a single path encountered during matrix path enumeration.
+pub enum PathsClass {
+    Covered(CoveredPathPrefix),
+    Uncovered(ProdPath),
+}
+
 /// Result of checking validity of a matrix.
 ///
-/// The matrix is valid (a tautology) iff `uncovered_paths` is empty.
-/// `paths_limit` limits `covered_path_prefixes.len() + uncovered_paths.len()`.
+/// The matrix is valid (a tautology) iff every class is `Covered`.
+/// `paths_limit` limits `classes.len()`.
 pub struct Paths {
-    pub cover: Cover,
-    pub covered_path_prefixes: Vec<Vec<Position>>,
-    pub uncovered_paths: Vec<ProdPath>,
+    pub classes: Vec<PathsClass>,
     pub hit_limit: bool,
+}
+
+impl Paths {
+    /// Extract the cover (list of complementary pairs) from the covered classes.
+    pub fn cover(&self) -> Cover {
+        self.classes.iter().filter_map(|c| match c {
+            PathsClass::Covered(cp) => Some(cp.cover.clone()),
+            PathsClass::Uncovered(_) => None,
+        }).collect()
+    }
+
+    /// Iterate over the covered path prefixes.
+    pub fn covered_path_prefixes(&self) -> impl Iterator<Item = &CoveredPathPrefix> {
+        self.classes.iter().filter_map(|c| match c {
+            PathsClass::Covered(cp) => Some(cp),
+            PathsClass::Uncovered(_) => None,
+        })
+    }
+
+    /// Iterate over the uncovered paths.
+    pub fn uncovered_paths(&self) -> impl Iterator<Item = &ProdPath> {
+        self.classes.iter().filter_map(|c| match c {
+            PathsClass::Uncovered(p) => Some(p),
+            PathsClass::Covered(_) => None,
+        })
+    }
 }
 
 // ─── Matrix ───────────────────────────────────────────────────────────────────
@@ -166,8 +208,8 @@ impl Matrix {
     }
 
     /// Resolve a path to the `Position`s (absolute tree addresses) of its literals.
-    pub fn positions_on_path(&self, path: &[usize]) -> Vec<Position> {
-        fn inner(m: &Matrix, path: &[usize], pos: &mut Vec<usize>, out: &mut Vec<Position>) -> usize {
+    pub fn positions_on_path(&self, path: &[usize]) -> PathPrefix {
+        fn inner(m: &Matrix, path: &[usize], pos: &mut Vec<usize>, out: &mut PathPrefix) -> usize {
             match m {
                 Matrix::Lit(_) => {
                     out.push(pos.clone());
@@ -198,8 +240,8 @@ impl Matrix {
     }
 
     /// Return every `Position` at which `target` appears.
-    pub fn literal_positions(&self, target: &Lit) -> Vec<Position> {
-        fn inner(m: &Matrix, target: &Lit, prefix: &mut Position, out: &mut Vec<Position>) {
+    pub fn literal_positions(&self, target: &Lit) -> PathPrefix {
+        fn inner(m: &Matrix, target: &Lit, prefix: &mut Position, out: &mut PathPrefix) {
             match m {
                 Matrix::Lit(l) => if l == target { out.push(prefix.clone()); }
                 Matrix::Sum(ch) | Matrix::Prod(ch) => {
@@ -258,7 +300,7 @@ impl Matrix {
     /// finds the first complementary literal pair within the path and adds it
     /// to the cover.
     pub fn cover(&self, paths: &[ProdPath]) -> Cover {
-        let resolved: Vec<Vec<Position>> = paths.iter()
+        let resolved: Vec<PathPrefix> = paths.iter()
             .map(|p| self.positions_on_path(p))
             .collect();
 
@@ -295,9 +337,7 @@ impl Matrix {
     /// enumerating all paths.
     pub fn paths(&self, params: Option<PathParams>) -> Paths {
         let params = params.unwrap_or_default();
-        let mut uncovered_paths = Vec::new();
-        let mut cover = Cover::new();
-        let mut covered_path_prefixes = Vec::new();
+        let mut classes: Vec<PathsClass> = Vec::new();
         let mut covered_at_depth: Option<usize> = None;
         let mut path_count: usize = 0;
 
@@ -320,8 +360,10 @@ impl Matrix {
                     let new_lit = lits[new_idx];
                     for (j, prior) in lits[..new_idx].iter().enumerate() {
                         if prior.is_complement_of(new_lit) {
-                            cover.push((positions[j].clone(), positions[new_idx].clone()));
-                            covered_path_prefixes.push(positions.clone());
+                            classes.push(PathsClass::Covered(CoveredPathPrefix {
+                                cover: (positions[j].clone(), positions[new_idx].clone()),
+                                prefix: positions.clone(),
+                            }));
                             covered_at_depth = Some(lits.len());
                             path_count += 1;
                             break;
@@ -332,7 +374,7 @@ impl Matrix {
             }
             if let Some(path) = prod_path {
                 if covered_at_depth.is_none() {
-                    uncovered_paths.push(path.clone());
+                    classes.push(PathsClass::Uncovered(path.clone()));
                     path_count += 1;
                 }
                 last_lits_len = lits.len();
@@ -347,7 +389,7 @@ impl Matrix {
             true
         });
 
-        Paths { cover, covered_path_prefixes, uncovered_paths, hit_limit: path_count >= params.paths_limit }
+        Paths { classes, hit_limit: path_count >= params.paths_limit }
     }
 
     /// Reference implementation: check validity by examining all paths.
@@ -355,15 +397,18 @@ impl Matrix {
     /// Reference implementation: check validity by examining all paths.
     pub fn paths_reference(&self) -> Paths {
         let all_paths: Vec<ProdPath> = self.paths_iter().collect();
-        let uncovered_paths: Vec<ProdPath> = all_paths.iter()
+        let uncovered: Vec<ProdPath> = all_paths.iter()
             .filter(|p| !self.is_complementary(p))
             .cloned()
             .collect();
-        if uncovered_paths.is_empty() {
-            Paths { cover: self.cover(&all_paths), covered_path_prefixes: vec![], uncovered_paths, hit_limit: false }
+        let classes: Vec<PathsClass> = if uncovered.is_empty() {
+            self.cover(&all_paths).into_iter()
+                .map(|cover| PathsClass::Covered(CoveredPathPrefix { cover, prefix: vec![] }))
+                .collect()
         } else {
-            Paths { cover: vec![], covered_path_prefixes: vec![], uncovered_paths, hit_limit: false }
-        }
+            uncovered.into_iter().map(PathsClass::Uncovered).collect()
+        };
+        Paths { classes, hit_limit: false }
     }
 
     /// Depth-first traversal of all path prefixes, with pruning.
@@ -379,10 +424,10 @@ impl Matrix {
     /// backtracks to the last `Prod` member choice.
     pub fn for_each_path_prefix(
         &self,
-        mut f: impl FnMut(&Vec<&Lit>, &Vec<Position>, Option<&ProdPath>) -> bool,
+        mut f: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> bool,
     ) {
         type Lits<'a> = Vec<&'a Lit>;
-        type Positions = Vec<Position>;
+        type Positions = PathPrefix;
 
         fn traverse<'a, F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> bool>(
             m: &'a Matrix,
@@ -763,14 +808,16 @@ mod tests {
     fn assert_paths_matches(m: &Matrix) {
         let fast = m.paths(Some(PathParams { paths_limit: usize::MAX }));
         let reference = m.paths_reference();
-        assert_eq!(fast.uncovered_paths, reference.uncovered_paths);
+        let fast_uncovered: Vec<&ProdPath> = fast.uncovered_paths().collect();
+        let ref_uncovered: Vec<&ProdPath> = reference.uncovered_paths().collect();
+        assert_eq!(fast_uncovered, ref_uncovered);
         // Covers may differ in structure but must both be valid: every path
         // must contain at least one pair from the cover.
-        if reference.uncovered_paths.is_empty() {
+        if ref_uncovered.is_empty() {
             let all_paths: Vec<ProdPath> = m.paths_iter().collect();
             for path in &all_paths {
                 let positions = m.positions_on_path(path);
-                assert!(fast.cover.iter().any(|(pa, pb)|
+                assert!(fast.cover().iter().any(|(pa, pb)|
                     positions.contains(pa) && positions.contains(pb)),
                     "fast cover misses path {:?}", path);
             }
@@ -845,15 +892,15 @@ mod tests {
 
         // Limit 3: should return exactly 3 uncovered paths
         let p3 = m.paths(Some(PathParams { paths_limit: 3 }));
-        assert_eq!(p3.uncovered_paths.len(), 3);
+        assert_eq!(p3.uncovered_paths().count(), 3);
 
         // Limit 5 (more than total): should return all 4 uncovered paths
         let p5 = m.paths(Some(PathParams { paths_limit: 5 }));
-        assert_eq!(p5.uncovered_paths.len(), 4);
+        assert_eq!(p5.uncovered_paths().count(), 4);
 
         // Default limit (1): should return exactly 1 uncovered path
         let p1 = m.paths(None);
-        assert_eq!(p1.uncovered_paths.len(), 1);
+        assert_eq!(p1.uncovered_paths().count(), 1);
     }
 
     #[test]
@@ -862,9 +909,9 @@ mod tests {
         // 6 covered path prefixes + 4 uncovered paths = 10
         let (m, _) = parse_to_matrix("a + a' b + c b' + a b + a a' b b'").unwrap();
         let p = m.paths(Some(PathParams { paths_limit: 20 }));
-        assert_eq!(p.covered_path_prefixes.len(), 6);
-        assert_eq!(p.uncovered_paths.len(), 4);
-        assert_eq!(p.cover.len(), 6);
+        assert_eq!(p.covered_path_prefixes().count(), 6);
+        assert_eq!(p.uncovered_paths().count(), 4);
+        assert_eq!(p.cover().len(), 6);
     }
 
     // ── Complement ────────────────────────────────────────────────────────────

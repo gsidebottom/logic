@@ -251,14 +251,18 @@ async fn paths_handler(Json(req): Json<PathsRequest>) -> Json<PathsResponse> {
                 paths_limit: req.paths_limit,
             }));
             let fmt = |p: &Vec<usize>| format_path(p, &target, &vars);
-            let uncov_positions: Vec<Vec<Vec<usize>>> = result.uncovered_paths.iter()
+            let uncovered: Vec<&Vec<usize>> = result.uncovered_paths().collect();
+            let uncov_positions: Vec<Vec<Vec<usize>>> = uncovered.iter()
                 .map(|p| target.positions_on_path(p))
                 .collect();
+            let cover = result.cover();
+            let prefixes: Vec<Vec<Vec<usize>>> = result.covered_path_prefixes()
+                .map(|cp| cp.prefix.clone()).collect();
             Json(PathsResponse {
-                uncovered_paths:          Some(result.uncovered_paths.iter().map(fmt).collect()),
+                uncovered_paths:          Some(uncovered.iter().map(|p| fmt(p)).collect()),
                 uncovered_path_positions: Some(uncov_positions),
-                covering_pairs:           Some(result.cover),
-                covered_path_prefixes:    Some(result.covered_path_prefixes),
+                covering_pairs:           Some(cover),
+                covered_path_prefixes:    Some(prefixes),
                 hit_limit:                Some(result.hit_limit),
                 error: None,
             })

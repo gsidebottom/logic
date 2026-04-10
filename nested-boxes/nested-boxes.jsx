@@ -601,6 +601,7 @@ export default function App() {
   const [pathsExpanded,  setPathsExpanded]  = useState(new Set());
   const [pathsUncovSel,  setPathsUncovSel]  = useState(new Set()); // selected uncovered path indices
   const [pathsRunning,   setPathsRunning]   = useState(false); // server-side path generation in progress
+  const [pathsTreeExpanded, setPathsTreeExpanded] = useState(new Set()); // Set<nodeKey> of expanded prefix-tree nodes
   const pathsPollRef = useRef(null);
   const [loading,        setLoading]        = useState(false);
   const [jqFilter,       setJqFilter]       = useState('');
@@ -701,6 +702,7 @@ export default function App() {
     setPathsSelected(new Set());
     setPathsExpanded(new Set());
     setPathsUncovSel(new Set());
+    setPathsTreeExpanded(new Set());
   }, [input]);
 
   // Load examples from file on mount
@@ -1326,7 +1328,11 @@ export default function App() {
                     <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
-                        {new Set(validResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size} pairs in the cover:
+                        {(() => {
+                          const n = new Set(validResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size;
+                          const m = validResult.coveredPrefixes?.length ?? validResult.coveringPairs.length;
+                          return `${n} ${n === 1 ? 'pair' : 'pairs'} in the cover covering ${m} ${m === 1 ? 'prefix' : 'prefixes'}:`;
+                        })()}
                         {' '}
                         <a href="#" onClick={e => { e.preventDefault(); setValidSelected(new Set(validResult.coveringPairs.map((_, i) => i))); }}
                            style={{ fontSize: 11, color: '#888' }}>all</a>
@@ -1657,7 +1663,11 @@ export default function App() {
                     <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
-                        {new Set(satResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size} pairs in the cover:
+                        {(() => {
+                          const n = new Set(satResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size;
+                          const m = satResult.coveredPrefixes?.length ?? satResult.coveringPairs.length;
+                          return `${n} ${n === 1 ? 'pair' : 'pairs'} in the cover covering ${m} ${m === 1 ? 'prefix' : 'prefixes'}:`;
+                        })()}
                         {' '}
                         <a href="#" onClick={e => { e.preventDefault(); setSatSelected(new Set(satResult.coveringPairs.map((_, i) => i))); }}
                            style={{ fontSize: 11, color: '#888' }}>all</a>
@@ -1769,21 +1779,113 @@ export default function App() {
             ? `✗ ${pathsResult.error}`
             : <span>
                 {pathsResult.hitLimit ? 'Some' : 'All'} paths through the {pathsResult.isComplement ? 'complement ' : ''}matrix
-                {pathsResult.uncoveredPaths.length > 0 && (
-                  <span>
-                    <br />
-                    <span style={{ fontWeight: 'normal' }}>{pathsResult.uncoveredPaths.length} uncovered {pathsResult.uncoveredPaths.length === 1 ? 'path' : 'paths'}: </span>
-                    {pathsResult.uncoveredPaths.map((path, i) => (
-                      <span key={`u${i}`}
-                        onClick={() => setPathsUncovSel(prev => {
-                          const s = new Set(prev); if (s.has(i)) s.delete(i); else s.add(i); return s;
-                        })}
-                        style={{ cursor: 'pointer', opacity: pathsUncovSel.has(i) ? 1 : 0.35 }}>
-                        <b style={{ fontFamily: 'Georgia, serif' }}>{path}</b>
+                {pathsResult.uncoveredPaths.length > 0 && (() => {
+                  const resName = pos => {
+                    const n = resolvePosition(ast, pos)?.n ?? pos.join(',');
+                    return pathsResult.isComplement ? compName(n) : n;
+                  };
+                  // Build a trie of uncovered paths keyed on literal positions.
+                  const root = { children: new Map(), pathIndex: null, key: '', position: null };
+                  (pathsResult.uncoveredPositions || []).forEach((posList, i) => {
+                    let node = root;
+                    let chain = '';
+                    posList.forEach(pos => {
+                      const k = pos.join(',');
+                      chain = chain ? chain + '|' + k : k;
+                      if (!node.children.has(k)) {
+                        node.children.set(k, { children: new Map(), pathIndex: null, key: chain, position: pos });
+                      }
+                      node = node.children.get(k);
+                    });
+                    node.pathIndex = i;
+                  });
+                  const toggleExpand = key => setPathsTreeExpanded(prev => {
+                    const s = new Set(prev); if (s.has(key)) s.delete(key); else s.add(key); return s;
+                  });
+                  const toggleSel = i => setPathsUncovSel(prev => {
+                    const s = new Set(prev); if (s.has(i)) s.delete(i); else s.add(i); return s;
+                  });
+                  const collectIndices = node => {
+                    const out = [];
+                    const walk = n => {
+                      if (n.pathIndex !== null) out.push(n.pathIndex);
+                      n.children.forEach(walk);
+                    };
+                    walk(node);
+                    return out;
+                  };
+                  const renderNode = (node, depth) => {
+                    const children = Array.from(node.children.values());
+                    return children.map(child => {
+                      const hasChildren = child.children.size > 0;
+                      const expanded = pathsTreeExpanded.has(child.key);
+                      const isLeaf = child.pathIndex !== null && !hasChildren;
+                      const subIdxs = collectIndices(child);
+                      const allSel = subIdxs.length > 0 && subIdxs.every(i => pathsUncovSel.has(i));
+                      const opacity = isLeaf
+                        ? (pathsUncovSel.has(child.pathIndex) ? 1 : 0.35)
+                        : (allSel ? 1 : 0.6);
+                      return (
+                        <div key={child.key} style={{ marginLeft: depth * 14, lineHeight: 1.5 }}>
+                          <span>
+                            {hasChildren ? (
+                              <span onClick={() => toggleExpand(child.key)}
+                                    style={{ cursor: 'pointer', userSelect: 'none', display: 'inline-block', width: 12, color: '#888' }}>
+                                {expanded ? '▼' : '▶'}
+                              </span>
+                            ) : (
+                              <span style={{ display: 'inline-block', width: 12 }} />
+                            )}
+                            <span
+                              onClick={() => {
+                                if (isLeaf) toggleSel(child.pathIndex);
+                                else {
+                                  // Toggle all leaves under this prefix.
+                                  setPathsUncovSel(prev => {
+                                    const s = new Set(prev);
+                                    if (allSel) subIdxs.forEach(i => s.delete(i));
+                                    else subIdxs.forEach(i => s.add(i));
+                                    return s;
+                                  });
+                                }
+                              }}
+                              style={{ cursor: 'pointer', opacity }}>
+                              <b style={{ fontFamily: 'Georgia, serif' }}>{resName(child.position)}</b>
+                              {!isLeaf && (
+                                <span style={{ fontWeight: 'normal', color: '#888', fontSize: 11 }}>
+                                  {' '}({subIdxs.length})
+                                </span>
+                              )}
+                            </span>
+                          </span>
+                          {hasChildren && expanded && renderNode(child, depth + 1)}
+                        </div>
+                      );
+                    });
+                  };
+                  return (
+                    <span>
+                      <br />
+                      <span style={{ fontWeight: 'normal' }}>
+                        {pathsResult.uncoveredPaths.length} uncovered {pathsResult.uncoveredPaths.length === 1 ? 'path' : 'paths'}{' '}
+                        <a href="#" onClick={e => { e.preventDefault();
+                          // Expand all internal nodes.
+                          const all = new Set();
+                          const walk = n => { if (n.children.size > 0) { if (n.key) all.add(n.key); n.children.forEach(walk); } };
+                          walk(root);
+                          setPathsTreeExpanded(all);
+                        }} style={{ fontSize: 11, color: '#888' }}>expand all</a>
+                        {' '}
+                        <a href="#" onClick={e => { e.preventDefault(); setPathsTreeExpanded(new Set()); }}
+                           style={{ fontSize: 11, color: '#888' }}>collapse all</a>
+                        :
                       </span>
-                    ))}
-                  </span>
-                )}
+                      <div style={{ marginTop: 4 }}>
+                        {renderNode(root, 0)}
+                      </div>
+                    </span>
+                  );
+                })()}
                 {pathsResult.coveringPairs?.length > 0 && ast && (() => {
                   const resName = pos => {
                     const n = resolvePosition(ast, pos)?.n ?? pos.join(',');
@@ -1795,7 +1897,8 @@ export default function App() {
                       {(() => {
                         const isPartial = pathsResult.uncoveredPaths.length > 0 || pathsResult.hitLimit;
                         const n = new Set(pathsResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size;
-                        return `${n} ${n === 1 ? 'pair' : 'pairs'} in the ${isPartial ? 'partial ' : ''}cover:`;
+                        const m = pathsResult.coveredPrefixes?.length ?? pathsResult.coveringPairs.length;
+                        return `${n} ${n === 1 ? 'pair' : 'pairs'} in the ${isPartial ? 'partial ' : ''}cover covering ${m} ${m === 1 ? 'prefix' : 'prefixes'}:`;
                       })()}
                       {' '}
                       <a href="#" onClick={e => { e.preventDefault(); setPathsSelected(new Set(pathsResult.coveringPairs.map((_, i) => i))); }}

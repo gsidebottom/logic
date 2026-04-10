@@ -600,6 +600,8 @@ export default function App() {
   const [pathsSelected,  setPathsSelected]  = useState(new Set());
   const [pathsExpanded,  setPathsExpanded]  = useState(new Set());
   const [pathsUncovSel,  setPathsUncovSel]  = useState(new Set()); // selected uncovered path indices
+  const [pathsRunning,   setPathsRunning]   = useState(false); // server-side path generation in progress
+  const pathsPollRef = useRef(null);
   const [loading,        setLoading]        = useState(false);
   const [jqFilter,       setJqFilter]       = useState('');
   const [jqError,        setJqError]        = useState('');
@@ -779,37 +781,96 @@ export default function App() {
     setTimeout(() => setSimplifyMsg(null), 3500);
   };
 
-  const fetchPaths = async () => {
-    setLoading(true);
+  const stopPathsPolling = () => {
+    if (pathsPollRef.current) {
+      clearInterval(pathsPollRef.current);
+      pathsPollRef.current = null;
+    }
+  };
+
+  const applyPathsStatus = (data, complementFlag) => {
+    if (data.error) {
+      setPathsResult({ error: data.error });
+      setPathsRunning(false);
+      stopPathsPolling();
+      return;
+    }
+    setPathsResult({
+      uncoveredPaths: data.uncovered_paths,
+      uncoveredPositions: data.uncovered_path_positions,
+      coveringPairs: data.covering_pairs,
+      coveredPrefixes: data.covered_path_prefixes,
+      hitLimit: data.hit_limit,
+      isComplement: complementFlag,
+    });
+    setPathsRunning(!!data.running);
+    if (!data.running) stopPathsPolling();
+  };
+
+  const pollPathsOnce = async (complementFlag) => {
     try {
-      const res  = await fetch('http://localhost:3001/paths', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input, paths_limit: pathsLimit, complement: pathsComp }),
-      });
+      const res = await fetch('http://localhost:3001/paths');
       const data = await res.json();
-      if (data.error) setPathsResult({ error: data.error });
-      else {
-        setPathsResult({
-          uncoveredPaths: data.uncovered_paths,
-          uncoveredPositions: data.uncovered_path_positions,
-          coveringPairs: data.covering_pairs,
-          coveredPrefixes: data.covered_path_prefixes,
-          hitLimit: data.hit_limit,
-          isComplement: pathsComp,
-        });
-        setComplementData(pathsComp);
-      }
+      applyPathsStatus(data, complementFlag);
     } catch (e) {
       setPathsResult({ error: 'Could not reach Rust service' });
+      setPathsRunning(false);
+      stopPathsPolling();
     }
-    setLoading(false);
+  };
+
+  const fetchPaths = async () => {
+    stopPathsPolling();
+    setPathsRunning(true);
+    setPathsResult({
+      uncoveredPaths: [], uncoveredPositions: [],
+      coveringPairs: [], coveredPrefixes: [],
+      hitLimit: false, isComplement: pathsComp,
+    });
+    setComplementData(pathsComp);
+    const complementFlag = pathsComp;
+    try {
+      const res = await fetch('http://localhost:3001/paths', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formula: input, paths_limit: pathsLimit, complement: complementFlag }),
+      });
+      if (!res.ok) throw new Error('start failed');
+    } catch (e) {
+      setPathsResult({ error: 'Could not reach Rust service' });
+      setPathsRunning(false);
+      return;
+    }
+    // Poll every 5s. Fetch once immediately so something shows up faster than 5s if quick.
+    pollPathsOnce(complementFlag);
+    pathsPollRef.current = setInterval(() => pollPathsOnce(complementFlag), 5000);
+  };
+
+  const cancelPaths = async () => {
+    stopPathsPolling();
+    try {
+      await fetch('http://localhost:3001/paths/cancel', { method: 'POST' });
+    } catch (e) { /* ignore */ }
+    // Final fetch to grab whatever the worker accumulated before cancellation.
+    try {
+      const res = await fetch('http://localhost:3001/paths');
+      const data = await res.json();
+      applyPathsStatus(data, pathsResult?.isComplement ?? false);
+    } catch (e) { /* ignore */ }
+    setPathsRunning(false);
   };
 
   const handlePaths = () => {
-    if (pathsResult && !pathsResult.error) { setPathsResult(null); setComplementData(false); return; }
+    if (pathsResult && !pathsResult.error) {
+      stopPathsPolling();
+      if (pathsRunning) { fetch('http://localhost:3001/paths/cancel', { method: 'POST' }).catch(()=>{}); }
+      setPathsResult(null); setPathsRunning(false); setComplementData(false); return;
+    }
     setValidResult(null); setSatResult(null);
     fetchPaths();
   };
+
+  // Stop polling on unmount.
+  useEffect(() => () => stopPathsPolling(), []);
 
   // Re-fetch paths when the limit or complement checkbox changes while the display is open
   useEffect(() => {
@@ -1223,6 +1284,28 @@ export default function App() {
             borderRadius: 4, textAlign: 'center',
           }}
         />
+        {pathsRunning && (
+          <button
+            onClick={cancelPaths}
+            title="Cancel path generation"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '4px 10px', fontSize: 12, border: '1px solid #c8c8e8',
+              borderRadius: 4, background: '#f7f7fd', color: '#4a4a8a',
+              cursor: 'pointer',
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                display: 'inline-block', width: 12, height: 12,
+                border: '2px solid #c8c8e8', borderTopColor: '#4a4a8a',
+                borderRadius: '50%', animation: 'logic-spin 0.8s linear infinite',
+              }}
+            />
+            Cancel
+          </button>
+        )}
       </div>
 
       {/* Valid result */}
@@ -1817,7 +1900,7 @@ export default function App() {
         </>
       )}
 
-      <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+      <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } } @keyframes logic-spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

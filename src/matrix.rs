@@ -1,6 +1,18 @@
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use serde::{Deserialize, Serialize};
 use crate::formula::{count_primes, get_base_name, Ast, Node};
+
+/// Handle for cooperatively cancelling a running async traversal.
+#[derive(Clone, Default, Debug)]
+pub struct CancelHandle(Arc<AtomicBool>);
+
+impl CancelHandle {
+    pub fn new() -> Self { Self::default() }
+    pub fn cancel(&self) { self.0.store(true, Ordering::Relaxed); }
+    pub fn is_cancelled(&self) -> bool { self.0.load(Ordering::Relaxed) }
+}
 
 // ─── Literal ──────────────────────────────────────────────────────────────────
 
@@ -412,10 +424,13 @@ impl Matrix {
     ) -> (
         tokio::task::JoinHandle<Result<(), tokio::sync::mpsc::error::SendError<(PathsClass, bool)>>>,
         tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
+        CancelHandle,
     ) {
         let m = self.clone();
         let params = params.unwrap_or_default();
         let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
+        let cancel = CancelHandle::new();
+        let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let mut send_err = None;
             let mut covered_at_depth: Option<usize> = None;
@@ -423,7 +438,7 @@ impl Matrix {
             let mut last_lits_len: usize = 0;
 
             m.for_each_path_prefix(|lits, positions, prod_path| {
-                if send_err.is_some() { return false; }
+                if send_err.is_some() || cancel_for_thread.is_cancelled() { return false; }
                 if path_count >= params.paths_limit {
                     return false;
                 }
@@ -480,7 +495,7 @@ impl Matrix {
             });
             send_err.map(Err).unwrap_or(Ok(()))
         });
-        (handle, rx)
+        (handle, rx, cancel)
     }
 
     /// Reference implementation: check validity by examining all paths.
@@ -611,13 +626,16 @@ impl Matrix {
     ) -> (
         tokio::task::JoinHandle<Result<(), tokio::sync::mpsc::error::SendError<PathPrefixEvent>>>,
         tokio::sync::mpsc::Receiver<PathPrefixEvent>,
+        CancelHandle,
     ) {
         let m = self.clone();
         let (tx, rx) = tokio::sync::mpsc::channel::<PathPrefixEvent>(buffer_size);
+        let cancel = CancelHandle::new();
+        let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let mut send_err = None;
             m.for_each_path_prefix(|lits, positions, prod_path| {
-                if send_err.is_some() { return false; }
+                if send_err.is_some() || cancel_for_thread.is_cancelled() { return false; }
                 let event = PathPrefixEvent {
                     lits: lits.iter().map(|&l| l.clone()).collect(),
                     positions: positions.clone(),
@@ -631,7 +649,7 @@ impl Matrix {
             });
             send_err.map(Err).unwrap_or(Ok(()))
         });
-        (handle, rx)
+        (handle, rx, cancel)
     }
 }
 
@@ -1047,11 +1065,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_paths_async_cancel() {
+        // Large enumeration; cancel after the first item.
+        let m = sum((0..6).map(|_| prod(vec![v(0), v(1), v(2), v(3)])).collect());
+        let (handle, mut rx, cancel) = m.paths_async(
+            Some(PathParams { paths_limit: usize::MAX }),
+            1,
+        );
+        let _first = rx.recv().await.expect("at least one item");
+        cancel.cancel();
+        // Drain remaining items already buffered/in flight.
+        while rx.recv().await.is_some() {}
+        handle.await.expect("worker panicked").expect("send error");
+    }
+
+    #[tokio::test]
     async fn test_paths_async_matches_paths() {
         let (m, _) = parse_to_matrix("a + a' b + c b' + a b + a a' b b'").unwrap();
         let sync_paths = m.paths(Some(PathParams { paths_limit: 20 }));
 
-        let (handle, mut rx) = m.paths_async(Some(PathParams { paths_limit: 20 }), 8);
+        let (handle, mut rx, _cancel) = m.paths_async(Some(PathParams { paths_limit: 20 }), 8);
         let mut items: Vec<(PathsClass, bool)> = Vec::new();
         while let Some(it) = rx.recv().await {
             items.push(it);
@@ -1092,7 +1125,7 @@ mod tests {
             true
         });
 
-        let (handle, mut rx) = m.for_each_path_prefix_async(64, |_, _, _| true);
+        let (handle, mut rx, _cancel) = m.for_each_path_prefix_async(64, |_, _, _| true);
         let mut async_events: Vec<(Vec<Lit>, PathPrefix, Option<ProdPath>)> = Vec::new();
         while let Some(ev) = rx.recv().await {
             async_events.push((ev.lits, ev.positions, ev.prod_path));

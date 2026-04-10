@@ -85,6 +85,15 @@ pub enum PathsClass {
     Uncovered(ProdPath),
 }
 
+/// An owned snapshot of a single `for_each_path_prefix` callback invocation,
+/// suitable for sending across a channel.
+#[derive(Clone, Debug)]
+pub struct PathPrefixEvent {
+    pub lits: Vec<Lit>,
+    pub positions: PathPrefix,
+    pub prod_path: Option<ProdPath>,
+}
+
 /// Result of checking validity of a matrix.
 ///
 /// The matrix is valid (a tautology) iff every class is `Covered`.
@@ -392,6 +401,88 @@ impl Matrix {
         Paths { classes, hit_limit: path_count >= params.paths_limit }
     }
 
+    /// Async streaming variant of `paths`: spawns a blocking thread that runs
+    /// the depth-first traversal and sends each `PathsClass` as it is
+    /// discovered, paired with a `bool` that is `true` if this item caused
+    /// the `paths_limit` to be reached.
+    pub fn paths_async(
+        &self,
+        params: Option<PathParams>,
+        buffer_size: usize,
+    ) -> (
+        tokio::task::JoinHandle<Result<(), tokio::sync::mpsc::error::SendError<(PathsClass, bool)>>>,
+        tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
+    ) {
+        let m = self.clone();
+        let params = params.unwrap_or_default();
+        let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
+        let handle = tokio::task::spawn_blocking(move || {
+            let mut send_err = None;
+            let mut covered_at_depth: Option<usize> = None;
+            let mut path_count: usize = 0;
+            let mut last_lits_len: usize = 0;
+
+            m.for_each_path_prefix(|lits, positions, prod_path| {
+                if send_err.is_some() { return false; }
+                if path_count >= params.paths_limit {
+                    return false;
+                }
+                // Detect backtrack: if lits shrunk past the depth where we
+                // found a complementary pair, we're no longer in a covered subtree.
+                if let Some(d) = covered_at_depth {
+                    if lits.len() < d {
+                        covered_at_depth = None;
+                    }
+                }
+                // Check new literals for complementary pairs.
+                if covered_at_depth.is_none() && lits.len() > last_lits_len {
+                    'outer: for new_idx in last_lits_len..lits.len() {
+                        let new_lit = lits[new_idx];
+                        for (j, prior) in lits[..new_idx].iter().enumerate() {
+                            if prior.is_complement_of(new_lit) {
+                                let cpp = CoveredPathPrefix {
+                                    cover: (positions[j].clone(), positions[new_idx].clone()),
+                                    prefix: positions.clone(),
+                                };
+                                path_count += 1;
+                                let hit_limit = path_count >= params.paths_limit;
+                                if let Err(e) = tx.blocking_send((PathsClass::Covered(cpp), hit_limit)) {
+                                    send_err = Some(e);
+                                    last_lits_len = lits.len();
+                                    return false;
+                                }
+                                covered_at_depth = Some(lits.len());
+                                break 'outer;
+                            }
+                        }
+                    }
+                }
+                if let Some(path) = prod_path {
+                    if covered_at_depth.is_none() {
+                        path_count += 1;
+                        let hit_limit = path_count >= params.paths_limit;
+                        if let Err(e) = tx.blocking_send((PathsClass::Uncovered(path.clone()), hit_limit)) {
+                            send_err = Some(e);
+                            last_lits_len = lits.len();
+                            return false;
+                        }
+                    }
+                    last_lits_len = lits.len();
+                    return path_count < params.paths_limit;
+                }
+                // Prod selection — prune if covered.
+                if covered_at_depth.is_some() {
+                    last_lits_len = lits.len();
+                    return false;
+                }
+                last_lits_len = lits.len();
+                true
+            });
+            send_err.map(Err).unwrap_or(Ok(()))
+        });
+        (handle, rx)
+    }
+
     /// Reference implementation: check validity by examining all paths.
     ///
     /// Reference implementation: check validity by examining all paths.
@@ -500,6 +591,47 @@ impl Matrix {
                 f(lits, positions, Some(path));
             },
         );
+    }
+
+    /// Async variant of `for_each_path_prefix`: spawns a blocking thread that
+    /// runs the depth-first traversal, sends each event as an owned
+    /// `PathPrefixEvent` over the returned channel, and consults
+    /// `should_continue` at each step to decide whether to continue forward
+    /// or backtrack. The traversal also stops when the receiver is dropped
+    /// (the next send fails).
+    ///
+    /// Returns a `(JoinHandle, Receiver)` pair so the caller can observe both
+    /// the streamed events and any panic from the worker thread.
+    pub fn for_each_path_prefix_async(
+        &self,
+        buffer_size: usize,
+        mut should_continue: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> bool
+            + Send
+            + 'static,
+    ) -> (
+        tokio::task::JoinHandle<Result<(), tokio::sync::mpsc::error::SendError<PathPrefixEvent>>>,
+        tokio::sync::mpsc::Receiver<PathPrefixEvent>,
+    ) {
+        let m = self.clone();
+        let (tx, rx) = tokio::sync::mpsc::channel::<PathPrefixEvent>(buffer_size);
+        let handle = tokio::task::spawn_blocking(move || {
+            let mut send_err = None;
+            m.for_each_path_prefix(|lits, positions, prod_path| {
+                if send_err.is_some() { return false; }
+                let event = PathPrefixEvent {
+                    lits: lits.iter().map(|&l| l.clone()).collect(),
+                    positions: positions.clone(),
+                    prod_path: prod_path.cloned(),
+                };
+                if let Err(e) = tx.blocking_send(event) {
+                    send_err = Some(e);
+                    return false;
+                }
+                should_continue(lits, positions, prod_path)
+            });
+            send_err.map(Err).unwrap_or(Ok(()))
+        });
+        (handle, rx)
     }
 }
 
@@ -912,6 +1044,63 @@ mod tests {
         assert_eq!(p.covered_path_prefixes().count(), 6);
         assert_eq!(p.uncovered_paths().count(), 4);
         assert_eq!(p.cover().len(), 6);
+    }
+
+    #[tokio::test]
+    async fn test_paths_async_matches_paths() {
+        let (m, _) = parse_to_matrix("a + a' b + c b' + a b + a a' b b'").unwrap();
+        let sync_paths = m.paths(Some(PathParams { paths_limit: 20 }));
+
+        let (handle, mut rx) = m.paths_async(Some(PathParams { paths_limit: 20 }), 8);
+        let mut items: Vec<(PathsClass, bool)> = Vec::new();
+        while let Some(it) = rx.recv().await {
+            items.push(it);
+        }
+        handle.await.expect("worker panicked").expect("send error");
+
+        assert_eq!(items.len(), sync_paths.classes.len());
+        // Compare each streamed class to the sync version's class.
+        for (a, b) in items.iter().zip(sync_paths.classes.iter()) {
+            match (&a.0, b) {
+                (PathsClass::Covered(x), PathsClass::Covered(y)) => {
+                    assert_eq!(x.cover, y.cover);
+                    assert_eq!(x.prefix, y.prefix);
+                }
+                (PathsClass::Uncovered(x), PathsClass::Uncovered(y)) => {
+                    assert_eq!(x, y);
+                }
+                _ => panic!("class mismatch"),
+            }
+        }
+        // Only the last item (if limit was hit) should have hit_limit=true.
+        assert!(items[..items.len() - 1].iter().all(|(_, hit)| !hit));
+    }
+
+    #[tokio::test]
+    async fn test_for_each_path_prefix_async() {
+        // Compare the events streamed from the async variant against
+        // the synchronous closure-based version.
+        let (m, _) = parse_to_matrix("a b + c d").unwrap();
+
+        let mut sync_events: Vec<(Vec<Lit>, PathPrefix, Option<ProdPath>)> = Vec::new();
+        m.for_each_path_prefix(|lits, positions, prod_path| {
+            sync_events.push((
+                lits.iter().map(|&l| l.clone()).collect(),
+                positions.clone(),
+                prod_path.cloned(),
+            ));
+            true
+        });
+
+        let (handle, mut rx) = m.for_each_path_prefix_async(64, |_, _, _| true);
+        let mut async_events: Vec<(Vec<Lit>, PathPrefix, Option<ProdPath>)> = Vec::new();
+        while let Some(ev) = rx.recv().await {
+            async_events.push((ev.lits, ev.positions, ev.prod_path));
+        }
+        handle.await.expect("worker thread panicked").expect("send error");
+
+        assert_eq!(sync_events, async_events);
+        assert!(!async_events.is_empty());
     }
 
     // ── Complement ────────────────────────────────────────────────────────────

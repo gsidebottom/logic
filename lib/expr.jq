@@ -25,3 +25,6 @@ def sum(s):
 def prod(p):
      [p] | join(" ")
 ;
+
+# interleave a and b
+def interleave(a; b): [[a], [b]] | transpose | flatten[];

@@ -1240,7 +1240,10 @@ export default function App() {
               node={ast}
               complementView={!!complementData}
               coveringPairs={pathsResult?.coveringPairs ?? (complementData ? satResult?.coveringPairs : validResult?.coveringPairs) ?? null}
-              coveredPrefixes={pathsResult?.coveredPrefixes ?? (complementData ? satResult?.coveredPrefixes : validResult?.coveredPrefixes) ?? null}
+              coveredPrefixes={(() => {
+                const p = pathsResult?.coveredPrefixes ?? (complementData ? satResult?.coveredPrefixes : validResult?.coveredPrefixes) ?? null;
+                return p && p.length > 1000 ? null : p;
+              })()}
               selectedIndices={pathsResult?.coveringPairs ? pathsSelected : (complementData ? satSelected : validSelected)}
               highlightedPaths={(() => {
                 const paths = [
@@ -1331,7 +1334,11 @@ export default function App() {
                         {(() => {
                           const n = new Set(validResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size;
                           const m = validResult.coveredPrefixes?.length ?? validResult.coveringPairs.length;
-                          return `${n} ${n === 1 ? 'pair' : 'pairs'} in the cover covering ${m} ${m === 1 ? 'prefix' : 'prefixes'}:`;
+                          const lens = (validResult.coveredPrefixes || []).map(p => p.length);
+                          const lo = lens.length ? Math.min(...lens) : 0;
+                          const hi = lens.length ? Math.max(...lens) : 0;
+                          const range = lens.length === 0 ? '' : lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`;
+                          return `${n} ${n === 1 ? 'pair' : 'pairs'} in the cover covering ${m} ${m === 1 ? 'prefix' : 'prefixes'}${range}:`;
                         })()}
                         {' '}
                         <a href="#" onClick={e => { e.preventDefault(); setValidSelected(new Set(validResult.coveringPairs.map((_, i) => i))); }}
@@ -1385,6 +1392,7 @@ export default function App() {
                           }
                           groups[groupMap[key]].indices.push(idx);
                         });
+                        const tooMany = (validResult.coveredPrefixes?.length ?? 0) > 1000;
                         return <div style={{
                           ...(groups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
                           marginTop: 4,
@@ -1393,6 +1401,26 @@ export default function App() {
                             const a = resolvePosition(ast, group.posA)?.n ?? group.posA.join(',');
                             const b = resolvePosition(ast, group.posB)?.n ?? group.posB.join(',');
                             const allSelected = group.indices.every(i => validSelected.has(i));
+                            const prefixLens = group.indices.map(idx => validResult.coveredPrefixes?.[idx]?.length).filter(l => l != null);
+                            const lenRange = prefixLens.length === 0 ? '' : (() => { const lo = Math.min(...prefixLens), hi = Math.max(...prefixLens); return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`; })();
+                            const prefixCount = group.indices.length;
+                            if (tooMany) {
+                              return <div key={gi} style={{ fontWeight: 'normal' }}>
+                                <span
+                                  onClick={() => setValidSelected(prev => {
+                                    const s = new Set(prev);
+                                    if (allSelected) group.indices.forEach(i => s.delete(i));
+                                    else group.indices.forEach(i => s.add(i));
+                                    return s;
+                                  })}
+                                  style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
+                                  <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                                </span>
+                                <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
+                                  {prefixCount} {prefixCount === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                                </span>
+                              </div>;
+                            }
                             const prefixes = group.indices.map(idx => {
                               const prefix = validResult.coveredPrefixes?.[idx];
                               return prefix
@@ -1418,7 +1446,7 @@ export default function App() {
                                   }); }}
                                   style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
                                   title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}</span>
+                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
                                 {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
                                   {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
                                 </div>}
@@ -1491,6 +1519,7 @@ export default function App() {
                           }
                           groups[groupMap[key]].indices.push(idx);
                         });
+                        const tooMany = (validResult.coveredPrefixes?.length ?? 0) > 1000;
                         return <div style={{
                           ...(groups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
                           marginTop: 4,
@@ -1499,6 +1528,26 @@ export default function App() {
                             const a = resolvePosition(ast, group.posA)?.n ?? group.posA.join(',');
                             const b = resolvePosition(ast, group.posB)?.n ?? group.posB.join(',');
                             const allSelected = group.indices.every(i => validSelected.has(i));
+                            const prefixLens = group.indices.map(idx => validResult.coveredPrefixes?.[idx]?.length).filter(l => l != null);
+                            const lenRange = prefixLens.length === 0 ? '' : (() => { const lo = Math.min(...prefixLens), hi = Math.max(...prefixLens); return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`; })();
+                            const prefixCount = group.indices.length;
+                            if (tooMany) {
+                              return <div key={gi} style={{ fontWeight: 'normal' }}>
+                                <span
+                                  onClick={() => setValidSelected(prev => {
+                                    const s = new Set(prev);
+                                    if (allSelected) group.indices.forEach(i => s.delete(i));
+                                    else group.indices.forEach(i => s.add(i));
+                                    return s;
+                                  })}
+                                  style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
+                                  <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                                </span>
+                                <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
+                                  {prefixCount} {prefixCount === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                                </span>
+                              </div>;
+                            }
                             const prefixes = group.indices.map(idx => {
                               const prefix = validResult.coveredPrefixes?.[idx];
                               return prefix
@@ -1524,7 +1573,7 @@ export default function App() {
                                   }); }}
                                   style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
                                   title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}</span>
+                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
                                 {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
                                   {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
                                 </div>}
@@ -1612,6 +1661,7 @@ export default function App() {
                           }
                           groups[groupMap[key]].indices.push(idx);
                         });
+                        const tooMany = (satResult.coveredPrefixes?.length ?? 0) > 1000;
                         return <div style={{
                           ...(groups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
                           marginTop: 4,
@@ -1620,6 +1670,26 @@ export default function App() {
                             const a = compName(resolvePosition(ast, group.posA)?.n) ?? group.posA.join(',');
                             const b = compName(resolvePosition(ast, group.posB)?.n) ?? group.posB.join(',');
                             const allSelected = group.indices.every(i => satSelected.has(i));
+                            const prefixLens = group.indices.map(idx => satResult.coveredPrefixes?.[idx]?.length).filter(l => l != null);
+                            const lenRange = prefixLens.length === 0 ? '' : (() => { const lo = Math.min(...prefixLens), hi = Math.max(...prefixLens); return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`; })();
+                            const prefixCount = group.indices.length;
+                            if (tooMany) {
+                              return <div key={gi} style={{ fontWeight: 'normal' }}>
+                                <span
+                                  onClick={() => setSatSelected(prev => {
+                                    const s = new Set(prev);
+                                    if (allSelected) group.indices.forEach(i => s.delete(i));
+                                    else group.indices.forEach(i => s.add(i));
+                                    return s;
+                                  })}
+                                  style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
+                                  <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                                </span>
+                                <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
+                                  {prefixCount} {prefixCount === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                                </span>
+                              </div>;
+                            }
                             const prefixes = group.indices.map(idx => {
                               const prefix = satResult.coveredPrefixes?.[idx];
                               return prefix
@@ -1645,7 +1715,7 @@ export default function App() {
                                   }); }}
                                   style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
                                   title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}</span>
+                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
                                 {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
                                   {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
                                 </div>}
@@ -1666,7 +1736,11 @@ export default function App() {
                         {(() => {
                           const n = new Set(satResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size;
                           const m = satResult.coveredPrefixes?.length ?? satResult.coveringPairs.length;
-                          return `${n} ${n === 1 ? 'pair' : 'pairs'} in the cover covering ${m} ${m === 1 ? 'prefix' : 'prefixes'}:`;
+                          const lens = (satResult.coveredPrefixes || []).map(p => p.length);
+                          const lo = lens.length ? Math.min(...lens) : 0;
+                          const hi = lens.length ? Math.max(...lens) : 0;
+                          const range = lens.length === 0 ? '' : lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`;
+                          return `${n} ${n === 1 ? 'pair' : 'pairs'} in the cover covering ${m} ${m === 1 ? 'prefix' : 'prefixes'}${range}:`;
                         })()}
                         {' '}
                         <a href="#" onClick={e => { e.preventDefault(); setSatSelected(new Set(satResult.coveringPairs.map((_, i) => i))); }}
@@ -1718,6 +1792,7 @@ export default function App() {
                           }
                           groups[groupMap[key]].indices.push(idx);
                         });
+                        const tooMany = (satResult.coveredPrefixes?.length ?? 0) > 1000;
                         return <div style={{
                           ...(groups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
                           marginTop: 4,
@@ -1726,6 +1801,26 @@ export default function App() {
                             const a = compName(resolvePosition(ast, group.posA)?.n) ?? group.posA.join(',');
                             const b = compName(resolvePosition(ast, group.posB)?.n) ?? group.posB.join(',');
                             const allSelected = group.indices.every(i => satSelected.has(i));
+                            const prefixLens = group.indices.map(idx => satResult.coveredPrefixes?.[idx]?.length).filter(l => l != null);
+                            const lenRange = prefixLens.length === 0 ? '' : (() => { const lo = Math.min(...prefixLens), hi = Math.max(...prefixLens); return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`; })();
+                            const prefixCount = group.indices.length;
+                            if (tooMany) {
+                              return <div key={gi} style={{ fontWeight: 'normal' }}>
+                                <span
+                                  onClick={() => setSatSelected(prev => {
+                                    const s = new Set(prev);
+                                    if (allSelected) group.indices.forEach(i => s.delete(i));
+                                    else group.indices.forEach(i => s.add(i));
+                                    return s;
+                                  })}
+                                  style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
+                                  <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                                </span>
+                                <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
+                                  {prefixCount} {prefixCount === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                                </span>
+                              </div>;
+                            }
                             const prefixes = group.indices.map(idx => {
                               const prefix = satResult.coveredPrefixes?.[idx];
                               return prefix
@@ -1751,7 +1846,7 @@ export default function App() {
                                   }); }}
                                   style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
                                   title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}</span>
+                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
                                 {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
                                   {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
                                 </div>}
@@ -1898,7 +1993,11 @@ export default function App() {
                         const isPartial = pathsResult.uncoveredPaths.length > 0 || pathsResult.hitLimit;
                         const n = new Set(pathsResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size;
                         const m = pathsResult.coveredPrefixes?.length ?? pathsResult.coveringPairs.length;
-                        return `${n} ${n === 1 ? 'pair' : 'pairs'} in the ${isPartial ? 'partial ' : ''}cover covering ${m} ${m === 1 ? 'prefix' : 'prefixes'}:`;
+                        const lens = (pathsResult.coveredPrefixes || []).map(p => p.length);
+                        const lo = lens.length ? Math.min(...lens) : 0;
+                        const hi = lens.length ? Math.max(...lens) : 0;
+                        const range = lens.length === 0 ? '' : lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`;
+                        return `${n} ${n === 1 ? 'pair' : 'pairs'} in the ${isPartial ? 'partial ' : ''}cover covering ${m} ${m === 1 ? 'prefix' : 'prefixes'}${range}:`;
                       })()}
                       {' '}
                       <a href="#" onClick={e => { e.preventDefault(); setPathsSelected(new Set(pathsResult.coveringPairs.map((_, i) => i))); }}
@@ -1950,6 +2049,7 @@ export default function App() {
                         }
                         groups[groupMap[key]].indices.push(idx);
                       });
+                      const tooMany = (pathsResult.coveredPrefixes?.length ?? 0) > 1000;
                       return <div style={{
                         ...(groups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
                         marginTop: 4,
@@ -1958,6 +2058,26 @@ export default function App() {
                           const a = resName(group.posA);
                           const b = resName(group.posB);
                           const allSelected = group.indices.every(i => pathsSelected.has(i));
+                          const prefixLens = group.indices.map(idx => pathsResult.coveredPrefixes?.[idx]?.length).filter(l => l != null);
+                          const lenRange = prefixLens.length === 0 ? '' : (() => { const lo = Math.min(...prefixLens), hi = Math.max(...prefixLens); return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`; })();
+                          const prefixCount = group.indices.length;
+                          if (tooMany) {
+                            return <div key={gi} style={{ fontWeight: 'normal' }}>
+                              <span
+                                onClick={() => setPathsSelected(prev => {
+                                  const s = new Set(prev);
+                                  if (allSelected) group.indices.forEach(i => s.delete(i));
+                                  else group.indices.forEach(i => s.add(i));
+                                  return s;
+                                })}
+                                style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
+                                <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                              </span>
+                              <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
+                                {prefixCount} {prefixCount === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                              </span>
+                            </div>;
+                          }
                           const prefixes = group.indices.map(idx => {
                             const prefix = pathsResult.coveredPrefixes?.[idx];
                             return prefix
@@ -1983,7 +2103,7 @@ export default function App() {
                                 }); }}
                                 style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
                                 title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                              >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}</span>
+                              >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
                               {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
                                 {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
                               </div>}

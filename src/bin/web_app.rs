@@ -4,9 +4,9 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use logic::matrix::CancelHandle;
+use logic::matrix::{CancelHandle, Cover, PathPrefix};
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, sync::{Arc, Mutex}};
+use std::{collections::HashMap, path::PathBuf, sync::{Arc, Mutex}};
 use tower_http::cors::{Any, CorsLayer};
 use xq::{module_loader::PreludeLoader, run_query, Value as XqValue};
 
@@ -19,13 +19,66 @@ struct JqLibEntry {
     content: String,
 }
 
-/// Snapshot of an in-progress paths job. Mirrors `PathsResponse`.
-#[derive(Default, Clone, Serialize)]
+const PREFIX_DETAIL_LIMIT: usize = 1000;
+
+/// A deduplicated cover group: one unique complementary pair with stats about
+/// how many path prefixes it covers.
+#[derive(Clone, Default, Serialize)]
+struct CoverGroup {
+    pair: (Vec<usize>, Vec<usize>),
+    count: usize,
+    prefix_length_min: usize,
+    prefix_length_max: usize,
+    /// Full prefix position arrays — only populated when total prefix count ≤ PREFIX_DETAIL_LIMIT.
+    prefixes: Vec<Vec<Vec<usize>>>,
+}
+
+fn pair_key(pair: &(Vec<usize>, Vec<usize>)) -> String {
+    format!("{}|{}", pair.0.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","),
+                     pair.1.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))
+}
+
+fn build_cover_groups(pairs: &Cover, prefixes: &[PathPrefix]) -> (Vec<CoverGroup>, usize) {
+    let total = pairs.len();
+    let include_prefixes = total <= PREFIX_DETAIL_LIMIT;
+    let mut groups: Vec<CoverGroup> = Vec::new();
+    let mut map: HashMap<String, usize> = HashMap::new();
+    for (pair, prefix) in pairs.iter().zip(prefixes.iter()) {
+        let key = pair_key(pair);
+        let len = prefix.len();
+        let gi = if let Some(&gi) = map.get(&key) {
+            gi
+        } else {
+            let gi = groups.len();
+            map.insert(key, gi);
+            groups.push(CoverGroup {
+                pair: pair.clone(),
+                count: 0,
+                prefix_length_min: usize::MAX,
+                prefix_length_max: 0,
+                prefixes: Vec::new(),
+            });
+            gi
+        };
+        let g = &mut groups[gi];
+        g.count += 1;
+        g.prefix_length_min = g.prefix_length_min.min(len);
+        g.prefix_length_max = g.prefix_length_max.max(len);
+        if include_prefixes {
+            g.prefixes.push(prefix.clone());
+        }
+    }
+    (groups, total)
+}
+
+/// Snapshot of an in-progress paths job.
+#[derive(Default, Clone)]
 struct PathsSnapshot {
     uncovered_paths:          Vec<String>,
     uncovered_path_positions: Vec<Vec<Vec<usize>>>,
-    covering_pairs:           Vec<(Vec<usize>, Vec<usize>)>,
-    covered_path_prefixes:    Vec<Vec<Vec<usize>>>,
+    cover_groups:             Vec<CoverGroup>,
+    group_map:                HashMap<String, usize>,
+    total_prefix_count:       usize,
     hit_limit:                bool,
 }
 
@@ -229,8 +282,8 @@ struct ValidResponse {
     valid:                      Option<bool>,
     path:                       Option<String>,
     uncovered_path_positions:   Option<Vec<Vec<usize>>>,
-    covering_pairs:             Option<Vec<(Vec<usize>, Vec<usize>)>>,
-    covered_path_prefixes:      Option<Vec<Vec<Vec<usize>>>>,
+    cover_groups:               Option<Vec<CoverGroup>>,
+    total_prefix_count:         Option<usize>,
     error:                      Option<String>,
 }
 
@@ -238,8 +291,8 @@ struct ValidResponse {
 struct PathsStatusResponse {
     uncovered_paths:            Vec<String>,
     uncovered_path_positions:   Vec<Vec<Vec<usize>>>,
-    covering_pairs:             Vec<(Vec<usize>, Vec<usize>)>,
-    covered_path_prefixes:      Vec<Vec<Vec<usize>>>,
+    cover_groups:               Vec<CoverGroup>,
+    total_prefix_count:         usize,
     hit_limit:                  bool,
     running:                    bool,
     is_complement:              bool,
@@ -251,8 +304,8 @@ struct SatisfiableResponse {
     satisfiable:                Option<bool>,
     path:                       Option<String>,
     uncovered_path_positions:   Option<Vec<Vec<usize>>>,
-    covering_pairs:             Option<Vec<(Vec<usize>, Vec<usize>)>>,
-    covered_path_prefixes:      Option<Vec<Vec<Vec<usize>>>>,
+    cover_groups:               Option<Vec<CoverGroup>>,
+    total_prefix_count:         Option<usize>,
     error:                      Option<String>,
 }
 
@@ -265,14 +318,17 @@ async fn simplify_handler(Json(req): Json<FormulaRequest>) -> Json<SimplifyRespo
 
 async fn valid_handler(Json(req): Json<FormulaRequest>) -> Json<ValidResponse> {
     match logic::check_valid(&req.formula) {
-        Ok((v, path, positions, pairs, prefixes)) => Json(ValidResponse {
-            valid: Some(v), path,
-            uncovered_path_positions: positions,
-            covering_pairs: Some(pairs),
-            covered_path_prefixes: Some(prefixes),
-            error: None,
-        }),
-        Err(e) => Json(ValidResponse { valid: None, path: None, uncovered_path_positions: None, covering_pairs: None, covered_path_prefixes: None, error: Some(e) }),
+        Ok((v, path, positions, pairs, prefixes)) => {
+            let (groups, total) = build_cover_groups(&pairs, &prefixes);
+            Json(ValidResponse {
+                valid: Some(v), path,
+                uncovered_path_positions: positions,
+                cover_groups: Some(groups),
+                total_prefix_count: Some(total),
+                error: None,
+            })
+        }
+        Err(e) => Json(ValidResponse { valid: None, path: None, uncovered_path_positions: None, cover_groups: None, total_prefix_count: None, error: Some(e) }),
     }
 }
 
@@ -320,8 +376,36 @@ async fn paths_handler(
             let mut job = job_state.lock().unwrap();
             match class {
                 PathsClass::Covered(cp) => {
-                    job.snapshot.covering_pairs.push(cp.cover);
-                    job.snapshot.covered_path_prefixes.push(cp.prefix);
+                    let key = pair_key(&cp.cover);
+                    let len = cp.prefix.len();
+                    let snap = &mut job.snapshot;
+                    snap.total_prefix_count += 1;
+                    let gi = if let Some(&gi) = snap.group_map.get(&key) {
+                        gi
+                    } else {
+                        let gi = snap.cover_groups.len();
+                        snap.group_map.insert(key, gi);
+                        snap.cover_groups.push(CoverGroup {
+                            pair: cp.cover,
+                            count: 0,
+                            prefix_length_min: usize::MAX,
+                            prefix_length_max: 0,
+                            prefixes: Vec::new(),
+                        });
+                        gi
+                    };
+                    let g = &mut snap.cover_groups[gi];
+                    g.count += 1;
+                    g.prefix_length_min = g.prefix_length_min.min(len);
+                    g.prefix_length_max = g.prefix_length_max.max(len);
+                    if snap.total_prefix_count <= PREFIX_DETAIL_LIMIT {
+                        g.prefixes.push(cp.prefix);
+                    } else if snap.total_prefix_count == PREFIX_DETAIL_LIMIT + 1 {
+                        // Just crossed — clear all accumulated prefixes.
+                        for grp in &mut snap.cover_groups {
+                            grp.prefixes.clear();
+                        }
+                    }
                 }
                 PathsClass::Uncovered(p) => {
                     job.snapshot.uncovered_paths.push(format_path(&p, &target, &vars));
@@ -344,8 +428,8 @@ async fn paths_status_handler(State(state): State<AppState>) -> Json<PathsStatus
     Json(PathsStatusResponse {
         uncovered_paths:          job.snapshot.uncovered_paths.clone(),
         uncovered_path_positions: job.snapshot.uncovered_path_positions.clone(),
-        covering_pairs:           job.snapshot.covering_pairs.clone(),
-        covered_path_prefixes:    job.snapshot.covered_path_prefixes.clone(),
+        cover_groups:             job.snapshot.cover_groups.clone(),
+        total_prefix_count:       job.snapshot.total_prefix_count,
         hit_limit:                job.snapshot.hit_limit,
         running:                  job.running,
         is_complement:            job.is_complement,
@@ -362,14 +446,17 @@ async fn paths_cancel_handler(State(state): State<AppState>) -> Json<serde_json:
 
 async fn satisfiable_handler(Json(req): Json<FormulaRequest>) -> Json<SatisfiableResponse> {
     match logic::check_satisfiable(&req.formula) {
-        Ok((s, path, positions, pairs, prefixes)) => Json(SatisfiableResponse {
-            satisfiable: Some(s), path,
-            uncovered_path_positions: positions,
-            covering_pairs: Some(pairs),
-            covered_path_prefixes: Some(prefixes),
-            error: None,
-        }),
-        Err(e) => Json(SatisfiableResponse { satisfiable: None, path: None, uncovered_path_positions: None, covering_pairs: None, covered_path_prefixes: None, error: Some(e) }),
+        Ok((s, path, positions, pairs, prefixes)) => {
+            let (groups, total) = build_cover_groups(&pairs, &prefixes);
+            Json(SatisfiableResponse {
+                satisfiable: Some(s), path,
+                uncovered_path_positions: positions,
+                cover_groups: Some(groups),
+                total_prefix_count: Some(total),
+                error: None,
+            })
+        }
+        Err(e) => Json(SatisfiableResponse { satisfiable: None, path: None, uncovered_path_positions: None, cover_groups: None, total_prefix_count: None, error: Some(e) }),
     }
 }
 

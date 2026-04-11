@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useMemo } from "react";
-import { parse, complementAst, astToString, parseCoveringPairs, resolvePosition, VarLabel } from "./formula.jsx";
+import { parse, complementAst, astToString, resolvePosition, VarLabel } from "./formula.jsx";
 
 // ─── Cover context (for highlighting complementary pairs in diagrams) ──────────
 const CoverContext = createContext(null);
@@ -163,58 +163,45 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
 }
 
 // ─── Diagram with SVG arc connections for covering pairs ──────────────────────
-function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selectedIndices, highlightedPaths, complementView = false }) {
+function DiagramWithConnections({ node, coverGroups, selectedGroups, highlightedPaths, complementView = false }) {
   const containerRef = useRef(null);
   const [arcs, setArcs] = useState([]);
   const [pathLines, setPathLines] = useState([]);
 
-  const parsed = useMemo(
-    () => (coveringPairs?.length ? parseCoveringPairs(coveringPairs) : []),
-    [coveringPairs]
-  );
-
-  // Only include selected indices; preserve original index for consistent colors
-  const selected = selectedIndices;
+  // Each group is already a unique pair — no dedup needed.
+  const groups = coverGroups ?? [];
+  const selected = selectedGroups;
 
   const posToPairIndices = useMemo(() => {
     const m = {};
-    parsed.forEach(([posA, posB], i) => {
+    groups.forEach((g, i) => {
       if (!selected.has(i)) return;
-      const ka = posA.join(','), kb = posB.join(',');
+      const ka = g.pair[0].join(','), kb = g.pair[1].join(',');
       (m[ka] ??= []).push(i);
       (m[kb] ??= []).push(i);
     });
     return m;
-  }, [parsed, selected]);
+  }, [groups, selected]);
 
   const posToPrefixIndices = useMemo(() => {
     const m = {};
-    if (coveredPrefixes) {
-      coveredPrefixes.forEach((positions, i) => {
-        if (!selected.has(i)) return;
+    groups.forEach((g, gi) => {
+      if (!selected.has(gi) || !g.prefixes?.length) return;
+      g.prefixes.forEach(positions => {
         positions.forEach(pos => {
           const key = pos.join(',');
-          (m[key] ??= []).push(i);
+          (m[key] ??= []).push(gi);
         });
       });
-    }
-    return m;
-  }, [coveredPrefixes, selected]);
-
-  // Map each cover index to a group color (indices with same pair positions share a color)
-  const idxToGroupColor = useMemo(() => {
-    const m = {};
-    let groupIdx = 0;
-    const seen = {};
-    parsed.forEach(([posA, posB], i) => {
-      const key = posA.join(',') + '|' + posB.join(',');
-      if (!(key in seen)) {
-        seen[key] = groupIdx++;
-      }
-      m[i] = PAIR_COLORS[seen[key] % PAIR_COLORS.length];
     });
     return m;
-  }, [parsed]);
+  }, [groups, selected]);
+
+  const idxToGroupColor = useMemo(() => {
+    const m = {};
+    groups.forEach((_, i) => { m[i] = PAIR_COLORS[i % PAIR_COLORS.length]; });
+    return m;
+  }, [groups]);
 
   // Build set of positions highlighted by uncovered paths
   const posToHighlightIndices = useMemo(() => {
@@ -249,13 +236,12 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
   // Recompute arc positions and path lines after every render (DOM may have changed)
   useLayoutEffect(() => {
     if (!containerRef.current) return;
-    if (!parsed.length && !highlightedPaths?.length) {
+    if (!groups.length && !highlightedPaths?.length) {
       setArcs(prev => prev.length === 0 ? prev : []);
       setPathLines(prev => prev.length === 0 ? prev : []);
       return;
     }
     const container = containerRef.current;
-    // Walk offsetParent chain to get layout coords relative to container.
     const boundsOf = el => {
       let x = 0, y = 0, cur = el;
       while (cur && cur !== container) { x += cur.offsetLeft; y += cur.offsetTop; cur = cur.offsetParent; }
@@ -263,16 +249,16 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
     };
 
     const newArcs = [];
-    parsed.forEach(([posA, posB], pairIdx) => {
-      if (!selected.has(pairIdx)) return;
-      const da = container.querySelector(`[data-position="${posA.join(',')}"]`);
-      const db = container.querySelector(`[data-position="${posB.join(',')}"]`);
+    groups.forEach((g, gi) => {
+      if (!selected.has(gi)) return;
+      const da = container.querySelector(`[data-position="${g.pair[0].join(',')}"]`);
+      const db = container.querySelector(`[data-position="${g.pair[1].join(',')}"]`);
       if (!da || !db) return;
       const ba = boundsOf(da), bb = boundsOf(db);
       newArcs.push({
         x1: ba.x + ba.w / 2, y1: ba.y + ba.h / 2,
         x2: bb.x + bb.w / 2, y2: bb.y + bb.h / 2,
-        pairIdx,
+        pairIdx: gi,
       });
     });
 
@@ -283,8 +269,6 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
     const maxStack = 16;
     const barStep = effectiveMax <= 4 ? 4 : Math.max(1, maxStack / effectiveMax);
 
-    // Get the bar offset for a cover/highlight index at a position.
-    // Normal: offset below element. Complement: offset to the right.
     const barOffset = (posKey, coverIdx, isHighlight) => {
       const pairs = posToPairIndices[posKey] ?? [];
       const prefixes = (posToPrefixIndices[posKey] ?? []).filter(i => !pairs.includes(i));
@@ -298,19 +282,16 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
         if (ringIdx === -1) ringIdx = 0;
       }
       const row = ringIdx % barsPerCol;
-      return 2 + row * barStep - barStep / 2; // center of the bar
+      return 2 + row * barStep - barStep / 2;
     };
 
-    // Compute line endpoints for a connection between two positions
     const lineEndpoints = (ba, bb, offA, offB) => {
       if (complementView) {
-        // Bars on right side; after 90° CW rotation, layout top=visual right, bottom=visual left
         return {
           x1: ba.x + ba.w + offA, y1: ba.y,
           x2: bb.x + bb.w + offB, y2: bb.y + bb.h,
         };
       }
-      // Bars on bottom; connect right→left with y offset
       return {
         x1: ba.x + ba.w, y1: ba.y + ba.h + offA,
         x2: bb.x,        y2: bb.y + bb.h + offB,
@@ -319,22 +300,22 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
 
     // Path connection lines: connect consecutive positions via their specific bars
     const newPathLines = [];
-    if (coveredPrefixes) {
-      coveredPrefixes.forEach((positions, idx) => {
-        if (!selected.has(idx)) return;
-        const color = idxToGroupColor[idx] ?? PAIR_COLORS[idx % PAIR_COLORS.length];
+    groups.forEach((g, gi) => {
+      if (!selected.has(gi) || !g.prefixes?.length) return;
+      const color = idxToGroupColor[gi] ?? PAIR_COLORS[gi % PAIR_COLORS.length];
+      g.prefixes.forEach(positions => {
         for (let k = 0; k < positions.length - 1; k++) {
           const keyA = positions[k].join(','), keyB = positions[k + 1].join(',');
           const da = container.querySelector(`[data-position="${keyA}"]`);
           const db = container.querySelector(`[data-position="${keyB}"]`);
           if (!da || !db) continue;
           const ba = boundsOf(da), bb = boundsOf(db);
-          const offA = barOffset(keyA, idx, false);
-          const offB = barOffset(keyB, idx, false);
+          const offA = barOffset(keyA, gi, false);
+          const offB = barOffset(keyB, gi, false);
           newPathLines.push({ ...lineEndpoints(ba, bb, offA, offB), color });
         }
       });
-    }
+    });
     // Highlighted uncovered path lines
     if (highlightedPaths) {
       const UNCOV_COLORS = ['#d32f2f', '#f57c00', '#7b1fa2', '#00838f', '#c2185b', '#4e342e'];
@@ -383,8 +364,6 @@ function DiagramWithConnections({ node, coveringPairs, coveredPrefixes, selected
               const dx = arc.x2 - arc.x1, dy = arc.y2 - arc.y1;
               const dist = Math.sqrt(dx * dx + dy * dy) || 1;
               const voff = Math.max(28, dist * 0.4);
-              // Normal: control point above. Complement: control point to the left
-              // (after 90° CW rotation, "left in layout" = "above visually")
               const qcx = complementView ? Math.min(arc.x1, arc.x2) - voff : mx;
               const qcy = complementView ? my : Math.min(arc.y1, arc.y2) - voff;
               const color = idxToGroupColor[arc.pairIdx] ?? PAIR_COLORS[arc.pairIdx % PAIR_COLORS.length];
@@ -590,11 +569,13 @@ export default function App() {
   const [validSelected,  setValidSelected]  = useState(new Set()); // Set<number> of selected pair indices
   const [validExpanded,  setValidExpanded]  = useState(new Set()); // Set<number> of expanded group indices
   const [validUncovOn,   setValidUncovOn]   = useState(false);     // toggle uncovered path highlight
-  const [satResult,      setSatResult]      = useState(null); // {satisfiable, path, coveringPairs}
+  const [validPathExpanded, setValidPathExpanded] = useState(false); // show full uncovered path
+  const [satResult,      setSatResult]      = useState(null); // {satisfiable, path, coverGroups}
   const [satSelected,    setSatSelected]    = useState(new Set()); // Set<number> of selected pair indices
   const [satExpanded,    setSatExpanded]    = useState(new Set()); // Set<number> of expanded group indices
   const [satUncovOn,     setSatUncovOn]     = useState(false);     // toggle uncovered path highlight
-  const [pathsResult,    setPathsResult]    = useState(null); // {uncoveredPaths, coveringPairs, coveredPrefixes} | {error}
+  const [satPathExpanded, setSatPathExpanded] = useState(false);   // show full uncovered path
+  const [pathsResult,    setPathsResult]    = useState(null); // {uncoveredPaths, coverGroups, totalPrefixCount} | {error}
   const [pathsLimit,     setPathsLimit]     = useState(100);
   const [pathsComp,      setPathsComp]      = useState(false); // show paths of complement
   const [pathsSelected,  setPathsSelected]  = useState(new Set());
@@ -694,10 +675,12 @@ export default function App() {
     setValidSelected(new Set());
     setValidExpanded(new Set());
     setValidUncovOn(false);
+    setValidPathExpanded(false);
     setSatResult(null);
     setSatSelected(new Set());
     setSatExpanded(new Set());
     setSatUncovOn(false);
+    setSatPathExpanded(false);
     setPathsResult(null);
     setPathsSelected(new Set());
     setPathsExpanded(new Set());
@@ -800,8 +783,8 @@ export default function App() {
     setPathsResult({
       uncoveredPaths: data.uncovered_paths,
       uncoveredPositions: data.uncovered_path_positions,
-      coveringPairs: data.covering_pairs,
-      coveredPrefixes: data.covered_path_prefixes,
+      coverGroups: data.cover_groups,
+      totalPrefixCount: data.total_prefix_count,
       hitLimit: data.hit_limit,
       isComplement: complementFlag,
     });
@@ -826,7 +809,7 @@ export default function App() {
     setPathsRunning(true);
     setPathsResult({
       uncoveredPaths: [], uncoveredPositions: [],
-      coveringPairs: [], coveredPrefixes: [],
+      coverGroups: [], totalPrefixCount: 0,
       hitLimit: false, isComplement: pathsComp,
     });
     setComplementData(pathsComp);
@@ -895,7 +878,7 @@ export default function App() {
       });
       const data = await res.json();
       if (data.error) setValidResult({ error: data.error });
-      else            setValidResult({ valid: data.valid, path: data.path, uncoveredPositions: data.uncovered_path_positions, coveringPairs: data.covering_pairs, coveredPrefixes: data.covered_path_prefixes });
+      else            setValidResult({ valid: data.valid, path: data.path, uncoveredPositions: data.uncovered_path_positions, coverGroups: data.cover_groups, totalPrefixCount: data.total_prefix_count });
     } catch (e) {
       setValidResult({ error: 'Could not reach Rust service' });
     }
@@ -915,7 +898,7 @@ export default function App() {
       if (data.error) {
         setSatResult({ error: data.error });
       } else {
-        setSatResult({ satisfiable: data.satisfiable, path: data.path, uncoveredPositions: data.uncovered_path_positions, coveringPairs: data.covering_pairs, coveredPrefixes: data.covered_path_prefixes });
+        setSatResult({ satisfiable: data.satisfiable, path: data.path, uncoveredPositions: data.uncovered_path_positions, coverGroups: data.cover_groups, totalPrefixCount: data.total_prefix_count });
         // Cover and uncovered paths are from the complement — auto-show it
         if (ast) {
           setComplementData(true);
@@ -1239,12 +1222,8 @@ export default function App() {
             <DiagramWithConnections
               node={ast}
               complementView={!!complementData}
-              coveringPairs={pathsResult?.coveringPairs ?? (complementData ? satResult?.coveringPairs : validResult?.coveringPairs) ?? null}
-              coveredPrefixes={(() => {
-                const p = pathsResult?.coveredPrefixes ?? (complementData ? satResult?.coveredPrefixes : validResult?.coveredPrefixes) ?? null;
-                return p && p.length > 1000 ? null : p;
-              })()}
-              selectedIndices={pathsResult?.coveringPairs ? pathsSelected : (complementData ? satSelected : validSelected)}
+              coverGroups={pathsResult?.coverGroups ?? (complementData ? satResult?.coverGroups : validResult?.coverGroups) ?? null}
+              selectedGroups={pathsResult?.coverGroups ? pathsSelected : (complementData ? satSelected : validSelected)}
               highlightedPaths={(() => {
                 const paths = [
                   ...(pathsResult?.uncoveredPositions?.filter((_, i) => pathsUncovSel.has(i)) ?? []),
@@ -1262,7 +1241,7 @@ export default function App() {
                 Simplified — <span style={{ fontFamily: 'Georgia, serif' }}>{simplified.formula}</span>
               </div>
               <ZoomPanWrapper key={simplified.formula} bg='#f0fff4' border='1px solid #b2e0b2'>
-                <DiagramWithConnections node={simplified.ast} coveringPairs={null} coveredPrefixes={null} selectedIndices={new Set()} highlightedPaths={null} />
+                <DiagramWithConnections node={simplified.ast} coverGroups={null} selectedGroups={new Set()} highlightedPaths={null} />
               </ZoomPanWrapper>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
                 {btn('Use simplified formula', () => setInput(simplified.formula), '#2a7a2a')}
@@ -1327,158 +1306,113 @@ export default function App() {
             : validResult.valid
               ? <span>
                   ✓ Valid — all paths are covered
-                  {validResult.coveringPairs?.length > 0 && ast && (
-                    <span>
+                  {validResult.coverGroups?.length > 0 && ast && (() => {
+                    const resName = pos => resolvePosition(ast, pos)?.n ?? pos.join(',');
+                    const tooMany = (validResult.totalPrefixCount ?? 0) > 1000;
+                    return <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
-                        {(() => {
-                          const n = new Set(validResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size;
-                          const m = validResult.coveredPrefixes?.length ?? validResult.coveringPairs.length;
-                          const lens = (validResult.coveredPrefixes || []).map(p => p.length);
-                          const lo = lens.length ? Math.min(...lens) : 0;
-                          const hi = lens.length ? Math.max(...lens) : 0;
-                          const range = lens.length === 0 ? '' : lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`;
-                          return `${n} ${n === 1 ? 'pair' : 'pairs'} in the cover covering ${m} ${m === 1 ? 'prefix' : 'prefixes'}${range}:`;
-                        })()}
+                        {validResult.coverGroups.length} {validResult.coverGroups.length === 1 ? 'pair' : 'pairs'} in the cover covering {validResult.totalPrefixCount} {validResult.totalPrefixCount === 1 ? 'prefix' : 'prefixes'}{(() => {
+                          const lo = Math.min(...validResult.coverGroups.map(g => g.prefix_length_min));
+                          const hi = Math.max(...validResult.coverGroups.map(g => g.prefix_length_max));
+                          return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`;
+                        })()}:
                         {' '}
-                        <a href="#" onClick={e => { e.preventDefault(); setValidSelected(new Set(validResult.coveringPairs.map((_, i) => i))); }}
+                        <a href="#" onClick={e => { e.preventDefault(); setValidSelected(new Set(validResult.coverGroups.map((_, i) => i))); }}
                            style={{ fontSize: 11, color: '#888' }}>all</a>
                         {' · '}
                         <a href="#" onClick={e => { e.preventDefault(); setValidSelected(new Set()); }}
                            style={{ fontSize: 11, color: '#888' }}>none</a>
-                        {(() => {
-                          // Build variable→cover-indices map (strip primes to get base variable)
-                          const varIndices = {};
-                          validResult.coveringPairs.forEach(([posA, posB], i) => {
-                            const a = resolvePosition(ast, posA)?.n ?? posA.join(',');
-                            const base = a.replace(/'$/,'');
-                            (varIndices[base] ??= new Set()).add(i);
-                          });
-                          const vars = Object.keys(varIndices).sort();
-                          return <>
-                            {' · '}
-                            {vars.map((v, j) => {
-                              const indices = [...varIndices[v]];
-                              const allOn = indices.every(i => validSelected.has(i));
-                              return <span key={v}>
-                                {j > 0 && ' '}
-                                <a href="#" onClick={e => {
-                                  e.preventDefault();
-                                  setValidSelected(prev => {
-                                    const s = new Set(prev);
-                                    if (allOn) indices.forEach(i => s.delete(i));
-                                    else indices.forEach(i => s.add(i));
-                                    return s;
-                                  });
-                                }} style={{
-                                  fontSize: 11, fontFamily: 'Georgia, serif',
-                                  color: allOn ? '#333' : '#888',
-                                  fontWeight: allOn ? 'bold' : 'normal',
-                                }}>{v}</a>
-                              </span>;
-                            })}
-                          </>;
-                        })()}
                       </span>
-                      {(() => {
-                        // Group pairs by their position key
-                        const groups = [];
-                        const groupMap = {};
-                        validResult.coveringPairs.forEach(([posA, posB], idx) => {
-                          const key = posA.join(',') + '|' + posB.join(',');
-                          if (!(key in groupMap)) {
-                            groupMap[key] = groups.length;
-                            groups.push({ posA, posB, indices: [] });
-                          }
-                          groups[groupMap[key]].indices.push(idx);
-                        });
-                        const tooMany = (validResult.coveredPrefixes?.length ?? 0) > 1000;
-                        return <div style={{
-                          ...(groups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
-                          marginTop: 4,
-                        }}>
-                          {groups.map((group, gi) => {
-                            const a = resolvePosition(ast, group.posA)?.n ?? group.posA.join(',');
-                            const b = resolvePosition(ast, group.posB)?.n ?? group.posB.join(',');
-                            const allSelected = group.indices.every(i => validSelected.has(i));
-                            const prefixLens = group.indices.map(idx => validResult.coveredPrefixes?.[idx]?.length).filter(l => l != null);
-                            const lenRange = prefixLens.length === 0 ? '' : (() => { const lo = Math.min(...prefixLens), hi = Math.max(...prefixLens); return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`; })();
-                            const prefixCount = group.indices.length;
-                            if (tooMany) {
-                              return <div key={gi} style={{ fontWeight: 'normal' }}>
-                                <span
-                                  onClick={() => setValidSelected(prev => {
-                                    const s = new Set(prev);
-                                    if (allSelected) group.indices.forEach(i => s.delete(i));
-                                    else group.indices.forEach(i => s.add(i));
-                                    return s;
-                                  })}
-                                  style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
-                                  <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
-                                </span>
-                                <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
-                                  {prefixCount} {prefixCount === 1 ? 'prefix' : 'prefixes'}{lenRange}
-                                </span>
-                              </div>;
-                            }
-                            const prefixes = group.indices.map(idx => {
-                              const prefix = validResult.coveredPrefixes?.[idx];
-                              return prefix
-                                ? '{' + prefix.map(p => resolvePosition(ast, p)?.n ?? p.join(',')).join(', ') + '}'
-                                : null;
-                            }).filter(Boolean);
-                            const expanded = validExpanded.has(gi);
+                      <div style={{
+                        ...(validResult.coverGroups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
+                        marginTop: 4,
+                      }}>
+                        {validResult.coverGroups.map((g, gi) => {
+                          const a = resName(g.pair[0]);
+                          const b = resName(g.pair[1]);
+                          const isSelected = validSelected.has(gi);
+                          const lenRange = g.prefix_length_min === g.prefix_length_max
+                            ? ` ${g.prefix_length_min} long`
+                            : ` ${g.prefix_length_min}..${g.prefix_length_max} long`;
+                          if (tooMany || !g.prefixes?.length) {
                             return <div key={gi} style={{ fontWeight: 'normal' }}>
-                              <span
-                                onClick={() => setValidSelected(prev => {
-                                  const s = new Set(prev);
-                                  if (allSelected) group.indices.forEach(i => s.delete(i));
-                                  else group.indices.forEach(i => s.add(i));
-                                  return s;
-                                })}
-                                style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
+                              <span onClick={() => setValidSelected(prev => {
+                                const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                              })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
                                 <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
                               </span>
-                              {prefixes.length > 0 && <>
-                                <span
-                                  onClick={e => { e.stopPropagation(); setValidExpanded(prev => {
-                                    const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
-                                  }); }}
-                                  style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
-                                  title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
-                                {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
-                                  {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
-                                </div>}
-                              </>}
+                              <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
+                                {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                              </span>
                             </div>;
-                          })}
-                        </div>;
-                      })()}
-                    </span>
-                  )}
+                          }
+                          const prefixes = g.prefixes.map(p =>
+                            '{' + p.map(pos => resName(pos)).join(', ') + '}'
+                          );
+                          const expanded = validExpanded.has(gi);
+                          return <div key={gi} style={{ fontWeight: 'normal' }}>
+                            <span onClick={() => setValidSelected(prev => {
+                              const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                            })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
+                              <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                            </span>
+                            {prefixes.length > 0 && <>
+                              <span onClick={e => { e.stopPropagation(); setValidExpanded(prev => {
+                                const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                              }); }}
+                                style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
+                                title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
+                              >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
+                              {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
+                                {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
+                              </div>}
+                            </>}
+                          </div>;
+                        })}
+                      </div>
+                    </span>;
+                  })()}
                 </span>
               : <span>
                   ✗ Not valid — uncovered path: <span
                     onClick={() => setValidUncovOn(prev => !prev)}
                     style={{ cursor: 'pointer', opacity: validUncovOn ? 1 : 0.35 }}>
-                    <b style={{ fontFamily: 'Georgia, serif' }}>{validResult.path}</b>
+                    <b style={{ fontFamily: 'Georgia, serif' }}>{(() => {
+                      const p = validResult.path;
+                      if (!p || validPathExpanded) return p;
+                      // Truncate to first 10 literals: "{a, b, c, ...}"
+                      const inner = p.startsWith('{') && p.endsWith('}') ? p.slice(1, -1) : null;
+                      if (!inner) return p;
+                      const lits = inner.split(', ');
+                      if (lits.length <= 10) return p;
+                      return '{' + lits.slice(0, 10).join(', ') + ', ';
+                    })()}</b>{!validPathExpanded && validResult.path && (() => {
+                      const inner = validResult.path.startsWith('{') && validResult.path.endsWith('}') ? validResult.path.slice(1, -1) : null;
+                      if (!inner) return null;
+                      const lits = inner.split(', ');
+                      if (lits.length <= 10) return null;
+                      return <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidPathExpanded(true); }}
+                        style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…}'}</a>;
+                    })()}
                   </span>
-                  {validResult.coveringPairs?.length > 0 && ast && (
-                    <span>
+                  {validResult.coverGroups?.length > 0 && ast && (() => {
+                    const resName = pos => resolvePosition(ast, pos)?.n ?? pos.join(',');
+                    const tooMany = (validResult.totalPrefixCount ?? 0) > 1000;
+                    return <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
-                        partial cover: {new Set(validResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size} pairs
+                        partial cover: {validResult.coverGroups.length} {validResult.coverGroups.length === 1 ? 'pair' : 'pairs'}
                         {' '}
-                        <a href="#" onClick={e => { e.preventDefault(); setValidSelected(new Set(validResult.coveringPairs.map((_, i) => i))); }}
+                        <a href="#" onClick={e => { e.preventDefault(); setValidSelected(new Set(validResult.coverGroups.map((_, i) => i))); }}
                            style={{ fontSize: 11, color: '#888' }}>all</a>
                         {' · '}
                         <a href="#" onClick={e => { e.preventDefault(); setValidSelected(new Set()); }}
                            style={{ fontSize: 11, color: '#888' }}>none</a>
                         {(() => {
                           const varIndices = {};
-                          validResult.coveringPairs.forEach(([posA, posB], i) => {
-                            const a = resolvePosition(ast, posA)?.n ?? posA.join(',');
+                          validResult.coverGroups.forEach((g, i) => {
+                            const a = resName(g.pair[0]);
                             const base = a.replace(/'$/,'');
                             (varIndices[base] ??= new Set()).add(i);
                           });
@@ -1508,82 +1442,55 @@ export default function App() {
                           </>;
                         })()}
                       </span>
-                      {(() => {
-                        const groups = [];
-                        const groupMap = {};
-                        validResult.coveringPairs.forEach(([posA, posB], idx) => {
-                          const key = posA.join(',') + '|' + posB.join(',');
-                          if (!(key in groupMap)) {
-                            groupMap[key] = groups.length;
-                            groups.push({ posA, posB, indices: [] });
-                          }
-                          groups[groupMap[key]].indices.push(idx);
-                        });
-                        const tooMany = (validResult.coveredPrefixes?.length ?? 0) > 1000;
-                        return <div style={{
-                          ...(groups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
-                          marginTop: 4,
-                        }}>
-                          {groups.map((group, gi) => {
-                            const a = resolvePosition(ast, group.posA)?.n ?? group.posA.join(',');
-                            const b = resolvePosition(ast, group.posB)?.n ?? group.posB.join(',');
-                            const allSelected = group.indices.every(i => validSelected.has(i));
-                            const prefixLens = group.indices.map(idx => validResult.coveredPrefixes?.[idx]?.length).filter(l => l != null);
-                            const lenRange = prefixLens.length === 0 ? '' : (() => { const lo = Math.min(...prefixLens), hi = Math.max(...prefixLens); return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`; })();
-                            const prefixCount = group.indices.length;
-                            if (tooMany) {
-                              return <div key={gi} style={{ fontWeight: 'normal' }}>
-                                <span
-                                  onClick={() => setValidSelected(prev => {
-                                    const s = new Set(prev);
-                                    if (allSelected) group.indices.forEach(i => s.delete(i));
-                                    else group.indices.forEach(i => s.add(i));
-                                    return s;
-                                  })}
-                                  style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
-                                  <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
-                                </span>
-                                <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
-                                  {prefixCount} {prefixCount === 1 ? 'prefix' : 'prefixes'}{lenRange}
-                                </span>
-                              </div>;
-                            }
-                            const prefixes = group.indices.map(idx => {
-                              const prefix = validResult.coveredPrefixes?.[idx];
-                              return prefix
-                                ? '{' + prefix.map(p => resolvePosition(ast, p)?.n ?? p.join(',')).join(', ') + '}'
-                                : null;
-                            }).filter(Boolean);
-                            const expanded = validExpanded.has(gi);
+                      <div style={{
+                        ...(validResult.coverGroups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
+                        marginTop: 4,
+                      }}>
+                        {validResult.coverGroups.map((g, gi) => {
+                          const a = resName(g.pair[0]);
+                          const b = resName(g.pair[1]);
+                          const isSelected = validSelected.has(gi);
+                          const lenRange = g.prefix_length_min === g.prefix_length_max
+                            ? ` ${g.prefix_length_min} long`
+                            : ` ${g.prefix_length_min}..${g.prefix_length_max} long`;
+                          if (tooMany || !g.prefixes?.length) {
                             return <div key={gi} style={{ fontWeight: 'normal' }}>
-                              <span
-                                onClick={() => setValidSelected(prev => {
-                                  const s = new Set(prev);
-                                  if (allSelected) group.indices.forEach(i => s.delete(i));
-                                  else group.indices.forEach(i => s.add(i));
-                                  return s;
-                                })}
-                                style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
+                              <span onClick={() => setValidSelected(prev => {
+                                const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                              })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
                                 <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
                               </span>
-                              {prefixes.length > 0 && <>
-                                <span
-                                  onClick={e => { e.stopPropagation(); setValidExpanded(prev => {
-                                    const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
-                                  }); }}
-                                  style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
-                                  title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
-                                {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
-                                  {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
-                                </div>}
-                              </>}
+                              <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
+                                {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                              </span>
                             </div>;
-                          })}
-                        </div>;
-                      })()}
-                    </span>
-                  )}
+                          }
+                          const prefixes = g.prefixes.map(p =>
+                            '{' + p.map(pos => resName(pos)).join(', ') + '}'
+                          );
+                          const expanded = validExpanded.has(gi);
+                          return <div key={gi} style={{ fontWeight: 'normal' }}>
+                            <span onClick={() => setValidSelected(prev => {
+                              const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                            })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
+                              <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                            </span>
+                            {prefixes.length > 0 && <>
+                              <span onClick={e => { e.stopPropagation(); setValidExpanded(prev => {
+                                const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                              }); }}
+                                style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
+                                title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
+                              >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
+                              {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
+                                {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
+                              </div>}
+                            </>}
+                          </div>;
+                        })}
+                      </div>
+                    </span>;
+                  })()}
                 </span>}
         </div>
       )}
@@ -1604,23 +1511,40 @@ export default function App() {
                   ✓ Satisfiable — uncovered path in complement: <span
                     onClick={() => setSatUncovOn(prev => !prev)}
                     style={{ cursor: 'pointer', opacity: satUncovOn ? 1 : 0.35 }}>
-                    <b style={{ fontFamily: 'Georgia, serif' }}>{satResult.path}</b>
+                    <b style={{ fontFamily: 'Georgia, serif' }}>{(() => {
+                      const p = satResult.path;
+                      if (!p || satPathExpanded) return p;
+                      const inner = p.startsWith('{') && p.endsWith('}') ? p.slice(1, -1) : null;
+                      if (!inner) return p;
+                      const lits = inner.split(', ');
+                      if (lits.length <= 10) return p;
+                      return '{' + lits.slice(0, 10).join(', ') + ', ';
+                    })()}</b>{!satPathExpanded && satResult.path && (() => {
+                      const inner = satResult.path.startsWith('{') && satResult.path.endsWith('}') ? satResult.path.slice(1, -1) : null;
+                      if (!inner) return null;
+                      const lits = inner.split(', ');
+                      if (lits.length <= 10) return null;
+                      return <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatPathExpanded(true); }}
+                        style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…}'}</a>;
+                    })()}
                   </span>
-                  {satResult.coveringPairs?.length > 0 && ast && (
-                    <span>
+                  {satResult.coverGroups?.length > 0 && ast && (() => {
+                    const resName = pos => compName(resolvePosition(ast, pos)?.n) ?? pos.join(',');
+                    const tooMany = (satResult.totalPrefixCount ?? 0) > 1000;
+                    return <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
-                        partial cover of complement: {new Set(satResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size} pairs
+                        partial cover of complement: {satResult.coverGroups.length} {satResult.coverGroups.length === 1 ? 'pair' : 'pairs'}
                         {' '}
-                        <a href="#" onClick={e => { e.preventDefault(); setSatSelected(new Set(satResult.coveringPairs.map((_, i) => i))); }}
+                        <a href="#" onClick={e => { e.preventDefault(); setSatSelected(new Set(satResult.coverGroups.map((_, i) => i))); }}
                            style={{ fontSize: 11, color: '#888' }}>all</a>
                         {' · '}
                         <a href="#" onClick={e => { e.preventDefault(); setSatSelected(new Set()); }}
                            style={{ fontSize: 11, color: '#888' }}>none</a>
                         {(() => {
                           const varIndices = {};
-                          satResult.coveringPairs.forEach(([posA, posB], i) => {
-                            const a = compName(resolvePosition(ast, posA)?.n) ?? posA.join(',');
+                          satResult.coverGroups.forEach((g, i) => {
+                            const a = resName(g.pair[0]);
                             const base = a.replace(/'$/,'');
                             (varIndices[base] ??= new Set()).add(i);
                           });
@@ -1650,213 +1574,125 @@ export default function App() {
                           </>;
                         })()}
                       </span>
-                      {(() => {
-                        const groups = [];
-                        const groupMap = {};
-                        satResult.coveringPairs.forEach(([posA, posB], idx) => {
-                          const key = posA.join(',') + '|' + posB.join(',');
-                          if (!(key in groupMap)) {
-                            groupMap[key] = groups.length;
-                            groups.push({ posA, posB, indices: [] });
-                          }
-                          groups[groupMap[key]].indices.push(idx);
-                        });
-                        const tooMany = (satResult.coveredPrefixes?.length ?? 0) > 1000;
-                        return <div style={{
-                          ...(groups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
-                          marginTop: 4,
-                        }}>
-                          {groups.map((group, gi) => {
-                            const a = compName(resolvePosition(ast, group.posA)?.n) ?? group.posA.join(',');
-                            const b = compName(resolvePosition(ast, group.posB)?.n) ?? group.posB.join(',');
-                            const allSelected = group.indices.every(i => satSelected.has(i));
-                            const prefixLens = group.indices.map(idx => satResult.coveredPrefixes?.[idx]?.length).filter(l => l != null);
-                            const lenRange = prefixLens.length === 0 ? '' : (() => { const lo = Math.min(...prefixLens), hi = Math.max(...prefixLens); return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`; })();
-                            const prefixCount = group.indices.length;
-                            if (tooMany) {
-                              return <div key={gi} style={{ fontWeight: 'normal' }}>
-                                <span
-                                  onClick={() => setSatSelected(prev => {
-                                    const s = new Set(prev);
-                                    if (allSelected) group.indices.forEach(i => s.delete(i));
-                                    else group.indices.forEach(i => s.add(i));
-                                    return s;
-                                  })}
-                                  style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
-                                  <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
-                                </span>
-                                <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
-                                  {prefixCount} {prefixCount === 1 ? 'prefix' : 'prefixes'}{lenRange}
-                                </span>
-                              </div>;
-                            }
-                            const prefixes = group.indices.map(idx => {
-                              const prefix = satResult.coveredPrefixes?.[idx];
-                              return prefix
-                                ? '{' + prefix.map(p => compName(resolvePosition(ast, p)?.n) ?? p.join(',')).join(', ') + '}'
-                                : null;
-                            }).filter(Boolean);
-                            const expanded = satExpanded.has(gi);
+                      <div style={{
+                        ...(satResult.coverGroups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
+                        marginTop: 4,
+                      }}>
+                        {satResult.coverGroups.map((g, gi) => {
+                          const a = resName(g.pair[0]);
+                          const b = resName(g.pair[1]);
+                          const isSelected = satSelected.has(gi);
+                          const lenRange = g.prefix_length_min === g.prefix_length_max
+                            ? ` ${g.prefix_length_min} long`
+                            : ` ${g.prefix_length_min}..${g.prefix_length_max} long`;
+                          if (tooMany || !g.prefixes?.length) {
                             return <div key={gi} style={{ fontWeight: 'normal' }}>
-                              <span
-                                onClick={() => setSatSelected(prev => {
-                                  const s = new Set(prev);
-                                  if (allSelected) group.indices.forEach(i => s.delete(i));
-                                  else group.indices.forEach(i => s.add(i));
-                                  return s;
-                                })}
-                                style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
+                              <span onClick={() => setSatSelected(prev => {
+                                const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                              })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
                                 <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
                               </span>
-                              {prefixes.length > 0 && <>
-                                <span
-                                  onClick={e => { e.stopPropagation(); setSatExpanded(prev => {
-                                    const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
-                                  }); }}
-                                  style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
-                                  title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
-                                {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
-                                  {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
-                                </div>}
-                              </>}
+                              <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
+                                {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                              </span>
                             </div>;
-                          })}
-                        </div>;
-                      })()}
-                    </span>
-                  )}
+                          }
+                          const prefixes = g.prefixes.map(p =>
+                            '{' + p.map(pos => resName(pos)).join(', ') + '}'
+                          );
+                          const expanded = satExpanded.has(gi);
+                          return <div key={gi} style={{ fontWeight: 'normal' }}>
+                            <span onClick={() => setSatSelected(prev => {
+                              const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                            })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
+                              <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                            </span>
+                            {prefixes.length > 0 && <>
+                              <span onClick={e => { e.stopPropagation(); setSatExpanded(prev => {
+                                const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                              }); }}
+                                style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
+                                title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
+                              >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
+                              {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
+                                {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
+                              </div>}
+                            </>}
+                          </div>;
+                        })}
+                      </div>
+                    </span>;
+                  })()}
                 </span>
               : <span>
                   ✗ Unsatisfiable — all paths in the complement are covered
-                  {satResult.coveringPairs?.length > 0 && ast && (
-                    <span>
+                  {satResult.coverGroups?.length > 0 && ast && (() => {
+                    const resName = pos => compName(resolvePosition(ast, pos)?.n) ?? pos.join(',');
+                    const tooMany = (satResult.totalPrefixCount ?? 0) > 1000;
+                    return <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
-                        {(() => {
-                          const n = new Set(satResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size;
-                          const m = satResult.coveredPrefixes?.length ?? satResult.coveringPairs.length;
-                          const lens = (satResult.coveredPrefixes || []).map(p => p.length);
-                          const lo = lens.length ? Math.min(...lens) : 0;
-                          const hi = lens.length ? Math.max(...lens) : 0;
-                          const range = lens.length === 0 ? '' : lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`;
-                          return `${n} ${n === 1 ? 'pair' : 'pairs'} in the cover covering ${m} ${m === 1 ? 'prefix' : 'prefixes'}${range}:`;
-                        })()}
+                        {satResult.coverGroups.length} {satResult.coverGroups.length === 1 ? 'pair' : 'pairs'} in the cover covering {satResult.totalPrefixCount} {satResult.totalPrefixCount === 1 ? 'prefix' : 'prefixes'}{(() => {
+                          const lo = Math.min(...satResult.coverGroups.map(g => g.prefix_length_min));
+                          const hi = Math.max(...satResult.coverGroups.map(g => g.prefix_length_max));
+                          return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`;
+                        })()}:
                         {' '}
-                        <a href="#" onClick={e => { e.preventDefault(); setSatSelected(new Set(satResult.coveringPairs.map((_, i) => i))); }}
+                        <a href="#" onClick={e => { e.preventDefault(); setSatSelected(new Set(satResult.coverGroups.map((_, i) => i))); }}
                            style={{ fontSize: 11, color: '#888' }}>all</a>
                         {' · '}
                         <a href="#" onClick={e => { e.preventDefault(); setSatSelected(new Set()); }}
                            style={{ fontSize: 11, color: '#888' }}>none</a>
-                        {(() => {
-                          const varIndices = {};
-                          satResult.coveringPairs.forEach(([posA, posB], i) => {
-                            const a = compName(resolvePosition(ast, posA)?.n) ?? posA.join(',');
-                            const base = a.replace(/'$/,'');
-                            (varIndices[base] ??= new Set()).add(i);
-                          });
-                          const vars = Object.keys(varIndices).sort();
-                          return <>
-                            {' · '}
-                            {vars.map((v, j) => {
-                              const indices = [...varIndices[v]];
-                              const allOn = indices.every(i => satSelected.has(i));
-                              return <span key={v}>
-                                {j > 0 && ' '}
-                                <a href="#" onClick={e => {
-                                  e.preventDefault();
-                                  setSatSelected(prev => {
-                                    const s = new Set(prev);
-                                    if (allOn) indices.forEach(i => s.delete(i));
-                                    else indices.forEach(i => s.add(i));
-                                    return s;
-                                  });
-                                }} style={{
-                                  fontSize: 11, fontFamily: 'Georgia, serif',
-                                  color: allOn ? '#333' : '#888',
-                                  fontWeight: allOn ? 'bold' : 'normal',
-                                }}>{v}</a>
-                              </span>;
-                            })}
-                          </>;
-                        })()}
                       </span>
-                      {(() => {
-                        const groups = [];
-                        const groupMap = {};
-                        satResult.coveringPairs.forEach(([posA, posB], idx) => {
-                          const key = posA.join(',') + '|' + posB.join(',');
-                          if (!(key in groupMap)) {
-                            groupMap[key] = groups.length;
-                            groups.push({ posA, posB, indices: [] });
-                          }
-                          groups[groupMap[key]].indices.push(idx);
-                        });
-                        const tooMany = (satResult.coveredPrefixes?.length ?? 0) > 1000;
-                        return <div style={{
-                          ...(groups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
-                          marginTop: 4,
-                        }}>
-                          {groups.map((group, gi) => {
-                            const a = compName(resolvePosition(ast, group.posA)?.n) ?? group.posA.join(',');
-                            const b = compName(resolvePosition(ast, group.posB)?.n) ?? group.posB.join(',');
-                            const allSelected = group.indices.every(i => satSelected.has(i));
-                            const prefixLens = group.indices.map(idx => satResult.coveredPrefixes?.[idx]?.length).filter(l => l != null);
-                            const lenRange = prefixLens.length === 0 ? '' : (() => { const lo = Math.min(...prefixLens), hi = Math.max(...prefixLens); return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`; })();
-                            const prefixCount = group.indices.length;
-                            if (tooMany) {
-                              return <div key={gi} style={{ fontWeight: 'normal' }}>
-                                <span
-                                  onClick={() => setSatSelected(prev => {
-                                    const s = new Set(prev);
-                                    if (allSelected) group.indices.forEach(i => s.delete(i));
-                                    else group.indices.forEach(i => s.add(i));
-                                    return s;
-                                  })}
-                                  style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
-                                  <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
-                                </span>
-                                <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
-                                  {prefixCount} {prefixCount === 1 ? 'prefix' : 'prefixes'}{lenRange}
-                                </span>
-                              </div>;
-                            }
-                            const prefixes = group.indices.map(idx => {
-                              const prefix = satResult.coveredPrefixes?.[idx];
-                              return prefix
-                                ? '{' + prefix.map(p => compName(resolvePosition(ast, p)?.n) ?? p.join(',')).join(', ') + '}'
-                                : null;
-                            }).filter(Boolean);
-                            const expanded = satExpanded.has(gi);
+                      <div style={{
+                        ...(satResult.coverGroups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
+                        marginTop: 4,
+                      }}>
+                        {satResult.coverGroups.map((g, gi) => {
+                          const a = resName(g.pair[0]);
+                          const b = resName(g.pair[1]);
+                          const isSelected = satSelected.has(gi);
+                          const lenRange = g.prefix_length_min === g.prefix_length_max
+                            ? ` ${g.prefix_length_min} long`
+                            : ` ${g.prefix_length_min}..${g.prefix_length_max} long`;
+                          if (tooMany || !g.prefixes?.length) {
                             return <div key={gi} style={{ fontWeight: 'normal' }}>
-                              <span
-                                onClick={() => setSatSelected(prev => {
-                                  const s = new Set(prev);
-                                  if (allSelected) group.indices.forEach(i => s.delete(i));
-                                  else group.indices.forEach(i => s.add(i));
-                                  return s;
-                                })}
-                                style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
+                              <span onClick={() => setSatSelected(prev => {
+                                const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                              })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
                                 <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
                               </span>
-                              {prefixes.length > 0 && <>
-                                <span
-                                  onClick={e => { e.stopPropagation(); setSatExpanded(prev => {
-                                    const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
-                                  }); }}
-                                  style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
-                                  title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                                >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
-                                {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
-                                  {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
-                                </div>}
-                              </>}
+                              <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
+                                {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                              </span>
                             </div>;
-                          })}
-                        </div>;
-                      })()}
-                    </span>
-                  )}
+                          }
+                          const prefixes = g.prefixes.map(p =>
+                            '{' + p.map(pos => resName(pos)).join(', ') + '}'
+                          );
+                          const expanded = satExpanded.has(gi);
+                          return <div key={gi} style={{ fontWeight: 'normal' }}>
+                            <span onClick={() => setSatSelected(prev => {
+                              const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                            })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
+                              <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                            </span>
+                            {prefixes.length > 0 && <>
+                              <span onClick={e => { e.stopPropagation(); setSatExpanded(prev => {
+                                const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                              }); }}
+                                style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
+                                title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
+                              >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
+                              {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
+                                {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
+                              </div>}
+                            </>}
+                          </div>;
+                        })}
+                      </div>
+                    </span>;
+                  })()}
                 </span>}
         </div>
       )}
@@ -1981,34 +1817,31 @@ export default function App() {
                     </span>
                   );
                 })()}
-                {pathsResult.coveringPairs?.length > 0 && ast && (() => {
+                {pathsResult.coverGroups?.length > 0 && ast && (() => {
                   const resName = pos => {
                     const n = resolvePosition(ast, pos)?.n ?? pos.join(',');
                     return pathsResult.isComplement ? compName(n) : n;
                   };
+                  const tooMany = (pathsResult.totalPrefixCount ?? 0) > 1000;
+                  const isPartial = pathsResult.uncoveredPaths.length > 0 || pathsResult.hitLimit;
                   return <span>
                     <br />
                     <span style={{ fontWeight: 'normal' }}>
-                      {(() => {
-                        const isPartial = pathsResult.uncoveredPaths.length > 0 || pathsResult.hitLimit;
-                        const n = new Set(pathsResult.coveringPairs.map(([a, b]) => a.join(',') + '|' + b.join(','))).size;
-                        const m = pathsResult.coveredPrefixes?.length ?? pathsResult.coveringPairs.length;
-                        const lens = (pathsResult.coveredPrefixes || []).map(p => p.length);
-                        const lo = lens.length ? Math.min(...lens) : 0;
-                        const hi = lens.length ? Math.max(...lens) : 0;
-                        const range = lens.length === 0 ? '' : lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`;
-                        return `${n} ${n === 1 ? 'pair' : 'pairs'} in the ${isPartial ? 'partial ' : ''}cover covering ${m} ${m === 1 ? 'prefix' : 'prefixes'}${range}:`;
-                      })()}
+                      {pathsResult.coverGroups.length} {pathsResult.coverGroups.length === 1 ? 'pair' : 'pairs'} in the {isPartial ? 'partial ' : ''}cover covering {pathsResult.totalPrefixCount} {pathsResult.totalPrefixCount === 1 ? 'prefix' : 'prefixes'}{(() => {
+                        const lo = Math.min(...pathsResult.coverGroups.map(g => g.prefix_length_min));
+                        const hi = Math.max(...pathsResult.coverGroups.map(g => g.prefix_length_max));
+                        return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`;
+                      })()}:
                       {' '}
-                      <a href="#" onClick={e => { e.preventDefault(); setPathsSelected(new Set(pathsResult.coveringPairs.map((_, i) => i))); }}
+                      <a href="#" onClick={e => { e.preventDefault(); setPathsSelected(new Set(pathsResult.coverGroups.map((_, i) => i))); }}
                          style={{ fontSize: 11, color: '#888' }}>all</a>
                       {' · '}
                       <a href="#" onClick={e => { e.preventDefault(); setPathsSelected(new Set()); }}
                          style={{ fontSize: 11, color: '#888' }}>none</a>
                       {(() => {
                         const varIndices = {};
-                        pathsResult.coveringPairs.forEach(([posA], i) => {
-                          const a = resName(posA);
+                        pathsResult.coverGroups.forEach((g, i) => {
+                          const a = resName(g.pair[0]);
                           const base = a.replace(/'$/,'');
                           (varIndices[base] ??= new Set()).add(i);
                         });
@@ -2038,80 +1871,53 @@ export default function App() {
                         </>;
                       })()}
                     </span>
-                    {(() => {
-                      const groups = [];
-                      const groupMap = {};
-                      pathsResult.coveringPairs.forEach(([posA, posB], idx) => {
-                        const key = posA.join(',') + '|' + posB.join(',');
-                        if (!(key in groupMap)) {
-                          groupMap[key] = groups.length;
-                          groups.push({ posA, posB, indices: [] });
-                        }
-                        groups[groupMap[key]].indices.push(idx);
-                      });
-                      const tooMany = (pathsResult.coveredPrefixes?.length ?? 0) > 1000;
-                      return <div style={{
-                        ...(groups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
-                        marginTop: 4,
-                      }}>
-                        {groups.map((group, gi) => {
-                          const a = resName(group.posA);
-                          const b = resName(group.posB);
-                          const allSelected = group.indices.every(i => pathsSelected.has(i));
-                          const prefixLens = group.indices.map(idx => pathsResult.coveredPrefixes?.[idx]?.length).filter(l => l != null);
-                          const lenRange = prefixLens.length === 0 ? '' : (() => { const lo = Math.min(...prefixLens), hi = Math.max(...prefixLens); return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`; })();
-                          const prefixCount = group.indices.length;
-                          if (tooMany) {
-                            return <div key={gi} style={{ fontWeight: 'normal' }}>
-                              <span
-                                onClick={() => setPathsSelected(prev => {
-                                  const s = new Set(prev);
-                                  if (allSelected) group.indices.forEach(i => s.delete(i));
-                                  else group.indices.forEach(i => s.add(i));
-                                  return s;
-                                })}
-                                style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
-                                <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
-                              </span>
-                              <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
-                                {prefixCount} {prefixCount === 1 ? 'prefix' : 'prefixes'}{lenRange}
-                              </span>
-                            </div>;
-                          }
-                          const prefixes = group.indices.map(idx => {
-                            const prefix = pathsResult.coveredPrefixes?.[idx];
-                            return prefix
-                              ? '{' + prefix.map(p => resName(p)).join(', ') + '}'
-                              : null;
-                          }).filter(Boolean);
-                          const expanded = pathsExpanded.has(gi);
+                    <div style={{
+                      ...(pathsResult.coverGroups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
+                      marginTop: 4,
+                    }}>
+                      {pathsResult.coverGroups.map((g, gi) => {
+                        const a = resName(g.pair[0]);
+                        const b = resName(g.pair[1]);
+                        const isSelected = pathsSelected.has(gi);
+                        const lenRange = g.prefix_length_min === g.prefix_length_max
+                          ? ` ${g.prefix_length_min} long`
+                          : ` ${g.prefix_length_min}..${g.prefix_length_max} long`;
+                        if (tooMany || !g.prefixes?.length) {
                           return <div key={gi} style={{ fontWeight: 'normal' }}>
-                            <span
-                              onClick={() => setPathsSelected(prev => {
-                                const s = new Set(prev);
-                                if (allSelected) group.indices.forEach(i => s.delete(i));
-                                else group.indices.forEach(i => s.add(i));
-                                return s;
-                              })}
-                              style={{ cursor: 'pointer', opacity: allSelected ? 1 : 0.35 }}>
+                            <span onClick={() => setPathsSelected(prev => {
+                              const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                            })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
                               <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
                             </span>
-                            {prefixes.length > 0 && <>
-                              <span
-                                onClick={e => { e.stopPropagation(); setPathsExpanded(prev => {
-                                  const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
-                                }); }}
-                                style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
-                                title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
-                              >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
-                              {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
-                                {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
-                              </div>}
-                            </>}
+                            <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
+                              {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                            </span>
                           </div>;
-                        })}
-                      </div>;
-                    })()}
+                        }
+                        const prefixes = g.prefixes.map(p =>
+                          '{' + p.map(pos => resName(pos)).join(', ') + '}'
+                        );
+                        const expanded = pathsExpanded.has(gi);
+                        return <div key={gi} style={{ fontWeight: 'normal' }}>
+                          <span onClick={() => setPathsSelected(prev => {
+                            const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                          })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
+                            <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                          </span>
+                          {prefixes.length > 0 && <>
+                            <span onClick={e => { e.stopPropagation(); setPathsExpanded(prev => {
+                              const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
+                            }); }}
+                              style={{ cursor: 'pointer', color: '#888', fontSize: 11, marginLeft: 4, userSelect: 'none' }}
+                              title={expanded ? 'Collapse covered paths' : 'Expand covered paths'}
+                            >{expanded ? '▾' : '▸'} {prefixes.length} {prefixes.length === 1 ? 'prefix' : 'prefixes'}{lenRange}</span>
+                            {expanded && <div style={{ marginLeft: 16, fontSize: 12, color: '#666' }}>
+                              {prefixes.map((p, pi) => <div key={pi}>{p}</div>)}
+                            </div>}
+                          </>}
+                        </div>;
+                      })}
+                    </div>
                   </span>;
                 })()}
               </span>}

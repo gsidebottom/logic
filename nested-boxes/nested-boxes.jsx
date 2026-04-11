@@ -570,11 +570,13 @@ export default function App() {
   const [validExpanded,  setValidExpanded]  = useState(new Set()); // Set<number> of expanded group indices
   const [validUncovOn,   setValidUncovOn]   = useState(false);     // toggle uncovered path highlight
   const [validPathExpanded, setValidPathExpanded] = useState(false); // show full uncovered path
+  const [validVarsExpanded, setValidVarsExpanded] = useState(false); // show full sorted unique literals
   const [satResult,      setSatResult]      = useState(null); // {satisfiable, path, coverGroups}
   const [satSelected,    setSatSelected]    = useState(new Set()); // Set<number> of selected pair indices
   const [satExpanded,    setSatExpanded]    = useState(new Set()); // Set<number> of expanded group indices
   const [satUncovOn,     setSatUncovOn]     = useState(false);     // toggle uncovered path highlight
   const [satPathExpanded, setSatPathExpanded] = useState(false);   // show full uncovered path
+  const [satVarsExpanded, setSatVarsExpanded] = useState(false);   // show full sorted unique literals
   const [pathsResult,    setPathsResult]    = useState(null); // {uncoveredPaths, coverGroups, totalPrefixCount} | {error}
   const [pathsLimit,     setPathsLimit]     = useState(100);
   const [pathsComp,      setPathsComp]      = useState(false); // show paths of complement
@@ -676,11 +678,13 @@ export default function App() {
     setValidExpanded(new Set());
     setValidUncovOn(false);
     setValidPathExpanded(false);
+    setValidVarsExpanded(false);
     setSatResult(null);
     setSatSelected(new Set());
     setSatExpanded(new Set());
     setSatUncovOn(false);
     setSatPathExpanded(false);
+    setSatVarsExpanded(false);
     setPathsResult(null);
     setPathsSelected(new Set());
     setPathsExpanded(new Set());
@@ -1375,27 +1379,43 @@ export default function App() {
                   })()}
                 </span>
               : <span>
-                  ✗ Not valid — uncovered path: <span
-                    onClick={() => setValidUncovOn(prev => !prev)}
-                    style={{ cursor: 'pointer', opacity: validUncovOn ? 1 : 0.35 }}>
-                    <b style={{ fontFamily: 'Georgia, serif' }}>{(() => {
-                      const p = validResult.path;
-                      if (!p || validPathExpanded) return p;
-                      // Truncate to first 10 literals: "{a, b, c, ...}"
-                      const inner = p.startsWith('{') && p.endsWith('}') ? p.slice(1, -1) : null;
-                      if (!inner) return p;
-                      const lits = inner.split(', ');
-                      if (lits.length <= 10) return p;
-                      return '{' + lits.slice(0, 10).join(', ') + ', ';
-                    })()}</b>{!validPathExpanded && validResult.path && (() => {
-                      const inner = validResult.path.startsWith('{') && validResult.path.endsWith('}') ? validResult.path.slice(1, -1) : null;
-                      if (!inner) return null;
-                      const lits = inner.split(', ');
-                      if (lits.length <= 10) return null;
-                      return <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidPathExpanded(true); }}
-                        style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…}'}</a>;
-                    })()}
-                  </span>
+                  ✗ Not valid — uncovered path:
+                  {validResult.path && (() => {
+                    const p = validResult.path;
+                    const inner = p.startsWith('{') && p.endsWith('}') ? p.slice(1, -1) : null;
+                    const lits = inner ? inner.split(', ') : [];
+                    const long = lits.length > 10;
+                    const unique = [...new Set(lits)].sort();
+                    const uLong = unique.length > 10;
+                    return <span style={{ fontWeight: 'normal' }}>
+                      <br />
+                      <span onClick={() => setValidUncovOn(prev => !prev)}
+                        style={{ cursor: 'pointer', opacity: validUncovOn ? 1 : 0.35 }}>
+                        path ({lits.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
+                          {!long || validPathExpanded
+                            ? p
+                            : '{' + lits.slice(0, 10).join(', ') + ', '}
+                        </b>
+                        {long && !validPathExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidPathExpanded(true); }}
+                          style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…}'}</a>}
+                        {long && validPathExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidPathExpanded(false); }}
+                          style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
+                      </span>
+                      <br />
+                      <span onClick={() => setValidUncovOn(prev => !prev)}
+                        style={{ cursor: 'pointer', opacity: validUncovOn ? 1 : 0.35 }}>
+                        variables ({unique.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
+                          {!uLong || validVarsExpanded
+                            ? '{' + unique.join(', ') + '}'
+                            : '{' + unique.slice(0, 10).join(', ') + ', '}
+                        </b>
+                        {uLong && !validVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidVarsExpanded(true); }}
+                          style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…}'}</a>}
+                        {uLong && validVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidVarsExpanded(false); }}
+                          style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
+                      </span>
+                    </span>;
+                  })()}
                   {validResult.coverGroups?.length > 0 && ast && (() => {
                     const resName = pos => resolvePosition(ast, pos)?.n ?? pos.join(',');
                     const tooMany = (validResult.totalPrefixCount ?? 0) > 1000;
@@ -1508,26 +1528,43 @@ export default function App() {
             ? `✗ ${satResult.error}`
             : satResult.satisfiable
               ? <span>
-                  ✓ Satisfiable — uncovered path in complement: <span
-                    onClick={() => setSatUncovOn(prev => !prev)}
-                    style={{ cursor: 'pointer', opacity: satUncovOn ? 1 : 0.35 }}>
-                    <b style={{ fontFamily: 'Georgia, serif' }}>{(() => {
-                      const p = satResult.path;
-                      if (!p || satPathExpanded) return p;
-                      const inner = p.startsWith('{') && p.endsWith('}') ? p.slice(1, -1) : null;
-                      if (!inner) return p;
-                      const lits = inner.split(', ');
-                      if (lits.length <= 10) return p;
-                      return '{' + lits.slice(0, 10).join(', ') + ', ';
-                    })()}</b>{!satPathExpanded && satResult.path && (() => {
-                      const inner = satResult.path.startsWith('{') && satResult.path.endsWith('}') ? satResult.path.slice(1, -1) : null;
-                      if (!inner) return null;
-                      const lits = inner.split(', ');
-                      if (lits.length <= 10) return null;
-                      return <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatPathExpanded(true); }}
-                        style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…}'}</a>;
-                    })()}
-                  </span>
+                  ✓ Satisfiable — uncovered path in complement:
+                  {satResult.path && (() => {
+                    const p = satResult.path;
+                    const inner = p.startsWith('{') && p.endsWith('}') ? p.slice(1, -1) : null;
+                    const lits = inner ? inner.split(', ') : [];
+                    const long = lits.length > 10;
+                    const unique = [...new Set(lits)].sort();
+                    const uLong = unique.length > 10;
+                    return <span style={{ fontWeight: 'normal' }}>
+                      <br />
+                      <span onClick={() => setSatUncovOn(prev => !prev)}
+                        style={{ cursor: 'pointer', opacity: satUncovOn ? 1 : 0.35 }}>
+                        path ({lits.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
+                          {!long || satPathExpanded
+                            ? p
+                            : '{' + lits.slice(0, 10).join(', ') + ', '}
+                        </b>
+                        {long && !satPathExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatPathExpanded(true); }}
+                          style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…}'}</a>}
+                        {long && satPathExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatPathExpanded(false); }}
+                          style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
+                      </span>
+                      <br />
+                      <span onClick={() => setSatUncovOn(prev => !prev)}
+                        style={{ cursor: 'pointer', opacity: satUncovOn ? 1 : 0.35 }}>
+                        variables ({unique.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
+                          {!uLong || satVarsExpanded
+                            ? '{' + unique.join(', ') + '}'
+                            : '{' + unique.slice(0, 10).join(', ') + ', '}
+                        </b>
+                        {uLong && !satVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatVarsExpanded(true); }}
+                          style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…}'}</a>}
+                        {uLong && satVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatVarsExpanded(false); }}
+                          style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
+                      </span>
+                    </span>;
+                  })()}
                   {satResult.coverGroups?.length > 0 && ast && (() => {
                     const resName = pos => compName(resolvePosition(ast, pos)?.n) ?? pos.join(',');
                     const tooMany = (satResult.totalPrefixCount ?? 0) > 1000;

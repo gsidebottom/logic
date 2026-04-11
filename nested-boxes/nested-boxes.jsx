@@ -9,6 +9,46 @@ const PAIR_COLORS = ['#e63946', '#1d7cc4', '#2a9d8f', '#e07c00', '#8e44ad', '#55
 // Complement a literal name: a → a', a' → a
 const compName = n => n?.endsWith("'") ? n.slice(0, -1) : (n ? n + "'" : n);
 
+// Evaluate an AST against a variable assignment { varName: '0'|'1' }.
+// Returns a Map<positionKey, 'true'|'false'|'undetermined'> for every node.
+function evaluateAst(node, assignment, position = []) {
+  const result = new Map();
+  const posKey = position.join(',');
+
+  if (node.t === 'VAR') {
+    const neg = node.n.endsWith("'");
+    const base = neg ? node.n.slice(0, -1) : node.n;
+    if (!(base in assignment)) {
+      result.set(posKey, 'undetermined');
+    } else {
+      const varTrue = assignment[base] === '1';
+      result.set(posKey, (varTrue !== neg) ? 'true' : 'false');
+    }
+  } else if (node.t === 'OR') {
+    let hasTrue = false, hasUndetermined = false;
+    node.c.forEach((child, i) => {
+      const childResult = evaluateAst(child, assignment, [...position, i]);
+      childResult.forEach((v, k) => result.set(k, v));
+      const cv = childResult.get([...position, i].join(','));
+      if (cv === 'true') hasTrue = true;
+      else if (cv === 'undetermined') hasUndetermined = true;
+    });
+    result.set(posKey, hasTrue ? 'true' : hasUndetermined ? 'undetermined' : 'false');
+  } else if (node.t === 'AND') {
+    let hasFalse = false, hasUndetermined = false;
+    node.c.forEach((child, i) => {
+      const childResult = evaluateAst(child, assignment, [...position, i]);
+      childResult.forEach((v, k) => result.set(k, v));
+      const cv = childResult.get([...position, i].join(','));
+      if (cv === 'false') hasFalse = true;
+      else if (cv === 'undetermined') hasUndetermined = true;
+    });
+    result.set(posKey, hasFalse ? 'false' : hasUndetermined ? 'undetermined' : 'true');
+  }
+  return result;
+}
+
+const EVAL_COLORS = { 'true': '#d4edda', 'false': '#f8d7da', 'undetermined': '#d6eaf8' };
 
 // ─── Box Renderer ─────────────────────────────────────────────────────────────
 const PAD = 10, GAP = 8;
@@ -108,12 +148,14 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
     });
 
     // Background tint
+    const evalResult = cover?.assignmentEval?.get(posKey);
+    const evalBg = evalResult ? EVAL_COLORS[evalResult] : undefined;
     const firstColor = sorted.length > 0
       ? (cover?.idxToGroupColor?.[sorted[0]] ?? PAIR_COLORS[sorted[0] % PAIR_COLORS.length])
       : hasHighlight ? UNCOV_COLORS[highlightIndices[0] % UNCOV_COLORS.length] : null;
-    const bgColor = highlighted && firstColor
+    const bgColor = evalBg ?? (highlighted && firstColor
       ? (hasPair ? firstColor + '20' : firstColor + '12')
-      : undefined;
+      : undefined);
 
     return (
       <div
@@ -145,6 +187,9 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
 
   const isOR  = node.t === 'OR';
   const color = BORDER_COLORS[depth % BORDER_COLORS.length];
+  const posKey = position.join(',');
+  const evalResult = cover?.assignmentEval?.get(posKey);
+  const evalBg = evalResult ? EVAL_COLORS[evalResult] : undefined;
 
   return (
     <div style={{
@@ -154,6 +199,7 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
       alignItems: 'center', justifyContent: 'center',
       gap: GAP, boxSizing: 'border-box',
       overflow: 'visible',
+      ...(evalBg ? { background: evalBg } : {}),
     }}>
       {(compView && !isOR ? [...node.c].reverse().map((child, ri) => {
         const i = node.c.length - 1 - ri;
@@ -164,7 +210,7 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
 }
 
 // ─── Diagram with SVG arc connections for covering pairs ──────────────────────
-function DiagramWithConnections({ node, coverGroups, selectedGroups, highlightedPaths, complementView = false }) {
+function DiagramWithConnections({ node, coverGroups, selectedGroups, highlightedPaths, assignmentEval = null, complementView = false }) {
   const containerRef = useRef(null);
   const [arcs, setArcs] = useState([]);
   const [pathLines, setPathLines] = useState([]);
@@ -340,7 +386,7 @@ function DiagramWithConnections({ node, coverGroups, selectedGroups, highlighted
   });
 
   return (
-    <CoverContext.Provider value={(Object.keys(posToPairIndices).length || Object.keys(posToPrefixIndices).length || Object.keys(posToHighlightIndices).length || complementView) ? { posToPairIndices, posToPrefixIndices, posToHighlightIndices, maxBarCount, idxToGroupColor, complementView } : null}>
+    <CoverContext.Provider value={(Object.keys(posToPairIndices).length || Object.keys(posToPrefixIndices).length || Object.keys(posToHighlightIndices).length || assignmentEval || complementView) ? { posToPairIndices, posToPrefixIndices, posToHighlightIndices, maxBarCount, idxToGroupColor, assignmentEval, complementView } : null}>
       <div ref={containerRef} style={{
         position: 'relative', display: 'inline-block',
         transform: complementView ? 'rotate(90deg)' : 'rotate(0deg)',
@@ -572,12 +618,14 @@ export default function App() {
   const [validUncovOn,   setValidUncovOn]   = useState(false);     // toggle uncovered path highlight
   const [validPathExpanded, setValidPathExpanded] = useState(false); // show full uncovered path
   const [validVarsExpanded, setValidVarsExpanded] = useState(false); // show full sorted unique literals
+  const [validAsgnOn,       setValidAsgnOn]       = useState(false); // highlight assignment in diagram
   const [satResult,      setSatResult]      = useState(null); // {satisfiable, path, coverGroups}
   const [satSelected,    setSatSelected]    = useState(new Set()); // Set<number> of selected pair indices
   const [satExpanded,    setSatExpanded]    = useState(new Set()); // Set<number> of expanded group indices
   const [satUncovOn,     setSatUncovOn]     = useState(false);     // toggle uncovered path highlight
   const [satPathExpanded, setSatPathExpanded] = useState(false);   // show full uncovered path
   const [satVarsExpanded, setSatVarsExpanded] = useState(false);   // show full sorted unique literals
+  const [satAsgnOn,       setSatAsgnOn]       = useState(false);   // highlight assignment in diagram
   const [pathsResult,    setPathsResult]    = useState(null); // {uncoveredPaths, coverGroups, totalPrefixCount} | {error}
   const [pathsLimit,     setPathsLimit]     = useState(100);
   const [pathsComp,      setPathsComp]      = useState(false); // show paths of complement
@@ -680,12 +728,14 @@ export default function App() {
     setValidUncovOn(false);
     setValidPathExpanded(false);
     setValidVarsExpanded(false);
+    setValidAsgnOn(false);
     setSatResult(null);
     setSatSelected(new Set());
     setSatExpanded(new Set());
     setSatUncovOn(false);
     setSatPathExpanded(false);
     setSatVarsExpanded(false);
+    setSatAsgnOn(false);
     setPathsResult(null);
     setPathsSelected(new Set());
     setPathsExpanded(new Set());
@@ -1240,6 +1290,31 @@ export default function App() {
                 ];
                 return paths.length ? paths : null;
               })()}
+              assignmentEval={(() => {
+                if (!ast) return null;
+                // Build assignment from path string
+                const buildAsgn = (pathStr, invert) => {
+                  if (!pathStr) return null;
+                  const inner = pathStr.startsWith('{') && pathStr.endsWith('}') ? pathStr.slice(1, -1) : null;
+                  if (!inner) return null;
+                  const asgn = {};
+                  inner.split(', ').forEach(l => {
+                    const neg = l.endsWith("'");
+                    const base = neg ? l.slice(0, -1) : l;
+                    if (!(base in asgn)) asgn[base] = (neg !== invert) ? '1' : '0';
+                  });
+                  return asgn;
+                };
+                if (validAsgnOn && validResult?.path) {
+                  const asgn = buildAsgn(validResult.path, true);
+                  return asgn ? evaluateAst(ast, asgn) : null;
+                }
+                if (satAsgnOn && satResult?.path) {
+                  const asgn = buildAsgn(satResult.path, false);
+                  return asgn ? evaluateAst(ast, asgn) : null;
+                }
+                return null;
+              })()}
             />
           </ZoomPanWrapper>
 
@@ -1331,6 +1406,38 @@ export default function App() {
                         {' · '}
                         <a href="#" onClick={e => { e.preventDefault(); setValidSelected(new Set()); }}
                            style={{ fontSize: 11, color: '#888' }}>none</a>
+                        {(() => {
+                          const varIndices = {};
+                          validResult.coverGroups.forEach((g, i) => {
+                            const a = resName(g.pair[0]);
+                            const base = a.replace(/'$/,'');
+                            (varIndices[base] ??= new Set()).add(i);
+                          });
+                          const vars = Object.keys(varIndices).sort();
+                          return <>
+                            {' · '}
+                            {vars.map((v, j) => {
+                              const indices = [...varIndices[v]];
+                              const allOn = indices.every(i => validSelected.has(i));
+                              return <span key={v}>
+                                {j > 0 && ' '}
+                                <a href="#" onClick={e => {
+                                  e.preventDefault();
+                                  setValidSelected(prev => {
+                                    const s = new Set(prev);
+                                    if (allOn) indices.forEach(i => s.delete(i));
+                                    else indices.forEach(i => s.add(i));
+                                    return s;
+                                  });
+                                }} style={{
+                                  fontSize: 11, fontFamily: 'Georgia, serif',
+                                  color: allOn ? '#333' : '#888',
+                                  fontWeight: allOn ? 'bold' : 'normal',
+                                }}><VarLabel name={v} /></a>
+                              </span>;
+                            })}
+                          </>;
+                        })()}
                       </span>
                       <div style={{
                         ...(validResult.coverGroups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),
@@ -1401,7 +1508,8 @@ export default function App() {
                     const aLong = asgnEntries.length > 10;
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
-                      <span>
+                      <span onClick={() => setValidAsgnOn(prev => !prev)}
+                        style={{ cursor: 'pointer', opacity: validAsgnOn ? 1 : 0.35 }}>
                         assignment ({asgnEntries.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
                           {((!aLong || validVarsExpanded) ? asgnEntries : asgnEntries.slice(0, 10)).map((e, ei) => <span key={ei}>{ei > 0 && ', '}<VarLabel name={e.name} />{`=${e.val}`}</span>)}
                           {aLong && !validVarsExpanded && ', '}
@@ -1555,7 +1663,8 @@ export default function App() {
                     const aLong = asgnEntries.length > 10;
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
-                      <span>
+                      <span onClick={() => setSatAsgnOn(prev => !prev)}
+                        style={{ cursor: 'pointer', opacity: satAsgnOn ? 1 : 0.35 }}>
                         assignment ({asgnEntries.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
                           {((!aLong || satVarsExpanded) ? asgnEntries : asgnEntries.slice(0, 10)).map((e, ei) => <span key={ei}>{ei > 0 && ', '}<VarLabel name={e.name} />{`=${e.val}`}</span>)}
                           {aLong && !satVarsExpanded && ', '}
@@ -1695,6 +1804,38 @@ export default function App() {
                         {' · '}
                         <a href="#" onClick={e => { e.preventDefault(); setSatSelected(new Set()); }}
                            style={{ fontSize: 11, color: '#888' }}>none</a>
+                        {(() => {
+                          const varIndices = {};
+                          satResult.coverGroups.forEach((g, i) => {
+                            const a = resName(g.pair[0]);
+                            const base = a.replace(/'$/,'');
+                            (varIndices[base] ??= new Set()).add(i);
+                          });
+                          const vars = Object.keys(varIndices).sort();
+                          return <>
+                            {' · '}
+                            {vars.map((v, j) => {
+                              const indices = [...varIndices[v]];
+                              const allOn = indices.every(i => satSelected.has(i));
+                              return <span key={v}>
+                                {j > 0 && ' '}
+                                <a href="#" onClick={e => {
+                                  e.preventDefault();
+                                  setSatSelected(prev => {
+                                    const s = new Set(prev);
+                                    if (allOn) indices.forEach(i => s.delete(i));
+                                    else indices.forEach(i => s.add(i));
+                                    return s;
+                                  });
+                                }} style={{
+                                  fontSize: 11, fontFamily: 'Georgia, serif',
+                                  color: allOn ? '#333' : '#888',
+                                  fontWeight: allOn ? 'bold' : 'normal',
+                                }}><VarLabel name={v} /></a>
+                              </span>;
+                            })}
+                          </>;
+                        })()}
                       </span>
                       <div style={{
                         ...(satResult.coverGroups.length > 6 ? { maxHeight: '9.5em', overflowY: 'auto' } : {}),

@@ -9,6 +9,7 @@ const PAIR_COLORS = ['#e63946', '#1d7cc4', '#2a9d8f', '#e07c00', '#8e44ad', '#55
 // Complement a literal name: a → a', a' → a
 const compName = n => n?.endsWith("'") ? n.slice(0, -1) : (n ? n + "'" : n);
 
+
 // ─── Box Renderer ─────────────────────────────────────────────────────────────
 const PAD = 10, GAP = 8;
 const BORDER_COLORS = ['#111', '#1a6bcc', '#b35000', '#2a7a2a', '#7a1a7a'];
@@ -866,6 +867,13 @@ export default function App() {
     if (pathsResult && !pathsResult.error) fetchPaths();
   }, [pathsLimit, pathsComp]);
 
+  // Auto-rotate to complement when sat selections are active, rotate back when none
+  useEffect(() => {
+    if (!satResult || satResult.error) return;
+    const hasSelection = satSelected.size > 0 || satUncovOn;
+    setComplementData(hasSelection ? true : false);
+  }, [satResult, satSelected, satUncovOn]);
+
   const handleComplement = () => {
     if (!ast) return;
     setComplementData(prev => !prev);
@@ -903,10 +911,6 @@ export default function App() {
         setSatResult({ error: data.error });
       } else {
         setSatResult({ satisfiable: data.satisfiable, path: data.path, uncoveredPositions: data.uncovered_path_positions, coverGroups: data.cover_groups, totalPrefixCount: data.total_prefix_count });
-        // Cover and uncovered paths are from the complement — auto-show it
-        if (ast) {
-          setComplementData(true);
-        }
       }
     } catch (e) {
       setSatResult({ error: 'Could not reach Rust service' });
@@ -1344,22 +1348,23 @@ export default function App() {
                               <span onClick={() => setValidSelected(prev => {
                                 const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
                               })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
-                                <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                                <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                               </span>
                               <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
                                 {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
                               </span>
                             </div>;
                           }
-                          const prefixes = g.prefixes.map(p =>
-                            '{' + p.map(pos => resName(pos)).join(', ') + '}'
-                          );
+                          const prefixes = g.prefixes.map(p => {
+                            const names = p.map(pos => resName(pos));
+                            return <>{'{'}{names.map((n, ni) => <span key={ni}>{ni > 0 && ', '}<VarLabel name={n} /></span>)}{'}' }</>;
+                          });
                           const expanded = validExpanded.has(gi);
                           return <div key={gi} style={{ fontWeight: 'normal' }}>
                             <span onClick={() => setValidSelected(prev => {
                               const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
                             })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
-                              <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                              <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                             </span>
                             {prefixes.length > 0 && <>
                               <span onClick={e => { e.stopPropagation(); setValidExpanded(prev => {
@@ -1379,39 +1384,43 @@ export default function App() {
                   })()}
                 </span>
               : <span>
-                  ✗ Not valid — uncovered path:
+                  ✗ Not valid — falsifying assignment and uncovered path:
                   {validResult.path && (() => {
                     const p = validResult.path;
                     const inner = p.startsWith('{') && p.endsWith('}') ? p.slice(1, -1) : null;
                     const lits = inner ? inner.split(', ') : [];
                     const long = lits.length > 10;
-                    const unique = [...new Set(lits)].sort();
-                    const uLong = unique.length > 10;
+                    // Build assignment: variable (no complement) = 0 if complemented, 1 if positive
+                    const asgn = {};
+                    lits.forEach(l => {
+                      const neg = l.endsWith("'");
+                      const base = neg ? l.slice(0, -1) : l;
+                      if (!(base in asgn)) asgn[base] = neg ? '1' : '0';
+                    });
+                    const asgnEntries = Object.keys(asgn).sort().map(v => ({ name: v, val: asgn[v] }));
+                    const aLong = asgnEntries.length > 10;
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
-                      <span onClick={() => setValidUncovOn(prev => !prev)}
-                        style={{ cursor: 'pointer', opacity: validUncovOn ? 1 : 0.35 }}>
-                        path ({lits.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
-                          {!long || validPathExpanded
-                            ? p
-                            : '{' + lits.slice(0, 10).join(', ') + ', '}
+                      <span>
+                        assignment ({asgnEntries.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
+                          {((!aLong || validVarsExpanded) ? asgnEntries : asgnEntries.slice(0, 10)).map((e, ei) => <span key={ei}>{ei > 0 && ', '}<VarLabel name={e.name} />{`=${e.val}`}</span>)}
+                          {aLong && !validVarsExpanded && ', '}
                         </b>
-                        {long && !validPathExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidPathExpanded(true); }}
-                          style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…}'}</a>}
-                        {long && validPathExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidPathExpanded(false); }}
+                        {aLong && !validVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidVarsExpanded(true); }}
+                          style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…'}</a>}
+                        {aLong && validVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidVarsExpanded(false); }}
                           style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
                       </span>
                       <br />
                       <span onClick={() => setValidUncovOn(prev => !prev)}
                         style={{ cursor: 'pointer', opacity: validUncovOn ? 1 : 0.35 }}>
-                        variables ({unique.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
-                          {!uLong || validVarsExpanded
-                            ? '{' + unique.join(', ') + '}'
-                            : '{' + unique.slice(0, 10).join(', ') + ', '}
+                        path ({lits.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
+                          {'{'}{((!long || validPathExpanded) ? lits : lits.slice(0, 10)).map((l, li) => <span key={li}>{li > 0 && ', '}<VarLabel name={l} /></span>)}
+                          {(!long || validPathExpanded) ? '}' : ', '}
                         </b>
-                        {uLong && !validVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidVarsExpanded(true); }}
+                        {long && !validPathExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidPathExpanded(true); }}
                           style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…}'}</a>}
-                        {uLong && validVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidVarsExpanded(false); }}
+                        {long && validPathExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidPathExpanded(false); }}
                           style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
                       </span>
                     </span>;
@@ -1456,7 +1465,7 @@ export default function App() {
                                   fontSize: 11, fontFamily: 'Georgia, serif',
                                   color: allOn ? '#333' : '#888',
                                   fontWeight: allOn ? 'bold' : 'normal',
-                                }}>{v}</a>
+                                }}><VarLabel name={v} /></a>
                               </span>;
                             })}
                           </>;
@@ -1478,22 +1487,23 @@ export default function App() {
                               <span onClick={() => setValidSelected(prev => {
                                 const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
                               })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
-                                <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                                <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                               </span>
                               <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
                                 {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
                               </span>
                             </div>;
                           }
-                          const prefixes = g.prefixes.map(p =>
-                            '{' + p.map(pos => resName(pos)).join(', ') + '}'
-                          );
+                          const prefixes = g.prefixes.map(p => {
+                            const names = p.map(pos => resName(pos));
+                            return <>{'{'}{names.map((n, ni) => <span key={ni}>{ni > 0 && ', '}<VarLabel name={n} /></span>)}{'}' }</>;
+                          });
                           const expanded = validExpanded.has(gi);
                           return <div key={gi} style={{ fontWeight: 'normal' }}>
                             <span onClick={() => setValidSelected(prev => {
                               const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
                             })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
-                              <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                              <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                             </span>
                             {prefixes.length > 0 && <>
                               <span onClick={e => { e.stopPropagation(); setValidExpanded(prev => {
@@ -1528,39 +1538,43 @@ export default function App() {
             ? `✗ ${satResult.error}`
             : satResult.satisfiable
               ? <span>
-                  ✓ Satisfiable — uncovered path in complement:
+                  ✓ Satisfiable — satisfying assignment and uncovered path in complement:
                   {satResult.path && (() => {
                     const p = satResult.path;
                     const inner = p.startsWith('{') && p.endsWith('}') ? p.slice(1, -1) : null;
                     const lits = inner ? inner.split(', ') : [];
                     const long = lits.length > 10;
-                    const unique = [...new Set(lits)].sort();
-                    const uLong = unique.length > 10;
+                    // Build satisfying assignment: complement literal a' → a=1, a → a=0
+                    const asgn = {};
+                    lits.forEach(l => {
+                      const neg = l.endsWith("'");
+                      const base = neg ? l.slice(0, -1) : l;
+                      if (!(base in asgn)) asgn[base] = neg ? '1' : '0';
+                    });
+                    const asgnEntries = Object.keys(asgn).sort().map(v => ({ name: v, val: asgn[v] }));
+                    const aLong = asgnEntries.length > 10;
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
-                      <span onClick={() => setSatUncovOn(prev => !prev)}
-                        style={{ cursor: 'pointer', opacity: satUncovOn ? 1 : 0.35 }}>
-                        path ({lits.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
-                          {!long || satPathExpanded
-                            ? p
-                            : '{' + lits.slice(0, 10).join(', ') + ', '}
+                      <span>
+                        assignment ({asgnEntries.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
+                          {((!aLong || satVarsExpanded) ? asgnEntries : asgnEntries.slice(0, 10)).map((e, ei) => <span key={ei}>{ei > 0 && ', '}<VarLabel name={e.name} />{`=${e.val}`}</span>)}
+                          {aLong && !satVarsExpanded && ', '}
                         </b>
-                        {long && !satPathExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatPathExpanded(true); }}
-                          style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…}'}</a>}
-                        {long && satPathExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatPathExpanded(false); }}
+                        {aLong && !satVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatVarsExpanded(true); }}
+                          style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…'}</a>}
+                        {aLong && satVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatVarsExpanded(false); }}
                           style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
                       </span>
                       <br />
                       <span onClick={() => setSatUncovOn(prev => !prev)}
                         style={{ cursor: 'pointer', opacity: satUncovOn ? 1 : 0.35 }}>
-                        variables ({unique.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
-                          {!uLong || satVarsExpanded
-                            ? '{' + unique.join(', ') + '}'
-                            : '{' + unique.slice(0, 10).join(', ') + ', '}
+                        path ({lits.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
+                          {'{'}{((!long || satPathExpanded) ? lits : lits.slice(0, 10)).map((l, li) => <span key={li}>{li > 0 && ', '}<VarLabel name={l} /></span>)}
+                          {(!long || satPathExpanded) ? '}' : ', '}
                         </b>
-                        {uLong && !satVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatVarsExpanded(true); }}
+                        {long && !satPathExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatPathExpanded(true); }}
                           style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…}'}</a>}
-                        {uLong && satVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatVarsExpanded(false); }}
+                        {long && satPathExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatPathExpanded(false); }}
                           style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
                       </span>
                     </span>;
@@ -1605,7 +1619,7 @@ export default function App() {
                                   fontSize: 11, fontFamily: 'Georgia, serif',
                                   color: allOn ? '#333' : '#888',
                                   fontWeight: allOn ? 'bold' : 'normal',
-                                }}>{v}</a>
+                                }}><VarLabel name={v} /></a>
                               </span>;
                             })}
                           </>;
@@ -1627,22 +1641,23 @@ export default function App() {
                               <span onClick={() => setSatSelected(prev => {
                                 const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
                               })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
-                                <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                                <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                               </span>
                               <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
                                 {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
                               </span>
                             </div>;
                           }
-                          const prefixes = g.prefixes.map(p =>
-                            '{' + p.map(pos => resName(pos)).join(', ') + '}'
-                          );
+                          const prefixes = g.prefixes.map(p => {
+                            const names = p.map(pos => resName(pos));
+                            return <>{'{'}{names.map((n, ni) => <span key={ni}>{ni > 0 && ', '}<VarLabel name={n} /></span>)}{'}' }</>;
+                          });
                           const expanded = satExpanded.has(gi);
                           return <div key={gi} style={{ fontWeight: 'normal' }}>
                             <span onClick={() => setSatSelected(prev => {
                               const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
                             })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
-                              <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                              <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                             </span>
                             {prefixes.length > 0 && <>
                               <span onClick={e => { e.stopPropagation(); setSatExpanded(prev => {
@@ -1697,22 +1712,23 @@ export default function App() {
                               <span onClick={() => setSatSelected(prev => {
                                 const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
                               })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
-                                <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                                <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                               </span>
                               <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
                                 {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
                               </span>
                             </div>;
                           }
-                          const prefixes = g.prefixes.map(p =>
-                            '{' + p.map(pos => resName(pos)).join(', ') + '}'
-                          );
+                          const prefixes = g.prefixes.map(p => {
+                            const names = p.map(pos => resName(pos));
+                            return <>{'{'}{names.map((n, ni) => <span key={ni}>{ni > 0 && ', '}<VarLabel name={n} /></span>)}{'}' }</>;
+                          });
                           const expanded = satExpanded.has(gi);
                           return <div key={gi} style={{ fontWeight: 'normal' }}>
                             <span onClick={() => setSatSelected(prev => {
                               const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
                             })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
-                              <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                              <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                             </span>
                             {prefixes.length > 0 && <>
                               <span onClick={e => { e.stopPropagation(); setSatExpanded(prev => {
@@ -1794,7 +1810,7 @@ export default function App() {
                         ? (pathsUncovSel.has(child.pathIndex) ? 1 : 0.35)
                         : (allSel ? 1 : 0.6);
                       return (
-                        <div key={child.key} style={{ marginLeft: depth * 14, lineHeight: 1.5 }}>
+                        <div key={child.key} style={{ marginLeft: depth === 0 ? 0 : 14, lineHeight: 1.5 }}>
                           <span>
                             {hasChildren ? (
                               <span onClick={() => toggleExpand(child.key)}
@@ -1818,7 +1834,7 @@ export default function App() {
                                 }
                               }}
                               style={{ cursor: 'pointer', opacity }}>
-                              <b style={{ fontFamily: 'Georgia, serif' }}>{resName(child.position)}</b>
+                              <b style={{ fontFamily: 'Georgia, serif' }}><VarLabel name={resName(child.position)} /></b>
                               {!isLeaf && (
                                 <span style={{ fontWeight: 'normal', color: '#888', fontSize: 11 }}>
                                   {' '}({subIdxs.length})
@@ -1902,7 +1918,7 @@ export default function App() {
                                 fontSize: 11, fontFamily: 'Georgia, serif',
                                 color: allOn ? '#333' : '#888',
                                 fontWeight: allOn ? 'bold' : 'normal',
-                              }}>{v}</a>
+                              }}><VarLabel name={v} /></a>
                             </span>;
                           })}
                         </>;
@@ -1924,22 +1940,23 @@ export default function App() {
                             <span onClick={() => setPathsSelected(prev => {
                               const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
                             })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
-                              <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                              <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                             </span>
                             <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
                               {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
                             </span>
                           </div>;
                         }
-                        const prefixes = g.prefixes.map(p =>
-                          '{' + p.map(pos => resName(pos)).join(', ') + '}'
-                        );
+                        const prefixes = g.prefixes.map(p => {
+                          const names = p.map(pos => resName(pos));
+                          return <>{'{'}{names.map((n, ni) => <span key={ni}>{ni > 0 && ', '}<VarLabel name={n} /></span>)}{'}' }</>;
+                        });
                         const expanded = pathsExpanded.has(gi);
                         return <div key={gi} style={{ fontWeight: 'normal' }}>
                           <span onClick={() => setPathsSelected(prev => {
                             const s = new Set(prev); if (s.has(gi)) s.delete(gi); else s.add(gi); return s;
                           })} style={{ cursor: 'pointer', opacity: isSelected ? 1 : 0.35 }}>
-                            <b style={{ fontFamily: 'Georgia, serif' }}>{`{${a}, ${b}}`}</b>
+                            <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                           </span>
                           {prefixes.length > 0 && <>
                             <span onClick={e => { e.stopPropagation(); setPathsExpanded(prev => {

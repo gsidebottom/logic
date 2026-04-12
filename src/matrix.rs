@@ -141,26 +141,26 @@ impl Paths {
     }
 }
 
-// ─── Matrix ───────────────────────────────────────────────────────────────────
+// ─── NNF ───────────────────────────────────────────────────────────────────
 
-/// A formula in negation normal form (NNF / Matrix).
+/// A formula in negation normal form (NNF / NNF).
 ///
 /// `∑` (Sum)  = disjunction (OR)
 /// `∏` (Prod) = conjunction (AND)
 #[derive(Clone, Debug)]
-pub enum Matrix {
+pub enum NNF {
     Lit(Lit),
-    Sum(Vec<Matrix>),
-    Prod(Vec<Matrix>),
+    Sum(Vec<NNF>),
+    Prod(Vec<NNF>),
 }
 
-impl Matrix {
+impl NNF {
     /// Push negation inward (De Morgan) to produce the complement in NNF.
     pub fn complement(&self) -> Self {
         match self {
-            Matrix::Lit(l)      => Matrix::Lit(l.complement()),
-            Matrix::Sum(ch)     => Matrix::Prod(ch.iter().map(|c| c.complement()).collect()),
-            Matrix::Prod(ch)    => Matrix::Sum(ch.iter().map(|c| c.complement()).collect()),
+            NNF::Lit(l)      => NNF::Lit(l.complement()),
+            NNF::Sum(ch)     => NNF::Prod(ch.iter().map(|c| c.complement()).collect()),
+            NNF::Prod(ch)    => NNF::Sum(ch.iter().map(|c| c.complement()).collect()),
         }
     }
 
@@ -169,15 +169,15 @@ impl Matrix {
     /// Follows the path's `Prod` member selections depth-first, collecting every
     /// `Lit` encountered (including those reached via `Sum` cross-products).
     pub fn lits_on_path(&self, path: &[usize]) -> Vec<&Lit> {
-        fn inner<'a>(m: &'a Matrix, path: &[usize]) -> (Vec<&'a Lit>, usize) {
+        fn inner<'a>(m: &'a NNF, path: &[usize]) -> (Vec<&'a Lit>, usize) {
             match m {
-                Matrix::Lit(l) => (vec![l], 0),
-                Matrix::Prod(children) => {
+                NNF::Lit(l) => (vec![l], 0),
+                NNF::Prod(children) => {
                     let sel = path[0];
                     let (lits, consumed) = inner(&children[sel], &path[1..]);
                     (lits, 1 + consumed)
                 }
-                Matrix::Sum(children) => {
+                NNF::Sum(children) => {
                     let mut all_lits = Vec::new();
                     let mut total = 0;
                     for child in children {
@@ -200,10 +200,10 @@ impl Matrix {
     /// - `Prod` (AND): union         — each path picks one child, prepending its index.
     /// - `Lit`:        an empty path (no `Prod` selection needed).
     pub fn paths_iter(&self) -> impl Iterator<Item = ProdPath> {
-        fn collect(m: &Matrix) -> Vec<ProdPath> {
+        fn collect(m: &NNF) -> Vec<ProdPath> {
             match m {
-                Matrix::Lit(_) => vec![vec![]],
-                Matrix::Sum(children) => {
+                NNF::Lit(_) => vec![vec![]],
+                NNF::Sum(children) => {
                     children.iter().fold(vec![vec![]], |acc, child| {
                         let cp = collect(child);
                         acc.into_iter()
@@ -215,7 +215,7 @@ impl Matrix {
                             .collect()
                     })
                 }
-                Matrix::Prod(children) => {
+                NNF::Prod(children) => {
                     children.iter().enumerate().flat_map(|(i, child)| {
                         collect(child).into_iter().map(move |mut p| {
                             p.insert(0, i);
@@ -230,20 +230,20 @@ impl Matrix {
 
     /// Resolve a path to the `Position`s (absolute tree addresses) of its literals.
     pub fn positions_on_path(&self, path: &[usize]) -> PathPrefix {
-        fn inner(m: &Matrix, path: &[usize], pos: &mut Vec<usize>, out: &mut PathPrefix) -> usize {
+        fn inner(m: &NNF, path: &[usize], pos: &mut Vec<usize>, out: &mut PathPrefix) -> usize {
             match m {
-                Matrix::Lit(_) => {
+                NNF::Lit(_) => {
                     out.push(pos.clone());
                     0
                 }
-                Matrix::Prod(children) => {
+                NNF::Prod(children) => {
                     let sel = path[0];
                     pos.push(sel);
                     let consumed = inner(&children[sel], &path[1..], pos, out);
                     pos.pop();
                     1 + consumed
                 }
-                Matrix::Sum(children) => {
+                NNF::Sum(children) => {
                     let mut total = 0;
                     for (i, child) in children.iter().enumerate() {
                         pos.push(i);
@@ -262,10 +262,10 @@ impl Matrix {
 
     /// Return every `Position` at which `target` appears.
     pub fn literal_positions(&self, target: &Lit) -> PathPrefix {
-        fn inner(m: &Matrix, target: &Lit, prefix: &mut Position, out: &mut PathPrefix) {
+        fn inner(m: &NNF, target: &Lit, prefix: &mut Position, out: &mut PathPrefix) {
             match m {
-                Matrix::Lit(l) => if l == target { out.push(prefix.clone()); }
-                Matrix::Sum(ch) | Matrix::Prod(ch) => {
+                NNF::Lit(l) => if l == target { out.push(prefix.clone()); }
+                NNF::Sum(ch) | NNF::Prod(ch) => {
                     for (i, child) in ch.iter().enumerate() {
                         prefix.push(i);
                         inner(child, target, prefix, out);
@@ -285,12 +285,12 @@ impl Matrix {
         let mut node = self;
         for &i in pos {
             match node {
-                Matrix::Lit(_) => return None,
-                Matrix::Sum(ch) | Matrix::Prod(ch) => node = ch.get(i)?,
+                NNF::Lit(_) => return None,
+                NNF::Sum(ch) | NNF::Prod(ch) => node = ch.get(i)?,
             }
         }
         match node {
-            Matrix::Lit(l) => Some(l),
+            NNF::Lit(l) => Some(l),
             _ => None,
         }
     }
@@ -536,7 +536,7 @@ impl Matrix {
         type Positions = PathPrefix;
 
         fn traverse<'a, F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> bool>(
-            m: &'a Matrix,
+            m: &'a NNF,
             path: &mut ProdPath,
             lits: &mut Lits<'a>,
             positions: &mut Positions,
@@ -545,14 +545,14 @@ impl Matrix {
             then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut Positions, &mut Position, &mut F),
         ) {
             match m {
-                Matrix::Lit(l) => {
+                NNF::Lit(l) => {
                     lits.push(l);
                     positions.push(pos.clone());
                     then(path, lits, positions, pos, f);
                     positions.pop();
                     lits.pop();
                 }
-                Matrix::Prod(children) => {
+                NNF::Prod(children) => {
                     for (i, child) in children.iter().enumerate() {
                         path.push(i);
                         pos.push(i);
@@ -563,7 +563,7 @@ impl Matrix {
                         path.pop();
                     }
                 }
-                Matrix::Sum(children) => {
+                NNF::Sum(children) => {
                     traverse_sum(children, 0, path, lits, positions, pos, f, then);
                 }
             }
@@ -571,7 +571,7 @@ impl Matrix {
 
         #[allow(clippy::too_many_arguments)]
         fn traverse_sum<'a, F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> bool>(
-            children: &'a [Matrix],
+            children: &'a [NNF],
             idx: usize,
             path: &mut ProdPath,
             lits: &mut Lits<'a>,
@@ -653,40 +653,40 @@ impl Matrix {
     }
 }
 
-// ─── Formula → Matrix conversion ──────────────────────────────────────────────
+// ─── Formula → NNF conversion ──────────────────────────────────────────────
 
-impl From<&Ast> for Matrix {
+impl From<&Ast> for NNF {
     fn from(ast: &Ast) -> Self {
-        fn convert(node: &Node, var_index: &HashMap<String, u32>) -> Matrix {
+        fn convert(node: &Node, var_index: &HashMap<String, u32>) -> NNF {
             match node {
                 Node::Var(name) => {
                     let base = get_base_name(name);
                     let neg  = count_primes(name) % 2 == 1;
                     match base {
-                        "0" => if neg { Matrix::Prod(vec![]) } else { Matrix::Sum(vec![]) },
-                        "1" => if neg { Matrix::Sum(vec![]) } else { Matrix::Prod(vec![]) },
-                        _   => Matrix::Lit(Lit { var: *var_index.get(base).unwrap(), neg }),
+                        "0" => if neg { NNF::Prod(vec![]) } else { NNF::Sum(vec![]) },
+                        "1" => if neg { NNF::Sum(vec![]) } else { NNF::Prod(vec![]) },
+                        _   => NNF::Lit(Lit { var: *var_index.get(base).unwrap(), neg }),
                     }
                 }
                 Node::And(ch) => {
                     let mut members = Vec::new();
                     for c in ch {
                         match convert(c, var_index) {
-                            Matrix::Prod(inner) => members.extend(inner),
+                            NNF::Prod(inner) => members.extend(inner),
                             other => members.push(other),
                         }
                     }
-                    Matrix::Prod(members)
+                    NNF::Prod(members)
                 }
                 Node::Or(ch) => {
                     let mut members = Vec::new();
                     for c in ch {
                         match convert(c, var_index) {
-                            Matrix::Sum(inner) => members.extend(inner),
+                            NNF::Sum(inner) => members.extend(inner),
                             other => members.push(other),
                         }
                     }
-                    Matrix::Sum(members)
+                    NNF::Sum(members)
                 }
             }
         }
@@ -694,7 +694,7 @@ impl From<&Ast> for Matrix {
     }
 }
 
-pub fn format_path(path: &ProdPath, m: &Matrix, var_names: &[String]) -> String {
+pub fn format_path(path: &ProdPath, m: &NNF, var_names: &[String]) -> String {
     let resolved = m.lits_on_path(path);
     if resolved.is_empty() { return "∅".to_string(); }
     let lits: Vec<String> = resolved.iter()
@@ -706,9 +706,50 @@ pub fn format_path(path: &ProdPath, m: &Matrix, var_names: &[String]) -> String 
     format!("{{{}}}", lits.join(", "))
 }
 
-pub fn parse_to_matrix(formula: &str) -> Result<(Matrix, Vec<String>), String> {
-    let ast = Ast::try_from(formula)?;
-    Ok((Matrix::from(&ast), ast.vars))
+/// A parsed formula with its AST and NNF (negation normal form) matrix.
+pub struct Matrix {
+    pub formula: String,
+    pub ast: Ast,
+    pub nnf: NNF,
+    pub nnf_complement: NNF,
+}
+
+impl TryFrom<&str> for Matrix {
+    type Error = String;
+    fn try_from(formula: &str) -> Result<Self, String> {
+        let ast = Ast::try_from(formula)?;
+        let nnf = NNF::from(&ast);
+        let nnf_complement = nnf.complement();
+        Ok(Matrix {
+            formula: formula.to_string(),
+            ast,
+            nnf,
+            nnf_complement,
+        })
+    }
+}
+
+impl Matrix {
+    pub fn for_each_path_prefix(
+        &self,
+        complement: bool,
+        buffer_size: usize,
+        should_continue: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> bool
+            + Send
+            + 'static,
+    ) -> (
+        tokio::task::JoinHandle<Result<(), tokio::sync::mpsc::error::SendError<PathPrefixEvent>>>,
+        tokio::sync::mpsc::Receiver<PathPrefixEvent>,
+        CancelHandle,
+    ) {
+        let target = if complement { &self.nnf_complement } else { &self.nnf };
+        target.for_each_path_prefix_async(buffer_size, should_continue)
+    }
+}
+
+pub fn parse_to_matrix(formula: &str) -> Result<(NNF, Vec<String>), String> {
+    let m = Matrix::try_from(formula)?;
+    Ok((m.nnf, m.ast.vars))
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -719,13 +760,13 @@ mod tests {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    fn v(n: Var) -> Matrix { Matrix::Lit(Lit::pos(n)) }
-    fn vn(n: Var) -> Matrix { Matrix::Lit(Lit::neg(n)) }
-    fn sum(ch: Vec<Matrix>) -> Matrix { Matrix::Sum(ch) }
-    fn prod(ch: Vec<Matrix>) -> Matrix { Matrix::Prod(ch) }
+    fn v(n: Var) -> NNF { NNF::Lit(Lit::pos(n)) }
+    fn vn(n: Var) -> NNF { NNF::Lit(Lit::neg(n)) }
+    fn sum(ch: Vec<NNF>) -> NNF { NNF::Sum(ch) }
+    fn prod(ch: Vec<NNF>) -> NNF { NNF::Prod(ch) }
 
     // Resolve each path's literals to (var, neg) pairs, sort for deterministic comparison.
-    fn sorted_paths(m: &Matrix) -> Vec<Vec<(Var, bool)>> {
+    fn sorted_paths(m: &NNF) -> Vec<Vec<(Var, bool)>> {
         let mut ps: Vec<Vec<(Var, bool)>> = m.paths_iter()
             .map(|path| {
                 let mut lits: Vec<(Var, bool)> = m.lits_on_path(&path)
@@ -804,9 +845,9 @@ mod tests {
         // (A B) (C D) should produce Prod(A, B, C, D), not Prod(A, B, Prod(C, D))
         let (m, _) = parse_to_matrix("(A B) (C D)").unwrap();
         match &m {
-            Matrix::Prod(children) => {
+            NNF::Prod(children) => {
                 assert_eq!(children.len(), 4, "expected 4 children, got {:?}", m);
-                assert!(children.iter().all(|c| matches!(c, Matrix::Lit(_))));
+                assert!(children.iter().all(|c| matches!(c, NNF::Lit(_))));
             }
             _ => panic!("expected Prod, got {:?}", m),
         }
@@ -817,9 +858,9 @@ mod tests {
         // (A + B) + (C + D) should produce Sum(A, B, C, D), not Sum(A, B, Sum(C, D))
         let (m, _) = parse_to_matrix("(A + B) + (C + D)").unwrap();
         match &m {
-            Matrix::Sum(children) => {
+            NNF::Sum(children) => {
                 assert_eq!(children.len(), 4, "expected 4 children, got {:?}", m);
-                assert!(children.iter().all(|c| matches!(c, Matrix::Lit(_))));
+                assert!(children.iter().all(|c| matches!(c, NNF::Lit(_))));
             }
             _ => panic!("expected Sum, got {:?}", m),
         }
@@ -909,7 +950,7 @@ mod tests {
     #[test]
     fn test_for_each_path_prefix_full_trace() {
         // a + b + b' c' + c d + e
-        // Matrix: Sum([a, b, Prod([b', c']), Prod([c, d]), e])
+        // NNF: Sum([a, b, Prod([b', c']), Prod([c, d]), e])
         // Variables alphabetically: a=0, b=1, c=2, d=3, e=4
         let (m, _) = parse_to_matrix("a + b + b' c' + c d + e").unwrap();
         let mut trace: Vec<(Vec<(Var, bool)>, Option<ProdPath>)> = Vec::new();
@@ -955,7 +996,7 @@ mod tests {
 
     // ── paths vs paths_reference ─────────────────────────────────
 
-    fn assert_paths_matches(m: &Matrix) {
+    fn assert_paths_matches(m: &NNF) {
         let fast = m.paths(Some(PathParams { paths_limit: usize::MAX }));
         let reference = m.paths_reference();
         let fast_uncovered: Vec<&ProdPath> = fast.uncovered_paths().collect();
@@ -1140,22 +1181,22 @@ mod tests {
 
     #[test]
     fn test_complement_lit() {
-        assert!(matches!(v(0).complement(), Matrix::Lit(l) if l == Lit::neg(0)));
-        assert!(matches!(vn(0).complement(), Matrix::Lit(l) if l == Lit::pos(0)));
+        assert!(matches!(v(0).complement(), NNF::Lit(l) if l == Lit::neg(0)));
+        assert!(matches!(vn(0).complement(), NNF::Lit(l) if l == Lit::pos(0)));
     }
 
     #[test]
     fn test_complement_sum_becomes_prod() {
         // (a + b)' = a' · b'
         let m = sum(vec![v(0), v(1)]).complement();
-        assert!(matches!(m, Matrix::Prod(_)));
+        assert!(matches!(m, NNF::Prod(_)));
     }
 
     #[test]
     fn test_complement_prod_becomes_sum() {
         // (a · b)' = a' + b'
         let m = prod(vec![v(0), v(1)]).complement();
-        assert!(matches!(m, Matrix::Sum(_)));
+        assert!(matches!(m, NNF::Sum(_)));
     }
 
     // ── Validity ──────────────────────────────────────────────────────────────

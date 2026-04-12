@@ -499,7 +499,7 @@ impl NNF {
     /// contains a complementary pair. For invalid matrices this finds
     /// non-complementary paths (up to `paths_limit`) without
     /// enumerating all paths.
-    pub fn paths<F: FnMut(PathsClass, bool) -> bool>(&self, ctrl: &mut BacktrackWhenCoveredController<F>) {
+    pub fn paths(&self, ctrl: &mut dyn PathSearchController) {
         self.for_each_path_prefix(|lits, positions, prod_path| {
             ctrl.should_continue_on_prefix(lits, positions, prod_path)
         });
@@ -509,9 +509,9 @@ impl NNF {
     /// the depth-first traversal and sends each `PathsClass` as it is
     /// discovered, paired with a `bool` that is `true` if this item caused
     /// the `paths_limit` to be reached.
-    pub fn paths_async<F: FnMut(PathsClass, bool) -> bool + Send + 'static>(
+    pub fn paths_async(
         &self,
-        mut ctrl: BacktrackWhenCoveredController<F>,
+        mut ctrl: Box<dyn PathSearchController + Send>,
     ) -> (tokio::task::JoinHandle<()>, CancelHandle) {
         let m = self.clone();
         let cancel = CancelHandle::new();
@@ -1153,7 +1153,7 @@ mod tests {
             Some(PathParams { paths_limit: usize::MAX }),
             move |class, hit_limit| { tx.blocking_send((class, hit_limit)).is_ok() },
         );
-        let (handle, cancel) = m.paths_async(ctrl);
+        let (handle, cancel) = m.paths_async(Box::new(ctrl));
         let _first = rx.recv().await.expect("at least one item");
         cancel.cancel();
         while rx.recv().await.is_some() {}
@@ -1170,7 +1170,7 @@ mod tests {
             Some(PathParams { paths_limit: 20 }),
             move |class, hit_limit| { tx.blocking_send((class, hit_limit)).is_ok() },
         );
-        let (handle, _cancel) = m.paths_async(ctrl);
+        let (handle, _cancel) = m.paths_async(Box::new(ctrl));
         let mut items: Vec<(PathsClass, bool)> = Vec::new();
         while let Some(it) = rx.recv().await {
             items.push(it);

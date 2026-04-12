@@ -1694,7 +1694,11 @@ export default function App() {
                     return <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
-                        partial cover of complement: {satResult.coverGroups.length} {satResult.coverGroups.length === 1 ? 'pair' : 'pairs'}
+                        {satResult.coverGroups.length} {satResult.coverGroups.length === 1 ? 'pair' : 'pairs'} in the partial cover covering {satResult.totalPrefixCount} {satResult.totalPrefixCount === 1 ? 'prefix' : 'prefixes'}{(() => {
+                          const lo = Math.min(...satResult.coverGroups.map(g => g.prefix_length_min));
+                          const hi = Math.max(...satResult.coverGroups.map(g => g.prefix_length_max));
+                          return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`;
+                        })()}:
                         {' '}
                         <a href="#" onClick={e => { e.preventDefault(); setSatSelected(new Set(satResult.coverGroups.map((_, i) => i))); }}
                            style={{ fontSize: 11, color: '#888' }}>all</a>

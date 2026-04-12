@@ -410,7 +410,7 @@ async fn paths_handler(
         },
     );
 
-    let (handle, cancel) = target.paths_async(ctrl);
+    let (handle, cancel) = target.paths_async(Box::new(ctrl));
     {
         let mut job = state.paths_job.lock().unwrap();
         job.cancel = Some(cancel);

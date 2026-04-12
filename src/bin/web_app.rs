@@ -339,7 +339,7 @@ async fn paths_handler(
     State(state): State<AppState>,
     Json(req): Json<PathsRequest>,
 ) -> Json<serde_json::Value> {
-    use logic::matrix::{parse_to_matrix, format_path, PathParams, PathsClass};
+    use logic::matrix::{parse_to_matrix, format_path, PathParams, PathsClass, BacktrackWhenCoveredController};
 
     // Cancel + reset existing job.
     {
@@ -360,19 +360,13 @@ async fn paths_handler(
         }
     };
     let target = if req.complement { m.complement() } else { m };
-
-    let (handle, mut rx, cancel) = target.paths_async(
-        Some(PathParams { paths_limit: req.paths_limit }),
-        64,
-    );
-    {
-        let mut job = state.paths_job.lock().unwrap();
-        job.cancel = Some(cancel);
-    }
+    let target_for_ctrl = target.clone();
+    let vars_for_ctrl = vars.clone();
 
     let job_state = state.paths_job.clone();
-    tokio::spawn(async move {
-        while let Some((class, hit_limit)) = rx.recv().await {
+    let ctrl = BacktrackWhenCoveredController::with_on_class(
+        Some(PathParams { paths_limit: req.paths_limit }),
+        move |class: PathsClass, hit_limit: bool| {
             let mut job = job_state.lock().unwrap();
             match class {
                 PathsClass::Covered(cp) => {
@@ -401,21 +395,31 @@ async fn paths_handler(
                     if snap.total_prefix_count <= PREFIX_DETAIL_LIMIT {
                         g.prefixes.push(cp.prefix);
                     } else if snap.total_prefix_count == PREFIX_DETAIL_LIMIT + 1 {
-                        // Just crossed — clear all accumulated prefixes.
                         for grp in &mut snap.cover_groups {
                             grp.prefixes.clear();
                         }
                     }
                 }
                 PathsClass::Uncovered(p) => {
-                    job.snapshot.uncovered_paths.push(format_path(&p, &target, &vars));
-                    job.snapshot.uncovered_path_positions.push(target.positions_on_path(&p));
+                    job.snapshot.uncovered_paths.push(format_path(&p, &target_for_ctrl, &vars_for_ctrl));
+                    job.snapshot.uncovered_path_positions.push(target_for_ctrl.positions_on_path(&p));
                 }
             }
             if hit_limit { job.snapshot.hit_limit = true; }
-        }
+            true
+        },
+    );
+
+    let (handle, cancel) = target.paths_async(ctrl);
+    {
+        let mut job = state.paths_job.lock().unwrap();
+        job.cancel = Some(cancel);
+    }
+
+    let job_state2 = state.paths_job.clone();
+    tokio::spawn(async move {
         let _ = handle.await;
-        let mut job = job_state.lock().unwrap();
+        let mut job = job_state2.lock().unwrap();
         job.running = false;
         job.cancel = None;
     });

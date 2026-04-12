@@ -141,9 +141,152 @@ impl Paths {
     }
 }
 
+// ─── PathSearchController ─────────────────────────────────────────────────────
+
+/// A `PathSearchController` that prunes paths whose prefix already contains a
+/// complementary literal pair, classifying each completed path as
+/// `Covered` or `Uncovered`. Classified items are delivered via
+/// `should_continue_on_paths_class`. Set `on_class` to receive them via a callback.
+pub struct BacktrackWhenCoveredController<F: FnMut(PathsClass, bool) -> bool = fn(PathsClass, bool) -> bool> {
+    paths_limit: usize,
+    covered_at_depth: Option<usize>,
+    path_count: usize,
+    last_lits_len: usize,
+    on_class: Option<F>,
+}
+
+impl From<Option<PathParams>> for BacktrackWhenCoveredController {
+    fn from(params: Option<PathParams>) -> Self {
+        let params = params.unwrap_or_default();
+        Self {
+            paths_limit: params.paths_limit,
+            covered_at_depth: None,
+            path_count: 0,
+            last_lits_len: 0,
+            on_class: None,
+        }
+    }
+}
+
+impl<F: FnMut(PathsClass, bool) -> bool> BacktrackWhenCoveredController<F> {
+    pub fn with_on_class(params: Option<PathParams>, on_class: F) -> Self {
+        let params = params.unwrap_or_default();
+        Self {
+            paths_limit: params.paths_limit,
+            covered_at_depth: None,
+            path_count: 0,
+            last_lits_len: 0,
+            on_class: Some(on_class),
+        }
+    }
+
+    pub fn hit_limit(&self) -> bool { self.path_count >= self.paths_limit }
+}
+
+impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenCoveredController<F> {
+    fn should_continue_on_prefix(
+        &mut self,
+        prefix_literals: &Vec<&Lit>,
+        prefix_positions: &PathPrefix,
+        complete_prod_path: Option<&ProdPath>,
+    ) -> bool {
+        if self.path_count >= self.paths_limit {
+            return false;
+        }
+        // Detect backtrack: if lits shrunk past the depth where we found
+        // a complementary pair, we're no longer in a covered subtree.
+        if let Some(d) = self.covered_at_depth {
+            if prefix_literals.len() < d {
+                self.covered_at_depth = None;
+            }
+        }
+        // Check new literals for complementary pairs.
+        if self.covered_at_depth.is_none() && prefix_literals.len() > self.last_lits_len {
+            'outer: for new_idx in self.last_lits_len..prefix_literals.len() {
+                let new_lit = prefix_literals[new_idx];
+                for (j, prior) in prefix_literals[..new_idx].iter().enumerate() {
+                    if prior.is_complement_of(new_lit) {
+                        let cpp = CoveredPathPrefix {
+                            cover: (prefix_positions[j].clone(), prefix_positions[new_idx].clone()),
+                            prefix: prefix_positions.clone(),
+                        };
+                        self.path_count += 1;
+                        let hit_limit = self.path_count >= self.paths_limit;
+                        if !self.should_continue_on_paths_class(PathsClass::Covered(cpp), hit_limit) {
+                            self.last_lits_len = prefix_literals.len();
+                            return false;
+                        }
+                        self.covered_at_depth = Some(prefix_literals.len());
+                        break 'outer;
+                    }
+                }
+            }
+        }
+        if let Some(path) = complete_prod_path {
+            if self.covered_at_depth.is_none() {
+                self.path_count += 1;
+                let hit_limit = self.path_count >= self.paths_limit;
+                if !self.should_continue_on_paths_class(PathsClass::Uncovered(path.clone()), hit_limit) {
+                    self.last_lits_len = prefix_literals.len();
+                    return false;
+                }
+            }
+            self.last_lits_len = prefix_literals.len();
+            return self.path_count < self.paths_limit;
+        }
+        // Prod selection — prune if covered.
+        if self.covered_at_depth.is_some() {
+            self.last_lits_len = prefix_literals.len();
+            return false;
+        }
+        self.last_lits_len = prefix_literals.len();
+        true
+    }
+
+    fn should_continue_on_paths_class(&mut self, paths_class: PathsClass, hit_limit: bool) -> bool {
+        match &mut self.on_class {
+            Some(f) => f(paths_class, hit_limit),
+            None => true,
+        }
+    }
+}
+
+/// Controls depth-first path-prefix traversal.
+pub trait PathSearchController {
+    /// Called at each step of the traversal. Return `true` to continue
+    /// forward, `false` to backtrack.
+    fn should_continue_on_prefix(
+        &mut self,
+        prefix_literals: &Vec<&Lit>,
+        prefix_positions: &PathPrefix,
+        complete_prod_path: Option<&ProdPath>,
+    ) -> bool;
+
+    /// Called on each classified path. Return `true` to continue
+    /// classifying paths, `false` to stop the traversal.
+    fn should_continue_on_paths_class(&mut self, _paths_class: PathsClass, _hit_limit: bool) -> bool {
+        true
+    }
+}
+
+/// Blanket impl: any matching `FnMut` is a `PathSearchController`.
+impl<F> PathSearchController for F
+where
+    F: FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> bool,
+{
+    fn should_continue_on_prefix(
+        &mut self,
+        prefix_literals: &Vec<&Lit>,
+        prefix_positions: &PathPrefix,
+        complete_prod_path: Option<&ProdPath>,
+    ) -> bool {
+        self(prefix_literals, prefix_positions, complete_prod_path)
+    }
+}
+
 // ─── NNF ───────────────────────────────────────────────────────────────────
 
-/// A formula in negation normal form (NNF / NNF).
+/// A formula in negation normal form (NNF).
 ///
 /// `∑` (Sum)  = disjunction (OR)
 /// `∏` (Prod) = conjunction (AND)
@@ -356,146 +499,30 @@ impl NNF {
     /// contains a complementary pair. For invalid matrices this finds
     /// non-complementary paths (up to `paths_limit`) without
     /// enumerating all paths.
-    pub fn paths(&self, params: Option<PathParams>) -> Paths {
-        let params = params.unwrap_or_default();
-        let mut classes: Vec<PathsClass> = Vec::new();
-        let mut covered_at_depth: Option<usize> = None;
-        let mut path_count: usize = 0;
-
-        let mut last_lits_len: usize = 0;
-
+    pub fn paths<F: FnMut(PathsClass, bool) -> bool>(&self, ctrl: &mut BacktrackWhenCoveredController<F>) {
         self.for_each_path_prefix(|lits, positions, prod_path| {
-            if path_count >= params.paths_limit {
-                return false;
-            }
-            // Detect backtrack: if lits shrunk past the depth where we found
-            // a complementary pair, we're no longer in a covered subtree.
-            if let Some(d) = covered_at_depth {
-                if lits.len() < d {
-                    covered_at_depth = None;
-                }
-            }
-            // Check new literals for complementary pairs.
-            if covered_at_depth.is_none() && lits.len() > last_lits_len {
-                for new_idx in last_lits_len..lits.len() {
-                    let new_lit = lits[new_idx];
-                    for (j, prior) in lits[..new_idx].iter().enumerate() {
-                        if prior.is_complement_of(new_lit) {
-                            classes.push(PathsClass::Covered(CoveredPathPrefix {
-                                cover: (positions[j].clone(), positions[new_idx].clone()),
-                                prefix: positions.clone(),
-                            }));
-                            covered_at_depth = Some(lits.len());
-                            path_count += 1;
-                            break;
-                        }
-                    }
-                    if covered_at_depth.is_some() { break; }
-                }
-            }
-            if let Some(path) = prod_path {
-                if covered_at_depth.is_none() {
-                    classes.push(PathsClass::Uncovered(path.clone()));
-                    path_count += 1;
-                }
-                last_lits_len = lits.len();
-                return path_count < params.paths_limit;
-            }
-            // Prod selection — prune if covered.
-            if covered_at_depth.is_some() {
-                last_lits_len = lits.len();
-                return false;
-            }
-            last_lits_len = lits.len();
-            true
+            ctrl.should_continue_on_prefix(lits, positions, prod_path)
         });
-
-        Paths { classes, hit_limit: path_count >= params.paths_limit }
     }
 
     /// Async streaming variant of `paths`: spawns a blocking thread that runs
     /// the depth-first traversal and sends each `PathsClass` as it is
     /// discovered, paired with a `bool` that is `true` if this item caused
     /// the `paths_limit` to be reached.
-    pub fn paths_async(
+    pub fn paths_async<F: FnMut(PathsClass, bool) -> bool + Send + 'static>(
         &self,
-        params: Option<PathParams>,
-        buffer_size: usize,
-    ) -> (
-        tokio::task::JoinHandle<Result<(), tokio::sync::mpsc::error::SendError<(PathsClass, bool)>>>,
-        tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
-        CancelHandle,
-    ) {
+        mut ctrl: BacktrackWhenCoveredController<F>,
+    ) -> (tokio::task::JoinHandle<()>, CancelHandle) {
         let m = self.clone();
-        let params = params.unwrap_or_default();
-        let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
         let cancel = CancelHandle::new();
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            let mut send_err = None;
-            let mut covered_at_depth: Option<usize> = None;
-            let mut path_count: usize = 0;
-            let mut last_lits_len: usize = 0;
-
             m.for_each_path_prefix(|lits, positions, prod_path| {
-                if send_err.is_some() || cancel_for_thread.is_cancelled() { return false; }
-                if path_count >= params.paths_limit {
-                    return false;
-                }
-                // Detect backtrack: if lits shrunk past the depth where we
-                // found a complementary pair, we're no longer in a covered subtree.
-                if let Some(d) = covered_at_depth {
-                    if lits.len() < d {
-                        covered_at_depth = None;
-                    }
-                }
-                // Check new literals for complementary pairs.
-                if covered_at_depth.is_none() && lits.len() > last_lits_len {
-                    'outer: for new_idx in last_lits_len..lits.len() {
-                        let new_lit = lits[new_idx];
-                        for (j, prior) in lits[..new_idx].iter().enumerate() {
-                            if prior.is_complement_of(new_lit) {
-                                let cpp = CoveredPathPrefix {
-                                    cover: (positions[j].clone(), positions[new_idx].clone()),
-                                    prefix: positions.clone(),
-                                };
-                                path_count += 1;
-                                let hit_limit = path_count >= params.paths_limit;
-                                if let Err(e) = tx.blocking_send((PathsClass::Covered(cpp), hit_limit)) {
-                                    send_err = Some(e);
-                                    last_lits_len = lits.len();
-                                    return false;
-                                }
-                                covered_at_depth = Some(lits.len());
-                                break 'outer;
-                            }
-                        }
-                    }
-                }
-                if let Some(path) = prod_path {
-                    if covered_at_depth.is_none() {
-                        path_count += 1;
-                        let hit_limit = path_count >= params.paths_limit;
-                        if let Err(e) = tx.blocking_send((PathsClass::Uncovered(path.clone()), hit_limit)) {
-                            send_err = Some(e);
-                            last_lits_len = lits.len();
-                            return false;
-                        }
-                    }
-                    last_lits_len = lits.len();
-                    return path_count < params.paths_limit;
-                }
-                // Prod selection — prune if covered.
-                if covered_at_depth.is_some() {
-                    last_lits_len = lits.len();
-                    return false;
-                }
-                last_lits_len = lits.len();
-                true
+                if cancel_for_thread.is_cancelled() { return false; }
+                ctrl.should_continue_on_prefix(lits, positions, prod_path)
             });
-            send_err.map(Err).unwrap_or(Ok(()))
         });
-        (handle, rx, cancel)
+        (handle, cancel)
     }
 
     /// Reference implementation: check validity by examining all paths.
@@ -611,7 +638,7 @@ impl NNF {
     /// Async variant of `for_each_path_prefix`: spawns a blocking thread that
     /// runs the depth-first traversal, sends each event as an owned
     /// `PathPrefixEvent` over the returned channel, and consults
-    /// `should_continue` at each step to decide whether to continue forward
+    /// `should_continue_on_prefix` at each step to decide whether to continue forward
     /// or backtrack. The traversal also stops when the receiver is dropped
     /// (the next send fails).
     ///
@@ -620,9 +647,7 @@ impl NNF {
     pub fn for_each_path_prefix_async(
         &self,
         buffer_size: usize,
-        mut should_continue: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> bool
-            + Send
-            + 'static,
+        mut path_prefix_controller: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> bool + Send + 'static,
     ) -> (
         tokio::task::JoinHandle<Result<(), tokio::sync::mpsc::error::SendError<PathPrefixEvent>>>,
         tokio::sync::mpsc::Receiver<PathPrefixEvent>,
@@ -645,7 +670,7 @@ impl NNF {
                     send_err = Some(e);
                     return false;
                 }
-                should_continue(lits, positions, prod_path)
+                path_prefix_controller(lits, positions, prod_path)
             });
             send_err.map(Err).unwrap_or(Ok(()))
         });
@@ -734,16 +759,16 @@ impl Matrix {
         &self,
         complement: bool,
         buffer_size: usize,
-        should_continue: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> bool
-            + Send
-            + 'static,
+        mut path_prefix_controller: impl PathSearchController + Send + 'static,
     ) -> (
         tokio::task::JoinHandle<Result<(), tokio::sync::mpsc::error::SendError<PathPrefixEvent>>>,
         tokio::sync::mpsc::Receiver<PathPrefixEvent>,
         CancelHandle,
     ) {
         let target = if complement { &self.nnf_complement } else { &self.nnf };
-        target.for_each_path_prefix_async(buffer_size, should_continue)
+        target.for_each_path_prefix_async(buffer_size, move |lits, positions, prod_path| {
+            path_prefix_controller.should_continue_on_prefix(lits, positions, prod_path)
+        })
     }
 }
 
@@ -867,6 +892,20 @@ mod tests {
     }
 
     // ── Path encoding ─────────────────────────────────────────────────────────
+
+    /// Test helper: run `paths()` with the given params, collect classes into a `Paths`.
+    fn collect_paths(m: &NNF, params: Option<PathParams>) -> Paths {
+        let mut classes = Vec::new();
+        let hit_limit = {
+            let mut ctrl = BacktrackWhenCoveredController::with_on_class(params, |class, _| {
+                classes.push(class);
+                true
+            });
+            m.paths(&mut ctrl);
+            ctrl.hit_limit()
+        };
+        Paths { classes, hit_limit }
+    }
 
     #[test]
     fn test_path_encoding() {
@@ -997,7 +1036,7 @@ mod tests {
     // ── paths vs paths_reference ─────────────────────────────────
 
     fn assert_paths_matches(m: &NNF) {
-        let fast = m.paths(Some(PathParams { paths_limit: usize::MAX }));
+        let fast = collect_paths(&m, Some(PathParams { paths_limit: usize::MAX }));
         let reference = m.paths_reference();
         let fast_uncovered: Vec<&ProdPath> = fast.uncovered_paths().collect();
         let ref_uncovered: Vec<&ProdPath> = reference.uncovered_paths().collect();
@@ -1082,15 +1121,15 @@ mod tests {
         let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
 
         // Limit 3: should return exactly 3 uncovered paths
-        let p3 = m.paths(Some(PathParams { paths_limit: 3 }));
+        let p3 = collect_paths(&m, Some(PathParams { paths_limit: 3 }));
         assert_eq!(p3.uncovered_paths().count(), 3);
 
         // Limit 5 (more than total): should return all 4 uncovered paths
-        let p5 = m.paths(Some(PathParams { paths_limit: 5 }));
+        let p5 = collect_paths(&m, Some(PathParams { paths_limit: 5 }));
         assert_eq!(p5.uncovered_paths().count(), 4);
 
         // Default limit (1): should return exactly 1 uncovered path
-        let p1 = m.paths(None);
+        let p1 = collect_paths(&m, None);
         assert_eq!(p1.uncovered_paths().count(), 1);
     }
 
@@ -1099,7 +1138,7 @@ mod tests {
         // a + a' b + c b' + a b + a a' b b'
         // 6 covered path prefixes + 4 uncovered paths = 10
         let (m, _) = parse_to_matrix("a + a' b + c b' + a b + a a' b b'").unwrap();
-        let p = m.paths(Some(PathParams { paths_limit: 20 }));
+        let p = collect_paths(&m, Some(PathParams { paths_limit: 20 }));
         assert_eq!(p.covered_path_prefixes().count(), 6);
         assert_eq!(p.uncovered_paths().count(), 4);
         assert_eq!(p.cover().len(), 6);
@@ -1109,31 +1148,36 @@ mod tests {
     async fn test_paths_async_cancel() {
         // Large enumeration; cancel after the first item.
         let m = sum((0..6).map(|_| prod(vec![v(0), v(1), v(2), v(3)])).collect());
-        let (handle, mut rx, cancel) = m.paths_async(
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(1);
+        let ctrl = BacktrackWhenCoveredController::with_on_class(
             Some(PathParams { paths_limit: usize::MAX }),
-            1,
+            move |class, hit_limit| { tx.blocking_send((class, hit_limit)).is_ok() },
         );
+        let (handle, cancel) = m.paths_async(ctrl);
         let _first = rx.recv().await.expect("at least one item");
         cancel.cancel();
-        // Drain remaining items already buffered/in flight.
         while rx.recv().await.is_some() {}
-        handle.await.expect("worker panicked").expect("send error");
+        handle.await.expect("worker panicked");
     }
 
     #[tokio::test]
     async fn test_paths_async_matches_paths() {
         let (m, _) = parse_to_matrix("a + a' b + c b' + a b + a a' b b'").unwrap();
-        let sync_paths = m.paths(Some(PathParams { paths_limit: 20 }));
+        let sync_paths = collect_paths(&m, Some(PathParams { paths_limit: 20 }));
 
-        let (handle, mut rx, _cancel) = m.paths_async(Some(PathParams { paths_limit: 20 }), 8);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(8);
+        let ctrl = BacktrackWhenCoveredController::with_on_class(
+            Some(PathParams { paths_limit: 20 }),
+            move |class, hit_limit| { tx.blocking_send((class, hit_limit)).is_ok() },
+        );
+        let (handle, _cancel) = m.paths_async(ctrl);
         let mut items: Vec<(PathsClass, bool)> = Vec::new();
         while let Some(it) = rx.recv().await {
             items.push(it);
         }
-        handle.await.expect("worker panicked").expect("send error");
+        handle.await.expect("worker panicked");
 
         assert_eq!(items.len(), sync_paths.classes.len());
-        // Compare each streamed class to the sync version's class.
         for (a, b) in items.iter().zip(sync_paths.classes.iter()) {
             match (&a.0, b) {
                 (PathsClass::Covered(x), PathsClass::Covered(y)) => {
@@ -1146,7 +1190,6 @@ mod tests {
                 _ => panic!("class mismatch"),
             }
         }
-        // Only the last item (if limit was hit) should have hit_limit=true.
         assert!(items[..items.len() - 1].iter().all(|(_, hit)| !hit));
     }
 

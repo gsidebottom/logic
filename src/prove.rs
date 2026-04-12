@@ -1,4 +1,4 @@
-use crate::matrix::{format_path, parse_to_matrix, Cover, PathParams, PathPrefix};
+use crate::matrix::{format_path, parse_to_matrix, BacktrackWhenCoveredController, Cover, PathParams, PathPrefix};
 
 type CoveredPrefixes = Vec<PathPrefix>;
 type UncoveredPositions = Option<PathPrefix>;
@@ -15,7 +15,16 @@ pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
 /// Returns `(valid, uncovered_path, uncovered_positions, cover, prefixes)`.
 pub fn check_valid(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
-    let result = m.paths(Some(PathParams { paths_limit: usize::MAX }));
+    let mut classes = Vec::new();
+    let hit_limit = {
+        let mut ctrl = BacktrackWhenCoveredController::with_on_class(
+            Some(PathParams { paths_limit: usize::MAX }),
+            |class, _hit_limit| { classes.push(class); true },
+        );
+        m.paths(&mut ctrl);
+        ctrl.hit_limit()
+    };
+    let result = crate::matrix::Paths { classes, hit_limit };
     let cover = result.cover();
     let prefixes: Vec<PathPrefix> = result.covered_path_prefixes().map(|cp| cp.prefix.clone()).collect();
     let first_uncovered = result.uncovered_paths().next();
@@ -28,7 +37,16 @@ pub fn check_valid(formula: &str) -> ProveResult {
 pub fn check_satisfiable(formula: &str) -> ProveResult {
     let (m, vars) = parse_to_matrix(formula)?;
     let comp = m.complement();
-    let result = comp.paths(Some(PathParams { paths_limit: usize::MAX }));
+    let mut classes = Vec::new();
+    let hit_limit = {
+        let mut ctrl = BacktrackWhenCoveredController::with_on_class(
+            Some(PathParams { paths_limit: usize::MAX }),
+            |class, _hit_limit| { classes.push(class); true },
+        );
+        comp.paths(&mut ctrl);
+        ctrl.hit_limit()
+    };
+    let result = crate::matrix::Paths { classes, hit_limit };
     let cover = result.cover();
     let prefixes: Vec<PathPrefix> = result.covered_path_prefixes().map(|cp| cp.prefix.clone()).collect();
     let first_uncovered = result.uncovered_paths().next();

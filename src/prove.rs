@@ -1,11 +1,11 @@
-use crate::matrix::{format_path, parse_to_matrix, BacktrackWhenCoveredController, Cover, PathParams, PathPrefix};
+use crate::matrix::{format_path, parse_to_nnf, BacktrackWhenCoveredController, Cover, PathParams, PathPrefix};
 
 type CoveredPrefixes = Vec<PathPrefix>;
 type UncoveredPositions = Option<PathPrefix>;
 type ProveResult = Result<(bool, Option<String>, UncoveredPositions, Cover, CoveredPrefixes), String>;
 
 pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
-    let (m, vars) = parse_to_matrix(formula)?;
+    let (m, vars) = parse_to_nnf(formula)?;
     let all_paths: Vec<_> = m.paths_iter().collect();
     let formatted  = all_paths.iter().map(|p| format_path(p, &m, &vars)).collect();
     let comp_flags = all_paths.iter().map(|p| m.is_complementary(p)).collect();
@@ -14,11 +14,11 @@ pub fn get_paths(formula: &str) -> Result<(Vec<String>, Vec<bool>), String> {
 
 /// Returns `(valid, uncovered_path, uncovered_positions, cover, prefixes)`.
 pub fn check_valid(formula: &str) -> ProveResult {
-    let (m, vars) = parse_to_matrix(formula)?;
+    let (m, vars) = parse_to_nnf(formula)?;
     let mut classes = Vec::new();
     let hit_limit = {
         let mut ctrl = BacktrackWhenCoveredController::with_on_class(
-            Some(PathParams { paths_limit: usize::MAX }),
+            Some(PathParams { paths_class_limit: usize::MAX, uncovered_path_limit: usize::MAX, covered_prefix_limit: usize::MAX }),
             |class, _hit_limit| { classes.push(class); true },
         );
         m.paths(&mut ctrl);
@@ -35,12 +35,12 @@ pub fn check_valid(formula: &str) -> ProveResult {
 
 /// Returns `(satisfiable, uncovered_path_in_complement, uncovered_positions, cover, prefixes)`.
 pub fn check_satisfiable(formula: &str) -> ProveResult {
-    let (m, vars) = parse_to_matrix(formula)?;
+    let (m, vars) = parse_to_nnf(formula)?;
     let comp = m.complement();
     let mut classes = Vec::new();
     let hit_limit = {
         let mut ctrl = BacktrackWhenCoveredController::with_on_class(
-            Some(PathParams { paths_limit: usize::MAX }),
+            Some(PathParams { paths_class_limit: usize::MAX, uncovered_path_limit: usize::MAX, covered_prefix_limit: usize::MAX }),
             |class, _hit_limit| { classes.push(class); true },
         );
         comp.paths(&mut ctrl);
@@ -88,7 +88,7 @@ mod tests {
         assert!(valid);
         assert!(path.is_none());
         // Every pair in the cover must consist of complementary literals.
-        let (m, _) = parse_to_matrix(F).unwrap();
+        let (m, _) = parse_to_nnf(F).unwrap();
         for (pa, pb) in &pairs {
             let la = m.lit_at(pa).expect("position a should resolve");
             let lb = m.lit_at(pb).expect("position b should resolve");

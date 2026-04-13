@@ -187,3 +187,28 @@ graph TD
       F --> a4["a"]
       F --> b4["b"]                     
 ```
+
+### Prompts
+
+
+Can you add a method like this to NNF?  The (PathsClass, bool) in the channel should be 
+```
+
+    pub fn classify_paths(
+
+        &self,
+
+        buffer_size: usize,
+
+        mut ctrl: impl PathSearchController + Send + 'static,
+
+    ) -> (
+
+        tokio::task::JoinHandle<Result<(), Box<dyn Error>>>,
+
+        tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
+
+        CancelHandle,
+
+    )
+```

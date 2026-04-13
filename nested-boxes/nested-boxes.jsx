@@ -872,7 +872,7 @@ export default function App() {
     try {
       const res = await fetch('http://localhost:3001/paths', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input, paths_limit: pathsLimit, complement: complementFlag }),
+        body: JSON.stringify({ formula: input, paths_class_limit: pathsLimit, complement: complementFlag }),
       });
       if (!res.ok) throw new Error('start failed');
     } catch (e) {

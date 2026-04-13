@@ -71,17 +71,30 @@ pub type Cover = Vec<Pair>;
 /// Parameters controlling proof search.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PathParams {
-    #[serde(default = "PathParams::default_paths_limit")]
-    pub paths_limit: usize,
+    /// Limited number of paths classes reported.
+    #[serde(default = "PathParams::default_paths_class_limit")]
+    pub paths_class_limit: usize,
+    /// Limited number of uncovered paths reported.
+    #[serde(default = "PathParams::default_uncovered_path_limit")]
+    pub uncovered_path_limit: usize,
+    /// Limited number of covered prefixes reported.
+    #[serde(default = "PathParams::default_covered_prefix_limit")]
+    pub covered_prefix_limit: usize,
 }
 
 impl PathParams {
-    fn default_paths_limit() -> usize { 1 }
+    fn default_paths_class_limit() -> usize { 100 }
+    fn default_uncovered_path_limit() -> usize { usize::MAX }
+    fn default_covered_prefix_limit() -> usize { usize::MAX }
 }
 
 impl Default for PathParams {
     fn default() -> Self {
-        PathParams { paths_limit: Self::default_paths_limit() }
+        PathParams {
+            paths_class_limit: Self::default_paths_class_limit(),
+            uncovered_path_limit: Self::default_uncovered_path_limit(),
+            covered_prefix_limit: Self::default_covered_prefix_limit(),
+        }
     }
 }
 
@@ -109,7 +122,7 @@ pub struct PathPrefixEvent {
 /// Result of checking validity of a matrix.
 ///
 /// The matrix is valid (a tautology) iff every class is `Covered`.
-/// `paths_limit` limits `classes.len()`.
+/// `paths_class_limit` limits `classes.len()`.
 pub struct Paths {
     pub classes: Vec<PathsClass>,
     pub hit_limit: bool,
@@ -148,9 +161,13 @@ impl Paths {
 /// `Covered` or `Uncovered`. Classified items are delivered via
 /// `should_continue_on_paths_class`. Set `on_class` to receive them via a callback.
 pub struct BacktrackWhenCoveredController<F: FnMut(PathsClass, bool) -> bool = fn(PathsClass, bool) -> bool> {
-    paths_limit: usize,
+    paths_class_limit: usize,
+    uncovered_path_limit: usize,
+    covered_prefix_limit: usize,
     covered_at_depth: Option<usize>,
     path_count: usize,
+    uncovered_path_count: usize,
+    covered_prefix_count: usize,
     last_lits_len: usize,
     on_class: Option<F>,
 }
@@ -159,9 +176,13 @@ impl From<Option<PathParams>> for BacktrackWhenCoveredController {
     fn from(params: Option<PathParams>) -> Self {
         let params = params.unwrap_or_default();
         Self {
-            paths_limit: params.paths_limit,
+            paths_class_limit: params.paths_class_limit,
+            uncovered_path_limit: params.uncovered_path_limit,
+            covered_prefix_limit: params.covered_prefix_limit,
             covered_at_depth: None,
             path_count: 0,
+            uncovered_path_count: 0,
+            covered_prefix_count: 0,
             last_lits_len: 0,
             on_class: None,
         }
@@ -172,15 +193,23 @@ impl<F: FnMut(PathsClass, bool) -> bool> BacktrackWhenCoveredController<F> {
     pub fn with_on_class(params: Option<PathParams>, on_class: F) -> Self {
         let params = params.unwrap_or_default();
         Self {
-            paths_limit: params.paths_limit,
+            paths_class_limit: params.paths_class_limit,
+            uncovered_path_limit: params.uncovered_path_limit,
+            covered_prefix_limit: params.covered_prefix_limit,
             covered_at_depth: None,
             path_count: 0,
+            uncovered_path_count: 0,
+            covered_prefix_count: 0,
             last_lits_len: 0,
             on_class: Some(on_class),
         }
     }
 
-    pub fn hit_limit(&self) -> bool { self.path_count >= self.paths_limit }
+    pub fn hit_limit(&self) -> bool {
+        self.path_count >= self.paths_class_limit
+            || self.uncovered_path_count >= self.uncovered_path_limit
+            || self.covered_prefix_count >= self.covered_prefix_limit
+    }
 }
 
 impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenCoveredController<F> {
@@ -190,15 +219,13 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenC
         prefix_positions: &PathPrefix,
         complete_prod_path: Option<&ProdPath>,
     ) -> bool {
-        if self.path_count >= self.paths_limit {
+        if self.hit_limit() {
             return false;
         }
         // Detect backtrack: if lits shrunk past the depth where we found
         // a complementary pair, we're no longer in a covered subtree.
-        if let Some(d) = self.covered_at_depth {
-            if prefix_literals.len() < d {
-                self.covered_at_depth = None;
-            }
+        if let Some(d) = self.covered_at_depth && prefix_literals.len() < d {
+            self.covered_at_depth = None;
         }
         // Check new literals for complementary pairs.
         if self.covered_at_depth.is_none() && prefix_literals.len() > self.last_lits_len {
@@ -211,8 +238,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenC
                             prefix: prefix_positions.clone(),
                         };
                         self.path_count += 1;
-                        let hit_limit = self.path_count >= self.paths_limit;
-                        if !self.should_continue_on_paths_class(PathsClass::Covered(cpp), hit_limit) {
+                        self.covered_prefix_count += 1;
+                        if !self.should_continue_on_paths_class(PathsClass::Covered(cpp), self.hit_limit()) {
                             self.last_lits_len = prefix_literals.len();
                             return false;
                         }
@@ -225,14 +252,14 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenC
         if let Some(path) = complete_prod_path {
             if self.covered_at_depth.is_none() {
                 self.path_count += 1;
-                let hit_limit = self.path_count >= self.paths_limit;
-                if !self.should_continue_on_paths_class(PathsClass::Uncovered(path.clone()), hit_limit) {
+                self.uncovered_path_count += 1;
+                if !self.should_continue_on_paths_class(PathsClass::Uncovered(path.clone()), self.hit_limit()) {
                     self.last_lits_len = prefix_literals.len();
                     return false;
                 }
             }
             self.last_lits_len = prefix_literals.len();
-            return self.path_count < self.paths_limit;
+            return !self.hit_limit();
         }
         // Prod selection — prune if covered.
         if self.covered_at_depth.is_some() {
@@ -497,7 +524,7 @@ impl NNF {
     ///
     /// Uses `for_each_path_prefix` to prune paths whose prefix already
     /// contains a complementary pair. For invalid matrices this finds
-    /// non-complementary paths (up to `paths_limit`) without
+    /// non-complementary paths (up to `paths_class_limit`) without
     /// enumerating all paths.
     pub fn paths(&self, ctrl: &mut dyn PathSearchController) {
         self.for_each_path_prefix(|lits, positions, prod_path| {
@@ -508,10 +535,10 @@ impl NNF {
     /// Async streaming variant of `paths`: spawns a blocking thread that runs
     /// the depth-first traversal and sends each `PathsClass` as it is
     /// discovered, paired with a `bool` that is `true` if this item caused
-    /// the `paths_limit` to be reached.
+    /// the `paths_class_limit` to be reached.
     pub fn paths_async(
         &self,
-        mut ctrl: Box<dyn PathSearchController + Send>,
+        mut ctrl: impl PathSearchController + Send + 'static,
     ) -> (tokio::task::JoinHandle<()>, CancelHandle) {
         let m = self.clone();
         let cancel = CancelHandle::new();
@@ -523,6 +550,46 @@ impl NNF {
             });
         });
         (handle, cancel)
+    }
+
+    /// Async streaming path classification. Spawns a blocking thread that
+    /// runs the traversal using a `BacktrackWhenCoveredController`, sending
+    /// each `(PathsClass, hit_limit)` over the returned channel via the
+    /// controller's `on_class` callback.
+    pub fn classify_paths(
+        &self,
+        buffer_size: usize,
+        params: Option<PathParams>,
+    ) -> (
+        tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
+        tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
+        CancelHandle,
+    ) {
+        let m = self.clone();
+        let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
+        let cancel = CancelHandle::new();
+        let cancel_for_thread = cancel.clone();
+        let handle = tokio::task::spawn_blocking(move || {
+            let mut send_err: Option<tokio::sync::mpsc::error::SendError<(PathsClass, bool)>> = None;
+            let mut ctrl = BacktrackWhenCoveredController::with_on_class(params,
+                |class: PathsClass, hit_limit: bool| {
+                    if send_err.is_some() || cancel_for_thread.is_cancelled() { return false; }
+                    if let Err(e) = tx.blocking_send((class, hit_limit)) {
+                        send_err = Some(e);
+                        return false;
+                    }
+                    true
+                },
+            );
+            m.for_each_path_prefix(|lits, positions, prod_path| {
+                ctrl.should_continue_on_prefix(lits, positions, prod_path)
+            });
+            match send_err {
+                Some(e) => Err(Box::new(e) as Box<dyn std::error::Error + Send>),
+                None => Ok(()),
+            }
+        });
+        (handle, rx, cancel)
     }
 
     /// Reference implementation: check validity by examining all paths.
@@ -755,24 +822,22 @@ impl TryFrom<&str> for Matrix {
 }
 
 impl Matrix {
-    pub fn for_each_path_prefix(
+    pub fn classify_paths(
         &self,
         complement: bool,
         buffer_size: usize,
-        mut path_prefix_controller: impl PathSearchController + Send + 'static,
+        params: Option<PathParams>,
     ) -> (
-        tokio::task::JoinHandle<Result<(), tokio::sync::mpsc::error::SendError<PathPrefixEvent>>>,
-        tokio::sync::mpsc::Receiver<PathPrefixEvent>,
+        tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
+        tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
         CancelHandle,
     ) {
         let target = if complement { &self.nnf_complement } else { &self.nnf };
-        target.for_each_path_prefix_async(buffer_size, move |lits, positions, prod_path| {
-            path_prefix_controller.should_continue_on_prefix(lits, positions, prod_path)
-        })
+        target.classify_paths(buffer_size, params)
     }
 }
 
-pub fn parse_to_matrix(formula: &str) -> Result<(NNF, Vec<String>), String> {
+pub fn parse_to_nnf(formula: &str) -> Result<(NNF, Vec<String>), String> {
     let m = Matrix::try_from(formula)?;
     Ok((m.nnf, m.ast.vars))
 }
@@ -868,7 +933,7 @@ mod tests {
     #[test]
     fn test_parse_prod_flattening() {
         // (A B) (C D) should produce Prod(A, B, C, D), not Prod(A, B, Prod(C, D))
-        let (m, _) = parse_to_matrix("(A B) (C D)").unwrap();
+        let (m, _) = parse_to_nnf("(A B) (C D)").unwrap();
         match &m {
             NNF::Prod(children) => {
                 assert_eq!(children.len(), 4, "expected 4 children, got {:?}", m);
@@ -881,7 +946,7 @@ mod tests {
     #[test]
     fn test_parse_sum_flattening() {
         // (A + B) + (C + D) should produce Sum(A, B, C, D), not Sum(A, B, Sum(C, D))
-        let (m, _) = parse_to_matrix("(A + B) + (C + D)").unwrap();
+        let (m, _) = parse_to_nnf("(A + B) + (C + D)").unwrap();
         match &m {
             NNF::Sum(children) => {
                 assert_eq!(children.len(), 4, "expected 4 children, got {:?}", m);
@@ -991,7 +1056,7 @@ mod tests {
         // a + b + b' c' + c d + e
         // NNF: Sum([a, b, Prod([b', c']), Prod([c, d]), e])
         // Variables alphabetically: a=0, b=1, c=2, d=3, e=4
-        let (m, _) = parse_to_matrix("a + b + b' c' + c d + e").unwrap();
+        let (m, _) = parse_to_nnf("a + b + b' c' + c d + e").unwrap();
         let mut trace: Vec<(Vec<(Var, bool)>, Option<ProdPath>)> = Vec::new();
         m.for_each_path_prefix(|lits, _positions, prod_path| {
             trace.push((
@@ -1036,7 +1101,7 @@ mod tests {
     // ── paths vs paths_reference ─────────────────────────────────
 
     fn assert_paths_matches(m: &NNF) {
-        let fast = collect_paths(&m, Some(PathParams { paths_limit: usize::MAX }));
+        let fast = collect_paths(&m, Some(PathParams { paths_class_limit: usize::MAX, uncovered_path_limit: usize::MAX, covered_prefix_limit: usize::MAX }));
         let reference = m.paths_reference();
         let fast_uncovered: Vec<&ProdPath> = fast.uncovered_paths().collect();
         let ref_uncovered: Vec<&ProdPath> = reference.uncovered_paths().collect();
@@ -1103,45 +1168,161 @@ mod tests {
     #[test]
     fn test_paths_larger_tautology() {
         // R'H' + L H R' + L' + R
-        let (m, _) = parse_to_matrix("R'H' + L H R' + L' + R").unwrap();
+        let (m, _) = parse_to_nnf("R'H' + L H R' + L' + R").unwrap();
         assert_paths_matches(&m);
     }
 
     #[test]
     fn test_paths_four_var() {
-        let (m, _) = parse_to_matrix(
+        let (m, _) = parse_to_nnf(
             "a'·b'·c + b'·c'·d + c'·d'·a' + d'·a·b' + a·b·c' + b·c·d' + c·d·a + d·a'·b"
         ).unwrap();
         assert_paths_matches(&m);
     }
 
     #[test]
-    fn test_paths_paths_limit() {
+    fn test_paths_paths_class_limit() {
         // (A·B) + (C·D) has 4 non-complementary paths: {A,C}, {A,D}, {B,C}, {B,D}
         let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
 
         // Limit 3: should return exactly 3 uncovered paths
-        let p3 = collect_paths(&m, Some(PathParams { paths_limit: 3 }));
+        let p3 = collect_paths(&m, Some(PathParams { paths_class_limit: 3, uncovered_path_limit: usize::MAX, ..Default::default() }));
         assert_eq!(p3.uncovered_paths().count(), 3);
 
         // Limit 5 (more than total): should return all 4 uncovered paths
-        let p5 = collect_paths(&m, Some(PathParams { paths_limit: 5 }));
+        let p5 = collect_paths(&m, Some(PathParams { paths_class_limit: 5, uncovered_path_limit: usize::MAX, ..Default::default() }));
         assert_eq!(p5.uncovered_paths().count(), 4);
 
-        // Default limit (1): should return exactly 1 uncovered path
-        let p1 = collect_paths(&m, None);
-        assert_eq!(p1.uncovered_paths().count(), 1);
+        // Default limit (paths_class_limit=100): should return all 4 uncovered paths
+        let p_default = collect_paths(&m, None);
+        assert_eq!(p_default.uncovered_paths().count(), 4);
     }
 
     #[test]
     fn test_paths_covered_and_uncovered() {
         // a + a' b + c b' + a b + a a' b b'
         // 6 covered path prefixes + 4 uncovered paths = 10
-        let (m, _) = parse_to_matrix("a + a' b + c b' + a b + a a' b b'").unwrap();
-        let p = collect_paths(&m, Some(PathParams { paths_limit: 20 }));
+        let (m, _) = parse_to_nnf("a + a' b + c b' + a b + a a' b b'").unwrap();
+        let p = collect_paths(&m, Some(PathParams { paths_class_limit: 20, uncovered_path_limit: usize::MAX, ..Default::default() }));
         assert_eq!(p.covered_path_prefixes().count(), 6);
         assert_eq!(p.uncovered_paths().count(), 4);
         assert_eq!(p.cover().len(), 6);
+    }
+
+    // ── Matrix::classify_paths limits ──────────────────────────────────────
+
+    // A (R' + S') + A' (R S) + B T + B' T' + A X'
+    // has 10 uncovered paths and 11 covered prefixes (21 path classes total).
+    const CLASSIFY_FORMULA: &str = "A (R' + S') + A' (R S) + B T + B' T' + A X'";
+
+    /// Helper: collect all (PathsClass, hit_limit) from Matrix::classify_paths.
+    async fn collect_classify(formula: &str, complement: bool, params: PathParams) -> Vec<(PathsClass, bool)> {
+        let m = Matrix::try_from(formula).unwrap();
+        let (handle, mut rx, _cancel) = m.classify_paths(complement, 64, Some(params));
+        let mut items = Vec::new();
+        while let Some(item) = rx.recv().await {
+            items.push(item);
+        }
+        handle.await.expect("worker panicked").expect("classify error");
+        items
+    }
+
+    fn count_covered(items: &[(PathsClass, bool)]) -> usize {
+        items.iter().filter(|(c, _)| matches!(c, PathsClass::Covered(_))).count()
+    }
+    fn count_uncovered(items: &[(PathsClass, bool)]) -> usize {
+        items.iter().filter(|(c, _)| matches!(c, PathsClass::Uncovered(_))).count()
+    }
+
+    #[tokio::test]
+    async fn test_classify_paths_no_limits() {
+        let items = collect_classify(CLASSIFY_FORMULA, false, PathParams {
+            paths_class_limit: usize::MAX,
+            uncovered_path_limit: usize::MAX,
+            covered_prefix_limit: usize::MAX,
+        }).await;
+        assert_eq!(count_covered(&items), 11);
+        assert_eq!(count_uncovered(&items), 10);
+        assert_eq!(items.len(), 21);
+        // Only the last item should have hit_limit=true? No — no limit was hit.
+        assert!(items.iter().all(|(_, hit)| !hit));
+    }
+
+    #[tokio::test]
+    async fn test_classify_paths_class_limit() {
+        // paths_class_limit=8: should get exactly 8 classes total
+        let items = collect_classify(CLASSIFY_FORMULA, false, PathParams {
+            paths_class_limit: 8,
+            uncovered_path_limit: usize::MAX,
+            covered_prefix_limit: usize::MAX,
+        }).await;
+        assert_eq!(items.len(), 8);
+        assert!(items.last().unwrap().1); // last item has hit_limit=true
+    }
+
+    #[tokio::test]
+    async fn test_classify_paths_uncovered_limit() {
+        // uncovered_path_limit=3: should stop after 3 uncovered paths
+        let items = collect_classify(CLASSIFY_FORMULA, false, PathParams {
+            paths_class_limit: usize::MAX,
+            uncovered_path_limit: 3,
+            covered_prefix_limit: usize::MAX,
+        }).await;
+        assert_eq!(count_uncovered(&items), 3);
+        // May have some covered prefixes found before/between uncovered paths
+        assert!(count_covered(&items) <= 6);
+        assert!(items.last().unwrap().1);
+    }
+
+    #[tokio::test]
+    async fn test_classify_paths_covered_limit() {
+        // covered_prefix_limit=2: should stop after 2 covered prefixes
+        let items = collect_classify(CLASSIFY_FORMULA, false, PathParams {
+            paths_class_limit: usize::MAX,
+            uncovered_path_limit: usize::MAX,
+            covered_prefix_limit: 2,
+        }).await;
+        assert_eq!(count_covered(&items), 2);
+        // May have some uncovered paths found before/between covered prefixes
+        assert!(count_uncovered(&items) <= 10);
+        assert!(items.last().unwrap().1);
+    }
+
+    #[tokio::test]
+    async fn test_classify_paths_uncovered_1() {
+        // uncovered_path_limit=1: default-like, should get exactly 1 uncovered
+        let items = collect_classify(CLASSIFY_FORMULA, false, PathParams {
+            paths_class_limit: usize::MAX,
+            uncovered_path_limit: 1,
+            covered_prefix_limit: usize::MAX,
+        }).await;
+        assert_eq!(count_uncovered(&items), 1);
+        assert!(items.last().unwrap().1);
+    }
+
+    #[tokio::test]
+    async fn test_classify_paths_all_limits_tight() {
+        // All limits set to 1: whichever fires first stops
+        let items = collect_classify(CLASSIFY_FORMULA, false, PathParams {
+            paths_class_limit: 1,
+            uncovered_path_limit: 1,
+            covered_prefix_limit: 1,
+        }).await;
+        assert_eq!(items.len(), 1);
+        assert!(items[0].1); // hit_limit=true
+    }
+
+    #[tokio::test]
+    async fn test_classify_paths_complement() {
+        // Complement should have different path structure
+        let items = collect_classify(CLASSIFY_FORMULA, true, PathParams {
+            paths_class_limit: usize::MAX,
+            uncovered_path_limit: usize::MAX,
+            covered_prefix_limit: usize::MAX,
+        }).await;
+        // Just verify it runs and produces some classes
+        assert!(!items.is_empty());
+        assert!(items.iter().all(|(_, hit)| !hit));
     }
 
     #[tokio::test]
@@ -1150,10 +1331,10 @@ mod tests {
         let m = sum((0..6).map(|_| prod(vec![v(0), v(1), v(2), v(3)])).collect());
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(1);
         let ctrl = BacktrackWhenCoveredController::with_on_class(
-            Some(PathParams { paths_limit: usize::MAX }),
+            Some(PathParams { paths_class_limit: usize::MAX, uncovered_path_limit: usize::MAX, covered_prefix_limit: usize::MAX }),
             move |class, hit_limit| { tx.blocking_send((class, hit_limit)).is_ok() },
         );
-        let (handle, cancel) = m.paths_async(Box::new(ctrl));
+        let (handle, cancel) = m.paths_async(ctrl);
         let _first = rx.recv().await.expect("at least one item");
         cancel.cancel();
         while rx.recv().await.is_some() {}
@@ -1162,15 +1343,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_paths_async_matches_paths() {
-        let (m, _) = parse_to_matrix("a + a' b + c b' + a b + a a' b b'").unwrap();
-        let sync_paths = collect_paths(&m, Some(PathParams { paths_limit: 20 }));
+        let (m, _) = parse_to_nnf("a + a' b + c b' + a b + a a' b b'").unwrap();
+        let params = Some(PathParams { paths_class_limit: 20, uncovered_path_limit: usize::MAX, ..Default::default() });
+        let sync_paths = collect_paths(&m, params.clone());
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(8);
         let ctrl = BacktrackWhenCoveredController::with_on_class(
-            Some(PathParams { paths_limit: 20 }),
+            params,
             move |class, hit_limit| { tx.blocking_send((class, hit_limit)).is_ok() },
         );
-        let (handle, _cancel) = m.paths_async(Box::new(ctrl));
+        let (handle, _cancel) = m.paths_async(ctrl);
         let mut items: Vec<(PathsClass, bool)> = Vec::new();
         while let Some(it) = rx.recv().await {
             items.push(it);
@@ -1197,7 +1379,7 @@ mod tests {
     async fn test_for_each_path_prefix_async() {
         // Compare the events streamed from the async variant against
         // the synchronous closure-based version.
-        let (m, _) = parse_to_matrix("a b + c d").unwrap();
+        let (m, _) = parse_to_nnf("a b + c d").unwrap();
 
         let mut sync_events: Vec<(Vec<Lit>, PathPrefix, Option<ProdPath>)> = Vec::new();
         m.for_each_path_prefix(|lits, positions, prod_path| {

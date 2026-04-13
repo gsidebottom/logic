@@ -263,13 +263,13 @@ struct FormulaRequest {
 #[derive(Deserialize)]
 struct PathsRequest {
     formula: String,
-    #[serde(default = "default_paths_limit")]
-    paths_limit: usize,
+    #[serde(default = "default_paths_class_limit")]
+    paths_class_limit: usize,
     #[serde(default)]
     complement: bool,
 }
 
-fn default_paths_limit() -> usize { 100 }
+fn default_paths_class_limit() -> usize { 100 }
 
 #[derive(Serialize)]
 struct SimplifyResponse {
@@ -339,7 +339,7 @@ async fn paths_handler(
     State(state): State<AppState>,
     Json(req): Json<PathsRequest>,
 ) -> Json<serde_json::Value> {
-    use logic::matrix::{parse_to_matrix, format_path, PathParams, PathsClass, BacktrackWhenCoveredController};
+    use logic::matrix::{parse_to_nnf, format_path, PathParams, PathsClass, BacktrackWhenCoveredController};
 
     // Cancel + reset existing job.
     {
@@ -350,7 +350,7 @@ async fn paths_handler(
         job.is_complement = req.complement;
     }
 
-    let (m, vars) = match parse_to_matrix(&req.formula) {
+    let (m, vars) = match parse_to_nnf(&req.formula) {
         Ok(v)  => v,
         Err(e) => {
             let mut job = state.paths_job.lock().unwrap();
@@ -365,7 +365,7 @@ async fn paths_handler(
 
     let job_state = state.paths_job.clone();
     let ctrl = BacktrackWhenCoveredController::with_on_class(
-        Some(PathParams { paths_limit: req.paths_limit }),
+        Some(PathParams { paths_class_limit: req.paths_class_limit, ..Default::default() }),
         move |class: PathsClass, hit_limit: bool| {
             let mut job = job_state.lock().unwrap();
             match class {
@@ -410,7 +410,7 @@ async fn paths_handler(
         },
     );
 
-    let (handle, cancel) = target.paths_async(Box::new(ctrl));
+    let (handle, cancel) = target.paths_async(ctrl);
     {
         let mut job = state.paths_job.lock().unwrap();
         job.cancel = Some(cancel);

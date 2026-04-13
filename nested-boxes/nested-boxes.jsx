@@ -840,6 +840,8 @@ export default function App() {
       uncoveredPositions: data.uncovered_path_positions,
       coverGroups: data.cover_groups,
       totalPrefixCount: data.total_prefix_count,
+      classifiedCount: data.classified_count,
+      totalPathCount: data.total_path_count,
       hitLimit: data.hit_limit,
       isComplement: complementFlag,
     });
@@ -882,7 +884,7 @@ export default function App() {
     }
     // Poll every 5s. Fetch once immediately so something shows up faster than 5s if quick.
     pollPathsOnce(complementFlag);
-    pathsPollRef.current = setInterval(() => pollPathsOnce(complementFlag), 5000);
+    pathsPollRef.current = setInterval(() => pollPathsOnce(complementFlag), 1000);
   };
 
   const cancelPaths = async () => {
@@ -1352,26 +1354,36 @@ export default function App() {
           }}
         />
         {pathsRunning && (
-          <button
-            onClick={cancelPaths}
-            title="Cancel path generation"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '4px 10px', fontSize: 12, border: '1px solid #c8c8e8',
-              borderRadius: 4, background: '#f7f7fd', color: '#4a4a8a',
-              cursor: 'pointer',
-            }}
-          >
-            <span
-              aria-hidden="true"
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <button
+              onClick={cancelPaths}
+              title="Cancel path generation"
               style={{
-                display: 'inline-block', width: 12, height: 12,
-                border: '2px solid #c8c8e8', borderTopColor: '#4a4a8a',
-                borderRadius: '50%', animation: 'logic-spin 0.8s linear infinite',
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '4px 10px', fontSize: 12, border: '1px solid #c8c8e8',
+                borderRadius: 4, background: '#f7f7fd', color: '#4a4a8a',
+                cursor: 'pointer',
               }}
-            />
-            Cancel
-          </button>
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  display: 'inline-block', width: 12, height: 12,
+                  border: '2px solid #c8c8e8', borderTopColor: '#4a4a8a',
+                  borderRadius: '50%', animation: 'logic-spin 0.8s linear infinite',
+                }}
+              />
+              Cancel
+            </button>
+            {pathsResult && (() => {
+              const covered = pathsResult.coverGroups?.reduce((s, g) => s + g.count, 0) ?? 0;
+              const uncovered = pathsResult.uncoveredPaths?.length ?? 0;
+              const total = pathsResult.totalPathCount ?? 0;
+              return <span style={{ fontSize: 11, color: '#666' }}>
+                {covered + uncovered} classified ({covered} covered + {uncovered} uncovered) of {total.toLocaleString()} paths
+              </span>;
+            })()}
+          </span>
         )}
       </div>
 

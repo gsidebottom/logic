@@ -334,6 +334,16 @@ impl NNF {
         }
     }
 
+    /// Total number of paths through this NNF.
+    /// A path selects one member from each Prod and visits all children of each Sum.
+    pub fn path_count(&self) -> usize {
+        match self {
+            NNF::Lit(_)   => 1,
+            NNF::Sum(ch)  => ch.iter().map(|c| c.path_count()).product(),
+            NNF::Prod(ch) => ch.iter().map(|c| c.path_count()).sum(),
+        }
+    }
+
     /// Resolve a path to the literals it collects.
     ///
     /// Follows the path's `Prod` member selections depth-first, collecting every

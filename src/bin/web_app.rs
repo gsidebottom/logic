@@ -79,11 +79,13 @@ struct PathsSnapshot {
     cover_groups:             Vec<CoverGroup>,
     group_map:                HashMap<String, usize>,
     total_prefix_count:       usize,
+    classified_count:         usize,
     hit_limit:                bool,
 }
 
 struct PathsJob {
     snapshot: PathsSnapshot,
+    total_path_count:         usize,
     cancel:   Option<CancelHandle>,
     running:  bool,
     error:    Option<String>,
@@ -98,6 +100,7 @@ impl Default for PathsJob {
             running: false,
             error: None,
             is_complement: false,
+            total_path_count: 0,
         }
     }
 }
@@ -293,6 +296,8 @@ struct PathsStatusResponse {
     uncovered_path_positions:   Vec<Vec<Vec<usize>>>,
     cover_groups:               Vec<CoverGroup>,
     total_prefix_count:         usize,
+    classified_count:           usize,
+    total_path_count:           usize,
     hit_limit:                  bool,
     running:                    bool,
     is_complement:              bool,
@@ -334,12 +339,12 @@ async fn valid_handler(Json(req): Json<FormulaRequest>) -> Json<ValidResponse> {
 
 /// Start a streaming paths job. Cancels any in-progress job, parses the
 /// formula, and spawns a drainer task that incrementally fills the shared
-/// `PathsJob` snapshot from the `paths_async` channel. Returns immediately.
+/// `PathsJob` snapshot from the `classify_paths` channel. Returns immediately.
 async fn paths_handler(
     State(state): State<AppState>,
     Json(req): Json<PathsRequest>,
 ) -> Json<serde_json::Value> {
-    use logic::matrix::{parse_to_nnf, format_path, PathParams, PathsClass, BacktrackWhenCoveredController};
+    use logic::matrix::{Matrix, format_path, PathParams, PathsClass};
 
     // Cancel + reset existing job.
     {
@@ -350,8 +355,8 @@ async fn paths_handler(
         job.is_complement = req.complement;
     }
 
-    let (m, vars) = match parse_to_nnf(&req.formula) {
-        Ok(v)  => v,
+    let matrix = match Matrix::try_from(req.formula.as_str()) {
+        Ok(m) => m,
         Err(e) => {
             let mut job = state.paths_job.lock().unwrap();
             job.running = false;
@@ -359,14 +364,23 @@ async fn paths_handler(
             return Json(serde_json::json!({ "ok": true }));
         }
     };
-    let target = if req.complement { m.complement() } else { m };
-    let target_for_ctrl = target.clone();
-    let vars_for_ctrl = vars.clone();
+
+    let target_nnf = if req.complement { &matrix.nnf_complement } else { &matrix.nnf };
+    let total_path_count = target_nnf.path_count();
+    let target = target_nnf.clone();
+    let vars = matrix.ast.vars.clone();
+
+    let params = Some(PathParams { paths_class_limit: req.paths_class_limit, ..Default::default() });
+    let (handle, mut rx, cancel) = matrix.classify_paths(req.complement, 64, params);
+    {
+        let mut job = state.paths_job.lock().unwrap();
+        job.cancel = Some(cancel);
+        job.total_path_count = total_path_count;
+    }
 
     let job_state = state.paths_job.clone();
-    let ctrl = BacktrackWhenCoveredController::with_on_class(
-        Some(PathParams { paths_class_limit: req.paths_class_limit, ..Default::default() }),
-        move |class: PathsClass, hit_limit: bool| {
+    tokio::spawn(async move {
+        while let Some((class, hit_limit)) = rx.recv().await {
             let mut job = job_state.lock().unwrap();
             match class {
                 PathsClass::Covered(cp) => {
@@ -401,25 +415,15 @@ async fn paths_handler(
                     }
                 }
                 PathsClass::Uncovered(p) => {
-                    job.snapshot.uncovered_paths.push(format_path(&p, &target_for_ctrl, &vars_for_ctrl));
-                    job.snapshot.uncovered_path_positions.push(target_for_ctrl.positions_on_path(&p));
+                    job.snapshot.uncovered_paths.push(format_path(&p, &target, &vars));
+                    job.snapshot.uncovered_path_positions.push(target.positions_on_path(&p));
                 }
             }
+            job.snapshot.classified_count += 1;
             if hit_limit { job.snapshot.hit_limit = true; }
-            true
-        },
-    );
-
-    let (handle, cancel) = target.paths_async(ctrl);
-    {
-        let mut job = state.paths_job.lock().unwrap();
-        job.cancel = Some(cancel);
-    }
-
-    let job_state2 = state.paths_job.clone();
-    tokio::spawn(async move {
+        }
         let _ = handle.await;
-        let mut job = job_state2.lock().unwrap();
+        let mut job = job_state.lock().unwrap();
         job.running = false;
         job.cancel = None;
     });
@@ -434,6 +438,8 @@ async fn paths_status_handler(State(state): State<AppState>) -> Json<PathsStatus
         uncovered_path_positions: job.snapshot.uncovered_path_positions.clone(),
         cover_groups:             job.snapshot.cover_groups.clone(),
         total_prefix_count:       job.snapshot.total_prefix_count,
+        classified_count:         job.snapshot.classified_count,
+        total_path_count:         job.total_path_count,
         hit_limit:                job.snapshot.hit_limit,
         running:                  job.running,
         is_complement:            job.is_complement,

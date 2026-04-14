@@ -6,6 +6,34 @@ const CoverContext = createContext(null);
 
 const PAIR_COLORS = ['#e63946', '#1d7cc4', '#2a9d8f', '#e07c00', '#8e44ad', '#555'];
 
+// Format a number with metric suffixes for large values (>= 1M), up to 6 sig figs.
+function fmtNum(n) {
+  if (n == null) return '0';
+  const abs = Math.abs(n);
+  if (abs < 1e6) return n.toLocaleString();
+  const suffixes = [
+    [1e30, 'Q'],  // quetta
+    [1e27, 'R'],  // ronna
+    [1e24, 'Y'],  // yotta
+    [1e21, 'Z'],  // zetta
+    [1e18, 'E'],  // exa
+    [1e15, 'P'],  // peta
+    [1e12, 'T'],  // tera
+    [1e9,  'G'],  // giga
+    [1e6,  'M'],  // mega
+  ];
+  for (const [threshold, suffix] of suffixes) {
+    if (abs >= threshold) {
+      const scaled = n / threshold;
+      // Up to 6 significant figures
+      const s = Number(scaled.toPrecision(6));
+      // Remove trailing zeros after decimal
+      return s.toLocaleString() + suffix;
+    }
+  }
+  return n.toLocaleString();
+}
+
 // Complement a literal name: a → a', a' → a
 const compName = n => n?.endsWith("'") ? n.slice(0, -1) : (n ? n + "'" : n);
 
@@ -841,6 +869,7 @@ export default function App() {
       coverGroups: data.cover_groups,
       totalPrefixCount: data.total_prefix_count,
       classifiedCount: data.classified_count,
+      elapsedSecs: data.elapsed_secs,
       totalPathCount: data.total_path_count,
       hitLimit: data.hit_limit,
       isComplement: complementFlag,
@@ -884,7 +913,7 @@ export default function App() {
     }
     // Poll every 5s. Fetch once immediately so something shows up faster than 5s if quick.
     pollPathsOnce(complementFlag);
-    pathsPollRef.current = setInterval(() => pollPathsOnce(complementFlag), 1000);
+    pathsPollRef.current = setInterval(() => pollPathsOnce(complementFlag), 500);
   };
 
   const cancelPaths = async () => {
@@ -1375,12 +1404,24 @@ export default function App() {
               />
               Cancel
             </button>
-            {pathsResult && (() => {
-              const covered = pathsResult.coverGroups?.reduce((s, g) => s + g.count, 0) ?? 0;
-              const uncovered = pathsResult.uncoveredPaths?.length ?? 0;
-              const total = pathsResult.totalPathCount ?? 0;
-              return <span style={{ fontSize: 11, color: '#666' }}>
-                {covered + uncovered} classified ({covered} covered + {uncovered} uncovered) of {total.toLocaleString()} paths
+            {pathsResult?.totalPathCount > 0 && (() => {
+              const classified = pathsResult.classifiedCount ?? 0;
+              const total = pathsResult.totalPathCount;
+              const elapsed = pathsResult.elapsedSecs ?? 0;
+              const pct = Math.min(100, (classified / total) * 100);
+              const rate = elapsed > 0 ? Math.round(classified / elapsed) : 0;
+              return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#666' }}>
+                <span style={{
+                  display: 'inline-block', width: 80, height: 8,
+                  background: '#e0e0e0', borderRadius: 4, overflow: 'hidden',
+                }}>
+                  <span style={{
+                    display: 'block', height: '100%', borderRadius: 4,
+                    background: '#4a4a8a', width: `${pct}%`,
+                    transition: 'width 0.3s ease',
+                  }} />
+                </span>
+                {pct.toFixed(1)}%{rate > 0 ? ` (${fmtNum(rate)}/s)` : ''}
               </span>;
             })()}
           </span>
@@ -1407,7 +1448,7 @@ export default function App() {
                     return <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
-                        {validResult.coverGroups.length} {validResult.coverGroups.length === 1 ? 'pair' : 'pairs'} in the cover covering {validResult.totalPrefixCount} {validResult.totalPrefixCount === 1 ? 'prefix' : 'prefixes'}{(() => {
+                        {fmtNum(validResult.coverGroups.length)} {validResult.coverGroups.length === 1 ? 'pair' : 'pairs'} in the cover covering {fmtNum(validResult.totalPrefixCount)} {validResult.totalPrefixCount === 1 ? 'prefix' : 'prefixes'}{(() => {
                           const lo = Math.min(...validResult.coverGroups.map(g => g.prefix_length_min));
                           const hi = Math.max(...validResult.coverGroups.map(g => g.prefix_length_max));
                           return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`;
@@ -1470,7 +1511,7 @@ export default function App() {
                                 <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                               </span>
                               <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
-                                {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                                {fmtNum(g.count)} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
                               </span>
                             </div>;
                           }
@@ -1551,7 +1592,7 @@ export default function App() {
                     return <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
-                        partial cover: {validResult.coverGroups.length} {validResult.coverGroups.length === 1 ? 'pair' : 'pairs'}
+                        partial cover: {fmtNum(validResult.coverGroups.length)} {validResult.coverGroups.length === 1 ? 'pair' : 'pairs'}
                         {' '}
                         <a href="#" onClick={e => { e.preventDefault(); setValidSelected(new Set(validResult.coverGroups.map((_, i) => i))); }}
                            style={{ fontSize: 11, color: '#888' }}>all</a>
@@ -1610,7 +1651,7 @@ export default function App() {
                                 <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                               </span>
                               <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
-                                {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                                {fmtNum(g.count)} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
                               </span>
                             </div>;
                           }
@@ -1706,7 +1747,7 @@ export default function App() {
                     return <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
-                        {satResult.coverGroups.length} {satResult.coverGroups.length === 1 ? 'pair' : 'pairs'} in the partial cover covering {satResult.totalPrefixCount} {satResult.totalPrefixCount === 1 ? 'prefix' : 'prefixes'}{(() => {
+                        {fmtNum(satResult.coverGroups.length)} {satResult.coverGroups.length === 1 ? 'pair' : 'pairs'} in the partial cover covering {fmtNum(satResult.totalPrefixCount)} {satResult.totalPrefixCount === 1 ? 'prefix' : 'prefixes'}{(() => {
                           const lo = Math.min(...satResult.coverGroups.map(g => g.prefix_length_min));
                           const hi = Math.max(...satResult.coverGroups.map(g => g.prefix_length_max));
                           return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`;
@@ -1769,7 +1810,7 @@ export default function App() {
                                 <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                               </span>
                               <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
-                                {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                                {fmtNum(g.count)} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
                               </span>
                             </div>;
                           }
@@ -1809,7 +1850,7 @@ export default function App() {
                     return <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
-                        {satResult.coverGroups.length} {satResult.coverGroups.length === 1 ? 'pair' : 'pairs'} in the cover covering {satResult.totalPrefixCount} {satResult.totalPrefixCount === 1 ? 'prefix' : 'prefixes'}{(() => {
+                        {fmtNum(satResult.coverGroups.length)} {satResult.coverGroups.length === 1 ? 'pair' : 'pairs'} in the cover covering {fmtNum(satResult.totalPrefixCount)} {satResult.totalPrefixCount === 1 ? 'prefix' : 'prefixes'}{(() => {
                           const lo = Math.min(...satResult.coverGroups.map(g => g.prefix_length_min));
                           const hi = Math.max(...satResult.coverGroups.map(g => g.prefix_length_max));
                           return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`;
@@ -1872,7 +1913,7 @@ export default function App() {
                                 <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                               </span>
                               <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
-                                {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                                {fmtNum(g.count)} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
                               </span>
                             </div>;
                           }
@@ -1919,7 +1960,18 @@ export default function App() {
           {pathsResult.error
             ? `✗ ${pathsResult.error}`
             : <span>
-                {pathsResult.hitLimit ? 'Some' : 'All'} paths through the {pathsResult.isComplement ? 'complement ' : ''}matrix
+                {(() => {
+                  const classified = pathsResult.classifiedCount ?? 0;
+                  const total = pathsResult.totalPathCount ?? 0;
+                  const elapsed = pathsResult.elapsedSecs ?? 0;
+                  const rate = elapsed > 0 ? Math.round(classified / elapsed) : 0;
+                  const ratePart = rate > 0 ? ` at ${fmtNum(rate)} paths/s` : '';
+                  if (pathsResult.hitLimit) {
+                    const pct = total > 0 ? ((classified / total) * 100).toFixed(1) : '0';
+                    return `${fmtNum(classified)} of ${fmtNum(total)} paths (${pct}%) through the ${pathsResult.isComplement ? 'complement ' : ''}matrix${ratePart}`;
+                  }
+                  return `All ${fmtNum(total)} paths through the ${pathsResult.isComplement ? 'complement ' : ''}matrix${ratePart}`;
+                })()}
                 {pathsResult.uncoveredPaths.length > 0 && (() => {
                   const resName = pos => {
                     const n = resolvePosition(ast, pos)?.n ?? pos.join(',');
@@ -2008,7 +2060,7 @@ export default function App() {
                     <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
-                        {pathsResult.uncoveredPaths.length} uncovered {pathsResult.uncoveredPaths.length === 1 ? 'path' : 'paths'}{' '}
+                        {fmtNum(pathsResult.uncoveredPaths.length)} uncovered {pathsResult.uncoveredPaths.length === 1 ? 'path' : 'paths'}{' '}
                         <a href="#" onClick={e => { e.preventDefault();
                           // Expand all internal nodes.
                           const all = new Set();
@@ -2037,7 +2089,7 @@ export default function App() {
                   return <span>
                     <br />
                     <span style={{ fontWeight: 'normal' }}>
-                      {pathsResult.coverGroups.length} {pathsResult.coverGroups.length === 1 ? 'pair' : 'pairs'} in the {isPartial ? 'partial ' : ''}cover covering {pathsResult.totalPrefixCount} {pathsResult.totalPrefixCount === 1 ? 'prefix' : 'prefixes'}{(() => {
+                      {fmtNum(pathsResult.coverGroups.length)} {pathsResult.coverGroups.length === 1 ? 'pair' : 'pairs'} in the {isPartial ? 'partial ' : ''}cover covering {fmtNum(pathsResult.totalPrefixCount)} {pathsResult.totalPrefixCount === 1 ? 'prefix' : 'prefixes'}{(() => {
                         const lo = Math.min(...pathsResult.coverGroups.map(g => g.prefix_length_min));
                         const hi = Math.max(...pathsResult.coverGroups.map(g => g.prefix_length_max));
                         return lo === hi ? ` ${lo} long` : ` ${lo}..${hi} long`;
@@ -2100,7 +2152,7 @@ export default function App() {
                               <b style={{ fontFamily: 'Georgia, serif' }}>{'{'}<VarLabel name={a} />{', '}<VarLabel name={b} />{'}'}</b>
                             </span>
                             <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
-                              {g.count} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
+                              {fmtNum(g.count)} {g.count === 1 ? 'prefix' : 'prefixes'}{lenRange}
                             </span>
                           </div>;
                         }

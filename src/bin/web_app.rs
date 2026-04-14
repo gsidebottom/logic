@@ -79,13 +79,14 @@ struct PathsSnapshot {
     cover_groups:             Vec<CoverGroup>,
     group_map:                HashMap<String, usize>,
     total_prefix_count:       usize,
-    classified_count:         usize,
+    classified_count:         f64,
     hit_limit:                bool,
 }
 
 struct PathsJob {
     snapshot: PathsSnapshot,
-    total_path_count:         usize,
+    total_path_count:         f64,
+    start_time:               Option<std::time::Instant>,
     cancel:   Option<CancelHandle>,
     running:  bool,
     error:    Option<String>,
@@ -100,7 +101,8 @@ impl Default for PathsJob {
             running: false,
             error: None,
             is_complement: false,
-            total_path_count: 0,
+            total_path_count: 0.0,
+            start_time: None,
         }
     }
 }
@@ -296,8 +298,9 @@ struct PathsStatusResponse {
     uncovered_path_positions:   Vec<Vec<Vec<usize>>>,
     cover_groups:               Vec<CoverGroup>,
     total_prefix_count:         usize,
-    classified_count:           usize,
-    total_path_count:           usize,
+    classified_count:           f64,
+    total_path_count:           f64,
+    elapsed_secs:               f64,
     hit_limit:                  bool,
     running:                    bool,
     is_complement:              bool,
@@ -376,6 +379,7 @@ async fn paths_handler(
         let mut job = state.paths_job.lock().unwrap();
         job.cancel = Some(cancel);
         job.total_path_count = total_path_count;
+        job.start_time = Some(std::time::Instant::now());
     }
 
     let job_state = state.paths_job.clone();
@@ -384,10 +388,12 @@ async fn paths_handler(
             let mut job = job_state.lock().unwrap();
             match class {
                 PathsClass::Covered(cp) => {
+                    let cover_count = target.prefix_cover_count(&cp.prefix);
                     let key = pair_key(&cp.cover);
                     let len = cp.prefix.len();
                     let snap = &mut job.snapshot;
                     snap.total_prefix_count += 1;
+                    snap.classified_count += cover_count;
                     let gi = if let Some(&gi) = snap.group_map.get(&key) {
                         gi
                     } else {
@@ -415,11 +421,11 @@ async fn paths_handler(
                     }
                 }
                 PathsClass::Uncovered(p) => {
+                    job.snapshot.classified_count += 1.0;
                     job.snapshot.uncovered_paths.push(format_path(&p, &target, &vars));
                     job.snapshot.uncovered_path_positions.push(target.positions_on_path(&p));
                 }
             }
-            job.snapshot.classified_count += 1;
             if hit_limit { job.snapshot.hit_limit = true; }
         }
         let _ = handle.await;
@@ -440,6 +446,7 @@ async fn paths_status_handler(State(state): State<AppState>) -> Json<PathsStatus
         total_prefix_count:       job.snapshot.total_prefix_count,
         classified_count:         job.snapshot.classified_count,
         total_path_count:         job.total_path_count,
+        elapsed_secs:             job.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64()),
         hit_limit:                job.snapshot.hit_limit,
         running:                  job.running,
         is_complement:            job.is_complement,

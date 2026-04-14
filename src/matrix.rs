@@ -336,12 +336,43 @@ impl NNF {
 
     /// Total number of paths through this NNF.
     /// A path selects one member from each Prod and visits all children of each Sum.
-    pub fn path_count(&self) -> usize {
+    pub fn path_count(&self) -> f64 {
         match self {
-            NNF::Lit(_)   => 1,
+            NNF::Lit(_)   => 1.0,
             NNF::Sum(ch)  => ch.iter().map(|c| c.path_count()).product(),
             NNF::Prod(ch) => ch.iter().map(|c| c.path_count()).sum(),
         }
+    }
+
+    /// Number of complete paths to the right of the last position in `prefix`.
+    /// When a covered prefix is found during DFS, only the remaining Sum
+    /// children (not yet crossed) are pruned. Prod siblings are visited
+    /// independently because `covered_at_depth` clears when `lits` shrinks.
+    pub fn prefix_cover_count(&self, prefix: &PathPrefix) -> f64 {
+        let Some(last_pos) = prefix.last() else { return self.path_count() };
+        fn walk(node: &NNF, pos: &[usize], multiplier: f64) -> f64 {
+            if pos.is_empty() {
+                return multiplier;
+            }
+            match node {
+                NNF::Lit(_) => multiplier,
+                NNF::Sum(ch) => {
+                    let idx = pos[0];
+                    // Remaining Sum children idx+1..n-1 haven't been crossed yet;
+                    // they are skipped when we backtrack.
+                    let remaining: f64 = ch[idx + 1..].iter()
+                        .map(|c| c.path_count())
+                        .product();
+                    walk(&ch[idx], &pos[1..], multiplier * remaining)
+                }
+                NNF::Prod(ch) => {
+                    // Prod siblings are NOT pruned — covered_at_depth clears
+                    // when lits shrinks back after each Prod child.
+                    walk(&ch[pos[0]], &pos[1..], multiplier)
+                }
+            }
+        }
+        walk(self, last_pos, 1.0)
     }
 
     /// Resolve a path to the literals it collects.
@@ -1333,6 +1364,59 @@ mod tests {
         // Just verify it runs and produces some classes
         assert!(!items.is_empty());
         assert!(items.iter().all(|(_, hit)| !hit));
+    }
+
+    #[test]
+    fn test_prefix_cover_count() {
+        // Sum([A, B, Prod([C, D])])
+        // path_count = 1 * 1 * (1+1) = 2
+        // Paths: {A, B, C}, {A, B, D}
+        let m = sum(vec![v(0), v(1), prod(vec![v(2), v(3)])]);
+        assert_eq!(m.path_count(), 2.0);
+
+        // DFS order: A, B, [Prod: C, D]
+        // At A (pos [0]): remaining Sum siblings B, Prod → 1*2 = 2 paths to the right
+        assert_eq!(m.prefix_cover_count(&vec![vec![0]]), 2.0);
+        // At B (pos [1]): remaining Sum sibling Prod → 2 paths to the right
+        assert_eq!(m.prefix_cover_count(&vec![vec![1]]), 2.0);
+        // At C (pos [2,0]): no remaining Sum siblings; Prod sibling D is NOT pruned → 1
+        assert_eq!(m.prefix_cover_count(&vec![vec![2, 0]]), 1.0);
+        // At D (pos [2,1]): no remaining Sum siblings; no Prod siblings right of D → 1
+        assert_eq!(m.prefix_cover_count(&vec![vec![2, 1]]), 1.0);
+
+        // Prod([Sum([A, B]), Sum([C, D])])
+        // path_count = 1 + 1 = 2. Paths: {A,B}, {C,D}.
+        let m2 = prod(vec![sum(vec![v(0), v(1)]), sum(vec![v(2), v(3)])]);
+        assert_eq!(m2.path_count(), 2.0);
+        // At A (pos [0,0]): remaining Sum sibling B → multiplier 1; Prod sibling ignored → 1
+        assert_eq!(m2.prefix_cover_count(&vec![vec![0, 0]]), 1.0);
+        // At C (pos [1,0]): remaining Sum sibling D → multiplier 1 → 1
+        assert_eq!(m2.prefix_cover_count(&vec![vec![1, 0]]), 1.0);
+
+        // prefix_cover_count uses last position only
+        assert_eq!(m.prefix_cover_count(&vec![vec![0], vec![2, 0]]), 1.0);
+
+        // Empty prefix → full path_count
+        assert_eq!(m.prefix_cover_count(&vec![]), 2.0);
+
+        // Verify invariant: sum of prefix_cover_counts for covered prefixes
+        // + uncovered path count == total path_count. This holds because the
+        // DFS partitions the path space: each covered prefix accounts for its
+        // pruned subtree, and uncovered paths each account for 1 path.
+        let (nnf, _) = parse_to_nnf(CLASSIFY_FORMULA).unwrap();
+        let total = nnf.path_count();
+        let p = collect_paths(&nnf, Some(PathParams {
+            paths_class_limit: usize::MAX,
+            uncovered_path_limit: usize::MAX,
+            covered_prefix_limit: usize::MAX,
+        }));
+        let covered_sum: f64 = p.covered_path_prefixes()
+            .map(|cp| nnf.prefix_cover_count(&cp.prefix))
+            .sum();
+        let uncovered_count = p.uncovered_paths().count() as f64;
+        assert_eq!(covered_sum + uncovered_count, total,
+            "covered paths ({}) + uncovered paths ({}) should equal total ({})",
+            covered_sum, uncovered_count, total);
     }
 
     #[tokio::test]

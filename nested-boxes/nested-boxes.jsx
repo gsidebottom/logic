@@ -651,6 +651,10 @@ export default function App() {
   const [satSelected,    setSatSelected]    = useState(new Set()); // Set<number> of selected pair indices
   const [satExpanded,    setSatExpanded]    = useState(new Set()); // Set<number> of expanded group indices
   const [satUncovOn,     setSatUncovOn]     = useState(false);     // toggle uncovered path highlight
+  const [validRunning,   setValidRunning]   = useState(false);
+  const validPollRef = useRef(null);
+  const [satRunning,     setSatRunning]     = useState(false);
+  const satPollRef = useRef(null);
   const [satPathExpanded, setSatPathExpanded] = useState(false);   // show full uncovered path
   const [satVarsExpanded, setSatVarsExpanded] = useState(false);   // show full sorted unique literals
   const [satAsgnOn,       setSatAsgnOn]       = useState(false);   // highlight assignment in diagram
@@ -750,21 +754,30 @@ export default function App() {
   useEffect(() => {
     setSimplified(null);
     setComplementData(null);
+    stopValidPolling();
+    if (validRunning) { fetch('http://localhost:3001/valid/cancel', { method: 'POST' }).catch(()=>{}); }
     setValidResult(null);
+    setValidRunning(false);
     setValidSelected(new Set());
     setValidExpanded(new Set());
     setValidUncovOn(false);
     setValidPathExpanded(false);
     setValidVarsExpanded(false);
     setValidAsgnOn(false);
+    stopSatPolling();
+    if (satRunning) { fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); }
     setSatResult(null);
+    setSatRunning(false);
     setSatSelected(new Set());
     setSatExpanded(new Set());
     setSatUncovOn(false);
     setSatPathExpanded(false);
     setSatVarsExpanded(false);
     setSatAsgnOn(false);
+    stopPathsPolling();
+    if (pathsRunning) { fetch('http://localhost:3001/paths/cancel', { method: 'POST' }).catch(()=>{}); }
     setPathsResult(null);
+    setPathsRunning(false);
     setPathsSelected(new Set());
     setPathsExpanded(new Set());
     setPathsUncovSel(new Set());
@@ -930,18 +943,180 @@ export default function App() {
     setPathsRunning(false);
   };
 
+  // ── Valid polling ──────────────────────────────────────────────────────────
+  const stopValidPolling = () => {
+    if (validPollRef.current) {
+      clearInterval(validPollRef.current);
+      validPollRef.current = null;
+    }
+  };
+
+  const applyValidStatus = (data) => {
+    if (data.error) {
+      setValidResult({ error: data.error });
+      setValidRunning(false);
+      stopValidPolling();
+      return;
+    }
+    setValidResult({
+      valid: !data.running ? (data.uncovered_paths.length === 0) : null,
+      path: data.uncovered_paths[0] || null,
+      uncoveredPositions: data.uncovered_path_positions[0] || null,
+      coverGroups: data.cover_groups,
+      totalPrefixCount: data.total_prefix_count,
+      classifiedCount: data.classified_count,
+      totalPathCount: data.total_path_count,
+      elapsedSecs: data.elapsed_secs,
+      hitLimit: data.hit_limit,
+    });
+    setValidRunning(!!data.running);
+    if (!data.running) stopValidPolling();
+  };
+
+  const pollValidOnce = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/valid');
+      const data = await res.json();
+      applyValidStatus(data);
+    } catch (e) {
+      setValidResult({ error: 'Could not reach Rust service' });
+      setValidRunning(false);
+      stopValidPolling();
+    }
+  };
+
+  const fetchValid = async () => {
+    stopValidPolling();
+    setValidRunning(true);
+    setValidResult({
+      valid: null, path: null, uncoveredPositions: null,
+      coverGroups: [], totalPrefixCount: 0,
+      hitLimit: false,
+    });
+    try {
+      const res = await fetch('http://localhost:3001/valid', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formula: input }),
+      });
+      if (!res.ok) throw new Error('start failed');
+    } catch (e) {
+      setValidResult({ error: 'Could not reach Rust service' });
+      setValidRunning(false);
+      return;
+    }
+    pollValidOnce();
+    validPollRef.current = setInterval(() => pollValidOnce(), 500);
+  };
+
+  const cancelValid = async () => {
+    stopValidPolling();
+    try {
+      await fetch('http://localhost:3001/valid/cancel', { method: 'POST' });
+    } catch (e) { /* ignore */ }
+    try {
+      const res = await fetch('http://localhost:3001/valid');
+      const data = await res.json();
+      applyValidStatus(data);
+    } catch (e) { /* ignore */ }
+    setValidRunning(false);
+  };
+
+  // ── Satisfiable polling ───────────────────────────────────────────────────
+  const stopSatPolling = () => {
+    if (satPollRef.current) {
+      clearInterval(satPollRef.current);
+      satPollRef.current = null;
+    }
+  };
+
+  const applySatStatus = (data) => {
+    if (data.error) {
+      setSatResult({ error: data.error });
+      setSatRunning(false);
+      stopSatPolling();
+      return;
+    }
+    setSatResult({
+      satisfiable: !data.running ? (data.uncovered_paths.length > 0) : null,
+      path: data.uncovered_paths[0] || null,
+      uncoveredPositions: data.uncovered_path_positions[0] || null,
+      coverGroups: data.cover_groups,
+      totalPrefixCount: data.total_prefix_count,
+      classifiedCount: data.classified_count,
+      totalPathCount: data.total_path_count,
+      elapsedSecs: data.elapsed_secs,
+      hitLimit: data.hit_limit,
+      isComplement: true,
+    });
+    setSatRunning(!!data.running);
+    if (!data.running) stopSatPolling();
+  };
+
+  const pollSatOnce = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/satisfiable');
+      const data = await res.json();
+      applySatStatus(data);
+    } catch (e) {
+      setSatResult({ error: 'Could not reach Rust service' });
+      setSatRunning(false);
+      stopSatPolling();
+    }
+  };
+
+  const fetchSat = async () => {
+    stopSatPolling();
+    setSatRunning(true);
+    setSatResult({
+      satisfiable: null, path: null, uncoveredPositions: null,
+      coverGroups: [], totalPrefixCount: 0,
+      hitLimit: false, isComplement: true,
+    });
+    try {
+      const res = await fetch('http://localhost:3001/satisfiable', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formula: input }),
+      });
+      if (!res.ok) throw new Error('start failed');
+    } catch (e) {
+      setSatResult({ error: 'Could not reach Rust service' });
+      setSatRunning(false);
+      return;
+    }
+    pollSatOnce();
+    satPollRef.current = setInterval(() => pollSatOnce(), 500);
+  };
+
+  const cancelSat = async () => {
+    stopSatPolling();
+    try {
+      await fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' });
+    } catch (e) { /* ignore */ }
+    try {
+      const res = await fetch('http://localhost:3001/satisfiable');
+      const data = await res.json();
+      applySatStatus(data);
+    } catch (e) { /* ignore */ }
+    setSatRunning(false);
+  };
+
   const handlePaths = () => {
     if (pathsResult && !pathsResult.error) {
       stopPathsPolling();
       if (pathsRunning) { fetch('http://localhost:3001/paths/cancel', { method: 'POST' }).catch(()=>{}); }
       setPathsResult(null); setPathsRunning(false); setComplementData(false); return;
     }
-    setValidResult(null); setSatResult(null);
+    stopValidPolling();
+    if (validRunning) { fetch('http://localhost:3001/valid/cancel', { method: 'POST' }).catch(()=>{}); setValidRunning(false); }
+    setValidResult(null);
+    stopSatPolling();
+    if (satRunning) { fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); setSatRunning(false); }
+    setSatResult(null);
     fetchPaths();
   };
 
   // Stop polling on unmount.
-  useEffect(() => () => stopPathsPolling(), []);
+  useEffect(() => () => { stopPathsPolling(); stopValidPolling(); stopSatPolling(); }, []);
 
   // Re-fetch paths when the limit or complement checkbox changes while the display is open
   useEffect(() => {
@@ -960,43 +1135,34 @@ export default function App() {
     setComplementData(prev => !prev);
   };
 
-  const handleValid = async () => {
-    if (validResult && !validResult.error) { setValidResult(null); return; }
-    setSatResult(null); setPathsResult(null); setComplementData(false);
-    setLoading(true);
-    try {
-      const res  = await fetch('http://localhost:3001/valid', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input }),
-      });
-      const data = await res.json();
-      if (data.error) setValidResult({ error: data.error });
-      else            setValidResult({ valid: data.valid, path: data.path, uncoveredPositions: data.uncovered_path_positions, coverGroups: data.cover_groups, totalPrefixCount: data.total_prefix_count });
-    } catch (e) {
-      setValidResult({ error: 'Could not reach Rust service' });
+  const handleValid = () => {
+    if (validResult && !validResult.error) {
+      stopValidPolling();
+      if (validRunning) { fetch('http://localhost:3001/valid/cancel', { method: 'POST' }).catch(()=>{}); }
+      setValidResult(null); setValidRunning(false); return;
     }
-    setLoading(false);
+    stopSatPolling();
+    if (satRunning) { fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); setSatRunning(false); }
+    setSatResult(null);
+    stopPathsPolling();
+    if (pathsRunning) { fetch('http://localhost:3001/paths/cancel', { method: 'POST' }).catch(()=>{}); setPathsRunning(false); }
+    setPathsResult(null); setComplementData(false);
+    fetchValid();
   };
 
-  const handleSatisfiable = async () => {
-    if (satResult && !satResult.error) { setSatResult(null); setComplementData(false); return; }
-    setValidResult(null); setPathsResult(null);
-    setLoading(true);
-    try {
-      const res  = await fetch('http://localhost:3001/satisfiable', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        setSatResult({ error: data.error });
-      } else {
-        setSatResult({ satisfiable: data.satisfiable, path: data.path, uncoveredPositions: data.uncovered_path_positions, coverGroups: data.cover_groups, totalPrefixCount: data.total_prefix_count });
-      }
-    } catch (e) {
-      setSatResult({ error: 'Could not reach Rust service' });
+  const handleSatisfiable = () => {
+    if (satResult && !satResult.error) {
+      stopSatPolling();
+      if (satRunning) { fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); }
+      setSatResult(null); setSatRunning(false); setComplementData(false); return;
     }
-    setLoading(false);
+    stopValidPolling();
+    if (validRunning) { fetch('http://localhost:3001/valid/cancel', { method: 'POST' }).catch(()=>{}); setValidRunning(false); }
+    setValidResult(null);
+    stopPathsPolling();
+    if (pathsRunning) { fetch('http://localhost:3001/paths/cancel', { method: 'POST' }).catch(()=>{}); setPathsRunning(false); }
+    setPathsResult(null);
+    fetchSat();
   };
 
   const btn = (label, onClick, color = '#333', disabled = false, title = '') => (
@@ -1366,7 +1532,95 @@ export default function App() {
       {/* Analysis buttons */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: 4, marginTop: 12, marginBottom: 8, flexWrap: 'wrap' }}>
         {btn('✓ Valid?',       handleValid,       '#6a2a9a', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula is a tautology")}
+        {validRunning && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <button
+              onClick={cancelValid}
+              title="Cancel validity check"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '4px 10px', fontSize: 12, border: '1px solid #d4a0f0',
+                borderRadius: 4, background: '#f8f0ff', color: '#6a2a9a',
+                cursor: 'pointer',
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  display: 'inline-block', width: 12, height: 12,
+                  border: '2px solid #d4a0f0', borderTopColor: '#6a2a9a',
+                  borderRadius: '50%', animation: 'logic-spin 0.8s linear infinite',
+                }}
+              />
+              Cancel
+            </button>
+            {validResult?.totalPathCount > 0 && (() => {
+              const classified = validResult.classifiedCount ?? 0;
+              const total = validResult.totalPathCount;
+              const elapsed = validResult.elapsedSecs ?? 0;
+              const pct = Math.min(100, (classified / total) * 100);
+              const rate = elapsed > 0 ? Math.round(classified / elapsed) : 0;
+              return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#666' }}>
+                <span style={{
+                  display: 'inline-block', width: 80, height: 8,
+                  background: '#e0e0e0', borderRadius: 4, overflow: 'hidden',
+                }}>
+                  <span style={{
+                    display: 'block', height: '100%', borderRadius: 4,
+                    background: '#6a2a9a', width: `${pct}%`,
+                    transition: 'width 0.3s ease',
+                  }} />
+                </span>
+                {pct.toFixed(1)}%{rate > 0 ? ` (${fmtNum(rate)}/s)` : ''}
+              </span>;
+            })()}
+          </span>
+        )}
         {btn('? Satisfiable?', handleSatisfiable, '#7a4a00', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula has a satisfying assignment")}
+        {satRunning && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <button
+              onClick={cancelSat}
+              title="Cancel satisfiability check"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '4px 10px', fontSize: 12, border: '1px solid #e0c870',
+                borderRadius: 4, background: '#fffaf0', color: '#7a4a00',
+                cursor: 'pointer',
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  display: 'inline-block', width: 12, height: 12,
+                  border: '2px solid #e0c870', borderTopColor: '#7a4a00',
+                  borderRadius: '50%', animation: 'logic-spin 0.8s linear infinite',
+                }}
+              />
+              Cancel
+            </button>
+            {satResult?.totalPathCount > 0 && (() => {
+              const classified = satResult.classifiedCount ?? 0;
+              const total = satResult.totalPathCount;
+              const elapsed = satResult.elapsedSecs ?? 0;
+              const pct = Math.min(100, (classified / total) * 100);
+              const rate = elapsed > 0 ? Math.round(classified / elapsed) : 0;
+              return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#666' }}>
+                <span style={{
+                  display: 'inline-block', width: 80, height: 8,
+                  background: '#e0e0e0', borderRadius: 4, overflow: 'hidden',
+                }}>
+                  <span style={{
+                    display: 'block', height: '100%', borderRadius: 4,
+                    background: '#7a4a00', width: `${pct}%`,
+                    transition: 'width 0.3s ease',
+                  }} />
+                </span>
+                {pct.toFixed(1)}%{rate > 0 ? ` (${fmtNum(rate)}/s)` : ''}
+              </span>;
+            })()}
+          </span>
+        )}
         {btn('ρ  Paths',       handlePaths,       '#4a4a8a', !ast || loading, !ast ? "Fix syntax errors first" : "Show paths through the matrix")}
         <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 13 }}
                title="Show paths of the complement">
@@ -1432,16 +1686,24 @@ export default function App() {
       {validResult && (
         <div style={{
           display: 'flex', alignItems: 'flex-start', gap: 8,
-          color: validResult.error ? '#8b0000' : validResult.valid ? '#1a5c1a' : '#6a2a9a',
-          background: validResult.error ? '#fff5f5' : validResult.valid ? '#f0fff0' : '#f8f0ff',
-          border: `1.5px solid ${validResult.error ? '#f5c2c2' : validResult.valid ? '#b2e0b2' : '#d4a0f0'}`,
+          color: validResult.error ? '#8b0000' : validResult.valid === true ? '#1a5c1a' : '#6a2a9a',
+          background: validResult.error ? '#fff5f5' : validResult.valid === true ? '#f0fff0' : '#f8f0ff',
+          border: `1.5px solid ${validResult.error ? '#f5c2c2' : validResult.valid === true ? '#b2e0b2' : '#d4a0f0'}`,
           padding: '9px 14px', borderRadius: 6, fontSize: 13, marginBottom: 12,
         }}>
           {validResult.error
             ? `✗ ${validResult.error}`
-            : validResult.valid
+            : validResult.valid === null
+              ? <span>Checking validity{validResult.totalPathCount > 0 ? ` — ${fmtNum(validResult.classifiedCount ?? 0)} / ${fmtNum(validResult.totalPathCount)} paths classified` : ''}...</span>
+              : validResult.valid
               ? <span>
-                  ✓ Valid — all paths are covered
+                  {(() => {
+                    const total = validResult.totalPathCount ?? 0;
+                    const elapsed = validResult.elapsedSecs ?? 0;
+                    const rate = elapsed > 0 ? Math.round((validResult.classifiedCount ?? 0) / elapsed) : 0;
+                    const ratePart = rate > 0 ? ` at ${fmtNum(rate)} paths/s` : '';
+                    return `✓ Valid — all ${fmtNum(total)} paths through the matrix are covered${ratePart}`;
+                  })()}
                   {validResult.coverGroups?.length > 0 && ast && (() => {
                     const resName = pos => resolvePosition(ast, pos)?.n ?? pos.join(',');
                     const tooMany = (validResult.totalPrefixCount ?? 0) > 1000;
@@ -1544,7 +1806,13 @@ export default function App() {
                   })()}
                 </span>
               : <span>
-                  ✗ Not valid — falsifying assignment and uncovered path:
+                  {(() => {
+                    const total = validResult.totalPathCount ?? 0;
+                    const elapsed = validResult.elapsedSecs ?? 0;
+                    const rate = elapsed > 0 ? Math.round((validResult.classifiedCount ?? 0) / elapsed) : 0;
+                    const ratePart = rate > 0 ? ` at ${fmtNum(rate)} paths/s` : '';
+                    return `✗ Not valid — falsifying assignment and uncovered path in ${fmtNum(total)} path matrix${ratePart}:`;
+                  })()}
                   {validResult.path && (() => {
                     const p = validResult.path;
                     const inner = p.startsWith('{') && p.endsWith('}') ? p.slice(1, -1) : null;
@@ -1690,16 +1958,24 @@ export default function App() {
       {satResult && (
         <div style={{
           display: 'flex', alignItems: 'flex-start', gap: 8,
-          color: satResult.error ? '#8b0000' : satResult.satisfiable ? '#1a5c1a' : '#7a4a00',
-          background: satResult.error ? '#fff5f5' : satResult.satisfiable ? '#f0fff0' : '#fffaf0',
-          border: `1.5px solid ${satResult.error ? '#f5c2c2' : satResult.satisfiable ? '#b2e0b2' : '#e0c870'}`,
+          color: satResult.error ? '#8b0000' : satResult.satisfiable === true ? '#1a5c1a' : '#7a4a00',
+          background: satResult.error ? '#fff5f5' : satResult.satisfiable === true ? '#f0fff0' : '#fffaf0',
+          border: `1.5px solid ${satResult.error ? '#f5c2c2' : satResult.satisfiable === true ? '#b2e0b2' : '#e0c870'}`,
           padding: '9px 14px', borderRadius: 6, fontSize: 13, marginBottom: 12,
         }}>
           {satResult.error
             ? `✗ ${satResult.error}`
-            : satResult.satisfiable
+            : satResult.satisfiable === null
+              ? <span>Checking satisfiability{satResult.totalPathCount > 0 ? ` — ${fmtNum(satResult.classifiedCount ?? 0)} / ${fmtNum(satResult.totalPathCount)} paths classified` : ''}...</span>
+              : satResult.satisfiable
               ? <span>
-                  ✓ Satisfiable — satisfying assignment and uncovered path in complement:
+                  {(() => {
+                    const total = satResult.totalPathCount ?? 0;
+                    const elapsed = satResult.elapsedSecs ?? 0;
+                    const rate = elapsed > 0 ? Math.round((satResult.classifiedCount ?? 0) / elapsed) : 0;
+                    const ratePart = rate > 0 ? ` at ${fmtNum(rate)} paths/s` : '';
+                    return `✓ Satisfiable — satisfying assignment and uncovered path in complement of ${fmtNum(total)} path matrix${ratePart}:`;
+                  })()}
                   {satResult.path && (() => {
                     const p = satResult.path;
                     const inner = p.startsWith('{') && p.endsWith('}') ? p.slice(1, -1) : null;
@@ -1843,7 +2119,13 @@ export default function App() {
                   })()}
                 </span>
               : <span>
-                  ✗ Unsatisfiable — all paths in the complement are covered
+                  {(() => {
+                    const total = satResult.totalPathCount ?? 0;
+                    const elapsed = satResult.elapsedSecs ?? 0;
+                    const rate = elapsed > 0 ? Math.round((satResult.classifiedCount ?? 0) / elapsed) : 0;
+                    const ratePart = rate > 0 ? ` at ${fmtNum(rate)} paths/s` : '';
+                    return `✗ Unsatisfiable — all ${fmtNum(total)} paths in the complement are covered${ratePart}`;
+                  })()}
                   {satResult.coverGroups?.length > 0 && ast && (() => {
                     const resName = pos => compName(resolvePosition(ast, pos)?.n) ?? pos.join(',');
                     const tooMany = (satResult.totalPrefixCount ?? 0) > 1000;

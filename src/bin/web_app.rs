@@ -4,7 +4,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use logic::matrix::{CancelHandle, Cover, PathPrefix};
+use logic::matrix::CancelHandle;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, sync::{Arc, Mutex}};
 use tower_http::cors::{Any, CorsLayer};
@@ -38,42 +38,10 @@ fn pair_key(pair: &(Vec<usize>, Vec<usize>)) -> String {
                      pair.1.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))
 }
 
-fn build_cover_groups(pairs: &Cover, prefixes: &[PathPrefix]) -> (Vec<CoverGroup>, usize) {
-    let total = pairs.len();
-    let include_prefixes = total <= PREFIX_DETAIL_LIMIT;
-    let mut groups: Vec<CoverGroup> = Vec::new();
-    let mut map: HashMap<String, usize> = HashMap::new();
-    for (pair, prefix) in pairs.iter().zip(prefixes.iter()) {
-        let key = pair_key(pair);
-        let len = prefix.len();
-        let gi = if let Some(&gi) = map.get(&key) {
-            gi
-        } else {
-            let gi = groups.len();
-            map.insert(key, gi);
-            groups.push(CoverGroup {
-                pair: pair.clone(),
-                count: 0,
-                prefix_length_min: usize::MAX,
-                prefix_length_max: 0,
-                prefixes: Vec::new(),
-            });
-            gi
-        };
-        let g = &mut groups[gi];
-        g.count += 1;
-        g.prefix_length_min = g.prefix_length_min.min(len);
-        g.prefix_length_max = g.prefix_length_max.max(len);
-        if include_prefixes {
-            g.prefixes.push(prefix.clone());
-        }
-    }
-    (groups, total)
-}
 
-/// Snapshot of an in-progress paths job.
+/// Snapshot of an in-progress classify job (shared by valid, satisfiable, paths).
 #[derive(Default, Clone)]
-struct PathsSnapshot {
+struct ClassifySnapshot {
     uncovered_paths:          Vec<String>,
     uncovered_path_positions: Vec<Vec<Vec<usize>>>,
     cover_groups:             Vec<CoverGroup>,
@@ -83,8 +51,8 @@ struct PathsSnapshot {
     hit_limit:                bool,
 }
 
-struct PathsJob {
-    snapshot: PathsSnapshot,
+struct ClassifyJob {
+    snapshot: ClassifySnapshot,
     total_path_count:         f64,
     start_time:               Option<std::time::Instant>,
     cancel:   Option<CancelHandle>,
@@ -93,10 +61,10 @@ struct PathsJob {
     is_complement: bool,
 }
 
-impl Default for PathsJob {
+impl Default for ClassifyJob {
     fn default() -> Self {
         Self {
-            snapshot: PathsSnapshot::default(),
+            snapshot: ClassifySnapshot::default(),
             cancel: None,
             running: false,
             error: None,
@@ -111,7 +79,9 @@ impl Default for PathsJob {
 struct AppState {
     jq_libs:     Arc<Mutex<Vec<JqLibEntry>>>,
     server_root: PathBuf,
-    paths_job:   Arc<Mutex<PathsJob>>,
+    valid_job:   Arc<Mutex<ClassifyJob>>,
+    sat_job:     Arc<Mutex<ClassifyJob>>,
+    paths_job:   Arc<Mutex<ClassifyJob>>,
 }
 
 // ── jq handlers ───────────────────────────────────────────────────────────────
@@ -282,18 +252,9 @@ struct SimplifyResponse {
     error:  Option<String>,
 }
 
+/// Shared status response for valid, satisfiable, and paths jobs.
 #[derive(Serialize)]
-struct ValidResponse {
-    valid:                      Option<bool>,
-    path:                       Option<String>,
-    uncovered_path_positions:   Option<Vec<Vec<usize>>>,
-    cover_groups:               Option<Vec<CoverGroup>>,
-    total_prefix_count:         Option<usize>,
-    error:                      Option<String>,
-}
-
-#[derive(Serialize)]
-struct PathsStatusResponse {
+struct ClassifyStatusResponse {
     uncovered_paths:            Vec<String>,
     uncovered_path_positions:   Vec<Vec<Vec<usize>>>,
     cover_groups:               Vec<CoverGroup>,
@@ -307,14 +268,20 @@ struct PathsStatusResponse {
     error:                      Option<String>,
 }
 
-#[derive(Serialize)]
-struct SatisfiableResponse {
-    satisfiable:                Option<bool>,
-    path:                       Option<String>,
-    uncovered_path_positions:   Option<Vec<Vec<usize>>>,
-    cover_groups:               Option<Vec<CoverGroup>>,
-    total_prefix_count:         Option<usize>,
-    error:                      Option<String>,
+fn classify_status(job: &ClassifyJob) -> ClassifyStatusResponse {
+    ClassifyStatusResponse {
+        uncovered_paths:          job.snapshot.uncovered_paths.clone(),
+        uncovered_path_positions: job.snapshot.uncovered_path_positions.clone(),
+        cover_groups:             job.snapshot.cover_groups.clone(),
+        total_prefix_count:       job.snapshot.total_prefix_count,
+        classified_count:         job.snapshot.classified_count,
+        total_path_count:         job.total_path_count,
+        elapsed_secs:             job.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64()),
+        hit_limit:                job.snapshot.hit_limit,
+        running:                  job.running,
+        is_complement:            job.is_complement,
+        error:                    job.error.clone(),
+    }
 }
 
 async fn simplify_handler(Json(req): Json<FormulaRequest>) -> Json<SimplifyResponse> {
@@ -324,68 +291,33 @@ async fn simplify_handler(Json(req): Json<FormulaRequest>) -> Json<SimplifyRespo
     }
 }
 
-async fn valid_handler(Json(req): Json<FormulaRequest>) -> Json<ValidResponse> {
-    match logic::check_valid(&req.formula) {
-        Ok((v, path, positions, pairs, prefixes)) => {
-            let (groups, total) = build_cover_groups(&pairs, &prefixes);
-            Json(ValidResponse {
-                valid: Some(v), path,
-                uncovered_path_positions: positions,
-                cover_groups: Some(groups),
-                total_prefix_count: Some(total),
-                error: None,
-            })
-        }
-        Err(e) => Json(ValidResponse { valid: None, path: None, uncovered_path_positions: None, cover_groups: None, total_prefix_count: None, error: Some(e) }),
-    }
-}
+/// Start a classify job: parse formula, launch `classify_paths`, spawn drainer.
+fn start_classify_job(
+    job_state: Arc<Mutex<ClassifyJob>>,
+    formula: &str,
+    complement: bool,
+    params: Option<logic::matrix::PathParams>,
+) -> Result<(), String> {
+    use logic::matrix::{Matrix, format_path, PathsClass, NNF};
 
-/// Start a streaming paths job. Cancels any in-progress job, parses the
-/// formula, and spawns a drainer task that incrementally fills the shared
-/// `PathsJob` snapshot from the `classify_paths` channel. Returns immediately.
-async fn paths_handler(
-    State(state): State<AppState>,
-    Json(req): Json<PathsRequest>,
-) -> Json<serde_json::Value> {
-    use logic::matrix::{Matrix, format_path, PathParams, PathsClass};
-
-    // Cancel + reset existing job.
-    {
-        let mut job = state.paths_job.lock().unwrap();
-        if let Some(c) = job.cancel.take() { c.cancel(); }
-        *job = PathsJob::default();
-        job.running = true;
-        job.is_complement = req.complement;
-    }
-
-    let matrix = match Matrix::try_from(req.formula.as_str()) {
-        Ok(m) => m,
-        Err(e) => {
-            let mut job = state.paths_job.lock().unwrap();
-            job.running = false;
-            job.error = Some(e);
-            return Json(serde_json::json!({ "ok": true }));
-        }
-    };
-
-    let target_nnf = if req.complement { &matrix.nnf_complement } else { &matrix.nnf };
+    let matrix = Matrix::try_from(formula).map_err(|e| e)?;
+    let target_nnf: &NNF = if complement { &matrix.nnf_complement } else { &matrix.nnf };
     let total_path_count = target_nnf.path_count();
     let target = target_nnf.clone();
     let vars = matrix.ast.vars.clone();
 
-    let params = Some(PathParams { paths_class_limit: req.paths_class_limit, ..Default::default() });
-    let (handle, mut rx, cancel) = matrix.classify_paths(req.complement, 64, params);
+    let (handle, mut rx, cancel) = matrix.classify_paths(complement, 64, params);
     {
-        let mut job = state.paths_job.lock().unwrap();
+        let mut job = job_state.lock().unwrap();
         job.cancel = Some(cancel);
         job.total_path_count = total_path_count;
         job.start_time = Some(std::time::Instant::now());
     }
 
-    let job_state = state.paths_job.clone();
+    let js = job_state.clone();
     tokio::spawn(async move {
         while let Some((class, hit_limit)) = rx.recv().await {
-            let mut job = job_state.lock().unwrap();
+            let mut job = js.lock().unwrap();
             match class {
                 PathsClass::Covered(cp) => {
                     let cover_count = target.prefix_cover_count(&cp.prefix);
@@ -429,52 +361,103 @@ async fn paths_handler(
             if hit_limit { job.snapshot.hit_limit = true; }
         }
         let _ = handle.await;
-        let mut job = job_state.lock().unwrap();
+        let mut job = js.lock().unwrap();
         job.running = false;
         job.cancel = None;
     });
+    Ok(())
+}
 
+fn reset_and_start(
+    job_state: &Arc<Mutex<ClassifyJob>>,
+    formula: &str,
+    complement: bool,
+    params: Option<logic::matrix::PathParams>,
+) -> Json<serde_json::Value> {
+    {
+        let mut job = job_state.lock().unwrap();
+        if let Some(c) = job.cancel.take() { c.cancel(); }
+        *job = ClassifyJob::default();
+        job.running = true;
+        job.is_complement = complement;
+    }
+    if let Err(e) = start_classify_job(job_state.clone(), formula, complement, params) {
+        let mut job = job_state.lock().unwrap();
+        job.running = false;
+        job.error = Some(e);
+    }
     Json(serde_json::json!({ "ok": true }))
 }
 
-async fn paths_status_handler(State(state): State<AppState>) -> Json<PathsStatusResponse> {
-    let job = state.paths_job.lock().unwrap();
-    Json(PathsStatusResponse {
-        uncovered_paths:          job.snapshot.uncovered_paths.clone(),
-        uncovered_path_positions: job.snapshot.uncovered_path_positions.clone(),
-        cover_groups:             job.snapshot.cover_groups.clone(),
-        total_prefix_count:       job.snapshot.total_prefix_count,
-        classified_count:         job.snapshot.classified_count,
-        total_path_count:         job.total_path_count,
-        elapsed_secs:             job.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64()),
-        hit_limit:                job.snapshot.hit_limit,
-        running:                  job.running,
-        is_complement:            job.is_complement,
-        error:                    job.error.clone(),
-    })
+fn status_handler(job_state: &Arc<Mutex<ClassifyJob>>) -> Json<ClassifyStatusResponse> {
+    let job = job_state.lock().unwrap();
+    Json(classify_status(&job))
 }
 
-async fn paths_cancel_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let mut job = state.paths_job.lock().unwrap();
+fn cancel_handler(job_state: &Arc<Mutex<ClassifyJob>>) -> Json<serde_json::Value> {
+    let mut job = job_state.lock().unwrap();
     if let Some(c) = job.cancel.take() { c.cancel(); }
     job.running = false;
     Json(serde_json::json!({ "ok": true }))
 }
 
-async fn satisfiable_handler(Json(req): Json<FormulaRequest>) -> Json<SatisfiableResponse> {
-    match logic::check_satisfiable(&req.formula) {
-        Ok((s, path, positions, pairs, prefixes)) => {
-            let (groups, total) = build_cover_groups(&pairs, &prefixes);
-            Json(SatisfiableResponse {
-                satisfiable: Some(s), path,
-                uncovered_path_positions: positions,
-                cover_groups: Some(groups),
-                total_prefix_count: Some(total),
-                error: None,
-            })
-        }
-        Err(e) => Json(SatisfiableResponse { satisfiable: None, path: None, uncovered_path_positions: None, cover_groups: None, total_prefix_count: None, error: Some(e) }),
-    }
+async fn valid_handler(
+    State(state): State<AppState>,
+    Json(req): Json<FormulaRequest>,
+) -> Json<serde_json::Value> {
+    use logic::matrix::PathParams;
+    let params = Some(PathParams {
+        uncovered_path_limit: 1,
+        paths_class_limit: usize::MAX,
+        covered_prefix_limit: usize::MAX,
+    });
+    reset_and_start(&state.valid_job, &req.formula, false, params)
+}
+
+async fn valid_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {
+    status_handler(&state.valid_job)
+}
+
+async fn valid_cancel_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    cancel_handler(&state.valid_job)
+}
+
+async fn paths_handler(
+    State(state): State<AppState>,
+    Json(req): Json<PathsRequest>,
+) -> Json<serde_json::Value> {
+    use logic::matrix::PathParams;
+    let params = Some(PathParams { paths_class_limit: req.paths_class_limit, ..Default::default() });
+    reset_and_start(&state.paths_job, &req.formula, req.complement, params)
+}
+
+async fn paths_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {
+    status_handler(&state.paths_job)
+}
+
+async fn paths_cancel_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    cancel_handler(&state.paths_job)
+}
+
+async fn satisfiable_handler(
+    State(state): State<AppState>,
+    Json(req): Json<FormulaRequest>,
+) -> Json<serde_json::Value> {
+    use logic::matrix::PathParams;
+    let params = Some(PathParams {
+        uncovered_path_limit: 1,
+        paths_class_limit: usize::MAX,
+        covered_prefix_limit: usize::MAX,
+    });
+    reset_and_start(&state.sat_job, &req.formula, true, params)
+}
+
+async fn satisfiable_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {
+    status_handler(&state.sat_job)
+}
+
+async fn satisfiable_cancel_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    cancel_handler(&state.sat_job)
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -501,7 +484,9 @@ async fn main() {
     let state = AppState {
         jq_libs: Arc::new(Mutex::new(default_libs)),
         server_root,
-        paths_job: Arc::new(Mutex::new(PathsJob::default())),
+        valid_job: Arc::new(Mutex::new(ClassifyJob::default())),
+        sat_job:   Arc::new(Mutex::new(ClassifyJob::default())),
+        paths_job: Arc::new(Mutex::new(ClassifyJob::default())),
     };
 
     let cors = CorsLayer::new()
@@ -510,11 +495,13 @@ async fn main() {
         .allow_headers(Any);
 
     let app = Router::new()
-        .route("/simplify",    post(simplify_handler))
-        .route("/valid",       post(valid_handler))
-        .route("/satisfiable", post(satisfiable_handler))
-        .route("/paths",        get(paths_status_handler).post(paths_handler))
-        .route("/paths/cancel", post(paths_cancel_handler))
+        .route("/simplify",          post(simplify_handler))
+        .route("/valid",             get(valid_status_handler).post(valid_handler))
+        .route("/valid/cancel",      post(valid_cancel_handler))
+        .route("/satisfiable",       get(satisfiable_status_handler).post(satisfiable_handler))
+        .route("/satisfiable/cancel",post(satisfiable_cancel_handler))
+        .route("/paths",             get(paths_status_handler).post(paths_handler))
+        .route("/paths/cancel",      post(paths_cancel_handler))
         .route("/jq",          post(jq_handler))
         .route("/jq-lib",      get(jq_lib_list_handler)
                                    .post(jq_lib_load_handler)

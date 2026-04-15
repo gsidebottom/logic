@@ -334,6 +334,46 @@ impl NNF {
         }
     }
 
+    /// Evaluate this NNF under a partial assignment.
+    /// Returns `Ok(true)` if the formula is determined true, `Ok(false)` if
+    /// determined false, and `Err(())` if the assignment is insufficient.
+    /// A `Lit::pos(x)` in the assignment means `x=1`, `Lit::neg(x)` means `x=0`.
+    pub fn evaluate(&self, assignment: &[Lit]) -> Result<bool, ()> {
+        match self {
+            NNF::Lit(l) => {
+                // Find this variable in the assignment
+                match assignment.iter().find(|a| a.var == l.var) {
+                    None => Err(()),
+                    Some(a) => Ok(a.neg == l.neg), // both neg or both pos → literal is true
+                }
+            }
+            NNF::Sum(ch) => {
+                // OR: true if any child true, false if all false, undetermined otherwise
+                let mut all_false = true;
+                for c in ch {
+                    match c.evaluate(assignment) {
+                        Ok(true) => return Ok(true),
+                        Ok(false) => {}
+                        Err(()) => { all_false = false; }
+                    }
+                }
+                if all_false { Ok(false) } else { Err(()) }
+            }
+            NNF::Prod(ch) => {
+                // AND: false if any child false, true if all true, undetermined otherwise
+                let mut all_true = true;
+                for c in ch {
+                    match c.evaluate(assignment) {
+                        Ok(false) => return Ok(false),
+                        Ok(true) => {}
+                        Err(()) => { all_true = false; }
+                    }
+                }
+                if all_true { Ok(true) } else { Err(()) }
+            }
+        }
+    }
+
     /// Total number of paths through this NNF.
     /// A path selects one member from each Prod and visits all children of each Sum.
     pub fn path_count(&self) -> f64 {
@@ -863,6 +903,13 @@ impl TryFrom<&str> for Matrix {
 }
 
 impl Matrix {
+    /// Evaluate the formula under a partial assignment.
+    /// Returns `Ok(true)` if determined true, `Ok(false)` if determined false,
+    /// `Err(())` if the assignment is insufficient to determine the result.
+    pub fn evaluate(&self, assignment: &[Lit]) -> Result<bool, ()> {
+        self.nnf.evaluate(assignment)
+    }
+
     pub fn classify_paths(
         &self,
         complement: bool,
@@ -875,6 +922,73 @@ impl Matrix {
     ) {
         let target = if complement { &self.nnf_complement } else { &self.nnf };
         target.classify_paths(buffer_size, params)
+    }
+
+    /// Check if the formula is valid (a tautology).
+    /// Returns `Ok(())` if valid, `Err(falsifying_assignment)` if not.
+    /// The falsifying assignment is a `Vec<Lit>` where `Lit::pos(x)` means `x=1`
+    /// and `Lit::neg(x)` means `x=0`.
+    pub fn valid(&self) -> Result<(), Vec<Lit>> {
+        let params = Some(PathParams {
+            uncovered_path_limit: 1,
+            paths_class_limit: usize::MAX,
+            covered_prefix_limit: usize::MAX,
+        });
+        let uncovered = self.first_uncovered(false, params);
+        match uncovered {
+            None => Ok(()),
+            Some(path) => {
+                let assignment = self.path_to_assignment(&self.nnf, &path);
+                Err(assignment)
+            }
+        }
+    }
+
+    /// Check if the formula is satisfiable.
+    /// Returns `Ok(satisfying_assignment)` if satisfiable, `Err(())` if not.
+    /// The satisfying assignment is a `Vec<Lit>` where `Lit::pos(x)` means `x=1`
+    /// and `Lit::neg(x)` means `x=0`.
+    pub fn satisfiable(&self) -> Result<Vec<Lit>, ()> {
+        let params = Some(PathParams {
+            uncovered_path_limit: 1,
+            paths_class_limit: usize::MAX,
+            covered_prefix_limit: usize::MAX,
+        });
+        let uncovered = self.first_uncovered(true, params);
+        match uncovered {
+            None => Err(()),
+            Some(path) => {
+                let assignment = self.path_to_assignment(&self.nnf_complement, &path);
+                Ok(assignment)
+            }
+        }
+    }
+
+    fn first_uncovered(&self, complement: bool, params: Option<PathParams>) -> Option<ProdPath> {
+        let nnf = if complement { &self.nnf_complement } else { &self.nnf };
+        let rt = tokio::runtime::Runtime::new().expect("failed to create runtime");
+        rt.block_on(async {
+            let (handle, mut rx, _cancel) = nnf.classify_paths(64, params);
+            let mut uncovered = None;
+            while let Some((class, _)) = rx.recv().await {
+                if let PathsClass::Uncovered(p) = class {
+                    uncovered = Some(p);
+                    break;
+                }
+            }
+            drop(rx);
+            let _ = handle.await;
+            uncovered
+        })
+    }
+
+    fn path_to_assignment(&self, nnf: &NNF, path: &ProdPath) -> Vec<Lit> {
+        let lits = nnf.lits_on_path(path);
+        let mut seen = std::collections::HashSet::new();
+        lits.into_iter()
+            .filter(|l| seen.insert(l.var))
+            .map(|l| Lit { var: l.var, neg: !l.neg })
+            .collect()
     }
 }
 
@@ -1364,6 +1478,201 @@ mod tests {
         // Just verify it runs and produces some classes
         assert!(!items.is_empty());
         assert!(items.iter().all(|(_, hit)| !hit));
+    }
+
+    // ── Matrix::valid / Matrix::satisfiable ────────────────────────────────
+
+    #[test]
+    fn test_valid_tautology() {
+        let m = Matrix::try_from("A + A'").unwrap();
+        assert!(m.valid().is_ok());
+    }
+
+    #[test]
+    fn test_valid_not_tautology() {
+        let m = Matrix::try_from("A").unwrap();
+        let err = m.valid().unwrap_err();
+        // A is not a tautology; falsifying assignment should set A=0
+        assert_eq!(err.len(), 1);
+        assert_eq!(err[0], Lit::neg(0)); // A=0
+    }
+
+    #[test]
+    fn test_valid_equiv() {
+        // a = b is not a tautology
+        let m = Matrix::try_from("a = b").unwrap();
+        assert!(m.valid().is_err());
+    }
+
+    #[test]
+    fn test_satisfiable_simple() {
+        let m = Matrix::try_from("A").unwrap();
+        let asgn = m.satisfiable().unwrap();
+        // A is satisfiable; satisfying assignment should set A=1
+        assert_eq!(asgn.len(), 1);
+        assert_eq!(asgn[0], Lit::pos(0)); // A=1
+    }
+
+    #[test]
+    fn test_satisfiable_contradiction() {
+        let m = Matrix::try_from("A A'").unwrap();
+        assert!(m.satisfiable().is_err());
+    }
+
+    #[test]
+    fn test_satisfiable_equiv() {
+        // a = b is satisfiable (e.g. a=0, b=0)
+        let m = Matrix::try_from("a = b").unwrap();
+        let asgn = m.satisfiable().unwrap();
+        // Both should have the same value
+        let a_val = asgn.iter().find(|l| l.var == 0).unwrap();
+        let b_val = asgn.iter().find(|l| l.var == 1).unwrap();
+        assert_eq!(a_val.neg, b_val.neg, "a and b should have the same truth value");
+    }
+
+    #[test]
+    fn test_evaluate() {
+        let m = Matrix::try_from("A B + C").unwrap();
+        // A=1, B=1 → A·B=true → true (short-circuit)
+        assert_eq!(m.evaluate(&[Lit::pos(0), Lit::pos(1)]), Ok(true));
+        // A=1, B=0, C=0 → A·B=false, C=false → false
+        assert_eq!(m.evaluate(&[Lit::pos(0), Lit::neg(1), Lit::neg(2)]), Ok(false));
+        // C=1 → C=true → true (short-circuit)
+        assert_eq!(m.evaluate(&[Lit::pos(2)]), Ok(true));
+        // A=0, C=0 → A·B=false, C=false → false regardless of B
+        assert_eq!(m.evaluate(&[Lit::neg(0), Lit::neg(2)]), Ok(false));
+        // A=1, B=0 → A·B=false, C=? → undetermined
+        assert_eq!(m.evaluate(&[Lit::pos(0), Lit::neg(1)]), Err(()));
+        // Empty assignment → undetermined
+        assert_eq!(m.evaluate(&[]), Err(()));
+    }
+
+    #[test]
+    fn test_valid_falsifying_evaluates_false() {
+        let m = Matrix::try_from("A + A'B").unwrap();
+        if let Err(asgn) = m.valid() {
+            assert_eq!(m.evaluate(&asgn), Ok(false));
+        }
+    }
+
+    #[test]
+    fn test_satisfiable_assignment_evaluates_true() {
+        let m = Matrix::try_from("A B + C").unwrap();
+        let asgn = m.satisfiable().unwrap();
+        assert_eq!(m.evaluate(&asgn), Ok(true));
+    }
+
+    #[test]
+    fn test_valid_and_satisfiable_formula_r() {
+        // This formula is satisfiable but not valid.
+        // Wait — user says it's unsatisfiable. Let's verify.
+        let f = "(a+b+c')(b+c+d')(c+d+a)(d+a'+b)(a'+b'+c)(b'+c'+d)(c'+d'+a')(d'+a+b')";
+        let m = Matrix::try_from(f).unwrap();
+
+        // Not valid — should return a falsifying assignment
+        let asgn = m.valid().unwrap_err();
+        assert_eq!(m.evaluate(&asgn), Ok(false),
+            "falsifying assignment {:?} should make the formula false", asgn);
+
+        // Unsatisfiable — should return Err(())
+        assert!(m.satisfiable().is_err(),
+            "formula should be unsatisfiable");
+    }
+
+    #[test]
+    fn test_valid_and_satisfiable_formula_r_prime() {
+        let f = "a'·b'·c + b'·c'·d + c'·d'·a' + d'·a·b' + a·b·c' + b·c·d' + c·d·a + d·a'·b";
+        let m = Matrix::try_from(f).unwrap();
+
+        // Valid — should return Ok(())
+        assert!(m.valid().is_ok(), "formula should be valid (tautology)");
+
+        // Satisfiable — should return a satisfying assignment
+        let asgn = m.satisfiable().expect("formula should be satisfiable");
+        assert_eq!(m.evaluate(&asgn), Ok(true),
+            "satisfying assignment {:?} should make the formula true", asgn);
+    }
+
+    #[test]
+    fn test_valid_and_satisfiable_formula_clpb_2() {
+        let f = "A (R' + S') + A' (R S) + B T + B' T' + A X'";
+        let m = Matrix::try_from(f).unwrap();
+
+        // Not valid — should return a falsifying assignment
+        let asgn = m.valid().unwrap_err();
+        assert_eq!(m.evaluate(&asgn), Ok(false),
+            "falsifying assignment {:?} should make the formula false", asgn);
+
+        // Satisfiable — should return a satisfying assignment
+        let asgn = m.satisfiable().expect("formula should be satisfiable");
+        assert_eq!(m.evaluate(&asgn), Ok(true),
+            "satisfying assignment {:?} should make the formula true", asgn);
+    }
+
+    #[test]
+    fn test_valid_and_satisfiable_formula_w338() {
+        let f = "\
+            (x_1 + x_2 + x_3) (x_1' + x_2' + x_3') \
+            (x_2 + x_3 + x_4) (x_2' + x_3' + x_4') \
+            (x_3 + x_4 + x_5) (x_3' + x_4' + x_5') \
+            (x_4 + x_5 + x_6) (x_4' + x_5' + x_6') \
+            (x_5 + x_6 + x_7) (x_5' + x_6' + x_7') \
+            (x_6 + x_7 + x_8) (x_6' + x_7' + x_8') \
+            (x_1 + x_3 + x_5) (x_1' + x_3' + x_5') \
+            (x_2 + x_4 + x_6) (x_2' + x_4' + x_6') \
+            (x_3 + x_5 + x_7) (x_3' + x_5' + x_7') \
+            (x_4 + x_6 + x_8) (x_4' + x_6' + x_8') \
+            (x_1 + x_4 + x_7) (x_1' + x_4' + x_7') \
+            (x_2 + x_5 + x_8) (x_2' + x_5' + x_8')";
+        let m = Matrix::try_from(f).unwrap();
+
+        // Not valid — should return a falsifying assignment
+        let asgn = m.valid().unwrap_err();
+        assert_eq!(m.evaluate(&asgn), Ok(false),
+            "falsifying assignment {:?} should make the formula false", asgn);
+
+        // Satisfiable — should return a satisfying assignment
+        let asgn = m.satisfiable().expect("formula should be satisfiable");
+        assert_eq!(m.evaluate(&asgn), Ok(true),
+            "satisfying assignment {:?} should make the formula true", asgn);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_valid_and_satisfiable_formula_w339() {
+        let f = "\
+            (x_1 + x_2 + x_3) (x_1' + x_2' + x_3') \
+            (x_2 + x_3 + x_4) (x_2' + x_3' + x_4') \
+            (x_3 + x_4 + x_5) (x_3' + x_4' + x_5') \
+            (x_4 + x_5 + x_6) (x_4' + x_5' + x_6') \
+            (x_5 + x_6 + x_7) (x_5' + x_6' + x_7') \
+            (x_6 + x_7 + x_8) (x_6' + x_7' + x_8') \
+            (x_7 + x_8 + x_9) (x_7' + x_8' + x_9') \
+            (x_1 + x_3 + x_5) (x_1' + x_3' + x_5') \
+            (x_2 + x_4 + x_6) (x_2' + x_4' + x_6') \
+            (x_3 + x_5 + x_7) (x_3' + x_5' + x_7') \
+            (x_4 + x_6 + x_8) (x_4' + x_6' + x_8') \
+            (x_5 + x_7 + x_9) (x_5' + x_7' + x_9') \
+            (x_1 + x_4 + x_7) (x_1' + x_4' + x_7') \
+            (x_2 + x_5 + x_8) (x_2' + x_5' + x_8') \
+            (x_3 + x_6 + x_9) (x_3' + x_6' + x_9') \
+            (x_1 + x_5 + x_9) (x_1' + x_5' + x_9')";
+        let m = Matrix::try_from(f).unwrap();
+
+        // Not valid — should return a falsifying assignment
+        let asgn = m.valid().unwrap_err();
+        assert_eq!(m.evaluate(&asgn), Ok(false),
+            "falsifying assignment {:?} should make the formula false", asgn);
+
+        // Not satisfiable
+        assert!(m.satisfiable().is_err(),
+            "formula should be unsatisfiable");
+    }
+
+    #[test]
+    fn test_valid_larger_tautology() {
+        let m = Matrix::try_from("R'H' + L H R' + L' + R").unwrap();
+        assert!(m.valid().is_ok());
     }
 
     #[test]

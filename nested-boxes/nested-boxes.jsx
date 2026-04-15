@@ -78,6 +78,23 @@ function evaluateAst(node, assignment, position = []) {
 
 const EVAL_COLORS = { 'true': '#d4edda', 'false': '#f8d7da', 'undetermined': '#d6eaf8' };
 
+// Extract all unique base variable names from an AST, sorted alphabetically.
+function extractVars(node) {
+  const vars = new Set();
+  const walk = n => {
+    if (!n) return;
+    if (n.t === 'VAR') {
+      const name = n.n;
+      const base = name.endsWith("'") ? name.slice(0, -1) : name;
+      vars.add(base);
+    } else if (n.c) {
+      n.c.forEach(walk);
+    }
+  };
+  walk(node);
+  return [...vars].sort();
+}
+
 // ─── Box Renderer ─────────────────────────────────────────────────────────────
 const PAD = 10, GAP = 8;
 const BORDER_COLORS = ['#111', '#1a6bcc', '#b35000', '#2a7a2a', '#7a1a7a'];
@@ -646,6 +663,7 @@ export default function App() {
   const [validUncovOn,   setValidUncovOn]   = useState(false);     // toggle uncovered path highlight
   const [validPathExpanded, setValidPathExpanded] = useState(false); // show full uncovered path
   const [validVarsExpanded, setValidVarsExpanded] = useState(false); // show full sorted unique literals
+  const [validAsgnFmt,      setValidAsgnFmt]      = useState(0);     // 0=expanded, 1=factored, 2=value string
   const [validAsgnOn,       setValidAsgnOn]       = useState(false); // highlight assignment in diagram
   const [satResult,      setSatResult]      = useState(null); // {satisfiable, path, coverGroups}
   const [satSelected,    setSatSelected]    = useState(new Set()); // Set<number> of selected pair indices
@@ -657,6 +675,7 @@ export default function App() {
   const satPollRef = useRef(null);
   const [satPathExpanded, setSatPathExpanded] = useState(false);   // show full uncovered path
   const [satVarsExpanded, setSatVarsExpanded] = useState(false);   // show full sorted unique literals
+  const [satAsgnFmt,      setSatAsgnFmt]      = useState(0);     // 0=expanded, 1=factored, 2=value string
   const [satAsgnOn,       setSatAsgnOn]       = useState(false);   // highlight assignment in diagram
   const [pathsResult,    setPathsResult]    = useState(null); // {uncoveredPaths, coverGroups, totalPrefixCount} | {error}
   const [pathsLimit,     setPathsLimit]     = useState(100);
@@ -1490,7 +1509,7 @@ export default function App() {
               assignmentEval={(() => {
                 if (!ast) return null;
                 // Build assignment from path string
-                const buildAsgn = (pathStr, invert) => {
+                const buildAsgn = (pathStr) => {
                   if (!pathStr) return null;
                   const inner = pathStr.startsWith('{') && pathStr.endsWith('}') ? pathStr.slice(1, -1) : null;
                   if (!inner) return null;
@@ -1498,16 +1517,16 @@ export default function App() {
                   inner.split(', ').forEach(l => {
                     const neg = l.endsWith("'");
                     const base = neg ? l.slice(0, -1) : l;
-                    if (!(base in asgn)) asgn[base] = (neg !== invert) ? '1' : '0';
+                    if (!(base in asgn)) asgn[base] = neg ? '1' : '0';
                   });
                   return asgn;
                 };
                 if (validAsgnOn && validResult?.path) {
-                  const asgn = buildAsgn(validResult.path, true);
+                  const asgn = buildAsgn(validResult.path);
                   return asgn ? evaluateAst(ast, asgn) : null;
                 }
                 if (satAsgnOn && satResult?.path) {
-                  const asgn = buildAsgn(satResult.path, false);
+                  const asgn = buildAsgn(satResult.path);
                   return asgn ? evaluateAst(ast, asgn) : null;
                 }
                 return null;
@@ -1827,19 +1846,31 @@ export default function App() {
                     });
                     const asgnEntries = Object.keys(asgn).sort().map(v => ({ name: v, val: asgn[v] }));
                     const aLong = asgnEntries.length > 10;
+                    const allVars = ast ? extractVars(ast) : [];
+                    const valueStr = allVars.map(v => v in asgn ? asgn[v] : '-').join('');
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
                       <span onClick={() => setValidAsgnOn(prev => !prev)}
                         style={{ cursor: 'pointer', opacity: validAsgnOn ? 1 : 0.35 }}>
-                        assignment ({asgnEntries.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
-                          {((!aLong || validVarsExpanded) ? asgnEntries : asgnEntries.slice(0, 10)).map((e, ei) => <span key={ei}>{ei > 0 && ', '}<VarLabel name={e.name} />{`=${e.val}`}</span>)}
-                          {aLong && !validVarsExpanded && ', '}
-                        </b>
-                        {aLong && !validVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidVarsExpanded(true); }}
-                          style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…'}</a>}
-                        {aLong && validVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidVarsExpanded(false); }}
-                          style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
+                        assignment ({asgnEntries.length}):{' '}
+                        {validAsgnFmt === 0 && <>
+                          <b style={{ fontFamily: 'Georgia, serif' }}>
+                            {((!aLong || validVarsExpanded) ? asgnEntries : asgnEntries.slice(0, 10)).map((e, ei) => <span key={ei}>{ei > 0 && ', '}<VarLabel name={e.name} />{`=${e.val}`}</span>)}
+                            {aLong && !validVarsExpanded && ', '}
+                          </b>
+                          {aLong && !validVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidVarsExpanded(true); }}
+                            style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…'}</a>}
+                          {aLong && validVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidVarsExpanded(false); }}
+                            style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
+                        </>}
+                        {validAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
+                          {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
+                          {' = '}{asgnEntries.map(e => e.val).join('')}
+                        </b>}
+                        {validAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
                       </span>
+                      {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidAsgnFmt(f => (f + 1) % 3); }}
+                        style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][validAsgnFmt]}</a>
                       <br />
                       <span onClick={() => setValidUncovOn(prev => !prev)}
                         style={{ cursor: 'pointer', opacity: validUncovOn ? 1 : 0.35 }}>
@@ -1990,19 +2021,31 @@ export default function App() {
                     });
                     const asgnEntries = Object.keys(asgn).sort().map(v => ({ name: v, val: asgn[v] }));
                     const aLong = asgnEntries.length > 10;
+                    const allVars = ast ? extractVars(ast) : [];
+                    const valueStr = allVars.map(v => v in asgn ? asgn[v] : '-').join('');
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
                       <span onClick={() => setSatAsgnOn(prev => !prev)}
                         style={{ cursor: 'pointer', opacity: satAsgnOn ? 1 : 0.35 }}>
-                        assignment ({asgnEntries.length}): <b style={{ fontFamily: 'Georgia, serif' }}>
-                          {((!aLong || satVarsExpanded) ? asgnEntries : asgnEntries.slice(0, 10)).map((e, ei) => <span key={ei}>{ei > 0 && ', '}<VarLabel name={e.name} />{`=${e.val}`}</span>)}
-                          {aLong && !satVarsExpanded && ', '}
-                        </b>
-                        {aLong && !satVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatVarsExpanded(true); }}
-                          style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…'}</a>}
-                        {aLong && satVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatVarsExpanded(false); }}
-                          style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
+                        assignment ({asgnEntries.length}):{' '}
+                        {satAsgnFmt === 0 && <>
+                          <b style={{ fontFamily: 'Georgia, serif' }}>
+                            {((!aLong || satVarsExpanded) ? asgnEntries : asgnEntries.slice(0, 10)).map((e, ei) => <span key={ei}>{ei > 0 && ', '}<VarLabel name={e.name} />{`=${e.val}`}</span>)}
+                            {aLong && !satVarsExpanded && ', '}
+                          </b>
+                          {aLong && !satVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatVarsExpanded(true); }}
+                            style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…'}</a>}
+                          {aLong && satVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatVarsExpanded(false); }}
+                            style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
+                        </>}
+                        {satAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
+                          {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
+                          {' = '}{asgnEntries.map(e => e.val).join('')}
+                        </b>}
+                        {satAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
                       </span>
+                      {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatAsgnFmt(f => (f + 1) % 3); }}
+                        style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][satAsgnFmt]}</a>
                       <br />
                       <span onClick={() => setSatUncovOn(prev => !prev)}
                         style={{ cursor: 'pointer', opacity: satUncovOn ? 1 : 0.35 }}>

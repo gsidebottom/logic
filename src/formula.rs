@@ -28,6 +28,21 @@ impl Node {
         set
     }
 
+    /// Push complement inward (De Morgan): (A·B)' → A'+B', (A+B)' → A'·B', x' → x''→x.
+    pub fn complement(&self) -> Node {
+        match self {
+            Node::Var(name) => {
+                if name.ends_with('\'') {
+                    Node::Var(name[..name.len() - 1].to_string())
+                } else {
+                    Node::Var(format!("{}'", name))
+                }
+            }
+            Node::And(c) => Node::Or(c.iter().map(|ch| ch.complement()).collect()),
+            Node::Or(c) => Node::And(c.iter().map(|ch| ch.complement()).collect()),
+        }
+    }
+
     pub fn evaluate(&self, variable_assignment: &HashMap<String, u8>) -> u8 {
         match self {
             Node::Var(name) => {
@@ -75,6 +90,7 @@ enum Token {
     RParen,
     Plus,
     Dot,
+    Prime,
     Var(String),
 }
 
@@ -117,7 +133,8 @@ fn tokenize(s: &str) -> Result<Vec<Token>, String> {
                 return Err(format!("Variable names cannot start with a digit: '{}'", c));
             }
             '\'' => {
-                return Err("Unexpected ' — complement must follow a variable name".to_string());
+                tokens.push(Token::Prime);
+                i += 1;
             }
             _ => { i += 1; }
         }
@@ -190,6 +207,7 @@ impl Parser {
             Some(Token::RParen) => Err("Unexpected ')'".to_string()),
             Some(Token::Plus)   => Err("Unexpected '+' — missing left operand?".to_string()),
             Some(Token::Dot)    => Err("Unexpected '·' — missing left operand?".to_string()),
+            Some(Token::Prime)  => Err("Unexpected ' — complement must follow a variable name or ')'".to_string()),
             Some(Token::LParen) => {
                 self.eat();
                 let expr = self.parse_expr()?;
@@ -197,7 +215,13 @@ impl Parser {
                     return Err("Missing closing ')'".to_string());
                 }
                 self.eat();
-                Ok(expr)
+                // Apply trailing complement operators (De Morgan)
+                let mut result = expr;
+                while matches!(self.peek(), Some(Token::Prime)) {
+                    self.eat();
+                    result = result.complement();
+                }
+                Ok(result)
             }
             Some(Token::Var(_)) => {
                 if let Some(Token::Var(name)) = self.eat() {
@@ -330,6 +354,22 @@ mod tests {
         assert!(Node::try_from("'A").is_err());
         assert!(Node::try_from("A + 'B").is_err());
         assert!(Node::try_from("(A * 'B)").is_err());
+    }
+
+    #[test]
+    fn test_parse_paren_complement() {
+        // (A B)' should apply De Morgan: A' + B'
+        let n = parse_ok("(A B)'");
+        assert!(matches!(&n, Node::Or(c) if c.len() == 2));
+        // (A + B)' should apply De Morgan: A' B'
+        let n2 = parse_ok("(A + B)'");
+        assert!(matches!(&n2, Node::And(c) if c.len() == 2));
+        // Double complement: (A B)'' = A B
+        let n3 = parse_ok("(A B)''");
+        assert!(matches!(&n3, Node::And(c) if c.len() == 2));
+        // Mixed: (x_1 + x_2 + x_3) (x_1 x_2 x_3)'
+        let n4 = parse_ok("(x_1 + x_2 + x_3) (x_1 x_2 x_3)'");
+        assert!(matches!(&n4, Node::And(_)));
     }
 
     #[test]

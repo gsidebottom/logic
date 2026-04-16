@@ -996,6 +996,145 @@ mod tests {
     fn sum(ch: Vec<NNF>) -> NNF { NNF::Sum(ch) }
     fn prod(ch: Vec<NNF>) -> NNF { NNF::Prod(ch) }
 
+    // ── CaDiCaL cross-check helpers ────────────────────────────────────────────
+
+    /// Tseitin encoding: convert an NNF to CNF clauses for CaDiCaL.
+    /// Variable numbering: original vars are 1-based (var+1).
+    /// Auxiliary vars start at `next_var`. Returns (root_var, next_var, clauses).
+    fn tseitin_encode(nnf: &NNF, next_var: &mut i32) -> (i32, Vec<Vec<i32>>) {
+        let mut clauses = Vec::new();
+        match nnf {
+            NNF::Lit(l) => {
+                let v = (l.var as i32) + 1;
+                (if l.neg { -v } else { v }, clauses)
+            }
+            NNF::Prod(ch) => {
+                // AND gate: root ↔ (c1 ∧ c2 ∧ ... ∧ cn)
+                let root = *next_var; *next_var += 1;
+                let mut child_vars = Vec::new();
+                for c in ch {
+                    let (cv, mut cc) = tseitin_encode(c, next_var);
+                    clauses.append(&mut cc);
+                    child_vars.push(cv);
+                }
+                // root → ci  for each i:  (-root ∨ ci)
+                for &cv in &child_vars {
+                    clauses.push(vec![-root, cv]);
+                }
+                // c1 ∧ c2 ∧ ... ∧ cn → root:  (-c1 ∨ -c2 ∨ ... ∨ -cn ∨ root)
+                let mut clause: Vec<i32> = child_vars.iter().map(|&cv| -cv).collect();
+                clause.push(root);
+                clauses.push(clause);
+                (root, clauses)
+            }
+            NNF::Sum(ch) => {
+                // OR gate: root ↔ (c1 ∨ c2 ∨ ... ∨ cn)
+                let root = *next_var; *next_var += 1;
+                let mut child_vars = Vec::new();
+                for c in ch {
+                    let (cv, mut cc) = tseitin_encode(c, next_var);
+                    clauses.append(&mut cc);
+                    child_vars.push(cv);
+                }
+                // ci → root  for each i:  (-ci ∨ root)
+                for &cv in &child_vars {
+                    clauses.push(vec![-cv, root]);
+                }
+                // root → c1 ∨ c2 ∨ ... ∨ cn:  (-root ∨ c1 ∨ c2 ∨ ... ∨ cn)
+                let mut clause = vec![-root];
+                clause.extend_from_slice(&child_vars);
+                clauses.push(clause);
+                (root, clauses)
+            }
+        }
+    }
+
+    /// Check validity and satisfiability with CaDiCaL and compare to Matrix results.
+    fn cadical_cross_check(
+        formula: &str,
+        matrix_valid: &Result<(), Vec<Lit>>,
+        matrix_sat: &Result<Vec<Lit>, ()>,
+    ) {
+        let m = Matrix::try_from(formula).unwrap();
+        let n_vars = m.ast.vars.len() as i32;
+
+        // --- Check satisfiability: encode nnf, assert root ---
+        let sat_result = {
+            let mut next_var = n_vars + 1;
+            let (root, clauses) = tseitin_encode(&m.nnf, &mut next_var);
+            let mut solver: cadical::Solver = Default::default();
+            for clause in &clauses { solver.add_clause(clause.iter().copied()); }
+            solver.add_clause([root]); // assert formula is true
+            let sat = solver.solve();
+            match sat {
+                Some(true) => {
+                    // Build assignment from cadical values, skip don't-care variables
+                    let asgn: Vec<Lit> = (0..n_vars as u32).filter_map(|v| {
+                        solver.value((v as i32) + 1).map(|val|
+                            if val { Lit::pos(v) } else { Lit::neg(v) }
+                        )
+                    }).collect();
+                    Ok(asgn)
+                }
+                Some(false) => Err(()),
+                None => panic!("cadical: resource exhaustion"),
+            }
+        };
+
+        // --- Check validity: encode complement, assert root ---
+        // Valid iff complement is unsatisfiable.
+        let valid_result = {
+            let mut next_var = n_vars + 1;
+            let (root, clauses) = tseitin_encode(&m.nnf_complement, &mut next_var);
+            let mut solver: cadical::Solver = Default::default();
+            for clause in &clauses { solver.add_clause(clause.iter().copied()); }
+            solver.add_clause([root]);
+            let sat = solver.solve();
+            match sat {
+                Some(true) => {
+                    // Complement is satisfiable → formula is NOT valid.
+                    let asgn: Vec<Lit> = (0..n_vars as u32).filter_map(|v| {
+                        solver.value((v as i32) + 1).map(|val|
+                            if val { Lit::pos(v) } else { Lit::neg(v) }
+                        )
+                    }).collect();
+                    Err(asgn) // falsifying assignment
+                }
+                Some(false) => Ok(()), // complement unsat → formula valid
+                None => panic!("cadical: resource exhaustion"),
+            }
+        };
+
+        // --- Compare Matrix results with CaDiCaL ---
+        // Validity agreement
+        assert_eq!(matrix_valid.is_ok(), valid_result.is_ok(),
+            "cadical and matrix disagree on validity of '{}'", formula);
+
+        // Satisfiability agreement
+        assert_eq!(matrix_sat.is_ok(), sat_result.is_ok(),
+            "cadical and matrix disagree on satisfiability of '{}'", formula);
+
+        // If not valid, both assignments should falsify the formula
+        if let Err(matrix_asgn) = matrix_valid {
+            assert_eq!(m.evaluate(matrix_asgn), Ok(false),
+                "matrix falsifying assignment doesn't evaluate to false");
+        }
+        if let Err(ref cadical_asgn) = valid_result {
+            assert_eq!(m.evaluate(cadical_asgn), Ok(false),
+                "cadical falsifying assignment doesn't evaluate to false");
+        }
+
+        // If satisfiable, both assignments should satisfy the formula
+        if let Ok(matrix_asgn) = matrix_sat {
+            assert_eq!(m.evaluate(matrix_asgn), Ok(true),
+                "matrix satisfying assignment doesn't evaluate to true");
+        }
+        if let Ok(ref cadical_asgn) = sat_result {
+            assert_eq!(m.evaluate(cadical_asgn), Ok(true),
+                "cadical satisfying assignment doesn't evaluate to true");
+        }
+    }
+
     // Resolve each path's literals to (var, neg) pairs, sort for deterministic comparison.
     fn sorted_paths(m: &NNF) -> Vec<Vec<(Var, bool)>> {
         let mut ps: Vec<Vec<(Var, bool)>> = m.paths_iter()
@@ -1550,49 +1689,35 @@ mod tests {
 
     #[test]
     fn test_valid_and_satisfiable_formula_r() {
-        // This formula is satisfiable but not valid.
-        // Wait — user says it's unsatisfiable. Let's verify.
         let f = "(a+b+c')(b+c+d')(c+d+a)(d+a'+b)(a'+b'+c)(b'+c'+d)(c'+d'+a')(d'+a+b')";
         let m = Matrix::try_from(f).unwrap();
-
-        // Not valid — should return a falsifying assignment
-        let asgn = m.valid().unwrap_err();
-        assert_eq!(m.evaluate(&asgn), Ok(false),
-            "falsifying assignment {:?} should make the formula false", asgn);
-
-        // Unsatisfiable — should return Err(())
-        assert!(m.satisfiable().is_err(),
-            "formula should be unsatisfiable");
+        let valid = m.valid();
+        assert_eq!(m.evaluate(valid.as_ref().unwrap_err()), Ok(false));
+        let sat = m.satisfiable();
+        assert!(sat.is_err());
+        cadical_cross_check(f, &valid, &sat);
     }
 
     #[test]
     fn test_valid_and_satisfiable_formula_r_prime() {
         let f = "a'·b'·c + b'·c'·d + c'·d'·a' + d'·a·b' + a·b·c' + b·c·d' + c·d·a + d·a'·b";
         let m = Matrix::try_from(f).unwrap();
-
-        // Valid — should return Ok(())
-        assert!(m.valid().is_ok(), "formula should be valid (tautology)");
-
-        // Satisfiable — should return a satisfying assignment
-        let asgn = m.satisfiable().expect("formula should be satisfiable");
-        assert_eq!(m.evaluate(&asgn), Ok(true),
-            "satisfying assignment {:?} should make the formula true", asgn);
+        let valid = m.valid();
+        assert!(valid.is_ok());
+        let sat = m.satisfiable();
+        assert_eq!(m.evaluate(sat.as_ref().unwrap()), Ok(true));
+        cadical_cross_check(f, &valid, &sat);
     }
 
     #[test]
     fn test_valid_and_satisfiable_formula_clpb_2() {
         let f = "A (R' + S') + A' (R S) + B T + B' T' + A X'";
         let m = Matrix::try_from(f).unwrap();
-
-        // Not valid — should return a falsifying assignment
-        let asgn = m.valid().unwrap_err();
-        assert_eq!(m.evaluate(&asgn), Ok(false),
-            "falsifying assignment {:?} should make the formula false", asgn);
-
-        // Satisfiable — should return a satisfying assignment
-        let asgn = m.satisfiable().expect("formula should be satisfiable");
-        assert_eq!(m.evaluate(&asgn), Ok(true),
-            "satisfying assignment {:?} should make the formula true", asgn);
+        let valid = m.valid();
+        assert_eq!(m.evaluate(valid.as_ref().unwrap_err()), Ok(false));
+        let sat = m.satisfiable();
+        assert_eq!(m.evaluate(sat.as_ref().unwrap()), Ok(true));
+        cadical_cross_check(f, &valid, &sat);
     }
 
     #[test]
@@ -1611,16 +1736,11 @@ mod tests {
             (x_1 + x_4 + x_7) (x_1' + x_4' + x_7') \
             (x_2 + x_5 + x_8) (x_2' + x_5' + x_8')";
         let m = Matrix::try_from(f).unwrap();
-
-        // Not valid — should return a falsifying assignment
-        let asgn = m.valid().unwrap_err();
-        assert_eq!(m.evaluate(&asgn), Ok(false),
-            "falsifying assignment {:?} should make the formula false", asgn);
-
-        // Satisfiable — should return a satisfying assignment
-        let asgn = m.satisfiable().expect("formula should be satisfiable");
-        assert_eq!(m.evaluate(&asgn), Ok(true),
-            "satisfying assignment {:?} should make the formula true", asgn);
+        let valid = m.valid();
+        assert_eq!(m.evaluate(valid.as_ref().unwrap_err()), Ok(false));
+        let sat = m.satisfiable();
+        assert_eq!(m.evaluate(sat.as_ref().unwrap()), Ok(true));
+        cadical_cross_check(f, &valid, &sat);
     }
 
     #[test]
@@ -1644,29 +1764,22 @@ mod tests {
             (x_3 + x_6 + x_9) (x_3' + x_6' + x_9') \
             (x_1 + x_5 + x_9) (x_1' + x_5' + x_9')";
         let m = Matrix::try_from(f).unwrap();
-
-        // Not valid — should return a falsifying assignment
-        let asgn = m.valid().unwrap_err();
-        assert_eq!(m.evaluate(&asgn), Ok(false),
-            "falsifying assignment {:?} should make the formula false", asgn);
-
-        // Not satisfiable
-        assert!(m.satisfiable().is_err(),
-            "formula should be unsatisfiable");
+        let valid = m.valid();
+        assert_eq!(m.evaluate(valid.as_ref().unwrap_err()), Ok(false));
+        let sat = m.satisfiable();
+        assert!(sat.is_err());
+        cadical_cross_check(f, &valid, &sat);
     }
 
     #[test]
     fn test_valid_and_satisfiable_formula_equal_not_equal() {
         let f = "(a = b = c = d)' = (a ≠ b ≠ c ≠ d)";
         let m = Matrix::try_from(f).unwrap();
-
-        // Valid — should return Ok(())
-        assert!(m.valid().is_ok(), "formula should be valid (tautology)");
-
-        // Satisfiable — should return a satisfying assignment
-        let asgn = m.satisfiable().expect("formula should be satisfiable");
-        assert_eq!(m.evaluate(&asgn), Ok(true),
-            "satisfying assignment {:?} should make the formula true", asgn);
+        let valid = m.valid();
+        assert!(valid.is_ok());
+        let sat = m.satisfiable();
+        assert_eq!(m.evaluate(sat.as_ref().unwrap()), Ok(true));
+        cadical_cross_check(f, &valid, &sat);
     }
 
     #[test]

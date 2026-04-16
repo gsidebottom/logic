@@ -91,6 +91,9 @@ enum Token {
     Plus,
     Dot,
     Prime,
+    Equiv,    // = ⇔ ⊙
+    Xor,      // ⊕ ≠
+    Implies,  // ⇒
     Var(String),
 }
 
@@ -105,6 +108,9 @@ fn tokenize(s: &str) -> Result<Vec<Token>, String> {
             ')' => { tokens.push(Token::RParen); i += 1; }
             '+' => { tokens.push(Token::Plus); i += 1; }
             '·' | '*' | '.' | '⋅' => { tokens.push(Token::Dot); i += 1; }
+            '=' | '⇔' | '⊙' => { tokens.push(Token::Equiv); i += 1; }
+            '⊕' | '≠' => { tokens.push(Token::Xor); i += 1; }
+            '⇒' => { tokens.push(Token::Implies); i += 1; }
             c if c.is_ascii_alphabetic() => {
                 let mut name = c.to_string();
                 i += 1;
@@ -164,6 +170,45 @@ impl Parser {
         }
     }
 
+    /// implies := xor ('⇒' implies)?    x⇒y = x' + y    (right-associative)
+    fn parse_implies(&mut self) -> Result<Node, String> {
+        let left = self.parse_xor()?;
+        if !matches!(self.peek(), Some(Token::Implies)) {
+            return Ok(left);
+        }
+        self.eat();
+        let right = self.parse_implies()?;
+        Ok(Node::Or(vec![left.complement(), right]))
+    }
+
+    /// xor := equiv ('⊕' xor)?    x⊕y = x·y' + x'·y    (right-associative)
+    fn parse_xor(&mut self) -> Result<Node, String> {
+        let left = self.parse_equiv()?;
+        if !matches!(self.peek(), Some(Token::Xor)) {
+            return Ok(left);
+        }
+        self.eat();
+        let right = self.parse_xor()?;
+        Ok(Node::Or(vec![
+            Node::And(vec![left.clone(), right.complement()]),
+            Node::And(vec![left.complement(), right]),
+        ]))
+    }
+
+    /// equiv := expr ('=' equiv)?    x⇔y = x·y + x'·y'    (right-associative)
+    fn parse_equiv(&mut self) -> Result<Node, String> {
+        let left = self.parse_expr()?;
+        if !matches!(self.peek(), Some(Token::Equiv)) {
+            return Ok(left);
+        }
+        self.eat();
+        let right = self.parse_equiv()?;
+        Ok(Node::Or(vec![
+            Node::And(vec![left.clone(), right.clone()]),
+            Node::And(vec![left.complement(), right.complement()]),
+        ]))
+    }
+
     fn parse_expr(&mut self) -> Result<Node, String> {
         let mut left = self.parse_term()?;
         while matches!(self.peek(), Some(Token::Plus)) {
@@ -208,9 +253,12 @@ impl Parser {
             Some(Token::Plus)   => Err("Unexpected '+' — missing left operand?".to_string()),
             Some(Token::Dot)    => Err("Unexpected '·' — missing left operand?".to_string()),
             Some(Token::Prime)  => Err("Unexpected ' — complement must follow a variable name or ')'".to_string()),
+            Some(Token::Equiv)  => Err("Unexpected '=' — missing left operand?".to_string()),
+            Some(Token::Xor)    => Err("Unexpected '⊕' — missing left operand?".to_string()),
+            Some(Token::Implies) => Err("Unexpected '⇒' — missing left operand?".to_string()),
             Some(Token::LParen) => {
                 self.eat();
-                let expr = self.parse_expr()?;
+                let expr = self.parse_implies()?;
                 if !matches!(self.peek(), Some(Token::RParen)) {
                     return Err("Missing closing ')'".to_string());
                 }
@@ -243,7 +291,7 @@ impl TryFrom<&str> for Node {
         }
         let tokens = tokenize(s)?;
         let mut parser = Parser { tokens, pos: 0 };
-        let result = parser.parse_expr()?;
+        let result = parser.parse_implies()?;
         if parser.pos < parser.tokens.len() {
             return Err("Unexpected content after formula".to_string());
         }

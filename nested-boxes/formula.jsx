@@ -34,12 +34,14 @@ export function tokenize(str) {
 }
 
 // ─── Recursive Descent Parser ─────────────────────────────────────────────────
-// equiv  := xor  ('⇔' xor)*           x⇔y  = x·y + x'·y'
-// xor    := impl ('⊕' impl)*          x⊕y  = x·y' + x'·y
-// impl   := expr ('⇒' impl)?          x⇒y  = x' + y   (right-assoc)
-// expr   := term ('+' term)*
+// Precedence (loosest to tightest, all right-associative):
+//   ⇒  ⊕  =  +  ·  '
+// impl   := xor   ('⇒' impl)?         x⇒y  = x' + y
+// xor    := equiv ('⊕' xor)?          x⊕y  = x·y' + x'·y
+// equiv  := expr  ('⇔' equiv)?        x⇔y  = x·y + x'·y'
+// expr   := term  ('+' term)*
 // term   := factor ('·' factor)*
-// factor := '(' equiv ')' "'"* | VAR
+// factor := '(' impl ')' "'"* | VAR
 export function parse(str) {
   if (!str.trim()) throw new Error("Formula is empty");
   const tokens = tokenize(str);
@@ -75,38 +77,34 @@ export function parse(str) {
     return left;
   }
 
-  function parseImpl() {
+  function parseEquiv() {
     const left = parseExpr();
+    if (peek() !== '⇔') return left;
+    eat();
+    const right = parseEquiv(); // right-associative
+    return { t: 'OR', c: [
+      { t: 'AND', c: [left,                right               ] },
+      { t: 'AND', c: [complementAst(left),  complementAst(right)] },
+    ]};
+  }
+
+  function parseXor() {
+    const left = parseEquiv();
+    if (peek() !== '⊕') return left;
+    eat();
+    const right = parseXor(); // right-associative
+    return { t: 'OR', c: [
+      { t: 'AND', c: [left,                complementAst(right)] },
+      { t: 'AND', c: [complementAst(left),  right              ] },
+    ]};
+  }
+
+  function parseImpl() {
+    const left = parseXor();
     if (peek() !== '⇒') return left;
     eat();
     const right = parseImpl(); // right-associative
     return { t: 'OR', c: [complementAst(left), right] };
-  }
-
-  function parseXor() {
-    let left = parseImpl();
-    while (peek() === '⊕') {
-      eat();
-      const right = parseImpl();
-      left = { t: 'OR', c: [
-        { t: 'AND', c: [left,                complementAst(right)] },
-        { t: 'AND', c: [complementAst(left),  right              ] },
-      ]};
-    }
-    return left;
-  }
-
-  function parseEquiv() {
-    let left = parseXor();
-    while (peek() === '⇔') {
-      eat();
-      const right = parseXor();
-      left = { t: 'OR', c: [
-        { t: 'AND', c: [left,                right               ] },
-        { t: 'AND', c: [complementAst(left),  complementAst(right)] },
-      ]};
-    }
-    return left;
   }
 
   function parseFactor() {
@@ -119,7 +117,7 @@ export function parse(str) {
     if (t === '⇒' || t === '⇔' || t === '⊕') throw new Error(`Unexpected '${t}' — missing left operand`);
     if (t === '(') {
       eat();
-      const expr = parseEquiv();
+      const expr = parseImpl();
       if (peek() !== ')') throw new Error("Missing closing ')'");
       eat();
       // Apply any trailing complement operators, pushing negation inward (De Morgan)
@@ -131,7 +129,7 @@ export function parse(str) {
     throw new Error(`Unexpected token: ${JSON.stringify(t)}`);
   }
 
-  const result = parseEquiv();
+  const result = parseImpl();
   if (pos < tokens.length) {
     const leftover = tokens[pos];
     throw new Error(

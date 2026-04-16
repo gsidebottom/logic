@@ -2332,22 +2332,36 @@ export default function App() {
                     walk(node);
                     return out;
                   };
+                  // Walk down a single-child chain starting at `node`.
+                  // Returns { chain: [chainNode...], end: terminalNode }
+                  // where end is the first node with !=1 children or a path leaf.
+                  const collapseChain = startNode => {
+                    const chain = [startNode];
+                    let cur = startNode;
+                    while (cur.children.size === 1 && cur.pathIndex === null) {
+                      cur = cur.children.values().next().value;
+                      chain.push(cur);
+                    }
+                    return { chain, end: cur };
+                  };
                   const renderNode = (node, depth) => {
                     const children = Array.from(node.children.values());
                     return children.map(child => {
-                      const hasChildren = child.children.size > 0;
-                      const expanded = pathsTreeExpanded.has(child.key);
-                      const isLeaf = child.pathIndex !== null && !hasChildren;
-                      const subIdxs = collectIndices(child);
+                      const { chain, end } = collapseChain(child);
+                      const chainKey = end.key;
+                      const hasChildren = end.children.size > 0;
+                      const expanded = pathsTreeExpanded.has(chainKey);
+                      const isLeaf = end.pathIndex !== null && !hasChildren;
+                      const subIdxs = collectIndices(end);
                       const allSel = subIdxs.length > 0 && subIdxs.every(i => pathsUncovSel.has(i));
                       const opacity = isLeaf
-                        ? (pathsUncovSel.has(child.pathIndex) ? 1 : 0.35)
+                        ? (pathsUncovSel.has(end.pathIndex) ? 1 : 0.35)
                         : (allSel ? 1 : 0.6);
                       return (
                         <div key={child.key} style={{ marginLeft: depth === 0 ? 0 : 14, lineHeight: 1.5 }}>
                           <span>
                             {hasChildren ? (
-                              <span onClick={() => toggleExpand(child.key)}
+                              <span onClick={() => toggleExpand(chainKey)}
                                     style={{ cursor: 'pointer', userSelect: 'none', display: 'inline-block', width: 12, color: '#888' }}>
                                 {expanded ? '▼' : '▶'}
                               </span>
@@ -2356,9 +2370,8 @@ export default function App() {
                             )}
                             <span
                               onClick={() => {
-                                if (isLeaf) toggleSel(child.pathIndex);
+                                if (isLeaf) toggleSel(end.pathIndex);
                                 else {
-                                  // Toggle all leaves under this prefix.
                                   setPathsUncovSel(prev => {
                                     const s = new Set(prev);
                                     if (allSel) subIdxs.forEach(i => s.delete(i));
@@ -2368,7 +2381,9 @@ export default function App() {
                                 }
                               }}
                               style={{ cursor: 'pointer', opacity }}>
-                              <b style={{ fontFamily: 'Georgia, serif' }}><VarLabel name={resName(child.position)} /></b>
+                              <b style={{ fontFamily: 'Georgia, serif' }}>
+                                {chain.map((cn, ci) => <span key={ci}>{ci > 0 && ' '}<VarLabel name={resName(cn.position)} /></span>)}
+                              </b>
                               {!isLeaf && (
                                 <span style={{ fontWeight: 'normal', color: '#888', fontSize: 11 }}>
                                   {' '}({subIdxs.length})
@@ -2376,7 +2391,7 @@ export default function App() {
                               )}
                             </span>
                           </span>
-                          {hasChildren && expanded && renderNode(child, depth + 1)}
+                          {hasChildren && expanded && renderNode(end, depth + 1)}
                         </div>
                       );
                     });

@@ -842,24 +842,10 @@ impl From<&Ast> for NNF {
                     }
                 }
                 Node::And(ch) => {
-                    let mut members = Vec::new();
-                    for c in ch {
-                        match convert(c, var_index) {
-                            NNF::Prod(inner) => members.extend(inner),
-                            other => members.push(other),
-                        }
-                    }
-                    NNF::Prod(members)
+                    NNF::Prod(ch.iter().map(|c| convert(c, var_index)).collect())
                 }
                 Node::Or(ch) => {
-                    let mut members = Vec::new();
-                    for c in ch {
-                        match convert(c, var_index) {
-                            NNF::Sum(inner) => members.extend(inner),
-                            other => members.push(other),
-                        }
-                    }
-                    NNF::Sum(members)
+                    NNF::Sum(ch.iter().map(|c| convert(c, var_index)).collect())
                 }
             }
         }
@@ -1667,6 +1653,20 @@ mod tests {
         // Not satisfiable
         assert!(m.satisfiable().is_err(),
             "formula should be unsatisfiable");
+    }
+
+    #[test]
+    fn test_valid_and_satisfiable_formula_equal_not_equal() {
+        let f = "(a = b = c = d)' = (a ≠ b ≠ c ≠ d)";
+        let m = Matrix::try_from(f).unwrap();
+
+        // Valid — should return Ok(())
+        assert!(m.valid().is_ok(), "formula should be valid (tautology)");
+
+        // Satisfiable — should return a satisfying assignment
+        let asgn = m.satisfiable().expect("formula should be satisfiable");
+        assert_eq!(m.evaluate(&asgn), Ok(true),
+            "satisfying assignment {:?} should make the formula true", asgn);
     }
 
     #[test]

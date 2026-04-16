@@ -34,6 +34,28 @@ function fmtNum(n) {
   return n.toLocaleString();
 }
 
+// Format seconds as DDdHHhMMmSSs, omitting leading zero components.
+function fmtTime(secs) {
+  if (secs == null || secs <= 0) return '';
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = Math.floor(secs % 60);
+  const frac = secs % 1;
+  let parts = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (d > 0 || h > 0) parts.push(`${parts.length ? String(h).padStart(2, '0') : h}h`);
+  if (d > 0 || h > 0 || m > 0) parts.push(`${parts.length ? String(m).padStart(2, '0') : m}m`);
+  if (parts.length) {
+    parts.push(`${String(s).padStart(2, '0')}s`);
+  } else if (secs >= 1) {
+    parts.push(`${s}s`);
+  } else {
+    return `${(secs * 1000).toFixed(0)}ms`;
+  }
+  return parts.join('');
+}
+
 // Complement a literal name: a → a', a' → a
 const compName = n => n?.endsWith("'") ? n.slice(0, -1) : (n ? n + "'" : n);
 
@@ -1736,7 +1758,7 @@ export default function App() {
                     const total = validResult.totalPathCount ?? 0;
                     const elapsed = validResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((validResult.classifiedCount ?? 0) / elapsed) : 0;
-                    const ratePart = rate > 0 ? ` at ${fmtNum(rate)} paths/s` : '';
+                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
                     return `✓ Valid — all ${fmtNum(total)} paths through the matrix are covered${ratePart}`;
                   })()}
                   {validResult.coverGroups?.length > 0 && ast && (() => {
@@ -1845,7 +1867,7 @@ export default function App() {
                     const total = validResult.totalPathCount ?? 0;
                     const elapsed = validResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((validResult.classifiedCount ?? 0) / elapsed) : 0;
-                    const ratePart = rate > 0 ? ` at ${fmtNum(rate)} paths/s` : '';
+                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
                     return `✗ Not valid — falsifying assignment and uncovered path in ${fmtNum(total)} path matrix${ratePart}:`;
                   })()}
                   {validResult.path && (() => {
@@ -2020,7 +2042,7 @@ export default function App() {
                     const total = satResult.totalPathCount ?? 0;
                     const elapsed = satResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((satResult.classifiedCount ?? 0) / elapsed) : 0;
-                    const ratePart = rate > 0 ? ` at ${fmtNum(rate)} paths/s` : '';
+                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
                     return `✓ Satisfiable — satisfying assignment and uncovered path in complement of ${fmtNum(total)} path matrix${ratePart}:`;
                   })()}
                   {satResult.path && (() => {
@@ -2182,7 +2204,7 @@ export default function App() {
                     const total = satResult.totalPathCount ?? 0;
                     const elapsed = satResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((satResult.classifiedCount ?? 0) / elapsed) : 0;
-                    const ratePart = rate > 0 ? ` at ${fmtNum(rate)} paths/s` : '';
+                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
                     return `✗ Unsatisfiable — all ${fmtNum(total)} paths in the complement are covered${ratePart}`;
                   })()}
                   {satResult.coverGroups?.length > 0 && ast && (() => {
@@ -2306,7 +2328,7 @@ export default function App() {
                   const total = pathsResult.totalPathCount ?? 0;
                   const elapsed = pathsResult.elapsedSecs ?? 0;
                   const rate = elapsed > 0 ? Math.round(classified / elapsed) : 0;
-                  const ratePart = rate > 0 ? ` at ${fmtNum(rate)} paths/s` : '';
+                  const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
                   if (pathsResult.hitLimit) {
                     const pct = total > 0 ? ((classified / total) * 100).toFixed(1) : '0';
                     return `${fmtNum(classified)} of ${fmtNum(total)} paths (${pct}%) through the ${pathsResult.isComplement ? 'complement ' : ''}matrix${ratePart}`;

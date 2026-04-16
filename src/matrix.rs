@@ -1049,23 +1049,59 @@ mod tests {
         }
     }
 
+    struct LearnPrinter {
+        vars: Vec<String>,
+        verbose: bool,
+    }
+    impl LearnPrinter {
+        /// Translate a cadical literal (1-based, negative=negated) to a variable name.
+        fn lit_name(&self, lit: i32) -> String {
+            let var_idx = lit.unsigned_abs() as usize - 1;
+            let negated = lit < 0;
+            if var_idx < self.vars.len() {
+                if negated { format!("{}'", self.vars[var_idx]) } else { self.vars[var_idx].clone() }
+            } else {
+                // Auxiliary Tseitin variable
+                if negated { format!("t{}'", var_idx + 1) } else { format!("t{}", var_idx + 1) }
+            }
+        }
+    }
+    impl cadical::Callbacks for LearnPrinter {
+        fn max_length(&self) -> i32 { i32::MAX }
+        fn learn(&mut self, clause: &[i32]) {
+            if self.verbose {
+                let lits: Vec<String> = clause.iter().map(|&l| self.lit_name(l)).collect();
+                eprintln!("  learned: {}", lits.join(" + "));
+            }
+        }
+    }
+
     /// Check validity and satisfiability with CaDiCaL and compare to Matrix results.
     fn cadical_cross_check(
         formula: &str,
         matrix_valid: &Result<(), Vec<Lit>>,
         matrix_sat: &Result<Vec<Lit>, ()>,
+        verbose: bool,
     ) {
         let m = Matrix::try_from(formula).unwrap();
         let n_vars = m.ast.vars.len() as i32;
+        let vars = m.ast.vars.clone();
 
         // --- Check satisfiability: encode nnf, assert root ---
         let sat_result = {
             let mut next_var = n_vars + 1;
             let (root, clauses) = tseitin_encode(&m.nnf, &mut next_var);
-            let mut solver: cadical::Solver = Default::default();
+            let mut solver: cadical::Solver<LearnPrinter> = cadical::Solver::new();
+            solver.set_callbacks(Some(LearnPrinter { vars: vars.clone(), verbose }));
             for clause in &clauses { solver.add_clause(clause.iter().copied()); }
             solver.add_clause([root]); // assert formula is true
+            if verbose { eprintln!("cadical sat solving '{}'", formula); }
+            let t = std::time::Instant::now();
             let sat = solver.solve();
+            let elapsed = t.elapsed();
+            if verbose || elapsed.as_secs_f64() > 1.0 {
+                eprintln!("cadical {:.2}ms to sat solve '{}'", elapsed.as_secs_f64() * 1000.0, formula);
+            }
             match sat {
                 Some(true) => {
                     // Build assignment from cadical values, skip don't-care variables
@@ -1086,10 +1122,17 @@ mod tests {
         let valid_result = {
             let mut next_var = n_vars + 1;
             let (root, clauses) = tseitin_encode(&m.nnf_complement, &mut next_var);
-            let mut solver: cadical::Solver = Default::default();
+            let mut solver: cadical::Solver<LearnPrinter> = cadical::Solver::new();
+            solver.set_callbacks(Some(LearnPrinter { vars: vars.clone(), verbose }));
             for clause in &clauses { solver.add_clause(clause.iter().copied()); }
             solver.add_clause([root]);
+            if verbose { eprintln!("cadical valid solving '{}'", formula); }
+            let t = std::time::Instant::now();
             let sat = solver.solve();
+            let elapsed = t.elapsed();
+            if verbose || elapsed.as_secs_f64() > 1.0 {
+                eprintln!("cadical {:.2}ms to valid solve '{}'", elapsed.as_secs_f64() * 1000.0, formula);
+            }
             match sat {
                 Some(true) => {
                     // Complement is satisfiable → formula is NOT valid.
@@ -1104,6 +1147,32 @@ mod tests {
                 None => panic!("cadical: resource exhaustion"),
             }
         };
+
+        // --- Format and print assignments ---
+        let fmt_asgn = |asgn: &[Lit]| -> String {
+            asgn.iter().map(|l| {
+                let name = &vars[l.var as usize];
+                if l.neg { format!("{}=0", name) } else { format!("{}=1", name) }
+            }).collect::<Vec<_>>().join(", ")
+        };
+        if verbose {
+            match &valid_result {
+                Ok(()) => eprintln!("cadical: valid (complement unsatisfiable)"),
+                Err(asgn) => eprintln!("cadical: not valid, falsifying: {}", fmt_asgn(asgn)),
+            }
+            match &sat_result {
+                Ok(asgn) => eprintln!("cadical: satisfiable, satisfying: {}", fmt_asgn(asgn)),
+                Err(()) => eprintln!("cadical: unsatisfiable"),
+            }
+            match matrix_valid {
+                Ok(()) => eprintln!("matrix: valid"),
+                Err(asgn) => eprintln!("matrix: not valid, falsifying: {}", fmt_asgn(asgn)),
+            }
+            match matrix_sat {
+                Ok(asgn) => eprintln!("matrix: satisfiable, satisfying: {}", fmt_asgn(asgn)),
+                Err(()) => eprintln!("matrix: unsatisfiable"),
+            }
+        }
 
         // --- Compare Matrix results with CaDiCaL ---
         // Validity agreement
@@ -1695,7 +1764,7 @@ mod tests {
         assert_eq!(m.evaluate(valid.as_ref().unwrap_err()), Ok(false));
         let sat = m.satisfiable();
         assert!(sat.is_err());
-        cadical_cross_check(f, &valid, &sat);
+        cadical_cross_check(f, &valid, &sat, false);
     }
 
     #[test]
@@ -1706,7 +1775,7 @@ mod tests {
         assert!(valid.is_ok());
         let sat = m.satisfiable();
         assert_eq!(m.evaluate(sat.as_ref().unwrap()), Ok(true));
-        cadical_cross_check(f, &valid, &sat);
+        cadical_cross_check(f, &valid, &sat, false);
     }
 
     #[test]
@@ -1717,7 +1786,7 @@ mod tests {
         assert_eq!(m.evaluate(valid.as_ref().unwrap_err()), Ok(false));
         let sat = m.satisfiable();
         assert_eq!(m.evaluate(sat.as_ref().unwrap()), Ok(true));
-        cadical_cross_check(f, &valid, &sat);
+        cadical_cross_check(f, &valid, &sat, false);
     }
 
     #[test]
@@ -1740,7 +1809,7 @@ mod tests {
         assert_eq!(m.evaluate(valid.as_ref().unwrap_err()), Ok(false));
         let sat = m.satisfiable();
         assert_eq!(m.evaluate(sat.as_ref().unwrap()), Ok(true));
-        cadical_cross_check(f, &valid, &sat);
+        cadical_cross_check(f, &valid, &sat, true);
     }
 
     #[test]
@@ -1768,7 +1837,7 @@ mod tests {
         assert_eq!(m.evaluate(valid.as_ref().unwrap_err()), Ok(false));
         let sat = m.satisfiable();
         assert!(sat.is_err());
-        cadical_cross_check(f, &valid, &sat);
+        cadical_cross_check(f, &valid, &sat, true);
     }
 
     #[test]
@@ -1779,7 +1848,7 @@ mod tests {
         assert!(valid.is_ok());
         let sat = m.satisfiable();
         assert_eq!(m.evaluate(sat.as_ref().unwrap()), Ok(true));
-        cadical_cross_check(f, &valid, &sat);
+        cadical_cross_check(f, &valid, &sat, false);
     }
 
     #[test]

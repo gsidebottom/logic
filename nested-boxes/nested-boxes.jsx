@@ -656,6 +656,7 @@ export default function App() {
   const [input,          setInput]          = useState(EXAMPLES[0].f);
   const [simplified,     setSimplified]     = useState(null); // {formula, ast}
   const [simplifyMsg,    setSimplifyMsg]    = useState(null); // {text, ok}
+  const [simplifyForm,   setSimplifyForm]   = useState('DNF'); // 'DNF' or 'CNF'
   const [complementData, setComplementData] = useState(null); // truthy = show complement view
   const [validResult,    setValidResult]    = useState(null); // {valid, path}
   const [validSelected,  setValidSelected]  = useState(new Set()); // Set<number> of selected pair indices
@@ -853,11 +854,12 @@ export default function App() {
 
   const handleSimplify = async () => {
     setLoading(true);
+    const form = simplifyForm;
     try {
       const res = await fetch('http://localhost:3001/simplify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input }),
+        body: JSON.stringify({ formula: input, cnf: form === 'CNF' }),
       });
       const data = await res.json();
       if (data.error) {
@@ -867,11 +869,12 @@ export default function App() {
         const inputNorm = input.replace(/\s+/g, '');
         const resultNorm = result.replace(/\s+/g, '');
         if (inputNorm === resultNorm) {
-          setSimplifyMsg({ text: '✓ Already in minimal SOP form', ok: true });
+          setSimplifyMsg({ text: `✓ Already in minimal ${form}`, ok: true });
           setSimplified(null);
         } else {
-          setSimplifyMsg({ text: '✓ Simplified!', ok: true });
+          setSimplifyMsg({ text: `✓ Simplified ${form}!`, ok: true });
           setSimplified({ formula: result, ast: parse(result) });
+          setInput(result);
         }
       }
     } catch (e) {
@@ -1443,8 +1446,21 @@ export default function App() {
           {btn('⊕',  () => insertAt(' ⊕ '), '#555', false, "Insert XOR (x ⊕ y = x·y' + x'·y)")}
           {btn('✕',  () => setInput(''),    '#a00', false, "Clear")}
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {btn('⚡ Simplify',    handleSimplify,    '#1a6bcc', !ast || loading, !ast ? "Fix syntax errors first" : "Simplify to minimal SOP")}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {btn('⚡ Simplify',    handleSimplify,    '#1a6bcc', !ast || loading, !ast ? "Fix syntax errors first" : `Simplify to minimal ${simplifyForm}`)}
+          <span style={{ display: 'inline-flex', border: '1px solid #1a6bcc', borderRadius: 4, overflow: 'hidden', fontSize: 12 }}>
+            {['DNF', 'CNF'].map(f => (
+              <span key={f}
+                onClick={() => setSimplifyForm(f)}
+                title={f === 'DNF' ? "Disjunctive normal form (sum of products)" : "Conjunctive normal form (product of sums)"}
+                style={{
+                  padding: '4px 8px', cursor: 'pointer', userSelect: 'none',
+                  background: simplifyForm === f ? '#1a6bcc' : '#fff',
+                  color: simplifyForm === f ? '#fff' : '#1a6bcc',
+                  fontWeight: simplifyForm === f ? 'bold' : 'normal',
+                }}>{f}</span>
+            ))}
+          </span>
           {btn("A'  Complement", handleComplement,  '#2a6a6a', !ast,            !ast ? "Fix syntax errors first" : "Show the complement as a nested box diagram")}
         </div>
       </div>

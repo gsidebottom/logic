@@ -236,6 +236,13 @@ struct FormulaRequest {
 }
 
 #[derive(Deserialize)]
+struct SimplifyRequest {
+    formula: String,
+    #[serde(default)]
+    cnf: bool,
+}
+
+#[derive(Deserialize)]
 struct PathsRequest {
     formula: String,
     #[serde(default = "default_paths_class_limit")]
@@ -284,8 +291,13 @@ fn classify_status(job: &ClassifyJob) -> ClassifyStatusResponse {
     }
 }
 
-async fn simplify_handler(Json(req): Json<FormulaRequest>) -> Json<SimplifyResponse> {
-    match logic::simplify(&req.formula) {
+async fn simplify_handler(Json(req): Json<SimplifyRequest>) -> Json<SimplifyResponse> {
+    let result = if req.cnf {
+        logic::simplify_cnf(&req.formula)
+    } else {
+        logic::simplify_dnf(&req.formula)
+    };
+    match result {
         Ok(r)  => Json(SimplifyResponse { result: Some(r), error: None }),
         Err(e) => Json(SimplifyResponse { result: None,    error: Some(e) }),
     }

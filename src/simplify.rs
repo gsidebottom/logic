@@ -74,6 +74,10 @@ pub fn qmc(minterms: &[usize], n: usize) -> Vec<Implicant> {
 }
 
 pub fn simplify(formula: &str) -> Result<String, String> {
+    simplify_dnf(formula)
+}
+
+pub fn simplify_dnf(formula: &str) -> Result<String, String> {
     let ast = Node::try_from(formula)?;
     let vars: Vec<String> = ast.extract_vars().into_iter().collect();
     let n = vars.len();
@@ -107,6 +111,48 @@ pub fn simplify(formula: &str) -> Result<String, String> {
         }).collect();
         if lits.is_empty() { "1".to_string() } else { lits.join("·") }
     }).collect::<Vec<_>>().join(" + ");
+
+    Ok(result)
+}
+
+pub fn simplify_cnf(formula: &str) -> Result<String, String> {
+    let ast = Node::try_from(formula)?;
+    let vars: Vec<String> = ast.extract_vars().into_iter().collect();
+    let n = vars.len();
+
+    if n == 0 { return Ok(ast.evaluate(&HashMap::new()).to_string()); }
+
+    // Maxterms: rows where the formula evaluates to FALSE.
+    let mut maxterms = Vec::new();
+    for i in 0..(1usize << n) {
+        let mut asgn = HashMap::new();
+        for (j, v) in vars.iter().enumerate() {
+            asgn.insert(v.clone(), ((i >> (n - 1 - j)) & 1) as u8);
+        }
+        if ast.evaluate(&asgn) == 0 {
+            maxterms.push(i);
+        }
+    }
+
+    if maxterms.is_empty() { return Ok("1".to_string()); }
+    if maxterms.len() == 1 << n { return Ok("0".to_string()); }
+
+    // Run QMC on the FALSE rows to find minimal cover of maxterms.
+    let primes = qmc(&maxterms, n);
+    let cover = minimal_cover(&primes, &maxterms);
+
+    // Each implicant of the FALSE rows represents a clause via De Morgan:
+    // a row with assignment (v=0 → v, v=1 → v') becomes a sum (OR clause).
+    let result = cover.iter().map(|imp| {
+        let lits: Vec<String> = vars.iter().enumerate().filter_map(|(i, v)| {
+            match imp.term[i] {
+                0 => Some(v.clone()),         // false in maxterm → positive in clause
+                1 => Some(format!("{}'", v)), // true  in maxterm → negative in clause
+                _ => None,
+            }
+        }).collect();
+        if lits.is_empty() { "0".to_string() } else { format!("({})", lits.join(" + ")) }
+    }).collect::<Vec<_>>().join("·");
 
     Ok(result)
 }

@@ -10,6 +10,69 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
 mkdir -p "$LOG_DIR"
 
+# ── Prerequisites ─────────────────────────────────────────────────────────────
+
+is_mac() { [[ "$(uname)" == "Darwin" ]]; }
+
+ensure_prereqs() {
+    local missing=()
+
+    # Check cargo (Rust)
+    if ! command -v cargo &>/dev/null; then
+        echo "Installing Rust via rustup..."
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source "$HOME/.cargo/env"
+        if ! command -v cargo &>/dev/null; then
+            echo "ERROR: Failed to install Rust"; exit 1
+        fi
+    fi
+
+    # Check bun
+    if ! command -v bun &>/dev/null; then
+        echo "Installing bun..."
+        curl -fsSL https://bun.sh/install | bash
+        export PATH="$HOME/.bun/bin:$PATH"
+        if ! command -v bun &>/dev/null; then
+            echo "ERROR: Failed to install bun"; exit 1
+        fi
+    fi
+
+    # Check node (needed by vite at runtime)
+    if ! command -v node &>/dev/null; then
+        echo "Installing Node.js..."
+        if is_mac; then
+            if command -v brew &>/dev/null; then
+                brew install node
+            else
+                echo "Installing Homebrew first..."
+                /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+                eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv 2>/dev/null)"
+                brew install node
+            fi
+        else
+            # Linux: use NodeSource or distro package manager
+            if command -v apt-get &>/dev/null; then
+                sudo apt-get update && sudo apt-get install -y nodejs npm
+            elif command -v dnf &>/dev/null; then
+                sudo dnf install -y nodejs npm
+            elif command -v pacman &>/dev/null; then
+                sudo pacman -S --noconfirm nodejs npm
+            else
+                echo "ERROR: Cannot auto-install Node.js — install it manually"; exit 1
+            fi
+        fi
+        if ! command -v node &>/dev/null; then
+            echo "ERROR: Failed to install Node.js"; exit 1
+        fi
+    fi
+
+    # Install node_modules if missing
+    if [[ ! -d "$VITE_DIR/node_modules" ]]; then
+        echo "Installing frontend dependencies..."
+        (cd "$VITE_DIR" && bun install) || { echo "ERROR: bun install failed"; exit 1; }
+    fi
+}
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 pid_running() { kill -0 "$1" 2>/dev/null; }
@@ -43,6 +106,16 @@ kill_rust_orphans() {
     fi
 }
 
+# Kill any orphaned vite processes from this project
+kill_vite_orphans() {
+    local pids
+    pids=$(pgrep -f "node.*$VITE_DIR.*vite" 2>/dev/null)
+    if [[ -n "$pids" ]]; then
+        echo "$pids" | xargs kill 2>/dev/null
+        sleep 0.3
+    fi
+}
+
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 needs_build() {
@@ -68,15 +141,18 @@ cmd_build() {
 cmd_start() {
     local force=""
     [[ "$*" == *"--force"* || "$*" == *"-f"* ]] && force="--force"
-    parse_port "$@"
+
+    ensure_prereqs
 
     read_pids
+    parse_port "$@"
     if [[ -n "$RUST_PID" ]] && pid_running "$RUST_PID"; then
         echo "Already running. Use restart or stop first."; exit 1
     fi
 
     # Kill any orphaned instances from previous sessions before starting
     kill_rust_orphans
+    kill_vite_orphans
 
     cmd_build "$force"
 
@@ -85,7 +161,7 @@ cmd_start() {
     RUST_PID=$!
 
     echo "Starting Vite UI on port $VITE_PORT..."
-    (cd "$VITE_DIR" && bunx vite --port "$VITE_PORT" >> "$LOG_DIR/vite.log" 2>&1) &
+    (cd "$VITE_DIR" && bunx vite --port "$VITE_PORT" --strictPort >> "$LOG_DIR/vite.log" 2>&1) &
     VITE_PID=$!
 
     echo "$RUST_PID $VITE_PID $VITE_PORT" > "$PID_FILE"
@@ -109,6 +185,7 @@ cmd_stop() {
 
     # Also kill any orphaned instances not tracked by .pids
     kill_rust_orphans
+    kill_vite_orphans
 
     rm -f "$PID_FILE"
 }

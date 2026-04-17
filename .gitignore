@@ -4,3 +4,4 @@ Cargo.lock
 .claude/
 .pids
 .logs
+nested-boxes/node_modules/

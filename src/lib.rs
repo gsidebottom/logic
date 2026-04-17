@@ -1,3 +1,4 @@
+pub mod cadical;
 pub mod formula;
 pub mod matrix;
 pub mod prove;

@@ -996,85 +996,7 @@ mod tests {
     fn sum(ch: Vec<NNF>) -> NNF { NNF::Sum(ch) }
     fn prod(ch: Vec<NNF>) -> NNF { NNF::Prod(ch) }
 
-    // ── CaDiCaL cross-check helpers ────────────────────────────────────────────
-
-    /// Tseitin encoding: convert an NNF to CNF clauses for CaDiCaL.
-    /// Variable numbering: original vars are 1-based (var+1).
-    /// Auxiliary vars start at `next_var`. Returns (root_var, next_var, clauses).
-    fn tseitin_encode(nnf: &NNF, next_var: &mut i32) -> (i32, Vec<Vec<i32>>) {
-        let mut clauses = Vec::new();
-        match nnf {
-            NNF::Lit(l) => {
-                let v = (l.var as i32) + 1;
-                (if l.neg { -v } else { v }, clauses)
-            }
-            NNF::Prod(ch) => {
-                // AND gate: root ↔ (c1 ∧ c2 ∧ ... ∧ cn)
-                let root = *next_var; *next_var += 1;
-                let mut child_vars = Vec::new();
-                for c in ch {
-                    let (cv, mut cc) = tseitin_encode(c, next_var);
-                    clauses.append(&mut cc);
-                    child_vars.push(cv);
-                }
-                // root → ci  for each i:  (-root ∨ ci)
-                for &cv in &child_vars {
-                    clauses.push(vec![-root, cv]);
-                }
-                // c1 ∧ c2 ∧ ... ∧ cn → root:  (-c1 ∨ -c2 ∨ ... ∨ -cn ∨ root)
-                let mut clause: Vec<i32> = child_vars.iter().map(|&cv| -cv).collect();
-                clause.push(root);
-                clauses.push(clause);
-                (root, clauses)
-            }
-            NNF::Sum(ch) => {
-                // OR gate: root ↔ (c1 ∨ c2 ∨ ... ∨ cn)
-                let root = *next_var; *next_var += 1;
-                let mut child_vars = Vec::new();
-                for c in ch {
-                    let (cv, mut cc) = tseitin_encode(c, next_var);
-                    clauses.append(&mut cc);
-                    child_vars.push(cv);
-                }
-                // ci → root  for each i:  (-ci ∨ root)
-                for &cv in &child_vars {
-                    clauses.push(vec![-cv, root]);
-                }
-                // root → c1 ∨ c2 ∨ ... ∨ cn:  (-root ∨ c1 ∨ c2 ∨ ... ∨ cn)
-                let mut clause = vec![-root];
-                clause.extend_from_slice(&child_vars);
-                clauses.push(clause);
-                (root, clauses)
-            }
-        }
-    }
-
-    struct LearnPrinter {
-        vars: Vec<String>,
-        verbose: bool,
-    }
-    impl LearnPrinter {
-        /// Translate a cadical literal (1-based, negative=negated) to a variable name.
-        fn lit_name(&self, lit: i32) -> String {
-            let var_idx = lit.unsigned_abs() as usize - 1;
-            let negated = lit < 0;
-            if var_idx < self.vars.len() {
-                if negated { format!("{}'", self.vars[var_idx]) } else { self.vars[var_idx].clone() }
-            } else {
-                // Auxiliary Tseitin variable
-                if negated { format!("t{}'", var_idx + 1) } else { format!("t{}", var_idx + 1) }
-            }
-        }
-    }
-    impl cadical::Callbacks for LearnPrinter {
-        fn max_length(&self) -> i32 { i32::MAX }
-        fn learn(&mut self, clause: &[i32]) {
-            if self.verbose {
-                let lits: Vec<String> = clause.iter().map(|&l| self.lit_name(l)).collect();
-                eprintln!("  learned: {}", lits.join(" + "));
-            }
-        }
-    }
+    // ── CaDiCaL cross-check ────────────────────────────────────────────────────
 
     /// Check validity and satisfiability with CaDiCaL and compare to Matrix results.
     fn cadical_cross_check(
@@ -1084,69 +1006,33 @@ mod tests {
         verbose: bool,
     ) {
         let m = Matrix::try_from(formula).unwrap();
-        let n_vars = m.ast.vars.len() as i32;
         let vars = m.ast.vars.clone();
+        let rt = tokio::runtime::Runtime::new().expect("failed to create runtime");
 
-        // --- Check satisfiability: encode nnf, assert root ---
-        let sat_result = {
-            let mut next_var = n_vars + 1;
-            let (root, clauses) = tseitin_encode(&m.nnf, &mut next_var);
-            let mut solver: cadical::Solver<LearnPrinter> = cadical::Solver::new();
-            solver.set_callbacks(Some(LearnPrinter { vars: vars.clone(), verbose }));
-            for clause in &clauses { solver.add_clause(clause.iter().copied()); }
-            solver.add_clause([root]); // assert formula is true
+        let (valid_r, sat_r) = rt.block_on(async {
             if verbose { eprintln!("cadical sat solving '{}'", formula); }
-            let t = std::time::Instant::now();
-            let sat = solver.solve();
-            let elapsed = t.elapsed();
-            if verbose || elapsed.as_secs_f64() > 1.0 {
-                eprintln!("cadical {:.2}ms to sat solve '{}'", elapsed.as_secs_f64() * 1000.0, formula);
+            let t_sat = std::time::Instant::now();
+            let (sat_handle, _cancel2) = m.cadical_satisfiable();
+            let sr = sat_handle.await.expect("sat task panicked").expect("cadical sat failed");
+            let sat_elapsed = t_sat.elapsed();
+            if verbose || sat_elapsed.as_secs_f64() > 1.0 {
+                eprintln!("cadical {:.2}ms to sat solve '{}'", sat_elapsed.as_secs_f64() * 1000.0, formula);
             }
-            match sat {
-                Some(true) => {
-                    // Build assignment from cadical values, skip don't-care variables
-                    let asgn: Vec<Lit> = (0..n_vars as u32).filter_map(|v| {
-                        solver.value((v as i32) + 1).map(|val|
-                            if val { Lit::pos(v) } else { Lit::neg(v) }
-                        )
-                    }).collect();
-                    Ok(asgn)
-                }
-                Some(false) => Err(()),
-                None => panic!("cadical: resource exhaustion"),
-            }
-        };
 
-        // --- Check validity: encode complement, assert root ---
-        // Valid iff complement is unsatisfiable.
-        let valid_result = {
-            let mut next_var = n_vars + 1;
-            let (root, clauses) = tseitin_encode(&m.nnf_complement, &mut next_var);
-            let mut solver: cadical::Solver<LearnPrinter> = cadical::Solver::new();
-            solver.set_callbacks(Some(LearnPrinter { vars: vars.clone(), verbose }));
-            for clause in &clauses { solver.add_clause(clause.iter().copied()); }
-            solver.add_clause([root]);
             if verbose { eprintln!("cadical valid solving '{}'", formula); }
-            let t = std::time::Instant::now();
-            let sat = solver.solve();
-            let elapsed = t.elapsed();
-            if verbose || elapsed.as_secs_f64() > 1.0 {
-                eprintln!("cadical {:.2}ms to valid solve '{}'", elapsed.as_secs_f64() * 1000.0, formula);
+            let t_valid = std::time::Instant::now();
+            let (valid_handle, _cancel) = m.cadical_valid();
+            let vr = valid_handle.await.expect("valid task panicked").expect("cadical valid failed");
+            let valid_elapsed = t_valid.elapsed();
+            if verbose || valid_elapsed.as_secs_f64() > 1.0 {
+                eprintln!("cadical {:.2}ms to valid solve '{}'", valid_elapsed.as_secs_f64() * 1000.0, formula);
             }
-            match sat {
-                Some(true) => {
-                    // Complement is satisfiable → formula is NOT valid.
-                    let asgn: Vec<Lit> = (0..n_vars as u32).filter_map(|v| {
-                        solver.value((v as i32) + 1).map(|val|
-                            if val { Lit::pos(v) } else { Lit::neg(v) }
-                        )
-                    }).collect();
-                    Err(asgn) // falsifying assignment
-                }
-                Some(false) => Ok(()), // complement unsat → formula valid
-                None => panic!("cadical: resource exhaustion"),
-            }
-        };
+
+            (vr, sr)
+        });
+
+        let valid_result = &valid_r.result;
+        let sat_result = &sat_r.result;
 
         // --- Format and print assignments ---
         let fmt_asgn = |asgn: &[Lit]| -> String {
@@ -1155,12 +1041,31 @@ mod tests {
                 if l.neg { format!("{}=0", name) } else { format!("{}=1", name) }
             }).collect::<Vec<_>>().join(", ")
         };
+        let fmt_clause = |clause: &[i32]| -> String {
+            clause.iter().map(|&lit| {
+                let var_idx = lit.unsigned_abs() as usize - 1;
+                let negated = lit < 0;
+                if var_idx < vars.len() {
+                    if negated { format!("{}'", vars[var_idx]) } else { vars[var_idx].clone() }
+                } else {
+                    if negated { format!("t{}'", var_idx + 1) } else { format!("t{}", var_idx + 1) }
+                }
+            }).collect::<Vec<_>>().join(" + ")
+        };
         if verbose {
-            match &valid_result {
+            if !valid_r.learned_clauses.is_empty() {
+                eprintln!("cadical valid learned {} clauses:", valid_r.learned_clauses.len());
+                for c in &valid_r.learned_clauses { eprintln!("  {}", fmt_clause(c)); }
+            }
+            if !sat_r.learned_clauses.is_empty() {
+                eprintln!("cadical sat learned {} clauses:", sat_r.learned_clauses.len());
+                for c in &sat_r.learned_clauses { eprintln!("  {}", fmt_clause(c)); }
+            }
+            match valid_result {
                 Ok(()) => eprintln!("cadical: valid (complement unsatisfiable)"),
                 Err(asgn) => eprintln!("cadical: not valid, falsifying: {}", fmt_asgn(asgn)),
             }
-            match &sat_result {
+            match sat_result {
                 Ok(asgn) => eprintln!("cadical: satisfiable, satisfying: {}", fmt_asgn(asgn)),
                 Err(()) => eprintln!("cadical: unsatisfiable"),
             }
@@ -1175,30 +1080,24 @@ mod tests {
         }
 
         // --- Compare Matrix results with CaDiCaL ---
-        // Validity agreement
         assert_eq!(matrix_valid.is_ok(), valid_result.is_ok(),
             "cadical and matrix disagree on validity of '{}'", formula);
-
-        // Satisfiability agreement
         assert_eq!(matrix_sat.is_ok(), sat_result.is_ok(),
             "cadical and matrix disagree on satisfiability of '{}'", formula);
 
-        // If not valid, both assignments should falsify the formula
         if let Err(matrix_asgn) = matrix_valid {
             assert_eq!(m.evaluate(matrix_asgn), Ok(false),
                 "matrix falsifying assignment doesn't evaluate to false");
         }
-        if let Err(ref cadical_asgn) = valid_result {
+        if let Err(cadical_asgn) = valid_result {
             assert_eq!(m.evaluate(cadical_asgn), Ok(false),
                 "cadical falsifying assignment doesn't evaluate to false");
         }
-
-        // If satisfiable, both assignments should satisfy the formula
         if let Ok(matrix_asgn) = matrix_sat {
             assert_eq!(m.evaluate(matrix_asgn), Ok(true),
                 "matrix satisfying assignment doesn't evaluate to true");
         }
-        if let Ok(ref cadical_asgn) = sat_result {
+        if let Ok(cadical_asgn) = sat_result {
             assert_eq!(m.evaluate(cadical_asgn), Ok(true),
                 "cadical satisfying assignment doesn't evaluate to true");
         }

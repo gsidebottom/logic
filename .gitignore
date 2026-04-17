@@ -5,3 +5,4 @@ Cargo.lock
 .pids
 .logs
 nested-boxes/node_modules/
+nested-boxes/dist/

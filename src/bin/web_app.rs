@@ -75,6 +75,36 @@ impl Default for ClassifyJob {
     }
 }
 
+/// State for a CaDiCaL solver job.
+#[derive(Default, Clone, Serialize)]
+struct CaDiCaLJobResult {
+    /// The assignment (if any). Each entry is [var_index, neg_bool].
+    assignment:      Option<Vec<(u32, bool)>>,
+    /// Learned clauses as raw cadical literal vectors.
+    learned_clauses: Vec<Vec<i32>>,
+    elapsed_secs:    f64,
+}
+
+struct CaDiCaLJob {
+    result:   Option<CaDiCaLJobResult>,
+    cancel:   Option<CancelHandle>,
+    running:  bool,
+    error:    Option<String>,
+}
+
+impl Default for CaDiCaLJob {
+    fn default() -> Self {
+        Self { result: None, cancel: None, running: false, error: None }
+    }
+}
+
+#[derive(Serialize)]
+struct CaDiCaLStatusResponse {
+    result:       Option<CaDiCaLJobResult>,
+    running:      bool,
+    error:        Option<String>,
+}
+
 #[derive(Clone)]
 struct AppState {
     jq_libs:     Arc<Mutex<Vec<JqLibEntry>>>,
@@ -82,6 +112,8 @@ struct AppState {
     valid_job:   Arc<Mutex<ClassifyJob>>,
     sat_job:     Arc<Mutex<ClassifyJob>>,
     paths_job:   Arc<Mutex<ClassifyJob>>,
+    cadical_valid_job: Arc<Mutex<CaDiCaLJob>>,
+    cadical_sat_job:   Arc<Mutex<CaDiCaLJob>>,
 }
 
 // ── jq handlers ───────────────────────────────────────────────────────────────
@@ -472,6 +504,153 @@ async fn satisfiable_cancel_handler(State(state): State<AppState>) -> Json<serde
     cancel_handler(&state.sat_job)
 }
 
+// ── CaDiCaL handlers ─────────────────────────────────────────────────────────
+
+fn start_cadical_job(
+    job_state: &Arc<Mutex<CaDiCaLJob>>,
+    formula: &str,
+    is_valid: bool,
+) -> Json<serde_json::Value> {
+    use logic::matrix::Matrix;
+
+    {
+        let mut job = job_state.lock().unwrap();
+        if let Some(c) = job.cancel.take() { c.cancel(); }
+        *job = CaDiCaLJob::default();
+        job.running = true;
+    }
+
+    let matrix = match Matrix::try_from(formula) {
+        Ok(m) => m,
+        Err(e) => {
+            let mut job = job_state.lock().unwrap();
+            job.running = false;
+            job.error = Some(e);
+            return Json(serde_json::json!({ "ok": true }));
+        }
+    };
+
+    let js = job_state.clone();
+    let start = std::time::Instant::now();
+
+    if is_valid {
+        let (handle, cancel) = matrix.cadical_valid();
+        { job_state.lock().unwrap().cancel = Some(cancel); }
+        tokio::spawn(async move {
+            let elapsed = match handle.await {
+                Ok(Ok(r)) => {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    let mut job = js.lock().unwrap();
+                    let asgn = match &r.result {
+                        Ok(()) => None,
+                        Err(a) => Some(a.iter().map(|l| (l.var, l.neg)).collect()),
+                    };
+                    job.result = Some(CaDiCaLJobResult {
+                        assignment: asgn,
+                        learned_clauses: r.learned_clauses,
+                        elapsed_secs: elapsed,
+                    });
+                    elapsed
+                }
+                Ok(Err(e)) => {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    js.lock().unwrap().error = Some(e.to_string());
+                    elapsed
+                }
+                Err(e) => {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    js.lock().unwrap().error = Some(format!("task panicked: {}", e));
+                    elapsed
+                }
+            };
+            let mut job = js.lock().unwrap();
+            job.running = false;
+            job.cancel = None;
+            // Store elapsed if not already set
+            if let Some(ref mut r) = job.result {
+                if r.elapsed_secs == 0.0 { r.elapsed_secs = elapsed; }
+            }
+        });
+    } else {
+        let (handle, cancel) = matrix.cadical_satisfiable();
+        { job_state.lock().unwrap().cancel = Some(cancel); }
+        tokio::spawn(async move {
+            let elapsed = match handle.await {
+                Ok(Ok(r)) => {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    let mut job = js.lock().unwrap();
+                    let asgn = match &r.result {
+                        Ok(a) => Some(a.iter().map(|l| (l.var, l.neg)).collect()),
+                        Err(()) => None,
+                    };
+                    job.result = Some(CaDiCaLJobResult {
+                        assignment: asgn,
+                        learned_clauses: r.learned_clauses,
+                        elapsed_secs: elapsed,
+                    });
+                    elapsed
+                }
+                Ok(Err(e)) => {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    js.lock().unwrap().error = Some(e.to_string());
+                    elapsed
+                }
+                Err(e) => {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    js.lock().unwrap().error = Some(format!("task panicked: {}", e));
+                    elapsed
+                }
+            };
+            let mut job = js.lock().unwrap();
+            job.running = false;
+            job.cancel = None;
+            if let Some(ref mut r) = job.result {
+                if r.elapsed_secs == 0.0 { r.elapsed_secs = elapsed; }
+            }
+        });
+    }
+
+    Json(serde_json::json!({ "ok": true }))
+}
+
+async fn cadical_valid_handler(
+    State(state): State<AppState>,
+    Json(req): Json<FormulaRequest>,
+) -> Json<serde_json::Value> {
+    start_cadical_job(&state.cadical_valid_job, &req.formula, true)
+}
+
+async fn cadical_valid_status_handler(State(state): State<AppState>) -> Json<CaDiCaLStatusResponse> {
+    let job = state.cadical_valid_job.lock().unwrap();
+    Json(CaDiCaLStatusResponse { result: job.result.clone(), running: job.running, error: job.error.clone() })
+}
+
+async fn cadical_valid_cancel_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let mut job = state.cadical_valid_job.lock().unwrap();
+    if let Some(c) = job.cancel.take() { c.cancel(); }
+    job.running = false;
+    Json(serde_json::json!({ "ok": true }))
+}
+
+async fn cadical_sat_handler(
+    State(state): State<AppState>,
+    Json(req): Json<FormulaRequest>,
+) -> Json<serde_json::Value> {
+    start_cadical_job(&state.cadical_sat_job, &req.formula, false)
+}
+
+async fn cadical_sat_status_handler(State(state): State<AppState>) -> Json<CaDiCaLStatusResponse> {
+    let job = state.cadical_sat_job.lock().unwrap();
+    Json(CaDiCaLStatusResponse { result: job.result.clone(), running: job.running, error: job.error.clone() })
+}
+
+async fn cadical_sat_cancel_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let mut job = state.cadical_sat_job.lock().unwrap();
+    if let Some(c) = job.cancel.take() { c.cancel(); }
+    job.running = false;
+    Json(serde_json::json!({ "ok": true }))
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 #[tokio::main]
@@ -499,6 +678,8 @@ async fn main() {
         valid_job: Arc::new(Mutex::new(ClassifyJob::default())),
         sat_job:   Arc::new(Mutex::new(ClassifyJob::default())),
         paths_job: Arc::new(Mutex::new(ClassifyJob::default())),
+        cadical_valid_job: Arc::new(Mutex::new(CaDiCaLJob::default())),
+        cadical_sat_job:   Arc::new(Mutex::new(CaDiCaLJob::default())),
     };
 
     let cors = CorsLayer::new()
@@ -514,6 +695,10 @@ async fn main() {
         .route("/satisfiable/cancel",post(satisfiable_cancel_handler))
         .route("/paths",             get(paths_status_handler).post(paths_handler))
         .route("/paths/cancel",      post(paths_cancel_handler))
+        .route("/cadical/valid",        get(cadical_valid_status_handler).post(cadical_valid_handler))
+        .route("/cadical/valid/cancel", post(cadical_valid_cancel_handler))
+        .route("/cadical/sat",          get(cadical_sat_status_handler).post(cadical_sat_handler))
+        .route("/cadical/sat/cancel",   post(cadical_sat_cancel_handler))
         .route("/jq",          post(jq_handler))
         .route("/jq-lib",      get(jq_lib_list_handler)
                                    .post(jq_lib_load_handler)

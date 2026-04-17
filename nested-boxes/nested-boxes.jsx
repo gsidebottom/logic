@@ -56,6 +56,16 @@ function fmtTime(secs) {
   return parts.join('');
 }
 
+// Format a cadical learned clause: translate 1-based literal numbers to variable names.
+function fmtClause(clause, vars) {
+  return clause.map(lit => {
+    const idx = Math.abs(lit) - 1;
+    const neg = lit < 0;
+    const name = idx < vars.length ? vars[idx] : `t${idx + 1}`;
+    return neg ? name + "'" : name;
+  }).join(' + ');
+}
+
 // Complement a literal name: a → a', a' → a
 const compName = n => n?.endsWith("'") ? n.slice(0, -1) : (n ? n + "'" : n);
 
@@ -700,6 +710,22 @@ export default function App() {
   const [satVarsExpanded, setSatVarsExpanded] = useState(false);   // show full sorted unique literals
   const [satAsgnFmt,      setSatAsgnFmt]      = useState(0);     // 0=expanded, 1=factored, 2=value string
   const [satAsgnOn,       setSatAsgnOn]       = useState(false);   // highlight assignment in diagram
+  // ── CaDiCaL SAT solver state ──────────────────────────────────────────────
+  const [cadicalEnabled,        setCadicalEnabled]        = useState(false);
+  const [cadicalValidResult,    setCadicalValidResult]    = useState(null); // {assignment, learnedClauses, elapsedSecs, error}
+  const [cadicalSatResult,      setCadicalSatResult]      = useState(null);
+  const [cadicalValidRunning,   setCadicalValidRunning]   = useState(false);
+  const [cadicalSatRunning,     setCadicalSatRunning]     = useState(false);
+  const cadicalValidPollRef = useRef(null);
+  const cadicalSatPollRef   = useRef(null);
+  const [cadicalValidAsgnOn,    setCadicalValidAsgnOn]    = useState(false); // highlight cadical assignment in diagram
+  const [cadicalSatAsgnOn,      setCadicalSatAsgnOn]      = useState(false);
+  const [cadicalValidAsgnFmt,   setCadicalValidAsgnFmt]   = useState(0);    // 0=expanded, 1=factored, 2=value string
+  const [cadicalSatAsgnFmt,     setCadicalSatAsgnFmt]     = useState(0);
+  const [cadicalValidVarsExpanded, setCadicalValidVarsExpanded] = useState(false);
+  const [cadicalSatVarsExpanded,   setCadicalSatVarsExpanded]   = useState(false);
+  const [cadicalValidClausesExpanded, setCadicalValidClausesExpanded] = useState(false);
+  const [cadicalSatClausesExpanded,   setCadicalSatClausesExpanded]   = useState(false);
   const [pathsResult,    setPathsResult]    = useState(null); // {uncoveredPaths, coverGroups, totalPrefixCount} | {error}
   const [pathsLimit,     setPathsLimit]     = useState(100);
   const [pathsComp,      setPathsComp]      = useState(false); // show paths of complement
@@ -816,6 +842,17 @@ export default function App() {
     setSatPathExpanded(false);
     setSatVarsExpanded(false);
     setSatAsgnOn(false);
+    // CaDiCaL reset
+    stopCadicalValidPolling();
+    if (cadicalValidRunning) { fetch('http://localhost:3001/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); }
+    setCadicalValidResult(null);
+    setCadicalValidRunning(false);
+    setCadicalValidAsgnOn(false);
+    stopCadicalSatPolling();
+    if (cadicalSatRunning) { fetch('http://localhost:3001/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); }
+    setCadicalSatResult(null);
+    setCadicalSatRunning(false);
+    setCadicalSatAsgnOn(false);
     stopPathsPolling();
     if (pathsRunning) { fetch('http://localhost:3001/paths/cancel', { method: 'POST' }).catch(()=>{}); }
     setPathsResult(null);
@@ -1063,6 +1100,7 @@ export default function App() {
       applyValidStatus(data);
     } catch (e) { /* ignore */ }
     setValidRunning(false);
+    if (cadicalValidRunning) cancelCadicalValid();
   };
 
   // ── Satisfiable polling ───────────────────────────────────────────────────
@@ -1142,6 +1180,149 @@ export default function App() {
       applySatStatus(data);
     } catch (e) { /* ignore */ }
     setSatRunning(false);
+    if (cadicalSatRunning) cancelCadicalSat();
+  };
+
+  // ── CaDiCaL Valid polling ──────────────────────────────────────────────────
+  const stopCadicalValidPolling = () => {
+    if (cadicalValidPollRef.current) {
+      clearInterval(cadicalValidPollRef.current);
+      cadicalValidPollRef.current = null;
+    }
+  };
+
+  const applyCadicalValidStatus = (data) => {
+    if (data.error) {
+      setCadicalValidResult({ error: data.error });
+      setCadicalValidRunning(false);
+      stopCadicalValidPolling();
+      return;
+    }
+    if (data.result || !data.running) {
+      const r = data.result;
+      setCadicalValidResult(r ? {
+        assignment: r.assignment,
+        learnedClauses: r.learned_clauses,
+        elapsedSecs: r.elapsed_secs,
+      } : { assignment: null, learnedClauses: [], elapsedSecs: 0 });
+      setCadicalValidRunning(false);
+      stopCadicalValidPolling();
+    }
+  };
+
+  const pollCadicalValidOnce = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/cadical/valid');
+      const data = await res.json();
+      applyCadicalValidStatus(data);
+    } catch (e) {
+      setCadicalValidResult({ error: 'Could not reach Rust service' });
+      setCadicalValidRunning(false);
+      stopCadicalValidPolling();
+    }
+  };
+
+  const startCadicalValid = async () => {
+    stopCadicalValidPolling();
+    setCadicalValidRunning(true);
+    setCadicalValidResult(null);
+    try {
+      const res = await fetch('http://localhost:3001/cadical/valid', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formula: input }),
+      });
+      if (!res.ok) throw new Error('start failed');
+    } catch (e) {
+      setCadicalValidResult({ error: 'Could not reach Rust service' });
+      setCadicalValidRunning(false);
+      return;
+    }
+    pollCadicalValidOnce();
+    cadicalValidPollRef.current = setInterval(() => pollCadicalValidOnce(), 500);
+  };
+
+  const cancelCadicalValid = async () => {
+    stopCadicalValidPolling();
+    try {
+      await fetch('http://localhost:3001/cadical/valid/cancel', { method: 'POST' });
+    } catch (e) { /* ignore */ }
+    try {
+      const res = await fetch('http://localhost:3001/cadical/valid');
+      const data = await res.json();
+      applyCadicalValidStatus(data);
+    } catch (e) { /* ignore */ }
+    setCadicalValidRunning(false);
+  };
+
+  // ── CaDiCaL Sat polling ───────────────────────────────────────────────────
+  const stopCadicalSatPolling = () => {
+    if (cadicalSatPollRef.current) {
+      clearInterval(cadicalSatPollRef.current);
+      cadicalSatPollRef.current = null;
+    }
+  };
+
+  const applyCadicalSatStatus = (data) => {
+    if (data.error) {
+      setCadicalSatResult({ error: data.error });
+      setCadicalSatRunning(false);
+      stopCadicalSatPolling();
+      return;
+    }
+    if (data.result || !data.running) {
+      const r = data.result;
+      setCadicalSatResult(r ? {
+        assignment: r.assignment,
+        learnedClauses: r.learned_clauses,
+        elapsedSecs: r.elapsed_secs,
+      } : { assignment: null, learnedClauses: [], elapsedSecs: 0 });
+      setCadicalSatRunning(false);
+      stopCadicalSatPolling();
+    }
+  };
+
+  const pollCadicalSatOnce = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/cadical/sat');
+      const data = await res.json();
+      applyCadicalSatStatus(data);
+    } catch (e) {
+      setCadicalSatResult({ error: 'Could not reach Rust service' });
+      setCadicalSatRunning(false);
+      stopCadicalSatPolling();
+    }
+  };
+
+  const startCadicalSat = async () => {
+    stopCadicalSatPolling();
+    setCadicalSatRunning(true);
+    setCadicalSatResult(null);
+    try {
+      const res = await fetch('http://localhost:3001/cadical/sat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formula: input }),
+      });
+      if (!res.ok) throw new Error('start failed');
+    } catch (e) {
+      setCadicalSatResult({ error: 'Could not reach Rust service' });
+      setCadicalSatRunning(false);
+      return;
+    }
+    pollCadicalSatOnce();
+    cadicalSatPollRef.current = setInterval(() => pollCadicalSatOnce(), 500);
+  };
+
+  const cancelCadicalSat = async () => {
+    stopCadicalSatPolling();
+    try {
+      await fetch('http://localhost:3001/cadical/sat/cancel', { method: 'POST' });
+    } catch (e) { /* ignore */ }
+    try {
+      const res = await fetch('http://localhost:3001/cadical/sat');
+      const data = await res.json();
+      applyCadicalSatStatus(data);
+    } catch (e) { /* ignore */ }
+    setCadicalSatRunning(false);
   };
 
   const handlePaths = () => {
@@ -1156,11 +1337,17 @@ export default function App() {
     stopSatPolling();
     if (satRunning) { fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); setSatRunning(false); }
     setSatResult(null);
+    stopCadicalValidPolling();
+    if (cadicalValidRunning) { fetch('http://localhost:3001/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); setCadicalValidRunning(false); }
+    setCadicalValidResult(null); setCadicalValidAsgnOn(false);
+    stopCadicalSatPolling();
+    if (cadicalSatRunning) { fetch('http://localhost:3001/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); setCadicalSatRunning(false); }
+    setCadicalSatResult(null); setCadicalSatAsgnOn(false);
     fetchPaths();
   };
 
   // Stop polling on unmount.
-  useEffect(() => () => { stopPathsPolling(); stopValidPolling(); stopSatPolling(); }, []);
+  useEffect(() => () => { stopPathsPolling(); stopValidPolling(); stopSatPolling(); stopCadicalValidPolling(); stopCadicalSatPolling(); }, []);
 
   // Re-fetch paths when the limit or complement checkbox changes while the display is open
   useEffect(() => {
@@ -1183,30 +1370,48 @@ export default function App() {
     if (validResult && !validResult.error) {
       stopValidPolling();
       if (validRunning) { fetch('http://localhost:3001/valid/cancel', { method: 'POST' }).catch(()=>{}); }
-      setValidResult(null); setValidRunning(false); return;
+      setValidResult(null); setValidRunning(false);
+      // Also cancel cadical valid
+      stopCadicalValidPolling();
+      if (cadicalValidRunning) { fetch('http://localhost:3001/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); }
+      setCadicalValidResult(null); setCadicalValidRunning(false); setCadicalValidAsgnOn(false);
+      return;
     }
     stopSatPolling();
     if (satRunning) { fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); setSatRunning(false); }
     setSatResult(null);
+    stopCadicalSatPolling();
+    if (cadicalSatRunning) { fetch('http://localhost:3001/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); setCadicalSatRunning(false); }
+    setCadicalSatResult(null); setCadicalSatAsgnOn(false);
     stopPathsPolling();
     if (pathsRunning) { fetch('http://localhost:3001/paths/cancel', { method: 'POST' }).catch(()=>{}); setPathsRunning(false); }
     setPathsResult(null); setComplementData(false);
     fetchValid();
+    if (cadicalEnabled) startCadicalValid();
   };
 
   const handleSatisfiable = () => {
     if (satResult && !satResult.error) {
       stopSatPolling();
       if (satRunning) { fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); }
-      setSatResult(null); setSatRunning(false); setComplementData(false); return;
+      setSatResult(null); setSatRunning(false); setComplementData(false);
+      // Also cancel cadical sat
+      stopCadicalSatPolling();
+      if (cadicalSatRunning) { fetch('http://localhost:3001/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); }
+      setCadicalSatResult(null); setCadicalSatRunning(false); setCadicalSatAsgnOn(false);
+      return;
     }
     stopValidPolling();
     if (validRunning) { fetch('http://localhost:3001/valid/cancel', { method: 'POST' }).catch(()=>{}); setValidRunning(false); }
     setValidResult(null);
+    stopCadicalValidPolling();
+    if (cadicalValidRunning) { fetch('http://localhost:3001/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); setCadicalValidRunning(false); }
+    setCadicalValidResult(null); setCadicalValidAsgnOn(false);
     stopPathsPolling();
     if (pathsRunning) { fetch('http://localhost:3001/paths/cancel', { method: 'POST' }).catch(()=>{}); setPathsRunning(false); }
     setPathsResult(null);
     fetchSat();
+    if (cadicalEnabled) startCadicalSat();
   };
 
   const btn = (label, onClick, color = '#333', disabled = false, title = '') => (
@@ -1559,12 +1764,31 @@ export default function App() {
                   });
                   return asgn;
                 };
+                // Build assignment from cadical [var_index, is_negated] pairs
+                const buildCadicalAsgn = (cadResult) => {
+                  if (!cadResult?.assignment) return null;
+                  const allVars = extractVars(ast);
+                  const asgn = {};
+                  cadResult.assignment.forEach(([varIdx, neg]) => {
+                    const varName = allVars[varIdx];
+                    if (varName) asgn[varName] = neg ? '0' : '1';
+                  });
+                  return asgn;
+                };
                 if (validAsgnOn && validResult?.path) {
                   const asgn = buildAsgn(validResult.path);
                   return asgn ? evaluateAst(ast, asgn) : null;
                 }
                 if (satAsgnOn && satResult?.path) {
                   const asgn = buildAsgn(satResult.path);
+                  return asgn ? evaluateAst(ast, asgn) : null;
+                }
+                if (cadicalValidAsgnOn && cadicalValidResult?.assignment) {
+                  const asgn = buildCadicalAsgn(cadicalValidResult);
+                  return asgn ? evaluateAst(ast, asgn) : null;
+                }
+                if (cadicalSatAsgnOn && cadicalSatResult?.assignment) {
+                  const asgn = buildCadicalAsgn(cadicalSatResult);
                   return asgn ? evaluateAst(ast, asgn) : null;
                 }
                 return null;
@@ -1678,6 +1902,11 @@ export default function App() {
             })()}
           </span>
         )}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 13 }}
+               title="Also run CaDiCaL SAT solver alongside matrix checks">
+          <input type="checkbox" checked={cadicalEnabled} onChange={e => setCadicalEnabled(e.target.checked)} />
+          CaDiCaL
+        </label>
         {btn('ρ  Paths',       handlePaths,       '#4a4a8a', !ast || loading, !ast ? "Fix syntax errors first" : "Show paths through the matrix")}
         <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 13 }}
                title="Show paths of the complement">
@@ -1888,7 +2117,7 @@ export default function App() {
                     const valueStr = allVars.map(v => v in asgn ? asgn[v] : '-').join('');
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
-                      <span onClick={() => setValidAsgnOn(prev => !prev)}
+                      <span onClick={() => { const next = !validAsgnOn; setValidAsgnOn(next); if (next) { setSatAsgnOn(false); setCadicalValidAsgnOn(false); setCadicalSatAsgnOn(false); } }}
                         style={{ cursor: 'pointer', opacity: validAsgnOn ? 1 : 0.35 }}>
                         assignment ({asgnEntries.length}):{' '}
                         {validAsgnFmt === 0 && <>
@@ -2023,6 +2252,83 @@ export default function App() {
         </div>
       )}
 
+      {/* CaDiCaL Valid result */}
+      {(cadicalValidResult || cadicalValidRunning) && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          color: cadicalValidResult?.error ? '#8b0000' : cadicalValidResult?.assignment === null ? '#1a5c1a' : '#6a2a9a',
+          background: cadicalValidResult?.error ? '#fff5f5' : cadicalValidResult?.assignment === null ? '#f0fff0' : '#f8f0ff',
+          border: `1.5px solid ${cadicalValidResult?.error ? '#f5c2c2' : cadicalValidResult?.assignment === null ? '#b2e0b2' : '#d4a0f0'}`,
+          padding: '9px 14px', borderRadius: 6, fontSize: 13, marginBottom: 12,
+        }}>
+          {cadicalValidRunning && !cadicalValidResult
+            ? <span>CaDiCaL: checking validity...</span>
+            : cadicalValidResult?.error
+            ? `CaDiCaL: ${cadicalValidResult.error}`
+            : cadicalValidResult?.assignment === null
+            ? <span>CaDiCaL: valid in {(cadicalValidResult.elapsedSecs * 1000).toFixed(0)}ms
+                {cadicalValidResult.learnedClauses?.length > 0 && <span style={{ fontWeight: 'normal' }}>
+                  <br />
+                  <span onClick={e => { e.stopPropagation(); setCadicalValidClausesExpanded(prev => !prev); }}
+                    style={{ cursor: 'pointer', color: '#888', fontSize: 12, userSelect: 'none' }}>
+                    {cadicalValidClausesExpanded ? '▾' : '▸'} {cadicalValidResult.learnedClauses.length} learned clause{cadicalValidResult.learnedClauses.length !== 1 ? 's' : ''}
+                  </span>
+                  {cadicalValidClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
+                    {cadicalValidResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, ast ? extractVars(ast) : [])}</div>)}
+                  </div>}
+                </span>}
+              </span>
+            : <span>
+                CaDiCaL: not valid in {(cadicalValidResult.elapsedSecs * 1000).toFixed(0)}ms
+                {cadicalValidResult.assignment && (() => {
+                  const allVars = ast ? extractVars(ast) : [];
+                  const asgnEntries = cadicalValidResult.assignment.map(([varIdx, neg]) => ({
+                    name: allVars[varIdx] ?? `v${varIdx}`, val: neg ? '0' : '1',
+                  }));
+                  const aLong = asgnEntries.length > 10;
+                  const valueStr = allVars.map(v => {
+                    const e = asgnEntries.find(a => a.name === v);
+                    return e ? e.val : '-';
+                  }).join('');
+                  return <span style={{ fontWeight: 'normal' }}>
+                    <br />
+                    <span onClick={() => { const next = !cadicalValidAsgnOn; setCadicalValidAsgnOn(next); if (next) { setValidAsgnOn(false); setSatAsgnOn(false); setCadicalSatAsgnOn(false); } }}
+                      style={{ cursor: 'pointer', opacity: cadicalValidAsgnOn ? 1 : 0.35 }}>
+                      assignment ({asgnEntries.length}):{' '}
+                      {cadicalValidAsgnFmt === 0 && <>
+                        <b style={{ fontFamily: 'Georgia, serif' }}>
+                          {((!aLong || cadicalValidVarsExpanded) ? asgnEntries : asgnEntries.slice(0, 10)).map((e, ei) => <span key={ei}>{ei > 0 && ', '}<VarLabel name={e.name} />{`=${e.val}`}</span>)}
+                          {aLong && !cadicalValidVarsExpanded && ', '}
+                        </b>
+                        {aLong && !cadicalValidVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setCadicalValidVarsExpanded(true); }}
+                          style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…'}</a>}
+                        {aLong && cadicalValidVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setCadicalValidVarsExpanded(false); }}
+                          style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
+                      </>}
+                      {cadicalValidAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
+                        {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
+                        {' = '}{asgnEntries.map(e => e.val).join('')}
+                      </b>}
+                      {cadicalValidAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
+                    </span>
+                    {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setCadicalValidAsgnFmt(f => (f + 1) % 3); }}
+                      style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][cadicalValidAsgnFmt]}</a>
+                  </span>;
+                })()}
+                {cadicalValidResult.learnedClauses?.length > 0 && <span style={{ fontWeight: 'normal' }}>
+                  <br />
+                  <span onClick={e => { e.stopPropagation(); setCadicalValidClausesExpanded(prev => !prev); }}
+                    style={{ cursor: 'pointer', color: '#888', fontSize: 12, userSelect: 'none' }}>
+                    {cadicalValidClausesExpanded ? '▾' : '▸'} {cadicalValidResult.learnedClauses.length} learned clause{cadicalValidResult.learnedClauses.length !== 1 ? 's' : ''}
+                  </span>
+                  {cadicalValidClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
+                    {cadicalValidResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, ast ? extractVars(ast) : [])}</div>)}
+                  </div>}
+                </span>}
+              </span>}
+        </div>
+      )}
+
       {/* Satisfiable result */}
       {satResult && (
         <div style={{
@@ -2063,7 +2369,7 @@ export default function App() {
                     const valueStr = allVars.map(v => v in asgn ? asgn[v] : '-').join('');
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
-                      <span onClick={() => setSatAsgnOn(prev => !prev)}
+                      <span onClick={() => { const next = !satAsgnOn; setSatAsgnOn(next); if (next) { setValidAsgnOn(false); setCadicalValidAsgnOn(false); setCadicalSatAsgnOn(false); } }}
                         style={{ cursor: 'pointer', opacity: satAsgnOn ? 1 : 0.35 }}>
                         assignment ({asgnEntries.length}):{' '}
                         {satAsgnFmt === 0 && <>
@@ -2308,6 +2614,83 @@ export default function App() {
                     </span>;
                   })()}
                 </span>}
+        </div>
+      )}
+
+      {/* CaDiCaL Sat result */}
+      {(cadicalSatResult || cadicalSatRunning) && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          color: cadicalSatResult?.error ? '#8b0000' : cadicalSatResult?.assignment ? '#1a5c1a' : '#7a4a00',
+          background: cadicalSatResult?.error ? '#fff5f5' : cadicalSatResult?.assignment ? '#f0fff0' : '#fffaf0',
+          border: `1.5px solid ${cadicalSatResult?.error ? '#f5c2c2' : cadicalSatResult?.assignment ? '#b2e0b2' : '#e0c870'}`,
+          padding: '9px 14px', borderRadius: 6, fontSize: 13, marginBottom: 12,
+        }}>
+          {cadicalSatRunning && !cadicalSatResult
+            ? <span>CaDiCaL: checking satisfiability...</span>
+            : cadicalSatResult?.error
+            ? `CaDiCaL: ${cadicalSatResult.error}`
+            : cadicalSatResult?.assignment
+            ? <span>
+                CaDiCaL: satisfiable in {(cadicalSatResult.elapsedSecs * 1000).toFixed(0)}ms
+                {(() => {
+                  const allVars = ast ? extractVars(ast) : [];
+                  const asgnEntries = cadicalSatResult.assignment.map(([varIdx, neg]) => ({
+                    name: allVars[varIdx] ?? `v${varIdx}`, val: neg ? '0' : '1',
+                  }));
+                  const aLong = asgnEntries.length > 10;
+                  const valueStr = allVars.map(v => {
+                    const e = asgnEntries.find(a => a.name === v);
+                    return e ? e.val : '-';
+                  }).join('');
+                  return <span style={{ fontWeight: 'normal' }}>
+                    <br />
+                    <span onClick={() => { const next = !cadicalSatAsgnOn; setCadicalSatAsgnOn(next); if (next) { setValidAsgnOn(false); setSatAsgnOn(false); setCadicalValidAsgnOn(false); } }}
+                      style={{ cursor: 'pointer', opacity: cadicalSatAsgnOn ? 1 : 0.35 }}>
+                      assignment ({asgnEntries.length}):{' '}
+                      {cadicalSatAsgnFmt === 0 && <>
+                        <b style={{ fontFamily: 'Georgia, serif' }}>
+                          {((!aLong || cadicalSatVarsExpanded) ? asgnEntries : asgnEntries.slice(0, 10)).map((e, ei) => <span key={ei}>{ei > 0 && ', '}<VarLabel name={e.name} />{`=${e.val}`}</span>)}
+                          {aLong && !cadicalSatVarsExpanded && ', '}
+                        </b>
+                        {aLong && !cadicalSatVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setCadicalSatVarsExpanded(true); }}
+                          style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold', textDecoration: 'none' }}>{'…'}</a>}
+                        {aLong && cadicalSatVarsExpanded && <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setCadicalSatVarsExpanded(false); }}
+                          style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
+                      </>}
+                      {cadicalSatAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
+                        {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
+                        {' = '}{asgnEntries.map(e => e.val).join('')}
+                      </b>}
+                      {cadicalSatAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
+                    </span>
+                    {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setCadicalSatAsgnFmt(f => (f + 1) % 3); }}
+                      style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][cadicalSatAsgnFmt]}</a>
+                  </span>;
+                })()}
+                {cadicalSatResult.learnedClauses?.length > 0 && <span style={{ fontWeight: 'normal' }}>
+                  <br />
+                  <span onClick={e => { e.stopPropagation(); setCadicalSatClausesExpanded(prev => !prev); }}
+                    style={{ cursor: 'pointer', color: '#888', fontSize: 12, userSelect: 'none' }}>
+                    {cadicalSatClausesExpanded ? '▾' : '▸'} {cadicalSatResult.learnedClauses.length} learned clause{cadicalSatResult.learnedClauses.length !== 1 ? 's' : ''}
+                  </span>
+                  {cadicalSatClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
+                    {cadicalSatResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, ast ? extractVars(ast) : [])}</div>)}
+                  </div>}
+                </span>}
+              </span>
+            : <span>CaDiCaL: unsatisfiable in {(cadicalSatResult?.elapsedSecs * 1000).toFixed(0)}ms
+                {cadicalSatResult?.learnedClauses?.length > 0 && <span style={{ fontWeight: 'normal' }}>
+                  <br />
+                  <span onClick={e => { e.stopPropagation(); setCadicalSatClausesExpanded(prev => !prev); }}
+                    style={{ cursor: 'pointer', color: '#888', fontSize: 12, userSelect: 'none' }}>
+                    {cadicalSatClausesExpanded ? '▾' : '▸'} {cadicalSatResult.learnedClauses.length} learned clause{cadicalSatResult.learnedClauses.length !== 1 ? 's' : ''}
+                  </span>
+                  {cadicalSatClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
+                    {cadicalSatResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, ast ? extractVars(ast) : [])}</div>)}
+                  </div>}
+                </span>}
+              </span>}
         </div>
       )}
 

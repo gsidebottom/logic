@@ -1,58 +1,57 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use crate::matrix::{CancelHandle, Lit, Matrix, NNF};
+use crate::simplify::{qmc, minimal_cover};
 
-// ─── Tseitin encoding ────────────────────────────────────────────────────────
+// ─── NNF to CNF conversion (no auxiliary variables) ──────────────────────────
 
-/// Tseitin encoding: convert an NNF to CNF clauses for CaDiCaL.
-/// Variable numbering: original vars are 1-based (var+1).
-/// Auxiliary vars start at `next_var`. Returns (root_var, clauses).
-pub fn tseitin_encode(nnf: &NNF, next_var: &mut i32) -> (i32, Vec<Vec<i32>>) {
-    let mut clauses = Vec::new();
-    match nnf {
-        NNF::Lit(l) => {
-            let v = (l.var as i32) + 1;
-            (if l.neg { -v } else { v }, clauses)
-        }
-        NNF::Prod(ch) => {
-            // AND gate: root ↔ (c1 ∧ c2 ∧ ... ∧ cn)
-            let root = *next_var; *next_var += 1;
-            let mut child_vars = Vec::new();
-            for c in ch {
-                let (cv, mut cc) = tseitin_encode(c, next_var);
-                clauses.append(&mut cc);
-                child_vars.push(cv);
-            }
-            // root → ci  for each i:  (-root ∨ ci)
-            for &cv in &child_vars {
-                clauses.push(vec![-root, cv]);
-            }
-            // c1 ∧ c2 ∧ ... ∧ cn → root:  (-c1 ∨ -c2 ∨ ... ∨ -cn ∨ root)
-            let mut clause: Vec<i32> = child_vars.iter().map(|&cv| -cv).collect();
-            clause.push(root);
-            clauses.push(clause);
-            (root, clauses)
-        }
-        NNF::Sum(ch) => {
-            // OR gate: root ↔ (c1 ∨ c2 ∨ ... ∨ cn)
-            let root = *next_var; *next_var += 1;
-            let mut child_vars = Vec::new();
-            for c in ch {
-                let (cv, mut cc) = tseitin_encode(c, next_var);
-                clauses.append(&mut cc);
-                child_vars.push(cv);
-            }
-            // ci → root  for each i:  (-ci ∨ root)
-            for &cv in &child_vars {
-                clauses.push(vec![-cv, root]);
-            }
-            // root → c1 ∨ c2 ∨ ... ∨ cn:  (-root ∨ c1 ∨ c2 ∨ ... ∨ cn)
-            let mut clause = vec![-root];
-            clause.extend_from_slice(&child_vars);
-            clauses.push(clause);
-            (root, clauses)
+/// Convert an NNF to CNF clauses using maxterm enumeration + QMC minimization.
+/// Returns clauses using 1-based variable numbering (positive = true, negative = negated).
+/// Only uses original variables — no auxiliary Tseitin variables.
+///
+/// Panics if n > 30 (2^30 assignments would be too many to enumerate).
+pub fn nnf_to_cnf_clauses(nnf: &NNF, n: usize) -> Vec<Vec<i32>> {
+    assert!(n <= 30, "nnf_to_cnf_clauses: too many variables ({}) for exhaustive enumeration", n);
+
+    if n == 0 {
+        // Evaluate with empty assignment
+        return match nnf.evaluate(&[]) {
+            Ok(true) => vec![],          // tautology: no clauses needed
+            Ok(false) => vec![vec![]],   // contradiction: empty clause
+            Err(()) => vec![],           // undetermined with no vars — treat as true
+        };
+    }
+
+    // Find maxterms: assignments where the formula evaluates to FALSE.
+    let mut maxterms = Vec::new();
+    for i in 0..(1usize << n) {
+        let asgn: Vec<Lit> = (0..n as u32).map(|j| {
+            if (i >> (n - 1 - j as usize)) & 1 == 1 { Lit::pos(j) } else { Lit::neg(j) }
+        }).collect();
+        if nnf.evaluate(&asgn) == Ok(false) {
+            maxterms.push(i);
         }
     }
+
+    if maxterms.is_empty() { return vec![]; }           // tautology
+    if maxterms.len() == 1 << n { return vec![vec![]]; } // contradiction
+
+    // Run QMC on the maxterms to get prime implicants of the negation.
+    let primes = qmc(&maxterms, n);
+    let cover = minimal_cover(&primes, &maxterms);
+
+    // Convert each implicant to a clause (De Morgan: maxterm → disjunction).
+    // In a maxterm assignment, bit=0 → positive literal in clause, bit=1 → negative.
+    cover.iter().map(|imp| {
+        (0..n).filter_map(|j| {
+            let var = (j as i32) + 1; // 1-based
+            match imp.term[j] {
+                0 => Some(var),   // false in maxterm → positive in clause
+                1 => Some(-var),  // true in maxterm → negative in clause
+                _ => None,        // don't-care: omit
+            }
+        }).collect()
+    }).collect()
 }
 
 // ─── Callbacks ───────────────────────────────────────────────────────────────
@@ -106,23 +105,20 @@ impl Matrix {
         CancelHandle,
     ) {
         let nnf_complement = self.nnf_complement.clone();
-        let n_vars = self.ast.vars.len() as i32;
+        let n_vars = self.ast.vars.len();
         let cancel = CancelHandle::new();
         let cancel_inner = Arc::new(AtomicBool::new(false));
         let cancel_for_callback = cancel_inner.clone();
         let cancel_handle = cancel.clone();
 
-        // Wire CancelHandle to the AtomicBool
         let handle = tokio::task::spawn_blocking(move || {
-            let mut next_var = n_vars + 1;
-            let (root, clauses) = tseitin_encode(&nnf_complement, &mut next_var);
+            let clauses = nnf_to_cnf_clauses(&nnf_complement, n_vars);
             let mut solver: cadical::Solver<SolverCallbacks> = cadical::Solver::new();
             solver.set_callbacks(Some(SolverCallbacks {
                 cancel: cancel_for_callback,
                 learned_clauses: Vec::new(),
             }));
             for clause in &clauses { solver.add_clause(clause.iter().copied()); }
-            solver.add_clause([root]);
 
             let sat = solver.solve();
 
@@ -133,7 +129,7 @@ impl Matrix {
             match sat {
                 Some(true) => {
                     // Complement is satisfiable → not valid → falsifying assignment
-                    let asgn = extract_assignment(&solver, n_vars);
+                    let asgn = extract_assignment(&solver, n_vars as i32);
                     Ok(CaDiCaLValidResult {
                         result: Err(asgn),
                         learned_clauses,
@@ -172,22 +168,20 @@ impl Matrix {
         CancelHandle,
     ) {
         let nnf = self.nnf.clone();
-        let n_vars = self.ast.vars.len() as i32;
+        let n_vars = self.ast.vars.len();
         let cancel = CancelHandle::new();
         let cancel_inner = Arc::new(AtomicBool::new(false));
         let cancel_for_callback = cancel_inner.clone();
         let cancel_handle = cancel.clone();
 
         let handle = tokio::task::spawn_blocking(move || {
-            let mut next_var = n_vars + 1;
-            let (root, clauses) = tseitin_encode(&nnf, &mut next_var);
+            let clauses = nnf_to_cnf_clauses(&nnf, n_vars);
             let mut solver: cadical::Solver<SolverCallbacks> = cadical::Solver::new();
             solver.set_callbacks(Some(SolverCallbacks {
                 cancel: cancel_for_callback,
                 learned_clauses: Vec::new(),
             }));
             for clause in &clauses { solver.add_clause(clause.iter().copied()); }
-            solver.add_clause([root]);
 
             let sat = solver.solve();
 
@@ -197,7 +191,7 @@ impl Matrix {
 
             match sat {
                 Some(true) => {
-                    let asgn = extract_assignment(&solver, n_vars);
+                    let asgn = extract_assignment(&solver, n_vars as i32);
                     Ok(CaDiCaLSatisfiableResult {
                         result: Ok(asgn),
                         learned_clauses,

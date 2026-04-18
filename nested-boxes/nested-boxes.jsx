@@ -78,7 +78,13 @@ function evaluateAst(node, assignment, position = []) {
   if (node.t === 'VAR') {
     const neg = node.n.endsWith("'");
     const base = neg ? node.n.slice(0, -1) : node.n;
-    if (!(base in assignment)) {
+    if (base === '1') {
+      // Constant 1: true; 1': false
+      result.set(posKey, neg ? 'false' : 'true');
+    } else if (base === '0') {
+      // Constant 0: false; 0': true
+      result.set(posKey, neg ? 'true' : 'false');
+    } else if (!(base in assignment)) {
       result.set(posKey, 'undetermined');
     } else {
       const varTrue = assignment[base] === '1';

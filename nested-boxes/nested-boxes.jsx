@@ -11,6 +11,13 @@ function fmtNum(n) {
   if (n == null) return '0';
   const abs = Math.abs(n);
   if (abs < 1e6) return n.toLocaleString();
+  // Beyond 999Q (1e33): use ennn scientific notation with exponent a multiple of 3.
+  if (abs >= 1e33 && Number.isFinite(abs)) {
+    const exp3 = Math.floor(Math.log10(abs) / 3) * 3;
+    const scaled = n / Math.pow(10, exp3);
+    const s = Number(scaled.toPrecision(6));
+    return s.toLocaleString() + 'e' + exp3;
+  }
   const suffixes = [
     [1e30, 'Q'],  // quetta
     [1e27, 'R'],  // ronna
@@ -64,6 +71,62 @@ function fmtClause(clause, vars) {
     const name = idx < vars.length ? vars[idx] : `t${idx + 1}`;
     return neg ? name + "'" : name;
   }).join(' + ');
+}
+
+// Format a formula with one top-level expression per line.
+// If a top-level operator (⇒, ⊕, =, +) is present, split at the loosest one
+// (each operand on its own line). Otherwise, split at every top-level factor
+// boundary (implicit AND between groups / variables).
+function formatFormula(s) {
+  if (!s || !s.trim()) return s;
+  const prec = { '⇒': 1, '⊕': 2, '≠': 2, '=': 3, '⇔': 3, '⊙': 3, '+': 4 };
+  const isVarChar = ch => /[A-Za-z0-9_,]/.test(ch);
+
+  let depth = 0;
+  const topOps = {};           // explicit top-level operators → positions
+  const juxtaPoints = [];      // start positions of top-level factors after the first
+  let prevFactorEnd = false;   // did the last depth-0 thing finish a factor?
+
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '(') {
+      if (depth === 0 && prevFactorEnd) juxtaPoints.push(i);
+      depth++;
+    } else if (ch === ')') {
+      depth--;
+      if (depth === 0) prevFactorEnd = true;
+    } else if (depth === 0) {
+      if (ch in prec) {
+        (topOps[ch] = topOps[ch] || []).push(i);
+        prevFactorEnd = false;
+      } else if (isVarChar(ch)) {
+        const prev = i > 0 ? s[i - 1] : '';
+        const continuingVar = isVarChar(prev) || prev === "'";
+        if (!continuingVar && prevFactorEnd) juxtaPoints.push(i);
+        prevFactorEnd = true;
+      }
+      // '\'' extends previous factor; whitespace/· are separators, no state change
+    }
+  }
+
+  // Prefer the loosest explicit operator if present; otherwise juxtaposition.
+  let chosenPositions = null;
+  let minPrec = Infinity;
+  for (const op in topOps) {
+    if (prec[op] < minPrec) { minPrec = prec[op]; chosenPositions = topOps[op]; }
+  }
+  if (!chosenPositions && juxtaPoints.length > 0) chosenPositions = juxtaPoints;
+  if (!chosenPositions) return s;
+
+  const sorted = [...new Set(chosenPositions)].sort((a, b) => a - b);
+  const parts = [];
+  let last = 0;
+  for (const p of sorted) {
+    parts.push(s.slice(last, p).trim());
+    last = p;
+  }
+  parts.push(s.slice(last).trim());
+  return parts.filter(p => p.length > 0).join('\n');
 }
 
 // Complement a literal name: a → a', a' → a
@@ -130,7 +193,115 @@ function extractVars(node) {
     }
   };
   walk(node);
-  return [...vars].sort();
+  return [...vars].sort(cmpVarName);
+}
+
+// Parse the subscript of a variable name for ordering within a base group.
+// Returns { rank, nums?, sub? }:
+//   rank 1: no underscore (bare base name) — sorts first
+//   rank 2: subscript is comma-separated list of integers (lexicographic via nums)
+//   rank 3: subscript contains non-integer parts (alphabetic via sub)
+function parseSubscript(name) {
+  const noPrime = name.endsWith("'") ? name.slice(0, -1) : name;
+  const ui = noPrime.indexOf('_');
+  if (ui === -1) return { rank: 1 };
+  const sub = noPrime.slice(ui + 1);
+  const parts = sub.split(',');
+  const nums = [];
+  for (const p of parts) {
+    if (/^-?\d+$/.test(p)) nums.push(parseInt(p, 10));
+    else return { rank: 3, sub };
+  }
+  return { rank: 2, nums, sub };
+}
+
+// Comparator for variable names. Groups by baseOf() alphabetically, then orders
+// within a base: bare name first, integer-list subscripts lexicographic, then
+// non-integer subscripts alphabetic.
+function cmpVarName(a, b, reverse = false) {
+  const ba = baseOf(a), bb = baseOf(b);
+  if (ba !== bb) return ba < bb ? -1 : 1;
+  const sa = parseSubscript(a), sb = parseSubscript(b);
+  let r = 0;
+  if (sa.rank !== sb.rank) r = sa.rank - sb.rank;
+  else if (sa.rank === 2) {
+    const len = Math.max(sa.nums.length, sb.nums.length);
+    for (let i = 0; i < len; i++) {
+      const va = sa.nums[i] ?? -Infinity;
+      const vb = sb.nums[i] ?? -Infinity;
+      if (va !== vb) { r = va - vb; break; }
+    }
+  } else if (sa.rank === 3) {
+    r = sa.sub < sb.sub ? -1 : sa.sub > sb.sub ? 1 : 0;
+  }
+  return reverse ? -r : r;
+}
+
+// Base name for filtering: part before first underscore (after stripping any prime).
+// e.g. "a_5'" → "a", "c_0" → "c", "x" → "x".
+function baseOf(name) {
+  const noPrime = name.endsWith("'") ? name.slice(0, -1) : name;
+  const ui = noPrime.indexOf('_');
+  return ui === -1 ? noPrime : noPrime.slice(0, ui);
+}
+
+// Join a sequence of {name, val} entries into a string, inserting a space
+// wherever baseOf(name) changes between adjacent entries.
+function spacedVals(entries) {
+  let out = '';
+  let prev = null;
+  for (let i = 0; i < entries.length; i++) {
+    const b = baseOf(entries[i].name);
+    if (i > 0 && b !== prev) out += ' ';
+    out += entries[i].val;
+    prev = b;
+  }
+  return out;
+}
+
+function formulaBases(ast) {
+  if (!ast) return [];
+  return [...new Set(extractVars(ast).map(baseOf))].sort();
+}
+
+// Filter chip strip used next to the expanded/factored/value link in assignment
+// displays. Toggles inclusion of variables matching a given base name.
+function AsgnFilter({ ast, hiddenBases, setHiddenBases, reverseBaseOrder, setReverseBaseOrder }) {
+  const bases = formulaBases(ast);
+  if (bases.length === 0) return null;
+  return <>
+    {' · '}
+    <a href="#"
+       title={reverseBaseOrder ? 'Reverse per-base ordering (on — click to restore)' : 'Reverse per-base ordering'}
+       onClick={e => { e.preventDefault(); e.stopPropagation(); setReverseBaseOrder(v => !v); }}
+       style={{
+         fontSize: 11, marginRight: 4,
+         color: reverseBaseOrder ? '#1a6bcc' : '#888',
+         fontWeight: reverseBaseOrder ? 'bold' : 'normal',
+         textDecoration: 'none',
+       }}>⇅</a>
+    {bases.map((b, j) => {
+      const hidden = hiddenBases.has(b);
+      return <span key={b}>
+        {j > 0 && ' '}
+        <a href="#"
+           title={hidden ? `Show ${b}* variables` : `Hide ${b}* variables`}
+           onClick={e => {
+             e.preventDefault(); e.stopPropagation();
+             setHiddenBases(prev => {
+               const s = new Set(prev);
+               if (s.has(b)) s.delete(b); else s.add(b);
+               return s;
+             });
+           }} style={{
+             fontSize: 11, fontFamily: 'Georgia, serif',
+             color: hidden ? '#bbb' : '#333',
+             textDecoration: hidden ? 'line-through' : 'none',
+             fontWeight: hidden ? 'normal' : 'bold',
+           }}>{b}</a>
+      </span>;
+    })}
+  </>;
 }
 
 // ─── Box Renderer ─────────────────────────────────────────────────────────────
@@ -691,11 +862,13 @@ export default function App() {
   const [helpOpen,       setHelpOpen]       = useState(false);
   const [addingLabel,    setAddingLabel]    = useState('');   // '' = not adding
   const [saveMsg,        setSaveMsg]        = useState('');
-  const [input,          setInput]          = useState(EXAMPLES[0].f);
+  const [input,          setInput]          = useState(formatFormula(EXAMPLES[0].f));
   const [simplified,     setSimplified]     = useState(null); // {formula, ast}
   const [simplifyMsg,    setSimplifyMsg]    = useState(null); // {text, ok}
   const [simplifyForm,   setSimplifyForm]   = useState('DNF'); // 'DNF' or 'CNF'
   const [complementData, setComplementData] = useState(null); // truthy = show complement view
+  const [hiddenBases,    setHiddenBases]    = useState(new Set()); // base names hidden from assignment displays
+  const [reverseBaseOrder, setReverseBaseOrder] = useState(false);  // reverse per-base ordering in assignments
   const [validResult,    setValidResult]    = useState(null); // {valid, path}
   const [validSelected,  setValidSelected]  = useState(new Set()); // Set<number> of selected pair indices
   const [validExpanded,  setValidExpanded]  = useState(new Set()); // Set<number> of expanded group indices
@@ -775,7 +948,7 @@ export default function App() {
           const out = data.results;
           if (out && out.length > 0) {
             const val = out[0];
-            setInput(typeof val === 'string' ? val : JSON.stringify(val));
+            setInput(formatFormula(typeof val === 'string' ? val : JSON.stringify(val)));
             setJqError('');
           } else {
             setJqError('Filter produced no output');
@@ -939,7 +1112,7 @@ export default function App() {
         } else {
           setSimplifyMsg({ text: `✓ Simplified ${form}!`, ok: true });
           setSimplified({ formula: result, ast: parse(result) });
-          setInput(result);
+          setInput(formatFormula(result));
         }
       }
     } catch (e) {
@@ -1592,7 +1765,7 @@ export default function App() {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6, alignItems: 'center' }}>
               {examples.map(({ label, f }, i) => (
                 <span key={i} style={{ display: 'inline-flex', alignItems: 'center' }}>
-                  <button onClick={() => setInput(f)} style={{
+                  <button onClick={() => setInput(formatFormula(f))} style={{
                     padding: '4px 11px', fontSize: 12, fontFamily: 'Georgia, serif',
                     border: '1px solid #ccc', borderRadius: '4px 0 0 4px', cursor: 'pointer',
                     background: input === f ? '#e8eeff' : '#fafafa', color: '#333',
@@ -1695,6 +1868,7 @@ export default function App() {
             ))}
           </span>
           {btn("A'  Complement", handleComplement,  '#2a6a6a', !ast,            !ast ? "Fix syntax errors first" : "Show the complement as a nested box diagram")}
+          {btn("Format", () => setInput(formatFormula(input)), '#6a4a8a', !input.trim(), !input.trim() ? "Enter a formula first" : "Reformat the formula with one top-level expression per line")}
         </div>
       </div>
 
@@ -1811,7 +1985,7 @@ export default function App() {
                 <DiagramWithConnections node={simplified.ast} coverGroups={null} selectedGroups={new Set()} highlightedPaths={null} />
               </ZoomPanWrapper>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
-                {btn('Use simplified formula', () => setInput(simplified.formula), '#2a7a2a')}
+                {btn('Use simplified formula', () => setInput(formatFormula(simplified.formula)), '#2a7a2a')}
               </div>
             </>
           )}
@@ -2117,10 +2291,12 @@ export default function App() {
                       const base = neg ? l.slice(0, -1) : l;
                       if (!(base in asgn)) asgn[base] = neg ? '1' : '0';
                     });
-                    const asgnEntries = Object.keys(asgn).sort().map(v => ({ name: v, val: asgn[v] }));
+                    const asgnEntries = Object.keys(asgn).sort((a, b) => cmpVarName(a, b, reverseBaseOrder))
+                      .filter(v => !hiddenBases.has(baseOf(v)))
+                      .map(v => ({ name: v, val: asgn[v] }));
                     const aLong = asgnEntries.length > 10;
-                    const allVars = ast ? extractVars(ast) : [];
-                    const valueStr = allVars.map(v => v in asgn ? asgn[v] : '-').join('');
+                    const allVars = ast ? extractVars(ast).filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder)) : [];
+                    const valueStr = spacedVals(allVars.map(v => ({ name: v, val: v in asgn ? asgn[v] : '-' })));
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
                       <span onClick={() => { const next = !validAsgnOn; setValidAsgnOn(next); if (next) { setSatAsgnOn(false); setCadicalValidAsgnOn(false); setCadicalSatAsgnOn(false); } }}
@@ -2138,12 +2314,13 @@ export default function App() {
                         </>}
                         {validAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
                           {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
-                          {' = '}{asgnEntries.map(e => e.val).join('')}
+                          {' = '}{spacedVals(asgnEntries)}
                         </b>}
                         {validAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
                       </span>
                       {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidAsgnFmt(f => (f + 1) % 3); }}
                         style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][validAsgnFmt]}</a>
+                      <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} />
                       <br />
                       <span onClick={() => setValidUncovOn(prev => !prev)}
                         style={{ cursor: 'pointer', opacity: validUncovOn ? 1 : 0.35 }}>
@@ -2287,15 +2464,16 @@ export default function App() {
             : <span>
                 CaDiCaL: not valid in {(cadicalValidResult.elapsedSecs * 1000).toFixed(0)}ms
                 {cadicalValidResult.assignment && (() => {
-                  const allVars = ast ? extractVars(ast) : [];
+                  const allVarsRaw = ast ? extractVars(ast) : [];
                   const asgnEntries = cadicalValidResult.assignment.map(([varIdx, neg]) => ({
-                    name: allVars[varIdx] ?? `v${varIdx}`, val: neg ? '0' : '1',
-                  }));
+                    name: allVarsRaw[varIdx] ?? `v${varIdx}`, val: neg ? '0' : '1',
+                  })).filter(e => !hiddenBases.has(baseOf(e.name))).sort((a, b) => cmpVarName(a.name, b.name, reverseBaseOrder));
                   const aLong = asgnEntries.length > 10;
-                  const valueStr = allVars.map(v => {
+                  const allVars = allVarsRaw.filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder));
+                  const valueStr = spacedVals(allVars.map(v => {
                     const e = asgnEntries.find(a => a.name === v);
-                    return e ? e.val : '-';
-                  }).join('');
+                    return { name: v, val: e ? e.val : '-' };
+                  }));
                   return <span style={{ fontWeight: 'normal' }}>
                     <br />
                     <span onClick={() => { const next = !cadicalValidAsgnOn; setCadicalValidAsgnOn(next); if (next) { setValidAsgnOn(false); setSatAsgnOn(false); setCadicalSatAsgnOn(false); } }}
@@ -2313,12 +2491,13 @@ export default function App() {
                       </>}
                       {cadicalValidAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
                         {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
-                        {' = '}{asgnEntries.map(e => e.val).join('')}
+                        {' = '}{spacedVals(asgnEntries)}
                       </b>}
                       {cadicalValidAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
                     </span>
                     {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setCadicalValidAsgnFmt(f => (f + 1) % 3); }}
                       style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][cadicalValidAsgnFmt]}</a>
+                    <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} />
                   </span>;
                 })()}
                 {cadicalValidResult.learnedClauses?.length > 0 && <span style={{ fontWeight: 'normal' }}>
@@ -2369,10 +2548,12 @@ export default function App() {
                       const base = neg ? l.slice(0, -1) : l;
                       if (!(base in asgn)) asgn[base] = neg ? '1' : '0';
                     });
-                    const asgnEntries = Object.keys(asgn).sort().map(v => ({ name: v, val: asgn[v] }));
+                    const asgnEntries = Object.keys(asgn).sort((a, b) => cmpVarName(a, b, reverseBaseOrder))
+                      .filter(v => !hiddenBases.has(baseOf(v)))
+                      .map(v => ({ name: v, val: asgn[v] }));
                     const aLong = asgnEntries.length > 10;
-                    const allVars = ast ? extractVars(ast) : [];
-                    const valueStr = allVars.map(v => v in asgn ? asgn[v] : '-').join('');
+                    const allVars = ast ? extractVars(ast).filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder)) : [];
+                    const valueStr = spacedVals(allVars.map(v => ({ name: v, val: v in asgn ? asgn[v] : '-' })));
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
                       <span onClick={() => { const next = !satAsgnOn; setSatAsgnOn(next); if (next) { setValidAsgnOn(false); setCadicalValidAsgnOn(false); setCadicalSatAsgnOn(false); } }}
@@ -2390,12 +2571,13 @@ export default function App() {
                         </>}
                         {satAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
                           {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
-                          {' = '}{asgnEntries.map(e => e.val).join('')}
+                          {' = '}{spacedVals(asgnEntries)}
                         </b>}
                         {satAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
                       </span>
                       {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatAsgnFmt(f => (f + 1) % 3); }}
                         style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][satAsgnFmt]}</a>
+                      <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} />
                       <br />
                       <span onClick={() => setSatUncovOn(prev => !prev)}
                         style={{ cursor: 'pointer', opacity: satUncovOn ? 1 : 0.35 }}>
@@ -2640,15 +2822,16 @@ export default function App() {
             ? <span>
                 CaDiCaL: satisfiable in {(cadicalSatResult.elapsedSecs * 1000).toFixed(0)}ms
                 {(() => {
-                  const allVars = ast ? extractVars(ast) : [];
+                  const allVarsRaw = ast ? extractVars(ast) : [];
                   const asgnEntries = cadicalSatResult.assignment.map(([varIdx, neg]) => ({
-                    name: allVars[varIdx] ?? `v${varIdx}`, val: neg ? '0' : '1',
-                  }));
+                    name: allVarsRaw[varIdx] ?? `v${varIdx}`, val: neg ? '0' : '1',
+                  })).filter(e => !hiddenBases.has(baseOf(e.name))).sort((a, b) => cmpVarName(a.name, b.name, reverseBaseOrder));
                   const aLong = asgnEntries.length > 10;
-                  const valueStr = allVars.map(v => {
+                  const allVars = allVarsRaw.filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder));
+                  const valueStr = spacedVals(allVars.map(v => {
                     const e = asgnEntries.find(a => a.name === v);
-                    return e ? e.val : '-';
-                  }).join('');
+                    return { name: v, val: e ? e.val : '-' };
+                  }));
                   return <span style={{ fontWeight: 'normal' }}>
                     <br />
                     <span onClick={() => { const next = !cadicalSatAsgnOn; setCadicalSatAsgnOn(next); if (next) { setValidAsgnOn(false); setSatAsgnOn(false); setCadicalValidAsgnOn(false); } }}
@@ -2666,12 +2849,13 @@ export default function App() {
                       </>}
                       {cadicalSatAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
                         {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
-                        {' = '}{asgnEntries.map(e => e.val).join('')}
+                        {' = '}{spacedVals(asgnEntries)}
                       </b>}
                       {cadicalSatAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
                     </span>
                     {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setCadicalSatAsgnFmt(f => (f + 1) % 3); }}
                       style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][cadicalSatAsgnFmt]}</a>
+                    <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} />
                   </span>;
                 })()}
                 {cadicalSatResult.learnedClauses?.length > 0 && <span style={{ fontWeight: 'normal' }}>

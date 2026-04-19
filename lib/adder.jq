@@ -23,9 +23,9 @@ def bit_adder(i):
         vi("c";i);
         vi("s";i);
         vi("c";i+1);
-        vi("u";i,1);
-        vi("u";i,2);
-        vi("u";i,3)
+        vi("u";i);
+        vi("v";i);
+        vi("w";i)
     )
 ;
 
@@ -50,6 +50,7 @@ def v_eq(name;num;w):
 # add with adder width w a+b+c_in = s+c_out
 # can use empty for unconstrained for example 6 bit adder 3+19+0 = ?+?
 # add(6;3;19;0;empty;empty)
+# add(16;371;226;0;empty;empty)
 def add(w;a;b;c_in;s;c_out):
   prod(
     br(prod(v_eq("a";a;w))),

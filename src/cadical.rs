@@ -227,3 +227,40 @@ impl Matrix {
         (handle, cancel_handle)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sat_11_var_single_product() {
+        let formula = "(a_10' a_9' a_8' a_7' a_6 a_5 a_4 a_3' a_2 a_1 a_0)";
+        let m = Matrix::try_from(formula).unwrap();
+        let vars = m.ast.vars.clone();
+
+        let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+        let result = rt.block_on(async {
+            let (handle, _cancel) = m.cadical_satisfiable();
+            handle.await.expect("sat task panicked").expect("cadical sat failed")
+        });
+
+        let asgn = result.result.expect("formula should be satisfiable");
+
+        // Expected assignment:
+        // a_10=0, a_9=0, a_8=0, a_7=0, a_6=1, a_5=1, a_4=1, a_3=0, a_2=1, a_1=1, a_0=1.
+        let expected: &[(&str, bool)] = &[
+            ("a_10", false), ("a_9", false), ("a_8", false), ("a_7", false),
+            ("a_6",  true),  ("a_5", true),  ("a_4", true),
+            ("a_3",  false),
+            ("a_2",  true),  ("a_1", true),  ("a_0", true),
+        ];
+        for (name, want) in expected {
+            let idx = vars.iter().position(|v| v == name)
+                .unwrap_or_else(|| panic!("variable {} not in formula", name));
+            let lit = asgn.iter().find(|l| l.var as usize == idx)
+                .unwrap_or_else(|| panic!("no assignment for {}", name));
+            let got = !lit.neg; // neg=false means positive → true
+            assert_eq!(got, *want, "{} = {} but expected {}", name, got, want);
+        }
+    }
+}

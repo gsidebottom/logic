@@ -193,7 +193,11 @@ function extractVars(node) {
     }
   };
   walk(node);
-  return [...vars].sort(cmpVarName);
+  // Plain string sort — must match the backend's BTreeSet<String> ordering so
+  // that CaDiCaL's [varIdx, neg] pairs resolve to the right variable names.
+  // Display-time reordering (numeric-aware, reverse toggle) happens downstream
+  // via cmpVarName after the varIdx → name lookup.
+  return [...vars].sort();
 }
 
 // Parse the subscript of a variable name for ordering within a base group.

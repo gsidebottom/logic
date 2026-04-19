@@ -17,15 +17,17 @@ def adder(a;b;c_in;s;c_out;u1;u2;u3):
 
 # adder for bit i
 def bit_adder(i):
-    adder(
-        vi("a";i);
-        vi("b";i);
-        vi("c";i);
-        vi("s";i);
-        vi("c";i+1);
-        vi("u";i);
-        vi("v";i);
-        vi("w";i)
+    br(
+        adder(
+            vi("a";i);
+            vi("b";i);
+            vi("c";i);
+            vi("s";i);
+            vi("c";i+1);
+            vi("u";i);
+            vi("v";i);
+            vi("w";i)
+        )
     )
 ;
 

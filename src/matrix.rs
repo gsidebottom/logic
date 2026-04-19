@@ -1975,4 +1975,107 @@ mod tests {
         ]);
         assert!(!m.is_satisfiable());
     }
+
+    /// Load the expr and adder jq libraries, generate the formula for
+    /// `add(16;371;226;0;empty;empty)` (a 16-bit ripple adder with a=371,
+    /// b=226, c_in=0 and free outputs) and verify that both Matrix and CaDiCaL
+    /// report it satisfiable with assignments that agree on every shared var.
+    #[test]
+    fn sat_adder_jq_371_plus_226() {
+        use xq::{module_loader::PreludeLoader, run_query, Value as XqValue};
+
+        let expr  = std::fs::read_to_string("lib/expr.jq").expect("read lib/expr.jq");
+        let adder = std::fs::read_to_string("lib/adder.jq").expect("read lib/adder.jq");
+        let combined = format!("{}\n{}\nadd(16;371;226;0;empty;empty)", expr, adder);
+
+        let loader  = PreludeLoader();
+        let context = std::iter::once(Ok::<XqValue, xq::InputError>(XqValue::Null));
+        let input   = std::iter::empty::<Result<XqValue, xq::InputError>>();
+
+        let iter = run_query(&combined, context, input, &loader)
+            .expect("jq query failed to compile");
+        let json_vals: Vec<String> = iter
+            .map(|r| r.expect("jq emitted error").to_string())
+            .collect();
+        assert_eq!(json_vals.len(), 1, "expected a single formula output, got {}", json_vals.len());
+        // xq's to_string() returns a JSON encoding; the value is a JSON string, so unquote.
+        let formula: String = serde_json::from_str(&json_vals[0])
+            .expect("formula result was not a JSON string");
+
+        let matrix = Matrix::try_from(formula.as_str()).expect("parse adder formula");
+
+        // Matrix.satisfiable.
+        let matrix_asgn = matrix.satisfiable()
+            .expect("matrix: formula should be satisfiable");
+
+        // CaDiCaL.satisfiable.
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let cadical_asgn = rt.block_on(async {
+            let (handle, _cancel) = matrix.cadical_satisfiable();
+            handle.await.expect("cadical task panicked")
+                .expect("cadical sat call failed")
+                .result.expect("cadical: formula should be satisfiable")
+        });
+
+        // Build var -> value maps and require agreement wherever both solvers assigned
+        // the same variable. (CaDiCaL usually returns a total assignment; Matrix may omit
+        // variables not forced along the satisfying path.)
+        let to_map = |lits: &[Lit]| -> std::collections::HashMap<Var, bool> {
+            lits.iter().map(|l| (l.var, !l.neg)).collect()
+        };
+        let m_map = to_map(&matrix_asgn);
+        let c_map = to_map(&cadical_asgn);
+
+        let mut overlap = 0;
+        for (&var, &mval) in &m_map {
+            if let Some(&cval) = c_map.get(&var) {
+                overlap += 1;
+                assert_eq!(
+                    mval, cval,
+                    "mismatch on {}: matrix={} cadical={}",
+                    matrix.ast.vars[var as usize], mval as u8, cval as u8,
+                );
+            }
+        }
+        assert!(overlap > 0, "matrix and cadical assignments had no overlapping variables");
+
+        // The output sum variables s_0..s_15 (s_0 is the LSB) must encode 371 + 226 = 597.
+        // Check both solvers' assignments. CaDiCaL returns a total assignment so we
+        // decode and compare the full 16-bit sum; Matrix's assignment may be partial,
+        // so we verify every s_i it *does* contain matches the expected bit.
+        const W: u32 = 16;
+        const EXPECTED: u32 = 371 + 226;
+
+        // CaDiCaL — full decode.
+        let mut cadical_decoded: u32 = 0;
+        for i in 0..W {
+            let name = format!("s_{}", i);
+            let idx = matrix.ast.vars.iter().position(|v| v == &name)
+                .unwrap_or_else(|| panic!("variable {} not found in formula", name));
+            let lit = cadical_asgn.iter().find(|l| l.var as usize == idx)
+                .unwrap_or_else(|| panic!("no cadical assignment for {}", name));
+            if !lit.neg { cadical_decoded |= 1 << i; }
+        }
+        assert_eq!(
+            cadical_decoded, EXPECTED,
+            "cadical s variables encode {} but 371 + 226 = {}", cadical_decoded, EXPECTED,
+        );
+
+        // Matrix — per-bit check on whatever s_i are present.
+        let mut matrix_bits_checked = 0;
+        for i in 0..W {
+            let name = format!("s_{}", i);
+            let idx = matrix.ast.vars.iter().position(|v| v == &name).unwrap() as Var;
+            if let Some(&val) = m_map.get(&idx) {
+                let expected_bit = ((EXPECTED >> i) & 1) == 1;
+                assert_eq!(
+                    val, expected_bit,
+                    "matrix s_{} = {} but bit {} of {} is {}",
+                    i, val as u8, i, EXPECTED, expected_bit as u8,
+                );
+                matrix_bits_checked += 1;
+            }
+        }
+        assert!(matrix_bits_checked > 0, "matrix assignment contained no s_i variables");
+    }
 }

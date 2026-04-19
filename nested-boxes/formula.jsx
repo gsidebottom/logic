@@ -14,7 +14,7 @@ export function tokenize(str) {
     else if ('⊕≠'.includes(ch))                   { tokens.push('⊕'); i++; }
     else if (/[A-Za-z]/.test(ch)) {
       let name = ch; i++;
-      while (i < str.length && /[A-Za-z0-9_]/.test(str[i])) { name += str[i]; i++; }
+      while (i < str.length && /[A-Za-z0-9_,]/.test(str[i])) { name += str[i]; i++; }
       while (i < str.length && /\s/.test(str[i])) { i++; }
       let primes = 0;
       while (i < str.length && str[i] === "'") { primes++; i++; }

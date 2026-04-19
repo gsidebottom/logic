@@ -114,7 +114,7 @@ fn tokenize(s: &str) -> Result<Vec<Token>, String> {
             c if c.is_ascii_alphabetic() => {
                 let mut name = c.to_string();
                 i += 1;
-                while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_' || chars[i] == ',') {
                     name.push(chars[i]);
                     i += 1;
                 }

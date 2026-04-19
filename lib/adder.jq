@@ -1,5 +1,3 @@
-# v sub i where i can be sequence of indexes
-def vi(v;i): "\(v)_\([i] | join(","))";
 def a(i): vi("a";i);
 def b(i): vi("b";i);
 def c(i): vi("c";i);
@@ -31,4 +29,35 @@ def bit_adder(i):
     )
 ;
 
-# prod(a(0), b(0), c(0), a(1), b(1), c(1), bit_adder(0), bit_adder(1))
+#
+def width(w): range(w-1;-1;-1);
+
+def adder(w): width(w) | prod(bit_adder(.));
+
+# call [bit_position;bit_value] | f for each bit in . as a number w wide.  bit_value is true or false
+def bits(w; f):
+  . as $n |
+  width(w) |
+  [., (($n / pow(2; .)) | floor) % 2 == 1] | f
+;
+
+# name_(w-1)^(w-1)+...+name_0 = num
+def v_eq(name;num;w):
+    num |
+    bits(w;lit(name;.[0];.[1]))
+;
+
+# add with adder width w a+b+c_in = s+c_out
+# can use empty for unconstrained for example 6 bit adder 3+19+0 = ?+?
+# add(6;3;19;0;empty;empty)
+def add(w;a;b;c_in;s;c_out):
+  prod(
+    br(prod(v_eq("a";a;w))),
+    br(prod(v_eq("b";b;w))),
+    lit("c";0;c_in == 1),
+    br(prod(v_eq("s";s;w))),
+    lit("c";w;c_out == 1),
+    adder(w)
+  )
+;
+

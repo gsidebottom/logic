@@ -1,6 +1,9 @@
 # variable n_i
 def v(n;i): "\(n)_\(i)";
 
+# v sub i where i can be sequence of indexes
+def vi(v;i): "\(v)_\([i] | join(","))";
+
 # complement formula .'
 def c: "\(.)'";
 
@@ -10,11 +13,14 @@ def p(n;i): v(n;i);
 # negative literal n_i'
 def n(n;i): v(n;i) | c;
 
+# literal
+def lit(n;i;p): if p then p(n;i) else n(n;i) end;
+
 def x: "x";
 def x(i): v(x;i);
 
-# brackets around formula (.)
-def br(f): "(\(f))";
+# brackets around formula f
+def br(f): if f == "" then "" else "(\(f))" end;
 
 # or together s
 def sum(s):

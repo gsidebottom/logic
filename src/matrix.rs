@@ -1,8 +1,26 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 use crate::formula::{count_primes, get_base_name, Ast, Node};
+
+/// Process-wide tokio runtime used by synchronous wrappers (like
+/// `Matrix::valid` / `Matrix::satisfiable`) that need to `block_on` an async
+/// `classify_paths` call.  Building a fresh multi-threaded runtime costs
+/// roughly a millisecond; reusing one amortises that across calls.  The
+/// runtime has a single worker thread, which is plenty for the blocking-task
+/// pool that `classify_paths` dispatches work onto.
+pub fn shared_runtime() -> &'static tokio::runtime::Runtime {
+    static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RT.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .expect("failed to build shared tokio runtime")
+    })
+}
 
 /// Handle for cooperatively cancelling a running async traversal.
 #[derive(Clone, Default, Debug)]
@@ -80,6 +98,12 @@ pub struct PathParams {
     /// Limited number of covered prefixes reported.
     #[serde(default = "PathParams::default_covered_prefix_limit")]
     pub covered_prefix_limit: usize,
+    /// If true, run with a controller whose `needs_cover()` is `false` — no
+    /// `CoveredPathPrefix` events are built or emitted, and position tracking
+    /// is skipped inside the traversal.  Intended for "I just want yes/no
+    /// with a witness" queries like validity / satisfiability.
+    #[serde(default)]
+    pub no_cover: bool,
 }
 
 impl PathParams {
@@ -94,6 +118,7 @@ impl Default for PathParams {
             paths_class_limit: Self::default_paths_class_limit(),
             uncovered_path_limit: Self::default_uncovered_path_limit(),
             covered_prefix_limit: Self::default_covered_prefix_limit(),
+            no_cover: false,
         }
     }
 }
@@ -170,6 +195,22 @@ pub struct BacktrackWhenCoveredController<F: FnMut(PathsClass, bool) -> bool = f
     covered_prefix_count: usize,
     last_lits_len: usize,
     on_class: Option<F>,
+    // O(1) complement lookup: for each (var, polarity) encoded as var*2 + neg,
+    // `lit_counter` is the number of copies currently on the path, and
+    // `lit_first_pos` is the earliest prefix index where that literal still
+    // sits.  `counted` is a stack of those encoded indices mirroring the
+    // `prefix_literals` vec observed on the previous callback, so we can pop
+    // our bookkeeping in lockstep when the DFS backtracks.
+    lit_counter: Vec<u32>,
+    lit_first_pos: Vec<Option<usize>>,
+    counted: Vec<usize>,
+    /// When true, the controller never builds or emits `PathsClass::Covered`
+    /// events and declares `needs_cover() == false`, letting the driver
+    /// skip all per-literal position cloning.  Complementary-pair detection
+    /// still runs (for pruning via `covered_at_depth`); only the
+    /// `CoveredPathPrefix` construction and `on_class(Covered)` invocation
+    /// are suppressed.
+    uncovered_only: bool,
 }
 
 impl From<Option<PathParams>> for BacktrackWhenCoveredController {
@@ -185,6 +226,10 @@ impl From<Option<PathParams>> for BacktrackWhenCoveredController {
             covered_prefix_count: 0,
             last_lits_len: 0,
             on_class: None,
+            lit_counter: Vec::new(),
+            lit_first_pos: Vec::new(),
+            counted: Vec::new(),
+            uncovered_only: false,
         }
     }
 }
@@ -202,13 +247,64 @@ impl<F: FnMut(PathsClass, bool) -> bool> BacktrackWhenCoveredController<F> {
             covered_prefix_count: 0,
             last_lits_len: 0,
             on_class: Some(on_class),
+            lit_counter: Vec::new(),
+            lit_first_pos: Vec::new(),
+            counted: Vec::new(),
+            uncovered_only: false,
         }
+    }
+
+    /// "Uncovered-only" flavour of [`Self::with_on_class`].  The controller
+    /// still detects complementary pairs (and prunes the subtree accordingly)
+    /// but never builds a `CoveredPathPrefix` or delivers a
+    /// `PathsClass::Covered` event to `on_class`.  It declares
+    /// `needs_cover() == false`, so paired with
+    /// [`NNF::for_each_path_prefix_no_positions`] no per-Lit
+    /// `pos.clone()` happens.  Intended for callers like `first_uncovered`
+    /// that only want to know whether a non-contradictory path exists.
+    pub fn with_on_class_uncovered_only(params: Option<PathParams>, on_class: F) -> Self {
+        let mut this = Self::with_on_class(params, on_class);
+        this.uncovered_only = true;
+        this
     }
 
     pub fn hit_limit(&self) -> bool {
         self.path_count >= self.paths_class_limit
             || self.uncovered_path_count >= self.uncovered_path_limit
             || self.covered_prefix_count >= self.covered_prefix_limit
+    }
+
+    #[inline]
+    fn ensure_capacity(&mut self, idx: usize) {
+        if idx >= self.lit_counter.len() {
+            self.lit_counter.resize(idx + 1, 0);
+            self.lit_first_pos.resize(idx + 1, None);
+        }
+    }
+
+    /// Sync our counter/first-pos bookkeeping with a prefix length by popping
+    /// entries that are no longer present.
+    #[inline]
+    fn pop_to(&mut self, target_len: usize) {
+        while self.counted.len() > target_len {
+            let idx = self.counted.pop().unwrap();
+            self.lit_counter[idx] -= 1;
+            if self.lit_counter[idx] == 0 {
+                self.lit_first_pos[idx] = None;
+            }
+        }
+    }
+
+    /// Record a newly-visible literal.
+    #[inline]
+    fn push_lit(&mut self, lit: &Lit, pos: usize) {
+        let idx = (lit.var as usize) * 2 + (lit.neg as usize);
+        self.ensure_capacity(idx);
+        self.lit_counter[idx] += 1;
+        if self.lit_first_pos[idx].is_none() {
+            self.lit_first_pos[idx] = Some(pos);
+        }
+        self.counted.push(idx);
     }
 }
 
@@ -222,33 +318,61 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenC
         if self.hit_limit() {
             return false;
         }
-        // Detect backtrack: if lits shrunk past the depth where we found
-        // a complementary pair, we're no longer in a covered subtree.
+        // Sync our counter mirror with the DFS stack: pop any entries that the
+        // traversal has since popped.  This must run every call because the DFS
+        // only invokes us at certain boundaries; between calls, lits may have
+        // grown and shrunk multiple times.
+        self.pop_to(prefix_literals.len());
+
+        // If we backtracked past the depth where the current covered pair was
+        // first detected, the pair no longer straddles the prefix and we can
+        // resume checking.
         if let Some(d) = self.covered_at_depth && prefix_literals.len() < d {
             self.covered_at_depth = None;
         }
-        // Check new literals for complementary pairs.
-        if self.covered_at_depth.is_none() && prefix_literals.len() > self.last_lits_len {
-            'outer: for new_idx in self.last_lits_len..prefix_literals.len() {
-                let new_lit = prefix_literals[new_idx];
-                for (j, prior) in prefix_literals[..new_idx].iter().enumerate() {
-                    if prior.is_complement_of(new_lit) {
+
+        // Process new literals, one at a time, with O(1) complement lookup.
+        if self.covered_at_depth.is_none() {
+            while self.counted.len() < prefix_literals.len() {
+                let pos = self.counted.len();
+                let lit = prefix_literals[pos];
+                let comp_idx = (lit.var as usize) * 2 + ((!lit.neg) as usize);
+                if comp_idx < self.lit_counter.len() && self.lit_counter[comp_idx] > 0 {
+                    self.path_count += 1;
+                    self.covered_prefix_count += 1;
+                    // Keep the bookkeeping in sync — we still push this lit so a
+                    // later pop_to() can undo it cleanly when the DFS retreats.
+                    self.push_lit(lit, pos);
+                    self.covered_at_depth = Some(prefix_literals.len());
+                    // Build + emit the covered event only when requested.  The
+                    // uncovered-only flavour skips both the allocations and
+                    // the callback, which makes this hot path allocation-free.
+                    if !self.uncovered_only {
+                        let j = self.lit_first_pos[comp_idx]
+                            .expect("first_pos must be set when counter > 0");
                         let cpp = CoveredPathPrefix {
-                            cover: (prefix_positions[j].clone(), prefix_positions[new_idx].clone()),
+                            cover: (prefix_positions[j].clone(), prefix_positions[pos].clone()),
                             prefix: prefix_positions.clone(),
                         };
-                        self.path_count += 1;
-                        self.covered_prefix_count += 1;
                         if !self.should_continue_on_paths_class(PathsClass::Covered(cpp), self.hit_limit()) {
                             self.last_lits_len = prefix_literals.len();
                             return false;
                         }
-                        self.covered_at_depth = Some(prefix_literals.len());
-                        break 'outer;
                     }
+                    break;
                 }
+                self.push_lit(lit, pos);
             }
         }
+        // If covered detection happened above (or we were already in a covered
+        // subtree), there may still be lits in `prefix_literals` that we haven't
+        // mirrored — mirror them without rechecking so backtrack stays sound.
+        while self.counted.len() < prefix_literals.len() {
+            let pos = self.counted.len();
+            let lit = prefix_literals[pos];
+            self.push_lit(lit, pos);
+        }
+
         if let Some(path) = complete_prod_path {
             if self.covered_at_depth.is_none() {
                 self.path_count += 1;
@@ -276,6 +400,10 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenC
             None => true,
         }
     }
+
+    fn needs_cover(&self) -> bool {
+        !self.uncovered_only
+    }
 }
 
 /// Controls depth-first path-prefix traversal.
@@ -294,6 +422,16 @@ pub trait PathSearchController {
     fn should_continue_on_paths_class(&mut self, _paths_class: PathsClass, _hit_limit: bool) -> bool {
         true
     }
+
+    /// Whether this controller consumes cover certificates.  Default is
+    /// `true` for back-compat.  Returning `false` is a contract: the
+    /// controller promises it won't read `prefix_positions` and won't care
+    /// about `PathsClass::Covered` events.  In return the driver may skip
+    /// the per-Lit `pos.clone()` bookkeeping and the per-emission
+    /// `prefix_positions.clone()` — see
+    /// [`NNF::for_each_path_prefix_no_positions`] and
+    /// [`NNF::classify_paths_uncovered_only`].
+    fn needs_cover(&self) -> bool { true }
 }
 
 /// Blanket impl: any matching `FnMut` is a `PathSearchController`.
@@ -673,6 +811,49 @@ impl NNF {
         (handle, rx, cancel)
     }
 
+    /// Uncovered-only streaming variant of [`Self::classify_paths`].  Runs the
+    /// DFS with `with_on_class_uncovered_only` and the positions-off traversal,
+    /// so no `CoveredPathPrefix` is built and no `pos.clone()` happens at Lit
+    /// visits.  Only `PathsClass::Uncovered` events are sent.
+    pub fn classify_paths_uncovered_only(
+        &self,
+        buffer_size: usize,
+        params: Option<PathParams>,
+    ) -> (
+        tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
+        tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
+        CancelHandle,
+    ) {
+        let m = self.clone();
+        let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
+        let cancel = CancelHandle::new();
+        let cancel_for_thread = cancel.clone();
+        let handle = tokio::task::spawn_blocking(move || {
+            let mut send_err: Option<tokio::sync::mpsc::error::SendError<(PathsClass, bool)>> = None;
+            let mut ctrl = BacktrackWhenCoveredController::with_on_class_uncovered_only(params,
+                |class: PathsClass, hit_limit: bool| {
+                    if send_err.is_some() || cancel_for_thread.is_cancelled() { return false; }
+                    if let Err(e) = tx.blocking_send((class, hit_limit)) {
+                        send_err = Some(e);
+                        return false;
+                    }
+                    true
+                },
+            );
+            debug_assert!(!ctrl.needs_cover());
+            m.for_each_path_prefix_no_positions(|lits, prod_path| {
+                // Controller ignores `prefix_positions` in uncovered-only mode.
+                let empty: PathPrefix = Vec::new();
+                ctrl.should_continue_on_prefix(lits, &empty, prod_path)
+            });
+            match send_err {
+                Some(e) => Err(Box::new(e) as Box<dyn std::error::Error + Send>),
+                None => Ok(()),
+            }
+        });
+        (handle, rx, cancel)
+    }
+
     /// Reference implementation: check validity by examining all paths.
     ///
     /// Reference implementation: check validity by examining all paths.
@@ -779,6 +960,72 @@ impl NNF {
         traverse(self, &mut path, &mut lits, &mut positions, &mut pos, &mut f,
             &mut |path, lits, positions, _pos, f| {
                 f(lits, positions, Some(path));
+            },
+        );
+    }
+
+    /// Positions-off variant of [`Self::for_each_path_prefix`].  Skips the
+    /// per-Lit `pos.clone()` and doesn't maintain a parallel `positions` vec.
+    /// Use when the controller's `needs_cover()` is `false` (e.g. for
+    /// first-uncovered queries where cover certificates aren't consumed).
+    pub fn for_each_path_prefix_no_positions(
+        &self,
+        mut f: impl FnMut(&Vec<&Lit>, Option<&ProdPath>) -> bool,
+    ) {
+        type Lits<'a> = Vec<&'a Lit>;
+
+        fn traverse<'a, F: FnMut(&Lits<'a>, Option<&ProdPath>) -> bool>(
+            m: &'a NNF,
+            path: &mut ProdPath,
+            lits: &mut Lits<'a>,
+            f: &mut F,
+            then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut F),
+        ) {
+            match m {
+                NNF::Lit(l) => {
+                    lits.push(l);
+                    then(path, lits, f);
+                    lits.pop();
+                }
+                NNF::Prod(children) => {
+                    for (i, child) in children.iter().enumerate() {
+                        path.push(i);
+                        if f(lits, None) {
+                            traverse(child, path, lits, f, then);
+                        }
+                        path.pop();
+                    }
+                }
+                NNF::Sum(children) => {
+                    traverse_sum(children, 0, path, lits, f, then);
+                }
+            }
+        }
+
+        fn traverse_sum<'a, F: FnMut(&Lits<'a>, Option<&ProdPath>) -> bool>(
+            children: &'a [NNF],
+            idx: usize,
+            path: &mut ProdPath,
+            lits: &mut Lits<'a>,
+            f: &mut F,
+            then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut F),
+        ) {
+            if idx >= children.len() {
+                then(path, lits, f);
+            } else {
+                traverse(&children[idx], path, lits, f,
+                    &mut |path, lits, f| {
+                        traverse_sum(children, idx + 1, path, lits, f, then);
+                    },
+                );
+            }
+        }
+
+        let mut path = ProdPath::new();
+        let mut lits = Vec::new();
+        traverse(self, &mut path, &mut lits, &mut f,
+            &mut |path, lits, f| {
+                f(lits, Some(path));
             },
         );
     }
@@ -907,7 +1154,11 @@ impl Matrix {
         CancelHandle,
     ) {
         let target = if complement { &self.nnf_complement } else { &self.nnf };
-        target.classify_paths(buffer_size, params)
+        if params.as_ref().is_some_and(|p| p.no_cover) {
+            target.classify_paths_uncovered_only(buffer_size, params)
+        } else {
+            target.classify_paths(buffer_size, params)
+        }
     }
 
     /// Check if the formula is valid (a tautology).
@@ -919,6 +1170,7 @@ impl Matrix {
             uncovered_path_limit: 1,
             paths_class_limit: usize::MAX,
             covered_prefix_limit: usize::MAX,
+            no_cover: true,
         });
         let uncovered = self.first_uncovered(false, params);
         match uncovered {
@@ -934,27 +1186,37 @@ impl Matrix {
     /// Returns `Ok(satisfying_assignment)` if satisfiable, `Err(())` if not.
     /// The satisfying assignment is a `Vec<Lit>` where `Lit::pos(x)` means `x=1`
     /// and `Lit::neg(x)` means `x=0`.
+    ///
+    /// Uses the async path-classification pipeline like `valid()` and the
+    /// streaming `classify_paths` endpoint — this keeps behaviour consistent
+    /// across `Matrix`'s path-based operations.
     pub fn satisfiable(&self) -> Result<Vec<Lit>, ()> {
         let params = Some(PathParams {
             uncovered_path_limit: 1,
             paths_class_limit: usize::MAX,
             covered_prefix_limit: usize::MAX,
+            no_cover: true,
         });
         let uncovered = self.first_uncovered(true, params);
         match uncovered {
             None => Err(()),
-            Some(path) => {
-                let assignment = self.path_to_assignment(&self.nnf_complement, &path);
-                Ok(assignment)
-            }
+            Some(path) => Ok(self.path_to_assignment(&self.nnf_complement, &path)),
         }
     }
 
     fn first_uncovered(&self, complement: bool, params: Option<PathParams>) -> Option<ProdPath> {
+        // Runs `classify_paths` (or its uncovered-only flavour when `params.no_cover`
+        // is set) on the process-wide shared runtime and returns the first
+        // `Uncovered` class emitted.  Dropping the receiver signals the worker
+        // to stop; we still await the handle for panic visibility.
         let nnf = if complement { &self.nnf_complement } else { &self.nnf };
-        let rt = tokio::runtime::Runtime::new().expect("failed to create runtime");
-        rt.block_on(async {
-            let (handle, mut rx, _cancel) = nnf.classify_paths(64, params);
+        let no_cover = params.as_ref().is_some_and(|p| p.no_cover);
+        shared_runtime().block_on(async {
+            let (handle, mut rx, _cancel) = if no_cover {
+                nnf.classify_paths_uncovered_only(64, params)
+            } else {
+                nnf.classify_paths(64, params)
+            };
             let mut uncovered = None;
             while let Some((class, _)) = rx.recv().await {
                 if let PathsClass::Uncovered(p) = class {
@@ -1349,7 +1611,7 @@ mod tests {
     // ── paths vs paths_reference ─────────────────────────────────
 
     fn assert_paths_matches(m: &NNF) {
-        let fast = collect_paths(&m, Some(PathParams { paths_class_limit: usize::MAX, uncovered_path_limit: usize::MAX, covered_prefix_limit: usize::MAX }));
+        let fast = collect_paths(&m, Some(PathParams { paths_class_limit: usize::MAX, uncovered_path_limit: usize::MAX, covered_prefix_limit: usize::MAX, no_cover: false }));
         let reference = m.paths_reference();
         let fast_uncovered: Vec<&ProdPath> = fast.uncovered_paths().collect();
         let ref_uncovered: Vec<&ProdPath> = reference.uncovered_paths().collect();
@@ -1488,6 +1750,7 @@ mod tests {
             paths_class_limit: usize::MAX,
             uncovered_path_limit: usize::MAX,
             covered_prefix_limit: usize::MAX,
+            no_cover: false,
         }).await;
         assert_eq!(count_covered(&items), 11);
         assert_eq!(count_uncovered(&items), 10);
@@ -1503,6 +1766,7 @@ mod tests {
             paths_class_limit: 8,
             uncovered_path_limit: usize::MAX,
             covered_prefix_limit: usize::MAX,
+            no_cover: false,
         }).await;
         assert_eq!(items.len(), 8);
         assert!(items.last().unwrap().1); // last item has hit_limit=true
@@ -1515,6 +1779,7 @@ mod tests {
             paths_class_limit: usize::MAX,
             uncovered_path_limit: 3,
             covered_prefix_limit: usize::MAX,
+            no_cover: false,
         }).await;
         assert_eq!(count_uncovered(&items), 3);
         // May have some covered prefixes found before/between uncovered paths
@@ -1529,6 +1794,7 @@ mod tests {
             paths_class_limit: usize::MAX,
             uncovered_path_limit: usize::MAX,
             covered_prefix_limit: 2,
+            no_cover: false,
         }).await;
         assert_eq!(count_covered(&items), 2);
         // May have some uncovered paths found before/between covered prefixes
@@ -1543,6 +1809,7 @@ mod tests {
             paths_class_limit: usize::MAX,
             uncovered_path_limit: 1,
             covered_prefix_limit: usize::MAX,
+            no_cover: false,
         }).await;
         assert_eq!(count_uncovered(&items), 1);
         assert!(items.last().unwrap().1);
@@ -1555,6 +1822,7 @@ mod tests {
             paths_class_limit: 1,
             uncovered_path_limit: 1,
             covered_prefix_limit: 1,
+            no_cover: false,
         }).await;
         assert_eq!(items.len(), 1);
         assert!(items[0].1); // hit_limit=true
@@ -1567,6 +1835,7 @@ mod tests {
             paths_class_limit: usize::MAX,
             uncovered_path_limit: usize::MAX,
             covered_prefix_limit: usize::MAX,
+            no_cover: false,
         }).await;
         // Just verify it runs and produces some classes
         assert!(!items.is_empty());
@@ -1799,6 +2068,7 @@ mod tests {
             paths_class_limit: usize::MAX,
             uncovered_path_limit: usize::MAX,
             covered_prefix_limit: usize::MAX,
+            no_cover: false,
         }));
         let covered_sum: f64 = p.covered_path_prefixes()
             .map(|cp| nnf.prefix_cover_count(&cp.prefix))
@@ -1815,7 +2085,7 @@ mod tests {
         let m = sum((0..6).map(|_| prod(vec![v(0), v(1), v(2), v(3)])).collect());
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(1);
         let ctrl = BacktrackWhenCoveredController::with_on_class(
-            Some(PathParams { paths_class_limit: usize::MAX, uncovered_path_limit: usize::MAX, covered_prefix_limit: usize::MAX }),
+            Some(PathParams { paths_class_limit: usize::MAX, uncovered_path_limit: usize::MAX, covered_prefix_limit: usize::MAX, no_cover: false }),
             move |class, hit_limit| { tx.blocking_send((class, hit_limit)).is_ok() },
         );
         let (handle, cancel) = m.paths_async(ctrl);
@@ -2004,9 +2274,18 @@ mod tests {
 
         let matrix = Matrix::try_from(formula.as_str()).expect("parse adder formula");
 
-        // Matrix.satisfiable.
-        let matrix_asgn = matrix.satisfiable()
-            .expect("matrix: formula should be satisfiable");
+        // Matrix.satisfiable — time for benchmarking.  Best of 21 runs (warm cache).
+        let mut best = std::time::Duration::MAX;
+        let mut matrix_asgn = None;
+        for _ in 0..21 {
+            let t = std::time::Instant::now();
+            let a = matrix.satisfiable().expect("matrix: formula should be satisfiable");
+            let dt = t.elapsed();
+            if dt < best { best = dt; }
+            matrix_asgn = Some(a);
+        }
+        let matrix_asgn = matrix_asgn.unwrap();
+        eprintln!("Matrix::satisfiable best-of-21 took {:.3}µs", best.as_secs_f64() * 1_000_000.0);
 
         // CaDiCaL.satisfiable.
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");

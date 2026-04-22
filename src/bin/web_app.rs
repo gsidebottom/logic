@@ -265,6 +265,8 @@ async fn save_examples_handler(Json(list): Json<Vec<Example>>) -> Json<serde_jso
 #[derive(Deserialize)]
 struct FormulaRequest {
     formula: String,
+    #[serde(default)]
+    no_cover: bool,
 }
 
 #[derive(Deserialize)]
@@ -407,7 +409,15 @@ fn start_classify_job(
         let _ = handle.await;
         let mut job = js.lock().unwrap();
         job.running = false;
+        let cancelled = job.cancel.as_ref().is_some_and(|c| c.is_cancelled());
         job.cancel = None;
+        // On clean completion every path has been classified — even in
+        // `no_cover` mode, where `Covered` events are suppressed and the
+        // running counter therefore never tracked them.  Backfill to the
+        // total so the reported rate reflects reality.
+        if !cancelled && !job.snapshot.hit_limit && job.error.is_none() {
+            job.snapshot.classified_count = job.total_path_count;
+        }
     });
     Ok(())
 }
@@ -454,6 +464,7 @@ async fn valid_handler(
         uncovered_path_limit: 1,
         paths_class_limit: usize::MAX,
         covered_prefix_limit: usize::MAX,
+        no_cover: req.no_cover,
     });
     reset_and_start(&state.valid_job, &req.formula, false, params)
 }
@@ -492,6 +503,7 @@ async fn satisfiable_handler(
         uncovered_path_limit: 1,
         paths_class_limit: usize::MAX,
         covered_prefix_limit: usize::MAX,
+        no_cover: req.no_cover,
     });
     reset_and_start(&state.sat_job, &req.formula, true, params)
 }

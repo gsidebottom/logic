@@ -917,6 +917,7 @@ export default function App() {
   const [satAsgnOn,       setSatAsgnOn]       = useState(false);   // highlight assignment in diagram
   // ── CaDiCaL SAT solver state ──────────────────────────────────────────────
   const [cadicalEnabled,        setCadicalEnabled]        = useState(false);
+  const [noCoverEnabled,        setNoCoverEnabled]        = useState(false); // skip cover construction in valid/sat for speed
   const [cadicalValidResult,    setCadicalValidResult]    = useState(null); // {assignment, learnedClauses, elapsedSecs, error}
   const [cadicalSatResult,      setCadicalSatResult]      = useState(null);
   const [cadicalValidRunning,   setCadicalValidRunning]   = useState(false);
@@ -1282,7 +1283,7 @@ export default function App() {
     try {
       const res = await fetch('http://localhost:3001/valid', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input }),
+        body: JSON.stringify({ formula: input, no_cover: noCoverEnabled }),
       });
       if (!res.ok) throw new Error('start failed');
     } catch (e) {
@@ -1362,7 +1363,7 @@ export default function App() {
     try {
       const res = await fetch('http://localhost:3001/satisfiable', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input }),
+        body: JSON.stringify({ formula: input, no_cover: noCoverEnabled }),
       });
       if (!res.ok) throw new Error('start failed');
     } catch (e) {
@@ -1618,6 +1619,50 @@ export default function App() {
     fetchSat();
     if (cadicalEnabled) startCadicalSat();
   };
+
+  // When "no cover" toggles while a valid/sat display is open, re-run the
+  // matrix-side check with the new flag.  Cadical results are unaffected.
+  const didInitNoCover = useRef(false);
+  useEffect(() => {
+    if (!didInitNoCover.current) { didInitNoCover.current = true; return; }
+    if (validResult && !validResult.error) {
+      stopValidPolling();
+      if (validRunning) { fetch('http://localhost:3001/valid/cancel', { method: 'POST' }).catch(()=>{}); }
+      fetchValid();
+    }
+    if (satResult && !satResult.error) {
+      stopSatPolling();
+      if (satRunning) { fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); }
+      fetchSat();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noCoverEnabled]);
+
+  // When "CaDiCaL" toggles while a valid/sat display is open, start or stop
+  // the cadical-side job to match the checkbox.
+  const didInitCadical = useRef(false);
+  useEffect(() => {
+    if (!didInitCadical.current) { didInitCadical.current = true; return; }
+    if (validResult && !validResult.error) {
+      if (cadicalEnabled) {
+        if (!cadicalValidResult && !cadicalValidRunning) startCadicalValid();
+      } else {
+        stopCadicalValidPolling();
+        if (cadicalValidRunning) { fetch('http://localhost:3001/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); }
+        setCadicalValidResult(null); setCadicalValidRunning(false); setCadicalValidAsgnOn(false);
+      }
+    }
+    if (satResult && !satResult.error) {
+      if (cadicalEnabled) {
+        if (!cadicalSatResult && !cadicalSatRunning) startCadicalSat();
+      } else {
+        stopCadicalSatPolling();
+        if (cadicalSatRunning) { fetch('http://localhost:3001/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); }
+        setCadicalSatResult(null); setCadicalSatRunning(false); setCadicalSatAsgnOn(false);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cadicalEnabled]);
 
   const btn = (label, onClick, color = '#333', disabled = false, title = '') => (
     <button onClick={onClick} disabled={disabled} title={title} style={{
@@ -2108,6 +2153,11 @@ export default function App() {
             })()}
           </span>
         )}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 13 }}
+               title="Skip building the cover (faster, no cover-pair highlighting or prefix lists)">
+          <input type="checkbox" checked={noCoverEnabled} onChange={e => setNoCoverEnabled(e.target.checked)} />
+          no cover
+        </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 13 }}
                title="Also run CaDiCaL SAT solver alongside matrix checks">
           <input type="checkbox" checked={cadicalEnabled} onChange={e => setCadicalEnabled(e.target.checked)} />

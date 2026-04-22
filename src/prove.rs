@@ -18,7 +18,7 @@ pub fn check_valid(formula: &str) -> ProveResult {
     let mut classes = Vec::new();
     let hit_limit = {
         let mut ctrl = BacktrackWhenCoveredController::with_on_class(
-            Some(PathParams { paths_class_limit: usize::MAX, uncovered_path_limit: usize::MAX, covered_prefix_limit: usize::MAX }),
+            Some(PathParams { paths_class_limit: usize::MAX, uncovered_path_limit: usize::MAX, covered_prefix_limit: usize::MAX, no_cover: false }),
             |class, _hit_limit| { classes.push(class); true },
         );
         m.paths(&mut ctrl);
@@ -40,7 +40,7 @@ pub fn check_satisfiable(formula: &str) -> ProveResult {
     let mut classes = Vec::new();
     let hit_limit = {
         let mut ctrl = BacktrackWhenCoveredController::with_on_class(
-            Some(PathParams { paths_class_limit: usize::MAX, uncovered_path_limit: usize::MAX, covered_prefix_limit: usize::MAX }),
+            Some(PathParams { paths_class_limit: usize::MAX, uncovered_path_limit: usize::MAX, covered_prefix_limit: usize::MAX, no_cover: false }),
             |class, _hit_limit| { classes.push(class); true },
         );
         comp.paths(&mut ctrl);

@@ -249,18 +249,30 @@ function baseOf(name) {
   return ui === -1 ? noPrime : noPrime.slice(0, ui);
 }
 
-// Join a sequence of {name, val} entries into a string, inserting a space
-// wherever baseOf(name) changes between adjacent entries.
-function spacedVals(entries) {
-  let out = '';
-  let prev = null;
-  for (let i = 0; i < entries.length; i++) {
-    const b = baseOf(entries[i].name);
-    if (i > 0 && b !== prev) out += ' ';
-    out += entries[i].val;
-    prev = b;
+// Join a sequence of {name, val} entries, grouping runs of entries sharing the
+// same baseOf(name) into tokens separated by spaces.  Each group is rendered as
+// a binary string (the raw 0/1/- vals concatenated) or, when `decimal` is true
+// and every val is 0 or 1, as a decimal number.  When `reverseBaseOrder` is
+// true the entries are assumed to be in descending-subscript order (MSB first);
+// otherwise the bits are reversed before decoding so the LSB is on the right.
+function spacedVals(entries, decimal = false, reverseBaseOrder = false) {
+  const groups = [];
+  for (const e of entries) {
+    const b = baseOf(e.name);
+    if (groups.length === 0 || groups[groups.length - 1].base !== b) {
+      groups.push({ base: b, items: [] });
+    }
+    groups[groups.length - 1].items.push(e);
   }
-  return out;
+  return groups.map(g => {
+    const binary = g.items.map(i => i.val).join('');
+    if (!decimal) return binary;
+    if (!g.items.every(i => i.val === '0' || i.val === '1')) return binary;
+    const bits = reverseBaseOrder ? binary : [...binary].reverse().join('');
+    if (bits.length === 0) return '';
+    if (bits.length <= 52) return parseInt(bits, 2).toString();
+    return BigInt('0b' + bits).toString();
+  }).join(' ');
 }
 
 function formulaBases(ast) {
@@ -270,7 +282,7 @@ function formulaBases(ast) {
 
 // Filter chip strip used next to the expanded/factored/value link in assignment
 // displays. Toggles inclusion of variables matching a given base name.
-function AsgnFilter({ ast, hiddenBases, setHiddenBases, reverseBaseOrder, setReverseBaseOrder }) {
+function AsgnFilter({ ast, hiddenBases, setHiddenBases, reverseBaseOrder, setReverseBaseOrder, decimalValues, setDecimalValues }) {
   const bases = formulaBases(ast);
   if (bases.length === 0) return null;
   return <>
@@ -284,6 +296,15 @@ function AsgnFilter({ ast, hiddenBases, setHiddenBases, reverseBaseOrder, setRev
          fontWeight: reverseBaseOrder ? 'bold' : 'normal',
          textDecoration: 'none',
        }}>⇅</a>
+    <a href="#"
+       title={decimalValues ? 'Show each variable group as binary bits' : 'Show each variable group as a decimal number'}
+       onClick={e => { e.preventDefault(); e.stopPropagation(); setDecimalValues(v => !v); }}
+       style={{
+         fontSize: 11, marginRight: 4,
+         color: decimalValues ? '#1a6bcc' : '#888',
+         fontWeight: decimalValues ? 'bold' : 'normal',
+         textDecoration: 'none',
+       }}>{decimalValues ? '10' : '2'}</a>
     {bases.map((b, j) => {
       const hidden = hiddenBases.has(b);
       return <span key={b}>
@@ -872,7 +893,8 @@ export default function App() {
   const [simplifyForm,   setSimplifyForm]   = useState('DNF'); // 'DNF' or 'CNF'
   const [complementData, setComplementData] = useState(null); // truthy = show complement view
   const [hiddenBases,    setHiddenBases]    = useState(new Set()); // base names hidden from assignment displays
-  const [reverseBaseOrder, setReverseBaseOrder] = useState(false);  // reverse per-base ordering in assignments
+  const [reverseBaseOrder, setReverseBaseOrder] = useState(true);   // per-base ordering: true=descending subscript (default), false=ascending
+  const [decimalValues,    setDecimalValues]    = useState(true);   // render each base group's value as decimal (default) or the raw binary string
   const [validResult,    setValidResult]    = useState(null); // {valid, path}
   const [validSelected,  setValidSelected]  = useState(new Set()); // Set<number> of selected pair indices
   const [validExpanded,  setValidExpanded]  = useState(new Set()); // Set<number> of expanded group indices
@@ -2300,7 +2322,7 @@ export default function App() {
                       .map(v => ({ name: v, val: asgn[v] }));
                     const aLong = asgnEntries.length > 10;
                     const allVars = ast ? extractVars(ast).filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder)) : [];
-                    const valueStr = spacedVals(allVars.map(v => ({ name: v, val: v in asgn ? asgn[v] : '-' })));
+                    const valueStr = spacedVals(allVars.map(v => ({ name: v, val: v in asgn ? asgn[v] : '-' })), decimalValues, reverseBaseOrder);
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
                       <span onClick={() => { const next = !validAsgnOn; setValidAsgnOn(next); if (next) { setSatAsgnOn(false); setCadicalValidAsgnOn(false); setCadicalSatAsgnOn(false); } }}
@@ -2318,13 +2340,13 @@ export default function App() {
                         </>}
                         {validAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
                           {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
-                          {' = '}{spacedVals(asgnEntries)}
+                          {' = '}{spacedVals(asgnEntries, decimalValues, reverseBaseOrder)}
                         </b>}
                         {validAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
                       </span>
                       {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidAsgnFmt(f => (f + 1) % 3); }}
                         style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][validAsgnFmt]}</a>
-                      <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} />
+                      <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
                       <br />
                       <span onClick={() => setValidUncovOn(prev => !prev)}
                         style={{ cursor: 'pointer', opacity: validUncovOn ? 1 : 0.35 }}>
@@ -2477,7 +2499,7 @@ export default function App() {
                   const valueStr = spacedVals(allVars.map(v => {
                     const e = asgnEntries.find(a => a.name === v);
                     return { name: v, val: e ? e.val : '-' };
-                  }));
+                  }), decimalValues, reverseBaseOrder);
                   return <span style={{ fontWeight: 'normal' }}>
                     <br />
                     <span onClick={() => { const next = !cadicalValidAsgnOn; setCadicalValidAsgnOn(next); if (next) { setValidAsgnOn(false); setSatAsgnOn(false); setCadicalSatAsgnOn(false); } }}
@@ -2495,13 +2517,13 @@ export default function App() {
                       </>}
                       {cadicalValidAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
                         {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
-                        {' = '}{spacedVals(asgnEntries)}
+                        {' = '}{spacedVals(asgnEntries, decimalValues, reverseBaseOrder)}
                       </b>}
                       {cadicalValidAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
                     </span>
                     {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setCadicalValidAsgnFmt(f => (f + 1) % 3); }}
                       style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][cadicalValidAsgnFmt]}</a>
-                    <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} />
+                    <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
                   </span>;
                 })()}
                 {cadicalValidResult.learnedClauses?.length > 0 && <span style={{ fontWeight: 'normal' }}>
@@ -2557,7 +2579,7 @@ export default function App() {
                       .map(v => ({ name: v, val: asgn[v] }));
                     const aLong = asgnEntries.length > 10;
                     const allVars = ast ? extractVars(ast).filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder)) : [];
-                    const valueStr = spacedVals(allVars.map(v => ({ name: v, val: v in asgn ? asgn[v] : '-' })));
+                    const valueStr = spacedVals(allVars.map(v => ({ name: v, val: v in asgn ? asgn[v] : '-' })), decimalValues, reverseBaseOrder);
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
                       <span onClick={() => { const next = !satAsgnOn; setSatAsgnOn(next); if (next) { setValidAsgnOn(false); setCadicalValidAsgnOn(false); setCadicalSatAsgnOn(false); } }}
@@ -2575,13 +2597,13 @@ export default function App() {
                         </>}
                         {satAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
                           {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
-                          {' = '}{spacedVals(asgnEntries)}
+                          {' = '}{spacedVals(asgnEntries, decimalValues, reverseBaseOrder)}
                         </b>}
                         {satAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
                       </span>
                       {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatAsgnFmt(f => (f + 1) % 3); }}
                         style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][satAsgnFmt]}</a>
-                      <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} />
+                      <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
                       <br />
                       <span onClick={() => setSatUncovOn(prev => !prev)}
                         style={{ cursor: 'pointer', opacity: satUncovOn ? 1 : 0.35 }}>
@@ -2835,7 +2857,7 @@ export default function App() {
                   const valueStr = spacedVals(allVars.map(v => {
                     const e = asgnEntries.find(a => a.name === v);
                     return { name: v, val: e ? e.val : '-' };
-                  }));
+                  }), decimalValues, reverseBaseOrder);
                   return <span style={{ fontWeight: 'normal' }}>
                     <br />
                     <span onClick={() => { const next = !cadicalSatAsgnOn; setCadicalSatAsgnOn(next); if (next) { setValidAsgnOn(false); setSatAsgnOn(false); setCadicalValidAsgnOn(false); } }}
@@ -2853,13 +2875,13 @@ export default function App() {
                       </>}
                       {cadicalSatAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
                         {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
-                        {' = '}{spacedVals(asgnEntries)}
+                        {' = '}{spacedVals(asgnEntries, decimalValues, reverseBaseOrder)}
                       </b>}
                       {cadicalSatAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
                     </span>
                     {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setCadicalSatAsgnFmt(f => (f + 1) % 3); }}
                       style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][cadicalSatAsgnFmt]}</a>
-                    <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} />
+                    <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
                   </span>;
                 })()}
                 {cadicalSatResult.learnedClauses?.length > 0 && <span style={{ fontWeight: 'normal' }}>

@@ -2254,8 +2254,33 @@ mod tests {
     fn sat_adder_jq_371_plus_226() {
         use xq::{module_loader::PreludeLoader, run_query, Value as XqValue};
 
-        let expr  = std::fs::read_to_string("lib/expr.jq").expect("read lib/expr.jq");
-        let adder = std::fs::read_to_string("lib/adder.jq").expect("read lib/adder.jq");
+        // Strip any `# === tests ===` / `# === deps ===` sections that may have
+        // been saved via the web editor — those are structural markers that
+        // aren't valid here where we concatenate the libraries ourselves.
+        let strip_sections = |s: &str| -> String {
+            let cut = s.find("\n# === tests ===").unwrap_or(s.len());
+            let head = &s[..cut];
+            let mut out = String::new();
+            let mut lines = head.lines();
+            // Drop a leading `# === deps === … # === end deps ===` block if present.
+            let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
+            for _ in 0..peek.len() { lines.next(); }
+            let mut rest = lines.clone();
+            if let Some(first) = rest.next() {
+                if first.trim_end() == "# === deps ===" {
+                    // advance original iterator past the block
+                    for _ in 0..peek.len() { /* already skipped */ }
+                    lines.next(); // consume the deps marker
+                    while let Some(l) = lines.next() {
+                        if l.trim_end() == "# === end deps ===" { break; }
+                    }
+                }
+            }
+            for l in lines { out.push_str(l); out.push('\n'); }
+            out
+        };
+        let expr  = strip_sections(&std::fs::read_to_string("lib/expr.jq").expect("read lib/expr.jq"));
+        let adder = strip_sections(&std::fs::read_to_string("lib/adder.jq").expect("read lib/adder.jq"));
         let combined = format!("{}\n{}\nadd(16;371;226;0;empty;empty)", expr, adder);
 
         let loader  = PreludeLoader();

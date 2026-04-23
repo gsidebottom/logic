@@ -49,3 +49,5 @@ def imp(i):
 
 # interleave a and b
 def interleave(a; b): [[a], [b]] | transpose | flatten[];
+# === tests ===
+v("x";1) == "x_1", vi("a";1,2) == "a_1,2"

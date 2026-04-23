@@ -948,7 +948,16 @@ export default function App() {
   const [jqLibs,         setJqLibs]         = useState([]);    // [{path, name, content}] from server
   const [jqLibLoading,   setJqLibLoading]   = useState(false);
   const [jqLibError,     setJqLibError]     = useState('');
-  const [jqLibViewing,   setJqLibViewing]   = useState(null); // {name, content} | null
+  const [jqLibViewing,   setJqLibViewing]   = useState(null); // {name, content, path} | null
+  const [jqLibEditContent, setJqLibEditContent] = useState(''); // editable buffer
+  const [jqLibSaving,    setJqLibSaving]    = useState(false);
+  const [jqLibSaveError, setJqLibSaveError] = useState('');
+  const [jqLibTest,      setJqLibTest]      = useState('');    // test filter buffer
+  const [jqLibTestRunning, setJqLibTestRunning] = useState(false);
+  const [jqLibTestResult,  setJqLibTestResult]  = useState(null); // {ok: bool, message: string} | null
+  const [jqLibClosePrompt, setJqLibClosePrompt] = useState(false); // unsaved-changes confirm
+  const [jqLibDeps,      setJqLibDeps]      = useState([]);    // editable dep list
+  const [jqLibDepInput,  setJqLibDepInput]  = useState('');    // dep picker input
   const [jqLibFiles,     setJqLibFiles]     = useState([]);   // available .jq filenames
   const [jqOpen,         setJqOpen]         = useState(false);
   const inputRef = useRef(null);
@@ -1737,6 +1746,109 @@ export default function App() {
                 padding: '2px 8px', fontSize: 12, border: '1px solid #bbb',
                 borderRadius: 4, cursor: 'pointer', background: '#f5f5f5',
               }}>{jqLibLoading ? '…' : 'Load'}</button>
+              {(() => {
+                const raw = jqLibPath.trim();
+                const canDelete = !!raw && jqLibFiles.includes(raw);
+                return (
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Permanently delete lib/${raw}?`)) return;
+                      setJqLibLoading(true); setJqLibError('');
+                      try {
+                        const res = await fetch('http://localhost:3001/jq-lib/file', {
+                          method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ path: raw }),
+                        });
+                        const data = await res.json();
+                        if (data.error) {
+                          setJqLibError(data.error);
+                        } else {
+                          setJqLibPath('');
+                          // Refresh file list & loaded libs.
+                          const filesRes = await fetch('http://localhost:3001/jq-lib/files');
+                          const filesData = await filesRes.json();
+                          if (filesData.files) setJqLibFiles(filesData.files);
+                          await refreshJqLibs();
+                          // If the editor had this lib open, close it.
+                          if (jqLibViewing && jqLibViewing.path === raw) setJqLibViewing(null);
+                        }
+                      } catch {
+                        setJqLibError('Could not reach Rust service');
+                      }
+                      setJqLibLoading(false);
+                    }}
+                    disabled={jqLibLoading || !canDelete}
+                    title={canDelete ? `Delete lib/${raw} from server` : 'Type an existing library name'}
+                    style={{
+                      padding: '2px 8px', fontSize: 12,
+                      border: '1px solid #c88', borderRadius: 4,
+                      cursor: (jqLibLoading || !canDelete) ? 'default' : 'pointer',
+                      background: (jqLibLoading || !canDelete) ? '#f5f5f5' : '#fff5f5',
+                      color: (jqLibLoading || !canDelete) ? '#888' : '#8b0000',
+                    }}
+                  >Delete</button>
+                );
+              })()}
+              {(() => {
+                const raw = jqLibPath.trim();
+                const name = raw.endsWith('.jq') ? raw : raw + '.jq';
+                const canCreate = !!raw && !jqLibFiles.includes(name) && !raw.includes('/') && !raw.includes('\\') && !raw.includes('..');
+                return (
+                  <button
+                    onClick={async () => {
+                      setJqLibLoading(true); setJqLibError('');
+                      try {
+                        // Create an empty library on disk via the save endpoint.
+                        const save = await fetch('http://localhost:3001/jq-lib', {
+                          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ path: name, deps: [], content: '', tests: '' }),
+                        });
+                        const saveData = await save.json();
+                        if (saveData.error) { setJqLibError(saveData.error); setJqLibLoading(false); return; }
+                        // Load the brand-new file so it appears in the loaded libs list.
+                        const load = await fetch('http://localhost:3001/jq-lib', {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ path: name }),
+                        });
+                        const loadData = await load.json();
+                        if (loadData.error) { setJqLibError(loadData.error); setJqLibLoading(false); return; }
+                        // Refresh file list & loaded libs.
+                        const filesRes = await fetch('http://localhost:3001/jq-lib/files');
+                        const filesData = await filesRes.json();
+                        if (filesData.files) setJqLibFiles(filesData.files);
+                        await refreshJqLibs();
+                        setJqLibPath('');
+                        // Open the editor for the new (empty) lib.
+                        const listRes = await fetch('http://localhost:3001/jq-lib');
+                        const listData = await listRes.json();
+                        const created = (listData.libs ?? []).find(l => l.path === name);
+                        if (created) {
+                          setJqLibViewing(created);
+                          setJqLibEditContent(created.content);
+                          setJqLibTest(created.tests ?? '');
+                          setJqLibDeps(created.deps ?? []);
+                          setJqLibDepInput('');
+                          setJqLibSaveError('');
+                          setJqLibTestResult(null);
+                          setJqLibClosePrompt(false);
+                        }
+                      } catch {
+                        setJqLibError('Could not reach Rust service');
+                      }
+                      setJqLibLoading(false);
+                    }}
+                    disabled={jqLibLoading || !canCreate}
+                    title={canCreate ? `Create lib/${name}` : 'Type a new library name (not already in lib/)'}
+                    style={{
+                      padding: '2px 8px', fontSize: 12,
+                      border: '1px solid #1a6bcc', borderRadius: 4,
+                      cursor: (jqLibLoading || !canCreate) ? 'default' : 'pointer',
+                      background: (jqLibLoading || !canCreate) ? '#f5f5f5' : '#eaf2fb',
+                      color: (jqLibLoading || !canCreate) ? '#888' : '#1a6bcc',
+                    }}
+                  >New</button>
+                );
+              })()}
               {jqLibError && (
                 <span style={{ color: '#c00' }} title={jqLibError}>✗ {jqLibError}</span>
               )}
@@ -1749,7 +1861,7 @@ export default function App() {
                     background: '#e8f5e9', border: '1px solid #a5d6a7',
                     borderRadius: 4, padding: '1px 6px', fontSize: 11,
                   }}>
-                    <button onClick={() => setJqLibViewing(lib)} title={lib.path} style={{
+                    <button onClick={() => { setJqLibViewing(lib); setJqLibEditContent(lib.content); setJqLibTest(lib.tests ?? ''); setJqLibDeps(lib.deps ?? []); setJqLibDepInput(''); setJqLibSaveError(''); setJqLibTestResult(null); setJqLibClosePrompt(false); }} title={lib.path} style={{
                       border: 'none', background: 'none', cursor: 'pointer',
                       fontFamily: 'monospace', color: '#2a7a2a', padding: 0,
                       fontSize: 11, textDecoration: 'underline dotted',
@@ -1763,8 +1875,81 @@ export default function App() {
               </div>
             )}
 
-            {jqLibViewing && (
-              <div onClick={() => setJqLibViewing(null)} style={{
+            {jqLibViewing && (() => {
+              const savedDeps = jqLibViewing.deps ?? [];
+              const depsChanged = jqLibDeps.length !== savedDeps.length
+                || jqLibDeps.some((d, i) => d !== savedDeps[i]);
+              const dirty = jqLibEditContent !== jqLibViewing.content
+                          || jqLibTest         !== (jqLibViewing.tests ?? '')
+                          || depsChanged;
+              const closeNow = () => { setJqLibClosePrompt(false); setJqLibViewing(null); };
+              const attemptClose = () => { if (dirty) setJqLibClosePrompt(true); else closeNow(); };
+              // Run the current tests against the current editor buffer.
+              // Returns {ok, message}; an empty test filter auto-passes.
+              const runTest = async () => {
+                if (!jqLibTest.trim()) {
+                  return { ok: true, message: 'No tests — considered a pass.' };
+                }
+                try {
+                  const res = await fetch('http://localhost:3001/jq', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      filter: jqLibTest,
+                      preamble: jqLibEditContent,
+                      preamble_path: jqLibViewing.path,
+                      deps: jqLibDeps,
+                    }),
+                  });
+                  const data = await res.json();
+                  if (data.error) return { ok: false, message: `Error: ${data.error}` };
+                  const results = data.results ?? [];
+                  if (results.length === 0) {
+                    return { ok: false, message: 'Test emitted no values — the test must yield at least one true.' };
+                  }
+                  let firstBad = null;
+                  for (const r of results) {
+                    if (r === true) continue;
+                    if (Array.isArray(r) && r.length > 0 && r.every(x => x === true)) continue;
+                    firstBad = r; break;
+                  }
+                  if (firstBad === null) {
+                    const n = results.reduce((acc, r) => acc + (Array.isArray(r) ? r.length : 1), 0);
+                    return { ok: true, message: `${n} value${n === 1 ? '' : 's'} — all true.` };
+                  }
+                  return {
+                    ok: false,
+                    message: `Test failed — got ${JSON.stringify(firstBad)}. Tests must return true, a stream of true, or an array of true.`,
+                  };
+                } catch {
+                  return { ok: false, message: 'Could not reach Rust service' };
+                }
+              };
+              const saveLib = async () => {
+                setJqLibSaving(true); setJqLibSaveError('');
+                try {
+                  const res = await fetch('http://localhost:3001/jq-lib', {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: jqLibViewing.path, deps: jqLibDeps, content: jqLibEditContent, tests: jqLibTest }),
+                  });
+                  const data = await res.json();
+                  if (data.error) { setJqLibSaveError(data.error); setJqLibSaving(false); return false; }
+                  setJqLibViewing(v => v && { ...v, deps: [...jqLibDeps], content: jqLibEditContent, tests: jqLibTest });
+                  await refreshJqLibs();
+                  setJqLibSaving(false);
+                  // Auto-run tests on every successful save.
+                  setJqLibTestRunning(true);
+                  const result = await runTest();
+                  setJqLibTestResult(result);
+                  setJqLibTestRunning(false);
+                  return true;
+                } catch {
+                  setJqLibSaveError('Could not reach Rust service');
+                  setJqLibSaving(false);
+                  return false;
+                }
+              };
+              return (
+              <div onClick={attemptClose} style={{
                 position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
                 zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
@@ -1772,6 +1957,7 @@ export default function App() {
                   background: '#fff', borderRadius: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
                   width: 'min(700px, 90vw)', maxHeight: '80vh',
                   display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                  position: 'relative',
                 }}>
                   <div style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1783,19 +1969,242 @@ export default function App() {
                     <span style={{ fontSize: 11, color: '#999', flex: 1, marginLeft: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {jqLibViewing.path}
                     </span>
-                    <button onClick={() => setJqLibViewing(null)} style={{
+                    <button onClick={attemptClose} style={{
                       border: 'none', background: 'none', cursor: 'pointer',
                       fontSize: 18, color: '#888', marginLeft: 12, lineHeight: 1,
                     }}>✕</button>
                   </div>
-                  <pre style={{
-                    margin: 0, padding: '14px 16px', overflow: 'auto',
-                    fontFamily: 'monospace', fontSize: 13, lineHeight: 1.6,
-                    background: '#fafafa', color: '#222', whiteSpace: 'pre',
-                  }}>{jqLibViewing.content}</pre>
+                  {/* Dependency panel — sits above the code editor */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6,
+                    padding: '8px 16px', borderBottom: '1px solid #e0e0e0',
+                    background: '#fff', fontSize: 12,
+                  }}>
+                    <span style={{ color: '#666', fontWeight: 600, marginRight: 4 }}>Depends on:</span>
+                    {jqLibDeps.length === 0 && (
+                      <span style={{ color: '#aaa', fontStyle: 'italic' }}>(no dependencies)</span>
+                    )}
+                    {jqLibDeps.map((d, i) => (
+                      <span key={i} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        padding: '2px 4px 2px 8px', borderRadius: 4,
+                        background: '#eaf2fb', border: '1px solid #c8dbee',
+                        fontFamily: 'monospace',
+                      }}>
+                        {d}
+                        <button
+                          onClick={() => { setJqLibDeps(jqLibDeps.filter((_, j) => j !== i)); setJqLibSaveError(''); }}
+                          title={`Remove ${d}`}
+                          style={{
+                            border: 'none', background: 'none', cursor: 'pointer',
+                            color: '#888', padding: '0 2px', fontSize: 13, lineHeight: 1,
+                          }}
+                        >×</button>
+                      </span>
+                    ))}
+                    <span style={{ flex: 1 }} />
+                    <input
+                      value={jqLibDepInput}
+                      onChange={e => setJqLibDepInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          const name = jqLibDepInput.trim();
+                          if (!name || !jqLibFiles.includes(name)) return;
+                          if (name === jqLibViewing.path) return;
+                          if (jqLibDeps.includes(name)) return;
+                          setJqLibDeps([...jqLibDeps, name]);
+                          setJqLibDepInput('');
+                          setJqLibSaveError('');
+                        }
+                      }}
+                      placeholder="add dependency…"
+                      list="jq-lib-files"
+                      spellCheck={false}
+                      style={{
+                        padding: '3px 8px', fontSize: 12, fontFamily: 'monospace',
+                        border: '1px solid #ccc', borderRadius: 4, width: 160,
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        const name = jqLibDepInput.trim();
+                        if (!name || !jqLibFiles.includes(name)) return;
+                        if (name === jqLibViewing.path) return;
+                        if (jqLibDeps.includes(name)) return;
+                        setJqLibDeps([...jqLibDeps, name]);
+                        setJqLibDepInput('');
+                        setJqLibSaveError('');
+                      }}
+                      disabled={
+                        !jqLibDepInput.trim()
+                        || !jqLibFiles.includes(jqLibDepInput.trim())
+                        || jqLibDepInput.trim() === jqLibViewing.path
+                        || jqLibDeps.includes(jqLibDepInput.trim())
+                      }
+                      style={{
+                        padding: '3px 10px', fontSize: 12,
+                        border: '1px solid #1a6bcc', borderRadius: 4,
+                        background: '#fff', color: '#1a6bcc',
+                        cursor: 'pointer',
+                      }}
+                    >Add</button>
+                  </div>
+                  <textarea
+                    value={jqLibEditContent}
+                    onChange={e => { setJqLibEditContent(e.target.value); setJqLibSaveError(''); }}
+                    spellCheck={false}
+                    style={{
+                      margin: 0, padding: '14px 16px', flex: 1,
+                      fontFamily: 'monospace', fontSize: 13, lineHeight: 1.6,
+                      background: '#fafafa', color: '#222', whiteSpace: 'pre',
+                      border: 'none', outline: 'none', resize: 'none',
+                      minHeight: '40vh',
+                    }}
+                  />
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 16px', borderTop: '1px solid #e0e0e0',
+                    background: '#fafafa',
+                  }}>
+                    {jqLibSaveError && (
+                      <span style={{ color: '#c00', fontSize: 12, flex: 1 }}>{jqLibSaveError}</span>
+                    )}
+                    {!jqLibSaveError && dirty && (
+                      <span style={{ color: '#888', fontSize: 12, flex: 1, fontStyle: 'italic' }}>unsaved changes</span>
+                    )}
+                    {!jqLibSaveError && !dirty && <span style={{ flex: 1 }} />}
+                    <button
+                      onClick={() => { setJqLibEditContent(jqLibViewing.content); setJqLibTest(jqLibViewing.tests ?? ''); setJqLibDeps(jqLibViewing.deps ?? []); setJqLibSaveError(''); }}
+                      disabled={jqLibSaving || !dirty}
+                      style={{
+                        padding: '5px 12px', fontSize: 12,
+                        border: '1px solid #ccc', borderRadius: 4, background: '#fff',
+                        cursor: (jqLibSaving || !dirty) ? 'default' : 'pointer',
+                        opacity: (jqLibSaving || !dirty) ? 0.5 : 1,
+                      }}
+                    >Revert</button>
+                    <button
+                      onClick={() => { saveLib(); }}
+                      disabled={jqLibSaving || !dirty}
+                      style={{
+                        padding: '5px 14px', fontSize: 12, fontWeight: 600,
+                        border: '1px solid #1a6bcc', borderRadius: 4,
+                        background: (jqLibSaving || !dirty) ? '#e0e0e0' : '#1a6bcc',
+                        color: (jqLibSaving || !dirty) ? '#888' : '#fff',
+                        cursor: (jqLibSaving || !dirty) ? 'default' : 'pointer',
+                      }}
+                    >{jqLibSaving ? 'Saving…' : 'Save'}</button>
+                  </div>
+                  {/* Tests panel */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '8px 16px 4px', borderTop: '1px solid #e0e0e0',
+                    background: '#fff',
+                  }}>
+                    <span style={{ fontSize: 12, color: '#666', fontWeight: 600 }}>Tests</span>
+                    <span style={{ fontSize: 11, color: '#999', flex: 1 }}>
+                      jq filter — passes when it yields <code>true</code>, a stream of <code>true</code>, or an array of <code>true</code>
+                    </span>
+                    <button
+                      onClick={async () => {
+                        setJqLibTestRunning(true); setJqLibTestResult(null);
+                        const result = await runTest();
+                        setJqLibTestResult(result);
+                        setJqLibTestRunning(false);
+                      }}
+                      disabled={jqLibTestRunning}
+                      style={{
+                        padding: '5px 14px', fontSize: 12, fontWeight: 600,
+                        border: '1px solid #2a6a2a', borderRadius: 4,
+                        background: jqLibTestRunning ? '#e0e0e0' : '#2a6a2a',
+                        color: jqLibTestRunning ? '#888' : '#fff',
+                        cursor: jqLibTestRunning ? 'default' : 'pointer',
+                      }}
+                    >{jqLibTestRunning ? 'Testing…' : 'Test'}</button>
+                  </div>
+                  <textarea
+                    value={jqLibTest}
+                    onChange={e => { setJqLibTest(e.target.value); setJqLibTestResult(null); }}
+                    spellCheck={false}
+                    placeholder="e.g.  bits(8; .[1])  == [true, false, true, false, false, true, true, true]"
+                    style={{
+                      margin: '0 16px 8px', padding: '8px 10px',
+                      fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5,
+                      background: '#fafafa', color: '#222',
+                      border: '1px solid #ccc', borderRadius: 4,
+                      outline: 'none', resize: 'vertical',
+                      minHeight: 60, maxHeight: '30vh',
+                    }}
+                  />
+                  {jqLibTestResult && (
+                    <div style={{
+                      margin: '0 16px 12px', padding: '6px 10px',
+                      fontSize: 12, borderRadius: 4,
+                      color: jqLibTestResult.ok ? '#1a5c1a' : '#8b0000',
+                      background: jqLibTestResult.ok ? '#f0fff0' : '#fff5f5',
+                      border: `1px solid ${jqLibTestResult.ok ? '#b2e0b2' : '#f5c2c2'}`,
+                      whiteSpace: 'pre-wrap',
+                      fontFamily: 'monospace',
+                    }}>
+                      {jqLibTestResult.ok ? '✓ ' : '✗ '}{jqLibTestResult.message}
+                    </div>
+                  )}
+                  {/* Unsaved-changes confirmation overlay */}
+                  {jqLibClosePrompt && (
+                    <div onClick={e => e.stopPropagation()} style={{
+                      position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.96)',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                      gap: 14, padding: 24,
+                    }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#333' }}>
+                        Unsaved changes to {jqLibViewing.name}.jq
+                      </div>
+                      <div style={{ fontSize: 12, color: '#666', textAlign: 'center', maxWidth: 420 }}>
+                        You've edited this library but haven't saved. Save before closing, discard your changes, or keep editing.
+                      </div>
+                      {jqLibSaveError && (
+                        <div style={{ fontSize: 12, color: '#c00' }}>{jqLibSaveError}</div>
+                      )}
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        <button
+                          onClick={() => setJqLibClosePrompt(false)}
+                          disabled={jqLibSaving}
+                          style={{
+                            padding: '6px 14px', fontSize: 12,
+                            border: '1px solid #ccc', borderRadius: 4, background: '#fff',
+                            cursor: jqLibSaving ? 'default' : 'pointer',
+                          }}
+                        >Keep editing</button>
+                        <button
+                          onClick={closeNow}
+                          disabled={jqLibSaving}
+                          style={{
+                            padding: '6px 14px', fontSize: 12,
+                            border: '1px solid #c88', borderRadius: 4, background: '#fff', color: '#8b0000',
+                            cursor: jqLibSaving ? 'default' : 'pointer',
+                          }}
+                        >Discard changes</button>
+                        <button
+                          onClick={async () => {
+                            const ok = await saveLib();
+                            if (ok) closeNow();
+                          }}
+                          disabled={jqLibSaving}
+                          style={{
+                            padding: '6px 14px', fontSize: 12, fontWeight: 600,
+                            border: '1px solid #1a6bcc', borderRadius: 4,
+                            background: jqLibSaving ? '#e0e0e0' : '#1a6bcc',
+                            color: jqLibSaving ? '#888' : '#fff',
+                            cursor: jqLibSaving ? 'default' : 'pointer',
+                          }}
+                        >{jqLibSaving ? 'Saving…' : 'Save & close'}</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
+              );
+            })()}
             <span>jq filter <span style={{ color: '#aaa' }}>(result replaces formula)</span></span>
           </div>
           <textarea

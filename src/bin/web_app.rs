@@ -1,7 +1,7 @@
 use axum::{
     extract::{Json, State},
     http::Method,
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use logic::matrix::CancelHandle;
@@ -16,7 +16,189 @@ use xq::{module_loader::PreludeLoader, run_query, Value as XqValue};
 struct JqLibEntry {
     path:    String,
     name:    String,
+    /// Other `.jq` files this library depends on.  Each entry is a filename
+    /// in `lib/` (same form the loader accepts).  Resolved transitively and
+    /// deduplicated when building a jq preamble; see [`resolve_preamble`].
+    deps:    Vec<String>,
+    /// Library source code (no dep header, no tests).
     content: String,
+    /// Saved test filter.  Empty string if there are no tests.
+    tests:   String,
+}
+
+/// Markers inside a `.jq` file that bracket structured sections.  They are
+/// jq comment lines so a file that contains them is still a legal preamble
+/// if something ever reads the whole file raw without splitting.
+const DEPS_MARKER:     &str = "# === deps ===";
+const DEPS_END_MARKER: &str = "# === end deps ===";
+const TESTS_MARKER:    &str = "# === tests ===";
+
+/// Parse a `.jq` file's raw contents into `(deps, library_code, tests)`.
+///
+/// Layout:
+///   # === deps ===
+///   # expr.jq         ← one per line, `# name` form (jq comment)
+///   # adder.jq
+///   # === end deps ===
+///   ...library code...
+///   # === tests ===
+///   ...test filter...
+///
+/// Any section may be absent.  The deps block, if present, must be at the
+/// start; the tests block, if present, must be after the library code.
+fn split_file(raw: &str) -> (Vec<String>, String, String) {
+    // Split tests off first (reuse the old logic).
+    let (body, tests) = {
+        let mut lib_end: Option<usize> = None;
+        let mut tests_start: Option<usize> = None;
+        let mut offset = 0usize;
+        for line in raw.split_inclusive('\n') {
+            let trimmed = line.trim_end_matches('\n').trim_end_matches('\r').trim_end();
+            if trimmed == TESTS_MARKER {
+                lib_end = Some(offset);
+                tests_start = Some(offset + line.len());
+                break;
+            }
+            offset += line.len();
+        }
+        match (lib_end, tests_start) {
+            (Some(le), Some(ts)) => (raw[..le].to_string(), raw[ts..].to_string()),
+            _ => (raw.to_string(), String::new()),
+        }
+    };
+
+    // Look for a leading deps block.  We only honour it if it starts at the
+    // very beginning (modulo whitespace-only lines); otherwise we leave the
+    // body untouched.
+    let mut deps: Vec<String> = Vec::new();
+    let mut content = body.clone();
+    let mut it = body.lines();
+    let mut header_lines_consumed = 0usize;
+    while let Some(line) = it.next() {
+        if line.trim().is_empty() {
+            header_lines_consumed += line.len() + 1;
+            continue;
+        }
+        if line.trim_end() == DEPS_MARKER {
+            header_lines_consumed += line.len() + 1;
+            // Collect dep names until end marker.
+            let mut closed = false;
+            for inner in it.by_ref() {
+                header_lines_consumed += inner.len() + 1;
+                let t = inner.trim_end();
+                if t == DEPS_END_MARKER { closed = true; break; }
+                // Expect "# name.jq" (jq comment with name).
+                let cleaned = t.trim_start();
+                let cleaned = cleaned.strip_prefix('#').unwrap_or(cleaned).trim();
+                if !cleaned.is_empty() {
+                    deps.push(cleaned.to_string());
+                }
+            }
+            if closed {
+                let take = header_lines_consumed.min(body.len());
+                content = body[take..].to_string();
+            } else {
+                // No closing marker — ignore; treat body as-is.
+                deps.clear();
+            }
+            break;
+        }
+        break;
+    }
+    (deps, content, tests)
+}
+
+/// Serialize a library to its on-disk form, writing only the sections that
+/// have content.  Deps block goes at the top, tests block at the bottom.
+fn join_file(deps: &[String], content: &str, tests: &str) -> String {
+    let mut out = String::new();
+    if !deps.is_empty() {
+        out.push_str(DEPS_MARKER);
+        out.push('\n');
+        for d in deps {
+            out.push_str("# ");
+            out.push_str(d);
+            out.push('\n');
+        }
+        out.push_str(DEPS_END_MARKER);
+        out.push('\n');
+    }
+    out.push_str(content);
+    if !tests.trim().is_empty() {
+        if !out.ends_with('\n') { out.push('\n'); }
+        out.push_str(TESTS_MARKER);
+        out.push('\n');
+        out.push_str(tests);
+    }
+    out
+}
+
+/// Build a concatenated jq preamble from a set of root libraries, pulling in
+/// their transitive dependencies in topological order.  Each library
+/// contributes its `content` (not its tests).  Cycles are reported.
+///
+/// `roots` are the libraries the caller starts from, in order.  `overrides`
+/// maps `path` → `(deps, content)` — typically the currently-loaded
+/// in-memory libs plus any editor preamble override.  Unknown paths fall
+/// through to a disk read from `lib_dir`.
+fn resolve_preamble(
+    roots: &[String],
+    overrides: &HashMap<String, (Vec<String>, String)>,
+    lib_dir: &std::path::Path,
+) -> Result<String, String> {
+    enum State { InProgress, Done }
+    let mut state: HashMap<String, State> = HashMap::new();
+    let mut out = String::new();
+
+    fn visit(
+        path: &str,
+        overrides: &HashMap<String, (Vec<String>, String)>,
+        lib_dir: &std::path::Path,
+        state: &mut HashMap<String, State>,
+        stack: &mut Vec<String>,
+        out: &mut String,
+    ) -> Result<(), String> {
+        match state.get(path) {
+            Some(State::Done) => return Ok(()),
+            Some(State::InProgress) => {
+                // Format a readable cycle report.
+                let start = stack.iter().position(|p| p == path).unwrap_or(0);
+                let cycle: Vec<String> = stack[start..].iter().cloned()
+                    .chain(std::iter::once(path.to_string()))
+                    .collect();
+                return Err(format!("dependency cycle: {}", cycle.join(" → ")));
+            }
+            None => {}
+        }
+        if path.contains('/') || path.contains('\\') || path.contains("..") {
+            return Err(format!("invalid dependency path: {}", path));
+        }
+        let (deps, content) = match overrides.get(path) {
+            Some(v) => v.clone(),
+            None => {
+                let raw = std::fs::read_to_string(lib_dir.join(path))
+                    .map_err(|e| format!("reading dependency {}: {}", path, e))?;
+                let (d, c, _t) = split_file(&raw);
+                (d, c)
+            }
+        };
+        state.insert(path.to_string(), State::InProgress);
+        stack.push(path.to_string());
+        for d in &deps {
+            visit(d, overrides, lib_dir, state, stack, out)?;
+        }
+        stack.pop();
+        out.push_str(&content);
+        if !content.ends_with('\n') { out.push('\n'); }
+        state.insert(path.to_string(), State::Done);
+        Ok(())
+    }
+
+    let mut stack = Vec::new();
+    for r in roots {
+        visit(r, overrides, lib_dir, &mut state, &mut stack, &mut out)?;
+    }
+    Ok(out)
 }
 
 const PREFIX_DETAIL_LIMIT: usize = 1000;
@@ -121,6 +303,19 @@ struct AppState {
 #[derive(Deserialize)]
 struct JqRequest {
     filter: String,
+    /// If set, used as the library body of an ad-hoc override — typically
+    /// the unsaved editor buffer.  Combined with `preamble_path` / `deps` to
+    /// drive transitive dependency resolution.
+    #[serde(default)]
+    preamble: Option<String>,
+    /// Virtual path for `preamble` when resolving dependencies.  Only used
+    /// when `preamble` is set.  Defaults to `"__editor__"`.
+    #[serde(default)]
+    preamble_path: Option<String>,
+    /// Dependencies declared by the editor buffer.  Resolved transitively
+    /// the same way the loaded libraries' `deps` are.
+    #[serde(default)]
+    deps: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -133,13 +328,30 @@ async fn jq_handler(
     State(state): State<AppState>,
     Json(req): Json<JqRequest>,
 ) -> Json<JqResponse> {
+    // Build preamble: resolve transitive deps of the roots, pull each
+    // library's content once.  Loaded libs contribute their in-memory
+    // `content`; unknown deps are read from disk.  If an editor override is
+    // supplied, inject it into the overrides map and seed it as a root.
     let libs = state.jq_libs.lock().unwrap().clone();
-
-    let mut preamble = String::new();
+    let mut overrides: HashMap<String, (Vec<String>, String)> = HashMap::new();
     for lib in &libs {
-        preamble.push_str(&lib.content);
-        preamble.push('\n');
+        overrides.insert(lib.path.clone(), (lib.deps.clone(), lib.content.clone()));
     }
+
+    let mut roots: Vec<String> = libs.iter().map(|l| l.path.clone()).collect();
+    if let Some(body) = &req.preamble {
+        let virt_path = req.preamble_path.clone().unwrap_or_else(|| "__editor__".into());
+        overrides.insert(virt_path.clone(), (req.deps.clone(), body.clone()));
+        // When the editor overrides a library already loaded, re-order roots so
+        // the override appears last (its content wins without duplication).
+        roots.retain(|p| p != &virt_path);
+        roots.push(virt_path);
+    }
+
+    let preamble = match resolve_preamble(&roots, &overrides, &state.server_root.join("lib")) {
+        Ok(s) => s,
+        Err(e) => return Json(JqResponse { results: None, error: Some(e) }),
+    };
 
     let combined = format!("{}{}", preamble, req.filter);
     let loader  = PreludeLoader();
@@ -202,10 +414,11 @@ async fn jq_lib_load_handler(
 ) -> Json<serde_json::Value> {
     let full_path = state.server_root.join("lib").join(&req.path);
 
-    let content = match std::fs::read_to_string(&full_path) {
+    let raw = match std::fs::read_to_string(&full_path) {
         Ok(c)   => c,
         Err(e)  => return Json(serde_json::json!({ "error": e.to_string() })),
     };
+    let (deps, content, tests) = split_file(&raw);
 
     let name = match full_path.file_stem().and_then(|s| s.to_str()) {
         Some(n) => n.to_string(),
@@ -214,9 +427,9 @@ async fn jq_lib_load_handler(
 
     let mut libs = state.jq_libs.lock().unwrap();
     if let Some(pos) = libs.iter().position(|e| e.path == req.path) {
-        libs[pos] = JqLibEntry { path: req.path, name, content };
+        libs[pos] = JqLibEntry { path: req.path, name, deps, content, tests };
     } else {
-        libs.push(JqLibEntry { path: req.path, name, content });
+        libs.push(JqLibEntry { path: req.path, name, deps, content, tests });
     }
 
     Json(serde_json::json!({ "ok": true }))
@@ -227,6 +440,107 @@ async fn jq_lib_unload_handler(
     Json(req): Json<JqLibRequest>,
 ) -> Json<serde_json::Value> {
     state.jq_libs.lock().unwrap().retain(|e| e.path != req.path);
+    Json(serde_json::json!({ "ok": true }))
+}
+
+/// Delete a `.jq` file from `lib/` on disk.  Refuses if any other `.jq` file
+/// in `lib/` lists the target as a dep — the dependants must be fixed or
+/// deleted first.  On success also unloads the file from the in-memory libs.
+async fn jq_lib_delete_handler(
+    State(state): State<AppState>,
+    Json(req): Json<JqLibRequest>,
+) -> Json<serde_json::Value> {
+    if req.path.is_empty() || req.path.contains('/') || req.path.contains('\\') || req.path.contains("..") {
+        return Json(serde_json::json!({ "error": "invalid path" }));
+    }
+    let lib_dir = state.server_root.join("lib");
+    let full_path = lib_dir.join(&req.path);
+    if !full_path.exists() {
+        return Json(serde_json::json!({ "error": format!("{} does not exist", req.path) }));
+    }
+
+    // Scan every other .jq file in lib/ and see whose deps list names this one.
+    let mut dependants: Vec<String> = Vec::new();
+    match std::fs::read_dir(&lib_dir) {
+        Err(e) => return Json(serde_json::json!({ "error": format!("listing lib/: {}", e) })),
+        Ok(entries) => {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let p = entry.path();
+                if p.extension().and_then(|x| x.to_str()) != Some("jq") { continue; }
+                let Some(name) = p.file_name().and_then(|s| s.to_str()) else { continue; };
+                if name == req.path { continue; } // skip self
+                if let Ok(raw) = std::fs::read_to_string(&p) {
+                    let (deps, _c, _t) = split_file(&raw);
+                    if deps.iter().any(|d| d == &req.path) {
+                        dependants.push(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    if !dependants.is_empty() {
+        dependants.sort();
+        return Json(serde_json::json!({
+            "error": format!(
+                "cannot delete {}: still referenced by {}",
+                req.path,
+                dependants.join(", "),
+            ),
+            "dependants": dependants,
+        }));
+    }
+
+    if let Err(e) = std::fs::remove_file(&full_path) {
+        return Json(serde_json::json!({ "error": e.to_string() }));
+    }
+    // Drop from in-memory loaded libs if present.
+    state.jq_libs.lock().unwrap().retain(|e| e.path != req.path);
+    Json(serde_json::json!({ "ok": true }))
+}
+
+#[derive(Deserialize)]
+struct JqLibSaveRequest {
+    path:    String,
+    #[serde(default)]
+    deps:    Vec<String>,
+    content: String,
+    #[serde(default)]
+    tests:   String,
+}
+
+/// Write a library's deps / content / tests back to `lib/{path}` on disk and
+/// refresh the in-memory copy so subsequent `/jq` requests see the change.
+async fn jq_lib_save_handler(
+    State(state): State<AppState>,
+    Json(req): Json<JqLibSaveRequest>,
+) -> Json<serde_json::Value> {
+    // Reject anything that would escape the lib/ directory.  `PathBuf::file_name`
+    // exists for exactly this reason but we need the raw component — disallow
+    // separators and parent references explicitly.
+    if req.path.contains('/') || req.path.contains('\\') || req.path.contains("..") {
+        return Json(serde_json::json!({ "error": "invalid path" }));
+    }
+    // Validate each dep the same way.
+    for d in &req.deps {
+        if d.is_empty() || d.contains('/') || d.contains('\\') || d.contains("..") {
+            return Json(serde_json::json!({ "error": format!("invalid dependency path: {}", d) }));
+        }
+        if d == &req.path {
+            return Json(serde_json::json!({ "error": "a library cannot depend on itself" }));
+        }
+    }
+    let full_path = state.server_root.join("lib").join(&req.path);
+    let on_disk = join_file(&req.deps, &req.content, &req.tests);
+    if let Err(e) = std::fs::write(&full_path, &on_disk) {
+        return Json(serde_json::json!({ "error": e.to_string() }));
+    }
+    // Update any loaded in-memory copy.
+    let mut libs = state.jq_libs.lock().unwrap();
+    if let Some(entry) = libs.iter_mut().find(|e| e.path == req.path) {
+        entry.deps = req.deps;
+        entry.content = req.content;
+        entry.tests = req.tests;
+    }
     Json(serde_json::json!({ "ok": true }))
 }
 
@@ -675,12 +989,15 @@ async fn main() {
 
     let mut default_libs = Vec::new();
     let expr_path = server_root.join("lib").join("expr.jq");
-    if let Ok(content) = std::fs::read_to_string(&expr_path) {
+    if let Ok(raw) = std::fs::read_to_string(&expr_path) {
         println!("Auto-loaded: {}", expr_path.display());
+        let (deps, content, tests) = split_file(&raw);
         default_libs.push(JqLibEntry {
             path:    "expr.jq".to_string(),
             name:    "expr".to_string(),
+            deps,
             content,
+            tests,
         });
     }
 
@@ -696,7 +1013,7 @@ async fn main() {
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods([Method::GET, Method::POST, Method::DELETE])
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers(Any);
 
     let app = Router::new()
@@ -714,7 +1031,9 @@ async fn main() {
         .route("/jq",          post(jq_handler))
         .route("/jq-lib",      get(jq_lib_list_handler)
                                    .post(jq_lib_load_handler)
+                                   .put(jq_lib_save_handler)
                                    .delete(jq_lib_unload_handler))
+        .route("/jq-lib/file",  delete(jq_lib_delete_handler))
         .route("/jq-lib/files", get(jq_lib_files_handler))
         .route("/examples",    get(load_examples_handler).post(save_examples_handler))
         .with_state(state)

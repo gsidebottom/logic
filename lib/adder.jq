@@ -1,3 +1,6 @@
+# === deps ===
+# expr.jq
+# === end deps ===
 def a(i): vi("a";i);
 def b(i): vi("b";i);
 def c(i): vi("c";i);
@@ -31,9 +34,10 @@ def bit_adder(i):
     )
 ;
 
-#
+# w-1, w-2, .. 0
 def width(w): range(w-1;-1;-1);
 
+# w wide adder
 def adder(w): width(w) | prod(bit_adder(.));
 
 # call [bit_position;bit_value] | f for each bit in . as a number w wide.  bit_value is true or false
@@ -64,3 +68,6 @@ def add(w;a;b;c_in;s;c_out):
   )
 ;
 
+# === tests ===
+#bit_adder(0)== "((a_0 b_0 = u_0) (w_0 c_0 = v_0) (u_0 + v_0 = c_1) (a_0 ⊕ b_0 = w_0) (w_0 ⊕ c_0 = s_0))",
+prod(v_eq("x"; 5; 3)) == "x_2 x_1' x_0"

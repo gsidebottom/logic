@@ -67,26 +67,38 @@ fn split_file(raw: &str) -> (Vec<String>, String, String) {
         }
     };
 
-    // Look for a leading deps block.  We only honour it if it starts at the
-    // very beginning (modulo whitespace-only lines); otherwise we leave the
-    // body untouched.
+    // Look for a leading deps block, skipping any purely-blank lines before
+    // it.  We iterate with `split_inclusive('\n')` so `line.len()` is the
+    // real on-disk byte count including any `\r` — which matters on CRLF
+    // files, where plain `lines()` would leave our byte offsets short and
+    // slice `content` mid-way through the end marker.
     let mut deps: Vec<String> = Vec::new();
     let mut content = body.clone();
-    let mut it = body.lines();
-    let mut header_lines_consumed = 0usize;
-    while let Some(line) = it.next() {
-        if line.trim().is_empty() {
-            header_lines_consumed += line.len() + 1;
+    let pieces: Vec<&str> = body.split_inclusive('\n').collect();
+    let mut header_end: Option<usize> = None; // byte just past `# === end deps ===\n`
+    let mut offset = 0usize;
+    let mut i = 0;
+    while i < pieces.len() {
+        let line = pieces[i];
+        let trimmed = line.trim_end_matches('\n').trim_end_matches('\r').trim_end();
+        if trimmed.is_empty() {
+            offset += line.len();
+            i += 1;
             continue;
         }
-        if line.trim_end() == DEPS_MARKER {
-            header_lines_consumed += line.len() + 1;
-            // Collect dep names until end marker.
+        if trimmed == DEPS_MARKER {
+            offset += line.len();
+            i += 1;
             let mut closed = false;
-            for inner in it.by_ref() {
-                header_lines_consumed += inner.len() + 1;
-                let t = inner.trim_end();
-                if t == DEPS_END_MARKER { closed = true; break; }
+            while i < pieces.len() {
+                let inner = pieces[i];
+                let t = inner.trim_end_matches('\n').trim_end_matches('\r').trim_end();
+                offset += inner.len();
+                i += 1;
+                if t == DEPS_END_MARKER {
+                    closed = true;
+                    break;
+                }
                 // Expect "# name.jq" (jq comment with name).
                 let cleaned = t.trim_start();
                 let cleaned = cleaned.strip_prefix('#').unwrap_or(cleaned).trim();
@@ -95,15 +107,17 @@ fn split_file(raw: &str) -> (Vec<String>, String, String) {
                 }
             }
             if closed {
-                let take = header_lines_consumed.min(body.len());
-                content = body[take..].to_string();
+                header_end = Some(offset);
             } else {
-                // No closing marker — ignore; treat body as-is.
+                // No closing marker — treat the file as all-content.
                 deps.clear();
             }
-            break;
         }
         break;
+    }
+    if let Some(end) = header_end {
+        let end = end.min(body.len());
+        content = body[end..].to_string();
     }
     (deps, content, tests)
 }

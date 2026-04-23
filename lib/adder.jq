@@ -4,10 +4,19 @@
 def a(i): vi("a";i);
 def b(i): vi("b";i);
 def c(i): vi("c";i);
-def u(i): vi("u";i);
+def c_in: "c_in";
+def c_out: "c_out";
 def s(i): vi("s";i);
+def u(i): vi("u";i);
+def v(i): vi("v";i);
+def w(i): vi("w";i);
+def d0(i): vi("d0";i);
+def d1(i): vi("d1";i);
+def d2(i): vi("d2";i);
+def d3(i): vi("d3";i);
+def d4(i): vi("d4";i);
 
-# adder for bit i
+# adder
 def adder(a;b;c_in;s;c_out;u1;u2;u3):
     prod(
         br(eq(prod(a, b), u1)),
@@ -18,18 +27,40 @@ def adder(a;b;c_in;s;c_out;u1;u2;u3):
     )
 ;
 
+# faulty adder
+def faulty_adder(a;b;c_in;s;c_out;u1;u2;u3;d0;d1;d2;d3;d4):
+    prod(
+        br(imp((d0 | c),br(eq(prod(a, b), u1)))),
+        br(imp((d1 | c),br(eq(prod(u3, c_in), u2)))),
+        br(imp((d2 | c),br(eq(sum(u1, u2), c_out)))),
+        br(imp((d3 | c),br(eq(xor(a, b), u3)))),
+        br(imp((d4 | c),br(eq(xor(u3, c_in), s))))
+    )
+;
+
 # adder for bit i
 def bit_adder(i):
     br(
         adder(
-            vi("a";i);
-            vi("b";i);
-            vi("c";i);
-            vi("s";i);
-            vi("c";i+1);
-            vi("u";i);
-            vi("v";i);
-            vi("w";i)
+            a(i); b(i);
+            c(i);
+            s(i);
+            c(i+1);
+            u(i); v(i); w(i)
+        )
+    )
+;
+
+# faulty adder for bit i
+def faulty_bit_adder(i):
+    br(
+        faulty_adder(
+            a(i); b(i);
+            c(i);
+            s(i);
+            c(i+1);
+            u(i); v(i); w(i);
+            d0(i); d1(i); d2(i); d3(i); d4(i)
         )
     )
 ;
@@ -69,5 +100,20 @@ def add(w;a;b;c_in;s;c_out):
 ;
 
 # === tests ===
-#bit_adder(0)== "((a_0 b_0 = u_0) (w_0 c_0 = v_0) (u_0 + v_0 = c_1) (a_0 ⊕ b_0 = w_0) (w_0 ⊕ c_0 = s_0))",
-prod(v_eq("x"; 5; 3)) == "x_2 x_1' x_0"
+bit_adder(0) == 
+"((a_0 b_0 = u_0) (w_0 c_0 = v_0) (u_0 + v_0 = c_1) (a_0 ⊕ b_0 = w_0) (w_0 ⊕ c_0 = s_0))",
+
+prod(v_eq("x"; 5; 3)) == "x_2 x_1' x_0",
+
+br(adder(a(0);b(0);c(0);s(0);c(1);u(0);v(0);w(0))) == bit_adder(0),
+
+faulty_adder(a(0);b(0);c(0);s(0);c(1);u(0);v(0);w(0);d0(0);d1(0);d2(0);d3(0);d4(0)) ==
+"(d0_0' ⇒ (a_0 b_0 = u_0)) (d1_0' ⇒ (w_0 c_0 = v_0)) (d2_0' ⇒ (u_0 + v_0 = c_1)) (d3_0' ⇒ (a_0 ⊕ b_0 = w_0)) (d4_0' ⇒ (w_0 ⊕ c_0 = s_0))",
+
+br(
+  faulty_adder(
+    a(0);b(0);c(0);s(0);c(1);
+    u(0);v(0);w(0);d0(0); 
+    d1(0); d2(0); d3(0); d4(0)
+  )
+) == faulty_bit_adder(0)

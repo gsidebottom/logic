@@ -1030,7 +1030,16 @@ async fn main() {
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers(Any);
 
-    let app = Router::new()
+    // Optional static-file serving for the pre-built frontend.  When the env
+    // var `STATIC_DIR` is set and the directory exists, serve it as a
+    // fallback — API routes above still take precedence.  This is how the
+    // Docker image bundles the vite output alongside the Rust binary and
+    // runs everything on a single port.
+    let static_dir = std::env::var("STATIC_DIR").ok()
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_dir());
+
+    let mut app = Router::new()
         .route("/simplify",          post(simplify_handler))
         .route("/valid",             get(valid_status_handler).post(valid_handler))
         .route("/valid/cancel",      post(valid_cancel_handler))
@@ -1050,10 +1059,24 @@ async fn main() {
         .route("/jq-lib/file",  delete(jq_lib_delete_handler))
         .route("/jq-lib/files", get(jq_lib_files_handler))
         .route("/examples",    get(load_examples_handler).post(save_examples_handler))
-        .with_state(state)
-        .layer(cors);
+        .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await.unwrap();
-    println!("Rust service listening on http://localhost:3001");
+    if let Some(dir) = &static_dir {
+        println!("Serving static files from {}", dir.display());
+        app = app.fallback_service(
+            tower_http::services::ServeDir::new(dir)
+                .append_index_html_on_directories(true)
+                .fallback(tower_http::services::ServeFile::new(dir.join("index.html"))),
+        );
+    }
+
+    let app = app.layer(cors);
+
+    let port: u16 = std::env::var("PORT").ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3001);
+    let bind = format!("0.0.0.0:{}", port);
+    let listener = tokio::net::TcpListener::bind(&bind).await.unwrap();
+    println!("Rust service listening on http://localhost:{}", port);
     axum::serve(listener, app).await.unwrap();
 }

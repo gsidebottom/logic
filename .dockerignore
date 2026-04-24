@@ -1,0 +1,13 @@
+target/
+**/node_modules/
+nested-boxes/dist/
+.git/
+.github/
+.logs/
+.pids
+*.log
+*.swp
+.DS_Store
+Dockerfile
+.dockerignore
+docker-compose.yml

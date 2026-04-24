@@ -1,0 +1,12 @@
+services:
+  logic:
+    build: .
+    image: logic:latest
+    ports:
+      - "3001:3001"
+    # Persist edits to jq libraries and the examples file across restarts.
+    # Comment these out for a fully ephemeral container.
+    volumes:
+      - ./lib:/app/lib
+      - ./examples.json:/app/examples.json
+    restart: unless-stopped

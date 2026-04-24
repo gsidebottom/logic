@@ -1,6 +1,13 @@
 import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useMemo } from "react";
 import { parse, complementAst, astToString, resolvePosition, VarLabel } from "./formula.jsx";
 
+// Base URL for API calls.  In `vite dev` we hit the separate Rust service on
+// :3001 (same as before).  In a production build — e.g. the Docker image —
+// the Rust backend also serves the built frontend static files, so relative
+// URLs keep everything same-origin no matter what hostname/port the user
+// reaches the container on.
+const API_BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
+
 // ─── Cover context (for highlighting complementary pairs in diagrams) ──────────
 const CoverContext = createContext(null);
 
@@ -973,7 +980,7 @@ export default function App() {
     if (!jqFilter.trim()) { setJqError(''); return; }
     const id = setTimeout(async () => {
       try {
-        const res  = await fetch('http://localhost:3001/jq', {
+        const res  = await fetch(API_BASE + '/jq', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filter: jqFilter }),
         });
@@ -999,7 +1006,7 @@ export default function App() {
 
   const refreshJqLibs = async () => {
     try {
-      const res  = await fetch('http://localhost:3001/jq-lib');
+      const res  = await fetch(API_BASE + '/jq-lib');
       const data = await res.json();
       setJqLibs(data.libs ?? []);
     } catch {}
@@ -1010,7 +1017,7 @@ export default function App() {
     setJqLibLoading(true);
     setJqLibError('');
     try {
-      const res  = await fetch('http://localhost:3001/jq-lib', {
+      const res  = await fetch(API_BASE + '/jq-lib', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: jqLibPath.trim() }),
       });
@@ -1025,7 +1032,7 @@ export default function App() {
 
   const handleUnloadJqLib = async (path) => {
     try {
-      await fetch('http://localhost:3001/jq-lib', {
+      await fetch(API_BASE + '/jq-lib', {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path }),
       });
@@ -1038,7 +1045,7 @@ export default function App() {
     setSimplified(null);
     setComplementData(null);
     stopValidPolling();
-    if (validRunning) { fetch('http://localhost:3001/valid/cancel', { method: 'POST' }).catch(()=>{}); }
+    if (validRunning) { fetch(API_BASE + '/valid/cancel', { method: 'POST' }).catch(()=>{}); }
     setValidResult(null);
     setValidRunning(false);
     setValidSelected(new Set());
@@ -1048,7 +1055,7 @@ export default function App() {
     setValidVarsExpanded(false);
     setValidAsgnOn(false);
     stopSatPolling();
-    if (satRunning) { fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); }
+    if (satRunning) { fetch(API_BASE + '/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); }
     setSatResult(null);
     setSatRunning(false);
     setSatSelected(new Set());
@@ -1059,17 +1066,17 @@ export default function App() {
     setSatAsgnOn(false);
     // CaDiCaL reset
     stopCadicalValidPolling();
-    if (cadicalValidRunning) { fetch('http://localhost:3001/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); }
+    if (cadicalValidRunning) { fetch(API_BASE + '/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); }
     setCadicalValidResult(null);
     setCadicalValidRunning(false);
     setCadicalValidAsgnOn(false);
     stopCadicalSatPolling();
-    if (cadicalSatRunning) { fetch('http://localhost:3001/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); }
+    if (cadicalSatRunning) { fetch(API_BASE + '/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); }
     setCadicalSatResult(null);
     setCadicalSatRunning(false);
     setCadicalSatAsgnOn(false);
     stopPathsPolling();
-    if (pathsRunning) { fetch('http://localhost:3001/paths/cancel', { method: 'POST' }).catch(()=>{}); }
+    if (pathsRunning) { fetch(API_BASE + '/paths/cancel', { method: 'POST' }).catch(()=>{}); }
     setPathsResult(null);
     setPathsRunning(false);
     setPathsSelected(new Set());
@@ -1080,7 +1087,7 @@ export default function App() {
 
   // Load examples from file on mount
   useEffect(() => {
-    fetch('http://localhost:3001/examples')
+    fetch(API_BASE + '/examples')
       .then(r => r.json())
       .then(data => { if (data.examples) setExamples(data.examples); })
       .catch(() => {});
@@ -1089,7 +1096,7 @@ export default function App() {
   // Load jq lib list and available files from server on mount
   useEffect(() => {
     refreshJqLibs();
-    fetch('http://localhost:3001/jq-lib/files')
+    fetch(API_BASE + '/jq-lib/files')
       .then(r => r.json())
       .then(data => { if (data.files) setJqLibFiles(data.files); })
       .catch(() => {});
@@ -1097,7 +1104,7 @@ export default function App() {
 
   const handleSaveExamples = async () => {
     try {
-      const res  = await fetch('http://localhost:3001/examples', {
+      const res  = await fetch(API_BASE + '/examples', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(examples),
       });
@@ -1130,7 +1137,7 @@ export default function App() {
     setLoading(true);
     const form = simplifyForm;
     try {
-      const res = await fetch('http://localhost:3001/simplify', {
+      const res = await fetch(API_BASE + '/simplify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ formula: input, cnf: form === 'CNF' }),
@@ -1189,7 +1196,7 @@ export default function App() {
 
   const pollPathsOnce = async (complementFlag) => {
     try {
-      const res = await fetch('http://localhost:3001/paths');
+      const res = await fetch(API_BASE + '/paths');
       const data = await res.json();
       applyPathsStatus(data, complementFlag);
     } catch (e) {
@@ -1210,7 +1217,7 @@ export default function App() {
     setComplementData(pathsComp);
     const complementFlag = pathsComp;
     try {
-      const res = await fetch('http://localhost:3001/paths', {
+      const res = await fetch(API_BASE + '/paths', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ formula: input, paths_class_limit: pathsLimit, complement: complementFlag }),
       });
@@ -1228,11 +1235,11 @@ export default function App() {
   const cancelPaths = async () => {
     stopPathsPolling();
     try {
-      await fetch('http://localhost:3001/paths/cancel', { method: 'POST' });
+      await fetch(API_BASE + '/paths/cancel', { method: 'POST' });
     } catch (e) { /* ignore */ }
     // Final fetch to grab whatever the worker accumulated before cancellation.
     try {
-      const res = await fetch('http://localhost:3001/paths');
+      const res = await fetch(API_BASE + '/paths');
       const data = await res.json();
       applyPathsStatus(data, pathsResult?.isComplement ?? false);
     } catch (e) { /* ignore */ }
@@ -1271,7 +1278,7 @@ export default function App() {
 
   const pollValidOnce = async () => {
     try {
-      const res = await fetch('http://localhost:3001/valid');
+      const res = await fetch(API_BASE + '/valid');
       const data = await res.json();
       applyValidStatus(data);
     } catch (e) {
@@ -1290,7 +1297,7 @@ export default function App() {
       hitLimit: false,
     });
     try {
-      const res = await fetch('http://localhost:3001/valid', {
+      const res = await fetch(API_BASE + '/valid', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ formula: input, no_cover: noCoverEnabled }),
       });
@@ -1307,10 +1314,10 @@ export default function App() {
   const cancelValid = async () => {
     stopValidPolling();
     try {
-      await fetch('http://localhost:3001/valid/cancel', { method: 'POST' });
+      await fetch(API_BASE + '/valid/cancel', { method: 'POST' });
     } catch (e) { /* ignore */ }
     try {
-      const res = await fetch('http://localhost:3001/valid');
+      const res = await fetch(API_BASE + '/valid');
       const data = await res.json();
       applyValidStatus(data);
     } catch (e) { /* ignore */ }
@@ -1351,7 +1358,7 @@ export default function App() {
 
   const pollSatOnce = async () => {
     try {
-      const res = await fetch('http://localhost:3001/satisfiable');
+      const res = await fetch(API_BASE + '/satisfiable');
       const data = await res.json();
       applySatStatus(data);
     } catch (e) {
@@ -1370,7 +1377,7 @@ export default function App() {
       hitLimit: false, isComplement: true,
     });
     try {
-      const res = await fetch('http://localhost:3001/satisfiable', {
+      const res = await fetch(API_BASE + '/satisfiable', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ formula: input, no_cover: noCoverEnabled }),
       });
@@ -1387,10 +1394,10 @@ export default function App() {
   const cancelSat = async () => {
     stopSatPolling();
     try {
-      await fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' });
+      await fetch(API_BASE + '/satisfiable/cancel', { method: 'POST' });
     } catch (e) { /* ignore */ }
     try {
-      const res = await fetch('http://localhost:3001/satisfiable');
+      const res = await fetch(API_BASE + '/satisfiable');
       const data = await res.json();
       applySatStatus(data);
     } catch (e) { /* ignore */ }
@@ -1427,7 +1434,7 @@ export default function App() {
 
   const pollCadicalValidOnce = async () => {
     try {
-      const res = await fetch('http://localhost:3001/cadical/valid');
+      const res = await fetch(API_BASE + '/cadical/valid');
       const data = await res.json();
       applyCadicalValidStatus(data);
     } catch (e) {
@@ -1442,7 +1449,7 @@ export default function App() {
     setCadicalValidRunning(true);
     setCadicalValidResult(null);
     try {
-      const res = await fetch('http://localhost:3001/cadical/valid', {
+      const res = await fetch(API_BASE + '/cadical/valid', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ formula: input }),
       });
@@ -1459,10 +1466,10 @@ export default function App() {
   const cancelCadicalValid = async () => {
     stopCadicalValidPolling();
     try {
-      await fetch('http://localhost:3001/cadical/valid/cancel', { method: 'POST' });
+      await fetch(API_BASE + '/cadical/valid/cancel', { method: 'POST' });
     } catch (e) { /* ignore */ }
     try {
-      const res = await fetch('http://localhost:3001/cadical/valid');
+      const res = await fetch(API_BASE + '/cadical/valid');
       const data = await res.json();
       applyCadicalValidStatus(data);
     } catch (e) { /* ignore */ }
@@ -1498,7 +1505,7 @@ export default function App() {
 
   const pollCadicalSatOnce = async () => {
     try {
-      const res = await fetch('http://localhost:3001/cadical/sat');
+      const res = await fetch(API_BASE + '/cadical/sat');
       const data = await res.json();
       applyCadicalSatStatus(data);
     } catch (e) {
@@ -1513,7 +1520,7 @@ export default function App() {
     setCadicalSatRunning(true);
     setCadicalSatResult(null);
     try {
-      const res = await fetch('http://localhost:3001/cadical/sat', {
+      const res = await fetch(API_BASE + '/cadical/sat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ formula: input }),
       });
@@ -1530,10 +1537,10 @@ export default function App() {
   const cancelCadicalSat = async () => {
     stopCadicalSatPolling();
     try {
-      await fetch('http://localhost:3001/cadical/sat/cancel', { method: 'POST' });
+      await fetch(API_BASE + '/cadical/sat/cancel', { method: 'POST' });
     } catch (e) { /* ignore */ }
     try {
-      const res = await fetch('http://localhost:3001/cadical/sat');
+      const res = await fetch(API_BASE + '/cadical/sat');
       const data = await res.json();
       applyCadicalSatStatus(data);
     } catch (e) { /* ignore */ }
@@ -1543,20 +1550,20 @@ export default function App() {
   const handlePaths = () => {
     if (pathsResult && !pathsResult.error) {
       stopPathsPolling();
-      if (pathsRunning) { fetch('http://localhost:3001/paths/cancel', { method: 'POST' }).catch(()=>{}); }
+      if (pathsRunning) { fetch(API_BASE + '/paths/cancel', { method: 'POST' }).catch(()=>{}); }
       setPathsResult(null); setPathsRunning(false); setComplementData(false); return;
     }
     stopValidPolling();
-    if (validRunning) { fetch('http://localhost:3001/valid/cancel', { method: 'POST' }).catch(()=>{}); setValidRunning(false); }
+    if (validRunning) { fetch(API_BASE + '/valid/cancel', { method: 'POST' }).catch(()=>{}); setValidRunning(false); }
     setValidResult(null);
     stopSatPolling();
-    if (satRunning) { fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); setSatRunning(false); }
+    if (satRunning) { fetch(API_BASE + '/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); setSatRunning(false); }
     setSatResult(null);
     stopCadicalValidPolling();
-    if (cadicalValidRunning) { fetch('http://localhost:3001/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); setCadicalValidRunning(false); }
+    if (cadicalValidRunning) { fetch(API_BASE + '/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); setCadicalValidRunning(false); }
     setCadicalValidResult(null); setCadicalValidAsgnOn(false);
     stopCadicalSatPolling();
-    if (cadicalSatRunning) { fetch('http://localhost:3001/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); setCadicalSatRunning(false); }
+    if (cadicalSatRunning) { fetch(API_BASE + '/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); setCadicalSatRunning(false); }
     setCadicalSatResult(null); setCadicalSatAsgnOn(false);
     fetchPaths();
   };
@@ -1584,22 +1591,22 @@ export default function App() {
   const handleValid = () => {
     if (validResult && !validResult.error) {
       stopValidPolling();
-      if (validRunning) { fetch('http://localhost:3001/valid/cancel', { method: 'POST' }).catch(()=>{}); }
+      if (validRunning) { fetch(API_BASE + '/valid/cancel', { method: 'POST' }).catch(()=>{}); }
       setValidResult(null); setValidRunning(false);
       // Also cancel cadical valid
       stopCadicalValidPolling();
-      if (cadicalValidRunning) { fetch('http://localhost:3001/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); }
+      if (cadicalValidRunning) { fetch(API_BASE + '/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); }
       setCadicalValidResult(null); setCadicalValidRunning(false); setCadicalValidAsgnOn(false);
       return;
     }
     stopSatPolling();
-    if (satRunning) { fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); setSatRunning(false); }
+    if (satRunning) { fetch(API_BASE + '/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); setSatRunning(false); }
     setSatResult(null);
     stopCadicalSatPolling();
-    if (cadicalSatRunning) { fetch('http://localhost:3001/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); setCadicalSatRunning(false); }
+    if (cadicalSatRunning) { fetch(API_BASE + '/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); setCadicalSatRunning(false); }
     setCadicalSatResult(null); setCadicalSatAsgnOn(false);
     stopPathsPolling();
-    if (pathsRunning) { fetch('http://localhost:3001/paths/cancel', { method: 'POST' }).catch(()=>{}); setPathsRunning(false); }
+    if (pathsRunning) { fetch(API_BASE + '/paths/cancel', { method: 'POST' }).catch(()=>{}); setPathsRunning(false); }
     setPathsResult(null); setComplementData(false);
     fetchValid();
     if (cadicalEnabled) startCadicalValid();
@@ -1608,22 +1615,22 @@ export default function App() {
   const handleSatisfiable = () => {
     if (satResult && !satResult.error) {
       stopSatPolling();
-      if (satRunning) { fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); }
+      if (satRunning) { fetch(API_BASE + '/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); }
       setSatResult(null); setSatRunning(false); setComplementData(false);
       // Also cancel cadical sat
       stopCadicalSatPolling();
-      if (cadicalSatRunning) { fetch('http://localhost:3001/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); }
+      if (cadicalSatRunning) { fetch(API_BASE + '/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); }
       setCadicalSatResult(null); setCadicalSatRunning(false); setCadicalSatAsgnOn(false);
       return;
     }
     stopValidPolling();
-    if (validRunning) { fetch('http://localhost:3001/valid/cancel', { method: 'POST' }).catch(()=>{}); setValidRunning(false); }
+    if (validRunning) { fetch(API_BASE + '/valid/cancel', { method: 'POST' }).catch(()=>{}); setValidRunning(false); }
     setValidResult(null);
     stopCadicalValidPolling();
-    if (cadicalValidRunning) { fetch('http://localhost:3001/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); setCadicalValidRunning(false); }
+    if (cadicalValidRunning) { fetch(API_BASE + '/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); setCadicalValidRunning(false); }
     setCadicalValidResult(null); setCadicalValidAsgnOn(false);
     stopPathsPolling();
-    if (pathsRunning) { fetch('http://localhost:3001/paths/cancel', { method: 'POST' }).catch(()=>{}); setPathsRunning(false); }
+    if (pathsRunning) { fetch(API_BASE + '/paths/cancel', { method: 'POST' }).catch(()=>{}); setPathsRunning(false); }
     setPathsResult(null);
     fetchSat();
     if (cadicalEnabled) startCadicalSat();
@@ -1636,12 +1643,12 @@ export default function App() {
     if (!didInitNoCover.current) { didInitNoCover.current = true; return; }
     if (validResult && !validResult.error) {
       stopValidPolling();
-      if (validRunning) { fetch('http://localhost:3001/valid/cancel', { method: 'POST' }).catch(()=>{}); }
+      if (validRunning) { fetch(API_BASE + '/valid/cancel', { method: 'POST' }).catch(()=>{}); }
       fetchValid();
     }
     if (satResult && !satResult.error) {
       stopSatPolling();
-      if (satRunning) { fetch('http://localhost:3001/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); }
+      if (satRunning) { fetch(API_BASE + '/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); }
       fetchSat();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1657,7 +1664,7 @@ export default function App() {
         if (!cadicalValidResult && !cadicalValidRunning) startCadicalValid();
       } else {
         stopCadicalValidPolling();
-        if (cadicalValidRunning) { fetch('http://localhost:3001/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); }
+        if (cadicalValidRunning) { fetch(API_BASE + '/cadical/valid/cancel', { method: 'POST' }).catch(()=>{}); }
         setCadicalValidResult(null); setCadicalValidRunning(false); setCadicalValidAsgnOn(false);
       }
     }
@@ -1666,7 +1673,7 @@ export default function App() {
         if (!cadicalSatResult && !cadicalSatRunning) startCadicalSat();
       } else {
         stopCadicalSatPolling();
-        if (cadicalSatRunning) { fetch('http://localhost:3001/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); }
+        if (cadicalSatRunning) { fetch(API_BASE + '/cadical/sat/cancel', { method: 'POST' }).catch(()=>{}); }
         setCadicalSatResult(null); setCadicalSatRunning(false); setCadicalSatAsgnOn(false);
       }
     }
@@ -1755,7 +1762,7 @@ export default function App() {
                       if (!confirm(`Permanently delete lib/${raw}?`)) return;
                       setJqLibLoading(true); setJqLibError('');
                       try {
-                        const res = await fetch('http://localhost:3001/jq-lib/file', {
+                        const res = await fetch(API_BASE + '/jq-lib/file', {
                           method: 'DELETE', headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ path: raw }),
                         });
@@ -1765,7 +1772,7 @@ export default function App() {
                         } else {
                           setJqLibPath('');
                           // Refresh file list & loaded libs.
-                          const filesRes = await fetch('http://localhost:3001/jq-lib/files');
+                          const filesRes = await fetch(API_BASE + '/jq-lib/files');
                           const filesData = await filesRes.json();
                           if (filesData.files) setJqLibFiles(filesData.files);
                           await refreshJqLibs();
@@ -1799,27 +1806,27 @@ export default function App() {
                       setJqLibLoading(true); setJqLibError('');
                       try {
                         // Create an empty library on disk via the save endpoint.
-                        const save = await fetch('http://localhost:3001/jq-lib', {
+                        const save = await fetch(API_BASE + '/jq-lib', {
                           method: 'PUT', headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ path: name, deps: [], content: '', tests: '' }),
                         });
                         const saveData = await save.json();
                         if (saveData.error) { setJqLibError(saveData.error); setJqLibLoading(false); return; }
                         // Load the brand-new file so it appears in the loaded libs list.
-                        const load = await fetch('http://localhost:3001/jq-lib', {
+                        const load = await fetch(API_BASE + '/jq-lib', {
                           method: 'POST', headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ path: name }),
                         });
                         const loadData = await load.json();
                         if (loadData.error) { setJqLibError(loadData.error); setJqLibLoading(false); return; }
                         // Refresh file list & loaded libs.
-                        const filesRes = await fetch('http://localhost:3001/jq-lib/files');
+                        const filesRes = await fetch(API_BASE + '/jq-lib/files');
                         const filesData = await filesRes.json();
                         if (filesData.files) setJqLibFiles(filesData.files);
                         await refreshJqLibs();
                         setJqLibPath('');
                         // Open the editor for the new (empty) lib.
-                        const listRes = await fetch('http://localhost:3001/jq-lib');
+                        const listRes = await fetch(API_BASE + '/jq-lib');
                         const listData = await listRes.json();
                         const created = (listData.libs ?? []).find(l => l.path === name);
                         if (created) {
@@ -1891,7 +1898,7 @@ export default function App() {
                   return { ok: true, message: 'No tests — considered a pass.' };
                 }
                 try {
-                  const res = await fetch('http://localhost:3001/jq', {
+                  const res = await fetch(API_BASE + '/jq', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                       filter: jqLibTest,
@@ -1927,7 +1934,7 @@ export default function App() {
               const saveLib = async () => {
                 setJqLibSaving(true); setJqLibSaveError('');
                 try {
-                  const res = await fetch('http://localhost:3001/jq-lib', {
+                  const res = await fetch(API_BASE + '/jq-lib', {
                     method: 'PUT', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: jqLibViewing.path, deps: jqLibDeps, content: jqLibEditContent, tests: jqLibTest }),
                   });

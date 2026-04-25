@@ -780,7 +780,7 @@ impl NNF {
     /// enumerating all paths.
     pub fn paths(&self, ctrl: &mut dyn PathSearchController) {
         self.for_each_path_prefix(|lits, positions, prod_path| {
-            ctrl.should_continue_on_prefix(lits, positions, prod_path)
+            if ctrl.should_continue_on_prefix(lits, positions, prod_path) { None } else { Some(0) }
         });
     }
 
@@ -797,8 +797,8 @@ impl NNF {
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             m.for_each_path_prefix(|lits, positions, prod_path| {
-                if cancel_for_thread.is_cancelled() { return false; }
-                ctrl.should_continue_on_prefix(lits, positions, prod_path)
+                if cancel_for_thread.is_cancelled() { return Some(0); }
+                if ctrl.should_continue_on_prefix(lits, positions, prod_path) { None } else { Some(0) }
             });
         });
         (handle, cancel)
@@ -840,12 +840,12 @@ impl NNF {
                 // class emissions — otherwise an UNSAT/all-covered formula can
                 // run the entire DFS to completion before any class event ever
                 // gives the on_class closure a chance to notice.
-                if cancel_for_step.is_cancelled() { return false; }
+                if cancel_for_step.is_cancelled() { return Some(0); }
                 step = step.wrapping_add(1);
                 if step & 0xFFF == 0 {
                     cancel_for_step.record_paths(ctrl.path_count() as f64);
                 }
-                ctrl.should_continue_on_prefix(lits, positions, prod_path)
+                if ctrl.should_continue_on_prefix(lits, positions, prod_path) { None } else { Some(0) }
             });
             cancel_for_step.record_paths(ctrl.path_count() as f64);
             match send_err {
@@ -945,60 +945,83 @@ impl NNF {
         Paths { classes, hit_limit: false }
     }
 
-    /// Depth-first traversal of all path prefixes, with pruning.
+    /// Depth-first traversal of all path prefixes, with generalized pruning.
     ///
-    /// Calls `f(lits, positions, prod_path)` at each step of the traversal:
+    /// Calls `report_prefix(lits, positions, prod_path)` at each step of the
+    /// traversal:
     /// - When a `Prod` member is selected or a `Lit` is reached: `prod_path` is `None`
     /// - When a full path is completed: `prod_path` is `Some(&path)`
     ///
     /// `lits` and `positions` are parallel vectors: `positions[i]` is the
     /// absolute tree address of `lits[i]`.
     ///
-    /// If `f` returns `true`, traversal continues forward; if `false`, it
-    /// backtracks to the last `Prod` member choice.
+    /// `report_prefix` returns `Option<usize>`:
+    /// - `None` — continue forward (the equivalent of the old `true`).
+    /// - `Some(0)` — backtrack one level: pop the last item from `pos` and
+    ///   `path` and continue with the next sibling at this level.  Equivalent
+    ///   to the old `false`.
+    /// - `Some(i)` for `i > 0` — backtrack `i + 1` levels: pop the last
+    ///   `i + 1` items from `pos` (and from `path` for those that were
+    ///   `Prod` choices), then continue with the next sibling at the level
+    ///   we land on.  Lets a caller skip up multiple recursion frames in one
+    ///   shot — useful when a lit-set discovers that an ancestor's choice
+    ///   has become impossible.
     pub fn for_each_path_prefix(
         &self,
-        mut f: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> bool,
+        mut report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> Option<usize>,
     ) {
         type Lits<'a> = Vec<&'a Lit>;
         type Positions = PathPrefix;
 
-        fn traverse<'a, F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> bool>(
+        fn traverse<'a, F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> Option<usize>>(
             m: &'a NNF,
             path: &mut ProdPath,
             lits: &mut Lits<'a>,
             positions: &mut Positions,
             pos: &mut Position,
             f: &mut F,
-            then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut Positions, &mut Position, &mut F),
-        ) {
+            then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut Positions, &mut Position, &mut F) -> Option<usize>,
+        ) -> Option<usize> {
             match m {
                 NNF::Lit(l) => {
                     lits.push(l);
                     positions.push(pos.clone());
-                    then(path, lits, positions, pos, f);
+                    let r = then(path, lits, positions, pos, f);
                     positions.pop();
                     lits.pop();
+                    r
                 }
                 NNF::Prod(children) => {
                     for (i, child) in children.iter().enumerate() {
                         path.push(i);
                         pos.push(i);
-                        if f(lits, positions, None) {
-                            traverse(child, path, lits, positions, pos, f, then);
-                        }
+                        let r = match f(lits, positions, None) {
+                            None        => traverse(child, path, lits, positions, pos, f, then),
+                            Some(k)     => Some(k),
+                        };
                         pos.pop();
                         path.pop();
+                        match r {
+                            // None: child completed normally; try next sibling.
+                            // Some(0): unwind requested at this level only —
+                            //          natural pop above already removed the
+                            //          one item asked for; continue with next
+                            //          sibling.
+                            None | Some(0) => continue,
+                            // Some(k>0): unwind further — propagate decremented.
+                            Some(k)        => return Some(k - 1),
+                        }
                     }
+                    None
                 }
                 NNF::Sum(children) => {
-                    traverse_sum(children, 0, path, lits, positions, pos, f, then);
+                    traverse_sum(children, 0, path, lits, positions, pos, f, then)
                 }
             }
         }
 
         #[allow(clippy::too_many_arguments)]
-        fn traverse_sum<'a, F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> bool>(
+        fn traverse_sum<'a, F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> Option<usize>>(
             children: &'a [NNF],
             idx: usize,
             path: &mut ProdPath,
@@ -1006,22 +1029,26 @@ impl NNF {
             positions: &mut Positions,
             pos: &mut Position,
             f: &mut F,
-            then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut Positions, &mut Position, &mut F),
-        ) {
+            then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut Positions, &mut Position, &mut F) -> Option<usize>,
+        ) -> Option<usize> {
             if idx >= children.len() {
-                then(path, lits, positions, pos, f);
-            } else {
-                let pos_len = pos.len();
-                pos.push(idx);
-                traverse(&children[idx], path, lits, positions, pos, f,
-                    &mut |path, lits, positions, pos, f| {
-                        let saved_pos = pos.clone();
-                        pos.truncate(pos_len);
-                        traverse_sum(children, idx + 1, path, lits, positions, pos, f, then);
-                        *pos = saved_pos;
-                    },
-                );
-                pos.truncate(pos_len);
+                return then(path, lits, positions, pos, f);
+            }
+            let pos_len = pos.len();
+            pos.push(idx);
+            let r = traverse(&children[idx], path, lits, positions, pos, f,
+                &mut |path, lits, positions, pos, f| {
+                    let saved_pos = pos.clone();
+                    pos.truncate(pos_len);
+                    let r = traverse_sum(children, idx + 1, path, lits, positions, pos, f, then);
+                    if r.is_none() { *pos = saved_pos; }
+                    r
+                },
+            );
+            pos.truncate(pos_len);
+            match r {
+                None | Some(0) => None,
+                Some(k)        => Some(k - 1),
             }
         }
 
@@ -1029,9 +1056,9 @@ impl NNF {
         let mut lits = Vec::new();
         let mut positions = Vec::new();
         let mut pos = Vec::new();
-        traverse(self, &mut path, &mut lits, &mut positions, &mut pos, &mut f,
+        traverse(self, &mut path, &mut lits, &mut positions, &mut pos, &mut report_prefix,
             &mut |path, lits, positions, _pos, f| {
-                f(lits, positions, Some(path));
+                f(lits, positions, Some(path))
             },
         );
     }
@@ -1165,7 +1192,7 @@ impl NNF {
         let handle = tokio::task::spawn_blocking(move || {
             let mut send_err = None;
             m.for_each_path_prefix(|lits, positions, prod_path| {
-                if send_err.is_some() || cancel_for_thread.is_cancelled() { return false; }
+                if send_err.is_some() || cancel_for_thread.is_cancelled() { return Some(0); }
                 let event = PathPrefixEvent {
                     lits: lits.iter().map(|&l| l.clone()).collect(),
                     positions: positions.clone(),
@@ -1173,9 +1200,9 @@ impl NNF {
                 };
                 if let Err(e) = tx.blocking_send(event) {
                     send_err = Some(e);
-                    return false;
+                    return Some(0);
                 }
-                path_prefix_controller(lits, positions, prod_path)
+                if path_prefix_controller(lits, positions, prod_path) { None } else { Some(0) }
             });
             send_err.map(Err).unwrap_or(Ok(()))
         });
@@ -1632,7 +1659,7 @@ mod tests {
             if let Some(path) = prod_path {
                 full_paths.push(path.clone());
             }
-            true
+            None
         });
         assert_eq!(full_paths, expected);
     }
@@ -1647,7 +1674,7 @@ mod tests {
         let mut all_lit_counts = Vec::new();
         m.for_each_path_prefix(|lits, _pos, _prod_path| {
             all_lit_counts.push(lits.len());
-            true
+            None
         });
         // Should see various prefix literal counts including 0 (Prod selections)
         assert!(all_lit_counts.contains(&0));
@@ -1664,7 +1691,7 @@ mod tests {
                 completed_paths.push(path.clone());
             }
             // Prune: don't continue if latest literal is var 1 (b)
-            !lits.last().is_some_and(|l| l.var == 1)
+            if lits.last().is_some_and(|l| l.var == 1) { Some(0) } else { None }
         });
         // Path [1] selects b, which gets pruned. Only paths selecting a (var 0) complete.
         assert_eq!(completed_paths.len(), 2); // [0,0] and [0,1]
@@ -1683,7 +1710,7 @@ mod tests {
                 lits.iter().map(|l| (l.var, l.neg)).collect(),
                 prod_path.cloned(),
             ));
-            true
+            None
         });
 
         let a  = (0, false);
@@ -2252,7 +2279,7 @@ mod tests {
                 positions.clone(),
                 prod_path.cloned(),
             ));
-            true
+            None
         });
 
         let (handle, mut rx, _cancel) = m.for_each_path_prefix_async(64, |_, _, _| true);

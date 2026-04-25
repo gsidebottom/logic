@@ -137,7 +137,6 @@ def faulty_add_at_most(w;a;b;c_in;s;c_out;n):
     faulty_add(w;a;b;c_in;s;c_out)
   )
 ;
-# this takes forever to run
 def test_faulty_add_at_most:
   faulty_add_at_most(6;3;19;0;21;0;1) | length == 2525
 ;

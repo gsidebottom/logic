@@ -144,17 +144,17 @@ w(3; 3; 9)
 
 From [Matings in Matrices](https://dl.acm.org/doi/epdf/10.1145/182.183)
 
-![img_1.png](img/matings/img_1.png)
+![img_1.png](../img/matings/img_1.png)
 
-![img_2.png](img/matings/img_2.png)
+![img_2.png](../img/matings/img_2.png)
 
-![img_3.png](img/matings/img_3.png)
+![img_3.png](../img/matings/img_3.png)
 
-![img_4.png](img/matings/img_4.png)
+![img_4.png](../img/matings/img_4.png)
 
 From [Issues in Theorem Proving Based on the Connection Method](https://www.researchgate.net/publication/226541694_Issues_in_Theorem_Proving_Based_on_the_Connection_Method)
 
-![img.png](img/issues/img.png)
+![img.png](../img/issues/img.png)
 
 ## Some References
 

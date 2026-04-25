@@ -787,12 +787,13 @@ impl NNF {
         let m = self.clone();
         let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
         let cancel = CancelHandle::new();
-        let cancel_for_thread = cancel.clone();
+        let cancel_for_class = cancel.clone();
+        let cancel_for_step  = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let mut send_err: Option<tokio::sync::mpsc::error::SendError<(PathsClass, bool)>> = None;
             let mut ctrl = BacktrackWhenCoveredController::with_on_class(params,
                 |class: PathsClass, hit_limit: bool| {
-                    if send_err.is_some() || cancel_for_thread.is_cancelled() { return false; }
+                    if send_err.is_some() || cancel_for_class.is_cancelled() { return false; }
                     if let Err(e) = tx.blocking_send((class, hit_limit)) {
                         send_err = Some(e);
                         return false;
@@ -801,6 +802,11 @@ impl NNF {
                 },
             );
             m.for_each_path_prefix(|lits, positions, prod_path| {
+                // Cancel must be honoured at every traversal step, not only on
+                // class emissions — otherwise an UNSAT/all-covered formula can
+                // run the entire DFS to completion before any class event ever
+                // gives the on_class closure a chance to notice.
+                if cancel_for_step.is_cancelled() { return false; }
                 ctrl.should_continue_on_prefix(lits, positions, prod_path)
             });
             match send_err {
@@ -827,12 +833,13 @@ impl NNF {
         let m = self.clone();
         let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
         let cancel = CancelHandle::new();
-        let cancel_for_thread = cancel.clone();
+        let cancel_for_class = cancel.clone();
+        let cancel_for_step  = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let mut send_err: Option<tokio::sync::mpsc::error::SendError<(PathsClass, bool)>> = None;
             let mut ctrl = BacktrackWhenCoveredController::with_on_class_uncovered_only(params,
                 |class: PathsClass, hit_limit: bool| {
-                    if send_err.is_some() || cancel_for_thread.is_cancelled() { return false; }
+                    if send_err.is_some() || cancel_for_class.is_cancelled() { return false; }
                     if let Err(e) = tx.blocking_send((class, hit_limit)) {
                         send_err = Some(e);
                         return false;
@@ -842,6 +849,11 @@ impl NNF {
             );
             debug_assert!(!ctrl.needs_cover());
             m.for_each_path_prefix_no_positions(|lits, prod_path| {
+                // Cancel must be honoured at every traversal step — see the
+                // companion comment in `classify_paths`.  Especially important
+                // here because UNSAT formulas in uncovered-only mode never
+                // emit a class event for the on_class closure to check.
+                if cancel_for_step.is_cancelled() { return false; }
                 // Controller ignores `prefix_positions` in uncovered-only mode.
                 let empty: PathPrefix = Vec::new();
                 ctrl.should_continue_on_prefix(lits, &empty, prod_path)
@@ -2279,9 +2291,22 @@ mod tests {
             for l in lines { out.push_str(l); out.push('\n'); }
             out
         };
-        let expr  = strip_sections(&std::fs::read_to_string("lib/expr.jq").expect("read lib/expr.jq"));
-        let adder = strip_sections(&std::fs::read_to_string("lib/adder.jq").expect("read lib/adder.jq"));
-        let combined = format!("{}\n{}\nadd(16;371;226;0;empty;empty)", expr, adder);
+        // Concatenate every dep adder.jq has accumulated.  Order matters —
+        // dependencies must precede the libs that use them; we rely on the
+        // current set of files in lib/ here rather than parsing the deps
+        // marker so the test stays self-contained.
+        let load = |name: &str| -> String {
+            strip_sections(&std::fs::read_to_string(format!("lib/{}", name))
+                .unwrap_or_else(|e| panic!("read lib/{}: {}", name, e)))
+        };
+        let expr     = load("expr.jq");
+        let math     = load("math.jq");
+        let at_most  = load("at_most.jq");
+        let adder    = load("adder.jq");
+        let combined = format!(
+            "{}\n{}\n{}\n{}\nadd(16;371;226;0;empty;empty)",
+            expr, math, at_most, adder,
+        );
 
         let loader  = PreludeLoader();
         let context = std::iter::once(Ok::<XqValue, xq::InputError>(XqValue::Null));

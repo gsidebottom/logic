@@ -22,14 +22,36 @@ pub fn shared_runtime() -> &'static tokio::runtime::Runtime {
     })
 }
 
-/// Handle for cooperatively cancelling a running async traversal.
+/// Two-way handle on a running path-classification job: callers use it to
+/// cooperatively cancel the worker, and the worker uses it to publish a
+/// best-effort live progress count of *paths classified so far* (covered
+/// + uncovered, weighted by each covered prefix's cover count) so readers
+/// see something tick even when the result channel is silent — e.g. an
+/// UNSAT formula in `no_cover` mode classifies many paths but emits no
+/// class events.
+///
+/// The progress value is an `f64` because cover counts can vastly exceed
+/// `u64`'s range for large NNFs; we store it as `f64::to_bits` inside an
+/// `AtomicU64` so loads and stores stay lock-free.
 #[derive(Clone, Default, Debug)]
-pub struct CancelHandle(Arc<AtomicBool>);
+pub struct PathClassificationHandle {
+    cancelled: Arc<AtomicBool>,
+    paths:     Arc<std::sync::atomic::AtomicU64>,
+}
 
-impl CancelHandle {
+impl PathClassificationHandle {
     pub fn new() -> Self { Self::default() }
-    pub fn cancel(&self) { self.0.store(true, Ordering::Relaxed); }
-    pub fn is_cancelled(&self) -> bool { self.0.load(Ordering::Relaxed) }
+    pub fn cancel(&self) { self.cancelled.store(true, Ordering::Relaxed); }
+    pub fn is_cancelled(&self) -> bool { self.cancelled.load(Ordering::Relaxed) }
+    /// Worker-side: publish the current count of paths classified so far
+    /// (sum of cover counts of covered prefixes plus the number of uncovered
+    /// paths reached).  Monotonically non-decreasing during a single run.
+    pub fn record_paths(&self, n: f64) {
+        self.paths.store(n.to_bits(), Ordering::Relaxed);
+    }
+    pub fn paths_so_far(&self) -> f64 {
+        f64::from_bits(self.paths.load(Ordering::Relaxed))
+    }
 }
 
 // ─── Literal ──────────────────────────────────────────────────────────────────
@@ -273,6 +295,17 @@ impl<F: FnMut(PathsClass, bool) -> bool> BacktrackWhenCoveredController<F> {
             || self.uncovered_path_count >= self.uncovered_path_limit
             || self.covered_prefix_count >= self.covered_prefix_limit
     }
+
+    /// Total classified path prefixes (covered + uncovered) seen so far.
+    pub fn path_count(&self) -> usize { self.path_count }
+
+    /// Number of complementary-pair detections so far (covered prefixes).
+    /// Each one stands for `cover_count` complete paths that the DFS pruned.
+    pub fn covered_prefix_count(&self) -> usize { self.covered_prefix_count }
+
+    /// Number of complete uncovered paths reached so far.  Each contributes
+    /// exactly one path to the classified total.
+    pub fn uncovered_path_count(&self) -> usize { self.uncovered_path_count }
 
     #[inline]
     fn ensure_capacity(&mut self, idx: usize) {
@@ -758,9 +791,9 @@ impl NNF {
     pub fn paths_async(
         &self,
         mut ctrl: impl PathSearchController + Send + 'static,
-    ) -> (tokio::task::JoinHandle<()>, CancelHandle) {
+    ) -> (tokio::task::JoinHandle<()>, PathClassificationHandle) {
         let m = self.clone();
-        let cancel = CancelHandle::new();
+        let cancel = PathClassificationHandle::new();
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             m.for_each_path_prefix(|lits, positions, prod_path| {
@@ -782,11 +815,11 @@ impl NNF {
     ) -> (
         tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
         tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
-        CancelHandle,
+        PathClassificationHandle,
     ) {
         let m = self.clone();
         let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
-        let cancel = CancelHandle::new();
+        let cancel = PathClassificationHandle::new();
         let cancel_for_class = cancel.clone();
         let cancel_for_step  = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
@@ -801,14 +834,20 @@ impl NNF {
                     true
                 },
             );
+            let mut step: u64 = 0;
             m.for_each_path_prefix(|lits, positions, prod_path| {
                 // Cancel must be honoured at every traversal step, not only on
                 // class emissions — otherwise an UNSAT/all-covered formula can
                 // run the entire DFS to completion before any class event ever
                 // gives the on_class closure a chance to notice.
                 if cancel_for_step.is_cancelled() { return false; }
+                step = step.wrapping_add(1);
+                if step & 0xFFF == 0 {
+                    cancel_for_step.record_paths(ctrl.path_count() as f64);
+                }
                 ctrl.should_continue_on_prefix(lits, positions, prod_path)
             });
+            cancel_for_step.record_paths(ctrl.path_count() as f64);
             match send_err {
                 Some(e) => Err(Box::new(e) as Box<dyn std::error::Error + Send>),
                 None => Ok(()),
@@ -828,11 +867,11 @@ impl NNF {
     ) -> (
         tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
         tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
-        CancelHandle,
+        PathClassificationHandle,
     ) {
         let m = self.clone();
         let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
-        let cancel = CancelHandle::new();
+        let cancel = PathClassificationHandle::new();
         let cancel_for_class = cancel.clone();
         let cancel_for_step  = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
@@ -848,16 +887,37 @@ impl NNF {
                 },
             );
             debug_assert!(!ctrl.needs_cover());
-            m.for_each_path_prefix_no_positions(|lits, prod_path| {
-                // Cancel must be honoured at every traversal step — see the
-                // companion comment in `classify_paths`.  Especially important
-                // here because UNSAT formulas in uncovered-only mode never
-                // emit a class event for the on_class closure to check.
+            // Track *paths* classified, not just covered-prefix detections.
+            // Each time the controller's covered or uncovered counter ticks
+            // up, add the current cover-count multiplier (paths covered) or
+            // 1 (paths reached uncovered) to the running total.  Publish
+            // every few thousand traversal steps so the front end's poll
+            // sees a smooth increase.
+            let mut step: u64 = 0;
+            let mut paths_classified: f64 = 0.0;
+            let mut prev_cov: usize = 0;
+            let mut prev_unc: usize = 0;
+            m.for_each_path_prefix_no_positions(|lits, prod_path, cover_mult| {
                 if cancel_for_step.is_cancelled() { return false; }
-                // Controller ignores `prefix_positions` in uncovered-only mode.
                 let empty: PathPrefix = Vec::new();
-                ctrl.should_continue_on_prefix(lits, &empty, prod_path)
+                let cont = ctrl.should_continue_on_prefix(lits, &empty, prod_path);
+                let cov = ctrl.covered_prefix_count();
+                let unc = ctrl.uncovered_path_count();
+                if cov > prev_cov {
+                    paths_classified += cover_mult;
+                    prev_cov = cov;
+                }
+                if unc > prev_unc {
+                    paths_classified += 1.0;
+                    prev_unc = unc;
+                }
+                step = step.wrapping_add(1);
+                if step & 0xFFF == 0 {
+                    cancel_for_step.record_paths(paths_classified);
+                }
+                cont
             });
+            cancel_for_step.record_paths(paths_classified);
             match send_err {
                 Some(e) => Err(Box::new(e) as Box<dyn std::error::Error + Send>),
                 None => Ok(()),
@@ -980,54 +1040,92 @@ impl NNF {
     /// per-Lit `pos.clone()` and doesn't maintain a parallel `positions` vec.
     /// Use when the controller's `needs_cover()` is `false` (e.g. for
     /// first-uncovered queries where cover certificates aren't consumed).
+    ///
+    /// The callback receives an additional `cover_mult: f64` argument: the
+    /// number of complete paths through the NNF that share the *current*
+    /// prefix.  When the controller detects a covered pair and returns
+    /// false, this multiplier is the cover count of the covered prefix.
+    /// At a path completion (`prod_path = Some(_)`) the multiplier is 1.
     pub fn for_each_path_prefix_no_positions(
         &self,
-        mut f: impl FnMut(&Vec<&Lit>, Option<&ProdPath>) -> bool,
+        mut f: impl FnMut(&Vec<&Lit>, Option<&ProdPath>, f64) -> bool,
     ) {
         type Lits<'a> = Vec<&'a Lit>;
+        type Counts = std::collections::HashMap<*const NNF, f64>;
 
-        fn traverse<'a, F: FnMut(&Lits<'a>, Option<&ProdPath>) -> bool>(
+        // Memoise path_count for every reachable subtree once.  Without this
+        // the per-Sum sibling-product computations would call path_count
+        // recursively and turn an O(N) traversal into O(N²) or worse.
+        fn build_counts(n: &NNF, c: &mut Counts) -> f64 {
+            let k = n as *const NNF;
+            if let Some(&v) = c.get(&k) { return v; }
+            let v = match n {
+                NNF::Lit(_)   => 1.0,
+                NNF::Sum(ch)  => ch.iter().map(|x| build_counts(x, c)).product(),
+                NNF::Prod(ch) => ch.iter().map(|x| build_counts(x, c)).sum(),
+            };
+            c.insert(k, v);
+            v
+        }
+        let mut counts: Counts = std::collections::HashMap::new();
+        build_counts(self, &mut counts);
+
+        fn traverse<'a, F: FnMut(&Lits<'a>, Option<&ProdPath>, f64) -> bool>(
             m: &'a NNF,
+            mult: f64,
             path: &mut ProdPath,
             lits: &mut Lits<'a>,
+            counts: &Counts,
             f: &mut F,
-            then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut F),
+            then: &mut dyn FnMut(f64, &mut ProdPath, &mut Lits<'a>, &Counts, &mut F),
         ) {
             match m {
                 NNF::Lit(l) => {
                     lits.push(l);
-                    then(path, lits, f);
+                    then(mult, path, lits, counts, f);
                     lits.pop();
                 }
                 NNF::Prod(children) => {
+                    // Prod siblings are alternative paths the DFS will visit
+                    // independently after backtrack; the cover does not skip
+                    // them, so the multiplier is unchanged.
                     for (i, child) in children.iter().enumerate() {
                         path.push(i);
-                        if f(lits, None) {
-                            traverse(child, path, lits, f, then);
+                        if f(lits, None, mult) {
+                            traverse(child, mult, path, lits, counts, f, then);
                         }
                         path.pop();
                     }
                 }
                 NNF::Sum(children) => {
-                    traverse_sum(children, 0, path, lits, f, then);
+                    traverse_sum(children, 0, mult, path, lits, counts, f, then);
                 }
             }
         }
 
-        fn traverse_sum<'a, F: FnMut(&Lits<'a>, Option<&ProdPath>) -> bool>(
+        fn traverse_sum<'a, F: FnMut(&Lits<'a>, Option<&ProdPath>, f64) -> bool>(
             children: &'a [NNF],
             idx: usize,
+            base_mult: f64,
             path: &mut ProdPath,
             lits: &mut Lits<'a>,
+            counts: &Counts,
             f: &mut F,
-            then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut F),
+            then: &mut dyn FnMut(f64, &mut ProdPath, &mut Lits<'a>, &Counts, &mut F),
         ) {
             if idx >= children.len() {
-                then(path, lits, f);
+                then(base_mult, path, lits, counts, f);
             } else {
-                traverse(&children[idx], path, lits, f,
-                    &mut |path, lits, f| {
-                        traverse_sum(children, idx + 1, path, lits, f, then);
+                // While inside child idx the unvisited Sum siblings to its
+                // right (idx+1..) contribute a product factor — those
+                // sub-paths are skipped if we backtrack from inside child idx.
+                let after_mult: f64 = children[idx+1..].iter()
+                    .map(|c| counts[&(c as *const NNF)])
+                    .product();
+                let inner = base_mult * after_mult;
+                traverse(&children[idx], inner, path, lits, counts, f,
+                    &mut |_m, path, lits, counts, f| {
+                        traverse_sum(children, idx + 1, base_mult, path, lits, counts, f, then);
                     },
                 );
             }
@@ -1035,9 +1133,9 @@ impl NNF {
 
         let mut path = ProdPath::new();
         let mut lits = Vec::new();
-        traverse(self, &mut path, &mut lits, &mut f,
-            &mut |path, lits, f| {
-                f(lits, Some(path));
+        traverse(self, 1.0, &mut path, &mut lits, &counts, &mut f,
+            &mut |mult, path, lits, _counts, f| {
+                f(lits, Some(path), mult);
             },
         );
     }
@@ -1058,11 +1156,11 @@ impl NNF {
     ) -> (
         tokio::task::JoinHandle<Result<(), tokio::sync::mpsc::error::SendError<PathPrefixEvent>>>,
         tokio::sync::mpsc::Receiver<PathPrefixEvent>,
-        CancelHandle,
+        PathClassificationHandle,
     ) {
         let m = self.clone();
         let (tx, rx) = tokio::sync::mpsc::channel::<PathPrefixEvent>(buffer_size);
-        let cancel = CancelHandle::new();
+        let cancel = PathClassificationHandle::new();
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let mut send_err = None;
@@ -1163,7 +1261,7 @@ impl Matrix {
     ) -> (
         tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
         tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
-        CancelHandle,
+        PathClassificationHandle,
     ) {
         let target = if complement { &self.nnf_complement } else { &self.nnf };
         if params.as_ref().is_some_and(|p| p.no_cover) {

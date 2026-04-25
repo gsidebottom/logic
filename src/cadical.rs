@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use crate::matrix::{CancelHandle, Lit, Matrix, NNF};
+use crate::matrix::{PathClassificationHandle, Lit, Matrix, NNF};
 
 // ─── Tseitin encoding ────────────────────────────────────────────────────────
 
@@ -100,14 +100,14 @@ fn extract_assignment(solver: &cadical::Solver<SolverCallbacks>, n_vars: i32) ->
 
 impl Matrix {
     /// Check validity using CaDiCaL. Valid iff the complement is unsatisfiable.
-    /// Returns a JoinHandle and CancelHandle for async cancellation.
+    /// Returns a JoinHandle and PathClassificationHandle for async cancellation.
     pub fn cadical_valid(&self) -> (
         tokio::task::JoinHandle<Result<CaDiCaLValidResult, Box<dyn std::error::Error + Send>>>,
-        CancelHandle,
+        PathClassificationHandle,
     ) {
         let nnf_complement = self.nnf_complement.clone();
         let n_vars = self.ast.vars.len() as i32;
-        let cancel = CancelHandle::new();
+        let cancel = PathClassificationHandle::new();
         let cancel_inner = Arc::new(AtomicBool::new(false));
         let cancel_for_callback = cancel_inner.clone();
         let cancel_handle = cancel.clone();
@@ -148,7 +148,7 @@ impl Matrix {
             }
         });
 
-        // Spawn a watcher that propagates CancelHandle to the AtomicBool
+        // Spawn a watcher that propagates PathClassificationHandle to the AtomicBool
         let cancel_flag = cancel_inner;
         let cancel_watch = cancel_handle.clone();
         tokio::task::spawn(async move {
@@ -165,14 +165,14 @@ impl Matrix {
     }
 
     /// Check satisfiability using CaDiCaL.
-    /// Returns a JoinHandle and CancelHandle for async cancellation.
+    /// Returns a JoinHandle and PathClassificationHandle for async cancellation.
     pub fn cadical_satisfiable(&self) -> (
         tokio::task::JoinHandle<Result<CaDiCaLSatisfiableResult, Box<dyn std::error::Error + Send>>>,
-        CancelHandle,
+        PathClassificationHandle,
     ) {
         let nnf = self.nnf.clone();
         let n_vars = self.ast.vars.len() as i32;
-        let cancel = CancelHandle::new();
+        let cancel = PathClassificationHandle::new();
         let cancel_inner = Arc::new(AtomicBool::new(false));
         let cancel_for_callback = cancel_inner.clone();
         let cancel_handle = cancel.clone();

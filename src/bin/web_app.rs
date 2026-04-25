@@ -4,7 +4,7 @@ use axum::{
     routing::{delete, get, post},
     Router,
 };
-use logic::matrix::CancelHandle;
+use logic::matrix::PathClassificationHandle;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, sync::{Arc, Mutex}};
 use tower_http::cors::{Any, CorsLayer};
@@ -251,7 +251,7 @@ struct ClassifyJob {
     snapshot: ClassifySnapshot,
     total_path_count:         f64,
     start_time:               Option<std::time::Instant>,
-    cancel:   Option<CancelHandle>,
+    cancel:   Option<PathClassificationHandle>,
     running:  bool,
     error:    Option<String>,
     is_complement: bool,
@@ -283,7 +283,7 @@ struct CaDiCaLJobResult {
 
 struct CaDiCaLJob {
     result:   Option<CaDiCaLJobResult>,
-    cancel:   Option<CancelHandle>,
+    cancel:   Option<PathClassificationHandle>,
     running:  bool,
     error:    Option<String>,
 }
@@ -638,12 +638,21 @@ struct ClassifyStatusResponse {
 }
 
 fn classify_status(job: &ClassifyJob) -> ClassifyStatusResponse {
+    // The drainer task keeps `snapshot.classified_count` updated for cover-
+    // mode jobs (it adds the right-side cover count of every covered prefix).
+    // For no_cover jobs the channel never sees Covered events so the snapshot
+    // stays at zero until the run completes.  The worker meanwhile publishes
+    // a live `path_count` (covered + uncovered detections) into the cancel
+    // handle every few thousand traversal steps; surface that as a fallback
+    // so the UI sees the count tick up in real time.
+    let live = job.cancel.as_ref().map(|c| c.paths_so_far()).unwrap_or(0.0);
+    let classified = job.snapshot.classified_count.max(live);
     ClassifyStatusResponse {
         uncovered_paths:          job.snapshot.uncovered_paths.clone(),
         uncovered_path_positions: job.snapshot.uncovered_path_positions.clone(),
         cover_groups:             job.snapshot.cover_groups.clone(),
         total_prefix_count:       job.snapshot.total_prefix_count,
-        classified_count:         job.snapshot.classified_count,
+        classified_count:         classified,
         total_path_count:         job.total_path_count,
         elapsed_secs:             job.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64()),
         hit_limit:                job.snapshot.hit_limit,

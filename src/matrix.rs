@@ -413,25 +413,6 @@ impl NNF {
         result
     }
 
-    /// Return every `Position` at which `target` appears.
-    pub fn literal_positions(&self, target: &Lit) -> PathPrefix {
-        fn inner(m: &NNF, target: &Lit, prefix: &mut Position, out: &mut PathPrefix) {
-            match m {
-                NNF::Lit(l) => if l == target { out.push(prefix.clone()); }
-                NNF::Sum(ch) | NNF::Prod(ch) => {
-                    for (i, child) in ch.iter().enumerate() {
-                        prefix.push(i);
-                        inner(child, target, prefix, out);
-                        prefix.pop();
-                    }
-                }
-            }
-        }
-        let mut result = Vec::new();
-        inner(self, target, &mut Vec::new(), &mut result);
-        result
-    }
-
     /// Resolve a position to the `Lit` it points to, or `None` if the
     /// position is out of bounds or does not end at a `Lit`.
     pub fn lit_at(&self, pos: &[usize]) -> Option<&Lit> {
@@ -453,18 +434,6 @@ impl NNF {
     pub fn is_complementary(&self, path: &ProdPath) -> bool {
         let lits = self.lits_on_path(path);
         lits.iter().any(|l| lits.iter().any(|l2| l.is_complement_of(l2)))
-    }
-
-    /// A matrix is *valid* (tautology) iff every path is complementary.
-    pub fn is_valid(&self) -> bool {
-        self.paths_iter().all(|p| self.is_complementary(&p))
-    }
-
-    /// A matrix is *satisfiable* iff its complement has at least one
-    /// non-complementary path (i.e. the complement is not a tautology).
-    pub fn is_satisfiable(&self) -> bool {
-        let comp = self.complement();
-        comp.paths_iter().any(|p| !comp.is_complementary(&p))
     }
 
     /// Covering pairs for all paths.
@@ -551,23 +520,6 @@ impl NNF {
                 cell.borrow_mut().should_continue_on_prefix(lits, &empty, prod_path).is_none()
             },
         );
-    }
-
-    /// Async streaming variant of `paths`: spawns a blocking thread that runs
-    /// the depth-first traversal and sends each `PathsClass` as it is
-    /// discovered, paired with a `bool` that is `true` if this item caused
-    /// the `paths_class_limit` to be reached.
-    pub fn paths_async(
-        &self,
-        ctrl: impl PathSearchController + Send + 'static,
-    ) -> (tokio::task::JoinHandle<()>, PathClassificationHandle) {
-        let m = self.clone();
-        let cancel = PathClassificationHandle::new();
-        let mut wrapped = crate::controller::CancelController::new(ctrl, cancel.clone());
-        let handle = tokio::task::spawn_blocking(move || {
-            m.for_each_path_prefix_with_controller(&mut wrapped);
-        });
-        (handle, cancel)
     }
 
     /// Async streaming path classification. Spawns a blocking thread that
@@ -682,25 +634,6 @@ impl NNF {
         (handle, rx, cancel)
     }
 
-    /// Reference implementation: check validity by examining all paths.
-    ///
-    /// Reference implementation: check validity by examining all paths.
-    pub fn paths_reference(&self) -> Paths {
-        let all_paths: Vec<ProdPath> = self.paths_iter().collect();
-        let uncovered: Vec<ProdPath> = all_paths.iter()
-            .filter(|p| !self.is_complementary(p))
-            .cloned()
-            .collect();
-        let classes: Vec<PathsClass> = if uncovered.is_empty() {
-            self.cover(&all_paths).into_iter()
-                .map(|cover| PathsClass::Covered(CoveredPathPrefix { cover, prefix: vec![] }))
-                .collect()
-        } else {
-            uncovered.into_iter().map(PathsClass::Uncovered).collect()
-        };
-        Paths { classes, hit_limit: false }
-    }
-
     /// Default child ordering — yields `(index, child)` in declaration order.
     /// Convenience for callers of [`Self::for_each_path_prefix`] who don't
     /// need to reshape Sum/Prod traversal order.
@@ -736,25 +669,6 @@ impl NNF {
     ///   we land on.  Lets a caller skip up multiple recursion frames in one
     ///   shot — useful when a lit-set discovers that an ancestor's choice
     ///   has become impossible.
-    pub fn for_each_path_prefix(
-        &self,
-        report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> Option<usize>,
-    ) {
-        // Thin wrapper over the `_ord` version with declaration-order Sum /
-        // Prod traversal.  The previous bespoke fast-path implementation
-        // saved one `Vec<(usize, &NNF)>` allocation per Sum/Prod node entry,
-        // but every realistic caller already pays that cost via a
-        // [`PathSearchController`] (whose `sum_ord` / `prod_ord` defaults
-        // also call [`Self::natural_order`]); duplicating ~100 lines of
-        // traversal logic for an alloc that's already in the noise wasn't
-        // worth the maintenance burden.
-        self.for_each_path_prefix_ord(
-            |children| Self::natural_order(children),
-            |children| Self::natural_order(children),
-            report_prefix,
-        );
-    }
-
     /// Same as [`Self::for_each_path_prefix`] but with caller-controlled
     /// child order at Sum and Prod nodes.  See [`Self::natural_order`] for
     /// the default; returning a reordered list lets callers e.g. visit
@@ -1028,47 +942,6 @@ impl NNF {
         );
     }
 
-    /// Async variant of `for_each_path_prefix`: spawns a blocking thread that
-    /// runs the depth-first traversal, sends each event as an owned
-    /// `PathPrefixEvent` over the returned channel, and consults
-    /// `should_continue_on_prefix` at each step to decide whether to continue forward
-    /// or backtrack. The traversal also stops when the receiver is dropped
-    /// (the next send fails).
-    ///
-    /// Returns a `(JoinHandle, Receiver)` pair so the caller can observe both
-    /// the streamed events and any panic from the worker thread.
-    pub fn for_each_path_prefix_async(
-        &self,
-        buffer_size: usize,
-        mut path_prefix_controller: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> bool + Send + 'static,
-    ) -> (
-        tokio::task::JoinHandle<Result<(), tokio::sync::mpsc::error::SendError<PathPrefixEvent>>>,
-        tokio::sync::mpsc::Receiver<PathPrefixEvent>,
-        PathClassificationHandle,
-    ) {
-        let m = self.clone();
-        let (tx, rx) = tokio::sync::mpsc::channel::<PathPrefixEvent>(buffer_size);
-        let cancel = PathClassificationHandle::new();
-        let cancel_for_thread = cancel.clone();
-        let handle = tokio::task::spawn_blocking(move || {
-            let mut send_err = None;
-            m.for_each_path_prefix(|lits, positions, prod_path| {
-                if send_err.is_some() || cancel_for_thread.is_cancelled() { return Some(0); }
-                let event = PathPrefixEvent {
-                    lits: lits.iter().map(|&l| l.clone()).collect(),
-                    positions: positions.clone(),
-                    prod_path: prod_path.cloned(),
-                };
-                if let Err(e) = tx.blocking_send(event) {
-                    send_err = Some(e);
-                    return Some(0);
-                }
-                if path_prefix_controller(lits, positions, prod_path) { None } else { Some(0) }
-            });
-            send_err.map(Err).unwrap_or(Ok(()))
-        });
-        (handle, rx, cancel)
-    }
 }
 
 // ─── Formula → NNF conversion ──────────────────────────────────────────────
@@ -1134,13 +1007,6 @@ impl TryFrom<&str> for Matrix {
 }
 
 impl Matrix {
-    /// Evaluate the formula under a partial assignment.
-    /// Returns `Ok(true)` if determined true, `Ok(false)` if determined false,
-    /// `Err(())` if the assignment is insufficient to determine the result.
-    pub fn evaluate(&self, assignment: &[Lit]) -> Result<bool, ()> {
-        self.nnf.evaluate(assignment)
-    }
-
     pub fn classify_paths(
         &self,
         complement: bool,
@@ -1159,128 +1025,6 @@ impl Matrix {
         }
     }
 
-    /// Check if the formula is valid (a tautology).
-    /// Returns `Ok(())` if valid, `Err(falsifying_assignment)` if not.
-    /// The falsifying assignment is a `Vec<Lit>` where `Lit::pos(x)` means `x=1`
-    /// and `Lit::neg(x)` means `x=0`.
-    pub fn valid(&self) -> Result<(), Vec<Lit>> {
-        let params = Some(PathParams {
-            uncovered_path_limit: 1,
-            paths_class_limit: usize::MAX,
-            covered_prefix_limit: usize::MAX,
-            no_cover: true,
-        });
-        let uncovered = self.first_uncovered(false, params);
-        match uncovered {
-            None => Ok(()),
-            Some(path) => {
-                let assignment = self.path_to_assignment(&self.nnf, &path);
-                Err(assignment)
-            }
-        }
-    }
-
-    /// Check if the formula is satisfiable.
-    /// Returns `Ok(satisfying_assignment)` if satisfiable, `Err(())` if not.
-    /// The satisfying assignment is a `Vec<Lit>` where `Lit::pos(x)` means `x=1`
-    /// and `Lit::neg(x)` means `x=0`.
-    ///
-    /// Today this uses the same `classify_paths`-based pipeline as
-    /// `valid()`: a `BacktrackWhenCoveredController` does the cover-pair
-    /// detection, the `_uncovered_only` traversal skips position tracking,
-    /// and the natural-order DFS finds the first non-conflicting path.  For
-    /// structured formulas where a real SAT solver would shine via unit
-    /// propagation (adders, large encoders), prefer
-    /// [`Self::cadical_satisfiable`] — see `bench_faulty_add_at_most` for
-    /// the gap.  [`SmartSatController`] is the place to plug in smarter
-    /// matrix-side search heuristics; the trait now exposes ordering and
-    /// non-chronological backtracking hooks for that purpose.
-    pub fn satisfiable(&self) -> Result<Vec<Lit>, ()> {
-        let params = Some(PathParams {
-            uncovered_path_limit: 1,
-            paths_class_limit: usize::MAX,
-            covered_prefix_limit: usize::MAX,
-            no_cover: true,
-        });
-        let uncovered = self.first_uncovered(true, params);
-        match uncovered {
-            None => Err(()),
-            Some(path) => Ok(self.path_to_assignment(&self.nnf_complement, &path)),
-        }
-    }
-
-    /// Smart-controller variant of [`Self::satisfiable`].  Uses the
-    /// generalized [`PathSearchController`] hooks (custom `sum_ord` /
-    /// `prod_ord`, `Option<usize>`-based unwinding) via
-    /// [`SmartSatController`].  Currently this path is *slower* than the
-    /// natural-order baseline on this codebase's adder/at_most workload
-    /// because the per-Sum/Prod allocations from the ordering closures and
-    /// the `RefCell` bridge cost more than the heuristics save without true
-    /// unit propagation.  Provided as a hook for future heuristic work and
-    /// for callers who supply their own `PathSearchController` with
-    /// formula-aware ordering.
-    pub fn satisfiable_with_smart_controller(&self) -> Result<Vec<Lit>, ()> {
-        let params = Some(PathParams {
-            uncovered_path_limit: 1,
-            paths_class_limit: usize::MAX,
-            covered_prefix_limit: usize::MAX,
-            no_cover: true,
-        });
-        let nnf = &self.nnf_complement;
-        let mut uncovered: Option<ProdPath> = None;
-        {
-            // for_nnf preprocesses every Prod-of-Lits ("clause complement")
-            // into a watch-list index, enabling cross-clause unit propagation.
-            let mut ctrl = SmartSatController::for_nnf(nnf, params, |class, _| {
-                if let PathsClass::Uncovered(p) = class {
-                    uncovered = Some(p);
-                    false
-                } else {
-                    true
-                }
-            });
-            nnf.for_each_path_prefix_no_positions_with_controller(&mut ctrl);
-        }
-        match uncovered {
-            None => Err(()),
-            Some(path) => Ok(self.path_to_assignment(&self.nnf_complement, &path)),
-        }
-    }
-
-    fn first_uncovered(&self, complement: bool, params: Option<PathParams>) -> Option<ProdPath> {
-        // Runs `classify_paths` (or its uncovered-only flavour when `params.no_cover`
-        // is set) on the process-wide shared runtime and returns the first
-        // `Uncovered` class emitted.  Dropping the receiver signals the worker
-        // to stop; we still await the handle for panic visibility.
-        let nnf = if complement { &self.nnf_complement } else { &self.nnf };
-        let no_cover = params.as_ref().is_some_and(|p| p.no_cover);
-        shared_runtime().block_on(async {
-            let (handle, mut rx, _cancel) = if no_cover {
-                nnf.classify_paths_uncovered_only(64, params)
-            } else {
-                nnf.classify_paths(64, params)
-            };
-            let mut uncovered = None;
-            while let Some((class, _)) = rx.recv().await {
-                if let PathsClass::Uncovered(p) = class {
-                    uncovered = Some(p);
-                    break;
-                }
-            }
-            drop(rx);
-            let _ = handle.await;
-            uncovered
-        })
-    }
-
-    fn path_to_assignment(&self, nnf: &NNF, path: &ProdPath) -> Vec<Lit> {
-        let lits = nnf.lits_on_path(path);
-        let mut seen = std::collections::HashSet::new();
-        lits.into_iter()
-            .filter(|l| seen.insert(l.var))
-            .map(|l| Lit { var: l.var, neg: !l.neg })
-            .collect()
-    }
 }
 
 pub fn parse_to_nnf(formula: &str) -> Result<(NNF, Vec<String>), String> {
@@ -1293,6 +1037,248 @@ pub fn parse_to_nnf(formula: &str) -> Result<(NNF, Vec<String>), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Test-only NNF helpers ─────────────────────────────────────────────────
+    //
+    // These methods used to live in the production `impl NNF` block but
+    // weren't called from anywhere except tests.  Moving them under
+    // `#[cfg(test)]` keeps the production surface lean and makes it
+    // immediately obvious which APIs the rest of the crate (and downstream
+    // consumers) actually depend on.
+
+    impl NNF {
+        /// A matrix is *valid* (tautology) iff every path is complementary.
+        pub fn is_valid(&self) -> bool {
+            self.paths_iter().all(|p| self.is_complementary(&p))
+        }
+
+        /// A matrix is *satisfiable* iff its complement has at least one
+        /// non-complementary path (i.e. the complement is not a tautology).
+        pub fn is_satisfiable(&self) -> bool {
+            let comp = self.complement();
+            comp.paths_iter().any(|p| !comp.is_complementary(&p))
+        }
+
+        /// Reference implementation: classify every path through a complete
+        /// enumeration, then either build a cover (when all paths are
+        /// complementary) or list the uncovered paths.  The fast streaming
+        /// `classify_paths` path is cross-checked against this.
+        pub fn paths_reference(&self) -> Paths {
+            let all_paths: Vec<ProdPath> = self.paths_iter().collect();
+            let uncovered: Vec<ProdPath> = all_paths.iter()
+                .filter(|p| !self.is_complementary(p))
+                .cloned()
+                .collect();
+            let classes: Vec<PathsClass> = if uncovered.is_empty() {
+                self.cover(&all_paths).into_iter()
+                    .map(|cover| PathsClass::Covered(CoveredPathPrefix { cover, prefix: vec![] }))
+                    .collect()
+            } else {
+                uncovered.into_iter().map(PathsClass::Uncovered).collect()
+            };
+            Paths { classes, hit_limit: false }
+        }
+
+        /// Convenience wrapper over `for_each_path_prefix_ord` with natural
+        /// child ordering.  Production code drives the traversal via
+        /// `for_each_path_prefix_with_controller` which already supplies
+        /// natural-order closures by default; this closure-style entry
+        /// point exists only to keep the suite of small DFS unit tests
+        /// readable.
+        pub fn for_each_path_prefix(
+            &self,
+            report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> Option<usize>,
+        ) {
+            self.for_each_path_prefix_ord(
+                |children| Self::natural_order(children),
+                |children| Self::natural_order(children),
+                report_prefix,
+            );
+        }
+
+        /// Async streaming variant of `paths`: spawns a blocking thread that
+        /// runs the depth-first traversal and sends each `PathsClass` as it
+        /// is discovered, paired with a `bool` that is `true` if this item
+        /// caused the `paths_class_limit` to be reached.
+        pub fn paths_async(
+            &self,
+            ctrl: impl PathSearchController + Send + 'static,
+        ) -> (tokio::task::JoinHandle<()>, PathClassificationHandle) {
+            let m = self.clone();
+            let cancel = PathClassificationHandle::new();
+            let mut wrapped = crate::controller::CancelController::new(ctrl, cancel.clone());
+            let handle = tokio::task::spawn_blocking(move || {
+                m.for_each_path_prefix_with_controller(&mut wrapped);
+            });
+            (handle, cancel)
+        }
+
+        /// Async variant of `for_each_path_prefix`: spawns a blocking thread
+        /// that runs the depth-first traversal and sends each event as an
+        /// owned `PathPrefixEvent` over the returned channel.  Used by the
+        /// streaming-traversal unit test; production paths use
+        /// `classify_paths` (class events) instead of streaming every step.
+        pub fn for_each_path_prefix_async(
+            &self,
+            buffer_size: usize,
+            mut path_prefix_controller: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> bool + Send + 'static,
+        ) -> (
+            tokio::task::JoinHandle<Result<(), tokio::sync::mpsc::error::SendError<PathPrefixEvent>>>,
+            tokio::sync::mpsc::Receiver<PathPrefixEvent>,
+            PathClassificationHandle,
+        ) {
+            let m = self.clone();
+            let (tx, rx) = tokio::sync::mpsc::channel::<PathPrefixEvent>(buffer_size);
+            let cancel = PathClassificationHandle::new();
+            let cancel_for_thread = cancel.clone();
+            let handle = tokio::task::spawn_blocking(move || {
+                let mut send_err = None;
+                m.for_each_path_prefix(|lits, positions, prod_path| {
+                    if send_err.is_some() || cancel_for_thread.is_cancelled() { return Some(0); }
+                    let event = PathPrefixEvent {
+                        lits: lits.iter().map(|&l| l.clone()).collect(),
+                        positions: positions.clone(),
+                        prod_path: prod_path.cloned(),
+                    };
+                    if let Err(e) = tx.blocking_send(event) {
+                        send_err = Some(e);
+                        return Some(0);
+                    }
+                    if path_prefix_controller(lits, positions, prod_path) { None } else { Some(0) }
+                });
+                send_err.map(Err).unwrap_or(Ok(()))
+            });
+            (handle, rx, cancel)
+        }
+    }
+
+    // ── Test-only Matrix helpers ─────────────────────────────────────────────
+    //
+    // Sync convenience wrappers around `classify_paths` /
+    // `classify_paths_uncovered_only`.  Production callers (web_app) drive
+    // those streaming APIs directly so they can show progress, cancel, and
+    // surface incremental results; the tests just want a one-shot answer
+    // ("is this valid?", "give me a satisfying assignment") and these
+    // wrappers keep the assertions readable.
+
+    impl Matrix {
+        /// Evaluate the formula under a partial assignment.  Forwards to
+        /// `NNF::evaluate` on the matrix's NNF.
+        pub fn evaluate(&self, assignment: &[Lit]) -> Result<bool, ()> {
+            self.nnf.evaluate(assignment)
+        }
+
+        /// Check if the formula is valid (a tautology).  Returns `Ok(())` if
+        /// valid, `Err(falsifying_assignment)` otherwise.
+        pub fn valid(&self) -> Result<(), Vec<Lit>> {
+            let params = Some(PathParams {
+                uncovered_path_limit: 1,
+                paths_class_limit: usize::MAX,
+                covered_prefix_limit: usize::MAX,
+                no_cover: true,
+            });
+            let uncovered = self.first_uncovered(false, params);
+            match uncovered {
+                None => Ok(()),
+                Some(path) => {
+                    let assignment = self.path_to_assignment(&self.nnf, &path);
+                    Err(assignment)
+                }
+            }
+        }
+
+        /// Check if the formula is satisfiable.  Returns
+        /// `Ok(satisfying_assignment)` or `Err(())`.
+        ///
+        /// Uses the same `classify_paths`-based pipeline as `valid()`: a
+        /// [`BacktrackWhenCoveredController`] does cover-pair detection, the
+        /// `_uncovered_only` traversal skips position tracking, and the
+        /// natural-order DFS finds the first non-conflicting path.  For
+        /// structured formulas where a real SAT solver would shine
+        /// (adders, large encoders), prefer
+        /// [`Matrix::cadical_satisfiable`] — see `bench_faulty_add_at_most`
+        /// for the gap.
+        pub fn satisfiable(&self) -> Result<Vec<Lit>, ()> {
+            let params = Some(PathParams {
+                uncovered_path_limit: 1,
+                paths_class_limit: usize::MAX,
+                covered_prefix_limit: usize::MAX,
+                no_cover: true,
+            });
+            let uncovered = self.first_uncovered(true, params);
+            match uncovered {
+                None => Err(()),
+                Some(path) => Ok(self.path_to_assignment(&self.nnf_complement, &path)),
+            }
+        }
+
+        /// Smart-controller variant of [`Self::satisfiable`].  Drives the
+        /// search through [`SmartSatController`], which preprocesses every
+        /// Prod-of-Lits ("clause complement") into a watch-list index for
+        /// cross-clause unit propagation.  Used by `smart_satisfiable_*`
+        /// tests and the `bench_faulty_add_at_most` micro-benchmark.
+        pub fn satisfiable_with_smart_controller(&self) -> Result<Vec<Lit>, ()> {
+            let params = Some(PathParams {
+                uncovered_path_limit: 1,
+                paths_class_limit: usize::MAX,
+                covered_prefix_limit: usize::MAX,
+                no_cover: true,
+            });
+            let nnf = &self.nnf_complement;
+            let mut uncovered: Option<ProdPath> = None;
+            {
+                let mut ctrl = SmartSatController::for_nnf(nnf, params, |class, _| {
+                    if let PathsClass::Uncovered(p) = class {
+                        uncovered = Some(p);
+                        false
+                    } else {
+                        true
+                    }
+                });
+                nnf.for_each_path_prefix_no_positions_with_controller(&mut ctrl);
+            }
+            match uncovered {
+                None => Err(()),
+                Some(path) => Ok(self.path_to_assignment(&self.nnf_complement, &path)),
+            }
+        }
+
+        fn first_uncovered(&self, complement: bool, params: Option<PathParams>) -> Option<ProdPath> {
+            // Runs `classify_paths` (or its uncovered-only flavour when
+            // `params.no_cover` is set) on the process-wide shared runtime
+            // and returns the first `Uncovered` class emitted.  Dropping
+            // the receiver signals the worker to stop; we still await the
+            // handle for panic visibility.
+            let nnf = if complement { &self.nnf_complement } else { &self.nnf };
+            let no_cover = params.as_ref().is_some_and(|p| p.no_cover);
+            shared_runtime().block_on(async {
+                let (handle, mut rx, _cancel) = if no_cover {
+                    nnf.classify_paths_uncovered_only(64, params)
+                } else {
+                    nnf.classify_paths(64, params)
+                };
+                let mut uncovered = None;
+                while let Some((class, _)) = rx.recv().await {
+                    if let PathsClass::Uncovered(p) = class {
+                        uncovered = Some(p);
+                        break;
+                    }
+                }
+                drop(rx);
+                let _ = handle.await;
+                uncovered
+            })
+        }
+
+        fn path_to_assignment(&self, nnf: &NNF, path: &ProdPath) -> Vec<Lit> {
+            let lits = nnf.lits_on_path(path);
+            let mut seen = std::collections::HashSet::new();
+            lits.into_iter()
+                .filter(|l| seen.insert(l.var))
+                .map(|l| Lit { var: l.var, neg: !l.neg })
+                .collect()
+        }
+    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

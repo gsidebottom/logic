@@ -539,6 +539,43 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartSatContro
         order
     }
 
+    fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Vec<(usize, &'a NNF)> {
+        // Real *alternative pruning* (not just sorting) — a one-step
+        // lookahead version of unit propagation focused on the Prod we're
+        // about to enter:
+        //
+        //   * If a `Lit` alternative is already true on the current path
+        //     the Prod is *trivially satisfied* by it; return only that one
+        //     alternative.  Saves the DFS from exploring siblings that
+        //     would just duplicate an existing commitment.
+        //   * If a `Lit` alternative's complement is on the path, taking it
+        //     would immediately produce a covered prefix.  Skip it — never
+        //     descend.
+        //   * Fresh `Lit` alternatives are kept; non-`Lit` children are
+        //     kept (we can't reason about nested subtrees from here).
+        //
+        // If filtering eliminates *every* alternative the result is empty.
+        // The DFS skips the Prod without yielding any lits — the
+        // surrounding Sum's continuation chain never reaches the end and no
+        // spurious path is emitted.  That's the correct "this branch has
+        // no consistent choice" signal.
+        let mut filtered: Vec<(usize, &'a NNF)> = Vec::with_capacity(children.len());
+        for (i, c) in children.iter().enumerate() {
+            match c {
+                NNF::Lit(l) => {
+                    if self.inner.has_lit(l) {
+                        return vec![(i, c)];
+                    }
+                    if self.inner.has_complement_of(l) {
+                        continue;
+                    }
+                    filtered.push((i, c));
+                }
+                _ => filtered.push((i, c)),
+            }
+        }
+        filtered
+    }
 }
 
 /// Controls depth-first path-prefix traversal.

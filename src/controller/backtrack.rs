@@ -59,39 +59,6 @@ impl From<Option<PathParams>> for BacktrackWhenCoveredController {
 }
 
 impl<F: FnMut(PathsClass, bool) -> bool> BacktrackWhenCoveredController<F> {
-    pub fn with_on_class(params: Option<PathParams>, on_class: F) -> Self {
-        let params = params.unwrap_or_default();
-        Self {
-            paths_class_limit: params.paths_class_limit,
-            uncovered_path_limit: params.uncovered_path_limit,
-            covered_prefix_limit: params.covered_prefix_limit,
-            covered_at_depth: None,
-            path_count: 0,
-            uncovered_path_count: 0,
-            covered_prefix_count: 0,
-            last_lits_len: 0,
-            on_class: Some(on_class),
-            lit_counter: Vec::new(),
-            lit_first_pos: Vec::new(),
-            counted: Vec::new(),
-            uncovered_only: false,
-        }
-    }
-
-    /// "Uncovered-only" flavour of [`Self::with_on_class`].  The controller
-    /// still detects complementary pairs (and prunes the subtree accordingly)
-    /// but never builds a `CoveredPathPrefix` or delivers a
-    /// `PathsClass::Covered` event to `on_class`.  It declares
-    /// `needs_cover() == false`, so paired with
-    /// [`crate::matrix::NNF::for_each_path_prefix_no_positions`] no per-Lit
-    /// `pos.clone()` happens.  Intended for callers like `first_uncovered`
-    /// that only want to know whether a non-contradictory path exists.
-    pub fn with_on_class_uncovered_only(params: Option<PathParams>, on_class: F) -> Self {
-        let mut this = Self::with_on_class(params, on_class);
-        this.uncovered_only = true;
-        this
-    }
-
     pub fn hit_limit(&self) -> bool {
         self.path_count >= self.paths_class_limit
             || self.uncovered_path_count >= self.uncovered_path_limit
@@ -159,6 +126,41 @@ impl<F: FnMut(PathsClass, bool) -> bool> BacktrackWhenCoveredController<F> {
 }
 
 impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenCoveredController<F> {
+    type OnClass = F;
+
+    fn with_on_class(params: Option<PathParams>, on_class: F) -> Self {
+        let params = params.unwrap_or_default();
+        Self {
+            paths_class_limit: params.paths_class_limit,
+            uncovered_path_limit: params.uncovered_path_limit,
+            covered_prefix_limit: params.covered_prefix_limit,
+            covered_at_depth: None,
+            path_count: 0,
+            uncovered_path_count: 0,
+            covered_prefix_count: 0,
+            last_lits_len: 0,
+            on_class: Some(on_class),
+            lit_counter: Vec::new(),
+            lit_first_pos: Vec::new(),
+            counted: Vec::new(),
+            uncovered_only: false,
+        }
+    }
+
+    /// "Uncovered-only" flavour of [`Self::with_on_class`].  The controller
+    /// still detects complementary pairs (and prunes the subtree
+    /// accordingly) but never builds a `CoveredPathPrefix` or delivers a
+    /// `PathsClass::Covered` event to `on_class`.  It declares
+    /// `needs_cover() == false`, so paired with
+    /// [`crate::matrix::NNF::for_each_path_prefix_no_positions`] no per-Lit
+    /// `pos.clone()` happens.  Intended for callers like `first_uncovered`
+    /// that only want to know whether a non-contradictory path exists.
+    fn with_on_class_uncovered_only(params: Option<PathParams>, on_class: F) -> Self {
+        let mut this = <Self as PathSearchController>::with_on_class(params, on_class);
+        this.uncovered_only = true;
+        this
+    }
+
     fn should_continue_on_prefix(
         &mut self,
         prefix_literals: &Vec<&Lit>,
@@ -256,4 +258,6 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenC
     }
 
     fn path_count(&self) -> usize { self.path_count }
+    fn covered_prefix_count(&self) -> usize { self.covered_prefix_count }
+    fn uncovered_path_count(&self) -> usize { self.uncovered_path_count }
 }

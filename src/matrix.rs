@@ -209,7 +209,7 @@ impl Paths {
 // `use crate::matrix::PathSearchController` keep compiling.
 
 pub use crate::controller::{
-    BacktrackWhenCoveredController, PathSearchController, SmartSatController,
+    BacktrackWhenCoveredController, PathSearchController, SmartController,
 };
 
 
@@ -478,7 +478,7 @@ impl NNF {
     /// contains a complementary pair. For invalid matrices this finds
     /// non-complementary paths (up to `paths_class_limit`) without
     /// enumerating all paths.
-    pub fn paths(&self, ctrl: &mut dyn PathSearchController) {
+    pub fn paths<C: PathSearchController + ?Sized>(&self, ctrl: &mut C) {
         self.for_each_path_prefix_with_controller(ctrl);
     }
 
@@ -488,7 +488,13 @@ impl NNF {
     /// gives the closures shared access to the controller — calls are
     /// strictly sequential within the DFS so the runtime borrow check never
     /// trips.
-    pub fn for_each_path_prefix_with_controller(&self, ctrl: &mut dyn PathSearchController) {
+    ///
+    /// Generic on the concrete `C` rather than `&mut dyn ...` because
+    /// `PathSearchController` carries an associated type (`OnClass`) that
+    /// can't be left unspecified in a trait object.  Static dispatch
+    /// works for all callers and lets the compiler inline the bridge
+    /// closures.
+    pub fn for_each_path_prefix_with_controller<C: PathSearchController + ?Sized>(&self, ctrl: &mut C) {
         let cell = std::cell::RefCell::new(ctrl);
         self.for_each_path_prefix_ord(
             |children| cell.borrow_mut().sum_ord(children),
@@ -503,9 +509,9 @@ impl NNF {
     /// positions-off traversal.  The controller must declare
     /// `needs_cover() == false` so the empty `prefix_positions` slice it
     /// receives is contractually valid.
-    pub fn for_each_path_prefix_no_positions_with_controller(
+    pub fn for_each_path_prefix_no_positions_with_controller<C: PathSearchController + ?Sized>(
         &self,
-        ctrl: &mut dyn PathSearchController,
+        ctrl: &mut C,
     ) {
         debug_assert!(!ctrl.needs_cover(),
             "no-positions traversal requires needs_cover() == false");
@@ -522,83 +528,84 @@ impl NNF {
         );
     }
 
-    /// Async streaming path classification. Spawns a blocking thread that
-    /// runs the traversal using a `BacktrackWhenCoveredController` wrapped
-    /// in a [`CancelController`] for cooperative cancellation and progress
-    /// publishing, sending each `(PathsClass, hit_limit)` over the returned
-    /// channel via the controller's `on_class` callback.
-    pub fn classify_paths(
+    /// Async streaming path classification.  Spawns a blocking thread that
+    /// runs the DFS via [`Self::for_each_path_prefix_with_controller`],
+    /// wrapping the caller-supplied inner controller in a [`CancelController`]
+    /// for cooperative cancellation and progress publishing.  Each
+    /// `(PathsClass, hit_limit)` event the inner controller emits flows
+    /// through the channel returned in the second tuple slot.
+    ///
+    /// `controller_builder` is a one-shot factory that receives the
+    /// channel `Sender` and returns a `PathSearchController`; it lets
+    /// callers pick any controller (typically
+    /// [`BacktrackWhenCoveredController`] or a [`SmartController`]) and
+    /// decide how class events should be plumbed onto the channel.  The
+    /// traversal stops cleanly if the receiver is dropped — the next
+    /// `blocking_send` fails, the closure returns `false`, and the inner
+    /// controller honours that on its next `should_continue_on_paths_class`
+    /// call.
+    pub fn classify_paths<C, B>(
         &self,
         buffer_size: usize,
-        params: Option<PathParams>,
+        controller_builder: B,
     ) -> (
         tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
         tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
         PathClassificationHandle,
-    ) {
+    )
+    where
+        C: PathSearchController + Send + 'static,
+        B: FnOnce(tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> C + Send + 'static,
+    {
         let m = self.clone();
         let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
         let cancel = PathClassificationHandle::new();
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            let mut send_err: Option<tokio::sync::mpsc::error::SendError<(PathsClass, bool)>> = None;
-            let inner = BacktrackWhenCoveredController::with_on_class(params,
-                |class: PathsClass, hit_limit: bool| {
-                    if let Err(e) = tx.blocking_send((class, hit_limit)) {
-                        send_err = Some(e);
-                        return false;
-                    }
-                    true
-                },
-            );
+            let inner = controller_builder(tx);
             let mut ctrl = crate::controller::CancelController::new(inner, cancel_for_thread);
             m.for_each_path_prefix_with_controller(&mut ctrl);
             ctrl.publish_progress();
-            match send_err {
-                Some(e) => Err(Box::new(e) as Box<dyn std::error::Error + Send>),
-                None => Ok(()),
-            }
+            Ok::<(), Box<dyn std::error::Error + Send>>(())
         });
         (handle, rx, cancel)
     }
 
-    /// Uncovered-only streaming variant of [`Self::classify_paths`].  Runs the
-    /// DFS with `with_on_class_uncovered_only` and the positions-off traversal,
-    /// so no `CoveredPathPrefix` is built and no `pos.clone()` happens at Lit
-    /// visits.  Only `PathsClass::Uncovered` events are sent.
-    pub fn classify_paths_uncovered_only(
+    /// Uncovered-only streaming variant of [`Self::classify_paths`].  Runs
+    /// the caller-supplied controller via the positions-off traversal
+    /// ([`Self::for_each_path_prefix_no_positions`]) so no
+    /// `CoveredPathPrefix` is built and no `pos.clone()` happens at Lit
+    /// visits.  The controller must report `needs_cover() == false` (this
+    /// is debug-asserted on first traversal step).
+    ///
+    /// Progress reporting is cover-multiplier-weighted: when the
+    /// controller's `covered_prefix_count()` ticks up, the
+    /// classified-paths counter advances by `cover_mult` (the number of
+    /// complete paths the just-detected cover stands for); when
+    /// `uncovered_path_count()` ticks up, it advances by 1.  This keeps
+    /// the rate display meaningful even on enormous formulas where each
+    /// covered-prefix event prunes billions of paths.
+    pub fn classify_paths_uncovered_only<C, B>(
         &self,
         buffer_size: usize,
-        params: Option<PathParams>,
+        controller_builder: B,
     ) -> (
         tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
         tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
         PathClassificationHandle,
-    ) {
+    )
+    where
+        C: PathSearchController + Send + 'static,
+        B: FnOnce(tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> C + Send + 'static,
+    {
         let m = self.clone();
         let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
         let cancel = PathClassificationHandle::new();
-        let cancel_for_class = cancel.clone();
-        let cancel_for_step  = cancel.clone();
+        let cancel_for_step = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            let mut send_err: Option<tokio::sync::mpsc::error::SendError<(PathsClass, bool)>> = None;
-            let mut ctrl = BacktrackWhenCoveredController::with_on_class_uncovered_only(params,
-                |class: PathsClass, hit_limit: bool| {
-                    if send_err.is_some() || cancel_for_class.is_cancelled() { return false; }
-                    if let Err(e) = tx.blocking_send((class, hit_limit)) {
-                        send_err = Some(e);
-                        return false;
-                    }
-                    true
-                },
-            );
-            debug_assert!(!ctrl.needs_cover());
-            // Track *paths* classified, not just covered-prefix detections.
-            // Each time the controller's covered or uncovered counter ticks
-            // up, add the current cover-count multiplier (paths covered) or
-            // 1 (paths reached uncovered) to the running total.  Publish
-            // every few thousand traversal steps so the front end's poll
-            // sees a smooth increase.
+            let mut ctrl = controller_builder(tx);
+            debug_assert!(!ctrl.needs_cover(),
+                "classify_paths_uncovered_only requires a controller with needs_cover() == false");
             let mut step: u64 = 0;
             let mut paths_classified: f64 = 0.0;
             let mut prev_cov: usize = 0;
@@ -626,10 +633,7 @@ impl NNF {
                 },
             );
             cancel_for_step.record_paths(paths_classified);
-            match send_err {
-                Some(e) => Err(Box::new(e) as Box<dyn std::error::Error + Send>),
-                None => Ok(()),
-            }
+            Ok::<(), Box<dyn std::error::Error + Send>>(())
         });
         (handle, rx, cancel)
     }
@@ -1015,21 +1019,38 @@ impl TryFrom<&str> for Matrix {
 }
 
 impl Matrix {
-    pub fn classify_paths(
+    /// Async streaming path classification of either the matrix's NNF
+    /// (`complement == false`) or its complement (`complement == true`).
+    ///
+    /// `params.no_cover` selects the traversal flavour: the default
+    /// (`false`) builds full cover certificates via
+    /// [`NNF::classify_paths`]; `true` switches to
+    /// [`NNF::classify_paths_uncovered_only`], which uses the positions-off
+    /// DFS and cover-multiplier-weighted progress.  In both cases the
+    /// caller-supplied `controller_builder` constructs the inner controller
+    /// — typically [`BacktrackWhenCoveredController`] in the appropriate
+    /// mode (cover or uncovered_only), but any
+    /// [`PathSearchController`] is accepted.
+    pub fn classify_paths<C, B>(
         &self,
         complement: bool,
         buffer_size: usize,
         params: Option<PathParams>,
+        controller_builder: B,
     ) -> (
         tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
         tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
         PathClassificationHandle,
-    ) {
+    )
+    where
+        C: PathSearchController + Send + 'static,
+        B: FnOnce(tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> C + Send + 'static,
+    {
         let target = if complement { &self.nnf_complement } else { &self.nnf };
         if params.as_ref().is_some_and(|p| p.no_cover) {
-            target.classify_paths_uncovered_only(buffer_size, params)
+            target.classify_paths_uncovered_only(buffer_size, controller_builder)
         } else {
-            target.classify_paths(buffer_size, params)
+            target.classify_paths(buffer_size, controller_builder)
         }
     }
 
@@ -1038,6 +1059,25 @@ impl Matrix {
 pub fn parse_to_nnf(formula: &str) -> Result<(NNF, Vec<String>), String> {
     let m = Matrix::try_from(formula)?;
     Ok((m.nnf, m.ast.vars))
+}
+
+/// Default `controller_builder` for [`Matrix::classify_paths`] and
+/// [`NNF::classify_paths`] / [`NNF::classify_paths_uncovered_only`]:
+/// builds a [`BacktrackWhenCoveredController`] in cover or uncovered-only
+/// mode based on `params.no_cover`, plumbing each `(PathsClass, hit_limit)`
+/// onto the supplied channel `Sender`.  When the receiver is dropped the
+/// `blocking_send` fails and the controller stops classifying.
+pub fn default_classify_controller(
+    params: Option<PathParams>,
+    tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>,
+) -> BacktrackWhenCoveredController<impl FnMut(PathsClass, bool) -> bool + Send> {
+    let no_cover = params.as_ref().is_some_and(|p| p.no_cover);
+    let on_class = move |class, hit_limit| tx.blocking_send((class, hit_limit)).is_ok();
+    if no_cover {
+        BacktrackWhenCoveredController::with_on_class_uncovered_only(params, on_class)
+    } else {
+        BacktrackWhenCoveredController::with_on_class(params, on_class)
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -1181,7 +1221,10 @@ mod tests {
                 covered_prefix_limit: usize::MAX,
                 no_cover: true,
             });
-            let uncovered = self.first_uncovered(false, params);
+            let p = params.clone();
+            let uncovered = self.first_uncovered(false, params, |tx| {
+                default_classify_controller(p, tx)
+            });
             match uncovered {
                 None => Ok(()),
                 Some(path) => {
@@ -1209,7 +1252,10 @@ mod tests {
                 covered_prefix_limit: usize::MAX,
                 no_cover: true,
             });
-            let uncovered = self.first_uncovered(true, params);
+            let p = params.clone();
+            let uncovered = self.first_uncovered(true, params, |tx| {
+                default_classify_controller(p, tx)
+            });
             match uncovered {
                 None => Err(()),
                 Some(path) => Ok(self.path_to_assignment(&self.nnf_complement, &path)),
@@ -1217,7 +1263,7 @@ mod tests {
         }
 
         /// Smart-controller variant of [`Self::satisfiable`].  Drives the
-        /// search through [`SmartSatController`], which preprocesses every
+        /// search through [`SmartController`], which preprocesses every
         /// Prod-of-Lits ("clause complement") into a watch-list index for
         /// cross-clause unit propagation.  Used by `smart_satisfiable_*`
         /// tests and the `bench_faulty_add_at_most` micro-benchmark.
@@ -1231,7 +1277,7 @@ mod tests {
             let nnf = &self.nnf_complement;
             let mut uncovered: Option<ProdPath> = None;
             {
-                let mut ctrl = SmartSatController::for_nnf(nnf, params, |class, _| {
+                let mut ctrl = SmartController::for_nnf(nnf, params, |class, _| {
                     if let PathsClass::Uncovered(p) = class {
                         uncovered = Some(p);
                         false
@@ -1247,7 +1293,16 @@ mod tests {
             }
         }
 
-        fn first_uncovered(&self, complement: bool, params: Option<PathParams>) -> Option<ProdPath> {
+        fn first_uncovered<C, B>(
+            &self,
+            complement: bool,
+            params: Option<PathParams>,
+            controller_builder: B,
+        ) -> Option<ProdPath>
+        where
+            C: PathSearchController + Send + 'static,
+            B: FnOnce(tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> C + Send + 'static,
+        {
             // Runs `classify_paths` (or its uncovered-only flavour when
             // `params.no_cover` is set) on the process-wide shared runtime
             // and returns the first `Uncovered` class emitted.  Dropping
@@ -1257,9 +1312,9 @@ mod tests {
             let no_cover = params.as_ref().is_some_and(|p| p.no_cover);
             shared_runtime().block_on(async {
                 let (handle, mut rx, _cancel) = if no_cover {
-                    nnf.classify_paths_uncovered_only(64, params)
+                    nnf.classify_paths_uncovered_only(64, controller_builder)
                 } else {
-                    nnf.classify_paths(64, params)
+                    nnf.classify_paths(64, controller_builder)
                 };
                 let mut uncovered = None;
                 while let Some((class, _)) = rx.recv().await {
@@ -1787,7 +1842,9 @@ mod tests {
     /// Helper: collect all (PathsClass, hit_limit) from Matrix::classify_paths.
     async fn collect_classify(formula: &str, complement: bool, params: PathParams) -> Vec<(PathsClass, bool)> {
         let m = Matrix::try_from(formula).unwrap();
-        let (handle, mut rx, _cancel) = m.classify_paths(complement, 64, Some(params));
+        let p = Some(params.clone());
+        let (handle, mut rx, _cancel) = m.classify_paths(complement, 64, Some(params),
+            move |tx| default_classify_controller(p, tx));
         let mut items = Vec::new();
         while let Some(item) = rx.recv().await {
             items.push(item);

@@ -17,7 +17,7 @@ use crate::matrix::{Lit, NNF, PathClassificationHandle, PathPrefix, PathsClass, 
 /// `needs_cover`, `sum_ord`, `prod_ord`, `path_count`,
 /// `paths_classified`) forward to the inner controller.  This means
 /// composing `CancelController` with `BacktrackWhenCoveredController`
-/// or `SmartSatController` Just Works.
+/// or `SmartController` Just Works.
 pub struct CancelController<C: PathSearchController> {
     pub inner: C,
     pub cancel: PathClassificationHandle,
@@ -38,6 +38,13 @@ impl<C: PathSearchController> CancelController<C> {
 }
 
 impl<C: PathSearchController> PathSearchController for CancelController<C> {
+    /// `CancelController` is a wrapper — it doesn't construct itself from
+    /// `(params, F)`.  Use [`CancelController::new`] with an
+    /// already-constructed inner controller.  The trait's
+    /// `with_on_class` / `with_on_class_uncovered_only` constructors fall
+    /// back to their default-panic impls.
+    type OnClass = ();
+
     fn should_continue_on_prefix(
         &mut self,
         prefix_literals: &Vec<&Lit>,
@@ -69,5 +76,7 @@ impl<C: PathSearchController> PathSearchController for CancelController<C> {
     }
 
     fn path_count(&self) -> usize { self.inner.path_count() }
+    fn covered_prefix_count(&self) -> usize { self.inner.covered_prefix_count() }
+    fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
     fn paths_classified(&self) -> f64 { self.inner.paths_classified() }
 }

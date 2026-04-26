@@ -1,4 +1,15 @@
-//! [`SmartSatController`] — propagation-aware SAT-search controller.
+//! [`SmartController`] — propagation-aware path-search controller.
+//!
+//! Adds cross-clause unit propagation on top of
+//! [`crate::controller::BacktrackWhenCoveredController`].  The propagation
+//! is purely structural — it indexes every `Prod` of `Lit`s whose
+//! ancestors are all `Sum` nodes (i.e. "clauses" that lie on every path
+//! through the NNF) and watches for blocked alternatives — so it works
+//! identically whether the search is over the original formula
+//! (validity / falsifying assignments) or its complement
+//! (satisfiability / satisfying assignments).  The only things that
+//! differ between the two cases are which NNF you preprocess and how you
+//! interpret the resulting uncovered path.
 
 use std::collections::HashMap;
 
@@ -8,8 +19,9 @@ use crate::matrix::{
     Lit, NNF, PathParams, PathPrefix, PathsClass, ProdPath, Var,
 };
 
-/// SAT-search controller that wraps a [`BacktrackWhenCoveredController`] and
-/// adds two CDCL-flavoured heuristics for fast satisfiability searches:
+/// Path-search controller that wraps a [`BacktrackWhenCoveredController`]
+/// and adds two CDCL-flavoured heuristics for fast uncovered-path searches
+/// (used by both validity and satisfiability):
 ///
 /// 1. **Unit-clause-first Sum ordering.**  At a Sum node (every child is
 ///    forced to contribute lits to the path) visit `Lit` children first,
@@ -31,7 +43,7 @@ use crate::matrix::{
 /// Backtracking is supported via a per-pushed-lit trail: every blocking
 /// and implication tied to a given push is undone when the corresponding
 /// lit is popped from the prefix.
-pub struct SmartSatController<F: FnMut(PathsClass, bool) -> bool = fn(PathsClass, bool) -> bool> {
+pub struct SmartController<F: FnMut(PathsClass, bool) -> bool = fn(PathsClass, bool) -> bool> {
     inner: BacktrackWhenCoveredController<F>,
     // Indexed Prod-of-Lits "clause complements" found during preprocessing.
     // The key is the address of the first child of each Prod's children
@@ -75,14 +87,13 @@ struct TrailEntry {
     implied: Vec<usize>,
 }
 
-impl<F: FnMut(PathsClass, bool) -> bool> SmartSatController<F> {
-    /// Build a SAT-search controller in uncovered-only mode (no `Covered`
-    /// emissions, positions-off compatible).  Without preprocessing the
-    /// propagation is dormant and the controller falls back to local
-    /// alternative pruning.
-    pub fn with_on_class(params: Option<PathParams>, on_class: F) -> Self {
+impl<F: FnMut(PathsClass, bool) -> bool> SmartController<F> {
+    /// Shared constructor body — used by the trait's `with_on_class` /
+    /// `with_on_class_uncovered_only` impls below to wrap an already-built
+    /// inner controller.
+    fn from_inner(inner: BacktrackWhenCoveredController<F>) -> Self {
         Self {
-            inner: BacktrackWhenCoveredController::with_on_class_uncovered_only(params, on_class),
+            inner,
             prod_id_of:           HashMap::new(),
             prod_alts:            Vec::new(),
             prod_total:           Vec::new(),
@@ -96,11 +107,21 @@ impl<F: FnMut(PathsClass, bool) -> bool> SmartSatController<F> {
         }
     }
 
-    /// Build a SAT-search controller and pre-process `nnf` for cross-clause
-    /// unit propagation.  Call this with the NNF (typically the complement)
-    /// the controller will be driven over.
+    /// Build a propagation-aware controller and pre-process `nnf` for
+    /// cross-clause unit propagation.  Pass the same NNF the controller
+    /// will be driven over: the original `nnf` for a validity search
+    /// (where an uncovered path is a falsifying assignment) or the
+    /// complement for a satisfiability search (where an uncovered path is
+    /// a satisfying assignment).
+    ///
+    /// Uses uncovered-only mode for the inner controller, since the
+    /// propagation-driven search is naturally paired with the no-positions
+    /// traversal.  If you want cover certificates as well, build via
+    /// [`PathSearchController::with_on_class`] and then call `preprocess`
+    /// (private) — but in practice all current callers want
+    /// uncovered-only.
     pub fn for_nnf(nnf: &NNF, params: Option<PathParams>, on_class: F) -> Self {
-        let mut s = Self::with_on_class(params, on_class);
+        let mut s = <Self as PathSearchController>::with_on_class_uncovered_only(params, on_class);
         s.preprocess(nnf);
         s
     }
@@ -116,7 +137,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> SmartSatController<F> {
     fn preprocess(&mut self, nnf: &NNF) {
         fn walk<G: FnMut(PathsClass, bool) -> bool>(
             n: &NNF,
-            s: &mut SmartSatController<G>,
+            s: &mut SmartController<G>,
             inside_prod: bool,
         ) {
             match n {
@@ -246,7 +267,33 @@ impl<F: FnMut(PathsClass, bool) -> bool> SmartSatController<F> {
     }
 }
 
-impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartSatController<F> {
+impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartController<F> {
+    type OnClass = F;
+
+    /// Build a propagation-aware controller wrapping a *cover-mode* inner
+    /// controller.  The propagation logic itself is mode-independent — it
+    /// only cares about which `Prod`-of-`Lit`s clauses exist and which
+    /// lits are on the path — so this is a useful pairing when the caller
+    /// wants both cross-clause propagation *and* `Covered` events for
+    /// downstream reporting.  See [`Self::for_nnf`] for the more common
+    /// uncovered-only flavour used by `Matrix::satisfiable_with_smart_controller`.
+    fn with_on_class(params: Option<PathParams>, on_class: F) -> Self {
+        let inner = <BacktrackWhenCoveredController<F> as PathSearchController>::with_on_class(params, on_class);
+        Self::from_inner(inner)
+    }
+
+    /// Build a propagation-aware controller in uncovered-only mode: no
+    /// `Covered` emissions, `needs_cover()` returns false, no per-Lit
+    /// `pos.clone()` happens in the no-positions traversal.  This is the
+    /// flavour [`Self::for_nnf`] uses internally.  Without preprocessing
+    /// (i.e. when built via this constructor directly without subsequent
+    /// `for_nnf` setup) the propagation is dormant and the controller
+    /// falls back to local alternative pruning via `prod_ord`.
+    fn with_on_class_uncovered_only(params: Option<PathParams>, on_class: F) -> Self {
+        let inner = <BacktrackWhenCoveredController<F> as PathSearchController>::with_on_class_uncovered_only(params, on_class);
+        Self::from_inner(inner)
+    }
+
     fn should_continue_on_prefix(
         &mut self,
         prefix_literals: &Vec<&Lit>,
@@ -305,6 +352,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartSatContro
     fn needs_cover(&self) -> bool { self.inner.needs_cover() }
 
     fn path_count(&self) -> usize { self.inner.path_count() }
+    fn covered_prefix_count(&self) -> usize { self.inner.covered_prefix_count() }
+    fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
 
     // sum_ord left at default (natural order).  Reordering Sum children
     // is *unsound* with the current path encoding: the `ProdPath` only

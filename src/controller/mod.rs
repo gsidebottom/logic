@@ -5,8 +5,9 @@
 //!
 //! * [`backtrack::BacktrackWhenCoveredController`] — the workhorse used by
 //!   `Matrix::valid` / `Matrix::satisfiable` for cover-aware DFS pruning.
-//! * [`smart::SmartSatController`] — a SAT-search controller layering
-//!   cross-clause unit propagation on top of `BacktrackWhenCoveredController`.
+//! * [`smart::SmartController`] — layers cross-clause unit propagation
+//!   on top of `BacktrackWhenCoveredController`; usable for either
+//!   validity or satisfiability searches.
 
 pub mod backtrack;
 pub mod cancel;
@@ -14,9 +15,9 @@ pub mod smart;
 
 pub use backtrack::BacktrackWhenCoveredController;
 pub use cancel::CancelController;
-pub use smart::SmartSatController;
+pub use smart::SmartController;
 
-use crate::matrix::{Lit, NNF, PathPrefix, PathsClass, ProdPath};
+use crate::matrix::{Lit, NNF, PathParams, PathPrefix, PathsClass, ProdPath};
 
 /// Controls depth-first path-prefix traversal.
 ///
@@ -28,6 +29,36 @@ use crate::matrix::{Lit, NNF, PathPrefix, PathsClass, ProdPath};
 /// per-node ordering hooks — so a controller can both decide *what* to
 /// backtrack and *how* the search visits Sum/Prod children.
 pub trait PathSearchController {
+    /// Type of the `on_class` callback used by this controller's
+    /// constructors.  For controllers parameterized on a closure type
+    /// `F: FnMut(PathsClass, bool) -> bool` (such as
+    /// [`backtrack::BacktrackWhenCoveredController<F>`] and
+    /// [`smart::SmartController<F>`]), this is `F` itself.  Wrapper
+    /// controllers that don't construct themselves from `(params, F)` —
+    /// e.g. [`cancel::CancelController`], which is built around an
+    /// already-constructed inner — set this to `()` and rely on the
+    /// default panic implementations of the constructor methods.
+    type OnClass;
+
+    /// Construct a controller that emits both `Covered` and `Uncovered`
+    /// events to `on_class`.  The default body panics, so wrapper
+    /// controllers don't need to override.
+    fn with_on_class(_params: Option<PathParams>, _on_class: Self::OnClass) -> Self
+    where Self: Sized {
+        unimplemented!("with_on_class is not supported for this controller type")
+    }
+
+    /// Construct a controller in uncovered-only mode: complementary-pair
+    /// detection still drives pruning, but `Covered` events are
+    /// suppressed (no `CoveredPathPrefix` is built), so `needs_cover()`
+    /// returns false and the no-positions traversal can be used.  The
+    /// default body panics, so wrapper controllers don't need to
+    /// override.
+    fn with_on_class_uncovered_only(_params: Option<PathParams>, _on_class: Self::OnClass) -> Self
+    where Self: Sized {
+        unimplemented!("with_on_class_uncovered_only is not supported for this controller type")
+    }
+
     /// Called at each step of the traversal.
     /// - `None` — continue forward.
     /// - `Some(0)` — backtrack one level (pop the latest item from `pos` and
@@ -85,6 +116,15 @@ pub trait PathSearchController {
     /// [`cancel::CancelController`] surface the inner controller's count for
     /// progress publishing.
     fn path_count(&self) -> usize { 0 }
+
+    /// Number of *covered* prefix detections so far (one per complementary
+    /// pair found along a prefix).  Each one stands for the count of
+    /// complete paths the DFS pruned at that point.  Default `0`.
+    fn covered_prefix_count(&self) -> usize { 0 }
+
+    /// Number of complete *uncovered* paths reached so far.  Each
+    /// contributes exactly one path to the classified total.  Default `0`.
+    fn uncovered_path_count(&self) -> usize { 0 }
 
     /// Floating-point count of *paths* classified so far — meaning the
     /// number of complete paths through the matrix that have been resolved,

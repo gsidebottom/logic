@@ -681,7 +681,7 @@ fn start_classify_job(
     complement: bool,
     params: Option<logic::matrix::PathParams>,
 ) -> Result<(), String> {
-    use logic::matrix::{Matrix, format_path, PathsClass, NNF};
+    use logic::matrix::{Matrix, default_classify_controller, format_path, PathsClass, NNF};
 
     let matrix = Matrix::try_from(formula).map_err(|e| e)?;
     let target_nnf: &NNF = if complement { &matrix.nnf_complement } else { &matrix.nnf };
@@ -689,7 +689,9 @@ fn start_classify_job(
     let target = target_nnf.clone();
     let vars = matrix.ast.vars.clone();
 
-    let (handle, mut rx, cancel) = matrix.classify_paths(complement, 64, params);
+    let params_for_builder = params.clone();
+    let (handle, mut rx, cancel) = matrix.classify_paths(complement, 64, params,
+        move |tx| default_classify_controller(params_for_builder, tx));
     {
         let mut job = job_state.lock().unwrap();
         job.cancel = Some(cancel);

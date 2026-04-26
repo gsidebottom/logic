@@ -1,3 +1,4 @@
+use crate::controller::PathSearchController;
 use crate::matrix::{format_path, parse_to_nnf, BacktrackWhenCoveredController, Cover, PathParams, PathPrefix};
 
 type CoveredPrefixes = Vec<PathPrefix>;

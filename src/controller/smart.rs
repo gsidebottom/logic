@@ -316,7 +316,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartSatContro
     // (Reordering Prod is fine — Prod consumes exactly one path entry
     // and we record the original child index.)
 
-    fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Vec<(usize, &'a NNF)> {
+    fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
         // Filter alternatives that propagation has shown can't lead to a
         // satisfying path:
         //   * already true (lit on path or implied) → return that single
@@ -328,7 +328,9 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartSatContro
         // we keep them and let the DFS work them out.  Empty result is the
         // correct "no consistent choice" signal — the surrounding Sum's
         // continuation chain never reaches the end and no spurious path is
-        // emitted.
+        // emitted.  We always return `Some(...)` because we always inspect
+        // children; the DFS engine's `None`-shortcut for declaration order
+        // doesn't apply to a propagation-aware controller.
         let mut filtered: Vec<(usize, &'a NNF)> = Vec::with_capacity(children.len());
         for (i, c) in children.iter().enumerate() {
             match c {
@@ -336,7 +338,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartSatContro
                     let lit_idx  = (l.var as usize) * 2 + (l.neg as usize);
                     let comp_idx = lit_idx ^ 1;
                     if self.lit_or_implied(lit_idx) {
-                        return vec![(i, c)];
+                        return Some(vec![(i, c)]);
                     }
                     if self.lit_or_implied(comp_idx) {
                         continue;
@@ -346,6 +348,6 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartSatContro
                 _ => filtered.push((i, c)),
             }
         }
-        filtered
+        Some(filtered)
     }
 }

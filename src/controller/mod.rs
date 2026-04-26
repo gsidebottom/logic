@@ -58,20 +58,26 @@ pub trait PathSearchController {
     /// [`crate::matrix::NNF::classify_paths_uncovered_only`].
     fn needs_cover(&self) -> bool { true }
 
-    /// Order in which to visit a Sum node's children.  Default: declaration
-    /// order.  Returning a permuted, filtered, or reordered vector lets a
-    /// controller drive the search — e.g. visit the most-constrained subtree
-    /// first to detect conflicts early.
-    fn sum_ord<'a>(&mut self, children: &'a [NNF]) -> Vec<(usize, &'a NNF)> {
-        NNF::natural_order(children)
+    /// Order in which to visit a Sum node's children.
+    ///
+    /// Return `None` to use declaration order (the default — and the
+    /// allocation-free fast path inside the DFS engine).  Return
+    /// `Some(order)` to permute, filter, or otherwise reshape the
+    /// traversal — e.g. visit the most-constrained subtree first to detect
+    /// conflicts early.  The `(index, child)` pairs in `order` must
+    /// reference the original `children` slice; indices are the absolute
+    /// positions used to record the path.
+    fn sum_ord<'a>(&mut self, _children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+        None
     }
 
-    /// Order in which to visit a Prod node's alternatives.  Default:
-    /// declaration order.  At Prod the DFS picks one alternative at a time;
-    /// reordering changes which alternative is tried first (and therefore
-    /// what the search descends into eagerly).
-    fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Vec<(usize, &'a NNF)> {
-        NNF::natural_order(children)
+    /// Order in which to visit a Prod node's alternatives.  Same `None` =
+    /// declaration order convention as [`Self::sum_ord`].  At Prod the DFS
+    /// picks one alternative at a time, so reordering changes which
+    /// alternative is tried first (and therefore what the search descends
+    /// into eagerly).
+    fn prod_ord<'a>(&mut self, _children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+        None
     }
 
     /// Total classified path prefixes (covered + uncovered) seen so far.

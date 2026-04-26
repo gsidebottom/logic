@@ -634,22 +634,16 @@ impl NNF {
         (handle, rx, cancel)
     }
 
-    /// Default child ordering — yields `(index, child)` in declaration order.
-    /// Convenience for callers of [`Self::for_each_path_prefix`] who don't
-    /// need to reshape Sum/Prod traversal order.
-    pub fn natural_order(children: &[NNF]) -> Vec<(usize, &NNF)> {
-        children.iter().enumerate().collect()
-    }
-
     /// Depth-first traversal of all path prefixes, with generalized pruning
     /// and caller-controlled child order at Sum and Prod nodes.
     ///
-    /// `sum_ord` and `prod_ord` are called once for each Sum / Prod node the
-    /// traversal enters; the `(index, child)` pairs they yield drive the
-    /// order in which the DFS visits that node's children.  Use
-    /// [`Self::natural_order`] for the default declaration order.  Returning
-    /// a reordered or filtered list lets callers e.g. visit lighter subtrees
-    /// first or randomise the search.
+    /// `sum_ord` and `prod_ord` are called once per Sum / Prod node the
+    /// traversal enters and return `Option<Vec<(usize, &NNF)>>`:
+    /// - `None` — visit the children in declaration order (no allocation).
+    /// - `Some(order)` — visit the listed `(index, child)` pairs in the
+    ///   given order, allowing permutation, filtering, or skipping.
+    /// Indices identify the absolute child position used to record the
+    /// path.
     ///
     /// `report_prefix(lits, positions, prod_path)` is called at each step:
     /// - When a `Prod` member is selected or a `Lit` is reached: `prod_path` is `None`
@@ -659,20 +653,15 @@ impl NNF {
     /// absolute tree address of `lits[i]`.
     ///
     /// `report_prefix` returns `Option<usize>`:
-    /// - `None` — continue forward (the equivalent of the old `true`).
+    /// - `None` — continue forward.
     /// - `Some(0)` — backtrack one level: pop the last item from `pos` and
-    ///   `path` and continue with the next sibling at this level.  Equivalent
-    ///   to the old `false`.
+    ///   `path` and continue with the next sibling at this level.
     /// - `Some(i)` for `i > 0` — backtrack `i + 1` levels: pop the last
     ///   `i + 1` items from `pos` (and from `path` for those that were
     ///   `Prod` choices), then continue with the next sibling at the level
-    ///   we land on.  Lets a caller skip up multiple recursion frames in one
-    ///   shot — useful when a lit-set discovers that an ancestor's choice
-    ///   has become impossible.
-    /// Same as [`Self::for_each_path_prefix`] but with caller-controlled
-    /// child order at Sum and Prod nodes.  See [`Self::natural_order`] for
-    /// the default; returning a reordered list lets callers e.g. visit
-    /// lighter subtrees first or randomise the search.
+    ///   we land on.  Lets a caller skip up multiple recursion frames in
+    ///   one shot — useful when a lit-set discovers that an ancestor's
+    ///   choice has become impossible.
     pub fn for_each_path_prefix_ord<SO, PO>(
         &self,
         mut sum_ord:  SO,
@@ -680,8 +669,8 @@ impl NNF {
         mut report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> Option<usize>,
     )
     where
-        SO: for<'a> FnMut(&'a [NNF]) -> Vec<(usize, &'a NNF)>,
-        PO: for<'a> FnMut(&'a [NNF]) -> Vec<(usize, &'a NNF)>,
+        SO: for<'a> FnMut(&'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
+        PO: for<'a> FnMut(&'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
     {
         type Lits<'a> = Vec<&'a Lit>;
         type Positions = PathPrefix;
@@ -700,8 +689,8 @@ impl NNF {
         ) -> Option<usize>
         where
             F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> Option<usize>,
-            SO: for<'b> FnMut(&'b [NNF]) -> Vec<(usize, &'b NNF)>,
-            PO: for<'b> FnMut(&'b [NNF]) -> Vec<(usize, &'b NNF)>,
+            SO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
+            PO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
         {
             match m {
                 NNF::Lit(l) => {
@@ -716,8 +705,13 @@ impl NNF {
                     r
                 }
                 NNF::Prod(children) => {
-                    let order = prod_ord(children);
-                    for (i, child) in order {
+                    let order_opt = prod_ord(children);
+                    let len = order_opt.as_ref().map_or(children.len(), |o| o.len());
+                    for ord_idx in 0..len {
+                        let (i, child) = match &order_opt {
+                            Some(o) => o[ord_idx],
+                            None    => (ord_idx, &children[ord_idx]),
+                        };
                         path.push(i);
                         pos.push(i);
                         let r = match f(lits, positions, None) {
@@ -740,8 +734,8 @@ impl NNF {
                     None
                 }
                 NNF::Sum(children) => {
-                    let order = sum_ord(children);
-                    traverse_sum(children, &order, 0, path, lits, positions, pos, f, sum_ord, prod_ord, then)
+                    let order_opt = sum_ord(children);
+                    traverse_sum(children, order_opt.as_deref(), 0, path, lits, positions, pos, f, sum_ord, prod_ord, then)
                 }
             }
         }
@@ -749,7 +743,7 @@ impl NNF {
         #[allow(clippy::too_many_arguments)]
         fn traverse_sum<'a, F, SO, PO>(
             children: &'a [NNF],
-            order:    &[(usize, &'a NNF)],
+            order:    Option<&[(usize, &'a NNF)]>,
             ord_idx:  usize,
             path: &mut ProdPath,
             lits: &mut Lits<'a>,
@@ -762,13 +756,17 @@ impl NNF {
         ) -> Option<usize>
         where
             F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> Option<usize>,
-            SO: for<'b> FnMut(&'b [NNF]) -> Vec<(usize, &'b NNF)>,
-            PO: for<'b> FnMut(&'b [NNF]) -> Vec<(usize, &'b NNF)>,
+            SO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
+            PO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
         {
-            if ord_idx >= order.len() {
+            let len = order.map_or(children.len(), |o| o.len());
+            if ord_idx >= len {
                 return then(path, lits, positions, pos, f, sum_ord, prod_ord);
             }
-            let (child_idx, child) = order[ord_idx];
+            let (child_idx, child) = match order {
+                Some(o) => o[ord_idx],
+                None    => (ord_idx, &children[ord_idx]),
+            };
             let pos_len = pos.len();
             pos.push(child_idx);
             let r = traverse(child, path, lits, positions, pos, f, sum_ord, prod_ord,
@@ -814,11 +812,7 @@ impl NNF {
     ) {
         // Thin wrapper over the `_ord` version with declaration-order Sum /
         // Prod traversal — same rationale as [`Self::for_each_path_prefix`].
-        self.for_each_path_prefix_no_positions_ord(
-            |children| Self::natural_order(children),
-            |children| Self::natural_order(children),
-            f,
-        );
+        self.for_each_path_prefix_no_positions_ord(|_| None, |_| None, f);
     }
 
     /// Like [`Self::for_each_path_prefix_no_positions`] but with custom
@@ -830,8 +824,8 @@ impl NNF {
         mut f: impl FnMut(&Vec<&Lit>, Option<&ProdPath>, f64) -> bool,
     )
     where
-        SO: for<'a> FnMut(&'a [NNF]) -> Vec<(usize, &'a NNF)>,
-        PO: for<'a> FnMut(&'a [NNF]) -> Vec<(usize, &'a NNF)>,
+        SO: for<'a> FnMut(&'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
+        PO: for<'a> FnMut(&'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
     {
         type Lits<'a> = Vec<&'a Lit>;
         type Counts = HashMap<*const NNF, f64>;
@@ -867,8 +861,8 @@ impl NNF {
         )
         where
             F: FnMut(&Lits<'a>, Option<&ProdPath>, f64) -> bool,
-            SO: for<'b> FnMut(&'b [NNF]) -> Vec<(usize, &'b NNF)>,
-            PO: for<'b> FnMut(&'b [NNF]) -> Vec<(usize, &'b NNF)>,
+            SO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
+            PO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
         {
             match m {
                 NNF::Lit(l) => {
@@ -879,8 +873,13 @@ impl NNF {
                     lits.pop();
                 }
                 NNF::Prod(children) => {
-                    let order = prod_ord(children);
-                    for (i, child) in order {
+                    let order_opt = prod_ord(children);
+                    let len = order_opt.as_ref().map_or(children.len(), |o| o.len());
+                    for ord_idx in 0..len {
+                        let (i, child) = match &order_opt {
+                            Some(o) => o[ord_idx],
+                            None    => (ord_idx, &children[ord_idx]),
+                        };
                         path.push(i);
                         if f(lits, None, mult) {
                             traverse(child, mult, path, lits, counts, f, sum_ord, prod_ord, then);
@@ -889,8 +888,8 @@ impl NNF {
                     }
                 }
                 NNF::Sum(children) => {
-                    let order = sum_ord(children);
-                    traverse_sum(children, &order, 0, mult, path, lits, counts, f, sum_ord, prod_ord, then);
+                    let order_opt = sum_ord(children);
+                    traverse_sum(children, order_opt.as_deref(), 0, mult, path, lits, counts, f, sum_ord, prod_ord, then);
                 }
             }
         }
@@ -898,7 +897,7 @@ impl NNF {
         #[allow(clippy::too_many_arguments)]
         fn traverse_sum<'a, F, SO, PO>(
             children: &'a [NNF],
-            order:    &[(usize, &'a NNF)],
+            order:    Option<&[(usize, &'a NNF)]>,
             ord_idx:  usize,
             base_mult: f64,
             path: &mut ProdPath,
@@ -911,19 +910,28 @@ impl NNF {
         )
         where
             F: FnMut(&Lits<'a>, Option<&ProdPath>, f64) -> bool,
-            SO: for<'b> FnMut(&'b [NNF]) -> Vec<(usize, &'b NNF)>,
-            PO: for<'b> FnMut(&'b [NNF]) -> Vec<(usize, &'b NNF)>,
+            SO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
+            PO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
         {
-            if ord_idx >= order.len() {
+            let len = order.map_or(children.len(), |o| o.len());
+            if ord_idx >= len {
                 then(base_mult, path, lits, counts, f, sum_ord, prod_ord);
             } else {
-                let (_child_idx, child) = order[ord_idx];
+                let child = match order {
+                    Some(o) => o[ord_idx].1,
+                    None    => &children[ord_idx],
+                };
                 // While inside the chosen child the *unvisited* Sum siblings —
                 // those at order positions > ord_idx — contribute a product
                 // factor; their path counts come from the memo.
-                let after_mult: f64 = order[ord_idx+1..].iter()
-                    .map(|(_, c)| counts[&(*c as *const NNF)])
-                    .product();
+                let after_mult: f64 = match order {
+                    Some(o) => o[ord_idx+1..].iter()
+                        .map(|(_, c)| counts[&(*c as *const NNF)])
+                        .product(),
+                    None => children[ord_idx+1..].iter()
+                        .map(|c| counts[&(c as *const NNF)])
+                        .product(),
+                };
                 let inner = base_mult * after_mult;
                 traverse(child, inner, path, lits, counts, f, sum_ord, prod_ord,
                     &mut |_m, path, lits, counts, f, sum_ord, prod_ord| {
@@ -1089,11 +1097,7 @@ mod tests {
             &self,
             report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> Option<usize>,
         ) {
-            self.for_each_path_prefix_ord(
-                |children| Self::natural_order(children),
-                |children| Self::natural_order(children),
-                report_prefix,
-            );
+            self.for_each_path_prefix_ord(|_| None, |_| None, report_prefix);
         }
 
         /// Async streaming variant of `paths`: spawns a blocking thread that

@@ -60,11 +60,11 @@ impl<C: PathSearchController> PathSearchController for CancelController<C> {
 
     fn needs_cover(&self) -> bool { self.inner.needs_cover() }
 
-    fn sum_ord<'a>(&mut self, children: &'a [NNF]) -> Vec<(usize, &'a NNF)> {
+    fn sum_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
         self.inner.sum_ord(children)
     }
 
-    fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Vec<(usize, &'a NNF)> {
+    fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
         self.inner.prod_ord(children)
     }
 

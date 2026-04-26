@@ -1,4 +1,5 @@
 pub mod cadical;
+pub mod controller;
 pub mod formula;
 pub mod matrix;
 pub mod prove;

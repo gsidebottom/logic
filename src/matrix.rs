@@ -307,6 +307,21 @@ impl<F: FnMut(PathsClass, bool) -> bool> BacktrackWhenCoveredController<F> {
     /// exactly one path to the classified total.
     pub fn uncovered_path_count(&self) -> usize { self.uncovered_path_count }
 
+    /// Whether the literal `lit` is currently present anywhere in the live
+    /// path prefix (the same lit may be pushed multiple times — this returns
+    /// `true` if the count is positive).  O(1).
+    pub fn has_lit(&self, lit: &Lit) -> bool {
+        let idx = (lit.var as usize) * 2 + (lit.neg as usize);
+        self.lit_counter.get(idx).copied().unwrap_or(0) > 0
+    }
+
+    /// Whether the *complement* of `lit` is on the current path — i.e.
+    /// pushing `lit` now would create a covered prefix.  O(1).
+    pub fn has_complement_of(&self, lit: &Lit) -> bool {
+        let comp_idx = (lit.var as usize) * 2 + ((!lit.neg) as usize);
+        self.lit_counter.get(comp_idx).copied().unwrap_or(0) > 0
+    }
+
     #[inline]
     fn ensure_capacity(&mut self, idx: usize) {
         if idx >= self.lit_counter.len() {
@@ -347,9 +362,9 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenC
         prefix_literals: &Vec<&Lit>,
         prefix_positions: &PathPrefix,
         complete_prod_path: Option<&ProdPath>,
-    ) -> bool {
+    ) -> Option<usize> {
         if self.hit_limit() {
-            return false;
+            return Some(0);
         }
         // Sync our counter mirror with the DFS stack: pop any entries that the
         // traversal has since popped.  This must run every call because the DFS
@@ -389,7 +404,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenC
                         };
                         if !self.should_continue_on_paths_class(PathsClass::Covered(cpp), self.hit_limit()) {
                             self.last_lits_len = prefix_literals.len();
-                            return false;
+                            return Some(0);
                         }
                     }
                     break;
@@ -412,19 +427,19 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenC
                 self.uncovered_path_count += 1;
                 if !self.should_continue_on_paths_class(PathsClass::Uncovered(path.clone()), self.hit_limit()) {
                     self.last_lits_len = prefix_literals.len();
-                    return false;
+                    return Some(0);
                 }
             }
             self.last_lits_len = prefix_literals.len();
-            return !self.hit_limit();
+            return if self.hit_limit() { Some(0) } else { None };
         }
         // Prod selection — prune if covered.
         if self.covered_at_depth.is_some() {
             self.last_lits_len = prefix_literals.len();
-            return false;
+            return Some(0);
         }
         self.last_lits_len = prefix_literals.len();
-        true
+        None
     }
 
     fn should_continue_on_paths_class(&mut self, paths_class: PathsClass, hit_limit: bool) -> bool {
@@ -439,16 +454,116 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenC
     }
 }
 
-/// Controls depth-first path-prefix traversal.
-pub trait PathSearchController {
-    /// Called at each step of the traversal. Return `true` to continue
-    /// forward, `false` to backtrack.
+/// SAT-search controller that wraps a [`BacktrackWhenCoveredController`] and
+/// adds heuristics for fast satisfiability searches:
+///
+/// 1. **Most-constrained-first Sum ordering.**  At a Sum node (cross-product:
+///    every child contributes lits to the path) visit children whose
+///    `path_count` is smallest first.  Smaller path counts mean the child
+///    has fewer alternatives downstream, so any conflict that *will* arise
+///    surfaces sooner and the DFS backtracks before expending work on
+///    needlessly-flexible siblings.
+///
+/// 2. **Conflict-aware Prod ordering.**  At a Prod node (alternatives) sort
+///    `Lit` children so that lits already on the path come first (free
+///    consistency), fresh non-conflicting lits next, and lits whose
+///    complement is already on the path last (these would immediately
+///    create a covered prefix).  Non-`Lit` children fall in the middle.
+///    Sort is stable: equal-score children retain declaration order.
+///
+/// `path_count` lookups are memoised in a per-controller cache so the
+/// per-Sum sort cost is amortised O(1).
+pub struct SmartSatController<F: FnMut(PathsClass, bool) -> bool = fn(PathsClass, bool) -> bool> {
+    inner: BacktrackWhenCoveredController<F>,
+    pc_cache: HashMap<*const NNF, f64>,
+}
+
+impl<F: FnMut(PathsClass, bool) -> bool> SmartSatController<F> {
+    /// Build a SAT-search controller in uncovered-only mode (no `Covered`
+    /// emissions, positions-off compatible).
+    pub fn with_on_class(params: Option<PathParams>, on_class: F) -> Self {
+        Self {
+            inner:    BacktrackWhenCoveredController::with_on_class_uncovered_only(params, on_class),
+            pc_cache: HashMap::new(),
+        }
+    }
+
+    pub fn hit_limit(&self) -> bool { self.inner.hit_limit() }
+    pub fn path_count(&self) -> usize { self.inner.path_count() }
+    pub fn covered_prefix_count(&self) -> usize { self.inner.covered_prefix_count() }
+    pub fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
+
+    /// Memoised `NNF::path_count`.  Built lazily; subsequent lookups are O(1).
+    fn pc(&mut self, n: &NNF) -> f64 {
+        let k = n as *const NNF;
+        if let Some(&v) = self.pc_cache.get(&k) { return v; }
+        let v = match n {
+            NNF::Lit(_)   => 1.0,
+            NNF::Sum(ch)  => ch.iter().map(|c| self.pc(c)).product(),
+            NNF::Prod(ch) => ch.iter().map(|c| self.pc(c)).sum(),
+        };
+        self.pc_cache.insert(k, v);
+        v
+    }
+}
+
+impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartSatController<F> {
     fn should_continue_on_prefix(
         &mut self,
         prefix_literals: &Vec<&Lit>,
         prefix_positions: &PathPrefix,
         complete_prod_path: Option<&ProdPath>,
-    ) -> bool;
+    ) -> Option<usize> {
+        self.inner.should_continue_on_prefix(prefix_literals, prefix_positions, complete_prod_path)
+    }
+
+    fn should_continue_on_paths_class(&mut self, paths_class: PathsClass, hit_limit: bool) -> bool {
+        self.inner.should_continue_on_paths_class(paths_class, hit_limit)
+    }
+
+    fn needs_cover(&self) -> bool { self.inner.needs_cover() }
+
+    fn sum_ord<'a>(&mut self, children: &'a [NNF]) -> Vec<(usize, &'a NNF)> {
+        // Cheap "unit-clause first" heuristic: visit `Lit` children before
+        // `Prod`s (alternative-clauses), and small Prods before large ones.
+        // Lit children of a Sum represent unit clauses in the original CNF
+        // (or unit terms in a DNF) — committing to their forced lits up
+        // front gives the rest of the search a head start that mimics SAT
+        // solver unit propagation.
+        let mut order: Vec<(usize, &'a NNF)> = children.iter().enumerate().collect();
+        order.sort_by_key(|(_, c)| match c {
+            NNF::Lit(_)    => 0,
+            NNF::Prod(ch)  => 1 + ch.len(),
+            NNF::Sum(ch)   => 1024 + ch.len(),
+        });
+        order
+    }
+
+}
+
+/// Controls depth-first path-prefix traversal.
+///
+/// The DFS calls `should_continue_on_prefix` at every Prod child entry and at
+/// every path completion; `sum_ord` / `prod_ord` once per Sum / Prod node to
+/// pick the order in which children are visited.  The trait surfaces all of
+/// the controls that [`NNF::for_each_path_prefix`] exposes — including the
+/// generalized backtracking via `Option<usize>` and the per-node ordering
+/// hooks — so a controller can both decide *what* to backtrack and *how* the
+/// search visits Sum/Prod children.
+pub trait PathSearchController {
+    /// Called at each step of the traversal.
+    /// - `None` — continue forward.
+    /// - `Some(0)` — backtrack one level (pop the latest item from `pos` and
+    ///   `path` and try the next sibling).
+    /// - `Some(i)` for `i > 0` — backtrack `i + 1` levels.  Use this for
+    ///   non-chronological backjumping when the controller knows that no
+    ///   choice in the recent stack frames can resolve the current conflict.
+    fn should_continue_on_prefix(
+        &mut self,
+        prefix_literals: &Vec<&Lit>,
+        prefix_positions: &PathPrefix,
+        complete_prod_path: Option<&ProdPath>,
+    ) -> Option<usize>;
 
     /// Called on each classified path. Return `true` to continue
     /// classifying paths, `false` to stop the traversal.
@@ -465,20 +580,21 @@ pub trait PathSearchController {
     /// [`NNF::for_each_path_prefix_no_positions`] and
     /// [`NNF::classify_paths_uncovered_only`].
     fn needs_cover(&self) -> bool { true }
-}
 
-/// Blanket impl: any matching `FnMut` is a `PathSearchController`.
-impl<F> PathSearchController for F
-where
-    F: FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> bool,
-{
-    fn should_continue_on_prefix(
-        &mut self,
-        prefix_literals: &Vec<&Lit>,
-        prefix_positions: &PathPrefix,
-        complete_prod_path: Option<&ProdPath>,
-    ) -> bool {
-        self(prefix_literals, prefix_positions, complete_prod_path)
+    /// Order in which to visit a Sum node's children.  Default: declaration
+    /// order.  Returning a permuted, filtered, or reordered vector lets a
+    /// controller drive the search — e.g. visit the most-constrained subtree
+    /// first to detect conflicts early.
+    fn sum_ord<'a>(&mut self, children: &'a [NNF]) -> Vec<(usize, &'a NNF)> {
+        NNF::natural_order(children)
+    }
+
+    /// Order in which to visit a Prod node's alternatives.  Default:
+    /// declaration order.  At Prod the DFS picks one alternative at a time;
+    /// reordering changes which alternative is tried first (and therefore
+    /// what the search descends into eagerly).
+    fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Vec<(usize, &'a NNF)> {
+        NNF::natural_order(children)
     }
 }
 
@@ -779,9 +895,47 @@ impl NNF {
     /// non-complementary paths (up to `paths_class_limit`) without
     /// enumerating all paths.
     pub fn paths(&self, ctrl: &mut dyn PathSearchController) {
-        self.for_each_path_prefix(NNF::natural_order, NNF::natural_order, |lits, positions, prod_path| {
-            if ctrl.should_continue_on_prefix(lits, positions, prod_path) { None } else { Some(0) }
-        });
+        self.for_each_path_prefix_with_controller(ctrl);
+    }
+
+    /// Run [`Self::for_each_path_prefix`] driven by a [`PathSearchController`].
+    /// Bridges the trait's `sum_ord` / `prod_ord` / `should_continue_on_prefix`
+    /// methods into the three closures the function expects.  A `RefCell`
+    /// gives the closures shared access to the controller — calls are
+    /// strictly sequential within the DFS so the runtime borrow check never
+    /// trips.
+    pub fn for_each_path_prefix_with_controller(&self, ctrl: &mut dyn PathSearchController) {
+        let cell = std::cell::RefCell::new(ctrl);
+        self.for_each_path_prefix_ord(
+            |children| cell.borrow_mut().sum_ord(children),
+            |children| cell.borrow_mut().prod_ord(children),
+            |lits, positions, prod_path| {
+                cell.borrow_mut().should_continue_on_prefix(lits, positions, prod_path)
+            },
+        );
+    }
+
+    /// Same as [`Self::for_each_path_prefix_with_controller`] but for the
+    /// positions-off traversal.  The controller must declare
+    /// `needs_cover() == false` so the empty `prefix_positions` slice it
+    /// receives is contractually valid.
+    pub fn for_each_path_prefix_no_positions_with_controller(
+        &self,
+        ctrl: &mut dyn PathSearchController,
+    ) {
+        debug_assert!(!ctrl.needs_cover(),
+            "no-positions traversal requires needs_cover() == false");
+        let cell = std::cell::RefCell::new(ctrl);
+        self.for_each_path_prefix_no_positions_ord(
+            |children| cell.borrow_mut().sum_ord(children),
+            |children| cell.borrow_mut().prod_ord(children),
+            |lits, prod_path, _cover_mult| {
+                let empty = PathPrefix::new();
+                // No-positions traversal still uses simple bool semantics: any
+                // non-None unwind request collapses to "backtrack one level."
+                cell.borrow_mut().should_continue_on_prefix(lits, &empty, prod_path).is_none()
+            },
+        );
     }
 
     /// Async streaming variant of `paths`: spawns a blocking thread that runs
@@ -790,16 +944,21 @@ impl NNF {
     /// the `paths_class_limit` to be reached.
     pub fn paths_async(
         &self,
-        mut ctrl: impl PathSearchController + Send + 'static,
+        ctrl: impl PathSearchController + Send + 'static,
     ) -> (tokio::task::JoinHandle<()>, PathClassificationHandle) {
         let m = self.clone();
         let cancel = PathClassificationHandle::new();
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            m.for_each_path_prefix(NNF::natural_order, NNF::natural_order, |lits, positions, prod_path| {
-                if cancel_for_thread.is_cancelled() { return Some(0); }
-                if ctrl.should_continue_on_prefix(lits, positions, prod_path) { None } else { Some(0) }
-            });
+            let cell = std::cell::RefCell::new(ctrl);
+            m.for_each_path_prefix_ord(
+                |c| cell.borrow_mut().sum_ord(c),
+                |c| cell.borrow_mut().prod_ord(c),
+                |lits, positions, prod_path| {
+                    if cancel_for_thread.is_cancelled() { return Some(0); }
+                    cell.borrow_mut().should_continue_on_prefix(lits, positions, prod_path)
+                },
+            );
         });
         (handle, cancel)
     }
@@ -824,7 +983,7 @@ impl NNF {
         let cancel_for_step  = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let mut send_err: Option<tokio::sync::mpsc::error::SendError<(PathsClass, bool)>> = None;
-            let mut ctrl = BacktrackWhenCoveredController::with_on_class(params,
+            let ctrl = BacktrackWhenCoveredController::with_on_class(params,
                 |class: PathsClass, hit_limit: bool| {
                     if send_err.is_some() || cancel_for_class.is_cancelled() { return false; }
                     if let Err(e) = tx.blocking_send((class, hit_limit)) {
@@ -835,7 +994,8 @@ impl NNF {
                 },
             );
             let mut step: u64 = 0;
-            m.for_each_path_prefix(NNF::natural_order, NNF::natural_order, |lits, positions, prod_path| {
+            let mut ctrl = ctrl;
+            m.for_each_path_prefix(|lits, positions, prod_path| {
                 // Cancel must be honoured at every traversal step, not only on
                 // class emissions — otherwise an UNSAT/all-covered formula can
                 // run the entire DFS to completion before any class event ever
@@ -845,7 +1005,7 @@ impl NNF {
                 if step & 0xFFF == 0 {
                     cancel_for_step.record_paths(ctrl.path_count() as f64);
                 }
-                if ctrl.should_continue_on_prefix(lits, positions, prod_path) { None } else { Some(0) }
+                ctrl.should_continue_on_prefix(lits, positions, prod_path)
             });
             cancel_for_step.record_paths(ctrl.path_count() as f64);
             match send_err {
@@ -897,26 +1057,28 @@ impl NNF {
             let mut paths_classified: f64 = 0.0;
             let mut prev_cov: usize = 0;
             let mut prev_unc: usize = 0;
-            m.for_each_path_prefix_no_positions(|lits, prod_path, cover_mult| {
-                if cancel_for_step.is_cancelled() { return false; }
-                let empty: PathPrefix = Vec::new();
-                let cont = ctrl.should_continue_on_prefix(lits, &empty, prod_path);
-                let cov = ctrl.covered_prefix_count();
-                let unc = ctrl.uncovered_path_count();
-                if cov > prev_cov {
-                    paths_classified += cover_mult;
-                    prev_cov = cov;
-                }
-                if unc > prev_unc {
-                    paths_classified += 1.0;
-                    prev_unc = unc;
-                }
-                step = step.wrapping_add(1);
-                if step & 0xFFF == 0 {
-                    cancel_for_step.record_paths(paths_classified);
-                }
-                cont
-            });
+            m.for_each_path_prefix_no_positions(
+                |lits, prod_path, cover_mult| {
+                    if cancel_for_step.is_cancelled() { return false; }
+                    let empty: PathPrefix = Vec::new();
+                    let cont = ctrl.should_continue_on_prefix(lits, &empty, prod_path).is_none();
+                    let cov = ctrl.covered_prefix_count();
+                    let unc = ctrl.uncovered_path_count();
+                    if cov > prev_cov {
+                        paths_classified += cover_mult;
+                        prev_cov = cov;
+                    }
+                    if unc > prev_unc {
+                        paths_classified += 1.0;
+                        prev_unc = unc;
+                    }
+                    step = step.wrapping_add(1);
+                    if step & 0xFFF == 0 {
+                        cancel_for_step.record_paths(paths_classified);
+                    }
+                    cont
+                },
+            );
             cancel_for_step.record_paths(paths_classified);
             match send_err {
                 Some(e) => Err(Box::new(e) as Box<dyn std::error::Error + Send>),
@@ -980,7 +1142,105 @@ impl NNF {
     ///   we land on.  Lets a caller skip up multiple recursion frames in one
     ///   shot — useful when a lit-set discovers that an ancestor's choice
     ///   has become impossible.
-    pub fn for_each_path_prefix<SO, PO>(
+    pub fn for_each_path_prefix(
+        &self,
+        mut report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> Option<usize>,
+    ) {
+        // Fast path for natural Sum / Prod order: avoids the per-Sum/Prod
+        // Vec allocation that the `_ord` variant pays.  Most callers (paths,
+        // classify_paths, valid, satisfiable) use natural order.
+        type Lits<'a> = Vec<&'a Lit>;
+        type Positions = PathPrefix;
+
+        fn traverse<'a, F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> Option<usize>>(
+            m: &'a NNF,
+            path: &mut ProdPath,
+            lits: &mut Lits<'a>,
+            positions: &mut Positions,
+            pos: &mut Position,
+            f: &mut F,
+            then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut Positions, &mut Position, &mut F) -> Option<usize>,
+        ) -> Option<usize> {
+            match m {
+                NNF::Lit(l) => {
+                    lits.push(l);
+                    positions.push(pos.clone());
+                    let r = then(path, lits, positions, pos, f);
+                    positions.pop();
+                    lits.pop();
+                    r
+                }
+                NNF::Prod(children) => {
+                    for (i, child) in children.iter().enumerate() {
+                        path.push(i);
+                        pos.push(i);
+                        let r = match f(lits, positions, None) {
+                            None    => traverse(child, path, lits, positions, pos, f, then),
+                            Some(k) => Some(k),
+                        };
+                        pos.pop();
+                        path.pop();
+                        match r {
+                            None | Some(0) => continue,
+                            Some(k)        => return Some(k - 1),
+                        }
+                    }
+                    None
+                }
+                NNF::Sum(children) => {
+                    traverse_sum(children, 0, path, lits, positions, pos, f, then)
+                }
+            }
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        fn traverse_sum<'a, F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> Option<usize>>(
+            children: &'a [NNF],
+            idx: usize,
+            path: &mut ProdPath,
+            lits: &mut Lits<'a>,
+            positions: &mut Positions,
+            pos: &mut Position,
+            f: &mut F,
+            then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut Positions, &mut Position, &mut F) -> Option<usize>,
+        ) -> Option<usize> {
+            if idx >= children.len() {
+                return then(path, lits, positions, pos, f);
+            }
+            let pos_len = pos.len();
+            pos.push(idx);
+            let r = traverse(&children[idx], path, lits, positions, pos, f,
+                &mut |path, lits, positions, pos, f| {
+                    let saved_pos = pos.clone();
+                    pos.truncate(pos_len);
+                    let r = traverse_sum(children, idx + 1, path, lits, positions, pos, f, then);
+                    if r.is_none() { *pos = saved_pos; }
+                    r
+                },
+            );
+            pos.truncate(pos_len);
+            match r {
+                None | Some(0) => None,
+                Some(k)        => Some(k - 1),
+            }
+        }
+
+        let mut path = ProdPath::new();
+        let mut lits = Vec::new();
+        let mut positions = Vec::new();
+        let mut pos = Vec::new();
+        traverse(self, &mut path, &mut lits, &mut positions, &mut pos, &mut report_prefix,
+            &mut |path, lits, positions, _pos, f| {
+                f(lits, positions, Some(path))
+            },
+        );
+    }
+
+    /// Same as [`Self::for_each_path_prefix`] but with caller-controlled
+    /// child order at Sum and Prod nodes.  See [`Self::natural_order`] for
+    /// the default; returning a reordered list lets callers e.g. visit
+    /// lighter subtrees first or randomise the search.
+    pub fn for_each_path_prefix_ord<SO, PO>(
         &self,
         mut sum_ord:  SO,
         mut prod_ord: PO,
@@ -1116,12 +1376,12 @@ impl NNF {
         &self,
         mut f: impl FnMut(&Vec<&Lit>, Option<&ProdPath>, f64) -> bool,
     ) {
+        // Fast path matching the with-positions `for_each_path_prefix`: no
+        // ord allocations on the hot path; iteration is by-index over each
+        // node's children directly.
         type Lits<'a> = Vec<&'a Lit>;
         type Counts = HashMap<*const NNF, f64>;
 
-        // Memoise path_count for every reachable subtree once.  Without this
-        // the per-Sum sibling-product computations would call path_count
-        // recursively and turn an O(N) traversal into O(N²) or worse.
         fn build_counts(n: &NNF, c: &mut Counts) -> f64 {
             let k = n as *const NNF;
             if let Some(&v) = c.get(&k) { return v; }
@@ -1152,9 +1412,6 @@ impl NNF {
                     lits.pop();
                 }
                 NNF::Prod(children) => {
-                    // Prod siblings are alternative paths the DFS will visit
-                    // independently after backtrack; the cover does not skip
-                    // them, so the multiplier is unchanged.
                     for (i, child) in children.iter().enumerate() {
                         path.push(i);
                         if f(lits, None, mult) {
@@ -1182,9 +1439,6 @@ impl NNF {
             if idx >= children.len() {
                 then(base_mult, path, lits, counts, f);
             } else {
-                // While inside child idx the unvisited Sum siblings to its
-                // right (idx+1..) contribute a product factor — those
-                // sub-paths are skipped if we backtrack from inside child idx.
                 let after_mult: f64 = children[idx+1..].iter()
                     .map(|c| counts[&(c as *const NNF)])
                     .product();
@@ -1201,6 +1455,125 @@ impl NNF {
         let mut lits = Vec::new();
         traverse(self, 1.0, &mut path, &mut lits, &counts, &mut f,
             &mut |mult, path, lits, _counts, f| {
+                f(lits, Some(path), mult);
+            },
+        );
+    }
+
+    /// Like [`Self::for_each_path_prefix_no_positions`] but with custom
+    /// Sum/Prod child ordering — see [`Self::for_each_path_prefix_ord`].
+    pub fn for_each_path_prefix_no_positions_ord<SO, PO>(
+        &self,
+        mut sum_ord:  SO,
+        mut prod_ord: PO,
+        mut f: impl FnMut(&Vec<&Lit>, Option<&ProdPath>, f64) -> bool,
+    )
+    where
+        SO: for<'a> FnMut(&'a [NNF]) -> Vec<(usize, &'a NNF)>,
+        PO: for<'a> FnMut(&'a [NNF]) -> Vec<(usize, &'a NNF)>,
+    {
+        type Lits<'a> = Vec<&'a Lit>;
+        type Counts = HashMap<*const NNF, f64>;
+
+        // Memoise path_count for every reachable subtree once.  Without this
+        // the per-Sum sibling-product computations would call path_count
+        // recursively and turn an O(N) traversal into O(N²) or worse.
+        fn build_counts(n: &NNF, c: &mut Counts) -> f64 {
+            let k = n as *const NNF;
+            if let Some(&v) = c.get(&k) { return v; }
+            let v = match n {
+                NNF::Lit(_)   => 1.0,
+                NNF::Sum(ch)  => ch.iter().map(|x| build_counts(x, c)).product(),
+                NNF::Prod(ch) => ch.iter().map(|x| build_counts(x, c)).sum(),
+            };
+            c.insert(k, v);
+            v
+        }
+        let mut counts: Counts = HashMap::new();
+        build_counts(self, &mut counts);
+
+        #[allow(clippy::too_many_arguments)]
+        fn traverse<'a, F, SO, PO>(
+            m: &'a NNF,
+            mult: f64,
+            path: &mut ProdPath,
+            lits: &mut Lits<'a>,
+            counts: &Counts,
+            f: &mut F,
+            sum_ord:  &mut SO,
+            prod_ord: &mut PO,
+            then: &mut dyn FnMut(f64, &mut ProdPath, &mut Lits<'a>, &Counts, &mut F, &mut SO, &mut PO),
+        )
+        where
+            F: FnMut(&Lits<'a>, Option<&ProdPath>, f64) -> bool,
+            SO: for<'b> FnMut(&'b [NNF]) -> Vec<(usize, &'b NNF)>,
+            PO: for<'b> FnMut(&'b [NNF]) -> Vec<(usize, &'b NNF)>,
+        {
+            match m {
+                NNF::Lit(l) => {
+                    lits.push(l);
+                    then(mult, path, lits, counts, f, sum_ord, prod_ord);
+                    lits.pop();
+                }
+                NNF::Prod(children) => {
+                    let order = prod_ord(children);
+                    for (i, child) in order {
+                        path.push(i);
+                        if f(lits, None, mult) {
+                            traverse(child, mult, path, lits, counts, f, sum_ord, prod_ord, then);
+                        }
+                        path.pop();
+                    }
+                }
+                NNF::Sum(children) => {
+                    let order = sum_ord(children);
+                    traverse_sum(children, &order, 0, mult, path, lits, counts, f, sum_ord, prod_ord, then);
+                }
+            }
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        fn traverse_sum<'a, F, SO, PO>(
+            children: &'a [NNF],
+            order:    &[(usize, &'a NNF)],
+            ord_idx:  usize,
+            base_mult: f64,
+            path: &mut ProdPath,
+            lits: &mut Lits<'a>,
+            counts: &Counts,
+            f: &mut F,
+            sum_ord:  &mut SO,
+            prod_ord: &mut PO,
+            then: &mut dyn FnMut(f64, &mut ProdPath, &mut Lits<'a>, &Counts, &mut F, &mut SO, &mut PO),
+        )
+        where
+            F: FnMut(&Lits<'a>, Option<&ProdPath>, f64) -> bool,
+            SO: for<'b> FnMut(&'b [NNF]) -> Vec<(usize, &'b NNF)>,
+            PO: for<'b> FnMut(&'b [NNF]) -> Vec<(usize, &'b NNF)>,
+        {
+            if ord_idx >= order.len() {
+                then(base_mult, path, lits, counts, f, sum_ord, prod_ord);
+            } else {
+                let (child_idx, child) = order[ord_idx];
+                // While inside the chosen child the *unvisited* Sum siblings —
+                // those at order positions > ord_idx — contribute a product
+                // factor; their path counts come from the memo.
+                let after_mult: f64 = order[ord_idx+1..].iter()
+                    .map(|(_, c)| counts[&(*c as *const NNF)])
+                    .product();
+                let inner = base_mult * after_mult;
+                traverse(child, inner, path, lits, counts, f, sum_ord, prod_ord,
+                    &mut |_m, path, lits, counts, f, sum_ord, prod_ord| {
+                        traverse_sum(children, order, ord_idx + 1, base_mult, path, lits, counts, f, sum_ord, prod_ord, then);
+                    },
+                );
+            }
+        }
+
+        let mut path = ProdPath::new();
+        let mut lits = Vec::new();
+        traverse(self, 1.0, &mut path, &mut lits, &counts, &mut f, &mut sum_ord, &mut prod_ord,
+            &mut |mult, path, lits, _counts, f, _so, _po| {
                 f(lits, Some(path), mult);
             },
         );
@@ -1230,7 +1603,7 @@ impl NNF {
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let mut send_err = None;
-            m.for_each_path_prefix(NNF::natural_order, NNF::natural_order, |lits, positions, prod_path| {
+            m.for_each_path_prefix(|lits, positions, prod_path| {
                 if send_err.is_some() || cancel_for_thread.is_cancelled() { return Some(0); }
                 let event = PathPrefixEvent {
                     lits: lits.iter().map(|&l| l.clone()).collect(),
@@ -1363,9 +1736,16 @@ impl Matrix {
     /// The satisfying assignment is a `Vec<Lit>` where `Lit::pos(x)` means `x=1`
     /// and `Lit::neg(x)` means `x=0`.
     ///
-    /// Uses the async path-classification pipeline like `valid()` and the
-    /// streaming `classify_paths` endpoint — this keeps behaviour consistent
-    /// across `Matrix`'s path-based operations.
+    /// Today this uses the same `classify_paths`-based pipeline as
+    /// `valid()`: a `BacktrackWhenCoveredController` does the cover-pair
+    /// detection, the `_uncovered_only` traversal skips position tracking,
+    /// and the natural-order DFS finds the first non-conflicting path.  For
+    /// structured formulas where a real SAT solver would shine via unit
+    /// propagation (adders, large encoders), prefer
+    /// [`Self::cadical_satisfiable`] — see `bench_faulty_add_at_most` for
+    /// the gap.  [`SmartSatController`] is the place to plug in smarter
+    /// matrix-side search heuristics; the trait now exposes ordering and
+    /// non-chronological backtracking hooks for that purpose.
     pub fn satisfiable(&self) -> Result<Vec<Lit>, ()> {
         let params = Some(PathParams {
             uncovered_path_limit: 1,
@@ -1374,6 +1754,42 @@ impl Matrix {
             no_cover: true,
         });
         let uncovered = self.first_uncovered(true, params);
+        match uncovered {
+            None => Err(()),
+            Some(path) => Ok(self.path_to_assignment(&self.nnf_complement, &path)),
+        }
+    }
+
+    /// Smart-controller variant of [`Self::satisfiable`].  Uses the
+    /// generalized [`PathSearchController`] hooks (custom `sum_ord` /
+    /// `prod_ord`, `Option<usize>`-based unwinding) via
+    /// [`SmartSatController`].  Currently this path is *slower* than the
+    /// natural-order baseline on this codebase's adder/at_most workload
+    /// because the per-Sum/Prod allocations from the ordering closures and
+    /// the `RefCell` bridge cost more than the heuristics save without true
+    /// unit propagation.  Provided as a hook for future heuristic work and
+    /// for callers who supply their own `PathSearchController` with
+    /// formula-aware ordering.
+    pub fn satisfiable_with_smart_controller(&self) -> Result<Vec<Lit>, ()> {
+        let params = Some(PathParams {
+            uncovered_path_limit: 1,
+            paths_class_limit: usize::MAX,
+            covered_prefix_limit: usize::MAX,
+            no_cover: true,
+        });
+        let nnf = &self.nnf_complement;
+        let mut uncovered: Option<ProdPath> = None;
+        {
+            let mut ctrl = SmartSatController::with_on_class(params, |class, _| {
+                if let PathsClass::Uncovered(p) = class {
+                    uncovered = Some(p);
+                    false
+                } else {
+                    true
+                }
+            });
+            nnf.for_each_path_prefix_no_positions_with_controller(&mut ctrl);
+        }
         match uncovered {
             None => Err(()),
             Some(path) => Ok(self.path_to_assignment(&self.nnf_complement, &path)),
@@ -1694,7 +2110,7 @@ mod tests {
         let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
         let mut full_paths = Vec::new();
         let expected: Vec<ProdPath> = m.paths_iter().collect();
-        m.for_each_path_prefix(NNF::natural_order, NNF::natural_order, |_lits, _pos, prod_path| {
+        m.for_each_path_prefix(|_lits, _pos, prod_path| {
             if let Some(path) = prod_path {
                 full_paths.push(path.clone());
             }
@@ -1711,7 +2127,7 @@ mod tests {
             prod(vec![v(3), vn(4), sum(vec![v(5), prod(vec![v(6), v(7)])])]),
         ]);
         let mut all_lit_counts = Vec::new();
-        m.for_each_path_prefix(NNF::natural_order, NNF::natural_order, |lits, _pos, _prod_path| {
+        m.for_each_path_prefix(|lits, _pos, _prod_path| {
             all_lit_counts.push(lits.len());
             None
         });
@@ -1725,7 +2141,7 @@ mod tests {
         // (a · b) + (c · d) — prune when first literal is var 1 (b)
         let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
         let mut completed_paths = Vec::new();
-        m.for_each_path_prefix(NNF::natural_order, NNF::natural_order, |lits, _pos, prod_path| {
+        m.for_each_path_prefix(|lits, _pos, prod_path| {
             if let Some(path) = prod_path {
                 completed_paths.push(path.clone());
             }
@@ -1744,7 +2160,7 @@ mod tests {
         // Variables alphabetically: a=0, b=1, c=2, d=3, e=4
         let (m, _) = parse_to_nnf("a + b + b' c' + c d + e").unwrap();
         let mut trace: Vec<(Vec<(Var, bool)>, Option<ProdPath>)> = Vec::new();
-        m.for_each_path_prefix(NNF::natural_order, NNF::natural_order, |lits, _positions, prod_path| {
+        m.for_each_path_prefix(|lits, _positions, prod_path| {
             trace.push((
                 lits.iter().map(|l| (l.var, l.neg)).collect(),
                 prod_path.cloned(),
@@ -2312,7 +2728,7 @@ mod tests {
         let (m, _) = parse_to_nnf("a b + c d").unwrap();
 
         let mut sync_events: Vec<(Vec<Lit>, PathPrefix, Option<ProdPath>)> = Vec::new();
-        m.for_each_path_prefix(NNF::natural_order, NNF::natural_order, |lits, positions, prod_path| {
+        m.for_each_path_prefix(|lits, positions, prod_path| {
             sync_events.push((
                 lits.iter().map(|&l| l.clone()).collect(),
                 positions.clone(),
@@ -2570,5 +2986,91 @@ mod tests {
             }
         }
         assert!(matrix_bits_checked > 0, "matrix assignment contained no s_i variables");
+    }
+
+    /// Performance regression check.  Generates the formula for
+    /// `faulty_add_at_most(3;1;1;0;3;0;1)` from the jq libraries and times
+    /// both `Matrix::satisfiable()` and `Matrix::cadical_satisfiable()` on it.
+    /// Use `cargo test --release --lib bench_faulty_add_at_most -- --nocapture
+    /// --ignored` to run; ignored by default so it doesn't slow down regular
+    /// CI but can be invoked deliberately.
+    #[test]
+    #[ignore]
+    fn bench_faulty_add_at_most() {
+        use xq::{module_loader::PreludeLoader, run_query, Value as XqValue};
+
+        let strip_sections = |s: &str| -> String {
+            let cut = s.find("\n# === tests ===").unwrap_or(s.len());
+            let head = &s[..cut];
+            let mut out = String::new();
+            let mut lines = head.lines();
+            let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
+            for _ in 0..peek.len() { lines.next(); }
+            let mut rest = lines.clone();
+            if let Some(first) = rest.next() {
+                if first.trim_end() == "# === deps ===" {
+                    lines.next();
+                    while let Some(l) = lines.next() {
+                        if l.trim_end() == "# === end deps ===" { break; }
+                    }
+                }
+            }
+            for l in lines { out.push_str(l); out.push('\n'); }
+            out
+        };
+        let load = |name: &str| -> String {
+            strip_sections(&std::fs::read_to_string(format!("lib/{}", name))
+                .unwrap_or_else(|e| panic!("read lib/{}: {}", name, e)))
+        };
+        let expr    = load("expr.jq");
+        let math    = load("math.jq");
+        let at_most = load("at_most.jq");
+        let adder   = load("adder.jq");
+        let combined = format!(
+            "{}\n{}\n{}\n{}\nfaulty_add_at_most(3;1;1;0;3;0;1)",
+            expr, math, at_most, adder,
+        );
+
+        let loader  = PreludeLoader();
+        let context = std::iter::once(Ok::<XqValue, xq::InputError>(XqValue::Null));
+        let input   = std::iter::empty::<Result<XqValue, xq::InputError>>();
+        let iter    = run_query(&combined, context, input, &loader)
+            .expect("jq query failed to compile");
+        let json_vals: Vec<String> = iter.map(|r| r.expect("jq emitted error").to_string()).collect();
+        assert_eq!(json_vals.len(), 1);
+        let formula: String = serde_json::from_str(&json_vals[0]).expect("formula not a JSON string");
+
+        eprintln!("formula length: {} chars", formula.len());
+        let matrix = Matrix::try_from(formula.as_str()).expect("parse formula");
+        eprintln!("variables: {}", matrix.ast.vars.len());
+
+        // ── Matrix::satisfiable (natural-order path) ──
+        let t = std::time::Instant::now();
+        let matrix_asgn = matrix.satisfiable().expect("matrix: should be satisfiable");
+        let matrix_ms = t.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("Matrix::satisfiable        took {:>10.3} ms ({} lits)",
+                  matrix_ms, matrix_asgn.len());
+
+        // ── Matrix::satisfiable_with_smart_controller (heuristic path) ──
+        let t = std::time::Instant::now();
+        let smart_asgn = matrix.satisfiable_with_smart_controller()
+            .expect("matrix smart: should be satisfiable");
+        let smart_ms = t.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("Matrix::satisfiable_smart  took {:>10.3} ms ({} lits)",
+                  smart_ms, smart_asgn.len());
+
+        // ── Matrix::cadical_satisfiable ──
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let t = std::time::Instant::now();
+        let cadical_asgn = rt.block_on(async {
+            let (handle, _cancel) = matrix.cadical_satisfiable();
+            handle.await.unwrap().unwrap().result.expect("cadical: should be satisfiable")
+        });
+        let cadical_ms = t.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("Matrix::cadical_satisfiable took {:>10.3} ms ({} lits)",
+                  cadical_ms, cadical_asgn.len());
+
+        eprintln!("ratio matrix/cadical:       {:.1}×", matrix_ms / cadical_ms.max(0.001));
+        eprintln!("ratio smart/cadical:        {:.1}×", smart_ms  / cadical_ms.max(0.001));
     }
 }

@@ -11,8 +11,6 @@
 //! differ between the two cases are which NNF you preprocess and how you
 //! interpret the resulting uncovered path.
 
-use std::collections::HashMap;
-
 use crate::controller::PathSearchController;
 use crate::controller::backtrack::BacktrackWhenCoveredController;
 use crate::matrix::{
@@ -46,9 +44,8 @@ use crate::matrix::{
 pub struct SmartController<F: FnMut(PathsClass, bool) -> bool = fn(PathsClass, bool) -> bool> {
     inner: BacktrackWhenCoveredController<F>,
     // Indexed Prod-of-Lits "clause complements" found during preprocessing.
-    // The key is the address of the first child of each Prod's children
-    // slice — every Prod has its own children Vec, so the address is unique.
-    prod_id_of:  HashMap<*const NNF, usize>,
+    // Each gets a sequential `prod_id`; per-id state lives in the parallel
+    // vectors below.
     prod_alts:   Vec<Vec<Lit>>,    // per prod_id: clones of Lit children
     prod_total:  Vec<usize>,       // per prod_id: total alternatives
     prod_blocked: Vec<usize>,      // per prod_id: blocked-alternative count
@@ -94,7 +91,6 @@ impl<F: FnMut(PathsClass, bool) -> bool> SmartController<F> {
     fn from_inner(inner: BacktrackWhenCoveredController<F>) -> Self {
         Self {
             inner,
-            prod_id_of:           HashMap::new(),
             prod_alts:            Vec::new(),
             prod_total:           Vec::new(),
             prod_blocked:         Vec::new(),
@@ -146,8 +142,6 @@ impl<F: FnMut(PathsClass, bool) -> bool> SmartController<F> {
                 NNF::Prod(ch) => {
                     if !inside_prod && !ch.is_empty() && ch.iter().all(|c| matches!(c, NNF::Lit(_))) {
                         let prod_id = s.prod_alts.len();
-                        let key = ch.as_ptr();
-                        s.prod_id_of.insert(key, prod_id);
                         let alts: Vec<Lit> = ch.iter().map(|c| match c {
                             NNF::Lit(l) => l.clone(),
                             _ => unreachable!(),

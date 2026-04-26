@@ -603,20 +603,32 @@ impl NNF {
         let cancel = PathClassificationHandle::new();
         let cancel_for_step = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            let mut ctrl = controller_builder(tx);
+            let ctrl = controller_builder(tx);
             debug_assert!(!ctrl.needs_cover(),
                 "classify_paths_uncovered_only requires a controller with needs_cover() == false");
+            // Wrap the controller in a `RefCell` so the three driver
+            // closures can each take it `&mut` independently — DFS calls
+            // are strictly sequential so the runtime borrow check never
+            // trips.  This is the same bridging pattern
+            // `for_each_path_prefix_no_positions_with_controller` uses;
+            // we inline it here to also weave in the cancel poll and
+            // cover-multiplier-weighted progress publishing.
+            let cell = std::cell::RefCell::new(ctrl);
             let mut step: u64 = 0;
             let mut paths_classified: f64 = 0.0;
             let mut prev_cov: usize = 0;
             let mut prev_unc: usize = 0;
-            m.for_each_path_prefix_no_positions(
+            m.for_each_path_prefix_no_positions_ord(
+                |children| cell.borrow_mut().sum_ord(children),
+                |children| cell.borrow_mut().prod_ord(children),
                 |lits, prod_path, cover_mult| {
                     if cancel_for_step.is_cancelled() { return false; }
                     let empty: PathPrefix = Vec::new();
-                    let cont = ctrl.should_continue_on_prefix(lits, &empty, prod_path).is_none();
-                    let cov = ctrl.covered_prefix_count();
-                    let unc = ctrl.uncovered_path_count();
+                    let mut c = cell.borrow_mut();
+                    let cont = c.should_continue_on_prefix(lits, &empty, prod_path).is_none();
+                    let cov = c.covered_prefix_count();
+                    let unc = c.uncovered_path_count();
+                    drop(c);
                     if cov > prev_cov {
                         paths_classified += cover_mult;
                         prev_cov = cov;
@@ -1070,7 +1082,7 @@ pub fn parse_to_nnf(formula: &str) -> Result<(NNF, Vec<String>), String> {
 pub fn default_classify_controller(
     params: Option<PathParams>,
     tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>,
-) -> BacktrackWhenCoveredController<impl FnMut(PathsClass, bool) -> bool + Send> {
+) -> BacktrackWhenCoveredController<impl FnMut(PathsClass, bool) -> bool + Send + 'static> {
     let no_cover = params.as_ref().is_some_and(|p| p.no_cover);
     let on_class = move |class, hit_limit| tx.blocking_send((class, hit_limit)).is_ok();
     if no_cover {
@@ -1078,6 +1090,52 @@ pub fn default_classify_controller(
     } else {
         BacktrackWhenCoveredController::with_on_class(params, on_class)
     }
+}
+
+/// Erased on-class callback — `Box<dyn FnMut(...) + Send>` satisfies
+/// `FnMut(...) + Send + 'static` and gives a *concrete* return type that
+/// callers can plug into a generic position taking `for<'a> FnOnce(&'a NNF, …)`
+/// without tripping over return-position-`impl Trait` lifetime
+/// inference (the opaque type would otherwise look as if it captured
+/// the input `&NNF` lifetime).
+pub type DynOnClass = Box<dyn FnMut(PathsClass, bool) -> bool + Send>;
+
+/// Builder for [`Matrix::valid`] / [`Matrix::satisfiable`] (and any other
+/// caller of [`NNF::classify_paths`]) that wires up a
+/// [`BacktrackWhenCoveredController`].  The `_nnf` parameter is ignored —
+/// `BacktrackWhenCoveredController` doesn't preprocess the formula — so
+/// this is a thin wrapper picking cover or uncovered-only mode based on
+/// `params.no_cover` and shoving the on-class callback through a
+/// type-erasing `Box`.
+pub fn backtrack_controller_builder(
+    _nnf: &NNF,
+    params: Option<PathParams>,
+    tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>,
+) -> BacktrackWhenCoveredController<DynOnClass> {
+    let no_cover = params.as_ref().is_some_and(|p| p.no_cover);
+    let on_class: DynOnClass = Box::new(move |class, hit_limit|
+        tx.blocking_send((class, hit_limit)).is_ok());
+    if no_cover {
+        BacktrackWhenCoveredController::with_on_class_uncovered_only(params, on_class)
+    } else {
+        BacktrackWhenCoveredController::with_on_class(params, on_class)
+    }
+}
+
+/// Builder for [`Matrix::valid`] / [`Matrix::satisfiable`] that wires up
+/// a propagation-aware [`SmartController`] preprocessed for `nnf` (the
+/// formula whose paths the search will enumerate — the original NNF for
+/// validity, the complement for satisfiability).  Uses uncovered-only
+/// mode for the inner controller, paired with the no-positions
+/// traversal.
+pub fn smart_controller_builder(
+    nnf: &NNF,
+    params: Option<PathParams>,
+    tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>,
+) -> SmartController<DynOnClass> {
+    let on_class: DynOnClass = Box::new(move |class, hit_limit|
+        tx.blocking_send((class, hit_limit)).is_ok());
+    SmartController::for_nnf(nnf, params, on_class)
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -1212,9 +1270,21 @@ mod tests {
             self.nnf.evaluate(assignment)
         }
 
-        /// Check if the formula is valid (a tautology).  Returns `Ok(())` if
-        /// valid, `Err(falsifying_assignment)` otherwise.
-        pub fn valid(&self) -> Result<(), Vec<Lit>> {
+        /// Check if the formula is valid (a tautology).  Returns `Ok(())`
+        /// if valid, `Err(falsifying_assignment)` otherwise.
+        ///
+        /// Generic on the controller — pass
+        /// [`backtrack_controller_builder`] for the cover-aware
+        /// natural-order DFS, [`smart_controller_builder`] for the
+        /// propagation-aware variant, or any other
+        /// `(&NNF, params, tx) -> C` factory.
+        pub fn valid<C, B>(&self, controller_builder: B) -> Result<(), Vec<Lit>>
+        where
+            C: PathSearchController + Send + 'static,
+            B: FnOnce(&NNF, Option<PathParams>, tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> C
+                + Send
+                + 'static,
+        {
             let params = Some(PathParams {
                 uncovered_path_limit: 1,
                 paths_class_limit: usize::MAX,
@@ -1222,8 +1292,9 @@ mod tests {
                 no_cover: true,
             });
             let p = params.clone();
-            let uncovered = self.first_uncovered(false, params, |tx| {
-                default_classify_controller(p, tx)
+            let nnf = self.nnf.clone();
+            let uncovered = self.first_uncovered(false, params, move |tx| {
+                controller_builder(&nnf, p, tx)
             });
             match uncovered {
                 None => Ok(()),
@@ -1235,17 +1306,22 @@ mod tests {
         }
 
         /// Check if the formula is satisfiable.  Returns
-        /// `Ok(satisfying_assignment)` or `Err(())`.
+        /// `Ok(satisfying_assignment)` or `Err(())`.  Generic on the
+        /// controller, like [`Self::valid`] — pass
+        /// [`backtrack_controller_builder`] or
+        /// [`smart_controller_builder`].
         ///
-        /// Uses the same `classify_paths`-based pipeline as `valid()`: a
-        /// [`BacktrackWhenCoveredController`] does cover-pair detection, the
-        /// `_uncovered_only` traversal skips position tracking, and the
-        /// natural-order DFS finds the first non-conflicting path.  For
-        /// structured formulas where a real SAT solver would shine
+        /// For structured formulas where a real SAT solver would shine
         /// (adders, large encoders), prefer
-        /// [`Matrix::cadical_satisfiable`] — see `bench_faulty_add_at_most`
-        /// for the gap.
-        pub fn satisfiable(&self) -> Result<Vec<Lit>, ()> {
+        /// [`Matrix::cadical_satisfiable`] — see
+        /// `bench_faulty_add_at_most` for the gap.
+        pub fn satisfiable<C, B>(&self, controller_builder: B) -> Result<Vec<Lit>, ()>
+        where
+            C: PathSearchController + Send + 'static,
+            B: FnOnce(&NNF, Option<PathParams>, tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> C
+                + Send
+                + 'static,
+        {
             let params = Some(PathParams {
                 uncovered_path_limit: 1,
                 paths_class_limit: usize::MAX,
@@ -1253,40 +1329,10 @@ mod tests {
                 no_cover: true,
             });
             let p = params.clone();
-            let uncovered = self.first_uncovered(true, params, |tx| {
-                default_classify_controller(p, tx)
+            let nnf = self.nnf_complement.clone();
+            let uncovered = self.first_uncovered(true, params, move |tx| {
+                controller_builder(&nnf, p, tx)
             });
-            match uncovered {
-                None => Err(()),
-                Some(path) => Ok(self.path_to_assignment(&self.nnf_complement, &path)),
-            }
-        }
-
-        /// Smart-controller variant of [`Self::satisfiable`].  Drives the
-        /// search through [`SmartController`], which preprocesses every
-        /// Prod-of-Lits ("clause complement") into a watch-list index for
-        /// cross-clause unit propagation.  Used by `smart_satisfiable_*`
-        /// tests and the `bench_faulty_add_at_most` micro-benchmark.
-        pub fn satisfiable_with_smart_controller(&self) -> Result<Vec<Lit>, ()> {
-            let params = Some(PathParams {
-                uncovered_path_limit: 1,
-                paths_class_limit: usize::MAX,
-                covered_prefix_limit: usize::MAX,
-                no_cover: true,
-            });
-            let nnf = &self.nnf_complement;
-            let mut uncovered: Option<ProdPath> = None;
-            {
-                let mut ctrl = SmartController::for_nnf(nnf, params, |class, _| {
-                    if let PathsClass::Uncovered(p) = class {
-                        uncovered = Some(p);
-                        false
-                    } else {
-                        true
-                    }
-                });
-                nnf.for_each_path_prefix_no_positions_with_controller(&mut ctrl);
-            }
             match uncovered {
                 None => Err(()),
                 Some(path) => Ok(self.path_to_assignment(&self.nnf_complement, &path)),
@@ -1345,6 +1391,56 @@ mod tests {
     fn vn(n: Var) -> NNF { NNF::Lit(Lit::neg(n)) }
     fn sum(ch: Vec<NNF>) -> NNF { NNF::Sum(ch) }
     fn prod(ch: Vec<NNF>) -> NNF { NNF::Prod(ch) }
+
+    /// Run [`Matrix::valid`] under both the cover-aware and the
+    /// propagation-aware controllers, assert they agree (Ok-vs-Ok or
+    /// Err-vs-Err with both falsifying assignments actually falsifying),
+    /// and return the backtrack controller's result for the test to
+    /// inspect further.
+    fn valid_both(m: &Matrix) -> Result<(), Vec<Lit>> {
+        // Wrapping the helper in a closure papers over a stable-Rust HRTB
+        // limitation: a bare `fn(&NNF, ...) -> impl FnMut(...) + 'static`
+        // doesn't satisfy `for<'a> FnOnce(&'a NNF, ...) -> ...` directly
+        // because the return-position `impl Trait` can't express that the
+        // hidden type is the same for every input lifetime.  A closure
+        // does, transparently.
+        let r1 = m.valid(|nnf, params, tx| backtrack_controller_builder(nnf, params, tx));
+        let r2 = m.valid(|nnf, params, tx| smart_controller_builder(nnf, params, tx));
+        match (&r1, &r2) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Err(a1), Err(a2)) => {
+                assert_eq!(m.evaluate(a1), Ok(false),
+                    "BacktrackWhenCoveredController: falsifying assignment doesn't actually falsify");
+                assert_eq!(m.evaluate(a2), Ok(false),
+                    "SmartController: falsifying assignment doesn't actually falsify");
+                Err(a1.clone())
+            }
+            _ => panic!(
+                "BacktrackWhenCoveredController and SmartController disagree on validity: \
+                 backtrack={:?}, smart={:?}", r1, r2),
+        }
+    }
+
+    /// Run [`Matrix::satisfiable`] under both controllers, assert they
+    /// agree (Ok-vs-Ok with both assignments actually satisfying, or
+    /// Err-vs-Err), and return the backtrack controller's result.
+    fn satisfiable_both(m: &Matrix) -> Result<Vec<Lit>, ()> {
+        let r1 = m.satisfiable(|nnf, params, tx| backtrack_controller_builder(nnf, params, tx));
+        let r2 = m.satisfiable(|nnf, params, tx| smart_controller_builder(nnf, params, tx));
+        match (&r1, &r2) {
+            (Err(()), Err(())) => Err(()),
+            (Ok(a1), Ok(a2)) => {
+                assert_eq!(m.evaluate(a1), Ok(true),
+                    "BacktrackWhenCoveredController: satisfying assignment doesn't actually satisfy");
+                assert_eq!(m.evaluate(a2), Ok(true),
+                    "SmartController: satisfying assignment doesn't actually satisfy");
+                Ok(a1.clone())
+            }
+            _ => panic!(
+                "BacktrackWhenCoveredController and SmartController disagree on satisfiability: \
+                 backtrack={:?}, smart={:?}", r1, r2),
+        }
+    }
 
     // ── CaDiCaL cross-check ────────────────────────────────────────────────────
 
@@ -1963,13 +2059,13 @@ mod tests {
     #[test]
     fn test_valid_tautology() {
         let m = Matrix::try_from("A + A'").unwrap();
-        assert!(m.valid().is_ok());
+        assert!(valid_both(&m).is_ok());
     }
 
     #[test]
     fn test_valid_not_tautology() {
         let m = Matrix::try_from("A").unwrap();
-        let err = m.valid().unwrap_err();
+        let err = valid_both(&m).unwrap_err();
         // A is not a tautology; falsifying assignment should set A=0
         assert_eq!(err.len(), 1);
         assert_eq!(err[0], Lit::neg(0)); // A=0
@@ -1979,13 +2075,13 @@ mod tests {
     fn test_valid_equiv() {
         // a = b is not a tautology
         let m = Matrix::try_from("a = b").unwrap();
-        assert!(m.valid().is_err());
+        assert!(valid_both(&m).is_err());
     }
 
     #[test]
     fn test_satisfiable_simple() {
         let m = Matrix::try_from("A").unwrap();
-        let asgn = m.satisfiable().unwrap();
+        let asgn = satisfiable_both(&m).unwrap();
         // A is satisfiable; satisfying assignment should set A=1
         assert_eq!(asgn.len(), 1);
         assert_eq!(asgn[0], Lit::pos(0)); // A=1
@@ -1994,14 +2090,14 @@ mod tests {
     #[test]
     fn test_satisfiable_contradiction() {
         let m = Matrix::try_from("A A'").unwrap();
-        assert!(m.satisfiable().is_err());
+        assert!(satisfiable_both(&m).is_err());
     }
 
     #[test]
     fn test_satisfiable_equiv() {
         // a = b is satisfiable (e.g. a=0, b=0)
         let m = Matrix::try_from("a = b").unwrap();
-        let asgn = m.satisfiable().unwrap();
+        let asgn = satisfiable_both(&m).unwrap();
         // Both should have the same value
         let a_val = asgn.iter().find(|l| l.var == 0).unwrap();
         let b_val = asgn.iter().find(|l| l.var == 1).unwrap();
@@ -2028,7 +2124,7 @@ mod tests {
     #[test]
     fn test_valid_falsifying_evaluates_false() {
         let m = Matrix::try_from("A + A'B").unwrap();
-        if let Err(asgn) = m.valid() {
+        if let Err(asgn) = valid_both(&m) {
             assert_eq!(m.evaluate(&asgn), Ok(false));
         }
     }
@@ -2036,7 +2132,7 @@ mod tests {
     #[test]
     fn test_satisfiable_assignment_evaluates_true() {
         let m = Matrix::try_from("A B + C").unwrap();
-        let asgn = m.satisfiable().unwrap();
+        let asgn = satisfiable_both(&m).unwrap();
         assert_eq!(m.evaluate(&asgn), Ok(true));
     }
 
@@ -2044,9 +2140,9 @@ mod tests {
     fn test_valid_and_satisfiable_formula_r() {
         let f = "(a+b+c')(b+c+d')(c+d+a)(d+a'+b)(a'+b'+c)(b'+c'+d)(c'+d'+a')(d'+a+b')";
         let m = Matrix::try_from(f).unwrap();
-        let valid = m.valid();
+        let valid = valid_both(&m);
         assert_eq!(m.evaluate(valid.as_ref().unwrap_err()), Ok(false));
-        let sat = m.satisfiable();
+        let sat = satisfiable_both(&m);
         assert!(sat.is_err());
         cadical_cross_check(f, &valid, &sat, false);
     }
@@ -2055,9 +2151,9 @@ mod tests {
     fn test_valid_and_satisfiable_formula_r_prime() {
         let f = "a'·b'·c + b'·c'·d + c'·d'·a' + d'·a·b' + a·b·c' + b·c·d' + c·d·a + d·a'·b";
         let m = Matrix::try_from(f).unwrap();
-        let valid = m.valid();
+        let valid = valid_both(&m);
         assert!(valid.is_ok());
-        let sat = m.satisfiable();
+        let sat = satisfiable_both(&m);
         assert_eq!(m.evaluate(sat.as_ref().unwrap()), Ok(true));
         cadical_cross_check(f, &valid, &sat, false);
     }
@@ -2066,9 +2162,9 @@ mod tests {
     fn test_valid_and_satisfiable_formula_clpb_2() {
         let f = "A (R' + S') + A' (R S) + B T + B' T' + A X'";
         let m = Matrix::try_from(f).unwrap();
-        let valid = m.valid();
+        let valid = valid_both(&m);
         assert_eq!(m.evaluate(valid.as_ref().unwrap_err()), Ok(false));
-        let sat = m.satisfiable();
+        let sat = satisfiable_both(&m);
         assert_eq!(m.evaluate(sat.as_ref().unwrap()), Ok(true));
         cadical_cross_check(f, &valid, &sat, false);
     }
@@ -2089,9 +2185,9 @@ mod tests {
             (x_1 + x_4 + x_7) (x_1' + x_4' + x_7') \
             (x_2 + x_5 + x_8) (x_2' + x_5' + x_8')";
         let m = Matrix::try_from(f).unwrap();
-        let valid = m.valid();
+        let valid = valid_both(&m);
         assert_eq!(m.evaluate(valid.as_ref().unwrap_err()), Ok(false));
-        let sat = m.satisfiable();
+        let sat = satisfiable_both(&m);
         assert_eq!(m.evaluate(sat.as_ref().unwrap()), Ok(true));
         cadical_cross_check(f, &valid, &sat, true);
     }
@@ -2117,9 +2213,9 @@ mod tests {
             (x_3 + x_6 + x_9) (x_3' + x_6' + x_9') \
             (x_1 + x_5 + x_9) (x_1' + x_5' + x_9')";
         let m = Matrix::try_from(f).unwrap();
-        let valid = m.valid();
+        let valid = valid_both(&m);
         assert_eq!(m.evaluate(valid.as_ref().unwrap_err()), Ok(false));
-        let sat = m.satisfiable();
+        let sat = satisfiable_both(&m);
         assert!(sat.is_err());
         cadical_cross_check(f, &valid, &sat, true);
     }
@@ -2128,9 +2224,9 @@ mod tests {
     fn test_valid_and_satisfiable_formula_equal_not_equal() {
         let f = "(a = b = c = d)' = (a ≠ b ≠ c ≠ d)";
         let m = Matrix::try_from(f).unwrap();
-        let valid = m.valid();
+        let valid = valid_both(&m);
         assert!(valid.is_ok());
-        let sat = m.satisfiable();
+        let sat = satisfiable_both(&m);
         assert_eq!(m.evaluate(sat.as_ref().unwrap()), Ok(true));
         cadical_cross_check(f, &valid, &sat, false);
     }
@@ -2138,7 +2234,7 @@ mod tests {
     #[test]
     fn test_valid_larger_tautology() {
         let m = Matrix::try_from("R'H' + L H R' + L' + R").unwrap();
-        assert!(m.valid().is_ok());
+        assert!(valid_both(&m).is_ok());
     }
 
     #[test]
@@ -2433,7 +2529,7 @@ mod tests {
         let mut matrix_asgn = None;
         for _ in 0..21 {
             let t = std::time::Instant::now();
-            let a = matrix.satisfiable().expect("matrix: formula should be satisfiable");
+            let a = satisfiable_both(&matrix).expect("matrix: formula should be satisfiable");
             let dt = t.elapsed();
             if dt < best { best = dt; }
             matrix_asgn = Some(a);
@@ -2540,15 +2636,10 @@ mod tests {
                 Ok(m) => m,
                 Err(e) => panic!("parse {}: {}", f, e),
             };
-            let nat = m.satisfiable();
-            let smart = m.satisfiable_with_smart_controller();
-            assert_eq!(nat.is_ok(), smart.is_ok(),
-                       "{}: natural={:?} smart={:?}", f, nat.is_ok(), smart.is_ok());
-            if let Ok(asgn) = smart {
-                let r = m.evaluate(&asgn);
-                assert_eq!(r, Ok(true),
-                    "{}: smart's assignment {:?} doesn't satisfy formula", f, asgn);
-            }
+            // `satisfiable_both` already cross-checks the two controllers
+            // and asserts each returned assignment actually satisfies the
+            // formula — no extra plumbing needed at the call site.
+            let _ = satisfiable_both(&m);
         }
     }
 
@@ -2597,13 +2688,8 @@ mod tests {
         let formula: String = serde_json::from_str(&json_vals[0]).unwrap();
 
         let m = Matrix::try_from(formula.as_str()).unwrap();
-        let nat   = m.satisfiable();
-        let smart = m.satisfiable_with_smart_controller();
-        assert_eq!(nat.is_ok(), smart.is_ok(),
-                   "faulty_add(3): natural={:?} smart={:?}", nat.is_ok(), smart.is_ok());
-        if let Ok(asgn) = smart {
-            assert_eq!(m.evaluate(&asgn), Ok(true), "smart's assignment doesn't satisfy");
-        }
+        // Cross-check both controllers in one shot.
+        let _ = satisfiable_both(&m);
     }
 
     /// Performance regression check.  Generates the formula for
@@ -2662,19 +2748,20 @@ mod tests {
         let matrix = Matrix::try_from(formula.as_str()).expect("parse formula");
         eprintln!("variables: {}", matrix.ast.vars.len());
 
-        // ── Matrix::satisfiable (natural-order path) ──
+        // ── Matrix::satisfiable with BacktrackWhenCoveredController ──
         let t = std::time::Instant::now();
-        let matrix_asgn = matrix.satisfiable().expect("matrix: should be satisfiable");
+        let matrix_asgn = matrix.satisfiable(|nnf, p, tx| backtrack_controller_builder(nnf, p, tx))
+            .expect("matrix backtrack: should be satisfiable");
         let matrix_ms = t.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("Matrix::satisfiable        took {:>10.3} ms ({} lits)",
+        eprintln!("Matrix::satisfiable[Backtrack]   took {:>10.3} ms ({} lits)",
                   matrix_ms, matrix_asgn.len());
 
-        // ── Matrix::satisfiable_with_smart_controller (heuristic path) ──
+        // ── Matrix::satisfiable with SmartController ──
         let t = std::time::Instant::now();
-        let smart_asgn = matrix.satisfiable_with_smart_controller()
+        let smart_asgn = matrix.satisfiable(|nnf, p, tx| smart_controller_builder(nnf, p, tx))
             .expect("matrix smart: should be satisfiable");
         let smart_ms = t.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("Matrix::satisfiable_smart  took {:>10.3} ms ({} lits)",
+        eprintln!("Matrix::satisfiable[Smart]       took {:>10.3} ms ({} lits)",
                   smart_ms, smart_asgn.len());
 
         // ── Matrix::cadical_satisfiable ──

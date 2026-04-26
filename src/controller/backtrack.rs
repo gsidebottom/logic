@@ -254,4 +254,6 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenC
     fn needs_cover(&self) -> bool {
         !self.uncovered_only
     }
+
+    fn path_count(&self) -> usize { self.path_count }
 }

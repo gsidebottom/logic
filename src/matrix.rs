@@ -563,25 +563,18 @@ impl NNF {
     ) -> (tokio::task::JoinHandle<()>, PathClassificationHandle) {
         let m = self.clone();
         let cancel = PathClassificationHandle::new();
-        let cancel_for_thread = cancel.clone();
+        let mut wrapped = crate::controller::CancelController::new(ctrl, cancel.clone());
         let handle = tokio::task::spawn_blocking(move || {
-            let cell = std::cell::RefCell::new(ctrl);
-            m.for_each_path_prefix_ord(
-                |c| cell.borrow_mut().sum_ord(c),
-                |c| cell.borrow_mut().prod_ord(c),
-                |lits, positions, prod_path| {
-                    if cancel_for_thread.is_cancelled() { return Some(0); }
-                    cell.borrow_mut().should_continue_on_prefix(lits, positions, prod_path)
-                },
-            );
+            m.for_each_path_prefix_with_controller(&mut wrapped);
         });
         (handle, cancel)
     }
 
     /// Async streaming path classification. Spawns a blocking thread that
-    /// runs the traversal using a `BacktrackWhenCoveredController`, sending
-    /// each `(PathsClass, hit_limit)` over the returned channel via the
-    /// controller's `on_class` callback.
+    /// runs the traversal using a `BacktrackWhenCoveredController` wrapped
+    /// in a [`CancelController`] for cooperative cancellation and progress
+    /// publishing, sending each `(PathsClass, hit_limit)` over the returned
+    /// channel via the controller's `on_class` callback.
     pub fn classify_paths(
         &self,
         buffer_size: usize,
@@ -594,13 +587,11 @@ impl NNF {
         let m = self.clone();
         let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
         let cancel = PathClassificationHandle::new();
-        let cancel_for_class = cancel.clone();
-        let cancel_for_step  = cancel.clone();
+        let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let mut send_err: Option<tokio::sync::mpsc::error::SendError<(PathsClass, bool)>> = None;
-            let ctrl = BacktrackWhenCoveredController::with_on_class(params,
+            let inner = BacktrackWhenCoveredController::with_on_class(params,
                 |class: PathsClass, hit_limit: bool| {
-                    if send_err.is_some() || cancel_for_class.is_cancelled() { return false; }
                     if let Err(e) = tx.blocking_send((class, hit_limit)) {
                         send_err = Some(e);
                         return false;
@@ -608,21 +599,9 @@ impl NNF {
                     true
                 },
             );
-            let mut step: u64 = 0;
-            let mut ctrl = ctrl;
-            m.for_each_path_prefix(|lits, positions, prod_path| {
-                // Cancel must be honoured at every traversal step, not only on
-                // class emissions — otherwise an UNSAT/all-covered formula can
-                // run the entire DFS to completion before any class event ever
-                // gives the on_class closure a chance to notice.
-                if cancel_for_step.is_cancelled() { return Some(0); }
-                step = step.wrapping_add(1);
-                if step & 0xFFF == 0 {
-                    cancel_for_step.record_paths(ctrl.path_count() as f64);
-                }
-                ctrl.should_continue_on_prefix(lits, positions, prod_path)
-            });
-            cancel_for_step.record_paths(ctrl.path_count() as f64);
+            let mut ctrl = crate::controller::CancelController::new(inner, cancel_for_thread);
+            m.for_each_path_prefix_with_controller(&mut ctrl);
+            ctrl.publish_progress();
             match send_err {
                 Some(e) => Err(Box::new(e) as Box<dyn std::error::Error + Send>),
                 None => Ok(()),
@@ -759,101 +738,20 @@ impl NNF {
     ///   has become impossible.
     pub fn for_each_path_prefix(
         &self,
-        mut report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> Option<usize>,
+        report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> Option<usize>,
     ) {
-        // Fast path for natural Sum / Prod order: avoids the per-Sum/Prod
-        // Vec allocation that the `_ord` variant pays.  Most callers (paths,
-        // classify_paths, valid, satisfiable) use natural order.
-        type Lits<'a> = Vec<&'a Lit>;
-        type Positions = PathPrefix;
-
-        fn traverse<'a, F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> Option<usize>>(
-            m: &'a NNF,
-            path: &mut ProdPath,
-            lits: &mut Lits<'a>,
-            positions: &mut Positions,
-            pos: &mut Position,
-            f: &mut F,
-            then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut Positions, &mut Position, &mut F) -> Option<usize>,
-        ) -> Option<usize> {
-            match m {
-                NNF::Lit(l) => {
-                    lits.push(l);
-                    positions.push(pos.clone());
-                    // Notify the controller of the just-pushed lit so its
-                    // state (lit_counter, propagation, etc.) is current
-                    // before any subsequent prod_ord call gets to inspect it.
-                    let r = match f(lits, positions, None) {
-                        None    => then(path, lits, positions, pos, f),
-                        Some(k) => Some(k),
-                    };
-                    positions.pop();
-                    lits.pop();
-                    r
-                }
-                NNF::Prod(children) => {
-                    for (i, child) in children.iter().enumerate() {
-                        path.push(i);
-                        pos.push(i);
-                        let r = match f(lits, positions, None) {
-                            None    => traverse(child, path, lits, positions, pos, f, then),
-                            Some(k) => Some(k),
-                        };
-                        pos.pop();
-                        path.pop();
-                        match r {
-                            None | Some(0) => continue,
-                            Some(k)        => return Some(k - 1),
-                        }
-                    }
-                    None
-                }
-                NNF::Sum(children) => {
-                    traverse_sum(children, 0, path, lits, positions, pos, f, then)
-                }
-            }
-        }
-
-        #[allow(clippy::too_many_arguments)]
-        fn traverse_sum<'a, F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> Option<usize>>(
-            children: &'a [NNF],
-            idx: usize,
-            path: &mut ProdPath,
-            lits: &mut Lits<'a>,
-            positions: &mut Positions,
-            pos: &mut Position,
-            f: &mut F,
-            then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut Positions, &mut Position, &mut F) -> Option<usize>,
-        ) -> Option<usize> {
-            if idx >= children.len() {
-                return then(path, lits, positions, pos, f);
-            }
-            let pos_len = pos.len();
-            pos.push(idx);
-            let r = traverse(&children[idx], path, lits, positions, pos, f,
-                &mut |path, lits, positions, pos, f| {
-                    let saved_pos = pos.clone();
-                    pos.truncate(pos_len);
-                    let r = traverse_sum(children, idx + 1, path, lits, positions, pos, f, then);
-                    if r.is_none() { *pos = saved_pos; }
-                    r
-                },
-            );
-            pos.truncate(pos_len);
-            match r {
-                None | Some(0) => None,
-                Some(k)        => Some(k - 1),
-            }
-        }
-
-        let mut path = ProdPath::new();
-        let mut lits = Vec::new();
-        let mut positions = Vec::new();
-        let mut pos = Vec::new();
-        traverse(self, &mut path, &mut lits, &mut positions, &mut pos, &mut report_prefix,
-            &mut |path, lits, positions, _pos, f| {
-                f(lits, positions, Some(path))
-            },
+        // Thin wrapper over the `_ord` version with declaration-order Sum /
+        // Prod traversal.  The previous bespoke fast-path implementation
+        // saved one `Vec<(usize, &NNF)>` allocation per Sum/Prod node entry,
+        // but every realistic caller already pays that cost via a
+        // [`PathSearchController`] (whose `sum_ord` / `prod_ord` defaults
+        // also call [`Self::natural_order`]); duplicating ~100 lines of
+        // traversal logic for an alloc that's already in the noise wasn't
+        // worth the maintenance burden.
+        self.for_each_path_prefix_ord(
+            |children| Self::natural_order(children),
+            |children| Self::natural_order(children),
+            report_prefix,
         );
     }
 
@@ -998,91 +896,14 @@ impl NNF {
     /// At a path completion (`prod_path = Some(_)`) the multiplier is 1.
     pub fn for_each_path_prefix_no_positions(
         &self,
-        mut f: impl FnMut(&Vec<&Lit>, Option<&ProdPath>, f64) -> bool,
+        f: impl FnMut(&Vec<&Lit>, Option<&ProdPath>, f64) -> bool,
     ) {
-        // Fast path matching the with-positions `for_each_path_prefix`: no
-        // ord allocations on the hot path; iteration is by-index over each
-        // node's children directly.
-        type Lits<'a> = Vec<&'a Lit>;
-        type Counts = HashMap<*const NNF, f64>;
-
-        fn build_counts(n: &NNF, c: &mut Counts) -> f64 {
-            let k = n as *const NNF;
-            if let Some(&v) = c.get(&k) { return v; }
-            let v = match n {
-                NNF::Lit(_)   => 1.0,
-                NNF::Sum(ch)  => ch.iter().map(|x| build_counts(x, c)).product(),
-                NNF::Prod(ch) => ch.iter().map(|x| build_counts(x, c)).sum(),
-            };
-            c.insert(k, v);
-            v
-        }
-        let mut counts: Counts = HashMap::new();
-        build_counts(self, &mut counts);
-
-        fn traverse<'a, F: FnMut(&Lits<'a>, Option<&ProdPath>, f64) -> bool>(
-            m: &'a NNF,
-            mult: f64,
-            path: &mut ProdPath,
-            lits: &mut Lits<'a>,
-            counts: &Counts,
-            f: &mut F,
-            then: &mut dyn FnMut(f64, &mut ProdPath, &mut Lits<'a>, &Counts, &mut F),
-        ) {
-            match m {
-                NNF::Lit(l) => {
-                    lits.push(l);
-                    if f(lits, None, mult) {
-                        then(mult, path, lits, counts, f);
-                    }
-                    lits.pop();
-                }
-                NNF::Prod(children) => {
-                    for (i, child) in children.iter().enumerate() {
-                        path.push(i);
-                        if f(lits, None, mult) {
-                            traverse(child, mult, path, lits, counts, f, then);
-                        }
-                        path.pop();
-                    }
-                }
-                NNF::Sum(children) => {
-                    traverse_sum(children, 0, mult, path, lits, counts, f, then);
-                }
-            }
-        }
-
-        fn traverse_sum<'a, F: FnMut(&Lits<'a>, Option<&ProdPath>, f64) -> bool>(
-            children: &'a [NNF],
-            idx: usize,
-            base_mult: f64,
-            path: &mut ProdPath,
-            lits: &mut Lits<'a>,
-            counts: &Counts,
-            f: &mut F,
-            then: &mut dyn FnMut(f64, &mut ProdPath, &mut Lits<'a>, &Counts, &mut F),
-        ) {
-            if idx >= children.len() {
-                then(base_mult, path, lits, counts, f);
-            } else {
-                let after_mult: f64 = children[idx+1..].iter()
-                    .map(|c| counts[&(c as *const NNF)])
-                    .product();
-                let inner = base_mult * after_mult;
-                traverse(&children[idx], inner, path, lits, counts, f,
-                    &mut |_m, path, lits, counts, f| {
-                        traverse_sum(children, idx + 1, base_mult, path, lits, counts, f, then);
-                    },
-                );
-            }
-        }
-
-        let mut path = ProdPath::new();
-        let mut lits = Vec::new();
-        traverse(self, 1.0, &mut path, &mut lits, &counts, &mut f,
-            &mut |mult, path, lits, _counts, f| {
-                f(lits, Some(path), mult);
-            },
+        // Thin wrapper over the `_ord` version with declaration-order Sum /
+        // Prod traversal — same rationale as [`Self::for_each_path_prefix`].
+        self.for_each_path_prefix_no_positions_ord(
+            |children| Self::natural_order(children),
+            |children| Self::natural_order(children),
+            f,
         );
     }
 

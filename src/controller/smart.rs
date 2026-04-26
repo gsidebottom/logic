@@ -304,6 +304,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartSatContro
 
     fn needs_cover(&self) -> bool { self.inner.needs_cover() }
 
+    fn path_count(&self) -> usize { self.inner.path_count() }
+
     // sum_ord left at default (natural order).  Reordering Sum children
     // is *unsound* with the current path encoding: the `ProdPath` only
     // records Prod-choice indices, and `NNF::lits_on_path` walks Sum

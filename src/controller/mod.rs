@@ -9,9 +9,11 @@
 //!   cross-clause unit propagation on top of `BacktrackWhenCoveredController`.
 
 pub mod backtrack;
+pub mod cancel;
 pub mod smart;
 
 pub use backtrack::BacktrackWhenCoveredController;
+pub use cancel::CancelController;
 pub use smart::SmartSatController;
 
 use crate::matrix::{Lit, NNF, PathPrefix, PathsClass, ProdPath};
@@ -71,4 +73,18 @@ pub trait PathSearchController {
     fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Vec<(usize, &'a NNF)> {
         NNF::natural_order(children)
     }
+
+    /// Total classified path prefixes (covered + uncovered) seen so far.
+    /// Default `0` for controllers that don't track this.  Wrappers like
+    /// [`cancel::CancelController`] surface the inner controller's count for
+    /// progress publishing.
+    fn path_count(&self) -> usize { 0 }
+
+    /// Floating-point count of *paths* classified so far — meaning the
+    /// number of complete paths through the matrix that have been resolved,
+    /// either by reaching them uncovered or by detecting a cover that
+    /// dominates them.  Defaults to `path_count() as f64`; the
+    /// uncovered-only flavour can override to weight covered detections by
+    /// the count of paths each one stands for.
+    fn paths_classified(&self) -> f64 { self.path_count() as f64 }
 }

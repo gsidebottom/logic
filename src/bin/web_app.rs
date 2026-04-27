@@ -675,13 +675,26 @@ async fn simplify_handler(Json(req): Json<SimplifyRequest>) -> Json<SimplifyResp
 }
 
 /// Start a classify job: parse formula, launch `classify_paths`, spawn drainer.
+///
+/// `use_smart_controller` picks the controller flavour:
+/// - `false` → `BacktrackWhenCoveredController`, the cover-aware DFS used
+///   by the `paths` view (it needs the full cover certificates).
+/// - `true` → `SmartController`, which preprocesses the target NNF for
+///   cross-clause unit propagation.  Used by the `valid` and `satisfiable`
+///   views, which only need a yes/no answer plus a witness — propagation
+///   gets there much faster on structured formulas (adders, encoders).
 fn start_classify_job(
     job_state: Arc<Mutex<ClassifyJob>>,
     formula: &str,
     complement: bool,
     params: Option<logic::matrix::PathParams>,
+    use_smart_controller: bool,
 ) -> Result<(), String> {
-    use logic::matrix::{Matrix, default_classify_controller, format_path, PathsClass, NNF};
+    use logic::matrix::{
+        Matrix, DynOnClass, PathsClass, NNF,
+        default_classify_controller, format_path,
+    };
+    use logic::controller::SmartController;
 
     let matrix = Matrix::try_from(formula).map_err(|e| e)?;
     let target_nnf: &NNF = if complement { &matrix.nnf_complement } else { &matrix.nnf };
@@ -690,8 +703,17 @@ fn start_classify_job(
     let vars = matrix.ast.vars.clone();
 
     let params_for_builder = params.clone();
-    let (handle, mut rx, cancel) = matrix.classify_paths(complement, 64, params,
-        move |tx| default_classify_controller(params_for_builder, tx));
+    let (handle, mut rx, cancel) = if use_smart_controller {
+        let nnf_for_builder = target.clone();
+        matrix.classify_paths(complement, 64, params, move |tx| {
+            let on_class: DynOnClass = Box::new(move |class, hit_limit|
+                tx.blocking_send((class, hit_limit)).is_ok());
+            SmartController::for_nnf(&nnf_for_builder, params_for_builder, on_class)
+        })
+    } else {
+        matrix.classify_paths(complement, 64, params,
+            move |tx| default_classify_controller(params_for_builder, tx))
+    };
     {
         let mut job = job_state.lock().unwrap();
         job.cancel = Some(cancel);
@@ -766,6 +788,7 @@ fn reset_and_start(
     formula: &str,
     complement: bool,
     params: Option<logic::matrix::PathParams>,
+    use_smart_controller: bool,
 ) -> Json<serde_json::Value> {
     {
         let mut job = job_state.lock().unwrap();
@@ -774,7 +797,7 @@ fn reset_and_start(
         job.running = true;
         job.is_complement = complement;
     }
-    if let Err(e) = start_classify_job(job_state.clone(), formula, complement, params) {
+    if let Err(e) = start_classify_job(job_state.clone(), formula, complement, params, use_smart_controller) {
         let mut job = job_state.lock().unwrap();
         job.running = false;
         job.error = Some(e);
@@ -805,7 +828,7 @@ async fn valid_handler(
         covered_prefix_limit: usize::MAX,
         no_cover: req.no_cover,
     });
-    reset_and_start(&state.valid_job, &req.formula, false, params)
+    reset_and_start(&state.valid_job, &req.formula, false, params, /*use_smart_controller=*/ true)
 }
 
 async fn valid_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {
@@ -822,7 +845,7 @@ async fn paths_handler(
 ) -> Json<serde_json::Value> {
     use logic::matrix::PathParams;
     let params = Some(PathParams { paths_class_limit: req.paths_class_limit, ..Default::default() });
-    reset_and_start(&state.paths_job, &req.formula, req.complement, params)
+    reset_and_start(&state.paths_job, &req.formula, req.complement, params, /*use_smart_controller=*/ false)
 }
 
 async fn paths_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {
@@ -844,7 +867,7 @@ async fn satisfiable_handler(
         covered_prefix_limit: usize::MAX,
         no_cover: req.no_cover,
     });
-    reset_and_start(&state.sat_job, &req.formula, true, params)
+    reset_and_start(&state.sat_job, &req.formula, true, params, /*use_smart_controller=*/ true)
 }
 
 async fn satisfiable_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {

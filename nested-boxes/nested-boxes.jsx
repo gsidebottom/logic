@@ -71,7 +71,12 @@ function fmtTime(secs) {
 }
 
 // Format a cadical learned clause: translate 1-based literal numbers to variable names.
+// The empty clause renders as `0`: a clause is a disjunction (at-least-one of its
+// literals must be true), so an empty disjunction is identically false.  CaDiCaL
+// derives this empty clause as the final step of any UNSAT proof, so it shows
+// up in the learned-clauses list and would otherwise render as a blank line.
 function fmtClause(clause, vars) {
+  if (clause.length === 0) return '0';
   return clause.map(lit => {
     const idx = Math.abs(lit) - 1;
     const neg = lit < 0;

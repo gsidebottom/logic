@@ -197,8 +197,20 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool) -> SearchOutcome 
     let nnf_for_builder = comp.clone();
     let p = params.clone();
 
+    // The matrix-method DFS in `for_each_path_prefix_ord` recurses
+    // through Sum siblings via continuation closures.  On a CNF
+    // complement with N clauses, the top-level Sum has N children, so
+    // the traversal nests O(N) deep — for industrial inputs (100k+
+    // clauses) that easily blows the default 2 MB tokio stack.
+    //
+    // Bumping `thread_stack_size` to 256 MB on the runtime builder
+    // covers everything we've seen in the wild (≈ 1.3 KB per nested
+    // frame × 200K frames ≈ 260 MB worst case).  The proper fix is to
+    // rewrite the traversal as an explicit work-stack iteration; this
+    // is the bandage until that lands.
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
+        .thread_stack_size(256 * 1024 * 1024)
         .build()
         .expect("tokio runtime");
 

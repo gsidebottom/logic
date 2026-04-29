@@ -154,4 +154,22 @@ pub trait PathSearchController {
     /// uncovered-only flavour can override to weight covered detections by
     /// the count of paths each one stands for.
     fn paths_classified(&self) -> f64 { self.path_count() as f64 }
+
+    /// Whether this controller wants the search to *restart* — abandon
+    /// the current trail, keep accumulated knowledge (learned clauses,
+    /// variable activities), and re-enter the DFS from the top.
+    ///
+    /// The driver
+    /// ([`crate::matrix::NNF::classify_paths_uncovered_only`]) checks
+    /// this after each DFS run and re-invokes the engine when it
+    /// returns `true`, calling [`Self::complete_restart`] in between.
+    /// Default `false` — most controllers don't restart.
+    fn is_restart_pending(&self) -> bool { false }
+
+    /// Hand-off after the DFS has exited and the driver is about to
+    /// re-invoke it.  Reset per-search bookkeeping (trail, propagation
+    /// blocked-counts, implied-lit counters) but keep persistent
+    /// state (learned clauses, watch lists, variable activities).
+    /// Default no-op.
+    fn complete_restart(&mut self) {}
 }

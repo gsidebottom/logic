@@ -23,17 +23,53 @@
 //!   complement is on the trail by construction at derivation time) is
 //!   recorded against the appropriate push-frames so backtrack undoes
 //!   the blockings correctly as those trail lits get popped.
-//! - **Step 6** (this commit): non-chronological backjumping via the
-//!   existing `Option<usize>` return value.  After a cascade conflict
-//!   triggers 1UIP analysis (Step 4) and the learned clause is wired
-//!   into the watch lists (Step 5), we return `Some(1)` instead of
-//!   `Some(0)` — the matrix-method analog of CDCL's backjump.  In our
+//! - **Step 6**: non-chronological backjumping via the existing
+//!   `Option<usize>` return value.  After a cascade conflict triggers
+//!   1UIP analysis (Step 4) and the learned clause is wired into the
+//!   watch lists (Step 5), we return `Some(1)` instead of `Some(0)`
+//!   — the matrix-method analog of CDCL's backjump.  In our
 //!   Sum-of-Prods CNF-complement structure, `Some(1)` escapes the
 //!   current Prod's alt loop entirely and continues with the previous
 //!   Prod's next alternative; the newly-active learned clause then
 //!   drives propagation as the search re-descends.  Chronological
 //!   `Some(0)` is still used for path-level conflicts (where we don't
 //!   have a learned clause to justify the more aggressive jump).
+//! - **LBD-based learned-clause deletion**: each learned clause is
+//!   tagged with its Literal Block Distance — the count of distinct
+//!   decision levels among its alts.  At restart time, when the
+//!   live-learned-clause count exceeds `learned_clause_limit`, we
+//!   mark the high-LBD half of the learned clauses as deleted (a
+//!   tombstone bit in `clause_deleted`) and compact watch lists so
+//!   subsequent propagation doesn't walk them.  Doing this at
+//!   restart time is convenient because the trail is about to be
+//!   cleared anyway, so there are no live `Reason::Implied(...)`
+//!   references to deleted clauses to worry about.  Original
+//!   (preprocessed) clauses are never deleted.
+//!
+//!   Tuning note: the default limit is 100000.  Lower limits
+//!   (2000-50000) regressed PHP-12-11 / PHP-14-13 noticeably —
+//!   the matrix-method search loses propagation power that would
+//!   otherwise short-circuit the path tree, and the cost of the
+//!   reduction itself (watch-list compaction) doesn't pay back.
+//!   The current default is effectively a safety bound for
+//!   runaway searches; the heuristic infrastructure is in place,
+//!   but the policy could use further tuning.
+//! - **Phase saving**: when a variable is popped from the trail
+//!   (during backtrack or restart) we remember the polarity it had.
+//!   In `prod_ord`, after VSIDS sorting, we tiebreak by preferring
+//!   alts whose polarity matches the saved phase for their variable
+//!   — so when revisiting a Prod the search re-tries the polarity
+//!   that was previously productive.  Especially useful after
+//!   restarts: the saved phases capture "what worked before" while
+//!   the trail is wiped.
+//! - **VSIDS**: variable-ordering heuristic.  Each
+//!   variable has an *activity* score that's bumped every time it's
+//!   in a learned clause's alts, then decayed (relatively) by
+//!   inflating the bump value over time.  In `prod_ord`, after the
+//!   propagation-driven filter runs, surviving alts are sorted by
+//!   descending activity — most-recently-conflicted variables are
+//!   tried first.  This focuses search on the active "frontier" the
+//!   way mainstream CDCL solvers do.
 //! - **Quality-of-life** (later): VSIDS, restarts, LBD-based deletion.
 
 use std::collections::HashMap;
@@ -113,6 +149,96 @@ pub struct CdclController<F: FnMut(PathsClass, bool) -> bool = fn(PathsClass, bo
     /// permanent collection registered with the propagation watch
     /// lists; for now we just keep them around for tests / observation.
     learned_clauses: Vec<LearnedClause>,
+
+    // ── VSIDS variable-ordering heuristic ──
+    //
+    // `var_activity[v]` is the running activity score for variable v.
+    // When a learned clause is derived, every variable in its alts
+    // gets `bump_value` added to its activity.  The global bump value
+    // grows over time (multiplied by `1 / decay_factor` after each
+    // conflict), which is mathematically equivalent to multiplying
+    // every existing activity by `decay_factor` — but only mutates
+    // one number per conflict instead of the whole vector.  When any
+    // activity exceeds 1e100 we re-normalize (divide everything by
+    // 1e100) to avoid f64 overflow.
+    var_activity: Vec<f64>,
+    bump_value:   f64,
+    decay_factor: f64,
+
+    // ── Phase saving ──
+    //
+    // `saved_phase[v] = Some(neg)` means variable `v` was last
+    // assigned with polarity `neg` — i.e., the literal `Lit { var: v,
+    // neg }` was on the trail at some point and got popped.  The next
+    // time `prod_ord` has to break ties between alts of equal VSIDS
+    // activity, alts whose polarity matches the saved phase win.
+    // None means "never assigned".
+    saved_phase: Vec<Option<bool>>,
+
+    // ── LBD-based learned-clause deletion ──
+    //
+    // `clause_deleted[id] = true` means clause `id` has been pruned
+    // from the live propagation set.  `process_push` skips deleted
+    // clauses' watch entries; the storage stays around (we don't
+    // compact `prod_alts` etc.) so existing `clause_id`s and the
+    // `Reason::Implied(clause_id)` back-pointers remain valid.
+    //
+    // Reduction is triggered from `complete_restart()` when
+    // `learned_clauses.len() > learned_clause_limit`; we mark the
+    // top-LBD half of the live-learned set as deleted.  Original
+    // (preprocessed) clauses are never deleted.
+    clause_deleted: Vec<bool>,
+    /// Above this many live learned clauses, the next restart triggers
+    /// LBD-based reduction.  Default 2000 (MiniSAT-style initial cap).
+    learned_clause_limit: usize,
+    /// Number of original (preprocessed) clauses, recorded after
+    /// `preprocess`.  Indexes >= this are learned clauses.
+    initial_clause_count: usize,
+
+    // ── Luby restart schedule ──
+    //
+    // After each cascade conflict we increment
+    // `conflicts_since_last_restart`; when it reaches
+    // `restart_threshold = restart_unit * luby(restart_count)`, we set
+    // `restart_pending = true` and return `Some(usize::MAX)` from the
+    // current `should_continue_on_prefix` call, which unwinds the
+    // entire DFS.  The driver then calls `complete_restart()` and
+    // re-invokes the engine.  The Luby sequence
+    //   1, 1, 2, 1, 1, 2, 4, 1, 1, 2, 1, 1, 2, 4, 8, 1, 1, 2, 1, 1, 2, 4, 8, 16, …
+    // gives geometric backoff so that after enough restarts even an
+    // UNSAT formula's full DFS fits within one allowance, breaking
+    // any restart loop.
+    restart_pending:               bool,
+    conflicts_since_last_restart:  usize,
+    restart_threshold:             usize,
+    restart_count:                 usize,
+    /// Multiplier on the Luby sequence: each restart's threshold is
+    /// `restart_unit * luby(restart_count + 1)` conflicts.  Higher
+    /// values mean less-frequent restarts; default 100 matches
+    /// MiniSAT-style tuning.
+    restart_unit:                  usize,
+}
+
+/// Luby's restart sequence (1-indexed).
+///
+/// Returns the i-th term of `1, 1, 2, 1, 1, 2, 4, 1, 1, 2, 1, 1, 2,
+/// 4, 8, 1, 1, …` — Luby et al.'s provably-optimal-in-expectation
+/// restart schedule for non-deterministic search.  Computed
+/// iteratively in O(log i) time.
+fn luby(mut i: usize) -> usize {
+    debug_assert!(i >= 1, "Luby sequence is 1-indexed");
+    loop {
+        // Find the smallest k where 2^k - 1 >= i.
+        let mut k = 1;
+        while (1usize << k) - 1 < i {
+            k += 1;
+        }
+        if i == (1usize << k) - 1 {
+            return 1usize << (k - 1);
+        }
+        // Otherwise, recurse on i - 2^(k-1) + 1.
+        i = i - (1usize << (k - 1)) + 1;
+    }
 }
 
 /// Result of 1UIP conflict analysis: the new clause to add, plus the
@@ -134,6 +260,13 @@ pub struct LearnedClause {
     /// usually the second-highest level represented in `alts`.
     /// Step 6 uses this to drive non-chronological backjump.
     pub backjump_level: usize,
+    /// Literal Block Distance: number of distinct decision levels
+    /// among the lits in the original learning set (the lits whose
+    /// negations form `alts`).  Lower LBD = the clause crosses fewer
+    /// decision frontiers = more likely to fire propagation early =
+    /// more valuable to keep.  Used by the periodic reducer to rank
+    /// learned clauses for deletion.
+    pub lbd: usize,
 }
 
 /// Why a lit ended up on the trail.
@@ -306,7 +439,135 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
             .max()
             .unwrap_or(0);
 
-        LearnedClause { alts, backjump_level }
+        // LBD = count of distinct decision levels among the learning
+        // set's lits.  Note that `learning.values()` collects *every*
+        // lit's level (including the UIP at conflict_level), so an LBD
+        // of 1 means "all lits at the same decision level" — extreme
+        // glue / very valuable.
+        let unique_levels: std::collections::HashSet<usize> =
+            learning.values().copied().collect();
+        let lbd = unique_levels.len();
+
+        LearnedClause { alts, backjump_level, lbd }
+    }
+
+    /// VSIDS: bump variable `var`'s activity by the current
+    /// `bump_value`.  Re-normalizes activities + bump_value when the
+    /// scores get unwieldy.
+    fn bump_var_activity(&mut self, var: Var) {
+        let idx = var as usize;
+        if idx >= self.var_activity.len() {
+            self.var_activity.resize(idx + 1, 0.0);
+        }
+        self.var_activity[idx] += self.bump_value;
+        // Re-normalize when any activity gets too large to avoid
+        // f64 inf/overflow.  Dividing every activity (and the bump
+        // value) by the same factor preserves the relative ordering.
+        if self.var_activity[idx] > 1e100 {
+            for a in &mut self.var_activity {
+                *a *= 1e-100;
+            }
+            self.bump_value *= 1e-100;
+        }
+    }
+
+    /// VSIDS: decay all activities by inflating the bump value.
+    /// Equivalent to multiplying every existing activity by
+    /// `decay_factor`, but cheaper.
+    fn decay_var_activities(&mut self) {
+        self.bump_value /= self.decay_factor;
+    }
+
+    /// VSIDS: variable activity lookup, defaulting to 0.0 if the
+    /// variable hasn't been seen yet.
+    fn var_activity(&self, var: Var) -> f64 {
+        self.var_activity.get(var as usize).copied().unwrap_or(0.0)
+    }
+
+    /// Number of learned clauses currently considered live (not
+    /// LBD-deleted).  Useful as a sanity check / progress indicator.
+    pub fn live_learned_clause_count(&self) -> usize {
+        (self.initial_clause_count..self.prod_alts.len())
+            .filter(|&id| !self.clause_deleted[id])
+            .count()
+    }
+
+    /// LBD-based learned-clause reduction.  Mark the high-LBD half of
+    /// the live learned clauses as deleted (their watch entries get
+    /// skipped in `process_push` going forward).  Original (preprocessed)
+    /// clauses are never deleted, only learned ones.
+    ///
+    /// **Caller invariant**: this is safe to call only when no trail
+    /// entry has `Reason::Implied(deleted_id)` for any clause we're
+    /// about to delete.  In practice we only call it from
+    /// `complete_restart()`, where the trail is about to be cleared
+    /// anyway, so the invariant is trivially satisfied.
+    fn reduce_learned_clauses(&mut self) {
+        // Collect (clause_id, lbd) for live learned clauses.
+        let mut live: Vec<(usize, usize)> = (self.initial_clause_count..self.prod_alts.len())
+            .filter(|&id| !self.clause_deleted[id])
+            .map(|id| {
+                let learned_idx = id - self.initial_clause_count;
+                let lbd = self.learned_clauses
+                    .get(learned_idx)
+                    .map(|lc| lc.lbd)
+                    .unwrap_or(0);
+                (id, lbd)
+            })
+            .collect();
+        if live.is_empty() { return; }
+
+        // Sort by LBD ascending (low first = keep first).
+        live.sort_by_key(|&(_, lbd)| lbd);
+
+        // Delete the top-LBD half.  Keep the lower half, which has
+        // the highest "glue" / longest expected propagation reach.
+        let to_delete = live.len() / 2;
+        for &(clause_id, _lbd) in live.iter().rev().take(to_delete) {
+            self.clause_deleted[clause_id] = true;
+            // Reset blocking state for the deleted clause, in case
+            // the search re-uses these slots after some other
+            // reduction.  (Not strictly necessary since we'll skip
+            // the clause via `clause_deleted`, but tidies up.)
+            self.prod_blocked[clause_id] = 0;
+            for b in &mut self.prod_alt_blocked[clause_id] {
+                *b = false;
+            }
+        }
+
+        // Compact watch lists: remove entries for deleted clauses so
+        // `process_push` doesn't walk through them on every push.
+        // Without this compaction the early-skip on `clause_deleted`
+        // is fast per-entry but the Luby schedule grows the
+        // between-restart window faster than the reducer can halve
+        // the count, and watch lists fill up with stale entries —
+        // PHP-12-11 timed at ~19s without compaction vs. ~1s with.
+        let deleted = &self.clause_deleted;
+        for w in &mut self.watches {
+            w.retain(|&(clause_id, _)| !deleted[clause_id]);
+        }
+    }
+
+    /// Phase saving: record the polarity of `lit` against its
+    /// variable.  Called from `undo()` and `complete_restart()` —
+    /// every trail entry being popped contributes its polarity.
+    fn save_lit_phase(&mut self, lit: &Lit) {
+        let v = lit.var as usize;
+        if v >= self.saved_phase.len() {
+            self.saved_phase.resize(v + 1, None);
+        }
+        self.saved_phase[v] = Some(lit.neg);
+    }
+
+    /// Phase saving: does `lit`'s polarity match the saved phase for
+    /// its variable?  Returns `false` when the variable has no saved
+    /// phase yet — phase saving is only a tiebreaker, so the search's
+    /// first descent uses VSIDS / declaration order untouched.
+    fn phase_matches(&self, lit: &Lit) -> bool {
+        self.saved_phase.get(lit.var as usize)
+            .copied()
+            .flatten()
+            .map_or(false, |saved| saved == lit.neg)
     }
 
     /// Look up the decision level of `lit` on the trail.  If multiple
@@ -378,6 +639,9 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         self.prod_blocked.push(0);
         self.prod_alt_blocked.push(vec![false; alts.len()]);
         self.prod_alts.push(alts.clone());
+        // The new clause is live by default — only the LBD reducer
+        // turns it off.
+        self.clause_deleted.push(false);
 
         // Walk the trail to find which entry blocks each alt and
         // attribute the blocking to the correct frame.  This is
@@ -469,6 +733,11 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         if !self.watches.is_empty() {
             self.implied_lit_counter.resize(self.watches.len(), 0);
         }
+        // Record how many clauses came from preprocess; anything added
+        // later is a learned clause and may be considered for deletion.
+        self.initial_clause_count = self.prod_alts.len();
+        // Initialize `clause_deleted` to all false for original clauses.
+        self.clause_deleted = vec![false; self.prod_alts.len()];
     }
 
     /// Returns whether `lit_idx` is currently "true" on the path —
@@ -520,6 +789,10 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
             // state and may extend the queue, so we can't hold the borrow.
             let touches: Vec<(usize, usize)> = self.watches[comp_idx].clone();
             for (clause_id, alt_idx) in touches {
+                // Skip clauses pruned by LBD reduction — their watch
+                // entries are still in `self.watches` (we don't compact
+                // for ID-stability reasons) but they shouldn't fire.
+                if self.clause_deleted[clause_id] { continue; }
                 if self.prod_alt_blocked[clause_id][alt_idx] { continue; }
                 self.prod_alt_blocked[clause_id][alt_idx] = true;
                 self.prod_blocked[clause_id] += 1;
@@ -572,8 +845,19 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         for &lit_idx in &frame.implied {
             self.implied_lit_counter[lit_idx] -= 1;
         }
-        // Truncate trail to remove this push's entries.
+        // Phase saving: every lit being popped here contributes its
+        // polarity to `saved_phase` so the next decision involving
+        // that variable can re-prefer the recently-tried polarity.
+        // We snapshot the lits first to avoid an aliasing borrow with
+        // the `&mut self.saved_phase` we'd need otherwise.
         let new_len = self.trail.len() - frame.trail_added;
+        let popped: Vec<Lit> = self.trail[new_len..]
+            .iter()
+            .map(|t| t.lit.clone())
+            .collect();
+        for lit in &popped {
+            self.save_lit_phase(lit);
+        }
         self.trail.truncate(new_len);
     }
 }
@@ -596,6 +880,31 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             push_frames:      Vec::new(),
             our_counted_len:  0,
             learned_clauses:  Vec::new(),
+            // VSIDS defaults: standard MiniSAT-style 0.95 decay.
+            // bump_value starts at 1.0 and grows over time as
+            // `bump_value /= decay_factor` runs after each conflict.
+            var_activity:     Vec::new(),
+            bump_value:       1.0,
+            decay_factor:     0.95,
+            saved_phase:      Vec::new(),
+            clause_deleted:   Vec::new(),
+            // Reduction fires when live learned-clause count exceeds
+            // this.  Tuned conservatively: low values (2000-50000)
+            // regressed PHP-12-11 and PHP-14-13 by 4-6× because the
+            // matrix-method search loses propagation power that
+            // would otherwise short-circuit the path tree.
+            // 100000 is a safety bound for runaway searches without
+            // disturbing typical short ones.
+            learned_clause_limit: 100000,
+            initial_clause_count: 0,    // set at end of preprocess()
+            // Luby restart defaults: unit=100 conflicts × luby(1)=1
+            // → 100 conflicts before first restart.  Subsequent
+            // thresholds follow the Luby sequence.
+            restart_pending:              false,
+            conflicts_since_last_restart: 0,
+            restart_threshold:            100,
+            restart_count:                0,
+            restart_unit:                 100,
         }
     }
 
@@ -614,6 +923,31 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             push_frames:      Vec::new(),
             our_counted_len:  0,
             learned_clauses:  Vec::new(),
+            // VSIDS defaults: standard MiniSAT-style 0.95 decay.
+            // bump_value starts at 1.0 and grows over time as
+            // `bump_value /= decay_factor` runs after each conflict.
+            var_activity:     Vec::new(),
+            bump_value:       1.0,
+            decay_factor:     0.95,
+            saved_phase:      Vec::new(),
+            clause_deleted:   Vec::new(),
+            // Reduction fires when live learned-clause count exceeds
+            // this.  Tuned conservatively: low values (2000-50000)
+            // regressed PHP-12-11 and PHP-14-13 by 4-6× because the
+            // matrix-method search loses propagation power that
+            // would otherwise short-circuit the path tree.
+            // 100000 is a safety bound for runaway searches without
+            // disturbing typical short ones.
+            learned_clause_limit: 100000,
+            initial_clause_count: 0,    // set at end of preprocess()
+            // Luby restart defaults: unit=100 conflicts × luby(1)=1
+            // → 100 conflicts before first restart.  Subsequent
+            // thresholds follow the Luby sequence.
+            restart_pending:              false,
+            conflicts_since_last_restart: 0,
+            restart_threshold:            100,
+            restart_count:                0,
+            restart_unit:                 100,
         }
     }
 
@@ -728,12 +1062,29 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
                             // `learned.backjump_level`.
                             let learned = self.analyze_conflict(conflict_clause_id);
                             let _learned_id = self.register_learned_clause(&learned, &mut frame);
+                            // VSIDS: bump every variable in the
+                            // learned clause's alts.  These are the
+                            // variables most directly involved in
+                            // the conflict — focusing future
+                            // decisions on them tends to compact the
+                            // search.
+                            for alt in &learned.alts {
+                                self.bump_var_activity(alt.var);
+                            }
+                            self.decay_var_activities();
                             self.learned_clauses.push(learned);
                             // Step 6: cascade conflict + learned
                             // clause → 1-Prod backjump.  See module
                             // docstring for why `Some(1)` is the
                             // right K for Sum-of-Prods.
                             want_backjump = true;
+                            // Luby restart: count this cascade
+                            // conflict; trigger restart when the
+                            // current threshold is reached.
+                            self.conflicts_since_last_restart += 1;
+                            if self.conflicts_since_last_restart >= self.restart_threshold {
+                                self.restart_pending = true;
+                            }
                         }
                     }
                 }
@@ -744,6 +1095,16 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             self.last_path_len_at_lit_push = level;
         }
 
+        // Restart takes precedence: returning `Some(usize::MAX)`
+        // unwinds the entire DFS.  The driver
+        // ([`crate::matrix::NNF::classify_paths_uncovered_only`]) sees
+        // `is_restart_pending()` after the engine exits, calls
+        // `complete_restart()`, and re-invokes the engine — which
+        // then re-descends with the same learned clauses + variable
+        // activities but a fresh trail.
+        if self.restart_pending {
+            return Some(usize::MAX);
+        }
         // Step 6: cascade conflicts (with learned clauses) escape the
         // current Prod's alt loop via `Some(1)`; path-level conflicts
         // fall back to chronological `Some(0)`.  The inner controller
@@ -768,12 +1129,18 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
         self.inner.sum_ord(children)
     }
 
-    /// Same propagation-driven prod_ord filter as
-    /// [`crate::controller::SmartController`]: skip Prod alternatives
-    /// whose lits already appear false on the path (the Prod choice
-    /// would create a covered prefix immediately) and short-circuit
-    /// to a single alt whose lit is already true (the Prod is
-    /// already satisfied).
+    /// Propagation-driven `prod_ord` filter (same as
+    /// [`crate::controller::SmartController`]) plus a VSIDS sort:
+    ///
+    /// 1. Skip Prod alternatives whose lits already appear false on
+    ///    the path (the Prod choice would create a covered prefix
+    ///    immediately).
+    /// 2. Short-circuit to a single alt whose lit is already true
+    ///    (the Prod is already satisfied).
+    /// 3. Sort the surviving alts by descending variable activity
+    ///    (VSIDS) — most-recently-conflicted variables are tried
+    ///    first.  Ties keep declaration order (stable sort).  Non-
+    ///    Lit children get activity 0.0 so they sort last.
     fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
         let mut filtered: Vec<(usize, &'a NNF)> = Vec::with_capacity(children.len());
         for (i, c) in children.iter().enumerate() {
@@ -792,12 +1159,91 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
                 _ => filtered.push((i, c)),
             }
         }
+
+        // VSIDS + phase saving sort:
+        //   1. Primary: descending variable activity.
+        //   2. Tiebreaker: alts whose polarity matches the saved
+        //      phase for their variable come first.
+        // Stable sort, so further ties keep declaration order.
+        filtered.sort_by(|(_, a), (_, b)| {
+            let act_a = match a { NNF::Lit(l) => self.var_activity(l.var), _ => 0.0 };
+            let act_b = match b { NNF::Lit(l) => self.var_activity(l.var), _ => 0.0 };
+            act_b.partial_cmp(&act_a).unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    let p_a = match a { NNF::Lit(l) => self.phase_matches(l), _ => false };
+                    let p_b = match b { NNF::Lit(l) => self.phase_matches(l), _ => false };
+                    // Reverse compare so true (match) sorts before false.
+                    p_b.cmp(&p_a)
+                })
+        });
+
         Some(filtered)
     }
 
     fn path_count(&self) -> usize { self.inner.path_count() }
     fn covered_prefix_count(&self) -> usize { self.inner.covered_prefix_count() }
     fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
+
+    fn is_restart_pending(&self) -> bool { self.restart_pending }
+
+    /// Reset trail / propagation state but keep accumulated knowledge.
+    /// After this returns, the controller is ready to drive a fresh
+    /// DFS with empty trail; the next call to
+    /// `should_continue_on_prefix` will re-derive any forcing chains
+    /// from scratch using the persistent watch lists, which now
+    /// include all learned clauses and reflect the current VSIDS
+    /// scores.
+    fn complete_restart(&mut self) {
+        // LBD reduction: prune the high-LBD half of learned clauses
+        // when there are too many.  Done first (before the trail is
+        // cleared) for symmetry with mainstream CDCL solvers; in our
+        // case the reducer doesn't actually care about trail content
+        // because only learned clauses are eligible and they're not
+        // referenced by `Reason` *via the trail being cleared next*.
+        if self.live_learned_clause_count() > self.learned_clause_limit {
+            self.reduce_learned_clauses();
+        }
+
+        // Phase saving: every trail lit's polarity is preserved
+        // across the restart so the next descent can re-prefer
+        // recently-productive polarities.  Clone first to dodge the
+        // borrow conflict with `save_lit_phase`'s `&mut self`.
+        let popped: Vec<Lit> = self.trail.iter().map(|t| t.lit.clone()).collect();
+        for lit in &popped {
+            self.save_lit_phase(lit);
+        }
+
+        // Reset trail and per-search bookkeeping.
+        self.trail.clear();
+        self.push_frames.clear();
+        self.our_counted_len = 0;
+        self.last_path_len_at_lit_push = 0;
+        self.restart_pending = false;
+        self.conflicts_since_last_restart = 0;
+
+        // Reset clause-blocking state.  Empty trail → nothing
+        // currently true → no alts blocked, no implied lits.  This
+        // is correct because every blocking we've recorded was
+        // attributed to a push_frame, all of which are now cleared;
+        // the on-trail lits that justified those blockings are gone.
+        for blocked in &mut self.prod_blocked {
+            *blocked = 0;
+        }
+        for ab in &mut self.prod_alt_blocked {
+            for b in ab.iter_mut() {
+                *b = false;
+            }
+        }
+        for c in &mut self.implied_lit_counter {
+            *c = 0;
+        }
+
+        // Advance the Luby schedule for the next restart's threshold.
+        self.restart_count += 1;
+        // 1-indexed Luby; first call here goes from initial threshold
+        // (luby(1)*unit) to luby(2)*unit, etc.
+        self.restart_threshold = self.restart_unit * luby(self.restart_count + 1);
+    }
 }
 
 #[cfg(test)]
@@ -1261,6 +1707,488 @@ mod tests {
             !ctrl.learned_clauses().is_empty(),
             "expected at least one learned clause to accompany the backjump",
         );
+    }
+
+    // ── VSIDS tests ──────────────────────────────────────────────────
+
+    /// After conflicts, every variable that appeared in a learned
+    /// clause's alts should have positive activity.  Exposed via the
+    /// inherent `var_activity()` accessor.
+    #[test]
+    fn vsids_bump_increases_activity_of_conflict_vars() {
+        // Use the same UNSAT NNF that step4 / step5 / step6 use.
+        let a   = NNF::Lit(Lit::pos(0));
+        let na  = NNF::Lit(Lit::neg(0));
+        let b   = NNF::Lit(Lit::pos(1));
+        let nb  = NNF::Lit(Lit::neg(1));
+        let c   = NNF::Lit(Lit::pos(2));
+        let nc  = NNF::Lit(Lit::neg(2));
+        let nnf = NNF::Sum(vec![
+            nc.clone(),
+            NNF::Prod(vec![a.clone(),  c.clone()]),
+            NNF::Prod(vec![b.clone(),  c.clone()]),
+            NNF::Prod(vec![na.clone(), nb.clone()]),
+        ]);
+
+        let ctrl = run_to_completion(&nnf);
+
+        // `c` (var=2) is the sole alt of the learned clause derived
+        // from this NNF — see step4_simple_cascade_yields_learned_clause.
+        // After at least one bump, var 2's activity must be > 0.
+        assert!(
+            ctrl.var_activity(2) > 0.0,
+            "expected var 2 ('c') to have positive activity after conflict; got {}",
+            ctrl.var_activity(2),
+        );
+        // Variables not in any learned clause's alts (in this case,
+        // `a`/var=0 and `b`/var=1 don't appear in the resolved {c}
+        // learned cube) should have activity 0.
+        assert_eq!(ctrl.var_activity(0), 0.0,
+            "var 0 ('a') not in any learned clause should have 0 activity");
+        assert_eq!(ctrl.var_activity(1), 0.0,
+            "var 1 ('b') not in any learned clause should have 0 activity");
+    }
+
+    /// Repeated bumps on the same variable accumulate, and the global
+    /// `bump_value` grows after each decay so that the same number of
+    /// raw bumps gives more weight when applied to recent conflicts.
+    #[test]
+    fn vsids_bump_value_grows_with_decay() {
+        let nnf = NNF::Sum(vec![
+            NNF::Lit(Lit::pos(0)),
+        ]);
+        let mut ctrl: CdclController<fn(PathsClass, bool) -> bool> =
+            CdclController::for_nnf(&nnf, None, noop_on_class);
+
+        let initial_bump = ctrl.bump_value;
+        ctrl.decay_var_activities();
+        let after_one = ctrl.bump_value;
+        ctrl.decay_var_activities();
+        let after_two = ctrl.bump_value;
+
+        // bump_value /= decay_factor each call → strictly increasing.
+        assert!(after_one > initial_bump,
+            "bump_value should grow after decay: {} -> {}", initial_bump, after_one);
+        assert!(after_two > after_one,
+            "bump_value should keep growing: {} -> {}", after_one, after_two);
+
+        // Specifically: 0.95 decay means each step multiplies by 1/0.95.
+        let expected_one = initial_bump / 0.95;
+        assert!((after_one - expected_one).abs() < 1e-12,
+            "after one decay: expected {}, got {}", expected_one, after_one);
+    }
+
+    /// Re-normalization fires when activity exceeds 1e100, scaling
+    /// every activity (and the bump value) down by 1e-100 so the
+    /// relative ordering is preserved but f64 doesn't overflow.
+    #[test]
+    fn vsids_renormalization_keeps_ordering() {
+        let nnf = NNF::Sum(vec![
+            NNF::Lit(Lit::pos(0)),
+            NNF::Lit(Lit::pos(1)),
+        ]);
+        let mut ctrl: CdclController<fn(PathsClass, bool) -> bool> =
+            CdclController::for_nnf(&nnf, None, noop_on_class);
+
+        // Just under the renormalization threshold so a single bump
+        // doesn't trigger renorm.
+        ctrl.bump_value = 5e99;
+
+        // Bump var 0 three times.  Each adds 5e99.
+        // After bump 1: var_act[0] = 5e99    (<= 1e100, no renorm)
+        // After bump 2: var_act[0] = 1e100  (still <= 1e100, no renorm)
+        // After bump 3: var_act[0] = 1.5e100 (> 1e100, renorm fires).
+        //   Renorm: every activity *= 1e-100, bump_value *= 1e-100.
+        //   So var_act[0] = 1.5, bump_value = 0.05.
+        ctrl.bump_var_activity(0);
+        ctrl.bump_var_activity(0);
+        ctrl.bump_var_activity(0);
+        let act_0_after_renorm = ctrl.var_activity(0);
+        assert!(act_0_after_renorm < 1e10,
+            "renormalization should bring activity down: {}", act_0_after_renorm);
+        assert!(ctrl.bump_value < 1e10,
+            "renormalization should bring bump_value down: {}", ctrl.bump_value);
+
+        // Bump var 1 once with the now-smaller bump.
+        ctrl.bump_var_activity(1);
+
+        // Relative ordering preserved: var 0 got 3 bumps' worth of
+        // activity (post-renorm), var 1 got 1 bump's worth, so var 0
+        // should remain higher.
+        assert!(ctrl.var_activity(0) > ctrl.var_activity(1),
+            "var 0 should have higher activity than var 1: {} vs {}",
+            ctrl.var_activity(0), ctrl.var_activity(1));
+    }
+
+    // ── Restart tests ────────────────────────────────────────────────
+
+    /// The Luby sequence must produce its canonical first 15 terms.
+    #[test]
+    fn luby_sequence_canonical_prefix() {
+        let expected = [1, 1, 2, 1, 1, 2, 4, 1, 1, 2, 1, 1, 2, 4, 8];
+        for (i, &want) in expected.iter().enumerate() {
+            let got = luby(i + 1);
+            assert_eq!(got, want, "luby({}) = {}, expected {}", i + 1, got, want);
+        }
+    }
+
+    /// `luby(2^k - 1) == 2^(k-1)` for all reasonable k — the
+    /// "long-run length doubles" invariant.
+    #[test]
+    fn luby_long_run_lengths_double() {
+        for k in 1..16 {
+            let i = (1usize << k) - 1;
+            assert_eq!(luby(i), 1usize << (k - 1),
+                "luby(2^{}-1 = {}) should equal 2^{} = {}", k, i, k-1, 1usize << (k-1));
+        }
+    }
+
+    /// `complete_restart()` must clear the trail and propagation
+    /// blocked-state but keep learned clauses, watches, and VSIDS
+    /// activities.
+    #[test]
+    fn restart_resets_trail_keeps_knowledge() {
+        let a   = NNF::Lit(Lit::pos(0));
+        let na  = NNF::Lit(Lit::neg(0));
+        let b   = NNF::Lit(Lit::pos(1));
+        let nb  = NNF::Lit(Lit::neg(1));
+        let c   = NNF::Lit(Lit::pos(2));
+        let nc  = NNF::Lit(Lit::neg(2));
+        let nnf = NNF::Sum(vec![
+            nc.clone(),
+            NNF::Prod(vec![a.clone(),  c.clone()]),
+            NNF::Prod(vec![b.clone(),  c.clone()]),
+            NNF::Prod(vec![na.clone(), nb.clone()]),
+        ]);
+
+        let mut ctrl = run_to_completion(&nnf);
+
+        assert!(!ctrl.learned_clauses().is_empty());
+        assert!(ctrl.var_activity(2) > 0.0);
+
+        // Snapshot persistent knowledge before restart.
+        let learned_before  = ctrl.learned_clauses().len();
+        let activity_before = ctrl.var_activity(2);
+        let watches_len     = ctrl.watches.len();
+        let prod_alts_len   = ctrl.prod_alts.len();
+
+        // Force-set restart_pending so we can exercise the trigger
+        // path even if the run-to-completion call already cleared it.
+        ctrl.restart_pending = true;
+        ctrl.complete_restart();
+
+        // Trail / propagation state cleared.
+        assert!(ctrl.trail.is_empty(), "trail should be empty after restart");
+        assert!(ctrl.push_frames.is_empty(), "push_frames should be empty");
+        assert_eq!(ctrl.our_counted_len, 0);
+        for &b in &ctrl.prod_blocked { assert_eq!(b, 0); }
+        for ab in &ctrl.prod_alt_blocked {
+            for &b in ab { assert!(!b); }
+        }
+        for &c in &ctrl.implied_lit_counter { assert_eq!(c, 0); }
+
+        // Persistent knowledge preserved.
+        assert_eq!(ctrl.learned_clauses().len(), learned_before,
+            "learned clauses should survive restart");
+        assert_eq!(ctrl.var_activity(2), activity_before,
+            "VSIDS activity should survive restart");
+        assert_eq!(ctrl.watches.len(), watches_len,
+            "watches shouldn't shrink");
+        assert_eq!(ctrl.prod_alts.len(), prod_alts_len,
+            "indexed clauses (incl. learned) should persist");
+
+        assert!(!ctrl.is_restart_pending());
+        assert_eq!(ctrl.restart_count, 1);
+    }
+
+    /// Force-restart-on-every-conflict must still terminate with the
+    /// right UNSAT answer — Luby's geometric backoff guarantees that
+    /// eventually a single iteration's threshold exceeds the search
+    /// cost, allowing clean DFS exhaustion.
+    #[test]
+    fn restart_preserves_unsat_outcome() {
+        let a   = NNF::Lit(Lit::pos(0));
+        let na  = NNF::Lit(Lit::neg(0));
+        let b   = NNF::Lit(Lit::pos(1));
+        let nb  = NNF::Lit(Lit::neg(1));
+        let c   = NNF::Lit(Lit::pos(2));
+        let nc  = NNF::Lit(Lit::neg(2));
+        let nnf = NNF::Sum(vec![
+            nc.clone(),
+            NNF::Prod(vec![a.clone(),  c.clone()]),
+            NNF::Prod(vec![b.clone(),  c.clone()]),
+            NNF::Prod(vec![na.clone(), nb.clone()]),
+        ]);
+
+        let mut ctrl: CdclController<fn(PathsClass, bool) -> bool> =
+            CdclController::for_nnf(&nnf, None, noop_on_class);
+        // Make every cascade conflict trigger a restart.
+        ctrl.restart_unit = 1;
+        ctrl.restart_threshold = 1;
+
+        // Drive the search via the same loop pattern as
+        // classify_paths_uncovered_only's worker uses.
+        let cell = std::cell::RefCell::new(ctrl);
+        let mut max_iters = 100;     // safety bound
+        loop {
+            let prev_unc = cell.borrow().uncovered_path_count();
+            nnf.for_each_path_prefix_no_positions_ord(
+                |_| None,
+                |_| None,
+                |lits, prod_path, is_complete, _cover_mult| {
+                    let empty: PathPrefix = Vec::new();
+                    cell.borrow_mut().should_continue_on_prefix(lits, &empty, prod_path, is_complete).is_none()
+                },
+            );
+            let need_restart = {
+                let c = cell.borrow();
+                c.is_restart_pending() && c.uncovered_path_count() == prev_unc
+            };
+            if !need_restart { break; }
+            cell.borrow_mut().complete_restart();
+            max_iters -= 1;
+            assert!(max_iters > 0,
+                "restart loop didn't converge — Luby threshold growth broken?");
+        }
+        assert_eq!(cell.borrow().uncovered_path_count(), 0,
+            "expected UNSAT outcome");
+        assert!(cell.borrow().restart_count > 0,
+            "expected at least one restart to have fired");
+    }
+
+    // ── Phase-saving tests ───────────────────────────────────────────
+
+    /// Popping a frame via `undo()` should record the polarity of
+    /// each removed trail entry as the saved phase for its variable.
+    #[test]
+    fn phase_saving_records_polarity_on_pop() {
+        let nnf = NNF::Sum(vec![NNF::Lit(Lit::pos(0))]);
+        let mut ctrl: CdclController<fn(PathsClass, bool) -> bool> =
+            CdclController::for_nnf(&nnf, None, noop_on_class);
+
+        // Hand-stage a trail entry + matching push frame, then call
+        // `undo()` to simulate a backtrack.  This tests the
+        // phase-saving path without requiring a particular DFS
+        // unwinding sequence.
+        ctrl.trail.push(TrailLit {
+            lit: Lit::neg(5),
+            reason: Reason::Decision,
+            decision_level: 1,
+        });
+        let frame = PushFrame { trail_added: 1, blocked: vec![], implied: vec![] };
+        ctrl.undo(&frame);
+
+        assert!(ctrl.trail.is_empty(), "trail should be empty after undo");
+        assert_eq!(
+            ctrl.saved_phase.get(5).copied().flatten(),
+            Some(true),
+            "expected var 5's phase saved as neg=true; saved_phase = {:?}",
+            ctrl.saved_phase,
+        );
+    }
+
+    /// Saved phases should survive a `complete_restart()`.
+    #[test]
+    fn phase_saving_survives_restart() {
+        let a  = NNF::Lit(Lit::pos(0));
+        let na = NNF::Lit(Lit::neg(0));
+        let nnf = NNF::Sum(vec![
+            NNF::Prod(vec![a.clone(),  na.clone()]),
+        ]);
+
+        let mut ctrl: CdclController<fn(PathsClass, bool) -> bool> =
+            CdclController::for_nnf(&nnf, None, noop_on_class);
+
+        // Simulate having a lit on the trail with a particular polarity,
+        // then trigger a restart.  After the restart, saved_phase
+        // should remember the polarity even though the trail is empty.
+        ctrl.trail.push(TrailLit {
+            lit: Lit::neg(7),    // var 7, polarity neg=true
+            reason: Reason::Decision,
+            decision_level: 1,
+        });
+        ctrl.restart_pending = true;
+        ctrl.complete_restart();
+
+        assert!(ctrl.trail.is_empty());
+        assert_eq!(
+            ctrl.saved_phase.get(7).copied().flatten(),
+            Some(true),
+            "var 7's saved phase should be `neg=true` after restart; got {:?}",
+            ctrl.saved_phase.get(7),
+        );
+    }
+
+    /// `phase_matches` returns true iff the lit's polarity equals
+    /// the saved phase, false when no save exists.
+    #[test]
+    fn phase_matches_lookup() {
+        let nnf = NNF::Sum(vec![NNF::Lit(Lit::pos(0))]);
+        let mut ctrl: CdclController<fn(PathsClass, bool) -> bool> =
+            CdclController::for_nnf(&nnf, None, noop_on_class);
+
+        // No save yet → phase_matches false.
+        assert!(!ctrl.phase_matches(&Lit::pos(0)));
+        assert!(!ctrl.phase_matches(&Lit::neg(0)));
+
+        // Save var 0 with neg=true.
+        ctrl.save_lit_phase(&Lit::neg(0));
+        assert!(!ctrl.phase_matches(&Lit::pos(0)),
+            "Lit::pos(0) (neg=false) shouldn't match saved neg=true");
+        assert!(ctrl.phase_matches(&Lit::neg(0)),
+            "Lit::neg(0) (neg=true) should match saved neg=true");
+
+        // Re-save with neg=false → flips the saved phase.
+        ctrl.save_lit_phase(&Lit::pos(0));
+        assert!(ctrl.phase_matches(&Lit::pos(0)));
+        assert!(!ctrl.phase_matches(&Lit::neg(0)));
+    }
+
+    // ── LBD-deletion tests ──────────────────────────────────────────
+
+    /// LBD of a learned clause whose learning set has all lits at
+    /// level 0 should be 1 (one distinct level).
+    #[test]
+    fn lbd_one_when_all_lits_at_same_level() {
+        // Same NNF as step4_simple_cascade — its learned cube has
+        // alts = [c] derived from a learning set entirely at level 0.
+        let a   = NNF::Lit(Lit::pos(0));
+        let na  = NNF::Lit(Lit::neg(0));
+        let b   = NNF::Lit(Lit::pos(1));
+        let nb  = NNF::Lit(Lit::neg(1));
+        let c   = NNF::Lit(Lit::pos(2));
+        let nc  = NNF::Lit(Lit::neg(2));
+        let nnf = NNF::Sum(vec![
+            nc.clone(),
+            NNF::Prod(vec![a.clone(),  c.clone()]),
+            NNF::Prod(vec![b.clone(),  c.clone()]),
+            NNF::Prod(vec![na.clone(), nb.clone()]),
+        ]);
+
+        let ctrl = run_to_completion(&nnf);
+        let learned = ctrl.learned_clauses();
+        assert!(!learned.is_empty(), "expected at least one learned clause");
+        assert_eq!(learned[0].lbd, 1,
+            "LBD should be 1 for a single-level learning set; got {}",
+            learned[0].lbd);
+    }
+
+    /// `clause_deleted` is initialized correctly during preprocess and
+    /// `live_learned_clause_count` reflects the deletion state.
+    #[test]
+    fn live_learned_count_tracks_clause_deleted() {
+        let nnf = NNF::Sum(vec![
+            NNF::Prod(vec![NNF::Lit(Lit::pos(0)), NNF::Lit(Lit::pos(1))]),
+        ]);
+        let mut ctrl: CdclController<fn(PathsClass, bool) -> bool> =
+            CdclController::for_nnf(&nnf, None, noop_on_class);
+
+        // Before any conflict: 0 learned clauses.
+        assert_eq!(ctrl.live_learned_clause_count(), 0);
+        assert_eq!(ctrl.initial_clause_count, 1);
+        assert_eq!(ctrl.clause_deleted.len(), 1);
+        assert!(!ctrl.clause_deleted[0]);   // original clause is live
+
+        // Hand-stage a learned clause to test the live-count tracking
+        // without driving an actual search.
+        let learned = LearnedClause {
+            alts: vec![Lit::pos(0)],
+            backjump_level: 0,
+            lbd: 5,
+        };
+        let mut frame = PushFrame::default();
+        let learned_id = ctrl.register_learned_clause(&learned, &mut frame);
+        ctrl.learned_clauses.push(learned);
+        assert_eq!(ctrl.live_learned_clause_count(), 1);
+        assert_eq!(learned_id, 1);   // initial_count=1, so first learned id is 1
+
+        // Mark the learned clause deleted; live count drops to 0.
+        ctrl.clause_deleted[learned_id] = true;
+        assert_eq!(ctrl.live_learned_clause_count(), 0);
+    }
+
+    /// `reduce_learned_clauses` should mark the high-LBD half of the
+    /// learned clauses as deleted, preserving the low-LBD half.
+    #[test]
+    fn reduce_learned_clauses_marks_high_lbd_half() {
+        // Use a Sum-of-Prod-of-Lits NNF so preprocess indexes one
+        // initial clause (giving initial_clause_count == 1).  Without
+        // a Prod, initial_clause_count would be 0 and the learned
+        // clauses below would be at ids 0..=3.
+        let nnf = NNF::Sum(vec![
+            NNF::Prod(vec![NNF::Lit(Lit::pos(0)), NNF::Lit(Lit::pos(1))]),
+        ]);
+        let mut ctrl: CdclController<fn(PathsClass, bool) -> bool> =
+            CdclController::for_nnf(&nnf, None, noop_on_class);
+        assert_eq!(ctrl.initial_clause_count, 1);
+
+        // Hand-stage four learned clauses with distinct LBDs.
+        let lbds = [1, 7, 3, 5];
+        for &lbd in &lbds {
+            let learned = LearnedClause {
+                alts: vec![Lit::pos(lbd as Var)],
+                backjump_level: 0,
+                lbd,
+            };
+            let mut frame = PushFrame::default();
+            let _ = ctrl.register_learned_clause(&learned, &mut frame);
+            ctrl.learned_clauses.push(learned);
+        }
+
+        assert_eq!(ctrl.live_learned_clause_count(), 4);
+
+        ctrl.reduce_learned_clauses();
+
+        // Half (2 of 4) should be marked deleted — specifically the
+        // top-LBD half (LBDs 5 and 7).
+        assert_eq!(ctrl.live_learned_clause_count(), 2,
+            "expected reduction to leave 2 live clauses");
+
+        // Inspect which got deleted.  ids 1..=4 in registration order;
+        // lbds at those ids are [1, 7, 3, 5].  Survivors are LBD 1 and 3.
+        // initial_clause_count = 1 (original Lit clause), so learned
+        // clauses are at ids 1, 2, 3, 4.
+        assert!(!ctrl.clause_deleted[1], "LBD 1 (id 1) should survive");
+        assert!( ctrl.clause_deleted[2], "LBD 7 (id 2) should be deleted");
+        assert!(!ctrl.clause_deleted[3], "LBD 3 (id 3) should survive");
+        assert!( ctrl.clause_deleted[4], "LBD 5 (id 4) should be deleted");
+    }
+
+    /// `process_push` must skip deleted clauses.  We hand-build a
+    /// state where a learned clause would normally fire (its watch
+    /// entry would block an alt) and confirm that marking it deleted
+    /// makes the cascade ignore it.
+    #[test]
+    fn deleted_clauses_skipped_during_propagation() {
+        let nnf = NNF::Sum(vec![
+            NNF::Prod(vec![NNF::Lit(Lit::pos(0)), NNF::Lit(Lit::pos(1))]),
+        ]);
+        let mut ctrl: CdclController<fn(PathsClass, bool) -> bool> =
+            CdclController::for_nnf(&nnf, None, noop_on_class);
+
+        // Stage a learned clause with alts [a, b].  Its watch entries
+        // are for var 0 and var 1.  Pushing ¬a (var 0, neg=true)
+        // would normally block the `a` alt of this clause.
+        let learned = LearnedClause {
+            alts: vec![Lit::pos(0), Lit::pos(1)],
+            backjump_level: 0,
+            lbd: 1,
+        };
+        let mut frame = PushFrame::default();
+        let learned_id = ctrl.register_learned_clause(&learned, &mut frame);
+        ctrl.learned_clauses.push(learned);
+
+        // Mark the clause deleted.
+        ctrl.clause_deleted[learned_id] = true;
+
+        // Now run process_push for ¬a and observe that the deleted
+        // clause's blocked count does NOT change.
+        let blocked_before = ctrl.prod_blocked[learned_id];
+        let mut frame2 = PushFrame::default();
+        let _ = ctrl.process_push(&Lit::neg(0), 0, &mut frame2);
+        let blocked_after = ctrl.prod_blocked[learned_id];
+        assert_eq!(blocked_before, blocked_after,
+            "deleted clause's prod_blocked should not change on cascade");
     }
 
     /// Backjumping must not break the agreement with SmartController.

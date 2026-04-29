@@ -618,32 +618,50 @@ impl NNF {
             let mut paths_classified: f64 = 0.0;
             let mut prev_cov: usize = 0;
             let mut prev_unc: usize = 0;
-            m.for_each_path_prefix_no_positions_ord(
-                |children| cell.borrow_mut().sum_ord(children),
-                |children| cell.borrow_mut().prod_ord(children),
-                |lits, prod_path, is_complete, cover_mult| {
-                    if cancel_for_step.is_cancelled() { return false; }
-                    let empty: PathPrefix = Vec::new();
-                    let mut c = cell.borrow_mut();
-                    let cont = c.should_continue_on_prefix(lits, &empty, prod_path, is_complete).is_none();
-                    let cov = c.covered_prefix_count();
-                    let unc = c.uncovered_path_count();
-                    drop(c);
-                    if cov > prev_cov {
-                        paths_classified += cover_mult;
-                        prev_cov = cov;
-                    }
-                    if unc > prev_unc {
-                        paths_classified += 1.0;
-                        prev_unc = unc;
-                    }
-                    step = step.wrapping_add(1);
-                    if step & 0xFFF == 0 {
-                        cancel_for_step.record_paths(paths_classified);
-                    }
-                    cont
-                },
-            );
+            // Outer loop: re-invoke the DFS engine when the
+            // controller asks for a restart (Luby-driven for the
+            // CdclController; default-no-op for other controllers).
+            // We gate restart on "no SAT path was found this run"
+            // — if `uncovered_path_count` increased since the last
+            // iteration, the search succeeded, no point restarting.
+            // Cancellation also breaks the loop.
+            loop {
+                let prev_uncovered_at_loop_start = cell.borrow().uncovered_path_count();
+                m.for_each_path_prefix_no_positions_ord(
+                    |children| cell.borrow_mut().sum_ord(children),
+                    |children| cell.borrow_mut().prod_ord(children),
+                    |lits, prod_path, is_complete, cover_mult| {
+                        if cancel_for_step.is_cancelled() { return false; }
+                        let empty: PathPrefix = Vec::new();
+                        let mut c = cell.borrow_mut();
+                        let cont = c.should_continue_on_prefix(lits, &empty, prod_path, is_complete).is_none();
+                        let cov = c.covered_prefix_count();
+                        let unc = c.uncovered_path_count();
+                        drop(c);
+                        if cov > prev_cov {
+                            paths_classified += cover_mult;
+                            prev_cov = cov;
+                        }
+                        if unc > prev_unc {
+                            paths_classified += 1.0;
+                            prev_unc = unc;
+                        }
+                        step = step.wrapping_add(1);
+                        if step & 0xFFF == 0 {
+                            cancel_for_step.record_paths(paths_classified);
+                        }
+                        cont
+                    },
+                );
+                if cancel_for_step.is_cancelled() { break; }
+                let need_restart = {
+                    let c = cell.borrow();
+                    c.is_restart_pending()
+                        && c.uncovered_path_count() == prev_uncovered_at_loop_start
+                };
+                if !need_restart { break; }
+                cell.borrow_mut().complete_restart();
+            }
             cancel_for_step.record_paths(paths_classified);
             Ok::<(), Box<dyn std::error::Error + Send>>(())
         });

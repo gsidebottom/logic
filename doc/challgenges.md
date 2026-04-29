@@ -12,3 +12,13 @@ faulty_add_at_most(3;1;1;0;3;0;1)
 ```jq
 faulty_add_at_most(4;1;1;0;3;0;1)
 ```
+
+## hwmcc20
+in `/Users/greg/projects/aiger`
+```zsh
+export k=20
+./aigmove hwmcc20/aig/2020/mann/rast-p11.aig moved.aig
+./aigunroll "$k" moved.aig > unrolled.aig
+./aigtocnf unrolled.aig > rast-p11.k"$k".cnf
+head rast-p11.k"$k".cnf
+```

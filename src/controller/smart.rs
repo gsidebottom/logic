@@ -292,7 +292,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartControlle
         &mut self,
         prefix_literals: &Vec<&Lit>,
         prefix_positions: &PathPrefix,
-        complete_prod_path: Option<&ProdPath>,
+        prefix_prod_path: &ProdPath,
+        is_complete: bool,
     ) -> Option<usize> {
         // Step 1: undo propagation for every lit that's been popped from
         // the prefix since the last call.  Trail entries are 1-to-1 with
@@ -312,7 +313,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartControlle
         // Step 2: let the inner controller run its cover-detection logic.
         // If it wants to backtrack, honour that immediately.
         let inner_r = self.inner.should_continue_on_prefix(
-            prefix_literals, prefix_positions, complete_prod_path,
+            prefix_literals, prefix_positions, prefix_prod_path, is_complete,
         );
         if inner_r.is_some() { return inner_r; }
 

@@ -11,10 +11,12 @@
 
 pub mod backtrack;
 pub mod cancel;
+pub mod cdcl;
 pub mod smart;
 
 pub use backtrack::BacktrackWhenCoveredController;
 pub use cancel::CancelController;
+pub use cdcl::CdclController;
 pub use smart::SmartController;
 
 use crate::matrix::{Lit, NNF, PathParams, PathPrefix, PathsClass, ProdPath};
@@ -60,17 +62,36 @@ pub trait PathSearchController {
     }
 
     /// Called at each step of the traversal.
+    ///
+    /// `prefix_literals` and `prefix_positions` are parallel views of the
+    /// lits accumulated on the current path so far.  In `needs_cover() ==
+    /// false` mode `prefix_positions` is an empty placeholder.
+    ///
+    /// `prefix_prod_path` is *always* the current `ProdPath` (the sequence
+    /// of `Prod`-alternative indices the DFS has chosen so far) — its
+    /// length is the current decision level.  CDCL-style controllers use
+    /// it to attach reasons / decision levels to their trail.
+    ///
+    /// `is_complete` distinguishes intermediate-step calls (Lit pushes,
+    /// Prod-alternative entries) from the call that fires when an entire
+    /// path is complete (every Sum visited, every Prod chosen).  Cover-
+    /// detection / class-emission logic typically only runs when
+    /// `is_complete == true`.
+    ///
+    /// Return value:
     /// - `None` — continue forward.
-    /// - `Some(0)` — backtrack one level (pop the latest item from `pos` and
-    ///   `path` and try the next sibling).
+    /// - `Some(0)` — backtrack one level (pop the latest item from `pos`
+    ///   and `path` and try the next sibling).
     /// - `Some(i)` for `i > 0` — backtrack `i + 1` levels.  Use this for
     ///   non-chronological backjumping when the controller knows that no
-    ///   choice in the recent stack frames can resolve the current conflict.
+    ///   choice in the recent stack frames can resolve the current
+    ///   conflict.
     fn should_continue_on_prefix(
         &mut self,
         prefix_literals: &Vec<&Lit>,
         prefix_positions: &PathPrefix,
-        complete_prod_path: Option<&ProdPath>,
+        prefix_prod_path: &ProdPath,
+        is_complete: bool,
     ) -> Option<usize>;
 
     /// Called on each classified path. Return `true` to continue

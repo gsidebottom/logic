@@ -58,7 +58,7 @@ use std::time::{Duration, Instant};
 
 use logic::matrix::{
     Lit, NNF, PathClassificationHandle, PathParams, PathsClass, Var,
-    smart_controller_builder,
+    cdcl_controller_builder, smart_controller_builder,
 };
 
 // ─── DIMACS parser ─────────────────────────────────────────────────────────
@@ -185,7 +185,21 @@ fn path_lits_to_assignment(nvars: usize, path_lits: &[&Lit]) -> Vec<bool> {
 /// bar is rendered on stderr — the cursor is hidden for the duration
 /// and unconditionally restored on return (or panic) via
 /// [`TerminalGuard`]'s `Drop` impl.
-fn matrix_search(comp: NNF, nvars: usize, show_progress: bool) -> SearchOutcome {
+/// Which matrix-method controller to drive the search with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MatrixBackend {
+    /// [`SmartController`](logic::controller::SmartController):
+    /// watched-literal propagation across Prod-of-`Lit`s clauses.
+    Smart,
+    /// [`CdclController`](logic::controller::CdclController):
+    /// CDCL-flavoured controller, in development.  Currently equivalent
+    /// to `SmartController` minus the propagation (the CDCL pieces are
+    /// being added incrementally — see the roadmap in
+    /// `src/controller/cdcl.rs`).
+    Cdcl,
+}
+
+fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBackend) -> SearchOutcome {
     let total_paths = comp.path_count();
     let params = Some(PathParams {
         uncovered_path_limit: 1,           // stop after the first witness
@@ -194,8 +208,6 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool) -> SearchOutcome 
         no_cover:             true,        // pairs with `_uncovered_only`
     });
     let comp_for_path = comp.clone();
-    let nnf_for_builder = comp.clone();
-    let p = params.clone();
 
     // The matrix-method DFS in `for_each_path_prefix_ord` recurses
     // through Sum siblings via continuation closures.  On a CNF
@@ -215,9 +227,23 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool) -> SearchOutcome 
         .expect("tokio runtime");
 
     rt.block_on(async move {
-        let (handle, mut rx, cancel) = comp.classify_paths_uncovered_only(64,
-            move |tx| smart_controller_builder(&nnf_for_builder, p, tx),
-        );
+        // Pre-clone the inputs each builder branch needs so the
+        // borrow checker is happy with the if/else producing the same
+        // `(JoinHandle, Receiver, Handle)` tuple from two different
+        // controller types.  Each branch is FnOnce so only one set of
+        // clones is actually consumed.
+        let nnf_smart = comp.clone();
+        let nnf_cdcl  = comp.clone();
+        let p_smart   = params.clone();
+        let p_cdcl    = params.clone();
+        let (handle, mut rx, cancel) = match backend {
+            MatrixBackend::Smart => comp.classify_paths_uncovered_only(64,
+                move |tx| smart_controller_builder(&nnf_smart, p_smart, tx),
+            ),
+            MatrixBackend::Cdcl => comp.classify_paths_uncovered_only(64,
+                move |tx| cdcl_controller_builder(&nnf_cdcl, p_cdcl, tx),
+            ),
+        };
 
         let want_progress = show_progress && io::stderr().is_terminal();
         let _term_guard = if want_progress { Some(TerminalGuard::new()) } else { None };
@@ -501,25 +527,35 @@ fn write_v_line<W: io::Write>(w: &mut W, asgn: &[bool]) -> io::Result<()> {
 struct Args {
     show_progress: bool,
     use_cadical:   bool,
+    use_cdcl:      bool,
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut a = Args { show_progress: false, use_cadical: false };
+    let mut a = Args { show_progress: false, use_cadical: false, use_cdcl: false };
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--progress" | "-p" => a.show_progress = true,
             "--cadical"  | "-c" => a.use_cadical   = true,
+            "--cdcl"            => a.use_cdcl      = true,
             "--help"     | "-h" => {
-                eprintln!("Usage: sat [--cadical] [--progress] < problem.cnf");
+                eprintln!("Usage: sat [--cadical | --cdcl] [--progress] < problem.cnf");
                 eprintln!();
-                eprintln!("  --cadical, -c     Solve via the bundled CaDiCaL solver instead");
-                eprintln!("                    of the matrix-method search with SmartController.");
+                eprintln!("  --cadical, -c     Solve via the bundled CaDiCaL solver.");
+                eprintln!("  --cdcl            Solve via the matrix-method search with the");
+                eprintln!("                    in-development CdclController.  Currently");
+                eprintln!("                    behavior-identical to the default Smart");
+                eprintln!("                    backend; later builds add CDCL features.");
                 eprintln!("  --progress, -p    Show a live progress bar on stderr (TTY only).");
                 eprintln!("                    Press Ctrl-C to interrupt.");
+                eprintln!();
+                eprintln!("Default: matrix-method search with SmartController.");
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument: {:?}", other)),
         }
+    }
+    if a.use_cadical && a.use_cdcl {
+        return Err("--cadical and --cdcl are mutually exclusive".into());
     }
     Ok(a)
 }
@@ -557,13 +593,16 @@ fn main() {
         return;
     }
 
-    let backend = if args.use_cadical { "CaDiCaL" } else { "matrix+SmartController" };
-    eprintln!("c backend: {}", backend);
+    let backend_name = if args.use_cadical { "CaDiCaL" }
+        else if args.use_cdcl { "matrix+CdclController" }
+        else { "matrix+SmartController" };
+    eprintln!("c backend: {}", backend_name);
     let t = Instant::now();
     let outcome = if args.use_cadical {
         cadical_search(nvars, clauses, args.show_progress)
     } else {
-        matrix_search(cnf_complement_nnf(&clauses), nvars, args.show_progress)
+        let backend = if args.use_cdcl { MatrixBackend::Cdcl } else { MatrixBackend::Smart };
+        matrix_search(cnf_complement_nnf(&clauses), nvars, args.show_progress, backend)
     };
     let elapsed_ms = t.elapsed().as_secs_f64() * 1000.0;
 
@@ -593,13 +632,25 @@ fn main() {
 mod tests {
     use super::*;
 
-    /// Solve a CNF via the matrix-method backend; returns the assignment
-    /// directly on SAT, `Err(())` on UNSAT.
+    /// Solve a CNF via the matrix-method backend with the
+    /// SmartController.  Returns the assignment directly on SAT,
+    /// `Err(())` on UNSAT.
     fn solve(nvars: usize, clauses: &[Vec<i32>]) -> Result<Vec<bool>, ()> {
+        solve_with_matrix(nvars, clauses, MatrixBackend::Smart)
+    }
+
+    /// Solve a CNF via the matrix-method backend with the
+    /// (in-development) CdclController.
+    fn solve_cdcl(nvars: usize, clauses: &[Vec<i32>]) -> Result<Vec<bool>, ()> {
+        solve_with_matrix(nvars, clauses, MatrixBackend::Cdcl)
+    }
+
+    /// Shared body of `solve` / `solve_cdcl`.
+    fn solve_with_matrix(nvars: usize, clauses: &[Vec<i32>], backend: MatrixBackend) -> Result<Vec<bool>, ()> {
         if clauses.iter().any(|c| c.is_empty()) { return Err(()); }
         if clauses.is_empty() { return Ok(vec![true; nvars]); }
         let comp = cnf_complement_nnf(clauses);
-        match matrix_search(comp, nvars, /*show_progress=*/ false) {
+        match matrix_search(comp, nvars, /*show_progress=*/ false, backend) {
             SearchOutcome::Sat(asgn) => Ok(asgn),
             SearchOutcome::Unsat => Err(()),
             SearchOutcome::Interrupted => panic!("test search reported interrupted"),
@@ -835,13 +886,44 @@ mod tests {
     fn matrix_search_smoke() {
         // End-to-end check that `matrix_search` produces an Sat outcome
         // for a satisfiable formula and an Unsat outcome for a contradiction.
-        match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false) {
-            SearchOutcome::Sat(_) => {}
-            other => panic!("expected Sat, got {:?}", outcome_kind(&other)),
+        for backend in [MatrixBackend::Smart, MatrixBackend::Cdcl] {
+            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend) {
+                SearchOutcome::Sat(_) => {}
+                other => panic!("[{:?}] expected Sat, got {:?}", backend, outcome_kind(&other)),
+            }
+            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend) {
+                SearchOutcome::Unsat => {}
+                other => panic!("[{:?}] expected Unsat, got {:?}", backend, outcome_kind(&other)),
+            }
         }
-        match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false) {
-            SearchOutcome::Unsat => {}
-            other => panic!("expected Unsat, got {:?}", outcome_kind(&other)),
+    }
+
+    /// Cross-check: SmartController and CdclController must agree on
+    /// every existing test case.  Both should produce a satisfying
+    /// assignment (verified via `satisfies`) or both should report UNSAT.
+    /// The actual assignments may differ — there's no guarantee the two
+    /// search orderings hit the same witness.
+    #[test]
+    fn cdcl_agrees_with_smart_on_all_cases() {
+        let cases: Vec<(usize, Vec<Vec<i32>>, bool)> = vec![
+            (3, vec![vec![1, -2], vec![2, 3], vec![-1, -3]], true),
+            (2, vec![vec![1, 2], vec![-1, 2], vec![1, -2], vec![-1, -2]], false),
+            (1, vec![vec![1]], true),
+            (1, vec![vec![1], vec![-1]], false),
+            (php(3, 3).0, php(3, 3).1, true),
+            (php(3, 2).0, php(3, 2).1, false),
+            (php(4, 3).0, php(4, 3).1, false),
+            (30, random_3sat(30, 90, 42), true),
+        ];
+        for (n, c, want_sat) in cases {
+            let r_smart = solve(n, &c);
+            let r_cdcl = solve_cdcl(n, &c);
+            assert_eq!(r_smart.is_ok(), want_sat, "Smart disagreed on {:?}", &c);
+            assert_eq!(r_cdcl.is_ok(), want_sat,  "Cdcl disagreed on {:?}",  &c);
+            if want_sat {
+                assert!(satisfies(&c, &r_smart.unwrap()), "Smart returned non-satisfying asgn");
+                assert!(satisfies(&c, &r_cdcl.unwrap()),  "Cdcl returned non-satisfying asgn");
+            }
         }
     }
 

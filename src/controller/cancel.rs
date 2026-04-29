@@ -49,7 +49,8 @@ impl<C: PathSearchController> PathSearchController for CancelController<C> {
         &mut self,
         prefix_literals: &Vec<&Lit>,
         prefix_positions: &PathPrefix,
-        complete_prod_path: Option<&ProdPath>,
+        prefix_prod_path: &ProdPath,
+        is_complete: bool,
     ) -> Option<usize> {
         if self.cancel.is_cancelled() {
             return Some(0);
@@ -58,7 +59,7 @@ impl<C: PathSearchController> PathSearchController for CancelController<C> {
         if self.step & 0xFFF == 0 {
             self.cancel.record_paths(self.inner.paths_classified());
         }
-        self.inner.should_continue_on_prefix(prefix_literals, prefix_positions, complete_prod_path)
+        self.inner.should_continue_on_prefix(prefix_literals, prefix_positions, prefix_prod_path, is_complete)
     }
 
     fn should_continue_on_paths_class(&mut self, paths_class: PathsClass, hit_limit: bool) -> bool {

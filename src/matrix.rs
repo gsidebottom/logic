@@ -209,7 +209,7 @@ impl Paths {
 // `use crate::matrix::PathSearchController` keep compiling.
 
 pub use crate::controller::{
-    BacktrackWhenCoveredController, PathSearchController, SmartController,
+    BacktrackWhenCoveredController, CdclController, PathSearchController, SmartController,
 };
 
 
@@ -499,8 +499,8 @@ impl NNF {
         self.for_each_path_prefix_ord(
             |children| cell.borrow_mut().sum_ord(children),
             |children| cell.borrow_mut().prod_ord(children),
-            |lits, positions, prod_path| {
-                cell.borrow_mut().should_continue_on_prefix(lits, positions, prod_path)
+            |lits, positions, prod_path, is_complete| {
+                cell.borrow_mut().should_continue_on_prefix(lits, positions, prod_path, is_complete)
             },
         );
     }
@@ -519,11 +519,11 @@ impl NNF {
         self.for_each_path_prefix_no_positions_ord(
             |children| cell.borrow_mut().sum_ord(children),
             |children| cell.borrow_mut().prod_ord(children),
-            |lits, prod_path, _cover_mult| {
+            |lits, prod_path, is_complete, _cover_mult| {
                 let empty = PathPrefix::new();
                 // No-positions traversal still uses simple bool semantics: any
                 // non-None unwind request collapses to "backtrack one level."
-                cell.borrow_mut().should_continue_on_prefix(lits, &empty, prod_path).is_none()
+                cell.borrow_mut().should_continue_on_prefix(lits, &empty, prod_path, is_complete).is_none()
             },
         );
     }
@@ -621,11 +621,11 @@ impl NNF {
             m.for_each_path_prefix_no_positions_ord(
                 |children| cell.borrow_mut().sum_ord(children),
                 |children| cell.borrow_mut().prod_ord(children),
-                |lits, prod_path, cover_mult| {
+                |lits, prod_path, is_complete, cover_mult| {
                     if cancel_for_step.is_cancelled() { return false; }
                     let empty: PathPrefix = Vec::new();
                     let mut c = cell.borrow_mut();
-                    let cont = c.should_continue_on_prefix(lits, &empty, prod_path).is_none();
+                    let cont = c.should_continue_on_prefix(lits, &empty, prod_path, is_complete).is_none();
                     let cov = c.covered_prefix_count();
                     let unc = c.uncovered_path_count();
                     drop(c);
@@ -661,9 +661,11 @@ impl NNF {
     /// Indices identify the absolute child position used to record the
     /// path.
     ///
-    /// `report_prefix(lits, positions, prod_path)` is called at each step:
-    /// - When a `Prod` member is selected or a `Lit` is reached: `prod_path` is `None`
-    /// - When a full path is completed: `prod_path` is `Some(&path)`
+    /// `report_prefix(lits, positions, prod_path, is_complete)` is called
+    /// at each step.  `prod_path` is the current sequence of `Prod`-
+    /// alternative choices made so far.  `is_complete` is `true` only on
+    /// the final call that signals "every Sum visited, every Prod chosen
+    /// — this path is fully decided".
     ///
     /// `lits` and `positions` are parallel vectors: `positions[i]` is the
     /// absolute tree address of `lits[i]`.
@@ -682,7 +684,7 @@ impl NNF {
         &self,
         mut sum_ord:  SO,
         mut prod_ord: PO,
-        mut report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> Option<usize>,
+        mut report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, &ProdPath, bool) -> Option<usize>,
     )
     where
         SO: for<'a> FnMut(&'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
@@ -704,7 +706,7 @@ impl NNF {
             then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut Positions, &mut Position, &mut F, &mut SO, &mut PO) -> Option<usize>,
         ) -> Option<usize>
         where
-            F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> Option<usize>,
+            F: FnMut(&Lits<'a>, &Positions, &ProdPath, bool) -> Option<usize>,
             SO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
             PO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
         {
@@ -712,7 +714,7 @@ impl NNF {
                 NNF::Lit(l) => {
                     lits.push(l);
                     positions.push(pos.clone());
-                    let r = match f(lits, positions, None) {
+                    let r = match f(lits, positions, path, false) {
                         None    => then(path, lits, positions, pos, f, sum_ord, prod_ord),
                         Some(k) => Some(k),
                     };
@@ -730,7 +732,7 @@ impl NNF {
                         };
                         path.push(i);
                         pos.push(i);
-                        let r = match f(lits, positions, None) {
+                        let r = match f(lits, positions, path, false) {
                             None    => traverse(child, path, lits, positions, pos, f, sum_ord, prod_ord, then),
                             Some(k) => Some(k),
                         };
@@ -771,7 +773,7 @@ impl NNF {
             then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut Positions, &mut Position, &mut F, &mut SO, &mut PO) -> Option<usize>,
         ) -> Option<usize>
         where
-            F: FnMut(&Lits<'a>, &Positions, Option<&ProdPath>) -> Option<usize>,
+            F: FnMut(&Lits<'a>, &Positions, &ProdPath, bool) -> Option<usize>,
             SO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
             PO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
         {
@@ -807,7 +809,7 @@ impl NNF {
         let mut pos = Vec::new();
         traverse(self, &mut path, &mut lits, &mut positions, &mut pos, &mut report_prefix, &mut sum_ord, &mut prod_ord,
             &mut |path, lits, positions, _pos, f, _so, _po| {
-                f(lits, positions, Some(path))
+                f(lits, positions, path, true)
             },
         );
     }
@@ -821,10 +823,10 @@ impl NNF {
     /// number of complete paths through the NNF that share the *current*
     /// prefix.  When the controller detects a covered pair and returns
     /// false, this multiplier is the cover count of the covered prefix.
-    /// At a path completion (`prod_path = Some(_)`) the multiplier is 1.
+    /// At a path completion (`is_complete == true`) the multiplier is 1.
     pub fn for_each_path_prefix_no_positions(
         &self,
-        f: impl FnMut(&Vec<&Lit>, Option<&ProdPath>, f64) -> bool,
+        f: impl FnMut(&Vec<&Lit>, &ProdPath, bool, f64) -> bool,
     ) {
         // Thin wrapper over the `_ord` version with declaration-order Sum /
         // Prod traversal — same rationale as [`Self::for_each_path_prefix`].
@@ -837,7 +839,7 @@ impl NNF {
         &self,
         mut sum_ord:  SO,
         mut prod_ord: PO,
-        mut f: impl FnMut(&Vec<&Lit>, Option<&ProdPath>, f64) -> bool,
+        mut f: impl FnMut(&Vec<&Lit>, &ProdPath, bool, f64) -> bool,
     )
     where
         SO: for<'a> FnMut(&'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
@@ -876,14 +878,14 @@ impl NNF {
             then: &mut dyn FnMut(f64, &mut ProdPath, &mut Lits<'a>, &Counts, &mut F, &mut SO, &mut PO),
         )
         where
-            F: FnMut(&Lits<'a>, Option<&ProdPath>, f64) -> bool,
+            F: FnMut(&Lits<'a>, &ProdPath, bool, f64) -> bool,
             SO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
             PO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
         {
             match m {
                 NNF::Lit(l) => {
                     lits.push(l);
-                    if f(lits, None, mult) {
+                    if f(lits, path, false, mult) {
                         then(mult, path, lits, counts, f, sum_ord, prod_ord);
                     }
                     lits.pop();
@@ -897,7 +899,7 @@ impl NNF {
                             None    => (ord_idx, &children[ord_idx]),
                         };
                         path.push(i);
-                        if f(lits, None, mult) {
+                        if f(lits, path, false, mult) {
                             traverse(child, mult, path, lits, counts, f, sum_ord, prod_ord, then);
                         }
                         path.pop();
@@ -925,7 +927,7 @@ impl NNF {
             then: &mut dyn FnMut(f64, &mut ProdPath, &mut Lits<'a>, &Counts, &mut F, &mut SO, &mut PO),
         )
         where
-            F: FnMut(&Lits<'a>, Option<&ProdPath>, f64) -> bool,
+            F: FnMut(&Lits<'a>, &ProdPath, bool, f64) -> bool,
             SO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
             PO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
         {
@@ -961,7 +963,7 @@ impl NNF {
         let mut lits = Vec::new();
         traverse(self, 1.0, &mut path, &mut lits, &counts, &mut f, &mut sum_ord, &mut prod_ord,
             &mut |mult, path, lits, _counts, f, _so, _po| {
-                f(lits, Some(path), mult);
+                f(lits, path, true, mult);
             },
         );
     }
@@ -1138,6 +1140,22 @@ pub fn smart_controller_builder(
     SmartController::for_nnf(nnf, params, on_class)
 }
 
+/// Builder for [`Matrix::valid`] / [`Matrix::satisfiable`] that wires
+/// up the in-development [`CdclController`].  Preprocesses `nnf` for
+/// cross-clause unit propagation (same scheme as
+/// [`smart_controller_builder`]) and additionally annotates every
+/// pushed lit on its reasoned trail — the foundation Step 4+ uses for
+/// 1UIP conflict analysis and backjumping.
+pub fn cdcl_controller_builder(
+    nnf: &NNF,
+    params: Option<PathParams>,
+    tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>,
+) -> CdclController<DynOnClass> {
+    let on_class: DynOnClass = Box::new(move |class, hit_limit|
+        tx.blocking_send((class, hit_limit)).is_ok());
+    CdclController::for_nnf(nnf, params, on_class)
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1193,7 +1211,7 @@ mod tests {
         /// readable.
         pub fn for_each_path_prefix(
             &self,
-            report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> Option<usize>,
+            report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, &ProdPath, bool) -> Option<usize>,
         ) {
             self.for_each_path_prefix_ord(|_| None, |_| None, report_prefix);
         }
@@ -1223,7 +1241,7 @@ mod tests {
         pub fn for_each_path_prefix_async(
             &self,
             buffer_size: usize,
-            mut path_prefix_controller: impl FnMut(&Vec<&Lit>, &PathPrefix, Option<&ProdPath>) -> bool + Send + 'static,
+            mut path_prefix_controller: impl FnMut(&Vec<&Lit>, &PathPrefix, &ProdPath, bool) -> bool + Send + 'static,
         ) -> (
             tokio::task::JoinHandle<Result<(), tokio::sync::mpsc::error::SendError<PathPrefixEvent>>>,
             tokio::sync::mpsc::Receiver<PathPrefixEvent>,
@@ -1235,18 +1253,18 @@ mod tests {
             let cancel_for_thread = cancel.clone();
             let handle = tokio::task::spawn_blocking(move || {
                 let mut send_err = None;
-                m.for_each_path_prefix(|lits, positions, prod_path| {
+                m.for_each_path_prefix(|lits, positions, prod_path, is_complete| {
                     if send_err.is_some() || cancel_for_thread.is_cancelled() { return Some(0); }
                     let event = PathPrefixEvent {
                         lits: lits.iter().map(|&l| l.clone()).collect(),
                         positions: positions.clone(),
-                        prod_path: prod_path.cloned(),
+                        prod_path: if is_complete { Some(prod_path.clone()) } else { None },
                     };
                     if let Err(e) = tx.blocking_send(event) {
                         send_err = Some(e);
                         return Some(0);
                     }
-                    if path_prefix_controller(lits, positions, prod_path) { None } else { Some(0) }
+                    if path_prefix_controller(lits, positions, prod_path, is_complete) { None } else { Some(0) }
                 });
                 send_err.map(Err).unwrap_or(Ok(()))
             });
@@ -1702,9 +1720,9 @@ mod tests {
         let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
         let mut full_paths = Vec::new();
         let expected: Vec<ProdPath> = m.paths_iter().collect();
-        m.for_each_path_prefix(|_lits, _pos, prod_path| {
-            if let Some(path) = prod_path {
-                full_paths.push(path.clone());
+        m.for_each_path_prefix(|_lits, _pos, prod_path, is_complete| {
+            if is_complete {
+                full_paths.push(prod_path.clone());
             }
             None
         });
@@ -1719,7 +1737,7 @@ mod tests {
             prod(vec![v(3), vn(4), sum(vec![v(5), prod(vec![v(6), v(7)])])]),
         ]);
         let mut all_lit_counts = Vec::new();
-        m.for_each_path_prefix(|lits, _pos, _prod_path| {
+        m.for_each_path_prefix(|lits, _pos, _prod_path, _is_complete| {
             all_lit_counts.push(lits.len());
             None
         });
@@ -1733,9 +1751,9 @@ mod tests {
         // (a · b) + (c · d) — prune when first literal is var 1 (b)
         let m = sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]);
         let mut completed_paths = Vec::new();
-        m.for_each_path_prefix(|lits, _pos, prod_path| {
-            if let Some(path) = prod_path {
-                completed_paths.push(path.clone());
+        m.for_each_path_prefix(|lits, _pos, prod_path, is_complete| {
+            if is_complete {
+                completed_paths.push(prod_path.clone());
             }
             // Prune: don't continue if latest literal is var 1 (b)
             if lits.last().is_some_and(|l| l.var == 1) { Some(0) } else { None }
@@ -1752,10 +1770,10 @@ mod tests {
         // Variables alphabetically: a=0, b=1, c=2, d=3, e=4
         let (m, _) = parse_to_nnf("a + b + b' c' + c d + e").unwrap();
         let mut trace: Vec<(Vec<(Var, bool)>, Option<ProdPath>)> = Vec::new();
-        m.for_each_path_prefix(|lits, _positions, prod_path| {
+        m.for_each_path_prefix(|lits, _positions, prod_path, is_complete| {
             trace.push((
                 lits.iter().map(|l| (l.var, l.neg)).collect(),
-                prod_path.cloned(),
+                if is_complete { Some(prod_path.clone()) } else { None },
             ));
             None
         });
@@ -2348,16 +2366,16 @@ mod tests {
         let (m, _) = parse_to_nnf("a b + c d").unwrap();
 
         let mut sync_events: Vec<(Vec<Lit>, PathPrefix, Option<ProdPath>)> = Vec::new();
-        m.for_each_path_prefix(|lits, positions, prod_path| {
+        m.for_each_path_prefix(|lits, positions, prod_path, is_complete| {
             sync_events.push((
                 lits.iter().map(|&l| l.clone()).collect(),
                 positions.clone(),
-                prod_path.cloned(),
+                if is_complete { Some(prod_path.clone()) } else { None },
             ));
             None
         });
 
-        let (handle, mut rx, _cancel) = m.for_each_path_prefix_async(64, |_, _, _| true);
+        let (handle, mut rx, _cancel) = m.for_each_path_prefix_async(64, |_, _, _, _| true);
         let mut async_events: Vec<(Vec<Lit>, PathPrefix, Option<ProdPath>)> = Vec::new();
         while let Some(ev) = rx.recv().await {
             async_events.push((ev.lits, ev.positions, ev.prod_path));

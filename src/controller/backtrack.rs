@@ -165,7 +165,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenC
         &mut self,
         prefix_literals: &Vec<&Lit>,
         prefix_positions: &PathPrefix,
-        complete_prod_path: Option<&ProdPath>,
+        prefix_prod_path: &ProdPath,
+        is_complete: bool,
     ) -> Option<usize> {
         if self.hit_limit() {
             return Some(0);
@@ -225,11 +226,11 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenC
             self.push_lit(lit, pos);
         }
 
-        if let Some(path) = complete_prod_path {
+        if is_complete {
             if self.covered_at_depth.is_none() {
                 self.path_count += 1;
                 self.uncovered_path_count += 1;
-                if !self.should_continue_on_paths_class(PathsClass::Uncovered(path.clone()), self.hit_limit()) {
+                if !self.should_continue_on_paths_class(PathsClass::Uncovered(prefix_prod_path.clone()), self.hit_limit()) {
                     self.last_lits_len = prefix_literals.len();
                     return Some(0);
                 }

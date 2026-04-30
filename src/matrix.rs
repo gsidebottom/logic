@@ -2734,6 +2734,202 @@ mod tests {
     /// Use `cargo test --release --lib bench_faulty_add_at_most -- --nocapture
     /// --ignored` to run; ignored by default so it doesn't slow down regular
     /// CI but can be invoked deliberately.
+    /// Shared harness for the 27-bit faulty-adder bench variants.
+    /// `n_faults` controls how many gate faults are permitted.
+    fn run_27bit_faulty_add(n_faults: u32) {
+        use xq::{module_loader::PreludeLoader, run_query, Value as XqValue};
+
+        let strip_sections = |s: &str| -> String {
+            let cut = s.find("\n# === tests ===").unwrap_or(s.len());
+            let head = &s[..cut];
+            let mut out = String::new();
+            let mut lines = head.lines();
+            let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
+            for _ in 0..peek.len() { lines.next(); }
+            let mut rest = lines.clone();
+            if let Some(first) = rest.next() {
+                if first.trim_end() == "# === deps ===" {
+                    lines.next();
+                    while let Some(l) = lines.next() {
+                        if l.trim_end() == "# === end deps ===" { break; }
+                    }
+                }
+            }
+            for l in lines { out.push_str(l); out.push('\n'); }
+            out
+        };
+        let load = |name: &str| -> String {
+            strip_sections(&std::fs::read_to_string(format!("lib/{}", name))
+                .unwrap_or_else(|e| panic!("read lib/{}: {}", name, e)))
+        };
+        let expr    = load("expr.jq");
+        let math    = load("math.jq");
+        let at_most = load("at_most.jq");
+        let adder   = load("adder.jq");
+        let combined = format!(
+            "{}\n{}\n{}\n{}\nfaulty_add_at_most(27;0;134217727;1;134217727;1;{})",
+            expr, math, at_most, adder, n_faults,
+        );
+
+        let loader  = PreludeLoader();
+        let context = std::iter::once(Ok::<XqValue, xq::InputError>(XqValue::Null));
+        let input   = std::iter::empty::<Result<XqValue, xq::InputError>>();
+        let t = std::time::Instant::now();
+        let iter    = run_query(&combined, context, input, &loader)
+            .expect("jq query failed to compile");
+        let json_vals: Vec<String> = iter.map(|r| r.expect("jq emitted error").to_string()).collect();
+        assert_eq!(json_vals.len(), 1);
+        let formula: String = serde_json::from_str(&json_vals[0]).expect("formula not a JSON string");
+        let jq_ms = t.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("[n_faults={}] formula length: {} chars (jq gen: {:.1} ms)",
+                  n_faults, formula.len(), jq_ms);
+
+        let t = std::time::Instant::now();
+        let matrix = Matrix::try_from(formula.as_str()).expect("parse formula");
+        let parse_ms = t.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("variables: {} (matrix parse: {:.1} ms)", matrix.ast.vars.len(), parse_ms);
+
+        // ── Matrix::cadical_satisfiable (run first; cheap baseline) ──
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let t = std::time::Instant::now();
+        let cadical_result = rt.block_on(async {
+            let (handle, _cancel) = matrix.cadical_satisfiable();
+            handle.await.unwrap().unwrap().result
+        });
+        let cadical_ms = t.elapsed().as_secs_f64() * 1000.0;
+        match &cadical_result {
+            Ok(asgn) => eprintln!("Matrix::cadical_satisfiable took {:>10.3} ms (SAT, {} lits)",
+                                  cadical_ms, asgn.len()),
+            Err(()) => eprintln!("Matrix::cadical_satisfiable took {:>10.3} ms (UNSAT)",
+                                 cadical_ms),
+        }
+
+        // ── Matrix::satisfiable with CdclController ──
+        let t = std::time::Instant::now();
+        let cdcl_result = matrix.satisfiable(|nnf, p, tx| cdcl_controller_builder(nnf, p, tx));
+        let cdcl_ms = t.elapsed().as_secs_f64() * 1000.0;
+        match &cdcl_result {
+            Ok(asgn) => eprintln!("Matrix::satisfiable[CDCL]        took {:>10.3} ms (SAT, {} lits)",
+                                  cdcl_ms, asgn.len()),
+            Err(()) => eprintln!("Matrix::satisfiable[CDCL]        took {:>10.3} ms (UNSAT)",
+                                 cdcl_ms),
+        }
+        // Cross-check: both should agree on SAT vs UNSAT.
+        assert_eq!(cadical_result.is_ok(), cdcl_result.is_ok(),
+                   "cadical and cdcl disagree on satisfiability");
+
+        eprintln!("ratio cdcl/cadical:         {:.1}×", cdcl_ms / cadical_ms.max(0.001));
+    }
+
+    /// 27-bit faulty adder, **1 fault** (UNSAT):
+    /// `faulty_add_at_most(27;0;134217727;1;134217727;1;1)`.
+    /// 1 fault is insufficient to reconcile `0 + (2^27-1) + 1 = 2^27`
+    /// with expected `sum=2^27-1, c_out=1`.  Set `CDCL_INSTR=1` to
+    /// print push-counters.
+    #[test]
+    #[ignore]
+    fn bench_faulty_add_at_most_27bit() {
+        run_27bit_faulty_add(1);
+    }
+
+    /// 27-bit faulty adder, **2 faults** (SAT):
+    /// `faulty_add_at_most(27;0;134217727;1;134217727;1;2)`.
+    /// With 2 faults permitted, the constraint becomes satisfiable.
+    /// Set `CDCL_INSTR=1` to print push-counters.
+    #[test]
+    #[ignore]
+    fn bench_faulty_add_at_most_27bit_2fault() {
+        run_27bit_faulty_add(2);
+    }
+
+    /// Same harness as [`bench_faulty_add_at_most`] but on the 4-bit
+    /// faulty adder, which `SmartController` solves in ~2m26s while
+    /// CaDiCaL handles in milliseconds — see `doc/challgenges.md`.
+    /// Skips the slow `BacktrackWhenCoveredController` arm; runs Smart
+    /// and CDCL.  Set `CDCL_INSTR=1` to print push-counters.
+    #[test]
+    #[ignore]
+    fn bench_faulty_add_at_most_4bit() {
+        use xq::{module_loader::PreludeLoader, run_query, Value as XqValue};
+
+        let strip_sections = |s: &str| -> String {
+            let cut = s.find("\n# === tests ===").unwrap_or(s.len());
+            let head = &s[..cut];
+            let mut out = String::new();
+            let mut lines = head.lines();
+            let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
+            for _ in 0..peek.len() { lines.next(); }
+            let mut rest = lines.clone();
+            if let Some(first) = rest.next() {
+                if first.trim_end() == "# === deps ===" {
+                    lines.next();
+                    while let Some(l) = lines.next() {
+                        if l.trim_end() == "# === end deps ===" { break; }
+                    }
+                }
+            }
+            for l in lines { out.push_str(l); out.push('\n'); }
+            out
+        };
+        let load = |name: &str| -> String {
+            strip_sections(&std::fs::read_to_string(format!("lib/{}", name))
+                .unwrap_or_else(|e| panic!("read lib/{}: {}", name, e)))
+        };
+        let expr    = load("expr.jq");
+        let math    = load("math.jq");
+        let at_most = load("at_most.jq");
+        let adder   = load("adder.jq");
+        // 4-bit faulty add: w=4, a=1, b=1, c_in=0, sum=3, c_out=0, n_faults=1.
+        let combined = format!(
+            "{}\n{}\n{}\n{}\nfaulty_add_at_most(4;1;1;0;3;0;1)",
+            expr, math, at_most, adder,
+        );
+
+        let loader  = PreludeLoader();
+        let context = std::iter::once(Ok::<XqValue, xq::InputError>(XqValue::Null));
+        let input   = std::iter::empty::<Result<XqValue, xq::InputError>>();
+        let iter    = run_query(&combined, context, input, &loader)
+            .expect("jq query failed to compile");
+        let json_vals: Vec<String> = iter.map(|r| r.expect("jq emitted error").to_string()).collect();
+        assert_eq!(json_vals.len(), 1);
+        let formula: String = serde_json::from_str(&json_vals[0]).expect("formula not a JSON string");
+
+        eprintln!("formula length: {} chars", formula.len());
+        let matrix = Matrix::try_from(formula.as_str()).expect("parse formula");
+        eprintln!("variables: {}", matrix.ast.vars.len());
+
+        // ── Matrix::cadical_satisfiable (run first; cheap) ──
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let t = std::time::Instant::now();
+        let cadical_asgn = rt.block_on(async {
+            let (handle, _cancel) = matrix.cadical_satisfiable();
+            handle.await.unwrap().unwrap().result.expect("cadical: should be satisfiable")
+        });
+        let cadical_ms = t.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("Matrix::cadical_satisfiable took {:>10.3} ms ({} lits)",
+                  cadical_ms, cadical_asgn.len());
+
+        // ── Matrix::satisfiable with CdclController ──
+        let t = std::time::Instant::now();
+        let cdcl_asgn = matrix.satisfiable(|nnf, p, tx| cdcl_controller_builder(nnf, p, tx))
+            .expect("matrix cdcl: should be satisfiable");
+        let cdcl_ms = t.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("Matrix::satisfiable[CDCL]        took {:>10.3} ms ({} lits)",
+                  cdcl_ms, cdcl_asgn.len());
+
+        // ── Matrix::satisfiable with SmartController ──
+        let t = std::time::Instant::now();
+        let smart_asgn = matrix.satisfiable(|nnf, p, tx| smart_controller_builder(nnf, p, tx))
+            .expect("matrix smart: should be satisfiable");
+        let smart_ms = t.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("Matrix::satisfiable[Smart]       took {:>10.3} ms ({} lits)",
+                  smart_ms, smart_asgn.len());
+
+        eprintln!("ratio smart/cadical:        {:.1}×", smart_ms / cadical_ms.max(0.001));
+        eprintln!("ratio cdcl/cadical:         {:.1}×", cdcl_ms  / cadical_ms.max(0.001));
+        eprintln!("ratio cdcl/smart:           {:.2}×", cdcl_ms  / smart_ms.max(0.001));
+    }
+
     #[test]
     #[ignore]
     fn bench_faulty_add_at_most() {
@@ -2800,6 +2996,14 @@ mod tests {
         eprintln!("Matrix::satisfiable[Smart]       took {:>10.3} ms ({} lits)",
                   smart_ms, smart_asgn.len());
 
+        // ── Matrix::satisfiable with CdclController ──
+        let t = std::time::Instant::now();
+        let cdcl_asgn = matrix.satisfiable(|nnf, p, tx| cdcl_controller_builder(nnf, p, tx))
+            .expect("matrix cdcl: should be satisfiable");
+        let cdcl_ms = t.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("Matrix::satisfiable[CDCL]        took {:>10.3} ms ({} lits)",
+                  cdcl_ms, cdcl_asgn.len());
+
         // ── Matrix::cadical_satisfiable ──
         let rt = tokio::runtime::Runtime::new().unwrap();
         let t = std::time::Instant::now();
@@ -2813,5 +3017,6 @@ mod tests {
 
         eprintln!("ratio matrix/cadical:       {:.1}×", matrix_ms / cadical_ms.max(0.001));
         eprintln!("ratio smart/cadical:        {:.1}×", smart_ms  / cadical_ms.max(0.001));
+        eprintln!("ratio cdcl/cadical:         {:.1}×", cdcl_ms   / cadical_ms.max(0.001));
     }
 }

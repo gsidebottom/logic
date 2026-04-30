@@ -364,19 +364,45 @@ All 164 tests pass with the LBD step landed.
   `prefix_prod_path.len()` — the count of Prod choices.  But Sum
   visit-all forks are also branching points.  Whether the LBD heuristic
   would work better with a finer-grained level concept is open.
+* **Why are there no cascade conflicts on faulty-adder formulas?**
+  The instrumentation in `doc/lazy-dfs.md` shows `learned = 0` on
+  every faulty-adder bench, including the 27-bit cases where the
+  matrix DFS runs for 220 ms (UNSAT) or 56 s (SAT) and accumulates
+  hundreds of thousands to millions of conflicts.  All conflicts
+  are *path-level* — the new lit's complement is already on the
+  trail at push time.  Cascade conflicts (a clause whose every alt
+  becomes blocked by propagation) never fire on these formulas, so
+  1UIP analysis never runs and learned clauses never get
+  registered.  This means CDCL's defining feature is inert on
+  hardware-verification workloads, and only the watched-literal
+  propagation infrastructure earns its keep.  Worth understanding
+  whether this is a property of the formulas, the matrix
+  representation, or the order in which alts get blocked — and
+  whether structuring the search differently (e.g. eager decision
+  at every Prod) would surface cascade conflicts.
 * **Try a serious benchmark suite** (SATLIB random 3-SAT, HWMCC small
   instances) systematically and characterize where matrix-CDCL is
   competitive vs. not.  The current measurements (PHP, one random
   3-SAT, the rast-p11 family) are too narrow to draw conclusions about
   which problem classes the matrix-CDCL stack is well-suited to.
-* **Investigate lazy matrix-DFS.**  Fundamentally restructure the
-  search to commit decisions only when propagation forces them, rather
-  than enumerating all Sum-children eagerly.  Today the DFS visits
-  every Sum child in turn even when the trail already implies them
-  (or contradicts them); a lazy formulation would let propagation
-  drive descent more directly, the way modern CDCL solvers operate
-  on a flat assignment.  This is research-level work; would need
-  significant design.
+* **Lazy matrix-DFS — investigated, conditionally deferred.**  The
+  hypothesis was that restructuring the search to commit decisions
+  only when propagation forces them (skipping the structural
+  enumeration of already-determined Sum-children) would yield a
+  meaningful per-step speedup.  Instrumentation showed it depends
+  heavily on the workload: already-implied pushes are **<0.01% on
+  PHP, ~10% on random 3-SAT, ~5% on small faulty-adder SAT
+  instances — but ~62% on both the 27-bit UNSAT (220 ms) and 27-bit
+  SAT (56.6 s) faulty-adder cases**.  The 62% pattern isn't
+  UNSAT-specific; it shows up on any hardware-verification-style
+  formula where the matrix DFS has to explore a combinatorial
+  space under heavy propagation.  Lazy DFS could plausibly save
+  7-18% on those workloads but offers no win on SAT-search or PHP.
+  Even a successful lazy-DFS implementation wouldn't close the gap
+  to CaDiCaL on the 27-bit cases (currently 166× / 37 800× slower).
+  Full write-up: [`lazy-dfs.md`](./lazy-dfs.md).  Recommendation:
+  scope a partial fast-path hook as a smaller experiment before
+  committing to a full lazy driver.
 
 ## File map
 

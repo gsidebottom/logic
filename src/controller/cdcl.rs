@@ -113,6 +113,20 @@ pub struct CdclController<F: FnMut(PathsClass, bool) -> bool = fn(PathsClass, bo
     /// and propagation-cascade conflicts.
     conflict_count: usize,
 
+    // ── Lazy-DFS investigation counters (transient) ──
+    /// Total calls to `should_continue_on_prefix`.
+    pub instr_calls: usize,
+    /// Calls that pushed at least one new lit.
+    pub instr_calls_with_push: usize,
+    /// Pushes where the lit was already implied (process_push skipped).
+    pub instr_pushes_already_implied: usize,
+    /// Pushes where process_push actually ran.
+    pub instr_pushes_propagated: usize,
+    /// Pushes that triggered an immediate conflict.
+    pub instr_pushes_conflict: usize,
+    /// Implied lits added by process_push cascades (sum over calls).
+    pub instr_implied_emitted: usize,
+
     /// Snapshot of `prefix_prod_path.len()` at the most recent DFS lit
     /// push.  Lets us tell whether the next lit-push was preceded by a
     /// Prod entry (Decision) or just another Sum-child visit
@@ -862,6 +876,24 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
     }
 }
 
+impl<F: FnMut(PathsClass, bool) -> bool> Drop for CdclController<F> {
+    fn drop(&mut self) {
+        if std::env::var("CDCL_INSTR").is_ok() {
+            eprintln!("c [instr] calls={} calls_with_push={} push_implied={} push_propagated={} push_conflict={} implied_emitted={} conflict_count={} learned={} restarts={}",
+                self.instr_calls,
+                self.instr_calls_with_push,
+                self.instr_pushes_already_implied,
+                self.instr_pushes_propagated,
+                self.instr_pushes_conflict,
+                self.instr_implied_emitted,
+                self.conflict_count,
+                self.learned_clauses.len(),
+                self.restart_count,
+            );
+        }
+    }
+}
+
 impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController<F> {
     type OnClass = F;
 
@@ -870,6 +902,12 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             inner: <BacktrackWhenCoveredController<F> as PathSearchController>::with_on_class(params, on_class),
             trail: Vec::new(),
             conflict_count: 0,
+            instr_calls: 0,
+            instr_calls_with_push: 0,
+            instr_pushes_already_implied: 0,
+            instr_pushes_propagated: 0,
+            instr_pushes_conflict: 0,
+            instr_implied_emitted: 0,
             last_path_len_at_lit_push: 0,
             prod_alts:        Vec::new(),
             prod_total:       Vec::new(),
@@ -913,6 +951,12 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             inner: <BacktrackWhenCoveredController<F> as PathSearchController>::with_on_class_uncovered_only(params, on_class),
             trail: Vec::new(),
             conflict_count: 0,
+            instr_calls: 0,
+            instr_calls_with_push: 0,
+            instr_pushes_already_implied: 0,
+            instr_pushes_propagated: 0,
+            instr_pushes_conflict: 0,
+            instr_implied_emitted: 0,
             last_path_len_at_lit_push: 0,
             prod_alts:        Vec::new(),
             prod_total:       Vec::new(),
@@ -987,6 +1031,12 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             prefix_literals, prefix_positions, prefix_prod_path, is_complete,
         );
 
+        // Lazy-DFS investigation: count this call.
+        self.instr_calls += 1;
+        if self.our_counted_len < prefix_literals.len() {
+            self.instr_calls_with_push += 1;
+        }
+
         // ── Phase 3: forward — process newly-pushed DFS lits ──
         let mut want_backtrack = false;
         // Step 6: track whether the conflict was cascade-derived
@@ -1032,6 +1082,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             let pushing_conflict = self.lit_or_implied(comp_idx);
             if pushing_conflict {
                 self.conflict_count += 1;
+                self.instr_pushes_conflict += 1;
                 want_backtrack = true;
                 // No useful 1UIP analysis for path-level conflicts
                 // (they aren't tied to a specific clause's all-alts-
@@ -1043,8 +1094,15 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
                 // already applied to clause-blocked state).
                 let already_implied = self.implied_lit_counter
                     .get(lit_idx).copied().unwrap_or(0) > 0;
+                if already_implied {
+                    self.instr_pushes_already_implied += 1;
+                }
                 if !already_implied {
-                    match self.process_push(&new_lit, level, &mut frame) {
+                    self.instr_pushes_propagated += 1;
+                    let trail_before = self.trail.len();
+                    let r = self.process_push(&new_lit, level, &mut frame);
+                    self.instr_implied_emitted += self.trail.len().saturating_sub(trail_before);
+                    match r {
                         Ok(()) => {}
                         Err(conflict_clause_id) => {
                             self.conflict_count += 1;

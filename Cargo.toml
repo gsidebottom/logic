@@ -12,3 +12,4 @@ tower-http = { version = "0.5", features = ["cors", "fs"] }
 xq          = "0.5"
 xq-lang     = "0.0.1"
 cadical     = "0.1"
+biodivine-lib-bdd = "0.6"

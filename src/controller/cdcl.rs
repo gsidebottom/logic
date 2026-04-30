@@ -340,6 +340,20 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         s
     }
 
+    /// Like [`Self::for_nnf`] but builds the controller in *cover mode*
+    /// (the inner `BacktrackWhenCoveredController` emits `Covered`
+    /// events on complementary-pair detection) while still preprocessing
+    /// the matrix for the full CDCL stack — propagation, 1UIP analysis,
+    /// learned clauses, restarts, VSIDS, phase saving, LBD.  Used by
+    /// the dual search framework, which needs both: cover events to
+    /// feed the shared pair-pool, and the CDCL machinery to keep B's
+    /// path-search fast.
+    pub fn for_nnf_with_cover(nnf: &NNF, params: Option<PathParams>, on_class: F) -> Self {
+        let mut s = <Self as PathSearchController>::with_on_class(params, on_class);
+        s.preprocess(nnf);
+        s
+    }
+
     /// Number of conflicts observed during this search so far.
     pub fn conflict_count(&self) -> usize { self.conflict_count }
 

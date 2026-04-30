@@ -122,6 +122,18 @@ impl<F: FnMut(PathsClass, bool) -> bool> SmartController<F> {
         s
     }
 
+    /// Like [`Self::for_nnf`] but builds the controller in *cover mode*
+    /// (the inner `BacktrackWhenCoveredController` emits `Covered`
+    /// events on complementary-pair detection) while still preprocessing
+    /// the matrix for cross-clause unit propagation.  Used by the dual
+    /// search framework, which needs both: cover events to feed the
+    /// shared pair-pool, and propagation to keep B's path-search fast.
+    pub fn for_nnf_with_cover(nnf: &NNF, params: Option<PathParams>, on_class: F) -> Self {
+        let mut s = <Self as PathSearchController>::with_on_class(params, on_class);
+        s.preprocess(nnf);
+        s
+    }
+
     /// Walk `nnf` once and index every `Prod` whose children are all `Lit`s
     /// **and whose ancestors are all Sum nodes**.  The Sum-only-ancestor
     /// restriction is what makes propagation sound: a Prod inside another

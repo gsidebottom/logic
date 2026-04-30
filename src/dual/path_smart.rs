@@ -1,0 +1,135 @@
+//! `SmartDualPathController` — dual-framework path-search controller
+//! using [`crate::controller::SmartController`] as the inner.
+//!
+//! Same shape as [`crate::dual::BasicDualPathController`], but
+//! benefits from cross-clause unit propagation: when a Prod-of-Lits
+//! clause has all-but-one alt blocked, the remaining alt is forced
+//! before B descends, so cascade conflicts surface earlier and B
+//! emits more pairs into the pool sooner.
+//!
+//! Like Basic, it composes the inner with
+//! [`crate::dual::wrapper::StateQueryWrapper`] so A's cover state
+//! can prune the DFS at any level on top of Smart's local
+//! propagation.
+
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use crate::controller::SmartController;
+use crate::dual::{
+    BasicCoverState, CoverState, DualPathSearchController, PairPool, PathOutcome, SearchMode,
+};
+use crate::dual::wrapper::{StateQueryWrapper, run_dfs_with_restarts};
+use crate::matrix::{NNF, PathParams, PathsClass, ProdPath};
+
+pub struct SmartDualPathController<S: CoverState = BasicCoverState> {
+    _state: std::marker::PhantomData<S>,
+}
+
+impl<S: CoverState> Default for SmartDualPathController<S> {
+    fn default() -> Self { Self::new() }
+}
+
+impl<S: CoverState> SmartDualPathController<S> {
+    pub fn new() -> Self {
+        Self { _state: std::marker::PhantomData }
+    }
+}
+
+impl<S: CoverState + 'static> DualPathSearchController for SmartDualPathController<S> {
+    type State = S;
+
+    fn run(
+        self,
+        nnf: &NNF,
+        _mode: SearchMode,
+        pool: Arc<PairPool>,
+        state: Arc<Mutex<Self::State>>,
+        cancel: Arc<AtomicBool>,
+    ) -> PathOutcome {
+        let uncovered: Arc<Mutex<Option<ProdPath>>> = Arc::new(Mutex::new(None));
+
+        let on_class = {
+            let pool = pool.clone();
+            let uncovered = uncovered.clone();
+            let cancel = cancel.clone();
+            move |class: PathsClass, _hit_limit: bool| -> bool {
+                if cancel.load(Ordering::SeqCst) {
+                    return false;
+                }
+                match class {
+                    PathsClass::Covered(cpp) => {
+                        pool.push(cpp.cover);
+                        true
+                    }
+                    PathsClass::Uncovered(pp) => {
+                        let mut slot = uncovered.lock().unwrap();
+                        if slot.is_none() {
+                            *slot = Some(pp);
+                        }
+                        false
+                    }
+                }
+            }
+        };
+
+        let params = PathParams {
+            uncovered_path_limit: 1,
+            paths_class_limit:    usize::MAX,
+            covered_prefix_limit: usize::MAX,
+            no_cover:             false,
+        };
+
+        // Cover-mode + matrix preprocessing: the dual-specific
+        // factory we added in `controller/smart.rs`.
+        let inner = SmartController::for_nnf_with_cover(nnf, Some(params), on_class);
+        let mut composite = StateQueryWrapper::new(inner, state, cancel);
+        run_dfs_with_restarts(&mut composite, nnf, &*uncovered)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dual::{BasicCoverController, GreedyMaxCoverController, Outcome, solve_dual, SearchMode};
+
+    #[test]
+    fn smart_b_detects_satisfiable() {
+        let matrix = crate::matrix::Matrix::try_from("a + b").expect("matrix");
+        let nnf = matrix.nnf_complement.clone();
+        let outcome = solve_dual(
+            &nnf,
+            BasicCoverController::default(),
+            SmartDualPathController::default(),
+            SearchMode::Satisfiable,
+        );
+        assert!(matches!(outcome, Outcome::Sat(_)));
+    }
+
+    #[test]
+    fn smart_b_detects_unsatisfiable() {
+        let matrix = crate::matrix::Matrix::try_from("a*a'").expect("matrix");
+        let nnf = matrix.nnf_complement.clone();
+        let outcome = solve_dual(
+            &nnf,
+            BasicCoverController::default(),
+            SmartDualPathController::default(),
+            SearchMode::Satisfiable,
+        );
+        assert_eq!(outcome, Outcome::Unsat);
+    }
+
+    #[test]
+    fn smart_b_with_greedy_a() {
+        let text = "(a + b)*(a' + b)*(a + b')*(a' + b')";
+        let matrix = crate::matrix::Matrix::try_from(text).expect("matrix");
+        let nnf = matrix.nnf_complement.clone();
+        let outcome = solve_dual(
+            &nnf,
+            GreedyMaxCoverController::default(),
+            SmartDualPathController::default(),
+            SearchMode::Satisfiable,
+        );
+        assert_eq!(outcome, Outcome::Unsat);
+    }
+}

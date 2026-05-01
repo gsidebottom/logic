@@ -2682,6 +2682,80 @@ mod tests {
     /// Run smart on `faulty_add(3;1;1;0;3;0)` (no at_most layer).  Bisects
     /// the bench failure to figure out which sub-formula confuses the
     /// propagation.
+    /// Semantic check on `math.jq`'s `plus(a; b; c; w)`: generate the
+    /// formula via jq, parse it through `Matrix`, then enumerate every
+    /// `(a, b, c)` combination of three w-bit unsigned integers and
+    /// confirm the formula evaluates to true exactly when `a + b == c`
+    /// (no overflow).  Runs for w ∈ {1, 2, 3} → 4096 evaluations max.
+    #[test]
+    fn plus_jq_formula_matches_integer_arithmetic() {
+        use xq::{module_loader::PreludeLoader, run_query, Value as XqValue};
+        let strip_sections = |s: &str| -> String {
+            let cut = s.find("\n# === tests ===").unwrap_or(s.len());
+            let head = &s[..cut];
+            let mut out = String::new();
+            let mut lines = head.lines();
+            let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
+            for _ in 0..peek.len() { lines.next(); }
+            let mut rest = lines.clone();
+            if let Some(first) = rest.next() {
+                if first.trim_end() == "# === deps ===" {
+                    lines.next();
+                    while let Some(l) = lines.next() {
+                        if l.trim_end() == "# === end deps ===" { break; }
+                    }
+                }
+            }
+            for l in lines { out.push_str(l); out.push('\n'); }
+            out
+        };
+        let load = |name: &str| -> String {
+            strip_sections(&std::fs::read_to_string(format!("lib/{}", name))
+                .unwrap_or_else(|e| panic!("read lib/{}: {}", name, e)))
+        };
+        let expr = load("expr.jq");
+        let math = load("math.jq");
+
+        for w in 1usize..=3 {
+            let combined = format!("{}\n{}\nplus(\"a\"; \"b\"; \"c\"; {})", expr, math, w);
+            let loader  = PreludeLoader();
+            let context = std::iter::once(Ok::<XqValue, xq::InputError>(XqValue::Null));
+            let input   = std::iter::empty::<Result<XqValue, xq::InputError>>();
+            let iter    = run_query(&combined, context, input, &loader).expect("jq compile");
+            let json_vals: Vec<String> = iter.map(|r| r.expect("jq err").to_string()).collect();
+            let formula: String = serde_json::from_str(&json_vals[0])
+                .expect("formula not a JSON string");
+            let m = Matrix::try_from(formula.as_str())
+                .unwrap_or_else(|e| panic!("parse w={} '{}': {}", w, formula, e));
+
+            let total = 1u32 << w;
+            for a in 0..total {
+                for b in 0..total {
+                    for c in 0..total {
+                        // Build a literal assignment for every bit of a, b, c.
+                        let mut asgn: Vec<Lit> = Vec::with_capacity(3 * w);
+                        let bit_lit = |name: &str, bit: usize, val: u32| -> Lit {
+                            let var_name = format!("{}_{}", name, bit);
+                            let var: Var = m.ast.var_index[&var_name];
+                            // val=1 → positive lit, val=0 → negative lit.
+                            if (val >> bit) & 1 == 1 { Lit::pos(var) } else { Lit::neg(var) }
+                        };
+                        for i in 0..w {
+                            asgn.push(bit_lit("a", i, a));
+                            asgn.push(bit_lit("b", i, b));
+                            asgn.push(bit_lit("c", i, c));
+                        }
+                        let formula_says_true = m.evaluate(&asgn).unwrap();
+                        let arithmetic = a + b == c;   // no overflow because c < 2^w
+                        assert_eq!(formula_says_true, arithmetic,
+                            "w={} a={} b={} c={}: formula says {}, arithmetic says {}",
+                            w, a, b, c, formula_says_true, arithmetic);
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     #[ignore]
     fn smart_satisfiable_on_faulty_add_3() {

@@ -43,6 +43,24 @@ def test_x_eq_5: prod(v_eq("x"; 5; 3)) == "x_2 x_1' x_0";
 # bit i (0-indexed from LSB) of num
 def num_bit(num; i): (num / pow(2; i)) | floor | . % 2;
 
+# Does the formula `.` have a top-level OR?  A top-level OR is a
+# `" + "` substring at bracket depth zero — anything bracketed is
+# at depth ≥ 1 and doesn't count.  Used by `b_and` below to decide
+# whether to wrap an operand in parens before juxtaposing.
+def has_top_or:
+  . as $s |
+  ($s | length) as $n |
+  reduce range(0; $n) as $i (
+    {d: 0, found: false};
+    if .found then .
+    elif $s[$i:$i+1] == "(" then .d += 1
+    elif $s[$i:$i+1] == ")" then .d -= 1
+    elif ($i + 3) <= $n and $s[$i:$i+3] == " + " and .d == 0 then .found = true
+    else .
+    end
+  ) | .found
+;
+
 # OR with constant simplification: x∨1=1, x∨0=x, x∨y otherwise.
 def b_or(x; y):
   if x == "1" or y == "1" then "1"
@@ -52,13 +70,17 @@ def b_or(x; y):
   end
 ;
 
-# AND with constant simplification + defensive bracket on y:
-# x∧1=x, x∧0=0, otherwise "x (y)" (y bracketed in case it's an OR).
+# AND with constant simplification.  Brackets each operand only
+# when it has a top-level OR — otherwise juxtaposition would
+# misparse since `+` has lower precedence than juxtaposition.
 def b_and(x; y):
   if x == "0" or y == "0" then "0"
   elif x == "1" then y
   elif y == "1" then x
-  else prod(x, br(y))
+  else
+    (if (x | has_top_or) then br(x) else x end) as $xx |
+    (if (y | has_top_or) then br(y) else y end) as $yy |
+    prod($xx, $yy)
   end
 ;
 
@@ -86,7 +108,7 @@ def v_lt(name; num; w):
   else v_le(name; num - 1; w)
   end
 ;
-def test_v_lt_5_3: v_lt("x"; 5; 3) == "x_2' + x_1' (x_0')";
+def test_v_lt_5_3: v_lt("x"; 5; 3) == "x_2' + x_1' x_0'";
 
 # Boolean formula: name_(w-1)..name_0 ≥ num.
 # Returns "1" for num ≤ 0 and "0" for num > 2^w-1.
@@ -112,7 +134,7 @@ def v_gt(name; num; w):
   else v_ge(name; num + 1; w)
   end
 ;
-def test_v_gt_5_3: v_gt("x"; 5; 3) == "x_2 (x_1)";
+def test_v_gt_5_3: v_gt("x"; 5; 3) == "x_2 x_1";
 
 # Edge cases: extremes degrade to the constants "0" / "1".
 def test_v_le_neg:        v_le("x"; -1; 3) == "0";
@@ -122,6 +144,103 @@ def test_v_ge_zero:       v_ge("x"; 0;  3) == "1";
 def test_v_ge_overshoot:  v_ge("x"; 8;  3) == "0";
 def test_v_gt_max:        v_gt("x"; 7;  3) == "0";
 def test_v_gt_neg:        v_gt("x"; -1; 3) == "1";
+
+# ─── Bit-vector addition ───────────────────────────────────────────────────
+#
+# `plus(a; b; c; w)` produces a propositional formula that holds iff
+# the unsigned w-bit integers represented by a, b, c satisfy
+#   a + b = c
+# *as integers* (i.e. the sum doesn't overflow w bits).
+#
+# No auxiliary carry variables are introduced.  Each carry bit is
+# expressed inline via the closed form
+#   carry_i = ⋁_{j=0..i-1} (a_j ∧ b_j ∧ ⋀_{k=j+1..i-1} (a_k ∨ b_k))
+# which gives O(w^3) formula size — much better than the
+# exponential blowup of recursively expanding the standard
+# `carry_{i+1} = a_i b_i + carry_i (a_i + b_i)` recurrence.
+#
+# The formula is the conjunction of:
+#   * for each bit i in [0, w-1]:  c_i ⇔ a_i ⊕ b_i ⊕ carry_i
+#   * a "no overflow" constraint:  ¬carry_w
+#
+# Each per-bit equality is bracketed because `=` (the formula
+# language's `iff`) and `⊕` both have lower precedence than
+# juxtaposition (AND).  The carry sub-expression is also bracketed
+# inside its `⊕` neighbour for the same reason — XOR binds tighter
+# than the OR (`+`) at the top of the carry expression.
+
+# Carry into bit `i` of a + b, expressed in terms of a_0..a_{i-1}
+# and b_0..b_{i-1} only.  Returns the constant "0" for i ≤ 0.
+def carry_at(a; b; i):
+  if i <= 0 then "0"
+  else
+    [
+      range(0; i) as $j |
+      lit(a; $j; true) as $aj |
+      lit(b; $j; true) as $bj |
+      # generate at j AND propagators for k in (j+1)..(i-1)
+      reduce range($j + 1; i) as $k
+        ( b_and($aj; $bj);
+          b_and(.; b_or(lit(a; $k; true); lit(b; $k; true)))
+        )
+    ] |
+    if   length == 0 then "0"
+    elif length == 1 then .[0]
+    else reduce .[1:][] as $t (.[0]; b_or(.; $t))
+    end
+  end
+;
+
+# c_i ⇔ a_i ⊕ b_i ⊕ carry_at(a, b, i), as a propositional formula.
+# Brackets the carry sub-expression to keep the XOR / OR precedence
+# right (XOR binds tighter than OR; without parens, OR-terms in the
+# carry would escape the XOR chain).
+def sum_bit_eq(a; b; c; i):
+  carry_at(a; b; i) as $carry |
+  lit(a; i; true) as $ai |
+  lit(b; i; true) as $bi |
+  lit(c; i; true) as $ci |
+  if   $carry == "0" then "\($ci) = \($ai) ⊕ \($bi)"
+  elif $carry == "1" then "\($ci) = \($ai) ⊕ \($bi) ⊕ 1"
+  else                    "\($ci) = \($ai) ⊕ \($bi) ⊕ (\($carry))"
+  end
+;
+
+# a_(w-1)..a_0  +  b_(w-1)..b_0  =  c_(w-1)..c_0   (unsigned, no overflow).
+# No extra variables introduced — every carry is inlined via `carry_at`.
+def plus(a; b; c; w):
+  if w <= 0 then "1"
+  else
+    [ range(0; w) | sum_bit_eq(a; b; c; .) | "(\(.))" ] as $eqs |
+    carry_at(a; b; w) as $carry_w |
+    (
+      if   $carry_w == "0" then $eqs
+      elif $carry_w == "1" then $eqs + ["0"]
+      else                      $eqs + ["(\($carry_w))'"]
+      end
+    ) |
+    prod(.[])
+  end
+;
+
+def test_plus_w0:
+  plus("a"; "b"; "c"; 0) == "1"
+;
+def test_plus_w1:
+  plus("a"; "b"; "c"; 1) ==
+  "(c_0 = a_0 ⊕ b_0) (a_0 b_0)'"
+;
+def test_plus_w2:
+  plus("a"; "b"; "c"; 2) ==
+  "(c_0 = a_0 ⊕ b_0) (c_1 = a_1 ⊕ b_1 ⊕ (a_0 b_0)) (a_0 b_0 (a_1 + b_1) + a_1 b_1)'"
+;
+def test_plus_w3:
+  plus("a"; "b"; "c"; 3) ==
+  "(c_0 = a_0 ⊕ b_0)" +
+  " (c_1 = a_1 ⊕ b_1 ⊕ (a_0 b_0))" +
+  " (c_2 = a_2 ⊕ b_2 ⊕ (a_0 b_0 (a_1 + b_1) + a_1 b_1))" +
+  " (a_0 b_0 (a_1 + b_1) (a_2 + b_2) + a_1 b_1 (a_2 + b_2) + a_2 b_2)'"
+;
 
 
 # Every subsequence of `.` whose length is in [0, $maxlen].
@@ -166,4 +285,8 @@ test_v_lt_zero,
 test_v_ge_zero,
 test_v_ge_overshoot,
 test_v_gt_max,
-test_v_gt_neg
+test_v_gt_neg,
+test_plus_w0,
+test_plus_w1,
+test_plus_w2,
+test_plus_w3

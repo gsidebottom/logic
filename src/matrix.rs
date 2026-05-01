@@ -282,7 +282,12 @@ impl NNF {
         match self {
             NNF::Lit(_)   => 1.0,
             NNF::Sum(ch)  => ch.iter().map(|c| c.path_count()).product(),
-            NNF::Prod(ch) => ch.iter().map(|c| c.path_count()).sum(),
+            // `.sum::<f64>()` over an empty iterator returns `-0.0`
+            // (the IEEE-754 additive identity that preserves
+            // signed-zero correctness); for an empty `Prod` we want
+            // `+0.0` so callers and JSON serialization don't see a
+            // negative zero.
+            NNF::Prod(ch) => ch.iter().map(|c| c.path_count()).fold(0.0_f64, |a, b| a + b),
         }
     }
 
@@ -875,7 +880,10 @@ impl NNF {
             let v = match n {
                 NNF::Lit(_)   => 1.0,
                 NNF::Sum(ch)  => ch.iter().map(|x| build_counts(x, c)).product(),
-                NNF::Prod(ch) => ch.iter().map(|x| build_counts(x, c)).sum(),
+                // Use fold(0.0, |a, b| a + b) to get `+0.0` instead
+                // of the `-0.0` IEEE-754 additive identity that
+                // `Sum::sum` returns over an empty iterator.
+                NNF::Prod(ch) => ch.iter().map(|x| build_counts(x, c)).fold(0.0_f64, |a, b| a + b),
             };
             c.insert(k, v);
             v

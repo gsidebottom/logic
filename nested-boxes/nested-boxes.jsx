@@ -16,6 +16,12 @@ const PAIR_COLORS = ['#e63946', '#1d7cc4', '#2a9d8f', '#e07c00', '#8e44ad', '#55
 // Format a number with metric suffixes for large values (>= 1M), up to 6 sig figs.
 function fmtNum(n) {
   if (n == null) return '0';
+  // Normalize negative zero to positive zero — some browsers'
+  // `(-0).toLocaleString()` displays "-0" which is confusing.
+  // Belt-and-suspenders against backend producing -0.0 (e.g. an
+  // empty `Prod`'s `[].iter().sum::<f64>()` is the IEEE-754
+  // additive identity -0.0 in Rust).
+  if (n === 0) n = 0;
   const abs = Math.abs(n);
   if (abs < 1e6) return n.toLocaleString();
   // Beyond 999Q (1e33): use ennn scientific notation with exponent a multiple of 3.

@@ -703,12 +703,24 @@ fn start_classify_job(
     let vars = matrix.ast.vars.clone();
 
     let params_for_builder = params.clone();
+    // `SmartController` has two constructors: `for_nnf` is
+    // uncovered-only (suppresses `Covered` events for speed), while
+    // `for_nnf_with_cover` enables cover-pair certificates so the
+    // UI can display them.  Pick the matching one based on the
+    // request's `no_cover` flag — without this, the valid /
+    // satisfiable views never see covered-prefix events even when
+    // the user has asked to display them.
+    let want_cover = params.as_ref().map_or(true, |p| !p.no_cover);
     let (handle, mut rx, cancel) = if use_smart_controller {
         let nnf_for_builder = target.clone();
         matrix.classify_paths(complement, 64, params, move |tx| {
             let on_class: DynOnClass = Box::new(move |class, hit_limit|
                 tx.blocking_send((class, hit_limit)).is_ok());
-            SmartController::for_nnf(&nnf_for_builder, params_for_builder, on_class)
+            if want_cover {
+                SmartController::for_nnf_with_cover(&nnf_for_builder, params_for_builder, on_class)
+            } else {
+                SmartController::for_nnf(&nnf_for_builder, params_for_builder, on_class)
+            }
         })
     } else {
         matrix.classify_paths(complement, 64, params,

@@ -223,6 +223,64 @@ def plus(a; b; c; w):
   end
 ;
 
+# a == b as w-bit unsigned bit-vectors.  Bitwise: ⋀_i (a_i ⇔ b_i).
+# Returns "1" for w=0 (the empty equality is vacuously true).
+def eq(a; b; w):
+  if w <= 0 then "1"
+  else
+    [ range(0; w) | "(\(lit(a; .; true)) = \(lit(b; .; true)))" ] |
+    prod(.[])
+  end
+;
+def test_eq_w0: eq("a"; "b"; 0) == "1";
+def test_eq_w1: eq("a"; "b"; 1) == "(a_0 = b_0)";
+def test_eq_w2: eq("a"; "b"; 2) == "(a_0 = b_0) (a_1 = b_1)";
+def test_eq_w3: eq("a"; "b"; 3) == "(a_0 = b_0) (a_1 = b_1) (a_2 = b_2)";
+
+# a + 1 = b, where a and b are w-bit unsigned bit-vectors.  No
+# extra variables; specializes `plus` to the constant 1 (b₀ = 1,
+# bᵢ = 0 for i ≥ 1) so the carry into bit i collapses from the
+# closed form
+#   carry_i = ⋁_j (a_j ∧ b_j ∧ ⋀_k (a_k ∨ b_k))
+# to just  a_0 ∧ a_1 ∧ … ∧ a_{i-1}  (only j=0 contributes; the
+# propagator factors (a_k ∨ 0) collapse to a_k).
+#
+# Result:
+#   * Bit 0:        b_0 ⇔ ¬a_0
+#   * Bit i ≥ 1:    b_i ⇔ a_i ⊕ (a_0 ∧ … ∧ a_{i-1})
+#   * No-overflow:  ¬(a_0 ∧ … ∧ a_{w-1})
+#
+# w = 0 is unsatisfiable (1 doesn't fit in zero bits) → "0".
+def plus1(a; b; w):
+  if w <= 0 then "0"
+  else
+    # AND of a_0..a_{i-1}; for i=1 it's just a_0.
+    def and_a_bits($i):
+      reduce range(1; $i) as $k
+        ( lit(a; 0; true);
+          b_and(.; lit(a; $k; true))
+        )
+    ;
+    [
+      # Bit 0: b_0 ⇔ ¬a_0
+      "(\(lit(b; 0; true)) = \(lit(a; 0; false)))"
+      ,
+      # Bit i ≥ 1: b_i ⇔ a_i ⊕ (a_0 ∧ … ∧ a_{i-1})
+      range(1; w) as $i |
+      and_a_bits($i) as $carry |
+      "(\(lit(b; $i; true)) = \(lit(a; $i; true)) ⊕ \($carry))"
+    ] as $eqs |
+    and_a_bits(w) as $carry_w |
+    ($eqs + ["(\($carry_w))'"]) |
+    prod(.[])
+  end
+;
+def test_plus1_w0: plus1("a"; "b"; 0) == "0";
+def test_plus1_w1: plus1("a"; "b"; 1) == "(b_0 = a_0') (a_0)'";
+def test_plus1_w2: plus1("a"; "b"; 2) == "(b_0 = a_0') (b_1 = a_1 ⊕ a_0) (a_0 a_1)'";
+def test_plus1_w3: plus1("a"; "b"; 3) ==
+  "(b_0 = a_0') (b_1 = a_1 ⊕ a_0) (b_2 = a_2 ⊕ a_0 a_1) (a_0 a_1 a_2)'";
+
 def test_plus_w0:
   plus("a"; "b"; "c"; 0) == "1"
 ;
@@ -289,4 +347,12 @@ test_v_gt_neg,
 test_plus_w0,
 test_plus_w1,
 test_plus_w2,
-test_plus_w3
+test_plus_w3,
+test_eq_w0,
+test_eq_w1,
+test_eq_w2,
+test_eq_w3,
+test_plus1_w0,
+test_plus1_w1,
+test_plus1_w2,
+test_plus1_w3

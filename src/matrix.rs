@@ -2682,11 +2682,10 @@ mod tests {
     /// Run smart on `faulty_add(3;1;1;0;3;0)` (no at_most layer).  Bisects
     /// the bench failure to figure out which sub-formula confuses the
     /// propagation.
-    /// Semantic check on `math.jq`'s `plus(a; b; c; w)`: generate the
-    /// formula via jq, parse it through `Matrix`, then enumerate every
-    /// `(a, b, c)` combination of three w-bit unsigned integers and
-    /// confirm the formula evaluates to true exactly when `a + b == c`
-    /// (no overflow).  Runs for w ∈ {1, 2, 3} → 4096 evaluations max.
+    /// Semantic check on `math.jq`'s `plus`, `eq`, and `plus1`:
+    /// generate each formula via jq, parse via `Matrix`, then
+    /// enumerate every w-bit input combination and confirm the
+    /// formula matches the integer-arithmetic predicate.
     #[test]
     fn plus_jq_formula_matches_integer_arithmetic() {
         use xq::{module_loader::PreludeLoader, run_query, Value as XqValue};
@@ -2716,8 +2715,9 @@ mod tests {
         let expr = load("expr.jq");
         let math = load("math.jq");
 
-        for w in 1usize..=3 {
-            let combined = format!("{}\n{}\nplus(\"a\"; \"b\"; \"c\"; {})", expr, math, w);
+        // Helper: compile + parse a single jq expression.
+        let compile = |query: &str| -> Matrix {
+            let combined = format!("{}\n{}\n{}", expr, math, query);
             let loader  = PreludeLoader();
             let context = std::iter::once(Ok::<XqValue, xq::InputError>(XqValue::Null));
             let input   = std::iter::empty::<Result<XqValue, xq::InputError>>();
@@ -2725,32 +2725,64 @@ mod tests {
             let json_vals: Vec<String> = iter.map(|r| r.expect("jq err").to_string()).collect();
             let formula: String = serde_json::from_str(&json_vals[0])
                 .expect("formula not a JSON string");
-            let m = Matrix::try_from(formula.as_str())
-                .unwrap_or_else(|e| panic!("parse w={} '{}': {}", w, formula, e));
+            Matrix::try_from(formula.as_str())
+                .unwrap_or_else(|e| panic!("parse '{}': {}", formula, e))
+        };
 
+        // Helper: build a Lit assignment for a list of (name, value, w) bit-vectors.
+        let assign = |m: &Matrix, vecs: &[(&str, u32, usize)]| -> Vec<Lit> {
+            let mut a: Vec<Lit> = Vec::new();
+            for (name, val, w) in vecs {
+                for i in 0..*w {
+                    let var_name = format!("{}_{}", name, i);
+                    let var: Var = m.ast.var_index[&var_name];
+                    a.push(if (val >> i) & 1 == 1 { Lit::pos(var) } else { Lit::neg(var) });
+                }
+            }
+            a
+        };
+
+        for w in 1usize..=3 {
             let total = 1u32 << w;
+
+            // ── plus(a; b; c; w) ─────────────────────────────────────
+            let m_plus = compile(&format!("plus(\"a\"; \"b\"; \"c\"; {})", w));
             for a in 0..total {
                 for b in 0..total {
                     for c in 0..total {
-                        // Build a literal assignment for every bit of a, b, c.
-                        let mut asgn: Vec<Lit> = Vec::with_capacity(3 * w);
-                        let bit_lit = |name: &str, bit: usize, val: u32| -> Lit {
-                            let var_name = format!("{}_{}", name, bit);
-                            let var: Var = m.ast.var_index[&var_name];
-                            // val=1 → positive lit, val=0 → negative lit.
-                            if (val >> bit) & 1 == 1 { Lit::pos(var) } else { Lit::neg(var) }
-                        };
-                        for i in 0..w {
-                            asgn.push(bit_lit("a", i, a));
-                            asgn.push(bit_lit("b", i, b));
-                            asgn.push(bit_lit("c", i, c));
-                        }
-                        let formula_says_true = m.evaluate(&asgn).unwrap();
-                        let arithmetic = a + b == c;   // no overflow because c < 2^w
-                        assert_eq!(formula_says_true, arithmetic,
-                            "w={} a={} b={} c={}: formula says {}, arithmetic says {}",
-                            w, a, b, c, formula_says_true, arithmetic);
+                        let asgn = assign(&m_plus, &[("a", a, w), ("b", b, w), ("c", c, w)]);
+                        let says = m_plus.evaluate(&asgn).unwrap();
+                        let truth = a + b == c;
+                        assert_eq!(says, truth,
+                            "plus w={} a={} b={} c={}: formula says {}, expected {}",
+                            w, a, b, c, says, truth);
                     }
+                }
+            }
+
+            // ── eq(a; b; w) ──────────────────────────────────────────
+            let m_eq = compile(&format!("eq(\"a\"; \"b\"; {})", w));
+            for a in 0..total {
+                for b in 0..total {
+                    let asgn = assign(&m_eq, &[("a", a, w), ("b", b, w)]);
+                    let says = m_eq.evaluate(&asgn).unwrap();
+                    let truth = a == b;
+                    assert_eq!(says, truth,
+                        "eq w={} a={} b={}: formula says {}, expected {}",
+                        w, a, b, says, truth);
+                }
+            }
+
+            // ── plus1(a; b; w) ───────────────────────────────────────
+            let m_plus1 = compile(&format!("plus1(\"a\"; \"b\"; {})", w));
+            for a in 0..total {
+                for b in 0..total {
+                    let asgn = assign(&m_plus1, &[("a", a, w), ("b", b, w)]);
+                    let says = m_plus1.evaluate(&asgn).unwrap();
+                    let truth = a + 1 == b;   // no overflow because b < 2^w
+                    assert_eq!(says, truth,
+                        "plus1 w={} a={} b={}: formula says {}, expected {}",
+                        w, a, b, says, truth);
                 }
             }
         }

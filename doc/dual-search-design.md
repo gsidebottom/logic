@@ -289,6 +289,300 @@ which controllers produced them.  This is what makes the framework
 *plug-in*: experimentation is `for a in [Basic, Greedy, Learned]:
 for b in [Basic, Smart, Cdcl]: run(a, b)`.
 
+## Effective-path-count path search
+
+A B-side strategy that addresses the "matrix walks through
+irrelevant subtrees" pathology observed on circuit-shaped formulas
+where unit-pinning constraints force a unique model.  Concrete
+example: `plus(a;b;c;w) ∧ a=max ∧ b=max ∧ c=2·max` has a single SAT
+model, CaDiCaL solves it via gate-propagation in ~0.3 ms regardless
+of `w`, but the existing matrix.cdcl runtime grows ~5× per added bit
+(0.6 ms at w=4, 2.5 ms at w=5, 14 ms at w=6, …) because the DFS
+re-derives the pinning via blind alt-selection in every nested
+XOR sub-tree.
+
+### The idea
+
+Annotate every NNF node with an **effective path count** — the
+number of distinct *potentially-satisfying assignments* its
+subtree can still contribute given the literals on the current
+path prefix.  The DFS then orders Sum traversal and Prod selection
+by *increasing* effective count: smallest first.
+
+The order is **not pre-determined** at search start — counts get
+updated as literals join (or leave) the path prefix, so the
+ordering at any depth reflects the *current* prefix's constraints.
+This is the core difference from `sum_ord` / `prod_ord` returning
+a fixed permutation: here the ordering at one depth depends on
+what was committed at shallower depths.
+
+### The recurrence
+
+For a path prefix `P` (a set of literals committed so far), the
+effective count `e(N | P)` of a node `N` is:
+
+| Node                         | Definition                          |
+|------------------------------|-------------------------------------|
+| `Lit(ℓ)` where `ℓ ∈ P`       | `1` (already satisfied; contributes no new constraint) |
+| `Lit(ℓ)` where `¬ℓ ∈ P`      | `0` (closed; subtree can't extend the prefix) |
+| `Lit(ℓ)` otherwise           | `1` (a fresh literal commitment is one option) |
+| `Sum(c₁ … c_n)` (visit-all)  | `∏ᵢ e(cᵢ \| P)` (every child must be live) |
+| `Prod(c₁ … c_n)` (pick-one)  | `∑ᵢ e(cᵢ \| P)` (we'll pick one alt) |
+
+Three observations worth calling out:
+
+1. **`Lit(ℓ)` for `ℓ ∈ P` returns 1, not 0.**  A `Lit` node where
+   the literal is already on the prefix is "trivially satisfied" —
+   re-committing to it via the matrix DFS adds nothing new but
+   doesn't fail either.  Distinct from "I have to add a *new*
+   literal here", which is also count 1; the difference is the
+   re-commitment doesn't enlarge the assignment.
+2. **A Sum's count goes to 0 if any child is 0.**  Sum is
+   visit-all; if any descendant cannot be satisfied under the
+   current prefix, the entire Sum fails.  This is the early-prune
+   signal.
+3. **Prod's count is the sum of viable alts.**  A Prod with an
+   alt of count 0 just removes that alt from consideration; the
+   Prod stays alive as long as some alt is non-zero, and collapses
+   to a forced choice when exactly one alt survives.
+
+### Worked example — `plus(a;b;c;3) ∧ a=3 ∧ b=3 ∧ c=6`
+
+The complement of this formula has a top-level `Sum` whose
+children include:
+
+* **9 single-literal Sum-children**: the negations of each pinning
+  literal — `a₂, a₁', a₀', b₂, b₁', b₀', c₂', c₁', c₀`.  Each has
+  effective count `1`.
+* **4 multi-alt sub-trees** from the negated bit-equality and
+  no-overflow constraints, each with effective count > 1
+  initially (often 3 or more).
+
+**Smallest-first** picks the 9 single-literal children first —
+committing them to the path prefix until the prefix is
+`{a₂, a₁', a₀', b₂, b₁', b₀', c₂', c₁', c₀}`.
+
+Now the four big sub-trees are *re-evaluated* against this
+prefix.  Take the Prod node `(a₁ · b₁ · (a₂+b₂))` (one inner
+node of one sub-tree):
+
+* alt `a₁` is a `Lit(a₁)`; `a₁'` is on the prefix → count `0`.
+* alt `b₁` is a `Lit(b₁)`; `b₁'` is on the prefix → count `0`.
+* alt `(a₂+b₂)` is a `Sum(Lit(a₂), Lit(b₂))`.  Both `a₂` and `b₂`
+  are *positively* on the prefix → both children count `1` →
+  Sum's count is `1 × 1 = 1`.
+* Prod count = `0 + 0 + 1 = 1`.  The Prod is alive but constrained
+  to its single viable alt.
+
+Propagating up: any sub-tree containing a `Lit` whose complement
+is on the prefix gets its count zeroed out.  In the visualised
+case the entire sub-tree containing `b₂', a₁, b₁` (all of which
+are complementary with the prefix) collapses to count `0`,
+and the DFS prunes it without descending.
+
+**The key efficiency**: the matrix DFS *never visits* the alt
+`a₁` once we know it's complementary with `a₁'`; the count update
+detected this *while we were committing the pinning literals*.
+CDCL's unit-propagation gives the same effect via watched
+literals on the Tseitin CNF — the effective-count strategy gives
+matrix-DFS the structural-NNF analog.
+
+### Incremental maintenance
+
+Naively recomputing every node's count after each push/pop is
+`O(|NNF|)` per step.  The tractable approach:
+
+1. **Pre-compute, per variable, the list of NNF nodes whose
+   subtree contains that variable**: `var_to_nodes[v] = Vec<NodeId>`.
+   One linear walk at construction time.
+2. **When literal `ℓ` is pushed**, only nodes in
+   `var_to_nodes[var(ℓ)]` need recomputation.  Walk those nodes
+   bottom-up; cascade to ancestors only when a count actually
+   changes.  For circuits like `plus(a;b;c;w)` each variable
+   occurs in `O(w)` places, so the per-step update is `O(w)`.
+3. **On pop**, restore previous counts.  Either by recomputing
+   again, or by stashing the prior counts on a stack as part of
+   the push frame.
+
+This is comparable to CDCL's watched-literal cost — linear in the
+local fan-out of the popped variable, not the whole NNF.
+
+### Trait changes — wrapper approach
+
+The current `DualPathSearchController` is a thin run-it harness;
+its B-side controllers compose an inner cover-aware
+`PathSearchController` with a `StateQueryWrapper` (Phase 2/3).
+The cleanest place to add effective-count search is **as another
+wrapper on the inner stack**, not by extending
+`DualPathSearchController` itself:
+
+```rust
+// src/dual/path_effective_count.rs (new)
+pub struct EffectivePathController<S: CoverState = BasicCoverState> {
+    _state: PhantomData<S>,
+}
+
+impl<S: CoverState + 'static> DualPathSearchController for EffectivePathController<S> {
+    type State = S;
+
+    fn run(self, nnf: &NNF, mode: SearchMode, …) -> PathOutcome {
+        // 1. Pre-walk: build var → [node_id] index.
+        let counts = EffectiveCountIndex::build(nnf);
+
+        // 2. Construct inner cover-aware controller (cover-mode
+        //    so pairs are emitted into the pool as before).
+        let inner = SmartController::for_nnf_with_cover(…);
+
+        // 3. Wrap with the count-maintaining adapter, which
+        //    wraps `inner` and intercepts sum_ord / prod_ord
+        //    plus updates counts on every push/pop in
+        //    should_continue_on_prefix.
+        let counted = EffectiveCountWrapper::new(inner, counts);
+
+        // 4. Wrap with the cover-state query layer (Phase 2).
+        let composite = StateQueryWrapper::new(counted, state, cancel);
+
+        // 5. Drive with restart loop.
+        run_dfs_with_restarts(&mut composite, nnf, &uncovered)
+    }
+}
+```
+
+The `EffectiveCountWrapper` is itself a `PathSearchController`:
+
+```rust
+struct EffectiveCountWrapper<Inner: PathSearchController> {
+    inner: Inner,
+    counts: EffectiveCountIndex,
+    /// Per-push-frame snapshot of count deltas, for undo on pop.
+    frames: Vec<CountDeltaFrame>,
+}
+
+impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper<Inner> {
+    fn should_continue_on_prefix(&mut self, lits, …) -> Option<usize> {
+        // Sync frames against `lits` len: pop frames for popped
+        // lits, restoring counts; push frames for new lits,
+        // updating counts.  Each new push that drives the active
+        // subtree's count to 0 returns `Some(0)` for early prune.
+        …
+        self.inner.should_continue_on_prefix(lits, …)
+    }
+
+    fn sum_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+        // Sort children by ascending current effective count;
+        // exclude zero-count children entirely (they'd zero the
+        // Sum, which is detected at should_continue_on_prefix).
+        // For the Sum-visit-all case, ordering doesn't change
+        // *which* children are visited, just the order — this
+        // gets the most-constrained subtree visited first so
+        // failures surface early.
+        Some(sorted_non_zero(children, &self.counts))
+    }
+
+    fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+        // Sort by ascending count, exclude zero-count alts —
+        // a zero-count alt is provably blocked, equivalent to
+        // CDCL's "blocked by complement on trail".  When only
+        // one alt remains, the DFS commits to it forced-choice.
+        Some(sorted_non_zero(children, &self.counts))
+    }
+}
+```
+
+The trait `DualPathSearchController` itself **doesn't need to
+change** — the strategy lives entirely inside the wrapper, which
+plugs into the existing `PathSearchController` slot (the same
+trait `BacktrackWhenCovered`, `Smart`, `Cdcl` all implement).
+That's the same composition pattern Phase 2/3 already established
+with `StateQueryWrapper` — effective counting is just a second
+wrapper layer.
+
+The cross-product expands cleanly:
+
+```
+{Basic, Greedy, CnfBans, BddBans}      A controllers
+×
+{Basic, Smart, Cdcl}                   B inner controllers
+×
+{plain, EffectiveCount}                wrapper option
+```
+
+= 24 compositions, all cross-checkable against the existing
+`dual_cross_product_agrees_on_assorted_formulas` test.
+
+### Why this hasn't been the natural strategy
+
+The matrix-DFS literature treats "Sum visits all, Prod picks one"
+as a fixed traversal protocol.  This proposal **adds a counting
+layer** that re-orders both Sum traversal and Prod selection
+based on dynamic constraints — essentially making the path-search
+look more like CDCL's decision-heuristic-driven search, but
+operating on the structural NNF rather than a flat CNF.
+
+The closest analog in CDCL: when the variable being pinned has
+only one non-blocked alt remaining in some clause, CDCL forces
+it via unit propagation.  The effective-count strategy
+generalises that to the NNF: when an inner Prod's alt counts
+collapse to one non-zero alt, the DFS commits to it as a forced
+choice; when a sub-tree's count drops to zero, the DFS skips it
+entirely.
+
+### Expected impact
+
+Cases where this should pay off:
+
+* `plus(a;b;c;w) ∧ pinning` benchmark series (the cleanest
+  illustrator).  Predicted: matrix.cdcl + EffectiveCount runtime
+  flat as `w` grows, vs the current ~5× per bit.
+* Faulty-adder with tight expected-output and fault-count
+  pinning — same shape, larger scale.
+* Any circuit-encoded formula where pinning input bits should
+  propagate through gate equalities to fix output bits.
+
+Cases where it won't help meaningfully:
+
+* PHP family — already flat Sum-of-Prods; the matrix-CDCL stack's
+  watched-literal cross-clause propagation already does the
+  equivalent work.  Effective counts mostly mirror what
+  propagation provides.
+* Faulty-adder UNSAT cases where the bottleneck is exhausting a
+  structurally-rich NNF — effective counts don't shrink the
+  search space, just reorder it.
+* Cases where the matrix DFS already finds an uncovered path
+  quickly (random-3sat at the easy ratio, small SAT formulas).
+
+The strategy's home is **circuit-like formulas with tight pinning
+constraints**, where the unique satisfying assignment can be
+derived from the pinning by structural propagation through XOR
+and AND gates.
+
+### Implementation plan
+
+1. **Phase 1**: `EffectiveCountIndex` — build the
+   `var → [NodeId]` index plus the per-node effective-count
+   storage.  Static recurrence: given a prefix, compute every
+   count from leaves up.  Validate by enumerating small NNFs
+   manually.
+2. **Phase 2**: `EffectiveCountWrapper` PathSearchController.
+   Maintains counts incrementally on push/pop via per-frame
+   delta lists.  Implements `sum_ord` / `prod_ord` to filter
+   zero-count children and order ascending.
+   Returns `Some(0)` from `should_continue_on_prefix` when the
+   active subtree's count is 0.
+   Validate: every dual `cross_product` test still passes.
+3. **Phase 3**: `EffectivePathController` DualPathSearchController
+   — composes inner cover-aware controller with the count
+   wrapper and the existing `StateQueryWrapper`.  Bench the
+   `plus`-with-pinning sweep at `w ∈ {3, 4, 5, 6, 8, 12}`,
+   compare against `matrix.cdcl`.
+4. **Phase 4**: extend the bench harness with a 4th column
+   (`{plain, EffectiveCount}`) and re-run all faulty-adder
+   variants and PHP cases.  Document where it helps and where
+   it doesn't.
+
+Estimated effort: ~600 LoC for Phase 1-2 + tests, another ~200
+for Phase 3 wiring, ~100 for bench integration.
+
 ## Termination and soundness
 
 ### Soundness

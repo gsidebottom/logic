@@ -131,6 +131,7 @@ def test_diags:
 
 # faulty add with adder width w a+b+c_in =? s+c_out at most n faults
 # faulty_add_at_most(6;3;19;0;21;0;1)
+# faulty_add_at_most(27;0;134217727;1;134217727;1;2)
 def faulty_add_at_most(w;a;b;c_in;s;c_out;n):
   prod(
     at_most_n(n; diags(w); "x"),

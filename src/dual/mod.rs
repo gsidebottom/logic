@@ -21,10 +21,12 @@ pub mod cover_cnf_bans;
 pub mod cover_greedy;
 pub mod cover_state_bdd;
 pub mod cover_state_cnf;
+pub mod effective_count;
 pub mod flat;
 pub mod path_basic;
-pub mod path_smart;
 pub mod path_cdcl;
+pub mod path_effective;
+pub mod path_smart;
 pub mod wrapper;
 
 #[cfg(test)]
@@ -38,6 +40,7 @@ pub use cover_state_bdd::BddBansCoverState;
 pub use cover_state_cnf::CnfBansCoverState;
 pub use path_basic::BasicDualPathController;
 pub use path_cdcl::CdclDualPathController;
+pub use path_effective::EffectivePathController;
 pub use path_smart::SmartDualPathController;
 
 use crate::matrix::{NNF, Pair, ProdPath};
@@ -681,6 +684,43 @@ mod tests {
             let dual_is_sat = matches!(outcome, Outcome::Sat(_));
             assert_eq!(dual_is_sat, existing_is_sat,
                        "CnfBans disagrees with existing on '{}': dual={:?}, existing.sat={}",
+                       text, outcome, existing_is_sat);
+        }
+    }
+
+    /// EffectivePathController cross-check.  Validates the
+    /// effective-path-count B-side controller against the existing
+    /// solver on a mix of SAT/UNSAT formulas, including a few that
+    /// exercise the non-flat NNF code path (parens forcing nested
+    /// AND/OR structure).
+    #[test]
+    fn dual_effective_agrees_on_assorted_formulas() {
+        for text in &[
+            // SAT
+            "a + a'",
+            "a + b",
+            "a*b + a*b' + a'*b + a'*b'",
+            "(a + b)*(c + d)",
+            "(a + b + c)*(b + c + d)*(a + d)",
+            "(x + y)*(x' + z)*(y' + z')",
+            "(a + b c)(d + e f)",
+            // UNSAT
+            "a*a'",
+            "a*a'*b",
+            "(a + b)*(a' + b)*(a + b')*(a' + b')",
+        ] {
+            let matrix = crate::matrix::Matrix::try_from(*text).expect("matrix");
+            let nnf = matrix.nnf_complement.clone();
+            let outcome = solve_dual(
+                &nnf,
+                BasicCoverController::default(),
+                EffectivePathController::default(),
+                SearchMode::Satisfiable,
+            );
+            let existing_is_sat = existing_sat(text);
+            let dual_is_sat = matches!(outcome, Outcome::Sat(_));
+            assert_eq!(dual_is_sat, existing_is_sat,
+                       "EffectivePathController disagrees on '{}': dual={:?}, existing.sat={}",
                        text, outcome, existing_is_sat);
         }
     }

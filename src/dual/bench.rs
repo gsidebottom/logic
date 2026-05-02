@@ -24,8 +24,10 @@ use crate::controller::{CdclController, SmartController};
 use crate::dual::{
     BasicCoverController, BasicCoverState, BasicDualPathController, BddBansCoverController,
     BddBansCoverState, CdclDualPathController, CnfBansCoverController, CnfBansCoverState,
-    GreedyMaxCoverController, Outcome, SearchMode, SmartDualPathController, solve_dual,
+    EffectivePathController, GreedyMaxCoverController, Outcome, SearchMode,
+    SmartDualPathController, solve_dual,
 };
+use crate::matrix::Matrix;
 use crate::matrix::{Lit, NNF, PathParams, PathsClass, Var};
 
 const PER_CONFIG_TIMEOUT: Duration = Duration::from_secs(60);
@@ -77,11 +79,23 @@ fn cnf_complement_nnf(clauses: &[Vec<i32>]) -> NNF {
     NNF::Sum(cubes)
 }
 
+#[allow(dead_code)]
 fn load_cnf(path: &str) -> Option<NNF> {
     let f = std::fs::File::open(path).ok()?;
     let r = std::io::BufReader::new(f);
     let (_nvars, clauses) = parse_dimacs(r).ok()?;
     Some(cnf_complement_nnf(&clauses))
+}
+
+/// Load a CNF and keep both the search-target (the complement NNF
+/// the matrix-method walks) *and* the raw clauses (so the cadical
+/// runner can solve the original CNF directly without round-tripping
+/// through tseitin).
+fn load_cnf_full(path: &str) -> Option<(NNF, Vec<Vec<i32>>)> {
+    let f = std::fs::File::open(path).ok()?;
+    let r = std::io::BufReader::new(f);
+    let (_nvars, clauses) = parse_dimacs(r).ok()?;
+    Some((cnf_complement_nnf(&clauses), clauses))
 }
 
 // ─── Faulty-adder formula loading via jq ──────────────────────────────────
@@ -91,6 +105,7 @@ fn load_cnf(path: &str) -> Option<NNF> {
 /// helper used in `matrix.rs`'s ignored faulty-adder benches.
 ///
 /// Returns the *complement* NNF (the SAT-search target).
+#[allow(dead_code)]
 fn faulty_add_at_most_nnf(jq_args: &str) -> Option<NNF> {
     use xq::{module_loader::PreludeLoader, run_query, Value as XqValue};
     let strip_sections = |s: &str| -> String {
@@ -130,6 +145,162 @@ fn faulty_add_at_most_nnf(jq_args: &str) -> Option<NNF> {
     let formula: String = serde_json::from_str(&json_vals[0]).ok()?;
     let matrix = crate::matrix::Matrix::try_from(formula.as_str()).ok()?;
     Some(matrix.nnf_complement.clone())
+}
+
+/// Same as `faulty_add_at_most_nnf` but also returns the source
+/// `Matrix`, so a cadical baseline can be run alongside the
+/// matrix-method search.
+fn faulty_add_at_most_full(jq_args: &str) -> Option<(NNF, Matrix)> {
+    use xq::{module_loader::PreludeLoader, run_query, Value as XqValue};
+    let strip_sections = |s: &str| -> String {
+        let cut = s.find("\n# === tests ===").unwrap_or(s.len());
+        let head = &s[..cut];
+        let mut out = String::new();
+        let mut lines = head.lines();
+        let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
+        for _ in 0..peek.len() { lines.next(); }
+        let mut rest = lines.clone();
+        if let Some(first) = rest.next() {
+            if first.trim_end() == "# === deps ===" {
+                lines.next();
+                while let Some(l) = lines.next() {
+                    if l.trim_end() == "# === end deps ===" { break; }
+                }
+            }
+        }
+        for l in lines { out.push_str(l); out.push('\n'); }
+        out
+    };
+    let load = |name: &str| -> Option<String> {
+        std::fs::read_to_string(format!("lib/{}", name)).ok().map(|s| strip_sections(&s))
+    };
+    let expr    = load("expr.jq")?;
+    let math    = load("math.jq")?;
+    let at_most = load("at_most.jq")?;
+    let adder   = load("adder.jq")?;
+    let combined = format!("{}\n{}\n{}\n{}\nfaulty_add_at_most({})",
+                           expr, math, at_most, adder, jq_args);
+    let loader  = PreludeLoader();
+    let context = std::iter::once(Ok::<XqValue, xq::InputError>(XqValue::Null));
+    let input   = std::iter::empty::<Result<XqValue, xq::InputError>>();
+    let iter    = run_query(&combined, context, input, &loader).ok()?;
+    let json_vals: Vec<String> = iter.filter_map(|r| r.ok().map(|v| v.to_string())).collect();
+    if json_vals.is_empty() { return None; }
+    let formula: String = serde_json::from_str(&json_vals[0]).ok()?;
+    let matrix = crate::matrix::Matrix::try_from(formula.as_str()).ok()?;
+    Some((matrix.nnf_complement.clone(), matrix))
+}
+
+/// Generate the NNF for a `bnc(n; w)`-based BMC formula via jq.
+/// `expression` is the body that follows `expr.jq`, `math.jq`, and
+/// `bmc.jq` definitions — e.g.
+///   `"16 as $w | 8 as $n | prod(bnc($n;$w), br(v_gt(\"c\\($n)\"; $n; $w)))"`.
+/// Returns the *complement* NNF (the SAT-search target).
+#[allow(dead_code)]
+fn bmc_nnf(expression: &str) -> Option<NNF> {
+    use xq::{module_loader::PreludeLoader, run_query, Value as XqValue};
+    let strip_sections = |s: &str| -> String {
+        let cut = s.find("\n# === tests ===").unwrap_or(s.len());
+        let head = &s[..cut];
+        let mut out = String::new();
+        let mut lines = head.lines();
+        let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
+        for _ in 0..peek.len() { lines.next(); }
+        let mut rest = lines.clone();
+        if let Some(first) = rest.next() {
+            if first.trim_end() == "# === deps ===" {
+                lines.next();
+                while let Some(l) = lines.next() {
+                    if l.trim_end() == "# === end deps ===" { break; }
+                }
+            }
+        }
+        for l in lines { out.push_str(l); out.push('\n'); }
+        out
+    };
+    let load = |name: &str| -> Option<String> {
+        std::fs::read_to_string(format!("lib/{}", name)).ok().map(|s| strip_sections(&s))
+    };
+    let expr = load("expr.jq")?;
+    let math = load("math.jq")?;
+    let bmc  = load("bmc.jq")?;
+    let combined = format!("{}\n{}\n{}\n{}", expr, math, bmc, expression);
+    let loader  = PreludeLoader();
+    let context = std::iter::once(Ok::<XqValue, xq::InputError>(XqValue::Null));
+    let input   = std::iter::empty::<Result<XqValue, xq::InputError>>();
+    let iter    = run_query(&combined, context, input, &loader).ok()?;
+    let json_vals: Vec<String> = iter.filter_map(|r| r.ok().map(|v| v.to_string())).collect();
+    if json_vals.is_empty() { return None; }
+    let formula: String = serde_json::from_str(&json_vals[0]).ok()?;
+    let matrix = crate::matrix::Matrix::try_from(formula.as_str()).ok()?;
+    Some(matrix.nnf_complement.clone())
+}
+
+/// Same as `bmc_nnf` but also returns the source `Matrix` for
+/// running a cadical baseline alongside.
+fn bmc_full(expression: &str) -> Option<(NNF, Matrix)> {
+    use xq::{module_loader::PreludeLoader, run_query, Value as XqValue};
+    let strip_sections = |s: &str| -> String {
+        let cut = s.find("\n# === tests ===").unwrap_or(s.len());
+        let head = &s[..cut];
+        let mut out = String::new();
+        let mut lines = head.lines();
+        let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
+        for _ in 0..peek.len() { lines.next(); }
+        let mut rest = lines.clone();
+        if let Some(first) = rest.next() {
+            if first.trim_end() == "# === deps ===" {
+                lines.next();
+                while let Some(l) = lines.next() {
+                    if l.trim_end() == "# === end deps ===" { break; }
+                }
+            }
+        }
+        for l in lines { out.push_str(l); out.push('\n'); }
+        out
+    };
+    let load = |name: &str| -> Option<String> {
+        std::fs::read_to_string(format!("lib/{}", name)).ok().map(|s| strip_sections(&s))
+    };
+    let expr = load("expr.jq")?;
+    let math = load("math.jq")?;
+    let bmc  = load("bmc.jq")?;
+    let combined = format!("{}\n{}\n{}\n{}", expr, math, bmc, expression);
+    let loader  = PreludeLoader();
+    let context = std::iter::once(Ok::<XqValue, xq::InputError>(XqValue::Null));
+    let input   = std::iter::empty::<Result<XqValue, xq::InputError>>();
+    let iter    = run_query(&combined, context, input, &loader).ok()?;
+    let json_vals: Vec<String> = iter.filter_map(|r| r.ok().map(|v| v.to_string())).collect();
+    if json_vals.is_empty() { return None; }
+    let formula: String = serde_json::from_str(&json_vals[0]).ok()?;
+    let matrix = crate::matrix::Matrix::try_from(formula.as_str()).ok()?;
+    Some((matrix.nnf_complement.clone(), matrix))
+}
+
+// ─── CaDiCaL runners ──────────────────────────────────────────────────────
+
+/// Solve a raw CNF clause set with CaDiCaL.  Returns true iff SAT.
+fn run_cadical_clauses(clauses: Vec<Vec<i32>>) -> bool {
+    let mut solver: cadical::Solver = cadical::Solver::new();
+    for c in &clauses { solver.add_clause(c.iter().copied()); }
+    matches!(solver.solve(), Some(true))
+}
+
+/// Solve via `Matrix::cadical_satisfiable` — used for jq-loaded
+/// formulas where the CNF would otherwise need to be re-derived.
+fn run_cadical_matrix(matrix: Matrix) -> bool {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
+    rt.block_on(async move {
+        let (handle, _cancel) = matrix.cadical_satisfiable();
+        match handle.await {
+            Ok(Ok(r))  => r.result.is_ok(),
+            Ok(Err(_)) => false,
+            Err(_)     => false,
+        }
+    })
 }
 
 // ─── Single-DFS baseline (existing Matrix::satisfiable equivalent) ────────
@@ -244,6 +415,19 @@ fn run_dual_bddbans_cdcl(nnf: NNF) -> bool {
         SearchMode::Satisfiable), Outcome::Sat(_))
 }
 
+// EffectivePathController — composes CDCL inner with the
+// effective-path-count layer.  Plug into Basic / Greedy A controllers.
+fn run_dual_basic_effective(nnf: NNF) -> bool {
+    matches!(solve_dual(&nnf, BasicCoverController::default(),
+        EffectivePathController::<BasicCoverState>::default(),
+        SearchMode::Satisfiable), Outcome::Sat(_))
+}
+fn run_dual_greedy_effective(nnf: NNF) -> bool {
+    matches!(solve_dual(&nnf, GreedyMaxCoverController::default(),
+        EffectivePathController::<BasicCoverState>::default(),
+        SearchMode::Satisfiable), Outcome::Sat(_))
+}
+
 // ─── Timeout-bounded runner ───────────────────────────────────────────────
 
 /// Spawn `f` on a fresh thread and wait up to `PER_CONFIG_TIMEOUT`.
@@ -264,8 +448,35 @@ fn run_with_timeout(f: impl FnOnce() -> bool + Send + 'static)
 
 // ─── The harness ──────────────────────────────────────────────────────────
 
-fn bench_one(name: &str, nnf: NNF) {
+/// Bench harness driver — runs an optional CaDiCaL baseline as the
+/// first row, then `matrix.{smart,cdcl}`, then the eleven `dual`
+/// configurations.  The cadical closure is consumed on the first
+/// (and only) attempt; pass `None` to skip the cadical row entirely.
+fn bench_one_with_cadical<F>(name: &str, nnf: NNF, cadical: Option<F>)
+where F: FnOnce() -> bool + Send + 'static
+{
     eprintln!("\n=== {} ===", name);
+    let mut answers: Vec<Option<bool>> = Vec::new();
+
+    if let Some(cd) = cadical {
+        let r = run_with_timeout(cd);
+        match r {
+            Some((is_sat, dt)) => {
+                answers.push(Some(is_sat));
+                eprintln!("{}  {:>10.3} ms   {}",
+                          "cadical                  ",
+                          dt.as_secs_f64() * 1000.0,
+                          if is_sat { "SAT" } else { "UNSAT" });
+            }
+            None => {
+                answers.push(None);
+                eprintln!("{}     TIMEOUT (>{:.0}s)",
+                          "cadical                  ",
+                          PER_CONFIG_TIMEOUT.as_secs_f64());
+            }
+        }
+    }
+
     type Runner = fn(NNF) -> bool;
     let configs: &[(&str, Runner)] = &[
         ("matrix.smart             ", |n| run_single(n, Backend::Smart)),
@@ -273,9 +484,11 @@ fn bench_one(name: &str, nnf: NNF) {
         ("dual basic    × basic    ", run_dual_basic_basic),
         ("dual basic    × smart    ", run_dual_basic_smart),
         ("dual basic    × cdcl     ", run_dual_basic_cdcl),
+        ("dual basic    × effective", run_dual_basic_effective),
         ("dual greedy   × basic    ", run_dual_greedy_basic),
         ("dual greedy   × smart    ", run_dual_greedy_smart),
         ("dual greedy   × cdcl     ", run_dual_greedy_cdcl),
+        ("dual greedy   × effective", run_dual_greedy_effective),
         ("dual cnf-bans × basic    ", run_dual_cnfbans_basic),
         ("dual cnf-bans × smart    ", run_dual_cnfbans_smart),
         ("dual cnf-bans × cdcl     ", run_dual_cnfbans_cdcl),
@@ -284,7 +497,6 @@ fn bench_one(name: &str, nnf: NNF) {
         ("dual bdd-bans × cdcl     ", run_dual_bddbans_cdcl),
     ];
 
-    let mut answers: Vec<Option<bool>> = Vec::with_capacity(configs.len());
     for (label, runner) in configs {
         let nnf_clone = nnf.clone();
         let r = run_with_timeout(move || runner(nnf_clone));
@@ -320,8 +532,8 @@ fn bench_one(name: &str, nnf: NNF) {
 #[test]
 #[ignore]
 fn bench_dual_php_10_9() {
-    if let Some(nnf) = load_cnf("benchmarks/php/php-10-9.cnf") {
-        bench_one("php-10-9", nnf);
+    if let Some((nnf, clauses)) = load_cnf_full("benchmarks/php/php-10-9.cnf") {
+        bench_one_with_cadical("php-10-9", nnf, Some(move || run_cadical_clauses(clauses)));
     } else {
         eprintln!("SKIP php-10-9: file not found");
     }
@@ -330,8 +542,8 @@ fn bench_dual_php_10_9() {
 #[test]
 #[ignore]
 fn bench_dual_php_11_10() {
-    if let Some(nnf) = load_cnf("benchmarks/php/php-11-10.cnf") {
-        bench_one("php-11-10", nnf);
+    if let Some((nnf, clauses)) = load_cnf_full("benchmarks/php/php-11-10.cnf") {
+        bench_one_with_cadical("php-11-10", nnf, Some(move || run_cadical_clauses(clauses)));
     } else {
         eprintln!("SKIP php-11-10: file not found");
     }
@@ -340,8 +552,8 @@ fn bench_dual_php_11_10() {
 #[test]
 #[ignore]
 fn bench_dual_php_12_11() {
-    if let Some(nnf) = load_cnf("benchmarks/php/php-12-11.cnf") {
-        bench_one("php-12-11", nnf);
+    if let Some((nnf, clauses)) = load_cnf_full("benchmarks/php/php-12-11.cnf") {
+        bench_one_with_cadical("php-12-11", nnf, Some(move || run_cadical_clauses(clauses)));
     } else {
         eprintln!("SKIP php-12-11: file not found");
     }
@@ -367,14 +579,18 @@ fn bench_dual_random_3sat_n30() {
         }
         chosen
     }).collect();
-    bench_one("random-3sat n=30", cnf_complement_nnf(&clauses));
+    let nnf = cnf_complement_nnf(&clauses);
+    let clauses_for_cadical = clauses;
+    bench_one_with_cadical("random-3sat n=30", nnf,
+        Some(move || run_cadical_clauses(clauses_for_cadical)));
 }
 
 #[test]
 #[ignore]
 fn bench_dual_faulty_add_3bit() {
-    if let Some(nnf) = faulty_add_at_most_nnf("3;1;1;0;3;0;1") {
-        bench_one("faulty_add_at_most(3;1;1;0;3;0;1) SAT", nnf);
+    if let Some((nnf, m)) = faulty_add_at_most_full("3;1;1;0;3;0;1") {
+        bench_one_with_cadical("faulty_add_at_most(3;1;1;0;3;0;1) SAT", nnf,
+            Some(move || run_cadical_matrix(m)));
     } else {
         eprintln!("SKIP faulty_add_3bit: jq libs not available");
     }
@@ -383,8 +599,9 @@ fn bench_dual_faulty_add_3bit() {
 #[test]
 #[ignore]
 fn bench_dual_faulty_add_4bit() {
-    if let Some(nnf) = faulty_add_at_most_nnf("4;1;1;0;3;0;1") {
-        bench_one("faulty_add_at_most(4;1;1;0;3;0;1) SAT", nnf);
+    if let Some((nnf, m)) = faulty_add_at_most_full("4;1;1;0;3;0;1") {
+        bench_one_with_cadical("faulty_add_at_most(4;1;1;0;3;0;1) SAT", nnf,
+            Some(move || run_cadical_matrix(m)));
     } else {
         eprintln!("SKIP faulty_add_4bit: jq libs not available");
     }
@@ -393,11 +610,33 @@ fn bench_dual_faulty_add_4bit() {
 #[test]
 #[ignore]
 fn bench_dual_faulty_add_27bit_unsat() {
-    if let Some(nnf) = faulty_add_at_most_nnf("27;0;134217727;1;134217727;1;1") {
-        bench_one("faulty_add_at_most(27;...;1) UNSAT", nnf);
+    if let Some((nnf, m)) = faulty_add_at_most_full("27;0;134217727;1;134217727;1;1") {
+        bench_one_with_cadical("faulty_add_at_most(27;...;1) UNSAT", nnf,
+            Some(move || run_cadical_matrix(m)));
     } else {
         eprintln!("SKIP faulty_add_27bit_unsat: jq libs not available");
     }
+}
+
+/// BMC zero-counter overflow check (UNSAT): a counter `c` initialised
+/// to 0 increments for each zero-valued element of an n-array of
+/// w-bit integers.  After n iterations `c` cannot exceed n, so the
+/// added constraint `c_n > n` makes the formula unsatisfiable.
+/// Uses w=16 / n=8 so `c` has plenty of headroom — UNSAT comes from
+/// the counting semantics, not from arithmetic overflow.  We run
+/// only the cdcl-side configurations because the formula is large
+/// and the smart/basic B-controllers are not competitive on it.
+#[test]
+#[ignore]
+fn bench_dual_bmc_count_zeros_n8_w16_cdcl_only() {
+    let expr = "16 as $w | 8 as $n | \
+                prod(bnc($n;$w), br(v_gt(\"c\\($n)\"; $n; $w)))";
+    let Some((nnf, matrix)) = bmc_full(expr) else {
+        eprintln!("SKIP bmc_count_zeros_n8_w16: jq libs not available");
+        return;
+    };
+    eprintln!("\n=== bmc count-zeros n=8 w=16 + (c_n > n) UNSAT — cdcl-only ===");
+    cdcl_only_with_cadical(nnf, Some(move || run_cadical_matrix(matrix)), true);
 }
 
 /// 27-bit / 2-fault SAT.  Single-DFS matrix.cdcl takes ~56s on this
@@ -406,11 +645,40 @@ fn bench_dual_faulty_add_27bit_unsat() {
 #[test]
 #[ignore]
 fn bench_dual_faulty_add_27bit_sat_cdcl_only() {
-    let Some(nnf) = faulty_add_at_most_nnf("27;0;134217727;1;134217727;1;2") else {
+    let Some((nnf, matrix)) = faulty_add_at_most_full("27;0;134217727;1;134217727;1;2") else {
         eprintln!("SKIP faulty_add_27bit_sat: jq libs not available");
         return;
     };
     eprintln!("\n=== faulty_add_at_most(27;...;2) SAT — cdcl-only ===");
+    cdcl_only_with_cadical(nnf, Some(move || run_cadical_matrix(matrix)), false);
+}
+
+/// Shared cdcl-only harness used by the BMC and 27-bit-2f benches.
+/// Runs cadical first (if a runner is provided), then matrix.cdcl
+/// and the four `dual × cdcl` configurations.  `expect_unsat = true`
+/// panics if any non-timed-out config returns SAT.
+fn cdcl_only_with_cadical<F>(nnf: NNF, cadical: Option<F>, expect_unsat: bool)
+where F: FnOnce() -> bool + Send + 'static
+{
+    let mut answers: Vec<Option<bool>> = Vec::new();
+    if let Some(cd) = cadical {
+        let r = run_with_timeout(cd);
+        match r {
+            Some((is_sat, dt)) => {
+                answers.push(Some(is_sat));
+                eprintln!("{}  {:>10.3} ms   {}",
+                          "cadical                  ",
+                          dt.as_secs_f64() * 1000.0,
+                          if is_sat { "SAT" } else { "UNSAT" });
+            }
+            None => {
+                answers.push(None);
+                eprintln!("{}     TIMEOUT (>{:.0}s)",
+                          "cadical                  ",
+                          PER_CONFIG_TIMEOUT.as_secs_f64());
+            }
+        }
+    }
     type Runner = fn(NNF) -> bool;
     let configs: &[(&str, Runner)] = &[
         ("matrix.cdcl              ", |n| run_single(n, Backend::Cdcl)),
@@ -418,8 +686,9 @@ fn bench_dual_faulty_add_27bit_sat_cdcl_only() {
         ("dual greedy   × cdcl     ", run_dual_greedy_cdcl),
         ("dual cnf-bans × cdcl     ", run_dual_cnfbans_cdcl),
         ("dual bdd-bans × cdcl     ", run_dual_bddbans_cdcl),
+        ("dual basic    × effective", run_dual_basic_effective),
+        ("dual greedy   × effective", run_dual_greedy_effective),
     ];
-    let mut answers: Vec<Option<bool>> = Vec::with_capacity(configs.len());
     for (label, runner) in configs {
         let nnf_clone = nnf.clone();
         let r = run_with_timeout(move || runner(nnf_clone));
@@ -446,5 +715,97 @@ fn bench_dual_faulty_add_27bit_sat_cdcl_only() {
                     "configurations disagree: {:?}", answers),
             }
         }
+    }
+    if expect_unsat {
+        if let Some(true) = baseline {
+            panic!("formula should be UNSAT but at least one config returned SAT");
+        }
+    }
+}
+
+/// `plus(a;b;c;w) ∧ a=max ∧ b=max ∧ c=2·max` for `w ∈ {3, 4, 5, 6}`.
+/// Unique-SAT formula whose NNF is non-flat (XOR/iff expansions).
+/// CaDiCaL is flat-fast (~0.3 ms regardless of `w`); the existing
+/// matrix.cdcl grows ~5× per bit; this bench measures whether the
+/// new `EffectivePathController` closes that gap.
+#[test]
+#[ignore]
+fn bench_dual_plus_pinning_sweep() {
+    use xq::{module_loader::PreludeLoader, run_query, Value as XqValue};
+    let strip = |s: &str| -> String {
+        let cut = s.find("\n# === tests ===").unwrap_or(s.len());
+        let head = &s[..cut];
+        let mut out = String::new();
+        let mut lines = head.lines();
+        let mut rest = lines.clone();
+        if let Some(first) = rest.next() {
+            if first.trim_end() == "# === deps ===" {
+                lines.next();
+                while let Some(l) = lines.next() {
+                    if l.trim_end() == "# === end deps ===" { break; }
+                }
+            }
+        }
+        for l in lines { out.push_str(l); out.push('\n'); }
+        out
+    };
+    let load = |n: &str| -> Option<String> {
+        std::fs::read_to_string(format!("lib/{}", n)).ok().map(|s| strip(&s))
+    };
+    let Some(expr_jq) = load("expr.jq") else {
+        eprintln!("SKIP plus_pinning: jq libs not available");
+        return;
+    };
+    let Some(math_jq) = load("math.jq") else {
+        eprintln!("SKIP plus_pinning: jq libs not available");
+        return;
+    };
+
+    eprintln!("\n=== plus(a;b;c;w) ∧ a=max ∧ b=max ∧ c=2·max  (unique SAT)");
+    eprintln!("{:>3}  {:>4}  {:>16}  {:>11}  {:>10}  {:>10}  {:>11}  {:>11}",
+              "w", "vars", "complement_paths",
+              "matrix.cdcl", "cadical", "basic×cdcl",
+              "basic×eff", "greedy×eff");
+    for w in 3..=6usize {
+        let max = (1u64 << (w-1)) - 1;
+        let combined = format!(
+            "{}\n{}\nprod(plus(\"a\";\"b\";\"c\";{w}), \
+             prod(v_eq(\"a\";{a};{w})), \
+             prod(v_eq(\"b\";{a};{w})), \
+             prod(v_eq(\"c\";{c};{w})))",
+            expr_jq, math_jq, w=w, a=max, c=2*max);
+        let loader = PreludeLoader();
+        let context = std::iter::once(Ok::<XqValue, xq::InputError>(XqValue::Null));
+        let input   = std::iter::empty::<Result<XqValue, xq::InputError>>();
+        let json: String = run_query(&combined, context, input, &loader).unwrap()
+            .next().unwrap().unwrap().to_string();
+        let formula: String = serde_json::from_str(&json).unwrap();
+        let m = Matrix::try_from(formula.as_str()).unwrap();
+        let n_vars = m.ast.vars.len();
+        let pc = m.nnf_complement.path_count();
+        let nnf = m.nnf_complement.clone();
+        drop(m);
+
+        let f1 = formula.clone();
+        let t_cd = run_with_timeout(move || {
+            let m = Matrix::try_from(f1.as_str()).unwrap();
+            run_cadical_matrix(m)
+        }).map(|(_,d)| d);
+        let n1 = nnf.clone();
+        let t_mx  = run_with_timeout(move || run_single(n1, Backend::Cdcl)).map(|(_,d)| d);
+        let n2 = nnf.clone();
+        let t_bc  = run_with_timeout(move || run_dual_basic_cdcl(n2)).map(|(_,d)| d);
+        let n3 = nnf.clone();
+        let t_be  = run_with_timeout(move || run_dual_basic_effective(n3)).map(|(_,d)| d);
+        let n4 = nnf.clone();
+        let t_ge  = run_with_timeout(move || run_dual_greedy_effective(n4)).map(|(_,d)| d);
+
+        let fmt = |t: Option<std::time::Duration>| match t {
+            Some(d) => format!("{:>8.2} ms", d.as_secs_f64() * 1000.0),
+            None    => format!("{:>11}", "TIMEOUT"),
+        };
+        eprintln!("{:>3}  {:>4}  {:>16.3e}  {}  {}  {}  {}  {}",
+                  w, n_vars, pc,
+                  fmt(t_mx), fmt(t_cd), fmt(t_bc), fmt(t_be), fmt(t_ge));
     }
 }

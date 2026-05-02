@@ -387,10 +387,24 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartControlle
         // emitted.  We always return `Some(...)` because we always inspect
         // children; the DFS engine's `None`-shortcut for declaration order
         // doesn't apply to a propagation-aware controller.
+        //
+        // **Cover-mode caveat.**  When the inner controller wants `Covered`
+        // certificates (`needs_cover()` is true) we must *not* prune
+        // alternatives whose visit would produce a covered subtree — doing
+        // so silently drops the very cover pairs the caller asked for.
+        // Concrete example: complement of `(a+b)(a+b')(c)(d)(e)(a')` has
+        // four paths; one of them is closed *only* by `{b', b}`, but
+        // pruning the `b` alternative skips that path entirely and the
+        // pair never makes it into the certificate.  Skipping the
+        // "lit-already-true" shortcut on the same grounds — the unvisited
+        // alternatives in that Prod might also carry pairs we haven't
+        // logged yet.  In cover mode we keep every Lit child and let
+        // inner detect `Covered` events naturally; sound, just slower.
+        let want_cover = self.inner.needs_cover();
         let mut filtered: Vec<(usize, &'a NNF)> = Vec::with_capacity(children.len());
         for (i, c) in children.iter().enumerate() {
             match c {
-                NNF::Lit(l) => {
+                NNF::Lit(l) if !want_cover => {
                     let lit_idx  = (l.var as usize) * 2 + (l.neg as usize);
                     let comp_idx = lit_idx ^ 1;
                     if self.lit_or_implied(lit_idx) {
@@ -405,5 +419,110 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartControlle
             }
         }
         Some(filtered)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::matrix::{Matrix, PathParams, PathsClass, default_classify_controller, DynOnClass};
+    use std::collections::HashSet;
+
+    /// Regression — `(a+b)(a+b')(c)(d)(e)(a')` is UNSAT, but covering the
+    /// complement requires *both* `{a',a}` and `{b',b}`: path 4 of the
+    /// complement = `[b', b, c', d', e', a]` has no `a'`, so `{a',a}`
+    /// alone can't close it.  An earlier `SmartController::prod_ord` in
+    /// cover mode pruned the `b` alternative based on propagation
+    /// implying `a'`, never visiting path 4 and silently dropping the
+    /// `{b',b}` cover certificate.  Cover mode must keep every Lit
+    /// alternative so inner emits a Covered event for every path.
+    #[tokio::test]
+    async fn smart_cover_mode_emits_pair_for_every_path() {
+        let formula = "(a + b)(a + b')(c)(d)(e)(a')";
+        let m = Matrix::try_from(formula).unwrap();
+        let nnf = m.nnf_complement.clone();
+        let params = PathParams {
+            uncovered_path_limit: 1,
+            paths_class_limit: usize::MAX,
+            covered_prefix_limit: usize::MAX,
+            no_cover: false,
+        };
+        let p = Some(params.clone());
+        let nnf_for_builder = nnf.clone();
+        let (handle, mut rx, _cancel) = m.classify_paths(true, 64, Some(params), move |tx| {
+            let on_class: DynOnClass = Box::new(move |class, hit_limit| {
+                tx.blocking_send((class, hit_limit)).is_ok()
+            });
+            SmartController::for_nnf_with_cover(&nnf_for_builder, p, on_class)
+        });
+        let mut pairs: HashSet<(Vec<usize>, Vec<usize>)> = HashSet::new();
+        let mut covered = 0usize;
+        let mut uncovered = 0usize;
+        while let Some((class, _)) = rx.recv().await {
+            match class {
+                PathsClass::Covered(cp) => {
+                    covered += 1;
+                    // Normalize each pair so {(a, b)} and {(b, a)} land in the
+                    // same bucket — the controller is free to emit either order.
+                    let (mut x, mut y) = cp.cover.clone();
+                    if x > y { std::mem::swap(&mut x, &mut y); }
+                    pairs.insert((x, y));
+                }
+                PathsClass::Uncovered(_) => uncovered += 1,
+            }
+        }
+        handle.await.expect("worker panicked").expect("classify error");
+        assert_eq!(uncovered, 0, "formula is UNSAT — no uncovered paths expected");
+        assert!(covered >= 2, "must emit at least one event per closing pair");
+
+        // The complement matrix has exactly two complementary literal-position
+        // pairs that close paths: positions of `a'` (in either of the two
+        // 2-literal Prods) connect to position of `a` (the singleton at the
+        // end), and positions of `b'` and `b` (alts 1 of the two Prods)
+        // connect to each other.  Cover-pair *positions* depend on which
+        // path's `a'` we hit first, so we check the underlying *literals*.
+        let mut lit_pairs: HashSet<(String, String)> = HashSet::new();
+        for (p1, p2) in &pairs {
+            let l1 = nnf.lit_at(p1).unwrap();
+            let l2 = nnf.lit_at(p2).unwrap();
+            let mut a = format!("{:?}", l1);
+            let mut b = format!("{:?}", l2);
+            if a > b { std::mem::swap(&mut a, &mut b); }
+            lit_pairs.insert((a, b));
+        }
+        // Both `{a, a'}` and `{b, b'}` must be present.
+        let var_pair_present = |v: char| {
+            lit_pairs.iter().any(|(a, b)| {
+                let av = a.contains(&format!("var: {}", v as u32 - 'a' as u32));
+                let bv = b.contains(&format!("var: {}", v as u32 - 'a' as u32));
+                av && bv && a != b  // one positive, one negative
+            })
+        };
+        assert!(var_pair_present('a'), "missing {{a, a'}} cover pair (got {:?})", lit_pairs);
+        assert!(var_pair_present('b'), "missing {{b, b'}} cover pair (got {:?})", lit_pairs);
+    }
+
+    /// Sanity: the equivalent uncovered-only run still terminates fast and
+    /// returns no uncovered paths (formula is UNSAT) — proves the
+    /// cover-mode change didn't bleed into the propagation-pruning path.
+    #[tokio::test]
+    async fn smart_uncovered_only_still_prunes() {
+        let formula = "(a + b)(a + b')(c)(d)(e)(a')";
+        let m = Matrix::try_from(formula).unwrap();
+        let params = PathParams {
+            uncovered_path_limit: 1,
+            paths_class_limit: usize::MAX,
+            covered_prefix_limit: usize::MAX,
+            no_cover: true,
+        };
+        let p = Some(params.clone());
+        let (handle, mut rx, _cancel) = m.classify_paths(true, 64, Some(params),
+            move |tx| default_classify_controller(p, tx));
+        let mut uncovered = 0usize;
+        while let Some((class, _)) = rx.recv().await {
+            if matches!(class, PathsClass::Uncovered(_)) { uncovered += 1; }
+        }
+        handle.await.expect("worker panicked").expect("classify error");
+        assert_eq!(uncovered, 0);
     }
 }

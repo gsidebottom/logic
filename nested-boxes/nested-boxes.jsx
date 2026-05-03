@@ -528,12 +528,25 @@ function DiagramWithConnections({ node, coverGroups, selectedGroups, highlighted
   }, [groups, selected]);
 
   const posToPrefixIndices = useMemo(() => {
+    // Dedup gi per position: a single cover group's `prefixes` list often
+    // shares positions across its prefixes (e.g. a singleton `a'` pushed
+    // by every covered path).  Without dedup the same gi lands in
+    // `m[key]` once per containing prefix, which (a) double-counts the
+    // bar in `maxBarCount`, and (b) emits duplicate React keys in
+    // `BoxNode.bars` (`bar-${idx}` repeated) — React leaves one stale
+    // DOM node behind when the cover is later deselected, showing a
+    // ghost dashed underline on positions that appeared in 2+ prefixes
+    // of the cover.
     const m = {};
     groups.forEach((g, gi) => {
       if (!selected.has(gi) || !g.prefixes?.length) return;
+      const seen = new Set();
       g.prefixes.forEach(positions => {
         positions.forEach(pos => {
           const key = pos.join(',');
+          const tag = `${key}\0${gi}`;
+          if (seen.has(tag)) return;
+          seen.add(tag);
           (m[key] ??= []).push(gi);
         });
       });

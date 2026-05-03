@@ -197,6 +197,42 @@ function evaluateAst(node, assignment, position = []) {
 
 const EVAL_COLORS = { 'true': '#d4edda', 'false': '#f8d7da', 'undetermined': '#d6eaf8' };
 
+// Set of leaf positions (as `posKey` strings) that lie on at least one matrix
+// path containing both `p1` and `p2`.  In matrix-method terms, a path is the
+// union of all literals collected by a "Sum-visit-all / Prod-pick-one" walk
+// of the NNF; a literal `l` is on some path containing `p1` and `p2` iff
+// every Prod ancestor `Q` of `l` that's also an ancestor of `p1` or `p2`
+// picks the alt that leads to that endpoint.  All non-Prod ancestors and
+// Prod ancestors not on `p1`/`p2`'s paths impose no constraint, so the set
+// is the union over the (typically large) family of paths through the pair.
+//
+// `prodType` selects which AST node type acts as Prod for the active cover
+// pair: `'AND'` when the cover came from a search of the original NNF
+// (validity), `'OR'` when from the complement NNF (satisfiability) — a
+// search through the complement turns AND↔OR via De Morgan.
+function coveredPathLeaves(ast, p1, p2, prodType) {
+  const out = new Set();
+  const isStrictPrefix = (prefix, full) => {
+    if (prefix.length >= full.length) return false;
+    for (let i = 0; i < prefix.length; i++) if (prefix[i] !== full[i]) return false;
+    return true;
+  };
+  const walk = (node, pos) => {
+    if (!node) return;
+    if (node.t === 'VAR') { out.add(pos.join(',')); return; }
+    if (!node.c) return;
+    for (let i = 0; i < node.c.length; i++) {
+      if (node.t === prodType) {
+        if (isStrictPrefix(pos, p1) && p1[pos.length] !== i) continue;
+        if (isStrictPrefix(pos, p2) && p2[pos.length] !== i) continue;
+      }
+      walk(node.c[i], [...pos, i]);
+    }
+  };
+  walk(ast, []);
+  return out;
+}
+
 // Extract all unique base variable names from an AST, sorted alphabetically.
 function extractVars(node) {
   const vars = new Set();
@@ -450,9 +486,19 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
     const firstColor = sorted.length > 0
       ? (cover?.idxToGroupColor?.[sorted[0]] ?? PAIR_COLORS[sorted[0] % PAIR_COLORS.length])
       : hasHighlight ? UNCOV_COLORS[highlightIndices[0] % UNCOV_COLORS.length] : null;
+    // "On a covered path" pale tint — applies to every literal on some
+    // matrix path through a selected cover pair, not just the
+    // pair-endpoints / visited prefixes that already get a stronger
+    // bar+tint.  Use a much lower alpha (`08` ≈ 3%) so it reads as
+    // "this literal is in the family the pair closes" without competing
+    // with eval/highlight colors.
+    const coveredPathIndices = cover?.posToCoveredPathIndices?.[posKey] ?? [];
+    const coveredPathColor = (!highlighted && !evalBg && coveredPathIndices.length > 0)
+      ? ((cover?.idxToGroupColor?.[coveredPathIndices[0]] ?? PAIR_COLORS[coveredPathIndices[0] % PAIR_COLORS.length]) + '14')
+      : undefined;
     const bgColor = evalBg ?? (highlighted && firstColor
       ? (hasPair ? firstColor + '20' : firstColor + '12')
-      : undefined);
+      : coveredPathColor);
 
     return (
       <div
@@ -507,7 +553,7 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
 }
 
 // ─── Diagram with SVG arc connections for covering pairs ──────────────────────
-function DiagramWithConnections({ node, coverGroups, selectedGroups, highlightedPaths, assignmentEval = null, complementView = false }) {
+function DiagramWithConnections({ node, coverGroups, selectedGroups, highlightedPaths, assignmentEval = null, complementView = false, coverProdType = 'AND' }) {
   const containerRef = useRef(null);
   const [arcs, setArcs] = useState([]);
   const [pathLines, setPathLines] = useState([]);
@@ -559,6 +605,23 @@ function DiagramWithConnections({ node, coverGroups, selectedGroups, highlighted
     groups.forEach((_, i) => { m[i] = PAIR_COLORS[i % PAIR_COLORS.length]; });
     return m;
   }, [groups]);
+
+  // For each selected cover, the positions of leaves on every matrix path
+  // that contains the cover pair — used to paint a very-pale background so
+  // the user can see at a glance which literals belong to the family of
+  // paths the pair closes.  Map from posKey → list of cover-group indices
+  // whose covered-path family includes that position.  Bars/underlines
+  // stack independently (they cover only the pair endpoints + visited
+  // prefixes).
+  const posToCoveredPathIndices = useMemo(() => {
+    const m = {};
+    groups.forEach((g, gi) => {
+      if (!selected.has(gi)) return;
+      const leaves = coveredPathLeaves(node, g.pair[0], g.pair[1], coverProdType);
+      leaves.forEach(key => { (m[key] ??= []).push(gi); });
+    });
+    return m;
+  }, [groups, selected, node, coverProdType]);
 
   // Build set of positions highlighted by uncovered paths
   const posToHighlightIndices = useMemo(() => {
@@ -696,7 +759,7 @@ function DiagramWithConnections({ node, coverGroups, selectedGroups, highlighted
   });
 
   return (
-    <CoverContext.Provider value={(Object.keys(posToPairIndices).length || Object.keys(posToPrefixIndices).length || Object.keys(posToHighlightIndices).length || assignmentEval || complementView) ? { posToPairIndices, posToPrefixIndices, posToHighlightIndices, maxBarCount, idxToGroupColor, assignmentEval, complementView } : null}>
+    <CoverContext.Provider value={(Object.keys(posToPairIndices).length || Object.keys(posToPrefixIndices).length || Object.keys(posToHighlightIndices).length || Object.keys(posToCoveredPathIndices).length || assignmentEval || complementView) ? { posToPairIndices, posToPrefixIndices, posToHighlightIndices, posToCoveredPathIndices, maxBarCount, idxToGroupColor, assignmentEval, complementView } : null}>
       <div ref={containerRef} style={{
         position: 'relative', display: 'inline-block',
         transform: complementView ? 'rotate(90deg)' : 'rotate(0deg)',
@@ -2432,6 +2495,17 @@ export default function App() {
               complementView={!!complementData}
               coverGroups={pathsResult?.coverGroups ?? (complementData ? satResult?.coverGroups : validResult?.coverGroups) ?? null}
               selectedGroups={pathsResult?.coverGroups ? pathsSelected : (complementData ? satSelected : validSelected)}
+              coverProdType={(() => {
+                // Pick the AST node type that played the matrix-Prod role
+                // ("pick one alt") for the source of the active cover
+                // groups.  Validity searches the original NNF (AND = Prod);
+                // satisfiability searches the complement (OR = Prod after
+                // De Morgan).  `paths` carries its own complement flag.
+                const sourceIsComplement = pathsResult?.coverGroups
+                  ? !!pathsResult.isComplement
+                  : !!complementData;
+                return sourceIsComplement ? 'OR' : 'AND';
+              })()}
               highlightedPaths={(() => {
                 const paths = [
                   ...(pathsResult?.uncoveredPositions?.filter((_, i) => pathsUncovSel.has(i)) ?? []),

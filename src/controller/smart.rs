@@ -204,7 +204,20 @@ impl<F: FnMut(PathsClass, bool) -> bool> SmartController<F> {
     /// `prod_blocked` / `implied_lit_counter` and records every change in
     /// `entry` so it can be undone later.  Returns `Err(())` if a conflict
     /// (some Prod's blocked count reached `total`) is discovered.
+    ///
+    /// **Cover-mode caveat.**  When the inner controller wants `Covered`
+    /// certificates we suppress the `Err` short-circuit and propagate as
+    /// far as the queue takes us — never bailing out on a fully-blocked
+    /// Prod.  Returning early would skip the DFS visit of that Prod, and
+    /// the cover pair that closes its alt-paths would never be emitted
+    /// (every alt's complement is on the path; visiting each alt lets
+    /// inner detect the cover naturally).  The bookkeeping stays
+    /// consistent because `find_remaining_alt` only fires when
+    /// `blocked == total - 1`; once we cross `total` no further
+    /// implications are attempted on that Prod, just dead-weight blocks
+    /// that the trail will undo on backtrack.
     fn process_push(&mut self, lit: &Lit, entry: &mut TrailEntry) -> Result<(), ()> {
+        let allow_short_circuit = !self.inner.needs_cover();
         let mut queue: Vec<usize> = Vec::new();
         queue.push((lit.var as usize) * 2 + (lit.neg as usize));
         while let Some(l_idx) = queue.pop() {
@@ -224,14 +237,24 @@ impl<F: FnMut(PathsClass, bool) -> bool> SmartController<F> {
                 entry.blocked.push((prod_id, alt_idx));
                 let total   = self.prod_total[prod_id];
                 let blocked = self.prod_blocked[prod_id];
-                if blocked >= total { return Err(()); }
+                if blocked >= total {
+                    if allow_short_circuit { return Err(()); }
+                    // Cover mode: skip implication step (no remaining alt)
+                    // and continue draining the queue.
+                    continue;
+                }
                 if blocked == total - 1 {
                     if let Some(rem_alt) = self.find_remaining_alt(prod_id) {
                         let rl = self.prod_alts[prod_id][rem_alt].clone();
                         let r_idx      = (rl.var as usize) * 2 + (rl.neg as usize);
                         let r_comp_idx = r_idx ^ 1;
                         if self.lit_or_implied(r_comp_idx) {
-                            return Err(());
+                            if allow_short_circuit { return Err(()); }
+                            // Cover mode: this Prod is unsatisfiable but
+                            // we'll let the DFS visit it and rely on
+                            // inner to detect the cover.  Don't imply
+                            // anything (no consistent remaining alt).
+                            continue;
                         }
                         if !self.lit_or_implied(r_idx) {
                             self.implied_lit_counter[r_idx] += 1;
@@ -441,6 +464,7 @@ mod tests {
         let formula = "(a + b)(a + b')(c)(d)(e)(a')";
         let m = Matrix::try_from(formula).unwrap();
         let nnf = m.nnf_complement.clone();
+        let total_paths = nnf.path_count();
         let params = PathParams {
             uncovered_path_limit: 1,
             paths_class_limit: usize::MAX,
@@ -455,42 +479,34 @@ mod tests {
             });
             SmartController::for_nnf_with_cover(&nnf_for_builder, p, on_class)
         });
-        let mut pairs: HashSet<(Vec<usize>, Vec<usize>)> = HashSet::new();
-        let mut covered = 0usize;
+        let mut lit_pairs: HashSet<(String, String)> = HashSet::new();
+        let mut total_cover_count = 0.0_f64;
         let mut uncovered = 0usize;
         while let Some((class, _)) = rx.recv().await {
             match class {
                 PathsClass::Covered(cp) => {
-                    covered += 1;
-                    // Normalize each pair so {(a, b)} and {(b, a)} land in the
-                    // same bucket — the controller is free to emit either order.
-                    let (mut x, mut y) = cp.cover.clone();
-                    if x > y { std::mem::swap(&mut x, &mut y); }
-                    pairs.insert((x, y));
+                    total_cover_count += nnf.prefix_cover_count(&cp.prefix);
+                    let l1 = nnf.lit_at(&cp.cover.0).unwrap();
+                    let l2 = nnf.lit_at(&cp.cover.1).unwrap();
+                    let mut a = format!("{:?}", l1);
+                    let mut b = format!("{:?}", l2);
+                    if a > b { std::mem::swap(&mut a, &mut b); }
+                    lit_pairs.insert((a, b));
                 }
                 PathsClass::Uncovered(_) => uncovered += 1,
             }
         }
         handle.await.expect("worker panicked").expect("classify error");
         assert_eq!(uncovered, 0, "formula is UNSAT — no uncovered paths expected");
-        assert!(covered >= 2, "must emit at least one event per closing pair");
-
-        // The complement matrix has exactly two complementary literal-position
-        // pairs that close paths: positions of `a'` (in either of the two
-        // 2-literal Prods) connect to position of `a` (the singleton at the
-        // end), and positions of `b'` and `b` (alts 1 of the two Prods)
-        // connect to each other.  Cover-pair *positions* depend on which
-        // path's `a'` we hit first, so we check the underlying *literals*.
-        let mut lit_pairs: HashSet<(String, String)> = HashSet::new();
-        for (p1, p2) in &pairs {
-            let l1 = nnf.lit_at(p1).unwrap();
-            let l2 = nnf.lit_at(p2).unwrap();
-            let mut a = format!("{:?}", l1);
-            let mut b = format!("{:?}", l2);
-            if a > b { std::mem::swap(&mut a, &mut b); }
-            lit_pairs.insert((a, b));
-        }
-        // Both `{a, a'}` and `{b, b'}` must be present.
+        // Cover certificate must account for every path of the complement.
+        // Without the fix this is < total_paths because path 4 (`[b', b, ...]`)
+        // is silently pruned by `prod_ord` when `a'` is implied.
+        assert_eq!(total_cover_count, total_paths,
+                   "covered prefixes account for {} of {} paths",
+                   total_cover_count, total_paths);
+        // For this specific formula path 4 is closed *only* by `{b, b'}`,
+        // so that pair must be present in the literal-level certificate
+        // — there's no other way to cover it.
         let var_pair_present = |v: char| {
             lit_pairs.iter().any(|(a, b)| {
                 let av = a.contains(&format!("var: {}", v as u32 - 'a' as u32));
@@ -498,8 +514,62 @@ mod tests {
                 av && bv && a != b  // one positive, one negative
             })
         };
-        assert!(var_pair_present('a'), "missing {{a, a'}} cover pair (got {:?})", lit_pairs);
         assert!(var_pair_present('b'), "missing {{b, b'}} cover pair (got {:?})", lit_pairs);
+    }
+
+    /// Stronger regression — propagation can detect a conflict for a Prod
+    /// `P` *before* the DFS visits `P`.  In that case my conservative
+    /// "don't filter Lit alts in cover mode" fix isn't enough on its own
+    /// because smart returns `Some(0)` from `process_push` before reaching
+    /// `P`'s alt-loop and no Covered events fire at all.  For
+    /// `(a)(b)(a'+b')(c)(d)(c'+d')` the complement is
+    /// `Sum[a', b', Prod[a,b], c', d', Prod[c,d]]`; pushing `a'` then `b'`
+    /// blocks both alts of `Prod[a,b]`.  Suppressing the propagation
+    /// short-circuit lets the DFS visit `Prod[a,b]` and emit `{a,a'}` /
+    /// `{b,b'}`, which together cover every complement path (they close
+    /// at depth 3 regardless of the later `Prod[c,d]` choice).
+    #[tokio::test]
+    async fn smart_emits_pair_when_prop_conflict_precedes_dfs_visit() {
+        let formula = "(a)(b)(a' + b')(c)(d)(c' + d')";
+        let m = Matrix::try_from(formula).unwrap();
+        let nnf = m.nnf_complement.clone();
+        let total_paths = nnf.path_count();
+        let params = PathParams {
+            uncovered_path_limit: 1,
+            paths_class_limit: usize::MAX,
+            covered_prefix_limit: usize::MAX,
+            no_cover: false,
+        };
+        let p = Some(params.clone());
+        let nnf_for_builder = nnf.clone();
+        let (handle, mut rx, _cancel) = m.classify_paths(true, 64, Some(params), move |tx| {
+            let on_class: DynOnClass = Box::new(move |class, hit_limit| {
+                tx.blocking_send((class, hit_limit)).is_ok()
+            });
+            SmartController::for_nnf_with_cover(&nnf_for_builder, p, on_class)
+        });
+        let mut total_cover_count = 0.0_f64;
+        let mut uncovered = 0usize;
+        let mut covered_events = 0usize;
+        while let Some((class, _)) = rx.recv().await {
+            match class {
+                PathsClass::Covered(cp) => {
+                    covered_events += 1;
+                    total_cover_count += nnf.prefix_cover_count(&cp.prefix);
+                }
+                PathsClass::Uncovered(_) => uncovered += 1,
+            }
+        }
+        handle.await.expect("worker panicked").expect("classify error");
+        assert_eq!(uncovered, 0, "formula is UNSAT");
+        assert!(covered_events > 0, "must emit at least one Covered event");
+        // Every path through the complement must be covered by some
+        // certificate prefix.  Sum of `prefix_cover_count` over emitted
+        // covered prefixes is the count of distinct full paths covered.
+        // Without this fix the count is 0 (no events at all).
+        assert_eq!(total_cover_count, total_paths,
+                   "covered prefixes account for {} of {} paths",
+                   total_cover_count, total_paths);
     }
 
     /// Sanity: the equivalent uncovered-only run still terminates fast and

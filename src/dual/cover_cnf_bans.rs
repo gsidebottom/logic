@@ -176,8 +176,7 @@ fn pair_to_triggers(pair: &crate::matrix::Pair) -> Option<[(usize, usize); 2]> {
 mod tests {
     use super::*;
     use crate::dual::{
-        BasicDualPathController, CnfBansCoverController as _,
-        CoverSearchController, Outcome, SearchMode, solve_dual,
+        BasicDualPathController, Outcome, SearchMode, solve_dual,
     };
     use crate::matrix::{Lit, NNF};
 

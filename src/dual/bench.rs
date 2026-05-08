@@ -833,3 +833,133 @@ fn bench_dual_plus_pinning_sweep() {
                   fmt(t_mx), fmt(t_cd), fmt(t_bc), fmt(t_be), fmt(t_ge));
     }
 }
+
+/// Focused bench across a curated set of test cases against the
+/// configurations that have so far survived our table-comparison
+/// exercises.  As we discover faster controllers we'll add them; as
+/// configurations fall behind on every row of this table we'll prune
+/// them.  Currently:
+///
+/// * `cadical` (baseline)
+/// * `matrix.smart` — single-DFS with cross-clause propagation
+/// * `matrix.cdcl` — single-DFS with full CDCL learning
+/// * `dual greedy × cdcl` — dual framework, static box-size cover
+///   selection + CDCL B side
+/// * `dual greedy × effective` — dual framework, static cover +
+///   effective-path-count B side
+///
+/// Test cases (four rows):
+/// 1. random 3-SAT n=30, 90 clauses (deterministic LCG seed) — SAT
+/// 2. `faulty_add_at_most(16;0;65535;1;65535;1;1)` — UNSAT (1 fault)
+/// 3. `faulty_add_at_most(16;0;65535;1;65535;1;2)` — SAT (2 faults)
+/// 4. BMC count-zeros n=8 w=16 + `c_n > n` — UNSAT
+///
+/// 16-bit faulty-adder rows replaced the original 27-bit ones from
+/// the table-fill exercise so `matrix.cdcl` / `matrix.smart` finish
+/// in tractable time.  3-bit and 4-bit rows were dropped — they
+/// were dominated by the 16-bit cases as a stress-test.  Skips any
+/// row whose jq sources aren't available (so the test passes in CI
+/// without the `lib/` directory).
+#[test]
+#[ignore]
+fn bench_focused_top_config() {
+    eprintln!("\n=== focused top-config bench ===");
+    // Each timing cell is exactly 14 chars wide so headers and rows
+    // line up:
+    //   "{:>9.2} ms {}"  →  "  1234.56 ms s"   (9 + 4 + 1 = 14)
+    //   "{:>14}"         →  "       TIMEOUT"   (14)
+    // Header columns use the same width.
+    let header = format!(
+        "{:<48}  {:>14}  {:>14}  {:>14}  {:>14}  {:>14}",
+        "case", "cadical", "matrix.smart", "matrix.cdcl",
+        "greedy×cdcl", "greedy×eff",
+    );
+    eprintln!("{}", header);
+    eprintln!("{}", "-".repeat(header.chars().count()));
+
+    // Helper: run the five configs against `nnf` plus a cadical
+    // closure, print one labeled row.  Cadical closure is consumed
+    // by value so it can carry owned state (Matrix or Vec<Vec<i32>>).
+    fn run_row<F>(label: &str, nnf: NNF, cadical: F)
+    where F: FnOnce() -> bool + Send + 'static
+    {
+        let cadical_box: Box<dyn FnOnce() -> bool + Send + 'static> = Box::new(cadical);
+        let t_cd = run_with_timeout(cadical_box);
+        let n1 = nnf.clone();
+        let t_sm = run_with_timeout(move || run_single(n1, Backend::Smart));
+        let n2 = nnf.clone();
+        let t_mc = run_with_timeout(move || run_single(n2, Backend::Cdcl));
+        let n3 = nnf.clone();
+        let t_gc = run_with_timeout(move || run_dual_greedy_cdcl(n3));
+        let n4 = nnf.clone();
+        let t_ge = run_with_timeout(move || run_dual_greedy_effective(n4));
+
+        // Each cell is exactly 14 chars wide so it lines up under
+        // the 14-char headers above.
+        let fmt = |t: Option<(bool, std::time::Duration)>| match t {
+            Some((is_sat, d)) => format!(
+                "{:>9.2} ms {}",
+                d.as_secs_f64() * 1000.0,
+                if is_sat { "s" } else { "u" }
+            ),
+            None => format!("{:>14}", "TIMEOUT"),
+        };
+        eprintln!(
+            "{:<48}  {}  {}  {}  {}  {}",
+            label, fmt(t_cd), fmt(t_sm), fmt(t_mc), fmt(t_gc), fmt(t_ge),
+        );
+    }
+
+    // Row 1 — random 3-SAT n=30
+    {
+        fn lcg(s: &mut u64) -> u64 {
+            *s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            *s
+        }
+        let n_vars = 30; let n_clauses = 90;
+        let mut s = 42u64;
+        let clauses: Vec<Vec<i32>> = (0..n_clauses).map(|_| {
+            let mut chosen: Vec<i32> = Vec::with_capacity(3);
+            while chosen.len() < 3 {
+                let v = (lcg(&mut s) % (n_vars as u64)) as i32 + 1;
+                if !chosen.iter().any(|&c| c.abs() == v) {
+                    let sign = if lcg(&mut s) & 1 == 0 { 1 } else { -1 };
+                    chosen.push(v * sign);
+                }
+            }
+            chosen
+        }).collect();
+        let nnf = cnf_complement_nnf(&clauses);
+        let clauses_for_cadical = clauses;
+        run_row("random-3sat n=30 (SAT)", nnf,
+            move || run_cadical_clauses(clauses_for_cadical));
+    }
+
+    // Rows 2–3 — faulty-adder 16-bit via jq
+    let faulty_rows: &[(&str, &str)] = &[
+        ("faulty_add_at_most(16;0;65535;1;65535;1;1) UNSAT",
+         "16;0;65535;1;65535;1;1"),
+        ("faulty_add_at_most(16;0;65535;1;65535;1;2) SAT",
+         "16;0;65535;1;65535;1;2"),
+    ];
+    for (label, args) in faulty_rows {
+        match faulty_add_at_most_full(args) {
+            Some((nnf, m)) => run_row(label, nnf, move || run_cadical_matrix(m)),
+            None => eprintln!("{:<48}  SKIP (jq libs not available)", label),
+        }
+    }
+
+    // Row 4 — BMC count-zeros n=8 w=16 + c_n > n (UNSAT)
+    {
+        let expr = "16 as $w | 8 as $n | \
+                    prod(bnc($n;$w), br(v_gt(\"c\\($n)\"; $n; $w)))";
+        match bmc_full(expr) {
+            Some((nnf, m)) =>
+                run_row("bmc count-zeros n=8 w=16 + (c_n>n) UNSAT",
+                        nnf, move || run_cadical_matrix(m)),
+            None =>
+                eprintln!("{:<48}  SKIP (jq libs not available)",
+                          "bmc count-zeros n=8 w=16 + (c_n>n) UNSAT"),
+        }
+    }
+}

@@ -233,6 +233,80 @@ function coveredPathLeaves(ast, p1, p2, prodType) {
   return out;
 }
 
+// Adjacency edges between leaves on the family of matrix paths that
+// contain both `p1` and `p2`.  Returns `Array<[posA, posB]>` — every
+// pair `(a, b)` such that `a` and `b` appear consecutively in *some*
+// covered path.  These are the segments to draw under the diagram so
+// the covered region reads as a single bipartite-style trace.
+//
+// Computed by a DFS over the AST that tracks, per subtree, the
+// "first-leaf" set (leaves that can start a path through that
+// subtree) and the "last-leaf" set (leaves that can end one).  At a
+// `Sum` node (visit-all) the edges ∪ over consecutive children's
+// {last(c[i]) × first(c[i+1])} bipartite product are the new
+// adjacencies introduced by the boundary.  At a `prodType` node
+// (pick-one) we union the per-alt first/last/edge sets — alts are
+// independent paths, so no cross-alt edges are introduced.
+//
+// Pair constraint applied per-Prod: at a `prodType` ancestor of `p1`
+// or `p2` we keep only the alt that leads toward that endpoint.
+// Result: at unconstrained Prods every alt's leaves participate; at
+// constrained Prods only the pair-endpoint alt does.
+function coverPathEdges(ast, p1, p2, prodType) {
+  const isStrictPrefix = (prefix, full) => {
+    if (prefix.length >= full.length) return false;
+    for (let i = 0; i < prefix.length; i++) if (prefix[i] !== full[i]) return false;
+    return true;
+  };
+  // Each walk returns { first: Position[], last: Position[], edges: [Position, Position][] }.
+  const walk = (node, pos) => {
+    if (!node) return { first: [], last: [], edges: [] };
+    if (node.t === 'VAR') {
+      const p = pos.slice();
+      return { first: [p], last: [p], edges: [] };
+    }
+    if (!node.c) return { first: [], last: [], edges: [] };
+    if (node.t === prodType) {
+      // Pick-one alts.  Constrained alts: filter to the one toward p1
+      // or p2; unconstrained: keep all.  Aggregate first/last/edges
+      // across kept alts.
+      const out = { first: [], last: [], edges: [] };
+      for (let i = 0; i < node.c.length; i++) {
+        if (isStrictPrefix(pos, p1) && p1[pos.length] !== i) continue;
+        if (isStrictPrefix(pos, p2) && p2[pos.length] !== i) continue;
+        const sub = walk(node.c[i], [...pos, i]);
+        out.first.push(...sub.first);
+        out.last.push(...sub.last);
+        out.edges.push(...sub.edges);
+      }
+      return out;
+    }
+    // Sum: visit-all.  first(Sum) = first of first non-empty child;
+    // last(Sum) = last of last non-empty child; new edges between
+    // consecutive children are bipartite last(c[i]) × first(c[i+1]).
+    const out = { first: [], last: [], edges: [] };
+    let prevLast = null;
+    for (let i = 0; i < node.c.length; i++) {
+      const sub = walk(node.c[i], [...pos, i]);
+      if (sub.first.length === 0) continue;  // empty subtree
+      if (prevLast !== null) {
+        for (const a of prevLast) {
+          for (const b of sub.first) {
+            out.edges.push([a, b]);
+          }
+        }
+      } else {
+        out.first = sub.first;
+      }
+      prevLast = sub.last;
+      out.edges.push(...sub.edges);
+    }
+    out.last = prevLast || [];
+    return out;
+  };
+  return walk(ast, []).edges;
+}
+
 // Extract all unique base variable names from an AST, sorted alphabetically.
 function extractVars(node) {
   const vars = new Set();
@@ -401,8 +475,17 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
     const pairIndices = cover?.posToPairIndices?.[posKey] ?? [];
     const prefixIndices = (cover?.posToPrefixIndices?.[posKey] ?? [])
       .filter(i => !pairIndices.includes(i)); // don't double-show
+    // Covered-path indices: every leaf on *some* matrix path through
+    // the cover pair (the union of all covered paths).  Filter out
+    // anything already drawn as a pair endpoint or visited prefix —
+    // those get a stronger style.  Each covered-path leaf gets a
+    // dashed underline, and the layout effect draws bipartite-style
+    // path-trace lines connecting adjacent leaves in DFS order
+    // (computed by `coverPathEdges`).
+    const coveredIndices = (cover?.posToCoveredPathIndices?.[posKey] ?? [])
+      .filter(i => !pairIndices.includes(i) && !prefixIndices.includes(i));
     const highlightIndices = cover?.posToHighlightIndices?.[posKey] ?? [];
-    const allIndices = [...pairIndices, ...prefixIndices];
+    const allIndices = [...pairIndices, ...prefixIndices, ...coveredIndices];
     const hasPair = pairIndices.length > 0;
     const hasPrefix = prefixIndices.length > 0;
     const hasHighlight = highlightIndices.length > 0;
@@ -607,18 +690,37 @@ function DiagramWithConnections({ node, coverGroups, selectedGroups, highlighted
   }, [groups]);
 
   // For each selected cover, the positions of leaves on every matrix path
-  // that contains the cover pair — used to paint a very-pale background so
-  // the user can see at a glance which literals belong to the family of
-  // paths the pair closes.  Map from posKey → list of cover-group indices
-  // whose covered-path family includes that position.  Bars/underlines
-  // stack independently (they cover only the pair endpoints + visited
-  // prefixes).
+  // that contains the cover pair — i.e. the union of all covered paths.
+  // Map from posKey → list of cover-group indices whose covered-path
+  // family includes that position.
+  //
+  // Used by `BoxNode` as the source of dashed-underline bars for every
+  // covered-path leaf (the pair endpoints get solid bars from
+  // `posToPairIndices` and are filtered out of dashed rendering).  At
+  // unconstrained Prods every alt's leaves are in the family; at
+  // constrained Prods only the pair-endpoint alt is.
   const posToCoveredPathIndices = useMemo(() => {
     const m = {};
     groups.forEach((g, gi) => {
       if (!selected.has(gi)) return;
       const leaves = coveredPathLeaves(node, g.pair[0], g.pair[1], coverProdType);
       leaves.forEach(key => { (m[key] ??= []).push(gi); });
+    });
+    return m;
+  }, [groups, selected, node, coverProdType]);
+
+  // Per-cover bipartite-style adjacency edges between covered-path
+  // leaves — every (posA, posB) pair that's adjacent in DFS order on
+  // some covered path.  At a `Sum` boundary every leaf in the previous
+  // child's last-set connects to every leaf in the next child's
+  // first-set, so this is naturally bipartite when both sides have
+  // multiple alts (the typical case at unconstrained Prods).  Used in
+  // the layout effect to draw a path-trace line per edge.
+  const groupCoveredEdges = useMemo(() => {
+    const m = new Map();
+    groups.forEach((g, gi) => {
+      if (!selected.has(gi)) return;
+      m.set(gi, coverPathEdges(node, g.pair[0], g.pair[1], coverProdType));
     });
     return m;
   }, [groups, selected, node, coverProdType]);
@@ -647,11 +749,17 @@ function DiagramWithConnections({ node, coverGroups, selectedGroups, highlighted
       const pairSet = new Set(posToPairIndices[key] ?? []);
       counts[key] = (counts[key] ?? 0) + indices.filter(i => !pairSet.has(i)).length;
     }
+    for (const [key, indices] of Object.entries(posToCoveredPathIndices)) {
+      const pairSet = new Set(posToPairIndices[key] ?? []);
+      const prefSet = new Set(posToPrefixIndices[key] ?? []);
+      counts[key] = (counts[key] ?? 0)
+        + indices.filter(i => !pairSet.has(i) && !prefSet.has(i)).length;
+    }
     for (const [key, indices] of Object.entries(posToHighlightIndices)) {
       counts[key] = (counts[key] ?? 0) + indices.length;
     }
     return Math.max(0, ...Object.values(counts));
-  }, [posToPairIndices, posToPrefixIndices, posToHighlightIndices]);
+  }, [posToPairIndices, posToPrefixIndices, posToCoveredPathIndices, posToHighlightIndices]);
 
   // Recompute arc positions and path lines after every render (DOM may have changed)
   useLayoutEffect(() => {
@@ -692,7 +800,13 @@ function DiagramWithConnections({ node, coverGroups, selectedGroups, highlighted
     const barOffset = (posKey, coverIdx, isHighlight) => {
       const pairs = posToPairIndices[posKey] ?? [];
       const prefixes = (posToPrefixIndices[posKey] ?? []).filter(i => !pairs.includes(i));
-      const sorted = [...pairs, ...prefixes].sort((a, b) => a - b);
+      // Covered-path indices are stacked AFTER pair / prefix bars
+      // (matching the order in `BoxNode.allIndices`) so a covered-
+      // edge line ends at the bar BoxNode actually drew for that
+      // cover.
+      const covered = (posToCoveredPathIndices[posKey] ?? [])
+        .filter(i => !pairs.includes(i) && !prefixes.includes(i));
+      const sorted = [...pairs, ...prefixes, ...covered].sort((a, b) => a - b);
       const highlights = posToHighlightIndices[posKey] ?? [];
       let ringIdx;
       if (isHighlight) {
@@ -718,23 +832,36 @@ function DiagramWithConnections({ node, coverGroups, selectedGroups, highlighted
       };
     };
 
-    // Path connection lines: connect consecutive positions via their specific bars
+    // Path connection lines: bipartite-style edges between covered-
+    // path leaves that are adjacent in DFS order on some covered path.
+    // For a flat Sum-of-Prods matrix that's "every alt of Prod K
+    // connects to every alt of Prod K+1," with constrained Prods
+    // (those containing a pair endpoint) collapsing to just the
+    // pair-endpoint alt.  De-duped per `(gi, keyA, keyB)` so a single
+    // edge isn't drawn twice if `coverPathEdges` produces it more than
+    // once.
     const newPathLines = [];
+    const seenSegment = new Set();
+    const pushSegment = (keyA, keyB, gi, color) => {
+      const segKey = `${gi}\0${keyA}\0${keyB}`;
+      if (seenSegment.has(segKey)) return;
+      seenSegment.add(segKey);
+      const da = container.querySelector(`[data-position="${keyA}"]`);
+      const db = container.querySelector(`[data-position="${keyB}"]`);
+      if (!da || !db) return;
+      const ba = boundsOf(da), bb = boundsOf(db);
+      const offA = barOffset(keyA, gi, false);
+      const offB = barOffset(keyB, gi, false);
+      newPathLines.push({ ...lineEndpoints(ba, bb, offA, offB), color });
+    };
     groups.forEach((g, gi) => {
-      if (!selected.has(gi) || !g.prefixes?.length) return;
+      if (!selected.has(gi)) return;
       const color = idxToGroupColor[gi] ?? PAIR_COLORS[gi % PAIR_COLORS.length];
-      g.prefixes.forEach(positions => {
-        for (let k = 0; k < positions.length - 1; k++) {
-          const keyA = positions[k].join(','), keyB = positions[k + 1].join(',');
-          const da = container.querySelector(`[data-position="${keyA}"]`);
-          const db = container.querySelector(`[data-position="${keyB}"]`);
-          if (!da || !db) continue;
-          const ba = boundsOf(da), bb = boundsOf(db);
-          const offA = barOffset(keyA, gi, false);
-          const offB = barOffset(keyB, gi, false);
-          newPathLines.push({ ...lineEndpoints(ba, bb, offA, offB), color });
-        }
-      });
+      const edges = groupCoveredEdges.get(gi);
+      if (!edges) return;
+      for (const [a, b] of edges) {
+        pushSegment(a.join(','), b.join(','), gi, color);
+      }
     });
     // Highlighted uncovered path lines
     if (highlightedPaths) {

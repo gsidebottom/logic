@@ -19,6 +19,7 @@ pub mod cover_basic;
 pub mod cover_bdd_bans;
 pub mod cover_cnf_bans;
 pub mod cover_greedy;
+pub mod cover_greedy_dynamic;
 pub mod cover_state_bdd;
 pub mod cover_state_cnf;
 pub mod effective_count;
@@ -36,6 +37,7 @@ pub use cover_basic::BasicCoverController;
 pub use cover_bdd_bans::BddBansCoverController;
 pub use cover_cnf_bans::CnfBansCoverController;
 pub use cover_greedy::GreedyMaxCoverController;
+pub use cover_greedy_dynamic::GreedyDynamicCoverController;
 pub use cover_state_bdd::BddBansCoverState;
 pub use cover_state_cnf::CnfBansCoverState;
 pub use path_basic::BasicDualPathController;
@@ -815,7 +817,7 @@ mod tests {
         // Helper: run `solve_dual` with the four (A, B) combinations
         // and assert each agrees with the existing single-DFS
         // controller's verdict.
-        fn check<A, B>(
+        fn check<S, A, B>(
             text: &str,
             label: &str,
             ctor_a: impl FnOnce() -> A,
@@ -823,8 +825,9 @@ mod tests {
             expected_sat: bool,
         )
         where
-            A: CoverSearchController<State = BasicCoverState>,
-            B: DualPathSearchController<State = BasicCoverState>,
+            S: CoverState,
+            A: CoverSearchController<State = S>,
+            B: DualPathSearchController<State = S>,
         {
             let matrix = crate::matrix::Matrix::try_from(text).expect("matrix");
             let nnf = matrix.nnf_complement.clone();
@@ -862,6 +865,21 @@ mod tests {
             check(text, "Greedy A × CDCL B",
                   GreedyMaxCoverController::default,
                   CdclDualPathController::<BasicCoverState>::default,
+                  expected_sat);
+            // Dynamic-greedy uses BddBansCoverState (its gain query
+            // reads `valid_bdd`).  Same B-controllers are generic
+            // over the state type, so they instantiate fine here.
+            check(text, "GreedyDyn A × Basic B",
+                  GreedyDynamicCoverController::default,
+                  BasicDualPathController::<BddBansCoverState>::default,
+                  expected_sat);
+            check(text, "GreedyDyn A × Smart B",
+                  GreedyDynamicCoverController::default,
+                  SmartDualPathController::<BddBansCoverState>::default,
+                  expected_sat);
+            check(text, "GreedyDyn A × CDCL B",
+                  GreedyDynamicCoverController::default,
+                  CdclDualPathController::<BddBansCoverState>::default,
                   expected_sat);
         }
     }

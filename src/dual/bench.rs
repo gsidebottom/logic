@@ -24,7 +24,7 @@ use crate::controller::{CdclController, SmartController};
 use crate::dual::{
     BasicCoverController, BasicCoverState, BasicDualPathController, BddBansCoverController,
     BddBansCoverState, CdclDualPathController, CnfBansCoverController, CnfBansCoverState,
-    EffectivePathController, GreedyMaxCoverController, Outcome, SearchMode,
+    EffectivePathController, GreedyDynamicCoverController, GreedyMaxCoverController, Outcome, SearchMode,
     SmartDualPathController, solve_dual,
 };
 use crate::matrix::Matrix;
@@ -378,6 +378,26 @@ fn run_dual_greedy_cdcl(nnf: NNF) -> bool {
         SearchMode::Satisfiable), Outcome::Sat(_))
 }
 
+// Dynamic-greedy cover controller — same shape as static Greedy but
+// scores by submodular marginal gain (paths the candidate would *newly*
+// cover given those already chosen).  Uses `BddBansCoverState` so the
+// gain query is `cardinality(valid_bdd ∧ box(pair))`.
+fn run_dual_greedydyn_basic(nnf: NNF) -> bool {
+    matches!(solve_dual(&nnf, GreedyDynamicCoverController::default(),
+        BasicDualPathController::<BddBansCoverState>::default(),
+        SearchMode::Satisfiable), Outcome::Sat(_))
+}
+fn run_dual_greedydyn_smart(nnf: NNF) -> bool {
+    matches!(solve_dual(&nnf, GreedyDynamicCoverController::default(),
+        SmartDualPathController::<BddBansCoverState>::default(),
+        SearchMode::Satisfiable), Outcome::Sat(_))
+}
+fn run_dual_greedydyn_cdcl(nnf: NNF) -> bool {
+    matches!(solve_dual(&nnf, GreedyDynamicCoverController::default(),
+        CdclDualPathController::<BddBansCoverState>::default(),
+        SearchMode::Satisfiable), Outcome::Sat(_))
+}
+
 // CnfBans cover controller: A's CaDiCaL completeness check is in
 // play.  Each (A, B) combination here uses CnfBansCoverState, which
 // indexes triggers the same way BasicCoverState does *and* runs an
@@ -489,6 +509,9 @@ where F: FnOnce() -> bool + Send + 'static
         ("dual greedy   × smart    ", run_dual_greedy_smart),
         ("dual greedy   × cdcl     ", run_dual_greedy_cdcl),
         ("dual greedy   × effective", run_dual_greedy_effective),
+        ("dual greedy⁺  × basic    ", run_dual_greedydyn_basic),
+        ("dual greedy⁺  × smart    ", run_dual_greedydyn_smart),
+        ("dual greedy⁺  × cdcl     ", run_dual_greedydyn_cdcl),
         ("dual cnf-bans × basic    ", run_dual_cnfbans_basic),
         ("dual cnf-bans × smart    ", run_dual_cnfbans_smart),
         ("dual cnf-bans × cdcl     ", run_dual_cnfbans_cdcl),
@@ -684,6 +707,7 @@ where F: FnOnce() -> bool + Send + 'static
         ("matrix.cdcl              ", |n| run_single(n, Backend::Cdcl)),
         ("dual basic    × cdcl     ", run_dual_basic_cdcl),
         ("dual greedy   × cdcl     ", run_dual_greedy_cdcl),
+        ("dual greedy⁺  × cdcl     ", run_dual_greedydyn_cdcl),
         ("dual cnf-bans × cdcl     ", run_dual_cnfbans_cdcl),
         ("dual bdd-bans × cdcl     ", run_dual_bddbans_cdcl),
         ("dual basic    × effective", run_dual_basic_effective),

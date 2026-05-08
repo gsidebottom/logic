@@ -167,6 +167,50 @@ impl BddBansCoverState {
 
     /// How many pairs have been merged into the BDD.
     pub fn bdd_pair_count(&self) -> usize { self.pairs_merged }
+
+    /// Number of currently-uncovered alt-selections that the candidate
+    /// `pair` would newly cover.  Defined as `cardinality(valid_bdd ∧
+    /// box(pair))` where `box(pair)` is the conjunction of the pair's
+    /// two `(clause, alt)` BDD vars.
+    ///
+    /// **Semantics for `GreedyDynamicCoverController`.**  This is the
+    /// classical set-cover marginal gain — paths the pair would close
+    /// that aren't already closed by some previously-registered pair.
+    /// The function is submodular in the registered set, so values
+    /// decrease (weakly) as more pairs are registered, which is what
+    /// lets the lazy-greedy heap stay correct with stale upper bounds.
+    ///
+    /// The caller is responsible for syncing the BDD before each query
+    /// (typically by calling [`Self::check_complete_with_bdd`] inside
+    /// `register_pair`); this method only reads the current
+    /// `valid_bdd`, so it remains `&self` and works under the
+    /// `next_pair_index(&Self::State)` borrow.
+    ///
+    /// Returns 0 for non-flat NNFs or pairs whose triggers are out of
+    /// range — both conservative answers that won't poison the
+    /// caller's heap (a 0-gain pair will simply lose to anything
+    /// better).
+    pub fn gain_for_pair(&self, pair: &Pair) -> u128 {
+        let Some(vars) = self.bdd_vars.as_ref() else { return 0; };
+        let Some(valid) = self.valid_bdd.as_ref() else { return 0; };
+        let Some([(ci, ai), (cj, aj)]) = flat_pair_triggers(pair) else { return 0; };
+        if ci >= self.var_map.len() || ai >= self.var_map[ci].len() { return 0; }
+        if cj >= self.var_map.len() || aj >= self.var_map[cj].len() { return 0; }
+        let bdd_a = vars.mk_var(self.var_map[ci][ai]);
+        let bdd_b = vars.mk_var(self.var_map[cj][aj]);
+        let box_bdd = bdd_a.and(&bdd_b);
+        // `cardinality()` returns f64.  For path-counts in our
+        // matrices f64 is plenty precise; cast through f64 → u128
+        // (clamped at u128::MAX rather than wrapping for safety).
+        let n = valid.and(&box_bdd).cardinality();
+        if n.is_finite() && n >= 0.0 && n <= u128::MAX as f64 {
+            n as u128
+        } else if n > 0.0 {
+            u128::MAX
+        } else {
+            0
+        }
+    }
 }
 
 impl CoverState for BddBansCoverState {

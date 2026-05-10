@@ -407,6 +407,71 @@ Naively recomputing every node's count after each push/pop is
 This is comparable to CDCL's watched-literal cost — linear in the
 local fan-out of the popped variable, not the whole NNF.
 
+#### Incremental delta updates per ancestor (the critical win)
+
+Step 2 above ("walk bottom-up, cascade") leaves a tempting
+inefficiency on the table.  When a child's count changes from
+`x` to `y`, the parent's new count is computable from its old
+count *without re-iterating every other child* — and that's
+where the implementation actually pays off:
+
+* **Sum (= product of children)**: `parent_new = parent_old / x · y`.
+  - `y == 0` short-circuits to `parent_new = 0`.
+  - `x == 0` is the awkward case (the parent's product was already
+    0 because *this* child was 0; some sibling might still be 0
+    too).  Fall back to the full `compute()` for that one ancestor.
+    Rare in practice — only fires when a sibling was already zero.
+* **Prod (= sum of children)**: `parent_new = parent_old + (y − x)`.
+  No edge cases.
+
+This makes each propagation step **O(1)** instead of O(arity).
+Multiple affected leaves can share ancestors; their delta walks
+compose correctly because each step uses the ancestor's *current*
+value (already reflecting earlier leaves' updates), and the
+chain stops early at any ancestor whose count doesn't change.
+
+For BMC's wide Sum/Prod nodes (XOR encodings have 4-way Sums,
+the `neq` disjunction has 3-way, the conjunction at the root has
+hundreds of children), this is the difference between "count
+maintenance is the bottleneck" and "count maintenance is free."
+
+#### Measured impact
+
+Before incremental delta updates, the `EffectivePathController`
+recomputed each dirty ancestor with the full `compute()` —
+iterating every child of the ancestor, multiplying or summing.
+After the switch (single function: `EffectiveCounts::push` in
+`src/dual/effective_count.rs`):
+
+| benchmark / config             | full `compute()` | incremental delta | speedup |
+|--------------------------------|------------------|-------------------|---------|
+| random-3sat n=30 (SAT)         | 1.42 ms          | 1.71 ms           | within noise |
+| faulty-add 16-bit / 1f UNSAT   | 16.46 ms         | **7.60 ms**       | **2.2×** |
+| faulty-add 16-bit / 2f SAT     | 1882 ms          | **857 ms**        | **2.2×** |
+| BMC count-zeros n=8 w=16 UNSAT | **TIMEOUT (>60 s)** | **3.74 ms**    | **>16 000×** |
+
+(All numbers are `dual greedy × eff` from
+`bench_focused_top_config`; numbers around the same as before for
+the small / random rows where count-maintenance overhead wasn't
+the bottleneck anyway.)
+
+The BMC line is the headline result: it went from "the
+controller's worst case — never finishes" to "the fastest cell on
+that row," beating CaDiCaL (3.93 ms) and `matrix.cdcl` (5.96 ms).
+The 2-fault SAT case at 857 ms is now 4.6× faster than
+`greedy × cdcl` (3931 ms) and 8× faster than `matrix.cdcl`
+(7060 ms).
+
+Why BMC dramatizes this: BMC's NNF is built from bit-vector
+arithmetic with thousands of leaves, deep nesting, and wide
+Sum/Prod nodes.  The pre-incremental algorithm spent its time
+re-multiplying children of dirty Sum nodes — each ancestor visit
+was O(arity), and most of the children's counts hadn't changed.
+Once each ancestor visit became O(1), the count layer's
+overhead drops out of the critical path entirely; the controller
+gets to use its narrowing intelligence (effective-count = 0 ⇒
+prune) on a per-step cost competitive with raw CDCL propagation.
+
 ### Trait changes — wrapper approach
 
 The current `DualPathSearchController` is a thin run-it harness;

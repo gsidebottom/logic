@@ -25,21 +25,33 @@ pub struct EffectiveCountIndex {
     /// PathSearchController wrapper can look up children by their
     /// `&NNF` references in `sum_ord` / `prod_ord`.
     by_ptr: HashMap<*const NNF, usize>,
-    /// `var → [leaf node id]` — every Lit-leaf containing this var.
-    /// Used by `EffectiveCounts::push` to locate the leaves whose
-    /// counts change when a literal is pushed.
-    var_to_lit_nodes: Vec<Vec<usize>>,
+    /// `var → [(leaf node id, leaf polarity)]` — every Lit-leaf
+    /// containing this var, paired with its `neg` flag so the hot
+    /// `push()` path can compute the new leaf count without
+    /// touching `kind[]` / calling `lit_at()`.  Used by
+    /// `EffectiveCounts::push` to locate and update the leaves
+    /// whose counts change when a literal is pushed.
+    var_to_lit_nodes: Vec<Vec<(usize, bool)>>,
     /// Parent of each node (`None` for root).
     parent: Vec<Option<usize>>,
     /// Children of each node (empty for `Lit`).
     children: Vec<Vec<usize>>,
     /// Per-node kind.
     kind: Vec<NodeKind>,
+    /// Per-leaf precomputed ancestor chain: for each leaf node
+    /// `leaf_id`, `leaf_ancestors[leaf_id]` is `[parent, grandparent,
+    /// ..., root]` — a flat sequence the `push()` chain walk reads
+    /// linearly instead of chasing `parent[child_id]` per step.
+    /// Empty for non-Lit nodes (which never start a chain walk).
+    leaf_ancestors: Vec<Vec<usize>>,
 }
 
 #[derive(Clone, Debug)]
 enum NodeKind {
-    Lit(Lit),
+    /// Lit-leaf.  The actual `Lit` value isn't stored on the kind
+    /// any more — `var_to_lit_nodes` carries the polarity needed
+    /// by the hot push() path, and no other code reads it.
+    Lit,
     Sum,
     Prod,
 }
@@ -56,8 +68,23 @@ impl EffectiveCountIndex {
             parent: Vec::new(),
             children: Vec::new(),
             kind: Vec::new(),
+            leaf_ancestors: Vec::new(),
         };
         idx.walk(nnf, None);
+        // Precompute each leaf's ancestor chain.  Done after the
+        // structural walk so `parent` is fully populated.
+        idx.leaf_ancestors = vec![Vec::new(); idx.parent.len()];
+        for id in 0..idx.parent.len() {
+            if matches!(idx.kind[id], NodeKind::Lit) {
+                let mut chain = Vec::new();
+                let mut cur = id;
+                while let Some(p) = idx.parent[cur] {
+                    chain.push(p);
+                    cur = p;
+                }
+                idx.leaf_ancestors[id] = chain;
+            }
+        }
         idx
     }
 
@@ -68,12 +95,15 @@ impl EffectiveCountIndex {
         self.children.push(Vec::new());
         match n {
             NNF::Lit(l) => {
-                self.kind.push(NodeKind::Lit(l.clone()));
+                self.kind.push(NodeKind::Lit);
                 let v = l.var as usize;
                 if v >= self.var_to_lit_nodes.len() {
                     self.var_to_lit_nodes.resize(v + 1, Vec::new());
                 }
-                self.var_to_lit_nodes[v].push(id);
+                // Pair the leaf id with its polarity so the hot
+                // `push()` loop can compute the new count without
+                // touching `kind[]`.
+                self.var_to_lit_nodes[v].push((id, l.neg));
             }
             NNF::Sum(ch) => {
                 self.kind.push(NodeKind::Sum);
@@ -101,12 +131,6 @@ impl EffectiveCountIndex {
     pub fn n_nodes(&self) -> usize { self.parent.len() }
     pub fn root_id(&self) -> usize { 0 }
 
-    fn lit_at(&self, id: usize) -> Option<&Lit> {
-        match &self.kind[id] {
-            NodeKind::Lit(l) => Some(l),
-            _ => None,
-        }
-    }
 }
 
 /// Per-node effective counts under a (mutating) path prefix.
@@ -135,7 +159,7 @@ impl EffectiveCounts {
 
     fn compute(&self, idx: &EffectiveCountIndex, id: usize) -> f64 {
         match &idx.kind[id] {
-            NodeKind::Lit(_) => 1.0,
+            NodeKind::Lit => 1.0,
             NodeKind::Sum => {
                 let mut p: f64 = 1.0;
                 for &c in &idx.children[id] {
@@ -185,10 +209,15 @@ impl EffectiveCounts {
         if v >= idx.var_to_lit_nodes.len() {
             return delta;
         }
-        for &leaf_id in &idx.var_to_lit_nodes[v] {
-            let leaf_lit = idx.lit_at(leaf_id).expect("var_to_lit_nodes points to non-Lit");
-            if leaf_lit.var != lit.var { continue; }
-            let new_count = if leaf_lit.neg == lit.neg { 1.0 } else { 0.0 };
+        let pushed_neg = lit.neg;
+        // Hot loop.  `var_to_lit_nodes[v]` holds (leaf_id, neg) pairs
+        // already (see `walk()`), so we don't touch `kind[]` here.
+        // Each leaf's ancestor chain is precomputed in
+        // `idx.leaf_ancestors[leaf_id]` so the walk-to-root is a
+        // sequential `for` over a `Vec<usize>` instead of chasing
+        // `parent[child_id]` per step.
+        for &(leaf_id, leaf_neg) in &idx.var_to_lit_nodes[v] {
+            let new_count = if leaf_neg == pushed_neg { 1.0 } else { 0.0 };
             let old_count = self.count[leaf_id];
             if new_count == old_count { continue; }
 
@@ -196,13 +225,12 @@ impl EffectiveCounts {
             delta.push((leaf_id, old_count));
             self.count[leaf_id] = new_count;
 
-            // Walk the chain to the root, applying an O(1) delta at
-            // each ancestor.  Stop early if an ancestor's count
-            // doesn't change.
-            let mut child_id  = leaf_id;
+            // Walk the precomputed chain to the root, applying an
+            // O(1) delta at each ancestor.  Stop early if an
+            // ancestor's count doesn't change.
             let mut child_old = old_count;
             let mut child_new = new_count;
-            while let Some(parent_id) = idx.parent[child_id] {
+            for &parent_id in &idx.leaf_ancestors[leaf_id] {
                 let parent_old = self.count[parent_id];
                 let parent_new = match &idx.kind[parent_id] {
                     NodeKind::Sum => {
@@ -221,14 +249,13 @@ impl EffectiveCounts {
                         // Prod = sum of children.
                         parent_old + child_new - child_old
                     }
-                    NodeKind::Lit(_) => unreachable!("Lit cannot be a parent"),
+                    NodeKind::Lit => unreachable!("Lit cannot be a parent"),
                 };
                 if parent_new == parent_old {
                     break;  // chain doesn't propagate any further
                 }
                 delta.push((parent_id, parent_old));
                 self.count[parent_id] = parent_new;
-                child_id  = parent_id;
                 child_old = parent_old;
                 child_new = parent_new;
             }

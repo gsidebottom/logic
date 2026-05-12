@@ -79,6 +79,28 @@ fn cnf_complement_nnf(clauses: &[Vec<i32>]) -> NNF {
     NNF::Sum(cubes)
 }
 
+/// Build the *original* (un-complemented) CNF NNF: `Prod` of `Sum`-of-`Lit`.
+/// Used by the preprocessing path, which wants F (not ¬F) so unit
+/// propagation can fire on top-level Prod-rooted unit clauses.
+#[allow(dead_code)]
+fn cnf_nnf(clauses: &[Vec<i32>]) -> NNF {
+    if clauses.is_empty() { return NNF::Prod(vec![]); }
+    let clause_nnfs: Vec<NNF> = clauses.iter().map(|cl| {
+        if cl.is_empty() { return NNF::Sum(vec![]); }
+        let lits: Vec<NNF> = cl.iter().map(|&n| {
+            let var: Var = (n.unsigned_abs() - 1) as Var;
+            let neg = n < 0;
+            NNF::Lit(Lit { var, neg })
+        }).collect();
+        if lits.len() == 1 { lits.into_iter().next().unwrap() } else { NNF::Sum(lits) }
+    }).collect();
+    if clause_nnfs.len() == 1 {
+        clause_nnfs.into_iter().next().unwrap()
+    } else {
+        NNF::Prod(clause_nnfs)
+    }
+}
+
 #[allow(dead_code)]
 fn load_cnf(path: &str) -> Option<NNF> {
     let f = std::fs::File::open(path).ok()?;
@@ -960,6 +982,125 @@ fn bench_focused_top_config() {
             None =>
                 eprintln!("{:<48}  SKIP (jq libs not available)",
                           "bmc count-zeros n=8 w=16 + (c_n>n) UNSAT"),
+        }
+    }
+}
+
+/// Same four rows as `bench_focused_top_config`, but each row's NNF is
+/// piped through Phase-1 unit-propagation preprocessing before being
+/// handed to the backends.  Prints one extra summary line per row
+/// (preprocess elapsed time, recon-stack depth, lemma-cover count)
+/// followed by the same five-column timing row, so this output can be
+/// eyeball-compared with the un-preprocessed run.
+#[test]
+#[ignore]
+fn bench_focused_top_config_preprocessed() {
+    eprintln!("\n=== focused top-config bench — WITH UP PREPROCESSING ===");
+    let header = format!(
+        "{:<48}  {:>14}  {:>14}  {:>14}  {:>14}  {:>14}",
+        "case", "cadical", "matrix.smart", "matrix.cdcl",
+        "greedy×cdcl", "greedy×eff",
+    );
+    eprintln!("{}", header);
+    eprintln!("{}", "-".repeat(header.chars().count()));
+
+    /// Preprocess the original-F NNF, print a one-line summary, then
+    /// run the five-column timing row on the *complemented* simplified
+    /// NNF (which is what the matrix-method SAT search consumes).
+    fn run_pp_row<F>(label: &str, original_nnf: NNF, cadical: F)
+    where F: FnOnce() -> bool + Send + 'static
+    {
+        let t0 = Instant::now();
+        let pp = crate::preprocess::preprocess(&original_nnf);
+        let dt = t0.elapsed().as_secs_f64() * 1000.0;
+        let orig_leaves = count_lit_leaves(&original_nnf);
+        let new_leaves = count_lit_leaves(&pp.nnf);
+        eprintln!("  [pp {:>7.2} ms, leaves {} → {}, units {}, lemmas {}]",
+                  dt, orig_leaves, new_leaves, pp.recon.len(), pp.lemma_covers.len());
+        // Hand the *simplified comp* to the backends.
+        let simplified_comp = pp.nnf.complement();
+        let cadical_box: Box<dyn FnOnce() -> bool + Send + 'static> = Box::new(cadical);
+        let t_cd = run_with_timeout(cadical_box);
+        let n1 = simplified_comp.clone();
+        let t_sm = run_with_timeout(move || run_single(n1, Backend::Smart));
+        let n2 = simplified_comp.clone();
+        let t_mc = run_with_timeout(move || run_single(n2, Backend::Cdcl));
+        let n3 = simplified_comp.clone();
+        let t_gc = run_with_timeout(move || run_dual_greedy_cdcl(n3));
+        let n4 = simplified_comp.clone();
+        let t_ge = run_with_timeout(move || run_dual_greedy_effective(n4));
+        let fmt = |t: Option<(bool, std::time::Duration)>| match t {
+            Some((is_sat, d)) => format!(
+                "{:>9.2} ms {}", d.as_secs_f64() * 1000.0,
+                if is_sat { "s" } else { "u" },
+            ),
+            None => format!("{:>14}", "TIMEOUT"),
+        };
+        eprintln!("{:<48}  {}  {}  {}  {}  {}",
+                  label, fmt(t_cd), fmt(t_sm), fmt(t_mc), fmt(t_gc), fmt(t_ge));
+    }
+
+    fn count_lit_leaves(nnf: &NNF) -> usize {
+        match nnf {
+            NNF::Lit(_) => 1,
+            NNF::Sum(ch) | NNF::Prod(ch) => ch.iter().map(count_lit_leaves).sum(),
+        }
+    }
+
+    // Row 1 — random 3-SAT (no unit clauses ⇒ preprocessing should be a no-op).
+    {
+        fn lcg(s: &mut u64) -> u64 {
+            *s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            *s
+        }
+        let n_vars = 30; let n_clauses = 90;
+        let mut s = 42u64;
+        let clauses: Vec<Vec<i32>> = (0..n_clauses).map(|_| {
+            let mut chosen: Vec<i32> = Vec::with_capacity(3);
+            while chosen.len() < 3 {
+                let v = (lcg(&mut s) % (n_vars as u64)) as i32 + 1;
+                if !chosen.iter().any(|&c| c.abs() == v) {
+                    let sign = if lcg(&mut s) & 1 == 0 { 1 } else { -1 };
+                    chosen.push(v * sign);
+                }
+            }
+            chosen
+        }).collect();
+        let original_nnf = cnf_nnf(&clauses);
+        let clauses_for_cadical = clauses;
+        run_pp_row("random-3sat n=30 (SAT)", original_nnf,
+            move || run_cadical_clauses(clauses_for_cadical));
+    }
+
+    // Rows 2–3 — faulty-adder 16-bit via jq
+    let faulty_rows: &[(&str, &str)] = &[
+        ("faulty_add_at_most(16;0;65535;1;65535;1;1) UNSAT",
+         "16;0;65535;1;65535;1;1"),
+        ("faulty_add_at_most(16;0;65535;1;65535;1;2) SAT",
+         "16;0;65535;1;65535;1;2"),
+    ];
+    for (label, args) in faulty_rows {
+        match faulty_add_at_most_full(args) {
+            Some((_, m)) => {
+                let original_nnf = m.nnf.clone();
+                run_pp_row(label, original_nnf, move || run_cadical_matrix(m));
+            }
+            None => eprintln!("{:<48}  SKIP (jq libs not available)", label),
+        }
+    }
+
+    // Row 4 — BMC count-zeros n=8 w=16 + c_n > n (UNSAT)
+    {
+        let expr = "16 as $w | 8 as $n | \
+                    prod(bnc($n;$w), br(v_gt(\"c\\($n)\"; $n; $w)))";
+        match bmc_full(expr) {
+            Some((_, m)) => {
+                let original_nnf = m.nnf.clone();
+                run_pp_row("bmc count-zeros n=8 w=16 + (c_n>n) UNSAT",
+                           original_nnf, move || run_cadical_matrix(m));
+            }
+            None => eprintln!("{:<48}  SKIP (jq libs not available)",
+                              "bmc count-zeros n=8 w=16 + (c_n>n) UNSAT"),
         }
     }
 }

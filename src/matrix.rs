@@ -1025,14 +1025,22 @@ impl From<&Ast> for NNF {
 
 pub fn format_path(path: &ProdPath, m: &NNF, var_names: &[String]) -> String {
     let resolved = m.lits_on_path(path);
-    if resolved.is_empty() { return "∅".to_string(); }
-    let lits: Vec<String> = resolved.iter()
+    format_lits(&resolved.into_iter().cloned().collect::<Vec<_>>(), var_names)
+}
+
+/// Same as [`format_path`] but for an already-resolved list of literals
+/// — useful when the literal set was assembled from multiple sources
+/// (e.g. a path through a preprocessed NNF plus the preprocessor's
+/// reconstruction stack).
+pub fn format_lits(lits: &[Lit], var_names: &[String]) -> String {
+    if lits.is_empty() { return "∅".to_string(); }
+    let strs: Vec<String> = lits.iter()
         .map(|l| {
             let name = &var_names[l.var as usize];
             if l.neg { format!("{}'", name) } else { name.clone() }
         })
         .collect();
-    format!("{{{}}}", lits.join(", "))
+    format!("{{{}}}", strs.join(", "))
 }
 
 /// A parsed formula with its AST and NNF (negation normal form) matrix.
@@ -1094,6 +1102,54 @@ impl Matrix {
         }
     }
 
+    /// Apply Phase 1 preprocessing (top-level unit propagation) and
+    /// return the NNF that the matrix-method search should run on,
+    /// together with a [`crate::preprocess::Preprocessed`] handle for
+    /// translating the search's certificates back to the original
+    /// matrix's variables and positions.
+    ///
+    /// Unit propagation is SAT-direction (it forces literals under the
+    /// assumption that the input NNF is to be *satisfied*), so it must
+    /// be applied to the *opposite* side of the side the search
+    /// enumerates paths on:
+    ///
+    /// - `complement == false` (validity check, search runs on `self.nnf`):
+    ///   preprocess `self.nnf_complement` and search the complement of
+    ///   the simplified result.
+    /// - `complement == true` (satisfiability check, search runs on
+    ///   `self.nnf_complement`): preprocess `self.nnf` and search the
+    ///   complement of the simplified result.
+    ///
+    /// In both cases the new search target is logically equivalent to
+    /// the original side for the matrix-method question (every-path
+    /// complementary ⟺ original-side every-path complementary), but
+    /// typically much smaller.
+    ///
+    /// To wire this into a streaming search, callers should:
+    /// 1. Hand `search_target` to `classify_paths` (e.g. by
+    ///    constructing a fresh `Matrix` whose `nnf` / `nnf_complement`
+    ///    are this NNF and its complement, or by calling
+    ///    `search_target.classify_paths` directly).
+    /// 2. Translate every cover-pair and path-position emitted by the
+    ///    search through `preprocessed.pos_map`.
+    /// 3. Prepend `preprocessed.lemma_covers` (already in
+    ///    original-NNF positions) to whatever covers the search
+    ///    produced.
+    /// 4. Reconstruct any uncovered path's witness assignment by
+    ///    feeding its literals into
+    ///    `preprocessed.reconstruct_sat_assignment` (the same call
+    ///    handles both directions — for `complement == false` the
+    ///    result is a falsifying assignment, for `complement == true`
+    ///    a satisfying assignment).
+    pub fn preprocess_for_search(
+        &self,
+        complement: bool,
+    ) -> (NNF, crate::preprocess::Preprocessed) {
+        let other_side = if complement { &self.nnf } else { &self.nnf_complement };
+        let pp = crate::preprocess::preprocess(other_side);
+        let search_target = pp.nnf.complement();
+        (search_target, pp)
+    }
 }
 
 pub fn parse_to_nnf(formula: &str) -> Result<(NNF, Vec<String>), String> {

@@ -255,6 +255,13 @@ struct ClassifyJob {
     running:  bool,
     error:    Option<String>,
     is_complement: bool,
+    /// Set to `true` when the job's search ran on a preprocessed NNF
+    /// rather than the matrix's raw `nnf` / `nnf_complement`.  Cover
+    /// pairs and path positions in `snapshot` are already translated
+    /// back to original-NNF positions so the UI can render them on
+    /// the original formula's diagram; this flag is informational
+    /// (e.g. for the cover-group display to label lemma covers).
+    preprocessed: bool,
 }
 
 impl Default for ClassifyJob {
@@ -265,6 +272,7 @@ impl Default for ClassifyJob {
             running: false,
             error: None,
             is_complement: false,
+            preprocessed: false,
             total_path_count: 0.0,
             start_time: None,
         }
@@ -683,24 +691,149 @@ async fn simplify_handler(Json(req): Json<SimplifyRequest>) -> Json<SimplifyResp
 ///   cross-clause unit propagation.  Used by the `valid` and `satisfiable`
 ///   views, which only need a yes/no answer plus a witness — propagation
 ///   gets there much faster on structured formulas (adders, encoders).
+///
+/// `preprocess` enables Phase 1 NNF preprocessing (top-level unit
+/// propagation) — runs `matrix.preprocess_for_search(complement)` and
+/// hands the simplified NNF to the search.  Cover-pair and
+/// path-position outputs are translated back to original-formula
+/// positions so the UI renders them on the original formula's
+/// diagram.  Lemma covers derived during preprocessing are appended
+/// to `cover_groups` after the search completes.
 fn start_classify_job(
     job_state: Arc<Mutex<ClassifyJob>>,
     formula: &str,
     complement: bool,
     params: Option<logic::matrix::PathParams>,
     use_smart_controller: bool,
+    preprocess: bool,
 ) -> Result<(), String> {
     use logic::matrix::{
-        Matrix, DynOnClass, PathsClass, NNF,
-        default_classify_controller, format_path,
+        Matrix, DynOnClass, PathsClass, NNF, Lit,
+        default_classify_controller, format_lits, format_path,
     };
     use logic::controller::SmartController;
+    use logic::preprocess::{PositionMap, ReconstructionStack, ReconStep};
+
+    /// Simulate the matrix-method search's DFS through `ast`, counting
+    /// leaf positions visited up to (and including) the moment when
+    /// both `p1` and `p2` have been visited — i.e. the moment when
+    /// `BacktrackWhenCoveredController` would detect the cover and
+    /// back out.  The returned count matches the `prefix_length` the
+    /// search would have reported for a search-found cover of this
+    /// pair (within the variability introduced by alt-pick choices at
+    /// unconstrained pick-one nodes — this simulation picks alt 0 at
+    /// such nodes).
+    ///
+    /// `pick_one_is_sum` is `true` for satisfiability (search on
+    /// complement: `Sum` is pick-one under De Morgan) and `false` for
+    /// validity (search on `NNF`: `Prod` is pick-one).
+    fn dfs_prefix_length_to_cover(
+        ast: &NNF,
+        p1: &[usize],
+        p2: &[usize],
+        pick_one_is_sum: bool,
+    ) -> usize {
+        fn is_strict_prefix(prefix: &[usize], full: &[usize]) -> bool {
+            if prefix.len() >= full.len() { return false; }
+            prefix.iter().zip(full.iter()).all(|(a, b)| a == b)
+        }
+        struct Ctx<'a> {
+            p1: &'a [usize],
+            p2: &'a [usize],
+            pick_one_is_sum: bool,
+            visited_p1: bool,
+            visited_p2: bool,
+            count: usize,
+            done: bool,
+        }
+        fn walk(node: &NNF, pos: &mut Vec<usize>, ctx: &mut Ctx) {
+            if ctx.done { return; }
+            match node {
+                NNF::Lit(_) => {
+                    ctx.count += 1;
+                    if pos.as_slice() == ctx.p1 { ctx.visited_p1 = true; }
+                    if pos.as_slice() == ctx.p2 { ctx.visited_p2 = true; }
+                    if ctx.visited_p1 && ctx.visited_p2 { ctx.done = true; }
+                }
+                NNF::Sum(ch) | NNF::Prod(ch) => {
+                    let is_pick_one = match node {
+                        NNF::Sum(_)  => ctx.pick_one_is_sum,
+                        NNF::Prod(_) => !ctx.pick_one_is_sum,
+                        NNF::Lit(_)  => unreachable!(),
+                    };
+                    if is_pick_one {
+                        // At pick-one nodes, follow the constraint from
+                        // p1 or p2 if pos is a strict prefix of either;
+                        // otherwise pick alt 0 (the search's natural
+                        // first descent).
+                        let chosen = if is_strict_prefix(pos, ctx.p1) {
+                            ctx.p1[pos.len()]
+                        } else if is_strict_prefix(pos, ctx.p2) {
+                            ctx.p2[pos.len()]
+                        } else {
+                            0
+                        };
+                        if chosen < ch.len() {
+                            pos.push(chosen);
+                            walk(&ch[chosen], pos, ctx);
+                            pos.pop();
+                        }
+                    } else {
+                        for (i, child) in ch.iter().enumerate() {
+                            if ctx.done { break; }
+                            pos.push(i);
+                            walk(child, pos, ctx);
+                            pos.pop();
+                        }
+                    }
+                }
+            }
+        }
+        let mut ctx = Ctx {
+            p1, p2, pick_one_is_sum,
+            visited_p1: false, visited_p2: false,
+            count: 0, done: false,
+        };
+        let mut pos: Vec<usize> = Vec::new();
+        walk(ast, &mut pos, &mut ctx);
+        ctx.count
+    }
 
     let matrix = Matrix::try_from(formula).map_err(|e| e)?;
-    let target_nnf: &NNF = if complement { &matrix.nnf_complement } else { &matrix.nnf };
+    // Snapshot of the original NNF needed for lemma-cover sizing
+    // (we count leaves on covered paths through the *original*
+    // matrix, not the preprocessed one).  Kept separately so the
+    // `for_search` consumer doesn't move it.
+    let original_nnf_for_lemma = matrix.nnf.clone();
+
+    // If preprocessing is enabled, run Phase 1 UP and use the
+    // simplified-and-re-complemented NNF as the search target.  Keep
+    // the position map, reconstruction stack, and lemma covers
+    // around so the drainer can translate outputs back to the
+    // original-NNF positions / variables the UI expects.
+    let (target_nnf, pos_map_opt, recon_opt, lemma_covers):
+        (NNF, Option<PositionMap>, Option<ReconstructionStack>, logic::matrix::Cover) =
+        if preprocess {
+            let (search_target, pp) = matrix.preprocess_for_search(complement);
+            (search_target, Some(pp.pos_map), Some(pp.recon), pp.lemma_covers)
+        } else {
+            let raw = if complement { matrix.nnf_complement.clone() } else { matrix.nnf.clone() };
+            (raw, None, None, Vec::new())
+        };
     let total_path_count = target_nnf.path_count();
     let target = target_nnf.clone();
     let vars = matrix.ast.vars.clone();
+
+    // Translation helpers — closures over the optional pos_map.  When
+    // pos_map is None (preprocessing disabled) these are identity.
+    let pos_map_for_drainer = pos_map_opt;
+    let recon_for_drainer = recon_opt;
+    let translate_pos = |p: &logic::matrix::Position, pm: &Option<PositionMap>| -> logic::matrix::Position {
+        pm.as_ref().and_then(|m| m.translate(p)).unwrap_or_else(|| p.clone())
+    };
+    let translate_pair = |pair: &logic::matrix::Pair, pm: &Option<PositionMap>| -> logic::matrix::Pair {
+        pm.as_ref().and_then(|m| m.translate_pair(pair)).unwrap_or_else(|| pair.clone())
+    };
 
     let params_for_builder = params.clone();
     // `SmartController` has two constructors: `for_nnf` is
@@ -711,7 +844,39 @@ fn start_classify_job(
     // satisfiable views never see covered-prefix events even when
     // the user has asked to display them.
     let want_cover = params.as_ref().map_or(true, |p| !p.no_cover);
-    let (handle, mut rx, cancel) = if use_smart_controller {
+    // Build a thin wrapper Matrix so classify_paths can drive the
+    // search on `target_nnf`.  We embed `target_nnf` as both the
+    // `nnf` and `nnf_complement` of the wrapper — only the side
+    // matching `complement` will actually be used.  (Constructing
+    // via the public API requires a formula string, which we don't
+    // have for the preprocessed NNF; so we fall back to the existing
+    // un-preprocessed path when `preprocess == false` and use a
+    // direct call when `preprocess == true`.)
+    let (handle, mut rx, cancel) = if preprocess {
+        // Drive the search directly on `target_nnf` (preprocessed).
+        let nnf_for_builder = target.clone();
+        let buffer_size = 64usize;
+        if use_smart_controller {
+            if want_cover {
+                let p = params_for_builder.clone();
+                target_nnf.classify_paths(buffer_size, move |tx| {
+                    let on_class: DynOnClass = Box::new(move |class, hit_limit|
+                        tx.blocking_send((class, hit_limit)).is_ok());
+                    SmartController::for_nnf_with_cover(&nnf_for_builder, p, on_class)
+                })
+            } else {
+                let p = params_for_builder.clone();
+                target_nnf.classify_paths_uncovered_only(buffer_size, move |tx| {
+                    let on_class: DynOnClass = Box::new(move |class, hit_limit|
+                        tx.blocking_send((class, hit_limit)).is_ok());
+                    SmartController::for_nnf(&nnf_for_builder, p, on_class)
+                })
+            }
+        } else {
+            let p = params_for_builder.clone();
+            target_nnf.classify_paths(buffer_size, move |tx| default_classify_controller(p, tx))
+        }
+    } else if use_smart_controller {
         let nnf_for_builder = target.clone();
         matrix.classify_paths(complement, 64, params, move |tx| {
             let on_class: DynOnClass = Box::new(move |class, hit_limit|
@@ -731,6 +896,7 @@ fn start_classify_job(
         job.cancel = Some(cancel);
         job.total_path_count = total_path_count;
         job.start_time = Some(std::time::Instant::now());
+        job.preprocessed = preprocess;
     }
 
     let js = job_state.clone();
@@ -740,8 +906,13 @@ fn start_classify_job(
             match class {
                 PathsClass::Covered(cp) => {
                     let cover_count = target.prefix_cover_count(&cp.prefix);
-                    let key = pair_key(&cp.cover);
-                    let len = cp.prefix.len();
+                    // Translate pair and prefix back to original-NNF positions.
+                    let pair = translate_pair(&cp.cover, &pos_map_for_drainer);
+                    let prefix: Vec<logic::matrix::Position> = cp.prefix.iter()
+                        .map(|p| translate_pos(p, &pos_map_for_drainer))
+                        .collect();
+                    let key = pair_key(&pair);
+                    let len = prefix.len();
                     let snap = &mut job.snapshot;
                     snap.total_prefix_count += 1;
                     snap.classified_count += cover_count;
@@ -751,7 +922,7 @@ fn start_classify_job(
                         let gi = snap.cover_groups.len();
                         snap.group_map.insert(key, gi);
                         snap.cover_groups.push(CoverGroup {
-                            pair: cp.cover,
+                            pair,
                             count: 0,
                             prefix_length_min: usize::MAX,
                             prefix_length_max: 0,
@@ -764,7 +935,7 @@ fn start_classify_job(
                     g.prefix_length_min = g.prefix_length_min.min(len);
                     g.prefix_length_max = g.prefix_length_max.max(len);
                     if snap.total_prefix_count <= PREFIX_DETAIL_LIMIT {
-                        g.prefixes.push(cp.prefix);
+                        g.prefixes.push(prefix);
                     } else if snap.total_prefix_count == PREFIX_DETAIL_LIMIT + 1 {
                         for grp in &mut snap.cover_groups {
                             grp.prefixes.clear();
@@ -772,15 +943,86 @@ fn start_classify_job(
                     }
                 }
                 PathsClass::Uncovered(p) => {
+                    let raw_positions = target.positions_on_path(&p);
+                    let translated: logic::matrix::PathPrefix = raw_positions.iter()
+                        .map(|p| translate_pos(p, &pos_map_for_drainer))
+                        .collect();
+                    // Build the displayed witness.  When preprocessing
+                    // is on, the search ran on a simplified NNF that
+                    // doesn't mention any variable UP pinned — append
+                    // the recon stack's literals so the user sees the
+                    // full assignment, not just the post-pp residual.
+                    //
+                    // Recon stores each step as `Unit { var, value }`
+                    // where `value` is what the var must equal in the
+                    // witness direction (satisfying-F for satisfiability,
+                    // falsifying-F for validity).  The matrix-method's
+                    // display convention is "user mentally negates the
+                    // displayed literals to read the witness", so we
+                    // push each recon literal with `neg = value` (the
+                    // OPPOSITE of the recon's witness-direction lit).
+                    let path_str = if let Some(recon) = &recon_for_drainer {
+                        let mut lits: Vec<Lit> = target.lits_on_path(&p)
+                            .iter().map(|&l| l.clone()).collect();
+                        let mut seen: std::collections::HashSet<u32> =
+                            lits.iter().map(|l| l.var).collect();
+                        for step in &recon.steps {
+                            let ReconStep::Unit { var, value } = step;
+                            if seen.insert(*var) {
+                                lits.push(Lit { var: *var, neg: *value });
+                            }
+                        }
+                        format_lits(&lits, &vars)
+                    } else {
+                        format_path(&p, &target, &vars)
+                    };
                     job.snapshot.classified_count += 1.0;
-                    job.snapshot.uncovered_paths.push(format_path(&p, &target, &vars));
-                    job.snapshot.uncovered_path_positions.push(target.positions_on_path(&p));
+                    job.snapshot.uncovered_paths.push(path_str);
+                    job.snapshot.uncovered_path_positions.push(translated);
                 }
             }
             if hit_limit { job.snapshot.hit_limit = true; }
         }
         let _ = handle.await;
         let mut job = js.lock().unwrap();
+        // Append preprocessing-derived lemma covers to the cover-group
+        // list.  Their positions are already in the original NNF; for
+        // each lemma cover we simulate the matrix-method search's DFS
+        // through the original NNF and report the leaf-count at the
+        // moment when both endpoints have been visited — i.e. when
+        // the search would have detected this cover and backed out.
+        // That gives a prefix length in the same ballpark as
+        // search-found covers, matching what the paths-view shows
+        // for similar covers found by full DFS.  `prefixes` stays
+        // empty (no concrete search-derived path-trace to render).
+        for pair in lemma_covers {
+            let key = pair_key(&pair);
+            // SAT direction (complement=true): search ran on comp(F), so
+            // Sum acts as pick-one when walking F's NNF.  Validity
+            // direction: Prod is pick-one.  Matches the frontend's
+            // `coverProdType` rule ('OR' for SAT, 'AND' for validity).
+            let leaf_count = dfs_prefix_length_to_cover(
+                &original_nnf_for_lemma, &pair.0, &pair.1, complement);
+            let snap = &mut job.snapshot;
+            let gi = if let Some(&gi) = snap.group_map.get(&key) {
+                gi
+            } else {
+                let gi = snap.cover_groups.len();
+                snap.group_map.insert(key, gi);
+                snap.cover_groups.push(CoverGroup {
+                    pair,
+                    count: 0,
+                    prefix_length_min: usize::MAX,
+                    prefix_length_max: 0,
+                    prefixes: Vec::new(),
+                });
+                gi
+            };
+            let g = &mut snap.cover_groups[gi];
+            g.count += 1;
+            g.prefix_length_min = g.prefix_length_min.min(leaf_count);
+            g.prefix_length_max = g.prefix_length_max.max(leaf_count);
+        }
         job.running = false;
         let cancelled = job.cancel.as_ref().is_some_and(|c| c.is_cancelled());
         job.cancel = None;
@@ -801,6 +1043,7 @@ fn reset_and_start(
     complement: bool,
     params: Option<logic::matrix::PathParams>,
     use_smart_controller: bool,
+    preprocess: bool,
 ) -> Json<serde_json::Value> {
     {
         let mut job = job_state.lock().unwrap();
@@ -809,7 +1052,9 @@ fn reset_and_start(
         job.running = true;
         job.is_complement = complement;
     }
-    if let Err(e) = start_classify_job(job_state.clone(), formula, complement, params, use_smart_controller) {
+    if let Err(e) = start_classify_job(
+        job_state.clone(), formula, complement, params, use_smart_controller, preprocess,
+    ) {
         let mut job = job_state.lock().unwrap();
         job.running = false;
         job.error = Some(e);
@@ -840,7 +1085,9 @@ async fn valid_handler(
         covered_prefix_limit: usize::MAX,
         no_cover: req.no_cover,
     });
-    reset_and_start(&state.valid_job, &req.formula, false, params, /*use_smart_controller=*/ true)
+    reset_and_start(&state.valid_job, &req.formula, false, params,
+                    /*use_smart_controller=*/ true,
+                    /*preprocess=*/ true)
 }
 
 async fn valid_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {
@@ -857,7 +1104,9 @@ async fn paths_handler(
 ) -> Json<serde_json::Value> {
     use logic::matrix::PathParams;
     let params = Some(PathParams { paths_class_limit: req.paths_class_limit, ..Default::default() });
-    reset_and_start(&state.paths_job, &req.formula, req.complement, params, /*use_smart_controller=*/ false)
+    reset_and_start(&state.paths_job, &req.formula, req.complement, params,
+                    /*use_smart_controller=*/ false,
+                    /*preprocess=*/ false)
 }
 
 async fn paths_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {
@@ -879,7 +1128,9 @@ async fn satisfiable_handler(
         covered_prefix_limit: usize::MAX,
         no_cover: req.no_cover,
     });
-    reset_and_start(&state.sat_job, &req.formula, true, params, /*use_smart_controller=*/ true)
+    reset_and_start(&state.sat_job, &req.formula, true, params,
+                    /*use_smart_controller=*/ true,
+                    /*preprocess=*/ true)
 }
 
 async fn satisfiable_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {

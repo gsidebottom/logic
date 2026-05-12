@@ -680,4 +680,120 @@ mod tests {
             }
         }
     }
+
+    // ─── Tests for Matrix::preprocess_for_search ──────────────────────────
+
+    /// Drive a SAT-direction search through `preprocess_for_search`
+    /// and verify: (a) the search-target NNF gives the same yes/no
+    /// answer as searching `matrix.nnf_complement` directly, and (b)
+    /// path-positions and cover-pair-positions emitted by the search
+    /// translate (via `pp.pos_map`) to positions that correctly
+    /// reference leaves of the original `matrix.nnf_complement`.
+    fn preprocess_for_search_roundtrip(formula: &str, expected_sat: bool) {
+        let m = Matrix::try_from(formula).unwrap();
+        let (search_target, pp) = m.preprocess_for_search(true);
+
+        // Reference: run the un-preprocessed SAT search on
+        // `m.nnf_complement` and record what it found.
+        let mut ref_uncov = None;
+        {
+            let mut ctrl = crate::matrix::BacktrackWhenCoveredController::with_on_class(
+                Some(PathParams {
+                    paths_class_limit: usize::MAX,
+                    uncovered_path_limit: 1,
+                    covered_prefix_limit: usize::MAX,
+                    no_cover: false,
+                }),
+                |c, _| {
+                    if let PathsClass::Uncovered(p) = c {
+                        if ref_uncov.is_none() { ref_uncov = Some(p); }
+                        false
+                    } else { true }
+                },
+            );
+            m.nnf_complement.paths(&mut ctrl);
+        }
+        let ref_sat = ref_uncov.is_some();
+        assert_eq!(ref_sat, expected_sat,
+            "{}: reference SAT verdict mismatch", formula);
+
+        // Run the search on the *preprocessed* search target.
+        let mut pp_uncov: Option<crate::matrix::ProdPath> = None;
+        let mut pp_classes: Vec<PathsClass> = Vec::new();
+        {
+            let mut ctrl = crate::matrix::BacktrackWhenCoveredController::with_on_class(
+                Some(PathParams {
+                    paths_class_limit: usize::MAX,
+                    uncovered_path_limit: 1,
+                    covered_prefix_limit: usize::MAX,
+                    no_cover: false,
+                }),
+                |c, _| { pp_classes.push(c); true },
+            );
+            search_target.paths(&mut ctrl);
+        }
+        for c in &pp_classes {
+            if let PathsClass::Uncovered(p) = c {
+                if pp_uncov.is_none() { pp_uncov = Some(p.clone()); }
+            }
+        }
+        let pp_sat = pp_uncov.is_some();
+        assert_eq!(pp_sat, expected_sat,
+            "{}: preprocessed SAT verdict mismatch", formula);
+
+        if pp_sat {
+            // Reconstruct a satisfying assignment from the path's literals.
+            let path = pp_uncov.unwrap();
+            let path_lits: Vec<Lit> = search_target.lits_on_path(&path).iter()
+                .map(|&l| l.clone()).collect();
+            let mut full = pp.reconstruct_sat_assignment(path_lits);
+            // Pad unmentioned vars with `var = false`.
+            for v in 0..m.ast.vars.len() as u32 {
+                if !full.iter().any(|l| l.var == v) {
+                    full.push(Lit { var: v, neg: true });
+                }
+            }
+            assert_eq!(m.nnf.evaluate(&full), Ok(true),
+                "{}: reconstructed satisfying assignment {:?} does not satisfy F",
+                formula, full);
+
+            // Verify each emitted path-position translates to a valid
+            // original-NNF leaf via pos_map.
+            let positions = search_target.positions_on_path(&path);
+            for p in &positions {
+                let orig = pp.pos_map.translate(p)
+                    .unwrap_or_else(|| panic!(
+                        "{}: pos_map missing for search-target leaf {:?}", formula, p));
+                assert!(m.nnf_complement.lit_at(&orig).is_some(),
+                    "{}: translated position {:?} doesn't resolve to a leaf in m.nnf_complement",
+                    formula, orig);
+            }
+        } else {
+            // UNSAT: covers + lemma covers should dominate every comp path.
+            let cover: crate::matrix::Cover = pp_classes.iter()
+                .filter_map(|c| match c {
+                    PathsClass::Covered(cp) => Some(cp.cover.clone()),
+                    _ => None,
+                }).collect();
+            let translated = pp.reconstruct_cover(&cover);
+            let original_comp = &m.nnf_complement;
+            for path in original_comp.paths_iter() {
+                let positions = original_comp.positions_on_path(&path);
+                let covered = translated.iter().any(|(pa, pb)|
+                    positions.contains(pa) && positions.contains(pb));
+                assert!(covered,
+                    "{}: translated cover {:?} misses comp path {:?}",
+                    formula, translated, path);
+            }
+        }
+    }
+
+    #[test] fn preprocess_for_search_sat_unit() { preprocess_for_search_roundtrip("a", true); }
+    #[test] fn preprocess_for_search_sat_with_pp() { preprocess_for_search_roundtrip("a (a' + b)", true); }
+    #[test] fn preprocess_for_search_sat_or() { preprocess_for_search_roundtrip("a + b", true); }
+    #[test] fn preprocess_for_search_unsat_contradiction() { preprocess_for_search_roundtrip("a a'", false); }
+    #[test] fn preprocess_for_search_unsat_chain() { preprocess_for_search_roundtrip("a (a' + b) b'", false); }
+    #[test] fn preprocess_for_search_unsat_three_clauses() {
+        preprocess_for_search_roundtrip("a b (a' + b')", false);
+    }
 }

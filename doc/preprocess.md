@@ -4,15 +4,31 @@
 
 Run a sequence of cheap, semantics-preserving simplifications on the NNF
 *before* the matrix-method search begins, while preserving every
-externally-visible certificate the search currently produces:
+externally-visible certificate the search currently produces.  All four
+outcomes work through paths of the matrix the search runs on:
 
-- **SAT outcome:** a satisfying assignment over the **original**
-  variables.
-- **VALID outcome (UNSAT of the formula, SAT of validity):** a
-  falsifying assignment over the original variables.
-- **UNSAT outcome:** a *cover* — a set of complementary literal pairs at
-  **original** NNF positions that, together, dominate every path through
-  the matrix.
+- **SAT outcome** (satisfiability search runs on the *complement* NNF
+  matrix):  a satisfying assignment over the **original** variables,
+  derived from a non-complementary path of the complement NNF matrix.
+- **UNSAT outcome** (also via the complement NNF matrix): a
+  *complementary cover* of the complement NNF matrix — a set of
+  complementary literal pairs at **original**-complement-NNF positions
+  that together dominate every path through the complement matrix.
+- **VALID outcome** (validity = UNSAT of the complement): a
+  complementary cover of the NNF matrix, witnessing that
+  every path through the NNF matrix has a complementary pair.
+- **INVALID outcome** (validity = SAT of the complement): a falsifying
+  assignment over the original variables, derived from a
+  non-complementary path of there NNF matrix.
+
+In the existing code (`Matrix::valid` / `Matrix::satisfiable`) the
+validity-direction search runs on `self.nnf` (the original F)
+directly, but the certificates produced are interchangeable with the
+complement-side view because the matrix-method theorem applies to any
+NNF: a complementary cover of F's matrix and a complementary cover of
+comp(F)'s matrix are dual proofs of the same fact.  This doc speaks
+in terms of the complement matrix throughout because that's the side
+where SAT preprocessing (unit propagation) is sound.
 
 The four transformations under consideration:
 
@@ -302,6 +318,49 @@ later passes:
    times on the preprocessed NNF. We're looking for whether the
    preprocessed problem is faster (or, more dramatically, trivially
    solved before the search starts).
+
+## Phase 1 measured impact
+
+Phase 1 landed as `src/preprocess.rs` + a hook into the focused bench
+(`bench_focused_top_config_preprocessed`).  Results on the four
+benchmark rows:
+
+```
+                                            cadical  matrix.smart  matrix.cdcl  greedy×cdcl  greedy×eff
+random-3sat n=30 (SAT)        baseline   0.10 ms       0.29 ms       0.18 ms       1.34 ms      1.41 ms
+                              with pp    0.06 ms       0.27 ms       0.20 ms       1.34 ms      1.38 ms
+                              ratio        ~                                                  (pp = no-op: 0 units found)
+
+faulty_add 16/1 UNSAT         baseline   0.93 ms      50.25 ms      49.56 ms      22.19 ms      8.89 ms
+                              with pp    0.83 ms       0.90 ms       0.92 ms       1.36 ms      1.32 ms
+                              speedup                     56×           54×           16×          6.7×
+
+faulty_add 16/2 SAT           baseline   0.95 ms    6766    ms    6935    ms    3845    ms    919    ms
+                              with pp    0.82 ms      60.81 ms      80.67 ms      17.81 ms     26.47 ms
+                              speedup                    111×           86×          216×           35×
+
+bmc count-zeros UNSAT         baseline   4.34 ms       4.91 ms       6.27 ms      90.09 ms      3.87 ms
+                              with pp    4.47 ms       5.07 ms       7.32 ms      85.29 ms      5.08 ms
+                              ratio        ~             ~             ~             ~      0.76× (slight regression)
+```
+
+**Preprocess overhead:** 0.06–0.55 ms (negligible).
+
+**What happens on each row:**
+
+- **random-3sat** — no top-level unit clauses ⇒ 0 units found, total
+  no-op.  Timings within noise.
+- **faulty_add 16/1 UNSAT** — pp reduces 1210 → 831 leaves with 50
+  units and 116 lemma covers (the IO pinning a=3, b=19, s=21, c_0=0,
+  c_6=0 cascades through the carry chain).  `matrix.smart` and
+  `matrix.cdcl` close their 50× gap with CaDiCaL.
+- **faulty_add 16/2 SAT** — pp reduces 1600 → 1221 leaves with the
+  same 50 units / 116 lemmas.  The largest absolute wins: 6.9 s →
+  17.8 ms for `greedy×cdcl`, 6.8 s → 60 ms for `matrix.smart`.
+- **bmc count-zeros UNSAT** — 3600 → 3172 leaves, 16 units, 167
+  lemmas.  The 16-bit count-zeros logic isn't reduced by pure
+  top-level UP; backends are within noise (≤30% noise band), with a
+  small `greedy×eff` regression (3.87 → 5.08 ms).
 
 ## Phase 2+ (deferred, depending on Phase 1 results)
 

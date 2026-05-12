@@ -3,6 +3,18 @@
 # math.jq
 # at_most.jq
 # === end deps ===
+# examples
+#
+# faulty_add_at_most(8;0;255;1;255;1;1) (unsat)
+# faulty_add_at_most(8;0;255;1;255;1;2) (sat)
+#
+# faulty_add_at_most(16;0;65535;1;65535;1;1) (unsat)
+# faulty_add_at_most(16;0;65535;1;65535;1;2) (sat)
+#
+# faulty_add_at_most(27;0;134217727;1;134217727;1;1) (unsat)
+# faulty_add_at_most(27;0;134217727;1;134217727;1;2) (sat)
+# 
+
 def a(i): vi("a";i);
 def b(i): vi("b";i);
 def c(i): vi("c";i);

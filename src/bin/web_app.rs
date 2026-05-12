@@ -245,6 +245,15 @@ struct ClassifySnapshot {
     total_prefix_count:       usize,
     classified_count:         f64,
     hit_limit:                bool,
+    /// Set when preprocessing reduced the search target to a constant
+    /// — `Some("TRUE")` for `Prod([])` (preprocessing alone proved
+    /// the search target valid, i.e. the formula's question was
+    /// answered without any matrix-method search) or `Some("FALSE")`
+    /// for `Sum([])` (proved unsat).  `None` otherwise.  The UI uses
+    /// this to display a message like "Preprocessing covered every
+    /// path in the original matrix" when there are no concrete covers
+    /// from the search to show.
+    preprocessed_to:          Option<String>,
 }
 
 struct ClassifyJob {
@@ -643,6 +652,7 @@ struct ClassifyStatusResponse {
     running:                    bool,
     is_complement:              bool,
     error:                      Option<String>,
+    preprocessed_to:            Option<String>,
 }
 
 fn classify_status(job: &ClassifyJob) -> ClassifyStatusResponse {
@@ -667,6 +677,7 @@ fn classify_status(job: &ClassifyJob) -> ClassifyStatusResponse {
         running:                  job.running,
         is_complement:            job.is_complement,
         error:                    job.error.clone(),
+        preprocessed_to:          job.snapshot.preprocessed_to.clone(),
     }
 }
 
@@ -820,9 +831,53 @@ fn start_classify_job(
             let raw = if complement { matrix.nnf_complement.clone() } else { matrix.nnf.clone() };
             (raw, None, None, Vec::new())
         };
-    let total_path_count = target_nnf.path_count();
+    // `total_path_count` is the count the UI shows in
+    // "all N paths..." messages — it should reflect the *original*
+    // formula's matrix (what the user is thinking about), not the
+    // possibly-much-smaller preprocessed search target.  For
+    // preprocessing-off this equals the search target as before; for
+    // preprocessing-on we ignore the preprocessed target's path count
+    // and report the original side's path count.
+    //
+    // Edge case: formulas containing the constant `0` (or whose
+    // encoders emit one when a sub-constraint is structurally
+    // impossible — e.g. BMC `c_n > n` with `n ≥ 2^w`) put a
+    // `Sum([])` somewhere in `F` and a `Prod([])` in `comp(F)`.
+    // `Prod([])` annihilates the surrounding `Sum`'s cross-product so
+    // the *complement* side ends up with `path_count = 0` while `F`
+    // still has many paths.  When the primary side is 0 fall back to
+    // the other side so the UI doesn't read "all 0 paths".
+    let primary_path_count = if complement {
+        matrix.nnf_complement.path_count()
+    } else {
+        matrix.nnf.path_count()
+    };
+    let total_path_count = if primary_path_count > 0.0 {
+        primary_path_count
+    } else if complement {
+        matrix.nnf.path_count()
+    } else {
+        matrix.nnf_complement.path_count()
+    };
     let target = target_nnf.clone();
     let vars = matrix.ast.vars.clone();
+
+    // Detect whether preprocessing already reduced the search target
+    // to a constant — `Prod([])` (TRUE) means the search will find no
+    // paths (so no covers, no uncovered), and `Sum([])` (FALSE) means
+    // one empty path which the search will report as uncovered.
+    // Surface this state in the snapshot so the UI can show
+    // "Preprocessing covered every path in the original matrix" when
+    // there are no concrete covers to render.
+    let preprocessed_to: Option<String> = if preprocess {
+        match &target {
+            NNF::Prod(ch) if ch.is_empty() => Some("TRUE".to_string()),
+            NNF::Sum(ch)  if ch.is_empty() => Some("FALSE".to_string()),
+            _ => None,
+        }
+    } else {
+        None
+    };
 
     // Translation helpers — closures over the optional pos_map.  When
     // pos_map is None (preprocessing disabled) these are identity.
@@ -897,6 +952,7 @@ fn start_classify_job(
         job.total_path_count = total_path_count;
         job.start_time = Some(std::time::Instant::now());
         job.preprocessed = preprocess;
+        job.snapshot.preprocessed_to = preprocessed_to;
     }
 
     let js = job_state.clone();
@@ -970,6 +1026,20 @@ fn start_classify_job(
                             let ReconStep::Unit { var, value } = step;
                             if seen.insert(*var) {
                                 lits.push(Lit { var: *var, neg: *value });
+                            }
+                        }
+                        // Pad the witness with every remaining variable
+                        // at default polarity.  Preprocessing may reduce
+                        // the search target so far that the search
+                        // itself contributes no literals (and recon may
+                        // be empty too — e.g. when an annihilator like
+                        // `0` collapses the whole NNF).  Showing the
+                        // full N-variable witness matches what cadical
+                        // reports and what the un-preprocessed search
+                        // produced for similarly-shaped formulas.
+                        for var in 0u32..vars.len() as u32 {
+                            if seen.insert(var) {
+                                lits.push(Lit { var, neg: false });
                             }
                         }
                         format_lits(&lits, &vars)

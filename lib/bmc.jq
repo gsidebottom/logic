@@ -15,7 +15,7 @@
 # ...
 # c_N+1 = (a[N−1] = 0) ? c_N + 1 : c_N
 #
-# 3 as $w | 8 as $n | prod(bnc($n;$w), br(v_gt("c\($n)"; $n; $w)))
+# 4 as $w | 8 as $n | prod(bnc($n;$w), br(v_gt("c\($n)"; $n; $w)))
 def bnc(n;w):
   prod(
     br(prod(v_eq("c0"; 0; w))),

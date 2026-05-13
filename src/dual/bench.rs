@@ -872,16 +872,16 @@ fn bench_dual_plus_pinning_sweep() {
 ///
 /// Test cases (four rows):
 /// 1. random 3-SAT n=30, 90 clauses (deterministic LCG seed) — SAT
-/// 2. `faulty_add_at_most(16;0;65535;1;65535;1;1)` — UNSAT (1 fault)
-/// 3. `faulty_add_at_most(16;0;65535;1;65535;1;2)` — SAT (2 faults)
+/// 2. `faulty_add_at_most(27;0;134217727;1;134217727;1;1)` — UNSAT (1 fault)
+/// 3. `faulty_add_at_most(27;0;134217727;1;134217727;1;2)` — SAT (2 faults)
 /// 4. BMC count-zeros n=8 w=16 + `c_n > n` — UNSAT
 ///
-/// 16-bit faulty-adder rows replaced the original 27-bit ones from
-/// the table-fill exercise so `matrix.cdcl` / `matrix.smart` finish
-/// in tractable time.  3-bit and 4-bit rows were dropped — they
-/// were dominated by the 16-bit cases as a stress-test.  Skips any
-/// row whose jq sources aren't available (so the test passes in CI
-/// without the `lib/` directory).
+/// 27-bit faulty-adder rows (the table-fill version) replace the
+/// shorter 16-bit ones — large enough that the preprocessor's
+/// per-pass cost is meaningful next to search.  3-bit and 4-bit rows
+/// were dropped — they were dominated by the larger cases as a
+/// stress-test.  Skips any row whose jq sources aren't available (so
+/// the test passes in CI without the `lib/` directory).
 #[test]
 #[ignore]
 fn bench_focused_top_config() {
@@ -892,7 +892,7 @@ fn bench_focused_top_config() {
     //   "{:>14}"         →  "       TIMEOUT"   (14)
     // Header columns use the same width.
     let header = format!(
-        "{:<48}  {:>14}  {:>14}  {:>14}  {:>14}  {:>14}",
+        "{:<56}  {:>14}  {:>14}  {:>14}  {:>14}  {:>14}",
         "case", "cadical", "matrix.smart", "matrix.cdcl",
         "greedy×cdcl", "greedy×eff",
     );
@@ -927,7 +927,7 @@ fn bench_focused_top_config() {
             None => format!("{:>14}", "TIMEOUT"),
         };
         eprintln!(
-            "{:<48}  {}  {}  {}  {}  {}",
+            "{:<56}  {}  {}  {}  {}  {}",
             label, fmt(t_cd), fmt(t_sm), fmt(t_mc), fmt(t_gc), fmt(t_ge),
         );
     }
@@ -957,17 +957,17 @@ fn bench_focused_top_config() {
             move || run_cadical_clauses(clauses_for_cadical));
     }
 
-    // Rows 2–3 — faulty-adder 16-bit via jq
+    // Rows 2–3 — faulty-adder 27-bit via jq
     let faulty_rows: &[(&str, &str)] = &[
-        ("faulty_add_at_most(16;0;65535;1;65535;1;1) UNSAT",
-         "16;0;65535;1;65535;1;1"),
-        ("faulty_add_at_most(16;0;65535;1;65535;1;2) SAT",
-         "16;0;65535;1;65535;1;2"),
+        ("faulty_add_at_most(27;0;134217727;1;134217727;1;1) UNSAT",
+         "27;0;134217727;1;134217727;1;1"),
+        ("faulty_add_at_most(27;0;134217727;1;134217727;1;2) SAT",
+         "27;0;134217727;1;134217727;1;2"),
     ];
     for (label, args) in faulty_rows {
         match faulty_add_at_most_full(args) {
             Some((nnf, m)) => run_row(label, nnf, move || run_cadical_matrix(m)),
-            None => eprintln!("{:<48}  SKIP (jq libs not available)", label),
+            None => eprintln!("{:<56}  SKIP (jq libs not available)", label),
         }
     }
 
@@ -980,7 +980,7 @@ fn bench_focused_top_config() {
                 run_row("bmc count-zeros n=8 w=16 + (c_n>n) UNSAT",
                         nnf, move || run_cadical_matrix(m)),
             None =>
-                eprintln!("{:<48}  SKIP (jq libs not available)",
+                eprintln!("{:<56}  SKIP (jq libs not available)",
                           "bmc count-zeros n=8 w=16 + (c_n>n) UNSAT"),
         }
     }
@@ -988,16 +988,21 @@ fn bench_focused_top_config() {
 
 /// Same four rows as `bench_focused_top_config`, but each row's NNF is
 /// piped through Phase-1 unit-propagation preprocessing before being
-/// handed to the backends.  Prints one extra summary line per row
-/// (preprocess elapsed time, recon-stack depth, lemma-cover count)
-/// followed by the same five-column timing row, so this output can be
-/// eyeball-compared with the un-preprocessed run.
+/// handed to the matrix backends.  Prints one extra summary line per
+/// row (preprocess elapsed time, recon-stack depth, lemma-cover count)
+/// followed by the five-column timing row.  Matrix columns report
+/// `pp + search` totals; cadical (which gets the un-preprocessed
+/// formula and runs its own internal preprocessing) reports a
+/// straight `solve()` time.  Both columns therefore measure raw input
+/// → verdict wall-clock and can be compared directly.
 #[test]
 #[ignore]
 fn bench_focused_top_config_preprocessed() {
     eprintln!("\n=== focused top-config bench — WITH UP PREPROCESSING ===");
+    eprintln!("(matrix.* columns are pp+search totals — directly comparable with cadical's all-in time;");
+    eprintln!(" the bare pp time is also shown on its own line above each row.)");
     let header = format!(
-        "{:<48}  {:>14}  {:>14}  {:>14}  {:>14}  {:>14}",
+        "{:<56}  {:>14}  {:>14}  {:>14}  {:>14}  {:>14}",
         "case", "cadical", "matrix.smart", "matrix.cdcl",
         "greedy×cdcl", "greedy×eff",
     );
@@ -1029,15 +1034,27 @@ fn bench_focused_top_config_preprocessed() {
         let t_gc = run_with_timeout(move || run_dual_greedy_cdcl(n3));
         let n4 = simplified_comp.clone();
         let t_ge = run_with_timeout(move || run_dual_greedy_effective(n4));
-        let fmt = |t: Option<(bool, std::time::Duration)>| match t {
+        // Format helper.  `pp_ms` is added to the reported search time
+        // — pass `dt` for the matrix backends (so the column shows pp +
+        // search, i.e. total wall-clock from raw input to verdict) and
+        // `0.0` for the CaDiCaL column (CaDiCaL's `solve()` already
+        // includes whatever internal preprocessing it does, and we hand
+        // it the un-preprocessed formula, so its column is already a
+        // total).
+        let fmt = |t: Option<(bool, std::time::Duration)>, pp_ms: f64| match t {
             Some((is_sat, d)) => format!(
-                "{:>9.2} ms {}", d.as_secs_f64() * 1000.0,
+                "{:>9.2} ms {}", d.as_secs_f64() * 1000.0 + pp_ms,
                 if is_sat { "s" } else { "u" },
             ),
             None => format!("{:>14}", "TIMEOUT"),
         };
-        eprintln!("{:<48}  {}  {}  {}  {}  {}",
-                  label, fmt(t_cd), fmt(t_sm), fmt(t_mc), fmt(t_gc), fmt(t_ge));
+        eprintln!("{:<56}  {}  {}  {}  {}  {}",
+                  label,
+                  fmt(t_cd, 0.0),
+                  fmt(t_sm, dt),
+                  fmt(t_mc, dt),
+                  fmt(t_gc, dt),
+                  fmt(t_ge, dt));
     }
 
     fn count_lit_leaves(nnf: &NNF) -> usize {
@@ -1072,12 +1089,12 @@ fn bench_focused_top_config_preprocessed() {
             move || run_cadical_clauses(clauses_for_cadical));
     }
 
-    // Rows 2–3 — faulty-adder 16-bit via jq
+    // Rows 2–3 — faulty-adder 27-bit via jq
     let faulty_rows: &[(&str, &str)] = &[
-        ("faulty_add_at_most(16;0;65535;1;65535;1;1) UNSAT",
-         "16;0;65535;1;65535;1;1"),
-        ("faulty_add_at_most(16;0;65535;1;65535;1;2) SAT",
-         "16;0;65535;1;65535;1;2"),
+        ("faulty_add_at_most(27;0;134217727;1;134217727;1;1) UNSAT",
+         "27;0;134217727;1;134217727;1;1"),
+        ("faulty_add_at_most(27;0;134217727;1;134217727;1;2) SAT",
+         "27;0;134217727;1;134217727;1;2"),
     ];
     for (label, args) in faulty_rows {
         match faulty_add_at_most_full(args) {
@@ -1085,7 +1102,7 @@ fn bench_focused_top_config_preprocessed() {
                 let original_nnf = m.nnf.clone();
                 run_pp_row(label, original_nnf, move || run_cadical_matrix(m));
             }
-            None => eprintln!("{:<48}  SKIP (jq libs not available)", label),
+            None => eprintln!("{:<56}  SKIP (jq libs not available)", label),
         }
     }
 
@@ -1099,7 +1116,7 @@ fn bench_focused_top_config_preprocessed() {
                 run_pp_row("bmc count-zeros n=8 w=16 + (c_n>n) UNSAT",
                            original_nnf, move || run_cadical_matrix(m));
             }
-            None => eprintln!("{:<48}  SKIP (jq libs not available)",
+            None => eprintln!("{:<56}  SKIP (jq libs not available)",
                               "bmc count-zeros n=8 w=16 + (c_n>n) UNSAT"),
         }
     }

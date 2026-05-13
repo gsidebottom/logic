@@ -725,6 +725,14 @@ fn start_classify_job(
     use logic::controller::SmartController;
     use logic::preprocess::{PositionMap, ReconstructionStack};
 
+    // Start the wall-clock timer here, before parsing and preprocessing,
+    // so the UI's `elapsed_secs` reflects raw-input → verdict time and
+    // is directly comparable with the cadical-style all-in numbers from
+    // `bench_focused_top_config_preprocessed`.  Without this, the timer
+    // would only cover the search phase and silently undercount the
+    // user's wait by `pp` (3–7 ms on the focused benchmark formulas).
+    let job_start = std::time::Instant::now();
+
     /// Simulate the matrix-method search's DFS through `ast`, counting
     /// leaf positions visited up to (and including) the moment when
     /// both `p1` and `p2` have been visited — i.e. the moment when
@@ -950,7 +958,10 @@ fn start_classify_job(
         let mut job = job_state.lock().unwrap();
         job.cancel = Some(cancel);
         job.total_path_count = total_path_count;
-        job.start_time = Some(std::time::Instant::now());
+        // Use the timer started at the very top of this function so
+        // preprocessing + search-setup are included in `elapsed_secs`
+        // (the UI's "at N paths/s in T ms" reading).
+        job.start_time = Some(job_start);
         job.preprocessed = preprocess;
         job.snapshot.preprocessed_to = preprocessed_to;
     }

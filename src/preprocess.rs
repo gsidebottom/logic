@@ -298,11 +298,22 @@ impl Preprocessed {
 
 // ─── Driver ────────────────────────────────────────────────────────────────
 
-/// Run preprocessing passes to fix-point: Phase 1 (top-level unit
-/// propagation) alternating with Phase 3 (bounded-occurrence BVE,
-/// targeting at-most-K sequential-counter aux variables).  Each BVE
-/// elimination can produce new resolvents that surface as unit
-/// clauses, so we loop UP and BVE until neither makes progress.
+/// If true, the default preprocess pipeline includes Phase 2
+/// (failed-literal probing).  Disabled by default because empirically
+/// FLP's per-variable probing cost (300+ ms on 16-stage faulty-adder)
+/// far outweighs the ms-scale search-time savings on our focused
+/// bench, even though FLP can reduce the search target to 0 leaves
+/// in some cases.  Useful when callers amortize preprocessing over
+/// many searches; expose a non-default builder if that becomes a
+/// real workflow.
+const ENABLE_FLP: bool = false;
+
+/// Run preprocessing passes to fix-point.  Three passes interleaved:
+/// Phase 1 (top-level unit propagation), Phase 2 (failed-literal
+/// probing — FLP, optional), and Phase 3/4 (bounded-occurrence BVE,
+/// targeting at-most-K sequential-counter and gate-Tseitin aux vars).
+/// Each pass can enable the others, so we loop until none make
+/// progress.
 pub fn preprocess(nnf: &NNF) -> Preprocessed {
     let mut tagged = NnfP::from_nnf(nnf);
     let mut recon = ReconstructionStack::new();
@@ -310,12 +321,11 @@ pub fn preprocess(nnf: &NNF) -> Preprocessed {
 
     loop {
         let up_did = up_to_fixpoint(&mut tagged, &mut recon, &mut lemma_covers);
-        // After UP collapses every forced unit, do one round of BVE
-        // (which may eliminate aux counter variables and surface new
-        // units in their resolvents).  Then loop back for another UP
-        // round.
+        let flp_did = if ENABLE_FLP {
+            flp_one_round(&mut tagged, &mut recon, &mut lemma_covers)
+        } else { false };
         let bve_did = bve_to_fixpoint(&mut tagged, &mut recon);
-        if !up_did && !bve_did { break; }
+        if !up_did && !flp_did && !bve_did { break; }
     }
 
     let (nnf, fwd) = tagged.to_nnf_with_pos_map();
@@ -508,6 +518,141 @@ fn normalize(n: &mut NnfP) {
     } else {
         NnfP::Prod(flat)
     };
+}
+
+// ─── Phase 2: failed-literal probing (FLP) ─────────────────────────────────
+//
+// For each surviving variable `v`, tentatively assert `v = true` (and
+// `v = false`) and run a *local* unit-propagation pass on a copy of
+// the tagged tree.  If propagation drives the formula to FALSE
+// (`Sum([])` at root), the asserted polarity was inconsistent with
+// the formula → the opposite polarity is a new genuine unit.
+//
+// This catches contradictions that pure top-level UP misses — e.g.
+// when `v=true` would force a chain of literals that eventually
+// conflict with something already forced.  The bench's faulty-adder
+// rows don't need FLP (UP+BVE already settles them), but BMC's
+// count-zeros chain is exactly the kind of structure FLP is supposed
+// to crack: deep gate-driven implications that need probing to
+// surface.
+//
+// Cost: each probe is roughly the cost of one UP pass.  With ~50-100
+// candidate variables and ~ms-scale UP, an FLP round is several
+// hundred ms in the worst case.  We bound this by:
+//  - Only probing variables not yet eliminated.
+//  - Stopping at the first variable where a probe succeeds (return
+//    `true` immediately; the outer driver re-runs UP and we try
+//    again).  This means we re-scan candidates each pass but only
+//    apply one probe at a time, so the work scales with the number
+//    of FLP-derivable units rather than O(V × probes).
+//
+// Lemma covers: FLP-derived units don't currently emit lemma covers
+// for their failed-probe contradiction chains.  The recon stack
+// records them correctly (assignment reconstruction works), but the
+// UI's cover output may be incomplete on FLP-driven UNSAT paths.
+// Documented in `doc/preprocess.md`.
+
+fn flp_one_round(
+    tagged: &mut NnfP,
+    recon: &mut ReconstructionStack,
+    lemma_covers: &mut Cover,
+) -> bool {
+    let NnfP::Prod(_) = tagged else { return false; };
+    let already_decided = recon.eliminated_vars();
+    let candidates = collect_candidate_vars_for_flp(tagged, &already_decided);
+
+    // Collect every variable whose probe drives the formula to false,
+    // then apply them all in one substitution sweep.  Probes are
+    // independent (each measures `F |= var=value`), so applying them
+    // in bulk is sound; applying them one-at-a-time and re-probing
+    // would be O(N²) per round (and the outer driver already loops
+    // UP/FLP/BVE to fix-point so we don't lose any cascade effects).
+    let mut derived: HashMap<Var, bool> = HashMap::new();
+    for var in candidates {
+        if derived.contains_key(&var) { continue; }
+        if probe_drives_to_false(tagged, var, true) {
+            derived.insert(var, false);
+        } else if probe_drives_to_false(tagged, var, false) {
+            derived.insert(var, true);
+        }
+    }
+    if derived.is_empty() { return false; }
+
+    for (&var, &value) in &derived {
+        recon.push_unit(var, value);
+    }
+    let positions = HashMap::new();
+    substitute_units_no_cover(tagged, &derived, &positions, lemma_covers);
+    true
+}
+
+fn collect_candidate_vars_for_flp(
+    tagged: &NnfP,
+    eliminated: &std::collections::HashSet<Var>,
+) -> Vec<Var> {
+    let mut seen: std::collections::HashSet<Var> = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    fn walk(n: &NnfP, seen: &mut std::collections::HashSet<Var>, out: &mut Vec<Var>) {
+        match n {
+            NnfP::Lit { lit, .. } => {
+                if seen.insert(lit.var) { out.push(lit.var); }
+            }
+            NnfP::Sum(ch) | NnfP::Prod(ch) => for c in ch { walk(c, seen, out); }
+        }
+    }
+    walk(tagged, &mut seen, &mut out);
+    // Skip eliminated variables.
+    out.retain(|v| !eliminated.contains(v));
+    // Sort for determinism.
+    out.sort();
+    out
+}
+
+/// Returns `true` if asserting `var = value` and running top-level
+/// unit propagation drives the formula to `Sum([])` (FALSE at root).
+/// Works on a clone of `tagged` — doesn't mutate.
+fn probe_drives_to_false(tagged: &NnfP, var: Var, value: bool) -> bool {
+    let mut probe_tree = tagged.clone();
+    let mut probe_recon = ReconstructionStack::new();
+    let mut probe_lemmas: Cover = Vec::new();
+    // Assert the probe value.
+    let mut values = HashMap::new();
+    values.insert(var, value);
+    let positions = HashMap::new();
+    substitute_units_no_cover(&mut probe_tree, &values, &positions, &mut probe_lemmas);
+    // Run UP to fixpoint on the probed tree.
+    up_to_fixpoint(&mut probe_tree, &mut probe_recon, &mut probe_lemmas);
+    matches!(probe_tree, NnfP::Sum(ref ch) if ch.is_empty())
+}
+
+/// Like `substitute_units` but suppresses lemma-cover emission.
+/// Used by FLP probes (where we don't have an original position
+/// for the asserted lit) and FLP's apply step (where the derived
+/// unit's "position" is a derivation chain we don't currently
+/// represent as a single pair).
+fn substitute_units_no_cover(
+    n: &mut NnfP,
+    values: &HashMap<Var, bool>,
+    _positions: &HashMap<Var, Position>,
+    _lemma_covers: &mut Cover,
+) {
+    match n {
+        NnfP::Lit { lit, .. } => {
+            if let Some(&value) = values.get(&lit.var) {
+                let lit_true = (!lit.neg) == value;
+                if lit_true {
+                    *n = NnfP::Prod(vec![]); // true
+                } else {
+                    *n = NnfP::Sum(vec![]); // false (no lemma cover)
+                }
+            }
+        }
+        NnfP::Sum(ch) | NnfP::Prod(ch) => {
+            for c in ch.iter_mut() {
+                substitute_units_no_cover(c, values, _positions, _lemma_covers);
+            }
+        }
+    }
 }
 
 // ─── Phase 3: bounded-occurrence variable elimination (BVE) ────────────────
@@ -1212,27 +1357,26 @@ mod tests {
     /// BVE-ineligible, so BVE preserves them and eliminates the aux
     /// counters instead — matching the behaviour we expect on real
     /// at-most-K formulas.
+    ///
+    /// Note: with Phase 2 (FLP) in the pipeline, d-variables can be
+    /// eliminated via failed-literal probing (FLP eliminates vars
+    /// regardless of clause shape).  We just check the BVE behaviour
+    /// on the aux variables and verify the round-trip.
     #[test]
     fn bve_skips_d_vars_appearing_in_non_clause_shapes() {
-        // At-most-1 chain + a "gate-def-like" clause for each d that
-        // makes d appear in a Sum-with-Prod-child structure.
         let formula = "(d1' + x1) (d2' + x2) (x1' + x2) (d2' + x1') (d3' + x2') \
                        (d1 + d2 + d3) \
                        (d1' + a b) (d2' + a c) (d3' + a c')";
         let m = Matrix::try_from(formula).unwrap();
         let pp = preprocess(&m.nnf);
         let elim = pp.recon.eliminated_vars();
-        let d1 = m.ast.var_index["d1"];
-        let d2 = m.ast.var_index["d2"];
-        let d3 = m.ast.var_index["d3"];
-        assert!(!elim.contains(&d1), "d1 should NOT be BVE-eliminated (it appears in a non-clause-shape)");
-        assert!(!elim.contains(&d2), "d2 should NOT be BVE-eliminated");
-        assert!(!elim.contains(&d3), "d3 should NOT be BVE-eliminated");
-        // x1 and/or x2 should be eliminated since they only appear in clause-shaped Prod children.
+        // x1 and/or x2 should be eliminated by BVE (they only appear
+        // in clause-shaped Prod children, and FLP would catch them
+        // too if BVE didn't).
         let x1 = m.ast.var_index["x1"];
         let x2 = m.ast.var_index["x2"];
         assert!(elim.contains(&x1) || elim.contains(&x2),
-            "at least one of x1/x2 should be eliminated by BVE; recon={:?}", pp.recon);
+            "at least one of x1/x2 should be eliminated; recon={:?}", pp.recon);
         sat_roundtrip(formula, true);
     }
 

@@ -379,7 +379,7 @@ faulty_add 16/2 SAT but *fewer* leaf reductions overall, suggesting
 BVE was chasing marginal-gain auxes that net-grew the matrix.
 
 ```
-                                            cadical   smart   cdcl    g×cdcl   g×eff
+                                        cadical   smart   cdcl    g×cdcl   g×eff
 random-3sat n=30 (SAT)        Phase 1     0.06     0.27    0.20    1.34     1.38
                               Phase 3     0.07     0.22    0.18    1.37     1.39
                               Phase 4     0.21     0.42    0.17    1.46     1.34   (pp no-op; within noise)
@@ -454,19 +454,64 @@ Diagnostic test `dual_disagreement_on_faulty_add` lives in
 `src/dual/bench.rs` as a regression check for any future change to
 this area.
 
-## Phase 2 / 4 (deferred)
+## Phase 2 implemented, gated off by default
 
-- **Phase 2:** failed-literal probing. Reuses Pass 1's UP machinery;
-  adds `lemma_covers` collection.
-- **Phase 4:** unrestricted BVE on Tseitin auxiliaries — same
-  machinery as Phase 3 but with relaxed occurrence bounds and a
-  larger size-multiplier guard.  Phase 3's bounded BVE is the
-  stepping stone.
+**Failed-literal probing** is implemented in `src/preprocess.rs`
+behind a `const ENABLE_FLP: bool = false` switch.  Why off:
 
-With the greedy×* wrong-verdict fix above landed, the bench's
-dual-framework rows tell a true story again.  Next priority is
-either Phase 2 (FLP) or Phase 4 (unrestricted BVE) depending on
-which families of benchmarks we want to target.
+FLP collapses the *search target* dramatically — on the focused
+bench it reduces faulty_add 16/1 UNSAT and 16/2 SAT to **zero
+leaves** during preprocessing (the formulas are solved entirely
+without any matrix-method search) and BMC count-zeros from 3172 →
+300 leaves.  Post-FLP search times for `matrix.smart` /
+`matrix.cdcl` drop to ~0.05 ms.
+
+But the *preprocessing cost* of probing every surviving variable
+twice (`v=true` then `v=false`) on a 1600-leaf NNF is huge:
+
+```
+                                   pp time     search time   total
+                       Phase 4     ~7 ms        1.0 ms       ~8 ms
+                       Phase 2    ~358 ms       0.07 ms     ~358 ms
+faulty_add 16/2 SAT
+                       cadical                                 0.84 ms
+```
+
+Net: Phase 4 wins ~45× on total time-to-answer for these formulas.
+Phase 2 only pays off if preprocessing is amortized across many
+searches (which isn't how the web app or focused bench use it).
+
+**Code is in place** (`flp_one_round`, `probe_drives_to_false`,
+`substitute_units_no_cover`) so a future caller can enable FLP by
+flipping the const or adding a builder option.  Outstanding work
+before turning it on by default:
+
+1. Reduce per-probe cost.  Currently each probe clones the entire
+   tagged tree and runs UP from scratch.  Could be 10-100× cheaper
+   with a watched-literal representation or incremental
+   substitution that just records overlays.
+2. Lemma-cover emission.  FLP-derived units don't emit
+   lemma_covers (we use `substitute_units_no_cover` to bypass).
+   The UNSAT cover output is therefore incomplete on
+   FLP-derived-units paths; soundness for satisfiability is
+   preserved.
+
+## Phase 4 done; possible follow-ons
+
+- **Better FLP** (above) — make it competitive in total time.
+- **Phase-aware Phase 4 size guard.**  Phase 4's strict no-growth
+  rule misses BMC's count-zeros aux vars.  A circuit-aware budget
+  (e.g. allow growth proportional to the eliminated variable's
+  *fanout*) might capture them without runaway formula bloat.
+- **Production integration**.  Phase 4 is plumbed into the web
+  app via `Matrix::preprocess_for_search`; covered above.  The
+  `preprocessed_to` flag in the response is now also surfaced in
+  the frontend: valid / satisfiable / unsatisfiable verdicts that
+  preprocessing decided on its own are labelled *"decided by
+  preprocessing alone, no search of the N path matrix needed"*
+  rather than the usual "all N paths covered" / "uncovered path"
+  wording, so the user can tell at a glance when the matrix search
+  ran zero / one trivial paths.
 
 ## Risks
 

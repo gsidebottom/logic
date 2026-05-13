@@ -1403,6 +1403,7 @@ export default function App() {
       totalPathCount: data.total_path_count,
       hitLimit: data.hit_limit,
       isComplement: complementFlag,
+      preprocessedTo: data.preprocessed_to ?? null,
     });
     setPathsRunning(!!data.running);
     if (!data.running) stopPathsPolling();
@@ -1485,6 +1486,7 @@ export default function App() {
       totalPathCount: data.total_path_count,
       elapsedSecs: data.elapsed_secs,
       hitLimit: data.hit_limit,
+      preprocessedTo: data.preprocessed_to ?? null,
     });
     setValidRunning(!!data.running);
     if (!data.running) stopValidPolling();
@@ -1565,6 +1567,7 @@ export default function App() {
       elapsedSecs: data.elapsed_secs,
       hitLimit: data.hit_limit,
       isComplement: true,
+      preprocessedTo: data.preprocessed_to ?? null,
     });
     setSatRunning(!!data.running);
     if (!data.running) stopSatPolling();
@@ -2885,6 +2888,9 @@ export default function App() {
                     const elapsed = validResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((validResult.classifiedCount ?? 0) / elapsed) : 0;
                     const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
+                    if (validResult.preprocessedTo) {
+                      return `✓ Valid — decided by preprocessing alone, no search of the ${fmtNum(total)} path matrix needed${ratePart}`;
+                    }
                     return `✓ Valid — all ${fmtNum(total)} paths through the matrix are covered${ratePart}`;
                   })()}
                   {validResult.coverGroups?.length > 0 && ast && (() => {
@@ -2994,7 +3000,8 @@ export default function App() {
                     const elapsed = validResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((validResult.classifiedCount ?? 0) / elapsed) : 0;
                     const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
-                    return `✗ Not valid — falsifying assignment and uncovered path in ${fmtNum(total)} path matrix${ratePart}:`;
+                    const ppNote = validResult.preprocessedTo ? ' (decided by preprocessing alone)' : '';
+                    return `✗ Not valid — falsifying assignment and uncovered path in ${fmtNum(total)} path matrix${ratePart}${ppNote}:`;
                   })()}
                   {validResult.path && (() => {
                     const p = validResult.path;
@@ -3251,7 +3258,8 @@ export default function App() {
                     const elapsed = satResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((satResult.classifiedCount ?? 0) / elapsed) : 0;
                     const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
-                    return `✓ Satisfiable — satisfying assignment and uncovered path in complement of ${fmtNum(total)} path matrix${ratePart}:`;
+                    const ppNote = satResult.preprocessedTo ? ' (decided by preprocessing alone)' : '';
+                    return `✓ Satisfiable — satisfying assignment and uncovered path in complement of ${fmtNum(total)} path matrix${ratePart}${ppNote}:`;
                   })()}
                   {satResult.path && (() => {
                     const p = satResult.path;
@@ -3416,6 +3424,9 @@ export default function App() {
                     const elapsed = satResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((satResult.classifiedCount ?? 0) / elapsed) : 0;
                     const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
+                    if (satResult.preprocessedTo) {
+                      return `✗ Unsatisfiable — decided by preprocessing alone, no search of the ${fmtNum(total)} path complement matrix needed${ratePart}`;
+                    }
                     return `✗ Unsatisfiable — all ${fmtNum(total)} paths in the complement are covered${ratePart}`;
                   })()}
                   {satResult.coverGroups?.length > 0 && ast && (() => {

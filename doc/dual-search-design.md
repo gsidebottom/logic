@@ -472,6 +472,49 @@ overhead drops out of the critical path entirely; the controller
 gets to use its narrowing intelligence (effective-count = 0 ⇒
 prune) on a per-step cost competitive with raw CDCL propagation.
 
+#### Confirmed: CDCL is essential as the Effective layer's inner
+
+A natural follow-up question after the table above: the Effective
+layer composes itself on top of an inner cover-aware
+`PathSearchController` — currently hard-wired to `CdclController`
+in `EffectivePathController::run` (`src/dual/path_effective.rs`).
+Is CDCL pulling its weight there, or is the effective-count layer
+doing all the real pruning?
+
+A one-off experiment in May 2026 replaced the inner with
+`BacktrackWhenCoveredController` (plain backtrack) and re-ran the
+focused 27-bit bench (with Phase 1+3+4 preprocessing on, the
+matrix method's strongest configuration):
+
+| row                              | greedy×eff (CDCL inner) | greedy×eff (basic inner) |
+|----------------------------------|-------------------------|--------------------------|
+| random-3sat n=30 (SAT)           | 1.45 ms                 | 1.45 ms (tie)            |
+| faulty_add 27-bit / 1f UNSAT     | 9.73 ms                 | **TIMEOUT (>60 s)**      |
+| faulty_add 27-bit / 2f SAT       | 46.52 ms                | **TIMEOUT (>60 s)**      |
+| bmc count-zeros n=8 w=16 UNSAT   | 6.84 ms                 | **TIMEOUT (>60 s)**      |
+
+CDCL is decisively essential.  On every structured row, removing
+it blows the search past the 60-second timeout — slowdowns of
+~1 300× (27/2 SAT), ~6 000× (27/1 UNSAT), and ~8 700× (BMC) on
+the lower bound; the real factor is unbounded because all three
+hit the timeout rather than finishing.  Only random-3sat
+(no propagation chains for CDCL to exploit) is a wash.
+
+The reading: **the effective-count layer and CDCL are
+synergistic, not competing.**  The count layer adds value that
+CDCL alone doesn't have (BMC: `greedy × cdcl` 102 ms →
+`greedy × eff` 6.84 ms — same CDCL inner, 15× speedup from the
+count layer), and CDCL adds value the count layer alone doesn't
+have (27-bit/BMC: removing CDCL → timeout).  Both layers
+contribute, both are needed, and the gain is multiplicative.
+
+This kills one tempting simplification (drop CDCL → smaller
+codepath), but it's also good architectural news: every part of
+the existing strongest configuration is earning its keep.  The
+experimental `EffectivePathBasicController` and its bench column
+were removed after this run; the finding is recorded here so we
+don't re-explore the same dead end.
+
 ### Trait changes — wrapper approach
 
 The current `DualPathSearchController` is a thin run-it harness;

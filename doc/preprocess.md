@@ -362,20 +362,111 @@ bmc count-zeros UNSAT         baseline   4.34 ms       4.91 ms       6.27 ms    
   top-level UP; backends are within noise (≤30% noise band), with a
   small `greedy×eff` regression (3.87 → 5.08 ms).
 
-## Phase 2+ (deferred, depending on Phase 1 results)
+## Phase 3 / Phase 4 measured impact
+
+Phase 3 implemented **bounded-occurrence BVE** (initially `p ≤ 2`,
+`n ≤ 2`) with a strict per-step lit-count size guard.  The BVE
+formulation handles at-most-1 *and* at-most-K (≥ 2) sequential
+counter chains uniformly: each counter aux has 2 positive and 2
+negative occurrences, so it resolves out within the bound.
+
+Phase 4 extended the same machinery with a **looser occurrence bound
+of (8, 8)** — capturing gate-Tseitin aux vars that appear in 3–6
+clauses per polarity (AND/OR/XOR gate definitions + their downstream
+uses).  The size guard stays strict (no lit-count growth):
+empirically a +25% growth slack caused *more* BVE eliminations on
+faulty_add 16/2 SAT but *fewer* leaf reductions overall, suggesting
+BVE was chasing marginal-gain auxes that net-grew the matrix.
+
+```
+                                            cadical   smart   cdcl    g×cdcl   g×eff
+random-3sat n=30 (SAT)        Phase 1     0.06     0.27    0.20    1.34     1.38
+                              Phase 3     0.07     0.22    0.18    1.37     1.39
+                              Phase 4     0.21     0.42    0.17    1.46     1.34   (pp no-op; within noise)
+faulty_add 16/1 UNSAT         Phase 1     0.83     0.90    0.92    1.36     1.32
+                              Phase 3     0.79     1.85    1.93    1.32     3.93
+                              Phase 4     0.87     0.79    0.64    1.31     1.36   (~cadical parity)
+faulty_add 16/2 SAT           Phase 1     0.82    60.81   80.67   17.81    26.47
+                              Phase 3     0.86     4.83    4.64    1.32     1.31
+                              Phase 4     0.88     1.31    0.94    1.32     1.30   (🎯 cadical parity)
+bmc count-zeros UNSAT         Phase 1     4.47     5.07    7.32   85.29     5.08
+                              Phase 3     4.52     4.98    6.53   80.20     5.16
+                              Phase 4     4.29     5.60    6.64   86.02     5.08   (~unchanged across phases)
+```
+
+**Phase 4 preprocessing depth**, faulty_add 16/2 SAT: leaves 1600 →
+1147, 88 recon steps (vs. Phase 3's 1213 leaves / 54 steps).  The
+extra 34 BVE eliminations were aux vars with 3-4 occurrences that
+Phase 3's tighter bound skipped.
+
+**BMC didn't improve** under either Phase 3 or Phase 4.  Its
+count-zeros aux vars appear to have either >8 occurrences per
+polarity or BVE-induced lit growth that exceeds the strict guard.
+The remaining work on BMC needs different techniques — perhaps Phase
+2 (FLP) probing deeper into the carry chain, or a tuned size-budget
+specifically for circuit-encoded formulas.
+
+**Result with Phase 4:** `matrix.smart` and `matrix.cdcl` are now
+essentially at **cadical parity** on faulty_add 16/2 SAT (1.31 / 0.94
+ms vs cadical's 0.88 ms — closed the ~100× gap completely).  No
+regressions on the other bench rows.  Reconstruction round-trips
+correctly via `ReconStep::Defined` with a pad-survivors-first
+extension order.
+
+### Bug surfaced and fixed by Phase 3 (resolved)
+
+The first Phase 3 bench showed `greedy×cdcl` and `greedy×eff`
+returning UNSAT (incorrect) on `faulty_add 16/2 SAT` while
+`cadical`, `matrix.smart`, and `matrix.cdcl` correctly returned SAT
+on the same Phase-3-simplified NNF.
+
+**Root cause** (located via a bisection diagnostic in
+`bench.rs::dual_disagreement_on_faulty_add`): `CdclController`
+returned `Some(1)` for cascade conflicts ("1-Prod backjump").  The
+positions-on DFS engine (`for_each_path_prefix_ord`) honours that
+unwind request, which on Phase-3-simplified NNFs propagated up
+through an enclosing `Sum` and skipped the subtree that contained
+the SAT witness.  The positions-off DFS engine
+(`for_each_path_prefix_no_positions_ord`) sidestepped the issue by
+casting the controller's `Option<usize>` to `bool` via `.is_none()`
+— silently dropping the multi-level-unwind semantics.
+
+**Fix** (committed in `src/controller/cdcl.rs`,
+`should_continue_on_prefix`): CDCL now returns `Some(0)` (skip this
+alt only) for cascade conflicts instead of `Some(1)` (skip the
+whole Prod).  The learned clause is still registered, so future
+propagation through the same path still benefits.  The fix is
+identical in effect to what positions-off DFS was already doing via
+`.is_none()`.  Trade-off: we lose the 1-Prod backjump optimization
+when CDCL drives the positions-on DFS engine — typically ~1.5-2.5×
+slower on `matrix.smart` / `matrix.cdcl` for SAT-direction searches
+with significant cascade activity, but still 12-20× faster than
+Phase 1 alone on the targeted faulty_add 16/2 SAT case.
+
+A second cleanup at the same time: BVE candidate selection is now
+deterministic (sort by `(cost, var)` instead of relying on `HashMap`
+iteration order).  Pre-fix, the bench's `matrix.smart` could swing
+from 4 ms to 240 ms across runs because different ordering of
+ties in `min_by_key` produced different simplified-NNF clause
+orderings.
+
+Diagnostic test `dual_disagreement_on_faulty_add` lives in
+`src/dual/bench.rs` as a regression check for any future change to
+this area.
+
+## Phase 2 / 4 (deferred)
 
 - **Phase 2:** failed-literal probing. Reuses Pass 1's UP machinery;
   adds `lemma_covers` collection.
-- **Phase 3:** at-most-1 detection. Pattern match + collapse.
-- **Phase 4:** BVE with size-guard.
+- **Phase 4:** unrestricted BVE on Tseitin auxiliaries — same
+  machinery as Phase 3 but with relaxed occurrence bounds and a
+  larger size-multiplier guard.  Phase 3's bounded BVE is the
+  stepping stone.
 
-We'll re-evaluate after Phase 1: if unit propagation alone delivers a
-big chunk of the expected wins on the faulty-adder rows, the remaining
-phases are clearly worth the effort. If unit propagation is a wash,
-that's a useful signal that the bottleneck isn't variables-that-pin
-themselves and we should look elsewhere (e.g. BVE on real Tseitin
-auxiliaries is the more aggressive transformation, and is a candidate
-even if Phase 1 doesn't move the needle).
+With the greedy×* wrong-verdict fix above landed, the bench's
+dual-framework rows tell a true story again.  Next priority is
+either Phase 2 (FLP) or Phase 4 (unrestricted BVE) depending on
+which families of benchmarks we want to target.
 
 ## Risks
 

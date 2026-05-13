@@ -1177,15 +1177,23 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
         if self.restart_pending {
             return Some(usize::MAX);
         }
-        // Step 6: cascade conflicts (with learned clauses) escape the
-        // current Prod's alt loop via `Some(1)`; path-level conflicts
-        // fall back to chronological `Some(0)`.  The inner controller
-        // may also have asked for backtrack (covered-prefix detection),
-        // in which case its return value already encodes the request.
-        if want_backjump {
-            return Some(1);
-        }
-        if want_backtrack {
+        // Step 6: cascade conflicts (with learned clauses) and
+        // path-level conflicts both fall back to chronological
+        // `Some(0)` (skip this alt only).
+        //
+        // Originally `Some(1)` was returned for cascade conflicts to
+        // skip the entire current Prod, but that interacts badly
+        // with the positions-on DFS engine on Phase-3-BVE-simplified
+        // NNFs: the 1-Prod backjump unwinds out of a Prod whose
+        // remaining alts may still hold the SAT witness, producing
+        // an incorrect UNSAT verdict.  Dropping back to `Some(0)`
+        // loses the backjump optimization (the search explores the
+        // remaining alts manually) but is sound under both DFS
+        // variants and matches what the positions-off DFS engine
+        // already does via its `.is_none()` cast.  See
+        // `doc/preprocess.md` § "Open issue surfaced by Phase 3"
+        // for the bisection diagnostic.
+        if want_backjump || want_backtrack {
             return Some(0);
         }
         inner_r
@@ -1729,9 +1737,11 @@ mod tests {
 
     // ── Step 6: backjump tests ───────────────────────────────────────
 
-    /// Cascade conflicts should return `Some(1)` (1-Prod backjump),
-    /// not `Some(0)` (chronological).  Path-level conflicts should
-    /// still return `Some(0)`.
+    /// Cascade conflicts register a learned clause and request a
+    /// backtrack (via `Some(0)` — see the doc comment in
+    /// `should_continue_on_prefix` for why `Some(1)` was downgraded
+    /// to `Some(0)` on the positions-on DFS soundness issue with
+    /// Phase 3 BVE-simplified NNFs).
     #[test]
     fn step6_cascade_conflict_returns_backjump_distance_1() {
         // Same NNF as step4_simple_cascade — known cascade conflict.
@@ -1762,19 +1772,12 @@ mod tests {
             },
         );
 
-        let returns = returns_cell.into_inner();
-        // The cascade conflict from pushing ¬c happens at the
-        // first step.  We expect at least one Some(1) return value
-        // (= 1-Prod backjump from the cascade-derived learned
-        // clause).  We don't assert there are *no* Some(0) returns
-        // because path-level conflicts and the inner controller's
-        // covered-prefix detection can also drive backtracks.
-        assert!(
-            returns.iter().any(|&r| r == Some(1)),
-            "expected at least one Some(1) return from cascade conflict; got {:?}",
-            returns,
-        );
-        // Also: the controller registered a learned clause along the way.
+        let _returns = returns_cell.into_inner();
+        // The cascade conflict from pushing ¬c registers a learned
+        // clause and asks for a chronological skip (`Some(0)`).
+        // What we test here is the *learning* — the backjump request
+        // itself is downgraded to `Some(0)` to stay sound on the
+        // positions-on DFS engine.
         assert!(
             !ctrl.learned_clauses().is_empty(),
             "expected at least one learned clause to accompany the backjump",

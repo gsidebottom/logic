@@ -723,7 +723,7 @@ fn start_classify_job(
         default_classify_controller, format_lits, format_path,
     };
     use logic::controller::SmartController;
-    use logic::preprocess::{PositionMap, ReconstructionStack, ReconStep};
+    use logic::preprocess::{PositionMap, ReconstructionStack};
 
     /// Simulate the matrix-method search's DFS through `ast`, counting
     /// leaf positions visited up to (and including) the moment when
@@ -1018,31 +1018,24 @@ fn start_classify_job(
                     // push each recon literal with `neg = value` (the
                     // OPPOSITE of the recon's witness-direction lit).
                     let path_str = if let Some(recon) = &recon_for_drainer {
-                        let mut lits: Vec<Lit> = target.lits_on_path(&p)
-                            .iter().map(|&l| l.clone()).collect();
-                        let mut seen: std::collections::HashSet<u32> =
-                            lits.iter().map(|l| l.var).collect();
-                        for step in &recon.steps {
-                            let ReconStep::Unit { var, value } = step;
-                            if seen.insert(*var) {
-                                lits.push(Lit { var: *var, neg: *value });
-                            }
-                        }
-                        // Pad the witness with every remaining variable
-                        // at default polarity.  Preprocessing may reduce
-                        // the search target so far that the search
-                        // itself contributes no literals (and recon may
-                        // be empty too — e.g. when an annihilator like
-                        // `0` collapses the whole NNF).  Showing the
-                        // full N-variable witness matches what cadical
-                        // reports and what the un-preprocessed search
-                        // produced for similarly-shaped formulas.
-                        for var in 0u32..vars.len() as u32 {
-                            if seen.insert(var) {
-                                lits.push(Lit { var, neg: false });
-                            }
-                        }
-                        format_lits(&lits, &vars)
+                        // Build the F-direction witness assignment, then
+                        // negate it for display (the UI follows the
+                        // "user mentally negates path literals to read
+                        // the witness" convention).  Use
+                        // `pad_survivors_and_extend` (not raw
+                        // `extend_assignment`) because Phase 3's
+                        // `Defined` recon steps evaluate their defns
+                        // against surviving variables — those must
+                        // already be in the assignment before recon
+                        // replay.
+                        let mut witness_f: Vec<Lit> = target.lits_on_path(&p)
+                            .iter().map(|&l| l.complement()).collect();
+                        recon.pad_survivors_and_extend(&mut witness_f, vars.len() as u32);
+                        // Display in target polarity (user negates).
+                        let display_lits: Vec<Lit> = witness_f.iter()
+                            .map(|l| l.complement())
+                            .collect();
+                        format_lits(&display_lits, &vars)
                     } else {
                         format_path(&p, &target, &vars)
                     };

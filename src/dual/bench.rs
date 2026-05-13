@@ -1104,3 +1104,125 @@ fn bench_focused_top_config_preprocessed() {
         }
     }
 }
+
+/// Diagnostic: confirm the dual-framework greedy×* wrong-verdict bug
+/// on the actual faulty-adder formula, by running both
+/// `matrix.cdcl` and `greedy×cdcl` on the *same* Phase-3-simplified
+/// NNF and reporting their verdicts.  Skipped if jq libs aren't
+/// available.
+#[test]
+#[ignore]
+fn dual_disagreement_on_faulty_add() {
+    use crate::dual::{
+        BasicCoverState, GreedyMaxCoverController, CdclDualPathController,
+        Outcome, SearchMode, solve_dual,
+    };
+    let rows: &[(&str, &str, bool)] = &[
+        ("faulty_add 16/1 UNSAT", "16;0;65535;1;65535;1;1", false),
+        ("faulty_add 16/2 SAT",   "16;0;65535;1;65535;1;2", true),
+    ];
+    for (label, args, expected_sat) in rows {
+        let Some((_, matrix)) = faulty_add_at_most_full(args) else {
+            eprintln!("{:<24}  SKIP (jq libs missing)", label);
+            continue;
+        };
+        let pp = crate::preprocess::preprocess(&matrix.nnf);
+        let simplified_comp = pp.nnf.complement();
+        use crate::controller::CdclController;
+        let is_flat = crate::dual::is_flat_sum_of_prods(&simplified_comp);
+        let n_mined_pairs = crate::dual::flat::mine_pairs(&simplified_comp).len();
+
+        // Reference 2: cdcl in *cover-mode* (with_on_class).  This is
+        // the inner controller `CdclDualPathController` uses but
+        // without the dual framework's wrapping.  Helps isolate
+        // whether the bug is in cover-mode CDCL alone or in the
+        // dual's wrapping.
+        let t_cover = std::time::Instant::now();
+        let mut cover_cdcl_saw_uncovered = false;
+        {
+            let mut ctrl = CdclController::for_nnf_with_cover(
+                &simplified_comp,
+                Some(crate::matrix::PathParams {
+                    paths_class_limit:   usize::MAX,
+                    uncovered_path_limit: 1,
+                    covered_prefix_limit: usize::MAX,
+                    no_cover: false,
+                }),
+                |c, _| {
+                    if matches!(c, crate::matrix::PathsClass::Uncovered(_)) {
+                        cover_cdcl_saw_uncovered = true;
+                    }
+                    true
+                },
+            );
+            simplified_comp.for_each_path_prefix_with_controller(&mut ctrl);
+        }
+        let cover_ms = t_cover.elapsed().as_secs_f64() * 1000.0;
+
+        // Reference 3: uncov-only CDCL driven by the SAME DFS engine
+        // as cover-mode (`for_each_path_prefix_with_controller`,
+        // positions-on).  Distinguishes between "different DFS
+        // engine" and "different controller mode".
+        let t_uncov_with_positions = std::time::Instant::now();
+        let mut uncov_with_positions_saw = false;
+        {
+            let mut ctrl = CdclController::for_nnf(
+                &simplified_comp,
+                Some(crate::matrix::PathParams {
+                    paths_class_limit:   usize::MAX,
+                    uncovered_path_limit: 1,
+                    covered_prefix_limit: usize::MAX,
+                    no_cover: false,  // ignored when ctrl is uncov-only
+                }),
+                |c, _| {
+                    if matches!(c, crate::matrix::PathsClass::Uncovered(_)) {
+                        uncov_with_positions_saw = true;
+                    }
+                    true
+                },
+            );
+            // Note: this controller has needs_cover() == false, but we
+            // drive it with the positions-on DFS anyway (the
+            // positions-off DFS has a debug_assert that we'd trip).
+            simplified_comp.for_each_path_prefix_with_controller(&mut ctrl);
+        }
+        let uncov_pos_ms = t_uncov_with_positions.elapsed().as_secs_f64() * 1000.0;
+
+        let t_ref = std::time::Instant::now();
+        let cdcl_sat = run_single(simplified_comp.clone(), Backend::Cdcl);
+        let ref_ms = t_ref.elapsed().as_secs_f64() * 1000.0;
+
+        // greedy×cdcl via solve_dual.
+        let t_dual = std::time::Instant::now();
+        let dual_outcome = solve_dual(
+            &simplified_comp,
+            GreedyMaxCoverController::default(),
+            CdclDualPathController::<BasicCoverState>::default(),
+            SearchMode::Satisfiable,
+        );
+        let dual_sat = matches!(dual_outcome, Outcome::Sat(_));
+        let dual_ms = t_dual.elapsed().as_secs_f64() * 1000.0;
+
+        // Also try basic A (no greedy) + cdcl B — if basic agrees,
+        // the bug is in greedy's seed_pool; if basic also disagrees,
+        // it's in the cover-mode CDCL or StateQueryWrapper.
+        let t_basic = std::time::Instant::now();
+        let basic_dual_outcome = solve_dual(
+            &simplified_comp,
+            crate::dual::BasicCoverController::default(),
+            CdclDualPathController::<BasicCoverState>::default(),
+            SearchMode::Satisfiable,
+        );
+        let basic_dual_sat = matches!(basic_dual_outcome, Outcome::Sat(_));
+        let basic_ms = t_basic.elapsed().as_secs_f64() * 1000.0;
+
+        eprintln!("{:<24}  expected_sat={}", label, expected_sat);
+        eprintln!("    is_flat={}  mined_pairs={}", is_flat, n_mined_pairs);
+        eprintln!("    cdcl uncov-only no-pos DFS  ({:>7.2} ms)_sat={}", ref_ms, cdcl_sat);
+        eprintln!("    cdcl uncov-only pos-on  DFS ({:>7.2} ms)_sat={}", uncov_pos_ms, uncov_with_positions_saw);
+        eprintln!("    cdcl cover-mode pos-on  DFS ({:>7.2} ms)_sat={}", cover_ms, cover_cdcl_saw_uncovered);
+        eprintln!("    basic×cdcl                  ({:>7.2} ms)_sat={}", basic_ms, basic_dual_sat);
+        eprintln!("    greedy×cdcl                 ({:>7.2} ms)_sat={}  AGREE_with_cdcl={}",
+                  dual_ms, dual_sat, cdcl_sat == dual_sat);
+    }
+}

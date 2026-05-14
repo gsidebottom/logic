@@ -1139,6 +1139,11 @@ export default function App() {
   // ── CaDiCaL SAT solver state ──────────────────────────────────────────────
   const [cadicalEnabled,        setCadicalEnabled]        = useState(false);
   const [noCoverEnabled,        setNoCoverEnabled]        = useState(false); // skip cover construction in valid/sat for speed
+  // Matrix-method backend selector for the Valid / Satisfiable buttons.
+  // One of: 'smart', 'cdcl', 'eff', 'greedy_cdcl', 'greedy_eff'.  Default
+  // 'greedy_eff' — currently the strongest matrix-method configuration on
+  // most rows of the focused 27-bit bench.
+  const [matrixBackend,         setMatrixBackend]         = useState('greedy_eff');
   const [cadicalValidResult,    setCadicalValidResult]    = useState(null); // {assignment, learnedClauses, elapsedSecs, error}
   const [cadicalSatResult,      setCadicalSatResult]      = useState(null);
   const [cadicalValidRunning,   setCadicalValidRunning]   = useState(false);
@@ -1515,7 +1520,7 @@ export default function App() {
     try {
       const res = await fetch(API_BASE + '/valid', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input, no_cover: noCoverEnabled }),
+        body: JSON.stringify({ formula: input, no_cover: noCoverEnabled, backend: matrixBackend }),
       });
       if (!res.ok) throw new Error('start failed');
     } catch (e) {
@@ -1596,7 +1601,7 @@ export default function App() {
     try {
       const res = await fetch(API_BASE + '/satisfiable', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input, no_cover: noCoverEnabled }),
+        body: JSON.stringify({ formula: input, no_cover: noCoverEnabled, backend: matrixBackend }),
       });
       if (!res.ok) throw new Error('start failed');
     } catch (e) {
@@ -1870,6 +1875,27 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noCoverEnabled]);
+
+  // When the matrix backend selector changes while a valid/sat display
+  // is open, re-run the matrix-side check with the new backend.  Same
+  // pattern as the `noCoverEnabled` effect above — cancel any in-flight
+  // job and fetch fresh.  Cadical results are unaffected (they're
+  // independent of the matrix backend).
+  const didInitBackend = useRef(false);
+  useEffect(() => {
+    if (!didInitBackend.current) { didInitBackend.current = true; return; }
+    if (validResult && !validResult.error) {
+      stopValidPolling();
+      if (validRunning) { fetch(API_BASE + '/valid/cancel', { method: 'POST' }).catch(()=>{}); }
+      fetchValid();
+    }
+    if (satResult && !satResult.error) {
+      stopSatPolling();
+      if (satRunning) { fetch(API_BASE + '/satisfiable/cancel', { method: 'POST' }).catch(()=>{}); }
+      fetchSat();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matrixBackend]);
 
   // When "CaDiCaL" toggles while a valid/sat display is open, start or stop
   // the cadical-side job to match the checkbox.
@@ -2706,7 +2732,26 @@ export default function App() {
           )}
 
       {/* Analysis buttons */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 4, marginTop: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 4, marginTop: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#444', marginRight: 4 }}
+               title="Matrix-method backend used by the Valid / Satisfiable buttons">
+          backend:
+          <select
+            value={matrixBackend}
+            onChange={e => setMatrixBackend(e.target.value)}
+            style={{
+              fontSize: 12, padding: '2px 4px',
+              border: '1px solid #c8c8c8', borderRadius: 4,
+              background: 'white',
+            }}
+          >
+            <option value="smart">matrix.smart</option>
+            <option value="cdcl">matrix.cdcl</option>
+            <option value="eff">matrix.eff</option>
+            <option value="greedy_cdcl">greedy×cdcl</option>
+            <option value="greedy_eff">greedy×eff</option>
+          </select>
+        </label>
         {btn('✓ Valid?',       handleValid,       '#6a2a9a', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula is a tautology")}
         {validRunning && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>

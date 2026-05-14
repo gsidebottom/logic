@@ -32,6 +32,13 @@ use crate::matrix::{Lit, NNF, PathParams, PathPrefix, PathsClass, ProdPath};
 
 pub struct EffectivePathController<S: CoverState = BasicCoverState> {
     _state: std::marker::PhantomData<S>,
+    /// Optional UI streaming sink — when set, every `PathsClass` event
+    /// the path search emits is forwarded here (in addition to the
+    /// dual framework's internal pool / uncovered handling).  Used by
+    /// the web UI so the `greedy×eff` backend can populate cover
+    /// groups and the uncovered-path list the same way single-DFS
+    /// backends do.
+    stream_tx: Option<tokio::sync::mpsc::Sender<(PathsClass, bool)>>,
 }
 
 impl<S: CoverState> Default for EffectivePathController<S> {
@@ -40,7 +47,14 @@ impl<S: CoverState> Default for EffectivePathController<S> {
 
 impl<S: CoverState> EffectivePathController<S> {
     pub fn new() -> Self {
-        Self { _state: std::marker::PhantomData }
+        Self { _state: std::marker::PhantomData, stream_tx: None }
+    }
+
+    /// Build the controller with a UI-streaming sender.  Every
+    /// `PathsClass` event is cloned and `blocking_send`'d to `tx`
+    /// before the dual framework's internal handler runs.
+    pub fn with_stream(tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> Self {
+        Self { _state: std::marker::PhantomData, stream_tx: Some(tx) }
     }
 }
 
@@ -63,13 +77,21 @@ impl<S: CoverState + 'static> DualPathSearchController for EffectivePathControll
         let counts = EffectiveCounts::new(&idx);
 
         let uncovered: Arc<Mutex<Option<ProdPath>>> = Arc::new(Mutex::new(None));
+        let stream_tx = self.stream_tx;
 
         let on_class = {
             let pool = pool.clone();
             let uncovered = uncovered.clone();
             let cancel = cancel.clone();
-            move |class: PathsClass, _hit_limit: bool| -> bool {
+            move |class: PathsClass, hit_limit: bool| -> bool {
                 if cancel.load(Ordering::SeqCst) { return false; }
+                // Tee to the UI stream first (clone, since the inner
+                // match below moves `class`).  If the UI receiver has
+                // dropped, we silently drop the event — the dual
+                // framework still drives to its own termination.
+                if let Some(ref tx) = stream_tx {
+                    let _ = tx.blocking_send((class.clone(), hit_limit));
+                }
                 match class {
                     PathsClass::Covered(cpp) => { pool.push(cpp.cover); true }
                     PathsClass::Uncovered(pp) => {

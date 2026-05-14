@@ -27,6 +27,9 @@ use crate::matrix::{NNF, PathParams, PathsClass, ProdPath};
 
 pub struct CdclDualPathController<S: CoverState = BasicCoverState> {
     _state: std::marker::PhantomData<S>,
+    /// Optional UI streaming sink — see `EffectivePathController` for
+    /// docs.  Same pattern.
+    stream_tx: Option<tokio::sync::mpsc::Sender<(PathsClass, bool)>>,
 }
 
 impl<S: CoverState> Default for CdclDualPathController<S> {
@@ -35,7 +38,14 @@ impl<S: CoverState> Default for CdclDualPathController<S> {
 
 impl<S: CoverState> CdclDualPathController<S> {
     pub fn new() -> Self {
-        Self { _state: std::marker::PhantomData }
+        Self { _state: std::marker::PhantomData, stream_tx: None }
+    }
+
+    /// Build the controller with a UI-streaming sender; every
+    /// `PathsClass` event is forwarded to `tx` in addition to the
+    /// dual framework's internal pool/uncovered handling.
+    pub fn with_stream(tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> Self {
+        Self { _state: std::marker::PhantomData, stream_tx: Some(tx) }
     }
 }
 
@@ -51,14 +61,18 @@ impl<S: CoverState + 'static> DualPathSearchController for CdclDualPathControlle
         cancel: Arc<AtomicBool>,
     ) -> PathOutcome {
         let uncovered: Arc<Mutex<Option<ProdPath>>> = Arc::new(Mutex::new(None));
+        let stream_tx = self.stream_tx;
 
         let on_class = {
             let pool = pool.clone();
             let uncovered = uncovered.clone();
             let cancel = cancel.clone();
-            move |class: PathsClass, _hit_limit: bool| -> bool {
+            move |class: PathsClass, hit_limit: bool| -> bool {
                 if cancel.load(Ordering::SeqCst) {
                     return false;
+                }
+                if let Some(ref tx) = stream_tx {
+                    let _ = tx.blocking_send((class.clone(), hit_limit));
                 }
                 match class {
                     PathsClass::Covered(cpp) => {

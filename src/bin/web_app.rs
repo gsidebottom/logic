@@ -612,6 +612,56 @@ struct FormulaRequest {
     formula: String,
     #[serde(default)]
     no_cover: bool,
+    /// Backend selector — one of "smart", "cdcl", "eff",
+    /// "greedy_cdcl", "greedy_eff".  Defaults to `greedy_eff`
+    /// (matches the UI selector's initial value).
+    #[serde(default = "default_backend")]
+    backend: String,
+}
+
+fn default_backend() -> String { "greedy_eff".to_string() }
+
+/// Internal enum form of the request's `backend` string.  Constructed
+/// in the handler via `parse_backend(&req.backend)`; on unknown
+/// strings we fall back to `GreedyEff` rather than erroring (the UI
+/// only sends a value from its known list, but a stale client could
+/// send anything).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Backend {
+    /// Single-DFS `BacktrackWhenCoveredController`.  Used by the
+    /// `paths` view (it needs the full cover certificates).  Not
+    /// exposed in the UI selector.
+    Backtrack,
+    /// Single-DFS `SmartController`.  Previous default for valid /
+    /// satisfiable.
+    Smart,
+    /// Single-DFS `CdclController`.
+    Cdcl,
+    /// Single-DFS `EffectiveCountWrapper<CdclController>` — CDCL with
+    /// the effective-path-count layer wrapped around it, no dual
+    /// framework overhead.
+    Eff,
+    /// Dual `GreedyMaxCoverController × CdclDualPathController`.
+    GreedyCdcl,
+    /// Dual `GreedyMaxCoverController × EffectivePathController`.
+    /// New default for valid / satisfiable; currently the strongest
+    /// matrix-method configuration on most rows of the focused
+    /// 27-bit bench.
+    GreedyEff,
+}
+
+// (`Backend::is_dual` helper omitted — the match arm in
+// `start_classify_job` directly handles the dual variants.)
+
+fn parse_backend(s: &str) -> Backend {
+    match s {
+        "smart"       => Backend::Smart,
+        "cdcl"        => Backend::Cdcl,
+        "eff"         => Backend::Eff,
+        "greedy_cdcl" => Backend::GreedyCdcl,
+        "greedy_eff"  => Backend::GreedyEff,
+        _             => Backend::GreedyEff,
+    }
 }
 
 #[derive(Deserialize)]
@@ -715,14 +765,14 @@ fn start_classify_job(
     formula: &str,
     complement: bool,
     params: Option<logic::matrix::PathParams>,
-    use_smart_controller: bool,
+    backend: Backend,
     preprocess: bool,
 ) -> Result<(), String> {
     use logic::matrix::{
         Matrix, DynOnClass, PathsClass, NNF, Lit,
         default_classify_controller, format_lits, format_path,
     };
-    use logic::controller::SmartController;
+    use logic::controller::{CdclController, SmartController};
     use logic::preprocess::{PositionMap, ReconstructionStack};
 
     // Start the wall-clock timer here, before parsing and preprocessing,
@@ -899,60 +949,89 @@ fn start_classify_job(
     };
 
     let params_for_builder = params.clone();
-    // `SmartController` has two constructors: `for_nnf` is
-    // uncovered-only (suppresses `Covered` events for speed), while
-    // `for_nnf_with_cover` enables cover-pair certificates so the
-    // UI can display them.  Pick the matching one based on the
-    // request's `no_cover` flag — without this, the valid /
-    // satisfiable views never see covered-prefix events even when
-    // the user has asked to display them.
+    // `for_nnf_with_cover` enables cover-pair certificates so the UI
+    // can display them; `for_nnf` is the cheaper uncovered-only
+    // variant that suppresses `Covered` events.  Pick based on the
+    // request's `no_cover` flag.
     let want_cover = params.as_ref().map_or(true, |p| !p.no_cover);
-    // Build a thin wrapper Matrix so classify_paths can drive the
-    // search on `target_nnf`.  We embed `target_nnf` as both the
-    // `nnf` and `nnf_complement` of the wrapper — only the side
-    // matching `complement` will actually be used.  (Constructing
-    // via the public API requires a formula string, which we don't
-    // have for the preprocessed NNF; so we fall back to the existing
-    // un-preprocessed path when `preprocess == false` and use a
-    // direct call when `preprocess == true`.)
-    let (handle, mut rx, cancel) = if preprocess {
-        // Drive the search directly on `target_nnf` (preprocessed).
-        let nnf_for_builder = target.clone();
-        let buffer_size = 64usize;
-        if use_smart_controller {
+    let buffer_size = 64usize;
+
+    // Dispatch by backend.  Single-DFS backends (smart, cdcl, eff,
+    // backtrack) use `classify_paths*` directly.  Dual backends
+    // (greedy_cdcl, greedy_eff) run `solve_dual_with_cancel` in a
+    // spawn_blocking task and stream events through a
+    // controller-side `Sender` set up via `with_stream`.
+    let (handle, mut rx, cancel) = match backend {
+        Backend::Backtrack => {
+            let p = params_for_builder.clone();
+            target_nnf.classify_paths(buffer_size, move |tx| default_classify_controller(p, tx))
+        }
+        Backend::Smart => {
+            let nnf_for_builder = target.clone();
+            let p = params_for_builder.clone();
             if want_cover {
-                let p = params_for_builder.clone();
                 target_nnf.classify_paths(buffer_size, move |tx| {
                     let on_class: DynOnClass = Box::new(move |class, hit_limit|
                         tx.blocking_send((class, hit_limit)).is_ok());
                     SmartController::for_nnf_with_cover(&nnf_for_builder, p, on_class)
                 })
             } else {
-                let p = params_for_builder.clone();
                 target_nnf.classify_paths_uncovered_only(buffer_size, move |tx| {
                     let on_class: DynOnClass = Box::new(move |class, hit_limit|
                         tx.blocking_send((class, hit_limit)).is_ok());
                     SmartController::for_nnf(&nnf_for_builder, p, on_class)
                 })
             }
-        } else {
-            let p = params_for_builder.clone();
-            target_nnf.classify_paths(buffer_size, move |tx| default_classify_controller(p, tx))
         }
-    } else if use_smart_controller {
-        let nnf_for_builder = target.clone();
-        matrix.classify_paths(complement, 64, params, move |tx| {
-            let on_class: DynOnClass = Box::new(move |class, hit_limit|
-                tx.blocking_send((class, hit_limit)).is_ok());
+        Backend::Cdcl => {
+            let nnf_for_builder = target.clone();
+            let p = params_for_builder.clone();
             if want_cover {
-                SmartController::for_nnf_with_cover(&nnf_for_builder, params_for_builder, on_class)
+                target_nnf.classify_paths(buffer_size, move |tx| {
+                    let on_class: DynOnClass = Box::new(move |class, hit_limit|
+                        tx.blocking_send((class, hit_limit)).is_ok());
+                    CdclController::for_nnf_with_cover(&nnf_for_builder, p, on_class)
+                })
             } else {
-                SmartController::for_nnf(&nnf_for_builder, params_for_builder, on_class)
+                target_nnf.classify_paths_uncovered_only(buffer_size, move |tx| {
+                    let on_class: DynOnClass = Box::new(move |class, hit_limit|
+                        tx.blocking_send((class, hit_limit)).is_ok());
+                    CdclController::for_nnf(&nnf_for_builder, p, on_class)
+                })
             }
-        })
-    } else {
-        matrix.classify_paths(complement, 64, params,
-            move |tx| default_classify_controller(params_for_builder, tx))
+        }
+        Backend::Eff => {
+            // matrix.eff: CDCL inner + EffectiveCountWrapper, no
+            // dual framework.  The `_with_nnf` builders pass the
+            // DFS-internal NNF clone to the builder so the index's
+            // pointer-keyed lookups line up with the &NNF refs the
+            // engine actually passes via sum_ord / prod_ord.
+            use logic::dual::effective_count::{EffectiveCountIndex, EffectiveCounts};
+            use logic::dual::path_effective::EffectiveCountWrapper;
+            let p = params_for_builder.clone();
+            if want_cover {
+                target_nnf.classify_paths_with_nnf(buffer_size, move |nnf_ref, tx| {
+                    let on_class: DynOnClass = Box::new(move |class, hit_limit|
+                        tx.blocking_send((class, hit_limit)).is_ok());
+                    let cdcl = CdclController::for_nnf_with_cover(nnf_ref, p, on_class);
+                    let idx = EffectiveCountIndex::build(nnf_ref);
+                    let counts = EffectiveCounts::new(&idx);
+                    EffectiveCountWrapper::new(cdcl, idx, counts)
+                })
+            } else {
+                target_nnf.classify_paths_uncovered_only_with_nnf(buffer_size, move |nnf_ref, tx| {
+                    let on_class: DynOnClass = Box::new(move |class, hit_limit|
+                        tx.blocking_send((class, hit_limit)).is_ok());
+                    let cdcl = CdclController::for_nnf(nnf_ref, p, on_class);
+                    let idx = EffectiveCountIndex::build(nnf_ref);
+                    let counts = EffectiveCounts::new(&idx);
+                    EffectiveCountWrapper::new(cdcl, idx, counts)
+                })
+            }
+        }
+        Backend::GreedyCdcl | Backend::GreedyEff => {
+            spawn_dual_classify_job(backend, target_nnf.clone(), buffer_size)
+        }
     };
     {
         let mut job = job_state.lock().unwrap();
@@ -969,7 +1048,34 @@ fn start_classify_job(
     let js = job_state.clone();
     tokio::spawn(async move {
         while let Some((class, hit_limit)) = rx.recv().await {
-            let mut job = js.lock().unwrap();
+            // Drainer needs the lock to update the snapshot.  Recover
+            // gracefully if a previous iteration poisoned the mutex
+            // (e.g. by panicking inside `positions_on_path` /
+            // `lits_on_path` on a re-ordered DFS path emission — see
+            // `bug_note` below).  Using `into_inner()` here is safe
+            // because we always re-acquire the lock and write
+            // valid state below; any partial write from the
+            // panicking iteration is overwritten.
+            let mut job = match js.lock() {
+                Ok(g)  => g,
+                Err(p) => p.into_inner(),
+            };
+            // Catch panics inside the per-event processing so a
+            // single bad event (e.g. an Uncovered ProdPath that
+            // doesn't resolve under declaration-order
+            // `positions_on_path`, which happens for re-ordered DFS
+            // emissions from the Effective layer / dual configs)
+            // doesn't take down the whole drainer and poison the
+            // mutex for every future status poll.  On panic, we set
+            // an error on the job, mark it not-running, and stop
+            // draining.
+            //
+            // bug_note: The proper fix is to plumb positions through
+            // `PathsClass::Uncovered` from the engines that have
+            // them (positions-ON DFS), or to make
+            // `positions_on_path` / `lits_on_path` re-order-aware.
+            // For now this turns a hard crash into a soft error.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             match class {
                 PathsClass::Covered(cp) => {
                     let cover_count = target.prefix_cover_count(&cp.prefix);
@@ -1056,9 +1162,36 @@ fn start_classify_job(
                 }
             }
             if hit_limit { job.snapshot.hit_limit = true; }
+            }));
+            if let Err(panic_info) = result {
+                let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+                    s.to_string()
+                } else if let Some(s) = panic_info.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "drainer event processing panicked (unknown payload type)".to_string()
+                };
+                job.error = Some(format!(
+                    "Internal: backend emitted a path the drainer couldn't \
+                     translate — likely a re-ordered Sum traversal from the \
+                     Effective layer.  Detail: {}",
+                    msg,
+                ));
+                eprintln!("[web_app drainer] caught panic: {}", msg);
+                drop(job);
+                // Stop draining — we can't trust further events from
+                // this run.  Also break the receiver so the producer
+                // notices the drop.
+                rx.close();
+                break;
+            }
+            // (job lock dropped at end of arm.)
         }
         let _ = handle.await;
-        let mut job = js.lock().unwrap();
+        let mut job = match js.lock() {
+            Ok(g)  => g,
+            Err(p) => p.into_inner(),
+        };
         // Append preprocessing-derived lemma covers to the cover-group
         // list.  Their positions are already in the original NNF; for
         // each lemma cover we simulate the matrix-method search's DFS
@@ -1111,25 +1244,107 @@ fn start_classify_job(
     Ok(())
 }
 
+/// Dual-framework backend dispatch: run `solve_dual_with_cancel` on a
+/// blocking task, with B's path controller (`CdclDualPathController`
+/// or `EffectivePathController`) configured to stream every
+/// `PathsClass` event into the returned `Receiver`.  The drainer
+/// task in `start_classify_job` then processes those events the
+/// same way it does single-DFS events — populating cover groups,
+/// uncovered paths, classified counts, etc.
+///
+/// The returned `PathClassificationHandle`'s cancel signal is wired
+/// to `solve_dual_with_cancel`'s `external_cancel` parameter via a
+/// short-lived watcher thread, so the UI's Cancel button still
+/// works.
+fn spawn_dual_classify_job(
+    backend: Backend,
+    target_nnf: logic::matrix::NNF,
+    buffer_size: usize,
+) -> (
+    tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
+    tokio::sync::mpsc::Receiver<(logic::matrix::PathsClass, bool)>,
+    logic::matrix::PathClassificationHandle,
+) {
+    use logic::dual::{
+        solve_dual_with_cancel, BasicCoverState, CdclDualPathController,
+        EffectivePathController, GreedyMaxCoverController, SearchMode,
+    };
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<(logic::matrix::PathsClass, bool)>(buffer_size);
+    let cancel = logic::matrix::PathClassificationHandle::new();
+    let cancel_for_task = cancel.clone();
+
+    let handle = tokio::task::spawn_blocking(move || {
+        // Bridge the UI's PathClassificationHandle to solve_dual's
+        // `external_cancel: Arc<AtomicBool>` — spawn a small watcher
+        // that polls the handle and sets the atomic when cancelled.
+        // The watcher also exits when the atomic is set by the main
+        // task on completion, so it doesn't outlive the job.
+        let external_cancel = Arc::new(AtomicBool::new(false));
+        let cancel_watcher_atomic = external_cancel.clone();
+        let cancel_watcher_handle = cancel_for_task.clone();
+        let watcher = std::thread::spawn(move || {
+            while !cancel_watcher_atomic.load(std::sync::atomic::Ordering::SeqCst) {
+                if cancel_watcher_handle.is_cancelled() {
+                    cancel_watcher_atomic.store(true, std::sync::atomic::Ordering::SeqCst);
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        });
+        let _ = match backend {
+            Backend::GreedyCdcl => {
+                let cover = GreedyMaxCoverController::default();
+                let path  = CdclDualPathController::<BasicCoverState>::with_stream(tx);
+                solve_dual_with_cancel(
+                    &target_nnf, cover, path, SearchMode::Satisfiable,
+                    external_cancel.clone(),
+                )
+            }
+            Backend::GreedyEff => {
+                let cover = GreedyMaxCoverController::default();
+                let path  = EffectivePathController::<BasicCoverState>::with_stream(tx);
+                solve_dual_with_cancel(
+                    &target_nnf, cover, path, SearchMode::Satisfiable,
+                    external_cancel.clone(),
+                )
+            }
+            _ => unreachable!("spawn_dual_classify_job called with non-dual backend"),
+        };
+        external_cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+        let _ = watcher.join();
+        Ok::<(), Box<dyn std::error::Error + Send>>(())
+    });
+    (handle, rx, cancel)
+}
+
 fn reset_and_start(
     job_state: &Arc<Mutex<ClassifyJob>>,
     formula: &str,
     complement: bool,
     params: Option<logic::matrix::PathParams>,
-    use_smart_controller: bool,
+    backend: Backend,
     preprocess: bool,
 ) -> Json<serde_json::Value> {
     {
-        let mut job = job_state.lock().unwrap();
+        let mut job = match job_state.lock() {
+            Ok(g)  => g,
+            Err(p) => p.into_inner(),
+        };
         if let Some(c) = job.cancel.take() { c.cancel(); }
         *job = ClassifyJob::default();
         job.running = true;
         job.is_complement = complement;
     }
     if let Err(e) = start_classify_job(
-        job_state.clone(), formula, complement, params, use_smart_controller, preprocess,
+        job_state.clone(), formula, complement, params, backend, preprocess,
     ) {
-        let mut job = job_state.lock().unwrap();
+        let mut job = match job_state.lock() {
+            Ok(g)  => g,
+            Err(p) => p.into_inner(),
+        };
         job.running = false;
         job.error = Some(e);
     }
@@ -1137,12 +1352,21 @@ fn reset_and_start(
 }
 
 fn status_handler(job_state: &Arc<Mutex<ClassifyJob>>) -> Json<ClassifyStatusResponse> {
-    let job = job_state.lock().unwrap();
+    // Recover from a poisoned mutex — see drainer notes.  A poisoned
+    // job-state is still readable: we just risk inconsistent
+    // intermediate values, which is fine for a status response.
+    let job = match job_state.lock() {
+        Ok(g)  => g,
+        Err(p) => p.into_inner(),
+    };
     Json(classify_status(&job))
 }
 
 fn cancel_handler(job_state: &Arc<Mutex<ClassifyJob>>) -> Json<serde_json::Value> {
-    let mut job = job_state.lock().unwrap();
+    let mut job = match job_state.lock() {
+        Ok(g)  => g,
+        Err(p) => p.into_inner(),
+    };
     if let Some(c) = job.cancel.take() { c.cancel(); }
     job.running = false;
     Json(serde_json::json!({ "ok": true }))
@@ -1159,9 +1383,9 @@ async fn valid_handler(
         covered_prefix_limit: usize::MAX,
         no_cover: req.no_cover,
     });
+    let backend = parse_backend(&req.backend);
     reset_and_start(&state.valid_job, &req.formula, false, params,
-                    /*use_smart_controller=*/ true,
-                    /*preprocess=*/ true)
+                    backend, /*preprocess=*/ true)
 }
 
 async fn valid_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {
@@ -1179,8 +1403,7 @@ async fn paths_handler(
     use logic::matrix::PathParams;
     let params = Some(PathParams { paths_class_limit: req.paths_class_limit, ..Default::default() });
     reset_and_start(&state.paths_job, &req.formula, req.complement, params,
-                    /*use_smart_controller=*/ false,
-                    /*preprocess=*/ false)
+                    Backend::Backtrack, /*preprocess=*/ false)
 }
 
 async fn paths_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {
@@ -1202,9 +1425,9 @@ async fn satisfiable_handler(
         covered_prefix_limit: usize::MAX,
         no_cover: req.no_cover,
     });
+    let backend = parse_backend(&req.backend);
     reset_and_start(&state.sat_job, &req.formula, true, params,
-                    /*use_smart_controller=*/ true,
-                    /*preprocess=*/ true)
+                    backend, /*preprocess=*/ true)
 }
 
 async fn satisfiable_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {

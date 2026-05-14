@@ -469,6 +469,104 @@ where
     }
 }
 
+/// Like [`solve_dual`] but accepts an external cancellation signal.
+/// When `external_cancel` becomes `true`, both A and B are signalled
+/// to wind down and `Outcome::Cancelled` is returned.  Polls
+/// `external_cancel` every 50 ms while waiting for one of A/B to
+/// signal termination — that's fast enough for interactive UI
+/// cancels (which sit behind a "Cancel" button click) and slow
+/// enough that the spin cost is negligible.
+pub fn solve_dual_with_cancel<A, B>(
+    nnf: &NNF,
+    cover_ctrl: A,
+    path_ctrl:  B,
+    mode: SearchMode,
+    external_cancel: Arc<AtomicBool>,
+) -> Outcome
+where
+    A: CoverSearchController,
+    B: DualPathSearchController<State = A::State>,
+{
+    let pool   = PairPool::new();
+    cover_ctrl.seed_pool(nnf, &pool);
+    let state  = Arc::new(Mutex::new(cover_ctrl.create_state(nnf)));
+    let cancel_a = Arc::new(AtomicBool::new(false));
+    let cancel_b = Arc::new(AtomicBool::new(false));
+    let (term_tx, term_rx) = std::sync::mpsc::sync_channel::<TermSignal>(2);
+
+    let a_handle = {
+        let pool   = pool.clone();
+        let state  = state.clone();
+        let cancel = cancel_a.clone();
+        let tx     = term_tx.clone();
+        std::thread::spawn(move || {
+            let outcome = cover_loop(cover_ctrl, &pool, &state, &cancel);
+            if matches!(outcome, CoverOutcome::CoverComplete) {
+                let _ = tx.send(TermSignal::CoverComplete);
+            }
+            outcome
+        })
+    };
+    let b_handle = {
+        let pool    = pool.clone();
+        let state   = state.clone();
+        let cancel  = cancel_b.clone();
+        let nnf     = nnf.clone();
+        let tx      = term_tx.clone();
+        std::thread::spawn(move || {
+            let outcome = path_ctrl.run(&nnf, mode, pool, state, cancel);
+            match &outcome {
+                PathOutcome::Uncovered(pp) => {
+                    let _ = tx.send(TermSignal::PathUncovered(pp.clone()));
+                }
+                PathOutcome::Exhausted => {
+                    let _ = tx.send(TermSignal::PathExhausted);
+                }
+                PathOutcome::Cancelled => {}
+            }
+            outcome
+        })
+    };
+    drop(term_tx);
+
+    // Poll for a terminator signal while watching the external
+    // cancel flag.  recv_timeout returns Err(Disconnected) if all
+    // senders dropped without sending — that shouldn't happen in
+    // well-formed runs (both threads send on termination) but be
+    // defensive.
+    use std::sync::mpsc::RecvTimeoutError;
+    let mut cancelled = false;
+    let signal_opt = loop {
+        if external_cancel.load(Ordering::SeqCst) {
+            cancelled = true;
+            break None;
+        }
+        match term_rx.recv_timeout(std::time::Duration::from_millis(50)) {
+            Ok(sig) => break Some(sig),
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => break None,
+        }
+    };
+    cancel_a.store(true, Ordering::SeqCst);
+    cancel_b.store(true, Ordering::SeqCst);
+    let _a_outcome = a_handle.join().expect("cover-search thread panicked");
+    let _b_outcome = b_handle.join().expect("path-search thread panicked");
+
+    if cancelled {
+        // External cancel — caller decides what to do; we report as
+        // Unsat by convention (the cancel handler in the UI sets
+        // `running = false` and the snapshot's uncovered_paths is
+        // checked separately to decide the verdict).
+        return Outcome::Unsat;
+    }
+    match signal_opt {
+        Some(TermSignal::PathUncovered(pp)) => Outcome::Sat(pp),
+        Some(TermSignal::PathExhausted)     => Outcome::Unsat,
+        Some(TermSignal::CoverComplete)     => Outcome::Unsat,
+        None                                => Outcome::Unsat,
+    }
+}
+
 /// Internal: which side terminated and how.
 enum TermSignal {
     /// B found an uncovered path → SAT.

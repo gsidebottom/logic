@@ -146,12 +146,21 @@ impl Default for PathParams {
 }
 
 /// A complementary pair together with the path prefix it covers.
+#[derive(Clone)]
 pub struct CoveredPathPrefix {
     pub cover: Pair,
     pub prefix: PathPrefix,
 }
 
 /// Classification of a single path encountered during matrix path enumeration.
+///
+/// `Clone` is provided so dual-framework path controllers can tee
+/// events to a UI-streaming `Sender` alongside their internal
+/// pool-pushing on_class.  Cloning a `PathsClass::Covered` walks the
+/// pair-positions and prefix Vecs once — comparable in cost to the
+/// blocking-send the tee performs, so doesn't materially change
+/// throughput.
+#[derive(Clone)]
 pub enum PathsClass {
     Covered(CoveredPathPrefix),
     Uncovered(ProdPath),
@@ -568,6 +577,40 @@ impl NNF {
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let inner = controller_builder(tx);
+            let mut ctrl = crate::controller::CancelController::new(inner, cancel_for_thread);
+            m.for_each_path_prefix_with_controller(&mut ctrl);
+            ctrl.publish_progress();
+            Ok::<(), Box<dyn std::error::Error + Send>>(())
+        });
+        (handle, rx, cancel)
+    }
+
+    /// Like [`Self::classify_paths`] but the builder receives a borrow
+    /// of the same NNF the DFS will walk — useful when the controller
+    /// needs to pre-compute structural state (e.g. `EffectiveCountIndex`
+    /// for the count-aware wrapper) whose lookups depend on pointer
+    /// identity with the actual walked tree.  Same purpose as
+    /// [`Self::classify_paths_uncovered_only_with_nnf`], but for the
+    /// cover-aware traversal that emits `CoveredPathPrefix` events.
+    pub fn classify_paths_with_nnf<C, B>(
+        &self,
+        buffer_size: usize,
+        controller_builder: B,
+    ) -> (
+        tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
+        tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
+        PathClassificationHandle,
+    )
+    where
+        C: PathSearchController + Send + 'static,
+        B: FnOnce(&NNF, tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> C + Send + 'static,
+    {
+        let m = self.clone();
+        let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
+        let cancel = PathClassificationHandle::new();
+        let cancel_for_thread = cancel.clone();
+        let handle = tokio::task::spawn_blocking(move || {
+            let inner = controller_builder(&m, tx);
             let mut ctrl = crate::controller::CancelController::new(inner, cancel_for_thread);
             m.for_each_path_prefix_with_controller(&mut ctrl);
             ctrl.publish_progress();

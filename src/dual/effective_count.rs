@@ -20,6 +20,23 @@ use std::collections::HashMap;
 use crate::matrix::{Lit, NNF};
 
 /// Pre-computed structural index of an NNF.
+///
+/// # Safety: cross-thread send
+///
+/// `by_ptr` stores `*const NNF` pointers that reference the NNF
+/// passed to `build`.  Those pointers are read-only and only
+/// dereferenced indirectly through `id_of` (which compares them by
+/// value, never deref'ing them).  As long as the indexed NNF
+/// outlives the index, the pointers remain valid for that lookup.
+///
+/// In the bench's `matrix.eff` row the index is built inside a
+/// `tokio::spawn_blocking` closure against an NNF that the same
+/// closure also owns — both live and die together on the spawned
+/// thread.  Same pattern in `EffectivePathController::run`.  The
+/// `unsafe impl Send + Sync` below lets the type cross thread
+/// boundaries when packaged inside a controller; soundness is the
+/// caller's responsibility (don't drop / mutate the underlying NNF
+/// while the index is alive).
 pub struct EffectiveCountIndex {
     /// Pointer-to-`NNF` → flat NodeId.  Used by `id_of` so the
     /// PathSearchController wrapper can look up children by their
@@ -132,6 +149,14 @@ impl EffectiveCountIndex {
     pub fn root_id(&self) -> usize { 0 }
 
 }
+
+// See type-level doc for the safety contract.  The pointers
+// reference an NNF whose lifetime is managed by the index owner;
+// this impl just lets the index cross thread boundaries when
+// packaged inside a controller (e.g. matrix.eff's bench row, where
+// it gets sent into `tokio::spawn_blocking`).
+unsafe impl Send for EffectiveCountIndex {}
+unsafe impl Sync for EffectiveCountIndex {}
 
 /// Per-node effective counts under a (mutating) path prefix.
 pub struct EffectiveCounts {

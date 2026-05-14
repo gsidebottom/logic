@@ -1,14 +1,22 @@
-# Strategic Cover — Design
+# Strategic Cover — Design + Null Result
 
 A demand-driven cover-search controller for the dual framework: A
 (cover search) watches B (path search)'s current prefix and the
-effective path counts on subtrees B is about to explore, and
-prioritizes complementary pairs whose endpoints fall inside the
-smallest-count subtrees at B's frontier.  The bet: those pairs are
-the highest-leverage covers — covering them collapses a tractable
-subtree completely, which immediately prunes B's DFS.
+effective path counts on subtrees B is exploring, and prioritizes
+complementary pairs in *small live subtrees* — pairs whose LCA in
+the NNF tree has a small `e(lca | P)`.  The bet was: those pairs
+are the highest-leverage covers — closing out a small subtree fully
+makes the Effective layer's zero-count prune kick in on B's next
+visit, which immediately prunes that whole subtree.
 
-## Why
+**Result: implemented twice (global pre-mining and frontier-driven
+mining), benchmarked thoroughly, doesn't help.  Reverted.  This
+doc records the design + null result so the next person tempted
+by this idea can skip the dead end.**
+
+---
+
+## The idea
 
 Today every cover controller (`Basic`, `Greedy`,
 `GreedyDynamic`, `CnfBans`, `BddBans`) makes its pair-selection
@@ -28,277 +36,185 @@ spends time on pairs that:
   subtree at B's frontier would have given B a much faster prune
 
 The Effective layer (`src/dual/path_effective.rs`) already maintains
-per-NNF-node effective path counts `e(X | P)` as B descends — paths
-through `X`'s subtree that are *not* already foreclosed by B's
-current prefix `P`.  That information is the answer to "what is B
-about to do."  It's right there in shared mutable state on B's
-thread.  A just doesn't see it.
+per-NNF-node effective path counts `e(X | P)` as B descends.  That
+information is the answer to "what is B about to do."  It's right
+there in shared mutable state on B's thread.  A just doesn't see it.
 
 **Strategic Cover plugs A into that signal** so A's priorities
 follow B's actual exploration in real time.
 
-## The mechanic
+## What was built
 
-1. **Snapshot.**  Add a `PathFrontier` shared structure
-   (`Arc<Mutex<PathFrontier>>`) updated by `EffectiveCountWrapper`
-   on every push/pop and read by A's `next_pair_index`.  Carries:
-   - `prefix_len: usize` — to detect staleness
-   - `counts: Vec<(NodePtr, f64)>` — per-NNF-node effective count
-     under the current prefix, only for nodes with `e > 0`
+### Shared snapshot
+`PathFrontier`: an `Arc<{version: AtomicUsize, counts_by_id:
+Mutex<Vec<f64>>}>` written by `EffectiveCountWrapper::sync_to_prefix`
+on B's thread and read by `StrategicCoverController::next_pair_index`
+on A's thread.
 
-2. **A's selection.**  In `StrategicCoverController::next_pair_index`:
-   - For each candidate pair `(p1, p2)` in the pool, look up the
-     deepest common NNF ancestor `lca(p1, p2)` (cached, since pairs
-     don't change).
-   - Score the pair by `e(lca | P)` from the snapshot — i.e. the
-     effective path count of the smallest subtree both endpoints
-     live in, under B's current prefix.
-   - Smallest non-zero `e` first.  Ties broken by FIFO.
+Counts are keyed by `EffectiveCountIndex` node ID — assigned in
+preorder during a pre-walk of the NNF.  Because preorder is a
+structural property of the tree, two indices built on two separate
+clones of the same NNF agree on every node's ID; A and B can use
+their own NNF clones and still share the count keyspace.
 
-3. **Adaptation.**  As B's prefix changes, the per-node `e` values
-   shift.  A re-ranks lazily: a min-heap keyed on the *last
-   observed* `e(lca | P)`.  On every `next_pair_index` call, A
-   peeks the top, re-evaluates its current `e`; if stale, sift
-   down; repeat.  Amortized cheap on prefix changes that don't
-   reorder much.
+`EffectiveCountIndex` got `unsafe impl Send + Sync` (the `*const
+NNF` pointers reference NNFs owned by `Box<NNF>` fields on the
+controllers — stable heap addresses across thread moves).
 
-4. **Seeding.**  Same as Greedy: `seed_pool` mines all
-   cross-clause complementary pairs up front.  Strategic isn't
-   about which pairs exist — it's about *order*.
+### Scoring
+`pair_score(p1, p2) = e(lca(p1, p2) | P)`.  Pairs with smaller
+LCA-subtree counts go first.  Pairs whose LCA is a Sum (= path
+picks one branch, pair covers zero paths) get `u64::MAX` and sink
+to the heap bottom.  Cold start (no published counts yet) → FIFO.
 
-5. **Termination.**  Unchanged.  Same `is_complete` story, same
-   B-exhaustion path.
+### Two mining strategies tried
 
-## Why this should help
+**Variant 1: Global pre-mining.**  At `seed_pool`, enumerate all
+complementary pairs in the NNF — including non-flat NNFs (added a
+`mine_pairs_general` helper that walks the tree, groups leaves by
+variable, cross-products positive/negative within each variable,
+filters by LCA-is-Prod).  Pool starts with hundreds-to-thousands
+of pairs; A re-ranks lazily as B publishes new counts.
 
-The Effective layer's structural pruning already turns "huge
-subtree" into "ignore it" when `e(X | P) = 0`.  What it can't do is
-*make* `e(X | P) = 0` for a subtree that's currently small but
-nonzero.  That's a job for A: emit pairs that cover the few
-remaining paths in `X`, after which the Effective layer prunes `X`
-on the next visit.
+**Variant 2: Frontier-driven mining.**  At `seed_pool`, do only the
+cheap flat miner (returns empty on non-flat NNFs, same as Greedy).
+Inside `next_pair_index`, on every observed frontier version bump,
+walk the count snapshot and mine pairs *within* each subtree whose
+`e(X|P)` is in `(0, MINE_THRESHOLD]` and that hasn't been mined
+before.  Each subtree is mined at most once.  Internal subtrees
+only (Lit-leaves skipped — single-literal subtrees can't form pairs).
 
-Concretely the predicted wins are on rows where:
+## Bench results (focused 27-bit suite, with Phase 1+3+4 preprocessing)
 
-- B's exploration has **uneven branching**: some Sum-children at the
-  frontier carry tens of paths, others carry 1 or 2
-- A **could** clear the 1-or-2 subtree with one or two well-chosen
-  pairs, *if* it knew which subtree mattered
-- Without coupling, A is just as likely to be working on covering
-  paths in the larger sibling — wasted work
+All times in ms; matrix-method columns include pp + search totals.
 
-BMC count-zeros is the textbook case: each bit position is a small
-local subtree.  27-bit faulty-adder is mixed — each fault-bit gate
-is a small block but they're interlinked.  random-3sat has no
-structure so we expect Strategic ≈ Basic there.
+| Variant | random-3sat | 27/1 UNSAT | 27/2 SAT | BMC count-zeros |
+|---------|-------------|------------|----------|-----------------|
+| greedy×eff (baseline) | 1.76 | 9.87 | 20.47 | **5.76** |
+| strat×eff Variant 1 (global pre-mining) | 2.12 | 10.21 | 21.99 | **10.24** (–78%) |
+| strat×eff (B-emissions-only, no mining) | 2.06 | 10.18 | 20.78 | 5.73 |
+| strat×eff Variant 2 (frontier mining, T=64) | 1.81 | 10.23 | 20.78 | 7.88 (–37%) |
+| strat×eff Variant 2 (frontier mining, T=8, skip leaves) | 1.82 | 10.18 | 20.71 | **7.15** (–24%) |
 
-## Why this should not regress
+No variant wins on any row.
 
-- Soundness is unaffected.  All emitted pairs are still mined from
-  the NNF (`mine_pairs`); priority changes don't change which
-  pairs are valid.
-- Completeness is unaffected.  Strategic eventually emits every
-  pair (not just frontier ones) because its priority key never
-  permanently demotes a pair — once B advances, the `lca` of an
-  old-frontier pair becomes ancestral and its `e` re-evaluates.
-- The base layer (`Basic`/`Greedy`/`Dynamic`) does not have a
-  fundamentally different *set* of pairs than Strategic — only
-  ordering differs.
-- The Effective layer is still hard-wiring CDCL as B's inner (the
-  May-2026 experiment confirmed CDCL is essential there; see
-  `dual-search-design.md`).  Strategic plugs in alongside that, not
-  instead.
+## Diagnostic — why it doesn't work
 
-## Architecture sketch
+Instrumentation (`STRATEGIC_INSTR=1`) printed `registered`,
+`mined_subtrees`, `mined_pairs` per run.  Pattern:
 
-### New shared snapshot
-```rust
-// src/dual/path_frontier.rs (new)
+| Row | Mined subtrees | Mined pairs | Search verdict |
+|-----|----------------|-------------|----------------|
+| random-3sat | 0 | 0 | SAT (fast) |
+| 27/1 UNSAT | 0 | 0 | UNSAT (fast) |
+| 27/2 SAT | 0 | 0 | SAT (fast) |
+| BMC | 1097 | 1124 | UNSAT (slower than greedy) |
 
-use std::sync::atomic::AtomicUsize;
+**Three of four rows: zero mining activity.**  The search terminates
+before A's frontier-driven mining triggers — B finds an uncovered
+path or exhausts the matrix in 1-20 ms while A's mining loop is
+still waiting for B's first published frontier snapshot.  Strategic
+on those rows degenerates to "Greedy plus extra setup cost" — the
+1-3% overhead is purely from the extra `Box<NNF>` clone, the index
+build, and the publishing-side mutex traffic on B.
 
-/// Snapshot of B's current effective-count state, written by the
-/// Effective layer and read by Strategic cover search.
-///
-/// Lock-light: B updates this on every push/pop (rare-ish — only
-/// when prefix changes); A reads it on every `next_pair_index`
-/// (frequent).  A `Mutex` is fine but a seqlock-style snapshot
-/// would also work if contention shows up.
-pub struct PathFrontier {
-    /// Monotonic version counter — A can short-circuit re-ranking
-    /// if version hasn't changed since last poll.
-    pub version: AtomicUsize,
-    /// Effective counts under B's current prefix, keyed by raw NNF
-    /// pointer (same key space as `EffectiveCountIndex`).  Empty
-    /// HashMap → no information yet (B hasn't started).
-    pub counts: Mutex<HashMap<*const NNF, f64>>,
-}
+**BMC, where mining does fire, still loses.**  Strategic mines 1097
+internal subtrees and registers 1124 pairs, all of which get added
+to `BasicCoverState`'s bucket index — making `is_prefix_covered`
+queries on B's side more expensive.  Whatever pruning value these
+pre-mined pairs provide is outweighed by:
 
-unsafe impl Send for PathFrontier {}
-unsafe impl Sync for PathFrontier {}
-```
+1. A's mining cost (walking ~1000 subtrees, grouping leaves by var,
+   cross-products, LCA-Sum checks)
+2. B's increased cover-state query cost (more pairs to scan)
+3. The extra `register_pair` calls into `BasicCoverState::add_pair`
 
-### B-side hook
-`EffectiveCountWrapper::sync_to_prefix` already maintains the
-per-node count map (`self.counts: EffectiveCounts`).  Add an
-optional `frontier: Option<Arc<PathFrontier>>` field; on every
-`sync_to_prefix` (i.e. every push/pop), update the shared map:
+## The structural reason
 
-```rust
-if let Some(ref f) = self.frontier {
-    let mut guard = f.counts.lock().unwrap();
-    self.counts.snapshot_into(&mut *guard);  // (new helper)
-    f.version.fetch_add(1, Ordering::Release);
-}
-```
+The "pair in a small live subtree closes the subtree" intuition
+fits flat CNF-like shapes better than circuit-encoded shapes:
 
-`snapshot_into` is one new method on `EffectiveCounts` — iterate
-nonzero entries, copy into the target map.  Cost: proportional to
-the count of nonzero nodes, amortizing across many path steps.
+- **Flat Sum-of-Prods** (random-3sat post-preprocessing): every
+  complementary pair has its LCA at the *root Sum*.  No
+  small-subtree structure for Strategic to discriminate on.  Score
+  is uniform across pairs.  Strategic degenerates to FIFO; Greedy's
+  box-size scoring is strictly more informative.
 
-### A-side
-`StrategicCoverController` holds:
-- `Arc<PathFrontier>` (shared with B)
-- A min-heap of `(e_score, fifo, pair_idx)`
-- A cache: `pair_idx → (lca_node, last_seen_version)`
+- **Circuit-encoded NNFs** (faulty-adder, BMC): each variable
+  typically appears with one polarity in any given subtree of the
+  circuit.  Mining *within* a subtree finds zero complementary
+  pairs locally (or only pairs whose LCA is the subtree's root —
+  same as mining the parent).  The pairs that actually block paths
+  **span subtrees** — one literal in subtree X, the complement in a
+  sibling subtree Y, with LCA at a Prod ancestor of both.
+  Mining-within-X never finds these.
 
-Plumbed through `solve_dual` by introducing it as a parameter
-(currently the driver only owns A, B, pool, state).  Need a small
-change to `solve_dual` to construct the `Arc<PathFrontier>`, hand it
-to A's controller, and ensure B's `EffectivePathController` picks
-it up (a new constructor:
-`EffectivePathController::with_frontier_publisher(frontier)`).
+So the score function `e(lca | P)` is degenerate on flat formulas
+(uniform across pairs) and the mining-within-subtree strategy is
+structurally blind on non-flat formulas (the pairs aren't where
+we're looking).
 
-### LCA precomputation
-For every pair `(p1, p2)` in the pool, the LCA is a function of
-NNF positions and never changes during a run.  Strategic computes
-it once, on pair arrival, using the same position-resolution
-machinery `flat_pair_triggers` already relies on.  Cost: per-pair
-O(min(|p1|, |p2|)) which is small for flat clauses.
+## What it would take to actually work
 
-### Re-rank strategy
-On `next_pair_index`:
-1. `let v = frontier.version.load(Acquire);`
-2. If `v == last_version`, just pop the heap (no changes).
-3. Otherwise, drain the heap into a Vec, re-score each entry from
-   the current snapshot, rebuild the heap, set `last_version = v`.
-4. Pop the top.
+Three orthogonal angles, each with substantial complexity:
 
-Worst-case rebuild is O(N log N) in pool size, paid only when B's
-prefix changed since A last polled.  In practice B's prefix is far
-slower than A's polling cadence so most polls are cache-hits.
+1. **Cross-subtree mining.**  For each frontier subtree X with
+   small `e(X | P)`, enumerate pairs (l1, l2) where l1 is in X and
+   l2 is in any *sibling* subtree under a Prod ancestor of X.  This
+   finds the spanning pairs.  But the search space explodes — every
+   leaf in X × every leaf in every sibling — so it'd need much
+   tighter selection (e.g. only mine variables that appear in X with
+   one polarity, restrict the sibling search to leaves of that var
+   with opposite polarity).  Doable but ~10× more code than what
+   was attempted here, and the win is still speculative.
 
-## Comparison
+2. **A different score.**  `e(lca | P)` is degenerate on flat
+   formulas.  An alternative: score by "fraction of B's currently
+   live paths this pair blocks", roughly `pair_box_size × (e(lca|P)
+   / e(lca|∅))`.  This is Greedy's box-size scaled by liveness — a
+   per-prefix-adjusted box size.  Would degenerate gracefully to
+   Greedy on flat formulas (where liveness ratios are uniform
+   across pairs) and would differentiate on nested ones.  Worth
+   trying but only after #1 to avoid the structural blindness.
 
-| Controller       | Pair selection key             | B-coupled? |
-|------------------|--------------------------------|------------|
-| Basic            | pool order                     | no         |
-| Greedy           | static box size                | no         |
-| GreedyDynamic    | submodular marginal gain       | no         |
-| **Strategic**    | `e(lca(p1,p2) \| P)`, asc       | **yes**    |
+3. **Lock-free publishing.**  Replace `Mutex<Vec<f64>>` with
+   `Vec<AtomicU64>` (each `f64` stored as bits).  B's publishing
+   becomes free; A's reads become lock-free.  Removes the
+   ~1-3% baseline overhead seen on the no-mining rows.  Useful
+   independent of whether the selection logic ever pays off.
 
-Strategic is the first controller that adapts to B's runtime
-exploration state.  It's small but novel within the framework.
+## What was removed
 
-## Expected impact
+Variant 2 was the cleanest implementation and the closest match to
+the user's original "pairs in low path count matrices on extensions
+of the search prefix" phrasing.  When it still didn't win, we
+reverted the whole experiment rather than keep dead code in the
+dual module.  All of the following came out:
 
-Predictions (to be checked against the focused 27-bit bench):
+- `src/dual/cover_strategic.rs` (deleted)
+- `src/dual/path_frontier.rs` (deleted)
+- Modifications to `src/dual/effective_count.rs` (position-of-id
+  tracking, leaf_lit inverted view, subtree-leaves walker,
+  `unsafe impl Send + Sync`)
+- Modifications to `src/dual/path_effective.rs`
+  (`with_frontier_publisher` constructor, `EffectiveCountWrapper`
+  frontier field, throttled publishing in `sync_to_prefix`)
+- Additions to `src/dual/flat.rs` (`mine_pairs_general` for
+  non-flat NNFs)
+- `strat×eff` bench column in `src/dual/bench.rs`
 
-| row                                | greedy×eff | strategic×eff prediction |
-|------------------------------------|------------|--------------------------|
-| random-3sat n=30 (SAT)             | ~1.5 ms    | tie (no structural locality) |
-| faulty_add 27/1 UNSAT              | ~10 ms     | maybe 20% faster (each fault-bit block is small) |
-| faulty_add 27/2 SAT                | ~22 ms     | unclear (SAT path may find an early uncovered before Strategic helps) |
-| BMC count-zeros n=8 w=16 UNSAT     | ~6 ms      | 1.5–3× faster (per-bit blocks are textbook small subtrees) |
+Restored cleanly via `git restore` + `rm`; build green, 237/237
+tests pass.
 
-If Strategic is *worse* anywhere it'll be because the LCA lookup
-and heap re-ranking overhead exceeded the savings on small inputs.
-The fallback: keep Greedy×eff as the default and ship Strategic as
-an opt-in for structured/big formulas where the coupling pays off.
+## What survives
 
-## Implementation plan
-
-1. **`src/dual/path_frontier.rs`** (new): `PathFrontier` shared
-   snapshot, ~30 lines.
-2. **`src/dual/effective_count.rs`**: `snapshot_into` method on
-   `EffectiveCounts`, ~10 lines.
-3. **`src/dual/path_effective.rs`**:
-   - `EffectivePathController::with_frontier_publisher(frontier: Arc<PathFrontier>)`
-     constructor.
-   - `EffectiveCountWrapper` gains optional frontier field; updates
-     on each `sync_to_prefix`.
-4. **`src/dual/cover_strategic.rs`** (new): `StrategicCoverController`,
-   ~200 lines.
-   - Heap + LCA cache + version-keyed re-rank logic.
-   - `seed_pool` reuses `mine_pairs` like Greedy does.
-5. **`src/dual/mod.rs`**: re-export, `pub use`.
-6. **`src/dual/bench.rs`**: add `run_dual_strategic_effective`, plug
-   into both bench tables as a new column `strategic×eff` (or
-   replace `greedy×eff_b` slot — we removed that column, the
-   header is 6 columns again).
-7. **Tests**:
-   - One unit test covering the cross-check pattern other cover
-     controllers have (`bench_focused_top_config`'s cross-check
-     style — same verdict as Basic on every formula).
-   - One that confirms Strategic's ordering actually responds to
-     prefix changes (drive B for k steps, snapshot, verify the
-     heap top changed).
-
-## Open questions
-
-1. **LCA representation.**  Cleanest is a `*const NNF` pointer
-   (same as `EffectiveCountIndex` uses).  Need to make sure the NNF
-   outlives the controller — `solve_dual` already holds the NNF by
-   reference for the duration of both threads, so this is fine.
-2. **Re-rank cadence.**  On every poll vs every N polls vs only
-   when version changes?  Start with "only on version change" and
-   measure.
-3. **Frontier write granularity.**  Updating on every push/pop is
-   probably too fine — B can push/pop hundreds of times per
-   millisecond.  Throttle to "every K pushes" or "every X
-   microseconds" via a coarser version-bump policy.
-4. **Cold start.**  Until B has done a prefix step, the frontier is
-   empty.  Strategic should fall back to FIFO (or Greedy ordering)
-   for the first few pairs.
-5. **Pairs whose LCA is the root.**  Their `e` is just the global
-   path count — the same for every such pair.  These degrade to
-   FIFO automatically.  Acceptable.
-6. **Pairs straddling two Sum branches.**  Their LCA's effective
-   count drops to zero on B's first Sum-branch commit (one of the
-   two branches has been picked, the other is foreclosed).  Such
-   pairs should be deprioritized to `+∞` or dropped from the heap
-   entirely on the next re-rank — they cover no live paths.
-
-## Risks
-
-1. **Polling overhead exceeds savings on small inputs.** Likely on
-   random-3sat.  Mitigation: profile, then either skip Strategic
-   when path count < threshold, or simplify the re-rank to be free
-   when version unchanged.
-2. **Race on frontier snapshot.**  B writes, A reads.  Worst case:
-   A acts on a slightly stale snapshot — pair priorities are
-   suboptimal but still correct.  No soundness risk.
-3. **LCA correctness for pairs with Sum-sibling endpoints.**  If
-   handled wrong, the priority is wrong; soundness is still fine.
-   Mitigation: unit test.
-4. **Memory: the count map duplicates state.**  ~hundreds of
-   nonzero nodes typical; copying on every snapshot is cheap but
-   adds allocator pressure.  Mitigation: use a `Vec<(*const NNF,
-   f64)>` instead of `HashMap` and reuse the buffer.
-5. **Effective layer becomes a hard dependency for Strategic.**
-   Strategic only makes sense paired with `EffectivePathController`
-   (other B-side controllers don't track per-node counts).
-   Document this constraint at the controller's doc-comment level;
-   `strategic × cdcl` is not a meaningful combination and shouldn't
-   be wired into the bench.
-
-## Recommendation
-
-Worth implementing.  The infrastructure (per-node effective
-counts) is already there, the trait shape doesn't need invasive
-changes, and the experiment falsifies cleanly: if `strategic×eff`
-isn't better than `greedy×eff` on at least BMC and 27-bit
-faulty-adder, the idea was wrong and we revert.  If it is, this
-becomes the new default A side for structured formulas, and the
-matrix-method's "Process A" finally pulls its weight at the
-problem's actual frontier rather than its abstract global shape.
+- This doc, as a record so the dead end doesn't get rediscovered.
+- The lessons:
+  - Demand-driven A is conceptually right but the leverage point
+    is wrong for circuit-encoded formulas where blocking pairs
+    span subtrees, not cluster within them.
+  - "Add another knob to A" is a tempting move that this codebase
+    has resisted for a reason — the existing controllers (`Greedy`,
+    `GreedyDynamic`, `Effective` B-side) are already in a fairly
+    optimal spot for this benchmark; pushing further means a
+    different problem class or a different score function entirely.

@@ -590,6 +590,39 @@ impl NNF {
     /// `uncovered_path_count()` ticks up, it advances by 1.  This keeps
     /// the rate display meaningful even on enormous formulas where each
     /// covered-prefix event prunes billions of paths.
+    /// Like [`Self::classify_paths_uncovered_only`] but the builder
+    /// receives a borrow of the same NNF the DFS will walk — useful
+    /// when the controller needs to pre-compute structural state
+    /// (e.g. `EffectiveCountIndex` for the count-aware wrapper)
+    /// whose lookups depend on pointer identity with the actual
+    /// walked tree.  `classify_paths_uncovered_only` clones `self`
+    /// internally before walking, so callers can't otherwise build
+    /// the index from the right NNF instance.
+    pub fn classify_paths_uncovered_only_with_nnf<C, B>(
+        &self,
+        buffer_size: usize,
+        controller_builder: B,
+    ) -> (
+        tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
+        tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
+        PathClassificationHandle,
+    )
+    where
+        C: PathSearchController + Send + 'static,
+        B: FnOnce(&NNF, tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> C + Send + 'static,
+    {
+        let m = self.clone();
+        let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
+        let cancel = PathClassificationHandle::new();
+        let cancel_for_step = cancel.clone();
+        let handle = tokio::task::spawn_blocking(move || {
+            let ctrl = controller_builder(&m, tx);
+            run_uncovered_only_dfs(m, ctrl, cancel_for_step);
+            Ok::<(), Box<dyn std::error::Error + Send>>(())
+        });
+        (handle, rx, cancel)
+    }
+
     pub fn classify_paths_uncovered_only<C, B>(
         &self,
         buffer_size: usize,
@@ -609,65 +642,7 @@ impl NNF {
         let cancel_for_step = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let ctrl = controller_builder(tx);
-            debug_assert!(!ctrl.needs_cover(),
-                "classify_paths_uncovered_only requires a controller with needs_cover() == false");
-            // Wrap the controller in a `RefCell` so the three driver
-            // closures can each take it `&mut` independently — DFS calls
-            // are strictly sequential so the runtime borrow check never
-            // trips.  This is the same bridging pattern
-            // `for_each_path_prefix_no_positions_with_controller` uses;
-            // we inline it here to also weave in the cancel poll and
-            // cover-multiplier-weighted progress publishing.
-            let cell = std::cell::RefCell::new(ctrl);
-            let mut step: u64 = 0;
-            let mut paths_classified: f64 = 0.0;
-            let mut prev_cov: usize = 0;
-            let mut prev_unc: usize = 0;
-            // Outer loop: re-invoke the DFS engine when the
-            // controller asks for a restart (Luby-driven for the
-            // CdclController; default-no-op for other controllers).
-            // We gate restart on "no SAT path was found this run"
-            // — if `uncovered_path_count` increased since the last
-            // iteration, the search succeeded, no point restarting.
-            // Cancellation also breaks the loop.
-            loop {
-                let prev_uncovered_at_loop_start = cell.borrow().uncovered_path_count();
-                m.for_each_path_prefix_no_positions_ord(
-                    |children| cell.borrow_mut().sum_ord(children),
-                    |children| cell.borrow_mut().prod_ord(children),
-                    |lits, prod_path, is_complete, cover_mult| {
-                        if cancel_for_step.is_cancelled() { return false; }
-                        let empty: PathPrefix = Vec::new();
-                        let mut c = cell.borrow_mut();
-                        let cont = c.should_continue_on_prefix(lits, &empty, prod_path, is_complete).is_none();
-                        let cov = c.covered_prefix_count();
-                        let unc = c.uncovered_path_count();
-                        drop(c);
-                        if cov > prev_cov {
-                            paths_classified += cover_mult;
-                            prev_cov = cov;
-                        }
-                        if unc > prev_unc {
-                            paths_classified += 1.0;
-                            prev_unc = unc;
-                        }
-                        step = step.wrapping_add(1);
-                        if step & 0xFFF == 0 {
-                            cancel_for_step.record_paths(paths_classified);
-                        }
-                        cont
-                    },
-                );
-                if cancel_for_step.is_cancelled() { break; }
-                let need_restart = {
-                    let c = cell.borrow();
-                    c.is_restart_pending()
-                        && c.uncovered_path_count() == prev_uncovered_at_loop_start
-                };
-                if !need_restart { break; }
-                cell.borrow_mut().complete_restart();
-            }
-            cancel_for_step.record_paths(paths_classified);
+            run_uncovered_only_dfs(m, ctrl, cancel_for_step);
             Ok::<(), Box<dyn std::error::Error + Send>>(())
         });
         (handle, rx, cancel)
@@ -1026,6 +1001,76 @@ impl From<&Ast> for NNF {
 pub fn format_path(path: &ProdPath, m: &NNF, var_names: &[String]) -> String {
     let resolved = m.lits_on_path(path);
     format_lits(&resolved.into_iter().cloned().collect::<Vec<_>>(), var_names)
+}
+
+/// Shared body of `NNF::classify_paths_uncovered_only` and
+/// `NNF::classify_paths_uncovered_only_with_nnf` — runs the
+/// positions-off DFS on `m`, feeding `ctrl` and honouring the
+/// controller's restart-pending signal.  Extracted so the two entry
+/// points can share the loop body without duplicating ~50 lines.
+fn run_uncovered_only_dfs<C: PathSearchController>(
+    m: NNF,
+    ctrl: C,
+    cancel_for_step: PathClassificationHandle,
+) {
+    debug_assert!(!ctrl.needs_cover(),
+        "classify_paths_uncovered_only requires a controller with needs_cover() == false");
+    // Wrap the controller in a `RefCell` so the three driver
+    // closures can each take it `&mut` independently — DFS calls
+    // are strictly sequential so the runtime borrow check never
+    // trips.  This is the same bridging pattern
+    // `for_each_path_prefix_no_positions_with_controller` uses;
+    // we inline it here to also weave in the cancel poll and
+    // cover-multiplier-weighted progress publishing.
+    let cell = std::cell::RefCell::new(ctrl);
+    let mut step: u64 = 0;
+    let mut paths_classified: f64 = 0.0;
+    let mut prev_cov: usize = 0;
+    let mut prev_unc: usize = 0;
+    // Outer loop: re-invoke the DFS engine when the controller asks
+    // for a restart (Luby-driven for the CdclController; default-
+    // no-op for other controllers).  We gate restart on "no SAT
+    // path was found this run" — if `uncovered_path_count`
+    // increased since the last iteration, the search succeeded, no
+    // point restarting.  Cancellation also breaks the loop.
+    loop {
+        let prev_uncovered_at_loop_start = cell.borrow().uncovered_path_count();
+        m.for_each_path_prefix_no_positions_ord(
+            |children| cell.borrow_mut().sum_ord(children),
+            |children| cell.borrow_mut().prod_ord(children),
+            |lits, prod_path, is_complete, cover_mult| {
+                if cancel_for_step.is_cancelled() { return false; }
+                let empty: PathPrefix = Vec::new();
+                let mut c = cell.borrow_mut();
+                let cont = c.should_continue_on_prefix(lits, &empty, prod_path, is_complete).is_none();
+                let cov = c.covered_prefix_count();
+                let unc = c.uncovered_path_count();
+                drop(c);
+                if cov > prev_cov {
+                    paths_classified += cover_mult;
+                    prev_cov = cov;
+                }
+                if unc > prev_unc {
+                    paths_classified += 1.0;
+                    prev_unc = unc;
+                }
+                step = step.wrapping_add(1);
+                if step & 0xFFF == 0 {
+                    cancel_for_step.record_paths(paths_classified);
+                }
+                cont
+            },
+        );
+        if cancel_for_step.is_cancelled() { break; }
+        let need_restart = {
+            let c = cell.borrow();
+            c.is_restart_pending()
+                && c.uncovered_path_count() == prev_uncovered_at_loop_start
+        };
+        if !need_restart { break; }
+        cell.borrow_mut().complete_restart();
+    }
+    cancel_for_step.record_paths(paths_classified);
 }
 
 /// Same as [`format_path`] but for an already-resolved list of literals

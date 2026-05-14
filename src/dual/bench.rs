@@ -328,9 +328,11 @@ fn run_cadical_matrix(matrix: Matrix) -> bool {
 // ─── Single-DFS baseline (existing Matrix::satisfiable equivalent) ────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Backend { Smart, Cdcl }
+enum Backend { Smart, Cdcl, Effective }
 
 fn run_single(nnf: NNF, backend: Backend) -> bool {
+    use crate::dual::effective_count::{EffectiveCountIndex, EffectiveCounts};
+    use crate::dual::path_effective::EffectiveCountWrapper;
     let params = Some(PathParams {
         uncovered_path_limit: 1,
         paths_class_limit:    usize::MAX,
@@ -354,6 +356,21 @@ fn run_single(nnf: NNF, backend: Backend) -> bool {
                 CdclController::for_nnf(&nnf_for_match, params, Box::new(move |class, hl|
                     tx.blocking_send((class, hl)).is_ok())
                     as Box<dyn FnMut(PathsClass, bool) -> bool + Send>)
+            }),
+            // matrix.eff: CDCL inner wrapped in EffectiveCountWrapper,
+            // driven by the single-DFS engine — no dual A/B threads,
+            // no cover-state mutex, no PairPool.  Builds its
+            // `EffectiveCountIndex` against the DFS's own cloned NNF
+            // via the `_with_nnf` variant of the entry point, so the
+            // index's pointer keys line up with whatever &NNF the
+            // engine passes via `sum_ord` / `prod_ord`.
+            Backend::Effective => nnf.classify_paths_uncovered_only_with_nnf(64, move |nnf_ref, tx| {
+                let cdcl = CdclController::for_nnf(nnf_ref, params, Box::new(move |class, hl|
+                    tx.blocking_send((class, hl)).is_ok())
+                    as Box<dyn FnMut(PathsClass, bool) -> bool + Send>);
+                let idx = EffectiveCountIndex::build(nnf_ref);
+                let counts = EffectiveCounts::new(&idx);
+                EffectiveCountWrapper::new(cdcl, idx, counts)
             }),
         };
         let mut found = false;
@@ -892,16 +909,22 @@ fn bench_focused_top_config() {
     //   "{:>14}"         →  "       TIMEOUT"   (14)
     // Header columns use the same width.
     let header = format!(
-        "{:<56}  {:>14}  {:>14}  {:>14}  {:>14}  {:>14}",
-        "case", "cadical", "matrix.smart", "matrix.cdcl",
+        "{:<56}  {:>14}  {:>14}  {:>14}  {:>14}  {:>14}  {:>14}",
+        "case", "cadical", "matrix.smart", "matrix.cdcl", "matrix.eff",
         "greedy×cdcl", "greedy×eff",
     );
     eprintln!("{}", header);
     eprintln!("{}", "-".repeat(header.chars().count()));
 
-    // Helper: run the five configs against `nnf` plus a cadical
-    // closure, print one labeled row.  Cadical closure is consumed
-    // by value so it can carry owned state (Matrix or Vec<Vec<i32>>).
+    // Helper: run the configs against `nnf` plus a cadical closure,
+    // print one labeled row.  Cadical closure is consumed by value
+    // so it can carry owned state (Matrix or Vec<Vec<i32>>).
+    //
+    // `matrix.eff` is single-DFS CDCL wrapped in
+    // `EffectiveCountWrapper` — same composition as `greedy×eff`'s
+    // B side but without the dual A/B threads, cover-state mutex,
+    // or PairPool.  Measures how much of `greedy×eff`'s budget the
+    // dual framework actually costs.
     fn run_row<F>(label: &str, nnf: NNF, cadical: F)
     where F: FnOnce() -> bool + Send + 'static
     {
@@ -911,6 +934,8 @@ fn bench_focused_top_config() {
         let t_sm = run_with_timeout(move || run_single(n1, Backend::Smart));
         let n2 = nnf.clone();
         let t_mc = run_with_timeout(move || run_single(n2, Backend::Cdcl));
+        let n_eff = nnf.clone();
+        let t_me = run_with_timeout(move || run_single(n_eff, Backend::Effective));
         let n3 = nnf.clone();
         let t_gc = run_with_timeout(move || run_dual_greedy_cdcl(n3));
         let n4 = nnf.clone();
@@ -927,8 +952,8 @@ fn bench_focused_top_config() {
             None => format!("{:>14}", "TIMEOUT"),
         };
         eprintln!(
-            "{:<56}  {}  {}  {}  {}  {}",
-            label, fmt(t_cd), fmt(t_sm), fmt(t_mc), fmt(t_gc), fmt(t_ge),
+            "{:<56}  {}  {}  {}  {}  {}  {}",
+            label, fmt(t_cd), fmt(t_sm), fmt(t_mc), fmt(t_me), fmt(t_gc), fmt(t_ge),
         );
     }
 
@@ -1002,16 +1027,16 @@ fn bench_focused_top_config_preprocessed() {
     eprintln!("(matrix.* columns are pp+search totals — directly comparable with cadical's all-in time;");
     eprintln!(" the bare pp time is also shown on its own line above each row.)");
     let header = format!(
-        "{:<56}  {:>14}  {:>14}  {:>14}  {:>14}  {:>14}",
-        "case", "cadical", "matrix.smart", "matrix.cdcl",
+        "{:<56}  {:>14}  {:>14}  {:>14}  {:>14}  {:>14}  {:>14}",
+        "case", "cadical", "matrix.smart", "matrix.cdcl", "matrix.eff",
         "greedy×cdcl", "greedy×eff",
     );
     eprintln!("{}", header);
     eprintln!("{}", "-".repeat(header.chars().count()));
 
     /// Preprocess the original-F NNF, print a one-line summary, then
-    /// run the five-column timing row on the *complemented* simplified
-    /// NNF (which is what the matrix-method SAT search consumes).
+    /// run the timing row on the *complemented* simplified NNF
+    /// (which is what the matrix-method SAT search consumes).
     fn run_pp_row<F>(label: &str, original_nnf: NNF, cadical: F)
     where F: FnOnce() -> bool + Send + 'static
     {
@@ -1030,6 +1055,8 @@ fn bench_focused_top_config_preprocessed() {
         let t_sm = run_with_timeout(move || run_single(n1, Backend::Smart));
         let n2 = simplified_comp.clone();
         let t_mc = run_with_timeout(move || run_single(n2, Backend::Cdcl));
+        let n_eff = simplified_comp.clone();
+        let t_me = run_with_timeout(move || run_single(n_eff, Backend::Effective));
         let n3 = simplified_comp.clone();
         let t_gc = run_with_timeout(move || run_dual_greedy_cdcl(n3));
         let n4 = simplified_comp.clone();
@@ -1048,11 +1075,12 @@ fn bench_focused_top_config_preprocessed() {
             ),
             None => format!("{:>14}", "TIMEOUT"),
         };
-        eprintln!("{:<56}  {}  {}  {}  {}  {}",
+        eprintln!("{:<56}  {}  {}  {}  {}  {}  {}",
                   label,
                   fmt(t_cd, 0.0),
                   fmt(t_sm, dt),
                   fmt(t_mc, dt),
+                  fmt(t_me, dt),
                   fmt(t_gc, dt),
                   fmt(t_ge, dt));
     }

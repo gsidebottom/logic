@@ -62,10 +62,10 @@ impl<S: CoverState + 'static> DualPathSearchController for SmartDualPathControll
                         pool.push(cpp.cover);
                         true
                     }
-                    PathsClass::Uncovered(pp) => {
+                    PathsClass::Uncovered(up) => {
                         let mut slot = uncovered.lock().unwrap();
                         if slot.is_none() {
-                            *slot = Some(pp);
+                            *slot = Some(up.prod_path);
                         }
                         false
                     }

@@ -1002,32 +1002,35 @@ fn start_classify_job(
         }
         Backend::Eff => {
             // matrix.eff: CDCL inner + EffectiveCountWrapper, no
-            // dual framework.  The `_with_nnf` builders pass the
-            // DFS-internal NNF clone to the builder so the index's
-            // pointer-keyed lookups line up with the &NNF refs the
-            // engine actually passes via sum_ord / prod_ord.
+            // dual framework.  Always use the positions-ON engine
+            // (`classify_paths_with_nnf`) regardless of `want_cover`
+            // because `EffectiveCountWrapper::sum_ord` re-orders Sum
+            // children — without positions tracked by the engine, the
+            // drainer's fallback (`positions_on_path` walking
+            // declaration-order) would mis-align path entries to
+            // subtrees and panic on non-trivial formulas.  The
+            // inner CdclController still picks cover-mode vs
+            // uncovered-only based on `want_cover`; only the engine
+            // tracks positions in both cases.  `_with_nnf` passes the
+            // engine's own NNF clone to the builder so the
+            // `EffectiveCountIndex`'s pointer-keyed lookups line up
+            // with the &NNF refs the engine passes via sum_ord /
+            // prod_ord.
             use logic::dual::effective_count::{EffectiveCountIndex, EffectiveCounts};
             use logic::dual::path_effective::EffectiveCountWrapper;
             let p = params_for_builder.clone();
-            if want_cover {
-                target_nnf.classify_paths_with_nnf(buffer_size, move |nnf_ref, tx| {
-                    let on_class: DynOnClass = Box::new(move |class, hit_limit|
-                        tx.blocking_send((class, hit_limit)).is_ok());
-                    let cdcl = CdclController::for_nnf_with_cover(nnf_ref, p, on_class);
-                    let idx = EffectiveCountIndex::build(nnf_ref);
-                    let counts = EffectiveCounts::new(&idx);
-                    EffectiveCountWrapper::new(cdcl, idx, counts)
-                })
-            } else {
-                target_nnf.classify_paths_uncovered_only_with_nnf(buffer_size, move |nnf_ref, tx| {
-                    let on_class: DynOnClass = Box::new(move |class, hit_limit|
-                        tx.blocking_send((class, hit_limit)).is_ok());
-                    let cdcl = CdclController::for_nnf(nnf_ref, p, on_class);
-                    let idx = EffectiveCountIndex::build(nnf_ref);
-                    let counts = EffectiveCounts::new(&idx);
-                    EffectiveCountWrapper::new(cdcl, idx, counts)
-                })
-            }
+            target_nnf.classify_paths_with_nnf(buffer_size, move |nnf_ref, tx| {
+                let on_class: DynOnClass = Box::new(move |class, hit_limit|
+                    tx.blocking_send((class, hit_limit)).is_ok());
+                let cdcl = if want_cover {
+                    CdclController::for_nnf_with_cover(nnf_ref, p, on_class)
+                } else {
+                    CdclController::for_nnf(nnf_ref, p, on_class)
+                };
+                let idx = EffectiveCountIndex::build(nnf_ref);
+                let counts = EffectiveCounts::new(&idx);
+                EffectiveCountWrapper::new(cdcl, idx, counts)
+            })
         }
         Backend::GreedyCdcl | Backend::GreedyEff => {
             spawn_dual_classify_job(backend, target_nnf.clone(), buffer_size)
@@ -1115,8 +1118,20 @@ fn start_classify_job(
                         }
                     }
                 }
-                PathsClass::Uncovered(p) => {
-                    let raw_positions = target.positions_on_path(&p);
+                PathsClass::Uncovered(up) => {
+                    // Use the engine-provided positions and lits when
+                    // they're populated (positions-ON engines —
+                    // matrix.eff / greedy×eff in particular).  Fall
+                    // back to `positions_on_path` / `lits_on_path` when
+                    // the engine didn't track them (positions-OFF —
+                    // matrix.smart / matrix.cdcl); that fallback is
+                    // sound because positions-OFF engines pair with
+                    // declaration-order Sum traversal.
+                    let raw_positions: logic::matrix::PathPrefix = if !up.positions.is_empty() {
+                        up.positions.clone()
+                    } else {
+                        target.positions_on_path(&up.prod_path)
+                    };
                     let translated: logic::matrix::PathPrefix = raw_positions.iter()
                         .map(|p| translate_pos(p, &pos_map_for_drainer))
                         .collect();
@@ -1145,16 +1160,24 @@ fn start_classify_job(
                         // against surviving variables — those must
                         // already be in the assignment before recon
                         // replay.
-                        let mut witness_f: Vec<Lit> = target.lits_on_path(&p)
-                            .iter().map(|&l| l.complement()).collect();
+                        let path_lits: Vec<Lit> = if !up.lits.is_empty() {
+                            up.lits.clone()
+                        } else {
+                            target.lits_on_path(&up.prod_path)
+                                .iter().map(|&l| l.clone()).collect()
+                        };
+                        let mut witness_f: Vec<Lit> = path_lits.iter()
+                            .map(|l| l.complement()).collect();
                         recon.pad_survivors_and_extend(&mut witness_f, vars.len() as u32);
                         // Display in target polarity (user negates).
                         let display_lits: Vec<Lit> = witness_f.iter()
                             .map(|l| l.complement())
                             .collect();
                         format_lits(&display_lits, &vars)
+                    } else if !up.lits.is_empty() {
+                        format_lits(&up.lits, &vars)
                     } else {
-                        format_path(&p, &target, &vars)
+                        format_path(&up.prod_path, &target, &vars)
                     };
                     job.snapshot.classified_count += 1.0;
                     job.snapshot.uncovered_paths.push(path_str);
@@ -1269,38 +1292,27 @@ fn spawn_dual_classify_job(
         solve_dual_with_cancel, BasicCoverState, CdclDualPathController,
         EffectivePathController, GreedyMaxCoverController, SearchMode,
     };
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
 
     let (tx, rx) = tokio::sync::mpsc::channel::<(logic::matrix::PathsClass, bool)>(buffer_size);
     let cancel = logic::matrix::PathClassificationHandle::new();
-    let cancel_for_task = cancel.clone();
+    // Share the cancel atomic directly — no watcher thread, so the
+    // UI's `cancel()` reaches `solve_dual_with_cancel`'s termination
+    // loop as fast as `solve_dual_with_cancel` polls it (every few
+    // ms; see that function for the timeout).  Previously a 50 ms
+    // polling watcher added a tail to cancel propagation, which
+    // compounded across rapid re-runs (e.g. backend-selector
+    // toggles) and made subsequent dual runs visibly slower until
+    // the old run cleaned up.
+    let external_cancel = cancel.cancel_flag();
 
     let handle = tokio::task::spawn_blocking(move || {
-        // Bridge the UI's PathClassificationHandle to solve_dual's
-        // `external_cancel: Arc<AtomicBool>` — spawn a small watcher
-        // that polls the handle and sets the atomic when cancelled.
-        // The watcher also exits when the atomic is set by the main
-        // task on completion, so it doesn't outlive the job.
-        let external_cancel = Arc::new(AtomicBool::new(false));
-        let cancel_watcher_atomic = external_cancel.clone();
-        let cancel_watcher_handle = cancel_for_task.clone();
-        let watcher = std::thread::spawn(move || {
-            while !cancel_watcher_atomic.load(std::sync::atomic::Ordering::SeqCst) {
-                if cancel_watcher_handle.is_cancelled() {
-                    cancel_watcher_atomic.store(true, std::sync::atomic::Ordering::SeqCst);
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            }
-        });
         let _ = match backend {
             Backend::GreedyCdcl => {
                 let cover = GreedyMaxCoverController::default();
                 let path  = CdclDualPathController::<BasicCoverState>::with_stream(tx);
                 solve_dual_with_cancel(
                     &target_nnf, cover, path, SearchMode::Satisfiable,
-                    external_cancel.clone(),
+                    external_cancel,
                 )
             }
             Backend::GreedyEff => {
@@ -1308,13 +1320,11 @@ fn spawn_dual_classify_job(
                 let path  = EffectivePathController::<BasicCoverState>::with_stream(tx);
                 solve_dual_with_cancel(
                     &target_nnf, cover, path, SearchMode::Satisfiable,
-                    external_cancel.clone(),
+                    external_cancel,
                 )
             }
             _ => unreachable!("spawn_dual_classify_job called with non-dual backend"),
         };
-        external_cancel.store(true, std::sync::atomic::Ordering::SeqCst);
-        let _ = watcher.join();
         Ok::<(), Box<dyn std::error::Error + Send>>(())
     });
     (handle, rx, cancel)

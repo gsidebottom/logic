@@ -71,18 +71,21 @@ impl<S: CoverState + 'static> DualPathSearchController for CdclDualPathControlle
                 if cancel.load(Ordering::SeqCst) {
                     return false;
                 }
+                // Use `try_send` (not `blocking_send`) so a slow /
+                // contended drainer can't hold B's std-thread hostage
+                // — see `path_effective.rs` for the rationale.
                 if let Some(ref tx) = stream_tx {
-                    let _ = tx.blocking_send((class.clone(), hit_limit));
+                    let _ = tx.try_send((class.clone(), hit_limit));
                 }
                 match class {
                     PathsClass::Covered(cpp) => {
                         pool.push(cpp.cover);
                         true
                     }
-                    PathsClass::Uncovered(pp) => {
+                    PathsClass::Uncovered(up) => {
                         let mut slot = uncovered.lock().unwrap();
                         if slot.is_none() {
-                            *slot = Some(pp);
+                            *slot = Some(up.prod_path);
                         }
                         false
                     }

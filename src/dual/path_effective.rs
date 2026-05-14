@@ -86,17 +86,23 @@ impl<S: CoverState + 'static> DualPathSearchController for EffectivePathControll
             move |class: PathsClass, hit_limit: bool| -> bool {
                 if cancel.load(Ordering::SeqCst) { return false; }
                 // Tee to the UI stream first (clone, since the inner
-                // match below moves `class`).  If the UI receiver has
-                // dropped, we silently drop the event — the dual
-                // framework still drives to its own termination.
+                // match below moves `class`).  Use `try_send` (not
+                // `blocking_send`) so that a slow / contended drainer
+                // can't hold B's std-thread hostage — when the channel
+                // is full or the receiver is dropped, we just drop
+                // the event.  The dual framework's internal logic
+                // (pool / uncovered) is unaffected; only the UI's
+                // cover-group display loses some events under load,
+                // which is a fine tradeoff for keeping cancel
+                // responsive across back-to-back re-runs.
                 if let Some(ref tx) = stream_tx {
-                    let _ = tx.blocking_send((class.clone(), hit_limit));
+                    let _ = tx.try_send((class.clone(), hit_limit));
                 }
                 match class {
                     PathsClass::Covered(cpp) => { pool.push(cpp.cover); true }
-                    PathsClass::Uncovered(pp) => {
+                    PathsClass::Uncovered(up) => {
                         let mut slot = uncovered.lock().unwrap();
-                        if slot.is_none() { *slot = Some(pp); }
+                        if slot.is_none() { *slot = Some(up.prod_path); }
                         false
                     }
                 }

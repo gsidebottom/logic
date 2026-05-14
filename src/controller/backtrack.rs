@@ -230,7 +230,20 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for BacktrackWhenC
             if self.covered_at_depth.is_none() {
                 self.path_count += 1;
                 self.uncovered_path_count += 1;
-                if !self.should_continue_on_paths_class(PathsClass::Uncovered(prefix_prod_path.clone()), self.hit_limit()) {
+                // Carry positions + lits with the event so downstream
+                // consumers (notably the web UI drainer) don't have to
+                // re-derive them by walking the NNF in declaration
+                // order — which is unsound when sum_ord re-orders Sum
+                // children (e.g. EffectiveCountWrapper).  For
+                // positions-OFF engines `prefix_positions` is the
+                // empty Vec the engine passes in; that's fine,
+                // consumers can detect the empty case.
+                let uncov = crate::matrix::UncoveredPath {
+                    prod_path: prefix_prod_path.clone(),
+                    positions: prefix_positions.clone(),
+                    lits: prefix_literals.iter().map(|&l| l.clone()).collect(),
+                };
+                if !self.should_continue_on_paths_class(PathsClass::Uncovered(uncov), self.hit_limit()) {
                     self.last_lits_len = prefix_literals.len();
                     return Some(0);
                 }

@@ -1208,8 +1208,8 @@ mod tests {
                     no_cover: false,
                 }),
                 |c, _| {
-                    if let PathsClass::Uncovered(p) = c {
-                        if ref_uncov.is_none() { ref_uncov = Some(p); }
+                    if let PathsClass::Uncovered(up) = c {
+                        if ref_uncov.is_none() { ref_uncov = Some(up.prod_path); }
                         false
                     } else { true }
                 },
@@ -1236,8 +1236,8 @@ mod tests {
             search_target.paths(&mut ctrl);
         }
         for c in &pp_classes {
-            if let PathsClass::Uncovered(p) = c {
-                if pp_uncov.is_none() { pp_uncov = Some(p.clone()); }
+            if let PathsClass::Uncovered(up) = c {
+                if pp_uncov.is_none() { pp_uncov = Some(up.prod_path.clone()); }
             }
         }
         let pp_sat = pp_uncov.is_some();

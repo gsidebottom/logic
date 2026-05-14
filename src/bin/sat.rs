@@ -260,7 +260,7 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
         loop {
             tokio::select! {
                 msg = rx.recv() => match msg {
-                    Some((PathsClass::Uncovered(p), _)) => { path = Some(p); break; }
+                    Some((PathsClass::Uncovered(up), _)) => { path = Some(up.prod_path); break; }
                     Some(_) => continue,
                     None    => break,                       // worker drained → UNSAT
                 },

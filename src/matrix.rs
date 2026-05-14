@@ -43,6 +43,14 @@ impl PathClassificationHandle {
     pub fn new() -> Self { Self::default() }
     pub fn cancel(&self) { self.cancelled.store(true, Ordering::Relaxed); }
     pub fn is_cancelled(&self) -> bool { self.cancelled.load(Ordering::Relaxed) }
+    /// Share the internal cancel atomic.  Used by
+    /// `solve_dual_with_cancel`'s `external_cancel` parameter so the
+    /// UI's cancel signal propagates without a polling watcher
+    /// thread — `cancel()` writes to this atomic and the dual's
+    /// termination loop reads it directly.
+    pub fn cancel_flag(&self) -> Arc<AtomicBool> {
+        self.cancelled.clone()
+    }
     /// Worker-side: publish the current count of paths classified so far
     /// (sum of cover counts of covered prefixes plus the number of uncovered
     /// paths reached).  Monotonically non-decreasing during a single run.
@@ -152,6 +160,56 @@ pub struct CoveredPathPrefix {
     pub prefix: PathPrefix,
 }
 
+/// An uncovered path through the matrix — a complete sequence of
+/// literals along which no two are complementary.  Carries everything
+/// the discovering controller knew about the path at emit time so
+/// consumers don't have to re-derive position info from the
+/// `prod_path` alone.
+///
+/// **Why all three fields are emitted.**  `prod_path` is the
+/// sequence of alt-picks at each Prod node, in **DFS visit order**.
+/// Walking it later to recover `positions` is sound **only** when
+/// the DFS visited Sum children in declaration order;
+/// `EffectiveCountWrapper::sum_ord` re-orders Sum children by
+/// ascending effective count, so the path entries arrive in
+/// re-ordered order and a naive declaration-order walk
+/// (`positions_on_path`) mis-aligns them to subtrees.  By having
+/// the controller — which sees the engine's `prefix_positions` and
+/// `prefix_literals` directly — emit them with the
+/// `PathsClass::Uncovered` event, downstream consumers don't need
+/// to know about the visit-order issue.
+///
+/// **Positions-OFF engine note.**  When the engine doesn't track
+/// positions (`for_each_path_prefix_no_positions*`), the controller
+/// receives an empty `prefix_positions` and emits an empty
+/// `positions` here.  Consumers that need positions must either
+/// fall back to `positions_on_path(&prod_path)` (sound when sum_ord
+/// is identity) or refuse the event.  In practice the matrix.eff /
+/// greedy×eff backends use positions-ON engines specifically to
+/// avoid this fallback.
+#[derive(Clone)]
+pub struct UncoveredPath {
+    pub prod_path: ProdPath,
+    /// Absolute tree positions of the literals along this path, in
+    /// DFS visit order.  Empty when emitted from a positions-OFF
+    /// engine.
+    pub positions: PathPrefix,
+    /// Literals along the path, in DFS visit order.
+    pub lits: Vec<Lit>,
+}
+
+impl UncoveredPath {
+    /// Build an `UncoveredPath` with just the prod_path, leaving
+    /// `positions` and `lits` empty.  Used by the reference path
+    /// enumerator in tests where positions aren't tracked; the
+    /// production path goes through
+    /// `BacktrackWhenCoveredController::should_continue_on_prefix`
+    /// which populates all three fields.
+    pub fn from_prod_path(prod_path: ProdPath) -> Self {
+        Self { prod_path, positions: Vec::new(), lits: Vec::new() }
+    }
+}
+
 /// Classification of a single path encountered during matrix path enumeration.
 ///
 /// `Clone` is provided so dual-framework path controllers can tee
@@ -163,7 +221,7 @@ pub struct CoveredPathPrefix {
 #[derive(Clone)]
 pub enum PathsClass {
     Covered(CoveredPathPrefix),
-    Uncovered(ProdPath),
+    Uncovered(UncoveredPath),
 }
 
 /// An owned snapshot of a single `for_each_path_prefix` callback invocation,
@@ -204,7 +262,18 @@ impl Paths {
     /// Iterate over the uncovered paths.
     pub fn uncovered_paths(&self) -> impl Iterator<Item = &ProdPath> {
         self.classes.iter().filter_map(|c| match c {
-            PathsClass::Uncovered(p) => Some(p),
+            PathsClass::Uncovered(u) => Some(&u.prod_path),
+            PathsClass::Covered(_) => None,
+        })
+    }
+
+    /// Iterate over uncovered paths with their full `UncoveredPath`
+    /// (prod_path + positions + lits).  Use this when the consumer
+    /// needs the engine-tracked positions/lits, not just the path
+    /// indices.
+    pub fn uncovered_paths_full(&self) -> impl Iterator<Item = &UncoveredPath> {
+        self.classes.iter().filter_map(|c| match c {
+            PathsClass::Uncovered(u) => Some(u),
             PathsClass::Covered(_) => None,
         })
     }
@@ -1368,7 +1437,9 @@ mod tests {
                     .map(|cover| PathsClass::Covered(CoveredPathPrefix { cover, prefix: vec![] }))
                     .collect()
             } else {
-                uncovered.into_iter().map(PathsClass::Uncovered).collect()
+                uncovered.into_iter()
+                    .map(|p| PathsClass::Uncovered(UncoveredPath::from_prod_path(p)))
+                    .collect()
             };
             Paths { classes, hit_limit: false }
         }
@@ -1552,8 +1623,8 @@ mod tests {
                 };
                 let mut uncovered = None;
                 while let Some((class, _)) = rx.recv().await {
-                    if let PathsClass::Uncovered(p) = class {
-                        uncovered = Some(p);
+                    if let PathsClass::Uncovered(up) = class {
+                        uncovered = Some(up.prod_path);
                         break;
                     }
                 }
@@ -2521,7 +2592,7 @@ mod tests {
                     assert_eq!(x.prefix, y.prefix);
                 }
                 (PathsClass::Uncovered(x), PathsClass::Uncovered(y)) => {
-                    assert_eq!(x, y);
+                    assert_eq!(x.prod_path, y.prod_path);
                 }
                 _ => panic!("class mismatch"),
             }

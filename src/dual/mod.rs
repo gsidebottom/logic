@@ -471,11 +471,13 @@ where
 
 /// Like [`solve_dual`] but accepts an external cancellation signal.
 /// When `external_cancel` becomes `true`, both A and B are signalled
-/// to wind down and `Outcome::Cancelled` is returned.  Polls
-/// `external_cancel` every 50 ms while waiting for one of A/B to
-/// signal termination — that's fast enough for interactive UI
-/// cancels (which sit behind a "Cancel" button click) and slow
-/// enough that the spin cost is negligible.
+/// to wind down and `Outcome::Unsat` is returned (caller is
+/// expected to consult its own state to distinguish cancel from
+/// genuine UNSAT).  Polls `external_cancel` every 5 ms while waiting
+/// for one of A/B to signal termination — fast enough that
+/// back-to-back UI re-runs (e.g. flipping the backend selector)
+/// don't accumulate concurrent in-flight searches, slow enough that
+/// the wake cost is negligible.
 pub fn solve_dual_with_cancel<A, B>(
     nnf: &NNF,
     cover_ctrl: A,
@@ -541,7 +543,7 @@ where
             cancelled = true;
             break None;
         }
-        match term_rx.recv_timeout(std::time::Duration::from_millis(50)) {
+        match term_rx.recv_timeout(std::time::Duration::from_millis(5)) {
             Ok(sig) => break Some(sig),
             Err(RecvTimeoutError::Timeout) => continue,
             Err(RecvTimeoutError::Disconnected) => break None,

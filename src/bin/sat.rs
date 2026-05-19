@@ -216,6 +216,14 @@ pub enum MatrixBackend {
     /// matrix-method configuration on most structured benchmarks
     /// (faulty-adder, BMC).
     GreedyEff,
+    /// `basic×eff`: dual-framework search pairing the minimal
+    /// [`BasicCoverController`](logic::dual::BasicCoverController)
+    /// A side (no upfront pair-mining — A only consumes pairs B
+    /// emits) with [`EffectivePathController`].  Cheaper than
+    /// `greedy×eff` on large CNFs where Greedy's
+    /// `mine_pairs(nnf)` cost (O(N²) over clauses) dominates the
+    /// actual search.
+    BasicEff,
 }
 
 impl MatrixBackend {
@@ -226,6 +234,7 @@ impl MatrixBackend {
             MatrixBackend::Eff        => "matrix.eff",
             MatrixBackend::GreedyCdcl => "greedy×cdcl",
             MatrixBackend::GreedyEff  => "greedy×eff",
+            MatrixBackend::BasicEff   => "basic×eff",
         }
     }
 }
@@ -308,7 +317,9 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
                     EffectiveCountWrapper::new(cdcl, idx, counts)
                 })
             }
-            MatrixBackend::GreedyCdcl | MatrixBackend::GreedyEff => {
+            MatrixBackend::GreedyCdcl
+            | MatrixBackend::GreedyEff
+            | MatrixBackend::BasicEff => {
                 spawn_dual_matrix_search(backend, comp.clone(), 64)
             }
         };
@@ -426,8 +437,9 @@ fn spawn_dual_matrix_search(
     PathClassificationHandle,
 ) {
     use logic::dual::{
-        solve_dual_with_cancel, BasicCoverState, CdclDualPathController,
-        EffectivePathController, GreedyMaxCoverController, SearchMode,
+        solve_dual_with_cancel, BasicCoverController, BasicCoverState,
+        CdclDualPathController, EffectivePathController, GreedyMaxCoverController,
+        SearchMode,
     };
 
     let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
@@ -456,6 +468,20 @@ fn spawn_dual_matrix_search(
             }
             MatrixBackend::GreedyEff => {
                 let cover = GreedyMaxCoverController::default();
+                let path  = EffectivePathController::<BasicCoverState>::with_stream(tx)
+                    .with_progress(progress_atom);
+                solve_dual_with_cancel(
+                    &target_nnf, cover, path, SearchMode::Satisfiable,
+                    external_cancel,
+                )
+            }
+            MatrixBackend::BasicEff => {
+                // BasicCoverController doesn't pre-mine — A only
+                // consumes pairs B emits.  Useful on big CNFs where
+                // GreedyMaxCoverController's `mine_pairs(nnf)` cost
+                // (O(N² × max_arity²) clause-pair comparisons)
+                // dominates the actual matrix-method search.
+                let cover = BasicCoverController::default();
                 let path  = EffectivePathController::<BasicCoverState>::with_stream(tx)
                     .with_progress(progress_atom);
                 solve_dual_with_cancel(
@@ -837,10 +863,12 @@ impl BackendChoice {
                          | "greedyxcdcl"   => Ok(BackendChoice::Matrix(MatrixBackend::GreedyCdcl)),
             "greedy_eff" | "greedy×eff"
                          | "greedyxeff"    => Ok(BackendChoice::Matrix(MatrixBackend::GreedyEff)),
+            "basic_eff"  | "basic×eff"
+                         | "basicxeff"     => Ok(BackendChoice::Matrix(MatrixBackend::BasicEff)),
             "cadical"                      => Ok(BackendChoice::Cadical),
             _ => Err(format!(
                 "unknown backend {:?}; expected one of: smart, cdcl, eff, \
-                 greedy_cdcl, greedy_eff, cadical", s
+                 greedy_cdcl, greedy_eff, basic_eff, cadical", s
             )),
         }
     }
@@ -850,12 +878,20 @@ impl BackendChoice {
 struct Args {
     show_progress: bool,
     backend:       BackendChoice,
+    /// Hard wall-clock limit in seconds.  When the search runs longer
+    /// than this, the binary prints `c TIMEOUT after Ns` and exits
+    /// with status 124 (the GNU `timeout` exit code for "command
+    /// timed out").  Default 6000 s; pass `--timeout 0` to disable.
+    timeout_secs:  u64,
 }
+
+const DEFAULT_TIMEOUT_SECS: u64 = 6000;
 
 fn parse_args() -> Result<Args, String> {
     let mut a = Args {
         show_progress: false,
-        backend: BackendChoice::Matrix(MatrixBackend::Smart),
+        backend: BackendChoice::Matrix(MatrixBackend::Eff),
+        timeout_secs: DEFAULT_TIMEOUT_SECS,
     };
     let mut explicit_backend = false;
     let mut iter = std::env::args().skip(1);
@@ -872,6 +908,18 @@ fn parse_args() -> Result<Args, String> {
             s if s.starts_with("--backend=") => {
                 a.backend = BackendChoice::parse(&s["--backend=".len()..])?;
                 explicit_backend = true;
+            }
+            // Wall-clock timeout.  `--timeout 0` disables.
+            "--timeout"  | "-t" => {
+                let v = iter.next().ok_or_else(||
+                    "--timeout requires a value in seconds (e.g. --timeout 600 or --timeout 0 to disable)".to_string())?;
+                a.timeout_secs = v.parse::<u64>().map_err(|_|
+                    format!("--timeout expects a non-negative integer (seconds); got {:?}", v))?;
+            }
+            s if s.starts_with("--timeout=") => {
+                let v = &s["--timeout=".len()..];
+                a.timeout_secs = v.parse::<u64>().map_err(|_|
+                    format!("--timeout expects a non-negative integer (seconds); got {:?}", v))?;
             }
             // Legacy boolean aliases — keep so older invocations
             // still work.  Mutually exclusive with each other (and
@@ -891,27 +939,35 @@ fn parse_args() -> Result<Args, String> {
                 explicit_backend = true;
             }
             "--help"     | "-h" => {
-                eprintln!("Usage: sat [--backend NAME] [--progress] < problem.cnf");
+                eprintln!("Usage: sat [--backend NAME] [--timeout SECS] [--progress] < problem.cnf");
                 eprintln!();
                 eprintln!("  --backend NAME, -b NAME");
                 eprintln!("                    Select the search backend.  NAME is one of:");
-                eprintln!("                      smart        — matrix.smart (default)");
+                eprintln!("                      smart        — matrix.smart");
                 eprintln!("                                     SmartController, single-DFS");
                 eprintln!("                      cdcl         — matrix.cdcl");
                 eprintln!("                                     CdclController, single-DFS");
-                eprintln!("                      eff          — matrix.eff");
+                eprintln!("                      eff          — matrix.eff (default)");
                 eprintln!("                                     CdclController + Effective layer,");
                 eprintln!("                                     single-DFS, no dual overhead");
                 eprintln!("                      greedy_cdcl  — greedy × CdclDualPath, dual");
                 eprintln!("                      greedy_eff   — greedy × Effective + CDCL, dual");
                 eprintln!("                                     (strongest on structured benches)");
+                eprintln!("                      basic_eff    — basic × Effective + CDCL, dual");
+                eprintln!("                                     (no upfront pair-mining — much");
+                eprintln!("                                     cheaper than greedy_eff on big CNFs)");
                 eprintln!("                      cadical      — bundled CaDiCaL reference solver");
+                eprintln!("  --timeout SECS, -t SECS");
+                eprintln!("                    Hard wall-clock limit.  On timeout, prints");
+                eprintln!("                    'c TIMEOUT after Ns' and exits 124.  Default: {}.",
+                          DEFAULT_TIMEOUT_SECS);
+                eprintln!("                    Pass --timeout 0 to disable.");
                 eprintln!("  --cadical, -c     Legacy alias for --backend cadical.");
                 eprintln!("  --cdcl            Legacy alias for --backend cdcl.");
                 eprintln!("  --progress, -p    Show a live progress bar on stderr (TTY only).");
                 eprintln!("                    Press Ctrl-C to interrupt.");
                 eprintln!();
-                eprintln!("Default backend: smart (matrix.smart).");
+                eprintln!("Default backend: eff (matrix.eff).");
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument: {:?}", other)),
@@ -954,6 +1010,23 @@ fn main() {
     }
 
     eprintln!("c backend: {}", args.backend.name());
+    if args.timeout_secs > 0 {
+        eprintln!("c timeout: {}s", args.timeout_secs);
+        // Spawn a watcher thread that hard-exits the process after
+        // the wall-clock budget is reached.  This is independent of
+        // the search engine's own cancellation paths and works for
+        // all backends (single-DFS, dual, CaDiCaL).  The watcher
+        // calls `restore_terminal()` before exit so the cursor
+        // stays sane when `--progress` was used.
+        let limit = args.timeout_secs;
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(limit));
+            restore_terminal();
+            eprintln!("\nc TIMEOUT after {}s", limit);
+            // 124 is the standard GNU `timeout` exit code.
+            std::process::exit(124);
+        });
+    }
     let t = Instant::now();
     let outcome = match args.backend {
         BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
@@ -1249,6 +1322,7 @@ mod tests {
             MatrixBackend::Eff,
             MatrixBackend::GreedyCdcl,
             MatrixBackend::GreedyEff,
+            MatrixBackend::BasicEff,
         ] {
             match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend) {
                 SearchOutcome::Sat(_) => {}

@@ -49,6 +49,38 @@ use crate::matrix::{NNF, Pair, ProdPath};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+/// Stack size for the A/B search threads spawned by [`solve_dual`] /
+/// [`solve_dual_with_cancel`].  The matrix-method DFS in
+/// `for_each_path_prefix_ord` recurses through Sum siblings via
+/// continuation closures — on a CNF complement with N clauses the
+/// nesting is `O(N)`, so industrial inputs (≥ 30k clauses) blow the
+/// OS default 2 MB stack and abort with a fatal-runtime stack
+/// overflow.
+///
+/// 256 MB matches the figure `sat.rs` configures on its tokio
+/// runtime builder.  The dual backends call `solve_dual_with_cancel`
+/// from a `spawn_blocking` task — that task itself runs on a tokio
+/// blocking-pool thread with the configured big stack, but A and B
+/// are spawned via `std::thread::spawn` *inside* that task and
+/// inherit the OS default unless we override it explicitly.
+const SEARCH_THREAD_STACK_SIZE: usize = 256 * 1024 * 1024;
+
+/// Spawn a search thread with [`SEARCH_THREAD_STACK_SIZE`] bytes of
+/// stack.  Use this in place of `std::thread::spawn` for any thread
+/// that drives a matrix-method DFS — see the constant's docs for
+/// why the OS default isn't enough.
+fn spawn_search_thread<F, T>(name: &str, f: F) -> std::thread::JoinHandle<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    std::thread::Builder::new()
+        .name(name.into())
+        .stack_size(SEARCH_THREAD_STACK_SIZE)
+        .spawn(f)
+        .expect("failed to spawn search thread")
+}
+
 /// Outcome of a dual-process search.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
@@ -408,7 +440,7 @@ where
         let state  = state.clone();
         let cancel = cancel_a.clone();
         let tx     = term_tx.clone();
-        std::thread::spawn(move || {
+        spawn_search_thread("dual.a", move || {
             let outcome = cover_loop(cover_ctrl, &pool, &state, &cancel);
             // Only `CoverComplete` is a useful signal — `Cancelled`
             // means the driver is already shutting us down.
@@ -428,7 +460,7 @@ where
         let cancel  = cancel_b.clone();
         let nnf     = nnf.clone();
         let tx      = term_tx.clone();
-        std::thread::spawn(move || {
+        spawn_search_thread("dual.b", move || {
             let outcome = path_ctrl.run(&nnf, mode, pool, state, cancel);
             // Don't signal on `Cancelled` — that means A already won.
             match &outcome {
@@ -501,7 +533,7 @@ where
         let state  = state.clone();
         let cancel = cancel_a.clone();
         let tx     = term_tx.clone();
-        std::thread::spawn(move || {
+        spawn_search_thread("dual.a", move || {
             let outcome = cover_loop(cover_ctrl, &pool, &state, &cancel);
             if matches!(outcome, CoverOutcome::CoverComplete) {
                 let _ = tx.send(TermSignal::CoverComplete);
@@ -515,7 +547,7 @@ where
         let cancel  = cancel_b.clone();
         let nnf     = nnf.clone();
         let tx      = term_tx.clone();
-        std::thread::spawn(move || {
+        spawn_search_thread("dual.b", move || {
             let outcome = path_ctrl.run(&nnf, mode, pool, state, cancel);
             match &outcome {
                 PathOutcome::Uncovered(pp) => {

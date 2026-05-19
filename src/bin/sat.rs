@@ -58,7 +58,7 @@ use std::time::{Duration, Instant};
 
 use logic::matrix::{
     Lit, NNF, PathClassificationHandle, PathParams, PathsClass, Var,
-    cdcl_controller_builder, smart_controller_builder,
+    CdclController, DynOnClass, cdcl_controller_builder, smart_controller_builder,
 };
 
 // ─── DIMACS parser ─────────────────────────────────────────────────────────
@@ -188,15 +188,42 @@ fn path_lits_to_assignment(nvars: usize, path_lits: &[&Lit]) -> Vec<bool> {
 /// Which matrix-method controller to drive the search with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MatrixBackend {
-    /// [`SmartController`](logic::controller::SmartController):
-    /// watched-literal propagation across Prod-of-`Lit`s clauses.
+    /// `matrix.smart`: [`SmartController`](logic::controller::SmartController)
+    /// — watched-literal propagation across Prod-of-`Lit`s clauses.
     Smart,
-    /// [`CdclController`](logic::controller::CdclController):
-    /// CDCL-flavoured controller, in development.  Currently equivalent
-    /// to `SmartController` minus the propagation (the CDCL pieces are
-    /// being added incrementally — see the roadmap in
-    /// `src/controller/cdcl.rs`).
+    /// `matrix.cdcl`: [`CdclController`](logic::controller::CdclController)
+    /// — CDCL-flavoured controller with watched-literal BCP, 1UIP
+    /// learning, and Luby restarts.
     Cdcl,
+    /// `matrix.eff`: CDCL inner wrapped in
+    /// [`EffectiveCountWrapper`](logic::dual::path_effective::EffectiveCountWrapper)
+    /// for effective-path-count-aware Sum/Prod ordering and
+    /// zero-count pruning.  Single-DFS — no dual A/B threads.
+    Eff,
+    /// `greedy×cdcl`: dual-framework search pairing
+    /// [`GreedyMaxCoverController`](logic::dual::GreedyMaxCoverController)
+    /// as the A-side cover ranker with
+    /// [`CdclDualPathController`](logic::dual::CdclDualPathController)
+    /// as the B-side path searcher.
+    GreedyCdcl,
+    /// `greedy×eff`: dual-framework search pairing greedy A with
+    /// [`EffectivePathController`](logic::dual::EffectivePathController)
+    /// (CDCL inner + Effective layer).  Currently the strongest
+    /// matrix-method configuration on most structured benchmarks
+    /// (faulty-adder, BMC).
+    GreedyEff,
+}
+
+impl MatrixBackend {
+    pub fn name(self) -> &'static str {
+        match self {
+            MatrixBackend::Smart      => "matrix.smart",
+            MatrixBackend::Cdcl       => "matrix.cdcl",
+            MatrixBackend::Eff        => "matrix.eff",
+            MatrixBackend::GreedyCdcl => "greedy×cdcl",
+            MatrixBackend::GreedyEff  => "greedy×eff",
+        }
+    }
 }
 
 fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBackend) -> SearchOutcome {
@@ -220,7 +247,19 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
     // frame × 200K frames ≈ 260 MB worst case).  The proper fix is to
     // rewrite the traversal as an explicit work-stack iteration; this
     // is the bandage until that lands.
-    let rt = tokio::runtime::Builder::new_current_thread()
+    //
+    // Multi-thread runtime (not current_thread): the dual backends'
+    // `try_send` pattern keeps `rx.recv()` perpetually ready, which
+    // on a single-thread runtime starves the IO driver and SIGINT
+    // never gets delivered to the `ctrl_c` future.  With a
+    // multi-thread runtime the IO driver runs on its own thread
+    // and signal delivery is independent of how busy the consumer
+    // loop is.  Two worker threads is plenty (one for the consumer
+    // loop, one for the IO driver / blocking-pool coordinator);
+    // the actual heavy lifting happens in spawn_blocking tasks
+    // which use a separate blocking-thread pool anyway.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
         .enable_all()
         .thread_stack_size(256 * 1024 * 1024)
         .build()
@@ -236,6 +275,7 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
         let nnf_cdcl  = comp.clone();
         let p_smart   = params.clone();
         let p_cdcl    = params.clone();
+        let p_eff     = params.clone();
         let (handle, mut rx, cancel) = match backend {
             MatrixBackend::Smart => comp.classify_paths_uncovered_only(64,
                 move |tx| smart_controller_builder(&nnf_smart, p_smart, tx),
@@ -243,6 +283,30 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
             MatrixBackend::Cdcl => comp.classify_paths_uncovered_only(64,
                 move |tx| cdcl_controller_builder(&nnf_cdcl, p_cdcl, tx),
             ),
+            MatrixBackend::Eff => {
+                // matrix.eff uses the positions-ON engine
+                // (`classify_paths_with_nnf`) because
+                // `EffectiveCountWrapper::sum_ord` re-orders Sum
+                // children — the positions-OFF engine + downstream
+                // `positions_on_path` is unsound for that.  The
+                // `_with_nnf` builder passes the DFS-internal NNF
+                // clone to the builder so the `EffectiveCountIndex`'s
+                // pointer-keyed lookups line up with the &NNF refs the
+                // engine passes via sum_ord / prod_ord.
+                use logic::dual::effective_count::{EffectiveCountIndex, EffectiveCounts};
+                use logic::dual::path_effective::EffectiveCountWrapper;
+                comp.classify_paths_with_nnf(64, move |nnf_ref, tx| {
+                    let on_class: DynOnClass = Box::new(move |class, hit_limit|
+                        tx.blocking_send((class, hit_limit)).is_ok());
+                    let cdcl = CdclController::for_nnf(nnf_ref, p_eff, on_class);
+                    let idx = EffectiveCountIndex::build(nnf_ref);
+                    let counts = EffectiveCounts::new(&idx);
+                    EffectiveCountWrapper::new(cdcl, idx, counts)
+                })
+            }
+            MatrixBackend::GreedyCdcl | MatrixBackend::GreedyEff => {
+                spawn_dual_matrix_search(backend, comp.clone(), 64)
+            }
         };
 
         let want_progress = show_progress && io::stderr().is_terminal();
@@ -256,35 +320,147 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
         };
 
         let mut path: Option<Vec<usize>> = None;
-        let mut interrupted = false;
+        // SIGINT-listener task: spawned as an independent task so it
+        // subscribes to `tokio::signal::ctrl_c()` exactly once and
+        // stays subscribed for the whole run.  This avoids the
+        // "fresh subscriber every loop iteration" pitfall of calling
+        // `ctrl_c()` inside `select!` directly — a SIGINT that
+        // arrived between two iterations would otherwise be lost
+        // because no subscriber was alive at the moment it fired.
+        // Spawning on the multi-thread runtime (configured above)
+        // also keeps signal delivery independent of how busy the
+        // main consume loop is.
+        //
+        // The main `select!` below races `rx.recv()` against the
+        // signal task's `JoinHandle`.  `biased;` polls the signal
+        // handle first so even when `rx.recv()` is also ready we
+        // notice the interrupt promptly.
+        let signal_task: tokio::task::JoinHandle<()> = tokio::spawn(async move {
+            let _ = tokio::signal::ctrl_c().await;
+        });
+        let mut signal_task = signal_task;
+        // Track total paths classified for progress reporting.  For
+        // single-DFS backends the wrapping `CancelController` already
+        // publishes `record_paths` from inside the engine (so the
+        // accumulation here is mostly redundant but harmless — the
+        // engine's value will dominate via `record_paths`).  For
+        // dual backends, no one inside `solve_dual_with_cancel`
+        // calls `record_paths`, so the progress bar would stay at 0
+        // forever without this — that's what was happening.  Each
+        // Covered event covers `prefix_cover_count(&prefix)` complete
+        // paths; each Uncovered is 1.  Publish every 256 events so
+        // we don't lock-contend on the cancel handle's atomic.
+        let mut paths_classified: f64 = 0.0;
+        let mut event_count: u64 = 0;
         loop {
             tokio::select! {
+                biased;
+                _ = &mut signal_task => {
+                    // SIGINT received.  Print the canonical
+                    // "INTERRUPTED" line and exit the process
+                    // immediately rather than trying to drive the
+                    // dual A/B threads to a graceful stop — the
+                    // dual's cooperative-cancel signal (`Some(0)`
+                    // from `should_continue_on_prefix`) means "skip
+                    // this branch" not "exit the whole DFS", so on
+                    // large formulas the cancel-and-join sequence
+                    // can take many seconds to fully drain.  The OS
+                    // reaps all worker threads cleanly on
+                    // process-exit.
+                    let ms = start.elapsed().as_secs_f64() * 1000.0;
+                    eprintln!("c INTERRUPTED after {:.1}ms", ms);
+                    std::process::exit(130);   // 128 + SIGINT
+                }
                 msg = rx.recv() => match msg {
                     Some((PathsClass::Uncovered(up), _)) => { path = Some(up.prod_path); break; }
-                    Some(_) => continue,
+                    Some((PathsClass::Covered(cpp), _)) => {
+                        paths_classified += comp_for_path.prefix_cover_count(&cpp.prefix);
+                        event_count += 1;
+                        if event_count & 0xFF == 0 {
+                            cancel.record_paths(paths_classified);
+                        }
+                        continue;
+                    }
                     None    => break,                       // worker drained → UNSAT
                 },
-                _ = tokio::signal::ctrl_c() => {
-                    interrupted = true;
-                    break;
-                }
             }
         }
+        // Normal-completion path (Sat found or worker drained).  The
+        // signal task is still running and will keep listening for
+        // SIGINT indefinitely; abort it so the runtime can drop
+        // cleanly.  Do NOT re-await — `select!` already
+        // polled-to-completion any handle that wakes it, and tokio
+        // panics on a second poll of a completed `JoinHandle`.
+        // abort() on a not-yet-completed handle is the right call;
+        // on an already-completed handle it's a harmless no-op.
+        signal_task.abort();
 
+        // Normal-completion shutdown.  (SIGINT path exited the
+        // process via `std::process::exit(130)` above.)
         cancel.cancel();
         drop(rx);
         if let Some(t) = progress_task { t.abort(); let _ = t.await; }
         let _ = handle.await;
 
-        if interrupted {
-            SearchOutcome::Interrupted
-        } else if let Some(p) = path {
+        if let Some(p) = path {
             let path_lits = comp_for_path.lits_on_path(&p);
             SearchOutcome::Sat(path_lits_to_assignment(nvars, &path_lits))
         } else {
             SearchOutcome::Unsat
         }
     })
+}
+
+/// Set up a dual-framework (`solve_dual_with_cancel`) search and
+/// adapt it to the same `(JoinHandle, Receiver, PathClassificationHandle)`
+/// shape `matrix_search` consumes for the single-DFS backends.  The
+/// dual's B-side path controller is built with `with_stream(tx)` so
+/// every `PathsClass` event B emits is tee'd onto the channel just
+/// like a single-DFS controller would.  The UI cancel atomic is
+/// shared with `solve_dual_with_cancel`'s `external_cancel` via
+/// `PathClassificationHandle::cancel_flag()` — Ctrl-C propagates to
+/// the dual within ~5 ms (`solve_dual_with_cancel`'s poll cadence).
+fn spawn_dual_matrix_search(
+    backend: MatrixBackend,
+    target_nnf: NNF,
+    buffer_size: usize,
+) -> (
+    tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
+    tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
+    PathClassificationHandle,
+) {
+    use logic::dual::{
+        solve_dual_with_cancel, BasicCoverState, CdclDualPathController,
+        EffectivePathController, GreedyMaxCoverController, SearchMode,
+    };
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
+    let cancel = PathClassificationHandle::new();
+    let external_cancel = cancel.cancel_flag();
+
+    let handle = tokio::task::spawn_blocking(move || {
+        let _ = match backend {
+            MatrixBackend::GreedyCdcl => {
+                let cover = GreedyMaxCoverController::default();
+                let path  = CdclDualPathController::<BasicCoverState>::with_stream(tx);
+                solve_dual_with_cancel(
+                    &target_nnf, cover, path, SearchMode::Satisfiable,
+                    external_cancel,
+                )
+            }
+            MatrixBackend::GreedyEff => {
+                let cover = GreedyMaxCoverController::default();
+                let path  = EffectivePathController::<BasicCoverState>::with_stream(tx);
+                solve_dual_with_cancel(
+                    &target_nnf, cover, path, SearchMode::Satisfiable,
+                    external_cancel,
+                )
+            }
+            _ => unreachable!("spawn_dual_matrix_search called with non-dual backend"),
+        };
+        Ok::<(), Box<dyn std::error::Error + Send>>(())
+    });
+    (handle, rx, cancel)
 }
 
 /// CaDiCaL search.  Adds the DIMACS clauses to a `cadical::Solver`
@@ -449,10 +625,37 @@ async fn matrix_progress_loop(
 
 /// Render one progress line on stderr.  Format roughly mirrors the web
 /// app's path display: `bar | percent | so-far/total | rate | elapsed`.
+/// When `so_far` is zero (no path-count signal — happens for
+/// `greedy_eff` where the Effective layer's count-based pruning
+/// short-circuits paths before they reach the leaf-level Covered
+/// detection that populates the counter), render an indeterminate
+/// spinner + elapsed instead of a static 0% bar, so the user sees
+/// the search is actively running.
 fn render_progress(so_far: f64, total: f64, elapsed_secs: f64) {
+    let bar_width = 30usize;
+    if so_far <= 0.0 {
+        // Indeterminate-progress mode: animate a small marker
+        // sliding along the bar so the user sees it's alive even
+        // though we have no usable percent.  Period ~3 s for a
+        // gentle pulse.  The renderer is called every 100 ms by
+        // the progress loop, so position advances by 1 each frame.
+        let frame = (elapsed_secs * 10.0) as usize;
+        let pos = frame % bar_width;
+        let bar: String = (0..bar_width)
+            .map(|i| if i == pos { '◉' } else { '·' })
+            .collect();
+        eprint!(
+            "\r\x1b[2Kc [{}] (searching) {}/{} {:.1}s",
+            bar,
+            format_count(so_far),
+            format_count(total),
+            elapsed_secs,
+        );
+        let _ = io::stderr().flush();
+        return;
+    }
     let pct = if total > 0.0 { (so_far / total * 100.0).clamp(0.0, 100.0) } else { 0.0 };
     let rate = if elapsed_secs > 0.0 { so_far / elapsed_secs } else { 0.0 };
-    let bar_width = 30usize;
     let filled = ((pct / 100.0) * bar_width as f64).round() as usize;
     let filled = filled.min(bar_width);
     let bar: String = (0..bar_width)
@@ -523,39 +726,114 @@ fn write_v_line<W: io::Write>(w: &mut W, asgn: &[bool]) -> io::Result<()> {
     writeln!(w, " 0")
 }
 
+/// What kind of search to run.  Either a `MatrixBackend` (the
+/// matrix-method path-search variants) or CaDiCaL (the bundled
+/// reference SAT solver).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BackendChoice {
+    Matrix(MatrixBackend),
+    Cadical,
+}
+
+impl BackendChoice {
+    fn name(self) -> &'static str {
+        match self {
+            BackendChoice::Matrix(m) => m.name(),
+            BackendChoice::Cadical   => "cadical",
+        }
+    }
+
+    /// Parse a `--backend NAME` argument value.  Accepts the canonical
+    /// names from the bench/UI (`smart`, `cdcl`, `eff`, `greedy_cdcl`,
+    /// `greedy_eff`, `cadical`) plus a few aliases for convenience.
+    fn parse(s: &str) -> Result<Self, String> {
+        match s {
+            "smart"      | "matrix.smart"  => Ok(BackendChoice::Matrix(MatrixBackend::Smart)),
+            "cdcl"       | "matrix.cdcl"   => Ok(BackendChoice::Matrix(MatrixBackend::Cdcl)),
+            "eff"        | "matrix.eff"    => Ok(BackendChoice::Matrix(MatrixBackend::Eff)),
+            "greedy_cdcl" | "greedy×cdcl"
+                         | "greedyxcdcl"   => Ok(BackendChoice::Matrix(MatrixBackend::GreedyCdcl)),
+            "greedy_eff" | "greedy×eff"
+                         | "greedyxeff"    => Ok(BackendChoice::Matrix(MatrixBackend::GreedyEff)),
+            "cadical"                      => Ok(BackendChoice::Cadical),
+            _ => Err(format!(
+                "unknown backend {:?}; expected one of: smart, cdcl, eff, \
+                 greedy_cdcl, greedy_eff, cadical", s
+            )),
+        }
+    }
+}
+
 /// Parsed command-line flags.
 struct Args {
     show_progress: bool,
-    use_cadical:   bool,
-    use_cdcl:      bool,
+    backend:       BackendChoice,
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut a = Args { show_progress: false, use_cadical: false, use_cdcl: false };
-    for arg in std::env::args().skip(1) {
+    let mut a = Args {
+        show_progress: false,
+        backend: BackendChoice::Matrix(MatrixBackend::Smart),
+    };
+    let mut explicit_backend = false;
+    let mut iter = std::env::args().skip(1);
+    while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--progress" | "-p" => a.show_progress = true,
-            "--cadical"  | "-c" => a.use_cadical   = true,
-            "--cdcl"            => a.use_cdcl      = true,
+            // Unified backend selector — preferred form.
+            "--backend"  | "-b" => {
+                let v = iter.next().ok_or_else(||
+                    "--backend requires a value (e.g. --backend greedy_eff)".to_string())?;
+                a.backend = BackendChoice::parse(&v)?;
+                explicit_backend = true;
+            }
+            s if s.starts_with("--backend=") => {
+                a.backend = BackendChoice::parse(&s["--backend=".len()..])?;
+                explicit_backend = true;
+            }
+            // Legacy boolean aliases — keep so older invocations
+            // still work.  Mutually exclusive with each other (and
+            // with --backend, since --backend is "the new way").
+            "--cadical"  | "-c" => {
+                if explicit_backend {
+                    return Err("--cadical conflicts with --backend".into());
+                }
+                a.backend = BackendChoice::Cadical;
+                explicit_backend = true;
+            }
+            "--cdcl"            => {
+                if explicit_backend {
+                    return Err("--cdcl conflicts with --backend".into());
+                }
+                a.backend = BackendChoice::Matrix(MatrixBackend::Cdcl);
+                explicit_backend = true;
+            }
             "--help"     | "-h" => {
-                eprintln!("Usage: sat [--cadical | --cdcl] [--progress] < problem.cnf");
+                eprintln!("Usage: sat [--backend NAME] [--progress] < problem.cnf");
                 eprintln!();
-                eprintln!("  --cadical, -c     Solve via the bundled CaDiCaL solver.");
-                eprintln!("  --cdcl            Solve via the matrix-method search with the");
-                eprintln!("                    in-development CdclController.  Currently");
-                eprintln!("                    behavior-identical to the default Smart");
-                eprintln!("                    backend; later builds add CDCL features.");
+                eprintln!("  --backend NAME, -b NAME");
+                eprintln!("                    Select the search backend.  NAME is one of:");
+                eprintln!("                      smart        — matrix.smart (default)");
+                eprintln!("                                     SmartController, single-DFS");
+                eprintln!("                      cdcl         — matrix.cdcl");
+                eprintln!("                                     CdclController, single-DFS");
+                eprintln!("                      eff          — matrix.eff");
+                eprintln!("                                     CdclController + Effective layer,");
+                eprintln!("                                     single-DFS, no dual overhead");
+                eprintln!("                      greedy_cdcl  — greedy × CdclDualPath, dual");
+                eprintln!("                      greedy_eff   — greedy × Effective + CDCL, dual");
+                eprintln!("                                     (strongest on structured benches)");
+                eprintln!("                      cadical      — bundled CaDiCaL reference solver");
+                eprintln!("  --cadical, -c     Legacy alias for --backend cadical.");
+                eprintln!("  --cdcl            Legacy alias for --backend cdcl.");
                 eprintln!("  --progress, -p    Show a live progress bar on stderr (TTY only).");
                 eprintln!("                    Press Ctrl-C to interrupt.");
                 eprintln!();
-                eprintln!("Default: matrix-method search with SmartController.");
+                eprintln!("Default backend: smart (matrix.smart).");
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument: {:?}", other)),
         }
-    }
-    if a.use_cadical && a.use_cdcl {
-        return Err("--cadical and --cdcl are mutually exclusive".into());
     }
     Ok(a)
 }
@@ -593,16 +871,12 @@ fn main() {
         return;
     }
 
-    let backend_name = if args.use_cadical { "CaDiCaL" }
-        else if args.use_cdcl { "matrix+CdclController" }
-        else { "matrix+SmartController" };
-    eprintln!("c backend: {}", backend_name);
+    eprintln!("c backend: {}", args.backend.name());
     let t = Instant::now();
-    let outcome = if args.use_cadical {
-        cadical_search(nvars, clauses, args.show_progress)
-    } else {
-        let backend = if args.use_cdcl { MatrixBackend::Cdcl } else { MatrixBackend::Smart };
-        matrix_search(cnf_complement_nnf(&clauses), nvars, args.show_progress, backend)
+    let outcome = match args.backend {
+        BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
+        BackendChoice::Matrix(m) =>
+            matrix_search(cnf_complement_nnf(&clauses), nvars, args.show_progress, m),
     };
     let elapsed_ms = t.elapsed().as_secs_f64() * 1000.0;
 
@@ -885,8 +1159,15 @@ mod tests {
     #[test]
     fn matrix_search_smoke() {
         // End-to-end check that `matrix_search` produces an Sat outcome
-        // for a satisfiable formula and an Unsat outcome for a contradiction.
-        for backend in [MatrixBackend::Smart, MatrixBackend::Cdcl] {
+        // for a satisfiable formula and an Unsat outcome for a contradiction
+        // across every matrix backend the binary exposes.
+        for backend in [
+            MatrixBackend::Smart,
+            MatrixBackend::Cdcl,
+            MatrixBackend::Eff,
+            MatrixBackend::GreedyCdcl,
+            MatrixBackend::GreedyEff,
+        ] {
             match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend) {
                 SearchOutcome::Sat(_) => {}
                 other => panic!("[{:?}] expected Sat, got {:?}", backend, outcome_kind(&other)),

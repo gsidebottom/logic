@@ -51,6 +51,17 @@ impl PathClassificationHandle {
     pub fn cancel_flag(&self) -> Arc<AtomicBool> {
         self.cancelled.clone()
     }
+
+    /// Share the internal paths atomic.  Used by the dual path
+    /// controllers (which don't go through the `CancelController`
+    /// wrapping that single-DFS controllers get) to publish
+    /// progress directly into the same atomic the
+    /// `paths_so_far()` reader consumes.  Stored as
+    /// `f64::to_bits()` of the paths-classified count, same
+    /// encoding as `record_paths`.
+    pub fn paths_atom(&self) -> Arc<std::sync::atomic::AtomicU64> {
+        self.paths.clone()
+    }
     /// Worker-side: publish the current count of paths classified so far
     /// (sum of cover counts of covered prefixes plus the number of uncovered
     /// paths reached).  Monotonically non-decreasing during a single run.

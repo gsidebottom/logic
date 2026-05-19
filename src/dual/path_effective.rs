@@ -39,6 +39,15 @@ pub struct EffectivePathController<S: CoverState = BasicCoverState> {
     /// groups and the uncovered-path list the same way single-DFS
     /// backends do.
     stream_tx: Option<tokio::sync::mpsc::Sender<(PathsClass, bool)>>,
+    /// Optional progress atom.  When set, the run wraps the composite
+    /// stack in a `ProgressWrapper` that publishes
+    /// `paths_classified()` here every ~4096 DFS steps.  Required
+    /// because dual path controllers don't get the
+    /// `CancelController` wrapping that single-DFS callers receive,
+    /// and `EffectivePathController`'s search work is mostly
+    /// invisible to leaf-level Covered detection (the Effective
+    /// layer's count-based pruning short-circuits before the leaf).
+    progress: Option<Arc<std::sync::atomic::AtomicU64>>,
 }
 
 impl<S: CoverState> Default for EffectivePathController<S> {
@@ -47,14 +56,24 @@ impl<S: CoverState> Default for EffectivePathController<S> {
 
 impl<S: CoverState> EffectivePathController<S> {
     pub fn new() -> Self {
-        Self { _state: std::marker::PhantomData, stream_tx: None }
+        Self { _state: std::marker::PhantomData, stream_tx: None, progress: None }
     }
 
     /// Build the controller with a UI-streaming sender.  Every
     /// `PathsClass` event is cloned and `blocking_send`'d to `tx`
     /// before the dual framework's internal handler runs.
     pub fn with_stream(tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> Self {
-        Self { _state: std::marker::PhantomData, stream_tx: Some(tx) }
+        Self { _state: std::marker::PhantomData, stream_tx: Some(tx), progress: None }
+    }
+
+    /// Configure the controller to publish progress
+    /// (`paths_classified()`) into `atom` every ~4096 DFS steps.
+    /// Pair with `PathClassificationHandle::paths_atom()` so a
+    /// progress observer's `paths_so_far()` reader sees the
+    /// published values.  Builder; chainable with `with_stream`.
+    pub fn with_progress(mut self, atom: Arc<std::sync::atomic::AtomicU64>) -> Self {
+        self.progress = Some(atom);
+        self
     }
 }
 
@@ -118,7 +137,14 @@ impl<S: CoverState + 'static> DualPathSearchController for EffectivePathControll
 
         let inner = CdclController::for_nnf_with_cover(nnf, Some(params), on_class);
         let counted = EffectiveCountWrapper::new(inner, idx, counts);
-        let mut composite = StateQueryWrapper::new(counted, state, cancel);
+        // Wrap with a ProgressWrapper.  When no progress atom was
+        // configured via `with_progress`, fall back to a private
+        // throwaway atomic the wrapper writes to but nobody reads —
+        // costs one `AtomicU64::store` per 4096 DFS calls, trivial.
+        let progress_atom = self.progress.clone().unwrap_or_else(
+            || Arc::new(std::sync::atomic::AtomicU64::new(0)));
+        let with_progress = crate::dual::wrapper::ProgressWrapper::new(counted, progress_atom);
+        let mut composite = StateQueryWrapper::new(with_progress, state, cancel);
         run_dfs_with_restarts(&mut composite, nnf, &*uncovered)
     }
 }
@@ -153,6 +179,22 @@ pub struct EffectiveCountWrapper<Inner: PathSearchController> {
     /// the alt list (i.e. unit-propagation-equivalent forced choices
     /// or pruned alts).
     pub prod_ord_filters: usize,
+    /// **Progress accounting.**  Each push of a DFS literal whose
+    /// effect drops the root effective count from `K` to a smaller
+    /// value (or to 0) accounts for `K - new_K` paths that the
+    /// Effective layer just *proved* are blocked without ever
+    /// reaching the leaf-level Covered detection in the inner
+    /// controller.  Cumulative across the whole run.
+    ///
+    /// Why this matters for progress: without it, the inner
+    /// `paths_classified()` only counts paths that reach a leaf and
+    /// fire Covered/Uncovered events.  For `EffectivePathController`
+    /// most of the work happens *before* the leaf — the count layer
+    /// prunes whole subtrees via `Some(0)` returns.  Adding
+    /// `pruned_paths` to the inner's count gives an honest "paths
+    /// accounted for so far" number that asymptotes to the matrix's
+    /// total path count when the search completes.
+    pruned_paths: f64,
 }
 
 impl<Inner: PathSearchController> EffectiveCountWrapper<Inner> {
@@ -163,22 +205,35 @@ impl<Inner: PathSearchController> EffectiveCountWrapper<Inner> {
             our_counted_len: 0,
             root_zero_prunes: 0,
             prod_ord_filters: 0,
+            pruned_paths: 0.0,
         }
     }
 
     fn sync_to_prefix(&mut self, prefix_literals: &Vec<&Lit>) {
-        // Pop frames for popped lits.
+        // Pop frames for popped lits.  Pops reflect DFS backtrack —
+        // those paths were already accounted for when we descended,
+        // so we don't re-add anything on pop.
         while self.our_counted_len > prefix_literals.len() {
             let frame = self.frames.pop().expect("frames underflow");
             self.counts.pop_undo(frame);
             self.our_counted_len -= 1;
         }
-        // Push frames for new lits.
+        // Push frames for new lits.  Each push commits to one
+        // literal of the DFS path; the literal may immediately
+        // block some paths (the ones that required the complement
+        // somewhere downstream).  Track the root-count drop as
+        // pruned-paths progress.
+        let root_id = self.idx.root_id();
         while self.our_counted_len < prefix_literals.len() {
+            let old_root = self.counts.count_of(root_id);
             let lit: Lit = prefix_literals[self.our_counted_len].clone();
             let frame = self.counts.push(&self.idx, &lit);
             self.frames.push(frame);
             self.our_counted_len += 1;
+            let new_root = self.counts.count_of(root_id);
+            if new_root < old_root {
+                self.pruned_paths += old_root - new_root;
+            }
         }
     }
 }
@@ -277,7 +332,14 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
     fn path_count(&self) -> usize { self.inner.path_count() }
     fn covered_prefix_count(&self) -> usize { self.inner.covered_prefix_count() }
     fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
-    fn paths_classified(&self) -> f64 { self.inner.paths_classified() }
+    fn paths_classified(&self) -> f64 {
+        // Combine the inner's leaf-level classifications with the
+        // count of paths the effective-count layer pruned without
+        // descending to a leaf.  Together they total the work the
+        // engine has accounted for — asymptoting to total_paths
+        // when the search completes.
+        self.inner.paths_classified() + self.pruned_paths
+    }
     fn is_restart_pending(&self) -> bool { self.inner.is_restart_pending() }
     fn complete_restart(&mut self) {
         // CDCL restart clears the trail; our prefix tracking will

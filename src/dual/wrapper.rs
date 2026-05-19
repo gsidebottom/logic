@@ -164,3 +164,80 @@ where
         return PathOutcome::Exhausted;
     }
 }
+
+
+/// `ProgressWrapper` — wraps any [`PathSearchController`] and
+/// periodically publishes its `paths_classified()` value into a
+/// shared `Arc<AtomicU64>` (the `PathClassificationHandle`'s paths
+/// atom).  Used by the dual path controllers, which don't go
+/// through the `CancelController` wrapping that single-DFS callers
+/// get for free — without this, the progress bar would see a
+/// constant zero for the dual configs.
+///
+/// Publishes every 4096 `should_continue_on_prefix` calls (same
+/// cadence as `CancelController`), encoded as `f64::to_bits()` to
+/// match `PathClassificationHandle::record_paths`.
+pub struct ProgressWrapper<Inner: PathSearchController> {
+    pub inner:    Inner,
+    pub progress: Arc<std::sync::atomic::AtomicU64>,
+    step: u64,
+}
+
+impl<Inner: PathSearchController> ProgressWrapper<Inner> {
+    pub fn new(inner: Inner, progress: Arc<std::sync::atomic::AtomicU64>) -> Self {
+        Self { inner, progress, step: 0 }
+    }
+
+    /// Publish once explicitly — for use after the DFS completes so
+    /// the final count is reflected even if the last 4096-step
+    /// boundary wasn't crossed.
+    pub fn publish_progress(&self) {
+        self.progress.store(
+            self.inner.paths_classified().to_bits(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+}
+
+impl<Inner: PathSearchController> PathSearchController for ProgressWrapper<Inner> {
+    type OnClass = ();
+
+    fn should_continue_on_prefix(
+        &mut self,
+        prefix_literals: &Vec<&Lit>,
+        prefix_positions: &PathPrefix,
+        prefix_prod_path: &ProdPath,
+        is_complete: bool,
+    ) -> Option<usize> {
+        self.step = self.step.wrapping_add(1);
+        if self.step & 0xFFF == 0 {
+            self.publish_progress();
+        }
+        self.inner.should_continue_on_prefix(
+            prefix_literals, prefix_positions, prefix_prod_path, is_complete,
+        )
+    }
+
+    fn should_continue_on_paths_class(&mut self, paths_class: PathsClass, hit_limit: bool) -> bool {
+        self.inner.should_continue_on_paths_class(paths_class, hit_limit)
+    }
+
+    fn needs_cover(&self) -> bool { self.inner.needs_cover() }
+
+    fn sum_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+        self.inner.sum_ord(children)
+    }
+
+    fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+        self.inner.prod_ord(children)
+    }
+
+    fn path_count(&self) -> usize { self.inner.path_count() }
+    fn covered_prefix_count(&self) -> usize { self.inner.covered_prefix_count() }
+    fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
+    fn paths_classified(&self) -> f64 { self.inner.paths_classified() }
+
+    fn is_restart_pending(&self) -> bool { self.inner.is_restart_pending() }
+    fn complete_restart(&mut self) { self.inner.complete_restart(); }
+}
+

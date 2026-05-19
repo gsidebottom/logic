@@ -30,6 +30,9 @@ pub struct CdclDualPathController<S: CoverState = BasicCoverState> {
     /// Optional UI streaming sink — see `EffectivePathController` for
     /// docs.  Same pattern.
     stream_tx: Option<tokio::sync::mpsc::Sender<(PathsClass, bool)>>,
+    /// Optional progress atom.  See `EffectivePathController::with_progress`
+    /// for the rationale and usage.
+    progress: Option<Arc<std::sync::atomic::AtomicU64>>,
 }
 
 impl<S: CoverState> Default for CdclDualPathController<S> {
@@ -38,14 +41,22 @@ impl<S: CoverState> Default for CdclDualPathController<S> {
 
 impl<S: CoverState> CdclDualPathController<S> {
     pub fn new() -> Self {
-        Self { _state: std::marker::PhantomData, stream_tx: None }
+        Self { _state: std::marker::PhantomData, stream_tx: None, progress: None }
     }
 
     /// Build the controller with a UI-streaming sender; every
     /// `PathsClass` event is forwarded to `tx` in addition to the
     /// dual framework's internal pool/uncovered handling.
     pub fn with_stream(tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> Self {
-        Self { _state: std::marker::PhantomData, stream_tx: Some(tx) }
+        Self { _state: std::marker::PhantomData, stream_tx: Some(tx), progress: None }
+    }
+
+    /// Configure the controller to publish progress
+    /// (`paths_classified()`) into `atom` every ~4096 DFS steps.
+    /// Builder; chainable with `with_stream`.
+    pub fn with_progress(mut self, atom: Arc<std::sync::atomic::AtomicU64>) -> Self {
+        self.progress = Some(atom);
+        self
     }
 }
 
@@ -101,7 +112,14 @@ impl<S: CoverState + 'static> DualPathSearchController for CdclDualPathControlle
         };
 
         let inner = CdclController::for_nnf_with_cover(nnf, Some(params), on_class);
-        let mut composite = StateQueryWrapper::new(inner, state, cancel);
+        // Wrap in ProgressWrapper before StateQueryWrapper so the
+        // progress publisher sees every `should_continue_on_prefix`
+        // call.  Throwaway atomic when no progress observer is
+        // configured — trivial cost.
+        let progress_atom = self.progress.clone().unwrap_or_else(
+            || Arc::new(std::sync::atomic::AtomicU64::new(0)));
+        let with_progress = crate::dual::wrapper::ProgressWrapper::new(inner, progress_atom);
+        let mut composite = StateQueryWrapper::new(with_progress, state, cancel);
         run_dfs_with_restarts(&mut composite, nnf, &*uncovered)
     }
 }

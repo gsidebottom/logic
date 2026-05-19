@@ -53,6 +53,10 @@
 //! search wins.
 
 use std::collections::HashSet;
+// `IsTerminal` is needed for the `.is_terminal()` method calls below
+// but rustc occasionally flags it as unused in this edition; the
+// allow keeps the warning out of the build.
+#[allow(unused_imports)]
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::time::{Duration, Instant};
 
@@ -339,48 +343,40 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
             let _ = tokio::signal::ctrl_c().await;
         });
         let mut signal_task = signal_task;
-        // Track total paths classified for progress reporting.  For
-        // single-DFS backends the wrapping `CancelController` already
-        // publishes `record_paths` from inside the engine (so the
-        // accumulation here is mostly redundant but harmless — the
-        // engine's value will dominate via `record_paths`).  For
-        // dual backends, no one inside `solve_dual_with_cancel`
-        // calls `record_paths`, so the progress bar would stay at 0
-        // forever without this — that's what was happening.  Each
-        // Covered event covers `prefix_cover_count(&prefix)` complete
-        // paths; each Uncovered is 1.  Publish every 256 events so
-        // we don't lock-contend on the cancel handle's atomic.
-        let mut paths_classified: f64 = 0.0;
-        let mut event_count: u64 = 0;
+        // Progress publishing is now done inside the search engine:
+        // single-DFS backends via the `CancelController` wrapper, dual
+        // backends via the `ProgressWrapper` (added to both
+        // `EffectivePathController` and `CdclDualPathController`) which
+        // publishes `paths_classified()` directly into the cancel
+        // handle's paths atom.  So the consumer loop just drains
+        // events for verdict purposes.
         loop {
             tokio::select! {
                 biased;
                 _ = &mut signal_task => {
-                    // SIGINT received.  Print the canonical
-                    // "INTERRUPTED" line and exit the process
-                    // immediately rather than trying to drive the
-                    // dual A/B threads to a graceful stop — the
-                    // dual's cooperative-cancel signal (`Some(0)`
-                    // from `should_continue_on_prefix`) means "skip
-                    // this branch" not "exit the whole DFS", so on
-                    // large formulas the cancel-and-join sequence
-                    // can take many seconds to fully drain.  The OS
+                    // SIGINT received.  Restore the terminal (cursor
+                    // visible, progress line cleared) BEFORE exiting
+                    // — `std::process::exit` skips Drop impls, so
+                    // `TerminalGuard::drop` wouldn't otherwise run.
+                    // Then print the canonical "INTERRUPTED" line
+                    // and exit the process immediately rather than
+                    // trying to drive the dual A/B threads to a
+                    // graceful stop — the dual's cooperative-cancel
+                    // signal (`Some(0)` from
+                    // `should_continue_on_prefix`) means "skip this
+                    // branch" not "exit the whole DFS", so on large
+                    // formulas the cancel-and-join sequence can
+                    // take many seconds to fully drain.  The OS
                     // reaps all worker threads cleanly on
                     // process-exit.
+                    restore_terminal();
                     let ms = start.elapsed().as_secs_f64() * 1000.0;
                     eprintln!("c INTERRUPTED after {:.1}ms", ms);
                     std::process::exit(130);   // 128 + SIGINT
                 }
                 msg = rx.recv() => match msg {
                     Some((PathsClass::Uncovered(up), _)) => { path = Some(up.prod_path); break; }
-                    Some((PathsClass::Covered(cpp), _)) => {
-                        paths_classified += comp_for_path.prefix_cover_count(&cpp.prefix);
-                        event_count += 1;
-                        if event_count & 0xFF == 0 {
-                            cancel.record_paths(paths_classified);
-                        }
-                        continue;
-                    }
+                    Some(_) => continue,
                     None    => break,                       // worker drained → UNSAT
                 },
             }
@@ -437,12 +433,22 @@ fn spawn_dual_matrix_search(
     let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
     let cancel = PathClassificationHandle::new();
     let external_cancel = cancel.cancel_flag();
+    // Share the cancel handle's paths atom with the dual's path
+    // controller so it can publish progress directly — the dual
+    // doesn't get the `CancelController`-wrapping that single-DFS
+    // controllers receive, so without this the progress bar would
+    // stay at 0% for the whole run (especially noticeable for
+    // greedy_eff, where the Effective layer prunes paths *before*
+    // they reach the leaf-level Covered detection that would
+    // populate `paths_classified` from event counting alone).
+    let progress_atom = cancel.paths_atom();
 
     let handle = tokio::task::spawn_blocking(move || {
         let _ = match backend {
             MatrixBackend::GreedyCdcl => {
                 let cover = GreedyMaxCoverController::default();
-                let path  = CdclDualPathController::<BasicCoverState>::with_stream(tx);
+                let path  = CdclDualPathController::<BasicCoverState>::with_stream(tx)
+                    .with_progress(progress_atom);
                 solve_dual_with_cancel(
                     &target_nnf, cover, path, SearchMode::Satisfiable,
                     external_cancel,
@@ -450,7 +456,8 @@ fn spawn_dual_matrix_search(
             }
             MatrixBackend::GreedyEff => {
                 let cover = GreedyMaxCoverController::default();
-                let path  = EffectivePathController::<BasicCoverState>::with_stream(tx);
+                let path  = EffectivePathController::<BasicCoverState>::with_stream(tx)
+                    .with_progress(progress_atom);
                 solve_dual_with_cancel(
                     &target_nnf, cover, path, SearchMode::Satisfiable,
                     external_cancel,
@@ -625,36 +632,38 @@ async fn matrix_progress_loop(
 
 /// Render one progress line on stderr.  Format roughly mirrors the web
 /// app's path display: `bar | percent | so-far/total | rate | elapsed`.
-/// When `so_far` is zero (no path-count signal — happens for
-/// `greedy_eff` where the Effective layer's count-based pruning
-/// short-circuits paths before they reach the leaf-level Covered
-/// detection that populates the counter), render an indeterminate
-/// spinner + elapsed instead of a static 0% bar, so the user sees
-/// the search is actively running.
+/// Falls back to an indeterminate spinner when neither the count nor
+/// the total are usable (very large formulas where `total = ∞`, or the
+/// rare case of a backend that publishes no progress at all).
 fn render_progress(so_far: f64, total: f64, elapsed_secs: f64) {
     let bar_width = 30usize;
-    if so_far <= 0.0 {
+    let have_total = total.is_finite() && total > 0.0;
+    let have_progress = so_far > 0.0 && have_total;
+    if !have_progress {
         // Indeterminate-progress mode: animate a small marker
-        // sliding along the bar so the user sees it's alive even
-        // though we have no usable percent.  Period ~3 s for a
-        // gentle pulse.  The renderer is called every 100 ms by
-        // the progress loop, so position advances by 1 each frame.
+        // sliding along the bar.  Triggered when `total` is `inf`
+        // (path count overflowed f64 on huge formulas) or when
+        // `so_far` is still 0.  Period ~3 s.  The renderer is
+        // called every 100 ms by the progress loop, so position
+        // advances by 1 each frame.
         let frame = (elapsed_secs * 10.0) as usize;
         let pos = frame % bar_width;
         let bar: String = (0..bar_width)
             .map(|i| if i == pos { '◉' } else { '·' })
             .collect();
+        let rate = if elapsed_secs > 0.0 { so_far / elapsed_secs } else { 0.0 };
         eprint!(
-            "\r\x1b[2Kc [{}] (searching) {}/{} {:.1}s",
+            "\r\x1b[2Kc [{}] {}/{} ({}/s) {:.1}s",
             bar,
             format_count(so_far),
             format_count(total),
+            format_count(rate),
             elapsed_secs,
         );
         let _ = io::stderr().flush();
         return;
     }
-    let pct = if total > 0.0 { (so_far / total * 100.0).clamp(0.0, 100.0) } else { 0.0 };
+    let pct = (so_far / total * 100.0).clamp(0.0, 100.0);
     let rate = if elapsed_secs > 0.0 { so_far / elapsed_secs } else { 0.0 };
     let filled = ((pct / 100.0) * bar_width as f64).round() as usize;
     let filled = filled.min(bar_width);
@@ -690,26 +699,99 @@ fn format_count(n: f64) -> String {
 }
 
 /// RAII cursor / progress-line manager.  On construction it hides the
-/// cursor so the bar redraws don't blink; on drop it clears the bar
-/// line and shows the cursor again.  Drop runs on normal completion,
-/// panic unwinding, and tokio runtime shutdown — including after we
-/// catch a Ctrl-C — so the user's terminal is left in a sane state.
+/// cursor (so progress-bar redraws don't blink) AND installs a
+/// best-effort panic hook + a few signal handlers that all call
+/// `restore_terminal()` so the user's terminal is left in a sane
+/// state across the modes of program exit we care about:
+///
+/// - **Normal completion / await of `handle.await`** — `Drop` runs.
+/// - **Panic unwinding** — `Drop` runs as the stack unwinds.
+/// - **`std::process::exit(130)` from the SIGINT path** — explicit
+///   `restore_terminal()` call before exit (see `matrix_search`).
+/// - **Tokio runtime shutdown after Ctrl-C** — `Drop` runs when the
+///   runtime drops the future.
+/// - **Process abort (stack overflow, abort intrinsic, fatal
+///   signal)** — handled by the libc signal handlers installed
+///   below.  Signal-handler context restricts us to async-signal-safe
+///   functions, so we write the restore bytes via the `write`
+///   syscall directly rather than going through Rust's `print!`
+///   machinery.
+///
+/// The panic hook chains the previous hook so the default Rust
+/// panic message still prints.
 struct TerminalGuard;
+
+/// Write the cursor-restore + clear-line escape bytes via the raw
+/// `write` syscall.  Async-signal-safe and panic-safe — fine to
+/// call from signal handlers, panic hooks, and `Drop`.
+fn restore_terminal() {
+    // \r + ESC[2K = move to col 0 and clear line.  ESC[?25h = show cursor.
+    const BYTES: &[u8] = b"\r\x1b[2K\x1b[?25h";
+    // SAFETY: `write(2)` is async-signal-safe.  fd 2 is stderr.  The
+    // buffer is a 'static slice so it's always valid.  We ignore the
+    // return value because there's nothing useful to do if it fails
+    // (we're typically on the way out anyway).
+    unsafe {
+        let _ = libc::write(
+            libc::STDERR_FILENO,
+            BYTES.as_ptr() as *const libc::c_void,
+            BYTES.len(),
+        );
+    }
+}
+
+/// Signal handler for abrupt-termination signals (SIGABRT, SIGSEGV,
+/// SIGBUS, SIGFPE).  Restores the terminal then re-raises the signal
+/// with the default disposition so the process dies the way it was
+/// going to die anyway (core dump, exit code reflecting the signal).
+extern "C" fn restore_and_reraise(sig: libc::c_int) {
+    restore_terminal();
+    // Reset to default handler and re-raise.  This way the process
+    // exits with the right status and any debugger/core-dump setup
+    // works as expected.
+    unsafe {
+        libc::signal(sig, libc::SIG_DFL);
+        libc::raise(sig);
+    }
+}
 
 impl TerminalGuard {
     fn new() -> Self {
         // ESC[?25l = hide cursor.
         eprint!("\x1b[?25l");
         let _ = io::stderr().flush();
+
+        // Panic hook: chain restore-terminal in front of the existing
+        // hook (default Rust panic printer, or whatever was set
+        // before this).  Set inside `new()` so we only pay the cost
+        // when a progress display is actually active.
+        let prev_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            restore_terminal();
+            prev_hook(info);
+        }));
+
+        // Signal handlers for hard-abort scenarios that wouldn't
+        // otherwise reach a Rust panic handler — stack overflow
+        // typically delivers SIGABRT or SIGSEGV depending on the
+        // platform; SIGBUS / SIGFPE are listed for completeness.
+        // SIGINT is NOT registered here: it's already handled by
+        // tokio's signal driver + our `signal_task`, which gives
+        // the process a chance to clean up gracefully before
+        // `std::process::exit(130)`.
+        for sig in &[libc::SIGABRT, libc::SIGSEGV, libc::SIGBUS, libc::SIGFPE] {
+            unsafe {
+                libc::signal(*sig, restore_and_reraise as *const () as libc::sighandler_t);
+            }
+        }
+
         TerminalGuard
     }
 }
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
-        // \r + ESC[2K = move to col 0 and clear line.  ESC[?25h = show cursor.
-        eprint!("\r\x1b[2K\x1b[?25h");
-        let _ = io::stderr().flush();
+        restore_terminal();
     }
 }
 

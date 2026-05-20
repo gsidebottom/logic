@@ -363,6 +363,128 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
     }
 }
 
+/// Arena-engine version of [`EffectiveCountWrapper`]'s controller
+/// hooks.  Same root-zero pruning, same Sum-by-count re-ordering,
+/// same Prod zero-count filter — but with arena-shaped signatures.
+///
+/// **Crucial layout invariant:** the arena's `NnfId` and this
+/// wrapper's `EffectiveCountIndex` NodeId are numerically the same
+/// integer for any given node, provided the index was built via
+/// [`crate::dual::effective_count::EffectiveCountIndex::build_from_arena`]
+/// (both walk the arena in identical DFS pre-order from the root).
+/// So we can skip the `by_ptr` lookup entirely: a parent `NnfId`
+/// IS its NodeId, and we index `idx.children_ids(parent_id)`
+/// directly.  This is faster and uses no HashMap.
+impl<Inner: crate::nnf_arena::ArenaPathSearchController + PathSearchController>
+    crate::nnf_arena::ArenaPathSearchController for EffectiveCountWrapper<Inner>
+{
+    fn should_continue_on_prefix(
+        &mut self,
+        arena: &crate::nnf_arena::NnfArena,
+        lits: &[Lit],
+        prefix_prod_path: &ProdPath,
+        is_complete: bool,
+    ) -> Option<usize> {
+        self.sync_to_prefix_arena(lits);
+        // Root-zero prune (same as the NNF impl).
+        if !is_complete && self.counts.count_of(self.idx.root_id()) == 0.0 {
+            self.root_zero_prunes += 1;
+            return Some(0);
+        }
+        crate::nnf_arena::ArenaPathSearchController::should_continue_on_prefix(
+            &mut self.inner, arena, lits, prefix_prod_path, is_complete,
+        )
+    }
+
+    fn sum_ord(
+        &mut self,
+        arena: &crate::nnf_arena::NnfArena,
+        parent: crate::nnf_arena::NnfId,
+        children: &[crate::nnf_arena::NnfId],
+    ) -> Option<Vec<crate::nnf_arena::NnfId>> {
+        // Inner first.
+        let base: Vec<crate::nnf_arena::NnfId> = match
+            crate::nnf_arena::ArenaPathSearchController::sum_ord(&mut self.inner, arena, parent, children)
+        {
+            Some(v) => v,
+            None    => children.to_vec(),
+        };
+        // No `by_ptr` HashMap lookup — parent NnfId == NodeId by
+        // construction.  Look up each child's count via the
+        // precomputed `children_ids[parent_id]` slice; the i-th
+        // entry there matches the i-th original child.
+        let parent_children_ids = self.idx.children_ids(parent as usize);
+        // Map original `NnfId` → original index → precomputed
+        // count.  Hashing children's NnfIds into a small map keyed
+        // by NnfId would be over-engineering for typical Sum
+        // arities; a linear scan over `children` is fine.
+        let mut annotated: Vec<(crate::nnf_arena::NnfId, f64)> = base.iter()
+            .map(|&c| {
+                let orig_idx = children.iter().position(|&id| id == c)
+                    .expect("inner sum_ord returned a NnfId not in children");
+                let cnt = self.counts.count_of(parent_children_ids[orig_idx]);
+                (c, cnt)
+            })
+            .collect();
+        annotated.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        Some(annotated.into_iter().map(|(c, _)| c).collect())
+    }
+
+    fn prod_ord(
+        &mut self,
+        arena: &crate::nnf_arena::NnfArena,
+        parent: crate::nnf_arena::NnfId,
+        children: &[crate::nnf_arena::NnfId],
+    ) -> Option<Vec<crate::nnf_arena::NnfId>> {
+        let base: Vec<crate::nnf_arena::NnfId> = match
+            crate::nnf_arena::ArenaPathSearchController::prod_ord(&mut self.inner, arena, parent, children)
+        {
+            Some(v) => v,
+            None    => children.to_vec(),
+        };
+        let base_len = base.len();
+        let parent_children_ids = self.idx.children_ids(parent as usize);
+        let mut annotated: Vec<(crate::nnf_arena::NnfId, f64)> = base.into_iter()
+            .map(|c| {
+                let orig_idx = children.iter().position(|&id| id == c)
+                    .expect("inner prod_ord returned a NnfId not in children");
+                let cnt = self.counts.count_of(parent_children_ids[orig_idx]);
+                (c, cnt)
+            })
+            .filter(|(_, c)| *c > 0.0)
+            .collect();
+        annotated.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        if annotated.len() < base_len {
+            self.prod_ord_filters += 1;
+        }
+        Some(annotated.into_iter().map(|(c, _)| c).collect())
+    }
+}
+
+impl<Inner: PathSearchController> EffectiveCountWrapper<Inner> {
+    /// Arena counterpart of `sync_to_prefix`.  `lits` is `&[Lit]`
+    /// (owned) instead of `&Vec<&Lit>`, but logic is identical.
+    fn sync_to_prefix_arena(&mut self, prefix_literals: &[Lit]) {
+        while self.our_counted_len > prefix_literals.len() {
+            let frame = self.frames.pop().expect("frames underflow");
+            self.counts.pop_undo(frame);
+            self.our_counted_len -= 1;
+        }
+        let root_id = self.idx.root_id();
+        while self.our_counted_len < prefix_literals.len() {
+            let old_root = self.counts.count_of(root_id);
+            let lit: Lit = prefix_literals[self.our_counted_len].clone();
+            let frame = self.counts.push(&self.idx, &lit);
+            self.frames.push(frame);
+            self.our_counted_len += 1;
+            let new_root = self.counts.count_of(root_id);
+            if new_root < old_root {
+                self.pruned_paths += old_root - new_root;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

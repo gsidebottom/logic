@@ -3,6 +3,7 @@ pub mod controller;
 pub mod dual;
 pub mod formula;
 pub mod matrix;
+pub mod nnf_arena;
 pub mod preprocess;
 pub mod prove;
 pub mod simplify;

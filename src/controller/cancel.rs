@@ -93,3 +93,55 @@ impl<C: PathSearchController> PathSearchController for CancelController<C> {
     fn is_restart_pending(&self) -> bool { self.inner.is_restart_pending() }
     fn complete_restart(&mut self) { self.inner.complete_restart() }
 }
+
+/// Arena-engine version of [`CancelController`].  Same role
+/// (cooperative cancellation + periodic progress publishing) but
+/// the hooks take `&NnfArena` / `&[Lit]` instead of `&Vec<&Lit>`.
+/// All real work is delegated to the inner controller — this
+/// wrapper just polls the cancel handle and ticks a step counter.
+///
+/// Requires `C: ArenaPathSearchController + PathSearchController`
+/// because we publish progress via the inner's
+/// [`PathSearchController::paths_classified`] method (the arena
+/// trait doesn't carry an equivalent — all paths_classified
+/// reporting still routes through the NNF trait's method, since
+/// every controller we stack on top of an arena-driven inner also
+/// implements the NNF trait for its own pre-arena uses).
+impl<C: crate::nnf_arena::ArenaPathSearchController + crate::controller::PathSearchController> crate::nnf_arena::ArenaPathSearchController for CancelController<C> {
+    fn should_continue_on_prefix(
+        &mut self,
+        arena: &crate::nnf_arena::NnfArena,
+        lits: &[Lit],
+        prefix_prod_path: &ProdPath,
+        is_complete: bool,
+    ) -> Option<usize> {
+        if self.cancel.is_cancelled() {
+            return Some(0);
+        }
+        self.step = self.step.wrapping_add(1);
+        if self.step & 0xFFF == 0 {
+            self.cancel.record_paths(crate::controller::PathSearchController::paths_classified(&self.inner));
+        }
+        crate::nnf_arena::ArenaPathSearchController::should_continue_on_prefix(
+            &mut self.inner, arena, lits, prefix_prod_path, is_complete,
+        )
+    }
+
+    fn sum_ord(
+        &mut self, arena: &crate::nnf_arena::NnfArena,
+        parent: crate::nnf_arena::NnfId, children: &[crate::nnf_arena::NnfId],
+    ) -> Option<Vec<crate::nnf_arena::NnfId>> {
+        crate::nnf_arena::ArenaPathSearchController::sum_ord(
+            &mut self.inner, arena, parent, children,
+        )
+    }
+
+    fn prod_ord(
+        &mut self, arena: &crate::nnf_arena::NnfArena,
+        parent: crate::nnf_arena::NnfId, children: &[crate::nnf_arena::NnfId],
+    ) -> Option<Vec<crate::nnf_arena::NnfId>> {
+        crate::nnf_arena::ArenaPathSearchController::prod_ord(
+            &mut self.inner, arena, parent, children,
+        )
+    }
+}

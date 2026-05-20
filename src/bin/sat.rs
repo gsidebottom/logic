@@ -312,43 +312,37 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
                 )
             }
             MatrixBackend::Eff => {
-                // matrix.eff uses the positions-ON engine
-                // (`classify_paths_with_nnf`) because
-                // `EffectiveCountWrapper::sum_ord` re-orders Sum
-                // children — the positions-OFF engine + downstream
-                // `positions_on_path` is unsound for that.  The
-                // `_with_nnf` builder passes the DFS-internal NNF
-                // clone to the builder so the `EffectiveCountIndex`'s
-                // pointer-keyed lookups line up with the &NNF refs the
-                // engine passes via sum_ord / prod_ord.
-                //
-                // IMPORTANT: `classify_paths_with_nnf` does NOT do
-                // engine-level cover detection (unlike
-                // `classify_paths_uncovered_only`, which the
-                // smart/cdcl backends use).  So the controller has
-                // to detect covers itself, which means:
-                //   * `no_cover: false`  in PathParams
-                //   * `CdclController::for_nnf_with_cover` (not
-                //     `for_nnf`), which composes the inner
-                //     `BacktrackWhenCoveredController` that actually
-                //     emits `Covered` / `Uncovered` events.
-                // Pairing the cover-less engine with the cover-less
-                // controller emits nothing at all → channel drains
-                // → sat reports UNSAT for satisfiable formulas
-                // (unsound).
+                // matrix.eff uses the arena engine: build a
+                // compact `NnfArena` from the complement NNF, drop
+                // the NNF, then drive an arena-native search via
+                // `NnfArena::classify_paths_with_arena`.  See
+                // `src/nnf_arena.rs` for the layout (12 B per node
+                // vs `enum NNF`'s 32 B) and `doc/`-level discussion
+                // for the migration rationale — net ~50 % per
+                // process memory savings on big CNF complements.
                 use logic::dual::effective_count::{EffectiveCountIndex, EffectiveCounts};
                 use logic::dual::path_effective::EffectiveCountWrapper;
+                use logic::nnf_arena::NnfArena;
                 let p_eff = Some(PathParams {
                     uncovered_path_limit: 1,
                     paths_class_limit:    usize::MAX,
                     covered_prefix_limit: usize::MAX,
+                    // `false` here is harmless in arena mode — the
+                    // arena-trait `BacktrackWhenCoveredController`
+                    // is in `uncovered_only=true` per
+                    // `for_arena_with_cover`, which suppresses
+                    // Covered event emission regardless of this
+                    // flag.  Kept `false` for symmetry with the
+                    // NNF wiring's intent ("cover detection on").
                     no_cover:             false,
                 });
-                comp.classify_paths_with_nnf(64, move |nnf_ref, tx| {
+                let arena = NnfArena::from_nnf(&comp);
+                drop(comp);  // ≈ 250 MB freed before search starts
+                arena.classify_paths_with_arena(64, move |arena_ref, tx| {
                     let on_class: DynOnClass = Box::new(move |class, hit_limit|
                         tx.blocking_send((class, hit_limit)).is_ok());
-                    let cdcl = CdclController::for_nnf_with_cover(nnf_ref, p_eff, on_class);
-                    let idx = EffectiveCountIndex::build(nnf_ref);
+                    let cdcl = CdclController::for_arena_with_cover(arena_ref, p_eff, on_class);
+                    let idx = EffectiveCountIndex::build_from_arena(arena_ref);
                     let counts = EffectiveCounts::new(&idx);
                     EffectiveCountWrapper::new(cdcl, idx, counts)
                 })

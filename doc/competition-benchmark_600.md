@@ -15,7 +15,7 @@
 
 ## Per-problem results
 
-| Problem | Result | Time |
+| Problem |clqcl_100_6_5.normalised Result | Time |
 |---------|--------|------|
 | gm24sparrc | UNSAT | 0.9899s |
 | GP_216_290_40 | SAT | 4.6127s |

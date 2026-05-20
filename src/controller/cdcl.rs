@@ -1016,187 +1016,18 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
         prefix_prod_path: &ProdPath,
         is_complete: bool,
     ) -> Option<usize> {
-        // ── Phase 1: backtrack ──
-        // Pop push_frames whose lits have been popped from the DFS path.
-        // Each frame undoes its cascade (block / implied) and trims the
-        // matching number of entries from the reasoned trail.
-        while self.our_counted_len > prefix_literals.len() {
-            let frame = self.push_frames.pop().expect("push_frames underflow");
-            self.undo(&frame);
-            self.our_counted_len -= 1;
-        }
-        // After backtrack, snap last_path_len_at_lit_push to the most
-        // recently retained DFS lit's level (or 0 if no DFS lits left).
-        if self.our_counted_len < prefix_literals.len() {
-            self.last_path_len_at_lit_push = self.trail.iter().rev()
-                .find(|t| !matches!(t.reason, Reason::Implied(_)))
-                .map(|t| t.decision_level)
-                .unwrap_or(0);
-        }
-
-        // ── Phase 2: delegate to the inner controller FIRST ──
-        // The inner updates its lit_counter to reflect the current
-        // prefix_literals, which our `lit_or_implied` checks rely on.
-        // Calling inner before our forward-propagation phase ensures
-        // process_push's "is the complement on path?" queries see the
-        // up-to-date path state.  (Same ordering SmartController uses
-        // and for the same reason.)
+        // Delegate to the inner controller first (so its lit_counter
+        // reflects the current prefix before our forward-propagation
+        // phase queries it via `lit_or_implied`).
         let inner_r = self.inner.should_continue_on_prefix(
             prefix_literals, prefix_positions, prefix_prod_path, is_complete,
         );
-
-        // Lazy-DFS investigation: count this call.
-        self.instr_calls += 1;
-        if self.our_counted_len < prefix_literals.len() {
-            self.instr_calls_with_push += 1;
-        }
-
-        // ── Phase 3: forward — process newly-pushed DFS lits ──
-        let mut want_backtrack = false;
-        // Step 6: track whether the conflict was cascade-derived
-        // (i.e., produced a learned clause).  If so, return `Some(1)`
-        // instead of `Some(0)` — a 1-Prod backjump in our flat
-        // Sum-of-Prods CNF-complement search.  Path-level conflicts
-        // (no learned clause) still use chronological `Some(0)` to
-        // avoid skipping potentially-valid paths.
-        let mut want_backjump = false;
-        while self.our_counted_len < prefix_literals.len() {
-            let i = self.our_counted_len;
-            let new_lit: Lit = prefix_literals[i].clone();
-            let level = prefix_prod_path.len();
-
-            // Reason for the DFS-pushed lit: Decision if path grew
-            // since the last DFS push, SumForced otherwise.
-            let reason = if level > self.last_path_len_at_lit_push {
-                Reason::Decision
-            } else {
-                Reason::SumForced
-            };
-
-            let lit_idx  = (new_lit.var as usize) * 2 + (new_lit.neg as usize);
-            let comp_idx = lit_idx ^ 1;
-
-            // Add the DFS lit to the reasoned trail.  Even if it was
-            // previously Implied, we keep the new record — Step 4's
-            // 1UIP analysis treats trail entries as events and
-            // resolves duplicates by their reason chains.
-            let mut frame = PushFrame::default();
-            self.trail.push(TrailLit {
-                lit: new_lit.clone(),
-                reason,
-                decision_level: level,
-            });
-            frame.trail_added = 1;
-
-            // Conflict detection at push time: is the complement
-            // already known true?  At this point the inner has
-            // processed `prefix_literals` so its lit_counter reflects
-            // the new lit's presence; lit_or_implied(comp_idx) is
-            // therefore accurate.
-            let pushing_conflict = self.lit_or_implied(comp_idx);
-            if pushing_conflict {
-                self.conflict_count += 1;
-                self.instr_pushes_conflict += 1;
-                want_backtrack = true;
-                // No useful 1UIP analysis for path-level conflicts
-                // (they aren't tied to a specific clause's all-alts-
-                // blocked event).  Step 6 may revisit this — for now
-                // we just count it.
-            } else {
-                // Run the propagation cascade unless this lit was
-                // already implied (in which case its consequences are
-                // already applied to clause-blocked state).
-                let already_implied = self.implied_lit_counter
-                    .get(lit_idx).copied().unwrap_or(0) > 0;
-                if already_implied {
-                    self.instr_pushes_already_implied += 1;
-                }
-                if !already_implied {
-                    self.instr_pushes_propagated += 1;
-                    let trail_before = self.trail.len();
-                    let r = self.process_push(&new_lit, level, &mut frame);
-                    self.instr_implied_emitted += self.trail.len().saturating_sub(trail_before);
-                    match r {
-                        Ok(()) => {}
-                        Err(conflict_clause_id) => {
-                            self.conflict_count += 1;
-                            want_backtrack = true;
-                            // Run 1UIP analysis and register the
-                            // learned clause with the propagation
-                            // machinery.  Initial blockings (every alt
-                            // is blocked by construction) get routed
-                            // to the appropriate push-frame's
-                            // `blocked` list so they're undone as
-                            // their owning frames pop on backtrack.
-                            //
-                            // Step 6 will turn `want_backtrack=true`
-                            // into a non-chronological backjump using
-                            // `learned.backjump_level`.
-                            let learned = self.analyze_conflict(conflict_clause_id);
-                            let _learned_id = self.register_learned_clause(&learned, &mut frame);
-                            // VSIDS: bump every variable in the
-                            // learned clause's alts.  These are the
-                            // variables most directly involved in
-                            // the conflict — focusing future
-                            // decisions on them tends to compact the
-                            // search.
-                            for alt in &learned.alts {
-                                self.bump_var_activity(alt.var);
-                            }
-                            self.decay_var_activities();
-                            self.learned_clauses.push(learned);
-                            // Step 6: cascade conflict + learned
-                            // clause → 1-Prod backjump.  See module
-                            // docstring for why `Some(1)` is the
-                            // right K for Sum-of-Prods.
-                            want_backjump = true;
-                            // Luby restart: count this cascade
-                            // conflict; trigger restart when the
-                            // current threshold is reached.
-                            self.conflicts_since_last_restart += 1;
-                            if self.conflicts_since_last_restart >= self.restart_threshold {
-                                self.restart_pending = true;
-                            }
-                        }
-                    }
-                }
-            }
-
-            self.push_frames.push(frame);
-            self.our_counted_len += 1;
-            self.last_path_len_at_lit_push = level;
-        }
-
-        // Restart takes precedence: returning `Some(usize::MAX)`
-        // unwinds the entire DFS.  The driver
-        // ([`crate::matrix::NNF::classify_paths_uncovered_only`]) sees
-        // `is_restart_pending()` after the engine exits, calls
-        // `complete_restart()`, and re-invokes the engine — which
-        // then re-descends with the same learned clauses + variable
-        // activities but a fresh trail.
-        if self.restart_pending {
-            return Some(usize::MAX);
-        }
-        // Step 6: cascade conflicts (with learned clauses) and
-        // path-level conflicts both fall back to chronological
-        // `Some(0)` (skip this alt only).
-        //
-        // Originally `Some(1)` was returned for cascade conflicts to
-        // skip the entire current Prod, but that interacts badly
-        // with the positions-on DFS engine on Phase-3-BVE-simplified
-        // NNFs: the 1-Prod backjump unwinds out of a Prod whose
-        // remaining alts may still hold the SAT witness, producing
-        // an incorrect UNSAT verdict.  Dropping back to `Some(0)`
-        // loses the backjump optimization (the search explores the
-        // remaining alts manually) but is sound under both DFS
-        // variants and matches what the positions-off DFS engine
-        // already does via its `.is_none()` cast.  See
-        // `doc/preprocess.md` § "Open issue surfaced by Phase 3"
-        // for the bisection diagnostic.
-        if want_backjump || want_backtrack {
-            return Some(0);
-        }
-        inner_r
+        let lits_len = prefix_literals.len();
+        self.process_prefix_step(
+            lits_len, prefix_prod_path, is_complete,
+            |i| prefix_literals[i].clone(),
+            inner_r,
+        )
     }
 
     fn should_continue_on_paths_class(&mut self, paths_class: PathsClass, hit_limit: bool) -> bool {
@@ -1323,6 +1154,332 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
         // 1-indexed Luby; first call here goes from initial threshold
         // (luby(1)*unit) to luby(2)*unit, etc.
         self.restart_threshold = self.restart_unit * luby(self.restart_count + 1);
+    }
+}
+
+impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
+    /// Arena counterpart of [`Self::for_nnf_with_cover`].  Builds a
+    /// CdclController whose inner [`BacktrackWhenCoveredController`]
+    /// is in `uncovered_only` mode — cover detection still runs (so
+    /// the search prunes contradictory subtrees and emits `Uncovered`
+    /// events at SAT leaves) but `Covered` events are *not* emitted,
+    /// because they'd require positions which the arena engine
+    /// doesn't compute.  This matches matrix.eff's needs exactly:
+    /// matrix.eff discards Covered events from its `on_class`
+    /// callback anyway (only Uncovered is useful as a SAT witness),
+    /// so suppressing them upstream is sound and saves the
+    /// per-leaf position-cloning cost.
+    pub fn for_arena_with_cover(arena: &crate::nnf_arena::NnfArena, params: Option<PathParams>, on_class: F) -> Self {
+        let mut s = <Self as PathSearchController>::with_on_class_uncovered_only(params, on_class);
+        s.preprocess_arena(arena);
+        s
+    }
+
+    /// Arena counterpart of [`Self::preprocess`].  Walks the arena
+    /// in DFS pre-order looking for Sum-only-ancestor Prods of pure
+    /// Lits — those are CNF-style clauses, the units propagation
+    /// machinery indexes.  Logic mirrors `preprocess` 1:1; only the
+    /// tree walk differs (arena indices instead of `&NNF`
+    /// pattern-match).
+    fn preprocess_arena(&mut self, arena: &crate::nnf_arena::NnfArena) {
+        use crate::nnf_arena::{NnfArena, NnfId, NnfKind};
+        fn walk<G: FnMut(PathsClass, bool) -> bool>(
+            arena: &NnfArena,
+            n: NnfId,
+            s: &mut CdclController<G>,
+            inside_prod: bool,
+        ) {
+            match arena.kind(n) {
+                NnfKind::Lit => {}
+                NnfKind::Sum => {
+                    for &c in arena.children(n) {
+                        walk(arena, c, s, inside_prod);
+                    }
+                }
+                NnfKind::Prod => {
+                    let children = arena.children(n);
+                    if !inside_prod && !children.is_empty()
+                       && children.iter().all(|&c| matches!(arena.kind(c), NnfKind::Lit))
+                    {
+                        let clause_id = s.prod_alts.len();
+                        let alts: Vec<Lit> = children.iter().map(|&c| arena.lit(c)).collect();
+                        for (alt_idx, lit) in alts.iter().enumerate() {
+                            let lit_idx = (lit.var as usize) * 2 + (lit.neg as usize);
+                            if lit_idx >= s.watches.len() {
+                                s.watches.resize(lit_idx + 1, Vec::new());
+                            }
+                            s.watches[lit_idx].push((clause_id, alt_idx));
+                        }
+                        s.prod_total.push(alts.len());
+                        s.prod_blocked.push(0);
+                        s.prod_alt_blocked.push(vec![false; alts.len()]);
+                        s.prod_alts.push(alts);
+                    }
+                    for &c in children { walk(arena, c, s, true); }
+                }
+            }
+        }
+        walk(arena, arena.root(), self, false);
+        if !self.watches.is_empty() {
+            self.implied_lit_counter.resize(self.watches.len(), 0);
+        }
+        self.initial_clause_count = self.prod_alts.len();
+        self.clause_deleted = vec![false; self.prod_alts.len()];
+    }
+}
+
+/// Arena-trait impl: same hooks, arena-shaped signatures.  Heavy
+/// logic shared with the NNF impl via `process_prefix_step`.
+impl<F: FnMut(PathsClass, bool) -> bool> crate::nnf_arena::ArenaPathSearchController for CdclController<F> {
+    fn should_continue_on_prefix(
+        &mut self,
+        arena: &crate::nnf_arena::NnfArena,
+        lits: &[Lit],
+        prefix_prod_path: &ProdPath,
+        is_complete: bool,
+    ) -> Option<usize> {
+        // Inner first — same ordering rationale as the NNF impl.
+        let inner_r = <BacktrackWhenCoveredController<F> as crate::nnf_arena::ArenaPathSearchController>::should_continue_on_prefix(
+            &mut self.inner, arena, lits, prefix_prod_path, is_complete,
+        );
+        self.process_prefix_step(
+            lits.len(), prefix_prod_path, is_complete,
+            |i| lits[i].clone(),
+            inner_r,
+        )
+    }
+
+    fn sum_ord(
+        &mut self, arena: &crate::nnf_arena::NnfArena,
+        parent: crate::nnf_arena::NnfId, children: &[crate::nnf_arena::NnfId],
+    ) -> Option<Vec<crate::nnf_arena::NnfId>> {
+        // Delegate to inner — BacktrackWhenCoveredController's arena
+        // impl returns None (declaration order).
+        <BacktrackWhenCoveredController<F> as crate::nnf_arena::ArenaPathSearchController>::sum_ord(
+            &mut self.inner, arena, parent, children,
+        )
+    }
+
+    /// Arena counterpart of the NNF `prod_ord`.  Same filter +
+    /// VSIDS-sort logic, but children are `NnfId`s and we use the
+    /// arena to determine which are Lit and look up their values.
+    fn prod_ord(
+        &mut self, arena: &crate::nnf_arena::NnfArena,
+        _parent: crate::nnf_arena::NnfId, children: &[crate::nnf_arena::NnfId],
+    ) -> Option<Vec<crate::nnf_arena::NnfId>> {
+        use crate::nnf_arena::NnfKind;
+        let mut filtered: Vec<crate::nnf_arena::NnfId> = Vec::with_capacity(children.len());
+        for &c in children {
+            match arena.kind(c) {
+                NnfKind::Lit => {
+                    let l = arena.lit(c);
+                    let lit_idx  = (l.var as usize) * 2 + (l.neg as usize);
+                    let comp_idx = lit_idx ^ 1;
+                    if self.lit_or_implied(lit_idx) {
+                        return Some(vec![c]);
+                    }
+                    if self.lit_or_implied(comp_idx) {
+                        continue;
+                    }
+                    filtered.push(c);
+                }
+                _ => filtered.push(c),
+            }
+        }
+        // VSIDS + phase-saving sort.  Non-Lit children get activity
+        // 0.0 and "phase doesn't match" → sort last.
+        filtered.sort_by(|&a, &b| {
+            let lit_a = if matches!(arena.kind(a), NnfKind::Lit) { Some(arena.lit(a)) } else { None };
+            let lit_b = if matches!(arena.kind(b), NnfKind::Lit) { Some(arena.lit(b)) } else { None };
+            let act_a = lit_a.as_ref().map(|l| self.var_activity(l.var)).unwrap_or(0.0);
+            let act_b = lit_b.as_ref().map(|l| self.var_activity(l.var)).unwrap_or(0.0);
+            act_b.partial_cmp(&act_a).unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    let p_a = lit_a.as_ref().map(|l| self.phase_matches(l)).unwrap_or(false);
+                    let p_b = lit_b.as_ref().map(|l| self.phase_matches(l)).unwrap_or(false);
+                    p_b.cmp(&p_a)
+                })
+        });
+        Some(filtered)
+    }
+}
+
+/// Inherent methods used by both trait impls (NNF and arena) to
+/// avoid duplicating the ~150-line backtrack / forward-propagation /
+/// conflict-analysis machinery in `should_continue_on_prefix`.
+impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
+    /// Engine-agnostic core of `should_continue_on_prefix`.  Callers
+    /// (NNF and arena trait impls) must invoke their inner controller
+    /// FIRST (so its `lit_counter` is in sync) and pass the result in
+    /// as `inner_r`.  `lit_at(i)` returns the owned `Lit` at prefix
+    /// position `i` — the NNF impl clones a `&Lit`, the arena impl
+    /// clones from its owned `&[Lit]`.
+    fn process_prefix_step(
+        &mut self,
+        lits_len: usize,
+        prefix_prod_path: &ProdPath,
+        _is_complete: bool,
+        mut lit_at: impl FnMut(usize) -> Lit,
+        inner_r: Option<usize>,
+    ) -> Option<usize> {
+        // ── Phase 1: backtrack ──
+        // Pop push_frames whose lits have been popped from the DFS path.
+        while self.our_counted_len > lits_len {
+            let frame = self.push_frames.pop().expect("push_frames underflow");
+            self.undo(&frame);
+            self.our_counted_len -= 1;
+        }
+        if self.our_counted_len < lits_len {
+            self.last_path_len_at_lit_push = self.trail.iter().rev()
+                .find(|t| !matches!(t.reason, Reason::Implied(_)))
+                .map(|t| t.decision_level)
+                .unwrap_or(0);
+        }
+        self.instr_calls += 1;
+        if self.our_counted_len < lits_len {
+            self.instr_calls_with_push += 1;
+        }
+        // ── Phase 3: forward — process newly-pushed DFS lits ──
+        let mut want_backtrack = false;
+        let mut want_backjump = false;
+        while self.our_counted_len < lits_len {
+            let i = self.our_counted_len;
+            let new_lit: Lit = lit_at(i);
+            let level = prefix_prod_path.len();
+            let reason = if level > self.last_path_len_at_lit_push {
+                Reason::Decision
+            } else {
+                Reason::SumForced
+            };
+            let lit_idx  = (new_lit.var as usize) * 2 + (new_lit.neg as usize);
+            let comp_idx = lit_idx ^ 1;
+            let mut frame = PushFrame::default();
+            self.trail.push(TrailLit {
+                lit: new_lit.clone(),
+                reason,
+                decision_level: level,
+            });
+            frame.trail_added = 1;
+            let pushing_conflict = self.lit_or_implied(comp_idx);
+            if pushing_conflict {
+                self.conflict_count += 1;
+                self.instr_pushes_conflict += 1;
+                want_backtrack = true;
+            } else {
+                let already_implied = self.implied_lit_counter
+                    .get(lit_idx).copied().unwrap_or(0) > 0;
+                if already_implied {
+                    self.instr_pushes_already_implied += 1;
+                }
+                if !already_implied {
+                    self.instr_pushes_propagated += 1;
+                    let trail_before = self.trail.len();
+                    let r = self.process_push(&new_lit, level, &mut frame);
+                    self.instr_implied_emitted += self.trail.len().saturating_sub(trail_before);
+                    match r {
+                        Ok(()) => {}
+                        Err(conflict_clause_id) => {
+                            self.conflict_count += 1;
+                            want_backtrack = true;
+                            let learned = self.analyze_conflict(conflict_clause_id);
+                            let _learned_id = self.register_learned_clause(&learned, &mut frame);
+                            for alt in &learned.alts {
+                                self.bump_var_activity(alt.var);
+                            }
+                            self.decay_var_activities();
+                            self.learned_clauses.push(learned);
+                            want_backjump = true;
+                            self.conflicts_since_last_restart += 1;
+                            if self.conflicts_since_last_restart >= self.restart_threshold {
+                                self.restart_pending = true;
+                            }
+                        }
+                    }
+                }
+            }
+            self.push_frames.push(frame);
+            self.our_counted_len += 1;
+            self.last_path_len_at_lit_push = level;
+        }
+        if self.restart_pending {
+            return Some(usize::MAX);
+        }
+        if want_backjump || want_backtrack {
+            return Some(0);
+        }
+        inner_r
+    }
+}
+
+#[cfg(test)]
+mod arena_tests {
+    use super::*;
+    use crate::nnf_arena::NnfArena;
+
+    fn lit_p(v: u32) -> NNF { NNF::Lit(Lit::pos(v)) }
+    fn lit_n(v: u32) -> NNF { NNF::Lit(Lit::neg(v)) }
+
+    /// Smoke: run a cover-mode CdclController via the arena engine
+    /// over a satisfiable matrix-complement formula and verify that
+    /// at least one Uncovered event fires.
+    #[test]
+    fn cdcl_arena_finds_satisfiable_path() {
+        // (a ∨ b) — satisfiable; its matrix-complement is
+        // Sum(Lit(a), Lit(b)) which has 1 complete path (both lits
+        // visited via Sum cross-product), non-contradictory →
+        // 1 Uncovered.
+        let nnf = NNF::Sum(vec![lit_p(0), lit_p(1)]);
+        let arena = NnfArena::from_nnf(&nnf);
+        let uncovered = std::cell::Cell::new(0u32);
+        let mut cdcl: CdclController<_> =
+            CdclController::for_arena_with_cover(
+                &arena,
+                Some(PathParams {
+                    uncovered_path_limit: 1,
+                    paths_class_limit:    usize::MAX,
+                    covered_prefix_limit: usize::MAX,
+                    no_cover:             false,
+                }),
+                |class: PathsClass, _hl| {
+                    if matches!(class, PathsClass::Uncovered(_)) {
+                        uncovered.set(uncovered.get() + 1);
+                    }
+                    true
+                },
+            );
+        arena.for_each_path_prefix(&mut cdcl);
+        assert!(uncovered.get() >= 1,
+            "expected at least one Uncovered event on satisfiable (a ∨ b), got {}",
+            uncovered.get());
+    }
+
+    /// Cover detection still fires under CdclController + arena.
+    /// `Sum(a, ¬a)` includes a complementary pair in every complete
+    /// path → 0 Uncovered, ≥ 1 covered-prefix detection.
+    #[test]
+    fn cdcl_arena_detects_contradictory() {
+        let nnf = NNF::Sum(vec![lit_p(0), lit_n(0)]);
+        let arena = NnfArena::from_nnf(&nnf);
+        let uncovered = std::cell::Cell::new(0u32);
+        let mut cdcl: CdclController<_> =
+            CdclController::for_arena_with_cover(
+                &arena,
+                Some(PathParams {
+                    uncovered_path_limit: 1,
+                    paths_class_limit:    usize::MAX,
+                    covered_prefix_limit: usize::MAX,
+                    no_cover:             false,
+                }),
+                |class: PathsClass, _hl| {
+                    if matches!(class, PathsClass::Uncovered(_)) {
+                        uncovered.set(uncovered.get() + 1);
+                    }
+                    true
+                },
+            );
+        arena.for_each_path_prefix(&mut cdcl);
+        assert_eq!(uncovered.get(), 0, "(a ∨ ¬a)-complement is fully covered");
+        assert!(cdcl.covered_prefix_count() > 0, "should have detected the a/¬a pair");
     }
 }
 

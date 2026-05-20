@@ -102,6 +102,95 @@ impl EffectiveCountIndex {
     /// in memory for the lifetime of any `EffectiveCounts` built on
     /// top of this index — the typical case is the index is owned by
     /// the controller and refers to the NNF the controller drives.
+    /// Arena counterpart of [`Self::build`].  Walks an [`NnfArena`]
+    /// in the same DFS pre-order, assigning the same flat NodeIds
+    /// the wrapper expects.  Because both `NnfArena::from_nnf` and
+    /// `EffectiveCountIndex::build_from_arena` traverse in DFS
+    /// pre-order from the root, the arena's `NnfId` and this
+    /// index's flat NodeId are numerically identical for any
+    /// node — so callers can pass an arena `NnfId` directly to
+    /// `id_of_arena_id` / `children_ids` without a translation
+    /// table.
+    pub fn build_from_arena(arena: &crate::nnf_arena::NnfArena) -> Self {
+        use crate::nnf_arena::{NnfArena, NnfId, NnfKind};
+        let mut idx = Self {
+            by_ptr: HashMap::new(),
+            var_to_lit_nodes: Vec::new(),
+            parent: Vec::new(),
+            children_offsets: Vec::new(),
+            children_data:    Vec::new(),
+            kind: Vec::new(),
+            leaf_ancestors_offsets: Vec::new(),
+            leaf_ancestors_data:    Vec::new(),
+        };
+        // Walk the arena recursively, mirroring the NNF `walk`.
+        // We only need parent[], kind[], var_to_lit_nodes, and the
+        // children CSR — `by_ptr` is intentionally empty in arena
+        // mode (the wrapper uses arena NnfIds directly, which match
+        // our flat NodeIds; no pointer-key lookup needed).
+        let mut scratch: Vec<Vec<usize>> = Vec::new();
+        fn walk(arena: &NnfArena, n: NnfId, parent: Option<usize>,
+                idx: &mut EffectiveCountIndex, scratch: &mut Vec<Vec<usize>>) -> usize {
+            let id = idx.parent.len();
+            idx.parent.push(parent);
+            scratch.push(Vec::new());
+            match arena.kind(n) {
+                NnfKind::Lit => {
+                    idx.kind.push(NodeKind::Lit);
+                    let l = arena.lit(n);
+                    let v = l.var as usize;
+                    if v >= idx.var_to_lit_nodes.len() {
+                        idx.var_to_lit_nodes.resize(v + 1, Vec::new());
+                    }
+                    idx.var_to_lit_nodes[v].push((id, l.neg));
+                }
+                NnfKind::Sum => {
+                    idx.kind.push(NodeKind::Sum);
+                    let cids: Vec<usize> = arena.children(n).iter()
+                        .map(|&c| walk(arena, c, Some(id), idx, scratch))
+                        .collect();
+                    scratch[id] = cids;
+                }
+                NnfKind::Prod => {
+                    idx.kind.push(NodeKind::Prod);
+                    let cids: Vec<usize> = arena.children(n).iter()
+                        .map(|&c| walk(arena, c, Some(id), idx, scratch))
+                        .collect();
+                    scratch[id] = cids;
+                }
+            }
+            id
+        }
+        walk(arena, arena.root(), None, &mut idx, &mut scratch);
+        // Flatten scratch to CSR (same as `build`).
+        let total: usize = scratch.iter().map(|v| v.len()).sum();
+        idx.children_offsets = Vec::with_capacity(scratch.len() + 1);
+        idx.children_data    = Vec::with_capacity(total);
+        idx.children_offsets.push(0);
+        for v in &scratch {
+            idx.children_data.extend_from_slice(v);
+            idx.children_offsets.push(idx.children_data.len());
+        }
+        drop(scratch);
+        // Build leaf_ancestors CSR (same logic as NNF version, no
+        // scratch nested Vec).
+        let n_nodes = idx.parent.len();
+        idx.leaf_ancestors_offsets = Vec::with_capacity(n_nodes + 1);
+        idx.leaf_ancestors_data    = Vec::new();
+        idx.leaf_ancestors_offsets.push(0);
+        for id in 0..n_nodes {
+            if matches!(idx.kind[id], NodeKind::Lit) {
+                let mut cur = id;
+                while let Some(p) = idx.parent[cur] {
+                    idx.leaf_ancestors_data.push(p);
+                    cur = p;
+                }
+            }
+            idx.leaf_ancestors_offsets.push(idx.leaf_ancestors_data.len());
+        }
+        idx
+    }
+
     pub fn build(nnf: &NNF) -> Self {
         let mut idx = Self {
             by_ptr: HashMap::new(),

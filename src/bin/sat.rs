@@ -286,22 +286,31 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
         .expect("tokio runtime");
 
     rt.block_on(async move {
-        // Pre-clone the inputs each builder branch needs so the
+        // Each match arm clones inputs only if it actually needs them.
+        // Earlier versions hoisted `nnf_smart = comp.clone();
+        // nnf_cdcl = comp.clone();` to the top of the function "so the
         // borrow checker is happy with the if/else producing the same
-        // `(JoinHandle, Receiver, Handle)` tuple from two different
-        // controller types.  Each branch is FnOnce so only one set of
-        // clones is actually consumed.
-        let nnf_smart = comp.clone();
-        let nnf_cdcl  = comp.clone();
-        let p_smart   = params.clone();
-        let p_cdcl    = params.clone();
+        // tuple shape" — but those clones lived for the entire search
+        // even when the chosen branch (Eff, Dual) didn't reference
+        // them, wasting one full NNF copy per unused arm.  For
+        // industrial CNFs (e.g. pj2013_k9, ~250 MB per NNF) this was
+        // ~500 MB of dead allocation per process times however many
+        // sat processes were running in parallel.
         let (handle, mut rx, cancel) = match backend {
-            MatrixBackend::Smart => comp.classify_paths_uncovered_only(64,
-                move |tx| smart_controller_builder(&nnf_smart, p_smart, tx),
-            ),
-            MatrixBackend::Cdcl => comp.classify_paths_uncovered_only(64,
-                move |tx| cdcl_controller_builder(&nnf_cdcl, p_cdcl, tx),
-            ),
+            MatrixBackend::Smart => {
+                let nnf_smart = comp.clone();
+                let p_smart = params.clone();
+                comp.classify_paths_uncovered_only(64,
+                    move |tx| smart_controller_builder(&nnf_smart, p_smart, tx),
+                )
+            }
+            MatrixBackend::Cdcl => {
+                let nnf_cdcl = comp.clone();
+                let p_cdcl = params.clone();
+                comp.classify_paths_uncovered_only(64,
+                    move |tx| cdcl_controller_builder(&nnf_cdcl, p_cdcl, tx),
+                )
+            }
             MatrixBackend::Eff => {
                 // matrix.eff uses the positions-ON engine
                 // (`classify_paths_with_nnf`) because
@@ -1063,8 +1072,14 @@ fn main() {
     let t = Instant::now();
     let outcome = match args.backend {
         BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
-        BackendChoice::Matrix(m) =>
-            matrix_search(cnf_complement_nnf(&clauses), nvars, args.show_progress, m),
+        BackendChoice::Matrix(m) => {
+            // Build the NNF complement, then drop the parsed `Vec<Vec<i32>>`
+            // before the search starts.  On 2M-clause inputs that's ~80 MB
+            // we can release instead of carrying through the whole run.
+            let comp = cnf_complement_nnf(&clauses);
+            drop(clauses);
+            matrix_search(comp, nvars, args.show_progress, m)
+        }
     };
     let elapsed_ms = t.elapsed().as_secs_f64() * 1000.0;
 

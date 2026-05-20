@@ -672,8 +672,16 @@ impl NNF {
     /// identity with the actual walked tree.  Same purpose as
     /// [`Self::classify_paths_uncovered_only_with_nnf`], but for the
     /// cover-aware traversal that emits `CoveredPathPrefix` events.
+    /// Takes `self` by value so the engine can move the NNF into the
+    /// `spawn_blocking` task without an internal `self.clone()`.  On
+    /// industrial CNFs the NNF is hundreds of MB and the clone was
+    /// the second-biggest single allocation in matrix.eff (after
+    /// `EffectiveCountIndex`).  Callers that need to keep a copy
+    /// around can `.clone()` at the call site explicitly; in practice
+    /// the only callers (sat.rs, web_app.rs) are happy to surrender
+    /// ownership.
     pub fn classify_paths_with_nnf<C, B>(
-        &self,
+        self,
         buffer_size: usize,
         controller_builder: B,
     ) -> (
@@ -685,12 +693,11 @@ impl NNF {
         C: PathSearchController + Send + 'static,
         B: FnOnce(&NNF, tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> C + Send + 'static,
     {
-        let m = self.clone();
         let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
         let cancel = PathClassificationHandle::new();
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            let inner = controller_builder(&m, tx);
+            let inner = controller_builder(&self, tx);
             // Need an extra clone of the cancel handle: `cancel_for_thread`
             // moves into CancelController below, but the outer restart
             // loop still needs to poll for cancellation between
@@ -707,7 +714,7 @@ impl NNF {
             // reports UNSAT for satisfiable formulas.
             loop {
                 if cancel_check.is_cancelled() { break; }
-                m.for_each_path_prefix_with_controller(&mut ctrl);
+                self.for_each_path_prefix_with_controller(&mut ctrl);
                 if cancel_check.is_cancelled() { break; }
                 if !ctrl.is_restart_pending() { break; }
                 ctrl.complete_restart();

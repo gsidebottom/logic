@@ -51,8 +51,22 @@ pub struct EffectiveCountIndex {
     var_to_lit_nodes: Vec<Vec<(usize, bool)>>,
     /// Parent of each node (`None` for root).
     parent: Vec<Option<usize>>,
-    /// Children of each node (empty for `Lit`).
-    children: Vec<Vec<usize>>,
+    /// Children of each node, in CSR (Compressed Sparse Row) layout:
+    /// node `i`'s children NodeIds occupy
+    /// `children_data[children_offsets[i] .. children_offsets[i+1]]`.
+    /// `children_offsets` has `n_nodes + 1` entries (the trailing
+    /// sentinel = `children_data.len()`).
+    ///
+    /// Previously this was `Vec<Vec<usize>>` — one `Vec` header
+    /// (24 B) per node plus a separate heap allocation for each
+    /// non-empty child list.  On 10M-node CNF complements that's
+    /// ~240 MB just in headers, before any child data.  The CSR
+    /// layout replaces every per-node header with one 8-byte offset
+    /// entry, cuts the headers to a single 80 MB `children_offsets`
+    /// Vec, and merges all the child lists into one heap allocation
+    /// with better locality.
+    children_offsets: Vec<usize>,
+    children_data:    Vec<usize>,
     /// Per-node kind.
     kind: Vec<NodeKind>,
     /// Per-leaf precomputed ancestor chain: for each leaf node
@@ -83,11 +97,36 @@ impl EffectiveCountIndex {
             by_ptr: HashMap::new(),
             var_to_lit_nodes: Vec::new(),
             parent: Vec::new(),
-            children: Vec::new(),
+            children_offsets: Vec::new(),
+            children_data:    Vec::new(),
             kind: Vec::new(),
             leaf_ancestors: Vec::new(),
         };
-        idx.walk(nnf, None);
+        // The recursive walk builds children lists incrementally —
+        // each Sum/Prod has its children's IDs only once its
+        // subtree is fully walked.  That's awkward to do directly
+        // in CSR layout (children_offsets[i+1] isn't known until
+        // we've finished node i's subtree, and meanwhile other
+        // nodes have been pushed into children_data already).  So
+        // we build into a scratch `Vec<Vec<usize>>` and then
+        // flatten — the scratch dies before `build` returns, so
+        // its peak memory is transient.
+        let mut scratch: Vec<Vec<usize>> = Vec::new();
+        idx.walk(nnf, None, &mut scratch);
+        // Flatten scratch into CSR.  `children_offsets[i]` is the
+        // start of node i's children in `children_data`; the
+        // sentinel `children_offsets[n_nodes]` = total child count
+        // lets `children_ids` use `offsets[i+1] - offsets[i]`
+        // uniformly without a special last-node case.
+        let total: usize = scratch.iter().map(|v| v.len()).sum();
+        idx.children_offsets = Vec::with_capacity(scratch.len() + 1);
+        idx.children_data    = Vec::with_capacity(total);
+        idx.children_offsets.push(0);
+        for v in &scratch {
+            idx.children_data.extend_from_slice(v);
+            idx.children_offsets.push(idx.children_data.len());
+        }
+        drop(scratch);
         // Precompute each leaf's ancestor chain.  Done after the
         // structural walk so `parent` is fully populated.
         idx.leaf_ancestors = vec![Vec::new(); idx.parent.len()];
@@ -105,7 +144,7 @@ impl EffectiveCountIndex {
         idx
     }
 
-    fn walk(&mut self, n: &NNF, parent: Option<usize>) -> usize {
+    fn walk(&mut self, n: &NNF, parent: Option<usize>, scratch: &mut Vec<Vec<usize>>) -> usize {
         let id = self.parent.len();
         // Pointer-key map only carries Sum/Prod nodes.  The
         // `EffectiveCountWrapper` only ever calls `id_of` on the
@@ -122,7 +161,7 @@ impl EffectiveCountIndex {
             NNF::Lit(_) => {}
         }
         self.parent.push(parent);
-        self.children.push(Vec::new());
+        scratch.push(Vec::new());
         match n {
             NNF::Lit(l) => {
                 self.kind.push(NodeKind::Lit);
@@ -139,17 +178,17 @@ impl EffectiveCountIndex {
                 self.kind.push(NodeKind::Sum);
                 let mut cids = Vec::with_capacity(ch.len());
                 for c in ch {
-                    cids.push(self.walk(c, Some(id)));
+                    cids.push(self.walk(c, Some(id), scratch));
                 }
-                self.children[id] = cids;
+                scratch[id] = cids;
             }
             NNF::Prod(ch) => {
                 self.kind.push(NodeKind::Prod);
                 let mut cids = Vec::with_capacity(ch.len());
                 for c in ch {
-                    cids.push(self.walk(c, Some(id)));
+                    cids.push(self.walk(c, Some(id), scratch));
                 }
-                self.children[id] = cids;
+                scratch[id] = cids;
             }
         }
         id
@@ -164,10 +203,13 @@ impl EffectiveCountIndex {
     }
 
     /// Children NodeIds of `node_id`, in declaration order.  Returns
-    /// `None` for ids out of range (defensive — all valid ids have
-    /// a children slot, possibly empty for Lit leaves).
-    pub fn children_ids(&self, node_id: usize) -> Option<&[usize]> {
-        self.children.get(node_id).map(|v| v.as_slice())
+    /// an empty slice for Lit leaves (no children).  Panics on ids
+    /// out of range — callers that obtain `node_id` from
+    /// [`Self::id_of`] are always in range.
+    pub fn children_ids(&self, node_id: usize) -> &[usize] {
+        let start = self.children_offsets[node_id];
+        let end   = self.children_offsets[node_id + 1];
+        &self.children_data[start..end]
     }
 
     pub fn n_nodes(&self) -> usize { self.parent.len() }
@@ -212,7 +254,7 @@ impl EffectiveCounts {
             NodeKind::Lit => 1.0,
             NodeKind::Sum => {
                 let mut p: f64 = 1.0;
-                for &c in &idx.children[id] {
+                for &c in idx.children_ids(id) {
                     p *= self.count[c];
                     if p == 0.0 { return 0.0; }
                 }
@@ -220,7 +262,7 @@ impl EffectiveCounts {
             }
             NodeKind::Prod => {
                 let mut s: f64 = 0.0;
-                for &c in &idx.children[id] {
+                for &c in idx.children_ids(id) {
                     s += self.count[c];
                 }
                 s
@@ -512,7 +554,7 @@ mod tests {
         // Children lookups by parent-id should still resolve every
         // child (including Lit leaves) — this is the API the
         // wrapper uses.
-        let root_children = idx.children_ids(0).unwrap();
+        let root_children = idx.children_ids(0);
         assert_eq!(root_children.len(), 2, "root has 2 children");
         // Each child id is a valid node in the flat arrays.
         for &cid in root_children {

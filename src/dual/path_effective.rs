@@ -300,7 +300,7 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
         // the `by_ptr` HashMap by ~75 %.
         let parent_id_opt = self.idx.id_of(parent);
         let parent_children_ids: Option<&[usize]> = parent_id_opt
-            .and_then(|pid| self.idx.children_ids(pid));
+            .map(|pid| self.idx.children_ids(pid));
         let mut annotated: Vec<(usize, &'a NNF, f64)> = base.into_iter()
             .map(|(i, c)| {
                 let count = parent_children_ids
@@ -326,7 +326,7 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
         // See `sum_ord` for the parent-id optimisation rationale.
         let parent_id_opt = self.idx.id_of(parent);
         let parent_children_ids: Option<&[usize]> = parent_id_opt
-            .and_then(|pid| self.idx.children_ids(pid));
+            .map(|pid| self.idx.children_ids(pid));
         let mut annotated: Vec<(usize, &'a NNF, f64)> = base.into_iter()
             .map(|(i, c)| {
                 let count = parent_children_ids

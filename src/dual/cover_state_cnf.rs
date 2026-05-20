@@ -183,17 +183,36 @@ impl CnfBansCoverState {
 }
 
 impl CoverState for CnfBansCoverState {
-    fn is_prefix_covered(&self, prefix: &ProdPath) -> bool {
-        // Same indexed lookup as `BasicCoverState`.
+    /// Mirrors [`super::BasicCoverState::is_prefix_covered`] — see
+    /// that impl for why we walk `prefix_positions` (absolute tree
+    /// addresses) rather than the engine's `prod_path` (DFS-visit
+    /// order, permuted by `sum_ord` wrappers).
+    fn is_prefix_covered(&self, prefix_positions: &crate::matrix::PathPrefix) -> bool {
         if !self.is_flat { return false; }
-        for (i, &a) in prefix.iter().enumerate() {
-            if i >= self.index.len() { continue; }
-            if a >= self.index[i].len() { continue; }
-            for &pair_idx in &self.index[i][a] {
+        let mut clause_assignment: Vec<Option<usize>> = vec![None; self.index.len()];
+        for pos in prefix_positions {
+            let (c, a) = match pos.len() {
+                1 => (pos[0], 0),
+                2 => (pos[0], pos[1]),
+                _ => continue,
+            };
+            if c < clause_assignment.len() {
+                clause_assignment[c] = Some(a);
+            }
+        }
+        for pos in prefix_positions {
+            let (c, a) = match pos.len() {
+                1 => (pos[0], 0),
+                2 => (pos[0], pos[1]),
+                _ => continue,
+            };
+            if c >= self.index.len() { continue; }
+            if a >= self.index[c].len() { continue; }
+            for &pair_idx in &self.index[c][a] {
                 let Some([t1, t2]) = self.triggers[pair_idx] else { continue; };
-                let (oi, oa) = if t1 == (i, a) { t2 } else { t1 };
-                if oi == i { continue; }
-                if prefix.len() > oi && prefix[oi] == oa {
+                let (oc, oa) = if t1 == (c, a) { t2 } else { t1 };
+                if oc == c { continue; }
+                if clause_assignment.get(oc).copied().flatten() == Some(oa) {
                     return true;
                 }
             }
@@ -299,10 +318,11 @@ mod tests {
         ]);
         let mut state = CnfBansCoverState::new(&nnf);
         state.add_pair((vec![0, 0], vec![1, 0]));   // ban (alt 0, alt 0)
-        // Prefix [0, 0] should be covered by this pair.
-        assert!(state.is_prefix_covered(&vec![0, 0]));
-        // Prefix [0, 1] doesn't match: not covered.
-        assert!(!state.is_prefix_covered(&vec![0, 1]));
+        // Position-based prefix: clause 0 picked alt 0, clause 1 picked alt 0.
+        // The registered pair triggers exactly on this combination.
+        assert!(state.is_prefix_covered(&vec![vec![0, 0], vec![1, 0]]));
+        // Different alts: not covered.
+        assert!(!state.is_prefix_covered(&vec![vec![0, 0], vec![1, 1]]));
     }
 
     /// Non-flat matrices: `is_prefix_covered` is conservatively
@@ -312,7 +332,7 @@ mod tests {
         let nnf = NNF::Prod(vec![lit_p(0)]);
         let mut state = CnfBansCoverState::new(&nnf);
         state.add_pair((vec![0], vec![1]));
-        assert!(!state.is_prefix_covered(&vec![0]));
+        assert!(!state.is_prefix_covered(&vec![vec![0]]));
         assert!(!state.check_complete_with_cadical());
     }
 }

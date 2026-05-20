@@ -83,7 +83,12 @@ impl<Inner: PathSearchController, S: CoverState> PathSearchController for StateQ
         if !is_complete {
             self.state_query_count += 1;
             let s = self.state.lock().unwrap();
-            if s.is_prefix_covered(prefix_prod_path) {
+            // Pass `prefix_positions` (absolute tree positions, in
+            // declaration-order coordinates) — *not* `prefix_prod_path`
+            // (DFS-visit order, which `EffectiveCountWrapper::sum_ord`
+            // can permute).  See the trait-level doc for the
+            // soundness rationale.
+            if s.is_prefix_covered(prefix_positions) {
                 self.state_prune_count += 1;
                 return Some(0);
             }

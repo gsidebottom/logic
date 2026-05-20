@@ -45,7 +45,7 @@ pub use path_cdcl::CdclDualPathController;
 pub use path_effective::EffectivePathController;
 pub use path_smart::SmartDualPathController;
 
-use crate::matrix::{NNF, Pair, ProdPath};
+use crate::matrix::{NNF, Pair, PathPrefix, ProdPath};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -171,11 +171,32 @@ impl PairPool {
 /// representations (e.g. the [`crate::dual::cover_state_cnf::CnfBansCoverState`]'s
 /// embedded CaDiCaL solver) are `Send` but not `Sync`.
 pub trait CoverState: Send + 'static {
-    /// Is the path identified by this `ProdPath` already covered by
-    /// some pair we've registered?  Phase 1's basic state can return
-    /// `false` always (it leaves cover detection to B's local
-    /// controller); future phases will use this to prune B early.
-    fn is_prefix_covered(&self, prefix: &ProdPath) -> bool;
+    /// Is the path identified by these prefix positions already
+    /// covered by some pair we've registered?  Phase 1's basic
+    /// state can return `false` always (it leaves cover detection
+    /// to B's local controller); future phases use this to prune
+    /// B early.
+    ///
+    /// **Coordinate system: absolute tree positions, not prod-path
+    /// indices.**  `prefix_positions[k]` is the full path from
+    /// the NNF root to the k-th lit on the prefix (e.g. `[c, a]`
+    /// for "Sum-child c, Prod-alt a", or `[c]` for a singleton-Lit
+    /// Sum-child).  Positions stay in the original declaration-order
+    /// coordinate system regardless of any `sum_ord` re-ordering the
+    /// engine's controller stack applied — they record which
+    /// physical tree node the lit lives at, not which slot in
+    /// `prod_path` accumulated it.
+    ///
+    /// Why this matters: `prod_path` indices track *DFS-visit
+    /// order*.  When wrappers like
+    /// `EffectiveCountWrapper::sum_ord` permute Sum-children for
+    /// branch-ordering heuristics, `prod_path[k]` no longer
+    /// corresponds to the k-th clause; matching pair triggers
+    /// against `prod_path` indices produces both false negatives
+    /// (missed prunes) and false positives (spurious "covered"
+    /// verdicts, the soundness bug behind `greedy_eff` returning
+    /// wrong `UNSAT` on SAT problems).
+    fn is_prefix_covered(&self, prefix_positions: &PathPrefix) -> bool;
 
     /// Statistical summary used by some cover-search controllers.
     /// `None` if the representation can't answer cheaply.
@@ -210,21 +231,41 @@ pub struct BasicCoverState {
     /// Raw registered pairs in arrival order.
     pairs: Vec<Pair>,
     /// Per-pair trigger conditions when the matrix is flat.  Each
-    /// entry `[(i, a), (j, b)]` says "pair fires when prefix[i]==a
-    /// and prefix[j]==b".  `None` means triggers couldn't be
-    /// derived (non-flat NNF or malformed pair).
+    /// entry `[(i, a), (j, b)]` says "pair fires when path picks
+    /// alt `a` for clause `i` and alt `b` for clause `j`".
+    /// `None` means triggers couldn't be derived (non-flat NNF or
+    /// malformed pair).
+    ///
+    /// **Coordinate system: clause-index, not prod-path-index.**
+    /// `mine_pairs` and the absolute `prefix_positions` carried by
+    /// `Covered` events both use clause indices (the 0..n_clauses
+    /// range over Sum-children).  The matrix-method DFS, by
+    /// contrast, emits its `prod_path` in prod-encounter-order:
+    /// singleton-Lit Sum-children don't push to `prod_path` at all.
+    /// The two coordinate systems differ whenever the NNF has any
+    /// singleton-Lit child.  See [`Self::is_prefix_covered`] for
+    /// the translation.
     triggers: Vec<Option<[(usize, usize); 2]>>,
     /// Whether the source NNF is flat Sum-of-Prods.  When false,
     /// `is_prefix_covered` short-circuits to `false`.
     is_flat: bool,
     /// Clause arities for the source NNF when flat; empty
-    /// otherwise.
+    /// otherwise.  `arities[c] == 1` ⇔ clause `c` is a singleton-Lit
+    /// (no `Prod` wrapper, no `prod_path` slot).
     arities: Vec<usize>,
     /// **Phase 4 bucket index.**  `index[clause_idx][alt_idx]` is
     /// the list of pair-IDs whose triggers include
     /// `(clause_idx, alt_idx)`.  Built lazily as pairs are
     /// registered.  Empty in non-flat mode.
     index: Vec<Vec<Vec<usize>>>,
+    /// **All-singletons cover flag.**  Set true if any registered
+    /// pair has triggers where both clauses are singletons (which
+    /// would mean their lits are *always* on every complete path,
+    /// so the pair covers the empty prefix — really every prefix).
+    /// In a well-formed CNF input two complementary unit clauses
+    /// imply trivial UNSAT, so this is set defensively but rarely
+    /// fires in practice.
+    has_always_covering_pair: bool,
 }
 
 impl BasicCoverState {
@@ -246,6 +287,7 @@ impl BasicCoverState {
             is_flat,
             arities,
             index,
+            has_always_covering_pair: false,
         }
     }
 
@@ -273,6 +315,16 @@ impl BasicCoverState {
             if (j, b) != (i, a) && j < self.index.len() && b < self.index[j].len() {
                 self.index[j][b].push(pair_idx);
             }
+            // If BOTH triggers point at singleton clauses, both lits
+            // are on every complete path automatically — the pair
+            // covers every prefix, including the empty one.  Flag it
+            // so `is_prefix_covered` returns true without needing to
+            // see either clause in the walked prefix.
+            let i_is_singleton = i < self.arities.len() && self.arities[i] <= 1;
+            let j_is_singleton = j < self.arities.len() && self.arities[j] <= 1;
+            if i_is_singleton && j_is_singleton {
+                self.has_always_covering_pair = true;
+            }
         }
         self.pairs.push(pair);
         self.triggers.push(triggers);
@@ -284,28 +336,82 @@ impl BasicCoverState {
 }
 
 impl CoverState for BasicCoverState {
-    /// Phase 4 indexed lookup.  Walks the prefix and, for each
-    /// `(clause_idx, alt_idx)` entry, consults the bucket index for
-    /// pairs that fire on that trigger; checks whether their *other*
-    /// trigger is also satisfied by the prefix.  Total work
-    /// O(|prefix| × avg pairs per bucket), vs the naive
-    /// O(|registered pairs|) full scan.
-    fn is_prefix_covered(&self, prefix: &ProdPath) -> bool {
+    /// Phase 4 indexed lookup using absolute tree positions.  For
+    /// every position on the prefix, decode `(clause_idx, alt_idx)`
+    /// from the position vector and consult the bucket index for
+    /// pairs whose triggers fire on that `(clause_idx, alt_idx)`;
+    /// for each candidate pair, check whether its *other* trigger
+    /// is also satisfied by some position on the prefix.
+    ///
+    /// **Why we walk `prefix_positions`, not `prefix_prod_path`.**
+    /// Pair triggers are stored in clause-index coordinates — both
+    /// `mine_pairs` and the `CoveredPathPrefix.cover` field of
+    /// `Covered` events use absolute tree positions over the NNF's
+    /// Sum-children.  The engine's `prod_path` is in DFS-visit
+    /// order, which a wrapper like `EffectiveCountWrapper::sum_ord`
+    /// can permute for branch-ordering — making `prod_path[k]`
+    /// correspond to whatever clause the wrapper happened to visit
+    /// k-th, not the k-th clause overall.  Indexing pair triggers
+    /// by `prod_path` indices therefore mis-matches them against
+    /// the wrong clauses on every reordered run, producing
+    /// spurious "covered" verdicts that prune satisfiable subtrees.
+    /// This was the soundness bug behind `greedy_eff` returning
+    /// wrong `UNSAT` on SAT problems.
+    ///
+    /// `prefix_positions` doesn't have this problem: positions are
+    /// recorded as the literal's tree-address (Sum-child index, then
+    /// Prod-alt index for multi-alt clauses, or just the Sum-child
+    /// index for singletons), and `traverse_sum` pushes the
+    /// *original* child index even when consulting a re-ordered
+    /// child list.  So `prefix_positions` is always in declaration-
+    /// order coordinates and matches the pair triggers' coordinate
+    /// system directly.
+    ///
+    /// Work O(|prefix| × avg pairs per bucket × |prefix|) — the
+    /// "other trigger satisfied" check is O(|prefix|) because it
+    /// scans the position list.  Per-query allocation of a small
+    /// `clause_assignment` lookup table eliminates the inner scan
+    /// in the common case where the same clause appears at most
+    /// once on the prefix (always true for the flat
+    /// Sum-of-Prod-of-Lits shape this matters for).
+    fn is_prefix_covered(&self, prefix_positions: &PathPrefix) -> bool {
         if !self.is_flat { return false; }
-        for (i, &a) in prefix.iter().enumerate() {
-            // Prefix entry may be out of range when the DFS is
-            // exploring beyond the matrix's clause count — happens
-            // for non-flat sub-NNFs that snuck past the flat check
-            // (shouldn't, but be defensive).
-            if i >= self.index.len() { continue; }
-            if a >= self.index[i].len() { continue; }
-            for &pair_idx in &self.index[i][a] {
+        // Edge case: a pair whose both triggers point at singleton
+        // clauses covers every prefix.  Short-circuit.
+        if self.has_always_covering_pair { return true; }
+
+        // Build a per-clause "assigned alt" lookup from the prefix
+        // positions.  Sized by `self.arities.len()` because that's
+        // the maximum clause index we'd ever want to index.  Vec
+        // of `Option<usize>` is fine — `arities.len()` is bounded
+        // by the matrix's clause count.
+        let mut clause_assignment: Vec<Option<usize>> = vec![None; self.arities.len()];
+        for pos in prefix_positions {
+            let (c, a) = match pos.len() {
+                1 => (pos[0], 0),
+                2 => (pos[0], pos[1]),
+                _ => continue,
+            };
+            if c < clause_assignment.len() {
+                clause_assignment[c] = Some(a);
+            }
+        }
+
+        // Walk positions, consult buckets, check the other trigger
+        // via the precomputed assignment.
+        for pos in prefix_positions {
+            let (c, a) = match pos.len() {
+                1 => (pos[0], 0),
+                2 => (pos[0], pos[1]),
+                _ => continue,
+            };
+            if c >= self.index.len() { continue; }
+            if a >= self.index[c].len() { continue; }
+            for &pair_idx in &self.index[c][a] {
                 let Some([t1, t2]) = self.triggers[pair_idx] else { continue; };
-                // We know one trigger matches (i, a); the *other* is
-                // whichever isn't (i, a).
-                let (oi, oa) = if t1 == (i, a) { t2 } else { t1 };
-                if oi == i { continue; }   // self-pair guard
-                if prefix.len() > oi && prefix[oi] == oa {
+                let (oc, oa) = if t1 == (c, a) { t2 } else { t1 };
+                if oc == c { continue; }   // self-pair guard
+                if clause_assignment.get(oc).copied().flatten() == Some(oa) {
                     return true;
                 }
             }
@@ -656,6 +762,123 @@ enum CoverOutcome {
     /// A was cancelled by the driver.  Normal end-of-search in
     /// Phase 1.
     Cancelled,
+}
+
+#[cfg(test)]
+mod cover_state_positions_tests {
+    //! Tests that pin down `BasicCoverState::is_prefix_covered`'s
+    //! use of `prefix_positions` (absolute tree addresses) rather
+    //! than `prefix_prod_path` (DFS-visit order).  The pre-fix code
+    //! indexed `prod_path` directly with clause indices, which was
+    //! wrong when (a) the NNF had singleton-Lit Sum-children
+    //! (singletons don't push to `prod_path`), or (b) any wrapper
+    //! permuted Sum-children via `sum_ord`.  Both produced
+    //! spurious "covered" verdicts that pruned satisfiable
+    //! subtrees — the soundness bug behind `greedy_eff` returning
+    //! wrong UNSAT on SAT problems.
+    //!
+    //! Tests construct `PathPrefix` (= `Vec<Position>`) values
+    //! directly to exercise the query without needing the engine.
+
+    use super::*;
+    use crate::matrix::{Lit, NNF, Position};
+
+    fn lit_p(v: u32) -> NNF { NNF::Lit(Lit::pos(v)) }
+    fn lit_n(v: u32) -> NNF { NNF::Lit(Lit::neg(v)) }
+
+    /// Position for clause `c`'s alt `a` (multi-alt Prod clause).
+    fn pos_alt(c: usize, a: usize) -> Position { vec![c, a] }
+    /// Position for a singleton-Lit Sum-child at clause `c`.
+    fn pos_single(c: usize) -> Position { vec![c] }
+
+    /// A pair across two multi-alt clauses fires when the prefix
+    /// positions show both clauses committed to the trigger alts.
+    /// Crucially, this works regardless of the *order* the
+    /// positions appear in `prefix_positions` (the engine may have
+    /// reordered Sum-children).
+    #[test]
+    fn cover_query_position_based_lookup() {
+        let nnf = NNF::Sum(vec![
+            NNF::Prod(vec![lit_p(0), lit_p(1)]),     // clause 0
+            NNF::Prod(vec![lit_p(2), lit_p(3)]),     // clause 1
+            NNF::Prod(vec![lit_p(4), lit_p(5)]),     // clause 2
+        ]);
+        let mut st = BasicCoverState::new(&nnf);
+        // Pair: clause 0 alt 1 + clause 2 alt 0.
+        st.add_pair((pos_alt(0, 1), pos_alt(2, 0)));
+        // Prefix in declaration order: clause 0 alt 1, clause 2 alt 0.
+        assert!(st.is_prefix_covered(&vec![pos_alt(0, 1), pos_alt(2, 0)]));
+        // Same content, reversed order — still fires.
+        assert!(st.is_prefix_covered(&vec![pos_alt(2, 0), pos_alt(0, 1)]));
+        // Wrong alts.
+        assert!(!st.is_prefix_covered(&vec![pos_alt(0, 0), pos_alt(2, 0)]));
+        assert!(!st.is_prefix_covered(&vec![pos_alt(0, 1), pos_alt(2, 1)]));
+        // Only one of the two clauses on the prefix.
+        assert!(!st.is_prefix_covered(&vec![pos_alt(0, 1)]));
+    }
+
+    /// A pair where one trigger is a singleton-Lit Sum-child.
+    /// Singleton positions are length-1 vectors (no alt index);
+    /// the query must still match them correctly against pair
+    /// triggers that encode singletons as alt 0.
+    #[test]
+    fn cover_query_handles_singleton_position() {
+        let nnf = NNF::Sum(vec![
+            lit_p(0),                                // clause 0: singleton
+            NNF::Prod(vec![lit_p(1), lit_p(2)]),     // clause 1: arity 2
+            lit_p(3),                                // clause 2: singleton
+        ]);
+        let mut st = BasicCoverState::new(&nnf);
+        // Pair: singleton clause 0 + clause 1 alt 1.
+        st.add_pair((pos_single(0), pos_alt(1, 1)));
+        // Prefix: both lits on the path.
+        assert!(st.is_prefix_covered(&vec![pos_single(0), pos_alt(1, 1)]));
+        // Prefix: only singleton — clause 1 not yet committed.
+        assert!(!st.is_prefix_covered(&vec![pos_single(0)]));
+        // Prefix: only clause 1, wrong alt.
+        assert!(!st.is_prefix_covered(&vec![pos_alt(1, 0)]));
+    }
+
+    /// Pin down the wrong-UNSAT regression.  Before the fix,
+    /// `is_prefix_covered` indexed `prefix[i]` as if `i` were the
+    /// clause index, so a permuted prefix would either miss covers
+    /// or report false ones.  The position-based query is immune.
+    ///
+    /// Construct a minimal scenario: 3 multi-alt clauses, register
+    /// a single pair, then verify that a "permuted" prefix
+    /// (positions in a different order than declaration) returns
+    /// the same verdict.
+    #[test]
+    fn cover_query_immune_to_prefix_order() {
+        let nnf = NNF::Sum(vec![
+            NNF::Prod(vec![lit_p(0), lit_p(1)]),
+            NNF::Prod(vec![lit_p(2), lit_p(3)]),
+            NNF::Prod(vec![lit_p(4), lit_p(5)]),
+        ]);
+        let mut st = BasicCoverState::new(&nnf);
+        st.add_pair((pos_alt(1, 1), pos_alt(2, 0)));
+        // Declaration-order prefix.
+        assert!(st.is_prefix_covered(&vec![pos_alt(0, 0), pos_alt(1, 1), pos_alt(2, 0)]));
+        // Same positions, visited in a wrapper-reordered order.
+        assert!(st.is_prefix_covered(&vec![pos_alt(2, 0), pos_alt(0, 0), pos_alt(1, 1)]));
+        assert!(st.is_prefix_covered(&vec![pos_alt(1, 1), pos_alt(2, 0)]));
+        assert!(!st.is_prefix_covered(&vec![pos_alt(0, 0), pos_alt(1, 0), pos_alt(2, 0)]));
+    }
+
+    /// All-singletons pair fires on the empty prefix (both lits
+    /// are automatically on every complete path).
+    #[test]
+    fn cover_query_handles_all_singleton_pair() {
+        let nnf = NNF::Sum(vec![
+            lit_p(0),                                // clause 0: singleton
+            NNF::Prod(vec![lit_p(1), lit_p(2)]),     // clause 1: arity 2
+            lit_n(0),                                // clause 2: singleton (¬a)
+        ]);
+        let mut st = BasicCoverState::new(&nnf);
+        st.add_pair((pos_single(0), pos_single(2)));
+        assert!(st.is_prefix_covered(&vec![]));
+        assert!(st.is_prefix_covered(&vec![pos_single(0)]));
+    }
 }
 
 #[cfg(test)]

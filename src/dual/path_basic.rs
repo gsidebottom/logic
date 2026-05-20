@@ -140,8 +140,19 @@ mod tests {
     }
 
     /// Pre-register pairs in the state and confirm that
-    /// `StateQueryWrapper` reports prunes.  This is the Phase 2
-    /// state-query layer earning its keep.
+    /// `StateQueryWrapper` runs cover queries during the search.
+    ///
+    /// The test used to also assert `state_prune_count > 0`, but
+    /// that depended on a soundness bug in pre-fix
+    /// `BasicCoverState::is_prefix_covered` (it indexed
+    /// `prod_path` directly with clause indices, producing false
+    /// positives).  With the position-based query fix, the inner
+    /// `BacktrackWhenCoveredController` correctly detects every
+    /// genuine cover before `StateQueryWrapper` would — so on the
+    /// tiny `(a + b)*(a' + b')` matrix the state-query prune
+    /// genuinely never fires, and that's the correct behaviour.
+    /// The test continues to verify the query *path* is wired up
+    /// (queries do happen) without asserting a specific prune count.
     #[test]
     fn state_query_layer_prunes_when_state_already_covers() {
         use crate::dual::flat::mine_pairs;
@@ -193,15 +204,9 @@ mod tests {
 
         assert!(wrapper.state_query_count > 0,
             "expected at least one state query during search");
-        // For an UNSAT formula with pre-loaded covers, prunes
-        // should fire — every covered prefix B explores has a
-        // matching pre-registered pair.  We assert >0 (not a
-        // specific count) because the relative ordering of B's
-        // local detection vs the wrapper's state-query is
-        // implementation-detail-y.
-        assert!(wrapper.state_prune_count > 0,
-            "expected at least one state-driven prune (had {} queries, {} prunes)",
-            wrapper.state_query_count, wrapper.state_prune_count);
+        // No prune-count assertion — see the doc-comment on this
+        // test for why.  We're verifying the wiring, not the
+        // prune-vs-inner-detect race.
     }
 
     #[test]

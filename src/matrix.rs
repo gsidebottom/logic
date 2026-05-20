@@ -591,8 +591,8 @@ impl NNF {
     pub fn for_each_path_prefix_with_controller<C: PathSearchController + ?Sized>(&self, ctrl: &mut C) {
         let cell = std::cell::RefCell::new(ctrl);
         self.for_each_path_prefix_ord(
-            |children| cell.borrow_mut().sum_ord(children),
-            |children| cell.borrow_mut().prod_ord(children),
+            |parent, children| cell.borrow_mut().sum_ord(parent, children),
+            |parent, children| cell.borrow_mut().prod_ord(parent, children),
             |lits, positions, prod_path, is_complete| {
                 cell.borrow_mut().should_continue_on_prefix(lits, positions, prod_path, is_complete)
             },
@@ -611,8 +611,8 @@ impl NNF {
             "no-positions traversal requires needs_cover() == false");
         let cell = std::cell::RefCell::new(ctrl);
         self.for_each_path_prefix_no_positions_ord(
-            |children| cell.borrow_mut().sum_ord(children),
-            |children| cell.borrow_mut().prod_ord(children),
+            |parent, children| cell.borrow_mut().sum_ord(parent, children),
+            |parent, children| cell.borrow_mut().prod_ord(parent, children),
             |lits, prod_path, is_complete, _cover_mult| {
                 let empty = PathPrefix::new();
                 // No-positions traversal still uses simple bool semantics: any
@@ -834,8 +834,8 @@ impl NNF {
         mut report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, &ProdPath, bool) -> Option<usize>,
     )
     where
-        SO: for<'a> FnMut(&'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
-        PO: for<'a> FnMut(&'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
+        SO: for<'a> FnMut(&'a NNF, &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
+        PO: for<'a> FnMut(&'a NNF, &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
     {
         type Lits<'a> = Vec<&'a Lit>;
         type Positions = PathPrefix;
@@ -854,8 +854,8 @@ impl NNF {
         ) -> Option<usize>
         where
             F: FnMut(&Lits<'a>, &Positions, &ProdPath, bool) -> Option<usize>,
-            SO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
-            PO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
+            SO: for<'b> FnMut(&'b NNF, &'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
+            PO: for<'b> FnMut(&'b NNF, &'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
         {
             match m {
                 NNF::Lit(l) => {
@@ -870,7 +870,10 @@ impl NNF {
                     r
                 }
                 NNF::Prod(children) => {
-                    let order_opt = prod_ord(children);
+                    // Pass the parent node `m` so the controller can
+                    // identify which Prod is being ordered without
+                    // having to hash every child.
+                    let order_opt = prod_ord(m, children);
                     let len = order_opt.as_ref().map_or(children.len(), |o| o.len());
                     for ord_idx in 0..len {
                         let (i, child) = match &order_opt {
@@ -899,7 +902,7 @@ impl NNF {
                     None
                 }
                 NNF::Sum(children) => {
-                    let order_opt = sum_ord(children);
+                    let order_opt = sum_ord(m, children);
                     traverse_sum(children, order_opt.as_deref(), 0, path, lits, positions, pos, f, sum_ord, prod_ord, then)
                 }
             }
@@ -921,8 +924,8 @@ impl NNF {
         ) -> Option<usize>
         where
             F: FnMut(&Lits<'a>, &Positions, &ProdPath, bool) -> Option<usize>,
-            SO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
-            PO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
+            SO: for<'b> FnMut(&'b NNF, &'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
+            PO: for<'b> FnMut(&'b NNF, &'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
         {
             let len = order.map_or(children.len(), |o| o.len());
             if ord_idx >= len {
@@ -977,7 +980,7 @@ impl NNF {
     ) {
         // Thin wrapper over the `_ord` version with declaration-order Sum /
         // Prod traversal — same rationale as [`Self::for_each_path_prefix`].
-        self.for_each_path_prefix_no_positions_ord(|_| None, |_| None, f);
+        self.for_each_path_prefix_no_positions_ord(|_, _| None, |_, _| None, f);
     }
 
     /// Like [`Self::for_each_path_prefix_no_positions`] but with custom
@@ -989,8 +992,8 @@ impl NNF {
         mut f: impl FnMut(&Vec<&Lit>, &ProdPath, bool, f64) -> bool,
     )
     where
-        SO: for<'a> FnMut(&'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
-        PO: for<'a> FnMut(&'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
+        SO: for<'a> FnMut(&'a NNF, &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
+        PO: for<'a> FnMut(&'a NNF, &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
     {
         type Lits<'a> = Vec<&'a Lit>;
         type Counts = HashMap<*const NNF, f64>;
@@ -1029,8 +1032,8 @@ impl NNF {
         )
         where
             F: FnMut(&Lits<'a>, &ProdPath, bool, f64) -> bool,
-            SO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
-            PO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
+            SO: for<'b> FnMut(&'b NNF, &'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
+            PO: for<'b> FnMut(&'b NNF, &'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
         {
             match m {
                 NNF::Lit(l) => {
@@ -1041,7 +1044,7 @@ impl NNF {
                     lits.pop();
                 }
                 NNF::Prod(children) => {
-                    let order_opt = prod_ord(children);
+                    let order_opt = prod_ord(m, children);
                     let len = order_opt.as_ref().map_or(children.len(), |o| o.len());
                     for ord_idx in 0..len {
                         let (i, child) = match &order_opt {
@@ -1056,7 +1059,7 @@ impl NNF {
                     }
                 }
                 NNF::Sum(children) => {
-                    let order_opt = sum_ord(children);
+                    let order_opt = sum_ord(m, children);
                     traverse_sum(children, order_opt.as_deref(), 0, mult, path, lits, counts, f, sum_ord, prod_ord, then);
                 }
             }
@@ -1078,8 +1081,8 @@ impl NNF {
         )
         where
             F: FnMut(&Lits<'a>, &ProdPath, bool, f64) -> bool,
-            SO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
-            PO: for<'b> FnMut(&'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
+            SO: for<'b> FnMut(&'b NNF, &'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
+            PO: for<'b> FnMut(&'b NNF, &'b [NNF]) -> Option<Vec<(usize, &'b NNF)>>,
         {
             let len = order.map_or(children.len(), |o| o.len());
             if ord_idx >= len {
@@ -1185,8 +1188,8 @@ fn run_uncovered_only_dfs<C: PathSearchController>(
     loop {
         let prev_uncovered_at_loop_start = cell.borrow().uncovered_path_count();
         m.for_each_path_prefix_no_positions_ord(
-            |children| cell.borrow_mut().sum_ord(children),
-            |children| cell.borrow_mut().prod_ord(children),
+            |parent, children| cell.borrow_mut().sum_ord(parent, children),
+            |parent, children| cell.borrow_mut().prod_ord(parent, children),
             |lits, prod_path, is_complete, cover_mult| {
                 if cancel_for_step.is_cancelled() { return false; }
                 let empty: PathPrefix = Vec::new();
@@ -1491,7 +1494,7 @@ mod tests {
             &self,
             report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, &ProdPath, bool) -> Option<usize>,
         ) {
-            self.for_each_path_prefix_ord(|_| None, |_| None, report_prefix);
+            self.for_each_path_prefix_ord(|_, _| None, |_, _| None, report_prefix);
         }
 
         /// Async streaming variant of `paths`: spawns a blocking thread that

@@ -1205,8 +1205,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
 
     fn needs_cover(&self) -> bool { self.inner.needs_cover() }
 
-    fn sum_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
-        self.inner.sum_ord(children)
+    fn sum_ord<'a>(&mut self, parent: &'a NNF, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+        self.inner.sum_ord(parent, children)
     }
 
     /// Propagation-driven `prod_ord` filter (same as
@@ -1221,7 +1221,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
     ///    (VSIDS) — most-recently-conflicted variables are tried
     ///    first.  Ties keep declaration order (stable sort).  Non-
     ///    Lit children get activity 0.0 so they sort last.
-    fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+    fn prod_ord<'a>(&mut self, _parent: &'a NNF, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
         let mut filtered: Vec<(usize, &'a NNF)> = Vec::with_capacity(children.len());
         for (i, c) in children.iter().enumerate() {
             match c {
@@ -1337,8 +1337,8 @@ mod tests {
         let mut ctrl: CdclController<fn(PathsClass, bool) -> bool> =
             CdclController::for_nnf(nnf, None, |_class, _hl| true);
         nnf.for_each_path_prefix_ord(
-            |_| None,
-            |_| None,
+            |_, _| None,
+            |_, _| None,
             |lits, positions, prod_path, is_complete| {
                 let r = ctrl.should_continue_on_prefix(lits, positions, prod_path, is_complete);
                 snapshots.borrow_mut().push(ctrl.trail_snapshot());
@@ -1420,8 +1420,8 @@ mod tests {
         let mut ctrl: CdclController<fn(PathsClass, bool) -> bool> =
             CdclController::for_nnf(&nnf, None, |_, _| true);
         nnf.for_each_path_prefix_ord(
-            |_| None,
-            |_| None,
+            |_, _| None,
+            |_, _| None,
             |lits, positions, prod_path, is_complete| {
                 ctrl.should_continue_on_prefix(lits, positions, prod_path, is_complete)
             },
@@ -1521,8 +1521,8 @@ mod tests {
             CdclController::for_nnf(nnf, None, noop_on_class as fn(PathsClass, bool) -> bool)
         );
         nnf.for_each_path_prefix_ord(
-            |_| None,
-            |_| None,
+            |_, _| None,
+            |_, _| None,
             |lits, positions, prod_path, is_complete| {
                 ctrl_cell.borrow_mut().should_continue_on_prefix(lits, positions, prod_path, is_complete)
             },
@@ -1763,8 +1763,8 @@ mod tests {
         let mut ctrl: CdclController<fn(PathsClass, bool) -> bool> =
             CdclController::for_nnf(&nnf, None, noop_on_class);
         nnf.for_each_path_prefix_ord(
-            |_| None,
-            |_| None,
+            |_, _| None,
+            |_, _| None,
             |lits, positions, prod_path, is_complete| {
                 let r = ctrl.should_continue_on_prefix(lits, positions, prod_path, is_complete);
                 returns_cell.borrow_mut().push(r);
@@ -2008,8 +2008,8 @@ mod tests {
         loop {
             let prev_unc = cell.borrow().uncovered_path_count();
             nnf.for_each_path_prefix_no_positions_ord(
-                |_| None,
-                |_| None,
+                |_, _| None,
+                |_, _| None,
                 |lits, prod_path, is_complete, _cover_mult| {
                     let empty: PathPrefix = Vec::new();
                     cell.borrow_mut().should_continue_on_prefix(lits, &empty, prod_path, is_complete).is_none()

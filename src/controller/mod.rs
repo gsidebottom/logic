@@ -119,7 +119,14 @@ pub trait PathSearchController {
     /// conflicts early.  The `(index, child)` pairs in `order` must
     /// reference the original `children` slice; indices are the absolute
     /// positions used to record the path.
-    fn sum_ord<'a>(&mut self, _children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+    ///
+    /// `parent` is the Sum node being entered (always
+    /// `NNF::Sum(_)`); `children` is `parent`'s child list.  Wrappers
+    /// that need to identify the node — e.g.
+    /// [`crate::dual::path_effective::EffectiveCountWrapper`] uses
+    /// the parent's identity to look its node-id up once, instead of
+    /// hashing every child separately — should consume `parent`.
+    fn sum_ord<'a>(&mut self, _parent: &'a NNF, _children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
         None
     }
 
@@ -127,8 +134,8 @@ pub trait PathSearchController {
     /// declaration order convention as [`Self::sum_ord`].  At Prod the DFS
     /// picks one alternative at a time, so reordering changes which
     /// alternative is tried first (and therefore what the search descends
-    /// into eagerly).
-    fn prod_ord<'a>(&mut self, _children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+    /// into eagerly).  See [`Self::sum_ord`] for the `parent` argument.
+    fn prod_ord<'a>(&mut self, _parent: &'a NNF, _children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
         None
     }
 

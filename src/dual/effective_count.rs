@@ -107,7 +107,20 @@ impl EffectiveCountIndex {
 
     fn walk(&mut self, n: &NNF, parent: Option<usize>) -> usize {
         let id = self.parent.len();
-        self.by_ptr.insert(n as *const NNF, id);
+        // Pointer-key map only carries Sum/Prod nodes.  The
+        // `EffectiveCountWrapper` only ever calls `id_of` on the
+        // *parent* of a sum_ord/prod_ord call, and a Lit can never
+        // be a parent (it has no children).  Skipping Lit entries
+        // shrinks the `by_ptr` HashMap from ~N (every node) to ~N/4
+        // (interior nodes only) on CNF complements — the dominant
+        // single allocation in the index for industrial-scale
+        // formulas.
+        match n {
+            NNF::Sum(_) | NNF::Prod(_) => {
+                self.by_ptr.insert(n as *const NNF, id);
+            }
+            NNF::Lit(_) => {}
+        }
         self.parent.push(parent);
         self.children.push(Vec::new());
         match n {
@@ -142,9 +155,21 @@ impl EffectiveCountIndex {
         id
     }
 
+    /// Look up the flat NodeId of `node` by pointer identity.  Only
+    /// returns `Some` for Sum/Prod nodes (Lits are intentionally not
+    /// in the pointer-key map — see [`Self::walk`] for the
+    /// rationale).
     pub fn id_of(&self, node: &NNF) -> Option<usize> {
         self.by_ptr.get(&(node as *const NNF)).copied()
     }
+
+    /// Children NodeIds of `node_id`, in declaration order.  Returns
+    /// `None` for ids out of range (defensive — all valid ids have
+    /// a children slot, possibly empty for Lit leaves).
+    pub fn children_ids(&self, node_id: usize) -> Option<&[usize]> {
+        self.children.get(node_id).map(|v| v.as_slice())
+    }
+
     pub fn n_nodes(&self) -> usize { self.parent.len() }
     pub fn root_id(&self) -> usize { 0 }
 
@@ -474,12 +499,24 @@ mod tests {
     fn id_of_pointer_lookup_returns_correct_node() {
         let nnf = NNF::Sum(vec![lit_p(0), NNF::Prod(vec![lit_p(1), lit_p(2)])]);
         let idx = EffectiveCountIndex::build(&nnf);
-        // Root.
+        // Root (Sum) is in the pointer map.
         assert_eq!(idx.id_of(&nnf), Some(0));
-        // First child (lit_p(0)).
+        // Children: the Prod is in the pointer map, the Lit is not
+        // (intentional — see `walk` for the rationale).  Callers
+        // resolve Lit ids via the parent's `children_ids` slice
+        // instead.
         if let NNF::Sum(ch) = &nnf {
-            assert!(idx.id_of(&ch[0]).is_some());
-            assert!(idx.id_of(&ch[1]).is_some());
+            assert!(idx.id_of(&ch[0]).is_none(), "Lit children are not pointer-keyed");
+            assert!(idx.id_of(&ch[1]).is_some(), "Prod children are pointer-keyed");
         } else { panic!() }
+        // Children lookups by parent-id should still resolve every
+        // child (including Lit leaves) — this is the API the
+        // wrapper uses.
+        let root_children = idx.children_ids(0).unwrap();
+        assert_eq!(root_children.len(), 2, "root has 2 children");
+        // Each child id is a valid node in the flat arrays.
+        for &cid in root_children {
+            assert!(cid < idx.n_nodes());
+        }
     }
 }

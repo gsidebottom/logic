@@ -276,9 +276,9 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
 
     fn needs_cover(&self) -> bool { self.inner.needs_cover() }
 
-    fn sum_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+    fn sum_ord<'a>(&mut self, parent: &'a NNF, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
         // Start from inner's order (None ⇒ declaration order).
-        let base: Vec<(usize, &'a NNF)> = match self.inner.sum_ord(children) {
+        let base: Vec<(usize, &'a NNF)> = match self.inner.sum_ord(parent, children) {
             Some(v) => v,
             None    => children.iter().enumerate().collect(),
         };
@@ -291,10 +291,20 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
         // re-order: zero-count children visited first surface their
         // closing lit early so the inner's cover detection fires
         // and we backtrack out of the wrong branch quickly.
+        //
+        // Resolve the parent once (pointer-hash lookup), then index
+        // into the precomputed children-id table for each child —
+        // avoids one HashMap lookup per child and means the index
+        // only needs entries for Sum/Prod nodes.  For
+        // industrial-scale CNFs (millions of Lit leaves) that cuts
+        // the `by_ptr` HashMap by ~75 %.
+        let parent_id_opt = self.idx.id_of(parent);
+        let parent_children_ids: Option<&[usize]> = parent_id_opt
+            .and_then(|pid| self.idx.children_ids(pid));
         let mut annotated: Vec<(usize, &'a NNF, f64)> = base.into_iter()
             .map(|(i, c)| {
-                let count = self.idx.id_of(c)
-                    .map(|nid| self.counts.count_of(nid))
+                let count = parent_children_ids
+                    .map(|ids| self.counts.count_of(ids[i]))
                     .unwrap_or(f64::INFINITY);
                 (i, c, count)
             })
@@ -303,20 +313,24 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
         Some(annotated.into_iter().map(|(i, c, _)| (i, c)).collect())
     }
 
-    fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+    fn prod_ord<'a>(&mut self, parent: &'a NNF, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
         // Inner first — its propagation filter (e.g. SmartController
         // / CdclController) prunes alts whose lits are blocked by
         // the trail.  We further filter zero-count alts (provably
         // blocked by the prefix) and re-sort ascending.
-        let base: Vec<(usize, &'a NNF)> = match self.inner.prod_ord(children) {
+        let base: Vec<(usize, &'a NNF)> = match self.inner.prod_ord(parent, children) {
             Some(v) => v,
             None    => children.iter().enumerate().collect(),
         };
         let base_len = base.len();
+        // See `sum_ord` for the parent-id optimisation rationale.
+        let parent_id_opt = self.idx.id_of(parent);
+        let parent_children_ids: Option<&[usize]> = parent_id_opt
+            .and_then(|pid| self.idx.children_ids(pid));
         let mut annotated: Vec<(usize, &'a NNF, f64)> = base.into_iter()
             .map(|(i, c)| {
-                let count = self.idx.id_of(c)
-                    .map(|nid| self.counts.count_of(nid))
+                let count = parent_children_ids
+                    .map(|ids| self.counts.count_of(ids[i]))
                     .unwrap_or(f64::INFINITY);
                 (i, c, count)
             })

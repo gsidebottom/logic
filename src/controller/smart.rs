@@ -395,7 +395,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for SmartControlle
     // (Reordering Prod is fine — Prod consumes exactly one path entry
     // and we record the original child index.)
 
-    fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+    fn prod_ord<'a>(&mut self, _parent: &'a NNF, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
         // Filter alternatives that propagation has shown can't lead to a
         // satisfying path:
         //   * already true (lit on path or implied) → return that single

@@ -97,12 +97,12 @@ impl<Inner: PathSearchController, S: CoverState> PathSearchController for StateQ
 
     fn needs_cover(&self) -> bool { self.inner.needs_cover() }
 
-    fn sum_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
-        self.inner.sum_ord(children)
+    fn sum_ord<'a>(&mut self, parent: &'a NNF, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+        self.inner.sum_ord(parent, children)
     }
 
-    fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
-        self.inner.prod_ord(children)
+    fn prod_ord<'a>(&mut self, parent: &'a NNF, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+        self.inner.prod_ord(parent, children)
     }
 
     fn path_count(&self) -> usize { self.inner.path_count() }
@@ -224,12 +224,12 @@ impl<Inner: PathSearchController> PathSearchController for ProgressWrapper<Inner
 
     fn needs_cover(&self) -> bool { self.inner.needs_cover() }
 
-    fn sum_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
-        self.inner.sum_ord(children)
+    fn sum_ord<'a>(&mut self, parent: &'a NNF, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+        self.inner.sum_ord(parent, children)
     }
 
-    fn prod_ord<'a>(&mut self, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
-        self.inner.prod_ord(children)
+    fn prod_ord<'a>(&mut self, parent: &'a NNF, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
+        self.inner.prod_ord(parent, children)
     }
 
     fn path_count(&self) -> usize { self.inner.path_count() }

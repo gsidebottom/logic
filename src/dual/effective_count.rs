@@ -69,12 +69,22 @@ pub struct EffectiveCountIndex {
     children_data:    Vec<usize>,
     /// Per-node kind.
     kind: Vec<NodeKind>,
-    /// Per-leaf precomputed ancestor chain: for each leaf node
-    /// `leaf_id`, `leaf_ancestors[leaf_id]` is `[parent, grandparent,
-    /// ..., root]` — a flat sequence the `push()` chain walk reads
-    /// linearly instead of chasing `parent[child_id]` per step.
-    /// Empty for non-Lit nodes (which never start a chain walk).
-    leaf_ancestors: Vec<Vec<usize>>,
+    /// Per-leaf precomputed ancestor chain in CSR layout: for each
+    /// leaf node `leaf_id`, its `[parent, grandparent, ..., root]`
+    /// chain lives at
+    /// `leaf_ancestors_data[leaf_ancestors_offsets[leaf_id] .. leaf_ancestors_offsets[leaf_id + 1]]`.
+    /// `leaf_ancestors_offsets` has `n_nodes + 1` entries; the
+    /// range is empty for non-Lit nodes (they never start a chain
+    /// walk).
+    ///
+    /// Previously this was `Vec<Vec<usize>>` indexed by node-id —
+    /// every node carried a 24 B inner-`Vec` header even though
+    /// only Lit leaves had any data, costing ~240 MB on
+    /// 10M-node CNF complements.  The CSR layout collapses every
+    /// header to one 8 B offset and merges the (very short)
+    /// per-leaf chains into a single heap allocation.
+    leaf_ancestors_offsets: Vec<usize>,
+    leaf_ancestors_data:    Vec<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -100,7 +110,8 @@ impl EffectiveCountIndex {
             children_offsets: Vec::new(),
             children_data:    Vec::new(),
             kind: Vec::new(),
-            leaf_ancestors: Vec::new(),
+            leaf_ancestors_offsets: Vec::new(),
+            leaf_ancestors_data:    Vec::new(),
         };
         // The recursive walk builds children lists incrementally —
         // each Sum/Prod has its children's IDs only once its
@@ -127,21 +138,38 @@ impl EffectiveCountIndex {
             idx.children_offsets.push(idx.children_data.len());
         }
         drop(scratch);
-        // Precompute each leaf's ancestor chain.  Done after the
-        // structural walk so `parent` is fully populated.
-        idx.leaf_ancestors = vec![Vec::new(); idx.parent.len()];
-        for id in 0..idx.parent.len() {
+        // Precompute each leaf's ancestor chain.  Build CSR
+        // directly — no scratch nested Vec — so the peak
+        // allocation during construction is just the final CSR
+        // arrays themselves.  Order of operations matters: we
+        // append a leaf's chain into `leaf_ancestors_data`, then
+        // record the trailing offset.  Non-Lit nodes append
+        // nothing and still get an offset equal to the previous
+        // (empty range).
+        let n_nodes = idx.parent.len();
+        idx.leaf_ancestors_offsets = Vec::with_capacity(n_nodes + 1);
+        idx.leaf_ancestors_data    = Vec::new();
+        idx.leaf_ancestors_offsets.push(0);
+        for id in 0..n_nodes {
             if matches!(idx.kind[id], NodeKind::Lit) {
-                let mut chain = Vec::new();
                 let mut cur = id;
                 while let Some(p) = idx.parent[cur] {
-                    chain.push(p);
+                    idx.leaf_ancestors_data.push(p);
                     cur = p;
                 }
-                idx.leaf_ancestors[id] = chain;
             }
+            idx.leaf_ancestors_offsets.push(idx.leaf_ancestors_data.len());
         }
         idx
+    }
+
+    /// Ancestor chain `[parent, grandparent, ..., root]` for the
+    /// Lit leaf at `leaf_id`.  Returns an empty slice for non-Lit
+    /// nodes.  Panics on ids out of range.
+    pub fn leaf_ancestors(&self, leaf_id: usize) -> &[usize] {
+        let start = self.leaf_ancestors_offsets[leaf_id];
+        let end   = self.leaf_ancestors_offsets[leaf_id + 1];
+        &self.leaf_ancestors_data[start..end]
     }
 
     fn walk(&mut self, n: &NNF, parent: Option<usize>, scratch: &mut Vec<Vec<usize>>) -> usize {
@@ -322,7 +350,7 @@ impl EffectiveCounts {
             // ancestor's count doesn't change.
             let mut child_old = old_count;
             let mut child_new = new_count;
-            for &parent_id in &idx.leaf_ancestors[leaf_id] {
+            for &parent_id in idx.leaf_ancestors(leaf_id) {
                 let parent_old = self.count[parent_id];
                 let parent_new = match &idx.kind[parent_id] {
                     NodeKind::Sum => {

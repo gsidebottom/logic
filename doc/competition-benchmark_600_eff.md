@@ -16,3 +16,10 @@
 | rook-51-0-0 | TIMEOUT | 600s |
 | b19_1 | UNKNOWN | n/a |
 | clqcl_100_6_5.normalised | TIMEOUT | 600s |
+| mp1-klieber2017s-0500-023-t12 | TIMEOUT | 600s |
+| cliquecoloring_n26_k7_c6 | TIMEOUT | 600s |
+| s38417 | TIMEOUT | 600s |
+| sum_of_three_cubes_42_known_representation | TIMEOUT | 600s |
+| sudoku-N30-12 | TIMEOUT | 600s |
+| pj2016_k100 | UNKNOWN | n/a |
+| pj2002_k500 | UNKNOWN | n/a |

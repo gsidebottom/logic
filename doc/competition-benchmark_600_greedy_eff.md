@@ -7,3 +7,5 @@
 | bp4_CSO_AM_IXA_LP.normalised | TIMEOUT | 600s |
 | GP_216_290_40 | TIMEOUT | 600s |
 | gm24sparrc | TIMEOUT | 600s |
+| ramsey_3_6_19.normalised | TIMEOUT | 600s |
+| goldcrest-and-11 | TIMEOUT | 600s |

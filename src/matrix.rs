@@ -691,8 +691,27 @@ impl NNF {
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let inner = controller_builder(&m, tx);
+            // Need an extra clone of the cancel handle: `cancel_for_thread`
+            // moves into CancelController below, but the outer restart
+            // loop still needs to poll for cancellation between
+            // DFS invocations.
+            let cancel_check = cancel_for_thread.clone();
             let mut ctrl = crate::controller::CancelController::new(inner, cancel_for_thread);
-            m.for_each_path_prefix_with_controller(&mut ctrl);
+            // Outer restart loop.  Mirrors the loop in
+            // `run_uncovered_only_dfs`: re-invoke the DFS engine
+            // whenever the controller asks for a restart (Luby-driven
+            // for `CdclController`; no-op for everything else).
+            // Without this loop, a CDCL-driven matrix.eff search
+            // unwinds completely on the first restart request and
+            // its channel drains silently — `sat -b eff` then
+            // reports UNSAT for satisfiable formulas.
+            loop {
+                if cancel_check.is_cancelled() { break; }
+                m.for_each_path_prefix_with_controller(&mut ctrl);
+                if cancel_check.is_cancelled() { break; }
+                if !ctrl.is_restart_pending() { break; }
+                ctrl.complete_restart();
+            }
             ctrl.publish_progress();
             Ok::<(), Box<dyn std::error::Error + Send>>(())
         });

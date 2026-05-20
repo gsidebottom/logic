@@ -80,4 +80,16 @@ impl<C: PathSearchController> PathSearchController for CancelController<C> {
     fn covered_prefix_count(&self) -> usize { self.inner.covered_prefix_count() }
     fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
     fn paths_classified(&self) -> f64 { self.inner.paths_classified() }
+
+    // Restart-protocol delegation.  Without these forwards the trait
+    // defaults (`false` / no-op) shadow the inner's signal — any
+    // wrapper that hosts a CDCL-style restarting controller below
+    // it will silently lose Luby restart requests, terminating the
+    // search prematurely.  Concretely: `matrix.eff` runs through
+    // `classify_paths_with_nnf`, which wraps the controller in a
+    // `CancelController`, which used to drop the restart signal and
+    // caused the search to exhaust without finding a SAT path on
+    // any formula that needed a restart to make progress.
+    fn is_restart_pending(&self) -> bool { self.inner.is_restart_pending() }
+    fn complete_restart(&mut self) { self.inner.complete_restart() }
 }

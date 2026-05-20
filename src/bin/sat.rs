@@ -247,7 +247,14 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
         covered_prefix_limit: usize::MAX,
         no_cover:             true,        // pairs with `_uncovered_only`
     });
-    let comp_for_path = comp.clone();
+    // No longer need to keep a separate clone for post-search
+    // `lits_on_path(&prod_path)` — the engine emits the literals
+    // along the uncovered path directly via `UncoveredPath::lits`,
+    // and walking the original NNF post-hoc is *unsound* for the
+    // `eff` backend whose `EffectiveCountWrapper::sum_ord` re-orders
+    // Sum children (the path indices end up indexing the wrong
+    // children, panicking on out-of-bounds or silently picking the
+    // wrong lits).
 
     // The matrix-method DFS in `for_each_path_prefix_ord` recurses
     // through Sum siblings via continuation closures.  On a CNF
@@ -288,7 +295,6 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
         let nnf_cdcl  = comp.clone();
         let p_smart   = params.clone();
         let p_cdcl    = params.clone();
-        let p_eff     = params.clone();
         let (handle, mut rx, cancel) = match backend {
             MatrixBackend::Smart => comp.classify_paths_uncovered_only(64,
                 move |tx| smart_controller_builder(&nnf_smart, p_smart, tx),
@@ -306,12 +312,33 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
                 // clone to the builder so the `EffectiveCountIndex`'s
                 // pointer-keyed lookups line up with the &NNF refs the
                 // engine passes via sum_ord / prod_ord.
+                //
+                // IMPORTANT: `classify_paths_with_nnf` does NOT do
+                // engine-level cover detection (unlike
+                // `classify_paths_uncovered_only`, which the
+                // smart/cdcl backends use).  So the controller has
+                // to detect covers itself, which means:
+                //   * `no_cover: false`  in PathParams
+                //   * `CdclController::for_nnf_with_cover` (not
+                //     `for_nnf`), which composes the inner
+                //     `BacktrackWhenCoveredController` that actually
+                //     emits `Covered` / `Uncovered` events.
+                // Pairing the cover-less engine with the cover-less
+                // controller emits nothing at all → channel drains
+                // → sat reports UNSAT for satisfiable formulas
+                // (unsound).
                 use logic::dual::effective_count::{EffectiveCountIndex, EffectiveCounts};
                 use logic::dual::path_effective::EffectiveCountWrapper;
+                let p_eff = Some(PathParams {
+                    uncovered_path_limit: 1,
+                    paths_class_limit:    usize::MAX,
+                    covered_prefix_limit: usize::MAX,
+                    no_cover:             false,
+                });
                 comp.classify_paths_with_nnf(64, move |nnf_ref, tx| {
                     let on_class: DynOnClass = Box::new(move |class, hit_limit|
                         tx.blocking_send((class, hit_limit)).is_ok());
-                    let cdcl = CdclController::for_nnf(nnf_ref, p_eff, on_class);
+                    let cdcl = CdclController::for_nnf_with_cover(nnf_ref, p_eff, on_class);
                     let idx = EffectiveCountIndex::build(nnf_ref);
                     let counts = EffectiveCounts::new(&idx);
                     EffectiveCountWrapper::new(cdcl, idx, counts)
@@ -334,7 +361,7 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
             None
         };
 
-        let mut path: Option<Vec<usize>> = None;
+        let mut path_lits: Option<Vec<Lit>> = None;
         // SIGINT-listener task: spawned as an independent task so it
         // subscribes to `tokio::signal::ctrl_c()` exactly once and
         // stays subscribed for the whole run.  This avoids the
@@ -386,7 +413,7 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
                     std::process::exit(130);   // 128 + SIGINT
                 }
                 msg = rx.recv() => match msg {
-                    Some((PathsClass::Uncovered(up), _)) => { path = Some(up.prod_path); break; }
+                    Some((PathsClass::Uncovered(up), _)) => { path_lits = Some(up.lits); break; }
                     Some(_) => continue,
                     None    => break,                       // worker drained → UNSAT
                 },
@@ -409,9 +436,9 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
         if let Some(t) = progress_task { t.abort(); let _ = t.await; }
         let _ = handle.await;
 
-        if let Some(p) = path {
-            let path_lits = comp_for_path.lits_on_path(&p);
-            SearchOutcome::Sat(path_lits_to_assignment(nvars, &path_lits))
+        if let Some(lits) = path_lits {
+            let refs: Vec<&Lit> = lits.iter().collect();
+            SearchOutcome::Sat(path_lits_to_assignment(nvars, &refs))
         } else {
             SearchOutcome::Unsat
         }
@@ -996,12 +1023,18 @@ fn main() {
     };
     eprintln!("c parsed {} variables, {} clauses", nvars, clauses.len());
 
-    // Quick edge cases handled before invoking either backend.
+    // Quick edge cases handled before invoking either backend.  We
+    // still emit the standard `c UNSAT|SAT in 0.0ms` timing line on
+    // these fast paths so downstream consumers (the
+    // doc/competition-benchmarks.sh parser, etc.) get a uniform
+    // result format regardless of which path the solver took.
     if clauses.iter().any(|c| c.is_empty()) {
+        eprintln!("c UNSAT in 0.0ms");
         println!("s UNSATISFIABLE");
         return;
     }
     if clauses.is_empty() {
+        eprintln!("c SAT in 0.0ms");
         println!("s SATISFIABLE");
         let stdout = io::stdout();
         let mut w = stdout.lock();

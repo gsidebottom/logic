@@ -57,13 +57,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// OS default 2 MB stack and abort with a fatal-runtime stack
 /// overflow.
 ///
-/// 256 MB matches the figure `sat.rs` configures on its tokio
-/// runtime builder.  The dual backends call `solve_dual_with_cancel`
-/// from a `spawn_blocking` task — that task itself runs on a tokio
+/// 1 GB matches the figure `sat.rs` configures on its tokio runtime
+/// builder.  Big benchmarks (e.g. goldcrest-and-11 with 1.5M
+/// clauses) need ~350 MB; 1 GB leaves headroom for inputs another
+/// 3× larger.  Stack is virtual memory — pages aren't committed
+/// until touched — so this is a 1 GB *reservation*, not a 1 GB
+/// allocation.
+///
+/// The dual backends call `solve_dual_with_cancel` from a
+/// `spawn_blocking` task — that task itself runs on a tokio
 /// blocking-pool thread with the configured big stack, but A and B
 /// are spawned via `std::thread::spawn` *inside* that task and
 /// inherit the OS default unless we override it explicitly.
-const SEARCH_THREAD_STACK_SIZE: usize = 256 * 1024 * 1024;
+const SEARCH_THREAD_STACK_SIZE: usize = 1024 * 1024 * 1024;
 
 /// Spawn a search thread with [`SEARCH_THREAD_STACK_SIZE`] bytes of
 /// stack.  Use this in place of `std::thread::spawn` for any thread

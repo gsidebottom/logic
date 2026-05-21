@@ -262,11 +262,21 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
     // the traversal nests O(N) deep — for industrial inputs (100k+
     // clauses) that easily blows the default 2 MB tokio stack.
     //
-    // Bumping `thread_stack_size` to 256 MB on the runtime builder
-    // covers everything we've seen in the wild (≈ 1.3 KB per nested
-    // frame × 200K frames ≈ 260 MB worst case).  The proper fix is to
-    // rewrite the traversal as an explicit work-stack iteration; this
-    // is the bandage until that lands.
+    // Bumping `thread_stack_size` to 1 GB on the runtime builder.
+    // The matrix-method DFS recurses through Sum siblings via
+    // continuation closures — for a 1.5M-clause CNF complement
+    // (e.g. goldcrest-and-11) the arena engine's recursion uses
+    // about 350 MB of stack, blowing the previous 256 MB ceiling
+    // mid-search with a `thread 'tokio-rt-worker' has overflowed
+    // its stack / fatal runtime error` abort.  1 GB handles
+    // everything we've measured (worst case ~700 MB on the
+    // largest competition CNFs we've benchmarked).  Stack is
+    // virtual memory — pages aren't committed until touched — so
+    // the 1 GB reservation doesn't grow RSS by 1 GB.
+    //
+    // The proper fix is to rewrite traverse_sum's sibling recursion
+    // as an explicit work-stack iteration; that's a deeper refactor
+    // for a follow-up.
     //
     // Multi-thread runtime (not current_thread): the dual backends'
     // `try_send` pattern keeps `rx.recv()` perpetually ready, which
@@ -281,7 +291,7 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
-        .thread_stack_size(256 * 1024 * 1024)
+        .thread_stack_size(1024 * 1024 * 1024)
         .build()
         .expect("tokio runtime");
 

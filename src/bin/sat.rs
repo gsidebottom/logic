@@ -149,6 +149,59 @@ fn cnf_complement_nnf(clauses: &[Vec<i32>]) -> NNF {
     if cubes.len() == 1 { cubes.into_iter().next().unwrap() } else { NNF::Sum(cubes) }
 }
 
+/// Classify a preprocessed NNF for an early-exit verdict.
+///
+/// NNF identity elements:
+/// * `Prod(vec![])` = empty conjunction = `T` ⇒ formula is
+///   trivially satisfiable; reconstruct any forced witness from the
+///   recon stack and report SAT without running the search.
+/// * `Sum(vec![])`  = empty disjunction = `F` ⇒ formula is
+///   trivially unsatisfiable; report UNSAT.
+/// * Everything else ⇒ search must run on `pp.nnf.complement()`.
+enum PreprocessVerdict { TriviallySat, TriviallyUnsat, NeedsSearch }
+
+fn preprocess_verdict(nnf: &NNF) -> PreprocessVerdict {
+    match nnf {
+        NNF::Prod(c) if c.is_empty() => PreprocessVerdict::TriviallySat,
+        NNF::Sum(c)  if c.is_empty() => PreprocessVerdict::TriviallyUnsat,
+        _ => PreprocessVerdict::NeedsSearch,
+    }
+}
+
+/// Build the original CNF as an NNF — `Prod(Sum(lit, ...), ...)`,
+/// no complement.  Used by the `--preprocess` path: NNF-level unit
+/// propagation runs in the SAT direction (i.e. on `F`), then the
+/// matrix-method search runs on the complement of the *simplified*
+/// `F` — so we need both an `F` builder (this) and a `complement(F)`
+/// builder ([`cnf_complement_nnf`]).
+fn cnf_to_nnf(clauses: &[Vec<i32>]) -> NNF {
+    if clauses.is_empty() {
+        // Empty CNF is trivially true (the empty conjunction).
+        return NNF::Prod(vec![]);
+    }
+    let clauses_nnf: Vec<NNF> = clauses.iter().map(|cl| {
+        if cl.is_empty() {
+            // Empty clause is false (the empty disjunction); the
+            // outer code short-circuits UNSAT before getting here,
+            // but include the case for completeness.
+            NNF::Sum(vec![])
+        } else {
+            let lits: Vec<NNF> = cl.iter().map(|&n| {
+                let var: Var = (n.unsigned_abs() - 1) as Var;
+                // DIMACS sign: negative ⇒ negated literal.
+                let neg = n < 0;
+                NNF::Lit(Lit { var, neg })
+            }).collect();
+            if lits.len() == 1 { lits.into_iter().next().unwrap() } else { NNF::Sum(lits) }
+        }
+    }).collect();
+    if clauses_nnf.len() == 1 {
+        clauses_nnf.into_iter().next().unwrap()
+    } else {
+        NNF::Prod(clauses_nnf)
+    }
+}
+
 // ─── Solver entry ─────────────────────────────────────────────────────────
 
 /// Outcome of the search: a satisfying assignment, an exhausted search
@@ -239,7 +292,21 @@ impl MatrixBackend {
     }
 }
 
-fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBackend) -> SearchOutcome {
+/// `preprocessed`: optional preprocessing handle.  When `Some`,
+/// the SAT-witness path (`SearchOutcome::Sat`) reconstructs the
+/// original-variable assignment by feeding the search's path
+/// literals through `pp.reconstruct_sat_assignment` (which negates
+/// each lit to take it from complement-direction to SAT-direction,
+/// then replays the recon stack to recover any variables eliminated
+/// during preprocessing).  When `None`, the legacy direct
+/// `path_lits_to_assignment` is used.
+fn matrix_search(
+    comp: NNF,
+    nvars: usize,
+    show_progress: bool,
+    backend: MatrixBackend,
+    preprocessed: Option<&logic::preprocess::Preprocessed>,
+) -> SearchOutcome {
     let total_paths = comp.path_count();
     let params = Some(PathParams {
         uncovered_path_limit: 1,           // stop after the first witness
@@ -450,8 +517,54 @@ fn matrix_search(comp: NNF, nvars: usize, show_progress: bool, backend: MatrixBa
         let _ = handle.await;
 
         if let Some(lits) = path_lits {
-            let refs: Vec<&Lit> = lits.iter().collect();
-            SearchOutcome::Sat(path_lits_to_assignment(nvars, &refs))
+            let asgn = match preprocessed {
+                Some(pp) => {
+                    // Build a SAT-direction partial assignment from
+                    // the search path (complement-direction lits →
+                    // negate to get the assignment that satisfies F).
+                    let mut sat_asgn: Vec<Lit> = lits.into_iter()
+                        .map(|l| l.complement())
+                        .collect();
+                    // Pad missing surviving variables with `false`
+                    // *before* replaying the reconstruction stack.
+                    //
+                    // Why this matters: Phase 3/4 BVE recon `Defined`
+                    // steps reconstruct an eliminated variable by
+                    // evaluating an NNF defn against the surviving
+                    // assignment.  If a survivor referenced by the
+                    // defn is missing from `sat_asgn`, the defn
+                    // evaluation returns `Err(())`, which
+                    // `extend_assignment` silently coerces to
+                    // `false` via `.unwrap_or(false)`.  Without
+                    // pre-padding, the eliminated var's recomputed
+                    // value bakes in "missing survivors = false"
+                    // implicitly — and the only way for the
+                    // resulting full model to be sound is for the
+                    // *real* bool_asgn missing-var fill to also be
+                    // `false`.  Use `pad_survivors_and_extend`
+                    // (the documented safe API) which pads
+                    // survivors with `false` explicitly, then
+                    // initialise bool_asgn to `false` so the two
+                    // agree.  Confirmed sound on Circuit_multiplier24
+                    // (26 Defined recon steps, was producing models
+                    // that failed 2 of 15 000 clauses before the fix).
+                    pp.pad_survivors_and_extend(&mut sat_asgn, nvars as u32);
+                    let mut bool_asgn = vec![false; nvars];
+                    for l in &sat_asgn {
+                        let i = l.var as usize;
+                        if i < nvars {
+                            // `neg = false` ⇒ x is true ⇒ asgn[i] = true.
+                            bool_asgn[i] = !l.neg;
+                        }
+                    }
+                    bool_asgn
+                }
+                None => {
+                    let refs: Vec<&Lit> = lits.iter().collect();
+                    path_lits_to_assignment(nvars, &refs)
+                }
+            };
+            SearchOutcome::Sat(asgn)
         } else {
             SearchOutcome::Unsat
         }
@@ -923,6 +1036,11 @@ struct Args {
     /// with status 124 (the GNU `timeout` exit code for "command
     /// timed out").  Default 6000 s; pass `--timeout 0` to disable.
     timeout_secs:  u64,
+    /// Run NNF-level preprocessing (top-level unit propagation, BVE,
+    /// normalisation) before handing the formula to the matrix-method
+    /// search.  Always disabled for the cadical backend (it has its
+    /// own internal preprocessor).  Default `true`.
+    preprocess:    bool,
 }
 
 const DEFAULT_TIMEOUT_SECS: u64 = 6000;
@@ -932,6 +1050,7 @@ fn parse_args() -> Result<Args, String> {
         show_progress: false,
         backend: BackendChoice::Matrix(MatrixBackend::Eff),
         timeout_secs: DEFAULT_TIMEOUT_SECS,
+        preprocess: true,
     };
     let mut explicit_backend = false;
     let mut iter = std::env::args().skip(1);
@@ -978,6 +1097,8 @@ fn parse_args() -> Result<Args, String> {
                 a.backend = BackendChoice::Matrix(MatrixBackend::Cdcl);
                 explicit_backend = true;
             }
+            "--preprocess"      => { a.preprocess = true;  }
+            "--no-preprocess"   => { a.preprocess = false; }
             "--help"     | "-h" => {
                 eprintln!("Usage: sat [--backend NAME] [--timeout SECS] [--progress] < problem.cnf");
                 eprintln!();
@@ -1004,6 +1125,10 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    Pass --timeout 0 to disable.");
                 eprintln!("  --cadical, -c     Legacy alias for --backend cadical.");
                 eprintln!("  --cdcl            Legacy alias for --backend cdcl.");
+                eprintln!("  --preprocess      Run NNF-level preprocessing (UP / BVE /");
+                eprintln!("                    normalisation) before search.  Default ON for");
+                eprintln!("                    matrix backends; no-op for cadical (its own preproc).");
+                eprintln!("  --no-preprocess   Disable preprocessing.");
                 eprintln!("  --progress, -p    Show a live progress bar on stderr (TTY only).");
                 eprintln!("                    Press Ctrl-C to interrupt.");
                 eprintln!();
@@ -1077,12 +1202,90 @@ fn main() {
     let outcome = match args.backend {
         BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
         BackendChoice::Matrix(m) => {
-            // Build the NNF complement, then drop the parsed `Vec<Vec<i32>>`
-            // before the search starts.  On 2M-clause inputs that's ~80 MB
-            // we can release instead of carrying through the whole run.
-            let comp = cnf_complement_nnf(&clauses);
-            drop(clauses);
-            matrix_search(comp, nvars, args.show_progress, m)
+            // Auto-skip preprocess on very large inputs.  Empirically
+            // Phase 1 preprocess takes ~150 µs / clause; at 2M
+            // clauses (pj2013_k9) that's ~5 minutes — most of any
+            // reasonable per-problem budget before the matrix
+            // search even starts.  Auto-skip above 250k clauses.
+            // Users wanting preprocess off entirely should pass
+            // `--no-preprocess`; users wanting it on for giant
+            // inputs (rare, niche) can bump the threshold by
+            // editing this constant.
+            //
+            // Threshold rationale: 250k × 150 µs ≈ 38 seconds —
+            // acceptable fraction of a 600 s budget but a clear
+            // "too long" for 60 s benchmarking.
+            const PREPROCESS_MAX_CLAUSES: usize = 250_000;
+            let do_preprocess = args.preprocess
+                && clauses.len() <= PREPROCESS_MAX_CLAUSES;
+            if args.preprocess && !do_preprocess {
+                eprintln!("c preprocess: auto-skipped ({} clauses > {} \
+                           threshold; use --no-preprocess to silence)",
+                          clauses.len(), PREPROCESS_MAX_CLAUSES);
+            }
+            if do_preprocess {
+                // Build F as NNF (Prod-of-Sums), run NNF-level
+                // preprocessing (UP / BVE / normalisation), check
+                // for a fully-resolved result, otherwise hand the
+                // complement of the simplified NNF to the matrix
+                // search.  See `src/preprocess.rs` for the pipeline
+                // and `doc/preprocess.md` for the design rationale.
+                let orig_clauses = clauses.len();
+                let f = cnf_to_nnf(&clauses);
+                drop(clauses);
+                let pp_start = Instant::now();
+                let pp = logic::preprocess::preprocess(&f);
+                let pp_ms = pp_start.elapsed().as_secs_f64() * 1000.0;
+                drop(f);
+                // Top-level clause count after preprocessing — Phase
+                // 1 keeps CNF shape (Prod-of-Sums), so this is just
+                // the root Prod's child count.  Useful to see at a
+                // glance whether preprocess actually shrunk the
+                // formula on a given input.
+                let pp_clauses = match &pp.nnf {
+                    NNF::Prod(ch) => ch.len(),
+                    NNF::Sum(_)   => 0,   // trivially unsat
+                    NNF::Lit(_)   => 1,   // single forced lit
+                };
+                let delta_pct = if orig_clauses == 0 { 0 } else {
+                    ((pp_clauses as i64 - orig_clauses as i64) * 100
+                     / orig_clauses as i64)
+                };
+                eprintln!("c preprocess: {} → {} clauses ({:+}%) in {:.1}ms",
+                          orig_clauses, pp_clauses, delta_pct, pp_ms);
+                match preprocess_verdict(&pp.nnf) {
+                    PreprocessVerdict::TriviallySat => {
+                        // Preprocessor reduced F to true (the empty
+                        // Prod).  Build a SAT model from the
+                        // reconstruction stack only (every survivor
+                        // defaults to false; recon steps then fill
+                        // in any forced lits in reverse order).
+                        let mut asgn_lits: Vec<Lit> = Vec::new();
+                        pp.pad_survivors_and_extend(&mut asgn_lits, nvars as u32);
+                        let mut bool_asgn = vec![true; nvars];
+                        for l in &asgn_lits {
+                            if (l.var as usize) < nvars {
+                                bool_asgn[l.var as usize] = !l.neg;
+                            }
+                        }
+                        SearchOutcome::Sat(bool_asgn)
+                    }
+                    PreprocessVerdict::TriviallyUnsat => {
+                        SearchOutcome::Unsat
+                    }
+                    PreprocessVerdict::NeedsSearch => {
+                        let comp = pp.nnf.complement();
+                        matrix_search(comp, nvars, args.show_progress, m, Some(&pp))
+                    }
+                }
+            } else {
+                // Skip preprocess: build the complement directly
+                // and search it.  Drop the parsed clauses before
+                // the search starts (≈ 80 MB on 2M-clause inputs).
+                let comp = cnf_complement_nnf(&clauses);
+                drop(clauses);
+                matrix_search(comp, nvars, args.show_progress, m, None)
+            }
         }
     };
     let elapsed_ms = t.elapsed().as_secs_f64() * 1000.0;
@@ -1131,7 +1334,7 @@ mod tests {
         if clauses.iter().any(|c| c.is_empty()) { return Err(()); }
         if clauses.is_empty() { return Ok(vec![true; nvars]); }
         let comp = cnf_complement_nnf(clauses);
-        match matrix_search(comp, nvars, /*show_progress=*/ false, backend) {
+        match matrix_search(comp, nvars, /*show_progress=*/ false, backend, None) {
             SearchOutcome::Sat(asgn) => Ok(asgn),
             SearchOutcome::Unsat => Err(()),
             SearchOutcome::Interrupted => panic!("test search reported interrupted"),
@@ -1376,11 +1579,11 @@ mod tests {
             MatrixBackend::GreedyEff,
             MatrixBackend::BasicEff,
         ] {
-            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend) {
+            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend, None) {
                 SearchOutcome::Sat(_) => {}
                 other => panic!("[{:?}] expected Sat, got {:?}", backend, outcome_kind(&other)),
             }
-            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend) {
+            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend, None) {
                 SearchOutcome::Unsat => {}
                 other => panic!("[{:?}] expected Unsat, got {:?}", backend, outcome_kind(&other)),
             }

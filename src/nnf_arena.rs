@@ -335,9 +335,18 @@ impl NnfArena {
                         Some(k) => Some(k),
                     };
                     prod_path.pop();
+                    // Always treat any "stop" as one-level back.  The
+                    // multi-level bubble-up (`Some(k>0) → Some(k-1)`) is
+                    // unsound when paired with CDCL's restart signal: the
+                    // bubble-up skips Sum/Prod siblings up the chain, and
+                    // the subsequent `complete_restart` + re-run loop
+                    // leaves CDCL in a state where the final non-restart
+                    // iteration wrongly concludes UNSAT on inputs whose
+                    // SAT model lives in a skipped subtree.  Matches the
+                    // NNF engine's semantics (which has no bubble-up via
+                    // its `bool` callback in `run_uncovered_only_dfs`).
                     match r {
-                        None | Some(0) => continue,
-                        Some(k)        => return Some(k - 1),
+                        None | Some(_) => continue,
                     }
                 }
                 None
@@ -368,13 +377,13 @@ impl NnfArena {
             Some(o) => o[ord_idx],
             None    => children[ord_idx],
         };
-        let r = self.traverse(child, lits, prod_path, ctrl, &mut |arena, lits, path, ctrl| {
+        let _r = self.traverse(child, lits, prod_path, ctrl, &mut |arena, lits, path, ctrl| {
             arena.traverse_sum(children, order, ord_idx + 1, lits, path, ctrl, then)
         });
-        match r {
-            None | Some(0) => None,
-            Some(k)        => Some(k - 1),
-        }
+        // Always return None — no multi-level bubble-up.  See the
+        // matching comment in `traverse`'s Prod arm for why bubble-up
+        // is unsound when combined with CDCL's restart signal.
+        None
     }
 }
 

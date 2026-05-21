@@ -35,7 +35,7 @@
 use biodivine_lib_bdd::{Bdd, BddVariable, BddVariableSet, BddVariableSetBuilder};
 
 use crate::dual::{flat, is_flat_sum_of_prods, CoverState, flat_pair_triggers};
-use crate::matrix::{NNF, Pair, ProdPath};
+use crate::matrix::{NNF, Pair};
 
 pub struct BddBansCoverState {
     pairs: Vec<Pair>,

@@ -41,6 +41,7 @@
 # Usage:
 #   doc/competition-benchmarks.sh                    # 600s timeout, 10 parallel, cadical
 #   doc/competition-benchmarks.sh -b eff             # use the eff backend
+#   doc/competition-benchmarks.sh -b eff --no-preprocess  # eff, preproc off
 #   doc/competition-benchmarks.sh -b greedy_eff 300  # eff backend, 300s timeout
 #   doc/competition-benchmarks.sh 300                # 300s timeout, 10 parallel
 #   doc/competition-benchmarks.sh 300 4              # 300s timeout, 4 parallel
@@ -52,6 +53,14 @@
 # `greedy_cdcl`, `greedy_eff`, `basic_eff`.  Run `sat --help` for the
 # authoritative list.  The chosen name is encoded in the output
 # filename so runs of different backends don't overwrite each other.
+#
+# Preprocess (--preprocess / --no-preprocess): forwarded to `sat`'s
+# matching flag.  Default is "let sat decide" (`sat` defaults to ON
+# for matrix backends + auto-skip above 250k clauses).  When
+# explicitly set here, `_pp` or `_nopp` is appended to the output
+# filename so preproc-on and preproc-off runs are distinguishable.
+# No-op for the cadical backend (cadical has its own internal
+# preprocessor).
 #
 #   doc/competition-benchmarks.sh --finalize FILE.md [FILE.md …]
 #       Retroactively add the summary table + cactus plot to an
@@ -274,7 +283,9 @@ if [ "${1:-}" = "--worker" ]; then
   tmp=$(mktemp)
   # `|| true` so a non-zero sat exit (124 on timeout, 130 on SIGINT
   # propagated through, etc.) doesn't kill the worker via `set -e`.
-  "$SAT_BIN" -b "$BACKEND" -t "$TIMEOUT_SECS" < "$cnf" > "$tmp" 2>&1 || true
+  # PREPROCESS_FLAG is "", "--preprocess", or "--no-preprocess" depending
+  # on the main-mode override.  Empty = sat picks its own default.
+  "$SAT_BIN" -b "$BACKEND" -t "$TIMEOUT_SECS" ${PREPROCESS_FLAG:-} < "$cnf" > "$tmp" 2>&1 || true
 
   IFS='|' read -r result time <<<"$(parse_result "$tmp")"
   display=$(strip_guid "$base")
@@ -298,6 +309,12 @@ fi
 # interspersed with positional args; remaining args drop into the
 # positional slots (timeout, parallel, limit).
 BACKEND=cadical
+# PREPROCESS_FLAG: "" = pass nothing (sat uses its own default),
+# "--preprocess" = force on, "--no-preprocess" = force off.
+# Encoded in OUT_MD suffix when non-empty so runs with different
+# preproc settings produce distinct files.
+PREPROCESS_FLAG=""
+PREPROCESS_SUFFIX=""
 positional=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -305,6 +322,16 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || { echo "missing value for $1" >&2; exit 1; }
       BACKEND=$2
       shift 2
+      ;;
+    --preprocess)
+      PREPROCESS_FLAG="--preprocess"
+      PREPROCESS_SUFFIX="_pp"
+      shift
+      ;;
+    --no-preprocess)
+      PREPROCESS_FLAG="--no-preprocess"
+      PREPROCESS_SUFFIX="_nopp"
+      shift
       ;;
     --)
       shift
@@ -331,19 +358,26 @@ command -v xz >/dev/null || { echo "xz not on PATH" >&2; exit 1; }
 # Pick an output filename that doesn't clobber a previous run.  The
 # backend is in the name so that, e.g., a `cadical` run and an `eff`
 # run at the same timeout produce distinct files.
-OUT_MD="$REPO_ROOT/doc/competition-benchmark_${TIMEOUT_SECS}_${BACKEND}.md"
+OUT_MD="$REPO_ROOT/doc/competition-benchmark_${TIMEOUT_SECS}_${BACKEND}${PREPROCESS_SUFFIX}.md"
 n=1
 while [ -e "$OUT_MD" ]; do
   n=$((n + 1))
-  OUT_MD="$REPO_ROOT/doc/competition-benchmark_${TIMEOUT_SECS}_${BACKEND}_${n}.md"
+  OUT_MD="$REPO_ROOT/doc/competition-benchmark_${TIMEOUT_SECS}_${BACKEND}${PREPROCESS_SUFFIX}_${n}.md"
 done
 
 # Seed the output file with a header + table separator.  Workers
 # append rows below this.  The header keeps the metadata
 # (timeout/backend/parallel) machine-parseable for downstream tools
 # like competition-benchmarks-plot.py.
+# Title preproc tag: "preprocess=on/off/default".  Default = "sat
+# decides" (empty PREPROCESS_FLAG ⇒ sat's own default behaviour).
+case "$PREPROCESS_FLAG" in
+  --preprocess)    PP_TAG=", preprocess=on" ;;
+  --no-preprocess) PP_TAG=", preprocess=off" ;;
+  *)               PP_TAG="" ;;
+esac
 cat > "$OUT_MD" <<EOF
-# Competition Benchmark Results (timeout=${TIMEOUT_SECS}s, backend=${BACKEND}, parallel=${PARALLEL})
+# Competition Benchmark Results (timeout=${TIMEOUT_SECS}s, backend=${BACKEND}, parallel=${PARALLEL}${PP_TAG})
 
 | Problem | Result | Time |
 |---------|--------|------|
@@ -352,6 +386,7 @@ EOF
 echo "writing results to: $OUT_MD"
 echo "timeout per problem: ${TIMEOUT_SECS}s"
 echo "backend:             ${BACKEND}"
+echo "preprocess:          ${PREPROCESS_FLAG:-<sat-default>}"
 echo "parallel workers:    $PARALLEL"
 
 # Build the to-process list, honouring LIMIT if set.
@@ -368,7 +403,7 @@ echo "queued ${#to_process[@]} problems"
 # Resolve our own absolute path so xargs can re-invoke us in
 # worker mode regardless of the current working directory.
 SELF="$SCRIPT_DIR/$(basename "$0")"
-export BENCH_DIR SAT_BIN OUT_MD TIMEOUT_SECS BACKEND
+export BENCH_DIR SAT_BIN OUT_MD TIMEOUT_SECS BACKEND PREPROCESS_FLAG
 
 # Dispatch.  -n 1: one basename per worker invocation.  -P N: up to
 # N workers in flight at once.  xargs propagates SIGINT/SIGTERM to

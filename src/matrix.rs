@@ -888,15 +888,21 @@ impl NNF {
                         };
                         pos.pop();
                         path.pop();
+                        // Always treat any "stop" as one-level back.
+                        // The multi-level bubble-up (`Some(k>0) →
+                        // Some(k-1)`) is unsound when paired with
+                        // CDCL's restart signal: the bubble-up skips
+                        // Sum/Prod siblings up the chain, and the
+                        // subsequent `complete_restart` + re-run loop
+                        // leaves CDCL in a state where the final
+                        // non-restart iteration wrongly concludes
+                        // UNSAT on inputs whose SAT model lives in a
+                        // skipped subtree.  Matches the positions-off
+                        // `bool` engine semantics (used by `cdcl`,
+                        // `smart`) which has no bubble-up at all and
+                        // doesn't exhibit the bug.
                         match r {
-                            // None: child completed normally; try next sibling.
-                            // Some(0): unwind requested at this level only —
-                            //          natural pop above already removed the
-                            //          one item asked for; continue with next
-                            //          sibling.
-                            None | Some(0) => continue,
-                            // Some(k>0): unwind further — propagate decremented.
-                            Some(k)        => return Some(k - 1),
+                            None | Some(_) => continue,
                         }
                     }
                     None
@@ -937,7 +943,7 @@ impl NNF {
             };
             let pos_len = pos.len();
             pos.push(child_idx);
-            let r = traverse(child, path, lits, positions, pos, f, sum_ord, prod_ord,
+            let _r = traverse(child, path, lits, positions, pos, f, sum_ord, prod_ord,
                 &mut |path, lits, positions, pos, f, sum_ord, prod_ord| {
                     let saved_pos = pos.clone();
                     pos.truncate(pos_len);
@@ -947,10 +953,11 @@ impl NNF {
                 },
             );
             pos.truncate(pos_len);
-            match r {
-                None | Some(0) => None,
-                Some(k)        => Some(k - 1),
-            }
+            // Always return None — no multi-level bubble-up.  See the
+            // matching comment in `traverse`'s Prod arm for why
+            // bubble-up is unsound when combined with CDCL's restart
+            // signal.
+            None
         }
 
         let mut path = ProdPath::new();

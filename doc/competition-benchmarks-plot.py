@@ -64,14 +64,19 @@ ROW_RE = re.compile(r"^\|\s*([^|]+?)\s*\|\s*(SAT|UNSAT|TIMEOUT|UNKNOWN)\s*\|\s*(
 def load_table(path):
     """
     Read a benchmark Markdown file.  Returns (timeout_secs, backend,
-    [(problem, result, secs)…]).  `timeout_secs` and `backend` are
-    parsed from the file header if present, else None.
+    preprocess, [(problem, result, secs)…]).  `timeout_secs`,
+    `backend`, and `preprocess` are parsed from the file header if
+    present, else `None`.  `preprocess` is the literal string after
+    `preprocess=` in the header (e.g. `"on"`, `"off"`) — absent on
+    runs that left `sat` to pick its own preproc default.
     """
     timeout = None
     backend = None
+    preprocess = None
     rows = []
-    timeout_re = re.compile(r"timeout=(\d+(?:\.\d+)?)s")
-    backend_re = re.compile(r"backend=([A-Za-z0-9_.-]+)")
+    timeout_re    = re.compile(r"timeout=(\d+(?:\.\d+)?)s")
+    backend_re    = re.compile(r"backend=([A-Za-z0-9_.-]+)")
+    preprocess_re = re.compile(r"preprocess=([A-Za-z0-9_.-]+)")
     with open(path) as f:
         for line in f:
             if timeout is None:
@@ -82,6 +87,10 @@ def load_table(path):
                 m = backend_re.search(line)
                 if m:
                     backend = m.group(1)
+            if preprocess is None:
+                m = preprocess_re.search(line)
+                if m:
+                    preprocess = m.group(1)
             m = ROW_RE.match(line)
             if not m:
                 continue
@@ -92,7 +101,7 @@ def load_table(path):
                 # distort the curve.
                 continue
             rows.append((problem, result, secs))
-    return timeout, backend, rows
+    return timeout, backend, preprocess, rows
 
 
 def cactus_data(rows):
@@ -113,15 +122,26 @@ def cactus_data(rows):
     return solved, list(range(1, len(solved) + 1))
 
 
-def label_for(path, timeout, backend):
-    """Human-friendly legend label for a file."""
-    if backend is not None and timeout is not None:
-        return f"sat -b {backend} (timeout {int(timeout)}s)"
+def label_for(path, timeout, backend, preprocess):
+    """Human-friendly legend label for a file.  Includes the
+    preprocess setting when it was explicit in the header (so a
+    preproc-on vs preproc-off overlay can be told apart in the
+    legend).  Falls back to the file stem when the header had no
+    metadata at all."""
+    parts = []
     if backend is not None:
-        return f"sat -b {backend}"
+        parts.append(f"sat -b {backend}")
+    if preprocess is not None:
+        parts.append(f"preprocess={preprocess}")
     if timeout is not None:
-        return f"sat (timeout {int(timeout)}s)"
-    return Path(path).stem
+        parts.append(f"timeout {int(timeout)}s")
+    if not parts:
+        return Path(path).stem
+    # First part is the headline ("sat -b eff"), the rest go in
+    # parens as comma-separated qualifiers.
+    head = parts[0]
+    tail = parts[1:]
+    return head if not tail else f"{head} ({', '.join(tail)})"
 
 
 def main():
@@ -145,7 +165,7 @@ def main():
     total_problems = None
 
     for path in args.files:
-        timeout, backend, rows = load_table(path)
+        timeout, backend, preprocess, rows = load_table(path)
         xs, ys = cactus_data(rows)
         if not xs:
             print(f"warning: no solved rows in {path}", file=sys.stderr)
@@ -153,7 +173,7 @@ def main():
         if total_problems is None:
             total_problems = len(rows)
         ax.plot(xs, ys, marker="o", markersize=3, linewidth=1.4,
-                label=label_for(path, timeout, backend))
+                label=label_for(path, timeout, backend, preprocess))
         solved = len(xs)
         timed_out = sum(1 for (_, r, _) in rows if r == "TIMEOUT")
         print(f"{path}: {solved} solved / {len(rows)} total "

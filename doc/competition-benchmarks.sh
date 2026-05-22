@@ -50,7 +50,10 @@
 #
 # Backend (-b / --backend): name passed to `sat -b NAME`.  Defaults to
 # `cadical`.  Known matrix backends include `smart`, `cdcl`, `eff`,
-# `greedy_cdcl`, `greedy_eff`, `basic_eff`.  Run `sat --help` for the
+# `greedy_cdcl`, `greedy_eff`, `basic_eff`, plus the experimental
+# bubble-up variants `effb`, `greedy_effb`, `basic_effb` (faster
+# restart wind-down but a known wrong-UNSAT mode; verify any UNSAT
+# against `cdcl`/`smart`/`cadical`).  Run `sat --help` for the
 # authoritative list.  The chosen name is encoded in the output
 # filename so runs of different backends don't overwrite each other.
 #

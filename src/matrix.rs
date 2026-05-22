@@ -599,6 +599,22 @@ impl NNF {
         );
     }
 
+    /// Bubble-up variant of
+    /// [`Self::for_each_path_prefix_with_controller`].  See
+    /// [`Self::for_each_path_prefix_ord_bubble_up`] for the soundness
+    /// caveat — used by the `basic_effb` / `greedy_effb` dual backends
+    /// for experimental performance testing.
+    pub fn for_each_path_prefix_with_controller_bubble_up<C: PathSearchController + ?Sized>(&self, ctrl: &mut C) {
+        let cell = std::cell::RefCell::new(ctrl);
+        self.for_each_path_prefix_ord_bubble_up(
+            |parent, children| cell.borrow_mut().sum_ord(parent, children),
+            |parent, children| cell.borrow_mut().prod_ord(parent, children),
+            |lits, positions, prod_path, is_complete| {
+                cell.borrow_mut().should_continue_on_prefix(lits, positions, prod_path, is_complete)
+            },
+        );
+    }
+
     /// Same as [`Self::for_each_path_prefix_with_controller`] but for the
     /// positions-off traversal.  The controller must declare
     /// `needs_cover() == false` so the empty `prefix_positions` slice it
@@ -829,9 +845,50 @@ impl NNF {
     ///   choice has become impossible.
     pub fn for_each_path_prefix_ord<SO, PO>(
         &self,
+        sum_ord:  SO,
+        prod_ord: PO,
+        report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, &ProdPath, bool) -> Option<usize>,
+    )
+    where
+        SO: for<'a> FnMut(&'a NNF, &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
+        PO: for<'a> FnMut(&'a NNF, &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
+    {
+        self.for_each_path_prefix_ord_impl(sum_ord, prod_ord, report_prefix, /*bubble_up=*/ false);
+    }
+
+    /// Bubble-up variant of [`Self::for_each_path_prefix_ord`].  When
+    /// the controller (typically [`crate::controller::CdclController`])
+    /// signals a multi-level backjump via `Some(k>0)`, the engine
+    /// propagates `Some(k-1)` up through Prod and Sum frames,
+    /// short-circuiting the DFS instead of exhausting each sibling
+    /// one at a time.
+    ///
+    /// **EXPERIMENTAL — known soundness issue:** when CDCL's restart
+    /// signal (`Some(usize::MAX)`) bubbles through BOTH a Prod arm
+    /// and a Sum arm in the same restart cycle, the engine can
+    /// wrong-UNSAT on inputs whose SAT model lives in a subtree the
+    /// bubble-up skipped.  Use only for benchmarking faster restart
+    /// wind-down; verify every UNSAT against a trusted backend
+    /// (`cdcl`, `smart`, `cadical`) before trusting the result.
+    pub fn for_each_path_prefix_ord_bubble_up<SO, PO>(
+        &self,
+        sum_ord:  SO,
+        prod_ord: PO,
+        report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, &ProdPath, bool) -> Option<usize>,
+    )
+    where
+        SO: for<'a> FnMut(&'a NNF, &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
+        PO: for<'a> FnMut(&'a NNF, &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
+    {
+        self.for_each_path_prefix_ord_impl(sum_ord, prod_ord, report_prefix, /*bubble_up=*/ true);
+    }
+
+    fn for_each_path_prefix_ord_impl<SO, PO>(
+        &self,
         mut sum_ord:  SO,
         mut prod_ord: PO,
         mut report_prefix: impl FnMut(&Vec<&Lit>, &PathPrefix, &ProdPath, bool) -> Option<usize>,
+        bubble_up: bool,
     )
     where
         SO: for<'a> FnMut(&'a NNF, &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>>,
@@ -850,6 +907,7 @@ impl NNF {
             f: &mut F,
             sum_ord:  &mut SO,
             prod_ord: &mut PO,
+            bubble_up: bool,
             then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut Positions, &mut Position, &mut F, &mut SO, &mut PO) -> Option<usize>,
         ) -> Option<usize>
         where
@@ -883,33 +941,40 @@ impl NNF {
                         path.push(i);
                         pos.push(i);
                         let r = match f(lits, positions, path, false) {
-                            None    => traverse(child, path, lits, positions, pos, f, sum_ord, prod_ord, then),
+                            None    => traverse(child, path, lits, positions, pos, f, sum_ord, prod_ord, bubble_up, then),
                             Some(k) => Some(k),
                         };
                         pos.pop();
                         path.pop();
-                        // Always treat any "stop" as one-level back.
-                        // The multi-level bubble-up (`Some(k>0) →
-                        // Some(k-1)`) is unsound when paired with
-                        // CDCL's restart signal: the bubble-up skips
-                        // Sum/Prod siblings up the chain, and the
-                        // subsequent `complete_restart` + re-run loop
-                        // leaves CDCL in a state where the final
-                        // non-restart iteration wrongly concludes
-                        // UNSAT on inputs whose SAT model lives in a
-                        // skipped subtree.  Matches the positions-off
-                        // `bool` engine semantics (used by `cdcl`,
-                        // `smart`) which has no bubble-up at all and
-                        // doesn't exhibit the bug.
-                        match r {
-                            None | Some(_) => continue,
+                        // Default (bubble_up=false): always treat any
+                        // "stop" as one-level back.  The multi-level
+                        // bubble-up (`Some(k>0) → Some(k-1)`) is unsound
+                        // when paired with CDCL's restart signal: the
+                        // bubble-up skips Sum/Prod siblings up the
+                        // chain, and the subsequent `complete_restart`
+                        // + re-run loop leaves CDCL in a state where
+                        // the final non-restart iteration wrongly
+                        // concludes UNSAT on inputs whose SAT model
+                        // lives in a skipped subtree.  Matches the
+                        // positions-off `bool` engine semantics (used
+                        // by `cdcl`, `smart`) which has no bubble-up at
+                        // all and doesn't exhibit the bug.
+                        if bubble_up {
+                            match r {
+                                None | Some(0) => continue,
+                                Some(k)        => return Some(k - 1),
+                            }
+                        } else {
+                            match r {
+                                None | Some(_) => continue,
+                            }
                         }
                     }
                     None
                 }
                 NNF::Sum(children) => {
                     let order_opt = sum_ord(m, children);
-                    traverse_sum(children, order_opt.as_deref(), 0, path, lits, positions, pos, f, sum_ord, prod_ord, then)
+                    traverse_sum(children, order_opt.as_deref(), 0, path, lits, positions, pos, f, sum_ord, prod_ord, bubble_up, then)
                 }
             }
         }
@@ -926,6 +991,7 @@ impl NNF {
             f: &mut F,
             sum_ord:  &mut SO,
             prod_ord: &mut PO,
+            bubble_up: bool,
             then: &mut dyn FnMut(&mut ProdPath, &mut Lits<'a>, &mut Positions, &mut Position, &mut F, &mut SO, &mut PO) -> Option<usize>,
         ) -> Option<usize>
         where
@@ -943,28 +1009,36 @@ impl NNF {
             };
             let pos_len = pos.len();
             pos.push(child_idx);
-            let _r = traverse(child, path, lits, positions, pos, f, sum_ord, prod_ord,
+            let r = traverse(child, path, lits, positions, pos, f, sum_ord, prod_ord, bubble_up,
                 &mut |path, lits, positions, pos, f, sum_ord, prod_ord| {
                     let saved_pos = pos.clone();
                     pos.truncate(pos_len);
-                    let r = traverse_sum(children, order, ord_idx + 1, path, lits, positions, pos, f, sum_ord, prod_ord, then);
+                    let r = traverse_sum(children, order, ord_idx + 1, path, lits, positions, pos, f, sum_ord, prod_ord, bubble_up, then);
                     if r.is_none() { *pos = saved_pos; }
                     r
                 },
             );
             pos.truncate(pos_len);
-            // Always return None — no multi-level bubble-up.  See the
-            // matching comment in `traverse`'s Prod arm for why
-            // bubble-up is unsound when combined with CDCL's restart
+            // Default (bubble_up=false): return None unconditionally.
+            // See the matching comment in `traverse`'s Prod arm for
+            // why bubble-up is unsound when paired with CDCL's restart
             // signal.
-            None
+            if bubble_up {
+                match r {
+                    None | Some(0) => None,
+                    Some(k)        => Some(k - 1),
+                }
+            } else {
+                let _ = r;
+                None
+            }
         }
 
         let mut path = ProdPath::new();
         let mut lits = Vec::new();
         let mut positions = Vec::new();
         let mut pos = Vec::new();
-        traverse(self, &mut path, &mut lits, &mut positions, &mut pos, &mut report_prefix, &mut sum_ord, &mut prod_ord,
+        traverse(self, &mut path, &mut lits, &mut positions, &mut pos, &mut report_prefix, &mut sum_ord, &mut prod_ord, bubble_up,
             &mut |path, lits, positions, _pos, f, _so, _po| {
                 f(lits, positions, path, true)
             },

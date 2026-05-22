@@ -146,11 +146,49 @@ where
     Inner: PathSearchController,
     S: CoverState,
 {
+    run_dfs_with_restarts_impl(composite, nnf, uncovered, /*bubble_up=*/ false)
+}
+
+/// Bubble-up variant of [`run_dfs_with_restarts`].  Drives the DFS
+/// via [`NNF::for_each_path_prefix_with_controller_bubble_up`], which
+/// short-circuits CDCL's multi-level restart signal via the engine's
+/// `Some(k>0) → Some(k-1)` bubble-up instead of "exhausting each
+/// sibling one at a time."
+///
+/// **EXPERIMENTAL — known soundness issue:** see the doc comment on
+/// [`NNF::for_each_path_prefix_ord_bubble_up`].  Used by the
+/// `basic_effb` / `greedy_effb` dual backends for benchmarking.
+pub fn run_dfs_with_restarts_bubble_up<Inner, S>(
+    composite: &mut StateQueryWrapper<Inner, S>,
+    nnf: &NNF,
+    uncovered: &Mutex<Option<ProdPath>>,
+) -> PathOutcome
+where
+    Inner: PathSearchController,
+    S: CoverState,
+{
+    run_dfs_with_restarts_impl(composite, nnf, uncovered, /*bubble_up=*/ true)
+}
+
+fn run_dfs_with_restarts_impl<Inner, S>(
+    composite: &mut StateQueryWrapper<Inner, S>,
+    nnf: &NNF,
+    uncovered: &Mutex<Option<ProdPath>>,
+    bubble_up: bool,
+) -> PathOutcome
+where
+    Inner: PathSearchController,
+    S: CoverState,
+{
     loop {
         if composite.cancel.load(Ordering::SeqCst) {
             return PathOutcome::Cancelled;
         }
-        nnf.for_each_path_prefix_with_controller(composite);
+        if bubble_up {
+            nnf.for_each_path_prefix_with_controller_bubble_up(composite);
+        } else {
+            nnf.for_each_path_prefix_with_controller(composite);
+        }
         if composite.cancel.load(Ordering::SeqCst) {
             return PathOutcome::Cancelled;
         }

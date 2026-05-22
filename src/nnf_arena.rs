@@ -274,10 +274,33 @@ impl NnfArena {
     /// an explicit work stack is a follow-up if recursion-depth
     /// stack budget becomes a concern on giant inputs.
     pub fn for_each_path_prefix<C: ArenaPathSearchController>(&self, ctrl: &mut C) {
+        self.for_each_path_prefix_impl(ctrl, /*bubble_up=*/ false);
+    }
+
+    /// Bubble-up variant of [`Self::for_each_path_prefix`].  When a
+    /// controller (typically [`crate::controller::CdclController`])
+    /// signals a multi-level backjump via `Some(k>0)`, the engine
+    /// propagates `Some(k-1)` up through Prod and Sum frames,
+    /// short-circuiting the DFS instead of exhausting each sibling
+    /// one at a time.
+    ///
+    /// **EXPERIMENTAL — known soundness issue:** when CDCL's restart
+    /// signal (`Some(usize::MAX)`) bubbles through BOTH a Prod arm
+    /// and a Sum arm in the same restart cycle, the engine can
+    /// wrong-UNSAT on inputs whose SAT model lives in a subtree the
+    /// bubble-up skipped (see the comment in `traverse`'s Prod arm).
+    /// Use only for benchmarking faster restart wind-down; verify
+    /// every UNSAT against a trusted backend (`cdcl`, `smart`,
+    /// `cadical`) before trusting the result.
+    pub fn for_each_path_prefix_bubble_up<C: ArenaPathSearchController>(&self, ctrl: &mut C) {
+        self.for_each_path_prefix_impl(ctrl, /*bubble_up=*/ true);
+    }
+
+    fn for_each_path_prefix_impl<C: ArenaPathSearchController>(&self, ctrl: &mut C, bubble_up: bool) {
         let mut lits: Vec<Lit>      = Vec::new();
         let mut prod_path: ProdPath = ProdPath::new();
         self.traverse(
-            self.root(), &mut lits, &mut prod_path, ctrl,
+            self.root(), &mut lits, &mut prod_path, ctrl, bubble_up,
             &mut |arena, lits, path, ctrl| ctrl.should_continue_on_prefix(arena, lits, path, true),
         );
     }
@@ -302,6 +325,7 @@ impl NnfArena {
         lits: &mut Vec<Lit>,
         prod_path: &mut ProdPath,
         ctrl: &mut C,
+        bubble_up: bool,
         then: &mut dyn FnMut(&NnfArena, &mut Vec<Lit>, &mut ProdPath, &mut C) -> Option<usize>,
     ) -> Option<usize> {
         match self.kind(m) {
@@ -331,22 +355,37 @@ impl NnfArena {
                     };
                     prod_path.push(i);
                     let r = match ctrl.should_continue_on_prefix(self, lits, prod_path, false) {
-                        None    => self.traverse(child, lits, prod_path, ctrl, then),
+                        None    => self.traverse(child, lits, prod_path, ctrl, bubble_up, then),
                         Some(k) => Some(k),
                     };
                     prod_path.pop();
-                    // Always treat any "stop" as one-level back.  The
-                    // multi-level bubble-up (`Some(k>0) → Some(k-1)`) is
-                    // unsound when paired with CDCL's restart signal: the
-                    // bubble-up skips Sum/Prod siblings up the chain, and
-                    // the subsequent `complete_restart` + re-run loop
-                    // leaves CDCL in a state where the final non-restart
-                    // iteration wrongly concludes UNSAT on inputs whose
-                    // SAT model lives in a skipped subtree.  Matches the
-                    // NNF engine's semantics (which has no bubble-up via
-                    // its `bool` callback in `run_uncovered_only_dfs`).
-                    match r {
-                        None | Some(_) => continue,
+                    // Default (bubble_up=false): always treat any "stop"
+                    // as one-level back.  The multi-level bubble-up
+                    // (`Some(k>0) → Some(k-1)`) is unsound when paired
+                    // with CDCL's restart signal: the bubble-up skips
+                    // Sum/Prod siblings up the chain, and the subsequent
+                    // `complete_restart` + re-run loop leaves CDCL in a
+                    // state where the final non-restart iteration wrongly
+                    // concludes UNSAT on inputs whose SAT model lives in
+                    // a skipped subtree (verified empirically on
+                    // x9-06068 N=2640; the bug requires BOTH Prod and
+                    // Sum bubble-up — either arm alone is sound).  This
+                    // matches the NNF engine's positions-off semantics
+                    // (used by `cdcl`/`smart`), which has no bubble-up
+                    // and doesn't exhibit the bug.
+                    //
+                    // bubble_up=true re-enables the multi-level back-up
+                    // for benchmarking faster restart wind-down on the
+                    // `effb` family of backends.  Use with caution.
+                    if bubble_up {
+                        match r {
+                            None | Some(0) => continue,
+                            Some(k)        => return Some(k - 1),
+                        }
+                    } else {
+                        match r {
+                            None | Some(_) => continue,
+                        }
                     }
                 }
                 None
@@ -354,7 +393,7 @@ impl NnfArena {
             NnfKind::Sum => {
                 let children = self.children(m);
                 let order = ctrl.sum_ord(self, m, children);
-                self.traverse_sum(children, order.as_deref(), 0, lits, prod_path, ctrl, then)
+                self.traverse_sum(children, order.as_deref(), 0, lits, prod_path, ctrl, bubble_up, then)
             }
         }
     }
@@ -367,6 +406,7 @@ impl NnfArena {
         lits: &mut Vec<Lit>,
         prod_path: &mut ProdPath,
         ctrl: &mut C,
+        bubble_up: bool,
         then: &mut dyn FnMut(&NnfArena, &mut Vec<Lit>, &mut ProdPath, &mut C) -> Option<usize>,
     ) -> Option<usize> {
         let len = order.map_or(children.len(), |o| o.len());
@@ -377,13 +417,23 @@ impl NnfArena {
             Some(o) => o[ord_idx],
             None    => children[ord_idx],
         };
-        let _r = self.traverse(child, lits, prod_path, ctrl, &mut |arena, lits, path, ctrl| {
-            arena.traverse_sum(children, order, ord_idx + 1, lits, path, ctrl, then)
+        let r = self.traverse(child, lits, prod_path, ctrl, bubble_up, &mut |arena, lits, path, ctrl| {
+            arena.traverse_sum(children, order, ord_idx + 1, lits, path, ctrl, bubble_up, then)
         });
-        // Always return None — no multi-level bubble-up.  See the
-        // matching comment in `traverse`'s Prod arm for why bubble-up
-        // is unsound when combined with CDCL's restart signal.
-        None
+        // Default (bubble_up=false): return None unconditionally.  See
+        // the matching comment in `traverse`'s Prod arm for why
+        // bubble-up is unsound when paired with CDCL's restart signal
+        // (BOTH Prod- and Sum-level bubble-up together cause the
+        // wrong-UNSAT; either arm alone is sound).
+        if bubble_up {
+            match r {
+                None | Some(0) => None,
+                Some(k)        => Some(k - 1),
+            }
+        } else {
+            let _ = r;
+            None
+        }
     }
 }
 
@@ -415,6 +465,42 @@ impl NnfArena {
         C: ArenaPathSearchController + crate::controller::PathSearchController + Send + 'static,
         B: FnOnce(&NnfArena, tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> C + Send + 'static,
     {
+        self.classify_paths_with_arena_impl(buffer_size, controller_builder, /*bubble_up=*/ false)
+    }
+
+    /// Bubble-up variant of [`Self::classify_paths_with_arena`].  See
+    /// [`Self::for_each_path_prefix_bubble_up`] for the soundness
+    /// caveat.  Used by the experimental `effb` backend.
+    pub fn classify_paths_with_arena_bubble_up<C, B>(
+        self,
+        buffer_size: usize,
+        controller_builder: B,
+    ) -> (
+        tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
+        tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
+        PathClassificationHandle,
+    )
+    where
+        C: ArenaPathSearchController + crate::controller::PathSearchController + Send + 'static,
+        B: FnOnce(&NnfArena, tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> C + Send + 'static,
+    {
+        self.classify_paths_with_arena_impl(buffer_size, controller_builder, /*bubble_up=*/ true)
+    }
+
+    fn classify_paths_with_arena_impl<C, B>(
+        self,
+        buffer_size: usize,
+        controller_builder: B,
+        bubble_up: bool,
+    ) -> (
+        tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
+        tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
+        PathClassificationHandle,
+    )
+    where
+        C: ArenaPathSearchController + crate::controller::PathSearchController + Send + 'static,
+        B: FnOnce(&NnfArena, tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> C + Send + 'static,
+    {
         let (tx, rx) = tokio::sync::mpsc::channel::<(PathsClass, bool)>(buffer_size);
         let cancel = PathClassificationHandle::new();
         let cancel_for_thread = cancel.clone();
@@ -428,7 +514,11 @@ impl NnfArena {
             // otherwise exits after a single full traversal.
             loop {
                 if cancel_check.is_cancelled() { break; }
-                self.for_each_path_prefix(&mut ctrl);
+                if bubble_up {
+                    self.for_each_path_prefix_bubble_up(&mut ctrl);
+                } else {
+                    self.for_each_path_prefix(&mut ctrl);
+                }
                 if cancel_check.is_cancelled() { break; }
                 if !<crate::controller::CancelController<C> as crate::controller::PathSearchController>::is_restart_pending(&ctrl) {
                     break;

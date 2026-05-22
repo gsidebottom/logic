@@ -277,6 +277,27 @@ pub enum MatrixBackend {
     /// `mine_pairs(nnf)` cost (O(N²) over clauses) dominates the
     /// actual search.
     BasicEff,
+    /// `matrix.effb`: same controller stack as
+    /// [`Self::Eff`] (CDCL + Effective wrapper on the arena
+    /// engine), but with the engine's multi-level bubble-up
+    /// re-enabled — `Some(k>0)` from a restart signal propagates
+    /// `Some(k-1)` up through Prod/Sum frames instead of
+    /// exhausting each sibling one at a time.
+    ///
+    /// **EXPERIMENTAL — known soundness issue.**  See
+    /// [`logic::nnf_arena::NnfArena::for_each_path_prefix_bubble_up`]
+    /// for the wrong-UNSAT mode the bubble-up can trigger.  Use
+    /// only for benchmarking; verify every UNSAT against a trusted
+    /// backend before trusting the result.
+    Effb,
+    /// `greedy×effb`: like [`Self::GreedyEff`] but with the NNF
+    /// engine's bubble-up re-enabled.  Same soundness caveat as
+    /// [`Self::Effb`].
+    GreedyEffb,
+    /// `basic×effb`: like [`Self::BasicEff`] but with the NNF
+    /// engine's bubble-up re-enabled.  Same soundness caveat as
+    /// [`Self::Effb`].
+    BasicEffb,
 }
 
 impl MatrixBackend {
@@ -288,6 +309,9 @@ impl MatrixBackend {
             MatrixBackend::GreedyCdcl => "greedy×cdcl",
             MatrixBackend::GreedyEff  => "greedy×eff",
             MatrixBackend::BasicEff   => "basic×eff",
+            MatrixBackend::Effb       => "matrix.effb",
+            MatrixBackend::GreedyEffb => "greedy×effb",
+            MatrixBackend::BasicEffb  => "basic×effb",
         }
     }
 }
@@ -388,7 +412,7 @@ fn matrix_search(
                     move |tx| cdcl_controller_builder(&nnf_cdcl, p_cdcl, tx),
                 )
             }
-            MatrixBackend::Eff => {
+            MatrixBackend::Eff | MatrixBackend::Effb => {
                 // matrix.eff uses the arena engine: build a
                 // compact `NnfArena` from the complement NNF, drop
                 // the NNF, then drive an arena-native search via
@@ -397,6 +421,13 @@ fn matrix_search(
                 // vs `enum NNF`'s 32 B) and `doc/`-level discussion
                 // for the migration rationale — net ~50 % per
                 // process memory savings on big CNF complements.
+                //
+                // `matrix.effb` is the experimental bubble-up
+                // variant: same controller stack but drives the
+                // engine through `classify_paths_with_arena_bubble_up`
+                // (multi-level back-up on CDCL restart).  See the
+                // doc comment on `MatrixBackend::Effb` for the
+                // soundness caveat.
                 use logic::dual::effective_count::{EffectiveCountIndex, EffectiveCounts};
                 use logic::dual::path_effective::EffectiveCountWrapper;
                 use logic::nnf_arena::NnfArena;
@@ -415,18 +446,25 @@ fn matrix_search(
                 });
                 let arena = NnfArena::from_nnf(&comp);
                 drop(comp);  // ≈ 250 MB freed before search starts
-                arena.classify_paths_with_arena(64, move |arena_ref, tx| {
+                let builder = move |arena_ref: &NnfArena, tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>| {
                     let on_class: DynOnClass = Box::new(move |class, hit_limit|
                         tx.blocking_send((class, hit_limit)).is_ok());
                     let cdcl = CdclController::for_arena_with_cover(arena_ref, p_eff, on_class);
                     let idx = EffectiveCountIndex::build_from_arena(arena_ref);
                     let counts = EffectiveCounts::new(&idx);
                     EffectiveCountWrapper::new(cdcl, idx, counts)
-                })
+                };
+                if matches!(backend, MatrixBackend::Effb) {
+                    arena.classify_paths_with_arena_bubble_up(64, builder)
+                } else {
+                    arena.classify_paths_with_arena(64, builder)
+                }
             }
             MatrixBackend::GreedyCdcl
             | MatrixBackend::GreedyEff
-            | MatrixBackend::BasicEff => {
+            | MatrixBackend::BasicEff
+            | MatrixBackend::GreedyEffb
+            | MatrixBackend::BasicEffb => {
                 spawn_dual_matrix_search(backend, comp.clone(), 64)
             }
         };
@@ -637,6 +675,30 @@ fn spawn_dual_matrix_search(
                 let cover = BasicCoverController::default();
                 let path  = EffectivePathController::<BasicCoverState>::with_stream(tx)
                     .with_progress(progress_atom);
+                solve_dual_with_cancel(
+                    &target_nnf, cover, path, SearchMode::Satisfiable,
+                    external_cancel,
+                )
+            }
+            MatrixBackend::GreedyEffb => {
+                // Bubble-up variant of greedy×eff — see
+                // `MatrixBackend::Effb` doc for the soundness caveat.
+                let cover = GreedyMaxCoverController::default();
+                let path  = EffectivePathController::<BasicCoverState>::with_stream(tx)
+                    .with_progress(progress_atom)
+                    .with_bubble_up();
+                solve_dual_with_cancel(
+                    &target_nnf, cover, path, SearchMode::Satisfiable,
+                    external_cancel,
+                )
+            }
+            MatrixBackend::BasicEffb => {
+                // Bubble-up variant of basic×eff — see
+                // `MatrixBackend::Effb` doc for the soundness caveat.
+                let cover = BasicCoverController::default();
+                let path  = EffectivePathController::<BasicCoverState>::with_stream(tx)
+                    .with_progress(progress_atom)
+                    .with_bubble_up();
                 solve_dual_with_cancel(
                     &target_nnf, cover, path, SearchMode::Satisfiable,
                     external_cancel,
@@ -974,17 +1036,51 @@ impl Drop for TerminalGuard {
     }
 }
 
-/// Print the SAT-competition `v` line for the given assignment.
+/// Print the SAT-competition `v` line(s) for the given assignment.
 /// `asgn[i]` is the truth value of variable `i + 1` (1-based DIMACS):
-/// `true` writes `+i`, `false` writes `-i`.  Output ends with the
-/// `0` terminator the format requires.
+/// `true` writes `+i`, `false` writes `-i`.  The final value line is
+/// terminated by the literal `0` per the SAT-competition spec.
+///
+/// **Line length**: the SAT-competition rules cap each value line at
+/// 4096 characters.  For inputs with more than ~680 variables, a
+/// single all-on-one-line emission would overflow that limit, so this
+/// writer splits the assignment across multiple `v ` lines, each kept
+/// safely under 4096 chars (including the trailing newline).  Only
+/// the last line carries the `0` terminator.
 fn write_v_line<W: io::Write>(w: &mut W, asgn: &[bool]) -> io::Result<()> {
-    write!(w, "v")?;
+    // Leave headroom so that the final ` 0\n` always fits on whatever
+    // line we're on without re-checking the limit twice.  An int32
+    // literal is at most 11 chars including the sign, so the per-lit
+    // worst case is " <11-digit-lit>" = 12 chars — 4090 gives us
+    // ample room for both that and the eventual ` 0\n` tail.
+    const MAX_LINE: usize = 4090;
+    let mut line = String::from("v");
     for (i, &val) in asgn.iter().enumerate() {
         let v = (i + 1) as i32;
-        write!(w, " {}", if val { v } else { -v })?;
+        let lit = if val { v } else { -v };
+        let lit_str = lit.to_string();
+        // +1 for the leading space.  If the lit won't fit, flush the
+        // current line (no terminator yet — it's not the last) and
+        // start a fresh `v ` line.
+        if line.len() + 1 + lit_str.len() > MAX_LINE {
+            writeln!(w, "{}", line)?;
+            line.clear();
+            line.push('v');
+        }
+        line.push(' ');
+        line.push_str(&lit_str);
     }
-    writeln!(w, " 0")
+    // Final line: append the ` 0` terminator and flush.  If the
+    // current line is too long for the terminator (rare — only when
+    // the last literal pushed it right up to the limit), wrap once
+    // more onto a fresh line.
+    if line.len() + 2 > MAX_LINE {
+        writeln!(w, "{}", line)?;
+        line.clear();
+        line.push('v');
+    }
+    line.push_str(" 0");
+    writeln!(w, "{}", line)
 }
 
 /// What kind of search to run.  Either a `MatrixBackend` (the
@@ -1007,21 +1103,34 @@ impl BackendChoice {
     /// Parse a `--backend NAME` argument value.  Accepts the canonical
     /// names from the bench/UI (`smart`, `cdcl`, `eff`, `greedy_cdcl`,
     /// `greedy_eff`, `cadical`) plus a few aliases for convenience.
+    ///
+    /// The `*b` suffix selects the experimental bubble-up variant of
+    /// the corresponding backend (`effb`, `basic_effb`, `greedy_effb`)
+    /// — same controller stack, but the engine propagates CDCL's
+    /// `Some(usize::MAX)` restart signal up through Prod/Sum frames
+    /// instead of exhausting each sibling.  Faster per restart cycle
+    /// but has a known wrong-UNSAT mode; verify results against a
+    /// trusted backend before trusting any UNSAT.
     fn parse(s: &str) -> Result<Self, String> {
         match s {
             "smart"      | "matrix.smart"  => Ok(BackendChoice::Matrix(MatrixBackend::Smart)),
             "cdcl"       | "matrix.cdcl"   => Ok(BackendChoice::Matrix(MatrixBackend::Cdcl)),
             "eff"        | "matrix.eff"    => Ok(BackendChoice::Matrix(MatrixBackend::Eff)),
+            "effb"       | "matrix.effb"   => Ok(BackendChoice::Matrix(MatrixBackend::Effb)),
             "greedy_cdcl" | "greedy×cdcl"
                          | "greedyxcdcl"   => Ok(BackendChoice::Matrix(MatrixBackend::GreedyCdcl)),
             "greedy_eff" | "greedy×eff"
                          | "greedyxeff"    => Ok(BackendChoice::Matrix(MatrixBackend::GreedyEff)),
+            "greedy_effb" | "greedy×effb"
+                         | "greedyxeffb"   => Ok(BackendChoice::Matrix(MatrixBackend::GreedyEffb)),
             "basic_eff"  | "basic×eff"
                          | "basicxeff"     => Ok(BackendChoice::Matrix(MatrixBackend::BasicEff)),
+            "basic_effb" | "basic×effb"
+                         | "basicxeffb"    => Ok(BackendChoice::Matrix(MatrixBackend::BasicEffb)),
             "cadical"                      => Ok(BackendChoice::Cadical),
             _ => Err(format!(
-                "unknown backend {:?}; expected one of: smart, cdcl, eff, \
-                 greedy_cdcl, greedy_eff, basic_eff, cadical", s
+                "unknown backend {:?}; expected one of: smart, cdcl, eff, effb, \
+                 greedy_cdcl, greedy_eff, greedy_effb, basic_eff, basic_effb, cadical", s
             )),
         }
     }
@@ -1117,6 +1226,11 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                      basic_eff    — basic × Effective + CDCL, dual");
                 eprintln!("                                     (no upfront pair-mining — much");
                 eprintln!("                                     cheaper than greedy_eff on big CNFs)");
+                eprintln!("                      effb         — eff with engine bubble-up on restart");
+                eprintln!("                                     (EXPERIMENTAL: known wrong-UNSAT mode;");
+                eprintln!("                                     verify UNSATs against cdcl/cadical)");
+                eprintln!("                      greedy_effb  — greedy_eff + bubble-up (same caveat)");
+                eprintln!("                      basic_effb   — basic_eff + bubble-up (same caveat)");
                 eprintln!("                      cadical      — bundled CaDiCaL reference solver");
                 eprintln!("  --timeout SECS, -t SECS");
                 eprintln!("                    Hard wall-clock limit.  On timeout, prints");
@@ -1672,5 +1786,77 @@ mod tests {
     fn cadical_render_progress_doesnt_panic() {
         render_cadical_progress(0, 0.0);
         render_cadical_progress(123_456, 4.5);
+    }
+
+    /// Single-line case: a small assignment fits in one `v` line with
+    /// the `0` terminator.  Each lit is rendered with the right sign;
+    /// variables are 1-based DIMACS.
+    #[test]
+    fn write_v_line_small_fits_on_one_line() {
+        let mut buf: Vec<u8> = Vec::new();
+        // asgn = [true, false, true] → vars 1, -2, 3
+        write_v_line(&mut buf, &[true, false, true]).unwrap();
+        let s = std::str::from_utf8(&buf).unwrap();
+        assert_eq!(s, "v 1 -2 3 0\n");
+    }
+
+    /// Empty assignment edge case: just `v 0\n` (the spec allows
+    /// partial assignments, so an empty one is degenerate-valid).
+    #[test]
+    fn write_v_line_empty_assignment() {
+        let mut buf: Vec<u8> = Vec::new();
+        write_v_line(&mut buf, &[]).unwrap();
+        assert_eq!(std::str::from_utf8(&buf).unwrap(), "v 0\n");
+    }
+
+    /// Multi-line case: a large assignment splits across multiple
+    /// `v ` lines, each ≤ 4096 chars including the trailing newline,
+    /// with only the very last line carrying the `0` terminator.
+    /// 1500 vars × ~5 chars/lit ≈ 7.5 KB → must wrap at least once.
+    #[test]
+    fn write_v_line_wraps_at_4096() {
+        let nvars = 1500;
+        let asgn: Vec<bool> = (0..nvars).map(|i| i % 2 == 0).collect();
+        let mut buf: Vec<u8> = Vec::new();
+        write_v_line(&mut buf, &asgn).unwrap();
+        let s = std::str::from_utf8(&buf).unwrap();
+
+        // Every line must start with `v ` and be ≤ 4096 chars
+        // (including the newline).
+        let lines: Vec<&str> = s.lines().collect();
+        assert!(lines.len() >= 2,
+            "expected multi-line output for {} vars, got {} lines",
+            nvars, lines.len());
+        for line in &lines {
+            assert!(line.starts_with("v "),
+                "value line must start with 'v ': {:?}", line);
+            assert!(line.len() + 1 <= 4096,  // +1 for the \n
+                "value line exceeds 4096 chars (got {}): {}", line.len() + 1, line);
+        }
+
+        // Only the last line carries the ` 0` terminator.
+        assert!(lines.last().unwrap().ends_with(" 0"),
+            "last line must end with ' 0': {:?}", lines.last().unwrap());
+        for line in &lines[..lines.len() - 1] {
+            assert!(!line.ends_with(" 0"),
+                "non-final value line must not have ' 0' terminator: {:?}", line);
+        }
+
+        // Round-trip: collect all literals across every line and
+        // confirm we got exactly the right ones in order.  Skip the
+        // leading "v" token on each line and the trailing "0" on the
+        // last line.
+        let mut lits: Vec<i32> = Vec::new();
+        for line in &lines {
+            for tok in line.split_ascii_whitespace().skip(1) {
+                if tok == "0" { continue; }
+                lits.push(tok.parse().unwrap());
+            }
+        }
+        assert_eq!(lits.len(), nvars);
+        for (i, &lit) in lits.iter().enumerate() {
+            let expected = (i as i32 + 1) * if asgn[i] { 1 } else { -1 };
+            assert_eq!(lit, expected, "lit at position {}", i);
+        }
     }
 }

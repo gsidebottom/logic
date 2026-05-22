@@ -27,7 +27,7 @@ use crate::dual::{
     BasicCoverState, CoverState, DualPathSearchController, PairPool, PathOutcome, SearchMode,
 };
 use crate::dual::effective_count::{DeltaFrame, EffectiveCountIndex, EffectiveCounts};
-use crate::dual::wrapper::{StateQueryWrapper, run_dfs_with_restarts};
+use crate::dual::wrapper::{StateQueryWrapper, run_dfs_with_restarts, run_dfs_with_restarts_bubble_up};
 use crate::matrix::{Lit, NNF, PathParams, PathPrefix, PathsClass, ProdPath};
 
 pub struct EffectivePathController<S: CoverState = BasicCoverState> {
@@ -48,6 +48,12 @@ pub struct EffectivePathController<S: CoverState = BasicCoverState> {
     /// invisible to leaf-level Covered detection (the Effective
     /// layer's count-based pruning short-circuits before the leaf).
     progress: Option<Arc<std::sync::atomic::AtomicU64>>,
+    /// EXPERIMENTAL: when `true`, drive the DFS via the bubble-up
+    /// variant of `run_dfs_with_restarts`.  See
+    /// [`crate::dual::wrapper::run_dfs_with_restarts_bubble_up`] for
+    /// the soundness caveat.  Set via [`Self::with_bubble_up`] for
+    /// the `basic_effb` / `greedy_effb` backends.
+    bubble_up: bool,
 }
 
 impl<S: CoverState> Default for EffectivePathController<S> {
@@ -56,14 +62,14 @@ impl<S: CoverState> Default for EffectivePathController<S> {
 
 impl<S: CoverState> EffectivePathController<S> {
     pub fn new() -> Self {
-        Self { _state: std::marker::PhantomData, stream_tx: None, progress: None }
+        Self { _state: std::marker::PhantomData, stream_tx: None, progress: None, bubble_up: false }
     }
 
     /// Build the controller with a UI-streaming sender.  Every
     /// `PathsClass` event is cloned and `blocking_send`'d to `tx`
     /// before the dual framework's internal handler runs.
     pub fn with_stream(tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> Self {
-        Self { _state: std::marker::PhantomData, stream_tx: Some(tx), progress: None }
+        Self { _state: std::marker::PhantomData, stream_tx: Some(tx), progress: None, bubble_up: false }
     }
 
     /// Configure the controller to publish progress
@@ -73,6 +79,14 @@ impl<S: CoverState> EffectivePathController<S> {
     /// published values.  Builder; chainable with `with_stream`.
     pub fn with_progress(mut self, atom: Arc<std::sync::atomic::AtomicU64>) -> Self {
         self.progress = Some(atom);
+        self
+    }
+
+    /// Enable bubble-up restart-handling on the DFS driver.  See
+    /// [`crate::dual::wrapper::run_dfs_with_restarts_bubble_up`] for
+    /// the soundness caveat.  Builder; chainable.
+    pub fn with_bubble_up(mut self) -> Self {
+        self.bubble_up = true;
         self
     }
 }
@@ -145,7 +159,11 @@ impl<S: CoverState + 'static> DualPathSearchController for EffectivePathControll
             || Arc::new(std::sync::atomic::AtomicU64::new(0)));
         let with_progress = crate::dual::wrapper::ProgressWrapper::new(counted, progress_atom);
         let mut composite = StateQueryWrapper::new(with_progress, state, cancel);
-        run_dfs_with_restarts(&mut composite, nnf, &*uncovered)
+        if self.bubble_up {
+            run_dfs_with_restarts_bubble_up(&mut composite, nnf, &*uncovered)
+        } else {
+            run_dfs_with_restarts(&mut composite, nnf, &*uncovered)
+        }
     }
 }
 

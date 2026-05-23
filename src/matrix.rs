@@ -673,8 +673,24 @@ impl NNF {
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
             let inner = controller_builder(tx);
+            let cancel_check = cancel_for_thread.clone();
             let mut ctrl = crate::controller::CancelController::new(inner, cancel_for_thread);
-            m.for_each_path_prefix_with_controller(&mut ctrl);
+            // Restart loop — mirror of `run_uncovered_only_dfs` for
+            // the positions-ON engine path.  Without this, the
+            // bubble-up-disabled engine treats CDCL's restart signal
+            // (Some(usize::MAX)) as a single-level "stop", and once
+            // restart_pending is set every subsequent SCOP call also
+            // stops, so the engine "exhausts" trivially in
+            // milliseconds — producing wrong-UNSAT on satisfiable
+            // inputs.  Re-invoke the DFS after each restart, just
+            // like the positions-OFF path does.
+            loop {
+                if cancel_check.is_cancelled() { break; }
+                m.for_each_path_prefix_with_controller(&mut ctrl);
+                if cancel_check.is_cancelled() { break; }
+                if !ctrl.is_restart_pending() { break; }
+                ctrl.complete_restart();
+            }
             ctrl.publish_progress();
             Ok::<(), Box<dyn std::error::Error + Send>>(())
         });

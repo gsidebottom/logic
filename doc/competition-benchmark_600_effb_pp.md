@@ -1,5 +1,20 @@
 # Competition Benchmark Results (timeout=600s, backend=effb, parallel=10, preprocess=on)
 
+## Summary
+
+| Result | Count | % |
+|--------|-------|---|
+| SAT | 2 | 0.5% |
+| UNSAT | 28 | 7.0% |
+| TIMEOUT | 370 | 92.5% |
+| **Total** | 400 | 100% |
+
+## Cactus plot
+
+![cactus plot](competition-benchmark_600_effb_pp.png)
+
+## Per-problem results
+
 | Problem | Result | Time |
 |---------|--------|------|
 | gm24sparrc | UNSAT | 136.0547s |
@@ -333,3 +348,72 @@
 | 16_2 | TIMEOUT | 600s |
 | bp4_BC012_AM_IXA_LPI.normalised | TIMEOUT | 600s |
 | snw_16_8_preOpt_pre | TIMEOUT | 600s |
+| PancakeVsSelectionSort_6_6 | TIMEOUT | 600s |
+| oski15a01b42s_opt | TIMEOUT | 600s |
+| arles_thres20_p10_r7532 | UNSAT | 0.5089s |
+| oisc-subrv-and-nested-11 | TIMEOUT | 600s |
+| velev-pipe-o-uns-1.1-6 | TIMEOUT | 600s |
+| grs-160-48 | TIMEOUT | 600s |
+| oski15a01b19s_opt | TIMEOUT | 600s |
+| bp4_BC012_CSO_IXA_LP.normalised | TIMEOUT | 600s |
+| 7.normalised | TIMEOUT | 600s |
+| battleship-13-13-unsat | TIMEOUT | 600s |
+| SC25_Timetable_C_395_E_47_Cl_27_D_7_T_50.normalised | TIMEOUT | 600s |
+| mod4block_3vars_7gates | TIMEOUT | 600s |
+| oski15a01b02s_opt | TIMEOUT | 600s |
+| lockchart-group3-L11-K23-p4d3j1.normalised | TIMEOUT | 600s |
+| bp4_BC012_CSO_AM_FPBEQ_FPBLE_ZR.normalised | TIMEOUT | 600s |
+| fermat-834855329100173267 | UNSAT | 74.22s |
+| ncc_none_2_17_4_3_0_0_435991723 | TIMEOUT | 600s |
+| oddball_57_5_tto_zp.normalised | TIMEOUT | 600s |
+| sudoku-N30-16 | TIMEOUT | 600s |
+| 16_16_booth_dadda_mapped_and_and_wallace_origin_bit28 | TIMEOUT | 600s |
+| veer_axi_yosyshq_appnote_123_veer_axi-p06_transition | TIMEOUT | 600s |
+| nla-digbench-scaling_dijkstra-u_valuebound1_step | TIMEOUT | 600s |
+| rphp5_085_shuffled | TIMEOUT | 600s |
+| 59-129706 | TIMEOUT | 600s |
+| 14.normalised | TIMEOUT | 600s |
+| 544707209399nw.shuffled-as.sat03-1671 | TIMEOUT | 600s |
+| crusti_g2io_250_0.2_255_43.normalised | TIMEOUT | 600s |
+| rphp_p25_r25 | TIMEOUT | 600s |
+| sudoku-N30-23 | TIMEOUT | 600s |
+| 2013113162201nw.shuffled-as.sat03-1668 | TIMEOUT | 600s |
+| Break_triple_14_48.xml | TIMEOUT | 600s |
+| mp1-klieber2017s-0300-032-t12 | TIMEOUT | 600s |
+| circuit_32in32out_with_64gates_7in7out_dist128_seed2.sanitized | TIMEOUT | 600s |
+| crusti_g2io_250_0.2_255_12.normalised | TIMEOUT | 600s |
+| clqcl_30_9_8.normalised | TIMEOUT | 600s |
+| sudoku-N30-15 | TIMEOUT | 600s |
+| 2018D_VexRiscv-regch0-20-p1_step | TIMEOUT | 600s |
+| battleship-16-31-sat | TIMEOUT | 600s |
+| div-mitern172 | UNSAT | 319.4084s |
+| ITC2021_Early_9.xml | TIMEOUT | 600s |
+| oddball_19_4_ttf.normalised | TIMEOUT | 600s |
+| 11.normalised | TIMEOUT | 600s |
+| Nb54T6 | TIMEOUT | 600s |
+| SC25_Timetable_C_406_E_45_Cl_26_D_7_T_50.normalised | TIMEOUT | 600s |
+| lockchart-group2-rnd0.3-L19-K38-P8D4J1_4 | TIMEOUT | 600s |
+| oddball_24_4_ttf.normalised | TIMEOUT | 600s |
+| 1-TC-256-K-63.sanitized | TIMEOUT | 600s |
+| DLTM_twitter774_83_17 | TIMEOUT | 600s |
+| simon-r17-1.sanitized | TIMEOUT | 600s |
+| arles_thres10_p20_r4514 | UNSAT | 0.025s |
+| WS_500_16_90_70.apx_1_DS-ST | TIMEOUT | 600s |
+| bp4_TCO_IXA_FPBLE_ZR.normalised | TIMEOUT | 600s |
+| tseitin_grid_n400_m400 | TIMEOUT | 600s |
+| oddball_112_5_ttf.normalised | TIMEOUT | 600s |
+| TT7F-33-24B | TIMEOUT | 600s |
+| crusti_g2io_200_0.1_127_19.normalised | TIMEOUT | 600s |
+| bp4_BC012_CSO_IXA_LP_FPBLE.normalised | TIMEOUT | 600s |
+| oski15a01b41s_opt | TIMEOUT | 600s |
+| crafted_n10_d6_c4_num8 | TIMEOUT | 600s |
+| case9 | TIMEOUT | 600s |
+| SC25_Timetable_C_495_E_50_Cl_33_D_7_T_50.normalised | TIMEOUT | 600s |
+| gm16sparrc | TIMEOUT | 600s |
+| sudoku-N30-28 | TIMEOUT | 600s |
+| x-epic_a19-p16_step | TIMEOUT | 600s |
+| bp4_CB_LP_FPBLE.normalised | TIMEOUT | 600s |
+| oddball_29_4_ttf.normalised | TIMEOUT | 600s |
+| grs-256-64 | TIMEOUT | 600s |
+| lockchart-group1-L220-K317-p8d4j1.normalised | TIMEOUT | 600s |
+| 16_16_default_mapped_ultra_and_and_dadda_mapped_bit28 | TIMEOUT | 600s |

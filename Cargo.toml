@@ -3,6 +3,10 @@ name = "logic"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "sat-cover-verify"
+path = "src/bin/sat_cover_verify.rs"
+
 [dependencies]
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }

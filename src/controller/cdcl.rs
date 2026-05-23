@@ -189,6 +189,47 @@ pub struct CdclController<F: FnMut(PathsClass, bool) -> bool = fn(PathsClass, bo
     // None means "never assigned".
     saved_phase: Vec<Option<bool>>,
 
+    /// Toggle for cover-cert emission.  When `true` (set via
+    /// `for_nnf_with_cover`), the controller participates in cover
+    /// emission — see `emit_static_cover` (one-shot up-front
+    /// enumeration of `F`'s complementary-pair connections) and
+    /// `emit_conflict_cover` (per-CDCL-conflict provenance-driven
+    /// pairs).
+    ///
+    /// `false` everywhere else — cover emission isn't needed for
+    /// plain SAT/UNSAT solving and the per-conflict work would
+    /// just be overhead.
+    emit_covers: bool,
+
+    /// `true` iff `emit_static_cover` succeeded (the formula's
+    /// static cover fit under `MAX_STATIC_COVER_PAIRS` and got
+    /// emitted up-front).  When set, `emit_conflict_cover` skips
+    /// per-conflict emission since the static cover is already
+    /// complete — saves significant per-conflict work on big
+    /// problems whose static cover did fit, and keeps the cert
+    /// from getting bloated with redundant pairs.
+    static_cover_emitted: bool,
+
+    /// Per-learned-clause complete *resolution provenance* — the
+    /// full set of original CNF clause ids involved in this learned
+    /// clause's resolution derivation, with all transitively-used
+    /// learned clauses already expanded.
+    /// `learned_provenance[i]` corresponds to the learned clause at
+    /// `prod_alts[initial_clause_count + i]`.
+    ///
+    /// Used by `emit_conflict_cover` to emit cover for ALL originals
+    /// that contributed to a learned-clause conflict, not just the
+    /// seed clause.  The matrix-cover argument for "this conflict
+    /// subtree is dead" requires the SET of original-clause covers,
+    /// since any single original may not capture every path the
+    /// learned clause prunes.
+    ///
+    /// Memory: each learned clause stores up to a few-hundred
+    /// `usize`s on industrial inputs (provenances dedup along the
+    /// way to bound size).  Only populated when `emit_covers` is
+    /// true.
+    learned_provenance: Vec<Vec<usize>>,
+
     // ── LBD-based learned-clause deletion ──
     //
     // `clause_deleted[id] = true` means clause `id` has been pruned
@@ -313,6 +354,17 @@ struct TrailLit {
     /// (Decision/SumForced lits) or the cascade that implied it
     /// (Implied lits).
     decision_level: usize,
+    /// Position in the matrix-method NNF tree where this lit was
+    /// visited.  `Some(pos)` for DFS-pushed lits when the engine
+    /// tracks positions (NNF-engine path, used by the `cdcl` /
+    /// `smart` backends with `--emit-cover`).  `None` for:
+    /// - Implied lits (no path position; they're CDCL-derived).
+    /// - DFS-pushed lits in the arena engine (positions not tracked).
+    /// - DFS-pushed lits in the positions-off NNF engine.
+    ///
+    /// Only the cover-emission path consumes this field; everywhere
+    /// else it's an `Option<Vec<usize>>` carried along.
+    position: Option<crate::matrix::Position>,
 }
 
 #[derive(Default)]
@@ -351,7 +403,94 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
     pub fn for_nnf_with_cover(nnf: &NNF, params: Option<PathParams>, on_class: F) -> Self {
         let mut s = <Self as PathSearchController>::with_on_class(params, on_class);
         s.preprocess(nnf);
+        // Turn on conflict cover emission: every CDCL conflict now
+        // contributes its share of the matrix cover via the
+        // implication-graph walk in `emit_conflict_cover`.  Without
+        // this flag, CDCL conflicts prune branches silently and the
+        // cert from BacktrackWhenCovered alone is partial (incomplete
+        // by construction on any problem where CDCL propagation
+        // pre-empts cover detection).
+        s.emit_covers = true;
+        // Emit the static structural cover up front (capped at a
+        // sane size).  See `emit_static_cover` for the algorithm.
+        // For small UNSAT problems this guarantees a complete cert
+        // independent of which paths the CDCL search actually
+        // visits.
+        s.emit_static_cover();
         s
+    }
+
+    /// Emit the *static structural cover* — every complementary pair
+    /// `(p1, p2)` such that `p1` and `p2` are positions in original
+    /// CNF clauses (in the complement-NNF representation) and the
+    /// lits at those positions are `X` / `¬X` for some var `X`.
+    ///
+    /// For any UNSAT F, this set covers every matrix path: each path
+    /// is complementary (by F's UNSAT) and the static cover contains
+    /// *every* complementary pair, so it contains the pair witnessing
+    /// each path's complementarity.
+    ///
+    /// Capped at [`MAX_STATIC_COVER_POSITIONS`] *positions* — not
+    /// pairs.  The v3 var-grouped cert encodes `K_pos * K_neg`
+    /// implied pairs per variable using only `K_pos + K_neg`
+    /// positions stored, so the right cost model for cert size is
+    /// positions, not pairs.  Beyond the cap, no static cover is
+    /// emitted and the cert relies on CDCL's conflict-derived pairs
+    /// alone (which may be partial — see `doc/cover_certify.md`).
+    fn emit_static_cover(&mut self) {
+        // First pass: index lit → positions, scanning only original
+        // clauses.  Build size estimate.  Bail without emitting if
+        // we'd exceed the cap.
+        let mut lit_positions: std::collections::HashMap<Lit, Vec<crate::matrix::Position>> =
+            std::collections::HashMap::new();
+        for cid in 0..self.initial_clause_count {
+            if cid >= self.prod_alts.len() { break; }
+            for (i, lit) in self.prod_alts[cid].iter().enumerate() {
+                lit_positions.entry(lit.clone()).or_default().push(vec![cid, i]);
+            }
+        }
+        // Estimate cert cost in *positions* — the v3 cert stores
+        // one entry per (var, polarity, position) tuple, which is
+        // bounded by total lit-occurrences in F (each lit appears
+        // at exactly one position).
+        let estimated: usize = lit_positions.values().map(|v| v.len()).sum();
+        const MAX_STATIC_COVER_POSITIONS: usize = 2_000_000;
+        if estimated > MAX_STATIC_COVER_POSITIONS {
+            // Beyond ~2M positions the cert file grows above ~30 MB
+            // — still tractable but big.  Skip in that regime; CDCL
+            // conflict emission alone will populate the cert
+            // (partial on most large inputs).
+            return;
+        }
+        // The static cover is a complete UNSAT certificate by
+        // construction.  Mark so per-conflict emission skips its
+        // (now-redundant + expensive) work; the cert is already
+        // covering everything via the static layer.
+        self.static_cover_emitted = true;
+        // Emit every pair.  Dedup happens at the writer (it
+        // canonicalises `(a, b)` and `(b, a)` to the same key).
+        // Order vars so we emit each unordered pair once: pair (p1
+        // for X, p2 for ¬X) is emitted only when X < ¬X by some
+        // ordering, e.g., by var-index then-neg.
+        for (lit, positions) in &lit_positions {
+            let neg_lit = lit.complement();
+            // Only iterate "positive side" to avoid double-emission.
+            // Canonicalise: emit when lit's encoding < neg_lit's.
+            let lit_idx = (lit.var as u64) * 2 + (lit.neg as u64);
+            let neg_idx = (neg_lit.var as u64) * 2 + (neg_lit.neg as u64);
+            if lit_idx >= neg_idx { continue; }
+            let Some(neg_positions) = lit_positions.get(&neg_lit) else { continue; };
+            for p1 in positions {
+                for p2 in neg_positions {
+                    let cpp = crate::matrix::CoveredPathPrefix {
+                        cover: (p1.clone(), p2.clone()),
+                        prefix: Vec::new(),
+                    };
+                    let _ = self.should_continue_on_paths_class(
+                        PathsClass::Covered(cpp), false);
+                }
+            }
+        }
     }
 
     /// Number of conflicts observed during this search so far.
@@ -378,6 +517,82 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
     /// tests.
     pub fn last_learned_clause(&self) -> Option<&LearnedClause> {
         self.learned_clauses.last()
+    }
+
+    /// Compute the *resolution provenance* of a new learned clause
+    /// derived from a conflict on `conflict_clause_id` — the
+    /// complete set of original CNF clause ids that contribute to
+    /// the derivation, with all transitively-used learned clauses
+    /// expanded via `learned_provenance`.
+    ///
+    /// Walks the same 1UIP resolution chain as `analyze_conflict`,
+    /// but instead of building a new clause it records every
+    /// `Reason::Implied(rid)` it follows.  Each rid is either an
+    /// original (added directly) or a learned (looked up and
+    /// flattened via `learned_provenance[rid - initial_clause_count]`).
+    ///
+    /// Used by `process_prefix_step`'s conflict handler to populate
+    /// `learned_provenance` for the newly-learned clause, and by
+    /// `emit_conflict_cover` to emit per-original cover for the
+    /// pruned subtree.
+    fn compute_provenance(&self, conflict_clause_id: usize) -> Vec<usize> {
+        use std::collections::HashSet;
+        let mut provenance: HashSet<usize> = HashSet::new();
+        // The conflict clause itself contributes to provenance.
+        self.add_to_provenance(conflict_clause_id, &mut provenance);
+        // Replicate analyze_conflict's resolution walk to collect
+        // every reason clause it would use.  We don't need the
+        // learning set's full structure — just the rids of clauses
+        // we'd resolve through.
+        let mut learning: std::collections::HashMap<Lit, usize> = std::collections::HashMap::new();
+        for alt in &self.prod_alts[conflict_clause_id] {
+            let lit = alt.complement();
+            let level = self.find_level(&lit);
+            learning.insert(lit, level);
+        }
+        let conflict_level = learning.values().copied().max().unwrap_or(0);
+        loop {
+            let count_at_top = learning.values().filter(|&&l| l == conflict_level).count();
+            if count_at_top <= 1 { break; }
+            let pick: Option<&TrailLit> = self.trail.iter().rev()
+                .find(|t| t.decision_level == conflict_level && learning.contains_key(&t.lit));
+            let Some(pick) = pick else { break; };
+            match pick.reason {
+                Reason::Implied(rid) => {
+                    self.add_to_provenance(rid, &mut provenance);
+                    let pick_lit = pick.lit.clone();
+                    learning.remove(&pick_lit);
+                    let alts: Vec<Lit> = self.prod_alts[rid].clone();
+                    for r_alt in alts {
+                        if r_alt != pick_lit {
+                            let new_lit = r_alt.complement();
+                            let level = self.find_level(&new_lit);
+                            learning.entry(new_lit).or_insert(level);
+                        }
+                    }
+                }
+                _ => break,
+            }
+        }
+        let mut prov_vec: Vec<usize> = provenance.into_iter().collect();
+        prov_vec.sort();
+        prov_vec
+    }
+
+    /// Helper for `compute_provenance`: if `clause_id` is original,
+    /// insert it directly; if learned, splat in its already-flattened
+    /// `learned_provenance` entry.
+    fn add_to_provenance(&self, clause_id: usize, out: &mut std::collections::HashSet<usize>) {
+        if clause_id < self.initial_clause_count {
+            out.insert(clause_id);
+        } else {
+            let idx = clause_id - self.initial_clause_count;
+            if let Some(prov) = self.learned_provenance.get(idx) {
+                for &p in prov {
+                    out.insert(p);
+                }
+            }
+        }
     }
 
     /// 1UIP conflict analysis.  Given the id of a clause that became
@@ -797,6 +1012,203 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         found
     }
 
+    // ─── Conflict cover emission (cover-certificate path) ──────────────
+
+    /// Emit cover pairs for a CDCL conflict so the cert file gets one
+    /// (or more) complementary-pair entries grounded on the matrix
+    /// path.
+    ///
+    /// Background: when CDCL hits a propagation conflict at clause
+    /// `Q`, it's because every alt `q` of `Q` has `¬q` on the trail.
+    /// `¬q` may be a DFS-pushed lit (= directly at a matrix-path
+    /// position) or an implied lit (= forced by some reason clause
+    /// `R`, whose other alts have their complements in trail by the
+    /// same recursive argument).  The matrix path picks some alt
+    /// `q*` from `Q`; we need `¬q*` on the path to form the
+    /// `(q*, ¬q*)` complementary pair.
+    ///
+    /// The cert is "every matrix path has some pair on it."  Each
+    /// `(case, position)` we emit handles one possible matrix-path
+    /// choice that the implication chain branches on; together they
+    /// cover every extension of the current DFS prefix.
+    fn emit_conflict_cover(&mut self, conflict_clause_id: usize) {
+        if !self.emit_covers { return; }
+        // Static cover already covered everything — skip the
+        // per-conflict work entirely.  This is critical for big
+        // problems where static cover *didn't* fit: we still want
+        // CDCL conflicts to contribute, just not when redundant.
+        if self.static_cover_emitted { return; }
+        // Only ORIGINAL CNF clauses have matrix-method positions
+        // (clause_id matches the Sum-child-index of the complement
+        // NNF, which equals the input CNF clause index).  Learned
+        // clauses are CDCL bookkeeping with no matrix position —
+        // emitting "Q:i" positions for them would put indices past
+        // num_clauses into the cert, which the verifier correctly
+        // rejects.
+        //
+        // Compute the **complete resolution provenance** of the
+        // conflict — the full set of original CNF clauses that
+        // contributed to this conflict's derivation.  Even an
+        // original-clause conflict carries provenance: the 1UIP
+        // resolution walk traverses implied lits' reason clauses,
+        // and each of those R's (and their further-expanded
+        // provenance if learned) is part of "what proves this
+        // subtree dead."  Emit per-alt cover for EACH original
+        // in the provenance — the matrix-cover argument requires
+        // the union, since a single seed clause's cover often
+        // doesn't capture every path the conflict prunes.
+        let provenance = self.compute_provenance(conflict_clause_id);
+        for cid in provenance {
+            // Clone the conflict clause's alts up front so we can borrow
+            // self mutably during emit.  Cheap: alts are small Vecs.
+            let alts = self.prod_alts[cid].clone();
+            for (i, q) in alts.iter().enumerate() {
+                // Q's alt at index `i` lives at matrix position
+                // (cid, i).  We need its complement `¬q` somewhere
+                // else on the path.
+                let q_pos: crate::matrix::Position = vec![cid, i];
+                let neg_q = q.complement();
+                self.ground_lit_to_path(&neg_q, &q_pos, 0);
+            }
+        }
+    }
+
+    /// Same idea for `pushing_conflict`: we DFS-pushed `lit` at
+    /// `pos`, and `¬lit` was already on the trail.  The matrix path
+    /// has `lit` at `pos`; we need `¬lit` on the path too.
+    fn emit_pushing_conflict_cover(&mut self, lit: &Lit, pos: &crate::matrix::Position) {
+        if !self.emit_covers { return; }
+        let neg_lit = lit.complement();
+        self.ground_lit_to_path(&neg_lit, pos, 0);
+    }
+
+    /// Recursive cover emitter: walk back through the implication
+    /// graph until `target` is grounded at a DFS-pushed matrix-path
+    /// position, emitting one `k`-entry per case-split at each
+    /// implication clause.
+    ///
+    /// `pair_with` is the *other* position the emitted pairs cite —
+    /// always a known matrix-path position (initially the conflict
+    /// alt's position; recursively the position of a sibling alt at
+    /// an implication clause).
+    ///
+    /// `depth` caps the recursion to keep pathological inputs from
+    /// blowing the stack on huge implication chains.  In practice
+    /// chains rarely exceed a few levels.
+    fn ground_lit_to_path(&mut self, target: &Lit, pair_with: &crate::matrix::Position, depth: usize) {
+        const MAX_GROUND_DEPTH: usize = 64;
+        if depth > MAX_GROUND_DEPTH { return; }
+
+        // Prefer the DFS-pushed entry: if `target` was directly
+        // picked at a path position, we have an unconditional witness
+        // — just emit the pair and stop.
+        let dfs_pos: Option<crate::matrix::Position> = self.trail.iter()
+            .find(|t| t.lit == *target && t.position.is_some())
+            .and_then(|t| t.position.clone());
+        if let Some(pos) = dfs_pos {
+            self.emit_cover_pair(pair_with.clone(), pos);
+            return;
+        }
+
+        // Otherwise look for an `Implied(R)` entry — `target` is on
+        // the trail because some clause `R` forced it.
+        let implied_clause: Option<usize> = self.trail.iter()
+            .find(|t| t.lit == *target && matches!(t.reason, Reason::Implied(_)))
+            .and_then(|t| match t.reason {
+                Reason::Implied(rid) => Some(rid),
+                _ => None,
+            });
+        let Some(r_id) = implied_clause else {
+            // Couldn't find target on the trail at all.  Shouldn't
+            // happen during a conflict — if it does, drop the entry
+            // (cert remains partial for this case; verifier will flag
+            // it).
+            return;
+        };
+        // If R is a learned clause, the per-alt case-split on R's
+        // own alts doesn't apply (R isn't in the matrix).  Instead,
+        // expand into R's resolution provenance: for each original
+        // Q in `learned_provenance[R]`, recursively try grounding
+        // through Q.  Critically, we DON'T blindly run the per-alt
+        // case-split for Q since Q's alts may be entirely disjoint
+        // from R's — instead we just check whether `target` happens
+        // to appear in Q's alts (or be derivable via Q's per-alt
+        // grounding) and emit accordingly.
+        //
+        // To avoid recursive blow-up, we cap depth here too — the
+        // outer `MAX_GROUND_DEPTH` already does this, and the
+        // per-provenance fan-out is bounded by the size of the
+        // provenance set (typically O(arity * resolution-chain
+        // length), which is bounded).
+        if r_id >= self.initial_clause_count {
+            let idx = r_id - self.initial_clause_count;
+            let provenance: Vec<usize> = self.learned_provenance
+                .get(idx).cloned().unwrap_or_default();
+            for q_id in provenance {
+                let q_alts = self.prod_alts[q_id].clone();
+                // Case A for Q: matrix path picks `target` from Q
+                // (if target appears in Q's alts).  Direct pair.
+                if let Some(idx_t) = q_alts.iter().position(|a| *a == *target) {
+                    let target_at_q: crate::matrix::Position = vec![q_id, idx_t];
+                    self.emit_cover_pair(pair_with.clone(), target_at_q);
+                }
+                // Cases B for Q: matrix path picks some other alt r
+                // from Q.  Need ¬r somewhere on path.  Recurse —
+                // but only one level deeper into the provenance,
+                // since deeper case-splits would blow up.
+                if depth + 1 > MAX_GROUND_DEPTH { continue; }
+                for (idx_r, r) in q_alts.iter().enumerate() {
+                    if q_alts.iter().position(|a| *a == *target) == Some(idx_r) { continue; }
+                    let r_at_q: crate::matrix::Position = vec![q_id, idx_r];
+                    let neg_r = r.complement();
+                    self.ground_lit_to_path(&neg_r, &r_at_q, depth + 1);
+                }
+            }
+            return;
+        }
+
+        let r_alts = self.prod_alts[r_id].clone();
+        // `target` is in R's alts somewhere (R forced target by being
+        // a unit-propagation clause with target as the unique unblocked
+        // alt).
+        let target_idx_in_r = r_alts.iter().position(|a| *a == *target);
+
+        // Case A: matrix path picks `target` from R.  Then `target`
+        // is at (r_id, target_idx_in_r) on the path → direct pair.
+        if let Some(idx) = target_idx_in_r {
+            let target_at_r: crate::matrix::Position = vec![r_id, idx];
+            self.emit_cover_pair(pair_with.clone(), target_at_r);
+        }
+
+        // Cases B..K: matrix path picks some other alt `r ≠ target`
+        // from R.  Then `r` is at (r_id, idx_r) on the path; for the
+        // cover, we need `¬r` somewhere on the path.  Recurse on
+        // each sibling alt.
+        for (idx_r, r) in r_alts.iter().enumerate() {
+            if Some(idx_r) == target_idx_in_r { continue; }
+            let r_at_r: crate::matrix::Position = vec![r_id, idx_r];
+            let neg_r = r.complement();
+            self.ground_lit_to_path(&neg_r, &r_at_r, depth + 1);
+        }
+    }
+
+    /// Build a `CoveredPathPrefix` for the two-position pair and
+    /// forward it as a `PathsClass::Covered` event.  The `prefix`
+    /// field is left empty — the v2 cert format doesn't use it.
+    fn emit_cover_pair(&mut self, pos_a: crate::matrix::Position, pos_b: crate::matrix::Position) {
+        if pos_a == pos_b { return; }   // degenerate self-pair, skip
+        let cpp = crate::matrix::CoveredPathPrefix {
+            cover: (pos_a, pos_b),
+            prefix: Vec::new(),
+        };
+        // Forward through `should_continue_on_paths_class` — this
+        // routes to the user-supplied on_class callback (which in
+        // --emit-cover mode writes to the cert file).  The bool
+        // return value is ignored: a "stop" from the on_class side
+        // is for SAT-detection control flow, not cover emission.
+        let _ = self.should_continue_on_paths_class(PathsClass::Covered(cpp), false);
+    }
+
     /// Run the propagation cascade triggered by pushing `lit` onto the
     /// trail at `level`.  Mutates clause-blocked counts and the
     /// implied-lit counter, and appends one `Reason::Implied(clause_id)`
@@ -851,6 +1263,9 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
                                 lit: rl.clone(),
                                 reason: Reason::Implied(clause_id),
                                 decision_level: level,
+                                // Implied lits have no direct path
+                                // position — they're CDCL-derived.
+                                position: None,
                             });
                             frame.trail_added += 1;
                             queue.push(r_idx);
@@ -939,6 +1354,9 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             bump_value:       1.0,
             decay_factor:     0.95,
             saved_phase:      Vec::new(),
+            emit_covers:      false,
+            static_cover_emitted: false,
+            learned_provenance: Vec::new(),
             clause_deleted:   Vec::new(),
             // Reduction fires when live learned-clause count exceeds
             // this.  Tuned conservatively: low values (2000-50000)
@@ -988,6 +1406,9 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             bump_value:       1.0,
             decay_factor:     0.95,
             saved_phase:      Vec::new(),
+            emit_covers:      false,
+            static_cover_emitted: false,
+            learned_provenance: Vec::new(),
             clause_deleted:   Vec::new(),
             // Reduction fires when live learned-clause count exceeds
             // this.  Tuned conservatively: low values (2000-50000)
@@ -1023,9 +1444,16 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             prefix_literals, prefix_positions, prefix_prod_path, is_complete,
         );
         let lits_len = prefix_literals.len();
+        // In NNF-engine mode, `prefix_positions` carries the matrix
+        // path position of each lit; pass them through so the trail's
+        // DFS-pushed entries can be cited by the conflict-cover
+        // emitter.  `prefix_positions` may be shorter than
+        // `prefix_literals` in degenerate cases (positions-off path);
+        // guard with bounds-check, falling back to None.
         self.process_prefix_step(
             lits_len, prefix_prod_path, is_complete,
             |i| prefix_literals[i].clone(),
+            |i| prefix_positions.get(i).cloned(),
             inner_r,
         )
     }
@@ -1242,9 +1670,13 @@ impl<F: FnMut(PathsClass, bool) -> bool> crate::nnf_arena::ArenaPathSearchContro
         let inner_r = <BacktrackWhenCoveredController<F> as crate::nnf_arena::ArenaPathSearchController>::should_continue_on_prefix(
             &mut self.inner, arena, lits, prefix_prod_path, is_complete,
         );
+        // Arena engine doesn't track positions — cover emission via
+        // arena is unsupported anyway (sat.rs rejects --emit-cover for
+        // arena backends), so a `|_| None` position_at is correct.
         self.process_prefix_step(
             lits.len(), prefix_prod_path, is_complete,
             |i| lits[i].clone(),
+            |_| None,
             inner_r,
         )
     }
@@ -1313,13 +1745,19 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
     /// FIRST (so its `lit_counter` is in sync) and pass the result in
     /// as `inner_r`.  `lit_at(i)` returns the owned `Lit` at prefix
     /// position `i` — the NNF impl clones a `&Lit`, the arena impl
-    /// clones from its owned `&[Lit]`.
+    /// clones from its owned `&[Lit]`.  `position_at(i)` returns the
+    /// NNF tree position of the lit at prefix index `i`, or `None` if
+    /// the engine doesn't track positions (arena / positions-off NNF).
+    /// Positions, when present, get stored on trail entries so the
+    /// conflict-cover emitter can ground implied lits to DFS-pushed
+    /// ancestors on the matrix path.
     fn process_prefix_step(
         &mut self,
         lits_len: usize,
         prefix_prod_path: &ProdPath,
         _is_complete: bool,
         mut lit_at: impl FnMut(usize) -> Lit,
+        mut position_at: impl FnMut(usize) -> Option<crate::matrix::Position>,
         inner_r: Option<usize>,
     ) -> Option<usize> {
         // ── Phase 1: backtrack ──
@@ -1354,10 +1792,12 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
             let lit_idx  = (new_lit.var as usize) * 2 + (new_lit.neg as usize);
             let comp_idx = lit_idx ^ 1;
             let mut frame = PushFrame::default();
+            let pos = position_at(i);
             self.trail.push(TrailLit {
                 lit: new_lit.clone(),
                 reason,
                 decision_level: level,
+                position: pos.clone(),
             });
             frame.trail_added = 1;
             let pushing_conflict = self.lit_or_implied(comp_idx);
@@ -1365,6 +1805,13 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
                 self.conflict_count += 1;
                 self.instr_pushes_conflict += 1;
                 want_backtrack = true;
+                // Cover-cert emission: we DFS-pushed `new_lit` at
+                // matrix position `pos`, and `¬new_lit` was already
+                // on the trail.  Ground `¬new_lit` and emit one or
+                // more `k` pairs.  Only fires when emit_covers is on.
+                if let Some(p) = pos.as_ref() {
+                    self.emit_pushing_conflict_cover(&new_lit, p);
+                }
             } else {
                 let already_implied = self.implied_lit_counter
                     .get(lit_idx).copied().unwrap_or(0) > 0;
@@ -1381,6 +1828,35 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
                         Err(conflict_clause_id) => {
                             self.conflict_count += 1;
                             want_backtrack = true;
+                            // Cover-cert emission: clause Q is fully
+                            // blocked.  For each Q-alt q, ground ¬q
+                            // through the implication graph to DFS
+                            // positions and emit pairs.
+                            self.emit_conflict_cover(conflict_clause_id);
+                            // Track the full resolution provenance
+                            // for the new learned clause about to be
+                            // added.  This is the set of all original
+                            // CNF clauses involved in this clause's
+                            // derivation chain; future conflicts on
+                            // this learned clause will iterate that
+                            // set to emit per-original cover.
+                            if self.emit_covers && !self.static_cover_emitted {
+                                // Compute provenance only when
+                                // per-conflict emission is actually
+                                // going to use it.  When static cover
+                                // succeeded, all conflicts produce
+                                // redundant pairs anyway, so we skip
+                                // the O(trail) provenance computation
+                                // per conflict.
+                                let prov = self.compute_provenance(conflict_clause_id);
+                                self.learned_provenance.push(prov);
+                            } else if self.emit_covers {
+                                // Push a placeholder to keep the
+                                // index alignment correct
+                                // (learned_provenance[i] for i-th
+                                // learned clause).
+                                self.learned_provenance.push(Vec::new());
+                            }
                             let learned = self.analyze_conflict(conflict_clause_id);
                             let _learned_id = self.register_learned_clause(&learned, &mut frame);
                             for alt in &learned.alts {
@@ -2206,6 +2682,7 @@ mod tests {
             lit: Lit::neg(5),
             reason: Reason::Decision,
             decision_level: 1,
+            position: None,
         });
         let frame = PushFrame { trail_added: 1, blocked: vec![], implied: vec![] };
         ctrl.undo(&frame);
@@ -2238,6 +2715,7 @@ mod tests {
             lit: Lit::neg(7),    // var 7, polarity neg=true
             reason: Reason::Decision,
             decision_level: 1,
+            position: None,
         });
         ctrl.restart_pending = true;
         ctrl.complete_restart();

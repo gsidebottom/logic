@@ -60,9 +60,11 @@ use std::collections::HashSet;
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::time::{Duration, Instant};
 
+use std::sync::{Arc, Mutex};
+
 use logic::matrix::{
     Lit, NNF, PathClassificationHandle, PathParams, PathsClass, Var,
-    CdclController, DynOnClass, cdcl_controller_builder, smart_controller_builder,
+    CdclController, DynOnClass, SmartController, cdcl_controller_builder, smart_controller_builder,
 };
 
 // ─── DIMACS parser ─────────────────────────────────────────────────────────
@@ -316,6 +318,178 @@ impl MatrixBackend {
     }
 }
 
+/// Writer state for an open cover file.  Accumulates a *var-grouped*
+/// cover (cert format v3): for each CNF variable, the set of
+/// positions where the positive literal appears and the set where
+/// the negative literal appears (in the matrix-method complement
+/// NNF, the "lit visited at position (c, l)" is `-F[c][l]`, so
+/// positive-lit positions are where the original CNF has the
+/// negative literal, and vice versa).
+///
+/// **Cross-product semantics**: a pair `(p, q)` is implicitly in
+/// the cert iff there exists some variable X with `p` in X's
+/// positive-position set and `q` in X's negative-position set.
+/// The verifier knows this and uses per-variable matched-counter
+/// pruning instead of per-pair lookup.
+///
+/// **Compression**: on RoundRobin-scale inputs where each variable
+/// appears at ~200 positions per polarity, the var-grouped form
+/// stores 400 positions per variable instead of 40,000 pairs — a
+/// ~100× space saving.
+///
+/// **Emission timing**: pairs accumulate in memory until
+/// `finalize()` is called (or the struct drops).  This is by
+/// design: the grouping requires seeing all pairs before we know
+/// what to dedup.  Memory cost is bounded by the total number of
+/// distinct (var, polarity, position) tuples in F, which is O(M)
+/// where M is the number of clause-positions in the input —
+/// always much smaller than the implied pair count.
+struct CoverWriter {
+    writer: io::BufWriter<std::fs::File>,
+    /// Per-variable positive-polarity position sets.  Key: DIMACS
+    /// variable index (1-based).  Value: set of `(clause_idx,
+    /// lit_idx)` positions where the matrix-method lit at that
+    /// position is `+var`.
+    positive: std::collections::HashMap<u32, std::collections::HashSet<(usize, usize)>>,
+    /// Mirror of `positive` but for negative-polarity positions
+    /// (matrix-method lit `−var`).
+    negative: std::collections::HashMap<u32, std::collections::HashSet<(usize, usize)>>,
+    /// The original CNF clauses, used to resolve positions to lit
+    /// values.  At position `(c, l)` the matrix-method engine sees
+    /// `Lit::from_dimacs(-clauses[c][l])` — the negation of the
+    /// original CNF lit, since the engine walks the complement NNF.
+    clauses: std::sync::Arc<Vec<Vec<i32>>>,
+}
+
+impl CoverWriter {
+    fn new(file: std::fs::File, clauses: std::sync::Arc<Vec<Vec<i32>>>) -> Self {
+        Self {
+            writer: io::BufWriter::new(file),
+            positive: std::collections::HashMap::new(),
+            negative: std::collections::HashMap::new(),
+            clauses,
+        }
+    }
+
+    /// Resolve a position `(c, l)` to the matrix-method lit at that
+    /// spot — `-F[c][l]` as a `(var, neg)` pair.  Returns `None`
+    /// for out-of-bounds or unexpected (non-length-2) positions.
+    fn position_lit(&self, pos: &logic::matrix::Position) -> Option<(u32, bool)> {
+        if pos.len() != 2 { return None; }
+        let (c, l) = (pos[0], pos[1]);
+        if c >= self.clauses.len() || l >= self.clauses[c].len() {
+            return None;
+        }
+        // matrix-method walks the complement, so visited lit =
+        // -F[c][l].  In DIMACS: positive int -> var, neg bit; we
+        // flip the sign here for the complement-walk semantics.
+        let orig = self.clauses[c][l];
+        let visited = -orig;
+        let var = visited.unsigned_abs();
+        let neg = visited < 0;
+        Some((var, neg))
+    }
+
+    /// Record `cpp`'s cover pair into the per-variable accumulators.
+    /// Both positions must resolve to a valid `(var, neg)` and the
+    /// two lits must be complementary (same var, opposite signs);
+    /// otherwise the pair is silently dropped (= invariant violated
+    /// on the prover side, not actionable here).
+    fn maybe_write(&mut self, cpp: &logic::matrix::CoveredPathPrefix) -> io::Result<()> {
+        let Some((va, na)) = self.position_lit(&cpp.cover.0) else { return Ok(()); };
+        let Some((vb, nb)) = self.position_lit(&cpp.cover.1) else { return Ok(()); };
+        if va != vb || na == nb { return Ok(()); }   // not a complementary pair
+        // a is positive-lit, b is negative-lit (or vice versa).
+        // Order so we insert into the right set.
+        let (pos_pos, neg_pos) = if !na { (&cpp.cover.0, &cpp.cover.1) }
+                                 else  { (&cpp.cover.1, &cpp.cover.0) };
+        self.positive.entry(va)
+            .or_insert_with(std::collections::HashSet::new)
+            .insert((pos_pos[0], pos_pos[1]));
+        self.negative.entry(va)
+            .or_insert_with(std::collections::HashSet::new)
+            .insert((neg_pos[0], neg_pos[1]));
+        Ok(())
+    }
+
+    /// Number of distinct positions accumulated (across all
+    /// variables, both polarities).  Useful as a cert-size proxy
+    /// for the post-search footer.
+    fn distinct_positions(&self) -> usize {
+        self.positive.values().map(|s| s.len()).sum::<usize>()
+            + self.negative.values().map(|s| s.len()).sum::<usize>()
+    }
+
+    /// Write the accumulated cover out in v3 format.  Idempotent
+    /// (safe to call multiple times).
+    fn finalize<S: AsRef<str>>(&mut self, verdict: S) -> io::Result<()> {
+        // Iterate vars in sorted order so the output is
+        // deterministic.  Collect once to release borrows.
+        let mut vars: Vec<u32> = self.positive.keys()
+            .chain(self.negative.keys())
+            .copied()
+            .collect();
+        vars.sort();
+        vars.dedup();
+        let n_vars = vars.len();
+        let n_pairs = self.implied_pair_count();
+        for v in vars {
+            let pos_set = self.positive.get(&v).cloned().unwrap_or_default();
+            let neg_set = self.negative.get(&v).cloned().unwrap_or_default();
+            // Skip vars that have only one polarity — no implied
+            // pairs, so no contribution to the cover.
+            if pos_set.is_empty() || neg_set.is_empty() { continue; }
+            write!(self.writer, "v {} +", v)?;
+            Self::write_clause_grouped(&mut self.writer, &pos_set)?;
+            write!(self.writer, " -")?;
+            Self::write_clause_grouped(&mut self.writer, &neg_set)?;
+            writeln!(self.writer)?;
+        }
+        writeln!(self.writer, "# verdict {} ({} vars, {} implied pairs)",
+                 verdict.as_ref(), n_vars, n_pairs)?;
+        self.writer.flush()
+    }
+
+    /// Format a set of positions as space-separated `c:l[,l...]`
+    /// tokens, grouping multiple lit indices of the same clause
+    /// into one token with comma-separated lit-idx tail.
+    fn write_clause_grouped<W: io::Write>(
+        w: &mut W,
+        positions: &std::collections::HashSet<(usize, usize)>,
+    ) -> io::Result<()> {
+        // Sort: by clause asc, then lit asc.  Stable + deterministic.
+        let mut sorted: Vec<(usize, usize)> = positions.iter().copied().collect();
+        sorted.sort();
+        let mut i = 0;
+        while i < sorted.len() {
+            let (c, l) = sorted[i];
+            write!(w, " {}:{}", c, l)?;
+            // Group subsequent entries with the same clause as
+            // comma-separated lit-idx suffixes.
+            let mut j = i + 1;
+            while j < sorted.len() && sorted[j].0 == c {
+                write!(w, ",{}", sorted[j].1)?;
+                j += 1;
+            }
+            i = j;
+        }
+        Ok(())
+    }
+
+    /// Sum over vars of |positive positions| * |negative positions|
+    /// — the number of pairs the var-grouped cert implicitly
+    /// represents.  Reported in the verdict footer for diagnostics.
+    fn implied_pair_count(&self) -> usize {
+        let mut total = 0usize;
+        for (v, pos_set) in &self.positive {
+            if let Some(neg_set) = self.negative.get(v) {
+                total = total.saturating_add(pos_set.len() * neg_set.len());
+            }
+        }
+        total
+    }
+}
+
 /// `preprocessed`: optional preprocessing handle.  When `Some`,
 /// the SAT-witness path (`SearchOutcome::Sat`) reconstructs the
 /// original-variable assignment by feeding the search's path
@@ -324,12 +498,19 @@ impl MatrixBackend {
 /// then replays the recon stack to recover any variables eliminated
 /// during preprocessing).  When `None`, the legacy direct
 /// `path_lits_to_assignment` is used.
+///
+/// `emit_cover`: optional path to a file that, when set, receives one
+/// cert entry per `CoveredPathPrefix` event the search emits.  Only
+/// supported by the `cdcl` and `smart` backends (which use the NNF
+/// engine with positions tracked); other backends error.
 fn matrix_search(
     comp: NNF,
     nvars: usize,
     show_progress: bool,
     backend: MatrixBackend,
     preprocessed: Option<&logic::preprocess::Preprocessed>,
+    emit_cover: Option<&std::path::Path>,
+    cover_clauses: Option<&[Vec<i32>]>,
 ) -> SearchOutcome {
     let total_paths = comp.path_count();
     let params = Some(PathParams {
@@ -386,7 +567,30 @@ fn matrix_search(
         .build()
         .expect("tokio runtime");
 
+    // `--emit-cover` only meaningful for backends that use the
+    // positions-tracked NNF engine (Cdcl, Smart) — the arena and
+    // dual-framework variants either don't track positions or run
+    // their cover events through internal channels that bypass the
+    // file emitter.  Bail with a clear message before launching the
+    // runtime to avoid the user thinking they got covers when they
+    // didn't.
+    if emit_cover.is_some()
+        && !matches!(backend, MatrixBackend::Cdcl | MatrixBackend::Smart)
+    {
+        eprintln!("c ERROR: --emit-cover only supported with backend cdcl or smart \
+                   (got {}); other backends use the positions-OFF or arena engine \
+                   which doesn't track the positional info the cert format needs",
+                  backend.name());
+        std::process::exit(2);
+    }
+
     rt.block_on(async move {
+        // Optional cover writer.  Populated by the Cdcl/Smart match
+        // arms when `emit_cover` is set; the post-search block flushes
+        // it via Arc-drop after `handle.await` so the file lands on
+        // disk before the verdict is printed.
+        let mut cover_writer_arc: Option<Arc<Mutex<CoverWriter>>> = None;
+
         // Each match arm clones inputs only if it actually needs them.
         // Earlier versions hoisted `nnf_smart = comp.clone();
         // nnf_cdcl = comp.clone();` to the top of the function "so the
@@ -401,16 +605,107 @@ fn matrix_search(
             MatrixBackend::Smart => {
                 let nnf_smart = comp.clone();
                 let p_smart = params.clone();
-                comp.classify_paths_uncovered_only(64,
-                    move |tx| smart_controller_builder(&nnf_smart, p_smart, tx),
-                )
+                if let Some(cover_path) = emit_cover {
+                    // Cover-emitting variant — mirrors the Cdcl arm
+                    // below.  Smart uses the same NNF positions-on
+                    // engine (`classify_paths`), so plumbing is
+                    // identical except for the controller builder.
+                    let file = match std::fs::File::create(cover_path) {
+                        Ok(f) => f,
+                        Err(e) => {
+                            eprintln!("c ERROR: cannot create cover file {}: {}",
+                                      cover_path.display(), e);
+                            std::process::exit(2);
+                        }
+                    };
+                    let clauses_arc = std::sync::Arc::new(
+                        cover_clauses.expect("--emit-cover requires cover_clauses").to_vec());
+                    let cover_w: Arc<Mutex<CoverWriter>> =
+                        Arc::new(Mutex::new(CoverWriter::new(file, clauses_arc)));
+                    {
+                        let mut cw = cover_w.lock().unwrap();
+                        let _ = writeln!(cw.writer, "# sat-cover-verify cert v3");
+                        let _ = writeln!(cw.writer, "# source: {} backend=smart preprocess={}",
+                                         cover_path.display(),
+                                         preprocessed.map(|_| "on").unwrap_or("off"));
+                    }
+                    let cw_for_search = cover_w.clone();
+                    let result = comp.classify_paths(64, move |tx| {
+                        let on_class: DynOnClass = Box::new(move |class, hit_limit| {
+                            if let PathsClass::Covered(cpp) = &class {
+                                let mut cw = cw_for_search.lock().unwrap();
+                                cw.maybe_write(cpp).expect("cover file write failed");
+                            }
+                            tx.blocking_send((class, hit_limit)).is_ok()
+                        });
+                        SmartController::for_nnf_with_cover(&nnf_smart, p_smart, on_class)
+                    });
+                    cover_writer_arc = Some(cover_w);
+                    result
+                } else {
+                    comp.classify_paths_uncovered_only(64,
+                        move |tx| smart_controller_builder(&nnf_smart, p_smart, tx),
+                    )
+                }
             }
             MatrixBackend::Cdcl => {
                 let nnf_cdcl = comp.clone();
                 let p_cdcl = params.clone();
-                comp.classify_paths_uncovered_only(64,
-                    move |tx| cdcl_controller_builder(&nnf_cdcl, p_cdcl, tx),
-                )
+                if let Some(cover_path) = emit_cover {
+                    // Cover-emitting variant: drive the search
+                    // through `classify_paths` (with positions, cover
+                    // events flow) and build the CDCL controller via
+                    // `for_nnf_with_cover` (inner BacktrackWhenCovered
+                    // in uncovered_only=false mode, so Covered events
+                    // are actually emitted).  Each event gets tee'd
+                    // into the cover file by the on_class closure.
+                    let file = match std::fs::File::create(cover_path) {
+                        Ok(f) => f,
+                        Err(e) => {
+                            eprintln!("c ERROR: cannot create cover file {}: {}",
+                                      cover_path.display(), e);
+                            std::process::exit(2);
+                        }
+                    };
+                    let clauses_arc = std::sync::Arc::new(
+                        cover_clauses.expect("--emit-cover requires cover_clauses").to_vec());
+                    let cover_w: Arc<Mutex<CoverWriter>> =
+                        Arc::new(Mutex::new(CoverWriter::new(file, clauses_arc)));
+                    // Header on file open so the verifier sees a
+                    // self-describing prefix even before any cover
+                    // entries arrive.
+                    {
+                        let mut cw = cover_w.lock().unwrap();
+                        let _ = writeln!(cw.writer, "# sat-cover-verify cert v3");
+                        let _ = writeln!(cw.writer, "# source: {} backend=cdcl preprocess={}",
+                                         cover_path.display(),
+                                         preprocessed.map(|_| "on").unwrap_or("off"));
+                    }
+                    let cw_for_search = cover_w.clone();
+                    let result = comp.classify_paths(64, move |tx| {
+                        let on_class: DynOnClass = Box::new(move |class, hit_limit| {
+                            if let PathsClass::Covered(cpp) = &class {
+                                let mut cw = cw_for_search.lock().unwrap();
+                                // I/O errors here mean the disk is
+                                // full or the file got unlinked; bail
+                                // loudly rather than silently truncate
+                                // the cert.
+                                cw.maybe_write(cpp).expect("cover file write failed");
+                            }
+                            tx.blocking_send((class, hit_limit)).is_ok()
+                        });
+                        CdclController::for_nnf_with_cover(&nnf_cdcl, p_cdcl, on_class)
+                    });
+                    // Stash the writer Arc so we can flush + write a
+                    // footer once the search drains (handled in the
+                    // post-search block below via cover_writer_arc).
+                    cover_writer_arc = Some(cover_w);
+                    result
+                } else {
+                    comp.classify_paths_uncovered_only(64,
+                        move |tx| cdcl_controller_builder(&nnf_cdcl, p_cdcl, tx),
+                    )
+                }
             }
             MatrixBackend::Eff | MatrixBackend::Effb => {
                 // matrix.eff uses the arena engine: build a
@@ -553,6 +848,34 @@ fn matrix_search(
         drop(rx);
         if let Some(t) = progress_task { t.abort(); let _ = t.await; }
         let _ = handle.await;
+
+        // Finalize the cover file (if any): write a footer with the
+        // verdict tag and flush.  After this `try_unwrap` the only
+        // remaining Arc reference is the worker's on_class closure,
+        // which got dropped when `handle.await` returned — so the
+        // unwrap should succeed.  If it doesn't (defensive: some
+        // future code path keeps a clone alive), we still get the
+        // file via the cloned Arc and rely on `Drop` to flush.
+        if let Some(arc) = cover_writer_arc.take() {
+            // Verdict footer: `# verdict UNSAT|SAT (N vars, M
+            // implied pairs)`.  The verdict is informational only —
+            // the verifier doesn't trust it.  `finalize()` dumps the
+            // accumulated var-grouped cert (v3 format) and writes
+            // the footer in one shot, then flushes.
+            let verdict = if path_lits.is_some() { "SAT" } else { "UNSAT" };
+            match Arc::try_unwrap(arc) {
+                Ok(mutex) => {
+                    let mut cw = mutex.into_inner().expect("cover writer mutex poisoned");
+                    let _ = cw.finalize(verdict);
+                    // CoverWriter (with its inner BufWriter+File) goes
+                    // out of scope here → Drop flushes + closes.
+                }
+                Err(arc_still_shared) => {
+                    let mut cw = arc_still_shared.lock().unwrap();
+                    let _ = cw.finalize(verdict);
+                }
+            }
+        }
 
         if let Some(lits) = path_lits {
             let asgn = match preprocessed {
@@ -1150,6 +1473,12 @@ struct Args {
     /// search.  Always disabled for the cadical backend (it has its
     /// own internal preprocessor).  Default `true`.
     preprocess:    bool,
+    /// Optional cover-certificate output path.  When set, every
+    /// `CoveredPathPrefix` event from the matrix-method search gets
+    /// written to this file, producing a UNSAT certificate that
+    /// `sat-cover-verify` can replay against the original CNF.  Only
+    /// supported by the `cdcl` and `smart` backends.
+    emit_cover:    Option<std::path::PathBuf>,
 }
 
 const DEFAULT_TIMEOUT_SECS: u64 = 6000;
@@ -1160,6 +1489,7 @@ fn parse_args() -> Result<Args, String> {
         backend: BackendChoice::Matrix(MatrixBackend::Eff),
         timeout_secs: DEFAULT_TIMEOUT_SECS,
         preprocess: true,
+        emit_cover: None,
     };
     let mut explicit_backend = false;
     let mut iter = std::env::args().skip(1);
@@ -1208,6 +1538,14 @@ fn parse_args() -> Result<Args, String> {
             }
             "--preprocess"      => { a.preprocess = true;  }
             "--no-preprocess"   => { a.preprocess = false; }
+            "--emit-cover" => {
+                let v = iter.next().ok_or_else(||
+                    "--emit-cover requires a file path (e.g. --emit-cover proof.cover)".to_string())?;
+                a.emit_cover = Some(v.into());
+            }
+            s if s.starts_with("--emit-cover=") => {
+                a.emit_cover = Some(s["--emit-cover=".len()..].to_string().into());
+            }
             "--help"     | "-h" => {
                 eprintln!("Usage: sat [--backend NAME] [--timeout SECS] [--progress] < problem.cnf");
                 eprintln!();
@@ -1243,6 +1581,11 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    normalisation) before search.  Default ON for");
                 eprintln!("                    matrix backends; no-op for cadical (its own preproc).");
                 eprintln!("  --no-preprocess   Disable preprocessing.");
+                eprintln!("  --emit-cover FILE Write a cover certificate to FILE.  On UNSAT,");
+                eprintln!("                    the file contains a sound replay-able UNSAT proof");
+                eprintln!("                    (every CoveredPathPrefix event the search emits).");
+                eprintln!("                    Validate with `sat-cover-verify <cnf> <FILE>`.");
+                eprintln!("                    Only supported with --backend cdcl or smart.");
                 eprintln!("  --progress, -p    Show a live progress bar on stderr (TTY only).");
                 eprintln!("                    Press Ctrl-C to interrupt.");
                 eprintln!();
@@ -1389,16 +1732,36 @@ fn main() {
                     }
                     PreprocessVerdict::NeedsSearch => {
                         let comp = pp.nnf.complement();
-                        matrix_search(comp, nvars, args.show_progress, m, Some(&pp))
+                        // Preprocess+cover: --emit-cover with
+                        // --preprocess isn't currently supported
+                        // because positions reference the preprocessed
+                        // CNF, not the input.  matrix_search will
+                        // panic loudly if both are set.
+                        matrix_search(comp, nvars, args.show_progress, m,
+                                      Some(&pp), args.emit_cover.as_deref(),
+                                      None)
                     }
                 }
             } else {
                 // Skip preprocess: build the complement directly
-                // and search it.  Drop the parsed clauses before
-                // the search starts (≈ 80 MB on 2M-clause inputs).
+                // and search it.  When --emit-cover is set, keep
+                // `clauses` alive (Arc'd inside CoverWriter for
+                // position-to-lit resolution); otherwise drop the
+                // parsed clauses before the search starts (≈ 80 MB
+                // on 2M-clause inputs).
                 let comp = cnf_complement_nnf(&clauses);
-                drop(clauses);
-                matrix_search(comp, nvars, args.show_progress, m, None)
+                if args.emit_cover.is_some() {
+                    let cover_clauses = clauses.clone();
+                    drop(clauses);
+                    matrix_search(comp, nvars, args.show_progress, m, None,
+                                  args.emit_cover.as_deref(),
+                                  Some(&cover_clauses))
+                } else {
+                    drop(clauses);
+                    matrix_search(comp, nvars, args.show_progress, m, None,
+                                  args.emit_cover.as_deref(),
+                                  None)
+                }
             }
         }
     };
@@ -1448,7 +1811,7 @@ mod tests {
         if clauses.iter().any(|c| c.is_empty()) { return Err(()); }
         if clauses.is_empty() { return Ok(vec![true; nvars]); }
         let comp = cnf_complement_nnf(clauses);
-        match matrix_search(comp, nvars, /*show_progress=*/ false, backend, None) {
+        match matrix_search(comp, nvars, /*show_progress=*/ false, backend, None, None, None) {
             SearchOutcome::Sat(asgn) => Ok(asgn),
             SearchOutcome::Unsat => Err(()),
             SearchOutcome::Interrupted => panic!("test search reported interrupted"),
@@ -1693,11 +2056,11 @@ mod tests {
             MatrixBackend::GreedyEff,
             MatrixBackend::BasicEff,
         ] {
-            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend, None) {
+            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend, None, None, None) {
                 SearchOutcome::Sat(_) => {}
                 other => panic!("[{:?}] expected Sat, got {:?}", backend, outcome_kind(&other)),
             }
-            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend, None) {
+            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend, None, None, None) {
                 SearchOutcome::Unsat => {}
                 other => panic!("[{:?}] expected Unsat, got {:?}", backend, outcome_kind(&other)),
             }

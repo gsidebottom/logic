@@ -141,8 +141,8 @@ propagation conflicts plus what additional sources they tap.
    `F` (every `(p1, p2)` with lit at p1 = `X`, lit at p2 = `¬X`).
    This is the matrix-method's natural "connection" set; for any
    UNSAT `F` it covers every matrix path by definition.  Capped at
-   `MAX_STATIC_COVER_PAIRS = 100_000` — if the formula's static
-   cover would exceed the cap (RoundRobin-scale), this layer is
+   `MAX_STATIC_COVER_POSITIONS = 2_000_000` v3-positions — if the
+   formula's static cover would exceed the cap, this layer is
    skipped and the cert relies on layers 1 + 2 only (which may be
    partial).
 
@@ -177,7 +177,8 @@ size is under the cap, full provenance + static cover combined.
 ## Verifying
 
 ```bash
-sat-cover-verify <cnf-file> <cert-file>
+sat-cover-verify <cnf-file> <cert-file>           # default: SAT-based
+sat-cover-verify --dfs <cnf-file> <cert-file>     # legacy pruned DFS
 ```
 
 Exit codes:
@@ -191,40 +192,158 @@ The verifier prints diagnostic info to stderr (`c` lines) and the
 verdict to stdout (`VALID UNSAT CERTIFICATE` or `INVALID
 CERTIFICATE (...)`), so it's pipeline-friendly.
 
+## Completeness check: SAT-based verifier (default)
+
+The completeness check — "every matrix path picks at least two
+positions whose lits are complementary, witnessed by some cover
+entry" — is itself a SAT problem.  Encode it as a CNF and feed it
+to CaDiCaL.
+
+### Encoding
+
+For each clause `c` with arity `k_c`, allocate `k_c` boolean
+variables `x_{c,0}, ..., x_{c, k_c−1}`.  Read `x_{c,a} = 1` as "the
+matrix path picks alt `a` of clause `c`".
+
+Add:
+
+1. **At-least-one per clause** (path picks ≥1 alt per clause):
+   `(x_{c,0} ∨ x_{c,1} ∨ ... ∨ x_{c, k_c−1})` for each `c`.
+
+2. **At-most-one per clause** (path picks ≤1 alt per clause):
+   `(¬x_{c,a} ∨ ¬x_{c,b})` for each `a < b` in clause `c`.
+
+3. **Ban each implied cover pair**: for each cert var entry,
+   iterate every (positive position, negative position) cross-product
+   and add `(¬x_{c_p, l_p} ∨ ¬x_{c_n, l_n})`.
+
+The expanded ban set is exactly the implied-pairs view of the
+cert (all `K_pos × K_neg` per variable).  The encoding is built
+once with `K_pos + K_neg` reads of the cert per variable, not
+`K_pos × K_neg`.
+
+### Decision
+
+- **CaDiCaL returns UNSAT** → every matrix-path assignment
+  contradicts some ban → the cert covers every matrix path →
+  print `VALID UNSAT CERTIFICATE`, exit 0.
+- **CaDiCaL returns SAT** → some `x_{c,a}` assignment satisfies
+  exactly-one-per-clause and avoids every ban → uncovered matrix
+  path exists → decode the model into the clause-by-clause alt
+  selection, print it, exit 1.
+
+### Why it's better than DFS
+
+The DFS-based verifier is fundamentally exponential — it walks
+the matrix tree pruning at each cover hit, but with `n` clauses
+of arity `k` the tree has `k^n` leaves.  On PHP-5-4 (5 clauses
+of arity 4 + 20 negation chains) the pruning isn't tight enough
+and the DFS hangs for minutes.
+
+The SAT-based verifier reuses 30 years of conflict-driven
+backjumping and clause learning to find the uncovered path (or
+prove there isn't one) — and on PHP-style problems where CaDiCaL
+is strong, this is orders of magnitude faster than the DFS.
+Quick measurements (May 2026, release build):
+
+| Input                  | DFS verifier  | SAT verifier (CaDiCaL) |
+|------------------------|---------------|-------------------------|
+| tiny (4-cls UNSAT)     | <1 ms         | <1 ms                   |
+| PHP-3-2                | <1 ms         | <1 ms                   |
+| PHP-4-3                | 3 ms          | <1 ms                   |
+| PHP-5-4                | hangs (4+min) | <1 ms                   |
+| RoundRobin n16_d13     | hangs         | hangs (see below)       |
+
+The SAT-based verifier is now the default.  Pass `--dfs` to fall
+back to the explicit pruned DFS — useful for tiny inputs where you
+want maximally simple verification logic, or as a sanity check
+against a SAT-side bug.
+
+### Verifier hardness is bounded below by original-problem hardness
+
+A subtle but important property of the SAT-based verifier on
+**static-cover** certs (= certs containing every complementary
+pair in F's matrix):
+
+> If the cert is the full static cover of F, then the
+> verification SAT instance is *equivalent* to F itself.
+
+Why: the encoded CSP says "pick one alt per clause, avoiding
+every ban".  A satisfying assignment is a matrix path that
+includes no cover pair.  When the cover is the full static cover
+of F, this is exactly a matrix path with no complementary pair —
+i.e., a satisfying assignment for F.  CSP is UNSAT iff F is
+UNSAT, and the proof difficulty matches.
+
+For inputs whose UNSAT proof is structurally easy for CDCL
+(PHP-family, most SAT-competition UNSAT instances), the SAT
+verifier inherits that easiness and runs in <1 ms.  For inputs
+where the UNSAT proof is *hard* for CDCL (RoundRobin n16_d13
+takes minutes for CaDiCaL even directly on the CNF), the SAT
+verifier inherits that hardness — there is no shortcut from
+verifying the cover.
+
+This is fundamental rather than an artifact of the encoding:
+any sound verifier capable of checking arbitrary covers must, in
+the worst case, do work proportional to the underlying UNSAT
+proof.  The win the SAT-based approach offers is *delegating
+that work to a vetted CDCL solver instead of an exponential
+explicit DFS*.
+
+A specialized format that embeds resolution-style replay info
+(beyond just the cover-pair list) could break this barrier, at
+the cost of larger certs and more prover-side bookkeeping —
+e.g., DRAT-style verifiers run in time linear in the proof
+trace.
+
+### Soundness considerations
+
+The SAT-based verifier *does* add a SAT solver (CaDiCaL) to the
+trusted base, which is bigger surface area than the DFS.  But:
+
+- CaDiCaL is already a dependency of this codebase (used in
+  cross-checking) and has been vetted as a SAT-competition
+  reference implementation.
+- The encoding is short (~40 lines) and easy to inspect.
+- A bug in CaDiCaL would have to falsely report UNSAT — i.e.
+  declare a SAT instance unsatisfiable — to make this verifier
+  wrongly accept an incomplete cert.  This is the SAT-solver
+  bug class with the most external attention.
+
+If even CaDiCaL is too much trusted base for your use case, run
+the verifier with `--dfs` on tiny inputs.
+
 ## What the verifier checks
 
-### 1. Per-pair validity (linear pass)
+### 1. Per-entry validity (linear pass)
 
-For each cert pair:
-- Both `<c>:<l>` positions have `c < num_clauses` and `l < |F[c]|`.
-- The lits at the two positions are genuinely complementary: same
-  variable, opposite signs.
-- Pair is not a self-pair (`a != b`).
+For each cert var-entry `v X + ... - ...`:
+- All positions `<c>:<l>` have `c < num_clauses` and `l < |F[c]|`.
+- Positions after `+` actually visit `+X` in the complement-NNF
+  walk (i.e., `−F[c][l] == +X`).
+- Positions after `-` actually visit `−X`.
+- Both the positive and negative position sets are non-empty
+  (otherwise the entry implies no pairs).
 
-If any pair fails this, the cert is rejected immediately.
+If any entry fails this, the cert is rejected immediately.
 
-### 2. Completeness (pruned DFS over matrix paths)
+### 2. Completeness
 
-Walk the matrix tree clause by clause. Track per cover pair:
-- `remaining`: number of constraints not yet matched. Initially 2
-  (one per cover position); decremented when a position is matched.
-- `compatible`: still consistent with the current partial?
-- A counter `covered_count` of pairs with `compatible && remaining
-  == 0` — pairs currently proving the subtree covered.
+Two algorithms are implemented, both checking the same property
+("every matrix path is covered"):
 
-At each DFS step:
-- Choose a lit-index for the next clause.
-- For each cover pair that constrains this clause:
-  - Match (decrement `remaining`) OR invalidate (`compatible = false`).
-- If `covered_count > 0`, prune the subtree — some pair's two
-  positions are both in the current partial, so every extension has
-  the `(X, ¬X)` pair.
-- If we reach a full matrix path (all clauses chosen) without
-  pruning, the cert is incomplete and the verifier reports the
-  uncovered path.
+- **SAT-based (default)** — encode the negation of cert
+  completeness as a CNF and feed to CaDiCaL.  See the [SAT-based
+  verifier](#completeness-check-sat-based-verifier-default)
+  section above for the encoding and the speed numbers.
 
-On backtrack, the per-pair state changes are undone exactly so the
-counters stay consistent.
+- **Pruned DFS (`--dfs`)** — explicit walk of the matrix tree.
+  Per cert var-entry, track how many positive-side positions and
+  how many negative-side positions are currently matched by the
+  partial.  A running `active_var_count` counts vars with both
+  polarities matched — when `> 0`, prune the subtree.  On
+  backtrack, the state is reversed.  Exponential worst case;
+  hangs on PHP-5-4 and up.
 
 ## Soundness
 
@@ -232,9 +351,12 @@ The verifier doesn't trust the prover's controllers (CDCL, Effective
 layer, bubble-up, learned clauses). Its surface area is:
 
 - DIMACS parsing (`parse_dimacs`, ~30 lines).
-- Cert parsing (`parse_cert`, ~25 lines).
-- Per-pair validation (`validate_pair`, ~12 lines).
-- Pruned DFS (`CoverDfs::verify` + `dfs`, ~90 lines).
+- Cert parsing (`parse_cert`, ~50 lines).
+- Per-entry validation (`validate_entry`, ~30 lines).
+- SAT-based completeness check (`sat_verify`, ~45 lines around
+  the CaDiCaL encoding).
+- Pruned DFS (`CoverDfs::verify` + `dfs`, ~90 lines), used when
+  `--dfs` is passed.
 
 If the verifier and prover disagree, the cert is wrong. (Or the
 verifier has a bug — but the verifier is small enough to inspect by
@@ -242,34 +364,50 @@ eye; see `src/bin/sat_cover_verify.rs`.)
 
 ## Limitations and future work
 
-1. **Static cover cap (`MAX_STATIC_COVER_PAIRS = 100_000`).**
-   Formulas whose static structural cover exceeds the cap (e.g.
-   RoundRobin_n16_d13's ~62M-pair static cover) fall back to
-   CDCL-conflict-only emission, which can still be partial.  Raising
-   the cap is straightforward but the corresponding cert file would
-   grow to hundreds of MB to GB; better long-term solutions are
+1. **Static cover cap (`MAX_STATIC_COVER_POSITIONS = 2_000_000`).**
+   Formulas whose static structural cover would require more than
+   2M positions in the v3 cert fall back to CDCL-conflict-only
+   emission, which can still be partial.  RoundRobin n16_d13 fits
+   under the cap (63,960 positions); much larger industrial
+   instances may not.  Raising the cap is straightforward, but
+   beyond a few million positions the cert file approaches GB
+   sizes — at which point better long-term solutions are
    compressed cert formats (e.g. trie-structured) or a smarter
    cover-derivation algorithm that picks a minimal sub-cover
    rather than enumerating every pair.
 
-2. **Verifier completeness DFS is exponential in worst case.**
-   Even with a complete cert, the verifier walks the matrix tree
-   pruning at each pair-match.  On medium-large formulas (PHP-5-4
-   and up) the pruning isn't always tight enough to keep the DFS
-   polynomial, and the verifier can take many minutes.  Two
-   complementary improvements: (a) build a constraint-trie of
-   the cover pairs so each DFS node's match-check is O(log #pairs)
-   instead of O(#pairs); (b) reorder DFS clauses by "hits most
-   pairs" heuristic to prune faster.
+2. **Verifier hardness is lower-bounded by original-problem
+   hardness.**  For static-cover certs, the SAT verifier's CSP
+   is equivalent to F (see "Verifier hardness is bounded below
+   by original-problem hardness" above).  RoundRobin n16_d13's
+   cert has 62,400 pairs and verifies-in-principle, but the
+   verification SAT instance is itself a structured CSP that
+   CaDiCaL doesn't crack in a usable budget — same hardness
+   wall as solving RoundRobin directly with CaDiCaL.  Breaking
+   this wall requires a richer cert format that embeds
+   resolution-style replay info (DRAT-equivalent), not just the
+   complementary-pair list.
 
-3. **Preprocessed input.** If `--preprocess` was on, the cert
+3. **SAT-encoding size on huge certs.** The default SAT-based
+   verifier expands every implied pair into one ban clause, so
+   the encoding has `Σ K_pos×K_neg` clauses (the flat-pair count).
+   On RoundRobin n16_d13 this is 62,400 ban clauses — small for
+   CaDiCaL.  A cert with millions of implied pairs would push the
+   encoding into hundreds of MB; if that ever becomes a real
+   problem, switch to per-entry encoding: introduce auxiliary
+   vars `pos_picked_X` = OR of `x_{c,l}` over var X's positive
+   positions, same for negative, then ban `pos_picked_X ∧
+   neg_picked_X` per var — encoding size becomes linear in
+   positions, not pairs.
+
+4. **Preprocessed input.** If `--preprocess` was on, the cert
    references the preprocessed CNF's clause indices, not the input
    CNF's. The verifier currently expects the input CNF. Either
    re-run with `--no-preprocess`, or extend the cert format to embed
    the preprocessed CNF (so the verifier reads it from the cert
    file).
 
-4. **`smart` doesn't get the static cover.** Currently only
+5. **`smart` doesn't get the static cover.** Currently only
    `cdcl --emit-cover` does up-front static cover enumeration
    (smart relies on its own cover-event emission).  For tiny inputs
    where smart could benefit from a guaranteed-complete cert, the
@@ -293,60 +431,48 @@ c UNSAT in 0.5ms
 s UNSATISFIABLE
 
 $ cat tiny.cover
-# sat-cover-verify cert v2
+# sat-cover-verify cert v3
 # source: tiny.cover backend=smart preprocess=off
-k 0:0 2:0
-k 0:0 3:0
-k 2:1 3:1
-k 1:1 2:1
-k 1:0 2:0
-k 1:0 3:0
-k 0:1 3:1
-k 0:1 1:1
-# verdict UNSAT (8 distinct pairs)
+v 1 + 2:0 3:0 - 0:0 1:0
+v 2 + 1:1 3:1 - 0:1 2:1
+# verdict UNSAT (2 vars, 8 implied pairs)
 
 $ sat-cover-verify tiny.cnf tiny.cover
 c F: vars=2 clauses=4
-c cert: 8 cover pairs
-c per-pair validity: OK (8 pairs)
-c completeness: OK (0.0ms)
+c cert: 2 vars, 8 positions, 8 implied pairs
+c per-entry validity: OK (2 entries)
+c completeness: OK via SAT (0.1ms, encoding: 8 vars 16 clauses)
 VALID UNSAT CERTIFICATE
 $ echo $?
 0
 ```
 
-## Worked example: cdcl partial cert (PHP-4-3)
+## Worked example: PHP-5-4 (where the SAT verifier shines)
 
-Showing the learned-clause limitation in action.  PHP-4-3 has only
-12 vars and 22 clauses — still tiny — but CDCL's propagation chain
-already involves learned clauses, so `cdcl --emit-cover` leaves the
-cert partial:
+PHP-5-4 has 20 vars and 45 clauses.  Static cover is 80 implied
+pairs.  The pruned DFS hangs for 4+ minutes on this input; the
+SAT-based verifier confirms in <1 ms:
 
 ```bash
-$ sat --backend cdcl  --no-preprocess --emit-cover php43.cdcl < php43.cnf
-$ sat --backend smart --no-preprocess --emit-cover php43.smart < php43.cnf
+$ sat --backend cdcl --no-preprocess --emit-cover php54.cover < php54.cnf
+c backend: matrix.cdcl
+c UNSAT in 2.0ms
+s UNSATISFIABLE
 
-$ wc -l php43.cdcl php43.smart
-  34  php43.cdcl       # ~30 pairs
-  40  php43.smart      # 36 pairs
-
-$ sat-cover-verify php43.cnf php43.cdcl
-c cert: 30 cover pairs
-c per-pair validity: OK (30 pairs)
-INCOMPLETE CERT: matrix path not covered by any entry
-  uncovered path (clause:lit_idx → lit): 0:0=-1 1:0=-4 2:1=-8 ...
-INVALID CERTIFICATE (incomplete)
-
-$ sat-cover-verify php43.cnf php43.smart
-c cert: 36 cover pairs
-c per-pair validity: OK (36 pairs)
-c completeness: OK (3.1ms)
+$ sat-cover-verify php54.cnf php54.cover
+c F: vars=20 clauses=45
+c cert: 20 vars, 100 positions, 80 implied pairs
+c per-entry validity: OK (20 entries)
+c completeness: OK via SAT (0.2ms, encoding: 100 vars 195 clauses)
 VALID UNSAT CERTIFICATE
+
+$ sat-cover-verify --dfs php54.cnf php54.cover
+# ... runs for many minutes, eventually finishes or hits Ctrl-C
 ```
 
-cdcl's cert is sound for the 30 pairs it emits (per-pair validation
-passes), but the verifier finds a matrix path none of those 30 pairs
-cover.  Smart's 36 pairs are enough.
+The pigeon-hole structure CDCL handles trivially also makes the
+matrix-path CSP easy for CaDiCaL — the SAT verifier finishes
+in microseconds.
 
 ## Worked example: SAT problem (cert must FAIL)
 
@@ -363,8 +489,9 @@ v 1 2 3 0
 
 $ sat-cover-verify sat_simple.cnf sat.cover
 c F: vars=3 clauses=2
-c cert: 1 cover pairs
-c per-pair validity: OK (1 pairs)
+c cert: 1 vars, 2 positions, 1 implied pairs
+c per-entry validity: OK (1 entries)
+c SAT-based completeness: incomplete (0.1ms)
 INCOMPLETE CERT: matrix path not covered by any entry
   uncovered path (clause:lit_idx → lit): 0:0=-1 1:1=-3
 INVALID CERTIFICATE (incomplete)
@@ -373,18 +500,24 @@ $ echo $?
 ```
 
 The SAT search emitted one cover event before finding an uncovered
-SAT path; the cert is partial by construction. The verifier reports
-the specific uncovered matrix path, confirming the cert wouldn't
-suffice as a UNSAT proof.
+SAT path; the cert is partial by construction. The verifier
+extracts the uncovered matrix path from CaDiCaL's satisfying model
+and reports it, confirming the cert wouldn't suffice as a UNSAT
+proof.
 
 ## Failure modes the verifier catches
 
-- **Per-pair corruption** — cover positions point at non-existent
-  clauses or lit indices, or the cover pair isn't actually
-  complementary.
+- **Per-entry corruption** — a position points at a non-existent
+  clause or lit index, or a position's visited lit doesn't match
+  the entry's polarity declaration.
+- **Empty positive or negative side** — an entry that doesn't
+  imply any pairs (probably a writer bug).
 - **Incomplete cert** — the cert misses some matrix path; the
-  verifier surfaces the specific uncovered choice sequence.
-- **Format errors** — unrecognized line.
+  verifier surfaces the specific uncovered choice sequence
+  (decoded from CaDiCaL's satisfying model under the SAT
+  backend, or from the DFS state under `--dfs`).
+- **Format errors** — unrecognized line, bad position token,
+  position-before-marker, etc.
 
 What the verifier does NOT catch (out of scope):
 - A wrong CNF on the command line (it just verifies the cert against

@@ -43,22 +43,20 @@
 //!    - The positive and negative sets are non-empty (else this var
 //!      contributes nothing).
 //!
-//! 2. **Completeness (pruned DFS over matrix paths)**.  Track per
-//!    variable: how many positive positions have been matched by the
-//!    current partial assignment, and how many negative.  When BOTH
-//!    counts are > 0 for some variable, the subtree is covered (the
-//!    matrix path has both `+X` and `−X` on it).  A running
-//!    `active_var_count` keeps the per-step check O(1):
-//!    - On push: each (var, polarity) whose set includes the new
-//!      position gets its matched-count incremented.  If a var
-//!      transitions from "only one polarity active" → "both
-//!      polarities active", increment active_var_count.
-//!    - On backtrack: reverse the increments; decrement
-//!      active_var_count when a var loses the both-polarities
-//!      condition.
-//!    - At each DFS node, prune iff `active_var_count > 0`.
-//!    - If a complete matrix path (all clauses chosen) is reached
-//!      without pruning, the cert is incomplete.
+//! 2. **Completeness — SAT-based (default)**.  Encode "some matrix
+//!    path is uncovered" as a SAT instance:
+//!    - One boolean `x_{c,a}` per (clause, alt) — "path picks alt
+//!      `a` at clause `c`".
+//!    - Exactly-one per clause: at-least-one + pairwise at-most-one.
+//!    - Ban each implied cover pair: `(¬x_{c_p,l_p} ∨ ¬x_{c_n,l_n})`
+//!      for every (positive_pos, negative_pos) cross product.
+//!    Run CaDiCaL.  UNSAT → cert is complete.  SAT → decode the
+//!    model into the uncovered path.
+//!
+//! 3. **Completeness — pruned DFS (`--dfs`)**.  Track per variable
+//!    how many positive and negative positions are matched.  Prune
+//!    when any var has both polarities matched.  Exponential
+//!    worst-case but never instantiates the implied-pair set.
 //!
 //! # Soundness
 //!
@@ -68,7 +66,8 @@
 //! - DIMACS parsing (~30 lines).
 //! - v3 cert parsing (~50 lines).
 //! - Per-entry validation (~30 lines).
-//! - Pruned DFS (~80 lines).
+//! - SAT-based completeness via CaDiCaL (~45 lines).
+//! - Pruned DFS (~90 lines, only used with `--dfs`).
 //!
 //! Disagreement between verifier and prover means the cert is
 //! invalid (or the verifier has a bug — but it's small enough to
@@ -77,8 +76,11 @@
 //! # CLI
 //!
 //! ```text
-//! sat-cover-verify <cnf-file> <cert-file>
+//! sat-cover-verify [--dfs] <cnf-file> <cert-file>
 //! ```
+//!
+//! Default: SAT-based completeness via CaDiCaL.
+//! With `--dfs`: legacy pruned DFS.
 //!
 //! Exits 0 on valid, 1 on cert error, 2 on usage / I/O error.
 
@@ -258,7 +260,113 @@ fn validate_entry(f: &Cnf, e: &VarEntry, idx: usize) -> Result<(), String> {
     Ok(())
 }
 
-// ─── Completeness check (pruned DFS) ────────────────────────────────────────
+// ─── Completeness via SAT (default) ─────────────────────────────────────────
+
+/// Result of the SAT-based completeness check.
+enum SatVerdict {
+    /// Cert is complete; CaDiCaL proved no uncovered matrix path
+    /// exists.  Includes encoding stats.
+    Valid { vars: usize, clauses: usize, elapsed_ms: f64 },
+    /// Cert is incomplete; an uncovered matrix path was decoded
+    /// from CaDiCaL's model (alt-index per clause, in clause
+    /// order).
+    Incomplete { path: Vec<usize>, elapsed_ms: f64 },
+}
+
+/// Encode "some matrix path is uncovered" as a CNF; solve with
+/// CaDiCaL; decide.
+fn sat_verify(f: &Cnf, cert: &Cert) -> SatVerdict {
+    let start = std::time::Instant::now();
+
+    // Allocate var IDs: x_{c,a} = var_map[c][a].  CaDiCaL var IDs
+    // are 1-indexed.
+    let mut next: i32 = 1;
+    let var_map: Vec<Vec<i32>> = f.clauses.iter().map(|cl| {
+        cl.iter().map(|_| { let v = next; next += 1; v }).collect()
+    }).collect();
+
+    let mut solver: cadical::Solver = cadical::Solver::new();
+    let mut n_clauses_added: usize = 0;
+
+    // Exactly-one per clause.
+    for c in 0..f.clauses.len() {
+        let k = f.clauses[c].len();
+        if k == 0 {
+            // Empty clause in the original: every path is already
+            // impossible to extend through it.  Skip; the at-least-one
+            // would be the empty clause = false, immediately UNSAT
+            // (correctly, since a CNF with an empty clause is trivially
+            // unsat and the cert is vacuously complete).
+            solver.add_clause(std::iter::empty());
+            n_clauses_added += 1;
+            continue;
+        }
+        // at-least-one
+        let alo: Vec<i32> = var_map[c].iter().copied().collect();
+        solver.add_clause(alo);
+        n_clauses_added += 1;
+        // at-most-one (pairwise)
+        for a in 0..k {
+            for b in (a + 1)..k {
+                solver.add_clause([-var_map[c][a], -var_map[c][b]]);
+                n_clauses_added += 1;
+            }
+        }
+    }
+
+    // Ban each implied cover pair.
+    for entry in &cert.vars {
+        for &(cp, lp) in &entry.positive {
+            let xp = var_map[cp][lp];
+            for &(cn, ln) in &entry.negative {
+                let xn = var_map[cn][ln];
+                solver.add_clause([-xp, -xn]);
+                n_clauses_added += 1;
+            }
+        }
+    }
+
+    let n_vars_added = (next - 1) as usize;
+
+    match solver.solve() {
+        Some(false) => SatVerdict::Valid {
+            vars: n_vars_added,
+            clauses: n_clauses_added,
+            elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+        },
+        Some(true) => {
+            // Decode model: pick the (unique) true x_{c,a} per clause.
+            let mut path: Vec<usize> = Vec::with_capacity(f.clauses.len());
+            for c in 0..f.clauses.len() {
+                let k = f.clauses[c].len();
+                let mut picked: Option<usize> = None;
+                for a in 0..k {
+                    if solver.value(var_map[c][a]) == Some(true) {
+                        picked = Some(a);
+                        break;
+                    }
+                }
+                // If no var is true (could happen if k==0), report 0.
+                path.push(picked.unwrap_or(0));
+            }
+            SatVerdict::Incomplete {
+                path,
+                elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+            }
+        }
+        None => {
+            // CaDiCaL aborted (resource exhaustion / cancellation).
+            // We don't set callbacks, so this shouldn't happen, but
+            // surface it conservatively as incomplete.
+            SatVerdict::Incomplete {
+                path: vec![0; f.clauses.len()],
+                elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+            }
+        }
+    }
+}
+
+// ─── Completeness via pruned DFS (--dfs fallback) ───────────────────────────
 
 /// Per-variable runtime state during the DFS.
 struct VarState {
@@ -367,22 +475,29 @@ impl<'a> CoverDfs<'a> {
 
 // ─── Main ───────────────────────────────────────────────────────────────────
 
+fn usage() -> ExitCode {
+    eprintln!("usage: sat-cover-verify [--dfs] <cnf-file> <cert-file>");
+    ExitCode::from(2)
+}
+
 fn main() -> ExitCode {
-    let mut args = env::args().skip(1);
-    let cnf_path: PathBuf = match args.next() {
-        Some(p) => p.into(),
-        None => {
-            eprintln!("usage: sat-cover-verify <cnf-file> <cert-file>");
-            return ExitCode::from(2);
+    let mut use_dfs = false;
+    let mut positional: Vec<String> = Vec::new();
+    for a in env::args().skip(1) {
+        match a.as_str() {
+            "--dfs" => use_dfs = true,
+            "--sat" => use_dfs = false,
+            "-h" | "--help" => return usage(),
+            _ if a.starts_with("--") => {
+                eprintln!("unknown flag: {}", a);
+                return usage();
+            }
+            _ => positional.push(a),
         }
-    };
-    let cert_path: PathBuf = match args.next() {
-        Some(p) => p.into(),
-        None => {
-            eprintln!("usage: sat-cover-verify <cnf-file> <cert-file>");
-            return ExitCode::from(2);
-        }
-    };
+    }
+    if positional.len() != 2 { return usage(); }
+    let cnf_path: PathBuf = positional[0].clone().into();
+    let cert_path: PathBuf = positional[1].clone().into();
 
     let f = match File::open(&cnf_path).map_err(|e| e.to_string())
         .and_then(|f| parse_dimacs(BufReader::new(f)))
@@ -420,26 +535,50 @@ fn main() -> ExitCode {
     }
     eprintln!("c per-entry validity: OK ({} entries)", cert.vars.len());
 
-    // Completeness DFS.
-    let mut dfs = CoverDfs::new(&f, &cert);
-    let start = std::time::Instant::now();
-    match dfs.verify() {
-        Ok(()) => {
-            let ms = start.elapsed().as_secs_f64() * 1000.0;
-            eprintln!("c completeness: OK ({:.1}ms)", ms);
-            let _ = writeln!(io::stdout(), "VALID UNSAT CERTIFICATE");
-            ExitCode::from(0)
-        }
-        Err(path) => {
-            eprintln!("INCOMPLETE CERT: matrix path not covered by any entry");
-            eprint!("  uncovered path (clause:lit_idx → lit):");
-            for (c, &l) in path.iter().enumerate() {
-                let lit = -f.clauses[c][l];
-                eprint!(" {}:{}={}", c, l, lit);
+    if use_dfs {
+        // Legacy pruned DFS.
+        let mut dfs = CoverDfs::new(&f, &cert);
+        let start = std::time::Instant::now();
+        match dfs.verify() {
+            Ok(()) => {
+                let ms = start.elapsed().as_secs_f64() * 1000.0;
+                eprintln!("c completeness: OK via DFS ({:.1}ms)", ms);
+                let _ = writeln!(io::stdout(), "VALID UNSAT CERTIFICATE");
+                ExitCode::from(0)
             }
-            eprintln!();
-            let _ = writeln!(io::stdout(), "INVALID CERTIFICATE (incomplete)");
-            ExitCode::from(1)
+            Err(path) => {
+                eprintln!("INCOMPLETE CERT: matrix path not covered by any entry");
+                eprint!("  uncovered path (clause:lit_idx → lit):");
+                for (c, &l) in path.iter().enumerate() {
+                    let lit = -f.clauses[c][l];
+                    eprint!(" {}:{}={}", c, l, lit);
+                }
+                eprintln!();
+                let _ = writeln!(io::stdout(), "INVALID CERTIFICATE (incomplete)");
+                ExitCode::from(1)
+            }
+        }
+    } else {
+        // Default: SAT-based completeness check.
+        match sat_verify(&f, &cert) {
+            SatVerdict::Valid { vars, clauses, elapsed_ms } => {
+                eprintln!("c completeness: OK via SAT ({:.1}ms, encoding: {} vars {} clauses)",
+                          elapsed_ms, vars, clauses);
+                let _ = writeln!(io::stdout(), "VALID UNSAT CERTIFICATE");
+                ExitCode::from(0)
+            }
+            SatVerdict::Incomplete { path, elapsed_ms } => {
+                eprintln!("c SAT-based completeness: incomplete ({:.1}ms)", elapsed_ms);
+                eprintln!("INCOMPLETE CERT: matrix path not covered by any entry");
+                eprint!("  uncovered path (clause:lit_idx → lit):");
+                for (c, &l) in path.iter().enumerate() {
+                    let lit = -f.clauses[c][l];
+                    eprint!(" {}:{}={}", c, l, lit);
+                }
+                eprintln!();
+                let _ = writeln!(io::stdout(), "INVALID CERTIFICATE (incomplete)");
+                ExitCode::from(1)
+            }
         }
     }
 }

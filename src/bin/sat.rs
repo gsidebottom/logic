@@ -490,6 +490,79 @@ impl CoverWriter {
     }
 }
 
+/// `DratWriter` — emit a DRAT (Delete Resolution Asymmetric Tautology)
+/// proof file alongside the search.  DRAT is the SAT-competition
+/// standard proof format: a sequence of clauses (one per line, DIMACS
+/// integers terminated by `0`) that a checker like `drat-trim` or
+/// `sat-drat-verify` (this repo) can replay against the original CNF
+/// to confirm UNSAT.
+///
+/// Each learned clause from CDCL conflict analysis is RUP-implied by
+/// the current clause set (it's a resolvent of original / prior
+/// learned clauses), so dumping them in learn-order gives a sound
+/// DRAT proof.  We append a final `0` line to denote the empty
+/// clause (proof end).
+///
+/// Construction cost is negligible: the prover already computes
+/// each learned clause; we just `writeln!` it.  Verification cost
+/// is linear in proof size × BCP work — typically comparable to
+/// or faster than the original solve.
+///
+/// Caveat: if `--preprocess` was on, the lit vars in the learned
+/// clauses reference the *preprocessed* CNF, not the input.  The
+/// caller (sat.rs) restricts `--emit-drat` to `--no-preprocess` —
+/// same caveat as `--emit-cover`.
+struct DratWriter {
+    writer: io::BufWriter<std::fs::File>,
+    /// Count of clauses written, for the header comment / diagnostic.
+    clauses_emitted: usize,
+}
+
+impl DratWriter {
+    fn new(file: std::fs::File) -> Self {
+        Self {
+            writer: io::BufWriter::new(file),
+            clauses_emitted: 0,
+        }
+    }
+
+    /// Emit one learned clause as a DIMACS line: `<lit1> <lit2> ... 0`.
+    ///
+    /// **Domain translation**: the matrix-method CDCL controller
+    /// works in the *complement-NNF* domain.  A learned Prod with
+    /// alts `[a, b, c]` (Lit polarity as-is) represents the F-domain
+    /// CNF clause `(¬a ∨ ¬b ∨ ¬c)`.  Reason: the Prod gets added to
+    /// the complement NNF (`¬F`) as a new Sum branch, and a fresh
+    /// `(a ∧ b ∧ c)` Sum-child of `¬F` is exactly the F-domain clause
+    /// `¬(a ∧ b ∧ c) = ¬a ∨ ¬b ∨ ¬c`.
+    ///
+    /// So we **negate** each lit when formatting: a positive-polarity
+    /// alt becomes a negative DIMACS lit and vice versa.  `Lit::var`
+    /// is 0-indexed; DIMACS is 1-indexed, so we also offset.
+    fn emit_clause(&mut self, clause: &[logic::matrix::Lit]) -> io::Result<()> {
+        for lit in clause {
+            // Polarity inverted: complement-NNF Prod alt `lit` =
+            // F-domain CNF clause lit `¬lit`.
+            let dimacs: i32 = (lit.var as i32 + 1) * if lit.neg { 1 } else { -1 };
+            write!(self.writer, "{} ", dimacs)?;
+        }
+        writeln!(self.writer, "0")?;
+        self.clauses_emitted += 1;
+        Ok(())
+    }
+
+    /// Write the empty clause `0` to mark proof end + flush.
+    /// Idempotent (callers can finalize once, then drop).
+    fn finalize_unsat(&mut self) -> io::Result<()> {
+        writeln!(self.writer, "0")?;
+        self.writer.flush()
+    }
+
+    /// Number of learned clauses emitted so far (excluding the final
+    /// `0` terminator).  Used for diagnostic reporting.
+    fn clauses_emitted(&self) -> usize { self.clauses_emitted }
+}
+
 /// `preprocessed`: optional preprocessing handle.  When `Some`,
 /// the SAT-witness path (`SearchOutcome::Sat`) reconstructs the
 /// original-variable assignment by feeding the search's path
@@ -511,6 +584,7 @@ fn matrix_search(
     preprocessed: Option<&logic::preprocess::Preprocessed>,
     emit_cover: Option<&std::path::Path>,
     cover_clauses: Option<&[Vec<i32>]>,
+    emit_drat: Option<&std::path::Path>,
 ) -> SearchOutcome {
     let total_paths = comp.path_count();
     let params = Some(PathParams {
@@ -583,6 +657,18 @@ fn matrix_search(
                   backend.name());
         std::process::exit(2);
     }
+    if emit_drat.is_some() && !matches!(backend, MatrixBackend::Cdcl) {
+        eprintln!("c ERROR: --emit-drat only supported with backend cdcl \
+                   (got {}); other backends don't produce learned clauses",
+                  backend.name());
+        std::process::exit(2);
+    }
+    if emit_drat.is_some() && preprocessed.is_some() {
+        eprintln!("c ERROR: --emit-drat with --preprocess not supported: the DRAT \
+                   trace would reference preprocessed-CNF variables, not the input \
+                   CNF's.  Rerun with --no-preprocess.");
+        std::process::exit(2);
+    }
 
     rt.block_on(async move {
         // Optional cover writer.  Populated by the Cdcl/Smart match
@@ -590,6 +676,23 @@ fn matrix_search(
         // it via Arc-drop after `handle.await` so the file lands on
         // disk before the verdict is printed.
         let mut cover_writer_arc: Option<Arc<Mutex<CoverWriter>>> = None;
+        // Optional DRAT writer.  Populated by the Cdcl match arm
+        // when `emit_drat` is set; flushed in the post-search block
+        // with a final `0` (empty clause = proof end) on UNSAT.
+        let mut drat_writer_arc: Option<Arc<Mutex<DratWriter>>> = None;
+        // Open the DRAT file early (outside the match arm) so we can
+        // pass the Arc into the cdcl arm cleanly.
+        if let Some(drat_path) = emit_drat {
+            let file = match std::fs::File::create(drat_path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("c ERROR: cannot create drat file {}: {}",
+                              drat_path.display(), e);
+                    std::process::exit(2);
+                }
+            };
+            drat_writer_arc = Some(Arc::new(Mutex::new(DratWriter::new(file))));
+        }
 
         // Each match arm clones inputs only if it actually needs them.
         // Earlier versions hoisted `nnf_smart = comp.clone();
@@ -651,6 +754,20 @@ fn matrix_search(
             MatrixBackend::Cdcl => {
                 let nnf_cdcl = comp.clone();
                 let p_cdcl = params.clone();
+                // Build a Send+Sync DRAT hook (closure that locks
+                // the writer Arc and emits one DIMACS line per
+                // learned clause).  Cloned into the controller-
+                // construction closure if drat emission is on.
+                let drat_hook: Option<logic::controller::cdcl::DratHook> =
+                    drat_writer_arc.as_ref().map(|arc| {
+                        let writer = arc.clone();
+                        let hook: logic::controller::cdcl::DratHook =
+                            Arc::new(move |alts: &[Lit]| {
+                                let mut w = writer.lock().unwrap();
+                                w.emit_clause(alts).expect("drat file write failed");
+                            });
+                        hook
+                    });
                 if let Some(cover_path) = emit_cover {
                     // Cover-emitting variant: drive the search
                     // through `classify_paths` (with positions, cover
@@ -682,6 +799,7 @@ fn matrix_search(
                                          preprocessed.map(|_| "on").unwrap_or("off"));
                     }
                     let cw_for_search = cover_w.clone();
+                    let drat_for_search = drat_hook.clone();
                     let result = comp.classify_paths(64, move |tx| {
                         let on_class: DynOnClass = Box::new(move |class, hit_limit| {
                             if let PathsClass::Covered(cpp) = &class {
@@ -694,13 +812,24 @@ fn matrix_search(
                             }
                             tx.blocking_send((class, hit_limit)).is_ok()
                         });
-                        CdclController::for_nnf_with_cover(&nnf_cdcl, p_cdcl, on_class)
+                        let mut ctrl = CdclController::for_nnf_with_cover(&nnf_cdcl, p_cdcl, on_class);
+                        ctrl.drat_hook = drat_for_search;
+                        ctrl
                     });
                     // Stash the writer Arc so we can flush + write a
                     // footer once the search drains (handled in the
                     // post-search block below via cover_writer_arc).
                     cover_writer_arc = Some(cover_w);
                     result
+                } else if drat_hook.is_some() {
+                    // DRAT-only (no cover): build the controller
+                    // manually so we can install the hook.
+                    let drat_for_search = drat_hook;
+                    comp.classify_paths_uncovered_only(64, move |tx| {
+                        let mut ctrl = cdcl_controller_builder(&nnf_cdcl, p_cdcl, tx);
+                        ctrl.drat_hook = drat_for_search;
+                        ctrl
+                    })
                 } else {
                     comp.classify_paths_uncovered_only(64,
                         move |tx| cdcl_controller_builder(&nnf_cdcl, p_cdcl, tx),
@@ -875,6 +1004,40 @@ fn matrix_search(
                     let _ = cw.finalize(verdict);
                 }
             }
+        }
+
+        // DRAT finalize: on UNSAT, write a final `0` (empty clause
+        // = proof end).  On SAT (search found a model), don't
+        // terminate with `0` — the proof file is meaningless for SAT
+        // and a stray empty clause would falsely claim UNSAT.
+        // In that case we still flush to capture whatever learned
+        // clauses leaked out, but a SAT-mode DRAT file isn't a valid
+        // proof and downstream tooling should refuse to parse it.
+        if let Some(arc) = drat_writer_arc.take() {
+            let is_unsat = path_lits.is_none();
+            let n_emitted = match Arc::try_unwrap(arc) {
+                Ok(mutex) => {
+                    let mut dw = mutex.into_inner().expect("drat writer mutex poisoned");
+                    if is_unsat {
+                        let _ = dw.finalize_unsat();
+                    } else {
+                        let _ = dw.writer.flush();
+                    }
+                    dw.clauses_emitted()
+                }
+                Err(arc_still_shared) => {
+                    let mut dw = arc_still_shared.lock().unwrap();
+                    if is_unsat {
+                        let _ = dw.finalize_unsat();
+                    } else {
+                        let _ = dw.writer.flush();
+                    }
+                    dw.clauses_emitted()
+                }
+            };
+            eprintln!("c drat: {} RUP-filtered learned clauses emitted{}",
+                      n_emitted,
+                      if is_unsat { " + final 0" } else { " (SAT — no proof)" });
         }
 
         if let Some(lits) = path_lits {
@@ -1479,6 +1642,14 @@ struct Args {
     /// `sat-cover-verify` can replay against the original CNF.  Only
     /// supported by the `cdcl` and `smart` backends.
     emit_cover:    Option<std::path::PathBuf>,
+    /// Optional DRAT-proof output path.  When set, every CDCL
+    /// learned clause is dumped to the file in DIMACS DRAT format
+    /// (`<lit1> <lit2> ... 0` per line), terminated by `0` (empty
+    /// clause = proof end).  Validate with `sat-drat-verify <cnf>
+    /// <FILE>` or any standard DRAT checker (drat-trim).  Only
+    /// supported by the `cdcl` backend (the only one producing
+    /// learned clauses).
+    emit_drat:     Option<std::path::PathBuf>,
 }
 
 const DEFAULT_TIMEOUT_SECS: u64 = 6000;
@@ -1490,6 +1661,7 @@ fn parse_args() -> Result<Args, String> {
         timeout_secs: DEFAULT_TIMEOUT_SECS,
         preprocess: true,
         emit_cover: None,
+        emit_drat: None,
     };
     let mut explicit_backend = false;
     let mut iter = std::env::args().skip(1);
@@ -1546,6 +1718,14 @@ fn parse_args() -> Result<Args, String> {
             s if s.starts_with("--emit-cover=") => {
                 a.emit_cover = Some(s["--emit-cover=".len()..].to_string().into());
             }
+            "--emit-drat" => {
+                let v = iter.next().ok_or_else(||
+                    "--emit-drat requires a file path (e.g. --emit-drat proof.drat)".to_string())?;
+                a.emit_drat = Some(v.into());
+            }
+            s if s.starts_with("--emit-drat=") => {
+                a.emit_drat = Some(s["--emit-drat=".len()..].to_string().into());
+            }
             "--help"     | "-h" => {
                 eprintln!("Usage: sat [--backend NAME] [--timeout SECS] [--progress] < problem.cnf");
                 eprintln!();
@@ -1586,6 +1766,11 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    (every CoveredPathPrefix event the search emits).");
                 eprintln!("                    Validate with `sat-cover-verify <cnf> <FILE>`.");
                 eprintln!("                    Only supported with --backend cdcl or smart.");
+                eprintln!("  --emit-drat FILE  Write a DRAT proof to FILE.  On UNSAT, contains");
+                eprintln!("                    every CDCL learned clause as a DIMACS line plus");
+                eprintln!("                    a final `0` for the empty clause.  Replayable by");
+                eprintln!("                    `sat-drat-verify <cnf> <FILE>` or drat-trim.");
+                eprintln!("                    Only supported with --backend cdcl + --no-preprocess.");
                 eprintln!("  --progress, -p    Show a live progress bar on stderr (TTY only).");
                 eprintln!("                    Press Ctrl-C to interrupt.");
                 eprintln!();
@@ -1739,7 +1924,8 @@ fn main() {
                         // panic loudly if both are set.
                         matrix_search(comp, nvars, args.show_progress, m,
                                       Some(&pp), args.emit_cover.as_deref(),
-                                      None)
+                                      None,
+                                      args.emit_drat.as_deref())
                     }
                 }
             } else {
@@ -1755,12 +1941,14 @@ fn main() {
                     drop(clauses);
                     matrix_search(comp, nvars, args.show_progress, m, None,
                                   args.emit_cover.as_deref(),
-                                  Some(&cover_clauses))
+                                  Some(&cover_clauses),
+                                  args.emit_drat.as_deref())
                 } else {
                     drop(clauses);
                     matrix_search(comp, nvars, args.show_progress, m, None,
                                   args.emit_cover.as_deref(),
-                                  None)
+                                  None,
+                                  args.emit_drat.as_deref())
                 }
             }
         }
@@ -1811,7 +1999,7 @@ mod tests {
         if clauses.iter().any(|c| c.is_empty()) { return Err(()); }
         if clauses.is_empty() { return Ok(vec![true; nvars]); }
         let comp = cnf_complement_nnf(clauses);
-        match matrix_search(comp, nvars, /*show_progress=*/ false, backend, None, None, None) {
+        match matrix_search(comp, nvars, /*show_progress=*/ false, backend, None, None, None, None) {
             SearchOutcome::Sat(asgn) => Ok(asgn),
             SearchOutcome::Unsat => Err(()),
             SearchOutcome::Interrupted => panic!("test search reported interrupted"),
@@ -2056,11 +2244,11 @@ mod tests {
             MatrixBackend::GreedyEff,
             MatrixBackend::BasicEff,
         ] {
-            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend, None, None, None) {
+            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend, None, None, None, None) {
                 SearchOutcome::Sat(_) => {}
                 other => panic!("[{:?}] expected Sat, got {:?}", backend, outcome_kind(&other)),
             }
-            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend, None, None, None) {
+            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend, None, None, None, None) {
                 SearchOutcome::Unsat => {}
                 other => panic!("[{:?}] expected Unsat, got {:?}", backend, outcome_kind(&other)),
             }

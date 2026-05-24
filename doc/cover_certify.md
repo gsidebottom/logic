@@ -66,8 +66,8 @@ Concrete numbers from the test corpus (the implementation):
 | PHP-3-2               | 12            | 240 B        | 240 B                |
 | PHP-4-3               | 36            | 500 B        | 700 B                |
 | PHP-5-4               | 80            | 770 B        | 1.5 KB               |
-| **RoundRobin n16_d13**| **62,400**    | **493 KB**   | **~940 KB** flat;   |
-|                       |               |              | (full static cover ~5 MB) |
+| **RoundRobin n16_d13**| **62,400**    | **493 KB**   | **~940 KB** flat     |
+|                       | (= full static cover, 100%) |   |                      |
 
 For very asymmetric problems like RoundRobin where one polarity
 dominates, the savings are modest (~2×); for symmetric problems
@@ -294,7 +294,12 @@ A specialized format that embeds resolution-style replay info
 (beyond just the cover-pair list) could break this barrier, at
 the cost of larger certs and more prover-side bookkeeping —
 e.g., DRAT-style verifiers run in time linear in the proof
-trace.
+trace.  An experimental `--emit-drat` flag exists for this
+purpose; see [`drat_emission.md`](drat_emission.md).  It works
+on small inputs but has known incompleteness on PHP-family and
+RoundRobin-style problems where the matrix-method's non-
+resolution inference paths can't be fully captured as RUP-valid
+clauses.
 
 ### Soundness considerations
 
@@ -367,14 +372,14 @@ eye; see `src/bin/sat_cover_verify.rs`.)
 1. **Static cover cap (`MAX_STATIC_COVER_POSITIONS = 2_000_000`).**
    Formulas whose static structural cover would require more than
    2M positions in the v3 cert fall back to CDCL-conflict-only
-   emission, which can still be partial.  RoundRobin n16_d13 fits
-   under the cap (63,960 positions); much larger industrial
-   instances may not.  Raising the cap is straightforward, but
-   beyond a few million positions the cert file approaches GB
-   sizes — at which point better long-term solutions are
-   compressed cert formats (e.g. trie-structured) or a smarter
-   cover-derivation algorithm that picks a minimal sub-cover
-   rather than enumerating every pair.
+   emission, which can still be partial.  Most SAT-competition
+   inputs fit easily — even RoundRobin n16_d13 needs only 63,960
+   positions and the full static cover is just 62,400 pairs.
+   Raising the cap is straightforward, but beyond a few million
+   positions the cert file approaches GB sizes — at which point
+   better long-term solutions are compressed cert formats (e.g.
+   trie-structured) or a smarter cover-derivation algorithm that
+   picks a minimal sub-cover rather than enumerating every pair.
 
 2. **Verifier hardness is lower-bounded by original-problem
    hardness.**  For static-cover certs, the SAT verifier's CSP

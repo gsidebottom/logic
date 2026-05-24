@@ -7,6 +7,10 @@ edition = "2024"
 name = "sat-cover-verify"
 path = "src/bin/sat_cover_verify.rs"
 
+[[bin]]
+name = "sat-drat-verify"
+path = "src/bin/sat_drat_verify.rs"
+
 [dependencies]
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }

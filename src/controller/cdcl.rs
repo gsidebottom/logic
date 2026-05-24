@@ -73,10 +73,22 @@
 //! - **Quality-of-life** (later): VSIDS, restarts, LBD-based deletion.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::controller::PathSearchController;
 use crate::controller::backtrack::BacktrackWhenCoveredController;
 use crate::matrix::{Lit, NNF, PathParams, PathPrefix, PathsClass, ProdPath, Var};
+
+/// Callback type for DRAT-proof emission.  When set via
+/// [`CdclController::drat_hook`], the controller invokes the
+/// callback once per newly-learned clause, passing the clause's
+/// alts.  The caller (typically `sat --emit-drat FILE`) is
+/// expected to serialize the clause to a DRAT proof file.
+///
+/// `Send + Sync` so the controller is freely movable across
+/// threads even though, in practice, the hook fires only from the
+/// single search thread inside `register_learned_clause`.
+pub type DratHook = Arc<dyn Fn(&[Lit]) + Send + Sync>;
 
 /// CDCL search controller, in development.  Wraps a
 /// [`BacktrackWhenCoveredController`] for cover-aware DFS pruning and
@@ -230,6 +242,30 @@ pub struct CdclController<F: FnMut(PathsClass, bool) -> bool = fn(PathsClass, bo
     /// true.
     learned_provenance: Vec<Vec<usize>>,
 
+    /// Optional DRAT-proof callback.  When `Some`, called once per
+    /// newly-learned clause with the clause's alts (`Lit` slice).
+    /// The caller (typically `sat --emit-drat FILE`) writes the
+    /// clause to a DRAT proof file in DIMACS format.
+    ///
+    /// The callback is `Send + Sync` so the controller can be
+    /// constructed on one thread and the search driven from
+    /// another; in practice the only call site is single-threaded
+    /// inside `register_learned_clause`.
+    pub drat_hook: Option<DratHook>,
+
+    /// Per-clause RUP-validity flag.  `true` for all original
+    /// preprocessed clauses (they're trivially RUP-implied by F
+    /// itself).  For learned clauses, `true` iff the 1UIP analysis
+    /// that produced it (a) terminated naturally (no SumForced
+    /// bailout) AND (b) only resolved through clauses that are
+    /// themselves RUP-valid.  Non-RUP-ness is transitive: a learned
+    /// clause derived using a non-RUP learned clause as a chain
+    /// reason is itself non-RUP.
+    ///
+    /// Used by the DRAT emitter to filter non-RUP clauses out of
+    /// the proof trace.  Indexed by clause-id (same as `prod_alts`).
+    clause_is_rup: Vec<bool>,
+
     // ── LBD-based learned-clause deletion ──
     //
     // `clause_deleted[id] = true` means clause `id` has been pruned
@@ -322,6 +358,19 @@ pub struct LearnedClause {
     /// more valuable to keep.  Used by the periodic reducer to rank
     /// learned clauses for deletion.
     pub lbd: usize,
+    /// True iff the 1UIP loop terminated naturally with exactly one
+    /// lit at conflict-level (the UIP).  False if the loop bailed
+    /// because the most-recent conflict-level lit was a
+    /// `Reason::SumForced` we can't resolve through.  Pure-resolution
+    /// (`true`) clauses are RUP-implied by the original CNF + earlier
+    /// pure-resolution learned clauses; matrix-method-specific
+    /// (`false`) ones are sound for the matrix-method's Sum-of-Prods
+    /// engine but **not** generally RUP-valid in CNF resolution.
+    ///
+    /// Used by the DRAT emitter to skip non-RUP clauses (drat-trim
+    /// or sat-drat-verify would reject them).  Decision lits in the
+    /// chain are *fine* — that's standard 1UIP termination.
+    pub pure_resolution: bool,
 }
 
 /// Why a lit ended up on the trail.
@@ -614,6 +663,13 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
             learning.insert(lit, level);
         }
 
+        // Track whether every clause involved in this resolution
+        // chain is RUP-valid.  Starts with the conflict clause's own
+        // RUP-status; flips to false on any non-RUP Implied reason
+        // encountered, or on SumForced bailout below.
+        let mut chain_all_rup = self.clause_is_rup
+            .get(conflict_clause_id).copied().unwrap_or(true);
+
         let conflict_level = learning.values().copied().max().unwrap_or(0);
 
         // Resolve while > 1 lit at conflict_level.  Each iteration
@@ -622,6 +678,16 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         // remove `p` from learning and add `¬r` for every other alt
         // `r` of `R`.  This is the resolution rule applied at the
         // implication graph level.
+        //
+        // `hit_sum_forced` tracks whether the loop bailed because
+        // the top-of-trail conflict-level lit was a `Reason::SumForced`
+        // we can't resolve through.  Decision-led bailouts at
+        // `count_at_top == 1` are *normal* 1UIP termination.
+        // The DRAT emitter uses `pure_resolution = !hit_sum_forced`
+        // to decide whether to emit the clause (non-pure clauses are
+        // sound for matrix-method semantics but not RUP-valid in CNF
+        // resolution).
+        let mut hit_sum_forced = false;
         loop {
             let count_at_top = learning.values().filter(|&&l| l == conflict_level).count();
             if count_at_top <= 1 { break; }
@@ -636,6 +702,12 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
                 Reason::Implied(rid) => {
                     let pick_lit = pick.lit.clone();
                     learning.remove(&pick_lit);
+                    // Track RUP-ness of the resolution chain: if this
+                    // resolved-against clause is itself non-RUP, the
+                    // result inherits the taint.
+                    if !self.clause_is_rup.get(rid).copied().unwrap_or(true) {
+                        chain_all_rup = false;
+                    }
                     // Snapshot the alts so we don't borrow self while
                     // mutating learning.
                     let alts: Vec<Lit> = self.prod_alts[rid].clone();
@@ -649,16 +721,20 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
                         }
                     }
                 }
-                _ => {
-                    // Hit a Decision or SumForced lit at conflict_level.
-                    // It's fixed — we can't resolve through it.  This
-                    // is the UIP if it's the only one at conflict_level,
-                    // which the loop's break-condition handles, but if
-                    // there are still multiple at conflict_level here,
-                    // it means the conflict involves multiple
-                    // Decisions/SumForceds at the same level (rare in
-                    // CNF-complement search; possible with structural
-                    // SumForceds).  Stop and accept the current set.
+                Reason::SumForced => {
+                    // Matrix-method-specific reason: a Sum's only
+                    // unblocked alt.  Can't be resolved through with
+                    // pure CNF resolution → the learned clause that
+                    // results isn't RUP-implied by F.  Sound for the
+                    // matrix engine's semantics; not for DRAT.
+                    hit_sum_forced = true;
+                    break;
+                }
+                Reason::Decision => {
+                    // Hit a Decision lit at conflict_level — fine
+                    // (standard 1UIP termination when multiple
+                    // decisions at same level, rare in CNF-complement
+                    // search).  The resulting clause is still RUP.
                     break;
                 }
             }
@@ -691,7 +767,34 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
             learning.values().copied().collect();
         let lbd = unique_levels.len();
 
-        LearnedClause { alts, backjump_level, lbd }
+        // pure_resolution = clause is RUP-implied by F + earlier-
+        // RUP-only learned clauses.  Required conditions:
+        //
+        // 1. 1UIP loop terminated cleanly without SumForced bailout
+        //    (`!hit_sum_forced`).
+        // 2. Every clause resolved through in the loop was RUP
+        //    (`chain_all_rup`).
+        // 3. Every surviving learning lit (= every alt of the final
+        //    clause, complemented) was forced on the trail either by
+        //    Decision or by Implied(rid_rup).  A learning lit forced
+        //    by SumForced or by Implied(rid_nonrup) makes the clause
+        //    depend on matrix-method-only inference; BCP on F +
+        //    earlier-RUP-clauses can't reconstruct it.
+        let learning_clean = learning.keys().all(|lit| {
+            match self.trail.iter().find(|t| t.lit == *lit) {
+                None => true,   // lit not on trail (rare; treat as clean)
+                Some(t) => match t.reason {
+                    Reason::Decision      => true,
+                    Reason::SumForced     => false,
+                    Reason::Implied(rid)  => self.clause_is_rup
+                                                 .get(rid).copied().unwrap_or(true),
+                },
+            }
+        });
+        let pure_resolution = !hit_sum_forced
+            && chain_all_rup
+            && learning_clean;
+        LearnedClause { alts, backjump_level, lbd, pure_resolution }
     }
 
     /// VSIDS: bump variable `var`'s activity by the current
@@ -885,6 +988,14 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         // The new clause is live by default — only the LBD reducer
         // turns it off.
         self.clause_deleted.push(false);
+        // Track DRAT-RUP-validity: a new learned clause is RUP iff
+        // (a) its 1UIP analysis was pure-resolution AND (b) every
+        // clause it resolved through was RUP.  The caller in the
+        // conflict-handler loop knows (a) (= `learned.pure_resolution`)
+        // and supplies the conjunction; we just record the flag here
+        // by index alignment.  Initialised to `true` here; the caller
+        // overrides via `clause_is_rup.last_mut()` if needed.
+        self.clause_is_rup.push(learned.pure_resolution);
 
         // Walk the trail to find which entry blocks each alt and
         // attribute the blocking to the correct frame.  This is
@@ -981,6 +1092,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         self.initial_clause_count = self.prod_alts.len();
         // Initialize `clause_deleted` to all false for original clauses.
         self.clause_deleted = vec![false; self.prod_alts.len()];
+        // Original clauses are all RUP-valid (they're in F).
+        self.clause_is_rup = vec![true; self.prod_alts.len()];
     }
 
     /// Returns whether `lit_idx` is currently "true" on the path —
@@ -1357,6 +1470,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             emit_covers:      false,
             static_cover_emitted: false,
             learned_provenance: Vec::new(),
+            drat_hook:        None,
+            clause_is_rup:    Vec::new(),
             clause_deleted:   Vec::new(),
             // Reduction fires when live learned-clause count exceeds
             // this.  Tuned conservatively: low values (2000-50000)
@@ -1409,6 +1524,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             emit_covers:      false,
             static_cover_emitted: false,
             learned_provenance: Vec::new(),
+            drat_hook:        None,
+            clause_is_rup:    Vec::new(),
             clause_deleted:   Vec::new(),
             // Reduction fires when live learned-clause count exceeds
             // this.  Tuned conservatively: low values (2000-50000)
@@ -1653,6 +1770,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         }
         self.initial_clause_count = self.prod_alts.len();
         self.clause_deleted = vec![false; self.prod_alts.len()];
+        self.clause_is_rup = vec![true; self.prod_alts.len()];
     }
 }
 
@@ -1863,6 +1981,31 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
                                 self.bump_var_activity(alt.var);
                             }
                             self.decay_var_activities();
+                            // DRAT emission: emit only learned clauses
+                            // flagged as pure-resolution (1UIP chain
+                            // that resolved cleanly through Implied
+                            // reasons over RUP-valid clauses, with no
+                            // SumForced lits surviving in the final
+                            // clause).  See `analyze_conflict` and
+                            // `LearnedClause::pure_resolution`.
+                            //
+                            // Caveat: the `pure_resolution` flag is a
+                            // sound *over-approximation* of RUP-
+                            // validity in vanilla CDCL terms, but the
+                            // matrix-method's Sum/Prod structure has
+                            // additional non-resolution inference
+                            // paths that aren't fully captured.  On
+                            // PHP-family inputs this means some
+                            // emitted clauses can be rejected by a
+                            // standards-strict DRAT checker.  Use
+                            // `--emit-cover` for guaranteed-sound
+                            // matrix-method UNSAT certificates;
+                            // `--emit-drat` is best-effort.
+                            if learned.pure_resolution {
+                                if let Some(hook) = &self.drat_hook {
+                                    hook(&learned.alts);
+                                }
+                            }
                             self.learned_clauses.push(learned);
                             want_backjump = true;
                             self.conflicts_since_last_restart += 1;
@@ -2805,6 +2948,7 @@ mod tests {
             alts: vec![Lit::pos(0)],
             backjump_level: 0,
             lbd: 5,
+            pure_resolution: true,
         };
         let mut frame = PushFrame::default();
         let learned_id = ctrl.register_learned_clause(&learned, &mut frame);
@@ -2839,6 +2983,7 @@ mod tests {
                 alts: vec![Lit::pos(lbd as Var)],
                 backjump_level: 0,
                 lbd,
+                pure_resolution: true,
             };
             let mut frame = PushFrame::default();
             let _ = ctrl.register_learned_clause(&learned, &mut frame);
@@ -2883,6 +3028,7 @@ mod tests {
             alts: vec![Lit::pos(0), Lit::pos(1)],
             backjump_level: 0,
             lbd: 1,
+            pure_resolution: true,
         };
         let mut frame = PushFrame::default();
         let learned_id = ctrl.register_learned_clause(&learned, &mut frame);

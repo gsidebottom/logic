@@ -182,6 +182,9 @@ struct Clause {
 }
 
 struct Checker {
+    /// Variable count from the CNF header.  Used for sizing `value`
+    /// and `watches` at construction; kept around for diagnostics.
+    #[allow(dead_code)]
     nvars: usize,
     clauses: Vec<Clause>,
     /// `watches[lit_code]` = list of clause IDs that have `lit_code`
@@ -247,10 +250,8 @@ impl Checker {
                 Val::Unassigned => {
                     if unassigned.is_some() {
                         // More than one unassigned — clause is not
-                        // currently unit; no enqueue needed.
-                        unassigned = Some(0);
-                        // Use a sentinel of 0 (no DIMACS lit ever
-                        // has code 0) by clearing on second hit.
+                        // currently unit; no enqueue needed.  Clear
+                        // and bail out of the count loop.
                         unassigned = None;
                         false_count = usize::MAX;   // mark "not unit"
                         break;

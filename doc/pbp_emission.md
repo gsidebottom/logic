@@ -292,5 +292,5 @@ Possible paths to close this gap:
   PHP-N-M using `red` rules with cyclic-pigeon symmetry.
   Polynomial-size proof for any PHP-N-2; M≥3 requires future
   work on explicit subproofs.
-- `/tmp/veripb/` — VeriPB source/binary location (after
-  `cargo install --path /tmp/veripb`).
+- `~/projects/veripb/` — VeriPB source/binary location (after
+  `cargo install --path ~/projects/veripb`).

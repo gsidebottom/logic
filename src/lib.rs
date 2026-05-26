@@ -1,5 +1,6 @@
 pub mod cadical;
 pub mod controller;
+pub mod cook_pbp;
 pub mod dual;
 pub mod formula;
 pub mod matrix;

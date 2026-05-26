@@ -1,6 +1,6 @@
 # VeriPB extension variables — scout notes
 
-Captured during Phase 1.A scouting of `/tmp/veripb/tests/instances/correct/version3/`.
+Captured during Phase 1.A scouting of `~/projects/veripb/tests/instances/correct/version3/`.
 This is the foundation for the Cook-style PHP proofs project.
 
 ## How to introduce a fresh variable
@@ -68,7 +68,7 @@ red 1 ~y 1 x2 >= 1 : y -> 0 ;
 
 ## Worked example from VeriPB tests
 
-`/tmp/veripb/tests/instances/correct/version3/add_preserved_var_subproof.pbp`:
+`~/projects/veripb/tests/instances/correct/version3/add_preserved_var_subproof.pbp`:
 
 ```
 red 1 ~x5 1 x1 >= 1 : x5 0 ;     % x5 → x1

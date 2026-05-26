@@ -414,7 +414,10 @@ impl CoverWriter {
 
     /// Number of distinct positions accumulated (across all
     /// variables, both polarities).  Useful as a cert-size proxy
-    /// for the post-search footer.
+    /// for the post-search footer.  Currently unused but kept as a
+    /// stable diagnostic for future tooling that wants to report
+    /// position-budget vs implied-pair counts side by side.
+    #[allow(dead_code)]
     fn distinct_positions(&self) -> usize {
         self.positive.values().map(|s| s.len()).sum::<usize>()
             + self.negative.values().map(|s| s.len()).sum::<usize>()
@@ -1874,6 +1877,16 @@ struct Args {
     /// `veripb --cnf <cnf> <FILE>`.  Only supported by `cdcl` +
     /// `--no-preprocess`, same as `--emit-drat`.
     emit_pbp:      Option<std::path::PathBuf>,
+    /// Optional Cook-style polynomial PB proof output path.  When set,
+    /// inspect the input CNF for known cardinality shapes (PHP-N-M,
+    /// RoundRobin n_d).  On match, emit a polynomial-size VeriPB proof
+    /// using Cook's extension-variable construction + the
+    /// at-most-1-from-pairwise-mutex subroutine — see
+    /// `doc/cook_php_walkthrough.md`.  No solver search is run; the
+    /// proof is generated directly from the structure analysis.
+    /// On no-match, exits with a non-zero code and a clear error
+    /// (use `--emit-pbp` for unstructured CNFs).
+    emit_cook_pbp: Option<std::path::PathBuf>,
 }
 
 const DEFAULT_TIMEOUT_SECS: u64 = 6000;
@@ -1887,6 +1900,7 @@ fn parse_args() -> Result<Args, String> {
         emit_cover: None,
         emit_drat: None,
         emit_pbp: None,
+        emit_cook_pbp: None,
     };
     let mut explicit_backend = false;
     let mut iter = std::env::args().skip(1);
@@ -1959,6 +1973,14 @@ fn parse_args() -> Result<Args, String> {
             s if s.starts_with("--emit-pbp=") => {
                 a.emit_pbp = Some(s["--emit-pbp=".len()..].to_string().into());
             }
+            "--emit-cook-pbp" => {
+                let v = iter.next().ok_or_else(||
+                    "--emit-cook-pbp requires a file path".to_string())?;
+                a.emit_cook_pbp = Some(v.into());
+            }
+            s if s.starts_with("--emit-cook-pbp=") => {
+                a.emit_cook_pbp = Some(s["--emit-cook-pbp=".len()..].to_string().into());
+            }
             "--help"     | "-h" => {
                 eprintln!("Usage: sat [--backend NAME] [--timeout SECS] [--progress] < problem.cnf");
                 eprintln!();
@@ -2009,6 +2031,12 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    cardinality reasoning via cutting-planes rules.");
                 eprintln!("                    Validate with `veripb --cnf <cnf> <FILE>`.");
                 eprintln!("                    Only with --backend cdcl + --no-preprocess.");
+                eprintln!("  --emit-cook-pbp FILE");
+                eprintln!("                    Detect PHP-N-M or RoundRobin shape in the input;");
+                eprintln!("                    if matched, emit a polynomial-size Cook-style");
+                eprintln!("                    PB proof to FILE without running any search.");
+                eprintln!("                    On no-match, exits 3 (use --emit-pbp instead).");
+                eprintln!("                    Verify with `veripb --cnf <cnf> <FILE>`.");
                 eprintln!("  --progress, -p    Show a live progress bar on stderr (TTY only).");
                 eprintln!("                    Press Ctrl-C to interrupt.");
                 eprintln!();
@@ -2040,6 +2068,50 @@ fn main() {
         }
     };
     eprintln!("c parsed {} variables, {} clauses", nvars, clauses.len());
+
+    // --emit-cook-pbp short-circuit.  When set, attempt to detect
+    // PHP-N-M or RoundRobin shape in the input.  On match, emit a
+    // polynomial-size VeriPB proof and exit UNSAT — no search needed.
+    // On no-match, exit with an error so callers know to use
+    // `--emit-pbp` or accept the matrix-method's regular path.
+    if let Some(out) = args.emit_cook_pbp.as_ref() {
+        use logic::cook_pbp::{detect_shape, emit_proof, CnfShape};
+        let t_detect = Instant::now();
+        let shape = detect_shape(&clauses, nvars);
+        let detect_ms = t_detect.elapsed().as_secs_f64() * 1000.0;
+        match shape {
+            CnfShape::Unknown => {
+                eprintln!("c emit-cook-pbp: no matching shape detected \
+                           in {:.1}ms (try --emit-pbp instead)", detect_ms);
+                std::process::exit(3);
+            }
+            ref s => {
+                eprintln!("c emit-cook-pbp: detected {} in {:.1}ms",
+                          s.describe(), detect_ms);
+                let t_emit = Instant::now();
+                let f = match std::fs::File::create(out) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        eprintln!("c ERROR: cannot create cook-pbp file {}: {}",
+                                  out.display(), e);
+                        std::process::exit(2);
+                    }
+                };
+                let mut w = io::BufWriter::new(f);
+                if let Err(e) = emit_proof(s, clauses.len(), &mut w) {
+                    eprintln!("c ERROR: cook-pbp emission failed: {}", e);
+                    std::process::exit(1);
+                }
+                let emit_ms = t_emit.elapsed().as_secs_f64() * 1000.0;
+                eprintln!("c emit-cook-pbp: wrote {} in {:.1}ms",
+                          out.display(), emit_ms);
+                eprintln!("c UNSAT in {:.1}ms (by Cook-PBP construction)",
+                          detect_ms + emit_ms);
+                println!("s UNSATISFIABLE");
+                return;
+            }
+        }
+    }
 
     // Quick edge cases handled before invoking either backend.  We
     // still emit the standard `c UNSAT|SAT in 0.0ms` timing line on
@@ -2128,8 +2200,8 @@ fn main() {
                     NNF::Lit(_)   => 1,   // single forced lit
                 };
                 let delta_pct = if orig_clauses == 0 { 0 } else {
-                    ((pp_clauses as i64 - orig_clauses as i64) * 100
-                     / orig_clauses as i64)
+                    (pp_clauses as i64 - orig_clauses as i64) * 100
+                     / orig_clauses as i64
                 };
                 eprintln!("c preprocess: {} → {} clauses ({:+}%) in {:.1}ms",
                           orig_clauses, pp_clauses, delta_pct, pp_ms);

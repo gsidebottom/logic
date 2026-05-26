@@ -563,6 +563,123 @@ impl DratWriter {
     fn clauses_emitted(&self) -> usize { self.clauses_emitted }
 }
 
+/// `PbpWriter` — emit a VeriPB-format pseudo-Boolean proof
+/// alongside the search.  PB+VeriPB is strictly more expressive than
+/// DRAT+drat-trim: cutting-planes (`pol`) steps can express
+/// cardinality reasoning that resolution can't handle in polynomial
+/// size (PHP-family, RoundRobin-class problems).
+///
+/// We start by emitting only RUP rules (same expressivity as DRAT),
+/// then layer in `pol` rules for cover-pair resolvents — captures the
+/// matrix-method's structural cover knowledge in PB form.
+///
+/// Format: per VeriPB 3.0 grammar.  Header → `f <n>` (sanity check) →
+/// `rup <constraint>;` per learned clause → optional `pol`/etc. for
+/// matrix-method translations → `output NONE;` → `conclusion UNSAT
+/// : -1;` (pointing at the most-recently-derived constraint as the
+/// contradiction witness) → `end pseudo-Boolean proof;`.
+///
+/// DIMACS lit `n` maps to PB literal `x<n>` (positive) or `~x<n>`
+/// (negated).  A clause `(l_1 ∨ … ∨ l_k)` becomes the PB constraint
+/// `+1 lit_1 +1 lit_2 ... +1 lit_k >= 1 ;`.
+struct PbpWriter {
+    writer: io::BufWriter<std::fs::File>,
+    n_constraints_initial: usize,
+    constraints_emitted: usize,
+}
+
+impl PbpWriter {
+    /// `n_input_constraints` is the number of CNF clauses in the
+    /// input — used for the `f <n>` sanity check.
+    fn new(file: std::fs::File, n_input_constraints: usize) -> io::Result<Self> {
+        let mut w = io::BufWriter::new(file);
+        writeln!(w, "pseudo-Boolean proof version 3.0")?;
+        writeln!(w, "f {};", n_input_constraints)?;
+        Ok(Self {
+            writer: w,
+            n_constraints_initial: n_input_constraints,
+            constraints_emitted: 0,
+        })
+    }
+
+    /// Emit one learned clause as a `rup` rule.  Domain translation:
+    /// the matrix-method controller's learned `alts` are in
+    /// complement-NNF domain; we negate each lit (same as DRAT) so
+    /// the result is in the original-F domain.  Then format as PB:
+    /// `+1 <lit1> +1 <lit2> ... >= 1`.
+    fn emit_rup_clause(&mut self, clause: &[logic::matrix::Lit]) -> io::Result<()> {
+        write!(self.writer, "rup")?;
+        for lit in clause {
+            // Domain flip: complement-NNF alt `lit` = F-domain clause
+            // lit `¬lit`.  `Lit::var` is 0-indexed; VeriPB uses
+            // 1-indexed `x<i>` names.
+            let var = lit.var + 1;
+            let want_neg = !lit.neg;  // negated relative to alt
+            if want_neg {
+                write!(self.writer, " +1 ~x{}", var)?;
+            } else {
+                write!(self.writer, " +1 x{}", var)?;
+            }
+        }
+        writeln!(self.writer, " >= 1 ;")?;
+        self.constraints_emitted += 1;
+        Ok(())
+    }
+
+    /// Finalize for UNSAT: emit `rup >= 1 ;` (empty clause, RUP-implied
+    /// iff F + earlier-derived clauses BCP to contradiction), then
+    /// the conclusion/end markers pointing at it.
+    fn finalize_unsat(&mut self) -> io::Result<()> {
+        writeln!(self.writer, "rup >= 1 ;")?;
+        self.constraints_emitted += 1;
+        writeln!(self.writer, "output NONE;")?;
+        writeln!(self.writer, "conclusion UNSAT : -1;")?;
+        writeln!(self.writer, "end pseudo-Boolean proof;")?;
+        self.writer.flush()
+    }
+
+    /// For SAT outcomes: emit a no-op conclusion + flush.  The proof
+    /// is not a refutation in this case; emitting `conclusion SAT`
+    /// requires the assignment which we don't always have here.
+    /// `conclusion NONE` is always valid.
+    fn finalize_sat(&mut self) -> io::Result<()> {
+        writeln!(self.writer, "output NONE;")?;
+        writeln!(self.writer, "conclusion NONE;")?;
+        writeln!(self.writer, "end pseudo-Boolean proof;")?;
+        self.writer.flush()
+    }
+
+    /// Emit a cover-pair resolvent via cutting-planes `pol`:
+    /// `pol <id_a> <id_b> + s ;` adds the resolvent of F-clauses
+    /// at IDs `id_a` and `id_b`.  The `+` adds them in PB form,
+    /// `s` saturates (caps coefficients at 1) — and since the two
+    /// clauses contain complementary literals `X` and `¬X`, those
+    /// literals cancel out in the sum, leaving the resolution
+    /// product.
+    ///
+    /// VeriPB assigns the result a fresh ConstraintID = IDmax+1.
+    /// We don't reference this ID by absolute number — subsequent
+    /// rules can use relative IDs (`-1`, `-2`, ...) or symbolic
+    /// labels if needed.
+    ///
+    /// `id_a` and `id_b` are VeriPB ConstraintIDs (1-indexed; the
+    /// first input CNF clause gets ID 1).
+    fn emit_pol_resolvent(&mut self, id_a: usize, id_b: usize) -> io::Result<()> {
+        writeln!(self.writer, "pol {} {} + s ;", id_a, id_b)?;
+        self.constraints_emitted += 1;
+        Ok(())
+    }
+
+    /// Count of learned-clause `rup` lines emitted so far (excluding
+    /// the final empty-clause derivation).
+    fn constraints_emitted(&self) -> usize { self.constraints_emitted }
+
+    /// Initial constraint count (= number of CNF clauses, for the
+    /// `f <n>` line).  Used in the diagnostic summary.
+    #[allow(dead_code)]
+    fn n_constraints_initial(&self) -> usize { self.n_constraints_initial }
+}
+
 /// `preprocessed`: optional preprocessing handle.  When `Some`,
 /// the SAT-witness path (`SearchOutcome::Sat`) reconstructs the
 /// original-variable assignment by feeding the search's path
@@ -585,6 +702,8 @@ fn matrix_search(
     emit_cover: Option<&std::path::Path>,
     cover_clauses: Option<&[Vec<i32>]>,
     emit_drat: Option<&std::path::Path>,
+    emit_pbp: Option<&std::path::Path>,
+    n_input_clauses: usize,
 ) -> SearchOutcome {
     let total_paths = comp.path_count();
     let params = Some(PathParams {
@@ -669,6 +788,18 @@ fn matrix_search(
                    CNF's.  Rerun with --no-preprocess.");
         std::process::exit(2);
     }
+    if emit_pbp.is_some() && !matches!(backend, MatrixBackend::Cdcl) {
+        eprintln!("c ERROR: --emit-pbp only supported with backend cdcl \
+                   (got {}); other backends don't produce learned clauses",
+                  backend.name());
+        std::process::exit(2);
+    }
+    if emit_pbp.is_some() && preprocessed.is_some() {
+        eprintln!("c ERROR: --emit-pbp with --preprocess not supported: the PB \
+                   proof would reference preprocessed-CNF variables, not the input \
+                   CNF's.  Rerun with --no-preprocess.");
+        std::process::exit(2);
+    }
 
     rt.block_on(async move {
         // Optional cover writer.  Populated by the Cdcl/Smart match
@@ -692,6 +823,28 @@ fn matrix_search(
                 }
             };
             drat_writer_arc = Some(Arc::new(Mutex::new(DratWriter::new(file))));
+        }
+        // Optional PBP (VeriPB pseudo-Boolean proof) writer.  Mirror
+        // structure: open early, share via Arc<Mutex>, finalize after
+        // search.  Header (`pseudo-Boolean proof v3.0` + `f <n>`)
+        // gets written in `PbpWriter::new`.
+        let mut pbp_writer_arc: Option<Arc<Mutex<PbpWriter>>> = None;
+        if let Some(pbp_path) = emit_pbp {
+            let file = match std::fs::File::create(pbp_path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("c ERROR: cannot create pbp file {}: {}",
+                              pbp_path.display(), e);
+                    std::process::exit(2);
+                }
+            };
+            match PbpWriter::new(file, n_input_clauses) {
+                Ok(w) => pbp_writer_arc = Some(Arc::new(Mutex::new(w))),
+                Err(e) => {
+                    eprintln!("c ERROR: pbp header write failed: {}", e);
+                    std::process::exit(2);
+                }
+            }
         }
 
         // Each match arm clones inputs only if it actually needs them.
@@ -754,61 +907,95 @@ fn matrix_search(
             MatrixBackend::Cdcl => {
                 let nnf_cdcl = comp.clone();
                 let p_cdcl = params.clone();
-                // Build a Send+Sync DRAT hook (closure that locks
-                // the writer Arc and emits one DIMACS line per
-                // learned clause).  Cloned into the controller-
-                // construction closure if drat emission is on.
-                let drat_hook: Option<logic::controller::cdcl::DratHook> =
-                    drat_writer_arc.as_ref().map(|arc| {
-                        let writer = arc.clone();
+                // Build a combined Send+Sync hook: emits each
+                // learned clause to whichever writers are
+                // configured (DRAT and/or PBP).  Both writers
+                // consume `&[Lit]` and translate to their own
+                // format internally.
+                let drat_hook: Option<logic::controller::cdcl::DratHook> = {
+                    let drat = drat_writer_arc.clone();
+                    let pbp = pbp_writer_arc.clone();
+                    if drat.is_none() && pbp.is_none() {
+                        None
+                    } else {
                         let hook: logic::controller::cdcl::DratHook =
                             Arc::new(move |alts: &[Lit]| {
-                                let mut w = writer.lock().unwrap();
-                                w.emit_clause(alts).expect("drat file write failed");
+                                if let Some(arc) = &drat {
+                                    let mut w = arc.lock().unwrap();
+                                    w.emit_clause(alts).expect("drat file write failed");
+                                }
+                                if let Some(arc) = &pbp {
+                                    let mut w = arc.lock().unwrap();
+                                    w.emit_rup_clause(alts).expect("pbp file write failed");
+                                }
                             });
-                        hook
-                    });
-                if let Some(cover_path) = emit_cover {
-                    // Cover-emitting variant: drive the search
-                    // through `classify_paths` (with positions, cover
-                    // events flow) and build the CDCL controller via
-                    // `for_nnf_with_cover` (inner BacktrackWhenCovered
-                    // in uncovered_only=false mode, so Covered events
-                    // are actually emitted).  Each event gets tee'd
-                    // into the cover file by the on_class closure.
-                    let file = match std::fs::File::create(cover_path) {
-                        Ok(f) => f,
-                        Err(e) => {
-                            eprintln!("c ERROR: cannot create cover file {}: {}",
-                                      cover_path.display(), e);
-                            std::process::exit(2);
-                        }
-                    };
-                    let clauses_arc = std::sync::Arc::new(
-                        cover_clauses.expect("--emit-cover requires cover_clauses").to_vec());
-                    let cover_w: Arc<Mutex<CoverWriter>> =
-                        Arc::new(Mutex::new(CoverWriter::new(file, clauses_arc)));
-                    // Header on file open so the verifier sees a
-                    // self-describing prefix even before any cover
-                    // entries arrive.
-                    {
-                        let mut cw = cover_w.lock().unwrap();
-                        let _ = writeln!(cw.writer, "# sat-cover-verify cert v3");
-                        let _ = writeln!(cw.writer, "# source: {} backend=cdcl preprocess={}",
-                                         cover_path.display(),
-                                         preprocessed.map(|_| "on").unwrap_or("off"));
+                        Some(hook)
                     }
-                    let cw_for_search = cover_w.clone();
+                };
+                // Decide whether to use the cover-emitting search
+                // path: when either --emit-cover (writes cover cert)
+                // or --emit-pbp (each cover pair → PB `pol`
+                // resolvent) is on.  Both need static cover events
+                // to flow through the on_class closure.
+                let need_cover_path = emit_cover.is_some() || pbp_writer_arc.is_some();
+                if need_cover_path {
+                    // Optional CoverWriter (only when --emit-cover is set).
+                    let cover_w_opt: Option<Arc<Mutex<CoverWriter>>> = emit_cover
+                        .map(|cover_path| {
+                            let file = std::fs::File::create(cover_path)
+                                .unwrap_or_else(|e| {
+                                    eprintln!("c ERROR: cannot create cover file {}: {}",
+                                              cover_path.display(), e);
+                                    std::process::exit(2);
+                                });
+                            let clauses_arc = std::sync::Arc::new(
+                                cover_clauses
+                                    .expect("--emit-cover requires cover_clauses")
+                                    .to_vec());
+                            let cw: Arc<Mutex<CoverWriter>> =
+                                Arc::new(Mutex::new(CoverWriter::new(file, clauses_arc)));
+                            {
+                                let mut cwl = cw.lock().unwrap();
+                                let _ = writeln!(cwl.writer, "# sat-cover-verify cert v3");
+                                let _ = writeln!(cwl.writer,
+                                    "# source: {} backend=cdcl preprocess={}",
+                                    cover_path.display(),
+                                    preprocessed.map(|_| "on").unwrap_or("off"));
+                            }
+                            cw
+                        });
+                    let cw_for_search   = cover_w_opt.clone();
+                    let pbp_for_search  = pbp_writer_arc.clone();
                     let drat_for_search = drat_hook.clone();
                     let result = comp.classify_paths(64, move |tx| {
+                        let cw_inner  = cw_for_search.clone();
+                        let pbp_inner = pbp_for_search.clone();
                         let on_class: DynOnClass = Box::new(move |class, hit_limit| {
                             if let PathsClass::Covered(cpp) = &class {
-                                let mut cw = cw_for_search.lock().unwrap();
-                                // I/O errors here mean the disk is
-                                // full or the file got unlinked; bail
-                                // loudly rather than silently truncate
-                                // the cert.
-                                cw.maybe_write(cpp).expect("cover file write failed");
+                                if let Some(cw) = &cw_inner {
+                                    let mut w = cw.lock().unwrap();
+                                    w.maybe_write(cpp).expect("cover file write failed");
+                                }
+                                if let Some(pbp) = &pbp_inner {
+                                    // Each cover pair (X@p1, ¬X@p2)
+                                    // becomes a `pol id_a id_b + s;`
+                                    // rule.  Positions are
+                                    // `[clause, lit]` vectors;
+                                    // VeriPB's constraint IDs for
+                                    // input clauses are 1-indexed in
+                                    // load order, so clause_idx c
+                                    // maps to ID c+1.  Only valid
+                                    // under --no-preprocess (which
+                                    // we've already enforced upstream).
+                                    let (a, b) = &cpp.cover;
+                                    if !a.is_empty() && !b.is_empty() {
+                                        let id_a = a[0] + 1;
+                                        let id_b = b[0] + 1;
+                                        let mut w = pbp.lock().unwrap();
+                                        w.emit_pol_resolvent(id_a, id_b)
+                                            .expect("pbp file write failed");
+                                    }
+                                }
                             }
                             tx.blocking_send((class, hit_limit)).is_ok()
                         });
@@ -816,10 +1003,10 @@ fn matrix_search(
                         ctrl.drat_hook = drat_for_search;
                         ctrl
                     });
-                    // Stash the writer Arc so we can flush + write a
-                    // footer once the search drains (handled in the
-                    // post-search block below via cover_writer_arc).
-                    cover_writer_arc = Some(cover_w);
+                    // Stash the cover writer Arc so the post-search
+                    // block can flush + write its footer (skipped
+                    // when --emit-cover wasn't set).
+                    cover_writer_arc = cover_w_opt;
                     result
                 } else if drat_hook.is_some() {
                     // DRAT-only (no cover): build the controller
@@ -1038,6 +1225,36 @@ fn matrix_search(
             eprintln!("c drat: {} RUP-filtered learned clauses emitted{}",
                       n_emitted,
                       if is_unsat { " + final 0" } else { " (SAT — no proof)" });
+        }
+
+        // PBP finalize: mirror DRAT.  On UNSAT, the writer emits a
+        // final `rup >= 1 ;` (empty clause) + the conclusion/end
+        // markers.  On SAT, just close with `conclusion NONE`.
+        if let Some(arc) = pbp_writer_arc.take() {
+            let is_unsat = path_lits.is_none();
+            let n_emitted = match Arc::try_unwrap(arc) {
+                Ok(mutex) => {
+                    let mut pw = mutex.into_inner().expect("pbp writer mutex poisoned");
+                    if is_unsat {
+                        let _ = pw.finalize_unsat();
+                    } else {
+                        let _ = pw.finalize_sat();
+                    }
+                    pw.constraints_emitted()
+                }
+                Err(arc_still_shared) => {
+                    let mut pw = arc_still_shared.lock().unwrap();
+                    if is_unsat {
+                        let _ = pw.finalize_unsat();
+                    } else {
+                        let _ = pw.finalize_sat();
+                    }
+                    pw.constraints_emitted()
+                }
+            };
+            eprintln!("c pbp: {} RUP-filtered learned clauses emitted{}",
+                      n_emitted,
+                      if is_unsat { " + final empty clause" } else { " (SAT)" });
         }
 
         if let Some(lits) = path_lits {
@@ -1650,6 +1867,13 @@ struct Args {
     /// supported by the `cdcl` backend (the only one producing
     /// learned clauses).
     emit_drat:     Option<std::path::PathBuf>,
+    /// Optional pseudo-Boolean proof (VeriPB .pbp format) output
+    /// path.  Each pure-resolution learned clause is emitted as a
+    /// `rup` rule; the proof ends with `rup >= 1 ;` (empty clause)
+    /// + `conclusion UNSAT` for refutation.  Verify with
+    /// `veripb --cnf <cnf> <FILE>`.  Only supported by `cdcl` +
+    /// `--no-preprocess`, same as `--emit-drat`.
+    emit_pbp:      Option<std::path::PathBuf>,
 }
 
 const DEFAULT_TIMEOUT_SECS: u64 = 6000;
@@ -1662,6 +1886,7 @@ fn parse_args() -> Result<Args, String> {
         preprocess: true,
         emit_cover: None,
         emit_drat: None,
+        emit_pbp: None,
     };
     let mut explicit_backend = false;
     let mut iter = std::env::args().skip(1);
@@ -1726,6 +1951,14 @@ fn parse_args() -> Result<Args, String> {
             s if s.starts_with("--emit-drat=") => {
                 a.emit_drat = Some(s["--emit-drat=".len()..].to_string().into());
             }
+            "--emit-pbp" => {
+                let v = iter.next().ok_or_else(||
+                    "--emit-pbp requires a file path (e.g. --emit-pbp proof.pbp)".to_string())?;
+                a.emit_pbp = Some(v.into());
+            }
+            s if s.starts_with("--emit-pbp=") => {
+                a.emit_pbp = Some(s["--emit-pbp=".len()..].to_string().into());
+            }
             "--help"     | "-h" => {
                 eprintln!("Usage: sat [--backend NAME] [--timeout SECS] [--progress] < problem.cnf");
                 eprintln!();
@@ -1771,6 +2004,11 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    a final `0` for the empty clause.  Replayable by");
                 eprintln!("                    `sat-drat-verify <cnf> <FILE>` or drat-trim.");
                 eprintln!("                    Only supported with --backend cdcl + --no-preprocess.");
+                eprintln!("  --emit-pbp FILE   Write a pseudo-Boolean (VeriPB) proof to FILE.");
+                eprintln!("                    Like --emit-drat but in PB format; can express");
+                eprintln!("                    cardinality reasoning via cutting-planes rules.");
+                eprintln!("                    Validate with `veripb --cnf <cnf> <FILE>`.");
+                eprintln!("                    Only with --backend cdcl + --no-preprocess.");
                 eprintln!("  --progress, -p    Show a live progress bar on stderr (TTY only).");
                 eprintln!("                    Press Ctrl-C to interrupt.");
                 eprintln!();
@@ -1922,10 +2160,15 @@ fn main() {
                         // because positions reference the preprocessed
                         // CNF, not the input.  matrix_search will
                         // panic loudly if both are set.
+                        // Preprocess path: --emit-pbp is rejected
+                        // earlier (variables would be shifted).
+                        // Pass 0 as n_input_clauses since it's unused.
                         matrix_search(comp, nvars, args.show_progress, m,
                                       Some(&pp), args.emit_cover.as_deref(),
                                       None,
-                                      args.emit_drat.as_deref())
+                                      args.emit_drat.as_deref(),
+                                      args.emit_pbp.as_deref(),
+                                      0)
                     }
                 }
             } else {
@@ -1935,6 +2178,7 @@ fn main() {
                 // position-to-lit resolution); otherwise drop the
                 // parsed clauses before the search starts (≈ 80 MB
                 // on 2M-clause inputs).
+                let n_clauses = clauses.len();
                 let comp = cnf_complement_nnf(&clauses);
                 if args.emit_cover.is_some() {
                     let cover_clauses = clauses.clone();
@@ -1942,13 +2186,17 @@ fn main() {
                     matrix_search(comp, nvars, args.show_progress, m, None,
                                   args.emit_cover.as_deref(),
                                   Some(&cover_clauses),
-                                  args.emit_drat.as_deref())
+                                  args.emit_drat.as_deref(),
+                                  args.emit_pbp.as_deref(),
+                                  n_clauses)
                 } else {
                     drop(clauses);
                     matrix_search(comp, nvars, args.show_progress, m, None,
                                   args.emit_cover.as_deref(),
                                   None,
-                                  args.emit_drat.as_deref())
+                                  args.emit_drat.as_deref(),
+                                  args.emit_pbp.as_deref(),
+                                  n_clauses)
                 }
             }
         }
@@ -1999,7 +2247,7 @@ mod tests {
         if clauses.iter().any(|c| c.is_empty()) { return Err(()); }
         if clauses.is_empty() { return Ok(vec![true; nvars]); }
         let comp = cnf_complement_nnf(clauses);
-        match matrix_search(comp, nvars, /*show_progress=*/ false, backend, None, None, None, None) {
+        match matrix_search(comp, nvars, /*show_progress=*/ false, backend, None, None, None, None, None, 0) {
             SearchOutcome::Sat(asgn) => Ok(asgn),
             SearchOutcome::Unsat => Err(()),
             SearchOutcome::Interrupted => panic!("test search reported interrupted"),
@@ -2244,11 +2492,11 @@ mod tests {
             MatrixBackend::GreedyEff,
             MatrixBackend::BasicEff,
         ] {
-            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend, None, None, None, None) {
+            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend, None, None, None, None, None, 0) {
                 SearchOutcome::Sat(_) => {}
                 other => panic!("[{:?}] expected Sat, got {:?}", backend, outcome_kind(&other)),
             }
-            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend, None, None, None, None) {
+            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend, None, None, None, None, None, 0) {
                 SearchOutcome::Unsat => {}
                 other => panic!("[{:?}] expected Unsat, got {:?}", backend, outcome_kind(&other)),
             }

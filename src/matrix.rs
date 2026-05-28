@@ -380,6 +380,52 @@ impl NNF {
         }
     }
 
+    /// `log10(path_count())` computed entirely in log-space, so it
+    /// never overflows f64 even when the literal path count would
+    /// exceed `f64::MAX` (~10^308) — common on PHP / RoundRobin /
+    /// Steiner-style inputs whose complement-NNF path counts can run
+    /// into the thousands of digits.
+    ///
+    /// Returns:
+    /// - `0.0` for a single literal (log10(1) = 0).
+    /// - For `Sum` (multiplicative): sum of children's log-counts.
+    ///   Empty Sum is the multiplicative identity 1 → 0.0.
+    /// - For `Prod` (additive): logsumexp of children's log-counts.
+    ///   Empty Prod is the additive identity 0 → `f64::NEG_INFINITY`.
+    ///
+    /// Used by `bin/sat.rs` to render a progress bar whose scale is
+    /// "orders of magnitude covered out of orders of magnitude total"
+    /// — see `render_progress` for the display.
+    pub fn log_path_count(&self) -> f64 {
+        match self {
+            NNF::Lit(_)   => 0.0,
+            NNF::Sum(ch)  => ch.iter().map(|c| c.log_path_count()).sum::<f64>(),
+            NNF::Prod(ch) => {
+                // log10(sum_i 10^l_i) via numerically-stable logsumexp:
+                //   m = max(l_i)
+                //   = m + log10(sum_i 10^(l_i - m))
+                // The shift by `m` keeps every exp() argument in
+                // [-inf, 0] so the sum can't overflow.  When `m` is
+                // -inf (every child has zero paths), the result is -inf.
+                let mut m = f64::NEG_INFINITY;
+                for c in ch {
+                    let l = c.log_path_count();
+                    if l > m { m = l; }
+                }
+                if !m.is_finite() {
+                    // All children are -inf (no paths anywhere) → -inf.
+                    // Also handles empty Prod (m stayed at the initial
+                    // -inf, no iteration ran).
+                    return f64::NEG_INFINITY;
+                }
+                let s: f64 = ch.iter()
+                    .map(|c| 10f64.powf(c.log_path_count() - m))
+                    .sum();
+                m + s.log10()
+            }
+        }
+    }
+
     /// Number of complete paths to the right of the last position in `prefix`.
     /// When a covered prefix is found during DFS, only the remaining Sum
     /// children (not yet crossed) are pruned. Prod siblings are visited
@@ -2631,6 +2677,70 @@ mod tests {
     fn test_valid_larger_tautology() {
         let m = Matrix::try_from("R'H' + L H R' + L' + R").unwrap();
         assert!(valid_both(&m).is_ok());
+    }
+
+    #[test]
+    fn test_log_path_count_agrees_with_path_count() {
+        // For small formulas, log10(path_count) and log_path_count
+        // should agree to within f64 round-off.
+        fn check(n: &NNF) {
+            let pc = n.path_count();
+            let lpc = n.log_path_count();
+            if pc == 0.0 {
+                assert!(lpc.is_infinite() && lpc < 0.0,
+                        "path_count=0 should give log = -inf, got {}", lpc);
+            } else {
+                let expected = pc.log10();
+                assert!((lpc - expected).abs() < 1e-9,
+                        "log mismatch: path_count={} log={} expected={}",
+                        pc, lpc, expected);
+            }
+        }
+        // single literal: 1 path → log 0
+        check(&v(0));
+        // Sum([A, B]) = product of 1,1 = 1 → log 0
+        check(&sum(vec![v(0), v(1)]));
+        // Prod([A, B]) = 1+1 = 2 → log10(2) ≈ 0.301
+        check(&prod(vec![v(0), v(1)]));
+        // Sum([A, B, Prod([C, D])]) = 1*1*2 = 2 → log10(2)
+        check(&sum(vec![v(0), v(1), prod(vec![v(2), v(3)])]));
+        // Prod([Sum([A,B]), Sum([C,D])]) = 1+1 = 2 → log10(2)
+        check(&prod(vec![sum(vec![v(0), v(1)]), sum(vec![v(2), v(3)])]));
+        // Larger:
+        // Sum([Prod([A,B]), Prod([C,D])]) = 2*2 = 4 → log10(4) ≈ 0.602
+        check(&sum(vec![prod(vec![v(0), v(1)]), prod(vec![v(2), v(3)])]));
+    }
+
+    #[test]
+    fn test_log_path_count_never_overflows() {
+        // Build a Sum-of-Prods deep enough that path_count overflows
+        // f64 (>= 10^308) but log_path_count stays finite.  Sum
+        // multiplies, so chaining N Prods each with k paths gives
+        // total = k^N — pick N=2000, k=2 → total = 2^2000 ≈ 10^602,
+        // well past f64::MAX.
+        let one_prod = prod(vec![v(0), v(1)]); // 2 paths each
+        let n = 2000;
+        let big = sum(std::iter::repeat(one_prod).take(n).collect());
+        let pc = big.path_count();
+        let lpc = big.log_path_count();
+        // Literal path_count overflows to inf:
+        assert!(pc.is_infinite(), "path_count should overflow, got {}", pc);
+        // Log-space stays finite at exactly N * log10(2) ≈ 2000 * 0.301:
+        let expected = (n as f64) * 2f64.log10();
+        assert!((lpc - expected).abs() < 1e-6,
+                "log_path_count={} expected≈{}", lpc, expected);
+        assert!(lpc.is_finite());
+    }
+
+    #[test]
+    fn test_log_path_count_empty_prod_is_neg_inf() {
+        // Empty Prod is the additive identity (0 paths).
+        // log10(0) = -inf; the implementation must not return NaN or 0.
+        let empty_prod = NNF::Prod(vec![]);
+        assert_eq!(empty_prod.path_count(), 0.0);
+        let lpc = empty_prod.log_path_count();
+        assert!(lpc.is_infinite() && lpc < 0.0,
+                "empty Prod log should be -inf, got {}", lpc);
     }
 
     #[test]

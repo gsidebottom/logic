@@ -284,7 +284,15 @@ class TUI:
         self.enabled = enabled and sys.stderr.isatty()
         self.lock = threading.Lock()
         self.worker_names: List[str] = [""] * n_workers
-        self.worker_lines: List[str] = [""] * n_workers
+        # Two stacked rows per worker, mirroring sat's two-bar display:
+        # path row holds the log-progress bar / banner / result line;
+        # time row holds the wall-clock bar.  Either can be empty (e.g.
+        # before the first frame, or when sat was invoked without a
+        # timeout so no time bar is emitted).
+        self.worker_path: List[str] = [""] * n_workers
+        self.worker_time: List[str] = [""] * n_workers
+        # Total bottom-block rows: 1 header + 2 per worker.
+        self.block_rows = 1 + 2 * n_workers
         self.done = 0
         self.solved = 0
         self.timed_out = 0
@@ -304,15 +312,31 @@ class TUI:
             sys.stderr.flush()
 
     def update_worker(self, idx: int, name: str, line: str) -> None:
+        """
+        Route a sat-progress frame to the worker's path or time row
+        based on its content.  Banners (`c parsed ...`, `c backend ...`)
+        and result lines (`c SAT in Xms`) don't match either bar
+        marker — those land in the path row so they're visible.
+        """
         with self.lock:
             self.worker_names[idx] = name
-            self.worker_lines[idx] = line
+            if TIME_FRAME_RE.search(line):
+                self.worker_time[idx] = line
+            elif PATH_FRAME_RE.search(line):
+                self.worker_path[idx] = line
+            else:
+                # Banner / result / unknown — put it in the path row
+                # and clear any stale time-bar text from a previous
+                # run on this slot.
+                self.worker_path[idx] = line
+                self.worker_time[idx] = ""
             self._redraw()
 
     def free_worker(self, idx: int) -> None:
         with self.lock:
             self.worker_names[idx] = ""
-            self.worker_lines[idx] = ""
+            self.worker_path[idx] = ""
+            self.worker_time[idx] = ""
             self._redraw()
 
     def record(self, result: str, mismatch: bool) -> None:
@@ -364,35 +388,47 @@ class TUI:
         parts.append(f"({time_s})")
         return "  ".join(parts)
 
-    def _worker_row(self, i: int) -> str:
+    def _worker_rows(self, i: int) -> Tuple[str, str]:
+        """
+        Two stacked rows for worker `i`: the path-bar row (with the
+        worker name on it) and the time-bar row (indented under it).
+        Both truncated to fit the terminal width.
+        """
         name = self.worker_names[i]
-        line = self.worker_lines[i]
-        if not name:
-            return f"  [{i}] {COLOR_RESET}(idle)"
-        # Truncate name + status to fit the terminal width.
         cols = self._cols()
-        prefix = f"  [{i}] {name}  "
-        avail = cols - len(prefix) - 1
-        if avail < 5:
-            avail = 5
-        if len(line) > avail:
-            line = line[:avail - 1] + "…"
-        return prefix + line
+        if not name:
+            # Idle slot: row 1 shows "(idle)", row 2 is empty.
+            return (f"  [{i}] (idle)", "")
+        # Row 1: name + path-bar line.
+        prefix1 = f"  [{i}] {name}  "
+        path = self.worker_path[i]
+        avail1 = max(5, cols - len(prefix1) - 1)
+        if len(path) > avail1:
+            path = path[:avail1 - 1] + "…"
+        row1 = prefix1 + path
+        # Row 2: indented continuation, time-bar line only.
+        prefix2 = " " * len(prefix1)
+        tline = self.worker_time[i]
+        avail2 = max(5, cols - len(prefix2) - 1)
+        if len(tline) > avail2:
+            tline = tline[:avail2 - 1] + "…"
+        row2 = prefix2 + tline
+        return (row1, row2)
 
     def _emit_block(self) -> None:
-        cols = self._cols()
         out: List[str] = [HIDE_CURSOR]
-        # Header (drop ANSI when measuring length, but it's hard — just trust)
         out.append(self._header() + "\n")
         for i in range(self.n):
-            out.append(self._worker_row(i) + "\n")
+            r1, r2 = self._worker_rows(i)
+            out.append(r1 + "\n")
+            out.append(r2 + "\n")
         out.append(SHOW_CURSOR)
         sys.stderr.write("".join(out))
         sys.stderr.flush()
 
     def _clear_block(self) -> None:
         """Cursor → header line, then clear-to-end-of-screen."""
-        sys.stderr.write(f"\x1b[{self.n + 1}A\x1b[J")
+        sys.stderr.write(f"\x1b[{self.block_rows}A\x1b[J")
 
     def _redraw(self) -> None:
         if not self.enabled:
@@ -407,7 +443,27 @@ class TUI:
 # `sat --progress` emits frames separated by these byte sequences.
 # Each frame is the text BETWEEN consecutive separators; we surface the
 # latest non-empty stripped frame to the worker's TUI row.
-SEP_RE = re.compile(r"\x1b\[2K|\x1b\[\?25[lh]|\r|\n")
+#
+# `\x1b[<N>A` (cursor-up) is critical: sat emits it between frames to
+# reposition for the in-place overwrite of its two stacked bars.
+# Without recognising it as a separator, the cursor-up bytes get
+# concatenated onto the END of the previous frame's text (which is
+# the time-bar line — sat doesn't terminate it with `\n` because the
+# next frame's `\x1b[1A` does that job).  We'd then either emit the
+# time-bar text with an embedded escape (which corrupts the TUI when
+# printed) or drop it entirely.  Matching `\x1b[NA` for any N covers
+# the 1-line case (just the path bar, `\x1b[0A` is a no-op anyway)
+# and the 2-line case (`\x1b[1A`).
+SEP_RE = re.compile(r"\x1b\[2K|\x1b\[\?25[lh]|\x1b\[\d*A|\r|\n")
+
+# Recognise which of sat's two bars a frame belongs to.  Both start
+# with `c [bar] ` followed by either "paths " (log-progress line) or
+# "time " (wall-clock line).  Banner lines (`c parsed ...`,
+# `c backend: ...`, `c preprocess: ...`) and the final result line
+# (`c SAT in ...`) match neither — we route those to the path row so
+# they're visible in scrollback before the bars take over.
+PATH_FRAME_RE = re.compile(r"\bpaths\s")
+TIME_FRAME_RE = re.compile(r"\btime\s")
 
 # Track all live sat subprocesses so a Ctrl-C in main can SIGTERM them
 # even if the worker thread is blocked on os.read.

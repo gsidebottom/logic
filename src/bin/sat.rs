@@ -61,6 +61,7 @@ use std::io::{self, BufRead, IsTerminal, Write};
 use std::time::{Duration, Instant};
 
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use logic::matrix::{
     Lit, NNF, PathClassificationHandle, PathParams, PathsClass, Var,
@@ -707,8 +708,21 @@ fn matrix_search(
     emit_drat: Option<&std::path::Path>,
     emit_pbp: Option<&std::path::Path>,
     n_input_clauses: usize,
+    // Wall-clock timeout in seconds; 0 means "no timeout configured"
+    // — the progress renderer suppresses the time bar in that case
+    // since there's no meaningful denominator.  Not used for actual
+    // cancellation (a separate watcher thread in `main` handles that
+    // via SIGTERM); purely informational for the time-budget bar.
+    timeout_secs: u64,
 ) -> SearchOutcome {
-    let total_paths = comp.path_count();
+    // log10 of the total path count.  Used by the progress renderer
+    // to map "paths classified so far" onto a [0, 1] bar fill in
+    // log-space (each tick of the bar = one constant fold-increase in
+    // coverage).  Computed in log-space because the literal
+    // `path_count()` overflows f64 to ∞ on huge complement NNFs
+    // (PHP-n-n, Steiner, RoundRobin) — log-space stays finite up to
+    // 10^(10^308), i.e. unbounded for any formula that fits in RAM.
+    let log_total_paths = comp.log_path_count();
     let params = Some(PathParams {
         uncovered_path_limit: 1,           // stop after the first witness
         paths_class_limit:    usize::MAX,
@@ -1088,7 +1102,8 @@ fn matrix_search(
 
         let start = Instant::now();
         let progress_task = if want_progress {
-            Some(tokio::spawn(matrix_progress_loop(cancel.clone(), total_paths, start)))
+            Some(tokio::spawn(matrix_progress_loop(
+                cancel.clone(), log_total_paths, timeout_secs, start)))
         } else {
             None
         };
@@ -1554,14 +1569,19 @@ fn render_cadical_progress(learned: usize, elapsed_secs: f64) {
     let _ = io::stderr().flush();
 }
 
-/// Tokio task that re-renders the matrix-search progress line every
+/// Tokio task that re-renders the matrix-search progress display every
 /// 100ms until the search completes or the task is aborted.  Reads
 /// `paths_so_far` off the `PathClassificationHandle` (published every
 /// 4096 traversal steps by the wrapping
 /// [`logic::controller::CancelController`]).
+///
+/// `log_total` is `log10(total_path_count)` — see `NNF::log_path_count`
+/// for why we work in log-space (literal counts overflow f64 on huge
+/// formulas).  `timeout_secs == 0` suppresses the time-budget bar.
 async fn matrix_progress_loop(
     cancel: PathClassificationHandle,
-    total_paths: f64,
+    log_total: f64,
+    timeout_secs: u64,
     start: Instant,
 ) {
     let mut interval = tokio::time::interval(Duration::from_millis(100));
@@ -1569,65 +1589,123 @@ async fn matrix_progress_loop(
     // Skip the first immediate tick so we don't render before any work
     // has happened (the first non-zero update arrives ~ms in).
     interval.tick().await;
+    let mut frame: u64 = 0;
     loop {
         interval.tick().await;
         let so_far = cancel.paths_so_far();
         let elapsed = start.elapsed().as_secs_f64();
-        render_progress(so_far, total_paths, elapsed);
+        render_progress(so_far, log_total, elapsed, timeout_secs, frame);
+        frame = frame.wrapping_add(1);
     }
 }
 
-/// Render one progress line on stderr.  Format roughly mirrors the web
-/// app's path display: `bar | percent | so-far/total | rate | elapsed`.
-/// Falls back to an indeterminate spinner when neither the count nor
-/// the total are usable (very large formulas where `total = ∞`, or the
-/// rare case of a backend that publishes no progress at all).
-fn render_progress(so_far: f64, total: f64, elapsed_secs: f64) {
+/// Render the progress display: a log-scale path bar plus (when a
+/// timeout is configured) a wall-clock time bar stacked below it.
+///
+/// **Why two bars.**  The path bar uses log-space so it actually
+/// moves on hard instances: a literal `so_far/total` would sit at 0%
+/// for hours then jump to 100%, because path counts grow
+/// exponentially while observed coverage starts near zero.  In
+/// log-space the bar advances at roughly constant rate as the search
+/// chews through orders of magnitude — but that means "50% on the bar"
+/// means "covered √total paths", not "halfway done in real terms."
+/// The time bar gives the honest ETA-style signal that the log bar
+/// can't.  Combined they answer: "am I making progress" (log bar) and
+/// "am I about to time out" (time bar) without either lying.
+///
+/// **Frame `0`** prints both lines fresh.  Subsequent frames cursor-up
+/// once and overwrite both lines in place.  The cursor invariant is:
+/// after every render, the cursor sits at the end of the *second*
+/// (time) line — or the first (path) line if there's no time bar.
+/// `restore_terminal()` knows about both lines and clears them on
+/// exit.
+fn render_progress(
+    so_far: f64,
+    log_total: f64,
+    elapsed_secs: f64,
+    timeout_secs: u64,
+    frame: u64,
+) {
     let bar_width = 30usize;
-    let have_total = total.is_finite() && total > 0.0;
-    let have_progress = so_far > 0.0 && have_total;
-    if !have_progress {
-        // Indeterminate-progress mode: animate a small marker
-        // sliding along the bar.  Triggered when `total` is `inf`
-        // (path count overflowed f64 on huge formulas) or when
-        // `so_far` is still 0.  Period ~3 s.  The renderer is
-        // called every 100 ms by the progress loop, so position
-        // advances by 1 each frame.
-        let frame = (elapsed_secs * 10.0) as usize;
-        let pos = frame % bar_width;
-        let bar: String = (0..bar_width)
+
+    // ─── Line 1: log-space path-progress bar ────────────────────
+    // so_far == 0  →  log10 is -inf  →  indeterminate-mode slider.
+    // log_total <= 0  →  formula has ≤ 1 path  →  also indeterminate
+    // (a one-tick search isn't worth a progress bar anyway).
+    let log_so_far = if so_far > 0.0 { so_far.log10() } else { f64::NEG_INFINITY };
+    let have_log_total = log_total.is_finite() && log_total > 0.0;
+    let have_log_progress = log_so_far.is_finite() && have_log_total;
+
+    let line1_bar = if have_log_progress {
+        let frac = (log_so_far / log_total).clamp(0.0, 1.0);
+        let filled = ((frac * bar_width as f64).round() as usize).min(bar_width);
+        (0..bar_width)
+            .map(|i| if i < filled { '█' } else { '·' })
+            .collect::<String>()
+    } else {
+        // Indeterminate slider: ◉ advances 1 cell per frame (10/s).
+        let pos = (frame as usize) % bar_width;
+        (0..bar_width)
             .map(|i| if i == pos { '◉' } else { '·' })
-            .collect();
-        let rate = if elapsed_secs > 0.0 { so_far / elapsed_secs } else { 0.0 };
-        eprint!(
-            "\r\x1b[2Kc [{}] {}/{} ({}/s) {:.1}s",
-            bar,
-            format_count(so_far),
-            format_count(total),
-            format_count(rate),
-            elapsed_secs,
-        );
-        let _ = io::stderr().flush();
-        return;
-    }
-    let pct = (so_far / total * 100.0).clamp(0.0, 100.0);
+            .collect::<String>()
+    };
+
     let rate = if elapsed_secs > 0.0 { so_far / elapsed_secs } else { 0.0 };
-    let filled = ((pct / 100.0) * bar_width as f64).round() as usize;
-    let filled = filled.min(bar_width);
-    let bar: String = (0..bar_width)
-        .map(|i| if i < filled { '█' } else { '·' })
-        .collect();
-    // \r returns to col 0; \x1b[2K clears the entire line.  Together
-    // they overwrite the previous render in place without scrolling.
-    eprint!(
-        "\r\x1b[2Kc [{}] {:>5.1}% {}/{} ({}/s) {:.1}s",
-        bar, pct,
+    let line1 = format!(
+        "c [{}] paths {} / {}  ({}/s)  {:.1}s",
+        line1_bar,
         format_count(so_far),
-        format_count(total),
+        format_log_count(log_total),
         format_count(rate),
         elapsed_secs,
     );
+
+    // ─── Line 2: wall-clock time-budget bar (only when configured) ──
+    let line2 = if timeout_secs > 0 {
+        let frac = (elapsed_secs / timeout_secs as f64).clamp(0.0, 1.0);
+        let filled = ((frac * bar_width as f64).round() as usize).min(bar_width);
+        let bar: String = (0..bar_width)
+            .map(|i| if i < filled { '█' } else { '·' })
+            .collect();
+        Some(format!(
+            "c [{}] time  {:.1}s / {}s",
+            bar, elapsed_secs, timeout_secs,
+        ))
+    } else {
+        None
+    };
+
+    // ─── Write to stderr.  On frame > 0 cursor-up to overwrite line1
+    // in place; \r\x1b[2K on each line clears and reprints.
+    let n_lines: u16 = if line2.is_some() { 2 } else { 1 };
+    if frame > 0 && n_lines > 1 {
+        eprint!("\x1b[{}A", n_lines - 1);
+    }
+    eprint!("\r\x1b[2K{}", line1);
+    if let Some(l2) = &line2 {
+        eprint!("\n\r\x1b[2K{}", l2);
+    }
     let _ = io::stderr().flush();
+    // Publish to restore_terminal() so it knows how many lines to
+    // clear when the search finishes / panics / receives a signal.
+    PROGRESS_LINES_DRAWN.store(n_lines as u8, Ordering::Relaxed);
+}
+
+/// Format a log10-valued count for display.  Small values (< 10⁹) are
+/// reconstructed back into K/M/G form so they look like normal counts;
+/// large values are shown as `10^x.y` since the actual integer would
+/// be unprintable.  `-inf` → "0" (formula has no paths at all).
+fn format_log_count(log10_n: f64) -> String {
+    if !log10_n.is_finite() {
+        return if log10_n < 0.0 { "0".into() } else { "?".into() };
+    }
+    if log10_n < 9.0 {
+        // Round-trip back to a literal count for compact display.
+        // `format_count` handles K/M/G prefixes for us.
+        format_count(10f64.powf(log10_n))
+    } else {
+        format!("10^{:.1}", log10_n)
+    }
 }
 
 /// SI-prefix big-number formatter.  Keeps lines short on huge formulas
@@ -1668,12 +1746,36 @@ fn format_count(n: f64) -> String {
 /// panic message still prints.
 struct TerminalGuard;
 
+/// Number of progress lines the renderer last drew (0 = nothing
+/// drawn yet; 1 = path bar only; 2 = path bar + time bar).  Read by
+/// `restore_terminal` to know how many lines to clear without
+/// clobbering legitimate scrollback above the progress block.
+/// `AtomicU8` because it's loaded/stored from signal handlers, which
+/// need lock-free access.
+static PROGRESS_LINES_DRAWN: AtomicU8 = AtomicU8::new(0);
+
 /// Write the cursor-restore + clear-line escape bytes via the raw
 /// `write` syscall.  Async-signal-safe and panic-safe — fine to
 /// call from signal handlers, panic hooks, and `Drop`.
 fn restore_terminal() {
-    // \r + ESC[2K = move to col 0 and clear line.  ESC[?25h = show cursor.
-    const BYTES: &[u8] = b"\r\x1b[2K\x1b[?25h";
+    // Clear whatever progress lines we drew.  The cursor sits at the
+    // end of the *last* line drawn (line 2 if there was a time bar,
+    // else line 1).  For the 2-line case we clear line 2, cursor-up,
+    // clear line 1; for the 1-line case we just clear line 1.
+    // Always re-show the cursor.
+    //
+    // We can't use `eprint!` here — this is called from signal
+    // handlers, so we go through the raw `write(2)` syscall on a
+    // 'static byte buffer.
+    let lines = PROGRESS_LINES_DRAWN.load(Ordering::Relaxed);
+    const TWO_LINES:  &[u8] = b"\r\x1b[2K\x1b[1A\r\x1b[2K\x1b[?25h";
+    const ONE_LINE:   &[u8] = b"\r\x1b[2K\x1b[?25h";
+    const JUST_SHOW:  &[u8] = b"\x1b[?25h";
+    let bytes: &[u8] = match lines {
+        0 => JUST_SHOW,
+        1 => ONE_LINE,
+        _ => TWO_LINES,
+    };
     // SAFETY: `write(2)` is async-signal-safe.  fd 2 is stderr.  The
     // buffer is a 'static slice so it's always valid.  We ignore the
     // return value because there's nothing useful to do if it fails
@@ -1681,10 +1783,14 @@ fn restore_terminal() {
     unsafe {
         let _ = libc::write(
             libc::STDERR_FILENO,
-            BYTES.as_ptr() as *const libc::c_void,
-            BYTES.len(),
+            bytes.as_ptr() as *const libc::c_void,
+            bytes.len(),
         );
     }
+    // Mark as cleared so a subsequent restore_terminal call (e.g. the
+    // panic hook firing after the SIGINT handler already ran) doesn't
+    // clear additional lines that didn't belong to us.
+    PROGRESS_LINES_DRAWN.store(0, Ordering::Relaxed);
 }
 
 /// Signal handler for abrupt-termination signals (SIGABRT, SIGSEGV,
@@ -2240,7 +2346,8 @@ fn main() {
                                       None,
                                       args.emit_drat.as_deref(),
                                       args.emit_pbp.as_deref(),
-                                      0)
+                                      0,
+                                      args.timeout_secs)
                     }
                 }
             } else {
@@ -2260,7 +2367,8 @@ fn main() {
                                   Some(&cover_clauses),
                                   args.emit_drat.as_deref(),
                                   args.emit_pbp.as_deref(),
-                                  n_clauses)
+                                  n_clauses,
+                                  args.timeout_secs)
                 } else {
                     drop(clauses);
                     matrix_search(comp, nvars, args.show_progress, m, None,
@@ -2268,7 +2376,8 @@ fn main() {
                                   None,
                                   args.emit_drat.as_deref(),
                                   args.emit_pbp.as_deref(),
-                                  n_clauses)
+                                  n_clauses,
+                                  args.timeout_secs)
                 }
             }
         }
@@ -2319,7 +2428,7 @@ mod tests {
         if clauses.iter().any(|c| c.is_empty()) { return Err(()); }
         if clauses.is_empty() { return Ok(vec![true; nvars]); }
         let comp = cnf_complement_nnf(clauses);
-        match matrix_search(comp, nvars, /*show_progress=*/ false, backend, None, None, None, None, None, 0) {
+        match matrix_search(comp, nvars, /*show_progress=*/ false, backend, None, None, None, None, None, 0, 0) {
             SearchOutcome::Sat(asgn) => Ok(asgn),
             SearchOutcome::Unsat => Err(()),
             SearchOutcome::Interrupted => panic!("test search reported interrupted"),
@@ -2542,13 +2651,40 @@ mod tests {
     #[test]
     fn render_progress_doesnt_panic() {
         // Smoke test: render with various inputs (incl. degenerate
-        // total=0 and start≈now) shouldn't panic or divide-by-zero.
+        // log_total=0 and start≈now) shouldn't panic or divide-by-zero.
         // Output goes to stderr, which captures during tests.
-        render_progress(0.0,   0.0, 0.0);
-        render_progress(50.0,  100.0, 1.5);
-        render_progress(1e15,  1.85e15, 12.3);
-        // Past-100% shouldn't overflow the bar.
-        render_progress(150.0, 100.0, 1.0);
+        //   (so_far, log_total, elapsed_secs, timeout_secs, frame)
+        // ---- both bars (timeout_secs > 0) ----
+        render_progress(0.0,   0.0,  0.0,  60, 0);   // pre-progress
+        render_progress(50.0,  4.0,  1.5,  60, 1);   // so_far=50, log_total=10^4
+        render_progress(1e6,   8.0,  12.3, 60, 2);   // mid run
+        render_progress(1e15,  15.0, 30.0, 60, 3);   // late
+        render_progress(1e9,   3.0,  1.0,  60, 4);   // so_far > total: clamp
+        // ---- log_total = -inf (formula has 0 paths; degenerate) ----
+        render_progress(0.0, f64::NEG_INFINITY, 0.5, 60, 5);
+        // ---- log_total = inf (shouldn't happen, but be defensive) ----
+        render_progress(100.0, f64::INFINITY, 1.0, 60, 6);
+        // ---- single bar only (timeout_secs == 0) ----
+        render_progress(0.0,   0.0,  0.0,  0, 0);
+        render_progress(50.0,  4.0,  1.5,  0, 1);
+    }
+
+    #[test]
+    fn format_log_count_handles_edges() {
+        assert_eq!(format_log_count(f64::NEG_INFINITY), "0");
+        assert_eq!(format_log_count(f64::INFINITY),     "?");
+        assert_eq!(format_log_count(f64::NAN),          "?");
+        // log10(1) = 0 → "1"
+        assert_eq!(format_log_count(0.0), "1");
+        // log10(1000) = 3 → "1.0K"
+        assert_eq!(format_log_count(3.0), "1.0K");
+        // log10(1e8) = 8 → "100.0M"  (still under 1e9 threshold)
+        let s = format_log_count(8.0);
+        assert!(s.ends_with("M"), "expected M-suffix for log=8, got {}", s);
+        // log10(1e10) = 10 → "10^10.0"
+        assert_eq!(format_log_count(10.0), "10^10.0");
+        // Very large: log10 = 4500 → "10^4500.0"
+        assert_eq!(format_log_count(4500.0), "10^4500.0");
     }
 
     #[test]
@@ -2564,11 +2700,11 @@ mod tests {
             MatrixBackend::GreedyEff,
             MatrixBackend::BasicEff,
         ] {
-            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend, None, None, None, None, None, 0) {
+            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend, None, None, None, None, None, 0, 0) {
                 SearchOutcome::Sat(_) => {}
                 other => panic!("[{:?}] expected Sat, got {:?}", backend, outcome_kind(&other)),
             }
-            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend, None, None, None, None, None, 0) {
+            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend, None, None, None, None, None, 0, 0) {
                 SearchOutcome::Unsat => {}
                 other => panic!("[{:?}] expected Unsat, got {:?}", backend, outcome_kind(&other)),
             }

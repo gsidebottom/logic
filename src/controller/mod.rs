@@ -162,6 +162,34 @@ pub trait PathSearchController {
     /// the count of paths each one stands for.
     fn paths_classified(&self) -> f64 { self.path_count() as f64 }
 
+    /// **Pre-leaf pruning credit** — the count of paths the controller
+    /// proved unreachable *without* descending to a leaf and firing a
+    /// Covered/Uncovered event.  Default `0.0`: most controllers do
+    /// all their work at the leaf level and have nothing to credit
+    /// before that.
+    ///
+    /// Override in controllers that prune whole subtrees structurally,
+    /// e.g. [`crate::dual::path_effective::EffectiveCountWrapper`],
+    /// which returns its `pruned_paths_peak` — paths killed by the
+    /// eff layer's `Some(0)` short-circuit that the inner CDCL
+    /// controller never saw and so never fired a Covered event for.
+    ///
+    /// Used by the cover-mult-weighted drivers
+    /// (`run_dfs_with_restarts_weighted`,
+    /// `classify_paths_with_arena_impl`) to disambiguate two
+    /// contributions to the progress publish:
+    ///   - leaf-event credit, counted driver-side as
+    ///     `cover_mult × Δcovered_prefix_count + Δuncovered_path_count`
+    ///   - pre-leaf pruning credit, returned by this method
+    /// The two are disjoint by construction (a path either reached
+    /// a leaf or didn't) so they sum to a sound `paths_classified`.
+    ///
+    /// Wrappers in the controller chain must forward this to their
+    /// inner (`self.inner.pre_leaf_pruning_credit()`) so the
+    /// driver sees the eff wrapper's credit even when the chain is
+    /// `OuterWrapper(EffectiveCountWrapper(CdclController))`.
+    fn pre_leaf_pruning_credit(&self) -> f64 { 0.0 }
+
     /// Whether this controller wants the search to *restart* — abandon
     /// the current trail, keep accumulated knowledge (learned clauses,
     /// variable activities), and re-enter the DFS from the top.

@@ -22,18 +22,41 @@ pub struct CancelController<C: PathSearchController> {
     pub inner: C,
     pub cancel: PathClassificationHandle,
     step: u64,
+    /// When `true`, the wrapper does cancel-polling only — it no
+    /// longer publishes `inner.paths_classified()` periodically.
+    /// Used by the arena driver, which now publishes a properly
+    /// cover-mult-weighted `paths_classified` itself (via
+    /// `for_each_path_prefix_weighted`).  Without this flag both
+    /// the wrapper and the driver would race to call
+    /// `cancel.record_paths`, with the wrapper's unweighted
+    /// `path_count` event-tally clobbering the driver's weighted
+    /// value.  Default `false` for backward compatibility.
+    publish_disabled: bool,
 }
 
 impl<C: PathSearchController> CancelController<C> {
     pub fn new(inner: C, cancel: PathClassificationHandle) -> Self {
-        Self { inner, cancel, step: 0 }
+        Self { inner, cancel, step: 0, publish_disabled: false }
+    }
+
+    /// Builder: suppress this wrapper's periodic
+    /// `cancel.record_paths(inner.paths_classified())` calls.
+    /// Use when the surrounding driver publishes its own (better)
+    /// `paths_classified` and you only want the wrapper for its
+    /// cancel-poll behaviour.
+    pub fn with_publish_disabled(mut self) -> Self {
+        self.publish_disabled = true;
+        self
     }
 
     /// Publish the inner controller's current paths-classified count to the
     /// handle.  Call this once after the DFS completes so the final value is
     /// reflected even if the last 4096-step boundary wasn't crossed.
+    /// No-op when `publish_disabled` is set.
     pub fn publish_progress(&self) {
-        self.cancel.record_paths(self.inner.paths_classified());
+        if !self.publish_disabled {
+            self.cancel.record_paths(self.inner.paths_classified());
+        }
     }
 }
 
@@ -56,7 +79,7 @@ impl<C: PathSearchController> PathSearchController for CancelController<C> {
             return Some(0);
         }
         self.step = self.step.wrapping_add(1);
-        if self.step & 0xFFF == 0 {
+        if self.step & 0xFFF == 0 && !self.publish_disabled {
             self.cancel.record_paths(self.inner.paths_classified());
         }
         self.inner.should_continue_on_prefix(prefix_literals, prefix_positions, prefix_prod_path, is_complete)
@@ -80,6 +103,7 @@ impl<C: PathSearchController> PathSearchController for CancelController<C> {
     fn covered_prefix_count(&self) -> usize { self.inner.covered_prefix_count() }
     fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
     fn paths_classified(&self) -> f64 { self.inner.paths_classified() }
+    fn pre_leaf_pruning_credit(&self) -> f64 { self.inner.pre_leaf_pruning_credit() }
 
     // Restart-protocol delegation.  Without these forwards the trait
     // defaults (`false` / no-op) shadow the inner's signal — any
@@ -119,7 +143,7 @@ impl<C: crate::nnf_arena::ArenaPathSearchController + crate::controller::PathSea
             return Some(0);
         }
         self.step = self.step.wrapping_add(1);
-        if self.step & 0xFFF == 0 {
+        if self.step & 0xFFF == 0 && !self.publish_disabled {
             self.cancel.record_paths(crate::controller::PathSearchController::paths_classified(&self.inner));
         }
         crate::nnf_arena::ArenaPathSearchController::should_continue_on_prefix(

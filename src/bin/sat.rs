@@ -1604,11 +1604,23 @@ async fn matrix_progress_loop(
     // has happened (the first non-zero update arrives ~ms in).
     interval.tick().await;
     let mut frame: u64 = 0;
+    // **Furthest-progress high-water mark.**  The eff backend's
+    // `pruned_paths_current` shrinks on backtrack (each pop reverses
+    // the per-push credit) and on CDCL restart (all pops at once),
+    // so `so_far` can drop between renders.  We mirror the wrapper's
+    // own `pruned_paths_peak` here at the render layer — tracking
+    // the max `so_far` ever observed — and pass it to the renderer,
+    // which draws a `▏` indicator at that position.  Gives the user
+    // a visual reference for "best progress in any single attempt"
+    // alongside "current progress in this attempt."  Strictly
+    // monotone-non-decreasing.
+    let mut max_so_far: f64 = 0.0;
     loop {
         interval.tick().await;
         let so_far = cancel.paths_so_far();
+        if so_far > max_so_far { max_so_far = so_far; }
         let elapsed = start.elapsed().as_secs_f64();
-        render_progress(so_far, log_total, elapsed, timeout_secs, frame);
+        render_progress(so_far, max_so_far, log_total, elapsed, timeout_secs, frame);
         frame = frame.wrapping_add(1);
     }
 }
@@ -1635,6 +1647,7 @@ async fn matrix_progress_loop(
 /// exit.
 fn render_progress(
     so_far: f64,
+    max_so_far: f64,
     log_total: f64,
     elapsed_secs: f64,
     timeout_secs: u64,
@@ -1653,8 +1666,30 @@ fn render_progress(
     let line1_bar = if have_log_progress {
         let frac = (log_so_far / log_total).clamp(0.0, 1.0);
         let filled = ((frac * bar_width as f64).round() as usize).min(bar_width);
+        // High-water mark cell.  `max_so_far` is monotone-non-decreasing
+        // (tracked outside the renderer); it advances as `so_far` hits
+        // new peaks and STAYS PUT when the eff backend's restart resets
+        // `pruned_paths`, so the user can see "best ever" alongside
+        // "current".  Position: the rightmost cell that would be filled
+        // at the peak.  Hidden when current ≥ peak (no mark to show).
+        let log_peak = if max_so_far > 0.0 { max_so_far.log10() } else { f64::NEG_INFINITY };
+        let peak_filled = if log_peak.is_finite() {
+            let pf = (log_peak / log_total).clamp(0.0, 1.0);
+            ((pf * bar_width as f64).round() as usize).min(bar_width)
+        } else {
+            0
+        };
+        let marker_pos: Option<usize> = if peak_filled > filled && peak_filled > 0 {
+            Some(peak_filled - 1)
+        } else {
+            None
+        };
         (0..bar_width)
-            .map(|i| if i < filled { '█' } else { '·' })
+            .map(|i| {
+                if i < filled                { '█' }
+                else if Some(i) == marker_pos { '▏' }
+                else                          { '·' }
+            })
             .collect::<String>()
     } else {
         // Indeterminate slider: ◉ advances 1 cell per frame (10/s).
@@ -2718,20 +2753,23 @@ mod tests {
         // Smoke test: render with various inputs (incl. degenerate
         // log_total=0 and start≈now) shouldn't panic or divide-by-zero.
         // Output goes to stderr, which captures during tests.
-        //   (so_far, log_total, elapsed_secs, timeout_secs, frame)
+        //   (so_far, max_so_far, log_total, elapsed_secs, timeout_secs, frame)
         // ---- both bars (timeout_secs > 0) ----
-        render_progress(0.0,   0.0,  0.0,  60, 0);   // pre-progress
-        render_progress(50.0,  4.0,  1.5,  60, 1);   // so_far=50, log_total=10^4
-        render_progress(1e6,   8.0,  12.3, 60, 2);   // mid run
-        render_progress(1e15,  15.0, 30.0, 60, 3);   // late
-        render_progress(1e9,   3.0,  1.0,  60, 4);   // so_far > total: clamp
+        render_progress(0.0,   0.0,   0.0,  0.0,  60, 0);   // pre-progress
+        render_progress(50.0,  50.0,  4.0,  1.5,  60, 1);   // so_far=max=50
+        render_progress(1e6,   1e6,   8.0,  12.3, 60, 2);   // mid run
+        render_progress(1e15,  1e15,  15.0, 30.0, 60, 3);   // late
+        render_progress(1e9,   1e9,   3.0,  1.0,  60, 4);   // so_far > total: clamp
+        // ---- post-restart: so_far < max_so_far → marker visible ----
+        render_progress(1e4,   1e8,   10.0, 5.0,  60, 5);
+        render_progress(0.0,   1e8,   10.0, 5.0,  60, 6);   // current reset to 0
         // ---- log_total = -inf (formula has 0 paths; degenerate) ----
-        render_progress(0.0, f64::NEG_INFINITY, 0.5, 60, 5);
+        render_progress(0.0, 0.0, f64::NEG_INFINITY, 0.5, 60, 7);
         // ---- log_total = inf (shouldn't happen, but be defensive) ----
-        render_progress(100.0, f64::INFINITY, 1.0, 60, 6);
+        render_progress(100.0, 100.0, f64::INFINITY, 1.0, 60, 8);
         // ---- single bar only (timeout_secs == 0) ----
-        render_progress(0.0,   0.0,  0.0,  0, 0);
-        render_progress(50.0,  4.0,  1.5,  0, 1);
+        render_progress(0.0,   0.0,  0.0,  0.0,  0, 0);
+        render_progress(50.0,  50.0, 4.0,  1.5,  0, 1);
     }
 
     #[test]

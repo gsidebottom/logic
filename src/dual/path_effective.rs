@@ -19,16 +19,16 @@
 //! cross-clause propagation is dormant — the count layer gives
 //! matrix-DFS a structural-NNF analog of unit propagation.
 
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use crate::controller::{CdclController, PathSearchController};
+use crate::dual::effective_count::{DeltaFrame, EffectiveCountIndex, EffectiveCounts};
+use crate::dual::wrapper::{run_dfs_with_restarts_weighted, run_dfs_with_restarts_weighted_bubble_up, StateQueryWrapper};
 use crate::dual::{
     BasicCoverState, CoverState, DualPathSearchController, PairPool, PathOutcome, SearchMode,
 };
-use crate::dual::effective_count::{DeltaFrame, EffectiveCountIndex, EffectiveCounts};
-use crate::dual::wrapper::{StateQueryWrapper, run_dfs_with_restarts, run_dfs_with_restarts_bubble_up};
-use crate::matrix::{Lit, NNF, PathParams, PathPrefix, PathsClass, ProdPath};
+use crate::matrix::{Lit, PathParams, PathPrefix, PathsClass, ProdPath, NNF};
 
 pub struct EffectivePathController<S: CoverState = BasicCoverState> {
     _state: std::marker::PhantomData<S>,
@@ -199,12 +199,21 @@ impl<S: CoverState + 'static> DualPathSearchController for EffectivePathControll
         // costs one `AtomicU64::store` per 4096 DFS calls, trivial.
         let progress_atom = self.progress.clone().unwrap_or_else(
             || Arc::new(std::sync::atomic::AtomicU64::new(0)));
-        let with_progress = crate::dual::wrapper::ProgressWrapper::new(counted, progress_atom);
+        // **Weighted driver wiring.**  Cover-mult-weighted progress
+        // for the eff dual backends (greedy_eff, basic_eff,
+        // greedy_effb, basic_effb).  Disabling the wrapper's own
+        // publish prevents it from racing the driver's weighted
+        // value with an unweighted one.  See
+        // `wrapper.rs::run_dfs_with_restarts_weighted_impl` for the
+        // driver's accounting + the `pre_leaf_pruning_credit` trait
+        // method for how the eff wrapper's peak is surfaced.
+        let with_progress = crate::dual::wrapper::ProgressWrapper::new(counted, progress_atom.clone())
+            .with_publish_disabled();
         let mut composite = StateQueryWrapper::new(with_progress, state, cancel);
         if self.bubble_up {
-            run_dfs_with_restarts_bubble_up(&mut composite, nnf, &*uncovered)
+            run_dfs_with_restarts_weighted_bubble_up(&mut composite, nnf, &*uncovered, progress_atom)
         } else {
-            run_dfs_with_restarts(&mut composite, nnf, &*uncovered)
+            run_dfs_with_restarts_weighted(&mut composite, nnf, &*uncovered, progress_atom)
         }
     }
 }
@@ -247,22 +256,38 @@ pub struct EffectiveCountWrapper<Inner: PathSearchController> {
     /// Diagnostics: count of `sum_ord` calls where the variance gate
     /// skipped a sort (children too uniform — `log10(max/min) < tau`).
     pub sum_ord_gate_skips: usize,
-    /// **Progress accounting.**  Each push of a DFS literal whose
-    /// effect drops the root effective count from `K` to a smaller
-    /// value (or to 0) accounts for `K - new_K` paths that the
-    /// Effective layer just *proved* are blocked without ever
-    /// reaching the leaf-level Covered detection in the inner
-    /// controller.  Cumulative across the whole run.
+    /// **Progress accounting — pruning credit stack.**
     ///
-    /// Why this matters for progress: without it, the inner
-    /// `paths_classified()` only counts paths that reach a leaf and
-    /// fire Covered/Uncovered events.  For `EffectivePathController`
-    /// most of the work happens *before* the leaf — the count layer
-    /// prunes whole subtrees via `Some(0)` returns.  Adding
-    /// `pruned_paths` to the inner's count gives an honest "paths
-    /// accounted for so far" number that asymptotes to the matrix's
-    /// total path count when the search completes.
-    pruned_paths: f64,
+    /// One entry per pushed literal: the marginal root-effective-count
+    /// drop that push caused (= paths blocked by this literal given
+    /// the prior prefix).  Pushed on `sync_to_prefix`'s push branch,
+    /// popped on the pop branch.  Stays in lockstep with `frames`.
+    ///
+    /// `pruned_paths_current = sum(pruning_credits)` — by telescoping,
+    /// this equals `R₀ − R_depth` where R is the root effective count.
+    /// Always ≤ `total_path_count` (because R_depth ≥ 0).  Computed
+    /// incrementally to avoid summing the stack every read.
+    ///
+    /// `pruned_paths_peak` is the all-time max of `current`, monotone
+    /// non-decreasing across the whole search (incl. CDCL restarts —
+    /// restart pops the trail, so `current` resets to 0, but `peak`
+    /// persists).  This is what `paths_classified()` publishes: the
+    /// "best fraction of path-space ever provably eliminated under
+    /// any single attempt's prefix."
+    ///
+    /// **Why a stack rather than a single cumulative counter.**  The
+    /// pre-fix design (`pruned_paths += old_root - new_root`, pops do
+    /// nothing) double-counted whenever the DFS backtracked: the
+    /// drop credited to lit L1 stayed on the books after we popped
+    /// L1, then we'd credit the drop from sibling alternative L2,
+    /// even though some paths between them overlap.  The stack-based
+    /// design self-cancels on backtrack — once we pop past L1, its
+    /// credit is reversed, leaving room for L2's credit without
+    /// double-counting.  Net effect: `current` is always exactly
+    /// `R₀ − R_depth`, never an artifact of search history.
+    pruning_credits: Vec<f64>,
+    pruned_paths_current: f64,
+    pub pruned_paths_peak: f64,
 }
 
 impl<Inner: PathSearchController> EffectiveCountWrapper<Inner> {
@@ -295,24 +320,41 @@ impl<Inner: PathSearchController> EffectiveCountWrapper<Inner> {
             root_zero_prunes: 0,
             prod_ord_filters: 0,
             sum_ord_gate_skips: 0,
-            pruned_paths: 0.0,
+            pruning_credits: Vec::new(),
+            pruned_paths_current: 0.0,
+            pruned_paths_peak: 0.0,
         }
     }
 
     fn sync_to_prefix(&mut self, prefix_literals: &Vec<&Lit>) {
-        // Pop frames for popped lits.  Pops reflect DFS backtrack —
-        // those paths were already accounted for when we descended,
-        // so we don't re-add anything on pop.
+        // ── Pop branch ──
+        // Each pop reverses the count layer's leaf updates AND
+        // decrements `pruned_paths_current` by the credit we charged
+        // at the corresponding push.  This is what stops the
+        // double-counting that the old (pop-is-no-op) design suffered
+        // from: the credit only lives while its literal is on the
+        // current prefix.
         while self.our_counted_len > prefix_literals.len() {
             let frame = self.frames.pop().expect("frames underflow");
             self.counts.pop_undo(frame);
+            if let Some(credit) = self.pruning_credits.pop() {
+                self.pruned_paths_current -= credit;
+                // Clamp at 0 — float arithmetic over many push/pops
+                // can drift slightly negative even though the math is
+                // exact in real numbers.
+                if self.pruned_paths_current < 0.0 {
+                    self.pruned_paths_current = 0.0;
+                }
+            }
             self.our_counted_len -= 1;
         }
-        // Push frames for new lits.  Each push commits to one
-        // literal of the DFS path; the literal may immediately
-        // block some paths (the ones that required the complement
-        // somewhere downstream).  Track the root-count drop as
-        // pruned-paths progress.
+        // ── Push branch ──
+        // Each push commits to one literal of the DFS path; the
+        // literal may immediately block some paths (the ones whose
+        // path-leaves require the complementary polarity somewhere
+        // downstream).  Push the root-drop onto the credit stack,
+        // add it to `current`, and refresh `peak` if current is now
+        // higher than any value we've ever observed.
         let root_id = self.idx.root_id();
         while self.our_counted_len < prefix_literals.len() {
             let old_root = self.counts.count_of(root_id);
@@ -321,8 +363,11 @@ impl<Inner: PathSearchController> EffectiveCountWrapper<Inner> {
             self.frames.push(frame);
             self.our_counted_len += 1;
             let new_root = self.counts.count_of(root_id);
-            if new_root < old_root {
-                self.pruned_paths += old_root - new_root;
+            let drop = if new_root < old_root { old_root - new_root } else { 0.0 };
+            self.pruning_credits.push(drop);
+            self.pruned_paths_current += drop;
+            if self.pruned_paths_current > self.pruned_paths_peak {
+                self.pruned_paths_peak = self.pruned_paths_current;
             }
         }
     }
@@ -332,9 +377,10 @@ impl<Inner: PathSearchController> Drop for EffectiveCountWrapper<Inner> {
     fn drop(&mut self) {
         if std::env::var("CDCL_INSTR").is_ok() {
             eprintln!(
-                "c [dual.effective] root_zero_prunes={} prod_ord_filters={} sum_ord_gate_skips={} sum_reorder_tau={}",
+                "c [dual.effective] root_zero_prunes={} prod_ord_filters={} sum_ord_gate_skips={} sum_reorder_tau={} pruned_paths_peak={:.3e}",
                 self.root_zero_prunes, self.prod_ord_filters,
                 self.sum_ord_gate_skips, self.sum_reorder_tau,
+                self.pruned_paths_peak,
             );
         }
     }
@@ -536,18 +582,34 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
     fn covered_prefix_count(&self) -> usize { self.inner.covered_prefix_count() }
     fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
     fn paths_classified(&self) -> f64 {
-        // Combine the inner's leaf-level classifications with the
-        // count of paths the effective-count layer pruned without
-        // descending to a leaf.  Together they total the work the
-        // engine has accounted for — asymptoting to total_paths
-        // when the search completes.
-        self.inner.paths_classified() + self.pruned_paths
+        // Pre-leaf eff-pruning credit, surfaced for non-weighted
+        // callers (the old publish path).  Weighted drivers use
+        // `pre_leaf_pruning_credit()` (see below) instead, which is
+        // the same value but a less-overloaded method name.
+        self.pruned_paths_peak
+    }
+
+    fn pre_leaf_pruning_credit(&self) -> f64 {
+        // Same value as `paths_classified()` above — paths the eff
+        // layer's root-zero short-circuit killed without descending
+        // to a leaf.  Disjoint from the cover-mult-weighted leaf
+        // events the weighted driver counts on its own side.
+        self.pruned_paths_peak
     }
     fn is_restart_pending(&self) -> bool { self.inner.is_restart_pending() }
     fn complete_restart(&mut self) {
         // CDCL restart clears the trail; our prefix tracking will
         // resync at the next `should_continue_on_prefix` call (we'll
-        // see prefix_literals.len() shrink to 0).
+        // see `prefix_literals.len()` shrink to 0).  At that point
+        // `sync_to_prefix` runs its pop branch all the way down,
+        // organically restoring `pruned_paths_current` to 0 by
+        // popping every credit.  `pruned_paths_peak` persists across
+        // restarts — it captures the high-water mark of any single
+        // attempt, which is what the renderer's
+        // "furthest progress" indicator surfaces.  **No manual reset
+        // needed here** with the stack-based scheme; the previous
+        // "blanket reset on restart" trick is no longer required and
+        // would actually clobber genuine peak progress.
         self.inner.complete_restart();
     }
 }
@@ -658,13 +720,25 @@ impl<Inner: crate::nnf_arena::ArenaPathSearchController + PathSearchController>
 
 impl<Inner: PathSearchController> EffectiveCountWrapper<Inner> {
     /// Arena counterpart of `sync_to_prefix`.  `lits` is `&[Lit]`
-    /// (owned) instead of `&Vec<&Lit>`, but logic is identical.
+    /// (owned) instead of `&Vec<&Lit>`, but logic is identical —
+    /// same stack-based credit accounting (see `sync_to_prefix`'s
+    /// doc comment for the rationale).
     fn sync_to_prefix_arena(&mut self, prefix_literals: &[Lit]) {
+        // ── Pop branch — reverse the leaf updates AND decrement
+        //    the per-push credit that lives at the top of the stack.
         while self.our_counted_len > prefix_literals.len() {
             let frame = self.frames.pop().expect("frames underflow");
             self.counts.pop_undo(frame);
+            if let Some(credit) = self.pruning_credits.pop() {
+                self.pruned_paths_current -= credit;
+                if self.pruned_paths_current < 0.0 {
+                    self.pruned_paths_current = 0.0;
+                }
+            }
             self.our_counted_len -= 1;
         }
+        // ── Push branch — credit the marginal root drop, then
+        //    refresh `peak` if `current` is now higher than ever.
         let root_id = self.idx.root_id();
         while self.our_counted_len < prefix_literals.len() {
             let old_root = self.counts.count_of(root_id);
@@ -673,8 +747,11 @@ impl<Inner: PathSearchController> EffectiveCountWrapper<Inner> {
             self.frames.push(frame);
             self.our_counted_len += 1;
             let new_root = self.counts.count_of(root_id);
-            if new_root < old_root {
-                self.pruned_paths += old_root - new_root;
+            let drop = if new_root < old_root { old_root - new_root } else { 0.0 };
+            self.pruning_credits.push(drop);
+            self.pruned_paths_current += drop;
+            if self.pruned_paths_current > self.pruned_paths_peak {
+                self.pruned_paths_peak = self.pruned_paths_current;
             }
         }
     }
@@ -683,7 +760,166 @@ impl<Inner: PathSearchController> EffectiveCountWrapper<Inner> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dual::{BasicCoverController, Outcome, SearchMode, solve_dual};
+    use crate::dual::{solve_dual, BasicCoverController, Outcome, SearchMode};
+
+    /// **End-to-end driver test for cover-mult-weighted accounting.**
+    ///
+    /// Runs a small UNSAT problem through the full dual-path stack
+    /// (StateQueryWrapper → ProgressWrapper → EffectiveCountWrapper
+    /// → CdclController) with a real progress atom attached.  After
+    /// the search exits Exhausted, reads the atom and verifies the
+    /// published value is in the legal range: `[0, total]`.  If the
+    /// weighted-driver accounting ever regresses to overcount (as it
+    /// did during initial Step-2 development before
+    /// `pre_leaf_pruning_credit` was introduced to prevent
+    /// event-count double-counting), this test catches it.
+    #[test]
+    fn dual_weighted_progress_never_overcounts() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicU64;
+        let matrix = crate::matrix::Matrix::try_from("a*a'").expect("matrix");
+        let nnf = matrix.nnf_complement.clone();
+        let total = nnf.path_count();
+        assert!(total > 0.0 && total.is_finite(),
+                "test formula must have a small finite path count; got {}", total);
+
+        let progress = Arc::new(AtomicU64::new(0));
+        let outcome = solve_dual(
+            &nnf,
+            BasicCoverController::default(),
+            EffectivePathController::default().with_progress(progress.clone()),
+            SearchMode::Satisfiable,
+        );
+        assert_eq!(outcome, Outcome::Unsat,
+            "trivial-UNSAT formula should be detected by the dual");
+
+        let published = f64::from_bits(progress.load(std::sync::atomic::Ordering::Relaxed));
+        assert!(published >= 0.0,
+            "published value must be non-negative; got {}", published);
+        assert!(published <= total * 1.001,
+            "published value {} must not exceed total path count {} (within 0.1% f64 slack)",
+            published, total);
+    }
+
+    /// **Same end-to-end check, but for `CdclDualPathController`
+    /// (no `EffectiveCountWrapper` in the stack).**  This is the
+    /// regression test for the specific bug I introduced when
+    /// `composite.paths_classified()` in the weighted driver was
+    /// returning the default `path_count() as f64` (event count)
+    /// for non-eff controller chains — causing the leaf events to be
+    /// double-counted (once driver-side as cover-mult-weighted,
+    /// once via the default impl).  Fix was the new
+    /// `pre_leaf_pruning_credit` trait method (default 0.0).
+    #[test]
+    fn dual_weighted_cdcl_only_never_overcounts() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicU64;
+        use crate::dual::CdclDualPathController;
+        let matrix = crate::matrix::Matrix::try_from("a*a'").expect("matrix");
+        let nnf = matrix.nnf_complement.clone();
+        let total = nnf.path_count();
+
+        let progress = Arc::new(AtomicU64::new(0));
+        let outcome = solve_dual(
+            &nnf,
+            BasicCoverController::default(),
+            CdclDualPathController::default().with_progress(progress.clone()),
+            SearchMode::Satisfiable,
+        );
+        assert_eq!(outcome, Outcome::Unsat);
+
+        let published = f64::from_bits(progress.load(std::sync::atomic::Ordering::Relaxed));
+        assert!(published >= 0.0 && published <= total * 1.001,
+            "CDCL-only weighted dual: published {} must be in [0, {}]",
+            published, total);
+    }
+
+    /// **Invariant test for the stack-based credit accounting.**
+    ///
+    /// `pruned_paths_current` must always equal `R₀ - R_depth` (the
+    /// telescoping sum), so it can never exceed `total_path_count`
+    /// = `R₀`.  We construct a small NNF, simulate a sequence of
+    /// pushes followed by pops, and check the invariant at every
+    /// step.  This is the surgical guard against the
+    /// "paths_so_far > total" regression.
+    #[test]
+    fn pruned_paths_current_equals_root_drop() {
+        use crate::dual::effective_count::{EffectiveCountIndex, EffectiveCounts};
+        // Sum(Lit(a), Prod(Lit(b), Lit(c)))  → 1 * (1+1) = 2 paths total.
+        let nnf = NNF::Sum(vec![
+            NNF::Lit(Lit::pos(0)),
+            NNF::Prod(vec![NNF::Lit(Lit::pos(1)), NNF::Lit(Lit::pos(2))]),
+        ]);
+        let idx = EffectiveCountIndex::build(&nnf);
+        let counts = EffectiveCounts::new(&idx);
+        let inner = crate::controller::BacktrackWhenCoveredController::from(None);
+        let mut w = EffectiveCountWrapper::new(inner, idx, counts);
+        let r0 = w.counts.count_of(w.idx.root_id());
+        assert_eq!(r0, 2.0, "empty-prefix root count should equal total paths");
+
+        // Helper: build the &Vec<&Lit> shape `sync_to_prefix` expects.
+        let a = Lit::pos(0);
+        let b = Lit::pos(1);
+        let c = Lit::pos(2);
+        let na = Lit::neg(0);
+
+        // Push [a] — should affect Lit(¬a) if any (none here),
+        // so root unchanged at 2.0.  current = R₀ - R₁ = 0.
+        let prefix1: Vec<&Lit> = vec![&a];
+        w.sync_to_prefix(&prefix1);
+        let r1 = w.counts.count_of(w.idx.root_id());
+        assert!((w.pruned_paths_current - (r0 - r1)).abs() < 1e-9,
+                "after push [a]: current={} ≠ R₀-R₁={}", w.pruned_paths_current, r0 - r1);
+        assert!(w.pruned_paths_current <= r0,
+                "current={} must never exceed total={}", w.pruned_paths_current, r0);
+
+        // Push [a, b] — Lit(b)→1, others unchanged.  Still r2 = 2.0.
+        let prefix2: Vec<&Lit> = vec![&a, &b];
+        w.sync_to_prefix(&prefix2);
+        let r2 = w.counts.count_of(w.idx.root_id());
+        assert!((w.pruned_paths_current - (r0 - r2)).abs() < 1e-9,
+                "after push [a,b]: current={} ≠ R₀-R₂={}", w.pruned_paths_current, r0 - r2);
+
+        // Pop back to [a] — current must drop by exactly the credit
+        // we added for `b`'s push.  invariant: current = R₀ - R₁.
+        w.sync_to_prefix(&prefix1);
+        let r1b = w.counts.count_of(w.idx.root_id());
+        assert!((w.pruned_paths_current - (r0 - r1b)).abs() < 1e-9,
+                "after pop to [a]: current={} ≠ R₀-R₁={}", w.pruned_paths_current, r0 - r1b);
+
+        // Try the OTHER Prod alternative: push [a, c].  Without the
+        // stack-based fix this would have double-credited the
+        // pruning that the (popped) `b` push had charged.  With it,
+        // current is exactly R₀ - R_depth at this new prefix.
+        let prefix3: Vec<&Lit> = vec![&a, &c];
+        w.sync_to_prefix(&prefix3);
+        let r3 = w.counts.count_of(w.idx.root_id());
+        assert!((w.pruned_paths_current - (r0 - r3)).abs() < 1e-9,
+                "after [a,c]: current={} ≠ R₀-R₃={}", w.pruned_paths_current, r0 - r3);
+        assert!(w.pruned_paths_current <= r0,
+                "current={} must never exceed total={} even after backtrack+retry",
+                w.pruned_paths_current, r0);
+
+        // Push a conflicting lit: [a, c, ¬a].  Root drops to 0
+        // (every path now blocked).  current must equal r0 (since
+        // R_depth = 0).  Peak must equal r0.
+        let prefix4: Vec<&Lit> = vec![&a, &c, &na];
+        w.sync_to_prefix(&prefix4);
+        let r4 = w.counts.count_of(w.idx.root_id());
+        assert_eq!(r4, 0.0, "[a,c,¬a] should zero the root");
+        assert!((w.pruned_paths_current - r0).abs() < 1e-9,
+                "fully-blocked prefix: current={} should equal total={}", w.pruned_paths_current, r0);
+        assert!(w.pruned_paths_peak >= w.pruned_paths_current,
+                "peak={} must be ≥ current={}", w.pruned_paths_peak, w.pruned_paths_current);
+
+        // Pop all the way back — current returns to 0, peak holds.
+        let empty: Vec<&Lit> = vec![];
+        w.sync_to_prefix(&empty);
+        assert!(w.pruned_paths_current.abs() < 1e-9,
+                "empty prefix: current={} should be 0", w.pruned_paths_current);
+        assert!((w.pruned_paths_peak - r0).abs() < 1e-9,
+                "peak={} should still equal total={}", w.pruned_paths_peak, r0);
+    }
 
     #[test]
     fn effective_detects_satisfiable() {

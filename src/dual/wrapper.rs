@@ -114,6 +114,7 @@ impl<Inner: PathSearchController, S: CoverState> PathSearchController for StateQ
     fn covered_prefix_count(&self) -> usize { self.inner.covered_prefix_count() }
     fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
     fn paths_classified(&self) -> f64 { self.inner.paths_classified() }
+    fn pre_leaf_pruning_credit(&self) -> f64 { self.inner.pre_leaf_pruning_credit() }
     fn is_restart_pending(&self) -> bool { self.inner.is_restart_pending() }
     fn complete_restart(&mut self) { self.inner.complete_restart() }
 }
@@ -208,6 +209,151 @@ where
     }
 }
 
+/// Cover-mult-weighted variant of [`run_dfs_with_restarts`].  Mirrors
+/// the arena driver's `classify_paths_with_arena_impl` accounting:
+/// maintains a driver-side `paths_classified: f64` counter that
+/// detects new Covered events via `composite.covered_prefix_count()`
+/// and credits each by the cover multiplier the NNF engine threads
+/// through `for_each_path_prefix_with_controller_weighted`.
+/// Uncovered events count 1 each.  Periodically publishes
+/// `driver_side + composite.paths_classified()` (where the
+/// `composite.paths_classified()` carries any pre-leaf contribution
+/// like the `EffectiveCountWrapper`'s `pruned_paths_peak`) into the
+/// supplied progress atom.
+///
+/// Pair with `ProgressWrapper::with_publish_disabled()` — without
+/// that, the wrapper's own un-weighted publishes would race and
+/// overwrite the weighted value.
+pub fn run_dfs_with_restarts_weighted<Inner, S>(
+    composite: &mut StateQueryWrapper<Inner, S>,
+    nnf: &NNF,
+    uncovered: &Mutex<Option<ProdPath>>,
+    progress: Arc<std::sync::atomic::AtomicU64>,
+) -> PathOutcome
+where
+    Inner: PathSearchController,
+    S: CoverState,
+{
+    run_dfs_with_restarts_weighted_impl(composite, nnf, uncovered, progress, /*bubble_up=*/ false)
+}
+
+/// Bubble-up variant — same soundness caveat as
+/// [`run_dfs_with_restarts_bubble_up`].
+pub fn run_dfs_with_restarts_weighted_bubble_up<Inner, S>(
+    composite: &mut StateQueryWrapper<Inner, S>,
+    nnf: &NNF,
+    uncovered: &Mutex<Option<ProdPath>>,
+    progress: Arc<std::sync::atomic::AtomicU64>,
+) -> PathOutcome
+where
+    Inner: PathSearchController,
+    S: CoverState,
+{
+    run_dfs_with_restarts_weighted_impl(composite, nnf, uncovered, progress, /*bubble_up=*/ true)
+}
+
+fn run_dfs_with_restarts_weighted_impl<Inner, S>(
+    composite: &mut StateQueryWrapper<Inner, S>,
+    nnf: &NNF,
+    uncovered: &Mutex<Option<ProdPath>>,
+    progress: Arc<std::sync::atomic::AtomicU64>,
+    bubble_up: bool,
+) -> PathOutcome
+where
+    Inner: PathSearchController,
+    S: CoverState,
+{
+    // Driver-side cover-mult-weighted `paths_classified`.  Persists
+    // across restart iterations so the published value is cumulative.
+    let mut paths_classified: f64 = 0.0;
+    let mut prev_cov: usize = 0;
+    let mut prev_unc: usize = 0;
+    let mut step: u64 = 0;
+    // Total path count for the safety `debug_assert!`s below.  May
+    // be `f64::INFINITY` on huge formulas (path_count() does naive
+    // multiplication); the assertion skips itself in that case.
+    let total_nnf = nnf.path_count();
+    loop {
+        if composite.cancel.load(Ordering::SeqCst) {
+            return PathOutcome::Cancelled;
+        }
+        // Build the cover-mult post_hook.  Closure captures the
+        // accumulators above and the progress atom; called after
+        // every `should_continue_on_prefix` with the current mult.
+        let cancel_for_hook = composite.cancel.clone();
+        let progress_for_hook = progress.clone();
+        let mut post_hook = |ctrl: &mut StateQueryWrapper<Inner, S>, mult: f64| -> bool {
+            if cancel_for_hook.load(Ordering::SeqCst) {
+                return false;
+            }
+            let cov = ctrl.covered_prefix_count();
+            let unc = ctrl.uncovered_path_count();
+            if cov > prev_cov {
+                // Each new Covered event covers `mult` complete
+                // paths through the NNF.
+                paths_classified += mult * (cov - prev_cov) as f64;
+                prev_cov = cov;
+            }
+            if unc > prev_unc {
+                paths_classified += (unc - prev_unc) as f64;
+                prev_unc = unc;
+            }
+            step = step.wrapping_add(1);
+            if step & 0xFFF == 0 {
+                // Add the controller stack's own contribution
+                // (e.g. the `EffectiveCountWrapper`'s
+                // `pruned_paths_peak` for pre-leaf pruning).
+                // Disjoint from leaf events by construction.
+                let pre_leaf = ctrl.pre_leaf_pruning_credit();
+                let total_now = paths_classified + pre_leaf;
+                // Safety invariant: never publish above total path count.
+                debug_assert!(
+                    !total_nnf.is_finite() || total_now <= total_nnf * 1.001,
+                    "dual driver: paths_classified ({}) + pre_leaf ({}) = {} exceeds total {}",
+                    paths_classified, pre_leaf, total_now, total_nnf,
+                );
+                progress_for_hook.store(total_now.to_bits(), Ordering::Relaxed);
+            }
+            true
+        };
+        if bubble_up {
+            nnf.for_each_path_prefix_with_controller_weighted_bubble_up(composite, &mut post_hook);
+        } else {
+            nnf.for_each_path_prefix_with_controller_weighted(composite, &mut post_hook);
+        }
+        if composite.cancel.load(Ordering::SeqCst) {
+            return PathOutcome::Cancelled;
+        }
+        if uncovered.lock().unwrap().is_some() {
+            let pp = uncovered.lock().unwrap().take().unwrap();
+            // Final publish for this attempt before returning.
+            let pre_leaf = composite.pre_leaf_pruning_credit();
+            let final_total = paths_classified + pre_leaf;
+            debug_assert!(
+                !total_nnf.is_finite() || final_total <= total_nnf * 1.001,
+                "dual driver Uncovered exit: total {} exceeds total path count {}",
+                final_total, total_nnf,
+            );
+            progress.store(final_total.to_bits(), Ordering::Relaxed);
+            return PathOutcome::Uncovered(pp);
+        }
+        if composite.is_restart_pending() {
+            composite.complete_restart();
+            continue;
+        }
+        // Search exhausted; final publish so the last batch lands.
+        let pre_leaf = composite.pre_leaf_pruning_credit();
+        let final_total = paths_classified + pre_leaf;
+        debug_assert!(
+            !total_nnf.is_finite() || final_total <= total_nnf * 1.001,
+            "dual driver Exhausted exit: total {} exceeds total path count {}",
+            final_total, total_nnf,
+        );
+        progress.store(final_total.to_bits(), Ordering::Relaxed);
+        return PathOutcome::Exhausted;
+    }
+}
+
 
 /// `ProgressWrapper` — wraps any [`PathSearchController`] and
 /// periodically publishes its `paths_classified()` value into a
@@ -224,21 +370,39 @@ pub struct ProgressWrapper<Inner: PathSearchController> {
     pub inner:    Inner,
     pub progress: Arc<std::sync::atomic::AtomicU64>,
     step: u64,
+    /// When `true`, the wrapper stops self-publishing inside
+    /// `should_continue_on_prefix`.  Used by the dual driver's
+    /// weighted variant (`run_dfs_with_restarts_weighted`), which
+    /// publishes a cover-mult-weighted value driver-side — without
+    /// this flag the wrapper would race and overwrite it with an
+    /// unweighted `inner.paths_classified()`.  Mirrors the same
+    /// flag on `CancelController` for the arena driver path.
+    publish_disabled: bool,
 }
 
 impl<Inner: PathSearchController> ProgressWrapper<Inner> {
     pub fn new(inner: Inner, progress: Arc<std::sync::atomic::AtomicU64>) -> Self {
-        Self { inner, progress, step: 0 }
+        Self { inner, progress, step: 0, publish_disabled: false }
+    }
+
+    /// Builder: suppress this wrapper's `publish_progress` calls
+    /// from inside `should_continue_on_prefix`.  Use when the
+    /// surrounding driver publishes its own (better) value.
+    pub fn with_publish_disabled(mut self) -> Self {
+        self.publish_disabled = true;
+        self
     }
 
     /// Publish once explicitly — for use after the DFS completes so
     /// the final count is reflected even if the last 4096-step
-    /// boundary wasn't crossed.
+    /// boundary wasn't crossed.  No-op when `publish_disabled` is set.
     pub fn publish_progress(&self) {
-        self.progress.store(
-            self.inner.paths_classified().to_bits(),
-            std::sync::atomic::Ordering::Relaxed,
-        );
+        if !self.publish_disabled {
+            self.progress.store(
+                self.inner.paths_classified().to_bits(),
+                std::sync::atomic::Ordering::Relaxed,
+            );
+        }
     }
 }
 
@@ -253,7 +417,7 @@ impl<Inner: PathSearchController> PathSearchController for ProgressWrapper<Inner
         is_complete: bool,
     ) -> Option<usize> {
         self.step = self.step.wrapping_add(1);
-        if self.step & 0xFFF == 0 {
+        if self.step & 0xFFF == 0 && !self.publish_disabled {
             self.publish_progress();
         }
         self.inner.should_continue_on_prefix(
@@ -279,6 +443,7 @@ impl<Inner: PathSearchController> PathSearchController for ProgressWrapper<Inner
     fn covered_prefix_count(&self) -> usize { self.inner.covered_prefix_count() }
     fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
     fn paths_classified(&self) -> f64 { self.inner.paths_classified() }
+    fn pre_leaf_pruning_credit(&self) -> f64 { self.inner.pre_leaf_pruning_credit() }
 
     fn is_restart_pending(&self) -> bool { self.inner.is_restart_pending() }
     fn complete_restart(&mut self) { self.inner.complete_restart(); }

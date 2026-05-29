@@ -22,7 +22,7 @@ use crate::controller::CdclController;
 use crate::dual::{
     BasicCoverState, CoverState, DualPathSearchController, PairPool, PathOutcome, SearchMode,
 };
-use crate::dual::wrapper::{StateQueryWrapper, run_dfs_with_restarts};
+use crate::dual::wrapper::{StateQueryWrapper, run_dfs_with_restarts_weighted};
 use crate::matrix::{NNF, PathParams, PathsClass, ProdPath};
 
 pub struct CdclDualPathController<S: CoverState = BasicCoverState> {
@@ -112,15 +112,18 @@ impl<S: CoverState + 'static> DualPathSearchController for CdclDualPathControlle
         };
 
         let inner = CdclController::for_nnf_with_cover(nnf, Some(params), on_class);
-        // Wrap in ProgressWrapper before StateQueryWrapper so the
-        // progress publisher sees every `should_continue_on_prefix`
-        // call.  Throwaway atomic when no progress observer is
-        // configured — trivial cost.
+        // **Weighted driver wiring** — see `path_effective.rs` for
+        // the full rationale.  ProgressWrapper is kept (downstream
+        // code expects the controller chain to expose
+        // `paths_classified()` etc.) but its own publishing is
+        // disabled; the driver computes its own cover-mult-weighted
+        // value and publishes via the same atom.
         let progress_atom = self.progress.clone().unwrap_or_else(
             || Arc::new(std::sync::atomic::AtomicU64::new(0)));
-        let with_progress = crate::dual::wrapper::ProgressWrapper::new(inner, progress_atom);
+        let with_progress = crate::dual::wrapper::ProgressWrapper::new(inner, progress_atom.clone())
+            .with_publish_disabled();
         let mut composite = StateQueryWrapper::new(with_progress, state, cancel);
-        run_dfs_with_restarts(&mut composite, nnf, &*uncovered)
+        run_dfs_with_restarts_weighted(&mut composite, nnf, &*uncovered, progress_atom)
     }
 }
 

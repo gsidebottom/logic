@@ -260,6 +260,39 @@ pub trait ArenaPathSearchController {
 }
 
 impl NnfArena {
+    /// Memoized path-count per node, indexed by `NnfId`.  `Lit→1`,
+    /// `Sum→product(children)`, `Prod→sum(children)` — the same
+    /// recurrence the matrix engine uses for total-path-count
+    /// computations.  Indexed by raw node id, length `n_nodes()`.
+    ///
+    /// `path_counts[root() as usize]` is the formula's total path
+    /// count.  Used by the cover-multiplier accounting in
+    /// `for_each_path_prefix_impl` so that a Covered event at
+    /// position P credits the search with the actual number of
+    /// complete paths the cover proves unreachable, not just `1`.
+    /// Pre-computed once at the start of each search so the per-
+    /// step cover-mult update is O(1).
+    pub fn build_path_counts(&self) -> Vec<f64> {
+        let n = self.n_nodes();
+        let mut counts = vec![0.0f64; n];
+        // Walk in reverse-id order = post-order (children before
+        // parents) because the arena assigns ids in DFS pre-order
+        // from root=0.
+        for raw in (0..n).rev() {
+            let id = raw as NnfId;
+            counts[raw] = match self.kind(id) {
+                NnfKind::Lit  => 1.0,
+                NnfKind::Sum  => self.children(id).iter()
+                    .map(|&c| counts[c as usize])
+                    .product(),
+                NnfKind::Prod => self.children(id).iter()
+                    .map(|&c| counts[c as usize])
+                    .fold(0.0f64, |a, b| a + b),
+            };
+        }
+        counts
+    }
+
     /// DFS the arena, invoking the controller's hooks.  Same
     /// traversal semantics as
     /// [`crate::matrix::NNF::for_each_path_prefix_with_controller`]
@@ -274,7 +307,46 @@ impl NnfArena {
     /// an explicit work stack is a follow-up if recursion-depth
     /// stack budget becomes a concern on giant inputs.
     pub fn for_each_path_prefix<C: ArenaPathSearchController>(&self, ctrl: &mut C) {
-        self.for_each_path_prefix_impl(ctrl, /*bubble_up=*/ false);
+        self.for_each_path_prefix_impl(ctrl, /*bubble_up=*/ false, &mut |_, _| true);
+    }
+
+    /// Like [`Self::for_each_path_prefix`] but exposes the cover-
+    /// multiplier to a `post_hook` invoked after each controller
+    /// `should_continue_on_prefix` call.  `mult` is the number of
+    /// complete paths through the arena that share the current
+    /// prefix (= cover-count if the controller backs up at this
+    /// point).  The hook returns `false` to signal "stop the
+    /// search" (e.g. cancellation), `true` to continue.
+    ///
+    /// Used by the driver in `classify_paths_with_arena_impl` to
+    /// maintain a properly-weighted `paths_classified` counter
+    /// driver-side, mirroring `run_uncovered_only_dfs`'s pattern
+    /// from the NNF engine.
+    pub fn for_each_path_prefix_weighted<C, H>(
+        &self,
+        ctrl: &mut C,
+        post_hook: &mut H,
+    )
+    where
+        C: ArenaPathSearchController,
+        H: FnMut(&mut C, f64) -> bool,
+    {
+        self.for_each_path_prefix_impl(ctrl, /*bubble_up=*/ false, post_hook);
+    }
+
+    /// Bubble-up version of [`Self::for_each_path_prefix_weighted`].
+    /// Same caveats about bubble-up + CDCL restart soundness as
+    /// [`Self::for_each_path_prefix_bubble_up`].
+    pub fn for_each_path_prefix_weighted_bubble_up<C, H>(
+        &self,
+        ctrl: &mut C,
+        post_hook: &mut H,
+    )
+    where
+        C: ArenaPathSearchController,
+        H: FnMut(&mut C, f64) -> bool,
+    {
+        self.for_each_path_prefix_impl(ctrl, /*bubble_up=*/ true, post_hook);
     }
 
     /// Bubble-up variant of [`Self::for_each_path_prefix`].  When a
@@ -293,15 +365,45 @@ impl NnfArena {
     /// every UNSAT against a trusted backend (`cdcl`, `smart`,
     /// `cadical`) before trusting the result.
     pub fn for_each_path_prefix_bubble_up<C: ArenaPathSearchController>(&self, ctrl: &mut C) {
-        self.for_each_path_prefix_impl(ctrl, /*bubble_up=*/ true);
+        self.for_each_path_prefix_impl(ctrl, /*bubble_up=*/ true, &mut |_, _| true);
     }
 
-    fn for_each_path_prefix_impl<C: ArenaPathSearchController>(&self, ctrl: &mut C, bubble_up: bool) {
+    /// Internal driver.  `post_hook(ctrl, mult)` fires after every
+    /// `should_continue_on_prefix` call with the current cover
+    /// multiplier — returning `false` aborts the traversal (signals
+    /// cancellation / limit hit).  The path-counts memo is built
+    /// lazily on first use of the weighted variants, so the
+    /// degenerate-hook path (legacy `for_each_path_prefix`) skips
+    /// the memo entirely and pays no extra cost.
+    fn for_each_path_prefix_impl<C, H>(
+        &self,
+        ctrl: &mut C,
+        bubble_up: bool,
+        post_hook: &mut H,
+    )
+    where
+        C: ArenaPathSearchController,
+        H: FnMut(&mut C, f64) -> bool,
+    {
         let mut lits: Vec<Lit>      = Vec::new();
         let mut prod_path: ProdPath = ProdPath::new();
+        // Only build the path-counts memo if we're going to use it.
+        // The legacy `for_each_path_prefix(_bubble_up)` callers pass
+        // a no-op hook; we detect that by trying the hook with a
+        // sentinel and skipping memo if it's never going to consume
+        // the mult.  Simpler: just always build the memo.  Build is
+        // O(n_nodes) one-time; cheap relative to a multi-second
+        // search.  If the cost ever matters on tiny formulas we can
+        // wrap in a `Option<Vec<f64>>` and skip for the no-op case.
+        let path_counts = self.build_path_counts();
         self.traverse(
-            self.root(), &mut lits, &mut prod_path, ctrl, bubble_up,
-            &mut |arena, lits, path, ctrl| ctrl.should_continue_on_prefix(arena, lits, path, true),
+            self.root(), 1.0, &path_counts,
+            &mut lits, &mut prod_path, ctrl, bubble_up, post_hook,
+            &mut |arena, mult, lits, path, ctrl, hook| {
+                let r = ctrl.should_continue_on_prefix(arena, lits, path, true);
+                if !hook(ctrl, mult) { return Some(0); }
+                r
+            },
         );
     }
 
@@ -319,21 +421,38 @@ impl NnfArena {
     /// `then` takes `&mut`-borrows of the same `lits`/`prod_path`
     /// that the caller owns, so nested Sum frames can keep pushing
     /// into them across the continuation chain.
-    fn traverse<C: ArenaPathSearchController>(
+    fn traverse<C, H>(
         &self,
         m: NnfId,
+        mult: f64,
+        path_counts: &[f64],
         lits: &mut Vec<Lit>,
         prod_path: &mut ProdPath,
         ctrl: &mut C,
         bubble_up: bool,
-        then: &mut dyn FnMut(&NnfArena, &mut Vec<Lit>, &mut ProdPath, &mut C) -> Option<usize>,
-    ) -> Option<usize> {
+        post_hook: &mut H,
+        then: &mut dyn FnMut(&NnfArena, f64, &mut Vec<Lit>, &mut ProdPath, &mut C, &mut H) -> Option<usize>,
+    ) -> Option<usize>
+    where
+        C: ArenaPathSearchController,
+        H: FnMut(&mut C, f64) -> bool,
+    {
         match self.kind(m) {
             NnfKind::Lit => {
                 let l = self.lit(m);
                 lits.push(l);
-                let r = match ctrl.should_continue_on_prefix(self, lits, prod_path, false) {
-                    None    => then(self, lits, prod_path, ctrl),
+                let cont = ctrl.should_continue_on_prefix(self, lits, prod_path, false);
+                // post_hook fires AFTER the controller's call so it
+                // sees any covered/uncovered count increment.  When
+                // the hook returns false (cancellation) we behave as
+                // if the controller said `Some(0)` — back up one
+                // level and let the parent decide.
+                if !post_hook(ctrl, mult) {
+                    lits.pop();
+                    return Some(0);
+                }
+                let r = match cont {
+                    None    => then(self, mult, lits, prod_path, ctrl, post_hook),
                     Some(k) => Some(k),
                 };
                 lits.pop();
@@ -354,8 +473,13 @@ impl NnfArena {
                         None => (ord_idx, children[ord_idx]),
                     };
                     prod_path.push(i);
-                    let r = match ctrl.should_continue_on_prefix(self, lits, prod_path, false) {
-                        None    => self.traverse(child, lits, prod_path, ctrl, bubble_up, then),
+                    let cont = ctrl.should_continue_on_prefix(self, lits, prod_path, false);
+                    if !post_hook(ctrl, mult) {
+                        prod_path.pop();
+                        return Some(0);
+                    }
+                    let r = match cont {
+                        None    => self.traverse(child, mult, path_counts, lits, prod_path, ctrl, bubble_up, post_hook, then),
                         Some(k) => Some(k),
                     };
                     prod_path.pop();
@@ -393,33 +517,61 @@ impl NnfArena {
             NnfKind::Sum => {
                 let children = self.children(m);
                 let order = ctrl.sum_ord(self, m, children);
-                self.traverse_sum(children, order.as_deref(), 0, lits, prod_path, ctrl, bubble_up, then)
+                self.traverse_sum(children, order.as_deref(), 0, mult, path_counts,
+                    lits, prod_path, ctrl, bubble_up, post_hook, then)
             }
         }
     }
 
-    fn traverse_sum<C: ArenaPathSearchController>(
+    fn traverse_sum<C, H>(
         &self,
         children: &[NnfId],
         order:    Option<&[NnfId]>,
         ord_idx:  usize,
+        base_mult: f64,
+        path_counts: &[f64],
         lits: &mut Vec<Lit>,
         prod_path: &mut ProdPath,
         ctrl: &mut C,
         bubble_up: bool,
-        then: &mut dyn FnMut(&NnfArena, &mut Vec<Lit>, &mut ProdPath, &mut C) -> Option<usize>,
-    ) -> Option<usize> {
+        post_hook: &mut H,
+        then: &mut dyn FnMut(&NnfArena, f64, &mut Vec<Lit>, &mut ProdPath, &mut C, &mut H) -> Option<usize>,
+    ) -> Option<usize>
+    where
+        C: ArenaPathSearchController,
+        H: FnMut(&mut C, f64) -> bool,
+    {
         let len = order.map_or(children.len(), |o| o.len());
         if ord_idx >= len {
-            return then(self, lits, prod_path, ctrl);
+            return then(self, base_mult, lits, prod_path, ctrl, post_hook);
         }
         let child = match order {
             Some(o) => o[ord_idx],
             None    => children[ord_idx],
         };
-        let r = self.traverse(child, lits, prod_path, ctrl, bubble_up, &mut |arena, lits, path, ctrl| {
-            arena.traverse_sum(children, order, ord_idx + 1, lits, path, ctrl, bubble_up, then)
-        });
+        // **Mult update at Sum descent.**  We visit every Sum child
+        // (matrix-method semantics: Sum = AND).  Inside the chosen
+        // child, the unvisited siblings (positions ord_idx+1..len)
+        // contribute a product factor to any cover-mult reported
+        // below — they're the paths we'll still visit via the
+        // continuation chain, multiplied through.  Same mult-update
+        // rule as `NNF::for_each_path_prefix_no_positions_ord`'s
+        // `traverse_sum` (matrix.rs); see there for the longer
+        // derivation.
+        let after_mult: f64 = match order {
+            Some(o) => o[ord_idx + 1..].iter()
+                .map(|&c| path_counts[c as usize])
+                .product(),
+            None => children[ord_idx + 1..].iter()
+                .map(|&c| path_counts[c as usize])
+                .product(),
+        };
+        let inner_mult = base_mult * after_mult;
+        let r = self.traverse(child, inner_mult, path_counts, lits, prod_path, ctrl, bubble_up, post_hook,
+            &mut |arena, _m, lits, path, ctrl, hook| {
+                arena.traverse_sum(children, order, ord_idx + 1, base_mult, path_counts,
+                    lits, path, ctrl, bubble_up, hook, then)
+            });
         // Default (bubble_up=false): return None unconditionally.  See
         // the matching comment in `traverse`'s Prod arm for why
         // bubble-up is unsound when paired with CDCL's restart signal
@@ -507,17 +659,105 @@ impl NnfArena {
         let handle = tokio::task::spawn_blocking(move || {
             let inner = controller_builder(&self, tx);
             let cancel_check = cancel_for_thread.clone();
-            let mut ctrl = crate::controller::CancelController::new(inner, cancel_for_thread);
-            // Restart loop — same as the NNF engine's restart loop
-            // in `classify_paths_with_nnf`.  Re-invokes the DFS
-            // when the controller asks for a Luby restart;
-            // otherwise exits after a single full traversal.
+            // **CancelController with publish disabled.**  We still
+            // want the cancel-poll behaviour (return Some(0) when
+            // cancelled), but the publishing of `paths_classified`
+            // is now done driver-side using the cover-mult-weighted
+            // accounting in the `post_hook` below.  Without
+            // `with_publish_disabled`, the wrapper would race with
+            // the hook and overwrite our weighted value with an
+            // unweighted event count.
+            let mut ctrl = crate::controller::CancelController::new(inner, cancel_for_thread.clone())
+                .with_publish_disabled();
+            // Driver-side cover-mult-weighted `paths_classified`.
+            // Mirrors `run_uncovered_only_dfs`'s accounting from
+            // `src/matrix.rs`: detect new Covered events via the
+            // controller's `covered_prefix_count`, add `cover_mult`
+            // per event; detect Uncovered events similarly, add 1.
+            // Persisted across restart iterations so the published
+            // value is cumulative.
+            //
+            // `total_arena` is the formula's total path count, used
+            // for the safety `debug_assert!` below.  Computed via
+            // `build_path_counts()` (same memo `for_each_path_prefix`
+            // builds internally — we pay it twice in debug builds;
+            // in release the assertion compiles out and we only pay
+            // it once, inside the traversal).
+            let total_arena = self.build_path_counts()[self.root() as usize];
+            let mut paths_classified: f64 = 0.0;
+            let mut prev_cov: usize = 0;
+            let mut prev_unc: usize = 0;
+            let mut step: u64 = 0;
+            let cancel_for_hook = cancel_for_thread.clone();
             loop {
                 if cancel_check.is_cancelled() { break; }
+                // Capture mut refs into the hook closure — the hook
+                // sees the controller and the current cover-mult on
+                // every traversal callback.  Closes over the
+                // counters declared above, which persist across
+                // restart loop iterations (cumulative accounting).
+                let mut post_hook = |ctrl: &mut crate::controller::CancelController<C>, mult: f64| -> bool {
+                    if cancel_for_hook.is_cancelled() {
+                        return false;
+                    }
+                    // Read inner counters via the NNF
+                    // PathSearchController trait (every wrapper in
+                    // the stack delegates these to its inner, so
+                    // we get the underlying CDCL controller's
+                    // running totals).
+                    let cov = <crate::controller::CancelController<C> as crate::controller::PathSearchController>::covered_prefix_count(ctrl);
+                    let unc = <crate::controller::CancelController<C> as crate::controller::PathSearchController>::uncovered_path_count(ctrl);
+                    if cov > prev_cov {
+                        // Each new Covered event covers `mult`
+                        // complete paths through the arena.  This
+                        // is the whole point of the rewrite: pre-
+                        // fix, this contribution was `1` per event
+                        // (event-count units), defeating the
+                        // "approaches total_paths" semantic.
+                        paths_classified += mult * (cov - prev_cov) as f64;
+                        prev_cov = cov;
+                    }
+                    if unc > prev_unc {
+                        // Uncovered events each represent exactly
+                        // one complete satisfying path.
+                        paths_classified += (unc - prev_unc) as f64;
+                        prev_unc = unc;
+                    }
+                    step = step.wrapping_add(1);
+                    if step & 0xFFF == 0 {
+                        // Published value = leaf-event contribution
+                        // (counted here, cover-mult-weighted) PLUS
+                        // any pre-leaf pruning contribution from
+                        // the controller stack (e.g. the
+                        // `EffectiveCountWrapper` exposes its
+                        // `pruned_paths_peak` via
+                        // `paths_classified()`).  By construction
+                        // the two contributions cover disjoint sets
+                        // of paths — a path either reached a leaf
+                        // or didn't — so the sum is a sound lower
+                        // bound on "paths definitively classified
+                        // so far."
+                        let pre_leaf = <crate::controller::CancelController<C> as crate::controller::PathSearchController>::pre_leaf_pruning_credit(ctrl);
+                        let total_now = paths_classified + pre_leaf;
+                        // Safety invariant: total accounted ≤ formula
+                        // total path count.  Tiny slack (1.001×) for
+                        // f64 accumulation drift.  Skipped when total
+                        // is non-finite (overflow on huge formulas)
+                        // since the assertion can't compare against
+                        // ∞ meaningfully.
+                        debug_assert!(
+                            !total_arena.is_finite() || total_now <= total_arena * 1.001,
+                            "arena driver: paths_classified ({}) + pre_leaf ({}) = {} exceeds total path count {}",
+                            paths_classified, pre_leaf, total_now, total_arena,
+                        );
+                        cancel_for_hook.record_paths(total_now);
+                    }
+                    true
+                };
                 if bubble_up {
-                    self.for_each_path_prefix_bubble_up(&mut ctrl);
+                    self.for_each_path_prefix_weighted_bubble_up(&mut ctrl, &mut post_hook);
                 } else {
-                    self.for_each_path_prefix(&mut ctrl);
+                    self.for_each_path_prefix_weighted(&mut ctrl, &mut post_hook);
                 }
                 if cancel_check.is_cancelled() { break; }
                 if !<crate::controller::CancelController<C> as crate::controller::PathSearchController>::is_restart_pending(&ctrl) {
@@ -525,7 +765,18 @@ impl NnfArena {
                 }
                 <crate::controller::CancelController<C> as crate::controller::PathSearchController>::complete_restart(&mut ctrl);
             }
-            crate::controller::CancelController::<C>::publish_progress(&ctrl);
+            // Final publish so the last (sub-4096-step) batch of
+            // events lands in the handle before the search reports.
+            // Same `leaf_events + pre_leaf` shape as the per-step
+            // publish in the post_hook above.
+            let final_pre_leaf = <crate::controller::CancelController<C> as crate::controller::PathSearchController>::pre_leaf_pruning_credit(&ctrl);
+            let final_total = paths_classified + final_pre_leaf;
+            debug_assert!(
+                !total_arena.is_finite() || final_total <= total_arena * 1.001,
+                "arena driver final publish: paths_classified ({}) + pre_leaf ({}) = {} exceeds total {}",
+                paths_classified, final_pre_leaf, final_total, total_arena,
+            );
+            cancel_for_thread.record_paths(final_total);
             Ok::<(), Box<dyn std::error::Error + Send>>(())
         });
         (handle, rx, cancel)

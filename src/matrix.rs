@@ -945,6 +945,244 @@ impl NNF {
         self.for_each_path_prefix_ord_impl(sum_ord, prod_ord, report_prefix, /*bubble_up=*/ true);
     }
 
+    /// Positions-aware variant that ALSO threads a cover multiplier
+    /// `mult` through traversal — the number of complete paths
+    /// through the NNF that share the current prefix.  `post_hook`
+    /// is invoked after every `report_prefix` call with the current
+    /// `mult`, returning `false` to abort traversal (cancellation /
+    /// limit).  Mirrors `for_each_path_prefix_no_positions_ord`'s
+    /// mult update at Sum descents.
+    ///
+    /// Used by the dual driver's `run_dfs_with_restarts_weighted`
+    /// (`src/dual/wrapper.rs`) so the published `paths_classified`
+    /// gets cover-mult credit per Covered event — bringing the
+    /// dual backends (`greedy_cdcl`, `greedy_eff`, `basic_eff`,
+    /// `greedy_effb`, `basic_effb`) into parity with the arena
+    /// driver's weighted accounting and the NNF `_uncovered_only`
+    /// driver's existing weighted publish.
+    pub fn for_each_path_prefix_with_controller_weighted<C, H>(
+        &self,
+        ctrl: &mut C,
+        post_hook: &mut H,
+    )
+    where
+        C: PathSearchController + ?Sized,
+        H: FnMut(&mut C, f64) -> bool,
+    {
+        self.for_each_path_prefix_ord_weighted_impl(ctrl, post_hook, /*bubble_up=*/ false);
+    }
+
+    /// Bubble-up variant — see
+    /// [`Self::for_each_path_prefix_ord_bubble_up`] for the
+    /// soundness caveat.
+    pub fn for_each_path_prefix_with_controller_weighted_bubble_up<C, H>(
+        &self,
+        ctrl: &mut C,
+        post_hook: &mut H,
+    )
+    where
+        C: PathSearchController + ?Sized,
+        H: FnMut(&mut C, f64) -> bool,
+    {
+        self.for_each_path_prefix_ord_weighted_impl(ctrl, post_hook, /*bubble_up=*/ true);
+    }
+
+    /// Internal impl for the weighted positions traverse.  Same
+    /// structure as `for_each_path_prefix_ord_impl` but threads
+    /// `mult: f64` through `traverse` / `traverse_sum` (updated at
+    /// Sum descents by multiplying with remaining-sibling
+    /// `path_count`s pre-computed in `counts`) and invokes
+    /// `post_hook(ctrl, mult)` after each callback.  Returning
+    /// `false` from the hook signals stop (treated as `Some(0)` —
+    /// back up one level — by the traversal).
+    fn for_each_path_prefix_ord_weighted_impl<C, H>(
+        &self,
+        ctrl: &mut C,
+        post_hook: &mut H,
+        bubble_up: bool,
+    )
+    where
+        C: PathSearchController + ?Sized,
+        H: FnMut(&mut C, f64) -> bool,
+    {
+        type Positions = PathPrefix;
+        type Counts = HashMap<*const NNF, f64>;
+
+        // Memoise path_count per subtree.  Same pattern as
+        // `for_each_path_prefix_no_positions_ord` (above).  Without
+        // memoisation each `traverse_sum` sibling-product call would
+        // recurse independently, turning O(N) into O(N²).
+        fn build_counts(n: &NNF, c: &mut Counts) -> f64 {
+            let k = n as *const NNF;
+            if let Some(&v) = c.get(&k) { return v; }
+            let v = match n {
+                NNF::Lit(_)   => 1.0,
+                NNF::Sum(ch)  => ch.iter().map(|x| build_counts(x, c)).product(),
+                NNF::Prod(ch) => ch.iter().map(|x| build_counts(x, c)).fold(0.0_f64, |a, b| a + b),
+            };
+            c.insert(k, v);
+            v
+        }
+        let mut counts: Counts = HashMap::new();
+        build_counts(self, &mut counts);
+
+        #[allow(clippy::too_many_arguments)]
+        fn traverse<'a, C, H>(
+            m: &'a NNF,
+            mult: f64,
+            counts: &Counts,
+            path: &mut ProdPath,
+            lits: &mut Vec<&'a Lit>,
+            positions: &mut Positions,
+            pos: &mut Position,
+            ctrl: &mut C,
+            post_hook: &mut H,
+            bubble_up: bool,
+            then: &mut dyn FnMut(f64, &mut ProdPath, &mut Vec<&'a Lit>, &mut Positions, &mut Position, &mut C, &mut H) -> Option<usize>,
+        ) -> Option<usize>
+        where
+            C: PathSearchController + ?Sized,
+            H: FnMut(&mut C, f64) -> bool,
+        {
+            match m {
+                NNF::Lit(l) => {
+                    lits.push(l);
+                    positions.push(pos.clone());
+                    let cont = ctrl.should_continue_on_prefix(lits, positions, path, false);
+                    if !post_hook(ctrl, mult) {
+                        positions.pop();
+                        lits.pop();
+                        return Some(0);
+                    }
+                    let r = match cont {
+                        None    => then(mult, path, lits, positions, pos, ctrl, post_hook),
+                        Some(k) => Some(k),
+                    };
+                    positions.pop();
+                    lits.pop();
+                    r
+                }
+                NNF::Prod(children) => {
+                    let order_opt = ctrl.prod_ord(m, children);
+                    let len = order_opt.as_ref().map_or(children.len(), |o| o.len());
+                    for ord_idx in 0..len {
+                        let (i, child) = match &order_opt {
+                            Some(o) => o[ord_idx],
+                            None    => (ord_idx, &children[ord_idx]),
+                        };
+                        path.push(i);
+                        pos.push(i);
+                        let cont = ctrl.should_continue_on_prefix(lits, positions, path, false);
+                        if !post_hook(ctrl, mult) {
+                            pos.pop();
+                            path.pop();
+                            return Some(0);
+                        }
+                        let r = match cont {
+                            None    => traverse(child, mult, counts, path, lits, positions, pos, ctrl, post_hook, bubble_up, then),
+                            Some(k) => Some(k),
+                        };
+                        pos.pop();
+                        path.pop();
+                        if bubble_up {
+                            match r {
+                                None | Some(0) => continue,
+                                Some(k)        => return Some(k - 1),
+                            }
+                        } else {
+                            match r {
+                                None | Some(_) => continue,
+                            }
+                        }
+                    }
+                    None
+                }
+                NNF::Sum(children) => {
+                    let order_opt = ctrl.sum_ord(m, children);
+                    traverse_sum(children, order_opt.as_deref(), 0, mult, counts,
+                        path, lits, positions, pos, ctrl, post_hook, bubble_up, then)
+                }
+            }
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        fn traverse_sum<'a, C, H>(
+            children: &'a [NNF],
+            order:    Option<&[(usize, &'a NNF)]>,
+            ord_idx:  usize,
+            base_mult: f64,
+            counts: &Counts,
+            path: &mut ProdPath,
+            lits: &mut Vec<&'a Lit>,
+            positions: &mut Positions,
+            pos: &mut Position,
+            ctrl: &mut C,
+            post_hook: &mut H,
+            bubble_up: bool,
+            then: &mut dyn FnMut(f64, &mut ProdPath, &mut Vec<&'a Lit>, &mut Positions, &mut Position, &mut C, &mut H) -> Option<usize>,
+        ) -> Option<usize>
+        where
+            C: PathSearchController + ?Sized,
+            H: FnMut(&mut C, f64) -> bool,
+        {
+            let len = order.map_or(children.len(), |o| o.len());
+            if ord_idx >= len {
+                return then(base_mult, path, lits, positions, pos, ctrl, post_hook);
+            }
+            let (child_idx, child) = match order {
+                Some(o) => o[ord_idx],
+                None    => (ord_idx, &children[ord_idx]),
+            };
+            // Sum descent: unvisited siblings (positions ord_idx+1..)
+            // contribute a multiplicative factor to any cover-mult
+            // reported inside this child.  Same derivation as
+            // `for_each_path_prefix_no_positions_ord::traverse_sum`.
+            let after_mult: f64 = match order {
+                Some(o) => o[ord_idx + 1..].iter()
+                    .map(|(_, c)| counts[&(*c as *const NNF)])
+                    .product(),
+                None => children[ord_idx + 1..].iter()
+                    .map(|c| counts[&(c as *const NNF)])
+                    .product(),
+            };
+            let inner_mult = base_mult * after_mult;
+            let pos_len = pos.len();
+            pos.push(child_idx);
+            let r = traverse(child, inner_mult, counts, path, lits, positions, pos, ctrl, post_hook, bubble_up,
+                &mut |_m, path, lits, positions, pos, ctrl, post_hook| {
+                    let saved_pos = pos.clone();
+                    pos.truncate(pos_len);
+                    let r = traverse_sum(children, order, ord_idx + 1, base_mult, counts,
+                        path, lits, positions, pos, ctrl, post_hook, bubble_up, then);
+                    if r.is_none() { *pos = saved_pos; }
+                    r
+                },
+            );
+            pos.truncate(pos_len);
+            if bubble_up {
+                match r {
+                    None | Some(0) => None,
+                    Some(k)        => Some(k - 1),
+                }
+            } else {
+                let _ = r;
+                None
+            }
+        }
+
+        let mut path = ProdPath::new();
+        let mut lits: Vec<&Lit> = Vec::new();
+        let mut positions = Vec::new();
+        let mut pos = Vec::new();
+        traverse(self, 1.0, &counts, &mut path, &mut lits, &mut positions, &mut pos, ctrl, post_hook, bubble_up,
+            &mut |mult, path, lits, positions, _pos, ctrl, post_hook| {
+                let r = ctrl.should_continue_on_prefix(lits, positions, path, true);
+                if !post_hook(ctrl, mult) { return Some(0); }
+                r
+            },
+        );
+    }
+
     fn for_each_path_prefix_ord_impl<SO, PO>(
         &self,
         mut sum_ord:  SO,

@@ -54,6 +54,26 @@ pub struct EffectivePathController<S: CoverState = BasicCoverState> {
     /// the soundness caveat.  Set via [`Self::with_bubble_up`] for
     /// the `basic_effb` / `greedy_effb` backends.
     bubble_up: bool,
+    /// **Variance-gated Sum reordering threshold.**  When a Sum node's
+    /// children have effective counts that span at least `10^tau` in
+    /// magnitude (i.e. `log10(max_count / min_count) >= tau`), the
+    /// wrapper applies its usual ascending-by-count reordering.  When
+    /// siblings are within `10^tau` of each other, reordering is
+    /// *skipped* (children stay in inner order) on the theory that
+    /// no meaningfully better order exists at that node — and that
+    /// re-imposing one disrupts CDCL's VSIDS heuristic for no gain.
+    ///
+    /// Default 0.0 = always reorder (pre-gate behavior; preserves
+    /// existing test results).  Higher τ values progressively suppress
+    /// reordering on uniform-cost Sums (e.g. Steiner / PHP / random
+    /// 3-SAT — formulas where every clause-complement Prod has the
+    /// same effective count, making the eff metric uninformative).
+    /// `f64::INFINITY` ≈ "never reorder" → wrapper degrades to a
+    /// no-op for Sum, keeping only the (sound) Prod zero-count filter.
+    ///
+    /// Only affects `sum_ord` — `prod_ord`'s zero-count filter is
+    /// sound regardless and stays unconditionally active.
+    sum_reorder_tau: f64,
 }
 
 impl<S: CoverState> Default for EffectivePathController<S> {
@@ -62,14 +82,26 @@ impl<S: CoverState> Default for EffectivePathController<S> {
 
 impl<S: CoverState> EffectivePathController<S> {
     pub fn new() -> Self {
-        Self { _state: std::marker::PhantomData, stream_tx: None, progress: None, bubble_up: false }
+        Self {
+            _state: std::marker::PhantomData,
+            stream_tx: None,
+            progress: None,
+            bubble_up: false,
+            sum_reorder_tau: 0.0,
+        }
     }
 
     /// Build the controller with a UI-streaming sender.  Every
     /// `PathsClass` event is cloned and `blocking_send`'d to `tx`
     /// before the dual framework's internal handler runs.
     pub fn with_stream(tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> Self {
-        Self { _state: std::marker::PhantomData, stream_tx: Some(tx), progress: None, bubble_up: false }
+        Self {
+            _state: std::marker::PhantomData,
+            stream_tx: Some(tx),
+            progress: None,
+            bubble_up: false,
+            sum_reorder_tau: 0.0,
+        }
     }
 
     /// Configure the controller to publish progress
@@ -87,6 +119,16 @@ impl<S: CoverState> EffectivePathController<S> {
     /// the soundness caveat.  Builder; chainable.
     pub fn with_bubble_up(mut self) -> Self {
         self.bubble_up = true;
+        self
+    }
+
+    /// Gate Sum-child reordering on the spread of sibling effective
+    /// counts: reorder only when `log10(max_count / min_count) >= tau`.
+    /// See `EffectiveCountWrapper::sum_reorder_tau` for the full
+    /// rationale.  `tau == 0.0` (the default) preserves the
+    /// pre-gate behavior of always reordering.
+    pub fn with_eff_tau(mut self, tau: f64) -> Self {
+        self.sum_reorder_tau = tau;
         self
     }
 }
@@ -150,7 +192,7 @@ impl<S: CoverState + 'static> DualPathSearchController for EffectivePathControll
         };
 
         let inner = CdclController::for_nnf_with_cover(nnf, Some(params), on_class);
-        let counted = EffectiveCountWrapper::new(inner, idx, counts);
+        let counted = EffectiveCountWrapper::new_with_tau(inner, idx, counts, self.sum_reorder_tau);
         // Wrap with a ProgressWrapper.  When no progress atom was
         // configured via `with_progress`, fall back to a private
         // throwaway atomic the wrapper writes to but nobody reads —
@@ -185,6 +227,11 @@ pub struct EffectiveCountWrapper<Inner: PathSearchController> {
     pub inner:  Inner,
     pub idx:    EffectiveCountIndex,
     pub counts: EffectiveCounts,
+    /// Min log10(max/min) of sibling effective-counts required for
+    /// `sum_ord` to actually reorder.  See
+    /// `EffectivePathController::sum_reorder_tau` for the full
+    /// rationale.  0.0 = always reorder (pre-gate behavior).
+    sum_reorder_tau: f64,
     /// One delta-frame per pushed lit.  `frames.len()` mirrors
     /// `prefix_literals.len()` after `should_continue_on_prefix`
     /// has synced.
@@ -197,6 +244,9 @@ pub struct EffectiveCountWrapper<Inner: PathSearchController> {
     /// the alt list (i.e. unit-propagation-equivalent forced choices
     /// or pruned alts).
     pub prod_ord_filters: usize,
+    /// Diagnostics: count of `sum_ord` calls where the variance gate
+    /// skipped a sort (children too uniform — `log10(max/min) < tau`).
+    pub sum_ord_gate_skips: usize,
     /// **Progress accounting.**  Each push of a DFS literal whose
     /// effect drops the root effective count from `K` to a smaller
     /// value (or to 0) accounts for `K - new_K` paths that the
@@ -216,13 +266,35 @@ pub struct EffectiveCountWrapper<Inner: PathSearchController> {
 }
 
 impl<Inner: PathSearchController> EffectiveCountWrapper<Inner> {
+    /// Build a wrapper with the default (always-reorder) policy —
+    /// equivalent to `new_with_tau(.., .., .., 0.0)`.  Kept for
+    /// callers that don't care about variance-gating.
     pub fn new(inner: Inner, idx: EffectiveCountIndex, counts: EffectiveCounts) -> Self {
+        Self::new_with_tau(inner, idx, counts, 0.0)
+    }
+
+    /// Build a wrapper with a custom variance threshold τ on Sum
+    /// reordering.  When a Sum's children's effective-counts have
+    /// `log10(max/min) < tau`, reordering is skipped — they stay in
+    /// inner-controller order.  Use `tau = 0.0` for the legacy
+    /// "always reorder" behavior; `tau = f64::INFINITY` for "never
+    /// reorder" (Sum becomes a passthrough; only the Prod zero-count
+    /// filter remains).  Higher values progressively suppress
+    /// reordering on uniform-cost formulas.
+    pub fn new_with_tau(
+        inner: Inner,
+        idx: EffectiveCountIndex,
+        counts: EffectiveCounts,
+        sum_reorder_tau: f64,
+    ) -> Self {
         Self {
             inner, idx, counts,
+            sum_reorder_tau,
             frames: Vec::new(),
             our_counted_len: 0,
             root_zero_prunes: 0,
             prod_ord_filters: 0,
+            sum_ord_gate_skips: 0,
             pruned_paths: 0.0,
         }
     }
@@ -259,9 +331,101 @@ impl<Inner: PathSearchController> EffectiveCountWrapper<Inner> {
 impl<Inner: PathSearchController> Drop for EffectiveCountWrapper<Inner> {
     fn drop(&mut self) {
         if std::env::var("CDCL_INSTR").is_ok() {
-            eprintln!("c [dual.effective] root_zero_prunes={} prod_ord_filters={}",
-                      self.root_zero_prunes, self.prod_ord_filters);
+            eprintln!(
+                "c [dual.effective] root_zero_prunes={} prod_ord_filters={} sum_ord_gate_skips={} sum_reorder_tau={}",
+                self.root_zero_prunes, self.prod_ord_filters,
+                self.sum_ord_gate_skips, self.sum_reorder_tau,
+            );
         }
+    }
+}
+
+/// Variance gate for Sum-child reordering.  Returns `true` iff the
+/// children's effective counts span at least `10^tau` in magnitude
+/// — i.e., `log10(max_count / min_count) >= tau` — making it worth
+/// re-sorting by ascending count.  When the spread is below `tau`,
+/// no reordering would meaningfully improve search direction at
+/// this Sum, so we skip the sort and let CDCL's own variable-order
+/// heuristics dominate (preserves VSIDS activity locality).
+///
+/// Special cases:
+/// - `tau == 0.0` → always `true` (legacy "always reorder" behavior).
+/// - fewer than 2 children → `false` (nothing to reorder).
+/// - mix of zero and non-zero counts → `true` (zero-count children
+///   are valuable to surface early so the inner's cover detection
+///   fires quickly — reorder regardless of `tau`).
+/// - all counts identical (incl. all zero) → `false` (max/min = 1
+///   → log10 = 0 → ≥ tau only when tau = 0, handled above).
+fn should_reorder_sum(counts: &[f64], tau: f64) -> bool {
+    if counts.len() < 2 { return false; }
+    if tau == 0.0 { return true; }
+    let mut min_nz: f64 = f64::INFINITY;
+    let mut max_nz: f64 = 0.0;
+    let mut any_zero = false;
+    let mut any_nonzero = false;
+    for &c in counts {
+        if !c.is_finite() {
+            // `inf` here means "no precomputed count" (parent not in
+            // the index).  Treat as max — always reorder when one
+            // sibling has unknown count.
+            return true;
+        }
+        if c == 0.0 {
+            any_zero = true;
+        } else {
+            any_nonzero = true;
+            if c < min_nz { min_nz = c; }
+            if c > max_nz { max_nz = c; }
+        }
+    }
+    if any_zero && any_nonzero { return true; }
+    if !any_nonzero { return false; }      // all zero — order doesn't matter
+    if min_nz <= 0.0 || max_nz <= 0.0 { return false; }
+    (max_nz / min_nz).log10() >= tau
+}
+
+#[cfg(test)]
+mod gate_tests {
+    use super::should_reorder_sum;
+    #[test] fn tau_zero_always_reorders_with_2plus_children() {
+        assert!( should_reorder_sum(&[1.0, 1.0], 0.0));
+        assert!( should_reorder_sum(&[1.0, 1.0, 1.0], 0.0));
+    }
+    #[test] fn lone_or_empty_child_never_reorders() {
+        assert!(!should_reorder_sum(&[], 0.0));
+        assert!(!should_reorder_sum(&[42.0], 0.0));
+        assert!(!should_reorder_sum(&[], 1.0));
+    }
+    #[test] fn uniform_counts_skip_when_tau_positive() {
+        // log10(1.0/1.0) = 0 < 0.5 → skip
+        assert!(!should_reorder_sum(&[3.0, 3.0, 3.0, 3.0], 0.5));
+        // log10(3.0/3.0) = 0 < 0.001 → skip
+        assert!(!should_reorder_sum(&[3.0, 3.0], 0.001));
+    }
+    #[test] fn high_spread_triggers_reorder() {
+        // log10(100/1) = 2 >= 1 → reorder
+        assert!( should_reorder_sum(&[1.0, 100.0], 1.0));
+        // log10(1000/1) = 3 >= 2 → reorder
+        assert!( should_reorder_sum(&[1.0, 10.0, 100.0, 1000.0], 2.0));
+    }
+    #[test] fn modest_spread_threshold_dependent() {
+        // log10(10/1) = 1
+        assert!( should_reorder_sum(&[1.0, 10.0], 0.5));   // 1.0 >= 0.5
+        assert!( should_reorder_sum(&[1.0, 10.0], 1.0));   // 1.0 >= 1.0
+        assert!(!should_reorder_sum(&[1.0, 10.0], 1.001)); // 1.0 < 1.001
+    }
+    #[test] fn mixed_zero_nonzero_always_reorders() {
+        // Zero-count children should always be surfaced first.
+        assert!( should_reorder_sum(&[0.0, 5.0, 5.0], 1000.0));
+        assert!( should_reorder_sum(&[1.0, 0.0], 99.9));
+    }
+    #[test] fn infinite_count_triggers_reorder() {
+        // f64::INFINITY = "unknown count" (parent not indexed).
+        // Reorder to be safe.
+        assert!( should_reorder_sum(&[f64::INFINITY, 5.0], 100.0));
+    }
+    #[test] fn never_reorder_with_infinite_tau() {
+        assert!(!should_reorder_sum(&[1.0, 1e10], f64::INFINITY));
     }
 }
 
@@ -327,6 +491,13 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
                 (i, c, count)
             })
             .collect();
+        // Variance gate: skip the sort when sibling counts are within
+        // 10^τ of each other (no meaningful reorder available).
+        let only_counts: Vec<f64> = annotated.iter().map(|(_, _, c)| *c).collect();
+        if !should_reorder_sum(&only_counts, self.sum_reorder_tau) {
+            self.sum_ord_gate_skips += 1;
+            return Some(annotated.into_iter().map(|(i, c, _)| (i, c)).collect());
+        }
         annotated.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
         Some(annotated.into_iter().map(|(i, c, _)| (i, c)).collect())
     }
@@ -444,6 +615,12 @@ impl<Inner: crate::nnf_arena::ArenaPathSearchController + PathSearchController>
                 (c, cnt)
             })
             .collect();
+        // Variance gate — same logic as the NNF sum_ord path above.
+        let only_counts: Vec<f64> = annotated.iter().map(|(_, c)| *c).collect();
+        if !should_reorder_sum(&only_counts, self.sum_reorder_tau) {
+            self.sum_ord_gate_skips += 1;
+            return Some(annotated.into_iter().map(|(c, _)| c).collect());
+        }
         annotated.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
         Some(annotated.into_iter().map(|(c, _)| c).collect())
     }

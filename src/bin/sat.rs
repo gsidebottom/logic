@@ -714,6 +714,10 @@ fn matrix_search(
     // cancellation (a separate watcher thread in `main` handles that
     // via SIGTERM); purely informational for the time-budget bar.
     timeout_secs: u64,
+    // Variance threshold for Sum-child reordering in eff backends.
+    // 0.0 = always reorder (legacy).  See `Args::eff_tau`.  No-op
+    // for non-eff backends (Smart, Cdcl, GreedyCdcl).
+    eff_tau: f64,
 ) -> SearchOutcome {
     // log10 of the total path count.  Used by the progress renderer
     // to map "paths classified so far" onto a [0, 1] bar fill in
@@ -1074,13 +1078,14 @@ fn matrix_search(
                 });
                 let arena = NnfArena::from_nnf(&comp);
                 drop(comp);  // ≈ 250 MB freed before search starts
+                let tau = eff_tau;  // capture by value into the builder closure
                 let builder = move |arena_ref: &NnfArena, tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>| {
                     let on_class: DynOnClass = Box::new(move |class, hit_limit|
                         tx.blocking_send((class, hit_limit)).is_ok());
                     let cdcl = CdclController::for_arena_with_cover(arena_ref, p_eff, on_class);
                     let idx = EffectiveCountIndex::build_from_arena(arena_ref);
                     let counts = EffectiveCounts::new(&idx);
-                    EffectiveCountWrapper::new(cdcl, idx, counts)
+                    EffectiveCountWrapper::new_with_tau(cdcl, idx, counts, tau)
                 };
                 if matches!(backend, MatrixBackend::Effb) {
                     arena.classify_paths_with_arena_bubble_up(64, builder)
@@ -1093,7 +1098,7 @@ fn matrix_search(
             | MatrixBackend::BasicEff
             | MatrixBackend::GreedyEffb
             | MatrixBackend::BasicEffb => {
-                spawn_dual_matrix_search(backend, comp.clone(), 64)
+                spawn_dual_matrix_search(backend, comp.clone(), 64, eff_tau)
             }
         };
 
@@ -1343,6 +1348,11 @@ fn spawn_dual_matrix_search(
     backend: MatrixBackend,
     target_nnf: NNF,
     buffer_size: usize,
+    // Variance-gated Sum-reordering threshold for the eff-wrapped
+    // legs of dual backends (GreedyEff, BasicEff, GreedyEffb,
+    // BasicEffb).  0.0 = always reorder (legacy).  No-op for
+    // GreedyCdcl whose dual path doesn't include eff wrapping.
+    eff_tau: f64,
 ) -> (
     tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send>>>,
     tokio::sync::mpsc::Receiver<(PathsClass, bool)>,
@@ -1381,7 +1391,8 @@ fn spawn_dual_matrix_search(
             MatrixBackend::GreedyEff => {
                 let cover = GreedyMaxCoverController::default();
                 let path  = EffectivePathController::<BasicCoverState>::with_stream(tx)
-                    .with_progress(progress_atom);
+                    .with_progress(progress_atom)
+                    .with_eff_tau(eff_tau);
                 solve_dual_with_cancel(
                     &target_nnf, cover, path, SearchMode::Satisfiable,
                     external_cancel,
@@ -1395,7 +1406,8 @@ fn spawn_dual_matrix_search(
                 // dominates the actual matrix-method search.
                 let cover = BasicCoverController::default();
                 let path  = EffectivePathController::<BasicCoverState>::with_stream(tx)
-                    .with_progress(progress_atom);
+                    .with_progress(progress_atom)
+                    .with_eff_tau(eff_tau);
                 solve_dual_with_cancel(
                     &target_nnf, cover, path, SearchMode::Satisfiable,
                     external_cancel,
@@ -1407,7 +1419,8 @@ fn spawn_dual_matrix_search(
                 let cover = GreedyMaxCoverController::default();
                 let path  = EffectivePathController::<BasicCoverState>::with_stream(tx)
                     .with_progress(progress_atom)
-                    .with_bubble_up();
+                    .with_bubble_up()
+                    .with_eff_tau(eff_tau);
                 solve_dual_with_cancel(
                     &target_nnf, cover, path, SearchMode::Satisfiable,
                     external_cancel,
@@ -1419,7 +1432,8 @@ fn spawn_dual_matrix_search(
                 let cover = BasicCoverController::default();
                 let path  = EffectivePathController::<BasicCoverState>::with_stream(tx)
                     .with_progress(progress_atom)
-                    .with_bubble_up();
+                    .with_bubble_up()
+                    .with_eff_tau(eff_tau);
                 solve_dual_with_cancel(
                     &target_nnf, cover, path, SearchMode::Satisfiable,
                     external_cancel,
@@ -1993,6 +2007,19 @@ struct Args {
     /// On no-match, exits with a non-zero code and a clear error
     /// (use `--emit-pbp` for unstructured CNFs).
     emit_cook_pbp: Option<std::path::PathBuf>,
+    /// Variance-gated Sum-reordering threshold for Effective-wrapped
+    /// backends (`eff`, `effb`, `greedy_eff`, `basic_eff`,
+    /// `greedy_effb`, `basic_effb`).  The wrapper applies its
+    /// ascending-by-effective-count reordering only when a Sum's
+    /// children's effective counts span at least `10^τ` (i.e.
+    /// `log10(max/min) >= τ`).  Default 0.0 = always reorder
+    /// (preserves the legacy behavior).  Higher values progressively
+    /// suppress reordering on uniform-cost formulas where eff's
+    /// metric is uninformative and reordering disrupts CDCL's VSIDS
+    /// heuristic for no gain (Steiner, PHP-like, random 3-SAT).
+    /// `inf` disables Sum reordering entirely (only the sound Prod
+    /// zero-count filter remains).  Doesn't affect non-eff backends.
+    eff_tau: f64,
 }
 
 const DEFAULT_TIMEOUT_SECS: u64 = 6000;
@@ -2007,6 +2034,9 @@ fn parse_args() -> Result<Args, String> {
         emit_drat: None,
         emit_pbp: None,
         emit_cook_pbp: None,
+        // 0.0 = always reorder (legacy behaviour).  Override with
+        // `--eff-tau N` to gate Sum reordering on `log10(max/min) >= N`.
+        eff_tau: 0.0,
     };
     let mut explicit_backend = false;
     let mut iter = std::env::args().skip(1);
@@ -2035,6 +2065,24 @@ fn parse_args() -> Result<Args, String> {
                 let v = &s["--timeout=".len()..];
                 a.timeout_secs = v.parse::<u64>().map_err(|_|
                     format!("--timeout expects a non-negative integer (seconds); got {:?}", v))?;
+            }
+            // Variance-gated Sum-reordering threshold (eff backends only).
+            "--eff-tau" => {
+                let v = iter.next().ok_or_else(||
+                    "--eff-tau requires a value (e.g. --eff-tau 1.0; use 0 for always-reorder, inf for never-reorder)".to_string())?;
+                a.eff_tau = v.parse::<f64>().map_err(|_|
+                    format!("--eff-tau expects a non-negative float (or `inf`); got {:?}", v))?;
+                if a.eff_tau < 0.0 || a.eff_tau.is_nan() {
+                    return Err(format!("--eff-tau must be non-negative and not NaN; got {}", a.eff_tau));
+                }
+            }
+            s if s.starts_with("--eff-tau=") => {
+                let v = &s["--eff-tau=".len()..];
+                a.eff_tau = v.parse::<f64>().map_err(|_|
+                    format!("--eff-tau expects a non-negative float (or `inf`); got {:?}", v))?;
+                if a.eff_tau < 0.0 || a.eff_tau.is_nan() {
+                    return Err(format!("--eff-tau must be non-negative and not NaN; got {}", a.eff_tau));
+                }
             }
             // Legacy boolean aliases — keep so older invocations
             // still work.  Mutually exclusive with each other (and
@@ -2116,6 +2164,14 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    'c TIMEOUT after Ns' and exits 124.  Default: {}.",
                           DEFAULT_TIMEOUT_SECS);
                 eprintln!("                    Pass --timeout 0 to disable.");
+                eprintln!("  --eff-tau TAU     Variance-gated Sum-reordering threshold for eff");
+                eprintln!("                    backends (eff, effb, greedy_eff, basic_eff,");
+                eprintln!("                    greedy_effb, basic_effb).  Reorder a Sum's children");
+                eprintln!("                    only when log10(max_count / min_count) >= TAU.");
+                eprintln!("                    Default 0 = always reorder (legacy).  Try 1.0 to");
+                eprintln!("                    suppress reordering on uniform-cost formulas (Steiner,");
+                eprintln!("                    PHP-like, random 3-SAT) where eff hurts CDCL.");
+                eprintln!("                    `inf` disables Sum reordering entirely.");
                 eprintln!("  --cadical, -c     Legacy alias for --backend cadical.");
                 eprintln!("  --cdcl            Legacy alias for --backend cdcl.");
                 eprintln!("  --preprocess      Run NNF-level preprocessing (UP / BVE /");
@@ -2239,6 +2295,12 @@ fn main() {
     }
 
     eprintln!("c backend: {}", args.backend.name());
+    // Only log eff-tau when it's been changed from the default —
+    // keeps the banner unchanged for the common case so existing
+    // log parsers don't trip over a new line.
+    if args.eff_tau != 0.0 {
+        eprintln!("c eff-tau: {} (variance-gated Sum reordering)", args.eff_tau);
+    }
     if args.timeout_secs > 0 {
         eprintln!("c timeout: {}s", args.timeout_secs);
         // Spawn a watcher thread that hard-exits the process after
@@ -2347,7 +2409,8 @@ fn main() {
                                       args.emit_drat.as_deref(),
                                       args.emit_pbp.as_deref(),
                                       0,
-                                      args.timeout_secs)
+                                      args.timeout_secs,
+                                      args.eff_tau)
                     }
                 }
             } else {
@@ -2368,7 +2431,8 @@ fn main() {
                                   args.emit_drat.as_deref(),
                                   args.emit_pbp.as_deref(),
                                   n_clauses,
-                                  args.timeout_secs)
+                                  args.timeout_secs,
+                                  args.eff_tau)
                 } else {
                     drop(clauses);
                     matrix_search(comp, nvars, args.show_progress, m, None,
@@ -2377,7 +2441,8 @@ fn main() {
                                   args.emit_drat.as_deref(),
                                   args.emit_pbp.as_deref(),
                                   n_clauses,
-                                  args.timeout_secs)
+                                  args.timeout_secs,
+                                  args.eff_tau)
                 }
             }
         }
@@ -2428,7 +2493,7 @@ mod tests {
         if clauses.iter().any(|c| c.is_empty()) { return Err(()); }
         if clauses.is_empty() { return Ok(vec![true; nvars]); }
         let comp = cnf_complement_nnf(clauses);
-        match matrix_search(comp, nvars, /*show_progress=*/ false, backend, None, None, None, None, None, 0, 0) {
+        match matrix_search(comp, nvars, /*show_progress=*/ false, backend, None, None, None, None, None, 0, 0, 0.0) {
             SearchOutcome::Sat(asgn) => Ok(asgn),
             SearchOutcome::Unsat => Err(()),
             SearchOutcome::Interrupted => panic!("test search reported interrupted"),
@@ -2700,11 +2765,11 @@ mod tests {
             MatrixBackend::GreedyEff,
             MatrixBackend::BasicEff,
         ] {
-            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend, None, None, None, None, None, 0, 0) {
+            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend, None, None, None, None, None, 0, 0, 0.0) {
                 SearchOutcome::Sat(_) => {}
                 other => panic!("[{:?}] expected Sat, got {:?}", backend, outcome_kind(&other)),
             }
-            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend, None, None, None, None, None, 0, 0) {
+            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend, None, None, None, None, None, 0, 0, 0.0) {
                 SearchOutcome::Unsat => {}
                 other => panic!("[{:?}] expected Unsat, got {:?}", backend, outcome_kind(&other)),
             }

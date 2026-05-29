@@ -177,11 +177,27 @@ Key flags:
 | `--drat-trim-bin PATH` | `~/projects/drat-trim/drat-trim` | drat-trim binary (`--verify-unsat` only) |
 | `--keep-proofs` | off | retain `.drat` files for audit (`--verify-unsat` only) |
 | `--proofs-dir PATH` | `$BENCH_DIR/drat_proofs` | where `--keep-proofs` puts them |
+| `--no-dedupe` | off | disable the post-run auto-dedupe (rare; for raw append-only behaviour) |
+| `--dedupe-in-place` | — | standalone: dedupe `--index PATH` and exit, no solving |
 
-The index file is **append-only by default**, so multiple runs against
-different queries / time budgets accumulate. Use `--index PATH` to
-maintain parallel suites (e.g., `curated_1s.jsonl`,
-`curated_10s.jsonl`).
+The index file accumulates across runs against different queries /
+time budgets.  Each run auto-dedupes the index when it finishes
+(one record per hash, last-write wins), so re-runs — including
+`--refresh` ones — converge to a clean state instead of accumulating
+duplicate rows.  Use `--index PATH` to maintain parallel suites (e.g.,
+`curated_1s.jsonl`, `curated_10s.jsonl`).
+
+To clean an old index that pre-dates the auto-dedupe (built up
+duplicate-hash rows from earlier `--refresh` invocations), use the
+standalone mode:
+
+```bash
+tools/gbd/curate.py --dedupe-in-place \
+    --index /path/to/curated.jsonl
+# → reports: rows before / rows after / removed
+```
+
+Pure file rewrite; no GBD or solver dependency, runs in milliseconds.
 
 ### `verify_unsat.py`
 
@@ -294,6 +310,76 @@ tools/gbd/curate.py --query "track=main_2025 and minisat1m=yes" \
 for "solvable by MiniSAT in 1M conflicts", a strong proxy for "easy"
 that we don't have to test ourselves. Values are `yes` / `no`.)
 
+### `curate_balanced.py`
+
+Build a curated JSONL index **balanced across benchmark families**.
+Solves the natural-distribution problem: a plain `minisat1m=yes`
+query returns ~80% station-repacking + uniform-random and 0% of the
+small structural families (pigeon-hole, tseitin, coloring-mycielski,
+waerden, …) where matrix / cardinality solvers are most likely to
+shine.  This tool hard-caps per-family contribution before download
+and curation.
+
+End-to-end:
+
+1. SQL-join `meta.db + base.db` for candidates matching the base
+   filter (default: `minisat1m=yes` + `variables ≤ 2000` + `clauses
+   ≤ 15000`).
+2. Bucket by `family`; keep `--top-families` (default 12) largest,
+   take up to `--per-family` (default 10) each.  Within each family,
+   tries to balance SAT vs UNSAT picks (`--no-sat-unsat-balance`
+   to disable).
+3. Downloads any missing CNFs from GBD's `/file/<hash>` endpoint
+   in parallel (skip with `--no-download`; default workers: 4).
+4. Solves each picked instance with CaDiCaL using
+   `curate.py`'s `solve_one` (same JSONL schema + dedupe).
+
+```bash
+# Default: 12 families × 10 = ~120-instance suite, written to
+# $BENCH_DIR/curated_balanced.jsonl
+tools/gbd/curate_balanced.py
+
+# Targeted families (for an eff-vs-CDCL discrimination suite)
+tools/gbd/curate_balanced.py \
+    --families "agile,pigeon-hole,tseitin-formulas,coloring,scheduling,\
+hamiltonian,prime-factoring,waerden,xor-chain" \
+    --per-family 8 --max-vars 1500 \
+    --index $BENCH_DIR/curated_struct.jsonl
+
+# Bigger suite for evolution fitness loops
+tools/gbd/curate_balanced.py \
+    --top-families 20 --per-family 15 \
+    --timeout 60 --parallel 8 \
+    --index $BENCH_DIR/curated_balanced_big.jsonl
+
+# Show the plan without downloading or solving
+tools/gbd/curate_balanced.py --plan-only
+```
+
+Key flags:
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--families A,B,C` | auto | explicit family list (else top-N by size) |
+| `--top-families N` | 12 | how many families to auto-pick |
+| `--per-family N` | 10 | max instances per family |
+| `--max-vars N` | 2000 | reject candidates above this var count (0 = unlimited) |
+| `--max-clauses N` | 15000 | reject candidates above this clause count (0 = unlimited) |
+| `--minisat1m {yes,no,any}` | `yes` | filter on GBD's "easy" tag |
+| `--no-sat-unsat-balance` | off | pick by ascending variables instead of trying to balance verdicts |
+| `--extra-sql-where SQL` | none | raw SQL WHERE for advanced filtering |
+| `--no-download` | off | curate only already-on-disk instances |
+| `--no-curate` | off | plan + download only (stage a big download overnight) |
+| `--plan-only` | off | show the per-family table and exit |
+| `--timeout SECS` | 30 | CaDiCaL budget per instance |
+| `--parallel N` | 4 | solver workers |
+| `--refresh` | off | re-solve hashes already in the index |
+
+The plan report shows per-family counts + SAT/UNSAT split + variable-
+range, so you can sanity-check the suite before paying the download
+cost.  Output JSONL is auto-deduped at the end (one record per hash,
+last-write-wins) just like `curate.py`.
+
 ### `run_benchmark.py`
 
 Once you have a curated index, `run_benchmark.py` runs an arbitrary
@@ -354,6 +440,58 @@ and auto-numbers (`_2`, `_3`, …) so consecutive runs don't clobber.
 
 Exit code: `0` on success, `1` if any MISMATCH was recorded, `2` for
 preflight failures (missing binary, missing index, etc.).
+
+### `sweep_eff_tau.py`
+
+Sweeps the new `sat --eff-tau` variance threshold over a curated index
+and emits a unified comparison report.  `--eff-tau` gates the
+`EffectiveCountWrapper`'s Sum reordering: instead of *always* sorting
+Sum children by ascending effective-count (the legacy behavior), the
+wrapper sorts only when sibling counts span at least `10^τ` in
+magnitude (i.e. `log10(max/min) >= τ`).  When siblings are uniform —
+Steiner, PHP, random 3-SAT — reordering finds nothing useful and
+disrupts CDCL's VSIDS heuristic; the gate skips it and falls through
+to CDCL's natural order, which is often substantially faster.
+
+```bash
+# Default sweep: τ ∈ {0, 0.5, 1, 2, inf} on the eff backend
+tools/gbd/sweep_eff_tau.py --index $BENCH_DIR/curated.jsonl
+
+# Custom τ list + a different eff variant
+tools/gbd/sweep_eff_tau.py --index easy.jsonl -b greedy_eff \
+    --taus 0,0.3,0.5,1,2,inf --timeout 60 -j 8
+
+# Restrict to one benchmark family
+tools/gbd/sweep_eff_tau.py --index curated.jsonl -b eff \
+    --filter "'Steiner' in r.get('filename','')"
+```
+
+Per τ value, it runs `run_benchmark.py` once with
+`--sat-arg=--eff-tau=<τ>`, writing each tau's results to a separate
+`.md` under `doc/sweeps/<index-stem>_<backend>_<timeout>s/`.  After
+all sweeps finish, parses the per-tau tables and writes
+`sweep_summary.md` containing:
+
+- **Per-τ totals**: solved / timeout / mismatch / unknown / total CPU.
+- **Recommended τ**: the value with the most instance wins (fastest
+  solve), ties broken by total CPU.  Use this to inform a new default
+  if a single τ dominates across families.
+- **Best τ per family**: when the recommended τ varies by benchmark
+  family, this tells you which τ each family prefers.  Useful if
+  you'd rather pick a per-formula τ via a structural heuristic than
+  ship one global default.
+- **Per-problem detail table**: result + time at each τ, with the
+  fastest cell **bold-highlighted** per row.
+
+The script is idempotent: rerunning skips τ values whose `.md`
+already exists (any non-trivial-size output is treated as "this τ has
+been measured").  Delete a tau's `.md` to force re-measurement.
+
+Resume support is handy because a full sweep on a 500-instance index
+at 60s per instance × 5 τ values × 4 workers is roughly
+`500 × 60 × 5 / 4 = 37,500s ≈ 10 hours`.  If you interrupt and resume,
+only the unfinished tau resumes from scratch (run_benchmark itself
+doesn't checkpoint within a tau run — that's a separate enhancement).
 
 ## See also
 

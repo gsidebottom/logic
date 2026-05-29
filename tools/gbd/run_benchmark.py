@@ -293,6 +293,10 @@ class TUI:
         self.worker_time: List[str] = [""] * n_workers
         # Total bottom-block rows: 1 header + 2 per worker.
         self.block_rows = 1 + 2 * n_workers
+        # Worker-index field width — wide enough for the largest [N]
+        # we'll print so the bracket column lines up across all rows.
+        # For -j 10 → indices 0..9 → 1 char; for -j 100 → 0..99 → 2.
+        self.idx_width = max(1, len(str(max(1, n_workers - 1))))
         self.done = 0
         self.solved = 0
         self.timed_out = 0
@@ -388,30 +392,71 @@ class TUI:
         parts.append(f"({time_s})")
         return "  ".join(parts)
 
+    # Fixed visual columns so progress bars line up across all
+    # worker rows, regardless of name length.  Names longer than
+    # NAME_WIDTH are truncated with an ellipsis; shorter names are
+    # right-padded with spaces.  Combined with `idx_width` this
+    # gives every row the same prefix length, so the `c [bar...]`
+    # column starts at the same character position on every line.
+    NAME_WIDTH = 20
+
+    def _fmt_name(self, name: str) -> str:
+        """Pad/truncate `name` to exactly NAME_WIDTH visible characters."""
+        if len(name) <= self.NAME_WIDTH:
+            return name.ljust(self.NAME_WIDTH)
+        # Truncate + ellipsis.  The ellipsis is one character so the
+        # truncated name still occupies exactly NAME_WIDTH columns.
+        return name[: self.NAME_WIDTH - 1] + "…"
+
+    def _row_prefix(self, i: int, with_name: bool, name: str = "") -> str:
+        """
+        Visual prefix shared by both rows of a worker.  Path-bar row
+        (with_name=True) shows `[i] <name>`; time-bar row
+        (with_name=False) blanks the entire bracket + name area so
+        the time bar reads as a clear continuation of the path bar
+        above it.  Both forms have identical total width, so the bar
+        column lines up across all worker rows.
+        Width = 2 (gutter) + 1 ('[') + idx_width + 2 ('] ')
+              + NAME_WIDTH + 2 (gap before bar).
+        """
+        bracket_w = 1 + self.idx_width + 2  # "[N] "
+        if with_name:
+            idx_str = str(i).rjust(self.idx_width)
+            head = f"[{idx_str}] "
+            body = self._fmt_name(name)
+        else:
+            head = " " * bracket_w
+            body = " " * self.NAME_WIDTH
+        return "  " + head + body + "  "
+
     def _worker_rows(self, i: int) -> Tuple[str, str]:
         """
-        Two stacked rows for worker `i`: the path-bar row (with the
-        worker name on it) and the time-bar row (indented under it).
-        Both truncated to fit the terminal width.
+        Two stacked rows per worker, vertically aligned:
+          row 1: `  [i] <name padded to 20>  <path-bar frame>`
+          row 2: `  [i] <20 blanks>           <time-bar frame>`
+        Bars start at the same column on every row regardless of
+        which worker is showing what name.
         """
         name = self.worker_names[i]
         cols = self._cols()
         if not name:
-            # Idle slot: row 1 shows "(idle)", row 2 is empty.
-            return (f"  [{i}] (idle)", "")
-        # Row 1: name + path-bar line.
-        prefix1 = f"  [{i}] {name}  "
+            # Idle slot — keep the prefix width so the empty row
+            # doesn't visually shift the others when a worker
+            # finishes and a new one hasn't claimed the slot yet.
+            return (self._row_prefix(i, with_name=True, name="(idle)"), "")
+        prefix1 = self._row_prefix(i, with_name=True, name=name)
+        prefix2 = self._row_prefix(i, with_name=False)
+
         path = self.worker_path[i]
         avail1 = max(5, cols - len(prefix1) - 1)
         if len(path) > avail1:
-            path = path[:avail1 - 1] + "…"
+            path = path[: avail1 - 1] + "…"
         row1 = prefix1 + path
-        # Row 2: indented continuation, time-bar line only.
-        prefix2 = " " * len(prefix1)
+
         tline = self.worker_time[i]
         avail2 = max(5, cols - len(prefix2) - 1)
         if len(tline) > avail2:
-            tline = tline[:avail2 - 1] + "…"
+            tline = tline[: avail2 - 1] + "…"
         row2 = prefix2 + tline
         return (row1, row2)
 
@@ -698,6 +743,11 @@ def main() -> int:
                          "\"r['status']=='SAT' and r.get('nvars',0)<1000\".")
     ap.add_argument("--no-progress", action="store_true",
                     help="Disable live TUI; one-line completion logs only.")
+    ap.add_argument("--no-dedupe", action="store_true",
+                    help="Don't dedupe records by `hash`.  Default is to keep "
+                         "the first occurrence per hash and warn about how many "
+                         "duplicates were dropped — curate.py is append-only, "
+                         "so multi-pass JSONL files commonly carry duplicates.")
     ap.add_argument("--finalize-interval", type=float, default=2.0,
                     help="Min seconds between full .md rewrites (summary + "
                          "plot regen).  Default: 2.0.")
@@ -743,6 +793,33 @@ def main() -> int:
         print(f"warning: {len(missing)} records have missing xz_path; skipping",
               file=sys.stderr)
         records = [r for r in records if Path(r.get("xz_path", "")).exists()]
+
+    # Dedupe by `hash` field (or by xz_path as fallback) — curate.py is
+    # append-only by default, so a JSONL built from multiple curate
+    # passes ends up with the same instance recorded N times.  Without
+    # deduping we'd solve each instance N times (wasted CPU) AND emit
+    # N rows per instance in the output .md (which downstream tools
+    # like sweep_eff_tau.py then mis-collate into wrong totals).
+    #
+    # Keep the FIRST occurrence per hash and warn loudly with counts
+    # so the user knows whether to clean their index file.  Pass
+    # `--no-dedupe` to disable (e.g. for genuinely parametrically
+    # repeated runs with intentionally same hash).
+    if not args.no_dedupe:
+        seen = set()
+        unique: List[dict] = []
+        for r in records:
+            key = r.get("hash") or r.get("xz_path") or json.dumps(r, sort_keys=True)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(r)
+        if len(unique) < len(records):
+            dupes = len(records) - len(unique)
+            print(f"warning: deduped {dupes} duplicate records "
+                  f"(kept {len(unique)} unique; --no-dedupe to disable)",
+                  file=sys.stderr)
+            records = unique
 
     if args.limit > 0:
         records = records[: args.limit]

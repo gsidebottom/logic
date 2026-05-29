@@ -16,11 +16,18 @@ Workflow per instance:
      line, easy to grep / partially read / append).
 
 Re-runnable: the index file accumulates across runs.  Already-recorded
-instances are skipped unless --refresh is passed.
+instances are skipped unless --refresh is passed.  The file is also
+auto-deduped at the end of every run (one record per hash, last-write
+wins) so consecutive runs — including --refresh ones — converge to a
+clean state rather than accumulating duplicate rows.  Pass --no-dedupe
+to disable, or run `curate.py --dedupe-in-place --index PATH` to clean
+up an old index file from before the dedupe became automatic.
 
 Usage:
     curate.py [--query QUERY] [--timeout SECS] [--parallel N]
               [--max-instances N] [--index PATH] [--refresh]
+              [--no-dedupe]
+    curate.py --dedupe-in-place [--index PATH]
 
 Defaults curate ~100-200 instances that CaDiCaL solves in <10 s each.
 
@@ -33,6 +40,11 @@ Examples:
 
     # Re-run on existing instances (e.g., to refresh timings):
     tools/gbd/curate.py --refresh
+
+    # Clean up an existing index that has duplicate-hash rows from
+    # pre-auto-dedupe runs (no solving — pure file rewrite):
+    tools/gbd/curate.py --dedupe-in-place \
+        --index /Users/greg/projects/curated_benchmarks/evo_fitness.jsonl
 """
 import argparse
 import json
@@ -260,6 +272,62 @@ def load_index(path: Path) -> Dict[str, dict]:
     return out
 
 
+def dedupe_index_file(path: Path) -> Tuple[int, int]:
+    """
+    Rewrite `path` so it contains at most one record per `hash`,
+    keeping the LAST occurrence per hash (matches `load_index`'s
+    semantics, so the on-disk file becomes consistent with what every
+    downstream tool already treats it as).
+
+    Returns `(rows_before, rows_after)`.  Idempotent.  Atomic via
+    tmp-file + rename so a crash mid-rewrite can't corrupt the index.
+    Returns `(0, 0)` if the file doesn't exist.
+
+    The "last occurrence wins" policy is intentional and matches how
+    `--refresh` is meant to work — a refreshed result should
+    semantically replace the older one (later in file = more recent
+    invocation).  If you instead want "keep the most-informative
+    status" (SAT/UNSAT > TIMEOUT > ERROR), do that as a separate
+    pass; this function intentionally has no policy beyond recency
+    so it never silently drops a real result a user just generated.
+    """
+    if not path.exists():
+        return (0, 0)
+    out: Dict[str, dict] = {}
+    n_before = 0
+    n_malformed = 0
+    with path.open() as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if not line.strip():
+                continue
+            n_before += 1
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                n_malformed += 1
+                continue
+            h = obj.get("hash")
+            if not h:
+                n_malformed += 1
+                continue
+            # Pop+reinsert so the dict's insertion order reflects
+            # "most-recently-seen" — keeps the rewritten file's row
+            # order matching the original's last-occurrence order.
+            if h in out:
+                out.pop(h)
+            out[h] = obj
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w") as f:
+        for obj in out.values():
+            f.write(json.dumps(obj) + "\n")
+    tmp.replace(path)
+    if n_malformed:
+        print(f"warning: dropped {n_malformed} malformed / hash-less lines "
+              f"during dedupe of {path}", file=sys.stderr)
+    return (n_before, len(out))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -277,7 +345,22 @@ def main():
                     help="Path to curated.jsonl (default: %(default)s)")
     ap.add_argument("--refresh", action="store_true",
                     help="Re-run on instances already in the index "
-                         "(overrides previous entry)")
+                         "(overrides previous entry).  Pre-fix this used to "
+                         "silently produce duplicate rows; now the post-run "
+                         "auto-dedupe collapses them to one row per hash.")
+    ap.add_argument("--no-dedupe", action="store_true",
+                    help="Don't auto-dedupe the index file after the run.  "
+                         "Default behaviour is to collapse any duplicate "
+                         "hash entries down to the last-written record "
+                         "(idempotent across re-runs).  Use --no-dedupe only "
+                         "if you really want raw append-only behaviour.")
+    ap.add_argument("--dedupe-in-place", action="store_true",
+                    help="Standalone mode: dedupe the index file (keep one "
+                         "record per hash, last-write-wins) and exit without "
+                         "running any solver.  Use this to clean up an old "
+                         "index that accumulated duplicates from --refresh "
+                         "runs pre-dating the auto-dedupe.  Combine with "
+                         "--index PATH to clean a non-default index.")
     ap.add_argument("--include-sat-assignments", action="store_true",
                     help="Keep full assignment in the index (large for big "
                          "instances). Default: only the verification bit.")
@@ -328,6 +411,22 @@ def main():
             "proofs_dir": args.proofs_dir if args.keep_proofs else None,
             "keep_proofs": args.keep_proofs,
         }
+
+    # ── Standalone dedupe mode: clean an existing index and exit ──
+    # Doesn't need sat / DBs / network — pure file rewrite.  Handle
+    # before the SAT_BIN preflight check so users can clean an index
+    # even on a machine without a built sat binary.
+    if args.dedupe_in_place:
+        index_path = Path(args.index)
+        if not index_path.exists():
+            print(f"FATAL: index file not found: {index_path}", file=sys.stderr)
+            sys.exit(2)
+        before, after = dedupe_index_file(index_path)
+        print(f"deduped {index_path}:")
+        print(f"  rows before: {before}")
+        print(f"  rows after:  {after}")
+        print(f"  removed:     {before - after} duplicate hash records")
+        return
 
     if not SAT_BIN.exists():
         print(f"FATAL: sat binary not found at {SAT_BIN}", file=sys.stderr)
@@ -411,6 +510,20 @@ def main():
     print(f"  TIMEOUT: {n_to}")
     print(f"  ERROR:   {n_err}")
     print(f"index file: {index_path}")
+
+    # ── Post-run dedupe ──
+    # Workers append-only as they go (crash-safe — partial work
+    # survives an interrupt).  When the run completes successfully,
+    # rewrite the file so it has at most one record per hash.  This
+    # makes consecutive runs idempotent at the file level, not just
+    # the load_index() level.  Skip with --no-dedupe for the rare
+    # case where raw append history matters.
+    if not args.no_dedupe:
+        before, after = dedupe_index_file(index_path)
+        removed = before - after
+        if removed > 0:
+            print(f"deduped index: {before} → {after} rows "
+                  f"({removed} duplicate-hash records collapsed)")
 
 
 if __name__ == "__main__":

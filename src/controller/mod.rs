@@ -190,6 +190,36 @@ pub trait PathSearchController {
     /// `OuterWrapper(EffectiveCountWrapper(CdclController))`.
     fn pre_leaf_pruning_credit(&self) -> f64 { 0.0 }
 
+    /// **CDCL conflict count** — cumulative count of CDCL
+    /// pushing-conflicts and propagation conflicts the controller
+    /// has detected so far.  Default `0` for controllers without a
+    /// CDCL layer.  Override in [`crate::controller::CdclController`]
+    /// to return its `conflict_count` field.
+    ///
+    /// Used by cover-mult-weighted drivers to give CDCL conflicts a
+    /// progress-bar contribution: each rise in this counter is
+    /// credited by the cover multiplier at the current DFS step,
+    /// producing a CDCL-specific pre-leaf pruning estimate.  The
+    /// driver combines this with `pre_leaf_pruning_credit` via
+    /// `MAX` (NOT sum), because both estimate the same set of pre-
+    /// leaf-pruned paths via different mechanisms — summing them
+    /// would double-count when both fire on overlapping pruning
+    /// events (e.g. CDCL conflict + eff-layer pruning at the same
+    /// DFS push).
+    ///
+    /// Wrappers must forward `self.inner.cdcl_conflict_count()`.
+    fn cdcl_conflict_count(&self) -> usize { 0 }
+
+    /// **CDCL restart count** — number of Luby restarts so far.
+    /// Default `0` for controllers without a CDCL layer.  Used by
+    /// the progress display as a coarse phase indicator alongside
+    /// the smoother `cdcl_conflict_count` — restarts mark big
+    /// phase transitions (the solver gave up its current trail and
+    /// re-entered from the top with fresh decision-heuristic state).
+    ///
+    /// Wrappers must forward `self.inner.cdcl_restart_count()`.
+    fn cdcl_restart_count(&self) -> usize { 0 }
+
     /// Whether this controller wants the search to *restart* — abandon
     /// the current trail, keep accumulated knowledge (learned clauses,
     /// variable activities), and re-enter the DFS from the top.

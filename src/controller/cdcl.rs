@@ -544,6 +544,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
 
     /// Number of conflicts observed during this search so far.
     pub fn conflict_count(&self) -> usize { self.conflict_count }
+    pub fn restart_count(&self) -> usize { self.restart_count }
 
     /// Snapshot of the current trail as `(lit, reason, decision_level)`
     /// triples.  Exposed for tests / introspection.
@@ -1555,9 +1556,9 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
         is_complete: bool,
     ) -> Option<usize> {
         // Inner first so its `lit_counter` is in sync with the new
-        // prefix (and any leaf-detected complementary pair is already
-        // reflected in `inner.covered_prefix_count()` before our
-        // CDCL machinery runs).
+        // prefix (and any leaf-detected complementary pair is
+        // already reflected in `inner.covered_prefix_count()` before
+        // our CDCL machinery runs).
         let inner_r = self.inner.should_continue_on_prefix(
             prefix_literals, prefix_positions, prefix_prod_path, is_complete,
         );
@@ -1634,6 +1635,21 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
     fn path_count(&self) -> usize { self.inner.path_count() }
     fn covered_prefix_count(&self) -> usize { self.inner.covered_prefix_count() }
     fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
+    /// **CDCL conflict count, exposed for cover-mult-weighted
+    /// progress accounting.**  Returns the controller's own
+    /// `conflict_count` (cumulative across restarts).  The
+    /// cover-mult-weighted driver
+    /// (`run_dfs_with_restarts_weighted_impl`) detects rises in
+    /// this counter and credits each delta by the cover multiplier
+    /// at the current DFS step, producing a CDCL-specific pruning
+    /// estimate.  The driver then uses
+    /// `MAX(cdcl_credit, pre_leaf_pruning_credit)` (NOT sum) to
+    /// publish progress — CDCL conflicts and the eff-layer's
+    /// `pruned_paths_peak` measure overlapping pre-leaf prunings,
+    /// so summing them would double-count.  See the driver code
+    /// for the full rationale.
+    fn cdcl_conflict_count(&self) -> usize { self.conflict_count }
+    fn cdcl_restart_count(&self) -> usize { self.restart_count }
 
     fn is_restart_pending(&self) -> bool { self.restart_pending }
 
@@ -2200,6 +2216,34 @@ mod tests {
         assert!(ctrl.conflict_count() >= 1,
             "expected at least one conflict; got {}",
             ctrl.conflict_count());
+    }
+
+    /// `cdcl_conflict_count()` exposes the controller's
+    /// `conflict_count` for the cover-mult-weighted driver to credit
+    /// CDCL conflicts as pre-leaf pruning (driver-side, weighted by
+    /// the cover multiplier at the current DFS step).  Verifies the
+    /// trait method matches the inherent `conflict_count()` getter.
+    #[test]
+    fn cdcl_conflict_count_exposes_conflict_count() {
+        let a  = NNF::Lit(Lit::pos(0));
+        let na = NNF::Lit(Lit::neg(0));
+        let nnf = NNF::Sum(vec![a.clone(), na.clone()]);
+
+        let mut ctrl: CdclController<fn(PathsClass, bool) -> bool> =
+            CdclController::for_nnf(&nnf, None, |_, _| true);
+        nnf.for_each_path_prefix_ord(
+            |_, _| None,
+            |_, _| None,
+            |lits, positions, prod_path, is_complete| {
+                ctrl.should_continue_on_prefix(lits, positions, prod_path, is_complete)
+            },
+        );
+        let inherent = ctrl.conflict_count();
+        let via_trait = <CdclController<_> as PathSearchController>::cdcl_conflict_count(&ctrl);
+        assert!(inherent >= 1, "expected at least one conflict; got {}", inherent);
+        assert_eq!(inherent, via_trait,
+            "cdcl_conflict_count trait method should match the inherent conflict_count() getter; \
+             inherent={}, via_trait={}", inherent, via_trait);
     }
 
 

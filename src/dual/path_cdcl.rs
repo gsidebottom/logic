@@ -33,6 +33,13 @@ pub struct CdclDualPathController<S: CoverState = BasicCoverState> {
     /// Optional progress atom.  See `EffectivePathController::with_progress`
     /// for the rationale and usage.
     progress: Option<Arc<std::sync::atomic::AtomicU64>>,
+    /// Optional CDCL trailing-indicator stats atoms (conflicts +
+    /// restarts).  Published alongside `progress` at the same
+    /// ~4096-step cadence by the dual driver — give the user a
+    /// smooth "work done" signal even when the cover-mult-weighted
+    /// `paths` metric is stuck at 0 or jumped to ~100%.
+    cdcl_conflicts: Option<Arc<std::sync::atomic::AtomicU64>>,
+    cdcl_restarts:  Option<Arc<std::sync::atomic::AtomicU64>>,
 }
 
 impl<S: CoverState> Default for CdclDualPathController<S> {
@@ -41,14 +48,26 @@ impl<S: CoverState> Default for CdclDualPathController<S> {
 
 impl<S: CoverState> CdclDualPathController<S> {
     pub fn new() -> Self {
-        Self { _state: std::marker::PhantomData, stream_tx: None, progress: None }
+        Self {
+            _state: std::marker::PhantomData,
+            stream_tx: None,
+            progress: None,
+            cdcl_conflicts: None,
+            cdcl_restarts: None,
+        }
     }
 
     /// Build the controller with a UI-streaming sender; every
     /// `PathsClass` event is forwarded to `tx` in addition to the
     /// dual framework's internal pool/uncovered handling.
     pub fn with_stream(tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>) -> Self {
-        Self { _state: std::marker::PhantomData, stream_tx: Some(tx), progress: None }
+        Self {
+            _state: std::marker::PhantomData,
+            stream_tx: Some(tx),
+            progress: None,
+            cdcl_conflicts: None,
+            cdcl_restarts: None,
+        }
     }
 
     /// Configure the controller to publish progress
@@ -56,6 +75,19 @@ impl<S: CoverState> CdclDualPathController<S> {
     /// Builder; chainable with `with_stream`.
     pub fn with_progress(mut self, atom: Arc<std::sync::atomic::AtomicU64>) -> Self {
         self.progress = Some(atom);
+        self
+    }
+
+    /// Configure CDCL trailing-indicator atoms — `conflicts` and
+    /// `restarts` get published at the same cadence as `progress`.
+    /// Chainable.
+    pub fn with_cdcl_stats(
+        mut self,
+        conflicts: Arc<std::sync::atomic::AtomicU64>,
+        restarts:  Arc<std::sync::atomic::AtomicU64>,
+    ) -> Self {
+        self.cdcl_conflicts = Some(conflicts);
+        self.cdcl_restarts  = Some(restarts);
         self
     }
 }
@@ -120,10 +152,19 @@ impl<S: CoverState + 'static> DualPathSearchController for CdclDualPathControlle
         // value and publishes via the same atom.
         let progress_atom = self.progress.clone().unwrap_or_else(
             || Arc::new(std::sync::atomic::AtomicU64::new(0)));
-        let with_progress = crate::dual::wrapper::ProgressWrapper::new(inner, progress_atom.clone())
+        let conflicts_atom = self.cdcl_conflicts.clone().unwrap_or_else(
+            || Arc::new(std::sync::atomic::AtomicU64::new(0)));
+        let restarts_atom = self.cdcl_restarts.clone().unwrap_or_else(
+            || Arc::new(std::sync::atomic::AtomicU64::new(0)));
+        let atoms = crate::dual::wrapper::ProgressAtoms {
+            paths: progress_atom.clone(),
+            conflicts: conflicts_atom,
+            restarts: restarts_atom,
+        };
+        let with_progress = crate::dual::wrapper::ProgressWrapper::new(inner, progress_atom)
             .with_publish_disabled();
         let mut composite = StateQueryWrapper::new(with_progress, state, cancel);
-        run_dfs_with_restarts_weighted(&mut composite, nnf, &*uncovered, progress_atom)
+        run_dfs_with_restarts_weighted(&mut composite, nnf, &*uncovered, atoms)
     }
 }
 

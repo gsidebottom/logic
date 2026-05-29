@@ -115,6 +115,8 @@ impl<Inner: PathSearchController, S: CoverState> PathSearchController for StateQ
     fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
     fn paths_classified(&self) -> f64 { self.inner.paths_classified() }
     fn pre_leaf_pruning_credit(&self) -> f64 { self.inner.pre_leaf_pruning_credit() }
+    fn cdcl_conflict_count(&self) -> usize { self.inner.cdcl_conflict_count() }
+    fn cdcl_restart_count(&self) -> usize { self.inner.cdcl_restart_count() }
     fn is_restart_pending(&self) -> bool { self.inner.is_restart_pending() }
     fn complete_restart(&mut self) { self.inner.complete_restart() }
 }
@@ -224,17 +226,47 @@ where
 /// Pair with `ProgressWrapper::with_publish_disabled()` — without
 /// that, the wrapper's own un-weighted publishes would race and
 /// overwrite the weighted value.
+/// Atoms for periodically publishing solver progress to the UI.
+///
+/// `paths` is the cover-mult-weighted leading indicator (can be 0
+/// forever or near-100% instantly); `conflicts` and `restarts` are
+/// CDCL-style trailing indicators that grow smoothly with actual
+/// solver work — useful when paths is stuck at one of those extremes.
+///
+/// `conflicts` / `restarts` are `usize`-cast-to-`u64`.  All three
+/// atoms are written with `Ordering::Relaxed` (advisory display only).
+#[derive(Clone)]
+pub struct ProgressAtoms {
+    pub paths:     Arc<std::sync::atomic::AtomicU64>,
+    pub conflicts: Arc<std::sync::atomic::AtomicU64>,
+    pub restarts:  Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl ProgressAtoms {
+    /// Build a `ProgressAtoms` where only the paths atom is shared
+    /// with the UI; conflicts / restarts go to private throwaway
+    /// atomics (still written, just nobody reads them).  Backward-
+    /// compatible with old single-atom call sites.
+    pub fn paths_only(paths: Arc<std::sync::atomic::AtomicU64>) -> Self {
+        Self {
+            paths,
+            conflicts: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            restarts:  Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        }
+    }
+}
+
 pub fn run_dfs_with_restarts_weighted<Inner, S>(
     composite: &mut StateQueryWrapper<Inner, S>,
     nnf: &NNF,
     uncovered: &Mutex<Option<ProdPath>>,
-    progress: Arc<std::sync::atomic::AtomicU64>,
+    atoms: ProgressAtoms,
 ) -> PathOutcome
 where
     Inner: PathSearchController,
     S: CoverState,
 {
-    run_dfs_with_restarts_weighted_impl(composite, nnf, uncovered, progress, /*bubble_up=*/ false)
+    run_dfs_with_restarts_weighted_impl(composite, nnf, uncovered, atoms, /*bubble_up=*/ false)
 }
 
 /// Bubble-up variant — same soundness caveat as
@@ -243,31 +275,82 @@ pub fn run_dfs_with_restarts_weighted_bubble_up<Inner, S>(
     composite: &mut StateQueryWrapper<Inner, S>,
     nnf: &NNF,
     uncovered: &Mutex<Option<ProdPath>>,
-    progress: Arc<std::sync::atomic::AtomicU64>,
+    atoms: ProgressAtoms,
 ) -> PathOutcome
 where
     Inner: PathSearchController,
     S: CoverState,
 {
-    run_dfs_with_restarts_weighted_impl(composite, nnf, uncovered, progress, /*bubble_up=*/ true)
+    run_dfs_with_restarts_weighted_impl(composite, nnf, uncovered, atoms, /*bubble_up=*/ true)
 }
 
 fn run_dfs_with_restarts_weighted_impl<Inner, S>(
     composite: &mut StateQueryWrapper<Inner, S>,
     nnf: &NNF,
     uncovered: &Mutex<Option<ProdPath>>,
-    progress: Arc<std::sync::atomic::AtomicU64>,
+    atoms: ProgressAtoms,
     bubble_up: bool,
 ) -> PathOutcome
 where
     Inner: PathSearchController,
     S: CoverState,
 {
-    // Driver-side cover-mult-weighted `paths_classified`.  Persists
-    // across restart iterations so the published value is cumulative.
-    let mut paths_classified: f64 = 0.0;
-    let mut prev_cov: usize = 0;
-    let mut prev_unc: usize = 0;
+    let progress = atoms.paths.clone();
+    let conflicts_atom = atoms.conflicts;
+    let restarts_atom = atoms.restarts;
+    // ── Cross-iteration peak (the displayed value) ──
+    //
+    // Per-iteration accumulators are reset at the top of each
+    // restart so each iteration's credit is bounded by `total_nnf`:
+    // within one DFS the engine visits each prefix at most once,
+    // so the sum of `mult × 1` per cover event is bounded by the
+    // total path count of the NNF.  Across iterations the same
+    // prefixes can be revisited and re-credited — summing those
+    // would overflow `total_nnf`.  Instead, we fold each
+    // iteration's total into `peak_paths_classified` via `max`,
+    // which is the semantically correct "fraction of the path
+    // space proven uncoverable so far": across iterations the
+    // proven-set is the UNION of per-iteration sets, but since
+    // each iteration re-explores the same space, the union ≈ the
+    // biggest single iteration.  `max` is a safe lower-bound on
+    // that union and is monotonic-by-construction.
+    //
+    // ── Two pre-leaf credit sources ──
+    //
+    // Per-iteration we accumulate TWO pre-leaf pruning estimates:
+    //
+    //   (1) `cdcl_credit`: cover-mult-weighted sum of CDCL
+    //       conflict events, computed driver-side by reading the
+    //       controller's `cdcl_conflict_count()` delta on each
+    //       step and crediting `mult × delta`.  Bounded by
+    //       `total_nnf` within one iteration (each conflict prunes
+    //       a disjoint subtree).  Source: `CdclController` (or 0
+    //       if no CDCL layer in stack).
+    //
+    //   (2) `pre_leaf`: the eff-layer's `pruned_paths_peak`,
+    //       reported via `pre_leaf_pruning_credit()`.  Tracks
+    //       pruning the eff layer's `Some(0)` short-circuit
+    //       caused, NOT including CDCL-induced backtracks (which
+    //       it can't distinguish).  Source: `EffectiveCountWrapper`
+    //       (or 0 if no eff layer in stack).
+    //
+    // **Combining them**: `MAX(cdcl_credit, pre_leaf)` — NOT sum.
+    // Both estimate the same set of pre-leaf-pruned paths through
+    // different mechanisms.  When BOTH are in the stack (e.g.
+    // `greedy_eff`), CDCL conflicts cause DFS backtracks that the
+    // eff layer ALSO sees as pruning, so summing would
+    // double-count.  When only one fires, MAX picks the live one.
+    // MAX undercounts slightly when the two estimates are
+    // genuinely disjoint, but never overcounts (preserves the
+    // `total ≤ total_nnf` invariant).
+    //
+    // ── Per-iteration vs cumulative ──
+    //
+    // The controller's `cdcl_conflict_count` is cumulative across
+    // restarts.  We reset `prev_cdcl_confl` to its current value
+    // at iter start so the per-iter delta only credits NEW
+    // conflicts.  Same pattern as `prev_cov` / `prev_unc`.
+    let mut peak_paths_classified: f64 = 0.0;
     let mut step: u64 = 0;
     // Total path count for the safety `debug_assert!`s below.  May
     // be `f64::INFINITY` on huge formulas (path_count() does naive
@@ -277,22 +360,67 @@ where
         if composite.cancel.load(Ordering::SeqCst) {
             return PathOutcome::Cancelled;
         }
+        // Per-iteration accumulators.  Reset at the top of each
+        // restart so each iteration's credit is bounded by total_nnf.
+        // `prev_cov` / `prev_unc` / `prev_cdcl_confl` start at the
+        // controller's CURRENT cumulative values so the first delta
+        // in this iteration only sees events that happen DURING
+        // this iteration.
+        let mut paths_classified: f64 = 0.0;
+        let mut cdcl_credit: f64 = 0.0;
+        let mut prev_cov: usize = composite.covered_prefix_count();
+        let mut prev_unc: usize = composite.uncovered_path_count();
+        let mut prev_cdcl_confl: usize = composite.cdcl_conflict_count();
         // Build the cover-mult post_hook.  Closure captures the
-        // accumulators above and the progress atom; called after
-        // every `should_continue_on_prefix` with the current mult.
+        // per-iteration accumulators (above) and the cross-iteration
+        // `peak_paths_classified` so it can publish a monotonic
+        // value to the progress atom on every ~4096 steps.
         let cancel_for_hook = composite.cancel.clone();
         let progress_for_hook = progress.clone();
+        let conflicts_for_hook = conflicts_atom.clone();
+        let restarts_for_hook = restarts_atom.clone();
+        let peak_ref = &mut peak_paths_classified;
         let mut post_hook = |ctrl: &mut StateQueryWrapper<Inner, S>, mult: f64| -> bool {
             if cancel_for_hook.load(Ordering::SeqCst) {
                 return false;
             }
             let cov = ctrl.covered_prefix_count();
             let unc = ctrl.uncovered_path_count();
-            if cov > prev_cov {
+            let cdcl_confl = ctrl.cdcl_conflict_count();
+            let cov_delta = cov - prev_cov;
+            let cdcl_delta = cdcl_confl - prev_cdcl_confl;
+            // **Leaf event takes precedence over CDCL conflict at
+            // the same step.**  On `a*a'`-style formulas the DFS
+            // pushes a literal that's complementary to one already
+            // on the trail: BacktrackWhenCovered sees the pair and
+            // bumps `covered_prefix_count`; CdclController's
+            // `process_prefix_step` ALSO detects the pushing-
+            // conflict and bumps `conflict_count`.  Both fire on
+            // the same step for the same path — counting both
+            // would double-credit.  The leaf event already credits
+            // the full subtree under this prefix (which is just
+            // this leaf at mult=1), so the CDCL event is
+            // redundant for this step.
+            //
+            // When ONLY CDCL fires (mid-path conflict, no leaf
+            // reached), credit `cdcl_credit` so the progress bar
+            // moves on CDCL-dominated formulas like Steiner.  When
+            // ONLY a leaf event fires (typical of search progress
+            // through a SAT subtree), credit `paths_classified`.
+            if cov_delta > 0 {
                 // Each new Covered event covers `mult` complete
                 // paths through the NNF.
-                paths_classified += mult * (cov - prev_cov) as f64;
+                paths_classified += mult * cov_delta as f64;
                 prev_cov = cov;
+                // Skip the CDCL credit for this step — the leaf
+                // event covers it.  Advance prev_cdcl_confl so
+                // subsequent steps' deltas start from here.
+                prev_cdcl_confl = cdcl_confl;
+            } else if cdcl_delta > 0 {
+                // CDCL fired without a leaf event — credit the
+                // subtree below this prefix as pre-leaf pruned.
+                cdcl_credit += mult * cdcl_delta as f64;
+                prev_cdcl_confl = cdcl_confl;
             }
             if unc > prev_unc {
                 paths_classified += (unc - prev_unc) as f64;
@@ -300,19 +428,31 @@ where
             }
             step = step.wrapping_add(1);
             if step & 0xFFF == 0 {
-                // Add the controller stack's own contribution
-                // (e.g. the `EffectiveCountWrapper`'s
-                // `pruned_paths_peak` for pre-leaf pruning).
-                // Disjoint from leaf events by construction.
                 let pre_leaf = ctrl.pre_leaf_pruning_credit();
-                let total_now = paths_classified + pre_leaf;
-                // Safety invariant: never publish above total path count.
+                let pruning = cdcl_credit.max(pre_leaf);
+                let this_iter_total = paths_classified + pruning;
+                // Per-iter invariant: bounded by total_nnf.
+                // `paths_classified` counts leaf events
+                // (mult-weighted, disjoint by DFS construction);
+                // `pruning` is MAX of two estimates of the same
+                // pre-leaf-pruned set, hence ≤ that set's
+                // |union| ≤ `total_nnf − leaf_events`.  Sum is
+                // bounded.
                 debug_assert!(
-                    !total_nnf.is_finite() || total_now <= total_nnf * 1.001,
-                    "dual driver: paths_classified ({}) + pre_leaf ({}) = {} exceeds total {}",
-                    paths_classified, pre_leaf, total_now, total_nnf,
+                    !total_nnf.is_finite() || this_iter_total <= total_nnf * 1.001,
+                    "dual driver per-iter: paths_classified ({}) + max(cdcl_credit={}, pre_leaf={}) = {} exceeds total {}",
+                    paths_classified, cdcl_credit, pre_leaf, this_iter_total, total_nnf,
                 );
-                progress_for_hook.store(total_now.to_bits(), Ordering::Relaxed);
+                if this_iter_total > *peak_ref { *peak_ref = this_iter_total; }
+                progress_for_hook.store(peak_ref.to_bits(), Ordering::Relaxed);
+                // CDCL trailing-indicator stats — cheap atomic
+                // stores published at the same ~4096-step cadence
+                // as paths.  These grow smoothly with actual solver
+                // work, complementing the cover-mult-weighted paths
+                // metric (which can be stuck at 0 or jump to ~100%
+                // depending on where in the path-tree work happens).
+                conflicts_for_hook.store(ctrl.cdcl_conflict_count() as u64, Ordering::Relaxed);
+                restarts_for_hook.store(ctrl.cdcl_restart_count() as u64, Ordering::Relaxed);
             }
             true
         };
@@ -321,35 +461,35 @@ where
         } else {
             nnf.for_each_path_prefix_with_controller_weighted(composite, &mut post_hook);
         }
+        // Fold this iteration's final total into the cross-iter peak.
+        let pre_leaf = composite.pre_leaf_pruning_credit();
+        let pruning = cdcl_credit.max(pre_leaf);
+        let this_iter_total = paths_classified + pruning;
+        debug_assert!(
+            !total_nnf.is_finite() || this_iter_total <= total_nnf * 1.001,
+            "dual driver per-iter (end): paths_classified ({}) + max(cdcl_credit={}, pre_leaf={}) = {} exceeds total {}",
+            paths_classified, cdcl_credit, pre_leaf, this_iter_total, total_nnf,
+        );
+        if this_iter_total > peak_paths_classified {
+            peak_paths_classified = this_iter_total;
+        }
+        // Final per-iter publish — captures any rises that didn't
+        // hit the 4096-step boundary inside the post_hook.
+        progress.store(peak_paths_classified.to_bits(), Ordering::Relaxed);
+        conflicts_atom.store(composite.cdcl_conflict_count() as u64, Ordering::Relaxed);
+        restarts_atom.store(composite.cdcl_restart_count() as u64, Ordering::Relaxed);
         if composite.cancel.load(Ordering::SeqCst) {
             return PathOutcome::Cancelled;
         }
         if uncovered.lock().unwrap().is_some() {
             let pp = uncovered.lock().unwrap().take().unwrap();
-            // Final publish for this attempt before returning.
-            let pre_leaf = composite.pre_leaf_pruning_credit();
-            let final_total = paths_classified + pre_leaf;
-            debug_assert!(
-                !total_nnf.is_finite() || final_total <= total_nnf * 1.001,
-                "dual driver Uncovered exit: total {} exceeds total path count {}",
-                final_total, total_nnf,
-            );
-            progress.store(final_total.to_bits(), Ordering::Relaxed);
             return PathOutcome::Uncovered(pp);
         }
         if composite.is_restart_pending() {
             composite.complete_restart();
             continue;
         }
-        // Search exhausted; final publish so the last batch lands.
-        let pre_leaf = composite.pre_leaf_pruning_credit();
-        let final_total = paths_classified + pre_leaf;
-        debug_assert!(
-            !total_nnf.is_finite() || final_total <= total_nnf * 1.001,
-            "dual driver Exhausted exit: total {} exceeds total path count {}",
-            final_total, total_nnf,
-        );
-        progress.store(final_total.to_bits(), Ordering::Relaxed);
+        // Search exhausted.
         return PathOutcome::Exhausted;
     }
 }
@@ -444,6 +584,8 @@ impl<Inner: PathSearchController> PathSearchController for ProgressWrapper<Inner
     fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
     fn paths_classified(&self) -> f64 { self.inner.paths_classified() }
     fn pre_leaf_pruning_credit(&self) -> f64 { self.inner.pre_leaf_pruning_credit() }
+    fn cdcl_conflict_count(&self) -> usize { self.inner.cdcl_conflict_count() }
+    fn cdcl_restart_count(&self) -> usize { self.inner.cdcl_restart_count() }
 
     fn is_restart_pending(&self) -> bool { self.inner.is_restart_pending() }
     fn complete_restart(&mut self) { self.inner.complete_restart(); }

@@ -1376,13 +1376,19 @@ fn spawn_dual_matrix_search(
     // they reach the leaf-level Covered detection that would
     // populate `paths_classified` from event counting alone).
     let progress_atom = cancel.paths_atom();
+    // CDCL trailing-indicator atoms — see `ProgressAtoms` for why we
+    // also publish these.  The progress renderer surfaces them as
+    // `conf K rst R` on the path bar.
+    let conflicts_atom = cancel.conflicts_atom();
+    let restarts_atom  = cancel.restarts_atom();
 
     let handle = tokio::task::spawn_blocking(move || {
         let _ = match backend {
             MatrixBackend::GreedyCdcl => {
                 let cover = GreedyMaxCoverController::default();
                 let path  = CdclDualPathController::<BasicCoverState>::with_stream(tx)
-                    .with_progress(progress_atom);
+                    .with_progress(progress_atom)
+                    .with_cdcl_stats(conflicts_atom, restarts_atom);
                 solve_dual_with_cancel(
                     &target_nnf, cover, path, SearchMode::Satisfiable,
                     external_cancel,
@@ -1392,6 +1398,7 @@ fn spawn_dual_matrix_search(
                 let cover = GreedyMaxCoverController::default();
                 let path  = EffectivePathController::<BasicCoverState>::with_stream(tx)
                     .with_progress(progress_atom)
+                    .with_cdcl_stats(conflicts_atom, restarts_atom)
                     .with_eff_tau(eff_tau);
                 solve_dual_with_cancel(
                     &target_nnf, cover, path, SearchMode::Satisfiable,
@@ -1407,6 +1414,7 @@ fn spawn_dual_matrix_search(
                 let cover = BasicCoverController::default();
                 let path  = EffectivePathController::<BasicCoverState>::with_stream(tx)
                     .with_progress(progress_atom)
+                    .with_cdcl_stats(conflicts_atom, restarts_atom)
                     .with_eff_tau(eff_tau);
                 solve_dual_with_cancel(
                     &target_nnf, cover, path, SearchMode::Satisfiable,
@@ -1419,6 +1427,7 @@ fn spawn_dual_matrix_search(
                 let cover = GreedyMaxCoverController::default();
                 let path  = EffectivePathController::<BasicCoverState>::with_stream(tx)
                     .with_progress(progress_atom)
+                    .with_cdcl_stats(conflicts_atom, restarts_atom)
                     .with_bubble_up()
                     .with_eff_tau(eff_tau);
                 solve_dual_with_cancel(
@@ -1432,6 +1441,7 @@ fn spawn_dual_matrix_search(
                 let cover = BasicCoverController::default();
                 let path  = EffectivePathController::<BasicCoverState>::with_stream(tx)
                     .with_progress(progress_atom)
+                    .with_cdcl_stats(conflicts_atom, restarts_atom)
                     .with_bubble_up()
                     .with_eff_tau(eff_tau);
                 solve_dual_with_cancel(
@@ -1620,7 +1630,13 @@ async fn matrix_progress_loop(
         let so_far = cancel.paths_so_far();
         if so_far > max_so_far { max_so_far = so_far; }
         let elapsed = start.elapsed().as_secs_f64();
-        render_progress(so_far, max_so_far, log_total, elapsed, timeout_secs, frame);
+        // CDCL trailing-indicator stats — `conf` (conflicts learned)
+        // and `rst` (restarts).  Always read; render skips them when
+        // both are zero (i.e. non-CDCL backend).
+        let conflicts = cancel.conflicts_so_far();
+        let restarts  = cancel.restarts_so_far();
+        render_progress(so_far, max_so_far, log_total, elapsed, timeout_secs, frame,
+                        conflicts, restarts);
         frame = frame.wrapping_add(1);
     }
 }
@@ -1652,6 +1668,8 @@ fn render_progress(
     elapsed_secs: f64,
     timeout_secs: u64,
     frame: u64,
+    conflicts: usize,
+    restarts: usize,
 ) {
     let bar_width = 30usize;
 
@@ -1700,11 +1718,27 @@ fn render_progress(
     };
 
     let rate = if elapsed_secs > 0.0 { so_far / elapsed_secs } else { 0.0 };
+    // CDCL trailing-indicator stats.  Suppress the `conf`/`rst`
+    // fragment entirely on non-CDCL backends (both atoms still at 0)
+    // so the line stays compact and the TUI display doesn't get
+    // misleading "conf 0" badges.  When non-zero, append them after
+    // the path total so the eye sees: bar → coverage → work-done.
+    // Tight spacing (single-space separators, no double-space) to
+    // maximize visibility in the multi-worker TUI grid where each
+    // worker row is truncated to `terminal_cols - name_prefix - 1`.
+    // The wider double-space style was eating ~3 chars of right-side
+    // visibility (the rate / time tokens were the first to get cut).
+    let cdcl_frag = if conflicts > 0 || restarts > 0 {
+        format!(" conf {} rst {}", format_count(conflicts as f64), restarts)
+    } else {
+        String::new()
+    };
     let line1 = format!(
-        "c [{}] paths {} / {}  ({}/s)  {:.1}s",
+        "c [{}] paths {} / {}{}  ({}/s)  {:.1}s",
         line1_bar,
         format_count(so_far),
         format_log_count(log_total),
+        cdcl_frag,
         format_count(rate),
         elapsed_secs,
     );
@@ -2753,23 +2787,26 @@ mod tests {
         // Smoke test: render with various inputs (incl. degenerate
         // log_total=0 and start≈now) shouldn't panic or divide-by-zero.
         // Output goes to stderr, which captures during tests.
-        //   (so_far, max_so_far, log_total, elapsed_secs, timeout_secs, frame)
+        //   (so_far, max_so_far, log_total, elapsed_secs, timeout_secs, frame, conflicts, restarts)
         // ---- both bars (timeout_secs > 0) ----
-        render_progress(0.0,   0.0,   0.0,  0.0,  60, 0);   // pre-progress
-        render_progress(50.0,  50.0,  4.0,  1.5,  60, 1);   // so_far=max=50
-        render_progress(1e6,   1e6,   8.0,  12.3, 60, 2);   // mid run
-        render_progress(1e15,  1e15,  15.0, 30.0, 60, 3);   // late
-        render_progress(1e9,   1e9,   3.0,  1.0,  60, 4);   // so_far > total: clamp
+        render_progress(0.0,   0.0,   0.0,  0.0,  60, 0, 0, 0);   // pre-progress
+        render_progress(50.0,  50.0,  4.0,  1.5,  60, 1, 0, 0);   // so_far=max=50
+        render_progress(1e6,   1e6,   8.0,  12.3, 60, 2, 0, 0);   // mid run
+        render_progress(1e15,  1e15,  15.0, 30.0, 60, 3, 0, 0);   // late
+        render_progress(1e9,   1e9,   3.0,  1.0,  60, 4, 0, 0);   // so_far > total: clamp
         // ---- post-restart: so_far < max_so_far → marker visible ----
-        render_progress(1e4,   1e8,   10.0, 5.0,  60, 5);
-        render_progress(0.0,   1e8,   10.0, 5.0,  60, 6);   // current reset to 0
+        render_progress(1e4,   1e8,   10.0, 5.0,  60, 5, 0, 0);
+        render_progress(0.0,   1e8,   10.0, 5.0,  60, 6, 0, 0);   // current reset to 0
         // ---- log_total = -inf (formula has 0 paths; degenerate) ----
-        render_progress(0.0, 0.0, f64::NEG_INFINITY, 0.5, 60, 7);
+        render_progress(0.0, 0.0, f64::NEG_INFINITY, 0.5, 60, 7, 0, 0);
         // ---- log_total = inf (shouldn't happen, but be defensive) ----
-        render_progress(100.0, 100.0, f64::INFINITY, 1.0, 60, 8);
+        render_progress(100.0, 100.0, f64::INFINITY, 1.0, 60, 8, 0, 0);
         // ---- single bar only (timeout_secs == 0) ----
-        render_progress(0.0,   0.0,  0.0,  0.0,  0, 0);
-        render_progress(50.0,  50.0, 4.0,  1.5,  0, 1);
+        render_progress(0.0,   0.0,  0.0,  0.0,  0, 0, 0, 0);
+        render_progress(50.0,  50.0, 4.0,  1.5,  0, 1, 0, 0);
+        // ---- with CDCL stats (greedy_cdcl / greedy_eff on hard UNSAT) ----
+        render_progress(0.0,   0.0,   180.0, 5.0,  60, 9,  1234, 5);
+        render_progress(1e150, 1e150, 180.0, 30.0, 60, 10, 999_999, 42);
     }
 
     #[test]

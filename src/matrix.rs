@@ -37,6 +37,21 @@ pub fn shared_runtime() -> &'static tokio::runtime::Runtime {
 pub struct PathClassificationHandle {
     cancelled: Arc<AtomicBool>,
     paths:     Arc<std::sync::atomic::AtomicU64>,
+    /// CDCL conflict count — cumulative count of conflicts the
+    /// search has detected (pushing-conflict + propagation-conflict).
+    /// Grows smoothly with actual work done, unlike the cover-mult-
+    /// weighted `paths` which can be 0 forever or near-100% instantly
+    /// depending on where in the path-tree work happens.  Published
+    /// alongside `paths` by the dual driver / `CancelController` and
+    /// rendered by the progress display as a complementary "trailing
+    /// indicator" of solver effort.
+    /// Zero for non-CDCL backends.  `usize` cast through `u64`.
+    conflicts: Arc<std::sync::atomic::AtomicU64>,
+    /// CDCL restart count — number of Luby restarts so far.  Lower
+    /// resolution than `conflicts` (jumps occasionally rather than
+    /// growing per-step) but is THE marker of a CDCL solver's
+    /// progress phase.  Same encoding as `conflicts`.
+    restarts:  Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl PathClassificationHandle {
@@ -70,6 +85,27 @@ impl PathClassificationHandle {
     }
     pub fn paths_so_far(&self) -> f64 {
         f64::from_bits(self.paths.load(Ordering::Relaxed))
+    }
+
+    /// Share the conflicts atomic.  Same pattern as `paths_atom()`.
+    pub fn conflicts_atom(&self) -> Arc<std::sync::atomic::AtomicU64> {
+        self.conflicts.clone()
+    }
+    /// Share the restarts atomic.  Same pattern as `paths_atom()`.
+    pub fn restarts_atom(&self) -> Arc<std::sync::atomic::AtomicU64> {
+        self.restarts.clone()
+    }
+    pub fn record_conflicts(&self, n: usize) {
+        self.conflicts.store(n as u64, Ordering::Relaxed);
+    }
+    pub fn record_restarts(&self, n: usize) {
+        self.restarts.store(n as u64, Ordering::Relaxed);
+    }
+    pub fn conflicts_so_far(&self) -> usize {
+        self.conflicts.load(Ordering::Relaxed) as usize
+    }
+    pub fn restarts_so_far(&self) -> usize {
+        self.restarts.load(Ordering::Relaxed) as usize
     }
 }
 
@@ -1590,6 +1626,15 @@ fn run_uncovered_only_dfs<C: PathSearchController>(
                 step = step.wrapping_add(1);
                 if step & 0xFFF == 0 {
                     cancel_for_step.record_paths(paths_classified);
+                    // CDCL trailing-indicator stats — re-borrow
+                    // the controller (we just dropped it above).
+                    // Cheap atomic stores, complementing the
+                    // potentially-volatile cover-mult-weighted
+                    // `paths_classified` with smooth "work done"
+                    // signals (`conf`, `rst`) that always grow.
+                    let c2 = cell.borrow();
+                    cancel_for_step.record_conflicts(c2.cdcl_conflict_count());
+                    cancel_for_step.record_restarts(c2.cdcl_restart_count());
                 }
                 cont
             },
@@ -1604,6 +1649,9 @@ fn run_uncovered_only_dfs<C: PathSearchController>(
         cell.borrow_mut().complete_restart();
     }
     cancel_for_step.record_paths(paths_classified);
+    let c = cell.borrow();
+    cancel_for_step.record_conflicts(c.cdcl_conflict_count());
+    cancel_for_step.record_restarts(c.cdcl_restart_count());
 }
 
 /// Same as [`format_path`] but for an already-resolved list of literals

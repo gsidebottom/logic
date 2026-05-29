@@ -48,6 +48,10 @@ pub struct EffectivePathController<S: CoverState = BasicCoverState> {
     /// invisible to leaf-level Covered detection (the Effective
     /// layer's count-based pruning short-circuits before the leaf).
     progress: Option<Arc<std::sync::atomic::AtomicU64>>,
+    /// Optional CDCL trailing-indicator stats atoms — see
+    /// [`crate::dual::wrapper::ProgressAtoms`] for the rationale.
+    cdcl_conflicts: Option<Arc<std::sync::atomic::AtomicU64>>,
+    cdcl_restarts:  Option<Arc<std::sync::atomic::AtomicU64>>,
     /// EXPERIMENTAL: when `true`, drive the DFS via the bubble-up
     /// variant of `run_dfs_with_restarts`.  See
     /// [`crate::dual::wrapper::run_dfs_with_restarts_bubble_up`] for
@@ -86,6 +90,8 @@ impl<S: CoverState> EffectivePathController<S> {
             _state: std::marker::PhantomData,
             stream_tx: None,
             progress: None,
+            cdcl_conflicts: None,
+            cdcl_restarts: None,
             bubble_up: false,
             sum_reorder_tau: 0.0,
         }
@@ -99,6 +105,8 @@ impl<S: CoverState> EffectivePathController<S> {
             _state: std::marker::PhantomData,
             stream_tx: Some(tx),
             progress: None,
+            cdcl_conflicts: None,
+            cdcl_restarts: None,
             bubble_up: false,
             sum_reorder_tau: 0.0,
         }
@@ -111,6 +119,20 @@ impl<S: CoverState> EffectivePathController<S> {
     /// published values.  Builder; chainable with `with_stream`.
     pub fn with_progress(mut self, atom: Arc<std::sync::atomic::AtomicU64>) -> Self {
         self.progress = Some(atom);
+        self
+    }
+
+    /// Configure CDCL trailing-indicator atoms — `conflicts` and
+    /// `restarts` get published at the same cadence as `progress`.
+    /// See [`crate::dual::wrapper::ProgressAtoms`] for the rationale.
+    /// Builder; chainable.
+    pub fn with_cdcl_stats(
+        mut self,
+        conflicts: Arc<std::sync::atomic::AtomicU64>,
+        restarts:  Arc<std::sync::atomic::AtomicU64>,
+    ) -> Self {
+        self.cdcl_conflicts = Some(conflicts);
+        self.cdcl_restarts  = Some(restarts);
         self
     }
 
@@ -199,6 +221,15 @@ impl<S: CoverState + 'static> DualPathSearchController for EffectivePathControll
         // costs one `AtomicU64::store` per 4096 DFS calls, trivial.
         let progress_atom = self.progress.clone().unwrap_or_else(
             || Arc::new(std::sync::atomic::AtomicU64::new(0)));
+        let conflicts_atom = self.cdcl_conflicts.clone().unwrap_or_else(
+            || Arc::new(std::sync::atomic::AtomicU64::new(0)));
+        let restarts_atom = self.cdcl_restarts.clone().unwrap_or_else(
+            || Arc::new(std::sync::atomic::AtomicU64::new(0)));
+        let atoms = crate::dual::wrapper::ProgressAtoms {
+            paths: progress_atom.clone(),
+            conflicts: conflicts_atom,
+            restarts: restarts_atom,
+        };
         // **Weighted driver wiring.**  Cover-mult-weighted progress
         // for the eff dual backends (greedy_eff, basic_eff,
         // greedy_effb, basic_effb).  Disabling the wrapper's own
@@ -207,13 +238,13 @@ impl<S: CoverState + 'static> DualPathSearchController for EffectivePathControll
         // `wrapper.rs::run_dfs_with_restarts_weighted_impl` for the
         // driver's accounting + the `pre_leaf_pruning_credit` trait
         // method for how the eff wrapper's peak is surfaced.
-        let with_progress = crate::dual::wrapper::ProgressWrapper::new(counted, progress_atom.clone())
+        let with_progress = crate::dual::wrapper::ProgressWrapper::new(counted, progress_atom)
             .with_publish_disabled();
         let mut composite = StateQueryWrapper::new(with_progress, state, cancel);
         if self.bubble_up {
-            run_dfs_with_restarts_weighted_bubble_up(&mut composite, nnf, &*uncovered, progress_atom)
+            run_dfs_with_restarts_weighted_bubble_up(&mut composite, nnf, &*uncovered, atoms)
         } else {
-            run_dfs_with_restarts_weighted(&mut composite, nnf, &*uncovered, progress_atom)
+            run_dfs_with_restarts_weighted(&mut composite, nnf, &*uncovered, atoms)
         }
     }
 }
@@ -596,6 +627,8 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
         // events the weighted driver counts on its own side.
         self.pruned_paths_peak
     }
+    fn cdcl_conflict_count(&self) -> usize { self.inner.cdcl_conflict_count() }
+    fn cdcl_restart_count(&self) -> usize { self.inner.cdcl_restart_count() }
     fn is_restart_pending(&self) -> bool { self.inner.is_restart_pending() }
     fn complete_restart(&mut self) {
         // CDCL restart clears the trail; our prefix tracking will

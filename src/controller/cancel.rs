@@ -52,11 +52,18 @@ impl<C: PathSearchController> CancelController<C> {
     /// Publish the inner controller's current paths-classified count to the
     /// handle.  Call this once after the DFS completes so the final value is
     /// reflected even if the last 4096-step boundary wasn't crossed.
-    /// No-op when `publish_disabled` is set.
+    /// No-op when `publish_disabled` is set.  Also publishes CDCL
+    /// stats (`cdcl_conflict_count`, `cdcl_restart_count`) which the
+    /// progress display uses as trailing indicators of solver effort.
+    /// Those are CHEAP to publish (single atomic store each) and the
+    /// `_disabled` flag doesn't gate them because there's no
+    /// alternative publisher in the single-DFS path.
     pub fn publish_progress(&self) {
         if !self.publish_disabled {
             self.cancel.record_paths(self.inner.paths_classified());
         }
+        self.cancel.record_conflicts(self.inner.cdcl_conflict_count());
+        self.cancel.record_restarts(self.inner.cdcl_restart_count());
     }
 }
 
@@ -79,8 +86,17 @@ impl<C: PathSearchController> PathSearchController for CancelController<C> {
             return Some(0);
         }
         self.step = self.step.wrapping_add(1);
-        if self.step & 0xFFF == 0 && !self.publish_disabled {
-            self.cancel.record_paths(self.inner.paths_classified());
+        if self.step & 0xFFF == 0 {
+            if !self.publish_disabled {
+                self.cancel.record_paths(self.inner.paths_classified());
+            }
+            // CDCL trailing-indicator stats — cheap atomic stores,
+            // always published.  The progress display surfaces them
+            // alongside the paths bar so the user can see smooth
+            // work progress even when the paths metric is stuck at 0
+            // or jumped to ~100% via a single high-mult conflict.
+            self.cancel.record_conflicts(self.inner.cdcl_conflict_count());
+            self.cancel.record_restarts(self.inner.cdcl_restart_count());
         }
         self.inner.should_continue_on_prefix(prefix_literals, prefix_positions, prefix_prod_path, is_complete)
     }
@@ -104,6 +120,8 @@ impl<C: PathSearchController> PathSearchController for CancelController<C> {
     fn uncovered_path_count(&self) -> usize { self.inner.uncovered_path_count() }
     fn paths_classified(&self) -> f64 { self.inner.paths_classified() }
     fn pre_leaf_pruning_credit(&self) -> f64 { self.inner.pre_leaf_pruning_credit() }
+    fn cdcl_conflict_count(&self) -> usize { self.inner.cdcl_conflict_count() }
+    fn cdcl_restart_count(&self) -> usize { self.inner.cdcl_restart_count() }
 
     // Restart-protocol delegation.  Without these forwards the trait
     // defaults (`false` / no-op) shadow the inner's signal — any
@@ -143,8 +161,24 @@ impl<C: crate::nnf_arena::ArenaPathSearchController + crate::controller::PathSea
             return Some(0);
         }
         self.step = self.step.wrapping_add(1);
-        if self.step & 0xFFF == 0 && !self.publish_disabled {
-            self.cancel.record_paths(crate::controller::PathSearchController::paths_classified(&self.inner));
+        if self.step & 0xFFF == 0 {
+            if !self.publish_disabled {
+                self.cancel.record_paths(crate::controller::PathSearchController::paths_classified(&self.inner));
+            }
+            // CDCL trailing-indicator stats — same rationale as the
+            // NNF impl above.  The arena driver in
+            // `classify_paths_with_arena_impl` wraps us with
+            // `with_publish_disabled` so it can do its own
+            // cover-mult-weighted paths publish, but the CDCL stats
+            // have no driver-side competitor and so always publish
+            // through us — they're the only smooth "work done"
+            // signal on `matrix.eff` / `matrix.cdcl` runs where the
+            // weighted paths metric can stick at 0 forever or jump
+            // to ~100 % on a single high-mult conflict.
+            self.cancel.record_conflicts(
+                crate::controller::PathSearchController::cdcl_conflict_count(&self.inner));
+            self.cancel.record_restarts(
+                crate::controller::PathSearchController::cdcl_restart_count(&self.inner));
         }
         crate::nnf_arena::ArenaPathSearchController::should_continue_on_prefix(
             &mut self.inner, arena, lits, prefix_prod_path, is_complete,

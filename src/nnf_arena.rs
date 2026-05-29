@@ -751,6 +751,16 @@ impl NnfArena {
                             paths_classified, pre_leaf, total_now, total_arena,
                         );
                         cancel_for_hook.record_paths(total_now);
+                        // CDCL trailing-indicator stats — published
+                        // here too so the publish cadence matches
+                        // the paths atom even when CancelController's
+                        // own publish is gated (it isn't currently,
+                        // but mirroring the dual driver shape keeps
+                        // the two drivers consistent).
+                        cancel_for_hook.record_conflicts(
+                            <crate::controller::CancelController<C> as crate::controller::PathSearchController>::cdcl_conflict_count(ctrl));
+                        cancel_for_hook.record_restarts(
+                            <crate::controller::CancelController<C> as crate::controller::PathSearchController>::cdcl_restart_count(ctrl));
                     }
                     true
                 };
@@ -777,6 +787,10 @@ impl NnfArena {
                 paths_classified, final_pre_leaf, final_total, total_arena,
             );
             cancel_for_thread.record_paths(final_total);
+            cancel_for_thread.record_conflicts(
+                <crate::controller::CancelController<C> as crate::controller::PathSearchController>::cdcl_conflict_count(&ctrl));
+            cancel_for_thread.record_restarts(
+                <crate::controller::CancelController<C> as crate::controller::PathSearchController>::cdcl_restart_count(&ctrl));
             Ok::<(), Box<dyn std::error::Error + Send>>(())
         });
         (handle, rx, cancel)

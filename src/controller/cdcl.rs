@@ -1554,19 +1554,14 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
         prefix_prod_path: &ProdPath,
         is_complete: bool,
     ) -> Option<usize> {
-        // Delegate to the inner controller first (so its lit_counter
-        // reflects the current prefix before our forward-propagation
-        // phase queries it via `lit_or_implied`).
+        // Inner first so its `lit_counter` is in sync with the new
+        // prefix (and any leaf-detected complementary pair is already
+        // reflected in `inner.covered_prefix_count()` before our
+        // CDCL machinery runs).
         let inner_r = self.inner.should_continue_on_prefix(
             prefix_literals, prefix_positions, prefix_prod_path, is_complete,
         );
         let lits_len = prefix_literals.len();
-        // In NNF-engine mode, `prefix_positions` carries the matrix
-        // path position of each lit; pass them through so the trail's
-        // DFS-pushed entries can be cited by the conflict-cover
-        // emitter.  `prefix_positions` may be shorter than
-        // `prefix_literals` in degenerate cases (positions-off path);
-        // guard with bounds-check, falling back to None.
         self.process_prefix_step(
             lits_len, prefix_prod_path, is_complete,
             |i| prefix_literals[i].clone(),
@@ -2206,6 +2201,7 @@ mod tests {
             "expected at least one conflict; got {}",
             ctrl.conflict_count());
     }
+
 
     // ── Step 3: propagation tests ────────────────────────────────────────
 

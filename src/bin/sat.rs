@@ -61,7 +61,7 @@ use std::io::{self, BufRead, IsTerminal, Write};
 use std::time::{Duration, Instant};
 
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 use logic::matrix::{
     Lit, NNF, PathClassificationHandle, PathParams, PathsClass, Var,
@@ -1106,6 +1106,16 @@ fn matrix_search(
         let _term_guard = if want_progress { Some(TerminalGuard::new()) } else { None };
 
         let start = Instant::now();
+        // Publish a stats-snapshot so the timeout watchdog (and any
+        // panic handler) can emit the canonical `c stats ...` line
+        // even on abrupt termination paths.  `OnceLock::set` is a
+        // no-op after the first set, which is fine — only one search
+        // runs per process invocation.
+        let _ = STATS_SNAPSHOT.set(StatsSnapshot {
+            handle: cancel.clone(),
+            log10_total_paths: log_total_paths,
+            started: start,
+        });
         let progress_task = if want_progress {
             Some(tokio::spawn(matrix_progress_loop(
                 cancel.clone(), log_total_paths, timeout_secs, start)))
@@ -1161,6 +1171,7 @@ fn matrix_search(
                     // process-exit.
                     restore_terminal();
                     let ms = start.elapsed().as_secs_f64() * 1000.0;
+                    print_stats_line();
                     eprintln!("c INTERRUPTED after {:.1}ms", ms);
                     std::process::exit(130);   // 128 + SIGINT
                 }
@@ -1187,6 +1198,11 @@ fn matrix_search(
         drop(rx);
         if let Some(t) = progress_task { t.abort(); let _ = t.await; }
         let _ = handle.await;
+
+        // Print the final `c stats ...` line.  See `print_stats_line`
+        // for the format / rationale.  Idempotent with the timeout
+        // watchdog's own call so we never get a duplicate stats line.
+        print_stats_line();
 
         // Finalize the cover file (if any): write a footer with the
         // verdict tag and flush.  After this `try_unwrap` the only
@@ -1837,6 +1853,43 @@ struct TerminalGuard;
 /// need lock-free access.
 static PROGRESS_LINES_DRAWN: AtomicU8 = AtomicU8::new(0);
 
+/// Shared snapshot of the currently-running search's stats handle +
+/// total-paths log10 + search start time.  Registered by
+/// `matrix_search` / `cadical_search` once their internal state is
+/// set up; read by the timeout watchdog (which calls
+/// `std::process::exit(124)` and would otherwise lose the final
+/// stats line) and by panic handlers.  `OnceLock` because exactly one
+/// search runs per process invocation.
+static STATS_SNAPSHOT: std::sync::OnceLock<StatsSnapshot> = std::sync::OnceLock::new();
+
+struct StatsSnapshot {
+    handle: PathClassificationHandle,
+    log10_total_paths: f64,
+    started: Instant,
+}
+
+/// Print the canonical `c stats ...` line on stderr.  Idempotent: a
+/// "printed" flag ensures we only emit one stats line per process
+/// run even if both the watchdog and the normal-completion path fire
+/// (e.g. a SAT result that lands microseconds before the timeout
+/// watchdog wakes).  Safe to call from any thread.
+fn print_stats_line() {
+    static PRINTED: AtomicBool = AtomicBool::new(false);
+    if PRINTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let Some(s) = STATS_SNAPSHOT.get() else { return; };
+    let elapsed_ms = s.started.elapsed().as_secs_f64() * 1000.0;
+    eprintln!(
+        "c stats paths={:.6e} log10_total_paths={:.4} conflicts={} restarts={} elapsed_ms={:.3}",
+        s.handle.paths_so_far(),
+        s.log10_total_paths,
+        s.handle.conflicts_so_far(),
+        s.handle.restarts_so_far(),
+        elapsed_ms,
+    );
+}
+
 /// Write the cursor-restore + clear-line escape bytes via the raw
 /// `write` syscall.  Async-signal-safe and panic-safe — fine to
 /// call from signal handlers, panic hooks, and `Drop`.
@@ -2382,6 +2435,12 @@ fn main() {
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_secs(limit));
             restore_terminal();
+            // Stats first (so the canonical line is present before
+            // the timeout marker), then the human-readable timeout
+            // line.  Both go to stderr.  `print_stats_line` is
+            // idempotent: if the normal-completion path raced ahead
+            // and already printed, this call is a no-op.
+            print_stats_line();
             eprintln!("\nc TIMEOUT after {}s", limit);
             // 124 is the standard GNU `timeout` exit code.
             std::process::exit(124);

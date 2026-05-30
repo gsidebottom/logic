@@ -91,6 +91,18 @@ def short_name(rec: dict) -> str:
 RESULT_RE  = re.compile(r"^c (SAT|UNSAT) in (.+)$")
 TIMEOUT_RE = re.compile(r"^c TIMEOUT after (.+)$")
 SHORT_RE   = re.compile(r"^s (SATISFIABLE|UNSATISFIABLE)$")
+# `c stats paths=6.319e180 log10_total_paths=180.8007 conflicts=31227
+# restarts=115 elapsed_ms=2998.441` — emitted unconditionally by sat at
+# the end of every search (incl. timeout / SIGINT).  All fields are
+# `key=value` so order doesn't matter.
+STATS_RE = re.compile(
+    r"^c stats\s+"
+    r"paths=([\-+0-9.eE]+)\s+"
+    r"log10_total_paths=([\-+0-9.eEnif]+)\s+"
+    r"conflicts=(\d+)\s+"
+    r"restarts=(\d+)\s+"
+    r"elapsed_ms=([\-+0-9.eE]+)\s*$"
+)
 
 def fmt_time(token: str) -> str:
     """Convert '12.3ms' → '0.0123s'; pass-through 'Ns' / '<0.001s'."""
@@ -109,14 +121,66 @@ def fmt_time(token: str) -> str:
 # so result-line scanning isn't confused by progress overstrike chars.
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
 
-def parse_sat_output(text: str) -> Tuple[str, str]:
+
+class SatStats:
+    """Parsed per-instance stats from sat's `c stats ...` line.  All
+    fields default to `None` when the line wasn't emitted (e.g. the
+    formula was trivially solved by the preprocessor before search
+    started — sat returns immediately without invoking the search
+    engine, so there are no path counts to report)."""
+    __slots__ = ("paths", "log10_total_paths", "conflicts", "restarts",
+                 "elapsed_ms")
+
+    def __init__(self):
+        self.paths: Optional[float] = None
+        self.log10_total_paths: Optional[float] = None
+        self.conflicts: Optional[int] = None
+        self.restarts: Optional[int] = None
+        self.elapsed_ms: Optional[float] = None
+
+    def is_set(self) -> bool:
+        return self.elapsed_ms is not None
+
+    def paths_fraction(self) -> Optional[float]:
+        """Fraction of the formula's total path space classified by
+        the search, in [0, 1].  Returns `None` if either field is
+        unknown or if the total is too big to bring to a finite float
+        (which happens above ~10^308 — at that point we still publish
+        the raw counts but can't form a meaningful ratio)."""
+        if self.paths is None or self.log10_total_paths is None:
+            return None
+        if self.log10_total_paths <= 0:
+            # Formula with ≤ 1 total path — fraction is meaningless.
+            return None
+        if self.log10_total_paths < 308.0:
+            total = 10.0 ** self.log10_total_paths
+            if total <= 0:
+                return None
+            return max(0.0, min(1.0, self.paths / total))
+        # Use log-space division: paths_frac = paths / 10^log_total
+        # → log10(frac) = log10(paths) - log_total.  Then convert
+        # back via 10^(...) IF the result is in finite range.
+        if self.paths <= 0:
+            return 0.0
+        import math
+        log_frac = math.log10(self.paths) - self.log10_total_paths
+        if log_frac >= 0:
+            return 1.0
+        if log_frac < -308.0:
+            return 0.0
+        return 10.0 ** log_frac
+
+
+def parse_sat_output(text: str) -> Tuple[str, str, SatStats]:
     """
-    Scan combined stderr (with ANSI removed) for the *final* result line.
-    Mirrors competition-benchmarks.sh's awk parser.  Returns
-    (RESULT, time_str) where RESULT ∈ {SAT, UNSAT, TIMEOUT, UNKNOWN}.
+    Scan combined stderr (with ANSI removed) for the *final* result line
+    AND for the `c stats ...` line.  Mirrors competition-benchmarks.sh's
+    awk parser.  Returns
+    (RESULT, time_str, stats) where RESULT ∈ {SAT, UNSAT, TIMEOUT, UNKNOWN}.
     """
     clean = ANSI_RE.sub("", text)
     result, time_str, short = "UNKNOWN", "n/a", None
+    stats = SatStats()
     # Split on \r + \n so progress overstrikes flatten into one line each.
     for raw in re.split(r"[\r\n]+", clean):
         ln = raw.strip()
@@ -131,41 +195,254 @@ def parse_sat_output(text: str) -> Tuple[str, str]:
         m = SHORT_RE.match(ln)
         if m:
             short = "UNSAT" if m.group(1) == "UNSATISFIABLE" else "SAT"
+            continue
+        m = STATS_RE.match(ln)
+        if m:
+            try:
+                stats.paths              = float(m.group(1))
+                stats.log10_total_paths  = float(m.group(2))
+                stats.conflicts          = int(m.group(3))
+                stats.restarts           = int(m.group(4))
+                stats.elapsed_ms         = float(m.group(5))
+            except ValueError:
+                # Malformed — leave defaults.
+                pass
     if result == "UNKNOWN" and short is not None:
-        return short, "<0.001s"
-    return result, time_str
+        return short, "<0.001s", stats
+    return result, time_str, stats
 
 
 # ---------------------------------------------------------------------------
 # Summary + plot regeneration (mirrors competition-benchmarks.sh)
 # ---------------------------------------------------------------------------
-# Match 3-column rows.  We include MISMATCH so the summary counts them
-# distinctly; the plotter's regex doesn't match MISMATCH (intentional —
-# suspect results stay off the cactus curve).
+# Match 7-column rows.  We include MISMATCH so the summary counts them
+# distinctly; the plotter's regex (built separately) is permissive about
+# extra columns and consumes the leading three (problem / result / time).
+#
+# Columns:
+#   1. Problem name
+#   2. Result (SAT/UNSAT/TIMEOUT/UNKNOWN/MISMATCH)
+#   3. Time   (e.g. "0.0123s" or "got=SAT expected=UNSAT, …")
+#   4. Paths  (cover-mult-weighted classified path count, e.g. "1.2e150")
+#   5. Total  (formula's total path count as "10^X" or "—")
+#   6. Conf   (CDCL conflicts learned, decimal int or "—")
+#   7. Rst    (CDCL Luby restarts, decimal int or "—")
+#
+# Cells use "—" when the underlying stat is unavailable (preprocessor-
+# resolved instances, non-CDCL backends, MISMATCH rows where we trust
+# the verdict but not the stats line provenance, etc.).
 ROW_RE = re.compile(
-    r"^\|\s*([^|]+?)\s*\|\s*(SAT|UNSAT|TIMEOUT|UNKNOWN|MISMATCH)\s*\|\s*([^|]+?)\s*\|\s*$"
+    r"^\|\s*([^|]+?)\s*"                                              # name
+    r"\|\s*(SAT|UNSAT|TIMEOUT|UNKNOWN|MISMATCH)\s*"                   # result
+    r"\|\s*([^|]+?)\s*"                                               # time
+    r"\|\s*([^|]+?)\s*"                                               # paths
+    r"\|\s*([^|]+?)\s*"                                               # total
+    r"\|\s*([^|]+?)\s*"                                               # conflicts
+    r"\|\s*([^|]+?)\s*"                                               # restarts
+    r"\|\s*$"
 )
-HDR_LINE = "| Problem | Result | Time |"
+HDR_LINE = "| Problem | Result | Time | Paths | Total | Conf | Rst |"
+SEP_LINE = "|---------|--------|------|-------|-------|------|-----|"
+
+
+def fmt_count(n: Optional[float]) -> str:
+    """SI-prefix big-number formatter — same shape as sat's
+    `format_count`.  Returns '—' for `None`.  Used for the
+    per-instance `Paths` / `Conf` / `Rst` columns and the
+    summary-table mean / range cells."""
+    if n is None: return "—"
+    a = abs(n)
+    if a < 1e3:   return f"{n:.0f}"
+    if a < 1e6:   return f"{n/1e3:.1f}K"
+    if a < 1e9:   return f"{n/1e6:.1f}M"
+    if a < 1e12:  return f"{n/1e9:.1f}G"
+    if a < 1e15:  return f"{n/1e12:.1f}T"
+    if a < 1e18:  return f"{n/1e15:.1f}P"
+    return f"{n:.2e}"
+
+
+def fmt_log10_count(log10_n: Optional[float]) -> str:
+    """Format a log10-valued count.  < 10^9 → reconstruct via
+    `fmt_count`; ≥ 10^9 → '10^X.Y' since the literal int is too
+    big to print compactly."""
+    if log10_n is None: return "—"
+    if log10_n < 0 or log10_n != log10_n: return "0"  # NaN / negative-inf
+    if log10_n < 9.0:
+        return fmt_count(10.0 ** log10_n)
+    return f"10^{log10_n:.1f}"
+
+
+def fmt_pct(frac: Optional[float]) -> str:
+    """0.42 → '42%'.  Returns '—' for `None`."""
+    if frac is None: return "—"
+    return f"{100.0 * frac:.1f}%"
+
+
+def fmt_mean_range(values: List[float], formatter=fmt_count) -> str:
+    """`mean (min-max)` cell.  Empty list → '—'."""
+    if not values: return "—"
+    mean = sum(values) / len(values)
+    if len(values) == 1:
+        return formatter(mean)
+    return f"{formatter(mean)} ({formatter(min(values))}-{formatter(max(values))})"
+
+
+def fmt_pct_range(fracs: List[float]) -> str:
+    """Like `fmt_mean_range` but each value is a fraction in [0, 1]
+    displayed as a percent."""
+    if not fracs: return "—"
+    mean = sum(fracs) / len(fracs)
+    if len(fracs) == 1:
+        return fmt_pct(mean)
+    return f"{fmt_pct(mean)} ({fmt_pct(min(fracs))}-{fmt_pct(max(fracs))})"
+
+
+def _parse_cell_count(cell: str) -> Optional[float]:
+    """Inverse of `fmt_count` — parse a `1.2K` / `3.4M` / `5e10` cell
+    back to a float.  Returns None for '—' / unparseable."""
+    s = cell.strip()
+    if not s or s == "—":
+        return None
+    mult = 1.0
+    if s[-1] in "KMGTP":
+        mult = {"K": 1e3, "M": 1e6, "G": 1e9, "T": 1e12, "P": 1e15}[s[-1]]
+        s = s[:-1]
+    try:
+        return float(s) * mult
+    except ValueError:
+        return None
+
+
+def _parse_cell_log10(cell: str) -> Optional[float]:
+    """Inverse of `fmt_log10_count` — parse '10^180.8' / '1.2K' back
+    to the log10 value.  Returns None for unparseable / '—'."""
+    s = cell.strip()
+    if not s or s == "—":
+        return None
+    if s.startswith("10^"):
+        try:
+            return float(s[3:])
+        except ValueError:
+            return None
+    n = _parse_cell_count(s)
+    if n is None or n <= 0:
+        return None
+    import math
+    return math.log10(n)
+
+
+def _parse_time_cell(cell: str) -> Optional[float]:
+    """`'0.0123s'` → `0.0123`; `'got=… '` → `None`."""
+    s = cell.strip()
+    if "got=" in s or s == "n/a":
+        return None
+    if s.startswith("<"):
+        s = s[1:]
+    if s.endswith("s"):
+        try:
+            return float(s[:-1])
+        except ValueError:
+            return None
+    return None
+
 
 def build_summary(md_path: Path) -> str:
-    """Count rows by Result column → Markdown summary table."""
+    """Walk the table rows and produce a multi-section summary:
+
+      1. Verdict counts (legacy table — kept for backward compat
+         with `sweep_eff_tau.py` and tooling that greps it).
+      2. Per-group solver-effort stats (paths covered / conflicts /
+         restarts, with mean + range and per-second rates).
+
+    Empty groups (e.g. no TIMEOUTs in this run) are skipped.  The
+    'Total' row aggregates every successfully-parsed row.
+    """
+    # Rows partitioned by result, each row → (paths, log10_total, conf,
+    # rst, time_s).  Unparseable cells become None and skip per-stat.
+    by_group: Dict[str, List[Tuple[Optional[float], Optional[float],
+                                   Optional[int], Optional[int],
+                                   Optional[float]]]] = {}
     counts: Dict[str, int] = {}
     total = 0
     for line in md_path.read_text().splitlines():
         m = ROW_RE.match(line)
         if not m:
             continue
-        r = m.group(2)
-        counts[r] = counts.get(r, 0) + 1
+        _name, result, t_cell, p_cell, tot_cell, c_cell, r_cell = m.groups()
+        counts[result] = counts.get(result, 0) + 1
         total += 1
-    out = ["## Summary", "", "| Result | Count | % |", "|--------|-------|---|"]
+        paths = _parse_cell_count(p_cell)
+        log10 = _parse_cell_log10(tot_cell)
+        conf  = _parse_cell_count(c_cell)
+        rst   = _parse_cell_count(r_cell)
+        secs  = _parse_time_cell(t_cell)
+        by_group.setdefault(result, []).append((paths, log10,
+                                                int(conf) if conf is not None else None,
+                                                int(rst) if rst is not None else None,
+                                                secs))
+
+    out: List[str] = ["## Summary", ""]
+
+    # ── Section 1: verdict counts (legacy) ──
+    out.extend(["| Result | Count | % |", "|--------|-------|---|"])
     for r in ("SAT", "UNSAT", "TIMEOUT", "UNKNOWN"):
         if r in counts:
             out.append(f"| {r} | {counts[r]} | {100.0 * counts[r] / total:.1f}% |")
     if "MISMATCH" in counts:
         out.append(f"| **MISMATCH** | {counts['MISMATCH']} | "
                    f"{100.0 * counts['MISMATCH'] / total:.1f}% |")
-    out.append(f"| **Total** | {total} | 100% |")
+    if total:
+        out.append(f"| **Total** | {total} | 100% |")
+    out.append("")
+
+    # ── Section 2: solver-effort stats per group ──
+    out.extend([
+        "### Solver effort (mean (min-max))",
+        "",
+        "| Group | N | Paths covered | Conflicts | Conf/s | Restarts | Rst/s |",
+        "|-------|---|---------------|-----------|--------|----------|-------|",
+    ])
+    # Build groups: each explicit verdict (when non-empty), then Total.
+    group_order = [g for g in ("SAT", "UNSAT", "TIMEOUT", "UNKNOWN", "MISMATCH")
+                   if g in by_group]
+    if total:
+        group_order.append("Total")
+    for g in group_order:
+        rows = (sum((by_group.get(k, []) for k in by_group), [])
+                if g == "Total" else by_group[g])
+        n = len(rows)
+        # Extract per-row stats, dropping `None` per-statistic so a row
+        # missing only conflicts (e.g. non-CDCL backend) still counts
+        # toward path-coverage statistics.
+        fracs: List[float] = []
+        confs: List[int]   = []
+        rsts:  List[int]   = []
+        conf_rates: List[float] = []
+        rst_rates:  List[float] = []
+        for (paths, log10, conf, rst, secs) in rows:
+            stats = SatStats()
+            stats.paths             = paths
+            stats.log10_total_paths = log10
+            f = stats.paths_fraction()
+            if f is not None:
+                fracs.append(f)
+            if conf is not None:
+                confs.append(conf)
+                if secs and secs > 0:
+                    conf_rates.append(conf / secs)
+            if rst is not None:
+                rsts.append(rst)
+                if secs and secs > 0:
+                    rst_rates.append(rst / secs)
+        out.append(
+            f"| {g} | {n} "
+            f"| {fmt_pct_range(fracs)} "
+            f"| {fmt_mean_range([float(c) for c in confs])} "
+            f"| {fmt_mean_range(conf_rates)} "
+            f"| {fmt_mean_range([float(r) for r in rsts])} "
+            f"| {fmt_mean_range(rst_rates)} |"
+        )
+
     return "\n".join(out)
 
 
@@ -680,7 +957,7 @@ def solve_one(
             try: tmp_path.unlink()
             except FileNotFoundError: pass
 
-    result, time_str = parse_sat_output(stderr_text)
+    result, time_str, stats = parse_sat_output(stderr_text)
 
     mismatch = bool(known) and result in ("SAT", "UNSAT") and result != known
     if mismatch:
@@ -690,7 +967,18 @@ def solve_one(
         md_result = result
         md_time = time_str
 
-    row = f"| {display} | {md_result} | {md_time} |\n"
+    # Per-row stats columns — `—` for any field the stats line didn't
+    # carry (trivial-preprocess solves / non-CDCL backends / parse
+    # error).  Conflict / restart counts on backends without CDCL are
+    # genuinely zero, but the stats line WAS emitted, so they show
+    # as "0" rather than "—".
+    paths_cell = fmt_count(stats.paths) if stats.paths is not None else "—"
+    total_cell = fmt_log10_count(stats.log10_total_paths)
+    conf_cell  = fmt_count(stats.conflicts) if stats.conflicts is not None else "—"
+    rst_cell   = fmt_count(stats.restarts)  if stats.restarts  is not None else "—"
+
+    row = (f"| {display} | {md_result} | {md_time} "
+           f"| {paths_cell} | {total_cell} | {conf_cell} | {rst_cell} |\n")
     md_writer.append_row(row)
 
     tui.record(result, mismatch)
@@ -706,8 +994,24 @@ def solve_one(
     else:
         tui.log(f"  ? [{display}] {result} {time_str}")
 
-    return {"hash": rec.get("hash"), "result": result, "time": time_str,
-            "expected": known, "mismatch": mismatch}
+    # Return dict carries the full per-instance record for the JSON
+    # writer (in `main`).  Stat fields are `None` when sat didn't emit
+    # them (trivially-preprocess-resolved instances, etc.).
+    return {
+        "hash":           rec.get("hash"),
+        "name":           display,
+        "result":         result,
+        "expected":       known,
+        "mismatch":       mismatch,
+        "time_s":         _parse_time_cell(time_str),
+        "time_str":       time_str,
+        "paths":          stats.paths,
+        "log10_total_paths": stats.log10_total_paths,
+        "paths_fraction": stats.paths_fraction(),
+        "conflicts":      stats.conflicts,
+        "restarts":       stats.restarts,
+        "elapsed_ms":     stats.elapsed_ms,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -858,7 +1162,7 @@ def main() -> int:
         f"backend={args.backend}, parallel={args.parallel}{pp_tag})\n"
         f"\n"
         f"{HDR_LINE}\n"
-        f"|---------|--------|------|\n"
+        f"{SEP_LINE}\n"
     )
     out_md.write_text(header)
 
@@ -922,12 +1226,17 @@ def main() -> int:
         finally:
             release_slot(idx)
 
+    # Collected per-instance result dicts (returned from `solve_one`).
+    # Accumulated for the JSON sidecar written after the run completes.
+    collected: List[dict] = []
     try:
         with ThreadPoolExecutor(max_workers=args.parallel) as ex:
             futures = [ex.submit(task, r) for r in records]
             for fut in as_completed(futures):
                 try:
-                    fut.result()
+                    res = fut.result()
+                    if isinstance(res, dict):
+                        collected.append(res)
                 except Exception as e:
                     tui.log(f"worker error: {e!r}", color=COLOR_RED)
     finally:
@@ -935,9 +1244,37 @@ def main() -> int:
 
     md_writer.flush()
 
+    # ── JSON sidecar ──
+    #
+    # Per-problem results + verdict-grouped summary statistics.  Same
+    # data the Markdown report carries, in a form downstream tooling
+    # (sweep_eff_tau.py, custom analysis scripts) can consume without
+    # parsing Markdown tables.  Written next to the .md as
+    # `<out_md.stem>.json`.
+    json_out = out_md.with_suffix(".json")
+    summary_json = _build_summary_json(collected)
+    json_payload = {
+        "metadata": {
+            "index":      str(args.index),
+            "backend":    args.backend,
+            "timeout_s":  args.timeout,
+            "parallel":   args.parallel,
+            "preprocess": args.preprocess,
+            "sat_args":   list(args.sat_arg),
+            "md_path":    str(out_md),
+        },
+        "summary": summary_json,
+        "results": collected,
+    }
+    try:
+        json_out.write_text(json.dumps(json_payload, indent=2, default=_json_default))
+    except OSError as e:
+        print(f"warning: failed to write JSON sidecar {json_out}: {e}", file=sys.stderr)
+
     # Final summary to stdout
     print()
     print(f"done; results in {out_md}")
+    print(f"        + JSON sidecar: {json_out}")
     print(f"  total:    {tui.done}/{tui.total}")
     print(f"  solved:   {tui.solved}")
     print(f"  timeout:  {tui.timed_out}")
@@ -946,6 +1283,60 @@ def main() -> int:
     if tui.unknown:
         print(f"  unknown:  {tui.unknown}")
     return 0 if tui.mismatch == 0 else 1
+
+
+def _json_default(obj):
+    """json.dumps fallback for non-trivially-serializable values
+    (NaN / inf survive `default=` so the f64 sentinels in
+    `paths_fraction` always round-trip)."""
+    try:
+        return float(obj)
+    except Exception:
+        return str(obj)
+
+
+def _build_summary_json(results: List[dict]) -> dict:
+    """Build the structured summary that goes into the JSON sidecar.
+    Mirrors `build_summary`'s per-group stats but in a form that's
+    convenient to consume programmatically (no parsing of '5.2K' or
+    'mean (min-max)' strings)."""
+    by_group: Dict[str, List[dict]] = {}
+    for r in results:
+        by_group.setdefault(r.get("result", "UNKNOWN"), []).append(r)
+
+    def _agg(rows: List[dict]) -> dict:
+        fracs      = [r["paths_fraction"] for r in rows if r.get("paths_fraction") is not None]
+        confs      = [r["conflicts"]      for r in rows if r.get("conflicts")      is not None]
+        rsts       = [r["restarts"]       for r in rows if r.get("restarts")       is not None]
+        secs       = [r["time_s"]         for r in rows if r.get("time_s")         is not None]
+        conf_rates = [r["conflicts"] / r["time_s"]
+                      for r in rows
+                      if r.get("conflicts") is not None
+                      and r.get("time_s") and r["time_s"] > 0]
+        rst_rates  = [r["restarts"]  / r["time_s"]
+                      for r in rows
+                      if r.get("restarts") is not None
+                      and r.get("time_s") and r["time_s"] > 0]
+        def stat(xs: List[float]) -> Optional[dict]:
+            if not xs: return None
+            return {"n": len(xs),
+                    "mean": sum(xs) / len(xs),
+                    "min":  min(xs),
+                    "max":  max(xs)}
+        return {
+            "count":            len(rows),
+            "time_s":           stat(secs),
+            "paths_fraction":   stat(fracs),
+            "conflicts":        stat([float(c) for c in confs]),
+            "conflicts_per_s":  stat(conf_rates),
+            "restarts":         stat([float(r) for r in rsts]),
+            "restarts_per_s":   stat(rst_rates),
+        }
+
+    out = {"by_verdict": {g: _agg(rs) for g, rs in by_group.items()}}
+    if results:
+        out["total"] = _agg(results)
+    return out
 
 
 if __name__ == "__main__":

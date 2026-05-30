@@ -57,8 +57,15 @@ def parse_time(s):
         return None
 
 
-# Match rows like: `| problem-name | RESULT | 4.0317s |`
-ROW_RE = re.compile(r"^\|\s*([^|]+?)\s*\|\s*(SAT|UNSAT|TIMEOUT|UNKNOWN)\s*\|\s*([^|]+?)\s*\|\s*$")
+# Match rows like:
+#   3-col legacy:   `| problem-name | RESULT | 4.0317s |`
+#   7-col (new):    `| problem | RESULT | time | paths | total | conf | rst |`
+# Captures only what the plotter needs (name, result, time); any
+# extra trailing columns are matched non-greedily and discarded.
+ROW_RE = re.compile(
+    r"^\|\s*([^|]+?)\s*\|\s*(SAT|UNSAT|TIMEOUT|UNKNOWN)\s*\|\s*([^|]+?)\s*\|"
+    r"(?:\s*[^|]*\|)*\s*$"
+)
 
 
 def load_table(path):

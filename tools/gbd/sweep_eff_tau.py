@@ -55,9 +55,16 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT  = SCRIPT_DIR.parent.parent
 RUN_BENCH  = SCRIPT_DIR / "run_benchmark.py"
 
-# Same row regex as run_benchmark.py (3-column compatible with the plotter).
+# Row regex compatible with both the old 3-column and new 7-column
+# run_benchmark.py table format.  Captures only what sweep_eff_tau
+# needs: problem name, result, time string.  Any additional columns
+# (Paths / Total / Conf / Rst added in the 7-column format) are
+# matched non-greedily and discarded.
 ROW_RE = re.compile(
-    r"^\|\s*([^|]+?)\s*\|\s*(SAT|UNSAT|TIMEOUT|UNKNOWN|MISMATCH)\s*\|\s*([^|]+?)\s*\|\s*$"
+    r"^\|\s*([^|]+?)\s*\|\s*"
+    r"(SAT|UNSAT|TIMEOUT|UNKNOWN|MISMATCH)\s*\|\s*"
+    r"([^|]+?)\s*\|"      # time cell, then any number of trailing columns
+    r"(?:\s*[^|]*\|)*\s*$"  # optional repeating " <cell> |" pairs to EOL
 )
 
 

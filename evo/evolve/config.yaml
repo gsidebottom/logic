@@ -1,0 +1,139 @@
+# OpenEvolve configuration for the matrix-method `eff` backend.
+#
+# Targets the three pure helper functions in
+# src/dual/path_effective.rs (wrapped in EVOLVE-BLOCK markers).
+# Mutations get scored against the evo/ benchmark set via
+# evo/evolve/evaluator.py — see that file for the tiered scoring.
+
+# ── Run length ──────────────────────────────────────────────────────
+#
+# Start: 5-iter smoke test to confirm wiring (no real exploration).
+# Pilot: 50 iterations (~3-4 wall-hours w/ Opus + full-tier eval).
+# Real:  200 iterations (~15 hours; bump when pilot signals signal).
+#
+# Override with `--iterations N` on the openevolve-run CLI.
+max_iterations: 50
+random_seed: 42
+
+# ── LLM ─────────────────────────────────────────────────────────────
+#
+# Points at a LiteLLM proxy on localhost:4000 (started by run.sh).
+# The proxy translates OpenAI-shaped requests to Bedrock /
+# Anthropic / wherever you've configured it.  See evo/evolve/README.md
+# for the LiteLLM proxy setup.
+#
+# Why ensemble: Opus for hard mutations (most weight); Sonnet for
+# variety + cheap baseline exploration.  Drop Sonnet if you don't
+# want to manage two model rows in the LiteLLM config.
+llm:
+  api_base: "http://localhost:4000/v1"
+  # `model` is a fallback; `models` (ensemble) is what actually
+  # gets used when present.
+  model: "claude-opus"
+  # NOTE: no `temperature` here.  Opus 4.8 / Sonnet 4.6 use adaptive
+  # thinking and DEPRECATED the temperature parameter (sending it
+  # 400s).  Sampling diversity is handled by the model's adaptive
+  # thinking + OpenEvolve's MAP-Elites / island architecture.  The
+  # reasoning budget (the real cost/quality lever) is set via
+  # `reasoning_effort` injected at the LiteLLM proxy — see run.sh's
+  # EFFORT env var.
+  models:
+    - name: "claude-opus"     # via LiteLLM proxy → bedrock or direct
+      weight: 0.75
+    - name: "claude-sonnet"   # cheaper, broader exploration
+      weight: 0.25
+
+# ── Search shape ────────────────────────────────────────────────────
+#
+# MAP-Elites archive — keeps diverse winners per "niche" (cell in
+# the feature grid below) so the search doesn't collapse to a
+# single local optimum.  num_islands lets multiple sub-populations
+# evolve in parallel and exchange champions every migration_interval
+# iterations.
+database:
+  population_size: 60
+  num_islands: 3
+  migration_interval: 15
+  # Feature dimensions: how OpenEvolve buckets candidates for the
+  # MAP-Elites archive.  We want diversity along these axes so the
+  # final population spans the trade-off frontier.
+  feature_dimensions:
+    - "complexity"       # built-in: rough code size
+    - "solved"           # primary fitness — solved-problem count
+    - "timeout_progress" # tertiary — partial credit shape
+  # How many bins per feature.  Higher = finer archive, slower
+  # convergence but better diversity preservation.
+  feature_bins: 8
+
+# ── Evaluator wiring ─────────────────────────────────────────────────
+evaluator:
+  # OpenEvolve invokes evaluator.py with the candidate file path.
+  # Set in CLI args, not here; keeping `enable_artifacts` on so the
+  # failure_detail strings flow back to the LLM for repair.
+  enable_artifacts: true
+  # Multi-tier eval: our evaluator.py already cascades smoke → quick
+  # → full internally, returning the deepest-reached metrics.  No
+  # need for OpenEvolve's own cascade_evaluation here.
+  cascade_evaluation: false
+  # **OFF.**  When true, OpenEvolve makes a second LLM call per
+  # candidate to subjectively rate code quality (readability /
+  # maintainability / efficiency) and BLENDS those ~0.0-1.0 scores
+  # into `combined_score`.  For a SAT-solver *performance* search
+  # that's pure noise: it diluted our real objective (solve count /
+  # speed / timeout-progress), manufactured fake "+0.0007 improved!"
+  # deltas from rating jitter on near-identical candidates, and cost
+  # an extra call per iteration.  With it off, `combined_score` is
+  # exactly the benchmark fitness our evaluator returns, so "new
+  # best" means a genuine solve/speed gain.
+  use_llm_feedback: false
+
+# ── Prompt ───────────────────────────────────────────────────────────
+prompt:
+  # Surface the contract from the EVOLVE-BLOCK doc-comment.  This is
+  # what gets injected into every mutation prompt as context.
+  system_message: |
+    You are improving the pure ordering-policy helpers for a
+    matrix-method SAT solver's "eff" (effective-count) backend.
+    Three Rust functions are in play — see the EVOLVE-BLOCK comment
+    for their contracts:
+
+      should_reorder_sum(counts, tau) -> bool
+      sum_visit_order(counts, tau) -> Vec<usize>   # MUST be a permutation
+      prod_visit_order(counts) -> Vec<usize>       # MUST keep all positive counts
+
+    HARD RULES:
+      * `sum_visit_order` MUST return a permutation of 0..counts.len()
+        — every index exactly once.  Dropping any index makes the
+        solver unsound.
+      * `prod_visit_order` MUST include every index whose count > 0.0.
+        It MAY drop indices with count == 0.0 (that's the only valid
+        filtering).
+      * Pure functions: no global state, no I/O, no panics on edge
+        cases (empty input, all zeros, NaN/Inf in counts).
+
+    DESIGN HINTS:
+      * `counts[i]` is the effective path count below child i; small
+        values mean "few paths through here," 0 means "provably no
+        paths" (prune), Inf means "count unknown — treat as large".
+      * The current baseline sorts ascending by count and gates the
+        sort on a log10 variance threshold.  Wins on this benchmark
+        family come from finding SAT witnesses faster (steering DFS
+        to subtrees that close quickly) and producing tighter CDCL
+        proofs.
+      * Multi-key sort orders, non-monotone tie-breaks, soft caps on
+        the sort cost, and value-aware grouping are all on the table.
+        Look for ideas the baseline doesn't capture.
+
+    You will be scored on:
+      1. `solved`           — # of SAT/UNSAT verdicts in 60s budget
+      2. `neg_time`         — −total CPU on solved problems (more = faster)
+      3. `timeout_progress` — mean path-fraction covered on TIMEOUT rows
+
+    Make small, targeted changes.  Keep the contract.  No grand
+    rewrites — they almost always regress soundness.
+  num_top_programs: 3
+  num_diverse_programs: 2
+
+# ── Output ──────────────────────────────────────────────────────────
+# Per-iteration artifacts (candidate source, scores, prompts) land
+# under evo/evolve/runs/<run-id>/.  Gitignored by default.

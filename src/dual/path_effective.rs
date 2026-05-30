@@ -417,22 +417,56 @@ impl<Inner: PathSearchController> Drop for EffectiveCountWrapper<Inner> {
     }
 }
 
-/// Variance gate for Sum-child reordering.  Returns `true` iff the
-/// children's effective counts span at least `10^tau` in magnitude
-/// — i.e., `log10(max_count / min_count) >= tau` — making it worth
-/// re-sorting by ascending count.  When the spread is below `tau`,
-/// no reordering would meaningfully improve search direction at
-/// this Sum, so we skip the sort and let CDCL's own variable-order
-/// heuristics dominate (preserves VSIDS activity locality).
-///
-/// Special cases:
-/// - `tau == 0.0` → always `true` (legacy "always reorder" behavior).
-/// - fewer than 2 children → `false` (nothing to reorder).
-/// - mix of zero and non-zero counts → `true` (zero-count children
-///   are valuable to surface early so the inner's cover detection
-///   fires quickly — reorder regardless of `tau`).
-/// - all counts identical (incl. all zero) → `false` (max/min = 1
-///   → log10 = 0 → ≥ tau only when tau = 0, handled above).
+// =====================================================================
+// EVOLVE-BLOCK-START
+// =====================================================================
+//
+// **Eff-layer ordering policy — pure functions on effective counts.**
+//
+// These three functions are the entire algorithmic surface that
+// OpenEvolve / the `evo/evolve/` rig is allowed to mutate.  The
+// surrounding `EffectiveCountWrapper` glue (count maintenance,
+// prefix tracking, CDCL integration) is load-bearing for correctness
+// and stays fixed.
+//
+// CONTRACTS — DO NOT BREAK (the evaluator will reject candidates
+// that violate these, via cross-checking against CaDiCaL verdicts on
+// the evo/ benchmark set):
+//
+//   `should_reorder_sum(counts, tau) -> bool`
+//      Pure, no side effects.  When `false`, the caller skips the
+//      reorder and uses identity order — that's a sound shortcut
+//      (Sum semantics are visit-all in any order).
+//
+//   `sum_visit_order(counts, tau) -> Vec<usize>`
+//      MUST return a PERMUTATION of `0..counts.len()` — every index
+//      EXACTLY once, no duplicates, no drops.  Sum semantics
+//      require visiting every child to gather lits; dropping any
+//      breaks soundness.  The "no reorder" answer is the identity
+//      permutation.
+//
+//   `prod_visit_order(counts) -> Vec<usize>`
+//      Returns a subset of `0..counts.len()` in visit order.  MAY
+//      drop indices whose `counts[i] == 0.0` (those are provably
+//      unreachable through this Prod given the current prefix; the
+//      whole point of the eff layer is to prune them).  MUST NOT
+//      drop any index with `counts[i] > 0.0` and MUST NOT duplicate
+//      any index.  Order of the kept indices is free.
+//
+// INPUTS:
+//   `counts[i]` = the static "effective count" for the i-th
+//   child/alt — a non-negative f64 (or `f64::INFINITY` when the
+//   parent isn't in the precomputed index; treat infinities as
+//   "very large, unknown precisely").  Could be 0 (provably
+//   blocked) up to the total path count below this node.
+//
+//   `tau` = variance-gate threshold from the wrapper config.
+//   `tau == 0.0` is "always reorder" (legacy behavior).
+//   `tau == f64::INFINITY` is "never reorder Sums" (gate trips false).
+//   Intermediate values gate by log10(max/min) >= tau.
+
+/// Variance gate: should `sum_visit_order` actually re-sort, or is
+/// the spread of sibling counts small enough to leave them alone?
 fn should_reorder_sum(counts: &[f64], tau: f64) -> bool {
     if counts.len() < 2 { return false; }
     if tau == 0.0 { return true; }
@@ -460,6 +494,37 @@ fn should_reorder_sum(counts: &[f64], tau: f64) -> bool {
     if min_nz <= 0.0 || max_nz <= 0.0 { return false; }
     (max_nz / min_nz).log10() >= tau
 }
+
+/// Sum-child visit order from a slice of per-child effective counts.
+/// Returns a permutation of `0..counts.len()` — identity when the
+/// gate says "don't bother reordering," else ascending-by-count
+/// (low-count children first so any closing/contradiction lits they
+/// carry surface early and the inner's cover detection fires).
+fn sum_visit_order(counts: &[f64], tau: f64) -> Vec<usize> {
+    let n = counts.len();
+    if !should_reorder_sum(counts, tau) {
+        return (0..n).collect();
+    }
+    let mut idx: Vec<usize> = (0..n).collect();
+    idx.sort_by(|&a, &b|
+        counts[a].partial_cmp(&counts[b]).unwrap_or(std::cmp::Ordering::Equal));
+    idx
+}
+
+/// Prod-alt visit order from a slice of per-alt effective counts.
+/// Filters zero-count alts (provably blocked) then sorts ascending
+/// by count so the "tightest" surviving alts get tried first.
+fn prod_visit_order(counts: &[f64]) -> Vec<usize> {
+    let mut keep: Vec<(usize, f64)> = counts.iter().enumerate()
+        .filter_map(|(i, &c)| if c > 0.0 { Some((i, c)) } else { None })
+        .collect();
+    keep.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    keep.into_iter().map(|(i, _)| i).collect()
+}
+
+// =====================================================================
+// EVOLVE-BLOCK-END
+// =====================================================================
 
 #[cfg(test)]
 mod gate_tests {
@@ -541,16 +606,6 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
             Some(v) => v,
             None    => children.iter().enumerate().collect(),
         };
-        // Annotate with effective counts and re-sort ascending — but
-        // do NOT filter zero-count children.  Sum is visit-all; its
-        // path-search semantics require visiting every child to
-        // collect their lits, so skipping a zero-count child would
-        // produce a path whose lit-set is missing those lits and
-        // therefore doesn't represent a real assignment.  We only
-        // re-order: zero-count children visited first surface their
-        // closing lit early so the inner's cover detection fires
-        // and we backtrack out of the wrong branch quickly.
-        //
         // Resolve the parent once (pointer-hash lookup), then index
         // into the precomputed children-id table for each child —
         // avoids one HashMap lookup per child and means the index
@@ -560,30 +615,32 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
         let parent_id_opt = self.idx.id_of(parent);
         let parent_children_ids: Option<&[usize]> = parent_id_opt
             .map(|pid| self.idx.children_ids(pid));
-        let mut annotated: Vec<(usize, &'a NNF, f64)> = base.into_iter()
-            .map(|(i, c)| {
-                let count = parent_children_ids
-                    .map(|ids| self.counts.count_of(ids[i]))
-                    .unwrap_or(f64::INFINITY);
-                (i, c, count)
-            })
+        // Gather per-base-position effective counts.  Position i in
+        // `counts` matches position i in `base` (NOT the original
+        // child index — `base` may have been reordered by inner).
+        let counts: Vec<f64> = base.iter()
+            .map(|(orig_i, _)| parent_children_ids
+                .map(|ids| self.counts.count_of(ids[*orig_i]))
+                .unwrap_or(f64::INFINITY))
             .collect();
-        // Variance gate: skip the sort when sibling counts are within
-        // 10^τ of each other (no meaningful reorder available).
-        let only_counts: Vec<f64> = annotated.iter().map(|(_, _, c)| *c).collect();
-        if !should_reorder_sum(&only_counts, self.sum_reorder_tau) {
+        // Delegate the actual decision to the EVOLVE-BLOCK helper —
+        // it returns a permutation of 0..base.len() (identity ⇒
+        // "don't reorder").  Sum is visit-all; the policy MUST
+        // preserve every child (helper's contract enforces this).
+        let perm = sum_visit_order(&counts, self.sum_reorder_tau);
+        if perm.iter().enumerate().all(|(k, &p)| k == p) {
+            // Identity → policy said no reorder; bump the gate-skip
+            // counter for instrumentation and return `base` as-is.
             self.sum_ord_gate_skips += 1;
-            return Some(annotated.into_iter().map(|(i, c, _)| (i, c)).collect());
+            return Some(base);
         }
-        annotated.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
-        Some(annotated.into_iter().map(|(i, c, _)| (i, c)).collect())
+        Some(perm.into_iter().map(|i| base[i]).collect())
     }
 
     fn prod_ord<'a>(&mut self, parent: &'a NNF, children: &'a [NNF]) -> Option<Vec<(usize, &'a NNF)>> {
         // Inner first — its propagation filter (e.g. SmartController
         // / CdclController) prunes alts whose lits are blocked by
-        // the trail.  We further filter zero-count alts (provably
-        // blocked by the prefix) and re-sort ascending.
+        // the trail.
         let base: Vec<(usize, &'a NNF)> = match self.inner.prod_ord(parent, children) {
             Some(v) => v,
             None    => children.iter().enumerate().collect(),
@@ -593,20 +650,20 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
         let parent_id_opt = self.idx.id_of(parent);
         let parent_children_ids: Option<&[usize]> = parent_id_opt
             .map(|pid| self.idx.children_ids(pid));
-        let mut annotated: Vec<(usize, &'a NNF, f64)> = base.into_iter()
-            .map(|(i, c)| {
-                let count = parent_children_ids
-                    .map(|ids| self.counts.count_of(ids[i]))
-                    .unwrap_or(f64::INFINITY);
-                (i, c, count)
-            })
-            .filter(|(_, _, c)| *c > 0.0)
+        let counts: Vec<f64> = base.iter()
+            .map(|(orig_i, _)| parent_children_ids
+                .map(|ids| self.counts.count_of(ids[*orig_i]))
+                .unwrap_or(f64::INFINITY))
             .collect();
-        annotated.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
-        if annotated.len() < base_len {
+        // Delegate to the EVOLVE-BLOCK helper: returns indices into
+        // `base` (subset, in visit order) — the policy filters and
+        // reorders.  Helper's contract: never drops a non-zero-count
+        // alt, may drop zero-count alts.
+        let keep = prod_visit_order(&counts);
+        if keep.len() < base_len {
             self.prod_ord_filters += 1;
         }
-        Some(annotated.into_iter().map(|(i, c, _)| (i, c)).collect())
+        Some(keep.into_iter().map(|i| base[i]).collect())
     }
 
     fn path_count(&self) -> usize { self.inner.path_count() }
@@ -696,28 +753,25 @@ impl<Inner: crate::nnf_arena::ArenaPathSearchController + PathSearchController>
         // No `by_ptr` HashMap lookup — parent NnfId == NodeId by
         // construction.  Look up each child's count via the
         // precomputed `children_ids[parent_id]` slice; the i-th
-        // entry there matches the i-th original child.
+        // entry there matches the i-th original child position.
         let parent_children_ids = self.idx.children_ids(parent as usize);
-        // Map original `NnfId` → original index → precomputed
-        // count.  Hashing children's NnfIds into a small map keyed
-        // by NnfId would be over-engineering for typical Sum
-        // arities; a linear scan over `children` is fine.
-        let mut annotated: Vec<(crate::nnf_arena::NnfId, f64)> = base.iter()
+        // Build per-base-position counts (resolve each base entry
+        // back to its original index, look up the count).
+        let counts: Vec<f64> = base.iter()
             .map(|&c| {
                 let orig_idx = children.iter().position(|&id| id == c)
                     .expect("inner sum_ord returned a NnfId not in children");
-                let cnt = self.counts.count_of(parent_children_ids[orig_idx]);
-                (c, cnt)
+                self.counts.count_of(parent_children_ids[orig_idx])
             })
             .collect();
-        // Variance gate — same logic as the NNF sum_ord path above.
-        let only_counts: Vec<f64> = annotated.iter().map(|(_, c)| *c).collect();
-        if !should_reorder_sum(&only_counts, self.sum_reorder_tau) {
+        // Delegate to the EVOLVE-BLOCK policy — identical contract
+        // to the NNF-engine sum_ord above.  See helper doc comments.
+        let perm = sum_visit_order(&counts, self.sum_reorder_tau);
+        if perm.iter().enumerate().all(|(k, &p)| k == p) {
             self.sum_ord_gate_skips += 1;
-            return Some(annotated.into_iter().map(|(c, _)| c).collect());
+            return Some(base);
         }
-        annotated.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-        Some(annotated.into_iter().map(|(c, _)| c).collect())
+        Some(perm.into_iter().map(|i| base[i]).collect())
     }
 
     fn prod_ord(
@@ -734,20 +788,20 @@ impl<Inner: crate::nnf_arena::ArenaPathSearchController + PathSearchController>
         };
         let base_len = base.len();
         let parent_children_ids = self.idx.children_ids(parent as usize);
-        let mut annotated: Vec<(crate::nnf_arena::NnfId, f64)> = base.into_iter()
-            .map(|c| {
+        let counts: Vec<f64> = base.iter()
+            .map(|&c| {
                 let orig_idx = children.iter().position(|&id| id == c)
                     .expect("inner prod_ord returned a NnfId not in children");
-                let cnt = self.counts.count_of(parent_children_ids[orig_idx]);
-                (c, cnt)
+                self.counts.count_of(parent_children_ids[orig_idx])
             })
-            .filter(|(_, c)| *c > 0.0)
             .collect();
-        annotated.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-        if annotated.len() < base_len {
+        // Delegate to the EVOLVE-BLOCK policy — identical contract
+        // to the NNF-engine prod_ord above.
+        let keep = prod_visit_order(&counts);
+        if keep.len() < base_len {
             self.prod_ord_filters += 1;
         }
-        Some(annotated.into_iter().map(|(c, _)| c).collect())
+        Some(keep.into_iter().map(|i| base[i]).collect())
     }
 }
 

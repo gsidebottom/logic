@@ -3,7 +3,13 @@ name = "logic-tools"
 version = "0.1.0"
 description = "Python tooling for the matrix-method SAT solver in this repo (curation, benchmarking, plotting)."
 readme = "tools/gbd/README.md"
-requires-python = ">=3.9"
+# Cap below 3.14: uvloop (transitive via litellm[proxy] → uvicorn[standard])
+# doesn't support Python 3.14 yet — 3.14 removed
+# `asyncio.events.BaseDefaultEventLoopPolicy`, which uvloop imports at
+# module load.  3.13 runs the whole stack (matplotlib, gbd-tools,
+# openevolve, litellm) cleanly.  Bump the upper bound once uvloop
+# ships a 3.14-compatible release.
+requires-python = ">=3.9,<3.14"
 
 # Runtime dependencies — these are everything the Python tools under
 # tools/ and doc/ need beyond the standard library.  Conservative
@@ -15,6 +21,15 @@ dependencies = [
     # SAT-competition benchmark database client used by tools/gbd/*
     # (installs the `gbd` CLI into the venv's bin/).
     "gbd-tools>=4.5",
+    # OpenEvolve — evolutionary code improvement, drives evo/evolve/
+    # against the matrix-method eff backend's ordering policy.
+    "openevolve>=0.2",
+    # LiteLLM proxy — OpenAI-compatible HTTP shim in front of any
+    # provider (Bedrock / Anthropic / OpenAI / Gemini / Ollama).
+    # `[proxy]` extra pulls in the FastAPI server + boto3 for the
+    # AWS Bedrock path.
+    "litellm[proxy]>=1.50",
+    "boto3>=1.34",
 ]
 
 # Keep the package itself out of "site-packages" — this project is a

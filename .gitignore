@@ -13,3 +13,11 @@ nested-boxes/dist/
 .venv/
 __pycache__/
 *.pyc
+
+# OpenEvolve per-run artifacts (candidate sources, prompts, scores,
+# LiteLLM proxy log).  Often hundreds of MB per run; reproducible
+# from config.yaml + initial_program.rs.
+evo/evolve/runs/
+
+# don't save cometition benchmark results
+evo/results/

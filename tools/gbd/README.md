@@ -73,20 +73,36 @@ prompt from the underlying `gbd` tool.
 ## Quickstart
 
 ```bash
-# 1. One-time setup: install gbd-tools + download metadata DBs
+# 1. One-time Python setup: install uv (if missing) + create the
+#    project's venv with matplotlib + gbd-tools per pyproject.toml.
+#    Sourcing the script also activates the venv in your shell.
+. ./setup.sh                # from the repo root — installs + activates
+
+# 2. One-time GBD metadata DB download (uses gbd from the venv above)
 tools/gbd/setup.sh
 
-# 2. Explore the database with arbitrary queries
+# 3. Explore the database with arbitrary queries
 tools/gbd/query.sh "track=main_2025 and result=unsat" -r filename | head
 
-# 3. Download instances matching a query (skips ones already on disk)
+# 4. Download instances matching a query (skips ones already on disk)
 tools/gbd/download.sh "track=main_2025 and variables<2000" --dry-run
 
-# 4. Curate: run CaDiCaL on candidates, keep ones it solves quickly,
+# 5. Curate: run CaDiCaL on candidates, keep ones it solves quickly,
 #    save the verified verdict + runtime to a JSONL index
 cargo build --release --bin sat        # curate.py needs target/release/sat
 tools/gbd/curate.py --query "track=main_2025" --timeout 10 --parallel 8
 ```
+
+If you'd rather not activate the venv (e.g. in CI), prefix any of the
+Python invocations above with `uv run`:
+
+```bash
+uv run tools/gbd/curate.py --query ... --timeout ...
+uv run tools/gbd/run_benchmark.py --index ...
+```
+
+`uv run` resolves the project's venv automatically by walking up to
+find `pyproject.toml`.
 
 After step 4, `$BENCH_DIR/curated.jsonl` (default
 `/Users/greg/projects/sat_benchmarks/curated.jsonl`) contains one
@@ -110,12 +126,23 @@ against every CNF clause). UNSAT records trust CaDiCaL's verdict
 
 One-time install. Idempotent.
 
-- Installs `gbd-tools` via `pip3 --user`.
+- **Prereq**: run the repo-root `./setup.sh` first.  That installs
+  `uv` (if missing) and creates `./.venv` with `gbd-tools` (which
+  provides the `gbd` CLI) per `pyproject.toml`.  This script just
+  needs `gbd` to be on PATH — either via `source .venv/bin/activate`
+  or by running `uv run tools/gbd/setup.sh`.
 - Downloads `meta.db` (~30 MB; provides `track`, `result`, `family`,
   `filename`, `isohash`) and `base.db` (~20 MB; provides `variables`,
   `clauses`, balance/horn/graph metrics) into `$GBD_DIR`
   (= `$BENCH_DIR/.gbd` by default).
 - Prints the `export GBD_DB=...` line you need for direct `gbd` use.
+
+You can also chain both setups in one go with the top-level wrapper:
+
+```bash
+GBD_SETUP=1 ./setup.sh        # uv env + gbd DB download
+./setup.sh --gbd              # same, via flag
+```
 
 ### `query.sh "<query>" [gbd-options...]`
 

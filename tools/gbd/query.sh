@@ -18,10 +18,20 @@ set -euo pipefail
 BENCH_DIR=${BENCH_DIR:-/Users/greg/projects/sat_benchmarks}
 GBD_DIR=${GBD_DIR:-$BENCH_DIR/.gbd}
 
-# Make sure the user-site Python bin is on PATH so `gbd` is callable.
-# (pip --user installs land here on macOS; ~/.local/bin on Linux.)
-USER_BIN=$(python3 -c "import site; print(site.getuserbase() + '/bin')")
-export PATH="$USER_BIN:$PATH"
+# `gbd` is expected on PATH already — supplied by the uv-managed venv
+# (created by the repo's top-level `setup.sh`).  Either source
+# `.venv/bin/activate` once per shell, or invoke this script via
+# `uv run`, and the binary will resolve.  As a convenience, if the
+# user hasn't done either, fall back to looking in the project's
+# .venv directly so `query.sh` Just Works without manual activation.
+if ! command -v gbd >/dev/null 2>&1; then
+    REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+    if [ -x "$REPO_ROOT/.venv/bin/gbd" ]; then
+        export PATH="$REPO_ROOT/.venv/bin:$PATH"
+    elif [ -x "$REPO_ROOT/.venv/Scripts/gbd.exe" ]; then
+        export PATH="$REPO_ROOT/.venv/Scripts:$PATH"
+    fi
+fi
 export GBD_DB="$GBD_DIR/meta.db:$GBD_DIR/base.db"
 
 if [ $# -eq 0 ]; then

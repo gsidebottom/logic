@@ -1,0 +1,26 @@
+[project]
+name = "logic-tools"
+version = "0.1.0"
+description = "Python tooling for the matrix-method SAT solver in this repo (curation, benchmarking, plotting)."
+readme = "tools/gbd/README.md"
+requires-python = ">=3.9"
+
+# Runtime dependencies — these are everything the Python tools under
+# tools/ and doc/ need beyond the standard library.  Conservative
+# lower bounds: pin to versions we've tested with.  Tighten only when
+# we hit an actual incompatibility.
+dependencies = [
+    # Cactus plot for benchmark sweeps (doc/competition-benchmarks-plot.py).
+    "matplotlib>=3.7",
+    # SAT-competition benchmark database client used by tools/gbd/*
+    # (installs the `gbd` CLI into the venv's bin/).
+    "gbd-tools>=4.5",
+]
+
+# Keep the package itself out of "site-packages" — this project is a
+# collection of scripts under tools/ and doc/, not a Python library.
+# `uv sync` still creates the venv + installs `dependencies`; without
+# this `setuptools` would refuse the build because there's no module
+# layout to pick up.
+[tool.uv]
+package = false

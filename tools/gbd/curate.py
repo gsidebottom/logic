@@ -96,11 +96,19 @@ def gbd_query(query: str) -> List[Tuple[str, str]]:
         sys.exit(2)
     env = os.environ.copy()
     env["GBD_DB"] = f"{GBD_DIR}/meta.db:{GBD_DIR}/base.db"
-    # Make sure user-site bin is on PATH (where pip --user puts `gbd`).
-    user_bin = subprocess.check_output(
-        ["python3", "-c", "import site; print(site.getuserbase() + '/bin')"]
-    ).decode().strip()
-    env["PATH"] = f"{user_bin}:{env.get('PATH', '')}"
+    # `gbd` is installed by the project's uv-managed venv (see
+    # ../../pyproject.toml + ../../setup.sh).  It lands at
+    # `.venv/bin/gbd` (POSIX) / `.venv\Scripts\gbd.exe` (Windows) —
+    # already on PATH whenever this script runs through `uv run` or
+    # the user has activated the venv.  As a convenience for callers
+    # who skipped activation, also try the project .venv directly.
+    if shutil.which("gbd") is None:
+        repo_root = Path(__file__).resolve().parents[2]
+        for cand in (repo_root / ".venv" / "bin",
+                     repo_root / ".venv" / "Scripts"):
+            if (cand / "gbd").exists() or (cand / "gbd.exe").exists():
+                env["PATH"] = f"{cand}{os.pathsep}{env.get('PATH', '')}"
+                break
 
     out = subprocess.check_output(
         ["gbd", "get", query, "-r", "filename"],

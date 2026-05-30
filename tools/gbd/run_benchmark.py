@@ -1038,8 +1038,15 @@ def main() -> int:
                     action="store_const", const="--no-preprocess",
                     help="Force matrix preprocess off.")
     ap.add_argument("-o", "--output", type=Path, default=None,
-                    help="Output .md path.  Default: doc/competition-benchmark_"
-                         "<index-stem>_<timeout>_<backend>[_pp|_nopp][_<n>].md")
+                    help="Output .md path.  Default: <output-dir>/"
+                         "competition-benchmark_<index-stem>_<timeout>_"
+                         "<backend>[_pp|_nopp][_<n>].md (auto-numbered to "
+                         "avoid clobbering prior runs).  Overrides --output-dir "
+                         "entirely when set.")
+    ap.add_argument("--output-dir", type=Path, default=OUT_DIR,
+                    help=f"Directory that holds the auto-named output .md / "
+                         f".json / .png when --output is not given.  Created "
+                         f"if missing.  Default: {OUT_DIR}")
     ap.add_argument("--limit", type=int, default=0,
                     help="Only process first N matching records (0 = no limit).")
     ap.add_argument("--filter", default=None,
@@ -1091,6 +1098,21 @@ def main() -> int:
             print(f"FATAL: --filter expression error: {e}", file=sys.stderr)
             return 2
 
+    # Resolve `xz_path` against the index file's parent directory when
+    # the path is relative — this lets self-contained benchmark dirs
+    # (like `evo/`: index + .cnf.xz files next to each other) be
+    # portable across machines and CI without rewriting absolute
+    # paths.  Absolute paths and existing relative paths that already
+    # resolve are left alone.  Mutates records in place so downstream
+    # code (solve_one, JSON sidecar) sees the resolved path.
+    index_dir = args.index.resolve().parent
+    for r in records:
+        p = Path(r.get("xz_path", ""))
+        if not p.is_absolute() and not p.exists():
+            cand = index_dir / p
+            if cand.exists():
+                r["xz_path"] = str(cand)
+
     # Skip records whose CNF isn't on disk (e.g. user moved BENCH_DIR).
     missing = [r for r in records if not Path(r.get("xz_path", "")).exists()]
     if missing:
@@ -1137,18 +1159,21 @@ def main() -> int:
         pp_suffix = "_pp"
     elif args.preprocess == "--no-preprocess":
         pp_suffix = "_nopp"
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    # `--output` (explicit .md path) wins outright.  Otherwise we
+    # auto-name into `--output-dir` (defaults to the repo's `doc/`).
+    out_dir = args.output_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
     if args.output:
         out_md = args.output
         out_md.parent.mkdir(parents=True, exist_ok=True)
     else:
         base_name = (f"competition-benchmark_{args.index.stem}_"
                      f"{args.timeout}_{args.backend}{pp_suffix}.md")
-        out_md = OUT_DIR / base_name
+        out_md = out_dir / base_name
         n = 1
         while out_md.exists():
             n += 1
-            out_md = OUT_DIR / f"{Path(base_name).stem}_{n}.md"
+            out_md = out_dir / f"{Path(base_name).stem}_{n}.md"
 
     pp_tag = ""
     if args.preprocess == "--preprocess":

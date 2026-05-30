@@ -6,3 +6,10 @@ Cargo.lock
 .logs
 nested-boxes/node_modules/
 nested-boxes/dist/
+
+# Python venv created by `./setup.sh` (uv-managed).  `pyproject.toml`
+# + `uv.lock` describe the env; `.venv` itself is regenerated
+# per-machine via `uv sync`.
+.venv/
+__pycache__/
+*.pyc

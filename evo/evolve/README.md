@@ -50,6 +50,51 @@ shape:
 }
 ```
 
+## Soundness guards — why an evolved policy can't cheat
+
+The evolve target (`sum_visit_order` / `prod_visit_order` /
+`should_reorder_sum`) only controls **visit order and zero-count
+filtering** — it can't touch the verdict logic.  But verdict-vs-
+ground-truth checking alone would be gameable: a mutation that
+"declares UNSAT fast" by unsoundly pruning would get the right
+answer on the UNSAT problems (by luck) and only be caught
+probabilistically by the SAT problems.  Three layers close that:
+
+1. **`evolve_guard` (the real fix, Rust-side).** The evaluator builds
+   `sat` with `--features evolve_guard`, which turns on runtime
+   assertions — living *outside* the EVOLVE block so a mutation can't
+   disable them — that enforce the two soundness contracts:
+   `sum_visit_order` must return a permutation (every Sum child
+   visited once); `prod_visit_order` must keep every positive-count
+   alt (only provably-blocked zero-count alts may be pruned).  A
+   violation **panics** → that candidate's solves crash → it scores
+   ~0.  This makes unsound search *inexpressible*, independent of the
+   benchmark set's SAT/UNSAT balance — no proof needed.  See
+   `enforce_sum_permutation` / `enforce_prod_keeps_reachable` in
+   `src/dual/path_effective.rs`.
+
+2. **SAT-witness verification (second line, Python-side).** The
+   evaluator passes `--verify-sat-witness`, so every SAT verdict's
+   `v`-line model is re-checked against the CNF clauses.  A bogus
+   model paired with a correct SAT verdict → recorded as MISMATCH →
+   `sound=0`.  Catches witness-reconstruction bugs the contract guard
+   wouldn't.
+
+3. **Proof-verified ground truth.** The 81 evo verdicts are
+   independently verified — 35 SAT `assignment_verified`, 46 UNSAT
+   `drat_verified` (cadical→drat-trim).  So the verdict cross-check
+   compares against *proven* answers, not just CaDiCaL's say-so.
+
+> **Note for widening the evolve target.** Guards #1–2 only guarantee
+> soundness because the evolve target is *constrained* to pure
+> visit-order/zero-drop functions.  If you later open up code where
+> soundness isn't structural (cover detection, witness
+> reconstruction, learned-clause logic), the construction guarantee
+> evaporates and you'll need the backend to emit **verifiable proofs**
+> per run.  Today only `cdcl`/`smart` can; the eff family can't.  That
+> capability is tracked as a backlog item — keep it on the agenda
+> before evolving outside the current block.
+
 ## How to run
 
 ### 1. Provision the Python env (one-time)

@@ -213,6 +213,95 @@ def parse_sat_output(text: str) -> Tuple[str, str, SatStats]:
 
 
 # ---------------------------------------------------------------------------
+# SAT-witness verification — re-check the `v <model> 0` assignment the
+# solver emitted against the actual CNF clauses.  Catches a *bogus
+# satisfying assignment paired with a correct SAT verdict* — a
+# soundness failure that the verdict-vs-ground-truth cross-check
+# misses (the verdict agrees; only the witness is wrong).  Used by the
+# OpenEvolve evaluator as a second line of defense alongside the
+# Rust-side `evolve_guard` contract enforcement.
+# ---------------------------------------------------------------------------
+def parse_dimacs_clauses(cnf_path: Path) -> List[List[int]]:
+    """Parse a DIMACS CNF into a list of clauses (each a list of
+    signed ints).  Robust to clauses spanning multiple lines: tokens
+    are accumulated across the whole file and split on `0`
+    terminators, not on newlines."""
+    toks: List[int] = []
+    with cnf_path.open() as f:
+        for line in f:
+            line = line.strip()
+            if not line or line[0] in "pc%":
+                continue
+            for x in line.split():
+                try:
+                    toks.append(int(x))
+                except ValueError:
+                    pass
+    clauses: List[List[int]] = []
+    cur: List[int] = []
+    for t in toks:
+        if t == 0:
+            if cur:
+                clauses.append(cur)
+            cur = []
+        else:
+            cur.append(t)
+    if cur:                       # tolerate a missing trailing 0
+        clauses.append(cur)
+    return clauses
+
+
+def parse_v_line(stdout_text: str) -> Dict[int, bool]:
+    """Parse the solver's `v <lit> <lit> ... 0` model line(s) from
+    stdout into {var: bool}.  Handles a model split across several
+    `v` lines (standard DIMACS); `0` terminates."""
+    asg: Dict[int, bool] = {}
+    for line in stdout_text.splitlines():
+        line = line.strip()
+        if not line.startswith("v"):
+            continue
+        for tok in line[1:].split():
+            try:
+                lit = int(tok)
+            except ValueError:
+                continue
+            if lit == 0:
+                continue
+            asg[abs(lit)] = (lit > 0)
+    return asg
+
+
+def verify_sat_witness(cnf_path: Path, stdout_text: str) -> Tuple[bool, str]:
+    """Return (ok, reason).  ok=True iff the `v`-line model satisfies
+    every clause of `cnf_path`.  A variable absent from the model is
+    treated as free → a clause is satisfied if ANY literal is
+    satisfied OR references an unassigned variable in the polarity
+    that could satisfy it (we treat unassigned as 'could be either',
+    i.e. don't fail solely on a missing var — solvers legitimately
+    omit don't-care variables)."""
+    asg = parse_v_line(stdout_text)
+    if not asg:
+        return False, "no 'v' model line found on stdout"
+    clauses = parse_dimacs_clauses(cnf_path)
+    for ci, clause in enumerate(clauses):
+        satisfied = False
+        has_free = False
+        for lit in clause:
+            v = abs(lit)
+            want = lit > 0
+            val = asg.get(v)
+            if val is None:
+                has_free = True          # don't-care var → clause could be sat
+            elif val == want:
+                satisfied = True
+                break
+        if not satisfied and not has_free:
+            return False, (f"clause #{ci} {clause} unsatisfied by model "
+                           f"(all {len(clause)} literals assigned false)")
+    return True, "ok"
+
+
+# ---------------------------------------------------------------------------
 # Summary + plot regeneration (mirrors competition-benchmarks.sh)
 # ---------------------------------------------------------------------------
 # Match 7-column rows.  We include MISMATCH so the summary counts them
@@ -820,24 +909,33 @@ def run_sat_with_pty(
     cmd: List[str],
     cnf_path: Path,
     on_frame,
-) -> Tuple[int, str]:
+) -> Tuple[int, str, str]:
     """
     Spawn `sat` with stderr attached to a pty (so --progress activates),
-    stdout to /dev/null, stdin from cnf_path.  Reads stderr in chunks,
-    splits on ANSI/CR/LF separators, calls on_frame(text) for each
-    non-empty frame.  Returns (exit_code, full_stderr_text).
+    stdin from cnf_path.  Reads stderr in chunks, splits on ANSI/CR/LF
+    separators, calls on_frame(text) for each non-empty frame.
+
+    stdout (which carries `s SATISFIABLE` + the `v <model> 0` witness
+    line) is captured to a temp FILE — not a pipe — so it can never
+    deadlock against the pty read loop even when the model is large.
+
+    Returns (exit_code, full_stderr_text, full_stdout_text).
     """
     master_fd, slave_fd = pty.openpty()
+    stdout_tmp = tempfile.NamedTemporaryFile(
+        prefix="sat-stdout-", suffix=".txt", delete=False)
+    stdout_tmp_path = Path(stdout_tmp.name)
     try:
         with cnf_path.open("rb") as cnf_in:
             proc = subprocess.Popen(
                 cmd,
                 stdin=cnf_in,
-                stdout=subprocess.DEVNULL,
+                stdout=stdout_tmp,          # → file, never blocks
                 stderr=slave_fd,
                 close_fds=True,
                 env={**os.environ, "TERM": os.environ.get("TERM", "xterm-256color")},
             )
+            stdout_tmp.close()              # child holds its own fd now
             os.close(slave_fd)
             slave_fd = -1  # mark closed
 
@@ -894,13 +992,19 @@ def run_sat_with_pty(
             except subprocess.TimeoutExpired:
                 proc.kill()
                 rc = proc.wait()
-            return rc, full.decode("utf-8", "replace")
+            try:
+                stdout_text = stdout_tmp_path.read_text(errors="replace")
+            except OSError:
+                stdout_text = ""
+            return rc, full.decode("utf-8", "replace"), stdout_text
     finally:
         try: os.close(master_fd)
         except Exception: pass
         if slave_fd >= 0:
             try: os.close(slave_fd)
             except Exception: pass
+        try: stdout_tmp_path.unlink()
+        except OSError: pass
 
 
 # ---------------------------------------------------------------------------
@@ -916,8 +1020,14 @@ def solve_one(
     worker_idx: int,
     md_writer: "MdWriter",
     tui: TUI,
+    verify_witness: bool = False,
 ) -> dict:
-    """Decompress + solve + append row + re-finalize.  Returns result dict."""
+    """Decompress + solve + append row + re-finalize.  Returns result dict.
+
+    When `verify_witness` is set, a SAT verdict's `v`-line model is
+    re-checked against the CNF clauses (while the decompressed CNF
+    still exists on disk); a bogus model is recorded as a soundness
+    failure (MISMATCH-class) even though the verdict itself agreed."""
     xz = Path(rec["xz_path"])
     display = short_name(rec)
     known = (rec.get("status") or "").upper()
@@ -930,6 +1040,9 @@ def solve_one(
     tui.update_worker(worker_idx, display, "decompressing…")
 
     tmp_path: Optional[Path] = None
+    result, time_str, stats = "UNKNOWN", "n/a", SatStats()
+    witness_ok: Optional[bool] = None   # None = not checked
+    witness_reason = ""
     try:
         with tempfile.NamedTemporaryFile(suffix=".cnf", delete=False) as tmp:
             tmp_path = Path(tmp.name)
@@ -951,16 +1064,41 @@ def solve_one(
             if frame.startswith("c "):
                 tui.update_worker(worker_idx, display, frame)
 
-        _, stderr_text = run_sat_with_pty(cmd, tmp_path, on_frame)
+        rc, stderr_text, stdout_text = run_sat_with_pty(cmd, tmp_path, on_frame)
+        result, time_str, stats = parse_sat_output(stderr_text)
+
+        # Witness check MUST happen here — the CNF is unlinked in
+        # `finally` below.
+        if verify_witness and result == "SAT" and tmp_path is not None:
+            witness_ok, witness_reason = verify_sat_witness(tmp_path, stdout_text)
     finally:
         if tmp_path is not None:
             try: tmp_path.unlink()
             except FileNotFoundError: pass
 
-    result, time_str, stats = parse_sat_output(stderr_text)
+    # The `evolve_guard` Rust feature hard-exits (code 101) on a
+    # soundness-contract violation, printing a `c EVOLVE-GUARD ABORT`
+    # marker on stderr.  Detect via EXIT CODE primarily (reliable from
+    # proc.wait()) and the stderr marker as confirmation — the marker
+    # alone is racy because the process dies right after writing it and
+    # the pty buffer may not be drained in time.  Either signal →
+    # treat as the strongest soundness failure, regardless of what
+    # verdict (if any) leaked out: a candidate that trips a contract
+    # can never be rewarded.
+    guard_abort = (rc == 101) or ("EVOLVE-GUARD ABORT" in stderr_text)
 
     mismatch = bool(known) and result in ("SAT", "UNSAT") and result != known
-    if mismatch:
+    if guard_abort:
+        md_result = "MISMATCH"
+        md_time = "GUARD-ABORT: soundness-contract violation"
+        mismatch = True
+    elif witness_ok is False:
+        # SAT verdict but the model doesn't satisfy the formula —
+        # a soundness failure even if the verdict matched ground truth.
+        md_result = "MISMATCH"
+        md_time = f"WRONG-SAT-WITNESS: {witness_reason}, {time_str}"
+        mismatch = True
+    elif mismatch:
         md_result = "MISMATCH"
         md_time = f"got={result} expected={known}, {time_str}"
     else:
@@ -984,7 +1122,13 @@ def solve_one(
     tui.record(result, mismatch)
     tui.free_worker(worker_idx)
 
-    if mismatch:
+    if guard_abort:
+        tui.log(f"  ✗ [{display}] GUARD-ABORT (contract violation)",
+                color=COLOR_RED + COLOR_BOLD)
+    elif witness_ok is False:
+        tui.log(f"  ✗ [{display}] WRONG-SAT-WITNESS  ({witness_reason})",
+                color=COLOR_RED + COLOR_BOLD)
+    elif mismatch:
         tui.log(f"  ! [{display}] {result}  (expected {known})  {time_str}",
                 color=COLOR_RED + COLOR_BOLD)
     elif result in ("SAT", "UNSAT"):
@@ -1003,6 +1147,9 @@ def solve_one(
         "result":         result,
         "expected":       known,
         "mismatch":       mismatch,
+        "guard_abort":    guard_abort,
+        "witness_ok":     witness_ok,      # None=not checked, True/False=checked
+        "witness_reason": witness_reason or None,
         "time_s":         _parse_time_cell(time_str),
         "time_str":       time_str,
         "paths":          stats.paths,
@@ -1065,6 +1212,13 @@ def main() -> int:
     ap.add_argument("--sat-arg", action="append", default=[],
                     metavar="ARG", help="Extra arg passed verbatim to sat "
                                         "(repeatable).")
+    ap.add_argument("--verify-sat-witness", action="store_true",
+                    help="For every SAT verdict, re-check the solver's "
+                         "`v`-line model against the CNF clauses.  A model "
+                         "that doesn't satisfy the formula is recorded as a "
+                         "MISMATCH (soundness failure) even if the verdict "
+                         "matched the expected status.  Used by the "
+                         "OpenEvolve evaluator to catch bogus witnesses.")
     args = ap.parse_args()
 
     # ---- preflight ----
@@ -1247,6 +1401,7 @@ def main() -> int:
                 worker_idx=idx,
                 md_writer=md_writer,
                 tui=tui,
+                verify_witness=args.verify_sat_witness,
             )
         finally:
             release_slot(idx)
@@ -1361,6 +1516,16 @@ def _build_summary_json(results: List[dict]) -> dict:
     out = {"by_verdict": {g: _agg(rs) for g, rs in by_group.items()}}
     if results:
         out["total"] = _agg(results)
+    # Explicit soundness-failure tally — `by_verdict` is keyed by the
+    # parsed verdict (SAT/UNSAT/TIMEOUT/UNKNOWN) so a MISMATCH never
+    # shows up there.  Surface the real soundness counts at top level
+    # so consumers (and humans reading the sidecar) can gate on them.
+    out["soundness"] = {
+        "mismatch":       sum(1 for r in results if r.get("mismatch")),
+        "guard_abort":    sum(1 for r in results if r.get("guard_abort")),
+        "bad_witness":    sum(1 for r in results if r.get("witness_ok") is False),
+        "witness_checked":sum(1 for r in results if r.get("witness_ok") is not None),
+    }
     return out
 
 

@@ -548,6 +548,107 @@ fn prod_visit_order(counts: &[f64]) -> Vec<usize> {
 // EVOLVE-BLOCK-END
 // =====================================================================
 
+// ─── Soundness-contract enforcement (OUTSIDE the evolve block) ───────
+//
+// These guards live deliberately *outside* the EVOLVE-BLOCK so a
+// mutation can never disable them.  They enforce, at runtime, the
+// two invariants that keep the eff backend SOUND no matter what the
+// evolved ordering policy does:
+//
+//   * `sum_visit_order` MUST return a permutation of `0..n` — every
+//     Sum child visited exactly once.  Dropping or duplicating a
+//     child makes the search incomplete → a wrong UNSAT that would
+//     otherwise only be caught probabilistically by the eval set's
+//     SAT problems.
+//
+//   * `prod_visit_order` MUST keep every positive-effective-count
+//     alt.  Only provably-blocked (zero-count) alts may be pruned.
+//     Dropping a reachable alt skips a branch → wrong UNSAT.
+//
+// With these enforced, an unsound evolved policy can't "guess UNSAT
+// fast" and score well: it panics the moment it violates a contract,
+// so the candidate crashes and earns ~0 fitness — independent of the
+// SAT/UNSAT balance of the benchmark set, and without needing the
+// backend to emit a proof.
+//
+// **Gated behind the `evolve_guard` cargo feature** so production
+// builds (known-sound, promoted code) pay zero overhead; the
+// OpenEvolve evaluator builds with `--features evolve_guard` to vet
+// untrusted candidates.  See `evo/evolve/evaluator.py`.
+
+/// Report a contract violation and terminate.
+///
+/// **Must hard-exit the whole process, not `panic!`.**  The eff
+/// search runs on tokio worker threads; a `panic!` there is caught at
+/// the thread boundary — the result channel just closes and the main
+/// loop reports a (bogus) verdict anyway, so an unsound candidate
+/// would slip through.  `std::process::exit` can't be caught: the
+/// process dies with no verdict, and the `c EVOLVE-GUARD ABORT`
+/// marker on stderr lets `run_benchmark` record the candidate as a
+/// soundness failure (sound=0).
+///
+/// In `cfg(test)` we `panic!` instead so the unit tests can use
+/// `#[should_panic]`.
+#[cfg(feature = "evolve_guard")]
+fn evolve_contract_fail(msg: &str) -> ! {
+    #[cfg(test)]
+    panic!("EVOLVE CONTRACT VIOLATION: {}", msg);
+    #[cfg(not(test))]
+    {
+        use std::io::Write;
+        eprintln!("c EVOLVE-GUARD ABORT: EVOLVE CONTRACT VIOLATION: {}", msg);
+        let _ = std::io::stderr().flush();
+        std::process::exit(101);   // Rust's conventional panic code
+    }
+}
+
+/// Fail if `perm` is not a permutation of `0..n` (the
+/// `sum_visit_order` contract).  No-op unless `evolve_guard` is on.
+#[cfg(feature = "evolve_guard")]
+fn enforce_sum_permutation(perm: &[usize], n: usize) {
+    if perm.len() != n {
+        evolve_contract_fail(&format!(
+            "sum_visit_order returned {} indices for {} Sum children — must be a \
+             permutation (every child visited exactly once)", perm.len(), n));
+    }
+    let mut seen = vec![false; n];
+    for &p in perm {
+        if p >= n {
+            evolve_contract_fail(&format!(
+                "sum_visit_order index {} out of range 0..{}", p, n));
+        }
+        if std::mem::replace(&mut seen[p], true) {
+            evolve_contract_fail(&format!(
+                "sum_visit_order duplicated index {} (another child never visited)", p));
+        }
+    }
+}
+
+/// Fail if `keep` drops any positive-count alt (the
+/// `prod_visit_order` contract).  No-op unless `evolve_guard` is on.
+#[cfg(feature = "evolve_guard")]
+fn enforce_prod_keeps_reachable(keep: &[usize], counts: &[f64]) {
+    let n = counts.len();
+    let mut in_keep = vec![false; n];
+    for &k in keep {
+        if k >= n {
+            evolve_contract_fail(&format!(
+                "prod_visit_order index {} out of range 0..{}", k, n));
+        }
+        if std::mem::replace(&mut in_keep[k], true) {
+            evolve_contract_fail(&format!(
+                "prod_visit_order duplicated index {}", k));
+        }
+    }
+    for (i, &c) in counts.iter().enumerate() {
+        if c > 0.0 && !in_keep[i] {
+            evolve_contract_fail(&format!(
+                "prod_visit_order dropped reachable alt {} (effective count {} > 0) — \
+                 only zero-count alts may be pruned (→ unsound UNSAT)", i, c));
+        }
+    }
+}
+
 #[cfg(test)]
 mod gate_tests {
     use super::should_reorder_sum;
@@ -590,6 +691,44 @@ mod gate_tests {
     }
     #[test] fn never_reorder_with_infinite_tau() {
         assert!(!should_reorder_sum(&[1.0, 1e10], f64::INFINITY));
+    }
+}
+
+/// Tests that the `evolve_guard` contract enforcement actually fires
+/// on unsound policies.  Only compiled when the feature is enabled
+/// (the OpenEvolve evaluator's build config).
+#[cfg(all(test, feature = "evolve_guard"))]
+mod guard_tests {
+    use super::{enforce_sum_permutation, enforce_prod_keeps_reachable};
+
+    #[test] fn sum_valid_permutation_ok() {
+        enforce_sum_permutation(&[2, 0, 1], 3);  // reordered
+        enforce_sum_permutation(&[0, 1, 2], 3);  // identity
+    }
+    #[test] #[should_panic(expected = "CONTRACT VIOLATION")]
+    fn sum_dropped_child_panics() {
+        enforce_sum_permutation(&[0, 1], 3);     // only 2 of 3 children
+    }
+    #[test] #[should_panic(expected = "CONTRACT VIOLATION")]
+    fn sum_duplicate_child_panics() {
+        enforce_sum_permutation(&[0, 0, 2], 3);  // dup 0, child 1 never visited
+    }
+    #[test] #[should_panic(expected = "CONTRACT VIOLATION")]
+    fn sum_out_of_range_panics() {
+        enforce_sum_permutation(&[0, 1, 9], 3);  // index 9 out of range
+    }
+
+    #[test] fn prod_drops_only_zero_count_ok() {
+        // Dropping index 1 (count 0.0) is allowed; keeping the two
+        // positive-count alts.
+        enforce_prod_keeps_reachable(&[0, 2], &[5.0, 0.0, 3.0]);
+        // Keeping everything (incl. the zero) is also fine.
+        enforce_prod_keeps_reachable(&[0, 1, 2], &[5.0, 0.0, 3.0]);
+    }
+    #[test] #[should_panic(expected = "CONTRACT VIOLATION")]
+    fn prod_drops_reachable_alt_panics() {
+        // Index 1 has count 3.0 > 0 — dropping it is unsound.
+        enforce_prod_keeps_reachable(&[0], &[5.0, 3.0]);
     }
 }
 
@@ -650,6 +789,8 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
         // "don't reorder").  Sum is visit-all; the policy MUST
         // preserve every child (helper's contract enforces this).
         let perm = sum_visit_order(&counts, self.sum_reorder_tau);
+        #[cfg(feature = "evolve_guard")]
+        enforce_sum_permutation(&perm, counts.len());
         if perm.iter().enumerate().all(|(k, &p)| k == p) {
             // Identity → policy said no reorder; bump the gate-skip
             // counter for instrumentation and return `base` as-is.
@@ -682,6 +823,8 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
         // reorders.  Helper's contract: never drops a non-zero-count
         // alt, may drop zero-count alts.
         let keep = prod_visit_order(&counts);
+        #[cfg(feature = "evolve_guard")]
+        enforce_prod_keeps_reachable(&keep, &counts);
         if keep.len() < base_len {
             self.prod_ord_filters += 1;
         }
@@ -789,6 +932,8 @@ impl<Inner: crate::nnf_arena::ArenaPathSearchController + PathSearchController>
         // Delegate to the EVOLVE-BLOCK policy — identical contract
         // to the NNF-engine sum_ord above.  See helper doc comments.
         let perm = sum_visit_order(&counts, self.sum_reorder_tau);
+        #[cfg(feature = "evolve_guard")]
+        enforce_sum_permutation(&perm, counts.len());
         if perm.iter().enumerate().all(|(k, &p)| k == p) {
             self.sum_ord_gate_skips += 1;
             return Some(base);
@@ -820,6 +965,8 @@ impl<Inner: crate::nnf_arena::ArenaPathSearchController + PathSearchController>
         // Delegate to the EVOLVE-BLOCK policy — identical contract
         // to the NNF-engine prod_ord above.
         let keep = prod_visit_order(&counts);
+        #[cfg(feature = "evolve_guard")]
+        enforce_prod_keeps_reachable(&keep, &counts);
         if keep.len() < base_len {
             self.prod_ord_filters += 1;
         }

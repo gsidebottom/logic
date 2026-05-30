@@ -62,6 +62,17 @@ EVO_INDEX  = EVO_DIR / "curated_struct_eff.jsonl"
 
 # ─── Tier configurations ──────────────────────────────────────────────
 # (n_problems, per-instance timeout seconds, parallel workers)
+#
+# NOTE on soundness coverage: the `evolve_guard` contract checks (and
+# the SAT-witness check) only fire when a candidate's unsound code is
+# *exercised*.  The smoke tier's first-6 records are uniform-cost
+# `bench_*` instances where `should_reorder_sum` is usually false, so
+# they don't exercise the Sum/Prod reordering paths — a contract
+# violation can slip through smoke.  That's fine: it's caught at quick
+# (which includes ordering-sensitive `3col`/`Break` instances) before
+# it can affect fitness, because the cascade returns the moment any
+# tier reports sound=0.  Smoke is only a cheap pre-filter for
+# compile-fail / wildly-broken candidates.
 TIERS = {
     "smoke": {"limit":  6, "timeout":  5, "parallel": 4, "deadline_s": 60},
     "quick": {"limit": 20, "timeout": 20, "parallel": 8, "deadline_s": 300},
@@ -167,11 +178,19 @@ def make_scratch() -> Scratch:
 
 # ─── Build + benchmark ────────────────────────────────────────────────
 def cargo_build(worktree: Path) -> Optional[str]:
-    """Build `sat --release` in the worktree.  Returns None on
-    success; the stderr tail on failure (capped at 4KB for
-    OpenEvolve's artifact stream)."""
+    """Build `sat --release --features evolve_guard` in the worktree.
+    Returns None on success; the stderr tail on failure (capped at
+    4KB for OpenEvolve's artifact stream).
+
+    `evolve_guard` turns on the runtime soundness-contract checks in
+    the eff layer (sum_visit_order must be a permutation;
+    prod_visit_order must keep all reachable alts).  A candidate that
+    violates a contract PANICS at search time → its problems fail →
+    it scores ~0.  This makes "guess UNSAT fast" inexpressible,
+    independent of the benchmark set's SAT/UNSAT balance."""
     r = subprocess.run(
-        ["cargo", "build", "--release", "--bin", "sat"],
+        ["cargo", "build", "--release", "--bin", "sat",
+         "--features", "evolve_guard"],
         cwd=worktree, capture_output=True, text=True,
         timeout=BUILD_TIMEOUT_S,
     )
@@ -218,7 +237,12 @@ def run_tier(worktree: Path, tier: str, out_dir: Path) -> Dict:
                      "-t", str(cfg["timeout"]),
                      "-j", str(cfg["parallel"]),
                      "-o", str(out_md),
-                     "--no-progress"]
+                     "--no-progress",
+                     # Second soundness line of defense: re-check every
+                     # SAT model against the CNF (catches a valid-verdict
+                     # / bogus-witness candidate that the contract guard
+                     # + verdict-match would miss).
+                     "--verify-sat-witness"]
     if cfg["limit"] > 0:
         cmd_pyproject.extend(["--limit", str(cfg["limit"])])
 
@@ -276,14 +300,29 @@ def combined_score(compiled: float, sound: float, solved: float,
 
 def score_from_payload(payload: Dict, per_problem_timeout_s: float) -> Dict:
     """Reduce a run_benchmark.py JSON payload to OpenEvolve's flat
-    fitness dict.  Soundness gate fires inside this function: if
-    any MISMATCH row is present the candidate is marked unsound.
+    fitness dict.  Soundness gate fires inside this function: if ANY
+    per-instance soundness failure is present, the candidate is marked
+    unsound (sound=0, combined_score=0).
+
+    A soundness failure is any of (all surfaced as the per-result
+    `mismatch` flag by run_benchmark):
+      * verdict ≠ proof-verified ground truth (wrong SAT/UNSAT),
+      * `witness_ok is False` (SAT verdict, bogus model — only when
+        run with --verify-sat-witness),
+      * `guard_abort` (the eff `evolve_guard` contract tripped → the
+        process hard-exited 101).
+
+    We count these from the per-result records, NOT the summary's
+    `MISMATCH` bucket — that bucket is keyed by the *markdown* result
+    label, which never appears in the JSON summary (it groups by the
+    parsed verdict), so reading it would always see zero.
 
     `per_problem_timeout_s` is the tier's per-instance timeout, used
     to normalize the speed component of `combined_score`."""
     results = payload.get("results", [])
-    summary = payload.get("summary", {}).get("by_verdict", {})
-    n_mismatch = summary.get("MISMATCH", {}).get("count", 0)
+    n_mismatch = sum(1 for r in results
+                     if r.get("mismatch") or r.get("guard_abort")
+                     or r.get("witness_ok") is False)
     if n_mismatch > 0:
         return {
             "combined_score": 0.0,

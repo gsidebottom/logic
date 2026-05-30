@@ -11,6 +11,17 @@ path = "src/bin/sat_cover_verify.rs"
 name = "sat-drat-verify"
 path = "src/bin/sat_drat_verify.rs"
 
+[features]
+# `evolve_guard` — runtime enforcement of the eff-layer ordering
+# contracts (sum_visit_order is a permutation; prod_visit_order keeps
+# all reachable alts).  OFF by default → zero overhead in production
+# builds of known-sound code.  The OpenEvolve evaluator builds with
+# `--features evolve_guard` to vet untrusted evolved candidates: a
+# contract violation panics, so an unsound mutation can't score well.
+# See src/dual/path_effective.rs (enforce_* helpers) and
+# evo/evolve/evaluator.py.
+evolve_guard = []
+
 [dependencies]
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }

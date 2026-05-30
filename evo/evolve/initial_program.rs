@@ -78,9 +78,10 @@ fn should_reorder_sum(counts: &[f64], tau: f64) -> bool {
 
 /// Sum-child visit order from a slice of per-child effective counts.
 /// Returns a permutation of `0..counts.len()` — identity when the
-/// gate says "don't bother reordering," else ascending-by-count
-/// (low-count children first so any closing/contradiction lits they
-/// carry surface early and the inner's cover detection fires).
+/// gate says "don't bother reordering," else descending-by-count
+/// (high-count / high-leverage children first — feeds CDCL better
+/// decision variables; see src/dual/path_effective.rs for the full
+/// rationale).  Soundness is order-independent: Sum is visit-all.
 fn sum_visit_order(counts: &[f64], tau: f64) -> Vec<usize> {
     let n = counts.len();
     if !should_reorder_sum(counts, tau) {
@@ -88,7 +89,7 @@ fn sum_visit_order(counts: &[f64], tau: f64) -> Vec<usize> {
     }
     let mut idx: Vec<usize> = (0..n).collect();
     idx.sort_by(|&a, &b|
-        counts[a].partial_cmp(&counts[b]).unwrap_or(std::cmp::Ordering::Equal));
+        counts[b].partial_cmp(&counts[a]).unwrap_or(std::cmp::Ordering::Equal));
     idx
 }
 

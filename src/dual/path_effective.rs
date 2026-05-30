@@ -497,17 +497,39 @@ fn should_reorder_sum(counts: &[f64], tau: f64) -> bool {
 
 /// Sum-child visit order from a slice of per-child effective counts.
 /// Returns a permutation of `0..counts.len()` — identity when the
-/// gate says "don't bother reordering," else ascending-by-count
-/// (low-count children first so any closing/contradiction lits they
-/// carry surface early and the inner's cover detection fires).
+/// gate says "don't bother reordering," else **descending**-by-count
+/// (high-count children first).
+///
+/// **Why descending (and not the intuitive ascending).**  The
+/// original heuristic sorted ascending — visit low-count, tightly-
+/// constrained children first to "fail fast" by surfacing closing
+/// lits early.  That's sound DFS intuition, but the eff layer sits
+/// on top of a full CDCL engine that finds contradictions through
+/// propagation + conflict analysis, not by stumbling into
+/// complementary leaves.  What CDCL actually benefits from is good
+/// *decision variables*: a high effective-count child carries the
+/// high-leverage variables (involved in the most paths / clauses).
+/// Visiting those first triggers larger propagation cascades and
+/// yields conflicts higher in the tree → shorter, more general
+/// learned clauses.  Ascending fought VSIDS by surfacing low-leverage
+/// variables first; descending reinforces it.  Empirically (evolved +
+/// validated on the `evo/` struct-eff set): descending solves +3 more
+/// instances and runs ~2.7× faster than ascending at a 30s budget.
+/// Found via the `evo/evolve/` OpenEvolve rig; see its README.
+///
+/// Soundness is unaffected: Sum is visit-all, so ANY permutation
+/// produces identical SAT/UNSAT verdicts — only search *speed*
+/// changes.
 fn sum_visit_order(counts: &[f64], tau: f64) -> Vec<usize> {
     let n = counts.len();
     if !should_reorder_sum(counts, tau) {
         return (0..n).collect();
     }
     let mut idx: Vec<usize> = (0..n).collect();
+    // Descending: `counts[b]` vs `counts[a]` (note the swap) puts
+    // high-count children first.  See the doc comment for why.
     idx.sort_by(|&a, &b|
-        counts[a].partial_cmp(&counts[b]).unwrap_or(std::cmp::Ordering::Equal));
+        counts[b].partial_cmp(&counts[a]).unwrap_or(std::cmp::Ordering::Equal));
     idx
 }
 

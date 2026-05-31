@@ -2098,6 +2098,16 @@ struct Args {
     /// search.  Always disabled for the cadical backend (it has its
     /// own internal preprocessor).  Default `true`.
     preprocess:    bool,
+    /// Maximum input clause count for which `--preprocess` actually
+    /// runs.  Preprocessing costs ~150 µs/clause, so on very large
+    /// inputs it can burn the whole time budget before the search even
+    /// starts; above this cap preprocess is auto-skipped (with a
+    /// `c preprocess: auto-skipped …` note).  Default 250_000.  Set to
+    /// `0` for NO cap (preprocess regardless of size — only sensible
+    /// with a very large `--timeout`).  Override with
+    /// `--preprocess-max-clauses N`; drivable through
+    /// `run_benchmark.py --sat-arg`.
+    preprocess_max_clauses: usize,
     /// Optional cover-certificate output path.  When set, every
     /// `CoveredPathPrefix` event from the matrix-method search gets
     /// written to this file, producing a UNSAT certificate that
@@ -2145,6 +2155,11 @@ struct Args {
 }
 
 const DEFAULT_TIMEOUT_SECS: u64 = 6000;
+/// Default cap on input clauses for which `--preprocess` runs.
+/// Preprocess is ~150 µs/clause, so 250k ≈ 38 s — an acceptable slice
+/// of a long budget but a clear "too long" for short benchmarking.
+/// Override per-run with `--preprocess-max-clauses N` (0 = no cap).
+const DEFAULT_PREPROCESS_MAX_CLAUSES: usize = 250_000;
 
 fn parse_args() -> Result<Args, String> {
     let mut a = Args {
@@ -2152,6 +2167,7 @@ fn parse_args() -> Result<Args, String> {
         backend: BackendChoice::Matrix(MatrixBackend::Eff),
         timeout_secs: DEFAULT_TIMEOUT_SECS,
         preprocess: true,
+        preprocess_max_clauses: DEFAULT_PREPROCESS_MAX_CLAUSES,
         emit_cover: None,
         emit_drat: None,
         emit_pbp: None,
@@ -2225,6 +2241,18 @@ fn parse_args() -> Result<Args, String> {
             }
             "--preprocess"      => { a.preprocess = true;  }
             "--no-preprocess"   => { a.preprocess = false; }
+            // Cap on input clauses for which preprocess runs (0 = no cap).
+            "--preprocess-max-clauses" => {
+                let v = iter.next().ok_or_else(||
+                    "--preprocess-max-clauses requires a value (clause count; 0 = no cap)".to_string())?;
+                a.preprocess_max_clauses = v.parse::<usize>().map_err(|_|
+                    format!("--preprocess-max-clauses expects a non-negative integer; got {:?}", v))?;
+            }
+            s if s.starts_with("--preprocess-max-clauses=") => {
+                let v = &s["--preprocess-max-clauses=".len()..];
+                a.preprocess_max_clauses = v.parse::<usize>().map_err(|_|
+                    format!("--preprocess-max-clauses expects a non-negative integer; got {:?}", v))?;
+            }
             "--emit-cover" => {
                 let v = iter.next().ok_or_else(||
                     "--emit-cover requires a file path (e.g. --emit-cover proof.cover)".to_string())?;
@@ -2300,6 +2328,10 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    normalisation) before search.  Default ON for");
                 eprintln!("                    matrix backends; no-op for cadical (its own preproc).");
                 eprintln!("  --no-preprocess   Disable preprocessing.");
+                eprintln!("  --preprocess-max-clauses N");
+                eprintln!("                    Skip preprocess when the input has > N clauses");
+                eprintln!("                    (preprocess is ~150 µs/clause).  Default 250000;");
+                eprintln!("                    pass 0 for no cap (only sensible with a large -t).");
                 eprintln!("  --emit-cover FILE Write a cover certificate to FILE.  On UNSAT,");
                 eprintln!("                    the file contains a sound replay-able UNSAT proof");
                 eprintln!("                    (every CoveredPathPrefix event the search emits).");
@@ -2453,23 +2485,19 @@ fn main() {
             // Auto-skip preprocess on very large inputs.  Empirically
             // Phase 1 preprocess takes ~150 µs / clause; at 2M
             // clauses (pj2013_k9) that's ~5 minutes — most of any
-            // reasonable per-problem budget before the matrix
-            // search even starts.  Auto-skip above 250k clauses.
-            // Users wanting preprocess off entirely should pass
-            // `--no-preprocess`; users wanting it on for giant
-            // inputs (rare, niche) can bump the threshold by
-            // editing this constant.
-            //
-            // Threshold rationale: 250k × 150 µs ≈ 38 seconds —
-            // acceptable fraction of a 600 s budget but a clear
-            // "too long" for 60 s benchmarking.
-            const PREPROCESS_MAX_CLAUSES: usize = 250_000;
+            // reasonable per-problem budget before the matrix search
+            // even starts.  The cap is configurable via
+            // `--preprocess-max-clauses N` (0 = no cap); default 250k
+            // (≈38 s).  Users wanting preprocess off entirely pass
+            // `--no-preprocess`.
+            let cap = args.preprocess_max_clauses;
             let do_preprocess = args.preprocess
-                && clauses.len() <= PREPROCESS_MAX_CLAUSES;
+                && (cap == 0 || clauses.len() <= cap);
             if args.preprocess && !do_preprocess {
-                eprintln!("c preprocess: auto-skipped ({} clauses > {} \
-                           threshold; use --no-preprocess to silence)",
-                          clauses.len(), PREPROCESS_MAX_CLAUSES);
+                eprintln!("c preprocess: auto-skipped ({} clauses > {} cap; \
+                           raise with --preprocess-max-clauses N (0=unlimited) \
+                           or silence with --no-preprocess)",
+                          clauses.len(), cap);
             }
             if do_preprocess {
                 // Build F as NNF (Prod-of-Sums), run NNF-level

@@ -27,13 +27,27 @@ Usage:
     curate.py [--query QUERY] [--timeout SECS] [--parallel N]
               [--max-instances N] [--index PATH] [--refresh]
               [--no-dedupe]
+    curate.py --index-only [--query QUERY] [--index PATH]
     curate.py --dedupe-in-place [--index PATH]
 
 Defaults curate ~100-200 instances that CaDiCaL solves in <10 s each.
 
+--index-only is the complement: instead of locally solving (and thus
+keeping only the fast subset), it emits the ENTIRE query result as an
+index with no solving at all — `status` comes from GBD's official
+competition result, metadata from the GBD feature DB.  Use it to
+benchmark a backend across a whole track (e.g. all 400 of main_2025),
+where re-solving every hard instance would be pointless and the normal
+solve flow would drop most of the set.
+
 Examples:
-    # Curate from main_2025 with default 10s budget:
+    # Curate from main_2025 with default 10s budget (fast-solvable subset):
     tools/gbd/curate.py --query "track=main_2025"
+
+    # Full main_2025 track as an index, no solving (all 400, status from
+    # GBD's verified competition result):
+    tools/gbd/curate.py --index-only --query "track=main_2025" \
+        --index ../curated_benchmarks/main_track_2025.jsonl
 
     # Tighter budget (1s) for evolution fitness:
     tools/gbd/curate.py --timeout 1 --index sat_benchmarks/curated_1s.jsonl
@@ -75,8 +89,8 @@ GBD_DIR = Path(os.environ.get("GBD_DIR", BENCH_DIR / ".gbd"))
 DEFAULT_INDEX = BENCH_DIR / "curated.jsonl"
 
 
-def gbd_query(query: str) -> List[Tuple[str, str]]:
-    """Run `gbd get` and return [(hash, filename), ...] for matches.
+def _gbd_env() -> dict:
+    """Build the environment for invoking `gbd` against the local DBs.
 
     Fails fast (no hang) if the GBD DBs aren't at GBD_DIR — otherwise
     the `gbd` subprocess would prompt interactively on stdin for
@@ -109,10 +123,14 @@ def gbd_query(query: str) -> List[Tuple[str, str]]:
             if (cand / "gbd").exists() or (cand / "gbd.exe").exists():
                 env["PATH"] = f"{cand}{os.pathsep}{env.get('PATH', '')}"
                 break
+    return env
 
+
+def _gbd_two_col(query: str, attr: str) -> List[Tuple[str, str]]:
+    """Run `gbd get QUERY -r ATTR` and parse the two-column
+    `hash value` output, taking the first of any comma-joined value."""
     out = subprocess.check_output(
-        ["gbd", "get", query, "-r", "filename"],
-        env=env, text=True
+        ["gbd", "get", query, "-r", attr], env=_gbd_env(), text=True
     )
     rows = []
     for line in out.splitlines():
@@ -122,10 +140,23 @@ def gbd_query(query: str) -> List[Tuple[str, str]]:
         parts = line.split(None, 1)
         if len(parts) != 2:
             continue
-        hash_, fname = parts
-        # filename may carry multiple comma-separated values; take the first
-        rows.append((hash_, fname.split(",")[0]))
+        h, v = parts
+        rows.append((h, v.split(",")[0]))
     return rows
+
+
+def gbd_query(query: str) -> List[Tuple[str, str]]:
+    """Run `gbd get` and return [(hash, filename), ...] for matches."""
+    return _gbd_two_col(query, "filename")
+
+
+def gbd_get_attr(query: str, attr: str) -> Dict[str, str]:
+    """Return {hash: value} for a single GBD feature/resource `attr`
+    over the instances matching `query`.  Used by --index-only to pull
+    competition metadata (result, variables, clauses, family) without
+    solving.  `gbd get` collapses repeated `-r` flags to the last one,
+    so each attribute is queried separately and joined by hash here."""
+    return dict(_gbd_two_col(query, attr))
 
 
 def find_cnf(hash_: str) -> Optional[Path]:
@@ -356,6 +387,16 @@ def main():
                          "(overrides previous entry).  Pre-fix this used to "
                          "silently produce duplicate rows; now the post-run "
                          "auto-dedupe collapses them to one row per hash.")
+    ap.add_argument("--index-only", action="store_true",
+                    help="Emit a full problem-set index WITHOUT solving "
+                         "anything.  Pulls `status` from GBD's official "
+                         "competition result (sat/unsat; `unknown` left "
+                         "unanchored) and nvars/nclauses/family from the GBD "
+                         "feature DB, so an entire track is indexed instantly. "
+                         "Use this to benchmark a backend across a whole track "
+                         "(e.g. all 400 of main_2025) where the normal "
+                         "curate-to-fast-subset solve flow would drop most of "
+                         "the set.  No cadical / sat binary needed.")
     ap.add_argument("--no-dedupe", action="store_true",
                     help="Don't auto-dedupe the index file after the run.  "
                          "Default behaviour is to collapse any duplicate "
@@ -434,6 +475,87 @@ def main():
         print(f"  rows before: {before}")
         print(f"  rows after:  {after}")
         print(f"  removed:     {before - after} duplicate hash records")
+        return
+
+    # ── Index-only mode: emit a full problem-set index without solving ──
+    # Pulls `status` from GBD's official competition result and metadata
+    # from the GBD feature DB, so the whole query result is indexed
+    # instantly — no cadical.  Doesn't need the sat binary, so handle it
+    # before the SAT_BIN preflight (mirrors --dedupe-in-place).
+    if args.index_only:
+        index_path = Path(args.index)
+        index = load_index(index_path)
+        print(f"loaded index: {len(index)} prior entries from {index_path}")
+        print(f"querying GBD: {args.query!r}")
+        candidates = gbd_query(args.query)
+        print(f"candidates:   {len(candidates)}")
+        # One query per attribute (gbd collapses repeated -r to the last).
+        results   = gbd_get_attr(args.query, "result")     # competition verdict
+        variables = gbd_get_attr(args.query, "variables")
+        clauses   = gbd_get_attr(args.query, "clauses")
+        families  = gbd_get_attr(args.query, "family")
+        # Derive a track label from a `track=VALUE` query for provenance.
+        q = args.query.replace(" ", "")
+        track_label = q.split("=", 1)[1] if q.startswith("track=") else None
+
+        def _toint(x):
+            try:
+                return int(float(x))
+            except Exception:
+                return None
+
+        def _clean(x):
+            if x is None:
+                return None
+            s = str(x).strip()
+            return None if s.lower() in ("none", "empty", "unknown", "") else s
+
+        rows, missing, in_index, anchored = [], 0, 0, 0
+        for hash_, fname in candidates:
+            xz = find_cnf(hash_)
+            if not xz:
+                missing += 1
+                continue
+            if not args.refresh and hash_ in index:
+                in_index += 1
+                continue
+            rec = {"hash": hash_, "filename": fname, "xz_path": str(xz)}
+            nv, nc = _toint(variables.get(hash_)), _toint(clauses.get(hash_))
+            if nv is not None:
+                rec["nvars"] = nv
+            if nc is not None:
+                rec["nclauses"] = nc
+            fam = _clean(families.get(hash_))
+            if fam:
+                rec["family"] = fam
+            if track_label:
+                rec["track"] = track_label
+            status = {"sat": "SAT", "unsat": "UNSAT"}.get(
+                (results.get(hash_) or "").lower())
+            if status:
+                rec["status"] = status
+                # Mark provenance: this verdict is GBD's competition result,
+                # NOT a local solve — so a downstream MISMATCH means the
+                # backend disagrees with the verified competition answer.
+                rec["status_source"] = "gbd_result"
+                anchored += 1
+            rows.append(rec)
+            if args.max_instances and len(rows) >= args.max_instances:
+                break
+
+        print(f"missing on disk:     {missing}  (run tools/gbd/download.sh to fetch)")
+        print(f"already in index:    {in_index}  (use --refresh to rewrite)")
+        print(f"to write:            {len(rows)}  "
+              f"({anchored} with SAT/UNSAT status anchor, "
+              f"{len(rows) - anchored} unknown/unanchored)")
+        if rows:
+            with open(index_path, "a") as fout:
+                for rec in rows:
+                    fout.write(json.dumps(rec) + "\n")
+            if not args.no_dedupe:
+                before, after = dedupe_index_file(index_path)
+                print(f"deduped index: {before} -> {after} rows")
+        print(f"index file: {index_path}")
         return
 
     if not SAT_BIN.exists():

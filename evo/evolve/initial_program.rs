@@ -76,31 +76,45 @@ fn should_reorder_sum(counts: &[f64], tau: f64) -> bool {
     (max_nz / min_nz).log10() >= tau
 }
 
-/// Sum-child visit order from a slice of per-child effective counts.
-/// Returns a permutation of `0..counts.len()` — identity when the
-/// gate says "don't bother reordering," else descending-by-count
-/// (high-count / high-leverage children first — feeds CDCL better
-/// decision variables; see src/dual/path_effective.rs for the full
-/// rationale).  Soundness is order-independent: Sum is visit-all.
+/// Sum-child visit order: descending by count (high-leverage first).
+/// Visiting high-count children early feeds CDCL better decision
+/// variables and produces tighter proofs (matches the best-scoring
+/// baseline).  Soundness is order-independent: Sum visits all children.
 fn sum_visit_order(counts: &[f64], tau: f64) -> Vec<usize> {
     let n = counts.len();
     if !should_reorder_sum(counts, tau) {
         return (0..n).collect();
     }
     let mut idx: Vec<usize> = (0..n).collect();
-    idx.sort_by(|&a, &b|
+    // Order among equal-count children is soundness-irrelevant (Sum is
+    // visit-all), so use the cheaper unstable sort to save CPU.
+    idx.sort_unstable_by(|&a, &b|
         counts[b].partial_cmp(&counts[a]).unwrap_or(std::cmp::Ordering::Equal));
     idx
 }
 
 /// Prod-alt visit order from a slice of per-alt effective counts.
-/// Filters zero-count alts (provably blocked) then sorts ascending
-/// by count so the "tightest" surviving alts get tried first.
+/// Filters zero-count alts (provably blocked) then sorts descending
+/// by count so the "richest" surviving alts (most satisfying paths)
+/// get tried first — finds SAT witnesses faster in DFS.
+/// Infinite counts (unknown) are placed after finite ones.
 fn prod_visit_order(counts: &[f64]) -> Vec<usize> {
     let mut keep: Vec<(usize, f64)> = counts.iter().enumerate()
         .filter_map(|(i, &c)| if c > 0.0 { Some((i, c)) } else { None })
         .collect();
-    keep.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    // Prod order among equal-count alts is free, so use unstable sort.
+    keep.sort_unstable_by(|a, b| {
+        let (af, bf) = (a.1.is_finite(), b.1.is_finite());
+        if af && bf {
+            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
+        } else if af {
+            std::cmp::Ordering::Less    // finite before infinite
+        } else if bf {
+            std::cmp::Ordering::Greater
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    });
     keep.into_iter().map(|(i, _)| i).collect()
 }
 

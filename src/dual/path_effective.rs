@@ -495,52 +495,66 @@ fn should_reorder_sum(counts: &[f64], tau: f64) -> bool {
     (max_nz / min_nz).log10() >= tau
 }
 
-/// Sum-child visit order from a slice of per-child effective counts.
-/// Returns a permutation of `0..counts.len()` — identity when the
-/// gate says "don't bother reordering," else **descending**-by-count
-/// (high-count children first).
+/// Sum-child visit order: **descending** by count (high-leverage
+/// first).  Soundness is order-independent — Sum is visit-all, so any
+/// permutation gives identical verdicts; only search *speed* changes.
 ///
-/// **Why descending (and not the intuitive ascending).**  The
-/// original heuristic sorted ascending — visit low-count, tightly-
-/// constrained children first to "fail fast" by surfacing closing
-/// lits early.  That's sound DFS intuition, but the eff layer sits
-/// on top of a full CDCL engine that finds contradictions through
-/// propagation + conflict analysis, not by stumbling into
-/// complementary leaves.  What CDCL actually benefits from is good
-/// *decision variables*: a high effective-count child carries the
-/// high-leverage variables (involved in the most paths / clauses).
-/// Visiting those first triggers larger propagation cascades and
-/// yields conflicts higher in the tree → shorter, more general
-/// learned clauses.  Ascending fought VSIDS by surfacing low-leverage
-/// variables first; descending reinforces it.  Empirically (evolved +
-/// validated on the `evo/` struct-eff set): descending solves +3 more
-/// instances and runs ~2.7× faster than ascending at a 30s budget.
-/// Found via the `evo/evolve/` OpenEvolve rig; see its README.
+/// **Why descending (counterintuitive).**  The original heuristic
+/// sorted *ascending* — visit low-count, tightly-constrained children
+/// first to "fail fast."  Good DFS instinct, but the eff layer sits on
+/// a full CDCL engine that finds contradictions via propagation +
+/// conflict analysis, not by walking to complementary leaves.  What
+/// CDCL benefits from is good *decision variables*: a high-count child
+/// carries the high-leverage variables (in the most paths/clauses), so
+/// deciding them first triggers larger propagation cascades and yields
+/// conflicts higher in the tree → shorter, more general learned
+/// clauses.  Ascending fought VSIDS; descending reinforces it.  The
+/// same principle applies to `prod_visit_order` below.
 ///
-/// Soundness is unaffected: Sum is visit-all, so ANY permutation
-/// produces identical SAT/UNSAT verdicts — only search *speed*
-/// changes.
+/// Empirically established on the `evo/` struct-eff set: the
+/// ascending→descending flip (sum, then prod) gains +2 solved at both
+/// 30s and 60s budgets.  The prod flip was found by the
+/// `evo/evolve/` OpenEvolve rig; the sum flip by hand.  See its README.
 fn sum_visit_order(counts: &[f64], tau: f64) -> Vec<usize> {
     let n = counts.len();
     if !should_reorder_sum(counts, tau) {
         return (0..n).collect();
     }
     let mut idx: Vec<usize> = (0..n).collect();
-    // Descending: `counts[b]` vs `counts[a]` (note the swap) puts
-    // high-count children first.  See the doc comment for why.
-    idx.sort_by(|&a, &b|
+    // Order among equal-count children is soundness-irrelevant (Sum is
+    // visit-all), so use the cheaper unstable sort to save CPU.
+    idx.sort_unstable_by(|&a, &b|
         counts[b].partial_cmp(&counts[a]).unwrap_or(std::cmp::Ordering::Equal));
     idx
 }
 
-/// Prod-alt visit order from a slice of per-alt effective counts.
-/// Filters zero-count alts (provably blocked) then sorts ascending
-/// by count so the "tightest" surviving alts get tried first.
+/// Prod-alt visit order: filter zero-count alts (provably blocked),
+/// then sort **descending** by count so the "richest" surviving alts
+/// (the branches with the most satisfying paths beneath them) are
+/// tried first — reaches SAT witnesses faster in the DFS, and feeds
+/// CDCL better decisions on UNSAT (same "high-leverage first"
+/// principle as `sum_visit_order`).  Infinite counts ("unknown", parent
+/// not indexed) sort *after* finite ones — defer the unknowns.
+/// Soundness: every positive-count alt is kept (only zero-count,
+/// provably-blocked alts are dropped); reordering the kept set can't
+/// change the verdict.
 fn prod_visit_order(counts: &[f64]) -> Vec<usize> {
     let mut keep: Vec<(usize, f64)> = counts.iter().enumerate()
         .filter_map(|(i, &c)| if c > 0.0 { Some((i, c)) } else { None })
         .collect();
-    keep.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    // Prod order among equal-count alts is free, so use unstable sort.
+    keep.sort_unstable_by(|a, b| {
+        let (af, bf) = (a.1.is_finite(), b.1.is_finite());
+        if af && bf {
+            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
+        } else if af {
+            std::cmp::Ordering::Less    // finite before infinite
+        } else if bf {
+            std::cmp::Ordering::Greater
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    });
     keep.into_iter().map(|(i, _)| i).collect()
 }
 

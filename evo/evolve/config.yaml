@@ -37,6 +37,25 @@ llm:
   # reasoning budget (the real cost/quality lever) is set via
   # `reasoning_effort` injected at the LiteLLM proxy — see run.sh's
   # EFFORT env var.
+  #
+  # Per-call request timeout (seconds).  Default 60 is too short for
+  # adaptive-thinking effort: at EFFORT=medium/high Opus spends well
+  # over a minute reasoning, so 60s calls get abandoned + retried
+  # (and a too-slow call burns all 4 retries identically → wasted
+  # iteration + possibly billed thinking tokens).  300s comfortably
+  # covers medium/high effort; the per-iteration eval is minutes
+  # anyway, so a slow LLM call isn't the bottleneck.
+  timeout: 300
+  # Max output tokens per call.  Default 4096 is too small with
+  # adaptive thinking: THINKING tokens count against this budget, so
+  # at EFFORT=medium/high the reasoning can consume the whole 4096
+  # and leave nothing for the actual code response → empty content →
+  # "LLM returned None response".  This is a CAP, not a target — you
+  # only pay for tokens actually generated (governed by `effort`), so
+  # a generous cap costs nothing extra and just prevents truncation.
+  # 16000 leaves comfortable room for medium-effort thinking (~8-10k)
+  # plus the code diff (~2-3k); bump toward 32000 if you go high.
+  max_tokens: 16000
   models:
     - name: "claude-opus"     # via LiteLLM proxy → bedrock or direct
       weight: 0.75

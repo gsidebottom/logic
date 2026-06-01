@@ -2449,6 +2449,14 @@ fn main() {
     }
 
     eprintln!("c backend: {}", args.backend.name());
+    // CaDiCaL runs its own inprocessing; the matrix-method `--preprocess`
+    // pass is never applied to it (the gate lives in the Matrix arm
+    // below).  Say so explicitly so it's clear from the log that a
+    // cadical run does NO NNF preprocessing, regardless of the
+    // (ignored) --preprocess flag.
+    if matches!(args.backend, BackendChoice::Cadical) {
+        eprintln!("c preprocess: n/a (CaDiCaL backend runs its own inprocessing)");
+    }
     // Only log eff-tau when it's been changed from the default —
     // keeps the banner unchanged for the common case so existing
     // log parsers don't trip over a new line.
@@ -2604,6 +2612,18 @@ fn main() {
         }
     };
     let elapsed_ms = t.elapsed().as_secs_f64() * 1000.0;
+
+    // A live progress display renders with a leading `\r` and NO
+    // trailing newline, so when the search finishes the cursor is left
+    // mid-line.  Terminate that line before printing the verdict —
+    // otherwise the verdict gets glued onto the last progress frame
+    // (e.g. `c CaDiCaL: … 0.2sc UNSAT in 260ms`) and a line-anchored
+    // parser like run_benchmark's can't match `^c (SAT|UNSAT) in …`,
+    // reporting UNKNOWN for a problem that was actually solved.  (The
+    // TIMEOUT path already leads with `\n` for exactly this reason.)
+    if args.show_progress {
+        eprintln!();
+    }
 
     match outcome {
         SearchOutcome::Unsat => {

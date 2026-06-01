@@ -90,6 +90,10 @@ def short_name(rec: dict) -> str:
 # `c SAT in 12.3ms`, `c UNSAT in 254.0ms`, `c TIMEOUT after 30s`
 RESULT_RE  = re.compile(r"^c (SAT|UNSAT) in (.+)$")
 TIMEOUT_RE = re.compile(r"^c TIMEOUT after (.+)$")
+# `c INTERRUPTED after 1234.5ms` — sat caught SIGINT (Ctrl-C) and bailed
+# mid-search.  Recognise it so an interrupted worker is reported as
+# INTERRUPTED, not misclassified as an UNKNOWN *solver* verdict.
+INTERRUPTED_RE = re.compile(r"^c INTERRUPTED after (.+)$")
 SHORT_RE   = re.compile(r"^s (SATISFIABLE|UNSATISFIABLE)$")
 # `c stats paths=6.319e180 log10_total_paths=180.8007 conflicts=31227
 # restarts=115 elapsed_ms=2998.441` — emitted unconditionally by sat at
@@ -192,6 +196,10 @@ def parse_sat_output(text: str) -> Tuple[str, str, SatStats]:
         if m:
             result, time_str = "TIMEOUT", fmt_time(m.group(1))
             continue
+        m = INTERRUPTED_RE.match(ln)
+        if m:
+            result, time_str = "INTERRUPTED", fmt_time(m.group(1))
+            continue
         m = SHORT_RE.match(ln)
         if m:
             short = "UNSAT" if m.group(1) == "UNSATISFIABLE" else "SAT"
@@ -209,6 +217,20 @@ def parse_sat_output(text: str) -> Tuple[str, str, SatStats]:
                 pass
     if result == "UNKNOWN" and short is not None:
         return short, "<0.001s", stats
+    if result == "UNKNOWN":
+        # Defensive fallback: a live `--progress` frame ends with `\r`
+        # and no newline, so a fast verdict can get glued onto it
+        # (`c CaDiCaL: … 0.2sc UNSAT in 260ms`), defeating the
+        # line-anchored matches above.  `sat` now emits a separating
+        # newline, but search the whole cleaned text too so we stay
+        # correct against older binaries / any other glue.  Only runs
+        # when nothing matched, so it can't override a real verdict.
+        m = re.search(r"c (SAT|UNSAT) in (\S+)", clean)
+        if m:
+            return m.group(1), fmt_time(m.group(2)), stats
+        m = re.search(r"c (TIMEOUT|INTERRUPTED) after (\S+)", clean)
+        if m:
+            return m.group(1), fmt_time(m.group(2)), stats
     return result, time_str, stats
 
 
@@ -1067,6 +1089,17 @@ def solve_one(
         rc, stderr_text, stdout_text = run_sat_with_pty(cmd, tmp_path, on_frame)
         result, time_str, stats = parse_sat_output(stderr_text)
 
+        # A worker killed mid-solve — by Ctrl-C (SIGTERM from
+        # _kill_all_running) or by the OS (e.g. SIGKILL on OOM) — may
+        # print no verdict line at all, so parse returns UNKNOWN.  That
+        # is interrupted/incomplete work, NOT a genuine "the solver
+        # couldn't decide" result; label it INTERRUPTED so a Ctrl-C'd
+        # run's report isn't dominated by misleading UNKNOWN rows.
+        # (rc < 0 ⇒ the child died on signal -rc.)
+        if result == "UNKNOWN" and (_shutdown.is_set()
+                                    or (rc is not None and rc < 0)):
+            result = "INTERRUPTED"
+
         # Witness check MUST happen here — the CNF is unlinked in
         # `finally` below.
         if verify_witness and result == "SAT" and tmp_path is not None:
@@ -1350,7 +1383,11 @@ def main() -> int:
     print(f"index:                {args.index}  ({len(records)} records)")
     print(f"timeout per problem:  {args.timeout}s")
     print(f"backend:              {args.backend}")
-    print(f"preprocess:           {args.preprocess or '<sat default>'}")
+    # CaDiCaL ignores the matrix `--preprocess` pass (it runs its own
+    # inprocessing), so don't imply a preprocess setting applies to it.
+    pp_display = ("n/a (CaDiCaL runs its own)" if args.backend == "cadical"
+                  else (args.preprocess or "<sat default>"))
+    print(f"preprocess:           {pp_display}")
     print(f"parallel workers:     {args.parallel}")
     print(f"progress TUI:         {'on' if tui_on else 'off'}")
     if args.sat_arg:

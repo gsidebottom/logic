@@ -111,62 +111,59 @@ prompt:
   # Surface the contract from the EVOLVE-BLOCK doc-comment.  This is
   # what gets injected into every mutation prompt as context.
   system_message: |
-    You are improving the ordering/pruning-policy helpers for a
-    matrix-method SAT solver's "eff" (effective-count) backend.  Three
-    pure Rust functions are in play — see the EVOLVE-BLOCK comment for
-    the full contract:
+    You are tuning the SEARCH-CONTROL heuristics of a matrix-method SAT
+    solver's CDCL engine.  Two pure Rust functions are in play — see the
+    EVOLVE-BLOCK comment for the full contract:
 
-      should_reorder_sum(counts, tau) -> bool
-      sum_visit_order(counts, tau) -> Vec<usize>   # visit order for Sum children
-      prod_visit_order(counts) -> Vec<usize>       # visit order for Prod alts
+      restart_interval(restart_count, restart_unit) -> usize
+          # conflicts to allow before the next restart
+      vsids_decay(restart_count) -> f64
+          # VSIDS activity decay applied per conflict (bump /= decay)
 
-    THIS IS OPEN EVOLUTION — you MAY make UNSOUND changes:
-      * `sum_visit_order` MAY DROP children (return a subsequence) and
-        `prod_visit_order` MAY DROP positive-count alts — i.e. prune
-        branches aggressively to cut the search.  This can make the
-        search unsound; that is allowed and expected.
-      * Soundness is enforced DOWNSTREAM, not by you: every verdict is
-        cross-checked against a drat-verified ground-truth label and
-        every SAT model is re-checked against the CNF.  A WRONG verdict
-        on any benchmark instance scores the candidate 0 (sound=0).  So
-        prune as hard as you like AS LONG AS the verdicts stay correct.
+    These are PURE EFFICIENCY KNOBS.  CDCL reaches the same verdict for
+    ANY restart schedule or decay rate — only the SPEED of convergence
+    changes — so you CANNOT make a wrong answer here.  Optimise freely
+    for speed.  (The caller clamps your outputs: restart interval >= 1,
+    decay into (0,1); a degenerate/NaN return is replaced by a safe
+    default, so don't worry about edge cases beyond returning a number.)
 
-    HARD RULES (never relaxed):
-      * Returned indices MUST be in range 0..counts.len() and MUST NOT
-        be duplicated (out-of-range/dup indices are silently dropped).
-      * Pure functions: no global state, no I/O, no panics on edge
-        cases (empty input, all zeros, NaN/Inf in counts).
+    HARD RULES:
+      * Pure functions: no global state, no I/O, no panics.
+      * `restart_interval` returns conflicts-until-next-restart (a small
+        return → frequent restarts → broad exploration; a large return →
+        rare restarts → deep dives).  Seed: luby(restart_count+1)*unit
+        with unit≈100.  You may call the in-scope `luby(i)` helper
+        (1-indexed Luby: 1,1,2,1,1,2,4,8,…) or invent any schedule.
+      * `vsids_decay` returns the per-conflict decay (seed: 0.95).
+        Lower = forget faster / chase recent conflicts; higher = longer
+        memory.  May depend on restart_count to anneal over time.
 
-    DESIGN HINTS:
-      * `counts[i]` is the effective path count below child/alt i; small
-        values mean "few paths through here," 0 means "provably no
-        paths" (always safe to prune), Inf means "count unknown".
-      * The baseline sorts descending by count (high-leverage first) and
-        drops nothing beyond zero-count alts.  The new lever is PRUNING:
-        e.g. drop Prod alts whose effective count is a tiny fraction of
-        the parent's total, or cap the branching factor — betting the
-        dropped branches hold no solution.  When the bet is right you
-        solve far faster; when wrong, that instance scores 0, so the
-        evolutionary pressure is toward pruning that stays correct.
-      * Threshold/ratio-based drops, top-k caps, value-aware grouping,
-        and multi-key sorts are all on the table.
+    DESIGN IDEAS (these are the levers competitive CDCL solvers tune):
+      * Restart schedule: scale the Luby unit up or down; switch to a
+        geometric (unit * r^restart_count) or arithmetic schedule; very
+        frequent early restarts then slower; glucose-style aggressive
+        restarts.  Restart frequency is one of the highest-leverage CDCL
+        knobs on hard structured UNSAT.
+      * VSIDS decay: a higher decay (e.g. 0.99) keeps long-range history
+        (good for some structured instances); a lower one (0.90) reacts
+        to the current conflict cluster; annealing decay over restarts.
+      * The two interact — e.g. frequent restarts pair well with a more
+        reactive (lower) decay.
 
     You will be scored on (solved dominates):
       1. `solved`           — # of correct SAT/UNSAT verdicts in budget
       2. `neg_time`         — −total CPU on solved problems (more = faster)
       3. `timeout_progress` — partial credit on instances you DON'T solve:
-         how far the search got (paths covered, in log-space, blended
-         with CDCL conflict throughput).  Many hard instances solve 0
-         and have astronomically large path spaces, so `solved` alone is
-         flat there — THIS term is the gradient.  A policy whose pruning
-         lets the search go deeper / do more CDCL work on the unsolved
-         instances scores higher even without tipping them to solved.
+         how far the search got (covered paths + CDCL conflict throughput,
+         in log space).  Many hard instances solve 0 with astronomically
+         large search spaces, so `solved` is flat there — THIS term is the
+         gradient.  A schedule/decay that lets the search do MORE work
+         (more conflicts, deeper coverage) in the budget scores higher
+         even without tipping an instance to solved, and is the path to
+         eventually solving more.
 
-    So aim for pruning that (a) keeps every verdict correct, and (b) makes
-    the search progress faster on the instances still timing out — that's
-    the path to eventually solving more.  Make small, targeted changes; a
-    single wrong verdict zeroes the whole candidate, so prune in a way
-    that provably (or empirically) can't discard the last solution.
+    Make small, targeted changes and reason about WHY a schedule/decay
+    should converge faster on large structured instances.
   num_top_programs: 3
   num_diverse_programs: 2
 

@@ -332,6 +332,64 @@ fn luby(mut i: usize) -> usize {
     }
 }
 
+// =====================================================================
+// EVOLVE-BLOCK-START
+// =====================================================================
+//
+// **CDCL search-control policy — restart schedule + VSIDS decay.**
+//
+// These two pure functions are the entire evolvable surface of the
+// CDCL engine.  Everything else (watched-literal BCP, 1UIP conflict
+// analysis, the trail, clause learning) is load-bearing for
+// correctness and stays fixed.
+//
+// SOUND BY CONSTRUCTION: both are pure EFFICIENCY knobs.  CDCL reaches
+// the same verdict for ANY decision order, restart schedule, or
+// activity-decay rate (only learned clauses are ever dropped; original
+// clauses never are) — so no value these return can make a wrong
+// SAT/UNSAT, only change how fast the search converges.  The caller
+// also CLAMPS the outputs (restart interval >= 1 so it can't hang;
+// decay into the open interval (0,1) so VSIDS stays stable), so a
+// degenerate/NaN return is harmless.
+//
+// INPUTS:
+//   `restart_count` — how many restarts have already happened (0 during
+//     the first interval).  Use it to make the schedule / decay
+//     ADAPTIVE (e.g. explore broadly early, dive deep later).
+//   `restart_unit`  — the configured base restart interval (100 in
+//     production); the seed scales the Luby sequence by it.
+// You may call the module-level `luby(i)` helper (1-indexed Luby
+// sequence 1,1,2,1,1,2,4,…) or compute any other schedule.
+
+/// Conflicts to allow before the next restart, given the restart index.
+/// Seed: Luby(restart_count+1) × unit — the classic Luby policy.
+/// Ideas worth trying: a larger effective unit (fewer restarts, deeper
+/// dives on hard UNSAT), geometric/linear schedules, or a unit that
+/// grows with `restart_count`.
+fn restart_interval(restart_count: usize, restart_unit: usize) -> usize {
+    restart_unit * luby(restart_count + 1)
+}
+
+/// VSIDS activity decay applied per conflict (`bump_value /= decay`),
+/// given the restart index.  Seed: constant 0.95 (MiniSAT-style).
+/// Lower = forget faster (more reactive to recent conflicts); higher =
+/// longer memory.  May vary with `restart_count` to anneal over time.
+fn vsids_decay(_restart_count: usize) -> f64 {
+    0.95
+}
+
+// =====================================================================
+// EVOLVE-BLOCK-END
+// =====================================================================
+
+/// Clamp an evolved decay into the well-behaved open interval (0, 1),
+/// falling back to the MiniSAT default on a degenerate/NaN value.
+/// Always applied (NOT an evolve knob) so VSIDS stays stable no matter
+/// what `vsids_decay` returns.
+fn clamp_decay(d: f64) -> f64 {
+    if d.is_finite() && d > 0.0 && d < 1.0 { d } else { 0.95 }
+}
+
 /// Result of 1UIP conflict analysis: the new clause to add, plus the
 /// non-chronological backjump level.
 ///
@@ -1466,7 +1524,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             // `bump_value /= decay_factor` runs after each conflict.
             var_activity:     Vec::new(),
             bump_value:       1.0,
-            decay_factor:     0.95,
+            decay_factor:     clamp_decay(vsids_decay(0)),
             saved_phase:      Vec::new(),
             emit_covers:      false,
             static_cover_emitted: false,
@@ -1488,7 +1546,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             // thresholds follow the Luby sequence.
             restart_pending:              false,
             conflicts_since_last_restart: 0,
-            restart_threshold:            100,
+            restart_threshold:            restart_interval(0, 100).max(1),
             restart_count:                0,
             restart_unit:                 100,
         }
@@ -1520,7 +1578,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             // `bump_value /= decay_factor` runs after each conflict.
             var_activity:     Vec::new(),
             bump_value:       1.0,
-            decay_factor:     0.95,
+            decay_factor:     clamp_decay(vsids_decay(0)),
             saved_phase:      Vec::new(),
             emit_covers:      false,
             static_cover_emitted: false,
@@ -1542,7 +1600,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             // thresholds follow the Luby sequence.
             restart_pending:              false,
             conflicts_since_last_restart: 0,
-            restart_threshold:            100,
+            restart_threshold:            restart_interval(0, 100).max(1),
             restart_count:                0,
             restart_unit:                 100,
         }
@@ -1705,11 +1763,16 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             *c = 0;
         }
 
-        // Advance the Luby schedule for the next restart's threshold.
+        // Advance to the next restart's threshold via the evolvable
+        // schedule (seed: luby(restart_count+1)*unit).  Clamp >= 1 so a
+        // degenerate policy can't yield a 0 threshold (→ restart storm).
         self.restart_count += 1;
-        // 1-indexed Luby; first call here goes from initial threshold
-        // (luby(1)*unit) to luby(2)*unit, etc.
-        self.restart_threshold = self.restart_unit * luby(self.restart_count + 1);
+        self.restart_threshold =
+            restart_interval(self.restart_count, self.restart_unit).max(1);
+        // VSIDS decay may also adapt across restarts (seed: constant
+        // 0.95, so no-op for the seed).  Pure-efficiency; clamped to
+        // (0,1) so VSIDS stays stable.
+        self.decay_factor = clamp_decay(vsids_decay(self.restart_count));
     }
 }
 

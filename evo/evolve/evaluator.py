@@ -5,8 +5,9 @@ OpenEvolve evaluator for the matrix-method SAT solver's `eff` backend.
 For every candidate program OpenEvolve hands us, this evaluator:
 
   1. Spins up a temporary git worktree of the repo (fast on APFS).
-  2. Splices the candidate's EVOLVE-BLOCK back into
-     `src/dual/path_effective.rs` in the worktree.
+  2. Splices the candidate's EVOLVE-BLOCK back into the host source
+     file (TARGET_REL — currently src/controller/cdcl.rs, the CDCL
+     search-control policy) in the worktree.
   3. Runs `cargo build --release --bin sat` in the worktree.
   4. Runs `run_benchmark.py` on a tiered slice of `evo/`, scoring:
        * compiled         — did cargo build succeed?
@@ -60,7 +61,12 @@ THIS_FILE = Path(__file__).resolve()
 EVOLVE_DIR = THIS_FILE.parent                 # evo/evolve
 EVO_DIR    = EVOLVE_DIR.parent                # evo
 REPO_ROOT  = EVO_DIR.parent                    # repo root
-TARGET_RS  = REPO_ROOT / "src" / "dual" / "path_effective.rs"
+# The source file hosting the EVOLVE-BLOCK we splice candidates into.
+# Currently the CDCL search-control policy (restart schedule + VSIDS
+# decay) in cdcl.rs; the visit-order block in path_effective.rs is
+# frozen at its promoted optimum (saturated as an evolve target).
+TARGET_REL = Path("src") / "controller" / "cdcl.rs"
+TARGET_RS  = REPO_ROOT / TARGET_REL
 RUN_BENCH  = REPO_ROOT / "tools" / "gbd" / "run_benchmark.py"
 EVO_INDEX  = EVO_DIR / "curated_struct_eff.jsonl"
 
@@ -182,26 +188,24 @@ def make_scratch() -> Scratch:
 
 # ─── Build + benchmark ────────────────────────────────────────────────
 def cargo_build(worktree: Path) -> Optional[str]:
-    """Build `sat` (release, `--features evolve_wide`) in the worktree.
-    Returns None on success; the stderr tail on failure (capped at 4KB
-    for OpenEvolve's artifact stream).
+    """Build `sat` (release, default features) in the worktree.  Returns
+    None on success; the stderr tail on failure (capped at 4KB for
+    OpenEvolve's artifact stream).
 
-    `evolve_wide` is OPEN-evolution mode: it COMPILES OUT the
-    permutation / keep-reachable guards so a mutation MAY drop branches
-    (aggressive pruning) and actually run — we *want* to evaluate those,
-    not hard-abort them.
+    The current evolve target is the CDCL search-control block (restart
+    schedule + VSIDS decay in cdcl.rs).  These are SOUND BY CONSTRUCTION
+    — pure efficiency knobs that can't change a verdict — so no special
+    feature flag is needed: the EVOLVE functions are always compiled and
+    their outputs clamped (restart interval >= 1, decay in (0,1)) so a
+    degenerate policy can't hang or destabilise the search.  (Contrast
+    the earlier visit-order PRUNING evolution, which needed `evolve_wide`
+    to relax the soundness guards; that's not active here.)
 
-    Substrate is the FAST arena `eff` backend (not the cover-emitting
-    `eff_cover`): on the labelled evo set the per-candidate matrix-cover
-    proof added no soundness over the ground-truth (drat-verified label)
-    mismatch + SAT-witness checks, while the slower NNF engine cost ~9
-    solves of ceiling and flattened the timeout-progress signal.  So
-    soundness here rests on ground-truth + witness; the cover/CaDiCaL
-    proof is run once on the *promoted* candidate (see promote step).
-    No sat-cover-verify needed in the hot per-candidate build."""
+    Substrate is the FAST arena `eff` backend.  Soundness still rests on
+    the ground-truth (drat-verified label) mismatch + SAT-witness checks
+    as belt-and-suspenders."""
     r = subprocess.run(
-        ["cargo", "build", "--release", "--bin", "sat",
-         "--features", "evolve_wide"],
+        ["cargo", "build", "--release", "--bin", "sat"],
         cwd=worktree, capture_output=True, text=True,
         timeout=BUILD_TIMEOUT_S,
     )
@@ -451,8 +455,8 @@ def evaluate(candidate_path: str, tier: Optional[str] = None) -> Dict:
     scratch = None
     try:
         scratch = make_scratch()
-        # Splice the candidate into the scratch tree's path_effective.rs.
-        tgt = scratch.path / "src" / "dual" / "path_effective.rs"
+        # Splice the candidate into the scratch tree's EVOLVE-BLOCK host.
+        tgt = scratch.path / TARGET_REL
         spliced = splice_evolve_block(tgt.read_text(), new_block)
         tgt.write_text(spliced)
 

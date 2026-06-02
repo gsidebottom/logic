@@ -142,9 +142,21 @@ EOF
 # string when no auth is enforced and the master_key matches.
 export OPENAI_API_KEY="sk-evo-local-noauth-needed"
 
+# Resolve litellm from the uv venv so run.sh works WITHOUT the venv
+# activated (mirrors the `uv run openevolve-run` call below).  Calling
+# the binary directly — rather than `uv run litellm` — keeps `$!`
+# pointing at the real proxy process so the cleanup trap kills it.
+LITELLM_BIN="$REPO_ROOT/.venv/bin/litellm"
+[ -x "$LITELLM_BIN" ] || LITELLM_BIN=$(command -v litellm || true)
+if [ -z "$LITELLM_BIN" ]; then
+    echo "ERROR: litellm not found (looked in $REPO_ROOT/.venv/bin and PATH)." >&2
+    echo "       Run ./setup.sh from the repo root to build the uv venv." >&2
+    exit 1
+fi
+
 echo "→ starting LiteLLM proxy on :$LITELLM_PORT ..."
 # Background the proxy; capture pid so we can kill it on exit.
-litellm --config "$PROXY_CFG" --port "$LITELLM_PORT" --num_workers 1 \
+"$LITELLM_BIN" --config "$PROXY_CFG" --port "$LITELLM_PORT" --num_workers 1 \
         > "$HERE/runs/.litellm.log" 2>&1 &
 PROXY_PID=$!
 

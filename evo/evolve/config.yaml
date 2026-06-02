@@ -111,45 +111,58 @@ prompt:
   # Surface the contract from the EVOLVE-BLOCK doc-comment.  This is
   # what gets injected into every mutation prompt as context.
   system_message: |
-    You are improving the pure ordering-policy helpers for a
-    matrix-method SAT solver's "eff" (effective-count) backend.
-    Three Rust functions are in play — see the EVOLVE-BLOCK comment
-    for their contracts:
+    You are improving the ordering/pruning-policy helpers for a
+    matrix-method SAT solver's "eff" (effective-count) backend.  Three
+    pure Rust functions are in play — see the EVOLVE-BLOCK comment for
+    the full contract:
 
       should_reorder_sum(counts, tau) -> bool
-      sum_visit_order(counts, tau) -> Vec<usize>   # MUST be a permutation
-      prod_visit_order(counts) -> Vec<usize>       # MUST keep all positive counts
+      sum_visit_order(counts, tau) -> Vec<usize>   # visit order for Sum children
+      prod_visit_order(counts) -> Vec<usize>       # visit order for Prod alts
 
-    HARD RULES:
-      * `sum_visit_order` MUST return a permutation of 0..counts.len()
-        — every index exactly once.  Dropping any index makes the
-        solver unsound.
-      * `prod_visit_order` MUST include every index whose count > 0.0.
-        It MAY drop indices with count == 0.0 (that's the only valid
-        filtering).
+    THIS IS OPEN EVOLUTION — you MAY make UNSOUND changes:
+      * `sum_visit_order` MAY DROP children (return a subsequence) and
+        `prod_visit_order` MAY DROP positive-count alts — i.e. prune
+        branches aggressively to cut the search.  This can make the
+        search unsound; that is allowed and expected.
+      * Soundness is enforced DOWNSTREAM, not by you: every verdict is
+        cross-checked against a drat-verified ground-truth label, every
+        SAT model is re-checked against the CNF, and every UNSAT is
+        re-checked against a matrix cover proof.  A WRONG verdict on any
+        benchmark instance scores the candidate 0 (sound=0).  So prune
+        as hard as you like AS LONG AS the verdicts stay correct.
+      * A correct UNSAT that can't be proven still counts as a solve
+        (better than a timeout); a complete cover proof is a bonus.
+
+    HARD RULES (never relaxed):
+      * Returned indices MUST be in range 0..counts.len() and MUST NOT
+        be duplicated (out-of-range/dup indices are silently dropped).
       * Pure functions: no global state, no I/O, no panics on edge
         cases (empty input, all zeros, NaN/Inf in counts).
 
     DESIGN HINTS:
-      * `counts[i]` is the effective path count below child i; small
+      * `counts[i]` is the effective path count below child/alt i; small
         values mean "few paths through here," 0 means "provably no
-        paths" (prune), Inf means "count unknown — treat as large".
-      * The current baseline sorts ascending by count and gates the
-        sort on a log10 variance threshold.  Wins on this benchmark
-        family come from finding SAT witnesses faster (steering DFS
-        to subtrees that close quickly) and producing tighter CDCL
-        proofs.
-      * Multi-key sort orders, non-monotone tie-breaks, soft caps on
-        the sort cost, and value-aware grouping are all on the table.
-        Look for ideas the baseline doesn't capture.
+        paths" (always safe to prune), Inf means "count unknown".
+      * The baseline sorts descending by count (high-leverage first) and
+        drops nothing beyond zero-count alts.  The new lever is PRUNING:
+        e.g. drop Prod alts whose effective count is a tiny fraction of
+        the parent's total, or cap the branching factor — betting the
+        dropped branches hold no solution.  When the bet is right you
+        solve far faster; when wrong, that instance scores 0, so the
+        evolutionary pressure is toward pruning that stays correct.
+      * Threshold/ratio-based drops, top-k caps, value-aware grouping,
+        and multi-key sorts are all on the table.
 
-    You will be scored on:
-      1. `solved`           — # of SAT/UNSAT verdicts in 60s budget
+    You will be scored on (solved dominates):
+      1. `solved`           — # of correct SAT/UNSAT verdicts in budget
       2. `neg_time`         — −total CPU on solved problems (more = faster)
       3. `timeout_progress` — mean path-fraction covered on TIMEOUT rows
+      (proven_unsat is tracked but is a bonus, not part of the score.)
 
-    Make small, targeted changes.  Keep the contract.  No grand
-    rewrites — they almost always regress soundness.
+    Make small, targeted changes.  A single wrong verdict zeroes the
+    whole candidate — so when you prune, prune in a way that provably
+    (or empirically) can't discard the last solution.
   num_top_programs: 3
   num_diverse_programs: 2
 

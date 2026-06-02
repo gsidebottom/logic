@@ -10,29 +10,37 @@
 // prefix tracking, CDCL integration) is load-bearing for correctness
 // and stays fixed.
 //
-// CONTRACTS — DO NOT BREAK (the evaluator will reject candidates
-// that violate these, via cross-checking against CaDiCaL verdicts on
-// the evo/ benchmark set):
+// CONTRACTS — these depend on the build mode:
+//
+//   * NARROW / sound-by-construction (default, or `--features
+//     evolve_guard`): the two ordering fns MUST preserve every branch
+//     (permutation for Sum; keep-every-positive-count for Prod), so the
+//     policy can only change *order*, never the verdict.
+//   * WIDE / open evolution (`--features evolve_wide`): a policy MAY
+//     DROP branches for aggressive pruning (sum_visit_order may return a
+//     subsequence; prod_visit_order may drop reachable alts).  This can
+//     make the search UNSOUND — that's allowed.  Soundness is enforced
+//     DOWNSTREAM by the evaluator (matrix cover proof where available +
+//     SAT-witness check + ground-truth drat-verified labels), NOT by
+//     construction.  A wrong UNSAT/SAT on the benchmark scores 0; a
+//     correct-but-unprovable UNSAT still counts as a solve.
+//
+// HARD RULES (both modes — never relaxed, enforced by an always-on
+// sanitizer so a violation can't crash, only get cleaned):
+//   * indices MUST be in range `0..counts.len()` and MUST NOT be
+//     duplicated (out-of-range / dup indices are silently dropped).
+//   * all three fns MUST be pure (no I/O, no panic on empty/NaN/Inf).
 //
 //   `should_reorder_sum(counts, tau) -> bool`
-//      Pure, no side effects.  When `false`, the caller skips the
-//      reorder and uses identity order — that's a sound shortcut
-//      (Sum semantics are visit-all in any order).
-//
+//      When `false`, the caller uses identity order (sound: Sum is
+//      visit-all in any order).
 //   `sum_visit_order(counts, tau) -> Vec<usize>`
-//      MUST return a PERMUTATION of `0..counts.len()` — every index
-//      EXACTLY once, no duplicates, no drops.  Sum semantics
-//      require visiting every child to gather lits; dropping any
-//      breaks soundness.  The "no reorder" answer is the identity
-//      permutation.
-//
+//      Visit order for Sum children.  NARROW: a permutation of
+//      `0..counts.len()`.  WIDE: MAY drop indices (prune children).
 //   `prod_visit_order(counts) -> Vec<usize>`
-//      Returns a subset of `0..counts.len()` in visit order.  MAY
-//      drop indices whose `counts[i] == 0.0` (those are provably
-//      unreachable through this Prod given the current prefix; the
-//      whole point of the eff layer is to prune them).  MUST NOT
-//      drop any index with `counts[i] > 0.0` and MUST NOT duplicate
-//      any index.  Order of the kept indices is free.
+//      Visit order for Prod alts (subset).  Both modes MAY drop
+//      zero-count alts (provably blocked).  WIDE: MAY also drop
+//      positive-count alts (aggressive pruning).
 //
 // INPUTS:
 //   `counts[i]` = the static "effective count" for the i-th
@@ -76,10 +84,26 @@ fn should_reorder_sum(counts: &[f64], tau: f64) -> bool {
     (max_nz / min_nz).log10() >= tau
 }
 
-/// Sum-child visit order: descending by count (high-leverage first).
-/// Visiting high-count children early feeds CDCL better decision
-/// variables and produces tighter proofs (matches the best-scoring
-/// baseline).  Soundness is order-independent: Sum visits all children.
+/// Sum-child visit order: **descending** by count (high-leverage
+/// first).  Soundness is order-independent — Sum is visit-all, so any
+/// permutation gives identical verdicts; only search *speed* changes.
+///
+/// **Why descending (counterintuitive).**  The original heuristic
+/// sorted *ascending* — visit low-count, tightly-constrained children
+/// first to "fail fast."  Good DFS instinct, but the eff layer sits on
+/// a full CDCL engine that finds contradictions via propagation +
+/// conflict analysis, not by walking to complementary leaves.  What
+/// CDCL benefits from is good *decision variables*: a high-count child
+/// carries the high-leverage variables (in the most paths/clauses), so
+/// deciding them first triggers larger propagation cascades and yields
+/// conflicts higher in the tree → shorter, more general learned
+/// clauses.  Ascending fought VSIDS; descending reinforces it.  The
+/// same principle applies to `prod_visit_order` below.
+///
+/// Empirically established on the `evo/` struct-eff set: the
+/// ascending→descending flip (sum, then prod) gains +2 solved at both
+/// 30s and 60s budgets.  The prod flip was found by the
+/// `evo/evolve/` OpenEvolve rig; the sum flip by hand.  See its README.
 fn sum_visit_order(counts: &[f64], tau: f64) -> Vec<usize> {
     let n = counts.len();
     if !should_reorder_sum(counts, tau) {
@@ -93,11 +117,16 @@ fn sum_visit_order(counts: &[f64], tau: f64) -> Vec<usize> {
     idx
 }
 
-/// Prod-alt visit order from a slice of per-alt effective counts.
-/// Filters zero-count alts (provably blocked) then sorts descending
-/// by count so the "richest" surviving alts (most satisfying paths)
-/// get tried first — finds SAT witnesses faster in DFS.
-/// Infinite counts (unknown) are placed after finite ones.
+/// Prod-alt visit order: filter zero-count alts (provably blocked),
+/// then sort **descending** by count so the "richest" surviving alts
+/// (the branches with the most satisfying paths beneath them) are
+/// tried first — reaches SAT witnesses faster in the DFS, and feeds
+/// CDCL better decisions on UNSAT (same "high-leverage first"
+/// principle as `sum_visit_order`).  Infinite counts ("unknown", parent
+/// not indexed) sort *after* finite ones — defer the unknowns.
+/// Soundness: every positive-count alt is kept (only zero-count,
+/// provably-blocked alts are dropped); reordering the kept set can't
+/// change the verdict.
 fn prod_visit_order(counts: &[f64]) -> Vec<usize> {
     let mut keep: Vec<(usize, f64)> = counts.iter().enumerate()
         .filter_map(|(i, &c)| if c > 0.0 { Some((i, c)) } else { None })

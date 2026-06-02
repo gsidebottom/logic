@@ -178,19 +178,21 @@ def make_scratch() -> Scratch:
 
 # ─── Build + benchmark ────────────────────────────────────────────────
 def cargo_build(worktree: Path) -> Optional[str]:
-    """Build `sat --release --features evolve_guard` in the worktree.
-    Returns None on success; the stderr tail on failure (capped at
-    4KB for OpenEvolve's artifact stream).
+    """Build `sat` + `sat-cover-verify` (release, `--features
+    evolve_wide`) in the worktree.  Returns None on success; the stderr
+    tail on failure (capped at 4KB for OpenEvolve's artifact stream).
 
-    `evolve_guard` turns on the runtime soundness-contract checks in
-    the eff layer (sum_visit_order must be a permutation;
-    prod_visit_order must keep all reachable alts).  A candidate that
-    violates a contract PANICS at search time → its problems fail →
-    it scores ~0.  This makes "guess UNSAT fast" inexpressible,
-    independent of the benchmark set's SAT/UNSAT balance."""
+    `evolve_wide` is OPEN-evolution mode: it COMPILES OUT the
+    permutation / keep-reachable guards so a mutation MAY drop branches
+    (aggressive pruning) and actually run — we *want* to evaluate those,
+    not hard-abort them.  Soundness is enforced downstream by the
+    run_benchmark gate: ground-truth (drat-verified label) mismatch +
+    SAT-witness + UNSAT cover-proof checks.  An always-on index
+    sanitizer still prevents any panic from a malformed index.
+    `sat-cover-verify` is needed for the --verify-unsat-proof gate."""
     r = subprocess.run(
         ["cargo", "build", "--release", "--bin", "sat",
-         "--features", "evolve_guard"],
+         "--bin", "sat-cover-verify", "--features", "evolve_wide"],
         cwd=worktree, capture_output=True, text=True,
         timeout=BUILD_TIMEOUT_S,
     )
@@ -210,7 +212,7 @@ def run_tier(worktree: Path, tier: str, out_dir: Path) -> Dict:
         "--project", str(REPO_ROOT),
         str(RUN_BENCH),
         "--index", str(EVO_INDEX),
-        "-b", "eff",
+        "-b", "eff_cover",
         "-t", str(cfg["timeout"]),
         "-j", str(cfg["parallel"]),
         "-o", str(out_md),
@@ -233,16 +235,20 @@ def run_tier(worktree: Path, tier: str, out_dir: Path) -> Dict:
                      "--project", str(worktree),
                      str(worktree / "tools" / "gbd" / "run_benchmark.py"),
                      "--index", str(EVO_INDEX),
-                     "-b", "eff",
+                     "-b", "eff_cover",
                      "-t", str(cfg["timeout"]),
                      "-j", str(cfg["parallel"]),
                      "-o", str(out_md),
                      "--no-progress",
-                     # Second soundness line of defense: re-check every
-                     # SAT model against the CNF (catches a valid-verdict
-                     # / bogus-witness candidate that the contract guard
-                     # + verdict-match would miss).
-                     "--verify-sat-witness"]
+                     # Soundness lines of defense beyond ground-truth
+                     # mismatch.  --verify-sat-witness: re-check every SAT
+                     # model against the CNF (catches a bogus witness).
+                     # --verify-unsat-proof: re-derive + check a matrix
+                     # cover for every UNSAT (a complete cover = proven
+                     # UNSAT; an incomplete one is just "unproven", still
+                     # a solve; a re-run that flips to SAT = hard fail).
+                     "--verify-sat-witness",
+                     "--verify-unsat-proof"]
     if cfg["limit"] > 0:
         cmd_pyproject.extend(["--limit", str(cfg["limit"])])
 
@@ -320,9 +326,18 @@ def score_from_payload(payload: Dict, per_problem_timeout_s: float) -> Dict:
     `per_problem_timeout_s` is the tier's per-instance timeout, used
     to normalize the speed component of `combined_score`."""
     results = payload.get("results", [])
+    # A soundness failure is any of: verdict ≠ proof-verified ground
+    # truth; bogus SAT witness; tripped evolve_guard; or an UNSAT whose
+    # cover re-run flipped to SAT (`unsat_proof_ok is False` — a direct
+    # contradiction).  NOTE: an *unprovable* UNSAT (`unsat_proof_ok is
+    # None`, cover incomplete) is NOT a failure — it's a correct solve we
+    # just couldn't certify (the matrix cover is incomplete for some
+    # UNSAT instances); soundness for those rests on the ground-truth
+    # label.  See the more-complete-unsat-proofs task.
     n_mismatch = sum(1 for r in results
                      if r.get("mismatch") or r.get("guard_abort")
-                     or r.get("witness_ok") is False)
+                     or r.get("witness_ok") is False
+                     or r.get("unsat_proof_ok") is False)
     if n_mismatch > 0:
         return {
             "combined_score": 0.0,
@@ -352,6 +367,12 @@ def score_from_payload(payload: Dict, per_problem_timeout_s: float) -> Dict:
         "neg_time":         -float(total_t),
         "timeout_progress": float(tp),
         "n_problems":       len(results),
+        # How many of the solved UNSATs carry a complete verified cover
+        # proof (informational — proofs are a bonus, not part of the
+        # solved-dominant combined_score; unprovable UNSATs still count
+        # as solves).
+        "proven_unsat":     sum(1 for r in results
+                                if r.get("unsat_proof_ok") is True),
     }
 
 

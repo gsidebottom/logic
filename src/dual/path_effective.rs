@@ -429,29 +429,37 @@ impl<Inner: PathSearchController> Drop for EffectiveCountWrapper<Inner> {
 // prefix tracking, CDCL integration) is load-bearing for correctness
 // and stays fixed.
 //
-// CONTRACTS — DO NOT BREAK (the evaluator will reject candidates
-// that violate these, via cross-checking against CaDiCaL verdicts on
-// the evo/ benchmark set):
+// CONTRACTS — these depend on the build mode:
+//
+//   * NARROW / sound-by-construction (default, or `--features
+//     evolve_guard`): the two ordering fns MUST preserve every branch
+//     (permutation for Sum; keep-every-positive-count for Prod), so the
+//     policy can only change *order*, never the verdict.
+//   * WIDE / open evolution (`--features evolve_wide`): a policy MAY
+//     DROP branches for aggressive pruning (sum_visit_order may return a
+//     subsequence; prod_visit_order may drop reachable alts).  This can
+//     make the search UNSOUND — that's allowed.  Soundness is enforced
+//     DOWNSTREAM by the evaluator (matrix cover proof where available +
+//     SAT-witness check + ground-truth drat-verified labels), NOT by
+//     construction.  A wrong UNSAT/SAT on the benchmark scores 0; a
+//     correct-but-unprovable UNSAT still counts as a solve.
+//
+// HARD RULES (both modes — never relaxed, enforced by an always-on
+// sanitizer so a violation can't crash, only get cleaned):
+//   * indices MUST be in range `0..counts.len()` and MUST NOT be
+//     duplicated (out-of-range / dup indices are silently dropped).
+//   * all three fns MUST be pure (no I/O, no panic on empty/NaN/Inf).
 //
 //   `should_reorder_sum(counts, tau) -> bool`
-//      Pure, no side effects.  When `false`, the caller skips the
-//      reorder and uses identity order — that's a sound shortcut
-//      (Sum semantics are visit-all in any order).
-//
+//      When `false`, the caller uses identity order (sound: Sum is
+//      visit-all in any order).
 //   `sum_visit_order(counts, tau) -> Vec<usize>`
-//      MUST return a PERMUTATION of `0..counts.len()` — every index
-//      EXACTLY once, no duplicates, no drops.  Sum semantics
-//      require visiting every child to gather lits; dropping any
-//      breaks soundness.  The "no reorder" answer is the identity
-//      permutation.
-//
+//      Visit order for Sum children.  NARROW: a permutation of
+//      `0..counts.len()`.  WIDE: MAY drop indices (prune children).
 //   `prod_visit_order(counts) -> Vec<usize>`
-//      Returns a subset of `0..counts.len()` in visit order.  MAY
-//      drop indices whose `counts[i] == 0.0` (those are provably
-//      unreachable through this Prod given the current prefix; the
-//      whole point of the eff layer is to prune them).  MUST NOT
-//      drop any index with `counts[i] > 0.0` and MUST NOT duplicate
-//      any index.  Order of the kept indices is free.
+//      Visit order for Prod alts (subset).  Both modes MAY drop
+//      zero-count alts (provably blocked).  WIDE: MAY also drop
+//      positive-count alts (aggressive pruning).
 //
 // INPUTS:
 //   `counts[i]` = the static "effective count" for the i-th
@@ -562,6 +570,25 @@ fn prod_visit_order(counts: &[f64]) -> Vec<usize> {
 // EVOLVE-BLOCK-END
 // =====================================================================
 
+// ─── Always-on index sanitizer (NOT gated by any feature) ───────────
+//
+// Keeps only in-range, first-occurrence indices from an EVOLVE-BLOCK
+// policy's return.  A malformed return (out-of-range or duplicate
+// index) is possible only in `evolve_wide` mode (where the
+// permutation / keep-reachable guards are compiled out); without this,
+// the `base[i]` indexing in `sum_ord`/`prod_ord` would panic on a tokio
+// worker thread — a swallowed panic that leaks a bogus verdict instead
+// of failing loudly.  Under the sound guards (or the promoted
+// production policy) the output is already a clean permutation / subset,
+// so this is a no-op.  Dropping an out-of-range/duplicate index is just
+// (sound-or-downstream-caught) pruning, never a crash.
+fn sanitize_indices(v: Vec<usize>, n: usize) -> Vec<usize> {
+    let mut seen = vec![false; n];
+    v.into_iter()
+        .filter(|&i| i < n && !std::mem::replace(&mut seen[i], true))
+        .collect()
+}
+
 // ─── Soundness-contract enforcement (OUTSIDE the evolve block) ───────
 //
 // These guards live deliberately *outside* the EVOLVE-BLOCK so a
@@ -603,7 +630,7 @@ fn prod_visit_order(counts: &[f64]) -> Vec<usize> {
 ///
 /// In `cfg(test)` we `panic!` instead so the unit tests can use
 /// `#[should_panic]`.
-#[cfg(feature = "evolve_guard")]
+#[cfg(all(feature = "evolve_guard", not(feature = "evolve_wide")))]
 fn evolve_contract_fail(msg: &str) -> ! {
     #[cfg(test)]
     panic!("EVOLVE CONTRACT VIOLATION: {}", msg);
@@ -618,7 +645,7 @@ fn evolve_contract_fail(msg: &str) -> ! {
 
 /// Fail if `perm` is not a permutation of `0..n` (the
 /// `sum_visit_order` contract).  No-op unless `evolve_guard` is on.
-#[cfg(feature = "evolve_guard")]
+#[cfg(all(feature = "evolve_guard", not(feature = "evolve_wide")))]
 fn enforce_sum_permutation(perm: &[usize], n: usize) {
     if perm.len() != n {
         evolve_contract_fail(&format!(
@@ -640,7 +667,7 @@ fn enforce_sum_permutation(perm: &[usize], n: usize) {
 
 /// Fail if `keep` drops any positive-count alt (the
 /// `prod_visit_order` contract).  No-op unless `evolve_guard` is on.
-#[cfg(feature = "evolve_guard")]
+#[cfg(all(feature = "evolve_guard", not(feature = "evolve_wide")))]
 fn enforce_prod_keeps_reachable(keep: &[usize], counts: &[f64]) {
     let n = counts.len();
     let mut in_keep = vec![false; n];
@@ -711,7 +738,7 @@ mod gate_tests {
 /// Tests that the `evolve_guard` contract enforcement actually fires
 /// on unsound policies.  Only compiled when the feature is enabled
 /// (the OpenEvolve evaluator's build config).
-#[cfg(all(test, feature = "evolve_guard"))]
+#[cfg(all(test, feature = "evolve_guard", not(feature = "evolve_wide")))]
 mod guard_tests {
     use super::{enforce_sum_permutation, enforce_prod_keeps_reachable};
 
@@ -803,11 +830,16 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
         // "don't reorder").  Sum is visit-all; the policy MUST
         // preserve every child (helper's contract enforces this).
         let perm = sum_visit_order(&counts, self.sum_reorder_tau);
-        #[cfg(feature = "evolve_guard")]
+        #[cfg(all(feature = "evolve_guard", not(feature = "evolve_wide")))]
         enforce_sum_permutation(&perm, counts.len());
-        if perm.iter().enumerate().all(|(k, &p)| k == p) {
-            // Identity → policy said no reorder; bump the gate-skip
-            // counter for instrumentation and return `base` as-is.
+        // Always-on safety net: drop out-of-range / duplicate indices a
+        // wide-mode mutation may emit (see `sanitize_indices`).
+        let perm = sanitize_indices(perm, counts.len());
+        if perm.len() == counts.len() && perm.iter().enumerate().all(|(k, &p)| k == p) {
+            // FULL identity → policy said no reorder; return `base`
+            // as-is.  (The length check ensures a wide-mode DROP — a
+            // short prefix like [0,1] — isn't mistaken for identity and
+            // silently un-pruned.)
             self.sum_ord_gate_skips += 1;
             return Some(base);
         }
@@ -837,8 +869,11 @@ impl<Inner: PathSearchController> PathSearchController for EffectiveCountWrapper
         // reorders.  Helper's contract: never drops a non-zero-count
         // alt, may drop zero-count alts.
         let keep = prod_visit_order(&counts);
-        #[cfg(feature = "evolve_guard")]
+        #[cfg(all(feature = "evolve_guard", not(feature = "evolve_wide")))]
         enforce_prod_keeps_reachable(&keep, &counts);
+        // Always-on safety net (see `sanitize_indices`): drop out-of-range
+        // / duplicate indices a wide-mode mutation may emit.
+        let keep = sanitize_indices(keep, base_len);
         if keep.len() < base_len {
             self.prod_ord_filters += 1;
         }
@@ -946,9 +981,11 @@ impl<Inner: crate::nnf_arena::ArenaPathSearchController + PathSearchController>
         // Delegate to the EVOLVE-BLOCK policy — identical contract
         // to the NNF-engine sum_ord above.  See helper doc comments.
         let perm = sum_visit_order(&counts, self.sum_reorder_tau);
-        #[cfg(feature = "evolve_guard")]
+        #[cfg(all(feature = "evolve_guard", not(feature = "evolve_wide")))]
         enforce_sum_permutation(&perm, counts.len());
-        if perm.iter().enumerate().all(|(k, &p)| k == p) {
+        // Always-on safety net (see `sanitize_indices`).
+        let perm = sanitize_indices(perm, counts.len());
+        if perm.len() == counts.len() && perm.iter().enumerate().all(|(k, &p)| k == p) {
             self.sum_ord_gate_skips += 1;
             return Some(base);
         }
@@ -979,8 +1016,11 @@ impl<Inner: crate::nnf_arena::ArenaPathSearchController + PathSearchController>
         // Delegate to the EVOLVE-BLOCK policy — identical contract
         // to the NNF-engine prod_ord above.
         let keep = prod_visit_order(&counts);
-        #[cfg(feature = "evolve_guard")]
+        #[cfg(all(feature = "evolve_guard", not(feature = "evolve_wide")))]
         enforce_prod_keeps_reachable(&keep, &counts);
+        // Always-on safety net (see `sanitize_indices`): drop out-of-range
+        // / duplicate indices a wide-mode mutation may emit.
+        let keep = sanitize_indices(keep, base_len);
         if keep.len() < base_len {
             self.prod_ord_filters += 1;
         }

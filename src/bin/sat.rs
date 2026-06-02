@@ -260,6 +260,19 @@ pub enum MatrixBackend {
     /// for effective-path-count-aware Sum/Prod ordering and
     /// zero-count pruning.  Single-DFS — no dual A/B threads.
     Eff,
+    /// `matrix.eff_cover`: same Effective policy as [`Self::Eff`] but
+    /// run on the cover-emitting **NNF** single-DFS engine (the one
+    /// `cdcl`/`smart` use) instead of the arena engine, so it CAN emit
+    /// a matrix UNSAT cover certificate via `--emit-cover`.  This is
+    /// the substrate the open-evolution harness runs on: the shared
+    /// `EffectiveCountWrapper` policy (the EVOLVE-BLOCK fns) drives the
+    /// search, while `CdclController::for_nnf_with_cover` emits a
+    /// complete static cover that `sat-cover-verify` checks — so an
+    /// unsound (aggressively-pruning) policy that wrongly reports UNSAT
+    /// is caught by an incomplete/failing certificate.  Slower than the
+    /// arena `Eff` (NNF engine + position tracking), so it's a
+    /// proof/evaluation substrate, not the production fast path.
+    EffCover,
     /// `greedy×cdcl`: dual-framework search pairing
     /// [`GreedyMaxCoverController`](logic::dual::GreedyMaxCoverController)
     /// as the A-side cover ranker with
@@ -309,6 +322,7 @@ impl MatrixBackend {
             MatrixBackend::Smart      => "matrix.smart",
             MatrixBackend::Cdcl       => "matrix.cdcl",
             MatrixBackend::Eff        => "matrix.eff",
+            MatrixBackend::EffCover   => "matrix.eff_cover",
             MatrixBackend::GreedyCdcl => "greedy×cdcl",
             MatrixBackend::GreedyEff  => "greedy×eff",
             MatrixBackend::BasicEff   => "basic×eff",
@@ -789,12 +803,24 @@ fn matrix_search(
     // runtime to avoid the user thinking they got covers when they
     // didn't.
     if emit_cover.is_some()
-        && !matches!(backend, MatrixBackend::Cdcl | MatrixBackend::Smart)
+        && !matches!(backend, MatrixBackend::Cdcl | MatrixBackend::Smart | MatrixBackend::EffCover)
     {
-        eprintln!("c ERROR: --emit-cover only supported with backend cdcl or smart \
-                   (got {}); other backends use the positions-OFF or arena engine \
-                   which doesn't track the positional info the cert format needs",
+        eprintln!("c ERROR: --emit-cover only supported with backend cdcl, smart, or \
+                   eff_cover (got {}); the other backends use the positions-OFF or arena \
+                   engine which doesn't track the positional info the cert format needs",
                   backend.name());
+        std::process::exit(2);
+    }
+    // eff_cover exists for the proof-verify pipeline, where the cover's
+    // positions must reference the INPUT CNF (sat-cover-verify checks
+    // against the original).  Preprocessing rewrites/renumbers clauses,
+    // so require --no-preprocess when emitting a cover from eff_cover.
+    if emit_cover.is_some()
+        && matches!(backend, MatrixBackend::EffCover)
+        && preprocessed.is_some()
+    {
+        eprintln!("c ERROR: --emit-cover with backend eff_cover requires --no-preprocess \
+                   (cover positions must reference the input CNF for sat-cover-verify)");
         std::process::exit(2);
     }
     if emit_drat.is_some() && !matches!(backend, MatrixBackend::Cdcl) {
@@ -1091,6 +1117,76 @@ fn matrix_search(
                     arena.classify_paths_with_arena_bubble_up(64, builder)
                 } else {
                     arena.classify_paths_with_arena(64, builder)
+                }
+            }
+            MatrixBackend::EffCover => {
+                // Eff policy on the cover-emitting NNF single-DFS
+                // engine.  Same `EffectiveCountWrapper` (EVOLVE-BLOCK)
+                // policy as `Eff`, but wrapped around the cover-emitting
+                // `CdclController::for_nnf_with_cover` so it can emit a
+                // complete static cover certificate (`emit_static_cover`
+                // runs at controller construction, independent of which
+                // paths the wrapper's policy visits — so an unsound
+                // policy yields an incomplete/failing cert, not a wrong
+                // "verified UNSAT").  This is the substrate the
+                // proof-gated evolution harness runs on.  The
+                // wrapper-over-cover-cdcl composition is the same stack
+                // `web_app.rs` runs in production (classify_paths_with_nnf
+                // so the EffectiveCountIndex is keyed to the engine's
+                // own NNF clone — pointer-identity for the count lookups).
+                use logic::dual::effective_count::{EffectiveCountIndex, EffectiveCounts};
+                use logic::dual::path_effective::EffectiveCountWrapper;
+                let tau = eff_tau;
+                if let Some(cover_path) = emit_cover {
+                    let file = std::fs::File::create(cover_path)
+                        .unwrap_or_else(|e| {
+                            eprintln!("c ERROR: cannot create cover file {}: {}",
+                                      cover_path.display(), e);
+                            std::process::exit(2);
+                        });
+                    let clauses_arc = std::sync::Arc::new(
+                        cover_clauses
+                            .expect("--emit-cover requires cover_clauses")
+                            .to_vec());
+                    let cover_w: Arc<Mutex<CoverWriter>> =
+                        Arc::new(Mutex::new(CoverWriter::new(file, clauses_arc)));
+                    {
+                        let mut cwl = cover_w.lock().unwrap();
+                        let _ = writeln!(cwl.writer, "# sat-cover-verify cert v3");
+                        let _ = writeln!(cwl.writer,
+                            "# source: {} backend=eff_cover preprocess=off",
+                            cover_path.display());
+                    }
+                    let cw_for_search = cover_w.clone();
+                    let p_ec = params.clone();
+                    let result = comp.classify_paths_with_nnf(64, move |nnf_ref, tx| {
+                        let cw_inner = cw_for_search.clone();
+                        let on_class: DynOnClass = Box::new(move |class, hit_limit| {
+                            if let PathsClass::Covered(cpp) = &class {
+                                let mut w = cw_inner.lock().unwrap();
+                                w.maybe_write(cpp).expect("cover file write failed");
+                            }
+                            tx.blocking_send((class, hit_limit)).is_ok()
+                        });
+                        let cdcl = CdclController::for_nnf_with_cover(nnf_ref, p_ec, on_class);
+                        let idx = EffectiveCountIndex::build(nnf_ref);
+                        let counts = EffectiveCounts::new(&idx);
+                        EffectiveCountWrapper::new_with_tau(cdcl, idx, counts, tau)
+                    });
+                    cover_writer_arc = Some(cover_w);
+                    result
+                } else {
+                    // Fast metric mode: uncovered-only engine + non-cover
+                    // cdcl controller (no static-cover enumeration cost).
+                    let p_ec = params.clone();
+                    comp.classify_paths_uncovered_only_with_nnf(64, move |nnf_ref, tx| {
+                        let on_class: DynOnClass = Box::new(move |class, hit_limit|
+                            tx.blocking_send((class, hit_limit)).is_ok());
+                        let cdcl = CdclController::for_nnf(nnf_ref, p_ec, on_class);
+                        let idx = EffectiveCountIndex::build(nnf_ref);
+                        let counts = EffectiveCounts::new(&idx);
+                        EffectiveCountWrapper::new_with_tau(cdcl, idx, counts, tau)
+                    })
                 }
             }
             MatrixBackend::GreedyCdcl
@@ -2064,6 +2160,8 @@ impl BackendChoice {
             "smart"      | "matrix.smart"  => Ok(BackendChoice::Matrix(MatrixBackend::Smart)),
             "cdcl"       | "matrix.cdcl"   => Ok(BackendChoice::Matrix(MatrixBackend::Cdcl)),
             "eff"        | "matrix.eff"    => Ok(BackendChoice::Matrix(MatrixBackend::Eff)),
+            "eff_cover"  | "eff-cover"
+                         | "matrix.eff_cover" => Ok(BackendChoice::Matrix(MatrixBackend::EffCover)),
             "effb"       | "matrix.effb"   => Ok(BackendChoice::Matrix(MatrixBackend::Effb)),
             "greedy_cdcl" | "greedy×cdcl"
                          | "greedyxcdcl"   => Ok(BackendChoice::Matrix(MatrixBackend::GreedyCdcl)),
@@ -2077,7 +2175,7 @@ impl BackendChoice {
                          | "basicxeffb"    => Ok(BackendChoice::Matrix(MatrixBackend::BasicEffb)),
             "cadical"                      => Ok(BackendChoice::Cadical),
             _ => Err(format!(
-                "unknown backend {:?}; expected one of: smart, cdcl, eff, effb, \
+                "unknown backend {:?}; expected one of: smart, cdcl, eff, eff_cover, effb, \
                  greedy_cdcl, greedy_eff, greedy_effb, basic_eff, basic_effb, cadical", s
             )),
         }
@@ -2297,6 +2395,9 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                      eff          — matrix.eff (default)");
                 eprintln!("                                     CdclController + Effective layer,");
                 eprintln!("                                     single-DFS, no dual overhead");
+                eprintln!("                      eff_cover    — eff policy on the cover-emitting NNF");
+                eprintln!("                                     engine; supports --emit-cover (proof");
+                eprintln!("                                     substrate for open evolution)");
                 eprintln!("                      greedy_cdcl  — greedy × CdclDualPath, dual");
                 eprintln!("                      greedy_eff   — greedy × Effective + CDCL, dual");
                 eprintln!("                                     (strongest on structured benches)");

@@ -63,6 +63,10 @@ from typing import Dict, List, Optional, Tuple
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT  = SCRIPT_DIR.parent.parent
 SAT_BIN    = REPO_ROOT / "target" / "release" / "sat"
+COVER_VERIFY_BIN = REPO_ROOT / "target" / "release" / "sat-cover-verify"
+# Backends that can emit a matrix cover certificate (--emit-cover); the
+# UNSAT-proof gate (--verify-unsat-proof) re-runs one of these.
+COVER_CAPABLE_BACKENDS = {"eff_cover", "cdcl", "smart"}
 PLOT_PY    = REPO_ROOT / "doc" / "competition-benchmarks-plot.py"
 OUT_DIR    = REPO_ROOT / "doc"
 
@@ -321,6 +325,105 @@ def verify_sat_witness(cnf_path: Path, stdout_text: str) -> Tuple[bool, str]:
             return False, (f"clause #{ci} {clause} unsatisfied by model "
                            f"(all {len(clause)} literals assigned false)")
     return True, "ok"
+
+
+def cadical_oracle(cnf_path: Path, timeout_s: int) -> Tuple[str, Optional[bool]]:
+    """Independent verdict oracle: run sat's CaDiCaL backend on the CNF.
+    Returns (verdict, model_ok) where verdict ∈ {"SAT","UNSAT","UNKNOWN"}
+    and model_ok is True/False (the SAT `v`-line re-checked against the
+    CNF) or None (not SAT / not checked).  CaDiCaL is a complete solver,
+    so it decides instances the matrix cover can't certify."""
+    try:
+        with cnf_path.open("rb") as cnf_in:
+            p = subprocess.run(
+                [str(SAT_BIN), "-b", "cadical", "-t", str(timeout_s)],
+                stdin=cnf_in, capture_output=True, text=True,
+                timeout=timeout_s + 30)
+    except subprocess.TimeoutExpired:
+        return "UNKNOWN", None
+    if "c SAT in" in p.stderr:
+        ok, _ = verify_sat_witness(cnf_path, p.stdout)
+        return "SAT", ok
+    if "c UNSAT in" in p.stderr:
+        return "UNSAT", None
+    return "UNKNOWN", None
+
+
+def verify_unsat_cover(cnf_path: Path, backend: str,
+                       timeout_s: int) -> Tuple[Optional[bool], str]:
+    """Try to PROVE an UNSAT verdict by re-deriving a matrix cover
+    certificate and checking it; fall back to the CaDiCaL oracle when
+    the cover is incomplete.
+
+    Re-runs `sat -b <backend> --no-preprocess --emit-cover <tmp>` on the
+    CNF (a cover-capable backend re-solves and emits its cover), then
+    `sat-cover-verify <cnf> <cover>`.  Outcomes:
+      - (True,  "ok")    : verifier accepted a COMPLETE cover → proven UNSAT.
+      - (False, reason)  : DEFINITIVE soundness failure — either the cover
+                           re-run itself reached SAT, or (cover incomplete)
+                           the CaDiCaL oracle found a VERIFIED SAT model.
+                           The instance is satisfiable, so the UNSAT verdict
+                           is wrong; the candidate is scored unsound (0),
+                           which is worse than a timeout.
+      - (None,  reason)  : no complete cover AND CaDiCaL agrees UNSAT (or is
+                           inconclusive).  NOT a failure — the matrix cover
+                           is provably incomplete for some genuinely-UNSAT
+                           instances (e.g. 3-colouring), so an unprovable-
+                           but-correct UNSAT scores as a solve (better than
+                           a timeout).
+    See the `more-complete-unsat-proofs` task for closing the None gap."""
+    if not COVER_VERIFY_BIN.exists():
+        return None, "sat-cover-verify binary missing"
+    cover = cnf_path.with_suffix(cnf_path.suffix + ".cover")
+    try:
+        try:
+            with cnf_path.open("rb") as cnf_in:
+                p = subprocess.run(
+                    [str(SAT_BIN), "-b", backend, "-t", str(timeout_s),
+                     "--no-preprocess", "--emit-cover", str(cover)],
+                    stdin=cnf_in, capture_output=True, text=True,
+                    timeout=timeout_s + 30)
+        except subprocess.TimeoutExpired:
+            return None, "cover re-run wall-timeout"
+        if "c SAT in" in p.stderr:
+            # The cover re-run found a SATISFYING path — the metric run's
+            # UNSAT verdict contradicts it.  Definitive soundness failure
+            # (preprocess preserves sat/unsat, so a sound policy could
+            # never flip).
+            return False, "cover re-run found SAT — UNSAT verdict is wrong"
+        if "c UNSAT in" not in p.stderr:
+            # Neither verdict (timed out, or cover-emission overhead
+            # pushed it past budget) → can't certify, but don't penalise.
+            return None, "cover re-run reached no verdict (timeout/over budget)"
+        try:
+            v = subprocess.run([str(COVER_VERIFY_BIN), str(cnf_path), str(cover)],
+                               capture_output=True, text=True,
+                               timeout=timeout_s + 30)
+        except subprocess.TimeoutExpired:
+            # Verifier (CaDiCaL on the cover CSP) didn't finish in budget
+            # → can't certify, but don't penalise.
+            return None, "cover verify wall-timeout"
+        if v.returncode == 0:
+            return True, "ok"
+        # Verifier rejected the cover.  An incomplete cover does NOT by
+        # itself imply SAT (the matrix cover is just incomplete for some
+        # UNSAT instances).  So ask the CaDiCaL oracle, which can decide:
+        #   - CaDiCaL finds a VERIFIED SAT model → the instance is
+        #     satisfiable → the UNSAT verdict is WRONG → fail (False).
+        #   - CaDiCaL says UNSAT / is inconclusive → unprovable-but-
+        #     correct UNSAT → not a failure (None).
+        cov_reason = next((ln.strip() for ln in v.stdout.splitlines()
+                           if "INVALID" in ln or "INCOMPLETE" in ln),
+                          "cover incomplete")
+        verdict, model_ok = cadical_oracle(cnf_path, timeout_s)
+        if verdict == "SAT" and model_ok:
+            return False, ("CaDiCaL found a verified SAT model — "
+                           "UNSAT verdict is wrong")
+        return None, (f"no complete cover ({cov_reason}); "
+                      f"CaDiCaL={verdict.lower()}")
+    finally:
+        try: cover.unlink()
+        except FileNotFoundError: pass
 
 
 # ---------------------------------------------------------------------------
@@ -1043,6 +1146,7 @@ def solve_one(
     md_writer: "MdWriter",
     tui: TUI,
     verify_witness: bool = False,
+    verify_unsat_proof: bool = False,
 ) -> dict:
     """Decompress + solve + append row + re-finalize.  Returns result dict.
 
@@ -1065,6 +1169,8 @@ def solve_one(
     result, time_str, stats = "UNKNOWN", "n/a", SatStats()
     witness_ok: Optional[bool] = None   # None = not checked
     witness_reason = ""
+    unsat_proof_ok: Optional[bool] = None   # None = not checked
+    unsat_proof_reason = ""
     try:
         with tempfile.NamedTemporaryFile(suffix=".cnf", delete=False) as tmp:
             tmp_path = Path(tmp.name)
@@ -1104,6 +1210,13 @@ def solve_one(
         # `finally` below.
         if verify_witness and result == "SAT" and tmp_path is not None:
             witness_ok, witness_reason = verify_sat_witness(tmp_path, stdout_text)
+        # UNSAT-proof gate — also needs the CNF on disk.  Re-derive +
+        # check a matrix cover certificate; an over-pruning policy that
+        # wrongly reports UNSAT yields an incomplete/​failing cover and
+        # is rejected (None = couldn't certify in budget → not penalised).
+        if verify_unsat_proof and result == "UNSAT" and tmp_path is not None:
+            unsat_proof_ok, unsat_proof_reason = verify_unsat_cover(
+                tmp_path, backend, timeout_s)
     finally:
         if tmp_path is not None:
             try: tmp_path.unlink()
@@ -1130,6 +1243,14 @@ def solve_one(
         # a soundness failure even if the verdict matched ground truth.
         md_result = "MISMATCH"
         md_time = f"WRONG-SAT-WITNESS: {witness_reason}, {time_str}"
+        mismatch = True
+    elif unsat_proof_ok is False:
+        # UNSAT verdict whose cover certificate doesn't check out (an
+        # uncovered/​satisfying path exists, or a re-run found SAT) —
+        # the instance isn't actually UNSAT, so this is a soundness
+        # failure even if the verdict matched ground truth.
+        md_result = "MISMATCH"
+        md_time = f"BAD-UNSAT-PROOF: {unsat_proof_reason}, {time_str}"
         mismatch = True
     elif mismatch:
         md_result = "MISMATCH"
@@ -1161,6 +1282,9 @@ def solve_one(
     elif witness_ok is False:
         tui.log(f"  ✗ [{display}] WRONG-SAT-WITNESS  ({witness_reason})",
                 color=COLOR_RED + COLOR_BOLD)
+    elif unsat_proof_ok is False:
+        tui.log(f"  ✗ [{display}] BAD-UNSAT-PROOF  ({unsat_proof_reason})",
+                color=COLOR_RED + COLOR_BOLD)
     elif mismatch:
         tui.log(f"  ! [{display}] {result}  (expected {known})  {time_str}",
                 color=COLOR_RED + COLOR_BOLD)
@@ -1183,6 +1307,8 @@ def solve_one(
         "guard_abort":    guard_abort,
         "witness_ok":     witness_ok,      # None=not checked, True/False=checked
         "witness_reason": witness_reason or None,
+        "unsat_proof_ok": unsat_proof_ok,  # None=not checked, True/False=checked
+        "unsat_proof_reason": unsat_proof_reason or None,
         "time_s":         _parse_time_cell(time_str),
         "time_str":       time_str,
         "paths":          stats.paths,
@@ -1252,6 +1378,16 @@ def main() -> int:
                          "MISMATCH (soundness failure) even if the verdict "
                          "matched the expected status.  Used by the "
                          "OpenEvolve evaluator to catch bogus witnesses.")
+    ap.add_argument("--verify-unsat-proof", action="store_true",
+                    help="For every UNSAT verdict, independently re-derive "
+                         "and check a matrix cover certificate (re-runs the "
+                         "backend with --no-preprocess --emit-cover, then "
+                         "sat-cover-verify).  An UNSAT whose cover doesn't "
+                         "check out (a satisfying path exists) is recorded as "
+                         "a MISMATCH (soundness failure).  Requires a "
+                         "cover-capable backend (eff_cover, cdcl, smart).  "
+                         "Used by the OpenEvolve evaluator to gate the open "
+                         "(potentially-unsound) evolve block.")
     args = ap.parse_args()
 
     # ---- preflight ----
@@ -1263,6 +1399,18 @@ def main() -> int:
               f"       Build with: cargo build --release --bin sat",
               file=sys.stderr)
         return 2
+    if args.verify_unsat_proof:
+        if args.backend not in COVER_CAPABLE_BACKENDS:
+            print(f"FATAL: --verify-unsat-proof needs a cover-capable backend "
+                  f"({', '.join(sorted(COVER_CAPABLE_BACKENDS))}); got "
+                  f"{args.backend!r}.", file=sys.stderr)
+            return 2
+        if not COVER_VERIFY_BIN.exists():
+            print(f"FATAL: --verify-unsat-proof needs sat-cover-verify: "
+                  f"{COVER_VERIFY_BIN}\n"
+                  f"       Build with: cargo build --release --bin sat-cover-verify",
+                  file=sys.stderr)
+            return 2
     if shutil.which("xz") is None:
         print("FATAL: xz not on PATH.", file=sys.stderr)
         return 2
@@ -1439,6 +1587,7 @@ def main() -> int:
                 md_writer=md_writer,
                 tui=tui,
                 verify_witness=args.verify_sat_witness,
+                verify_unsat_proof=args.verify_unsat_proof,
             )
         finally:
             release_slot(idx)
@@ -1562,6 +1711,15 @@ def _build_summary_json(results: List[dict]) -> dict:
         "guard_abort":    sum(1 for r in results if r.get("guard_abort")),
         "bad_witness":    sum(1 for r in results if r.get("witness_ok") is False),
         "witness_checked":sum(1 for r in results if r.get("witness_ok") is not None),
+        # bad_unsat_proof: UNSAT whose cover re-run found SAT (definitive
+        # contradiction → soundness failure).  proven_unsat: UNSAT with a
+        # complete verified cover.  unproven_unsat: correct UNSAT we just
+        # couldn't certify (matrix cover incomplete) — still a solve.
+        "bad_unsat_proof":sum(1 for r in results if r.get("unsat_proof_ok") is False),
+        "proven_unsat":   sum(1 for r in results if r.get("unsat_proof_ok") is True),
+        "unproven_unsat": sum(1 for r in results
+                              if r.get("result") == "UNSAT"
+                              and r.get("unsat_proof_ok") is None),
     }
     return out
 

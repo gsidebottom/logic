@@ -21,6 +21,17 @@ path = "src/bin/sat_drat_verify.rs"
 # See src/dual/path_effective.rs (enforce_* helpers) and
 # evo/evolve/evaluator.py.
 evolve_guard = []
+# `evolve_wide` — OPEN evolution mode: relaxes the eff-layer ordering
+# contracts so an evolved policy MAY drop branches (sum_visit_order may
+# return a subsequence; prod_visit_order may drop reachable alts) for
+# aggressive pruning.  This makes a mutation potentially UNSOUND — that's
+# intended; soundness is enforced downstream by the OpenEvolve
+# evaluator's cover/witness + ground-truth (drat-verified label) checks,
+# not by construction.  Mutually exclusive with `evolve_guard` (which
+# would hard-abort the very mutations we want to run and verify).  An
+# always-on index sanitizer (sanitize_indices) still guarantees no panic
+# on a malformed index.  See src/dual/path_effective.rs.
+evolve_wide = []
 
 [dependencies]
 axum = "0.7"

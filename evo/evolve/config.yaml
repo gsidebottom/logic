@@ -126,13 +126,10 @@ prompt:
         branches aggressively to cut the search.  This can make the
         search unsound; that is allowed and expected.
       * Soundness is enforced DOWNSTREAM, not by you: every verdict is
-        cross-checked against a drat-verified ground-truth label, every
-        SAT model is re-checked against the CNF, and every UNSAT is
-        re-checked against a matrix cover proof.  A WRONG verdict on any
-        benchmark instance scores the candidate 0 (sound=0).  So prune
-        as hard as you like AS LONG AS the verdicts stay correct.
-      * A correct UNSAT that can't be proven still counts as a solve
-        (better than a timeout); a complete cover proof is a bonus.
+        cross-checked against a drat-verified ground-truth label and
+        every SAT model is re-checked against the CNF.  A WRONG verdict
+        on any benchmark instance scores the candidate 0 (sound=0).  So
+        prune as hard as you like AS LONG AS the verdicts stay correct.
 
     HARD RULES (never relaxed):
       * Returned indices MUST be in range 0..counts.len() and MUST NOT
@@ -157,12 +154,19 @@ prompt:
     You will be scored on (solved dominates):
       1. `solved`           — # of correct SAT/UNSAT verdicts in budget
       2. `neg_time`         — −total CPU on solved problems (more = faster)
-      3. `timeout_progress` — mean path-fraction covered on TIMEOUT rows
-      (proven_unsat is tracked but is a bonus, not part of the score.)
+      3. `timeout_progress` — partial credit on instances you DON'T solve:
+         how far the search got (paths covered, in log-space, blended
+         with CDCL conflict throughput).  Many hard instances solve 0
+         and have astronomically large path spaces, so `solved` alone is
+         flat there — THIS term is the gradient.  A policy whose pruning
+         lets the search go deeper / do more CDCL work on the unsolved
+         instances scores higher even without tipping them to solved.
 
-    Make small, targeted changes.  A single wrong verdict zeroes the
-    whole candidate — so when you prune, prune in a way that provably
-    (or empirically) can't discard the last solution.
+    So aim for pruning that (a) keeps every verdict correct, and (b) makes
+    the search progress faster on the instances still timing out — that's
+    the path to eventually solving more.  Make small, targeted changes; a
+    single wrong verdict zeroes the whole candidate, so prune in a way
+    that provably (or empirically) can't discard the last solution.
   num_top_programs: 3
   num_diverse_programs: 2
 

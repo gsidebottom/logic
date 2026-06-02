@@ -16,9 +16,12 @@ For every candidate program OpenEvolve hands us, this evaluator:
        * solved           — SAT + UNSAT row count (primary maximize)
        * neg_time         — −(sum of solve times)  (secondary; max
                             ⇒ minimize total CPU)
-       * timeout_progress — mean(paths_fraction) over TIMEOUT rows
-                            (tertiary; partial credit for "got
-                            further before timing out")
+       * timeout_progress — mean(timeout_progress_row) over TIMEOUT
+                            rows (tertiary; the gradient on instances
+                            not yet solvable — log-space path coverage
+                            blended with a conflict-throughput term so
+                            it's non-zero even when no path is closed.
+                            See timeout_progress_row.)
   5. Cleans up the worktree.
 
 Tiered evaluation cascades:
@@ -41,6 +44,7 @@ Usage:
 
 import argparse
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -178,21 +182,26 @@ def make_scratch() -> Scratch:
 
 # ─── Build + benchmark ────────────────────────────────────────────────
 def cargo_build(worktree: Path) -> Optional[str]:
-    """Build `sat` + `sat-cover-verify` (release, `--features
-    evolve_wide`) in the worktree.  Returns None on success; the stderr
-    tail on failure (capped at 4KB for OpenEvolve's artifact stream).
+    """Build `sat` (release, `--features evolve_wide`) in the worktree.
+    Returns None on success; the stderr tail on failure (capped at 4KB
+    for OpenEvolve's artifact stream).
 
     `evolve_wide` is OPEN-evolution mode: it COMPILES OUT the
     permutation / keep-reachable guards so a mutation MAY drop branches
     (aggressive pruning) and actually run — we *want* to evaluate those,
-    not hard-abort them.  Soundness is enforced downstream by the
-    run_benchmark gate: ground-truth (drat-verified label) mismatch +
-    SAT-witness + UNSAT cover-proof checks.  An always-on index
-    sanitizer still prevents any panic from a malformed index.
-    `sat-cover-verify` is needed for the --verify-unsat-proof gate."""
+    not hard-abort them.
+
+    Substrate is the FAST arena `eff` backend (not the cover-emitting
+    `eff_cover`): on the labelled evo set the per-candidate matrix-cover
+    proof added no soundness over the ground-truth (drat-verified label)
+    mismatch + SAT-witness checks, while the slower NNF engine cost ~9
+    solves of ceiling and flattened the timeout-progress signal.  So
+    soundness here rests on ground-truth + witness; the cover/CaDiCaL
+    proof is run once on the *promoted* candidate (see promote step).
+    No sat-cover-verify needed in the hot per-candidate build."""
     r = subprocess.run(
         ["cargo", "build", "--release", "--bin", "sat",
-         "--bin", "sat-cover-verify", "--features", "evolve_wide"],
+         "--features", "evolve_wide"],
         cwd=worktree, capture_output=True, text=True,
         timeout=BUILD_TIMEOUT_S,
     )
@@ -212,7 +221,7 @@ def run_tier(worktree: Path, tier: str, out_dir: Path) -> Dict:
         "--project", str(REPO_ROOT),
         str(RUN_BENCH),
         "--index", str(EVO_INDEX),
-        "-b", "eff_cover",
+        "-b", "eff",
         "-t", str(cfg["timeout"]),
         "-j", str(cfg["parallel"]),
         "-o", str(out_md),
@@ -235,20 +244,19 @@ def run_tier(worktree: Path, tier: str, out_dir: Path) -> Dict:
                      "--project", str(worktree),
                      str(worktree / "tools" / "gbd" / "run_benchmark.py"),
                      "--index", str(EVO_INDEX),
-                     "-b", "eff_cover",
+                     "-b", "eff",
                      "-t", str(cfg["timeout"]),
                      "-j", str(cfg["parallel"]),
                      "-o", str(out_md),
                      "--no-progress",
-                     # Soundness lines of defense beyond ground-truth
-                     # mismatch.  --verify-sat-witness: re-check every SAT
-                     # model against the CNF (catches a bogus witness).
-                     # --verify-unsat-proof: re-derive + check a matrix
-                     # cover for every UNSAT (a complete cover = proven
-                     # UNSAT; an incomplete one is just "unproven", still
-                     # a solve; a re-run that flips to SAT = hard fail).
-                     "--verify-sat-witness",
-                     "--verify-unsat-proof"]
+                     # Soundness on the labelled evo set = ground-truth
+                     # (drat-verified) verdict mismatch + this witness
+                     # re-check (catches a valid-verdict / bogus-model
+                     # candidate).  The matrix-cover/CaDiCaL UNSAT proof
+                     # is NOT run per-candidate here (arena eff can't emit
+                     # covers; it added nothing over ground truth on this
+                     # set) — it's applied once to the promoted candidate.
+                     "--verify-sat-witness"]
     if cfg["limit"] > 0:
         cmd_pyproject.extend(["--limit", str(cfg["limit"])])
 
@@ -304,6 +312,46 @@ def combined_score(compiled: float, sound: float, solved: float,
     return float(solved) + 0.7 * speed_norm + 0.3 * float(timeout_progress)
 
 
+# Reference total log-work for a TIMEOUT to score ~1.0.  log-work is
+# log10(paths_covered) + log10(conflicts); ~20 means e.g. 10^15 paths
+# covered — a near-complete search that just didn't finish in budget.
+_WORK_REF = 20.0
+
+
+def timeout_progress_row(r: Dict) -> float:
+    """Smooth 'how far did the search get' signal for one TIMEOUT row,
+    in [0,1] — the gradient evolution climbs on instances it can't yet
+    solve, so it must be NON-ZERO and monotone-with-search-effort.
+
+    The naive linear path-fraction is ~0 on hard matrix instances (total
+    path counts are 10^thousands, so any finite coverage rounds to 0) and
+    a path-fraction relative to that astronomical total is ~0 too — both
+    give evolution no gradient.  Instead score the ABSOLUTE search work
+    done in log space:
+
+        log-work = log10(paths_covered + 1) + log10(conflicts + 1)
+
+    - `paths` (root-to-leaf paths fully covered) is the high-value term:
+      it jumps by ~1 per 10× more coverage and dominates when a policy's
+      pruning actually shrinks the searched space enough to start closing
+      paths — the signal that an instance is becoming tractable.
+    - `conflicts` (CDCL work) is non-zero even when paths==0 (the genuinely
+      hard instances), so there's still a climbable gradient: a policy
+      that searches faster/deeper in the same budget scores higher.
+
+    Normalised by _WORK_REF and capped at 1.0.  Comparisons are per-
+    instance, so even though the absolute number understates 'fraction of
+    total', a better policy always scores higher on the same instance."""
+    paths = r.get("paths") or 0.0
+    conf = r.get("conflicts") or 0
+    log_work = 0.0
+    if paths > 0.0:
+        log_work += math.log10(paths + 1.0)
+    if conf and conf > 0:
+        log_work += math.log10(conf + 1.0)
+    return min(1.0, log_work / _WORK_REF)
+
+
 def score_from_payload(payload: Dict, per_problem_timeout_s: float) -> Dict:
     """Reduce a run_benchmark.py JSON payload to OpenEvolve's flat
     fitness dict.  Soundness gate fires inside this function: if ANY
@@ -352,11 +400,8 @@ def score_from_payload(payload: Dict, per_problem_timeout_s: float) -> Dict:
     total_t = sum(r.get("time_s") or 0.0
                   for r in results if r.get("result") in ("SAT", "UNSAT"))
     timeout_rows = [r for r in results if r.get("result") == "TIMEOUT"]
-    if timeout_rows:
-        fracs = [r.get("paths_fraction") or 0.0 for r in timeout_rows]
-        tp = sum(fracs) / len(fracs)
-    else:
-        tp = 0.0
+    tp = (sum(timeout_progress_row(r) for r in timeout_rows) / len(timeout_rows)
+          if timeout_rows else 0.0)
     cs = combined_score(1.0, 1.0, float(solved), float(total_t),
                         float(tp), len(results), per_problem_timeout_s)
     return {

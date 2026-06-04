@@ -778,11 +778,12 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
                     if !self.clause_is_rup.get(rid).copied().unwrap_or(true) {
                         chain_all_rup = false;
                     }
-                    // Snapshot the alts so we don't borrow self while
-                    // mutating learning.
-                    let alts: Vec<Lit> = self.prod_alts[rid].clone();
-                    for r_alt in alts {
-                        if r_alt != pick_lit {
+                    // Iterate the resolved-against clause's alts by
+                    // reference — `find_level` is also `&self`, and
+                    // `learning` is a local, so no clone is needed (this
+                    // runs once per resolution step, once per conflict).
+                    for r_alt in &self.prod_alts[rid] {
+                        if *r_alt != pick_lit {
                             let new_lit = r_alt.complement();
                             let level = self.find_level(&new_lit);
                             // Use entry().or_insert: same lit at same

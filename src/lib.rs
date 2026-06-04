@@ -8,6 +8,7 @@ pub mod nnf_arena;
 pub mod preprocess;
 pub mod prove;
 pub mod simplify;
+pub mod xor_gauss;
 
 pub use preprocess::{preprocess, Preprocessed, ReconstructionStack, PositionMap};
 pub use prove::{check_satisfiable, check_valid, get_paths};

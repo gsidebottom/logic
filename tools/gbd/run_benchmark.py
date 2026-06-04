@@ -1195,6 +1195,19 @@ def solve_one(
         rc, stderr_text, stdout_text = run_sat_with_pty(cmd, tmp_path, on_frame)
         result, time_str, stats = parse_sat_output(stderr_text)
 
+        # Fast-solve pty race: a sub-millisecond solve (e.g. an XOR-GE
+        # pre-pass deciding a parity formula) can exit and close the pty
+        # before its `c SAT/UNSAT in` stderr line is drained — on macOS
+        # the kernel drops buffered master bytes on slave close — so
+        # parse returns UNKNOWN.  The `s SATISFIABLE/UNSATISFIABLE` line
+        # is on STDOUT, captured to a file (never lost), so recover the
+        # verdict from there.
+        if result == "UNKNOWN" and stdout_text:
+            if re.search(r"^s SATISFIABLE\b", stdout_text, re.M):
+                result = "SAT"
+            elif re.search(r"^s UNSATISFIABLE\b", stdout_text, re.M):
+                result = "UNSAT"
+
         # A worker killed mid-solve — by Ctrl-C (SIGTERM from
         # _kill_all_running) or by the OS (e.g. SIGKILL on OOM) — may
         # print no verdict line at all, so parse returns UNKNOWN.  That

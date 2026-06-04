@@ -2206,6 +2206,12 @@ struct Args {
     /// `--preprocess-max-clauses N`; drivable through
     /// `run_benchmark.py --sat-arg`.
     preprocess_max_clauses: usize,
+    /// XOR-recovery + GF(2) Gaussian-elimination pre-pass (matrix
+    /// backends only).  On by default; disable with `--no-xor-gauss`.
+    /// Decides pure-parity formulas (random mod-2 systems, Urquhart,
+    /// the x1/x2 family) in polynomial time, which resolution — and the
+    /// matrix search — can't.
+    xor_gauss: bool,
     /// Optional cover-certificate output path.  When set, every
     /// `CoveredPathPrefix` event from the matrix-method search gets
     /// written to this file, producing a UNSAT certificate that
@@ -2266,6 +2272,7 @@ fn parse_args() -> Result<Args, String> {
         timeout_secs: DEFAULT_TIMEOUT_SECS,
         preprocess: true,
         preprocess_max_clauses: DEFAULT_PREPROCESS_MAX_CLAUSES,
+        xor_gauss: true,
         emit_cover: None,
         emit_drat: None,
         emit_pbp: None,
@@ -2339,6 +2346,8 @@ fn parse_args() -> Result<Args, String> {
             }
             "--preprocess"      => { a.preprocess = true;  }
             "--no-preprocess"   => { a.preprocess = false; }
+            "--xor-gauss"       => { a.xor_gauss = true;  }
+            "--no-xor-gauss"    => { a.xor_gauss = false; }
             // Cap on input clauses for which preprocess runs (0 = no cap).
             "--preprocess-max-clauses" => {
                 let v = iter.next().ok_or_else(||
@@ -2587,6 +2596,43 @@ fn main() {
             std::process::exit(124);
         });
     }
+
+    // XOR-recovery + GF(2) Gaussian-elimination pre-pass (matrix
+    // backends only — CaDiCaL does its own).  Parity/XOR-structured
+    // formulas (random mod-2 systems, Urquhart, the x1/x2 family) are
+    // exponential for resolution, hence for the matrix search, but
+    // LINEAR over GF(2).  When the pass decides the formula, skip the
+    // search entirely.
+    if args.xor_gauss && matches!(args.backend, BackendChoice::Matrix(_)) {
+        let t_xg = Instant::now();
+        match logic::xor_gauss::solve_xor_system(nvars, &clauses) {
+            logic::xor_gauss::XorGaussResult::Unsat => {
+                let ms = t_xg.elapsed().as_secs_f64() * 1000.0;
+                eprintln!("c xor-gauss: recovered XOR system is inconsistent");
+                eprintln!("c UNSAT in {:.1}ms", ms);
+                println!("s UNSATISFIABLE");
+                return;
+            }
+            logic::xor_gauss::XorGaussResult::Sat(model) => {
+                let ms = t_xg.elapsed().as_secs_f64() * 1000.0;
+                eprintln!("c xor-gauss: pure-XOR formula solved by Gaussian elimination");
+                eprintln!("c SAT in {:.1}ms", ms);
+                println!("s SATISFIABLE");
+                let stdout = io::stdout();
+                let mut w = stdout.lock();
+                write_v_line(&mut w, &model).unwrap();
+                return;
+            }
+            logic::xor_gauss::XorGaussResult::Indeterminate { recovered, consumed, total } => {
+                if recovered > 0 {
+                    eprintln!("c xor-gauss: recovered {} XOR(s) covering {}/{} clauses; \
+                               formula is mixed — running the matrix search on the rest",
+                              recovered, consumed, total);
+                }
+            }
+        }
+    }
+
     let t = Instant::now();
     let outcome = match args.backend {
         BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),

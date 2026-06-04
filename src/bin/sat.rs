@@ -2486,7 +2486,7 @@ fn main() {
 
     // Parse stdin (buffered) into a clause set.
     let stdin = io::stdin();
-    let (nvars, clauses) = match parse_dimacs(stdin.lock()) {
+    let (nvars, mut clauses) = match parse_dimacs(stdin.lock()) {
         Ok(x) => x,
         Err(e) => {
             eprintln!("c parse error: {}", e);
@@ -2603,6 +2603,11 @@ fn main() {
     // exponential for resolution, hence for the matrix search, but
     // LINEAR over GF(2).  When the pass decides the formula, skip the
     // search entirely.
+    // Holds the GE-derived forced assignment when the pass simplifies a
+    // mixed formula: the matrix search runs on the residual (which no
+    // longer mentions the forced vars), so on SAT we must overlay these
+    // constants back onto the search's model before printing it.
+    let mut xor_forced: Option<Vec<Option<bool>>> = None;
     if args.xor_gauss && matches!(args.backend, BackendChoice::Matrix(_)) {
         let t_xg = Instant::now();
         match logic::xor_gauss::solve_xor_system(nvars, &clauses) {
@@ -2622,6 +2627,14 @@ fn main() {
                 let mut w = stdout.lock();
                 write_v_line(&mut w, &model).unwrap();
                 return;
+            }
+            logic::xor_gauss::XorGaussResult::Simplified { clauses: residual, forced, recovered, forced_count } => {
+                let ms = t_xg.elapsed().as_secs_f64() * 1000.0;
+                eprintln!("c xor-gauss: recovered {} XOR(s); GE + BCP forced {} var(s), \
+                           residual {} clause(s) (from {}) in {:.1}ms — searching the residual",
+                          recovered, forced_count, residual.len(), clauses.len(), ms);
+                clauses = residual;
+                xor_forced = Some(forced);
             }
             logic::xor_gauss::XorGaussResult::Indeterminate { recovered, consumed, total } => {
                 if recovered > 0 {
@@ -2777,9 +2790,20 @@ fn main() {
             eprintln!("c UNSAT in {:.1}ms", elapsed_ms);
             println!("s UNSATISFIABLE");
         }
-        SearchOutcome::Sat(asgn) => {
+        SearchOutcome::Sat(mut asgn) => {
             eprintln!("c SAT in {:.1}ms", elapsed_ms);
             println!("s SATISFIABLE");
+            // Overlay XOR-GE forced constants: the residual the search
+            // saw no longer mentioned these vars, so its model left them
+            // at arbitrary defaults. Restore the GE/BCP-derived values so
+            // the printed witness satisfies the *original* formula.
+            if let Some(forced) = &xor_forced {
+                for (i, f) in forced.iter().enumerate() {
+                    if let (Some(b), Some(slot)) = (f, asgn.get_mut(i)) {
+                        *slot = *b;
+                    }
+                }
+            }
             let stdout = io::stdout();
             let mut w = stdout.lock();
             write_v_line(&mut w, &asgn).unwrap();

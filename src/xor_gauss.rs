@@ -43,7 +43,17 @@ pub enum XorGaussResult {
     Unsat,
     /// Pure-XOR formula, satisfiable; `model[i]` is the value of var i+1.
     Sat(Vec<bool>),
-    /// Couldn't decide (no XORs, or non-XOR clauses remain).
+    /// Mixed formula partially simplified: the GE-forced units (and
+    /// their BCP cascade) were eliminated.  The caller searches
+    /// `clauses` and then reconstructs the full model by overwriting
+    /// each var that has `forced[v-1] = Some(b)`.
+    Simplified {
+        clauses: Vec<Vec<i32>>,
+        forced: Vec<Option<bool>>, // forced[v-1] = Some(value) for var v
+        recovered: usize,
+        forced_count: usize,
+    },
+    /// Couldn't decide or simplify (no XORs / no forced units).
     Indeterminate { recovered: usize, consumed: usize, total: usize },
 }
 
@@ -115,14 +125,44 @@ pub fn recover_xors(clauses: &[Vec<i32>]) -> (Vec<XorConstraint>, Vec<bool>) {
     (xors, consumed)
 }
 
-enum GaussOutcome {
-    Unsat,
-    Consistent(Vec<bool>),
+/// Reduced XOR system after Gaussian elimination (RREF).
+struct Reduced {
+    rows: Vec<(Vec<u64>, bool)>,
+    /// 1-indexed pivot variable for pivot row `i` (`i < pivot_var.len()`).
+    pivot_var: Vec<u32>,
+    /// A `0 = 1` row was found.
+    unsat: bool,
 }
 
-/// Gaussian-eliminate the XOR system over GF(2).  On consistency,
-/// returns a model (free variables set false, pivots back-substituted).
-fn gauss(nvars: usize, xors: &[XorConstraint]) -> GaussOutcome {
+impl Reduced {
+    /// Variables forced to a constant by the XOR system: pivot rows
+    /// whose coefficient bitset has a single bit (the pivot itself, no
+    /// free variables) — so the pivot equals its row's rhs.  These are
+    /// linear consequences plain BCP cannot derive.
+    fn forced_units(&self) -> Vec<(u32, bool)> {
+        let mut out = Vec::new();
+        for (i, &v) in self.pivot_var.iter().enumerate() {
+            let (c, rhs) = &self.rows[i];
+            if c.iter().map(|w| w.count_ones()).sum::<u32>() == 1 {
+                out.push((v, *rhs));
+            }
+        }
+        out
+    }
+
+    /// Full model for a PURE-XOR formula: free vars false, each pivot
+    /// var takes its row's rhs (after RREF, free vars are 0).
+    fn pure_model(&self, nvars: usize) -> Vec<bool> {
+        let mut m = vec![false; nvars];
+        for (i, &v) in self.pivot_var.iter().enumerate() {
+            m[(v - 1) as usize] = self.rows[i].1;
+        }
+        m
+    }
+}
+
+/// Gaussian-eliminate the XOR system over GF(2) (reduced row echelon).
+fn gauss(nvars: usize, xors: &[XorConstraint]) -> Reduced {
     let words = nvars / 64 + 1;
     // Each row = (coefficient bitset over vars, rhs bit).  Bit v-1 ↔ var v.
     let mut rows: Vec<(Vec<u64>, bool)> = xors
@@ -137,7 +177,7 @@ fn gauss(nvars: usize, xors: &[XorConstraint]) -> GaussOutcome {
         })
         .collect();
 
-    let mut pivot_row_of_col: Vec<Option<usize>> = vec![None; nvars];
+    let mut pivot_var: Vec<u32> = Vec::new();
     let mut pr = 0usize; // next free pivot row
     for col in 0..nvars {
         if pr >= rows.len() {
@@ -145,12 +185,10 @@ fn gauss(nvars: usize, xors: &[XorConstraint]) -> GaussOutcome {
         }
         let w = col / 64;
         let bit = 1u64 << (col % 64);
-        // Find a row at/below pr with this column set.
         let Some(sel) = (pr..rows.len()).find(|&r| rows[r].0[w] & bit != 0) else {
             continue;
         };
         rows.swap(pr, sel);
-        // Reduced row-echelon: clear this column from every OTHER row.
         let pivot = rows[pr].clone();
         for r in 0..rows.len() {
             if r != pr && rows[r].0[w] & bit != 0 {
@@ -160,26 +198,12 @@ fn gauss(nvars: usize, xors: &[XorConstraint]) -> GaussOutcome {
                 rows[r].1 ^= pivot.1;
             }
         }
-        pivot_row_of_col[col] = Some(pr);
+        pivot_var.push((col + 1) as u32);
         pr += 1;
     }
 
-    // Inconsistency: a row with no coefficients but rhs = 1 (0 = 1).
-    for (c, rhs) in &rows {
-        if *rhs && c.iter().all(|&w| w == 0) {
-            return GaussOutcome::Unsat;
-        }
-    }
-    // Model: free variables false; each pivot variable takes its row's
-    // rhs (after RREF a pivot row has only the pivot + free vars, and
-    // free vars are false).
-    let mut model = vec![false; nvars];
-    for col in 0..nvars {
-        if let Some(r) = pivot_row_of_col[col] {
-            model[col] = rows[r].1;
-        }
-    }
-    GaussOutcome::Consistent(model)
+    let unsat = rows.iter().any(|(c, rhs)| *rhs && c.iter().all(|&w| w == 0));
+    Reduced { rows, pivot_var, unsat }
 }
 
 fn model_satisfies(model: &[bool], clauses: &[Vec<i32>]) -> bool {
@@ -191,34 +215,136 @@ fn model_satisfies(model: &[bool], clauses: &[Vec<i32>]) -> bool {
     })
 }
 
+/// Unit-propagate the current partial assignment (`assign[v]`, 1-indexed)
+/// through `clauses` to a fixpoint.  Returns `false` on conflict.
+fn bcp(clauses: &[Vec<i32>], assign: &mut [Option<bool>]) -> bool {
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for cl in clauses {
+            let mut last_unassigned: i32 = 0;
+            let mut n_unassigned = 0;
+            let mut satisfied = false;
+            for &l in cl {
+                match assign[l.unsigned_abs() as usize] {
+                    Some(b) => {
+                        if b == (l > 0) {
+                            satisfied = true;
+                            break;
+                        }
+                    }
+                    None => {
+                        n_unassigned += 1;
+                        last_unassigned = l;
+                    }
+                }
+            }
+            if satisfied {
+                continue;
+            }
+            if n_unassigned == 0 {
+                return false; // all literals false → conflict
+            }
+            if n_unassigned == 1 {
+                let v = last_unassigned.unsigned_abs() as usize;
+                let want = last_unassigned > 0;
+                match assign[v] {
+                    Some(b) if b != want => return false,
+                    Some(_) => {}
+                    None => {
+                        assign[v] = Some(want);
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    true
+}
+
 /// Run the full XOR-recovery + Gaussian-elimination pre-pass.
 pub fn solve_xor_system(nvars: usize, clauses: &[Vec<i32>]) -> XorGaussResult {
     let (xors, consumed) = recover_xors(clauses);
     let n_consumed = consumed.iter().filter(|&&c| c).count();
     if xors.is_empty() {
-        return XorGaussResult::Indeterminate {
-            recovered: 0,
-            consumed: 0,
-            total: clauses.len(),
+        return XorGaussResult::Indeterminate { recovered: 0, consumed: 0, total: clauses.len() };
+    }
+    let red = gauss(nvars, &xors);
+    if red.unsat {
+        return XorGaussResult::Unsat;
+    }
+    let indeterminate = || XorGaussResult::Indeterminate {
+        recovered: xors.len(),
+        consumed: n_consumed,
+        total: clauses.len(),
+    };
+
+    // PURE-XOR formula → GE fully decides it (re-checked for safety).
+    if n_consumed == clauses.len() {
+        let model = red.pure_model(nvars);
+        return if model_satisfies(&model, clauses) {
+            XorGaussResult::Sat(model)
+        } else {
+            indeterminate()
         };
     }
-    match gauss(nvars, &xors) {
-        GaussOutcome::Unsat => XorGaussResult::Unsat,
-        GaussOutcome::Consistent(model) => {
-            // Decide SAT only for a PURE-XOR formula (every clause
-            // consumed) AND only after re-checking the model — so a
-            // recovery bug degrades to Indeterminate, never unsound SAT.
-            if n_consumed == clauses.len() && model_satisfies(&model, clauses) {
-                XorGaussResult::Sat(model)
-            } else {
-                XorGaussResult::Indeterminate {
-                    recovered: xors.len(),
-                    consumed: n_consumed,
-                    total: clauses.len(),
-                }
-            }
+
+    // MIXED formula: GE found variables forced to a constant (a global
+    // linear consequence BCP can't see).  Propagate them through the
+    // whole formula and eliminate the forced vars; search the residual.
+    let units = red.forced_units();
+    if units.is_empty() {
+        return indeterminate();
+    }
+    let mut assign: Vec<Option<bool>> = vec![None; nvars + 1]; // 1-indexed
+    for &(v, b) in &units {
+        match assign[v as usize] {
+            Some(old) if old != b => return XorGaussResult::Unsat,
+            _ => assign[v as usize] = Some(b),
         }
     }
+    if !bcp(clauses, &mut assign) {
+        return XorGaussResult::Unsat;
+    }
+
+    // Build the residual: drop satisfied clauses, drop now-false literals.
+    let mut residual: Vec<Vec<i32>> = Vec::new();
+    for cl in clauses {
+        let mut sat = false;
+        let mut lits: Vec<i32> = Vec::new();
+        for &l in cl {
+            match assign[l.unsigned_abs() as usize] {
+                Some(b) => {
+                    if b == (l > 0) {
+                        sat = true;
+                        break;
+                    }
+                }
+                None => lits.push(l),
+            }
+        }
+        if sat {
+            continue;
+        }
+        if lits.is_empty() {
+            return XorGaussResult::Unsat; // all literals false
+        }
+        residual.push(lits);
+    }
+
+    let forced: Vec<Option<bool>> = (1..=nvars).map(|v| assign[v]).collect();
+    let forced_count = forced.iter().filter(|f| f.is_some()).count();
+
+    if residual.is_empty() {
+        // GE + BCP decided everything.
+        let model: Vec<bool> = forced.iter().map(|f| f.unwrap_or(false)).collect();
+        return if model_satisfies(&model, clauses) {
+            XorGaussResult::Sat(model)
+        } else {
+            indeterminate()
+        };
+    }
+    XorGaussResult::Simplified { clauses: residual, forced, recovered: xors.len(), forced_count }
 }
 
 #[cfg(test)]
@@ -273,6 +399,26 @@ mod tests {
         // x=1,y=1 force x⊕y=0, contradicting x⊕y=1 → GE finds UNSAT.
         let cl = vec![vec![1], vec![2], vec![1, 2], vec![-1, -2]];
         assert!(matches!(solve_xor_system(2, &cl), XorGaussResult::Unsat));
+    }
+
+    #[test]
+    fn mixed_with_forced_unit_simplifies_and_reconstructs() {
+        // x=1 (a 1-XOR ⇒ forced unit) + two non-XOR clauses.
+        let orig = vec![vec![1], vec![-1, 2, 3], vec![2, -3, 4]];
+        match solve_xor_system(4, &orig) {
+            XorGaussResult::Simplified { clauses, forced, .. } => {
+                assert_eq!(forced[0], Some(true), "x forced true");
+                // `x` must not appear in the residual any more.
+                assert!(clauses.iter().all(|c| c.iter().all(|&l| l.unsigned_abs() != 1)));
+                // Solve the residual (everything true works) and reconstruct.
+                let mut model = vec![true; 4];
+                for (i, f) in forced.iter().enumerate() {
+                    if let Some(b) = f { model[i] = *b; }
+                }
+                assert!(model_satisfies(&model, &orig), "reconstructed model is valid");
+            }
+            other => panic!("expected Simplified, got {other:?}"),
+        }
     }
 
     #[test]

@@ -811,6 +811,38 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
             }
         }
 
+        // ── Local learned-clause minimization (MiniSat ccmin=1) ──
+        // Drop non-asserting learning lits whose unit-implication
+        // antecedents are ALL already in the learning set: such a lit
+        // would simply be re-implied, so the smaller cube still blocks
+        // the conflict.  Smaller learned clauses propagate more strongly
+        // and shrink the clause DB, cutting downstream conflicts — the
+        // standard first conflict-efficiency win.
+        //
+        // Redundancy is tested against the *unmodified* set (we collect
+        // first, remove after); the implication graph is a DAG, so two
+        // mutually-listed lits can't both be redundant and removal is
+        // safe.  The UIP (the lone conflict_level lit) is never a
+        // candidate, so the clause stays asserting.
+        let candidates: Vec<Lit> = learning.iter()
+            .filter(|(_, lvl)| **lvl != conflict_level)
+            .map(|(l, _)| (*l).clone())
+            .collect();
+        let mut redundant: Vec<(Lit, usize)> = Vec::new();
+        for l in &candidates {
+            if let Some(rid) = self.lit_redundant_local(l, &learning) {
+                redundant.push((l.clone(), rid));
+            }
+        }
+        for (l, rid) in redundant {
+            // Minimizing through a non-RUP clause taints the DRAT
+            // proof's purity (cover-cert is the authoritative proof).
+            if !self.clause_is_rup.get(rid).copied().unwrap_or(true) {
+                chain_all_rup = false;
+            }
+            learning.remove(&l);
+        }
+
         // Negations of the learning-set lits → cube alts of the
         // learned clause.  A future path containing all the
         // *original* learning lits would re-trigger this conflict;
@@ -987,6 +1019,32 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
             .find(|t| t.lit == *lit)
             .map(|t| t.decision_level)
             .unwrap_or(0)
+    }
+
+    /// Local (MiniSat ccmin=1) redundancy test for learned-clause
+    /// minimization.  A true-on-trail lit `l` in the learning set is
+    /// redundant if it was unit-implied by some clause `rid` and EVERY
+    /// antecedent of that implication (the complement of each of `rid`'s
+    /// other alts — all true on the trail when `rid` went unit) is
+    /// already in the learning set.  Returns `Some(rid)` if redundant
+    /// (so the caller can track the resolved-through clause's RUP
+    /// status), else `None`.  Decision / SumForced lits are never
+    /// redundant — they're genuine root causes.
+    fn lit_redundant_local(&self, l: &Lit, learning: &HashMap<Lit, usize>) -> Option<usize> {
+        let reason = self.trail.iter().rev()
+            .find(|t| t.lit == *l)
+            .map(|t| &t.reason)?;
+        if let Reason::Implied(rid) = reason {
+            for a in &self.prod_alts[*rid] {
+                if a == l { continue; }          // the surviving (implied) alt
+                if !learning.contains_key(&a.complement()) {
+                    return None;                 // an antecedent isn't covered
+                }
+            }
+            Some(*rid)
+        } else {
+            None
+        }
     }
 
     /// Add a 1UIP-derived clause to the controller's propagation

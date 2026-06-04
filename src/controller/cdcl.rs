@@ -145,19 +145,32 @@ pub struct CdclController<F: FnMut(PathsClass, bool) -> bool = fn(PathsClass, bo
     /// (SumForced).
     last_path_len_at_lit_push: usize,
 
-    // ── Propagation infrastructure (port from SmartController) ──
+    // ── Propagation infrastructure: 2-watched-literal BCP ──
     //
     // For every Prod-of-Lits "clause complement" with Sum-only
-    // ancestors, we store its alternatives, a count of how many are
-    // blocked by lits committed to the path, and a per-alt blocked
-    // bitmap to dedup.  Watch lists drive the propagation cascade.
-    prod_alts:        Vec<Vec<Lit>>,    // per clause_id: clones of Lit children
-    prod_total:       Vec<usize>,       // per clause_id: total alternatives
-    prod_blocked:     Vec<usize>,       // per clause_id: # blocked alts
-    prod_alt_blocked: Vec<Vec<bool>>,   // per clause_id: which alts are blocked
-    /// `var*2 + neg` lit_idx → list of `(clause_id, alt_idx)` entries.
-    /// Pushing a lit with this lit_idx blocks each listed alternative.
-    watches:          Vec<Vec<(usize, usize)>>,
+    // ancestors we store its alternatives (the clause's literals).  An
+    // alt with lit `L` is "blocked" (falsified) iff `comp(L)` is true
+    // on the path / implied — checked lazily via `lit_or_implied`, so
+    // there's no materialized per-alt blocked bitmap or blocked counter
+    // any more (those were O(occurrences)-per-assignment counter-based
+    // BCP; this is ~O(1)-per-assignment 2WL).
+    //
+    // Each clause watches exactly TWO non-false alts (`clause_watch`).
+    // `watch_clauses[lit_idx]` lists the clause_ids that watch an alt
+    // whose lit has that `lit_idx`; a clause appears there when one of
+    // its two watched alts has that lit.  Pushing a lit `l` (making it
+    // true) falsifies alts equal to `comp(l)`, so we process
+    // `watch_clauses[comp(l).lit_idx]` — exactly the clauses whose
+    // watch just became false.  Watches are NEVER undone on backtrack:
+    // as lits become unassigned the watched alts only get *less* false,
+    // so the invariant "two non-false watches (or sat/unit/conflict)"
+    // is preserved for free.
+    prod_alts:        Vec<Vec<Lit>>,    // per clause_id: the clause's literals
+    prod_total:       Vec<usize>,       // per clause_id: number of alts
+    /// per clause_id: the two watched alt indices (equal for arity-1).
+    clause_watch:     Vec<[usize; 2]>,
+    /// `var*2 + neg` lit_idx → clause_ids watching an alt with this lit.
+    watch_clauses:    Vec<Vec<usize>>,
     /// `var*2 + neg` lit_idx → count of times propagation has
     /// implied this lit (multiple clauses can each imply the same lit
     /// in a single cascade).  >0 means the lit is currently implied.
@@ -479,12 +492,10 @@ struct PushFrame {
     /// Number of `trail` entries this push (DFS push + propagation
     /// cascade) added.  On undo, pop this many from the trail.
     trail_added: usize,
-    /// `(clause_id, alt_idx)` pairs marked blocked during this push's
-    /// cascade.  Each one decrements `prod_blocked[clause_id]` on
-    /// undo.
-    blocked: Vec<(usize, usize)>,
     /// `lit_idx` (= `var*2+neg`) values whose `implied_lit_counter`
-    /// this push incremented.  Each decrements on undo.
+    /// this push incremented.  Each decrements on undo.  (2WL keeps no
+    /// per-clause blocked state, so there is nothing else to undo —
+    /// watch positions persist across backtracking by design.)
     implied: Vec<usize>,
 }
 
@@ -930,26 +941,17 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         let to_delete = live.len() / 2;
         for &(clause_id, _lbd) in live.iter().rev().take(to_delete) {
             self.clause_deleted[clause_id] = true;
-            // Reset blocking state for the deleted clause, in case
-            // the search re-uses these slots after some other
-            // reduction.  (Not strictly necessary since we'll skip
-            // the clause via `clause_deleted`, but tidies up.)
-            self.prod_blocked[clause_id] = 0;
-            for b in &mut self.prod_alt_blocked[clause_id] {
-                *b = false;
-            }
         }
 
-        // Compact watch lists: remove entries for deleted clauses so
-        // `process_push` doesn't walk through them on every push.
-        // Without this compaction the early-skip on `clause_deleted`
-        // is fast per-entry but the Luby schedule grows the
-        // between-restart window faster than the reducer can halve
-        // the count, and watch lists fill up with stale entries —
-        // PHP-12-11 timed at ~19s without compaction vs. ~1s with.
+        // Compact watch lists: drop entries for deleted clauses so
+        // `process_push` doesn't walk through them.  (2WL already drops
+        // a deleted clause's watches lazily the next time one of its two
+        // watched lits fires, but an eager sweep keeps the lists tight —
+        // it mattered a lot under the old all-alts watching; with only
+        // two watches per clause it's cheap insurance.)
         let deleted = &self.clause_deleted;
-        for w in &mut self.watches {
-            w.retain(|&(clause_id, _)| !deleted[clause_id]);
+        for w in &mut self.watch_clauses {
+            w.retain(|&clause_id| !deleted[clause_id]);
         }
     }
 
@@ -1012,94 +1014,66 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
     fn register_learned_clause(
         &mut self,
         learned: &LearnedClause,
-        current_frame: &mut PushFrame,
+        _current_frame: &mut PushFrame,
     ) -> usize {
         let clause_id = self.prod_alts.len();
         let alts: Vec<Lit> = learned.alts.clone();
+        let n = alts.len();
 
-        // Insert into watches.  An alt being pushed onto the trail
-        // is detected via watches[alt.lit_idx ^ 1] (i.e. someone
-        // pushed the alt's complement); but we register at
-        // watches[alt.lit_idx] so future pushes of the alt's
-        // complement find this clause via the standard process_push
-        // path.  Wait — let's be precise:
-        //
-        //   process_push(lit) walks watches[comp_of_lit] looking for
-        //   `(clause, alt_idx)` entries to block.  That means
-        //   watches[X] holds entries `(clause, alt_idx)` where the
-        //   *alt's lit_idx* is X.  So we insert into
-        //   watches[alt.lit_idx], and when someone pushes a lit `l`
-        //   such that `l.complement().lit_idx == alt.lit_idx` (i.e.
-        //   `l == alt.complement()`), the block fires.
-        for (alt_idx, lit) in alts.iter().enumerate() {
-            let lit_idx = (lit.var as usize) * 2 + (lit.neg as usize);
-            if lit_idx >= self.watches.len() {
-                self.watches.resize(lit_idx + 1, Vec::new());
-                self.implied_lit_counter.resize(lit_idx + 1, 0);
-            }
-            self.watches[lit_idx].push((clause_id, alt_idx));
-        }
-
-        self.prod_total.push(alts.len());
-        self.prod_blocked.push(0);
-        self.prod_alt_blocked.push(vec![false; alts.len()]);
-        self.prod_alts.push(alts.clone());
+        self.prod_total.push(n);
         // The new clause is live by default — only the LBD reducer
         // turns it off.
         self.clause_deleted.push(false);
         // Track DRAT-RUP-validity: a new learned clause is RUP iff
         // (a) its 1UIP analysis was pure-resolution AND (b) every
-        // clause it resolved through was RUP.  The caller in the
-        // conflict-handler loop knows (a) (= `learned.pure_resolution`)
-        // and supplies the conjunction; we just record the flag here
-        // by index alignment.  Initialised to `true` here; the caller
-        // overrides via `clause_is_rup.last_mut()` if needed.
+        // clause it resolved through was RUP.  The caller supplies (a)
+        // via `learned.pure_resolution`; recorded here by index.
         self.clause_is_rup.push(learned.pure_resolution);
 
-        // Walk the trail to find which entry blocks each alt and
-        // attribute the blocking to the correct frame.  This is
-        // O(trail × alts) but typically alts is small (often <10) so
-        // it's fine.
-        //
-        // Build a parallel array `frame_of_trail[i]` = index into
-        // `push_frames` for trail entry `i`.  Trail entries beyond
-        // `frame_of_trail.len()` belong to `current_frame` (which
-        // hasn't been moved into `push_frames` yet).
-        let mut frame_of_trail: Vec<usize> = Vec::with_capacity(self.trail.len());
-        for (frame_idx, frame) in self.push_frames.iter().enumerate() {
-            for _ in 0..frame.trail_added {
-                frame_of_trail.push(frame_idx);
-            }
-        }
-        let len_in_frames = frame_of_trail.len();
-
-        // Snapshot trail lit_idx values to dodge the
-        // `&self.trail` + `&mut self.prod_alt_blocked` borrow conflict.
+        // Choose the two watched alts.  At registration the learned
+        // clause is fully falsified (its alts are exactly the trail lits
+        // that drove the conflict), so we can't pick two non-false lits.
+        // Instead watch the two alts whose complement sits DEEPEST on the
+        // trail — they are the last to become unassigned as the DFS
+        // backtracks.  This is the standard 2WL choice for an asserting
+        // clause: after the backtrack that retracts the deepest lit, that
+        // watch is the now-unassigned asserting literal and the invariant
+        // "two non-false watches, or sat/unit/conflict" is restored for
+        // free without any backtrack-time bookkeeping.
         let trail_lit_idx: Vec<usize> = self.trail.iter()
             .map(|t| (t.lit.var as usize) * 2 + (t.lit.neg as usize))
             .collect();
-
-        for (alt_idx, alt) in alts.iter().enumerate() {
-            let comp_idx = (alt.var as usize) * 2 + ((!alt.neg) as usize);
-            // Find the FIRST trail entry whose lit is the alt's
-            // complement.  That's the entry "responsible" for the
-            // alt being blocked; when its frame pops, the blocking
-            // gets undone in lockstep.
-            for (trail_idx, &t_idx) in trail_lit_idx.iter().enumerate() {
-                if t_idx == comp_idx {
-                    self.prod_alt_blocked[clause_id][alt_idx] = true;
-                    self.prod_blocked[clause_id] += 1;
-                    if trail_idx < len_in_frames {
-                        let fi = frame_of_trail[trail_idx];
-                        self.push_frames[fi].blocked.push((clause_id, alt_idx));
-                    } else {
-                        // Trail entry was added by the in-progress
-                        // current frame.
-                        current_frame.blocked.push((clause_id, alt_idx));
-                    }
-                    break;
-                }
+        let depth_of = |alt: &Lit| -> usize {
+            let comp = (alt.var as usize) * 2 + ((!alt.neg) as usize);
+            // LAST trail position holding the alt's complement (= when
+            // the alt was falsified).  Larger = retracted earlier.
+            trail_lit_idx.iter().rposition(|&x| x == comp).unwrap_or(0)
+        };
+        // w0 = deepest alt, w1 = second-deepest (w1 == w0 for arity 1).
+        let depths: Vec<usize> = alts.iter().map(|a| depth_of(a)).collect();
+        let mut w0 = 0usize;
+        let mut w1 = if n > 1 { 1 } else { 0 };
+        if n >= 2 {
+            if depths[1] > depths[0] { w0 = 1; w1 = 0; }
+            for ai in 2..n {
+                if depths[ai] > depths[w0] { w1 = w0; w0 = ai; }
+                else if depths[ai] > depths[w1] { w1 = ai; }
             }
+        }
+
+        self.prod_alts.push(alts.clone());
+        self.clause_watch.push([w0, w1]);
+
+        // Register the watch(es) — once for arity 1 (w0 == w1).
+        let mut to_watch = vec![w0];
+        if w1 != w0 { to_watch.push(w1); }
+        for wa in to_watch {
+            let lit_idx = (alts[wa].var as usize) * 2 + (alts[wa].neg as usize);
+            if lit_idx >= self.watch_clauses.len() {
+                self.watch_clauses.resize(lit_idx + 1, Vec::new());
+                self.implied_lit_counter.resize(lit_idx + 1, 0);
+            }
+            self.watch_clauses[lit_idx].push(clause_id);
         }
 
         clause_id
@@ -1126,16 +1100,23 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
                             NNF::Lit(l) => l.clone(),
                             _ => unreachable!(),
                         }).collect();
-                        for (alt_idx, lit) in alts.iter().enumerate() {
-                            let lit_idx = (lit.var as usize) * 2 + (lit.neg as usize);
-                            if lit_idx >= s.watches.len() {
-                                s.watches.resize(lit_idx + 1, Vec::new());
+                        let n = alts.len();
+                        // Trail is empty at preprocess ⇒ every alt is
+                        // non-false ⇒ watch the first two (or the single
+                        // alt for arity 1).
+                        let w0 = 0usize;
+                        let w1 = if n > 1 { 1 } else { 0 };
+                        let mut to_watch = vec![w0];
+                        if w1 != w0 { to_watch.push(w1); }
+                        for wa in to_watch {
+                            let lit_idx = (alts[wa].var as usize) * 2 + (alts[wa].neg as usize);
+                            if lit_idx >= s.watch_clauses.len() {
+                                s.watch_clauses.resize(lit_idx + 1, Vec::new());
                             }
-                            s.watches[lit_idx].push((clause_id, alt_idx));
+                            s.watch_clauses[lit_idx].push(clause_id);
                         }
-                        s.prod_total.push(alts.len());
-                        s.prod_blocked.push(0);
-                        s.prod_alt_blocked.push(vec![false; alts.len()]);
+                        s.prod_total.push(n);
+                        s.clause_watch.push([w0, w1]);
                         s.prod_alts.push(alts);
                     }
                     for c in ch { walk(c, s, true); }
@@ -1143,8 +1124,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
             }
         }
         walk(nnf, self, false);
-        if !self.watches.is_empty() {
-            self.implied_lit_counter.resize(self.watches.len(), 0);
+        if !self.watch_clauses.is_empty() {
+            self.implied_lit_counter.resize(self.watch_clauses.len(), 0);
         }
         // Record how many clauses came from preprocess; anything added
         // later is a learned clause and may be considered for deletion.
@@ -1168,20 +1149,13 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         self.inner.has_lit(&Lit { var, neg })
     }
 
-    /// Linear scan over a clause's alternatives — returns the unique
-    /// non-blocked one, or `None` if there's zero or more than one.
-    /// Called only when the blocked count says exactly one should
-    /// remain, so the linear cost is bounded by the clause's arity.
-    fn find_remaining_alt(&self, clause_id: usize) -> Option<usize> {
-        let alts = &self.prod_alts[clause_id];
-        let mut found: Option<usize> = None;
-        for (i, lit) in alts.iter().enumerate() {
-            let comp_idx = (lit.var as usize) * 2 + ((!lit.neg) as usize);
-            if self.lit_or_implied(comp_idx) { continue; }
-            if found.is_some() { return None; }
-            found = Some(i);
-        }
-        found
+    /// `lit_idx` (= `var*2+neg`) of alt `alt_idx` in clause `clause_id`.
+    /// Kept tiny so the borrow ends immediately (the 2WL propagation
+    /// loop interleaves these reads with `&mut self` watch/trail writes).
+    #[inline]
+    fn alt_lit_idx(&self, clause_id: usize, alt_idx: usize) -> usize {
+        let l = &self.prod_alts[clause_id][alt_idx];
+        (l.var as usize) * 2 + (l.neg as usize)
     }
 
     // ─── Conflict cover emission (cover-certificate path) ──────────────
@@ -1394,73 +1368,93 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
     fn process_push(&mut self, lit: &Lit, level: usize, frame: &mut PushFrame) -> Result<(), usize> {
         let mut queue: Vec<usize> = Vec::new();
         queue.push((lit.var as usize) * 2 + (lit.neg as usize));
-        while let Some(l_idx) = queue.pop() {
-            let comp_idx = l_idx ^ 1;
-            if comp_idx >= self.watches.len() { continue; }
-            // We're about to mutate other clause state (and may extend
-            // the queue), so we can't hold an immutable borrow of
-            // `self.watches[comp_idx]` across the loop.  The loop body
-            // never touches *this* watch list, so move it out with an
-            // O(1) `take` (leaving an empty Vec) and put it back after —
-            // far cheaper than cloning the whole list on every single
-            // propagation step (this is the hottest loop in the solver).
-            let touches = std::mem::take(&mut self.watches[comp_idx]);
-            // Track a conflict and `break` rather than early-`return`, so
-            // the watch list is always restored before we leave (an early
-            // return on conflict would leak the moved-out list, leaving
-            // `self.watches[comp_idx]` permanently empty and silently
-            // breaking all later propagation through this literal).
+        while let Some(p_idx) = queue.pop() {
+            // `p_idx` just became TRUE on the path / implied.  The alts
+            // that are now FALSE are exactly those whose lit == comp(p);
+            // process the clauses currently watching such an alt.
+            let false_idx = p_idx ^ 1;
+            if false_idx >= self.watch_clauses.len() { continue; }
+            // Move the watch list out (O(1)) so we can mutate OTHER watch
+            // lists / the trail while iterating.  Replacement watches go
+            // to other lit indices (a non-false lit can't equal the false
+            // one), so `watch_clauses[false_idx]` is never touched inside
+            // the loop; we rebuild it from `kept` afterwards.
+            let watchers = std::mem::take(&mut self.watch_clauses[false_idx]);
+            let mut kept: Vec<usize> = Vec::with_capacity(watchers.len());
             let mut conflict: Option<usize> = None;
-            for &(clause_id, alt_idx) in &touches {
-                // Skip clauses pruned by LBD reduction — their watch
-                // entries are still in `self.watches` (we don't compact
-                // for ID-stability reasons) but they shouldn't fire.
+            let mut wi = 0;
+            while wi < watchers.len() {
+                let clause_id = watchers[wi];
+                wi += 1;
+                // Deleted (LBD-reduced) clauses drop their watch lazily:
+                // by not copying into `kept`, they vanish from this list.
                 if self.clause_deleted[clause_id] { continue; }
-                if self.prod_alt_blocked[clause_id][alt_idx] { continue; }
-                self.prod_alt_blocked[clause_id][alt_idx] = true;
-                self.prod_blocked[clause_id] += 1;
-                frame.blocked.push((clause_id, alt_idx));
-                let total   = self.prod_total[clause_id];
-                let blocked = self.prod_blocked[clause_id];
-                if blocked >= total {
-                    // Every alt of this clause is blocked — conflict.
-                    conflict = Some(clause_id);
-                    break;
+                let w = self.clause_watch[clause_id];
+                // Identify which watched slot just became false.
+                let (false_slot, other_alt) = if self.alt_lit_idx(clause_id, w[0]) == false_idx {
+                    (0usize, w[1])
+                } else {
+                    (1usize, w[0])
+                };
+                let other_idx = self.alt_lit_idx(clause_id, other_alt);
+                // Other watch already TRUE ⇒ clause satisfied; keep watch.
+                if self.lit_or_implied(other_idx) {
+                    kept.push(clause_id);
+                    continue;
                 }
-                if blocked == total - 1 {
-                    if let Some(rem_alt) = self.find_remaining_alt(clause_id) {
-                        let rl = self.prod_alts[clause_id][rem_alt].clone();
-                        let r_idx      = (rl.var as usize) * 2 + (rl.neg as usize);
-                        let r_comp_idx = r_idx ^ 1;
-                        if self.lit_or_implied(r_comp_idx) {
-                            conflict = Some(clause_id);
-                            break;
+                // Hunt for a replacement watch: a non-false alt that
+                // isn't already one of the two current watches.
+                let n = self.prod_total[clause_id];
+                let mut found: Option<usize> = None;
+                for ai in 0..n {
+                    if ai == w[false_slot] || ai == other_alt { continue; }
+                    if !self.lit_or_implied(self.alt_lit_idx(clause_id, ai) ^ 1) {
+                        found = Some(ai);
+                        break;
+                    }
+                }
+                match found {
+                    Some(ai) => {
+                        // Relocate the false watch onto `ai` (a different,
+                        // non-false lit index — so not `false_idx`).
+                        let new_idx = self.alt_lit_idx(clause_id, ai);
+                        self.clause_watch[clause_id][false_slot] = ai;
+                        if new_idx >= self.watch_clauses.len() {
+                            self.watch_clauses.resize(new_idx + 1, Vec::new());
+                            self.implied_lit_counter.resize(new_idx + 1, 0);
                         }
-                        if !self.lit_or_implied(r_idx) {
-                            self.implied_lit_counter[r_idx] += 1;
-                            frame.implied.push(r_idx);
-                            // Add to the reasoned trail with the
-                            // back-pointer to the clause that forced
-                            // this lit.  1UIP analysis uses this
-                            // back-pointer to traverse the implication
-                            // graph.
+                        self.watch_clauses[new_idx].push(clause_id);
+                        // (not kept on `false_idx`)
+                    }
+                    None => {
+                        // No replacement — the other watch is the clause's
+                        // last non-false alt.  Keep watching `false_idx`.
+                        kept.push(clause_id);
+                        if self.lit_or_implied(other_idx ^ 1) {
+                            // Other watch is ALSO false ⇒ every alt false
+                            // ⇒ conflict.  Preserve the unprocessed tail.
+                            conflict = Some(clause_id);
+                            kept.extend_from_slice(&watchers[wi..]);
+                            break;
+                        } else {
+                            // Other watch unassigned ⇒ unit; imply it.
+                            // 1UIP analysis follows the Reason back-pointer.
+                            let other_lit = self.prod_alts[clause_id][other_alt].clone();
+                            self.implied_lit_counter[other_idx] += 1;
+                            frame.implied.push(other_idx);
                             self.trail.push(TrailLit {
-                                lit: rl.clone(),
+                                lit: other_lit,
                                 reason: Reason::Implied(clause_id),
                                 decision_level: level,
-                                // Implied lits have no direct path
-                                // position — they're CDCL-derived.
                                 position: None,
                             });
                             frame.trail_added += 1;
-                            queue.push(r_idx);
+                            queue.push(other_idx);
                         }
                     }
                 }
             }
-            // Put the (unmodified) watch list back where we took it from —
-            // on every path, conflict or not.
-            self.watches[comp_idx] = touches;
+            self.watch_clauses[false_idx] = kept;
             if let Some(clause_id) = conflict {
                 return Err(clause_id);
             }
@@ -1468,23 +1462,20 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         Ok(())
     }
 
-    /// Undo every blocking / implication recorded in `frame`, plus
-    /// truncate the reasoned trail by the number of entries this push
-    /// added.
+    /// Undo a push: decrement the implied-lit counters this push raised
+    /// and truncate the trail.  2WL keeps NO per-clause blocked state and
+    /// its watch positions persist across backtracking by design (as lits
+    /// become unassigned the watched alts only get *less* false), so the
+    /// trail/implied unwind is the whole of undo.
     fn undo(&mut self, frame: &PushFrame) {
-        for &(clause_id, alt_idx) in &frame.blocked {
-            self.prod_alt_blocked[clause_id][alt_idx] = false;
-            self.prod_blocked[clause_id] -= 1;
-        }
         for &lit_idx in &frame.implied {
             self.implied_lit_counter[lit_idx] -= 1;
         }
         // Phase saving: every lit being popped here contributes its
-        // polarity to `saved_phase` so the next decision involving
-        // that variable can re-prefer the recently-tried polarity.
-        // Copy each lit out by value (Lit is a small POD) to dodge the
-        // aliasing borrow with `&mut self` inside `save_lit_phase` —
-        // no heap `Vec` snapshot needed (this runs on every backtrack).
+        // polarity to `saved_phase` so the next decision involving that
+        // variable can re-prefer the recently-tried polarity.  Copy each
+        // lit out by value (Lit is a small POD) to dodge the aliasing
+        // borrow with `&mut self` inside `save_lit_phase`.
         let new_len = self.trail.len() - frame.trail_added;
         for i in new_len..self.trail.len() {
             let lit = self.trail[i].lit.clone();
@@ -1529,9 +1520,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             last_path_len_at_lit_push: 0,
             prod_alts:        Vec::new(),
             prod_total:       Vec::new(),
-            prod_blocked:     Vec::new(),
-            prod_alt_blocked: Vec::new(),
-            watches:          Vec::new(),
+            clause_watch:     Vec::new(),
+            watch_clauses:    Vec::new(),
             implied_lit_counter: Vec::new(),
             push_frames:      Vec::new(),
             our_counted_len:  0,
@@ -1583,9 +1573,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
             last_path_len_at_lit_push: 0,
             prod_alts:        Vec::new(),
             prod_total:       Vec::new(),
-            prod_blocked:     Vec::new(),
-            prod_alt_blocked: Vec::new(),
-            watches:          Vec::new(),
+            clause_watch:     Vec::new(),
+            watch_clauses:    Vec::new(),
             implied_lit_counter: Vec::new(),
             push_frames:      Vec::new(),
             our_counted_len:  0,
@@ -1763,19 +1752,11 @@ impl<F: FnMut(PathsClass, bool) -> bool> PathSearchController for CdclController
         self.restart_pending = false;
         self.conflicts_since_last_restart = 0;
 
-        // Reset clause-blocking state.  Empty trail → nothing
-        // currently true → no alts blocked, no implied lits.  This
-        // is correct because every blocking we've recorded was
-        // attributed to a push_frame, all of which are now cleared;
-        // the on-trail lits that justified those blockings are gone.
-        for blocked in &mut self.prod_blocked {
-            *blocked = 0;
-        }
-        for ab in &mut self.prod_alt_blocked {
-            for b in ab.iter_mut() {
-                *b = false;
-            }
-        }
+        // Empty trail → nothing currently true → no implied lits.
+        // 2WL watch positions are deliberately NOT reset: with an empty
+        // trail every alt is non-false, so whatever two alts each clause
+        // currently watches are trivially valid watches — the invariant
+        // holds for free and propagation resumes correctly from here.
         for c in &mut self.implied_lit_counter {
             *c = 0;
         }
@@ -1839,16 +1820,22 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
                     {
                         let clause_id = s.prod_alts.len();
                         let alts: Vec<Lit> = children.iter().map(|&c| arena.lit(c)).collect();
-                        for (alt_idx, lit) in alts.iter().enumerate() {
-                            let lit_idx = (lit.var as usize) * 2 + (lit.neg as usize);
-                            if lit_idx >= s.watches.len() {
-                                s.watches.resize(lit_idx + 1, Vec::new());
+                        let nn = alts.len();
+                        // Empty trail at preprocess ⇒ watch the first two
+                        // alts (or the single alt for arity 1).
+                        let w0 = 0usize;
+                        let w1 = if nn > 1 { 1 } else { 0 };
+                        let mut to_watch = vec![w0];
+                        if w1 != w0 { to_watch.push(w1); }
+                        for wa in to_watch {
+                            let lit_idx = (alts[wa].var as usize) * 2 + (alts[wa].neg as usize);
+                            if lit_idx >= s.watch_clauses.len() {
+                                s.watch_clauses.resize(lit_idx + 1, Vec::new());
                             }
-                            s.watches[lit_idx].push((clause_id, alt_idx));
+                            s.watch_clauses[lit_idx].push(clause_id);
                         }
-                        s.prod_total.push(alts.len());
-                        s.prod_blocked.push(0);
-                        s.prod_alt_blocked.push(vec![false; alts.len()]);
+                        s.prod_total.push(nn);
+                        s.clause_watch.push([w0, w1]);
                         s.prod_alts.push(alts);
                     }
                     for &c in children { walk(arena, c, s, true); }
@@ -1856,8 +1843,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
             }
         }
         walk(arena, arena.root(), self, false);
-        if !self.watches.is_empty() {
-            self.implied_lit_counter.resize(self.watches.len(), 0);
+        if !self.watch_clauses.is_empty() {
+            self.implied_lit_counter.resize(self.watch_clauses.len(), 0);
         }
         self.initial_clause_count = self.prod_alts.len();
         self.clause_deleted = vec![false; self.prod_alts.len()];
@@ -2617,17 +2604,17 @@ mod tests {
         let learned = ctrl.learned_clauses();
         assert!(!learned.is_empty(), "expected a learned clause");
 
-        // The learned clause from this NNF has alts = { c }.  Its
-        // clause_id is `initial_clauses + 0` = 3.  watches[c.lit_idx]
-        // should contain (3, 0).
+        // The learned clause from this NNF has alts = { c } (arity 1).
+        // Its clause_id is `initial_clauses + 0` = 3.  2WL watches its
+        // single alt, so watch_clauses[c.lit_idx] should contain 3.
         let learned_id = 3;     // 3 original cubes + this is the first learned
         let c_lit_idx  = 2 * 2 + 0;     // var=2 (c), neg=false
-        let watches_entries = &ctrl.watches[c_lit_idx];
+        let watch_entries = &ctrl.watch_clauses[c_lit_idx];
         assert!(
-            watches_entries.iter().any(|&(cid, _)| cid == learned_id),
-            "expected watches[{}] to contain the learned clause's id ({}); \
+            watch_entries.iter().any(|&cid| cid == learned_id),
+            "expected watch_clauses[{}] to contain the learned clause's id ({}); \
              got {:?}",
-            c_lit_idx, learned_id, watches_entries,
+            c_lit_idx, learned_id, watch_entries,
         );
     }
 
@@ -2840,7 +2827,7 @@ mod tests {
         // Snapshot persistent knowledge before restart.
         let learned_before  = ctrl.learned_clauses().len();
         let activity_before = ctrl.var_activity(2);
-        let watches_len     = ctrl.watches.len();
+        let watches_len     = ctrl.watch_clauses.len();
         let prod_alts_len   = ctrl.prod_alts.len();
 
         // Force-set restart_pending so we can exercise the trigger
@@ -2852,10 +2839,8 @@ mod tests {
         assert!(ctrl.trail.is_empty(), "trail should be empty after restart");
         assert!(ctrl.push_frames.is_empty(), "push_frames should be empty");
         assert_eq!(ctrl.our_counted_len, 0);
-        for &b in &ctrl.prod_blocked { assert_eq!(b, 0); }
-        for ab in &ctrl.prod_alt_blocked {
-            for &b in ab { assert!(!b); }
-        }
+        // 2WL keeps no per-clause blocked state; the only transient
+        // propagation state is the implied-lit counters, all cleared.
         for &c in &ctrl.implied_lit_counter { assert_eq!(c, 0); }
 
         // Persistent knowledge preserved.
@@ -2863,8 +2848,8 @@ mod tests {
             "learned clauses should survive restart");
         assert_eq!(ctrl.var_activity(2), activity_before,
             "VSIDS activity should survive restart");
-        assert_eq!(ctrl.watches.len(), watches_len,
-            "watches shouldn't shrink");
+        assert_eq!(ctrl.watch_clauses.len(), watches_len,
+            "watch lists shouldn't shrink");
         assert_eq!(ctrl.prod_alts.len(), prod_alts_len,
             "indexed clauses (incl. learned) should persist");
 
@@ -2947,7 +2932,7 @@ mod tests {
             decision_level: 1,
             position: None,
         });
-        let frame = PushFrame { trail_added: 1, blocked: vec![], implied: vec![] };
+        let frame = PushFrame { trail_added: 1, implied: vec![] };
         ctrl.undo(&frame);
 
         assert!(ctrl.trail.is_empty(), "trail should be empty after undo");
@@ -3141,11 +3126,11 @@ mod tests {
         let mut ctrl: CdclController<fn(PathsClass, bool) -> bool> =
             CdclController::for_nnf(&nnf, None, noop_on_class);
 
-        // Stage a learned clause with alts [a, b].  Its watch entries
-        // are for var 0 and var 1.  Pushing ¬a (var 0, neg=true)
-        // would normally block the `a` alt of this clause.
+        // Stage a learned clause [c, d] over FRESH vars (2, 3) so it's
+        // the only clause that could fire on these literals (the nnf's
+        // clause is over vars 0/1).  2WL watches its two alts (c, d).
         let learned = LearnedClause {
-            alts: vec![Lit::pos(0), Lit::pos(1)],
+            alts: vec![Lit::pos(2), Lit::pos(3)],
             backjump_level: 0,
             lbd: 1,
             pure_resolution: true,
@@ -3157,14 +3142,15 @@ mod tests {
         // Mark the clause deleted.
         ctrl.clause_deleted[learned_id] = true;
 
-        // Now run process_push for ¬a and observe that the deleted
-        // clause's blocked count does NOT change.
-        let blocked_before = ctrl.prod_blocked[learned_id];
+        // Pushing ¬c falsifies the `c` watch; were the clause live it
+        // would go unit and imply `d`.  Deleted, process_push must skip
+        // it entirely — no implication, no conflict.
+        let d_idx = 3 * 2 + 0; // var=3 (d), neg=false
         let mut frame2 = PushFrame::default();
-        let _ = ctrl.process_push(&Lit::neg(0), 0, &mut frame2);
-        let blocked_after = ctrl.prod_blocked[learned_id];
-        assert_eq!(blocked_before, blocked_after,
-            "deleted clause's prod_blocked should not change on cascade");
+        let r = ctrl.process_push(&Lit::neg(2), 0, &mut frame2);
+        assert!(r.is_ok(), "a deleted clause must not raise a conflict");
+        assert_eq!(ctrl.implied_lit_counter.get(d_idx).copied().unwrap_or(0), 0,
+            "a deleted clause must not imply its other watch");
     }
 
     /// Backjumping must not break the agreement with SmartController.
@@ -3232,19 +3218,14 @@ mod tests {
         let empty_path = Vec::new();
         ctrl.should_continue_on_prefix(&empty_lits, &empty_positions, &empty_path, false);
 
-        // After full unwind, every clause's prod_blocked should be 0.
-        for (cid, &blocked) in ctrl.prod_blocked.iter().enumerate() {
-            assert_eq!(
-                blocked, 0,
-                "after full backtrack, clause {} (alts={:?}) should have 0 blocked alts; got {}",
-                cid, ctrl.prod_alts[cid], blocked,
-            );
-        }
-        // ... and every alt-blocked bit should be false.
-        for (cid, alt_block) in ctrl.prod_alt_blocked.iter().enumerate() {
-            for (i, &b) in alt_block.iter().enumerate() {
-                assert!(!b, "clause {} alt {} should be unblocked; was {}", cid, i, b);
-            }
+        // After full unwind the trail is empty, so no lit is implied.
+        // (2WL keeps no per-clause blocked state; the implied-lit
+        // counters are the only transient propagation state and they
+        // must all be zero once every push has been undone.)
+        assert!(ctrl.trail.is_empty(), "trail should be empty after full backtrack");
+        for (idx, &c) in ctrl.implied_lit_counter.iter().enumerate() {
+            assert_eq!(c, 0,
+                "after full backtrack, lit_idx {} should not be implied; got {}", idx, c);
         }
     }
 

@@ -1397,10 +1397,21 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         while let Some(l_idx) = queue.pop() {
             let comp_idx = l_idx ^ 1;
             if comp_idx >= self.watches.len() { continue; }
-            // Snapshot the watch list — we're about to mutate clause
-            // state and may extend the queue, so we can't hold the borrow.
-            let touches: Vec<(usize, usize)> = self.watches[comp_idx].clone();
-            for (clause_id, alt_idx) in touches {
+            // We're about to mutate other clause state (and may extend
+            // the queue), so we can't hold an immutable borrow of
+            // `self.watches[comp_idx]` across the loop.  The loop body
+            // never touches *this* watch list, so move it out with an
+            // O(1) `take` (leaving an empty Vec) and put it back after —
+            // far cheaper than cloning the whole list on every single
+            // propagation step (this is the hottest loop in the solver).
+            let touches = std::mem::take(&mut self.watches[comp_idx]);
+            // Track a conflict and `break` rather than early-`return`, so
+            // the watch list is always restored before we leave (an early
+            // return on conflict would leak the moved-out list, leaving
+            // `self.watches[comp_idx]` permanently empty and silently
+            // breaking all later propagation through this literal).
+            let mut conflict: Option<usize> = None;
+            for &(clause_id, alt_idx) in &touches {
                 // Skip clauses pruned by LBD reduction — their watch
                 // entries are still in `self.watches` (we don't compact
                 // for ID-stability reasons) but they shouldn't fire.
@@ -1413,7 +1424,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
                 let blocked = self.prod_blocked[clause_id];
                 if blocked >= total {
                     // Every alt of this clause is blocked — conflict.
-                    return Err(clause_id);
+                    conflict = Some(clause_id);
+                    break;
                 }
                 if blocked == total - 1 {
                     if let Some(rem_alt) = self.find_remaining_alt(clause_id) {
@@ -1421,7 +1433,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
                         let r_idx      = (rl.var as usize) * 2 + (rl.neg as usize);
                         let r_comp_idx = r_idx ^ 1;
                         if self.lit_or_implied(r_comp_idx) {
-                            return Err(clause_id);
+                            conflict = Some(clause_id);
+                            break;
                         }
                         if !self.lit_or_implied(r_idx) {
                             self.implied_lit_counter[r_idx] += 1;
@@ -1445,6 +1458,12 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
                     }
                 }
             }
+            // Put the (unmodified) watch list back where we took it from —
+            // on every path, conflict or not.
+            self.watches[comp_idx] = touches;
+            if let Some(clause_id) = conflict {
+                return Err(clause_id);
+            }
         }
         Ok(())
     }
@@ -1463,15 +1482,13 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         // Phase saving: every lit being popped here contributes its
         // polarity to `saved_phase` so the next decision involving
         // that variable can re-prefer the recently-tried polarity.
-        // We snapshot the lits first to avoid an aliasing borrow with
-        // the `&mut self.saved_phase` we'd need otherwise.
+        // Copy each lit out by value (Lit is a small POD) to dodge the
+        // aliasing borrow with `&mut self` inside `save_lit_phase` —
+        // no heap `Vec` snapshot needed (this runs on every backtrack).
         let new_len = self.trail.len() - frame.trail_added;
-        let popped: Vec<Lit> = self.trail[new_len..]
-            .iter()
-            .map(|t| t.lit.clone())
-            .collect();
-        for lit in &popped {
-            self.save_lit_phase(lit);
+        for i in new_len..self.trail.len() {
+            let lit = self.trail[i].lit.clone();
+            self.save_lit_phase(&lit);
         }
         self.trail.truncate(new_len);
     }

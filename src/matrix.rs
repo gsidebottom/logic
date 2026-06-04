@@ -443,9 +443,18 @@ impl NNF {
                 // The shift by `m` keeps every exp() argument in
                 // [-inf, 0] so the sum can't overflow.  When `m` is
                 // -inf (every child has zero paths), the result is -inf.
+                //
+                // PERF: recurse into each child EXACTLY ONCE and cache the
+                // result.  The previous code recursed twice per child (once
+                // for the max, once for the sum), which on a deeply-nested
+                // NNF — exactly what preprocessing emits — is O(2^depth):
+                // every Prod doubled the work of its whole subtree.  On
+                // industrial complements this single up-front progress-scale
+                // call (bin/sat.rs) could eat most of the time budget before
+                // the search even started.  Single-eval makes it O(n_nodes).
+                let ls: Vec<f64> = ch.iter().map(|c| c.log_path_count()).collect();
                 let mut m = f64::NEG_INFINITY;
-                for c in ch {
-                    let l = c.log_path_count();
+                for &l in &ls {
                     if l > m { m = l; }
                 }
                 if !m.is_finite() {
@@ -454,9 +463,7 @@ impl NNF {
                     // -inf, no iteration ran).
                     return f64::NEG_INFINITY;
                 }
-                let s: f64 = ch.iter()
-                    .map(|c| 10f64.powf(c.log_path_count() - m))
-                    .sum();
+                let s: f64 = ls.iter().map(|&l| 10f64.powf(l - m)).sum();
                 m + s.log10()
             }
         }

@@ -2212,6 +2212,15 @@ struct Args {
     /// the x1/x2 family) in polynomial time, which resolution — and the
     /// matrix search — can't.
     xor_gauss: bool,
+    /// Skip the XOR-GE pass when the input has more than this many
+    /// clauses (0 = no cap).  Like `preprocess_max_clauses`, this guards
+    /// against the recovery pass — which groups every clause by its
+    /// variable set — eating the whole time budget on giant inputs
+    /// (e.g. GP_216_290_40: 25M clauses) before the search ever starts.
+    /// XOR structure worth recovering lives in small/structured formulas
+    /// (parity, ezfact: thousands of clauses), so a generous cap loses
+    /// nothing real.  Default 1,000,000.
+    xor_gauss_max_clauses: usize,
     /// Optional cover-certificate output path.  When set, every
     /// `CoveredPathPrefix` event from the matrix-method search gets
     /// written to this file, producing a UNSAT certificate that
@@ -2273,6 +2282,7 @@ fn parse_args() -> Result<Args, String> {
         preprocess: true,
         preprocess_max_clauses: DEFAULT_PREPROCESS_MAX_CLAUSES,
         xor_gauss: true,
+        xor_gauss_max_clauses: 1_000_000,
         emit_cover: None,
         emit_drat: None,
         emit_pbp: None,
@@ -2359,6 +2369,18 @@ fn parse_args() -> Result<Args, String> {
                 let v = &s["--preprocess-max-clauses=".len()..];
                 a.preprocess_max_clauses = v.parse::<usize>().map_err(|_|
                     format!("--preprocess-max-clauses expects a non-negative integer; got {:?}", v))?;
+            }
+            // Cap on input clauses for which the XOR-GE pass runs (0 = no cap).
+            "--xor-gauss-max-clauses" => {
+                let v = iter.next().ok_or_else(||
+                    "--xor-gauss-max-clauses requires a value (clause count; 0 = no cap)".to_string())?;
+                a.xor_gauss_max_clauses = v.parse::<usize>().map_err(|_|
+                    format!("--xor-gauss-max-clauses expects a non-negative integer; got {:?}", v))?;
+            }
+            s if s.starts_with("--xor-gauss-max-clauses=") => {
+                let v = &s["--xor-gauss-max-clauses=".len()..];
+                a.xor_gauss_max_clauses = v.parse::<usize>().map_err(|_|
+                    format!("--xor-gauss-max-clauses expects a non-negative integer; got {:?}", v))?;
             }
             "--emit-cover" => {
                 let v = iter.next().ok_or_else(||
@@ -2608,7 +2630,14 @@ fn main() {
     // longer mentions the forced vars), so on SAT we must overlay these
     // constants back onto the search's model before printing it.
     let mut xor_forced: Option<Vec<Option<bool>>> = None;
-    if args.xor_gauss && matches!(args.backend, BackendChoice::Matrix(_)) {
+    let xg_cap = args.xor_gauss_max_clauses;
+    let xg_ok = xg_cap == 0 || clauses.len() <= xg_cap;
+    if args.xor_gauss && !xg_ok {
+        eprintln!("c xor-gauss: auto-skipped ({} clauses > {} cap; raise with \
+                   --xor-gauss-max-clauses N (0=unlimited) or silence with --no-xor-gauss)",
+                  clauses.len(), xg_cap);
+    }
+    if args.xor_gauss && xg_ok && matches!(args.backend, BackendChoice::Matrix(_)) {
         let t_xg = Instant::now();
         match logic::xor_gauss::solve_xor_system(nvars, &clauses) {
             logic::xor_gauss::XorGaussResult::Unsat => {

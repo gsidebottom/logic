@@ -1936,6 +1936,14 @@ impl<F: FnMut(PathsClass, bool) -> bool> crate::nnf_arena::ArenaPathSearchContro
         )
     }
 
+    fn decision_activity(&self, var: u32) -> Option<f64> {
+        Some(self.var_activity(var as Var))
+    }
+
+    fn search_restart_count(&self) -> usize {
+        self.restart_count()
+    }
+
     fn sum_ord(
         &mut self, arena: &crate::nnf_arena::NnfArena,
         parent: crate::nnf_arena::NnfId, children: &[crate::nnf_arena::NnfId],

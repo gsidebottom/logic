@@ -272,6 +272,19 @@ pub struct EffectiveCountWrapper<Inner: PathSearchController> {
     /// `EffectivePathController::sum_reorder_tau` for the full
     /// rationale.  0.0 = always reorder (pre-gate behavior).
     sum_reorder_tau: f64,
+    /// Sum/Prod visit-ordering mode (env `EFF_VSIDS` overrides).
+    /// `3` (DEFAULT) = restart-alternating portfolio: EffectiveCount
+    /// (path-count) ordering on even restart epochs, conflict-driven
+    /// VSIDS on odd — one single-threaded search captures both the
+    /// structure niche (PHP/pigeonhole, where path-count guides well)
+    /// and the arithmetic niche (ezfact/circuit, where VSIDS does), since
+    /// a niche instance solves fast in its favoured epoch.  `0` = pure
+    /// EffectiveCount; `1` = pure VSIDS; `2` = variance-gated hybrid
+    /// (use VSIDS only where sibling counts are near-uniform — a worse
+    /// detector than alternating; kept for comparison).  Soundness-
+    /// neutral: only visit order changes, never the reachable set.  Read
+    /// once at construction to keep the hot ordering loop branch-cheap.
+    vsids_order: u8,
     /// One delta-frame per pushed lit.  `frames.len()` mirrors
     /// `prefix_literals.len()` after `should_continue_on_prefix`
     /// has synced.
@@ -346,6 +359,13 @@ impl<Inner: PathSearchController> EffectiveCountWrapper<Inner> {
         Self {
             inner, idx, counts,
             sum_reorder_tau,
+            // Default 3 = restart-alternating portfolio (EffectiveCount on
+            // even restart epochs, VSIDS on odd) — captures both the
+            // structure niche (PHP/pigeonhole) and the arithmetic niche
+            // (ezfact/circuit) in one single-threaded search.  Override
+            // via env `EFF_VSIDS` (0=EffectiveCount, 1=VSIDS, 2=hybrid).
+            vsids_order: std::env::var("EFF_VSIDS").ok()
+                .and_then(|s| s.parse::<u8>().ok()).unwrap_or(3),
             frames: Vec::new(),
             our_counted_len: 0,
             root_zero_prunes: 0,
@@ -985,7 +1005,47 @@ impl<Inner: crate::nnf_arena::ArenaPathSearchController + PathSearchController>
         enforce_sum_permutation(&perm, counts.len());
         // Always-on safety net (see `sanitize_indices`).
         let perm = sanitize_indices(perm, counts.len());
-        if perm.len() == counts.len() && perm.iter().enumerate().all(|(k, &p)| k == p) {
+        let gate_skipped = perm.len() == counts.len()
+            && perm.iter().enumerate().all(|(k, &p)| k == p);
+        // VSIDS / hybrid Sum ordering.  Mode 1: always order Sum children
+        // (clause-complements) by conflict activity.  Mode 2 (hybrid):
+        // do so ONLY when the variance gate skipped — i.e. the sibling
+        // counts are near-uniform, so EffectiveCount is uninformative and
+        // declaration order would otherwise be the (arbitrary) fallback.
+        // Sum is visit-all, so any permutation is sound; only speed changes.
+        let use_vsids = match self.vsids_order {
+            1 => true,
+            2 => gate_skipped,
+            // Mode 3 (alternating portfolio): flip the sum-order heuristic
+            // every restart epoch — EffectiveCount on even restarts,
+            // VSIDS on odd — so a single search tries both perspectives
+            // over time and captures whichever class the instance needs.
+            3 => self.inner.search_restart_count() % 2 == 1,
+            _ => false,
+        };
+        if use_vsids {
+            // Activity of a Sum child = max VSIDS over its immediate
+            // literals (a clause-complement Prod is "hot" if any of its
+            // vars is hot).  Highest-activity clause first.
+            let act = |id: crate::nnf_arena::NnfId| -> f64 {
+                use crate::nnf_arena::NnfKind;
+                match arena.kind(id) {
+                    NnfKind::Lit => crate::nnf_arena::ArenaPathSearchController::decision_activity(
+                        &self.inner, arena.lit(id).var as u32).unwrap_or(0.0),
+                    _ => arena.children(id).iter().fold(0.0f64, |m, &c| {
+                        if matches!(arena.kind(c), NnfKind::Lit) {
+                            m.max(crate::nnf_arena::ArenaPathSearchController::decision_activity(
+                                &self.inner, arena.lit(c).var as u32).unwrap_or(0.0))
+                        } else { m }
+                    }),
+                }
+            };
+            let mut order: Vec<usize> = (0..base.len()).collect();
+            order.sort_by(|&a, &b|
+                act(base[b]).partial_cmp(&act(base[a])).unwrap_or(std::cmp::Ordering::Equal));
+            return Some(order.into_iter().map(|i| base[i]).collect());
+        }
+        if gate_skipped {
             self.sum_ord_gate_skips += 1;
             return Some(base);
         }
@@ -1020,9 +1080,48 @@ impl<Inner: crate::nnf_arena::ArenaPathSearchController + PathSearchController>
         enforce_prod_keeps_reachable(&keep, &counts);
         // Always-on safety net (see `sanitize_indices`): drop out-of-range
         // / duplicate indices a wide-mode mutation may emit.
-        let keep = sanitize_indices(keep, base_len);
+        let mut keep = sanitize_indices(keep, base_len);
         if keep.len() < base_len {
             self.prod_ord_filters += 1;
+        }
+        // VSIDS / hybrid ordering experiment.  Only the order of the
+        // already-filtered (reachable) survivors changes — every
+        // soundness property above is preserved.
+        if self.vsids_order != 0 && keep.len() > 1 {
+            // Mode 2 (hybrid): keep EffectiveCount order when the
+            // surviving alts' counts span widely (the metric is
+            // informative); otherwise fall back to VSIDS.  Mode 1: always
+            // VSIDS.  The spread test mirrors `should_reorder_sum`.
+            let use_vsids = match self.vsids_order {
+                1 => true,
+                3 => self.inner.search_restart_count() % 2 == 1, // alternate per restart
+                _ => {
+                    let (mut lo, mut hi) = (f64::INFINITY, 0.0f64);
+                    for &i in &keep {
+                        let c = counts[i];
+                        if c.is_finite() && c > 0.0 {
+                            if c < lo { lo = c; }
+                            if c > hi { hi = c; }
+                        }
+                    }
+                    // Near-uniform counts ⇒ EffectiveCount uninformative ⇒ VSIDS.
+                    !(lo.is_finite() && hi > 0.0 && (hi / lo).log10() >= 1.0)
+                }
+            };
+            if use_vsids {
+                keep.sort_by(|&a, &b| {
+                    let key = |idx: usize| -> f64 {
+                        let id = base[idx];
+                        if matches!(arena.kind(id), crate::nnf_arena::NnfKind::Lit) {
+                            crate::nnf_arena::ArenaPathSearchController::decision_activity(
+                                &self.inner, arena.lit(id).var as u32).unwrap_or(0.0)
+                        } else {
+                            0.0
+                        }
+                    };
+                    key(b).partial_cmp(&key(a)).unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
         }
         Some(keep.into_iter().map(|i| base[i]).collect())
     }

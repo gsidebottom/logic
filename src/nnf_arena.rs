@@ -242,6 +242,21 @@ pub trait ArenaPathSearchController {
         None
     }
 
+    /// Conflict-driven decision activity (VSIDS) for a variable, if this
+    /// controller maintains one.  `None` (the default) means "no VSIDS";
+    /// a CDCL controller returns `Some(activity)` so a wrapping
+    /// visit-order policy can branch on conflict-important variables.
+    fn decision_activity(&self, _var: u32) -> Option<f64> {
+        None
+    }
+
+    /// Number of restarts the controller has performed so far.  Lets a
+    /// wrapping visit-order policy alternate heuristics across restart
+    /// epochs (e.g. EffectiveCount on even, VSIDS on odd).  Default 0.
+    fn search_restart_count(&self) -> usize {
+        0
+    }
+
     /// Called at every prefix step (every Lit visit, plus at the
     /// final empty-tail visit of a complete path).  Same semantics
     /// as [`PathSearchController::should_continue_on_prefix`] —

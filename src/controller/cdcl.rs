@@ -811,35 +811,40 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
             }
         }
 
-        // ── Local learned-clause minimization (MiniSat ccmin=1) ──
+        // ── Recursive learned-clause minimization (MiniSat ccmin=2) ──
         // Drop non-asserting learning lits whose unit-implication
-        // antecedents are ALL already in the learning set: such a lit
-        // would simply be re-implied, so the smaller cube still blocks
-        // the conflict.  Smaller learned clauses propagate more strongly
-        // and shrink the clause DB, cutting downstream conflicts — the
-        // standard first conflict-efficiency win.
+        // antecedents are each either already in the learning set, forced
+        // at level 0, or *recursively* redundant by the same rule.  Such a
+        // lit would be re-implied, so the smaller cube still blocks the
+        // conflict.  Strictly stronger than the local (ccmin=1) rule — it
+        // strips transitively-redundant literals too, yielding smaller,
+        // higher-quality learned clauses that propagate harder and shrink
+        // the DB, cutting downstream conflicts.
         //
-        // Redundancy is tested against the *unmodified* set (we collect
-        // first, remove after); the implication graph is a DAG, so two
-        // mutually-listed lits can't both be redundant and removal is
-        // safe.  The UIP (the lone conflict_level lit) is never a
-        // candidate, so the clause stays asserting.
+        // Redundancy is tested against the *unmodified* learning set (we
+        // collect first, remove after).  The implication graph is a DAG
+        // (reasons point strictly backward on the trail), so the recursion
+        // terminates; `cache` memoises per-lit verdicts.  The UIP (the
+        // lone conflict_level lit) is never a candidate, so the clause
+        // stays asserting.
         let candidates: Vec<Lit> = learning.iter()
             .filter(|(_, lvl)| **lvl != conflict_level)
             .map(|(l, _)| (*l).clone())
             .collect();
-        let mut redundant: Vec<(Lit, usize)> = Vec::new();
+        let mut cache: HashMap<Lit, (bool, bool)> = HashMap::new();
+        let mut removable: Vec<Lit> = Vec::new();
         for l in &candidates {
-            if let Some(rid) = self.lit_redundant_local(l, &learning) {
-                redundant.push((l.clone(), rid));
+            let (red, chain_rup) = self.lit_redundant_recursive(l, &learning, &mut cache);
+            if red {
+                // A removed lit's whole resolution chain must be RUP for
+                // the DRAT proof to stay pure (cover-cert is authoritative).
+                if !chain_rup {
+                    chain_all_rup = false;
+                }
+                removable.push(l.clone());
             }
         }
-        for (l, rid) in redundant {
-            // Minimizing through a non-RUP clause taints the DRAT
-            // proof's purity (cover-cert is the authoritative proof).
-            if !self.clause_is_rup.get(rid).copied().unwrap_or(true) {
-                chain_all_rup = false;
-            }
+        for l in removable {
             learning.remove(&l);
         }
 
@@ -1021,30 +1026,59 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
             .unwrap_or(0)
     }
 
-    /// Local (MiniSat ccmin=1) redundancy test for learned-clause
-    /// minimization.  A true-on-trail lit `l` in the learning set is
-    /// redundant if it was unit-implied by some clause `rid` and EVERY
-    /// antecedent of that implication (the complement of each of `rid`'s
-    /// other alts — all true on the trail when `rid` went unit) is
-    /// already in the learning set.  Returns `Some(rid)` if redundant
-    /// (so the caller can track the resolved-through clause's RUP
-    /// status), else `None`.  Decision / SumForced lits are never
-    /// redundant — they're genuine root causes.
-    fn lit_redundant_local(&self, l: &Lit, learning: &HashMap<Lit, usize>) -> Option<usize> {
+    /// Recursive (MiniSat ccmin=2) redundancy test for learned-clause
+    /// minimization.  A true-on-trail lit `l` is redundant iff it was
+    /// unit-implied by some clause `rid` and EVERY antecedent of that
+    /// implication (the complement of each of `rid`'s other alts — all
+    /// true on the trail when `rid` went unit) is itself either already in
+    /// the learning set, forced at decision level 0, or *recursively*
+    /// redundant.  Decision / SumForced lits are never redundant — they're
+    /// genuine root causes.
+    ///
+    /// Returns `(redundant, chain_is_rup)`: `chain_is_rup` is true iff
+    /// every clause resolved through on `l`'s redundancy proof is itself
+    /// RUP-valid — the caller taints the DRAT proof's purity when it's
+    /// false (the cover-cert is the authoritative proof regardless).
+    ///
+    /// `cache` memoises `(redundant, chain_is_rup)` per lit.  Soundness /
+    /// termination: the implication graph is a DAG (reasons point strictly
+    /// earlier on the trail), so the recursion can't cycle.
+    fn lit_redundant_recursive(
+        &self,
+        l: &Lit,
+        learning: &HashMap<Lit, usize>,
+        cache: &mut HashMap<Lit, (bool, bool)>,
+    ) -> (bool, bool) {
+        if let Some(&r) = cache.get(l) {
+            return r;
+        }
+        // Clone the reason to release the trail borrow before recursing.
         let reason = self.trail.iter().rev()
             .find(|t| t.lit == *l)
-            .map(|t| &t.reason)?;
-        if let Reason::Implied(rid) = reason {
-            for a in &self.prod_alts[*rid] {
-                if a == l { continue; }          // the surviving (implied) alt
-                if !learning.contains_key(&a.complement()) {
-                    return None;                 // an antecedent isn't covered
+            .map(|t| t.reason.clone());
+        let result = match reason {
+            Some(Reason::Implied(rid)) => {
+                let mut redundant = true;
+                let mut chain_rup = self.clause_is_rup.get(rid).copied().unwrap_or(true);
+                for a in &self.prod_alts[rid] {
+                    if a == l { continue; }      // the surviving (implied) alt
+                    let ante = a.complement();   // antecedent: true on trail
+                    if learning.contains_key(&ante) { continue; }
+                    if self.find_level(&ante) == 0 { continue; }  // globally forced
+                    let (r, cr) = self.lit_redundant_recursive(&ante, learning, cache);
+                    if !r {
+                        redundant = false;
+                        break;
+                    }
+                    chain_rup = chain_rup && cr;
                 }
+                (redundant, chain_rup)
             }
-            Some(*rid)
-        } else {
-            None
-        }
+            // Decision / SumForced / off-trail → genuine root, not redundant.
+            _ => (false, true),
+        };
+        cache.insert(l.clone(), result);
+        result
     }
 
     /// Add a 1UIP-derived clause to the controller's propagation

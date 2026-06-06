@@ -93,6 +93,69 @@ pub fn detect_shape(clauses: &[Vec<i32>], nvars: usize) -> CnfShape {
     CnfShape::Unknown
 }
 
+/// Heuristic structural test used to *route the `eff` visit-order policy*
+/// (not for proof emission).  Returns `true` when the CNF looks like an
+/// "exactly-one" cardinality CSP — PHP, RoundRobin, MVRoundRobin,
+/// scheduling, graph-colouring-style encodings — i.e. its at-least-one
+/// constraints (all-positive clauses of arity ≥ 2) are pairwise
+/// variable-DISJOINT (a genuine partition of objects into value groups),
+/// and the remaining clauses are overwhelmingly binary at-most-one
+/// mutexes.
+///
+/// These are exactly the highly-symmetric, structured instances where the
+/// matrix method's EffectiveCount (path-count) ordering dominates and
+/// conflict-driven VSIDS only wastes search effort — so `bin/sat.rs`
+/// routes them to pure EffectiveCount instead of the default
+/// VSIDS-alternating portfolio.  This generalises past byte-exact
+/// PHP/RoundRobin matching: it catches MVRoundRobin and unseen
+/// cardinality families too.
+///
+/// Crucially it does NOT fire on arithmetic/circuit formulas (ezfact,
+/// tseitin, the x9 circuit family): their XOR/gate clauses are
+/// mixed-polarity and their positive clauses overlap heavily, so the
+/// disjoint-partition test fails and they keep the VSIDS portfolio.
+/// O(total literals).
+pub fn is_exactly_one_csp(clauses: &[Vec<i32>]) -> bool {
+    use std::collections::HashSet;
+    let mut seen: HashSet<i32> = HashSet::new();
+    let mut at_least_one = 0usize;
+    let mut non_alo = 0usize;
+    let mut bin_neg_mutex = 0usize;
+    for c in clauses {
+        let all_pos = c.len() >= 2 && c.iter().all(|&l| l > 0);
+        if all_pos {
+            at_least_one += 1;
+            // Reject if this at-least-one clause shares a variable with a
+            // *previous* one — then the at-least-one clauses don't form a
+            // partition, so it isn't an exactly-one CSP.  (Within-clause
+            // dups are harmless: we test against `seen` before inserting
+            // any of this clause's vars.)
+            for &l in c {
+                if seen.contains(&l.abs()) {
+                    return false;
+                }
+            }
+            for &l in c {
+                seen.insert(l.abs());
+            }
+        } else {
+            non_alo += 1;
+            if c.len() == 2 && c.iter().all(|&l| l < 0) {
+                bin_neg_mutex += 1;
+            }
+        }
+    }
+    // Need a real partition (≥ 2 disjoint groups) and the rest of the
+    // formula must be ~all at-most-one mutexes (the cardinality skeleton).
+    if at_least_one < 2 {
+        return false;
+    }
+    if non_alo > 0 && (bin_neg_mutex as f64) / (non_alo as f64) < 0.9 {
+        return false;
+    }
+    true
+}
+
 fn detect_php(clauses: &[Vec<i32>], nvars: usize) -> Option<CnfShape> {
     // PHP-N-M requires nvars = N*M.  First clause is pigeon 1 (vars 1..=M).
     if clauses.is_empty() { return None; }
@@ -660,6 +723,28 @@ mod tests {
         let cnf = rr_cnf(16, 13);
         let nv = 16 * 15 / 2 * 13;
         assert_eq!(detect_shape(&cnf, nv), CnfShape::RoundRobin { n_teams: 16, n_days: 13 });
+    }
+
+    #[test]
+    fn exactly_one_csp_detects_php_and_rr() {
+        // PHP and RoundRobin are exactly-one CSPs: disjoint at-least-one
+        // pigeon clauses + binary at-most-one mutexes.
+        assert!(is_exactly_one_csp(&php_cnf(4, 3)));
+        assert!(is_exactly_one_csp(&rr_cnf(8, 5)));
+    }
+
+    #[test]
+    fn exactly_one_csp_rejects_arithmetic_and_overlap() {
+        // Mixed-polarity XOR clauses (no all-positive at-least-one) —
+        // must keep the VSIDS portfolio, not route to EffectiveCount.
+        let xor = vec![
+            vec![1, 2, -3], vec![1, -2, 3], vec![-1, 2, 3], vec![-1, -2, -3],
+            vec![4, 5, -6], vec![4, -5, 6], vec![-4, 5, 6], vec![-4, -5, -6],
+        ];
+        assert!(!is_exactly_one_csp(&xor));
+        // At-least-one clauses that share a variable aren't a partition.
+        let overlap = vec![vec![1, 2, 3], vec![3, 4, 5], vec![-1, -2]];
+        assert!(!is_exactly_one_csp(&overlap));
     }
 
     #[test]

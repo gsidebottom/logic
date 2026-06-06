@@ -732,6 +732,12 @@ fn matrix_search(
     // 0.0 = always reorder (legacy).  See `Args::eff_tau`.  No-op
     // for non-eff backends (Smart, Cdcl, GreedyCdcl).
     eff_tau: f64,
+    // Visit-order mode override for eff backends: `Some(0)` forces pure
+    // EffectiveCount (used when the input is detected as an exactly-one
+    // CSP — PHP/RoundRobin-like — where VSIDS-alternating only wastes
+    // effort); `None` keeps the default (restart-alternating portfolio,
+    // or whatever `EFF_VSIDS` overrides to).  No-op for non-eff backends.
+    eff_vsids_override: Option<u8>,
 ) -> SearchOutcome {
     // log10 of the total path count.  Used by the progress renderer
     // to map "paths classified so far" onto a [0, 1] bar fill in
@@ -1111,7 +1117,7 @@ fn matrix_search(
                     let cdcl = CdclController::for_arena_with_cover(arena_ref, p_eff, on_class);
                     let idx = EffectiveCountIndex::build_from_arena(arena_ref);
                     let counts = EffectiveCounts::new(&idx);
-                    EffectiveCountWrapper::new_with_tau(cdcl, idx, counts, tau)
+                    EffectiveCountWrapper::new_with_tau(cdcl, idx, counts, tau).with_vsids_order(eff_vsids_override)
                 };
                 if matches!(backend, MatrixBackend::Effb) {
                     arena.classify_paths_with_arena_bubble_up(64, builder)
@@ -1171,7 +1177,7 @@ fn matrix_search(
                         let cdcl = CdclController::for_nnf_with_cover(nnf_ref, p_ec, on_class);
                         let idx = EffectiveCountIndex::build(nnf_ref);
                         let counts = EffectiveCounts::new(&idx);
-                        EffectiveCountWrapper::new_with_tau(cdcl, idx, counts, tau)
+                        EffectiveCountWrapper::new_with_tau(cdcl, idx, counts, tau).with_vsids_order(eff_vsids_override)
                     });
                     cover_writer_arc = Some(cover_w);
                     result
@@ -1185,7 +1191,7 @@ fn matrix_search(
                         let cdcl = CdclController::for_nnf(nnf_ref, p_ec, on_class);
                         let idx = EffectiveCountIndex::build(nnf_ref);
                         let counts = EffectiveCounts::new(&idx);
-                        EffectiveCountWrapper::new_with_tau(cdcl, idx, counts, tau)
+                        EffectiveCountWrapper::new_with_tau(cdcl, idx, counts, tau).with_vsids_order(eff_vsids_override)
                     })
                 }
             }
@@ -2630,6 +2636,28 @@ fn main() {
     // longer mentions the forced vars), so on SAT we must overlay these
     // constants back onto the search's model before printing it.
     let mut xor_forced: Option<Vec<Option<bool>>> = None;
+
+    // Structure-based visit-order routing for eff backends.  Detect an
+    // "exactly-one" cardinality CSP (PHP / RoundRobin / MVRoundRobin /
+    // scheduling) on the ORIGINAL clauses and, if found, force pure
+    // EffectiveCount ordering — the matrix path-count heuristic dominates
+    // these symmetric instances, and the default VSIDS-alternating
+    // portfolio only wastes half its restart epochs there (it regressed 5
+    // RoundRobin instances on the main track).  An explicit `EFF_VSIDS`
+    // env override (for experiments) always wins.
+    let eff_vsids_override: Option<u8> =
+        if std::env::var("EFF_VSIDS").is_ok() {
+            None
+        } else if matches!(args.backend, BackendChoice::Matrix(_))
+            && logic::cook_pbp::is_exactly_one_csp(&clauses)
+        {
+            eprintln!("c structure: exactly-one CSP (PHP/RoundRobin-like) \
+                       — using EffectiveCount ordering (no VSIDS alternation)");
+            Some(0)
+        } else {
+            None
+        };
+
     let xg_cap = args.xor_gauss_max_clauses;
     let xg_ok = xg_cap == 0 || clauses.len() <= xg_cap;
     if args.xor_gauss && !xg_ok {
@@ -2763,7 +2791,7 @@ fn main() {
                                       args.emit_pbp.as_deref(),
                                       0,
                                       args.timeout_secs,
-                                      args.eff_tau)
+                                      args.eff_tau, eff_vsids_override)
                     }
                 }
             } else {
@@ -2785,7 +2813,7 @@ fn main() {
                                   args.emit_pbp.as_deref(),
                                   n_clauses,
                                   args.timeout_secs,
-                                  args.eff_tau)
+                                  args.eff_tau, eff_vsids_override)
                 } else {
                     drop(clauses);
                     matrix_search(comp, nvars, args.show_progress, m, None,
@@ -2795,7 +2823,7 @@ fn main() {
                                   args.emit_pbp.as_deref(),
                                   n_clauses,
                                   args.timeout_secs,
-                                  args.eff_tau)
+                                  args.eff_tau, eff_vsids_override)
                 }
             }
         }
@@ -2869,7 +2897,7 @@ mod tests {
         if clauses.iter().any(|c| c.is_empty()) { return Err(()); }
         if clauses.is_empty() { return Ok(vec![true; nvars]); }
         let comp = cnf_complement_nnf(clauses);
-        match matrix_search(comp, nvars, /*show_progress=*/ false, backend, None, None, None, None, None, 0, 0, 0.0) {
+        match matrix_search(comp, nvars, /*show_progress=*/ false, backend, None, None, None, None, None, 0, 0, 0.0, None) {
             SearchOutcome::Sat(asgn) => Ok(asgn),
             SearchOutcome::Unsat => Err(()),
             SearchOutcome::Interrupted => panic!("test search reported interrupted"),
@@ -3147,11 +3175,11 @@ mod tests {
             MatrixBackend::GreedyEff,
             MatrixBackend::BasicEff,
         ] {
-            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend, None, None, None, None, None, 0, 0, 0.0) {
+            match matrix_search(cnf_complement_nnf(&[vec![1, -2], vec![2, 3], vec![-1, -3]]), 3, false, backend, None, None, None, None, None, 0, 0, 0.0, None) {
                 SearchOutcome::Sat(_) => {}
                 other => panic!("[{:?}] expected Sat, got {:?}", backend, outcome_kind(&other)),
             }
-            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend, None, None, None, None, None, 0, 0, 0.0) {
+            match matrix_search(cnf_complement_nnf(&[vec![1], vec![-1]]), 1, false, backend, None, None, None, None, None, 0, 0, 0.0, None) {
                 SearchOutcome::Unsat => {}
                 other => panic!("[{:?}] expected Unsat, got {:?}", backend, outcome_kind(&other)),
             }

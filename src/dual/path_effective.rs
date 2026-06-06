@@ -377,6 +377,18 @@ impl<Inner: PathSearchController> EffectiveCountWrapper<Inner> {
         }
     }
 
+    /// Override the visit-ordering mode (`vsids_order`) after construction.
+    /// `None` leaves whatever the constructor read from `EFF_VSIDS` (so an
+    /// explicit env override for experiments still wins); `Some(m)` forces
+    /// mode `m`.  `bin/sat.rs` uses this to route detected exactly-one
+    /// CSPs (PHP/RoundRobin/…) to pure EffectiveCount (`Some(0)`).
+    pub fn with_vsids_order(mut self, mode: Option<u8>) -> Self {
+        if let Some(m) = mode {
+            self.vsids_order = m;
+        }
+        self
+    }
+
     fn sync_to_prefix(&mut self, prefix_literals: &Vec<&Lit>) {
         // ── Pop branch ──
         // Each pop reverses the count layer's leaf updates AND

@@ -365,17 +365,48 @@ first (closing the cover cert's "None gap" on structured UNSAT).
 **Scope.** Covers **single-level** embedded pigeonholes — clean (PHP),
 extended (MVRoundRobin), and reshuffled/flipped (harder-fphp).
 
-Outside the single-level class are the **two-level** cardinality
-families, each of which needs a dedicated construction like RoundRobin's
-(team,day) generator (`cook_rr_proof.py`):
+## Two-level composed cardinality — cliquecoloring (done)
 
-- **rphp** (relativized PHP): pigeon → resource → hole; no single arity
-  yields variable-disjoint pigeons (the relativization layer overlaps).
-- **cliquecoloring**: two disjoint at-least-one families — N vertices × C
-  colors and K clique-slots × N vertices — whose contradiction (K clique
-  vertices need K>C distinct colors) lives at the *composition* of the
-  two layers, not in either alone.
+`tools/cook_cliquecoloring_proof.py` proves the **clique-coloring**
+family, a two-level (clique-membership × coloring) cardinality structure
+whose contradiction lives at the *composition*, not in either layer:
 
-A generic two-level / composed-cardinality emitter (folding a
-clique-slot→color extension variable through both layers) is the natural
-next research step; future work.
+- N vertices × C colors (each vertex ≥1 color) and K clique-slots × N
+  vertices (each slot ≥1 vertex); clique-edge + coloring clauses force
+  the K clique vertices pairwise-different colors, K > C ⇒ UNSAT.
+- The proof reifies `z_{i,v,c} = clique_{i,v} ∧ col_{v,c}` and
+  `y_{i,c} = ∨_v z_{i,v,c}` (via `red`), derives the composed
+  at-least-one (A) and at-most-1 (B), then runs PHP-K-C on `y`. The key
+  trick: (A)/(B) become `rup`-checkable once intermediate lemmas
+  (`T,U` for A; `N,Q` for B) are added so unit propagation cascades
+  through the existential composition.
+- Structure is read directly from the CNF (K largest-arity all-positive
+  clauses = clique-membership; next = vertex-color), so no synthetic
+  layout is assumed.
+
+VeriPB-verified on all 3 curated instances:
+
+| instance | K×N×C | proof lines | verdict |
+|---|---|---|---|
+| cliquecoloring_n14_k7_c6 | 7×14×6 | 29,719 | VERIFIED UNSAT |
+| cliquecoloring_n32_k5_c4 | 5×32×4 | 45,693 | VERIFIED UNSAT |
+| cliquecoloring_n26_k7_c6 | 7×26×6 | 94,315 | VERIFIED UNSAT |
+
+This is the two-level analogue of RoundRobin's (team,day) generator; the
+composed-PHP + rup-intermediate technique is reusable for other
+clean two-layer cardinality families.
+
+## Still open — rphp (relativized PHP)
+
+`rphp` is **not** confirmed tractable and may be a proof-system
+*impossibility*, not just effort:
+
+- The non-shuffled `rphp_p25_r25` has a clean disjoint pigeon→resource
+  layer (25 arity-25 clauses) but the relativization's second layer +
+  contradiction differ from clique-coloring and remain undecoded.
+- The shuffled `rphp5_050/085` are heavily obfuscated (mixed-polarity
+  at-least-one + permuted, on top of the 2-layer relativization).
+- Crucially, **relativized PHP is designed to defeat counting
+  arguments** — it may require exponential cutting-planes/extended
+  proofs, in which case no compact VeriPB proof exists. Resolve that
+  proof-complexity question before investing in a generator.

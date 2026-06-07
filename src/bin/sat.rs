@@ -2140,6 +2140,14 @@ fn write_v_line<W: io::Write>(w: &mut W, asgn: &[bool]) -> io::Result<()> {
 enum BackendChoice {
     Matrix(MatrixBackend),
     Cadical,
+    /// Verified portfolio: first try the standalone Cook PB-prover (a
+    /// structure pattern-match → polynomial VeriPB proof for PHP /
+    /// RoundRobin / MVRoundRobin / clique-coloring), and if no shape is
+    /// detected, run the CaDiCaL binary with `--veripb` so its DRAT-style
+    /// reasoning is emitted as a VeriPB-checkable proof too.  Either way a
+    /// solved instance comes with a VeriPB-verifiable certificate (proof
+    /// path via `--proof`).  Short-circuits before the matrix search.
+    PbCadical,
 }
 
 impl BackendChoice {
@@ -2147,6 +2155,7 @@ impl BackendChoice {
         match self {
             BackendChoice::Matrix(m) => m.name(),
             BackendChoice::Cadical   => "cadical",
+            BackendChoice::PbCadical => "pb-cadical",
         }
     }
 
@@ -2180,9 +2189,12 @@ impl BackendChoice {
             "basic_effb" | "basic×effb"
                          | "basicxeffb"    => Ok(BackendChoice::Matrix(MatrixBackend::BasicEffb)),
             "cadical"                      => Ok(BackendChoice::Cadical),
+            "pb-cadical" | "pb_cadical"
+                         | "pbcadical"      => Ok(BackendChoice::PbCadical),
             _ => Err(format!(
                 "unknown backend {:?}; expected one of: smart, cdcl, eff, eff_cover, effb, \
-                 greedy_cdcl, greedy_eff, greedy_effb, basic_eff, basic_effb, cadical", s
+                 greedy_cdcl, greedy_eff, greedy_effb, basic_eff, basic_effb, cadical, \
+                 pb-cadical", s
             )),
         }
     }
@@ -2258,6 +2270,12 @@ struct Args {
     /// On no-match, exits with a non-zero code and a clear error
     /// (use `--emit-pbp` for unstructured CNFs).
     emit_cook_pbp: Option<std::path::PathBuf>,
+    /// VeriPB proof output path for the `pb-cadical` backend.  On an UNSAT
+    /// verdict the proof is written here — either the Cook PB proof (if a
+    /// structural shape was detected) or CaDiCaL's `--veripb` proof.
+    /// Verify with `veripb <cnf> <FILE>`.  Optional: without it,
+    /// `pb-cadical` still solves and prints the verdict but writes no proof.
+    proof: Option<std::path::PathBuf>,
     /// Variance-gated Sum-reordering threshold for Effective-wrapped
     /// backends (`eff`, `effb`, `greedy_eff`, `basic_eff`,
     /// `greedy_effb`, `basic_effb`).  The wrapper applies its
@@ -2293,6 +2311,7 @@ fn parse_args() -> Result<Args, String> {
         emit_drat: None,
         emit_pbp: None,
         emit_cook_pbp: None,
+        proof: None,
         // 0.0 = always reorder (legacy behaviour).  Override with
         // `--eff-tau N` to gate Sum reordering on `log10(max/min) >= N`.
         eff_tau: 0.0,
@@ -2420,6 +2439,14 @@ fn parse_args() -> Result<Args, String> {
             s if s.starts_with("--emit-cook-pbp=") => {
                 a.emit_cook_pbp = Some(s["--emit-cook-pbp=".len()..].to_string().into());
             }
+            "--proof" => {
+                let v = iter.next().ok_or_else(||
+                    "--proof requires a file path".to_string())?;
+                a.proof = Some(v.into());
+            }
+            s if s.starts_with("--proof=") => {
+                a.proof = Some(s["--proof=".len()..].to_string().into());
+            }
             "--help"     | "-h" => {
                 eprintln!("Usage: sat [--backend NAME] [--timeout SECS] [--progress] < problem.cnf");
                 eprintln!();
@@ -2447,6 +2474,11 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                      greedy_effb  — greedy_eff + bubble-up (same caveat)");
                 eprintln!("                      basic_effb   — basic_eff + bubble-up (same caveat)");
                 eprintln!("                      cadical      — bundled CaDiCaL reference solver");
+                eprintln!("                      pb-cadical   — verified portfolio: Cook PB-prover");
+                eprintln!("                                     for structured shapes, else CaDiCaL");
+                eprintln!("                                     (--veripb); both proofs VeriPB-checkable");
+                eprintln!("  --proof FILE      VeriPB proof output for pb-cadical (UNSAT verdicts).");
+                eprintln!("                    Verify with: veripb <cnf> FILE");
                 eprintln!("  --timeout SECS, -t SECS");
                 eprintln!("                    Hard wall-clock limit.  On timeout, prints");
                 eprintln!("                    'c TIMEOUT after Ns' and exits 124.  Default: {}.",
@@ -2565,6 +2597,99 @@ fn main() {
                 return;
             }
         }
+    }
+
+    // pb-cadical backend: verified portfolio.  Try the standalone Cook
+    // PB-prover first (structure -> polynomial VeriPB proof); on no match,
+    // shell out to the CaDiCaL binary with --veripb so its proof is also
+    // VeriPB-checkable.  Either way a solved instance carries a verifiable
+    // certificate.  Short-circuits before the matrix search.
+    if matches!(args.backend, BackendChoice::PbCadical) {
+        use logic::cook_pbp::{detect_shape, emit_proof, CnfShape};
+        use std::io::Write as _;
+        let t0 = Instant::now();
+        let shape = detect_shape(&clauses, nvars);
+        if !matches!(shape, CnfShape::Unknown) {
+            eprintln!("c pb-cadical: Cook shape {} in {:.1}ms -> PB proof",
+                      shape.describe(), t0.elapsed().as_secs_f64() * 1000.0);
+            if let Some(out) = args.proof.as_ref() {
+                match std::fs::File::create(out) {
+                    Ok(f) => {
+                        let mut w = io::BufWriter::new(f);
+                        if let Err(e) = emit_proof(&shape, clauses.len(), &mut w) {
+                            eprintln!("c ERROR: cook-pbp emission failed: {}", e);
+                            std::process::exit(1);
+                        }
+                        eprintln!("c pb-cadical: wrote VeriPB proof {}", out.display());
+                    }
+                    Err(e) => {
+                        eprintln!("c ERROR: cannot create proof {}: {}", out.display(), e);
+                        std::process::exit(2);
+                    }
+                }
+            }
+            println!("s UNSATISFIABLE");
+            return;
+        }
+        // No structural shape: hand off to the CaDiCaL binary.
+        eprintln!("c pb-cadical: no Cook shape ({:.1}ms) -> CaDiCaL binary (--veripb)",
+                  t0.elapsed().as_secs_f64() * 1000.0);
+        let tmp = std::env::temp_dir().join(format!("pbcadical-{}.cnf", std::process::id()));
+        {
+            let f = match std::fs::File::create(&tmp) {
+                Ok(f) => f,
+                Err(e) => { eprintln!("c ERROR: temp cnf: {}", e); std::process::exit(2); }
+            };
+            let mut w = io::BufWriter::new(f);
+            let _ = writeln!(w, "p cnf {} {}", nvars, clauses.len());
+            for c in &clauses {
+                for &l in c { let _ = write!(w, "{} ", l); }
+                let _ = writeln!(w, "0");
+            }
+        }
+        let cadical_bin = ["/opt/homebrew/bin/cadical", "/usr/local/bin/cadical",
+                           "/usr/bin/cadical"]
+            .iter().find(|p| std::path::Path::new(p).exists())
+            .copied().unwrap_or("cadical");
+        let mut cmd = std::process::Command::new(cadical_bin);
+        cmd.arg("-q");
+        if args.timeout_secs > 0 { cmd.arg("-t").arg(args.timeout_secs.to_string()); }
+        if args.proof.is_some() { cmd.arg("--veripb=1"); }
+        cmd.arg(&tmp);
+        if let Some(out) = args.proof.as_ref() { cmd.arg(out); }
+        let out = match cmd.output() {
+            Ok(o) => o,
+            Err(e) => {
+                eprintln!("c ERROR: failed to run CaDiCaL ({}): {}", cadical_bin, e);
+                let _ = std::fs::remove_file(&tmp);
+                std::process::exit(2);
+            }
+        };
+        let _ = std::fs::remove_file(&tmp);
+        let so = String::from_utf8_lossy(&out.stdout);
+        let mut verdict: Option<String> = None;
+        for line in so.lines() {
+            if let Some(rest) = line.strip_prefix("s ") {
+                verdict = Some(rest.trim().to_string());
+                println!("{}", line);
+            } else if line.starts_with("v ") {
+                println!("{}", line);
+            }
+        }
+        match verdict.as_deref() {
+            Some("UNSATISFIABLE") => {
+                if let Some(out) = args.proof.as_ref() {
+                    eprintln!("c pb-cadical: CaDiCaL UNSAT; VeriPB proof at {}", out.display());
+                }
+            }
+            Some("SATISFIABLE") => {
+                eprintln!("c pb-cadical: CaDiCaL SAT (model is the certificate; \
+                           no refutation proof)");
+                if let Some(out) = args.proof.as_ref() { let _ = std::fs::remove_file(out); }
+            }
+            _ => eprintln!("c pb-cadical: CaDiCaL reached no verdict (timeout/unknown)"),
+        }
+        return;
     }
 
     // Quick edge cases handled before invoking either backend.  We
@@ -2706,6 +2831,7 @@ fn main() {
     let t = Instant::now();
     let outcome = match args.backend {
         BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
+        BackendChoice::PbCadical => unreachable!("pb-cadical is handled before the search dispatch"),
         BackendChoice::Matrix(m) => {
             // Auto-skip preprocess on very large inputs.  Empirically
             // Phase 1 preprocess takes ~150 µs / clause; at 2M

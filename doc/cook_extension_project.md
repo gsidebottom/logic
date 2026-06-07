@@ -7,6 +7,26 @@ cardinality-flavored problems where pure RUP and pure cutting-planes
 hit the at-most-1-from-pairwise-mutex wall (see
 [`pbp_emission.md`](pbp_emission.md)).
 
+## Relationship to the matrix method (important — read first)
+
+This is a **standalone, structure-specialized prover**, *not* part of
+eff's matrix-method search.  `--emit-cook-pbp` pattern-matches the raw CNF
+for a known shape (PHP / RoundRobin / MVRoundRobin / clique-coloring) and
+emits a fixed **Cook-1976-style PB + extension-variable** proof template.
+It short-circuits *before any search* and never touches the
+NNF / arena / EffectiveCount machinery — `-b eff` is ignored on this path.
+It is its own proof system (cutting-planes + extension), distinct from:
+
+- the **matrix method's** native search (`eff`), and
+- the **matrix cover certificate** (`--emit-cover`, see
+  [`cover_certify.md`](cover_certify.md)) — which *is* the matrix method's
+  own UNSAT proof, derived from the search's complementary-pair cover.
+
+So when these proofs beat CaDiCaL on resolution-hard families, the credit
+belongs to the **Cook construction** (a strictly more powerful proof
+system), not to the matrix search — which times out on most of the same
+instances too.
+
 Primary targets, in order:
 
 1. **PHP-N-M for any N > M ≥ 3** — known polynomial proofs exist
@@ -205,7 +225,7 @@ seconds.
 
 **Estimated effort**: 8–16 focused hours.
 
-### Phase 4 — Integration with matrix-method prover  *(2–3 sessions)*
+### Phase 4 — Integration into the `sat` binary (CLI flag)  *(2–3 sessions)*
 
 **Goal**: New `sat` flag (e.g., `--emit-cook-pbp`) that detects
 cardinality structure in the input and emits the Cook-style proof
@@ -355,8 +375,11 @@ Results (VeriPB 3.0.2, `veripb <cnf> <pbp>`):
 
 MVRoundRobin is **resolution-hard** — cadical 3.0 times out at 600s on
 `n14_d10_v2` (127,491 clauses), while the polynomial Cook proof verifies
-in ~60 ms. This is the matrix method's differentiator: compact proofs
-where resolution/DRAT is exponential.
+in ~60 ms. That is the **Cook construction's** edge over CDCL: compact
+PB+extension proofs where resolution/DRAT (and hence CDCL search,
+CaDiCaL included) is exponential.  Note this is the standalone Cook prover,
+*not* eff's matrix search — eff's search times out on these too (see the
+"Relationship to the matrix method" note at the top).
 
 Wired natively: `sat -b eff --emit-cook-pbp` detects the shape on the raw
 CNF and emits the proof; `run_benchmark.py --verify-unsat-proof` tries it

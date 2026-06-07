@@ -1,5 +1,13 @@
 //! Cook-style polynomial PB proof emission for structured CNFs.
 //!
+//! STANDALONE structural prover — NOT part of eff's matrix-method search.
+//! It pattern-matches the raw CNF and emits a Cook-1976-style PB +
+//! extension-variable proof; `--emit-cook-pbp` short-circuits *before* any
+//! search and never touches the NNF / arena / EffectiveCount machinery.
+//! The matrix method's *own* UNSAT proof is the cover certificate
+//! (`--emit-cover`, see `doc/cover_certify.md`); this is a different,
+//! strictly stronger proof system (cutting-planes + extension).
+//!
 //! For inputs matching the **PHP** (pigeon-hole) or **RoundRobin**
 //! cardinality shape, this module emits VeriPB-verifiable polynomial-size
 //! UNSAT proofs.  See:

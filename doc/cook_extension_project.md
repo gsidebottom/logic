@@ -362,10 +362,20 @@ Wired natively: `sat -b eff --emit-cook-pbp` detects the shape on the raw
 CNF and emits the proof; `run_benchmark.py --verify-unsat-proof` tries it
 first (closing the cover cert's "None gap" on structured UNSAT).
 
-**Scope.** Covers single-level embedded pigeonholes — clean (PHP),
+**Scope.** Covers **single-level** embedded pigeonholes — clean (PHP),
 extended (MVRoundRobin), and reshuffled/flipped (harder-fphp).
-RoundRobin's two-level (team,day) cardinality keeps its dedicated
-generator (`cook_rr_proof.py`). Still outside the class: **relativized
-PHP** (`rphp` — pigeons not variable-disjoint) and **cliquecoloring**
-(Ramsey-style, not pigeonhole-shaped) — these need genuinely different
-proof techniques (future work).
+
+Outside the single-level class are the **two-level** cardinality
+families, each of which needs a dedicated construction like RoundRobin's
+(team,day) generator (`cook_rr_proof.py`):
+
+- **rphp** (relativized PHP): pigeon → resource → hole; no single arity
+  yields variable-disjoint pigeons (the relativization layer overlaps).
+- **cliquecoloring**: two disjoint at-least-one families — N vertices × C
+  colors and K clique-slots × N vertices — whose contradiction (K clique
+  vertices need K>C distinct colors) lives at the *composition* of the
+  two layers, not in either alone.
+
+A generic two-level / composed-cardinality emitter (folding a
+clique-slot→color extension variable through both layers) is the natural
+next research step; future work.

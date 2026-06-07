@@ -670,53 +670,59 @@ fn current_ih_stub() -> usize { 0 }
 
 // ─── Embedded-pigeonhole emitter (generic cardinality + mutex) ──────────────
 //
-// Generalises PHP/RoundRobin to ANY CNF carrying an embedded pigeonhole:
-// P variable-disjoint all-positive at-least-one "pigeon" clauses of equal
-// arity S, where for each slot s the set {var s of each pigeon} forms a
-// COMPLETE pairwise-mutex clique ("hole" holding <= 1).  P > S => UNSAT.
-// Detected from raw clause structure (no hand-coded family knowledge), so
-// the same path covers MVRoundRobin and other aligned at-least-one +
-// slot-clique instances.  Port of `tools/cook_card_proof.py`.
+// Generalises PHP/RoundRobin to ANY CNF carrying an embedded pigeonhole,
+// including reshuffled / polarity-flipped encodings (e.g. harder-fphp):
+// P variable-disjoint at-least-one "pigeon" clauses of equal arity S, with
+// literals of ANY polarity, where each "hole" (the P pigeon-literals for
+// one slot) forms a COMPLETE pairwise-mutex clique (holds <= 1).  P > S =>
+// UNSAT.  Holes are recovered two ways (tried in order):
+//   (A) component: connected components of the cross-pigeon mutex graph
+//                  (PHP / reshuffled fphp);
+//   (B) aligned:   the s-th literal of each pigeon sorted by |var|
+//                  (MVRoundRobin, whose team-capacity mutexes merge the
+//                  component graph).
+// The proof is emitted at the LITERAL level so flipped polarities work
+// transparently.  Detected from raw clause structure (no hand-coded family
+// knowledge).  Port of `tools/cook_card_proof.py`.
 
 /// Extracted embedded-pigeonhole structure (see [`detect_embedded_pigeonhole`]).
-/// Carries clause ids + slot vars because, unlike PHP/RoundRobin, the
-/// variable layout is not canonical — it is read out of the input CNF.
+/// Carries clause ids + signed slot literals because, unlike PHP/RoundRobin,
+/// the variable layout is read out of the input CNF (and may be flipped).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmbeddedPigeonhole {
     /// 1-based CNF clause id of each pigeon's at-least-one clause.
     pub pigeon_ids: Vec<usize>,
-    /// holes[s] = the P pigeon-vars occupying slot s (in pigeon order).
-    pub holes: Vec<Vec<u32>>,
-    /// 1-based clause id of the binary mutex on the (min, max) var pair.
-    pub mutex_ids: std::collections::HashMap<(u32, u32), usize>,
+    /// holes[s] = the P pigeon-LITERALS forming hole s (in pigeon order).
+    pub holes: Vec<Vec<i32>>,
+    /// 1-based clause id of the binary clause EXCLUDING the literal pair
+    /// (la, lb) — i.e. the mutex `~la v ~lb`.  Keyed (min, max).
+    pub mutex_ids: std::collections::HashMap<(i32, i32), usize>,
 }
 
-/// Try to recognise an embedded pigeonhole.  Pigeons = all-positive
-/// at-least-one clauses of arity >= 2, all sharing the first such arity
-/// seen, pairwise variable-disjoint.  Holes = aligned slot cliques,
-/// required to be COMPLETE (every same-slot pigeon pair has a binary
-/// mutex).  Requires P > S.  Returns `None` if the structure is absent —
-/// so emission only ever fires on a confirmed pigeonhole.  The
-/// O(S * P^2) clique-completeness check guarantees the emitted proof is
-/// sound by construction (every `pol`/`red` it references exists).
+/// Try to recognise an embedded pigeonhole.  Pigeons = variable-disjoint
+/// at-least-one clauses (ANY polarity) of arity >= 3, all sharing the
+/// first such arity seen.  Holes are recovered by [`recover_component`]
+/// (cross-pigeon mutex components) and, failing that, [`recover_aligned`]
+/// (s-th literal of each pigeon).  Each hole must be a COMPLETE P-clique;
+/// requires P > S.  Returns `None` if the structure is absent — so
+/// emission only ever fires on a confirmed pigeonhole, with every
+/// referenced mutex present (sound by construction).
 pub fn detect_embedded_pigeonhole(
     clauses: &[Vec<i32>],
     _nvars: usize,
 ) -> Option<EmbeddedPigeonhole> {
     use std::collections::{HashMap, HashSet};
-    // Pigeons: all-positive arity->=2 clauses of the first such arity.
+    // Pigeons: disjoint clauses of the first arity (>= 3) seen.
     let mut arity = 0usize;
-    let mut pigeons: Vec<Vec<u32>> = Vec::new();
+    let mut pigeons: Vec<Vec<i32>> = Vec::new();
     let mut pigeon_ids: Vec<usize> = Vec::new();
     for (i, c) in clauses.iter().enumerate() {
-        if c.len() >= 2 && c.iter().all(|&l| l > 0) {
-            if arity == 0 {
+        if c.len() >= 2 {
+            if arity == 0 && c.len() >= 3 {
                 arity = c.len();
             }
-            if c.len() == arity {
-                let mut vs: Vec<u32> = c.iter().map(|&l| l as u32).collect();
-                vs.sort_unstable();
-                pigeons.push(vs);
+            if arity != 0 && c.len() == arity {
+                pigeons.push(c.clone());
                 pigeon_ids.push(i + 1);
             }
         }
@@ -726,52 +732,146 @@ pub fn detect_embedded_pigeonhole(
     if p < 3 || s < 2 || p <= s {
         return None;
     }
-    // Pigeons must be variable-disjoint.
-    let mut seen: HashSet<u32> = HashSet::new();
-    for g in &pigeons {
-        for &v in g {
-            if !seen.insert(v) {
+    // Variable-disjoint (by |var|) + literal -> pigeon map.
+    let mut seen: HashSet<i32> = HashSet::new();
+    let mut lit2pig: HashMap<i32, usize> = HashMap::new();
+    for (pi, g) in pigeons.iter().enumerate() {
+        for &l in g {
+            if !seen.insert(l.abs()) {
                 return None;
             }
+            lit2pig.insert(l, pi);
         }
     }
-    // Binary all-negative mutex index.
-    let mut mutex_ids: HashMap<(u32, u32), usize> = HashMap::new();
+    // Binary mutex index keyed on the EXCLUDED literal pair (~la v ~lb).
+    let mut mutex_ids: HashMap<(i32, i32), usize> = HashMap::new();
     for (i, c) in clauses.iter().enumerate() {
-        if c.len() == 2 && c[0] < 0 && c[1] < 0 {
-            let a = (-c[0]) as u32;
-            let b = (-c[1]) as u32;
-            let key = if a < b { (a, b) } else { (b, a) };
+        if c.len() == 2 {
+            let la = -c[0];
+            let lb = -c[1];
+            let key = if la < lb { (la, lb) } else { (lb, la) };
             mutex_ids.entry(key).or_insert(i + 1);
         }
     }
-    // Holes = aligned slot cliques; require completeness.
-    let mut holes: Vec<Vec<u32>> = Vec::with_capacity(s);
+    let holes = recover_component(&pigeons, &lit2pig, &mutex_ids)
+        .or_else(|| recover_aligned(&pigeons, &mutex_ids))?;
+    if holes.is_empty() || p <= holes.len() {
+        return None;
+    }
+    Some(EmbeddedPigeonhole { pigeon_ids, holes, mutex_ids })
+}
+
+/// Holes = connected components of the cross-pigeon mutex graph; each must
+/// be a complete P-clique with one literal per pigeon.  Seeds from pigeon
+/// 0's literals (one per hole) for a deterministic hole order.  Handles
+/// PHP and reshuffled/flipped fphp.
+fn recover_component(
+    pigeons: &[Vec<i32>],
+    lit2pig: &std::collections::HashMap<i32, usize>,
+    mutex_ids: &std::collections::HashMap<(i32, i32), usize>,
+) -> Option<Vec<Vec<i32>>> {
+    use std::collections::{HashMap, HashSet};
+    let p = pigeons.len();
+    let mut adj: HashMap<i32, HashSet<i32>> = HashMap::new();
+    for &(la, lb) in mutex_ids.keys() {
+        if let (Some(&pa), Some(&pb)) = (lit2pig.get(&la), lit2pig.get(&lb)) {
+            if pa != pb {
+                adj.entry(la).or_default().insert(lb);
+                adj.entry(lb).or_default().insert(la);
+            }
+        }
+    }
+    let mut seen: HashSet<i32> = HashSet::new();
+    let mut holes: Vec<Vec<i32>> = Vec::new();
+    for &seed in &pigeons[0] {
+        if seen.contains(&seed) {
+            continue;
+        }
+        let mut stack = vec![seed];
+        let mut comp: Vec<i32> = Vec::new();
+        while let Some(u) = stack.pop() {
+            if !seen.insert(u) {
+                continue;
+            }
+            comp.push(u);
+            if let Some(ns) = adj.get(&u) {
+                for &v in ns {
+                    if !seen.contains(&v) {
+                        stack.push(v);
+                    }
+                }
+            }
+        }
+        if comp.len() != p {
+            return None;
+        }
+        let pigset: HashSet<usize> = comp.iter().map(|l| lit2pig[l]).collect();
+        if pigset.len() != p {
+            return None;
+        }
+        for i in 0..comp.len() {
+            for j in (i + 1)..comp.len() {
+                if !adj.get(&comp[i]).map_or(false, |ns| ns.contains(&comp[j])) {
+                    return None;
+                }
+            }
+        }
+        comp.sort_by_key(|l| lit2pig[l]);
+        holes.push(comp);
+    }
+    // Every pigeon literal must be covered by some hole.
+    if seen.len() != p * pigeons[0].len() {
+        return None;
+    }
+    Some(holes)
+}
+
+/// Holes = the s-th literal of each pigeon (sorted by |var|); each slot
+/// must be a complete pairwise-mutex clique.  Handles MVRoundRobin (whose
+/// team-capacity mutexes merge the component graph, so it needs this
+/// positional method instead).
+fn recover_aligned(
+    pigeons: &[Vec<i32>],
+    mutex_ids: &std::collections::HashMap<(i32, i32), usize>,
+) -> Option<Vec<Vec<i32>>> {
+    let p = pigeons.len();
+    let s = pigeons[0].len();
+    let pigs: Vec<Vec<i32>> = pigeons
+        .iter()
+        .map(|g| {
+            let mut v = g.clone();
+            v.sort_by_key(|l| l.abs());
+            v
+        })
+        .collect();
+    let mut holes: Vec<Vec<i32>> = Vec::with_capacity(s);
     for slot in 0..s {
-        let hv: Vec<u32> = (0..p).map(|pp| pigeons[pp][slot]).collect();
-        for ai in 0..p {
-            for bi in (ai + 1)..p {
-                let (a, b) = if hv[ai] < hv[bi] {
-                    (hv[ai], hv[bi])
-                } else {
-                    (hv[bi], hv[ai])
-                };
-                if !mutex_ids.contains_key(&(a, b)) {
+        let hv: Vec<i32> = (0..p).map(|pp| pigs[pp][slot]).collect();
+        for i in 0..p {
+            for j in (i + 1)..p {
+                let key = if hv[i] < hv[j] { (hv[i], hv[j]) } else { (hv[j], hv[i]) };
+                if !mutex_ids.contains_key(&key) {
                     return None;
                 }
             }
         }
         holes.push(hv);
     }
-    Some(EmbeddedPigeonhole { pigeon_ids, holes, mutex_ids })
+    Some(holes)
 }
 
-/// Emit the Cook cardinality proof for an embedded pigeonhole.  Per hole,
-/// derive at-most-1 over its P vars via the recursive Cook subroutine
-/// (base IH(3) = `pol` of 3 mutexes / 2; IH(k) = `red` witness -> 0), sum
-/// the S holes (Sum ~x >= S*(P-1)) against the P pigeon clauses
-/// (Sum x >= P), and combine: since x + ~x = P*S over all P*S vars,
-/// P*S >= S*(P-1) + P = P*S + (P-S) forces 0 >= P-S > 0 -> contradiction.
+/// VeriPB term for `~l` (the literal being false): `~x{v}` if l>0 else `x{v}`.
+fn neg_lit(l: i32) -> String {
+    if l > 0 { format!("~x{}", l) } else { format!("x{}", -l) }
+}
+
+/// Emit the Cook cardinality proof for an embedded pigeonhole, at the
+/// LITERAL level (so polarity-flipped encodings work transparently).  Per
+/// hole, derive at-most-1 over its P literals via the recursive Cook
+/// subroutine (base IH(3) = `pol` of 3 mutexes / 2; IH(k) = `red` on the
+/// witness var -> {0,1}), sum the S holes (Sum ~l >= S*(P-1)) against the
+/// P pigeon clauses (Sum l >= P), and combine: l + ~l = P*S over all P*S
+/// literals, so P*S >= S*(P-1) + P = P*S + (P-S) forces 0 >= P-S -> ⊥.
 fn emit_embedded_pigeonhole<W: Write>(
     ep: &EmbeddedPigeonhole,
     n_clauses: usize,
@@ -780,16 +880,16 @@ fn emit_embedded_pigeonhole<W: Write>(
     let p = ep.pigeon_ids.len();
     let s = ep.holes.len();
     assert!(p > s && p >= 3, "embedded pigeonhole needs P > S, P >= 3");
-    let key = |a: u32, b: u32| if a < b { (a, b) } else { (b, a) };
+    let key = |a: i32, b: i32| if a < b { (a, b) } else { (b, a) };
 
     writeln!(w, "pseudo-Boolean proof version 3.0")?;
-    writeln!(w, "% embedded pigeonhole: {} pigeons > {} holes (Cook cardinality)", p, s)?;
+    writeln!(w, "% embedded pigeonhole: {} pigeons > {} holes (literal-level Cook)", p, s)?;
     writeln!(w, "f {};", n_clauses)?;
     writeln!(w)?;
     let mut cur = n_clauses;
 
-    // Step 1: per-hole at-most-1 over the P pigeon-vars.
-    writeln!(w, "% --- Step 1: per-hole at-most-1 over {} vars (recursive Cook subroutine) ---", p)?;
+    // Step 1: per-hole at-most-1 over the P pigeon-literals.
+    writeln!(w, "% --- Step 1: per-hole at-most-1 over {} literals (recursive Cook) ---", p)?;
     let mut hole_amo: Vec<usize> = Vec::with_capacity(s);
     for hv in &ep.holes {
         let m01 = ep.mutex_ids[&key(hv[0], hv[1])];
@@ -800,8 +900,10 @@ fn emit_embedded_pigeonhole<W: Write>(
         let mut current = cur;
         for k in 4..=p {
             let lits: Vec<String> =
-                (0..k).map(|i| format!("+1 ~x{}", hv[i])).collect();
-            writeln!(w, "red {} >= {} : x{} -> 0 ;", lits.join(" "), k - 1, hv[k - 1])?;
+                (0..k).map(|i| format!("+1 {}", neg_lit(hv[i]))).collect();
+            let wl = hv[k - 1];
+            writeln!(w, "red {} >= {} : x{} -> {} ;",
+                     lits.join(" "), k - 1, wl.abs(), if wl > 0 { 0 } else { 1 })?;
             cur += 1;
             current = cur;
         }
@@ -1026,5 +1128,48 @@ mod tests {
         // P <= S (4 pigeons, 4 holes) is satisfiable — must NOT detect.
         let cnf = embedded_php_cnf(4, 4);
         assert_eq!(detect_shape(&cnf, 3 * 10 + 4), CnfShape::Unknown);
+    }
+
+    /// Embedded PHP with FLIPPED polarities (some literals negated, like a
+    /// reshuffled fphp) — exercises the literal-level + component-recovery
+    /// path.  Holes are NOT positionally aligned with respect to polarity,
+    /// so this only detects if the cross-pigeon component recovery works.
+    fn embedded_php_cnf_flipped(p: usize, s: usize) -> Vec<Vec<i32>> {
+        let lit = |i: usize, j: usize| {
+            let v = (i * 10 + j + 1) as i32;
+            if (i + j) % 2 == 1 { -v } else { v }
+        };
+        let mut cs = Vec::new();
+        for i in 0..p {
+            cs.push((0..s).map(|j| lit(i, j)).collect());
+        }
+        for j in 0..s {
+            for i1 in 0..p {
+                for i2 in (i1 + 1)..p {
+                    cs.push(vec![-lit(i1, j), -lit(i2, j)]);
+                }
+            }
+        }
+        cs
+    }
+
+    #[test]
+    fn detect_and_emit_flipped_embedded_pigeonhole() {
+        let cnf = embedded_php_cnf_flipped(5, 3); // 5 pigeons > 3 holes
+        let shape = detect_shape(&cnf, 4 * 10 + 3);
+        match &shape {
+            CnfShape::EmbeddedPigeonhole(ep) => {
+                assert_eq!(ep.pigeon_ids.len(), 5);
+                assert_eq!(ep.holes.len(), 3);
+                // at least one hole literal must be negative (flipped).
+                assert!(ep.holes.iter().flatten().any(|&l| l < 0));
+            }
+            other => panic!("expected EmbeddedPigeonhole, got {:?}", other),
+        }
+        let mut buf = Vec::new();
+        emit_proof(&shape, cnf.len(), &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(s.contains("embedded pigeonhole: 5 pigeons > 3 holes"));
+        assert!(s.ends_with("end pseudo-Boolean proof;\n"));
     }
 }

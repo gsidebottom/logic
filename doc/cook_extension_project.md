@@ -324,39 +324,48 @@ work.
 
 ## Stretch update — generic "embedded pigeonhole" generalization (done)
 
-`tools/cook_card_proof.py` generalizes the PHP/RR Cook proof to **any**
-CNF carrying an embedded pigeonhole, detected automatically (no
-hand-coded family knowledge):
+`tools/cook_card_proof.py` (and the native Rust port in
+`src/cook_pbp.rs`) generalizes the PHP/RR Cook proof to **any** CNF
+carrying an embedded pigeonhole — including **reshuffled / polarity-
+flipped** encodings — detected automatically (no hand-coded family
+knowledge):
 
-- **Pigeons**: P variable-disjoint, all-positive at-least-one clauses of
-  equal arity S (pigeon picks ≥1 of S slots).
-- **Holes**: for slot s, the set {var s of each pigeon} is a *complete*
-  pairwise-mutex clique (hole holds ≤1). Completeness is verified before
-  emitting; the generator refuses (errors) otherwise.
-- **P > S** ⇒ UNSAT, with the Step-1..4 Cook proof (per-hole recursive
-  at-most-1 → Σ~x ≥ S(P−1); Σx ≥ P pigeons; combine → ⊥).
+- **Pigeons**: P variable-disjoint at-least-one clauses of equal arity S,
+  with literals of *any* polarity (pigeon picks ≥1 of S slots).
+- **Holes**: each hole = the P pigeon-literals for one slot, required to
+  form a *complete* pairwise-mutex clique (holds ≤1). Recovered two ways,
+  tried in order: **(A) component** — connected components of the
+  cross-pigeon mutex graph (PHP, reshuffled fphp); **(B) aligned** — the
+  s-th literal of each pigeon sorted by |var| (MVRoundRobin, whose
+  team-capacity mutexes merge the component graph). Completeness verified
+  before emitting; refuses otherwise.
+- **P > S** ⇒ UNSAT, via the literal-level Step-1..4 Cook proof (per-hole
+  recursive at-most-1 → Σ~l ≥ S(P−1); Σl ≥ P pigeons; combine → ⊥).
 
 Results (VeriPB 3.0.2, `veripb <cnf> <pbp>`):
 
-| family / instance | pigeons × holes | proof lines | verdict |
-|---|---|---|---|
-| PHP-12-11 (clean) | 12 × 11 | ~150 | VERIFIED UNSAT |
-| MVRoundRobin_n14_d10_v2 | 91 × 20 | 1799 | VERIFIED UNSAT |
-| MVRoundRobin_n16_d10_v2 | 120 × 20 | 2379 | VERIFIED UNSAT |
-| MVRoundRobin_n16_d10_v3 | 120 × 30 | 3559 | VERIFIED UNSAT |
-| MVRoundRobin_n20_d10_v2 | 190 × 20 | 3779 | VERIFIED UNSAT |
+| family / instance | pigeons × holes | proof lines | recovery | verdict |
+|---|---|---|---|---|
+| PHP-12-11 (clean) | 12 × 11 | ~150 | component | VERIFIED UNSAT |
+| MVRoundRobin_n14_d10_v2 | 91 × 20 | 1799 | aligned | VERIFIED UNSAT |
+| MVRoundRobin_n16_d10_v2 | 120 × 20 | 2379 | aligned | VERIFIED UNSAT |
+| MVRoundRobin_n16_d10_v3 | 120 × 30 | 3559 | aligned | VERIFIED UNSAT |
+| MVRoundRobin_n20_d10_v2 | 190 × 20 | 3779 | aligned | VERIFIED UNSAT |
+| harder-fphp-016-015 (reshuffled) | 16 × 15 | 221 | component | VERIFIED UNSAT |
 
 MVRoundRobin is **resolution-hard** — cadical 3.0 times out at 600s on
 `n14_d10_v2` (127,491 clauses), while the polynomial Cook proof verifies
 in ~60 ms. This is the matrix method's differentiator: compact proofs
 where resolution/DRAT is exponential.
 
-**Scope.** Covers single-level embedded pigeonholes (PHP, MVRoundRobin).
-RoundRobin's two-level (team,day) cardinality keeps its dedicated
-generator (`cook_rr_proof.py`); the relativized/functional PHP
-(`rphp`, `harder-fphp`) and `cliquecoloring` families have
-non-disjoint/Ramsey structure outside this clean class — future work.
+Wired natively: `sat -b eff --emit-cook-pbp` detects the shape on the raw
+CNF and emits the proof; `run_benchmark.py --verify-unsat-proof` tries it
+first (closing the cover cert's "None gap" on structured UNSAT).
 
-**Follow-on still open:** wire `cook_card_proof.py`'s detection+emission
-into `sat --emit-cook-pbp` (Rust `src/cook_pbp.rs`) so the binary emits
-these natively, and into the `run_benchmark.py` UNSAT-proof gate.
+**Scope.** Covers single-level embedded pigeonholes — clean (PHP),
+extended (MVRoundRobin), and reshuffled/flipped (harder-fphp).
+RoundRobin's two-level (team,day) cardinality keeps its dedicated
+generator (`cook_rr_proof.py`). Still outside the class: **relativized
+PHP** (`rphp` — pigeons not variable-disjoint) and **cliquecoloring**
+(Ramsey-style, not pigeonhole-shaped) — these need genuinely different
+proof techniques (future work).

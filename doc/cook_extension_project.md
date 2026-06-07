@@ -321,3 +321,42 @@ The project is "done" when:
 Phase 4 (sat integration) and stretch generalization (auto-detection
 of pigeon+mutex structure in arbitrary CNF) remain as follow-on
 work.
+
+## Stretch update — generic "embedded pigeonhole" generalization (done)
+
+`tools/cook_card_proof.py` generalizes the PHP/RR Cook proof to **any**
+CNF carrying an embedded pigeonhole, detected automatically (no
+hand-coded family knowledge):
+
+- **Pigeons**: P variable-disjoint, all-positive at-least-one clauses of
+  equal arity S (pigeon picks ≥1 of S slots).
+- **Holes**: for slot s, the set {var s of each pigeon} is a *complete*
+  pairwise-mutex clique (hole holds ≤1). Completeness is verified before
+  emitting; the generator refuses (errors) otherwise.
+- **P > S** ⇒ UNSAT, with the Step-1..4 Cook proof (per-hole recursive
+  at-most-1 → Σ~x ≥ S(P−1); Σx ≥ P pigeons; combine → ⊥).
+
+Results (VeriPB 3.0.2, `veripb <cnf> <pbp>`):
+
+| family / instance | pigeons × holes | proof lines | verdict |
+|---|---|---|---|
+| PHP-12-11 (clean) | 12 × 11 | ~150 | VERIFIED UNSAT |
+| MVRoundRobin_n14_d10_v2 | 91 × 20 | 1799 | VERIFIED UNSAT |
+| MVRoundRobin_n16_d10_v2 | 120 × 20 | 2379 | VERIFIED UNSAT |
+| MVRoundRobin_n16_d10_v3 | 120 × 30 | 3559 | VERIFIED UNSAT |
+| MVRoundRobin_n20_d10_v2 | 190 × 20 | 3779 | VERIFIED UNSAT |
+
+MVRoundRobin is **resolution-hard** — cadical 3.0 times out at 600s on
+`n14_d10_v2` (127,491 clauses), while the polynomial Cook proof verifies
+in ~60 ms. This is the matrix method's differentiator: compact proofs
+where resolution/DRAT is exponential.
+
+**Scope.** Covers single-level embedded pigeonholes (PHP, MVRoundRobin).
+RoundRobin's two-level (team,day) cardinality keeps its dedicated
+generator (`cook_rr_proof.py`); the relativized/functional PHP
+(`rphp`, `harder-fphp`) and `cliquecoloring` families have
+non-disjoint/Ramsey structure outside this clean class — future work.
+
+**Follow-on still open:** wire `cook_card_proof.py`'s detection+emission
+into `sat --emit-cook-pbp` (Rust `src/cook_pbp.rs`) so the binary emits
+these natively, and into the `run_benchmark.py` UNSAT-proof gate.

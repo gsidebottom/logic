@@ -54,6 +54,11 @@ pub enum CnfShape {
     /// C(n-1, 2) team-day mutex.  Matches the official
     /// `RoundRobin_n*_d*.cnf` benchmarks byte-for-byte.
     RoundRobin { n_teams: usize, n_days: usize },
+    /// Generic embedded pigeonhole (P disjoint at-least-one clauses + S
+    /// complete slot-mutex cliques, P > S).  Generalises PHP/RoundRobin
+    /// to e.g. MVRoundRobin; carries the extracted structure because the
+    /// variable layout is read from the CNF, not canonical.
+    EmbeddedPigeonhole(EmbeddedPigeonhole),
     /// No matching shape detected.
     Unknown,
 }
@@ -66,6 +71,11 @@ impl CnfShape {
             CnfShape::RoundRobin { n_teams, n_days } => {
                 format!("RoundRobin n={} d={}", n_teams, n_days)
             }
+            CnfShape::EmbeddedPigeonhole(ep) => format!(
+                "embedded pigeonhole {}x{}",
+                ep.pigeon_ids.len(),
+                ep.holes.len()
+            ),
             CnfShape::Unknown => "Unknown".into(),
         }
     }
@@ -89,6 +99,9 @@ pub fn detect_shape(clauses: &[Vec<i32>], nvars: usize) -> CnfShape {
     }
     if let Some(s) = detect_roundrobin(clauses, nvars) {
         return s;
+    }
+    if let Some(ep) = detect_embedded_pigeonhole(clauses, nvars) {
+        return CnfShape::EmbeddedPigeonhole(ep);
     }
     CnfShape::Unknown
 }
@@ -264,6 +277,9 @@ pub fn emit_proof<W: Write>(
         CnfShape::Php { n, m } => emit_php(*n, *m, n_clauses, w),
         CnfShape::RoundRobin { n_teams, n_days } => {
             emit_roundrobin(*n_teams, *n_days, n_clauses, w)
+        }
+        CnfShape::EmbeddedPigeonhole(ep) => {
+            emit_embedded_pigeonhole(ep, n_clauses, w)
         }
         CnfShape::Unknown => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -652,6 +668,182 @@ fn emit_roundrobin<W: Write>(
 // path warning doesn't surface when `kk` loops zero times.
 fn current_ih_stub() -> usize { 0 }
 
+// ─── Embedded-pigeonhole emitter (generic cardinality + mutex) ──────────────
+//
+// Generalises PHP/RoundRobin to ANY CNF carrying an embedded pigeonhole:
+// P variable-disjoint all-positive at-least-one "pigeon" clauses of equal
+// arity S, where for each slot s the set {var s of each pigeon} forms a
+// COMPLETE pairwise-mutex clique ("hole" holding <= 1).  P > S => UNSAT.
+// Detected from raw clause structure (no hand-coded family knowledge), so
+// the same path covers MVRoundRobin and other aligned at-least-one +
+// slot-clique instances.  Port of `tools/cook_card_proof.py`.
+
+/// Extracted embedded-pigeonhole structure (see [`detect_embedded_pigeonhole`]).
+/// Carries clause ids + slot vars because, unlike PHP/RoundRobin, the
+/// variable layout is not canonical — it is read out of the input CNF.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmbeddedPigeonhole {
+    /// 1-based CNF clause id of each pigeon's at-least-one clause.
+    pub pigeon_ids: Vec<usize>,
+    /// holes[s] = the P pigeon-vars occupying slot s (in pigeon order).
+    pub holes: Vec<Vec<u32>>,
+    /// 1-based clause id of the binary mutex on the (min, max) var pair.
+    pub mutex_ids: std::collections::HashMap<(u32, u32), usize>,
+}
+
+/// Try to recognise an embedded pigeonhole.  Pigeons = all-positive
+/// at-least-one clauses of arity >= 2, all sharing the first such arity
+/// seen, pairwise variable-disjoint.  Holes = aligned slot cliques,
+/// required to be COMPLETE (every same-slot pigeon pair has a binary
+/// mutex).  Requires P > S.  Returns `None` if the structure is absent —
+/// so emission only ever fires on a confirmed pigeonhole.  The
+/// O(S * P^2) clique-completeness check guarantees the emitted proof is
+/// sound by construction (every `pol`/`red` it references exists).
+pub fn detect_embedded_pigeonhole(
+    clauses: &[Vec<i32>],
+    _nvars: usize,
+) -> Option<EmbeddedPigeonhole> {
+    use std::collections::{HashMap, HashSet};
+    // Pigeons: all-positive arity->=2 clauses of the first such arity.
+    let mut arity = 0usize;
+    let mut pigeons: Vec<Vec<u32>> = Vec::new();
+    let mut pigeon_ids: Vec<usize> = Vec::new();
+    for (i, c) in clauses.iter().enumerate() {
+        if c.len() >= 2 && c.iter().all(|&l| l > 0) {
+            if arity == 0 {
+                arity = c.len();
+            }
+            if c.len() == arity {
+                let mut vs: Vec<u32> = c.iter().map(|&l| l as u32).collect();
+                vs.sort_unstable();
+                pigeons.push(vs);
+                pigeon_ids.push(i + 1);
+            }
+        }
+    }
+    let p = pigeons.len();
+    let s = arity;
+    if p < 3 || s < 2 || p <= s {
+        return None;
+    }
+    // Pigeons must be variable-disjoint.
+    let mut seen: HashSet<u32> = HashSet::new();
+    for g in &pigeons {
+        for &v in g {
+            if !seen.insert(v) {
+                return None;
+            }
+        }
+    }
+    // Binary all-negative mutex index.
+    let mut mutex_ids: HashMap<(u32, u32), usize> = HashMap::new();
+    for (i, c) in clauses.iter().enumerate() {
+        if c.len() == 2 && c[0] < 0 && c[1] < 0 {
+            let a = (-c[0]) as u32;
+            let b = (-c[1]) as u32;
+            let key = if a < b { (a, b) } else { (b, a) };
+            mutex_ids.entry(key).or_insert(i + 1);
+        }
+    }
+    // Holes = aligned slot cliques; require completeness.
+    let mut holes: Vec<Vec<u32>> = Vec::with_capacity(s);
+    for slot in 0..s {
+        let hv: Vec<u32> = (0..p).map(|pp| pigeons[pp][slot]).collect();
+        for ai in 0..p {
+            for bi in (ai + 1)..p {
+                let (a, b) = if hv[ai] < hv[bi] {
+                    (hv[ai], hv[bi])
+                } else {
+                    (hv[bi], hv[ai])
+                };
+                if !mutex_ids.contains_key(&(a, b)) {
+                    return None;
+                }
+            }
+        }
+        holes.push(hv);
+    }
+    Some(EmbeddedPigeonhole { pigeon_ids, holes, mutex_ids })
+}
+
+/// Emit the Cook cardinality proof for an embedded pigeonhole.  Per hole,
+/// derive at-most-1 over its P vars via the recursive Cook subroutine
+/// (base IH(3) = `pol` of 3 mutexes / 2; IH(k) = `red` witness -> 0), sum
+/// the S holes (Sum ~x >= S*(P-1)) against the P pigeon clauses
+/// (Sum x >= P), and combine: since x + ~x = P*S over all P*S vars,
+/// P*S >= S*(P-1) + P = P*S + (P-S) forces 0 >= P-S > 0 -> contradiction.
+fn emit_embedded_pigeonhole<W: Write>(
+    ep: &EmbeddedPigeonhole,
+    n_clauses: usize,
+    w: &mut W,
+) -> io::Result<()> {
+    let p = ep.pigeon_ids.len();
+    let s = ep.holes.len();
+    assert!(p > s && p >= 3, "embedded pigeonhole needs P > S, P >= 3");
+    let key = |a: u32, b: u32| if a < b { (a, b) } else { (b, a) };
+
+    writeln!(w, "pseudo-Boolean proof version 3.0")?;
+    writeln!(w, "% embedded pigeonhole: {} pigeons > {} holes (Cook cardinality)", p, s)?;
+    writeln!(w, "f {};", n_clauses)?;
+    writeln!(w)?;
+    let mut cur = n_clauses;
+
+    // Step 1: per-hole at-most-1 over the P pigeon-vars.
+    writeln!(w, "% --- Step 1: per-hole at-most-1 over {} vars (recursive Cook subroutine) ---", p)?;
+    let mut hole_amo: Vec<usize> = Vec::with_capacity(s);
+    for hv in &ep.holes {
+        let m01 = ep.mutex_ids[&key(hv[0], hv[1])];
+        let m02 = ep.mutex_ids[&key(hv[0], hv[2])];
+        let m12 = ep.mutex_ids[&key(hv[1], hv[2])];
+        writeln!(w, "pol {} {} + {} + 2 d ;", m01, m02, m12)?;
+        cur += 1;
+        let mut current = cur;
+        for k in 4..=p {
+            let lits: Vec<String> =
+                (0..k).map(|i| format!("+1 ~x{}", hv[i])).collect();
+            writeln!(w, "red {} >= {} : x{} -> 0 ;", lits.join(" "), k - 1, hv[k - 1])?;
+            cur += 1;
+            current = cur;
+        }
+        hole_amo.push(current);
+    }
+    writeln!(w)?;
+
+    // Step 2: sum the S hole at-most-1's -> Sum ~x >= S*(P-1).
+    writeln!(w, "% --- Step 2: sum hole at-most-1's ---")?;
+    let mut expr = hole_amo[0].to_string();
+    for h in &hole_amo[1..] {
+        expr += &format!(" {} +", h);
+    }
+    writeln!(w, "pol {} ;", expr)?;
+    cur += 1;
+    let amo_sum = cur;
+    writeln!(w)?;
+
+    // Step 3: sum the P pigeon at-least-one clauses -> Sum x >= P.
+    writeln!(w, "% --- Step 3: sum pigeon at-least-one clauses ---")?;
+    let mut expr = ep.pigeon_ids[0].to_string();
+    for &pid in &ep.pigeon_ids[1..] {
+        expr += &format!(" {} +", pid);
+    }
+    writeln!(w, "pol {} ;", expr)?;
+    cur += 1;
+    let pigeon_sum = cur;
+    writeln!(w)?;
+
+    // Step 4: combine -> contradiction.
+    writeln!(w, "% --- Step 4: combine -> contradiction ---")?;
+    writeln!(w, "pol {} {} + ;", amo_sum, pigeon_sum)?;
+    cur += 1;
+    writeln!(w, "rup >= 1 ;")?;
+    writeln!(w)?;
+    writeln!(w, "output NONE;")?;
+    writeln!(w, "conclusion UNSAT : -1;")?;
+    writeln!(w, "end pseudo-Boolean proof;")?;
+    let _ = cur;
+    Ok(())
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -777,5 +969,62 @@ mod tests {
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains("RoundRobin n=4 d=2"));
         assert!(s.ends_with("end pseudo-Boolean proof;\n"));
+    }
+
+    /// PHP-P-S with NON-canonical variable numbering (stride 10) — so the
+    /// byte-exact `detect_php` misses it and the generic embedded-
+    /// pigeonhole detector must catch it instead.  pigeon i, slot j -> var
+    /// `i*10 + j + 1`; per-slot complete mutex cliques.
+    fn embedded_php_cnf(p: usize, s: usize) -> Vec<Vec<i32>> {
+        let var = |i: usize, j: usize| (i * 10 + j + 1) as i32;
+        let mut cs = Vec::new();
+        for i in 0..p {
+            cs.push((0..s).map(|j| var(i, j)).collect());
+        }
+        for j in 0..s {
+            for i1 in 0..p {
+                for i2 in (i1 + 1)..p {
+                    cs.push(vec![-var(i1, j), -var(i2, j)]);
+                }
+            }
+        }
+        cs
+    }
+
+    #[test]
+    fn detect_embedded_pigeonhole_non_canonical() {
+        let cnf = embedded_php_cnf(4, 3); // 4 pigeons > 3 holes
+        let shape = detect_shape(&cnf, 3 * 10 + 3);
+        match &shape {
+            CnfShape::EmbeddedPigeonhole(ep) => {
+                assert_eq!(ep.pigeon_ids.len(), 4);
+                assert_eq!(ep.holes.len(), 3);
+                // every slot clique must be complete (all C(4,2)=6 mutexes)
+                assert_eq!(ep.mutex_ids.len(), 3 * 6);
+            }
+            other => panic!("expected EmbeddedPigeonhole, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn emit_embedded_pigeonhole_produces_output() {
+        let cnf = embedded_php_cnf(5, 3);
+        let shape = detect_shape(&cnf, 4 * 10 + 3);
+        let mut buf = Vec::new();
+        emit_proof(&shape, cnf.len(), &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(s.starts_with("pseudo-Boolean proof version 3.0"));
+        assert!(s.contains("embedded pigeonhole: 5 pigeons > 3 holes"));
+        assert!(s.ends_with("end pseudo-Boolean proof;\n"));
+        // 3 holes, each IH(3) base + IH(4),IH(5) recursive red = 2 reds/hole.
+        let n_red = s.lines().filter(|l| l.starts_with("red ")).count();
+        assert_eq!(n_red, 3 * 2);
+    }
+
+    #[test]
+    fn embedded_pigeonhole_rejects_sat_ratio() {
+        // P <= S (4 pigeons, 4 holes) is satisfiable — must NOT detect.
+        let cnf = embedded_php_cnf(4, 4);
+        assert_eq!(detect_shape(&cnf, 3 * 10 + 4), CnfShape::Unknown);
     }
 }

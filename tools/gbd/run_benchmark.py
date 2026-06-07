@@ -67,6 +67,18 @@ COVER_VERIFY_BIN = REPO_ROOT / "target" / "release" / "sat-cover-verify"
 # Backends that can emit a matrix cover certificate (--emit-cover); the
 # UNSAT-proof gate (--verify-unsat-proof) re-runs one of these.
 COVER_CAPABLE_BACKENDS = {"eff_cover", "cdcl", "smart"}
+# VeriPB checker for the compact Cook PB proofs (--emit-cook-pbp).  The
+# UNSAT-proof gate tries this *first* (it completely certifies detected
+# PHP/RoundRobin/embedded-pigeonhole shapes, closing the cover cert's
+# "None gap" on RR-scale structured UNSAT).  Located on PATH or ~/.cargo.
+def _find_veripb() -> Optional[str]:
+    import shutil
+    hit = shutil.which("veripb")
+    if hit:
+        return hit
+    cand = Path.home() / ".cargo" / "bin" / "veripb"
+    return str(cand) if cand.exists() else None
+VERIPB_BIN = _find_veripb()
 PLOT_PY    = REPO_ROOT / "doc" / "competition-benchmarks-plot.py"
 OUT_DIR    = REPO_ROOT / "doc"
 
@@ -349,11 +361,61 @@ def cadical_oracle(cnf_path: Path, timeout_s: int) -> Tuple[str, Optional[bool]]
     return "UNKNOWN", None
 
 
+def verify_unsat_cook_pbp(cnf_path: Path) -> Tuple[Optional[bool], str]:
+    """Try to PROVE UNSAT via a compact Cook PB proof checked by VeriPB.
+
+    Runs `sat --emit-cook-pbp <tmp>` (detects PHP / RoundRobin /
+    embedded-pigeonhole shape on the RAW CNF and emits a polynomial-size
+    PB proof), then `veripb <cnf> <tmp>`.  Outcomes:
+      - (True,  reason): VeriPB VERIFIED UNSATISFIABLE → proven UNSAT.
+      - (False, reason): VeriPB REJECTED the proof.  The emitter only ever
+                         fires after an O(S*P^2) clique-completeness check,
+                         so this should never happen; treat as a soundness
+                         failure if it does.
+      - (None,  reason): no shape detected, or VeriPB missing/timeout — NOT
+                         a failure; the caller falls back to the cover cert.
+    Unlike the cover certificate, this COMPLETELY certifies RR-scale
+    structured UNSAT (PHP/RoundRobin/MVRoundRobin), closing the cover
+    gate's historical "None gap" on exactly those instances."""
+    if VERIPB_BIN is None:
+        return None, "veripb not found"
+    pbp = cnf_path.with_suffix(cnf_path.suffix + ".pbp")
+    try:
+        try:
+            with cnf_path.open("rb") as cnf_in:
+                p = subprocess.run(
+                    [str(SAT_BIN), "-b", "eff", "--emit-cook-pbp", str(pbp)],
+                    stdin=cnf_in, capture_output=True, text=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            return None, "cook-pbp emit wall-timeout"
+        if "no matching shape" in p.stderr or not pbp.exists():
+            return None, "no cook-pbp shape detected"
+        try:
+            v = subprocess.run([VERIPB_BIN, str(cnf_path), str(pbp)],
+                               capture_output=True, text=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            return None, "veripb wall-timeout"
+        if "VERIFIED UNSATISFIABLE" in v.stdout:
+            return True, "cook-pbp veripb-verified"
+        return False, "veripb rejected cook-pbp proof"
+    finally:
+        try:
+            pbp.unlink()
+        except OSError:
+            pass
+
+
 def verify_unsat_cover(cnf_path: Path, backend: str,
                        timeout_s: int) -> Tuple[Optional[bool], str]:
     """Try to PROVE an UNSAT verdict by re-deriving a matrix cover
     certificate and checking it; fall back to the CaDiCaL oracle when
     the cover is incomplete.
+
+    First attempts the compact Cook PB proof (`verify_unsat_cook_pbp`):
+    on a detected PHP/RoundRobin/embedded-pigeonhole shape it completely
+    certifies UNSAT in milliseconds, closing the cover gate's None gap on
+    RR-scale structured instances.  Only when no shape is detected does it
+    fall through to the matrix cover certificate below.
 
     Re-runs `sat -b <backend> --no-preprocess --emit-cover <tmp>` on the
     CNF (a cover-capable backend re-solves and emits its cover), then
@@ -371,7 +433,14 @@ def verify_unsat_cover(cnf_path: Path, backend: str,
                            instances (e.g. 3-colouring), so an unprovable-
                            but-correct UNSAT scores as a solve (better than
                            a timeout).
-    See the `more-complete-unsat-proofs` task for closing the None gap."""
+    The None gap is now closed for PHP/RoundRobin/MVRoundRobin-style
+    structured UNSAT by the Cook PB proof tried first below; other
+    families (e.g. 3-colouring) can still legitimately return None."""
+    # Preferred: compact Cook PB proof (complete on detected pigeonhole
+    # shapes).  Definitive True/False short-circuits; None falls through.
+    ck_ok, ck_reason = verify_unsat_cook_pbp(cnf_path)
+    if ck_ok is not None:
+        return ck_ok, ck_reason
     if not COVER_VERIFY_BIN.exists():
         return None, "sat-cover-verify binary missing"
     cover = cnf_path.with_suffix(cnf_path.suffix + ".cover")
@@ -1413,17 +1482,26 @@ def main() -> int:
               file=sys.stderr)
         return 2
     if args.verify_unsat_proof:
-        if args.backend not in COVER_CAPABLE_BACKENDS:
-            print(f"FATAL: --verify-unsat-proof needs a cover-capable backend "
-                  f"({', '.join(sorted(COVER_CAPABLE_BACKENDS))}); got "
-                  f"{args.backend!r}.", file=sys.stderr)
-            return 2
-        if not COVER_VERIFY_BIN.exists():
-            print(f"FATAL: --verify-unsat-proof needs sat-cover-verify: "
-                  f"{COVER_VERIFY_BIN}\n"
-                  f"       Build with: cargo build --release --bin sat-cover-verify",
+        # The gate has two proof paths: the compact Cook PB proof (any
+        # backend; needs VeriPB) tried first, then the matrix cover cert
+        # (needs a cover-capable backend + sat-cover-verify) as fallback.
+        # Require at least one to be usable.
+        cook_ok = VERIPB_BIN is not None
+        cover_ok = (args.backend in COVER_CAPABLE_BACKENDS
+                    and COVER_VERIFY_BIN.exists())
+        if not cook_ok and not cover_ok:
+            print(f"FATAL: --verify-unsat-proof needs either VeriPB (for the "
+                  f"Cook PB proof path) or a cover-capable backend "
+                  f"({', '.join(sorted(COVER_CAPABLE_BACKENDS))}) with "
+                  f"sat-cover-verify; got backend {args.backend!r}, "
+                  f"veripb={'found' if cook_ok else 'missing'}, "
+                  f"sat-cover-verify={'found' if COVER_VERIFY_BIN.exists() else 'missing'}.",
                   file=sys.stderr)
             return 2
+        if not cook_ok:
+            print("c --verify-unsat-proof: VeriPB not found; Cook PB proof "
+                  "path disabled, using cover certificate only.",
+                  file=sys.stderr)
     if shutil.which("xz") is None:
         print("FATAL: xz not on PATH.", file=sys.stderr)
         return 2

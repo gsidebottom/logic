@@ -400,7 +400,7 @@ clean two-layer cardinality families.
 has `detect_clique_coloring` + `emit_clique_coloring`, so `sat -b eff
 --emit-cook-pbp` emits clique-coloring proofs directly (detection runs
 after PHP/RoundRobin/embedded-pigeonhole; the K largest-arity all-positive
-clauses are clique-membership, the next N are vertex-color) and the
+clauses are clique-membership, the next N are vertex-color; rejects coincidental arity matches via K<=N + variable-disjoint layers) and the
 `run_benchmark.py` UNSAT-proof gate covers it. Verified end-to-end on the
 tiny `n3_k3_c2` demo and all 3 curated instances via the binary.
 

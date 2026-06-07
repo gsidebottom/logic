@@ -1022,8 +1022,30 @@ pub fn detect_clique_coloring(clauses: &[Vec<i32>], nvars: usize) -> Option<Cliq
     let clique = by_arity[&n_arity].clone();
     let mut color = by_arity[&c_arity].clone();
     let (k, n, c) = (clique.len(), n_arity, c_arity);
-    if color.len() != n || k <= c || k < 3 || c < 2 {
+    // K > C (the UNSAT pigeonhole), K <= N (a clique can't have more slots
+    // than vertices — rejects coincidental arity matches such as the
+    // profitable-robust-production family, where K=78 > N=40), K >= 3 and
+    // C >= 2 (recursive at-most-1 base + >= 2 colors), and the color-clause
+    // count must equal the vertex count N.
+    if color.len() != n || k <= c || k > n || k < 3 || c < 2 {
         return None;
+    }
+    // Both cardinality layers must be variable-disjoint (K slots × N
+    // vertices and N × C colors, sharing no variables) — the hallmark of a
+    // genuine clique-coloring encoding.  A non-clique-coloring that merely
+    // matches the arity profile generally reuses variables and is rejected
+    // here, so the emitted proof's `rup` lemmas reference clauses that
+    // actually exist (sound by construction, not just caught by VeriPB).
+    {
+        use std::collections::HashSet;
+        let mut seen: HashSet<i32> = HashSet::new();
+        for clause in clique.iter().chain(color.iter()) {
+            for &v in clause {
+                if !seen.insert(v) {
+                    return None;
+                }
+            }
+        }
     }
     color.sort_by_key(|cl| cl[0]); // order vertices by ascending min var
     Some(CliqueColoring { clique, color, nvars })
@@ -1460,5 +1482,22 @@ mod tests {
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains("clique-coloring two-level: composed PHP-3-2"));
         assert!(s.ends_with("end pseudo-Boolean proof;\n"));
+    }
+
+    #[test]
+    fn clique_coloring_rejects_impossible_clique() {
+        // Arity profile matching clique-coloring (5 arity-3 all-positive +
+        // 3 arity-2 all-positive: N=3, K=5, C=2) but K=5 > N=3 is an
+        // IMPOSSIBLE clique (can't pick 5 distinct vertices from 3) — the
+        // PRP_40_40 false-positive class.  Must NOT be detected, so the
+        // bare `--emit-cook-pbp` verdict can't wrongly claim UNSAT.
+        let mut cnf: Vec<Vec<i32>> = Vec::new();
+        for i in 0..5 {
+            cnf.push(vec![3 * i + 1, 3 * i + 2, 3 * i + 3]); // clique-ish, arity 3
+        }
+        for j in 0..3 {
+            cnf.push(vec![16 + 2 * j, 17 + 2 * j]); // color-ish, arity 2
+        }
+        assert_eq!(detect_shape(&cnf, 21), CnfShape::Unknown);
     }
 }

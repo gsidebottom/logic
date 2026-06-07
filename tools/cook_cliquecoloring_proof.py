@@ -66,6 +66,20 @@ def detect(clauses):
         raise ValueError("vertex-color count %d != #vertices %d" % (len(color), N))
     if K <= C:
         raise ValueError("not UNSAT clique-coloring: K=%d <= C=%d" % (K, C))
+    if K > N:
+        # A clique can't have more slots than vertices; rejects coincidental
+        # arity matches such as the profitable-robust-production family
+        # (K=78 > N=40) that would otherwise emit an invalid proof.
+        raise ValueError("impossible clique: K=%d > N=%d vertices" % (K, N))
+    # Both layers must be variable-disjoint (K*N clique vars + N*C color vars,
+    # no overlap) — a genuine clique-coloring encoding; a mere arity match
+    # generally reuses variables and is rejected here.
+    seen = set()
+    for clause in clique + color:
+        for v in clause:
+            if v in seen:
+                raise ValueError("clique/color layers not variable-disjoint")
+            seen.add(v)
     # Order color-clauses by vertex (their min var ascends with vertex id).
     color = sorted(color, key=lambda cl: cl[0])
     return clique, color

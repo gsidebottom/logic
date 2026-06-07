@@ -59,6 +59,13 @@ pub enum CnfShape {
     /// to e.g. MVRoundRobin; carries the extracted structure because the
     /// variable layout is read from the CNF, not canonical.
     EmbeddedPigeonhole(EmbeddedPigeonhole),
+    /// Clique-coloring: a graph asserted to contain a K-clique yet be
+    /// C-colorable, K > C.  A *two-level* (clique-membership × coloring)
+    /// cardinality structure whose pigeonhole lives at the composed
+    /// clique-slot → color level.  Carries the extracted clique/color
+    /// clause vars; proved by composing the two layers (see
+    /// `emit_clique_coloring`).
+    CliqueColoring(CliqueColoring),
     /// No matching shape detected.
     Unknown,
 }
@@ -75,6 +82,12 @@ impl CnfShape {
                 "embedded pigeonhole {}x{}",
                 ep.pigeon_ids.len(),
                 ep.holes.len()
+            ),
+            CnfShape::CliqueColoring(cc) => format!(
+                "clique-coloring K={} N={} C={}",
+                cc.clique.len(),
+                cc.color.len(),
+                cc.color.first().map_or(0, |v| v.len())
             ),
             CnfShape::Unknown => "Unknown".into(),
         }
@@ -102,6 +115,9 @@ pub fn detect_shape(clauses: &[Vec<i32>], nvars: usize) -> CnfShape {
     }
     if let Some(ep) = detect_embedded_pigeonhole(clauses, nvars) {
         return CnfShape::EmbeddedPigeonhole(ep);
+    }
+    if let Some(cc) = detect_clique_coloring(clauses, nvars) {
+        return CnfShape::CliqueColoring(cc);
     }
     CnfShape::Unknown
 }
@@ -281,6 +297,7 @@ pub fn emit_proof<W: Write>(
         CnfShape::EmbeddedPigeonhole(ep) => {
             emit_embedded_pigeonhole(ep, n_clauses, w)
         }
+        CnfShape::CliqueColoring(cc) => emit_clique_coloring(cc, n_clauses, w),
         CnfShape::Unknown => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "cannot emit Cook proof for Unknown shape",
@@ -946,6 +963,200 @@ fn emit_embedded_pigeonhole<W: Write>(
     Ok(())
 }
 
+// ─── Clique-coloring emitter (two-level composed cardinality) ───────────────
+//
+// A clique-coloring formula asserts a graph contains a K-clique (via K
+// selector "clique-slots") yet is C-colorable, with K > C — UNSAT because
+// the K mutually-adjacent clique vertices need K distinct colors.  The
+// pigeonhole lives at the COMPOSED clique-slot → color level, so the proof
+// composes the two cardinality layers (clique membership × coloring):
+//
+//   z_{i,v,c} = clique_{i,v} AND col_{v,c}      (AND reification, red)
+//   y_{i,c}   = OR_v z_{i,v,c}                   (OR  reification, red)
+//   (A) OR_c y_{i,c}  per slot                   (composed at-least-one)
+//   (B) ~y_{i,c} | ~y_{j,c}  per color, i<j      (composed at-most-1)
+//   PHP-K-C on y                                 -> contradiction
+//
+// (A)/(B) are derived with `rup` plus intermediate lemmas that make unit
+// propagation cascade through the existential composition (the `OR_v z`
+// disjunction doesn't unit-propagate on its own): T,U for (A); N,Q for (B).
+// Port of `tools/cook_cliquecoloring_proof.py`.
+
+/// Extracted clique-coloring structure (see [`detect_clique_coloring`]).
+/// `clique[i][v]` is the var "clique-slot i is at vertex v" and
+/// `color[v][c]` the var "vertex v has color c", aligned so index `v`
+/// means the same vertex in both.  `nvars` is the max formula var (the
+/// fresh z/y vars are allocated above it).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CliqueColoring {
+    pub clique: Vec<Vec<i32>>,
+    pub color: Vec<Vec<i32>>,
+    pub nvars: usize,
+}
+
+/// Recognise a clique-coloring CNF: the K largest-arity all-positive
+/// clauses are clique-membership (arity = #vertices N), the next N
+/// all-positive clauses are vertex-color (arity = #colors C), with K > C
+/// and K >= 3, C >= 2.  Vertices are aligned by ordering color-clauses by
+/// their min var (matches the clique-clauses' v-th sorted var).  Returns
+/// `None` if the shape is absent — emission only fires on a match, and the
+/// `rup` steps re-derive every lemma against the DB, so a spurious match
+/// simply fails verification rather than producing an unsound proof.
+pub fn detect_clique_coloring(clauses: &[Vec<i32>], nvars: usize) -> Option<CliqueColoring> {
+    use std::collections::HashMap;
+    let mut by_arity: HashMap<usize, Vec<Vec<i32>>> = HashMap::new();
+    for c in clauses {
+        if c.len() >= 2 && c.iter().all(|&l| l > 0) {
+            let mut s = c.clone();
+            s.sort_unstable();
+            by_arity.entry(c.len()).or_default().push(s);
+        }
+    }
+    if by_arity.len() < 2 {
+        return None;
+    }
+    let mut arities: Vec<usize> = by_arity.keys().copied().collect();
+    arities.sort_unstable();
+    let n_arity = arities[arities.len() - 1]; // clique arity = #vertices N
+    let c_arity = arities[arities.len() - 2]; // color arity  = #colors C
+    let clique = by_arity[&n_arity].clone();
+    let mut color = by_arity[&c_arity].clone();
+    let (k, n, c) = (clique.len(), n_arity, c_arity);
+    if color.len() != n || k <= c || k < 3 || c < 2 {
+        return None;
+    }
+    color.sort_by_key(|cl| cl[0]); // order vertices by ascending min var
+    Some(CliqueColoring { clique, color, nvars })
+}
+
+/// Emit the two-level composed-PHP proof for a clique-coloring instance.
+fn emit_clique_coloring<W: Write>(
+    cc: &CliqueColoring,
+    n_clauses: usize,
+    w: &mut W,
+) -> io::Result<()> {
+    use std::collections::HashMap;
+    let k = cc.clique.len();
+    let n = cc.clique[0].len();
+    let c = cc.color[0].len();
+    assert!(k > c && k >= 3 && c >= 2, "clique-coloring needs K > C, K >= 3");
+    let cl = |i: usize, v: usize| cc.clique[i][v]; // clique_{i,v}
+    let co = |v: usize, j: usize| cc.color[v][j]; // col_{v,c}
+    // Fresh extension vars above the formula's max var.
+    let base = cc.nvars as i32;
+    let zid = |i: usize, v: usize, j: usize| base + 1 + (i * n * c + v * c + j) as i32;
+    let yid = |i: usize, j: usize| base + (k * n * c) as i32 + 1 + (i * c + j) as i32;
+
+    writeln!(w, "pseudo-Boolean proof version 3.0")?;
+    writeln!(w, "% clique-coloring two-level: composed PHP-{}-{} (slot->color)", k, c)?;
+    writeln!(w, "f {};", n_clauses)?;
+    writeln!(w)?;
+    let mut cur = n_clauses;
+
+    // z = clique AND col
+    for i in 0..k {
+        for v in 0..n {
+            for j in 0..c {
+                let z = zid(i, v, j);
+                writeln!(w, "red 1 ~x{} 1 x{} >= 1 : x{} -> 0 ;", z, cl(i, v), z)?;
+                writeln!(w, "red 1 ~x{} 1 x{} >= 1 : x{} -> 0 ;", z, co(v, j), z)?;
+                writeln!(w, "red 1 x{} 1 ~x{} 1 ~x{} >= 1 : x{} -> 1 ;", z, cl(i, v), co(v, j), z)?;
+                cur += 3;
+            }
+        }
+    }
+    // y = OR_v z
+    for i in 0..k {
+        for j in 0..c {
+            let y = yid(i, j);
+            for v in 0..n {
+                writeln!(w, "red 1 ~x{} 1 x{} >= 1 : x{} -> 1 ;", zid(i, v, j), y, y)?;
+                cur += 1;
+            }
+            let terms: String = (0..n).map(|v| format!("1 x{}", zid(i, v, j))).collect::<Vec<_>>().join(" ");
+            writeln!(w, "red 1 ~x{} {} >= 1 : x{} -> 0 ;", y, terms, y)?;
+            cur += 1;
+        }
+    }
+    // (A) composed at-least-one, via rup intermediates that cascade UP
+    let mut a_id = vec![0usize; k];
+    for i in 0..k {
+        for v in 0..n {
+            for j in 0..c {
+                writeln!(w, "rup 1 ~x{} 1 ~x{} 1 x{} >= 1 ;", cl(i, v), co(v, j), yid(i, j))?; // T
+                cur += 1;
+            }
+        }
+        for v in 0..n {
+            let terms: String = (0..c).map(|j| format!("1 x{}", yid(i, j))).collect::<Vec<_>>().join(" ");
+            writeln!(w, "rup 1 ~x{} {} >= 1 ;", cl(i, v), terms)?; // U
+            cur += 1;
+        }
+        let terms: String = (0..c).map(|j| format!("1 x{}", yid(i, j))).collect::<Vec<_>>().join(" ");
+        writeln!(w, "rup {} >= 1 ;", terms)?; // (A)
+        cur += 1;
+        a_id[i] = cur;
+    }
+    // (B) composed at-most-1, via rup intermediates
+    let mut b_id: HashMap<(usize, usize, usize), usize> = HashMap::new();
+    for j in 0..c {
+        for i in 0..k {
+            for jj in (i + 1)..k {
+                for v in 0..n {
+                    for ww in 0..n {
+                        writeln!(w, "rup 1 ~x{} 1 ~x{} >= 1 ;", zid(i, v, j), zid(jj, ww, j))?; // N
+                        cur += 1;
+                    }
+                }
+                for v in 0..n {
+                    writeln!(w, "rup 1 ~x{} 1 ~x{} >= 1 ;", zid(i, v, j), yid(jj, j))?; // Q
+                    cur += 1;
+                }
+                writeln!(w, "rup 1 ~x{} 1 ~x{} >= 1 ;", yid(i, j), yid(jj, j))?; // (B)
+                cur += 1;
+                b_id.insert((i, jj, j), cur);
+            }
+        }
+    }
+    // PHP-K-C on y: per-color at-most-1 (recursive Cook) + sum + contradiction
+    let mut hole_amo = vec![0usize; c];
+    for j in 0..c {
+        let ys: Vec<i32> = (0..k).map(|i| yid(i, j)).collect();
+        writeln!(w, "pol {} {} + {} + 2 d ;", b_id[&(0, 1, j)], b_id[&(0, 2, j)], b_id[&(1, 2, j)])?;
+        cur += 1;
+        let mut cid = cur;
+        for kk in 4..=k {
+            let lits: String = (0..kk).map(|t| format!("1 ~x{}", ys[t])).collect::<Vec<_>>().join(" ");
+            writeln!(w, "red {} >= {} : x{} -> 0 ;", lits, kk - 1, ys[kk - 1])?;
+            cur += 1;
+            cid = cur;
+        }
+        hole_amo[j] = cid;
+    }
+    let mut expr = hole_amo[0].to_string();
+    for &h in &hole_amo[1..] {
+        expr += &format!(" {} +", h);
+    }
+    writeln!(w, "pol {} ;", expr)?;
+    cur += 1;
+    let amo_sum = cur;
+    let mut expr = a_id[0].to_string();
+    for i in 1..k {
+        expr += &format!(" {} +", a_id[i]);
+    }
+    writeln!(w, "pol {} ;", expr)?;
+    cur += 1;
+    let pig_sum = cur;
+    writeln!(w, "pol {} {} + ;", amo_sum, pig_sum)?;
+    cur += 1;
+    writeln!(w, "rup >= 1 ;")?;
+    writeln!(w, "output NONE;")?;
+    writeln!(w, "conclusion UNSAT : -1;")?;
+    writeln!(w, "end pseudo-Boolean proof;")?;
+    let _ = cur;
+    Ok(())
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1170,6 +1381,84 @@ mod tests {
         emit_proof(&shape, cnf.len(), &mut buf).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains("embedded pigeonhole: 5 pigeons > 3 holes"));
+        assert!(s.ends_with("end pseudo-Boolean proof;\n"));
+    }
+
+    /// Clique-coloring CNF (curated encoding): N vertices, K clique-slots,
+    /// C colors; forces a K-clique that must be C-colored, UNSAT when K>C.
+    fn clique_coloring_cnf(n: usize, k: usize, c: usize) -> Vec<Vec<i32>> {
+        let edges: Vec<(usize, usize)> =
+            (0..n).flat_map(|v| ((v + 1)..n).map(move |w| (v, w))).collect();
+        let eid = |v: usize, w: usize| {
+            edges.iter().position(|&e| e == (v, w)).unwrap() as i32 + 1
+        };
+        let base_cl = edges.len();
+        let cq = |i: usize, v: usize| (base_cl + i * n + v + 1) as i32;
+        let base_col = base_cl + k * n;
+        let co = |v: usize, cc: usize| (base_col + v * c + cc + 1) as i32;
+        let mut cs: Vec<Vec<i32>> = Vec::new();
+        for i in 0..k {
+            cs.push((0..n).map(|v| cq(i, v)).collect());
+        }
+        for i in 0..k {
+            for v in 0..n {
+                for w in (v + 1)..n {
+                    cs.push(vec![-cq(i, v), -cq(i, w)]);
+                }
+            }
+        }
+        for v in 0..n {
+            for i in 0..k {
+                for j in (i + 1)..k {
+                    cs.push(vec![-cq(i, v), -cq(j, v)]);
+                }
+            }
+        }
+        for v in 0..n {
+            cs.push((0..c).map(|cc| co(v, cc)).collect());
+        }
+        for v in 0..n {
+            for c1 in 0..c {
+                for c2 in (c1 + 1)..c {
+                    cs.push(vec![-co(v, c1), -co(v, c2)]);
+                }
+            }
+        }
+        for i in 0..k {
+            for j in 0..k {
+                if i == j {
+                    continue;
+                }
+                for &(v, w) in &edges {
+                    cs.push(vec![eid(v, w), -cq(i, v), -cq(j, w)]);
+                }
+            }
+        }
+        for &(v, w) in &edges {
+            for cc in 0..c {
+                cs.push(vec![-eid(v, w), -co(v, cc), -co(w, cc)]);
+            }
+        }
+        cs
+    }
+
+    #[test]
+    fn detect_and_emit_clique_coloring() {
+        let cnf = clique_coloring_cnf(3, 3, 2); // 3-clique can't be 2-colored
+        let nv = cnf.iter().flatten().map(|&l| l.unsigned_abs() as usize).max().unwrap();
+        let shape = detect_shape(&cnf, nv);
+        match &shape {
+            CnfShape::CliqueColoring(cc) => {
+                assert_eq!(cc.clique.len(), 3);       // K clique-slots
+                assert_eq!(cc.color.len(), 3);        // N vertices
+                assert_eq!(cc.color[0].len(), 2);     // C colors
+            }
+            other => panic!("expected CliqueColoring, got {:?}", other),
+        }
+        let mut buf = Vec::new();
+        emit_proof(&shape, cnf.len(), &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(s.contains("clique-coloring two-level: composed PHP-3-2"));
         assert!(s.ends_with("end pseudo-Boolean proof;\n"));
     }
 }

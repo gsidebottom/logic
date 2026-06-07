@@ -396,6 +396,14 @@ This is the two-level analogue of RoundRobin's (team,day) generator; the
 composed-PHP + rup-intermediate technique is reusable for other
 clean two-layer cardinality families.
 
+**Wired natively** (in addition to the Python reference tool): `src/cook_pbp.rs`
+has `detect_clique_coloring` + `emit_clique_coloring`, so `sat -b eff
+--emit-cook-pbp` emits clique-coloring proofs directly (detection runs
+after PHP/RoundRobin/embedded-pigeonhole; the K largest-arity all-positive
+clauses are clique-membership, the next N are vertex-color) and the
+`run_benchmark.py` UNSAT-proof gate covers it. Verified end-to-end on the
+tiny `n3_k3_c2` demo and all 3 curated instances via the binary.
+
 ## Still open — rphp (relativized PHP)
 
 `rphp` is **not** confirmed tractable and may be a proof-system

@@ -405,27 +405,66 @@ def verify_unsat_cook_pbp(cnf_path: Path) -> Tuple[Optional[bool], str]:
             pass
 
 
-def verify_pb_proof(cnf_path: Path, proof_path: Path) -> Tuple[Optional[bool], str]:
+def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
+                    on_progress=None) -> Tuple[Optional[bool], str, float]:
     """Verify an EMITTED VeriPB proof (e.g. pb-cadical's `--proof` output)
-    directly against the CNF with VeriPB — unlike `verify_unsat_cover`,
-    this checks the solver's OWN proof rather than re-deriving one.
-      - (True,  "ok")    : VeriPB VERIFIED the emitted proof.
-      - (False, reason)  : VeriPB REJECTED it — a soundness failure (the
-                           emitted proof does not certify UNSAT).
-      - (None,  reason)  : VeriPB missing / timed out / no proof file —
-                           can't certify, not penalised."""
+    directly against the CNF — unlike `verify_unsat_cover`, this checks the
+    solver's OWN proof rather than re-deriving one.  This runs SEPARATELY
+    from the solve, with its own wall `timeout_s`, and returns the elapsed
+    verification time so it can be reported apart from the solve time.
+
+    Returns (ok, reason, elapsed_s):
+      - (True,  "ok",   t)  : VeriPB VERIFIED the proof.
+      - (False, reason, t)  : VeriPB REJECTED it.
+      - (None,  reason, t)  : veripb missing / no proof / timed out.
+
+    When `on_progress` is given, VeriPB runs with --show-progress and its
+    `Progress: X%` is relayed through the callback for the live display."""
     if VERIPB_BIN is None:
-        return None, "veripb not found"
+        return None, "veripb not found", 0.0
     if not proof_path.exists() or proof_path.stat().st_size == 0:
-        return None, "no proof emitted"
+        return None, "no proof emitted", 0.0
+    t0 = time.time()
+    cmd = [VERIPB_BIN]
+    if on_progress is not None:
+        cmd.append("--show-progress")
+    cmd += [str(cnf_path), str(proof_path)]
+    # Popen (not subprocess.run) so we can relay progress live AND enforce
+    # our own timeout independently of the solve's.
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True)
+    state = {"verified": False}
+
+    def _reader():
+        last, tail = 0.0, ""
+        try:
+            for chunk in iter(lambda: proc.stdout.read(512), ""):
+                tail = (tail + chunk)[-4096:]      # rolling tail for the verdict
+                if "VERIFIED UNSATISFIABLE" in tail:
+                    state["verified"] = True
+                if on_progress is not None:
+                    m = re.findall(r"Progress:\s*([\d.]+)%", chunk)
+                    if m and time.time() - last >= 0.4:
+                        last = time.time()
+                        on_progress(f"verifying proof… {m[-1]}%")
+        except Exception:
+            pass
+
+    th = threading.Thread(target=_reader, daemon=True)
+    th.start()
     try:
-        v = subprocess.run([VERIPB_BIN, str(cnf_path), str(proof_path)],
-                           capture_output=True, text=True, timeout=300)
+        proc.wait(timeout=timeout_s)
     except subprocess.TimeoutExpired:
-        return None, "veripb wall-timeout"
-    if "VERIFIED UNSATISFIABLE" in v.stdout:
-        return True, "ok"
-    return False, "veripb rejected the emitted proof"
+        proc.kill()
+        try: proc.wait(timeout=5)
+        except Exception: pass
+        th.join(timeout=1)
+        return None, f"veripb timeout ({timeout_s}s)", time.time() - t0
+    th.join(timeout=2)
+    elapsed = time.time() - t0
+    if state["verified"]:
+        return True, "ok", elapsed
+    return False, "veripb rejected the emitted proof", elapsed
 
 
 def verify_unsat_cover(cnf_path: Path, backend: str,
@@ -1240,6 +1279,7 @@ def solve_one(
     verify_witness: bool = False,
     verify_unsat_proof: bool = False,
     proof_dir: Optional[Path] = None,
+    proof_timeout: int = 300,
 ) -> dict:
     """Decompress + solve + append row + re-finalize.  Returns result dict.
 
@@ -1267,6 +1307,7 @@ def solve_one(
     pb_proof_ok: Optional[bool] = None       # pb-cadical emitted-proof check
     pb_proof_reason = ""
     pb_proof_prover: Optional[str] = None    # "cook" | "cadical" (which emitted it)
+    pb_proof_time: Optional[float] = None    # VeriPB verification wall time (s)
     proof_path: Optional[Path] = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".cnf", delete=False) as tmp:
@@ -1338,7 +1379,16 @@ def solve_one(
         # pb-cadical: VeriPB-check the proof the solver just emitted.
         if (proof_path is not None and result == "UNSAT"
                 and tmp_path is not None):
-            pb_proof_ok, pb_proof_reason = verify_pb_proof(tmp_path, proof_path)
+            tui.update_worker(worker_idx, display, "verifying proof…")
+            # Live %-progress only for LARGE proofs: VeriPB's --show-progress
+            # ~doubles verify time, so skip it on small/fast proofs (the
+            # static message above already covers those); big proofs are the
+            # long verifies where watching progress actually matters.
+            _big = proof_path.stat().st_size > 20_000_000
+            _on_prog = ((lambda m: tui.update_worker(worker_idx, display, m))
+                        if tui.enabled and _big else None)
+            pb_proof_ok, pb_proof_reason, pb_proof_time = verify_pb_proof(
+                tmp_path, proof_path, timeout_s=proof_timeout, on_progress=_on_prog)
             # Which prover emitted it — a Cook-path proof failure is a real
             # soundness alarm (our detector/proof is wrong); a CaDiCaL-path
             # one is only a certification gap (CaDiCaL is a trusted oracle,
@@ -1436,7 +1486,9 @@ def solve_one(
         tui.log(f"  ⚠ [{display}] {result} {time_str}  [CaDiCaL proof unverified]",
                 color=COLOR_YELLOW)
     elif pb_proof_ok is True:
-        tui.log(f"  ✓ [{display}] {result} {time_str}  [proof ✓]", color=COLOR_GREEN)
+        _pt = f" {pb_proof_time:.1f}s" if pb_proof_time is not None else ""
+        tui.log(f"  ✓ [{display}] {result} {time_str}  [proof ✓{_pt}]",
+                color=COLOR_GREEN)
     elif mismatch:
         tui.log(f"  ! [{display}] {result}  (expected {known})  {time_str}",
                 color=COLOR_RED + COLOR_BOLD)
@@ -1464,6 +1516,7 @@ def solve_one(
         "pb_proof_ok":    pb_proof_ok,     # pb-cadical emitted-proof veripb check
         "pb_proof_reason": pb_proof_reason or None,
         "pb_proof_prover": pb_proof_prover,  # "cook" | "cadical"
+        "pb_proof_time_s": pb_proof_time,    # VeriPB verify wall time (separate from solve)
         "pb_proof_path":  str(proof_path) if proof_path else None,
         "time_s":         _parse_time_cell(time_str),
         "time_str":       time_str,
@@ -1515,6 +1568,11 @@ def main() -> int:
                          "an UNSAT verdict (recorded as a soundness check).  "
                          "Other backends ignore it.  Default: the output "
                          "directory (next to the .md / .json).")
+    ap.add_argument("--proof-timeout", type=int, default=None,
+                    help="Wall-clock limit (s) for VeriPB proof verification, "
+                         "applied SEPARATELY from the solve --timeout (the solve "
+                         "time reported is CaDiCaL's only).  Default: same as "
+                         "--timeout.")
     ap.add_argument("--limit", type=int, default=0,
                     help="Only process first N matching records (0 = no limit).")
     ap.add_argument("--filter", default=None,
@@ -1687,6 +1745,8 @@ def main() -> int:
     if args.proof_dir is None:
         args.proof_dir = out_md.parent
     args.proof_dir.mkdir(parents=True, exist_ok=True)
+    if args.proof_timeout is None:
+        args.proof_timeout = args.timeout
 
     pp_tag = ""
     if args.preprocess == "--preprocess":
@@ -1767,6 +1827,7 @@ def main() -> int:
                 verify_witness=args.verify_sat_witness,
                 verify_unsat_proof=args.verify_unsat_proof,
                 proof_dir=args.proof_dir,
+                proof_timeout=args.proof_timeout,
             )
         finally:
             release_slot(idx)

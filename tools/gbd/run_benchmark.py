@@ -1308,7 +1308,8 @@ def solve_one(
     pb_proof_reason = ""
     pb_proof_prover: Optional[str] = None    # "cook" | "cadical" (which emitted it)
     pb_proof_time: Optional[float] = None    # VeriPB verification wall time (s)
-    proof_path: Optional[Path] = None
+    proof_path: Optional[Path] = None        # /tmp write target (deleted unless kept)
+    proof_kept: Optional[Path] = None        # where a FAILING proof is kept, else None
     try:
         with tempfile.NamedTemporaryFile(suffix=".cnf", delete=False) as tmp:
             tmp_path = Path(tmp.name)
@@ -1325,12 +1326,14 @@ def solve_one(
             cmd.append("--progress")
         cmd.extend(extra_sat_args)
 
-        # pb-cadical: emit a per-instance VeriPB proof into proof_dir, to be
-        # verified after an UNSAT verdict (the solver's OWN proof — Cook PB
-        # for structured shapes, or CaDiCaL's --veripb proof otherwise).
+        # pb-cadical: emit a per-instance VeriPB proof, verify it after an
+        # UNSAT verdict, then DELETE it (CaDiCaL proofs run to hundreds of
+        # MB).  Only proofs that FAIL to verify are kept (moved to proof_dir
+        # below).  So we write to a temp file, not proof_dir itself.
+        proof_stem = None
         if proof_dir is not None and backend in ("pb-cadical", "pb_cadical"):
-            stem = rec.get("hash") or re.sub(r"[^A-Za-z0-9._-]", "_", display)
-            proof_path = proof_dir / f"{stem}.pbp"
+            proof_stem = rec.get("hash") or re.sub(r"[^A-Za-z0-9._-]", "_", display)
+            proof_path = Path(tempfile.gettempdir()) / f"pbproof-{proof_stem}.pbp"
             cmd.extend(["--proof", str(proof_path)])
 
         def on_frame(frame: str) -> None:
@@ -1397,7 +1400,24 @@ def solve_one(
                 pb_proof_prover = "cook"
             elif "prover=cadical" in stderr_text:
                 pb_proof_prover = "cadical"
+            # Keep ONLY proofs that FAIL to verify (move to proof_dir for
+            # inspection); verified/unverifiable ones are deleted in `finally`
+            # (they're far too large to retain).
+            if pb_proof_ok is False and proof_path is not None:
+                if proof_dir is not None:
+                    dest = proof_dir / proof_path.name
+                    try:
+                        proof_path.replace(dest)
+                        proof_kept = dest
+                    except OSError:
+                        proof_kept = proof_path   # move failed → keep in /tmp
+                else:
+                    proof_kept = proof_path
     finally:
+        # Delete the temp proof unless it was kept (a verification failure).
+        if proof_path is not None and proof_path != proof_kept:
+            try: proof_path.unlink()
+            except OSError: pass
         if tmp_path is not None:
             try: tmp_path.unlink()
             except FileNotFoundError: pass
@@ -1517,7 +1537,7 @@ def solve_one(
         "pb_proof_reason": pb_proof_reason or None,
         "pb_proof_prover": pb_proof_prover,  # "cook" | "cadical"
         "pb_proof_time_s": pb_proof_time,    # VeriPB verify wall time (separate from solve)
-        "pb_proof_path":  str(proof_path) if proof_path else None,
+        "pb_proof_path":  str(proof_kept) if proof_kept else None,  # only kept on failure
         "time_s":         _parse_time_cell(time_str),
         "time_str":       time_str,
         "paths":          stats.paths,
@@ -1563,11 +1583,11 @@ def main() -> int:
                          f".json / .png when --output is not given.  Created "
                          f"if missing.  Default: {OUT_DIR}")
     ap.add_argument("--proof-dir", type=Path, default=None,
-                    help="Directory for the pb-cadical backend's per-instance "
-                         "VeriPB proofs (<hash>.pbp), each VeriPB-verified after "
-                         "an UNSAT verdict (recorded as a soundness check).  "
-                         "Other backends ignore it.  Default: the output "
-                         "directory (next to the .md / .json).")
+                    help="Where pb-cadical's FAILED VeriPB proofs are kept for "
+                         "inspection.  Each proof is written to /tmp, verified, "
+                         "then DELETED (they run to hundreds of MB) — only those "
+                         "that fail to verify are moved here.  Default: the "
+                         "output directory (next to the .md / .json).")
     ap.add_argument("--proof-timeout", type=int, default=None,
                     help="Wall-clock limit (s) for VeriPB proof verification, "
                          "applied SEPARATELY from the solve --timeout (the solve "

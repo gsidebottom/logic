@@ -2610,6 +2610,7 @@ fn main() {
         let t0 = Instant::now();
         let shape = detect_shape(&clauses, nvars);
         if !matches!(shape, CnfShape::Unknown) {
+            eprintln!("c pb-cadical: prover=cook");
             eprintln!("c pb-cadical: Cook shape {} in {:.1}ms -> PB proof",
                       shape.describe(), t0.elapsed().as_secs_f64() * 1000.0);
             if let Some(out) = args.proof.as_ref() {
@@ -2634,6 +2635,7 @@ fn main() {
             return;
         }
         // No structural shape: hand off to the CaDiCaL binary.
+        eprintln!("c pb-cadical: prover=cadical");
         eprintln!("c pb-cadical: no Cook shape ({:.1}ms) -> CaDiCaL binary (--veripb)",
                   t0.elapsed().as_secs_f64() * 1000.0);
         let tmp = std::env::temp_dir().join(format!("pbcadical-{}.cnf", std::process::id()));
@@ -2658,7 +2660,12 @@ fn main() {
         // rows; stream stdout line-by-line and relay them live (throttled)
         // to the progress display, capturing the verdict + model en route.
         if args.timeout_secs > 0 { cmd.arg("-t").arg(args.timeout_secs.to_string()); }
-        if args.proof.is_some() { cmd.arg("--veripb=1"); }
+        // --veripb=4 (DRAT mode, no deletion-checking) — the deletion-
+        // checking modes (odd values) emit hints that VeriPB 3.0.2 rejects
+        // on large proofs ("constraint not equal at the hint"); =4 verifies
+        // and is smaller.  Unchecked deletion is still sound for UNSAT (a
+        // refutation's added constraints are all checked).
+        if args.proof.is_some() { cmd.arg("--veripb=4"); }
         cmd.arg(&tmp);
         if let Some(out) = args.proof.as_ref() { cmd.arg(out); }
         cmd.stdout(std::process::Stdio::piped());

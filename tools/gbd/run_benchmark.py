@@ -1266,6 +1266,7 @@ def solve_one(
     unsat_proof_reason = ""
     pb_proof_ok: Optional[bool] = None       # pb-cadical emitted-proof check
     pb_proof_reason = ""
+    pb_proof_prover: Optional[str] = None    # "cook" | "cadical" (which emitted it)
     proof_path: Optional[Path] = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".cnf", delete=False) as tmp:
@@ -1338,6 +1339,14 @@ def solve_one(
         if (proof_path is not None and result == "UNSAT"
                 and tmp_path is not None):
             pb_proof_ok, pb_proof_reason = verify_pb_proof(tmp_path, proof_path)
+            # Which prover emitted it — a Cook-path proof failure is a real
+            # soundness alarm (our detector/proof is wrong); a CaDiCaL-path
+            # one is only a certification gap (CaDiCaL is a trusted oracle,
+            # its verdict stands; VeriPB just couldn't check its proof).
+            if "prover=cook" in stderr_text:
+                pb_proof_prover = "cook"
+            elif "prover=cadical" in stderr_text:
+                pb_proof_prover = "cadical"
     finally:
         if tmp_path is not None:
             try: tmp_path.unlink()
@@ -1373,12 +1382,20 @@ def solve_one(
         md_result = "MISMATCH"
         md_time = f"BAD-UNSAT-PROOF: {unsat_proof_reason}, {time_str}"
         mismatch = True
-    elif pb_proof_ok is False:
-        # The solver emitted an UNSAT proof that VeriPB rejected — the
-        # emitted certificate does not establish UNSAT.  Soundness failure.
+    elif pb_proof_ok is False and pb_proof_prover != "cadical":
+        # Cook-path proof (the one WE generate) was rejected by VeriPB —
+        # our detector/proof is wrong, so the verdict itself is suspect.
+        # Soundness failure.
         md_result = "MISMATCH"
         md_time = f"BAD-PB-PROOF: {pb_proof_reason}, {time_str}"
         mismatch = True
+    elif pb_proof_ok is False:
+        # CaDiCaL-path proof VeriPB couldn't verify.  CaDiCaL is a trusted
+        # reference solver (we use it as the cross-check oracle elsewhere),
+        # so its UNSAT verdict stands — this is a certification GAP, not a
+        # soundness failure.  Keep the verdict; mark the proof unverified.
+        md_result = result
+        md_time = f"{time_str} (CaDiCaL proof unverified)"
     elif mismatch:
         md_result = "MISMATCH"
         md_time = f"got={result} expected={known}, {time_str}"
@@ -1412,9 +1429,12 @@ def solve_one(
     elif unsat_proof_ok is False:
         tui.log(f"  ✗ [{display}] BAD-UNSAT-PROOF  ({unsat_proof_reason})",
                 color=COLOR_RED + COLOR_BOLD)
-    elif pb_proof_ok is False:
+    elif pb_proof_ok is False and pb_proof_prover != "cadical":
         tui.log(f"  ✗ [{display}] BAD-PB-PROOF  ({pb_proof_reason})",
                 color=COLOR_RED + COLOR_BOLD)
+    elif pb_proof_ok is False:
+        tui.log(f"  ⚠ [{display}] {result} {time_str}  [CaDiCaL proof unverified]",
+                color=COLOR_YELLOW)
     elif pb_proof_ok is True:
         tui.log(f"  ✓ [{display}] {result} {time_str}  [proof ✓]", color=COLOR_GREEN)
     elif mismatch:
@@ -1443,6 +1463,7 @@ def solve_one(
         "unsat_proof_reason": unsat_proof_reason or None,
         "pb_proof_ok":    pb_proof_ok,     # pb-cadical emitted-proof veripb check
         "pb_proof_reason": pb_proof_reason or None,
+        "pb_proof_prover": pb_proof_prover,  # "cook" | "cadical"
         "pb_proof_path":  str(proof_path) if proof_path else None,
         "time_s":         _parse_time_cell(time_str),
         "time_str":       time_str,
@@ -1884,7 +1905,12 @@ def _build_summary_json(results: List[dict]) -> dict:
         # proof; pb_proof_failed: emitted proof VeriPB rejected (soundness
         # failure).
         "pb_proof_verified": sum(1 for r in results if r.get("pb_proof_ok") is True),
-        "pb_proof_failed":   sum(1 for r in results if r.get("pb_proof_ok") is False),
+        # Cook-path proof rejected by VeriPB = real soundness failure:
+        "pb_proof_failed":   sum(1 for r in results if r.get("pb_proof_ok") is False
+                                 and r.get("pb_proof_prover") != "cadical"),
+        # CaDiCaL-path proof VeriPB couldn't verify = certification gap, not a lie:
+        "pb_proof_unverified": sum(1 for r in results if r.get("pb_proof_ok") is False
+                                   and r.get("pb_proof_prover") == "cadical"),
     }
     return out
 

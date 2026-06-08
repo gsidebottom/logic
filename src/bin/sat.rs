@@ -2660,12 +2660,14 @@ fn main() {
         // rows; stream stdout line-by-line and relay them live (throttled)
         // to the progress display, capturing the verdict + model en route.
         if args.timeout_secs > 0 { cmd.arg("-t").arg(args.timeout_secs.to_string()); }
-        // --veripb=4 (DRAT mode, no deletion-checking) — the deletion-
-        // checking modes (odd values) emit hints that VeriPB 3.0.2 rejects
-        // on large proofs ("constraint not equal at the hint"); =4 verifies
-        // and is smaller.  Unchecked deletion is still sound for UNSAT (a
-        // refutation's added constraints are all checked).
-        if args.proof.is_some() { cmd.arg("--veripb=4"); }
+        // --veripb=3 (DRAT + deletion-checking) — the universal mode.  The
+        // two failure modes seen in the wild need opposite halves of the
+        // flag: large proofs need DRAT (>2) or VeriPB rejects a hint
+        // ("constraint not equal at the hint", e.g. homer11), while others
+        // need deletion-checking (odd) or VeriPB rejects a core-set
+        // deletion ("delete derived via core", e.g. s38417).  =3 is both,
+        // and verifies both.  (=4 was DRAT-only and failed the latter.)
+        if args.proof.is_some() { cmd.arg("--veripb=3"); }
         cmd.arg(&tmp);
         if let Some(out) = args.proof.as_ref() { cmd.arg(out); }
         cmd.stdout(std::process::Stdio::piped());

@@ -1466,6 +1466,12 @@ def solve_one(
         # soundness failure.  Keep the verdict; mark the proof unverified.
         md_result = result
         md_time = f"{time_str} (CaDiCaL proof unverified)"
+    elif pb_proof_ok is None and pb_proof_reason:
+        # Verification was ATTEMPTED but couldn't conclude (VeriPB timed out
+        # on a large proof, veripb missing, no proof emitted, …).  Surface
+        # the reason rather than printing a bare ✓ with no proof mention.
+        md_result = result
+        md_time = f"{time_str} (proof unchecked: {pb_proof_reason})"
     elif mismatch:
         md_result = "MISMATCH"
         md_time = f"got={result} expected={known}, {time_str}"
@@ -1509,6 +1515,9 @@ def solve_one(
         _pt = f" {pb_proof_time:.1f}s" if pb_proof_time is not None else ""
         tui.log(f"  ✓ [{display}] {result} {time_str}  [proof ✓{_pt}]",
                 color=COLOR_GREEN)
+    elif pb_proof_ok is None and pb_proof_reason:
+        tui.log(f"  ⚠ [{display}] {result} {time_str}  [proof unchecked: {pb_proof_reason}]",
+                color=COLOR_YELLOW)
     elif mismatch:
         tui.log(f"  ! [{display}] {result}  (expected {known})  {time_str}",
                 color=COLOR_RED + COLOR_BOLD)

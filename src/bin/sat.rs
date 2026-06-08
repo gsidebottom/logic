@@ -2654,30 +2654,53 @@ fn main() {
             .iter().find(|p| std::path::Path::new(p).exists())
             .copied().unwrap_or("cadical");
         let mut cmd = std::process::Command::new(cadical_bin);
-        cmd.arg("-q");
+        // Default verbosity (no -q) so CaDiCaL prints its periodic report
+        // rows; stream stdout line-by-line and relay them live (throttled)
+        // to the progress display, capturing the verdict + model en route.
         if args.timeout_secs > 0 { cmd.arg("-t").arg(args.timeout_secs.to_string()); }
         if args.proof.is_some() { cmd.arg("--veripb=1"); }
         cmd.arg(&tmp);
         if let Some(out) = args.proof.as_ref() { cmd.arg(out); }
-        let out = match cmd.output() {
-            Ok(o) => o,
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::null());
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
             Err(e) => {
                 eprintln!("c ERROR: failed to run CaDiCaL ({}): {}", cadical_bin, e);
                 let _ = std::fs::remove_file(&tmp);
                 std::process::exit(2);
             }
         };
-        let _ = std::fs::remove_file(&tmp);
-        let so = String::from_utf8_lossy(&out.stdout);
+        // A CaDiCaL report data row is "c <marker>  <seconds> <ints…>": after
+        // "c " a single non-space phase marker, then whitespace, then a digit.
+        // The 2-/3-line column headers ("c  seconds …") and banner don't match.
+        let is_report = |line: &str| -> bool {
+            line.strip_prefix("c ").map_or(false, |r| {
+                let mut ch = r.chars();
+                matches!(ch.next(), Some(m) if !m.is_whitespace())
+                    && ch.as_str().trim_start().starts_with(|c: char| c.is_ascii_digit())
+            })
+        };
         let mut verdict: Option<String> = None;
-        for line in so.lines() {
-            if let Some(rest) = line.strip_prefix("s ") {
-                verdict = Some(rest.trim().to_string());
-                println!("{}", line);
-            } else if line.starts_with("v ") {
-                println!("{}", line);
+        if let Some(out) = child.stdout.take() {
+            use std::io::BufRead as _;
+            let mut last = Instant::now();
+            for line in io::BufReader::new(out).lines().map_while(Result::ok) {
+                if let Some(rest) = line.strip_prefix("s ") {
+                    verdict = Some(rest.trim().to_string());
+                    println!("{}", line);
+                } else if line.starts_with("v ") {
+                    println!("{}", line);
+                } else if args.show_progress && verdict.is_none() && is_report(&line)
+                          && last.elapsed().as_secs_f64() >= 0.4 {
+                    last = Instant::now();
+                    eprintln!("c pb-cadical: cadical {}",
+                              line.trim_start_matches('c').trim());
+                }
             }
         }
+        let _ = child.wait();
+        let _ = std::fs::remove_file(&tmp);
         // Standard timing line (stderr) so run_benchmark's parser records
         // the time; the verdict comes from the relayed `s` line on stdout.
         let el_ms = t0.elapsed().as_secs_f64() * 1000.0;

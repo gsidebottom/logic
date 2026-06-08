@@ -405,6 +405,29 @@ def verify_unsat_cook_pbp(cnf_path: Path) -> Tuple[Optional[bool], str]:
             pass
 
 
+def verify_pb_proof(cnf_path: Path, proof_path: Path) -> Tuple[Optional[bool], str]:
+    """Verify an EMITTED VeriPB proof (e.g. pb-cadical's `--proof` output)
+    directly against the CNF with VeriPB — unlike `verify_unsat_cover`,
+    this checks the solver's OWN proof rather than re-deriving one.
+      - (True,  "ok")    : VeriPB VERIFIED the emitted proof.
+      - (False, reason)  : VeriPB REJECTED it — a soundness failure (the
+                           emitted proof does not certify UNSAT).
+      - (None,  reason)  : VeriPB missing / timed out / no proof file —
+                           can't certify, not penalised."""
+    if VERIPB_BIN is None:
+        return None, "veripb not found"
+    if not proof_path.exists() or proof_path.stat().st_size == 0:
+        return None, "no proof emitted"
+    try:
+        v = subprocess.run([VERIPB_BIN, str(cnf_path), str(proof_path)],
+                           capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        return None, "veripb wall-timeout"
+    if "VERIFIED UNSATISFIABLE" in v.stdout:
+        return True, "ok"
+    return False, "veripb rejected the emitted proof"
+
+
 def verify_unsat_cover(cnf_path: Path, backend: str,
                        timeout_s: int) -> Tuple[Optional[bool], str]:
     """Try to PROVE an UNSAT verdict by re-deriving a matrix cover
@@ -1216,6 +1239,7 @@ def solve_one(
     tui: TUI,
     verify_witness: bool = False,
     verify_unsat_proof: bool = False,
+    proof_dir: Optional[Path] = None,
 ) -> dict:
     """Decompress + solve + append row + re-finalize.  Returns result dict.
 
@@ -1240,6 +1264,9 @@ def solve_one(
     witness_reason = ""
     unsat_proof_ok: Optional[bool] = None   # None = not checked
     unsat_proof_reason = ""
+    pb_proof_ok: Optional[bool] = None       # pb-cadical emitted-proof check
+    pb_proof_reason = ""
+    proof_path: Optional[Path] = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".cnf", delete=False) as tmp:
             tmp_path = Path(tmp.name)
@@ -1255,6 +1282,14 @@ def solve_one(
         if tui.enabled:
             cmd.append("--progress")
         cmd.extend(extra_sat_args)
+
+        # pb-cadical: emit a per-instance VeriPB proof into proof_dir, to be
+        # verified after an UNSAT verdict (the solver's OWN proof — Cook PB
+        # for structured shapes, or CaDiCaL's --veripb proof otherwise).
+        if proof_dir is not None and backend in ("pb-cadical", "pb_cadical"):
+            stem = rec.get("hash") or re.sub(r"[^A-Za-z0-9._-]", "_", display)
+            proof_path = proof_dir / f"{stem}.pbp"
+            cmd.extend(["--proof", str(proof_path)])
 
         def on_frame(frame: str) -> None:
             # Only show "c …" status lines; ignore stray ANSI residue.
@@ -1299,6 +1334,10 @@ def solve_one(
         if verify_unsat_proof and result == "UNSAT" and tmp_path is not None:
             unsat_proof_ok, unsat_proof_reason = verify_unsat_cover(
                 tmp_path, backend, timeout_s)
+        # pb-cadical: VeriPB-check the proof the solver just emitted.
+        if (proof_path is not None and result == "UNSAT"
+                and tmp_path is not None):
+            pb_proof_ok, pb_proof_reason = verify_pb_proof(tmp_path, proof_path)
     finally:
         if tmp_path is not None:
             try: tmp_path.unlink()
@@ -1334,6 +1373,12 @@ def solve_one(
         md_result = "MISMATCH"
         md_time = f"BAD-UNSAT-PROOF: {unsat_proof_reason}, {time_str}"
         mismatch = True
+    elif pb_proof_ok is False:
+        # The solver emitted an UNSAT proof that VeriPB rejected — the
+        # emitted certificate does not establish UNSAT.  Soundness failure.
+        md_result = "MISMATCH"
+        md_time = f"BAD-PB-PROOF: {pb_proof_reason}, {time_str}"
+        mismatch = True
     elif mismatch:
         md_result = "MISMATCH"
         md_time = f"got={result} expected={known}, {time_str}"
@@ -1367,6 +1412,11 @@ def solve_one(
     elif unsat_proof_ok is False:
         tui.log(f"  ✗ [{display}] BAD-UNSAT-PROOF  ({unsat_proof_reason})",
                 color=COLOR_RED + COLOR_BOLD)
+    elif pb_proof_ok is False:
+        tui.log(f"  ✗ [{display}] BAD-PB-PROOF  ({pb_proof_reason})",
+                color=COLOR_RED + COLOR_BOLD)
+    elif pb_proof_ok is True:
+        tui.log(f"  ✓ [{display}] {result} {time_str}  [proof ✓]", color=COLOR_GREEN)
     elif mismatch:
         tui.log(f"  ! [{display}] {result}  (expected {known})  {time_str}",
                 color=COLOR_RED + COLOR_BOLD)
@@ -1391,6 +1441,9 @@ def solve_one(
         "witness_reason": witness_reason or None,
         "unsat_proof_ok": unsat_proof_ok,  # None=not checked, True/False=checked
         "unsat_proof_reason": unsat_proof_reason or None,
+        "pb_proof_ok":    pb_proof_ok,     # pb-cadical emitted-proof veripb check
+        "pb_proof_reason": pb_proof_reason or None,
+        "pb_proof_path":  str(proof_path) if proof_path else None,
         "time_s":         _parse_time_cell(time_str),
         "time_str":       time_str,
         "paths":          stats.paths,
@@ -1435,6 +1488,12 @@ def main() -> int:
                     help=f"Directory that holds the auto-named output .md / "
                          f".json / .png when --output is not given.  Created "
                          f"if missing.  Default: {OUT_DIR}")
+    ap.add_argument("--proof-dir", type=Path, default=None,
+                    help="Directory for the pb-cadical backend's per-instance "
+                         "VeriPB proofs (<hash>.pbp), each VeriPB-verified after "
+                         "an UNSAT verdict (recorded as a soundness check).  "
+                         "Other backends ignore it.  Default: the output "
+                         "directory (next to the .md / .json).")
     ap.add_argument("--limit", type=int, default=0,
                     help="Only process first N matching records (0 = no limit).")
     ap.add_argument("--filter", default=None,
@@ -1601,6 +1660,13 @@ def main() -> int:
             n += 1
             out_md = out_dir / f"{Path(base_name).stem}_{n}.md"
 
+    # --proof-dir defaults to the markdown/JSON output directory.  Only the
+    # pb-cadical backend emits proofs into it (one <hash>.pbp per UNSAT,
+    # VeriPB-verified); other backends ignore it.
+    if args.proof_dir is None:
+        args.proof_dir = out_md.parent
+    args.proof_dir.mkdir(parents=True, exist_ok=True)
+
     pp_tag = ""
     if args.preprocess == "--preprocess":
         pp_tag = ", preprocess=on"
@@ -1679,6 +1745,7 @@ def main() -> int:
                 tui=tui,
                 verify_witness=args.verify_sat_witness,
                 verify_unsat_proof=args.verify_unsat_proof,
+                proof_dir=args.proof_dir,
             )
         finally:
             release_slot(idx)
@@ -1810,7 +1877,14 @@ def _build_summary_json(results: List[dict]) -> dict:
         "proven_unsat":   sum(1 for r in results if r.get("unsat_proof_ok") is True),
         "unproven_unsat": sum(1 for r in results
                               if r.get("result") == "UNSAT"
-                              and r.get("unsat_proof_ok") is None),
+                              and r.get("unsat_proof_ok") is None
+                              and r.get("pb_proof_ok") is not True),
+        # pb-cadical emitted-proof verification (the solver's OWN proof,
+        # VeriPB-checked).  pb_proof_verified: UNSAT with a verified emitted
+        # proof; pb_proof_failed: emitted proof VeriPB rejected (soundness
+        # failure).
+        "pb_proof_verified": sum(1 for r in results if r.get("pb_proof_ok") is True),
+        "pb_proof_failed":   sum(1 for r in results if r.get("pb_proof_ok") is False),
     }
     return out
 

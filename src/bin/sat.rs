@@ -2628,6 +2628,8 @@ fn main() {
                     }
                 }
             }
+            // Standard timing line so run_benchmark's parser records the time.
+            eprintln!("c UNSAT in {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
             println!("s UNSATISFIABLE");
             return;
         }
@@ -2676,18 +2678,26 @@ fn main() {
                 println!("{}", line);
             }
         }
+        // Standard timing line (stderr) so run_benchmark's parser records
+        // the time; the verdict comes from the relayed `s` line on stdout.
+        let el_ms = t0.elapsed().as_secs_f64() * 1000.0;
         match verdict.as_deref() {
             Some("UNSATISFIABLE") => {
+                eprintln!("c UNSAT in {:.1}ms", el_ms);
                 if let Some(out) = args.proof.as_ref() {
                     eprintln!("c pb-cadical: CaDiCaL UNSAT; VeriPB proof at {}", out.display());
                 }
             }
             Some("SATISFIABLE") => {
+                eprintln!("c SAT in {:.1}ms", el_ms);
                 eprintln!("c pb-cadical: CaDiCaL SAT (model is the certificate; \
                            no refutation proof)");
                 if let Some(out) = args.proof.as_ref() { let _ = std::fs::remove_file(out); }
             }
-            _ => eprintln!("c pb-cadical: CaDiCaL reached no verdict (timeout/unknown)"),
+            _ => {
+                eprintln!("c TIMEOUT after {:.1}ms", el_ms);
+                eprintln!("c pb-cadical: CaDiCaL reached no verdict (timeout/unknown)");
+            }
         }
         return;
     }

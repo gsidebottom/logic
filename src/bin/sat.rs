@@ -2691,6 +2691,7 @@ fn main() {
             })
         };
         let mut verdict: Option<String> = None;
+        let mut last_report: Option<String> = None;
         if let Some(out) = child.stdout.take() {
             use std::io::BufRead as _;
             let mut last = Instant::now();
@@ -2700,15 +2701,31 @@ fn main() {
                     println!("{}", line);
                 } else if line.starts_with("v ") {
                     println!("{}", line);
-                } else if args.show_progress && verdict.is_none() && is_report(&line)
-                          && last.elapsed().as_secs_f64() >= 0.4 {
-                    last = Instant::now();
-                    eprintln!("c pb-cadical: cadical {}",
-                              line.trim_start_matches('c').trim());
+                } else if verdict.is_none() && is_report(&line) {
+                    last_report = Some(line.clone());   // keep the latest for final stats
+                    if args.show_progress && last.elapsed().as_secs_f64() >= 0.4 {
+                        last = Instant::now();
+                        eprintln!("c pb-cadical: cadical {}",
+                                  line.trim_start_matches('c').trim());
+                    }
                 }
             }
         }
         let _ = child.wait();
+        // Conflicts + restarts from CaDiCaL's last report row (column order:
+        // marker seconds MB level reduction RESTARTS rate CONFLICTS …) emitted
+        // as a line run_benchmark scrapes for its conflicts/restarts columns.
+        if let Some(row) = last_report.as_deref() {
+            let f: Vec<&str> = row.trim_start_matches("c ").split_whitespace().collect();
+            if f.len() >= 8 {
+                if let (Ok(restarts), Ok(conflicts)) =
+                    (f[5].parse::<u64>(), f[7].parse::<u64>())
+                {
+                    eprintln!("c pb-cadical: stats conflicts={} restarts={}",
+                              conflicts, restarts);
+                }
+            }
+        }
         let _ = std::fs::remove_file(&tmp);
         // Standard timing line (stderr) so run_benchmark's parser records
         // the time; the verdict comes from the relayed `s` line on stdout.

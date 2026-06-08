@@ -123,6 +123,9 @@ STATS_RE = re.compile(
     r"restarts=(\d+)\s+"
     r"elapsed_ms=([\-+0-9.eE]+)\s*$"
 )
+# pb-cadical's CaDiCaL path has no matrix "paths"; it reports just the
+# conflicts/restarts scraped from CaDiCaL's last report row.
+PB_STATS_RE = re.compile(r"pb-cadical: stats conflicts=(\d+) restarts=(\d+)")
 
 def fmt_time(token: str) -> str:
     """Convert '12.3ms' → '0.0123s'; pass-through 'Ns' / '<0.001s'."""
@@ -231,6 +234,13 @@ def parse_sat_output(text: str) -> Tuple[str, str, SatStats]:
             except ValueError:
                 # Malformed — leave defaults.
                 pass
+            continue
+        m = PB_STATS_RE.search(ln)
+        if m:
+            # pb-cadical (CaDiCaL path): conflicts/restarts only; paths stay
+            # None so the matrix-path columns render as "—".
+            stats.conflicts = int(m.group(1))
+            stats.restarts  = int(m.group(2))
     if result == "UNKNOWN" and short is not None:
         return short, "<0.001s", stats
     if result == "UNKNOWN":
@@ -890,6 +900,7 @@ class MdWriter:
 COLOR_RED    = "\x1b[31m"
 COLOR_GREEN  = "\x1b[32m"
 COLOR_YELLOW = "\x1b[33m"
+COLOR_ORANGE = "\x1b[38;5;208m"   # solve TIMEOUT (distinct from yellow proof-timeout)
 COLOR_BOLD   = "\x1b[1m"
 COLOR_RESET  = "\x1b[0m"
 HIDE_CURSOR  = "\x1b[?25l"
@@ -1005,7 +1016,7 @@ class TUI:
         parts = [
             f"{COLOR_BOLD}{self.done}/{self.total}{COLOR_RESET} done",
             f"{COLOR_GREEN}{self.solved} solved{COLOR_RESET}",
-            f"{COLOR_YELLOW}{self.timed_out} timeout{COLOR_RESET}",
+            f"{COLOR_ORANGE}{self.timed_out} timeout{COLOR_RESET}",
         ]
         if self.mismatch:
             parts.append(f"{COLOR_RED}{self.mismatch} MISMATCH{COLOR_RESET}")
@@ -1524,7 +1535,7 @@ def solve_one(
     elif result in ("SAT", "UNSAT"):
         tui.log(f"  ✓ [{display}] {result} {time_str}", color=COLOR_GREEN)
     elif result == "TIMEOUT":
-        tui.log(f"  · [{display}] {result} {time_str}", color=COLOR_YELLOW)
+        tui.log(f"  · [{display}] {result} {time_str}", color=COLOR_ORANGE)
     else:
         tui.log(f"  ? [{display}] {result} {time_str}")
 

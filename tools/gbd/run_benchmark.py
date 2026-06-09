@@ -415,7 +415,30 @@ def verify_unsat_cook_pbp(cnf_path: Path) -> Tuple[Optional[bool], str]:
             pass
 
 
+try:
+    import psutil as _psutil
+
+    def _proc_rss_bytes(pid: int) -> int:
+        """Resident memory (bytes) of pid + all descendants."""
+        try:
+            p = _psutil.Process(pid)
+            return p.memory_info().rss + sum(
+                c.memory_info().rss for c in p.children(recursive=True))
+        except Exception:
+            return 0
+except ImportError:
+    def _proc_rss_bytes(pid: int) -> int:
+        """Resident memory (bytes) of pid, via `ps` (KiB -> bytes)."""
+        try:
+            out = subprocess.run(["ps", "-o", "rss=", "-p", str(pid)],
+                                 capture_output=True, text=True, timeout=3).stdout.strip()
+            return int(out) * 1024 if out else 0
+        except Exception:
+            return 0
+
+
 def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
+                    mem_limit_bytes: int = 0,
                     on_progress=None) -> Tuple[Optional[bool], str, float]:
     """Verify an EMITTED VeriPB proof (e.g. pb-cadical's `--proof` output)
     directly against the CNF — unlike `verify_unsat_cover`, this checks the
@@ -426,8 +449,10 @@ def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
     Returns (ok, reason, elapsed_s):
       - (True,  "ok",   t)  : VeriPB VERIFIED the proof.
       - (False, reason, t)  : VeriPB REJECTED it.
-      - (None,  reason, t)  : veripb missing / no proof / timed out.
+      - (None,  reason, t)  : veripb missing / no proof / timed out / memout.
 
+    `mem_limit_bytes` (> 0) kills VeriPB if its resident memory exceeds the
+    cap (polled), reported as a MEMOUT — analogous to the wall-timeout.
     When `on_progress` is given, VeriPB runs with --show-progress and its
     `Progress: X%` is relayed through the callback for the live display."""
     if VERIPB_BIN is None:
@@ -462,14 +487,22 @@ def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
 
     th = threading.Thread(target=_reader, daemon=True)
     th.start()
-    try:
-        proc.wait(timeout=timeout_s)
-    except subprocess.TimeoutExpired:
+
+    def _abort(reason: str):
         proc.kill()
         try: proc.wait(timeout=5)
         except Exception: pass
         th.join(timeout=1)
-        return None, f"veripb timeout ({timeout_s}s)", time.time() - t0
+        return None, reason, time.time() - t0
+
+    # Poll for completion, wall-timeout, and the memory cap (RSS).
+    deadline = time.time() + timeout_s
+    while proc.poll() is None:
+        if time.time() > deadline:
+            return _abort(f"veripb timeout ({timeout_s}s)")
+        if mem_limit_bytes and _proc_rss_bytes(proc.pid) > mem_limit_bytes:
+            return _abort(f"veripb memout (>{mem_limit_bytes // (1024 ** 3)}GB)")
+        time.sleep(0.5)
     th.join(timeout=2)
     elapsed = time.time() - t0
     if state["verified"]:
@@ -1291,6 +1324,7 @@ def solve_one(
     verify_unsat_proof: bool = False,
     proof_dir: Optional[Path] = None,
     proof_timeout: int = 300,
+    proof_mem_gb: int = 64,
 ) -> dict:
     """Decompress + solve + append row + re-finalize.  Returns result dict.
 
@@ -1402,7 +1436,9 @@ def solve_one(
             _on_prog = ((lambda m: tui.update_worker(worker_idx, display, m))
                         if tui.enabled and _big else None)
             pb_proof_ok, pb_proof_reason, pb_proof_time = verify_pb_proof(
-                tmp_path, proof_path, timeout_s=proof_timeout, on_progress=_on_prog)
+                tmp_path, proof_path, timeout_s=proof_timeout,
+                mem_limit_bytes=proof_mem_gb * (1024 ** 3) if proof_mem_gb else 0,
+                on_progress=_on_prog)
             # Which prover emitted it — a Cook-path proof failure is a real
             # soundness alarm (our detector/proof is wrong); a CaDiCaL-path
             # one is only a certification gap (CaDiCaL is a trusted oracle,
@@ -1613,6 +1649,11 @@ def main() -> int:
                          "applied SEPARATELY from the solve --timeout (the solve "
                          "time reported is CaDiCaL's only).  Default: same as "
                          "--timeout.")
+    ap.add_argument("--proof-mem-gb", type=int, default=64,
+                    help="Resident-memory cap (GiB) for VeriPB proof "
+                         "verification; if exceeded, VeriPB is killed and the "
+                         "proof is reported MEMOUT (like a proof timeout).  "
+                         "0 disables.  Default: 64.")
     ap.add_argument("--limit", type=int, default=0,
                     help="Only process first N matching records (0 = no limit).")
     ap.add_argument("--filter", default=None,
@@ -1868,6 +1909,7 @@ def main() -> int:
                 verify_unsat_proof=args.verify_unsat_proof,
                 proof_dir=args.proof_dir,
                 proof_timeout=args.proof_timeout,
+                proof_mem_gb=args.proof_mem_gb,
             )
         finally:
             release_slot(idx)

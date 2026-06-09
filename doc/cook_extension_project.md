@@ -11,7 +11,8 @@ hit the at-most-1-from-pairwise-mutex wall (see
 
 This is a **standalone, structure-specialized prover**, *not* part of
 eff's matrix-method search.  `--emit-cook-pbp` pattern-matches the raw CNF
-for a known shape (PHP / RoundRobin / MVRoundRobin / clique-coloring) and
+for a known shape (PHP / RoundRobin / MVRoundRobin / clique-coloring /
+mutilated-chessboard) and
 emits a fixed **Cook-1976-style PB + extension-variable** proof template.
 It short-circuits *before any search* and never touches the
 NNF / arena / EffectiveCount machinery — `-b eff` is ignored on this path.
@@ -387,6 +388,29 @@ first (closing the cover cert's "None gap" on structured UNSAT).
 
 **Scope.** Covers **single-level** embedded pigeonholes — clean (PHP),
 extended (MVRoundRobin), and reshuffled/flipped (harder-fphp).
+
+## Bipartite matching imbalance — mutilated chessboard (done)
+
+A perfect-matching / domino-tiling encoding: each square has an exactly-one
+over its incident edge vars (all-positive at-least-1 + pairwise mutexes),
+every edge var sits in exactly two squares (its endpoints), the
+square-adjacency graph is **bipartite**, and the two sides are **imbalanced**
+(W > B — removing two same-colour corners leaves 143 vs 144) ⇒ no perfect
+matching ⇒ UNSAT.  Resolution-exponential (Alekhnovich 2004), but a one-shot
+cutting-planes argument (the RoundRobin two-sided card. argument over a
+recovered bipartition):
+
+  - sum the minority at-most-1 (recursive Cook) ⇒ `Σ ~e ≥ E − B`
+  - sum the majority at-least-1 ⇒ `Σ e ≥ W` (+ forced-off edges)
+  - each edge is one majority + one minority endpoint, so `e + ~e` cancel to
+    `E`; the forced-off edges left over are killed by their negative units ⇒
+    `W − B ≤ 0`, contradicting `W > B`.
+
+Detector recovers the bipartition by 2-colouring the square graph and
+requires `W ≠ B` + complete per-square mutexes (sound by construction).
+`tools/cook_mutilated_proof.py` + native `CnfShape::MutilatedChessboard`.
+Verified on `mchess_17` (144>143) and `mchess_20` (200>198) in <1 ms; CaDiCaL
+times out at 25 s on both.
 
 ## Two-level composed cardinality — cliquecoloring (done)
 

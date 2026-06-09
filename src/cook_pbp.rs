@@ -74,6 +74,13 @@ pub enum CnfShape {
     /// clause vars; proved by composing the two layers (see
     /// `emit_clique_coloring`).
     CliqueColoring(CliqueColoring),
+    /// Mutilated chessboard / bipartite perfect-matching infeasibility: each
+    /// square has an exactly-one over incident domino edges (all-positive
+    /// at-least-1 + pairwise mutexes), every edge var sits in two squares,
+    /// the square graph is bipartite, and the two sides are imbalanced
+    /// (W > B) — so no perfect matching exists.  Carries the extracted
+    /// structure; proved by the two-sided cardinality argument.
+    MutilatedChessboard(MutilatedChessboard),
     /// No matching shape detected.
     Unknown,
 }
@@ -96,6 +103,9 @@ impl CnfShape {
                 cc.clique.len(),
                 cc.color.len(),
                 cc.color.first().map_or(0, |v| v.len())
+            ),
+            CnfShape::MutilatedChessboard(mc) => format!(
+                "mutilated chessboard {}>{}", mc.w, mc.b
             ),
             CnfShape::Unknown => "Unknown".into(),
         }
@@ -126,6 +136,9 @@ pub fn detect_shape(clauses: &[Vec<i32>], nvars: usize) -> CnfShape {
     }
     if let Some(cc) = detect_clique_coloring(clauses, nvars) {
         return CnfShape::CliqueColoring(cc);
+    }
+    if let Some(mc) = detect_mutilated_chessboard(clauses, nvars) {
+        return CnfShape::MutilatedChessboard(mc);
     }
     CnfShape::Unknown
 }
@@ -306,6 +319,7 @@ pub fn emit_proof<W: Write>(
             emit_embedded_pigeonhole(ep, n_clauses, w)
         }
         CnfShape::CliqueColoring(cc) => emit_clique_coloring(cc, n_clauses, w),
+        CnfShape::MutilatedChessboard(mc) => emit_mutilated_chessboard(mc, n_clauses, w),
         CnfShape::Unknown => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "cannot emit Cook proof for Unknown shape",
@@ -1187,6 +1201,237 @@ fn emit_clique_coloring<W: Write>(
     Ok(())
 }
 
+// ─── Mutilated chessboard / bipartite matching emitter ──────────────────────
+//
+// A perfect-matching (domino-tiling) encoding: each square v has an
+// at-least-one over its incident edge vars plus pairwise mutexes
+// (at-most-one) — exactly-one edge per square.  The square-adjacency graph
+// is bipartite; when the two sides differ in size (W > B) no perfect
+// matching exists (mutilated chessboard: two removed same-colour corners
+// leave 143 vs 144 squares).  Resolution-exponential (Alekhnovich 2004), but
+// a one-shot cutting-planes argument:
+//   sum minority at-most-1  -> sum_e ~e >= E - B
+//   sum majority at-least-1 -> sum_e  e >= W            (+ forced-off edges)
+// each edge is one majority + one minority endpoint, so e + ~e cancel to E;
+// the forced-off edges left over are killed by their negative units, leaving
+// W - B <= 0 -> contradiction.  Port of `tools/cook_mutilated_proof.py`.
+
+/// Extracted bipartite perfect-matching structure (see
+/// [`detect_mutilated_chessboard`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MutilatedChessboard {
+    /// Each minority-side square's incident (non-forced) edge vars.
+    pub min_edges: Vec<Vec<i32>>,
+    /// 1-based clause ids of the majority-side at-least-one clauses.
+    pub maj_ids: Vec<usize>,
+    /// 1-based clause id of each binary mutex `~a v ~b`, keyed (min, max).
+    pub mutex_ids: std::collections::HashMap<(i32, i32), usize>,
+    /// 1-based clause ids of the negative units `~e` (forced-off edges).
+    pub unit_ids: Vec<usize>,
+    /// Majority / minority side sizes (w > b).
+    pub w: usize,
+    pub b: usize,
+}
+
+/// Recognise a bipartite perfect-matching infeasibility (mutilated
+/// chessboard).  Square clauses = all-positive arity-`>=2` at-least-ones;
+/// each non-forced edge var occurs in exactly two squares (its endpoints);
+/// the square-adjacency graph must be bipartite with unequal sides; per
+/// square the incident edges are pairwise-mutex.  Returns `None` unless every
+/// referenced mutex is present, so emission only fires on a confirmed
+/// structure (sound by construction).
+pub fn detect_mutilated_chessboard(
+    clauses: &[Vec<i32>],
+    _nvars: usize,
+) -> Option<MutilatedChessboard> {
+    use std::collections::{HashMap, HashSet, VecDeque};
+    let mut squares: Vec<Vec<i32>> = Vec::new();
+    let mut sq_id: Vec<usize> = Vec::new();
+    let mut forced: HashSet<i32> = HashSet::new();
+    let mut unit_ids: Vec<usize> = Vec::new();
+    let mut mutex_ids: HashMap<(i32, i32), usize> = HashMap::new();
+    for (i, c) in clauses.iter().enumerate() {
+        let cid = i + 1;
+        if c.len() == 1 && c[0] < 0 {
+            forced.insert(-c[0]);
+            unit_ids.push(cid);
+        } else if c.len() >= 2 && c.iter().all(|&x| x > 0) {
+            let mut s = c.clone();
+            s.sort_unstable();
+            squares.push(s);
+            sq_id.push(cid);
+        } else if c.len() == 2 && c.iter().all(|&x| x < 0) {
+            let (a, b) = (-c[0], -c[1]);
+            mutex_ids.insert((a.min(b), a.max(b)), cid);
+        }
+    }
+    if squares.len() < 4 {
+        return None;
+    }
+    // edge -> the square indices it occurs in
+    let mut occ: HashMap<i32, Vec<usize>> = HashMap::new();
+    for (si, c) in squares.iter().enumerate() {
+        for &v in c {
+            occ.entry(v).or_default().push(si);
+        }
+    }
+    // adjacency over non-forced edges (each must join exactly two squares)
+    let n = squares.len();
+    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for (&v, sqs) in &occ {
+        if forced.contains(&v) {
+            continue;
+        }
+        if sqs.len() != 2 {
+            return None;
+        }
+        adj[sqs[0]].push(sqs[1]);
+        adj[sqs[1]].push(sqs[0]);
+    }
+    // 2-colour the square graph (BFS); reject if not bipartite
+    let mut color = vec![-1i8; n];
+    for start in 0..n {
+        if color[start] != -1 {
+            continue;
+        }
+        color[start] = 0;
+        let mut q: VecDeque<usize> = VecDeque::new();
+        q.push_back(start);
+        while let Some(u) = q.pop_front() {
+            let cu = color[u];
+            for &nb in &adj[u] {
+                if color[nb] == -1 {
+                    color[nb] = cu ^ 1;
+                    q.push_back(nb);
+                } else if color[nb] == cu {
+                    return None;
+                }
+            }
+        }
+    }
+    let side0: Vec<usize> = (0..n).filter(|&s| color[s] == 0).collect();
+    let side1: Vec<usize> = (0..n).filter(|&s| color[s] != 0).collect();
+    if side0.len() == side1.len() {
+        return None; // balanced: no imbalance refutation
+    }
+    let (maj, mino) = if side0.len() > side1.len() {
+        (&side0, &side1)
+    } else {
+        (&side1, &side0)
+    };
+    // every minority square's (non-forced) incident edges must be pairwise mutex
+    let key = |a: i32, b: i32| if a < b { (a, b) } else { (b, a) };
+    let mut min_edges: Vec<Vec<i32>> = Vec::with_capacity(mino.len());
+    for &s in mino {
+        let edges: Vec<i32> =
+            squares[s].iter().copied().filter(|e| !forced.contains(e)).collect();
+        for i in 0..edges.len() {
+            for j in (i + 1)..edges.len() {
+                if !mutex_ids.contains_key(&key(edges[i], edges[j])) {
+                    return None;
+                }
+            }
+        }
+        min_edges.push(edges);
+    }
+    if min_edges.iter().all(|e| e.len() < 2) {
+        return None;
+    }
+    let maj_ids: Vec<usize> = maj.iter().map(|&s| sq_id[s]).collect();
+    Some(MutilatedChessboard {
+        min_edges,
+        maj_ids,
+        mutex_ids,
+        unit_ids,
+        w: maj.len(),
+        b: mino.len(),
+    })
+}
+
+/// Emit the two-sided cardinality proof for a mutilated chessboard.
+fn emit_mutilated_chessboard<W: Write>(
+    mc: &MutilatedChessboard,
+    n_clauses: usize,
+    w: &mut W,
+) -> io::Result<()> {
+    let key = |a: i32, b: i32| if a < b { (a, b) } else { (b, a) };
+    writeln!(w, "pseudo-Boolean proof version 3.0")?;
+    writeln!(w, "% mutilated chessboard / bipartite matching: {} > {} (imbalance {})",
+             mc.w, mc.b, mc.w - mc.b)?;
+    writeln!(w, "f {};", n_clauses)?;
+    writeln!(w)?;
+    let mut cur = n_clauses;
+
+    // Step 1: per-minority-square at-most-1 over its active edges.
+    writeln!(w, "% --- per-minority-square at-most-1 (recursive Cook) ---")?;
+    let mut amo_ids: Vec<usize> = Vec::with_capacity(mc.min_edges.len());
+    for edges in &mc.min_edges {
+        let k = edges.len();
+        if k < 2 {
+            continue;
+        }
+        if k == 2 {
+            amo_ids.push(mc.mutex_ids[&key(edges[0], edges[1])]);
+            continue;
+        }
+        let m01 = mc.mutex_ids[&key(edges[0], edges[1])];
+        let m02 = mc.mutex_ids[&key(edges[0], edges[2])];
+        let m12 = mc.mutex_ids[&key(edges[1], edges[2])];
+        writeln!(w, "pol {} {} + {} + 2 d ;", m01, m02, m12)?;
+        cur += 1;
+        let mut current = cur;
+        for j in 4..=k {
+            let lits: Vec<String> =
+                (0..j).map(|i| format!("+1 {}", neg_lit(edges[i]))).collect();
+            let wl = edges[j - 1];
+            writeln!(w, "red {} >= {} : x{} -> {} ;",
+                     lits.join(" "), j - 1, wl.abs(), if wl > 0 { 0 } else { 1 })?;
+            cur += 1;
+            current = cur;
+        }
+        amo_ids.push(current);
+    }
+    writeln!(w)?;
+
+    // Step 2: sum the minority at-most-1's  -> sum ~e >= E - B.
+    writeln!(w, "% --- sum minority at-most-1's ---")?;
+    let mut expr = amo_ids[0].to_string();
+    for a in &amo_ids[1..] {
+        expr += &format!(" {} +", a);
+    }
+    writeln!(w, "pol {} ;", expr)?;
+    cur += 1;
+    let min_sum = cur;
+    writeln!(w)?;
+
+    // Step 3: sum the majority at-least-one clauses  -> sum e >= W.
+    writeln!(w, "% --- sum majority at-least-1 clauses ---")?;
+    let mut expr = mc.maj_ids[0].to_string();
+    for a in &mc.maj_ids[1..] {
+        expr += &format!(" {} +", a);
+    }
+    writeln!(w, "pol {} ;", expr)?;
+    cur += 1;
+    let maj_sum = cur;
+    writeln!(w)?;
+
+    // Step 4: combine (edges cancel) + kill forced edges with their units.
+    writeln!(w, "% --- combine -> W - B <= 0 contradiction ---")?;
+    let mut comb = format!("{} {} +", maj_sum, min_sum);
+    for &uid in &mc.unit_ids {
+        comb += &format!(" {} +", uid);
+    }
+    writeln!(w, "pol {} ;", comb)?;
+    cur += 1;
+    writeln!(w, "rup >= 1 ;")?;
+    writeln!(w)?;
+    writeln!(w, "output NONE;")?;
+    writeln!(w, "conclusion UNSAT : -1;")?;
+    writeln!(w, "end pseudo-Boolean proof;")?;
+    let _ = cur;
+    Ok(())
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1507,5 +1752,48 @@ mod tests {
             cnf.push(vec![16 + 2 * j, 17 + 2 * j]); // color-ish, arity 2
         }
         assert_eq!(detect_shape(&cnf, 21), CnfShape::Unknown);
+    }
+
+    #[test]
+    fn detect_and_emit_mutilated_chessboard() {
+        // Imbalanced bipartite matching K_{3,2}: 3 white squares (deg 2) +
+        // 2 black squares (deg 3), each edge in one white + one black, no
+        // perfect matching (3 > 2).  Same shape as the mutilated chessboard.
+        // edge vars: e_ij for white i (1..3), black j (1..2):
+        //   1=e11 2=e12 3=e21 4=e22 5=e31 6=e32
+        let cnf: Vec<Vec<i32>> = vec![
+            vec![1, 2], vec![3, 4], vec![5, 6],              // white at-least-1
+            vec![1, 3, 5], vec![2, 4, 6],                    // black at-least-1
+            vec![-1, -2], vec![-3, -4], vec![-5, -6],        // white mutexes
+            vec![-1, -3], vec![-1, -5], vec![-3, -5],        // black1 mutexes
+            vec![-2, -4], vec![-2, -6], vec![-4, -6],        // black2 mutexes
+        ];
+        let shape = detect_shape(&cnf, 6);
+        match &shape {
+            CnfShape::MutilatedChessboard(mc) => {
+                assert_eq!(mc.w, 3); // majority (white)
+                assert_eq!(mc.b, 2); // minority (black)
+            }
+            other => panic!("expected MutilatedChessboard, got {:?}", other),
+        }
+        let mut buf = Vec::new();
+        emit_proof(&shape, cnf.len(), &mut buf).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(s.contains("mutilated chessboard / bipartite matching: 3 > 2"));
+        assert!(s.ends_with("end pseudo-Boolean proof;\n"));
+    }
+
+    #[test]
+    fn mutilated_rejects_balanced() {
+        // Balanced bipartite matching K_{2,2} (W == B == 2): a perfect
+        // matching EXISTS (SAT), so there is no imbalance refutation — must
+        // NOT be detected.
+        let cnf: Vec<Vec<i32>> = vec![
+            vec![1, 2], vec![3, 4],                          // white at-least-1
+            vec![1, 3], vec![2, 4],                          // black at-least-1
+            vec![-1, -2], vec![-3, -4],                      // white mutexes
+            vec![-1, -3], vec![-2, -4],                      // black mutexes
+        ];
+        assert_eq!(detect_shape(&cnf, 4), CnfShape::Unknown);
     }
 }

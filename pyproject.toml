@@ -30,6 +30,9 @@ dependencies = [
     # AWS Bedrock path.
     "litellm[proxy]>=1.50",
     "boto3>=1.34",
+    # Resident-memory polling for run_benchmark's VeriPB --proof-mem-gb cap
+    # (tree-aware; falls back to `ps` if psutil is absent).
+    "psutil>=7.2.2",
 ]
 
 # Keep the package itself out of "site-packages" — this project is a

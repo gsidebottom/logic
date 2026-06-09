@@ -46,6 +46,12 @@ def parse_time(s):
     s = s.strip()
     if s == "n/a":
         return None
+    # Drop any trailing annotation on the time, e.g.
+    #   "851.7s (proof unchecked: veripb timeout (5000s))"
+    #   "5.3s (CaDiCaL proof unverified)"
+    # The instance is still SOLVED — the note is about proof verification,
+    # not the solve — so the cactus curve must still count it.
+    s = s.split(" (", 1)[0].strip()
     if s.startswith("<"):
         # "<0.001s" → treat as the upper bound
         s = s[1:]

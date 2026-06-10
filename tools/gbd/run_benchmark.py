@@ -1527,10 +1527,16 @@ def solve_one(
                 tmp_path, proof_path, timeout_s=proof_timeout,
                 mem_limit_bytes=proof_mem_gb * (1024 ** 3) if proof_mem_gb else 0,
                 fmt=_fmt, on_progress=_on_prog)
-            # Keep ONLY proofs that FAIL to verify (move to proof_dir for
-            # inspection); verified/unverifiable ones are deleted in `finally`
-            # (they're far too large to retain).
-            if pb_proof_ok is False and proof_path is not None:
+            # Keep ONLY rejected COOK-path proofs (move to proof_dir for
+            # inspection): they're KB-sized and a rejection there is a real
+            # soundness alarm.  Everything else is deleted in `finally` —
+            # verified, unchecked (timeout/memout), and rejected
+            # CaDiCaL-path LRATs: those run to GBs, and the rejection is
+            # already recorded in the json (a certification gap, not a
+            # wrong verdict); re-solving the one instance regenerates the
+            # proof if it's ever needed.
+            if (pb_proof_ok is False and proof_path is not None
+                    and pb_proof_prover != "cadical"):
                 if proof_dir is not None:
                     dest = proof_dir / proof_path.name
                     try:
@@ -1719,11 +1725,13 @@ def main() -> int:
                          f".json / .png when --output is not given.  Created "
                          f"if missing.  Default: {OUT_DIR}")
     ap.add_argument("--proof-dir", type=Path, default=None,
-                    help="Where pb-cadical's FAILED VeriPB proofs are kept for "
-                         "inspection.  Each proof is written to /tmp, verified, "
-                         "then DELETED (they run to hundreds of MB) — only those "
-                         "that fail to verify are moved here.  Default: the "
-                         "output directory (next to the .md / .json).")
+                    help="Where pb-cadical's rejected COOK-path proofs are kept "
+                         "for inspection (KB-sized; a rejection there is a real "
+                         "soundness alarm).  Every proof is written to a temp "
+                         "dir, verified, then DELETED — verified, "
+                         "timeout/memout, and rejected CaDiCaL-path LRATs alike "
+                         "(those run to GBs; the outcome is recorded in the "
+                         "json).  Default: the output directory.")
     ap.add_argument("--proof-timeout", type=int, default=None,
                     help="Wall-clock limit (s) for VeriPB proof verification, "
                          "applied SEPARATELY from the solve --timeout (the solve "

@@ -449,6 +449,34 @@ except ImportError:
             return 0
 
 
+def _fd_offset(pid: int, path: str) -> Optional[int]:
+    """How far `pid` has read into the open file `path` (bytes), or None.
+
+    Used to derive progress for sequential checkers that print none
+    (cake_lpr): offset / file size = fraction checked, at zero cost to the
+    checker.  Linux: psutil exposes the offset directly.  macOS: psutil
+    maps path -> fd, then libproc's PROC_PIDFDVNODEPATHINFO carries
+    fi_offset (bytes 8..16 of struct proc_fileinfo)."""
+    try:
+        import psutil
+        real = os.path.realpath(path)
+        for of in psutil.Process(pid).open_files():
+            if os.path.realpath(of.path) != real:
+                continue
+            pos = getattr(of, "position", None)        # Linux
+            if pos is not None:
+                return pos
+            import ctypes                               # macOS: libproc
+            libproc = ctypes.CDLL("/usr/lib/libproc.dylib")
+            buf = ctypes.create_string_buffer(4096)
+            n = libproc.proc_pidfdinfo(pid, of.fd, 2, buf, 4096)
+            if n > 16:
+                return int.from_bytes(buf.raw[8:16], "little")
+    except Exception:
+        pass
+    return None
+
+
 def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
                     mem_limit_bytes: int = 0, fmt: Optional[str] = None,
                     on_progress=None) -> Tuple[Optional[bool], str, float]:
@@ -483,12 +511,15 @@ def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
         except OSError:
             return None, "proof unreadable", 0.0
     env = None
+    poll_progress = None       # offset-based progress, driven by the poll loop
     if fmt == "lrat":
         if CAKELPR_BIN is None:
             return None, "cake_lpr not found", 0.0
         cmd = [CAKELPR_BIN, str(cnf_path), str(proof_path)]
         success = "s VERIFIED UNSAT"
-        on_progress = None
+        # cake_lpr prints no progress, but it reads the proof sequentially —
+        # its fd offset / proof size is a faithful % at zero checker cost.
+        poll_progress, on_progress = on_progress, None
         if mem_limit_bytes:
             env = dict(os.environ)
             env["CML_HEAP_SIZE"] = str(max(1024, mem_limit_bytes // (1024 ** 2) - 4096))
@@ -532,14 +563,20 @@ def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
         th.join(timeout=1)
         return None, reason, time.time() - t0
 
-    # Poll for completion, wall-timeout, and the memory cap (RSS).
+    # Poll for completion, wall-timeout, the memory cap (RSS), and — for
+    # cake_lpr — offset-based progress.
     checker = "cake_lpr" if fmt == "lrat" else "veripb"
+    proof_size = proof_path.stat().st_size
     deadline = time.time() + timeout_s
     while proc.poll() is None:
         if time.time() > deadline:
             return _abort(f"{checker} timeout ({timeout_s}s)")
         if mem_limit_bytes and _proc_rss_bytes(proc.pid) > mem_limit_bytes:
             return _abort(f"{checker} memout (>{mem_limit_bytes // (1024 ** 3)}GB)")
+        if poll_progress is not None and proof_size:
+            off = _fd_offset(proc.pid, str(proof_path))
+            if off:
+                poll_progress(f"verifying proof… {min(99, off * 100 // proof_size)}%")
         time.sleep(0.5)
     th.join(timeout=2)
     elapsed = time.time() - t0

@@ -79,6 +79,18 @@ def _find_veripb() -> Optional[str]:
     cand = Path.home() / ".cargo" / "bin" / "veripb"
     return str(cand) if cand.exists() else None
 VERIPB_BIN = _find_veripb()
+
+
+def _find_cake_lpr() -> Optional[str]:
+    """cake_lpr — the formally-verified LRAT/LPR checker (the SAT-competition
+    toolchain) used for pb-cadical's CaDiCaL-path proofs."""
+    import shutil
+    hit = shutil.which("cake_lpr")
+    if hit:
+        return hit
+    cand = Path.home() / ".cargo" / "bin" / "cake_lpr"
+    return str(cand) if cand.exists() else None
+CAKELPR_BIN = _find_cake_lpr()
 PLOT_PY    = REPO_ROOT / "doc" / "competition-benchmarks-plot.py"
 OUT_DIR    = REPO_ROOT / "doc"
 
@@ -438,36 +450,61 @@ except ImportError:
 
 
 def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
-                    mem_limit_bytes: int = 0,
+                    mem_limit_bytes: int = 0, fmt: Optional[str] = None,
                     on_progress=None) -> Tuple[Optional[bool], str, float]:
-    """Verify an EMITTED VeriPB proof (e.g. pb-cadical's `--proof` output)
-    directly against the CNF — unlike `verify_unsat_cover`, this checks the
-    solver's OWN proof rather than re-deriving one.  This runs SEPARATELY
-    from the solve, with its own wall `timeout_s`, and returns the elapsed
+    """Verify an EMITTED proof (pb-cadical's `--proof` output) directly
+    against the CNF — unlike `verify_unsat_cover`, this checks the solver's
+    OWN proof rather than re-deriving one.  This runs SEPARATELY from the
+    solve, with its own wall `timeout_s`, and returns the elapsed
     verification time so it can be reported apart from the solve time.
 
-    Returns (ok, reason, elapsed_s):
-      - (True,  "ok",   t)  : VeriPB VERIFIED the proof.
-      - (False, reason, t)  : VeriPB REJECTED it.
-      - (None,  reason, t)  : veripb missing / no proof / timed out / memout.
+    `fmt` selects the checker per proof format:
+      - "pbp"  : VeriPB pseudo-Boolean proof (the Cook path)   → veripb
+      - "lrat" : CaDiCaL native LRAT (the CaDiCaL path)        → cake_lpr
+      - None   : sniff the file head ("pseudo-Boolean proof…" → pbp).
 
-    `mem_limit_bytes` (> 0) kills VeriPB if its resident memory exceeds the
-    cap (polled), reported as a MEMOUT — analogous to the wall-timeout.
-    When `on_progress` is given, VeriPB runs with --show-progress and its
-    `Progress: X%` is relayed through the callback for the live display."""
-    if VERIPB_BIN is None:
-        return None, "veripb not found", 0.0
+    Returns (ok, reason, elapsed_s):
+      - (True,  "ok",   t)  : the checker VERIFIED the proof.
+      - (False, reason, t)  : the checker REJECTED it.
+      - (None,  reason, t)  : checker missing / no proof / timed out / memout.
+
+    `mem_limit_bytes` (> 0) kills the checker if its resident memory exceeds
+    the cap (polled), reported as a MEMOUT — analogous to the wall-timeout.
+    For cake_lpr the cap is also passed down as its CakeML heap budget
+    (CML_HEAP_SIZE).  When `on_progress` is given, VeriPB runs with
+    --show-progress and its `Progress: X%` is relayed through the callback
+    (cake_lpr has no progress output — and doesn't need one)."""
     if not proof_path.exists() or proof_path.stat().st_size == 0:
         return None, "no proof emitted", 0.0
+    if fmt is None:
+        try:
+            with proof_path.open("rb") as f:
+                fmt = "pbp" if f.read(20).startswith(b"pseudo-Boolean proof") else "lrat"
+        except OSError:
+            return None, "proof unreadable", 0.0
+    env = None
+    if fmt == "lrat":
+        if CAKELPR_BIN is None:
+            return None, "cake_lpr not found", 0.0
+        cmd = [CAKELPR_BIN, str(cnf_path), str(proof_path)]
+        success = "s VERIFIED UNSAT"
+        on_progress = None
+        if mem_limit_bytes:
+            env = dict(os.environ)
+            env["CML_HEAP_SIZE"] = str(max(1024, mem_limit_bytes // (1024 ** 2) - 4096))
+    else:
+        if VERIPB_BIN is None:
+            return None, "veripb not found", 0.0
+        cmd = [VERIPB_BIN]
+        if on_progress is not None:
+            cmd.append("--show-progress")
+        cmd += [str(cnf_path), str(proof_path)]
+        success = "VERIFIED UNSATISFIABLE"
     t0 = time.time()
-    cmd = [VERIPB_BIN]
-    if on_progress is not None:
-        cmd.append("--show-progress")
-    cmd += [str(cnf_path), str(proof_path)]
     # Popen (not subprocess.run) so we can relay progress live AND enforce
     # our own timeout independently of the solve's.
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True)
+                            stderr=subprocess.STDOUT, text=True, env=env)
     state = {"verified": False}
 
     def _reader():
@@ -475,7 +512,7 @@ def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
         try:
             for chunk in iter(lambda: proc.stdout.read(512), ""):
                 tail = (tail + chunk)[-4096:]      # rolling tail for the verdict
-                if "VERIFIED UNSATISFIABLE" in tail:
+                if success in tail:
                     state["verified"] = True
                 if on_progress is not None:
                     m = re.findall(r"Progress:\s*([\d.]+)%", chunk)
@@ -496,18 +533,19 @@ def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
         return None, reason, time.time() - t0
 
     # Poll for completion, wall-timeout, and the memory cap (RSS).
+    checker = "cake_lpr" if fmt == "lrat" else "veripb"
     deadline = time.time() + timeout_s
     while proc.poll() is None:
         if time.time() > deadline:
-            return _abort(f"veripb timeout ({timeout_s}s)")
+            return _abort(f"{checker} timeout ({timeout_s}s)")
         if mem_limit_bytes and _proc_rss_bytes(proc.pid) > mem_limit_bytes:
-            return _abort(f"veripb memout (>{mem_limit_bytes // (1024 ** 3)}GB)")
+            return _abort(f"{checker} memout (>{mem_limit_bytes // (1024 ** 3)}GB)")
         time.sleep(0.5)
     th.join(timeout=2)
     elapsed = time.time() - t0
     if state["verified"]:
         return True, "ok", elapsed
-    return False, "veripb rejected the emitted proof", elapsed
+    return False, f"{checker} rejected the emitted proof", elapsed
 
 
 def verify_unsat_cover(cnf_path: Path, backend: str,
@@ -1428,25 +1466,30 @@ def solve_one(
         if (proof_path is not None and result == "UNSAT"
                 and tmp_path is not None):
             tui.update_worker(worker_idx, display, "verifying proof…")
-            # Live %-progress only for LARGE proofs: VeriPB's --show-progress
-            # ~doubles verify time, so skip it on small/fast proofs (the
-            # static message above already covers those); big proofs are the
-            # long verifies where watching progress actually matters.
+            # Which prover emitted it — a Cook-path proof failure is a real
+            # soundness alarm (our detector/proof is wrong); a CaDiCaL-path
+            # one is only a certification gap (CaDiCaL is a trusted oracle,
+            # its verdict stands; the checker just couldn't check its proof).
+            if "prover=cook" in stderr_text:
+                pb_proof_prover = "cook"
+            elif "prover=cadical" in stderr_text:
+                pb_proof_prover = "cadical"
+            # Which checker the proof needs: Cook path emits VeriPB pbp,
+            # CaDiCaL path native LRAT (checked by cake_lpr).  None → sniff.
+            _fmt = ("pbp" if "proof-format=pbp" in stderr_text
+                    else "lrat" if "proof-format=lrat" in stderr_text
+                    else None)
+            # Live %-progress only for LARGE VeriPB proofs: --show-progress
+            # ~doubles VeriPB's verify time, so skip it on small/fast proofs
+            # (the static message above already covers those).  cake_lpr has
+            # no progress output (it's fast enough not to need one).
             _big = proof_path.stat().st_size > 20_000_000
             _on_prog = ((lambda m: tui.update_worker(worker_idx, display, m))
                         if tui.enabled and _big else None)
             pb_proof_ok, pb_proof_reason, pb_proof_time = verify_pb_proof(
                 tmp_path, proof_path, timeout_s=proof_timeout,
                 mem_limit_bytes=proof_mem_gb * (1024 ** 3) if proof_mem_gb else 0,
-                on_progress=_on_prog)
-            # Which prover emitted it — a Cook-path proof failure is a real
-            # soundness alarm (our detector/proof is wrong); a CaDiCaL-path
-            # one is only a certification gap (CaDiCaL is a trusted oracle,
-            # its verdict stands; VeriPB just couldn't check its proof).
-            if "prover=cook" in stderr_text:
-                pb_proof_prover = "cook"
-            elif "prover=cadical" in stderr_text:
-                pb_proof_prover = "cadical"
+                fmt=_fmt, on_progress=_on_prog)
             # Keep ONLY proofs that FAIL to verify (move to proof_dir for
             # inspection); verified/unverifiable ones are deleted in `finally`
             # (they're far too large to retain).
@@ -1821,13 +1864,23 @@ def main() -> int:
             out_md = out_dir / f"{Path(base_name).stem}_{n}.md"
 
     # --proof-dir defaults to the markdown/JSON output directory.  Only the
-    # pb-cadical backend emits proofs into it (one <hash>.pbp per UNSAT,
-    # VeriPB-verified); other backends ignore it.
+    # pb-cadical backend emits proofs into it (failures only); other
+    # backends ignore it.  Cook-path proofs are VeriPB pbp; CaDiCaL-path
+    # proofs are native LRAT checked by cake_lpr.
     if args.proof_dir is None:
         args.proof_dir = out_md.parent
     args.proof_dir.mkdir(parents=True, exist_ok=True)
     if args.proof_timeout is None:
         args.proof_timeout = args.timeout
+    if args.backend in ("pb-cadical", "pb_cadical"):
+        if CAKELPR_BIN is None:
+            print("c WARNING: cake_lpr not found (PATH or ~/.cargo/bin) — "
+                  "CaDiCaL-path LRAT proofs will go UNCHECKED. Build it from "
+                  "https://github.com/tanyongkiam/cake_lpr (make cake_lpr_arm8).",
+                  file=sys.stderr)
+        if VERIPB_BIN is None:
+            print("c WARNING: veripb not found — Cook-path PB proofs will go "
+                  "UNCHECKED.", file=sys.stderr)
 
     pp_tag = ""
     if args.preprocess == "--preprocess":

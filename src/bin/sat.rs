@@ -2141,12 +2141,14 @@ enum BackendChoice {
     Matrix(MatrixBackend),
     Cadical,
     /// Verified portfolio: first try the standalone Cook PB-prover (a
-    /// structure pattern-match → polynomial VeriPB proof for PHP /
-    /// RoundRobin / MVRoundRobin / clique-coloring), and if no shape is
-    /// detected, run the CaDiCaL binary with `--veripb` so its DRAT-style
-    /// reasoning is emitted as a VeriPB-checkable proof too.  Either way a
-    /// solved instance comes with a VeriPB-verifiable certificate (proof
-    /// path via `--proof`).  Short-circuits before the matrix search.
+    /// structure pattern-match → polynomial VeriPB PB proof for PHP /
+    /// RoundRobin / MVRoundRobin / clique-coloring / mutilated-chessboard),
+    /// and if no shape is detected, run the CaDiCaL binary with `--lrat` so
+    /// its clausal reasoning is emitted as native LRAT, checkable by the
+    /// fast formally-verified cake_lpr.  Either way a solved UNSAT comes
+    /// with a machine-checkable certificate (path via `--proof`; format
+    /// announced as `c pb-cadical: proof-format=pbp|lrat`).  Short-circuits
+    /// before the matrix search.
     PbCadical,
 }
 
@@ -2270,10 +2272,11 @@ struct Args {
     /// On no-match, exits with a non-zero code and a clear error
     /// (use `--emit-pbp` for unstructured CNFs).
     emit_cook_pbp: Option<std::path::PathBuf>,
-    /// VeriPB proof output path for the `pb-cadical` backend.  On an UNSAT
-    /// verdict the proof is written here — either the Cook PB proof (if a
-    /// structural shape was detected) or CaDiCaL's `--veripb` proof.
-    /// Verify with `veripb <cnf> <FILE>`.  Optional: without it,
+    /// Proof output path for the `pb-cadical` backend.  On an UNSAT verdict
+    /// the proof is written here: the Cook path emits a VeriPB PB proof
+    /// (`veripb <cnf> <FILE>`), the CaDiCaL path emits native LRAT
+    /// (`cake_lpr <cnf> <FILE>`).  The chosen format is announced on stderr
+    /// as `c pb-cadical: proof-format=pbp|lrat`.  Optional: without it,
     /// `pb-cadical` still solves and prints the verdict but writes no proof.
     proof: Option<std::path::PathBuf>,
     /// Variance-gated Sum-reordering threshold for Effective-wrapped
@@ -2476,9 +2479,11 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                      cadical      — bundled CaDiCaL reference solver");
                 eprintln!("                      pb-cadical   — verified portfolio: Cook PB-prover");
                 eprintln!("                                     for structured shapes, else CaDiCaL");
-                eprintln!("                                     (--veripb); both proofs VeriPB-checkable");
-                eprintln!("  --proof FILE      VeriPB proof output for pb-cadical (UNSAT verdicts).");
-                eprintln!("                    Verify with: veripb <cnf> FILE");
+                eprintln!("                                     (--lrat); every proof machine-checkable");
+                eprintln!("  --proof FILE      Proof output for pb-cadical (UNSAT verdicts).");
+                eprintln!("                    Cook path: VeriPB pbp (veripb <cnf> FILE);");
+                eprintln!("                    CaDiCaL path: LRAT (cake_lpr <cnf> FILE).");
+                eprintln!("                    The format is on stderr: c pb-cadical: proof-format=…");
                 eprintln!("  --timeout SECS, -t SECS");
                 eprintln!("                    Hard wall-clock limit.  On timeout, prints");
                 eprintln!("                    'c TIMEOUT after Ns' and exits 124.  Default: {}.",
@@ -2611,6 +2616,7 @@ fn main() {
         let shape = detect_shape(&clauses, nvars);
         if !matches!(shape, CnfShape::Unknown) {
             eprintln!("c pb-cadical: prover=cook");
+            eprintln!("c pb-cadical: proof-format=pbp");
             eprintln!("c pb-cadical: Cook shape {} in {:.1}ms -> PB proof",
                       shape.describe(), t0.elapsed().as_secs_f64() * 1000.0);
             if let Some(out) = args.proof.as_ref() {
@@ -2636,7 +2642,8 @@ fn main() {
         }
         // No structural shape: hand off to the CaDiCaL binary.
         eprintln!("c pb-cadical: prover=cadical");
-        eprintln!("c pb-cadical: no Cook shape ({:.1}ms) -> CaDiCaL binary (--veripb)",
+        eprintln!("c pb-cadical: proof-format=lrat");
+        eprintln!("c pb-cadical: no Cook shape ({:.1}ms) -> CaDiCaL binary (--lrat)",
                   t0.elapsed().as_secs_f64() * 1000.0);
         let tmp = std::env::temp_dir().join(format!("pbcadical-{}.cnf", std::process::id()));
         {
@@ -2660,14 +2667,14 @@ fn main() {
         // rows; stream stdout line-by-line and relay them live (throttled)
         // to the progress display, capturing the verdict + model en route.
         if args.timeout_secs > 0 { cmd.arg("-t").arg(args.timeout_secs.to_string()); }
-        // --veripb=3 (DRAT + deletion-checking) — the universal mode.  The
-        // two failure modes seen in the wild need opposite halves of the
-        // flag: large proofs need DRAT (>2) or VeriPB rejects a hint
-        // ("constraint not equal at the hint", e.g. homer11), while others
-        // need deletion-checking (odd) or VeriPB rejects a core-set
-        // deletion ("delete derived via core", e.g. s38417).  =3 is both,
-        // and verifies both.  (=4 was DRAT-only and failed the latter.)
-        if args.proof.is_some() { cmd.arg("--veripb=3"); }
+        // --lrat: CaDiCaL's reasoning is clausal, so emit native LRAT
+        // (binary, with hints) and check with the fast formally-verified
+        // cake_lpr — the SAT-competition toolchain — instead of wrapping it
+        // in a PB proof for the much slower general-purpose VeriPB.
+        // (Earlier --veripb modes also tripped VeriPB 3.0.2 bugs: hint
+        // mismatch on >2, core-deletion rejection on odd.)  The Cook path
+        // above still emits genuine PB proofs for VeriPB.
+        if args.proof.is_some() { cmd.arg("--lrat"); }
         cmd.arg(&tmp);
         if let Some(out) = args.proof.as_ref() { cmd.arg(out); }
         cmd.stdout(std::process::Stdio::piped());
@@ -2734,7 +2741,7 @@ fn main() {
             Some("UNSATISFIABLE") => {
                 eprintln!("c UNSAT in {:.1}ms", el_ms);
                 if let Some(out) = args.proof.as_ref() {
-                    eprintln!("c pb-cadical: CaDiCaL UNSAT; VeriPB proof at {}", out.display());
+                    eprintln!("c pb-cadical: CaDiCaL UNSAT; LRAT proof at {}", out.display());
                 }
             }
             Some("SATISFIABLE") => {

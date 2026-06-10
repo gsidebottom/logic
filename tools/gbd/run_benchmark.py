@@ -1451,7 +1451,7 @@ def solve_one(
         # MB).  Only proofs that FAIL to verify are kept (moved to proof_dir
         # below).  So we write to a temp file, not proof_dir itself.
         proof_stem = None
-        if proof_dir is not None and backend in ("pb-cadical", "pb_cadical"):
+        if proof_dir is not None and backend in ("pb-cadical", "pb_cadical", "hydra"):
             proof_stem = rec.get("hash") or re.sub(r"[^A-Za-z0-9._-]", "_", display)
             proof_path = Path(tempfile.gettempdir()) / f"pbproof-{proof_stem}.pbp"
             cmd.extend(["--proof", str(proof_path)])
@@ -1520,7 +1520,8 @@ def solve_one(
             # ~doubles VeriPB's verify time, so skip it on small/fast proofs
             # (the static message above already covers those).  cake_lpr has
             # no progress output (it's fast enough not to need one).
-            _big = proof_path.stat().st_size > 20_000_000
+            _big = (proof_path.exists()
+                    and proof_path.stat().st_size > 20_000_000)
             _on_prog = ((lambda m: tui.update_worker(worker_idx, display, m))
                         if tui.enabled and _big else None)
             pb_proof_ok, pb_proof_reason, pb_proof_time = verify_pb_proof(
@@ -1917,7 +1918,7 @@ def main() -> int:
     args.proof_dir.mkdir(parents=True, exist_ok=True)
     if args.proof_timeout is None:
         args.proof_timeout = args.timeout
-    if args.backend in ("pb-cadical", "pb_cadical"):
+    if args.backend in ("pb-cadical", "pb_cadical", "hydra"):
         if CAKELPR_BIN is None:
             print("c WARNING: cake_lpr not found (PATH or ~/.cargo/bin) — "
                   "CaDiCaL-path LRAT proofs will go UNCHECKED. Build it from "

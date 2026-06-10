@@ -2150,6 +2150,16 @@ enum BackendChoice {
     /// announced as `c pb-cadical: proof-format=pbp|lrat`).  Short-circuits
     /// before the matrix search.
     PbCadical,
+    /// Hydra: the structure-dispatch portfolio — pb-cadical plus an
+    /// XOR/parity stage between the Cook prover and CaDiCaL.  Stages:
+    /// (1) Cook shape → polynomial VeriPB PB proof; (2) XOR recovery +
+    /// GF(2) Gaussian elimination → decides pure-parity formulas outright
+    /// (SAT with a checkable witness; UNSAT currently uncertified) and
+    /// simplifies mixed formulas via GE-forced units; (3) residual →
+    /// CaDiCaL with native LRAT (cake_lpr-checkable).  Every stage's
+    /// verdict is sound; certificates per stage (`proof-format=pbp|lrat|
+    /// none`).
+    Hydra,
 }
 
 impl BackendChoice {
@@ -2158,6 +2168,7 @@ impl BackendChoice {
             BackendChoice::Matrix(m) => m.name(),
             BackendChoice::Cadical   => "cadical",
             BackendChoice::PbCadical => "pb-cadical",
+            BackendChoice::Hydra     => "hydra",
         }
     }
 
@@ -2193,10 +2204,11 @@ impl BackendChoice {
             "cadical"                      => Ok(BackendChoice::Cadical),
             "pb-cadical" | "pb_cadical"
                          | "pbcadical"      => Ok(BackendChoice::PbCadical),
+            "hydra"                        => Ok(BackendChoice::Hydra),
             _ => Err(format!(
                 "unknown backend {:?}; expected one of: smart, cdcl, eff, eff_cover, effb, \
                  greedy_cdcl, greedy_eff, greedy_effb, basic_eff, basic_effb, cadical, \
-                 pb-cadical", s
+                 pb-cadical, hydra", s
             )),
         }
     }
@@ -2484,6 +2496,9 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    Cook path: VeriPB pbp (veripb <cnf> FILE);");
                 eprintln!("                    CaDiCaL path: LRAT (cake_lpr <cnf> FILE).");
                 eprintln!("                    The format is on stderr: c pb-cadical: proof-format=…");
+                eprintln!("                      hydra        — pb-cadical + an XOR/parity stage:");
+                eprintln!("                                     GF(2) elimination decides pure-parity");
+                eprintln!("                                     formulas and simplifies mixed ones");
                 eprintln!("  --timeout SECS, -t SECS");
                 eprintln!("                    Hard wall-clock limit.  On timeout, prints");
                 eprintln!("                    'c TIMEOUT after Ns' and exits 124.  Default: {}.",
@@ -2609,16 +2624,30 @@ fn main() {
     // shell out to the CaDiCaL binary with --veripb so its proof is also
     // VeriPB-checkable.  Either way a solved instance carries a verifiable
     // certificate.  Short-circuits before the matrix search.
-    if matches!(args.backend, BackendChoice::PbCadical) {
+    if matches!(args.backend, BackendChoice::PbCadical | BackendChoice::Hydra) {
         use logic::cook_pbp::{detect_shape, emit_proof, CnfShape};
         use std::io::Write as _;
+        let bk = args.backend.name();
         let t0 = Instant::now();
+        // Backstop watchdog: the main watchdog spawns after this block, and
+        // hydra's XOR stage can run minutes on 100k+-var parity systems.
+        // CaDiCaL gets its own (budget-split) -t below, so fire with a 60s
+        // grace period so the graceful CaDiCaL-timeout path wins the race
+        // whenever CaDiCaL is the active stage.
+        if args.timeout_secs > 0 {
+            let limit = args.timeout_secs + 60;
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(limit));
+                eprintln!("c TIMEOUT after {:.1}ms", (limit as f64) * 1000.0);
+                std::process::exit(124);
+            });
+        }
         let shape = detect_shape(&clauses, nvars);
         if !matches!(shape, CnfShape::Unknown) {
-            eprintln!("c pb-cadical: prover=cook");
-            eprintln!("c pb-cadical: proof-format=pbp");
-            eprintln!("c pb-cadical: Cook shape {} in {:.1}ms -> PB proof",
-                      shape.describe(), t0.elapsed().as_secs_f64() * 1000.0);
+            eprintln!("c {}: prover=cook", bk);
+            eprintln!("c {}: proof-format=pbp", bk);
+            eprintln!("c {}: Cook shape {} in {:.1}ms -> PB proof",
+                      bk, shape.describe(), t0.elapsed().as_secs_f64() * 1000.0);
             if let Some(out) = args.proof.as_ref() {
                 match std::fs::File::create(out) {
                     Ok(f) => {
@@ -2627,7 +2656,7 @@ fn main() {
                             eprintln!("c ERROR: cook-pbp emission failed: {}", e);
                             std::process::exit(1);
                         }
-                        eprintln!("c pb-cadical: wrote VeriPB proof {}", out.display());
+                        eprintln!("c {}: wrote VeriPB proof {}", bk, out.display());
                     }
                     Err(e) => {
                         eprintln!("c ERROR: cannot create proof {}: {}", out.display(), e);
@@ -2640,10 +2669,72 @@ fn main() {
             println!("s UNSATISFIABLE");
             return;
         }
-        // No structural shape: hand off to the CaDiCaL binary.
-        eprintln!("c pb-cadical: prover=cadical");
-        eprintln!("c pb-cadical: proof-format=lrat");
-        eprintln!("c pb-cadical: no Cook shape ({:.1}ms) -> CaDiCaL binary (--lrat)",
+        // No structural shape.  Hydra inserts the XOR/parity stage here;
+        // pb-cadical goes straight to CaDiCaL.
+        let mut xor_simplified: Option<(Vec<Vec<i32>>, Vec<Option<bool>>)> = None;
+        if matches!(args.backend, BackendChoice::Hydra) && clauses.len() <= 5_000_000 {
+            use logic::xor_gauss::{solve_xor_system, XorGaussResult};
+            let t_x = Instant::now();
+            match solve_xor_system(nvars, &clauses) {
+                XorGaussResult::Unsat => {
+                    eprintln!("c {}: prover=xor", bk);
+                    eprintln!("c {}: proof-format=none", bk);
+                    eprintln!("c {}: XOR system inconsistent (GF(2) GE, {:.1}ms) -> UNSAT \
+                               [uncertified: parity PB proof pending]",
+                              bk, t_x.elapsed().as_secs_f64() * 1000.0);
+                    if let Some(out) = args.proof.as_ref() { let _ = std::fs::remove_file(out); }
+                    eprintln!("c UNSAT in {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
+                    println!("s UNSATISFIABLE");
+                    return;
+                }
+                XorGaussResult::Sat(model) => {
+                    eprintln!("c {}: prover=xor", bk);
+                    eprintln!("c {}: proof-format=witness", bk);
+                    eprintln!("c {}: pure-XOR satisfiable (GF(2) GE, {:.1}ms); the model is \
+                               the certificate", bk, t_x.elapsed().as_secs_f64() * 1000.0);
+                    if let Some(out) = args.proof.as_ref() { let _ = std::fs::remove_file(out); }
+                    eprintln!("c SAT in {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
+                    println!("s SATISFIABLE");
+                    let mut line = String::from("v");
+                    for (i, &b) in model.iter().enumerate() {
+                        line.push(' ');
+                        if !b { line.push('-'); }
+                        line.push_str(&(i + 1).to_string());
+                        if line.len() > 70 {
+                            println!("{}", line);
+                            line = String::from("v");
+                        }
+                    }
+                    println!("{} 0", line);
+                    return;
+                }
+                XorGaussResult::Simplified { clauses: simp, forced, recovered, forced_count } => {
+                    eprintln!("c {}: xor stage: {} XOR(s), {} var(s) GE-forced; residual \
+                               {} clauses ({:.1}ms)", bk, recovered, forced_count,
+                              simp.len(), t_x.elapsed().as_secs_f64() * 1000.0);
+                    xor_simplified = Some((simp, forced));
+                }
+                XorGaussResult::Indeterminate { recovered, .. } => {
+                    if recovered > 0 {
+                        eprintln!("c {}: xor stage: {} XOR(s) recovered, no usable consequence \
+                                   ({:.1}ms)", bk, recovered, t_x.elapsed().as_secs_f64() * 1000.0);
+                    }
+                }
+            }
+        }
+        let solve_clauses: &[Vec<i32>] =
+            xor_simplified.as_ref().map(|(s, _)| s.as_slice()).unwrap_or(&clauses);
+        let forced: Option<&Vec<Option<bool>>> = xor_simplified.as_ref().map(|(_, f)| f);
+        // Proof routing: a CaDiCaL LRAT proof is only valid against the CNF
+        // CaDiCaL actually saw.  On a GE-simplified residual it would NOT
+        // certify the original formula, so no proof is emitted there (the
+        // verdict stays sound: GE-forced units are logical consequences).
+        let emit_lrat = args.proof.is_some() && forced.is_none();
+        eprintln!("c {}: prover=cadical", bk);
+        eprintln!("c {}: proof-format={}", bk, if emit_lrat { "lrat" } else { "none" });
+        eprintln!("c {}: {} -> CaDiCaL binary{} ({:.1}ms)", bk,
+                  if forced.is_some() { "GE-simplified residual" } else { "no Cook shape" },
+                  if emit_lrat { " (--lrat)" } else { "" },
                   t0.elapsed().as_secs_f64() * 1000.0);
         let tmp = std::env::temp_dir().join(format!("pbcadical-{}.cnf", std::process::id()));
         {
@@ -2652,8 +2743,8 @@ fn main() {
                 Err(e) => { eprintln!("c ERROR: temp cnf: {}", e); std::process::exit(2); }
             };
             let mut w = io::BufWriter::new(f);
-            let _ = writeln!(w, "p cnf {} {}", nvars, clauses.len());
-            for c in &clauses {
+            let _ = writeln!(w, "p cnf {} {}", nvars, solve_clauses.len());
+            for c in solve_clauses {
                 for &l in c { let _ = write!(w, "{} ", l); }
                 let _ = writeln!(w, "0");
             }
@@ -2666,7 +2757,13 @@ fn main() {
         // Default verbosity (no -q) so CaDiCaL prints its periodic report
         // rows; stream stdout line-by-line and relay them live (throttled)
         // to the progress display, capturing the verdict + model en route.
-        if args.timeout_secs > 0 { cmd.arg("-t").arg(args.timeout_secs.to_string()); }
+        if args.timeout_secs > 0 {
+            // Budget split: CaDiCaL gets what the earlier stages left.
+            let remaining = args.timeout_secs
+                .saturating_sub(t0.elapsed().as_secs())
+                .max(1);
+            cmd.arg("-t").arg(remaining.to_string());
+        }
         // --lrat: CaDiCaL's reasoning is clausal, so emit native LRAT
         // (binary, with hints) and check with the fast formally-verified
         // cake_lpr — the SAT-competition toolchain — instead of wrapping it
@@ -2674,9 +2771,11 @@ fn main() {
         // (Earlier --veripb modes also tripped VeriPB 3.0.2 bugs: hint
         // mismatch on >2, core-deletion rejection on odd.)  The Cook path
         // above still emits genuine PB proofs for VeriPB.
-        if args.proof.is_some() { cmd.arg("--lrat"); }
+        if emit_lrat { cmd.arg("--lrat"); }
         cmd.arg(&tmp);
-        if let Some(out) = args.proof.as_ref() { cmd.arg(out); }
+        if emit_lrat {
+            if let Some(out) = args.proof.as_ref() { cmd.arg(out); }
+        }
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::null());
         let mut child = match cmd.spawn() {
@@ -2699,6 +2798,7 @@ fn main() {
         };
         let mut verdict: Option<String> = None;
         let mut last_report: Option<String> = None;
+        let mut vline: Vec<i32> = Vec::new();
         if let Some(out) = child.stdout.take() {
             use std::io::BufRead as _;
             let mut last = Instant::now();
@@ -2707,12 +2807,21 @@ fn main() {
                     verdict = Some(rest.trim().to_string());
                     println!("{}", line);
                 } else if line.starts_with("v ") {
-                    println!("{}", line);
+                    if forced.is_some() {
+                        // Residual model: collect, reconstruct + print below.
+                        for tok in line[2..].split_whitespace() {
+                            if let Ok(l) = tok.parse::<i32>() {
+                                if l != 0 { vline.push(l); }
+                            }
+                        }
+                    } else {
+                        println!("{}", line);
+                    }
                 } else if verdict.is_none() && is_report(&line) {
                     last_report = Some(line.clone());   // keep the latest for final stats
                     if args.show_progress && last.elapsed().as_secs_f64() >= 0.4 {
                         last = Instant::now();
-                        eprintln!("c pb-cadical: cadical {}",
+                        eprintln!("c {}: cadical {}", bk,
                                   line.trim_start_matches('c').trim());
                     }
                 }
@@ -2728,7 +2837,7 @@ fn main() {
                 if let (Ok(restarts), Ok(conflicts)) =
                     (f[5].parse::<u64>(), f[7].parse::<u64>())
                 {
-                    eprintln!("c pb-cadical: stats conflicts={} restarts={}",
+                    eprintln!("c {}: stats conflicts={} restarts={}", bk,
                               conflicts, restarts);
                 }
             }
@@ -2740,19 +2849,48 @@ fn main() {
         match verdict.as_deref() {
             Some("UNSATISFIABLE") => {
                 eprintln!("c UNSAT in {:.1}ms", el_ms);
-                if let Some(out) = args.proof.as_ref() {
-                    eprintln!("c pb-cadical: CaDiCaL UNSAT; LRAT proof at {}", out.display());
+                if emit_lrat {
+                    if let Some(out) = args.proof.as_ref() {
+                        eprintln!("c {}: CaDiCaL UNSAT; LRAT proof at {}", bk, out.display());
+                    }
                 }
             }
             Some("SATISFIABLE") => {
                 eprintln!("c SAT in {:.1}ms", el_ms);
-                eprintln!("c pb-cadical: CaDiCaL SAT (model is the certificate; \
-                           no refutation proof)");
+                eprintln!("c {}: CaDiCaL SAT (model is the certificate; \
+                           no refutation proof)", bk);
                 if let Some(out) = args.proof.as_ref() { let _ = std::fs::remove_file(out); }
+                if let Some(f) = forced {
+                    // Reconstruct the ORIGINAL formula's model: CaDiCaL's
+                    // assignment over the residual, with every GE-forced var
+                    // overwritten to its forced value (those vars were
+                    // eliminated, so CaDiCaL's values for them are arbitrary).
+                    let mut sign = vec![true; nvars + 1];
+                    for &l in &vline {
+                        let v = l.unsigned_abs() as usize;
+                        if v <= nvars { sign[v] = l > 0; }
+                    }
+                    for (i, ov) in f.iter().enumerate() {
+                        if let Some(b) = ov {
+                            if i + 1 <= nvars { sign[i + 1] = *b; }
+                        }
+                    }
+                    let mut line = String::from("v");
+                    for v in 1..=nvars {
+                        line.push(' ');
+                        if !sign[v] { line.push('-'); }
+                        line.push_str(&v.to_string());
+                        if line.len() > 70 {
+                            println!("{}", line);
+                            line = String::from("v");
+                        }
+                    }
+                    println!("{} 0", line);
+                }
             }
             _ => {
                 eprintln!("c TIMEOUT after {:.1}ms", el_ms);
-                eprintln!("c pb-cadical: CaDiCaL reached no verdict (timeout/unknown)");
+                eprintln!("c {}: CaDiCaL reached no verdict (timeout/unknown)", bk);
             }
         }
         return;
@@ -2898,6 +3036,7 @@ fn main() {
     let outcome = match args.backend {
         BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
         BackendChoice::PbCadical => unreachable!("pb-cadical is handled before the search dispatch"),
+        BackendChoice::Hydra => unreachable!("hydra is handled before the search dispatch"),
         BackendChoice::Matrix(m) => {
             // Auto-skip preprocess on very large inputs.  Empirically
             // Phase 1 preprocess takes ~150 µs / clause; at 2M

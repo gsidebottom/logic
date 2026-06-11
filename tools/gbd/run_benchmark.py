@@ -1513,6 +1513,8 @@ def solve_one(
                 pb_proof_prover = "xor"     # hydra GN21 parity prover
             elif "prover=cadical" in stderr_text:
                 pb_proof_prover = "cadical"
+            elif "prover=kissat" in stderr_text:
+                pb_proof_prover = "kissat"  # trusted oracle, same class as cadical
             # Which checker the proof needs: Cook path emits VeriPB pbp,
             # CaDiCaL path native LRAT (checked by cake_lpr).  None → sniff.
             _fmt = ("pbp" if "proof-format=pbp" in stderr_text
@@ -1539,7 +1541,7 @@ def solve_one(
             # wrong verdict); re-solving the one instance regenerates the
             # proof if it's ever needed.
             if (pb_proof_ok is False and proof_path is not None
-                    and pb_proof_prover != "cadical"):
+                    and pb_proof_prover not in ("cadical", "kissat")):
                 if proof_dir is not None:
                     dest = proof_dir / proof_path.name
                     try:
@@ -1588,7 +1590,7 @@ def solve_one(
         md_result = "MISMATCH"
         md_time = f"BAD-UNSAT-PROOF: {unsat_proof_reason}, {time_str}"
         mismatch = True
-    elif pb_proof_ok is False and pb_proof_prover != "cadical":
+    elif pb_proof_ok is False and pb_proof_prover not in ("cadical", "kissat"):
         # Cook-path proof (the one WE generate) was rejected by VeriPB —
         # our detector/proof is wrong, so the verdict itself is suspect.
         # Soundness failure.
@@ -1641,7 +1643,7 @@ def solve_one(
     elif unsat_proof_ok is False:
         tui.log(f"  ✗ [{display}] BAD-UNSAT-PROOF  ({unsat_proof_reason})",
                 color=COLOR_RED + COLOR_BOLD)
-    elif pb_proof_ok is False and pb_proof_prover != "cadical":
+    elif pb_proof_ok is False and pb_proof_prover not in ("cadical", "kissat"):
         tui.log(f"  ✗ [{display}] BAD-PB-PROOF  ({pb_proof_reason})",
                 color=COLOR_RED + COLOR_BOLD)
     elif pb_proof_ok is False:
@@ -2151,10 +2153,10 @@ def _build_summary_json(results: List[dict]) -> dict:
         "pb_proof_verified": sum(1 for r in results if r.get("pb_proof_ok") is True),
         # Cook-path proof rejected by VeriPB = real soundness failure:
         "pb_proof_failed":   sum(1 for r in results if r.get("pb_proof_ok") is False
-                                 and r.get("pb_proof_prover") != "cadical"),
-        # CaDiCaL-path proof VeriPB couldn't verify = certification gap, not a lie:
+                                 and r.get("pb_proof_prover") not in ("cadical", "kissat")),
+        # Engine-path proof the checker couldn't verify = certification gap, not a lie:
         "pb_proof_unverified": sum(1 for r in results if r.get("pb_proof_ok") is False
-                                   and r.get("pb_proof_prover") == "cadical"),
+                                   and r.get("pb_proof_prover") in ("cadical", "kissat")),
     }
     return out
 

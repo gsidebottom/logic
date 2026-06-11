@@ -2291,6 +2291,10 @@ struct Args {
     /// as `c pb-cadical: proof-format=pbp|lrat`.  Optional: without it,
     /// `pb-cadical` still solves and prints the verdict but writes no proof.
     proof: Option<std::path::PathBuf>,
+    /// CDCL engine for the pb-cadical / hydra final stage: "cadical"
+    /// (default; native LRAT) or "kissat" (binary DRAT, elaborated to LRAT
+    /// via `drat-trim -L` when a proof is requested).
+    engine: String,
     /// Variance-gated Sum-reordering threshold for Effective-wrapped
     /// backends (`eff`, `effb`, `greedy_eff`, `basic_eff`,
     /// `greedy_effb`, `basic_effb`).  The wrapper applies its
@@ -2327,6 +2331,7 @@ fn parse_args() -> Result<Args, String> {
         emit_pbp: None,
         emit_cook_pbp: None,
         proof: None,
+        engine: "cadical".into(),
         // 0.0 = always reorder (legacy behaviour).  Override with
         // `--eff-tau N` to gate Sum reordering on `log10(max/min) >= N`.
         eff_tau: 0.0,
@@ -2462,6 +2467,14 @@ fn parse_args() -> Result<Args, String> {
             s if s.starts_with("--proof=") => {
                 a.proof = Some(s["--proof=".len()..].to_string().into());
             }
+            "--engine" => {
+                let v = iter.next().ok_or_else(||
+                    "--engine requires cadical|kissat".to_string())?;
+                a.engine = v.to_string();
+            }
+            s if s.starts_with("--engine=") => {
+                a.engine = s["--engine=".len()..].to_string();
+            }
             "--help"     | "-h" => {
                 eprintln!("Usage: sat [--backend NAME] [--timeout SECS] [--progress] < problem.cnf");
                 eprintln!();
@@ -2496,6 +2509,9 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    Cook path: VeriPB pbp (veripb <cnf> FILE);");
                 eprintln!("                    CaDiCaL path: LRAT (cake_lpr <cnf> FILE).");
                 eprintln!("                    The format is on stderr: c pb-cadical: proof-format=…");
+                eprintln!("  --engine NAME     CDCL engine for pb-cadical/hydra: cadical (default,");
+                eprintln!("                    native LRAT) or kissat (DRAT, elaborated to LRAT");
+                eprintln!("                    via drat-trim when --proof is given).");
                 eprintln!("                      hydra        — pb-cadical + an XOR/parity stage:");
                 eprintln!("                                     GF(2) elimination decides pure-parity");
                 eprintln!("                                     formulas and simplifies mixed ones");
@@ -2635,7 +2651,10 @@ fn main() {
         // grace period so the graceful CaDiCaL-timeout path wins the race
         // whenever CaDiCaL is the active stage.
         if args.timeout_secs > 0 {
-            let limit = args.timeout_secs + 60;
+            // Extra grace when kissat+proof: drat-trim elaboration runs after
+            // the engine finishes and can take minutes on giant proofs.
+            let grace = if args.engine == "kissat" && args.proof.is_some() { 900 } else { 60 };
+            let limit = args.timeout_secs + grace;
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(limit));
                 eprintln!("c TIMEOUT after {:.1}ms", (limit as f64) * 1000.0);
@@ -2737,10 +2756,23 @@ fn main() {
                     return;
                 }
                 XorGaussResult::Simplified { clauses: simp, forced, recovered, forced_count } => {
-                    eprintln!("c {}: xor stage: {} XOR(s), {} var(s) GE-forced; residual \
-                               {} clauses ({:.1}ms)", bk, recovered, forced_count,
-                              simp.len(), t_x.elapsed().as_secs_f64() * 1000.0);
-                    xor_simplified = Some((simp, forced));
+                    if args.proof.is_none() {
+                        eprintln!("c {}: xor stage: {} XOR(s), {} var(s) GE-forced; residual \
+                                   {} clauses ({:.1}ms)", bk, recovered, forced_count,
+                                  simp.len(), t_x.elapsed().as_secs_f64() * 1000.0);
+                        xor_simplified = Some((simp, forced));
+                    } else {
+                        // Certified mode: solving the GE-simplified residual
+                        // would make the engine's proof useless against the
+                        // ORIGINAL formula (the s38417 class).  Solve the
+                        // original instead — full LRAT certification beats
+                        // the simplification.  (Certifying the forced units
+                        // via a DRAT prefix is future work.)
+                        eprintln!("c {}: xor stage: {} XOR(s), {} var(s) GE-forced — \
+                                   ignored in certified mode ({:.1}ms)",
+                                  bk, recovered, forced_count,
+                                  t_x.elapsed().as_secs_f64() * 1000.0);
+                    }
                 }
                 XorGaussResult::Indeterminate { recovered, .. } => {
                     if recovered > 0 {
@@ -2758,11 +2790,14 @@ fn main() {
         // certify the original formula, so no proof is emitted there (the
         // verdict stays sound: GE-forced units are logical consequences).
         let emit_lrat = args.proof.is_some() && forced.is_none();
-        eprintln!("c {}: prover=cadical", bk);
+        let engine_kissat = args.engine == "kissat";
+        let engine_name = if engine_kissat { "kissat" } else { "cadical" };
+        eprintln!("c {}: prover={}", bk, engine_name);
         eprintln!("c {}: proof-format={}", bk, if emit_lrat { "lrat" } else { "none" });
-        eprintln!("c {}: {} -> CaDiCaL binary{} ({:.1}ms)", bk,
+        eprintln!("c {}: {} -> {}{} ({:.1}ms)", bk,
                   if forced.is_some() { "GE-simplified residual" } else { "no Cook shape" },
-                  if emit_lrat { " (--lrat)" } else { "" },
+                  engine_name,
+                  if emit_lrat { " (proof)" } else { "" },
                   t0.elapsed().as_secs_f64() * 1000.0);
         let tmp = std::env::temp_dir().join(format!("pbcadical-{}.cnf", std::process::id()));
         {
@@ -2777,20 +2812,34 @@ fn main() {
                 let _ = writeln!(w, "0");
             }
         }
-        let cadical_bin = ["/opt/homebrew/bin/cadical", "/usr/local/bin/cadical",
-                           "/usr/bin/cadical"]
-            .iter().find(|p| std::path::Path::new(p).exists())
-            .copied().unwrap_or("cadical");
-        let mut cmd = std::process::Command::new(cadical_bin);
+        let engine_bin = if engine_kissat {
+            ["/opt/homebrew/bin/kissat", "/usr/local/bin/kissat", "/usr/bin/kissat"]
+                .iter().find(|p| std::path::Path::new(p).exists())
+                .copied().unwrap_or("kissat")
+        } else {
+            ["/opt/homebrew/bin/cadical", "/usr/local/bin/cadical", "/usr/bin/cadical"]
+                .iter().find(|p| std::path::Path::new(p).exists())
+                .copied().unwrap_or("cadical")
+        };
+        // Kissat emits binary DRAT (no native LRAT); it goes to a temp file
+        // and is elaborated to the requested proof path with `drat-trim -L`
+        // after an UNSAT verdict.
+        let drat_tmp = std::env::temp_dir()
+            .join(format!("pbcadical-{}.drat", std::process::id()));
+        let mut cmd = std::process::Command::new(engine_bin);
         // Default verbosity (no -q) so CaDiCaL prints its periodic report
         // rows; stream stdout line-by-line and relay them live (throttled)
         // to the progress display, capturing the verdict + model en route.
         if args.timeout_secs > 0 {
-            // Budget split: CaDiCaL gets what the earlier stages left.
+            // Budget split: the engine gets what the earlier stages left.
             let remaining = args.timeout_secs
                 .saturating_sub(t0.elapsed().as_secs())
                 .max(1);
-            cmd.arg("-t").arg(remaining.to_string());
+            if engine_kissat {
+                cmd.arg(format!("--time={}", remaining));
+            } else {
+                cmd.arg("-t").arg(remaining.to_string());
+            }
         }
         // --lrat: CaDiCaL's reasoning is clausal, so emit native LRAT
         // (binary, with hints) and check with the fast formally-verified
@@ -2799,17 +2848,21 @@ fn main() {
         // (Earlier --veripb modes also tripped VeriPB 3.0.2 bugs: hint
         // mismatch on >2, core-deletion rejection on odd.)  The Cook path
         // above still emits genuine PB proofs for VeriPB.
-        if emit_lrat { cmd.arg("--lrat"); }
+        if emit_lrat && !engine_kissat { cmd.arg("--lrat"); }
         cmd.arg(&tmp);
         if emit_lrat {
-            if let Some(out) = args.proof.as_ref() { cmd.arg(out); }
+            if engine_kissat {
+                cmd.arg(&drat_tmp);                 // binary DRAT, elaborated below
+            } else if let Some(out) = args.proof.as_ref() {
+                cmd.arg(out);                       // native LRAT straight to --proof
+            }
         }
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::null());
         let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("c ERROR: failed to run CaDiCaL ({}): {}", cadical_bin, e);
+                eprintln!("c ERROR: failed to run {} ({}): {}", engine_name, engine_bin, e);
                 let _ = std::fs::remove_file(&tmp);
                 std::process::exit(2);
             }
@@ -2849,7 +2902,7 @@ fn main() {
                     last_report = Some(line.clone());   // keep the latest for final stats
                     if args.show_progress && last.elapsed().as_secs_f64() >= 0.4 {
                         last = Instant::now();
-                        eprintln!("c {}: cadical {}", bk,
+                        eprintln!("c {}: {} {}", bk, engine_name,
                                   line.trim_start_matches('c').trim());
                     }
                 }
@@ -2859,18 +2912,20 @@ fn main() {
         // Conflicts + restarts from CaDiCaL's last report row (column order:
         // marker seconds MB level reduction RESTARTS rate CONFLICTS …) emitted
         // as a line run_benchmark scrapes for its conflicts/restarts columns.
-        if let Some(row) = last_report.as_deref() {
-            let f: Vec<&str> = row.trim_start_matches("c ").split_whitespace().collect();
-            if f.len() >= 8 {
-                if let (Ok(restarts), Ok(conflicts)) =
-                    (f[5].parse::<u64>(), f[7].parse::<u64>())
-                {
-                    eprintln!("c {}: stats conflicts={} restarts={}", bk,
-                              conflicts, restarts);
+        if !engine_kissat {
+            // Column positions are CaDiCaL-specific; skip for kissat.
+            if let Some(row) = last_report.as_deref() {
+                let f: Vec<&str> = row.trim_start_matches("c ").split_whitespace().collect();
+                if f.len() >= 8 {
+                    if let (Ok(restarts), Ok(conflicts)) =
+                        (f[5].parse::<u64>(), f[7].parse::<u64>())
+                    {
+                        eprintln!("c {}: stats conflicts={} restarts={}", bk,
+                                  conflicts, restarts);
+                    }
                 }
             }
         }
-        let _ = std::fs::remove_file(&tmp);
         // Standard timing line (stderr) so run_benchmark's parser records
         // the time; the verdict comes from the relayed `s` line on stdout.
         let el_ms = t0.elapsed().as_secs_f64() * 1000.0;
@@ -2878,15 +2933,46 @@ fn main() {
             Some("UNSATISFIABLE") => {
                 eprintln!("c UNSAT in {:.1}ms", el_ms);
                 if emit_lrat {
-                    if let Some(out) = args.proof.as_ref() {
-                        eprintln!("c {}: CaDiCaL UNSAT; LRAT proof at {}", bk, out.display());
+                    if engine_kissat {
+                        // Elaborate the binary DRAT to LRAT for cake_lpr.
+                        // The timing line above is already printed, so this
+                        // does not inflate the recorded solve time.
+                        if let Some(out) = args.proof.as_ref() {
+                            let drat_trim = [
+                                "/opt/homebrew/bin/drat-trim", "/usr/local/bin/drat-trim",
+                            ].iter().find(|p| std::path::Path::new(p).exists()).copied()
+                                .map(str::to_string)
+                                .unwrap_or_else(|| {
+                                    let home = std::env::var("HOME").unwrap_or_default();
+                                    let c = format!("{}/.cargo/bin/drat-trim", home);
+                                    if std::path::Path::new(&c).exists() { c }
+                                    else { "drat-trim".to_string() }
+                                });
+                            let t_e = Instant::now();
+                            let res = std::process::Command::new(&drat_trim)
+                                .arg(&tmp).arg(&drat_tmp).arg("-L").arg(out)
+                                .output();
+                            let ok = res.as_ref().map(|o| {
+                                String::from_utf8_lossy(&o.stdout).contains("s VERIFIED")
+                            }).unwrap_or(false);
+                            if ok {
+                                eprintln!("c {}: kissat UNSAT; DRAT elaborated to LRAT at {} \
+                                           ({:.1}s)", bk, out.display(),
+                                          t_e.elapsed().as_secs_f64());
+                            } else {
+                                eprintln!("c {}: drat-trim elaboration FAILED; no proof", bk);
+                                let _ = std::fs::remove_file(out);
+                            }
+                        }
+                    } else if let Some(out) = args.proof.as_ref() {
+                        eprintln!("c {}: cadical UNSAT; LRAT proof at {}", bk, out.display());
                     }
                 }
             }
             Some("SATISFIABLE") => {
                 eprintln!("c SAT in {:.1}ms", el_ms);
-                eprintln!("c {}: CaDiCaL SAT (model is the certificate; \
-                           no refutation proof)", bk);
+                eprintln!("c {}: {} SAT (model is the certificate; \
+                           no refutation proof)", bk, engine_name);
                 if let Some(out) = args.proof.as_ref() { let _ = std::fs::remove_file(out); }
                 if let Some(f) = forced {
                     // Reconstruct the ORIGINAL formula's model: CaDiCaL's
@@ -2918,9 +3004,11 @@ fn main() {
             }
             _ => {
                 eprintln!("c TIMEOUT after {:.1}ms", el_ms);
-                eprintln!("c {}: CaDiCaL reached no verdict (timeout/unknown)", bk);
+                eprintln!("c {}: {} reached no verdict (timeout/unknown)", bk, engine_name);
             }
         }
+        let _ = std::fs::remove_file(&tmp);
+        let _ = std::fs::remove_file(&drat_tmp);
         return;
     }
 

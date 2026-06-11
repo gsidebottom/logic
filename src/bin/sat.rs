@@ -2678,11 +2678,39 @@ fn main() {
             match solve_xor_system(nvars, &clauses) {
                 XorGaussResult::Unsat => {
                     eprintln!("c {}: prover=xor", bk);
-                    eprintln!("c {}: proof-format=none", bk);
-                    eprintln!("c {}: XOR system inconsistent (GF(2) GE, {:.1}ms) -> UNSAT \
-                               [uncertified: parity PB proof pending]",
+                    eprintln!("c {}: XOR system inconsistent (GF(2) GE, {:.1}ms) -> UNSAT",
                               bk, t_x.elapsed().as_secs_f64() * 1000.0);
-                    if let Some(out) = args.proof.as_ref() { let _ = std::fs::remove_file(out); }
+                    // Certify with a GN21 parity PB proof.  The certifier does
+                    // its own STRICT recovery (complete canonical encodings
+                    // only), so it can decline even though the (laxer) solving
+                    // recovery refuted — then the verdict stands uncertified.
+                    let mut certified = false;
+                    if let Some(out) = args.proof.as_ref() {
+                        use logic::parity_pbp::{detect_parity_refutation, emit_parity_proof};
+                        let t_p = Instant::now();
+                        if let Some(pr) = detect_parity_refutation(&clauses) {
+                            match std::fs::File::create(out) {
+                                Ok(f) => {
+                                    let mut w = io::BufWriter::new(f);
+                                    if emit_parity_proof(&pr, clauses.len(), nvars, &mut w).is_ok() {
+                                        certified = true;
+                                        eprintln!("c {}: proof-format=pbp", bk);
+                                        eprintln!("c {}: wrote GN21 parity proof {} ({} XORs in \
+                                                   refutation, {:.1}ms)",
+                                                  bk, out.display(), pr.subset.len(),
+                                                  t_p.elapsed().as_secs_f64() * 1000.0);
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("c ERROR: cannot create proof {}: {}", out.display(), e);
+                                }
+                            }
+                        }
+                    }
+                    if !certified {
+                        eprintln!("c {}: proof-format=none", bk);
+                        if let Some(out) = args.proof.as_ref() { let _ = std::fs::remove_file(out); }
+                    }
                     eprintln!("c UNSAT in {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
                     println!("s UNSATISFIABLE");
                     return;

@@ -1509,6 +1509,8 @@ def solve_one(
             # its verdict stands; the checker just couldn't check its proof).
             if "prover=cook" in stderr_text:
                 pb_proof_prover = "cook"
+            elif "prover=xor" in stderr_text:
+                pb_proof_prover = "xor"     # hydra GN21 parity prover
             elif "prover=cadical" in stderr_text:
                 pb_proof_prover = "cadical"
             # Which checker the proof needs: Cook path emits VeriPB pbp,

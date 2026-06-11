@@ -3002,12 +3002,55 @@ fn main() {
                                     else { "drat-trim".to_string() }
                                 });
                             let t_e = Instant::now();
-                            let res = std::process::Command::new(&drat_trim)
-                                .arg(&tmp).arg(&drat_tmp).arg("-L").arg(out)
-                                .output();
-                            let ok = res.as_ref().map(|o| {
-                                String::from_utf8_lossy(&o.stdout).contains("s VERIFIED")
-                            }).unwrap_or(false);
+                            // Spawn + poll (not .output()) so the terminal
+                            // gets progress: drat-trim does backward checking
+                            // and can run minutes on giant proofs.  Elapsed +
+                            // LRAT-bytes-written is the honest live signal.
+                            // stdout goes to a temp file (deadlock-safe), read
+                            // after exit for the "s VERIFIED" marker.
+                            let elog = std::env::temp_dir().join(
+                                format!("pbcadical-{}.elog", std::process::id()));
+                            let drat_mb = std::fs::metadata(&drat_tmp)
+                                .map(|m| m.len()).unwrap_or(0) as f64 / 1e6;
+                            let mut ecmd = std::process::Command::new(&drat_trim);
+                            ecmd.arg(&tmp).arg(&drat_tmp).arg("-L").arg(out);
+                            ecmd.stdout(std::fs::File::create(&elog)
+                                .map(std::process::Stdio::from)
+                                .unwrap_or_else(|_| std::process::Stdio::null()));
+                            ecmd.stderr(std::process::Stdio::null());
+                            let ok = match ecmd.spawn() {
+                                Ok(mut ch) => {
+                                    let mut last = Instant::now();
+                                    loop {
+                                        match ch.try_wait() {
+                                            Ok(Some(_)) => break,
+                                            Ok(None) => {
+                                                if args.show_progress
+                                                    && last.elapsed().as_secs_f64() >= 5.0
+                                                {
+                                                    last = Instant::now();
+                                                    let lmb = std::fs::metadata(out)
+                                                        .map(|m| m.len()).unwrap_or(0)
+                                                        as f64 / 1e6;
+                                                    eprintln!("c {}: elaborating DRAT -> LRAT… \
+                                                               {:.0}s (drat {:.0}MB, lrat {:.0}MB)",
+                                                              bk,
+                                                              t_e.elapsed().as_secs_f64(),
+                                                              drat_mb, lmb);
+                                                }
+                                                std::thread::sleep(
+                                                    std::time::Duration::from_millis(500));
+                                            }
+                                            Err(_) => break,
+                                        }
+                                    }
+                                    std::fs::read_to_string(&elog)
+                                        .map(|t| t.contains("s VERIFIED"))
+                                        .unwrap_or(false)
+                                }
+                                Err(_) => false,
+                            };
+                            let _ = std::fs::remove_file(&elog);
                             if ok {
                                 eprintln!("c {}: kissat UNSAT; DRAT elaborated to LRAT at {} \
                                            ({:.1}s)", bk, out.display(),

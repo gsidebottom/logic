@@ -3043,7 +3043,10 @@ fn main() {
                             let drat_mb = std::fs::metadata(&drat_tmp)
                                 .map(|m| m.len()).unwrap_or(0) as f64 / 1e6;
                             let mut ecmd = std::process::Command::new(&drat_trim);
-                            ecmd.arg(&tmp).arg(&drat_tmp).arg("-L").arg(out);
+                            // -b: drat-trim's own backward-pass progress bar
+                            // ("\rc 42.17% [...] time remaining: …"), captured
+                            // in elog and tailed by the poll tick below.
+                            ecmd.arg(&tmp).arg(&drat_tmp).arg("-L").arg(out).arg("-b");
                             ecmd.stdout(std::fs::File::create(&elog)
                                 .map(std::process::Stdio::from)
                                 .unwrap_or_else(|_| std::process::Stdio::null()));
@@ -3084,11 +3087,40 @@ fn main() {
                                                     let lmb = std::fs::metadata(out)
                                                         .map(|m| m.len()).unwrap_or(0)
                                                         as f64 / 1e6;
-                                                    eprintln!("c {}: elaborating DRAT -> LRAT… \
-                                                               {:.0}s (drat {:.0}MB, lrat {:.0}MB)",
-                                                              bk,
-                                                              t_e.elapsed().as_secs_f64(),
-                                                              drat_mb, lmb);
+                                                    // Tail elog for the latest
+                                                    // "\rc NN.NN% [" bar update.
+                                                    let pct = (|| -> Option<f64> {
+                                                        use std::io::{Read, Seek, SeekFrom};
+                                                        let mut f = std::fs::File::open(&elog).ok()?;
+                                                        let len = f.metadata().ok()?.len();
+                                                        f.seek(SeekFrom::Start(len.saturating_sub(8192))).ok()?;
+                                                        let mut raw = Vec::new();
+                                                        f.read_to_end(&mut raw).ok()?;
+                                                        let text = String::from_utf8_lossy(&raw);
+                                                        for chunk in text.split('\r').rev() {
+                                                            let c = chunk.trim_start();
+                                                            if let Some(rest) = c.strip_prefix("c ") {
+                                                                if let Some(pp) = rest.find('%') {
+                                                                    if let Ok(v) = rest[..pp].trim().parse::<f64>() {
+                                                                        return Some(v);
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        None
+                                                    })();
+                                                    match pct {
+                                                        Some(p) => eprintln!(
+                                                            "c {}: elaborating DRAT -> LRAT… {:.1}% \
+                                                             ({:.0}s, drat {:.0}MB, lrat {:.0}MB)",
+                                                            bk, p, t_e.elapsed().as_secs_f64(),
+                                                            drat_mb, lmb),
+                                                        None => eprintln!(
+                                                            "c {}: elaborating DRAT -> LRAT… {:.0}s \
+                                                             (drat {:.0}MB, lrat {:.0}MB)",
+                                                            bk, t_e.elapsed().as_secs_f64(),
+                                                            drat_mb, lmb),
+                                                    }
                                                 }
                                                 if last.elapsed().as_secs_f64() >= 5.0 {
                                                     last = Instant::now();

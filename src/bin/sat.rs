@@ -3079,6 +3079,8 @@ fn main() {
                                 format!("pbcadical-{}.elog", std::process::id()));
                             let drat_mb = std::fs::metadata(&drat_tmp)
                                 .map(|m| m.len()).unwrap_or(0) as f64 / 1e6;
+                            // (t, pct) samples for the ETA fit below.
+                            let mut elab_samples: Vec<(f64, f64)> = Vec::new();
                             let mut ecmd = std::process::Command::new(&drat_trim);
                             // -b: drat-trim's own backward-pass progress bar
                             // ("\rc 42.17% [...] time remaining: …"), captured
@@ -3157,11 +3159,61 @@ fn main() {
                                                         None
                                                     })();
                                                     match pct {
-                                                        Some(p) => eprintln!(
-                                                            "c {}: elaborating DRAT -> LRAT… {:.1}% \
-                                                             ({:.0}s, drat {:.0}MB, lrat {:.0}MB)",
-                                                            bk, p, t_e.elapsed().as_secs_f64(),
-                                                            drat_mb, lmb),
+                                                        Some(p) => {
+                                                            // drat-trim's % counts LEMMAS, but
+                                                            // per-lemma cost grows as the
+                                                            // backward pass descends, so the bar
+                                                            // decelerates.  Fit p = 100·(t/T)^b
+                                                            // over the samples (linear regression
+                                                            // in log-log) and project T -> ETA.
+                                                            let t_now = t_e.elapsed().as_secs_f64();
+                                                            if p > 0.5 && p < 99.5 {
+                                                                elab_samples.push((t_now, p));
+                                                            }
+                                                            let eta = if elab_samples.len() >= 4 {
+                                                                let pts: Vec<(f64, f64)> = elab_samples
+                                                                    .iter()
+                                                                    .map(|&(t, pp)| (t.ln(), (pp / 100.0).ln()))
+                                                                    .collect();
+                                                                let n = pts.len() as f64;
+                                                                let mx = pts.iter().map(|p| p.0).sum::<f64>() / n;
+                                                                let my = pts.iter().map(|p| p.1).sum::<f64>() / n;
+                                                                let cov = pts.iter()
+                                                                    .map(|p| (p.0 - mx) * (p.1 - my))
+                                                                    .sum::<f64>();
+                                                                let var = pts.iter()
+                                                                    .map(|p| (p.0 - mx) * (p.0 - mx))
+                                                                    .sum::<f64>();
+                                                                if var > 1e-9 && cov / var > 0.05 {
+                                                                    let b = cov / var;
+                                                                    let a = my - b * mx;
+                                                                    let total = (-a / b).exp();
+                                                                    let r = total - t_now;
+                                                                    if r.is_finite() && r > 0.0
+                                                                        && r < 360_000.0
+                                                                    {
+                                                                        Some(r)
+                                                                    } else {
+                                                                        None
+                                                                    }
+                                                                } else {
+                                                                    None
+                                                                }
+                                                            } else {
+                                                                None
+                                                            };
+                                                            let eta_s = match eta {
+                                                                Some(r) if r >= 120.0 =>
+                                                                    format!(", eta ~{:.0}m", r / 60.0),
+                                                                Some(r) =>
+                                                                    format!(", eta ~{:.0}s", r),
+                                                                None => String::new(),
+                                                            };
+                                                            eprintln!(
+                                                                "c {}: elaborating DRAT -> LRAT… {:.1}% \
+                                                                 ({:.0}s{}, drat {:.0}MB, lrat {:.0}MB)",
+                                                                bk, p, t_now, eta_s, drat_mb, lmb);
+                                                        }
                                                         None => eprintln!(
                                                             "c {}: elaborating DRAT -> LRAT… {:.0}s \
                                                              (drat {:.0}MB, lrat {:.0}MB)",

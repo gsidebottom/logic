@@ -2510,8 +2510,9 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    CaDiCaL path: LRAT (cake_lpr <cnf> FILE).");
                 eprintln!("                    The format is on stderr: c pb-cadical: proof-format=…");
                 eprintln!("  --engine NAME     CDCL engine for pb-cadical/hydra: cadical (default,");
-                eprintln!("                    native LRAT) or kissat (DRAT, elaborated to LRAT");
-                eprintln!("                    via drat-trim when --proof is given).");
+                eprintln!("                    native LRAT), kissat (DRAT, elaborated to LRAT via");
+                eprintln!("                    drat-trim), or portfolio[:pct] — kissat for the");
+                eprintln!("                    first pct% (default 10) of the budget, then cadical.");
                 eprintln!("                      hydra        — pb-cadical + an XOR/parity stage:");
                 eprintln!("                                     GF(2) elimination decides pure-parity");
                 eprintln!("                                     formulas and simplifies mixed ones");
@@ -2653,7 +2654,7 @@ fn main() {
         if args.timeout_secs > 0 {
             // Extra grace when kissat+proof: drat-trim elaboration runs after
             // the engine finishes and can take minutes on giant proofs.
-            let grace = if args.engine == "kissat" && args.proof.is_some() { 900 } else { 60 };
+            let grace = if args.engine != "cadical" && args.proof.is_some() { 900 } else { 60 };
             let limit = args.timeout_secs + grace;
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(limit));
@@ -2790,13 +2791,28 @@ fn main() {
         // certify the original formula, so no proof is emitted there (the
         // verdict stays sound: GE-forced units are logical consequences).
         let emit_lrat = args.proof.is_some() && forced.is_none();
-        let engine_kissat = args.engine == "kissat";
-        let engine_name = if engine_kissat { "kissat" } else { "cadical" };
-        eprintln!("c {}: prover={}", bk, engine_name);
+        // Engine schedule.  "portfolio[:pct]" = kissat for the first pct% of
+        // the remaining budget, then cadical for the rest.  Sizing (from the
+        // 5000s baseline runs): both measured kissat wins landed at 165s/345s,
+        // inside a 10% slice of T=5000, while cadical solves needing more
+        // than the post-slice budget (>4500s) number only 3 (2025) + 1
+        // (2026) — so pct=10 banks kissat's fast SAT wins at minimal tail
+        // risk.  Single-engine modes are a 1-phase schedule.
+        let portfolio_pct: Option<u64> = if args.engine == "portfolio" {
+            Some(10)
+        } else if let Some(p) = args.engine.strip_prefix("portfolio:") {
+            Some(p.parse::<u64>().unwrap_or(10).clamp(1, 99))
+        } else {
+            None
+        };
+        let schedule: Vec<bool> = match portfolio_pct {
+            Some(_) => vec![true, false],            // kissat slice, cadical rest
+            None => vec![args.engine == "kissat"],
+        };
         eprintln!("c {}: proof-format={}", bk, if emit_lrat { "lrat" } else { "none" });
         eprintln!("c {}: {} -> {}{} ({:.1}ms)", bk,
                   if forced.is_some() { "GE-simplified residual" } else { "no Cook shape" },
-                  engine_name,
+                  args.engine,
                   if emit_lrat { " (proof)" } else { "" },
                   t0.elapsed().as_secs_f64() * 1000.0);
         let tmp = std::env::temp_dir().join(format!("pbcadical-{}.cnf", std::process::id()));
@@ -2812,61 +2828,11 @@ fn main() {
                 let _ = writeln!(w, "0");
             }
         }
-        let engine_bin = if engine_kissat {
-            ["/opt/homebrew/bin/kissat", "/usr/local/bin/kissat", "/usr/bin/kissat"]
-                .iter().find(|p| std::path::Path::new(p).exists())
-                .copied().unwrap_or("kissat")
-        } else {
-            ["/opt/homebrew/bin/cadical", "/usr/local/bin/cadical", "/usr/bin/cadical"]
-                .iter().find(|p| std::path::Path::new(p).exists())
-                .copied().unwrap_or("cadical")
-        };
         // Kissat emits binary DRAT (no native LRAT); it goes to a temp file
         // and is elaborated to the requested proof path with `drat-trim -L`
         // after an UNSAT verdict.
         let drat_tmp = std::env::temp_dir()
             .join(format!("pbcadical-{}.drat", std::process::id()));
-        let mut cmd = std::process::Command::new(engine_bin);
-        // Default verbosity (no -q) so CaDiCaL prints its periodic report
-        // rows; stream stdout line-by-line and relay them live (throttled)
-        // to the progress display, capturing the verdict + model en route.
-        if args.timeout_secs > 0 {
-            // Budget split: the engine gets what the earlier stages left.
-            let remaining = args.timeout_secs
-                .saturating_sub(t0.elapsed().as_secs())
-                .max(1);
-            if engine_kissat {
-                cmd.arg(format!("--time={}", remaining));
-            } else {
-                cmd.arg("-t").arg(remaining.to_string());
-            }
-        }
-        // --lrat: CaDiCaL's reasoning is clausal, so emit native LRAT
-        // (binary, with hints) and check with the fast formally-verified
-        // cake_lpr — the SAT-competition toolchain — instead of wrapping it
-        // in a PB proof for the much slower general-purpose VeriPB.
-        // (Earlier --veripb modes also tripped VeriPB 3.0.2 bugs: hint
-        // mismatch on >2, core-deletion rejection on odd.)  The Cook path
-        // above still emits genuine PB proofs for VeriPB.
-        if emit_lrat && !engine_kissat { cmd.arg("--lrat"); }
-        cmd.arg(&tmp);
-        if emit_lrat {
-            if engine_kissat {
-                cmd.arg(&drat_tmp);                 // binary DRAT, elaborated below
-            } else if let Some(out) = args.proof.as_ref() {
-                cmd.arg(out);                       // native LRAT straight to --proof
-            }
-        }
-        cmd.stdout(std::process::Stdio::piped());
-        cmd.stderr(std::process::Stdio::null());
-        let mut child = match cmd.spawn() {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("c ERROR: failed to run {} ({}): {}", engine_name, engine_bin, e);
-                let _ = std::fs::remove_file(&tmp);
-                std::process::exit(2);
-            }
-        };
         // A CaDiCaL report data row is "c <marker>  <seconds> <ints…>": after
         // "c " a single non-space phase marker, then whitespace, then a digit.
         // The 2-/3-line column headers ("c  seconds …") and banner don't match.
@@ -2880,39 +2846,126 @@ fn main() {
         let mut verdict: Option<String> = None;
         let mut last_report: Option<String> = None;
         let mut vline: Vec<i32> = Vec::new();
-        if let Some(out) = child.stdout.take() {
-            use std::io::BufRead as _;
-            let mut last = Instant::now();
-            for line in io::BufReader::new(out).lines().map_while(Result::ok) {
-                if let Some(rest) = line.strip_prefix("s ") {
-                    verdict = Some(rest.trim().to_string());
-                    println!("{}", line);
-                } else if line.starts_with("v ") {
-                    if forced.is_some() {
-                        // Residual model: collect, reconstruct + print below.
-                        for tok in line[2..].split_whitespace() {
-                            if let Ok(l) = tok.parse::<i32>() {
-                                if l != 0 { vline.push(l); }
-                            }
-                        }
+        let mut deciding_kissat = schedule[0];
+        for (pi, &ph_kissat) in schedule.iter().enumerate() {
+            deciding_kissat = ph_kissat;
+            let engine_name = if ph_kissat { "kissat" } else { "cadical" };
+            let engine_bin = if ph_kissat {
+                ["/opt/homebrew/bin/kissat", "/usr/local/bin/kissat", "/usr/bin/kissat"]
+                    .iter().find(|p| std::path::Path::new(p).exists())
+                    .copied().unwrap_or("kissat")
+            } else {
+                ["/opt/homebrew/bin/cadical", "/usr/local/bin/cadical", "/usr/bin/cadical"]
+                    .iter().find(|p| std::path::Path::new(p).exists())
+                    .copied().unwrap_or("cadical")
+            };
+            // Per-phase budget: the first portfolio phase gets its slice of
+            // what the earlier stages left; the last phase gets the rest.
+            // budget == 0 means "no limit" (only without a global timeout).
+            let remaining = if args.timeout_secs > 0 {
+                args.timeout_secs.saturating_sub(t0.elapsed().as_secs()).max(1)
+            } else {
+                0
+            };
+            let budget = match portfolio_pct {
+                Some(pct) if pi + 1 < schedule.len() => {
+                    if remaining > 0 {
+                        // Floor of 30s (a shorter kissat phase is pointless),
+                        // but never more than half the remaining budget.
+                        let floor = 30.min(remaining / 2).max(1);
+                        (remaining * pct / 100).max(floor).min(remaining)
                     } else {
-                        println!("{}", line);
+                        600
                     }
-                } else if verdict.is_none() && is_report(&line) {
-                    last_report = Some(line.clone());   // keep the latest for final stats
-                    if args.show_progress && last.elapsed().as_secs_f64() >= 0.4 {
-                        last = Instant::now();
-                        eprintln!("c {}: {} {}", bk, engine_name,
-                                  line.trim_start_matches('c').trim());
+                }
+                _ => remaining,
+            };
+            if schedule.len() > 1 {
+                eprintln!("c {}: phase {}/{}: {} budget={}",
+                          bk, pi + 1, schedule.len(), engine_name,
+                          if budget > 0 { format!("{}s", budget) } else { "unbounded".into() });
+            }
+            let mut cmd = std::process::Command::new(engine_bin);
+            // Default verbosity (no -q) so the engine prints its periodic
+            // report rows; stream stdout line-by-line and relay them live
+            // (throttled), capturing the verdict + model en route.
+            if budget > 0 {
+                if ph_kissat {
+                    cmd.arg(format!("--time={}", budget));
+                } else {
+                    cmd.arg("-t").arg(budget.to_string());
+                }
+            }
+            // --lrat: CaDiCaL's reasoning is clausal, so emit native LRAT
+            // (binary, with hints) for the fast formally-verified cake_lpr;
+            // kissat writes binary DRAT to drat_tmp, elaborated below.
+            if emit_lrat && !ph_kissat { cmd.arg("--lrat"); }
+            cmd.arg(&tmp);
+            if emit_lrat {
+                if ph_kissat {
+                    cmd.arg(&drat_tmp);
+                } else if let Some(out) = args.proof.as_ref() {
+                    cmd.arg(out);
+                }
+            }
+            cmd.stdout(std::process::Stdio::piped());
+            cmd.stderr(std::process::Stdio::null());
+            let mut child = match cmd.spawn() {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("c ERROR: failed to run {} ({}): {}", engine_name, engine_bin, e);
+                    continue; // a missing engine forfeits its phase only
+                }
+            };
+            vline.clear();
+            last_report = None;
+            if let Some(out) = child.stdout.take() {
+                use std::io::BufRead as _;
+                let mut last = Instant::now();
+                for line in io::BufReader::new(out).lines().map_while(Result::ok) {
+                    if let Some(rest) = line.strip_prefix("s ") {
+                        // Engines print "s UNKNOWN" on their own timeout —
+                        // that is NOT a deciding verdict (the next phase, or
+                        // the TIMEOUT path, owns the outcome).
+                        let v = rest.trim();
+                        if v == "SATISFIABLE" || v == "UNSATISFIABLE" {
+                            verdict = Some(v.to_string());
+                            println!("{}", line);
+                        }
+                    } else if line.starts_with("v ") {
+                        if forced.is_some() {
+                            // Residual model: collect, reconstruct + print below.
+                            for tok in line[2..].split_whitespace() {
+                                if let Ok(l) = tok.parse::<i32>() {
+                                    if l != 0 { vline.push(l); }
+                                }
+                            }
+                        } else {
+                            println!("{}", line);
+                        }
+                    } else if verdict.is_none() && is_report(&line) {
+                        last_report = Some(line.clone());
+                        if args.show_progress && last.elapsed().as_secs_f64() >= 0.4 {
+                            last = Instant::now();
+                            eprintln!("c {}: {} {}", bk, engine_name,
+                                      line.trim_start_matches('c').trim());
+                        }
                     }
                 }
             }
+            let _ = child.wait();
+            if verdict.is_some() {
+                break;
+            }
+            // Phase timed out: discard any partial DRAT before the next one.
+            let _ = std::fs::remove_file(&drat_tmp);
         }
-        let _ = child.wait();
+        eprintln!("c {}: prover={}", bk,
+                  if deciding_kissat { "kissat" } else { "cadical" });
         // Conflicts + restarts from CaDiCaL's last report row (column order:
         // marker seconds MB level reduction RESTARTS rate CONFLICTS …) emitted
         // as a line run_benchmark scrapes for its conflicts/restarts columns.
-        if !engine_kissat {
+        if !deciding_kissat {
             // Column positions are CaDiCaL-specific; skip for kissat.
             if let Some(row) = last_report.as_deref() {
                 let f: Vec<&str> = row.trim_start_matches("c ").split_whitespace().collect();
@@ -2933,7 +2986,7 @@ fn main() {
             Some("UNSATISFIABLE") => {
                 eprintln!("c UNSAT in {:.1}ms", el_ms);
                 if emit_lrat {
-                    if engine_kissat {
+                    if deciding_kissat {
                         // Elaborate the binary DRAT to LRAT for cake_lpr.
                         // The timing line above is already printed, so this
                         // does not inflate the recorded solve time.
@@ -2972,7 +3025,8 @@ fn main() {
             Some("SATISFIABLE") => {
                 eprintln!("c SAT in {:.1}ms", el_ms);
                 eprintln!("c {}: {} SAT (model is the certificate; \
-                           no refutation proof)", bk, engine_name);
+                           no refutation proof)", bk,
+                          if deciding_kissat { "kissat" } else { "cadical" });
                 if let Some(out) = args.proof.as_ref() { let _ = std::fs::remove_file(out); }
                 if let Some(f) = forced {
                     // Reconstruct the ORIGINAL formula's model: CaDiCaL's
@@ -3004,7 +3058,8 @@ fn main() {
             }
             _ => {
                 eprintln!("c TIMEOUT after {:.1}ms", el_ms);
-                eprintln!("c {}: {} reached no verdict (timeout/unknown)", bk, engine_name);
+                eprintln!("c {}: {} reached no verdict (timeout/unknown)", bk,
+                          if deciding_kissat { "kissat" } else { "cadical" });
             }
         }
         let _ = std::fs::remove_file(&tmp);

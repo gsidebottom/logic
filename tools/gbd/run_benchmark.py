@@ -137,7 +137,9 @@ STATS_RE = re.compile(
 )
 # pb-cadical's CaDiCaL path has no matrix "paths"; it reports just the
 # conflicts/restarts scraped from CaDiCaL's last report row.
-PB_STATS_RE = re.compile(r"pb-cadical: stats conflicts=(\d+) restarts=(\d+)")
+# Matches any structure-dispatch backend (pb-cadical, hydra): the prefix is
+# the backend name, so key on the ": stats" marker itself.
+PB_STATS_RE = re.compile(r": stats conflicts=(\d+) restarts=(\d+)")
 
 def fmt_time(token: str) -> str:
     """Convert '12.3ms' → '0.0123s'; pass-through 'Ns' / '<0.001s'."""

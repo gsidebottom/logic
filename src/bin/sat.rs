@@ -2846,6 +2846,10 @@ fn main() {
         let mut verdict: Option<String> = None;
         let mut last_report: Option<String> = None;
         let mut vline: Vec<i32> = Vec::new();
+        // Kissat prints clean end-of-run stat lines ("c conflicts: N …",
+        // "c restarts: N …") after the s-line — including on timeout.
+        let mut ks_conflicts: Option<u64> = None;
+        let mut ks_restarts: Option<u64> = None;
         let mut deciding_kissat = schedule[0];
         for (pi, &ph_kissat) in schedule.iter().enumerate() {
             deciding_kissat = ph_kissat;
@@ -2919,6 +2923,8 @@ fn main() {
             };
             vline.clear();
             last_report = None;
+            ks_conflicts = None;
+            ks_restarts = None;
             if let Some(out) = child.stdout.take() {
                 use std::io::BufRead as _;
                 let mut last = Instant::now();
@@ -2943,6 +2949,12 @@ fn main() {
                         } else {
                             println!("{}", line);
                         }
+                    } else if let Some(rest) = line.strip_prefix("c conflicts:") {
+                        ks_conflicts = rest.split_whitespace().next()
+                            .and_then(|t| t.parse().ok());
+                    } else if let Some(rest) = line.strip_prefix("c restarts:") {
+                        ks_restarts = rest.split_whitespace().next()
+                            .and_then(|t| t.parse().ok());
                     } else if verdict.is_none() && is_report(&line) {
                         last_report = Some(line.clone());
                         if args.show_progress && last.elapsed().as_secs_f64() >= 0.4 {
@@ -2965,17 +2977,20 @@ fn main() {
         // Conflicts + restarts from CaDiCaL's last report row (column order:
         // marker seconds MB level reduction RESTARTS rate CONFLICTS …) emitted
         // as a line run_benchmark scrapes for its conflicts/restarts columns.
-        if !deciding_kissat {
-            // Column positions are CaDiCaL-specific; skip for kissat.
-            if let Some(row) = last_report.as_deref() {
-                let f: Vec<&str> = row.trim_start_matches("c ").split_whitespace().collect();
-                if f.len() >= 8 {
-                    if let (Ok(restarts), Ok(conflicts)) =
-                        (f[5].parse::<u64>(), f[7].parse::<u64>())
-                    {
-                        eprintln!("c {}: stats conflicts={} restarts={}", bk,
-                                  conflicts, restarts);
-                    }
+        if deciding_kissat {
+            if let (Some(c), Some(r)) = (ks_conflicts, ks_restarts) {
+                eprintln!("c {}: stats conflicts={} restarts={}", bk, c, r);
+            }
+        } else if let Some(row) = last_report.as_deref() {
+            // CaDiCaL has no clean stat lines; scrape its last report row
+            // (column positions are CaDiCaL-specific).
+            let f: Vec<&str> = row.trim_start_matches("c ").split_whitespace().collect();
+            if f.len() >= 8 {
+                if let (Ok(restarts), Ok(conflicts)) =
+                    (f[5].parse::<u64>(), f[7].parse::<u64>())
+                {
+                    eprintln!("c {}: stats conflicts={} restarts={}", bk,
+                              conflicts, restarts);
                 }
             }
         }

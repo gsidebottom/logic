@@ -1448,8 +1448,11 @@ def solve_one(
     unsat_proof_reason = ""
     pb_proof_ok: Optional[bool] = None       # pb-cadical emitted-proof check
     pb_proof_reason = ""
-    pb_proof_prover: Optional[str] = None    # "cook" | "cadical" (which emitted it)
-    pb_proof_time: Optional[float] = None    # VeriPB verification wall time (s)
+    pb_proof_prover: Optional[str] = None    # cook|xor|cadical|kissat (how solved)
+    pb_proof_time: Optional[float] = None    # checker verification wall time (s)
+    pb_checker: Optional[str] = None         # veripb | cake_lpr
+    elab_s: Optional[float] = None           # drat->lrat elaboration time (s)
+    elab_fail: Optional[str] = None          # elaboration TIMEOUT/MEMOUT note
     proof_path: Optional[Path] = None        # /tmp write target (deleted unless kept)
     proof_kept: Optional[Path] = None        # where a FAILING proof is kept, else None
     try:
@@ -1510,6 +1513,24 @@ def solve_one(
                                     or (rc is not None and rc < 0)):
             result = "INTERRUPTED"
 
+        # How the instance was solved + the proof-chain timings, from the
+        # solver's stderr markers (available for every row, incl. SAT).
+        if "prover=cook" in stderr_text:
+            pb_proof_prover = "cook"
+        elif "prover=xor" in stderr_text:
+            pb_proof_prover = "xor"
+        elif "prover=kissat" in stderr_text:
+            pb_proof_prover = "kissat"
+        elif "prover=cadical" in stderr_text:
+            pb_proof_prover = "cadical"
+        m = re.search(r"elaborated to LRAT at .* \(([0-9.]+)s\)", stderr_text)
+        if m:
+            elab_s = float(m.group(1))
+        m = re.search(r"drat-trim elaboration (TIMEOUT \(\d+s\)|MEMOUT \(>\d+MB\))",
+                      stderr_text)
+        if m:
+            elab_fail = m.group(1)
+
         # Witness check MUST happen here — the CNF is unlinked in
         # `finally` below.
         if verify_witness and result == "SAT" and tmp_path is not None:
@@ -1525,18 +1546,6 @@ def solve_one(
         if (proof_path is not None and result == "UNSAT"
                 and tmp_path is not None):
             tui.update_worker(worker_idx, display, "verifying proof…")
-            # Which prover emitted it — a Cook-path proof failure is a real
-            # soundness alarm (our detector/proof is wrong); a CaDiCaL-path
-            # one is only a certification gap (CaDiCaL is a trusted oracle,
-            # its verdict stands; the checker just couldn't check its proof).
-            if "prover=cook" in stderr_text:
-                pb_proof_prover = "cook"
-            elif "prover=xor" in stderr_text:
-                pb_proof_prover = "xor"     # hydra GN21 parity prover
-            elif "prover=cadical" in stderr_text:
-                pb_proof_prover = "cadical"
-            elif "prover=kissat" in stderr_text:
-                pb_proof_prover = "kissat"  # trusted oracle, same class as cadical
             # Which checker the proof needs: Cook path emits VeriPB pbp,
             # CaDiCaL path native LRAT (checked by cake_lpr).  None → sniff.
             _fmt = ("pbp" if "proof-format=pbp" in stderr_text
@@ -1550,6 +1559,8 @@ def solve_one(
                     and proof_path.stat().st_size > 20_000_000)
             _on_prog = ((lambda m: tui.update_worker(worker_idx, display, m))
                         if tui.enabled and _big else None)
+            pb_checker = ("cake_lpr" if _fmt == "lrat"
+                          else "veripb" if _fmt == "pbp" else None)
             pb_proof_ok, pb_proof_reason, pb_proof_time = verify_pb_proof(
                 tmp_path, proof_path, timeout_s=proof_timeout,
                 mem_limit_bytes=proof_mem_gb * (1024 ** 3) if proof_mem_gb else 0,
@@ -1655,6 +1666,17 @@ def solve_one(
            f"| {paths_cell} | {total_cell} | {conf_cell} | {rst_cell} |\n")
     md_writer.append_row(row)
 
+    # Proof-chain prefix for the log lines: solver, then the drat->lrat
+    # elaboration leg when it ran (or failed), e.g. "kissat; drat→lrat 41.2s; ".
+    _chain = ""
+    if pb_proof_prover:
+        _chain = pb_proof_prover
+        if elab_s is not None:
+            _chain += f"; drat→lrat {elab_s:.1f}s"
+        elif elab_fail:
+            _chain += f"; drat→lrat ✗{elab_fail}"
+        _chain += "; "
+
     tui.record(result, mismatch)
     tui.free_worker(worker_idx)
 
@@ -1671,20 +1693,22 @@ def solve_one(
         tui.log(f"  ✗ [{display}] BAD-PB-PROOF  ({pb_proof_reason})",
                 color=COLOR_RED + COLOR_BOLD)
     elif pb_proof_ok is False:
-        tui.log(f"  ⚠ [{display}] {result} {time_str}  [CaDiCaL proof unverified]",
+        tui.log(f"  ⚠ [{display}] {result} {time_str}  [{_chain}proof unverified]",
                 color=COLOR_YELLOW)
     elif pb_proof_ok is True:
         _pt = f" {pb_proof_time:.1f}s" if pb_proof_time is not None else ""
-        tui.log(f"  ✓ [{display}] {result} {time_str}  [proof ✓{_pt}]",
+        _ck = pb_checker or "proof"
+        tui.log(f"  ✓ [{display}] {result} {time_str}  [{_chain}{_ck} ✓{_pt}]",
                 color=COLOR_GREEN)
     elif pb_proof_ok is None and pb_proof_reason:
-        tui.log(f"  ⚠ [{display}] {result} {time_str}  [proof unchecked: {pb_proof_reason}]",
-                color=COLOR_YELLOW)
+        tui.log(f"  ⚠ [{display}] {result} {time_str}  [{_chain}proof unchecked: "
+                f"{pb_proof_reason}]", color=COLOR_YELLOW)
     elif mismatch:
         tui.log(f"  ! [{display}] {result}  (expected {known})  {time_str}",
                 color=COLOR_RED + COLOR_BOLD)
     elif result in ("SAT", "UNSAT"):
-        tui.log(f"  ✓ [{display}] {result} {time_str}", color=COLOR_GREEN)
+        _tag = f"  [{pb_proof_prover}]" if pb_proof_prover else ""
+        tui.log(f"  ✓ [{display}] {result} {time_str}{_tag}", color=COLOR_GREEN)
     elif result == "TIMEOUT":
         tui.log(f"  · [{display}] {result} {time_str}", color=COLOR_ORANGE)
     else:
@@ -1706,8 +1730,10 @@ def solve_one(
         "unsat_proof_reason": unsat_proof_reason or None,
         "pb_proof_ok":    pb_proof_ok,     # pb-cadical emitted-proof veripb check
         "pb_proof_reason": pb_proof_reason or None,
-        "pb_proof_prover": pb_proof_prover,  # "cook" | "cadical"
-        "pb_proof_time_s": pb_proof_time,    # VeriPB verify wall time (separate from solve)
+        "pb_proof_prover": pb_proof_prover,  # cook|xor|cadical|kissat (how solved)
+        "pb_checker":      pb_checker,       # veripb | cake_lpr
+        "elab_time_s":     elab_s,           # drat->lrat elaboration (separate from both)
+        "pb_proof_time_s": pb_proof_time,    # checker verify wall time (separate from solve)
         "pb_proof_path":  str(proof_kept) if proof_kept else None,  # only kept on failure
         "time_s":         _parse_time_cell(time_str),
         "time_str":       time_str,

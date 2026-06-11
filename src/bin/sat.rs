@@ -2295,6 +2295,11 @@ struct Args {
     /// (default; native LRAT) or "kissat" (binary DRAT, elaborated to LRAT
     /// via `drat-trim -L` when a proof is requested).
     engine: String,
+    /// Resident-memory cap (MB) for the drat-trim DRAT->LRAT elaboration —
+    /// drat-trim holds the whole proof + core marking in RAM and is
+    /// otherwise unbounded.  On breach it is killed and the solve stands
+    /// without a proof.  Default 16384 (16 GB); 0 disables.
+    elab_mem_mb: u64,
     /// Variance-gated Sum-reordering threshold for Effective-wrapped
     /// backends (`eff`, `effb`, `greedy_eff`, `basic_eff`,
     /// `greedy_effb`, `basic_effb`).  The wrapper applies its
@@ -2332,6 +2337,7 @@ fn parse_args() -> Result<Args, String> {
         emit_cook_pbp: None,
         proof: None,
         engine: "cadical".into(),
+        elab_mem_mb: 16384,
         // 0.0 = always reorder (legacy behaviour).  Override with
         // `--eff-tau N` to gate Sum reordering on `log10(max/min) >= N`.
         eff_tau: 0.0,
@@ -2474,6 +2480,15 @@ fn parse_args() -> Result<Args, String> {
             }
             s if s.starts_with("--engine=") => {
                 a.engine = s["--engine=".len()..].to_string();
+            }
+            "--elab-mem-mb" => {
+                let v = iter.next().ok_or_else(||
+                    "--elab-mem-mb requires a number".to_string())?;
+                a.elab_mem_mb = v.parse().map_err(|_| "bad --elab-mem-mb".to_string())?;
+            }
+            s if s.starts_with("--elab-mem-mb=") => {
+                a.elab_mem_mb = s["--elab-mem-mb=".len()..].parse()
+                    .map_err(|_| "bad --elab-mem-mb".to_string())?;
             }
             "--help"     | "-h" => {
                 eprintln!("Usage: sat [--backend NAME] [--timeout SECS] [--progress] < problem.cnf");
@@ -3040,10 +3055,32 @@ fn main() {
                                         match ch.try_wait() {
                                             Ok(Some(_)) => break,
                                             Ok(None) => {
+                                                if args.elab_mem_mb > 0
+                                                    && last.elapsed().as_secs_f64() >= 5.0
+                                                {
+                                                    // RSS guard: drat-trim is
+                                                    // otherwise unbounded and can
+                                                    // take down the machine.
+                                                    let rss_mb = std::process::Command::new("ps")
+                                                        .args(["-o", "rss=", "-p",
+                                                               &ch.id().to_string()])
+                                                        .output().ok()
+                                                        .and_then(|o| String::from_utf8_lossy(&o.stdout)
+                                                            .trim().parse::<u64>().ok())
+                                                        .map(|kb| kb / 1024)
+                                                        .unwrap_or(0);
+                                                    if rss_mb > args.elab_mem_mb {
+                                                        eprintln!("c {}: drat-trim elaboration \
+                                                                   MEMOUT (>{}MB); no proof",
+                                                                  bk, args.elab_mem_mb);
+                                                        let _ = ch.kill();
+                                                        let _ = ch.wait();
+                                                        break;
+                                                    }
+                                                }
                                                 if args.show_progress
                                                     && last.elapsed().as_secs_f64() >= 5.0
                                                 {
-                                                    last = Instant::now();
                                                     let lmb = std::fs::metadata(out)
                                                         .map(|m| m.len()).unwrap_or(0)
                                                         as f64 / 1e6;
@@ -3052,6 +3089,9 @@ fn main() {
                                                               bk,
                                                               t_e.elapsed().as_secs_f64(),
                                                               drat_mb, lmb);
+                                                }
+                                                if last.elapsed().as_secs_f64() >= 5.0 {
+                                                    last = Instant::now();
                                                 }
                                                 std::thread::sleep(
                                                     std::time::Duration::from_millis(500));

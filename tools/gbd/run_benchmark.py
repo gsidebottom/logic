@@ -91,6 +91,15 @@ def _find_cake_lpr() -> Optional[str]:
     cand = Path.home() / ".cargo" / "bin" / "cake_lpr"
     return str(cand) if cand.exists() else None
 CAKELPR_BIN = _find_cake_lpr()
+
+# At most N instances above the "giant" thresholds solve concurrently —
+# a 100M-clause instance costs 10-25 GB inside the engine plus hydra's own
+# parsed copy, and several at once (plus a fat drat-trim) is exactly the
+# combination that OOM-crashed a 64 GB machine on the 2025 set (74
+# instances >4M clauses, max 315M).  Sized from --giant-slots in main().
+GIANT_CLAUSES = 4_000_000
+GIANT_VARS    = 2_000_000
+_giant_sem: Optional[threading.BoundedSemaphore] = None
 PLOT_PY    = REPO_ROOT / "doc" / "competition-benchmarks-plot.py"
 OUT_DIR    = REPO_ROOT / "doc"
 
@@ -524,7 +533,13 @@ def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
         poll_progress, on_progress = on_progress, None
         if mem_limit_bytes:
             env = dict(os.environ)
-            env["CML_HEAP_SIZE"] = str(max(1024, mem_limit_bytes // (1024 ** 2) - 4096))
+            # Heap BUDGET hint, not the kill threshold: licensing each
+            # cake_lpr to the full --proof-mem-gb melts the machine when
+            # several verify concurrently (the kill threshold only fires
+            # after the damage).  16 GB checks every proof seen so far
+            # (713MB LRAT needed <4 GB).
+            heap_mb = min(16384, max(2048, mem_limit_bytes // (1024 ** 2) - 4096))
+            env["CML_HEAP_SIZE"] = str(heap_mb)
     else:
         if VERIPB_BIN is None:
             return None, "veripb not found", 0.0
@@ -1418,6 +1433,11 @@ def solve_one(
     if _shutdown.is_set():
         return {"hash": rec.get("hash"), "result": "INTERRUPTED"}
 
+    is_giant = ((rec.get("nclauses") or 0) > GIANT_CLAUSES
+                or (rec.get("nvars") or 0) > GIANT_VARS)
+    if is_giant and _giant_sem is not None:
+        tui.update_worker(worker_idx, display, "waiting (giant slot)…")
+        _giant_sem.acquire()
     tui.update_worker(worker_idx, display, "decompressing…")
 
     tmp_path: Optional[Path] = None
@@ -1554,6 +1574,8 @@ def solve_one(
                 else:
                     proof_kept = proof_path
     finally:
+        if is_giant and _giant_sem is not None:
+            _giant_sem.release()
         # Delete the temp proof unless it was kept (a verification failure).
         if proof_path is not None and proof_path != proof_kept:
             try: proof_path.unlink()
@@ -1744,6 +1766,10 @@ def main() -> int:
                          "applied SEPARATELY from the solve --timeout (the solve "
                          "time reported is CaDiCaL's only).  Default: same as "
                          "--timeout.")
+    ap.add_argument("--giant-slots", type=int, default=2,
+                    help="Max concurrent giant instances (>4M clauses or >2M "
+                         "vars) — each costs 10-25 GB in the engine alone.  "
+                         "0 = unlimited.  Default: 2.")
     ap.add_argument("--proof-mem-gb", type=int, default=64,
                     help="Resident-memory cap (GiB) for VeriPB proof "
                          "verification; if exceeded, VeriPB is killed and the "
@@ -1924,6 +1950,9 @@ def main() -> int:
     args.proof_dir.mkdir(parents=True, exist_ok=True)
     if args.proof_timeout is None:
         args.proof_timeout = args.timeout
+    global _giant_sem
+    if args.giant_slots > 0:
+        _giant_sem = threading.BoundedSemaphore(args.giant_slots)
     if args.backend in ("pb-cadical", "pb_cadical", "hydra"):
         if CAKELPR_BIN is None:
             print("c WARNING: cake_lpr not found (PATH or ~/.cargo/bin) — "

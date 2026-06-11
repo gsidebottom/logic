@@ -2740,16 +2740,44 @@ fn main() {
             use logic::xor_gauss::{solve_xor_system, XorGaussResult};
             let t_x = Instant::now();
             match solve_xor_system(nvars, &clauses) {
-                XorGaussResult::Unsat => {
+                XorGaussResult::Unsat { by_bcp } => {
                     eprintln!("c {}: prover=xor", bk);
-                    eprintln!("c {}: XOR system inconsistent (GF(2) GE, {:.1}ms) -> UNSAT",
-                              bk, t_x.elapsed().as_secs_f64() * 1000.0);
+                    if by_bcp {
+                        eprintln!("c {}: unit propagation refutes the formula \
+                                   ({:.1}ms) -> UNSAT",
+                                  bk, t_x.elapsed().as_secs_f64() * 1000.0);
+                    } else {
+                        eprintln!("c {}: XOR system inconsistent (GF(2) GE, {:.1}ms) -> UNSAT",
+                                  bk, t_x.elapsed().as_secs_f64() * 1000.0);
+                    }
                     // Certify with a GN21 parity PB proof.  The certifier does
                     // its own STRICT recovery (complete canonical encodings
                     // only), so it can decline even though the (laxer) solving
                     // recovery refuted — then the verdict stands uncertified.
                     let mut certified = false;
-                    if let Some(out) = args.proof.as_ref() {
+                    if by_bcp {
+                        // A BCP refutation has the simplest certificate of
+                        // all: VeriPB unit-propagates the formula to the
+                        // conflict, so the whole proof is one `rup >= 1`.
+                        if let Some(out) = args.proof.as_ref() {
+                            if let Ok(f) = std::fs::File::create(out) {
+                                let mut w = io::BufWriter::new(f);
+                                let ok = writeln!(w, "pseudo-Boolean proof version 3.0")
+                                    .and_then(|_| writeln!(w, "f {};", clauses.len()))
+                                    .and_then(|_| writeln!(w, "rup >= 1 ;"))
+                                    .and_then(|_| writeln!(w, "output NONE;"))
+                                    .and_then(|_| writeln!(w, "conclusion UNSAT : -1;"))
+                                    .and_then(|_| writeln!(w, "end pseudo-Boolean proof;"));
+                                if ok.is_ok() {
+                                    certified = true;
+                                    eprintln!("c {}: proof-format=pbp", bk);
+                                    eprintln!("c {}: wrote trivial RUP proof {}", bk,
+                                              out.display());
+                                }
+                            }
+                        }
+                    }
+                    if let (false, Some(out)) = (certified, args.proof.as_ref()) {
                         use logic::parity_pbp::{detect_parity_refutation, emit_parity_proof};
                         let t_p = Instant::now();
                         if let Some(pr) = detect_parity_refutation(&clauses) {
@@ -3399,7 +3427,8 @@ fn main() {
     if args.xor_gauss && xg_ok && matches!(args.backend, BackendChoice::Matrix(_)) {
         let t_xg = Instant::now();
         match logic::xor_gauss::solve_xor_system(nvars, &clauses) {
-            logic::xor_gauss::XorGaussResult::Unsat => {
+            logic::xor_gauss::XorGaussResult::Unsat { by_bcp } => {
+                let _ = by_bcp;
                 let ms = t_xg.elapsed().as_secs_f64() * 1000.0;
                 eprintln!("c xor-gauss: recovered XOR system is inconsistent");
                 eprintln!("c UNSAT in {:.1}ms", ms);

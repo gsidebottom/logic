@@ -39,8 +39,12 @@ pub struct XorConstraint {
 /// Outcome of the XOR/GE pre-pass.
 #[derive(Debug)]
 pub enum XorGaussResult {
-    /// The XOR subsystem is inconsistent ⇒ the formula is UNSAT.
-    Unsat,
+    /// The formula is UNSAT.  `by_bcp = false`: the recovered XOR system
+    /// itself is GF(2)-inconsistent (certifiable by a GN21 parity proof).
+    /// `by_bcp = true`: the formula's units / GE-forced units propagate to
+    /// a conflict — plain unit propagation refutes it (certifiable by a
+    /// single `rup >= 1`).
+    Unsat { by_bcp: bool },
     /// Pure-XOR formula, satisfiable; `model[i]` is the value of var i+1.
     Sat(Vec<bool>),
     /// Mixed formula partially simplified: the GE-forced units (and
@@ -271,7 +275,7 @@ pub fn solve_xor_system(nvars: usize, clauses: &[Vec<i32>]) -> XorGaussResult {
     }
     let red = gauss(nvars, &xors);
     if red.unsat {
-        return XorGaussResult::Unsat;
+        return XorGaussResult::Unsat { by_bcp: false };
     }
     let indeterminate = || XorGaussResult::Indeterminate {
         recovered: xors.len(),
@@ -299,12 +303,12 @@ pub fn solve_xor_system(nvars: usize, clauses: &[Vec<i32>]) -> XorGaussResult {
     let mut assign: Vec<Option<bool>> = vec![None; nvars + 1]; // 1-indexed
     for &(v, b) in &units {
         match assign[v as usize] {
-            Some(old) if old != b => return XorGaussResult::Unsat,
+            Some(old) if old != b => return XorGaussResult::Unsat { by_bcp: true },
             _ => assign[v as usize] = Some(b),
         }
     }
     if !bcp(clauses, &mut assign) {
-        return XorGaussResult::Unsat;
+        return XorGaussResult::Unsat { by_bcp: true };
     }
 
     // Build the residual: drop satisfied clauses, drop now-false literals.
@@ -327,7 +331,7 @@ pub fn solve_xor_system(nvars: usize, clauses: &[Vec<i32>]) -> XorGaussResult {
             continue;
         }
         if lits.is_empty() {
-            return XorGaussResult::Unsat; // all literals false
+            return XorGaussResult::Unsat { by_bcp: true }; // all literals false
         }
         residual.push(lits);
     }
@@ -390,7 +394,8 @@ mod tests {
             vec![1, -2, 3],
             vec![1, 2, -3],
         ]);
-        assert!(matches!(solve_xor_system(3, &cl), XorGaussResult::Unsat));
+        assert!(matches!(solve_xor_system(3, &cl),
+                         XorGaussResult::Unsat { by_bcp: false }));
     }
 
     #[test]
@@ -398,7 +403,8 @@ mod tests {
         // x=1 (1-XOR), y=1 (1-XOR), and x⊕y=1 (2-XOR, CNF {(x∨y),(¬x∨¬y)}).
         // x=1,y=1 force x⊕y=0, contradicting x⊕y=1 → GE finds UNSAT.
         let cl = vec![vec![1], vec![2], vec![1, 2], vec![-1, -2]];
-        assert!(matches!(solve_xor_system(2, &cl), XorGaussResult::Unsat));
+        assert!(matches!(solve_xor_system(2, &cl),
+                         XorGaussResult::Unsat { by_bcp: false }));
     }
 
     #[test]

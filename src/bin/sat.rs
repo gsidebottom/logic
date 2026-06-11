@@ -2295,6 +2295,12 @@ struct Args {
     /// (default; native LRAT) or "kissat" (binary DRAT, elaborated to LRAT
     /// via `drat-trim -L` when a proof is requested).
     engine: String,
+    /// Wall-clock cap (seconds) for the drat-trim DRAT->LRAT elaboration.
+    /// 0 (default) means "the same as --timeout" — elaboration gets its own
+    /// fresh budget equal to the solve budget, mirroring how competitions
+    /// budget proof checking separately from solving.  On breach drat-trim
+    /// is killed and the solve stands without a proof.
+    elab_time_s: u64,
     /// Resident-memory cap (MB) for the drat-trim DRAT->LRAT elaboration —
     /// drat-trim holds the whole proof + core marking in RAM and is
     /// otherwise unbounded.  On breach it is killed and the solve stands
@@ -2337,6 +2343,7 @@ fn parse_args() -> Result<Args, String> {
         emit_cook_pbp: None,
         proof: None,
         engine: "cadical".into(),
+        elab_time_s: 0,
         elab_mem_mb: 16384,
         // 0.0 = always reorder (legacy behaviour).  Override with
         // `--eff-tau N` to gate Sum reordering on `log10(max/min) >= N`.
@@ -2480,6 +2487,15 @@ fn parse_args() -> Result<Args, String> {
             }
             s if s.starts_with("--engine=") => {
                 a.engine = s["--engine=".len()..].to_string();
+            }
+            "--elab-time-s" => {
+                let v = iter.next().ok_or_else(||
+                    "--elab-time-s requires a number".to_string())?;
+                a.elab_time_s = v.parse().map_err(|_| "bad --elab-time-s".to_string())?;
+            }
+            s if s.starts_with("--elab-time-s=") => {
+                a.elab_time_s = s["--elab-time-s=".len()..].parse()
+                    .map_err(|_| "bad --elab-time-s".to_string())?;
             }
             "--elab-mem-mb" => {
                 let v = iter.next().ok_or_else(||
@@ -2666,14 +2682,27 @@ fn main() {
         // CaDiCaL gets its own (budget-split) -t below, so fire with a 60s
         // grace period so the graceful CaDiCaL-timeout path wins the race
         // whenever CaDiCaL is the active stage.
+        // Once a verdict + timing line is printed, the backstop must NOT
+        // print "c TIMEOUT after" — that would overwrite the recorded
+        // verdict in run_benchmark's parser (last line wins) and destroy a
+        // genuine solve whose proof post-processing ran long.
+        let verdict_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         if args.timeout_secs > 0 {
-            // Extra grace when kissat+proof: drat-trim elaboration runs after
-            // the engine finishes and can take minutes on giant proofs.
-            let grace = if args.engine != "cadical" && args.proof.is_some() { 900 } else { 60 };
-            let limit = args.timeout_secs + grace;
+            // Grace covers post-verdict work: drat-trim elaboration gets its
+            // own bounded budget (--elab-time-s, default = --timeout), so the
+            // backstop is sized to outlive it.
+            let elab_budget = if args.engine != "cadical" && args.proof.is_some() {
+                if args.elab_time_s > 0 { args.elab_time_s } else { args.timeout_secs }
+            } else {
+                0
+            };
+            let limit = args.timeout_secs + elab_budget + 60;
+            let vd = verdict_done.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(limit));
-                eprintln!("c TIMEOUT after {:.1}ms", (limit as f64) * 1000.0);
+                if !vd.load(std::sync::atomic::Ordering::Relaxed) {
+                    eprintln!("c TIMEOUT after {:.1}ms", (limit as f64) * 1000.0);
+                }
                 std::process::exit(124);
             });
         }
@@ -3015,6 +3044,7 @@ fn main() {
         match verdict.as_deref() {
             Some("UNSATISFIABLE") => {
                 eprintln!("c UNSAT in {:.1}ms", el_ms);
+                verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
                 if emit_lrat {
                     if deciding_kissat {
                         // Elaborate the binary DRAT to LRAT for cake_lpr.
@@ -3032,6 +3062,13 @@ fn main() {
                                     else { "drat-trim".to_string() }
                                 });
                             let t_e = Instant::now();
+                            let elab_deadline = if args.elab_time_s > 0 {
+                                args.elab_time_s
+                            } else if args.timeout_secs > 0 {
+                                args.timeout_secs
+                            } else {
+                                0
+                            };
                             // Spawn + poll (not .output()) so the terminal
                             // gets progress: drat-trim does backward checking
                             // and can run minutes on giant proofs.  Elapsed +
@@ -3058,6 +3095,16 @@ fn main() {
                                         match ch.try_wait() {
                                             Ok(Some(_)) => break,
                                             Ok(None) => {
+                                                if elab_deadline > 0
+                                                    && t_e.elapsed().as_secs() > elab_deadline
+                                                {
+                                                    eprintln!("c {}: drat-trim elaboration \
+                                                               TIMEOUT ({}s); no proof",
+                                                              bk, elab_deadline);
+                                                    let _ = ch.kill();
+                                                    let _ = ch.wait();
+                                                    break;
+                                                }
                                                 if args.elab_mem_mb > 0
                                                     && last.elapsed().as_secs_f64() >= 5.0
                                                 {
@@ -3154,6 +3201,7 @@ fn main() {
             }
             Some("SATISFIABLE") => {
                 eprintln!("c SAT in {:.1}ms", el_ms);
+                verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
                 eprintln!("c {}: {} SAT (model is the certificate; \
                            no refutation proof)", bk,
                           if deciding_kissat { "kissat" } else { "cadical" });
@@ -3188,6 +3236,7 @@ fn main() {
             }
             _ => {
                 eprintln!("c TIMEOUT after {:.1}ms", el_ms);
+                verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
                 eprintln!("c {}: {} reached no verdict (timeout/unknown)", bk,
                           if deciding_kissat { "kissat" } else { "cadical" });
             }

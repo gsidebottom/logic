@@ -267,11 +267,29 @@ fn bcp(clauses: &[Vec<i32>], assign: &mut [Option<bool>]) -> bool {
 }
 
 /// Run the full XOR-recovery + Gaussian-elimination pre-pass.
-pub fn solve_xor_system(nvars: usize, clauses: &[Vec<i32>]) -> XorGaussResult {
+///
+/// `mixed_nvars_cap`: skip the (dense, O(nvars²)-ish) elimination for MIXED
+/// formulas above this many variables — on those the GE-forced-unit payoff
+/// rarely justifies minutes of budget (a 487k-var instance was observed
+/// burning 30+ minutes here).  PURE-XOR formulas are never gated: GE
+/// outright decides them (e.g. tseitin_grid_n400, 319k vars, ~430s, +1
+/// certified).
+pub fn solve_xor_system(
+    nvars: usize,
+    clauses: &[Vec<i32>],
+    mixed_nvars_cap: usize,
+) -> XorGaussResult {
     let (xors, consumed) = recover_xors(clauses);
     let n_consumed = consumed.iter().filter(|&&c| c).count();
     if xors.is_empty() {
         return XorGaussResult::Indeterminate { recovered: 0, consumed: 0, total: clauses.len() };
+    }
+    if n_consumed != clauses.len() && nvars > mixed_nvars_cap {
+        return XorGaussResult::Indeterminate {
+            recovered: xors.len(),
+            consumed: n_consumed,
+            total: clauses.len(),
+        };
     }
     let red = gauss(nvars, &xors);
     if red.unsat {
@@ -377,7 +395,7 @@ mod tests {
     #[test]
     fn pure_xor_sat_model_checks_out() {
         // a⊕b⊕c=1 alone is satisfiable.
-        match solve_xor_system(3, &xor3_eq1()) {
+        match solve_xor_system(3, &xor3_eq1(), usize::MAX) {
             XorGaussResult::Sat(m) => assert!(model_satisfies(&m, &xor3_eq1())),
             other => panic!("expected Sat, got {other:?}"),
         }
@@ -394,7 +412,7 @@ mod tests {
             vec![1, -2, 3],
             vec![1, 2, -3],
         ]);
-        assert!(matches!(solve_xor_system(3, &cl),
+        assert!(matches!(solve_xor_system(3, &cl, usize::MAX),
                          XorGaussResult::Unsat { by_bcp: false }));
     }
 
@@ -403,7 +421,7 @@ mod tests {
         // x=1 (1-XOR), y=1 (1-XOR), and x⊕y=1 (2-XOR, CNF {(x∨y),(¬x∨¬y)}).
         // x=1,y=1 force x⊕y=0, contradicting x⊕y=1 → GE finds UNSAT.
         let cl = vec![vec![1], vec![2], vec![1, 2], vec![-1, -2]];
-        assert!(matches!(solve_xor_system(2, &cl),
+        assert!(matches!(solve_xor_system(2, &cl, usize::MAX),
                          XorGaussResult::Unsat { by_bcp: false }));
     }
 
@@ -411,7 +429,7 @@ mod tests {
     fn mixed_with_forced_unit_simplifies_and_reconstructs() {
         // x=1 (a 1-XOR ⇒ forced unit) + two non-XOR clauses.
         let orig = vec![vec![1], vec![-1, 2, 3], vec![2, -3, 4]];
-        match solve_xor_system(4, &orig) {
+        match solve_xor_system(4, &orig, usize::MAX) {
             XorGaussResult::Simplified { clauses, forced, .. } => {
                 assert_eq!(forced[0], Some(true), "x forced true");
                 // `x` must not appear in the residual any more.
@@ -433,7 +451,7 @@ mod tests {
         let mut cl = xor3_eq1();
         cl.push(vec![4, 5]); // length-2 over fresh vars, lone clause (not a full 2-XOR)
         assert!(matches!(
-            solve_xor_system(5, &cl),
+            solve_xor_system(5, &cl, usize::MAX),
             XorGaussResult::Indeterminate { .. }
         ));
     }

@@ -35,8 +35,8 @@ fn main() {
     for x in xors.iter().take(8) {
         println!("  sample: vars={:?} rhs={}", &x.vars[..x.vars.len().min(6)], x.rhs);
     }
-    match solve_xor_system(nvars, &clauses) {
-        XorGaussResult::Unsat => println!("solve_xor_system: UNSAT"),
+    match solve_xor_system(nvars, &clauses, usize::MAX) {
+        XorGaussResult::Unsat { by_bcp } => println!("solve_xor_system: UNSAT (by_bcp={})", by_bcp),
         XorGaussResult::Sat(_) => println!("solve_xor_system: SAT"),
         XorGaussResult::Simplified { recovered, forced_count, .. } =>
             println!("solve_xor_system: Simplified recovered={} forced={}", recovered, forced_count),

@@ -2677,6 +2677,10 @@ fn main() {
         use std::io::Write as _;
         let bk = args.backend.name();
         let t0 = Instant::now();
+        // Cook shapes are all small instances (largest detection in either
+        // competition set: <1M clauses); skip the detectors on giants so
+        // structure analysis never eats meaningful engine budget there.
+        let try_cook = clauses.len() <= 1_000_000;
         // Backstop watchdog: the main watchdog spawns after this block, and
         // hydra's XOR stage can run minutes on 100k+-var parity systems.
         // CaDiCaL gets its own (budget-split) -t below, so fire with a 60s
@@ -2706,7 +2710,11 @@ fn main() {
                 std::process::exit(124);
             });
         }
-        let shape = detect_shape(&clauses, nvars);
+        let shape = if try_cook {
+            detect_shape(&clauses, nvars)
+        } else {
+            CnfShape::Unknown
+        };
         if !matches!(shape, CnfShape::Unknown) {
             eprintln!("c {}: prover=cook", bk);
             eprintln!("c {}: proof-format=pbp", bk);
@@ -2739,7 +2747,8 @@ fn main() {
         if matches!(args.backend, BackendChoice::Hydra) && clauses.len() <= 5_000_000 {
             use logic::xor_gauss::{solve_xor_system, XorGaussResult};
             let t_x = Instant::now();
-            match solve_xor_system(nvars, &clauses) {
+            eprintln!("c {}: structure analysis (xor stage)…", bk);
+            match solve_xor_system(nvars, &clauses, 200_000) {
                 XorGaussResult::Unsat { by_bcp } => {
                     eprintln!("c {}: prover=xor", bk);
                     if by_bcp {
@@ -3426,7 +3435,7 @@ fn main() {
     }
     if args.xor_gauss && xg_ok && matches!(args.backend, BackendChoice::Matrix(_)) {
         let t_xg = Instant::now();
-        match logic::xor_gauss::solve_xor_system(nvars, &clauses) {
+        match logic::xor_gauss::solve_xor_system(nvars, &clauses, 200_000) {
             logic::xor_gauss::XorGaussResult::Unsat { by_bcp } => {
                 let _ = by_bcp;
                 let ms = t_xg.elapsed().as_secs_f64() * 1000.0;

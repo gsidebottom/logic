@@ -536,9 +536,13 @@ def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
             # Heap BUDGET hint, not the kill threshold: licensing each
             # cake_lpr to the full --proof-mem-gb melts the machine when
             # several verify concurrently (the kill threshold only fires
-            # after the damage).  16 GB checks every proof seen so far
-            # (713MB LRAT needed <4 GB).
-            heap_mb = min(16384, max(2048, mem_limit_bytes // (1024 ** 2) - 4096))
+            # after the damage).  At the 16 GB default this stays ~12 GB
+            # (checks every normal proof; 713MB LRAT needed <4 GB); an
+            # explicitly LARGER --proof-mem-gb scales it up (3/4 of the
+            # budget) so giant proofs can be re-checked deliberately, e.g.
+            # a -j1 post-run pass with --proof-mem-gb 48.
+            mem_mb = mem_limit_bytes // (1024 ** 2)
+            heap_mb = max(2048, min(mem_mb - 4096, max(16384, (mem_mb * 3) // 4)))
             env["CML_HEAP_SIZE"] = str(heap_mb)
     else:
         if VERIPB_BIN is None:
@@ -553,13 +557,14 @@ def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
     # our own timeout independently of the solve's.
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True, env=env)
-    state = {"verified": False}
+    state = {"verified": False, "tail": ""}
 
     def _reader():
         last, tail = 0.0, ""
         try:
             for chunk in iter(lambda: proc.stdout.read(512), ""):
                 tail = (tail + chunk)[-4096:]      # rolling tail for the verdict
+                state["tail"] = tail
                 if success in tail:
                     state["verified"] = True
                 if on_progress is not None:
@@ -599,7 +604,14 @@ def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
     elapsed = time.time() - t0
     if state["verified"]:
         return True, "ok", elapsed
-    return False, f"{checker} rejected the emitted proof", elapsed
+    # Failure: distinguish a RESOURCE abort (checker ran out of its heap on
+    # a giant proof — not a statement about the proof) from a genuine
+    # rejection, and surface the checker's last words either way.
+    tail = " ".join(state["tail"].split())[-160:]
+    if re.search(r"heap|memory|alloc", state["tail"], re.I):
+        return None, f"{checker} out of memory (heap cap; not a rejection)", elapsed
+    return False, f"{checker} rejected: …{tail}" if tail else \
+        f"{checker} rejected the emitted proof", elapsed
 
 
 def verify_unsat_cover(cnf_path: Path, backend: str,

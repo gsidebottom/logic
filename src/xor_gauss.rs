@@ -277,14 +277,25 @@ fn bcp(clauses: &[Vec<i32>], assign: &mut [Option<bool>]) -> bool {
 pub fn solve_xor_system(
     nvars: usize,
     clauses: &[Vec<i32>],
-    mixed_nvars_cap: usize,
+    mixed_work_cap: u64,
 ) -> XorGaussResult {
     let (xors, consumed) = recover_xors(clauses);
     let n_consumed = consumed.iter().filter(|&&c| c).count();
     if xors.is_empty() {
         return XorGaussResult::Indeterminate { recovered: 0, consumed: 0, total: clauses.len() };
     }
-    if n_consumed != clauses.len() && nvars > mixed_nvars_cap {
+    // Mixed-formula GE only extracts forced units (a marginal payoff), and
+    // its cost scales with the matrix size AND fill-in.  Gate it on a WORK
+    // estimate — XOR rows × bitset width (nvars/64) — not on `nvars` alone:
+    // dense crypto XOR systems slip under any reasonable nvars cap yet cost
+    // minutes of useless elimination (e.g. Ascon-hash: ~79k arity-3 XORs
+    // over 159k vars → ~2e8 work, 10+ min, returns nothing usable).  PURE-
+    // XOR formulas are NEVER gated — there GE decides the instance
+    // (tseitin_grid_n400: 160k XORs, ~580s, +1 certified).  `u64::MAX`
+    // disables the gate.
+    let words = (nvars / 64 + 1) as u64;
+    let work = (xors.len() as u64).saturating_mul(words);
+    if n_consumed != clauses.len() && work > mixed_work_cap {
         return XorGaussResult::Indeterminate {
             recovered: xors.len(),
             consumed: n_consumed,
@@ -395,7 +406,7 @@ mod tests {
     #[test]
     fn pure_xor_sat_model_checks_out() {
         // a⊕b⊕c=1 alone is satisfiable.
-        match solve_xor_system(3, &xor3_eq1(), usize::MAX) {
+        match solve_xor_system(3, &xor3_eq1(), u64::MAX) {
             XorGaussResult::Sat(m) => assert!(model_satisfies(&m, &xor3_eq1())),
             other => panic!("expected Sat, got {other:?}"),
         }
@@ -412,7 +423,7 @@ mod tests {
             vec![1, -2, 3],
             vec![1, 2, -3],
         ]);
-        assert!(matches!(solve_xor_system(3, &cl, usize::MAX),
+        assert!(matches!(solve_xor_system(3, &cl, u64::MAX),
                          XorGaussResult::Unsat { by_bcp: false }));
     }
 
@@ -421,7 +432,7 @@ mod tests {
         // x=1 (1-XOR), y=1 (1-XOR), and x⊕y=1 (2-XOR, CNF {(x∨y),(¬x∨¬y)}).
         // x=1,y=1 force x⊕y=0, contradicting x⊕y=1 → GE finds UNSAT.
         let cl = vec![vec![1], vec![2], vec![1, 2], vec![-1, -2]];
-        assert!(matches!(solve_xor_system(2, &cl, usize::MAX),
+        assert!(matches!(solve_xor_system(2, &cl, u64::MAX),
                          XorGaussResult::Unsat { by_bcp: false }));
     }
 
@@ -429,7 +440,7 @@ mod tests {
     fn mixed_with_forced_unit_simplifies_and_reconstructs() {
         // x=1 (a 1-XOR ⇒ forced unit) + two non-XOR clauses.
         let orig = vec![vec![1], vec![-1, 2, 3], vec![2, -3, 4]];
-        match solve_xor_system(4, &orig, usize::MAX) {
+        match solve_xor_system(4, &orig, u64::MAX) {
             XorGaussResult::Simplified { clauses, forced, .. } => {
                 assert_eq!(forced[0], Some(true), "x forced true");
                 // `x` must not appear in the residual any more.
@@ -446,12 +457,27 @@ mod tests {
     }
 
     #[test]
+    fn mixed_work_cap_skips_but_pure_xor_is_never_gated() {
+        // The same mixed formula that Simplifies above: with a zero work
+        // cap the (marginal) mixed GE is skipped → Indeterminate, not
+        // Simplified.  This is the Ascon-class guard: a costly mixed GE that
+        // would only extract forced units is short-circuited.
+        let mixed = vec![vec![1], vec![-1, 2, 3], vec![2, -3, 4]];
+        assert!(matches!(solve_xor_system(4, &mixed, 0),
+                         XorGaussResult::Indeterminate { .. }));
+        // PURE-XOR is NEVER gated (every clause consumed): even at cap 0 the
+        // system is still decided — here a⊕b⊕c=1 is satisfiable.
+        assert!(matches!(solve_xor_system(3, &xor3_eq1(), 0),
+                         XorGaussResult::Sat(_)));
+    }
+
+    #[test]
     fn mixed_formula_is_indeterminate() {
         // One real XOR plus a stray non-XOR clause → not pure XOR.
         let mut cl = xor3_eq1();
         cl.push(vec![4, 5]); // length-2 over fresh vars, lone clause (not a full 2-XOR)
         assert!(matches!(
-            solve_xor_system(5, &cl, usize::MAX),
+            solve_xor_system(5, &cl, u64::MAX),
             XorGaussResult::Indeterminate { .. }
         ));
     }

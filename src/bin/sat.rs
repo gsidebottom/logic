@@ -2748,7 +2748,7 @@ fn main() {
             use logic::xor_gauss::{solve_xor_system, XorGaussResult};
             let t_x = Instant::now();
             eprintln!("c {}: structure analysis (xor stage)…", bk);
-            match solve_xor_system(nvars, &clauses, 200_000) {
+            match solve_xor_system(nvars, &clauses, 50_000_000) {
                 XorGaussResult::Unsat { by_bcp } => {
                     eprintln!("c {}: prover=xor", bk);
                     if by_bcp {
@@ -3435,7 +3435,7 @@ fn main() {
     }
     if args.xor_gauss && xg_ok && matches!(args.backend, BackendChoice::Matrix(_)) {
         let t_xg = Instant::now();
-        match logic::xor_gauss::solve_xor_system(nvars, &clauses, 200_000) {
+        match logic::xor_gauss::solve_xor_system(nvars, &clauses, 50_000_000) {
             logic::xor_gauss::XorGaussResult::Unsat { by_bcp } => {
                 let _ = by_bcp;
                 let ms = t_xg.elapsed().as_secs_f64() * 1000.0;

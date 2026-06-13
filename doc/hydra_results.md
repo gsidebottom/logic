@@ -168,6 +168,65 @@ in seconds, skipping elaboration entirely).
 
 ---
 
+## Comparison to SAT Competition 2025
+
+How does hydra's 2025-set result stack up against the *actual* SAT
+Competition 2025 main (sequential) track? **The raw count exceeds the field
+— but the comparison is not like-for-like, and the gap is dominated by
+hardware.**
+
+Competition setup (organizers' slides): 400 main-track benchmarks, 5000 s
+solver timeout, **45000 s** proof-checker budget, on Dirk Beyer's LMU
+server cluster, under the rule *"an instance is not solved if the proof
+checker times out"* — i.e. UNSAT requires a verified proof, the same
+standard hydra holds itself to.
+
+Main sequential track, instances solved (/400):
+
+| solver | solved |
+|--------|-------:|
+| AE-Kissat-MAB (1st) | 327 |
+| Kissat-public (2nd) | 321 |
+| Kissat-VSA (3rd) | 317 |
+| CaDiCaL-sc2025 (~5th) | <317 (exact not in slides) |
+| **hydra (this report)** | **352 raw / 342 proof-verified** |
+
+So on number of instances solved, hydra's **352** — or **342** counting
+only machine-certified UNSATs (164 SAT witnesses + 178 verified UNSAT
+proofs), the apples-to-apples figure against the competition's own
+proof-verified rule — is **above the 2025 winner's 327**. We do solve more
+problems.
+
+**But three caveats, in decreasing order of importance — this is NOT "hydra
+would have won SC2025":**
+
+1. **Faster hardware (dominant).** This report ran on an Apple M4 Pro;
+   SC2025 ran on an LMU cluster. A faster machine solves more in a fixed
+   5000 s, and we measured ≥20× single-instance speedups for the *same*
+   solver (kissat) on this M4 Pro vs the cluster-era expectation. Most of
+   the +25 over the winner is the machine, not the method. The fair test
+   would be running AE-Kissat-MAB / CaDiCaL-sc2025 on *this* M4 Pro — they
+   would jump well above their cluster ranks too.
+2. **Benchmark-set provenance.** Our `main_track_2025.jsonl` is a
+   GBD-reconstructed approximation of the official 400, not verified
+   instance-for-instance identical (its result field was unpopulated at
+   curation). Small set differences shift the count either way.
+3. **Checker budget.** The competition allows 45000 s of proof checking; we
+   allowed 5000 s + a 16 GB heap. Our 10 uncertified-UNSAT resource gaps
+   would mostly close under the competition's 9× budget — so hydra's
+   proof-verified number sits between 342 (our budget) and ~352 (theirs).
+
+**What is defensible and hardware-independent:** hydra certifies a
+*differentiated slice* — 76 counting/parity UNSATs across the two sets,
+several solved by no CDCL engine at 5000 s on *any* hardware (the
+resolution-exponential families), each with a machine-checked proof. That
+capability — not the raw count — is the real result; the count edge over the
+field is genuine but mostly the M4 Pro talking.
+
+Source: [SAT Competition 2025 results slides](https://satcompetition.github.io/2025/satcomp25slides.pdf).
+No analogous comparison is given for 2026 — SC2026 main-track results are
+not available to compare against.
+
 ## Honest caveats
 
 - **Hardware confound.** These counts are on an M4 Pro; the competition ran

@@ -33,6 +33,12 @@ dependencies = [
     # Resident-memory polling for run_benchmark's VeriPB --proof-mem-gb cap
     # (tree-aware; falls back to `ps` if psutil is absent).
     "psutil>=7.2.2",
+    # Graph encoding + dataset arrays for the neural-SAT work (neural/).
+    # Cross-platform core dep.  The ML backend (MLX on Apple Silicon, or
+    # torch on the Linux GPU cluster) is added as an OPTIONAL extra at the
+    # encoder step (#93) — kept out of core so the project still installs
+    # where its platform's accelerator isn't available.
+    "numpy>=1.24",
 ]
 
 # Keep the package itself out of "site-packages" — this project is a

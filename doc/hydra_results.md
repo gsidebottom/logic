@@ -200,13 +200,23 @@ problems.
 **But three caveats, in decreasing order of importance — this is NOT "hydra
 would have won SC2025":**
 
-1. **Faster hardware (dominant).** This report ran on an Apple M4 Pro;
-   SC2025 ran on an LMU cluster. A faster machine solves more in a fixed
-   5000 s, and we measured ≥20× single-instance speedups for the *same*
-   solver (kissat) on this M4 Pro vs the cluster-era expectation. Most of
-   the +25 over the winner is the machine, not the method. The fair test
-   would be running AE-Kissat-MAB / CaDiCaL-sc2025 on *this* M4 Pro — they
-   would jump well above their cluster ranks too.
+1. **Faster hardware.** This report ran on an Apple M4 Pro; SC2025 ran on
+   Beyer's LMU cluster, whose documented SV-COMP node is an **Intel Xeon
+   E3-1230 v5 @ 3.4 GHz** (Skylake, 2015). Published single-thread
+   benchmarks put the M4 Pro P-core at roughly **2–3×** that core (PassMark
+   single-thread 4506 vs 2189 ≈ 2.1×; Geekbench 6 ≈ 2.9×) — *not* the "20×"
+   an earlier draft of this section wrongly claimed (that figure conflated a
+   kissat-vs-cadical *solver* gap on this same M4 with a hardware gap, and
+   is retracted). A ~2–3× per-core edge still matters: on heavy-tailed
+   runtimes it pulls a meaningful number of near-5000 s instances under the
+   line, so it plausibly accounts for a substantial — but unquantified —
+   part of the +25 over the winner. Two things blunt it, though: we ran
+   `-j10` sharing the M4's memory bandwidth while the competition gives each
+   instance a dedicated node (so the *effective* per-instance ratio is below
+   the raw single-thread number), and the SC2025 node model is assumed from
+   the SV-COMP infrastructure, not confirmed in the SC2025 slides. The only
+   rigorous control — running AE-Kissat-MAB / CaDiCaL-sc2025 on *this* M4 Pro
+   — was not done, so the hardware-adjusted gap is genuinely unknown.
 2. **Benchmark-set provenance.** Our `main_track_2025.jsonl` is a
    GBD-reconstructed approximation of the official 400, not verified
    instance-for-instance identical (its result field was unpopulated at
@@ -229,11 +239,13 @@ not available to compare against.
 
 ## Honest caveats
 
-- **Hardware confound.** These counts are on an M4 Pro; the competition ran
-  on a server cluster. Raw solve counts vs published SC2025 standings are
-  **not** comparable — a faster machine solves more in 5000 s. The valid
-  internal comparison is hydra vs pb-cadical *on the same machine*, which is
-  what this report measures.
+- **Hardware confound.** These counts are on an M4 Pro (≈2–3× the single-
+  thread of the LMU cluster's Xeon E3-1230 v5 — see the competition section
+  for the grounded figures and the retraction of an earlier "20×"
+  overstatement). Raw solve counts vs published SC2025 standings are
+  therefore **not** directly comparable. The valid, hardware-independent
+  comparison is hydra vs pb-cadical *on the same machine* — which is what the
+  +11 headline measures, and where hardware cancels out entirely.
 - **kissat's edge is mostly SAT-side phase machinery** (target phases,
   embedded walk, stable-mode rephasing), amplified on heavy-tailed
   satisfiable crypto/algebraic instances. It is not an asymptotic

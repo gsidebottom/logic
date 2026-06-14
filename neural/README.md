@@ -15,7 +15,7 @@ search over the certified slice.
 |---|---|---|
 | `sat_graph.py` | DIMACS → NeuroSAT-style literal–clause bipartite graph (numpy) | Phase 0a |
 | `backend.py` | runtime ML-backend detection (mlx / torch) | done |
-| `build_dataset.py` | solve curated/GBD instances → per-variable phase labels (from SAT witnesses) → train/test dataset | Phase 0b |
+| `build_dataset.py` | solve instances → per-variable phase labels (from SAT witnesses) → verified .npz + manifest + stratified split | Phase 0b ✓ |
 | `model.py` | message-passing GNN, phase-prediction head; Phase-0 gate | Phase 0c |
 
 ## Setup

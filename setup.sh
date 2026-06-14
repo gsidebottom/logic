@@ -13,7 +13,9 @@
 #      bootstrap from https://astral.sh/uv/install.sh).
 #   2. Run `uv sync` to provision ./.venv from pyproject.toml, pulling
 #      `matplotlib` and `gbd-tools` (which itself installs the `gbd`
-#      CLI into .venv/bin).
+#      CLI into .venv/bin).  Auto-selects the neural/ ML backend extra:
+#      Apple Silicon -> mlx, a CUDA host (nvidia-smi) -> torch, else none.
+#      Override with `--ml-backend mlx|torch|none` or ML_BACKEND=...
 #   3. Optionally chain to the GBD database download
 #      (tools/gbd/setup.sh) when invoked with `--gbd` or `GBD_SETUP=1`.
 #   4. Print activation / usage instructions.
@@ -68,10 +70,15 @@ REPO_ROOT=$(cd "$(dirname "$__abs")" && pwd)
 # ── Flag parsing ─────────────────────────────────────────────────────
 do_gbd=0
 if [ "${GBD_SETUP:-0}" = "1" ]; then do_gbd=1; fi
+# Neural-SAT ML accelerator backend (neural/): auto | mlx | torch | none.
+# `auto` (default) picks per platform below; ML_BACKEND env overrides.
+ml_backend="${ML_BACKEND:-auto}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --gbd|--with-gbd)    do_gbd=1; shift ;;
         --no-gbd)            do_gbd=0; shift ;;
+        --ml-backend)        ml_backend="${2:?--ml-backend needs auto|mlx|torch|none}"; shift 2 ;;
+        --ml-backend=*)      ml_backend="${1#*=}"; shift ;;
         -h|--help)
             sed -n '2,40p' "$__abs" | sed 's/^# \{0,1\}//'
             return 0 2>/dev/null || exit 0
@@ -120,8 +127,27 @@ echo "✓ $(uv --version)"
 # https://github.com/indygreg/python-build-standalone if the system
 # Python doesn't qualify), creates ./.venv, and installs every
 # declared dependency.  Subsequent runs are fast (lockfile + cache).
-echo "→ syncing Python environment from pyproject.toml ..."
-uv sync
+# Auto-select the neural/ ML accelerator backend unless overridden:
+#   CUDA present (nvidia-smi)       -> torch  (portable; cluster GPUs)
+#   Apple Silicon (Darwin/arm64)   -> mlx    (fast on M-series)
+#   otherwise                      -> none   (core only; force with --ml-backend)
+if [ "$ml_backend" = "auto" ]; then
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        ml_backend=torch
+    elif [ "$(uname -s)" = "Darwin" ] && \
+         { [ "$(uname -m)" = "arm64" ] || [ "$(uname -m)" = "aarch64" ]; }; then
+        ml_backend=mlx
+    else
+        ml_backend=none
+    fi
+fi
+echo "→ syncing Python environment from pyproject.toml (ML backend: $ml_backend) ..."
+case "$ml_backend" in
+    none)       uv sync ;;
+    mlx|torch)  uv sync --extra "$ml_backend" ;;
+    *) echo "ERROR: --ml-backend must be auto|mlx|torch|none (got '$ml_backend')" >&2
+       return 2 2>/dev/null || exit 2 ;;
+esac
 
 # ── Step 3 (optional): GBD database setup ────────────────────────────
 if [ "$do_gbd" = "1" ]; then

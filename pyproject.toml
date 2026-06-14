@@ -41,6 +41,17 @@ dependencies = [
     "numpy>=1.24",
 ]
 
+# Optional ML-backend extras for the neural-SAT GNN (neural/model.py, #93).
+# Platform-split so `uv sync` core stays installable everywhere; setup.sh
+# auto-selects (mac → mlx, CUDA → torch).  Install one explicitly with
+# `uv sync --extra mlx` or `--extra torch`.
+[project.optional-dependencies]
+# MLX is Apple-Silicon-only — the marker makes `--extra mlx` a no-op
+# elsewhere instead of a resolution failure.
+mlx = ["mlx; sys_platform == 'darwin' and platform_machine == 'arm64'"]
+# torch is portable (M4 via MPS, Linux cluster via CUDA).
+torch = ["torch>=2.2"]
+
 # Keep the package itself out of "site-packages" — this project is a
 # collection of scripts under tools/ and doc/, not a Python library.
 # `uv sync` still creates the venv + installs `dependencies`; without

@@ -14,8 +14,18 @@ search over the certified slice.
 | file | role | status |
 |---|---|---|
 | `sat_graph.py` | DIMACS → NeuroSAT-style literal–clause bipartite graph (numpy) | Phase 0a |
+| `backend.py` | runtime ML-backend detection (mlx / torch) | done |
 | `build_dataset.py` | solve curated/GBD instances → per-variable phase labels (from SAT witnesses) → train/test dataset | Phase 0b |
-| `model.py` | message-passing GNN (MLX), phase-prediction head; Phase-0 gate | Phase 0c |
+| `model.py` | message-passing GNN, phase-prediction head; Phase-0 gate | Phase 0c |
 
-numpy-only through Phase 0b; MLX added at the encoder (0c). No GPU needed
-for the data foundation; the GNN trains on the M4 Pro via MLX.
+## Setup
+
+`./setup.sh` auto-selects the ML backend by platform — **Apple Silicon →
+`mlx`**, **CUDA host (`nvidia-smi`) → `torch`**, else core-only — via the
+`mlx` / `torch` optional extras in `pyproject.toml`. Override with
+`./setup.sh --ml-backend mlx|torch|none` or `ML_BACKEND=…`. At runtime,
+`backend.py`'s `detect_backend()` picks whatever was installed, so model
+code stays backend-agnostic.
+
+numpy-only through Phase 0b (no GPU needed for the data foundation); the
+GNN (0c) trains on the M4 Pro via MLX, or on the cluster via torch.

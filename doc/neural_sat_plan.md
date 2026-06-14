@@ -162,6 +162,18 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   kissat (§4b) — while every UNSAT still certifies. This gate is *concrete
   and already-achieved by others*, so failing it means an implementation
   bug, not an open-research wall.
+- **◐ PARTIAL (2026-06-14).** Mechanism proven, substrate redirected — see
+  [doc/neural_phase1.md](neural_phase1.md). A sparse NeuroSAT per-variable phase
+  predictor reaches **0.80 held-out phase accuracy** (vs 0.58 majority) on 53
+  structured SAT instances; majority-vote labels (`build_dataset.py --models`)
+  beat the single-model MVP. The query-once warm-start hook
+  (`sat --initial-phases`, seeding `cdcl.rs` phase-saving) is **sound** and its
+  upside is **real**: an oracle (true-model seed) solves in **0 conflicts**, and
+  high-confidence seeding (`phase_infer.py --margin`) cut conflicts −59% on the
+  one A/B instance that solves. But the matrix `eff` engine proved a **poor A/B
+  venue** — nondeterministic and too slow (most medium instances time out), and
+  brittle to imperfect priors. **Next: the §4b kissat fork** (robust soft-prior
+  phase-saving) is where the NeuroBack-class win should be measurable.
 
 ### Phase 2 — RL / expert iteration (track A, exceed the teacher)
 - **Reward** = solved (binary) + shaping: −log(decisions) for speed, and

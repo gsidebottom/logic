@@ -81,16 +81,21 @@ def _find_veripb() -> Optional[str]:
 VERIPB_BIN = _find_veripb()
 
 
-def _find_cake_lpr() -> Optional[str]:
-    """cake_lpr — the formally-verified LRAT/LPR checker (the SAT-competition
-    toolchain) used for pb-cadical's CaDiCaL-path proofs."""
+def _find_tool(name: str) -> Optional[str]:
+    """Locate a verified-checker binary on PATH or in ~/.cargo/bin."""
     import shutil
-    hit = shutil.which("cake_lpr")
+    hit = shutil.which(name)
     if hit:
         return hit
-    cand = Path.home() / ".cargo" / "bin" / "cake_lpr"
+    cand = Path.home() / ".cargo" / "bin" / name
     return str(cand) if cand.exists() else None
-CAKELPR_BIN = _find_cake_lpr()
+
+
+# cake_lpr — formally-verified LRAT/LPR checker (CaDiCaL-path proofs).
+CAKELPR_BIN = _find_tool("cake_lpr")
+# gratchk — formally-verified GRAT checker (kissat-path proofs; the GRAT
+# tool chain's gratgen elaborates kissat's DRAT, gratchk verifies it).
+GRATCHK_BIN = _find_tool("gratchk")
 
 # At most N instances above the "giant" thresholds solve concurrently —
 # a 100M-clause instance costs 10-25 GB inside the engine plus hydra's own
@@ -500,6 +505,7 @@ def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
     `fmt` selects the checker per proof format:
       - "pbp"  : VeriPB pseudo-Boolean proof (the Cook path)   → veripb
       - "lrat" : CaDiCaL native LRAT (the CaDiCaL path)        → cake_lpr
+      - "grat" : GRAT (the kissat path, gratgen-elaborated)    → gratchk
       - None   : sniff the file head ("pseudo-Boolean proof…" → pbp).
 
     Returns (ok, reason, elapsed_s):
@@ -544,6 +550,15 @@ def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
             mem_mb = mem_limit_bytes // (1024 ** 2)
             heap_mb = max(2048, min(mem_mb - 4096, max(16384, (mem_mb * 3) // 4)))
             env["CML_HEAP_SIZE"] = str(heap_mb)
+    elif fmt == "grat":
+        if GRATCHK_BIN is None:
+            return None, "gratchk not found", 0.0
+        cmd = [GRATCHK_BIN, "unsat", str(cnf_path), str(proof_path)]
+        success = "s VERIFIED UNSAT"
+        # gratchk prints no progress but reads the GRAT sequentially — reuse
+        # the fd-offset progress mechanism.  No CakeML heap env (gratchk is
+        # MLton-compiled, uses native malloc); the RSS cap still applies.
+        poll_progress, on_progress = on_progress, None
     else:
         if VERIPB_BIN is None:
             return None, "veripb not found", 0.0
@@ -587,7 +602,7 @@ def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
 
     # Poll for completion, wall-timeout, the memory cap (RSS), and — for
     # cake_lpr — offset-based progress.
-    checker = "cake_lpr" if fmt == "lrat" else "veripb"
+    checker = {"lrat": "cake_lpr", "grat": "gratchk", "pbp": "veripb"}.get(fmt, "checker")
     proof_size = proof_path.stat().st_size
     deadline = time.time() + timeout_s
     while proc.poll() is None:
@@ -1462,8 +1477,8 @@ def solve_one(
     pb_proof_reason = ""
     pb_proof_prover: Optional[str] = None    # cook|xor|cadical|kissat (how solved)
     pb_proof_time: Optional[float] = None    # checker verification wall time (s)
-    pb_checker: Optional[str] = None         # veripb | cake_lpr
-    elab_s: Optional[float] = None           # drat->lrat elaboration time (s)
+    pb_checker: Optional[str] = None         # veripb | cake_lpr | gratchk
+    elab_s: Optional[float] = None           # drat->grat elaboration time (s)
     elab_fail: Optional[str] = None          # elaboration TIMEOUT/MEMOUT note
     proof_path: Optional[Path] = None        # /tmp write target (deleted unless kept)
     proof_kept: Optional[Path] = None        # where a FAILING proof is kept, else None
@@ -1535,11 +1550,11 @@ def solve_one(
             pb_proof_prover = "kissat"
         elif "prover=cadical" in stderr_text:
             pb_proof_prover = "cadical"
-        m = re.search(r"elaborated to LRAT at .* \(([0-9.]+)s\)", stderr_text)
+        m = re.search(r"elaborated to (?:LRAT|GRAT) at .* \(([0-9.]+)s\)", stderr_text)
         if m:
             elab_s = float(m.group(1))
-        m = re.search(r"drat-trim elaboration (TIMEOUT \(\d+s\)|MEMOUT \(>\d+MB\))",
-                      stderr_text)
+        m = re.search(r"(?:drat-trim|gratgen) elaboration "
+                      r"(TIMEOUT \(\d+s\)|MEMOUT \(>\d+MB\))", stderr_text)
         if m:
             elab_fail = m.group(1)
 
@@ -1558,11 +1573,18 @@ def solve_one(
         if (proof_path is not None and result == "UNSAT"
                 and tmp_path is not None):
             tui.update_worker(worker_idx, display, "verifying proof…")
-            # Which checker the proof needs: Cook path emits VeriPB pbp,
-            # CaDiCaL path native LRAT (checked by cake_lpr).  None → sniff.
-            _fmt = ("pbp" if "proof-format=pbp" in stderr_text
-                    else "lrat" if "proof-format=lrat" in stderr_text
-                    else None)
+            # Which checker the proof needs, keyed off the deciding engine
+            # (reliable; the generic "proof-format=lrat" pre-announcement would
+            # otherwise shadow the kissat path's grat): cook/xor → VeriPB pbp,
+            # cadical → native LRAT (cake_lpr), kissat → GRAT (gratchk).  Fall
+            # back to the per-path format marker if no prover marker is present.
+            _fmt = {"cook": "pbp", "xor": "pbp",
+                    "kissat": "grat", "cadical": "lrat"}.get(pb_proof_prover)
+            if _fmt is None:
+                _fmt = ("pbp" if "proof-format=pbp" in stderr_text
+                        else "grat" if "proof-format=grat" in stderr_text
+                        else "lrat" if "proof-format=lrat" in stderr_text
+                        else None)
             # Live %-progress only for LARGE VeriPB proofs: --show-progress
             # ~doubles VeriPB's verify time, so skip it on small/fast proofs
             # (the static message above already covers those).  cake_lpr has
@@ -1571,8 +1593,8 @@ def solve_one(
                     and proof_path.stat().st_size > 20_000_000)
             _on_prog = ((lambda m: tui.update_worker(worker_idx, display, m))
                         if tui.enabled and _big else None)
-            pb_checker = ("cake_lpr" if _fmt == "lrat"
-                          else "veripb" if _fmt == "pbp" else None)
+            pb_checker = {"lrat": "cake_lpr", "grat": "gratchk",
+                          "pbp": "veripb"}.get(_fmt)
             pb_proof_ok, pb_proof_reason, pb_proof_time = verify_pb_proof(
                 tmp_path, proof_path, timeout_s=proof_timeout,
                 mem_limit_bytes=proof_mem_gb * (1024 ** 3) if proof_mem_gb else 0,
@@ -1678,15 +1700,15 @@ def solve_one(
            f"| {paths_cell} | {total_cell} | {conf_cell} | {rst_cell} |\n")
     md_writer.append_row(row)
 
-    # Proof-chain prefix for the log lines: solver, then the drat->lrat
-    # elaboration leg when it ran (or failed), e.g. "kissat; drat→lrat 41.2s; ".
+    # Proof-chain prefix for the log lines: solver, then the drat->grat
+    # elaboration leg when it ran (or failed), e.g. "kissat; drat→grat 41.2s; ".
     _chain = ""
     if pb_proof_prover:
         _chain = pb_proof_prover
         if elab_s is not None:
-            _chain += f"; drat→lrat {elab_s:.1f}s"
+            _chain += f"; drat→grat {elab_s:.1f}s"
         elif elab_fail:
-            _chain += f"; drat→lrat ✗{elab_fail}"
+            _chain += f"; drat→grat ✗{elab_fail}"
         _chain += "; "
 
     tui.record(result, mismatch)
@@ -1744,7 +1766,7 @@ def solve_one(
         "pb_proof_reason": pb_proof_reason or None,
         "pb_proof_prover": pb_proof_prover,  # cook|xor|cadical|kissat (how solved)
         "pb_checker":      pb_checker,       # veripb | cake_lpr
-        "elab_time_s":     elab_s,           # drat->lrat elaboration (separate from both)
+        "elab_time_s":     elab_s,           # drat->grat elaboration (separate from both)
         "pb_proof_time_s": pb_proof_time,    # checker verify wall time (separate from solve)
         "pb_proof_path":  str(proof_kept) if proof_kept else None,  # only kept on failure
         "time_s":         _parse_time_cell(time_str),
@@ -1997,6 +2019,11 @@ def main() -> int:
                   "CaDiCaL-path LRAT proofs will go UNCHECKED. Build it from "
                   "https://github.com/tanyongkiam/cake_lpr (make cake_lpr_arm8).",
                   file=sys.stderr)
+        if GRATCHK_BIN is None:
+            print("c WARNING: gratchk not found (PATH or ~/.cargo/bin) — "
+                  "kissat-path GRAT proofs will go UNCHECKED. Install the GRAT "
+                  "tool chain (gratgen+gratchk) — see setup.sh / "
+                  "https://www21.in.tum.de/~lammich/grat/.", file=sys.stderr)
         if VERIPB_BIN is None:
             print("c WARNING: veripb not found — Cook-path PB proofs will go "
                   "UNCHECKED.", file=sys.stderr)

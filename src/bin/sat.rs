@@ -2295,17 +2295,22 @@ struct Args {
     /// (default; native LRAT) or "kissat" (binary DRAT, elaborated to LRAT
     /// via `drat-trim -L` when a proof is requested).
     engine: String,
-    /// Wall-clock cap (seconds) for the drat-trim DRAT->LRAT elaboration.
+    /// Wall-clock cap (seconds) for the gratgen DRAT->GRAT elaboration.
     /// 0 (default) means "the same as --timeout" — elaboration gets its own
     /// fresh budget equal to the solve budget, mirroring how competitions
-    /// budget proof checking separately from solving.  On breach drat-trim
+    /// budget proof checking separately from solving.  On breach gratgen
     /// is killed and the solve stands without a proof.
     elab_time_s: u64,
-    /// Resident-memory cap (MB) for the drat-trim DRAT->LRAT elaboration —
-    /// drat-trim holds the whole proof + core marking in RAM and is
-    /// otherwise unbounded.  On breach it is killed and the solve stands
-    /// without a proof.  Default 16384 (16 GB); 0 disables.
+    /// Resident-memory cap (MB) for the gratgen DRAT->GRAT elaboration —
+    /// gratgen holds the proof + watch structures in RAM, and more with more
+    /// threads.  On breach it is killed and the solve stands without a proof.
+    /// Default 49152 (48 GB); 0 disables.  (A 30 GB-capped competition node
+    /// should lower --elab-jobs to keep the peak under the limit.)
     elab_mem_mb: u64,
+    /// Worker threads for gratgen (`-j`).  More threads elaborate faster but
+    /// raise peak memory (the proof's clause DB is shared, watch state is
+    /// per-thread).  Default 8.
+    elab_jobs: u64,
     /// Variance-gated Sum-reordering threshold for Effective-wrapped
     /// backends (`eff`, `effb`, `greedy_eff`, `basic_eff`,
     /// `greedy_effb`, `basic_effb`).  The wrapper applies its
@@ -2344,7 +2349,8 @@ fn parse_args() -> Result<Args, String> {
         proof: None,
         engine: "cadical".into(),
         elab_time_s: 0,
-        elab_mem_mb: 16384,
+        elab_mem_mb: 49152,
+        elab_jobs: 8,
         // 0.0 = always reorder (legacy behaviour).  Override with
         // `--eff-tau N` to gate Sum reordering on `log10(max/min) >= N`.
         eff_tau: 0.0,
@@ -2506,6 +2512,15 @@ fn parse_args() -> Result<Args, String> {
                 a.elab_mem_mb = s["--elab-mem-mb=".len()..].parse()
                     .map_err(|_| "bad --elab-mem-mb".to_string())?;
             }
+            "--elab-jobs" => {
+                let v = iter.next().ok_or_else(||
+                    "--elab-jobs requires a number".to_string())?;
+                a.elab_jobs = v.parse().map_err(|_| "bad --elab-jobs".to_string())?;
+            }
+            s if s.starts_with("--elab-jobs=") => {
+                a.elab_jobs = s["--elab-jobs=".len()..].parse()
+                    .map_err(|_| "bad --elab-jobs".to_string())?;
+            }
             "--help"     | "-h" => {
                 eprintln!("Usage: sat [--backend NAME] [--timeout SECS] [--progress] < problem.cnf");
                 eprintln!();
@@ -2538,12 +2553,15 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                                     (--lrat); every proof machine-checkable");
                 eprintln!("  --proof FILE      Proof output for pb-cadical (UNSAT verdicts).");
                 eprintln!("                    Cook path: VeriPB pbp (veripb <cnf> FILE);");
-                eprintln!("                    CaDiCaL path: LRAT (cake_lpr <cnf> FILE).");
+                eprintln!("                    CaDiCaL path: LRAT (cake_lpr <cnf> FILE);");
+                eprintln!("                    kissat path: GRAT (gratchk unsat <cnf> FILE).");
                 eprintln!("                    The format is on stderr: c pb-cadical: proof-format=…");
                 eprintln!("  --engine NAME     CDCL engine for pb-cadical/hydra: cadical (default,");
-                eprintln!("                    native LRAT), kissat (DRAT, elaborated to LRAT via");
-                eprintln!("                    drat-trim), or portfolio[:pct] — kissat for the");
-                eprintln!("                    first pct% (default 10) of the budget, then cadical.");
+                eprintln!("                    native LRAT), kissat (binary DRAT, elaborated to GRAT");
+                eprintln!("                    via gratgen and checked by gratchk), or portfolio[:pct]");
+                eprintln!("                    — kissat for the first pct% (default 10) of the budget,");
+                eprintln!("                    then cadical.");
+                eprintln!("  --elab-jobs N     gratgen worker threads for DRAT->GRAT (default 8).");
                 eprintln!("                      hydra        — pb-cadical + an XOR/parity stage:");
                 eprintln!("                                     GF(2) elimination decides pure-parity");
                 eprintln!("                                     formulas and simplifies mixed ones");
@@ -3084,19 +3102,21 @@ fn main() {
                 verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
                 if emit_lrat {
                     if deciding_kissat {
-                        // Elaborate the binary DRAT to LRAT for cake_lpr.
-                        // The timing line above is already printed, so this
-                        // does not inflate the recorded solve time.
+                        // Elaborate kissat's binary DRAT into a GRAT
+                        // certificate with gratgen (parallel; ~2x faster than
+                        // drat-trim and far lighter on the verified checker via
+                        // gratchk).  The solve timing above is already printed,
+                        // so this elaboration is not charged to the solve time.
                         if let Some(out) = args.proof.as_ref() {
-                            let drat_trim = [
-                                "/opt/homebrew/bin/drat-trim", "/usr/local/bin/drat-trim",
+                            let gratgen = [
+                                "/opt/homebrew/bin/gratgen", "/usr/local/bin/gratgen",
                             ].iter().find(|p| std::path::Path::new(p).exists()).copied()
                                 .map(str::to_string)
                                 .unwrap_or_else(|| {
                                     let home = std::env::var("HOME").unwrap_or_default();
-                                    let c = format!("{}/.cargo/bin/drat-trim", home);
+                                    let c = format!("{}/.cargo/bin/gratgen", home);
                                     if std::path::Path::new(&c).exists() { c }
-                                    else { "drat-trim".to_string() }
+                                    else { "gratgen".to_string() }
                                 });
                             let t_e = Instant::now();
                             let elab_deadline = if args.elab_time_s > 0 {
@@ -3106,27 +3126,28 @@ fn main() {
                             } else {
                                 0
                             };
-                            // Spawn + poll (not .output()) so the terminal
-                            // gets progress: drat-trim does backward checking
-                            // and can run minutes on giant proofs.  Elapsed +
-                            // LRAT-bytes-written is the honest live signal.
-                            // stdout goes to a temp file (deadlock-safe), read
-                            // after exit for the "s VERIFIED" marker.
-                            let elog = std::env::temp_dir().join(
-                                format!("pbcadical-{}.elog", std::process::id()));
                             let drat_mb = std::fs::metadata(&drat_tmp)
                                 .map(|m| m.len()).unwrap_or(0) as f64 / 1e6;
-                            // (t, pct) samples for the ETA fit below.
-                            let mut elab_samples: Vec<(f64, f64)> = Vec::new();
-                            let mut ecmd = std::process::Command::new(&drat_trim);
-                            // -b: drat-trim's own backward-pass progress bar
-                            // ("\rc 42.17% [...] time remaining: …"), captured
-                            // in elog and tailed by the poll tick below.
-                            ecmd.arg(&tmp).arg(&drat_tmp).arg("-L").arg(out).arg("-b");
-                            ecmd.stdout(std::fs::File::create(&elog)
+                            // gratgen writes the GRAT to the -o file and prints
+                            // its verdict ("s VERIFIED") + stats to STDERR (not
+                            // stdout); capture stderr to a temp file
+                            // (deadlock-safe) and read it back for the marker.
+                            // --no-progress-bar: we drive our own elapsed/size
+                            // ticks from the poll below.
+                            let elog = std::env::temp_dir().join(
+                                format!("pbcadical-{}.elog", std::process::id()));
+                            let mut ecmd = std::process::Command::new(&gratgen);
+                            // gratgen takes OPTIONS AFTER the positionals;
+                            // -b reads the binary DRAT, -o writes combined GRAT.
+                            ecmd.arg(&tmp).arg(&drat_tmp)
+                                .arg("-b").arg("-o").arg(out)
+                                .arg("-j").arg(args.elab_jobs.to_string())
+                                .arg("--no-progress-bar");
+                            ecmd.stdout(std::process::Stdio::null());
+                            ecmd.stderr(std::fs::File::create(&elog)
                                 .map(std::process::Stdio::from)
                                 .unwrap_or_else(|_| std::process::Stdio::null()));
-                            ecmd.stderr(std::process::Stdio::null());
+                            let mut reported_fail = false;
                             let ok = match ecmd.spawn() {
                                 Ok(mut ch) => {
                                     let mut last = Instant::now();
@@ -3137,129 +3158,48 @@ fn main() {
                                                 if elab_deadline > 0
                                                     && t_e.elapsed().as_secs() > elab_deadline
                                                 {
-                                                    eprintln!("c {}: drat-trim elaboration \
+                                                    eprintln!("c {}: gratgen elaboration \
                                                                TIMEOUT ({}s); no proof",
                                                               bk, elab_deadline);
                                                     let _ = ch.kill();
                                                     let _ = ch.wait();
+                                                    reported_fail = true;
                                                     break;
-                                                }
-                                                if args.elab_mem_mb > 0
-                                                    && last.elapsed().as_secs_f64() >= 5.0
-                                                {
-                                                    // RSS guard: drat-trim is
-                                                    // otherwise unbounded and can
-                                                    // take down the machine.
-                                                    let rss_mb = std::process::Command::new("ps")
-                                                        .args(["-o", "rss=", "-p",
-                                                               &ch.id().to_string()])
-                                                        .output().ok()
-                                                        .and_then(|o| String::from_utf8_lossy(&o.stdout)
-                                                            .trim().parse::<u64>().ok())
-                                                        .map(|kb| kb / 1024)
-                                                        .unwrap_or(0);
-                                                    if rss_mb > args.elab_mem_mb {
-                                                        eprintln!("c {}: drat-trim elaboration \
-                                                                   MEMOUT (>{}MB); no proof",
-                                                                  bk, args.elab_mem_mb);
-                                                        let _ = ch.kill();
-                                                        let _ = ch.wait();
-                                                        break;
-                                                    }
-                                                }
-                                                if args.show_progress
-                                                    && last.elapsed().as_secs_f64() >= 5.0
-                                                {
-                                                    let lmb = std::fs::metadata(out)
-                                                        .map(|m| m.len()).unwrap_or(0)
-                                                        as f64 / 1e6;
-                                                    // Tail elog for the latest
-                                                    // "\rc NN.NN% [" bar update.
-                                                    let pct = (|| -> Option<f64> {
-                                                        use std::io::{Read, Seek, SeekFrom};
-                                                        let mut f = std::fs::File::open(&elog).ok()?;
-                                                        let len = f.metadata().ok()?.len();
-                                                        f.seek(SeekFrom::Start(len.saturating_sub(8192))).ok()?;
-                                                        let mut raw = Vec::new();
-                                                        f.read_to_end(&mut raw).ok()?;
-                                                        let text = String::from_utf8_lossy(&raw);
-                                                        for chunk in text.split('\r').rev() {
-                                                            let c = chunk.trim_start();
-                                                            if let Some(rest) = c.strip_prefix("c ") {
-                                                                if let Some(pp) = rest.find('%') {
-                                                                    if let Ok(v) = rest[..pp].trim().parse::<f64>() {
-                                                                        return Some(v);
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                        None
-                                                    })();
-                                                    match pct {
-                                                        Some(p) => {
-                                                            // drat-trim's % counts LEMMAS, but
-                                                            // per-lemma cost grows as the
-                                                            // backward pass descends, so the bar
-                                                            // decelerates.  Fit p = 100·(t/T)^b
-                                                            // over the samples (linear regression
-                                                            // in log-log) and project T -> ETA.
-                                                            let t_now = t_e.elapsed().as_secs_f64();
-                                                            if p > 0.5 && p < 99.5 {
-                                                                elab_samples.push((t_now, p));
-                                                            }
-                                                            let eta = if elab_samples.len() >= 4 {
-                                                                let pts: Vec<(f64, f64)> = elab_samples
-                                                                    .iter()
-                                                                    .map(|&(t, pp)| (t.ln(), (pp / 100.0).ln()))
-                                                                    .collect();
-                                                                let n = pts.len() as f64;
-                                                                let mx = pts.iter().map(|p| p.0).sum::<f64>() / n;
-                                                                let my = pts.iter().map(|p| p.1).sum::<f64>() / n;
-                                                                let cov = pts.iter()
-                                                                    .map(|p| (p.0 - mx) * (p.1 - my))
-                                                                    .sum::<f64>();
-                                                                let var = pts.iter()
-                                                                    .map(|p| (p.0 - mx) * (p.0 - mx))
-                                                                    .sum::<f64>();
-                                                                if var > 1e-9 && cov / var > 0.05 {
-                                                                    let b = cov / var;
-                                                                    let a = my - b * mx;
-                                                                    let total = (-a / b).exp();
-                                                                    let r = total - t_now;
-                                                                    if r.is_finite() && r > 0.0
-                                                                        && r < 360_000.0
-                                                                    {
-                                                                        Some(r)
-                                                                    } else {
-                                                                        None
-                                                                    }
-                                                                } else {
-                                                                    None
-                                                                }
-                                                            } else {
-                                                                None
-                                                            };
-                                                            let eta_s = match eta {
-                                                                Some(r) if r >= 120.0 =>
-                                                                    format!(", eta ~{:.0}m", r / 60.0),
-                                                                Some(r) =>
-                                                                    format!(", eta ~{:.0}s", r),
-                                                                None => String::new(),
-                                                            };
-                                                            eprintln!(
-                                                                "c {}: elaborating DRAT -> LRAT… {:.1}% \
-                                                                 ({:.0}s{}, drat {:.0}MB, lrat {:.0}MB)",
-                                                                bk, p, t_now, eta_s, drat_mb, lmb);
-                                                        }
-                                                        None => eprintln!(
-                                                            "c {}: elaborating DRAT -> LRAT… {:.0}s \
-                                                             (drat {:.0}MB, lrat {:.0}MB)",
-                                                            bk, t_e.elapsed().as_secs_f64(),
-                                                            drat_mb, lmb),
-                                                    }
                                                 }
                                                 if last.elapsed().as_secs_f64() >= 5.0 {
                                                     last = Instant::now();
+                                                    // RSS guard: gratgen is
+                                                    // otherwise unbounded and can
+                                                    // take down the machine.
+                                                    if args.elab_mem_mb > 0 {
+                                                        let rss_mb = std::process::Command::new("ps")
+                                                            .args(["-o", "rss=", "-p",
+                                                                   &ch.id().to_string()])
+                                                            .output().ok()
+                                                            .and_then(|o| String::from_utf8_lossy(&o.stdout)
+                                                                .trim().parse::<u64>().ok())
+                                                            .map(|kb| kb / 1024)
+                                                            .unwrap_or(0);
+                                                        if rss_mb > args.elab_mem_mb {
+                                                            eprintln!("c {}: gratgen elaboration \
+                                                                       MEMOUT (>{}MB); no proof",
+                                                                      bk, args.elab_mem_mb);
+                                                            let _ = ch.kill();
+                                                            let _ = ch.wait();
+                                                            reported_fail = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                    if args.show_progress {
+                                                        let gmb = std::fs::metadata(out)
+                                                            .map(|m| m.len()).unwrap_or(0)
+                                                            as f64 / 1e6;
+                                                        eprintln!("c {}: elaborating DRAT -> GRAT… \
+                                                                   {:.0}s (drat {:.0}MB, grat {:.0}MB, \
+                                                                   -j{})", bk,
+                                                                  t_e.elapsed().as_secs_f64(),
+                                                                  drat_mb, gmb, args.elab_jobs);
+                                                    }
                                                 }
                                                 std::thread::sleep(
                                                     std::time::Duration::from_millis(500));
@@ -3271,15 +3211,22 @@ fn main() {
                                         .map(|t| t.contains("s VERIFIED"))
                                         .unwrap_or(false)
                                 }
-                                Err(_) => false,
+                                Err(e) => {
+                                    eprintln!("c {}: gratgen spawn failed: {}", bk, e);
+                                    reported_fail = true;
+                                    false
+                                }
                             };
                             let _ = std::fs::remove_file(&elog);
                             if ok {
-                                eprintln!("c {}: kissat UNSAT; DRAT elaborated to LRAT at {} \
+                                eprintln!("c {}: proof-format=grat", bk);
+                                eprintln!("c {}: kissat UNSAT; DRAT elaborated to GRAT at {} \
                                            ({:.1}s)", bk, out.display(),
                                           t_e.elapsed().as_secs_f64());
                             } else {
-                                eprintln!("c {}: drat-trim elaboration FAILED; no proof", bk);
+                                if !reported_fail {
+                                    eprintln!("c {}: gratgen elaboration FAILED; no proof", bk);
+                                }
                                 let _ = std::fs::remove_file(out);
                             }
                         }

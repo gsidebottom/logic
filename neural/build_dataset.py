@@ -97,7 +97,39 @@ def model_satisfies(clauses, model: dict[int, bool]) -> bool:
     return True
 
 
-def process(rec: dict, out_dir: str, timeout: int, verify: bool) -> dict:
+def sample_models(clauses, nvars: int, timeout: int, k: int):
+    """Sample up to k distinct models via blocking clauses (budget-bounded by
+    `timeout` s total).  Returns a list of {var: bool} complete models — the
+    basis for the per-variable MAJORITY phase (vars that agree across all
+    models are the backbone, the NeuroBack signal; a single arbitrary model is
+    noisy on the non-backbone vars)."""
+    import time as _t
+    models, blocks = [], []
+    deadline = _t.time() + timeout
+    with tempfile.TemporaryDirectory() as td:
+        cnf = os.path.join(td, "s.cnf")
+        for _ in range(k):
+            rem = deadline - _t.time()
+            if rem <= 1:
+                break
+            with open(cnf, "w") as f:
+                f.write(f"p cnf {nvars} {len(clauses) + len(blocks)}\n")
+                for c in clauses:
+                    f.write(" ".join(map(str, c)) + " 0\n")
+                for b in blocks:
+                    f.write(" ".join(map(str, b)) + " 0\n")
+            verdict, model = solve_model(cnf, int(rem))
+            if verdict != "SAT" or model is None:
+                break
+            full = {v: model.get(v, False) for v in range(1, nvars + 1)}
+            models.append(full)
+            # block this exact assignment so the next solve yields a new model
+            blocks.append([(-v if full[v] else v) for v in range(1, nvars + 1)])
+    return models
+
+
+def process(rec: dict, out_dir: str, timeout: int, verify: bool,
+            n_models: int = 1) -> dict:
     """Solve one instance; on SAT, save its graph + phase labels. Returns a
     manifest entry."""
     name = rec.get("filename", rec.get("path", "?"))
@@ -118,21 +150,37 @@ def process(rec: dict, out_dir: str, timeout: int, verify: bool) -> dict:
         nvars, clauses = sat_graph.parse_dimacs(cnf)
         entry["n_vars"], entry["n_clauses"] = nvars, len(clauses)
         sat = 1 if verdict == "SAT" else 0
-        phase = np.zeros(nvars, dtype=np.uint8)   # meaningful only when sat==1
+        phase = np.zeros(nvars, dtype=np.uint8)        # meaningful only when sat==1
+        agreement = np.ones(nvars, dtype=np.float32)   # per-var label confidence
         if sat:
             # complete the model (solver may omit don't-care vars → False)
             full = {v: model.get(v, False) for v in range(1, nvars + 1)}
             if verify and not model_satisfies(clauses, full):
                 entry["verdict"] = "SAT-BADMODEL"  # dropped from dataset
                 return entry
-            phase = np.fromiter((1 if full[v] else 0 for v in range(1, nvars + 1)),
-                                dtype=np.uint8, count=nvars)
+            if n_models > 1:
+                # MAJORITY phase over sampled models (the NeuroBack target):
+                # cleaner than one arbitrary model, and `agreement` (fraction
+                # voting the majority way, 0.5–1.0) marks the backbone.
+                models = sample_models(clauses, nvars, timeout, n_models) or [full]
+                cnt = np.zeros(nvars, dtype=np.float32)
+                for mdl in models:
+                    cnt += np.fromiter((1.0 if mdl[v] else 0.0
+                                        for v in range(1, nvars + 1)),
+                                       dtype=np.float32, count=nvars)
+                ku = len(models)
+                phase = (cnt > ku / 2.0).astype(np.uint8)
+                agreement = (np.maximum(cnt, ku - cnt) / ku).astype(np.float32)
+                entry["n_models"] = ku
+            else:
+                phase = np.fromiter((1 if full[v] else 0 for v in range(1, nvars + 1)),
+                                    dtype=np.uint8, count=nvars)
         g = sat_graph.build_graph(clauses, nvars)
         np.savez_compressed(
             os.path.join(out_dir, f"{h}.npz"),
             edge_lit=g.edge_lit, edge_clause=g.edge_clause, flip=g.flip,
             n_vars=np.int64(nvars), n_clauses=np.int64(len(clauses)),
-            sat=np.int8(sat), phase=phase)
+            sat=np.int8(sat), phase=phase, agreement=agreement)
         entry["sat"] = sat
         entry["saved"] = True
     return entry
@@ -169,6 +217,10 @@ def main() -> None:
     ap.add_argument("--max-clauses", type=int, default=2_000_000)
     ap.add_argument("--test-frac", type=float, default=0.2)
     ap.add_argument("--no-verify", action="store_true")
+    ap.add_argument("--models", type=int, default=1,
+                    help="sample up to N models/instance (blocking clauses) and "
+                         "label each var by MAJORITY phase + agreement; 1 = single "
+                         "model (the noisier MVP). NeuroBack uses majority.")
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -184,7 +236,8 @@ def main() -> None:
 
     entries: list[dict] = []
     with ThreadPoolExecutor(max_workers=args.jobs) as ex:
-        futs = [ex.submit(process, r, args.out, args.timeout, not args.no_verify)
+        futs = [ex.submit(process, r, args.out, args.timeout, not args.no_verify,
+                          args.models)
                 for r in kept]
         for i, f in enumerate(futs, 1):
             e = f.result()

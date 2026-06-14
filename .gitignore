@@ -23,4 +23,4 @@ evo/evolve/runs/
 evo/results/
 
 # Phase-1 harvested phase dataset (derived; rebuild via neural/build_dataset.py)
-neural/data/phase_ds/
+neural/data/phase_ds*/

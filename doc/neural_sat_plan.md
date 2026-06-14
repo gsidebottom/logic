@@ -131,6 +131,16 @@ verified by VeriPB/cake_lpr — no model training.
   on held-out instances above a trivial baseline (sanity that the encoder
   learns SAT structure at all). If not → the encoder/features are wrong;
   fix before spending on search.
+- **✓ GATE PASSED (2026-06-13).** `neural/model.py` (MLX NeuroSAT-style GNN,
+  64-dim, 16 rounds) on a synthetic random-3-SAT corpus straddling α≈4.26
+  (`neural/gen_random.py`; 400 instances, 189 SAT / 211 UNSAT,
+  family-stratified 320/80 split): **held-out SAT/UNSAT accuracy 0.812 vs
+  0.525 majority** (+0.287, gate ≥ 0.10). Training is stable — loss falls
+  0.88→0.39 monotonically; no peak-then-collapse. What was load-bearing:
+  SUM (not mean) aggregation to break node symmetry; sqrt(n)-scaled sum
+  pooling + LayerNorm; and gradient accumulation over a mini-batch (the
+  collapse was batch-size-1 gradient variance). The encoder demonstrably
+  learns SAT structure → cleared into Phase 1.
 
 ### Phase 1 — reproduce NeuroBack, then distill (track A, the de-risked win)
 NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is

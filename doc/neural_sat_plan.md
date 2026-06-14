@@ -172,8 +172,15 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   high-confidence seeding (`phase_infer.py --margin`) cut conflicts −59% on the
   one A/B instance that solves. But the matrix `eff` engine proved a **poor A/B
   venue** — nondeterministic and too slow (most medium instances time out), and
-  brittle to imperfect priors. **Next: the §4b kissat fork** (robust soft-prior
-  phase-saving) is where the NeuroBack-class win should be measurable.
+  brittle to imperfect priors. The §4b kissat fork was then built
+  ([neural/kissat/](../neural/kissat/)): a sound, polarity-verified patch seeding
+  `kissat_decide_phase` (oracle → **0 conflicts**). Its A/B on held-out
+  instances is **net-negative** (conflict geomean ~1.2–1.3×, wall ≈ neutral) —
+  *not* an implementation bug (oracle proves the hook), but an **undertrained
+  predictor** (53 instances vs NeuroBack's thousands). **Gate not met; the lever
+  is training-data scale** — a large multi-family labeled corpus / per-family
+  models. All infrastructure (predictor, inference, cdcl.rs + kissat hooks,
+  GRAT-certified A/B) is complete and reusable for that data effort.
 
 ### Phase 2 — RL / expert iteration (track A, exceed the teacher)
 - **Reward** = solved (binary) + shaping: −log(decisions) for speed, and

@@ -1,0 +1,141 @@
+diff --git a/src/decide.c b/src/decide.c
+index 522930e..a688791 100644
+--- a/src/decide.c
++++ b/src/decide.c
+@@ -1,10 +1,69 @@
+ #include "decide.h"
++#include "inline.h"
+ #include "inlineframes.h"
+ #include "inlineheap.h"
+ #include "inlinequeue.h"
+ #include "print.h"
+ 
+ #include <inttypes.h>
++#include <stdio.h>
++#include <stdlib.h>
++
++// Neural warm-start (NeuroBack-style): load predicted per-EXTERNAL-variable
++// phases once from $KISSAT_INITIAL_PHASES (signed DIMACS lits, 0-terminated,
++// `c` comment lines — the neural/phase_infer.py format).  Decision-order only.
++static void kissat_load_initial_phases (kissat *solver) {
++  solver->initial_phases_loaded = true;
++  const char *path = getenv ("KISSAT_INITIAL_PHASES");
++  if (!path)
++    return;
++  FILE *file = fopen (path, "r");
++  if (!file)
++    return;
++  unsigned maxvar = 0;
++  static char line[1 << 20];
++  for (int pass = 0; pass < 2; pass++) {
++    while (fgets (line, sizeof line, file)) {
++      if (line[0] == 'c')
++        continue;
++      char *p = line;
++      for (;;) {
++        char *q;
++        long v = strtol (p, &q, 10);
++        if (q == p)
++          break; // no more integers on this line
++        p = q;
++        if (v == 0)
++          continue;
++        unsigned a = (v < 0) ? (unsigned) -v : (unsigned) v;
++        if (pass == 0) {
++          if (a > maxvar)
++            maxvar = a;
++        } else if (a < solver->initial_phases_size) {
++          solver->initial_phases[a] = (v < 0) ? -1 : 1;
++        }
++      }
++    }
++    if (pass == 0) {
++      if (!maxvar)
++        break;
++      solver->initial_phases = calloc (maxvar + 1, 1);
++      if (!solver->initial_phases)
++        break;
++      solver->initial_phases_size = maxvar + 1;
++      rewind (file);
++    }
++  }
++  fclose (file);
++  if (solver->initial_phases) {
++    unsigned n = 0;
++    for (unsigned i = 1; i < solver->initial_phases_size; i++)
++      if (solver->initial_phases[i])
++        n++;
++    fprintf (stderr, "c neural: seeded %u initial phases from %s\n", n, path);
++    fflush (stderr);
++  }
++}
+ 
+ static unsigned last_enqueued_unassigned_variable (kissat *solver) {
+   assert (solver->unassigned);
+@@ -153,6 +212,9 @@ unsigned kissat_next_decision_variable (kissat *solver) {
+ }
+ 
+ int kissat_decide_phase (kissat *solver, unsigned idx) {
++  if (!solver->initial_phases_loaded)
++    kissat_load_initial_phases (solver);
++
+   bool force = GET_OPTION (forcephase);
+ 
+   value *target;
+@@ -196,6 +258,22 @@ int kissat_decide_phase (kissat *solver, unsigned idx) {
+     INC (saved_decisions);
+   }
+ 
++  if (!res && solver->initial_phases) {
++    // Neural warm-start: use the predicted phase in place of the constant
++    // INITIAL_PHASE.  Map internal idx -> external var (polarity-aware: the
++    // export lit's sign undoes any import polarity flip).
++    const int elit = kissat_export_literal (solver, LIT (idx));
++    const unsigned evar = (elit < 0) ? (unsigned) -elit : (unsigned) elit;
++    if (evar && evar < solver->initial_phases_size) {
++      const signed char p = solver->initial_phases[evar];
++      if (p) {
++        res = (elit < 0) ? -p : p;
++        LOG ("%s uses neural initial phase %d", LOGVAR (idx), (int) res);
++        INC (initial_decisions);
++      }
++    }
++  }
++
+   if (!res) {
+     res = INITIAL_PHASE;
+     LOG ("%s uses initial decision phase %d", LOGVAR (idx), (int) res);
+diff --git a/src/internal.c b/src/internal.c
+index 1c00020..1643c3e 100644
+--- a/src/internal.c
++++ b/src/internal.c
+@@ -83,6 +83,9 @@ void kissat_release (kissat *solver) {
+   kissat_release_vectors (solver);
+   kissat_release_phases (solver);
+ 
++  if (solver->initial_phases)
++    free (solver->initial_phases);   // neural warm-start array (libc calloc)
++
+   RELEASE_STACK (solver->export);
+   RELEASE_STACK (solver->import);
+ 
+diff --git a/src/internal.h b/src/internal.h
+index 8a4b46c..b1f27b8 100644
+--- a/src/internal.h
++++ b/src/internal.h
+@@ -111,6 +111,15 @@ struct kissat {
+   extensions extend;
+   unsigneds witness;
+ 
++  /* Neural warm-start (NeuroBack-style): predicted phase per EXTERNAL
++     variable (-1/0/+1), used in kissat_decide_phase as the initial phase
++     in place of the constant INITIAL_PHASE (target/saved phase-saving still
++     win).  Loaded once from $KISSAT_INITIAL_PHASES.  Decision-order only —
++     clause learning + DRAT proof emission are unaffected (sound). */
++  signed char *initial_phases;
++  unsigned initial_phases_size;
++  bool initial_phases_loaded;
++
+   assigned *assigned;
+   flags *flags;
+ 

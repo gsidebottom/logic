@@ -84,6 +84,28 @@ seeds): only the one instance that *solves within 30 s* gives a clean read —
   GRAT-certified `run_benchmark`. This is where NeuroBack's +5–7% should
   materialize.
 
+## §4b — kissat fork (executed)
+
+The recommended next step, now done ([neural/kissat/](../neural/kissat/)). A
+90-line patch to kissat 4.0.4 seeds `kissat_decide_phase` from
+`$KISSAT_INITIAL_PHASES` (in place of the constant `INITIAL_PHASE`; target/saved
+phase-saving still win), internal→external var mapping polarity-aware.
+
+- **Sound + correct:** UNSAT + seed → DRAT still `gratchk`-certifies; oracle
+  (true model) → **0 conflicts**, inverted → worse than baseline (polarity
+  verified). kissat is deterministic, so the A/B is clean.
+- **A/B (13 held-out instances, `phase_v2`):** **net-negative** — conflict
+  ratio warm/base geomean **1.29** @ margin 0.6 (wall ≈ neutral), **1.23**
+  @ margin 0.85 (median 1.00, wall −4%). High family variance: big wins
+  (`Break_triple`, `toughsat` ~0.4×) cancelled by big losses (`med30` 6.9×).
+- **Diagnosis:** *not* an implementation bug (the oracle proves the hook is
+  perfect) — the **predictor is undertrained** (53 instances vs NeuroBack's
+  thousands), so its held-out phases aren't reliable enough to beat kissat's own
+  heuristics. The gate (NeuroBack-class win) is **not met**; the lever is
+  **training-data scale** (a large multi-family labeled corpus and/or per-family
+  models), which is a data effort, not a mechanism one. Infrastructure (fork,
+  inference, A/B, GRAT certification) is complete and reusable for that.
+
 ## Artifacts
 
 - `neural/phase_model.py` (sparse encoder + phase head), `neural/phase_infer.py`

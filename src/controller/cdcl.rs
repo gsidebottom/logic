@@ -993,6 +993,18 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         }
     }
 
+    /// Neural warm-start (NeuroBack-style): seed the phase-saving array
+    /// with a predicted preferred polarity per variable, queried once
+    /// before search.  `seed[v] == Some(b)` biases variable `v`'s first
+    /// (and, until overwritten by `save_lit_phase`, subsequent) decisions
+    /// toward complement-literal polarity `b`.  Soundness is unaffected:
+    /// phase saving is purely a decision-order tiebreaker (it changes
+    /// *which* assignments are tried first, never clause learning or the
+    /// proof), so a wrong seed can only slow the search, never mis-decide.
+    pub fn set_initial_phases(&mut self, seed: &[Option<bool>]) {
+        self.saved_phase = seed.to_vec();
+    }
+
     /// Phase saving: record the polarity of `lit` against its
     /// variable.  Called from `undo()` and `complete_restart()` —
     /// every trail entry being popped contributes its polarity.

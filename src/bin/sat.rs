@@ -711,6 +711,38 @@ impl PbpWriter {
 /// cert entry per `CoveredPathPrefix` event the search emits.  Only
 /// supported by the `cdcl` and `smart` backends (which use the NNF
 /// engine with positions tracked); other backends error.
+/// Neural warm-start seed (NeuroBack-style), set once from `--initial-phases`.
+/// Read by the cdcl/eff controller builders to seed phase saving.  Indexed by
+/// 0-based internal var (= DIMACS var − 1); `Some(b)` = predicted phase.
+static INITIAL_PHASES: std::sync::OnceLock<Vec<Option<bool>>> = std::sync::OnceLock::new();
+
+/// Parse a phase file (signed DIMACS lits, `0`-terminated, `c` comments) into a
+/// per-variable seed: `seed[|L|-1] = Some(L > 0)` (the predicted phase).
+///
+/// The matrix search runs on the CNF *complement* and maps a path lit back via
+/// `asgn[var] = lit.neg` (see `path_lits_to_assignment`), so the complement-lit
+/// polarity to prefer-save IS exactly the predicted phase — the De Morgan
+/// complement and that `asgn = neg` mapping cancel.  Hence `Some(L > 0)`.
+fn load_initial_phases(path: &std::path::Path, nvars: usize)
+    -> Result<Vec<Option<bool>>, String>
+{
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read --initial-phases {}: {}", path.display(), e))?;
+    let mut seed = vec![None; nvars];
+    for line in text.lines() {
+        let t = line.trim();
+        if t.is_empty() || t.starts_with('c') { continue; }
+        for tok in t.split_ascii_whitespace() {
+            let l: i32 = tok.parse()
+                .map_err(|_| format!("bad token in phase file: {:?}", tok))?;
+            if l == 0 { continue; }
+            let v = l.unsigned_abs() as usize;
+            if v >= 1 && v <= nvars { seed[v - 1] = Some(l > 0); }
+        }
+    }
+    Ok(seed)
+}
+
 fn matrix_search(
     comp: NNF,
     nvars: usize,
@@ -1053,6 +1085,7 @@ fn matrix_search(
                             tx.blocking_send((class, hit_limit)).is_ok()
                         });
                         let mut ctrl = CdclController::for_nnf_with_cover(&nnf_cdcl, p_cdcl, on_class);
+                        if let Some(s) = INITIAL_PHASES.get() { ctrl.set_initial_phases(s); }
                         ctrl.drat_hook = drat_for_search;
                         ctrl
                     });
@@ -1067,13 +1100,16 @@ fn matrix_search(
                     let drat_for_search = drat_hook;
                     comp.classify_paths_uncovered_only(64, move |tx| {
                         let mut ctrl = cdcl_controller_builder(&nnf_cdcl, p_cdcl, tx);
+                        if let Some(s) = INITIAL_PHASES.get() { ctrl.set_initial_phases(s); }
                         ctrl.drat_hook = drat_for_search;
                         ctrl
                     })
                 } else {
-                    comp.classify_paths_uncovered_only(64,
-                        move |tx| cdcl_controller_builder(&nnf_cdcl, p_cdcl, tx),
-                    )
+                    comp.classify_paths_uncovered_only(64, move |tx| {
+                        let mut ctrl = cdcl_controller_builder(&nnf_cdcl, p_cdcl, tx);
+                        if let Some(s) = INITIAL_PHASES.get() { ctrl.set_initial_phases(s); }
+                        ctrl
+                    })
                 }
             }
             MatrixBackend::Eff | MatrixBackend::Effb => {
@@ -1114,7 +1150,8 @@ fn matrix_search(
                 let builder = move |arena_ref: &NnfArena, tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>| {
                     let on_class: DynOnClass = Box::new(move |class, hit_limit|
                         tx.blocking_send((class, hit_limit)).is_ok());
-                    let cdcl = CdclController::for_arena_with_cover(arena_ref, p_eff, on_class);
+                    let mut cdcl = CdclController::for_arena_with_cover(arena_ref, p_eff, on_class);
+                    if let Some(s) = INITIAL_PHASES.get() { cdcl.set_initial_phases(s); }
                     let idx = EffectiveCountIndex::build_from_arena(arena_ref);
                     let counts = EffectiveCounts::new(&idx);
                     EffectiveCountWrapper::new_with_tau(cdcl, idx, counts, tau).with_vsids_order(eff_vsids_override)
@@ -1174,7 +1211,8 @@ fn matrix_search(
                             }
                             tx.blocking_send((class, hit_limit)).is_ok()
                         });
-                        let cdcl = CdclController::for_nnf_with_cover(nnf_ref, p_ec, on_class);
+                        let mut cdcl = CdclController::for_nnf_with_cover(nnf_ref, p_ec, on_class);
+                        if let Some(s) = INITIAL_PHASES.get() { cdcl.set_initial_phases(s); }
                         let idx = EffectiveCountIndex::build(nnf_ref);
                         let counts = EffectiveCounts::new(&idx);
                         EffectiveCountWrapper::new_with_tau(cdcl, idx, counts, tau).with_vsids_order(eff_vsids_override)
@@ -1188,7 +1226,8 @@ fn matrix_search(
                     comp.classify_paths_uncovered_only_with_nnf(64, move |nnf_ref, tx| {
                         let on_class: DynOnClass = Box::new(move |class, hit_limit|
                             tx.blocking_send((class, hit_limit)).is_ok());
-                        let cdcl = CdclController::for_nnf(nnf_ref, p_ec, on_class);
+                        let mut cdcl = CdclController::for_nnf(nnf_ref, p_ec, on_class);
+                        if let Some(s) = INITIAL_PHASES.get() { cdcl.set_initial_phases(s); }
                         let idx = EffectiveCountIndex::build(nnf_ref);
                         let counts = EffectiveCounts::new(&idx);
                         EffectiveCountWrapper::new_with_tau(cdcl, idx, counts, tau).with_vsids_order(eff_vsids_override)
@@ -2311,6 +2350,12 @@ struct Args {
     /// raise peak memory (the proof's clause DB is shared, watch state is
     /// per-thread).  Default 8.
     elab_jobs: u64,
+    /// Neural warm-start (NeuroBack-style): a phase file (signed DIMACS lits,
+    /// `0`-terminated) of predicted per-variable phases, seeded into the
+    /// cdcl/eff phase-saving array (one query before search).  Requires
+    /// `--no-preprocess` so seed indices match the input CNF's variables.
+    /// Sound by construction — phase saving is a decision tiebreaker only.
+    initial_phases: Option<std::path::PathBuf>,
     /// Variance-gated Sum-reordering threshold for Effective-wrapped
     /// backends (`eff`, `effb`, `greedy_eff`, `basic_eff`,
     /// `greedy_effb`, `basic_effb`).  The wrapper applies its
@@ -2351,6 +2396,7 @@ fn parse_args() -> Result<Args, String> {
         elab_time_s: 0,
         elab_mem_mb: 49152,
         elab_jobs: 8,
+        initial_phases: None,
         // 0.0 = always reorder (legacy behaviour).  Override with
         // `--eff-tau N` to gate Sum reordering on `log10(max/min) >= N`.
         eff_tau: 0.0,
@@ -2521,6 +2567,14 @@ fn parse_args() -> Result<Args, String> {
                 a.elab_jobs = s["--elab-jobs=".len()..].parse()
                     .map_err(|_| "bad --elab-jobs".to_string())?;
             }
+            "--initial-phases" => {
+                let v = iter.next().ok_or_else(||
+                    "--initial-phases requires a file path".to_string())?;
+                a.initial_phases = Some(v.into());
+            }
+            s if s.starts_with("--initial-phases=") => {
+                a.initial_phases = Some(s["--initial-phases=".len()..].into());
+            }
             "--help"     | "-h" => {
                 eprintln!("Usage: sat [--backend NAME] [--timeout SECS] [--progress] < problem.cnf");
                 eprintln!();
@@ -2562,6 +2616,10 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    — kissat for the first pct% (default 10) of the budget,");
                 eprintln!("                    then cadical.");
                 eprintln!("  --elab-jobs N     gratgen worker threads for DRAT->GRAT (default 8).");
+                eprintln!("  --initial-phases FILE  Neural warm-start: seed cdcl/eff phase-saving");
+                eprintln!("                    from predicted per-variable phases (signed DIMACS");
+                eprintln!("                    lits, 0-terminated; see neural/phase_infer.py).");
+                eprintln!("                    Requires --no-preprocess.");
                 eprintln!("                      hydra        — pb-cadical + an XOR/parity stage:");
                 eprintln!("                                     GF(2) elimination decides pure-parity");
                 eprintln!("                                     formulas and simplifies mixed ones");
@@ -2640,6 +2698,26 @@ fn main() {
         }
     };
     eprintln!("c parsed {} variables, {} clauses", nvars, clauses.len());
+
+    // Neural warm-start (--initial-phases): load the predicted per-variable
+    // phase seed once and stash it for the cdcl/eff controller builders.
+    // Requires --no-preprocess so seed indices match the input CNF variables.
+    if let Some(pf) = args.initial_phases.as_ref() {
+        if args.preprocess {
+            eprintln!("c ERROR: --initial-phases requires --no-preprocess \
+                       (seed indices must match the input CNF variables)");
+            std::process::exit(2);
+        }
+        match load_initial_phases(pf, nvars) {
+            Ok(seed) => {
+                let n = seed.iter().filter(|s| s.is_some()).count();
+                let _ = INITIAL_PHASES.set(seed);
+                eprintln!("c warm-start: seeded {}/{} variable phases from {}",
+                          n, nvars, pf.display());
+            }
+            Err(e) => { eprintln!("c ERROR: {}", e); std::process::exit(2); }
+        }
+    }
 
     // --emit-cook-pbp short-circuit.  When set, attempt to detect
     // PHP-N-M or RoundRobin shape in the input.  On match, emit a

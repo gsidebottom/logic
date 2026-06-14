@@ -104,7 +104,7 @@ def process(rec: dict, out_dir: str, timeout: int, verify: bool) -> dict:
     h = hashlib.sha1(name.encode()).hexdigest()[:16]
     entry = {"hash": h, "filename": name, "family": rec.get("family"),
              "verdict": None, "n_vars": None, "n_clauses": None,
-             "labeled": False, "split": None}
+             "sat": None, "saved": False, "split": None}
     with tempfile.TemporaryDirectory() as td:
         try:
             cnf = _cnf_path_for_solver(rec, td)
@@ -113,35 +113,39 @@ def process(rec: dict, out_dir: str, timeout: int, verify: bool) -> dict:
             return entry
         verdict, model = solve_model(cnf, timeout)
         entry["verdict"] = verdict
-        if verdict != "SAT":
-            return entry
+        if verdict not in ("SAT", "UNSAT"):
+            return entry                          # UNKNOWN/timeout → no graph
         nvars, clauses = sat_graph.parse_dimacs(cnf)
         entry["n_vars"], entry["n_clauses"] = nvars, len(clauses)
-        # complete the model (solver may omit don't-care vars → default False)
-        full = {v: model.get(v, False) for v in range(1, nvars + 1)}
-        if verify and not model_satisfies(clauses, full):
-            entry["verdict"] = "SAT-BADMODEL"   # dropped from dataset
-            return entry
+        sat = 1 if verdict == "SAT" else 0
+        phase = np.zeros(nvars, dtype=np.uint8)   # meaningful only when sat==1
+        if sat:
+            # complete the model (solver may omit don't-care vars → False)
+            full = {v: model.get(v, False) for v in range(1, nvars + 1)}
+            if verify and not model_satisfies(clauses, full):
+                entry["verdict"] = "SAT-BADMODEL"  # dropped from dataset
+                return entry
+            phase = np.fromiter((1 if full[v] else 0 for v in range(1, nvars + 1)),
+                                dtype=np.uint8, count=nvars)
         g = sat_graph.build_graph(clauses, nvars)
-        phase = np.fromiter((1 if full[v] else 0 for v in range(1, nvars + 1)),
-                            dtype=np.uint8, count=nvars)
         np.savez_compressed(
             os.path.join(out_dir, f"{h}.npz"),
             edge_lit=g.edge_lit, edge_clause=g.edge_clause, flip=g.flip,
             n_vars=np.int64(nvars), n_clauses=np.int64(len(clauses)),
-            phase=phase)
-        entry["labeled"] = True
+            sat=np.int8(sat), phase=phase)
+        entry["sat"] = sat
+        entry["saved"] = True
     return entry
 
 
 def assign_splits(entries: list[dict], test_frac: float) -> None:
     """Family-stratified, deterministic train/test split over labeled rows."""
     from collections import defaultdict
-    by_fam: dict[str, list[dict]] = defaultdict(list)
+    by_grp: dict = defaultdict(list)
     for e in entries:
-        if e["labeled"]:
-            by_fam[e["family"] or "?"].append(e)
-    for fam, rows in by_fam.items():
+        if e["saved"]:
+            by_grp[(e["family"] or "?", e["sat"])].append(e)   # balance classes
+    for grp, rows in by_grp.items():
         rows.sort(key=lambda e: e["hash"])      # deterministic
         n_test = max(1, round(len(rows) * test_frac)) if len(rows) > 1 else 0
         for i, e in enumerate(rows):
@@ -186,8 +190,8 @@ def main() -> None:
             e = f.result()
             entries.append(e)
             if i % 25 == 0 or i == len(futs):
-                lab = sum(1 for x in entries if x["labeled"])
-                print(f"  {i}/{len(futs)} solved  ({lab} SAT-labeled)")
+                sv = sum(1 for x in entries if x["saved"])
+                print(f"  {i}/{len(futs)} solved  ({sv} graphs saved)")
 
     assign_splits(entries, args.test_frac)
     with open(os.path.join(args.out, "manifest.jsonl"), "w") as f:
@@ -196,16 +200,19 @@ def main() -> None:
 
     from collections import Counter
     verd = Counter(e["verdict"] for e in entries)
-    lab = [e for e in entries if e["labeled"]]
-    spl = Counter(e["split"] for e in lab)
+    saved = [e for e in entries if e["saved"]]
+    n_sat = sum(1 for e in saved if e["sat"]); n_uns = len(saved) - n_sat
+    spl = Counter((e["split"], "SAT" if e["sat"] else "UNSAT") for e in saved)
     print(f"\ndataset → {args.out}")
     print(f"  verdicts: {dict(verd)}")
-    print(f"  labeled SAT instances: {len(lab)}  "
-          f"(train={spl.get('train',0)} test={spl.get('test',0)})")
-    if lab:
-        vs = [e["n_vars"] for e in lab]
-        print(f"  labeled var counts: min={min(vs)} "
-              f"median={sorted(vs)[len(vs)//2]} max={max(vs)}")
+    print(f"  saved graphs: {len(saved)}  (SAT={n_sat} UNSAT={n_uns})")
+    print(f"  split: train[SAT={spl.get(('train','SAT'),0)} "
+          f"UNSAT={spl.get(('train','UNSAT'),0)}]  "
+          f"test[SAT={spl.get(('test','SAT'),0)} "
+          f"UNSAT={spl.get(('test','UNSAT'),0)}]")
+    if saved:
+        vs = sorted(e["n_vars"] for e in saved)
+        print(f"  var counts: min={vs[0]} median={vs[len(vs)//2]} max={vs[-1]}")
 
 
 if __name__ == "__main__":

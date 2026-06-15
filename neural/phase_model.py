@@ -123,10 +123,17 @@ class PhaseNet(nn.Module):
 
 # ─── train / eval ───────────────────────────────────────────────────────────
 
+LABEL_SMOOTH = 0.0   # set from --label-smooth; softens targets toward 0.5 to
+                     # curb overconfidence (better calibration) on bigger nets.
+
+
 def loss_fn(model, inst):
     logits = model(inst)
+    y = inst["phase"]
+    if LABEL_SMOOTH:
+        y = y * (1.0 - LABEL_SMOOTH) + 0.5 * LABEL_SMOOTH
     return nn.losses.binary_cross_entropy(
-        logits, inst["phase"], with_logits=True, reduction="mean")
+        logits, y, with_logits=True, reduction="mean")
 
 
 def accuracy(model, data):
@@ -164,12 +171,16 @@ def main() -> None:
     ap.add_argument("--epochs", type=int, default=60)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--batch", type=int, default=8)   # grad-accum: denoise steps
+    ap.add_argument("--label-smooth", type=float, default=0.0,
+                    help="soften targets toward 0.5 (e.g. 0.05) for calibration")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--save", default=None,
                     help="save best weights to PATH.safetensors (+ PATH.json config) "
                          "for CPU inference (phase_infer.py)")
     args = ap.parse_args()
 
+    global LABEL_SMOOTH
+    LABEL_SMOOTH = args.label_smooth
     mx.random.seed(args.seed)
     rng = random.Random(args.seed)
     train, test = load_dataset(args.data)
@@ -238,7 +249,8 @@ def main() -> None:
     if args.save:
         base = args.save[:-len(".safetensors")] if args.save.endswith(".safetensors") else args.save
         model.save_weights(base + ".safetensors")
-        json.dump({"dim": args.dim, "rounds": args.rounds},
+        json.dump({"dim": args.dim, "rounds": args.rounds,
+                   "label_smooth": args.label_smooth},
                   open(base + ".json", "w"))
         print(f"  saved weights → {base}.safetensors  (config {base}.json)")
 

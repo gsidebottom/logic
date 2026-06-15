@@ -220,6 +220,18 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   predictor scale/quality the phase warm-start is **≈ neutral on wall-time**, not
   NeuroBack's +5–7%. The bigger held-out caught the over-claim. See
   [neural_phase1.md](neural_phase1.md) (v6 section).
+- **○ bigger/margin levers exhausted (2026-06-15) — bottleneck is the signal.**
+  A calibration probe showed v6 is already well-calibrated (ECE 0.049); accuracy
+  rises with the margin (0.69→0.95 at M=0.8). But (1) a **4× bigger** model
+  (`phase_v7`, dim 128/rounds 24) hit the *same* accuracy ceiling (0.691 vs
+  0.689), and (2) a **margin sweep** found no net win: M=0.6 = wall +9.7%
+  (aggressive, some-wrong seeds), M=0.7/0.8 = byte-identical conflicts (seeds
+  vanish on the real instances). Root cause: the predictor largely learned
+  **per-instance majority phase** (4/14 held-out insts predict a fully constant
+  polarity; mean std(P) 0.11), not per-variable discrimination. **Next real
+  lever = better labels, not a bigger net:** majority-vote phases
+  (`build_dataset.py --models K`) + per-instance gating. See
+  [neural_phase1.md](neural_phase1.md) (v7 section).
 
 ### Phase 2 — RL / expert iteration (track A, exceed the teacher)
 - **Reward** = solved (binary) + shaping: −log(decisions) for speed, and

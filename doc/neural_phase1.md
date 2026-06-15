@@ -231,10 +231,57 @@ is less hurt by a few regressions). **The larger held-out earning this
 correction is the main result of this round** — it caught an over-claim the
 13-instance set had hidden.
 
+### v7 — "bigger / better-calibrated" predictor + margin sweep (negative result)
+
+Tested the two obvious levers on the v6 result. First a **calibration probe**
+(`neural/calibrate.py`) on the v6 labeled test split (351 insts): v6 is already
+**well-calibrated** (ECE 0.049), and accuracy *climbs* with the confidence
+margin — 0.689 (all) → 0.885 (M=0.6) → **0.948 (M=0.8)**. So the +9.7% A/B
+(seeded at M=0.6, where ~11.5% of seeds are wrong) looked like a *threshold*
+problem, not a model-quality one. Two follow-ups:
+
+1. **Bigger model (`phase_v7`: dim 64→128, rounds 16→24, ~4× params, +0.05
+   label smoothing).** Hit the **same accuracy ceiling** (micro 0.691 vs v6's
+   0.689) and, because smoothing curbs confidence, ended up with **less than
+   half** v6's high-confidence-correct mass at every margin (M=0.8: 2.4% vs
+   5.4% coverage). Capacity is **not** the bottleneck — the ceiling is how
+   learnable these phases are from structure.
+
+2. **Margin sweep on v6 (the better seeding model), 53-instance held-out:**
+
+   | margin | result vs base |
+   |---|---|
+   | 0.6 | geomean 0.953, **wall +9.7%** (aggressive seeds, some wrong → regress) |
+   | 0.7 | geomean **1.000**, wall +0.2% (byte-identical conflicts) |
+   | 0.8 | geomean **1.000**, wall +0.1% (byte-identical conflicts) |
+
+   At M≥0.7 the seeds **vanish** on this set — the confidence distribution on the
+   *real* A/B instances is far lower than on the easy training-test split (at
+   M=0.8, median per-instance coverage is **0.000**). Diagnosing why
+   (`x9-10070`): the model seeds **all 500 vars as False at M=0.6** (a
+   near-constant majority-phase bias, confidence clustered in [0.6,0.7)) and only
+   **3 vars** clear M=0.7. Across 14 held-out insts, **4 are fully constant**
+   (0%/100% True) and mean std(P) is just 0.11 — the predictor has largely
+   learned **per-instance majority phase**, not per-variable discrimination
+   (consistent with the +0.05 margin over the majority baseline).
+
+**Conclusion (robust across model size and margin).** The phase warm-start is
+**net neutral-to-negative** here, and the bottleneck is the **informativeness of
+the per-variable signal**, not model capacity or the seeding threshold. Where the
+model is confident on hard instances it emits a degenerate all-one-polarity bias
+(seed it → regress; raise the bar → no-op); genuine per-variable signal exists
+only on a subset (WS_500, med30, mp1…) and doesn't carry the aggregate. **The
+real next lever is better labels, not a bigger net:** majority-vote phases over
+many sampled models (`build_dataset.py --models K`, the NeuroBack refinement) to
+replace single-model labels that collapse toward majority phase — plus possibly
+per-instance gating (skip near-constant predictions, which add no information).
+
 ## Artifacts
 
-- `neural/phase_model.py` (sparse encoder + phase head), `neural/phase_infer.py`
-  (`--margin`), `neural/build_dataset.py` (`--models` majority + agreement).
+- `neural/phase_model.py` (sparse encoder + phase head; `--label-smooth`),
+  `neural/phase_infer.py` (`--margin`), `neural/build_dataset.py` (`--models`
+  majority + agreement), `neural/calibrate.py` (reliability/ECE +
+  accuracy-at-margin probe).
 - `neural/weights/phase_v1.*` (single-model), `phase_v2.*` (majority; preferred).
 - Datasets are derived (gitignored): rebuild via `build_dataset.py` from
   `neural/data/phase_harvest_index.jsonl`.

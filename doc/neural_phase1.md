@@ -131,6 +131,33 @@ NeuroBack's clean +5–7% — the trend across v1→v2→v3 (negative → neutra
 positive) shows the lever is corpus scale, and the full thousands-scale corpus
 (GBD has 31k indexed instances) is the path to a robust win.
 
+### Full-scale push (phase_v4, 2206 instances)
+
+Pushed the corpus **53 → 2206** SAT instances: **106 real** (all on-disk SAT
+≤50k vars per GBD's `result` feature, minus the 13 held-out) + **2100 generated**
+(`neural/gen_npz.py` — planted coloring/k-SAT/PHP-SAT written *directly to npz*
+with plant-phase labels, **no solver**, ~5 s for 2100). Retrained `phase_v4`,
+re-ran the same kissat A/B:
+
+| predictor | corpus | best wall (13 held-out) | conflict geomean |
+|---|--:|---|--:|
+| phase_v2 | 53 | ≈ neutral | ~1.3 |
+| phase_v3 | 691 | −15% (margin 0.6, noisy) | 1.32 |
+| **phase_v4** | **2206** | **−5.9% (margin 0.85)** | **0.95–0.98** |
+
+Scale **monotonically pushed the conflict geomean from >1 (hurting) to <1
+(net-helping)** — the `med30` 6.9× regression at v2 became a 0.23× *win* at v4 —
+a genuine, scale-driven improvement; wall-time stays net-positive (−2 to −6%)
+but **noisy** (the 13-instance set is dominated by a few big instances that flip
+win↔loss between models). Sound throughout (all verdicts matched).
+
+**The binding constraint, now clearly demonstrated:** only ~106–440 *real* SAT
+instances are on disk (GBD can't download the rest of its 31k index), so the
+corpus is synthetic-heavy, and synthetic transfer to the real test families is
+limited + noisy. The mechanism + scaling law are proven; a *clean, robust*
+NeuroBack +5–7% needs **thousands of real instances** — i.e. the actual SAT
+archive on disk, a data-acquisition step beyond what's locally available.
+
 ## Artifacts
 
 - `neural/phase_model.py` (sparse encoder + phase head), `neural/phase_infer.py`

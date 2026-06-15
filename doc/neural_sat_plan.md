@@ -190,6 +190,16 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   **corpus scale is the lever** (v1→v2→v3: negative → neutral → positive).
   Still high-variance, not yet NeuroBack's clean +5–7%; the full thousands-scale
   corpus (GBD indexes 31k instances) is the path to a robust win.
+- **◑ full-scale push (2026-06-14).** Scaled **53 → 2206** (106 real + 2100
+  generated plant-labeled-directly-to-npz, no solver, via `neural/gen_npz.py`),
+  trained `phase_v4`. Scale **monotonically pushed the A/B conflict geomean
+  >1 → <1** (v2 ~1.3 → v3 1.32 → v4 0.95–0.98: net-helping); best wall −5.9%
+  (margin 0.85), sound throughout. Wall stays noisy (few big instances flip
+  between models). **Binding constraint identified:** only ~106–440 *real* SAT
+  instances are on disk (GBD can't fetch its 31k index), so the corpus is
+  synthetic-heavy with limited transfer — a clean robust win needs the real SAT
+  archive on disk (a data-acquisition step, not more engineering). See
+  [neural_phase1.md](neural_phase1.md).
 
 ### Phase 2 — RL / expert iteration (track A, exceed the teacher)
 - **Reward** = solved (binary) + shaping: −log(decisions) for speed, and

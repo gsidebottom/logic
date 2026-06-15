@@ -151,12 +151,15 @@ a genuine, scale-driven improvement; wall-time stays net-positive (−2 to −6%
 but **noisy** (the 13-instance set is dominated by a few big instances that flip
 win↔loss between models). Sound throughout (all verdicts matched).
 
-**The binding constraint, now clearly demonstrated:** only ~106–440 *real* SAT
-instances are on disk (GBD can't download the rest of its 31k index), so the
-corpus is synthetic-heavy, and synthetic transfer to the real test families is
-limited + noisy. The mechanism + scaling law are proven; a *clean, robust*
-NeuroBack +5–7% needs **thousands of real instances** — i.e. the actual SAT
-archive on disk, a data-acquisition step beyond what's locally available.
+**Why this corpus was synthetic-heavy (and the fix):** at v4 only ~106–440
+*real* SAT instances were on local disk, so I padded with synthetic — whose
+transfer to the real test families is limited + noisy. (An earlier note here
+wrongly said the rest of GBD's 31k index "can't be fetched" — **it can**:
+`tools/gbd/download.sh "result=sat and variables<N"` pulls CNFs from
+benchmark-database.de by GBD query; **5,984 SAT ≤50k vars are downloadable**.)
+The mechanism + scaling law are proven; a *clean, robust* NeuroBack +5–7% needs
+**thousands of real instances**, which is a download + harvest-compute step —
+now underway (`phase_v5`).
 
 ## Artifacts
 

@@ -195,10 +195,11 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   trained `phase_v4`. Scale **monotonically pushed the A/B conflict geomean
   >1 → <1** (v2 ~1.3 → v3 1.32 → v4 0.95–0.98: net-helping); best wall −5.9%
   (margin 0.85), sound throughout. Wall stays noisy (few big instances flip
-  between models). **Binding constraint identified:** only ~106–440 *real* SAT
-  instances are on disk (GBD can't fetch its 31k index), so the corpus is
-  synthetic-heavy with limited transfer — a clean robust win needs the real SAT
-  archive on disk (a data-acquisition step, not more engineering). See
+  between models). The v4 corpus was synthetic-heavy only because ~106–440 real
+  SAT instances were on local disk at the time — **not** a hard limit: real
+  instances ARE fetchable via `tools/gbd/download.sh` from benchmark-database.de
+  (5,984 SAT ≤50k vars downloadable). A *real* thousands-scale corpus (`phase_v5`)
+  is the next step — a download + harvest-compute step. See
   [neural_phase1.md](neural_phase1.md).
 
 ### Phase 2 — RL / expert iteration (track A, exceed the teacher)

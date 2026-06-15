@@ -161,6 +161,38 @@ The mechanism + scaling law are proven; a *clean, robust* NeuroBack +5–7% need
 **thousands of real instances**, which is a download + harvest-compute step —
 now underway (`phase_v5`).
 
+### Real full-scale (phase_v5) — the data-scale win
+
+With the fetch path open (`download.sh`), pulled **2,899 real SAT instances**
+(4,016 on disk, 11 GB) and built a **3,014-real-SAT** index (≤15k vars, minus
+the 13 held-out), harvested **2,218** (single-model), trained **`phase_v5`
+(real-only)**. Same kissat A/B, same 13 held-out:
+
+| predictor | corpus | wall (13 held-out) | conflict geomean |
+|---|--:|---|--:|
+| phase_v3 | 691 (91 real) | −15% | 1.32 |
+| phase_v4 | 2206 (106 real) | −5.9% | 0.95 |
+| **phase_v5** | **2218 real** | **−28.7%** | **0.891** |
+
+**Best result across the whole sweep** — geomean monotonically 1.32 → 0.95 →
+0.89, wall −28.7% (311→222 s), all 13 verdicts sound. Real data is decisively
+the lever (e.g. `WS_500` 2.6M→162K conflicts, `Break_triple` 1.8M→379K).
+
+Two honest caveats:
+- **Still high-variance:** the −28.7% is dominated by two huge wins
+  (`WS_500` 0.06×, `Break_triple` 0.21×) against real regressions (`x9`, `mp1`
+  ~1.7×); the geomean 0.89 is the steadier read. The 13-instance held-out set is
+  too small for a tight aggregate — a larger test set is needed for a
+  publication-grade number.
+- **Accuracy ≠ utility, and corpus *quality* matters:** v5's internal accuracy
+  gate *failed* (margin +0.044) because the cheap small-size band is
+  **random-heavy** (uniform-random/random/hidden-model ≈ 1,200 of 3,014), whose
+  phases are unpredictable — yet the *structured* real instances (hamiltonian,
+  planning, coloring, factoring…) carried the downstream A/B win. So random
+  families are dead weight; the clean next lever is a **structured-only** corpus
+  (**3,355 non-random SAT ≤15k vars are downloadable** — hamiltonian 775, crypto
+  383, planning 241, coloring 189, …), which should lift accuracy *and* the A/B.
+
 ## Artifacts
 
 - `neural/phase_model.py` (sparse encoder + phase head), `neural/phase_infer.py`

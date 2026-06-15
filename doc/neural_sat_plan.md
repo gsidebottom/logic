@@ -201,6 +201,15 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   (5,984 SAT ≤50k vars downloadable). A *real* thousands-scale corpus (`phase_v5`)
   is the next step — a download + harvest-compute step. See
   [neural_phase1.md](neural_phase1.md).
+- **● real full-scale win (2026-06-15).** Downloaded 2,899 real SAT
+  (`tools/gbd/download.sh`), trained `phase_v5` on **2,218 real** instances.
+  Best A/B yet: **−28.7% wall** on the 13 held-out, geomean monotonically
+  1.32 (v3) → 0.95 (v4) → **0.89 (v5)**, all sound. Real data is decisively the
+  lever. Caveats: still high-variance (two big wins dominate; small 13-instance
+  test), and the cheap size-band is random-heavy (unpredictable phases →
+  internal accuracy gate failed even as the A/B improved). Clean next lever: a
+  **structured-only** corpus (3,355 non-random SAT ≤15k downloadable) + a larger
+  held-out test for a tight aggregate.
 
 ### Phase 2 — RL / expert iteration (track A, exceed the teacher)
 - **Reward** = solved (binary) + shaping: −log(decisions) for speed, and

@@ -106,6 +106,31 @@ phase-saving still win), internal→external var mapping polarity-aware.
   models), which is a data effort, not a mechanism one. Infrastructure (fork,
   inference, A/B, GRAT certification) is complete and reusable for that.
 
+## §4b data-scale follow-up — the lever confirmed
+
+The §4b diagnosis (undertrained predictor) predicted that *more data* should
+help. Tested it: scaled the corpus **53 → 691** SAT instances — 91 real (broad
+GBD-pool harvest, `neural/data/v3_real_index.jsonl`) + 600 generated
+structured-with-planted-phases (`neural/gen_structured.py`: planted graph
+k-coloring + planted k-SAT). Retrained **`phase_v3`**, re-ran the *same* kissat
+A/B on the *same 13 held-out* real instances:
+
+| predictor | corpus | A/B total wall (base → warm, margin 0.6) |
+|---|--:|---|
+| phase_v2 | 53 | 325 → 324 s (≈ neutral) |
+| **phase_v3** | **691** | **328 → 279 s (−15%)** |
+
+13× more data **flipped the warm-start from neutral to a net wall-time win**:
+big speedups on the large SAT instances (`Break_triple` 70→21 s, `WS_500`
+63→21 s) outweigh small regressions. All verdicts sound. Honest caveats: it's
+**high-variance** (a few big wins + a few regressions, not uniform), the
+conflict-ratio geomean still reads >1 (dominated by *tiny* instances where
+absolute cost is negligible), and it's **margin-sensitive** (0.6 wins; 0.85
+seeds too few vars → neutral). So this is a **directional confirmation**, not yet
+NeuroBack's clean +5–7% — the trend across v1→v2→v3 (negative → neutral →
+positive) shows the lever is corpus scale, and the full thousands-scale corpus
+(GBD has 31k indexed instances) is the path to a robust win.
+
 ## Artifacts
 
 - `neural/phase_model.py` (sparse encoder + phase head), `neural/phase_infer.py`

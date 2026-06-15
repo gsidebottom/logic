@@ -181,6 +181,15 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   is training-data scale** — a large multi-family labeled corpus / per-family
   models. All infrastructure (predictor, inference, cdcl.rs + kissat hooks,
   GRAT-certified A/B) is complete and reusable for that data effort.
+- **◑ data-scale lever confirmed (2026-06-14).** Scaled the corpus **53 → 691**
+  SAT instances (91 real GBD-pool + 600 generated planted-phase, via
+  `neural/gen_structured.py`), retrained `phase_v3`, re-ran the *same* kissat A/B
+  on the *same 13 held-out*: total wall **325→324 s (v2) → 328→279 s (v3, −15%)**.
+  13× data **flipped the warm-start from neutral to a net wall-time win** (big
+  speedups on large SAT instances), all sound — directional confirmation that
+  **corpus scale is the lever** (v1→v2→v3: negative → neutral → positive).
+  Still high-variance, not yet NeuroBack's clean +5–7%; the full thousands-scale
+  corpus (GBD indexes 31k instances) is the path to a robust win.
 
 ### Phase 2 — RL / expert iteration (track A, exceed the teacher)
 - **Reward** = solved (binary) + shaping: −log(decisions) for speed, and

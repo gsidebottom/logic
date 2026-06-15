@@ -183,7 +183,9 @@ Two honest caveats:
   (`WS_500` 0.06×, `Break_triple` 0.21×) against real regressions (`x9`, `mp1`
   ~1.7×); the geomean 0.89 is the steadier read. The 13-instance held-out set is
   too small for a tight aggregate — a larger test set is needed for a
-  publication-grade number.
+  publication-grade number. **→ The v6 round below built that 53-instance
+  held-out, and it deflated this −28.7% to +9.7% wall: the win was small-sample
+  luck.**
 - **Accuracy ≠ utility, and corpus *quality* matters:** v5's internal accuracy
   gate *failed* (margin +0.044) because the cheap small-size band is
   **random-heavy** (uniform-random/random/hidden-model ≈ 1,200 of 3,014), whose
@@ -192,6 +194,42 @@ Two honest caveats:
   families are dead weight; the clean next lever is a **structured-only** corpus
   (**3,355 non-random SAT ≤15k vars are downloadable** — hamiltonian 775, crypto
   383, planning 241, coloring 189, …), which should lift accuracy *and* the A/B.
+
+### v6 — structured-only corpus + larger held-out (the honest correction)
+
+Two fixes to pressure-test the v5 win: **(1)** a **structured-only** training
+corpus (2,248 → 1,738 harvested; dropped the random families) and **(2)** a
+**larger held-out** (53 structured instances vs the noisy 13), with a
+time-capped, unfinished-excluding A/B harness.
+
+- **(1) worked on accuracy:** the gate flipped from v5's failing **+0.044 →
+  +0.050 PASSED** — removing random families (unpredictable phases) cleaned the
+  signal (modestly).
+- **(2) overturned the headline.** On 40 usable held-out instances:
+
+  | metric | v5 (noisy 13) | **v6 (53 held-out)** |
+  |---|---|---|
+  | conflict geomean | 0.891 | **0.953** |
+  | total wall | **−28.7%** | **+9.7%** |
+
+  The warm-start gives a *modest, broad* conflict reduction (geomean 0.95,
+  ~13 wins / 17 ties / 8 losses) but is a **net wall-time loss (+9.7%)**: a few
+  instances regress badly (the predicted phase sends kissat down a worse path)
+  and cost more wall-time than the many small wins save. **v5's −28.7% was
+  small-sample luck** — two huge wins on 13 instances. All 53 sound (0
+  mismatches).
+
+**Honest bottom line.** At this predictor scale/quality, the neural phase
+warm-start is **≈ neutral-to-slightly-negative on wall-time** (modestly positive
+on conflicts) — *not* NeuroBack's clean +5–7%. The mechanism is sound (oracle →
+0 conflicts) and phases are weakly predictable (~0.69–0.80), but the per-instance
+variance — costly regressions on a minority — sinks the wall aggregate once the
+test set is big enough to be trustworthy. NeuroBack's win likely needs its
+combination we don't have here: a much larger model + majority-vote labels + a
+PAR-2-style metric over a large benchmark (which rewards many small speedups and
+is less hurt by a few regressions). **The larger held-out earning this
+correction is the main result of this round** — it caught an over-claim the
+13-instance set had hidden.
 
 ## Artifacts
 

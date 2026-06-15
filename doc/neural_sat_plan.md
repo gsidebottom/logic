@@ -210,6 +210,16 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   internal accuracy gate failed even as the A/B improved). Clean next lever: a
   **structured-only** corpus (3,355 non-random SAT ≤15k downloadable) + a larger
   held-out test for a tight aggregate.
+- **○ stabilized (2026-06-15) — the −28.7% was small-sample luck.** Built both
+  next levers: a structured-only corpus (`phase_v6`, 1,738 harvested, random
+  families dropped) and a **53-instance** held-out. The structured corpus lifted
+  the accuracy gate (v5 +0.044 *failed* → v6 +0.050 *passed*), but the larger
+  A/B deflated the headline: **geomean 0.953, wall +9.7%** (40 usable, 0
+  mismatches) — a modest, broad conflict reduction that is a *net wall loss*
+  once a few costly regressions are counted. Honest conclusion: at this
+  predictor scale/quality the phase warm-start is **≈ neutral on wall-time**, not
+  NeuroBack's +5–7%. The bigger held-out caught the over-claim. See
+  [neural_phase1.md](neural_phase1.md) (v6 section).
 
 ### Phase 2 — RL / expert iteration (track A, exceed the teacher)
 - **Reward** = solved (binary) + shaping: −log(decisions) for speed, and

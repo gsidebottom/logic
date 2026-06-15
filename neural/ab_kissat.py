@@ -15,12 +15,16 @@ from __future__ import annotations
 import argparse, json, os, re, subprocess, time, statistics as st
 
 
-def kissat(binary, cnf, phases=None):
+def kissat(binary, cnf, phases=None, tcap=0):
     env = dict(os.environ)
     if phases:
         env["KISSAT_INITIAL_PHASES"] = phases
+    cmd = [binary]
+    if tcap:
+        cmd.append(f"--time={tcap}")        # CPU-time cap → UNKNOWN if exceeded
+    cmd.append(cnf)
     t0 = time.time()
-    p = subprocess.run([binary, cnf], capture_output=True, text=True, env=env)
+    p = subprocess.run(cmd, capture_output=True, text=True, env=env)
     dt = time.time() - t0
     out = p.stdout
     v = ("SAT" if "s SATISFIABLE" in out
@@ -41,6 +45,9 @@ def main():
     ap.add_argument("--index", required=True, help="jsonl with filename + xz_path")
     ap.add_argument("--split-from", help="manifest.jsonl: only its split==test rows")
     ap.add_argument("--infer", default="neural/phase_infer.py")
+    ap.add_argument("--time", type=int, default=0,
+                    help="per-run kissat CPU-time cap (s); unfinished runs are "
+                         "excluded from the aggregate, not counted as mismatches")
     args = ap.parse_args()
 
     idx = {json.loads(l)["filename"]: json.loads(l) for l in open(args.index)}
@@ -57,24 +64,37 @@ def main():
     print(f"{'instance':28} {'base':>11} {'warm':>11} {'ratio':>6}  "
           f"{'base_s':>7} {'warm_s':>7}  verdict")
     ratios, bt, wt = [], 0.0, 0.0
+    n_skip = n_mismatch = n_used = 0
     for name, rec in items:
         subprocess.run(["sh", "-c", f"xz -dkc {rec['xz_path']} > /tmp/abk.cnf"], check=True)
         subprocess.run(["uv", "run", "python", args.infer, "--weights", args.weights,
                         "--cnf", "/tmp/abk.cnf", "--out", "/tmp/abk.phases",
                         "--margin", args.margin], capture_output=True)
-        bv, bc, bts = kissat(args.kissat, "/tmp/abk.cnf")
-        wv, wc, wts = kissat(args.kissat, "/tmp/abk.cnf", "/tmp/abk.phases")
-        ok = "ok" if bv == wv and bv in ("SAT", "UNSAT") else f"MISMATCH {bv}/{wv}"
-        ratio = (wc / bc) if bc > 0 else float("nan")
-        if bc > 0:
-            ratios.append(ratio)
-        bt += bts; wt += wts
-        print(f"{name[:28]:28} {bc:>11} {wc:>11} {ratio:>6.2f}  "
-              f"{bts:>7.2f} {wts:>7.2f}  {ok}")
+        bv, bc, bts = kissat(args.kissat, "/tmp/abk.cnf", tcap=args.time)
+        wv, wc, wts = kissat(args.kissat, "/tmp/abk.cnf", "/tmp/abk.phases", tcap=args.time)
+        # decided = both runs reached the SAME real verdict; only those count.
+        decided = bv == wv and bv in ("SAT", "UNSAT")
+        if not decided:
+            both_solved = bv in ("SAT", "UNSAT") and wv in ("SAT", "UNSAT")
+            if both_solved:
+                tag = f"MISMATCH {bv}/{wv}"; n_mismatch += 1      # real soundness alarm
+            else:
+                tag = f"skip({bv}/{wv})"; n_skip += 1             # timeout/unknown
+            ratio = float("nan")
+        else:
+            ratio = (wc / bc) if bc > 0 else float("nan")
+            if bc > 0:
+                ratios.append(ratio); bt += bts; wt += wts; n_used += 1
+            tag = "ok"
+        print(f"{name[:30]:30} {bc:>11} {wc:>11} {ratio:>6.2f}  "
+              f"{bts:>7.2f} {wts:>7.2f}  {tag}")
     pos = [r for r in ratios if r > 0]
-    print(f"\nconflict ratio (warm/base): geomean={st.geometric_mean(pos):.3f}  "
-          f"median={st.median(ratios):.3f}  (<1 = warm-start helps)")
-    print(f"total wall: base={bt:.1f}s  warm={wt:.1f}s")
+    print(f"\nusable={n_used}  skipped(timeout/trivial)={n_skip}  mismatch={n_mismatch}")
+    if pos:
+        print(f"conflict ratio (warm/base): geomean={st.geometric_mean(pos):.3f}  "
+              f"median={st.median(pos):.3f}  (<1 = warm-start helps)")
+        print(f"total wall (usable only): base={bt:.1f}s  warm={wt:.1f}s "
+              f"({100*(wt-bt)/bt:+.1f}%)")
 
 
 if __name__ == "__main__":

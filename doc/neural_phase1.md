@@ -247,41 +247,74 @@ problem, not a model-quality one. Two follow-ups:
    5.4% coverage). Capacity is **not** the bottleneck — the ceiling is how
    learnable these phases are from structure.
 
-2. **Margin sweep on v6 (the better seeding model), 53-instance held-out:**
+2. **Margin sweep on v6 — ⚠ CORRUPTED by a harness bug, retracted.** The
+   original sweep reported M=0.7/0.8 as **byte-identical ties** (geomean 1.000),
+   which I misread as "seeds vanish → signal is the bottleneck." That was **not
+   real**: `ab_kissat`'s `--infer` default failed silently when the driver was
+   run from `neural/` (it looked for `neural/neural/phase_infer.py`), reusing a
+   *stale* phase file, so the warm runs were **un-seeded** → false ties (fixed in
+   `c146799`; see the v8 section). The bigger-model result (1) stands — it rests
+   on the inference-only calibration probe, which the bug never touched.
 
-   | margin | result vs base |
-   |---|---|
-   | 0.6 | geomean 0.953, **wall +9.7%** (aggressive seeds, some wrong → regress) |
-   | 0.7 | geomean **1.000**, wall +0.2% (byte-identical conflicts) |
-   | 0.8 | geomean **1.000**, wall +0.1% (byte-identical conflicts) |
+**Conclusion (corrected).** *Capacity* is not the lever (v7 hit v6's accuracy
+ceiling). The real margin/label behavior — measured on the **fixed** harness —
+is in the v8 section below, and it shows the **labels** are a genuine lever.
 
-   At M≥0.7 the seeds **vanish** on this set — the confidence distribution on the
-   *real* A/B instances is far lower than on the easy training-test split (at
-   M=0.8, median per-instance coverage is **0.000**). Diagnosing why
-   (`x9-10070`): the model seeds **all 500 vars as False at M=0.6** (a
-   near-constant majority-phase bias, confidence clustered in [0.6,0.7)) and only
-   **3 vars** clear M=0.7. Across 14 held-out insts, **4 are fully constant**
-   (0%/100% True) and mean std(P) is just 0.11 — the predictor has largely
-   learned **per-instance majority phase**, not per-variable discrimination
-   (consistent with the +0.05 margin over the majority baseline).
+### v8 — majority-vote soft labels (the labels ARE the lever) + a harness bug
 
-**Conclusion (robust across model size and margin).** The phase warm-start is
-**net neutral-to-negative** here, and the bottleneck is the **informativeness of
-the per-variable signal**, not model capacity or the seeding threshold. Where the
-model is confident on hard instances it emits a degenerate all-one-polarity bias
-(seed it → regress; raise the bar → no-op); genuine per-variable signal exists
-only on a subset (WS_500, med30, mp1…) and doesn't carry the aggregate. **The
-real next lever is better labels, not a bigger net:** majority-vote phases over
-many sampled models (`build_dataset.py --models K`, the NeuroBack refinement) to
-replace single-model labels that collapse toward majority phase — plus possibly
-per-instance gating (skip near-constant predictions, which add no information).
+Took the "better labels, not a bigger net" shot. Re-harvested the **same 1,738
+structured instances** with `build_dataset.py --models 16` (vote over up to 16
+blocking-clause models; median ku=12; **75%** of instances got labels that differ
+from single-model), and trained `phase_v8` at **v6's exact architecture** (dim
+64, rounds 16) on the **soft target** P(True)=agreement (`--soft-labels`) — so
+any change is the labels, not capacity. The soft target teaches the net to
+abstain (≈0.5) on free vars and be confident only on backbones.
+
+- **Gate:** micro 0.721 vs majority 0.667 (+0.054); already > v6's 0.689.
+- **Calibration probe (vs v6):** seeds are markedly cleaner — at M=0.6
+  **94.3%** accurate (v6: 88.5%), and **~70% more** high-confidence-correct mass
+  at M=0.8 (9.2% coverage @ 96.7% vs v6's 5.4% @ 94.8%).
+
+**⚠ Harness bug found mid-run.** Early v8 A/Bs came back byte-identical — the
+same `ab_kissat` infer-path failure above. A hand check exposed it: v8 actually
+drives `x9` from 609569 → **252118** conflicts (**−57% wall**) while the harness
+reported a tie. Fixed (`c146799`: cwd-independent infer path, fail-loud on infer
+error, fresh phase file per instance, phase/CNF var-count check). **All
+this-session A/Bs before the fix were no-seed artifacts.**
+
+**Clean A/B (fixed harness), 53-instance held-out:**
+
+| run | conflict geomean | wall | wins/ties/losses |
+|---|--:|--:|--:|
+| **v8@0.6** (soft majority) | **0.851** | +10.8% | 11/21/7 |
+| v8@0.7 | 0.969 | +15.5% | 7/28/5 |
+| v6@0.6 (single-model, same harness) | 0.943 | +8.8% | 13/19/7 |
+
+**The labels worked on what they target:** v8@0.6 conflict geomean **0.851** vs
+single-model v6's 0.943 — a real, substantial improvement, with big wins
+(`Break_triple` 0.36×/−47.5s, `WS_500` 0.40×/−38.6s, `Break_14` 0.12×/−13.1s,
+`x9` 0.41×/−7.6s). **But wall is still net-positive (+10.8%)** — and it's *one
+bad apple*: net Δ = +190.7s regressions − 113.2s savings = **+77.5s**, of which a
+**single** instance (`19a72fc6`) is **+106.5s** (12.3×). Excluding just that one,
+v8@0.6 is a net wall **win (−29s)**; excluding the top two, −90s.
+
+**Remaining obstacle = tail-risk, not signal.** The catastrophe `19a72fc6` has
+the **lowest** confidence-mass of any instance (meanConf 0.192, only 6.7% of vars
+> 0.6) — a diffuse, low-information prediction. A "skip seeding when
+confidence-mass is low" **gate** would drop it (→ net win), though it's imperfect
+(`3c15c8fb` +60.8s is high-confidence yet regressed). So the corrected bottom
+line: majority-vote labels are a genuine lever (conflicts ↓, seeds cleaner); the
+path to a wall win is **per-instance gating / runtime abstention** on the few
+catastrophic regressions, not a bigger model or a different margin.
 
 ## Artifacts
 
-- `neural/phase_model.py` (sparse encoder + phase head; `--label-smooth`),
-  `neural/phase_infer.py` (`--margin`), `neural/build_dataset.py` (`--models`
-  majority + agreement), `neural/calibrate.py` (reliability/ECE +
-  accuracy-at-margin probe).
-- `neural/weights/phase_v1.*` (single-model), `phase_v2.*` (majority; preferred).
+- `neural/phase_model.py` (sparse encoder + phase head; `--label-smooth`,
+  `--soft-labels`), `neural/phase_infer.py` (`--margin`),
+  `neural/build_dataset.py` (`--models K` majority-vote + agreement),
+  `neural/calibrate.py` (reliability/ECE + accuracy-at-margin probe),
+  `neural/ab_kissat.py` (kissat A/B; cwd-independent infer, fail-loud).
+- `neural/weights/phase_v6.*` (single-model, structured), `phase_v8.*`
+  (soft majority-vote, **best conflicts**; trained at v6's dim 64/rounds 16).
 - Datasets are derived (gitignored): rebuild via `build_dataset.py` from
   `neural/data/phase_harvest_index.jsonl`.

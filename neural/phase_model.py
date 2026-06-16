@@ -48,6 +48,14 @@ def load_instance(path: str):
     if int(d["sat"]) != 1:
         return None                      # phase labels meaningful only for SAT
     n_vars = int(d["n_vars"])
+    phase = d["phase"].astype(np.float32)                   # (n_vars,) majority 0/1
+    # agreement = fraction voting the majority way (0.5–1.0); 1.0 for single-model
+    # npz.  Reconstruct the empirical P(var=True) = cnt/ku — the SOFT target that
+    # teaches the net to be uncertain (≈0.5) on free vars and confident only on
+    # backbones (agreement≈1.0), which is exactly what margin-seeding wants.
+    agr = (d["agreement"].astype(np.float32) if "agreement" in d.files
+           else np.ones_like(phase))
+    p_true = phase * agr + (1.0 - phase) * (1.0 - agr)
     return {
         "el": mx.array(d["edge_lit"].astype(np.int32)),     # literal endpoint / edge
         "ec": mx.array(d["edge_clause"].astype(np.int32)),  # clause endpoint / edge
@@ -56,7 +64,8 @@ def load_instance(path: str):
         # lit_node(l) = 2(v-1) + (l<0): positive lits are even, negative odd.
         "pos": mx.arange(n_vars) * 2,
         "neg": mx.arange(n_vars) * 2 + 1,
-        "phase": mx.array(d["phase"].astype(np.float32)),   # (n_vars,) 0/1
+        "phase": mx.array(phase),                           # (n_vars,) hard majority
+        "phase_soft": mx.array(p_true),                     # (n_vars,) P(True)
     }
 
 
@@ -125,11 +134,13 @@ class PhaseNet(nn.Module):
 
 LABEL_SMOOTH = 0.0   # set from --label-smooth; softens targets toward 0.5 to
                      # curb overconfidence (better calibration) on bigger nets.
+SOFT_LABELS = False  # set from --soft-labels; train on P(True) (majority-vote
+                     # agreement) instead of the hard majority phase.
 
 
 def loss_fn(model, inst):
     logits = model(inst)
-    y = inst["phase"]
+    y = inst["phase_soft"] if SOFT_LABELS else inst["phase"]
     if LABEL_SMOOTH:
         y = y * (1.0 - LABEL_SMOOTH) + 0.5 * LABEL_SMOOTH
     return nn.losses.binary_cross_entropy(
@@ -173,14 +184,18 @@ def main() -> None:
     ap.add_argument("--batch", type=int, default=8)   # grad-accum: denoise steps
     ap.add_argument("--label-smooth", type=float, default=0.0,
                     help="soften targets toward 0.5 (e.g. 0.05) for calibration")
+    ap.add_argument("--soft-labels", action="store_true",
+                    help="train on P(True) from majority-vote agreement (needs a "
+                         "--models K harvested dataset) instead of the hard phase")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--save", default=None,
                     help="save best weights to PATH.safetensors (+ PATH.json config) "
                          "for CPU inference (phase_infer.py)")
     args = ap.parse_args()
 
-    global LABEL_SMOOTH
+    global LABEL_SMOOTH, SOFT_LABELS
     LABEL_SMOOTH = args.label_smooth
+    SOFT_LABELS = args.soft_labels
     mx.random.seed(args.seed)
     rng = random.Random(args.seed)
     train, test = load_dataset(args.data)
@@ -195,6 +210,9 @@ def main() -> None:
           f"test={len(test)} insts ({te_vars} vars)")
     print(f"majority-phase baseline: train_micro={b_tr_micro:.3f}  "
           f"test_micro={b_te_micro:.3f}  test_macro={b_te_macro:.3f}")
+    print(f"targets: {'SOFT P(True) from agreement' if SOFT_LABELS else 'hard phase'}"
+          f"{f' + label_smooth={LABEL_SMOOTH}' if LABEL_SMOOTH else ''}  "
+          f"(gate still measures hard acc vs majority)")
 
     model = PhaseNet(args.dim, args.rounds)
     mx.eval(model.parameters())
@@ -250,7 +268,8 @@ def main() -> None:
         base = args.save[:-len(".safetensors")] if args.save.endswith(".safetensors") else args.save
         model.save_weights(base + ".safetensors")
         json.dump({"dim": args.dim, "rounds": args.rounds,
-                   "label_smooth": args.label_smooth},
+                   "label_smooth": args.label_smooth,
+                   "soft_labels": args.soft_labels},
                   open(base + ".json", "w"))
         print(f"  saved weights → {base}.safetensors  (config {base}.json)")
 

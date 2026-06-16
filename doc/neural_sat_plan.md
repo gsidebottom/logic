@@ -224,14 +224,22 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   A calibration probe showed v6 is already well-calibrated (ECE 0.049); accuracy
   rises with the margin (0.69→0.95 at M=0.8). But (1) a **4× bigger** model
   (`phase_v7`, dim 128/rounds 24) hit the *same* accuracy ceiling (0.691 vs
-  0.689), and (2) a **margin sweep** found no net win: M=0.6 = wall +9.7%
-  (aggressive, some-wrong seeds), M=0.7/0.8 = byte-identical conflicts (seeds
-  vanish on the real instances). Root cause: the predictor largely learned
-  **per-instance majority phase** (4/14 held-out insts predict a fully constant
-  polarity; mean std(P) 0.11), not per-variable discrimination. **Next real
-  lever = better labels, not a bigger net:** majority-vote phases
-  (`build_dataset.py --models K`) + per-instance gating. See
-  [neural_phase1.md](neural_phase1.md) (v7 section).
+  0.689) — capacity is not the lever; and (2) a margin sweep *appeared* to find
+  no net win (M=0.7/0.8 byte-identical), **but that was a harness bug**
+  (`ab_kissat` infer-path failure → un-seeded warm runs; retracted, fixed in
+  `c146799`). The bigger-model finding stands (inference-only probe). **Next
+  lever = better labels:** majority-vote phases (`build_dataset.py --models K`).
+  See [neural_phase1.md](neural_phase1.md) (v7 section).
+- **◑ majority-vote labels WORK on conflicts (2026-06-16).** Re-harvested the
+  1,738 structured insts with `--models 16` (median ku=12; 75% differ from
+  single-model); trained `phase_v8` on the **soft** target P(True) at v6's exact
+  size (so it isolates the labels). Clean A/B (post-bugfix): **v8@0.6 conflict
+  geomean 0.851 vs single-model v6's 0.943** — a real lever, with big wins
+  (Break_triple 0.36×, WS_500 0.40×, x9 0.41×). **Wall still +10.8%**, but one
+  bad apple owns it: a single instance (`19a72fc6`, +106.5s, 12.3×) > the whole
+  net loss — excluding it, net **−29s**. That catastrophe has the lowest
+  confidence-mass on the set → next lever is **per-instance gating / runtime
+  abstention**. See [neural_phase1.md](neural_phase1.md) (v8 section).
 
 ### Phase 2 — RL / expert iteration (track A, exceed the teacher)
 - **Reward** = solved (binary) + shaping: −log(decisions) for speed, and

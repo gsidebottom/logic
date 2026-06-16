@@ -12,7 +12,23 @@ Usage:
                --margin 0.6 --index <jsonl with xz_path> [--split-from <manifest>]
 """
 from __future__ import annotations
-import argparse, json, os, re, subprocess, time, statistics as st
+import argparse, json, os, re, subprocess, tempfile, time, statistics as st
+
+
+def _dimacs_vars(path):
+    with open(path) as f:
+        for ln in f:
+            if ln.startswith("p cnf"):
+                return int(ln.split()[2])
+    return -1
+
+
+def _phase_file_vars(path):
+    """Var count from phase_infer's header 'c phase predictions: N vars, ...'."""
+    with open(path) as f:
+        head = f.readline()
+    m = re.search(r"(\d+)\s+vars", head)
+    return int(m.group(1)) if m else -1
 
 
 def kissat(binary, cnf, phases=None, tcap=0):
@@ -44,7 +60,10 @@ def main():
     ap.add_argument("--margin", default="0.6")
     ap.add_argument("--index", required=True, help="jsonl with filename + xz_path")
     ap.add_argument("--split-from", help="manifest.jsonl: only its split==test rows")
-    ap.add_argument("--infer", default="neural/phase_infer.py")
+    ap.add_argument("--infer", default=os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "phase_infer.py"),
+        help="path to phase_infer.py (default: alongside this script, so it "
+             "works regardless of the caller's cwd)")
     ap.add_argument("--time", type=int, default=0,
                     help="per-run kissat CPU-time cap (s); unfinished runs are "
                          "excluded from the aggregate, not counted as mismatches")
@@ -64,14 +83,29 @@ def main():
     print(f"{'instance':28} {'base':>11} {'warm':>11} {'ratio':>6}  "
           f"{'base_s':>7} {'warm_s':>7}  verdict")
     ratios, bt, wt = [], 0.0, 0.0
-    n_skip = n_mismatch = n_used = 0
+    n_skip = n_mismatch = n_used = n_inferfail = 0
+    tmp = tempfile.mkdtemp(prefix="abk_")          # unique per process (no clobber)
+    cnf_path, ph_path = os.path.join(tmp, "abk.cnf"), os.path.join(tmp, "abk.phases")
     for name, rec in items:
-        subprocess.run(["sh", "-c", f"xz -dkc {rec['xz_path']} > /tmp/abk.cnf"], check=True)
-        subprocess.run(["uv", "run", "python", args.infer, "--weights", args.weights,
-                        "--cnf", "/tmp/abk.cnf", "--out", "/tmp/abk.phases",
-                        "--margin", args.margin], capture_output=True)
-        bv, bc, bts = kissat(args.kissat, "/tmp/abk.cnf", tcap=args.time)
-        wv, wc, wts = kissat(args.kissat, "/tmp/abk.cnf", "/tmp/abk.phases", tcap=args.time)
+        subprocess.run(["sh", "-c", f"xz -dkc {rec['xz_path']} > {cnf_path}"], check=True)
+        if os.path.exists(ph_path):
+            os.remove(ph_path)                     # never reuse a stale phase file
+        r = subprocess.run(["uv", "run", "python", args.infer, "--weights", args.weights,
+                            "--cnf", cnf_path, "--out", ph_path,
+                            "--margin", args.margin], capture_output=True, text=True)
+        # Hard-fail loudly: a broken infer must NOT masquerade as a no-seed tie.
+        if r.returncode != 0 or not os.path.exists(ph_path):
+            print(f"{name[:30]:30} {'INFER-FAIL':>23}  rc={r.returncode} "
+                  f"{(r.stderr or '').strip().splitlines()[-1][:50] if r.stderr else ''}")
+            n_inferfail += 1
+            continue
+        cv, pv = _dimacs_vars(cnf_path), _phase_file_vars(ph_path)
+        if cv != pv:
+            print(f"{name[:30]:30} PHASE/CNF VAR MISMATCH {pv} vs {cv} — skip")
+            n_inferfail += 1
+            continue
+        bv, bc, bts = kissat(args.kissat, cnf_path, tcap=args.time)
+        wv, wc, wts = kissat(args.kissat, cnf_path, ph_path, tcap=args.time)
         # decided = both runs reached the SAME real verdict; only those count.
         decided = bv == wv and bv in ("SAT", "UNSAT")
         if not decided:
@@ -89,7 +123,8 @@ def main():
         print(f"{name[:30]:30} {bc:>11} {wc:>11} {ratio:>6.2f}  "
               f"{bts:>7.2f} {wts:>7.2f}  {tag}")
     pos = [r for r in ratios if r > 0]
-    print(f"\nusable={n_used}  skipped(timeout/trivial)={n_skip}  mismatch={n_mismatch}")
+    print(f"\nusable={n_used}  skipped(timeout/trivial)={n_skip}  "
+          f"infer_fail={n_inferfail}  mismatch={n_mismatch}")
     if pos:
         print(f"conflict ratio (warm/base): geomean={st.geometric_mean(pos):.3f}  "
               f"median={st.median(pos):.3f}  (<1 = warm-start helps)")

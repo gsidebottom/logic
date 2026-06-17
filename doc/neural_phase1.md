@@ -344,13 +344,41 @@ sample; and high-confidence-but-wrong regressions (`3c15c8fb`) are a residual
 limit. Plausible next levers: a *learned* (vs threshold) gate, or seeding only
 *backbone* vars (agreement≈1.0) instead of all margin-passers.
 
+### Both refinements tried — both negative; the threshold gate stands
+
+- **Backbone-only seeding (v8 @ high margin 0.85/0.9): neutral** (+0.1% / −0.1%,
+  geomean ~1.01). Seeding only near-certain vars is *inert* — too few seeds to
+  help, so it discards the big wins (x9, WS_500 came from seeding *many* vars on
+  confident instances) along with the losses. The gate's "seed aggressively at
+  M=0.6 where the instance is confident, skip entirely where it's diffuse" keeps
+  the wins; backbone-only throws them away.
+- **Learned gate (logistic / Δwall-ridge, leave-one-out): can't beat the blunt
+  threshold.** Evaluated by simulation — the ungated A/B already measured both
+  `base_s` and `warm_s` per instance, so a gate just *chooses* which to count
+  (`neural/gate_loo.py`, no new solver runs). Every learned variant lands near
+  ungated (+12%), never near the threshold's −2.4%/−5.6% (sim). Root cause: the
+  catastrophic regressions are **not predictable from prediction features** —
+  `19a72fc6` (+106.5s) and `1c3abce4` (+5.5s) have nearly identical features
+  (cov06 0.067 vs 0.065). Whether seeding backfires is a property of the
+  *solver's search dynamics*, invisible to the GNN's output statistics. An oracle
+  gate shows −15.5% headroom, but capturing it needs information the predictor
+  doesn't have. The blunt threshold wins *because* it's blunt (avoid the whole
+  low-confidence region), which is what a rare-catastrophe-dominated wall metric
+  rewards.
+
+**Final config:** `phase_v8` (soft majority-vote) @ **M=0.6 + confidence-mass
+gate (cov < 0.10–0.15)** → sound −4 to −6% wall. Bigger models, margin tuning,
+backbone-only seeding, and a learned gate were all tried and did not improve on
+it.
+
 ## Artifacts
 
 - `neural/phase_model.py` (sparse encoder + phase head; `--label-smooth`,
   `--soft-labels`), `neural/phase_infer.py` (`--margin`),
   `neural/build_dataset.py` (`--models K` majority-vote + agreement),
   `neural/calibrate.py` (reliability/ECE + accuracy-at-margin probe),
-  `neural/ab_kissat.py` (kissat A/B; cwd-independent infer, fail-loud).
+  `neural/ab_kissat.py` (kissat A/B; cwd-independent infer, fail-loud, `--gate`),
+  `neural/gate_loo.py` (leave-one-out gate simulation from measured A/B data).
 - `neural/weights/phase_v6.*` (single-model, structured), `phase_v8.*`
   (soft majority-vote, **best conflicts**; trained at v6's dim 64/rounds 16).
 - Datasets are derived (gitignored): rebuild via `build_dataset.py` from

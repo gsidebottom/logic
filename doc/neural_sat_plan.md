@@ -252,6 +252,14 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   values win, so not a knife-edge); one high-confidence-but-wrong regressor
   (`3c15c8fb`) is uncatchable by a confidence gate. See
   [neural_phase1.md](neural_phase1.md) (v8 + gate section).
+- **○ two refinements tried, both negative (2026-06-17).** *Backbone-only*
+  seeding (v8 @ high margin 0.85/0.9) is **neutral** (±0.1%) — too few seeds,
+  discards the wins with the losses. A *learned* gate (logistic / Δwall-ridge,
+  leave-one-out, simulated via `gate_loo.py` from the measured A/B — no new
+  runs) **can't beat the blunt threshold**: catastrophes are not predictable
+  from prediction features (`19a72fc6` +106s vs `1c3abce4` +5s have ~identical
+  features → it's solver-dynamics, not GNN-output). **Final config stands:** v8
+  @ M=0.6 + confidence-mass gate (−4 to −6%).
 
 ### Phase 2 — RL / expert iteration (track A, exceed the teacher)
 - **Reward** = solved (binary) + shaping: −log(decisions) for speed, and

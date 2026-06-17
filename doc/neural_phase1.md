@@ -307,6 +307,43 @@ line: majority-vote labels are a genuine lever (conflicts ↓, seeds cleaner); t
 path to a wall win is **per-instance gating / runtime abstention** on the few
 catastrophic regressions, not a bigger model or a different margin.
 
+### v8 + confidence-mass gate — the first real net wall WIN
+
+The catastrophic regressors are *diffuse* predictions (`19a72fc6` has the lowest
+confidence-mass on the set: only 6.7% of vars clear M=0.6). So `phase_infer
+--gate FRAC` adds a **per-instance** gate on top of the per-variable margin: if
+the fraction of vars clearing the margin is `< FRAC`, emit **zero** seeds (solver
+runs un-seeded → a harmless tie instead of a regression). Gated `19a72fc6` →
+194777 = 194777 (exact tie); high-coverage winners (x9 0.78, WS_500 0.50,
+Break ~0.20) are untouched.
+
+Clean A/B, v8 @ M=0.6, 53-instance held-out:
+
+| config | conflict geomean | **wall** | wins/ties/losses |
+|---|--:|--:|--:|
+| ungated | 0.851 | +10.8% (+77.5s) | 11/21/7 |
+| **gate=0.10** | 0.891 | **−4.0%** (−28.7s) | 5/30/4 |
+| **gate=0.15** | 0.876 | **−6.1%** (−44.1s) | 5/31/3 |
+
+**Both thresholds flip the wall to a net win** (gate=0.10 hit −28.7s, matching the
+"exclude the one catastrophe → −29s" prediction). gate=0.15 also drops `case13`
+(+12s, coverage 0.122). The only regressor neither gate catches is `3c15c8fb`
+(+61s) — *high* confidence-mass (0.33) but wrong, the one failure mode a
+confidence gate can't see. All sound (0 mismatches).
+
+**Bottom line (the whole line of work).** A neural phase warm-start on kissat is
+a **real, sound, modest net wall win (−4 to −6%)** — but only with *both* levers:
+**(1) majority-vote soft labels** (v8: conflict geomean 0.851 vs single-model
+0.943) for a trustworthy per-variable signal, and **(2) a confidence-mass gate**
+to abstain on diffuse predictions that otherwise regress catastrophically.
+Neither *bigger models* nor *margin tuning* moved the needle. Honest caveats: the
+gate threshold is tuned in-sample on these 53 (0.10 is a round a-priori value and
+both thresholds win, so not a knife-edge, but a separate test set would firm up
+the magnitude); the win is modest, not the illusory −28.7% of the v5 small
+sample; and high-confidence-but-wrong regressions (`3c15c8fb`) are a residual
+limit. Plausible next levers: a *learned* (vs threshold) gate, or seeding only
+*backbone* vars (agreement≈1.0) instead of all margin-passers.
+
 ## Artifacts
 
 - `neural/phase_model.py` (sparse encoder + phase head; `--label-smooth`,

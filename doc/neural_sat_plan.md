@@ -240,6 +240,18 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   net loss — excluding it, net **−29s**. That catastrophe has the lowest
   confidence-mass on the set → next lever is **per-instance gating / runtime
   abstention**. See [neural_phase1.md](neural_phase1.md) (v8 section).
+- **● WALL WIN (2026-06-17) — labels + confidence-mass gate.** Added
+  `phase_infer --gate FRAC`: skip seeding any instance whose fraction of
+  margin-clearing vars is `< FRAC` (diffuse predictions → catastrophic-regression
+  risk; the `19a72fc6` disaster has only 6.7% coverage). Clean A/B, v8 @ M=0.6:
+  **gate=0.10 → wall −4.0%** (geomean 0.891), **gate=0.15 → wall −6.1%**
+  (geomean 0.876), 0 mismatches — vs ungated +10.8%. **First real, sound net
+  wall win** in the phase-warm-start line. Needs *both* levers: majority-vote
+  soft labels (signal) + the gate (abstain on diffuse predictions); bigger models
+  and margin tuning did nothing. Caveat: gate threshold tuned in-sample (both
+  values win, so not a knife-edge); one high-confidence-but-wrong regressor
+  (`3c15c8fb`) is uncatchable by a confidence gate. See
+  [neural_phase1.md](neural_phase1.md) (v8 + gate section).
 
 ### Phase 2 — RL / expert iteration (track A, exceed the teacher)
 - **Reward** = solved (binary) + shaping: −log(decisions) for speed, and

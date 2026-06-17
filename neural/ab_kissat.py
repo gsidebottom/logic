@@ -58,6 +58,9 @@ def main():
     ap.add_argument("--kissat", required=True, help="patched kissat binary")
     ap.add_argument("--weights", required=True, help="phase predictor base path")
     ap.add_argument("--margin", default="0.6")
+    ap.add_argument("--gate", default="0.0",
+                    help="per-instance confidence-mass gate passed to phase_infer "
+                         "(skip seeding instances whose coverage < gate)")
     ap.add_argument("--index", required=True, help="jsonl with filename + xz_path")
     ap.add_argument("--split-from", help="manifest.jsonl: only its split==test rows")
     ap.add_argument("--infer", default=os.path.join(
@@ -92,7 +95,8 @@ def main():
             os.remove(ph_path)                     # never reuse a stale phase file
         r = subprocess.run(["uv", "run", "python", args.infer, "--weights", args.weights,
                             "--cnf", cnf_path, "--out", ph_path,
-                            "--margin", args.margin], capture_output=True, text=True)
+                            "--margin", args.margin, "--gate", args.gate],
+                           capture_output=True, text=True)
         # Hard-fail loudly: a broken infer must NOT masquerade as a no-seed tie.
         if r.returncode != 0 or not os.path.exists(ph_path):
             print(f"{name[:30]:30} {'INFER-FAIL':>23}  rc={r.returncode} "

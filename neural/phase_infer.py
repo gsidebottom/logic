@@ -55,6 +55,12 @@ def main() -> None:
                     help="emit only high-confidence phases: seed variable v iff "
                          "2*|p-0.5| >= margin (0=all; 0.8 ≈ top-confidence ~13%% "
                          "at ~95%% accuracy).  Unseeded vars use the solver default.")
+    ap.add_argument("--gate", type=float, default=0.0,
+                    help="per-INSTANCE confidence-mass gate: if the fraction of "
+                         "vars clearing --margin is below this, emit ZERO seeds "
+                         "(skip this instance → solver runs un-seeded). 0=off. "
+                         "Suppresses diffuse, low-signal predictions that tend to "
+                         "drive catastrophic warm-start regressions.")
     args = ap.parse_args()
 
     if args.cpu:
@@ -81,13 +87,18 @@ def main() -> None:
     phases = prob >= 0.5
     conf = 2.0 * np.abs(prob - 0.5)                         # 0..1 confidence
     keep = conf >= args.margin                              # high-confidence only
+    coverage = float(keep.mean())                          # fraction of vars seeded
+    gated = args.gate > 0.0 and coverage < args.gate       # too diffuse → skip seeding
+    if gated:
+        keep = np.zeros(g.n_vars, dtype=bool)
     dt = time.time() - t0
 
     lits = [((v + 1) if phases[v] else -(v + 1))
             for v in range(g.n_vars) if keep[v]]
     out = sys.stdout if args.out == "-" else open(args.out, "w")
     out.write(f"c phase predictions: {g.n_vars} vars, {g.n_clauses} clauses, "
-              f"seeded {len(lits)} (margin {args.margin}), "
+              f"seeded {len(lits)} (margin {args.margin}, coverage {coverage:.3f}"
+              f"{f', GATED<{args.gate}' if gated else ''}), "
               f"{int(phases[keep].sum())} True ({dt*1000:.0f} ms)\n")
     for i in range(0, len(lits), 20):
         out.write(" ".join(map(str, lits[i:i + 20])) + "\n")

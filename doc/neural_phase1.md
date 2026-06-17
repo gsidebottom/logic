@@ -371,6 +371,42 @@ gate (cov < 0.10–0.15)** → sound −4 to −6% wall. Bigger models, margin t
 backbone-only seeding, and a learned gate were all tried and did not improve on
 it.
 
+### Solver-dynamics probe-gate — a race recovers the oracle (with a 2nd core)
+
+The catastrophes are invisible to GNN features but trivially visible to the
+*solver*: just **race** seeded vs unseeded and take the first to finish. The race
+outcome depends only on which of `base_s`/`warm_s` is smaller, both already
+measured, so the whole wall/CPU tradeoff is simulated exactly
+(`neural/probe_gate.py`) and spot-checked with real concurrent runs (contention
+is ~3%: x9 6.0s concurrent vs 5.8s solo; the 6634-var `19a72fc6` 10.93s vs
+10.61s — so the parallel model holds).
+
+| strategy | wall | CPU |
+|---|--:|--:|
+| ungated (seed all) | +12.2% | 1.0× |
+| confidence-mass threshold (prev best) | −4 to −6% | **1.0×** |
+| **probe race, T_p=30s** (commit-seeded if both slow) | **−15.1%** | 1.49× |
+| full portfolio (race to completion) | −15.5% | 1.69× |
+
+A short parallel race recovers essentially the entire −15.5% oracle the
+feature-gate couldn't — *3× the threshold gate's win* — because "does it finish
+quickly" is the dynamics signal the predictor lacked. At T_p=30s only 6/40
+instances are still undecided (the commit cases).
+
+**But there is no *cheap* version.** A dynamics-*feature* gate that reads
+intermediate conflicts at a small probe (T_probe=5s) to commit early **fails**:
+"fewer conflicts@5s" predicts the eventual winner only **10/21 (48%) — a coin
+flip** on the both-slow instances (both arms grind at near-identical rates early;
+the divergence comes later, unpredictably). So the reliable signal is *finishing*,
+not early dynamics — you pay the race's ~1.5× CPU (a second core) for the −15%.
+
+**Final picture of the gate question.** Single-core: the confidence-mass
+threshold (−4 to −6%, free). With a spare core: the parallel race (−15%, ≈oracle,
+never regresses). Everything cheaper-than-a-race that was tried (bigger model,
+margins, backbone-only, learned feature gate, early-dynamics gate) does not beat
+the threshold; the race is the only thing that reaches the oracle, and it costs a
+core.
+
 ## Artifacts
 
 - `neural/phase_model.py` (sparse encoder + phase head; `--label-smooth`,
@@ -378,7 +414,8 @@ it.
   `neural/build_dataset.py` (`--models K` majority-vote + agreement),
   `neural/calibrate.py` (reliability/ECE + accuracy-at-margin probe),
   `neural/ab_kissat.py` (kissat A/B; cwd-independent infer, fail-loud, `--gate`),
-  `neural/gate_loo.py` (leave-one-out gate simulation from measured A/B data).
+  `neural/gate_loo.py` (leave-one-out gate simulation from measured A/B data),
+  `neural/probe_gate.py` (parallel-race / probe-gate wall-vs-CPU tradeoff).
 - `neural/weights/phase_v6.*` (single-model, structured), `phase_v8.*`
   (soft majority-vote, **best conflicts**; trained at v6's dim 64/rounds 16).
 - Datasets are derived (gitignored): rebuild via `build_dataset.py` from

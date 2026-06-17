@@ -260,6 +260,18 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   from prediction features (`19a72fc6` +106s vs `1c3abce4` +5s have ~identical
   features → it's solver-dynamics, not GNN-output). **Final config stands:** v8
   @ M=0.6 + confidence-mass gate (−4 to −6%).
+- **◑ solver-dynamics probe-gate: a race reaches the oracle, but costs a core
+  (2026-06-17).** Since catastrophes are visible to the *solver* not the GNN,
+  **race** seeded vs unseeded and take the first to finish. Simulated exactly
+  from measured `base_s`/`warm_s` (`probe_gate.py`) + validated with real
+  concurrent runs (contention ~3%): **probe race T_p=30s → −15.1% wall at 1.49×
+  CPU**; full portfolio −15.5% at 1.69×. That's **3× the threshold gate's win**,
+  recovering the oracle the feature-gate couldn't. *But* a cheap early-commit via
+  intermediate dynamics fails — conflicts@5s predict the winner only 48% (coin
+  flip), so you must actually run the race (a 2nd core) for the −15%. Net: single
+  core → confidence-mass threshold (−4 to −6%); spare core → parallel race
+  (−15%, never regresses). See [neural_phase1.md](neural_phase1.md)
+  (probe-gate section).
 
 ### Phase 2 — RL / expert iteration (track A, exceed the teacher)
 - **Reward** = solved (binary) + shaping: −log(decisions) for speed, and

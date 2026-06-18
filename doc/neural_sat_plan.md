@@ -289,6 +289,22 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   (precedent: our search-side ideas — rephasing, inprocessing — all
   measured negative; this gate respects that).
 
+- **○ ExIt headroom de-risk KILLS one-shot-seeding ExIt (2026-06-17).** Iteration
+  1's rollout step (`neural/exit_rollout.py`): sample K phase-seedings from v8,
+  run kissat, keep the best by conflicts. Headroom looked huge — best-of-5 /
+  argmax geomean **0.465** (−54% conflicts beyond v8). **But the control killed
+  it:** *uniform-random* seeds do equally well (best-of-5 / argmax **0.449**;
+  v8-best beats uniform-best on only 23/59). So the gain is **seed-variance, not
+  learnable signal** — kissat's heavy-tailed runtime (Gomes et al.) means
+  best-of-K exploits randomization luck, which a one-shot policy can't distill.
+  v8's argmax is still good (it beats the *mean* sample, 1.65×), but ExIt can't
+  improve it. The same heavy-tail obstacle applies to VSIDS-*score* seeding
+  (CDCL runtime is chaotic regardless of phase vs score), so that's not pursued
+  either. **The real best-of-K win (−66% conflicts) is a *portfolio*** (random
+  restarts / multi-seed), captured by parallelism — the same lesson as the
+  probe-race. The only ExIt variant with a non-chaotic, learnable objective is
+  Phase 3 (proof construction; proof-size is deterministic).
+
 ### Phase 3 — MCGS proof search for the certified slice (track B, the Aristotle analog)
 - **The true analog.** MCGS *constructs* a refutation: actions are
   proof-steps (cutting-planes ops, cardinality/at-most-1 reductions,

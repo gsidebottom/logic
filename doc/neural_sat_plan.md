@@ -321,6 +321,25 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   competitive in size/time. This is the highest-novelty, highest-ceiling,
   most-"us" track — and the most uncertain.
 
+- **● Phase-3 env BUILT + de-risk GREEN (2026-06-17).** `neural/cp_search.py`: a
+  cutting-planes proof-search environment — PB constraints, `pol` actions (add /
+  multiply / divide-with-ceiling = Chvátal–Gomory cut), terminal `0>=1`, emits a
+  VeriPB `.pbp` and **independently verifies** every proof found. Best-first
+  (unguided) search results:
+  - self-tests (trivial `{x}{¬x}`; an LP-infeasible CNF needing multiply): both
+    construct + **veripb-VERIFIED** proofs.
+  - **PHP-3-2** (pairwise CNF — LP-feasible, resolution-*hard*): unguided search
+    finds a **verified** CG proof in **12 nodes** *with* the divide rule;
+    FM-only (no divide) correctly fails — isolating CG-rounding as essential.
+  - **PHP-4-3** (one size up): **explodes** — 30k nodes, no proof, with or
+    without divide. This is the learnable frontier.
+  So the construct-and-verify loop is real, search finds small proofs of a
+  resolution-hard family, and the bottleneck is precisely *search guidance at
+  scale*. Unlike the killed seeding-ExIt, the objective is **deterministic + the
+  derivations are structured (learnable)**, not chaotic runtime luck. Next: a
+  learned policy to score `pol` derivations (bootstrap from found proofs + the
+  Cook generators), then ExIt to scale to PHP-4-3+/non-PHP families.
+
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward
   pass to hide latency, the trick that made GNN branching work for MILP,

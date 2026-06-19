@@ -339,6 +339,18 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   derivations are structured (learnable)**, not chaotic runtime luck. Next: a
   learned policy to score `pol` derivations (bootstrap from found proofs + the
   Cook generators), then ExIt to scale to PHP-4-3+/non-PHP families.
+- **● Phase-3 step-1 (hand-guidance de-risk): guidance IS the lever
+  (2026-06-18).** Replaced the generic `(nvars,-rhs)` heuristic with **slack**
+  (`Σ positive-coeffs − rhs` — drive the LP relaxation toward infeasibility). FM
+  + divide, no same-sign: PHP-3-2 in 8 nodes; **PHP-4-3 in 389 nodes / an
+  80-derivation verified proof — vs the baseline heuristic FAILING at 30k
+  nodes** (~100× node reduction from the heuristic alone). The same-sign
+  "cardinality-building" action *explodes* branching (PHP-3-2: 12 nodes →
+  minutes) — a red herring; FM+divide+slack is the right config. So the search
+  is **strongly guidable** (30k-fail → 389) — the precondition for a learned
+  policy (better policy → fewer nodes → bigger proofs). Caveat: the per-node
+  engine cost is high (PHP-4-3: 389 nodes but 477s — pool × divisor branching),
+  an optimization orthogonal to the guidance question.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

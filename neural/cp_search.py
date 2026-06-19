@@ -107,14 +107,33 @@ class Item:
     pb: PB = field(compare=False)
 
 
-def search(inputs, max_nodes=20000, allow_divide=False, divide_consts=(2, 3)):
-    """Best-first cutting-planes search for 0>=1.  Actions: eliminate a shared
-    variable between two constraints (Fourier–Motzkin step), optionally divide."""
+def slack(p: PB) -> int:
+    """LP slack: max achievable LHS minus rhs.  < 0 ⇒ the constraint alone is
+    infeasible; 0>=1 has slack -1.  The search minimizes this toward a
+    contradiction (a tighter LP relaxation is closer to a refutation)."""
+    return sum(c for c in p.coef.values() if c > 0) - p.rhs
+
+
+def divisors_for(p: PB):
+    """Useful CG divisors: the distinct positive literal-coefficients (the
+    rounding that turns Σ k·ℓ ≥ b into a cardinality), capped."""
+    lit, _ = to_literal_normalized(p)
+    ds = sorted({c for c in lit.values() if c >= 2})
+    return ds[:6]
+
+
+def search(inputs, max_nodes=20000, allow_divide=False, same_sign=True,
+           max_size=64):
+    """Best-first cutting-planes search for 0>=1.  Actions between the current
+    constraint and a pool constraint sharing a variable: Fourier–Motzkin
+    elimination (opposite sign) and, with same_sign, cardinality-building
+    summation (same sign); each result optionally CG-divided.  Heuristic =
+    (slack, nvars): drive the LP relaxation toward infeasibility."""
     pool = list(inputs)
     seen = {p.key() for p in pool}
-    # index: var -> list of (pool_idx, coef sign)
+
     def push_heap(h, p):
-        heapq.heappush(h, Item((p.nvars(), -p.rhs), p))
+        heapq.heappush(h, Item((slack(p), p.nvars()), p))
     h = []
     for p in pool:
         push_heap(h, p)
@@ -124,28 +143,33 @@ def search(inputs, max_nodes=20000, allow_divide=False, divide_consts=(2, 3)):
         nodes += 1
         if cur.is_contradiction():
             return cur, nodes
-        # try to eliminate each var of `cur` against a pool constraint of opposite sign
         for v, cv in list(cur.coef.items()):
             for other in pool:
                 if other is cur:
                     continue
                 cw = other.coef.get(v, 0)
-                if cw == 0 or (cv > 0) == (cw > 0):
-                    continue            # need opposite signs on v to cancel
+                if cw == 0:
+                    continue
+                opp = (cv > 0) != (cw > 0)
                 g = math.gcd(abs(cv), abs(cw))
-                ma, mb = abs(cw) // g, abs(cv) // g
-                new = add_scaled(cur, ma, other, mb).norm()
-                cand = [new]
-                if allow_divide and new.coef:
-                    g2 = math.gcd(*[abs(c) for c in new.coef.values()], abs(new.rhs) if new.rhs else 0) if new.coef else 1
-                    for d in divide_consts:
-                        cand.append(divide(new, d))
-                for nc in cand:
-                    if nc.is_contradiction():
-                        return nc, nodes
-                    k = nc.key()
-                    if k not in seen and nc.nvars() <= max(cur.nvars(), 1) + 1:
-                        seen.add(k); pool.append(nc); push_heap(h, nc)
+                if opp:                                  # FM elimination
+                    combos = [(abs(cw) // g, abs(cv) // g)]
+                elif same_sign:                          # cardinality-building sum
+                    combos = [(1, 1)]
+                else:
+                    continue
+                for ma, mb in combos:
+                    new = add_scaled(cur, ma, other, mb).norm()
+                    cand = [new]
+                    if allow_divide and new.coef:
+                        for d in divisors_for(new):
+                            cand.append(divide(new, d))
+                    for nc in cand:
+                        if nc.is_contradiction():
+                            return nc, nodes
+                        k = nc.key()
+                        if k not in seen and nc.nvars() <= max_size:
+                            seen.add(k); pool.append(nc); push_heap(h, nc)
     return None, nodes
 
 
@@ -207,17 +231,21 @@ def read_cnf(path):
     return inputs
 
 
-def prove_cnf(cnf_path, max_nodes, allow_divide):
+def prove_cnf(cnf_path, max_nodes, allow_divide, same_sign=True, max_size=64):
     inputs = read_cnf(cnf_path)
-    contra, nodes = search(inputs, max_nodes, allow_divide)
+    import time as _t
+    t0 = _t.time()
+    contra, nodes = search(inputs, max_nodes, allow_divide, same_sign, max_size)
+    dt = _t.time() - t0
     if not contra:
-        print(f"  no proof found ({nodes} nodes, divide={allow_divide})")
+        print(f"  no proof found ({nodes} nodes, {dt:.1f}s, divide={allow_divide}, "
+              f"same_sign={same_sign})")
         return False
     pbp = cnf_path + ".pbp"
     nd = emit_pbp(len(inputs), contra, pbp)
     ok, tail = verify(cnf_path, pbp)
-    print(f"  proof: {nd} derivations, {nodes} nodes searched, divide={allow_divide}"
-          f"  ->  veripb: {'VERIFIED' if ok else 'FAILED '+str(tail)}")
+    print(f"  proof: {nd} derivations, {nodes} nodes, {dt:.1f}s, "
+          f"same_sign={same_sign}  ->  veripb: {'VERIFIED' if ok else 'FAILED '+str(tail)}")
     return ok
 
 
@@ -244,11 +272,15 @@ def main():
     ap.add_argument("--cnf")
     ap.add_argument("--max-nodes", type=int, default=20000)
     ap.add_argument("--allow-divide", action="store_true")
+    ap.add_argument("--no-same-sign", action="store_true",
+                    help="disable cardinality-building same-sign summation (FM only)")
+    ap.add_argument("--max-size", type=int, default=64)
     args = ap.parse_args()
     if args.selftest:
         sys.exit(0 if selftest() else 1)
     if args.cnf:
-        prove_cnf(args.cnf, args.max_nodes, args.allow_divide)
+        prove_cnf(args.cnf, args.max_nodes, args.allow_divide,
+                  same_sign=not args.no_same_sign, max_size=args.max_size)
 
 
 if __name__ == "__main__":

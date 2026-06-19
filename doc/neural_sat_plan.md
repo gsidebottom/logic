@@ -351,6 +351,25 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   policy (better policy → fewer nodes → bigger proofs). Caveat: the per-node
   engine cost is high (PHP-4-3: 389 nodes but 477s — pool × divisor branching),
   an optimization orthogonal to the guidance question.
+- **◐ Phase-3 step-2a BLOCKED — the engine, not learnability, is the wall
+  (2026-06-19).** Built the feature-scorer imitation infra (`cp_policy.py`:
+  record which expanded constraints land on the proof path → logistic priority)
+  but couldn't get a clean result: the prototype `cp_search.py` is
+  **catastrophically inefficient** — the *legitimate* PHP-4-3 search generates
+  **>5,000,000 constraints (gigabytes)** to find an 80-step proof (it prunes
+  nothing, adding every FM+divide combination), at ~1.2s/node. So recording one
+  proof takes ~8 min + GBs; PHP-5-4 is out of reach; the proof sits at the
+  search's exhaustion edge (389 nodes). (Also surfaced + fixed a 9-hour runaway:
+  a diverged logistic → NaN priority → unbounded pool → 11.7 GB; hardened with a
+  stable fit, NaN-guarded learned priority, and a `max_secs` wall-time guard —
+  the real runaway bound. A guessed `max_pool` cap is *not* safe: it kept cutting
+  off legitimate searches, which need a >5M pool on this engine. See
+  [[bound-and-watch-background-compute]].)  **Verdict:** the concept is validated
+  (step-1) but the Python engine is a slow, memory-explosive sketch unfit for the
+  iterative learned-policy loop. **Critical path before resuming 2a/2b: an engine
+  rewrite** — aggressive subsumption/dominance pruning (pool should be thousands,
+  not millions), efficient structures, likely Rust alongside the Cook/PB infra —
+  so proofs are found with headroom and recording is tractable.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

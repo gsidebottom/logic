@@ -122,27 +122,88 @@ def divisors_for(p: PB):
     return ds[:6]
 
 
+FEAT_NAMES = ["slack", "nvars", "rhs", "maxcoef", "sumcoef", "ncoefdistinct",
+              "tightness", "from_divide"]
+
+
+def feats(p: PB):
+    """Cheap per-constraint features for the learned priority (step 2a)."""
+    lit, r = to_literal_normalized(p)
+    cs = list(lit.values()) or [0]
+    pos = sum(c for c in cs if c > 0)
+    return [float(slack(p)), float(p.nvars()), float(r), float(max(cs)),
+            float(sum(cs)), float(len(set(cs))), r / (pos + 1.0),
+            1.0 if p.deriv[0] == "div" else 0.0]
+
+
+def ancestors(contra: PB):
+    """Set of id()s of all constraints (incl. inputs) the proof actually uses."""
+    seen = set()
+    def walk(p):
+        if id(p) in seen:
+            return
+        seen.add(id(p))
+        d = p.deriv
+        if d[0] == "addsc":
+            walk(d[1]); walk(d[3])
+        elif d[0] == "div":
+            walk(d[1])
+    walk(contra)
+    return seen
+
+
+def default_prio(p):
+    return (slack(p), p.nvars())
+
+
 def search(inputs, max_nodes=20000, allow_divide=False, same_sign=True,
-           max_size=64):
+           max_size=64, priority_fn=None, record=False,
+           max_pool=0, max_secs=0.0):
     """Best-first cutting-planes search for 0>=1.  Actions between the current
     constraint and a pool constraint sharing a variable: Fourier–Motzkin
     elimination (opposite sign) and, with same_sign, cardinality-building
-    summation (same sign); each result optionally CG-divided.  Heuristic =
-    (slack, nvars): drive the LP relaxation toward infeasibility."""
+    summation (same sign); each result optionally CG-divided.  Default heuristic
+    = (slack, nvars); a learned `priority_fn(pb)->sortable` overrides it.  With
+    record=True, returns the list of expanded constraints (for imitation data).
+
+    Hard bounds (a bad priority must never run away): max_nodes, max_pool
+    constraints, max_secs wall-time (0 = off)."""
+    import time as _t
+    t0 = _t.time()
+
+    if priority_fn is None:
+        prio = default_prio                       # default path: identical to baseline
+    else:
+        def prio(p):                              # learned path: NaN/inf-guarded
+            try:
+                k = priority_fn(p)
+                v = k[0] if isinstance(k, tuple) else k
+                if v != v or v in (float("inf"), float("-inf")):
+                    return default_prio(p)
+                return k
+            except Exception:
+                return default_prio(p)
     pool = list(inputs)
     seen = {p.key() for p in pool}
 
     def push_heap(h, p):
-        heapq.heappush(h, Item((slack(p), p.nvars()), p))
+        heapq.heappush(h, Item(prio(p), p))
     h = []
     for p in pool:
         push_heap(h, p)
     nodes = 0
+    popped = [] if record else None
     while h and nodes < max_nodes:
+        if (max_pool and len(pool) >= max_pool) or \
+           (max_secs and _t.time() - t0 > max_secs):
+            break                                  # bound (max_secs is the real
+                                                   # runaway guard; pool off by default)
         cur = heapq.heappop(h).pb
         nodes += 1
+        if record:
+            popped.append(cur)
         if cur.is_contradiction():
-            return cur, nodes
+            return cur, nodes, popped
         for v, cv in list(cur.coef.items()):
             for other in pool:
                 if other is cur:
@@ -166,11 +227,13 @@ def search(inputs, max_nodes=20000, allow_divide=False, same_sign=True,
                             cand.append(divide(new, d))
                     for nc in cand:
                         if nc.is_contradiction():
-                            return nc, nodes
+                            if record:
+                                popped.append(nc)
+                            return nc, nodes, popped
                         k = nc.key()
                         if k not in seen and nc.nvars() <= max_size:
                             seen.add(k); pool.append(nc); push_heap(h, nc)
-    return None, nodes
+    return None, nodes, popped
 
 
 # ── proof emission + verification ───────────────────────────────────────────
@@ -235,7 +298,7 @@ def prove_cnf(cnf_path, max_nodes, allow_divide, same_sign=True, max_size=64):
     inputs = read_cnf(cnf_path)
     import time as _t
     t0 = _t.time()
-    contra, nodes = search(inputs, max_nodes, allow_divide, same_sign, max_size)
+    contra, nodes, _ = search(inputs, max_nodes, allow_divide, same_sign, max_size)
     dt = _t.time() - t0
     if not contra:
         print(f"  no proof found ({nodes} nodes, {dt:.1f}s, divide={allow_divide}, "

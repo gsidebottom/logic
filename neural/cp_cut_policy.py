@@ -118,6 +118,94 @@ def record(tag, qmax=10, n_obj=6, max_rounds=40, seed=0):
     return X, y
 
 
+def _amatrix(cons):
+    """(varset, vi, A'<=-form, b') for the mod-q separation MILP."""
+    varset = sorted({v for c in cons for v in c.coef})
+    vi = {v: i for i, v in enumerate(varset)}
+    n, m = len(varset), len(cons)
+    Ap = np.zeros((n, m)); bp = np.zeros(m)
+    for j, c in enumerate(cons):
+        for v, a in c.coef.items():
+            Ap[vi[v], j] = -a
+        bp[j] = -c.rhs
+    return varset, vi, Ap, bp
+
+
+def sep_choice_loop(inputs, nvars, qmax=10, n_obj=6, max_rounds=300, seed=0,
+                    max_secs=300, verbose=False):
+    """Separation-CHOICE policy: tiered/lazy separation.  Diagnosis showed useful
+    cuts concentrate in the CHEAP q=2 GF(2) separator while the per-q MILPs (q≥3)
+    are ~88% wasted — so run q=2 every round and fire the expensive MILPs ONLY in
+    rounds where q=2 is exhausted but the LP is still feasible.  This slashes MILP
+    calls where brute-force 'all q every round' explodes (PHP-5-4).  Incremental
+    add (later vertices see this round's cuts) for stronger convergence.
+    Returns (refuted, cons, cut_derivs, stats)."""
+    cons = list(inputs); seen = {c.canonical().key() for c in cons}
+    cut_derivs = []; rng = np.random.default_rng(seed)
+    milp_calls = cheap_rounds = milp_rounds = 0
+    t0 = time.time()
+
+    def done(refuted, reason):
+        return refuted, cons, cut_derivs, {
+            "cuts": len(cut_derivs), "milp_calls": milp_calls,
+            "cheap_rounds": cheap_rounds, "milp_rounds": milp_rounds,
+            "secs": round(time.time() - t0, 1), "reason": reason}
+
+    for rnd in range(max_rounds):
+        if time.time() - t0 > max_secs:
+            return done(False, "timeout")
+        st, _ = cp_lp.lp_point(cons, nvars)                # cheap infeasibility test
+        if st == "infeasible":
+            return done(True, "refuted")
+        objs = [None] + [list(rng.uniform(-1, 1, nvars)) for _ in range(n_obj - 1)]
+
+        added = 0                                          # tier 1: cheap q=2 GF(2)
+        for obj in objs:
+            s, x = cp_lp.lp_point(cons, nvars, obj)
+            if s == "infeasible":
+                return done(True, "refuted")
+            if s != "feasible":
+                continue
+            for viol, mults, q, cut in cp_lp.mod2_cuts(cons, nvars, x):
+                k = cut.canonical().key()
+                if k in seen:
+                    continue
+                seen.add(k); cut_derivs.append((mults, q)); cons.append(cut)
+                added += 1
+        if added:
+            cheap_rounds += 1
+            if verbose:
+                print(f"  round {rnd}: +{added} cheap q2 (total {len(cut_derivs)})")
+            continue
+
+        milp_rounds += 1                                   # tier 2: escalate to MILPs
+        varset, vi, Ap, bp = _amatrix(cons)                # fixed during this round
+        newcuts = {}
+        for obj in objs:
+            s, x = cp_lp.lp_point(cons, nvars, obj)
+            if s == "infeasible":
+                return done(True, "refuted")
+            if s != "feasible":
+                continue
+            xs = np.array([x[v - 1] for v in varset])
+            for q in range(3, qmax + 1):
+                milp_calls += 1
+                r = cp_lp._modq_separate(cons, Ap, bp, xs, varset, x, q)
+                if r:
+                    viol, mults, qq, cut = r
+                    k = cut.canonical().key()
+                    if k not in seen and k not in newcuts:
+                        newcuts[k] = (mults, qq, cut)
+        for k, (mults, qq, cut) in newcuts.items():        # add the batch at round end
+            seen.add(k); cut_derivs.append((mults, qq)); cons.append(cut); added += 1
+        if verbose:
+            print(f"  round {rnd}: ESCALATE +{added} milp "
+                  f"({milp_calls} milp-calls, total {len(cut_derivs)})")
+        if added == 0:
+            return done(False, "stuck")
+    return done(False, "max_rounds")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--train", nargs="+", default=["3_2", "4_3"])

@@ -453,6 +453,27 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
     policy to choose which *(objective, divisor)* to **separate** (cut MILP count,
     not just additions) and/or a **GNN over the constraint graph** (richer than 9
     hand-features) — the clear Phase-4 direction.
+- **● LP-CG separation-CHOICE policy + PHP-5-4 wall diagnosed (2026-06-20).**
+  `cp_cut_policy.sep_choice_loop`. Diagnosis first: useful cuts concentrate in the
+  **cheap q=2 GF(2)** separator while the per-q MILPs (q≥3) are **~88 % wasted**
+  (PHP-4-3: q=2 → 9 useful, q=3..10 MILPs → 2). So tiered/lazy separation — run
+  q=2 every round, fire the expensive MILPs **only in rounds where q=2 is
+  exhausted**.
+  - **Bounds the cost (its design goal): PHP-3-2 → 6 cuts / 0 MILP calls,
+    PHP-4-3 → 11 cuts / 1 escalation round / 1.2 s, both veripb VERIFIED.** No more
+    wandering MILP explosion.
+  - **PHP-5-4 wall re-diagnosed: it's separator *completeness*, not cost.** The
+    policy bounds PHP-5-4 to ~100 s (no explosion) but it still **stalls at ~31–36
+    cuts**. The decisive check: at the stall, the **exact any-multiplier CG
+    separation MILP still finds violated cuts (viol 0.5–0.75)** that the
+    uniform-denominator mod-q — even sweeping q≤20 — **misses** (those cuts need
+    non-uniform multipliers / an LCM-denominator >20). So PHP-5-4 is *not* at the
+    integer hull and *not* cost-bound — the mod-q separator is **incomplete**.
+  - **Next lever (Phase 4): a complete separator.** Either Gomory mixed-integer
+    (GMI) cuts read from the **simplex tableau** (complete, O(1)/cut, no MILP — but
+    needs basis-inverse access scipy.linprog doesn't expose) or the exact F-L MILP
+    with **exact rational multiplier recovery** for emission. That, not a cheaper
+    or smarter *selection*, is what unlocks PHP-5-4+.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

@@ -387,6 +387,18 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   so it unifies the efficiency fix with the Phase-3 learning goal. Cost: needs an
   LP solver (scipy — *not installed*; add dep or hand-roll Farkas) + CG-cut and
   Farkas→`pol` emission. A substantial fresh build, not an incremental patch.
+- **● LP-CG engine, Phase A DONE — goal-directed Farkas refutation
+  (2026-06-20).** Added scipy; `neural/cp_lp.py`: the **signed-variable Farkas
+  LP** (maximize Σ y·rhs s.t. Σ y·coef[i]=0 ∀i, y≥0, normalized) → rationalize
+  the ray → integer multipliers → emit one `pol Σ mⱼ·Cⱼ` = 0≥positive →
+  **veripb VERIFIED**. Validated on three LP(ℝ)-infeasible cases (lp_infeasible
+  (1,1,2); amo3; chain) — each a *single* LP solve + *single* pol line, instant,
+  no pool. This is the architecture working: goal-directed, O(1) constraints vs
+  the blind engine's millions. **Next (Phase B):** the CG-cut loop for
+  LP-feasible-but-UNSAT systems (PHP class) — add variable bounds, and when the
+  LP is feasible separate a violated Chvátal-Gomory cut, add it, repeat until
+  infeasible → Farkas. CG *separation* is the crux (Gomory-from-basis or a
+  separation search) and is exactly where the learned cut-selection policy lives.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

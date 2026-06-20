@@ -39,6 +39,7 @@ dependencies = [
     # encoder step (#93) — kept out of core so the project still installs
     # where its platform's accelerator isn't available.
     "numpy>=1.24",
+    "scipy>=1.13.1",
 ]
 
 # Optional ML-backend extras for the neural-SAT GNN (neural/model.py, #93).

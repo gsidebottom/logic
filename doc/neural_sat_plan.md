@@ -434,6 +434,25 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
     *few* cuts that drive toward infeasibility (GNN over the LP+constraint state →
     which cut, à la Gasse et al.). That is the next step, now well-motivated by a
     concrete scaling wall rather than a guess.
+- **● LP-CG cut-selection policy — learned scorer → VERIFIED proof, 2.3× fewer
+  cuts (2026-06-20).** `cp_cut_policy.py`. **Imitation**: run the brute-force loop,
+  trace the final Farkas support *backward through the cut derivations* to label
+  each added cut useful/not, fit a logistic scorer over 9 cheap cut features, then
+  re-run keeping only the top-scored fraction per round.
+  - The premise holds: only **25–38 %** of brute-force cuts are useful (the rest
+    are wasted). Learned weights are interpretable — keep cuts that combine *fewer*
+    constraints (`nsrc −1.2`), have a smaller max coefficient (`maxc −1.0`), and
+    higher violation/degree.
+  - **Result: on PHP-4-3 the policy refutes in 12 cuts vs 28 for add-all in the
+    same loop (2.3×), and the policy-selected proof emits → veripb VERIFIED** (7 of
+    12 cuts in the Farkas support). A learned policy producing a machine-checked
+    proof — the Aristotle loop realized on cutting-planes.
+  - **Limitation:** PHP-5-4 not yet cracked by the policy. The scorer filters cuts
+    *after* separation, so it shrinks system growth but not per-round MILP cost;
+    and convergence at that size needs a stronger loop. Scaling further wants the
+    policy to choose which *(objective, divisor)* to **separate** (cut MILP count,
+    not just additions) and/or a **GNN over the constraint graph** (richer than 9
+    hand-features) — the clear Phase-4 direction.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

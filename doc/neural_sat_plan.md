@@ -399,6 +399,21 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   LP is feasible separate a violated Chvátal-Gomory cut, add it, repeat until
   infeasible → Farkas. CG *separation* is the crux (Gomory-from-basis or a
   separation search) and is exactly where the learned cut-selection policy lives.
+- **● LP-CG Phase B — PHP-3-2 CRACKED end-to-end, verified (2026-06-20).** The
+  cutting-plane loop (`cp_lp.py --cg`): LP over [0,1] → if infeasible, Farkas;
+  else separate violated **{0,1/2}-cuts** (mod-2 / GF(2): a 0/1 constraint combo
+  with all-even coeffs + odd degree, CG-rounded — these *are* the PHP cardinality
+  cuts) → add, repeat. Emission chains each cut (`pol <Σsel> 2 d`) then the final
+  Farkas. Result: **PHP-3-2 refuted in 6 cuts → veripb VERIFIED**, goal-directed
+  and instant — vs the blind engine's ~5M constraints / 477s. The architecture is
+  validated end-to-end on a resolution-hard instance.
+  - **Limitation:** {0,1/2}-cuts stall on PHP-4-3/5-4 — even pigeon-count holes
+    put each var in an *odd* number of pairwise AMOs, so the full cardinality
+    isn't a single mod-2 cut (PHP-5-4 gets `Σ≤2`, not `≤1`). These need **general
+    CG cuts** (divisors >2 / iterated) — the Fischetti–Lodi separation MIP
+    (`scipy.optimize.milp`). That's the next build, and it's the natural home for
+    the **learned cut-selection policy** (GNN over the LP+constraint state →
+    which cut, à la Gasse et al.).
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

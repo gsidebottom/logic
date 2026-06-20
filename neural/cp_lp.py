@@ -22,7 +22,7 @@ import argparse, os, sys, tempfile
 from fractions import Fraction
 from math import gcd
 import numpy as np
-from scipy.optimize import linprog
+from scipy.optimize import linprog, milp, LinearConstraint, Bounds
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cp_search as cp                                  # noqa: E402
@@ -73,16 +73,19 @@ def farkas_refute(constraints):
     return mult
 
 
-def lp_point(constraints, nvars):
-    """Maximize Σ x over {coef·x >= rhs, 0<=x<=1}.  Returns (status, x*):
-    status 'infeasible' ⇒ refuted; else x* is a fractional vertex to separate."""
+def lp_point(constraints, nvars, obj=None):
+    """Optimize a linear objective (default: maximize Σ x) over
+    {coef·x >= rhs, 0<=x<=1}.  Returns (status, x*): status 'infeasible' ⇒ refuted;
+    else x* is a fractional vertex to separate.  Rotating obj exposes different
+    vertices — essential to avoid cutting-plane stalling on a single vertex."""
     A_ub, b_ub = [], []
     for c in constraints:
         row = [0.0] * nvars
         for v, a in c.coef.items():
             row[v - 1] = -float(a)                       # coef·x>=rhs  ⇔  -coef·x<=-rhs
         A_ub.append(row); b_ub.append(-float(c.rhs))
-    res = linprog([-1.0] * nvars, A_ub=A_ub, b_ub=b_ub,
+    c_obj = [-1.0] * nvars if obj is None else list(obj)  # default: maximize Σx
+    res = linprog(c_obj, A_ub=A_ub, b_ub=b_ub,
                   bounds=[(0, 1)] * nvars, method="highs")
     if res.status == 2:
         return "infeasible", None
@@ -151,35 +154,125 @@ def mod2_cuts(constraints, nvars, x):
         if viol > 1e-6:
             k = cut.canonical().key()
             if k not in seen:
-                seen.add(k); cuts.append((viol, sel, cut))
+                seen.add(k); cuts.append((viol, {j: 1 for j in sel}, 2, cut))
     cuts.sort(key=lambda t: -t[0])
     return cuts
 
 
-def cg_loop(constraints, nvars, max_rounds=20, verbose=False):
-    """Cutting-plane loop: LP → if infeasible, done (Farkas); else add violated
-    {0,1/2}-cuts, repeat.  Returns (cons, refuted, cut_derivs) where cut_derivs[k]
-    is the list of constraint indices (into cons) whose 1/2-sum, CG-rounded, gives
-    the k-th added cut — the emission recipe."""
+def _modq_separate(constraints, Ap, bp, xs, varset, x, q):
+    """Most-violated CG cut with a FIXED divisor q: integer multipliers
+    w_j ∈ {0..q-1}, cut coeffs ⌊(Σ w_j A'_ji)/q⌋.  Integer-only MILP → the cut is
+    exact and emits cleanly as `pol Σ w_j·C_j q d` (no float rationalization)."""
+    m, n = len(constraints), len(varset)
+    iw, ia, ir, izb, irb = 0, m, m + n, m + 2 * n, m + 2 * n + 1
+    N = m + 2 * n + 2
+    c_obj = np.zeros(N)                                     # max Σ alpha·x* - zb
+    for i in range(n):
+        c_obj[ia + i] = -xs[i]
+    c_obj[izb] = 1.0
+    Aeq = np.zeros((n + 1, N))
+    for i in range(n):                                     # A'w - q·alpha - r = 0
+        Aeq[i, iw:iw + m] = Ap[i]; Aeq[i, ia + i] = -q; Aeq[i, ir + i] = -1.0
+    Aeq[n, iw:iw + m] = bp; Aeq[n, izb] = -q; Aeq[n, irb] = -1.0  # b'w - q·zb - rb = 0
+    AMAX = float(np.abs(Ap).sum() + np.abs(bp).sum() + 10)
+    lo = np.zeros(N); hi = np.zeros(N)
+    hi[iw:iw + m] = q - 1; hi[ir:ir + n] = q - 1; hi[irb] = q - 1
+    lo[ia:ia + n] = -AMAX; hi[ia:ia + n] = AMAX; lo[izb] = -AMAX; hi[izb] = AMAX
+    res = milp(c_obj, constraints=LinearConstraint(Aeq, np.zeros(n + 1), np.zeros(n + 1)),
+               integrality=np.ones(N), bounds=Bounds(lo, hi),
+               options={"time_limit": 5.0})           # bound each separation MILP
+    if not res.success or res.fun is None or -res.fun <= 1e-6:
+        return None
+    w = np.round(res.x[iw:iw + m]).astype(int)
+    mults = {j: int(w[j]) for j in range(m) if w[j] > 0}
+    if not mults:
+        return None
+    combo = None
+    for j, mj in mults.items():
+        term = cp.PB({v: a * mj for v, a in constraints[j].coef.items()},
+                     constraints[j].rhs * mj)
+        combo = term if combo is None else cp.add_scaled(combo, 1, term, 1)
+    cut = cp.divide(combo.norm(), q)
+    viol = cut.rhs - sum(cut.coef.get(v, 0) * x[v - 1] for v in cut.coef)
+    return (viol, mults, q, cut) if viol > 1e-6 else None
+
+
+def fl_separate(constraints, nvars, x, qs=(2, 3, 4, 5, 6)):
+    """General CG separation: sweep small fixed divisors q and return the
+    most-violated cut found (Fischetti–Lodi style, but integer-multiplier per q so
+    cuts are exact + emittable).  Returns (viol, mults, q, cut) or None."""
+    varset = sorted({v for c in constraints for v in c.coef})
+    n, m = len(varset), len(constraints)
+    vi = {v: i for i, v in enumerate(varset)}
+    Ap = np.zeros((n, m)); bp = np.zeros(m)                 # <=-form: A'=-coef, b'=-rhs
+    for j, c in enumerate(constraints):
+        for v, a in c.coef.items():
+            Ap[vi[v], j] = -a
+        bp[j] = -c.rhs
+    xs = np.array([x[v - 1] for v in varset])
+    best = None
+    for q in qs:
+        r = _modq_separate(constraints, Ap, bp, xs, varset, x, q)
+        if r and (best is None or r[0] > best[0]):
+            best = r
+    return best
+
+
+def separate_all(constraints, nvars, x, qmax=10):
+    """All distinct violated CG cuts at x*: the cheap {0,1/2} (GF(2)) batch plus the
+    best mod-q cut for each divisor q=3..qmax.  Returns [(viol, mults, q, cut)]."""
+    cuts = list(mod2_cuts(constraints, nvars, x))         # many q=2 cuts (no MILP)
+    if qmax >= 3:
+        varset = sorted({v for c in constraints for v in c.coef})
+        n, m = len(varset), len(constraints)
+        vi = {v: i for i, v in enumerate(varset)}
+        Ap = np.zeros((n, m)); bp = np.zeros(m)
+        for j, c in enumerate(constraints):
+            for v, a in c.coef.items():
+                Ap[vi[v], j] = -a
+            bp[j] = -c.rhs
+        xs = np.array([x[v - 1] for v in varset])
+        for q in range(3, qmax + 1):
+            r = _modq_separate(constraints, Ap, bp, xs, varset, x, q)
+            if r:
+                cuts.append(r)
+    return cuts
+
+
+def cg_loop(constraints, nvars, max_rounds=40, qmax=10, n_obj=6, seed=0,
+            verbose=False):
+    """Cutting-plane loop → Farkas.  Each round rotates n_obj LP objectives (to
+    expose different vertices) and adds ALL distinct violated CG cuts found across
+    the q=2..qmax sweep.  Single-vertex / single-best-cut separation stalls before
+    infeasibility; rotation + add-all drives the LP infeasible.  Returns
+    (cons, refuted, cut_derivs) with cut_derivs[k]=(mults, q): the k-th cut is
+    `divide(Σ mults[j]·C_j, q)`, the pol emission recipe."""
     cons = list(constraints)
     cut_derivs = []
+    seen = {c.canonical().key() for c in cons}
+    rng = np.random.default_rng(seed)
     for rnd in range(max_rounds):
-        status, x = lp_point(cons, nvars)
-        if status == "infeasible":
-            if verbose:
-                print(f"    round {rnd}: LP infeasible — refuted "
-                      f"({len(cut_derivs)} cuts)")
-            return cons, True, cut_derivs
-        if status != "feasible":
-            return cons, False, cut_derivs
-        cuts = mod2_cuts(cons, nvars, x)
+        objs = [None] + [list(rng.uniform(-1, 1, nvars)) for _ in range(n_obj - 1)]
+        added = 0
+        for obj in objs:
+            status, x = lp_point(cons, nvars, obj)
+            if status == "infeasible":
+                if verbose:
+                    print(f"    round {rnd}: LP infeasible — refuted "
+                          f"({len(cut_derivs)} cuts)")
+                return cons, True, cut_derivs
+            if status != "feasible":
+                continue
+            for _, mults, q, cut in separate_all(cons, nvars, x, qmax):
+                k = cut.canonical().key()
+                if k in seen:
+                    continue
+                seen.add(k); cut_derivs.append((mults, q)); cons.append(cut)
+                added += 1
         if verbose:
-            print(f"    round {rnd}: LP feasible, {len(cuts)} violated cuts"
-                  + (f" (best {cuts[0][0]:.3f})" if cuts else " — stuck"))
-        if not cuts:
+            print(f"    round {rnd}: +{added} cuts (total {len(cut_derivs)})")
+        if added == 0:
             return cons, False, cut_derivs
-        for _, sel, cut in cuts[:max(1, nvars)]:          # add a batch
-            cut_derivs.append(list(sel)); cons.append(cut)
     return cons, False, cut_derivs
 
 
@@ -187,10 +280,15 @@ def emit_cg(n_inputs, cut_derivs, mult, path):
     """Emit the LP-CG proof: each cut as `pol <Σ sel> 2 d`, then the final Farkas
     `pol Σ m_j·C_j` over inputs+cuts (constraint at index i → veripb id i+1)."""
     lines = ["pseudo-Boolean proof version 3.0", f"f {n_inputs};"]
-    for sel in cut_derivs:
-        ids = [s + 1 for s in sel]
-        rp = [str(ids[0])] + [tok for i in ids[1:] for tok in (str(i), "+")]
-        rp += ["2", "d"]
+    for mults, q in cut_derivs:
+        items = sorted(mults.items())                     # (constraint index, m_j)
+        rp, first = [], True
+        for idx, mj in items:
+            rp += [str(idx + 1), str(mj), "*"]
+            if not first:
+                rp.append("+")
+            first = False
+        rp += [str(q), "d"]                               # CG divide by q
         lines.append("pol " + " ".join(rp) + " ;")
     rp, first = [], True
     for j, mj in enumerate(mult):
@@ -210,7 +308,7 @@ def refute_cg(cnf_path, verbose=False):
     nvars = max((v for c in inputs for v in c.coef), default=0)
     cons, refuted, cut_derivs = cg_loop(inputs, nvars, verbose=verbose)
     if not refuted:
-        print(f"  not refuted by {{0,1/2}}-cuts ({len(cut_derivs)} cuts added)")
+        print(f"  not refuted by CG cuts ({len(cut_derivs)} cuts added)")
         return False
     mult = farkas_refute(cons)
     if not mult:

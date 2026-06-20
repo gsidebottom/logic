@@ -407,13 +407,33 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   Farkas. Result: **PHP-3-2 refuted in 6 cuts → veripb VERIFIED**, goal-directed
   and instant — vs the blind engine's ~5M constraints / 477s. The architecture is
   validated end-to-end on a resolution-hard instance.
-  - **Limitation:** {0,1/2}-cuts stall on PHP-4-3/5-4 — even pigeon-count holes
-    put each var in an *odd* number of pairwise AMOs, so the full cardinality
-    isn't a single mod-2 cut (PHP-5-4 gets `Σ≤2`, not `≤1`). These need **general
-    CG cuts** (divisors >2 / iterated) — the Fischetti–Lodi separation MIP
-    (`scipy.optimize.milp`). That's the next build, and it's the natural home for
-    the **learned cut-selection policy** (GNN over the LP+constraint state →
-    which cut, à la Gasse et al.).
+  - **Limitation (resolved below):** {0,1/2}-cuts stall on PHP-4-3/5-4 — even
+    pigeon-count holes put each var in an *odd* number of pairwise AMOs, so the
+    full cardinality isn't a single mod-2 cut (PHP-5-4 gets `Σ≤2`, not `≤1`).
+    These need **general CG cuts** (divisors >2).
+- **● LP-CG Phase C — general CG cuts; PHP-4-3 CRACKED + verified (2026-06-20).**
+  Added Fischetti–Lodi-style CG separation, but with **integer multipliers per a
+  fixed divisor q** (`_modq_separate`, swept q=2..qmax): an all-integer MILP picks
+  `w_j ∈ {0..q-1}` maximizing the violation of `divide(Σ w_j·C_j, q)`. Integer w
+  (not rationalized floats) makes the cut **exact and emittable** as
+  `pol Σ w_j·C_j q d` — the {0,1/2} case is just q=2. (A first attempt rationalized
+  scipy's float multipliers; messy denominators → huge LCM → `divide` degenerated,
+  so the reconstructed cut wasn't the one the MILP found. Integer-per-q fixes it.)
+  - **Anti-stall is the other half.** Single-vertex (max-Σx), single-best-cut
+    separation hits the first CG closure while the LP is still feasible and stalls
+    (PHP-4-3 at 4–5 cuts). Fix in `cg_loop`: **rotate LP objectives** (expose
+    different vertices) and **add *all* distinct violated cuts** each round. With
+    that: **PHP-3-2 → 8 cuts, PHP-4-3 → 12 cuts, both refuted in round 0 → veripb
+    VERIFIED.** PHP-4-3 is the instance {0,1/2}-cuts alone could not crack.
+  - **PHP-5-4: the loop *progresses* but naive separation doesn't *scale*.** It
+    climbs (20→48 cuts) but never finishes cheaply — re-separating the whole
+    growing system across ~12 objectives × ~10 divisors per round explodes in time
+    (round 7 ≈ 360 s; per-MILP `time_limit=5 s` added as a guard). This is exactly
+    the motivation for the **learned cut-selection policy**: replace the
+    brute-force "separate everything, add everything" with a policy that picks the
+    *few* cuts that drive toward infeasibility (GNN over the LP+constraint state →
+    which cut, à la Gasse et al.). That is the next step, now well-motivated by a
+    concrete scaling wall rather than a guess.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

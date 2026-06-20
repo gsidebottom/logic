@@ -59,6 +59,28 @@ class PB:
     def nvars(self):
         return len(self.coef)
 
+    def canonical(self):
+        """Sound canonical form: literal-normalize → saturate → exact-gcd divide.
+        Collapses the scalar-multiple (2x+2y>=2 ≡ x+y>=1) and over-strong-coeff
+        duplicates the FM+divide search otherwise floods the pool with.  Returns
+        an equivalent PB (signed-var); leaves contradictions/trivial as-is."""
+        lit, rhs = to_literal_normalized(self)
+        if rhs <= 0 or not lit:
+            return self
+        lit = {k: min(c, rhs) for k, c in lit.items()}          # saturate
+        g = rhs
+        for c in lit.values():
+            g = math.gcd(g, c)
+        if g > 1:                                               # exact gcd divide
+            lit = {k: c // g for k, c in lit.items()}; rhs //= g
+        coef, srhs = {}, rhs
+        for (s, v), c in lit.items():
+            if s == 'x':
+                coef[v] = coef.get(v, 0) + c
+            else:
+                coef[v] = coef.get(v, 0) - c; srhs -= c
+        return PB(coef, srhs, self.deriv, self.cid).norm()
+
 
 def add_scaled(a: PB, ma: int, b: PB, mb: int) -> PB:
     coef = {}
@@ -158,7 +180,7 @@ def default_prio(p):
 
 def search(inputs, max_nodes=20000, allow_divide=False, same_sign=True,
            max_size=64, priority_fn=None, record=False,
-           max_pool=0, max_secs=0.0):
+           max_pool=0, max_secs=0.0, prune=False):
     """Best-first cutting-planes search for 0>=1.  Actions between the current
     constraint and a pool constraint sharing a variable: Fourier–Motzkin
     elimination (opposite sign) and, with same_sign, cardinality-building
@@ -203,7 +225,7 @@ def search(inputs, max_nodes=20000, allow_divide=False, same_sign=True,
         if record:
             popped.append(cur)
         if cur.is_contradiction():
-            return cur, nodes, popped
+            return cur, nodes, popped, len(pool)
         for v, cv in list(cur.coef.items()):
             for other in pool:
                 if other is cur:
@@ -226,14 +248,16 @@ def search(inputs, max_nodes=20000, allow_divide=False, same_sign=True,
                         for d in divisors_for(new):
                             cand.append(divide(new, d))
                     for nc in cand:
+                        if prune:
+                            nc = nc.canonical()
                         if nc.is_contradiction():
                             if record:
                                 popped.append(nc)
-                            return nc, nodes, popped
+                            return nc, nodes, popped, len(pool)
                         k = nc.key()
                         if k not in seen and nc.nvars() <= max_size:
                             seen.add(k); pool.append(nc); push_heap(h, nc)
-    return None, nodes, popped
+    return None, nodes, popped, len(pool)
 
 
 # ── proof emission + verification ───────────────────────────────────────────
@@ -294,21 +318,23 @@ def read_cnf(path):
     return inputs
 
 
-def prove_cnf(cnf_path, max_nodes, allow_divide, same_sign=True, max_size=64):
+def prove_cnf(cnf_path, max_nodes, allow_divide, same_sign=True, max_size=64,
+              prune=False):
     inputs = read_cnf(cnf_path)
     import time as _t
     t0 = _t.time()
-    contra, nodes, _ = search(inputs, max_nodes, allow_divide, same_sign, max_size)
+    contra, nodes, _, pool_sz = search(inputs, max_nodes, allow_divide, same_sign,
+                                       max_size, prune=prune)
     dt = _t.time() - t0
     if not contra:
-        print(f"  no proof found ({nodes} nodes, {dt:.1f}s, divide={allow_divide}, "
-              f"same_sign={same_sign})")
+        print(f"  no proof found ({nodes} nodes, pool={pool_sz}, {dt:.1f}s, "
+              f"divide={allow_divide}, prune={prune})")
         return False
     pbp = cnf_path + ".pbp"
     nd = emit_pbp(len(inputs), contra, pbp)
     ok, tail = verify(cnf_path, pbp)
-    print(f"  proof: {nd} derivations, {nodes} nodes, {dt:.1f}s, "
-          f"same_sign={same_sign}  ->  veripb: {'VERIFIED' if ok else 'FAILED '+str(tail)}")
+    print(f"  proof: {nd} derivations, {nodes} nodes, pool={pool_sz}, {dt:.1f}s, "
+          f"prune={prune}  ->  veripb: {'VERIFIED' if ok else 'FAILED '+str(tail)}")
     return ok
 
 
@@ -338,12 +364,16 @@ def main():
     ap.add_argument("--no-same-sign", action="store_true",
                     help="disable cardinality-building same-sign summation (FM only)")
     ap.add_argument("--max-size", type=int, default=64)
+    ap.add_argument("--prune", action="store_true",
+                    help="canonicalize derived constraints (saturate+gcd) to "
+                         "collapse duplicate families and shrink the pool")
     args = ap.parse_args()
     if args.selftest:
         sys.exit(0 if selftest() else 1)
     if args.cnf:
         prove_cnf(args.cnf, args.max_nodes, args.allow_divide,
-                  same_sign=not args.no_same_sign, max_size=args.max_size)
+                  same_sign=not args.no_same_sign, max_size=args.max_size,
+                  prune=args.prune)
 
 
 if __name__ == "__main__":

@@ -370,6 +370,23 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   rewrite** — aggressive subsumption/dominance pruning (pool should be thousands,
   not millions), efficient structures, likely Rust alongside the Cook/PB infra —
   so proofs are found with headroom and recording is tractable.
+- **○ Engine rewrite attempt 1 — pruning is the wrong fix; need a new algorithm
+  (2026-06-19).** Added sound **canonicalization** (`PB.canonical()`:
+  literal-normalize → saturate → exact-gcd divide, behind `cp_search --prune`) to
+  collapse the scalar-multiple / over-strong-coeff duplicate families. Measured on
+  PHP-4-3: pool **5M → 2.8M (only ~2×)**, 383 nodes, 357s — *insufficient*. The
+  pool is **genuinely-distinct constraints**, and blind best-first FM-against-the-
+  whole-pool **generates ~2.8M constraints to find a 74-step proof** (~38,000×
+  overhead); the *generation* (O(pool) candidates/node × hundreds of nodes), not
+  storage, is the cost — so subsumption pruning won't fix it either (it still has
+  to generate+test millions). **The right architecture is the LP-guided
+  cutting-plane method** (how ILP/PB solvers refute): solve the LP relaxation, add
+  one *violated CG cut*, repeat until infeasible → Farkas combination = the proof
+  — ~one constraint per cut (dozens), goal-directed. Bonus: **"which cut to add"
+  is exactly the learned-policy hook** (Gasse et al. GNN cut-selection for MILP),
+  so it unifies the efficiency fix with the Phase-3 learning goal. Cost: needs an
+  LP solver (scipy — *not installed*; add dep or hand-roll Farkas) + CG-cut and
+  Farkas→`pol` emission. A substantial fresh build, not an incremental patch.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

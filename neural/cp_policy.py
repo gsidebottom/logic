@@ -51,8 +51,8 @@ def cnf_path(tag):
 def record(tag, max_nodes):
     inputs = cp.read_cnf(cnf_path(tag))
     t0 = time.time()
-    contra, nodes, popped = cp.search(inputs, max_nodes, allow_divide=True,
-                                      same_sign=False, record=True, max_secs=1200)
+    contra, nodes, popped, _ = cp.search(inputs, max_nodes, allow_divide=True,
+                                         same_sign=False, record=True, max_secs=1200)
     if not contra:
         print(f"  record {tag}: NO PROOF ({nodes} nodes) — skipped")
         return None
@@ -104,8 +104,8 @@ def main():
     for t in args.eval:
         inputs = cp.read_cnf(cnf_path(t))
         t0 = time.time()
-        contra, nodes, _ = cp.search(inputs, args.max_nodes, allow_divide=True,
-                                     same_sign=False, priority_fn=prio, max_secs=600)
+        contra, nodes, _, _ = cp.search(inputs, args.max_nodes, allow_divide=True,
+                                        same_sign=False, priority_fn=prio, max_secs=600)
         base = baseline.get(t, "?")
         tag = "in-sample" if t in args.train else "OUT-OF-SAMPLE"
         print(f"  PHP-{t.replace('_','-')} [{tag}]: learned "

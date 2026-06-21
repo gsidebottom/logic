@@ -494,6 +494,33 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
       finite convergence) to refute PHP-5-4/6-5. **Then** layer MCGS + a
       policy/value GNN + expert iteration on this matured env (the re-aligned
       Aristotle track).
+- **● Complete separator BUILT — GMI from an exact tableau cracks the PHP-5-4
+  wall, veripb VERIFIED (2026-06-21).** `neural/cp_gmi.py`, self-contained (no
+  LP dep). A small **exact rational simplex** (Fractions, two-phase, Bland's rule
+  for the degenerate PHP optima) on the standard form (`Σa·x − s_j = b_j`,
+  `x_v + t_v = 1`, all vars ≥0); from a fractional basic row the Gomory cut
+  `Σ frac(āⱼ)yⱼ ≥ frac(βᵢ)` reads off as **nonnegative rational multipliers by
+  construction** — by column meaning: the `s_j` column → multiplier on `Cⱼ`, the
+  `x_v` column → on the `x_v ≥ 0` axiom, the `t_v` column → on the `x_v ≤ 1`
+  axiom. Scaling by the common denominator D gives integers; the cut emits as one
+  CG step `pol Σ λ·Con D d` (constraint ids + the veripb literal axioms `xv` /
+  `~xv`, both confirmed pushable). The simplex is cross-checked against scipy
+  (38 random LPs: optimum + infeasibility); the cuts are checked violated at x*
+  before adding.
+  - **Results (cutting-plane loop, rotated objectives, add-all violated Gomory
+    cuts → exact-LP infeasible → Farkas, every proof veripb-VERIFIED):
+    PHP-3-2 → 1 cut, PHP-4-3 → 17 cuts / 0.5 s, PHP-5-4 → 38 cuts / 3.9 s,
+    PHP-6-5 → 102 cuts / 41 s.** The PHP-3-2 cut is literally the cardinality cut
+    `x1+x3+x5 ≤ 1`; the proofs at 5-4+ use the bound axioms (general Gomory, not
+    just q=2 mod-2).
+  - **This is the wall.** The mod-q separator *stalled* PHP-5-4 at ~31–36 cuts
+    and never reached infeasibility (incomplete — those cuts need non-uniform
+    multipliers). The exact-tableau Gomory separator is **complete**: it refutes
+    PHP-5-4 deterministically and scales past it (6-5). The exact LP also removes
+    the degeneracy/float-basis fragility that motivated the hand-rolled simplex.
+  - **Next:** the env is matured — layer MCGS + a policy/value GNN + expert
+    iteration (the re-aligned Aristotle track). "Which fractional row / which cut
+    to keep" is the learned-policy hook, now on a complete, fast, exact separator.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

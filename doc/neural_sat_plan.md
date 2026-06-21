@@ -698,6 +698,23 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   - **Caveat:** measured as cut-usefulness *prediction* accuracy on small (6-5)
     instances; next is end-to-end (Burn GNN in the loop) + larger g-PHP, then
     expert iteration on top.
+- **◐ Burn build started — framework de-risk GREEN (2026-06-21).** Toward a
+  Rust-native GNN in the warm loop (the graph-PHP flip justified it).  Added
+  `burn = "0.21"` as an **optional** dep behind a `gnn` feature + isolated bin
+  `gmi_train` (`required-features=["gnn"]`), so the default `sat`/`gmi` builds
+  never pull burn.  Gate: does Burn compile + train a custom multi-layer module
+  here?  **Yes — an MLP fits a linear target, loss 1.399 → 0.0007 (2110×).**
+  Three Burn-0.21 gotchas cost the most time (now documented in `gmi_train.rs`):
+  the `#[derive(Module)]` backend generic **must be named `B`** (the derive
+  hardcodes that ident → otherwise broken codegen); **do not** add a manual
+  `#[derive(Clone)]` (the Module derive emits an *id-preserving* Clone; a
+  field-wise one reassigns `Param` ids and silently freezes training); and use the
+  `relu` *function*, not a stored non-generic `Relu` module field.
+  - **Next (the bulk):** (1) instrument the Rust engine to dump per-round graph
+    snapshots + transitive Farkas-support labels (fast data; cold Python times out
+    at g8-7); (2) reimplement the validated bipartite var×constraint message-
+    passing GNN in Burn; (3) train + reproduce the g-PHP flip in Rust; (4)
+    integrate inference into `gmi_loop_warm`; then expert iteration.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

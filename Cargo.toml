@@ -15,6 +15,11 @@ path = "src/bin/sat_drat_verify.rs"
 name = "gmi"
 path = "src/bin/gmi.rs"
 
+[[bin]]
+name = "gmi_train"
+path = "src/bin/gmi_train.rs"
+required-features = ["gnn"]
+
 [features]
 # `evolve_guard` — runtime enforcement of the eff-layer ordering
 # contracts (sum_visit_order is a permutation; prod_visit_order keeps
@@ -36,6 +41,9 @@ evolve_guard = []
 # always-on index sanitizer (sanitize_indices) still guarantees no panic
 # on a malformed index.  See src/dual/path_effective.rs.
 evolve_wide = []
+# GNN cut-scorer (Burn).  Optional + isolated so the default sat/gmi builds never
+# pull burn; build with `cargo build --features gnn --bin gmi_train`.
+gnn = ["dep:burn"]
 
 [dependencies]
 axum = "0.7"
@@ -52,3 +60,4 @@ num-bigint = "0.4"
 num-rational = "0.4"
 num-integer = "0.1"
 num-traits = "0.2"
+burn = { version = "0.21", features = ["ndarray", "autodiff"], optional = true }

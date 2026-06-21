@@ -614,6 +614,26 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
     learning tracks (cut-selection is the learned hook and *also* shrinks the cut
     count); maintain an incremental objective/cost row to drop the per-pivot
     reduced-cost recompute for a further constant factor.
+- **● Learned cut-selection on GMI — imitation scorer, ~2× fewer cuts, transfers,
+  veripb-VERIFIED (2026-06-21).** `neural/cp_gmi_policy.py`. The warm engine made
+  the *cut count* the bottleneck; this is the Aristotle analog on the complete
+  separator (cf. the earlier `cp_cut_policy` on the *incomplete* mod-q one).
+  - **Headroom confirmed:** trace the final Farkas support backward through each
+    cut's `lamC` (source constraints) → only **~30 % of add-all GMI cuts are
+    useful** (php-4-3 32 %, 5-4 30 %, 6-5 31 %); ~70 % are wasted.
+  - **Imitation:** fit a logistic scorer over 9 cheap cut features (label =
+    useful), then keep the top fraction per round.  Interpretable weights — prefer
+    **higher violation** (+0.87), **fewer source constraints** (nsrc −1.8,
+    nbound −1.8), **smaller max coefficient** (−1.3): sparser/simpler cuts are the
+    useful ones (same lesson as the mod-q policy).
+  - **Result (top-50 %/round, all veripb-VERIFIED): php-5-4 56→24 cuts (2.3×),
+    php-6-5 111→59 cuts (1.9×) — and 6-5 is OUT-OF-SAMPLE** (trained on
+    3-2/4-3/5-4).  A learned policy producing machine-checked proofs, transferring
+    small→large; also faster (fewer cuts → smaller growing system).
+  - **Next:** port the scorer into the Rust warm loop to apply selection at scale
+    (cut the ~1810 cuts on php-9-8, push toward 10-9); then a GNN over the
+    constraint graph / expert iteration (richer than 9 hand-features) is the
+    Phase-4 direction, now on a fast complete separator.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

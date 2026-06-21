@@ -648,8 +648,14 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
     size — the learned policy is increasingly valuable exactly where add-all
     explodes.  This is the learned cut-selection win realized at scale on a fast,
     sound, machine-checked engine — the Phase-3 / Aristotle loop, end to end.
-  - **Next:** push the ceiling with the policy (php-10-9); GNN + expert iteration
-    for the per-step *(row, divisor)* choice (richer than 9 hand-features).
+  - **The policy also pushes the CEILING, not just the cut count: php-10-9 (90
+    vars) — which add-all could NOT refute in 300 s — is cracked in 574 cuts /
+    167 s, veripb-VERIFIED** (the smallest of the `benchmarks/php` instances).
+    Learned selection turns a previously-out-of-reach instance into a solved,
+    machine-checked one.
+  - **Next:** a GNN over the constraint graph + expert iteration for the per-step
+    *(row, divisor)* choice (richer than 9 hand-features), now on a fast, sound,
+    complete separator.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

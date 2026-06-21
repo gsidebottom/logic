@@ -521,6 +521,30 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   - **Next:** the env is matured — layer MCGS + a policy/value GNN + expert
     iteration (the re-aligned Aristotle track). "Which fractional row / which cut
     to keep" is the learned-policy hook, now on a complete, fast, exact separator.
+- **● Generality sweep — ONE Gomory engine subsumes the five per-family Rust
+  detectors at small scale (2026-06-21).** `neural/cp_sweep.py`. Context: PHP is
+  *already* handled efficiently by `cook_pbp.rs` (PHP-8-7 → poly proof, veripb
+  VERIFIED, 1.1 ms), so cracking PHP with Gomory is engine *validation*, not a
+  result that beats a detector. The real question: is exact-tableau Gomory a
+  *general* engine or a PHP toy? Sweep over small UNSAT instances, comparing the
+  structural detectors (`cook_pbp` shape-match, `xor_gauss` XOR-recovery) against
+  the single GMI engine (all veripb-VERIFIED):
+  - **parity (Tseitin cycles C3..C9):** cook=no-match, xor_gauss=solves; **GMI =
+    1 cut** (one {0,1/2} CG cut does the GF(2) contradiction).
+  - **graph-coloring (odd cycles C5..C9, 2-col):** cook=no-match, **xor_gauss
+    can't finish (mixed → falls through to the general matrix search)** — i.e.
+    *both* structural detectors miss it; **GMI = 1 cut**, VERIFIED. A concrete
+    "beyond the structural detectors" datapoint.
+  - **mutilated chessboard (4×4, 4×6):** cook detects; GMI = 5 cuts / 1.8 s and
+    35 cuts / 93 s, VERIFIED.
+  - **PHP-4-3 (baseline):** cook detects; GMI = 17 cuts.
+  So one algorithm with no per-family pattern-matching produces machine-checked
+  proofs across PHP / parity / coloring / mutilated-chessboard, including a family
+  (coloring) the hand-detectors miss. **Limit quantified:** the pure-Python
+  `Fraction` simplex is comfortable to ~20–30 vars, slow by ~34 (4×6 = 93 s) — so
+  the engine's value is as the *small-instance learning environment*, not a scale
+  competitor to the Rust detectors. The gap-family direction (a resolution-hard
+  family no detector handles) and the learning track are both now well-founded.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

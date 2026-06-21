@@ -469,11 +469,31 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
     uniform-denominator mod-q — even sweeping q≤20 — **misses** (those cuts need
     non-uniform multipliers / an LCM-denominator >20). So PHP-5-4 is *not* at the
     integer hull and *not* cost-bound — the mod-q separator is **incomplete**.
-  - **Next lever (Phase 4): a complete separator.** Either Gomory mixed-integer
-    (GMI) cuts read from the **simplex tableau** (complete, O(1)/cut, no MILP — but
-    needs basis-inverse access scipy.linprog doesn't expose) or the exact F-L MILP
-    with **exact rational multiplier recovery** for emission. That, not a cheaper
-    or smarter *selection*, is what unlocks PHP-5-4+.
+  - **Next lever: a complete separator (decision = GMI from an exact tableau).**
+    The cheap alternatives are now *ruled out by measurement*, not guessed:
+    - **mod-q at higher Q is dead.** At the PHP-5-4 stall the exact any-multiplier
+      F-L MILP still finds violated cuts (viol 0.5–0.99), but **mod-q finds nothing
+      at Q∈{6,12,24,30,48,60,LCM}** — these cuts are *not* expressible as `w/Q`.
+    - **Float-multiplier recovery is dead.** The F-L MILP's `u` come back as
+      numerical noise (per-constraint denominators in the thousands, LCM ≈ 10⁴⁵) —
+      a degenerate/non-unique multiplier vector, un-rationalizable. The cut
+      `(α,zb)` is exact (integer MILP vars) but its *emittable* multipliers are not
+      recoverable from the float `u`.
+    - So the complete separator must produce cuts with **exact rational multipliers
+      by construction** → **Gomory cuts from the simplex tableau**: the optimal
+      basis-inverse row `B⁻¹ᵢ` gives exact multipliers (common denominator
+      `det(B)`), the Gomory fractional cut `Σ frac(āⱼ)xⱼ ≥ frac(βᵢ)` cuts the LP
+      optimum by construction, and it emits as `pol Σ (det(B)·B⁻¹ᵢ)·Cⱼ  det(B) d`.
+    - **Build (next session — self-contained, no dep):** `highspy` is absent and
+      `scipy.linprog` doesn't expose the basis, and PHP LP optima are **degenerate**
+      (float basis reconstruction is fragile) → build a small **exact rational
+      simplex** (Fractions, Bland's rule) on the standard form (`−coef·x ≤ −rhs`,
+      `x ≤ 1`, slacks). From its optimal tableau: pick a fractional basic var →
+      Gomory cut → eliminate slacks back to a CG cut over the PB constraints +
+      `x≤1` bound axioms → emit pol + final Farkas → veripb. Iterate (Gomory's
+      finite convergence) to refute PHP-5-4/6-5. **Then** layer MCGS + a
+      policy/value GNN + expert iteration on this matured env (the re-aligned
+      Aristotle track).
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

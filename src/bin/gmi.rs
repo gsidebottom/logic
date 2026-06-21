@@ -50,6 +50,7 @@ fn main() {
     let mut max_rounds = 200usize;
     let mut n_obj = 4usize;
     let mut max_secs = 0.0f64;
+    let mut cold = false;
     let args: Vec<String> = std::env::args().collect();
     let mut i = 1;
     while i < args.len() {
@@ -70,6 +71,7 @@ fn main() {
                 i += 1;
                 max_secs = args[i].parse().unwrap_or(0.0);
             }
+            "--cold" => cold = true,
             _ => {}
         }
         i += 1;
@@ -80,7 +82,12 @@ fn main() {
     let (nvars, clauses) = parse_dimacs(&input);
 
     let t0 = std::time::Instant::now();
-    match gmi::refute(&clauses, nvars, max_rounds, n_obj, max_secs) {
+    let result = if cold {
+        gmi::refute_cold(&clauses, nvars, max_rounds, n_obj, max_secs)
+    } else {
+        gmi::refute(&clauses, nvars, max_rounds, n_obj, max_secs)
+    };
+    match result {
         Some(r) => {
             let dt = t0.elapsed().as_secs_f64();
             let proof = gmi::emit(r.cons_len, &r);

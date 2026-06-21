@@ -726,6 +726,297 @@ fn gmi_loop<S: Scalar>(
     (cons, false, cuts)
 }
 
+// ── warm-start cutting-plane loop (dual simplex after each cut) ──────────────
+//
+// The cold loop above re-solves the whole growing system from scratch every
+// round × objective.  Warm-start keeps ONE persistent tableau: after adding a cut
+// (one row + one slack), the old optimal basis is dual-feasible but primal-
+// infeasible only in the new row → a few DUAL-simplex pivots restore optimality
+// (vs a full two-phase).  An objective rotation keeps primal feasibility → a
+// PRIMAL re-optimize (no phase 1).  Soundness is unaffected: this only changes
+// how cuts/Farkas are found; the proof is still BigInt-exact + veripb-checked,
+// with the cold path as the ultimate fallback.
+
+#[derive(Clone, Copy)]
+enum ColKind {
+    X(u32),       // original var x_v        → multiplier on the x_v >= 0 axiom
+    Slack(usize), // surplus of cons[idx]    → multiplier on cons[idx]
+    Upper(u32),   // slack of x_v <= 1       → multiplier on the ~x_v axiom
+}
+
+/// Standard pivot on (r, enter): normalize row r, eliminate the column elsewhere.
+fn pivot<S: Scalar>(t: &mut [Vec<S>], b: &mut [S], basis: &mut [usize], r: usize, enter: usize) {
+    let piv = t[r][enter].clone();
+    for x in t[r].iter_mut() {
+        *x = x.clone() / piv.clone();
+    }
+    b[r] = b[r].clone() / piv.clone();
+    for i in 0..basis.len() {
+        if i != r && !t[i][enter].is_zero() {
+            let f = t[i][enter].clone();
+            for j in 0..t[i].len() {
+                let d = f.clone() * t[r][j].clone();
+                t[i][j] = t[i][j].clone() - d;
+            }
+            let d = f.clone() * b[r].clone();
+            b[i] = b[i].clone() - d;
+        }
+    }
+    basis[r] = enter;
+}
+
+struct Warm<S> {
+    t: Vec<Vec<S>>,
+    b: Vec<S>,
+    basis: Vec<usize>,
+    kind: Vec<ColKind>,
+    cost: Vec<S>,
+    ncols: usize,
+    nvars: usize,
+}
+
+impl<S: Scalar> Warm<S> {
+    fn from_cold(s: &Std, t: Vec<Vec<S>>, b: Vec<S>, basis: Vec<usize>, cost: Vec<S>, nvars: usize) -> Warm<S> {
+        let mut kind = Vec::with_capacity(s.ncols);
+        for v in 1..=s.n as u32 {
+            kind.push(ColKind::X(v)); // cols 0..n-1
+        }
+        for j in 0..s.m {
+            kind.push(ColKind::Slack(j)); // cols n..n+m-1 (input constraint j)
+        }
+        for v in 1..=s.n as u32 {
+            kind.push(ColKind::Upper(v)); // cols n+m..2n+m-1
+        }
+        Warm { t, b, basis, kind, cost, ncols: s.ncols, nvars }
+    }
+
+    fn primal_x(&self) -> Vec<S> {
+        let mut x = vec![S::zero(); self.nvars];
+        for i in 0..self.basis.len() {
+            if let ColKind::X(v) = self.kind[self.basis[i]] {
+                x[(v - 1) as usize] = self.b[i].clone();
+            }
+        }
+        x
+    }
+
+    /// Append cut (= cons[ci]) as a new row + surplus column, expressed in the
+    /// current basis so the new slack is basic with a negative value (the cut is
+    /// violated → primal-infeasible row, ready for the dual simplex).
+    fn add_cut(&mut self, cut: &Pb, ci: usize) {
+        let snew = self.ncols;
+        for row in self.t.iter_mut() {
+            row.push(S::zero());
+        }
+        self.kind.push(ColKind::Slack(ci));
+        self.cost.push(S::zero());
+        self.ncols += 1;
+        let mut nr = vec![S::zero(); self.ncols];
+        for (&v, g) in &cut.coef {
+            nr[(v - 1) as usize] = S::from_bigint(g);
+        }
+        nr[snew] = -S::one();
+        let mut rhs = S::from_bigint(&cut.rhs);
+        for i in 0..self.basis.len() {
+            let c = self.basis[i];
+            if !nr[c].is_zero() {
+                let g = nr[c].clone();
+                for j in 0..self.ncols {
+                    let d = g.clone() * self.t[i][j].clone();
+                    nr[j] = nr[j].clone() - d;
+                }
+                rhs = rhs - g.clone() * self.b[i].clone();
+            }
+        }
+        for x in nr.iter_mut() {
+            *x = -std::mem::replace(x, S::zero()); // ×−1 → s_new basic with +1
+        }
+        self.t.push(nr);
+        self.b.push(-rhs);
+        self.basis.push(snew);
+    }
+
+    /// Dual simplex: restore primal feasibility from a dual-feasible basis.
+    /// Returns Infeasible when an infeasible row has no eligible entering column
+    /// (LP infeasible → refuted).
+    fn dual_resolve(&mut self) -> Status {
+        let cap = 50_000 + 200 * (self.basis.len() + self.ncols);
+        let mut it = 0usize;
+        loop {
+            it += 1;
+            if it > cap {
+                return Status::Optimal; // bail; the cold fallback covers it
+            }
+            // leaving row: Bland — smallest basic-var index among b[r] < 0
+            let mut leave = usize::MAX;
+            let mut leave_bi = usize::MAX;
+            for r in 0..self.basis.len() {
+                if self.b[r] < S::zero() && self.basis[r] < leave_bi {
+                    leave_bi = self.basis[r];
+                    leave = r;
+                }
+            }
+            if leave == usize::MAX {
+                return Status::Optimal; // primal feasible → optimal
+            }
+            let cb: Vec<S> = (0..self.basis.len()).map(|i| self.cost[self.basis[i]].clone()).collect();
+            // entering: min reduced-cost / (−t[leave][j]) over t[leave][j] < 0
+            let mut enter = usize::MAX;
+            let mut best: Option<S> = None;
+            for j in 0..self.ncols {
+                if self.t[leave][j] < S::zero() {
+                    let mut rc = self.cost[j].clone();
+                    for i in 0..self.basis.len() {
+                        if !cb[i].is_zero() {
+                            rc = rc - cb[i].clone() * self.t[i][j].clone();
+                        }
+                    }
+                    let ratio = rc / (-self.t[leave][j].clone());
+                    if best.as_ref().map_or(true, |bv| ratio < *bv) {
+                        best = Some(ratio);
+                        enter = j;
+                    }
+                }
+            }
+            if enter == usize::MAX {
+                return Status::Infeasible; // primal infeasible → REFUTED
+            }
+            pivot(&mut self.t, &mut self.b, &mut self.basis, leave, enter);
+        }
+    }
+
+    /// All distinct violated Gomory cuts from the current optimal tableau,
+    /// routing each fractional column to its multiplier by `kind`.
+    fn read_cuts(&self, cons: &[Pb], seen: &std::collections::HashSet<String>) -> Vec<(Pb, Recipe)> {
+        let x = self.primal_x();
+        let mut out = Vec::new();
+        let mut local = std::collections::HashSet::new();
+        for i in 0..self.basis.len() {
+            if self.b[i].frac().is_zero() {
+                continue;
+            }
+            let mut raw: Vec<(usize, BigInt, BigInt)> = Vec::new();
+            let mut d = BigInt::one();
+            for col in 0..self.ncols {
+                if let Some((n, dn)) = col_frac(&self.t[i][col]) {
+                    d = d.lcm(&dn);
+                    raw.push((col, n, dn));
+                }
+            }
+            if d.is_one() {
+                continue;
+            }
+            let mul = |n: &BigInt, dn: &BigInt| n * (&d / dn);
+            let mut lam_l = Vec::new();
+            let mut lam_c = Vec::new();
+            let mut lam_b = Vec::new();
+            for (col, n, dn) in &raw {
+                let lam = mul(n, dn);
+                match self.kind[*col] {
+                    ColKind::X(v) => lam_l.push((v, lam)),
+                    ColKind::Slack(ci) => lam_c.push((ci, lam)),
+                    ColKind::Upper(v) => lam_b.push((v, lam)),
+                }
+            }
+            let recipe: Recipe = (d, lam_c, lam_l, lam_b);
+            let cut = build_cut(cons, &recipe);
+            if cut.coef.is_empty() {
+                continue;
+            }
+            let mut viol = S::from_bigint(&cut.rhs);
+            for (&v, a) in &cut.coef {
+                viol = viol - S::from_bigint(a) * x[(v - 1) as usize].clone();
+            }
+            if viol <= S::zero() {
+                continue;
+            }
+            let k = cut.key();
+            if seen.contains(&k) || !local.insert(k) {
+                continue;
+            }
+            out.push((cut, recipe));
+        }
+        out
+    }
+}
+
+fn one_obj<S: Scalar>(n: usize, idx: usize) -> Vec<S> {
+    let mut seed = 0x9e3779b97f4a7c15u64 ^ (idx as u64).wrapping_mul(0x100000001b3);
+    (0..n)
+        .map(|_| {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            S::from_i64(((seed >> 33) % 5) as i64 - 2)
+        })
+        .collect()
+}
+
+fn gmi_loop_warm<S: Scalar>(
+    inputs: &[Pb],
+    nvars: usize,
+    max_rounds: usize,
+    n_obj: usize,
+    max_secs: f64,
+) -> (Vec<Pb>, bool, Vec<Recipe>) {
+    let start = std::time::Instant::now();
+    let mut cons: Vec<Pb> = inputs.to_vec();
+    // one cold solve for the initial optimal basis (default objective: maximize Σx)
+    let s = Std::new(nvars, inputs.len());
+    let (a, b0) = s.build::<S>(&cons);
+    let mut cost0 = vec![S::zero(); s.ncols];
+    for v in 1..=nvars as u32 {
+        cost0[s.cx(v)] = -S::one();
+    }
+    let (status, t, b, basis) = two_phase::<S>(&a, &b0, &cost0);
+    if status == Status::Infeasible {
+        return (cons, true, Vec::new()); // inputs already LP-infeasible
+    }
+    let mut warm = Warm::from_cold(&s, t, b, basis, cost0, nvars);
+    let mut cuts: Vec<Recipe> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = cons.iter().map(|c| c.key()).collect();
+    let mut stale = 0usize;
+    let mut rot = 0usize;
+    for _ in 0..max_rounds * n_obj.max(1) {
+        if max_secs > 0.0 && start.elapsed().as_secs_f64() > max_secs {
+            return (cons, false, cuts);
+        }
+        let fresh = warm.read_cuts(&cons, &seen);
+        if !fresh.is_empty() {
+            stale = 0;
+            for (cut, recipe) in fresh {
+                let k = cut.key();
+                if !seen.insert(k) {
+                    continue;
+                }
+                let ci = cons.len();
+                cons.push(cut.clone());
+                cuts.push(recipe);
+                warm.add_cut(&cut, ci);
+            }
+            if warm.dual_resolve() == Status::Infeasible {
+                return (cons, true, cuts);
+            }
+        } else {
+            stale += 1;
+            if stale >= n_obj {
+                return (cons, false, cuts);
+            }
+            rot += 1;
+            let obj = one_obj::<S>(nvars, rot);
+            for c in warm.cost.iter_mut() {
+                *c = S::zero();
+            }
+            for v in 1..=nvars as u32 {
+                warm.cost[s.cx(v)] = obj[(v - 1) as usize].clone();
+            }
+            let cost = warm.cost.clone();
+            optimize(&mut warm.t, &mut warm.b, &mut warm.basis, &cost); // primal re-opt
+        }
+    }
+    (cons, false, cuts)
+}
+
 // ── exact Farkas certificate ────────────────────────────────────────────────
 
 /// Find nonneg integer multipliers over {cons, x_v<=1, x_v>=0} whose combination
@@ -860,11 +1151,44 @@ fn refute_with<S: Scalar>(
     })
 }
 
-/// Refute `clauses` by Gomory cutting planes.  Runs the fast i128-rational path
-/// first; on failure (overflow-corruption or round/time limit) falls back to the
-/// exact `BigRational` path.  Either way the returned proof is BigInt-exact (its
-/// Farkas step is verified to cancel) and VeriPB-checkable.
+fn refute_warm<S: Scalar>(
+    inputs: &[Pb],
+    nvars: usize,
+    max_rounds: usize,
+    n_obj: usize,
+    max_secs: f64,
+) -> Option<Refutation> {
+    let (cons, refuted, cuts) = gmi_loop_warm::<S>(inputs, nvars, max_rounds, n_obj, max_secs);
+    if !refuted {
+        return None;
+    }
+    let farkas = farkas::<S>(&cons, nvars)?;
+    Some(Refutation {
+        cuts,
+        farkas,
+        cons_len: inputs.len(),
+    })
+}
+
+/// Refute `clauses` by Gomory cutting planes.  Fast path: warm-start (dual
+/// simplex) on i128 rationals.  On failure (overflow, warm-start bug, or limit)
+/// falls back to the trusted cold-start `BigRational` engine.  Either way the
+/// returned proof is BigInt-exact (its Farkas step is verified to cancel) and
+/// VeriPB-checkable.
 pub fn refute(
+    clauses: &[Vec<i32>],
+    nvars: usize,
+    max_rounds: usize,
+    n_obj: usize,
+    max_secs: f64,
+) -> Option<Refutation> {
+    let inputs: Vec<Pb> = clauses.iter().map(|c| Pb::from_clause(c)).collect();
+    refute_warm::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs)
+        .or_else(|| refute_with::<BigRational>(&inputs, nvars, max_rounds, n_obj, max_secs))
+}
+
+/// Cold-start engine (no warm-start) — i128 then BigRational.  For A/B timing.
+pub fn refute_cold(
     clauses: &[Vec<i32>],
     nvars: usize,
     max_rounds: usize,

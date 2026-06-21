@@ -591,6 +591,29 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   - **Next:** push the ceiling (php-8-7+) and revisit the hard-gap / learning
     tracks now that medium instances are tractable; warm-start re-solve is the
     next orthogonal speedup (avoid from-scratch two-phase after each cut).
+- **● Warm-start re-solve — dual simplex after each cut; ceiling php-7-6 → php-9-8
+  (2026-06-21).** `src/gmi.rs` `Warm`/`gmi_loop_warm`. The cold loop re-solves the
+  whole growing system from scratch every round × objective — the *(many vars ×
+  many cuts)* wall.  Warm-start keeps ONE persistent tableau: after adding a cut
+  (one row + one surplus column, expressed in the current basis so the new slack
+  is basic-negative) the old optimum is dual-feasible but primal-infeasible in
+  just that row → a few **dual-simplex** pivots (Bland, capped) restore optimality
+  instead of a full two-phase; an objective rotation keeps primal feasibility → a
+  **primal** re-opt, no phase 1.  `refute()` now runs warm-i128 first, cold
+  `BigRational` as the trusted fallback.  Soundness unchanged (warm only *finds*
+  the cuts/Farkas; proof is BigInt-exact + veripb-checked).
+  - **Speedup over cold-i128, growing with size (all veripb-VERIFIED):
+    php-5-4 0.19→0.029 s, php-6-5 1.79→0.13 s (13.7×), php-7-6 35→1.7 s (20×).**
+    Warm even finds *fewer* cuts (7-6: 256 vs 370) — re-optimizing to a true
+    vertex each step beats cold add-all-then-rebuild.
+  - **Ceiling moved two levels: php-8-7 (56 vars) 9.6 s / 682 cuts and php-9-8
+    (72 vars) 87.6 s / 1810 cuts, both veripb-VERIFIED** — cold-i128 couldn't do
+    php-8-7 in 200 s.  vs the original Python prototype (php-6-5 41 s → 0.13 s)
+    that is **~315×**.
+  - **Next:** the engine now reaches medium instances — revisit the hard-gap and
+    learning tracks (cut-selection is the learned hook and *also* shrinks the cut
+    count); maintain an incremental objective/cost row to drop the per-pivot
+    reduced-cost recompute for a further constant factor.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

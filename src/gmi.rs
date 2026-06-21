@@ -11,30 +11,180 @@
 //! is infeasible; close with an exact Farkas combination.  Every step is a legal
 //! cutting-plane derivation, so the emitted `.pbp` is VeriPB-checkable.
 //!
-//! Arithmetic is `BigRational` throughout: a proof engine must never silently
-//! overflow.  For the structured 0/1 systems here the basis subdeterminants stay
-//! small, so the bignums stay small.
+//! Arithmetic is generic over a [`Scalar`] field, run fast-path first with a
+//! plain `i128` rational ([`Q`]) and falling back to `BigRational` if that fails
+//! to refute.  Soundness does NOT depend on the scalar: the i128 simplex only
+//! *searches* for the cuts and the Farkas combination; the emitted proof is
+//! reconstructed in exact `BigInt` and its Farkas step is checked to cancel
+//! exactly, after which VeriPB verifies independently.  So an i128 overflow can
+//! only cause a fallback, never an unsound proof.
 
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_rational::BigRational;
-use num_traits::{One, Signed, Zero};
+use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::collections::BTreeMap;
-
-type Rat = BigRational;
 
 fn bi(n: i64) -> BigInt {
     BigInt::from(n)
-}
-fn rat_i(n: i64) -> Rat {
-    Rat::from_integer(bi(n))
 }
 fn ceil_div(a: &BigInt, b: &BigInt) -> BigInt {
     // b > 0
     (a + b - BigInt::one()).div_floor(b)
 }
-fn frac(z: &Rat) -> Rat {
-    z.clone() - z.floor()
+
+fn igcd(a: i128, b: i128) -> i128 {
+    let (mut a, mut b) = (a.abs(), b.abs());
+    while b != 0 {
+        let t = a % b;
+        a = b;
+        b = t;
+    }
+    a
+}
+
+// ── Scalar field: the simplex tableau entry type ─────────────────────────────
+
+/// An ordered field with the bits the simplex + Gomory reader need.  Arithmetic
+/// is by value (operands cloned); for `Q` that's a cheap `Copy`.
+pub trait Scalar:
+    Clone
+    + PartialOrd
+    + std::ops::Add<Output = Self>
+    + std::ops::Sub<Output = Self>
+    + std::ops::Mul<Output = Self>
+    + std::ops::Div<Output = Self>
+    + std::ops::Neg<Output = Self>
+{
+    fn zero() -> Self;
+    fn one() -> Self;
+    fn from_i64(n: i64) -> Self;
+    fn from_bigint(n: &BigInt) -> Self;
+    fn is_zero(&self) -> bool;
+    fn frac(&self) -> Self;
+    /// (numer, denom>0) as BigInt, reduced.
+    fn ratio_bigint(&self) -> (BigInt, BigInt);
+}
+
+/// Plain `i128` rational (kept reduced, denom > 0).  Arithmetic may wrap on
+/// overflow — that is fine: see the module note (soundness is from the exact
+/// BigInt reconstruction + VeriPB, and the iteration cap prevents runaway).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Q {
+    n: i128,
+    d: i128,
+}
+
+impl Q {
+    fn reduce(mut n: i128, mut d: i128) -> Q {
+        if d == 0 {
+            return Q { n: 0, d: 1 };
+        }
+        if d < 0 {
+            n = -n;
+            d = -d;
+        }
+        let g = igcd(n, d).max(1);
+        Q { n: n / g, d: d / g }
+    }
+}
+
+// Arithmetic wraps rather than panics on i128 overflow: a wrapped value can only
+// make the i128 attempt FAIL (→ BigRational fallback), never an unsound proof.
+impl std::ops::Add for Q {
+    type Output = Q;
+    fn add(self, o: Q) -> Q {
+        Q::reduce(
+            (self.n.wrapping_mul(o.d)).wrapping_add(o.n.wrapping_mul(self.d)),
+            self.d.wrapping_mul(o.d),
+        )
+    }
+}
+impl std::ops::Sub for Q {
+    type Output = Q;
+    fn sub(self, o: Q) -> Q {
+        Q::reduce(
+            (self.n.wrapping_mul(o.d)).wrapping_sub(o.n.wrapping_mul(self.d)),
+            self.d.wrapping_mul(o.d),
+        )
+    }
+}
+impl std::ops::Mul for Q {
+    type Output = Q;
+    fn mul(self, o: Q) -> Q {
+        Q::reduce(self.n.wrapping_mul(o.n), self.d.wrapping_mul(o.d))
+    }
+}
+impl std::ops::Div for Q {
+    type Output = Q;
+    fn div(self, o: Q) -> Q {
+        Q::reduce(self.n.wrapping_mul(o.d), self.d.wrapping_mul(o.n))
+    }
+}
+impl std::ops::Neg for Q {
+    type Output = Q;
+    fn neg(self) -> Q {
+        Q {
+            n: self.n.wrapping_neg(),
+            d: self.d,
+        }
+    }
+}
+impl PartialOrd for Q {
+    fn partial_cmp(&self, o: &Q) -> Option<std::cmp::Ordering> {
+        // d > 0 for both
+        Some((self.n.wrapping_mul(o.d)).cmp(&(o.n.wrapping_mul(self.d))))
+    }
+}
+impl Scalar for Q {
+    fn zero() -> Q {
+        Q { n: 0, d: 1 }
+    }
+    fn one() -> Q {
+        Q { n: 1, d: 1 }
+    }
+    fn from_i64(n: i64) -> Q {
+        Q { n: n as i128, d: 1 }
+    }
+    fn from_bigint(n: &BigInt) -> Q {
+        Q {
+            n: n.to_i128().unwrap_or(0),
+            d: 1,
+        }
+    }
+    fn is_zero(&self) -> bool {
+        self.n == 0
+    }
+    fn frac(&self) -> Q {
+        Q::reduce(self.n.rem_euclid(self.d), self.d)
+    }
+    fn ratio_bigint(&self) -> (BigInt, BigInt) {
+        (BigInt::from(self.n), BigInt::from(self.d))
+    }
+}
+
+impl Scalar for BigRational {
+    fn zero() -> Self {
+        <BigRational as Zero>::zero()
+    }
+    fn one() -> Self {
+        <BigRational as One>::one()
+    }
+    fn from_i64(n: i64) -> Self {
+        BigRational::from_integer(bi(n))
+    }
+    fn from_bigint(n: &BigInt) -> Self {
+        BigRational::from_integer(n.clone())
+    }
+    fn is_zero(&self) -> bool {
+        <BigRational as Zero>::is_zero(self)
+    }
+    fn frac(&self) -> Self {
+        self.clone() - self.floor()
+    }
+    fn ratio_bigint(&self) -> (BigInt, BigInt) {
+        (self.numer().clone(), self.denom().clone())
+    }
 }
 
 // ── PB constraint  Σ coef[v]·x_v >= rhs  (signed-variable form) ──────────────
@@ -181,23 +331,30 @@ enum Status {
 }
 
 /// In-place Bland-rule simplex minimizing cost·y on tableau (T, b, basis).
-/// `cost.len()` is the working column count (= each row's length).
-fn optimize(t: &mut [Vec<Rat>], b: &mut [Rat], basis: &mut [usize], cost: &[Rat]) {
+/// `cost.len()` is the working column count (= each row's length).  An iteration
+/// cap backstops termination (exact arithmetic + Bland always terminate; the cap
+/// only matters if an i128 scalar wrapped — then we bail and fall back).
+fn optimize<S: Scalar>(t: &mut [Vec<S>], b: &mut [S], basis: &mut [usize], cost: &[S]) {
     let nrows = basis.len();
     let ncols = cost.len();
-    let zero = Rat::zero();
+    let maxit = 50_000 + 200 * (nrows + ncols);
+    let mut it = 0usize;
     loop {
-        let cb: Vec<&Rat> = (0..nrows).map(|i| &cost[basis[i]]).collect();
+        it += 1;
+        if it > maxit {
+            return;
+        }
+        let cb: Vec<S> = (0..nrows).map(|i| cost[basis[i]].clone()).collect();
         // entering: lowest-index column with negative reduced cost (Bland)
         let mut enter = usize::MAX;
         for j in 0..ncols {
             let mut rc = cost[j].clone();
             for i in 0..nrows {
                 if !cb[i].is_zero() {
-                    rc -= cb[i] * &t[i][j];
+                    rc = rc - cb[i].clone() * t[i][j].clone();
                 }
             }
-            if rc < zero {
+            if rc < S::zero() {
                 enter = j;
                 break;
             }
@@ -207,10 +364,10 @@ fn optimize(t: &mut [Vec<Rat>], b: &mut [Rat], basis: &mut [usize], cost: &[Rat]
         }
         // leaving: min ratio b[i]/t[i][enter] over t[i][enter] > 0, Bland tie-break
         let mut leave = usize::MAX;
-        let mut best: Option<Rat> = None;
+        let mut best: Option<S> = None;
         for i in 0..nrows {
-            if t[i][enter] > zero {
-                let ratio = &b[i] / &t[i][enter];
+            if t[i][enter] > S::zero() {
+                let ratio = b[i].clone() / t[i][enter].clone();
                 let take = match &best {
                     None => true,
                     Some(bv) => ratio < *bv || (ratio == *bv && basis[i] < basis[leave]),
@@ -226,18 +383,18 @@ fn optimize(t: &mut [Vec<Rat>], b: &mut [Rat], basis: &mut [usize], cost: &[Rat]
         }
         let piv = t[leave][enter].clone();
         for x in t[leave].iter_mut() {
-            *x /= &piv;
+            *x = x.clone() / piv.clone();
         }
-        b[leave] /= &piv;
+        b[leave] = b[leave].clone() / piv.clone();
         for i in 0..nrows {
             if i != leave && !t[i][enter].is_zero() {
                 let f = t[i][enter].clone();
                 for j in 0..t[i].len() {
-                    let d = &f * &t[leave][j];
-                    t[i][j] -= d;
+                    let d = f.clone() * t[leave][j].clone();
+                    t[i][j] = t[i][j].clone() - d;
                 }
-                let d = &f * &b[leave];
-                b[i] -= d;
+                let d = f.clone() * b[leave].clone();
+                b[i] = b[i].clone() - d;
             }
         }
         basis[leave] = enter;
@@ -247,42 +404,42 @@ fn optimize(t: &mut [Vec<Rat>], b: &mut [Rat], basis: &mut [usize], cost: &[Rat]
 /// Two-phase exact simplex for {a·y = b0, y >= 0} minimizing cost·y (cost over
 /// the structural columns).  Returns (status, tableau, rhs, basis) with the
 /// tableau restricted to the structural columns (artificials dropped).
-fn two_phase(
-    a: &[Vec<Rat>],
-    b0: &[Rat],
-    cost: &[Rat],
-) -> (Status, Vec<Vec<Rat>>, Vec<Rat>, Vec<usize>) {
+fn two_phase<S: Scalar>(
+    a: &[Vec<S>],
+    b0: &[S],
+    cost: &[S],
+) -> (Status, Vec<Vec<S>>, Vec<S>, Vec<usize>) {
     let nrows = a.len();
     let ncols = if nrows > 0 { a[0].len() } else { 0 };
     let total = ncols + nrows;
-    let mut t: Vec<Vec<Rat>> = Vec::with_capacity(nrows);
-    let mut b: Vec<Rat> = Vec::with_capacity(nrows);
+    let mut t: Vec<Vec<S>> = Vec::with_capacity(nrows);
+    let mut b: Vec<S> = Vec::with_capacity(nrows);
     for i in 0..nrows {
         let mut row = a[i].clone();
-        row.resize(total, Rat::zero());
+        row.resize(total, S::zero());
         let mut bi_ = b0[i].clone();
-        if bi_ < Rat::zero() {
+        if bi_ < S::zero() {
             for x in row.iter_mut() {
-                *x = -std::mem::replace(x, Rat::zero());
+                *x = -std::mem::replace(x, S::zero());
             }
             bi_ = -bi_;
         }
-        row[ncols + i] = Rat::one(); // artificial
+        row[ncols + i] = S::one(); // artificial
         t.push(row);
         b.push(bi_);
     }
     let mut basis: Vec<usize> = (0..nrows).map(|i| ncols + i).collect();
     // phase 1: minimize sum of artificials
-    let mut cost1 = vec![Rat::zero(); total];
+    let mut cost1 = vec![S::zero(); total];
     for j in ncols..total {
-        cost1[j] = Rat::one();
+        cost1[j] = S::one();
     }
     optimize(&mut t, &mut b, &mut basis, &cost1);
-    let art_val: Rat = (0..nrows)
+    let art_val: S = (0..nrows)
         .filter(|&i| basis[i] >= ncols)
         .map(|i| b[i].clone())
-        .fold(Rat::zero(), |acc, x| acc + x);
-    if art_val > Rat::zero() {
+        .fold(S::zero(), |acc, x| acc + x);
+    if art_val > S::zero() {
         return (Status::Infeasible, vec![], vec![], vec![]);
     }
     // drive artificials still basic (at 0) out of the basis
@@ -291,18 +448,18 @@ fn two_phase(
             if let Some(pc) = (0..ncols).find(|&j| !t[i][j].is_zero()) {
                 let piv = t[i][pc].clone();
                 for x in t[i].iter_mut() {
-                    *x /= &piv;
+                    *x = x.clone() / piv.clone();
                 }
-                b[i] /= &piv;
+                b[i] = b[i].clone() / piv.clone();
                 for k in 0..nrows {
                     if k != i && !t[k][pc].is_zero() {
                         let f = t[k][pc].clone();
                         for j in 0..t[k].len() {
-                            let d = &f * &t[i][j];
-                            t[k][j] -= d;
+                            let d = f.clone() * t[i][j].clone();
+                            t[k][j] = t[k][j].clone() - d;
                         }
-                        let d = &f * &b[i];
-                        b[k] -= d;
+                        let d = f.clone() * b[i].clone();
+                        b[k] = b[k].clone() - d;
                     }
                 }
                 basis[i] = pc;
@@ -311,14 +468,11 @@ fn two_phase(
     }
     // drop redundant rows (artificial still basic on an all-zero row) + artificials
     let keep: Vec<usize> = (0..nrows).filter(|&i| basis[i] < ncols).collect();
-    let mut t2: Vec<Vec<Rat>> = keep
-        .iter()
-        .map(|&i| t[i][..ncols].to_vec())
-        .collect();
-    let mut b2: Vec<Rat> = keep.iter().map(|&i| b[i].clone()).collect();
+    let mut t2: Vec<Vec<S>> = keep.iter().map(|&i| t[i][..ncols].to_vec()).collect();
+    let mut b2: Vec<S> = keep.iter().map(|&i| b[i].clone()).collect();
     let mut basis2: Vec<usize> = keep.iter().map(|&i| basis[i]).collect();
     // phase 2: optimize the real objective
-    let mut cost2 = vec![Rat::zero(); ncols];
+    let mut cost2 = vec![S::zero(); ncols];
     cost2[..cost.len()].clone_from_slice(cost);
     optimize(&mut t2, &mut b2, &mut basis2, &cost2);
     (Status::Optimal, t2, b2, basis2)
@@ -350,29 +504,30 @@ impl Std {
     }
     /// Build (A, b) of the standard form.  Columns [x_1..x_n | s_1..s_m | t_1..t_n]:
     ///   R_j: Σ_v a_jv x_v − s_j = b_j ;   U_v: x_v + t_v = 1.
-    fn build(&self, cons: &[Pb]) -> (Vec<Vec<Rat>>, Vec<Rat>) {
+    fn build<S: Scalar>(&self, cons: &[Pb]) -> (Vec<Vec<S>>, Vec<S>) {
         let nrows = self.m + self.n;
-        let mut a = vec![vec![Rat::zero(); self.ncols]; nrows];
-        let mut b = vec![Rat::zero(); nrows];
+        let mut a = vec![vec![S::zero(); self.ncols]; nrows];
+        let mut b = vec![S::zero(); nrows];
         for (j, c) in cons.iter().enumerate() {
             for (&v, co) in &c.coef {
-                a[j][self.cx(v)] += Rat::from_integer(co.clone());
+                let cx = self.cx(v);
+                a[j][cx] = a[j][cx].clone() + S::from_bigint(co);
             }
-            a[j][self.cs(j)] = -Rat::one();
-            b[j] = Rat::from_integer(c.rhs.clone());
+            a[j][self.cs(j)] = -S::one();
+            b[j] = S::from_bigint(&c.rhs);
         }
         for v in 1..=self.n as u32 {
             let r = self.m + (v - 1) as usize;
-            a[r][self.cx(v)] = Rat::one();
-            a[r][self.ct(v)] = Rat::one();
-            b[r] = Rat::one();
+            a[r][self.cx(v)] = S::one();
+            a[r][self.ct(v)] = S::one();
+            b[r] = S::one();
         }
         (a, b)
     }
 }
 
-fn primal(s: &Std, b: &[Rat], basis: &[usize]) -> Vec<Rat> {
-    let mut x = vec![Rat::zero(); s.n];
+fn primal<S: Scalar>(s: &Std, b: &[S], basis: &[usize]) -> Vec<S> {
+    let mut x = vec![S::zero(); s.n];
     for i in 0..basis.len() {
         if basis[i] < s.n {
             x[basis[i]] = b[i].clone();
@@ -413,72 +568,73 @@ fn build_cut(cons: &[Pb], r: &Recipe) -> Pb {
     acc.unwrap().divide(d)
 }
 
+/// frac of a tableau entry as (numer, denom) BigInt; both helpers in one place.
+fn col_frac<S: Scalar>(e: &S) -> Option<(BigInt, BigInt)> {
+    let f = e.frac();
+    if f.is_zero() {
+        None
+    } else {
+        Some(f.ratio_bigint())
+    }
+}
+
 /// All distinct violated Gomory cuts from the fractional basic rows.
-fn gomory_cuts(s: &Std, t: &[Vec<Rat>], b: &[Rat], cons: &[Pb], x: &[Rat]) -> Vec<(Pb, Recipe)> {
+fn gomory_cuts<S: Scalar>(
+    s: &Std,
+    t: &[Vec<S>],
+    b: &[S],
+    cons: &[Pb],
+    x: &[S],
+) -> Vec<(Pb, Recipe)> {
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
     for i in 0..b.len() {
-        if frac(&b[i]).is_zero() {
+        if b[i].frac().is_zero() {
             continue;
         }
         let row = &t[i];
-        let mut lam_l: Vec<(u32, BigInt)> = Vec::new();
-        let mut lam_c: Vec<(usize, BigInt)> = Vec::new();
-        let mut lam_b: Vec<(u32, BigInt)> = Vec::new();
-        let mut fracs: Vec<Rat> = Vec::new();
+        // collect (column-id, numer, denom) of every fractional entry, by kind
+        let mut raw_l: Vec<(u32, BigInt, BigInt)> = Vec::new();
+        let mut raw_c: Vec<(usize, BigInt, BigInt)> = Vec::new();
+        let mut raw_b: Vec<(u32, BigInt, BigInt)> = Vec::new();
+        let mut d = BigInt::one();
         for v in 1..=s.n as u32 {
-            let f = frac(&row[s.cx(v)]);
-            if !f.is_zero() {
-                lam_l.push((v, BigInt::zero()));
-                fracs.push(f);
+            if let Some((fnum, fden)) = col_frac(&row[s.cx(v)]) {
+                d = d.lcm(&fden);
+                raw_l.push((v, fnum, fden));
             }
         }
         for j in 0..s.m {
-            let f = frac(&row[s.cs(j)]);
-            if !f.is_zero() {
-                lam_c.push((j, BigInt::zero()));
-                fracs.push(f);
+            if let Some((fnum, fden)) = col_frac(&row[s.cs(j)]) {
+                d = d.lcm(&fden);
+                raw_c.push((j, fnum, fden));
             }
         }
         for v in 1..=s.n as u32 {
-            let f = frac(&row[s.ct(v)]);
-            if !f.is_zero() {
-                lam_b.push((v, BigInt::zero()));
-                fracs.push(f);
+            if let Some((fnum, fden)) = col_frac(&row[s.ct(v)]) {
+                d = d.lcm(&fden);
+                raw_b.push((v, fnum, fden));
             }
-        }
-        if fracs.is_empty() {
-            continue;
-        }
-        let mut d = BigInt::one();
-        for f in &fracs {
-            d = d.lcm(f.denom());
         }
         if d.is_one() {
             continue;
         }
-        // fill the integer multipliers λ = frac · D, recomputing per column
-        let scale = |raw: &Rat| -> BigInt { (raw * Rat::from_integer(d.clone())).to_integer() };
-        for (v, lam) in lam_l.iter_mut() {
-            *lam = scale(&frac(&row[s.cx(*v)]));
-        }
-        for (j, lam) in lam_c.iter_mut() {
-            *lam = scale(&frac(&row[s.cs(*j)]));
-        }
-        for (v, lam) in lam_b.iter_mut() {
-            *lam = scale(&frac(&row[s.ct(*v)]));
-        }
+        // integer multiplier = frac · D = numer · (D / denom)
+        let mul = |fnum: &BigInt, fden: &BigInt| fnum * (&d / fden);
+        let lam_l: Vec<(u32, BigInt)> = raw_l.iter().map(|(v, n, dn)| (*v, mul(n, dn))).collect();
+        let lam_c: Vec<(usize, BigInt)> = raw_c.iter().map(|(j, n, dn)| (*j, mul(n, dn))).collect();
+        let lam_b: Vec<(u32, BigInt)> = raw_b.iter().map(|(v, n, dn)| (*v, mul(n, dn))).collect();
         let recipe: Recipe = (d, lam_c, lam_l, lam_b);
         let cut = build_cut(cons, &recipe);
         if cut.coef.is_empty() {
             continue;
         }
         // violation at x*: rhs − Σ coef·x*
-        let mut viol = Rat::from_integer(cut.rhs.clone());
+        let mut viol = S::from_bigint(&cut.rhs);
         for (&v, a) in &cut.coef {
-            viol -= Rat::from_integer(a.clone()) * &x[(v - 1) as usize];
+            viol = viol - S::from_bigint(a) * x[(v - 1) as usize].clone();
         }
-        if viol <= Rat::zero() {
+        if viol <= S::zero() {
             continue;
         }
         let k = cut.key();
@@ -504,8 +660,8 @@ pub enum FarkasTerm {
     Upper(u32, BigInt),  // x_v <= 1 axiom (~x_v)
 }
 
-fn lcg_objs(n: usize, n_obj: usize, rnd: usize) -> Vec<Option<Vec<Rat>>> {
-    let mut objs: Vec<Option<Vec<Rat>>> = vec![None]; // None = maximize Σx
+fn lcg_objs<S: Scalar>(n: usize, n_obj: usize, rnd: usize) -> Vec<Option<Vec<S>>> {
+    let mut objs: Vec<Option<Vec<S>>> = vec![None]; // None = maximize Σx
     let mut seed: u64 = 0x9e3779b97f4a7c15u64 ^ (rnd as u64).wrapping_mul(0x100000001b3);
     for _ in 1..n_obj {
         let mut o = Vec::with_capacity(n);
@@ -513,7 +669,7 @@ fn lcg_objs(n: usize, n_obj: usize, rnd: usize) -> Vec<Option<Vec<Rat>>> {
             seed = seed
                 .wrapping_mul(6364136223846793005)
                 .wrapping_add(1442695040888963407);
-            o.push(rat_i(((seed >> 33) % 5) as i64 - 2)); // {−2..2}
+            o.push(S::from_i64(((seed >> 33) % 5) as i64 - 2)); // {−2..2}
         }
         objs.push(Some(o));
     }
@@ -521,7 +677,7 @@ fn lcg_objs(n: usize, n_obj: usize, rnd: usize) -> Vec<Option<Vec<Rat>>> {
 }
 
 /// Cutting-plane loop with Gomory separation.  Returns (cons, refuted, cuts).
-fn gmi_loop(
+fn gmi_loop<S: Scalar>(
     inputs: &[Pb],
     nvars: usize,
     max_rounds: usize,
@@ -537,24 +693,24 @@ fn gmi_loop(
             return (cons, false, cuts); // wall-clock guard
         }
         let mut added = 0;
-        for obj in lcg_objs(nvars, n_obj, rnd) {
+        for obj in lcg_objs::<S>(nvars, n_obj, rnd) {
             let s = Std::new(nvars, cons.len());
-            let (a, b0) = s.build(&cons);
-            let mut cost = vec![Rat::zero(); nvars];
+            let (a, b0) = s.build::<S>(&cons);
+            let mut cost = vec![S::zero(); nvars];
             match &obj {
                 None => {
                     for c in cost.iter_mut() {
-                        *c = -Rat::one();
+                        *c = -S::one();
                     }
                 }
                 Some(o) => cost.clone_from_slice(o),
             }
-            let (status, t, b, basis) = two_phase(&a, &b0, &cost);
+            let (status, t, b, basis) = two_phase::<S>(&a, &b0, &cost);
             if status == Status::Infeasible {
                 return (cons, true, cuts);
             }
-            let x = primal(&s, &b, &basis);
-            for (cut, recipe) in gomory_cuts(&s, &t, &b, &cons, &x) {
+            let x = primal::<S>(&s, &b, &basis);
+            for (cut, recipe) in gomory_cuts::<S>(&s, &t, &b, &cons, &x) {
                 let k = cut.key();
                 if seen.insert(k) {
                     cons.push(cut);
@@ -575,7 +731,7 @@ fn gmi_loop(
 /// Find nonneg integer multipliers over {cons, x_v<=1, x_v>=0} whose combination
 /// is 0 >= positive (LP-infeasibility certificate).  Solved exactly via the LP
 ///   max Σ y·rhs  s.t.  Σ y·coef[i] = 0 ∀i,  Σ y <= 1,  y >= 0.
-fn farkas(cons: &[Pb], nvars: usize) -> Option<Vec<FarkasTerm>> {
+fn farkas<S: Scalar>(cons: &[Pb], nvars: usize) -> Option<Vec<FarkasTerm>> {
     // candidate constraints: cons, then (−x_v >= −1), then (x_v >= 0)
     let mut cands: Vec<Pb> = cons.to_vec();
     let n_con = cons.len();
@@ -594,47 +750,51 @@ fn farkas(cons: &[Pb], nvars: usize) -> Option<Vec<FarkasTerm>> {
     // per problem variable (Σ y coef = 0) + the normalization row.
     let nrows = nvars + 1;
     let ncols = k + 1;
-    let mut a = vec![vec![Rat::zero(); ncols]; nrows];
-    let mut b0 = vec![Rat::zero(); nrows];
+    let mut a = vec![vec![S::zero(); ncols]; nrows];
+    let mut b0 = vec![S::zero(); nrows];
     for (kk, c) in cands.iter().enumerate() {
         for (&v, co) in &c.coef {
-            a[(v - 1) as usize][kk] = Rat::from_integer(co.clone());
+            a[(v - 1) as usize][kk] = S::from_bigint(co);
         }
-        a[nvars][kk] = Rat::one(); // normalization Σ y + slack = 1
+        a[nvars][kk] = S::one(); // normalization Σ y + slack = 1
     }
-    a[nvars][k] = Rat::one(); // slack column
-    b0[nvars] = Rat::one();
-    let mut cost = vec![Rat::zero(); ncols];
+    a[nvars][k] = S::one(); // slack column
+    b0[nvars] = S::one();
+    let mut cost = vec![S::zero(); ncols];
     for kk in 0..k {
-        cost[kk] = -Rat::from_integer(cands[kk].rhs.clone()); // minimize −Σ y·rhs
+        cost[kk] = -S::from_bigint(&cands[kk].rhs); // minimize −Σ y·rhs
     }
-    let (status, _t, b, basis) = two_phase(&a, &b0, &cost);
+    let (status, _t, b, basis) = two_phase::<S>(&a, &b0, &cost);
     if status != Status::Optimal {
         return None;
     }
     // recover y* from the basis
-    let mut y = vec![Rat::zero(); k];
+    let mut y = vec![S::zero(); k];
     for i in 0..basis.len() {
         if basis[i] < k {
             y[basis[i]] = b[i].clone();
         }
     }
-    let obj: Rat = (0..k)
-        .map(|kk| &y[kk] * &Rat::from_integer(cands[kk].rhs.clone()))
-        .fold(Rat::zero(), |acc, x| acc + x);
-    if obj <= Rat::zero() {
+    let obj: S = (0..k)
+        .map(|kk| y[kk].clone() * S::from_bigint(&cands[kk].rhs))
+        .fold(S::zero(), |acc, x| acc + x);
+    if obj <= S::zero() {
         return None;
     }
     // clear denominators → integer multipliers
     let mut den = BigInt::one();
     for yi in &y {
         if !yi.is_zero() {
-            den = den.lcm(yi.denom());
+            let (_, dd) = yi.ratio_bigint();
+            den = den.lcm(&dd);
         }
     }
     let mult: Vec<BigInt> = y
         .iter()
-        .map(|yi| (yi * Rat::from_integer(den.clone())).to_integer())
+        .map(|yi| {
+            let (nn, dd) = yi.ratio_bigint();
+            nn * (&den / &dd)
+        })
         .collect();
     let mut g = BigInt::zero();
     for m in &mult {
@@ -681,6 +841,29 @@ fn farkas(cons: &[Pb], nvars: usize) -> Option<Vec<FarkasTerm>> {
 
 // ── top-level + emission ────────────────────────────────────────────────────
 
+fn refute_with<S: Scalar>(
+    inputs: &[Pb],
+    nvars: usize,
+    max_rounds: usize,
+    n_obj: usize,
+    max_secs: f64,
+) -> Option<Refutation> {
+    let (cons, refuted, cuts) = gmi_loop::<S>(inputs, nvars, max_rounds, n_obj, max_secs);
+    if !refuted {
+        return None;
+    }
+    let farkas = farkas::<S>(&cons, nvars)?;
+    Some(Refutation {
+        cuts,
+        farkas,
+        cons_len: inputs.len(),
+    })
+}
+
+/// Refute `clauses` by Gomory cutting planes.  Runs the fast i128-rational path
+/// first; on failure (overflow-corruption or round/time limit) falls back to the
+/// exact `BigRational` path.  Either way the returned proof is BigInt-exact (its
+/// Farkas step is verified to cancel) and VeriPB-checkable.
 pub fn refute(
     clauses: &[Vec<i32>],
     nvars: usize,
@@ -689,16 +872,8 @@ pub fn refute(
     max_secs: f64,
 ) -> Option<Refutation> {
     let inputs: Vec<Pb> = clauses.iter().map(|c| Pb::from_clause(c)).collect();
-    let (cons, refuted, cuts) = gmi_loop(&inputs, nvars, max_rounds, n_obj, max_secs);
-    if !refuted {
-        return None;
-    }
-    let farkas = farkas(&cons, nvars)?;
-    Some(Refutation {
-        cuts,
-        farkas,
-        cons_len: inputs.len(),
-    })
+    refute_with::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs)
+        .or_else(|| refute_with::<BigRational>(&inputs, nvars, max_rounds, n_obj, max_secs))
 }
 
 fn pol_terms(parts: &[(String, BigInt)], suffix: &str) -> String {

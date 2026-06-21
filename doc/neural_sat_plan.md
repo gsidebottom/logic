@@ -572,6 +572,25 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
     re-solve, or a Rust port). Until then GMI's demonstrated niche is generality
     (one algorithm, verified, across families incl. ones no detector matches), not
     hardness.
+- **● Rust port of the GMI engine — ~15× via i128 rationals, soundness preserved
+  (2026-06-21).** `src/gmi.rs` + `src/bin/gmi` (DIMACS stdin → VeriPB `.pbp`),
+  alongside the `cook_pbp` / `parity_pbp` detectors. The numeric core is generic
+  over a `Scalar` field; it runs a **fast `i128`-rational path first and falls
+  back to `BigRational`** on failure.  Key soundness argument: the scalar is only
+  a *search* device — the i128 simplex finds the cuts and the Farkas combination,
+  but the emitted proof is reconstructed in exact `BigInt`, its Farkas step is
+  checked to cancel to `0≥1` exactly, and VeriPB verifies independently.  So an
+  i128 overflow (arithmetic wraps, never panics) can only trigger a fallback,
+  never an unsound proof; an iteration cap backstops loop termination.
+  - **First a `BigRational`-only port was merely ~1.6× over Python** (php-6-5
+    41 s→26 s) — bignum heap-alloc per op dominates, like Python's `Fraction`. The
+    `i128` path gives the real unlock: **php-5-4 0.19 s, php-6-5 1.77 s (15× over
+    BigRational, ~23× over Python), php-7-6 370 cuts / 35 s** — 7-6 was out of
+    reach for the Python prototype.  All veripb-VERIFIED; the parity/coloring/
+    subset-card families stay 1 cut.
+  - **Next:** push the ceiling (php-8-7+) and revisit the hard-gap / learning
+    tracks now that medium instances are tractable; warm-start re-solve is the
+    next orthogonal speedup (avoid from-scratch two-phase after each cut).
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

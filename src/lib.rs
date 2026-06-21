@@ -4,6 +4,7 @@ pub mod cook_pbp;
 pub mod parity_pbp;
 pub mod dual;
 pub mod formula;
+pub mod gmi;
 pub mod matrix;
 pub mod nnf_arena;
 pub mod preprocess;

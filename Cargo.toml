@@ -11,6 +11,10 @@ path = "src/bin/sat_cover_verify.rs"
 name = "sat-drat-verify"
 path = "src/bin/sat_drat_verify.rs"
 
+[[bin]]
+name = "gmi"
+path = "src/bin/gmi.rs"
+
 [features]
 # `evolve_guard` — runtime enforcement of the eff-layer ordering
 # contracts (sum_visit_order is a permutation; prod_visit_order keeps
@@ -44,3 +48,7 @@ xq-lang     = "0.0.1"
 cadical     = "0.1"
 biodivine-lib-bdd = "0.6"
 libc = "0.2.186"
+num-bigint = "0.4"
+num-rational = "0.4"
+num-integer = "0.1"
+num-traits = "0.2"

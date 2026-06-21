@@ -634,6 +634,22 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
     (cut the ~1810 cuts on php-9-8, push toward 10-9); then a GNN over the
     constraint graph / expert iteration (richer than 9 hand-features) is the
     Phase-4 direction, now on a fast complete separator.
+- **● Learned policy ported to the Rust warm engine — cut reduction GROWS with
+  scale, up to 5.3× (2026-06-21).** `src/gmi.rs` `cut_score` + `refute_policy`
+  (bin `--policy [--topfrac f]`).  The 9-feature imitation scorer trained in
+  Python (effective weights w/sd hard-coded; only the ranking matters) is applied
+  in `gmi_loop_warm`: each round keep the top `topfrac` of violated cuts by score.
+  No retraining — the *same* scorer (trained on php-3-2/4-3/5-4) transfers to the
+  fast warm engine.  Soundness unchanged (selection only drops candidate cuts;
+  proof BigInt-exact + veripb-checked; cold add-all fallback).
+  - **A/B add-all vs policy (top-50 %/round), all veripb-VERIFIED:
+    php-7-6 256→110 cuts / 1.7→0.7 s (2.3×), php-8-7 682→171 / 9.6→4.4 s (4.0×),
+    php-9-8 1810→341 / 87.6→16.5 s (5.3×).** The reduction *grows* with instance
+    size — the learned policy is increasingly valuable exactly where add-all
+    explodes.  This is the learned cut-selection win realized at scale on a fast,
+    sound, machine-checked engine — the Phase-3 / Aristotle loop, end to end.
+  - **Next:** push the ceiling with the policy (php-10-9); GNN + expert iteration
+    for the per-step *(row, divisor)* choice (richer than 9 hand-features).
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

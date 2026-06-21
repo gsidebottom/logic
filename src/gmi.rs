@@ -64,6 +64,7 @@ pub trait Scalar:
     fn frac(&self) -> Self;
     /// (numer, denom>0) as BigInt, reduced.
     fn ratio_bigint(&self) -> (BigInt, BigInt);
+    fn to_f64(&self) -> f64;
 }
 
 /// Plain `i128` rational (kept reduced, denom > 0).  Arithmetic may wrap on
@@ -161,6 +162,9 @@ impl Scalar for Q {
     fn ratio_bigint(&self) -> (BigInt, BigInt) {
         (BigInt::from(self.n), BigInt::from(self.d))
     }
+    fn to_f64(&self) -> f64 {
+        self.n as f64 / self.d as f64
+    }
 }
 
 impl Scalar for BigRational {
@@ -184,6 +188,9 @@ impl Scalar for BigRational {
     }
     fn ratio_bigint(&self) -> (BigInt, BigInt) {
         (self.numer().clone(), self.denom().clone())
+    }
+    fn to_f64(&self) -> f64 {
+        <BigRational as ToPrimitive>::to_f64(self).unwrap_or(0.0)
     }
 }
 
@@ -765,6 +772,37 @@ fn pivot<S: Scalar>(t: &mut [Vec<S>], b: &mut [S], basis: &mut [usize], r: usize
     basis[r] = enter;
 }
 
+/// Learned cut-selection scorer — effective weights (w/sd) from cp_gmi_policy.py
+/// (imitation on php-3-2/4-3/5-4; only the ratio matters for ranking).  Features:
+/// [viol, D, nsrc, nbound, msum, degree, ncoef, maxc, density].  Higher = keep.
+const CUT_W: [f64; 9] = [
+    4.673984, -0.039576, -0.375185, -1.467375, -0.006227, -0.096239, -0.027566,
+    -2.697505, -1.084399,
+];
+
+fn cut_score(cut: &Pb, recipe: &Recipe, viol: f64, nvars: usize) -> f64 {
+    let (d, lam_c, lam_l, lam_b) = recipe;
+    let fb = |x: &BigInt| x.to_f64().unwrap_or(0.0);
+    let msum: f64 = lam_c.iter().map(|(_, m)| fb(m)).sum::<f64>()
+        + lam_l.iter().map(|(_, m)| fb(m)).sum::<f64>()
+        + lam_b.iter().map(|(_, m)| fb(m)).sum::<f64>();
+    let degree = fb(&cut.rhs).abs();
+    let ncoef = cut.coef.len() as f64;
+    let maxc = cut.coef.values().map(|a| fb(a).abs()).fold(0.0, f64::max);
+    let feats = [
+        viol,
+        fb(d),
+        lam_c.len() as f64,
+        (lam_l.len() + lam_b.len()) as f64,
+        msum,
+        degree,
+        ncoef,
+        maxc,
+        ncoef / (nvars.max(1) as f64),
+    ];
+    feats.iter().zip(CUT_W.iter()).map(|(f, w)| f * w).sum()
+}
+
 struct Warm<S> {
     t: Vec<Vec<S>>,
     b: Vec<S>,
@@ -887,7 +925,7 @@ impl<S: Scalar> Warm<S> {
 
     /// All distinct violated Gomory cuts from the current optimal tableau,
     /// routing each fractional column to its multiplier by `kind`.
-    fn read_cuts(&self, cons: &[Pb], seen: &std::collections::HashSet<String>) -> Vec<(Pb, Recipe)> {
+    fn read_cuts(&self, cons: &[Pb], seen: &std::collections::HashSet<String>) -> Vec<(Pb, Recipe, f64)> {
         let x = self.primal_x();
         let mut out = Vec::new();
         let mut local = std::collections::HashSet::new();
@@ -934,7 +972,7 @@ impl<S: Scalar> Warm<S> {
             if seen.contains(&k) || !local.insert(k) {
                 continue;
             }
-            out.push((cut, recipe));
+            out.push((cut, recipe, viol.to_f64()));
         }
         out
     }
@@ -958,6 +996,7 @@ fn gmi_loop_warm<S: Scalar>(
     max_rounds: usize,
     n_obj: usize,
     max_secs: f64,
+    topfrac: f64,
 ) -> (Vec<Pb>, bool, Vec<Recipe>) {
     let start = std::time::Instant::now();
     let mut cons: Vec<Pb> = inputs.to_vec();
@@ -981,10 +1020,20 @@ fn gmi_loop_warm<S: Scalar>(
         if max_secs > 0.0 && start.elapsed().as_secs_f64() > max_secs {
             return (cons, false, cuts);
         }
-        let fresh = warm.read_cuts(&cons, &seen);
+        let mut fresh = warm.read_cuts(&cons, &seen);
         if !fresh.is_empty() {
             stale = 0;
-            for (cut, recipe) in fresh {
+            if topfrac < 1.0 && fresh.len() > 1 {
+                // learned selection: keep the top-scored fraction this round
+                let mut scored: Vec<(f64, (Pb, Recipe, f64))> = fresh
+                    .into_iter()
+                    .map(|x| (cut_score(&x.0, &x.1, x.2, nvars), x))
+                    .collect();
+                scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+                let keep = ((scored.len() as f64 * topfrac).round() as usize).max(1);
+                fresh = scored.into_iter().take(keep).map(|(_, x)| x).collect();
+            }
+            for (cut, recipe, _viol) in fresh {
                 let k = cut.key();
                 if !seen.insert(k) {
                     continue;
@@ -1157,8 +1206,9 @@ fn refute_warm<S: Scalar>(
     max_rounds: usize,
     n_obj: usize,
     max_secs: f64,
+    topfrac: f64,
 ) -> Option<Refutation> {
-    let (cons, refuted, cuts) = gmi_loop_warm::<S>(inputs, nvars, max_rounds, n_obj, max_secs);
+    let (cons, refuted, cuts) = gmi_loop_warm::<S>(inputs, nvars, max_rounds, n_obj, max_secs, topfrac);
     if !refuted {
         return None;
     }
@@ -1183,7 +1233,23 @@ pub fn refute(
     max_secs: f64,
 ) -> Option<Refutation> {
     let inputs: Vec<Pb> = clauses.iter().map(|c| Pb::from_clause(c)).collect();
-    refute_warm::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs)
+    refute_warm::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs, 1.0)
+        .or_else(|| refute_with::<BigRational>(&inputs, nvars, max_rounds, n_obj, max_secs))
+}
+
+/// Like [`refute`] but with the learned cut-selection policy: each round keep
+/// only the top `topfrac` of violated cuts by [`cut_score`].  Fewer cuts ⇒
+/// smaller proof + smaller growing system.  Falls back to cold add-all on miss.
+pub fn refute_policy(
+    clauses: &[Vec<i32>],
+    nvars: usize,
+    max_rounds: usize,
+    n_obj: usize,
+    max_secs: f64,
+    topfrac: f64,
+) -> Option<Refutation> {
+    let inputs: Vec<Pb> = clauses.iter().map(|c| Pb::from_clause(c)).collect();
+    refute_warm::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs, topfrac)
         .or_else(|| refute_with::<BigRational>(&inputs, nvars, max_rounds, n_obj, max_secs))
 }
 

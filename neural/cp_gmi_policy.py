@@ -180,6 +180,9 @@ def main():
     Z = np.clip((X - mu) / sd, -10, 10)
     w, b = logreg_fit(Z, y)
     print("  weights:", {n: round(float(wi), 2) for n, wi in zip(FEAT_NAMES, w)})
+    eff = w / sd                                           # rank-relevant raw weights
+    print("  eff (w/sd) for Rust port:",
+          "[" + ", ".join(f"{e:.6f}" for e in eff) + "]")
     scorer = make_scorer(w, b, mu, sd)
 
     print(f"=== eval (policy top {args.topfrac:.0%}/round) ===")

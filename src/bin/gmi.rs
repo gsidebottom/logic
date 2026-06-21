@@ -51,6 +51,7 @@ fn main() {
     let mut n_obj = 4usize;
     let mut max_secs = 0.0f64;
     let mut cold = false;
+    let mut topfrac = 1.0f64;
     let args: Vec<String> = std::env::args().collect();
     let mut i = 1;
     while i < args.len() {
@@ -72,6 +73,15 @@ fn main() {
                 max_secs = args[i].parse().unwrap_or(0.0);
             }
             "--cold" => cold = true,
+            "--policy" => {
+                if topfrac >= 1.0 {
+                    topfrac = 0.5; // default selection fraction
+                }
+            }
+            "--topfrac" => {
+                i += 1;
+                topfrac = args[i].parse().unwrap_or(0.5);
+            }
             _ => {}
         }
         i += 1;
@@ -84,6 +94,8 @@ fn main() {
     let t0 = std::time::Instant::now();
     let result = if cold {
         gmi::refute_cold(&clauses, nvars, max_rounds, n_obj, max_secs)
+    } else if topfrac < 1.0 {
+        gmi::refute_policy(&clauses, nvars, max_rounds, n_obj, max_secs, topfrac)
     } else {
         gmi::refute(&clauses, nvars, max_rounds, n_obj, max_secs)
     };

@@ -31,6 +31,7 @@ import cp_search as cp                                    # noqa: E402
 import cp_lp                                              # noqa: E402
 import cp_gmi                                             # noqa: E402
 import cp_gmi_policy as pol                               # noqa: E402
+import cp_sweep                                           # noqa: E402
 from cp_policy import logreg_fit, standardize            # noqa: E402
 
 TD = tempfile.mkdtemp(prefix="gmignn_")
@@ -46,11 +47,11 @@ def cnf_for(tag):
 
 # ── data: per-(round,objective) snapshots labeled by the Farkas support ──────
 
-def record(tag, seed=0, n_obj=4, max_rounds=120, max_secs=120):
+def record(path, seed=0, n_obj=4, max_rounds=120, max_secs=120):
     """Add-all GMI run; capture (cons_so_far, x*, [candidate cuts]) per vertex,
     then label each candidate by the transitive Farkas support of the refutation.
     Returns [(cons, x_float, [(cut, label)])] or None."""
-    inputs = cp.read_cnf(cnf_for(tag))
+    inputs = cp.read_cnf(path)
     nvars = max(v for c in inputs for v in c.coef)
     cons = list(inputs)
     seen = {c.canonical().key() for c in cons}
@@ -99,8 +100,8 @@ def record(tag, seed=0, n_obj=4, max_rounds=120, max_secs=120):
                                    for cut, ci in cands]))
     ncand = sum(len(c) for _, _, c in out)
     npos = sum(int(l) for _, _, c in out for _, l in c)
-    print(f"  record {tag} seed{seed}: {len(out)} snapshots, {ncand} candidates, "
-          f"{npos} useful ({npos / max(1, ncand):.0%})")
+    print(f"  record {os.path.basename(path)} seed{seed}: {len(out)} snapshots, "
+          f"{ncand} candidates, {npos} useful ({npos / max(1, ncand):.0%})")
     return out
 
 
@@ -166,11 +167,11 @@ def loss_fn(model, g):
 
 # ── train + A/B vs logistic ──────────────────────────────────────────────────
 
-def gather(tags, seeds):
+def gather(paths, seeds):
     data = []
-    for tag in tags:
+    for path in paths:
         for s in range(seeds):
-            r = record(tag, seed=s)
+            r = record(path, seed=s)
             if r:
                 data.extend(r)
     return data
@@ -221,13 +222,28 @@ def main():
     ap.add_argument("--epochs", type=int, default=120)
     ap.add_argument("--lr", type=float, default=3e-3)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--gphp", nargs=5, metavar=("P", "H", "DENS", "NTRAIN", "NTEST"),
+                    help="graph-PHP testbed: generate NTRAIN train + NTEST held-out instances")
     args = ap.parse_args()
     mx.random.seed(args.seed)
 
-    nvars_ref = max(int(t.split("_")[0]) * int(t.split("_")[1])
-                    for t in args.train + args.test)
-    print("=== record train ==="); train_data = gather(args.train, args.seeds)
-    print("=== record test  ==="); test_data = gather(args.test, 1)
+    if args.gphp:
+        P, H, dens = int(args.gphp[0]), int(args.gphp[1]), float(args.gphp[2])
+        ntr, nte = int(args.gphp[3]), int(args.gphp[4])
+        train_paths = [cp_sweep.graph_php_cnf(P, H, dens, s, os.path.join(TD, f"g_{s}.cnf"))
+                       for s in range(ntr)]
+        test_paths = [cp_sweep.graph_php_cnf(P, H, dens, 1000 + s, os.path.join(TD, f"gte_{s}.cnf"))
+                      for s in range(nte)]
+        nvars_ref = P * H
+        seeds = 1                                          # instances already vary
+    else:
+        train_paths = [cnf_for(t) for t in args.train]
+        test_paths = [cnf_for(t) for t in args.test]
+        nvars_ref = max(int(t.split("_")[0]) * int(t.split("_")[1])
+                        for t in args.train + args.test)
+        seeds = args.seeds
+    print("=== record train ==="); train_data = gather(train_paths, seeds)
+    print("=== record test  ==="); test_data = gather(test_paths, 1)
     # one graph per snapshot; pad var dim to the max so M shapes are consistent? No —
     # each graph is independent (its own nvars from its instance).  Use per-graph nvars.
     def nvars_of(tag_data):
@@ -251,6 +267,10 @@ def main():
     print(f"train graphs={len(tr_graphs)} ({ntr} cands)  "
           f"test graphs={len(te_graphs)} ({nte} cands)  "
           f"majority baseline(test)={base_te:.3f}")
+    if not tr_graphs or not te_graphs:
+        print("  ABORT: no data recorded (instances not refuted in time — "
+              "use smaller instances or longer --max-secs)")
+        return
 
     model = CutGNN(args.dim, args.rounds)
     mx.eval(model.parameters())

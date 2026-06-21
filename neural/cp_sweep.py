@@ -16,7 +16,7 @@ several families and, per instance, reports:
 Usage:  cp_sweep.py [--max-secs S] [--only FAMILY]
 """
 from __future__ import annotations
-import argparse, os, subprocess, sys, tempfile, time
+import argparse, os, random, subprocess, sys, tempfile, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cp_search as cp                                    # noqa: E402
@@ -97,6 +97,37 @@ def subset_cardinality_cnf(n, path):
         for x in range(len(es)):
             for y in range(x + 1, len(es)):
                 cl.append([-es[x], -es[y]])
+    return _write(path, len(eid), cl)
+
+
+def graph_php_cnf(P, H, density, seed, path):
+    """Sparse RANDOM bipartite pigeonhole: P pigeons, H holes (P>H); each pigeon
+    wired to a random subset of holes (each hole w.p. `density`, ≥1).  UNSAT by
+    matching infeasibility (P>H) regardless of the graph.  Var per edge (p,h);
+    pigeon p: ≥1 of its edges (OR); hole h: ≤1 incident pigeon (pairwise NOR).
+
+    Keeps PHP's cut-heavy cardinality structure but BREAKS its symmetry (every
+    hole's incident-pigeon set differs) — a (cut-heavy ∧ low-symmetry) testbed,
+    and not byte-matched by the cook_pbp PHP detector."""
+    rng = random.Random(seed)
+    eid, nbr, incid = {}, {p: [] for p in range(P)}, {h: [] for h in range(H)}
+    for p in range(P):
+        hs = [h for h in range(H) if rng.random() < density]
+        if not hs:
+            hs = [rng.randrange(H)]
+        for h in hs:
+            e = len(eid) + 1
+            eid[(p, h)] = e
+            nbr[p].append(e)
+            incid[h].append(e)
+    cl = []
+    for p in range(P):
+        cl.append(nbr[p][:])                               # ≥1 hole
+    for h in range(H):
+        es = incid[h]
+        for i in range(len(es)):
+            for j in range(i + 1, len(es)):
+                cl.append([-es[i], -es[j]])                # ≤1 pigeon
     return _write(path, len(eid), cl)
 
 

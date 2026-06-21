@@ -71,6 +71,35 @@ def tseitin_cycle(n, path):
     return _write(path, n, cl)
 
 
+def subset_cardinality_cnf(n, path):
+    """Subset-cardinality formula on a 3-regular circulant bipartite graph (L,R
+    each size n; edge (i,(i+t)%n) for t=0,1,2).  Each LEFT vertex: ≥2 of its 3
+    edges TRUE (pairwise OR clauses).  Each RIGHT vertex: ≤1 of its 3 edges TRUE
+    (pairwise NOR).  Σ_rows ⇒ total ≥ 2n, Σ_cols ⇒ total ≤ n ⇒ UNSAT.
+
+    Only binary clauses ⇒ LP relaxation feasible (x=½) ⇒ needs CG cuts to recover
+    the cardinality constraints.  Resolution-hard on expanders; matches none of
+    cook_pbp / xor_gauss (not PHP/XOR/clique/mchess) — a genuine gap family."""
+    eid, left, right = {}, {i: [] for i in range(n)}, {j: [] for j in range(n)}
+    for i in range(n):
+        for t in (0, 1, 2):
+            j = (i + t) % n
+            e = len(eid) + 1
+            eid[(i, t)] = e
+            left[i].append(e)
+            right[j].append(e)
+    cl = []
+    for i in range(n):                                  # left: ≥2 of 3 → pairwise OR
+        a, b, c = left[i]
+        cl += [[a, b], [a, c], [b, c]]
+    for j in range(n):                                  # right: ≤1 of 3 → pairwise NOR
+        es = right[j]
+        for x in range(len(es)):
+            for y in range(x + 1, len(es)):
+                cl.append([-es[x], -es[y]])
+    return _write(path, len(eid), cl)
+
+
 def mutilated_cnf(R, C, path):
     """Domino exact-cover of an R×C grid minus two same-colour opposite corners.
     Var per domino (edge between adjacent kept cells); each kept cell covered by
@@ -165,6 +194,8 @@ def sweep(max_secs=60, only=None):
     insts += [(f"mutilated({R}x{C})", "mutilated", mutilated_cnf(R, C,
               os.path.join(td, f"mut_{R}x{C}.cnf")))
               for (R, C) in ((4, 4), (4, 6))]
+    insts += [(f"subset-card(3reg{n})", "subsetcard", subset_cardinality_cnf(n,
+              os.path.join(td, f"sc_{n}.cnf"))) for n in (5, 10, 20)]
     insts += [("PHP-4-3 (baseline)", "php", cp_gmi.php_cnf(4, 3,
               os.path.join(td, "php_4_3.cnf")))]
     if only:

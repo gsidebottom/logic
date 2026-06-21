@@ -545,6 +545,33 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   the engine's value is as the *small-instance learning environment*, not a scale
   competitor to the Rust detectors. The gap-family direction (a resolution-hard
   family no detector handles) and the learning track are both now well-founded.
+- **◐ Gap-family probe — subset-cardinality is outside all detectors + GMI-verified,
+  but "hard + no-detector" is gated by SCALE (2026-06-21).** Target: a family that
+  is resolution-hard AND no detector matches AND GMI cracks (the Phase-3 gate,
+  concretely). Chose **subset-cardinality** (`cp_sweep.subset_cardinality_cnf`):
+  on a 3-regular bipartite graph each left vertex needs ≥2-of-3 edges TRUE, each
+  right vertex ≤1-of-3 → Σ ≥ 2n yet ≤ n → UNSAT. Only binary clauses ⇒ LP-feasible
+  (`farkas_refute` on the raw clauses = None) ⇒ genuinely needs CG cuts.
+  - **Outside all detector coverage** (cook_pbp: no-match; xor_gauss: miss — not
+    PHP/XOR/clique/mchess), and **GMI refutes it veripb-VERIFIED**, hand-checked
+    (the cut `divide(C1+C2+C3,2)` = the row cardinality `x1+x2+x3≥2`; Farkas over
+    it + binary clauses → 0≥1), scaling to n=30 / **90 vars** / 1 cut / 12.6 s.
+  - **But it is NOT hard at reachable scale.** GMI cracks it in **1 cut** for every
+    n; the general Rust solver in **2 conflicts / 0.5 ms**. Resolution-hardness of
+    subset-cardinality / Tseitin / etc. is *asymptotic* (needs large expanders) —
+    there is no "small + resolution-hard": at any fixed small size everything is
+    absolutely easy. PHP-5-4 ("38 cuts at 20 vars") is the closest small-but-cut-
+    heavy instance, and it is *detected*.
+  - **The binding constraint is SCALE, and precisely so.** The prototype handles
+    *(many vars, few cuts)* — subset-card 90 vars/1 cut/12.6 s — OR *(few vars,
+    many cuts)* — mutilated 4×6 34 vars/35 cuts/93 s — but NOT the genuinely-hard
+    regime *(many vars × many cuts)*: each cut re-solves the growing system with
+    `Fraction` arithmetic, so cost ≈ cuts × tableau-resolves compounds. So a
+    compelling hard-gap result **requires the engine to scale first** (faster
+    exact LP: bounded-variable form to drop the x≤1 rows, warm-start/incremental
+    re-solve, or a Rust port). Until then GMI's demonstrated niche is generality
+    (one algorithm, verified, across families incl. ones no detector matches), not
+    hardness.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

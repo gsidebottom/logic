@@ -656,6 +656,28 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   - **Next:** a GNN over the constraint graph + expert iteration for the per-step
     *(row, divisor)* choice (richer than 9 hand-features), now on a fast, sound,
     complete separator.
+- **◐ GNN cut-scorer de-risk — representation is NOT the lever on PHP; search is
+  (2026-06-21).** `neural/cp_gmi_gnn.py`.  Before a GNN-inference-in-Rust port +
+  expert iteration, the gate question: does a GNN over the constraint graph
+  predict cut-usefulness *better* than the 9 hand-features?  Built it (MLX,
+  bipartite var×constraint message-passing à la Gasse et al.: var nodes
+  [x*, fractionality], constraint nodes [rhs, slack@x*, is-candidate], edges =
+  coefficients, per-candidate readout), imitation-trained on the same Farkas-
+  support labels, A/B on held-out php-6-5 cut-usefulness accuracy:
+  - **majority 0.637 · logistic (hand-features) 0.961 · GNN 0.912.** The GNN
+    clearly *learns* structure (0.91 ≫ 0.64) but **does not beat the intrinsic
+    features**, despite seeing strictly more (x*, slacks, full graph).
+  - **Why:** PHP is highly symmetric — every cut is structurally alike, so the
+    discriminative signal is *intrinsic* (how violated / how sparse / coefficient
+    size), not *relational*.  The cheap features already capture it (~0.96).  The
+    less-symmetric families where a GNN might win (subset-cardinality, mixed) are
+    CG-trivial (1 cut, no selection to learn).
+  - **Verdict:** representation is not the bottleneck for GMI cut-selection on the
+    families we can test — so **no Rust-GNN port**.  The genuine high-ceiling lever
+    is **expert iteration / search** (find shorter cut sequences than add-all+
+    imitation can, retrain on them — proof size is the deterministic reward), and/
+    or harder non-symmetric instance families.  Negative result that prunes the
+    cheap-but-wrong path, exactly like the mod-q→GMI decision.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

@@ -726,6 +726,15 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
     freezes training (use the derive's id-preserving Clone); per-graph SGD is too
     noisy on small variable-size graphs (mini-batch the loss-sum over graphs); and
     late-epoch instability needs an lr decay.
+  - **GPU backend option (Burn Metal/wgpu) added + measured — CPU wins at this
+    scale.** `--features gpu` swaps the backend to Apple-Silicon Metal (one cargo
+    feature; model code unchanged via Burn's backend abstraction).  Both backends
+    give the **identical 0.974** test accuracy (correctness confirmed across
+    backends), but 300 epochs: **CPU/NdArray 178 s vs GPU/Metal 472 s (~2.6×
+    slower on GPU)** — the textbook "kernel-launch overhead dominates many tiny
+    ops" regime (~50-node graphs).  So CPU is right for the current de-risk; the
+    GPU win is at scale (large g-PHP / big batches / expert-iteration rollouts).
+    Infra is in place for when that arrives.
   - **Next:** integrate the trained GNN's inference into `gmi_loop_warm` as the
     cut-selection scorer (end-to-end cut reduction at scale on g-PHP), then expert
     iteration (search for shorter proofs, retrain on them — proof size is the

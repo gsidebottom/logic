@@ -9,8 +9,7 @@
 //! generic MUST be named `B`; never add a manual `#[derive(Clone)]` (the derive
 //! emits an id-preserving one); use the `relu` function, not a stored field.
 
-use burn::backend::ndarray::NdArrayDevice;
-use burn::backend::{Autodiff, NdArray};
+use burn::backend::Autodiff;
 use burn::module::Module;
 use burn::nn::{LayerNorm, LayerNormConfig, Linear, LinearConfig};
 use burn::optim::{AdamConfig, GradientsParams, Optimizer};
@@ -18,7 +17,16 @@ use burn::tensor::activation::{relu, sigmoid};
 use burn::tensor::{backend::Backend, Int, Tensor, TensorData};
 use logic::gmi::{self, Pb, Snapshot};
 
-type AD = Autodiff<NdArray<f32>>;
+// Backend swap: `--features gpu` → Burn Metal (wgpu) on Apple Silicon; else CPU.
+#[cfg(not(feature = "gpu"))]
+type BK = burn::backend::NdArray<f32>;
+#[cfg(not(feature = "gpu"))]
+type Dev = burn::backend::ndarray::NdArrayDevice;
+#[cfg(feature = "gpu")]
+type BK = burn::backend::Metal<f32, i32>;
+#[cfg(feature = "gpu")]
+type Dev = burn::backend::wgpu::WgpuDevice;
+type AD = Autodiff<BK>;
 
 // ── graph-PHP generator (sparse random bipartite pigeonhole) ─────────────────
 
@@ -136,7 +144,7 @@ struct Graph {
     labels: Vec<f32>,
 }
 
-fn build_graph(snap: &Snapshot, device: &NdArrayDevice) -> Graph {
+fn build_graph(snap: &Snapshot, device: &Dev) -> Graph {
     let nvars = snap.nvars;
     let nodes: Vec<&Pb> = snap.cons.iter().chain(snap.cand_cuts.iter()).collect();
     let cc = nodes.len();
@@ -226,7 +234,7 @@ impl CutGnn<AD> {
     }
 }
 
-fn bce_with_logits(logits: Tensor<AD, 1>, labels: &[f32], device: &NdArrayDevice) -> Tensor<AD, 1> {
+fn bce_with_logits(logits: Tensor<AD, 1>, labels: &[f32], device: &Dev) -> Tensor<AD, 1> {
     let y = Tensor::<AD, 1>::from_data(TensorData::new(labels.to_vec(), [labels.len()]), device);
     // stable: relu(z) - z*y + log(1+exp(-|z|))
     let max0 = logits.clone().clamp_min(0.0);
@@ -249,7 +257,11 @@ fn gnn_acc(model: &CutGnn<AD>, graphs: &[Graph]) -> f64 {
 }
 
 fn main() {
-    let device = NdArrayDevice::default();
+    #[cfg(not(feature = "gpu"))]
+    let device = burn::backend::ndarray::NdArrayDevice::default();
+    #[cfg(feature = "gpu")]
+    let device = burn::backend::wgpu::WgpuDevice::default();
+    println!("backend: {}", if cfg!(feature = "gpu") { "Metal (GPU)" } else { "NdArray (CPU)" });
     let (p, h, dens) = (6usize, 5usize, 0.7f64);
     let (ntr, nte) = (16usize, 8usize);
 
@@ -297,6 +309,7 @@ fn main() {
     let mut opt = AdamConfig::new().init::<AD, CutGnn<AD>>();
     let (mut best, mut last) = (0.0f64, 0.0f64);
     let bs = 16; // mini-batch over graphs (denoise vs per-graph SGD)
+    let t_train = std::time::Instant::now();
     for ep in 1..=300 {
         let lr = if ep <= 200 { 3e-3 } else { 1e-3 }; // decay for stability late
         let mut i = 0;
@@ -318,6 +331,7 @@ fn main() {
         }
     }
 
+    println!("  (300 epochs trained in {:.1}s)", t_train.elapsed().as_secs_f64());
     println!("\n=== A/B (held-out g-PHP cut-usefulness accuracy) ===");
     println!("  majority baseline : {base:.3}");
     println!("  logistic (5 feats): {log_acc:.3}");

@@ -42,8 +42,11 @@ evolve_guard = []
 # on a malformed index.  See src/dual/path_effective.rs.
 evolve_wide = []
 # GNN cut-scorer (Burn).  Optional + isolated so the default sat/gmi builds never
-# pull burn; build with `cargo build --features gnn --bin gmi_train`.
-gnn = ["dep:burn"]
+# pull burn; build with `cargo build --features gnn --bin gmi_train` (CPU/ndarray).
+gnn = ["dep:burn", "burn/ndarray", "burn/autodiff"]
+# `gpu` swaps the gmi_train backend to Burn's Metal (wgpu) GPU backend on Apple
+# Silicon: `cargo run --release --features gpu --bin gmi_train`.
+gpu = ["gnn", "burn/metal"]
 
 [dependencies]
 axum = "0.7"

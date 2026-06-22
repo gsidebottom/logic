@@ -753,6 +753,30 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   - **Next:** expert iteration — search for shorter cut sequences than the current
     policy finds, retrain the GNN on them (proof size = deterministic reward),
     iterate; and scale (larger g-PHP, where the GPU backend starts to pay off).
+- **◐ Expert iteration + CPU scaling — search headroom is real but one ExpIt round
+  doesn't capture it; workload is training-bound (2026-06-22).** `gmi_train`.
+  - **ExpIt de-risk (positive):** best-of-K stochastic rollouts (GNN scores +
+    exploration noise) around the imitation policy find **shorter** proofs than the
+    greedy policy on every held-out g-PHP instance — **best-of-12 15.6 vs
+    deterministic 17.0 cuts (~8 %)**.  So search beats the one-shot policy: ExpIt
+    has headroom.
+  - **ExpIt iteration (negative):** relabel each train instance on its shortest
+    rollout's Farkas support → retrain → compare in-loop.  Across runs the
+    retrained policy does **NOT** beat imitation (ExpIt-GNN 16.4 vs imitation 15.3;
+    16/19 elsewhere) — it's slightly worse.  Honest causes: the recorder logs only
+    *selected* candidates under topfrac<1 (biased targets, not all-violated), tiny
+    data, and a single iteration with no value head.  A real win needs proper MCGS
+    (visit-count/value targets over the constraint-set DAG) + unbiased candidate
+    recording, not naive best-of-K relabel-retrain.
+  - **CPU scaling:** data-gen parallelized cleanly (rayon, pure engine, **0.1 s**).
+    Rollout-level parallelism does NOT help this config: it's *training-bound* (two
+    sequential GNN trainings ≈ 6 min of an ~11 min run), and the GNN forwards are
+    tiny so parallelism overhead dominates.  **std::thread over burn-ndarray's
+    internal rayon oversubscribed catastrophically (87 min); rayon-outer composes
+    (one pool, no disaster) but nets ~no speedup (11:44, ~1.7 cores avg).**  Added
+    `NTR/NTE/EPOCHS` env sizing.  Real multi-CPU payoff needs much larger
+    (rollout-dominated) instances, or building burn-ndarray without `multi-threads`
+    so the outer pool doesn't nest — future.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

@@ -193,6 +193,26 @@ fn build_graph(snap: &Snapshot, device: &Dev) -> Graph {
     g
 }
 
+/// GNN cut-usefulness logits for the candidates given the current (cons, x*).
+fn gnn_logits(model: &CutGnn<AD>, device: &Dev, cons: &[Pb], x: &[f64], cands: &[Pb]) -> Vec<f64> {
+    let nv = cons
+        .iter()
+        .chain(cands.iter())
+        .flat_map(|p| p.coef_f64_pairs())
+        .map(|(v, _)| v)
+        .max()
+        .unwrap_or(1);
+    let g = build_graph_raw(cons, x, cands, nv, device);
+    model
+        .forward(&g)
+        .into_data()
+        .to_vec::<f32>()
+        .unwrap()
+        .into_iter()
+        .map(|v| v as f64)
+        .collect()
+}
+
 #[derive(Module, Debug)]
 struct CutGnn<B: Backend> {
     v_emb: Linear<B>,
@@ -265,26 +285,74 @@ fn gnn_acc(model: &CutGnn<AD>, graphs: &[Graph]) -> f64 {
     ok as f64 / tot.max(1) as f64
 }
 
+/// Run `f(i, model, device)` for i in 0..n via rayon.  CutGnn is Sync, so the
+/// model + device are SHARED (no per-thread clone).  Crucially this uses rayon
+/// for the OUTER loop too: burn-ndarray's ops are themselves rayon, so a single
+/// shared pool composes via work-stealing — whereas a std::thread outer pool
+/// nested over burn's rayon oversubscribes and spins (10× slower, learned the
+/// hard way).  Results in index order.
+fn par_instances<R: Send>(
+    n: usize,
+    model: &CutGnn<AD>,
+    device: &Dev,
+    f: impl Fn(usize, &CutGnn<AD>, &Dev) -> R + Sync,
+) -> Vec<R> {
+    use rayon::prelude::*;
+    (0..n).into_par_iter().map(|i| f(i, model, device)).collect()
+}
+
+/// Train a fresh GNN on the given graphs (mini-batched, lr-decayed).
+fn train_gnn(tr: &[Graph], device: &Dev, epochs: usize) -> CutGnn<AD> {
+    let mut model = CutGnn::<AD>::new(32, 8, device);
+    let mut opt = AdamConfig::new().init::<AD, CutGnn<AD>>();
+    let bs = 16;
+    for ep in 1..=epochs {
+        let lr = if ep * 3 <= epochs * 2 { 3e-3 } else { 1e-3 };
+        let mut i = 0;
+        while i < tr.len() {
+            let end = (i + bs).min(tr.len());
+            let total = tr[i..end]
+                .iter()
+                .map(|g| bce_with_logits(model.forward(g), &g.labels, device))
+                .reduce(|a, b| a + b)
+                .unwrap();
+            let grads = GradientsParams::from_grads::<AD, CutGnn<AD>>(total.backward(), &model);
+            model = opt.step(lr, model, grads);
+            i = end;
+        }
+    }
+    model
+}
+
 fn main() {
     #[cfg(not(feature = "gpu"))]
     let device = burn::backend::ndarray::NdArrayDevice::default();
     #[cfg(feature = "gpu")]
     let device = burn::backend::wgpu::WgpuDevice::default();
-    println!("backend: {}", if cfg!(feature = "gpu") { "Metal (GPU)" } else { "NdArray (CPU)" });
+    println!(
+        "backend: {} | rayon {} threads",
+        if cfg!(feature = "gpu") { "Metal (GPU)" } else { "NdArray (CPU)" },
+        rayon::current_num_threads()
+    );
     let (p, h, dens) = (6usize, 5usize, 0.7f64);
-    let (ntr, nte) = (16usize, 8usize);
+    let envn = |k: &str, d: usize| std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d);
+    let (ntr, nte, epochs) = (envn("NTR", 16), envn("NTE", 8), envn("EPOCHS", 300));
 
-    // generate data via the fast Rust engine
-    let mut tr_snaps: Vec<Snapshot> = Vec::new();
-    let mut te_snaps: Vec<Snapshot> = Vec::new();
-    for s in 0..ntr {
-        let (nv, cl) = graph_php(p, h, dens, s as u64);
-        tr_snaps.extend(gmi::gen_data(&cl, nv, 200, 4, 30.0));
-    }
-    for s in 0..nte {
-        let (nv, cl) = graph_php(p, h, dens, 1000 + s as u64);
-        te_snaps.extend(gmi::gen_data(&cl, nv, 200, 4, 30.0));
-    }
+    // generate data via the fast Rust engine — parallel (pure engine, no Burn)
+    use rayon::prelude::*;
+    let gendata = |seeds: std::ops::Range<usize>, base: u64| -> Vec<Snapshot> {
+        seeds
+            .into_par_iter()
+            .flat_map(|s| {
+                let (nv, cl) = graph_php(p, h, dens, base + s as u64);
+                gmi::gen_data(&cl, nv, 200, 4, 30.0, 1.0, None).0
+            })
+            .collect()
+    };
+    let t_data = std::time::Instant::now();
+    let tr_snaps = gendata(0..ntr, 0);
+    let te_snaps = gendata(0..nte, 1000);
+    eprintln!("c data-gen {:.1}s", t_data.elapsed().as_secs_f64());
     let ncand = |ss: &[Snapshot]| ss.iter().map(|s| s.labels.len()).sum::<usize>();
     let npos = |ss: &[Snapshot]| ss.iter().flat_map(|s| &s.labels).filter(|&&l| l > 0.5).count();
     println!(
@@ -314,82 +382,34 @@ fn main() {
     // build graphs + train the GNN
     let tr: Vec<Graph> = tr_snaps.iter().map(|s| build_graph(s, &device)).collect();
     let te: Vec<Graph> = te_snaps.iter().map(|s| build_graph(s, &device)).collect();
-    let mut model = CutGnn::<AD>::new(32, 8, &device);
-    let mut opt = AdamConfig::new().init::<AD, CutGnn<AD>>();
-    let (mut best, mut last) = (0.0f64, 0.0f64);
-    let bs = 16; // mini-batch over graphs (denoise vs per-graph SGD)
     let t_train = std::time::Instant::now();
-    for ep in 1..=300 {
-        let lr = if ep <= 200 { 3e-3 } else { 1e-3 }; // decay for stability late
-        let mut i = 0;
-        while i < tr.len() {
-            let end = (i + bs).min(tr.len());
-            let total = tr[i..end]
-                .iter()
-                .map(|g| bce_with_logits(model.forward(g), &g.labels, &device))
-                .reduce(|a, b| a + b)
-                .unwrap();
-            let grads = GradientsParams::from_grads::<AD, CutGnn<AD>>(total.backward(), &model);
-            model = opt.step(lr, model, grads);
-            i = end;
-        }
-        if ep % 50 == 0 || ep == 300 {
-            last = gnn_acc(&model, &te);
-            best = best.max(last);
-            println!("  ep{ep}: train_acc {:.3}  test_acc {:.3}", gnn_acc(&model, &tr), last);
-        }
-    }
-
-    println!("  (300 epochs trained in {:.1}s)", t_train.elapsed().as_secs_f64());
+    let model = train_gnn(&tr, &device, epochs);
+    let (best, last) = (gnn_acc(&model, &te), gnn_acc(&model, &te));
+    println!("  (imitation GNN: 300 epochs in {:.1}s)", t_train.elapsed().as_secs_f64());
     println!("\n=== A/B (held-out g-PHP cut-usefulness accuracy) ===");
     println!("  majority baseline : {base:.3}");
     println!("  logistic (5 feats): {log_acc:.3}");
     println!("  GNN (graph)       : {last:.3} final, {best:.3} best");
 
+    // Per-instance rollout loops below are embarrassingly parallel → 12 threads.
+    let mknoisy_seed = |s: usize, k: usize, salt: u64| {
+        salt.wrapping_add((s as u64 * 131 + k as u64) * 0x9e3779b97f4a7c15)
+    };
+
     // ── end-to-end: GNN as the in-loop cut selector vs add-all & logistic ──
     println!("\n=== end-to-end refutation cut counts (held-out g-PHP, top-50%/round) ===");
-    let gnn_scorer = |cons: &[Pb], x: &[f64], cands: &[Pb]| -> Vec<f64> {
-        // nvars for the graph = max var seen across cons+cands
-        let nv = cons
-            .iter()
-            .chain(cands.iter())
-            .flat_map(|p| p.coef_f64_pairs())
-            .map(|(v, _)| v)
-            .max()
-            .unwrap_or(1);
-        let g = build_graph_raw(cons, x, cands, nv, &device);
-        model
-            .forward(&g)
-            .into_data()
-            .to_vec::<f32>()
-            .unwrap()
-            .into_iter()
-            .map(|v| v as f64)
-            .collect()
-    };
+    let ab: Vec<(Option<usize>, Option<usize>, Option<usize>)> =
+        par_instances(nte, &model, &device, |s, m, dev| {
+            let (nv, cl) = graph_php(p, h, dens, 1000 + s as u64);
+            let add = gmi::refute(&cl, nv, 200, 4, 30.0).map(|r| r.cuts.len());
+            let log = gmi::refute_policy(&cl, nv, 200, 4, 30.0, 0.5).map(|r| r.cuts.len());
+            let sc = |cons: &[Pb], x: &[f64], cands: &[Pb]| gnn_logits(m, dev, cons, x, cands);
+            let gnn = gmi::refute_scored(&cl, nv, 200, 4, 30.0, 0.5, &sc).map(|r| r.cuts.len());
+            (add, log, gnn)
+        });
     let (mut s_add, mut s_log, mut s_gnn, mut n) = (0usize, 0usize, 0usize, 0usize);
-    for s in 0..nte {
-        let (nv, cl) = graph_php(p, h, dens, 1000 + s as u64);
-        let add = gmi::refute(&cl, nv, 200, 4, 30.0).map(|r| r.cuts.len());
-        let log = gmi::refute_policy(&cl, nv, 200, 4, 30.0, 0.5).map(|r| r.cuts.len());
-        let gnn_ref = gmi::refute_scored(&cl, nv, 200, 4, 30.0, 0.5, &gnn_scorer);
-        if s == 0 {
-            if let Some(r) = &gnn_ref {
-                std::fs::create_dir_all("/tmp/gmi_rs").ok();
-                std::fs::write("/tmp/gmi_rs/gnn_inst0.pbp", gmi::emit(r.cons_len, r)).ok();
-                let mut cnf = format!("p cnf {} {}\n", nv, cl.len());
-                for c in &cl {
-                    for &l in c {
-                        cnf.push_str(&format!("{l} "));
-                    }
-                    cnf.push_str("0\n");
-                }
-                std::fs::write("/tmp/gmi_rs/gnn_inst0.cnf", cnf).ok();
-                eprintln!("c wrote /tmp/gmi_rs/gnn_inst0.{{cnf,pbp}} for veripb");
-            }
-        }
-        let gnn = gnn_ref.map(|r| r.cuts.len());
-        if let (Some(a), Some(l), Some(gg)) = (add, log, gnn) {
+    for s in 0..ab.len() {
+        if let (Some(a), Some(l), Some(gg)) = ab[s] {
             s_add += a;
             s_log += l;
             s_gnn += gg;
@@ -403,6 +423,106 @@ fn main() {
             s_add as f64 / n as f64,
             s_log as f64 / n as f64,
             s_gnn as f64 / n as f64
+        );
+    }
+
+    // ── ExpIt de-risk: best-of-K stochastic search vs the deterministic policy ──
+    println!("\n=== ExpIt de-risk: best-of-K search vs deterministic GNN policy ===");
+    let kk = 12usize;
+    let bok_res: Vec<(Option<usize>, usize)> = par_instances(nte, &model, &device, |s, m, dev| {
+        let (nv, cl) = graph_php(p, h, dens, 1000 + s as u64);
+        let scd = |cons: &[Pb], x: &[f64], cands: &[Pb]| gnn_logits(m, dev, cons, x, cands);
+        let det = gmi::refute_scored(&cl, nv, 200, 4, 30.0, 0.5, &scd).map(|r| r.cuts.len());
+        let mut bok = usize::MAX;
+        for k in 0..kk {
+            let rng = std::cell::Cell::new(mknoisy_seed(s, k, 0x1234));
+            let noisy = |cons: &[Pb], x: &[f64], cands: &[Pb]| -> Vec<f64> {
+                let mut sc = gnn_logits(m, dev, cons, x, cands);
+                for v in sc.iter_mut() {
+                    let mut r = rng.get();
+                    r = r.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                    rng.set(r);
+                    *v += 2.0 * (((r >> 33) as f64) / ((1u64 << 31) as f64) - 0.5);
+                }
+                sc
+            };
+            if let Some(r) = gmi::refute_scored(&cl, nv, 200, 4, 30.0, 0.5, &noisy) {
+                bok = bok.min(r.cuts.len());
+            }
+        }
+        (det, bok)
+    });
+    let (mut s_det, mut s_bok, mut n2) = (0usize, 0usize, 0usize);
+    for s in 0..bok_res.len() {
+        let (det, bok) = bok_res[s];
+        if let (Some(d), true) = (det, bok != usize::MAX) {
+            s_det += d;
+            s_bok += bok;
+            n2 += 1;
+            println!("  inst {s}: deterministic {d:3}  best-of-{kk} {bok:3}");
+        }
+    }
+    let bok_avg = if n2 > 0 { s_bok as f64 / n2 as f64 } else { 0.0 };
+    if n2 > 0 {
+        println!(
+            "  AVG over {n2}: deterministic {:.1}  best-of-{kk} {:.1} cuts",
+            s_det as f64 / n2 as f64,
+            bok_avg
+        );
+    }
+
+    // ── ExpIt iteration: relabel on shortest rollouts, retrain, compare ──
+    println!("\n=== ExpIt iteration: retrain on search-improved (shortest-rollout) data ===");
+    let per_inst: Vec<Vec<Snapshot>> = par_instances(ntr, &model, &device, |s, m, dev| {
+        let (nv, cl) = graph_php(p, h, dens, s as u64);
+        let mut best_len = usize::MAX;
+        let mut best_snaps: Vec<Snapshot> = Vec::new();
+        for k in 0..6 {
+            let rng = std::cell::Cell::new(mknoisy_seed(s, k, 0x77));
+            let noisy = |cons: &[Pb], x: &[f64], cands: &[Pb]| -> Vec<f64> {
+                let mut sc = gnn_logits(m, dev, cons, x, cands);
+                for v in sc.iter_mut() {
+                    let mut r = rng.get();
+                    r = r.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                    rng.set(r);
+                    *v += 2.0 * (((r >> 33) as f64) / ((1u64 << 31) as f64) - 0.5);
+                }
+                sc
+            };
+            let (snaps, nc) = gmi::gen_data(&cl, nv, 200, 4, 30.0, 0.5, Some(&noisy));
+            if nc > 0 && nc < best_len {
+                best_len = nc;
+                best_snaps = snaps;
+            }
+        }
+        best_snaps
+    });
+    let search_snaps: Vec<Snapshot> = per_inst.into_iter().flatten().collect();
+    let search_graphs: Vec<Graph> = search_snaps.iter().map(|s| build_graph(s, &device)).collect();
+    println!("  search-improved data: {} snapshots", search_graphs.len());
+    let model2 = train_gnn(&search_graphs, &device, epochs);
+
+    // final A/B: imitation policy (reuse model's GNN column) vs ExpIt policy (model2)
+    let m2_cuts: Vec<Option<usize>> = par_instances(nte, &model2, &device, |s, m, dev| {
+        let (nv, cl) = graph_php(p, h, dens, 1000 + s as u64);
+        let sc = |cons: &[Pb], x: &[f64], cands: &[Pb]| gnn_logits(m, dev, cons, x, cands);
+        gmi::refute_scored(&cl, nv, 200, 4, 30.0, 0.5, &sc).map(|r| r.cuts.len())
+    });
+    let (mut s_im, mut s_ex, mut n4) = (0usize, 0usize, 0usize);
+    for s in 0..nte {
+        if let (Some(a), Some(b)) = (ab[s].2, m2_cuts[s]) {
+            s_im += a;
+            s_ex += b;
+            n4 += 1;
+            println!("  inst {s}: imitation-GNN {a:3}  ExpIt-GNN {b:3}");
+        }
+    }
+    if n4 > 0 {
+        println!(
+            "  AVG over {n4}: imitation-GNN {:.1}  ExpIt-GNN {:.1} cuts  (best-of-K search was {:.1})",
+            s_im as f64 / n4 as f64,
+            s_ex as f64 / n4 as f64,
+            bok_avg
         );
     }
 }

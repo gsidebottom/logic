@@ -1286,17 +1286,20 @@ pub fn gen_data(
     max_rounds: usize,
     n_obj: usize,
     max_secs: f64,
-) -> Vec<Snapshot> {
+    topfrac: f64,
+    scorer: Option<&dyn Fn(&[Pb], &[f64], &[Pb]) -> Vec<f64>>,
+) -> (Vec<Snapshot>, usize) {
     let inputs: Vec<Pb> = clauses.iter().map(|c| Pb::from_clause(c)).collect();
     let mut raw: Vec<(Vec<f64>, usize, Vec<usize>)> = Vec::new();
-    let (cons, refuted, cuts) =
-        gmi_loop_warm::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs, 1.0, None, Some(&mut raw));
+    let (cons, refuted, cuts) = gmi_loop_warm::<Q>(
+        &inputs, nvars, max_rounds, n_obj, max_secs, topfrac, scorer, Some(&mut raw),
+    );
     if !refuted {
-        return Vec::new();
+        return (Vec::new(), 0);
     }
     let farkas = match farkas::<Q>(&cons, nvars) {
         Some(f) => f,
-        None => return Vec::new(),
+        None => return (Vec::new(), 0),
     };
     // transitive useful set: Farkas support + every source of a useful cut
     let n_inputs = inputs.len();
@@ -1313,7 +1316,8 @@ pub fn gen_data(
             }
         }
     }
-    raw.into_iter()
+    let snaps = raw
+        .into_iter()
         .map(|(x, clen, cand_idx)| Snapshot {
             nvars,
             cons: cons[0..clen].to_vec(),
@@ -1324,7 +1328,8 @@ pub fn gen_data(
                 .map(|&i| if useful.contains(&i) { 1.0 } else { 0.0 })
                 .collect(),
         })
-        .collect()
+        .collect();
+    (snaps, cuts.len())
 }
 
 /// Refute `clauses` by Gomory cutting planes.  Fast path: warm-start (dual

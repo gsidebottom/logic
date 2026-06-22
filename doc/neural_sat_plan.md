@@ -777,6 +777,33 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
     `NTR/NTE/EPOCHS` env sizing.  Real multi-CPU payoff needs much larger
     (rollout-dominated) instances, or building burn-ndarray without `multi-threads`
     so the outer pool doesn't nest — future.
+- **● MCGS rung 1 — graph search machinery + de-risk: MCGS consistently (if
+  modestly) beats best-of-K (2026-06-22).** `gmi_mcgs` bin + `gmi::{expand,
+  mcgs_step, mcgs_step_exact, refutes_exact, graph_php}`.
+  - **Built the search the ExpIt non-result called for.** State = the constraint
+    *set* (order-independent), so a node is keyed by its sorted cut keys and
+    transpositions merge — a true *graph* search.  Per simulation: PUCT select
+    (violation prior + value) → expand → rollout → backup over the DAG.  Leaf eval
+    is `mcgs_step`: ONE cold LP solve, then a WARM rollout (dual-resolve per added
+    cut) — ~depth× faster than re-solving cold each step.  The winning proof is
+    confirmed exactly in BigRational (`refutes_exact`); every reported proof is ✓.
+  - **De-risk (mildly positive):** on g-PHP(6,4), 13 refuting instances, equal
+    rollout budget — **MCGS 4.5 vs best-of-K 4.8 vs greedy 7.2 cuts; MCGS wins
+    3/13, ties 10/13, never loses.**  The tree+backup add value over random
+    rollouts even with only a violation prior — so a *learned* prior+value (rung 2)
+    has something to amplify.  (Best-of-K already captures most of the headroom
+    over greedy, so the room left for MCGS/learning is ~6 % here.)
+  - **Honest limits.** g-PHP(6,4) is easy (proofs 0–27, many ≤9; low headroom).
+    The headroom regime g-PHP(6,5) defeats the single-cut rollout: the i128 path
+    overflows AND exact BigRational still can't refute the hard instances within
+    cap (single-cut proofs run long / stall), and BigRational is ~10× slower
+    (319 s for SIMS=30).  MCGS's action set is default-objective cuts only
+    (rollouts use rotated objectives) — a tree-expressiveness limit.
+  - **Rung 2 (the ask: value/visit-count targets):** GNN policy+value heads;
+    self-play MCGS; train policy → visit-count distribution, value → achieved
+    proof length; iterate.  GATING RISK is compute/arithmetic on high-headroom
+    instances (single-cut rollout robustness + i128 overflow + BigRational cost),
+    not the learning — clear that wall first.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

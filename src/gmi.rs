@@ -320,7 +320,7 @@ impl Pb {
         self.coef.iter().map(|(&v, c)| (v as usize, c.to_f64().unwrap_or(0.0))).collect()
     }
 
-    fn key(&self) -> String {
+    pub fn key(&self) -> String {
         let c = self.canonical();
         let mut s = String::new();
         for (v, a) in &c.coef {
@@ -1393,6 +1393,188 @@ pub fn refute_cold(
     let inputs: Vec<Pb> = clauses.iter().map(|c| Pb::from_clause(c)).collect();
     refute_with::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs)
         .or_else(|| refute_with::<BigRational>(&inputs, nvars, max_rounds, n_obj, max_secs))
+}
+
+// ── MCGS support: state-transition primitive + instance generator ───────────
+
+fn expand_with<S: Scalar>(inputs: &[Pb], nvars: usize, added: &[Pb]) -> (bool, Vec<(Pb, f64)>) {
+    let mut cons = inputs.to_vec();
+    cons.extend_from_slice(added);
+    let s = Std::new(nvars, cons.len());
+    let (a, b0) = s.build::<S>(&cons);
+    let cost = vec![-S::one(); nvars]; // maximize Σx
+    let (status, t, b, basis) = two_phase::<S>(&a, &b0, &cost);
+    if status == Status::Infeasible {
+        return (true, Vec::new());
+    }
+    let x = primal(&s, &b, &basis);
+    let xf: Vec<f64> = x.iter().map(|q| q.to_f64()).collect();
+    let cands = gomory_cuts::<S>(&s, &t, &b, &cons, &x)
+        .into_iter()
+        .map(|(cut, _)| {
+            let viol = cut.rhs_f64() - cut.dot(&xf);
+            (cut, viol)
+        })
+        .collect();
+    (false, cands)
+}
+
+/// MCGS state-transition primitive.  Given the input constraints and the cuts
+/// chosen so far (`added`), solve the box LP (maximize Σx) and return
+/// `(is_refutation, candidates)`: `is_refutation` = the augmented LP is
+/// infeasible (this state proves UNSAT); otherwise `candidates` is the set of
+/// violated Gomory cuts at the optimum — the legal actions — each paired with
+/// its violation at x*.  Uses the i128 fast path (the same engine whose proofs
+/// VeriPB has validated on this family); for a one-off exact confirmation of a
+/// specific refutation use [`refutes_exact`].
+pub fn expand(inputs: &[Pb], nvars: usize, added: &[Pb]) -> (bool, Vec<(Pb, f64)>) {
+    expand_with::<Q>(inputs, nvars, added)
+}
+
+/// Exact (BigRational) check that `inputs + added` is infeasible — i.e. that
+/// `added` is a genuine refutation.  Slow; use to confirm a winning proof, not
+/// inside the search loop.
+pub fn refutes_exact(inputs: &[Pb], nvars: usize, added: &[Pb]) -> bool {
+    expand_with::<BigRational>(inputs, nvars, added).0
+}
+
+/// Efficient MCGS leaf evaluation: ONE cold solve for `inputs + added`, then —
+/// if not already a refutation — read the violated Gomory candidates (the node's
+/// actions, each with its violation) AND warm-roll a rollout to a refutation
+/// from the SAME tableau (warm dual-resolve per step, not a fresh cold solve).
+/// Returns `(is_terminal, candidates, rollout_proof)` where a proof is the full
+/// cut list `added ++ rollout_cuts`.  `pick(&[viol]) -> idx` selects the next
+/// rollout cut (caller supplies greedy argmax or ∝viol sampling).
+fn mcgs_step_g<S: Scalar>(
+    inputs: &[Pb],
+    nvars: usize,
+    added: &[Pb],
+    cap: usize,
+    pick: &mut dyn FnMut(&[f64]) -> usize,
+) -> (bool, Vec<(Pb, f64)>, Option<Vec<Pb>>) {
+    let mut cons: Vec<Pb> = inputs.to_vec();
+    cons.extend_from_slice(added);
+    let s = Std::new(nvars, cons.len());
+    let (a, b0) = s.build::<S>(&cons);
+    let mut cost0 = vec![S::zero(); s.ncols];
+    for v in 1..=nvars as u32 {
+        cost0[s.cx(v)] = -S::one(); // maximize Σx
+    }
+    let (status, t, b, basis) = two_phase::<S>(&a, &b0, &cost0);
+    if status == Status::Infeasible {
+        return (true, Vec::new(), Some(added.to_vec()));
+    }
+    let mut warm = Warm::from_cold(&s, t, b, basis, cost0, nvars);
+    let mut seen: std::collections::HashSet<String> = cons.iter().map(|c| c.key()).collect();
+    let mut cur = warm.read_cuts(&cons, &seen);
+    let candidates: Vec<(Pb, f64)> = cur.iter().map(|t| (t.0.clone(), t.2)).collect();
+    // warm rollout from the same tableau (rotating the objective when stale)
+    let mut chosen: Vec<Pb> = added.to_vec();
+    let mut stale = 0usize;
+    let mut rot = 0usize;
+    let proof = loop {
+        if chosen.len() > cap {
+            break None;
+        }
+        if cur.is_empty() {
+            stale += 1;
+            if stale >= 20 {
+                break None;
+            }
+            rot += 1;
+            let obj = one_obj::<S>(nvars, rot);
+            for c in warm.cost.iter_mut() {
+                *c = S::zero();
+            }
+            for v in 1..=nvars as u32 {
+                warm.cost[s.cx(v)] = obj[(v - 1) as usize].clone();
+            }
+            let cost = warm.cost.clone();
+            optimize(&mut warm.t, &mut warm.b, &mut warm.basis, &cost);
+            cur = warm.read_cuts(&cons, &seen);
+            continue;
+        }
+        stale = 0;
+        let viols: Vec<f64> = cur.iter().map(|t| t.2).collect();
+        let idx = pick(&viols).min(cur.len() - 1);
+        let cut = cur[idx].0.clone();
+        if !seen.insert(cut.key()) {
+            break None;
+        }
+        let ci = cons.len();
+        cons.push(cut.clone());
+        chosen.push(cut.clone());
+        warm.add_cut(&cut, ci);
+        if warm.dual_resolve() == Status::Infeasible {
+            break Some(chosen);
+        }
+        cur = warm.read_cuts(&cons, &seen);
+    };
+    (false, candidates, proof)
+}
+
+/// MCGS leaf step on the i128 fast path.  Fast, but on instances whose proofs
+/// grow large coefficients the i128 can wrap and the rollout fails to refute —
+/// use [`mcgs_step_exact`] there.
+pub fn mcgs_step(
+    inputs: &[Pb],
+    nvars: usize,
+    added: &[Pb],
+    cap: usize,
+    pick: &mut dyn FnMut(&[f64]) -> usize,
+) -> (bool, Vec<(Pb, f64)>, Option<Vec<Pb>>) {
+    mcgs_step_g::<Q>(inputs, nvars, added, cap, pick)
+}
+
+/// MCGS leaf step in exact BigRational — no overflow, for the headroom regime
+/// where the i128 path wraps.  Slower per step.
+pub fn mcgs_step_exact(
+    inputs: &[Pb],
+    nvars: usize,
+    added: &[Pb],
+    cap: usize,
+    pick: &mut dyn FnMut(&[f64]) -> usize,
+) -> (bool, Vec<(Pb, f64)>, Option<Vec<Pb>>) {
+    mcgs_step_g::<BigRational>(inputs, nvars, added, cap, pick)
+}
+
+/// Sparse random bipartite pigeonhole (the asymmetric, cut-heavy testbed): `p`
+/// pigeons, `h` holes, each pigeon adjacent to each hole independently with
+/// probability `density`.  Returns `(nvars, clauses)`.
+pub fn graph_php(p: usize, h: usize, density: f64, seed: u64) -> (usize, Vec<Vec<i32>>) {
+    let mut st = seed.wrapping_mul(0x9e3779b97f4a7c15).wrapping_add(12345);
+    let mut rng = || {
+        st = st
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((st >> 33) as f64) / ((1u64 << 31) as f64)
+    };
+    let mut nv = 0i32;
+    let mut nbr: Vec<Vec<i32>> = vec![Vec::new(); p];
+    let mut incid: Vec<Vec<i32>> = vec![Vec::new(); h];
+    for pig in 0..p {
+        let mut hs: Vec<usize> = (0..h).filter(|_| rng() < density).collect();
+        if hs.is_empty() {
+            hs.push((rng() * h as f64) as usize % h);
+        }
+        for hole in hs {
+            nv += 1;
+            nbr[pig].push(nv);
+            incid[hole].push(nv);
+        }
+    }
+    let mut clauses: Vec<Vec<i32>> = Vec::new();
+    for pig in 0..p {
+        clauses.push(nbr[pig].clone()); // >= 1 hole
+    }
+    for es in &incid {
+        for i in 0..es.len() {
+            for j in i + 1..es.len() {
+                clauses.push(vec![-es[i], -es[j]]); // <= 1 pigeon
+            }
+        }
+    }
+    (nv as usize, clauses)
 }
 
 fn pol_terms(parts: &[(String, BigInt)], suffix: &str) -> String {

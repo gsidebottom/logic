@@ -710,11 +710,26 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
   `#[derive(Clone)]` (the Module derive emits an *id-preserving* Clone; a
   field-wise one reassigns `Param` ids and silently freezes training); and use the
   `relu` *function*, not a stored non-generic `Relu` module field.
-  - **Next (the bulk):** (1) instrument the Rust engine to dump per-round graph
-    snapshots + transitive Farkas-support labels (fast data; cold Python times out
-    at g8-7); (2) reimplement the validated bipartite var×constraint message-
-    passing GNN in Burn; (3) train + reproduce the g-PHP flip in Rust; (4)
-    integrate inference into `gmi_loop_warm`; then expert iteration.
+- **● Burn GNN trains in Rust + reproduces the g-PHP flip (2026-06-21).** The bulk
+  landed: (1) `gmi::gen_data` instruments the warm engine to dump per-round
+  `Snapshot`s (constraint system + x* + candidate cuts) labeled by the transitive
+  Farkas support — fast (i128), all-Rust (cold Python timed out at g8-7); the
+  recorder is guarded so the hot refute path pays nothing.  (2) `gmi_train` (bin,
+  `--features gnn`) reimplements the bipartite var×constraint message-passing GNN
+  in Burn + a graph-PHP generator + a logistic baseline, all in Rust.
+  - **A/B (held-out g-PHP-6-5 cut-usefulness, 341 train / 232 test candidates):
+    majority 0.552 · logistic(5 feats) 0.927 · GNN 0.974** (final = best, train→
+    1.000, stable after an lr-decay fix).  **Reproduces — and slightly strengthens
+    — the MLX flip** (0.92 vs 0.88 there) in the Rust-native stack: on asymmetric
+    families a constraint-graph GNN beats intrinsic cut features.
+  - Three more Burn gotchas hit + fixed: a manual `#[derive(Clone)]` silently
+    freezes training (use the derive's id-preserving Clone); per-graph SGD is too
+    noisy on small variable-size graphs (mini-batch the loss-sum over graphs); and
+    late-epoch instability needs an lr decay.
+  - **Next:** integrate the trained GNN's inference into `gmi_loop_warm` as the
+    cut-selection scorer (end-to-end cut reduction at scale on g-PHP), then expert
+    iteration (search for shorter proofs, retrain on them — proof size is the
+    deterministic reward), the AlphaZero-for-cutting-planes loop.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

@@ -301,6 +301,25 @@ impl Pb {
         Pb { coef, rhs: srhs }.norm()
     }
 
+    /// rhs as f64 (for feature/graph extraction).
+    pub fn rhs_f64(&self) -> f64 {
+        self.rhs.to_f64().unwrap_or(0.0)
+    }
+    /// Σ coef·x (x is 0-indexed by var-1).
+    pub fn dot(&self, x: &[f64]) -> f64 {
+        self.coef
+            .iter()
+            .map(|(&v, c)| c.to_f64().unwrap_or(0.0) * x.get((v - 1) as usize).copied().unwrap_or(0.0))
+            .sum()
+    }
+    pub fn coefs_f64(&self) -> Vec<f64> {
+        self.coef.values().map(|c| c.to_f64().unwrap_or(0.0)).collect()
+    }
+    /// (var (1-based), coef) pairs as f64.
+    pub fn coef_f64_pairs(&self) -> Vec<(usize, f64)> {
+        self.coef.iter().map(|(&v, c)| (v as usize, c.to_f64().unwrap_or(0.0))).collect()
+    }
+
     fn key(&self) -> String {
         let c = self.canonical();
         let mut s = String::new();
@@ -997,6 +1016,7 @@ fn gmi_loop_warm<S: Scalar>(
     n_obj: usize,
     max_secs: f64,
     topfrac: f64,
+    mut rec: Option<&mut Vec<(Vec<f64>, usize, Vec<usize>)>>,
 ) -> (Vec<Pb>, bool, Vec<Recipe>) {
     let start = std::time::Instant::now();
     let mut cons: Vec<Pb> = inputs.to_vec();
@@ -1033,15 +1053,32 @@ fn gmi_loop_warm<S: Scalar>(
                 let keep = ((scored.len() as f64 * topfrac).round() as usize).max(1);
                 fresh = scored.into_iter().take(keep).map(|(_, x)| x).collect();
             }
+            // record this vertex's (x*, cons-len, candidate indices) for GNN data
+            let recording = rec.is_some();
+            let x_snap: Vec<f64> = if recording {
+                warm.primal_x().iter().map(|v| v.to_f64()).collect()
+            } else {
+                Vec::new()
+            };
+            let cons_len_snap = cons.len();
+            let mut cand_idx_snap: Vec<usize> = Vec::new();
             for (cut, recipe, _viol) in fresh {
                 let k = cut.key();
                 if !seen.insert(k) {
                     continue;
                 }
                 let ci = cons.len();
+                if recording {
+                    cand_idx_snap.push(ci);
+                }
                 cons.push(cut.clone());
                 cuts.push(recipe);
                 warm.add_cut(&cut, ci);
+            }
+            if recording && !cand_idx_snap.is_empty() {
+                if let Some(r) = rec.as_deref_mut() {
+                    r.push((x_snap, cons_len_snap, cand_idx_snap));
+                }
             }
             if warm.dual_resolve() == Status::Infeasible {
                 return (cons, true, cuts);
@@ -1208,7 +1245,8 @@ fn refute_warm<S: Scalar>(
     max_secs: f64,
     topfrac: f64,
 ) -> Option<Refutation> {
-    let (cons, refuted, cuts) = gmi_loop_warm::<S>(inputs, nvars, max_rounds, n_obj, max_secs, topfrac);
+    let (cons, refuted, cuts) =
+        gmi_loop_warm::<S>(inputs, nvars, max_rounds, n_obj, max_secs, topfrac, None);
     if !refuted {
         return None;
     }
@@ -1218,6 +1256,66 @@ fn refute_warm<S: Scalar>(
         farkas,
         cons_len: inputs.len(),
     })
+}
+
+/// One labeled training example for the GNN: the constraint system + LP point at a
+/// round, the candidate cuts read there, and whether each is in the transitive
+/// Farkas support of the eventual refutation.
+pub struct Snapshot {
+    pub nvars: usize,
+    pub cons: Vec<Pb>,      // constraint nodes (inputs + cuts so far)
+    pub x: Vec<f64>,        // LP solution at this vertex
+    pub cand_cuts: Vec<Pb>, // candidate cut nodes to score
+    pub labels: Vec<f32>,   // 1.0 if the candidate ends up useful
+}
+
+/// Run an add-all refutation and emit labeled per-round graph snapshots (fast,
+/// i128 path).  Empty if not refuted.  Labels = transitive Farkas support.
+pub fn gen_data(
+    clauses: &[Vec<i32>],
+    nvars: usize,
+    max_rounds: usize,
+    n_obj: usize,
+    max_secs: f64,
+) -> Vec<Snapshot> {
+    let inputs: Vec<Pb> = clauses.iter().map(|c| Pb::from_clause(c)).collect();
+    let mut raw: Vec<(Vec<f64>, usize, Vec<usize>)> = Vec::new();
+    let (cons, refuted, cuts) =
+        gmi_loop_warm::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs, 1.0, Some(&mut raw));
+    if !refuted {
+        return Vec::new();
+    }
+    let farkas = match farkas::<Q>(&cons, nvars) {
+        Some(f) => f,
+        None => return Vec::new(),
+    };
+    // transitive useful set: Farkas support + every source of a useful cut
+    let n_inputs = inputs.len();
+    let mut useful: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    for t in &farkas {
+        if let FarkasTerm::Con(idx, _) = t {
+            useful.insert(*idx);
+        }
+    }
+    for k in (0..cuts.len()).rev() {
+        if useful.contains(&(n_inputs + k)) {
+            for (src, _) in &cuts[k].1 {
+                useful.insert(*src);
+            }
+        }
+    }
+    raw.into_iter()
+        .map(|(x, clen, cand_idx)| Snapshot {
+            nvars,
+            cons: cons[0..clen].to_vec(),
+            x,
+            cand_cuts: cand_idx.iter().map(|&i| cons[i].clone()).collect(),
+            labels: cand_idx
+                .iter()
+                .map(|&i| if useful.contains(&i) { 1.0 } else { 0.0 })
+                .collect(),
+        })
+        .collect()
 }
 
 /// Refute `clauses` by Gomory cutting planes.  Fast path: warm-start (dual

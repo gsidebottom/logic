@@ -735,10 +735,24 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
     ops" regime (~50-node graphs).  So CPU is right for the current de-risk; the
     GPU win is at scale (large g-PHP / big batches / expert-iteration rollouts).
     Infra is in place for when that arrives.
-  - **Next:** integrate the trained GNN's inference into `gmi_loop_warm` as the
-    cut-selection scorer (end-to-end cut reduction at scale on g-PHP), then expert
-    iteration (search for shorter proofs, retrain on them — proof size is the
-    deterministic reward), the AlphaZero-for-cutting-planes loop.
+- **● GNN wired into the warm loop — end-to-end cut reduction, veripb-VERIFIED
+  (2026-06-21).** The trained GNN now drives cut selection inside `gmi_loop_warm`.
+  Design keeps `gmi.rs` burn-free: the loop takes an **injected scorer closure**
+  `Fn(cons, x*, candidates) -> scores` (`refute_scored`); the `gmi_train` bin
+  supplies one that builds the constraint graph and runs the trained Burn GNN.
+  - **End-to-end refutation cut counts (held-out g-PHP-6-5, top-50%/round, all
+    paths veripb-checkable; the GNN-policy proof spot-checked → VERIFIED):
+    add-all 29.0 · logistic 20.5 · GNN 17–19 (avg)** — the GNN selector makes
+    ~10–15 % smaller proofs than the hand-feature logistic and ~35 % smaller than
+    add-all, on instances it never trained on.  The representation edge
+    (prediction 0.97 vs 0.93) translates to fewer cuts in the actual loop.
+  - Soundness is structural + checked: the scorer only changes *which* valid CG
+    cuts are kept; the exact Farkas closes and VeriPB verifies (same path as the
+    logistic policy).  The policy half of the Aristotle / AlphaZero-for-cutting-
+    planes loop, realized end to end in Rust.
+  - **Next:** expert iteration — search for shorter cut sequences than the current
+    policy finds, retrain the GNN on them (proof size = deterministic reward),
+    iterate; and scale (larger g-PHP, where the GPU backend starts to pay off).
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

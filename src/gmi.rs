@@ -1016,6 +1016,7 @@ fn gmi_loop_warm<S: Scalar>(
     n_obj: usize,
     max_secs: f64,
     topfrac: f64,
+    scorer: Option<&dyn Fn(&[Pb], &[f64], &[Pb]) -> Vec<f64>>,
     mut rec: Option<&mut Vec<(Vec<f64>, usize, Vec<usize>)>>,
 ) -> (Vec<Pb>, bool, Vec<Recipe>) {
     let start = std::time::Instant::now();
@@ -1044,11 +1045,18 @@ fn gmi_loop_warm<S: Scalar>(
         if !fresh.is_empty() {
             stale = 0;
             if topfrac < 1.0 && fresh.len() > 1 {
-                // learned selection: keep the top-scored fraction this round
-                let mut scored: Vec<(f64, (Pb, Recipe, f64))> = fresh
-                    .into_iter()
-                    .map(|x| (cut_score(&x.0, &x.1, x.2, nvars), x))
-                    .collect();
+                // learned selection: score candidates (injected GNN scorer, else
+                // the built-in logistic), keep the top fraction this round
+                let scores: Vec<f64> = match scorer {
+                    Some(f) => {
+                        let xf: Vec<f64> = warm.primal_x().iter().map(|v| v.to_f64()).collect();
+                        let cands: Vec<Pb> = fresh.iter().map(|t| t.0.clone()).collect();
+                        f(&cons, &xf, &cands)
+                    }
+                    None => fresh.iter().map(|t| cut_score(&t.0, &t.1, t.2, nvars)).collect(),
+                };
+                let mut scored: Vec<(f64, (Pb, Recipe, f64))> =
+                    scores.into_iter().zip(fresh.into_iter()).collect();
                 scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
                 let keep = ((scored.len() as f64 * topfrac).round() as usize).max(1);
                 fresh = scored.into_iter().take(keep).map(|(_, x)| x).collect();
@@ -1244,9 +1252,10 @@ fn refute_warm<S: Scalar>(
     n_obj: usize,
     max_secs: f64,
     topfrac: f64,
+    scorer: Option<&dyn Fn(&[Pb], &[f64], &[Pb]) -> Vec<f64>>,
 ) -> Option<Refutation> {
     let (cons, refuted, cuts) =
-        gmi_loop_warm::<S>(inputs, nvars, max_rounds, n_obj, max_secs, topfrac, None);
+        gmi_loop_warm::<S>(inputs, nvars, max_rounds, n_obj, max_secs, topfrac, scorer, None);
     if !refuted {
         return None;
     }
@@ -1281,7 +1290,7 @@ pub fn gen_data(
     let inputs: Vec<Pb> = clauses.iter().map(|c| Pb::from_clause(c)).collect();
     let mut raw: Vec<(Vec<f64>, usize, Vec<usize>)> = Vec::new();
     let (cons, refuted, cuts) =
-        gmi_loop_warm::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs, 1.0, Some(&mut raw));
+        gmi_loop_warm::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs, 1.0, None, Some(&mut raw));
     if !refuted {
         return Vec::new();
     }
@@ -1331,12 +1340,12 @@ pub fn refute(
     max_secs: f64,
 ) -> Option<Refutation> {
     let inputs: Vec<Pb> = clauses.iter().map(|c| Pb::from_clause(c)).collect();
-    refute_warm::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs, 1.0)
+    refute_warm::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs, 1.0, None)
         .or_else(|| refute_with::<BigRational>(&inputs, nvars, max_rounds, n_obj, max_secs))
 }
 
-/// Like [`refute`] but with the learned cut-selection policy: each round keep
-/// only the top `topfrac` of violated cuts by [`cut_score`].  Fewer cuts ⇒
+/// Like [`refute`] but with the built-in logistic cut-selection policy: each round
+/// keep only the top `topfrac` of violated cuts by [`cut_score`].  Fewer cuts ⇒
 /// smaller proof + smaller growing system.  Falls back to cold add-all on miss.
 pub fn refute_policy(
     clauses: &[Vec<i32>],
@@ -1347,8 +1356,25 @@ pub fn refute_policy(
     topfrac: f64,
 ) -> Option<Refutation> {
     let inputs: Vec<Pb> = clauses.iter().map(|c| Pb::from_clause(c)).collect();
-    refute_warm::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs, topfrac)
+    refute_warm::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs, topfrac, None)
         .or_else(|| refute_with::<BigRational>(&inputs, nvars, max_rounds, n_obj, max_secs))
+}
+
+/// Like [`refute_policy`] but with an INJECTED scorer (e.g. a GNN supplied by the
+/// caller): `scorer(cons, x*, candidate_cuts) -> scores` (higher = keep).  Keeps
+/// this crate burn-free.  No cold fallback (the scorer can't run there) — returns
+/// None if the warm path doesn't refute.
+pub fn refute_scored(
+    clauses: &[Vec<i32>],
+    nvars: usize,
+    max_rounds: usize,
+    n_obj: usize,
+    max_secs: f64,
+    topfrac: f64,
+    scorer: &dyn Fn(&[Pb], &[f64], &[Pb]) -> Vec<f64>,
+) -> Option<Refutation> {
+    let inputs: Vec<Pb> = clauses.iter().map(|c| Pb::from_clause(c)).collect();
+    refute_warm::<Q>(&inputs, nvars, max_rounds, n_obj, max_secs, topfrac, Some(scorer))
 }
 
 /// Cold-start engine (no warm-start) — i128 then BigRational.  For A/B timing.

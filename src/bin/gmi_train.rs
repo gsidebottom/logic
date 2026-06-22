@@ -141,32 +141,37 @@ struct Graph {
     vfeat: Tensor<AD, 2>,     // nvars × 2
     cfeat: Tensor<AD, 2>,     // C × 3
     cand: Tensor<AD, 1, Int>, // candidate row indices
-    labels: Vec<f32>,
+    ncand: usize,
+    labels: Vec<f32>, // empty for inference
 }
 
-fn build_graph(snap: &Snapshot, device: &Dev) -> Graph {
-    let nvars = snap.nvars;
-    let nodes: Vec<&Pb> = snap.cons.iter().chain(snap.cand_cuts.iter()).collect();
+/// Build the bipartite var×constraint graph from the constraint nodes (`cons`),
+/// the LP point `x`, and the candidate cuts to score.  Used for both training
+/// (via `build_graph`) and in-loop inference (the scorer closure).
+fn build_graph_raw(cons: &[Pb], x: &[f64], cands: &[Pb], nvars: usize, device: &Dev) -> Graph {
+    let nodes: Vec<&Pb> = cons.iter().chain(cands.iter()).collect();
     let cc = nodes.len();
     let mut m = vec![0.0f32; cc * nvars];
     let mut cfeat = vec![0.0f32; cc * 3];
     for (c, pb) in nodes.iter().enumerate() {
         let absum = 1.0 + pb.coefs_f64().iter().map(|x| x.abs()).sum::<f64>();
-        let slack = pb.dot(&snap.x) - pb.rhs_f64();
+        let slack = pb.dot(x) - pb.rhs_f64();
         for (v, coef) in pb.coef_f64_pairs() {
-            m[c * nvars + (v - 1)] = coef as f32;
+            if v >= 1 && v <= nvars {
+                m[c * nvars + (v - 1)] = coef as f32;
+            }
         }
         cfeat[c * 3] = (pb.rhs_f64() / absum) as f32;
         cfeat[c * 3 + 1] = (slack / absum) as f32;
-        cfeat[c * 3 + 2] = if c >= snap.cons.len() { 1.0 } else { 0.0 };
+        cfeat[c * 3 + 2] = if c >= cons.len() { 1.0 } else { 0.0 };
     }
     let mut vfeat = vec![0.0f32; nvars * 2];
     for v in 0..nvars {
-        let xv = snap.x.get(v).copied().unwrap_or(0.0);
+        let xv = x.get(v).copied().unwrap_or(0.0);
         vfeat[v * 2] = xv as f32;
         vfeat[v * 2 + 1] = xv.min(1.0 - xv) as f32;
     }
-    let cand: Vec<i64> = (snap.cons.len()..cc).map(|i| i as i64).collect();
+    let cand: Vec<i64> = (cons.len()..cc).map(|i| i as i64).collect();
     let mk2 = |data: Vec<f32>, r: usize, c: usize| {
         Tensor::<AD, 2>::from_data(TensorData::new(data, [r, c]), device)
     };
@@ -176,12 +181,16 @@ fn build_graph(snap: &Snapshot, device: &Dev) -> Graph {
         mt,
         vfeat: mk2(vfeat, nvars, 2),
         cfeat: mk2(cfeat, cc, 3),
-        cand: Tensor::<AD, 1, Int>::from_data(
-            TensorData::new(cand, [snap.cand_cuts.len()]),
-            device,
-        ),
-        labels: snap.labels.clone(),
+        cand: Tensor::<AD, 1, Int>::from_data(TensorData::new(cand, [cands.len()]), device),
+        ncand: cands.len(),
+        labels: Vec::new(),
     }
+}
+
+fn build_graph(snap: &Snapshot, device: &Dev) -> Graph {
+    let mut g = build_graph_raw(&snap.cons, &snap.x, &snap.cand_cuts, snap.nvars, device);
+    g.labels = snap.labels.clone();
+    g
 }
 
 #[derive(Module, Debug)]
@@ -230,7 +239,7 @@ impl CutGnn<AD> {
             v = self.ln_v.forward(v.clone() + self.v_upd.forward(v_in).tanh());
         }
         let logits = self.r2.forward(relu(self.r1.forward(c))); // C × 1
-        logits.select(0, g.cand.clone()).reshape([g.labels.len()])
+        logits.select(0, g.cand.clone()).reshape([g.ncand])
     }
 }
 
@@ -336,4 +345,64 @@ fn main() {
     println!("  majority baseline : {base:.3}");
     println!("  logistic (5 feats): {log_acc:.3}");
     println!("  GNN (graph)       : {last:.3} final, {best:.3} best");
+
+    // ── end-to-end: GNN as the in-loop cut selector vs add-all & logistic ──
+    println!("\n=== end-to-end refutation cut counts (held-out g-PHP, top-50%/round) ===");
+    let gnn_scorer = |cons: &[Pb], x: &[f64], cands: &[Pb]| -> Vec<f64> {
+        // nvars for the graph = max var seen across cons+cands
+        let nv = cons
+            .iter()
+            .chain(cands.iter())
+            .flat_map(|p| p.coef_f64_pairs())
+            .map(|(v, _)| v)
+            .max()
+            .unwrap_or(1);
+        let g = build_graph_raw(cons, x, cands, nv, &device);
+        model
+            .forward(&g)
+            .into_data()
+            .to_vec::<f32>()
+            .unwrap()
+            .into_iter()
+            .map(|v| v as f64)
+            .collect()
+    };
+    let (mut s_add, mut s_log, mut s_gnn, mut n) = (0usize, 0usize, 0usize, 0usize);
+    for s in 0..nte {
+        let (nv, cl) = graph_php(p, h, dens, 1000 + s as u64);
+        let add = gmi::refute(&cl, nv, 200, 4, 30.0).map(|r| r.cuts.len());
+        let log = gmi::refute_policy(&cl, nv, 200, 4, 30.0, 0.5).map(|r| r.cuts.len());
+        let gnn_ref = gmi::refute_scored(&cl, nv, 200, 4, 30.0, 0.5, &gnn_scorer);
+        if s == 0 {
+            if let Some(r) = &gnn_ref {
+                std::fs::create_dir_all("/tmp/gmi_rs").ok();
+                std::fs::write("/tmp/gmi_rs/gnn_inst0.pbp", gmi::emit(r.cons_len, r)).ok();
+                let mut cnf = format!("p cnf {} {}\n", nv, cl.len());
+                for c in &cl {
+                    for &l in c {
+                        cnf.push_str(&format!("{l} "));
+                    }
+                    cnf.push_str("0\n");
+                }
+                std::fs::write("/tmp/gmi_rs/gnn_inst0.cnf", cnf).ok();
+                eprintln!("c wrote /tmp/gmi_rs/gnn_inst0.{{cnf,pbp}} for veripb");
+            }
+        }
+        let gnn = gnn_ref.map(|r| r.cuts.len());
+        if let (Some(a), Some(l), Some(gg)) = (add, log, gnn) {
+            s_add += a;
+            s_log += l;
+            s_gnn += gg;
+            n += 1;
+            println!("  inst {s}: add-all {a:3}  logistic {l:3}  GNN {gg:3}");
+        }
+    }
+    if n > 0 {
+        println!(
+            "  AVG over {n}: add-all {:.1}  logistic {:.1}  GNN {:.1} cuts",
+            s_add as f64 / n as f64,
+            s_log as f64 / n as f64,
+            s_gnn as f64 / n as f64
+        );
+    }
 }

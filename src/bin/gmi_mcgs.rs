@@ -193,7 +193,7 @@ fn main() {
     let envn = |k: &str, d: usize| std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d);
     let sims = envn("SIMS", 400);
     let nte = envn("NTE", 8);
-    let cap = envn("CAP", 45);
+    let cap = envn("CAP", 150);
     let c_puct: f64 = std::env::var("CPUCT")
         .ok()
         .and_then(|v| v.parse().ok())

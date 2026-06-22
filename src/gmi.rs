@@ -1469,16 +1469,24 @@ fn mcgs_step_g<S: Scalar>(
     let mut cur = warm.read_cuts(&cons, &seen);
     let candidates: Vec<(Pb, f64)> = cur.iter().map(|t| (t.0.clone(), t.2)).collect();
     // warm rollout from the same tableau (rotating the objective when stale)
+    let stale_cap = std::env::var("STALE").ok().and_then(|v| v.parse().ok()).unwrap_or(60usize);
+    let dbg = std::env::var("DBG").is_ok();
     let mut chosen: Vec<Pb> = added.to_vec();
     let mut stale = 0usize;
     let mut rot = 0usize;
     let proof = loop {
         if chosen.len() > cap {
+            if dbg {
+                eprintln!("  rollout gave up: hit cap at {} cuts", chosen.len());
+            }
             break None;
         }
         if cur.is_empty() {
             stale += 1;
-            if stale >= 20 {
+            if stale >= stale_cap {
+                if dbg {
+                    eprintln!("  rollout gave up: stalled (stale={stale}) at {} cuts", chosen.len());
+                }
                 break None;
             }
             rot += 1;

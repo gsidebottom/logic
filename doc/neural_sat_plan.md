@@ -777,8 +777,8 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
     `NTR/NTE/EPOCHS` env sizing.  Real multi-CPU payoff needs much larger
     (rollout-dominated) instances, or building burn-ndarray without `multi-threads`
     so the outer pool doesn't nest — future.
-- **● MCGS rung 1 — graph search machinery + de-risk: MCGS consistently (if
-  modestly) beats best-of-K (2026-06-22).** `gmi_mcgs` bin + `gmi::{expand,
+- **◐ MCGS rung 1 — graph search machinery built; de-risk says MCGS does NOT
+  beat best-of-K with a hand prior (2026-06-22).** `gmi_mcgs` bin + `gmi::{expand,
   mcgs_step, mcgs_step_exact, refutes_exact, graph_php}`.
   - **Built the search the ExpIt non-result called for.** State = the constraint
     *set* (order-independent), so a node is keyed by its sorted cut keys and
@@ -787,23 +787,29 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
     is `mcgs_step`: ONE cold LP solve, then a WARM rollout (dual-resolve per added
     cut) — ~depth× faster than re-solving cold each step.  The winning proof is
     confirmed exactly in BigRational (`refutes_exact`); every reported proof is ✓.
-  - **De-risk (mildly positive):** on g-PHP(6,4), 13 refuting instances, equal
-    rollout budget — **MCGS 4.5 vs best-of-K 4.8 vs greedy 7.2 cuts; MCGS wins
-    3/13, ties 10/13, never loses.**  The tree+backup add value over random
-    rollouts even with only a violation prior — so a *learned* prior+value (rung 2)
-    has something to amplify.  (Best-of-K already captures most of the headroom
-    over greedy, so the room left for MCGS/learning is ~6 % here.)
-  - **Honest limits.** g-PHP(6,4) is easy (proofs 0–27, many ≤9; low headroom).
-    The headroom regime g-PHP(6,5) defeats the single-cut rollout: the i128 path
-    overflows AND exact BigRational still can't refute the hard instances within
-    cap (single-cut proofs run long / stall), and BigRational is ~10× slower
-    (319 s for SIMS=30).  MCGS's action set is default-objective cuts only
-    (rollouts use rotated objectives) — a tree-expressiveness limit.
-  - **Rung 2 (the ask: value/visit-count targets):** GNN policy+value heads;
-    self-play MCGS; train policy → visit-count distribution, value → achieved
-    proof length; iterate.  GATING RISK is compute/arithmetic on high-headroom
-    instances (single-cut rollout robustness + i128 overflow + BigRational cost),
-    not the learning — clear that wall first.
+  - **The "compute wall" was a misdiagnosis.** Hard g-PHP(6,5) instances failed
+    not from i128 overflow but from a too-low rollout cap: single-cut proofs run
+    30–85 cuts there (vs the multi-cut loop's ~30–40).  Q stays ✓-sound throughout
+    (no overflow); raising cap (150) + stale (60) lets them refute.  Defaults
+    fixed; `STALE`/`CAP`/`EXACT` env knobs added.  Real remaining cost is SPEED
+    (a hard rollout adds 30–85 cuts, each a dual-resolve on a growing tableau).
+  - **De-risk verdict (equal rollout budget — the honest comparison):**
+    - easy g-PHP(6,4), 13 inst, SIMS=200: MCGS 4.5 vs best-of-K 4.8 (wins 3/13,
+      never loses) — marginal, because best-of-K already ≈ optimal.
+    - hard g-PHP(6,5), 4 inst, SIMS=16: **MCGS 22.8 vs best-of-K 22.2** — best-of-K
+      marginally AHEAD (MCGS wins 1/4, loses 2/4, ties 1/4).  The big "31 % MCGS
+      win" seen at SIMS=3 was a low-budget artifact: best-of-K catches up and
+      passes once it has the same rollout count.
+  - **Key insight:** with a *weak* (violation) prior, MCGS's tree commitment can
+    actively HURT vs unbiased best-of-K — PUCT concentrates rollouts on prior-
+    favored prefixes, and if the prior is bad that's worse than free exploration.
+    So a learned prior+value (rung 2) is NECESSARY for MCGS to beat best-of-K, not
+    merely an amplifier.  Combined with the ExpIt non-result (learning cut-
+    selection didn't beat imitation), whether a learned prior can clear that bar on
+    g-PHP is genuinely uncertain — best-of-K stochastic search is a strong, simple,
+    embarrassingly-parallel baseline.  Honest call: the learned-cutting-plane-search
+    headroom on this family looks small; rung 2's payoff is doubtful here, and a
+    structurally different family (where best-of-K is weaker) may be the better bet.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

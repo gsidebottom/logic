@@ -52,6 +52,9 @@ fn main() {
     let mut max_secs = 0.0f64;
     let mut cold = false;
     let mut topfrac = 1.0f64;
+    let mut bestofk: Option<usize> = None;
+    let mut cap = 150usize;
+    let mut seed = 1u64;
     let args: Vec<String> = std::env::args().collect();
     let mut i = 1;
     while i < args.len() {
@@ -82,6 +85,18 @@ fn main() {
                 i += 1;
                 topfrac = args[i].parse().unwrap_or(0.5);
             }
+            "--bestofk" => {
+                i += 1;
+                bestofk = Some(args[i].parse().unwrap_or(64));
+            }
+            "--cap" => {
+                i += 1;
+                cap = args[i].parse().unwrap_or(150);
+            }
+            "--seed" => {
+                i += 1;
+                seed = args[i].parse().unwrap_or(1);
+            }
             _ => {}
         }
         i += 1;
@@ -92,7 +107,9 @@ fn main() {
     let (nvars, clauses) = parse_dimacs(&input);
 
     let t0 = std::time::Instant::now();
-    let result = if cold {
+    let result = if let Some(k) = bestofk {
+        gmi::refute_bestofk(&clauses, nvars, k, cap, seed)
+    } else if cold {
         gmi::refute_cold(&clauses, nvars, max_rounds, n_obj, max_secs)
     } else if topfrac < 1.0 {
         gmi::refute_policy(&clauses, nvars, max_rounds, n_obj, max_secs, topfrac)

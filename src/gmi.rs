@@ -1546,6 +1546,120 @@ pub fn mcgs_step_exact(
     mcgs_step_g::<BigRational>(inputs, nvars, added, cap, pick)
 }
 
+/// One stochastic best-of-K rollout, RECORDING the CG recipe of each chosen cut
+/// (so the proof can be emitted).  Warm-started: build once, then add ONE cut
+/// per step (sampled ∝ violation, ε-floor) and dual-resolve until infeasible.
+/// Returns the recipe sequence on refutation, else None.  i128 fast path.
+fn bestofk_rollout(inputs: &[Pb], nvars: usize, cap: usize, mut seed: u64) -> Option<Vec<Recipe>> {
+    let mut rng = || {
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((seed >> 33) as f64) / ((1u64 << 31) as f64)
+    };
+    let mut cons: Vec<Pb> = inputs.to_vec();
+    let s = Std::new(nvars, cons.len());
+    let (a, b0) = s.build::<Q>(&cons);
+    let mut cost0 = vec![Q::zero(); s.ncols];
+    for v in 1..=nvars as u32 {
+        cost0[s.cx(v)] = -Q::one();
+    }
+    let (status, t, b, basis) = two_phase::<Q>(&a, &b0, &cost0);
+    if status == Status::Infeasible {
+        return Some(Vec::new());
+    }
+    let mut warm = Warm::from_cold(&s, t, b, basis, cost0, nvars);
+    let mut seen: std::collections::HashSet<String> = cons.iter().map(|c| c.key()).collect();
+    let mut recs: Vec<Recipe> = Vec::new();
+    let (mut stale, mut rot) = (0usize, 0usize);
+    while recs.len() <= cap {
+        let fresh = warm.read_cuts(&cons, &seen);
+        if fresh.is_empty() {
+            stale += 1;
+            if stale >= 60 {
+                return None;
+            }
+            rot += 1;
+            let obj = one_obj::<Q>(nvars, rot);
+            for c in warm.cost.iter_mut() {
+                *c = Q::zero();
+            }
+            for v in 1..=nvars as u32 {
+                warm.cost[s.cx(v)] = obj[(v - 1) as usize].clone();
+            }
+            let cost = warm.cost.clone();
+            optimize(&mut warm.t, &mut warm.b, &mut warm.basis, &cost);
+            continue;
+        }
+        stale = 0;
+        // sample an index ∝ violation with a uniform ε-floor
+        let n = fresh.len();
+        let tot: f64 = fresh.iter().map(|t| t.2.max(1e-9)).sum::<f64>().max(1e-12);
+        let (eps, mut r, mut idx) = (0.10f64, rng(), n - 1);
+        for i in 0..n {
+            let p = (1.0 - eps) * (fresh[i].2.max(1e-9) / tot) + eps / n as f64;
+            if r < p {
+                idx = i;
+                break;
+            }
+            r -= p;
+        }
+        let (cut, recipe, _v) = fresh[idx].clone();
+        if !seen.insert(cut.key()) {
+            return None;
+        }
+        let ci = cons.len();
+        cons.push(cut);
+        recs.push(recipe);
+        warm.add_cut(&cons[ci], ci);
+        if warm.dual_resolve() == Status::Infeasible {
+            return Some(recs);
+        }
+    }
+    None
+}
+
+/// Parallel best-of-K Gomory refuter (the productized strong baseline): run `k`
+/// independent stochastic single-cut rollouts across all cores, keep the
+/// SHORTEST whose exact (BigRational) Farkas certificate verifies, and return a
+/// fully emittable [`Refutation`].  Soundness gate: the exact Farkas only
+/// succeeds if `inputs + cuts` is genuinely infeasible, so an i128 wrap can't
+/// yield a false proof.  `cap` bounds rollout length; `seed` makes it reproducible.
+pub fn refute_bestofk(
+    clauses: &[Vec<i32>],
+    nvars: usize,
+    k: usize,
+    cap: usize,
+    seed: u64,
+) -> Option<Refutation> {
+    use rayon::prelude::*;
+    let inputs: Vec<Pb> = clauses.iter().map(|c| Pb::from_clause(c)).collect();
+    let mut wins: Vec<Vec<Recipe>> = (0..k)
+        .into_par_iter()
+        .filter_map(|i| {
+            let sd = seed ^ (i as u64).wrapping_mul(0x9e3779b97f4a7c15).wrapping_add(1);
+            bestofk_rollout(&inputs, nvars, cap, sd)
+        })
+        .collect();
+    wins.sort_by_key(|r| r.len());
+    // shortest proof whose exact Farkas certificate verifies
+    for recs in wins {
+        let mut cons = inputs.clone();
+        for r in &recs {
+            let cut = build_cut(&cons, r);
+            cons.push(cut);
+        }
+        if let Some(farkas) = farkas::<BigRational>(&cons, nvars) {
+            return Some(Refutation {
+                cuts: recs,
+                farkas,
+                cons_len: inputs.len(),
+            });
+        }
+    }
+    None
+}
+
 /// Sparse random bipartite pigeonhole (the asymmetric, cut-heavy testbed): `p`
 /// pigeons, `h` holes, each pigeon adjacent to each hole independently with
 /// probability `density`.  Returns `(nvars, clauses)`.

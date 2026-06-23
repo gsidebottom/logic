@@ -832,6 +832,21 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
     GMI + best-of-K (parallel, no training, exact-verified) is a strong, simple
     baseline; the families that would motivate learning (long structured proofs)
     are either 1-cut for GMI or push past the engine's tractability.
+- **● Productized best-of-K refuter — parallel + VeriPB-verified (2026-06-22).**
+  `gmi::refute_bestofk` + `gmi --bestofk K [--cap N] [--seed N]`.  Turns the
+  strong baseline into a tool: `k` independent stochastic single-cut rollouts run
+  across all cores (rayon — **967 % CPU**, the clean multi-core that the
+  Burn-nested `gmi_train` never got, because best-of-K is pure-engine and
+  embarrassingly parallel), each RECORDING its cut recipes; keep the SHORTEST
+  whose **exact BigRational Farkas certificate verifies** (soundness gate — an
+  i128 wrap can't yield a false proof), emit it.
+  - **Verified, and it finds the shortest proof:** on a g-PHP(6,5) instance —
+    add-all 31 cuts, logistic policy 17, **best-of-128 15** — all three
+    `veripb 3.0.2 → VERIFIED UNSATISFIABLE`.  Second instance 6 cuts, VERIFIED.
+  - **Honest tradeoff:** best-of-K is a proof-*minimization* mode, not the fast
+    default — 89 s (parallel) for 15 cuts vs 0.03 s for the policy's 17.  Worth it
+    only when minimal proof size matters more than time; the logistic policy stays
+    the fast default.  Default `sat`/`gmi` builds otherwise unchanged.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

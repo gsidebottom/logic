@@ -3,6 +3,9 @@
 //! Reads DIMACS CNF on stdin; on UNSAT-by-cutting-planes, emits a VeriPB proof.
 //!
 //! Usage:  gmi [--out FILE] [--max-rounds N] [--n-obj N] < problem.cnf
+//!         gmi --policy [--topfrac F]                    (learned cut selection)
+//!         gmi --bestofk K [--cap N] [--seed N]          (parallel best-of-K —
+//!             K stochastic rollouts across all cores, shortest VERIFIED proof)
 //! Verify: veripb problem.cnf FILE
 
 use logic::gmi;

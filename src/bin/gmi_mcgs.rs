@@ -189,6 +189,48 @@ fn mcgs(
     best_cuts
 }
 
+/// Headroom probe: per instance print the engine's multi-cut proof length (a
+/// strong "achievable" reference), greedy, and the best-of-K plateau curve.
+/// Headroom for a learned policy ⇔ best-of-K stays well ABOVE the engine ref
+/// and keeps dropping as K grows (short proofs exist but are rare under random
+/// rollouts).  Flat curve near the engine ref ⇒ no headroom (like g-PHP).
+fn probe(family: &str, nte: usize, cap: usize, kmax: usize, mkinst: &dyn Fn(usize) -> (usize, Vec<Vec<i32>>)) {
+    let cks: Vec<usize> = [8usize, 32, kmax].into_iter().filter(|&k| k <= kmax).collect();
+    let fmt = |o: usize| if o == usize::MAX { "—".to_string() } else { o.to_string() };
+    println!("HEADROOM PROBE — {family}: engine(multi-cut) vs greedy vs best-of-K plateau (cap={cap}, KMAX={kmax})");
+    println!("  headroom ⇔ best-of-K stays >> engine and keeps dropping with K\n");
+    for s in 0..nte {
+        let (nvars, clauses) = mkinst(s);
+        let inputs: Vec<Pb> = clauses.iter().map(|c| Pb::from_clause(c)).collect();
+        let eng = gmi::refute_policy(&clauses, nvars, 300, 4, 30.0, 0.5).map(|r| r.cuts.len());
+        let mut rng = Rng::new(7 + s as u64);
+        let greedy = {
+            let mut pick = |v: &[f64]| argmax(v);
+            gmi::mcgs_step(&inputs, nvars, &[], cap, &mut pick).2.map(|c| c.len())
+        };
+        let (mut best, mut curve, mut ci) = (usize::MAX, String::new(), 0usize);
+        for k in 1..=kmax {
+            let mut pick = |v: &[f64]| rng.sample(v);
+            if let Some(c) = gmi::mcgs_step(&inputs, nvars, &[], cap, &mut pick).2 {
+                best = best.min(c.len());
+            }
+            if ci < cks.len() && k == cks[ci] {
+                curve.push_str(&format!("@{k}={} ", fmt(best)));
+                ci += 1;
+            }
+        }
+        println!(
+            "  inst {s} (nv={nvars} ncl={}): engine={} greedy={} best-of-K {}",
+            clauses.len(),
+            eng.map(fmt).unwrap_or_else(|| "—".into()),
+            greedy.map(fmt).unwrap_or_else(|| "—".into()),
+            curve.trim_end(),
+        );
+        use std::io::Write;
+        std::io::stdout().flush().ok();
+    }
+}
+
 fn main() {
     let envn = |k: &str, d: usize| std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d);
     let sims = envn("SIMS", 400);
@@ -203,17 +245,32 @@ fn main() {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(0.7);
-    // exact BigRational by default (the headroom regime overflows i128); EXACT=0 → Q
-    let exact = std::env::var("EXACT").map(|v| v != "0").unwrap_or(true);
+    // i128 fast path by default (sound on these families; every win ✓-verified); EXACT=1 → exact
+    let exact = std::env::var("EXACT").map(|v| v == "1").unwrap_or(false);
     let step: StepFn = if exact { gmi::mcgs_step_exact } else { gmi::mcgs_step };
+    let family = std::env::var("FAMILY").unwrap_or_else(|_| "gphp".into());
+    let kmax = envn("KMAX", 128);
+    // instance s of the chosen family (gphp varies by seed; subset/color by size)
+    let mkinst = |s: usize| -> (usize, Vec<Vec<i32>>) {
+        match family.as_str() {
+            "subset" => gmi::subset_cardinality(p + s),
+            "color" => gmi::cycle_coloring(p + 2 * s, 2),
+            "tseitin" => gmi::tseitin_cycle(p + s),
+            _ => gmi::graph_php(p, h, dens, 1000 + s as u64),
+        }
+    };
+    if std::env::var("PROBE").is_ok() {
+        probe(&family, nte, cap, kmax, &mkinst);
+        return;
+    }
     println!(
-        "MCGS over the GMI constraint DAG — g-PHP({p},{h}) dens {dens}, sims={sims}, c_puct={c_puct}"
+        "MCGS over the GMI constraint DAG — {family}(p={p},h={h}) sims={sims}, c_puct={c_puct}"
     );
     println!("  best-of-K uses K=sims (equal rollout budget); greedy = argmax-violation\n");
     let t0 = std::time::Instant::now();
     let (mut sg, mut sk, mut sm, mut cnt, mut wins) = (0usize, 0usize, 0usize, 0usize, 0usize);
     for s in 0..nte {
-        let (nvars, clauses) = gmi::graph_php(p, h, dens, 1000 + s as u64);
+        let (nvars, clauses) = mkinst(s);
         let inputs: Vec<Pb> = clauses.iter().map(|c| Pb::from_clause(c)).collect();
         let mut rng = Rng::new(7 + s as u64);
         // greedy: deterministic argmax-violation rollout from root

@@ -1585,6 +1585,86 @@ pub fn graph_php(p: usize, h: usize, density: f64, seed: u64) -> (usize, Vec<Vec
     (nv as usize, clauses)
 }
 
+/// Subset-cardinality on a 3-regular circulant bipartite graph (L,R each size
+/// `n`; edge (i,(i+t)%n) for t∈{0,1,2}).  Left vertex: ≥2 of its 3 edges TRUE
+/// (pairwise OR); right vertex: ≤1 of its 3 edges TRUE (pairwise NOR).  Σrows ⇒
+/// ≥2n, Σcols ⇒ ≤n ⇒ UNSAT.  Binary clauses only ⇒ LP relaxation feasible at
+/// x=½ ⇒ genuinely NEEDS CG cuts (the gap family).  Returns `(nvars, clauses)`.
+pub fn subset_cardinality(n: usize) -> (usize, Vec<Vec<i32>>) {
+    let mut left: Vec<Vec<i32>> = vec![Vec::new(); n];
+    let mut right: Vec<Vec<i32>> = vec![Vec::new(); n];
+    let mut ne = 0i32;
+    for i in 0..n {
+        for t in 0..3 {
+            let j = (i + t) % n;
+            ne += 1;
+            left[i].push(ne);
+            right[j].push(ne);
+        }
+    }
+    let mut cl: Vec<Vec<i32>> = Vec::new();
+    for es in &left {
+        // ≥2 of 3 → pairwise OR
+        for i in 0..es.len() {
+            for j in i + 1..es.len() {
+                cl.push(vec![es[i], es[j]]);
+            }
+        }
+    }
+    for es in &right {
+        // ≤1 of 3 → pairwise NOR
+        for i in 0..es.len() {
+            for j in i + 1..es.len() {
+                cl.push(vec![-es[i], -es[j]]);
+            }
+        }
+    }
+    (ne as usize, cl)
+}
+
+/// Tseitin parity on the cycle C_n: edge var i joins vertices i,i+1; vertex j has
+/// parity e_{j-1} ⊕ e_j = τ_j with τ_1=1 (rest 0), Στ odd ⇒ UNSAT.  Parity/XOR is
+/// classically HIGH CG-rank — a candidate GMI-hard (long-proof) family.  Returns
+/// `(nvars, clauses)`.
+pub fn tseitin_cycle(n: usize) -> (usize, Vec<Vec<i32>>) {
+    let xor2 = |a: i32, b: i32, rhs: bool| -> Vec<Vec<i32>> {
+        if rhs {
+            vec![vec![a, b], vec![-a, -b]]
+        } else {
+            vec![vec![a, -b], vec![-a, b]]
+        }
+    };
+    let mut cl: Vec<Vec<i32>> = Vec::new();
+    let ni = n as i32;
+    for j in 1..=ni {
+        let e_prev = (j - 2).rem_euclid(ni) + 1;
+        cl.extend(xor2(e_prev, j, j == 1));
+    }
+    (n, cl)
+}
+
+/// Proper k-coloring of the cycle C_n (edges i—(i mod n + 1)); UNSAT for odd `n`,
+/// `k=2`.  Var (v,c) = (v-1)*k+c+1.  Returns `(nvars, clauses)`.
+pub fn cycle_coloring(n: usize, k: usize) -> (usize, Vec<Vec<i32>>) {
+    let cv = |v: usize, c: usize| ((v - 1) * k + c + 1) as i32;
+    let mut cl: Vec<Vec<i32>> = Vec::new();
+    for v in 1..=n {
+        cl.push((0..k).map(|c| cv(v, c)).collect()); // ≥1 color
+        for a in 0..k {
+            for b in a + 1..k {
+                cl.push(vec![-cv(v, a), -cv(v, b)]); // ≤1 color
+            }
+        }
+    }
+    for u in 1..=n {
+        let w = u % n + 1;
+        for c in 0..k {
+            cl.push(vec![-cv(u, c), -cv(w, c)]); // adjacent differ
+        }
+    }
+    (n * k, cl)
+}
+
 fn pol_terms(parts: &[(String, BigInt)], suffix: &str) -> String {
     let mut rp = String::from("pol ");
     let mut first = true;

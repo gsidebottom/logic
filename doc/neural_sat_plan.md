@@ -810,6 +810,28 @@ NeuroBack (ICLR 2024) already demonstrated this exact win — so Phase 1 is
     embarrassingly-parallel baseline.  Honest call: the learned-cutting-plane-search
     headroom on this family looks small; rung 2's payoff is doubtful here, and a
     structurally different family (where best-of-K is weaker) may be the better bet.
+- **◐ Headroom hunt — no clean high-headroom family among GMI-tractable ones
+  (2026-06-22).** `gmi_mcgs` PROBE mode + `gmi::{subset_cardinality, cycle_coloring,
+  tseitin_cycle}` ported from `cp_sweep.py`; `FAMILY` dispatch; plateau curve
+  (engine multi-cut ref vs greedy vs best-of-K at K=8/32/128).
+  - **GMI is too strong on the "hard" families.** subset-cardinality (the designed
+    CG-gap family), cycle 2-coloring, and Tseitin-on-a-cycle are ALL **1-cut** for
+    GMI (engine = greedy = best-of-K = 1, every size).  They're hard for
+    resolution / detectors but a single Gomory cut closes each — so zero search
+    headroom (can't beat 1).  Only g-PHP yields multi-cut proofs.
+  - **g-PHP headroom is real but modest + instance-dependent.** best-of-K is a
+    strong baseline — it usually MATCHES or BEATS the multi-cut engine (e.g. inst 0
+    26 vs 43, inst 2 9 vs 10).  The clean headroom case is inst 3 (nv=24): best-of-K
+    plateaus at 35 while the engine's *learned* logistic selection reaches 30 — a
+    learned policy already beats random search there.  But it's inconsistent.  The
+    residual headroom grows with instance size (bigger ⇒ best-of-K under-converges
+    at fixed K), so any rung-2 payoff lives on LARGER g-PHP — exactly where the
+    rollout speed/arithmetic cost is worst.
+  - **Net:** across every GMI-tractable family available, learned-search headroom
+    over simple stochastic best-of-K is small / inconsistent.  The combination
+    GMI + best-of-K (parallel, no training, exact-verified) is a strong, simple
+    baseline; the families that would motivate learning (long structured proofs)
+    are either 1-cut for GMI or push past the engine's tractability.
 
 ### Phase 4 — moonshot: general wall-clock parity *(open research)*
 - GPU-batched amortized inference (batch many nodes/instances per forward

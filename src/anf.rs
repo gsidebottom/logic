@@ -549,6 +549,9 @@ pub struct Sls<'a> {
     frozen: Vec<u8>,
     frozen_val: Vec<(u32, u8)>,
     pub flips: u64,
+    /// chain-best assignment (fewest unsat seen) and its unsat count
+    pub best_bits: Vec<u8>,
+    pub best_n: usize,
     rng: Rng,
     cands: Vec<u32>,
     pow_cb: [f64; 32],
@@ -575,6 +578,8 @@ impl<'a> Sls<'a> {
             frozen: fz,
             frozen_val: frozen.to_vec(),
             flips: 0,
+            best_bits: Vec::new(),
+            best_n: usize::MAX,
             rng: Rng::new(cfg.seed),
             cands: Vec::new(),
             pow_cb,
@@ -762,13 +767,14 @@ impl<'a> Sls<'a> {
         hook: Option<Hook>,
     ) -> bool {
         let mut restart = 1u64;
-        let mut best_bits: Vec<u8> = Vec::new();
-        let mut best_n = usize::MAX;
         let mut next_hook = cfg.closure_every;
         let mut hook_k = 0u64;
         loop {
-            if cfg.pert > 0.0 && restart % 2 == 0 && !best_bits.is_empty() {
-                self.bits.copy_from_slice(&best_bits);
+            if cfg.pert > 0.0 && restart % 2 == 0 && !self.best_bits.is_empty()
+            {
+                let bb = std::mem::take(&mut self.best_bits);
+                self.bits.copy_from_slice(&bb);
+                self.best_bits = bb;
                 for v in 0..self.anf.nvars {
                     if self.frozen[v] == 0 && self.rng.f64() < cfg.pert {
                         self.bits[v] ^= 1;
@@ -802,11 +808,13 @@ impl<'a> Sls<'a> {
                         }
                     }
                 }
-                if self.unsat.len() < best_n {
-                    best_n = self.unsat.len();
-                    best_bits.clear();
-                    best_bits.extend_from_slice(&self.bits);
-                    *best_seen = (*best_seen).min(best_n);
+                if self.unsat.len() < self.best_n {
+                    self.best_n = self.unsat.len();
+                    let mut bb = std::mem::take(&mut self.best_bits);
+                    bb.clear();
+                    bb.extend_from_slice(&self.bits);
+                    self.best_bits = bb;
+                    *best_seen = (*best_seen).min(self.best_n);
                 }
                 left -= 1;
                 if left == 0 {
@@ -825,17 +833,18 @@ impl<'a> Sls<'a> {
 }
 
 /// Portfolio: `threads` independent Luby chains (seeds `cfg.seed + i`),
-/// first solution wins.  Returns (bits, total flips, best unsat seen).
+/// first solution wins.  Returns (solution bits, total flips, best unsat
+/// seen, best-assignment bits across chains — empty when solved).
 pub fn solve_portfolio(
     anf: &Anf,
     frozen: &[(u32, u8)],
     cfg: &SlsCfg,
     threads: usize,
     hook: Option<Hook>,
-) -> (Option<Vec<u8>>, u64, usize) {
+) -> (Option<Vec<u8>>, u64, usize, Vec<u8>) {
     let stop = AtomicBool::new(false);
     let t0 = Instant::now();
-    let results: Vec<(Option<Vec<u8>>, u64, usize)> = (0..threads)
+    let results: Vec<(Option<Vec<u8>>, u64, usize, Vec<u8>)> = (0..threads)
         .into_par_iter()
         .map(|i| {
             let mut c = *cfg;
@@ -845,23 +854,30 @@ pub fn solve_portfolio(
             let ok = sls.run(&c, t0, &stop, &mut best, hook);
             if ok {
                 stop.store(true, Ordering::Relaxed);
-                (Some(sls.bits.clone()), sls.flips, 0)
+                (Some(sls.bits.clone()), sls.flips, 0, Vec::new())
             } else {
-                (None, sls.flips, best)
+                (None, sls.flips, best, std::mem::take(&mut sls.best_bits))
             }
         })
         .collect();
     let mut flips = 0;
     let mut best = usize::MAX;
     let mut sol = None;
-    for (s, f, b) in results {
+    let mut best_bits = Vec::new();
+    for (s, f, b, bb) in results {
         flips += f;
-        best = best.min(b);
+        if b < best {
+            best = b;
+            best_bits = bb;
+        }
         if s.is_some() && sol.is_none() {
             sol = s;
         }
     }
-    (sol, flips, best)
+    if sol.is_some() {
+        best_bits.clear();
+    }
+    (sol, flips, best, best_bits)
 }
 
 // ---------------------------------------------------------------- tests
@@ -916,7 +932,7 @@ mod tests {
         let d = Dims { n1: 2, n2: 2, n3: 2, r: 7 };
         let anf = brent(d);
         let cfg = SlsCfg { max_secs: 30.0, seed: 3, ..Default::default() };
-        let (sol, _, _) = solve_portfolio(&anf, &[], &cfg, 1, None);
+        let (sol, _, _, _) = solve_portfolio(&anf, &[], &cfg, 1, None);
         let bits = sol.expect("2x2x2 r=7 should solve fast");
         assert_eq!(verify(&anf, &bits), 0);
     }
@@ -984,7 +1000,7 @@ mod tests {
         let frozen: Vec<(u32, u8)> =
             idx[..414].iter().map(|&v| (v, lb[v as usize])).collect();
         let cfg = SlsCfg { max_secs: 30.0, seed: 5, ..Default::default() };
-        let (sol, flips, _) = solve_portfolio(&anf, &frozen, &cfg, 1, None);
+        let (sol, flips, _, _) = solve_portfolio(&anf, &frozen, &cfg, 1, None);
         let bits = sol.expect("414-seeded repair should solve");
         assert_eq!(verify(&anf, &bits), 0);
         assert!(flips < 5_000_000, "repair took {flips} flips");

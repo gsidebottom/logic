@@ -283,6 +283,18 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
     are pairwise inequivalent (53 distinct classes) and inequivalent to
     the 4 classics (earlier seed audit) ⇒ **53 new 23-multiplication
     mod-2 schemes vs everything published**, from one 6-minute walk.
+  - **● All 53 LIFTED to ℤ (2026-07-03, `matmul/lift.py`) — 53/53, zero
+    failures, every one exactly ℤ-verified.**  Lifting as **sign-SAT**
+    (our twist vs HKS's Gröbner route): sign bits per support
+    coefficient, a term's sign = XOR of its three sign bits, each
+    integer Brent equation = an exactly-(k−rhs)/2 cardinality over its
+    k covering terms; per-product scaling broken by fixing the first
+    α/β support signs.  Tiny CNFs (~2 k clauses), kissat solves each in
+    ms.  Controls: all 4 classics lift + ℤ-verify.  Result: **53 new
+    integer {−1,0,+1} schemes** (`matmul/lifted/*.txt`), valid over any
+    commutative ring — the same object class as Laderman's.  (En route:
+    a parity bug caught by the exact ℤ-verifier failing on exactly the
+    27 delta equations — the verify-everything discipline paying off.)
 - **R3b — r=22 probes** (challenge 4 infra): `matmul/drop22.py`
   (drop-a-product repair seeds) + plain r=22 attacks with closure.
   - **Campaign wave 1 (2026-07-03, `matmul/campaign22.py`): 210 bounded
@@ -301,6 +313,30 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
     violated equation, exhaustive 1/2/3-flip repairs over its 69 vars,
     closure contradiction counts — which either finds a solution or
     characterizes the obstruction (which equations pin, local rigidity).
+  - **● Finisher ran (2026-07-03) — obstruction identified, UNSAT-lean
+    RETRACTED.** `anf --emit-best` added (chain-best assignment surfaced
+    through the portfolio); floor-1 states collected
+    (`matmul/nearmiss/`); `matmul/finisher22.py` (incremental
+    flip-prober + per-tensor exact closure diagnostics).  Findings:
+    - Every analyzed floor-1 state violates **one type-3 (delta)
+      equation, covered 0×** — the state is "26/27 type-3 terms
+      covered"; per-tensor closure fails by exactly 1 contradiction row
+      each; **rigid to radius 3** (≈1.3 M structured flip-sets per
+      state, none repairs).
+    - Cause, verified: **every floor-1-producing drop removed a product
+      that was the sole cover of exactly one type-3 term** (laderman
+      d18, db-i4 d9, walk-00031/124 d9 all solely-covered term (0,1,0) —
+      which is why independent near-misses all violate the same
+      equation; walk-00094/115/130's drops solely-covered (0,2,0),
+      (1,1,1), (0,2,1)).  The repair patches every even equation but
+      cannot re-manufacture the missing odd term (needs an exact
+      triple-intersection in some product).
+    - **Consequence: the "dense floor-1 shell" of wave 1 is an artifact
+      of drop-a-product seeding, and the earlier weak UNSAT-lean is
+      withdrawn.**  The unbiased r=22 signal is the plain-attack floor
+      (best 8/729).  If a wave 2 runs: plain attacks + drops of
+      multi-type-3-cover products (forcing genuine restructuring) +
+      lower nfix; single-cover drops are structurally pinned at ≥1.
 - **R3c — connection-method path-space SLS. ○ built, measured, NEGATIVE
   (2026-07-03).** `matmul/pathsls.py`: a correct path-space local search
   on the ANF matrix — state = per-equation scenario (ON-monomial set,

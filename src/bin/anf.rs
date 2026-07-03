@@ -173,9 +173,10 @@ fn main() {
         None
     };
     let t0 = Instant::now();
-    let (sol, flips, best) =
+    let (sol, flips, best, best_bits) =
         solve_portfolio(&anf, &frozen, &cfg, threads, hook);
     let dt = t0.elapsed().as_secs_f64();
+    let emit_best = args.iter().any(|a| a == "--emit-best");
     let rate = flips as f64 / dt / 1e6;
     match sol {
         Some(bits) => {
@@ -208,6 +209,15 @@ fn main() {
                 "s UNKNOWN  ({dt:.3}s, {flips} flips, {rate:.2}M flips/s, best {best} unsat of {})",
                 anf.neqs()
             );
+            if emit_best && !best_bits.is_empty() {
+                println!(
+                    "B {}",
+                    best_bits
+                        .iter()
+                        .map(|b| (b + b'0') as char)
+                        .collect::<String>()
+                );
+            }
         }
     }
 }

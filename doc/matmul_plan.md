@@ -273,11 +273,38 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   (drop-a-product repair seeds) + plain r=22 attacks with closure.  First
   bounded probes running.  Expected negative (open problem); the walk +
   closure machinery at r=22 is the campaign vehicle.
-- **R3c — connection-method path-space SLS** (the research question).
-  Local search over per-equation satisfaction scenarios on the NNF matrix
-  (connections = shared-var conflicts), vs assignment-space SLS at equal
-  budget. Honest gate: any slice where it wins; a clean negative is
-  publishable insight too.
+- **R3c — connection-method path-space SLS. ○ built, measured, NEGATIVE
+  (2026-07-03).** `matmul/pathsls.py`: a correct path-space local search
+  on the ANF matrix — state = per-equation scenario (ON-monomial set,
+  parity-consistent) + a blocker var per OFF monomial (the disjunct the
+  path takes); **connections** = vars forced 1 by one equation's scenario
+  and 0 by another's blocker; moves = re-blocker, scenario swap, and
+  parity-preserving pair add/remove (the size-changing move the first
+  version lacked); frozen bits as permanent force-counts.  Correctness
+  proven: init-from-solution ⇒ 0 connections; incremental force counts +
+  conflict set + parity invariants all consistent after 200 k moves.
+  - **Equal-budget A/B (Python vs Python, same machine/wall):**
+    | regime | assignment-SLS | path-SLS |
+    |---|---|---|
+    | 2×2×2 r=7 scratch (30 s) | SOLVED 0.48 s | best 4 connections |
+    | 3×3 fix=414 (60 s) | SOLVED 0.02 s | best 60 |
+    | 3×3 fix=300 (90 s) | SOLVED 0.12 s | best 51 |
+  - **Diagnosis** (why, not just that): the connection objective
+    (#conflicted vars) collapses badly — one conflicted var hides
+    force1×force0 pending repairs and each path move shifts one force
+    count by ±1, so there is no gradient; and the Brent matrix has
+    *dense* sharing (every var in 81 equations, 69 vars/equation), so
+    connections are everywhere and path rerouting is myopic.  One
+    assignment flip re-evaluates all 81 incident equations at once —
+    exactly the quotient path moves can't take.  Path search pays where
+    connections are sparse/local (first-order tableaux, unification);
+    dense ANF is its worst case.  The native-representation win of this
+    track came from ANF structure (cheap flips + tri-linear closure),
+    NOT from path-space search.
+  - Scope: naive-but-correct prototype, three move classes, light
+    tuning; a cover-space or hybrid formulation could be tried, but an
+    orders-of-magnitude gap in every regime doesn't invite it.  Gate
+    ("any slice where it wins") — **not met; negative documented.**
 - **R4 — the r=22 campaign** (moonshot, gated on R1–R2). Seeded long-range
   exploration (the 17k-scheme DB as seeds, low fixing fractions), pairing
   variants at r=22 (27 = 5×2+17×1 or with triples), drop-a-product +

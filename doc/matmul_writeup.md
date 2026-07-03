@@ -208,14 +208,15 @@ grep NEW novelty_verdicts.csv | cut -d, -f1 | sed 's|^|found/|;s|$|.bits|' \
 # 4. rank-pattern novelty vs the 302 DB dirs (weaker, no download) [~30 s]
 python3 novelty.py db_rank_patterns.txt found/walk-00029.bits   # etc.
 
-# 5. FULL database check (downloads the DB once, ~43 MB)         [~30 min]
-mkdir -p dbcache && curl -k -o dbcache/schemes.tgz \
-  https://www.algebra.uni-linz.ac.at/research/matrix-multiplication/schemes.tgz
-#   then: extract, convert every .tab (transpose the C block),
-#   require verify_bits==0 on all 17,376, fingerprint all, and check the
-#   53 finds (x6 S3 variants) have no fingerprint match; exact
-#   equivalent() on any collision.  The committed verdicts are in
-#   novelty_verdicts.csv (85 EQUIVALENT with named witnesses / 53 NEW).
+# 5. FULL database check from primary sources                    [~15 min]
+python3 dbcheck.py all
+#   fetch (43 MB schemes.tgz) -> convert all 17,376 .tab with a
+#   verify_bits==0 gate (expect 0 failures) -> controls (20 db seeds
+#   byte-identical + 4 classics equivalent) -> check every find against
+#   ALL DB fingerprints (x6 S3 variants; exact equivalent() on
+#   collisions; directory-scope-free, so independent of the rank-pattern
+#   legend).  Ends with an automatic cross-check against the committed
+#   novelty_verdicts.csv: expect "MATCH" and 85 EQUIVALENT / 53 NEW.
 
 # 6. integer lifting + exact Z-verification                       [~1 min]
 python3 lift.py seeds/smirnov.bits seeds/laderman.bits --outdir /tmp/ctl
@@ -224,13 +225,17 @@ grep NEW novelty_verdicts.csv | cut -d, -f1 | sed 's|^|found/|;s|$|.bits|' \
 #   expect: "53 lifted, 0 not +-1-liftable"; each line Z-VERIFIED
 #   (the Z-check is an assertion: any failure aborts loudly)
 
-# 7. challenge-1 spot-check (their exact CNF file, our scheme)     [~10 s]
-../target/release/anf 3 3 3 23 --freeze-file inst/core-MM-23-2-2-2-2-A.freeze \
+# 7. challenge-1 spot-check (their exact CNF file, our scheme)     [~1 min]
+git clone https://github.com/marijnheule/matrix-challenges challenges  # if absent
+mkdir -p inst && python3 import_core.py \
+  challenges/challenge1/MM-23-2-2-2-2-A.cnf inst/core-A.freeze
+../target/release/anf 3 3 3 23 --freeze-file inst/core-A.freeze \
   --probsat --cb 2.5 --density 0.1 --seconds 60 --threads 10 --seed 3 --quiet \
   | grep '^b ' > /tmp/solA.txt
 python3 check_their_cnf.py challenges/challenge1/MM-23-2-2-2-2-A.cnf /tmp/solA.txt
-#   expect: SATISFIED by our scheme     (challenges/ = clone of
-#   github.com/marijnheule/matrix-challenges, gitignored)
+#   expect: "validated type-3 pairing (transpose_gamma=True)" on import,
+#   then: SATISFIED by our scheme
+#   (challenges/ and inst/ are gitignored — external data + derived files)
 ```
 
 **What is and isn't deterministic.** Verification of the committed 53
@@ -369,7 +374,11 @@ exact checks. All 53 are pairwise inequivalent.)*
 - Plan/lab-notebook: `doc/matmul_plan.md` (every measurement, incl.
   negatives and retractions). Engine: `src/anf.rs`, `src/bin/anf.rs`.
 - Tools: `matmul/{brent,sls,walk,canon,equiv,novelty,lift,import_core,
-  check_their_cnf,campaign22,drop22,finisher22,pathsls}.py`.
+  check_their_cnf,dbcheck,campaign22,drop22,finisher22,pathsls}.py`.
+  Everything needed for §4 is in-repo except three things fetched from
+  their public sources by the commands shown: the DB archive
+  (`dbcheck.py fetch`), the matrix-challenges clone (step 7), and yalsat
+  (github.com/arminbiere/yalsat) for the baseline timings.
 - HKS: *Local Search for Fast Matrix Multiplication* (SAT 2019,
   arXiv:1903.11391); *New ways to multiply 3×3-matrices* (JSC 104,
   2021). Database: algebra.uni-linz.ac.at/research/matrix-multiplication.

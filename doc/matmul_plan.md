@@ -284,9 +284,23 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
     the 4 classics (earlier seed audit) ⇒ **53 new 23-multiplication
     mod-2 schemes vs everything published**, from one 6-minute walk.
 - **R3b — r=22 probes** (challenge 4 infra): `matmul/drop22.py`
-  (drop-a-product repair seeds) + plain r=22 attacks with closure.  First
-  bounded probes running.  Expected negative (open problem); the walk +
-  closure machinery at r=22 is the campaign vehicle.
+  (drop-a-product repair seeds) + plain r=22 attacks with closure.
+  - **Campaign wave 1 (2026-07-03, `matmul/campaign22.py`): 210 bounded
+    attacks (45 s × 6 threads each; drop-a-product over all 162 schemes +
+    10 % plain), best floor 1/729, 0 solutions.**  The near-miss shell is
+    **broad, not concentrated**: floor ≤2 reached 32× across ~30 distinct
+    (scheme, drop) combos spanning every family (floor 1 hit 9× across 8
+    schemes; laderman twice, drops 18/19); nfix barely matters (mean
+    floors 4.9–6.0 for 250–320; plain 7.1).  Reading: the r=22 polytope
+    has a dense violation-1 shell reachable from any wounded 23-scheme —
+    consistent with either SAT-needle or min-violation-1 UNSAT; the floor
+    pinning at exactly 1 across 9 independent diverse hits leans
+    UNSAT-ish, but 210×45 s is tiny compute vs HKS's 35 CPU-years — no
+    conclusion.  Wave-2 design (not yet run): save floor-≤2 assignments
+    (`anf --emit-best`), then a **finisher** per near-miss — identify the
+    violated equation, exhaustive 1/2/3-flip repairs over its 69 vars,
+    closure contradiction counts — which either finds a solution or
+    characterizes the obstruction (which equations pin, local rigidity).
 - **R3c — connection-method path-space SLS. ○ built, measured, NEGATIVE
   (2026-07-03).** `matmul/pathsls.py`: a correct path-space local search
   on the ANF matrix — state = per-equation scenario (ON-monomial set,

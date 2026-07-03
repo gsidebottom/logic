@@ -229,8 +229,33 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   **Gate (≤ minutes/new-scheme on M4 Pro): met — 3 s/scheme.**
   Stretch (beyond yalsat on challenge 1): **met — 7/10** (600 s retry on
   the last three queued).
-- **R3 — connection-method path-space SLS** (the research question). Local
-  search over per-equation satisfaction scenarios on the NNF matrix
+- **R3a — de-Groote equivalence + novelty audit. ● landed (2026-07-02).**
+  `matmul/equiv.py`.  Key derivation: in the **(α, β, γᵀ)** representation
+  our convention equals HKS's, the group acts as the clean cyclic sandwich
+  (PAQ⁻¹, QBR⁻¹, RC̃P⁻¹), and every summand-match constraint is **linear**
+  in the 27 unknown bits of (P,Q,R) — so exact equivalence = rank-triple-
+  pruned backtracking + incremental GF(2) RREF + nullspace enumeration +
+  invertibility + full multiset check.  Invariant fingerprint (multiset of
+  sorted summand rank-triples + pair-sum rank-triples) prunes first.
+  Self-test: 12 random group elements preserve the Brent equations and are
+  found equivalent-with-witness; laderman vs smirnov inequivalent.  Two
+  Python-int gotchas fixed en route (interned-small-int `is` in rank;
+  bit-order in inverse).
+  - **Audit (2.6 s total): 162 schemes (138 found + 24 seeds) → 152
+    fingerprints → 153 exact classes.  The 138 walk finds = 129 distinct
+    de-Groote classes, NONE equivalent to any seed.**  One fingerprint
+    collision was exactly-separated (walk-00134 vs db-i106… — invariants
+    equal, schemes inequivalent), vindicating the exact stage.
+  - Scope: seeds sample 20/302 of their rank-pattern dirs → "new to the
+    literature" unproven; next lever = decode their dir-name rank-pattern
+    convention and compare our finds' patterns against all 302 (pattern
+    absent ⇒ certified new without fetching).
+- **R3b — r=22 probes** (challenge 4 infra): `matmul/drop22.py`
+  (drop-a-product repair seeds) + plain r=22 attacks with closure.  First
+  bounded probes running.  Expected negative (open problem); the walk +
+  closure machinery at r=22 is the campaign vehicle.
+- **R3c — connection-method path-space SLS** (the research question).
+  Local search over per-equation satisfaction scenarios on the NNF matrix
   (connections = shared-var conflicts), vs assignment-space SLS at equal
   budget. Honest gate: any slice where it wins; a clean negative is
   publishable insight too.

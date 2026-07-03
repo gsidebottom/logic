@@ -36,6 +36,14 @@ def main():
     ap.add_argument("--secs", type=float, default=45.0)
     ap.add_argument("--plain-frac", type=float, default=0.1)
     ap.add_argument("--plain-secs", type=float, default=120.0)
+    ap.add_argument("--pair-frac", type=float, default=0.0,
+                    help="fraction of attacks = random r=22 type-3 pairing "
+                    "(method 1 at r=22: 5 pairs + 17 singles)")
+    ap.add_argument("--pair-secs", type=float, default=120.0)
+    ap.add_argument("--multi-only", action="store_true",
+                    help="only drop products covering >=2 type-3 terms "
+                    "(single-cover drops are structurally pinned at "
+                    "floor 1 — see finisher, doc/matmul_plan.md)")
     ap.add_argument("--nfix", default="250,280,300,320")
     ap.add_argument("--outdir", default="found22")
     ap.add_argument("--anf", default="../target/release/anf")
@@ -51,15 +59,32 @@ def main():
             done.add(",".join(line.split(",")[:4]))
     log = open(log_path, "a", buffering=1)
 
+    def multi_cover_products(bits):
+        """products covering >=2 type-3 terms (drop targets that force
+        genuine restructuring)."""
+        na = 23 * 9
+        out = []
+        for m in range(23):
+            n3 = sum(1 for a in range(3) for b in range(3) for d in range(3)
+                     if bits[m * 9 + a * 3 + b]
+                     and bits[na + m * 9 + b * 3 + d]
+                     and bits[2 * na + m * 9 + a * 3 + d])
+            if n3 >= 2:
+                out.append(m)
+        return out
+
     schemes = sorted(glob.glob("seeds/*.bits") + glob.glob("found/*.bits"))
     pool = []
     for p in schemes:
         s = open(p).read().split()[-1].strip()
         bits = [int(c) for c in s]
         if verify_bits(bits, 3, 3, 3, 23) == 0:
-            pool.append((os.path.basename(p)[:-5], bits))
+            mc = multi_cover_products(bits)
+            pool.append((os.path.basename(p)[:-5], bits, mc))
     nfixes = [int(x) for x in args.nfix.split(",")]
-    print(f"campaign22: {len(pool)} verified 23-schemes, "
+    print(f"campaign22: {len(pool)} verified 23-schemes "
+          f"(multi-cover drop targets/scheme: "
+          f"{sum(len(mc) for _, _, mc in pool) / len(pool):.1f} avg), "
           f"{len(done)} attacks already logged, "
           f"{args.hours}h x {args.threads} threads", flush=True)
 
@@ -70,14 +95,23 @@ def main():
     nsol = 0
     while time.time() - t0 < args.hours * 3600:
         n += 1
-        plain = rng.random() < args.plain_frac
-        if plain:
+        roll = rng.random()
+        if roll < args.pair_frac:
+            name, m, nfix = "PAIR22", -2, 0
+            secs = args.pair_secs
+            cmd = [args.anf, "3", "3", "3", "22", "--pair"]
+        elif roll < args.pair_frac + args.plain_frac:
             name, m, nfix = "PLAIN", -1, 0
             secs = args.plain_secs
             cmd = [args.anf, "3", "3", "3", "22"]
         else:
-            name, bits = pool[rng.randrange(len(pool))]
-            m = rng.randrange(23)
+            name, bits, mc = pool[rng.randrange(len(pool))]
+            if args.multi_only:
+                if not mc:
+                    continue
+                m = mc[rng.randrange(len(mc))]
+            else:
+                m = rng.randrange(23)
             nfix = nfixes[rng.randrange(len(nfixes))]
             secs = args.secs
             key = f"{name},{m},{nfix},{n}"

@@ -250,11 +250,16 @@ matters.
 
 Files: mod-2 bit-vectors `matmul/found/walk-*.bits` (the 53 names are
 the `NEW` rows of `matmul/novelty_verdicts.csv`); signed integer forms
-`matmul/lifted/walk-*.txt`. Support = number of nonzero coefficients
-(HKS's found schemes: ~160–300, mode ≈225; ours sit at 147–163,
-i.e. at the sparse end). Rank-type multiset = per-summand sorted
-(rank α, rank β, rank γ) with multiplicities — the invariant that
-separates 51 of the 53 from the whole DB at the coarsest level.
+`matmul/lifted/walk-*.txt`. Support = number of nonzero coefficients;
+for a 3×3×23 scheme the naive addition count is exactly support − 55.
+Ours: support 149–164 (median 154) = **94–109 naive additions**; for
+reference Laderman = 153/98, Smirnov = 139/84, DB minimum = 139
+(support percentiles of the full DB: p1 = 146, median = 159 — our
+sparsest sits at the 3rd percentile; 22 of the 53 need fewer naive
+additions than Laderman, none beats the DB's sparsest). Rank-type
+multiset = per-summand sorted (rank α, rank β, rank γ) with
+multiplicities — the invariant that separates 51 of the 53 from the
+whole DB at the coarsest level.
 
 Example (walk-00029, lifted; full file in `matmul/lifted/`):
 

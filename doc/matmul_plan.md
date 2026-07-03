@@ -127,21 +127,71 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
     controls how far from a known scheme search can travel.  (Caveat: our
     Tseitin CNF is ~25 % bigger than HKS's pooled encoding; that doesn't
     explain 4+ orders.)
-  - **Scheme diversity works**: at fix=250, completions with Hamming
-    distance 6/6/18 from Laderman (all VERIFIED, all support 153 —
-    plausibly de-Groote images; equivalence classification is R2+).
+  - **Scheme "diversity" was product-reordering**: fix=250 completions at
+    Hamming 6/6/18 from Laderman are all VERIFIED but collapse to **1
+    distinct scheme after summand sorting** (`matmul/canon.py`) — i.e.
+    Laderman with permuted product slots.  Laderman's isolation holds
+    exactly as HKS found ("Laderman 0 new"); genuinely-new schemes need
+    richer seeds (Smirnov/Oh from the Linz DB: 561/94-scheme
+    neighborhoods) or method-1 cores — R2.
   - Policy probes at the fix=200 wall: probSAT (cb 2.5) best=11, walksat
     noise 0.35 → 7, 0.1/luby-2¹⁶ → 8 vs default 0.2 → 5 — the wall is a
-    difficulty transition, not a tuning artifact.  Two near-misses at
-    best=1–2 say **restart-from-best + perturbation** (yalsat-style cached
-    assignment) is the next cheap win.
+    difficulty transition, not a tuning artifact.  (Restart-from-best
+    perturbation added — `--pert`, default 0.06 — no breakthrough at
+    fix=200 either.)
+  - **The pairing regime is a different policy point — probSAT + density
+    0.1 is the unlock.** Control experiment: Laderman's own type-3 core
+    (93 frozen bits, profile 4-4-4-4, extendable by construction —
+    `matmul/inst/core-laderman.freeze`).  Default WalkSAT/0.25 floors at
+    best **193** (worse than unconstrained from-scratch!); density 0.15 →
+    69; **probSAT cb 2.5–3.5 at density 0.10 → SOLVED in 3–4 ms** (5.5–8.6
+    k flips).  Density ≈ the free-support of completions ((153−93)/528 ≈
+    0.11), and probSAT's break-only dynamics fit the frozen-ON landscape —
+    consistent with yalsat (probSAT-family) being HKS's winner.  Frozen
+    handling itself verified by a consistency ladder (all-621-fixed solves
+    at init; 400/250-fixed + core solve in 85/1.7 k flips).
+  - **Regime → config duality**: close-repair (seeded ≥250 fixed) wants
+    WalkSAT/0.25 (fix=250: 60 ms vs probSAT's 14.5 s); pairing/from-scratch
+    wants probSAT/0.10 (random pairing: best 10 vs WalkSAT's 65).  Random
+    pairings mostly don't extend (paper-consistent); official challenge-1
+    cores imported (`matmul/import_core.py`, γ-transpose validated).
+  - **Official challenge-1 result (2026-07-02): 5/10 cores SOLVED — equal
+    to yalsat's published record — at ≤120 s × 10 threads each** (probSAT
+    cb 2.5, density 0.10, seed 3):
+    | core | native | yalsat here (300 s cap, 1 seed) |
+    |---|---|---|
+    | 2-2-2-2-A | **0.069 s** ✓ | TIMEOUT |
+    | 4-4-4-4-1 (Laderman-core) | **0.019 s** ✓ | 0.62 s |
+    | 2-2-2-3-4 | **11.0 s** ✓ | — |
+    | 2-2-2-4-B | **30.5 s** ✓ | — |
+    | 2-2-2-2-D | **24.5 s** ✓ | — |
+    | 2-2-2-2-{3,B,C}, M, 2-2-2-4-A | best 2/2/1/4/6 of 729 | M: TIMEOUT |
+    All 5 solutions VERIFIED against our Brent system; the A solution
+    additionally **kissat-confirmed against their exact CNF**
+    (`matmul/check_their_cnf.py` plants our 621 bits as units → s
+    SATISFIABLE).  All misses are near-misses (1–6 unsat) — final-mile
+    candidates for R2 (Gauss closure, longer budgets); note HKS pose these
+    as SAT instances but which 5 are yalsat-solvable is instance-specific,
+    and near-miss ≠ guaranteed-SAT.  Aggregate throughput peaked at
+    **10.1 M flips/s** (10 threads) — the ≥10⁷ gate met in aggregate, open
+    single-core.
+  - **Same-machine yalsat baseline complete** (single-seed, default
+    config, 300 s cap): fix300 ×3 + fix250 ×3 + plain + chal1-A + chal1-M
+    → all TIMEOUT; chal1-4-4-4-4-1 → SAT 0.62 s.  Honest caveats: 1 seed,
+    1 core, no tuning; the paper itself reports 5/10 in "a few minutes",
+    so treat per-instance timeouts as "slower here", not "cannot".
 - **R2 — structure moves.** Native pairing generation (method-1 cores),
   streamliners as constraints/initializers, seeded neighborhood mode, and
   the **tri-linear Gauss closure move** (fix two tensors, exact-solve the
   third via GF(2) elimination; also usable as "repair γ exactly, walk on
-  α,β"). **Gate: from-scratch new-scheme pipeline at ≤ minutes/scheme on
-  M4 Pro (paper: CPU-hours), schemes verifier-confirmed and
-  distinct-after-summand-sort.** Stretch: challenge 1 (pairing, *no*
+  α,β"). Design note (2026-07-02): with (α,β) fixed the γ-system
+  **decomposes into 9 independent 81×23 GF(2) systems** (equations
+  partition by γ's (p,q) index; likewise per (a,b) for α, (c,d) for β) —
+  each a few-µs bitset elimination, so closure is affordable every few
+  hundred flips; when inconsistent, the count of `0=1` rows is the
+  closure objective. **Gate: from-scratch new-scheme pipeline at ≤
+  minutes/scheme on M4 Pro (paper: CPU-hours), schemes verifier-confirmed
+  and distinct-after-summand-sort.** Stretch: challenge 1 (pairing, *no*
   streamliners) beyond yalsat's 5/10.
 - **R3 — connection-method path-space SLS** (the research question). Local
   search over per-equation satisfaction scenarios on the NNF matrix

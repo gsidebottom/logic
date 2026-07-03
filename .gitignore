@@ -28,3 +28,4 @@ neural/data/synth_cnf/
 matmul/challenges/
 matmul/inst/
 matmul/yalsat-bin
+matmul/dbcache/

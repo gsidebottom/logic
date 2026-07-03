@@ -266,9 +266,23 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
     patterns are de-Groote invariants).  Residual assumptions: the
     dir-name legend fit (20-sample-consistent) and index completeness
     (302 = their stated count).
-  - Remaining for full certainty on the other 133: per-dir exact checks
-    against the ~17k DB schemes (crawl + `equivalent()`; the fingerprint
-    prunes most).
+  - **Full-DB crawl SETTLED it (2026-07-03, agent; ~25 min):** the 133
+    undecided finds needed 132/302 dirs; the site's single `schemes.tgz`
+    (43 MB, all **17,376** .tab files) was used instead of ~12 k requests,
+    validated byte-for-byte against a live-fetched probe.  **0/17,376
+    parse failures** (C-transpose conversion, every file
+    `verify_bits==0`); **13/13 seed-anchor controls** recovered
+    byte-identically from their predicted dirs; the 5 certified-new
+    controls got 0 candidate dirs, as predicted.  Verdicts
+    (`matmul/novelty_verdicts.csv`): **85 finds EQUIVALENT to DB schemes**
+    (77 distinct; witnesses returned) — expected, the walk was DB-seeded —
+    and **53 finds NEW vs the entire database**.  **Hardened
+    unconditionally**: all 17,376 DB schemes fingerprinted; the 53 NEW
+    finds (×6 S₃ variants) have **zero fingerprint matches anywhere** —
+    the verdict no longer depends on the dir-name legend at all.  The 53
+    are pairwise inequivalent (53 distinct classes) and inequivalent to
+    the 4 classics (earlier seed audit) ⇒ **53 new 23-multiplication
+    mod-2 schemes vs everything published**, from one 6-minute walk.
 - **R3b — r=22 probes** (challenge 4 infra): `matmul/drop22.py`
   (drop-a-product repair seeds) + plain r=22 attacks with closure.  First
   bounded probes running.  Expected negative (open problem); the walk +

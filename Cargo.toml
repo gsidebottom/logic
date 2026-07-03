@@ -24,6 +24,10 @@ required-features = ["gnn"]
 name = "gmi_mcgs"
 path = "src/bin/gmi_mcgs.rs"
 
+[[bin]]
+name = "anf"
+path = "src/bin/anf.rs"
+
 [features]
 # `evolve_guard` — runtime enforcement of the eff-layer ordering
 # contracts (sum_visit_order is a permutation; prod_visit_order keeps

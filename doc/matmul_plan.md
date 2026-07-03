@@ -105,15 +105,36 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
 
 ## 3. Plan — rungs with gates
 
-- **R1 — Rust native-ANF SLS engine.** New `src/anf.rs` + bin: Brent
-  generator embedded, probSAT-style scoring (cached break counts, adaptive
-  noise, restarts), bitset partner tests. Baseline interop: read/write their
-  DIMACS + decode their base-var convention (summand-major 27-blocks).
-  **Gate: ≥10⁷ flips/s single-core; solve seeded (414-fix) instances ≪1 s;
-  solve some pairing+streamliner instances (paper: seconds-minutes for
-  yalsat).** Equal-wall-clock A/B vs yalsat on their instances
-  ([[compare-search-methods-at-equal-budget]]; yalsat build needs user OK —
-  first attempt was permission-blocked).
+- **R1 — Rust native-ANF SLS engine. ● BUILT + thesis validated
+  (2026-07-02).** `src/anf.rs` + `src/bin/anf.rs`: CSR cubic-ANF system,
+  WalkSAT/SKC + probSAT policies, Luby restarts, frozen-var seeding/pairing
+  modes, rayon portfolio, independent from-scratch verifier gating every
+  claimed solution; Laderman/Strassen embedded as verified bit-strings
+  (transcription-proof, guarded by tests). 5/5 tests green.
+  - **Throughput**: 0.4–3.6 M flips/s single-core by regime (below the 10⁷
+    aspiration — candidate break-scans dominate; caching is a known v2
+    lever) — but wall-clock already wins big (below), because one native
+    flip ≈ many CNF flips of work.
+  - **Seeded-repair curve (single core)**: fix=414 → **284 flips, <1 ms**;
+    fix=300 → 5 ms; fix=250 → 60 ms–1.5 s (8/10 seeds ≤1.5 s, two stuck at
+    best=1–2); **wall now at fix≈200** (best 5/729 after 207 M flips/120 s).
+    Python prototype's wall was fix≈250; Rust moved it ~50 bits deeper.
+  - **yalsat A/B on identical semantics (our CNF + unit-fixed seeds), same
+    machine**: fix=414 → 0.04–0.18 s (paper-consistent ~1 s regime); but
+    **fix=300 and fix=250 → TIMEOUT at 300 s** — instances the native
+    engine solves in **5 ms / 60 ms**: a ≥5,000× wall-clock gap.  The
+    native representation extends the *repair horizon* — the quantity that
+    controls how far from a known scheme search can travel.  (Caveat: our
+    Tseitin CNF is ~25 % bigger than HKS's pooled encoding; that doesn't
+    explain 4+ orders.)
+  - **Scheme diversity works**: at fix=250, completions with Hamming
+    distance 6/6/18 from Laderman (all VERIFIED, all support 153 —
+    plausibly de-Groote images; equivalence classification is R2+).
+  - Policy probes at the fix=200 wall: probSAT (cb 2.5) best=11, walksat
+    noise 0.35 → 7, 0.1/luby-2¹⁶ → 8 vs default 0.2 → 5 — the wall is a
+    difficulty transition, not a tuning artifact.  Two near-misses at
+    best=1–2 say **restart-from-best + perturbation** (yalsat-style cached
+    assignment) is the next cheap win.
 - **R2 — structure moves.** Native pairing generation (method-1 cores),
   streamliners as constraints/initializers, seeded neighborhood mode, and
   the **tri-linear Gauss closure move** (fix two tensors, exact-solve the

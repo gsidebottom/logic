@@ -312,6 +312,18 @@ if __name__ == "__main__":
     elif cmd == "cnf":
         n1, n2, n3, r = map(int, sys.argv[2:6])
         nv, cls = to_cnf(n1, n2, n3, r)
+        rest = sys.argv[7:]
+        if "--fix-scheme" in rest:
+            name = rest[rest.index("--fix-scheme") + 1]
+            nfix = int(rest[rest.index("--nfix") + 1])
+            seed = int(rest[rest.index("--seed") + 1]) if "--seed" in rest \
+                else 1
+            sch = {"laderman": laderman, "strassen": strassen}[name]()
+            bits = scheme_to_bits(*sch, n1, n2, n3, r)
+            rng = random.Random(seed)
+            for v in rng.sample(range(len(bits)), nfix):
+                cls.append([v + 1 if bits[v] else -(v + 1)])
+            print(f"fixed {nfix} base vars from {name} (seed {seed})")
         write_dimacs(sys.argv[6], nv, cls)
         print(f"wrote {sys.argv[6]}: {nv} vars, {len(cls)} clauses")
     elif cmd == "decode":

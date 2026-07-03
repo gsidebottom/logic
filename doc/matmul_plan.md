@@ -246,10 +246,29 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
     de-Groote classes, NONE equivalent to any seed.**  One fingerprint
     collision was exactly-separated (walk-00134 vs db-i106… — invariants
     equal, schemes inequivalent), vindicating the exact stage.
-  - Scope: seeds sample 20/302 of their rank-pattern dirs → "new to the
-    literature" unproven; next lever = decode their dir-name rank-pattern
-    convention and compare our finds' patterns against all 302 (pattern
-    absent ⇒ certified new without fetching).
+  - **Novelty CERTIFIED at the database level (2026-07-02,
+    `matmul/novelty.py` + `db_rank_patterns.txt`).** Decoded the DB's
+    dir-name legend by constraint-solving over our 20 dir↔scheme pairs:
+    dirs are letter-coded multisets of per-summand rank types — letters
+    refine sorted rank triples by slot (a=(1,1,1); b/d/j=(1,1,2);
+    c/g/s=(1,1,3); e/k/m=(1,2,2); f=(1,2,3); n=(2,2,2); w=(2,2,3));
+    coarse level suffices for an absence test.  Extracted all **302**
+    patterns from the DB index (count matches the site).  Unknown letters
+    (h/l/p, 8 patterns) treated as wildcards — conservative, never
+    falsely certifies.  Control: Laderman's pattern {13×(1,1,1),
+    6×(1,1,3), 4×(2,2,2)} is absent from all 302 — correct, the classics
+    live outside the found-dirs and HKS note their finds never reached
+    Laderman's type.  **Result: 5 of the 138 walk finds
+    (walk-00029/00091/00106/00108/00122) have rank patterns matching NONE
+    of the 302 dirs and NONE of the 4 classics, and are pairwise
+    inequivalent (10/10 exact checks) → five schemes provably
+    inequivalent to every scheme in the published HKS database** (rank
+    patterns are de-Groote invariants).  Residual assumptions: the
+    dir-name legend fit (20-sample-consistent) and index completeness
+    (302 = their stated count).
+  - Remaining for full certainty on the other 133: per-dir exact checks
+    against the ~17k DB schemes (crawl + `equivalent()`; the fingerprint
+    prunes most).
 - **R3b — r=22 probes** (challenge 4 infra): `matmul/drop22.py`
   (drop-a-product repair seeds) + plain r=22 attacks with closure.  First
   bounded probes running.  Expected negative (open problem); the walk +

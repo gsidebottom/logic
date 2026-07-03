@@ -32,6 +32,13 @@ EQS = brent_equations(N, N, N, R)
 
 def lift(bits):
     """returns (signed_entries dict var->+-1, stats) or None if UNSAT."""
+    models = lift_models(bits, 1)
+    return models[0] if models else None
+
+
+def lift_models(bits, nmodels):
+    """up to `nmodels` distinct sign models, each (signs dict, stats).
+    Distinct models are enforced by blocking clauses over the sign vars."""
     support = [v for v in range(NV) if bits[v]]
     svar = {v: i + 1 for i, v in enumerate(support)}  # DIMACS sign vars
     nxt = len(support) + 1
@@ -75,29 +82,36 @@ def lift(bits):
         for sub in itertools.combinations(tvars, k - n1 + 1):
             clauses.append(list(sub))
 
-    with tempfile.NamedTemporaryFile(
-            "w", suffix=".cnf", delete=False) as f:
-        f.write(f"p cnf {nxt - 1} {len(clauses)}\n")
-        for c in clauses:
-            f.write(" ".join(map(str, c)) + " 0\n")
-        path = f.name
-    r = subprocess.run(["kissat", "-q", path], capture_output=True,
-                       text=True)
-    os.unlink(path)
-    if "s UNSATISFIABLE" in r.stdout:
-        return None
-    assert "s SATISFIABLE" in r.stdout, r.stdout[-500:]
-    model = set()
-    for line in r.stdout.splitlines():
-        if line.startswith("v"):
-            for tok in line.split()[1:]:
-                x = int(tok)
-                if x > 0:
-                    model.add(x)
-    signs = {}
-    for v in support:
-        signs[v] = -1 if svar[v] in model else 1
-    return signs, (len(support), nterms, len(clauses))
+    out = []
+    blocking: list = []
+    for _ in range(nmodels):
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".cnf", delete=False) as f:
+            f.write(f"p cnf {nxt - 1} {len(clauses) + len(blocking)}\n")
+            for c in clauses + blocking:
+                f.write(" ".join(map(str, c)) + " 0\n")
+            path = f.name
+        r = subprocess.run(["kissat", "-q", path], capture_output=True,
+                           text=True)
+        os.unlink(path)
+        if "s UNSATISFIABLE" in r.stdout:
+            break
+        assert "s SATISFIABLE" in r.stdout, r.stdout[-500:]
+        model = set()
+        for line in r.stdout.splitlines():
+            if line.startswith("v"):
+                for tok in line.split()[1:]:
+                    x = int(tok)
+                    if x > 0:
+                        model.add(x)
+        signs = {}
+        for v in support:
+            signs[v] = -1 if svar[v] in model else 1
+        out.append((signs, (len(support), nterms, len(clauses))))
+        # block this sign assignment (over sign vars only)
+        blocking.append([-s if s in model else s
+                         for s in (svar[v] for v in support)])
+    return out
 
 
 def z_verify(bits, signs):

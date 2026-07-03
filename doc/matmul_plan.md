@@ -313,6 +313,16 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
     violated equation, exhaustive 1/2/3-flip repairs over its 69 vars,
     closure contradiction counts — which either finds a solution or
     characterizes the obstruction (which equations pin, local rigidity).
+  - **Wave 2 done (2026-07-03): 146 honest attacks, best floor 2, no
+    solution.** By mode: PAIR22 (r=22 pairing, n=63) min 9 / median 13 —
+    pairing-from-scratch is far from the boundary at these budgets;
+    PLAIN (n=31) min 6 / median 7; **drop-multi (n=52) min 2 / median
+    13** — multi-cover drops do reach deep (six attacks ≤5) but the
+    floors are genuine (post-finisher design), not artifacts.  Combined
+    wave-1+2 verdict: r=22 remains open; the honest boundary sits at
+    2–6 violated equations across attack families; further waves need
+    either much larger budgets or a qualitatively new idea (e.g.
+    restructuring moves that re-cover multiple type-3 terms at once).
   - **● Finisher ran (2026-07-03) — obstruction identified, UNSAT-lean
     RETRACTED.** `anf --emit-best` added (chain-best assignment surfaced
     through the portfolio); floor-1 states collected

@@ -25,3 +25,6 @@ evo/results/
 # Phase-1 harvested phase dataset (derived; rebuild via neural/build_dataset.py)
 neural/data/phase_ds*/
 neural/data/synth_cnf/
+matmul/challenges/
+matmul/inst/
+matmul/yalsat-bin

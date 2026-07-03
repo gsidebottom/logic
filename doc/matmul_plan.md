@@ -385,6 +385,30 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   repair probes. Bounded, checkpointed background runs
   ([[bound-and-watch-background-compute]]). Also viable: challenge 3
   (no-type-3 product) as a nearer novel target.
+- **R5 — the 4×4 campaign (2026-07-03, running).** Records: 47 mod 2
+  (AlphaTensor 2022 = KM flip graphs), **48 over ℤ** (AlphaEvolve
+  May 2025, de-complexified by Dumas–Pernet–Sedoglavic
+  arXiv:2506.13242), lower bounds mid-30s.  **Tier 2 (the record shot):
+  generate new 47-classes mod 2 by seeded walks, sign-SAT lift-test
+  every one; a liftable 47 beats 48 over ℤ.**  Tier 1: 4×4 additive
+  complexity via the CSE pipeline.
+  - Infra: lift/slp/walk generalized to dims (`--dims`), 3×3 regression
+    clean; the anf engine needed nothing (dims-parametric since R1).
+  - Seeds (agent, verified): `seeds4/alphatensor47.bits` (support 450)
+    + `seeds4/km47-0.bits` (support 677; the only machine-readable KM
+    4×4×4-47) — canon-distinct; `seeds4/alphaevolve48.json` (exact
+    dyadic rationals, denominators to 1/8 ⇒ mod-2 undefined; Tier-1
+    seed only, needs coefficient-aware CSE).
+  - **Baseline: both known 47s are NOT ±1-liftable (sign-SAT UNSAT)** —
+    the reason 48 is the ℤ record, and the campaign premise: every NEW
+    47-class is a fresh liftability ticket.
+  - Calibration: 4×4 seeded repair fast to ≥nfix 1350/2256 (13 ms);
+    first walk launched at nfix 1150 (≈ 3×3's sweet-spot fraction).
+  - Missing before 4×4 *novelty* claims: GL(4,2) port of equiv.py (same
+    cyclic-sandwich linearization, 48-bit unknowns); canon-level
+    distinctness gates the lift loop meanwhile.  Strassen² CSE baseline
+    208 greedy vs 198/165 structured (structure-aware CSE = upgrade
+    lever).
 - **Later options**: MCGS/learned policy over restart seeds / move classes
   (ties back to the neural track); UNSAT side (challenge 2) via our proof
   machinery — a *different* project (algebraic/symmetry lower-bound

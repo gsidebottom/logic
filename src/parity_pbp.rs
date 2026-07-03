@@ -58,10 +58,6 @@ impl Bits {
         Some((self.0.len() - 1) * 64 + (63 - last.leading_zeros() as usize))
     }
 
-    fn is_zero(&self) -> bool {
-        self.0.is_empty()
-    }
-
     fn ones(&self) -> Vec<usize> {
         let mut out = Vec::new();
         for (wi, &w) in self.0.iter().enumerate() {

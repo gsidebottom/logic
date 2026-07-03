@@ -24,23 +24,26 @@ import time
 from brent import verify_bits
 from canon import canon_key
 
-DIMS = (3, 3, 3, 23)
+DIMS = (3, 3, 3, 23)  # default; override with --dims
 
 
-def load_pool(paths):
+def load_pool(paths, dims):
     pool = {}
     for p in paths:
         s = open(p).read().split()[-1].strip()
         bits = [int(c) for c in s]
-        assert verify_bits(bits, *DIMS) == 0, f"{p} does not verify"
-        pool[canon_key(bits, *DIMS)] = s
+        assert verify_bits(bits, *dims) == 0, f"{p} does not verify"
+        pool[canon_key(bits, *dims)] = s
     return pool
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--minutes", type=float, default=5.0)
-    ap.add_argument("--nfix", type=int, default=300)
+    ap.add_argument("--dims", default="3,3,3,23",
+                    help="n1,n2,n3,r (e.g. 4,4,4,47)")
+    ap.add_argument("--nfix", type=int, default=0,
+                    help="bits frozen per hop (0 = 48%% of nvars)")
     ap.add_argument("--runs", type=int, default=8, help="completions per hop")
     ap.add_argument("--secs", type=float, default=15.0, help="budget per run")
     ap.add_argument("--threads", type=int, default=1)
@@ -50,13 +53,19 @@ def main():
     ap.add_argument("--rng", type=int, default=0)
     args = ap.parse_args()
 
+    dims = tuple(int(x) for x in args.dims.split(","))
+    from brent import var_counts
+    nvars = sum(var_counts(*dims))
+    if args.nfix == 0:
+        args.nfix = int(nvars * 0.48)
     os.makedirs(args.archive, exist_ok=True)
     seed_files = sorted(glob.glob(f"{args.seeds}/*.bits"))
     arch_files = sorted(glob.glob(f"{args.archive}/*.bits"))
-    pool = load_pool(seed_files)
+    pool = load_pool(seed_files, dims)
     nseeds = len(pool)
-    pool.update(load_pool(arch_files))
-    print(f"pool: {nseeds} seeds + {len(pool) - nseeds} archived")
+    pool.update(load_pool(arch_files, dims))
+    print(f"pool: {nseeds} seeds + {len(pool) - nseeds} archived "
+          f"(dims {dims}, nvars {nvars}, nfix {args.nfix})")
 
     rng = random.Random(args.rng)
     t0 = time.time()
@@ -72,7 +81,7 @@ def main():
                 break
             runs += 1
             r = subprocess.run(
-                [args.anf, "3", "3", "3", "23", "--fix-file", tmp,
+                [args.anf, *[str(x) for x in dims], "--fix-file", tmp,
                  "--nfix", str(args.nfix), "--seconds", str(args.secs),
                  "--threads", str(args.threads),
                  "--seed", str(rng.randrange(1 << 30)), "--quiet"],
@@ -82,10 +91,10 @@ def main():
                     continue
                 s = line[2:].strip()
                 bits = [int(c) for c in s]
-                if verify_bits(bits, *DIMS) != 0:
+                if verify_bits(bits, *dims) != 0:
                     print("SOLVER BUG: unverified scheme dropped")
                     continue
-                k = canon_key(bits, *DIMS)
+                k = canon_key(bits, *dims)
                 if k in pool:
                     continue
                 pool[k] = s

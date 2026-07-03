@@ -23,23 +23,25 @@ import sys
 from itertools import combinations
 
 from brent import var_counts, verify_bits
-from lift import lift_models
-
-NA, NB, NG = var_counts(3, 3, 3, 23)
+from lift import DIMS3, lift_models
 
 
-def scheme_forms(bits, signs):
-    """three lists of signed forms: A-forms/B-forms (over 9 vars),
-    C-forms (over 23 product vars)."""
-    coef = [signs.get(v, 0) if bits[v] else 0 for v in range(621)]
-    aforms = [{k: coef[m * 9 + k] for k in range(9) if coef[m * 9 + k]}
-              for m in range(23)]
-    bforms = [{k: coef[NA + m * 9 + k] for k in range(9)
-               if coef[NA + m * 9 + k]} for m in range(23)]
+def scheme_forms(bits, signs, dims=DIMS3):
+    """three lists of signed forms: A-forms/B-forms (over the input
+    cells), C-forms (over the r product vars)."""
+    n1, n2, n3, r = dims
+    na, nb, ng = var_counts(*dims)
+    sa, sb, sg = n1 * n2, n2 * n3, n1 * n3
+    nv = na + nb + ng
+    coef = [signs.get(v, 0) if bits[v] else 0 for v in range(nv)]
+    aforms = [{k: coef[m * sa + k] for k in range(sa) if coef[m * sa + k]}
+              for m in range(r)]
+    bforms = [{k: coef[na + m * sb + k] for k in range(sb)
+               if coef[na + m * sb + k]} for m in range(r)]
     cforms = []
-    for pq in range(9):
-        f = {m: coef[NA + NB + m * 9 + pq] for m in range(23)
-             if coef[NA + NB + m * 9 + pq]}
+    for pq in range(sg):
+        f = {m: coef[na + nb + m * sg + pq] for m in range(r)
+             if coef[na + nb + m * sg + pq]}
         cforms.append(f)
     return aforms, bforms, cforms
 
@@ -128,16 +130,16 @@ def verify_slp(orig_forms, trace):
     return True
 
 
-def best_cse(bits, nmodels=1, restarts=1, seed=0):
+def best_cse(bits, nmodels=1, restarts=1, seed=0, dims=DIMS3):
     """min verified CSE adds over `nmodels` sign models x `restarts`
     randomized greedy runs (restart 0 deterministic).
     Returns (best_total, parts, model_idx) or None if unliftable."""
-    models = lift_models(bits, nmodels)
+    models = lift_models(bits, nmodels, dims)
     if not models:
         return None
     best = None
     for mi, (signs, _) in enumerate(models):
-        fa, fb, fc = scheme_forms(bits, signs)
+        fa, fb, fc = scheme_forms(bits, signs, dims)
         for r in range(restarts):
             rng = random.Random(seed * 1000003 + mi * 997 + r) if r else None
             parts = []
@@ -164,21 +166,30 @@ def main():
 
     nmodels = opt("--models", 1)
     restarts = opt("--restarts", 1)
+    dims = DIMS3
+    if "--dims" in argv:
+        i = argv.index("--dims")
+        dims = tuple(int(x) for x in argv[i + 1].split(","))
+        del argv[i:i + 2]
+    n1, n2, n3, r = dims
+    # naive adds = support - (2r + n1*n3): r products x (|a|-1)+(|b|-1),
+    # n1*n3 outputs x (contributing-1)
+    naive_off = 2 * r + n1 * n3
     print(f"{'scheme':26s} {'support':>7s} {'naive':>5s} "
           f"{'best-CSE':>8s}  (A+B+C, model#)   "
-          f"[{nmodels} sign models x {restarts} restarts]")
+          f"[{nmodels} sign models x {restarts} restarts, dims {dims}]")
     for path in argv:
         s = open(path).read().split()[-1].strip()
         bits = [int(c) for c in s]
-        assert verify_bits(bits, 3, 3, 3, 23) == 0
-        res = best_cse(bits, nmodels, restarts)
+        assert verify_bits(bits, *dims) == 0
+        res = best_cse(bits, nmodels, restarts, dims=dims)
         if res is None:
             print(f"{path}: not liftable, skipped")
             continue
         tot, parts, mi = res
         sup = sum(bits)
         name = path.split("/")[-1]
-        print(f"{name:26s} {sup:7d} {sup - 55:5d} {tot:8d}  "
+        print(f"{name:26s} {sup:7d} {sup - naive_off:5d} {tot:8d}  "
               f"({parts[0]}+{parts[1]}+{parts[2]}, m{mi})", flush=True)
 
 

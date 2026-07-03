@@ -295,6 +295,197 @@ pub fn random_pairing(d: Dims, rng: &mut Rng) -> Option<Vec<(u32, u8)>> {
     Some(frozen)
 }
 
+// ---------------------------------------------------------------- closure
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Block {
+    Alpha,
+    Beta,
+    Gamma,
+}
+
+const RHS_BIT: u32 = 63;
+
+/// RREF over GF(2); rows pack coefficient bits 0..ncols and rhs at bit 63.
+/// Returns (pivot rows as (col, row), #contradiction rows). After full
+/// reduction each pivot row's remaining coefficient bits are free columns.
+fn gauss_rref(rows: &mut Vec<u64>, ncols: usize) -> (Vec<(usize, u64)>, usize) {
+    debug_assert!(ncols < RHS_BIT as usize);
+    let coeff_mask: u64 = (1u64 << ncols) - 1;
+    let mut pivots: Vec<(usize, u64)> = Vec::new();
+    for col in 0..ncols {
+        let mask = 1u64 << col;
+        if let Some(i) = rows.iter().position(|&r| r & mask != 0) {
+            let p = rows.swap_remove(i);
+            for r in rows.iter_mut() {
+                if *r & mask != 0 {
+                    *r ^= p;
+                }
+            }
+            for (_, pr) in pivots.iter_mut() {
+                if *pr & mask != 0 {
+                    *pr ^= p;
+                }
+            }
+            pivots.push((col, p));
+        }
+    }
+    let ncontra = rows
+        .iter()
+        .filter(|&&r| r & coeff_mask == 0 && r >> RHS_BIT == 1)
+        .count();
+    (pivots, ncontra)
+}
+
+/// Exact GF(2) solve of one index-group of one tensor, holding the other
+/// two tensors (and frozen bits) fixed.  The Brent equations partition so
+/// that every equation touches exactly one gamma-group (p,q) — likewise
+/// one alpha-group (a,b) and one beta-group (c,d) — so solving a group
+/// satisfies ALL of its equations, and a fully-consistent tensor closure
+/// solves the whole instance.  Free (non-pivot) vars keep their current
+/// values; on inconsistency bits are left untouched.
+/// Returns Ok(#bits changed) or Err(#contradiction rows).
+pub fn closure_group(
+    d: Dims,
+    bits: &mut [u8],
+    frozen: &[u8],
+    block: Block,
+    gi: usize,
+    gj: usize,
+) -> Result<usize, usize> {
+    let r = d.r;
+    assert!(r < RHS_BIT as usize, "r too large for u64 rows");
+    let var = |m: usize| -> usize {
+        (match block {
+            Block::Alpha => d.a_idx(m, gi, gj),
+            Block::Beta => d.b_idx(m, gi, gj),
+            Block::Gamma => d.g_idx(m, gi, gj),
+        }) as usize
+    };
+    let mut rows: Vec<u64> = Vec::with_capacity(81);
+    let mut push_row = |coeffs: &dyn Fn(usize) -> u8, rhs0: bool| {
+        let mut row: u64 = 0;
+        let mut rhs = rhs0 as u64;
+        for m in 0..r {
+            if coeffs(m) == 1 {
+                let v = var(m);
+                if frozen[v] == 1 {
+                    rhs ^= bits[v] as u64;
+                } else {
+                    row |= 1 << m;
+                }
+            }
+        }
+        rows.push(row | (rhs << RHS_BIT));
+    };
+    match block {
+        Block::Gamma => {
+            // group (p,q)=(gi,gj); equations over (a,b,c,dd)
+            for a in 0..d.n1 {
+                for b in 0..d.n2 {
+                    for c in 0..d.n2 {
+                        for dd in 0..d.n3 {
+                            push_row(
+                                &|m| {
+                                    bits[d.a_idx(m, a, b) as usize]
+                                        & bits[d.b_idx(m, c, dd) as usize]
+                                },
+                                b == c && a == gi && dd == gj,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        Block::Alpha => {
+            // group (a,b)=(gi,gj); equations over (c,dd,p,q)
+            for c in 0..d.n2 {
+                for dd in 0..d.n3 {
+                    for p in 0..d.n1 {
+                        for q in 0..d.n3 {
+                            push_row(
+                                &|m| {
+                                    bits[d.b_idx(m, c, dd) as usize]
+                                        & bits[d.g_idx(m, p, q) as usize]
+                                },
+                                gj == c && gi == p && dd == q,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        Block::Beta => {
+            // group (c,dd)=(gi,gj); equations over (a,b,p,q)
+            for a in 0..d.n1 {
+                for b in 0..d.n2 {
+                    for p in 0..d.n1 {
+                        for q in 0..d.n3 {
+                            push_row(
+                                &|m| {
+                                    bits[d.a_idx(m, a, b) as usize]
+                                        & bits[d.g_idx(m, p, q) as usize]
+                                },
+                                b == gi && a == p && gj == q,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let (pivots, ncontra) = gauss_rref(&mut rows, r);
+    if ncontra > 0 {
+        return Err(ncontra);
+    }
+    let coeff_mask: u64 = (1u64 << r) - 1;
+    let mut changed = 0;
+    for &(col, prow) in &pivots {
+        let mut val = (prow >> RHS_BIT) & 1;
+        let mut rest = prow & coeff_mask & !(1u64 << col);
+        while rest != 0 {
+            let c2 = rest.trailing_zeros() as usize;
+            rest &= rest - 1;
+            val ^= bits[var(c2)] as u64;
+        }
+        let v = var(col);
+        if bits[v] != val as u8 {
+            bits[v] = val as u8;
+            changed += 1;
+        }
+    }
+    Ok(changed)
+}
+
+/// Closure over all index-groups of one tensor.  Monotone: solved groups
+/// satisfy all their equations, untouched groups are unchanged.
+/// Returns (consistent groups, total contradiction rows, bits changed).
+pub fn closure_tensor(
+    d: Dims,
+    bits: &mut [u8],
+    frozen: &[u8],
+    block: Block,
+) -> (usize, usize, usize) {
+    let (ni, nj) = match block {
+        Block::Alpha => (d.n1, d.n2),
+        Block::Beta => (d.n2, d.n3),
+        Block::Gamma => (d.n1, d.n3),
+    };
+    let (mut ok, mut contra, mut changed) = (0, 0, 0);
+    for gi in 0..ni {
+        for gj in 0..nj {
+            match closure_group(d, bits, frozen, block, gi, gj) {
+                Ok(ch) => {
+                    ok += 1;
+                    changed += ch;
+                }
+                Err(nc) => contra += nc,
+            }
+        }
+    }
+    (ok, contra, changed)
+}
+
 // ---------------------------------------------------------------- sls
 
 #[derive(Clone, Copy)]
@@ -311,9 +502,16 @@ pub struct SlsCfg {
     /// odd restarts re-start from the chain-best assignment with each free
     /// bit flipped with this probability; 0 disables (always fresh random)
     pub pert: f64,
+    /// call the closure hook every this many flips; 0 disables
+    pub closure_every: u64,
     pub seed: u64,
     pub max_secs: f64,
 }
+
+/// Injected "big move" (e.g. Brent tensor closure): mutates bits given the
+/// frozen mask; the u64 is the invocation counter (for cycling tensors).
+/// The SLS recomputes its incremental state after each call.
+pub type Hook<'h> = &'h (dyn Fn(&mut [u8], &[u8], u64) + Sync);
 
 impl Default for SlsCfg {
     fn default() -> Self {
@@ -324,6 +522,7 @@ impl Default for SlsCfg {
             density: 0.25,
             luby_unit: 1 << 20,
             pert: 0.06,
+            closure_every: 0,
             seed: 1,
             max_secs: 10.0,
         }
@@ -560,10 +759,13 @@ impl<'a> Sls<'a> {
         t0: Instant,
         stop: &AtomicBool,
         best_seen: &mut usize,
+        hook: Option<Hook>,
     ) -> bool {
         let mut restart = 1u64;
         let mut best_bits: Vec<u8> = Vec::new();
         let mut best_n = usize::MAX;
+        let mut next_hook = cfg.closure_every;
+        let mut hook_k = 0u64;
         loop {
             if cfg.pert > 0.0 && restart % 2 == 0 && !best_bits.is_empty() {
                 self.bits.copy_from_slice(&best_bits);
@@ -588,6 +790,17 @@ impl<'a> Sls<'a> {
             loop {
                 if !self.step(cfg) {
                     return self.unsat.is_empty();
+                }
+                if let Some(h) = hook {
+                    if cfg.closure_every > 0 && self.flips >= next_hook {
+                        h(&mut self.bits, &self.frozen, hook_k);
+                        hook_k += 1;
+                        next_hook = self.flips + cfg.closure_every;
+                        self.recompute();
+                        if self.unsat.is_empty() {
+                            return true;
+                        }
+                    }
                 }
                 if self.unsat.len() < best_n {
                     best_n = self.unsat.len();
@@ -618,6 +831,7 @@ pub fn solve_portfolio(
     frozen: &[(u32, u8)],
     cfg: &SlsCfg,
     threads: usize,
+    hook: Option<Hook>,
 ) -> (Option<Vec<u8>>, u64, usize) {
     let stop = AtomicBool::new(false);
     let t0 = Instant::now();
@@ -628,7 +842,7 @@ pub fn solve_portfolio(
             c.seed = cfg.seed.wrapping_add(i as u64).wrapping_mul(0x9e37);
             let mut sls = Sls::new(anf, frozen, &c);
             let mut best = usize::MAX;
-            let ok = sls.run(&c, t0, &stop, &mut best);
+            let ok = sls.run(&c, t0, &stop, &mut best, hook);
             if ok {
                 stop.store(true, Ordering::Relaxed);
                 (Some(sls.bits.clone()), sls.flips, 0)
@@ -702,9 +916,58 @@ mod tests {
         let d = Dims { n1: 2, n2: 2, n3: 2, r: 7 };
         let anf = brent(d);
         let cfg = SlsCfg { max_secs: 30.0, seed: 3, ..Default::default() };
-        let (sol, _, _) = solve_portfolio(&anf, &[], &cfg, 1);
+        let (sol, _, _) = solve_portfolio(&anf, &[], &cfg, 1, None);
         let bits = sol.expect("2x2x2 r=7 should solve fast");
         assert_eq!(verify(&anf, &bits), 0);
+    }
+
+    #[test]
+    fn closure_reconstructs_each_tensor() {
+        let d = Dims { n1: 3, n2: 3, n3: 3, r: 23 };
+        let anf = brent(d);
+        let lb = bits_of(LADERMAN_BITS);
+        let nofrz = vec![0u8; anf.nvars];
+        for (block, lo, hi) in [
+            (Block::Gamma, 414, 621),
+            (Block::Alpha, 0, 207),
+            (Block::Beta, 207, 414),
+        ] {
+            let mut bits = lb.clone();
+            for v in lo..hi {
+                bits[v] = 0; // wipe the tensor entirely
+            }
+            let (ok, contra, changed) =
+                closure_tensor(d, &mut bits, &nofrz, block);
+            assert_eq!(ok, 9, "{block:?}: all 9 groups must be consistent");
+            assert_eq!(contra, 0);
+            assert!(changed > 0);
+            assert_eq!(verify(&anf, &bits), 0,
+                "{block:?}-closure must yield a full valid scheme");
+        }
+    }
+
+    #[test]
+    fn closure_respects_frozen_and_is_monotone() {
+        let d = Dims { n1: 3, n2: 3, n3: 3, r: 23 };
+        let anf = brent(d);
+        let lb = bits_of(LADERMAN_BITS);
+        // freeze all gamma bits at laderman, wipe the rest, random alpha/beta
+        let mut rng = Rng::new(99);
+        let mut bits: Vec<u8> =
+            (0..anf.nvars).map(|_| (rng.f64() < 0.25) as u8).collect();
+        let mut frozen = vec![0u8; anf.nvars];
+        for v in 414..621 {
+            bits[v] = lb[v];
+            frozen[v] = 1;
+        }
+        let before = verify(&anf, &bits);
+        let snapshot: Vec<u8> = bits[414..621].to_vec();
+        let (_, _, _) = closure_tensor(d, &mut bits, &frozen, Block::Gamma);
+        assert_eq!(&bits[414..621], &snapshot[..], "frozen bits must not move");
+        // monotone: gamma-closure never increases violations
+        let (_, _, _) = closure_tensor(d, &mut bits, &vec![0u8; anf.nvars],
+            Block::Gamma);
+        assert!(verify(&anf, &bits) <= before);
     }
 
     #[test]
@@ -721,7 +984,7 @@ mod tests {
         let frozen: Vec<(u32, u8)> =
             idx[..414].iter().map(|&v| (v, lb[v as usize])).collect();
         let cfg = SlsCfg { max_secs: 30.0, seed: 5, ..Default::default() };
-        let (sol, flips, _) = solve_portfolio(&anf, &frozen, &cfg, 1);
+        let (sol, flips, _) = solve_portfolio(&anf, &frozen, &cfg, 1, None);
         let bits = sol.expect("414-seeded repair should solve");
         assert_eq!(verify(&anf, &bits), 0);
         assert!(flips < 5_000_000, "repair took {flips} flips");

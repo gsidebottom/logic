@@ -180,19 +180,55 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
     → all TIMEOUT; chal1-4-4-4-4-1 → SAT 0.62 s.  Honest caveats: 1 seed,
     1 core, no tuning; the paper itself reports 5/10 in "a few minutes",
     so treat per-instance timeouts as "slower here", not "cannot".
-- **R2 — structure moves.** Native pairing generation (method-1 cores),
-  streamliners as constraints/initializers, seeded neighborhood mode, and
-  the **tri-linear Gauss closure move** (fix two tensors, exact-solve the
-  third via GF(2) elimination; also usable as "repair γ exactly, walk on
-  α,β"). Design note (2026-07-02): with (α,β) fixed the γ-system
-  **decomposes into 9 independent 81×23 GF(2) systems** (equations
-  partition by γ's (p,q) index; likewise per (a,b) for α, (c,d) for β) —
-  each a few-µs bitset elimination, so closure is affordable every few
-  hundred flips; when inconsistent, the count of `0=1` rows is the
-  closure objective. **Gate: from-scratch new-scheme pipeline at ≤
-  minutes/scheme on M4 Pro (paper: CPU-hours), schemes verifier-confirmed
-  and distinct-after-summand-sort.** Stretch: challenge 1 (pairing, *no*
-  streamliners) beyond yalsat's 5/10.
+- **R2 — structure moves. ● closure + discovery pipeline landed
+  (2026-07-02).** Design note: with (α,β) fixed the γ-system **decomposes
+  into 9 independent 81×23 GF(2) systems** (equations partition by γ's
+  (p,q) index; likewise per (a,b) for α, (c,d) for β) — and since every
+  equation contains exactly one group of each tensor, **a fully-consistent
+  single-tensor closure solves the whole instance**, and each closure call
+  is monotone (solved groups satisfy all their equations; inconsistent
+  groups are left untouched).
+  - **Built**: `closure_group`/`closure_tensor` in `src/anf.rs` (u64-row
+    RREF, frozen-aware via RHS-substitution, free vars keep current values)
+    + an injected-hook seam in the SLS (`--closure-every N`, cycling
+    γ/α/β — same injection idiom as gmi's scorer).  Tests: wiping any one
+    tensor of Laderman and closing reconstructs a full VERIFIED scheme;
+    frozen bits never move; monotonicity asserted.  7/7 tests green.
+  - **Challenge-1 beyond yalsat: 7/10 official cores solved** (was 5/10
+    without closure; yalsat's published record is 5/10): closure converts
+    B (96 s) and **C (0.090 s)**.  Remaining 3/M/2-2-2-4-A float at best
+    3–4.
+  - **Seed bank**: 24 schemes fetched from the Linz DB and
+    verifier-confirmed (4 classics + 20 across distinct rank patterns;
+    `matmul/seeds/`, agent-built; `.tab`/`.exp` γ conventions determined
+    empirically = transposed).  DB indexes 17,372 schemes total.
+  - **Neighborhood discovery works and compounds** (all counts =
+    distinct-after-summand-sort, the paper's own metric): from Smirnov at
+    nfix=414, 20/20 completions re-find Smirnov (few-%-yield regime, as in
+    the paper); at **nfix=300, 20 runs → 3 new schemes** (supports
+    139–141); hop 2 from a found scheme → **3 more new** + walks back to
+    Smirnov.  `matmul/walk.py` productizes this (pool of seeds+finds →
+    random hops → canon-dedupe → archive `matmul/found/`), every accepted
+    scheme independently re-verified.
+  - **Walk pipeline demo: 138 new schemes in 365 s — 3 s/scheme,
+    single-threaded** (`walk.py --minutes 6 --nfix 300 --runs 8`; pool =
+    24 seeds, archive `matmul/found/`, every accepted scheme re-verified;
+    `cat found/*.bits | canon.py` → 138 read / 0 INVALID / 138 distinct).
+    The rate *accelerates* as the pool diversifies (last 24 schemes in the
+    final 14 s).  vs the paper: method 1 ≈ CPU-hours/scheme; their
+    Smirnov-walk ≈ 85 CPU-s/scheme.  Honest scope: distinct-after-
+    summand-sort = the paper's *neighborhood* metric; de-Groote
+    inequivalence (their 17k headline metric) is stronger and not yet
+    implemented — so these are new-to-our-archive, not yet certified
+    new-to-the-literature.
+  - Method-1 (random pairings + closure, from scratch): **0/30 pairings
+    extended** at 20 s × 10 threads — paper-consistent ("only very rare
+    random pairings extend"; their few-CPU-hours/scheme reflects burning
+    through many).  With the walk at 3 s/scheme, method 1 is a diversity
+    side-channel (longer budgets / streamliners), not the pipeline.
+  **Gate (≤ minutes/new-scheme on M4 Pro): met — 3 s/scheme.**
+  Stretch (beyond yalsat on challenge 1): **met — 7/10** (600 s retry on
+  the last three queued).
 - **R3 — connection-method path-space SLS** (the research question). Local
   search over per-equation satisfaction scenarios on the NNF matrix
   (connections = shared-var conflicts), vs assignment-space SLS at equal

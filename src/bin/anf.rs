@@ -11,6 +11,10 @@
 //!   --cb C               probSAT base (default 2.5)
 //!   --density D          random-init one-density (default 0.25)
 //!   --luby-unit F        flips per Luby unit, 0 = no restarts (default 2^20)
+//!   --pert P             restart-from-best perturbation prob (default 0.06)
+//!   --closure-every N    exact GF(2) tensor closure every N flips (0=off);
+//!                        cycles gamma/alpha/beta; a consistent closure
+//!                        solves the instance outright
 //!   --fix-scheme NAME    seed mode: laderman | strassen
 //!   --nfix K             #base vars frozen at the scheme's values
 //!   --pair               freeze a random type-3 pairing (method 1)
@@ -53,6 +57,7 @@ fn main() {
     cfg.density = arg_val(&args, "--density").unwrap_or(0.25);
     cfg.luby_unit = arg_val(&args, "--luby-unit").unwrap_or(1 << 20);
     cfg.pert = arg_val(&args, "--pert").unwrap_or(0.06);
+    cfg.closure_every = arg_val(&args, "--closure-every").unwrap_or(0);
     cfg.probsat = args.iter().any(|a| a == "--probsat");
     let threads: usize = arg_val(&args, "--threads").unwrap_or(1);
     let quiet = args.iter().any(|a| a == "--quiet");
@@ -78,7 +83,7 @@ fn main() {
         let t0 = Instant::now();
         let stop = AtomicBool::new(false);
         let mut best = usize::MAX;
-        let solved = sls.run(&c, t0, &stop, &mut best);
+        let solved = sls.run(&c, t0, &stop, &mut best, None);
         let dt = t0.elapsed().as_secs_f64();
         println!(
             "c bench: {} flips in {:.2}s = {:.2}M flips/s (best {} unsat{})",
@@ -93,6 +98,7 @@ fn main() {
 
     // frozen units: seeded scheme and/or pairing
     let mut frozen: Vec<(u32, u8)> = Vec::new();
+    let mut seed_bits: Option<Vec<u8>> = None;
     if let Some(name) = args
         .iter()
         .position(|a| a == "--fix-scheme")
@@ -103,6 +109,20 @@ fn main() {
             "strassen" => bits_of(STRASSEN_BITS),
             _ => panic!("unknown scheme {name}"),
         };
+        eprintln!("c seed scheme: {name}");
+        seed_bits = Some(bits);
+    }
+    if let Some(path) = args
+        .iter()
+        .position(|a| a == "--fix-file")
+        .and_then(|i| args.get(i + 1))
+    {
+        let txt = std::fs::read_to_string(path).expect("fix file");
+        let s = txt.split_whitespace().last().expect("bits in fix file");
+        eprintln!("c seed scheme from {path}");
+        seed_bits = Some(bits_of(s));
+    }
+    if let Some(bits) = &seed_bits {
         assert_eq!(bits.len(), anf.nvars, "scheme dims mismatch");
         let nfix: usize = arg_val(&args, "--nfix").unwrap_or(bits.len() * 2 / 3);
         let mut rng = Rng::new(cfg.seed ^ 0xfeed);
@@ -111,7 +131,7 @@ fn main() {
             idx.swap(i, rng.below(i + 1));
         }
         frozen.extend(idx[..nfix].iter().map(|&v| (v, bits[v as usize])));
-        eprintln!("c seeded: froze {nfix} vars at {name}'s values");
+        eprintln!("c seeded: froze {nfix} vars at the seed scheme's values");
     }
     if args.iter().any(|a| a == "--pair") {
         let mut rng = Rng::new(cfg.seed ^ 0xbeef);
@@ -140,8 +160,21 @@ fn main() {
         eprintln!("c freeze-file: froze {n} bits from {path}");
     }
 
+    let closure_hook = move |bits: &mut [u8], frz: &[u8], k: u64| {
+        let block =
+            [Block::Gamma, Block::Alpha, Block::Beta][(k % 3) as usize];
+        let _ = closure_tensor(d, bits, frz, block);
+    };
+    let hook: Option<Hook> = if cfg.closure_every > 0 {
+        eprintln!("c closure hook: every {} flips (G/A/B cycle)",
+            cfg.closure_every);
+        Some(&closure_hook)
+    } else {
+        None
+    };
     let t0 = Instant::now();
-    let (sol, flips, best) = solve_portfolio(&anf, &frozen, &cfg, threads);
+    let (sol, flips, best) =
+        solve_portfolio(&anf, &frozen, &cfg, threads, hook);
     let dt = t0.elapsed().as_secs_f64();
     let rate = flips as f64 / dt / 1e6;
     match sol {
@@ -154,14 +187,13 @@ fn main() {
             );
             let support: usize = bits.iter().map(|&b| b as usize).sum();
             println!("c support {} / {}", support, anf.nvars);
-            let lb = bits_of(LADERMAN_BITS);
-            if bits.len() == lb.len() {
-                let dh: usize = bits
-                    .iter()
-                    .zip(&lb)
-                    .filter(|(a, b)| a != b)
-                    .count();
-                println!("c hamming-to-laderman {dh}");
+            let refb = seed_bits
+                .clone()
+                .or_else(|| (bits.len() == 621).then(|| bits_of(LADERMAN_BITS)));
+            if let Some(rb) = refb {
+                let dh: usize =
+                    bits.iter().zip(&rb).filter(|(a, b)| a != b).count();
+                println!("c hamming-to-seed {dh}");
             }
             println!(
                 "b {}",

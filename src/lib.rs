@@ -4,6 +4,7 @@ pub mod controller;
 pub mod cook_pbp;
 pub mod parity_pbp;
 pub mod dual;
+pub mod flip;
 pub mod formula;
 pub mod gmi;
 pub mod matrix;

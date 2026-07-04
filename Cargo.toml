@@ -28,6 +28,10 @@ path = "src/bin/gmi_mcgs.rs"
 name = "anf"
 path = "src/bin/anf.rs"
 
+[[bin]]
+name = "flip"
+path = "src/bin/flip.rs"
+
 [features]
 # `evolve_guard` — runtime enforcement of the eff-layer ordering
 # contracts (sum_visit_order is a permutation; prod_visit_order keeps

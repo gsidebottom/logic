@@ -433,6 +433,28 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
     (b) KM's symmetry restriction (symmetric flip graphs shrank 5×5
     dramatically); (c) brute cloud scale.  The 47k+ rank-49 corpus is a
     standing asset regardless.
+  - **Wave 4 (certified equalization, 4h×10t) + STRUCTURAL VERDICT
+    (2026-07-04).** try_equalize_merge (solve for a 1/2-flip XOR chain
+    that forces a merge; transactional) layered on the restored deep
+    seek (a 50× starvation bug that stalled descent at 52 was found +
+    fixed; regression guard `descends_below_trivial_rank` added).
+    Result: 33,125 more rank-49 schemes, **zero sub-49 landings**.  The
+    decisive probe (`flip_analyze.py`, 80 rank-49 landings): **pairwise
+    shared-factor histogram is 100% at agreement 0 — every rank-49
+    landing is a flip-graph SINK** (no two summands share any factor, so
+    NO flip applies and equalization has no 1-agreement pair to promote).
+    This is the documented Kauers–Moosbauer obstruction: the low-rank
+    flip graph is dominated by isolated vertices; reaching 47 needs
+    rank-increasing escape through different basins + their symmetric-
+    flip-graph machinery + AlphaTensor-scale compute (years of field
+    effort).  **Honest stop for the pure-flip-descent line at 4×4.** What
+    stands: a fast verified parallel flip engine, the lift-lottery
+    design, ~100k verified rank-49 schemes (a 4×4 CSE / novelty asset),
+    and the record-TYING additive-complexity results at 3×3 (doc/
+    matmul_adds_paper.md).  Genuine routes to 4×4 records from here are
+    research-scale: (a) KM symmetric flip graphs; (b) rank-increasing
+    random walks (not greedy descent) spending time at rank 50–51 where
+    the graph is connected; (c) cloud-scale search.
   - Missing before 4×4 *novelty* claims: GL(4,2) port of equiv.py (same
     cyclic-sandwich linearization, 48-bit unknowns); canon-level
     distinctness gates the lift loop meanwhile.  Strassen² CSE baseline

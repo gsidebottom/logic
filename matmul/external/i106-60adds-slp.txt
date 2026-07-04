@@ -1,0 +1,86 @@
+# i106-orbitbest.bits: full straight-line program, 3x3x3 r=23
+# cost model: binary +/- counted, unary negation free
+
+## A-side: 15 additions
+w0 = a22 + a32
+w1 = a11 + a13
+w2 = a23 + w0
+w3 = a31 + w1
+w4 = a21 + w1
+w5 = a21 + w0
+P1 = +a33   # M1 = P1 * Q1
+P2 = +w2   # M2 = P2 * Q2
+P3 = +w3   # M3 = P3 * Q3
+P4 = +a23   # M4 = P4 * Q4
+P5 = +a22 +a23   # M5 = P5 * Q5
+P6 = +w4   # M6 = P6 * Q6
+P7 = +a13   # M7 = P7 * Q7
+P8 = +a12   # M8 = P8 * Q8
+P9 = +w1   # M9 = P9 * Q9
+P10 = +a33 +w2 +w3   # M10 = P10 * Q10
+P11 = +a32   # M11 = P11 * Q11
+P12 = +a31   # M12 = P12 * Q12
+P13 = +w0   # M13 = P13 * Q13
+P14 = +w5   # M14 = P14 * Q14
+P15 = +a12   # M15 = P15 * Q15
+P16 = +a11 +a31   # M16 = P16 * Q16
+P17 = +a33   # M17 = P17 * Q17
+P18 = +a31 +w5   # M18 = P18 * Q18
+P19 = +a23 +w4   # M19 = P19 * Q19
+P20 = +a21 +a22   # M20 = P20 * Q20
+P21 = +a21   # M21 = P21 * Q21
+P22 = +a11 +a12   # M22 = P22 * Q22
+P23 = +a11 +a21   # M23 = P23 * Q23
+
+## B-side: 16 additions
+w0 = b11 + b12
+w1 = b21 + b22
+w2 = b13 - b23
+w3 = b32 - w1
+w4 = b32 - w0
+w5 = b11 - w2
+Q1 = +b31
+Q2 = -w3
+Q3 = -w4
+Q4 = -b31 +b33 -w3
+Q5 = +w1
+Q6 = -b33 +w0
+Q7 = -b31 -w4
+Q8 = +w1
+Q9 = +w0
+Q10 = +b32
+Q11 = +b21
+Q12 = +b11
+Q13 = +b22 -b32 +w5
+Q14 = +w5
+Q15 = +b22
+Q16 = +b12 -b32
+Q17 = +b33
+Q18 = +b11 -b13
+Q19 = +b33
+Q20 = +b23
+Q21 = +w0 -w2
+Q22 = +b23
+Q23 = -b33 +w2
+
+## outputs: 29 additions
+w0 = M12 - M3
+w1 = M21 - M6
+w2 = M9 + w1
+w3 = M2 - M11
+w4 = M15 + M16
+w5 = w0 + w4
+w6 = M13 - M14
+w7 = M19 - w2
+w8 = w3 - w6
+C11 = -M7 +M8 -w5
+C12 = +M9 +w5
+C13 = +M22 +M23 +w2
+C21 = -M4 +w7 +w8
+C22 = +M21 +M5 -w8
+C23 = +M20 +w7
+C31 = +M1 +M11 +M12
+C32 = -M5 -M9 +M10 -w0 +w3
+C33 = +M12 +M14 +M17 -M18 -M20
+
+# TOTAL: 60 additions (+ 23 multiplications M_i = P_i * Q_i)

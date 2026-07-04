@@ -153,6 +153,71 @@ def best_cse(bits, nmodels=1, restarts=1, seed=0, dims=DIMS3):
     return best
 
 
+def emit_slp(bits, signs, dims, name):
+    """re-run the deterministic-best greedy and print the full SLP
+    (pre-additions w*, product forms, output forms), replay-verified."""
+    n1, n2, n3, r = dims
+    fa, fb, fc = scheme_forms(bits, signs, dims)
+    out = [f"# {name}: full straight-line program, {n1}x{n2}x{n3} r={r}",
+           "# cost model: binary +/- counted, unary negation free"]
+    tot = 0
+
+    def var_name(part, k):
+        if part == 0:
+            return f"a{k // n2 + 1}{k % n2 + 1}"
+        if part == 1:
+            return f"b{k // n3 + 1}{k % n3 + 1}"
+        return f"M{k + 1}"
+
+    for part, forms, label in ((0, fa, "A-side"), (1, fb, "B-side"),
+                               (2, fc, "outputs")):
+        best = None
+        for rr in range(64):
+            rng = random.Random(500 + rr) if rr else None
+            n, tr = greedy_slp(forms, rng)
+            verify_slp(forms, tr)
+            if best is None or n < best[0]:
+                best = (n, tr)
+        n, tr = best
+        tot += n
+        out.append(f"\n## {label}: {n} additions")
+        wmap = {}
+        for (w, u, su, v, sv) in tr:
+            un = wmap.get(u, var_name(part, u) if not str(u).startswith("w")
+                          else u)
+            vn = wmap.get(v, var_name(part, v) if not str(v).startswith("w")
+                          else v)
+            wmap[w] = w
+            out.append(f"{w} = {'-' if su < 0 else ''}{un} "
+                       f"{'-' if sv < 0 else '+'} {vn}")
+        # remaining forms after substitutions
+        forms2 = [dict(f) for f in forms]
+        for (w, u, su, v, sv) in tr:
+            for f in forms2:
+                if u in f and v in f:
+                    for sg in (1, -1):
+                        if f[u] == sg * su and f[v] == sg * sv:
+                            del f[u]
+                            del f[v]
+                            f[w] = sg
+                            break
+        for fi, f in enumerate(forms2):
+            terms = []
+            for k, c in sorted(f.items(), key=lambda kv: str(kv[0])):
+                nm = k if str(k).startswith("w") else var_name(part, k)
+                terms.append(f"{'-' if c < 0 else '+'}{nm}")
+            lhs = (f"P{fi + 1}" if part == 0 else
+                   f"Q{fi + 1}" if part == 1 else
+                   f"C{fi // n3 + 1}{fi % n3 + 1}")
+            out.append(f"{lhs} = {' '.join(terms)}"
+                       + ("" if part == 2 else
+                          f"   # M{fi + 1} = P{fi + 1} * Q{fi + 1}"
+                          if part == 0 else ""))
+    out.append(f"\n# TOTAL: {tot} additions (+ {r} multiplications "
+               f"M_i = P_i * Q_i)")
+    return "\n".join(out) + "\n", tot
+
+
 def main():
     argv = sys.argv[1:]
 
@@ -166,6 +231,11 @@ def main():
 
     nmodels = opt("--models", 1)
     restarts = opt("--restarts", 1)
+    emit = None
+    if "--emit" in argv:
+        i = argv.index("--emit")
+        emit = argv[i + 1]
+        del argv[i:i + 2]
     dims = DIMS3
     if "--dims" in argv:
         i = argv.index("--dims")
@@ -191,6 +261,12 @@ def main():
         name = path.split("/")[-1]
         print(f"{name:26s} {sup:7d} {sup - naive_off:5d} {tot:8d}  "
               f"({parts[0]}+{parts[1]}+{parts[2]}, m{mi})", flush=True)
+        if emit:
+            models = lift_models(bits, nmodels, dims)
+            signs = models[mi][0]
+            txt, etot = emit_slp(bits, signs, dims, name)
+            open(emit, "w").write(txt)
+            print(f"  emitted {etot}-addition SLP -> {emit}", flush=True)
 
 
 if __name__ == "__main__":

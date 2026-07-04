@@ -460,6 +460,40 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
     distinctness gates the lift loop meanwhile.  Strassen² CSE baseline
     208 greedy vs 198/165 structured (structure-aware CSE = upgrade
     lever).
+- **R6 — exact input-side minimizer (2026-07-04, `matmul/sidemin.py`)**.
+  Sun's 56 (arXiv:2604.27645) = 13+13+30 with *chain-covering* input
+  sides (all 23 rows are values of one addition chain) — a structure
+  pair-extraction CSE cannot represent (our v1/v2 plateaued at 58 =
+  14+14+30 on his rep).  `sidemin.py` solves the side subproblem
+  *exactly*: minimum #(binary ± adds) so that one chain over the 9
+  input cells contains every distinct multi-term row up to sign.
+  Method: iterative deepening on helper count h; normal form = greedily
+  cover every creatable target (pool is monotone ⇒ complete by an
+  exchange argument), branch only on helper insertion at closure
+  fixpoints; at h=1 the helper must directly complete a target
+  (enabling-set restriction).  Helpers may be arbitrary integer vectors
+  (doubling allowed) — strictly more general than Sun's pure/aux1
+  certificate model, so our h-exhaustion is the stronger impossibility.
+  Gates: micro-optima 5/5; Sun's U (nt 12, h*=1 → 13, 3 nodes) and V
+  (nt 11, h*=2 → 13, 11 nodes) reproduced with his pure/aux1
+  impossibility certificates, 0.3 s total; every chain replay-verified;
+  every sign model Z-verified (z_verify returns bad-equation COUNT —
+  an inverted assert was caught immediately by the Stapleton run).
+  **Results (exact A/B sides + heuristic C, 24 Z-verified sign models
+  each)**: sun56 rep → **56 = 13+13+30 tied by our own pipeline**
+  (24/24 models); cr58-cn122 → **56 = 13+14+29 — ties the world record
+  on a DIFFERENT de Groote class** (≢ sun56 by equiv.py; Perminov's
+  published count for that scheme was 58); cr58-cn119 → 57 (published
+  58); cr58-cn120 → 57 = 13+16+28 and cn120 ≡ sun56 — so **C = 28
+  exists inside Sun's own class** while sides 13+13 exist on Sun's rep;
+  mws59 → 58 (published 59); our i106/i106b/i107 orbit-best reps →
+  **59 = 15+15+29 each** (our three classes tie the old MWS record);
+  stapleton60-orbitbest → 60 = 16+16+28.  Side costs were sign-model
+  invariant on every rep tested.  **Next: the 55-hunt** — orbit sweep
+  inside the hot classes (Sun's, cn122's, cn119's) scoring
+  exact-sides + heuristic-C: sides-optimal (13+13) and C-optimal (28)
+  representatives coexist within one class; a single rep with both
+  gives 54–55 and the outright record.
 - **Later options**: MCGS/learned policy over restart seeds / move classes
   (ties back to the neural track); UNSAT side (challenge 2) via our proof
   machinery — a *different* project (algebraic/symmetry lower-bound

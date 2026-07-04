@@ -356,6 +356,13 @@ exact checks. All 53 are pairwise inequivalent.)*
 
 ## 7. Caveats and scope
 
+- *Re-checked 2026-07-04*: the 53 were additionally tested against
+  Perminov's scheme collection (github.com/dronperminov/
+  FastMatrixMultiplication, the source of the Dec-2025 additive-record
+  schemes; 7 distinct rank-23 schemes, all themselves HKS-DB classes) —
+  **zero matches; all 53 remain new**, with positive controls firing.
+
+
 - "New" = inequivalent under de Groote symmetry to the 17,376 schemes
   in the Linz database snapshot (`schemes.tgz`, Last-Modified
   2020-08-07) and the 4 classics. The database is the comprehensive

@@ -1,9 +1,12 @@
 # Three New 60-Addition, Rank-23 Schemes for 3×3 Matrix Multiplication
 
 *Research note — logic repo, matmul track, 2026-07-03; revised
-2026-07-04 after Perminov (arXiv:2512.21980, Dec 2025) came to our
-attention — the additive record is now **58**, not 60; framing updated
-throughout, findings unchanged. Companion to
+2026-07-04. Written against the Aug-2025 frontier (60); the record has
+since moved 60 → 59 → 58 → **56** (chain below, every scheme verified
+and classified by our machinery on 2026-07-04). Framing updated;
+findings unchanged — and the central thesis is strengthened: all five
+newer record schemes are HKS-database classes, and the 58 → 56 step is
+literally a change of representative. Companion to
 `doc/matmul_53_3x3_schemes.md`; every claim has a mechanical check (§6).*
 
 ---
@@ -11,11 +14,17 @@ throughout, findings unchanged. Companion to
 ## Abstract
 
 The additive-complexity record for exact non-commutative 3×3 matrix
-multiplication with 23 multiplications is **58 additions** without
-change of basis (Perminov, arXiv:2512.21980, Dec 2025 — ternary
-flip-graph search + greedy intersection CSE), which superseded
-Stapleton's 60 (arXiv:2508.03857, Aug 2025; prior: 61 with basis change,
-Schwartz–Vaknin 2023; 62 without, Mårtensson–Wagner 2024). This note's
+multiplication with 23 multiplications is **56 additions** without
+change of basis (Yinqi Sun, arXiv:2604.27645, Apr 2026), at the end of
+a rapid chain: 60 (Stapleton, Aug 2025) → 59 (Mårtensson–Stankovski
+Wagner–Stapleton, arXiv:2601.05272, Dec 2025) → 58 ×3 schemes
+(Perminov, arXiv:2512.21980 + repo, Dec 2025) → 56. We verified every
+scheme in the chain exactly (Brent over ℤ, ternary, our count formula =
+theirs) and classified each against the HKS database: **all five are
+HKS DB classes** (59 = `i19w203c23ci`; 58s = `i12w219c23ci`,
+`i46w213c23ci`, `i19w225c4efh`; 56 = a cyclic image of the 58-class
+`i46w213c23ci` — i.e., the 58 → 56 step is a representative change
+within one class, exactly the axis this note isolates). This note's
 results were obtained against the 60-era frontier and are reframed
 accordingly. We report:
 
@@ -41,9 +50,9 @@ accordingly. We report:
    enumerated sign models (SAT) × randomized restarts × orbit walks
    with transvection moves (>20,000 well-mixed proposals per class).
    At the time we wrote, honestly, that this was "either a true barrier
-   at 60 or a shared ceiling of the greedy-CSE family" — Perminov's 58
-   resolves it: it was the family ceiling. The finding stands as a
-   clean negative about this heuristic family (§7).
+   at 60 or a shared ceiling of the greedy-CSE family" — the 59/58/56
+   chain resolves it: it was the family ceiling. The finding stands as
+   a clean negative about this heuristic family (§7).
 
 ## 1. Cost model and history
 
@@ -61,9 +70,11 @@ weaker with-basis-change model.
 | 1976 | 98 | Laderman, naive form | — |
 | 2023 | 61 | Schwartz–Vaknin (pebbling + alt. basis) | **yes** |
 | 2024 | 62 | Mårtensson–Wagner, Greedy-Potential on Laderman | no |
-| 2025 (Aug) | 60 | Stapleton (NN-discovered scheme + Greedy-Potential) | no |
+| 2025 (Aug) | 60 | Stapleton (NN + Greedy-Potential); class `i2w201c26fi` | no |
 | this note (Jul 2026, vs the 60-era frontier) | 60 × 3 more classes | HKS DB classes + orbit-CSE | no |
-| **2025 (Dec)** | **58 — current record** | Perminov (ternary flip-graph + intersection CSE), arXiv:2512.21980 | no |
+| 2025 (Dec 18) | 59 | Mårtensson–Stankovski Wagner–Stapleton, arXiv:2601.05272; class `i19w203c23ci` | no |
+| 2025 (Dec 25) | 58 (×3 schemes) | Perminov, arXiv:2512.21980; classes `i12w219c23ci`, `i46w213c23ci`, `i19w225c4efh` | no |
+| **2026 (Apr)** | **56 — current record** | Yinqi Sun, arXiv:2604.27645; cyclic image of class `i46w213c23ci` | no |
 
 ## 2. Tools (all in `matmul/`, all verification-gated)
 
@@ -130,10 +141,10 @@ accepted moves), each accepted representative re-scored at high effort,
 plus 16×128 sign×restart passes on every 60-representative. **No
 configuration reached 59 anywhere.** Four independent classes
 converging on exactly 60 looked like either a true barrier or a shared
-heuristic ceiling; Perminov's 58 (published Dec 2025, after the
-frontier this note was written against) settles it as the latter. The
-measurement stands as a characterization of the greedy-CSE family; no
-nontrivial additive lower bound is known for this setting.
+heuristic ceiling; the Dec-2025/Apr-2026 chain (59, 58, 56) settles it
+as the latter. The measurement stands as a characterization of the
+greedy-CSE family; no nontrivial additive lower bound is known for
+this setting.
 
 ## 4. Reclassification of Stapleton's scheme
 
@@ -197,17 +208,17 @@ deterministic to check.
 ## 7. Limitations and the route to 59
 
 All counts are upper bounds from one heuristic family; nothing here
-bounds the optimum from below. Perminov's 58 shows what a stronger
-pipeline (scheme search coupled to a stronger CSE) extracts; notably
-his method searches schemes and subexpressions jointly — the same
-(class × representative × signs × optimizer) factorization this note
-makes explicit, with better optimization. The constructive combination
-is open in both directions: classify his 58-scheme against the HKS
-database with our exact machinery (as we did Stapleton's), and drive
-his optimizer with our orbit/sign search axes — either could move 58.
-Exact SLP minimization (SAT/ILP) on the output side (~29 additions in
-all four of our 60s) remains the in-principle route to optimality
-statements.
+bounds the optimum from below. The Dec-2025/Apr-2026 record chain is a
+field-scale confirmation of this note's thesis: every new record
+scheme is an HKS-database class (we classified each exactly), the
+counts were produced by stronger scheme×CSE pipelines, and the current
+record itself (56) differs from a 58-scheme only by a group element —
+the representative axis, isolated here, moved the record two
+additions. The systematic version of that move is exactly our
+orbit-search machinery driven by the strongest available optimizer;
+running it (and the full-DB screen) with Perminov-class CSE is the
+concrete open combination. Exact SLP minimization (SAT/ILP) on the
+output side remains the in-principle route to optimality statements.
 
 ## References
 

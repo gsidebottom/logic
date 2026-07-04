@@ -158,7 +158,12 @@ def min_side(rows, nbase, max_slack=3, node_cap=2_000_000):
     for h in range(max_slack + 1):
         memo = [set() for _ in range(h + 1)]
         pl = basis(nbase)
-        res = dfs(list(pl), set(pl), set(tset), [], h, memo)
+        try:
+            res = dfs(list(pl), set(pl), set(tset), [], h, memo)
+        except Budget:
+            # levels < h were exhausted, so nt + h is a valid lower bound
+            return {"nt": nt, "h": None, "adds": nt + h, "chain": None,
+                    "status": "budget", "nodes": nodes[0]}
         if res is not None:
             assert len(res) == nt + h
             return {"nt": nt, "h": h, "adds": nt + h, "chain": res,

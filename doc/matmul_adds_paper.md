@@ -1,24 +1,29 @@
 # Three New 60-Addition, Rank-23 Schemes for 3×3 Matrix Multiplication
 
-*Research note — logic repo, matmul track, 2026-07-03. Companion to
-`doc/matmul_53_3x3_schemes.md` (the 53-new-schemes report); every claim here has
-a mechanical check (§6). Contact: this repository.*
+*Research note — logic repo, matmul track, 2026-07-03; revised
+2026-07-04 after Perminov (arXiv:2512.21980, Dec 2025) came to our
+attention — the additive record is now **58**, not 60; framing updated
+throughout, findings unchanged. Companion to
+`doc/matmul_53_3x3_schemes.md`; every claim has a mechanical check (§6).*
 
 ---
 
 ## Abstract
 
 The additive-complexity record for exact non-commutative 3×3 matrix
-multiplication with 23 multiplications is **60 additions/subtractions
-without change of basis** (Stapleton, arXiv:2508.03857, Aug 2025; prior:
-61 with basis change, Schwartz–Vaknin 2023; 62 without, Mårtensson–Wagner
-2024). We report:
+multiplication with 23 multiplications is **58 additions** without
+change of basis (Perminov, arXiv:2512.21980, Dec 2025 — ternary
+flip-graph search + greedy intersection CSE), which superseded
+Stapleton's 60 (arXiv:2508.03857, Aug 2025; prior: 61 with basis change,
+Schwartz–Vaknin 2023; 62 without, Mårtensson–Wagner 2024). This note's
+results were obtained against the 60-era frontier and are reframed
+accordingly. We report:
 
 1. **Three further schemes achieving 60 additions**, on three mutually
-   inequivalent de Groote classes distinct from Stapleton's — so at least
-   **four inequivalent rank-23 classes attain the record count**. Each is
-   presented as a replay-verified straight-line program (one in full in
-   the appendix).
+   inequivalent de Groote classes distinct from Stapleton's — so at
+   least four inequivalent rank-23 classes attain what was the record
+   count until Dec 2025. Each is presented as a replay-verified
+   straight-line program (one in full in the appendix).
 2. **A classification of Stapleton's scheme**: it is de Groote-equivalent
    to scheme `i2w201c26fi-000` of the Heule–Kauers–Seidl (HKS) database —
    his neural pipeline rediscovered a class published in 2019. (No such
@@ -31,12 +36,14 @@ without change of basis** (Stapleton, arXiv:2508.03857, Aug 2025; prior:
    **full-database screen** (all 17,376 HKS schemes — apparently the
    first such sweep) surfaced three classes whose lazy representatives
    already reached 61.
-4. **A characterization of the barrier at 59**: all four record classes
-   plateau at exactly 60 under our search family — greedy signed-pair
-   CSE × enumerated sign models (SAT) × randomized restarts × orbit
-   walks with transvection moves (>20,000 well-mixed proposals per
-   class). We conjecture nothing; we report that 59 resists this family
-   and identify where a stronger attack would aim (§7).
+4. **A characterization of our search family's ceiling at 60**: all
+   four classes plateau at exactly 60 under greedy signed-pair CSE ×
+   enumerated sign models (SAT) × randomized restarts × orbit walks
+   with transvection moves (>20,000 well-mixed proposals per class).
+   At the time we wrote, honestly, that this was "either a true barrier
+   at 60 or a shared ceiling of the greedy-CSE family" — Perminov's 58
+   resolves it: it was the family ceiling. The finding stands as a
+   clean negative about this heuristic family (§7).
 
 ## 1. Cost model and history
 
@@ -54,8 +61,9 @@ weaker with-basis-change model.
 | 1976 | 98 | Laderman, naive form | — |
 | 2023 | 61 | Schwartz–Vaknin (pebbling + alt. basis) | **yes** |
 | 2024 | 62 | Mårtensson–Wagner, Greedy-Potential on Laderman | no |
-| 2025 | 60 | Stapleton (NN-discovered scheme + Greedy-Potential) | no |
-| this note | **60 × 3 more classes** | HKS DB classes + orbit-CSE | no |
+| 2025 (Aug) | 60 | Stapleton (NN-discovered scheme + Greedy-Potential) | no |
+| this note (Jul 2026, vs the 60-era frontier) | 60 × 3 more classes | HKS DB classes + orbit-CSE | no |
+| **2025 (Dec)** | **58 — current record** | Perminov (ternary flip-graph + intersection CSE), arXiv:2512.21980 | no |
 
 ## 2. Tools (all in `matmul/`, all verification-gated)
 
@@ -115,15 +123,17 @@ the 61-representatives they came from (144 → 153 nonzeros while 61 → 60
 additions): naive sparsity and optimized additive cost are decoupled
 axes, so weight-minimized databases are not addition-minimized.
 
-**The barrier at 59.** For each of the four classes we ran
+**Our family's ceiling at 60.** For each of the four classes we ran
 transvection-move orbit walks with plateau acceptance (15 min each;
 20,740 / 23,770 / 23,567 / 22,885 proposals; 1,504 / 70 / 79 / 83
 accepted moves), each accepted representative re-scored at high effort,
 plus 16×128 sign×restart passes on every 60-representative. **No
-configuration reached 59 anywhere.** Four independent classes converging
-on exactly 60 is consistent with either a true barrier at 60 or a shared
-ceiling of the greedy-CSE family; we explicitly do not claim optimality
-(no nontrivial additive lower bound is known for this setting).
+configuration reached 59 anywhere.** Four independent classes
+converging on exactly 60 looked like either a true barrier or a shared
+heuristic ceiling; Perminov's 58 (published Dec 2025, after the
+frontier this note was written against) settles it as the latter. The
+measurement stands as a characterization of the greedy-CSE family; no
+nontrivial additive lower bound is known for this setting.
 
 ## 4. Reclassification of Stapleton's scheme
 
@@ -187,16 +197,17 @@ deterministic to check.
 ## 7. Limitations and the route to 59
 
 All counts are upper bounds from one heuristic family; nothing here
-bounds the optimum from below. The uniform structure of the four 60s —
-A-side 15–16, B-side 15–16, C-side 28–29 — locates the slack: the
-**output side** (9 forms over 23 products, ~29 additions) is the fat
-part everywhere, and exact SLP minimization (SAT/ILP over addition
-chains) at that size is heavy but not obviously hopeless; it is the
-natural next tool, and this repository's stack (incremental SAT,
-verified pipelines) is suited to building it. A second route is
-widening the class supply: our companion report contributes 53 new
-classes (best 63 so far under this optimizer); flip-graph generation can
-supply arbitrarily more.
+bounds the optimum from below. Perminov's 58 shows what a stronger
+pipeline (scheme search coupled to a stronger CSE) extracts; notably
+his method searches schemes and subexpressions jointly — the same
+(class × representative × signs × optimizer) factorization this note
+makes explicit, with better optimization. The constructive combination
+is open in both directions: classify his 58-scheme against the HKS
+database with our exact machinery (as we did Stapleton's), and drive
+his optimizer with our orbit/sign search axes — either could move 58.
+Exact SLP minimization (SAT/ILP) on the output side (~29 additions in
+all four of our 60s) remains the in-principle route to optimality
+statements.
 
 ## References
 

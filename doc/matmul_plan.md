@@ -404,6 +404,19 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
     47-class is a fresh liftability ticket.
   - Calibration: 4×4 seeded repair fast to ≥nfix 1350/2256 (13 ms);
     first walk launched at nfix 1150 (≈ 3×3's sweet-spot fraction).
+  - **Rust engine + waves 1–2 (2026-07-04).** `src/flip.rs` (parallel
+    descend, frontier pool, rank-adaptive seek; 3×3 control: 3,430
+    distinct rank-23s/min = ~1000× Python).  Wave 1 (2h×10t, naive
+    restarts): 43.2B flips, ONE rank-49 landing.  Wave 2 (5h×10t,
+    frontier): **40,238 distinct rank-49 schemes** — and zero at 48.
+    Measured funnel: 64→50 trivial, 49 an enormous plateau harvested at
+    ~8 landings/s, **49→48 is the wall** (≈3×10⁵ rank-49 visits ×
+    10⁵-attempt seeks, no merge pair ever sampled).  Random flips don't
+    engineer two-slot-equal pairs at this depth; wave-3 lever = GUIDED
+    descent (objective: factor-multiset concentration / targeted
+    pair-equalization), the track's recurring lesson that guidance, not
+    scale, breaks walls.  The 40k rank-49 corpus is itself an asset
+    (4×4 CSE targets; novelty pool pending the GL(4,2) equiv port).
   - Missing before 4×4 *novelty* claims: GL(4,2) port of equiv.py (same
     cyclic-sandwich linearization, 48-bit unknowns); canon-level
     distinctness gates the lift loop meanwhile.  Strassen² CSE baseline

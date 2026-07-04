@@ -170,6 +170,137 @@ pub fn seek_reduction(
     false
 }
 
+// ---------------- guided descent (wave 3) ----------------
+//
+// At the funnel bottom a reduction needs a MERGEABLE pair: two summands
+// equal in two slots (a⊗b⊗c + a⊗b⊗c' -> a⊗b⊗(c+c')). Random flips
+// essentially never produce one at rank 49 (measured: ~3e5 visits,
+// zero). Guidance: score candidate flips by the agreement structure
+// they create and take the best (Metropolis on ties/worse); merge
+// deterministically the moment a mergeable pair exists.
+
+/// number of slots in which summands i and j hold equal factors
+#[inline]
+fn agreements(s: &[Summand], i: usize, j: usize) -> u32 {
+    (s[i][0] == s[j][0]) as u32
+        + (s[i][1] == s[j][1]) as u32
+        + (s[i][2] == s[j][2]) as u32
+}
+
+/// pair-structure score contribution of summand m against all others:
+/// 1 per 1-agreement pair, heavy bonus per mergeable (>=2) pair.
+fn row_score(s: &[Summand], m: usize) -> i64 {
+    let mut sc = 0i64;
+    for j in 0..s.len() {
+        if j == m {
+            continue;
+        }
+        match agreements(s, m, j) {
+            0 => {}
+            1 => sc += 1,
+            _ => sc += 200,
+        }
+    }
+    sc
+}
+
+/// merge one mergeable pair if present. Returns true if rank dropped.
+pub fn merge_if_available(s: &mut Vec<Summand>) -> bool {
+    let r = s.len();
+    for i in 0..r {
+        for j in i + 1..r {
+            if agreements(s, i, j) >= 2 {
+                // combine in the (a) disagreeing slot, or annihilate
+                let o = (0..3).find(|&k| s[i][k] != s[j][k]);
+                match o {
+                    Some(k) => {
+                        s[j][k] ^= s[i][k];
+                        s.remove(i);
+                        if s[j - 1].contains(&0) {
+                            s.remove(j - 1);
+                        }
+                    }
+                    None => {
+                        // identical summands cancel entirely (mod 2)
+                        s.remove(j);
+                        s.remove(i);
+                    }
+                }
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// one guided flip: sample K legal candidates, apply the one with the
+/// best agreement-score delta (Metropolis acceptance for non-improving).
+pub fn guided_flip(s: &mut Vec<Summand>, rng: &mut Rng, k: usize) -> bool {
+    let r = s.len();
+    let mut best: Option<(i64, usize, usize, usize, usize)> = None;
+    for _ in 0..k * 8 {
+        if best.as_ref().map_or(false, |_| false) {
+            break;
+        }
+        let slot = rng.below(3);
+        let i = rng.below(r);
+        let j = rng.below(r);
+        if i == j || s[i][slot] != s[j][slot] || s[i][slot] == 0 {
+            continue;
+        }
+        let (mut o1, mut o2) = match slot {
+            0 => (1, 2),
+            1 => (0, 2),
+            _ => (0, 1),
+        };
+        if rng.f64() < 0.5 {
+            std::mem::swap(&mut o1, &mut o2);
+        }
+        if s[i][o1] == s[j][o1] || s[i][o2] == s[j][o2] {
+            continue; // zero-producing: merges are handled explicitly
+        }
+        // trial apply, score, revert
+        let before = row_score(s, i) + row_score(s, j);
+        s[i][o1] ^= s[j][o1];
+        s[j][o2] ^= s[i][o2];
+        let after = row_score(s, i) + row_score(s, j);
+        s[j][o2] ^= s[i][o2];
+        s[i][o1] ^= s[j][o1];
+        let d = after - before;
+        if best.map_or(true, |(bd, ..)| d > bd) {
+            best = Some((d, i, j, o1, o2));
+        }
+        if best.map_or(false, |(bd, ..)| bd > 0) && rng.f64() < 0.35 {
+            break; // good enough, keep moving
+        }
+    }
+    if let Some((d, i, j, o1, o2)) = best {
+        // Metropolis: always take improvements; sometimes take flat/worse
+        if d >= 0 || rng.f64() < (0.25f64).powi((-d).min(8) as i32) {
+            s[i][o1] ^= s[j][o1];
+            s[j][o2] ^= s[i][o2];
+            return true;
+        }
+    }
+    false
+}
+
+/// guided burst: try to force a reduction within `steps` guided flips.
+pub fn guided_descend(
+    s: &mut Vec<Summand>,
+    rng: &mut Rng,
+    steps: usize,
+    k: usize,
+) -> bool {
+    for _ in 0..steps {
+        if merge_if_available(s) {
+            return true;
+        }
+        guided_flip(s, rng, k);
+    }
+    merge_if_available(s)
+}
+
 pub struct Stats {
     pub flips: AtomicU64,
     pub reductions: AtomicU64,
@@ -226,20 +357,24 @@ where
                     if nf % 512 == 0 && stop.load(Ordering::Relaxed) {
                         break;
                     }
-                    // rank-adaptive seek effort: deep pockets down low
+                    // rank-adaptive effort: guided descent at the funnel
+                    // bottom, cheap random seeks up high
                     let rk = cur.len();
-                    let mult = if rk <= cfg.save_at + 2 {
-                        25
-                    } else if rk <= cfg.save_at + 5 {
-                        4
+                    let reduced = if rk <= cfg.save_at + 3 {
+                        guided_descend(
+                            &mut cur,
+                            &mut rng,
+                            cfg.seek_attempts / 2,
+                            12,
+                        )
+                    } else if rk <= cfg.save_at + 6 {
+                        seek_reduction(&mut cur, &mut rng,
+                                       cfg.seek_attempts * 4)
                     } else {
-                        1
+                        seek_reduction(&mut cur, &mut rng,
+                                       cfg.seek_attempts)
                     };
-                    if seek_reduction(
-                        &mut cur,
-                        &mut rng,
-                        cfg.seek_attempts * mult,
-                    ) {
+                    if reduced {
                         stats.reductions.fetch_add(1, Ordering::Relaxed);
                         stall = 0;
                         let rk = cur.len();
@@ -430,6 +565,41 @@ mod tests {
                     verify(anf, &summands_to_bits(&s, &cfg)),
                     0,
                     "invalid after {step} moves at rank {rk}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn merge_and_guided_preserve_validity() {
+        let (mut s, cfg) = trivial(3);
+        let mut rng = Rng::new(11);
+        let mut anfs: HashMap<usize, Anf> = HashMap::new();
+        // trivial has many mergeable pairs? (no two summands agree in 2
+        // slots there) — create material via splits+flips then exercise
+        // merge_if_available + guided_flip and re-verify throughout.
+        for step in 0..8_000 {
+            match step % 7 {
+                0 if s.len() < 32 => split_toward(&mut s, &mut rng),
+                1 | 2 => {
+                    guided_flip(&mut s, &mut rng, 8);
+                }
+                3 => {
+                    merge_if_available(&mut s);
+                }
+                _ => {
+                    random_flip(&mut s, &mut rng, false);
+                }
+            }
+            if step % 500 == 0 {
+                let rk = s.len();
+                let anf = anfs.entry(rk).or_insert_with(|| {
+                    brent(Dims { n1: 3, n2: 3, n3: 3, r: rk })
+                });
+                assert_eq!(
+                    verify(anf, &summands_to_bits(&s, &cfg)),
+                    0,
+                    "invalid after {step} steps at rank {rk}"
                 );
             }
         }

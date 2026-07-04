@@ -417,6 +417,22 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
     pair-equalization), the track's recurring lesson that guidance, not
     scale, breaks walls.  The 40k rank-49 corpus is itself an asset
     (4×4 CSE targets; novelty pool pending the GL(4,2) equiv port).
+  - **Guided descent (v3, 2026-07-04): harvest ×6, wall intact.**
+    Agreement-steered flips (row-score: +1 per 1-agreement pair, +200
+    per mergeable pair; Metropolis) + deterministic merges: 20-min probe
+    → **6,990 distinct rank-49s** (~6× wave-2 rate) and 65,791 landings —
+    but **zero mergeable pairs ever formed at rank 49** (min rank still
+    49).  Reading: myopic 1-step agreement steering reaches 49 fast but
+    cannot engineer 2-agreements there; plausibly reproducing the
+    literature's own wall (KM's first flip paper reports 49 for 4×4×4;
+    47 required later techniques).  Wave-4 candidates, in order:
+    **(a) targeted pair equalization** — pick a 1-agreement pair (i,j),
+    slot o: equalizing needs s[i][o]⊕s[j][o] expressible as an XOR chain
+    of flip-reachable factors — an exact GF(2) reachability question our
+    stack is built for (guidance-by-linear-algebra fused into search);
+    (b) KM's symmetry restriction (symmetric flip graphs shrank 5×5
+    dramatically); (c) brute cloud scale.  The 47k+ rank-49 corpus is a
+    standing asset regardless.
   - Missing before 4×4 *novelty* claims: GL(4,2) port of equiv.py (same
     cyclic-sandwich linearization, 48-bit unknowns); canon-level
     distinctness gates the lift loop meanwhile.  Strassen² CSE baseline

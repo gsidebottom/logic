@@ -20,7 +20,7 @@ use crate::anf::{brent, verify, Anf, Dims, Rng};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex};
 use std::time::Instant;
 
 pub type Summand = [u16; 3];
@@ -197,6 +197,11 @@ where
     };
     let (tx, rx) = mpsc::channel::<Vec<Summand>>();
     let t0 = Instant::now();
+    // shared frontier: low-rank states accumulate; restarts draw from
+    // here so effort concentrates at the bottom of the funnel instead of
+    // re-paying the easy high-rank descent per trajectory.
+    let frontier: Mutex<Vec<Vec<Summand>>> = Mutex::new(Vec::new());
+    let frontier_rank = seed_summands.len().min(cfg.save_at + 4);
 
     std::thread::scope(|scope| {
         let mut result: (HashMap<usize, usize>, usize) =
@@ -206,6 +211,7 @@ where
             let tx = tx.clone();
             let stop = &stop;
             let stats = &stats;
+            let frontier = &frontier;
             let cfg = cfg;
             scope.spawn(move || {
                 let mut rng =
@@ -215,15 +221,39 @@ where
                 let mut cur = seed.clone();
                 let mut stall = 0usize;
                 let mut nf = 0u64;
+                let mut deposited = usize::MAX;
                 loop {
                     if nf % 512 == 0 && stop.load(Ordering::Relaxed) {
                         break;
                     }
-                    if seek_reduction(&mut cur, &mut rng, cfg.seek_attempts)
-                    {
+                    // rank-adaptive seek effort: deep pockets down low
+                    let rk = cur.len();
+                    let mult = if rk <= cfg.save_at + 2 {
+                        25
+                    } else if rk <= cfg.save_at + 5 {
+                        4
+                    } else {
+                        1
+                    };
+                    if seek_reduction(
+                        &mut cur,
+                        &mut rng,
+                        cfg.seek_attempts * mult,
+                    ) {
                         stats.reductions.fetch_add(1, Ordering::Relaxed);
                         stall = 0;
-                        if cur.len() <= cfg.save_at {
+                        let rk = cur.len();
+                        if rk <= frontier_rank && rk < deposited {
+                            deposited = rk;
+                            let mut fr = frontier.lock().unwrap();
+                            fr.push(cur.clone());
+                            if fr.len() > 256 {
+                                // keep the lowest-rank half
+                                fr.sort_by_key(|s| s.len());
+                                fr.truncate(128);
+                            }
+                        }
+                        if rk <= cfg.save_at {
                             stats.landings.fetch_add(1, Ordering::Relaxed);
                             let _ = tx.send(cur.clone());
                         }
@@ -242,7 +272,31 @@ where
                             stats
                                 .trajectories
                                 .fetch_add(1, Ordering::Relaxed);
-                            cur = seed.clone();
+                            // restart from the frontier when it exists:
+                            // perturb up (splits+diffusion), re-descend
+                            let pick = {
+                                let fr = frontier.lock().unwrap();
+                                if fr.is_empty() {
+                                    None
+                                } else {
+                                    Some(fr[rng.below(fr.len())].clone())
+                                }
+                            };
+                            match pick {
+                                Some(f) if rng.f64() < 0.8 => {
+                                    cur = f;
+                                    for _ in 0..2 + rng.below(4) {
+                                        split_toward(&mut cur, &mut rng);
+                                    }
+                                    for _ in 0..500 + rng.below(2000) {
+                                        random_flip(
+                                            &mut cur, &mut rng, false,
+                                        );
+                                    }
+                                }
+                                _ => cur = seed.clone(),
+                            }
+                            deposited = usize::MAX;
                             stall = 0;
                         }
                     }

@@ -23,7 +23,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Mutex};
 use std::time::Instant;
 
-pub type Summand = [u16; 3];
+pub type Summand = [u32; 3];
 
 #[derive(Clone, Copy)]
 pub struct FlipCfg {
@@ -53,13 +53,13 @@ pub fn bits_to_summands(bits: &[u8], c: &FlipCfg) -> Vec<Summand> {
     for m in 0..r {
         let mut s: Summand = [0, 0, 0];
         for k in 0..sa {
-            s[0] |= (bits[m * sa + k] as u16) << k;
+            s[0] |= (bits[m * sa + k] as u32) << k;
         }
         for k in 0..sb {
-            s[1] |= (bits[na + m * sb + k] as u16) << k;
+            s[1] |= (bits[na + m * sb + k] as u32) << k;
         }
         for k in 0..sg {
-            s[2] |= (bits[na + nb + m * sg + k] as u16) << k;
+            s[2] |= (bits[na + nb + m * sg + k] as u32) << k;
         }
         out.push(s);
     }
@@ -149,7 +149,7 @@ pub fn split_toward(s: &mut Vec<Summand>, rng: &mut Rng) {
     let m = rng.below(r);
     let slot = rng.below(3);
     let f = s[m][slot];
-    let x = (rng.next_u64() as u16) & 0xffff;
+    let x = (rng.next_u64() as u32) & ((1u32 << 25) - 1);
     let x = if x == 0 || x == f { f ^ 1 } else { x };
     let mut child = s[m];
     s[m][slot] = x;
@@ -347,7 +347,7 @@ fn try_equalize_inner(s: &mut Vec<Summand>, rng: &mut Rng) -> bool {
                 let d = s[i][o] ^ s[j][o];
                 // adjacency: k reachable from i via shared slot t (t!=o)
                 // collect (k, t, payload = s[k][o])
-                let mut adj: Vec<(usize, usize, u16)> = Vec::new();
+                let mut adj: Vec<(usize, usize, u32)> = Vec::new();
                 for k in 0..s.len() {
                     if k == i || k == j {
                         continue;
@@ -371,7 +371,7 @@ fn try_equalize_inner(s: &mut Vec<Summand>, rng: &mut Rng) -> bool {
                 }
                 // 2-step: payloads p1 ^ p2 == d
                 if adj.len() >= 2 {
-                    let mut seen: HashMap<u16, (usize, usize)> =
+                    let mut seen: HashMap<u32, (usize, usize)> =
                         HashMap::new();
                     for &(k, t, p) in &adj {
                         if let Some(&(k1, t1)) = seen.get(&(p ^ d)) {
@@ -661,9 +661,9 @@ mod tests {
             for k in 0..n {
                 for j in 0..n {
                     s.push([
-                        1u16 << (i * n + k),
-                        1u16 << (k * n + j),
-                        1u16 << (i * n + j),
+                        1u32 << (i * n + k),
+                        1u32 << (k * n + j),
+                        1u32 << (i * n + j),
                     ]);
                 }
             }

@@ -1,7 +1,7 @@
 # Three New 60-Addition, Rank-23 Schemes for 3×3 Matrix Multiplication
 
 *Research note — logic repo, matmul track, 2026-07-03. Companion to
-`doc/matmul_writeup.md` (the 53-new-schemes report); every claim here has
+`doc/matmul_53_3x3_schemes.md` (the 53-new-schemes report); every claim here has
 a mechanical check (§6). Contact: this repository.*
 
 ---

@@ -24,12 +24,14 @@ scheme is:
 
 Discovery cost: the 53 came out of one **6-minute single-threaded run**
 of a neighborhood-walk pipeline (138 raw finds → 53 survived full-database
-novelty checking), plus ~40 minutes of certification compute. For scale:
+novelty checking), plus ~40 minutes of certification compute. (All
+timings in this report are from one machine: a Mac mini with an Apple
+M4 Pro — 10 performance + 4 efficiency cores — and 64 GB RAM, macOS.) For scale:
 the HKS campaign that produced the 17,376-scheme database used ~35
 CPU-years (methods differ; see §7 caveats).
 
 The engine behind the discovery is a **native-ANF stochastic local
-search**: the Brent system is kept as 729 cubic-XOR constraints over the
+search (SLS)**: the Brent system is kept as 729 cubic-XOR constraints over the
 621 real variables instead of a ~26,500-variable CNF, which extends the
 seeded-repair horizon by ≥5,000× over yalsat-on-CNF and, with an exact
 GF(2) "tensor closure" move, solves 8/10 of the official HKS challenge-1
@@ -88,7 +90,7 @@ closure therefore *solves the instance outright*, and each closure call
 is monotone. It runs as an injected hook every N flips
 (`--closure-every`).
 
-Baselines on this machine: kissat cannot solve the r=23 CNF (unknown at
+Baselines on this machine (the Mac mini defined in §1): kissat cannot solve the r=23 CNF (unknown at
 60s; it needs 41.6s to prove even 2×2-in-6 UNSAT), matching HKS's
 finding that CDCL fails here. yalsat (the HKS solver, v1.0.1 built from
 source) solves seeded-repair CNFs at their published operating point
@@ -384,14 +386,15 @@ exact checks. All 53 are pairwise inequivalent.)*
 ## 8. Pointers
 
 - Plan/lab-notebook: `doc/matmul_plan.md` (every measurement, incl.
-  negatives and retractions). Engine: `src/anf.rs`, `src/bin/anf.rs`.
+  negatives and retractions).
+- Engine: `src/anf.rs`, `src/bin/anf.rs`.
 - Tools: `matmul/{brent,sls,walk,canon,equiv,novelty,lift,import_core,
   check_their_cnf,dbcheck,campaign22,drop22,finisher22,pathsls}.py`.
-  Everything needed for §4 is in-repo except three things fetched from
+- Everything needed for §4 is in-repo except three things fetched from
   their public sources by the commands shown: the DB archive
   (`dbcheck.py fetch`), the matrix-challenges clone (step 7), and yalsat
   (github.com/arminbiere/yalsat) for the baseline timings.
 - HKS: *Local Search for Fast Matrix Multiplication* (SAT 2019,
-  arXiv:1903.11391); *New ways to multiply 3×3-matrices* (JSC 104,
-  2021). Database: algebra.uni-linz.ac.at/research/matrix-multiplication.
-  Challenges: github.com/marijnheule/matrix-challenges.
+  arXiv:1903.11391); *New ways to multiply 3×3-matrices* (JSC 104, 2021).
+- Scheme database: algebra.uni-linz.ac.at/research/matrix-multiplication.
+- Challenges: github.com/marijnheule/matrix-challenges.

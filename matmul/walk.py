@@ -50,6 +50,9 @@ def main():
     ap.add_argument("--seeds", default="seeds")
     ap.add_argument("--archive", default="found")
     ap.add_argument("--anf", default="../target/release/anf")
+    ap.add_argument("--anf-args", default="",
+                    help="extra flags passed through to the solver, e.g. "
+                    "'--probsat --cb 2.5 --density 0.1 --closure-every 2048'")
     ap.add_argument("--rng", type=int, default=0)
     args = ap.parse_args()
 
@@ -69,7 +72,7 @@ def main():
 
     rng = random.Random(args.rng)
     t0 = time.time()
-    hops = runs = found = 0
+    hops = runs = found = ndup = ntimeout = 0
     keys = list(pool)
     while time.time() - t0 < args.minutes * 60:
         hops += 1
@@ -84,8 +87,11 @@ def main():
                 [args.anf, *[str(x) for x in dims], "--fix-file", tmp,
                  "--nfix", str(args.nfix), "--seconds", str(args.secs),
                  "--threads", str(args.threads),
-                 "--seed", str(rng.randrange(1 << 30)), "--quiet"],
+                 "--seed", str(rng.randrange(1 << 30)), "--quiet",
+                 *args.anf_args.split()],
                 capture_output=True, text=True)
+            if "s UNKNOWN" in r.stdout:
+                ntimeout += 1
             for line in r.stdout.splitlines():
                 if not line.startswith("b "):
                     continue
@@ -96,6 +102,7 @@ def main():
                     continue
                 k = canon_key(bits, *dims)
                 if k in pool:
+                    ndup += 1
                     continue
                 pool[k] = s
                 keys.append(k)
@@ -107,7 +114,8 @@ def main():
                       f"(support {sum(bits)}) -> {out}", flush=True)
     el = time.time() - t0
     print(f"done: {found} new schemes in {el:.0f}s "
-          f"({hops} hops, {runs} runs"
+          f"({hops} hops, {runs} runs = {found} new + {ndup} dup + "
+          f"{ntimeout} timeout"
           f"{f', {el / found:.0f}s/scheme' if found else ''})")
 
 

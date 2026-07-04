@@ -319,6 +319,17 @@ pub fn try_equalize_merge(s: &mut Vec<Summand>, rng: &mut Rng) -> bool {
     if merge_if_available(s) {
         return true;
     }
+    // transactional: any payload flips are rolled back unless the rank
+    // actually drops, so a failed attempt never corrupts the scheme.
+    let snapshot = s.clone();
+    if try_equalize_inner(s, rng) {
+        return true;
+    }
+    *s = snapshot;
+    false
+}
+
+fn try_equalize_inner(s: &mut Vec<Summand>, rng: &mut Rng) -> bool {
     let r = s.len();
     let start = rng.below(r.max(1));
     for ii in 0..r {
@@ -389,23 +400,31 @@ pub fn try_equalize_merge(s: &mut Vec<Summand>, rng: &mut Rng) -> bool {
 }
 
 /// guided burst: try to force a reduction within `steps` guided flips.
+/// funnel-bottom reducer: the proven deep random seek is the workhorse
+/// (`seek` attempts — keep this large, it is what punched 52->49 in the
+/// scale waves), and certified equalization is layered on top as the new
+/// lever, tried before an expensive steered burst.
 pub fn guided_descend(
     s: &mut Vec<Summand>,
     rng: &mut Rng,
-    steps: usize,
+    seek: usize,
     k: usize,
 ) -> bool {
-    for step in 0..steps {
-        // certified equalization periodically (it is O(r^2)-ish);
-        // cheap merge check every step
-        if step % 24 == 0 {
-            if try_equalize_merge(s, rng) {
-                return true;
-            }
-        } else if merge_if_available(s) {
+    // 1) deep random seek — the workhorse (do NOT shrink this budget).
+    if seek_reduction(s, rng, seek) {
+        return true;
+    }
+    // 2) certified equalization from the stuck state (transactional).
+    if try_equalize_merge(s, rng) {
+        return true;
+    }
+    // 3) a short steered burst that engineers mergeable structure, then
+    //    one more certified pass — bounded so it never dominates time.
+    for _ in 0..48 {
+        guided_flip(s, rng, k);
+        if merge_if_available(s) {
             return true;
         }
-        guided_flip(s, rng, k);
     }
     try_equalize_merge(s, rng)
 }
@@ -470,10 +489,11 @@ where
                     // bottom, cheap random seeks up high
                     let rk = cur.len();
                     let reduced = if rk <= cfg.save_at + 3 {
+                        // deep seek (wave-2's 25x) + certified equalization
                         guided_descend(
                             &mut cur,
                             &mut rng,
-                            cfg.seek_attempts / 2,
+                            cfg.seek_attempts * 25,
                             12,
                         )
                     } else if rk <= cfg.save_at + 6 {
@@ -715,6 +735,44 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn descends_below_trivial_rank() {
+        // guards against silent descent stalls (the wave-4 regression):
+        // from the trivial 3x3 rank-27 scheme a single guided worker must
+        // reach at least rank 24 within a bounded step budget, every
+        // landing Brent-valid.
+        let (seed, _cfg) = trivial(3);
+        let mut rng = Rng::new(3);
+        let mut cur = seed.clone();
+        let mut min_rank = cur.len();
+        let mut anfs: HashMap<usize, Anf> = HashMap::new();
+        let mut stall = 0;
+        for _ in 0..4000 {
+            if guided_descend(&mut cur, &mut rng, 3000, 12) {
+                let rk = cur.len();
+                let anf = anfs.entry(rk).or_insert_with(|| {
+                    brent(Dims { n1: 3, n2: 3, n3: 3, r: rk })
+                });
+                assert_eq!(verify(anf, &summands_to_bits(&cur, &_cfg)), 0);
+                min_rank = min_rank.min(rk);
+                stall = 0;
+                if min_rank <= 23 {
+                    break;
+                }
+            } else {
+                for _ in 0..300 {
+                    random_flip(&mut cur, &mut rng, false);
+                }
+                stall += 1;
+                if stall > 20 {
+                    cur = seed.clone();
+                    stall = 0;
+                }
+            }
+        }
+        assert!(min_rank <= 24, "stalled at rank {min_rank} (>24)");
     }
 
     #[test]

@@ -285,6 +285,109 @@ pub fn guided_flip(s: &mut Vec<Summand>, rng: &mut Rng, k: usize) -> bool {
     false
 }
 
+/// one payload flip: i[o] ^= k[o] via shared slot t (side effect:
+/// k[third] ^= i[third]). Preconditions checked; drops zeroed summands.
+/// Returns false (and changes nothing) if the flip is illegal now.
+#[inline]
+fn payload_flip(
+    s: &mut Vec<Summand>,
+    i: usize,
+    k: usize,
+    t: usize,
+    o: usize,
+) -> bool {
+    if i == k || t == o || s[i][t] != s[k][t] || s[i][t] == 0 {
+        return false;
+    }
+    let third = 3 - t - o;
+    s[i][o] ^= s[k][o];
+    s[k][third] ^= s[i][third];
+    // payload never zeroes i[o] here by construction (target = j's
+    // nonzero factor), but the side effect may zero k[third]:
+    if s[k].contains(&0) {
+        s.retain(|x| !x.contains(&0));
+    }
+    true
+}
+
+/// WAVE 4: certified pair equalization. For each 1-agreement pair
+/// (i,j), disagreeing slot o with difference d: find a 1- or 2-flip
+/// XOR chain from flip-adjacent summands whose payloads sum to d;
+/// execute it and merge. Exact search, not sampling.
+/// Returns true if the rank dropped.
+pub fn try_equalize_merge(s: &mut Vec<Summand>, rng: &mut Rng) -> bool {
+    if merge_if_available(s) {
+        return true;
+    }
+    let r = s.len();
+    let start = rng.below(r.max(1));
+    for ii in 0..r {
+        let i = (start + ii) % r;
+        for j in 0..r {
+            if j == i || agreements(s, i, j) != 1 {
+                continue;
+            }
+            // the agreeing slot
+            let sa = (0..3).find(|&k| s[i][k] == s[j][k]).unwrap();
+            for o in 0..3 {
+                if o == sa {
+                    continue;
+                }
+                let d = s[i][o] ^ s[j][o];
+                // adjacency: k reachable from i via shared slot t (t!=o)
+                // collect (k, t, payload = s[k][o])
+                let mut adj: Vec<(usize, usize, u16)> = Vec::new();
+                for k in 0..s.len() {
+                    if k == i || k == j {
+                        continue;
+                    }
+                    for t in 0..3 {
+                        if t != o && s[i][t] == s[k][t] && s[i][t] != 0 {
+                            adj.push((k, t, s[k][o]));
+                            break;
+                        }
+                    }
+                }
+                // 1-step
+                if let Some(&(k, t, _)) =
+                    adj.iter().find(|&&(_, _, p)| p == d)
+                {
+                    if payload_flip(s, i, k, t, o) {
+                        if merge_if_available(s) || s.len() < r {
+                            return true;
+                        }
+                    }
+                }
+                // 2-step: payloads p1 ^ p2 == d
+                if adj.len() >= 2 {
+                    let mut seen: HashMap<u16, (usize, usize)> =
+                        HashMap::new();
+                    for &(k, t, p) in &adj {
+                        if let Some(&(k1, t1)) = seen.get(&(p ^ d)) {
+                            // execute k1 then k (re-check legality —
+                            // step 1's side effect may have moved things)
+                            let before = s.len();
+                            if payload_flip(s, i, k1, t1, o)
+                                && s.len() == before
+                                && payload_flip(s, i, k, t, o)
+                            {
+                                if merge_if_available(s) || s.len() < before
+                                {
+                                    return true;
+                                }
+                            } else if s.len() < before {
+                                return true; // side-effect reduction
+                            }
+                        }
+                        seen.insert(p, (k, t));
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
 /// guided burst: try to force a reduction within `steps` guided flips.
 pub fn guided_descend(
     s: &mut Vec<Summand>,
@@ -292,13 +395,19 @@ pub fn guided_descend(
     steps: usize,
     k: usize,
 ) -> bool {
-    for _ in 0..steps {
-        if merge_if_available(s) {
+    for step in 0..steps {
+        // certified equalization periodically (it is O(r^2)-ish);
+        // cheap merge check every step
+        if step % 24 == 0 {
+            if try_equalize_merge(s, rng) {
+                return true;
+            }
+        } else if merge_if_available(s) {
             return true;
         }
         guided_flip(s, rng, k);
     }
-    merge_if_available(s)
+    try_equalize_merge(s, rng)
 }
 
 pub struct Stats {
@@ -579,13 +688,16 @@ mod tests {
         // slots there) — create material via splits+flips then exercise
         // merge_if_available + guided_flip and re-verify throughout.
         for step in 0..8_000 {
-            match step % 7 {
+            match step % 8 {
                 0 if s.len() < 32 => split_toward(&mut s, &mut rng),
                 1 | 2 => {
                     guided_flip(&mut s, &mut rng, 8);
                 }
                 3 => {
                     merge_if_available(&mut s);
+                }
+                4 => {
+                    try_equalize_merge(&mut s, &mut rng);
                 }
                 _ => {
                     random_flip(&mut s, &mut rng, false);

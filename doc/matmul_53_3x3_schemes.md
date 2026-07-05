@@ -13,8 +13,10 @@ listed in §4.*
 ## 1. Summary
 
 We report **53 new schemes for multiplying two 3×3 matrices with 23
-multiplications, with coefficients in {−1, 0, +1}** — valid over any
-commutative ring, the same object class as Laderman's 1976 scheme. Each
+multiplications, with coefficients in {−1, 0, +1}** — bilinear, so
+valid over any ring (commutativity of the entries is never used,
+which is what lets them recurse on block matrices), the same object
+class as Laderman's 1976 scheme. Each
 scheme is:
 
 1. **verified mod 2** against all 729 Brent equations,

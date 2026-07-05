@@ -29,3 +29,33 @@ matmul/challenges/
 matmul/inst/
 matmul/yalsat-bin
 matmul/dbcache/
+# Third-party + downloaded reference material (not ours to commit):
+# Perminov's repo clone (~3 GB, has its own .git), fetched papers/pages.
+# The committed, verified bits live in matmul/perminov_cache/bits/ and
+# the verifier scripts are tracked; everything else here is external.
+matmul/perminov_cache/repo/
+matmul/perminov_cache/*.html
+matmul/perminov_cache/*.pdf
+matmul/perminov_cache/*.log
+# Regenerable hunt corpora + run logs + derived intermediates.
+# Reproduce via the tracked tools/drivers (floors, zrescore, orbitscan,
+# orbit55, lift, the *.sh campaign drivers); results are summarized in
+# committed CSVs (db_floor_census.csv, f27_campaign_results.csv) and
+# canonical representatives are saved under matmul/external/.
+matmul/foundR/
+matmul/found4r/
+matmul/liftedR/
+matmul/found/*-orbitbest.bits
+matmul/found55/scan/
+matmul/found55/cands*/
+matmul/found55/ccells/
+matmul/found55/fat/
+matmul/found55/f27run/
+matmul/found55/f26/
+matmul/found55/satcomp/
+matmul/found55/*.log
+matmul/found55/*-best.bits
+matmul/found55/smoke.bits
+matmul/found55/f27names.txt
+matmul/found55/f28names.txt
+matmul/found55/f28list.txt

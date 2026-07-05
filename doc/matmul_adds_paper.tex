@@ -125,7 +125,8 @@ committed (\path{matmul/external/i19-56adds-slp.txt}, appendix;
   schemes in the public HKS database, used here verbatim as opaque
   labels; the trailing \texttt{-N} indexes files sharing a prefix,
   and the prefix fields encode HKS's own cataloguing invariants (see
-  the database). Nothing in this note relies on their semantics:
+  the HKS database reference at the end of this note). Nothing in
+  this note relies on their semantics:
   ``class $X$'' always means the de Groote equivalence class of the
   scheme stored under that name, and every class identity we assert
   is established by our own exact fingerprint + witness machinery,
@@ -597,9 +598,14 @@ combinations:
 \item E.~M\aa rtensson, P.~S.~Wagner. IACR ePrint 2024/2063
   (Greedy-Potential). Code: \path{werekorren/fmm_add_reduction}.
 \item O.~Schwartz, N.~Vaknin. SIAM J.~Sci.~Comput.~45(6), 2023.
-\item M.~Heule, M.~Kauers, J.~Seidl. SAT 2019 + J.~Symb.\
-  Comput.~104 (2021); database:
-  \url{https://algebra.uni-linz.ac.at/research/matrix-multiplication}.
+\item M.~Heule, M.~Kauers, J.~Seidl. \emph{Local Search for Fast
+  Matrix Multiplication.} SAT 2019 (arXiv:1903.11391); \emph{New ways
+  to multiply $3\times3$-matrices.} J.~Symb.\ Comput.~104 (2021),
+  899--916 (arXiv:1905.10192).
+\item HKS scheme database (the 17{,}376-scheme corpus this note
+  classifies against; source of the scheme identifiers):
+  \url{https://algebra.uni-linz.ac.at/research/matrix-multiplication/}
+  (snapshot \texttt{schemes.tgz}, Last-Modified 2020-08-07).
 \item J.~Laderman. Bull.~AMS 82(1):126--128, 1976.
 \item H.~F.~de Groote. Theor.\ Comput.\ Sci.~7 (1978).
 \end{itemize}

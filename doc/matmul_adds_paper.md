@@ -90,7 +90,8 @@ complete 56-addition programs are committed
   are the file names of the stored schemes in the public HKS
   database, used here verbatim as opaque labels; the trailing `-N`
   indexes files sharing a prefix, and the prefix fields encode HKS's
-  own cataloguing invariants (see the database). Nothing in this
+  own cataloguing invariants (see the HKS database reference at the
+  end of this note). Nothing in this
   note relies on their semantics: "class `X`" always means the de
   Groote equivalence class of the scheme stored under that name, and
   every class identity we assert is established by our own exact
@@ -477,9 +478,14 @@ gain nothing. The concrete open combinations:
 - E. Mårtensson, P. S. Wagner. IACR ePrint 2024/2063
   (Greedy-Potential). Code: `werekorren/fmm_add_reduction`.
 - O. Schwartz, N. Vaknin. SIAM J. Sci. Comput. 45(6), 2023.
-- M. Heule, M. Kauers, J. Seidl. SAT 2019 + J. Symb. Comput. 104
-  (2021); database:
-  algebra.uni-linz.ac.at/research/matrix-multiplication.
+- M. Heule, M. Kauers, J. Seidl. *Local Search for Fast Matrix
+  Multiplication.* SAT 2019 (arXiv:1903.11391); *New ways to multiply
+  3×3-matrices.* J. Symb. Comput. 104 (2021), 899–916
+  (arXiv:1905.10192).
+- HKS scheme database (the 17,376-scheme corpus this note classifies
+  against; source of the scheme identifiers):
+  https://algebra.uni-linz.ac.at/research/matrix-multiplication/
+  (snapshot `schemes.tgz`, Last-Modified 2020-08-07).
 - J. Laderman. Bull. AMS 82(1):126–128, 1976.
 - H. F. de Groote. Theor. Comput. Sci. 7 (1978).
 

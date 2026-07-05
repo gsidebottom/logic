@@ -545,6 +545,40 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   floors 27/27/28 and cn119 v0/v1 28/28 — exactly the Rust
   predictions, with matching candidate counts; both Python jobs then
   stopped as superseded.
+- **R9 — C-side lower bounds via exact XOR-SLP SAT (2026-07-04/05,
+  `matmul/cxlb.py` v1+v2) + solver landscape + DB floor sweep.**
+  cxlb: "do k XOR additions suffice for the 9 C-forms over the 23
+  products?" as SAT (FSK-flavored; unit-vector inputs collapse bit
+  semantics to one base literal + AND-guarded prior terms).  UNSAT at
+  k ⇒ C_Z ≥ k+1 (mod-2 reduction) — the sound closure tool for the
+  fat-sides 55 windows.  v2: value-lex symmetry breaking on adjacent
+  independent steps (sound by bubble-swap; monotonicity selftest),
+  abstract XORs materialized as Tseitin or NATIVE CMS x-lines,
+  portfolio solving, --window K + --drat.  Soundness catch: v1's
+  dead-step elimination broke monotonicity in k (odd padding can
+  need a dead step) — could have corrupted a completed descent; none
+  completed, nothing published affected; removed.
+  **Solver shootout on the live sun56 k=29 boundary** (23,867 vars /
+  84k clauses): kissat 600 s + 1800 s ✗, cadical 600 s ✗,
+  cryptominisat 615 s ✗, z3 word-level QF_BV + ordered pairs 600 s ✗;
+  v2 (SB + portfolio + native XOR) 900 s ✗ under sweep load.  CMS's
+  Gauss cannot engage through AND-guarded parities — solver shopping
+  is not the lever; boundary certificates cost hours each (clean-
+  machine reruns pending).  Lean/grind: category error (proof
+  automation, not search); Lean's role = LRAT certification of final
+  boundary UNSATs.  cvc5 ≈ cadical backend + overhead (not run;
+  bounded by cadical's row).  **Calibrated C-floors (verified SAT
+  witnesses + resisting boundaries): sun56 cell GF2-min ∈ {29,30};
+  cn120 cell ∈ {27,28}.**  Production plan for window closure:
+  enumerate the distinct C form-sets inside each class's fat-sides
+  window, one long DRAT-certified UNSAT@27 (or @26) per form-set —
+  weekend-scale, certifiable.
+  **DB-wide floor sweep** (Rust, --screen-nt 13, class-parallel ×10
+  after the row-parallel version proved load-starved): all 17,376
+  classes; at 69% had already surfaced **195 classes with sides
+  floor ≤ 27 — all exactly 27, none below** (mirrors cn119/cn122;
+  Sun's 26 still unique).  Follow-up per candidate class:
+  emit-sides 28 + zrescore (minutes each).
 - **Later options**: MCGS/learned policy over restart seeds / move classes
   (ties back to the neural track); UNSAT side (challenge 2) via our proof
   machinery — a *different* project (algebraic/symmetry lower-bound

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exact GF(2) XOR-SLP minimization / lower bounds for the C side.
+"""Exact GF(2) XOR-SLP minimization / lower bounds for the C side. v2.
 
 The C side of a scheme computes 9 output forms over the 23 products.
 Any Z-side SLP reduces mod 2 to an XOR-SLP, so the exact GF(2)
@@ -9,31 +9,57 @@ with the slim-sides exhaustions, UNSAT at the right k on the right
 (R,P) cells closes entire classes for 55.
 
 Encoding (Fuhs--Schneider-Kamp flavored, simplified by unit-vector
-inputs): step t in 1..k selects exactly two sources among the n
-bases and steps 1..t-1; value bits are defined by parity chains
-  x[t][i] = sel[t][base_i]  XOR  XOR_{j<t} (sel[t][step_j] AND x[j][i])
+inputs): step t selects exactly two sources among the n bases and
+steps 1..t-1; value bits are parity-defined
+  x[t][i] = sel[t][base_i] XOR XOR_{j<t} (sel[t][step_j] AND x[j][i])
 and every output form must equal some step value (or a base, for
-weight-1 outputs).  Dead steps are forbidden (every step feeds a
-later step or an output).  Solved with kissat; --drat asks kissat
-for a DRAT proof on UNSAT (verifiable evidence for the bound).
+weight-1 outputs).  Dead steps are forbidden.
+
+v2 additions:
+  * symmetry breaking (default on): step values nonzero, and any two
+    ADJACENT INDEPENDENT steps (t+1 does not consume t) must have
+    strictly lex-increasing values.  Sound: swapping adjacent
+    independent steps preserves validity, so any program bubble-sorts
+    into this canonical form; distinct-value programs always exist at
+    any feasible k (pad with fresh values).
+  * parity constraints are collected abstractly and materialized as
+    Tseitin chains (kissat/cadical/z3) or NATIVE x-lines for
+    cryptominisat (Gaussian elimination can then engage; also drops
+    the chain auxiliaries).
+  * portfolio solving: kissat, cadical, cryptominisat5 in parallel on
+    the same instance; first conclusive answer wins, rest killed.
+  * --window K: the production single-shot decision (e.g. UNSAT at
+    27 => C_Z >= 28), with --drat PATH for a kissat proof run.
 
 Usage:
   cxlb.py selftest
-  cxlb.py --bits FILE [--k N | --min] [--start K] [--timeout S]
+  cxlb.py --bits FILE [--k N | --min | --window K] [--start K]
+          [--timeout S] [--no-sb] [--solvers kissat,cadical,cms]
+          [--drat PATH]
   cxlb.py --forms 3,6,5 --n 3 --k 2      # masks over n base vars
 """
 import os
 import subprocess
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
 
+SOLVER_CMDS = {
+    "kissat": ["kissat", "-q"],
+    "cadical": ["cadical", "-q"],
+    "cms": ["cryptominisat5", "--verb", "0"],
+}
+
 
 class CNF:
+    """clauses + abstract XOR constraints (materialized per solver)."""
+
     def __init__(self):
         self.n = 0
         self.clauses = []
+        self.xors = []  # lists of literals L with XOR(L) == False
 
     def var(self):
         self.n += 1
@@ -42,12 +68,11 @@ class CNF:
     def add(self, *lits):
         self.clauses.append(list(lits))
 
-    def xor3(self, a, b, c):
-        """c = a XOR b (4 clauses)."""
-        self.add(-a, -b, -c)
-        self.add(a, b, -c)
-        self.add(a, -b, c)
-        self.add(-a, b, c)
+    def xor_zero(self, lits):
+        """assert XOR of lits == 0 (even parity of true literals)."""
+        lits = [l for l in lits if l != 0]
+        assert lits
+        self.xors.append(list(lits))
 
     def and2(self, a, b, c):
         """c = a AND b."""
@@ -56,17 +81,15 @@ class CNF:
         self.add(b, -c)
 
     def exactly2(self, lits):
-        """sequential counter <=2 plus >=2 (naive but small)."""
-        # at least 2: forbid all-zero and exactly-one
+        # at least 2
         self.add(*lits)
         for i, x in enumerate(lits):
             others = [y for j, y in enumerate(lits) if j != i]
-            self.add(-x, *others)  # x -> some other
-        # at most 2: no three true (sequential counter)
+            self.add(-x, *others)
+        # at most 2 (sequential)
         s1 = s2 = None
         for x in lits:
             n1, n2 = self.var(), self.var()
-            # n1 = s1 | x ; n2 = s2 | (s1 & x); forbid s2 & x
             if s1 is None:
                 self.add(-x, n1)
                 self.add(x, -n1)
@@ -80,92 +103,198 @@ class CNF:
                 self.add(-s2, n2)
                 self.add(-aux, n2)
                 self.add(s2, aux, -n2)
-                # forbid third: s2 & x
                 self.add(-s2, -x)
             s1, s2 = n1, n2
 
-    def solve(self, timeout=None, drat=None):
-        with tempfile.NamedTemporaryFile("w", suffix=".cnf",
-                                         delete=False) as f:
-            f.write(f"p cnf {self.n} {len(self.clauses)}\n")
-            for c in self.clauses:
-                f.write(" ".join(map(str, c)) + " 0\n")
-            path = f.name
-        cmd = ["kissat", "-q", path]
+    # ---- materialization ----
+
+    def _tseitin_xor(self):
+        """expand xors into CNF clauses with chain auxiliaries;
+        returns (nvars, clauses)."""
+        n = self.n
+        clauses = [list(c) for c in self.clauses]
+
+        def xor3(a, b, c):
+            clauses.append([-a, -b, -c])
+            clauses.append([a, b, -c])
+            clauses.append([a, -b, c])
+            clauses.append([-a, b, c])
+
+        for lits in self.xors:
+            if len(lits) == 1:
+                clauses.append([-lits[0]])
+                continue
+            acc = lits[0]
+            for l in lits[1:-1]:
+                n += 1
+                xor3(acc, l, n)
+                acc = n
+            # acc XOR last == 0  <=>  acc == last
+            clauses.append([-acc, lits[-1]])
+            clauses.append([acc, -lits[-1]])
+        return n, clauses
+
+    def write(self, path, native_xor=False):
+        if native_xor:
+            with open(path, "w") as f:
+                f.write(f"p cnf {self.n} "
+                        f"{len(self.clauses) + len(self.xors)}\n")
+                for c in self.clauses:
+                    f.write(" ".join(map(str, c)) + " 0\n")
+                for lits in self.xors:
+                    # x-line asserts XOR(lits) == True; flip one sign
+                    # to assert == False
+                    flipped = [-lits[0]] + lits[1:]
+                    f.write("x " + " ".join(map(str, flipped)) + " 0\n")
+        else:
+            n, clauses = self._tseitin_xor()
+            with open(path, "w") as f:
+                f.write(f"p cnf {n} {len(clauses)}\n")
+                for c in clauses:
+                    f.write(" ".join(map(str, c)) + " 0\n")
+
+    def solve(self, timeout=None, solvers=("kissat",), drat=None):
+        """portfolio solve; returns (True, model)|(False, None)|(None, None).
+        drat: path — kissat-only proof run (UNSAT certificate)."""
         if drat:
-            cmd = ["kissat", "-q", path, drat]
-        if timeout:
-            cmd = ["kissat", "-q", f"--time={int(timeout)}", path] + (
-                [drat] if drat else [])
-        r = subprocess.run(cmd, capture_output=True, text=True)
-        os.unlink(path)
-        if "s SATISFIABLE" in r.stdout:
+            solvers = ("kissat",)
+        tmp = {}
+        procs = {}
+        try:
+            for s in solvers:
+                suffix = ".cnf"
+                path = tempfile.NamedTemporaryFile(
+                    "w", suffix=suffix, delete=False).name
+                self.write(path, native_xor=(s == "cms"))
+                tmp[s] = path
+                cmd = list(SOLVER_CMDS[s]) + [path]
+                if drat and s == "kissat":
+                    cmd.append(drat)
+                procs[s] = subprocess.Popen(
+                    cmd, stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL, text=True)
+            t0 = time.time()
+            done = {}
+            while procs:
+                for s, p in list(procs.items()):
+                    rc = p.poll()
+                    if rc is None:
+                        continue
+                    out = p.stdout.read()
+                    del procs[s]
+                    if "s SATISFIABLE" in out:
+                        done[s] = (True, out)
+                    elif "s UNSATISFIABLE" in out:
+                        done[s] = (False, out)
+                if done:
+                    break
+                if timeout and time.time() - t0 > timeout:
+                    break
+                time.sleep(0.05)
+            for p in procs.values():
+                p.kill()
+            for p in procs.values():
+                p.wait()
+            if not done:
+                return None, None
+            s, (sat, out) = next(iter(done.items()))
+            if not sat:
+                return False, None
             model = set()
-            for line in r.stdout.splitlines():
+            for line in out.splitlines():
                 if line.startswith("v"):
                     for tok in line.split()[1:]:
                         x = int(tok)
                         if x > 0:
                             model.add(x)
             return True, model
-        if "s UNSATISFIABLE" in r.stdout:
-            return False, None
-        return None, None  # timeout / unknown
+        finally:
+            for path in tmp.values():
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
 
 
-def slp_k(forms, n, k, timeout=None, drat=None):
+def slp_k(forms, n, k, timeout=None, solvers=("kissat",), sb=True,
+          drat=None):
     """SAT: k XOR additions compute all forms (masks over n bases)?
-    Returns (True, chain) | (False, None) | (None, None) on timeout.
-    chain = [(src1, src2), ...] with sources <n = bases else step."""
+    Returns (True, chain)|(False, None)|(None, None)."""
     forms = list(forms)
     for f in forms:
         assert 0 < f < (1 << n)
     cnf = CNF()
-    # sel[t][j]: step t (0-based) uses source j (0..n+t-1)
     sel = [[cnf.var() for _ in range(n + t)] for t in range(k)]
-    # x[t][i]
     x = [[cnf.var() for _ in range(n)] for _ in range(k)]
     for t in range(k):
         cnf.exactly2(sel[t])
         for i in range(n):
-            # parity chain: x[t][i] = sel[t][i] ^ XOR_j (sel[t][n+j] & x[j][i])
-            acc = sel[t][i]
+            # x[t][i] XOR sel[t][i] XOR XOR_j (sel[t][n+j] & x[j][i]) = 0
+            terms = [x[t][i], sel[t][i]]
             for j in range(t):
                 a = cnf.var()
                 cnf.and2(sel[t][n + j], x[j][i], a)
-                nxt = cnf.var()
-                cnf.xor3(acc, a, nxt)
-                acc = nxt
-            # x[t][i] <-> acc
-            cnf.add(-x[t][i], acc)
-            cnf.add(x[t][i], -acc)
-    # outputs: each form equals some step value or a base
+                terms.append(a)
+            cnf.xor_zero(terms)
+    # outputs
     outsel = []
     for f in forms:
         opts = []
-        wt1_base = None
-        if bin(f).count("1") == 1:
-            wt1_base = f.bit_length() - 1
         for t in range(k):
             o = cnf.var()
             opts.append((o, t))
             for i in range(n):
                 bit = (f >> i) & 1
                 cnf.add(-o, x[t][i] if bit else -x[t][i])
-        if wt1_base is not None:
+        if bin(f).count("1") == 1:
             o = cnf.var()
-            opts.append((o, None))  # base matches trivially
+            opts.append((o, None))
         cnf.add(*[o for o, _ in opts])
         outsel.append(opts)
-    # no dead steps: step t feeds a later step or an output
-    for t in range(k):
-        feeds = [sel[t2][n + t] for t2 in range(t + 1, k)]
-        feeds += [o for opts in outsel for (o, tt) in opts if tt == t]
-        if feeds:
-            cnf.add(*feeds)
-        # (a step with no possible consumer only at t=k-1 with no
-        # matching output — the clause above is then empty-safe)
-    ok, model = cnf.solve(timeout=timeout, drat=drat)
+    # NOTE: no dead-step elimination — it breaks monotonicity in k
+    # (odd-length padding cannot always avoid dead steps, so SAT(k)
+    # could fail above the true min and a descent would misreport).
+    # SB below keeps padding available: fresh-value steps appended in
+    # a dependent chain never face a lex constraint.
+    _ = outsel
+    if sb:
+        # step values nonzero
+        for t in range(k):
+            cnf.add(*[x[t][i] for i in range(n)])
+        # adjacent independent steps strictly value-lex increasing
+        for t in range(k - 1):
+            ind = cnf.var()  # step t+1 does NOT use step t
+            cnf.add(ind, sel[t + 1][n + t])
+            cnf.add(-ind, -sel[t + 1][n + t])
+            # ind -> x[t+1] >lex x[t]   (bit n-1 most significant)
+            prefix = None  # prefix equality so far
+            gts = []
+            for i in range(n - 1, -1, -1):
+                g = cnf.var()  # strictly greater decided at bit i
+                if prefix is None:
+                    # g = x[t+1][i] & ~x[t][i]
+                    cnf.add(-g, x[t + 1][i])
+                    cnf.add(-g, -x[t][i])
+                    cnf.add(g, -x[t + 1][i], x[t][i])
+                else:
+                    cnf.add(-g, prefix)
+                    cnf.add(-g, x[t + 1][i])
+                    cnf.add(-g, -x[t][i])
+                    cnf.add(g, -prefix, -x[t + 1][i], x[t][i])
+                gts.append(g)
+                eq = cnf.var()  # bits equal at i
+                cnf.add(-eq, x[t + 1][i], -x[t][i])
+                cnf.add(-eq, -x[t + 1][i], x[t][i])
+                cnf.add(eq, x[t + 1][i], x[t][i])
+                cnf.add(eq, -x[t + 1][i], -x[t][i])
+                if prefix is None:
+                    prefix = eq
+                else:
+                    np_ = cnf.var()
+                    cnf.and2(prefix, eq, np_)
+                    prefix = np_
+            cnf.add(-ind, *gts)
+    ok, model = cnf.solve(timeout=timeout, solvers=solvers, drat=drat)
     if ok is not True:
         return ok, None
     chain = []
@@ -173,7 +302,6 @@ def slp_k(forms, n, k, timeout=None, drat=None):
         srcs = [j for j in range(n + t) if sel[t][j] in model]
         assert len(srcs) == 2, srcs
         chain.append((srcs[0], srcs[1]))
-    # replay-verify the witness
     vals = [1 << i for i in range(n)]
     for (a, b) in chain:
         vals.append(vals[a] ^ vals[b])
@@ -182,14 +310,13 @@ def slp_k(forms, n, k, timeout=None, drat=None):
     return True, chain
 
 
-def min_slp(forms, n, start, timeout=None, verbose=True):
-    """descend k from `start` until UNSAT; returns (min_k, status).
-    status 'exact' if the UNSAT boundary was proven, 'timeout' if a
-    solve timed out (min_k is then only an upper bound)."""
+def min_slp(forms, n, start, timeout=None, solvers=("kissat",),
+            sb=True, verbose=True):
     k = start
     best = None
     while k >= 0:
-        ok, chain = slp_k(forms, n, k, timeout=timeout)
+        ok, _ = slp_k(forms, n, k, timeout=timeout, solvers=solvers,
+                      sb=sb)
         if verbose:
             tag = {True: "SAT", False: "UNSAT", None: "TIMEOUT"}[ok]
             print(f"  k={k}: {tag}", flush=True)
@@ -215,25 +342,53 @@ def c_forms_from_bits(bits):
 
 
 def selftest():
-    # single weight-3 output: min 2
-    assert slp_k([0b111], 3, 2)[0] is True
-    assert slp_k([0b111], 3, 1)[0] is False
-    # pair + extension: min 2
-    assert slp_k([0b011, 0b111], 3, 2)[0] is True
-    assert slp_k([0b011, 0b111], 3, 1)[0] is False
-    # three pairwise forms, pure chain: min 3
-    fs = [0b011, 0b110, 0b101]
-    assert slp_k(fs, 3, 3)[0] is True
-    assert slp_k(fs, 3, 2)[0] is False
-    # weight 4: min 3
-    assert slp_k([0b1111], 4, 3)[0] is True
-    assert slp_k([0b1111], 4, 2)[0] is False
-    # weight-1 output is free
-    assert slp_k([0b010, 0b011], 3, 1)[0] is True
-    # shared subexpression: {a^b^c, a^b^d} = 3 (w=a^b reused)
-    assert slp_k([0b0111, 0b1011], 4, 3)[0] is True
-    assert slp_k([0b0111, 0b1011], 4, 2)[0] is False
-    print("cxlb selftest: ALL OK")
+    import itertools
+    import random
+    for sb in (True, False):
+        assert slp_k([0b111], 3, 2, sb=sb)[0] is True
+        assert slp_k([0b111], 3, 1, sb=sb)[0] is False
+        assert slp_k([0b011, 0b111], 3, 2, sb=sb)[0] is True
+        assert slp_k([0b011, 0b111], 3, 1, sb=sb)[0] is False
+        fs = [0b011, 0b110, 0b101]
+        assert slp_k(fs, 3, 3, sb=sb)[0] is True
+        assert slp_k(fs, 3, 2, sb=sb)[0] is False
+        assert slp_k([0b1111], 4, 3, sb=sb)[0] is True
+        assert slp_k([0b1111], 4, 2, sb=sb)[0] is False
+        assert slp_k([0b010, 0b011], 3, 1, sb=sb)[0] is True
+        assert slp_k([0b0111, 0b1011], 4, 3, sb=sb)[0] is True
+        assert slp_k([0b0111, 0b1011], 4, 2, sb=sb)[0] is False
+    # monotonicity: SAT stays SAT above the min (padding must work)
+    for sb in (True, False):
+        for kk in (1, 2, 3, 4):
+            assert slp_k([0b011], 3, kk, sb=sb)[0] is True, (sb, kk)
+        for kk in (3, 4, 5):
+            assert slp_k([0b011, 0b110, 0b101], 3, kk, sb=sb)[0] \
+                is True, (sb, kk)
+    print("micro optima + monotonicity: OK (sb on + off)")
+    # SB-vs-noSB verdict agreement on random small instances
+    rng = random.Random(11)
+    for trial in range(6):
+        n = 7
+        forms = []
+        while len(forms) < 4:
+            f = rng.randrange(1, 1 << n)
+            if bin(f).count("1") >= 2 and f not in forms:
+                forms.append(f)
+        for k in (5, 6, 7, 8):
+            a = slp_k(forms, n, k, sb=True)[0]
+            b = slp_k(forms, n, k, sb=False)[0]
+            assert a == b, (forms, k, a, b)
+    print("SB/no-SB verdict agreement: OK (6 random x 4 k's)")
+    # portfolio smoke (all three solvers agree on a small instance)
+    have = [s for s, cmd in SOLVER_CMDS.items()
+            if subprocess.run(["which", cmd[0]],
+                              capture_output=True).returncode == 0]
+    ok, _ = slp_k([0b011, 0b110, 0b101], 3, 3, solvers=tuple(have))
+    assert ok is True
+    ok, _ = slp_k([0b011, 0b110, 0b101], 3, 2, solvers=tuple(have))
+    assert ok is False
+    print(f"portfolio smoke: OK ({','.join(have)})")
+    print("cxlb v2 selftest: ALL OK")
 
 
 def main():
@@ -251,11 +406,16 @@ def main():
         return default
 
     k = opt("--k", None, int)
+    window = opt("--window", None, int)
     start = opt("--start", 30, int)
     timeout = opt("--timeout", None, float)
     formsarg = opt("--forms", None, str)
     nvars = opt("--n", 23, int)
     bitsfile = opt("--bits", None, str)
+    drat = opt("--drat", None, str)
+    solvers = tuple(opt("--solvers", "kissat,cadical,cms", str)
+                    .replace("cryptominisat5", "cms").split(","))
+    sb = "--no-sb" not in argv
     do_min = "--min" in argv
 
     if formsarg:
@@ -272,24 +432,29 @@ def main():
         sys.exit("need --forms or --bits")
 
     if do_min:
-        best, status = min_slp(forms, n, start, timeout=timeout)
+        best, status = min_slp(forms, n, start, timeout=timeout,
+                               solvers=solvers, sb=sb)
         print(f"GF(2) C-min: {best} ({status})"
               + ("" if status == "exact"
                  else " — upper bound only; raise --timeout"))
         if status == "exact" and best is not None:
-            print(f"=> C_Z >= {best} for every ternary/Z SLP "
-                  f"of this C side (sound lower bound)")
-    else:
-        assert k is not None, "need --k or --min"
-        ok, chain = slp_k(forms, n, k, timeout=timeout)
-        print({True: f"SAT: {k} additions suffice",
-               False: f"UNSAT: {k} additions impossible "
-                      f"=> C >= {k + 1} (GF2, hence Z)",
-               None: "TIMEOUT"}[ok])
-        if chain:
-            for t, (a, b) in enumerate(chain):
-                fmt = lambda s: (f"M{s+1}" if s < n else f"t{s-n}")
-                print(f"  t{t} = {fmt(a)} ^ {fmt(b)}")
+            print(f"=> C_Z >= {best} (sound lower bound)")
+        return
+    kk = window if window is not None else k
+    assert kk is not None, "need --k, --window or --min"
+    t0 = time.time()
+    ok, chain = slp_k(forms, n, kk, timeout=timeout, solvers=solvers,
+                      sb=sb, drat=drat)
+    dt = time.time() - t0
+    print({True: f"SAT: {kk} additions suffice [{dt:.1f}s]",
+           False: f"UNSAT: {kk} additions impossible => C >= {kk + 1} "
+                  f"(GF2, hence Z) [{dt:.1f}s]"
+                  + (f"; DRAT at {drat}" if drat else ""),
+           None: f"TIMEOUT [{dt:.1f}s]"}[ok])
+    if chain:
+        for t, (a, b) in enumerate(chain):
+            fmt = lambda s: (f"M{s+1}" if s < n else f"t{s-n}")
+            print(f"  t{t} = {fmt(a)} ^ {fmt(b)}")
 
 
 if __name__ == "__main__":

@@ -250,6 +250,47 @@ the time of writing), so its 56 = 13+14+29 sits one addition above
 its own side floor; a 55 there needs sides 27 + C 28. These are now
 *concrete, finite* search targets rather than open-ended hunts.
 
+## 5b. The database-wide side-floor census (v3 addition, 2026-07-05)
+
+With the table machinery ported to Rust (`src/floors.rs`, ~300×; a
+sound nt-prefilter for sweep mode) and exact Z-rescoring in-process
+(`src/zrescore.rs`, ~150×), the orbit-side analysis was run over the
+**entire HKS database — all 17,376 classes, every representative of
+every orbit** (~10¹¹ representatives covered by table decomposition).
+Screened side-floor histogram: **26: 4 classes; 27: 526; 28: 12,159;
+29: 4,326; 30: 357; 31: 4.**
+
+- **Floor 26 (Sun-grade sides) exists in exactly four classes**:
+  Sun's `i46w213c23ci`, its family siblings `i46w205c23ci` and
+  `i46w221c23ci`, and `i73w191c236f` (floors exact-confirmed
+  unscreened). Exhausting every sides ≤ 27 representative of the
+  three new ones (4,320 reps, exact Z-rescoring): best totals
+  **57, 57, 58** — chain-coverable sides are *not* sufficient;
+  Sun's class is the only one in the published record that pairs
+  them with an output side ≤ 30. (Control: the same run reproduces
+  Sun's class at 56 from its 1,728 slim-sides reps.)
+- **Of the 526 screened floor-27 classes, 80 truly admit sides 27**
+  (the rest are prefilter lower-bound artifacts, filtered exactly as
+  designed). Exhausting all of them: best totals 56 ×2, 57 ×6,
+  58 ×27, 59 ×26, 60 ×18, 61 ×1 — and the two 56s are precisely
+  `i12w219c23ci` and `i19w225c4efh`: **the blind database sweep
+  independently rediscovers both classes of §4**, with no input
+  from this note's earlier results.
+- Consequently, over the entire published database: **exactly three
+  classes attain 56; no slim-sides representative of any class
+  attains 55 anywhere**; and any 55 at rank 23 within known classes
+  must be a fat-sides representative (sides ≥ 28) with an output
+  side of ≤ 27 — two additions below the best output count ever
+  observed at this format. The per-class closure tool for that last
+  window is the exact XOR-SLP lower-bound program of §9
+  (`matmul/cxlb.py`: UNSAT at k ⇒ C_Z ≥ k+1, DRAT-certifiable);
+  its calibration brackets the two key cells at GF(2) C-min ∈
+  {29,30} (Sun's rep) and ∈ {27,28} (the C=28 rep of Sun's class).
+
+Committed artifacts: `matmul/db_floor_census.csv` (17,376 rows),
+`matmul/f27_campaign_results.csv` (80 rows), campaign driver
+`matmul/found55/f27_campaign.sh`.
+
 ## 6. The 60-era results (v1 of this note, compressed)
 
 Kept because the discovery path and the negative are still

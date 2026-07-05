@@ -112,10 +112,53 @@ on Sun's own scheme. We therefore built the missing tool and report:
 
 Everything is exact and replayable: Brent equations over
 $\mathbb{Z}$ for every scheme, replay-verified straight-line
-programs, chain re-verification, sign models Z-verified, equivalence
+programs, chain re-verification, sign models $\mathbb{Z}$-verified, equivalence
 witnesses/refutations. Two complete 56-addition programs are
 committed (\path{matmul/external/i19-56adds-slp.txt}, appendix;
 \path{matmul/external/i12-56adds-slp.txt}).
+
+\section{Notation and terminology}\label{sec:notation}
+
+\begin{itemize}
+\item \textbf{Scheme identifiers} (\texttt{i12w219c23ci-008},
+  \texttt{i2w201c26fi-000}, \dots) are the file names of the stored
+  schemes in the public HKS database, used here verbatim as opaque
+  labels; the trailing \texttt{-N} indexes files sharing a prefix,
+  and the prefix fields encode HKS's own cataloguing invariants (see
+  the database). Nothing in this note relies on their semantics:
+  ``class $X$'' always means the de Groote equivalence class of the
+  scheme stored under that name, and every class identity we assert
+  is established by our own exact fingerprint + witness machinery,
+  not by name.
+\item \textbf{de Groote group, class, orbit, representative.} The
+  de Groote symmetry group acts on schemes (sandwiching the three
+  tensors by invertible matrices, plus the $S_3$ slot symmetries);
+  two schemes are \emph{equivalent} if one is the image of the
+  other. The \textbf{orbit} of a scheme is its set of images under
+  the group --- identical to its equivalence \textbf{class}; a
+  \textbf{representative} is any member. An \textbf{orbit walk} is
+  a local search over representatives inside one class (moving by
+  small group elements), which can change the additive cost but
+  never the class.
+\item \textbf{sign-SAT} (companion paper, \S 3.5): the Boolean
+  satisfiability instance whose variables are the signs of the
+  mod-2-supported coefficients. A covering term's sign is the XOR of
+  its three factor signs, and each integer Brent equation with $k$
+  covering terms and right-hand side $\delta$ becomes the
+  cardinality constraint ``exactly $(k-\delta)/2$ of the $k$ terms
+  are negative''. Its solutions are exactly the valid $\pm 1$ lifts
+  of the mod-2 scheme (worked example in Appendix~C).
+\item \textbf{$\mathbb{Z}$-verified}: checked exactly over the
+  integers --- all 729 Brent equations evaluated with the scheme's
+  $\pm 1$ coefficients in exact integer arithmetic, zero residuals.
+  (Code output and command comments write plain \texttt{Z} for
+  $\mathbb{Z}$.)
+\item \textbf{$h^{*}$}: the star denotes the optimal value ---
+  $h^{*}$ is the smallest helper count $h$ at which the
+  side-minimizer's search succeeds.
+\item \textbf{Closure normal form}: defined in
+  \S\ref{sec:minimizer} (Method); worked example in Appendix~B.
+\end{itemize}
 
 \section{Cost model and history}\label{sec:model}
 
@@ -183,12 +226,16 @@ as a search problem.
 
 \textbf{Method.} Iterative deepening on the number of \emph{helpers}
 $h$ (chain values that are not target rows); the optimum is
-(\#distinct multi-term targets) $+\, h^{*}$. The search uses a
-closure normal form: since the value pool only grows, covering a
-coverable target never hurts and always costs exactly one addition
---- so targets are covered greedily to a fixpoint and the search
-branches \textbf{only on helper insertions at fixpoints} (complete
-by an exchange argument). With one helper left, the helper must
+(\#distinct multi-term targets) $+\, h^{*}$. The search uses what we call the
+\textbf{closure normal form}: because the pool of computed values
+only ever grows, covering a currently-derivable target can never
+hurt a later step and always costs exactly one addition --- so the
+search covers every derivable target greedily until none remains
+(the \emph{closure fixpoint}) and branches \textbf{only on which
+helper value to insert at a fixpoint}. Any optimal chain can be
+reordered into this form (an exchange argument: coverable-target
+steps commute forward past helper insertions), so restricting the
+search to it loses nothing. With one helper left, the helper must
 directly complete some uncovered target, shrinking the last level to
 an ``enabling set''. Helpers may be arbitrary integer vectors,
 doublings included --- strictly more general than the pure/one-aux
@@ -206,7 +253,7 @@ certificates --- in 0.3\,s total, every chain replay-verified.
 Micro-optima (5 hand-checkable cases) also pass.
 
 \textbf{Scoring a scheme.} Sign models are enumerated by sign-SAT
-with blocking clauses and Z-verified; per model the two input sides
+with blocking clauses and $\mathbb{Z}$-verified; per model the two input sides
 are minimized exactly and the output side is optimized by
 replay-verified restart-greedy CSE (the v1 pair extractor --- on the
 relevant representatives its counts coincide with the v2
@@ -359,7 +406,7 @@ covered by table decomposition). Screened side-floor histogram:
   \texttt{i46w205c23ci} and \texttt{i46w221c23ci}, and
   \texttt{i73w191c236f} (floors exact-confirmed unscreened).
   Exhausting every sides $\le 27$ representative of the three new
-  ones (4,320 reps, exact Z-rescoring): best totals \textbf{57, 57,
+  ones (4,320 reps, exact $\mathbb{Z}$-rescoring): best totals \textbf{57, 57,
   58} --- chain-coverable sides are \emph{not} sufficient; Sun's
   class is the only one in the published record that pairs them with
   an output side $\le 30$. (Control: the same run reproduces Sun's
@@ -444,7 +491,7 @@ informative; full text in git history.
   over 28.4M representatives per class in minutes), the
   database-wide census over all 17,376 classes, and, for Sun's
   class, side-optimality of his representative over the whole class
-  plus an exhaustive Z-re-score of every slim-sides representative
+  plus an exhaustive $\mathbb{Z}$-re-score of every slim-sides representative
   --- the sharpest localization yet of where a 55 could live.
 \item Improved counts on every other class in the record chain's
   history on their own representatives ($59 \to 58$, $58 \to 57$,
@@ -557,7 +604,7 @@ combinations:
 \item H.~F.~de Groote. Theor.\ Comput.\ Sci.~7 (1978).
 \end{itemize}
 
-\section*{Appendix: a complete 56-addition program (class
+\section*{Appendix A: a complete 56-addition program (class
 \texttt{i19w225c4efh})}
 
 Exact input sides (13 + 14, both provably minimal for this
@@ -611,5 +658,80 @@ cw6 = M18 -cw3           C31 = M8 +M9 -cw7
 cw7 = M14 -cw5           C32 = M11 +M16 +M4
 cw8 = M20 -cw4           C33 = -M12 +M17 +M7 -cw1
 \end{Code}
+
+\section*{Appendix B: the side-minimizer on a worked
+example}
+
+Rows (targets) over base variables $a, b, c, d$: $T_1 = a + b$ and
+$T_2 = a + b + c + d$. Both have $\ge 2$ terms, are distinct up to
+global sign, and neither is a basis vector, so $\mathrm{nt} = 2$
+and any chain needs at least 2 additions.
+
+\textbf{Slack $h = 0$} (no helpers --- every addition must create a
+target): the pool starts as $\{a, b, c, d\}$. $T_1 = a + b$ is
+derivable (both operands in the pool): cover it; the pool grows to
+$\{a, b, c, d, a{+}b\}$. Now $T_2$ must be $x \pm y$ with $x, y$
+in the pool: subtracting each pool value from $T_2$ gives $c{+}d$,
+$a{+}c{+}d$, $b{+}c{+}d$, $a{+}b{+}c$, $a{+}b{+}d$ --- none in the
+pool, so the closure is at a fixpoint with $T_2$ uncovered, and
+$h = 0$ is \textbf{exhausted: 2 additions are impossible.}
+
+\textbf{Slack $h = 1$}: at that same fixpoint the \emph{enabling
+set} --- values $u$ that would directly complete an uncovered target
+as $T_2 = x \pm u$ --- is $\{c{+}d,\ a{+}c{+}d,\ b{+}c{+}d,\
+a{+}b{+}c,\ a{+}b{+}d, \dots\}$; of these, $u = c + d$ is itself
+derivable from the pool ($c$ and $d$ are basis vectors). Insert it
+as the helper, and the closure resumes: $T_2 = (a{+}b) + (c{+}d)$.
+
+The optimum is $\mathrm{nt} + h^{*} = 2 + 1 = \textbf{3
+additions}$, found in 3 search nodes; the emitted chain is
+
+\begin{Code}
+w0 = a + b        (covers T1)
+w1 = c + d        (helper)
+w2 = w0 + w1      (covers T2)
+\end{Code}
+
+\noindent replay-verified by expansion. Global signs are free
+throughout: a row $-a - b$ is the same target as $a + b$ (a chain
+value may be used negated at no cost).
+
+\section*{Appendix C: $\mathbb{Z}$-scoring a scheme, end to end
+(sun56)}
+
+The pipeline of \S\ref{sec:minimizer} on the record
+representative, with every number below reproduced by
+\texttt{sidemin.py --models 24 perminov\_cache/bits/sun56.bits}:
+
+\begin{enumerate}
+\item \textbf{Mod-2 gate.} The 621-bit vector satisfies all 729
+  Brent equations over GF(2).
+\item \textbf{Sign-SAT.} The support has 175 nonzero coefficients
+  (175 sign variables); the 729 integer Brent equations have 453
+  covering terms in total, and the instance has 4{,}269 clauses. Two
+  concrete equations: one type-3 equation is covered by $k = 3$
+  terms (the products $M_2$, $M_{17}$, $M_{23}$) with right-hand
+  side 1, so \textbf{exactly $(3-1)/2 = 1$ of the three terms must
+  be negative}; a neighboring rhs-0 equation is covered by $k = 4$
+  terms ($M_2$, $M_{17}$, $M_{20}$, $M_{23}$), so exactly 2 of 4 are
+  negative. kissat solves the instance in milliseconds; each
+  returned model is $\mathbb{Z}$-verified (all 729 equations, exact
+  integer arithmetic) before use.
+\item \textbf{Exact input sides} (model m0). The 23 $A$-rows
+  contain 12 distinct multi-term targets; $h = 0$ is exhausted and
+  $h^{*} = 1$ succeeds: $A$-side $= 12 + 1 = \textbf{13}$ additions
+  (3 search nodes). The $B$-rows contain 11 distinct targets; $h =
+  0$ and $h = 1$ are exhausted, $h^{*} = 2$ succeeds: $B$-side
+  $= \textbf{13}$ (11 nodes). These reproduce Sun's own side optima
+  and impossibility certificates.
+\item \textbf{Greedy output side.} Deterministic pair extraction
+  gives 31 additions --- its first extraction is $w_0 = M_{13} -
+  M_{23}$, a signed pair shared by 3 of the 9 output forms.
+  Randomized tie-breaking restarts improve this: best over 300
+  restarts $= \textbf{30}$ (the value used throughout; every
+  emitted program is replay-verified).
+\item \textbf{Total.} $13 + 13 + 30 = \textbf{56}$, on every one
+  of the 24 enumerated sign models.
+\end{enumerate}
 
 \end{document}

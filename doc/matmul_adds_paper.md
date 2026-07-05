@@ -79,10 +79,47 @@ therefore built the missing tool and report:
 
 Everything is exact and replayable: Brent equations over ℤ for every
 scheme, replay-verified straight-line programs, chain re-verification,
-sign models Z-verified, equivalence witnesses/refutations. Two
+sign models ℤ-verified, equivalence witnesses/refutations. Two
 complete 56-addition programs are committed
 (`matmul/external/i19-56adds-slp.txt`, appendix;
 `matmul/external/i12-56adds-slp.txt`).
+
+## 0. Notation and terminology
+
+- **Scheme identifiers** (`i12w219c23ci-008`, `i2w201c26fi-000`, …)
+  are the file names of the stored schemes in the public HKS
+  database, used here verbatim as opaque labels; the trailing `-N`
+  indexes files sharing a prefix, and the prefix fields encode HKS's
+  own cataloguing invariants (see the database). Nothing in this
+  note relies on their semantics: "class `X`" always means the de
+  Groote equivalence class of the scheme stored under that name, and
+  every class identity we assert is established by our own exact
+  fingerprint + witness machinery, not by name.
+- **de Groote group, class, orbit, representative.** The de Groote
+  symmetry group acts on schemes (sandwiching the three tensors by
+  invertible matrices, plus the S₃ slot symmetries); two schemes are
+  *equivalent* if one is the image of the other. The **orbit** of a
+  scheme is its set of images under the group — identical to its
+  equivalence **class**; a **representative** is any member. An
+  **orbit walk** is a local search over representatives inside one
+  class (moving by small group elements), which can change the
+  additive cost but never the class.
+- **sign-SAT** (companion paper, §3.5): the Boolean satisfiability
+  instance whose variables are the signs of the mod-2-supported
+  coefficients. A covering term's sign is the XOR of its three
+  factor signs, and each integer Brent equation with k covering
+  terms and right-hand side δ becomes the cardinality constraint
+  "exactly (k−δ)/2 of the k terms are negative". Its solutions are
+  exactly the valid ±1 lifts of the mod-2 scheme (worked example in
+  Appendix C).
+- **ℤ-verified**: checked exactly over the integers — all 729 Brent
+  equations evaluated with the scheme's ±1 coefficients in exact
+  integer arithmetic, zero residuals. (Code output and command
+  comments write plain `Z` for ℤ.)
+- **h\***: the star denotes the optimal value — h\* is the smallest
+  helper count h at which the side-minimizer's search succeeds.
+- **Closure normal form**: defined in §3 (Method); worked example in
+  Appendix B.
 
 ## 1. Cost model and history
 
@@ -132,11 +169,16 @@ sign. This is Sun's chain-covering structure as a search problem.
 
 **Method.** Iterative deepening on the number of *helpers* h (chain
 values that are not target rows); the optimum is (#distinct
-multi-term targets) + h*. The search uses a closure normal form:
-since the value pool only grows, covering a coverable target never
-hurts and always costs exactly one addition — so targets are covered
-greedily to a fixpoint and the search branches **only on helper
-insertions at fixpoints** (complete by an exchange argument). With
+multi-term targets) + h\*. The search uses what we call the
+**closure normal form**: because the pool of computed values only
+ever grows, covering a currently-derivable target can never hurt a
+later step and always costs exactly one addition — so the search
+covers every derivable target greedily until none remains (the
+*closure fixpoint*) and branches **only on which helper value to
+insert at a fixpoint**. Any optimal chain can be reordered into this
+form (an exchange argument: coverable-target steps commute forward
+past helper insertions), so restricting the search to it loses
+nothing. With
 one helper left, the helper must directly complete some uncovered
 target, shrinking the last level to an "enabling set". Helpers may
 be arbitrary integer vectors, doublings included — strictly more
@@ -258,7 +300,7 @@ its own side floor; a 55 there needs sides 27 + C 28. These are now
 ## 5b. The database-wide side-floor census (v3 addition, 2026-07-05)
 
 With the table machinery ported to Rust (`src/floors.rs`, ~300×; a
-sound nt-prefilter for sweep mode) and exact Z-rescoring in-process
+sound nt-prefilter for sweep mode) and exact ℤ-rescoring in-process
 (`src/zrescore.rs`, ~150×), the orbit-side analysis was run over the
 **entire HKS database — all 17,376 classes, every representative of
 every orbit** (~10¹¹ representatives covered by table decomposition).
@@ -269,7 +311,7 @@ Screened side-floor histogram: **26: 4 classes; 27: 526; 28: 12,159;
   Sun's `i46w213c23ci`, its family siblings `i46w205c23ci` and
   `i46w221c23ci`, and `i73w191c236f` (floors exact-confirmed
   unscreened). Exhausting every sides ≤ 27 representative of the
-  three new ones (4,320 reps, exact Z-rescoring): best totals
+  three new ones (4,320 reps, exact ℤ-rescoring): best totals
   **57, 57, 58** — chain-coverable sides are *not* sufficient;
   Sun's class is the only one in the published record that pairs
   them with an output side ≤ 30. (Control: the same run reproduces
@@ -441,7 +483,7 @@ gain nothing. The concrete open combinations:
 - J. Laderman. Bull. AMS 82(1):126–128, 1976.
 - H. F. de Groote. Theor. Comput. Sci. 7 (1978).
 
-## Appendix: a complete 56-addition program (class `i19w225c4efh`)
+## Appendix A: a complete 56-addition program (class `i19w225c4efh`)
 
 Exact input sides (13 + 14, both provably minimal for this
 representative by the side-minimizer's exhaustion), greedy output
@@ -493,3 +535,69 @@ cw6 = M18 -cw3           C31 = M8 +M9 -cw7
 cw7 = M14 -cw5           C32 = M11 +M16 +M4
 cw8 = M20 -cw4           C33 = -M12 +M17 +M7 -cw1
 ```
+
+## Appendix B: the side-minimizer on a worked example
+
+Rows (targets) over base variables a, b, c, d:
+T₁ = a + b and T₂ = a + b + c + d. Both have ≥ 2 terms, are distinct
+up to global sign, and neither is a basis vector, so nt = 2 and any
+chain needs at least 2 additions.
+
+**Slack h = 0** (no helpers — every addition must create a target):
+the pool starts as {a, b, c, d}. T₁ = a + b is derivable (both
+operands in the pool): cover it; pool grows to {a, b, c, d, a+b}.
+Now T₂ must be x ± y with x, y in the pool: subtracting each pool
+value from T₂ gives c+d, a+c+d, b+c+d, a+b+c, a+b+d — none in the
+pool, so the closure is at a fixpoint with T₂ uncovered, and h = 0
+is **exhausted: 2 additions are impossible.**
+
+**Slack h = 1**: at that same fixpoint the *enabling set* — values u
+that would directly complete an uncovered target as T₂ = x ± u —
+is {c+d, a+c+d, b+c+d, a+b+c, a+b+d, …}; of these, u = c + d is
+itself derivable from the pool (c and d are basis vectors). Insert
+it as the helper, and the closure resumes: T₂ = (a+b) + (c+d).
+
+The optimum is nt + h\* = 2 + 1 = **3 additions**, found in 3
+search nodes; the emitted chain is
+
+```text
+w0 = a + b        (covers T₁)
+w1 = c + d        (helper)
+w2 = w0 + w1      (covers T₂)
+```
+
+replay-verified by expansion. Global signs are free throughout: a
+row −a − b is the same target as a + b (a chain value may be used
+negated at no cost).
+
+## Appendix C: ℤ-scoring a scheme, end to end (sun56)
+
+The pipeline of §3 on the record representative, with every number
+below reproduced by `sidemin.py --models 24
+perminov_cache/bits/sun56.bits`:
+
+1. **Mod-2 gate.** The 621-bit vector satisfies all 729 Brent
+   equations over GF(2).
+2. **Sign-SAT.** The support has 175 nonzero coefficients (175 sign
+   variables); the 729 integer Brent equations have 453 covering
+   terms in total, and the instance has 4,269 clauses. Two concrete
+   equations: one type-3 equation is covered by k = 3 terms (the
+   products M2, M17, M23) with right-hand side 1, so **exactly
+   (3−1)/2 = 1 of the three terms must be negative**; a neighboring
+   rhs-0 equation is covered by k = 4 terms (M2, M17, M20, M23), so
+   exactly 2 of 4 are negative. kissat solves the instance in
+   milliseconds; each returned model is ℤ-verified (all 729
+   equations, exact integer arithmetic) before use.
+3. **Exact input sides** (model m0). The 23 A-rows contain 12
+   distinct multi-term targets; h = 0 is exhausted and h\* = 1
+   succeeds: A-side = 12 + 1 = **13 additions** (3 search nodes).
+   The B-rows contain 11 distinct targets; h = 0 and h = 1 are
+   exhausted, h\* = 2 succeeds: B-side = **13** (11 nodes). These
+   reproduce Sun's own side optima and impossibility certificates.
+4. **Greedy output side.** Deterministic pair extraction gives 31
+   additions — its first extraction is w0 = M13 − M23, a signed
+   pair shared by 3 of the 9 output forms. Randomized tie-breaking
+   restarts improve this: best over 300 restarts = **30** (the value
+   used throughout; every emitted program is replay-verified).
+5. **Total.** 13 + 13 + 30 = **56**, on every one of the 24
+   enumerated sign models.

@@ -411,4 +411,6 @@ exact checks. All 53 are pairwise inequivalent.)*
   self-signed cert). Snapshot pinned by content: `schemes.tgz`,
   43,134,227 bytes, Last-Modified 2020-08-07, sha256
   `4bc8132644504a917e3c076f64df8e6619fb67c55670179853ae5fdb1583074f`.
+  A permanent, content-verified archival mirror of that exact
+  snapshot is deposited at https://doi.org/10.5281/zenodo.21209925.
 - Challenges: github.com/marijnheule/matrix-challenges.

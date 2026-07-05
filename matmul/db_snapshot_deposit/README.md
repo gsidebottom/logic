@@ -1,5 +1,7 @@
 # HKS 3×3×23 matrix-multiplication scheme database — archival snapshot
 
+**Archived at: https://doi.org/10.5281/zenodo.21209925**
+
 This is a **verbatim mirror** of the scheme database published by
 **Marijn J. H. Heule, Manuel Kauers, and Martina Seidl** as the
 data artifact accompanying their work on multiplying 3×3 matrices

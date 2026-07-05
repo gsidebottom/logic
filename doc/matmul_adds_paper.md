@@ -493,7 +493,10 @@ gain nothing. The concrete open combinations:
   depend on the site being reachable: the corpus is the snapshot
   `schemes.tgz` (43,134,227 bytes, Last-Modified 2020-08-07,
   sha256 `4bc8132644504a917e3c076f64df8e6619fb67c55670179853ae5fdb1583074f`),
-  fetched once and cached; all class results are pinned to it.
+  fetched once and cached; all class results are pinned to it. A
+  permanent, content-verified archival mirror of that exact snapshot
+  is deposited at https://doi.org/10.5281/zenodo.21209925 (cite the
+  HKS papers for the schemes, not the mirror).
 - J. Laderman. Bull. AMS 82(1):126–128, 1976.
 - H. F. de Groote. Theor. Comput. Sci. 7 (1978).
 

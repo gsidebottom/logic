@@ -521,6 +521,30 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   cands); suite 309/309.  Also fixed a pre-existing
   unused-assignment warning in flip.rs (build back to zero
   warnings).
+- **R8 — Rust Z-rescorer + full-Rust exhaust pipeline (2026-07-04,
+  `src/zrescore.rs` + bins `zrescore`, `floors --emit-sides`)**.
+  Per-candidate exact pipeline in Rust: sign-model enumeration =
+  lift.py's encoding on in-process CaDiCaL (XOR3 term bits, binomial
+  exactly-(k−r)/2, α/β gauge units, blocking clauses; every model
+  z_bad-asserted); exact signed side-min = sidemin.py's algorithm on
+  [i16;9] (arbitrary ℤ helpers, exact memo keys); greedy C = slp.py
+  v1 ported bit-for-bit on the deterministic pass (str()-key
+  ordering + insertion-ordered first-max).  Gates: 6 reference
+  totals reproduced exactly; sun56 m0 sides nt12+h1/nt11+h2;
+  Z-negative control; suite 313/313.  ~0.28 s/scheme at 24×300
+  effort (~150× Python) and parallel across candidates.
+  **55-hunt milestone — slim-sides exhaustion of BOTH new 56-classes:
+  every rep with GF2 sides ≤ 28 in the entire orbits of cn119's
+  class (4,320 reps) and cn122's (6,480) exact-Z-rescored in 11.3
+  min: best = 56, no 55.**  With the earlier Sun-class exhaust
+  (1,728 reps ≤ 27): all three known 56-classes have NO 55 in the
+  slim-sides regime; remaining routes are C ≤ 26–27 on fat-sides
+  reps (needs C lower bounds / exact C) or other classes (DB-wide
+  floor sweep, now ~1 day in Rust).  Cross-validation: Python
+  orbitscan, running blind in parallel, produced cn122 v3/v4/v5
+  floors 27/27/28 and cn119 v0/v1 28/28 — exactly the Rust
+  predictions, with matching candidate counts; both Python jobs then
+  stopped as superseded.
 - **Later options**: MCGS/learned policy over restart seeds / move classes
   (ties back to the neural track); UNSAT side (challenge 2) via our proof
   machinery — a *different* project (algebraic/symmetry lower-bound

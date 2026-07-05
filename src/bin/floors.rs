@@ -44,8 +44,12 @@ fn main() {
     let node_cap: u64 =
         opt("--node-cap", Some("10000000")).unwrap().parse().unwrap();
     let emit_dir = opt("--emit-cands", None);
+    // emit EVERY distinct rep with exact GF2 sides A+B <= this budget
+    // (the sides-exhaust enumeration; C table skipped) — feed zrescore
+    let emit_sides: Option<u32> =
+        opt("--emit-sides", None).map(|s| s.parse().unwrap());
     let max_emit: usize =
-        opt("--max-emit", Some("200")).unwrap().parse().unwrap();
+        opt("--max-emit", Some("200000")).unwrap().parse().unwrap();
     if let Some(n) = opt("--threads", None) {
         rayon::ThreadPoolBuilder::new()
             .num_threads(n.parse().unwrap())
@@ -91,6 +95,57 @@ fn main() {
         let mut seen = std::collections::HashSet::new();
         for &vi in &variants {
             let t0 = Instant::now();
+            if let Some(budget) = emit_sides {
+                let dir = emit_dir.as_ref().expect(
+                    "--emit-sides requires --emit-cands DIR");
+                let t = side_tables(&vlist[vi], &gl, max_slack, node_cap,
+                                    false);
+                let mut n_triples = 0usize;
+                for q in 0..NG {
+                    for p in 0..NG {
+                        let a = t.a[p * NG + q] as u32;
+                        if a + (0..NG)
+                            .map(|r_| t.b[q * NG + r_] as u32)
+                            .min()
+                            .unwrap()
+                            > budget
+                        {
+                            continue;
+                        }
+                        for r_ in 0..NG {
+                            if a + t.b[q * NG + r_] as u32 > budget {
+                                continue;
+                            }
+                            n_triples += 1;
+                            if emitted >= max_emit {
+                                continue;
+                            }
+                            let img =
+                                apply_pqr(&vlist[vi], &gl, p, q, r_);
+                            let nb = summands_to_bits(&img);
+                            let key: String = nb
+                                .iter()
+                                .map(|b| (b + b'0') as char)
+                                .collect();
+                            if !seen.insert(key.clone()) {
+                                continue;
+                            }
+                            let sd = a + t.b[q * NG + r_] as u32;
+                            let fname = format!(
+                                "{dir}/{stem}-v{vi}-s{sd}-{p}_{q}_{r_}.bits"
+                            );
+                            std::fs::write(&fname, key + "\n").unwrap();
+                            emitted += 1;
+                        }
+                    }
+                }
+                println!(
+                    "{stem} v{vi} sides<={budget}: {n_triples} triples, \
+                     {emitted} distinct emitted so far  [{:.2}s]",
+                    t0.elapsed().as_secs_f64()
+                );
+                continue;
+            }
             let t = side_tables(&vlist[vi], &gl, max_slack, node_cap,
                                 !floors_only);
             let r = scan(&t, cutoff);
@@ -148,7 +203,9 @@ fn main() {
                 }
             }
         }
-        if floors_only {
+        if emit_sides.is_some() {
+            println!("{stem} EMITTED {emitted} distinct reps");
+        } else if floors_only {
             println!("{stem} FLOOR {file_floor}");
         } else {
             println!(

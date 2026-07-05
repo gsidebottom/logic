@@ -1,8 +1,12 @@
 # 53 New Integer Schemes for 3×3 Matrix Multiplication with 23 Products
 
-*Reproducible report — logic repo, matmul track, 2026-07-03
-(commits `45e5acc..93347f2`). All artifacts referenced live in this
-repository; every claim has a mechanical check listed in §4.*
+*Greg Sidebottom · Claude Fable 5*
+
+*Reproducible report — logic repo
+([github.com/gsidebottom/logic](https://github.com/gsidebottom/logic)),
+matmul track, 2026-07-03 (commits `45e5acc..93347f2`). All artifacts
+referenced live in this repository; every claim has a mechanical check
+listed in §4.*
 
 ---
 
@@ -385,6 +389,7 @@ exact checks. All 53 are pairwise inequivalent.)*
 
 ## 8. Pointers
 
+- Repository: https://github.com/gsidebottom/logic.
 - Plan/lab-notebook: `doc/matmul_plan.md` (every measurement, incl.
   negatives and retractions).
 - Engine: `src/anf.rs`, `src/bin/anf.rs`.

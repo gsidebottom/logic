@@ -1,0 +1,194 @@
+% SAT Competition benchmark description — cxlb XOR-SLP instances
+% Build:  tectonic doc/matmul_cxlb_satcomp.tex
+\documentclass[conference]{IEEEtran}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+
+\title{Shortest XOR Straight-Line Programs for $3\times 3$ Matrix
+  Multiplication:\\ Benchmark Description}
+\author{\IEEEauthorblockN{Greg Sidebottom \qquad Claude Fable 5}%
+\IEEEauthorblockA{logic repository,
+\url{https://github.com/gsidebottom/logic}}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We contribute SAT instances deciding ``do $k$ XOR additions
+suffice?'' for the output sides of rank-23 bilinear $3\times 3$
+matrix-multiplication schemes. Each boundary instance is a live
+mathematical question: an UNSAT answer at the right $k$ lower-bounds
+the integer additive complexity of a scheme class and, combined with
+published exhaustive side analyses, would settle whether 55
+additions are possible in known classes (current record: 56, Sun
+2026). The family's AND-guarded parity structure defeats current
+XOR/Gaussian reasoning while remaining genuinely hard for plain
+CDCL: no tested configuration (kissat, CaDiCaL, CryptoMiniSat plain
+and native-XOR, Z3 word-level, portfolios with symmetry breaking)
+decides the calibrated boundary cells within 10--30 minutes.
+\end{abstract}
+
+\section{Problem origin}
+
+A bilinear scheme multiplying two $3\times 3$ matrices with 23
+products \cite{laderman} evaluates 23 products of linear forms and
+combines them into the 9 output entries. Its \emph{additive
+complexity} --- binary $\pm$ additions in a straight-line program,
+negation free, no change of basis --- has fallen rapidly: 60
+\cite{stapleton}, 59 \cite{mws}, 58 \cite{perminov}, and the current
+record \textbf{56} \cite{sun}. Sun's $56 = 13 + 13 + 30$ splits into
+two provably optimal \emph{input sides} and an \emph{output side} of
+30 additions computing the 9 output forms from the 23 products.
+
+Whether \textbf{55 additions} are possible is open. An exhaustive
+orbit-level analysis of all 17{,}376 de Groote classes of the public
+Heule--Kauers--Seidl scheme database \cite{hks} (exact input-side
+minimization over every representative; research notes in the
+repository) reduces the question, for all known classes, to the
+output side: \emph{a 55-addition scheme in a known class requires an
+output side of $\le 27$ additions on specific representatives} ---
+two below the best output count ever observed at this format.
+
+Any $\mathbb{Z}$-coefficient output-side program reduces mod~2 to an
+XOR straight-line program, so the decision problem
+\begin{quote}
+\textbf{SLP($k$):} do $k$ XOR additions suffice to compute the 9
+given output forms (vectors in $\mathrm{GF}(2)^{23}$) from the 23
+inputs?
+\end{quote}
+yields sound lower bounds: UNSAT at $k$ proves the integer output
+side needs $\ge k{+}1$ additions, and UNSAT at $k=27$ on the right
+cells closes entire equivalence classes for 55. These instances
+continue the tradition of matrix-multiplication benchmarks in past
+competitions \cite{hks}, with a twist of independent solver
+interest: the parity constraints are \emph{AND-guarded}, which
+prevents CryptoMiniSat's Gaussian elimination from engaging, while
+plain CDCL faces genuine parity hardness.
+
+\section{Encoding}
+
+SLP synthesis in the style of Fuhs--Schneider-Kamp \cite{fsk},
+simplified by unit-vector inputs. For steps $t = 1,\dots,k$:
+
+\begin{itemize}
+\item \textbf{Source selection.} Step $t$ selects exactly two
+  sources among the 23 inputs and steps $1..t{-}1$ (sequential
+  counter for the exactly-two constraint).
+\item \textbf{Values.} Value bits are parity-defined:
+  \[
+  x_{t,i} \;=\; \mathit{sel}_{t,\mathrm{base}_i} \;\oplus\;
+  \bigoplus_{j<t} \bigl(\mathit{sel}_{t,\mathrm{step}_j} \wedge
+  x_{j,i}\bigr).
+  \]
+  Unit-vector inputs make the base contribution a single literal.
+  The AND-guarded parities are materialized as Tseitin chains
+  (plain CNF) or native \texttt{x}-lines (CryptoMiniSat extension);
+  the generator emits both.
+\item \textbf{Outputs.} Each of the 9 forms must equal some step
+  value (selector-guarded bit equalities; weight-1 forms may match
+  an input).
+\item \textbf{Symmetry breaking} (optional, default on): all step
+  values nonzero; adjacent \emph{independent} steps (step $t{+}1$
+  does not consume step $t$) must have strictly lexicographically
+  increasing values. Sound: swapping adjacent independent steps
+  preserves validity, so every program normalizes by bubble sort,
+  and padding above the minimum survives as a dependent chain.
+  Dead-step elimination is deliberately \emph{not} used: with it,
+  satisfiability is not monotone in $k$ (odd-length padding can
+  force a dead step), which corrupts minimum-finding by descent.
+\end{itemize}
+
+At $k=29$ with symmetry breaking: 25{,}799 variables, 91{,}426
+clauses.
+
+\section{Instances and empirical hardness}
+
+An instance is determined by (output tensor of a scheme
+representative, $k$). Tensors come from the public database and the
+record chain; the de Groote action turns every class into ${\sim}28$k
+distinct cells, so the supply is practically unlimited with $k$ as
+the hardness dial:
+
+\begin{itemize}
+\item \textbf{SAT phase} ($k \ge$ minimum): minutes at
+  minimum${}+1$; witnesses are extracted and replay-verified by the
+  generator.
+\item \textbf{Deep UNSAT} ($k$ well below minimum): easy.
+\item \textbf{Boundary} ($k \in \{\min-1, \min\}$): hard. On the
+  calibrated seed cells no tested configuration decides the
+  boundary within 10--30 minutes (Apple M4 Pro, one core per
+  solver): kissat (600\,s and 1800\,s), CaDiCaL (600\,s),
+  CryptoMiniSat~5 (615\,s, plain and native-XOR), Z3 4.16 on a
+  word-level QF\_BV formulation (600\,s), and a
+  kissat{+}CaDiCaL{+}CMS portfolio with symmetry breaking (900\,s).
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\caption{Calibrated seed cells (SAT witnesses verified).}
+{\small
+\begin{tabular}{lcc}
+\toprule
+cell & weight & GF(2) min \\
+\midrule
+\texttt{sun56} output side (record scheme) & 49 & $\in \{29, 30\}$ \\
+\texttt{cn120} output side ($C{=}28$ rep) & 60 & $\in \{27, 28\}$ \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Deciding either boundary advances the underlying question directly;
+UNSAT at 27 on the fat-sides window cells of the record class would,
+combined with the published exhaustions, make ``no 55-addition
+scheme exists in the record class'' a theorem with a DRAT
+certificate.
+
+\section{Proposed benchmark set}
+
+Twenty instances spanning the phases: the two seed cells at $k \in
+\{\min{-}1, \min, \min{+}1\}$; the identity cells of the two other
+known 56-addition classes (\texttt{i12w219c23ci},
+\texttt{i19w225c4efh}) at their boundaries; and four fat-sides
+window cells of the record class at $k=27$; each with and without
+symmetry breaking. All are emitted by:
+
+\begin{verbatim}
+python3 matmul/cxlb.py --bits SCHEME.bits \
+    --k K --dump out.cnf
+python3 matmul/cxlb.py --bits SCHEME.bits \
+    --k K --dump out.xnf   # native XOR
+\end{verbatim}
+
+\noindent(\texttt{--no-sb} disables symmetry breaking; all scheme
+bits files are committed in the repository.)
+
+\section{Availability}
+
+Generator, scheme inputs, verification tooling, and research notes:
+\url{https://github.com/gsidebottom/logic}. Submitted instances may
+be used freely under the competition's standard terms.
+
+\begin{thebibliography}{9}
+\bibitem{sun} Y.~Sun. A 56-addition scheme for rank-23 $3\times3$
+matrix multiplication. arXiv:2604.27645, 2026.
+\bibitem{perminov} D.~Perminov. arXiv:2512.21980, 2025.
+\bibitem{mws} E.~M\aa rtensson, P.~Stankovski Wagner, J.~Stapleton.
+arXiv:2601.05272, 2025.
+\bibitem{stapleton} J.~Stapleton. arXiv:2508.03857, 2025.
+\bibitem{hks} M.~J.~H.~Heule, M.~Kauers, J.~Seidl. Local search for
+fast matrix multiplication. \emph{SAT 2019}; J.~Symbolic
+Computation 104, 2021.
+\bibitem{fsk} C.~Fuhs, P.~Schneider-Kamp. Synthesizing shortest
+linear straight-line programs over GF(2). \emph{SAT 2010}.
+\bibitem{bp} J.~Boyar, R.~Peralta. A new combinational logic
+minimization technique with applications to cryptology.
+\emph{SEA 2010}.
+\bibitem{laderman} J.~Laderman. A noncommutative algorithm for
+multiplying $3\times 3$ matrices using 23 multiplications.
+Bull.~AMS 82(1), 1976.
+\end{thebibliography}
+
+\end{document}

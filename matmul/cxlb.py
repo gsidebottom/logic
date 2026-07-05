@@ -216,10 +216,8 @@ class CNF:
                     pass
 
 
-def slp_k(forms, n, k, timeout=None, solvers=("kissat",), sb=True,
-          drat=None):
-    """SAT: k XOR additions compute all forms (masks over n bases)?
-    Returns (True, chain)|(False, None)|(None, None)."""
+def build_cnf(forms, n, k, sb=True):
+    """encode: k XOR additions compute all forms; returns (cnf, sel)."""
     forms = list(forms)
     for f in forms:
         assert 0 < f < (1 << n)
@@ -294,6 +292,14 @@ def slp_k(forms, n, k, timeout=None, solvers=("kissat",), sb=True,
                     cnf.and2(prefix, eq, np_)
                     prefix = np_
             cnf.add(-ind, *gts)
+    return cnf, sel
+
+
+def slp_k(forms, n, k, timeout=None, solvers=("kissat",), sb=True,
+          drat=None):
+    """SAT: k XOR additions compute all forms (masks over n bases)?
+    Returns (True, chain)|(False, None)|(None, None)."""
+    cnf, sel = build_cnf(forms, n, k, sb=sb)
     ok, model = cnf.solve(timeout=timeout, solvers=solvers, drat=drat)
     if ok is not True:
         return ok, None
@@ -440,8 +446,19 @@ def main():
         if status == "exact" and best is not None:
             print(f"=> C_Z >= {best} (sound lower bound)")
         return
+    dump = opt("--dump", None, str)
     kk = window if window is not None else k
     assert kk is not None, "need --k, --window or --min"
+    if dump:
+        cnf, _ = build_cnf(forms, n, kk, sb=sb)
+        native = dump.endswith(".xnf")
+        cnf.write(dump, native_xor=native)
+        nv = cnf.n if native else cnf._tseitin_xor()[0]
+        nc = (len(cnf.clauses) + len(cnf.xors)) if native \
+            else len(cnf._tseitin_xor()[1])
+        print(f"dumped k={kk} {'native-xor' if native else 'cnf'}: "
+              f"{nv} vars, {nc} constraints -> {dump}")
+        return
     t0 = time.time()
     ok, chain = slp_k(forms, n, kk, timeout=timeout, solvers=solvers,
                       sb=sb, drat=drat)

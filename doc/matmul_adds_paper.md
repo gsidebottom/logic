@@ -38,8 +38,7 @@ structure; it plateaus at 58 = 14+14+30 on Sun's own scheme. We
 therefore built the missing tool and report:
 
 1. **An exact input-side minimizer** (`matmul/sidemin.py`): the
-   minimum number of ±-additions such that one chain over the 9 input
-   cells contains every distinct multi-term factor row (up to sign),
+   minimum number of ±-additions such that one chain over the 9 input entries contains every distinct multi-term factor row (up to sign),
    solved exactly by iterative deepening over *helper values* with a
    closure normal form (complete by an exchange argument; helpers may
    be arbitrary integer vectors, strictly more general than Sun's
@@ -86,6 +85,7 @@ complete 56-addition programs are committed
 ## 0. Notation and terminology
 
 - **Sides.** A scheme's additive cost splits into two *input sides* — the A- and B-side forms, over the 9 entries of A and of B — plus one *output side*, the C-side forms computing the 9 outputs from the 23 products. The exact input-side minimizer of §3 (the *side-minimizer* for short) treats the two input sides; the output side is optimized heuristically. Throughout, a bare "sides", a "side floor", and "fat-/slim-sides" refer to the **input** sides; the output side is always named explicitly.
+- **Cell.** The de Groote sandwich fixes each side of a representative from a pair of the sandwich matrices — the output/C side from the (R,P) pair, the A side from (P,Q), the B side from (Q,R) (see §5). Ranging that pair over the 168 elements of GL(3,2) in each coordinate gives a 168×168 grid, and each entry is a **cell** — one concrete side (its 9 forms) with that side's cost. It is the unit of the side-cost tables of §5 ("sub-ms per cell"); unqualified, a *cell* means an output-side cell, the object the C-side lower-bound search of §9 decides.
 - **Scheme identifiers** (`i12w219c23ci-008`, `i2w201c26fi-000`, …)
   are the file names of the stored schemes in the public HKS
   database, used here verbatim as opaque labels; the trailing `-N`

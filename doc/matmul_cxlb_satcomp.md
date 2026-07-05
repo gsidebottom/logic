@@ -36,8 +36,8 @@ straight-line program. Hence the decision problem
 > output forms (vectors in GF(2)^23) from the 23 inputs?*
 
 yields sound lower bounds: **UNSAT at k proves the integer output
-side needs ≥ k+1 additions**, and UNSAT at k = 27 on the right
-cells closes entire equivalence classes for 55. These benchmarks
+side needs ≥ k+1 additions**, and UNSAT at k = 27 on the right cells (§3) closes entire
+equivalence classes for 55. These benchmarks
 are therefore not synthetic: each boundary instance is a live
 mathematical question, in the tradition of the matrix-multiplication
 benchmarks contributed to past competitions by Heule et al. The
@@ -83,9 +83,11 @@ At k = 29 with symmetry breaking the CNF has 25,799 variables and
 An instance is determined by (γ tensor of a scheme representative,
 k). The γ tensors come from the public database and the record
 chain; the de Groote group action (sandwiching by GL(3,2)² on the
-output tensor) turns every class into ~28,000 distinct cells, so
-the supply of instances is practically unlimited, with k the
-hardness dial:
+output tensor) makes the output form-set depend only on the pair
+(R, P) of GL(3,2) matrices; each of the 168×168 = 28,224 pairs is a
+**cell** — one concrete output-side instance of the class. So every
+class supplies ~28k cells, and the instance supply is practically
+unlimited, with k the hardness dial:
 
 - **SAT phase** (k ≥ minimum): moderately easy — minutes at the
   minimum + 1; witnesses are extracted and replay-verified by the

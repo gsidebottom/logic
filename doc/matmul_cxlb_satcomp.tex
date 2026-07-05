@@ -61,7 +61,8 @@ inputs?
 \end{quote}
 yields sound lower bounds: UNSAT at $k$ proves the integer output
 side needs $\ge k{+}1$ additions, and UNSAT at $k=27$ on the right
-cells closes entire equivalence classes for 55. These instances
+cells (\S\ref{sec:inst}) closes entire equivalence classes
+for 55. These instances
 continue the tradition of matrix-multiplication benchmarks in past
 competitions \cite{hks}, with a twist of independent solver
 interest: the parity constraints are \emph{AND-guarded}, which
@@ -104,13 +105,15 @@ simplified by unit-vector inputs. For steps $t = 1,\dots,k$:
 At $k=29$ with symmetry breaking: 25{,}799 variables, 91{,}426
 clauses.
 
-\section{Instances and empirical hardness}
+\section{Instances and empirical hardness}\label{sec:inst}
 
 An instance is determined by (output tensor of a scheme
 representative, $k$). Tensors come from the public database and the
-record chain; the de Groote action turns every class into ${\sim}28$k
-distinct cells, so the supply is practically unlimited with $k$ as
-the hardness dial:
+record chain; the de Groote action makes the output form-set depend only on the
+pair $(R,P)$ of $\mathrm{GL}(3,2)$ matrices; each of the
+$168\times168 = 28{,}224$ pairs is a \textbf{cell} (one concrete
+output-side instance), so every class supplies ${\sim}28$k cells
+--- a practically unlimited supply, with $k$ the hardness dial:
 
 \begin{itemize}
 \item \textbf{SAT phase} ($k \ge$ minimum): minutes at

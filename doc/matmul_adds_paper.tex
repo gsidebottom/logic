@@ -67,7 +67,7 @@ on Sun's own scheme. We therefore built the missing tool and report:
 \begin{enumerate}[itemsep=2pt]
 \item \textbf{An exact input-side minimizer}
   (\texttt{matmul/sidemin.py}): the minimum number of
-  $\pm$-additions such that one chain over the 9 input cells
+  $\pm$-additions such that one chain over the 9 input entries
   contains every distinct multi-term factor row (up to sign), solved
   exactly by iterative deepening over \emph{helper values} with a
   closure normal form (complete by an exchange argument; helpers may
@@ -119,6 +119,7 @@ committed (\path{matmul/external/i19-56adds-slp.txt}, appendix;
 
 \begin{itemize}
 \item \textbf{Sides.} A scheme's additive cost splits into two \emph{input sides} --- the $A$- and $B$-side forms, over the 9 entries of $A$ and of $B$ --- plus one \emph{output side}, the $C$-side forms computing the 9 outputs from the 23 products. The exact input-side minimizer of \S\ref{sec:minimizer} (the \emph{side-minimizer} for short) treats the two input sides; the output side is optimized heuristically. Throughout, a bare ``sides'', a ``side floor'', and ``fat-/slim-sides'' refer to the \textbf{input} sides; the output side is always named explicitly.
+\item \textbf{Cell.} The de Groote sandwich fixes each side of a representative from a pair of the sandwich matrices --- the output/$C$ side from the $(R,P)$ pair, the $A$ side from $(P,Q)$, the $B$ side from $(Q,R)$ (see \S\ref{sec:floors}). Ranging that pair over the 168 elements of $\mathrm{GL}(3,2)$ in each coordinate gives a $168\times168$ grid, and each entry is a \textbf{cell} --- one concrete side (its 9 forms) with that side's cost. It is the unit of the side-cost tables of \S\ref{sec:floors} (``sub-ms per cell''); unqualified, a \emph{cell} means an output-side cell, the object the $C$-side lower-bound search of \S\ref{sec:limits} decides.
 \item \textbf{Scheme identifiers} (\texttt{i12w219c23ci-008},
   \texttt{i2w201c26fi-000}, \dots) are the file names of the stored
   schemes in the public HKS database, used here verbatim as opaque

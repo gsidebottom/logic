@@ -31,7 +31,9 @@ a *change of representative*, not a new scheme.
 Sun's count has two structural ingredients: input sides in
 *addition-chain form* (all 23 left/right factors are values of one
 13-step chain), and per-side optimality certificates. Pair-extraction
-CSE — the engine behind 62 → 60 → 59 → 58 — cannot represent that
+CSE (common-subexpression elimination: repeatedly compute the most
+frequent signed pair into a temporary and substitute it) — the engine
+behind 62 → 60 → 59 → 58 — cannot represent that
 structure; it plateaus at 58 = 14+14+30 on Sun's own scheme. We
 therefore built the missing tool and report:
 

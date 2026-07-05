@@ -58,8 +58,10 @@ from a \emph{change of representative}, not a new scheme.
 Sun's count has two structural ingredients: input sides in
 \emph{addition-chain form} (all 23 left/right factors are values of
 one 13-step chain), and per-side optimality certificates.
-Pair-extraction CSE --- the engine behind $62 \to 60 \to 59 \to 58$
---- cannot represent that structure; it plateaus at $58 = 14{+}14{+}30$
+Pair-extraction CSE (common-subexpression elimination: repeatedly
+compute the most frequent signed pair into a temporary and substitute
+it) --- the engine behind $62 \to 60 \to 59 \to 58$ --- cannot
+represent that structure; it plateaus at $58 = 14{+}14{+}30$
 on Sun's own scheme. We therefore built the missing tool and report:
 
 \begin{enumerate}[itemsep=2pt]

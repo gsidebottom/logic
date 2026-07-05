@@ -403,5 +403,12 @@ exact checks. All 53 are pairwise inequivalent.)*
   (github.com/arminbiere/yalsat) for the baseline timings.
 - HKS: *Local Search for Fast Matrix Multiplication* (SAT 2019,
   arXiv:1903.11391); *New ways to multiply 3×3-matrices* (JSC 104, 2021).
-- Scheme database: algebra.uni-linz.ac.at/research/matrix-multiplication.
+- Scheme database (17,376 schemes; no GitHub mirror — the related
+  GitHub repo `marijnheule/matrix-challenges` holds the SAT
+  challenges, not the scheme corpus):
+  http://www.algebra.uni-linz.ac.at/research/matrix-multiplication/
+  (the `www.` host and plain http are required; https serves a
+  self-signed cert). Snapshot pinned by content: `schemes.tgz`,
+  43,134,227 bytes, Last-Modified 2020-08-07, sha256
+  `4bc8132644504a917e3c076f64df8e6619fb67c55670179853ae5fdb1583074f`.
 - Challenges: github.com/marijnheule/matrix-challenges.

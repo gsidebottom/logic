@@ -484,8 +484,16 @@ gain nothing. The concrete open combinations:
   (arXiv:1905.10192).
 - HKS scheme database (the 17,376-scheme corpus this note classifies
   against; source of the scheme identifiers):
-  https://algebra.uni-linz.ac.at/research/matrix-multiplication/
-  (snapshot `schemes.tgz`, Last-Modified 2020-08-07).
+  http://www.algebra.uni-linz.ac.at/research/matrix-multiplication/
+  (the `www.` host is required — the bare domain does not resolve;
+  the site serves plain http, with a self-signed cert on https).
+  There is no separate GitHub mirror of the database; the related
+  GitHub artifact is the authors' SAT-benchmark repo
+  github.com/marijnheule/matrix-challenges. Our reproduction does not
+  depend on the site being reachable: the corpus is the snapshot
+  `schemes.tgz` (43,134,227 bytes, Last-Modified 2020-08-07,
+  sha256 `4bc8132644504a917e3c076f64df8e6619fb67c55670179853ae5fdb1583074f`),
+  fetched once and cached; all class results are pinned to it.
 - J. Laderman. Bull. AMS 82(1):126–128, 1976.
 - H. F. de Groote. Theor. Comput. Sci. 7 (1978).
 

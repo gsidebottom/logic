@@ -12,7 +12,7 @@
 \usepackage[hidelinks]{hyperref}
 \urlstyle{same}
 \setlist{itemsep=2pt,topsep=3pt}
-\setlength{\emergencystretch}{1em}
+\setlength{\emergencystretch}{3em}
 \newcommand{\Ct}{\ensuremath{\tilde{C}}}
 \DefineVerbatimEnvironment{Code}{Verbatim}{fontsize=\footnotesize}
 
@@ -483,8 +483,14 @@ fingerprint and/or exact checks. All 53 are pairwise inequivalent.)}
 \item HKS: \emph{Local Search for Fast Matrix Multiplication} (SAT
   2019, arXiv:1903.11391); \emph{New ways to multiply
   $3\times3$-matrices} (J.~Symbolic Computation 104, 2021).
-\item Scheme database:
-  \url{https://algebra.uni-linz.ac.at/research/matrix-multiplication}.
+\item Scheme database (17,376 schemes; no GitHub mirror --- the
+  related repo \url{https://github.com/marijnheule/matrix-challenges}
+  holds the SAT challenges, not the scheme corpus):
+  \url{http://www.algebra.uni-linz.ac.at/research/matrix-multiplication/}
+  (the \texttt{www.} host and plain http are required; https serves a
+  self-signed cert). Snapshot pinned by content: \texttt{schemes.tgz},
+  43{,}134{,}227 bytes, Last-Modified 2020-08-07, sha256
+  \texttt{4bc8132644504a917e3c076f64df8e6619fb67c55670179853ae5fdb1583074f}.
 \item Challenges: \url{https://github.com/marijnheule/matrix-challenges}.
 \end{itemize}
 

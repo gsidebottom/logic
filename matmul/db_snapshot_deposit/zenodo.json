@@ -1,0 +1,19 @@
+{
+  "title": "HKS 3x3x23 matrix-multiplication scheme database (archival snapshot of schemes.tgz, 2020-08-07)",
+  "upload_type": "dataset",
+  "description": "Verbatim archival mirror of the scheme database by Marijn J. H. Heule, Manuel Kauers, and Martina Seidl (17,376 mutually inequivalent {-1,0,1} rank-23 schemes for 3x3 matrix multiplication). Redistributed for reproducibility and permanence only; all credit belongs to the original authors, who should be cited for the schemes. File schemes.tgz, 43,134,227 bytes, sha256 4bc8132644504a917e3c076f64df8e6619fb67c55670179853ae5fdb1583074f, originally at http://www.algebra.uni-linz.ac.at/research/matrix-multiplication/schemes.tgz (Last-Modified 2020-08-07). This snapshot is the corpus that two research notes (in github.com/gsidebottom/logic) classify new schemes against, with novelty claims pinned to the sha256.",
+  "creators": [
+    {"name": "Heule, Marijn J. H."},
+    {"name": "Kauers, Manuel"},
+    {"name": "Seidl, Martina"}
+  ],
+  "contributors": [
+    {"name": "Sidebottom, Greg", "type": "DataManager"}
+  ],
+  "related_identifiers": [
+    {"identifier": "arXiv:1903.11391", "relation": "isDerivedFrom", "scheme": "arxiv"},
+    {"identifier": "arXiv:1905.10192", "relation": "isDerivedFrom", "scheme": "arxiv"}
+  ],
+  "keywords": ["matrix multiplication", "bilinear complexity", "Brent equations", "rank-23", "3x3", "SAT"],
+  "notes": "sha256(schemes.tgz) = 4bc8132644504a917e3c076f64df8e6619fb67c55670179853ae5fdb1583074f; 17376 .tab files."
+}

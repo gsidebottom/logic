@@ -30,7 +30,7 @@ a *change of representative*, not a new scheme.
 
 Sun's count has two structural ingredients: input sides in
 *addition-chain form* (all 23 left/right factors are values of one
-13-step chain), and per-side optimality certificates. Pair-extraction
+13-step chain), and per-input-side optimality certificates. Pair-extraction
 CSE (common-subexpression elimination: repeatedly compute the most
 frequent signed pair into a temporary and substitute it) — the engine
 behind 62 → 60 → 59 → 58 — cannot represent that
@@ -43,10 +43,10 @@ therefore built the missing tool and report:
    solved exactly by iterative deepening over *helper values* with a
    closure normal form (complete by an exchange argument; helpers may
    be arbitrary integer vectors, strictly more general than Sun's
-   certificate model). It reproduces both of Sun's side optima (13,
+   certificate model). It reproduces both of Sun's input-side optima (13,
    13) *and* both of his impossibility certificates in 0.3 s, and its
    chains are replay-verified.
-2. **The 56 record tied, three times over.** With exact sides + a
+2. **The 56 record tied, three times over.** With exact input sides + a
    restart-greedy output side: Sun's representative gives **56 =
    13+13+30 on all 24 enumerated sign models**. Perminov's scheme
    `cn122` — class `i19w225c4efh`, published at 58 — gives **56 =
@@ -58,12 +58,12 @@ therefore built the missing tool and report:
    refutations), so **56 additions is now attained on three
    inequivalent rank-23 classes** where before there was one.
 3. **Every published count in the chain drops or ties on its own
-   representative** under exact sides: MWS's 59-scheme → 58
+   representative** under exact input sides: MWS's 59-scheme → 58
    (14+15+29); Perminov's cn119 → 57, cn120 → 57 (13+16+28; this is
    Sun's class, so C = 28 exists *inside* the record class), cn122 →
    56; and the three 60-addition classes of this note's v1 → **59
    each** (15+15+29). Stapleton's class alone stays at 60 (16+16+28).
-4. **Orbit-wide side floors, exhaustively.** The de Groote sandwich
+4. **Orbit-wide input-side floors, exhaustively.** The de Groote sandwich
    factors by side — A-forms depend only on (P,Q), B on (Q,R), C on
    (R,P) — so three 168×168 GF(2) cost tables cover an entire orbit
    (28.4M representatives across the 6 slot variants), with GF(2)
@@ -73,8 +73,7 @@ therefore built the missing tool and report:
    representative is side-optimal for the whole class — and *every*
    representative with sides ≤ 27 (864 per eligible variant, all
    distinct) was individually re-scored over ℤ: **none beats 56**.
-   A 55 in Sun's class therefore requires an output side of ≤ 27 on
-   a fat-sides representative — two below anything observed at this
+   A 55 in Sun's class therefore requires an output side of ≤ 27 on a representative with fat input sides — two below anything observed at this
    format. The 55 question is now sharply localized.
 
 Everything is exact and replayable: Brent equations over ℤ for every
@@ -86,6 +85,7 @@ complete 56-addition programs are committed
 
 ## 0. Notation and terminology
 
+- **Sides.** A scheme's additive cost splits into two *input sides* — the A- and B-side forms, over the 9 entries of A and of B — plus one *output side*, the C-side forms computing the 9 outputs from the 23 products. The exact input-side minimizer of §3 (the *side-minimizer* for short) treats the two input sides; the output side is optimized heuristically. Throughout, a bare "sides", a "side floor", and "fat-/slim-sides" refer to the **input** sides; the output side is always named explicitly.
 - **Scheme identifiers** (`i12w219c23ci-008`, `i2w201c26fi-000`, …)
   are the file names of the stored schemes in the public HKS
   database, used here verbatim as opaque labels; the trailing `-N`
@@ -159,7 +159,7 @@ neutral here) plateaus at **58 = 14+14+30 on Sun's own
 representative**, exactly 1+1 above his sides, with an identical
 output side. The two missing additions were purely side-structural.
 
-## 3. The exact side-minimizer (`matmul/sidemin.py`)
+## 3. The exact input-side minimizer (`matmul/sidemin.py`)
 
 **Problem.** Given the 23 signed factor rows of one side (vectors in
 {−1,0,+1}⁹; rows equal to a basis vector or to ±another row are
@@ -232,13 +232,13 @@ Notes.
   additions separating 58 from 56 on that class were entirely
   side-structural, mirroring the Sun-vs-58 diagnosis.
 - The cn119 56-representative was found by a hill-climb over the de
-  Groote orbit scoring exact-sides + greedy-C (`matmul/orbit55.py`,
+  Groote orbit scoring exact input sides + greedy-C (`matmul/orbit55.py`,
   45 min), then confirmed at high effort (24 sign models × 800
   restarts) and confirmed in-class by exact equivalence to cn119
   (witness; one class).
 - Three classes at 56, pairwise inequivalent (exact refutations
   among `sun56`/`cn119`/`cn122` and their images). Before: one.
-- Our three v1 classes improve 60 → 59 by exact sides alone — tying
+- Our three v1 classes improve 60 → 59 by exact input sides alone — tying
   the *previous* (MWS-era) record on classes of our own — and the
   chain's other counts all drop or tie on their own representatives.
   Stapleton's class alone resists below 60; notably its
@@ -254,7 +254,7 @@ nothing; output-reuse moves (the trick behind the 4×4
 de-complexification of Dumas–Pernet–Sedoglavic) gain zero on these
 representatives (28/29/30 unchanged).
 
-## 5. Orbit-wide side floors and the localization of 55
+## 5. Orbit-wide input-side floors and the localization of 55
 
 The de Groote sandwich (P A Q⁻¹, Q B R⁻¹, R C̃ P⁻¹) factors by side:
 the A-form multiset depends only on (P,Q), B on (Q,R), C on (R,P).
@@ -298,7 +298,7 @@ the time of writing), so its 56 = 13+14+29 sits one addition above
 its own side floor; a 55 there needs sides 27 + C 28. These are now
 *concrete, finite* search targets rather than open-ended hunts.
 
-## 5b. The database-wide side-floor census (v3 addition, 2026-07-05)
+## 5b. The database-wide input-side-floor census (v3 addition, 2026-07-05)
 
 With the table machinery ported to Rust (`src/floors.rs`, ~300×; a
 sound nt-prefilter for sweep mode) and exact ℤ-rescoring in-process
@@ -366,7 +366,7 @@ informative; full text in git history.
   per class × 16 sign models × 128 restarts never moved any of the
   four 60-classes below 60. We wrote, honestly, that this was
   "either a true barrier at 60 or a shared ceiling of the greedy-CSE
-  family". The chain — and now our own exact-sides results — settle
+  family". The chain — and now our own exact input-side results — settle
   it: it was the family ceiling, and the missing structure was
   chain-covering input sides. The v1 measurement stands as a clean
   characterization of what pair-extraction alone can and cannot see.
@@ -396,7 +396,7 @@ cd matmul
 # impossibility certificates (0.3 s)
 python3 sidemin.py selftest
 
-# the record chain, exact sides + greedy C (Z-verified sign models):
+# the record chain, exact input sides + greedy C (Z-verified sign models):
 # sun56 -> 56 = 13+13+30 on all models; cn122 -> 56 = 13+14+29;
 # cn119 -> 57; cn120 -> 57 = 13+16+28; mws59 -> 58
 python3 sidemin.py --models 24 perminov_cache/bits/sun56.bits \
@@ -610,7 +610,7 @@ perminov_cache/bits/sun56.bits`:
    succeeds: A-side = 12 + 1 = **13 additions** (3 search nodes).
    The B-rows contain 11 distinct targets; h = 0 and h = 1 are
    exhausted, h\* = 2 succeeds: B-side = **13** (11 nodes). These
-   reproduce Sun's own side optima and impossibility certificates.
+   reproduce Sun's own input-side optima and impossibility certificates.
 4. **Greedy output side.** Deterministic pair extraction gives 31
    additions — its first extraction is w0 = M13 − M23, a signed
    pair shared by 3 of the 9 output forms. Randomized tie-breaking

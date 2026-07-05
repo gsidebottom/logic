@@ -36,6 +36,10 @@ path = "src/bin/flip.rs"
 name = "floors"
 path = "src/bin/floors.rs"
 
+[[bin]]
+name = "zrescore"
+path = "src/bin/zrescore.rs"
+
 [features]
 # `evolve_guard` — runtime enforcement of the eff-layer ordering
 # contracts (sum_visit_order is a permutation; prod_visit_order keeps

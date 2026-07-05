@@ -209,7 +209,94 @@ def best_c(cforms, restarts, seed):
     return best
 
 
-def run_scheme(path, dims, nmodels, max_slack, c_restarts, seed):
+def emit_slp(path, bits, dims, ra, rb, fa, fb, fc, c_seed, c_restarts):
+    """assemble a full SLP text: exact A/B side chains + best greedy C
+    trace.  All parts are replay-verified before emission."""
+    import random
+    n1, n2, n3, r = dims
+    sa, sb = n1 * n2, n2 * n3
+
+    def cell(prefix, k, ncols):
+        return f"{prefix}{k // ncols + 1}{k % ncols + 1}"
+
+    def side_text(rr, rows, prefix, ncols, out_prefix):
+        names = {}
+        for i in range(len(rows[0])):
+            v = tuple(1 if j == i else 0 for j in range(len(rows[0])))
+            names[v] = cell(prefix, i, ncols)
+        lines = []
+        for wi, (v, x, sx, y, sy) in enumerate(rr["chain"]):
+            nm = f"{prefix}w{wi}"
+            sxs = "" if sx > 0 else "-"
+            sys_ = "+" if sy > 0 else "-"
+            lines.append(f"{nm} = {sxs}{names[x]} {sys_} {names[y]}")
+            names[v] = nm
+        outs = []
+        for m, row in enumerate(rows):
+            c = canon(row)
+            if not any(row):
+                outs.append(f"{out_prefix}{m+1} = 0")
+            elif c in names:
+                sign = "" if row == c else "-"
+                outs.append(f"{out_prefix}{m+1} = {sign}{names[c]}")
+            else:
+                raise AssertionError("row not covered")
+        return lines, outs
+
+    best = None
+    for rr in range(c_restarts):
+        rng = random.Random(c_seed * 7717 + rr) if rr else None
+        adds, trace = greedy_slp(fc, rng)
+        verify_slp(fc, trace)
+        if best is None or adds < best[0]:
+            best = (adds, trace)
+    c_adds, trace = best
+    # rebuild C forms after substitutions to print outputs
+    forms = [dict(f) for f in fc]
+    cw = {}
+    clines = []
+    for wi, (w, u, su, v, sv) in enumerate(trace):
+        def nm(s, sg):
+            t = cw.get(s, f"M{s+1}" if isinstance(s, int) else None) or s
+            return ("-" if sg < 0 else "+") + str(t)
+        cw[w] = f"cw{wi}"
+        clines.append(f"cw{wi} = {nm(u, su)[0:]} {nm(v, sv)}".replace(
+            "= +", "= "))
+        for f in forms:
+            if f.get(u) == su and f.get(v) == sv:
+                del f[u], f[v]
+                f[w] = 1
+            elif f.get(u) == -su and f.get(v) == -sv:
+                del f[u], f[v]
+                f[w] = -1
+    couts = []
+    sg_ = n1 * n3
+    for pq in range(sg_):
+        terms = []
+        f = forms[pq]
+        for s, c in sorted(f.items(), key=lambda kv: str(kv[0])):
+            t = cw.get(s, f"M{s+1}" if isinstance(s, int) else str(s))
+            terms.append(("+" if c > 0 else "-") + str(t))
+        expr = " ".join(terms).lstrip("+") if terms else "0"
+        couts.append(f"C{pq // n3 + 1}{pq % n3 + 1} = {expr}")
+
+    va = [form_vec(f, sa) for f in fa]
+    vb = [form_vec(f, sb) for f in fb]
+    al, ao = side_text(ra, va, "a", n2, "P")
+    bl, bo = side_text(rb, vb, "b", n3, "Q")
+    tot = ra["adds"] + rb["adds"] + c_adds
+    txt = [f"# {path}: {n1}x{n2}x{n3} r={r} — {tot} additions "
+           f"= {ra['adds']} (A, exact) + {rb['adds']} (B, exact) "
+           f"+ {c_adds} (C, greedy); M_i = P_i * Q_i",
+           f"## A-side: {ra['adds']} additions"]
+    txt += al + ao
+    txt += [f"## B-side: {rb['adds']} additions"] + bl + bo
+    txt += [f"## outputs: {c_adds} additions"] + clines + couts
+    return "\n".join(txt) + "\n", tot
+
+
+def run_scheme(path, dims, nmodels, max_slack, c_restarts, seed,
+               emit=None):
     bits = [int(c) for c in open(path).read().split()[-1].strip()]
     assert verify_bits(bits, *dims) == 0
     n1, n2, n3, r = dims
@@ -241,6 +328,13 @@ def run_scheme(path, dims, nmodels, max_slack, c_restarts, seed):
     name = path.split("/")[-1]
     print(f"{name:28s} BEST total {tot} = {ra['adds']}+{rb['adds']}+{c} "
           f"(m{mi}; sides exact, C heuristic)")
+    if emit:
+        signs = models[mi][0]
+        fa, fb, fc = scheme_forms(bits, signs, dims)
+        txt, etot = emit_slp(path, bits, dims, ra, rb, fa, fb, fc,
+                             seed + mi, c_restarts)
+        open(emit, "w").write(txt)
+        print(f"  emitted {etot}-addition SLP -> {emit}")
     return best
 
 
@@ -304,10 +398,11 @@ def main():
     max_slack = opt("--max-slack", 3, int)
     c_restarts = opt("--c-restarts", 120, int)
     seed = opt("--seed", 0, int)
+    emit = opt("--emit", None, str)
     paths = [a for a in argv if not a.startswith("--")]
     for p in paths:
         print(f"== {p} (exact A/B sides, heuristic C; {nmodels} models)")
-        run_scheme(p, dims, nmodels, max_slack, c_restarts, seed)
+        run_scheme(p, dims, nmodels, max_slack, c_restarts, seed, emit)
 
 
 if __name__ == "__main__":

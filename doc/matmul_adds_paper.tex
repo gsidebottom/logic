@@ -46,7 +46,7 @@ The additive-complexity record for exact non-commutative $3\times 3$
 matrix multiplication with 23 multiplications, without change of
 basis, is \textbf{56 additions} (Yinqi Sun, arXiv:2604.27645, Apr
 2026), reached through a rapid chain: 60 (Stapleton, Aug 2025)
-$\to$ 59 (M\aa rtensson--Stankovski Wagner--Stapleton) $\to$ 58
+$\to$ 59 (M\aa rtensson--Stankovski Wagner--Stapleton, MWS) $\to$ 58
 $\times 3$ (Perminov) $\to$ 56. We verified every scheme in that
 chain exactly (Brent over $\mathbb{Z}$, ternary coefficients,
 matching addition counts) and classified each against the
@@ -167,8 +167,8 @@ A bilinear scheme with $r$ products computes $M_m = P_m \cdot Q_m$
 from linear forms $P_m$ (over the 9 entries of $A$), $Q_m$ (over
 $B$), then each $C$ entry as a linear form over the $M_m$. The
 \textbf{additive complexity} is the number of binary
-additions/subtractions in a straight-line program computing all
-forms; unary negation is free; no change of basis
+additions/subtractions in a straight-line program (SLP) computing
+all forms; unary negation is free; no change of basis
 (Karstadt--Schwartz accounting is \emph{not} used). This is the
 model of M\aa rtensson--Wagner, Stapleton, Perminov, and Sun;
 Schwartz--Vaknin's 61 lives in the weaker with-basis-change model.
@@ -276,16 +276,16 @@ the count in the source paper for that representative):
 de Groote class & publ. & this note ($A{+}B{+}C$) & representative \\
 \midrule
 \texttt{i46w213c23ci} (= Sun 56, & 56 & 56 = 13+13+30 tied,
-  24/24 models & Sun's rep \\
+  24/24 models & Y.\,Sun's rep \\
 \quad = Perminov cn120 58) & & 57 = 13+16+28
-  (\textbf{$C{=}28$ in class}) & Perminov's cn120 rep \\
+  (\textbf{$C{=}28$ in class}) & D.\,Perminov's cn120 rep \\
 \texttt{i19w225c4efh} (= cn122) & 58 & \textbf{56 = 13+14+29} &
-  \emph{his published rep} \\
+  D.\,Perminov's rep \\
 \texttt{i12w219c23ci} (= cn119) & 58 & 57 = 13+15+29 &
-  his published rep \\
+  D.\,Perminov's rep \\
  & & \textbf{56 = 13+14+29} & orbit rep (ours) \\
 \texttt{i19w203c23ci} (= MWS 59) & 59 & 58 = 14+15+29 &
-  their published rep \\
+  E.\,M\aa rtensson et al.\ rep \\
 \texttt{i106w191c347g} (ours, v1) & 60 & \textbf{59 = 15+15+29} &
   v1 orbit rep \\
 \texttt{i106w191c23ci} (ours, v1) & 60 & \textbf{59 = 15+15+29} &
@@ -427,8 +427,8 @@ covered by table decomposition). Screened side-floor histogram:
   rank 23 within known classes must be a fat-sides representative
   (sides $\ge 28$) with an output side of $\le 27$ --- two additions
   below the best output count ever observed at this format. The
-  per-class closure tool for that last window is the exact XOR-SLP
-  lower-bound program of \S\ref{sec:limits}
+  per-class closure tool for that last window is the exact XOR-SLP (an
+  SLP over GF(2)) lower-bound program of \S\ref{sec:limits}
   (\texttt{matmul/cxlb.py}: UNSAT at $k$ $\Rightarrow$ $C_\mathbb{Z}
   \ge k{+}1$, DRAT-certifiable); its calibration brackets the two
   key cells at GF(2) $C$-min $\in \{29,30\}$ (Sun's rep) and $\in

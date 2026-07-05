@@ -20,7 +20,7 @@ The additive-complexity record for exact non-commutative 3×3 matrix
 multiplication with 23 multiplications, without change of basis, is
 **56 additions** (Yinqi Sun, arXiv:2604.27645, Apr 2026), reached
 through a rapid chain: 60 (Stapleton, Aug 2025) → 59
-(Mårtensson–Stankovski Wagner–Stapleton) → 58 ×3 (Perminov) → 56. We
+(Mårtensson–Stankovski Wagner–Stapleton, MWS) → 58 ×3 (Perminov) → 56. We
 verified every scheme in that chain exactly (Brent over ℤ, ternary
 coefficients, matching addition counts) and classified each against
 the Heule–Kauers–Seidl (HKS) database: **all five are HKS database
@@ -128,7 +128,7 @@ A bilinear scheme with r products computes M_m = P_m·Q_m from linear
 forms P_m (over the 9 entries of A), Q_m (over B), then each C entry
 as a linear form over the M_m. The **additive complexity** is the
 number of binary additions/subtractions in a straight-line program
-computing all forms; unary negation is free; no change of basis
+(SLP) computing all forms; unary negation is free; no change of basis
 (Karstadt–Schwartz accounting is *not* used). This is the model of
 Mårtensson–Wagner, Stapleton, Perminov, and Sun; Schwartz–Vaknin's 61
 lives in the weaker with-basis-change model.
@@ -213,12 +213,12 @@ paper for that representative):
 
 | de Groote class | published | this note (A+B+C) | representative |
 |---|---|---|---|
-| `i46w213c23ci` (= Sun 56, = Perminov cn120 58) | 56 | 56 = 13+13+30 tied, 24/24 sign models | Sun's rep |
-| | | 57 = 13+16+28 (**C = 28 in the record class**) | Perminov's cn120 rep |
-| `i19w225c4efh` (= Perminov cn122) | 58 | **56 = 13+14+29** | *his published rep* |
-| `i12w219c23ci` (= Perminov cn119) | 58 | 57 = 13+15+29 | his published rep |
+| `i46w213c23ci` (= Sun 56, = Perminov cn120 58) | 56 | 56 = 13+13+30 tied, 24/24 sign models | Y. Sun's rep |
+| | | 57 = 13+16+28 (**C = 28 in the record class**) | D. Perminov's cn120 rep |
+| `i19w225c4efh` (= Perminov cn122) | 58 | **56 = 13+14+29** | D. Perminov's rep |
+| `i12w219c23ci` (= Perminov cn119) | 58 | 57 = 13+15+29 | D. Perminov's rep |
 | | | **56 = 13+14+29** | orbit representative (ours) |
-| `i19w203c23ci` (= MWS 59) | 59 | 58 = 14+15+29 | their published rep |
+| `i19w203c23ci` (= MWS 59) | 59 | 58 = 14+15+29 | E. Mårtensson et al. rep |
 | `i106w191c347g` (ours, v1) | 60 (v1) | **59 = 15+15+29** | v1 orbit rep |
 | `i106w191c23ci` (ours, v1) | 60 (v1) | **59 = 15+15+29** | v1 orbit rep |
 | `i107w189c48ae` (ours, v1) | 60 (v1) | **59 = 15+15+29** | v1 orbit rep |
@@ -330,7 +330,7 @@ Screened side-floor histogram: **26: 4 classes; 27: 526; 28: 12,159;
   must be a fat-sides representative (sides ≥ 28) with an output
   side of ≤ 27 — two additions below the best output count ever
   observed at this format. The per-class closure tool for that last
-  window is the exact XOR-SLP lower-bound program of §9
+  window is the exact XOR-SLP (an SLP over GF(2)) lower-bound program of §9
   (`matmul/cxlb.py`: UNSAT at k ⇒ C_Z ≥ k+1, DRAT-certifiable);
   its calibration brackets the two key cells at GF(2) C-min ∈
   {29,30} (Sun's rep) and ∈ {27,28} (the C=28 rep of Sun's class).

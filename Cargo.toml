@@ -32,6 +32,10 @@ path = "src/bin/anf.rs"
 name = "flip"
 path = "src/bin/flip.rs"
 
+[[bin]]
+name = "floors"
+path = "src/bin/floors.rs"
+
 [features]
 # `evolve_guard` — runtime enforcement of the eff-layer ordering
 # contracts (sum_visit_order is a permutation; prod_visit_order keeps
@@ -77,3 +81,4 @@ num-integer = "0.1"
 num-traits = "0.2"
 burn = { version = "0.21", features = ["ndarray", "autodiff"], optional = true }
 rayon = "1"
+

@@ -5,6 +5,7 @@ pub mod cook_pbp;
 pub mod parity_pbp;
 pub mod dual;
 pub mod flip;
+pub mod floors;
 pub mod formula;
 pub mod gmi;
 pub mod matrix;

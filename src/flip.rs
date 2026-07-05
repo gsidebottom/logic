@@ -463,8 +463,7 @@ where
     let frontier_rank = seed_summands.len().min(cfg.save_at + 4);
 
     std::thread::scope(|scope| {
-        let mut result: (HashMap<usize, usize>, usize) =
-            (HashMap::new(), seed_summands.len());
+        let result: (HashMap<usize, usize>, usize);
         for w in 0..cfg.threads {
             let seed = seed_summands.clone();
             let tx = tx.clone();

@@ -494,6 +494,33 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   exact-sides + heuristic-C: sides-optimal (13+13) and C-optimal (28)
   representatives coexist within one class; a single rep with both
   gives 54–55 and the outright record.
+- **R7 — Rust floor scanner (2026-07-04, `src/floors.rs` + bin
+  `floors`)**.  Port of orbitscan.py's exhaustive table machinery:
+  GL(3,2) as 9-bit ints, exact GF(2) chain-covering side cost
+  (512-bit-bitset pools, closure + helper IDDFS), three 168² tables
+  per S3 variant built rayon-parallel, min-plus scan, candidate
+  emission for Python Z-rescoring (`--emit-cands`), `--floors-only`
+  sweep mode (A+B tables only).  **Parity: line-for-line with the
+  Python scan on sun56 — all six floors (26/28/29/26/29/28),
+  est-bests (56/57/57/56/57/57), candidate counts
+  (432/216/324/444/252/216)** after making the C-greedy tie-break
+  insertion-ordered like CPython's dict+max.  One non-bug chased to
+  ground: "budget cells" were actually max-slack exhaustion cells
+  (true cost ≥ nt+4) — the Python reference stores the same
+  lower-bound values *silently*; renamed `open_cells`, semantics
+  documented (floors stay sound).  **Speed: full 6-variant class scan
+  5.4 s at 10 threads vs tens of minutes–hours in Python (~300×)**;
+  DB-wide floor sweep (17,376 classes) now ~a day, was ~a year.
+  New floor facts from the first Rust runs: cn119's class floor is
+  **27** (variants 2/4 — 55 there needs sides 27 + C 28); cn122's
+  floor 27 (v0/2/3/4); **mws59's class floor is 29 and their rep's
+  sides 14+15 = 29 already sit ON it** (57 in that class needs
+  C ≤ 28; best C seen there 29).  Tests: GL=168+inverses, micro
+  optima, Sun identity sides 13/13 + Brent gate + bits round-trip;
+  ignored release gate = full sun56 v0 (floor 26 / est 56 / 432
+  cands); suite 309/309.  Also fixed a pre-existing
+  unused-assignment warning in flip.rs (build back to zero
+  warnings).
 - **Later options**: MCGS/learned policy over restart seeds / move classes
   (ties back to the neural track); UNSAT side (challenge 2) via our proof
   machinery — a *different* project (algebraic/symmetry lower-bound

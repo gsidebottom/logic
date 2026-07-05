@@ -54,6 +54,16 @@ fn main() {
     // bound) instead of searching — for database-wide floor sweeps
     let screen_nt: Option<u32> =
         opt("--screen-nt", None).map(|s| s.parse().unwrap());
+    // emit the DISTINCT C form-sets at (R,P) cells participating in
+    // triples with exact sides in [lo,hi] — input files for cxlb
+    // window closure ("lo,hi", e.g. --ccells 28,29)
+    let ccells: Option<(u32, u32)> = opt("--ccells", None).map(|s| {
+        let mut it = s.split(',');
+        (
+            it.next().unwrap().parse().unwrap(),
+            it.next().unwrap().parse().unwrap(),
+        )
+    });
     // list file: one "name <621 bits>" per line instead of .bits args
     let list_file = opt("--list", None);
     if let Some(n) = opt("--threads", None) {
@@ -122,6 +132,80 @@ fn main() {
         let mut seen = std::collections::HashSet::new();
         for &vi in &variants {
             let t0 = Instant::now();
+            if let Some((lo, hi)) = ccells {
+                let dir = emit_dir
+                    .as_ref()
+                    .expect("--ccells requires --emit-cands DIR");
+                let t = side_tables(&vlist[vi], &gl, max_slack,
+                                    node_cap, false);
+                let gli: Vec<u16> =
+                    gl.iter().map(|&g| mat_inv(g).unwrap()).collect();
+                let cmats: Vec<u16> =
+                    vlist[vi].iter().map(|s| s.2).collect();
+                // min sides over triples touching each (r,p) cell
+                let mut cellmin =
+                    vec![u32::MAX; NG * NG]; // [r*NG+p]
+                for q in 0..NG {
+                    for p in 0..NG {
+                        let a = t.a[p * NG + q] as u32;
+                        if a > hi {
+                            continue;
+                        }
+                        for r_ in 0..NG {
+                            let sd = a + t.b[q * NG + r_] as u32;
+                            if sd >= lo && sd <= hi {
+                                let ix = r_ * NG + p;
+                                cellmin[ix] = cellmin[ix].min(sd);
+                            }
+                        }
+                    }
+                }
+                let mut n_cells = 0usize;
+                for r_ in 0..NG {
+                    let lc: Vec<u16> = cmats
+                        .iter()
+                        .map(|&m| mat_mul(gl[r_], m))
+                        .collect();
+                    for p in 0..NG {
+                        let sd = cellmin[r_ * NG + p];
+                        if sd == u32::MAX {
+                            continue;
+                        }
+                        n_cells += 1;
+                        let inv = gli[p];
+                        let mut forms = [0u32; 9];
+                        for (m, &g) in lc.iter().enumerate() {
+                            let gm = mat_mul(g, inv);
+                            for j in 0..9 {
+                                if gm >> j & 1 == 1 {
+                                    forms[j] |= 1 << m;
+                                }
+                            }
+                        }
+                        forms.sort_unstable();
+                        let key: String = forms
+                            .iter()
+                            .map(|f| f.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",");
+                        if !seen.insert(key.clone()) {
+                            continue;
+                        }
+                        emitted += 1;
+                        let fname = format!(
+                            "{dir}/{stem}-v{vi}-s{sd}-r{r_}_p{p}.cforms"
+                        );
+                        std::fs::write(&fname, key + "\n").unwrap();
+                    }
+                }
+                println!(
+                    "{stem} v{vi} ccells sides in [{lo},{hi}]: \
+                     {n_cells} cells, {emitted} distinct so far  \
+                     [{:.2}s]",
+                    t0.elapsed().as_secs_f64()
+                );
+                continue;
+            }
             if let Some(budget) = emit_sides {
                 let dir = emit_dir.as_ref().expect(
                     "--emit-sides requires --emit-cands DIR");

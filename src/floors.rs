@@ -402,8 +402,26 @@ pub struct Tables {
     pub open_cells: usize,
 }
 
+/// distinct weight>=2 rows — a sound lower bound on the side cost,
+/// ~100x cheaper than the exact search.
+pub fn gf2_nt(rows: &[u16]) -> u32 {
+    let mut seen = [false; 512];
+    let mut nt = 0u32;
+    for &r in rows {
+        if r.count_ones() >= 2 && !seen[r as usize] {
+            seen[r as usize] = true;
+            nt += 1;
+        }
+    }
+    nt
+}
+
 /// build the three side-cost tables for one variant.  `with_c` off
-/// skips the C table (floors need A and B only).
+/// skips the C table (floors need A and B only).  `screen_nt`: cells
+/// whose distinct-target count exceeds it store nt — a sound lower
+/// bound, so screened floors are lower bounds and no class whose
+/// true floor is under a hunt cutoff can be missed (verify
+/// survivors with an exact pass).
 pub fn side_tables(
     sm: &[(u16, u16, u16)],
     gl: &[u16],
@@ -411,11 +429,33 @@ pub fn side_tables(
     node_cap: u64,
     with_c: bool,
 ) -> Tables {
+    side_tables_screened(sm, gl, max_slack, node_cap, with_c, None)
+}
+
+pub fn side_tables_screened(
+    sm: &[(u16, u16, u16)],
+    gl: &[u16],
+    max_slack: u32,
+    node_cap: u64,
+    with_c: bool,
+    screen_nt: Option<u32>,
+) -> Tables {
     use rayon::prelude::*;
     let gli: Vec<u16> = gl.iter().map(|&g| mat_inv(g).unwrap()).collect();
     let amats: Vec<u16> = sm.iter().map(|s| s.0).collect();
     let bmats: Vec<u16> = sm.iter().map(|s| s.1).collect();
     let cmats: Vec<u16> = sm.iter().map(|s| s.2).collect();
+    let cost = |rows9: &[u16], over: &mut usize| -> u16 {
+        if let Some(t) = screen_nt {
+            let nt = gf2_nt(rows9);
+            if nt > t {
+                return nt as u16; // sound lower bound, search skipped
+            }
+        }
+        let sc = gf2_min_side(rows9, max_slack, node_cap);
+        *over += usize::from(!sc.exact);
+        sc.adds as u16
+    };
     let rows: Vec<(Vec<u16>, Vec<u16>, Vec<u16>, usize)> = (0..NG)
         .into_par_iter()
         .map(|li| {
@@ -433,15 +473,11 @@ pub fn side_tables(
                 for (k, &m) in la.iter().enumerate() {
                     rows9[k] = mat_mul(m, inv);
                 }
-                let sc = gf2_min_side(&rows9, max_slack, node_cap);
-                over += usize::from(!sc.exact);
-                ra[ri] = sc.adds as u16;
+                ra[ri] = cost(&rows9, &mut over);
                 for (k, &m) in lb.iter().enumerate() {
                     rows9[k] = mat_mul(m, inv);
                 }
-                let sc = gf2_min_side(&rows9, max_slack, node_cap);
-                over += usize::from(!sc.exact);
-                rb[ri] = sc.adds as u16;
+                rb[ri] = cost(&rows9, &mut over);
                 if with_c {
                     let mut forms = [0u64; 9];
                     for (m, &g) in lc.iter().enumerate() {

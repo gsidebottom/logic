@@ -50,6 +50,12 @@ fn main() {
         opt("--emit-sides", None).map(|s| s.parse().unwrap());
     let max_emit: usize =
         opt("--max-emit", Some("200000")).unwrap().parse().unwrap();
+    // screening mode: cells with nt > this store nt (sound lower
+    // bound) instead of searching — for database-wide floor sweeps
+    let screen_nt: Option<u32> =
+        opt("--screen-nt", None).map(|s| s.parse().unwrap());
+    // list file: one "name <621 bits>" per line instead of .bits args
+    let list_file = opt("--list", None);
     if let Some(n) = opt("--threads", None) {
         rayon::ThreadPoolBuilder::new()
             .num_threads(n.parse().unwrap())
@@ -66,8 +72,37 @@ fn main() {
     };
     let files: Vec<String> =
         args.into_iter().filter(|a| !a.starts_with("--")).collect();
-    if files.is_empty() {
-        eprintln!("usage: floors FILE.bits ... (see source header)");
+    // (name, bits-string) work items from args and/or --list
+    let mut items: Vec<(String, String)> = files
+        .iter()
+        .map(|path| {
+            let s = std::fs::read_to_string(path)
+                .unwrap_or_else(|e| panic!("{path}: {e}"));
+            let tok =
+                s.split_whitespace().last().expect("empty bits file");
+            let stem = path
+                .rsplit('/')
+                .next()
+                .unwrap()
+                .trim_end_matches(".bits")
+                .to_string();
+            (stem, tok.to_string())
+        })
+        .collect();
+    if let Some(lf) = &list_file {
+        let s = std::fs::read_to_string(lf)
+            .unwrap_or_else(|e| panic!("{lf}: {e}"));
+        for line in s.lines() {
+            let mut it = line.split_whitespace();
+            if let (Some(name), Some(bits)) = (it.next(), it.next()) {
+                items.push((name.to_string(), bits.to_string()));
+            }
+        }
+    }
+    if items.is_empty() {
+        eprintln!(
+            "usage: floors FILE.bits ... | --list FILE (see header)"
+        );
         std::process::exit(2);
     }
     let gl = gl3();
@@ -75,19 +110,11 @@ fn main() {
         std::fs::create_dir_all(d).unwrap();
     }
 
-    for path in &files {
-        let s = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("{path}: {e}"));
-        let tok = s.split_whitespace().last().expect("empty bits file");
-        assert_eq!(tok.len(), 621, "{path}: expected 621 bits");
+    for (stem, tok) in &items {
+        assert_eq!(tok.len(), 621, "{stem}: expected 621 bits");
         let bits: Vec<u8> = tok.chars().map(|c| (c as u8) - b'0').collect();
         let sm = bits_to_summands(&bits);
-        assert_eq!(brent_bad(&sm), 0, "{path}: Brent mod-2 check failed");
-        let stem = path
-            .rsplit('/')
-            .next()
-            .unwrap()
-            .trim_end_matches(".bits");
+        assert_eq!(brent_bad(&sm), 0, "{stem}: Brent mod-2 check failed");
         let vlist = s3_variants(&sm);
         let mut file_floor = u32::MAX;
         let mut file_best_est = u32::MAX;
@@ -98,8 +125,9 @@ fn main() {
             if let Some(budget) = emit_sides {
                 let dir = emit_dir.as_ref().expect(
                     "--emit-sides requires --emit-cands DIR");
-                let t = side_tables(&vlist[vi], &gl, max_slack, node_cap,
-                                    false);
+                let t = side_tables_screened(&vlist[vi], &gl,
+                                             max_slack, node_cap,
+                                             false, screen_nt);
                 let mut n_triples = 0usize;
                 for q in 0..NG {
                     for p in 0..NG {
@@ -146,8 +174,9 @@ fn main() {
                 );
                 continue;
             }
-            let t = side_tables(&vlist[vi], &gl, max_slack, node_cap,
-                                !floors_only);
+            let t = side_tables_screened(&vlist[vi], &gl, max_slack,
+                                         node_cap, !floors_only,
+                                         screen_nt);
             let r = scan(&t, cutoff);
             file_floor = file_floor.min(r.floor_sides);
             let dt = t0.elapsed().as_secs_f64();

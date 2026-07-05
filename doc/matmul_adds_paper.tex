@@ -1,0 +1,613 @@
+% Exact Input-Side Minimization and 56-Addition Schemes on Two New
+% Classes for Rank-23 3x3 Matrix Multiplication
+% Build:  tectonic doc/matmul_adds_paper.tex
+% (verbatim blocks are spliced from the canonical markdown source)
+\documentclass[10pt]{article}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{fancyvrb}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+\urlstyle{same}
+\setlist{itemsep=2pt,topsep=3pt}
+\setlength{\emergencystretch}{1em}
+\newcommand{\Ct}{\ensuremath{\tilde{C}}}
+\DefineVerbatimEnvironment{Code}{Verbatim}{fontsize=\footnotesize}
+
+\title{\bfseries Exact Input-Side Minimization and 56-Addition
+  Schemes on Two New Classes for Rank-23 $3\times 3$ Matrix
+  Multiplication}
+\author{Greg Sidebottom \and Claude Fable 5}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-3em}
+\begin{center}
+\itshape Research note --- logic repo
+(\url{https://github.com/gsidebottom/logic}), matmul track. v1
+2026-07-03 (``Three New 60-Addition, Rank-23 Schemes\dots'', written
+against the Aug-2025 frontier of 60; full text in git history). v2
+2026-07-04, revised after the record chain $60 \to 59 \to 58 \to 56$
+and after our exact side-minimizer tied the 56 record with
+independent machinery --- twice more, on two further de Groote
+classes. v3 2026-07-05 adds the database-wide census
+(\S\ref{sec:census}). Companion to
+\texttt{doc/matmul\_53\_3x3\_schemes.md}; every claim has a
+mechanical check (\S\ref{sec:repro}).
+\end{center}
+
+\section*{Abstract}
+
+The additive-complexity record for exact non-commutative $3\times 3$
+matrix multiplication with 23 multiplications, without change of
+basis, is \textbf{56 additions} (Yinqi Sun, arXiv:2604.27645, Apr
+2026), reached through a rapid chain: 60 (Stapleton, Aug 2025)
+$\to$ 59 (M\aa rtensson--Stankovski Wagner--Stapleton) $\to$ 58
+$\times 3$ (Perminov) $\to$ 56. We verified every scheme in that
+chain exactly (Brent over $\mathbb{Z}$, ternary coefficients,
+matching addition counts) and classified each against the
+Heule--Kauers--Seidl (HKS) database: \textbf{all five are HKS
+database classes}, and Sun's 56 is a cyclic-symmetry image of one of
+Perminov's 58-classes --- the last two additions of the record came
+from a \emph{change of representative}, not a new scheme.
+
+Sun's count has two structural ingredients: input sides in
+\emph{addition-chain form} (all 23 left/right factors are values of
+one 13-step chain), and per-side optimality certificates.
+Pair-extraction CSE --- the engine behind $62 \to 60 \to 59 \to 58$
+--- cannot represent that structure; it plateaus at $58 = 14{+}14{+}30$
+on Sun's own scheme. We therefore built the missing tool and report:
+
+\begin{enumerate}[itemsep=2pt]
+\item \textbf{An exact input-side minimizer}
+  (\texttt{matmul/sidemin.py}): the minimum number of
+  $\pm$-additions such that one chain over the 9 input cells
+  contains every distinct multi-term factor row (up to sign), solved
+  exactly by iterative deepening over \emph{helper values} with a
+  closure normal form (complete by an exchange argument; helpers may
+  be arbitrary integer vectors, strictly more general than Sun's
+  certificate model). It reproduces both of Sun's side optima (13,
+  13) \emph{and} both of his impossibility certificates in 0.3\,s,
+  and its chains are replay-verified.
+\item \textbf{The 56 record tied, three times over.} With exact
+  sides + a restart-greedy output side: Sun's representative gives
+  \textbf{56 = 13+13+30 on all 24 enumerated sign models}.
+  Perminov's scheme cn122 --- class \texttt{i19w225c4efh}, published
+  at 58 --- gives \textbf{56 = 13+14+29 directly on his published
+  representative}: the exact side-minimizer alone recovers two
+  additions. And an orbit walk in the class of his cn119 ---
+  \texttt{i12w219c23ci}, also published at 58 --- reaches a
+  representative scoring \textbf{56 = 13+14+29} (verified at high
+  effort). All three classes are pairwise inequivalent (exact
+  refutations), so \textbf{56 additions is now attained on three
+  inequivalent rank-23 classes} where before there was one.
+\item \textbf{Every published count in the chain drops or ties on
+  its own representative} under exact sides: MWS's 59-scheme $\to$
+  58 (14+15+29); Perminov's cn119 $\to$ 57, cn120 $\to$ 57
+  (13+16+28; this is Sun's class, so $C = 28$ exists \emph{inside}
+  the record class), cn122 $\to$ 56; and the three 60-addition
+  classes of this note's v1 $\to$ \textbf{59 each} (15+15+29).
+  Stapleton's class alone stays at 60 (16+16+28).
+\item \textbf{Orbit-wide side floors, exhaustively.} The de Groote
+  sandwich factors by side --- $A$-forms depend only on $(P,Q)$, $B$
+  on $(Q,R)$, $C$ on $(R,P)$ --- so three $168\times 168$ GF(2) cost
+  tables cover an entire orbit (28.4M representatives across the 6
+  slot variants), with GF(2) side cost a sound lower bound on the
+  $\mathbb{Z}$ side cost (\texttt{matmul/orbitscan.py}). For Sun's
+  class: \textbf{no representative anywhere in the orbit has input
+  sides below 26 = 13+13} --- his representative is side-optimal for
+  the whole class --- and \emph{every} representative with sides
+  $\le 27$ (864 per eligible variant, all distinct) was individually
+  re-scored over $\mathbb{Z}$: \textbf{none beats 56.} A 55 in Sun's
+  class therefore requires an output side of $\le 27$ on a fat-sides
+  representative --- two below anything observed at this format. The
+  55 question is now sharply localized.
+\end{enumerate}
+
+Everything is exact and replayable: Brent equations over
+$\mathbb{Z}$ for every scheme, replay-verified straight-line
+programs, chain re-verification, sign models Z-verified, equivalence
+witnesses/refutations. Two complete 56-addition programs are
+committed (\path{matmul/external/i19-56adds-slp.txt}, appendix;
+\path{matmul/external/i12-56adds-slp.txt}).
+
+\section{Cost model and history}\label{sec:model}
+
+A bilinear scheme with $r$ products computes $M_m = P_m \cdot Q_m$
+from linear forms $P_m$ (over the 9 entries of $A$), $Q_m$ (over
+$B$), then each $C$ entry as a linear form over the $M_m$. The
+\textbf{additive complexity} is the number of binary
+additions/subtractions in a straight-line program computing all
+forms; unary negation is free; no change of basis
+(Karstadt--Schwartz accounting is \emph{not} used). This is the
+model of M\aa rtensson--Wagner, Stapleton, Perminov, and Sun;
+Schwartz--Vaknin's 61 lives in the weaker with-basis-change model.
+
+\begin{center}
+\small
+\begin{tabular}{@{}l l p{6.8cm} c@{}}
+\toprule
+year & count & scheme / method & basis change \\
+\midrule
+1976 & 98 & Laderman, naive form & --- \\
+2023 & 61 & Schwartz--Vaknin (pebbling + alt.\ basis) & \textbf{yes} \\
+2024 & 62 & M\aa rtensson--Wagner, Greedy-Potential on Laderman & no \\
+2025 (Aug) & 60 & Stapleton (NN + Greedy-Potential); class
+  \texttt{i2w201c26fi} & no \\
+this note v1 & 60 $\times$3 classes & HKS DB classes + orbit-CSE & no \\
+2025 (Dec 18) & 59 & MWS, arXiv:2601.05272; class
+  \texttt{i19w203c23ci} & no \\
+2025 (Dec 25) & 58 ($\times$3) & Perminov, arXiv:2512.21980; classes
+  \texttt{i12w219c23ci}, \texttt{i46w213c23ci}, \texttt{i19w225c4efh}
+  & no \\
+2026 (Apr) & \textbf{56 --- record} & Sun, arXiv:2604.27645; cyclic
+  image of \texttt{i46w213c23ci} & no \\
+\textbf{this note v2} & \textbf{56 on two further classes} &
+  \texttt{i19w225c4efh}, \texttt{i12w219c23ci}; 59 on our three v1
+  classes (exact input sides + orbit search) & no \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Why 58 was the pair-extraction wall}\label{sec:wall}
+
+Sun's $56 = 13 + 13 + 30$ ($A$-side + $B$-side + outputs). Both
+input sides are \emph{chain-covering}: a single 13-step addition
+chain per side whose values include all 23 factor rows --- every
+$P_m$ is a bare reference into the chain. Greedy pair extraction
+builds balanced binary trees of shared pairs; it cannot discover a
+program in which intermediate \emph{sums of three, four, five
+inputs} are themselves the reused objects. Measured consequence: our
+v1 optimizer (and its v2 with kernel and output-reuse moves --- both
+measured, kernels net-harmful, reuse neutral here) plateaus at
+\textbf{58 = 14+14+30 on Sun's own representative}, exactly $1{+}1$
+above his sides, with an identical output side. The two missing
+additions were purely side-structural.
+
+\section{The exact side-minimizer
+(\texttt{matmul/sidemin.py})}\label{sec:minimizer}
+
+\textbf{Problem.} Given the 23 signed factor rows of one side
+(vectors in $\{-1,0,+1\}^9$; rows equal to a basis vector or to
+$\pm$another row are free), find the minimum number of steps of the
+form $v = \pm x \pm y$ ($x, y$ earlier values, starting from the 9
+basis vectors) such that every distinct multi-term row appears among
+the values up to global sign. This is Sun's chain-covering structure
+as a search problem.
+
+\textbf{Method.} Iterative deepening on the number of \emph{helpers}
+$h$ (chain values that are not target rows); the optimum is
+(\#distinct multi-term targets) $+\, h^{*}$. The search uses a
+closure normal form: since the value pool only grows, covering a
+coverable target never hurts and always costs exactly one addition
+--- so targets are covered greedily to a fixpoint and the search
+branches \textbf{only on helper insertions at fixpoints} (complete
+by an exchange argument). With one helper left, the helper must
+directly complete some uncovered target, shrinking the last level to
+an ``enabling set''. Helpers may be arbitrary integer vectors,
+doublings included --- strictly more general than the pure/one-aux
+model of Sun's certificates, so an exhaustion at slack $h$ here is
+the stronger impossibility statement.
+
+\textbf{Calibration against Sun's own certificates.} His verifier
+proves each of his sides optimal by a reachability argument (no
+12-addition chain covers $U$'s 12 targets; no 12-addition chain with
+any single auxiliary covers $V$'s 11). Our search independently
+reproduces all of it --- $U$: 12 targets, $h^{*} = 1$, 13 additions
+(3 search nodes); $V$: 11 targets, $h^{*} = 2$, 13 additions (11
+nodes); $h = 0$ and $h = 1$ exhaustions match his two impossibility
+certificates --- in 0.3\,s total, every chain replay-verified.
+Micro-optima (5 hand-checkable cases) also pass.
+
+\textbf{Scoring a scheme.} Sign models are enumerated by sign-SAT
+with blocking clauses and Z-verified; per model the two input sides
+are minimized exactly and the output side is optimized by
+replay-verified restart-greedy CSE (the v1 pair extractor --- on the
+relevant representatives its counts coincide with the v2
+optimizer's, and the output side is where all remaining heuristic
+slack lives). Side costs were sign-model invariant on every
+representative tested.
+
+\section{Results}\label{sec:results}
+
+\textbf{Class-by-class} (all schemes Brent-verified over
+$\mathbb{Z}$; class identities by exact fingerprint + witness
+machinery, cross-checked against the HKS database; ``published'' =
+the count in the source paper for that representative):
+
+\begin{center}
+\small
+\begin{tabular}{@{}l c l l@{}}
+\toprule
+de Groote class & publ. & this note ($A{+}B{+}C$) & representative \\
+\midrule
+\texttt{i46w213c23ci} (= Sun 56, & 56 & 56 = 13+13+30 tied,
+  24/24 models & Sun's rep \\
+\quad = Perminov cn120 58) & & 57 = 13+16+28
+  (\textbf{$C{=}28$ in class}) & Perminov's cn120 rep \\
+\texttt{i19w225c4efh} (= cn122) & 58 & \textbf{56 = 13+14+29} &
+  \emph{his published rep} \\
+\texttt{i12w219c23ci} (= cn119) & 58 & 57 = 13+15+29 &
+  his published rep \\
+ & & \textbf{56 = 13+14+29} & orbit rep (ours) \\
+\texttt{i19w203c23ci} (= MWS 59) & 59 & 58 = 14+15+29 &
+  their published rep \\
+\texttt{i106w191c347g} (ours, v1) & 60 & \textbf{59 = 15+15+29} &
+  v1 orbit rep \\
+\texttt{i106w191c23ci} (ours, v1) & 60 & \textbf{59 = 15+15+29} &
+  v1 orbit rep \\
+\texttt{i107w189c48ae} (ours, v1) & 60 & \textbf{59 = 15+15+29} &
+  v1 orbit rep \\
+\texttt{i2w201c26fi} (Stapleton) & 60 & 60 = 16+16+28 &
+  v1 orbit rep \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Notes.
+
+\begin{itemize}
+\item The cn122 result required \textbf{no search over
+  representatives at all}: exact side minimization applied to
+  Perminov's own published scheme yields 13+14 sides against
+  pair-greedy's 14+15 --- the two additions separating 58 from 56 on
+  that class were entirely side-structural, mirroring the Sun-vs-58
+  diagnosis.
+\item The cn119 56-representative was found by a hill-climb over the
+  de Groote orbit scoring exact-sides + greedy-$C$
+  (\texttt{matmul/orbit55.py}, 45\,min), then confirmed at high
+  effort (24 sign models $\times$ 800 restarts) and confirmed
+  in-class by exact equivalence to cn119 (witness; one class).
+\item Three classes at 56, pairwise inequivalent (exact refutations
+  among sun56/cn119/cn122 and their images). Before: one.
+\item Our three v1 classes improve $60 \to 59$ by exact sides alone
+  --- tying the \emph{previous} (MWS-era) record on classes of our
+  own --- and the chain's other counts all drop or tie on their own
+  representatives. Stapleton's class alone resists below 60; notably
+  its representative has the cheapest output side seen anywhere (28)
+  paired with the fattest input sides (16+16).
+\end{itemize}
+
+\textbf{Attempted and failed at 55 so far} (honest negatives, each
+bounded): four 45-minute orbit climbs (7.2k--8.4k proposals each)
+from both ends of Sun's class and from cn119/cn122 all converge to
+56; 45-minute climbs on the MWS class and one of ours stop at 58 and
+59 respectively; deeper sign-model/restart budgets ($48 \times 800$)
+move nothing; output-reuse moves (the trick behind the $4\times 4$
+de-complexification of Dumas--Pernet--Sedoglavic) gain zero on these
+representatives (28/29/30 unchanged).
+
+\section{Orbit-wide side floors and the localization of
+55}\label{sec:floors}
+
+The de Groote sandwich $(P A Q^{-1},\, Q B R^{-1},\, R\,\Ct\,P^{-1})$
+factors by side: the $A$-form multiset depends only on $(P,Q)$, $B$
+on $(Q,R)$, $C$ on $(R,P)$. So three $168\times 168$ tables of
+\emph{exact GF(2) side costs} (XOR chain covering --- same algorithm
+on 9-bit masks, sub-ms per cell) plus a min-plus scan cover
+\textbf{every representative of an orbit}: $168^3 \approx 4.7$M
+sandwiches per slot variant, 28.4M per class, in ${\sim}$minutes ---
+no hill-climbing, no misses. A GF(2) side cost lower-bounds the
+$\mathbb{Z}$ side cost of the same representative (reduce any
+$\mathbb{Z}$-chain mod 2), so the scan yields sound orbit-wide side
+floors (\texttt{matmul/orbitscan.py}).
+
+\textbf{Sun's class} (\texttt{i46w213c23ci}), all six variants:
+
+\begin{center}
+\begin{tabular}{@{}c c c@{}}
+\toprule
+variant & GF(2) sides floor & candidates $\le 57$ (est) \\
+\midrule
+0 & \textbf{26} & 432 \\
+1 & 28 & 216 \\
+2 & 29 & 324 \\
+3 & \textbf{26} & 444 \\
+4 & 29 & 252 \\
+5 & 28 & 216 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+No representative of the class, in any variant, has input sides
+below $26 = 13{+}13$: \textbf{Sun's representative is side-optimal
+for his entire equivalence class.} Furthermore every representative
+with sides $\le 27$ (the only ones that could give 55 with an output
+side of 28--29) was enumerated --- 864 distinct schemes in each of
+the two floor-26 variants --- and each was individually re-scored
+over $\mathbb{Z}$ at high effort: \textbf{best = 56 = 13+13+30, no
+exceptions.} Combining:
+
+\begin{itemize}
+\item a 55 with sides 26--27 in Sun's class is excluded up to the
+  output heuristic's reliability on those 1,728 exhaustive
+  re-scores;
+\item a 55 with sides 28--29 requires an output side of 26--27 ---
+  at least two below the best output count ever observed at this
+  format (28, seen in exactly two classes), on representatives whose
+  $C$ tensors we scored throughout the scans.
+\end{itemize}
+
+The same machinery applied to \texttt{i19w225c4efh} (cn122) shows
+side floors of 27--28, so its $56 = 13{+}14{+}29$ sits one addition
+above its own side floor; a 55 there needs sides 27 + $C$ 28. These
+are now \emph{concrete, finite} search targets rather than
+open-ended hunts.
+
+\section{The database-wide side-floor census (v3 addition,
+2026-07-05)}\label{sec:census}
+
+With the table machinery ported to Rust (\texttt{src/floors.rs},
+${\sim}300\times$; a sound nt-prefilter for sweep mode) and exact
+Z-rescoring in-process (\texttt{src/zrescore.rs},
+${\sim}150\times$), the orbit-side analysis was run over the
+\textbf{entire HKS database --- all 17,376 classes, every
+representative of every orbit} (${\sim}10^{11}$ representatives
+covered by table decomposition). Screened side-floor histogram:
+\textbf{26: 4 classes; 27: 526; 28: 12,159; 29: 4,326; 30: 357; 31:
+4.}
+
+\begin{itemize}
+\item \textbf{Floor 26 (Sun-grade sides) exists in exactly four
+  classes}: Sun's \texttt{i46w213c23ci}, its family siblings
+  \texttt{i46w205c23ci} and \texttt{i46w221c23ci}, and
+  \texttt{i73w191c236f} (floors exact-confirmed unscreened).
+  Exhausting every sides $\le 27$ representative of the three new
+  ones (4,320 reps, exact Z-rescoring): best totals \textbf{57, 57,
+  58} --- chain-coverable sides are \emph{not} sufficient; Sun's
+  class is the only one in the published record that pairs them with
+  an output side $\le 30$. (Control: the same run reproduces Sun's
+  class at 56 from its 1,728 slim-sides reps.)
+\item \textbf{Of the 526 screened floor-27 classes, 80 truly admit
+  sides 27} (the rest are prefilter lower-bound artifacts, filtered
+  exactly as designed). Exhausting all of them: best totals 56
+  $\times$2, 57 $\times$6, 58 $\times$27, 59 $\times$26, 60
+  $\times$18, 61 $\times$1 --- and the two 56s are precisely
+  \texttt{i12w219c23ci} and \texttt{i19w225c4efh}: \textbf{the blind
+  database sweep independently rediscovers both classes of
+  \S\ref{sec:results}}, with no input from this note's earlier
+  results.
+\item Consequently, over the entire published database:
+  \textbf{exactly three classes attain 56; no slim-sides
+  representative of any class attains 55 anywhere}; and any 55 at
+  rank 23 within known classes must be a fat-sides representative
+  (sides $\ge 28$) with an output side of $\le 27$ --- two additions
+  below the best output count ever observed at this format. The
+  per-class closure tool for that last window is the exact XOR-SLP
+  lower-bound program of \S\ref{sec:limits}
+  (\texttt{matmul/cxlb.py}: UNSAT at $k$ $\Rightarrow$ $C_\mathbb{Z}
+  \ge k{+}1$, DRAT-certifiable); its calibration brackets the two
+  key cells at GF(2) $C$-min $\in \{29,30\}$ (Sun's rep) and $\in
+  \{27,28\}$ (the $C{=}28$ rep of Sun's class).
+\end{itemize}
+
+Committed artifacts: \path{matmul/db_floor_census.csv} (17,376
+rows), \path{matmul/f27_campaign_results.csv} (80 rows), campaign
+driver \path{matmul/found55/f27_campaign.sh}.
+
+\section{The 60-era results (v1 of this note,
+compressed)}\label{sec:era60}
+
+Kept because the discovery path and the negative are still
+informative; full text in git history.
+
+\begin{itemize}
+\item \textbf{Full-database CSE screen} (all 17,376 HKS schemes;
+  apparently the first such sweep): exactly three classes reach 61
+  from their stored representatives; the classics: Laderman 62,
+  Smirnov 68 (sparsest $\ne$ most CSE-able). Committed:
+  \path{matmul/cse_screen_top200.csv}.
+\item \textbf{Orbit search over representatives} (transvection
+  moves): the optimized count is \textbf{not} a de Groote invariant
+  --- within Stapleton's class the stored representative plateaus at
+  62 while his reaches 60; our three v1 classes went $61 \to 60$ the
+  same way. The representative axis has now been worth $\ge 2$
+  additions twice over: $62 \to 60$ (v1) and $58 \to 56$ (Sun vs
+  Perminov, one group element apart --- classified here).
+\item \textbf{Reclassification of Stapleton's scheme}: de
+  Groote-equivalent to HKS \texttt{i2w201c26fi-000} (exact witness)
+  --- his neural pipeline rediscovered a 2019 database class; no
+  such check appears in his note. Perminov's schemes are database
+  classes too (IDs above), as is Sun's; one of Perminov's non-record
+  schemes (\texttt{naive88}) even lands in one of \emph{our} v1
+  classes (\texttt{i107w189c48ae}).
+\item \textbf{The greedy-family ceiling}: ${>}20{,}000$ well-mixed
+  orbit proposals per class $\times$ 16 sign models $\times$ 128
+  restarts never moved any of the four 60-classes below 60. We
+  wrote, honestly, that this was ``either a true barrier at 60 or a
+  shared ceiling of the greedy-CSE family''. The chain --- and now
+  our own exact-sides results --- settle it: it was the family
+  ceiling, and the missing structure was chain-covering input sides.
+  The v1 measurement stands as a clean characterization of what
+  pair-extraction alone can and cannot see.
+\end{itemize}
+
+\section{What is new here, plainly}\label{sec:new}
+
+\begin{itemize}
+\item The input-side subproblem of additive complexity solved
+  \emph{exactly}, with optimality certificates cross-validated
+  against Sun's, and the observation that this alone --- no new
+  schemes, no orbit search --- turns Perminov's published cn122 into
+  a record-tying 56.
+\item \textbf{Two new 56-addition classes} (\texttt{i19w225c4efh},
+  \texttt{i12w219c23ci}), tripling the number of known record-count
+  classes; complete replay-verified 56-addition programs committed
+  for both.
+\item Exhaustive orbit-wide side floors (a sound lower-bound method
+  over 28.4M representatives per class in minutes), the
+  database-wide census over all 17,376 classes, and, for Sun's
+  class, side-optimality of his representative over the whole class
+  plus an exhaustive Z-re-score of every slim-sides representative
+  --- the sharpest localization yet of where a 55 could live.
+\item Improved counts on every other class in the record chain's
+  history on their own representatives ($59 \to 58$, $58 \to 57$,
+  $60 \to 59$ $\times$3).
+\end{itemize}
+
+\section{Reproduction}\label{sec:repro}
+
+\begin{Code}
+cd matmul
+# exact side-minimizer: micro-optima + Sun's U/V optima + his
+# impossibility certificates (0.3 s)
+python3 sidemin.py selftest
+
+# the record chain, exact sides + greedy C (Z-verified sign models):
+# sun56 -> 56 = 13+13+30 on all models; cn122 -> 56 = 13+14+29;
+# cn119 -> 57; cn120 -> 57 = 13+16+28; mws59 -> 58
+python3 sidemin.py --models 24 perminov_cache/bits/sun56.bits \
+    perminov_cache/bits/cr58-cn122.bits perminov_cache/bits/cr58-cn119.bits \
+    perminov_cache/bits/cr58-cn120.bits perminov_cache/bits/mws59.bits
+
+# the two new 56-classes at high effort, with full SLP emission
+python3 sidemin.py --models 24 --c-restarts 800 \
+    --emit /tmp/i19.slp external/i19-perminov56.bits
+python3 sidemin.py --models 24 --c-restarts 800 \
+    --emit /tmp/i12.slp external/i12-orbit56.bits
+
+# class identities: three pairwise-inequivalent 56-classes;
+# cn119-orbit rep stays in cn119's class
+python3 equiv.py classes perminov_cache/bits/sun56.bits \
+    external/i19-perminov56.bits external/i12-orbit56.bits   # expect 3
+python3 equiv.py classes external/i12-orbit56.bits \
+    perminov_cache/bits/cr58-cn119.bits                      # expect 1
+
+# our three v1 classes at 59; Stapleton at 60
+python3 sidemin.py --models 24 external/i106-orbitbest.bits \
+    external/i106b-orbitbest.bits external/i107-orbitbest.bits \
+    external/stapleton60-orbitbest.bits
+
+# orbit-wide side floors + candidate re-scoring (Sun's class, ~20 min)
+python3 orbitscan.py perminov_cache/bits/sun56.bits --cutoff 57
+# exhaustive slim-sides re-score (variants 0+3, ~1 h)
+python3 orbitscan.py perminov_cache/bits/sun56.bits \
+    --exhaust-sides 27 --variants 03 --models 8 --crestarts 300
+
+# orbit hill-climb used for the cn119 56-representative (stochastic)
+python3 orbit55.py perminov_cache/bits/cr58-cn119.bits --minutes 45 \
+    --out /tmp/cn119-best.bits
+
+# HKS class IDs of every chain scheme (needs the DB cache;
+# dbcheck.py fetch convert first if absent)
+python3 perminov_cache/q2_check.py
+\end{Code}
+
+Deterministic caveats: kissat may return different sign models
+across versions (each returned model is Z-verified); orbit climbs
+are stochastic --- the \emph{committed representatives} make every
+headline count deterministic to check.
+
+\section{Limitations and the route to 55}\label{sec:limits}
+
+Input sides are now exact; \textbf{the output side is the open
+flank} --- all counts above use replay-verified greedy CSE there,
+and nothing bounds $C$ from below beyond trivialities. The observed
+$C$ landscape at this format: 28 in exactly two classes
+(Stapleton's, and Perminov's cn120 representative of Sun's class),
+29--30 elsewhere; reuse moves gain nothing. The concrete open
+combinations:
+
+\begin{itemize}
+\item \textbf{$C$-side exact minimization or lower bounds.} The
+  side-minimizer does not transfer (the $C$ side has ${\sim}20$
+  helpers' worth of slack); candidate tools are
+  transposition-principle arguments, SAT/ILP with structure, or a
+  chain-covering generalization to fan-in trees. Any $C \le 27$ on a
+  fat-sides representative of Sun's class, or $C \le 28$ on a
+  sides-27 representative of cn122's class, is an outright 55.
+  First steps exist: \texttt{matmul/cxlb.py} decides ``$k$ XOR
+  additions suffice'' exactly (UNSAT $\Rightarrow$ sound
+  $\mathbb{Z}$ bound, DRAT-certifiable); its boundary instances
+  resist all current solvers at 10--30 minute budgets and are being
+  submitted as SAT-competition benchmarks
+  (\texttt{doc/matmul\_cxlb\_satcomp.pdf}).
+\item \textbf{Class sweep: done} (\S\ref{sec:census}) --- the census
+  found no class with a floor below 26 and no new 56-class; within
+  the published record, the fat-sides window is the only route left.
+\item The $r{=}22$ question (challenge 4) remains open and is where
+  any count would change complexity theory rather than constants.
+\end{itemize}
+
+\section*{References}
+
+\begin{itemize}[label={},leftmargin=1.2em,itemsep=1pt]
+\item Y.~Sun. \emph{A 56-Addition Scheme\dots} arXiv:2604.27645
+  (2026). Verifier and chain data cached at
+  \path{matmul/perminov_cache/sun_verify.py}.
+\item D.~Perminov. arXiv:2512.21980 (2025); repo
+  \url{https://github.com/dronperminov/FastMatrixMultiplication}.
+\item E.~M\aa rtensson, P.~Stankovski Wagner, J.~Stapleton.
+  arXiv:2601.05272 (2025).
+\item J.~Stapleton. \emph{A 60-Addition, Rank-23 Scheme for Exact
+  $3\times 3$ Matrix Multiplication.} arXiv:2508.03857 (2025).
+\item E.~M\aa rtensson, P.~S.~Wagner. IACR ePrint 2024/2063
+  (Greedy-Potential). Code: \path{werekorren/fmm_add_reduction}.
+\item O.~Schwartz, N.~Vaknin. SIAM J.~Sci.~Comput.~45(6), 2023.
+\item M.~Heule, M.~Kauers, J.~Seidl. SAT 2019 + J.~Symb.\
+  Comput.~104 (2021); database:
+  \url{https://algebra.uni-linz.ac.at/research/matrix-multiplication}.
+\item J.~Laderman. Bull.~AMS 82(1):126--128, 1976.
+\item H.~F.~de Groote. Theor.\ Comput.\ Sci.~7 (1978).
+\end{itemize}
+
+\section*{Appendix: a complete 56-addition program (class
+\texttt{i19w225c4efh})}
+
+Exact input sides (13 + 14, both provably minimal for this
+representative by the side-minimizer's exhaustion), greedy output
+side (29). On disk: \path{matmul/external/i19-56adds-slp.txt} with
+bits at \path{matmul/external/i19-perminov56.bits} (= Perminov's
+published cn122 scheme, our sign model m0). Note the $A$-side: one
+long addition chain --- the structure pair extraction cannot
+express.
+
+\begin{Code}
+## A-side: 13 additions
+aw0 = a13 + a23          P1 = aw2     P13 = a23
+aw1 = a11 + aw0          P2 = aw8     P14 = aw7
+aw2 = a12 + aw1          P3 = a11     P15 = a21
+aw3 = -a23 + aw2         P4 = a32     P16 = a31
+aw4 = a22 + aw2          P5 = a11     P17 = a31
+aw5 = a33 + aw3          P6 = aw10    P18 = aw0
+aw6 = a32 + aw5          P7 = aw6     P19 = aw5
+aw7 = a21 + aw4          P8 = a33     P20 = aw12
+aw8 = a31 + aw7          P9 = aw9     P21 = a12
+aw9 = a32 + aw8          P10 = aw1    P22 = a22
+aw10 = -a12 + aw5        P11 = a33    P23 = aw4
+aw11 = a21 + a31         P12 = aw3
+aw12 = aw1 + aw11
+
+## B-side: 14 additions
+bw0 = b13 - b33          Q1 = bw10    Q13 = b32
+bw1 = b11 - b21          Q2 = bw6     Q14 = bw2
+bw2 = b11 + b13          Q3 = bw0     Q15 = b12
+bw3 = b11 - b31          Q4 = b22     Q16 = b12
+bw4 = b23 - b33          Q5 = bw9     Q17 = b13
+bw5 = bw1 - bw4          Q6 = bw4     Q18 = bw3
+bw6 = b13 + bw1          Q7 = b23     Q19 = bw12
+bw7 = -b23 + bw6         Q8 = b31     Q20 = bw1
+bw8 = b32 + bw3          Q9 = b21     Q21 = bw11
+bw9 = -b12 + bw8         Q10 = bw5    Q22 = b22
+bw10 = -bw5 + bw8        Q11 = b32    Q23 = bw7
+bw11 = -b22 + bw10       Q12 = bw13
+bw12 = -b21 + bw10
+bw13 = b23 - bw12
+
+## outputs: 29 additions
+cw0 = M11 -M19           C11 = cw4 -cw6
+cw1 = M8 -cw0            C12 = -M21 -M5 +M10 -cw6
+cw2 = M6 -cw1            C13 = M12 +M3 -cw2
+cw3 = M1 -M13            C21 = -cw3 +cw7 +cw8
+cw4 = M10 +cw2           C22 = M13 +M15 +M22
+cw5 = M2 -M17            C23 = -M12 -M23 +cw5 -cw8
+cw6 = M18 -cw3           C31 = M8 +M9 -cw7
+cw7 = M14 -cw5           C32 = M11 +M16 +M4
+cw8 = M20 -cw4           C33 = -M12 +M17 +M7 -cw1
+\end{Code}
+
+\end{document}

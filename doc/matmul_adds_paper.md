@@ -1,7 +1,10 @@
 # Exact Input-Side Minimization and 56-Addition Schemes on Two New Classes for Rank-23 3×3 Matrix Multiplication
 
-*Research note — logic repo, matmul track. v1 2026-07-03 ("Three New
-60-Addition, Rank-23 Schemes…", written against the Aug-2025 frontier
+*Greg Sidebottom · Claude Fable 5*
+
+*Research note — logic repo
+([github.com/gsidebottom/logic](https://github.com/gsidebottom/logic)),
+matmul track. v1 2026-07-03 ("Three New 60-Addition, Rank-23 Schemes…", written against the Aug-2025 frontier
 of 60; full text in git history). v2 2026-07-04: revised throughout
 after the record chain 60 → 59 → 58 → 56 (all verified and classified
 here) and after our own exact side-minimizer both **tied the 56 record

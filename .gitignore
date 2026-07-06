@@ -53,6 +53,7 @@ matmul/found55/fat/
 matmul/found55/f27run/
 matmul/found55/f26/
 matmul/found55/satcomp/
+matmul/found55/sq54/
 matmul/found55/*.log
 matmul/found55/*-best.bits
 matmul/found55/smoke.bits

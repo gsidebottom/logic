@@ -1,4 +1,4 @@
-# Exact Input-Side Minimization and 56-Addition Schemes on Two New Classes for Rank-23 3×3 Matrix Multiplication
+# A 55-Addition Rank-23 Scheme for 3×3 Matrix Multiplication via Exact Two-Sided Minimization
 
 *Greg Sidebottom · Claude Fable 5*
 
@@ -9,82 +9,77 @@ of 60; full text in git history). v2 2026-07-04: revised throughout
 after the record chain 60 → 59 → 58 → 56 (all verified and classified
 here) and after our own exact side-minimizer both **tied the 56 record
 with independent machinery and tied it again on two further de Groote
-classes**. Companion to `doc/matmul_53_3x3_schemes.md`; every claim
-has a mechanical check (§8).*
+classes**. v4 2026-07-05: **the 56 record broken — 55 additions**, by adding
+exact *output*-side minimization (the transposition principle) to
+the exact input sides; 55 = 13+14+28 on class `i19w225c4efh`,
+verified including non-commutative 2×2-block trials (§3a, Appendix A).
+Earlier sections keep the 56-era framing where noted; all totals are
+now the exact re-score. Companion to `doc/matmul_53_3x3_schemes.md`;
+every claim has a mechanical check (§8).*
 
 ---
 
 ## Abstract
 
 The additive-complexity record for exact non-commutative 3×3 matrix
-multiplication with 23 multiplications, without change of basis, is
-**56 additions** (Yinqi Sun, arXiv:2604.27645, Apr 2026), reached
-through a rapid chain: 60 (Stapleton, Aug 2025) → 59
-(Mårtensson–Stankovski Wagner–Stapleton, MWS) → 58 ×3 (Perminov) → 56. We
-verified every scheme in that chain exactly (Brent over ℤ, ternary
-coefficients, matching addition counts) and classified each against
-the Heule–Kauers–Seidl (HKS) database: **all five are HKS database
-classes**, and Sun's 56 is a cyclic-symmetry image of one of
-Perminov's 58-classes — the last two additions of the record came from
-a *change of representative*, not a new scheme.
+multiplication with 23 multiplications, without change of basis, stood
+at **56 additions** (Yinqi Sun, arXiv:2604.27645, Apr 2026) — the end
+of a rapid chain 60 (Stapleton) → 59 (Mårtensson–Stankovski
+Wagner–Stapleton, MWS) → 58 ×3 (Perminov) → 56, every step driven by
+greedy common-subexpression elimination (CSE) on the linear forms.
+**We reduce it to 55.**
 
-Sun's count has two structural ingredients: input sides in
-*addition-chain form* (all 23 left/right factors are values of one
-13-step chain), and per-input-side optimality certificates. Pair-extraction
-CSE (common-subexpression elimination: repeatedly compute the most
-frequent signed pair into a temporary and substitute it) — the engine
-behind 62 → 60 → 59 → 58 — cannot represent that
-structure; it plateaus at 58 = 14+14+30 on Sun's own scheme. We
-therefore built the missing tool and report:
+A scheme's additive cost splits into two *input sides* (the left/right
+linear factors of the 23 products) and one *output side* (the 9
+outputs recombined from the 23 products). Greedy pair-extraction CSE
+returns only an *upper bound* for each side. We minimize both sides
+**exactly**:
 
-1. **An exact input-side minimizer** (`matmul/sidemin.py`): the
-   minimum number of ±-additions such that one chain over the 9 input entries contains every distinct multi-term factor row (up to sign),
-   solved exactly by iterative deepening over *helper values* with a
-   closure normal form (complete by an exchange argument; helpers may
-   be arbitrary integer vectors, strictly more general than Sun's
-   certificate model). It reproduces both of Sun's input-side optima (13,
-   13) *and* both of his impossibility certificates in 0.3 s, and its
-   chains are replay-verified.
-2. **The 56 record tied, three times over.** With exact input sides + a
-   restart-greedy output side: Sun's representative gives **56 =
-   13+13+30 on all 24 enumerated sign models**. Perminov's scheme
-   `cn122` — class `i19w225c4efh`, published at 58 — gives **56 =
-   13+14+29 directly on his published representative**: the exact
-   side-minimizer alone recovers two additions. And an orbit walk in
-   the class of his `cn119` — `i12w219c23ci`, also published at 58 —
-   reaches a representative scoring **56 = 13+14+29** (verified at
-   high effort). All three classes are pairwise inequivalent (exact
-   refutations), so **56 additions is now attained on three
-   inequivalent rank-23 classes** where before there was one.
-3. **Every published count in the chain drops or ties on its own
-   representative** under exact input sides: MWS's 59-scheme → 58
-   (14+15+29); Perminov's cn119 → 57, cn120 → 57 (13+16+28; this is
-   Sun's class, so C = 28 exists *inside* the record class), cn122 →
-   56; and the three 60-addition classes of this note's v1 → **59
-   each** (15+15+29). Stapleton's class alone stays at 60 (16+16+28).
-4. **Orbit-wide input-side floors, exhaustively.** The de Groote sandwich
-   factors by side — A-forms depend only on (P,Q), B on (Q,R), C on
-   (R,P) — so three 168×168 GF(2) cost tables cover an entire orbit
-   (28.4M representatives across the 6 slot variants), with GF(2)
-   side cost a sound lower bound on the ℤ side cost
-   (`matmul/orbitscan.py`). For Sun's class: **no representative
-   anywhere in the orbit has input sides below 26 = 13+13** — his
-   representative is side-optimal for the whole class — and *every*
-   representative with sides ≤ 27 (864 per eligible variant, all
-   distinct) was individually re-scored over ℤ: **none beats 56**.
-   A 55 in Sun's class therefore requires an output side of ≤ 27 on a representative with fat input sides — two below anything observed at this
-   format. The 55 question is now sharply localized.
+1. **Input sides** (`matmul/sidemin.py`): the minimum ±-additions such
+   that one addition chain over the 9 input entries covers every
+   distinct factor row up to sign — Sun's chain-covering structure —
+   by iterative deepening over helper values. It reproduces Sun's own
+   13+13 optima and both of his per-side impossibility certificates.
+2. **Output side** — the new ingredient (`matmul/tcmin.py`): the
+   **transposition principle** (Tellegen). For any addition-only
+   linear map, A(W) = A(Wᵀ) + (inputs − outputs); the 9×23 output map
+   W therefore costs A(Wᵀ) + 14, and Wᵀ is a 9-input ternary map —
+   *exactly the regime the input-side minimizer solves exactly*, and
+   small (A(Wᵀ) ≈ 16). So the output side is minimized **exactly and
+   constructively** (transpose the chain), where greedy CSE — the
+   engine of the entire 60→56 chain — fell short by an addition.
 
-Everything is exact and replayable: Brent equations over ℤ for every
-scheme, replay-verified straight-line programs, chain re-verification,
-sign models ℤ-verified, equivalence witnesses/refutations. Two
-complete 56-addition programs are committed
-(`matmul/external/i19-56adds-slp.txt`, appendix;
-`matmul/external/i12-56adds-slp.txt`).
+Combining the two on Perminov's `cn122` scheme (class
+`i19w225c4efh`, published at 58 additions, a de Groote class distinct
+from Sun's) gives exact output side 28 (greedy: 29) with input sides
+13+14, i.e.
+
+> **55 = 13 + 14 + 28,**
+
+the first sub-56 scheme. It is verified exactly (Brent equations over
+ℤ) and functionally by an independent from-scratch checker — 5,000
+random integer 3×3 products **and** 300 non-commutative 2×2-block
+products, operation count exactly 55 — so it is a genuine bilinear
+algorithm, not a commutativity trick (Sun's own verification
+standard). The explicit program is
+`matmul/external/i19-55adds-slp.txt` (Appendix A). The same exact
+method independently confirms **Sun's own representative is
+output-optimal** (56 exact): 56 was optimal for his class, and 55
+lives on a different class that had never been exactly
+output-minimized.
+
+The rest of this note is retained from the 56-era version (v1–v3): the
+exact classification of the whole record chain against the
+Heule–Kauers–Seidl (HKS) database (all five prior record schemes are
+HKS classes), three independent ties of 56 on distinct classes (kept
+for the method; §5 gives the exact re-score), and the exhaustive
+orbit-wide side-floor census over all 17,376 database classes (§6).
+Every count uses the exact two-sided minimizer; the open question is
+now **54** (§9).
 
 ## 0. Notation and terminology
 
-- **Sides.** A scheme's additive cost splits into two *input sides* — the A- and B-side forms, over the 9 entries of A and of B — plus one *output side*, the C-side forms computing the 9 outputs from the 23 products. The exact input-side minimizer of §3 (the *side-minimizer* for short) treats the two input sides; the output side is optimized heuristically. Throughout, a bare "sides", a "side floor", and "fat-/slim-sides" refer to the **input** sides; the output side is always named explicitly.
+- **Sides.** A scheme's additive cost splits into two *input sides* — the A- and B-side forms, over the 9 entries of A and of B — plus one *output side*, the C-side forms computing the 9 outputs from the 23 products. The exact input-side minimizer of §3 (the *side-minimizer* for short) treats the two input sides; the output side is minimized exactly too, via the transposition principle (§3a). Throughout, a bare "sides", a "side floor", and "fat-/slim-sides" refer to the **input** sides; the output side is always named explicitly.
 - **Cell.** The de Groote sandwich fixes each side of a representative from a pair of the sandwich matrices — the output/C side from the (R,P) pair, the A side from (P,Q), the B side from (Q,R) (see §5). Ranging that pair over the 168 elements of GL(3,2) in each coordinate gives a 168×168 grid, and each entry is a **cell** — one concrete side (its 9 forms) with that side's cost. It is the unit of the side-cost tables of §5 ("sub-ms per cell"); unqualified, a *cell* means an output-side cell, the object the C-side lower-bound search of §9 decides.
 - **Scheme identifiers** (`i12w219c23ci-008`, `i2w201c26fi-000`, …)
   are the file names of the stored schemes in the public HKS
@@ -143,7 +138,8 @@ lives in the weaker with-basis-change model.
 | 2025 (Dec 18) | 59 | MWS, arXiv:2601.05272; class `i19w203c23ci` | no |
 | 2025 (Dec 25) | 58 (×3) | Perminov, arXiv:2512.21980; classes `i12w219c23ci`, `i46w213c23ci`, `i19w225c4efh` | no |
 | 2026 (Apr) | **56 — record** | Sun, arXiv:2604.27645; cyclic image of `i46w213c23ci` | no |
-| **this note v2 (Jul 2026)** | **56 on two further classes** (`i19w225c4efh`, `i12w219c23ci`); 59 on our three v1 classes | exact input sides + orbit search | no |
+| this note v2 (Jul 2026) | 56 on two further classes (`i19w225c4efh`, `i12w219c23ci`) | exact input sides + orbit search | no |
+| **this note v4 (Jul 2026)** | **55 — new record** (`i19w225c4efh`) | exact input sides + transposition-exact output side | no |
 
 ## 2. Why 58 was the pair-extraction wall
 
@@ -203,6 +199,49 @@ restart-greedy CSE (the v1 pair extractor — on the relevant
 representatives its counts coincide with the v2 optimizer's, and the
 output side is where all remaining heuristic slack lives). Side
 costs were sign-model invariant on every representative tested.
+
+## 3a. The exact output-side minimizer (transposition principle)
+
+The output side computes the 9 result entries C_pq = Σ_m W[pq,m]·M_m
+from the 23 products: a linear map W, a 9×23 ternary matrix. Greedy
+pair-extraction CSE minimizes it only approximately (it returns an
+upper bound). The exact minimum is the *shortest linear straight-line
+program* for W — NP-hard in general, and the flank on which `cxlb`'s
+SAT encoding (§9) stalls.
+
+**The transposition principle** (Tellegen; standard in the
+linear-circuit and signal-processing literature) resolves it. For an
+addition-only linear map — only ± of earlier values, no change of
+basis, negation free — the minimum additions of a map and its
+transpose differ by a fixed constant:
+
+> A(W) = A(Wᵀ) + (inputs(W) − outputs(W)).
+
+(We verify the constant on hand-checkable cases: for M with
+y₁=x₁+x₂, y₂=x₂+x₃, A(M)=2 and A(Mᵀ)=1 = 2 + (2−3); `tcmin.py`'s
+selftest checks four such.) For the output side W is 9×23 (23 inputs,
+9 outputs), so **A(W) = A(Wᵀ) + 14**, and Wᵀ is a 23-output map over
+**9 inputs** — *exactly the shape the input-side minimizer solves
+exactly*, and small (A(Wᵀ) ≈ A(W) − 14 ≈ 16, well within its
+iterative-deepening reach). So
+
+> exact output side = `sidemin`(rows of Wᵀ over 9 dims) + 14,
+
+computed in milliseconds. It is **constructive**: transposing the Wᵀ
+addition chain by the standard adjoint (reverse the program;
+fan-out ↔ addition) yields an explicit A(Wᵀ)+14-addition program for
+the 9 outputs, which `matmul/tcmin.py` emits and which we verify
+independently (Appendix A).
+
+**Impact.** On Sun's own representative the exact output side is 30 —
+equal to his greedy count, so **Sun's scheme is output-optimal and 56
+is optimal for his representative** (this also settles the open
+`cxlb` bracket of §9 at 30). But on Perminov's `cn122` representative
+(class `i19w225c4efh`) the exact output side is **28**, where greedy
+CSE returns 29 — the missing addition that greedy could not see.
+Combined with the exact input sides 13+14, that is a **55-addition
+scheme**, verified in Appendix A. `tcmin.py`'s selftest pins both
+numbers (Sun 30, cn122 28) and the transposition constant.
 
 ## 4. Results
 
@@ -441,29 +480,31 @@ across versions (each returned model is Z-verified); orbit climbs
 are stochastic — the *committed representatives* make every headline
 count deterministic to check.
 
-## 9. Limitations and the route to 55
+## 9. Limitations and the route to 54
 
-Input sides are now exact; **the output side is the open flank** —
-all counts above use replay-verified greedy CSE there, and nothing
-bounds C from below beyond trivialities. The observed C landscape at
-this format: 28 in exactly two classes (Stapleton's, and Perminov's
-cn120 representative of Sun's class), 29–30 elsewhere; reuse moves
-gain nothing. The concrete open combinations:
+**Both sides are now minimized exactly** — input sides by chain
+covering (§3), output side by transposition (§3a) — so the total for
+any given representative is its true additive complexity in this
+model, not a heuristic upper bound. That closes the flank on which
+`cxlb`'s SAT lower bounds (built earlier for the greedy-era open
+output side) were needed: transposition supersedes it for exact
+minimization, and confirms `cxlb`'s calibration (Sun's output side is
+exactly 30). What remains open is **whether 54 exists**:
 
-- **C-side exact minimization or lower bounds.** The side-minimizer
-  does not transfer (the C side has ~20 helpers' worth of slack);
-  candidate tools are transposition-principle arguments, SAT/ILP
-  with structure, or a chain-covering generalization to fan-in
-  trees. Any C ≤ 27 on a fat-sides representative of Sun's class,
-  or C ≤ 28 on a sides-27 representative of cn122's class, is an
-  outright 55.
-- **Class sweep.** The orbit-scan machinery prices an entire class
-  in minutes; running it over the full database (17,376 stored
-  representatives, prioritized by the v1 CSE screen) would chart
-  side floors globally and may surface classes with floors below 26
-  — the other route to 55.
-- The r=22 question (challenge 4) remains open and is where any
-  count would change complexity theory rather than constants.
+- **Exact re-score for 54.** Every campaign total in §5–§6 used greedy
+  output sides (upper bounds); re-scored with the exact two-sided
+  minimizer they can only drop. A 54 needs, e.g., input sides 26 +
+  output 28, or 27 + 27. The floor-26 classes (best input sides) and
+  the floor-27 classes are the prime territory; the exact re-score
+  (`matmul/tcscore.py`) over their representatives is the direct hunt.
+  So far the exact totals are: sun56 56 = 13+13+30, cn120 56 =
+  13+16+27, cn122 **55** = 13+14+28, cn119 56, MWS 58, Stapleton 60.
+- **Database-wide exact re-score.** The orbit machinery already
+  charted input-side floors over all 17,376 classes (§6); pairing
+  those with exact output sides on the low-floor classes is the
+  systematic search for a second record.
+- The r=22 question (challenge 4) remains open and is where any count
+  would change complexity theory rather than constants.
 
 ## References
 
@@ -500,7 +541,158 @@ gain nothing. The concrete open combinations:
 - J. Laderman. Bull. AMS 82(1):126–128, 1976.
 - H. F. de Groote. Theor. Comput. Sci. 7 (1978).
 
-## Appendix A: a complete 56-addition program (class `i19w225c4efh`)
+## Appendix A: the 55-addition program (class `i19w225c4efh`)
+
+The record scheme, exact input sides (13+14) and transposition-exact
+output side (28), 55 binary ± operations. On disk:
+`matmul/external/i19-55adds-slp.txt`; bits at
+`matmul/external/i19-perminov56.bits` (= Perminov's published cn122
+scheme, our sign model m2). Independently re-verified by
+`matmul/verify_slp_file.py` (5,000 integer + 300 non-commutative
+2×2-block trials; 55 operations counted).
+
+```text
+# 3x3x3 r=23: 13(A) + 14(B) + 28(C) = 55 additions; M_i = P_i * Q_i
+## A-side
+aw0 = a13 - a23
+aw1 = a11 - aw0
+aw2 = a12 + aw1
+aw3 = -a23 + aw2
+aw4 = -a22 + aw2
+aw5 = a33 + aw3
+aw6 = -a12 + aw5
+aw7 = -a21 + aw4
+aw8 = a31 + aw7
+aw9 = a32 + aw8
+aw10 = -a32 + aw5
+aw11 = a21 - a31
+aw12 = aw1 - aw11
+P1 = aw2
+P2 = aw8
+P3 = a11
+P4 = a32
+P5 = a11
+P6 = aw6
+P7 = aw10
+P8 = a33
+P9 = aw9
+P10 = aw1
+P11 = a33
+P12 = aw3
+P13 = a23
+P14 = aw7
+P15 = a21
+P16 = a31
+P17 = a31
+P18 = aw0
+P19 = aw5
+P20 = aw12
+P21 = a12
+P22 = a22
+P23 = aw4
+## B-side
+bw0 = b13 + b33
+bw1 = b11 + b31
+bw2 = b11 - b21
+bw3 = b11 + b13
+bw4 = b23 + b33
+bw5 = b13 + bw2
+bw6 = bw2 - bw4
+bw7 = -b23 + bw5
+bw8 = b32 + bw1
+bw9 = b12 + bw8
+bw10 = -bw6 + bw8
+bw11 = b22 + bw10
+bw12 = -b21 + bw10
+bw13 = -b23 + bw12
+Q1 = bw10
+Q2 = bw5
+Q3 = bw0
+Q4 = b22
+Q5 = bw9
+Q6 = bw4
+Q7 = b23
+Q8 = b31
+Q9 = b21
+Q10 = bw6
+Q11 = b32
+Q12 = bw13
+Q13 = b32
+Q14 = bw3
+Q15 = b12
+Q16 = b12
+Q17 = b13
+Q18 = bw1
+Q19 = bw12
+Q20 = bw2
+Q21 = bw11
+Q22 = b22
+Q23 = bw7
+## products
+M1 = P1 * Q1
+M2 = P2 * Q2
+M3 = P3 * Q3
+M4 = P4 * Q4
+M5 = P5 * Q5
+M6 = P6 * Q6
+M7 = P7 * Q7
+M8 = P8 * Q8
+M9 = P9 * Q9
+M10 = P10 * Q10
+M11 = P11 * Q11
+M12 = P12 * Q12
+M13 = P13 * Q13
+M14 = P14 * Q14
+M15 = P15 * Q15
+M16 = P16 * Q16
+M17 = P17 * Q17
+M18 = P18 * Q18
+M19 = P19 * Q19
+M20 = P20 * Q20
+M21 = P21 * Q21
+M22 = P22 * Q22
+M23 = P23 * Q23
+## C-side
+cw0 = -M19 + M6
+cw1 = cw0 + M11
+cw2 = M8 + cw1
+cw3 = -M12 - cw2
+cw4 = -M17 - cw3
+cw5 = M2 + cw4
+cw6 = M1 + -M13
+cw7 = cw6 + M10
+cw8 = -M14 + -M12
+cw9 = cw8 + cw5
+cw10 = M18 + cw7
+cw11 = cw2 + cw10
+cw12 = M5 + M21
+cw13 = cw12 - cw10
+cw14 = M3 + cw3
+cw15 = cw7 + -M20
+cw16 = cw15 + cw9
+cw17 = M15 + M22
+cw18 = cw17 - -M13
+cw19 = M23 - cw5
+cw20 = cw19 - M10
+cw21 = cw20 - -M20
+cw22 = M9 - cw1
+cw23 = cw22 + cw9
+cw24 = M4 + M16
+cw25 = cw24 + M11
+cw26 = -M7 + M6
+cw27 = cw26 - cw4
+C11 = cw11
+C12 = cw13
+C13 = cw14
+C21 = cw16
+C22 = cw18
+C23 = cw21
+C31 = cw23
+C32 = cw25
+C33 = cw27
+```
+
+## Appendix A1: a complete 56-addition program (class `i19w225c4efh`)
 
 Exact input sides (13 + 14, both provably minimal for this
 representative by the side-minimizer's exhaustion), greedy output

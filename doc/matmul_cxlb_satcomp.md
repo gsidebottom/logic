@@ -140,10 +140,15 @@ terms.
 
 ## References
 
-- Y. Sun. arXiv:2604.27645 (2026). 56-addition rank-23 scheme.
-- D. Perminov. arXiv:2512.21980 (2025).
-- E. Mårtensson, P. Stankovski Wagner, J. Stapleton. arXiv:2601.05272.
-- J. Stapleton. arXiv:2508.03857 (2025).
+- Y. Sun. *An Exact 56-Addition, Rank-23 Scheme for General 3×3
+  Matrix Multiplication.* arXiv:2604.27645 (2026).
+- A. I. Perminov. *A 58-Addition, Rank-23 Scheme for General 3×3
+  Matrix Multiplication.* arXiv:2512.21980 (2025).
+- E. Mårtensson, P. Stankovski Wagner, J. Stapleton. *A Rank 23
+  Algorithm for Multiplying 3×3 Matrices with an Arithmetic
+  Complexity of 59.* arXiv:2601.05272 (2025).
+- J. Stapleton. *A 60-Addition, Rank-23 Scheme for Exact 3×3 Matrix
+  Multiplication.* arXiv:2508.03857 (2025).
 - M. Heule, M. Kauers, J. Seidl. *Local search for fast matrix
   multiplication.* SAT 2019; JSC 104 (2021).
 - C. Fuhs, P. Schneider-Kamp. *Synthesizing shortest linear

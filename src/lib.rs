@@ -6,6 +6,7 @@ pub mod parity_pbp;
 pub mod dual;
 pub mod flip;
 pub mod floors;
+pub mod mm55;
 pub mod zrescore;
 pub mod formula;
 pub mod gmi;

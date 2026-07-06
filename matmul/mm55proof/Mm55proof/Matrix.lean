@@ -26,7 +26,7 @@ variable {R : Type _} [Ring R]
 matrices: the exact straight-line program of `src/mm55.rs`, in four
 sections — `A_in` (13 additions on the `A` side), `B_in` (14 on the
 `B` side), `M` (the 23 multiplies, each one `A`-combination times one
-`B`-combination), and `C_in` (28 additions recombining the products
+`B`-combination), and `C_out` (28 additions recombining the products
 into the 9 outputs). -/
 def scheme (A B : Matrix (Fin 3) (Fin 3) R) : Matrix (Fin 3) (Fin 3) R :=
   -- 13 adds on the A input side
@@ -75,7 +75,7 @@ def scheme (A B : Matrix (Fin 3) (Fin 3) R) : Matrix (Fin 3) (Fin 3) R :=
       A_in 5 * B_in 12, A_in 12 * B_in 2, A 0 1 * B_in 11,
       A 1 1 * B 1 1, A_in 4 * B_in 7]
   -- 28 adds on the C output side
-  let C_in : Fin 28 → R :=
+  let C_out : Fin 28 → R :=
     let cw0 := M 5 - M 18
     let cw1 := cw0 + M 10
     let cw2 := M 7 + cw1
@@ -108,9 +108,9 @@ def scheme (A B : Matrix (Fin 3) (Fin 3) R) : Matrix (Fin 3) (Fin 3) R :=
       cw9, cw10, cw11, cw12, cw13, cw14, cw15, cw16, cw17,
       cw18, cw19, cw20, cw21, cw22, cw23, cw24, cw25, cw26,
       cw27]
-  !![C_in 11, C_in 13, C_in 14;
-     C_in 16, C_in 18, C_in 21;
-     C_in 23, C_in 25, C_in 27]
+  !![C_out 11, C_out 13, C_out 14;
+     C_out 16, C_out 18, C_out 21;
+     C_out 23, C_out 25, C_out 27]
 
 -- `scheme` unfolds to a ~100-binding straight-line program, so a single
 -- elaboration exceeds the default heartbeat budget; raise it for this proof.

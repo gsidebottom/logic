@@ -234,7 +234,7 @@ m_block = ("  -- 23 multiplies\n"
            "    ![" + ",\n      ".join(", ".join(r) for r in m_rows) + "]")
 c_lets = "\n".join(f"    let {n} := {c_expr(e)}" for n, e in cw)
 c_block = (f"  -- 28 adds on the C output side\n"
-           f"  let C_in : Fin 28 → R :=\n"
+           f"  let C_out : Fin 28 → R :=\n"
            f"{c_lets}\n"
            f"    {vec_pack([n for n, _ in cw])}")
 body = "\n".join([
@@ -243,7 +243,7 @@ body = "\n".join([
     m_block,
     c_block,
 ])
-outv = ["C_in " + n[2:] for n in OUTS]
+outv = ["C_out " + n[2:] for n in OUTS]
 mat = (f"  !![{outv[0]}, {outv[1]}, {outv[2]};\n"
        f"     {outv[3]}, {outv[4]}, {outv[5]};\n"
        f"     {outv[6]}, {outv[7]}, {outv[8]}]")
@@ -277,7 +277,7 @@ variable {{R : Type _}} [Ring R]
 matrices: the exact straight-line program of `src/mm55.rs`, in four
 sections — `A_in` (13 additions on the `A` side), `B_in` (14 on the
 `B` side), `M` (the 23 multiplies, each one `A`-combination times one
-`B`-combination), and `C_in` (28 additions recombining the products
+`B`-combination), and `C_out` (28 additions recombining the products
 into the 9 outputs). -/
 def scheme (A B : Matrix (Fin 3) (Fin 3) R) : Matrix (Fin 3) (Fin 3) R :=
 {body}

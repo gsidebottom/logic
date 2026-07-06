@@ -302,14 +302,16 @@ representative is its true additive complexity in this model. The
 open question is **whether 54 exists**:
 
 - **Exact re-score for 54.** A 54 needs input sides 26 + output 28, or
-  27 + 27. We exact-re-scored (`matmul/tcscore.py`) the four floor-26
-  and 80 floor-27 database classes — some 35,000 slim-sided
-  representatives, the tiers where a 54 (sides 26 + output 28, or
-  27 + 27) could live — and found **no 54; the minimum is 55,
-  attained only on `i19w225c4efh`.** A 54 would now require an output
-  side of 26 (below any observed; the smallest exact output side seen
-  is 27) on a fat-sided representative — the remaining, increasingly
-  marginal, gap. A 54 would require an output
+  27 + 27. A 54 with output side ≥ 27 must have input sides ≤ 27, so it
+  can only live in a floor-26 or floor-27 class (the only classes with
+  any sides-≤27 representatives). We are exact-re-scoring
+  (`matmul/tcscore.py`) **every** such representative of all four
+  floor-26 and 80 floor-27 classes (the full sides-≤27 orbit per
+  class); across the sample scored so far (400+ per class) there is
+  **no 54, and 55 appears only on `i19w225c4efh`**, but the exhaustive
+  pass is what will make ``no 54'' definitive. The residual case a 54
+  would still need is an output side of 26 — below any observed (the
+  smallest exact output side seen is 27). A 54 would require an output
   side below any yet observed (the smallest exact output side seen is
   27) paired with optimal input sides — increasingly marginal, but the
   fat-sided and remaining orbit regions are not exhausted.

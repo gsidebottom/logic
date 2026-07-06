@@ -303,10 +303,13 @@ open question is **whether 54 exists**:
 
 - **Exact re-score for 54.** A 54 needs input sides 26 + output 28, or
   27 + 27. We exact-re-scored (`matmul/tcscore.py`) the four floor-26
-  database classes over their slim-sided representatives — **no 54;
-  the minimum is 55, uniquely on `i19w225c4efh`** — and the 80
-  genuine floor-27 classes are being re-scored the same way (no 54 so
-  far). A 54 would require an output
+  and 80 floor-27 database classes — some 35,000 slim-sided
+  representatives, the tiers where a 54 (sides 26 + output 28, or
+  27 + 27) could live — and found **no 54; the minimum is 55,
+  attained only on `i19w225c4efh`.** A 54 would now require an output
+  side of 26 (below any observed; the smallest exact output side seen
+  is 27) on a fat-sided representative — the remaining, increasingly
+  marginal, gap. A 54 would require an output
   side below any yet observed (the smallest exact output side seen is
   27) paired with optimal input sides — increasingly marginal, but the
   fat-sided and remaining orbit regions are not exhausted.

@@ -251,12 +251,27 @@ against the HKS database; "published" = the count in the source paper):
   greedy. The exact output side beats greedy by one addition on the
   two Perminov classes (cn122 29→28, cn119 30→29) and by one on the
   cn120 representative (28→27).
-- **No 54 with input sides ≤ 27 exists in the database.** A 54 with
-  output side ≥ 27 must have input sides ≤ 27, which only the 4
-  floor-26 and 80 floor-27 classes admit at all. The 12-sign-model
-  exact re-score of all 79,488 such representatives bottoms out at 55,
-  and the GF(2) bound above closes the remaining sign models: none can
-  reach 54. What a 54 would still require is stated in §8.
+- **No 54 exists anywhere in the published database — 55 is the
+  additive minimum.** Two exhaustive tiers, both model-independent via
+  the GF(2) bound:
+  1. *Slim representatives* (GF(2) input sides ≤ 27, possible only in
+     the 4 floor-26 + 80 floor-27 classes): all 79,488 were
+     enumerated; GF(2) sides + exact GF(2) output side ≥ 55 on every
+     one (and the 12-sign-model exact ℤ re-score independently bottoms
+     out at 55).
+  2. *Fat representatives* (input sides ≥ 28) of **every** class: the
+     output-side cost depends only on the γ-support, whose de Groote
+     orbit reduces to 784 canonical (X ⊗ Y)-images per tensor slot
+     (output-coordinate permutations are free, so X, Y range over
+     S₃-cosets of GL(3,2); validated against the full 56,448-image
+     sweep). `matmul/cfloor.py` swept all 44,125 candidate slots of
+     all 17,376 classes: **no image anywhere has XOR cover ≤ 12**, so
+     the exact GF(2) output side is ≥ 27 on every representative of
+     every class, and any fat representative totals ≥ 28 + 27 = 55.
+
+  Exactly 620 slots (616 classes, including the record class and
+  Sun's) reach cover 13 — output side 27 — so those are the only
+  places further (record-tying, never record-beating) 55s could live.
 
 ## 6. Contributions
 
@@ -272,6 +287,12 @@ against the HKS database; "published" = the count in the source paper):
   class on its own representative and fixes the true count per class
   (§5): 56 on two classes, 55 on one, and confirmation that Sun's
   representative was already output-optimal.
+- **An additive-optimality theorem for the published catalogue**: no
+  representative of any of the 17,376 published classes, under any
+  sign model, multiplies 3×3 matrices with 23 products in fewer than
+  55 additions (§5) — so the record is not just current but final for
+  this catalogue, and any future sub-55 scheme must come from a class
+  outside it.
 
 ## 7. Reproduction
 
@@ -306,6 +327,12 @@ python3 equiv.py classes perminov_cache/bits/sun56.bits \
 # search; with the GF(2) side tags it lower-bounds EVERY sign model
 python3 gf2min.py selftest
 
+# the database-wide closing sweep (54 excluded on all 17,376 classes):
+# stage 1 census (seconds), then the 784-image orbit sweep per slot
+python3 cfloor.py census          # writes dbcache/cfloor_cands.txt
+python3 cfloor.py sweep i19w225c4efh-000 i46w213c23ci-016   # spot-check
+#   full run: cfloor.py sweep-list dbcache/cfloor_cands.txt (~20 min)
+
 # machine-checked proof (Lean 4 + Mathlib) that the 55-addition scheme
 # equals A*B over a general non-commutative ring — sorry-free
 cd mm55proof && lake exe cache get && lake build
@@ -324,17 +351,23 @@ Both sides are now minimized exactly, so the total for any given
 representative is its true additive complexity in this model. The
 open question is **whether 54 exists**:
 
-- **Close 54 outright.** The slim tiers are settled (§5): no
-  representative with GF(2) input sides ≤ 27 admits any sign model
-  totalling ≤ 54, and 55 is attainable only on `i19w225c4efh`. A 54
-  must therefore have input sides ≥ 28 and a GF(2) output side ≤ 26 —
-  one below the smallest output side ever witnessed (27, on the cn120
-  representative). `matmul/gf2min.py` makes the closing sweep
-  tractable: minimizing the exact GF(2) output side over each class's
-  γ-orbit (a `floors.rs`-style sandwich scan) would either exhibit a
-  class with output floor ≤ 26 or finish the proof that **55 is the
-  additive minimum for rank-23 3×3 schemes over the entire published
-  database**.
+- **More 55s (never fewer) inside the catalogue.** The 616 classes
+  whose γ-orbit reaches output side 27 (§5) are the only places a
+  further, fat-sided 55 = 28 + 27 could live; pairing each with exact
+  input sides at its cover-13 images is a bounded, well-defined hunt
+  for record-*tying* schemes.
+- **Beyond the published catalogue.** The optimality theorem is
+  relative to the 17,376 published classes (our own 53 novel classes
+  clear the output-side bar too — every representative has output side
+  ≥ 28 — with their input-side floors finishing the same audit). A sub-55 scheme, if one exists, requires a rank-23
+  class nobody has catalogued — the de Groote classification at rank
+  23 is not known to be complete — or a cost model beyond ±1
+  coefficients.
+- **Independent certification.** The GF(2) floors rest on our
+  minimizers (selftested against exhaustive search, quotient validated
+  against the full orbit); DRAT-certified UNSAT instances of the same
+  statements (companion benchmark paper) would make them
+  solver-checkable end to end.
 - **Database-wide exact re-score.** The input-side floors of all
   17,376 classes are already charted (in the git-history census);
   pairing the low-floor classes with exact output sides is the

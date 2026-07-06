@@ -194,12 +194,13 @@ OUT.write_text(lean)
 print(f"wrote {OUT}  ({len(lean.splitlines())} lines)")
 
 # ---- emit the idiomatic Matrix-API corollary: scheme A B = A * B ----
-def rc(v):    # a11 -> (0,0) as Fin 3 indices
-    return int(v[1])-1, int(v[2])-1
-entry_lets = "\n".join(
-    f"  let {v} := {'A' if v[0]=='a' else 'B'} {rc(v)[0]} {rc(v)[1]}"
-    for v in BASE_A + BASE_B)
-wire_lets = "\n".join(f"  let {n} := {lean_expr(e)}" for n,e in defs)
+def mat_entry(m):      # a13 -> A 0 2, b32 -> B 2 1  (Fin 3 indices)
+    v = m.group(0)
+    return f"{'A' if v[0] == 'a' else 'B'} {int(v[1])-1} {int(v[2])-1}"
+def lean_expr_mat(e):  # wire expr reading inputs directly from A/B
+    # application binds tighter than +/-/* so no parens are needed
+    return re.sub(r"\b[ab][123][123]\b", mat_entry, lean_expr(e))
+wire_lets = "\n".join(f"  let {n} := {lean_expr_mat(e)}" for n,e in defs)
 mat = (f"  !![{OUTS[0]}, {OUTS[1]}, {OUTS[2]};\n"
        f"     {OUTS[3]}, {OUTS[4]}, {OUTS[5]};\n"
        f"     {OUTS[6]}, {OUTS[7]}, {OUTS[8]}]")
@@ -233,7 +234,6 @@ variable {{R : Type _}} [Ring R]
 matrices: the exact straight-line program of `src/mm55.rs`, reading the
 inputs from `A`, `B` and assembling the 9 outputs into a matrix. -/
 def scheme (A B : Matrix (Fin 3) (Fin 3) R) : Matrix (Fin 3) (Fin 3) R :=
-{entry_lets}
 {wire_lets}
 {mat}
 

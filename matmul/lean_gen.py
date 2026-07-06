@@ -200,10 +200,53 @@ def mat_entry(m):      # a13 -> A 0 2, b32 -> B 2 1  (Fin 3 indices)
 def lean_expr_mat(e):  # wire expr reading inputs directly from A/B
     # application binds tighter than +/-/* so no parens are needed
     return re.sub(r"\b[ab][123][123]\b", mat_entry, lean_expr(e))
-wire_lets = "\n".join(f"  let {n} := {lean_expr_mat(e)}" for n,e in defs)
-mat = (f"  !![{OUTS[0]}, {OUTS[1]}, {OUTS[2]};\n"
-       f"     {OUTS[3]}, {OUTS[4]}, {OUTS[5]};\n"
-       f"     {OUTS[6]}, {OUTS[7]}, {OUTS[8]}]")
+
+# group the wires into the four sections of the program
+aw = [(n, e) for n, e in defs if n.startswith("aw")]
+bw = [(n, e) for n, e in defs if n.startswith("bw")]
+ms = [(n, e) for n, e in defs if re.fullmatch(r"m\d+", n)]
+cw = [(n, e) for n, e in defs if n.startswith("cw")]
+assert (len(aw), len(bw), len(ms), len(cw)) == (13, 14, 23, 28)
+
+def vec_pack(names, per=9):
+    rows = [names[i:i + per] for i in range(0, len(names), per)]
+    return "![" + ",\n      ".join(", ".join(r) for r in rows) + "]"
+
+def side_block(comment, vname, wires):
+    lets = "\n".join(f"    let {n} := {lean_expr_mat(e)}" for n, e in wires)
+    return (f"  -- {comment}\n"
+            f"  let {vname} : Fin {len(wires)} → R :=\n"
+            f"{lets}\n"
+            f"    {vec_pack([n for n, _ in wires])}")
+
+def m_expr(e):         # products: aw/bw -> A_in/B_in, a/b -> A/B entries
+    e = re.sub(r"\baw(\d+)\b", lambda m: f"A_in {m.group(1)}", lean_expr(e))
+    e = re.sub(r"\bbw(\d+)\b", lambda m: f"B_in {m.group(1)}", e)
+    return re.sub(r"\b[ab][123][123]\b", mat_entry, e)
+
+def c_expr(e):         # outputs: m6 -> M 5 (the SLP's m's are 1-indexed)
+    return re.sub(r"\bm(\d+)\b", lambda m: f"M {int(m.group(1)) - 1}",
+                  lean_expr(e))
+
+m_rows = [[m_expr(e) for _, e in ms[i:i + 3]] for i in range(0, 23, 3)]
+m_block = ("  -- 23 multiplies\n"
+           "  let M : Fin 23 → R :=\n"
+           "    ![" + ",\n      ".join(", ".join(r) for r in m_rows) + "]")
+c_lets = "\n".join(f"    let {n} := {c_expr(e)}" for n, e in cw)
+c_block = (f"  -- 28 adds on the C output side\n"
+           f"  let C_in : Fin 28 → R :=\n"
+           f"{c_lets}\n"
+           f"    {vec_pack([n for n, _ in cw])}")
+body = "\n".join([
+    side_block("13 adds on the A input side", "A_in", aw),
+    side_block("14 adds on the B input side", "B_in", bw),
+    m_block,
+    c_block,
+])
+outv = ["C_in " + n[2:] for n in OUTS]
+mat = (f"  !![{outv[0]}, {outv[1]}, {outv[2]};\n"
+       f"     {outv[3]}, {outv[4]}, {outv[5]};\n"
+       f"     {outv[6]}, {outv[7]}, {outv[8]}]")
 OUT2 = OUT.parent / "Matrix.lean"
 lean2 = f'''\
 /-
@@ -231,10 +274,13 @@ namespace Matmul55
 variable {{R : Type _}} [Ring R]
 
 /-- The 55-addition, 23-multiplication scheme as a map on `3×3`
-matrices: the exact straight-line program of `src/mm55.rs`, reading the
-inputs from `A`, `B` and assembling the 9 outputs into a matrix. -/
+matrices: the exact straight-line program of `src/mm55.rs`, in four
+sections — `A_in` (13 additions on the `A` side), `B_in` (14 on the
+`B` side), `M` (the 23 multiplies, each one `A`-combination times one
+`B`-combination), and `C_in` (28 additions recombining the products
+into the 9 outputs). -/
 def scheme (A B : Matrix (Fin 3) (Fin 3) R) : Matrix (Fin 3) (Fin 3) R :=
-{wire_lets}
+{body}
 {mat}
 
 -- `scheme` unfolds to a ~100-binding straight-line program, so a single

@@ -29,10 +29,13 @@ block matrices.
 
 - **`Matmul55.scheme_eq_mul`** (`Mm55proof/Matrix.lean`) — the same
   scheme written as a function `scheme : Matrix (Fin 3) (Fin 3) R →
-  Matrix (Fin 3) (Fin 3) R → Matrix (Fin 3) (Fin 3) R`, proved equal to
-  Mathlib's own matrix product `A * B`. This packages the result in
-  Mathlib's native `Matrix` API. Depends on the three standard
-  foundational axioms `propext, Classical.choice, Quot.sound`.
+  Matrix (Fin 3) (Fin 3) R → Matrix (Fin 3) (Fin 3) R` in four labeled
+  sections — `A_in` (13 adds on the A input side), `B_in` (14 on the
+  B side), `M` (the 23 multiplies), `C_in` (28 adds on the C output
+  side) — proved equal to Mathlib's own matrix product `A * B`. This
+  packages the result in Mathlib's native `Matrix` API. Depends on the
+  three standard foundational axioms `propext, Classical.choice,
+  Quot.sound`.
 
 Neither proof uses `sorry` (each file ends with a `#print axioms`
 audit, printed during the build).

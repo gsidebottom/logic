@@ -23,90 +23,94 @@ namespace Matmul55
 variable {R : Type _} [Ring R]
 
 /-- The 55-addition, 23-multiplication scheme as a map on `3×3`
-matrices: the exact straight-line program of `src/mm55.rs`, reading the
-inputs from `A`, `B` and assembling the 9 outputs into a matrix. -/
+matrices: the exact straight-line program of `src/mm55.rs`, in four
+sections — `A_in` (13 additions on the `A` side), `B_in` (14 on the
+`B` side), `M` (the 23 multiplies, each one `A`-combination times one
+`B`-combination), and `C_in` (28 additions recombining the products
+into the 9 outputs). -/
 def scheme (A B : Matrix (Fin 3) (Fin 3) R) : Matrix (Fin 3) (Fin 3) R :=
-  let aw0 := A 0 2 - A 1 2
-  let aw1 := A 0 0 - aw0
-  let aw2 := A 0 1 + aw1
-  let aw3 := aw2 - A 1 2
-  let aw4 := aw2 - A 1 1
-  let aw5 := A 2 2 + aw3
-  let aw6 := aw5 - A 0 1
-  let aw7 := aw4 - A 1 0
-  let aw8 := A 2 0 + aw7
-  let aw9 := A 2 1 + aw8
-  let aw10 := aw5 - A 2 1
-  let aw11 := A 1 0 - A 2 0
-  let aw12 := aw1 - aw11
-  let bw0 := B 0 2 + B 2 2
-  let bw1 := B 0 0 + B 2 0
-  let bw2 := B 0 0 - B 1 0
-  let bw3 := B 0 0 + B 0 2
-  let bw4 := B 1 2 + B 2 2
-  let bw5 := B 0 2 + bw2
-  let bw6 := bw2 - bw4
-  let bw7 := bw5 - B 1 2
-  let bw8 := B 2 1 + bw1
-  let bw9 := B 0 1 + bw8
-  let bw10 := bw8 - bw6
-  let bw11 := B 1 1 + bw10
-  let bw12 := bw10 - B 1 0
-  let bw13 := bw12 - B 1 2
-  let m1 := aw2 * bw10
-  let m2 := aw8 * bw5
-  let m3 := A 0 0 * bw0
-  let m4 := A 2 1 * B 1 1
-  let m5 := A 0 0 * bw9
-  let m6 := aw6 * bw4
-  let m7 := aw10 * B 1 2
-  let m8 := A 2 2 * B 2 0
-  let m9 := aw9 * B 1 0
-  let m10 := aw1 * bw6
-  let m11 := A 2 2 * B 2 1
-  let m12 := aw3 * bw13
-  let m13 := A 1 2 * B 2 1
-  let m14 := aw7 * bw3
-  let m15 := A 1 0 * B 0 1
-  let m16 := A 2 0 * B 0 1
-  let m17 := A 2 0 * B 0 2
-  let m18 := aw0 * bw1
-  let m19 := aw5 * bw12
-  let m20 := aw12 * bw2
-  let m21 := A 0 1 * bw11
-  let m22 := A 1 1 * B 1 1
-  let m23 := aw4 * bw7
-  let cw0 := m6 - m19
-  let cw1 := cw0 + m11
-  let cw2 := m8 + cw1
-  let cw3 := -(m12 + cw2)
-  let cw4 := -(m17 + cw3)
-  let cw5 := m2 + cw4
-  let cw6 := m1 - m13
-  let cw7 := cw6 + m10
-  let cw8 := -(m14 + m12)
-  let cw9 := cw8 + cw5
-  let cw10 := m18 + cw7
-  let cw11 := cw2 + cw10
-  let cw12 := m5 + m21
-  let cw13 := cw12 - cw10
-  let cw14 := m3 + cw3
-  let cw15 := cw7 - m20
-  let cw16 := cw15 + cw9
-  let cw17 := m15 + m22
-  let cw18 := cw17 + m13
-  let cw19 := m23 - cw5
-  let cw20 := cw19 - m10
-  let cw21 := cw20 + m20
-  let cw22 := m9 - cw1
-  let cw23 := cw22 + cw9
-  let cw24 := m4 + m16
-  let cw25 := cw24 + m11
-  let cw26 := m6 - m7
-  let cw27 := cw26 - cw4
-  !![cw11, cw13, cw14;
-     cw16, cw18, cw21;
-     cw23, cw25, cw27]
+  -- 13 adds on the A input side
+  let A_in : Fin 13 → R :=
+    let aw0 := A 0 2 - A 1 2
+    let aw1 := A 0 0 - aw0
+    let aw2 := A 0 1 + aw1
+    let aw3 := aw2 - A 1 2
+    let aw4 := aw2 - A 1 1
+    let aw5 := A 2 2 + aw3
+    let aw6 := aw5 - A 0 1
+    let aw7 := aw4 - A 1 0
+    let aw8 := A 2 0 + aw7
+    let aw9 := A 2 1 + aw8
+    let aw10 := aw5 - A 2 1
+    let aw11 := A 1 0 - A 2 0
+    let aw12 := aw1 - aw11
+    ![aw0, aw1, aw2, aw3, aw4, aw5, aw6, aw7, aw8,
+      aw9, aw10, aw11, aw12]
+  -- 14 adds on the B input side
+  let B_in : Fin 14 → R :=
+    let bw0 := B 0 2 + B 2 2
+    let bw1 := B 0 0 + B 2 0
+    let bw2 := B 0 0 - B 1 0
+    let bw3 := B 0 0 + B 0 2
+    let bw4 := B 1 2 + B 2 2
+    let bw5 := B 0 2 + bw2
+    let bw6 := bw2 - bw4
+    let bw7 := bw5 - B 1 2
+    let bw8 := B 2 1 + bw1
+    let bw9 := B 0 1 + bw8
+    let bw10 := bw8 - bw6
+    let bw11 := B 1 1 + bw10
+    let bw12 := bw10 - B 1 0
+    let bw13 := bw12 - B 1 2
+    ![bw0, bw1, bw2, bw3, bw4, bw5, bw6, bw7, bw8,
+      bw9, bw10, bw11, bw12, bw13]
+  -- 23 multiplies
+  let M : Fin 23 → R :=
+    ![A_in 2 * B_in 10, A_in 8 * B_in 5, A 0 0 * B_in 0,
+      A 2 1 * B 1 1, A 0 0 * B_in 9, A_in 6 * B_in 4,
+      A_in 10 * B 1 2, A 2 2 * B 2 0, A_in 9 * B 1 0,
+      A_in 1 * B_in 6, A 2 2 * B 2 1, A_in 3 * B_in 13,
+      A 1 2 * B 2 1, A_in 7 * B_in 3, A 1 0 * B 0 1,
+      A 2 0 * B 0 1, A 2 0 * B 0 2, A_in 0 * B_in 1,
+      A_in 5 * B_in 12, A_in 12 * B_in 2, A 0 1 * B_in 11,
+      A 1 1 * B 1 1, A_in 4 * B_in 7]
+  -- 28 adds on the C output side
+  let C_in : Fin 28 → R :=
+    let cw0 := M 5 - M 18
+    let cw1 := cw0 + M 10
+    let cw2 := M 7 + cw1
+    let cw3 := -(M 11 + cw2)
+    let cw4 := -(M 16 + cw3)
+    let cw5 := M 1 + cw4
+    let cw6 := M 0 - M 12
+    let cw7 := cw6 + M 9
+    let cw8 := -(M 13 + M 11)
+    let cw9 := cw8 + cw5
+    let cw10 := M 17 + cw7
+    let cw11 := cw2 + cw10
+    let cw12 := M 4 + M 20
+    let cw13 := cw12 - cw10
+    let cw14 := M 2 + cw3
+    let cw15 := cw7 - M 19
+    let cw16 := cw15 + cw9
+    let cw17 := M 14 + M 21
+    let cw18 := cw17 + M 12
+    let cw19 := M 22 - cw5
+    let cw20 := cw19 - M 9
+    let cw21 := cw20 + M 19
+    let cw22 := M 8 - cw1
+    let cw23 := cw22 + cw9
+    let cw24 := M 3 + M 15
+    let cw25 := cw24 + M 10
+    let cw26 := M 5 - M 6
+    let cw27 := cw26 - cw4
+    ![cw0, cw1, cw2, cw3, cw4, cw5, cw6, cw7, cw8,
+      cw9, cw10, cw11, cw12, cw13, cw14, cw15, cw16, cw17,
+      cw18, cw19, cw20, cw21, cw22, cw23, cw24, cw25, cw26,
+      cw27]
+  !![C_in 11, C_in 13, C_in 14;
+     C_in 16, C_in 18, C_in 21;
+     C_in 23, C_in 25, C_in 27]
 
 -- `scheme` unfolds to a ~100-binding straight-line program, so a single
 -- elaboration exceeds the default heartbeat budget; raise it for this proof.

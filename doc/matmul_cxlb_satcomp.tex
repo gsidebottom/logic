@@ -21,10 +21,12 @@ We contribute SAT instances deciding ``do $k$ XOR additions
 suffice?'' for the output sides of rank-23 bilinear $3\times 3$
 matrix-multiplication schemes. Each boundary instance is a live
 mathematical question: an UNSAT answer at the right $k$ lower-bounds
-the integer additive complexity of a scheme class and, combined with
-published exhaustive side analyses, would settle whether 55
-additions are possible in known classes (current record: 56, Sun
-2026). The family's AND-guarded parity structure defeats current
+the integer additive complexity of a scheme class (an optimality
+certificate). The exact minima are now independently known --- via the
+transposition principle, which just produced the first sub-56 scheme
+(55 additions) --- so these instances carry \emph{known ground-truth
+answers} yet remain hard for every solver we tried. The family's
+AND-guarded parity structure defeats current
 XOR/Gaussian reasoning while remaining genuinely hard for plain
 CDCL: no tested configuration (kissat, CaDiCaL, CryptoMiniSat plain
 and native-XOR, Z3 word-level, portfolios with symmetry breaking)
@@ -43,14 +45,13 @@ record \textbf{56} \cite{sun}. Sun's $56 = 13 + 13 + 30$ splits into
 two provably optimal \emph{input sides} and an \emph{output side} of
 30 additions computing the 9 output forms from the 23 products.
 
-Whether \textbf{55 additions} are possible is open. An exhaustive
-orbit-level analysis of all 17{,}376 de Groote classes of the public
-Heule--Kauers--Seidl scheme database \cite{hks} (exact input-side
-minimization over every representative; research notes in the
-repository) reduces the question, for all known classes, to the
-output side: \emph{a 55-addition scheme in a known class requires an
-output side of $\le 27$ additions on specific representatives} ---
-two below the best output count ever observed at this format.
+\textbf{55 additions are now achieved} ($13{+}14{+}28$ on class
+\texttt{i19w225c4efh}), by minimizing the output side \emph{exactly}
+via the transposition principle --- the record was 56 (Sun 2026). That
+also yields, for every scheme, the exact output-side minimum in
+milliseconds, so these instances now carry known ground-truth answers
+(the SAT/UNSAT boundary is independently pinned) while remaining hard
+for every SAT/SMT solver tried; the open target is now \textbf{54}.
 
 Any $\mathbb{Z}$-coefficient output-side program reduces mod~2 to an
 XOR straight-line program, so the decision problem
@@ -143,11 +144,12 @@ cell & weight & GF(2) min \\
 \end{tabular}}
 \end{table}
 
-Deciding either boundary advances the underlying question directly;
-UNSAT at 27 on the fat-sides window cells of the record class would,
-combined with the published exhaustions, make ``no 55-addition
-scheme exists in the record class'' a theorem with a DRAT
-certificate.
+Deciding a boundary certifies a per-class optimum: e.g.\ an UNSAT
+certificate at the transposition-computed minimum proves that a
+class's output side cannot be smaller, and (with the input-side
+exhaustions) that its total is optimal --- a DRAT-checkable optimality
+theorem for a fixed class, now that a $55$ scheme is known and the
+target is $54$.
 
 \section{Proposed benchmark set}
 

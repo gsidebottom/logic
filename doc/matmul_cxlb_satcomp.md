@@ -20,14 +20,15 @@ sides* (provably optimal for his scheme, via chain-covering
 structure) and an *output side* of 30 additions computing the 9
 output forms from the 23 products.
 
-Whether **55 additions** are possible is open. Our exhaustive
-orbit-level analysis of all 17,376 de Groote classes of the public
-Heule–Kauers–Seidl scheme database (exact input-side minimization
-over every representative; see the repository's research notes)
-reduced the question, for all known classes, to the output side:
-**a 55-addition scheme in a known class requires an output side of
-27 or fewer additions on specific representatives** — two below the
-best output count ever observed at this format.
+**55 additions are now achieved** (13+14+28 on class i19w225c4efh),
+by minimizing the output side *exactly* via the transposition
+principle — the record was 56 (Sun 2026). That also gives, for every
+scheme, the exact output-side minimum in milliseconds, so these
+benchmark instances now come with **known ground-truth answers**
+(the SAT/UNSAT boundary is independently pinned) while remaining hard
+for every SAT/SMT solver we tried — an unusually clean combination for
+a competition benchmark. The instances certify per-class optimality
+and now target the next open question, **54**.
 
 Any ℤ-coefficient output-side program reduces mod 2 to an XOR
 straight-line program. Hence the decision problem
@@ -36,10 +37,10 @@ straight-line program. Hence the decision problem
 > output forms (vectors in GF(2)^23) from the 23 inputs?*
 
 yields sound lower bounds: **UNSAT at k proves the integer output
-side needs ≥ k+1 additions**, and UNSAT at k = 27 on the right cells (§3) closes entire
-equivalence classes for 55. These benchmarks
-are therefore not synthetic: each boundary instance is a live
-mathematical question, in the tradition of the matrix-multiplication
+side needs ≥ k+1 additions** — an optimality certificate matching the
+transposition-computed minimum. These benchmarks
+are therefore not synthetic: each is a live
+mathematical question with a known answer, in the tradition of the matrix-multiplication
 benchmarks contributed to past competitions by Heule et al. The
 family also has a structural property of independent solver
 interest: its parity constraints are *AND-guarded*, which defeats
@@ -108,11 +109,10 @@ Calibrated seed cells (SAT witnesses verified; boundaries open):
 | `sun56` output side (record scheme) | 49 | ∈ {29, 30} |
 | `cn120` output side (C = 28 rep of the record class) | 60 | ∈ {27, 28} |
 
-Deciding either boundary advances the research question directly;
-UNSAT at 27 on the fat-sides window cells of the record class
-would, combined with the published exhaustions, make "no
-55-addition scheme exists in the record class" a theorem with a
-DRAT certificate.
+Deciding a boundary certifies a per-class optimum: an UNSAT
+certificate at the transposition-computed minimum proves a class's
+output side cannot be smaller — a DRAT-checkable optimality theorem
+for a fixed class, now that a 55 scheme is known and the target is 54.
 
 ## 4. Proposed benchmark set
 

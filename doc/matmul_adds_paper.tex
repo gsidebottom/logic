@@ -50,7 +50,11 @@ a runnable program (\path{src/mm55.rs}; also
 \textbf{and} 50{,}000 non-commutative $2\times2$-block inputs --- so it
 holds over any ring and recurses on block matrices --- with an
 operation counter confirming exactly $23\times$ and $55\pm$
-(\texttt{cargo test mm55}).
+(\texttt{cargo test mm55}). Its correctness is additionally
+machine-checked in Lean~4 (\texttt{matmul/mm55proof/}): a sorry-free
+proof that, over a general non-commutative ring, the program's 9
+outputs are the entries of $A\cdot B$ --- and, in Mathlib's own
+\texttt{Matrix} API, that the scheme equals \texttt{A * B}.
 
 The 56 record was the end of a rapid chain --- 60 (Stapleton) $\to$ 59
 (M\aa rtensson--Stankovski Wagner--Stapleton, MWS) $\to$ 58 $\times 3$
@@ -371,6 +375,12 @@ python3 tcmin.py perminov_cache/bits/sun56.bits \
 # class identity: cn122 is a de Groote class distinct from Sun's
 python3 equiv.py classes perminov_cache/bits/sun56.bits \
     external/i19-perminov56.bits          # expect 2 (distinct classes)
+
+# machine-checked proof (Lean 4 + Mathlib) that the 55-addition scheme
+# equals A*B over a general non-commutative ring -- sorry-free
+cd mm55proof && lake exe cache get && lake build
+#   Matmul55.correct       depends on axioms: [propext]
+#   Matmul55.scheme_eq_mul depends on axioms: [propext, Classical.choice, Quot.sound]
 \end{Code}
 
 Deterministic caveats: kissat may return different sign models across

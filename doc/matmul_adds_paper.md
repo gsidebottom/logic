@@ -27,7 +27,11 @@ into the 9 entries of C — negation is free. It is a runnable program
 against the naive 27-multiplication triple loop on 500,000 random
 integer inputs **and** 50,000 non-commutative 2×2-block inputs — so it
 holds over any ring and recurses on block matrices — with an operation
-counter confirming exactly 23 × and 55 ± (`cargo test mm55`).
+counter confirming exactly 23 × and 55 ± (`cargo test mm55`). Its
+correctness is additionally machine-checked in Lean 4 (`matmul/mm55proof/`):
+a sorry-free proof that, over a general non-commutative ring, the
+program's 9 outputs are the entries of A·B — and, in Mathlib's own
+`Matrix` API, that the scheme equals `A * B`.
 
 The 56 record was the end of a rapid chain — 60 (Stapleton) → 59
 (Mårtensson–Stankovski Wagner–Stapleton, MWS) → 58 ×3 (Perminov) → 56
@@ -288,6 +292,12 @@ python3 tcmin.py perminov_cache/bits/sun56.bits \
 # class identity: cn122 is a de Groote class distinct from Sun's
 python3 equiv.py classes perminov_cache/bits/sun56.bits \
     external/i19-perminov56.bits          # expect 2 (distinct classes)
+
+# machine-checked proof (Lean 4 + Mathlib) that the 55-addition scheme
+# equals A*B over a general non-commutative ring — sorry-free
+cd mm55proof && lake exe cache get && lake build
+#   Matmul55.correct       depends on axioms: [propext]
+#   Matmul55.scheme_eq_mul depends on axioms: [propext, Classical.choice, Quot.sound]
 ```
 
 Deterministic caveats: kissat may return different sign models across

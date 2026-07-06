@@ -21,19 +21,28 @@ every claim has a mechanical check (§8).*
 
 ## Abstract
 
-The additive-complexity record for exact non-commutative 3×3 matrix
-multiplication with 23 multiplications, without change of basis, stood
-at **56 additions** (Yinqi Sun, arXiv:2604.27645, Apr 2026) — the end
-of a rapid chain 60 (Stapleton) → 59 (Mårtensson–Stankovski
-Wagner–Stapleton, MWS) → 58 ×3 (Perminov) → 56, every step driven by
-greedy common-subexpression elimination (CSE) on the linear forms.
-**We reduce it to 55.**
+**We multiply two 3×3 matrices with 23 multiplications and 55
+additions** — one below the previous record of 56 (Yinqi Sun,
+arXiv:2604.27645, Apr 2026), and the first sub-56 scheme for exact
+non-commutative 3×3 multiplication without change of basis. The
+algorithm is short and concrete: form 13 signed combinations of the 9
+entries of A and 14 of B, take 23 products (each one A-combination
+times one B-combination), and recombine them with 28 further additions
+into the 9 entries of C — negation is free. It is a runnable program
+(`src/mm55.rs`; also `matmul/external/i19-55adds-slp.txt`) checked
+against the naive 27-multiplication triple loop on 500,000 random
+integer inputs **and** 50,000 non-commutative 2×2-block inputs — so it
+holds over any ring and recurses on block matrices — with an operation
+counter confirming exactly 23 × and 55 ± (`cargo test mm55`).
 
-A scheme's additive cost splits into two *input sides* (the left/right
-linear factors of the 23 products) and one *output side* (the 9
-outputs recombined from the 23 products). Greedy pair-extraction CSE
-returns only an *upper bound* for each side. We minimize both sides
-**exactly**:
+The 56 record was the end of a rapid chain — 60 (Stapleton) → 59
+(Mårtensson–Stankovski Wagner–Stapleton, MWS) → 58 ×3 (Perminov) → 56
+— every step driven by greedy common-subexpression elimination (CSE)
+on the linear forms. A scheme's additive cost splits into two *input
+sides* (the left/right linear factors of the 23 products) and one
+*output side* (the 9 outputs recombined from the products); greedy
+pair-extraction CSE returns only an *upper bound* per side. We minimize
+both sides **exactly**:
 
 1. **Input sides** (`matmul/sidemin.py`): the minimum ±-additions such
    that one addition chain over the 9 input entries covers every
@@ -430,6 +439,10 @@ informative; full text in git history.
 ## 8. Reproduction
 
 ```bash
+# the record scheme, runnable + fuzzed vs naive 27-mult, from repo root
+cargo test --release --lib mm55::   # 3 pass: fuzz(int), fuzz(2x2), 23*/55+-
+python3 matmul/tcmin.py selftest    # transposition constant + Sun 30 / cn122 28
+
 cd matmul
 # exact side-minimizer: micro-optima + Sun's U/V optima + his
 # impossibility certificates (0.3 s)

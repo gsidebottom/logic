@@ -357,9 +357,9 @@ open question is **whether 54 exists**:
   input sides at its cover-13 images is a bounded, well-defined hunt
   for record-*tying* schemes.
 - **Beyond the published catalogue.** The optimality theorem is
-  relative to the 17,376 published classes (our own 53 novel classes
-  clear the output-side bar too — every representative has output side
-  ≥ 28 — with their input-side floors finishing the same audit). A sub-55 scheme, if one exists, requires a rank-23
+  relative to the 17,376 published classes; our own 53 novel classes
+  clear it with margin (every representative has output side ≥ 28 and
+  input sides ≥ 28, so ≥ 56 total — they cannot even host a 55). A sub-55 scheme, if one exists, requires a rank-23
   class nobody has catalogued — the de Groote classification at rank
   23 is not known to be complete — or a cost model beyond ±1
   coefficients.

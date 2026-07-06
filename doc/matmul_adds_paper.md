@@ -239,16 +239,24 @@ against the HKS database; "published" = the count in the source paper):
 | `i2w201c26fi` (Stapleton 60) | 60 | 60 = 16 + 16 + 28 | orbit rep (ours) |
 
 - **55 on one class** (`i19w225c4efh`) — the record, verified in
-  Appendix A. Many representatives of this class attain it (an exact
-  re-score of its slim-sided orbit found 861), so it is robust.
+  Appendix A — and provably *only* on this class in the slim tiers:
+  for each of the 79,488 sides-≤27 representatives (the complete
+  orbits of all 84 floor-26/27 classes), replaying §4's transposition
+  argument over GF(2) (`matmul/gf2min.py`) gives an exact GF(2) total
+  that lower-bounds **every** integer sign model of that
+  representative. The bound is ≥ 55 everywhere, and equals 55 only on
+  864 representatives of this one class.
 - **56 on two classes** (`i46w213c23ci` = Sun's, and
   `i12w219c23ci`); before the exact re-score these read 56/58 under
   greedy. The exact output side beats greedy by one addition on the
   two Perminov classes (cn122 29→28, cn119 30→29) and by one on the
   cn120 representative (28→27).
-- The exact re-score of the 80 genuine floor-27 database classes (the
-  only tier where 54 = sides 27 + output 27 could live) is reported in
-  §8.
+- **No 54 with input sides ≤ 27 exists in the database.** A 54 with
+  output side ≥ 27 must have input sides ≤ 27, which only the 4
+  floor-26 and 80 floor-27 classes admit at all. The 12-sign-model
+  exact re-score of all 79,488 such representatives bottoms out at 55,
+  and the GF(2) bound above closes the remaining sign models: none can
+  reach 54. What a 54 would still require is stated in §8.
 
 ## 6. Contributions
 
@@ -293,6 +301,11 @@ python3 tcmin.py perminov_cache/bits/sun56.bits \
 python3 equiv.py classes perminov_cache/bits/sun56.bits \
     external/i19-perminov56.bits          # expect 2 (distinct classes)
 
+# model-independent 54-exclusion: exact GF(2) output side via the
+# transposition principle over GF(2), selftested against exhaustive
+# search; with the GF(2) side tags it lower-bounds EVERY sign model
+python3 gf2min.py selftest
+
 # machine-checked proof (Lean 4 + Mathlib) that the 55-addition scheme
 # equals A*B over a general non-commutative ring — sorry-free
 cd mm55proof && lake exe cache get && lake build
@@ -311,20 +324,17 @@ Both sides are now minimized exactly, so the total for any given
 representative is its true additive complexity in this model. The
 open question is **whether 54 exists**:
 
-- **Exact re-score for 54.** A 54 needs input sides 26 + output 28, or
-  27 + 27. A 54 with output side ≥ 27 must have input sides ≤ 27, so it
-  can only live in a floor-26 or floor-27 class (the only classes with
-  any sides-≤27 representatives). We are exact-re-scoring
-  (`matmul/tcscore.py`) **every** such representative of all four
-  floor-26 and 80 floor-27 classes (the full sides-≤27 orbit per
-  class); across the sample scored so far (400+ per class) there is
-  **no 54, and 55 appears only on `i19w225c4efh`**, but the exhaustive
-  pass is what will make ``no 54'' definitive. The residual case a 54
-  would still need is an output side of 26 — below any observed (the
-  smallest exact output side seen is 27). A 54 would require an output
-  side below any yet observed (the smallest exact output side seen is
-  27) paired with optimal input sides — increasingly marginal, but the
-  fat-sided and remaining orbit regions are not exhausted.
+- **Close 54 outright.** The slim tiers are settled (§5): no
+  representative with GF(2) input sides ≤ 27 admits any sign model
+  totalling ≤ 54, and 55 is attainable only on `i19w225c4efh`. A 54
+  must therefore have input sides ≥ 28 and a GF(2) output side ≤ 26 —
+  one below the smallest output side ever witnessed (27, on the cn120
+  representative). `matmul/gf2min.py` makes the closing sweep
+  tractable: minimizing the exact GF(2) output side over each class's
+  γ-orbit (a `floors.rs`-style sandwich scan) would either exhibit a
+  class with output floor ≤ 26 or finish the proof that **55 is the
+  additive minimum for rank-23 3×3 schemes over the entire published
+  database**.
 - **Database-wide exact re-score.** The input-side floors of all
   17,376 classes are already charted (in the git-history census);
   pairing the low-floor classes with exact output sides is the

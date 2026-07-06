@@ -64,3 +64,4 @@ matmul/found55/f28list.txt
 
 # Lean/Lake build + fetched Mathlib (7GB, regenerable via `lake exe cache get`)
 matmul/mm55proof/.lake/
+matmul/found55/hunt54/

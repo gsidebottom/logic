@@ -1,7 +1,7 @@
 /-
-Copyright (c) 2026 Greg Sidebottom and Claude Fable 5. All rights reserved.
+Copyright (c) 2026 Greg Sidebottom. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: Greg Sidebottom, Claude Fable 5
+Authors: Greg Sidebottom
 -/
 import Mathlib.Tactic.NoncommRing
 import Mathlib.Tactic.Abel

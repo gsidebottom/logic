@@ -146,9 +146,9 @@ refine = "⟨" + ", ".join("?_" for _ in OUTS) + "⟩"
 
 lean = f'''\
 /-
-Copyright (c) 2026 Greg Sidebottom and Claude Fable 5. All rights reserved.
+Copyright (c) 2026 Greg Sidebottom. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: Greg Sidebottom, Claude Fable 5
+Authors: Greg Sidebottom
 -/
 import Mathlib.Tactic.NoncommRing
 import Mathlib.Tactic.Abel
@@ -250,9 +250,9 @@ mat = (f"  !![{outv[0]}, {outv[1]}, {outv[2]};\n"
 OUT2 = OUT.parent / "Matrix.lean"
 lean2 = f'''\
 /-
-Copyright (c) 2026 Greg Sidebottom and Claude Fable 5. All rights reserved.
+Copyright (c) 2026 Greg Sidebottom. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: Greg Sidebottom, Claude Fable 5
+Authors: Greg Sidebottom
 -/
 import Mathlib.Data.Matrix.Mul
 import Mathlib.LinearAlgebra.Matrix.Notation

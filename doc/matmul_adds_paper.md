@@ -331,7 +331,7 @@ Screened side-floor histogram: **26: 4 classes; 27: 526; 28: 12,159;
   side of ≤ 27 — two additions below the best output count ever
   observed at this format. The per-class closure tool for that last
   window is the exact XOR-SLP (an SLP over GF(2)) lower-bound program of §9
-  (`matmul/cxlb.py`: UNSAT at k ⇒ C_Z ≥ k+1, DRAT-certifiable);
+  (`matmul/cxlb.py`, the C-side lower-bound tool: UNSAT at k ⇒ C_Z ≥ k+1, DRAT-certifiable);
   its calibration brackets the two key cells at GF(2) C-min ∈
   {29,30} (Sun's rep) and ∈ {27,28} (the C=28 rep of Sun's class).
 

@@ -4,7 +4,7 @@
 
 *Benchmark description in the style of the SAT Competition proceedings.
 Generator and all inputs: github.com/gsidebottom/logic
-(`matmul/cxlb.py`).*
+(`matmul/cxlb.py`, the C-side lower-bound generator — cxlb).*
 
 ## 1. Problem origin
 

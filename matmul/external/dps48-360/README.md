@@ -17,6 +17,13 @@ Independently proven end to end by
 exact Fractions, all 256 basis pairs (a complete proof of the bilinear
 map), random integer trials, and a from-scratch operation recount.
 
+**Update (2,000-rep converged run):** the same instance improved to a
+**verified 357** (L = 79+33 = 112, R = 104+0, P = 136+5 = 141; files
+`RtLtPtt_{L,R,P}_357.slp`, proven identically: 256/256 basis pairs,
+recount matches SLPchecker). The original DPS instance under the same
+budget: 364. The presentation gap is stable across budgets
+(22 ops @ 24 reps, 8 @ 200, 7 @ 2,000).
+
 Context: the DPS paper's published SLP totals 341; that number is not
 reproduced by PLinOpt's shipped optimizer under any protocol we ran
 (their own instance converges to 368 at 200 reps x 3 modes), so 341

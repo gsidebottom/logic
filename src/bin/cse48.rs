@@ -121,9 +121,14 @@ fn t16(m: &[Vec<Option<Coef>>]) -> Vec<Vec<Option<Coef>>> {
         .collect()
 }
 
-/// gauge: per product, shift each side row so its max exponent is 0,
-/// compensating in the output column (alpha*beta*gamma = 1).
-fn gauge(s1: &mut [Vec<Option<Coef>>], s2: &mut [Vec<Option<Coef>>], out: &mut [Vec<Option<Coef>>]) {
+/// gauge: per product, use the free alpha*beta*gamma = 1 scaling to
+/// minimize the shift burden.  Step 1 normalizes each side row to max
+/// exponent 0 (collecting all scale in the output column).  Step 2
+/// re-splits per product: shifting the output column i by 2^k costs
+/// at most one shift on that product's side wire (k != 0) and changes
+/// the column's distinct-nonzero-exponent count — pick the k zeroing
+/// the column's modal exponent whenever that wins.
+fn gauge(s1: &mut [Vec<Option<Coef>>], s2: &mut [Vec<Option<Coef>>], out: &mut [Vec<Option<Coef>>], mode: u32) {
     for i in 0..48 {
         for side in [&mut *s1, &mut *s2] {
             let mx = side[i].iter().flatten().map(|c| c.exp).max().unwrap();
@@ -136,6 +141,57 @@ fn gauge(s1: &mut [Vec<Option<Coef>>], s2: &mut [Vec<Option<Coef>>], out: &mut [
                         c.exp += mx;
                     }
                 }
+            }
+        }
+    }
+    if mode == 0 {
+        return; // conservative: row-normalized sides only
+    }
+    // step 2: per output column, count exponents and try k = -modal
+    for i in 0..48 {
+        let mut exps: Vec<i8> = out
+            .iter()
+            .filter_map(|row| row[i].map(|c| c.exp))
+            .collect();
+        if exps.is_empty() {
+            continue;
+        }
+        exps.sort_unstable();
+        // cost(k) = #distinct nonzero exps after subtracting k, plus 1
+        // side shift if k != 0
+        // mode 1: ties prefer no-rescale (0 first); mode 2: ties
+        // prefer rescaling (0 last — aggressive, worth it when the
+        // exponent spread fragments extraction sharing)
+        let cand: Vec<i8> = {
+            let mut e: Vec<i8> = exps.clone();
+            e.dedup();
+            let mut c: Vec<i8> = Vec::new();
+            if mode == 1 {
+                c.push(0);
+            }
+            c.extend(e.into_iter().filter(|&k| k != 0));
+            if mode != 1 {
+                c.push(0);
+            }
+            c
+        };
+        let cost = |k: i8| -> u32 {
+            let mut es: Vec<i8> = exps.iter().map(|e| e - k).collect();
+            es.sort_unstable();
+            es.dedup();
+            es.iter().filter(|&&e| e != 0).count() as u32 + (k != 0) as u32
+        };
+        let best = *cand.iter().min_by_key(|&&k| cost(k)).unwrap();
+        if best != 0 {
+            for row in out.iter_mut() {
+                if let Some(c) = &mut row[i] {
+                    c.exp -= best;
+                }
+            }
+            // compensate on side 1's row (its wire picks up 2^best —
+            // one shift, which cost() already charged)
+            for c in s1[i].iter_mut().flatten() {
+                c.exp += best;
             }
         }
     }
@@ -195,24 +251,27 @@ fn build_instances(dir: &str) -> Vec<Instance> {
                     let mk = |k: usize, fl: bool| -> Vec<Vec<Option<Coef>>> {
                         if fl { t16(&fams[k].1) } else { fams[k].1.clone() }
                     };
-                    let mut s1 = mk(a, bits & 1 != 0);
-                    let mut s2 = mk(b, bits & 2 != 0);
-                    let ot = mk(c, bits & 4 != 0); // 48 x 16
-                    let mut outm = transpose_mat(&ot); // 16 x 48
-                    gauge(&mut s1, &mut s2, &mut outm);
-                    if brent_ok(&s1, &s2, &outm) {
-                        let tag = |fl: bool| if fl { "t" } else { "" };
-                        instances.push(Instance {
-                            name: format!(
-                                "{}{}|{}{}>{}{}",
-                                fams[a].0, tag(bits & 1 != 0),
-                                fams[b].0, tag(bits & 2 != 0),
-                                fams[c].0, tag(bits & 4 != 0)
-                            ),
-                            s1: rows_to_forms(&s1),
-                            s2: rows_to_forms(&s2),
-                            out: rows_to_forms(&transpose_mat(&outm)),
-                        });
+                    for mode in 0..3u32 {
+                        let mut s1 = mk(a, bits & 1 != 0);
+                        let mut s2 = mk(b, bits & 2 != 0);
+                        let ot = mk(c, bits & 4 != 0); // 48 x 16
+                        let mut outm = transpose_mat(&ot); // 16 x 48
+                        gauge(&mut s1, &mut s2, &mut outm, mode);
+                        if brent_ok(&s1, &s2, &outm) {
+                            let tag = |fl: bool| if fl { "t" } else { "" };
+                            instances.push(Instance {
+                                name: format!(
+                                    "{}{}|{}{}>{}{} g{}",
+                                    fams[a].0, tag(bits & 1 != 0),
+                                    fams[b].0, tag(bits & 2 != 0),
+                                    fams[c].0, tag(bits & 4 != 0),
+                                    mode
+                                ),
+                                s1: rows_to_forms(&s1),
+                                s2: rows_to_forms(&s2),
+                                out: rows_to_forms(&transpose_mat(&outm)),
+                            });
+                        }
                     }
                 }
             }
@@ -235,23 +294,176 @@ impl Rng {
     }
 }
 
+/// kernel pre-phase (PLinOpt Alg-2 idea): in the rank-deficient
+/// 48-forms-over-16-vars orientations, ~32 rows are combinations of
+/// others.  A row equal to alpha*row_a (alpha = +-2^k) is free up to a
+/// deduped shift; a row equal to alpha*row_a + beta*row_b costs 1 add
+/// (+ deduped shifts for non-unit alpha/beta).  Scanned in rng order,
+/// deriving only from kept rows.  Returns (kept, adds, shift_keys)
+/// where shift_keys join the caller's global dedup set (keys use the
+/// high bit so they cannot collide with extraction wires).
+fn kernel_prephase(
+    forms: &[Form],
+    rng: &mut Rng,
+) -> (Vec<Form>, u32, Vec<(u32, i8)>) {
+    let nv = 16usize;
+    let val = |c: &Coef| -> i64 {
+        let v = 1i64 << ((c.exp as i32) + 10);
+        if c.neg { -v } else { v }
+    };
+    let dense: Vec<Vec<i64>> = forms
+        .iter()
+        .map(|f| {
+            let mut row = vec![0i64; nv];
+            for &(v, c) in f {
+                row[v as usize] = val(&c);
+            }
+            row
+        })
+        .collect();
+    // x/y as +-2^k if it is one
+    let dyadic = |x: i128, y: i128| -> Option<(bool, i8)> {
+        if x == 0 || y == 0 {
+            return None;
+        }
+        let neg = (x < 0) != (y < 0);
+        let (ax, ay) = (x.abs(), y.abs());
+        let (big, small, sg) = if ax >= ay { (ax, ay, 1i8) } else { (ay, ax, -1i8) };
+        if big % small != 0 {
+            return None;
+        }
+        let q = (big / small) as u128;
+        if !q.is_power_of_two() {
+            return None;
+        }
+        let k = q.trailing_zeros() as i8 * sg;
+        if k.abs() > 6 { None } else { Some((neg, k)) }
+    };
+    let n = forms.len();
+    let mut order: Vec<usize> = (0..n).collect();
+    for i in (1..n).rev() {
+        let j = rng.below(i + 1);
+        order.swap(i, j);
+    }
+    let mut derived = vec![false; n];
+    let mut kadds = 0u32;
+    let mut shifts: Vec<(u32, i8)> = Vec::new();
+    let wire = |i: usize| 0x8000_0000u32 | i as u32;
+    for &c in &order {
+        if dense[c].iter().all(|&x| x == 0) {
+            continue;
+        }
+        let rc = &dense[c];
+        let mut done = false;
+        // scalar multiples first (cost: at most one shift)
+        for &a in &order {
+            if a == c || derived[a] {
+                continue;
+            }
+            let ra = &dense[a];
+            if (0..nv).any(|v| (ra[v] == 0) != (rc[v] == 0)) {
+                continue;
+            }
+            let v0 = (0..nv).find(|&v| rc[v] != 0).unwrap();
+            if let Some((_, k)) = dyadic(rc[v0] as i128, ra[v0] as i128) {
+                if (0..nv).all(|v| {
+                    ra[v] == 0 || rc[v] as i128 * ra[v0] as i128 == ra[v] as i128 * rc[v0] as i128
+                }) {
+                    if k != 0 {
+                        shifts.push((wire(a), k));
+                    }
+                    derived[c] = true;
+                    done = true;
+                    break;
+                }
+            }
+        }
+        if done {
+            continue;
+        }
+        'pair: for &a in &order {
+            if a == c || derived[a] {
+                continue;
+            }
+            for &b in &order {
+                if b <= a || b == c || derived[b] {
+                    continue;
+                }
+                let (ra, rb) = (&dense[a], &dense[b]);
+                // two vars with nonzero determinant
+                let mut piv = None;
+                'fv: for v1 in 0..nv {
+                    for v2 in v1 + 1..nv {
+                        let det = ra[v1] as i128 * rb[v2] as i128
+                            - ra[v2] as i128 * rb[v1] as i128;
+                        if det != 0 {
+                            piv = Some((v1, v2, det));
+                            break 'fv;
+                        }
+                    }
+                }
+                let (v1, v2, det) = match piv {
+                    Some(p) => p,
+                    None => continue,
+                };
+                // Cramer: alpha = (rc x rb), beta = (ra x rc) over det
+                let na = rc[v1] as i128 * rb[v2] as i128 - rc[v2] as i128 * rb[v1] as i128;
+                let nb = ra[v1] as i128 * rc[v2] as i128 - ra[v2] as i128 * rc[v1] as i128;
+                if na == 0 || nb == 0 {
+                    continue; // scalar case, handled above
+                }
+                let (da, db) = match (dyadic(na, det), dyadic(nb, det)) {
+                    (Some(x), Some(y)) => (x, y),
+                    _ => continue,
+                };
+                // verify every var exactly: det*rc == na*ra + nb*rb
+                if !(0..nv).all(|v| {
+                    det * rc[v] as i128
+                        == na * ra[v] as i128 + nb * rb[v] as i128
+                }) {
+                    continue;
+                }
+                kadds += 1;
+                if da.1 != 0 {
+                    shifts.push((wire(a), da.1));
+                }
+                if db.1 != 0 {
+                    shifts.push((wire(b), db.1));
+                }
+                derived[c] = true;
+                break 'pair;
+            }
+        }
+    }
+    let kept: Vec<Form> = (0..n)
+        .filter(|&i| !derived[i])
+        .map(|i| forms[i].clone())
+        .collect();
+    (kept, kadds, shifts)
+}
+
 /// greedy signed-dyadic-pair CSE; returns (adds, shifts).
 /// Each extraction w = x_i + s·2^k x_j: 1 add (+1 shift if k≠0).
 /// Final assembly of a form with ℓ terms: ℓ−1 adds + one shift per
 /// term with residual coefficient ≠ ±1 (over-approximation is fine —
 /// all comparisons use the same accounting).
-fn greedy(forms: &[Form], nvars: u32, rng: &mut Rng) -> (u32, u32) {
-    let mut forms: Vec<Form> = forms
-        .iter()
+fn greedy(forms: &[Form], nvars: u32, kernel: bool, rng: &mut Rng) -> (u32, u32) {
+    let (pre_forms, mut adds, kshifts) = if kernel {
+        let (kept, ka, ks) = kernel_prephase(forms, rng);
+        (kept, ka, ks)
+    } else {
+        (forms.to_vec(), 0u32, Vec::new())
+    };
+    let mut forms: Vec<Form> = pre_forms
+        .into_iter()
         .filter(|f| f.len() >= 2)
-        .cloned()
         .collect();
     let mut next_var = nvars;
-    let mut adds = 0u32;
     // shifts dedup: a materialized 2^k·v is one shift however often
     // it is reused (matches the paper's shift accounting)
     let mut shifted: std::collections::HashSet<(u32, i8)> =
         std::collections::HashSet::new();
+    shifted.extend(kshifts);
     let mut keys: Vec<u64> = Vec::with_capacity(4096);
     loop {
         // packed pattern keys (va, vb, sign, exp+64), sort + run-length
@@ -272,7 +484,11 @@ fn greedy(forms: &[Form], nvars: u32, rng: &mut Rng) -> (u32, u32) {
             }
         }
         keys.sort_unstable();
-        let mut best = 0u32;
+        // shift-aware score: an extraction saving `c` occurrences is
+        // worth 2c, minus 1 if it must materialize a new (value, 2^k)
+        // shift that the global dedup set does not already contain
+        let mut best = 0i64;
+        let mut bestc = 0u32;
         let mut top: Vec<u64> = Vec::new();
         let mut i = 0;
         while i < keys.len() {
@@ -281,16 +497,24 @@ fn greedy(forms: &[Form], nvars: u32, rng: &mut Rng) -> (u32, u32) {
                 j += 1;
             }
             let c = (j - i) as u32;
-            if c > best {
-                best = c;
-                top.clear();
-                top.push(keys[i]);
-            } else if c == best {
-                top.push(keys[i]);
+            if c >= 2 {
+                let k = keys[i];
+                let vb = ((k >> 12) & 0xfffff) as u32;
+                let e = ((k & 0xff) as i8) - 64;
+                let newshift = e != 0 && !shifted.contains(&(vb, e));
+                let score = 2 * c as i64 - newshift as i64;
+                if score > best {
+                    best = score;
+                    bestc = c;
+                    top.clear();
+                    top.push(k);
+                } else if score == best {
+                    top.push(k);
+                }
             }
             i = j;
         }
-        if best < 2 {
+        if bestc < 2 {
             break;
         }
         let k = top[rng.below(top.len())];
@@ -318,18 +542,40 @@ fn greedy(forms: &[Form], nvars: u32, rng: &mut Rng) -> (u32, u32) {
             }
         }
     }
-    // final assembly: normalize each form by its leading coefficient's
-    // exponent (free output scaling is NOT free — charge relative to
-    // the stored coefficients), dedup shifted values globally
+    // final assembly with common-exponent hoisting: sum the form at
+    // its modal exponent e* (terms off the mode need a relative shift,
+    // deduped globally by (value, delta)), then one shift materializes
+    // 2^{e*} of the completed wire when e* != 0.  This is a valid SLP
+    // transformation for sides and outputs alike.
+    let mut hoists = 0u32;
     for f in &forms {
         adds += f.len() as u32 - 1;
+        let mut exps: Vec<i8> = f.iter().map(|&(_, c)| c.exp).collect();
+        exps.sort_unstable();
+        let mut estar = exps[0];
+        let mut bestrun = 0;
+        let mut i = 0;
+        while i < exps.len() {
+            let mut j = i + 1;
+            while j < exps.len() && exps[j] == exps[i] {
+                j += 1;
+            }
+            if j - i > bestrun {
+                bestrun = j - i;
+                estar = exps[i];
+            }
+            i = j;
+        }
+        if estar != 0 {
+            hoists += 1;
+        }
         for &(v, c) in f {
-            if c.exp != 0 {
-                shifted.insert((v, c.exp));
+            if c.exp != estar {
+                shifted.insert((v, c.exp - estar));
             }
         }
     }
-    (adds, shifted.len() as u32)
+    (adds, shifted.len() as u32 + hoists)
 }
 
 /// transposed view: columns of the 48x16 side as 16 forms over 48 vars
@@ -395,11 +641,15 @@ fn main() {
                     // 16 forms/48 vars with no offset.
                     let flip = rng.next() & 1 == 0;
                     let (a, sh, off, tag) = if flip {
-                        let (a, s) = greedy(comp, 16, &mut rng);
+                        // 48 forms / 16 vars: rank <= 16, kernel-rich;
+                        // coin-flip the kernel so the plain-greedy
+                        // distribution stays in play for the sides
+                        let kern = rng.next() & 1 == 0;
+                        let (a, s) = greedy(comp, 16, kern, &mut rng);
                         (a, s, if ci == 2 { 32i64 } else { 0 }, "48/16")
                     } else {
                         let tf = transpose_forms(comp, 16);
-                        let (a, s) = greedy(&tf, 48, &mut rng);
+                        let (a, s) = greedy(&tf, 48, false, &mut rng);
                         (a, s, if ci == 2 { 0 } else { -32 }, "16/48")
                     };
                     let score = (a as i64 + sh as i64 + off) as u32;

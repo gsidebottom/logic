@@ -949,6 +949,398 @@ fn kernel_plan(
     (kept, ders)
 }
 
+// ---------- Boyar–Peralta-style cancellation-aware CSE ----------
+//
+// Pair-greedy only factors pairs that appear syntactically in the
+// forms; it can never exploit CANCELLATION (building a helper whose
+// extra terms vanish later).  This BP-lite works semantically over
+// dyadic vectors: a base B grows from the 16 units; each step either
+// COMPLETES a target as c1*b1 + c2*b2 (preferring ops that finish
+// many targets and shrink others' residuals) or, when no completion
+// exists, adds a SPECULATIVE helper chosen to maximally reduce total
+// residual weight (min over subtracting any multiple — this is where
+// cancellation enters).  Vectors are exact i64 at scale 2^20.
+const BPSC: i64 = 1 << 20;
+const BPRAT: [i8; 3] = [-1, 0, 1];   // tight: +-1, +-2, +-1/2 only
+
+fn bp_apply(c: i8, neg: bool, v: i64) -> Option<i64> {
+    let w = if c >= 0 {
+        v.checked_shl(c as u32)?
+    } else {
+        let d = 1i64 << (-c) as u32;
+        if v % d != 0 {
+            return None;
+        }
+        v / d
+    };
+    Some(if neg { -w } else { w })
+}
+
+fn bp_canon(v: &[i64]) -> Option<(Vec<i64>, bool, i8)> {
+    // normalize: divide by the largest power of two dividing all
+    // entries and make the first nonzero positive.  Returns
+    // (canon, negated?, exponent) with v = (-1)^neg * 2^exp * canon.
+    let mut tz = 63;
+    let mut first = 0i64;
+    for &x in v {
+        if x != 0 {
+            tz = tz.min(x.trailing_zeros() as i32);
+            if first == 0 {
+                first = x;
+            }
+        }
+    }
+    if first == 0 {
+        return None;
+    }
+    let neg = first < 0;
+    let c: Vec<i64> = v
+        .iter()
+        .map(|&x| {
+            let y = x >> tz;
+            if neg { -y } else { y }
+        })
+        .collect();
+    Some((c, neg, tz as i8))
+}
+
+fn bp_hash(v: &[i64]) -> u64 {
+    let mut h = 0xcbf29ce484222325u64;
+    for &x in v {
+        h ^= x as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
+fn bp_weight(v: &[i64]) -> u32 {
+    v.iter().filter(|&&x| x != 0).count() as u32
+}
+
+/// BP-lite over `forms` (48 forms over `nv` vars): cancellation-aware
+/// base growth in the Boyar–Peralta spirit.  Distance of a target f
+/// from the base B: 0 if f is a scaled base element, 1 if f is a
+/// 2-combination of base elements, else the depth-1 relaxation
+/// min over (w in B, dyadic c) of weight(f - c*w)  — "subtract one
+/// base element, finish with units" (this is where cancellation
+/// enters: c*w may cover terms of f while introducing none).  Each
+/// round: complete every distance<=1 target (multiplicity-greedy),
+/// else add the sampled helper with the largest total distance drop,
+/// else deterministically complete the cheapest target.  Returns the
+/// traced program and each form's wire.
+fn bp_traced(forms: &[Form], nv: usize, rng: &mut Rng) -> Option<(Vec<TOp>, Vec<u32>)> {
+    use std::collections::HashMap;
+    let scaled = |c: i8, neg: bool, v: &[i64], out: &mut Vec<i64>| -> bool {
+        out.clear();
+        for &x in v {
+            match bp_apply(c, neg, x) {
+                Some(y) => out.push(y),
+                None => return false,
+            }
+        }
+        true
+    };
+    let mut base: Vec<(Vec<i64>, u32)> = (0..nv)
+        .map(|i| {
+            let mut v = vec![0i64; nv];
+            v[i] = BPSC;
+            (v, i as u32)
+        })
+        .collect();
+    let mut bh: HashMap<u64, Vec<usize>> = HashMap::new();
+    let mut push_base = |v: Vec<i64>, w: u32,
+                         base: &mut Vec<(Vec<i64>, u32)>,
+                         bh: &mut HashMap<u64, Vec<usize>>| {
+        if let Some((c, _, _)) = bp_canon(&v) {
+            bh.entry(bp_hash(&c)).or_default().push(base.len());
+        }
+        base.push((v, w));
+    };
+    for i in 0..nv {
+        let (v, w) = (base[i].0.clone(), base[i].1);
+        if let Some((c, _, _)) = bp_canon(&v) {
+            bh.entry(bp_hash(&c)).or_default().push(i);
+        }
+        let _ = (v, w);
+    }
+    let dense = |f: &Form| -> Vec<i64> {
+        let mut v = vec![0i64; nv];
+        for &(x, c) in f {
+            v[x as usize] = bp_apply(c.exp, c.neg, BPSC).unwrap();
+        }
+        v
+    };
+    let find = |v: &[i64], base: &Vec<(Vec<i64>, u32)>,
+                bh: &HashMap<u64, Vec<usize>>| -> Option<(usize, Coef)> {
+        let (c, neg, exp) = bp_canon(v)?;
+        for &bi in bh.get(&bp_hash(&c))?.iter() {
+            let (bc, bneg, bexp) = bp_canon(&base[bi].0).unwrap();
+            if bc == c {
+                return Some((bi, Coef { neg: neg != bneg, exp: exp - bexp }));
+            }
+        }
+        None
+    };
+    let mut ops: Vec<TOp> = Vec::new();
+    let mut next = nv as u32 + 64;
+    let mut outw: Vec<Option<u32>> = vec![None; forms.len()];
+    let mut targets: Vec<(Vec<i64>, usize)> = Vec::new();
+    for (i, f) in forms.iter().enumerate() {
+        if !f.is_empty() {
+            targets.push((dense(f), i));
+        } else {
+            outw[i] = Some(0); // unused; forms here are never empty
+        }
+    }
+    // delta(f): depth-1 relaxation; also returns the best (w, c)
+    let delta = |v: &[i64], base: &Vec<(Vec<i64>, u32)>| -> (u32, usize, Coef) {
+        let mut best = (bp_weight(v), usize::MAX, ONE); // units only
+        let mut buf = Vec::with_capacity(v.len());
+        for (bi, (bv, _)) in base.iter().enumerate().skip(v.len()) {
+            for &e in &BPRAT {
+                for neg in [false, true] {
+                    if !scaled(e, neg, bv, &mut buf) {
+                        continue;
+                    }
+                    let wt = v
+                        .iter()
+                        .zip(buf.iter())
+                        .filter(|(a, b)| **a != **b)
+                        .count() as u32;
+                    if wt < best.0 {
+                        best = (wt, bi, Coef { neg, exp: e });
+                    }
+                }
+            }
+        }
+        best
+    };
+    let mut guard = 0;
+    let mut buf = Vec::with_capacity(nv);
+    loop {
+        let todo: Vec<usize> = (0..targets.len())
+            .filter(|&t| outw[targets[t].1].is_none())
+            .collect();
+        if todo.is_empty() {
+            break;
+        }
+        guard += 1;
+        if guard > 900 {
+            return None;
+        }
+        // distance-0 completions
+        let mut progressed = false;
+        for &t in &todo {
+            let (v, i) = (&targets[t].0, targets[t].1);
+            if let Some((bi, c)) = find(v, &base, &bh) {
+                let src = base[bi].1;
+                if c == ONE {
+                    outw[i] = Some(src);
+                } else {
+                    ops.push(TOp::Sca { w: next, a: src, c });
+                    outw[i] = Some(next);
+                    next += 1;
+                }
+                progressed = true;
+            }
+        }
+        if progressed {
+            continue;
+        }
+        // distance-1 completions: f = c1 b1 + c2 b2, multiplicity-greedy
+        let mut cands: HashMap<(usize, usize, i8, bool, i8, bool), u32> =
+            HashMap::new();
+        for &t in &todo {
+            let v = &targets[t].0;
+            for (bi, (bv, _)) in base.iter().enumerate() {
+                for &e in &BPRAT {
+                    for neg in [false, true] {
+                        if !scaled(e, neg, bv, &mut buf) {
+                            continue;
+                        }
+                        let r: Vec<i64> =
+                            v.iter().zip(buf.iter()).map(|(a, b)| a - b).collect();
+                        if r.iter().all(|&x| x == 0) {
+                            continue;
+                        }
+                        if let Some((bj, c2)) = find(&r, &base, &bh) {
+                            if bj != bi {
+                                *cands
+                                    .entry((bi, bj, e, neg, c2.exp, c2.neg))
+                                    .or_insert(0) += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !cands.is_empty() {
+            let best = *cands.values().max().unwrap();
+            let top: Vec<_> = cands
+                .iter()
+                .filter(|&(_, &c)| c == best)
+                .map(|(k, _)| *k)
+                .collect();
+            let (bi, bj, e, neg, e2, neg2) = top[rng.below(top.len())];
+            let mut w = Vec::with_capacity(nv);
+            scaled(e, neg, &base[bi].0.clone(), &mut buf);
+            let b2 = base[bj].0.clone();
+            for k in 0..nv {
+                w.push(buf[k] + bp_apply(e2, neg2, b2[k]).unwrap());
+            }
+            ops.push(TOp::Bin {
+                w: next,
+                a: base[bi].1,
+                ca: Coef { neg, exp: e },
+                b: base[bj].1,
+                cb: Coef { neg: neg2, exp: e2 },
+            });
+            push_base(w, next, &mut base, &mut bh);
+            next += 1;
+            continue;
+        }
+        // helper round: sample pairs, score by total delta drop
+        let deltas: Vec<(u32, usize, Coef)> = todo
+            .iter()
+            .map(|&t| delta(&targets[t].0, &base))
+            .collect();
+        let mut bestw: Option<(Vec<i64>, usize, usize, Coef, Coef)> = None;
+        let mut bestgain = 0i64;
+        for _ in 0..128 {
+            let bi = rng.below(base.len());
+            let bj = rng.below(base.len());
+            if bi == bj {
+                continue;
+            }
+            let e1 = if rng.next() & 3 == 0 {
+                BPRAT[rng.below(BPRAT.len())]
+            } else {
+                0
+            };
+            let n1 = rng.next() & 1 == 0;
+            let e2 = BPRAT[rng.below(BPRAT.len())];
+            let n2 = rng.next() & 1 == 0;
+            if !scaled(e1, n1, &base[bi].0, &mut buf) {
+                continue;
+            }
+            let mut w = buf.clone();
+            if !scaled(e2, n2, &base[bj].0, &mut buf) {
+                continue;
+            }
+            for k in 0..nv {
+                w[k] += buf[k];
+            }
+            if w.iter().all(|&x| x == 0) {
+                continue;
+            }
+            // gain: sum over targets of delta-drop when w joins the base
+            let mut gain = 0i64;
+            for (di, &t) in deltas.iter().zip(todo.iter()) {
+                let v = &targets[t].0;
+                let mut bnew = di.0;
+                for &e in &BPRAT {
+                    for neg in [false, true] {
+                        if !scaled(e, neg, &w, &mut buf) {
+                            continue;
+                        }
+                        let wt = v
+                            .iter()
+                            .zip(buf.iter())
+                            .filter(|(a, b)| **a != **b)
+                            .count() as u32;
+                        bnew = bnew.min(wt);
+                    }
+                }
+                gain += di.0 as i64 - bnew as i64;
+            }
+            if gain > bestgain {
+                bestgain = gain;
+                bestw = Some((
+                    w,
+                    bi,
+                    bj,
+                    Coef { neg: n1, exp: e1 },
+                    Coef { neg: n2, exp: e2 },
+                ));
+            }
+        }
+        if let Some((w, bi, bj, c1, c2)) = bestw {
+            ops.push(TOp::Bin { w: next, a: base[bi].1, ca: c1, b: base[bj].1, cb: c2 });
+            push_base(w, next, &mut base, &mut bh);
+            next += 1;
+            continue;
+        }
+        // deterministic completion of the cheapest target: subtract its
+        // best (w, c), then chain the residual's units
+        let (ti, _) = todo
+            .iter()
+            .zip(deltas.iter())
+            .min_by_key(|(_, d)| d.0)
+            .map(|(&t, d)| (t, d.clone()))
+            .unwrap();
+        let (v, i) = (targets[ti].0.clone(), targets[ti].1);
+        let (_, wbi, wc) = delta(&v, &base);
+        let mut acc: Option<u32> = None;
+        let mut rem = v.clone();
+        if wbi != usize::MAX {
+            scaled(wc.exp, wc.neg, &base[wbi].0, &mut buf);
+            for k in 0..nv {
+                rem[k] -= buf[k];
+            }
+            acc = Some(base[wbi].1);
+            // acc holds wc * base[wbi]; fold the coefficient into the
+            // first Bin below (or a Sca if the residual is empty)
+        }
+        let mut acc_coef = if wbi != usize::MAX { wc } else { ONE };
+        for k in 0..nv {
+            if rem[k] == 0 {
+                continue;
+            }
+            // rem[k] = m * 2^20, m an arbitrary dyadic: decompose into
+            // binary bits, one +-2^e term per set bit
+            let neg = rem[k] < 0;
+            let mut a = rem[k].unsigned_abs();
+            while a != 0 {
+                let p = a.trailing_zeros();
+                a &= a - 1;
+                let (cn, ce) = (neg, p as i8 - 20);
+                match acc {
+                    None => {
+                        acc = Some(k as u32);
+                        acc_coef = Coef { neg: cn, exp: ce };
+                    }
+                    Some(aw) => {
+                        ops.push(TOp::Bin {
+                            w: next,
+                            a: aw,
+                            ca: acc_coef,
+                            b: k as u32,
+                            cb: Coef { neg: cn, exp: ce },
+                        });
+                        acc = Some(next);
+                        acc_coef = ONE;
+                        next += 1;
+                    }
+                }
+            }
+        }
+        let aw = acc.unwrap();
+        if acc_coef != ONE {
+            ops.push(TOp::Sca { w: next, a: aw, c: acc_coef });
+            outw[i] = Some(next);
+            next += 1;
+        } else {
+            outw[i] = Some(aw);
+        }
+        // the completed target joins the base for later reuse
+        push_base(v, outw[i].unwrap(), &mut base, &mut bh);
+    }
+    let outw: Vec<u32> = (0..forms.len())
+        .map(|i| outw[i].expect("unassigned form"))
+        .collect();
+    Some((ops, outw))
+}
+
 /// mechanical Tellegen transposition of a traced linear program.
 /// `ops` computes wires `outs` from wires `ins`; the result computes
 /// the adjoint map (new inputs indexed as 0..outs.len()) and returns
@@ -1099,6 +1491,9 @@ fn best_component(
             let (aops, aout) = adjoint(&tops, &ins, &toutw);
             Some((aops, aout))
         };
+        // (a Boyar–Peralta-style candidate was evaluated here and
+        // removed: see bp_traced / --bp-bench — it is dominated by
+        // pair-greedy + kernel on these instances)
         for c in [cand, cand2].into_iter().flatten() {
             let cnt = count_ops(&c.0);
             let tot = cnt.0 + cnt.1;
@@ -1344,6 +1739,25 @@ fn main() {
     let instances = build_instances(&dir);
     if args.iter().any(|a| a == "--export-sms") {
         export_sms(&instances, &format!("{dir}/ours_sms"));
+        return;
+    }
+    if args.iter().any(|a| a == "--bp-bench") {
+        let mut rng = Rng(0x5eed);
+        for ins in instances.iter().take(3) {
+            for (nm, comp) in [("s1", &ins.s1), ("s2", &ins.s2), ("out", &ins.out)] {
+                let t0 = std::time::Instant::now();
+                match bp_traced(comp, 16, &mut rng) {
+                    Some((ops, _)) => {
+                        let (a, sh) = count_ops(&ops);
+                        println!("{} {}: BP {}a+{}s = {}  [{:.1}s]",
+                                 ins.name, nm, a, sh, a + sh,
+                                 t0.elapsed().as_secs_f32());
+                    }
+                    None => println!("{} {}: BP FAILED [{:.1}s]",
+                                     ins.name, nm, t0.elapsed().as_secs_f32()),
+                }
+            }
+        }
         return;
     }
     if let Some(pi) = args.iter().position(|a| a == "--emit") {

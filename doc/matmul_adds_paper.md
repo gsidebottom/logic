@@ -372,7 +372,14 @@ open question is **whether 54 exists**:
   input sides ≥ 28, so ≥ 56 total — they cannot even host a 55). A sub-55 scheme, if one exists, requires a rank-23
   class nobody has catalogued — the de Groote classification at rank
   23 is not known to be complete — or a cost model beyond ±1
-  coefficients.
+  coefficients. For the latter we can already close the nearest door:
+  in the adds+shifts model (unit-cost scalings by 2^k, the model of
+  the 4×4 literature), the exact minima of this scheme's three maps
+  are *unchanged* — still 13 + 14 + 28 = 55, and still 56 for Sun's
+  scheme (`matmul/shiftmin.py`, an exact extension of the
+  chain-covering minimizer validated against exhaustive search). A
+  sub-55 via richer coefficients therefore requires a genuinely dyadic
+  *scheme*, not a cheaper program for the known ones.
 - **Independent certification.** The GF(2) floors rest on our
   minimizers (selftested against exhaustive search, quotient validated
   against the full orbit); DRAT-certified UNSAT instances of the same

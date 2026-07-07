@@ -465,7 +465,15 @@ question is \textbf{whether 54 exists}:
   cannot even host a 55). A sub-55 scheme, if one exists, requires a
   rank-23 class nobody has catalogued --- the de Groote classification
   at rank 23 is not known to be complete --- or a cost model beyond
-  $\pm1$ coefficients.
+  $\pm1$ coefficients. For the latter we can already close the
+  nearest door: in the adds+shifts model (unit-cost scalings by $2^k$,
+  the model of the $4\times4$ literature), the exact minima of this
+  scheme's three maps are \emph{unchanged} --- still $13 + 14 + 28 =
+  55$, and still 56 for Sun's scheme (\texttt{matmul/shiftmin.py}, an
+  exact extension of the chain-covering minimizer validated against
+  exhaustive search). A sub-55 via richer coefficients therefore
+  requires a genuinely dyadic \emph{scheme}, not a cheaper program
+  for the known ones.
 \item \textbf{Independent certification.} The GF(2) floors rest on our
   minimizers (selftested against exhaustive search, quotient validated
   against the full orbit); DRAT-certified UNSAT instances of the same

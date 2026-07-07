@@ -1,6 +1,6 @@
 # 53 New Integer Schemes for 3×3 Matrix Multiplication with 23 Products
 
-*Greg Sidebottom · Claude Fable 5*
+*Greg Sidebottom*
 
 *Reproducible report — logic repo
 ([github.com/gsidebottom/logic](https://github.com/gsidebottom/logic)),
@@ -388,6 +388,17 @@ exact checks. All 53 are pairwise inequivalent.)*
   arithmetic + our exact checker with published inputs.
 - 51/53 schemes have four rank-(2,2,2) summands (like most HKS finds);
   none matches Laderman's four-quadruple core type.
+
+## Acknowledgments
+
+This work was carried out in an extended interactive collaboration
+with Claude (Anthropic; the Fable 5 and Opus 4.8 models), which
+implemented the repository's search tooling, exact minimizers, the
+Lean formalization, and much of this text under the author's
+direction and review. Every computational claim is mechanically
+checkable by the commands in the reproduction section; the results
+rest on those independent verifications rather than on trust in
+either the author or the tools.
 
 ## 8. Pointers
 

@@ -1,6 +1,6 @@
 # Shortest XOR Straight-Line Programs for 3×3 Matrix Multiplication: Benchmark Description
 
-*Greg Sidebottom · Claude Fable 5*
+*Greg Sidebottom*
 
 *Benchmark description in the style of the SAT Competition proceedings.
 Generator and all inputs: github.com/gsidebottom/logic
@@ -137,6 +137,17 @@ Generator, scheme inputs, verification tooling, and the research
 notes are public at **github.com/gsidebottom/logic**. The submitted
 instances may be used freely under the competition's standard
 terms.
+
+## Acknowledgments
+
+This work was carried out in an extended interactive collaboration
+with Claude (Anthropic; the Fable 5 and Opus 4.8 models), which
+implemented the repository's search tooling, exact minimizers, the
+Lean formalization, and much of this text under the author's
+direction and review. Every computational claim is mechanically
+checkable by the commands in the reproduction section; the results
+rest on those independent verifications rather than on trust in
+either the author or the tools.
 
 ## References
 

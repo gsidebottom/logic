@@ -1,6 +1,6 @@
 # A 55-Addition Rank-23 Scheme for 3×3 Matrix Multiplication via Exact Two-Sided Minimization
 
-*Greg Sidebottom · Claude Fable 5*
+*Greg Sidebottom*
 
 *Research note — logic repo
 ([github.com/gsidebottom/logic](https://github.com/gsidebottom/logic)),
@@ -296,6 +296,15 @@ against the HKS database; "published" = the count in the source paper):
 
 ## 7. Reproduction
 
+Prerequisites: `python3` (3.11+, no packages needed), `kissat` (for
+sign-model enumeration; e.g. `brew install kissat`), a Rust toolchain
+(`cargo`) for the runnable scheme, and `elan` for the Lean proof. The
+database-wide steps additionally need the public scheme archive —
+rebuild it from the primary source with
+`python3 dbcheck.py fetch && python3 dbcheck.py convert`
+(downloads schemes.tgz, ~43 MB, from the Linz algebra server and
+writes `dbcache/all_schemes.txt` behind a verify-everything gate).
+
 ```bash
 # the record scheme, runnable + fuzzed vs the naive 27-mult loop
 cargo test --release --lib mm55::   # 3 pass: fuzz(int), fuzz(2x2 blocks), 23*/55±
@@ -381,6 +390,17 @@ open question is **whether 54 exists**:
   challenges, github.com/marijnheule/matrix-challenges) remains open
   and is where any result would change complexity theory rather than
   constants.
+
+## Acknowledgments
+
+This work was carried out in an extended interactive collaboration
+with Claude (Anthropic; the Fable 5 and Opus 4.8 models), which
+implemented the repository's search tooling, exact minimizers, the
+Lean formalization, and much of this text under the author's
+direction and review. Every computational claim is mechanically
+checkable by the commands in the reproduction section; the results
+rest on those independent verifications rather than on trust in
+either the author or the tools.
 
 ## References
 

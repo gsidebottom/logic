@@ -24,6 +24,7 @@ sub-55 scheme would require a rank-23 class nobody has catalogued.
 | Runnable Rust version + fuzz vs naive | [src/mm55.rs](src/mm55.rs) | `cargo test --release --lib mm55::` |
 | Machine-checked proof (Lean 4 + Mathlib) | [matmul/mm55proof/](matmul/mm55proof) | `cd matmul/mm55proof && lake exe cache get && lake build` |
 | Paper (method + reproduction) | [doc/matmul_adds_paper.pdf](doc/matmul_adds_paper.pdf) | §7 lists every command |
+| Archived artifacts (citable) | [DOI 10.5281/zenodo.21240904](https://doi.org/10.5281/zenodo.21240904) | program + verifier + proof + snapshot |
 
 The method: both halves of a scheme's additive cost are minimized
 **exactly** — the input sides as addition-chain covering

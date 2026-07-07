@@ -9,7 +9,8 @@ result and how to reproduce it; the earlier 56-era exploration
 (orbit-CSE search, database-wide side-floor census, SAT lower bounds)
 lives in the git history. Companion to
 `doc/matmul_53_3x3_schemes.md`; every claim has a mechanical check
-(§7).*
+(§7). Artifacts (program, verifier, Lean proof, repository snapshot)
+archived at DOI 10.5281/zenodo.21240904.*
 
 ---
 
@@ -404,6 +405,9 @@ either the author or the tools.
 
 ## References
 
+- G. Sidebottom. *A 55-Addition Rank-23 Scheme for 3×3 Matrix
+  Multiplication — artifacts, verifier, and machine-checked proof.*
+  Zenodo (2026). DOI 10.5281/zenodo.21240904.
 - Y. Sun. *An Exact 56-Addition, Rank-23 Scheme for General 3×3 Matrix
   Multiplication.* arXiv:2604.27645 (2026). Verifier and chain data
   cached at `matmul/perminov_cache/sun_verify.py`.

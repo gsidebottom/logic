@@ -1,6 +1,7 @@
 [project]
 name = "logic-tools"
 version = "0.1.0"
+license = "Apache-2.0"
 description = "Python tooling for the matrix-method SAT solver in this repo (curation, benchmarking, plotting)."
 readme = "tools/gbd/README.md"
 # Cap below 3.14: uvloop (transitive via litellm[proxy] → uvicorn[standard])

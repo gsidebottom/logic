@@ -64,9 +64,20 @@ impl Vec16 {
         }
         self
     }
-    /// primitive integer part + (sign, scalar exponent) so that
-    /// self = sign * 2^exp * primitive, primitive leading coeff > 0.
-    fn canon(&self) -> (Vec16, bool, i32) {
+    /// FULL-content canonical form: self = sign * 2^exp * g * prim,
+    /// with g odd (> 0), prim primitive (content 1), leading coeff > 0.
+    /// v1 extracted only powers of two, which made proportionality by
+    /// odd factors (3, 5, ...) invisible to flips and reductions.
+    fn canon(&self) -> (Vec16, bool, i32, i64) {
+        fn gcd(a: i64, b: i64) -> i64 {
+            let (mut a, mut b) = (a.abs(), b.abs());
+            while b != 0 {
+                let t = a % b;
+                a = b;
+                b = t;
+            }
+            a
+        }
         let mut v = self.clone().normalize();
         let mut neg = false;
         for &x in v.nums.iter() {
@@ -80,9 +91,20 @@ impl Vec16 {
                 *x = -*x;
             }
         }
+        let mut g = 0i64;
+        for &x in v.nums.iter() {
+            g = gcd(g, x);
+        }
+        if g > 1 {
+            for x in v.nums.iter_mut() {
+                *x /= g;
+            }
+        } else {
+            g = 1;
+        }
         let e = v.exp;
         v.exp = 0;
-        (v, neg, e)
+        (v, neg, e, g)
     }
     /// self += lam * other, lam = sign * 2^k
     fn add_scaled(&self, other: &Vec16, neg: bool, k: i32) -> Option<Vec16> {
@@ -117,16 +139,20 @@ impl Summand {
         if a.is_zero() || b.is_zero() || c.is_zero() {
             return None;
         }
-        let (ca, na, ea) = a.canon();
-        let (cb, nb, eb) = b.canon();
+        let (ca, na, ea, ga) = a.canon();
+        let (cb, nb, eb, gb) = b.canon();
         let mut c = c.clone().normalize();
         c.exp += ea + eb;
+        let g = ga.checked_mul(gb)?;
+        for x in c.nums.iter_mut() {
+            *x = x.checked_mul(g)?;
+        }
         if na != nb {
             for x in c.nums.iter_mut() {
                 *x = -*x;
             }
         }
-        Some(Summand { a: ca, b: cb, c })
+        Some(Summand { a: ca, b: cb, c: c.normalize() })
     }
 }
 
@@ -323,55 +349,73 @@ fn try_reduce(scheme: &mut Vec<Summand>, cap: i64) -> bool {
                 })
             } else if si.a == sj.a {
                 // pattern ac: c_i = s_i chat, c_j = s_j chat ->
-                // merge b' = s_i b_i + s_j b_j (signs/exps from canon)
-                let (ci, ni, ei) = si.c.canon();
-                let (cj, nj, ej) = sj.c.canon();
+                // merge b' = s_i b_i + s_j b_j (sign/exp/odd content
+                // from the full canon)
+                let (ci, ni, ei, gi) = si.c.canon();
+                let (cj, nj, ej, gj) = sj.c.canon();
                 if ci == cj {
-                    let mut bi = si.b.clone();
-                    bi.exp += ei;
-                    let mut bj = sj.b.clone();
-                    bj.exp += ej;
-                    // signs: b' = (-1)^ni bi + (-1)^nj bj; fold ni out
-                    bi.add_scaled(&bj, ni != nj, 0).and_then(|mut b| {
-                        if ni {
-                            for x in b.nums.iter_mut() {
-                                *x = -*x;
+                    let mk = |v: &Vec16, e: i32, g: i64| -> Option<Vec16> {
+                        let mut w = v.clone();
+                        w.exp += e;
+                        for x in w.nums.iter_mut() {
+                            *x = x.checked_mul(g)?;
+                        }
+                        Some(w.normalize())
+                    };
+                    mk(&si.b, ei, gi)
+                        .zip(mk(&sj.b, ej, gj))
+                        .and_then(|(bi, bj)| {
+                            bi.add_scaled(&bj, ni != nj, 0)
+                        })
+                        .and_then(|mut b| {
+                            if ni {
+                                for x in b.nums.iter_mut() {
+                                    *x = -*x;
+                                }
                             }
-                        }
-                        if b.is_zero() {
-                            None
-                        } else {
-                            let mut cc = ci.clone();
-                            cc.exp = 0;
-                            Summand::gauge(sj.a.clone(), b, cc)
-                        }
-                    })
+                            if b.is_zero() {
+                                None
+                            } else {
+                                let mut cc = ci.clone();
+                                cc.exp = 0;
+                                Summand::gauge(sj.a.clone(), b, cc)
+                            }
+                        })
                 } else {
                     None
                 }
             } else if si.b == sj.b {
                 // pattern bc: symmetric, merge a'
-                let (ci, ni, ei) = si.c.canon();
-                let (cj, nj, ej) = sj.c.canon();
+                let (ci, ni, ei, gi) = si.c.canon();
+                let (cj, nj, ej, gj) = sj.c.canon();
                 if ci == cj {
-                    let mut ai = si.a.clone();
-                    ai.exp += ei;
-                    let mut aj = sj.a.clone();
-                    aj.exp += ej;
-                    ai.add_scaled(&aj, ni != nj, 0).and_then(|mut a| {
-                        if ni {
-                            for x in a.nums.iter_mut() {
-                                *x = -*x;
+                    let mk = |v: &Vec16, e: i32, g: i64| -> Option<Vec16> {
+                        let mut w = v.clone();
+                        w.exp += e;
+                        for x in w.nums.iter_mut() {
+                            *x = x.checked_mul(g)?;
+                        }
+                        Some(w.normalize())
+                    };
+                    mk(&si.a, ei, gi)
+                        .zip(mk(&sj.a, ej, gj))
+                        .and_then(|(ai, aj)| {
+                            ai.add_scaled(&aj, ni != nj, 0)
+                        })
+                        .and_then(|mut a| {
+                            if ni {
+                                for x in a.nums.iter_mut() {
+                                    *x = -*x;
+                                }
                             }
-                        }
-                        if a.is_zero() {
-                            None
-                        } else {
-                            let mut cc = ci.clone();
-                            cc.exp = 0;
-                            Summand::gauge(a, sj.b.clone(), cc)
-                        }
-                    })
+                            if a.is_zero() {
+                                None
+                            } else {
+                                let mut cc = ci.clone();
+                                cc.exp = 0;
+                                Summand::gauge(a, sj.b.clone(), cc)
+                            }
+                        })
                 } else {
                     None
                 }
@@ -579,6 +623,114 @@ fn load_seed(dir: &str) -> Vec<Summand> {
         .collect()
 }
 
+/// v2: deterministic 2-ply coincidence pursuit at the seed.
+/// For every (i, k, slot): split i against k, then look for a third
+/// summand m reachable by TWO solved flips on the shared pair — one
+/// aligning the split part with m in each free slot — and reduce.
+/// Every hit is a constructively-derived rank-48 scheme (or lower!);
+/// zero hits = a rigorous 1-split/2-flip rigidity certificate.
+fn pursue(seed: &[Summand], cap: i64, outdir: &str) {
+    use std::collections::HashSet;
+    let seed_hash = scheme_hash(seed);
+    let mut new48: HashSet<u64> = HashSet::new();
+    let mut hits = 0u64;
+    let mut alarms = 0u64;
+    let mut saved = 0u32;
+    let (mut n_split, mut n_c1, mut n_f1, mut n_c2) = (0u64, 0u64, 0u64, 0u64);
+    for slot in 0..3usize {
+        let others: [usize; 2] = match slot {
+            0 => [1, 2],
+            1 => [0, 2],
+            _ => [0, 1],
+        };
+        for i in 0..48 {
+            for k in 0..48 {
+                if i == k {
+                    continue;
+                }
+                // split i against k (mu = +1)
+                let mut base = seed.to_vec();
+                if !try_split(&mut base, i, k, slot, (false, 0), cap) {
+                    continue;
+                }
+                n_split += 1;
+                // ply 1 candidates on the shared pair (i, k)
+                let cands1 = coincidence_lams(&base, i, k, slot);
+                n_c1 += cands1.len() as u64;
+                for &(t1, lam1, m) in &cands1 {
+                    let mut s1 = base.clone();
+                    let ok = if t1 == others[0] {
+                        try_flip(&mut s1, i, k, slot, lam1, cap)
+                    } else {
+                        try_flip(&mut s1, k, i, slot, (!lam1.0, lam1.1), cap)
+                    };
+                    if !ok {
+                        continue;
+                    }
+                    n_f1 += 1;
+                    // ply 2: align the OTHER slot with the same m
+                    let t2 = if t1 == others[0] { others[1] } else { others[0] };
+                    let cands2 = coincidence_lams(&s1, i, k, slot);
+                    n_c2 += cands2.len() as u64;
+                    for &(t2c, lam2, m2) in &cands2 {
+                        if t2c != t2 || m2 != m {
+                            continue;
+                        }
+                        let mut s2 = s1.clone();
+                        let ok2 = if t2 == others[0] {
+                            try_flip(&mut s2, i, k, slot, lam2, cap)
+                        } else {
+                            try_flip(&mut s2, k, i, slot, (!lam2.0, lam2.1), cap)
+                        };
+                        if !ok2 {
+                            continue;
+                        }
+                        hits += 1;
+                        while try_reduce(&mut s2, cap * 4) {}
+                        let rank = s2.len();
+                        if rank < 48 {
+                            if verify(&s2) {
+                                alarms += 1;
+                                let p = format!("{outdir}/RANK{rank}_pursue.txt");
+                                dump(&s2, &p);
+                                println!("*** RANK {rank} VERIFIED (pursue) -> {p} ***");
+                            }
+                        } else if rank == 48 {
+                            let h = scheme_hash(&s2);
+                            if h != seed_hash && verify(&s2) && new48.insert(h) {
+                                if saved < 50 {
+                                    let p = format!("{outdir}/new48_{saved}.txt");
+                                    dump(&s2, &p);
+                                    saved += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    println!(
+        "pursue funnel: {} splits, {} p1cands, {} p1flips, {} p2cands",
+        n_split, n_c1, n_f1, n_c2
+    );
+    println!(
+        "pursue: {} double-coplanar executions, {} NEW distinct rank-48          schemes ({} saved), {} sub-48 alarms",
+        hits, new48.len(), saved, alarms
+    );
+}
+
+fn dump(s: &[Summand], path: &str) {
+    let mut txt = String::new();
+    for t in s {
+        txt += &format!("{:?} | {:?} | {:?}\n",
+                        (t.a.nums, t.a.exp),
+                        (t.b.nums, t.b.exp),
+                        (t.c.nums, t.c.exp));
+    }
+    std::fs::write(path, txt).ok();
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let get = |flag: &str, default: i64| -> i64 {
@@ -612,6 +764,10 @@ fn main() {
     assert_eq!(seed.len(), 48);
     assert!(verify(&seed), "seed must verify");
     println!("seed loaded + exactly verified (48 summands)");
+    if args.iter().any(|a| a == "--pursue") {
+        pursue(&seed, cap, &outdir);
+        return;
+    }
 
     let best_rank = AtomicU32::new(48);
     let n_split = AtomicU64::new(0);

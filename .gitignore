@@ -69,3 +69,8 @@ matmul/found55/cfloor/
 matmul/dps48/*.log
 zenodo-upload/
 matmul/dps48/*.slp
+# Kaporin's artifacts (his own public share; provenance in NOTES.md —
+# we archive locally but do not redistribute)
+matmul/dps48/kaporin/*.for
+matmul/dps48/kaporin/*.pdf
+matmul/dps48/kaporin/*.json

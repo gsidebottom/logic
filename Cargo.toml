@@ -26,6 +26,10 @@ name = "gmi_mcgs"
 path = "src/bin/gmi_mcgs.rs"
 
 [[bin]]
+name = "flip48"
+path = "src/bin/flip48.rs"
+
+[[bin]]
 name = "cse48"
 path = "src/bin/cse48.rs"
 

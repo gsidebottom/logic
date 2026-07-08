@@ -74,3 +74,4 @@ matmul/dps48/*.slp
 matmul/dps48/kaporin/*.for
 matmul/dps48/kaporin/*.pdf
 matmul/dps48/kaporin/*.json
+matmul/found48q/

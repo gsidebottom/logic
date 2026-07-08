@@ -873,6 +873,21 @@ fn main() {
     assert_eq!(seed.len(), 48);
     assert!(verify(&seed), "seed must verify");
     println!("seed loaded + exactly verified (48 summands)");
+    if args.iter().any(|a| a == "--emit-lean") {
+        // dump the gauged seed as a Lean literal (List (V16 x V16 x V16))
+        let v = |x: &Vec16| -> String {
+            format!("⟨#[{}], {}⟩",
+                    x.nums.map(|n| n.to_string()).join(", "), x.exp)
+        };
+        let mut txt = String::from("def seed : List Summand := [\n");
+        for (idx, t) in seed.iter().enumerate() {
+            txt += &format!("  ⟨{}, {}, {}⟩{}\n", v(&t.a), v(&t.b), v(&t.c),
+                            if idx + 1 < seed.len() { "," } else { "" });
+        }
+        txt += "]\n";
+        println!("{txt}");
+        return;
+    }
     if args.iter().any(|a| a == "--pursue") {
         pursue(&seed, cap, &outdir);
         return;

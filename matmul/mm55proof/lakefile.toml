@@ -16,3 +16,7 @@ rev = "v4.32.0-rc1"
 
 [[lean_lib]]
 name = "Mm55proof"
+
+[[lean_exe]]
+name = "rigid48probe"
+root = "Probe48"

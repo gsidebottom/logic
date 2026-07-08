@@ -720,6 +720,115 @@ fn pursue(seed: &[Summand], cap: i64, outdir: &str) {
     );
 }
 
+/// v3: depth-D deterministic pursuit over ALL shared pairs of every
+/// post-split state (includes the split-partner pair, whose transfers
+/// open the s-slot coplanarity family).  Reduction checked at every
+/// node.  Scope: shared pairs are detected by post-gauge equality —
+/// complete for a/b slots (canon ⇒ proportional ⟺ equal), exact-equal
+/// only for the scalar-carrying c slot.
+fn pursue3(seed: &[Summand], cap: i64, depth_max: u32, outdir: &str) {
+    use std::collections::HashSet;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    let seed_hash = scheme_hash(seed);
+    let n_nodes = AtomicU64::new(0);
+    let n_new = AtomicU64::new(0);
+    let n_alarm = AtomicU64::new(0);
+    let roots: Vec<(usize, usize, usize)> = (0..3)
+        .flat_map(|s| {
+            (0..48).flat_map(move |i| {
+                (0..48).filter(move |&k| k != i).map(move |k| (s, i, k))
+            })
+        })
+        .collect();
+    roots.par_iter().for_each(|&(slot, i, k)| {
+        let mut base = seed.to_vec();
+        if !try_split(&mut base, i, k, slot, (false, 0), cap) {
+            return;
+        }
+        let mut seen: HashSet<u64> = HashSet::new();
+        seen.insert(scheme_hash(&base));
+        // stack DFS: (state, depth)
+        let mut stack: Vec<(Vec<Summand>, u32)> = vec![(base, 0)];
+        let mut budget = 60_000u64; // nodes per root
+        while let Some((state, depth)) = stack.pop() {
+            if budget == 0 {
+                break;
+            }
+            budget -= 1;
+            n_nodes.fetch_add(1, Ordering::Relaxed);
+            // reduction probe
+            let mut r = state.clone();
+            while try_reduce(&mut r, cap * 4) {}
+            if r.len() < 48 {
+                if verify(&r) {
+                    let a = n_alarm.fetch_add(1, Ordering::Relaxed);
+                    let p = format!("{outdir}/RANK{}_p3_{}.txt", r.len(), a);
+                    dump(&r, &p);
+                    println!("*** RANK {} VERIFIED (pursue3) -> {} ***",
+                             r.len(), p);
+                }
+            } else if r.len() == 48 {
+                let h = scheme_hash(&r);
+                if h != seed_hash && verify(&r) {
+                    let a = n_new.fetch_add(1, Ordering::Relaxed);
+                    if a < 40 {
+                        let p = format!("{outdir}/new48_p3_{}.txt", a);
+                        dump(&r, &p);
+                        println!("NEW rank-48 scheme (pursue3) -> {p}");
+                    }
+                }
+            }
+            if depth >= depth_max {
+                continue;
+            }
+            // all shared pairs, all slots
+            let n = state.len();
+            for ss in 0..3usize {
+                for x in 0..n {
+                    for y in x + 1..n {
+                        if fac(&state[x], ss) != fac(&state[y], ss) {
+                            continue;
+                        }
+                        let others: [usize; 2] = match ss {
+                            0 => [1, 2],
+                            1 => [0, 2],
+                            _ => [0, 1],
+                        };
+                        for &(ord_x, ord_y) in &[(x, y), (y, x)] {
+                            let cands =
+                                coincidence_lams(&state, ord_x, ord_y, ss);
+                            for &(t, lam, _m) in &cands {
+                                let mut s2 = state.clone();
+                                let ok = if t == others[0] {
+                                    try_flip(&mut s2, ord_x, ord_y, ss,
+                                             lam, cap)
+                                } else {
+                                    try_flip(&mut s2, ord_y, ord_x, ss,
+                                             (!lam.0, lam.1), cap)
+                                };
+                                if !ok {
+                                    continue;
+                                }
+                                let h = scheme_hash(&s2);
+                                if seen.insert(h) {
+                                    stack.push((s2, depth + 1));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+    println!(
+        "pursue3(depth {}): {} nodes explored, {} NEW rank-48, {} sub-48 alarms",
+        depth_max,
+        n_nodes.load(Ordering::Relaxed),
+        n_new.load(Ordering::Relaxed),
+        n_alarm.load(Ordering::Relaxed)
+    );
+}
+
 fn dump(s: &[Summand], path: &str) {
     let mut txt = String::new();
     for t in s {
@@ -766,6 +875,14 @@ fn main() {
     println!("seed loaded + exactly verified (48 summands)");
     if args.iter().any(|a| a == "--pursue") {
         pursue(&seed, cap, &outdir);
+        return;
+    }
+    if let Some(pi) = args.iter().position(|a| a == "--pursue3") {
+        let depth: u32 = args
+            .get(pi + 1)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(2);
+        pursue3(&seed, cap, depth, &outdir);
         return;
     }
 

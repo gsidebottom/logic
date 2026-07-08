@@ -47,6 +47,11 @@ the 55-operation program computes the matrix product — sorry-free,
 - **53 new rank-23 3×3 schemes** inequivalent to the entire published
   database ([doc/matmul_53_3x3_schemes.pdf](doc/matmul_53_3x3_schemes.pdf)),
   found by native-ANF stochastic local search on the Brent equations.
+- **A machine-checked rigidity theorem for the rank-48 4×4 scheme**:
+  the only characteristic-0 rank-48 scheme is provably rigid under
+  rational flip moves — no rank-47 is reachable — certified in Lean 4
+  ([doc/matmul_rigid48_paper.pdf](doc/matmul_rigid48_paper.pdf),
+  `Rigid48.rigid` in [matmul/mm55proof/](matmul/mm55proof)).
 - **SAT benchmarks** with known ground truth from the additive-
   complexity work ([doc/matmul_cxlb_satcomp.pdf](doc/matmul_cxlb_satcomp.pdf)).
 - A native-ANF SLS solver for the Heule matrix-multiplication

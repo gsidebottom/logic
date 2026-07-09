@@ -25,6 +25,9 @@
 //!               [--cap 64] [--out found48q]
 //!        flip48 --nmrand K [--n 2000]   random-walk nearmiss baseline
 //!               (control for the --pursue6 gradient; depths 1..=K)
+//!        flip48 --pursue5 ... [--resume]  logs completed parent indices
+//!               to OUT/fringe_done.txt; --resume skips exactly those
+//!               (sound under work-stealing: done-set is not a prefix)
 
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -1283,7 +1286,7 @@ fn nmrand(seed: &[Summand], cap: i64, maxk: usize, n: usize) {
 /// continuations.  Ticker + global state budget + nearmiss-depth
 /// tracking (the empirical gradient: does depth-2 exceed 2?).
 fn pursue5(seed: &[Summand], cap: i64, k_sample: usize, budget: u64,
-           fringe_only: bool, outdir: &str) {
+           fringe_only: bool, resume: bool, outdir: &str) {
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
     let seed_hash = scheme_hash(seed);
     // collect the 1-split component (deduped states)
@@ -1359,13 +1362,41 @@ fn pursue5(seed: &[Summand], cap: i64, k_sample: usize, budget: u64,
         if k_sample == 0 { "ALL".to_string() } else { k_sample.to_string() },
         budget
     );
+    // sound resume: parents complete in work-stealing (scattered) order,
+    // so a budget stop leaves a non-prefix done-set.  Log each completed
+    // parent index (stable across runs: enumeration + stable sort are
+    // deterministic); --resume skips exactly the logged ones.
+    let done_path = format!("{outdir}/fringe_done.txt");
+    let mut done_set = std::collections::HashSet::new();
+    if resume {
+        if let Ok(txt) = std::fs::read_to_string(&done_path) {
+            for line in txt.lines() {
+                if let Ok(pi) = line.trim().parse::<usize>() {
+                    done_set.insert(pi);
+                }
+            }
+        }
+        println!("resume: {} parents already logged done", done_set.len());
+    }
+    let done_log = Mutex::new(
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&done_path)
+            .unwrap(),
+    );
     let n_states = AtomicU64::new(0);
     let n_new48 = AtomicU64::new(0);
     let n_sub48 = AtomicU64::new(0);
     let saved = AtomicU64::new(0);
     let done = AtomicUsize::new(0);
     let max_nm2 = AtomicUsize::new(0);
-    let order: Vec<usize> = scored.iter().map(|&(_, i)| i).collect();
+    let order: Vec<usize> = scored
+        .iter()
+        .map(|&(_, i)| i)
+        .filter(|pi| !done_set.contains(pi))
+        .collect();
+    println!("pursue5: {} parents to process this run", order.len());
     order.par_iter().for_each(|&pi| {
         if n_states.load(Ordering::Relaxed) > budget {
             return;
@@ -1408,6 +1439,12 @@ fn pursue5(seed: &[Summand], cap: i64, k_sample: usize, budget: u64,
                     println!("depth-2 nearmiss = {nm} (new max)");
                 }
             }
+        }
+        {
+            use std::io::Write;
+            let mut f = done_log.lock().unwrap();
+            writeln!(f, "{pi}").ok();
+            f.flush().ok();
         }
         let d = done.fetch_add(1, Ordering::Relaxed) + 1;
         if d % 200 == 0 {
@@ -1656,7 +1693,8 @@ fn main() {
             .unwrap_or(200);
         let budget = get("--budget", 200_000_000) as u64;
         let fringe = args.iter().any(|a| a == "--fringe-only");
-        pursue5(&seed, cap, k, budget, fringe, &outdir);
+        let resume = args.iter().any(|a| a == "--resume");
+        pursue5(&seed, cap, k, budget, fringe, resume, &outdir);
         return;
     }
     if let Some(pi) = args.iter().position(|a| a == "--pursue4") {

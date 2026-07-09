@@ -23,6 +23,8 @@
 //!
 //! Usage: flip48 [--dir matmul/dps48] [--seconds N] [--threads N]
 //!               [--cap 64] [--out found48q]
+//!        flip48 --nmrand K [--n 2000]   random-walk nearmiss baseline
+//!               (control for the --pursue6 gradient; depths 1..=K)
 
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -1212,6 +1214,68 @@ fn nearmiss_of(st: &[Summand]) -> usize {
     total
 }
 
+/// Random-walk nearmiss baseline — the control for the chase gradient.
+/// For each depth k in 1..=maxk: N unguided random k-split walks from
+/// the seed (uniform (slot, i, partner), mu = 1, exactly as pursue6
+/// samples splits), then nearmiss_of the raw endpoint (rank 48+k;
+/// chase level L states carry L+1 splits, so level L <-> k = L+1).
+/// Distinguishes "the beam concentrates real structure" from
+/// "nearmiss inflates mechanically with rank".  top1500 = mean of the
+/// 1500 best samples: what one-shot selection (no guidance) achieves.
+fn nmrand(seed: &[Summand], cap: i64, maxk: usize, n: usize) {
+    println!("nmrand control: {n} unguided walks per depth, depths 1..={maxk}");
+    println!("{:>3} {:>5} {:>6} {:>8} {:>5} {:>5} {:>5} {:>5} {:>6} {:>8}",
+             "k", "rank", "level", "mean", "p50", "p90", "p99", "max",
+             "pos%", "top1500");
+    for k in 1..=maxk {
+        let mut nms: Vec<usize> = (0..n)
+            .into_par_iter()
+            .filter_map(|w| {
+                let mut rng = Rng((0xC0FFEE_u64
+                    ^ ((k as u64) << 32)
+                    ^ (w as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)) | 1);
+                let mut st = seed.to_vec();
+                let mut applied = 0usize;
+                for _try in 0..100_000 {
+                    if applied == k {
+                        break;
+                    }
+                    let (ss, i, kk) =
+                        (rng.below(3), rng.below(st.len()), rng.below(st.len()));
+                    if i == kk {
+                        continue;
+                    }
+                    if try_split(&mut st, i, kk, ss, (false, 0), cap) {
+                        applied += 1;
+                    }
+                }
+                if applied < k {
+                    return None;
+                }
+                Some(nearmiss_of(&st))
+            })
+            .collect();
+        nms.sort_unstable();
+        let cnt = nms.len();
+        if cnt == 0 {
+            println!("{k:>3} {:>5} {:>6} (no completed walks)", 48 + k, k - 1);
+            continue;
+        }
+        let mean = nms.iter().sum::<usize>() as f64 / cnt as f64;
+        let q = |p: f64| nms[((cnt - 1) as f64 * p) as usize];
+        let pos = nms.iter().filter(|&&x| x > 0).count() as f64
+            / cnt as f64 * 100.0;
+        let top = 1500.min(cnt);
+        let top_mean = nms[cnt - top..].iter().sum::<usize>() as f64
+            / top as f64;
+        println!(
+            "{k:>3} {:>5} {:>6} {mean:>8.2} {:>5} {:>5} {:>5} {:>5} {pos:>5.1}% {top_mean:>8.2}",
+            48 + k, k as i64 - 1, q(0.5), q(0.9), q(0.99),
+            nms[cnt - 1]
+        );
+    }
+}
+
 /// v5: instrumented, sampled, gradient-guided 2-split pursuit.
 /// Parents = the 1-split component states ordered fringe-first
 /// (nearmiss desc); per parent, sample K random second splits (K = 0
@@ -1570,6 +1634,13 @@ fn main() {
         let path = args.get(pi + 1).cloned()
             .unwrap_or_else(|| "graph48.json".into());
         graph_export(&seed, cap, &path);
+        return;
+    }
+    if let Some(pi) = args.iter().position(|a| a == "--nmrand") {
+        let maxk: usize = args.get(pi + 1).and_then(|v| v.parse().ok())
+            .unwrap_or(8);
+        let n = get("--n", 2000) as usize;
+        nmrand(&seed, cap, maxk, n);
         return;
     }
     if args.iter().any(|a| a == "--pursue6") {

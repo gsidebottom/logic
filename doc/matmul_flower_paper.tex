@@ -168,6 +168,43 @@ steepens under guidance --- the strongest empirical argument yet that
 the rigidity boundary is a property of the \emph{radius}, not of the
 whole landscape.
 
+\medskip
+\noindent\emph{H3, tested against the null.} A climbing nearmiss
+curve has a cheap alternative explanation: a depth-$k$ state has
+$48{+}k$ summands, so the count of possible alignments could inflate
+mechanically with rank, and a beam would then be ``climbing'' a
+staircase that rises under everyone's feet. The control
+(\texttt{--nmrand}): at each depth, 5{,}000 \emph{unguided} random
+split-walks from the seed, nearmiss of each raw endpoint --- same
+split distribution as the beam, no selection, no inheritance. Matched
+at equal rank:
+
+\begin{center}
+\begin{tabular}{ccccccc}
+\toprule
+rank & beam mean & beam max & rnd mean & rnd p99 & rnd max & top-1{,}500\\
+     &           &          &          &         & (5{,}000) & of 5{,}000\\
+\midrule
+50 & 5.1 & 9 & 0.21 & 5 & 9 & 0.7\\
+51 & 14.3 & 29 & 0.51 & 6 & 12 & 1.7\\
+52 & 27.9 & 50 & 0.92 & 7 & 17 & 3.0\\
+53 & \textbf{51.1} & 76 & 1.55 & 10 & \textbf{27} & 4.6\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Rank inflation exists but is tiny (unguided mean reaches only 10.5 by
+rank 61, the campaign's terminal depth --- the beam passed that at
+level 2). At rank 53 the beam's \emph{mean} is $33\times$ the unguided
+mean, $5\times$ the unguided 99th percentile, and nearly twice the
+unguided \emph{maximum over 5{,}000 draws}; one-shot selection without
+guidance (best 1{,}500 of 5{,}000) achieves 4.6, i.e.\ 9\% of the beam
+mean. A typical beam state outscores the best unguided state of equal
+rank --- no one-shot selection from the unguided distribution produces
+that. The only mechanism left is inheritance: high-nearmiss parents
+beget higher-nearmiss children. \textbf{The gradient is heritable
+structure, not a rank artifact.}
+
 \paragraph{H4 --- The copl band is a prior.} Coplanarity is the raw
 material of solvable moves; the 384-state copl-109 band is the natural
 first target for any deeper enumeration, and band membership is
@@ -193,18 +230,26 @@ global state budgets, and inline exact verification of any find):
   gradient-positive parents, every root closed under solved flips with
   reduction continuations. Zero findings here extends the rigidity
   certificate to ``no reduction reachable through the fringe at
-  2-split radius.'' Status at writing: 200/840 parents (24\%),
-  \textbf{1.24 billion states explored, zero reductions found}, and an
+  2-split radius.'' Status at writing: 400/840 parents (48\%),
+  \textbf{2.51 billion states explored, zero reductions found}, and an
   independent confirmation of nearmiss-14 territory.
 \item \textbf{Gradient chase} (\texttt{--pursue6}): best-first beam on
   nearmiss across split depths (beam 1{,}500, 60 sampled splits per
-  frontier state). Level 1 complete: nearmiss max 14, mean 11.1. The
-  chase asks the one question that matters: \textbf{does nearmiss keep
-  climbing until a double-coincidence actually fires, or does it
-  plateau --- and at what height?} A conversion produces a genuinely
-  new rank-48 scheme (fresh material for the operation-count program
-  of the companion papers) or a characteristic-0 rank-47 --- a record.
-  A plateau maps the next rigidity boundary.
+  frontier state, closure cap 150). Through level 4 (rank 53):
+  nearmiss max 76, beam mean 51.1, with the per-level mean
+  \emph{accelerating} ($+9.2$, $+13.6$, $+23.2$) while the unguided
+  baseline crawls ($+0.3$, $+0.4$, $+0.6$) --- and the H3 control
+  certifies the climb is not rank inflation. Yet through 240 million
+  states, \textbf{zero conversions}: 76 one-slot alignments available
+  and not one same-partner second-slot event has ever fired. The
+  chase asks the one question that matters: \textbf{does nearmiss
+  keep climbing until a double-coincidence actually fires, or is
+  there an obstruction --- a radius-independent invariant separating
+  alignment from reduction?} A conversion produces a genuinely new
+  rank-48 scheme (fresh material for the operation-count program of
+  the companion papers) or a characteristic-0 rank-47 --- a record. A
+  plateau --- or a curve that climbs forever without converting ---
+  maps the next rigidity boundary.
 \end{itemize}
 
 \section{Why visualize at all}\label{sec:why}
@@ -231,6 +276,7 @@ cargo build --release --bin flip48
     --budget 4000000000            # fringe-exhaustive campaign
 ./target/release/flip48 --pursue6 --beam 1500 --samples 60 --depth 8 \
     --threads 4                    # gradient chase
+./target/release/flip48 --nmrand 13 --n 5000 --threads 4   # H3 null
 \end{Code}
 
 The interactive Figure~\ref{fig:flower} (hover any fringe state for

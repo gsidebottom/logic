@@ -829,6 +829,643 @@ fn pursue3(seed: &[Summand], cap: i64, depth_max: u32, outdir: &str) {
     );
 }
 
+    // closure of `root` under solved flips + reduction-continuations;
+// returns closure states; records findings.
+fn closure(
+    root: Vec<Summand>,
+    seed_hash: u64,
+    cap: i64,
+    outdir: &str,
+    n_states: &AtomicU64,
+    n_new48: &AtomicU64,
+    n_sub48: &AtomicU64,
+    saved: &AtomicU64,
+) -> Vec<Vec<Summand>> {
+    use std::collections::HashSet;
+    let mut seen: HashSet<u64> = HashSet::new();
+    let mut out: Vec<Vec<Summand>> = Vec::new();
+    let mut stack = vec![root];
+    while let Some(state) = stack.pop() {
+        let h = scheme_hash(&state);
+        if !seen.insert(h) {
+            continue;
+        }
+        n_states.fetch_add(1, Ordering::Relaxed);
+        // reduction probe -> continuation
+        let mut r = state.clone();
+        let mut reduced = false;
+        while try_reduce(&mut r, cap * 4) {
+            reduced = true;
+        }
+        if reduced {
+            if r.len() < 48 {
+                if verify(&r) {
+                    let k = n_sub48.fetch_add(1, Ordering::Relaxed);
+                    let p = format!("{outdir}/RANK{}_p4_{}.txt", r.len(), k);
+                    dump(&r, &p);
+                    println!("*** RANK {} VERIFIED (pursue4) -> {} ***",
+                             r.len(), p);
+                }
+            } else if r.len() == 48 {
+                let rh = scheme_hash(&r);
+                if rh != seed_hash && verify(&r) {
+                    let k = n_new48.fetch_add(1, Ordering::Relaxed);
+                    if saved.load(Ordering::Relaxed) < 40 {
+                        saved.fetch_add(1, Ordering::Relaxed);
+                        let p = format!("{outdir}/new48_p4_{}.txt", k);
+                        dump(&r, &p);
+                        println!("NEW rank-48 (pursue4) -> {p}");
+                    }
+                }
+            }
+            // continue exploring from the reduced state
+            if r.len() >= 48 && seen.len() < 20_000 {
+                stack.push(r);
+            }
+        }
+        // solved-flip successors
+        let n = state.len();
+        for ss in 0..3usize {
+            let others: [usize; 2] = match ss {
+                0 => [1, 2],
+                1 => [0, 2],
+                _ => [0, 1],
+            };
+            for x in 0..n {
+                for y in x + 1..n {
+                    if fac(&state[x], ss) != fac(&state[y], ss) {
+                        continue;
+                    }
+                    for &(oi, oj) in &[(x, y), (y, x)] {
+                        for &(t, lam, _m) in
+                            &coincidence_lams(&state, oi, oj, ss)
+                        {
+                            let mut s2 = state.clone();
+                            let ok = if t == others[0] {
+                                try_flip(&mut s2, oi, oj, ss, lam, cap)
+                            } else {
+                                try_flip(&mut s2, oj, oi, ss,
+                                         (!lam.0, lam.1), cap)
+                            };
+                            if ok && seen.len() < 20_000 {
+                                stack.push(s2);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        out.push(state);
+    }
+    out
+}
+
+
+/// v4: multi-split pursuit.  From each state: close under solved
+/// flips; PROBE reductions and CONTINUE exploring from reduced states
+/// (reductions are first-class moves — the 50 -> 49' -> 48' path);
+/// while split budget remains, recurse into every split of every
+/// closure state.  Exhaustive at split budget 2 (~54M roots, tiny
+/// closures); findings saved + verified.
+fn pursue4(seed: &[Summand], cap: i64, splits: u32, outdir: &str) {
+    use std::collections::HashSet;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    let seed_hash = scheme_hash(seed);
+    let n_states = AtomicU64::new(0);
+    let n_new48 = AtomicU64::new(0);
+    let n_sub48 = AtomicU64::new(0);
+    let saved = AtomicU64::new(0);
+
+    // (closure lifted to a free fn below)
+
+    // recursive split levels
+    fn level(
+        states: Vec<Vec<Summand>>,
+        budget: u32,
+        seed_hash: u64,
+        cap: i64,
+        outdir: &str,
+        n_states: &AtomicU64,
+        n_new48: &AtomicU64,
+        n_sub48: &AtomicU64,
+        saved: &AtomicU64,
+    ) {
+        if budget == 0 {
+            return;
+        }
+        for st in states {
+            let n = st.len();
+            for ss in 0..3usize {
+                for i in 0..n {
+                    for k in 0..n {
+                        if i == k {
+                            continue;
+                        }
+                        let mut base = st.clone();
+                        if !try_split(&mut base, i, k, ss, (false, 0), cap) {
+                            continue;
+                        }
+                        let cl = closure(base, seed_hash, cap, outdir,
+                                         n_states, n_new48, n_sub48, saved);
+                        level(cl, budget - 1, seed_hash, cap, outdir,
+                              n_states, n_new48, n_sub48, saved);
+                    }
+                }
+            }
+        }
+    }
+
+    // first level parallel over root splits of the seed
+    let roots: Vec<(usize, usize, usize)> = (0..3)
+        .flat_map(|s| {
+            (0..48).flat_map(move |i| {
+                (0..48).filter(move |&k| k != i).map(move |k| (s, i, k))
+            })
+        })
+        .collect();
+    roots.par_iter().for_each(|&(ss, i, k)| {
+        let mut base = seed.to_vec();
+        if !try_split(&mut base, i, k, ss, (false, 0), cap) {
+            return;
+        }
+        let cl = closure(base, seed_hash, cap, outdir,
+                         &n_states, &n_new48, &n_sub48, &saved);
+        level(cl, splits - 1, seed_hash, cap, outdir,
+              &n_states, &n_new48, &n_sub48, &saved);
+    });
+    println!(
+        "pursue4(splits {}): {} states, {} NEW rank-48, {} sub-48 alarms",
+        splits,
+        n_states.load(Ordering::Relaxed),
+        n_new48.load(Ordering::Relaxed),
+        n_sub48.load(Ordering::Relaxed)
+    );
+}
+
+/// export the full 1-split solved-move component as a JSON graph:
+/// nodes (rank, shared pairs, coincidence count, coplanar triples,
+/// max coefficient, near-miss count) + typed edges.
+fn graph_export(seed: &[Summand], cap: i64, path: &str) {
+    use std::collections::HashMap;
+    let seed_hash = scheme_hash(seed);
+    let mut ids: HashMap<u64, usize> = HashMap::new();
+    let mut nodes: Vec<String> = Vec::new();
+    let mut edges: Vec<String> = Vec::new();
+    let mut stack: Vec<(Vec<Summand>, usize)> = Vec::new();
+
+    let mut metrics = |st: &Vec<Summand>| -> (usize, usize, usize, i64, usize) {
+        let n = st.len();
+        let mut shared = 0usize;
+        let mut coinc = 0usize;
+        let mut nearmiss = 0usize;
+        for ss in 0..3usize {
+            for x in 0..n {
+                for y in x + 1..n {
+                    if fac(&st[x], ss) == fac(&st[y], ss) {
+                        shared += 1;
+                        let c1 = coincidence_lams(st, x, y, ss);
+                        let c2 = coincidence_lams(st, y, x, ss);
+                        coinc += c1.len() + c2.len();
+                        // near-miss: distinct m's reachable in ply 1
+                        let mut ms: Vec<usize> =
+                            c1.iter().chain(c2.iter()).map(|&(_, _, m)| m).collect();
+                        ms.sort_unstable();
+                        ms.dedup();
+                        nearmiss += ms.len();
+                    }
+                }
+            }
+        }
+        // coplanar triples per slot (rank<=2 of factor triples), sampled
+        // exactly over a-slot only for cost control
+        let mut copl = 0usize;
+        for x in 0..n {
+            for y in x + 1..n {
+                for z in y + 1..n {
+                    // rank of {a_x, a_y, a_z} <= 2 ? via all 3x3 minors
+                    // over 16 coords: cheap sufficient check: does
+                    // solve of a_x + t a_y = u a_z exist -> coplanar
+                    let e = fac(&st[x], 0).exp
+                        .min(fac(&st[y], 0).exp)
+                        .min(fac(&st[z], 0).exp);
+                    let g = |v: &Vec16, k: usize| -> i128 {
+                        (v.nums[k] as i128) << (v.exp - e) as u32
+                    };
+                    let (vx, vy, vz) =
+                        (fac(&st[x], 0), fac(&st[y], 0), fac(&st[z], 0));
+                    // coplanar iff all 3x3 minors vanish; test a few
+                    // then confirm via full scan only if promising
+                    let mut ok = true;
+                    'mn: for p in 0..16 {
+                        for q in (p + 1)..16 {
+                            for r in (q + 1)..16 {
+                                let d = g(vx, p) * (g(vy, q) * g(vz, r) - g(vy, r) * g(vz, q))
+                                    - g(vy, p) * (g(vx, q) * g(vz, r) - g(vx, r) * g(vz, q))
+                                    + g(vz, p) * (g(vx, q) * g(vy, r) - g(vx, r) * g(vy, q));
+                                if d != 0 {
+                                    ok = false;
+                                    break 'mn;
+                                }
+                            }
+                        }
+                    }
+                    if ok {
+                        copl += 1;
+                    }
+                }
+            }
+        }
+        let maxc = st.iter()
+            .map(|t| t.a.max_abs().max(t.b.max_abs()).max(t.c.max_abs()))
+            .max()
+            .unwrap_or(0);
+        (shared, coinc, copl, maxc, nearmiss)
+    };
+
+    let mut add_node = |st: &Vec<Summand>,
+                        ids: &mut HashMap<u64, usize>,
+                        nodes: &mut Vec<String>,
+                        stack: &mut Vec<(Vec<Summand>, usize)>,
+                        metrics: &mut dyn FnMut(&Vec<Summand>) -> (usize, usize, usize, i64, usize)|
+     -> (usize, bool) {
+        let h = scheme_hash(st);
+        if let Some(&id) = ids.get(&h) {
+            return (id, false);
+        }
+        let id = nodes.len();
+        ids.insert(h, id);
+        let (sh, co, cp, mx, nm) = metrics(st);
+        nodes.push(format!(
+            "{{\"id\":{},\"rank\":{},\"shared\":{},\"coinc\":{},\"copl\":{},\"maxc\":{},\"nearmiss\":{},\"isSeed\":{}}}",
+            id, st.len(), sh, co, cp, mx, nm,
+            scheme_hash(st) == seed_hash
+        ));
+        stack.push((st.clone(), id));
+        (id, true)
+    };
+
+    let (seed_id, _) = add_node(&seed.to_vec(), &mut ids, &mut nodes, &mut stack, &mut metrics);
+    // root splits
+    for ss in 0..3usize {
+        for i in 0..48 {
+            for k in 0..48 {
+                if i == k {
+                    continue;
+                }
+                let mut base = seed.to_vec();
+                if try_split(&mut base, i, k, ss, (false, 0), cap) {
+                    let (id, _) = add_node(&base, &mut ids, &mut nodes, &mut stack, &mut metrics);
+                    edges.push(format!(
+                        "{{\"s\":{},\"t\":{},\"ty\":\"split\"}}",
+                        seed_id, id
+                    ));
+                }
+            }
+        }
+    }
+    // closure under solved flips + reduction edges
+    let mut qi = 0usize;
+    while qi < stack.len() {
+        let (st, sid) = stack[qi].clone();
+        qi += 1;
+        if sid == seed_id {
+            continue;
+        }
+        // reduction edge
+        let mut r = st.clone();
+        let mut reduced = false;
+        while try_reduce(&mut r, cap * 4) {
+            reduced = true;
+        }
+        if reduced {
+            let (rid, _) = add_node(&r, &mut ids, &mut nodes, &mut stack, &mut metrics);
+            edges.push(format!(
+                "{{\"s\":{},\"t\":{},\"ty\":\"reduce\"}}",
+                sid, rid
+            ));
+        }
+        // solved flips
+        let n = st.len();
+        for ss in 0..3usize {
+            let others: [usize; 2] = match ss {
+                0 => [1, 2],
+                1 => [0, 2],
+                _ => [0, 1],
+            };
+            for x in 0..n {
+                for y in x + 1..n {
+                    if fac(&st[x], ss) != fac(&st[y], ss) {
+                        continue;
+                    }
+                    for &(oi, oj) in &[(x, y), (y, x)] {
+                        for &(t, lam, _m) in &coincidence_lams(&st, oi, oj, ss) {
+                            let mut s2 = st.clone();
+                            let ok = if t == others[0] {
+                                try_flip(&mut s2, oi, oj, ss, lam, cap)
+                            } else {
+                                try_flip(&mut s2, oj, oi, ss, (!lam.0, lam.1), cap)
+                            };
+                            if ok {
+                                let (id2, _) = add_node(&s2, &mut ids, &mut nodes, &mut stack, &mut metrics);
+                                edges.push(format!(
+                                    "{{\"s\":{},\"t\":{},\"ty\":\"flip\"}}",
+                                    sid, id2
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let json = format!(
+        "{{\"nodes\":[{}],\"edges\":[{}]}}",
+        nodes.join(","),
+        edges.join(",")
+    );
+    std::fs::write(path, json).unwrap();
+    println!("graph: {} nodes, {} edges -> {}", nodes.len(), edges.len(), path);
+}
+
+/// light nearmiss metric: distinct ply-1 targets across shared pairs
+fn nearmiss_of(st: &[Summand]) -> usize {
+    let n = st.len();
+    let mut total = 0usize;
+    for ss in 0..3usize {
+        for x in 0..n {
+            for y in x + 1..n {
+                if fac(&st[x], ss) != fac(&st[y], ss) {
+                    continue;
+                }
+                let mut ms: Vec<usize> = coincidence_lams(st, x, y, ss)
+                    .iter()
+                    .chain(coincidence_lams(st, y, x, ss).iter())
+                    .map(|&(_, _, m)| m)
+                    .collect();
+                ms.sort_unstable();
+                ms.dedup();
+                total += ms.len();
+            }
+        }
+    }
+    total
+}
+
+/// v5: instrumented, sampled, gradient-guided 2-split pursuit.
+/// Parents = the 1-split component states ordered fringe-first
+/// (nearmiss desc); per parent, sample K random second splits (K = 0
+/// means all); each root closed under solved flips with reduction
+/// continuations.  Ticker + global state budget + nearmiss-depth
+/// tracking (the empirical gradient: does depth-2 exceed 2?).
+fn pursue5(seed: &[Summand], cap: i64, k_sample: usize, budget: u64,
+           fringe_only: bool, outdir: &str) {
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+    let seed_hash = scheme_hash(seed);
+    // collect the 1-split component (deduped states)
+    let mut seen = std::collections::HashSet::new();
+    let mut parents: Vec<Vec<Summand>> = Vec::new();
+    for ss in 0..3usize {
+        for i in 0..48 {
+            for k in 0..48 {
+                if i == k {
+                    continue;
+                }
+                let mut base = seed.to_vec();
+                if !try_split(&mut base, i, k, ss, (false, 0), cap) {
+                    continue;
+                }
+                // light closure (flips only) to gather states
+                let mut stack = vec![base];
+                while let Some(st) = stack.pop() {
+                    if !seen.insert(scheme_hash(&st)) {
+                        continue;
+                    }
+                    let n = st.len();
+                    for s2 in 0..3usize {
+                        let others: [usize; 2] = match s2 {
+                            0 => [1, 2],
+                            1 => [0, 2],
+                            _ => [0, 1],
+                        };
+                        for x in 0..n {
+                            for y in x + 1..n {
+                                if fac(&st[x], s2) != fac(&st[y], s2) {
+                                    continue;
+                                }
+                                for &(oi, oj) in &[(x, y), (y, x)] {
+                                    for &(t, lam, _m) in
+                                        &coincidence_lams(&st, oi, oj, s2)
+                                    {
+                                        let mut c = st.clone();
+                                        let ok = if t == others[0] {
+                                            try_flip(&mut c, oi, oj, s2, lam, cap)
+                                        } else {
+                                            try_flip(&mut c, oj, oi, s2,
+                                                     (!lam.0, lam.1), cap)
+                                        };
+                                        if ok {
+                                            stack.push(c);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    parents.push(st);
+                }
+            }
+        }
+    }
+    // gradient ordering: fringe first
+    let mut scored: Vec<(usize, usize)> = parents
+        .iter()
+        .enumerate()
+        .map(|(i, st)| (nearmiss_of(st), i))
+        .collect();
+    scored.sort_by(|a, b| b.0.cmp(&a.0));
+    if fringe_only {
+        scored.retain(|&(nm, _)| nm > 0);
+        println!("fringe-only: {} parents retained", scored.len());
+    }
+    println!(
+        "pursue5: {} parents; nearmiss>0 parents: {}; sampling {} splits/parent, budget {}",
+        parents.len(),
+        scored.iter().filter(|(nm, _)| *nm > 0).count(),
+        if k_sample == 0 { "ALL".to_string() } else { k_sample.to_string() },
+        budget
+    );
+    let n_states = AtomicU64::new(0);
+    let n_new48 = AtomicU64::new(0);
+    let n_sub48 = AtomicU64::new(0);
+    let saved = AtomicU64::new(0);
+    let done = AtomicUsize::new(0);
+    let max_nm2 = AtomicUsize::new(0);
+    let order: Vec<usize> = scored.iter().map(|&(_, i)| i).collect();
+    order.par_iter().for_each(|&pi| {
+        if n_states.load(Ordering::Relaxed) > budget {
+            return;
+        }
+        let st = &parents[pi];
+        let n = st.len();
+        let mut rng = Rng(0x1234_5678u64 ^ (pi as u64 * 0x9e37_79b9 + 1));
+        let mut picks: Vec<(usize, usize, usize)> = Vec::new();
+        if k_sample == 0 {
+            for ss in 0..3 {
+                for i in 0..n {
+                    for k in 0..n {
+                        if i != k {
+                            picks.push((ss, i, k));
+                        }
+                    }
+                }
+            }
+        } else {
+            for _ in 0..k_sample {
+                picks.push((rng.below(3), rng.below(n), rng.below(n)));
+            }
+        }
+        for (ss, i, k) in picks {
+            if i == k {
+                continue;
+            }
+            let mut base = st.clone();
+            if !try_split(&mut base, i, k, ss, (false, 0), cap) {
+                continue;
+            }
+            let cl = closure(base, seed_hash, cap, outdir,
+                             &n_states, &n_new48, &n_sub48, &saved);
+            // gradient probe: sample nearmiss at depth 2
+            if let Some(deep) = cl.first() {
+                let nm = nearmiss_of(deep);
+                let prev = max_nm2.load(Ordering::Relaxed);
+                if nm > prev {
+                    max_nm2.store(nm, Ordering::Relaxed);
+                    println!("depth-2 nearmiss = {nm} (new max)");
+                }
+            }
+        }
+        let d = done.fetch_add(1, Ordering::Relaxed) + 1;
+        if d % 200 == 0 {
+            println!(
+                "[tick] parents {}/{}  states {}  new48 {}  sub48 {}  max-nm2 {}",
+                d,
+                order.len(),
+                n_states.load(Ordering::Relaxed),
+                n_new48.load(Ordering::Relaxed),
+                n_sub48.load(Ordering::Relaxed),
+                max_nm2.load(Ordering::Relaxed)
+            );
+        }
+    });
+    println!(
+        "pursue5 done: {} states, {} NEW rank-48, {} sub-48, max depth-2 nearmiss {}",
+        n_states.load(Ordering::Relaxed),
+        n_new48.load(Ordering::Relaxed),
+        n_sub48.load(Ordering::Relaxed),
+        max_nm2.load(Ordering::Relaxed)
+    );
+}
+
+/// v6: gradient chase — best-first beam on nearmiss across split
+/// depths.  frontier := fringe parents; each level: sample K splits
+/// per frontier state, close under solved flips, score every closure
+/// state by nearmiss, keep the global top-B; repeat to depth D.
+fn pursue6(seed: &[Summand], cap: i64, beam: usize, k_sample: usize,
+           depth: u32, budget: u64, outdir: &str) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Mutex;
+    let seed_hash = scheme_hash(seed);
+    // level-0 frontier: fringe parents (nearmiss > 0)
+    let mut seen = std::collections::HashSet::new();
+    let mut frontier: Vec<(usize, Vec<Summand>)> = Vec::new();
+    for ss in 0..3usize {
+        for i in 0..48 {
+            for k in 0..48 {
+                if i == k {
+                    continue;
+                }
+                let mut base = seed.to_vec();
+                if !try_split(&mut base, i, k, ss, (false, 0), cap) {
+                    continue;
+                }
+                if seen.insert(scheme_hash(&base)) {
+                    let nm = nearmiss_of(&base);
+                    if nm > 0 {
+                        frontier.push((nm, base));
+                    }
+                }
+            }
+        }
+    }
+    frontier.sort_by(|a, b| b.0.cmp(&a.0));
+    frontier.truncate(beam);
+    println!("chase: level 0 frontier {} (nearmiss max {})",
+             frontier.len(),
+             frontier.first().map(|x| x.0).unwrap_or(0));
+    let n_states = AtomicU64::new(0);
+    let n_new48 = AtomicU64::new(0);
+    let n_sub48 = AtomicU64::new(0);
+    let saved = AtomicU64::new(0);
+    for level in 1..=depth {
+        if n_states.load(Ordering::Relaxed) > budget {
+            println!("budget exhausted");
+            break;
+        }
+        let next: Mutex<Vec<(usize, Vec<Summand>)>> = Mutex::new(Vec::new());
+        frontier.par_iter().for_each(|(_, st)| {
+            let mut rng = Rng(scheme_hash(st) | 1);
+            let n = st.len();
+            for _ in 0..k_sample {
+                let (ss, i, k) = (rng.below(3), rng.below(n), rng.below(n));
+                if i == k {
+                    continue;
+                }
+                let mut base = st.clone();
+                if !try_split(&mut base, i, k, ss, (false, 0), cap) {
+                    continue;
+                }
+                let cl = closure(base, seed_hash, cap, outdir,
+                                 &n_states, &n_new48, &n_sub48, &saved);
+                let mut local: Vec<(usize, Vec<Summand>)> = cl
+                    .into_iter()
+                    .map(|c| (nearmiss_of(&c), c))
+                    .filter(|(nm, _)| *nm > 0)
+                    .collect();
+                local.sort_by(|a, b| b.0.cmp(&a.0));
+                local.truncate(20);
+                next.lock().unwrap().extend(local);
+            }
+        });
+        let mut nx = next.into_inner().unwrap();
+        nx.sort_by(|a, b| b.0.cmp(&a.0));
+        // dedup by hash keeping best-first order
+        let mut hs = std::collections::HashSet::new();
+        nx.retain(|(_, st)| hs.insert(scheme_hash(st)));
+        nx.truncate(beam);
+        let mx = nx.first().map(|x| x.0).unwrap_or(0);
+        let mean: f64 = if nx.is_empty() { 0.0 } else {
+            nx.iter().map(|x| x.0 as f64).sum::<f64>() / nx.len() as f64
+        };
+        println!(
+            "chase level {}: frontier {}  nearmiss max {}  mean {:.1}               states {}  new48 {}  sub48 {}",
+            level, nx.len(), mx, mean,
+            n_states.load(Ordering::Relaxed),
+            n_new48.load(Ordering::Relaxed),
+            n_sub48.load(Ordering::Relaxed)
+        );
+        if nx.is_empty() {
+            break;
+        }
+        frontier = nx;
+    }
+    println!(
+        "chase done: {} states, {} NEW rank-48, {} sub-48",
+        n_states.load(Ordering::Relaxed),
+        n_new48.load(Ordering::Relaxed),
+        n_sub48.load(Ordering::Relaxed)
+    );
+}
+
 fn dump(s: &[Summand], path: &str) {
     let mut txt = String::new();
     for t in s {
@@ -890,6 +1527,36 @@ fn main() {
     }
     if args.iter().any(|a| a == "--pursue") {
         pursue(&seed, cap, &outdir);
+        return;
+    }
+    if let Some(pi) = args.iter().position(|a| a == "--graph") {
+        let path = args.get(pi + 1).cloned()
+            .unwrap_or_else(|| "graph48.json".into());
+        graph_export(&seed, cap, &path);
+        return;
+    }
+    if args.iter().any(|a| a == "--pursue6") {
+        let beam = get("--beam", 1500) as usize;
+        let ks = get("--samples", 60) as usize;
+        let dp = get("--depth", 6) as u32;
+        let budget = get("--budget", 500_000_000) as u64;
+        pursue6(&seed, cap, beam, ks, dp, budget, &outdir);
+        return;
+    }
+    if let Some(pi) = args.iter().position(|a| a == "--pursue5") {
+        let k: usize = args.get(pi + 1).and_then(|v| v.parse().ok())
+            .unwrap_or(200);
+        let budget = get("--budget", 200_000_000) as u64;
+        let fringe = args.iter().any(|a| a == "--fringe-only");
+        pursue5(&seed, cap, k, budget, fringe, &outdir);
+        return;
+    }
+    if let Some(pi) = args.iter().position(|a| a == "--pursue4") {
+        let sp: u32 = args
+            .get(pi + 1)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(2);
+        pursue4(&seed, cap, sp, &outdir);
         return;
     }
     if let Some(pi) = args.iter().position(|a| a == "--pursue3") {

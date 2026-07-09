@@ -75,3 +75,7 @@ matmul/dps48/kaporin/*.for
 matmul/dps48/kaporin/*.pdf
 matmul/dps48/kaporin/*.json
 matmul/found48q/
+matmul/dps48/graph48.json
+matmul/fringe_exhaustive.log
+matmul/chase.log
+matmul/found48q_p4.log

@@ -47,6 +47,9 @@ the 55-operation program computes the matrix product — sorry-free,
 - **53 new rank-23 3×3 schemes** inequivalent to the entire published
   database ([doc/matmul_53_3x3_schemes.pdf](doc/matmul_53_3x3_schemes.pdf)),
   found by native-ANF stochastic local search on the Brent equations.
+- **"The Flower"** — visualization + search heuristics for the rank-48
+  solved-move landscape ([doc/matmul_flower_paper.pdf](doc/matmul_flower_paper.pdf),
+  [interactive](https://claude.ai/code/artifact/e2167bb4-fb0d-4295-a0f9-b4554142e39d)).
 - **A machine-checked rigidity theorem for the rank-48 4×4 scheme**:
   the only characteristic-0 rank-48 scheme is provably rigid under
   rational flip moves — no rank-47 is reachable — certified in Lean 4

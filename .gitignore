@@ -79,3 +79,4 @@ matmul/dps48/graph48.json
 matmul/fringe_exhaustive.log
 matmul/chase.log
 matmul/found48q_p4.log
+matmul/chase2.log

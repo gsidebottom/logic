@@ -835,6 +835,7 @@ fn closure(
     root: Vec<Summand>,
     seed_hash: u64,
     cap: i64,
+    max_seen: usize,
     outdir: &str,
     n_states: &AtomicU64,
     n_new48: &AtomicU64,
@@ -879,7 +880,7 @@ fn closure(
                 }
             }
             // continue exploring from the reduced state
-            if r.len() >= 48 && seen.len() < 20_000 {
+            if r.len() >= 48 && seen.len() < max_seen {
                 stack.push(r);
             }
         }
@@ -907,7 +908,7 @@ fn closure(
                                 try_flip(&mut s2, oj, oi, ss,
                                          (!lam.0, lam.1), cap)
                             };
-                            if ok && seen.len() < 20_000 {
+                            if ok && seen.len() < max_seen {
                                 stack.push(s2);
                             }
                         }
@@ -965,7 +966,7 @@ fn pursue4(seed: &[Summand], cap: i64, splits: u32, outdir: &str) {
                         if !try_split(&mut base, i, k, ss, (false, 0), cap) {
                             continue;
                         }
-                        let cl = closure(base, seed_hash, cap, outdir,
+                        let cl = closure(base, seed_hash, cap, 20_000, outdir,
                                          n_states, n_new48, n_sub48, saved);
                         level(cl, budget - 1, seed_hash, cap, outdir,
                               n_states, n_new48, n_sub48, saved);
@@ -988,7 +989,7 @@ fn pursue4(seed: &[Summand], cap: i64, splits: u32, outdir: &str) {
         if !try_split(&mut base, i, k, ss, (false, 0), cap) {
             return;
         }
-        let cl = closure(base, seed_hash, cap, outdir,
+        let cl = closure(base, seed_hash, cap, 20_000, outdir,
                          &n_states, &n_new48, &n_sub48, &saved);
         level(cl, splits - 1, seed_hash, cap, outdir,
               &n_states, &n_new48, &n_sub48, &saved);
@@ -1332,7 +1333,7 @@ fn pursue5(seed: &[Summand], cap: i64, k_sample: usize, budget: u64,
             if !try_split(&mut base, i, k, ss, (false, 0), cap) {
                 continue;
             }
-            let cl = closure(base, seed_hash, cap, outdir,
+            let cl = closure(base, seed_hash, cap, 20_000, outdir,
                              &n_states, &n_new48, &n_sub48, &saved);
             // gradient probe: sample nearmiss at depth 2
             if let Some(deep) = cl.first() {
@@ -1406,6 +1407,7 @@ fn pursue6(seed: &[Summand], cap: i64, beam: usize, k_sample: usize,
     let n_new48 = AtomicU64::new(0);
     let n_sub48 = AtomicU64::new(0);
     let saved = AtomicU64::new(0);
+    let mut chase_seen = std::collections::HashSet::new();
     for level in 1..=depth {
         if n_states.load(Ordering::Relaxed) > budget {
             println!("budget exhausted");
@@ -1424,24 +1426,59 @@ fn pursue6(seed: &[Summand], cap: i64, beam: usize, k_sample: usize,
                 if !try_split(&mut base, i, k, ss, (false, 0), cap) {
                     continue;
                 }
-                let cl = closure(base, seed_hash, cap, outdir,
+                let cl = closure(base, seed_hash, cap, 150, outdir,
                                  &n_states, &n_new48, &n_sub48, &saved);
-                let mut local: Vec<(usize, Vec<Summand>)> = cl
+                // two-stage scoring: cheap shared-pair count for
+                // all closure states, full nearmiss only for the top 6
+                let mut pre: Vec<(usize, Vec<Summand>)> = cl
                     .into_iter()
-                    .map(|c| (nearmiss_of(&c), c))
+                    .map(|c| {
+                        let n = c.len();
+                        let mut sh = 0usize;
+                        for ss in 0..3usize {
+                            for x in 0..n {
+                                for y in x + 1..n {
+                                    if fac(&c[x], ss) == fac(&c[y], ss) {
+                                        sh += 1;
+                                    }
+                                }
+                            }
+                        }
+                        (sh, c)
+                    })
+                    .filter(|(sh, _)| *sh > 0)
+                    .collect();
+                pre.sort_by(|a, b| b.0.cmp(&a.0));
+                pre.truncate(6);
+                let local: Vec<(usize, Vec<Summand>)> = pre
+                    .into_iter()
+                    .map(|(_, c)| (nearmiss_of(&c), c))
                     .filter(|(nm, _)| *nm > 0)
                     .collect();
-                local.sort_by(|a, b| b.0.cmp(&a.0));
-                local.truncate(20);
                 next.lock().unwrap().extend(local);
             }
         });
         let mut nx = next.into_inner().unwrap();
         nx.sort_by(|a, b| b.0.cmp(&a.0));
-        // dedup by hash keeping best-first order
-        let mut hs = std::collections::HashSet::new();
-        nx.retain(|(_, st)| hs.insert(scheme_hash(st)));
+        // dedup by hash keeping best-first order, across ALL levels
+        nx.retain(|(_, st)| chase_seen.insert(scheme_hash(st)));
         nx.truncate(beam);
+        // persist the frontier for post-hoc analysis / resume
+        {
+            let mut txt = String::new();
+            for (nm, st) in nx.iter().take(50) {
+                txt += &format!("nearmiss {nm}\n");
+                for t in st {
+                    txt += &format!("{:?} | {:?} | {:?}\n",
+                                    (t.a.nums, t.a.exp),
+                                    (t.b.nums, t.b.exp),
+                                    (t.c.nums, t.c.exp));
+                }
+                txt += "---\n";
+            }
+            std::fs::write(format!("{outdir}/chase_frontier_L{level}.txt"),
+                           txt).ok();
+        }
         let mx = nx.first().map(|x| x.0).unwrap_or(0);
         let mean: f64 = if nx.is_empty() { 0.0 } else {
             nx.iter().map(|x| x.0 as f64).sum::<f64>() / nx.len() as f64

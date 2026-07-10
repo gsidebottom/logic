@@ -1011,6 +1011,281 @@ fn pursue4(seed: &[Summand], cap: i64, splits: u32, outdir: &str) {
 }
 
 /// export the full 1-split solved-move component as a JSON graph:
+/// full per-state metrics: (shared, coinc, copl, maxc, nearmiss)
+fn state_metrics(st: &Vec<Summand>) -> (usize, usize, usize, i64, usize) {
+    let n = st.len();
+    let mut shared = 0usize;
+    let mut coinc = 0usize;
+    let mut nearmiss = 0usize;
+    for ss in 0..3usize {
+        for x in 0..n {
+            for y in x + 1..n {
+                if fac(&st[x], ss) == fac(&st[y], ss) {
+                    shared += 1;
+                    let c1 = coincidence_lams(st, x, y, ss);
+                    let c2 = coincidence_lams(st, y, x, ss);
+                    coinc += c1.len() + c2.len();
+                    // near-miss: distinct m's reachable in ply 1
+                    let mut ms: Vec<usize> =
+                        c1.iter().chain(c2.iter()).map(|&(_, _, m)| m).collect();
+                    ms.sort_unstable();
+                    ms.dedup();
+                    nearmiss += ms.len();
+                }
+            }
+        }
+    }
+    // coplanar triples (rank<=2 factor triples), a-slot only
+    let mut copl = 0usize;
+    for x in 0..n {
+        for y in x + 1..n {
+            for z in y + 1..n {
+                let e = fac(&st[x], 0).exp
+                    .min(fac(&st[y], 0).exp)
+                    .min(fac(&st[z], 0).exp);
+                let g = |v: &Vec16, k: usize| -> i128 {
+                    (v.nums[k] as i128) << (v.exp - e) as u32
+                };
+                let (vx, vy, vz) =
+                    (fac(&st[x], 0), fac(&st[y], 0), fac(&st[z], 0));
+                // coplanar iff all 3x3 minors over the 16 coords vanish
+                let mut ok = true;
+                'mn: for p in 0..16 {
+                    for q in (p + 1)..16 {
+                        for r in (q + 1)..16 {
+                            let d = g(vx, p) * (g(vy, q) * g(vz, r) - g(vy, r) * g(vz, q))
+                                - g(vy, p) * (g(vx, q) * g(vz, r) - g(vx, r) * g(vz, q))
+                                + g(vz, p) * (g(vx, q) * g(vy, r) - g(vx, r) * g(vy, q));
+                            if d != 0 {
+                                ok = false;
+                                break 'mn;
+                            }
+                        }
+                    }
+                }
+                if ok {
+                    copl += 1;
+                }
+            }
+        }
+    }
+    let maxc = st.iter()
+        .map(|t| t.a.max_abs().max(t.b.max_abs()).max(t.c.max_abs()))
+        .max()
+        .unwrap_or(0);
+    (shared, coinc, copl, maxc, nearmiss)
+}
+
+const SLOT: [&str; 3] = ["a", "b", "c"];
+
+fn lam_str(l: (bool, i32)) -> String {
+    let (neg, k) = l;
+    let v = if k >= 0 {
+        (1i64 << k).to_string()
+    } else {
+        format!("1/{}", 1i64 << (-k) as u32)
+    };
+    if neg { format!("-{v}") } else { v }
+}
+
+/// dyadic Vec16 as a sparse combination of 4x4 matrix units e_rc
+fn pretty_v16(v: &Vec16) -> String {
+    let mut out = String::new();
+    for k in 0..16 {
+        let n = v.nums[k];
+        if n == 0 {
+            continue;
+        }
+        let (r, c) = (k / 4 + 1, k % 4 + 1);
+        let (num, den) = if v.exp >= 0 {
+            ((n as i128) << v.exp as u32, 1i128)
+        } else {
+            let sh = (-v.exp) as u32;
+            let tz = n.trailing_zeros().min(sh);
+            ((n >> tz) as i128, 1i128 << (sh - tz))
+        };
+        let mag = if den == 1 {
+            format!("{}", num.abs())
+        } else {
+            format!("{}/{}", num.abs(), den)
+        };
+        let sign = if num < 0 { "-" } else { "+" };
+        if mag == "1" {
+            out += &format!("{sign}e{r}{c} ");
+        } else {
+            out += &format!("{sign}{mag}e{r}{c} ");
+        }
+    }
+    let s = out.trim_end();
+    s.strip_prefix('+').unwrap_or(s).to_string()
+}
+
+/// worked example for the paper appendix: find a split whose flip
+/// component contains nearmiss-2, nearmiss-1, nearmiss-0 and copl-109
+/// states, then print a single walk visiting all four with the full
+/// move algebra (shared factor, solved lambda, target, rewrites).
+fn worked(seed: &[Summand], cap: i64) {
+    use std::collections::{HashMap, HashSet, VecDeque};
+    let pm = |st: &Vec<Summand>| state_metrics(st);
+    let (sh, co, cp, mx, nm) = pm(&seed.to_vec());
+    println!("SEED  rank 48  shared {sh}  coinc {co}  nearmiss {nm}  copl {cp}  maxc {mx}");
+
+    // all solved flips out of st, with human-readable move descriptions
+    let expand = |st: &Vec<Summand>| -> Vec<(String, Vec<Summand>)> {
+        let mut out = Vec::new();
+        let n = st.len();
+        for s2 in 0..3usize {
+            let others: [usize; 2] = match s2 {
+                0 => [1, 2],
+                1 => [0, 2],
+                _ => [0, 1],
+            };
+            for x in 0..n {
+                for y in x + 1..n {
+                    if fac(&st[x], s2) != fac(&st[y], s2) {
+                        continue;
+                    }
+                    for &(oi, oj) in &[(x, y), (y, x)] {
+                        for &(t, lam, m) in &coincidence_lams(st, oi, oj, s2) {
+                            let mut c = st.clone();
+                            let ok = if t == others[0] {
+                                try_flip(&mut c, oi, oj, s2, lam, cap)
+                            } else {
+                                try_flip(&mut c, oj, oi, s2, (!lam.0, lam.1), cap)
+                            };
+                            if !ok {
+                                continue;
+                            }
+                            let tc = if t == others[0] { others[1] } else { others[0] };
+                            let desc = format!(
+                                "flip on pair ({oi},{oj}), shared {}-factor [{}]\n  solve {}_{oi} + λ·{}_{oj} ∝ {}_{m}:  λ = {}\n  {}_{oi}: {}\n     →   {}   (∝ {}_{m} = {})\n  comp {}_{oj}: {}  →  {}",
+                                SLOT[s2], pretty_v16(fac(&st[oi], s2)),
+                                SLOT[t], SLOT[t], SLOT[t], lam_str(lam),
+                                SLOT[t], pretty_v16(fac(&st[oi], t)),
+                                pretty_v16(fac(&c[oi], t)),
+                                SLOT[t], pretty_v16(fac(&st[m], t)),
+                                SLOT[tc], pretty_v16(fac(&st[oj], tc)),
+                                pretty_v16(fac(&c[oj], tc))
+                            );
+                            out.push((desc, c));
+                        }
+                    }
+                }
+            }
+        }
+        out
+    };
+
+    // shortest solved-flip path from `from` to the first state with `want`
+    let bfs_leg = |from: &Vec<Summand>,
+                   want: &dyn Fn(&Vec<Summand>) -> bool|
+     -> Option<Vec<(String, Vec<Summand>)>> {
+        let fh = scheme_hash(from);
+        let mut par: HashMap<u64, (u64, String, Vec<Summand>)> = HashMap::new();
+        let mut seen: HashSet<u64> = HashSet::new();
+        seen.insert(fh);
+        let mut q = VecDeque::new();
+        q.push_back(from.clone());
+        let mut hit: Option<u64> = None;
+        'b: while let Some(st) = q.pop_front() {
+            if seen.len() > 400 {
+                break;
+            }
+            let h = scheme_hash(&st);
+            for (d, c) in expand(&st) {
+                let ch = scheme_hash(&c);
+                if !seen.insert(ch) {
+                    continue;
+                }
+                par.insert(ch, (h, d, c.clone()));
+                if want(&c) {
+                    hit = Some(ch);
+                    break 'b;
+                }
+                q.push_back(c);
+            }
+        }
+        let mut hh = hit?;
+        let mut legs = Vec::new();
+        while hh != fh {
+            let (ph, d, s) = par.get(&hh).unwrap().clone();
+            legs.push((d, s));
+            hh = ph;
+        }
+        legs.reverse();
+        Some(legs)
+    };
+
+    'outer: for ss in 0..3usize {
+        for i in 0..48usize {
+            for k in 0..48usize {
+                if i == k {
+                    continue;
+                }
+                let mut root = seed.to_vec();
+                if !try_split(&mut root, i, k, ss, (false, 0), cap) {
+                    continue;
+                }
+                // attempt the full milestone walk; on any failed leg,
+                // move on to the next split candidate
+                let cats: Vec<(&str, Box<dyn Fn(&Vec<Summand>) -> bool>)> = vec![
+                    ("nearmiss 2", Box::new(|s: &Vec<Summand>| state_metrics(s).4 == 2)),
+                    ("copl 109", Box::new(|s: &Vec<Summand>| state_metrics(s).2 == 109)),
+                    ("nearmiss 1", Box::new(|s: &Vec<Summand>| state_metrics(s).4 == 1)),
+                    ("nearmiss 0 (flip sink)",
+                     Box::new(|s: &Vec<Summand>| state_metrics(s).4 == 0)),
+                ];
+                let mut walk: Vec<String> = Vec::new();
+                let mut cur = root.clone();
+                let mut stepno = 0usize;
+                let mut okall = true;
+                for (label, want) in &cats {
+                    if want(&cur) {
+                        walk.push(format!("[{label}] — current state already qualifies"));
+                        continue;
+                    }
+                    match bfs_leg(&cur, want.as_ref()) {
+                        None => {
+                            okall = false;
+                            break;
+                        }
+                        Some(legs) => {
+                            walk.push(format!("-- leg to {label}: {} step(s) --", legs.len()));
+                            for (d, s) in legs {
+                                stepno += 1;
+                                let (sh, co, cp, mx, nm) = pm(&s);
+                                walk.push(format!("step {stepno}: {d}"));
+                                walk.push(format!(
+                                    "  state: shared {sh}  coinc {co}  nearmiss {nm}  copl {cp}  maxc {mx}"
+                                ));
+                                cur = s;
+                            }
+                        }
+                    }
+                }
+                if !okall {
+                    continue;
+                }
+                // success: print split detail + the walk
+                println!("\nSPLIT: summand {i} against summand {k} in slot {} (μ = 1):", SLOT[ss]);
+                println!("  {}_{i} = {}", SLOT[ss], pretty_v16(fac(&seed[i], ss)));
+                println!("  {}_{k} = {}", SLOT[ss], pretty_v16(fac(&seed[k], ss)));
+                println!("  summand {i} := ({}_{k}) ⊗ (rest of {i})  +  ({}_{i} − {}_{k}) ⊗ (rest of {i})",
+                         SLOT[ss], SLOT[ss], SLOT[ss]);
+                println!("  new summand 48 carries the remainder factor: {}",
+                         pretty_v16(fac(&root[48], ss)));
+                let (sh, co, cp, mx, nm) = pm(&root);
+                println!("  ROOT  rank 49  shared {sh}  coinc {co}  nearmiss {nm}  copl {cp}  maxc {mx}");
+                for line in walk {
+                    println!("{line}");
+                }
+                println!("\nwalk complete: 1 split + {stepno} solved flips");
+                break 'outer;
+            }
+        }
+    }
+}
+
 /// nodes (rank, shared pairs, coincidence count, coplanar triples,
 /// max coefficient, near-miss count) + typed edges.
 fn graph_export(seed: &[Summand], cap: i64, path: &str) {
@@ -1021,74 +1296,8 @@ fn graph_export(seed: &[Summand], cap: i64, path: &str) {
     let mut edges: Vec<String> = Vec::new();
     let mut stack: Vec<(Vec<Summand>, usize)> = Vec::new();
 
-    let mut metrics = |st: &Vec<Summand>| -> (usize, usize, usize, i64, usize) {
-        let n = st.len();
-        let mut shared = 0usize;
-        let mut coinc = 0usize;
-        let mut nearmiss = 0usize;
-        for ss in 0..3usize {
-            for x in 0..n {
-                for y in x + 1..n {
-                    if fac(&st[x], ss) == fac(&st[y], ss) {
-                        shared += 1;
-                        let c1 = coincidence_lams(st, x, y, ss);
-                        let c2 = coincidence_lams(st, y, x, ss);
-                        coinc += c1.len() + c2.len();
-                        // near-miss: distinct m's reachable in ply 1
-                        let mut ms: Vec<usize> =
-                            c1.iter().chain(c2.iter()).map(|&(_, _, m)| m).collect();
-                        ms.sort_unstable();
-                        ms.dedup();
-                        nearmiss += ms.len();
-                    }
-                }
-            }
-        }
-        // coplanar triples per slot (rank<=2 of factor triples), sampled
-        // exactly over a-slot only for cost control
-        let mut copl = 0usize;
-        for x in 0..n {
-            for y in x + 1..n {
-                for z in y + 1..n {
-                    // rank of {a_x, a_y, a_z} <= 2 ? via all 3x3 minors
-                    // over 16 coords: cheap sufficient check: does
-                    // solve of a_x + t a_y = u a_z exist -> coplanar
-                    let e = fac(&st[x], 0).exp
-                        .min(fac(&st[y], 0).exp)
-                        .min(fac(&st[z], 0).exp);
-                    let g = |v: &Vec16, k: usize| -> i128 {
-                        (v.nums[k] as i128) << (v.exp - e) as u32
-                    };
-                    let (vx, vy, vz) =
-                        (fac(&st[x], 0), fac(&st[y], 0), fac(&st[z], 0));
-                    // coplanar iff all 3x3 minors vanish; test a few
-                    // then confirm via full scan only if promising
-                    let mut ok = true;
-                    'mn: for p in 0..16 {
-                        for q in (p + 1)..16 {
-                            for r in (q + 1)..16 {
-                                let d = g(vx, p) * (g(vy, q) * g(vz, r) - g(vy, r) * g(vz, q))
-                                    - g(vy, p) * (g(vx, q) * g(vz, r) - g(vx, r) * g(vz, q))
-                                    + g(vz, p) * (g(vx, q) * g(vy, r) - g(vx, r) * g(vy, q));
-                                if d != 0 {
-                                    ok = false;
-                                    break 'mn;
-                                }
-                            }
-                        }
-                    }
-                    if ok {
-                        copl += 1;
-                    }
-                }
-            }
-        }
-        let maxc = st.iter()
-            .map(|t| t.a.max_abs().max(t.b.max_abs()).max(t.c.max_abs()))
-            .max()
-            .unwrap_or(0);
-        (shared, coinc, copl, maxc, nearmiss)
-    };
+    let mut metrics =
+        |st: &Vec<Summand>| -> (usize, usize, usize, i64, usize) { state_metrics(st) };
 
     let mut add_node = |st: &Vec<Summand>,
                         ids: &mut HashMap<u64, usize>,
@@ -1738,6 +1947,10 @@ fn main() {
             .unwrap_or(8);
         let n = get("--n", 2000) as usize;
         nmrand(&seed, cap, maxk, n);
+        return;
+    }
+    if args.iter().any(|a| a == "--worked") {
+        worked(&seed, cap);
         return;
     }
     if args.iter().any(|a| a == "--pursue6") {

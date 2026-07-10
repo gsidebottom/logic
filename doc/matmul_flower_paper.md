@@ -272,6 +272,7 @@ cargo build --release --bin flip48
 ./target/release/flip48 --pursue6 --beam 1500 --samples 60 --depth 8 \
     --threads 4                    # gradient chase
 ./target/release/flip48 --nmrand 13 --n 5000 --threads 4  # H3 null
+./target/release/flip48 --worked                # Appendix A trace
 ```
 
 The interactive Figure 1 (hover any fringe state or flip edge for
@@ -281,6 +282,86 @@ and archived in-repo as `doc/fig_flower_interactive.html`
 (self-contained — open it in any browser); the static figure is
 regenerable from `graph48.json` by the script in the repository
 history.
+
+## Appendix A. A worked walk: seed → fringe → sink
+
+One concrete walk from the seed through solved flips, visiting
+nearmiss 1, 2, 1, 0 and the copl-109 band — generated
+deterministically by `flip48 --worked` (the first split in scan
+order whose flip-cluster admits the full milestone visit), with
+every state re-verified exactly (128-bit integer arithmetic) against
+the 4×4 tensor. Notation: `e_rc` is the 4×4 matrix unit (row `r`,
+column `c`); a summand is a ⊗ b ⊗ c in canonical gauge (a, b
+primitive integer vectors; the dyadic scalar rides on c).
+
+**The seed is flip-isolated** (shared 0, coinc 0, nearmiss 0,
+copl 16): no two of its 48 summands share a factor in any slot, so
+no flip applies anywhere. The only move in the system is a split.
+
+**The split** (rank 48 → 49): summand 0 against summand 25 in the
+b-slot, with b_0 = e31 + e41 and
+b_25 = e32 + e33 + e34 + e42 + e43 + e44:
+
+```
+T_0  =  a_0 ⊗ b_0 ⊗ c_0  =  a_0 ⊗ b_25 ⊗ c_0  +  a_0 ⊗ (b_0 − b_25) ⊗ c_0
+```
+
+The first part overwrites summand 0; the remainder becomes summand
+48. This *engineers* alignment: pair (0, 25) now agrees in slot b,
+and pair (0, 48) agrees in slots a and c — the latter being exactly
+the split-undo reduction, the trivial return the rigidity theorem
+allows. Root metrics: shared 3, coinc 2, **nearmiss 1**, copl 64.
+
+**Step 1 — up to nearmiss 2, into the copl-109 band.** The shared
+pair (25, 0) in slot b opens coincidence systems in the other two
+slots: solve a_25 + λ·a_0 ∝ a_m over dyadic λ and all third summands
+m (a 2×2 Cramer system per candidate, then a 16-coordinate exact
+check). A solution exists at m = 27, λ = −1:
+
+```
+a_25 = [ 1 -1  1  1 ]   a_0 = [ 1 -1 -1 -1 ]   a_25 − a_0 = 2·[ 0  0  1  1 ] = 2·a_27
+       [ 1 -1  1  1 ]         [ 1 -1 -1 -1 ]                   [ 0  0  1  1 ]
+       [ 1 -1  1  1 ]         [-1  1  1  1 ]                   [ 1 -1  0  0 ]
+       [-1  1 -1 -1 ]         [ 1 -1 -1 -1 ]                   [-1  1  0  0 ]
+```
+
+After the flip (gauge folds the factor 2 into the c-slot), summand
+25's a-factor *equals* a_27 — a new shared pair (25, 27) in slot a.
+The compensating rewrite lands on c_0 (it gains ±¼·e33/e43 terms),
+preserving the tensor sum exactly. New state: shared 3, coinc 4,
+**nearmiss 2, copl 109** — one flip doubled the door count and
+entered the band.
+
+**Step 2 — back down to nearmiss 1.** Pair (48, 0) shares slot a;
+solving in slot c finds c_48 + (−1)·c_0 ∝ c_25 = ½e33 − ½e43, and
+after the flip c_48 = −¼e33 + ¼e43. The compensation restores b_0 to
+its original e31 + e41 — the walk is circling near its origin.
+State: shared 2, coinc 2, nearmiss 1, copl 109.
+
+**Step 3 — into a flip sink.** Pair (48, 0) shares slot a again;
+solving in slot b lands b_48 exactly on the support of b_25. Final
+state: **shared 3, coinc 0, nearmiss 0**, copl 109 — three aligned
+pairs and *not one solvable coincidence*. Alignment without exits:
+the concrete face of the alignment-vs-reduction gap of §4. A
+reduction would need a single partner aligned in *two* slots
+simultaneously; here every alignment lands on a different
+partner–slot combination, and the walk ends.
+
+| state | move | shared | coinc | nearmiss | copl |
+|---|---|---|---|---|---|
+| seed (rank 48) | — | 0 | 0 | 0 | 16 |
+| root (rank 49) | split 0 ← 25 in slot b | 3 | 2 | 1 | 64 |
+| s₁ | flip (25,0): a-slot, λ = −1, target 27 | 3 | 4 | **2** | **109** |
+| s₂ | flip (48,0): c-slot, λ = −1, target 25 | 2 | 2 | 1 | 109 |
+| s₃ | flip (48,0): b-slot, λ = −1, target 25 | 3 | 0 | **0** | 109 |
+
+Throughout: coefficient magnitudes never exceed 2 and denominators
+never exceed 4, matching §2's magnitude row. Two incidental
+observations. First, all three flips involve only the split
+participants {0, 25, 48} and a single outside target (27) — solved
+moves are local. Second, the seed's coplanar count (16) coincides
+with the number of flip-clusters (16); we have not pursued whether
+that is more than numerology.
 
 ## Acknowledgments
 

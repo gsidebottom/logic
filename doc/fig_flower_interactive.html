@@ -140,6 +140,7 @@ let W, H, DPR = Math.min(devicePixelRatio || 1, 2);
 let vs = 1, vpx = 0, vpy = 0;   // view: zoom scale + pan (screen px)
 let hovered = null;             // fringe state under cursor (seed spokes)
 let hovEdge = -1;               // flip edge under cursor (cluster isolate)
+let hovHalo = false;            // cursor on the pendant-leaf ring
 let exactR = false, savedPos = null;   // exact-ring mode + free-layout snapshot
 const RING = { 2: 130, 1: 190, 0: 260 };
 function resize() {
@@ -234,9 +235,8 @@ function draw() {
   ctx.translate(W / 2 + vpx, H / 2 + vpy);
   ctx.scale(vs, vs);
   // pendant-leaf halo (in exact-ring mode, pushed out past the rings)
-  const R = exactR ? Math.max(Math.min(W, H) * 0.44, RING[0] + 44)
-                   : Math.min(W, H) * 0.44;
-  ctx.strokeStyle = 'rgba(61,72,85,0.5)';
+  const R = haloR();
+  ctx.strokeStyle = hovHalo ? 'rgba(80,94,112,0.75)' : 'rgba(61,72,85,0.5)';
   ctx.lineWidth = 26;
   ctx.beginPath(); ctx.arc(0, 0, R, 0, 2 * Math.PI); ctx.stroke();
   ctx.fillStyle = '#8a94a3';
@@ -356,6 +356,10 @@ function draw() {
   ctx.textBaseline = 'alphabetic';
   ctx.restore();
 }
+function haloR() {
+  return exactR ? Math.max(Math.min(W, H) * 0.44, RING[0] + 44)
+                : Math.min(W, H) * 0.44;
+}
 // small direction triangle at (x,y) pointing along angle a (world units)
 function arrow(x, y, a) {
   const s = Math.min(7, 5 / Math.sqrt(vs) + 2);
@@ -402,7 +406,11 @@ cv.addEventListener('mousemove', ev => {
       if (d < bde) { bde = d; bestE = ei; }
     });
   }
-  if (best || bestE >= 0) {
+  let onHalo = false;
+  if (!best && bestE < 0) {
+    onHalo = Math.abs(Math.hypot(mx, my) - haloR()) < 15;
+  }
+  if (best || bestE >= 0 || onHalo) {
     tip.style.display = 'block';
     tip.style.left = (ev.clientX - rect.left + 14) + 'px';
     tip.style.top = (ev.clientY - rect.top + 10) + 'px';
@@ -422,14 +430,22 @@ cv.addEventListener('mousemove', ev => {
       `solved flip — cluster ${A.cl + 1}/${CLS.length} (${CLS[A.cl]} states)\n` +
       `nearmiss ${A.nm} ↔ ${B.nm}${dnm ? `   (gradient step ${dnm})` : '   (level move)'}\n` +
       `coinc ${A.co} ↔ ${B.co}   copl ${A.cp} ↔ ${B.cp}\n${band}`;
+  } else if (onHalo) {
+    tip.textContent =
+      '6,488 pendant leaves — aggregated as this ring\n' +
+      'each: one split in, one reduction straight home, no flips\n' +
+      'nearmiss 0 · coinc 0 — 88% of the component\n' +
+      'seed removed ⇒ 6,488 singletons + the 16 clusters';
   } else tip.style.display = 'none';
-  if (best !== hovered || bestE !== hovEdge) {
-    hovered = best; hovEdge = bestE; draw();
+  if (best !== hovered || bestE !== hovEdge || onHalo !== hovHalo) {
+    hovered = best; hovEdge = bestE; hovHalo = onHalo; draw();
   }
 });
 cv.addEventListener('mouseleave', () => {
   tip.style.display = 'none';
-  if (hovered || hovEdge >= 0) { hovered = null; hovEdge = -1; draw(); }
+  if (hovered || hovEdge >= 0 || hovHalo) {
+    hovered = null; hovEdge = -1; hovHalo = false; draw();
+  }
 });
 // exact-ring toggle: radius strictly encodes nearmiss (tangential
 // relaxation only); toggling off restores the free layout exactly

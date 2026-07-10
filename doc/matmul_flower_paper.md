@@ -105,7 +105,11 @@ Four readings:
    climb: the landscape is flat at height 2.
 4. **The fringe has sixteen-fold substructure.** Its 920 states
    decompose into exactly 16 flip-connected clusters of near-equal
-   size (53–61 states). Near-uniformity like that is unlikely to be
+   size (53–61 states). Equivalently, the seed is a cut vertex of
+   spectacular degree: every split and reduction edge is incident to
+   it, so deleting it isolates the 6,488 leaves completely and
+   shatters all remaining connectivity into those 16 near-equal
+   components. Near-uniformity like that is unlikely to be
    accidental: the scheme's automorphisms act on the component, and
    the clusters look like an orbit decomposition — observed, not yet
    proven. Flips are also where the metrics move: 74% of flip edges

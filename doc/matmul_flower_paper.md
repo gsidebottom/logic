@@ -82,12 +82,13 @@ flip-active fringe, colored by nearmiss, teal-ringed where copl =
 | reductions → seed | **6,904 of 6,904** |
 | degree-2 pendant leaves (split in, reduce back, nothing else) | 6,488 (88%) |
 | flip-active fringe | 920 states, 1,468 flip edges |
+| flip-clusters of the fringe | **16**, near-equal sizes 53–61 (2·53 + 4·55 + 2·57 + 4·59 + 4·61 = 920) |
 | nearmiss distribution | 0: 6,568 · 1: 516 · 2: 324 — **maximum 2** |
 | coinc distribution | 0: 6,568 · 2: 516 · 4: 324 |
 | copl distribution | 63: 2,128 · 64: 4,896 · **109: 384** |
 | max coefficient anywhere | 6 (magnitudes never grow) |
 
-Three readings:
+Four readings:
 
 1. **The rigidity theorem, as one number.** Every one of the 6,904
    reduction edges points at the seed. The certified statement "no
@@ -102,6 +103,16 @@ Three readings:
    the 63–64 baseline — concentrates the geometric richness. Inside
    the certified component there is, quite literally, no gradient to
    climb: the landscape is flat at height 2.
+4. **The fringe has sixteen-fold substructure.** Its 920 states
+   decompose into exactly 16 flip-connected clusters of near-equal
+   size (53–61 states). Near-uniformity like that is unlikely to be
+   accidental: the scheme's automorphisms act on the component, and
+   the clusters look like an orbit decomposition — observed, not yet
+   proven. Flips are also where the metrics move: 74% of flip edges
+   connect states of *different* nearmiss (308 of them jump 0 ↔ 2 in
+   a single move), and 78% touch the copl-109 band. In the
+   interactive figure, hovering any state or flip edge isolates its
+   cluster and displays the per-edge gradient.
 
 ## 3. The heuristics
 
@@ -248,11 +259,13 @@ cargo build --release --bin flip48
 ./target/release/flip48 --nmrand 13 --n 5000 --threads 4  # H3 null
 ```
 
-The interactive Figure 1 (hover any fringe state for its metrics) is
-published at the artifact URL in the front matter and archived
-in-repo as `doc/fig_flower_interactive.html` (self-contained — open
-it in any browser); the static figure is regenerable from
-`graph48.json` by the script in the repository history.
+The interactive Figure 1 (hover any fringe state or flip edge for
+its metrics and per-edge gradient; hovering isolates the state's
+flip-cluster) is published at the artifact URL in the front matter
+and archived in-repo as `doc/fig_flower_interactive.html`
+(self-contained — open it in any browser); the static figure is
+regenerable from `graph48.json` by the script in the repository
+history.
 
 ## Acknowledgments
 

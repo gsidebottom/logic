@@ -23,6 +23,8 @@
 //!
 //! Usage: flip48 [--dir matmul/dps48] [--seconds N] [--threads N]
 //!               [--cap 64] [--out found48q]
+//!        flip48 --pursue6 ... [--resume6 FRONTIER.txt --startlevel N]
+//!               lossless chase resume from a full-frontier dump
 //!        flip48 --nmrand K [--n 2000]   random-walk nearmiss baseline
 //!               (control for the --pursue6 gradient; depths 1..=K)
 //!        flip48 --pursue5 ... [--resume]  logs completed parent indices
@@ -1468,48 +1470,104 @@ fn pursue5(seed: &[Summand], cap: i64, k_sample: usize, budget: u64,
     );
 }
 
+/// parse one dumped Vec16: "([n1, n2, ...], exp)"
+fn parse_v16(s: &str) -> Option<Vec16> {
+    let s = s.trim().strip_prefix('(')?.strip_suffix(')')?;
+    let (l, r) = s.rsplit_once("], ")?;
+    let mut nums = [0i64; 16];
+    for (i, tok) in l.strip_prefix('[')?.split(',').enumerate() {
+        if i >= 16 {
+            return None;
+        }
+        nums[i] = tok.trim().parse().ok()?;
+    }
+    Some(Vec16 { nums, exp: r.trim().parse().ok()? })
+}
+
+/// parse a chase_frontier_L*.txt dump back into schemes.  Format per
+/// state: optional "nearmiss N" line, one "va | vb | vc" line per
+/// summand, "---" terminator.  Panics loudly on any malformed line.
+fn parse_frontier(path: &str) -> Vec<Vec<Summand>> {
+    let txt = std::fs::read_to_string(path).expect("read resume file");
+    let mut out = Vec::new();
+    for block in txt.split("---\n") {
+        let mut st: Vec<Summand> = Vec::new();
+        for line in block.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with("nearmiss") {
+                continue;
+            }
+            let mut p = line.split(" | ");
+            let (a, b, c) = (|| {
+                Some((parse_v16(p.next()?)?, parse_v16(p.next()?)?,
+                      parse_v16(p.next()?)?))
+            })().unwrap_or_else(|| panic!("bad frontier line: {line}"));
+            st.push(Summand::gauge(a, b, c).expect("gauge on resumed summand"));
+        }
+        if !st.is_empty() {
+            out.push(st);
+        }
+    }
+    out
+}
+
 /// v6: gradient chase — best-first beam on nearmiss across split
 /// depths.  frontier := fringe parents; each level: sample K splits
 /// per frontier state, close under solved flips, score every closure
 /// state by nearmiss, keep the global top-B; repeat to depth D.
 fn pursue6(seed: &[Summand], cap: i64, beam: usize, k_sample: usize,
-           depth: u32, budget: u64, outdir: &str) {
+           depth: u32, budget: u64, outdir: &str,
+           resume: Option<&str>, start_level: u32) {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Mutex;
     let seed_hash = scheme_hash(seed);
-    // level-0 frontier: fringe parents (nearmiss > 0)
-    let mut seen = std::collections::HashSet::new();
+    let mut chase_seen = std::collections::HashSet::new();
     let mut frontier: Vec<(usize, Vec<Summand>)> = Vec::new();
-    for ss in 0..3usize {
-        for i in 0..48 {
-            for k in 0..48 {
-                if i == k {
-                    continue;
-                }
-                let mut base = seed.to_vec();
-                if !try_split(&mut base, i, k, ss, (false, 0), cap) {
-                    continue;
-                }
-                if seen.insert(scheme_hash(&base)) {
-                    let nm = nearmiss_of(&base);
-                    if nm > 0 {
-                        frontier.push((nm, base));
+    if let Some(path) = resume {
+        // resume from a persisted frontier dump: parse, exact-verify,
+        // re-score; historical cross-level dedup is not recoverable, so
+        // old states may be re-visited (wasted work, never wrong answers)
+        for st in parse_frontier(path) {
+            assert!(verify(&st), "resumed state fails exact verification");
+            chase_seen.insert(scheme_hash(&st));
+            frontier.push((nearmiss_of(&st), st));
+        }
+        frontier.sort_by(|a, b| b.0.cmp(&a.0));
+        println!("chase resume: {} verified states from {}; continuing at level {}",
+                 frontier.len(), path, start_level + 1);
+    } else {
+        // level-0 frontier: fringe parents (nearmiss > 0)
+        let mut seen = std::collections::HashSet::new();
+        for ss in 0..3usize {
+            for i in 0..48 {
+                for k in 0..48 {
+                    if i == k {
+                        continue;
+                    }
+                    let mut base = seed.to_vec();
+                    if !try_split(&mut base, i, k, ss, (false, 0), cap) {
+                        continue;
+                    }
+                    if seen.insert(scheme_hash(&base)) {
+                        let nm = nearmiss_of(&base);
+                        if nm > 0 {
+                            frontier.push((nm, base));
+                        }
                     }
                 }
             }
         }
+        frontier.sort_by(|a, b| b.0.cmp(&a.0));
+        frontier.truncate(beam);
+        println!("chase: level 0 frontier {} (nearmiss max {})",
+                 frontier.len(),
+                 frontier.first().map(|x| x.0).unwrap_or(0));
     }
-    frontier.sort_by(|a, b| b.0.cmp(&a.0));
-    frontier.truncate(beam);
-    println!("chase: level 0 frontier {} (nearmiss max {})",
-             frontier.len(),
-             frontier.first().map(|x| x.0).unwrap_or(0));
     let n_states = AtomicU64::new(0);
     let n_new48 = AtomicU64::new(0);
     let n_sub48 = AtomicU64::new(0);
     let saved = AtomicU64::new(0);
-    let mut chase_seen = std::collections::HashSet::new();
-    for level in 1..=depth {
+    for level in (start_level + 1)..=depth {
         if n_states.load(Ordering::Relaxed) > budget {
             println!("budget exhausted");
             break;
@@ -1564,10 +1622,12 @@ fn pursue6(seed: &[Summand], cap: i64, beam: usize, k_sample: usize,
         // dedup by hash keeping best-first order, across ALL levels
         nx.retain(|(_, st)| chase_seen.insert(scheme_hash(st)));
         nx.truncate(beam);
-        // persist the frontier for post-hoc analysis / resume
+        // persist the FULL frontier: --resume6 restarts losslessly from
+        // this file (H6: the resume set must be the complete identity
+        // list, not a sample — top-50 dumps cost us a lossy resume once)
         {
             let mut txt = String::new();
-            for (nm, st) in nx.iter().take(50) {
+            for (nm, st) in nx.iter() {
                 txt += &format!("nearmiss {nm}\n");
                 for t in st {
                     txt += &format!("{:?} | {:?} | {:?}\n",
@@ -1685,7 +1745,11 @@ fn main() {
         let ks = get("--samples", 60) as usize;
         let dp = get("--depth", 6) as u32;
         let budget = get("--budget", 500_000_000) as u64;
-        pursue6(&seed, cap, beam, ks, dp, budget, &outdir);
+        let resume6 = args.iter().position(|a| a == "--resume6")
+            .and_then(|i| args.get(i + 1).cloned());
+        let startlv = get("--startlevel", 0) as u32;
+        pursue6(&seed, cap, beam, ks, dp, budget, &outdir,
+                resume6.as_deref(), startlv);
         return;
     }
     if let Some(pi) = args.iter().position(|a| a == "--pursue5") {

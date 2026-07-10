@@ -25,12 +25,15 @@ no move except undoing themselves, and a thin 920-state *fringe* where
 all nontrivial structure lives and where every local search signal
 saturates almost immediately.
 
-From the picture we derive five concrete search heuristics, and they
+From the picture we derive six concrete search heuristics, and they
 pay off at once: a gradient signal (**nearmiss**, the number of
 solvable one-move coincidence targets) that is provably capped at 2
 inside the certified component **deepens to 7 and then 14** one split
-level further out, guiding a beam search; a 19× budget-focusing rule;
-and a cost-recalibration discipline that caught a uniform
+level further out and, under five levels of beam guidance, reaches a
+mean of 85 — 38× a matched-rank random control, certifying the
+gradient as heritable structure rather than rank inflation; a 19×
+budget-focusing rule; and a cost-recalibration discipline that caught
+a uniform
 two-split enumeration mispriced by two orders of magnitude (killed at
 3% after 18 CPU-hours; its true cost ≈ 500 CPU-hours) and replaced it
 with a guided program that covers the region all metrics favor at a
@@ -138,19 +141,21 @@ inheritance. Matched at equal rank:
 | 50 | 5.1 | 9 | 0.21 | 5 | 9 | 0.7 |
 | 51 | 14.3 | 29 | 0.51 | 6 | 12 | 1.7 |
 | 52 | 27.9 | 50 | 0.92 | 7 | 17 | 3.0 |
-| 53 | **51.1** | 76 | 1.55 | 10 | **27** | 4.6 |
+| 53 | 51.1 | 76 | 1.55 | 10 | 27 | 4.6 |
+| 54 | **85.3** | 122 | 2.22 | 12 | **20** | 6.0 |
 
 Rank inflation exists but is tiny (unguided mean reaches only 10.5 by
 rank 61, the campaign's terminal depth — the beam passed that at
-level 2). At rank 53 the beam's *mean* is 33× the unguided mean, 5×
-the unguided 99th percentile, and nearly twice the unguided *maximum
-over 5,000 draws*; one-shot selection without guidance (best 1,500 of
-5,000) achieves 4.6, i.e. 9% of the beam mean. A typical beam state
+level 2). At rank 54 the beam's *mean* is 38× the unguided mean, 7×
+the unguided 99th percentile, and 4× the unguided *maximum over 5,000
+draws*; one-shot selection without guidance (best 1,500 of 5,000)
+achieves 6.0, i.e. 7% of the beam mean. A typical beam state
 outscores the best unguided state of equal rank — no one-shot
 selection from the unguided distribution produces that. The only
 mechanism left is inheritance: high-nearmiss parents beget
-higher-nearmiss children. **The gradient is heritable structure, not
-a rank artifact.**
+higher-nearmiss children. And the beam/null ratio itself climbs
+(24× → 28× → 30× → 33× → 38× across levels 1–5): guidance compounds.
+**The gradient is heritable structure, not a rank artifact.**
 
 **H4 — The copl band is a prior.** Coplanarity is the raw material of
 solvable moves; the 384-state copl-109 band is the natural first
@@ -166,6 +171,21 @@ spent) and replaced with the guided program below. The rule: before
 exhausting level k+1, measure its branching on a sample; the
 extrapolation from level k is not a bound, it is a guess.
 
+**H6 — A certificate needs an audit trail, not a counter.** The first
+fringe-exhaustive campaign hit its state budget at "~644 of 840
+parents done" — and could not say *which* 644. Its parents were
+processed by a work-stealing parallel loop, so the completed set was
+a scattered, nondeterministic subset, not a prefix (a 2-parent test
+run completed indices 76 and 2,775); a planned prefix-skip resume
+would have silently left coverage holes in the certificate, and was
+retracted before use. The rule: any enumeration whose value is the
+claim "*all* of X was covered" must log the *identities* of completed
+work (stable across runs), not a count — completeness of coverage is
+otherwise unrecoverable from the survivor. The engine now appends
+each finished parent index to `fringe_done.txt`, and `--resume` skips
+exactly the logged set; campaign 1's 4.02 billion states stand as
+evidence, campaign 2 is the certificate run.
+
 ## 4. The running program, and the open question
 
 Two campaigns implement the heuristics (both with progress tickers,
@@ -175,27 +195,30 @@ global state budgets, and inline exact verification of any find):
   second splits of each of the 840 gradient-positive parents, every
   root closed under solved flips with reduction continuations. Zero
   findings here extends the rigidity certificate to "no reduction
-  reachable through the fringe at 2-split radius." Status at
-  writing: 400/840 parents (48%), **2.51 billion states explored,
-  zero reductions found**, and an independent confirmation of
-  nearmiss-14 territory.
+  reachable through the fringe at 2-split radius." Campaign 1 closed
+  at its 4×10⁹ budget: **4.02 billion states, ~644/840 parents
+  (scattered — see H6), zero reductions**, depth-2 nearmiss ceiling
+  14. Campaign 2 (completion-logged, exactly resumable, budget
+  7×10⁹) is re-running all 840 for the certificate; at writing,
+  189/840 with the same zero-reduction, ceiling-14 profile.
 - **Gradient chase** (`--pursue6`): best-first beam on nearmiss
   across split depths (beam 1,500, 60 sampled splits per frontier
-  state, closure cap 150). Through level 4 (rank 53): nearmiss max
-  76, beam mean 51.1, with the per-level mean *accelerating* (+9.2,
-  +13.6, +23.2) while the unguided baseline crawls (+0.3, +0.4,
-  +0.6) — and the H3 control certifies the climb is not rank
-  inflation. Yet through 240 million states, **zero conversions**:
-  76 one-slot alignments available and not one same-partner
-  second-slot event has ever fired. The chase asks the one question
-  that matters: **does nearmiss keep climbing until a
-  double-coincidence actually fires, or is there an obstruction —
-  a radius-independent invariant separating alignment from
-  reduction?** A conversion produces a genuinely new rank-48 scheme
-  (fresh material for the operation-count program of the companion
-  papers) or a characteristic-0 rank-47 — a record. A plateau — or
-  a curve that climbs forever without converting — maps the next
-  rigidity boundary.
+  state, closure cap 150). Through level 5 (rank 54): nearmiss max
+  122, beam mean 85.3, with the per-level mean *accelerating* (+9.2,
+  +13.6, +23.2, +34.2) while the unguided baseline crawls (+0.3,
+  +0.4, +0.6, +0.7) — and the H3 control certifies the climb is not
+  rank inflation. Yet through 450 million states, **zero
+  conversions**: over a hundred one-slot alignments available per
+  frontier state and not one same-partner second-slot event has ever
+  fired. The chase asks the one question that matters: **does
+  nearmiss keep climbing until a double-coincidence actually fires,
+  or is there an obstruction — a radius-independent invariant
+  separating alignment from reduction?** A conversion produces a
+  genuinely new rank-48 scheme (fresh material for the
+  operation-count program of the companion papers) or a
+  characteristic-0 rank-47 — a record. A plateau — or a curve that
+  climbs forever without converting — maps the next rigidity
+  boundary.
 
 ## 5. Why visualize at all
 
@@ -217,7 +240,9 @@ cargo build --release --bin flip48
 ./target/release/flip48 --graph matmul/dps48/graph48.json --cap 256   # 17 s
 # anatomy numbers: any JSON tool over graph48.json (see §2 table)
 ./target/release/flip48 --pursue5 0 --fringe-only --threads 8 \
-    --budget 4000000000            # fringe-exhaustive campaign
+    --budget 7000000000            # fringe-exhaustive campaign
+# completed parents log to found48q/fringe_done.txt; add --resume
+# after any interruption to skip exactly the logged set (H6)
 ./target/release/flip48 --pursue6 --beam 1500 --samples 60 --depth 8 \
     --threads 4                    # gradient chase
 ./target/release/flip48 --nmrand 13 --n 5000 --threads 4  # H3 null

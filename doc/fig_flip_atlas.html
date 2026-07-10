@@ -1,0 +1,214 @@
+<title>DPS-48 flip campaign — condensation atlas</title>
+<style>
+  :root {
+    --ink:#101418; --panel:#1a2027; --line:#242c36;
+    --text:#d8dee6; --mut:#8a94a3;
+    --steel:#3d4855; --amber:#e0a458; --sig:#e2603f;
+    --seed:#f2f4f7; --teal:#5fb7a5;
+  }
+  html,body { background:var(--ink); color:var(--text); margin:0;
+    font:14px/1.5 -apple-system,'Segoe UI',sans-serif; }
+  main { max-width:1020px; margin:0 auto; padding:20px 18px 40px; }
+  h1 { font:600 20px/1.3 ui-monospace,Menlo,monospace; margin:6px 0 4px;
+    color:var(--seed); }
+  h2 { font:600 12px/1.3 ui-monospace,Menlo,monospace; margin:30px 0 6px;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--mut); }
+  p.sub { color:var(--mut); margin:0 0 14px; max-width:72ch; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 4px; }
+  .chip { background:var(--panel); border:1px solid var(--line);
+    padding:5px 10px; border-radius:3px;
+    font:12.5px ui-monospace,Menlo,monospace; color:var(--mut);
+    font-variant-numeric:tabular-nums; }
+  .chip b { color:var(--seed); font-weight:600; }
+  .chip.hot b { color:var(--sig); } .chip.warm b { color:var(--amber); }
+  .atlas { display:flex; flex-wrap:wrap; gap:14px; }
+  .card { background:var(--panel); border:1px solid var(--line);
+    border-radius:4px; padding:10px 10px 6px; position:relative; }
+  .card h3 { margin:0 0 2px; font:600 12.5px ui-monospace,Menlo,monospace;
+    color:var(--seed); }
+  .card .m { color:var(--mut); font:11.5px ui-monospace,Menlo,monospace; }
+  .badge { position:absolute; top:8px; right:10px; color:var(--teal);
+    font:700 13px ui-monospace,Menlo,monospace; }
+  #tip { position:fixed; pointer-events:none; background:var(--panel);
+    border:1px solid var(--line); padding:6px 9px; border-radius:3px;
+    font:12px ui-monospace,Menlo,monospace; display:none; white-space:pre;
+    z-index:5; box-shadow:0 4px 14px rgba(0,0,0,.5); }
+  .leg { display:flex; gap:16px; flex-wrap:wrap; color:var(--mut);
+    font:12px ui-monospace,Menlo,monospace; margin:8px 0 0; align-items:center; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%;
+    vertical-align:-1px; margin-right:5px; }
+  svg text { font:10.5px ui-monospace,Menlo,monospace; fill:var(--mut); }
+  .charts { display:flex; gap:14px; flex-wrap:wrap; }
+  .note { color:var(--mut); font-size:13px; max-width:72ch; }
+</style>
+<main>
+<h1>DPS&#8288;-&#8288;48 &middot; flip campaign &middot; condensation atlas</h1>
+<p class="sub">The solved-flip system seen at strongly-connected-component
+resolution, plus the gradient chase's trajectory into unbounded territory.
+Companion to the flower figure; same underlying certified graph.</p>
+<div class="chips">
+  <div class="chip">directed flips <b>2,328</b></div>
+  <div class="chip">two&#8209;way pairs <b>804</b></div>
+  <div class="chip warm">one&#8209;way pairs <b>664</b></div>
+  <div class="chip">SCCs <b>292</b></div>
+  <div class="chip hot">flip sinks <b>80</b> (= coinc&#8209;0 states)</div>
+  <div class="chip">trap cycles <b>0</b></div>
+  <div class="chip">cluster species <b>5</b></div>
+</div>
+
+<h2>1 &middot; The five cluster species, SCC-aggregated</h2>
+<p class="sub">Each diagram is the <em>condensation</em> of one flip-cluster:
+nodes are strongly connected components (area &prop; states inside; color =
+max nearmiss), arrows are one-way flips between SCCs (thicker = more).
+Every condensation is exactly three layers deep: mutual cores on the left,
+one-way flow rightward into the sinks. Same-size clusters are
+indistinguishable (SCC size/degree/nearmiss multisets and typed edge
+signatures) &mdash; each panel stands for all its <span style="color:var(--teal)">&times;N</span> copies.</p>
+<div class="atlas" id="atlas"></div>
+<div class="leg">
+  <span><span class="dot" style="background:var(--sig)"></span>max nearmiss 2</span>
+  <span><span class="dot" style="background:var(--amber)"></span>max nearmiss 1</span>
+  <span><span class="dot" style="background:var(--steel)"></span>nearmiss 0</span>
+  <span><span class="dot" style="background:none;border:1.5px solid var(--seed);width:8px;height:8px"></span>sink (no exit)</span>
+  <span>hover an SCC for details</span>
+</div>
+
+<h2>2 &middot; The chase: beam vs unguided null</h2>
+<div class="charts"><div id="curve"></div><div id="hist"></div></div>
+<p class="note" id="chasenote"></p>
+
+<h2>3 &middot; Campaign ledger</h2>
+<div class="chips">
+  <div class="chip">radius&#8209;1 certificate <b>7,409 states</b> (Lean-checked)</div>
+  <div class="chip">fringe-exhaustive c1+c2 <b>&gt;9&times;10&#8313; states</b></div>
+  <div class="chip">chase through L7 <b>0.82&times;10&#8313; states</b></div>
+  <div class="chip hot">reductions found <b>0</b></div>
+  <div class="chip warm">beam mean vs null at rank 56 <b>48&times;</b></div>
+</div>
+</main>
+<div id="tip"></div>
+<script>
+const DATA = {"atlas": [{"n": [{"id": 8, "sz": 1, "nm": 0, "x": 2, "y": 2, "rowlen": 3, "sink": 1}, {"id": 9, "sz": 2, "nm": 2, "x": 0, "y": 8, "rowlen": 12, "sink": 0}, {"id": 30, "sz": 1, "nm": 0, "x": 2, "y": 0, "rowlen": 3, "sink": 1}, {"id": 31, "sz": 1, "nm": 0, "x": 2, "y": 1, "rowlen": 3, "sink": 1}, {"id": 32, "sz": 2, "nm": 1, "x": 0, "y": 9, "rowlen": 12, "sink": 0}, {"id": 101, "sz": 4, "nm": 2, "x": 0, "y": 2, "rowlen": 12, "sink": 0}, {"id": 102, "sz": 4, "nm": 2, "x": 0, "y": 3, "rowlen": 12, "sink": 0}, {"id": 138, "sz": 4, "nm": 2, "x": 0, "y": 4, "rowlen": 12, "sink": 0}, {"id": 139, "sz": 4, "nm": 2, "x": 0, "y": 5, "rowlen": 12, "sink": 0}, {"id": 140, "sz": 4, "nm": 2, "x": 0, "y": 6, "rowlen": 12, "sink": 0}, {"id": 141, "sz": 4, "nm": 2, "x": 0, "y": 7, "rowlen": 12, "sink": 0}, {"id": 220, "sz": 4, "nm": 2, "x": 1, "y": 2, "rowlen": 4, "sink": 0}, {"id": 221, "sz": 4, "nm": 2, "x": 1, "y": 3, "rowlen": 4, "sink": 0}, {"id": 222, "sz": 1, "nm": 1, "x": 0, "y": 10, "rowlen": 12, "sink": 0}, {"id": 223, "sz": 4, "nm": 2, "x": 1, "y": 0, "rowlen": 4, "sink": 0}, {"id": 224, "sz": 6, "nm": 2, "x": 0, "y": 0, "rowlen": 12, "sink": 0}, {"id": 254, "sz": 1, "nm": 1, "x": 0, "y": 11, "rowlen": 12, "sink": 0}, {"id": 255, "sz": 4, "nm": 2, "x": 1, "y": 1, "rowlen": 4, "sink": 0}, {"id": 256, "sz": 6, "nm": 2, "x": 0, "y": 1, "rowlen": 12, "sink": 0}], "e": [{"a": 9, "b": 8, "w": 3}, {"a": 32, "b": 31, "w": 2}, {"a": 101, "b": 30, "w": 2}, {"a": 102, "b": 31, "w": 2}, {"a": 138, "b": 8, "w": 2}, {"a": 139, "b": 31, "w": 2}, {"a": 140, "b": 8, "w": 2}, {"a": 141, "b": 30, "w": 2}, {"a": 220, "b": 8, "w": 2}, {"a": 221, "b": 30, "w": 2}, {"a": 222, "b": 220, "w": 1}, {"a": 222, "b": 221, "w": 1}, {"a": 223, "b": 31, "w": 2}, {"a": 224, "b": 8, "w": 2}, {"a": 224, "b": 223, "w": 4}, {"a": 254, "b": 220, "w": 1}, {"a": 254, "b": 221, "w": 1}, {"a": 255, "b": 31, "w": 2}, {"a": 256, "b": 30, "w": 2}, {"a": 256, "b": 255, "w": 4}], "layers": 3, "size": 61, "mult": 4, "nscc": 19}, {"n": [{"id": 18, "sz": 1, "nm": 0, "x": 2, "y": 0, "rowlen": 2, "sink": 1}, {"id": 19, "sz": 2, "nm": 2, "x": 0, "y": 4, "rowlen": 9, "sink": 0}, {"id": 33, "sz": 1, "nm": 0, "x": 2, "y": 1, "rowlen": 2, "sink": 1}, {"id": 34, "sz": 2, "nm": 1, "x": 0, "y": 5, "rowlen": 9, "sink": 0}, {"id": 56, "sz": 1, "nm": 0, "x": 1, "y": 5, "rowlen": 11, "sink": 1}, {"id": 57, "sz": 2, "nm": 2, "x": 0, "y": 6, "rowlen": 9, "sink": 0}, {"id": 118, "sz": 4, "nm": 2, "x": 1, "y": 9, "rowlen": 11, "sink": 0}, {"id": 119, "sz": 4, "nm": 2, "x": 1, "y": 2, "rowlen": 11, "sink": 0}, {"id": 120, "sz": 1, "nm": 0, "x": 1, "y": 3, "rowlen": 11, "sink": 1}, {"id": 121, "sz": 1, "nm": 0, "x": 1, "y": 4, "rowlen": 11, "sink": 1}, {"id": 122, "sz": 4, "nm": 2, "x": 0, "y": 2, "rowlen": 9, "sink": 0}, {"id": 142, "sz": 4, "nm": 2, "x": 1, "y": 10, "rowlen": 11, "sink": 0}, {"id": 143, "sz": 4, "nm": 2, "x": 1, "y": 6, "rowlen": 11, "sink": 0}, {"id": 144, "sz": 1, "nm": 0, "x": 1, "y": 7, "rowlen": 11, "sink": 1}, {"id": 145, "sz": 1, "nm": 0, "x": 1, "y": 8, "rowlen": 11, "sink": 1}, {"id": 146, "sz": 4, "nm": 2, "x": 0, "y": 3, "rowlen": 9, "sink": 0}, {"id": 236, "sz": 1, "nm": 1, "x": 0, "y": 7, "rowlen": 9, "sink": 0}, {"id": 237, "sz": 4, "nm": 2, "x": 1, "y": 0, "rowlen": 11, "sink": 0}, {"id": 238, "sz": 6, "nm": 2, "x": 0, "y": 0, "rowlen": 9, "sink": 0}, {"id": 257, "sz": 1, "nm": 1, "x": 0, "y": 8, "rowlen": 9, "sink": 0}, {"id": 258, "sz": 4, "nm": 2, "x": 1, "y": 1, "rowlen": 11, "sink": 0}, {"id": 259, "sz": 6, "nm": 2, "x": 0, "y": 1, "rowlen": 9, "sink": 0}], "e": [{"a": 19, "b": 18, "w": 3}, {"a": 34, "b": 33, "w": 2}, {"a": 57, "b": 56, "w": 3}, {"a": 118, "b": 33, "w": 2}, {"a": 119, "b": 18, "w": 2}, {"a": 122, "b": 56, "w": 2}, {"a": 122, "b": 119, "w": 2}, {"a": 122, "b": 120, "w": 1}, {"a": 122, "b": 121, "w": 1}, {"a": 142, "b": 18, "w": 2}, {"a": 143, "b": 33, "w": 2}, {"a": 146, "b": 56, "w": 2}, {"a": 146, "b": 143, "w": 2}, {"a": 146, "b": 144, "w": 1}, {"a": 146, "b": 145, "w": 1}, {"a": 236, "b": 118, "w": 1}, {"a": 236, "b": 142, "w": 1}, {"a": 237, "b": 18, "w": 2}, {"a": 238, "b": 56, "w": 2}, {"a": 238, "b": 237, "w": 4}, {"a": 257, "b": 118, "w": 1}, {"a": 257, "b": 142, "w": 1}, {"a": 258, "b": 33, "w": 2}, {"a": 259, "b": 56, "w": 2}, {"a": 259, "b": 258, "w": 4}], "layers": 3, "size": 59, "mult": 4, "nscc": 22}, {"n": [{"id": 1, "sz": 1, "nm": 0, "x": 2, "y": 0, "rowlen": 2, "sink": 1}, {"id": 2, "sz": 2, "nm": 2, "x": 0, "y": 5, "rowlen": 7, "sink": 0}, {"id": 54, "sz": 1, "nm": 0, "x": 2, "y": 1, "rowlen": 2, "sink": 1}, {"id": 55, "sz": 2, "nm": 1, "x": 0, "y": 6, "rowlen": 7, "sink": 0}, {"id": 70, "sz": 1, "nm": 0, "x": 1, "y": 4, "rowlen": 8, "sink": 1}, {"id": 86, "sz": 4, "nm": 2, "x": 1, "y": 5, "rowlen": 8, "sink": 0}, {"id": 87, "sz": 1, "nm": 0, "x": 1, "y": 0, "rowlen": 8, "sink": 1}, {"id": 88, "sz": 1, "nm": 0, "x": 1, "y": 1, "rowlen": 8, "sink": 1}, {"id": 89, "sz": 8, "nm": 2, "x": 0, "y": 0, "rowlen": 7, "sink": 0}, {"id": 166, "sz": 6, "nm": 2, "x": 0, "y": 2, "rowlen": 7, "sink": 0}, {"id": 167, "sz": 1, "nm": 0, "x": 1, "y": 2, "rowlen": 8, "sink": 1}, {"id": 168, "sz": 1, "nm": 0, "x": 1, "y": 3, "rowlen": 8, "sink": 1}, {"id": 169, "sz": 8, "nm": 2, "x": 0, "y": 1, "rowlen": 7, "sink": 0}, {"id": 209, "sz": 4, "nm": 2, "x": 1, "y": 6, "rowlen": 8, "sink": 0}, {"id": 210, "sz": 6, "nm": 2, "x": 0, "y": 3, "rowlen": 7, "sink": 0}, {"id": 275, "sz": 4, "nm": 2, "x": 1, "y": 7, "rowlen": 8, "sink": 0}, {"id": 276, "sz": 6, "nm": 2, "x": 0, "y": 4, "rowlen": 7, "sink": 0}], "e": [{"a": 2, "b": 1, "w": 4}, {"a": 55, "b": 54, "w": 2}, {"a": 86, "b": 54, "w": 2}, {"a": 89, "b": 1, "w": 2}, {"a": 89, "b": 70, "w": 2}, {"a": 89, "b": 87, "w": 2}, {"a": 89, "b": 88, "w": 2}, {"a": 166, "b": 1, "w": 2}, {"a": 166, "b": 86, "w": 4}, {"a": 169, "b": 54, "w": 2}, {"a": 169, "b": 70, "w": 2}, {"a": 169, "b": 167, "w": 2}, {"a": 169, "b": 168, "w": 2}, {"a": 209, "b": 1, "w": 2}, {"a": 210, "b": 70, "w": 2}, {"a": 210, "b": 209, "w": 4}, {"a": 275, "b": 54, "w": 2}, {"a": 276, "b": 70, "w": 2}, {"a": 276, "b": 275, "w": 4}], "layers": 3, "size": 57, "mult": 2, "nscc": 17}, {"n": [{"id": 5, "sz": 1, "nm": 0, "x": 1, "y": 4, "rowlen": 6, "sink": 1}, {"id": 24, "sz": 1, "nm": 0, "x": 2, "y": 1, "rowlen": 2, "sink": 1}, {"id": 25, "sz": 2, "nm": 2, "x": 0, "y": 6, "rowlen": 8, "sink": 0}, {"id": 52, "sz": 1, "nm": 0, "x": 2, "y": 0, "rowlen": 2, "sink": 1}, {"id": 53, "sz": 2, "nm": 1, "x": 0, "y": 7, "rowlen": 8, "sink": 0}, {"id": 92, "sz": 4, "nm": 2, "x": 0, "y": 4, "rowlen": 8, "sink": 0}, {"id": 93, "sz": 1, "nm": 0, "x": 1, "y": 0, "rowlen": 6, "sink": 1}, {"id": 94, "sz": 1, "nm": 0, "x": 1, "y": 1, "rowlen": 6, "sink": 1}, {"id": 95, "sz": 8, "nm": 2, "x": 0, "y": 0, "rowlen": 8, "sink": 0}, {"id": 129, "sz": 4, "nm": 2, "x": 0, "y": 5, "rowlen": 8, "sink": 0}, {"id": 130, "sz": 4, "nm": 2, "x": 1, "y": 2, "rowlen": 6, "sink": 0}, {"id": 131, "sz": 6, "nm": 2, "x": 0, "y": 1, "rowlen": 8, "sink": 0}, {"id": 213, "sz": 4, "nm": 2, "x": 1, "y": 3, "rowlen": 6, "sink": 0}, {"id": 214, "sz": 6, "nm": 2, "x": 0, "y": 2, "rowlen": 8, "sink": 0}, {"id": 215, "sz": 4, "nm": 2, "x": 1, "y": 5, "rowlen": 6, "sink": 0}, {"id": 216, "sz": 6, "nm": 2, "x": 0, "y": 3, "rowlen": 8, "sink": 0}], "e": [{"a": 25, "b": 24, "w": 4}, {"a": 53, "b": 52, "w": 2}, {"a": 92, "b": 24, "w": 2}, {"a": 95, "b": 5, "w": 2}, {"a": 95, "b": 52, "w": 2}, {"a": 95, "b": 93, "w": 2}, {"a": 95, "b": 94, "w": 2}, {"a": 129, "b": 5, "w": 2}, {"a": 130, "b": 24, "w": 2}, {"a": 131, "b": 52, "w": 2}, {"a": 131, "b": 130, "w": 4}, {"a": 213, "b": 24, "w": 2}, {"a": 214, "b": 5, "w": 2}, {"a": 214, "b": 213, "w": 4}, {"a": 215, "b": 52, "w": 2}, {"a": 216, "b": 5, "w": 2}, {"a": 216, "b": 215, "w": 4}], "layers": 3, "size": 55, "mult": 4, "nscc": 16}, {"n": [{"id": 3, "sz": 1, "nm": 0, "x": 2, "y": 0, "rowlen": 2, "sink": 1}, {"id": 4, "sz": 2, "nm": 1, "x": 0, "y": 7, "rowlen": 9, "sink": 0}, {"id": 26, "sz": 1, "nm": 0, "x": 1, "y": 3, "rowlen": 4, "sink": 1}, {"id": 74, "sz": 1, "nm": 0, "x": 2, "y": 1, "rowlen": 2, "sink": 1}, {"id": 75, "sz": 2, "nm": 2, "x": 0, "y": 8, "rowlen": 9, "sink": 0}, {"id": 90, "sz": 4, "nm": 2, "x": 0, "y": 3, "rowlen": 9, "sink": 0}, {"id": 91, "sz": 4, "nm": 2, "x": 1, "y": 0, "rowlen": 4, "sink": 0}, {"id": 132, "sz": 4, "nm": 2, "x": 0, "y": 4, "rowlen": 9, "sink": 0}, {"id": 133, "sz": 4, "nm": 2, "x": 0, "y": 5, "rowlen": 9, "sink": 0}, {"id": 191, "sz": 6, "nm": 2, "x": 0, "y": 0, "rowlen": 9, "sink": 0}, {"id": 192, "sz": 4, "nm": 2, "x": 0, "y": 6, "rowlen": 9, "sink": 0}, {"id": 211, "sz": 4, "nm": 2, "x": 1, "y": 1, "rowlen": 4, "sink": 0}, {"id": 212, "sz": 6, "nm": 2, "x": 0, "y": 1, "rowlen": 9, "sink": 0}, {"id": 245, "sz": 4, "nm": 2, "x": 1, "y": 2, "rowlen": 4, "sink": 0}, {"id": 246, "sz": 6, "nm": 2, "x": 0, "y": 2, "rowlen": 9, "sink": 0}], "e": [{"a": 4, "b": 3, "w": 2}, {"a": 75, "b": 74, "w": 4}, {"a": 90, "b": 26, "w": 2}, {"a": 91, "b": 74, "w": 2}, {"a": 132, "b": 3, "w": 2}, {"a": 133, "b": 74, "w": 2}, {"a": 191, "b": 3, "w": 2}, {"a": 191, "b": 91, "w": 4}, {"a": 192, "b": 26, "w": 2}, {"a": 211, "b": 3, "w": 2}, {"a": 212, "b": 26, "w": 2}, {"a": 212, "b": 211, "w": 4}, {"a": 245, "b": 74, "w": 2}, {"a": 246, "b": 26, "w": 2}, {"a": 246, "b": 245, "w": 4}], "layers": 3, "size": 53, "mult": 2, "nscc": 15}], "l7hist": [[160, 64], [180, 1119], [200, 217], [220, 77], [240, 18], [260, 3], [280, 2]], "beam": {"levels": [1, 2, 3, 4, 5, 6, 7], "mean": [5.1, 14.3, 27.9, 51.1, 85.3, 137.5, 192.3], "max": [9, 29, 50, 76, 122, 194, 282]}, "null": {"mean": [0.21, 0.51, 0.92, 1.55, 2.22, 3.02, 4.01], "max": [9, 12, 17, 27, 20, 25, 33]}, "pairs": {"twoway": 804, "oneway": 664, "multi": 20}, "totals": {"sccs": 292, "sinks": 80}};
+const NS = 'http://www.w3.org/2000/svg';
+const tip = document.getElementById('tip');
+function el(t, at, parent) {
+  const e = document.createElementNS(NS, t);
+  for (const k in at) e.setAttribute(k, at[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const NMCOL = ['#3d4855', '#e0a458', '#e2603f'];
+// --- atlas ---
+const atlas = document.getElementById('atlas');
+DATA.atlas.forEach(sp => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<h3>${sp.size}-state cluster</h3>
+    <div class="m">${sp.nscc} SCCs &middot; ${sp.e.length} one-way relations</div>
+    <span class="badge">&times;${sp.mult}</span>`;
+  const Wc = 176, Hc = 190;
+  const svg = el('svg', {width: Wc, height: Hc, viewBox: `0 0 ${Wc} ${Hc}`});
+  const defs = el('defs', {}, svg);
+  const mk = el('marker', {id: 'ar' + sp.size, viewBox: '0 0 8 8',
+    refX: 7, refY: 4, markerWidth: 5.5, markerHeight: 5.5, orient: 'auto'}, defs);
+  el('path', {d: 'M0,0 L8,4 L0,8 z', fill: '#7a8698'}, mk);
+  const pos = {};
+  sp.n.forEach(n => {
+    const x = 26 + n.x * ((Wc - 56) / 2);
+    const y = 16 + (n.y + 0.5) * ((Hc - 26) / n.rowlen);
+    pos[n.id] = [x, y];
+  });
+  sp.e.forEach(ed => {
+    const [x1, y1] = pos[ed.a], [x2, y2] = pos[ed.b];
+    const mx = (x1 + x2) / 2 + (y2 - y1) * 0.08,
+          my = (y1 + y2) / 2 - (x2 - x1) * 0.08;
+    el('path', {d: `M${x1},${y1} Q${mx},${my} ${x2},${y2}`,
+      fill: 'none', stroke: '#7a8698',
+      'stroke-opacity': 0.55, 'stroke-width': 0.7 + ed.w * 0.25,
+      'marker-end': `url(#ar${sp.size})`}, svg);
+  });
+  sp.n.forEach(n => {
+    const [x, y] = pos[n.id];
+    const r = 2.6 + 2.1 * Math.sqrt(n.sz);
+    const c = el('circle', {cx: x, cy: y, r, fill: NMCOL[n.nm],
+      stroke: n.sink ? '#f2f4f7' : 'none', 'stroke-width': 1.4}, svg);
+    c.addEventListener('mousemove', ev => {
+      tip.style.display = 'block';
+      tip.style.left = (ev.clientX + 14) + 'px';
+      tip.style.top = (ev.clientY + 10) + 'px';
+      tip.textContent = `SCC of ${n.sz} state${n.sz > 1 ? 's' : ''}` +
+        `\nmax nearmiss ${n.nm}` + (n.sink ? '\nSINK — no solved flip leaves' : '') +
+        (n.sz > 1 ? '\nmutually reachable by flips' : '');
+    });
+    c.addEventListener('mouseleave', () => tip.style.display = 'none');
+  });
+  card.appendChild(svg);
+  atlas.appendChild(card);
+});
+// --- chase curve (log scale) ---
+(() => {
+  const W = 560, H = 300, L = 46, B = 34, T = 16, R = 12;
+  const svg = el('svg', {width: W, height: H, viewBox: `0 0 ${W} ${H}`});
+  document.getElementById('curve').appendChild(svg);
+  const lv = DATA.beam.levels;
+  const x = i => L + (i) * (W - L - R) / (lv.length - 1);
+  const y = v => T + (1 - (Math.log10(v) + 1) / (Math.log10(300) + 1)) * (H - T - B);
+  [0.1, 1, 10, 100].forEach(v => {
+    el('line', {x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: '#242c36'}, svg);
+    el('text', {x: L - 6, y: y(v) + 3, 'text-anchor': 'end'}, svg).textContent =
+      v < 1 ? v : v.toLocaleString();
+  });
+  lv.forEach((l, i) => {
+    el('text', {x: x(i), y: H - B + 16, 'text-anchor': 'middle'}, svg)
+      .textContent = 'L' + l;
+  });
+  el('text', {x: (L + W - R) / 2, y: H - 4, 'text-anchor': 'middle'}, svg)
+    .textContent = 'beam level (rank 49+L)  ·  log scale';
+  const line = (vals, color, dash) => {
+    el('path', {d: vals.map((v, i) =>
+      (i ? 'L' : 'M') + x(i) + ',' + y(v)).join(' '),
+      fill: 'none', stroke: color, 'stroke-width': 1.8,
+      'stroke-dasharray': dash || 'none'}, svg);
+    vals.forEach((v, i) =>
+      el('circle', {cx: x(i), cy: y(v), r: 2.6, fill: color}, svg));
+  };
+  line(DATA.beam.mean, '#e2603f');
+  line(DATA.beam.max, '#e2603f', '3,3');
+  line(DATA.null.mean, '#3d4855');
+  line(DATA.null.max, '#3d4855', '3,3');
+  const lbl = (t, cx, cy, col) => {
+    const e = el('text', {x: cx, y: cy}, svg);
+    e.textContent = t; e.setAttribute('fill', col);
+  };
+  lbl('beam max', x(6) - 58, y(282) - 6, '#e2603f');
+  lbl('beam mean', x(6) - 64, y(192) + 16, '#e2603f');
+  lbl('null max', x(6) - 52, y(33) - 8, '#8a94a3');
+  lbl('null mean', x(6) - 58, y(4) + 16, '#8a94a3');
+  lbl('48× at L7', x(6) - 2, (y(192.3) + y(4.01)) / 2, '#5fb7a5');
+})();
+// --- L7 histogram ---
+(() => {
+  const bins = DATA.l7hist;
+  const W = 360, H = 300, L = 40, B = 34, T = 16, R = 8;
+  const svg = el('svg', {width: W, height: H, viewBox: `0 0 ${W} ${H}`});
+  document.getElementById('hist').appendChild(svg);
+  const mx = Math.max(...bins.map(b => b[1]));
+  const bw = (W - L - R) / bins.length;
+  bins.forEach(([b0, c], i) => {
+    const h = c / mx * (H - T - B);
+    el('rect', {x: L + i * bw + 2, y: H - B - h, width: bw - 4, height: h,
+      fill: '#e2603f', 'fill-opacity': 0.8}, svg);
+    el('text', {x: L + i * bw + bw / 2, y: H - B + 16,
+      'text-anchor': 'middle'}, svg).textContent = b0;
+    el('text', {x: L + i * bw + bw / 2, y: H - B - h - 5,
+      'text-anchor': 'middle'}, svg).textContent = c;
+  });
+  el('text', {x: (L + W - R) / 2, y: H - 4, 'text-anchor': 'middle'}, svg)
+    .textContent = 'level-7 beam: nearmiss of all 1,500 states';
+})();
+document.getElementById('chasenote').textContent =
+  'The entire level-7 beam sits between nearmiss 177 and 282 — at the same ' +
+  'rank the unguided maximum over 5,000 random states is 33. Yet zero ' +
+  'double-coincidences have fired anywhere in the campaign: the gap between ' +
+  'alignment and reduction is the open question.';
+</script>

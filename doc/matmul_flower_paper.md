@@ -112,7 +112,17 @@ Four readings:
    components. Near-uniformity like that is unlikely to be
    accidental: the scheme's automorphisms act on the component, and
    the clusters look like an orbit decomposition — observed, not yet
-   proven. Flips are also where the metrics move: 74% of flip edges
+   proven. Aggregating each cluster's *directed* flip graph by
+   strongly connected components sharpens this: same-size clusters
+   have **identical condensation profiles** (SCC size/degree/nearmiss
+   multisets and typed edge signatures; five species with
+   15/16/17/22/19 SCCs), every condensation is exactly three layers
+   deep, SCC sizes are only 1, 2, 4, 6, 8, and there are **no trap
+   cycles** — the only dead ends are the 80 singleton sinks (the
+   coinc-0 states; 664 of the 1,468 flip pairs are one-way). A
+   companion figure, the *condensation atlas*
+   (`doc/fig_flip_atlas.html`), draws the five species and the
+   chase-vs-null trajectory. Flips are also where the metrics move: 74% of flip edges
    connect states of *different* nearmiss (308 of them jump 0 ↔ 2 in
    a single move), and 78% touch the copl-109 band. In the
    interactive figure, hovering any state or flip edge isolates its

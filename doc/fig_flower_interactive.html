@@ -23,7 +23,11 @@
   .chip.warm b { color:var(--amber); }
   main { display:grid; grid-template-columns:1fr 340px; gap:0; }
   #cwrap { position:relative; min-height:640px; }
-  canvas { display:block; width:100%; height:100%; cursor:crosshair; }
+  canvas { display:block; width:100%; height:100%; cursor:grab;
+    touch-action:none; }
+  #zoomhint { position:absolute; left:12px; bottom:10px;
+    pointer-events:none; color:var(--mut); font-size:11px;
+    font-family:ui-monospace,Menlo,monospace; opacity:.85; }
   #tip { position:absolute; pointer-events:none; background:var(--panel);
     border:1px solid var(--line); padding:7px 10px; border-radius:3px;
     font-family:ui-monospace,Menlo,monospace; font-size:12px; display:none;
@@ -71,7 +75,8 @@
   <div class="chip">new rank-48 reachable <b>0</b></div>
 </div>
 <main>
-  <div id="cwrap"><canvas id="cv"></canvas><div id="tip"></div></div>
+  <div id="cwrap"><canvas id="cv"></canvas><div id="tip"></div>
+    <div id="zoomhint">scroll to zoom &middot; drag to pan &middot; double&#8209;click to reset</div></div>
   <aside>
     <section>
       <h2>Legend</h2>
@@ -118,13 +123,14 @@ const cv = document.getElementById('cv'), tip = document.getElementById('tip');
 const ctx = cv.getContext('2d');
 const wrap = document.getElementById('cwrap');
 let W, H, DPR = Math.min(devicePixelRatio || 1, 2);
+let vs = 1, vpx = 0, vpy = 0;   // view: zoom scale + pan (screen px)
 function resize() {
   W = wrap.clientWidth; H = Math.max(640, innerHeight - 210);
   wrap.style.height = H + 'px';
   cv.width = W * DPR; cv.height = H * DPR;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
-resize(); addEventListener('resize', () => { resize(); });
+resize(); addEventListener('resize', () => { resize(); draw(); });
 const N = DATA.nodes, EDG = DATA.flips;
 // adjacency for layout
 const adj = new Map();
@@ -179,48 +185,48 @@ function step() {
 }
 function draw() {
   ctx.clearRect(0, 0, W, H);
-  const cx = W / 2, cy = H / 2;
+  ctx.save();
+  ctx.translate(W / 2 + vpx, H / 2 + vpy);
+  ctx.scale(vs, vs);
   // pendant-leaf halo
   const R = Math.min(W, H) * 0.44;
-  ctx.save();
   ctx.strokeStyle = 'rgba(61,72,85,0.5)';
   ctx.lineWidth = 26;
-  ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, 2 * Math.PI); ctx.stroke();
   ctx.fillStyle = '#8a94a3';
   ctx.font = '12px ui-monospace,Menlo,monospace';
   ctx.textAlign = 'center';
-  ctx.fillText(DATA.leaves.toLocaleString() + ' pendant leaves — split in, reduce back, nothing else', cx, cy + R + 30);
-  ctx.restore();
+  ctx.fillText(DATA.leaves.toLocaleString() + ' pendant leaves — split in, reduce back, nothing else', 0, R + 30);
   // flip edges
   ctx.strokeStyle = 'rgba(86,98,116,0.45)';
   ctx.lineWidth = 0.7;
   ctx.beginPath();
   EDG.forEach(([a, b]) => {
-    ctx.moveTo(cx + N[a].x, cy + N[a].y);
-    ctx.lineTo(cx + N[b].x, cy + N[b].y);
+    ctx.moveTo(N[a].x, N[a].y);
+    ctx.lineTo(N[b].x, N[b].y);
   });
   ctx.stroke();
   // nodes
   N.forEach(n => {
     if (n.seed) return;
-    const x = cx + n.x, y = cy + n.y;
     const r = n.nm === 2 ? 4.2 : n.nm === 1 ? 3.4 : 2.3;
-    ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI);
+    ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 2 * Math.PI);
     ctx.fillStyle = n.nm === 2 ? '#e2603f' : n.nm === 1 ? '#e0a458' : '#3d4855';
     ctx.fill();
     if (n.cp === 109) {
       ctx.strokeStyle = '#5fb7a5'; ctx.lineWidth = 1.1;
-      ctx.beginPath(); ctx.arc(x, y, r + 2, 0, 2 * Math.PI); ctx.stroke();
+      ctx.beginPath(); ctx.arc(n.x, n.y, r + 2, 0, 2 * Math.PI); ctx.stroke();
     }
   });
   // seed
-  ctx.beginPath(); ctx.arc(cx, cy, 9, 0, 2 * Math.PI);
+  ctx.beginPath(); ctx.arc(0, 0, 9, 0, 2 * Math.PI);
   ctx.fillStyle = '#f2f4f7'; ctx.fill();
   ctx.fillStyle = '#101418';
   ctx.font = 'bold 8px ui-monospace,Menlo,monospace';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('48', cx, cy + .5);
+  ctx.fillText('48', 0, .5);
   ctx.textBaseline = 'alphabetic';
+  ctx.restore();
 }
 function loop() {
   if (ticks > 0) { step(); step(); ticks -= 2; }
@@ -229,11 +235,13 @@ function loop() {
 }
 if (reduced) { for (let i = 0; i < 220; i++) step(); }
 loop();
-// tooltip
+// tooltip (hit-test in world coordinates: invert the view transform)
 cv.addEventListener('mousemove', ev => {
+  if (dragging) return;
   const rect = cv.getBoundingClientRect();
-  const mx = ev.clientX - rect.left - W / 2, my = ev.clientY - rect.top - H / 2;
-  let best = null, bd = 90;
+  const mx = (ev.clientX - rect.left - W / 2 - vpx) / vs,
+        my = (ev.clientY - rect.top - H / 2 - vpy) / vs;
+  let best = null, bd = 90 / (vs * vs);
   for (const n of N) {
     const dx = n.x - mx, dy = n.y - my, d = dx * dx + dy * dy;
     if (d < bd) { bd = d; best = n; }
@@ -248,6 +256,54 @@ cv.addEventListener('mousemove', ev => {
   } else tip.style.display = 'none';
 });
 cv.addEventListener('mouseleave', () => tip.style.display = 'none');
+// pan / zoom / pinch
+let dragging = false;
+const ptrs = new Map();
+let pinch0 = null;
+function zoomAt(px, py, f) {          // px,py in canvas-local screen coords
+  const wx = (px - W / 2 - vpx) / vs, wy = (py - H / 2 - vpy) / vs;
+  vs = Math.min(24, Math.max(0.25, vs * f));
+  vpx = px - W / 2 - wx * vs; vpy = py - H / 2 - wy * vs;
+  draw();
+}
+cv.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  const rect = cv.getBoundingClientRect();
+  zoomAt(ev.clientX - rect.left, ev.clientY - rect.top,
+         Math.exp(-ev.deltaY * 0.0015));
+}, { passive: false });
+cv.addEventListener('pointerdown', ev => {
+  cv.setPointerCapture(ev.pointerId);
+  ptrs.set(ev.pointerId, [ev.clientX, ev.clientY]);
+  if (ptrs.size === 1) {
+    dragging = true; tip.style.display = 'none';
+    cv.style.cursor = 'grabbing';
+  } else if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()];
+    pinch0 = Math.hypot(a[0] - b[0], a[1] - b[1]);
+  }
+});
+cv.addEventListener('pointermove', ev => {
+  if (!ptrs.has(ev.pointerId)) return;
+  const prev = ptrs.get(ev.pointerId);
+  ptrs.set(ev.pointerId, [ev.clientX, ev.clientY]);
+  if (ptrs.size === 1) {
+    vpx += ev.clientX - prev[0]; vpy += ev.clientY - prev[1];
+    draw();
+  } else if (ptrs.size === 2 && pinch0) {
+    const [a, b] = [...ptrs.values()];
+    const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    const rect = cv.getBoundingClientRect();
+    zoomAt((a[0] + b[0]) / 2 - rect.left, (a[1] + b[1]) / 2 - rect.top,
+           d / pinch0);
+    pinch0 = d;
+  }
+});
+['pointerup', 'pointercancel'].forEach(t => cv.addEventListener(t, ev => {
+  ptrs.delete(ev.pointerId); pinch0 = null;
+  if (!ptrs.size) { dragging = false; cv.style.cursor = 'grab'; }
+}));
+cv.addEventListener('dblclick', () => { vs = 1; vpx = 0; vpy = 0; draw(); });
 // histograms
 function hist(el, rows, color) {
   const mx = Math.max(...rows.map(r => r[1]));

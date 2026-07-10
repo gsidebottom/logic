@@ -249,9 +249,10 @@ cargo build --release --bin flip48
 ```
 
 The interactive Figure 1 (hover any fringe state for its metrics) is
-published at the artifact URL in the front matter; the static figure
-is regenerable from `graph48.json` by the script in the repository
-history.
+published at the artifact URL in the front matter and archived
+in-repo as `doc/fig_flower_interactive.html` (self-contained — open
+it in any browser); the static figure is regenerable from
+`graph48.json` by the script in the repository history.
 
 ## Acknowledgments
 

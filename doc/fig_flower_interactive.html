@@ -28,6 +28,12 @@
   #zoomhint { position:absolute; left:12px; bottom:10px;
     pointer-events:none; color:var(--mut); font-size:11px;
     font-family:ui-monospace,Menlo,monospace; opacity:.85; }
+  #ringbtn { position:absolute; right:12px; top:10px;
+    background:var(--panel); border:1px solid var(--line);
+    color:var(--mut); font-size:11px; padding:5px 9px;
+    font-family:ui-monospace,Menlo,monospace; border-radius:3px;
+    cursor:pointer; }
+  #ringbtn.on { color:var(--teal); border-color:var(--teal); }
   #tip { position:absolute; pointer-events:none; background:var(--panel);
     border:1px solid var(--line); padding:7px 10px; border-radius:3px;
     font-family:ui-monospace,Menlo,monospace; font-size:12px; display:none;
@@ -76,7 +82,8 @@
 </div>
 <main>
   <div id="cwrap"><canvas id="cv"></canvas><div id="tip"></div>
-    <div id="zoomhint">scroll to zoom &middot; drag to pan &middot; double&#8209;click to reset</div></div>
+    <div id="zoomhint">scroll to zoom &middot; drag to pan &middot; double&#8209;click to reset &middot; hover a dot for its seed edges</div>
+    <button id="ringbtn" type="button">exact rings: off</button></div>
   <aside>
     <section>
       <h2>Legend</h2>
@@ -124,6 +131,9 @@ const ctx = cv.getContext('2d');
 const wrap = document.getElementById('cwrap');
 let W, H, DPR = Math.min(devicePixelRatio || 1, 2);
 let vs = 1, vpx = 0, vpy = 0;   // view: zoom scale + pan (screen px)
+let hovered = null;             // fringe state under cursor (seed spokes)
+let exactR = false, savedPos = null;   // exact-ring mode + free-layout snapshot
+const RING = { 2: 130, 1: 190, 0: 260 };
 function resize() {
   W = wrap.clientWidth; H = Math.max(640, innerHeight - 210);
   wrap.style.height = H + 'px';
@@ -182,14 +192,22 @@ function step() {
     n.vx *= 0.86; n.vy *= 0.86;
     n.x += n.vx; n.y += n.vy;
   });
+  // exact-ring mode: project back to the nearmiss ring, so the
+  // forces can only rearrange nodes tangentially
+  if (exactR) N.forEach(n => {
+    if (n.fx) return;
+    const r = RING[n.nm], L = Math.hypot(n.x, n.y) || 1;
+    n.x *= r / L; n.y *= r / L;
+  });
 }
 function draw() {
   ctx.clearRect(0, 0, W, H);
   ctx.save();
   ctx.translate(W / 2 + vpx, H / 2 + vpy);
   ctx.scale(vs, vs);
-  // pendant-leaf halo
-  const R = Math.min(W, H) * 0.44;
+  // pendant-leaf halo (in exact-ring mode, pushed out past the rings)
+  const R = exactR ? Math.max(Math.min(W, H) * 0.44, RING[0] + 44)
+                   : Math.min(W, H) * 0.44;
   ctx.strokeStyle = 'rgba(61,72,85,0.5)';
   ctx.lineWidth = 26;
   ctx.beginPath(); ctx.arc(0, 0, R, 0, 2 * Math.PI); ctx.stroke();
@@ -197,6 +215,18 @@ function draw() {
   ctx.font = '12px ui-monospace,Menlo,monospace';
   ctx.textAlign = 'center';
   ctx.fillText(DATA.leaves.toLocaleString() + ' pendant leaves — split in, reduce back, nothing else', 0, R + 30);
+  // exact-ring guides: radius IS nearmiss in this mode
+  if (exactR) {
+    ctx.lineWidth = 1;
+    ctx.font = '10px ui-monospace,Menlo,monospace';
+    ctx.textAlign = 'left';
+    [[2, '#e2603f'], [1, '#e0a458'], [0, '#566274']].forEach(([nm, col]) => {
+      ctx.strokeStyle = col + '3c';
+      ctx.beginPath(); ctx.arc(0, 0, RING[nm], 0, 2 * Math.PI); ctx.stroke();
+      ctx.fillStyle = col + 'cc';
+      ctx.fillText('nm ' + nm, RING[nm] + 5, 3);
+    });
+  }
   // flip edges
   ctx.strokeStyle = 'rgba(86,98,116,0.45)';
   ctx.lineWidth = 0.7;
@@ -206,6 +236,30 @@ function draw() {
     ctx.lineTo(N[b].x, N[b].y);
   });
   ctx.stroke();
+  // hover spokes: the hovered state's two seed edges — the split that
+  // creates it (seed -> state, dashed) and the reduction straight back
+  // (state -> seed, teal).  Drawn on demand; statically these edges
+  // exist for EVERY state, which is why they are not drawn en masse.
+  if (hovered && !hovered.seed) {
+    const hx = hovered.x, hy = hovered.y;
+    const px = -hy * 0.10, py = hx * 0.10;   // perpendicular bow
+    const mid = (cxq, cyq) => [hx / 4 + cxq / 2, hy / 4 + cyq / 2];
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = ctx.fillStyle = 'rgba(216,222,230,0.6)';
+    ctx.beginPath(); ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(hx / 2 + px, hy / 2 + py, hx, hy);
+    ctx.stroke();
+    let [mx1, my1] = mid(hx / 2 + px, hy / 2 + py);
+    arrow(mx1, my1, Math.atan2(hy, hx));           // outbound: split
+    ctx.setLineDash([]);
+    ctx.strokeStyle = ctx.fillStyle = 'rgba(95,183,165,0.7)';
+    ctx.beginPath(); ctx.moveTo(hx, hy);
+    ctx.quadraticCurveTo(hx / 2 - px, hy / 2 - py, 0, 0);
+    ctx.stroke();
+    let [mx2, my2] = mid(hx / 2 - px, hy / 2 - py);
+    arrow(mx2, my2, Math.atan2(-hy, -hx));         // inbound: reduce
+  }
   // nodes
   N.forEach(n => {
     if (n.seed) return;
@@ -216,6 +270,10 @@ function draw() {
     if (n.cp === 109) {
       ctx.strokeStyle = '#5fb7a5'; ctx.lineWidth = 1.1;
       ctx.beginPath(); ctx.arc(n.x, n.y, r + 2, 0, 2 * Math.PI); ctx.stroke();
+    }
+    if (n === hovered) {
+      ctx.strokeStyle = '#f2f4f7'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(n.x, n.y, r + 3.5, 0, 2 * Math.PI); ctx.stroke();
     }
   });
   // seed
@@ -228,10 +286,20 @@ function draw() {
   ctx.textBaseline = 'alphabetic';
   ctx.restore();
 }
+// small direction triangle at (x,y) pointing along angle a (world units)
+function arrow(x, y, a) {
+  const s = Math.min(7, 5 / Math.sqrt(vs) + 2);
+  ctx.beginPath();
+  ctx.moveTo(x + s * Math.cos(a), y + s * Math.sin(a));
+  ctx.lineTo(x + s * Math.cos(a + 2.55), y + s * Math.sin(a + 2.55));
+  ctx.lineTo(x + s * Math.cos(a - 2.55), y + s * Math.sin(a - 2.55));
+  ctx.closePath(); ctx.fill();
+}
+let rafId = 0;
 function loop() {
   if (ticks > 0) { step(); step(); ticks -= 2; }
   draw();
-  if (ticks > 0) requestAnimationFrame(loop);
+  if (ticks > 0) rafId = requestAnimationFrame(loop);
 }
 if (reduced) { for (let i = 0; i < 220; i++) step(); }
 loop();
@@ -252,10 +320,39 @@ cv.addEventListener('mousemove', ev => {
     tip.style.top = (ev.clientY - rect.top + 10) + 'px';
     tip.textContent = best.seed
       ? 'THE SEED — rank 48\nall 6,904 reductions return here'
-      : `rank 49 fringe state\nnearmiss ${best.nm}   coinc ${best.co}\nshared pairs ${best.sh}   coplanar ${best.cp}\nmax |coeff| ${best.mx}`;
+      : `rank 49 fringe state\nnearmiss ${best.nm}   coinc ${best.co}\nshared pairs ${best.sh}   coplanar ${best.cp}\nmax |coeff| ${best.mx}\n⇄ seed: split in · reduces back`;
   } else tip.style.display = 'none';
+  if (best !== hovered) { hovered = best; draw(); }
 });
-cv.addEventListener('mouseleave', () => tip.style.display = 'none');
+cv.addEventListener('mouseleave', () => {
+  tip.style.display = 'none';
+  if (hovered) { hovered = null; draw(); }
+});
+// exact-ring toggle: radius strictly encodes nearmiss (tangential
+// relaxation only); toggling off restores the free layout exactly
+const ringbtn = document.getElementById('ringbtn');
+ringbtn.addEventListener('click', () => {
+  exactR = !exactR;
+  ringbtn.textContent = 'exact rings: ' + (exactR ? 'on' : 'off');
+  ringbtn.classList.toggle('on', exactR);
+  cancelAnimationFrame(rafId);
+  if (exactR) {
+    savedPos = N.map(n => [n.x, n.y]);
+    N.forEach(n => {
+      if (n.fx) return;
+      const r = RING[n.nm], L = Math.hypot(n.x, n.y) || 1;
+      n.x *= r / L; n.y *= r / L; n.vx = 0; n.vy = 0;
+    });
+    ticks = reduced ? 0 : 140;
+    if (reduced) for (let i = 0; i < 140; i++) step();
+  } else {
+    if (savedPos) N.forEach((n, i) => {
+      n.x = savedPos[i][0]; n.y = savedPos[i][1]; n.vx = 0; n.vy = 0;
+    });
+    ticks = 0;
+  }
+  loop();
+});
 // pan / zoom / pinch
 let dragging = false;
 const ptrs = new Map();

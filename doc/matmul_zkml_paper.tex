@@ -1,0 +1,361 @@
+% Bilinear rank as proof cost: fast matmul schemes and field-specific
+% flip search for zkML.  Build: tectonic doc/matmul_zkml_paper.tex
+\documentclass[10pt]{article}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{fancyvrb}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+\urlstyle{same}
+\setlist{itemsep=2pt,topsep=3pt}
+\setlength{\emergencystretch}{3em}
+\DefineVerbatimEnvironment{Code}{Verbatim}{fontsize=\footnotesize}
+
+\title{\bfseries Bilinear Rank as Proof Cost: Fast
+  Matrix-Multiplication Schemes and Field-Specific Flip Search for
+  zkML}
+\author{Greg Sidebottom}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-3em}
+\begin{center}
+\itshape Research note --- logic repo
+(\url{https://github.com/gsidebottom/logic}), matmul track,
+2026-07-11. Companion to the $3\times3$ additive-complexity paper
+(\texttt{doc/matmul\_adds\_paper.md}, artifacts DOI
+10.5281/zenodo.21240904), the rank-48 rigidity paper, and the flower
+note. The engine of \S\ref{sec:engine} is
+\texttt{src/bin/flip23p.rs} in this repository.
+\end{center}
+
+\begin{abstract}
+Zero-knowledge machine learning (zkML) --- proving that a
+neural-network inference was computed correctly without re-executing
+or revealing it --- is bottlenecked by the prover, whose work in
+circuit-based proof systems is counted in \textbf{multiplication
+constraints}: additions and constant-coefficient linear combinations
+are free. This is the exact inversion of the hardware cost model that
+keeps fast matrix multiplication out of GPUs, and it makes
+\textbf{bilinear rank} --- the number of multiplications in a
+Strassen-like scheme --- the direct cost driver for matrix products
+between witness values (private weights; attention). Three
+consequences. (1) Known schemes already pay: recursive rank-48
+$4\times4$ blocking proves a $768\times768$ witness$\times$witness
+product with ${\approx}4\times$ fewer constraints than the naive
+circuit, penalty-free because the schemes' additions cost nothing.
+(2) Coefficient obstructions vanish: schemes over $\mathbb{Q}$ with
+dyadic (or any rational) coefficients are exact over a prime field,
+and numerical stability is not a concept. (3) Most interestingly,
+\textbf{rank is field-dependent} --- rank 47 for $4\times4$ exists
+modulo 2 with no characteristic-0 equivalent known --- and zkML fixes
+a short list of concrete fields (Goldilocks, BabyBear, M31, the
+BN254/BLS12-381 scalar fields) over which nobody has searched. We
+port our rational flip-graph engine to $\mathbb{F}_p$
+(\texttt{flip23p}, Goldilocks first): over a prime field the engine
+is strictly stronger than its $\mathbb{Q}$ parent --- no coefficient
+growth, no magnitude caps, and every coincidence-solving $\lambda$ is
+admissible, so the coplanarity structure that rationality left mostly
+unusable becomes fully spendable. A verified rank-22 $3\times3$ or
+rank-47 $4\times4$ over a proof field would be a shippable
+constraint-count reduction with no analog in the characteristic-0
+literature. We state the cost model precisely, including the honest
+carve-outs (sumcheck/GKR provers multiply matrices in ${\sim}n^2$
+prover work and do not care about rank; public-weight linear layers
+cost no constraints), inventory which of our existing artifacts
+transfer, and report the port's first measurements.
+\end{abstract}
+
+\section{zkML in one page}\label{sec:zkml}
+
+A \textbf{zero-knowledge proof} (ZKP) lets a prover convince a
+verifier that a statement holds --- here, ``this output is what model
+$M$ computes on input $x$'' --- without the verifier re-executing the
+computation, and optionally without revealing $x$ or $M$. Two
+families dominate. \textbf{SNARKs} (succinct non-interactive
+arguments of knowledge; Groth16 \cite{groth16}, PLONK \cite{plonk})
+give constant-or-polylog proof sizes over elliptic-curve-pairing
+fields such as the BN254 and BLS12-381 scalar fields (${\sim}254$-bit
+primes). \textbf{STARKs} \cite{stark} replace pairings with hashes,
+gain transparency and plausible post-quantum security, and run over
+small ``FFT-friendly'' primes chosen for fast number-theoretic
+transforms --- Goldilocks $p = 2^{64} - 2^{32} + 1$ (Plonky2
+\cite{plonky2}), BabyBear $p = 2^{31} - 2^{27} + 1$ (RISC~Zero
+\cite{risc0}), and M31 $= 2^{31}-1$ (Circle STARKs \cite{circle}).
+
+The asymmetry that defines the field: verification is cheap,
+\textbf{proving is $10^3$--$10^6\times$ the native computation}, all
+of it exact arithmetic in the proof field. zkML applications ---
+proving a proprietary model was faithfully executed (model privacy),
+proving an inference inside a blockchain rollup, auditable AI where
+the checker is cheap --- inherit that overhead on every multiply of
+every layer. Making matrix multiplication cheap \emph{inside a proof}
+is therefore a different optimization problem from making it fast on
+silicon, with a different --- in fact opposite --- cost model.
+
+\section{What proving charges}\label{sec:cost}
+
+The standard arithmetization, \textbf{R1CS} (rank-1 constraint
+systems, as in Groth16 \cite{groth16}), expresses a computation as
+constraints of the form
+\[
+\Big( \textstyle\sum_i a_i w_i \Big) \times
+\Big( \textstyle\sum_i b_i w_i \Big) =
+\Big( \textstyle\sum_i c_i w_i \Big)
+\]
+over the proof field, where $w$ is the witness vector and the $a_i,
+b_i, c_i$ are \emph{constants}. Each constraint carries exactly one
+multiplication of witness values; the linear combinations inside the
+parentheses --- additions, subtractions, scalings by arbitrary field
+constants --- are free: they are folded into the constraint's
+constant vectors and cost the prover nothing. PLONK-family systems
+\cite{plonk} charge per gate/row with the same shape (custom gates
+and lookup arguments shift constants around but preserve the
+headline: \textbf{bilinear multiplications of witnesses are the
+metered resource}).
+
+For an $n\times n$ product $C = A\cdot B$ where both operands are
+witnesses, each entry $C_{ij} = \sum_k A_{ik}B_{kj}$ is a sum of $n$
+witness$\times$witness products; a sum of $n$ products is not one
+rank-1 quadratic form --- it takes $n$ constraints. The naive circuit
+therefore costs $n^3$ constraints. Two situations make both operands
+witnesses in zkML: \textbf{private weights} (the commercially central
+case --- the model owner proves inference without revealing the
+model) and \textbf{attention} ($QK^{\mathsf T}$ and
+$\mathrm{scores}\cdot V$ multiply two activation matrices ---
+witness$\times$witness even when all weights are public).
+Conversely, a linear layer with \emph{public} weights is a constant
+linear map and costs zero multiplication constraints; rank
+optimization has nothing to offer there.
+
+\section{Bilinear rank is constraint count}\label{sec:rank}
+
+A bilinear scheme of rank $r$ computes an $m\times m$ block product
+with $r$ products of linear forms. In R1CS each product is exactly
+one constraint --- the linear forms slide into the constraint's free
+linear parts --- so an $m\times m$ witness$\times$witness block
+product costs $r$ constraints instead of $m^3$, and recursion
+compounds it: $T(n) = r\,T(n/m)$, i.e.\ $n^{\log_m r}$ constraints
+total, \textbf{with zero cost for the combination additions at every
+level}. The additions that price fast schemes out of silicon are
+literally free here; there is no numerical-stability tax because
+arithmetic is exact; and coefficients may be any field constants ---
+dyadic $\tfrac12$'s are simply the constant $(p+1)/2 \bmod p$.
+
+Idealized constraint counts for a witness$\times$witness product
+(recursion to scalar base; real circuits stop at a base tile, which
+shifts absolute numbers but not the ordering):
+
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+scheme (exponent) & $n=768$ & vs naive & $n=4096$ & vs naive\\
+\midrule
+naive (3.000) & $4.53\times10^{8}$ & $1.0\times$ & $6.87\times10^{10}$ & $1.0\times$\\
+$3{\times}3:23$ (2.854) & $1.72\times10^{8}$ & $2.6\times$ & $2.05\times10^{10}$ & $3.4\times$\\
+Strassen $2{\times}2:7$ (2.807) & $1.26\times10^{8}$ & $3.6\times$ & $1.39\times10^{10}$ & $4.9\times$\\
+\textbf{$4{\times}4:48$ (2.792)} & $1.14\times10^{8}$ & $\mathbf{4.0\times}$ & $1.23\times10^{10}$ & $\mathbf{5.6\times}$\\
+$3{\times}3:22$ (2.814), \emph{if found} & $1.32\times10^{8}$ & $3.4\times$ & --- & ---\\
+$4{\times}4:47$ (2.785), \emph{if found} & $1.09\times10^{8}$ & $4.2\times$ & --- & ---\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two readings. First, \textbf{the wins in the top half are available
+today}: the rank-48 scheme \cite{alphatensor,dps} with dyadic
+coefficients drops into any R1CS/PLONK matmul gadget as-is (our
+repository carries the verified scheme and its minimized linear
+networks). Second, the \emph{marginal} rows show why new records
+matter here more than in silicon: each rank step is a few percent per
+recursion level, compounding --- and unlike hardware, nothing eats
+the margin.
+
+\section{The honest carve-outs}\label{sec:carve}
+
+Rank is \textbf{not} the lever everywhere:
+
+\begin{itemize}
+\item \textbf{Sumcheck/GKR provers do matmul in ${\sim}n^2$ prover
+  field-ops} (Thaler \cite{thaler}; GKR \cite{gkr}); zkCNN
+  \cite{zkcnn} and successors build dedicated zkML provers on this
+  line, and where such a prover applies, bilinear rank is irrelevant.
+  The rank lever applies to the (large) circuit-based world:
+  general-purpose SNARK toolchains, zkVMs executing matmul as
+  arithmetic, PLONK/R1CS pipelines such as EZKL \cite{ezkl}, and
+  folding-based IVC (Nova \cite{nova}) whose per-step cost is the
+  step circuit's constraint count.
+\item \textbf{Public-weight linear layers are free}; rank helps
+  witness$\times$witness products only --- private weights and
+  attention.
+\item \textbf{Constraint count is not wall-clock}: prover time also
+  includes commitments (multi-scalar multiplications / hashing);
+  fewer constraints shrink those too, but constants differ by
+  system.
+\item \textbf{Nonlinearities dominate some workloads} (range checks,
+  lookups for ReLU/quantization); the matmul share is large in
+  attention/convolution-heavy models, smaller in lookup-heavy
+  quantized pipelines.
+\end{itemize}
+
+\section{Field-specific rank: the open frontier, and
+  flip23p}\label{sec:engine}
+
+Bilinear rank depends on the coefficient field. The emblem:
+AlphaTensor's rank-\textbf{47} $4\times4$ scheme exists over
+$\mathbb{F}_2$ \cite{alphatensor}, no characteristic-0 rank-47 is
+known, and our companion work proved the only $\mathbb{Q}$-usable
+rank-48 class \emph{rigid} under a large certified move system ---
+evidence that characteristic 0 is genuinely constrained in ways a
+fixed finite field need not be. zkML nominates a short, concrete
+list of fields that matter commercially --- Goldilocks, BabyBear,
+M31, BN254-Fr, BLS12-381-Fr --- and, to our knowledge, \textbf{no
+rank search has ever been run over any of them}: the flip-graph
+literature works over $\mathbb{F}_2$ and small extensions
+\cite{km}, the explicit records over $\mathbb{Z}/\mathbb{Q}$. A
+verified $3\times3$ rank-22 --- or $4\times4$ rank-47 --- over
+Goldilocks would be a new kind of record with an immediate consumer:
+2--4\% fewer constraints per recursion level in deployed proof
+systems, compounding as in \S\ref{sec:rank}.
+
+\texttt{flip23p} is our rational flip engine (splits,
+$\lambda$-flips, reductions, canonical gauge, exact Brent
+verification --- the machinery of the companion papers) re-based
+onto $\mathbb{F}_p$, Goldilocks first. Over a prime field the engine
+is \emph{strictly stronger} than its $\mathbb{Q}$ parent:
+\begin{enumerate}
+\item \textbf{No coefficient growth.} $\mathbb{Q}$-walks need
+  magnitude caps and dyadic bookkeeping; field elements don't grow.
+  Every cap in the $\mathbb{Q}$ engine is deleted, not loosened.
+\item \textbf{Every solved flip is admissible.} Over $\mathbb{Q}$, a
+  coincidence ($f_i + \lambda f_j \propto f_m$, the Cramer-solved
+  move that makes flips productive) is usable only when $\lambda$ is
+  dyadic --- the filter discarded most solutions. Over $\mathbb{F}_p$
+  every nondegenerate solution is a legal move: the coplanarity
+  structure (``H4's raw material'' in the flower note) becomes fully
+  spendable.
+\item \textbf{The gauge simplifies}: monic normalization (leading
+  coefficient 1, scalars folded into the $c$-slot); proportional
+  $\Leftrightarrow$ equal, with none of $\mathbb{Q}$'s content/sign
+  bookkeeping.
+\end{enumerate}
+
+First measurements (2026-07-11; \S\ref{sec:repro}): the 55-addition
+record scheme loads and verifies over Goldilocks (729 Brent equations
+mod $p$); the census gate matches the $\mathbb{Q}$ engine exactly (9
+shared pairs, weight 177, distinct-rows 40). One honest surprise: the
+seed's solved-move silence is \emph{not} the dyadic filter's fault
+--- even with all field $\lambda$ available, its 9 shared pairs admit
+no coincidence solution; the coplanarity geometry genuinely fails
+there. Mobility arrives at once elsewhere: a 25-second smoke storm
+from the most mobile census seed executed 1.3M moves with 369K solved
+flips and ${\sim}$10K reductions --- a far higher solved-flip
+fraction than the $\mathbb{Q}$ storm ever achieved, the freed
+$\lambda$ paying immediately. No sub-23 rank has appeared in smoke
+tests (nor was one expected at that effort); the campaigns are the
+point.
+
+\section{What transfers from the existing program}\label{sec:assets}
+
+\begin{itemize}
+\item \textbf{Engines and discipline.} flip48/flip23's storm,
+  closure, census, novelty and thin-storm machinery ports
+  mechanically (v1 of \texttt{flip23p} carries
+  storm/census/closures; the beam-chase and exhaustive campaign
+  modes follow). The operational rules hard-won in the companion
+  papers --- completion logs, full-frontier dumps, control
+  baselines, budget caps --- apply verbatim.
+\item \textbf{Seeds.} Every scheme we hold is a valid $\mathbb{F}_p$
+  scheme: the 17,376 database classes, our 53 lifted classes, the 46
+  storm-new classes, and the 467 mod-2-invisible dyadic
+  $\mathbb{Q}$-schemes (denominators are field constants). The
+  mobility census that ranked $\mathbb{Q}$-seeds re-runs unchanged.
+\item \textbf{Verified gadgets.} The Lean pipeline that certified
+  the 55-add scheme extends naturally: a scheme-to-circuit emitter
+  (circom / Halo2 templates for the 23- and 48-multiplication
+  blocks) with a machine-checked correctness certificate is a
+  deliverable the proof-systems world actually values.
+\item \textbf{What does not transfer:} the additive-complexity
+  results (55 adds, the no-54 theorem). Additions are free here;
+  that program's value stays in classical hardware and in
+  witness-generation speed.
+\end{itemize}
+
+\section{Program}\label{sec:program}
+
+(1) Goldilocks campaigns: storm + closure portfolios over the
+census-ranked seeds; targets, in order of plausibility $\times$
+value: any new-class harvest over $\mathbb{F}_p$, rank 22 at
+$3\times3$, rank 47 at $4\times4$ (the $4\times4$ port is the same
+edit at 16 coordinates). (2) Small-field variants: BabyBear and M31
+(31-bit arithmetic, ${\sim}4\times$ faster walks), then BN254-Fr.
+(3) Rectangular tiles: transformer shapes want $\langle
+m,n,k\rangle$ records; the engine generalizes as flip48 $\to$ flip23
+did. (4) Verified gadget emitter + benchmark note: constraint-count
+measurements in an EZKL-style stack, naive vs recursive-scheme, with
+Lean-certified gadget templates.
+
+\section{Reproduction}\label{sec:repro}
+
+\begin{Code}
+cargo build --release --bin flip23p
+./target/release/flip23p --census --dir matmul/mm23      # gates
+./target/release/flip23p --dir matmul/seeds23/13a5bd4n \
+    --seconds 25 --threads 4 --out matmul/found23p       # smoke storm
+# any verified rank <= 22 over Goldilocks lands in
+# found23p/RECORDP_rank*.txt and is announced loudly
+\end{Code}
+
+\section*{Acknowledgments}
+
+This work was carried out in an extended interactive collaboration
+with Claude (Anthropic; the Fable 5 and Opus 4.8 models), which
+implemented the engines and drafted this text under the author's
+direction and review.
+
+\begin{thebibliography}{19}
+\bibitem{strassen} V. Strassen. \emph{Gaussian elimination is not
+  optimal.} Numer. Math. 13:354--356, 1969.
+\bibitem{stark} E. Ben-Sasson, I. Bentov, Y. Horesh, M. Riabzev.
+  \emph{Scalable, transparent, and post-quantum secure computational
+  integrity.} ePrint 2018/046.
+\bibitem{alphatensor} A. Fawzi et al. \emph{Discovering faster matrix
+  multiplication algorithms with reinforcement learning.} Nature
+  610:47--53, 2022.
+\bibitem{thaler} J. Thaler. \emph{Time-optimal interactive proofs for
+  circuit evaluation.} CRYPTO 2013.
+\bibitem{plonk} A. Gabizon, Z. Williamson, O. Ciobotaru.
+  \emph{PLONK.} ePrint 2019/953.
+\bibitem{groth16} J. Groth. \emph{On the size of pairing-based
+  non-interactive arguments.} EUROCRYPT 2016.
+\bibitem{gkr} S. Goldwasser, Y. T. Kalai, G. N. Rothblum.
+  \emph{Delegating computation: interactive proofs for muggles.}
+  STOC 2008.
+\bibitem{circle} U. Hab\"ock, D. Levit, S. Papini. \emph{Circle
+  STARKs.} ePrint 2024/278.
+\bibitem{zkcnn} T. Liu, X. Xie, Y. Zhang. \emph{zkCNN.} CCS 2021.
+\bibitem{dps} J.-G. Dumas, C. Pernet, A. Sedoglavic.
+  arXiv:2506.13242; A. Novikov et al. \emph{AlphaEvolve.}
+  arXiv:2506.13131.
+\bibitem{ezkl} EZKL. \url{github.com/zkonduit/ezkl}.
+\bibitem{plonky2} Polygon Zero. \emph{Plonky2.} Whitepaper, 2022.
+\bibitem{risc0} RISC Zero. \emph{zkVM documentation}, 2023.
+\bibitem{nova} A. Kothapalli, S. Setty, I. Tzialla. \emph{Nova.}
+  CRYPTO 2022.
+\bibitem{km} M. Kauers, J. Moosbauer. \emph{Flip graphs for matrix
+  multiplication.} arXiv:2212.01175.
+\bibitem{poseidon} G. Grassi et al. \emph{Poseidon.} USENIX Security
+  2021.
+\bibitem{adds} G. Sidebottom. \emph{A 55-addition rank-23 scheme for
+  $3\times3$ matrix multiplication.} This repository, 2026. DOI
+  10.5281/zenodo.21240904.
+\bibitem{companions} G. Sidebottom. \emph{Rigidity of the rank-48
+  $4\times4$ scheme} and \emph{The Flower.} Companion notes, this
+  repository, 2026.
+\end{thebibliography}
+
+\end{document}

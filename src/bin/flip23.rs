@@ -23,17 +23,17 @@
 //! any numerator past a magnitude cap, and collects distinct rank-23
 //! canonical forms with odd-prime fingerprints for novelty screening.
 //!
-//! Usage: flip27 [--dir matmul/mm23] [--seconds N] [--threads N]
-//!               [--cap 64] [--out found27q]
-//!        flip27 --pursue6 ... [--resume6 FRONTIER.txt --startlevel N]
+//! Usage: flip23 [--dir matmul/mm23] [--seconds N] [--threads N]
+//!               [--cap 64] [--out found23q]
+//!        flip23 --pursue6 ... [--resume6 FRONTIER.txt --startlevel N]
 //!               lossless chase resume from a full-frontier dump
-//!        flip27 --nmrand K [--n 2000]   random-walk nearmiss baseline
+//!        flip23 --nmrand K [--n 2000]   random-walk nearmiss baseline
 //!               (control for the --pursue6 gradient; depths 1..=K)
-//!        flip27 --pursue5 ... [--resume]  logs completed parent indices
+//!        flip23 --pursue5 ... [--resume]  logs completed parent indices
 //!               to OUT/fringe_done.txt; --resume skips exactly those
 //!               (sound under work-stealing: done-set is not a prefix)
-//!        flip27 --census     seed anatomy: metrics + shared-pair list
-//!        flip27 --native [--max N]  close the SEED under solved flips
+//!        flip23 --census     seed anatomy: metrics + shared-pair list
+//!        flip23 --native [--max N]  close the SEED under solved flips
 //!               (rank 23, no splits): component size, reductions, sinks
 
 use rayon::prelude::*;
@@ -1909,7 +1909,7 @@ fn main() {
         .iter()
         .position(|a| a == "--out")
         .and_then(|i| args.get(i + 1).cloned())
-        .unwrap_or_else(|| "matmul/found27q".into());
+        .unwrap_or_else(|| "matmul/found23q".into());
     std::fs::create_dir_all(&outdir).unwrap();
 
     rayon::ThreadPoolBuilder::new()

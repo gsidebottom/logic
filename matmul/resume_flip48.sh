@@ -29,7 +29,7 @@ else
   N=${PICK%% *}; FILE=${PICK#* }
   echo "chase: resuming from level $N frontier ($FILE)"
   nohup $BIN --pursue6 --beam 1500 --samples 60 --depth 12 \
-      --budget 2500000000 --threads 4 --resume6 "$FILE" --startlevel "$N" \
+      --budget 2500000000 --threads 6 --resume6 "$FILE" --startlevel "$N" \
       --out $OUT >> matmul/chase2.log 2>&1 &
   disown
 fi

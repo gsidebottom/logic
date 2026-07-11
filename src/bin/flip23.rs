@@ -2227,9 +2227,31 @@ fn main() {
                     if rank == 23 {
                         let h = scheme_hash(&s);
                         let mut d = distinct48.lock().unwrap();
-                        if d.insert(h) && d.len() % 500 == 0 {
-                            println!("[{:.0}s] distinct rank-23 forms: {}",
-                                     t0.elapsed().as_secs_f32(), d.len());
+                        if d.insert(h) {
+                            let n = d.len();
+                            // persist the novelty pool (chase-dump format,
+                            // parse_frontier-compatible): all of the first
+                            // 2000 distinct forms, then every 1000th
+                            if n <= 2000 || n % 1000 == 0 {
+                                use std::io::Write;
+                                if let Ok(mut f) = std::fs::OpenOptions::new()
+                                    .create(true)
+                                    .append(true)
+                                    .open(format!("{outdir}/pool23.txt"))
+                                {
+                                    for t in &s {
+                                        writeln!(f, "{:?} | {:?} | {:?}",
+                                                 (t.a.nums, t.a.exp),
+                                                 (t.b.nums, t.b.exp),
+                                                 (t.c.nums, t.c.exp)).ok();
+                                    }
+                                    writeln!(f, "---").ok();
+                                }
+                            }
+                            if n % 500 == 0 {
+                                println!("[{:.0}s] distinct rank-23 forms: {}",
+                                         t0.elapsed().as_secs_f32(), n);
+                            }
                         }
                     }
                 }

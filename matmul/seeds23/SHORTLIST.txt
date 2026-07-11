@@ -1,0 +1,32 @@
+# flip23 campaign seeds: best rep per class by (nearmiss, coinc, pairs)
+# from census23_results.csv over 29,344 verified schemes / 135 DB classes + ours
+matmul/seeds23/13a5bd4n  nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/13a5bd4n/i19w253c48eh-000.tab
+matmul/seeds23/14a5b4n  nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/14a5b4n/i12w249c346d-000.tab
+matmul/seeds23/_tgz  nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/_tgz/schemes/18x2+51x+4y6+6y4+13y3+z32+z28+z27/i19w253c48eh-000.tab
+matmul/seeds23/12a5bdj4n  nm=6 coinc=12 pairs=5 maxc=1  src=matmul/dbcache/12a5bdj4n/i30w257c258h-003.tab
+matmul/seeds23/12a6bd4n  nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/12a6bd4n/i32w245c389h-000.tab
+matmul/seeds23/13a6b4n  nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/13a6b4n/i20w241c235e-001.tab
+matmul/seeds23/11a6bdj4n  nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/11a6bdj4n/i47w261c258a-000.tab
+matmul/seeds23/11a5b2dj4n  nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/11a5b2dj4n/i45w261c346i-000.tab
+matmul/seeds23/12abcdegj4ns  nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/12abcdegj4ns/i107w193c367g-000.tab
+matmul/seeds23/12a5b2d4n  nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/12a5b2d4n/i31w245c234i-000.tab
+matmul/seeds23/14a2b2dj4n  nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/14a2b2dj4n/i8w215c37gj-000.tab
+matmul/seeds23/8a3bc3dgjk4ns  nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/8a3bc3dgjk4ns/i119w215c28aj-000.tab
+matmul/seeds23/10a2bc2dgjk4ns  nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/10a2bc2dgjk4ns/i113w199c367g-000.tab
+matmul/seeds23/11a2bcdegj4ns  nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/11a2bcdegj4ns/i110w199c367g-000.tab
+matmul/seeds23/10a3b3djk4ns  nm=4 coinc=8 pairs=3 maxc=1  src=matmul/dbcache/10a3b3djk4ns/i161w199c23ci-000.tab
+matmul/seeds23/14abcdej4n  nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/14abcdej4n/i133w213c48ae-000.tab
+matmul/seeds23/13a2bdgjm4n  nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/13a2bdgjm4n/i139w221c48ah-000.tab
+matmul/seeds23/11a6b2d4n  nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/11a6b2d4n/i48w279c34de-000.tab
+matmul/seeds23/6a4bc4d4j4n  nm=3 coinc=6 pairs=3 maxc=1  src=matmul/dbcache/6a4bc4d4j4n/i238w239c37eg-000.tab
+matmul/seeds23/12a4b2dj4n  nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/12a4b2dj4n/i28w221c23ci-001.tab
+matmul/seeds23/13abcdeg4ns  nm=3 coinc=6 pairs=7 maxc=1  src=matmul/dbcache/13abcdeg4ns/i106w197c347g-000.tab
+matmul/seeds23/15abcde4n  nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/15abcde4n/i130w221c34ef-000.tab
+matmul/seeds23/12a4bd2m4n  nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/12a4bd2m4n/i56w215c35eh-000.tab
+matmul/seeds23/14a3bdj4n  nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/14a3bdj4n/i9w237c46fi-000.tab
+matmul/seeds23/11a4bdj2m4n  nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/11a4bdj2m4n/i76w205c23ci-001.tab
+matmul/seeds23/8a5b3d2j4ns  nm=3 coinc=6 pairs=3 maxc=1  src=matmul/dbcache/8a5b3d2j4ns/i223w235c37eg-000.tab
+matmul/seeds23/8a2b2c2dgjkm4ns  nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/8a2b2c2dgjkm4ns/i128w229c467f-000.tab
+matmul/seeds23/11a4b3dj4n  nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/11a4b3dj4n/i44w233c36ef-000.tab
+matmul/seeds23/13a2bcdej4n  nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/13a2bcdej4n/i141w217c356e-000.tab
+matmul/seeds23/13a3b2dj4n  nm=3 coinc=6 pairs=6 maxc=1  src=matmul/dbcache/13a3b2dj4n/i16w215c6acf-000.tab

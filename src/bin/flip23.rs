@@ -32,6 +32,10 @@
 //!        flip23 --pursue5 ... [--resume]  logs completed parent indices
 //!               to OUT/fringe_done.txt; --resume skips exactly those
 //!               (sound under work-stealing: done-set is not a prefix)
+//!        flip23 [--maxw W] [--maxd D]  thin storm: reject splits/flips
+//!               that push weight past W or distinct a+b rows past D
+//!               (reductions never capped). --maxd is the adds-aware
+//!               knob: record rep da+db = 40, storm median 42
 //!        flip23 --census     seed anatomy: metrics + shared-pair list
 //!        flip23 --native [--max N]  close the SEED under solved flips
 //!               (rank 23, no splits): component size, reductions, sinks
@@ -223,6 +227,53 @@ impl Rng {
 // ---------- moves ----------
 const LAMS: [(bool, i32); 6] =
     [(false, 0), (true, 0), (false, 1), (true, 1), (false, -1), (true, -1)];
+
+/// total support weight: nonzero coefficients across all factors.
+/// Measured 2026-07-11: storm rank-23 landings run weight 158-200 —
+/// already thinner than DB reps — so weight alone does NOT steer
+/// toward low-adds classes; use --maxd (row reuse) for that.
+fn weight(s: &[Summand]) -> usize {
+    s.iter()
+        .map(|t| {
+            t.a.nums.iter().filter(|x| **x != 0).count()
+                + t.b.nums.iter().filter(|x| **x != 0).count()
+                + t.c.nums.iter().filter(|x| **x != 0).count()
+        })
+        .sum()
+}
+
+/// row-reuse proxy: distinct a-rows + distinct b-rows (post-gauge,
+/// sign-normalized).  Chain-covering side cost grows with distinct
+/// rows, and the 55-add record rep sits at 40 while unconstrained
+/// storm landings run 40-45 (median 42) yet floor at 30-32 — the cap
+/// is a steering heuristic toward reuse-dense (54-capable) territory,
+/// not a bound on the class's orbit floor.
+fn dsum(s: &[Summand]) -> usize {
+    use std::collections::HashSet;
+    let da: HashSet<&Vec9> = s.iter().map(|t| &t.a).collect();
+    let db: HashSet<&Vec9> = s.iter().map(|t| &t.b).collect();
+    da.len() + db.len()
+}
+
+/// thin-storm gate (ratchet form): a move is rejected if it lands
+/// above an active cap AND increased that measure — so walks seeded
+/// above the cap may only descend until they are under it, and free
+/// movement resumes below the ceiling.
+fn over_caps(old: &[Summand], new: &[Summand], maxw: usize, maxd: usize) -> bool {
+    if maxw > 0 {
+        let nw = weight(new);
+        if nw > maxw && nw > weight(old) {
+            return true;
+        }
+    }
+    if maxd > 0 {
+        let nd = dsum(new);
+        if nd > maxd && nd > dsum(old) {
+            return true;
+        }
+    }
+    false
+}
 
 /// slot accessor: 0 = a, 1 = b (flips on the c slot are covered by the
 /// symmetric identities through a/b; splits cover all three via c too)
@@ -1905,6 +1956,8 @@ fn main() {
     let seconds = get("--seconds", 60) as u64;
     let threads = get("--threads", 12) as usize;
     let cap = get("--cap", 64);
+    let maxw = get("--maxw", 0) as usize; // 0 = uncapped (thin storm off)
+    let maxd = get("--maxd", 0) as usize; // 0 = uncapped (row-reuse knob)
     let outdir = args
         .iter()
         .position(|a| a == "--out")
@@ -2132,6 +2185,11 @@ fn main() {
     let n_split = AtomicU64::new(0);
     let n_coinc = AtomicU64::new(0);   // targeted flips applied
     let n_reduce = AtomicU64::new(0);  // merges performed
+    if maxw > 0 || maxd > 0 {
+        println!("thin storm (ratchet): maxw {maxw} maxd {maxd}; seed weight {} dsum {}",
+                 weight(&seed), dsum(&seed));
+    }
+    let n_wrej = AtomicU64::new(0);
     let distinct48 = Mutex::new(std::collections::HashSet::<u64>::new());
     let walks = AtomicU64::new(0);
     let moves = AtomicU64::new(0);
@@ -2155,9 +2213,15 @@ fn main() {
                         let k = rng.below(s.len());
                         let slot = rng.below(3);
                         let mu = LAMS[rng.below(6)];
+                        let saved = if maxw > 0 || maxd > 0 { Some(s.clone()) } else { None };
                         if try_split(&mut s, i, k, slot, mu, cap) {
-                            moves.fetch_add(1, Ordering::Relaxed);
-                            n_split.fetch_add(1, Ordering::Relaxed);
+                            if let Some(sv) = saved.filter(|sv| over_caps(sv, &s, maxw, maxd)) {
+                                s = sv; // over a thin-storm cap: revert
+                                n_wrej.fetch_add(1, Ordering::Relaxed);
+                            } else {
+                                moves.fetch_add(1, Ordering::Relaxed);
+                                n_split.fetch_add(1, Ordering::Relaxed);
+                            }
                         }
                     }
                     // at the ceiling: skip the split, keep flipping
@@ -2190,10 +2254,16 @@ fn main() {
                     } else {
                         LAMS[rng.below(6)]
                     };
+                    let saved = if maxw > 0 || maxd > 0 { Some(s.clone()) } else { None };
                     if try_flip(&mut s, i, j, slot, lam, cap) {
-                        moves.fetch_add(1, Ordering::Relaxed);
-                        if targeted {
-                            n_coinc.fetch_add(1, Ordering::Relaxed);
+                        if let Some(sv) = saved.filter(|sv| over_caps(sv, &s, maxw, maxd)) {
+                            s = sv; // over a thin-storm cap: revert
+                            n_wrej.fetch_add(1, Ordering::Relaxed);
+                        } else {
+                            moves.fetch_add(1, Ordering::Relaxed);
+                            if targeted {
+                                n_coinc.fetch_add(1, Ordering::Relaxed);
+                            }
                         }
                     }
                 } else {
@@ -2278,4 +2348,8 @@ fn main() {
         best_rank.load(Ordering::Relaxed),
         distinct48.lock().unwrap().len()
     );
+    if maxw > 0 || maxd > 0 {
+        println!("thin storm: maxw {maxw} maxd {maxd}; moves rejected over caps: {}",
+                 n_wrej.load(Ordering::Relaxed));
+    }
 }

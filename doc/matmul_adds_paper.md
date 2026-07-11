@@ -274,6 +274,19 @@ against the HKS database; "published" = the count in the source paper):
   Sun's) reach cover 13 — output side 27 — so those are the only
   places further (record-tying, never record-beating) 55s could live.
 
+  *Scope extension (2026-07-11).* Rational flip-walk exploration (the
+  `flip23` engine; companion notes in this repository) later produced
+  the first additions to the known rank-23 corpus beyond the database
+  and our 53 lifted classes: **46 new de Groote classes**, harvested
+  from overnight random walks and certified inequivalent by rank-type
+  invariants plus exact matching. The same two-tier machinery closes
+  them all with margin: orbit input-side floors are 30–32 (fatter
+  than every hot database class), and the strict-target γ-orbit sweep
+  (XOR cover ≤ 55 − floor − 14) admits no image on any slot — **every
+  representative of every new class totals ≥ 56**. The 55 minimum,
+  and the record class's uniqueness at 55, stand over the enlarged
+  catalogue of 17,376 + 53 + 46 classes.
+
 ## 6. Contributions
 
 - **A 55-addition rank-23 scheme** — the first below 56 — with an
@@ -369,7 +382,9 @@ open question is **whether 54 exists**:
 - **Beyond the published catalogue.** The optimality theorem is
   relative to the 17,376 published classes; our own 53 novel classes
   clear it with margin (every representative has output side ≥ 28 and
-  input sides ≥ 28, so ≥ 56 total — they cannot even host a 55). A sub-55 scheme, if one exists, requires a rank-23
+  input sides ≥ 28, so ≥ 56 total — they cannot even host a 55), and
+  the 46 further classes since discovered by rational flip walks
+  clear it the same way (floors 30–32, §5 scope extension). A sub-55 scheme, if one exists, requires a rank-23
   class nobody has catalogued — the de Groote classification at rank
   23 is not known to be complete — or a cost model beyond ±1
   coefficients. For the latter we can already close the nearest door:

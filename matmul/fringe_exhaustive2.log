@@ -1,0 +1,25 @@
+seed loaded + exactly verified (48 summands)
+fringe-only: 840 parents retained
+pursue5: 7408 parents; nearmiss>0 parents: 840; sampling ALL splits/parent, budget 7000000000
+pursue5: 840 parents to process this run
+depth-2 nearmiss = 2 (new max)
+depth-2 nearmiss = 4 (new max)
+depth-2 nearmiss = 9 (new max)
+depth-2 nearmiss = 14 (new max)
+[tick] parents 200/840  states 1241043413  new48 0  sub48 0  max-nm2 14
+seed loaded + exactly verified (48 summands)
+fringe-only: 840 parents retained
+pursue5: 7408 parents; nearmiss>0 parents: 840; sampling ALL splits/parent, budget 7000000000
+resume: 306 parents already logged done
+pursue5: 534 parents to process this run
+depth-2 nearmiss = 2 (new max)
+depth-2 nearmiss = 3 (new max)
+depth-2 nearmiss = 4 (new max)
+depth-2 nearmiss = 5 (new max)
+depth-2 nearmiss = 6 (new max)
+depth-2 nearmiss = 8 (new max)
+depth-2 nearmiss = 11 (new max)
+depth-2 nearmiss = 14 (new max)
+[tick] parents 200/534  states 1247633322  new48 0  sub48 0  max-nm2 14
+[tick] parents 400/534  states 2575849496  new48 0  sub48 0  max-nm2 14
+pursue5 done: 3442589939 states, 0 NEW rank-48, 0 sub-48, max depth-2 nearmiss 14

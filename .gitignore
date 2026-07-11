@@ -80,3 +80,16 @@ matmul/fringe_exhaustive.log
 matmul/chase.log
 matmul/found48q_p4.log
 matmul/chase2.log
+# flip23 storm raw output (distilled artifacts live in matmul/new23/)
+matmul/found23q/
+# dps48 experiment intermediates (regenerable via committed scripts)
+matmul/dps48/accurate/
+matmul/dps48/best329/
+matmul/dps48/converged/
+matmul/dps48/converged2k/
+matmul/dps48/mm55_sms/
+matmul/dps48/ours_sms/
+# external tool builds (PLinOpt + givaro/fflas/linbox stack)
+matmul/dps48/build/
+matmul/dps48/plinopt/
+matmul/dps48/stack/

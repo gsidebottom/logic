@@ -1,0 +1,28 @@
+gate: new23-40 d=[23, 20, 23] matches census
+lb histogram (floor + min-d + 5): {54: 7, 55: 17, 56: 13, 57: 9, 58: 2}
+sweeping 24 open classes
+('new23-04', 30, 'closed->=56', None, None)
+('new23-06', 30, 'closed->=56', None, None)
+('new23-09', 30, 'closed->=56', None, None)
+('new23-10', 31, 'closed->=56', None, None)
+('new23-07', 30, 'closed->=56', None, None)
+('new23-11', 31, 'closed->=56', None, None)
+('new23-13', 30, 'closed->=56', None, None)
+('new23-12', 30, 'closed->=56', None, None)
+('new23-14', 31, 'closed->=56', None, None)
+('new23-15', 31, 'closed->=56', None, None)
+('new23-17', 31, 'closed->=56', None, None)
+('new23-18', 31, 'closed->=56', None, None)
+('new23-19', 31, 'closed->=56', None, None)
+('new23-20', 31, 'closed->=56', None, None)
+('new23-21', 31, 'closed->=56', None, None)
+('new23-22', 31, 'closed->=56', None, None)
+('new23-23', 31, 'closed->=56', None, None)
+('new23-28', 30, 'closed->=56', None, None)
+('new23-30', 30, 'closed->=56', None, None)
+('new23-37', 30, 'closed->=56', None, None)
+('new23-38', 30, 'closed->=56', None, None)
+('new23-39', 31, 'closed->=56', None, None)
+('new23-40', 30, 'closed->=56', None, None)
+('new23-35', 30, 'closed->=56', None, None)
+sweep done

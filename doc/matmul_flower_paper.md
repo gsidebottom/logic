@@ -221,15 +221,16 @@ global state budgets, and inline exact verification of any find):
 
 - **Fringe-exhaustive** (`--pursue5 0 --fringe-only`): *all* 7,056
   second splits of each of the 840 gradient-positive parents, every
-  root closed under solved flips with reduction continuations. Zero
-  findings here extends the rigidity certificate to "no reduction
-  reachable through the fringe at 2-split radius." Campaign 1 closed
-  at its 4×10⁹ budget: **4.02 billion states, ~644/840 parents
-  (scattered — see H6), zero reductions**, depth-2 nearmiss ceiling
-  14. Campaign 2 (completion-logged, exactly resumable — it has
-  already survived one host interruption with zero lost coverage) is
-  re-running all 840 for the certificate; at writing, 741/840 (88%)
-  with the same zero-reduction, ceiling-14 profile.
+  root closed under solved flips with reduction continuations.
+  **Complete: all 840 parents exhausted — zero reductions found,
+  depth-2 nearmiss ceiling 14.** The certificate took ≈9.4 billion
+  states across three runs: campaign 1's scattered ~644 parents at
+  its 4×10⁹ budget stop (unusable for coverage — see H6), then the
+  completion-logged campaign 2 in two runs (306 + 534 parents,
+  3.44×10⁹ states in the final run), bridged losslessly across a
+  host interruption by the H6 machinery. The rigidity certificate
+  now extends to: **no reduction is reachable through the fringe at
+  2-split radius.**
 - **Gradient chase** (`--pursue6`): best-first beam on nearmiss
   across split depths (beam 1,500, 60 sampled splits per frontier
   state, closure cap 150). Through level 7 (rank 56): nearmiss max

@@ -19,9 +19,6 @@ __pycache__/
 # from config.yaml + initial_program.rs.
 evo/evolve/runs/
 
-# don't save cometition benchmark results
-evo/results/
-
 # Phase-1 harvested phase dataset (derived; rebuild via neural/build_dataset.py)
 neural/data/phase_ds*/
 neural/data/synth_cnf/

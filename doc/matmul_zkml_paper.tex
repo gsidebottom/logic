@@ -386,7 +386,19 @@ are \textbf{public}; the five inputs stay private. The witness
 w = (\,1,\ P_1{=}8,\ P_3{=}6 \mid A_{11}{=}1,\ A_{22}{=}4,\
       B_{11}{=}5,\ B_{12}{=}6,\ B_{22}{=}0\,)
 \]
-and the two constraints (check: $5\cdot5 = 25 \equiv 8$,
+(Why no $A_{12}, A_{21}, B_{21}$ here, when \S2's full witness
+carries every entry?  Because this appendix proves only the
+two-constraint slice: a witness coordinate earns its place by being
+\emph{wired into some constraint}, and $c_1, c_2$ below never
+touch those entries.  Including them would just add all-zero rows
+to the QAP table --- their coefficient polynomials would be
+identically 0 on all three sides.  In the full 7-constraint
+Strassen proof all eight inputs appear, since e.g.\ $M_5 =
+(A_{11}+A_{12})B_{22}$ wires in $A_{12}$.  Note the contrast:
+$B_{22} = 0$ \emph{is} present despite its value being zero ---
+membership is about the circuit's wiring, not the value.)
+
+The two constraints (check: $5\cdot5 = 25 \equiv 8$,
 $1\cdot6 = 6$):
 \begin{align*}
 c_1&: (w_{A_{11}} + w_{A_{22}}) \times (w_{B_{11}} + w_{B_{22}})

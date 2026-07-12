@@ -328,7 +328,18 @@ products (8, 6) are **public**; the five inputs stay private. The witness (publi
 w = ( 1, P₁=8, P₃=6 | A₁₁=1, A₂₂=4, B₁₁=5, B₁₂=6, B₂₂=0 )
 ```
 
-and the two R1CS constraints (check: 5·5 = 25 ≡ 8 ✓, 1·6 = 6 ✓):
+(Why no A₁₂, A₂₁, B₂₁ here, when §2's full witness carries every
+entry? Because this appendix proves only the two-constraint slice:
+a witness coordinate earns its place by being *wired into some
+constraint*, and c₁, c₂ below never touch those entries. Including
+them would just add all-zero rows to the QAP table — their
+coefficient polynomials would be identically 0 on all three sides.
+In the full 7-constraint Strassen proof all eight inputs appear,
+since e.g. M₅ = (A₁₁+A₁₂)B₂₂ wires in A₁₂. Note the contrast:
+B₂₂ = 0 *is* present despite its value being zero — membership is
+about the circuit's wiring, not the value.)
+
+The two R1CS constraints (check: 5·5 = 25 ≡ 8 ✓, 1·6 = 6 ✓):
 
 ```
 c1:  ( w_A11 + w_A22 ) × ( w_B11 + w_B22 ) = w_P1

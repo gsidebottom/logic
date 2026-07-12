@@ -315,8 +315,8 @@ provers compute it.
 entries supply every private value below:
 
 ```
-A = [ 1 2 ]        B = [ 5 6 ]
-    [ 3 4 ]            [ 7 0 ]
+A = [ 1 2 ]     B = [ 5 6 ]     C = A·B ≡ [ 2 6 ]   (mod 17)
+    [ 3 4 ]         [ 7 0 ]               [ 9 1 ]
 ```
 
 The prover claims: "I know private values A₁₁, A₂₂, B₁₁, B₁₂, B₂₂

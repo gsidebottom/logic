@@ -372,7 +372,9 @@ provers compute it.
 \S\ref{sec:cost}, whose entries supply every private value below:
 \[
 A = \begin{pmatrix} 1 & 2\\ 3 & 4 \end{pmatrix}, \qquad
-B = \begin{pmatrix} 5 & 6\\ 7 & 0 \end{pmatrix}.
+B = \begin{pmatrix} 5 & 6\\ 7 & 0 \end{pmatrix}, \qquad
+C = A\cdot B \equiv \begin{pmatrix} 2 & 6\\ 9 & 1 \end{pmatrix}
+\pmod{17}.
 \]
 The prover claims: ``I know private values $A_{11}, A_{22}, B_{11},
 B_{12}, B_{22}$ (here $1, 4, 5, 6, 0$ --- the marked entries of $A$

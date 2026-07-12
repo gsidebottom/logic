@@ -152,14 +152,20 @@ beam)**. The gradient is real, and it steepens under guidance — the
 strongest empirical argument yet that the rigidity boundary is a
 property of the *radius*, not of the whole landscape.
 
-*H3, tested against the null.* A climbing nearmiss curve has a cheap
-alternative explanation: a depth-k state has 48+k summands, so the
-count of possible alignments could inflate mechanically with rank,
-and a beam would then be "climbing" a staircase that rises under
-everyone's feet. The control (`--nmrand`): at each depth, 5,000
+*H3, tested against the null.* "Null" in the statistician's sense:
+the **null hypothesis** is that the climbing nearmiss curve is not
+guidance at all, and the **null control** is a measurement of what
+the curve would do if that hypothesis were true. Here the cheap
+alternative explanation is mechanical *rank inflation*: a depth-k
+state has 48+k summands, so the count of possible alignments could
+inflate with rank, and a beam would then be "climbing" a staircase
+that rises under everyone's feet. The control (`--nmrand`) measures
+exactly what inflation alone provides: at each depth, 5,000
 *unguided* random split-walks from the seed, nearmiss of each raw
 endpoint — same split distribution as the beam, no selection, no
-inheritance. Matched at equal rank:
+inheritance. The null columns below are that free staircase; only
+the beam's excess above them is evidence of guidance. Matched at
+equal rank:
 
 | rank | beam mean | beam max | random mean | random p99 | random max (5,000) | top-1,500 of 5,000 |
 |---|---|---|---|---|---|---|

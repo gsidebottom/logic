@@ -168,8 +168,8 @@ absolute numbers but not the ordering):
 | 3×3 : 23 (2.854) | 1.72×10⁸ | 2.6× | 2.05×10¹⁰ | 3.4× |
 | Strassen 2×2 : 7 (2.807) | 1.26×10⁸ | 3.6× | 1.39×10¹⁰ | 4.9× |
 | **4×4 : 48 (2.792)** | 1.14×10⁸ | **4.0×** | 1.23×10¹⁰ | **5.6×** |
-| 3×3 : 22 (2.814), *if found* | 1.32×10⁸ | 3.4× | — | — |
-| 4×4 : 47 (2.785), *if found* | 1.09×10⁸ | 4.2× | — | — |
+| 3×3 : 22 (2.814), *if found* | 1.31×10⁸ | 3.4× | 1.46×10¹⁰ | 4.7× |
+| 4×4 : 47 (2.777), *if found* | 1.03×10⁸ | 4.4× | 1.08×10¹⁰ | **6.4×** |
 
 Two readings. First, **the wins in the top half are available today**:
 the rank-48 scheme [3, 10] with dyadic coefficients drops into any

@@ -15,22 +15,32 @@
 //   - gauge = monic normalization (leading coeff 1; scalars fold
 //     into the c-slot), so proportional <=> equal, as before.
 //
-// v1 modes: storm (default), --census, --native, --lams.  Campaign
-// modes (pursue5/6, graph, worked, nmrand) port in v2.
-// Pool format: one line per summand "[9 u64s] | [..] | [..]", blocks
-// separated by "---" (no exp fields — this is a different ecosystem
-// from the Q pools).
+// DIMENSION-GENERIC: the enclosing include! module provides, besides
+// P and fmul, the consts DIM (matrix dimension), RANK0 (seed rank),
+// DEF_DIR and DEF_OUT.  flip23p instantiates 3x3x23; flip48p 4x4x48.
 //
-// Usage: flip23p [--dir matmul/mm23] [--seconds N] [--threads N]
-//                [--out found23p] [--maxw W] [--maxd D]
-//         flip23p --census | --native [--max N] | --lams [--max N]
+// Modes: storm (default), --census, --native, --lams, --pursue7
+// (mix-and-quench descent), --pursue8 (constructor), --repair K
+// (delete K seed terms, beam-rebuild the residual in <= K-1: any
+// success is an instant rank drop; exhaustive over C(RANK0,K)).
+// Pool format: one line per summand "[NN u64s] | [..] | [..]",
+// blocks separated by "---" (no exp fields).
+//
+// Usage: flipNNp [--prime g|b|m31] [--dir D] [--seconds N]
+//                [--threads N] [--out D] [--maxw W] [--maxd D]
+//                [--census | --native | --lams | --pursue7 --hi H
+//                 --mix M | --pursue8 --beam B --cands C --maxr R |
+//                 --repair K]
 
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
 
-// field primitives (P, fmul) are provided by the enclosing field module
+// field primitives (P, fmul) and shape consts (DIM, RANK0, DEF_DIR,
+// DEF_OUT) are provided by the enclosing field module
+const NN: usize = DIM * DIM; // vectorized matrix length
+const NAIVE: usize = DIM * NN; // naive rank = DIM^3
 
 #[inline]
 fn fadd(a: u64, b: u64) -> u64 {
@@ -67,17 +77,17 @@ fn finv(a: u64) -> u64 {
 
 // ---------- vectors over F_p ----------
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-struct Vec9 {
-    nums: [u64; 9],
+struct FVec {
+    nums: [u64; NN],
 }
 
-impl Vec9 {
+impl FVec {
     fn is_zero(&self) -> bool {
         self.nums.iter().all(|&x| x == 0)
     }
     /// monic canonical form: self = scalar * canon, canon's leading
     /// nonzero coefficient = 1.  Returns (canon, scalar).
-    fn canon(&self) -> (Vec9, u64) {
+    fn canon(&self) -> (FVec, u64) {
         let mut lead = 0u64;
         for &x in self.nums.iter() {
             if x != 0 {
@@ -89,38 +99,38 @@ impl Vec9 {
             return (self.clone(), 1);
         }
         let li = finv(lead);
-        let mut v = [0u64; 9];
+        let mut v = [0u64; NN];
         for (o, &x) in v.iter_mut().zip(self.nums.iter()) {
             *o = fmul(x, li);
         }
-        (Vec9 { nums: v }, lead)
+        (FVec { nums: v }, lead)
     }
     /// self + lam * other
-    fn add_scaled(&self, other: &Vec9, lam: u64) -> Vec9 {
-        let mut v = [0u64; 9];
-        for i in 0..9 {
+    fn add_scaled(&self, other: &FVec, lam: u64) -> FVec {
+        let mut v = [0u64; NN];
+        for i in 0..NN {
             v[i] = fadd(self.nums[i], fmul(lam, other.nums[i]));
         }
-        Vec9 { nums: v }
+        FVec { nums: v }
     }
-    fn scaled(&self, lam: u64) -> Vec9 {
-        let mut v = [0u64; 9];
-        for i in 0..9 {
+    fn scaled(&self, lam: u64) -> FVec {
+        let mut v = [0u64; NN];
+        for i in 0..NN {
             v[i] = fmul(self.nums[i], lam);
         }
-        Vec9 { nums: v }
+        FVec { nums: v }
     }
 }
 
 #[derive(Clone)]
 struct Summand {
-    a: Vec9, // monic
-    b: Vec9, // monic
-    c: Vec9, // carries the scalar
+    a: FVec, // monic
+    b: FVec, // monic
+    c: FVec, // carries the scalar
 }
 
 impl Summand {
-    fn gauge(a: Vec9, b: Vec9, c: Vec9) -> Option<Summand> {
+    fn gauge(a: FVec, b: FVec, c: FVec) -> Option<Summand> {
         if a.is_zero() || b.is_zero() || c.is_zero() {
             return None;
         }
@@ -134,7 +144,7 @@ impl Summand {
     }
 }
 
-fn fac<'s>(t: &'s Summand, slot: usize) -> &'s Vec9 {
+fn fac<'s>(t: &'s Summand, slot: usize) -> &'s FVec {
     match slot {
         0 => &t.a,
         1 => &t.b,
@@ -144,15 +154,15 @@ fn fac<'s>(t: &'s Summand, slot: usize) -> &'s Vec9 {
 
 // ---------- exact verification over F_p ----------
 fn verify(scheme: &[Summand]) -> bool {
-    for x in 0..9usize {
-        for y in 0..9usize {
-            for z in 0..9usize {
+    for x in 0..NN {
+        for y in 0..NN {
+            for z in 0..NN {
                 let mut s = 0u64;
                 for t in scheme {
                     s = fadd(s, fmul(fmul(t.a.nums[x], t.b.nums[y]), t.c.nums[z]));
                 }
                 let want =
-                    if x % 3 == y / 3 && x / 3 == z / 3 && y % 3 == z % 3 { 1 } else { 0 };
+                    if x % DIM == y / DIM && x / DIM == z / DIM && y % DIM == z % DIM { 1 } else { 0 };
                 if s != want {
                     return false;
                 }
@@ -218,7 +228,7 @@ fn try_split(scheme: &mut Vec<Summand>, i: usize, k: usize, slot: usize, mu: u64
         return false; // proportional: that's a reduction, not a split
     }
     let part = fk.scaled(mu);
-    let mk = |f: Vec9, t: &Summand| -> Option<Summand> {
+    let mk = |f: FVec, t: &Summand| -> Option<Summand> {
         match slot {
             0 => Summand::gauge(f, t.b.clone(), t.c.clone()),
             1 => Summand::gauge(t.a.clone(), f, t.c.clone()),
@@ -236,9 +246,9 @@ fn try_split(scheme: &mut Vec<Summand>, i: usize, k: usize, slot: usize, mu: u64
 }
 
 /// proportionality over F_p: v = rho * w for some rho != 0
-fn prop_ratio(v: &Vec9, w: &Vec9) -> Option<u64> {
+fn prop_ratio(v: &FVec, w: &FVec) -> Option<u64> {
     let mut rho = 0u64;
-    for i in 0..9 {
+    for i in 0..NN {
         match (v.nums[i], w.nums[i]) {
             (0, 0) => {}
             (0, _) | (_, 0) => return None,
@@ -332,8 +342,8 @@ fn coincidence_lams(scheme: &[Summand], i: usize, j: usize, slot: usize) -> Vec<
             let fm = fac(&scheme[m], t1);
             // lam*fj - mu*fm = -fi at two pivot coords, then full check
             let mut piv = None;
-            'fp: for p in 0..9 {
-                for q in p + 1..9 {
+            'fp: for p in 0..NN {
+                for q in p + 1..NN {
                     let det = fsub(
                         fmul(fj.nums[p], fneg(fm.nums[q])),
                         fmul(fj.nums[q], fneg(fm.nums[p])),
@@ -361,7 +371,7 @@ fn coincidence_lams(scheme: &[Summand], i: usize, j: usize, slot: usize) -> Vec<
             }
             let di = finv(det);
             let lam = fmul(nl, di);
-            let ok = (0..9).all(|x| {
+            let ok = (0..NN).all(|x| {
                 fadd(
                     fadd(fmul(det, fi.nums[x]), fmul(nl, fj.nums[x])),
                     fneg(fmul(nmu, fm.nums[x])),
@@ -379,13 +389,13 @@ fn coincidence_lams(scheme: &[Summand], i: usize, j: usize, slot: usize) -> Vec<
 fn scheme_hash(scheme: &[Summand]) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    let mut keys: Vec<[u64; 27]> = scheme
+    let mut keys: Vec<[u64; 3 * NN]> = scheme
         .iter()
         .map(|t| {
-            let mut k = [0u64; 27];
-            k[..9].copy_from_slice(&t.a.nums);
-            k[9..18].copy_from_slice(&t.b.nums);
-            k[18..].copy_from_slice(&t.c.nums);
+            let mut k = [0u64; 3 * NN];
+            k[..NN].copy_from_slice(&t.a.nums);
+            k[NN..2 * NN].copy_from_slice(&t.b.nums);
+            k[2 * NN..].copy_from_slice(&t.c.nums);
             k
         })
         .collect();
@@ -407,8 +417,8 @@ fn weight(s: &[Summand]) -> usize {
 
 fn dsum(s: &[Summand]) -> usize {
     use std::collections::HashSet;
-    let da: HashSet<&Vec9> = s.iter().map(|t| &t.a).collect();
-    let db: HashSet<&Vec9> = s.iter().map(|t| &t.b).collect();
+    let da: HashSet<&FVec> = s.iter().map(|t| &t.a).collect();
+    let db: HashSet<&FVec> = s.iter().map(|t| &t.b).collect();
     da.len() + db.len()
 }
 
@@ -426,37 +436,6 @@ fn over_caps(old: &[Summand], new: &[Summand], maxw: usize, maxd: usize) -> bool
         }
     }
     false
-}
-
-fn rank3(v: &Vec9) -> usize {
-    // exact 3x3 rank over F_p via minors
-    let m = &v.nums;
-    let det = fadd(
-        fsub(
-            fmul(m[0], fsub(fmul(m[4], m[8]), fmul(m[5], m[7]))),
-            fmul(m[1], fsub(fmul(m[3], m[8]), fmul(m[5], m[6]))),
-        ),
-        fmul(m[2], fsub(fmul(m[3], m[7]), fmul(m[4], m[6]))),
-    );
-    if det != 0 {
-        return 3;
-    }
-    for r1 in 0..3 {
-        for r2 in r1 + 1..3 {
-            for c1 in 0..3 {
-                for c2 in c1 + 1..3 {
-                    if fsub(
-                        fmul(m[3 * r1 + c1], m[3 * r2 + c2]),
-                        fmul(m[3 * r1 + c2], m[3 * r2 + c1]),
-                    ) != 0
-                    {
-                        return 2;
-                    }
-                }
-            }
-        }
-    }
-    if v.is_zero() { 0 } else { 1 }
 }
 
 fn state_metrics(st: &[Summand]) -> (usize, usize, usize) {
@@ -492,12 +471,12 @@ fn state_metrics(st: &[Summand]) -> (usize, usize, usize) {
 // scheme expressible over F_p is in this search space by construction.
 
 fn target_tensor() -> Vec<u64> {
-    let mut r = vec![0u64; 729];
-    for x in 0..9 {
-        for y in 0..9 {
-            for z in 0..9 {
-                if x % 3 == y / 3 && x / 3 == z / 3 && y % 3 == z % 3 {
-                    r[(x * 9 + y) * 9 + z] = 1;
+    let mut r = vec![0u64; NN * NN * NN];
+    for x in 0..NN {
+        for y in 0..NN {
+            for z in 0..NN {
+                if x % DIM == y / DIM && x / DIM == z / DIM && y % DIM == z % DIM {
+                    r[(x * NN + y) * NN + z] = 1;
                 }
             }
         }
@@ -505,12 +484,12 @@ fn target_tensor() -> Vec<u64> {
     r
 }
 
-fn mat9_rank(m: &[[u64; 9]; 9]) -> usize {
+fn matn_rank(m: &[[u64; NN]; NN]) -> usize {
     let mut a = *m;
     let mut rank = 0;
-    for col in 0..9 {
+    for col in 0..NN {
         let mut piv = None;
-        for row in rank..9 {
+        for row in rank..NN {
             if a[row][col] != 0 {
                 piv = Some(row);
                 break;
@@ -519,19 +498,19 @@ fn mat9_rank(m: &[[u64; 9]; 9]) -> usize {
         let Some(pr) = piv else { continue };
         a.swap(rank, pr);
         let inv = finv(a[rank][col]);
-        for c in col..9 {
+        for c in col..NN {
             a[rank][c] = fmul(a[rank][c], inv);
         }
-        for row in 0..9 {
+        for row in 0..NN {
             if row != rank && a[row][col] != 0 {
                 let f = a[row][col];
-                for c in col..9 {
+                for c in col..NN {
                     a[row][c] = fsub(a[row][c], fmul(f, a[rank][c]));
                 }
             }
         }
         rank += 1;
-        if rank == 9 {
+        if rank == NN {
             break;
         }
     }
@@ -541,23 +520,23 @@ fn mat9_rank(m: &[[u64; 9]; 9]) -> usize {
 /// score = sum of z-slice ranks (heuristic remaining-rank measure)
 fn residual_score(r: &[u64]) -> usize {
     let mut total = 0;
-    for z in 0..9 {
-        let mut m = [[0u64; 9]; 9];
-        for x in 0..9 {
-            for y in 0..9 {
-                m[x][y] = r[(x * 9 + y) * 9 + z];
+    for z in 0..NN {
+        let mut m = [[0u64; NN]; NN];
+        for x in 0..NN {
+            for y in 0..NN {
+                m[x][y] = r[(x * NN + y) * NN + z];
             }
         }
-        total += mat9_rank(&m);
+        total += matn_rank(&m);
     }
     total
 }
 
 fn residual_nz_fibers(r: &[u64]) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
-    for x in 0..9 {
-        for y in 0..9 {
-            if (0..9).any(|z| r[(x * 9 + y) * 9 + z] != 0) {
+    for x in 0..NN {
+        for y in 0..NN {
+            if (0..NN).any(|z| r[(x * NN + y) * NN + z] != 0) {
                 out.push((x, y));
             }
         }
@@ -565,19 +544,19 @@ fn residual_nz_fibers(r: &[u64]) -> Vec<(usize, usize)> {
     out
 }
 
-fn subtract_term(r: &mut [u64], u: &[u64; 9], v: &[u64; 9], w: &[u64; 9]) {
-    for x in 0..9 {
+fn subtract_term(r: &mut [u64], u: &[u64; NN], v: &[u64; NN], w: &[u64; NN]) {
+    for x in 0..NN {
         if u[x] == 0 {
             continue;
         }
-        for y in 0..9 {
+        for y in 0..NN {
             if v[y] == 0 {
                 continue;
             }
             let uv = fmul(u[x], v[y]);
-            for z in 0..9 {
+            for z in 0..NN {
                 if w[z] != 0 {
-                    let idx = (x * 9 + y) * 9 + z;
+                    let idx = (x * NN + y) * NN + z;
                     r[idx] = fsub(r[idx], fmul(uv, w[z]));
                 }
             }
@@ -587,10 +566,10 @@ fn subtract_term(r: &mut [u64], u: &[u64; 9], v: &[u64; 9], w: &[u64; 9]) {
 
 // ---------- pursue7: mix-and-quench descent ----------
 /// solve f_base + lam*f_other = mu*f_target over F_p (lam, mu != 0)
-fn solve_toward(fb: &Vec9, fo: &Vec9, ft: &Vec9) -> Option<u64> {
+fn solve_toward(fb: &FVec, fo: &FVec, ft: &FVec) -> Option<u64> {
     let mut piv = None;
-    'fp: for p in 0..9 {
-        for q in p + 1..9 {
+    'fp: for p in 0..NN {
+        for q in p + 1..NN {
             let det = fsub(
                 fmul(fo.nums[p], fneg(ft.nums[q])),
                 fmul(fo.nums[q], fneg(ft.nums[p])),
@@ -613,7 +592,7 @@ fn solve_toward(fb: &Vec9, fo: &Vec9, ft: &Vec9) -> Option<u64> {
     if nl == 0 || nmu == 0 {
         return None;
     }
-    let ok = (0..9).all(|x| {
+    let ok = (0..NN).all(|x| {
         fadd(
             fadd(fmul(det, fb.nums[x]), fmul(nl, fo.nums[x])),
             fneg(fmul(nmu, ft.nums[x])),
@@ -684,10 +663,25 @@ fn try_closing(st: &mut Vec<Summand>) -> bool {
 
 // ---------- seed loading (SMS, integers reduced mod p) ----------
 fn load_seed(dir: &str) -> Vec<Summand> {
-    let parse = |p: &str| -> Vec<Vec<(usize, i64)>> {
+    let tof = |v: i64| -> u64 {
+        if v >= 0 { v as u64 % P } else { P - ((-v) as u64 % P) }
+    };
+    // entries may be integers "n" or fractions "n/d" (fine over F_p)
+    let fval = move |s: &str| -> u64 {
+        match s.split_once('/') {
+            None => tof(s.parse::<i64>().expect("seed entry")),
+            Some((a, b)) => {
+                let na = tof(a.parse::<i64>().expect("seed numerator"));
+                let nb = tof(b.parse::<i64>().expect("seed denominator"));
+                assert!(nb != 0, "seed denominator divisible by p");
+                fmul(na, finv(nb))
+            }
+        }
+    };
+    let parse = move |p: &str| -> Vec<Vec<(usize, u64)>> {
         let txt = std::fs::read_to_string(p).expect(p);
         let mut dims = None;
-        let mut rows: Vec<Vec<(usize, i64)>> = Vec::new();
+        let mut rows: Vec<Vec<(usize, u64)>> = Vec::new();
         for ln in txt.lines() {
             let ln = ln.trim();
             if ln.is_empty() || ln.starts_with('#') {
@@ -703,31 +697,27 @@ fn load_seed(dir: &str) -> Vec<Summand> {
             if i == 0 && j == 0 {
                 break;
             }
-            let v: i64 = f[2].parse().expect("integer seed entries only in v1");
-            rows[i - 1].push((j - 1, v));
+            rows[i - 1].push((j - 1, fval(f[2])));
         }
         rows
     };
-    let tof = |v: i64| -> u64 {
-        if v >= 0 { v as u64 % P } else { P - ((-v) as u64 % P) }
-    };
-    let mk = |sparse: &Vec<(usize, i64)>| -> Vec9 {
-        let mut nums = [0u64; 9];
+    let mk = |sparse: &Vec<(usize, u64)>| -> FVec {
+        let mut nums = [0u64; NN];
         for &(j, n) in sparse {
-            nums[j] = tof(n);
+            nums[j] = n;
         }
-        Vec9 { nums }
+        FVec { nums }
     };
     let l = parse(&format!("{dir}/L.sms"));
     let r = parse(&format!("{dir}/R.sms"));
-    let p = parse(&format!("{dir}/P.sms")); // 9 x 23 -> transpose
-    let mut pt: Vec<Vec<(usize, i64)>> = vec![Vec::new(); 23];
+    let p = parse(&format!("{dir}/P.sms")); // NN x RANK0 -> transpose
+    let mut pt: Vec<Vec<(usize, u64)>> = vec![Vec::new(); RANK0];
     for (z, row) in p.iter().enumerate() {
         for &(i, n) in row {
             pt[i].push((z, n));
         }
     }
-    (0..23)
+    (0..RANK0)
         .map(|i| Summand::gauge(mk(&l[i]), mk(&r[i]), mk(&pt[i])).expect("seed"))
         .collect()
 }
@@ -754,25 +744,26 @@ pub fn run(args: Vec<String>) {
         .iter()
         .position(|a| a == "--dir")
         .and_then(|i| args.get(i + 1).cloned())
-        .unwrap_or_else(|| "matmul/mm23".into());
+        .unwrap_or_else(|| DEF_DIR.into());
     let seconds = get("--seconds", 60) as u64;
     let threads = get("--threads", 12) as usize;
     let maxw = get("--maxw", 0) as usize;
     let maxd = get("--maxd", 0) as usize;
+    let cap = get("--cap", (RANK0 + 4) as i64) as usize;
     let outdir = args
         .iter()
         .position(|a| a == "--out")
         .and_then(|i| args.get(i + 1).cloned())
-        .unwrap_or_else(|| "matmul/found23p".into());
+        .unwrap_or_else(|| DEF_OUT.into());
     std::fs::create_dir_all(&outdir).unwrap();
     let _ = rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
         .build_global();
 
     let seed = load_seed(&dir);
-    assert_eq!(seed.len(), 23);
+    assert_eq!(seed.len(), RANK0);
     assert!(verify(&seed), "seed must verify over F_p");
-    println!("seed loaded + exactly verified over F_p, p = {P} (23 summands)");
+    println!("seed loaded + exactly verified over F_p, p = {P} ({RANK0} summands)");
 
     if args.iter().any(|a| a == "--census") {
         let (sh, co, nm) = state_metrics(&seed);
@@ -821,9 +812,9 @@ pub fn run(args: Vec<String>) {
             while try_reduce(&mut r) {
                 red = true;
             }
-            if red && r.len() < 23 && verify(&r) {
+            if red && r.len() < RANK0 && verify(&r) {
                 n_red += 1;
-                println!("!!! RANK {} OVER GOLDILOCKS — verified !!!", r.len());
+                println!("!!! RANK {} OVER F_p — verified !!!", r.len());
                 dump(&r, &format!("{outdir}/RECORDP_rank{}_{}.txt", r.len(), n_red));
             }
             let n = st.len();
@@ -886,6 +877,259 @@ pub fn run(args: Vec<String>) {
         return;
     }
 
+    let repair_k = get("--repair", 0) as usize;
+    if repair_k >= 2 {
+        // repair mode: delete K seed terms, beam-rebuild the residual
+        // (= the sum of the K deleted rank-one tensors) in <= K-1 new
+        // terms.  ANY completion is an instant verified rank drop.
+        // Exhaustive over C(RANK0, K) subsets (lex-unranked, strided
+        // across threads), time-capped by --seconds.
+        let k = repair_k;
+        let budget = k - 1;
+        let beamw = get("--beam", 4) as usize;
+        let cands = get("--cands", 24) as usize;
+        let secsp = get("--seconds", 600) as u64;
+        let n = seed.len();
+        fn binom(n: usize, k: usize) -> u64 {
+            if k > n {
+                return 0;
+            }
+            let k = k.min(n - k);
+            let mut r: u128 = 1;
+            for i in 0..k {
+                r = r * (n - i) as u128 / (i + 1) as u128;
+            }
+            r as u64
+        }
+        let unrank = |mut idx: u64, n: usize, k: usize| -> Vec<usize> {
+            let mut out = Vec::with_capacity(k);
+            let (mut need, mut start) = (k, 0usize);
+            while need > 0 {
+                let c = binom(n - start - 1, need - 1);
+                if idx < c {
+                    out.push(start);
+                    need -= 1;
+                } else {
+                    idx -= c;
+                }
+                start += 1;
+            }
+            out
+        };
+        let total = binom(n, k);
+        println!(
+            "repair: delete {k} of {n}, beam-rebuild in <= {budget} \
+             ({total} subsets, beam {beamw}, cands {cands})"
+        );
+        use std::collections::BTreeMap;
+        let hist: Mutex<BTreeMap<usize, u64>> = Mutex::new(BTreeMap::new());
+        let n_done = AtomicU64::new(0);
+        let n_none = AtomicU64::new(0);
+        let n_rec = AtomicU64::new(0);
+        let t0 = Instant::now();
+        (0..threads as u64).into_par_iter().for_each(|tid| {
+            let mut rng = 0x2545_f491_4f6c_dd1du64
+                ^ (tid.wrapping_mul(0x9e37_79b9_7f4a_7c15) + 1);
+            let mut next = move || {
+                rng ^= rng << 13;
+                rng ^= rng >> 7;
+                rng ^= rng << 17;
+                rng
+            };
+            let mut idx = tid;
+            while idx < total && t0.elapsed().as_secs() < secsp {
+                let del = unrank(idx, n, k);
+                idx += threads as u64;
+                // residual = sum of the deleted terms' tensors
+                let mut r0 = vec![0u64; NN * NN * NN];
+                for &i in &del {
+                    let mut negc = [0u64; NN];
+                    for (o, &x) in negc.iter_mut().zip(seed[i].c.nums.iter()) {
+                        *o = fneg(x);
+                    }
+                    subtract_term(&mut r0, &seed[i].a.nums, &seed[i].b.nums, &negc);
+                }
+                let mut beam: Vec<(Vec<u64>, Vec<([u64; NN], [u64; NN], [u64; NN])>)> =
+                    vec![(r0, Vec::new())];
+                let mut best: Option<Vec<([u64; NN], [u64; NN], [u64; NN])>> = None;
+                for _step in 0..=budget {
+                    let mut pool: Vec<(usize, usize, Vec<u64>,
+                                       Vec<([u64; NN], [u64; NN], [u64; NN])>)> = Vec::new();
+                    for (r, terms) in &beam {
+                        let fibers = residual_nz_fibers(r);
+                        if terms.len() + fibers.len() <= budget {
+                            let mut ts = terms.clone();
+                            let mut rr = r.clone();
+                            for &(x, y) in &fibers {
+                                let mut u = [0u64; NN];
+                                let mut v = [0u64; NN];
+                                let mut w = [0u64; NN];
+                                u[x] = 1;
+                                v[y] = 1;
+                                for z in 0..NN {
+                                    w[z] = rr[(x * NN + y) * NN + z];
+                                }
+                                subtract_term(&mut rr, &u, &v, &w);
+                                ts.push((u, v, w));
+                            }
+                            debug_assert!(rr.iter().all(|&e| e == 0));
+                            if best.as_ref().map_or(true, |b| ts.len() < b.len()) {
+                                best = Some(ts);
+                            }
+                        }
+                        if terms.len() >= budget {
+                            continue;
+                        }
+                        for ci in 0..cands {
+                            let mut u = [0u64; NN];
+                            let mut v = [0u64; NN];
+                            if ci & 1 == 0 && fibers.len() >= 2 {
+                                let (x1, y1) =
+                                    fibers[(next() % fibers.len() as u64) as usize];
+                                let (x2, y2) =
+                                    fibers[(next() % fibers.len() as u64) as usize];
+                                u[x1] = 1;
+                                if x2 != x1 {
+                                    u[x2] = if next() & 1 == 0 { 1 } else { P - 1 };
+                                }
+                                v[y1] = 1;
+                                if y2 != y1 {
+                                    v[y2] = if next() & 1 == 0 { 1 } else { P - 1 };
+                                }
+                            } else {
+                                let su = 1 + (next() % DIM as u64) as usize;
+                                let sv = 1 + (next() % DIM as u64) as usize;
+                                for _ in 0..su {
+                                    let e = if next() & 1 == 0 { 1 } else { P - 1 };
+                                    u[(next() % NN as u64) as usize] = e;
+                                }
+                                for _ in 0..sv {
+                                    let e = if next() & 1 == 0 { 1 } else { P - 1 };
+                                    v[(next() % NN as u64) as usize] = e;
+                                }
+                            }
+                            let mut f = [0u64; NN];
+                            for x in 0..NN {
+                                if u[x] == 0 {
+                                    continue;
+                                }
+                                for y in 0..NN {
+                                    if v[y] == 0 {
+                                        continue;
+                                    }
+                                    let uv = fmul(u[x], v[y]);
+                                    for z in 0..NN {
+                                        f[z] = fadd(
+                                            f[z],
+                                            fmul(uv, r[(x * NN + y) * NN + z]),
+                                        );
+                                    }
+                                }
+                            }
+                            if f.iter().all(|&e| e == 0) {
+                                continue;
+                            }
+                            let su2 =
+                                u.iter().fold(0u64, |a, &e| fadd(a, fmul(e, e)));
+                            let sv2 =
+                                v.iter().fold(0u64, |a, &e| fadd(a, fmul(e, e)));
+                            let s = fmul(su2, sv2);
+                            if s == 0 {
+                                continue;
+                            }
+                            let si = finv(s);
+                            let mut w = [0u64; NN];
+                            for z in 0..NN {
+                                w[z] = fmul(f[z], si);
+                            }
+                            let mut rr = r.clone();
+                            subtract_term(&mut rr, &u, &v, &w);
+                            let fib2 = residual_nz_fibers(&rr).len();
+                            let proj = terms.len() + 1 + fib2;
+                            let nz = rr.iter().filter(|&&e| e != 0).count();
+                            let mut ts = terms.clone();
+                            ts.push((u, v, w));
+                            pool.push((proj * 1000 + nz, nz, rr, ts));
+                        }
+                    }
+                    if pool.is_empty() {
+                        break;
+                    }
+                    pool.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+                    pool.truncate(beamw);
+                    beam = pool.into_iter().map(|(_, _, r, t)| (r, t)).collect();
+                }
+                let done = n_done.fetch_add(1, Ordering::Relaxed) + 1;
+                match best {
+                    None => {
+                        n_none.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Some(ts) => {
+                        let tot = n - k + ts.len();
+                        *hist.lock().unwrap().entry(tot).or_insert(0) += 1;
+                        if tot < n {
+                            let mut sch: Vec<Summand> = seed
+                                .iter()
+                                .enumerate()
+                                .filter(|(i, _)| !del.contains(i))
+                                .map(|(_, s)| s.clone())
+                                .collect();
+                            let mut ok = true;
+                            for (u, v, w) in &ts {
+                                match Summand::gauge(
+                                    FVec { nums: *u },
+                                    FVec { nums: *v },
+                                    FVec { nums: *w },
+                                ) {
+                                    Some(g) => sch.push(g),
+                                    None => {
+                                        ok = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            if ok && verify(&sch) {
+                                n_rec.fetch_add(1, Ordering::Relaxed);
+                                let path = format!(
+                                    "{outdir}/RECORDP_repair_rank{tot}_{tid}.txt"
+                                );
+                                dump(&sch, &path);
+                                println!(
+                                    "[{:.0}s] *** REPAIR RANK {tot} OVER F_p VERIFIED \
+                                     (deleted {del:?}) *** -> {path}",
+                                    t0.elapsed().as_secs_f32()
+                                );
+                            } else if ok {
+                                println!(
+                                    "repair assembled-scheme verify FAILED (rank {tot}) — bug!"
+                                );
+                            }
+                        }
+                    }
+                }
+                if done % 100_000 == 0 {
+                    println!(
+                        "[{:.0}s] repair: {done}/{total} subsets",
+                        t0.elapsed().as_secs_f32()
+                    );
+                }
+            }
+        });
+        println!(
+            "repair k={k}: {}/{} subsets in {:.0}s; no-completion {}; records {}",
+            n_done.load(Ordering::Relaxed),
+            total,
+            t0.elapsed().as_secs_f64(),
+            n_none.load(Ordering::Relaxed),
+            n_rec.load(Ordering::Relaxed)
+        );
+        println!(
+            "rebuilt-total histogram (kept + rebuilt): {:?}",
+            hist.lock().unwrap()
+        );
+        return;
+    }
+
     if args.iter().any(|a| a == "--pursue8") {
         // constructor: beam search over rank-one subtractions from the
         // residual tensor; exact fiber-peel finishing rule guarantees a
@@ -893,7 +1137,7 @@ pub fn run(args: Vec<String>) {
         // the instrument; <= 22 over the field is the record event.
         let beamw = get("--beam", 8) as usize;
         let cands = get("--cands", 160) as usize;
-        let maxr = get("--maxr", 27) as usize;
+        let maxr = get("--maxr", NAIVE as i64) as usize;
         let secsp = get("--seconds", 600) as u64;
         let rankscore = args.iter().any(|a| a == "--rankscore");
         use std::collections::BTreeMap;
@@ -915,12 +1159,12 @@ pub fn run(args: Vec<String>) {
             while t0.elapsed().as_secs() < secsp {
                 n_restarts.fetch_add(1, Ordering::Relaxed);
                 // beam of (residual, terms)
-                let mut beam: Vec<(Vec<u64>, Vec<([u64; 9], [u64; 9], [u64; 9])>)> =
+                let mut beam: Vec<(Vec<u64>, Vec<([u64; NN], [u64; NN], [u64; NN])>)> =
                     vec![(target_tensor(), Vec::new())];
-                let mut finished: Option<Vec<([u64; 9], [u64; 9], [u64; 9])>> = None;
+                let mut finished: Option<Vec<([u64; NN], [u64; NN], [u64; NN])>> = None;
                 'steps: for _step in 0..maxr {
                     let mut pool: Vec<(usize, usize, Vec<u64>,
-                                       Vec<([u64; 9], [u64; 9], [u64; 9])>)> = Vec::new();
+                                       Vec<([u64; NN], [u64; NN], [u64; NN])>)> = Vec::new();
                     for (r, terms) in &beam {
                         // finishing rule: peel remaining fibers exactly
                         let fibers = residual_nz_fibers(r);
@@ -928,13 +1172,13 @@ pub fn run(args: Vec<String>) {
                             let mut ts = terms.clone();
                             let mut rr = r.clone();
                             for &(x, y) in &fibers {
-                                let mut u = [0u64; 9];
-                                let mut v = [0u64; 9];
-                                let mut w = [0u64; 9];
+                                let mut u = [0u64; NN];
+                                let mut v = [0u64; NN];
+                                let mut w = [0u64; NN];
                                 u[x] = 1;
                                 v[y] = 1;
-                                for z in 0..9 {
-                                    w[z] = rr[(x * 9 + y) * 9 + z];
+                                for z in 0..NN {
+                                    w[z] = rr[(x * NN + y) * NN + z];
                                 }
                                 subtract_term(&mut rr, &u, &v, &w);
                                 ts.push((u, v, w));
@@ -947,8 +1191,8 @@ pub fn run(args: Vec<String>) {
                         }
                         // candidate expansions
                         for ci in 0..cands {
-                            let mut u = [0u64; 9];
-                            let mut v = [0u64; 9];
+                            let mut u = [0u64; NN];
+                            let mut v = [0u64; NN];
                             if ci & 1 == 0 && fibers.len() >= 2 {
                                 // fiber-targeted: aim at two ACTIVE fibers
                                 let (x1, y1) = fibers[(next() % fibers.len() as u64) as usize];
@@ -962,27 +1206,27 @@ pub fn run(args: Vec<String>) {
                                     v[y2] = if next() & 1 == 0 { 1 } else { P - 1 };
                                 }
                             } else {
-                                let su = 1 + (next() % 3) as usize;
-                                let sv = 1 + (next() % 3) as usize;
+                                let su = 1 + (next() % DIM as u64) as usize;
+                                let sv = 1 + (next() % DIM as u64) as usize;
                                 for _ in 0..su {
                                     let e = if next() & 1 == 0 { 1 } else { P - 1 };
-                                    u[(next() % 9) as usize] = e;
+                                    u[(next() % NN as u64) as usize] = e;
                                 }
                                 for _ in 0..sv {
                                     let e = if next() & 1 == 0 { 1 } else { P - 1 };
-                                    v[(next() % 9) as usize] = e;
+                                    v[(next() % NN as u64) as usize] = e;
                                 }
                             }
                             // contraction f_z and normalizer s
-                            let mut f = [0u64; 9];
-                            for x in 0..9 {
+                            let mut f = [0u64; NN];
+                            for x in 0..NN {
                                 if u[x] == 0 { continue; }
-                                for y in 0..9 {
+                                for y in 0..NN {
                                     if v[y] == 0 { continue; }
                                     let uv = fmul(u[x], v[y]);
-                                    for z in 0..9 {
+                                    for z in 0..NN {
                                         f[z] = fadd(f[z],
-                                            fmul(uv, r[(x * 9 + y) * 9 + z]));
+                                            fmul(uv, r[(x * NN + y) * NN + z]));
                                     }
                                 }
                             }
@@ -996,8 +1240,8 @@ pub fn run(args: Vec<String>) {
                                 continue;
                             }
                             let si = finv(s);
-                            let mut w = [0u64; 9];
-                            for z in 0..9 {
+                            let mut w = [0u64; NN];
+                            for z in 0..NN {
                                 w[z] = fmul(f[z], si);
                             }
                             let mut rr = r.clone();
@@ -1038,16 +1282,16 @@ pub fn run(args: Vec<String>) {
                     println!("[{:.0}s] pursue8 best so far: {total} terms",
                              t0.elapsed().as_secs_f32());
                 }
-                if total <= 23 {
+                if total <= RANK0 {
                     // reconstruct + exact-verify the built scheme
                     let ts = finished.unwrap();
                     let sch: Option<Vec<Summand>> = ts.iter()
                         .map(|(u, v, w)| Summand::gauge(
-                            Vec9 { nums: *u }, Vec9 { nums: *v }, Vec9 { nums: *w }))
+                            FVec { nums: *u }, FVec { nums: *v }, FVec { nums: *w }))
                         .collect();
                     if let Some(sch) = sch {
                         if verify(&sch) {
-                            if total < 23 {
+                            if total < RANK0 {
                                 let path = format!(
                                     "{outdir}/RECORDP_built_rank{total}_{tid}.txt");
                                 dump(&sch, &path);
@@ -1097,7 +1341,7 @@ pub fn run(args: Vec<String>) {
         // greedily reduce + close; instrument terminal ranks (the
         // corrected obstruction diagnostic: where do chains stall?)
         let mix = get("--mix", 1500) as u64;
-        let hi = get("--hi", 26) as usize;
+        let hi = get("--hi", (RANK0 + 3) as i64) as usize;
         let secsp = get("--seconds", 600) as u64;
         use std::collections::BTreeMap;
         let hist: Mutex<BTreeMap<usize, u64>> = Mutex::new(BTreeMap::new());
@@ -1122,7 +1366,7 @@ pub fn run(args: Vec<String>) {
                 // MIX: splits up to the band + random-lam flips; no descent
                 for _ in 0..mix {
                     let r = next() % 100;
-                    if s.len() < hi && (r < 25 || s.len() == 23) {
+                    if s.len() < hi && (r < 25 || s.len() == RANK0) {
                         let i = (next() % s.len() as u64) as usize;
                         let k = (next() % s.len() as u64) as usize;
                         let slot = (next() % 3) as usize;
@@ -1137,7 +1381,7 @@ pub fn run(args: Vec<String>) {
                         use std::collections::HashMap;
                         let mut eligible: Vec<(usize, usize, usize)> = Vec::new();
                         for slot in 0..3 {
-                            let mut m: HashMap<&Vec9, usize> = HashMap::new();
+                            let mut m: HashMap<&FVec, usize> = HashMap::new();
                             for (idx, t) in s.iter().enumerate() {
                                 if let Some(&prev) = m.get(fac(t, slot)) {
                                     eligible.push((prev, idx, slot));
@@ -1175,7 +1419,7 @@ pub fn run(args: Vec<String>) {
                 }
                 let r = s.len();
                 *hist.lock().unwrap().entry(r).or_insert(0) += 1;
-                if r < 23 {
+                if r < RANK0 {
                     if verify(&s) {
                         let path = format!("{outdir}/RECORDP_rank{r}_{tid}.txt");
                         dump(&s, &path);
@@ -1186,7 +1430,7 @@ pub fn run(args: Vec<String>) {
                     } else {
                         println!("pursue7 terminal verify FAILED at rank {r} (bug!)");
                     }
-                } else if r == 23 && verify(&s) {
+                } else if r == RANK0 && verify(&s) {
                     let h = scheme_hash(&s);
                     let mut d = land23.lock().unwrap();
                     if d.insert(h) {
@@ -1210,7 +1454,7 @@ pub fn run(args: Vec<String>) {
             }
         });
         println!(
-            "pursue7: {} walks in {:.0}s; closings {}  reductions {}  distinct 23-landings {}",
+            "pursue7: {} walks in {:.0}s; closings {}  reductions {}  distinct {RANK0}-landings {}",
             n_walks.load(Ordering::Relaxed),
             t0.elapsed().as_secs_f64(),
             n_close.load(Ordering::Relaxed),
@@ -1228,7 +1472,7 @@ pub fn run(args: Vec<String>) {
             weight(&seed), dsum(&seed)
         );
     }
-    let best_rank = AtomicU32::new(23);
+    let best_rank = AtomicU32::new(RANK0 as u32);
     let n_split = AtomicU64::new(0);
     let n_coinc = AtomicU64::new(0);
     let n_reduce = AtomicU64::new(0);
@@ -1256,7 +1500,7 @@ pub fn run(args: Vec<String>) {
                 }
                 let r = next() % 100;
                 if r < 8 || s.len() == 23 {
-                    if s.len() <= 27 {
+                    if s.len() <= cap {
                         let i = (next() % s.len() as u64) as usize;
                         let k = (next() % s.len() as u64) as usize;
                         let slot = (next() % 3) as usize;
@@ -1276,7 +1520,7 @@ pub fn run(args: Vec<String>) {
                     use std::collections::HashMap;
                     let mut eligible: Vec<(usize, usize, usize)> = Vec::new();
                     for slot in 0..3 {
-                        let mut m: HashMap<&Vec9, usize> = HashMap::new();
+                        let mut m: HashMap<&FVec, usize> = HashMap::new();
                         for (idx, t) in s.iter().enumerate() {
                             if let Some(&prev) = m.get(fac(t, slot)) {
                                 eligible.push((prev, idx, slot));
@@ -1321,14 +1565,14 @@ pub fn run(args: Vec<String>) {
                             let path = format!("{outdir}/RECORDP_rank{rank}_{tid}.txt");
                             dump(&s, &path);
                             println!(
-                                "[{:.0}s] *** RANK {} OVER GOLDILOCKS VERIFIED *** -> {}",
+                                "[{:.0}s] *** RANK {} OVER F_p VERIFIED *** -> {}",
                                 t0.elapsed().as_secs_f32(), rank, path
                             );
                         } else {
                             println!("WALK VERIFY FAILED at rank {} (bug!)", s.len());
                         }
                     }
-                    if rank == 23 {
+                    if rank == RANK0 as u32 {
                         let h = scheme_hash(&s);
                         let mut d = distinct23.lock().unwrap();
                         if d.insert(h) {
@@ -1348,7 +1592,7 @@ pub fn run(args: Vec<String>) {
                                 }
                             }
                             if n % 500 == 0 {
-                                println!("[{:.0}s] distinct rank-23 forms (F_p): {}",
+                                println!("[{:.0}s] distinct rank-{RANK0} forms (F_p): {}",
                                          t0.elapsed().as_secs_f32(), n);
                             }
                         }

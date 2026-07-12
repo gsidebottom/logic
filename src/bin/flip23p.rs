@@ -12,6 +12,10 @@
 //! with closing moves — see the engine header).
 
 mod goldilocks {
+    pub const DIM: usize = 3;
+    pub const RANK0: usize = 23;
+    pub const DEF_DIR: &str = "matmul/mm23";
+    pub const DEF_OUT: &str = "matmul/found23p";
     pub const P: u64 = 0xFFFF_FFFF_0000_0001;
     #[inline(always)]
     pub fn fmul(a: u64, b: u64) -> u64 {
@@ -21,6 +25,10 @@ mod goldilocks {
 }
 
 mod babybear {
+    pub const DIM: usize = 3;
+    pub const RANK0: usize = 23;
+    pub const DEF_DIR: &str = "matmul/mm23";
+    pub const DEF_OUT: &str = "matmul/found23p";
     pub const P: u64 = 2_013_265_921; // 2^31 - 2^27 + 1
     #[inline(always)]
     pub fn fmul(a: u64, b: u64) -> u64 {
@@ -30,6 +38,10 @@ mod babybear {
 }
 
 mod m31 {
+    pub const DIM: usize = 3;
+    pub const RANK0: usize = 23;
+    pub const DEF_DIR: &str = "matmul/mm23";
+    pub const DEF_OUT: &str = "matmul/found23p";
     pub const P: u64 = 2_147_483_647; // 2^31 - 1
     #[inline(always)]
     pub fn fmul(a: u64, b: u64) -> u64 {

@@ -512,9 +512,9 @@ with $AB - C = HZ$.''
 \paragraph{Step 1 --- Setup (the trusted ceremony).} Sample a secret
 point, say $\boldsymbol{\tau = 5}$ --- the ``toxic waste'' --- and
 publish the powers of $\tau$ and the QAP polynomials evaluated at
-$\tau$, each wrapped in an encoding that supports additions and
-scalings but hides the value (elliptic-curve points $g^{\tau^i}$ in
-real systems; bare numbers here, with hiding flagged). Then
+$\tau$, each wrapped in an encoding $\mathrm{enc}(\cdot)$ that
+supports additions and scalings but hides the value --- defined
+concretely just below. Then
 \textbf{destroy $\tau$}: anyone holding it can forge proofs ---
 hence the multi-party ceremonies around Groth16, and the transparent
 (no-$\tau$) alternatives like STARKs. For our toy, the published material (the \textbf{common reference
@@ -536,6 +536,46 @@ C_{P_1}(5) \equiv 14 & C_{P_3}(5) = 4 &
 is \textbf{not} published: anything witness-dependent --- $A(x)$,
 $B(x)$, $C(x)$, $P(x)$, $H(x)$ belong to the prover, not the setup.
 
+\paragraph{What $\mathrm{enc}(\cdot)$ is.} Exponentiation in a
+group where the reverse direction --- recovering the exponent, the
+\emph{discrete logarithm} --- is computationally infeasible: fix a
+public generator $g$ and set $\mathrm{enc}(v) = g^v$. Real systems
+use elliptic-curve groups of size ${\sim}2^{256}$; the toy admits
+an honest miniature. Inside the integers mod 103 (a prime), the
+powers of $g = 72$ form a subgroup of order exactly 17 ---
+$72^{17} \equiv 1 \pmod{103}$, no smaller power is 1 --- so
+exponents live precisely in $\mathbb{F}_{17}$:
+\[
+\mathrm{enc}(v) = 72^{v} \bmod 103:\qquad
+\begin{array}{l}
+\mathrm{enc}(0)=1,\ \mathrm{enc}(1)=72,\ \mathrm{enc}(4)=23,\
+\mathrm{enc}(6)=61,\ \mathrm{enc}(9)=81,\\
+\mathrm{enc}(10)=64,\ \mathrm{enc}(12)=13,\ \mathrm{enc}(13)=9,\
+\mathrm{enc}(14)=30.
+\end{array}
+\]
+What Setup \emph{literally} publishes is this column:
+$\mathrm{enc}(1)=72$, $\mathrm{enc}(14)=30$, $\mathrm{enc}(4)=23$,
+$\mathrm{enc}(10)=64$ for the coordinate polynomials,
+$\mathrm{enc}(12)=13$ for $Z(5)$ --- the raw values displayed above
+were narrator's courtesy. (That $\mathrm{enc}(12)=13$ numerically
+equals $H$'s value is pure coincidence.) Two properties do all the
+work: (i) \textbf{hiding} --- recovering $v$ from $72^v \bmod 103$
+is the discrete-log problem, brute-forceable at order 17 (the toy's
+one dishonesty: 17 candidates) but infeasible at order
+${\sim}2^{256}$, which is why publishing encodings of powers of
+$\tau$ does not reveal $\tau$; (ii) \textbf{linearity passes
+through} --- $\mathrm{enc}(a)\,\mathrm{enc}(b) = g^{a+b} =
+\mathrm{enc}(a+b)$ and $\mathrm{enc}(v)^{c} = \mathrm{enc}(cv)$
+for known $c$, so anyone can form known-coefficient linear
+combinations of hidden values without decoding. What the encoding
+can \emph{never} do is multiply two hidden values; that asymmetry
+is the crypto-layer origin of this paper's cost model --- linear
+operations ride through for free, each hidden$\times$hidden
+product must be paid for as a constraint, and the verifier's one
+pairing (Step 3) grants exactly one such product, just enough for
+the final check.
+
 \paragraph{Step 2 --- Prove.} The prover, holding $w$, computes the
 \emph{encoded} evaluations --- each a \textbf{linear combination} of
 published encodings with witness coefficients (this is why R1CS's
@@ -553,17 +593,38 @@ narrators, can do): $A(x) = 9-4x$ at 5 gives $-11 \equiv 6$
 \checkmark, $B = x+4$ gives 9 \checkmark, $C = 10-2x$ gives 0
 \checkmark\ --- the same numbers, but the prover's route touched
 only published encodings and witness values, never $\tau$ itself.
-The proof is $\pi = (\mathrm{enc}(A(5)), \mathrm{enc}(B(5)),
-\mathrm{enc}(C_{\text{priv}}(5)), \mathrm{enc}(H(5)))$ --- in
-Groth16, after optimizations, three curve points, ${\sim}200$ bytes,
-\emph{independent of circuit size}. The prover never learns $\tau$.
+In encoded form --- all a real prover ever holds --- the same
+combinations run \emph{inside the group}, by property (ii):
+\[
+\begin{aligned}
+\mathrm{enc}(A(5)) &= \mathrm{enc}(A_{A_{11}}(5))^{w_{A_{11}}}
+ \mathrm{enc}(A_{A_{22}}(5))^{w_{A_{22}}} = 72^{1}\cdot 30^{4}
+ = 72\cdot 8 \equiv 61 \pmod{103} = \mathrm{enc}(6),\\
+\mathrm{enc}(B(5)) &= 30^{5}\, 23^{6}\, 64^{0} \equiv 81
+ = \mathrm{enc}(9), \qquad
+\mathrm{enc}(C(5)) = 30^{8}\, 23^{6} \equiv 1 = \mathrm{enc}(0),\\
+\mathrm{enc}(H(5)) &= \mathrm{enc}(\tau^{0})^{13} = 72^{13}
+ \equiv 9 = \mathrm{enc}(13).
+\end{aligned}
+\]
+The transmitted proof is literally those four group elements,
+$\boldsymbol{\pi = (61, 81, 1, 9)}$, and nothing else. (Both
+$C$-coordinates here happen to be public outputs, so the verifier
+could rebuild $\mathrm{enc}(C(5))$ itself; in general the proof
+carries the private part $C_{\text{priv}}$.) In Groth16, after
+optimizations, the proof compresses to three curve points,
+${\sim}200$ bytes, \emph{independent of circuit size}. The prover
+never learns $\tau$.
 
 \paragraph{Step 3 --- Verify.} The verifier reconstructs the
 \emph{public} part of $C(\tau)$ itself from the claimed outputs
 $(8, 6)$ --- the prover cannot lie about what is being claimed ---
-then checks \textbf{one multiplicative relation} (one pairing
-equation in real systems; pairings are the tool that multiplies two
-hidden values exactly once):
+then checks \textbf{one multiplicative relation}. In real systems
+this is one \emph{pairing} equation: a pairing satisfies
+$e(g^a, g^b) = e(g,g)^{ab}$, multiplying two hidden values exactly
+once --- the single multiplication the encoding ever grants. Our
+mod-103 toy group has no pairing, so here (the toy's one honest
+deviation) we decode and check in the clear:
 \[
 A(\tau)B(\tau) - C(\tau) \stackrel{?}{=} H(\tau)Z(\tau):
 \qquad 6\cdot9 - 0 = 54 \equiv 3, \qquad 13\cdot12 = 156 \equiv 3.

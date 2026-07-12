@@ -449,9 +449,8 @@ with A·B − C = H·Z."
 **Step 1 — Setup (the trusted ceremony).** Sample a secret point,
 say **τ = 5** — the "toxic waste" — and publish the *powers of τ and
 the QAP polynomials evaluated at τ*, each wrapped in an encoding
-that allows additions and scalings but hides the value (in real
-systems, elliptic-curve points g^(τ^i); in this toy we will write
-the bare numbers and mark where hiding matters). Then **destroy τ**.
+enc(·) that allows additions and scalings but hides the value —
+defined concretely just below. Then **destroy τ**.
 Anyone who keeps τ can forge proofs — hence "trusted setup," the
 multi-party ceremonies around Groth16, and the transparent (no-τ)
 alternatives like STARKs.
@@ -476,6 +475,45 @@ contributes nothing). Note what is **not** published: anything
 witness-dependent — A(x), B(x), C(x), P(x), H(x) belong to the
 prover, not the setup.
 
+**What enc(·) is.** Exponentiation in a group where the reverse
+direction — recovering the exponent, the *discrete logarithm* — is
+computationally infeasible: fix a public generator g and set
+enc(v) = gᵛ. Real systems use elliptic-curve groups of size ~2²⁵⁶;
+our toy admits an honest miniature. Inside the integers mod 103 (a
+prime), the powers of g = 72 form a subgroup of order exactly 17 —
+72¹⁷ ≡ 1 (mod 103) and no smaller power is 1 — so exponents live
+precisely in our field 𝔽₁₇:
+
+```
+enc(v) = 72^v mod 103:
+enc(0)=1    enc(1)=72   enc(4)=23   enc(6)=61   enc(9)=81
+enc(10)=64  enc(12)=13  enc(13)=9   enc(14)=30
+```
+
+What Setup *literally* publishes is this column: enc(1) = 72,
+enc(14) = 30, enc(4) = 23, enc(10) = 64 for the coordinate
+polynomials, enc(12) = 13 for Z(5) — the raw values in the table
+above were narrator's courtesy. (That enc(12) = 13 numerically
+equals H's value is pure coincidence of the toy.) Two properties do
+all the work:
+
+1. **Hiding.** Recovering v from 72ᵛ mod 103 is the discrete-log
+   problem — brute-forceable at order 17 (the toy's one dishonesty:
+   only 17 candidates to try) but infeasible at order ~2²⁵⁶. This
+   is why the ceremony can publish encodings of powers of τ without
+   revealing τ.
+2. **Linearity passes through.** enc(a)·enc(b) = g^(a+b) =
+   enc(a+b), and enc(v)ᶜ = enc(c·v) for any *known* scalar c. So
+   anyone holding encodings can form any known-coefficient linear
+   combination of the hidden values — without decoding anything.
+
+What the encoding can *never* do is multiply two hidden values.
+That asymmetry is the crypto-layer origin of this paper's entire
+cost model: linear operations ride through the encoding for free,
+while each hidden×hidden product must be paid for as a constraint —
+and the verifier's single pairing (Step 3) grants exactly one such
+product, just enough for the final check.
+
 **Step 2 — Prove.** The prover, holding w, computes the *encoded*
 evaluations at τ — crucially, each is a **linear combination** of
 published encodings with witness coefficients (this is why R1CS's
@@ -485,7 +523,7 @@ free-linear-combination structure is the whole design):
 A(5) = w_A11·A_A11(5) + w_A22·A_A22(5) = 1·1 + 4·14 = 57 ≡ 6
 B(5) = 5·14 + 6·4 + 0·10               = 94       ≡ 9
 C(5) = 8·14 + 6·4                      = 136      ≡ 0
-H(5) = 13·enc(τ⁰)                      = 13
+H(5) = 13·τ⁰   (H is the constant 13)  = 13
 ```
 
 Cross-check against direct evaluation (which only we, the
@@ -494,17 +532,34 @@ B = x+4 gives 9 ✓, C = 10−2x gives 0 ✓ — the same numbers, but the
 prover's route touched only published encodings and witness values,
 never τ itself.
 
-The proof is π = (enc(A(5)), enc(B(5)), enc(C_priv(5)), enc(H(5)))
-— in Groth16, after optimizations, three curve points, ~200 bytes,
-*independent of circuit size*. The prover never learns τ; it only
-ever combines published encodings.
+In encoded form — which is all a real prover ever holds — the same
+combinations run *inside the group*, by property 2:
+
+```
+enc(A(5)) = enc(A_A11(5))^w_A11 · enc(A_A22(5))^w_A22
+          = 72¹ · 30⁴  =  72 · 8  ≡  61 (mod 103)  = enc(6)  ✓
+enc(B(5)) = 30⁵ · 23⁶ · 64⁰  ≡  81   = enc(9)  ✓
+enc(C(5)) = 30⁸ · 23⁶        ≡   1   = enc(0)  ✓
+enc(H(5)) = enc(τ⁰)¹³ = 72¹³ ≡   9   = enc(13) ✓
+```
+
+The transmitted proof is literally those four group elements,
+**π = (61, 81, 1, 9)**, and nothing else. (Both C-coordinates here
+happen to be public outputs, so the verifier could rebuild
+enc(C(5)) itself; in general the proof carries the private part
+C_priv.) In Groth16, after optimizations, the proof compresses to
+three curve points, ~200 bytes, *independent of circuit size*. The
+prover never learns τ; it only ever combines published encodings.
 
 **Step 3 — Verify.** The verifier reconstructs the *public* part of
 C(τ) itself from the claimed outputs (8, 6) and the published
 encodings — the prover cannot lie about what P₁, P₃ are claimed to
-be — then checks **one multiplicative relation** (in real systems,
-one pairing equation; pairings are exactly the tool that multiplies
-two hidden values once):
+be — then checks **one multiplicative relation**. In real systems
+this is one *pairing* equation: a pairing e(·,·) satisfies
+e(gᵃ, gᵇ) = e(g,g)^(a·b), multiplying two hidden values exactly
+once — the single multiplication the encoding ever grants. Our
+mod-103 toy group has no pairing, so here (the toy's one honest
+deviation) we decode and check in the clear:
 
 ```
 A(τ)·B(τ) − C(τ)  =?  H(τ)·Z(τ)

@@ -60,8 +60,12 @@ survived full-database novelty checking), plus ${\sim}40$ minutes of
 certification compute. (All timings in this report are from one
 machine: a Mac~mini with an Apple M4~Pro --- 10 performance + 4
 efficiency cores --- and 64\,GB RAM, macOS.) For scale: the HKS
-campaign that produced the 17{,}376-scheme database used ${\sim}35$
-CPU-years (methods differ; see \S\ref{sec:caveats} caveats).
+local-search campaign reported ``more than 13{,}000 mutually
+inequivalent'' schemes for about 35 years of CPU time (SAT~2019,
+arXiv:1903.11391); the public database that grew out of it --- our
+novelty reference --- holds 17{,}376 (methods differ; see
+\S\ref{sec:caveats} caveats, including a normalized rate
+comparison).
 
 The engine behind the discovery is a \textbf{native-ANF stochastic
 local search (SLS)}: the Brent system is kept as 729 cubic-XOR
@@ -446,12 +450,27 @@ fingerprint and/or exact checks. All 53 are pairwise inequivalent.)}
   comprehensive public record of $\{-1,0,1\}$ $3{\times}3{\times}23$
   schemes; we make no claim about unpublished or post-2020 private
   collections.
-\item Discovery-effort comparisons with HKS (35 CPU-years vs minutes)
-  are indicative, not controlled: we \emph{start from} their
-  published schemes as seeds, they started from 4; their campaign
-  also had to invent the methods. The like-for-like comparison is our
-  seeded-repair and challenge-1 numbers vs yalsat on the same machine
-  (\S\ref{sec:engine}).
+\item Discovery-effort comparisons with HKS are indicative, not
+  controlled: we \emph{start from} their published schemes as seeds,
+  they started from 4; their campaign also had to invent the methods.
+  The like-for-like comparison is our seeded-repair and challenge-1
+  numbers vs yalsat on the same machine (\S\ref{sec:engine}).
+  Normalized anyway, for scale: SAT~2019 reports ${>}13{,}000$
+  mutually inequivalent schemes for ${\approx}35$ CPU-years ---
+  ${\approx}370$ schemes per CPU-year on 2019 server cores, or
+  ${\approx}750$--$1{,}100$ per CPU-year after crediting modern
+  cores (M4-class single-thread is roughly 2--3$\times$ a 2019
+  cluster Xeon's). Our 53 cost ${\approx}46$ single-core minutes
+  end-to-end: ${\approx}6{\times}10^{5}$ schemes per CPU-year,
+  roughly 500--800$\times$ the speed-adjusted HKS rate. The gap
+  persists in class currency: the full 17{,}376-scheme database
+  spans 302 de-Groote rank-type patterns (${\lesssim}9$ patterns
+  per CPU-year), while our later flip campaigns (companion notes)
+  added 81 new patterns for ${\approx}140$ CPU-hours
+  (${\approx}5{,}000$ per CPU-year, ${\approx}200$--$300\times$
+  adjusted). The warm start is doing real work in these ratios ---
+  which is this report's thesis: the database turns discovery from
+  search into traversal.
 \item The de-Groote checker, DB converter, and lift verifier are our
   code; their self-tests and controls are listed in
   \S\ref{sec:verify}. The two strongest external anchors: our

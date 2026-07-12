@@ -41,8 +41,9 @@ the two source papers for this track):
     random pairings don't extend).
   - *Method 2*: fix **414/621 (2/3)** base vars from a known scheme, search
     the remaining 207 → a neighbor in **~1 s**.
-  - Campaign: ~35 CPU-years → **>17,000 inequivalent new 23-schemes** (up
-    from 4 known). None compresses to 22.
+  - Campaign: ~35 CPU-years → **>13,000 mutually inequivalent new
+    23-schemes** (SAT'19; the public DB snapshot later reached 17,376,
+    up from 4 known). None compresses to 22.
 - Challenges (no cash, open since 2019): (1) solve pairing-only instances
   without streamlining — yalsat gets 5/10; (2) prove one of 10
   hardcoded-pairing instances UNSAT; (3) find a scheme with one product

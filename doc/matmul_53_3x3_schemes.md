@@ -33,8 +33,11 @@ of a neighborhood-walk pipeline (138 raw finds → 53 survived full-database
 novelty checking), plus ~40 minutes of certification compute. (All
 timings in this report are from one machine: a Mac mini with an Apple
 M4 Pro — 10 performance + 4 efficiency cores — and 64 GB RAM, macOS.) For scale:
-the HKS campaign that produced the 17,376-scheme database used ~35
-CPU-years (methods differ; see §7 caveats).
+the HKS local-search campaign reported "more than 13,000 mutually
+inequivalent" schemes for about 35 years of CPU time (SAT 2019,
+arXiv:1903.11391); the public database that grew out of it — our
+novelty reference — holds 17,376 (methods differ; see §7 caveats,
+including a normalized rate comparison).
 
 The engine behind the discovery is a **native-ANF stochastic local
 search (SLS)**: the Brent system is kept as 729 cubic-XOR constraints over the
@@ -376,11 +379,24 @@ exact checks. All 53 are pairwise inequivalent.)*
   2020-08-07) and the 4 classics. The database is the comprehensive
   public record of {−1,0,1} 3×3×23 schemes; we make no claim about
   unpublished or post-2020 private collections.
-- Discovery-effort comparisons with HKS (35 CPU-years vs minutes) are
-  indicative, not controlled: we *start from* their published schemes
-  as seeds, they started from 4; their campaign also had to invent the
-  methods. The like-for-like comparison is our seeded-repair and
-  challenge-1 numbers vs yalsat on the same machine (§3.1).
+- Discovery-effort comparisons with HKS are indicative, not
+  controlled: we *start from* their published schemes as seeds, they
+  started from 4; their campaign also had to invent the methods. The
+  like-for-like comparison is our seeded-repair and challenge-1
+  numbers vs yalsat on the same machine (§3.1). Normalized anyway,
+  for scale: SAT 2019 reports >13,000 mutually inequivalent schemes
+  for ≈35 CPU-years — ≈370 schemes per CPU-year on 2019 server
+  cores, or ≈750–1,100 per CPU-year after crediting modern cores
+  (M4-class single-thread is roughly 2–3× a 2019 cluster Xeon's).
+  Our 53 cost ≈46 single-core minutes end-to-end: ≈6×10⁵ schemes
+  per CPU-year, roughly 500–800× the speed-adjusted HKS rate. The
+  gap persists in class currency: the full 17,376-scheme database
+  spans 302 de-Groote rank-type patterns (≲9 patterns per CPU-year),
+  while our later flip campaigns (companion notes) added 81 new
+  patterns for ≈140 CPU-hours (≈5,000 per CPU-year, ≈200–300×
+  adjusted). The warm start is doing real work in these ratios —
+  which is this report's thesis: the database turns discovery from
+  search into traversal.
 - The de-Groote checker, DB converter, and lift verifier are our code;
   their self-tests and controls are listed in §4. The two strongest
   external anchors: our A-instance solution satisfies *HKS's own CNF*

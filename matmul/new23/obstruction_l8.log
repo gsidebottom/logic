@@ -1,0 +1,8 @@
+1500 states loaded; sampling every 15th
+  [20 states] {'pairs': 1532, 'sols': 14560, 'dy': 12922, 'nondy': 1638, 'conv_dy': 11508, 'conv_nondy': 1610}
+  [40 states] {'pairs': 3026, 'sols': 27680, 'dy': 24832, 'nondy': 2848, 'conv_dy': 21938, 'conv_nondy': 2778}
+  [60 states] {'pairs': 4498, 'sols': 40752, 'dy': 36330, 'nondy': 4422, 'conv_dy': 32378, 'conv_nondy': 4278}
+  [80 states] {'pairs': 6032, 'sols': 53146, 'dy': 47602, 'nondy': 5544, 'conv_dy': 42470, 'conv_nondy': 5360}
+  [100 states] {'pairs': 7467, 'sols': 65944, 'dy': 58692, 'nondy': 7252, 'conv_dy': 52065, 'conv_nondy': 7035}
+FINAL over 100 states: {'pairs': 7467, 'sols': 65944, 'dy': 58692, 'nondy': 7252, 'conv_dy': 52065, 'conv_nondy': 7035}
+interpretation: conv_nondy > 0 => rationality is the obstruction (F_p converts); conv_* all zero => geometric.

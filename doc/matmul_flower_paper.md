@@ -29,8 +29,8 @@ From the picture we derive six concrete search heuristics, and they
 pay off at once: a gradient signal (**nearmiss**, the number of
 solvable one-move coincidence targets) that is provably capped at 2
 inside the certified component **deepens to 7 and then 14** one split
-level further out and, under seven levels of beam guidance, reaches a
-mean of 192 — 48× a matched-rank random control, certifying the
+level further out and, under eight levels of beam guidance, reaches a
+mean of 289 — 57× a matched-rank random control, certifying the
 gradient as heritable structure rather than rank inflation; a 19×
 budget-focusing rule; and a cost-recalibration discipline that caught
 a uniform
@@ -169,19 +169,20 @@ inheritance. Matched at equal rank:
 | 53 | 51.1 | 76 | 1.55 | 10 | 27 | 4.6 |
 | 54 | 85.3 | 122 | 2.22 | 12 | 20 | 6.0 |
 | 55 | 137.5 | 194 | 3.02 | 14 | 25 | 7.3 |
-| 56 | **192.3** | 282 | 4.01 | 17 | **33** | 9.0 |
+| 56 | 192.3 | 282 | 4.01 | 17 | 33 | 9.0 |
+| 57 | **289.1** | 392 | 5.03 | 19 | **45** | 10.7 |
 
 Rank inflation exists but is tiny (unguided mean reaches only 10.5 by
 rank 61, the campaign's terminal depth — the beam passed that at
-level 2). At rank 56 the beam's *mean* is 48× the unguided mean, 11×
-the unguided 99th percentile, and nearly 6× the unguided *maximum
+level 2). At rank 57 the beam's *mean* is 57× the unguided mean, 15×
+the unguided 99th percentile, and more than 6× the unguided *maximum
 over 5,000 draws*; one-shot selection without guidance (best 1,500 of
-5,000) achieves 9.0, i.e. 5% of the beam mean. A typical beam state
+5,000) achieves 10.7, i.e. 4% of the beam mean. A typical beam state
 outscores the best unguided state of equal rank — no one-shot
 selection from the unguided distribution produces that. The only
 mechanism left is inheritance: high-nearmiss parents beget
 higher-nearmiss children. And the beam/null ratio itself climbs
-(24× → 28× → 30× → 33× → 38× → 46× → 48× across levels 1–7):
+(24× → 28× → 30× → 33× → 38× → 46× → 48× → 57× across levels 1–8):
 guidance compounds.
 **The gradient is heritable structure, not a rank artifact.**
 
@@ -233,21 +234,24 @@ global state budgets, and inline exact verification of any find):
   2-split radius.**
 - **Gradient chase** (`--pursue6`): best-first beam on nearmiss
   across split depths (beam 1,500, 60 sampled splits per frontier
-  state, closure cap 150). Through level 7 (rank 56): nearmiss max
-  282, beam mean 192.3, with the per-level mean rising (+9.2, +13.6,
-  +23.2, +34.2, +52.2, +54.8) while the unguided baseline crawls
-  (+0.3, +0.4, +0.6, +0.7, +0.8, +1.0) — and the H3 control
-  certifies the climb is not rank inflation. (Operational note: a
-  silent default state budget ended the first run after level 6; it
-  was resumed from the level-6 frontier dump, which under the
-  then-current format kept only the top 50 of the 1,500-state beam.
-  Dumps now persist the full frontier, so future stops resume
-  losslessly. The near-flat acceleration at the reseed level —
-  +52.2 → +54.8 — may be an artifact of that narrowed beam; level
-  8, grown from the full beam again, decides.) Yet through 0.82
+  state, closure cap 150). Through level 8 (rank 57): nearmiss max
+  392, beam mean 289.1, with the per-level mean rising (+9.2, +13.6,
+  +23.2, +34.2, +52.2, +54.8, +96.8) while the unguided baseline
+  crawls (+0.3, +0.4, +0.6, +0.7, +0.8, +1.0, +1.0) — and the H3
+  control certifies the climb is not rank inflation. (Operational
+  note, resolved: a silent default state budget ended the first run
+  after level 6, and the resume seeded from a top-50 frontier dump —
+  the then-current lossy format. The near-flat +52.2 → +54.8 at the
+  reseed level was flagged as a possible artifact, with level 8,
+  regrown from the full 1,500-state beam, to decide. It decided:
+  +96.8 — the flattening was the artifact; dumps now persist full
+  frontiers and all stops resume losslessly.) Yet through 1.45
   billion states, **zero conversions**: hundreds of one-slot
-  alignments available per frontier state and not one same-partner
-  second-slot event has ever fired. The chase asks the one question
+  alignments available per frontier state and not one reduction
+  chain has ever descended below rank 48 or landed on a new rank-48
+  class. The chase was stopped at the level-8 boundary — frontier
+  banked, losslessly resumable — to reallocate cores to the
+  prime-field program (companion zkML note). The chase asks the one question
   that matters: **does nearmiss keep climbing until a
   double-coincidence actually fires, or is there an obstruction — a
   radius-independent invariant separating alignment from

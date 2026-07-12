@@ -7,7 +7,7 @@
 # (world record); distinct rank-23 landings are collected for the
 # novelty pool (new classes reopen the 54-adds hunt).
 cd "$(dirname "$0")/.." || exit 1
-BIN=./target/release/flip23
+BIN=${BIN:-./target/release/flip23}   # override: BIN=./target/release/flip23p
 SECS=${1:-900}
 THREADS=${2:-8}
 OUT=${3:-matmul/found23q}

@@ -474,7 +474,38 @@ P(x) = A B - C = -4x^2 - 5x + 26 \equiv 13x^2 + 12x + 9,
 \qquad Z(x) = x^2 - 3x + 2,
 \qquad H(x) = P/Z = 13
 \]
-(exact division, remainder 0). The secret knowledge is compressed
+(exact division, remainder 0).
+
+\emph{Where $Z$ comes from.} $Z$ is the \textbf{vanishing
+polynomial} of the constraint points. Constraint $c_j$ holds exactly
+when $P(j) = A(j)B(j) - C(j) = 0$ --- that is, when $(x-j)$ divides
+$P$. Both constraints hold exactly when $(x-1)$ and $(x-2)$
+\emph{both} divide $P$, i.e.\ when their product
+$Z(x) = (x-1)(x-2) = x^2 - 3x + 2$ does. (With $m$ constraints,
+$Z = \prod_{j=1}^{m}(x-j)$: one root per constraint --- ``$P$
+vanishes wherever a constraint lives.'')
+
+\emph{How $H = 13$ was computed.} Ordinary polynomial division over
+$\mathbb{F}_{17}$, which here collapses to one step: $P$ and $Z$
+both have degree 2, so $H$ is the constant (leading coefficient of
+$P$) $\div$ (leading coefficient of $Z$) $= 13 \div 1 = 13$, and
+exactness is one multiplication:
+\[
+13\,Z = 13x^2 + 13(-3)x + 13\cdot 2 = 13x^2 - 39x + 26
+      \equiv 13x^2 + 12x + 9 \pmod{17} = P
+\quad\text{(remainder 0).}\ \checkmark
+\]
+The exactness is not an algebraic accident; it is the entire content
+of the proof: \textbf{division comes out clean precisely because
+the witness satisfies both constraints}. Tamper with the claim ---
+say the prover asserts $P_1 = 9$ instead of 8 --- and $C(x)$ becomes
+$9(2-x) + 6(x-1)$, so $P(1) = 25 - 9 = 16 \ne 0$: now $(x-1)$ no
+longer divides $P$, no valid $H$ exists at all, and the cheater's
+only remaining hope is faking the divisibility check at the one
+hidden point $\tau$ --- exactly what Step 3's Schwartz--Zippel
+argument makes overwhelmingly unlikely.
+
+The secret knowledge is compressed
 into: ``I can exhibit witness-weighted $A, B, C$ and a quotient $H$
 with $AB - C = HZ$.''
 

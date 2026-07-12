@@ -412,6 +412,36 @@ Z(x) = x² − 3x + 2       ≡  x² + 14x + 2
 H(x) = P(x) / Z(x)       =  13      (exact division, remainder 0)
 ```
 
+**Where Z comes from.** Z is the **vanishing polynomial** of the
+constraint points. Constraint c_j holds exactly when
+P(j) = A(j)·B(j) − C(j) = 0 — that is, when (x − j) divides P. Both
+constraints hold exactly when (x−1) and (x−2) *both* divide P,
+i.e. when their product Z(x) = (x−1)(x−2) = x² − 3x + 2 does. (With
+m constraints, Z = (x−1)(x−2)···(x−m): one root per constraint —
+"P vanishes wherever a constraint lives.")
+
+**How H = 13 was computed.** Ordinary polynomial division over 𝔽₁₇
+— and in this tiny case it collapses to one step: P and Z both have
+degree 2, so H must be the constant (leading coefficient of P) ÷
+(leading coefficient of Z) = 13 ÷ 1 = 13, and exactness is checked
+by one multiplication:
+
+```
+13·Z = 13x² + 13·(−3)·x + 13·2 = 13x² − 39x + 26
+     ≡ 13x² + 12x + 9   (mod 17)     = P exactly — remainder 0 ✓
+```
+
+(−39 ≡ 12 and 26 ≡ 9 mod 17.) The exactness is not an algebraic
+accident; it is the entire content of the proof: **division comes
+out clean precisely because the witness satisfies both
+constraints**. Tamper with the claim — say the prover asserts
+P₁ = 9 instead of 8 — and C(x) becomes 9(2−x) + 6(x−1), so
+P(1) = 25 − 9 = 16 ≠ 0: now (x−1) no longer divides P, no valid H
+exists at all, and the cheater's only remaining hope is faking the
+divisibility check at the one hidden point τ — which is exactly
+what Step 3's Schwartz–Zippel argument makes overwhelmingly
+unlikely.
+
 The prover's secret knowledge is now compressed into: "I can exhibit
 polynomials A, B, C (correctly witness-weighted) and a quotient H
 with A·B − C = H·Z."

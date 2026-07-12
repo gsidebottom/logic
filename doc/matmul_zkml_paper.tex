@@ -133,6 +133,35 @@ Conversely, a linear layer with \emph{public} weights is a constant
 linear map and costs zero multiplication constraints; rank
 optimization has nothing to offer there.
 
+\paragraph{A toy example, $2\times2$ over $\mathbb{F}_{17}$.} Take
+witnesses $A = \begin{psmallmatrix}1&2\\3&4\end{psmallmatrix}$,
+$B = \begin{psmallmatrix}5&6\\7&0\end{psmallmatrix}$; then
+$C = A\cdot B \equiv \begin{psmallmatrix}2&6\\9&1\end{psmallmatrix}
+\pmod{17}$. The naive circuit spends one constraint per product ---
+eight constraints of the shape $u_1 = A_{11}\times B_{11}$ --- and
+output sums like $C_{11} = u_1 + u_2$ cost nothing further (they are
+linear). Strassen's rank-7 scheme spends \textbf{seven}: its first
+product is the single constraint
+\[
+( w_{A_{11}} + w_{A_{22}} ) \times ( w_{B_{11}} + w_{B_{22}} )
+  = w_{P_1},
+\]
+where all four operand additions sit \emph{inside} the constraint's
+linear forms, free. Checking over $\mathbb{F}_{17}$:
+$P_1 = 5\cdot5 = 8$, $P_2 = 7\cdot5 = 1$, $P_3 = 1\cdot6 = 6$,
+$P_4 = 4\cdot2 = 8$, $P_5 = 3\cdot0 = 0$, $P_6 = 2\cdot11 = 5$,
+$P_7 = (-2)\cdot7 = 3$ (all mod 17), and the free output
+combinations reproduce $C$ exactly:
+$C_{11} = P_1{+}P_4{-}P_5{+}P_7 = 19 \equiv 2$,
+$C_{12} = P_3{+}P_5 = 6$, $C_{21} = P_2{+}P_4 = 9$,
+$C_{22} = P_1{-}P_2{+}P_3{+}P_6 = 18 \equiv 1$. Seven constraints
+instead of eight --- 12.5\% at one level, compounding to
+$n^{2.807}$ under recursion --- and dyadic coefficients would be
+equally at home: $\tfrac12$ is just the constant 9 in
+$\mathbb{F}_{17}$ ($2\cdot9 = 18 \equiv 1$). This is
+\S\ref{sec:rank}'s story in miniature; the rank-23 and rank-48
+schemes are the same picture with better ratios.
+
 \section{Bilinear rank is constraint count}\label{sec:rank}
 
 A bilinear scheme of rank $r$ computes an $m\times m$ block product

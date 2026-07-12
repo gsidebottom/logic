@@ -470,7 +470,23 @@ fingerprint and/or exact checks. All 53 are pairwise inequivalent.)}
   (${\approx}5{,}000$ per CPU-year, ${\approx}200$--$300\times$
   adjusted). The warm start is doing real work in these ratios ---
   which is this report's thesis: the database turns discovery from
-  search into traversal.
+  search into traversal. A 46-minute controlled pilot replaces
+  ``indicative'' with ``measured'' at the start of the curve:
+  seeding \texttt{walk.py} with \emph{only the four classics}
+  (HKS's actual 2019 starting position, database withheld) produced
+  31 schemes $=$ 29 new de~Groote classes in 46 single-core minutes
+  --- 122\,s/scheme cold, 86\,s/scheme once the pool reached
+  ${\sim}35$, every find inside existing DB rank patterns (i.e.,
+  database \emph{re}discovery: the database is the classics'
+  method-2 neighborhood). That is ${\approx}3{\times}10^{5}$
+  inequivalent schemes per CPU-year from their own starting
+  position, ${\approx}300$--$450\times$ the speed-adjusted HKS
+  average, before the compounding that carried the warm-pool run to
+  ${\sim}3$\,s/scheme. At the pilot's cold rate, regenerating all
+  13{,}000 would cost ${\approx}13$ CPU-days (theirs:
+  ${\approx}12{,}800$); the full-coverage controlled number would
+  require running to saturation, where our duplicate rate must rise
+  too (artifacts: \texttt{matmul/replica4/}).
 \item The de-Groote checker, DB converter, and lift verifier are our
   code; their self-tests and controls are listed in
   \S\ref{sec:verify}. The two strongest external anchors: our

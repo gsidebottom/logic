@@ -336,9 +336,52 @@ c2:  ( w_A11 )         × ( w_B12 − w_B22 ) = w_P3
 ```
 
 **Step 0 — constraints become one polynomial identity (the QAP).**
-Assign constraint c_j to the point x = j. For each witness
-coordinate, interpolate its coefficient across constraints, using
-the point-1/point-2 interpolation basis L₁(x) = 2−x, L₂(x) = x−1:
+QAP stands for **Quadratic Arithmetic Program** [19] — the standard
+compilation of an R1CS into a single polynomial divisibility test,
+so that "all constraints hold" can later be checked at *one point*
+instead of once per constraint. Three sub-steps.
+
+*(a) Read off each constraint's coefficients.* A witness
+**coordinate** is one entry of the vector w (such as w_A11); each
+constraint assigns every coordinate three constant **coefficients**
+— its multiplier in the left factor, in the right factor, and on
+the output side. Our two constraints, written out in full:
+
+```
+c₁:  left  = 1·w_A11 + 1·w_A22     (every unlisted coordinate: 0)
+     right = 1·w_B11 + 1·w_B22
+     out   = 1·w_P1
+c₂:  left  = 1·w_A11
+     right = 1·w_B12 + (−1)·w_B22
+     out   = 1·w_P3
+```
+
+*(b) Build the Lagrange interpolation basis.* Assign constraint c_j
+to the evaluation point x = j. The **Lagrange basis polynomial**
+L_j(x) is the unique lowest-degree polynomial equal to 1 at its own
+point and 0 at every other; the general formula is
+L_j(x) = Π_{k≠j} (x − k)/(j − k), which for our two points {1, 2}
+gives
+
+```
+L₁(x) = (x−2)/(1−2) = 2 − x        L₁(1) = 1,  L₁(2) = 0
+L₂(x) = (x−1)/(2−1) = x − 1        L₂(1) = 0,  L₂(2) = 1
+```
+
+(over 𝔽₁₇ the division by 1−2 = −1 is just multiplication by 16 —
+every nonzero denominator is invertible in a field). These are
+building blocks: the polynomial taking values (v₁, v₂) at points
+(1, 2) is exactly v₁·L₁ + v₂·L₂.
+
+*(c) Interpolate each coordinate's coefficients.* For coordinate k,
+collect its left-factor coefficients across the constraints as a
+value list (value in c₁, value in c₂) and set
+A_k(x) = (coeff in c₁)·L₁(x) + (coeff in c₂)·L₂(x); likewise B_k(x)
+from the right-factor coefficients and C_k(x) from the output
+coefficients. Two worked rows: A₂₂ has left-coefficients (1, 0), so
+its A-poly is 1·L₁ + 0·L₂ = 2−x; B₂₂ has right-coefficients
+(1, −1), so its B-poly is L₁ − L₂ = (2−x) − (x−1) = 3−2x. The full
+table:
 
 | coordinate | in A-side of | A-poly | in B-side of | B-poly | in C-side of | C-poly |
 |---|---|---|---|---|---|---|
@@ -487,3 +530,6 @@ direction and review.
 18. G. Sidebottom. *Rigidity of the rank-48 4×4 scheme under solved
     flip moves* and *The Flower.* Companion notes, this repository,
     2026.
+19. R. Gennaro, C. Gentry, B. Parno, M. Raykova. *Quadratic span
+    programs and succinct NIZKs without PCPs.* EUROCRYPT 2013. (The
+    QAP compilation.)

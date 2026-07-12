@@ -395,9 +395,52 @@ c_2&: (w_{A_{11}}) \times (w_{B_{12}} - w_{B_{22}}) = w_{P_3}
 \end{align*}
 
 \paragraph{Step 0 --- constraints become one polynomial identity
-(the QAP).} Assign constraint $c_j$ to the point $x = j$, and
-interpolate each coordinate's coefficients across constraints with
-the basis $L_1(x) = 2-x$, $L_2(x) = x-1$:
+(the QAP).} QAP stands for \textbf{Quadratic Arithmetic Program}
+\cite{ggpr} --- the standard compilation of an R1CS into a single
+polynomial divisibility test, so that ``all constraints hold'' can
+later be checked at \emph{one point} instead of once per
+constraint. Three sub-steps.
+
+\emph{(a) Read off each constraint's coefficients.} A witness
+\textbf{coordinate} is one entry of the vector $w$ (such as
+$w_{A_{11}}$); each constraint assigns every coordinate three
+constant \textbf{coefficients} --- its multiplier in the left
+factor, the right factor, and the output side. Written out in full:
+\begin{align*}
+c_1:\quad &\text{left} = 1\,w_{A_{11}} + 1\,w_{A_{22}}
+  \quad\text{(every unlisted coordinate: 0)}\\
+&\text{right} = 1\,w_{B_{11}} + 1\,w_{B_{22}}, \qquad
+ \text{out} = 1\,w_{P_1}\\
+c_2:\quad &\text{left} = 1\,w_{A_{11}}, \qquad
+ \text{right} = 1\,w_{B_{12}} + (-1)\,w_{B_{22}}, \qquad
+ \text{out} = 1\,w_{P_3}
+\end{align*}
+
+\emph{(b) Build the Lagrange interpolation basis.} Assign
+constraint $c_j$ to the evaluation point $x = j$. The
+\textbf{Lagrange basis polynomial} $L_j$ is the unique
+lowest-degree polynomial equal to 1 at its own point and 0 at every
+other; the general formula $L_j(x) = \prod_{k \ne j}
+\frac{x-k}{j-k}$ gives, for our points $\{1, 2\}$,
+\[
+L_1(x) = \frac{x-2}{1-2} = 2 - x, \qquad
+L_2(x) = \frac{x-1}{2-1} = x - 1,
+\]
+with $L_1(1)=1, L_1(2)=0$ and $L_2(1)=0, L_2(2)=1$ (over
+$\mathbb{F}_{17}$ the division by $1-2 = -1$ is multiplication by
+16 --- every nonzero denominator is invertible in a field). These
+are building blocks: the polynomial taking values $(v_1, v_2)$ at
+$(1, 2)$ is exactly $v_1 L_1 + v_2 L_2$.
+
+\emph{(c) Interpolate each coordinate's coefficients.} For
+coordinate $k$, collect its left-factor coefficients across
+constraints as the value list (value in $c_1$, value in $c_2$) and
+set $A_k(x) = (\text{coeff in } c_1)\,L_1(x) + (\text{coeff in }
+c_2)\,L_2(x)$; likewise $B_k$ from right-factor and $C_k$ from
+output coefficients. Two worked rows: $A_{22}$ has
+left-coefficients $(1, 0)$, so its A-poly is $1\cdot L_1 + 0\cdot
+L_2 = 2-x$; $B_{22}$ has right-coefficients $(1, -1)$, so its
+B-poly is $L_1 - L_2 = (2-x)-(x-1) = 3-2x$. The full table:
 
 \begin{center}
 \begin{tabular}{lcccccc}
@@ -541,6 +584,9 @@ direction and review.
 \bibitem{companions} G. Sidebottom. \emph{Rigidity of the rank-48
   $4\times4$ scheme} and \emph{The Flower.} Companion notes, this
   repository, 2026.
+\bibitem{ggpr} R. Gennaro, C. Gentry, B. Parno, M. Raykova.
+  \emph{Quadratic span programs and succinct NIZKs without PCPs.}
+  EUROCRYPT 2013. (The QAP compilation.)
 \end{thebibliography}
 
 \end{document}

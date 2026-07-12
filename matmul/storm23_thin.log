@@ -1,0 +1,242 @@
+=== storm 13a5bd4n  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/13a5bd4n/i19w253c48eh-000.tab]  17:07 ===
+
+191869 walks, 150604123 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 308140
+thin storm: maxw 0 maxd 40; moves rejected over caps: 113780779
+=== storm 14a5b4n  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/14a5b4n/i12w249c346d-000.tab]  17:17 ===
+
+181068 walks, 134961673 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 228158
+thin storm: maxw 0 maxd 40; moves rejected over caps: 121664782
+=== storm _tgz  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/_tgz/schemes/18x2+51x+4y6+6y4+13y3+z32+z28+z27/i19w253c48eh-000.tab]  17:27 ===
+
+188841 walks, 148218945 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 303381
+thin storm: maxw 0 maxd 40; moves rejected over caps: 111971963
+=== storm 12a5bdj4n  [nm=6 coinc=12 pairs=5 maxc=1  src=matmul/dbcache/12a5bdj4n/i30w257c258h-003.tab]  17:37 ===
+
+189178 walks, 149920571 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 327071
+thin storm: maxw 0 maxd 40; moves rejected over caps: 112288687
+=== storm 12a6bd4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/12a6bd4n/i32w245c389h-000.tab]  17:47 ===
+
+185486 walks, 141588333 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 248240
+thin storm: maxw 0 maxd 40; moves rejected over caps: 117070711
+=== storm 13a6b4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/13a6b4n/i20w241c235e-001.tab]  17:57 ===
+
+188641 walks, 131944130 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 225722
+thin storm: maxw 0 maxd 40; moves rejected over caps: 133439466
+=== storm 11a6bdj4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/11a6bdj4n/i47w261c258a-000.tab]  18:07 ===
+
+186608 walks, 118030672 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 153781
+thin storm: maxw 0 maxd 40; moves rejected over caps: 164015476
+=== storm 11a5b2dj4n  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/11a5b2dj4n/i45w261c346i-000.tab]  18:17 ===
+
+180637 walks, 131506292 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 255615
+thin storm: maxw 0 maxd 40; moves rejected over caps: 126825601
+=== storm 12abcdegj4ns  [nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/12abcdegj4ns/i107w193c367g-000.tab]  18:27 ===
+
+185311 walks, 140804012 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 275522
+thin storm: maxw 0 maxd 40; moves rejected over caps: 120460978
+=== storm 12a5b2d4n  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/12a5b2d4n/i31w245c234i-000.tab]  18:37 ===
+
+180939 walks, 135695453 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 247902
+thin storm: maxw 0 maxd 40; moves rejected over caps: 118595908
+=== storm 14a2b2dj4n  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/14a2b2dj4n/i8w215c37gj-000.tab]  18:47 ===
+
+188636 walks, 148382659 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 286432
+thin storm: maxw 0 maxd 40; moves rejected over caps: 131219543
+=== storm 8a3bc3dgjk4ns  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/8a3bc3dgjk4ns/i119w215c28aj-000.tab]  18:57 ===
+
+187029 walks, 149050441 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 322326
+thin storm: maxw 0 maxd 40; moves rejected over caps: 112485734
+=== storm 10a2bc2dgjk4ns  [nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/10a2bc2dgjk4ns/i113w199c367g-000.tab]  19:07 ===
+
+189102 walks, 148545436 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 324135
+thin storm: maxw 0 maxd 40; moves rejected over caps: 112749509
+=== storm 11a2bcdegj4ns  [nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/11a2bcdegj4ns/i110w199c367g-000.tab]  19:17 ===
+
+180819 walks, 133982694 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 252066
+thin storm: maxw 0 maxd 40; moves rejected over caps: 117933259
+=== storm 10a3b3djk4ns  [nm=4 coinc=8 pairs=3 maxc=1  src=matmul/dbcache/10a3b3djk4ns/i161w199c23ci-000.tab]  19:27 ===
+
+179025 walks, 128090317 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 181350
+thin storm: maxw 0 maxd 40; moves rejected over caps: 134732028
+=== storm 14abcdej4n  [nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/14abcdej4n/i133w213c48ae-000.tab]  19:37 ===
+
+183618 walks, 135543698 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 229715
+thin storm: maxw 0 maxd 40; moves rejected over caps: 119356930
+=== storm 13a2bdgjm4n  [nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/13a2bdgjm4n/i139w221c48ah-000.tab]  19:47 ===
+
+196307 walks, 157712487 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 317995
+thin storm: maxw 0 maxd 40; moves rejected over caps: 115583624
+=== storm 11a6b2d4n  [nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/11a6b2d4n/i48w279c34de-000.tab]  19:57 ===
+
+185081 walks, 139186344 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 247296
+thin storm: maxw 0 maxd 40; moves rejected over caps: 123064850
+=== storm 6a4bc4d4j4n  [nm=3 coinc=6 pairs=3 maxc=1  src=matmul/dbcache/6a4bc4d4j4n/i238w239c37eg-000.tab]  20:07 ===
+
+184546 walks, 137327067 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 193761
+thin storm: maxw 0 maxd 40; moves rejected over caps: 123727581
+=== storm 12a4b2dj4n  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/12a4b2dj4n/i28w221c23ci-001.tab]  20:17 ===
+
+186667 walks, 145292861 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 284865
+thin storm: maxw 0 maxd 40; moves rejected over caps: 107967825
+=== storm 13abcdeg4ns  [nm=3 coinc=6 pairs=7 maxc=1  src=matmul/dbcache/13abcdeg4ns/i106w197c347g-000.tab]  20:27 ===
+
+184338 walks, 140513192 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 309138
+thin storm: maxw 0 maxd 40; moves rejected over caps: 126364745
+=== storm 15abcde4n  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/15abcde4n/i130w221c34ef-000.tab]  20:37 ===
+
+183633 walks, 133457896 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 212741
+thin storm: maxw 0 maxd 40; moves rejected over caps: 131527677
+=== storm 12a4bd2m4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/12a4bd2m4n/i56w215c35eh-000.tab]  20:47 ===
+
+192082 walks, 154860076 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 308563
+thin storm: maxw 0 maxd 40; moves rejected over caps: 111156006
+=== storm 14a3bdj4n  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/14a3bdj4n/i9w237c46fi-000.tab]  20:57 ===
+
+183860 walks, 142237760 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 258541
+thin storm: maxw 0 maxd 40; moves rejected over caps: 125515867
+=== storm 11a4bdj2m4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/11a4bdj2m4n/i76w205c23ci-001.tab]  21:07 ===
+
+182629 walks, 139926400 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 235300
+thin storm: maxw 0 maxd 40; moves rejected over caps: 103756789
+=== storm 8a5b3d2j4ns  [nm=3 coinc=6 pairs=3 maxc=1  src=matmul/dbcache/8a5b3d2j4ns/i223w235c37eg-000.tab]  21:17 ===
+
+185438 walks, 139485528 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 189064
+thin storm: maxw 0 maxd 40; moves rejected over caps: 120249936
+=== storm 8a2b2c2dgjkm4ns  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/8a2b2c2dgjkm4ns/i128w229c467f-000.tab]  21:27 ===
+
+192524 walks, 154387707 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 323409
+thin storm: maxw 0 maxd 40; moves rejected over caps: 116076457
+=== storm 11a4b3dj4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/11a4b3dj4n/i44w233c36ef-000.tab]  21:37 ===
+
+186543 walks, 138969633 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 207932
+thin storm: maxw 0 maxd 40; moves rejected over caps: 110624961
+=== storm 13a2bcdej4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/13a2bcdej4n/i141w217c356e-000.tab]  21:47 ===
+
+186354 walks, 137969997 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 234311
+thin storm: maxw 0 maxd 40; moves rejected over caps: 125104972
+=== storm 13a3b2dj4n  [nm=3 coinc=6 pairs=6 maxc=1  src=matmul/dbcache/13a3b2dj4n/i16w215c6acf-000.tab]  21:57 ===
+
+185521 walks, 145459966 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 296045
+thin storm: maxw 0 maxd 40; moves rejected over caps: 130345648
+=== storm portfolio complete 22:07 ===
+=== storm 13a5bd4n  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/13a5bd4n/i19w253c48eh-000.tab]  22:07 ===
+
+179408 walks, 135729679 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 290569
+thin storm: maxw 0 maxd 38; moves rejected over caps: 119963029
+=== storm 14a5b4n  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/14a5b4n/i12w249c346d-000.tab]  22:17 ===
+
+180318 walks, 132702705 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 229280
+thin storm: maxw 0 maxd 38; moves rejected over caps: 124904973
+=== storm _tgz  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/_tgz/schemes/18x2+51x+4y6+6y4+13y3+z32+z28+z27/i19w253c48eh-000.tab]  22:27 ===
+
+178032 walks, 134689324 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 288452
+thin storm: maxw 0 maxd 38; moves rejected over caps: 119041831
+=== storm 12a5bdj4n  [nm=6 coinc=12 pairs=5 maxc=1  src=matmul/dbcache/12a5bdj4n/i30w257c258h-003.tab]  22:37 ===
+
+179842 walks, 136012537 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 314264
+thin storm: maxw 0 maxd 38; moves rejected over caps: 124727527
+=== storm 12a6bd4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/12a6bd4n/i32w245c389h-000.tab]  22:47 ===
+
+184727 walks, 137075484 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 247742
+thin storm: maxw 0 maxd 38; moves rejected over caps: 125609705
+=== storm 13a6b4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/13a6b4n/i20w241c235e-001.tab]  22:57 ===
+
+184216 walks, 115680925 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 219921
+thin storm: maxw 0 maxd 38; moves rejected over caps: 160607985
+=== storm 11a6bdj4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/11a6bdj4n/i47w261c258a-000.tab]  23:07 ===
+
+177944 walks, 104633476 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 147199
+thin storm: maxw 0 maxd 38; moves rejected over caps: 174139941
+=== storm 11a5b2dj4n  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/11a5b2dj4n/i45w261c346i-000.tab]  23:17 ===
+
+182278 walks, 127058961 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 257777
+thin storm: maxw 0 maxd 38; moves rejected over caps: 141073158
+=== storm 12abcdegj4ns  [nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/12abcdegj4ns/i107w193c367g-000.tab]  23:27 ===
+
+183622 walks, 136597128 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 272904
+thin storm: maxw 0 maxd 38; moves rejected over caps: 126496928
+=== storm 12a5b2d4n  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/12a5b2d4n/i31w245c234i-000.tab]  23:37 ===
+
+181391 walks, 133617847 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 248306
+thin storm: maxw 0 maxd 38; moves rejected over caps: 124484597
+=== storm 14a2b2dj4n  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/14a2b2dj4n/i8w215c37gj-000.tab]  23:47 ===
+
+182477 walks, 137232284 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 278730
+thin storm: maxw 0 maxd 38; moves rejected over caps: 144976639
+=== storm 8a3bc3dgjk4ns  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/8a3bc3dgjk4ns/i119w215c28aj-000.tab]  23:57 ===
+
+179728 walks, 138489174 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 363563
+thin storm: maxw 0 maxd 38; moves rejected over caps: 128732550
+=== storm 10a2bc2dgjk4ns  [nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/10a2bc2dgjk4ns/i113w199c367g-000.tab]  00:07 ===
+
+183095 walks, 138924764 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 324737
+thin storm: maxw 0 maxd 38; moves rejected over caps: 123248745
+=== storm 11a2bcdegj4ns  [nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/11a2bcdegj4ns/i110w199c367g-000.tab]  00:17 ===
+
+189518 walks, 136890321 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 264165
+thin storm: maxw 0 maxd 38; moves rejected over caps: 132013878
+=== storm 10a3b3djk4ns  [nm=4 coinc=8 pairs=3 maxc=1  src=matmul/dbcache/10a3b3djk4ns/i161w199c23ci-000.tab]  00:27 ===
+
+183266 walks, 129246215 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 187595
+thin storm: maxw 0 maxd 38; moves rejected over caps: 142079731
+=== storm 14abcdej4n  [nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/14abcdej4n/i133w213c48ae-000.tab]  00:37 ===
+
+182658 walks, 130877368 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 231529
+thin storm: maxw 0 maxd 38; moves rejected over caps: 127839157
+=== storm 13a2bdgjm4n  [nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/13a2bdgjm4n/i139w221c48ah-000.tab]  00:47 ===
+
+185237 walks, 143309414 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 367097
+thin storm: maxw 0 maxd 38; moves rejected over caps: 133062759
+=== storm 11a6b2d4n  [nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/11a6b2d4n/i48w279c34de-000.tab]  00:57 ===
+
+188230 walks, 139428494 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 251875
+thin storm: maxw 0 maxd 38; moves rejected over caps: 129866680
+=== storm 6a4bc4d4j4n  [nm=3 coinc=6 pairs=3 maxc=1  src=matmul/dbcache/6a4bc4d4j4n/i238w239c37eg-000.tab]  01:07 ===
+
+186574 walks, 137382263 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 196967
+thin storm: maxw 0 maxd 38; moves rejected over caps: 128064150
+=== storm 12a4b2dj4n  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/12a4b2dj4n/i28w221c23ci-001.tab]  01:17 ===
+
+192853 walks, 145906077 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 292000
+thin storm: maxw 0 maxd 38; moves rejected over caps: 120524231
+=== storm 13abcdeg4ns  [nm=3 coinc=6 pairs=7 maxc=1  src=matmul/dbcache/13abcdeg4ns/i106w197c347g-000.tab]  01:27 ===
+
+180914 walks, 130313955 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 306422
+thin storm: maxw 0 maxd 38; moves rejected over caps: 144988644
+=== storm 15abcde4n  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/15abcde4n/i130w221c34ef-000.tab]  01:37 ===
+
+181247 walks, 129711614 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 207928
+thin storm: maxw 0 maxd 38; moves rejected over caps: 133954814
+=== storm 12a4bd2m4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/12a4bd2m4n/i56w215c35eh-000.tab]  01:47 ===
+
+186566 walks, 144869693 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 380955
+thin storm: maxw 0 maxd 38; moves rejected over caps: 134076578
+=== storm 14a3bdj4n  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/14a3bdj4n/i9w237c46fi-000.tab]  01:57 ===
+
+180243 walks, 133582463 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 253671
+thin storm: maxw 0 maxd 38; moves rejected over caps: 137932102
+=== storm 11a4bdj2m4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/11a4bdj2m4n/i76w205c23ci-001.tab]  02:07 ===
+
+184604 walks, 139135783 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 236912
+thin storm: maxw 0 maxd 38; moves rejected over caps: 109366390
+=== storm 8a5b3d2j4ns  [nm=3 coinc=6 pairs=3 maxc=1  src=matmul/dbcache/8a5b3d2j4ns/i223w235c37eg-000.tab]  02:17 ===
+
+184720 walks, 135289643 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 188998
+thin storm: maxw 0 maxd 38; moves rejected over caps: 127747716
+=== storm 8a2b2c2dgjkm4ns  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/8a2b2c2dgjkm4ns/i128w229c467f-000.tab]  02:27 ===
+
+185293 walks, 144172726 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 407585
+thin storm: maxw 0 maxd 38; moves rejected over caps: 136560485
+=== storm 11a4b3dj4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/11a4b3dj4n/i44w233c36ef-000.tab]  02:37 ===
+
+189642 walks, 140189525 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 211470
+thin storm: maxw 0 maxd 38; moves rejected over caps: 114732468
+=== storm 13a2bcdej4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/13a2bcdej4n/i141w217c356e-000.tab]  02:47 ===
+
+180371 walks, 128195031 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 228678
+thin storm: maxw 0 maxd 38; moves rejected over caps: 133660568
+=== storm 13a3b2dj4n  [nm=3 coinc=6 pairs=6 maxc=1  src=matmul/dbcache/13a3b2dj4n/i16w215c6acf-000.tab]  02:57 ===
+
+180678 walks, 135868164 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 292919
+thin storm: maxw 0 maxd 38; moves rejected over caps: 143822254
+=== storm portfolio complete 03:07 ===

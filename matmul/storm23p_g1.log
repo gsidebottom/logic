@@ -1,0 +1,121 @@
+=== storm 13a5bd4n  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/13a5bd4n/i19w253c48eh-000.tab]  06:15 ===
+funnel: 1442598 splits, 38811461 targeted flips, 1029106 reductions
+
+82562 walks, 140910027 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 68600
+=== storm 14a5b4n  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/14a5b4n/i12w249c346d-000.tab]  06:25 ===
+funnel: 1394059 splits, 48015274 targeted flips, 959892 reductions
+
+86731 walks, 147817662 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 64358
+=== storm _tgz  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/_tgz/schemes/18x2+51x+4y6+6y4+13y3+z32+z28+z27/i19w253c48eh-000.tab]  06:35 ===
+funnel: 1459759 splits, 39281660 targeted flips, 1041378 reductions
+
+83539 walks, 142580072 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 69416
+=== storm 12a5bdj4n  [nm=6 coinc=12 pairs=5 maxc=1  src=matmul/dbcache/12a5bdj4n/i30w257c258h-003.tab]  06:45 ===
+funnel: 1561208 splits, 40597621 targeted flips, 1113423 reductions
+
+89409 walks, 152603634 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 79323
+=== storm 12a6bd4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/12a6bd4n/i32w245c389h-000.tab]  06:55 ===
+funnel: 1534904 splits, 48001618 targeted flips, 1078166 reductions
+
+91221 walks, 155597451 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 71319
+=== storm 13a6b4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/13a6b4n/i20w241c235e-001.tab]  07:05 ===
+funnel: 1489219 splits, 43911270 targeted flips, 1046462 reductions
+
+88423 walks, 150824481 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 66319
+=== storm 11a6bdj4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/11a6bdj4n/i47w261c258a-000.tab]  07:15 ===
+funnel: 1353765 splits, 42214253 targeted flips, 931686 reductions
+
+84307 walks, 143690642 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 58040
+=== storm 11a5b2dj4n  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/11a5b2dj4n/i45w261c346i-000.tab]  07:25 ===
+funnel: 1456259 splits, 46701830 targeted flips, 1017767 reductions
+
+87583 walks, 149360054 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 70816
+=== storm 12abcdegj4ns  [nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/12abcdegj4ns/i107w193c367g-000.tab]  07:35 ===
+funnel: 1096939 splits, 34109903 targeted flips, 767507 reductions
+
+65791 walks, 112202220 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 59112
+=== storm 12a5b2d4n  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/12a5b2d4n/i31w245c234i-000.tab]  07:45 ===
+funnel: 878742 splits, 27760063 targeted flips, 613876 reductions
+
+52902 walks, 90210466 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 44975
+=== storm 14a2b2dj4n  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/14a2b2dj4n/i8w215c37gj-000.tab]  07:55 ===
+funnel: 894151 splits, 22271422 targeted flips, 625168 reductions
+
+53711 walks, 91595781 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 45148
+=== storm 8a3bc3dgjk4ns  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/8a3bc3dgjk4ns/i119w215c28aj-000.tab]  08:05 ===
+funnel: 1035612 splits, 23346585 targeted flips, 735426 reductions
+
+59941 walks, 102274388 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 53872
+=== storm 10a2bc2dgjk4ns  [nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/10a2bc2dgjk4ns/i113w199c367g-000.tab]  08:15 ===
+funnel: 1594190 splits, 36986330 targeted flips, 1125931 reductions
+
+93503 walks, 159519893 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 86549
+=== storm 11a2bcdegj4ns  [nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/11a2bcdegj4ns/i110w199c367g-000.tab]  08:25 ===
+funnel: 1548056 splits, 55054643 targeted flips, 1075114 reductions
+
+94459 walks, 161041264 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 81567
+=== storm 10a3b3djk4ns  [nm=4 coinc=8 pairs=3 maxc=1  src=matmul/dbcache/10a3b3djk4ns/i161w199c23ci-000.tab]  08:35 ===
+funnel: 1404724 splits, 48440776 targeted flips, 965553 reductions
+
+87728 walks, 149514869 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 64921
+=== storm 14abcdej4n  [nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/14abcdej4n/i133w213c48ae-000.tab]  08:45 ===
+funnel: 1454600 splits, 43151884 targeted flips, 1018855 reductions
+
+87028 walks, 148423201 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 74544
+=== storm 13a2bdgjm4n  [nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/13a2bdgjm4n/i139w221c48ah-000.tab]  08:55 ===
+funnel: 1449485 splits, 29607169 targeted flips, 1031195 reductions
+
+83520 walks, 142536065 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 74596
+=== storm 11a6b2d4n  [nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/11a6b2d4n/i48w279c34de-000.tab]  09:05 ===
+funnel: 1469214 splits, 40955431 targeted flips, 1025506 reductions
+
+88628 walks, 151143318 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 73977
+=== storm 6a4bc4d4j4n  [nm=3 coinc=6 pairs=3 maxc=1  src=matmul/dbcache/6a4bc4d4j4n/i238w239c37eg-000.tab]  09:15 ===
+funnel: 1486047 splits, 48742575 targeted flips, 1035668 reductions
+
+89947 walks, 153381410 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 66712
+=== storm 12a4b2dj4n  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/12a4b2dj4n/i28w221c23ci-001.tab]  09:25 ===
+funnel: 1425569 splits, 42496387 targeted flips, 1009268 reductions
+
+83132 walks, 141841803 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 74663
+=== storm 13abcdeg4ns  [nm=3 coinc=6 pairs=7 maxc=1  src=matmul/dbcache/13abcdeg4ns/i106w197c347g-000.tab]  09:35 ===
+funnel: 1480547 splits, 44014140 targeted flips, 1034008 reductions
+
+89186 walks, 152092012 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 80223
+=== storm 15abcde4n  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/15abcde4n/i130w221c34ef-000.tab]  09:45 ===
+funnel: 1436807 splits, 53416889 targeted flips, 993316 reductions
+
+88585 walks, 151004300 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 73836
+=== storm 12a4bd2m4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/12a4bd2m4n/i56w215c35eh-000.tab]  09:55 ===
+funnel: 1513529 splits, 30344984 targeted flips, 1081420 reductions
+
+86286 walks, 147280023 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 78889
+=== storm 14a3bdj4n  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/14a3bdj4n/i9w237c46fi-000.tab]  10:05 ===
+funnel: 1465972 splits, 41037510 targeted flips, 1021103 reductions
+
+88848 walks, 151488767 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 73965
+=== storm 11a4bdj2m4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/11a4bdj2m4n/i76w205c23ci-001.tab]  10:15 ===
+funnel: 1455713 splits, 47109174 targeted flips, 1019895 reductions
+
+87050 walks, 148459060 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 74471
+=== storm 8a5b3d2j4ns  [nm=3 coinc=6 pairs=3 maxc=1  src=matmul/dbcache/8a5b3d2j4ns/i223w235c37eg-000.tab]  10:25 ===
+funnel: 1523672 splits, 46766956 targeted flips, 1069222 reductions
+
+90754 walks, 154792787 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 66793
+=== storm 8a2b2c2dgjkm4ns  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/8a2b2c2dgjkm4ns/i128w229c467f-000.tab]  10:35 ===
+funnel: 1364661 splits, 28320567 targeted flips, 970034 reductions
+
+78789 walks, 134447688 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 72769
+=== storm 11a4b3dj4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/11a4b3dj4n/i44w233c36ef-000.tab]  10:45 ===
+funnel: 1564006 splits, 55126365 targeted flips, 1097088 reductions
+
+93246 walks, 159040273 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 75681
+=== storm 13a2bcdej4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/13a2bcdej4n/i141w217c356e-000.tab]  10:55 ===
+funnel: 1508658 splits, 43563060 targeted flips, 1056136 reductions
+
+90368 walks, 154115766 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 73832
+=== storm 13a3b2dj4n  [nm=3 coinc=6 pairs=6 maxc=1  src=matmul/dbcache/13a3b2dj4n/i16w215c6acf-000.tab]  11:05 ===
+funnel: 1473552 splits, 39903624 targeted flips, 1026528 reductions
+
+89279 walks, 152225968 moves in 600s; best rank 23; distinct rank-23 canonical forms collected: 78373
+=== storm portfolio complete 11:15 ===

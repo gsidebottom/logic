@@ -484,6 +484,107 @@ fn state_metrics(st: &[Summand]) -> (usize, usize, usize) {
 }
 
 
+
+// ---------- pursue8: constructor (residual rank-one subtraction) ----------
+// The builder arm: start from the full matmul tensor as a residual and
+// SUBTRACT rank-one terms u (x) v (x) w until zero — AlphaTensor's move
+// space, beam-guided here.  Not confined to any flip component: every
+// scheme expressible over F_p is in this search space by construction.
+
+fn target_tensor() -> Vec<u64> {
+    let mut r = vec![0u64; 729];
+    for x in 0..9 {
+        for y in 0..9 {
+            for z in 0..9 {
+                if x % 3 == y / 3 && x / 3 == z / 3 && y % 3 == z % 3 {
+                    r[(x * 9 + y) * 9 + z] = 1;
+                }
+            }
+        }
+    }
+    r
+}
+
+fn mat9_rank(m: &[[u64; 9]; 9]) -> usize {
+    let mut a = *m;
+    let mut rank = 0;
+    for col in 0..9 {
+        let mut piv = None;
+        for row in rank..9 {
+            if a[row][col] != 0 {
+                piv = Some(row);
+                break;
+            }
+        }
+        let Some(pr) = piv else { continue };
+        a.swap(rank, pr);
+        let inv = finv(a[rank][col]);
+        for c in col..9 {
+            a[rank][c] = fmul(a[rank][c], inv);
+        }
+        for row in 0..9 {
+            if row != rank && a[row][col] != 0 {
+                let f = a[row][col];
+                for c in col..9 {
+                    a[row][c] = fsub(a[row][c], fmul(f, a[rank][c]));
+                }
+            }
+        }
+        rank += 1;
+        if rank == 9 {
+            break;
+        }
+    }
+    rank
+}
+
+/// score = sum of z-slice ranks (heuristic remaining-rank measure)
+fn residual_score(r: &[u64]) -> usize {
+    let mut total = 0;
+    for z in 0..9 {
+        let mut m = [[0u64; 9]; 9];
+        for x in 0..9 {
+            for y in 0..9 {
+                m[x][y] = r[(x * 9 + y) * 9 + z];
+            }
+        }
+        total += mat9_rank(&m);
+    }
+    total
+}
+
+fn residual_nz_fibers(r: &[u64]) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    for x in 0..9 {
+        for y in 0..9 {
+            if (0..9).any(|z| r[(x * 9 + y) * 9 + z] != 0) {
+                out.push((x, y));
+            }
+        }
+    }
+    out
+}
+
+fn subtract_term(r: &mut [u64], u: &[u64; 9], v: &[u64; 9], w: &[u64; 9]) {
+    for x in 0..9 {
+        if u[x] == 0 {
+            continue;
+        }
+        for y in 0..9 {
+            if v[y] == 0 {
+                continue;
+            }
+            let uv = fmul(u[x], v[y]);
+            for z in 0..9 {
+                if w[z] != 0 {
+                    let idx = (x * 9 + y) * 9 + z;
+                    r[idx] = fsub(r[idx], fmul(uv, w[z]));
+                }
+            }
+        }
+    }
+}
+
 // ---------- pursue7: mix-and-quench descent ----------
 /// solve f_base + lam*f_other = mu*f_target over F_p (lam, mu != 0)
 fn solve_toward(fb: &Vec9, fo: &Vec9, ft: &Vec9) -> Option<u64> {
@@ -782,6 +883,212 @@ pub fn run(args: Vec<String>) {
             if seen.len() >= maxn { ", TRUNCATED" } else { ", complete" },
             t0.elapsed().as_secs_f64()
         );
+        return;
+    }
+
+    if args.iter().any(|a| a == "--pursue8") {
+        // constructor: beam search over rank-one subtractions from the
+        // residual tensor; exact fiber-peel finishing rule guarantees a
+        // valid terminal count per restart.  Terminal-count histogram is
+        // the instrument; <= 22 over the field is the record event.
+        let beamw = get("--beam", 8) as usize;
+        let cands = get("--cands", 160) as usize;
+        let maxr = get("--maxr", 27) as usize;
+        let secsp = get("--seconds", 600) as u64;
+        let rankscore = args.iter().any(|a| a == "--rankscore");
+        use std::collections::BTreeMap;
+        let hist: Mutex<BTreeMap<usize, u64>> = Mutex::new(BTreeMap::new());
+        let built23: Mutex<std::collections::HashSet<u64>> =
+            Mutex::new(Default::default());
+        let n_restarts = AtomicU64::new(0);
+        let best_seen = AtomicU32::new(u32::MAX);
+        let t0 = Instant::now();
+        (0..threads as u64).into_par_iter().for_each(|tid| {
+            let mut rng = 0x517c_c1b7_2722_0a95u64
+                ^ (tid.wrapping_mul(0x2545_f491_4f6c_dd1d) + 1);
+            let mut next = move || {
+                rng ^= rng << 13;
+                rng ^= rng >> 7;
+                rng ^= rng << 17;
+                rng
+            };
+            while t0.elapsed().as_secs() < secsp {
+                n_restarts.fetch_add(1, Ordering::Relaxed);
+                // beam of (residual, terms)
+                let mut beam: Vec<(Vec<u64>, Vec<([u64; 9], [u64; 9], [u64; 9])>)> =
+                    vec![(target_tensor(), Vec::new())];
+                let mut finished: Option<Vec<([u64; 9], [u64; 9], [u64; 9])>> = None;
+                'steps: for _step in 0..maxr {
+                    let mut pool: Vec<(usize, usize, Vec<u64>,
+                                       Vec<([u64; 9], [u64; 9], [u64; 9])>)> = Vec::new();
+                    for (r, terms) in &beam {
+                        // finishing rule: peel remaining fibers exactly
+                        let fibers = residual_nz_fibers(r);
+                        if terms.len() + fibers.len() <= maxr {
+                            let mut ts = terms.clone();
+                            let mut rr = r.clone();
+                            for &(x, y) in &fibers {
+                                let mut u = [0u64; 9];
+                                let mut v = [0u64; 9];
+                                let mut w = [0u64; 9];
+                                u[x] = 1;
+                                v[y] = 1;
+                                for z in 0..9 {
+                                    w[z] = rr[(x * 9 + y) * 9 + z];
+                                }
+                                subtract_term(&mut rr, &u, &v, &w);
+                                ts.push((u, v, w));
+                            }
+                            debug_assert!(rr.iter().all(|&e| e == 0));
+                            if finished.as_ref().map_or(true, |f| ts.len() < f.len()) {
+                                finished = Some(ts);
+                            }
+                            // fall through: keep improving on this state
+                        }
+                        // candidate expansions
+                        for ci in 0..cands {
+                            let mut u = [0u64; 9];
+                            let mut v = [0u64; 9];
+                            if ci & 1 == 0 && fibers.len() >= 2 {
+                                // fiber-targeted: aim at two ACTIVE fibers
+                                let (x1, y1) = fibers[(next() % fibers.len() as u64) as usize];
+                                let (x2, y2) = fibers[(next() % fibers.len() as u64) as usize];
+                                u[x1] = 1;
+                                if x2 != x1 {
+                                    u[x2] = if next() & 1 == 0 { 1 } else { P - 1 };
+                                }
+                                v[y1] = 1;
+                                if y2 != y1 {
+                                    v[y2] = if next() & 1 == 0 { 1 } else { P - 1 };
+                                }
+                            } else {
+                                let su = 1 + (next() % 3) as usize;
+                                let sv = 1 + (next() % 3) as usize;
+                                for _ in 0..su {
+                                    let e = if next() & 1 == 0 { 1 } else { P - 1 };
+                                    u[(next() % 9) as usize] = e;
+                                }
+                                for _ in 0..sv {
+                                    let e = if next() & 1 == 0 { 1 } else { P - 1 };
+                                    v[(next() % 9) as usize] = e;
+                                }
+                            }
+                            // contraction f_z and normalizer s
+                            let mut f = [0u64; 9];
+                            for x in 0..9 {
+                                if u[x] == 0 { continue; }
+                                for y in 0..9 {
+                                    if v[y] == 0 { continue; }
+                                    let uv = fmul(u[x], v[y]);
+                                    for z in 0..9 {
+                                        f[z] = fadd(f[z],
+                                            fmul(uv, r[(x * 9 + y) * 9 + z]));
+                                    }
+                                }
+                            }
+                            if f.iter().all(|&e| e == 0) {
+                                continue;
+                            }
+                            let su2 = u.iter().fold(0u64, |a, &e| fadd(a, fmul(e, e)));
+                            let sv2 = v.iter().fold(0u64, |a, &e| fadd(a, fmul(e, e)));
+                            let s = fmul(su2, sv2);
+                            if s == 0 {
+                                continue;
+                            }
+                            let si = finv(s);
+                            let mut w = [0u64; 9];
+                            for z in 0..9 {
+                                w[z] = fmul(f[z], si);
+                            }
+                            let mut rr = r.clone();
+                            subtract_term(&mut rr, &u, &v, &w);
+                            // primary score: projected completion total
+                            // (terms so far + 1 + remaining fibers);
+                            // secondary: slice-rank sum
+                            let fib2 = residual_nz_fibers(&rr).len();
+                            let proj = terms.len() + 1 + fib2;
+                            // --rankscore: slice-rank-sum primary (can
+                            // reward Strassen-hump moves that temporarily
+                            // raise fiber count); default: projected-total
+                            let sc = if rankscore {
+                                residual_score(&rr) * 1000 + proj
+                            } else {
+                                proj * 1000 + residual_score(&rr)
+                            };
+                            let nz = rr.iter().filter(|&&e| e != 0).count();
+                            let mut ts = terms.clone();
+                            ts.push((u, v, w));
+                            pool.push((sc, nz, rr, ts));
+                        }
+                    }
+                    if pool.is_empty() {
+                        break 'steps;
+                    }
+                    pool.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+                    pool.truncate(beamw);
+                    beam = pool.into_iter().map(|(_, _, r, t)| (r, t)).collect();
+                }
+                let total = match &finished {
+                    Some(ts) => ts.len(),
+                    None => continue, // no valid completion this restart
+                };
+                *hist.lock().unwrap().entry(total).or_insert(0) += 1;
+                if (total as u32) < best_seen.load(Ordering::Relaxed) {
+                    best_seen.store(total as u32, Ordering::Relaxed);
+                    println!("[{:.0}s] pursue8 best so far: {total} terms",
+                             t0.elapsed().as_secs_f32());
+                }
+                if total <= 23 {
+                    // reconstruct + exact-verify the built scheme
+                    let ts = finished.unwrap();
+                    let sch: Option<Vec<Summand>> = ts.iter()
+                        .map(|(u, v, w)| Summand::gauge(
+                            Vec9 { nums: *u }, Vec9 { nums: *v }, Vec9 { nums: *w }))
+                        .collect();
+                    if let Some(sch) = sch {
+                        if verify(&sch) {
+                            if total < 23 {
+                                let path = format!(
+                                    "{outdir}/RECORDP_built_rank{total}_{tid}.txt");
+                                dump(&sch, &path);
+                                println!(
+                                    "[{:.0}s] *** BUILT RANK {} OVER F_p — VERIFIED *** -> {}",
+                                    t0.elapsed().as_secs_f32(), total, path);
+                            } else {
+                                let h = scheme_hash(&sch);
+                                let mut d = built23.lock().unwrap();
+                                if d.insert(h) {
+                                    let nn = d.len();
+                                    if nn <= 2000 || nn % 1000 == 0 {
+                                        use std::io::Write;
+                                        if let Ok(mut fpool) = std::fs::OpenOptions::new()
+                                            .create(true).append(true)
+                                            .open(format!("{outdir}/pool8.txt"))
+                                        {
+                                            for t in &sch {
+                                                writeln!(fpool, "{:?} | {:?} | {:?}",
+                                                    t.a.nums, t.b.nums, t.c.nums).ok();
+                                            }
+                                            writeln!(fpool, "---").ok();
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            println!("pursue8 built-scheme verify FAILED ({total} terms) — bug!");
+                        }
+                    }
+                }
+            }
+        });
+        println!(
+            "pursue8: {} restarts in {:.0}s; best {} terms; distinct built-23s {}",
+            n_restarts.load(Ordering::Relaxed),
+            t0.elapsed().as_secs_f64(),
+            best_seen.load(Ordering::Relaxed),
+            built23.lock().unwrap().len()
+        );
+        println!("terminal-count histogram: {:?}", hist.lock().unwrap());
         return;
     }
 

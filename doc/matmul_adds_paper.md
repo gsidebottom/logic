@@ -283,9 +283,13 @@ against the HKS database; "published" = the count in the source paper):
   them all with margin: orbit input-side floors are 30–32 (fatter
   than every hot database class), and the strict-target γ-orbit sweep
   (XOR cover ≤ 55 − floor − 14) admits no image on any slot — **every
-  representative of every new class totals ≥ 56**. The 55 minimum,
-  and the record class's uniqueness at 55, stand over the enlarged
-  catalogue of 17,376 + 53 + 46 classes.
+  representative of every new class totals ≥ 56**. A further 35
+  classes from *reuse-capped* walks (support-thin storms designed to
+  steer toward low-addition territory) closed identically — floors
+  30–32, the same distribution as unconstrained walks — so
+  representative-level thinness does not reach the low-floor island.
+  The 55 minimum, and the record class's uniqueness at 55, stand
+  over the enlarged catalogue of 17,376 + 53 + 46 + 35 classes.
 
 ## 6. Contributions
 

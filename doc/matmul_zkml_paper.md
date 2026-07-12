@@ -454,9 +454,27 @@ systems, elliptic-curve points g^(τ^i); in this toy we will write
 the bare numbers and mark where hiding matters). Then **destroy τ**.
 Anyone who keeps τ can forge proofs — hence "trusted setup," the
 multi-party ceremonies around Groth16, and the transparent (no-τ)
-alternatives like STARKs. For our toy the published material
-includes Z(τ) = (5−1)(5−2) = 12 and the encoded evaluations of each
-coordinate polynomial at τ = 5.
+alternatives like STARKs.
+
+For our toy, the published material (the **common reference
+string**, CRS) is *witness-independent* — one ceremony serves every
+future proof of this circuit — and consists of the encoded
+evaluations at τ = 5 of each *coordinate* polynomial from Step 0's
+table, plus Z(5) and encodings of the powers of τ that H may need
+(here just τ⁰, since our H has degree 0). Spelled out, using the
+table's polynomials:
+
+```
+A-side:  A_A11(5) = 1          A_A22(5) = 2−5 ≡ 14
+B-side:  B_B11(5) = 2−5 ≡ 14   B_B12(5) = 5−1 = 4   B_B22(5) = 3−10 ≡ 10
+C-side:  C_P1(5)  = 2−5 ≡ 14   C_P3(5)  = 5−1 = 4
+plus:    Z(5) = 4·3 = 12       enc(τ⁰) = enc(1), …
+```
+
+(every unlisted coordinate's polynomial is identically 0 and
+contributes nothing). Note what is **not** published: anything
+witness-dependent — A(x), B(x), C(x), P(x), H(x) belong to the
+prover, not the setup.
 
 **Step 2 — Prove.** The prover, holding w, computes the *encoded*
 evaluations at τ — crucially, each is a **linear combination** of
@@ -464,9 +482,17 @@ published encodings with witness coefficients (this is why R1CS's
 free-linear-combination structure is the whole design):
 
 ```
-A(5) = 9 − 20 = −11 ≡ 6      B(5) = 5 + 4 = 9
-C(5) = 10 − 10 = 0           H(5) = 13
+A(5) = w_A11·A_A11(5) + w_A22·A_A22(5) = 1·1 + 4·14 = 57 ≡ 6
+B(5) = 5·14 + 6·4 + 0·10               = 94       ≡ 9
+C(5) = 8·14 + 6·4                      = 136      ≡ 0
+H(5) = 13·enc(τ⁰)                      = 13
 ```
+
+Cross-check against direct evaluation (which only we, the
+omniscient narrators, can do): A(x) = 9−4x at 5 gives 9 − 20 ≡ 6 ✓,
+B = x+4 gives 9 ✓, C = 10−2x gives 0 ✓ — the same numbers, but the
+prover's route touched only published encodings and witness values,
+never τ itself.
 
 The proof is π = (enc(A(5)), enc(B(5)), enc(C_priv(5)), enc(H(5)))
 — in Groth16, after optimizations, three curve points, ~200 bytes,

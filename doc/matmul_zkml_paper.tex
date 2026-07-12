@@ -517,18 +517,42 @@ scalings but hides the value (elliptic-curve points $g^{\tau^i}$ in
 real systems; bare numbers here, with hiding flagged). Then
 \textbf{destroy $\tau$}: anyone holding it can forge proofs ---
 hence the multi-party ceremonies around Groth16, and the transparent
-(no-$\tau$) alternatives like STARKs. Published for the toy:
-$Z(5) = 4\cdot3 = 12$ and the encoded coordinate-polynomial
-evaluations at 5.
+(no-$\tau$) alternatives like STARKs. For our toy, the published material (the \textbf{common reference
+string}, CRS) is \emph{witness-independent} --- one ceremony serves
+every future proof of this circuit --- and consists of the encoded
+evaluations at $\tau = 5$ of each \emph{coordinate} polynomial
+from Step 0's table, plus $Z(5)$ and encodings of the powers of
+$\tau$ that $H$ may need (here just $\tau^0$, since our $H$ has
+degree 0). Spelled out:
+\[
+\begin{array}{lll}
+A_{A_{11}}(5) = 1 & A_{A_{22}}(5) = 2-5 \equiv 14 & \\
+B_{B_{11}}(5) \equiv 14 & B_{B_{12}}(5) = 4 & B_{B_{22}}(5) = 3-10 \equiv 10\\
+C_{P_1}(5) \equiv 14 & C_{P_3}(5) = 4 &
+  Z(5) = 4\cdot3 = 12
+\end{array}
+\]
+(every unlisted coordinate's polynomial is identically 0). Note what
+is \textbf{not} published: anything witness-dependent --- $A(x)$,
+$B(x)$, $C(x)$, $P(x)$, $H(x)$ belong to the prover, not the setup.
 
 \paragraph{Step 2 --- Prove.} The prover, holding $w$, computes the
 \emph{encoded} evaluations --- each a \textbf{linear combination} of
 published encodings with witness coefficients (this is why R1CS's
 free-linear-combination structure is the whole design):
 \[
-A(5) = 9 - 20 \equiv 6, \qquad B(5) = 9, \qquad C(5) = 0,
-\qquad H(5) = 13.
+\begin{aligned}
+A(5) &= w_{A_{11}} A_{A_{11}}(5) + w_{A_{22}} A_{A_{22}}(5)
+      = 1\cdot1 + 4\cdot14 = 57 \equiv 6,\\
+B(5) &= 5\cdot14 + 6\cdot4 + 0\cdot10 = 94 \equiv 9, \qquad
+C(5) = 8\cdot14 + 6\cdot4 = 136 \equiv 0, \qquad H(5) = 13.
+\end{aligned}
 \]
+Cross-check by direct evaluation (which only we, the omniscient
+narrators, can do): $A(x) = 9-4x$ at 5 gives $-11 \equiv 6$
+\checkmark, $B = x+4$ gives 9 \checkmark, $C = 10-2x$ gives 0
+\checkmark\ --- the same numbers, but the prover's route touched
+only published encodings and witness values, never $\tau$ itself.
 The proof is $\pi = (\mathrm{enc}(A(5)), \mathrm{enc}(B(5)),
 \mathrm{enc}(C_{\text{priv}}(5)), \mathrm{enc}(H(5)))$ --- in
 Groth16, after optimizations, three curve points, ${\sim}200$ bytes,

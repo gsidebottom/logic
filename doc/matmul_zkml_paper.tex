@@ -175,7 +175,9 @@ recursion --- and dyadic coefficients would be equally at home:
 $\tfrac12$ is just the constant 9 in $\mathbb{F}_{17}$
 ($2\cdot9 = 18 \equiv 1$). This is \S\ref{sec:rank}'s story in
 miniature; the rank-23 and rank-48 schemes are the same picture with
-better ratios.
+better ratios. (Appendix~\ref{app:tutorial} runs a complete Setup
+$\to$ Prove $\to$ Verify on a two-constraint slice of this example
+--- the whole SNARK pipeline at hand-checkable scale.)
 
 \section{Bilinear rank is constraint count}\label{sec:rank}
 
@@ -353,6 +355,137 @@ cargo build --release --bin flip23p
 # any verified rank <= 22 over Goldilocks lands in
 # found23p/RECORDP_rank*.txt and is announced loudly
 \end{Code}
+
+\appendix
+\section{Setup, Prove, Verify --- a complete toy proof}\label{app:tutorial}
+
+This appendix runs the entire SNARK pipeline, Groth16-shaped, on a
+two-constraint slice of \S\ref{sec:cost}'s example, every number over
+$\mathbb{F}_{17}$. One honest simplification, flagged where it
+occurs: real systems wrap the values below in elliptic-curve
+encodings (``in the exponent''), which is what makes hiding
+cryptographic; the \emph{arithmetic} --- R1CS $\to$ QAP $\to$
+divisibility check at a secret point --- is shown exactly as real
+provers compute it.
+
+\paragraph{The statement.} The prover claims: ``I know private
+values $A_{11}, A_{22}, B_{11}, B_{12}, B_{22}$ such that
+$P_1 = (A_{11}{+}A_{22})(B_{11}{+}B_{22}) = 8$ and
+$P_3 = A_{11}(B_{12}{-}B_{22}) = 6$.'' The claimed products $(8,6)$
+are \textbf{public}; the five inputs stay private. The witness
+(public part first):
+\[
+w = (\,1,\ P_1{=}8,\ P_3{=}6 \mid A_{11}{=}1,\ A_{22}{=}4,\
+      B_{11}{=}5,\ B_{12}{=}6,\ B_{22}{=}0\,)
+\]
+and the two constraints (check: $5\cdot5 = 25 \equiv 8$,
+$1\cdot6 = 6$):
+\begin{align*}
+c_1&: (w_{A_{11}} + w_{A_{22}}) \times (w_{B_{11}} + w_{B_{22}})
+      = w_{P_1}\\
+c_2&: (w_{A_{11}}) \times (w_{B_{12}} - w_{B_{22}}) = w_{P_3}
+\end{align*}
+
+\paragraph{Step 0 --- constraints become one polynomial identity
+(the QAP).} Assign constraint $c_j$ to the point $x = j$, and
+interpolate each coordinate's coefficients across constraints with
+the basis $L_1(x) = 2-x$, $L_2(x) = x-1$:
+
+\begin{center}
+\begin{tabular}{lcccccc}
+\toprule
+coord & A-side of & A-poly & B-side of & B-poly & C-side of & C-poly\\
+\midrule
+$A_{11}$ & $c_1,c_2$ & $1$ & --- & 0 & --- & 0\\
+$A_{22}$ & $c_1$ & $2-x$ & --- & 0 & --- & 0\\
+$B_{11}$ & --- & 0 & $c_1$ & $2-x$ & --- & 0\\
+$B_{12}$ & --- & 0 & $c_2$ & $x-1$ & --- & 0\\
+$B_{22}$ & --- & 0 & $c_1 (+),\, c_2 (-)$ & $3-2x$ & --- & 0\\
+$P_1$ & --- & 0 & --- & 0 & $c_1$ & $2-x$\\
+$P_3$ & --- & 0 & --- & 0 & $c_2$ & $x-1$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Weight each polynomial by its witness value and sum:
+\[
+A(x) = 1\cdot1 + 4(2-x) = 9 - 4x, \qquad
+B(x) = 5(2-x) + 6(x-1) = x + 4, \qquad
+C(x) = 8(2-x) + 6(x-1) = 10 - 2x.
+\]
+Sanity: at $x{=}1$: $A\!\cdot\!B = 25 \equiv 8 = C$ ($c_1$
+\checkmark); at $x{=}2$: $A\!\cdot\!B = 6 = C$ ($c_2$ \checkmark).
+\textbf{Both constraints hold $\iff$ $A(x)B(x) - C(x)$ vanishes at
+$x = 1, 2$ $\iff$ it is divisible by $Z(x) = (x-1)(x-2)$.} Over
+$\mathbb{F}_{17}$:
+\[
+P(x) = A B - C = -4x^2 - 5x + 26 \equiv 13x^2 + 12x + 9,
+\qquad Z(x) = x^2 - 3x + 2,
+\qquad H(x) = P/Z = 13
+\]
+(exact division, remainder 0). The secret knowledge is compressed
+into: ``I can exhibit witness-weighted $A, B, C$ and a quotient $H$
+with $AB - C = HZ$.''
+
+\paragraph{Step 1 --- Setup (the trusted ceremony).} Sample a secret
+point, say $\boldsymbol{\tau = 5}$ --- the ``toxic waste'' --- and
+publish the powers of $\tau$ and the QAP polynomials evaluated at
+$\tau$, each wrapped in an encoding that supports additions and
+scalings but hides the value (elliptic-curve points $g^{\tau^i}$ in
+real systems; bare numbers here, with hiding flagged). Then
+\textbf{destroy $\tau$}: anyone holding it can forge proofs ---
+hence the multi-party ceremonies around Groth16, and the transparent
+(no-$\tau$) alternatives like STARKs. Published for the toy:
+$Z(5) = 4\cdot3 = 12$ and the encoded coordinate-polynomial
+evaluations at 5.
+
+\paragraph{Step 2 --- Prove.} The prover, holding $w$, computes the
+\emph{encoded} evaluations --- each a \textbf{linear combination} of
+published encodings with witness coefficients (this is why R1CS's
+free-linear-combination structure is the whole design):
+\[
+A(5) = 9 - 20 \equiv 6, \qquad B(5) = 9, \qquad C(5) = 0,
+\qquad H(5) = 13.
+\]
+The proof is $\pi = (\mathrm{enc}(A(5)), \mathrm{enc}(B(5)),
+\mathrm{enc}(C_{\text{priv}}(5)), \mathrm{enc}(H(5)))$ --- in
+Groth16, after optimizations, three curve points, ${\sim}200$ bytes,
+\emph{independent of circuit size}. The prover never learns $\tau$.
+
+\paragraph{Step 3 --- Verify.} The verifier reconstructs the
+\emph{public} part of $C(\tau)$ itself from the claimed outputs
+$(8, 6)$ --- the prover cannot lie about what is being claimed ---
+then checks \textbf{one multiplicative relation} (one pairing
+equation in real systems; pairings are the tool that multiplies two
+hidden values exactly once):
+\[
+A(\tau)B(\tau) - C(\tau) \stackrel{?}{=} H(\tau)Z(\tau):
+\qquad 6\cdot9 - 0 = 54 \equiv 3, \qquad 13\cdot12 = 156 \equiv 3.
+\quad\checkmark
+\]
+
+\paragraph{Why this convinces (soundness).} A cheating prover
+without a valid witness needs $AB - C$ divisible by $Z$; the best it
+can do is fake the relation at the single hidden point $\tau$. Two
+distinct low-degree polynomials agree at a random point with
+probability $\le \deg/|\mathbb{F}|$ --- about $2/17$ in the toy
+(which is why $\mathbb{F}_{17}$ is a classroom field), about
+$2^{-250}$ over a real 254-bit field. Not knowing $\tau$, the prover
+cannot aim: Schwartz--Zippel is the heart of the construction.
+
+\paragraph{Why it reveals nothing (zero-knowledge).} The verifier
+sees only encodings, never witness coordinates. (Full Groth16
+additionally randomizes each proof with masking multiples of $Z(x)$
+so two proofs of the same witness look independent; omitted for
+clarity.)
+
+\paragraph{The connection to rank, one last time.} Each constraint
+became one interpolation point, one row of the QAP table, one share
+of prover work and setup size. Prove a witness$\times$witness matrix
+product with a rank-$r$ scheme and this whole pipeline is $r$
+constraints per block instead of $m^3$ --- the scheme's additions
+never appear as constraints at any stage; they live inside the
+linear combinations, which the encodings support for free.
 
 \section*{Acknowledgments}
 

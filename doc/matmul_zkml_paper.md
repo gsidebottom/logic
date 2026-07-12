@@ -139,7 +139,9 @@ eight — 12.5% at one level, compounding to n^2.807 under recursion —
 and dyadic coefficients would be equally at home: ½ is just the
 constant 9 in 𝔽₁₇ (2·9 = 18 ≡ 1). This is §3's story in miniature;
 the rank-23 and rank-48 schemes are the same picture with better
-ratios.
+ratios. (Appendix A runs a complete Setup → Prove → Verify on a
+two-constraint slice of this example — the whole SNARK pipeline at
+hand-checkable scale.)
 
 ## 3. Bilinear rank is constraint count
 
@@ -298,6 +300,133 @@ cargo build --release --bin flip23p
 # any verified rank <= 22 over Goldilocks lands in
 # found23p/RECORDP_rank*.txt and is announced loudly
 ```
+
+## Appendix A. Setup, Prove, Verify — a complete toy proof
+
+This appendix runs the entire SNARK pipeline, Groth16-shaped, on a
+two-constraint slice of §2's example, every number over 𝔽₁₇. One
+honest simplification, flagged where it occurs: real systems wrap the
+values below in elliptic-curve encodings ("in the exponent"), which
+is what makes hiding cryptographic; the *arithmetic* — R1CS → QAP →
+divisibility check at a secret point — is shown here exactly as real
+provers compute it.
+
+**The statement.** The prover claims: "I know private values A₁₁,
+A₂₂, B₁₁, B₁₂, B₂₂ such that P₁ = (A₁₁+A₂₂)(B₁₁+B₂₂) = 8 and
+P₃ = A₁₁(B₁₂−B₂₂) = 6." The claimed products (8, 6) are **public**;
+the five inputs stay private. The witness (public part first):
+
+```
+w = ( 1, P₁=8, P₃=6 | A₁₁=1, A₂₂=4, B₁₁=5, B₁₂=6, B₂₂=0 )
+```
+
+and the two R1CS constraints (check: 5·5 = 25 ≡ 8 ✓, 1·6 = 6 ✓):
+
+```
+c1:  ( w_A11 + w_A22 ) × ( w_B11 + w_B22 ) = w_P1
+c2:  ( w_A11 )         × ( w_B12 − w_B22 ) = w_P3
+```
+
+**Step 0 — constraints become one polynomial identity (the QAP).**
+Assign constraint c_j to the point x = j. For each witness
+coordinate, interpolate its coefficient across constraints, using
+the point-1/point-2 interpolation basis L₁(x) = 2−x, L₂(x) = x−1:
+
+| coordinate | in A-side of | A-poly | in B-side of | B-poly | in C-side of | C-poly |
+|---|---|---|---|---|---|---|
+| A₁₁ | c1, c2 | 1 | — | 0 | — | 0 |
+| A₂₂ | c1 | 2−x | — | 0 | — | 0 |
+| B₁₁ | — | 0 | c1 | 2−x | — | 0 |
+| B₁₂ | — | 0 | c2 | x−1 | — | 0 |
+| B₂₂ | — | 0 | c1 (+), c2 (−) | 3−2x | — | 0 |
+| P₁ | — | 0 | — | 0 | c1 | 2−x |
+| P₃ | — | 0 | — | 0 | c2 | x−1 |
+
+Now weight each polynomial by its witness value and sum:
+
+```
+A(x) = 1·1 + 4·(2−x)            = 9 − 4x
+B(x) = 5·(2−x) + 6·(x−1) + 0·(3−2x) = x + 4
+C(x) = 8·(2−x) + 6·(x−1)        = 10 − 2x
+```
+
+Sanity: at x=1, A·B = 5·5 = 25 ≡ 8 = C ✓ (constraint c1); at x=2,
+A·B = 1·6 = 6 = C ✓ (c2). **Both constraints hold ⟺ A(x)·B(x) −
+C(x) vanishes at x = 1 and x = 2 ⟺ it is divisible by
+Z(x) = (x−1)(x−2).** Indeed, over 𝔽₁₇:
+
+```
+P(x) = A(x)·B(x) − C(x) = −4x² − 5x + 26  ≡  13x² + 12x + 9
+Z(x) = x² − 3x + 2       ≡  x² + 14x + 2
+H(x) = P(x) / Z(x)       =  13      (exact division, remainder 0)
+```
+
+The prover's secret knowledge is now compressed into: "I can exhibit
+polynomials A, B, C (correctly witness-weighted) and a quotient H
+with A·B − C = H·Z."
+
+**Step 1 — Setup (the trusted ceremony).** Sample a secret point,
+say **τ = 5** — the "toxic waste" — and publish the *powers of τ and
+the QAP polynomials evaluated at τ*, each wrapped in an encoding
+that allows additions and scalings but hides the value (in real
+systems, elliptic-curve points g^(τ^i); in this toy we will write
+the bare numbers and mark where hiding matters). Then **destroy τ**.
+Anyone who keeps τ can forge proofs — hence "trusted setup," the
+multi-party ceremonies around Groth16, and the transparent (no-τ)
+alternatives like STARKs. For our toy the published material
+includes Z(τ) = (5−1)(5−2) = 12 and the encoded evaluations of each
+coordinate polynomial at τ = 5.
+
+**Step 2 — Prove.** The prover, holding w, computes the *encoded*
+evaluations at τ — crucially, each is a **linear combination** of
+published encodings with witness coefficients (this is why R1CS's
+free-linear-combination structure is the whole design):
+
+```
+A(5) = 9 − 20 = −11 ≡ 6      B(5) = 5 + 4 = 9
+C(5) = 10 − 10 = 0           H(5) = 13
+```
+
+The proof is π = (enc(A(5)), enc(B(5)), enc(C_priv(5)), enc(H(5)))
+— in Groth16, after optimizations, three curve points, ~200 bytes,
+*independent of circuit size*. The prover never learns τ; it only
+ever combines published encodings.
+
+**Step 3 — Verify.** The verifier reconstructs the *public* part of
+C(τ) itself from the claimed outputs (8, 6) and the published
+encodings — the prover cannot lie about what P₁, P₃ are claimed to
+be — then checks **one multiplicative relation** (in real systems,
+one pairing equation; pairings are exactly the tool that multiplies
+two hidden values once):
+
+```
+A(τ)·B(τ) − C(τ)  =?  H(τ)·Z(τ)
+   6 · 9   −  0   =   54 ≡ 3
+  13 · 12         =  156 ≡ 3     ✓  accept
+```
+
+**Why this convinces (soundness).** A cheating prover with no valid
+witness needs A·B − C divisible by Z; the best it can do is fake the
+relation *at the single hidden point τ*. Two distinct low-degree
+polynomials agree at a random point with probability ≤ deg/|𝔽| —
+about 2/17 in the toy (which is why 𝔽₁₇ is a classroom field), about
+2⁻²⁵⁰ over a real 254-bit field. Not knowing τ, the prover cannot
+aim; that is the Schwartz–Zippel heart of the whole construction.
+
+**Why it reveals nothing (zero-knowledge).** The verifier sees only
+encodings — curve points hiding A(τ), B(τ), H(τ) — never the
+witness coordinates. (Full Groth16 additionally *randomizes* each
+proof: the prover adds masking multiples of Z(x) so that even two
+proofs of the same witness look independent; we omit that term for
+clarity.)
+
+**And the connection to rank, one last time**: each constraint
+became one interpolation point, one row of the QAP tables above, one
+share of the prover's work and of the setup's size. Prove a
+witness×witness matrix product with a rank-r scheme and this entire
+pipeline is r constraints per block instead of m³ — the additions
+never appear as constraints at any stage; they live inside the
+linear combinations, which the encodings support for free.
 
 ## Acknowledgments
 

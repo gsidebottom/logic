@@ -311,10 +311,18 @@ is what makes hiding cryptographic; the *arithmetic* — R1CS → QAP →
 divisibility check at a secret point — is shown here exactly as real
 provers compute it.
 
-**The statement.** The prover claims: "I know private values A₁₁,
-A₂₂, B₁₁, B₁₂, B₂₂ such that P₁ = (A₁₁+A₂₂)(B₁₁+B₂₂) = 8 and
-P₃ = A₁₁(B₁₂−B₂₂) = 6." The claimed products (8, 6) are **public**;
-the five inputs stay private. The witness (public part first):
+**The statement.** For reference, the full toy matrices of §2, whose
+entries supply every private value below:
+
+```
+A = [ 1 2 ]        B = [ 5 6 ]
+    [ 3 4 ]            [ 7 0 ]
+```
+
+The prover claims: "I know private values A₁₁, A₂₂, B₁₁, B₁₂, B₂₂
+(here 1, 4, 5, 6, 0 — the marked entries of A and B) such that
+P₁ = (A₁₁+A₂₂)(B₁₁+B₂₂) = 8 and P₃ = A₁₁(B₁₂−B₂₂) = 6." The claimed
+products (8, 6) are **public**; the five inputs stay private. The witness (public part first):
 
 ```
 w = ( 1, P₁=8, P₃=6 | A₁₁=1, A₂₂=4, B₁₁=5, B₁₂=6, B₂₂=0 )

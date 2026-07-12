@@ -368,9 +368,15 @@ cryptographic; the \emph{arithmetic} --- R1CS $\to$ QAP $\to$
 divisibility check at a secret point --- is shown exactly as real
 provers compute it.
 
-\paragraph{The statement.} The prover claims: ``I know private
-values $A_{11}, A_{22}, B_{11}, B_{12}, B_{22}$ such that
-$P_1 = (A_{11}{+}A_{22})(B_{11}{+}B_{22}) = 8$ and
+\paragraph{The statement.} For reference, the full toy matrices of
+\S\ref{sec:cost}, whose entries supply every private value below:
+\[
+A = \begin{pmatrix} 1 & 2\\ 3 & 4 \end{pmatrix}, \qquad
+B = \begin{pmatrix} 5 & 6\\ 7 & 0 \end{pmatrix}.
+\]
+The prover claims: ``I know private values $A_{11}, A_{22}, B_{11},
+B_{12}, B_{22}$ (here $1, 4, 5, 6, 0$ --- the marked entries of $A$
+and $B$) such that $P_1 = (A_{11}{+}A_{22})(B_{11}{+}B_{22}) = 8$ and
 $P_3 = A_{11}(B_{12}{-}B_{22}) = 6$.'' The claimed products $(8,6)$
 are \textbf{public}; the five inputs stay private. The witness
 (public part first):

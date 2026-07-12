@@ -147,20 +147,35 @@ product is the single constraint
   = w_{P_1},
 \]
 where all four operand additions sit \emph{inside} the constraint's
-linear forms, free. Checking over $\mathbb{F}_{17}$:
-$P_1 = 5\cdot5 = 8$, $P_2 = 7\cdot5 = 1$, $P_3 = 1\cdot6 = 6$,
-$P_4 = 4\cdot2 = 8$, $P_5 = 3\cdot0 = 0$, $P_6 = 2\cdot11 = 5$,
-$P_7 = (-2)\cdot7 = 3$ (all mod 17), and the free output
-combinations reproduce $C$ exactly:
+linear forms, free. There is exactly \textbf{one witness per proof}:
+a single vector $w$ over $\mathbb{F}_{17}$ holding every wire value
+--- a conventional leading 1 (which lets constraints use constants),
+the inputs, the seven products, the outputs. Concretely, all 20
+coordinates:
+\[
+w = (\,1 \mid \underbrace{1,2,3,4}_{A} \mid \underbrace{5,6,7,0}_{B}
+      \mid \underbrace{8,1,6,8,0,5,3}_{P_1..P_7}
+      \mid \underbrace{2,6,9,1}_{C}\,).
+\]
+The subscripted symbols above are coordinates of this one vector,
+and each constraint is checked by reading them off: for $P_1$,
+$(1+4)\cdot(5+0) = 25 \equiv 8$ \checkmark, and likewise
+$P_2 = 7\cdot5 = 1$, $P_3 = 1\cdot6 = 6$, $P_4 = 4\cdot2 = 8$,
+$P_5 = 3\cdot0 = 0$, $P_6 = 2\cdot11 = 5$, $P_7 = (-2)\cdot7 = 3$
+(all mod 17). The free output combinations reproduce $C$ exactly:
 $C_{11} = P_1{+}P_4{-}P_5{+}P_7 = 19 \equiv 2$,
 $C_{12} = P_3{+}P_5 = 6$, $C_{21} = P_2{+}P_4 = 9$,
-$C_{22} = P_1{-}P_2{+}P_3{+}P_6 = 18 \equiv 1$. Seven constraints
-instead of eight --- 12.5\% at one level, compounding to
-$n^{2.807}$ under recursion --- and dyadic coefficients would be
-equally at home: $\tfrac12$ is just the constant 9 in
-$\mathbb{F}_{17}$ ($2\cdot9 = 18 \equiv 1$). This is
-\S\ref{sec:rank}'s story in miniature; the rank-23 and rank-48
-schemes are the same picture with better ratios.
+$C_{22} = P_1{-}P_2{+}P_3{+}P_6 = 18 \equiv 1$. (The prover commits
+to $w$ and proves the constraints hold; the verifier never sees $w$
+--- that is the ``zero-knowledge''. Note the naive circuit's witness
+carries eight product coordinates to Strassen's seven, so lower rank
+also shortens the committed vector.) Seven constraints instead of
+eight --- 12.5\% at one level, compounding to $n^{2.807}$ under
+recursion --- and dyadic coefficients would be equally at home:
+$\tfrac12$ is just the constant 9 in $\mathbb{F}_{17}$
+($2\cdot9 = 18 \equiv 1$). This is \S\ref{sec:rank}'s story in
+miniature; the rank-23 and rank-48 schemes are the same picture with
+better ratios.
 
 \section{Bilinear rank is constraint count}\label{sec:rank}
 

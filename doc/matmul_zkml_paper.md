@@ -114,16 +114,32 @@ constraint
 ```
 
 where all four operand additions sit *inside* the constraint's
-linear forms, free. Checking over 𝔽₁₇: P₁ = 5·5 = 8, P₂ = 7·5 = 1,
+linear forms, free. There is exactly **one witness per proof**: a
+single vector w over 𝔽₁₇ holding every wire value — a conventional
+leading 1 (which lets constraints use constants), the inputs, the
+seven products, the outputs. Here it is concretely, all 20
+coordinates:
+
+```
+w = ( 1 | A: 1,2,3,4 | B: 5,6,7,0 | P: 8,1,6,8,0,5,3 | C: 2,6,9,1 )
+```
+
+The subscripted symbols above are coordinates of this one vector,
+and each constraint is checked by reading them off: for P₁,
+(1 + 4)·(5 + 0) = 25 ≡ 8 ✓, and likewise P₂ = 7·5 = 1,
 P₃ = 1·6 = 6, P₄ = 4·2 = 8, P₅ = 3·0 = 0, P₆ = 2·11 = 5,
-P₇ = (−2)·7 = 3 (all mod 17), and the free output combinations
+P₇ = (−2)·7 = 3 (all mod 17). The free output combinations
 reproduce C exactly: C₁₁ = P₁+P₄−P₅+P₇ = 19 ≡ 2, C₁₂ = P₃+P₅ = 6,
-C₂₁ = P₂+P₄ = 9, C₂₂ = P₁−P₂+P₃+P₆ = 18 ≡ 1. Seven constraints
-instead of eight — 12.5% at one level, compounding to n^2.807 under
-recursion — and dyadic coefficients would be equally at home: ½ is
-just the constant 9 in 𝔽₁₇ (2·9 = 18 ≡ 1). This is §3's story in
-miniature; the rank-23 and rank-48 schemes are the same picture with
-better ratios.
+C₂₁ = P₂+P₄ = 9, C₂₂ = P₁−P₂+P₃+P₆ = 18 ≡ 1. (The prover commits
+to w and proves the constraints hold; the verifier never sees w —
+that is the "zero-knowledge". Note the naive circuit's witness
+carries eight product coordinates to Strassen's seven, so lower rank
+also shortens the committed vector.) Seven constraints instead of
+eight — 12.5% at one level, compounding to n^2.807 under recursion —
+and dyadic coefficients would be equally at home: ½ is just the
+constant 9 in 𝔽₁₇ (2·9 = 18 ≡ 1). This is §3's story in miniature;
+the rank-23 and rank-48 schemes are the same picture with better
+ratios.
 
 ## 3. Bilinear rank is constraint count
 

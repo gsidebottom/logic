@@ -1,0 +1,44 @@
+=== rediscovery launcher up 07-12 20:18; waiting for rank-22 arms ===
+=== arms done 07-13 00:28; walking at 12 threads, target 13000, 30m chunks ===
+=== chunk 0  archive 31 schemes  07-13 00:28 ===
+[1792.5s] NEW scheme #99 (support 189) -> replica4/found/walk-00134.bits
+done: 99 new schemes in 1806s (171 hops, 1368 runs = 99 new + 1204 dup + 65 timeout, 18s/scheme)
+=== chunk 1  archive 130 schemes  07-13 00:58 ===
+[1793.4s] NEW scheme #81 (support 148) -> replica4/found/walk-00215.bits
+done: 81 new schemes in 1806s (331 hops, 2641 runs = 81 new + 2496 dup + 64 timeout, 22s/scheme)
+=== chunk 2  archive 211 schemes  07-13 01:28 ===
+[1664.4s] NEW scheme #58 (support 149) -> replica4/found/walk-00273.bits
+done: 58 new schemes in 1814s (215 hops, 1715 runs = 58 new + 1582 dup + 75 timeout, 31s/scheme)
+=== chunk 3  archive 269 schemes  07-13 01:58 ===
+[1784.4s] NEW scheme #43 (support 149) -> replica4/found/walk-00316.bits
+done: 43 new schemes in 1812s (222 hops, 1771 runs = 43 new + 1660 dup + 68 timeout, 42s/scheme)
+=== chunk 4  archive 312 schemes  07-13 02:29 ===
+[1718.1s] NEW scheme #75 (support 155) -> replica4/found/walk-00391.bits
+done: 75 new schemes in 1805s (274 hops, 2187 runs = 75 new + 2040 dup + 72 timeout, 24s/scheme)
+=== chunk 5  archive 387 schemes  07-13 02:59 ===
+[1790.2s] NEW scheme #51 (support 154) -> replica4/found/walk-00442.bits
+done: 51 new schemes in 1805s (265 hops, 2117 runs = 51 new + 1994 dup + 72 timeout, 35s/scheme)
+=== chunk 6  archive 438 schemes  07-13 03:29 ===
+[1752.4s] NEW scheme #37 (support 153) -> replica4/found/walk-00479.bits
+done: 37 new schemes in 1809s (241 hops, 1927 runs = 37 new + 1815 dup + 75 timeout, 49s/scheme)
+=== chunk 7  archive 475 schemes  07-13 03:59 ===
+[1795.4s] NEW scheme #35 (support 151) -> replica4/found/walk-00514.bits
+done: 35 new schemes in 1811s (246 hops, 1961 runs = 35 new + 1860 dup + 66 timeout, 52s/scheme)
+=== chunk 8  archive 510 schemes  07-13 04:29 ===
+[1801.4s] NEW scheme #26 (support 193) -> replica4/found/walk-00540.bits
+done: 26 new schemes in 1801s (307 hops, 2453 runs = 26 new + 2360 dup + 67 timeout, 69s/scheme)
+=== chunk 9  archive 536 schemes  07-13 04:59 ===
+[1757.2s] NEW scheme #20 (support 151) -> replica4/found/walk-00560.bits
+done: 20 new schemes in 1809s (317 hops, 2529 runs = 20 new + 2438 dup + 71 timeout, 90s/scheme)
+=== chunk 10  archive 556 schemes  07-13 05:30 ===
+[1720.9s] NEW scheme #29 (support 155) -> replica4/found/walk-00589.bits
+done: 29 new schemes in 1810s (298 hops, 2377 runs = 29 new + 2277 dup + 71 timeout, 62s/scheme)
+=== chunk 11  archive 585 schemes  07-13 06:00 ===
+[1743.6s] NEW scheme #18 (support 154) -> replica4/found/walk-00607.bits
+done: 18 new schemes in 1803s (255 hops, 2034 runs = 18 new + 1938 dup + 78 timeout, 100s/scheme)
+=== chunk 12  archive 603 schemes  07-13 06:30 ===
+[1612.9s] NEW scheme #9 (support 151) -> replica4/found/walk-00616.bits
+done: 9 new schemes in 1813s (221 hops, 1766 runs = 9 new + 1684 dup + 73 timeout, 201s/scheme)
+=== chunk 13  archive 612 schemes  07-13 07:00 ===
+[ 565.5s] NEW scheme #5 (support 155) -> replica4/found/walk-00621.bits
+[ 798.5s] NEW scheme #6 (support 156) -> replica4/found/walk-00622.bits

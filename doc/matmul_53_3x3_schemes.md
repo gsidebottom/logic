@@ -396,7 +396,35 @@ exact checks. All 53 are pairwise inequivalent.)*
   patterns for ≈140 CPU-hours (≈5,000 per CPU-year, ≈200–300×
   adjusted). The warm start is doing real work in these ratios —
   which is this report's thesis: the database turns discovery from
-  search into traversal.
+  search into traversal. A controlled replication measured both
+  ends of the curve. *Pilot* (46 single-core minutes): seeding
+  walk.py with *only the four classics* (HKS's actual 2019 starting
+  position, database withheld) produced 31 schemes = 29 new de
+  Groote classes — 122 s/scheme cold, 86 s/scheme at pool ~35,
+  every find inside existing DB rank patterns (database
+  *re*discovery: the DB is the classics' method-2 neighborhood);
+  that is ≈3×10⁵ inequivalent schemes/CPU-year from their own
+  start, ≈300–450× their speed-adjusted average. *Full campaign*
+  (6.8 h at 12 threads, ≈82 CPU-h) then measured the saturation the
+  pilot could only warn about: archive 31 → 618 schemes = 385
+  classes, per-half-hour yield decaying 99 → 9; the decay fits
+  rate ∝ (N − S) with **N̂ ≈ 715**, i.e. *pure method-2
+  neighborhood walking from the classics saturates at ≈700
+  schemes* — regenerating the 13,000-scheme corpus requires the
+  diversity injections HKS's two-method design provided
+  (streamlined cold solves; in our machinery, flip/storm moves or
+  lower-nfix jumps). Measured rates: ≈63,000 schemes/CPU-year
+  averaged to saturation, ≈15–20,000 marginal at saturation,
+  versus their 371 whole-campaign average. Full-regeneration
+  **estimates** (model-dependent: assume diversity injection
+  sustains between our saturation-marginal and averaged rates):
+  ≈0.2–0.9 CPU-years for 13,000 — **40–175× less compute than the
+  original 35 CPU-years** unadjusted, ≈13–90× after the 2–3×
+  hardware credit — and ≈0.3–1.2 CPU-years for the full
+  17,376-scheme database (no HKS cost is published for the DB's
+  post-13,000 growth). The measured objects are the discovery
+  curve and the ≈700-scheme method-2 basin; the ratios inherit
+  their assumptions (artifacts: `matmul/replica4/`).
 - The de-Groote checker, DB converter, and lift verifier are our code;
   their self-tests and controls are listed in §4. The two strongest
   external anchors: our A-instance solution satisfies *HKS's own CNF*

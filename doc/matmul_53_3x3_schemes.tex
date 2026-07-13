@@ -482,11 +482,30 @@ fingerprint and/or exact checks. All 53 are pairwise inequivalent.)}
   inequivalent schemes per CPU-year from their own starting
   position, ${\approx}300$--$450\times$ the speed-adjusted HKS
   average, before the compounding that carried the warm-pool run to
-  ${\sim}3$\,s/scheme. At the pilot's cold rate, regenerating all
-  13{,}000 would cost ${\approx}13$ CPU-days (theirs:
-  ${\approx}12{,}800$); the full-coverage controlled number would
-  require running to saturation, where our duplicate rate must rise
-  too (artifacts: \texttt{matmul/replica4/}).
+  ${\sim}3$\,s/scheme. The full campaign (6.8~h at 12 threads,
+  ${\approx}82$ CPU-h) then measured the saturation the pilot could
+  only warn about: archive $31 \to 618$ schemes $= 385$ de~Groote
+  classes, per-half-hour yield decaying $99 \to 9$; the decay fits
+  rate $\propto (N-S)$ with $\hat{N} \approx 715$, i.e.
+  \emph{pure method-2 neighborhood walking from the classics
+  saturates at ${\approx}700$ schemes} --- regenerating the
+  13{,}000-scheme corpus requires the diversity injections HKS's
+  two-method design provided (streamlined cold solves; in our
+  machinery, flip/storm moves or lower-\texttt{nfix} jumps).
+  Measured rates: ${\approx}63{,}000$ schemes/CPU-year averaged to
+  saturation, ${\approx}15$--$20{,}000$ marginal at saturation,
+  versus their 371 whole-campaign average. Full-regeneration
+  \textbf{estimates} (model-dependent: assume diversity injection
+  sustains between our saturation-marginal and averaged rates):
+  ${\approx}0.2$--$0.9$ CPU-years for 13{,}000 ---
+  \textbf{40--175$\times$ less compute than the original 35
+  CPU-years} unadjusted, ${\approx}13$--$90\times$ after the
+  2--3$\times$ hardware credit --- and ${\approx}0.3$--$1.2$
+  CPU-years for the full 17{,}376-scheme database (no HKS cost is
+  published for the DB's post-13{,}000 growth). The measured
+  objects are the discovery curve and the ${\approx}700$-scheme
+  method-2 basin; the ratios inherit their assumptions (artifacts:
+  \texttt{matmul/replica4/}).
 \item The de-Groote checker, DB converter, and lift verifier are our
   code; their self-tests and controls are listed in
   \S\ref{sec:verify}. The two strongest external anchors: our

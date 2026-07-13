@@ -1,0 +1,94 @@
+=== day2 start 07-13 07:21  threads 12 ===
+--- 3x3 goldilocks repair k=5  07:21 ---
+repair: delete 5 of 23, beam-rebuild in <= 4 (33649 subsets, beam 4, cands 24)
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+--- 3x3 goldilocks repair k=6  07:21 ---
+[8s] repair: 100000/100947 subsets
+repair k=6: 100947/100947 subsets in 9s; no-completion 100947; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+--- 3x3 goldilocks repair k=7  07:21 ---
+[21s] repair: 200000/245157 subsets
+repair k=7: 245157/245157 subsets in 26s; no-completion 245157; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+--- 3x3 goldilocks repair k=8  07:21 ---
+[52s] repair: 400000/490314 subsets
+repair k=8: 490314/490314 subsets in 63s; no-completion 490314; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+--- 3x3 goldilocks repair k=9  07:23 ---
+[128s] repair: 800000/817190 subsets
+repair k=9: 817190/817190 subsets in 131s; no-completion 817190; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+--- 3x3 babybear repair k=5  07:25 ---
+repair: delete 5 of 23, beam-rebuild in <= 4 (33649 subsets, beam 4, cands 24)
+repair k=5: 33649/33649 subsets in 1s; no-completion 33649; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+--- 3x3 babybear repair k=6  07:25 ---
+[4s] repair: 100000/100947 subsets
+repair k=6: 100947/100947 subsets in 4s; no-completion 100947; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+--- 3x3 babybear repair k=7  07:25 ---
+[12s] repair: 200000/245157 subsets
+repair k=7: 245157/245157 subsets in 14s; no-completion 245157; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+--- 3x3 babybear repair k=8  07:25 ---
+[30s] repair: 400000/490314 subsets
+repair k=8: 490314/490314 subsets in 36s; no-completion 490314; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+--- 3x3 babybear repair k=9  07:26 ---
+[67s] repair: 800000/817190 subsets
+repair k=9: 817190/817190 subsets in 69s; no-completion 817190; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+--- 4x4 goldilocks repair k=5  07:27 ---
+[210s] repair: 1700000/1712304 subsets
+repair k=5: 1712304/1712304 subsets in 212s; no-completion 1712304; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+--- 4x4 goldilocks repair k=6  07:30 ---
+[2078s] repair: 12200000/12271512 subsets
+repair k=6: 12271512/12271512 subsets in 2091s; no-completion 12271512; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+--- hi-30 arm: top-10 seeds x 1200 s  08:05 ---
+=== hi30 13a5bd4n  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/13a5bd4n/i19w253c48eh-000.tab]  08:05 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 499683 walks in 1200s; closings 642263  reductions 1754264  distinct 23-landings 11559
+terminal-rank histogram: {23: 11559, 24: 40983, 25: 82640, 26: 114299, 27: 115840, 28: 84667, 29: 40203, 30: 9492}
+=== hi30 14a5b4n  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/14a5b4n/i12w249c346d-000.tab]  08:25 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 500697 walks in 1200s; closings 440305  reductions 1821716  distinct 23-landings 11703
+terminal-rank histogram: {23: 11704, 24: 44939, 25: 90937, 26: 120844, 27: 115019, 28: 76949, 29: 33138, 30: 7167}
+=== hi30 _tgz  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/_tgz/schemes/18x2+51x+4y6+6y4+13y3+z32+z28+z27/i19w253c48eh-000.tab]  08:45 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 502207 walks in 1200s; closings 645510  reductions 1763081  distinct 23-landings 11613
+terminal-rank histogram: {23: 11613, 24: 41206, 25: 83049, 26: 114846, 27: 116434, 28: 85103, 29: 40417, 30: 9539}
+=== hi30 12a5bdj4n  [nm=6 coinc=12 pairs=5 maxc=1  src=matmul/dbcache/12a5bdj4n/i30w257c258h-003.tab]  09:05 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 502178 walks in 1200s; closings 644241  reductions 1741779  distinct 23-landings 10803
+terminal-rank histogram: {23: 10803, 24: 39399, 25: 80586, 26: 114244, 27: 117552, 28: 87522, 29: 42158, 30: 9914}
+=== hi30 12a6bd4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/12a6bd4n/i32w245c389h-000.tab]  09:25 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 503157 walks in 1200s; closings 560657  reductions 1780606  distinct 23-landings 11234
+terminal-rank histogram: {23: 11234, 24: 42126, 25: 85059, 26: 117063, 27: 116886, 28: 83154, 29: 38699, 30: 8936}
+=== hi30 13a6b4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/13a6b4n/i20w241c235e-001.tab]  09:45 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 497430 walks in 1200s; closings 568594  reductions 1731474  distinct 23-landings 10298
+terminal-rank histogram: {23: 10298, 24: 39164, 25: 80389, 26: 114974, 27: 117137, 28: 85400, 29: 40352, 30: 9716}
+=== hi30 11a6bdj4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/11a6bdj4n/i47w261c258a-000.tab]  10:05 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 501727 walks in 1200s; closings 508811  reductions 1771748  distinct 23-landings 10371
+terminal-rank histogram: {23: 10371, 24: 41063, 25: 84906, 26: 117922, 27: 117088, 28: 83555, 29: 38181, 30: 8641}
+=== hi30 11a5b2dj4n  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/11a5b2dj4n/i45w261c346i-000.tab]  10:25 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 500194 walks in 1200s; closings 507468  reductions 1773476  distinct 23-landings 10678
+terminal-rank histogram: {23: 10678, 24: 41527, 25: 84622, 26: 118192, 27: 117418, 28: 82079, 29: 37278, 30: 8400}
+=== hi30 12abcdegj4ns  [nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/12abcdegj4ns/i107w193c367g-000.tab]  10:45 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 502083 walks in 1200s; closings 549915  reductions 1768708  distinct 23-landings 10644
+terminal-rank histogram: {23: 10644, 24: 40946, 25: 84044, 26: 116951, 27: 118129, 28: 83612, 29: 38889, 30: 8868}
+=== hi30 12a5b2d4n  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/12a5b2d4n/i31w245c234i-000.tab]  11:05 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 493176 walks in 1200s; closings 551060  reductions 1750108  distinct 23-landings 11410
+terminal-rank histogram: {23: 11410, 24: 41360, 25: 83990, 26: 114573, 27: 114646, 28: 81393, 29: 37112, 30: 8692}
+=== day2 complete 07-13 11:25 ===
+RECORDP files:
+matmul/rank22_day2.sh:42: no matches found: matmul/found23p/RECORDP*
+       0

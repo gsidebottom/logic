@@ -44,6 +44,17 @@ the two source papers for this track):
   - Campaign: ~35 CPU-years → **>13,000 mutually inequivalent new
     23-schemes** (SAT'19; the public DB snapshot later reached 17,376,
     up from 4 known). None compresses to 22.
+- **Day-2 repair ladders + hi-30 arm COMPLETE (2026-07-13 11:26)**:
+  all negative, all exhaustive. 3x3 repair k=5..9 over BOTH fields:
+  1,687,257 subsets/field, zero completions -> mm23 seed is k<=9
+  locally rigid over Goldilocks AND BabyBear (delete 39% of the
+  scheme, no 22-rebuild exists). 4x4 repair k=5 (1.7M) + k=6
+  (12.3M) Goldilocks: zero -> DPS-48 k<=6 locally rigid (no 47
+  within replacement-distance 6). hi-30 arm, 10 seeds x 1200 s:
+  5.0M walks, 107K landings, zero RECORDP (histogram peaks 26-27).
+  Next widenings: repair ladders from OTHER class reps (rigidity is
+  seed-specific), 4x4 k=7 (73.6M, ~3.5 h), BabyBear 4x4 ladder,
+  m31 arms, novelty screen of the 122K pooled landings.
 - **Rank-22 two-arm portfolio COMPLETE (2026-07-13 00:26)**: no 22
   over Goldilocks or BabyBear. 30 seeds x 1200 s x both arms;
   G (hi 26): 9.98M walks, 1.93M distinct 23-landings, 61.9K pooled;

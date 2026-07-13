@@ -1,0 +1,121 @@
+=== storm 13a5bd4n  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/13a5bd4n/i19w253c48eh-000.tab]  14:26 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 331223 walks in 1200s; closings 180692  reductions 554128  distinct 23-landings 66967
+terminal-rank histogram: {23: 66967, 24: 124943, 25: 103341, 26: 35972}
+=== storm 14a5b4n  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/14a5b4n/i12w249c346d-000.tab]  14:46 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 334454 walks in 1200s; closings 81321  reductions 564200  distinct 23-landings 65993
+terminal-rank histogram: {23: 65993, 24: 130879, 25: 104463, 26: 33119}
+=== storm _tgz  [nm=7 coinc=14 pairs=4 maxc=1  src=matmul/dbcache/_tgz/schemes/18x2+51x+4y6+6y4+13y3+z32+z28+z27/i19w253c48eh-000.tab]  15:06 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 334268 walks in 1200s; closings 182305  reductions 559229  distinct 23-landings 67581
+terminal-rank histogram: {23: 67581, 24: 126101, 25: 104284, 26: 36302}
+=== storm 12a5bdj4n  [nm=6 coinc=12 pairs=5 maxc=1  src=matmul/dbcache/12a5bdj4n/i30w257c258h-003.tab]  15:26 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 332673 walks in 1200s; closings 180732  reductions 546824  distinct 23-landings 63807
+terminal-rank histogram: {23: 63807, 24: 124619, 25: 106165, 26: 38082}
+=== storm 12a6bd4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/12a6bd4n/i32w245c389h-000.tab]  15:46 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 332070 walks in 1200s; closings 140836  reductions 553133  distinct 23-landings 65114
+terminal-rank histogram: {23: 65114, 24: 126665, 25: 104461, 26: 35830}
+=== storm 13a6b4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/13a6b4n/i20w241c235e-001.tab]  16:06 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 332607 walks in 1200s; closings 147411  reductions 541902  distinct 23-landings 61488
+terminal-rank histogram: {23: 61488, 24: 124578, 25: 108282, 26: 38259}
+=== storm 11a6bdj4n  [nm=5 coinc=10 pairs=4 maxc=1  src=matmul/dbcache/11a6bdj4n/i47w261c258a-000.tab]  16:26 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 330627 walks in 1200s; closings 113767  reductions 541963  distinct 23-landings 60951
+terminal-rank histogram: {23: 60951, 24: 126205, 25: 106700, 26: 36771}
+=== storm 11a5b2dj4n  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/11a5b2dj4n/i45w261c346i-000.tab]  16:46 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 324665 walks in 1200s; closings 114255  reductions 535616  distinct 23-landings 61217
+terminal-rank histogram: {23: 61217, 24: 124065, 25: 103835, 26: 35548}
+=== storm 12abcdegj4ns  [nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/12abcdegj4ns/i107w193c367g-000.tab]  17:06 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 333526 walks in 1200s; closings 135782  reductions 548866  distinct 23-landings 62739
+terminal-rank histogram: {23: 62739, 24: 126805, 25: 107039, 26: 36943}
+=== storm 12a5b2d4n  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/12a5b2d4n/i31w245c234i-000.tab]  17:26 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 333061 walks in 1200s; closings 141955  reductions 557444  distinct 23-landings 66449
+terminal-rank histogram: {23: 66449, 24: 126749, 25: 104599, 26: 35264}
+=== storm 14a2b2dj4n  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/14a2b2dj4n/i8w215c37gj-000.tab]  17:46 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 329801 walks in 1200s; closings 148031  reductions 533414  distinct 23-landings 59380
+terminal-rank histogram: {23: 59380, 24: 123747, 25: 107780, 26: 38894}
+=== storm 8a3bc3dgjk4ns  [nm=4 coinc=8 pairs=5 maxc=1  src=matmul/dbcache/8a3bc3dgjk4ns/i119w215c28aj-000.tab]  18:06 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 326895 walks in 1200s; closings 170859  reductions 545540  distinct 23-landings 65611
+terminal-rank histogram: {23: 65611, 24: 123258, 25: 102191, 26: 35835}
+=== storm 10a2bc2dgjk4ns  [nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/10a2bc2dgjk4ns/i113w199c367g-000.tab]  18:26 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 326103 walks in 1200s; closings 161467  reductions 542620  distinct 23-landings 64733
+terminal-rank histogram: {23: 64733, 24: 122849, 25: 102723, 26: 35798}
+=== storm 11a2bcdegj4ns  [nm=4 coinc=8 pairs=6 maxc=1  src=matmul/dbcache/11a2bcdegj4ns/i110w199c367g-000.tab]  18:46 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 313882 walks in 1200s; closings 123320  reductions 524506  distinct 23-landings 62044
+terminal-rank histogram: {23: 62044, 24: 120196, 25: 97982, 26: 33660}
+=== storm 10a3b3djk4ns  [nm=4 coinc=8 pairs=3 maxc=1  src=matmul/dbcache/10a3b3djk4ns/i161w199c23ci-000.tab]  19:06 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 319283 walks in 1200s; closings 79557  reductions 536052  distinct 23-landings 61795
+terminal-rank histogram: {23: 61801, 24: 125357, 25: 99935, 26: 32190}
+=== storm 14abcdej4n  [nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/14abcdej4n/i133w213c48ae-000.tab]  19:26 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 333461 walks in 1200s; closings 141632  reductions 557974  distinct 23-landings 66168
+terminal-rank histogram: {23: 66168, 24: 127508, 25: 104454, 26: 35331}
+=== storm 13a2bdgjm4n  [nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/13a2bdgjm4n/i139w221c48ah-000.tab]  19:46 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 335300 walks in 1200s; closings 180985  reductions 557468  distinct 23-landings 66446
+terminal-rank histogram: {23: 66446, 24: 126433, 25: 105264, 26: 37157}
+=== storm 11a6b2d4n  [nm=4 coinc=8 pairs=4 maxc=1  src=matmul/dbcache/11a6b2d4n/i48w279c34de-000.tab]  20:06 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 334490 walks in 1200s; closings 113300  reductions 561674  distinct 23-landings 66376
+terminal-rank histogram: {23: 66376, 24: 129148, 25: 104250, 26: 34716}
+=== storm 6a4bc4d4j4n  [nm=3 coinc=6 pairs=3 maxc=1  src=matmul/dbcache/6a4bc4d4j4n/i238w239c37eg-000.tab]  20:26 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 330164 walks in 1200s; closings 112640  reductions 548661  distinct 23-landings 63671
+terminal-rank histogram: {23: 63674, 24: 126406, 25: 104827, 26: 35257}
+=== storm 12a4b2dj4n  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/12a4b2dj4n/i28w221c23ci-001.tab]  20:46 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 333206 walks in 1200s; closings 141694  reductions 558803  distinct 23-landings 66316
+terminal-rank histogram: {23: 66316, 24: 128054, 25: 103747, 26: 35089}
+=== storm 13abcdeg4ns  [nm=3 coinc=6 pairs=7 maxc=1  src=matmul/dbcache/13abcdeg4ns/i106w197c347g-000.tab]  21:06 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 334681 walks in 1200s; closings 146079  reductions 542883  distinct 23-landings 60369
+terminal-rank histogram: {23: 60369, 24: 126396, 25: 108984, 26: 38932}
+=== storm 15abcde4n  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/15abcde4n/i130w221c34ef-000.tab]  21:26 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 339210 walks in 1200s; closings 86055  reductions 567130  distinct 23-landings 65060
+terminal-rank histogram: {23: 65060, 24: 132662, 25: 106626, 26: 34862}
+=== storm 12a4bd2m4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/12a4bd2m4n/i56w215c35eh-000.tab]  21:46 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 338902 walks in 1200s; closings 182903  reductions 564709  distinct 23-landings 67886
+terminal-rank histogram: {23: 67886, 24: 127369, 25: 106313, 26: 37334}
+=== storm 14a3bdj4n  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/14a3bdj4n/i9w237c46fi-000.tab]  22:06 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 336687 walks in 1200s; closings 148295  reductions 552210  distinct 23-landings 62822
+terminal-rank histogram: {23: 62822, 24: 127633, 25: 108478, 26: 37754}
+=== storm 11a4bdj2m4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/11a4bdj2m4n/i76w205c23ci-001.tab]  22:26 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 335931 walks in 1200s; closings 81231  reductions 566168  distinct 23-landings 66028
+terminal-rank histogram: {23: 66028, 24: 131743, 25: 104598, 26: 33562}
+=== storm 8a5b3d2j4ns  [nm=3 coinc=6 pairs=3 maxc=1  src=matmul/dbcache/8a5b3d2j4ns/i223w235c37eg-000.tab]  22:46 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 336232 walks in 1200s; closings 147414  reductions 557393  distinct 23-landings 65261
+terminal-rank histogram: {23: 65261, 24: 127414, 25: 106782, 26: 36775}
+=== storm 8a2b2c2dgjkm4ns  [nm=3 coinc=6 pairs=5 maxc=1  src=matmul/dbcache/8a2b2c2dgjkm4ns/i128w229c467f-000.tab]  23:06 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 338955 walks in 1200s; closings 187340  reductions 554483  distinct 23-landings 64445
+terminal-rank histogram: {23: 64445, 24: 126407, 25: 108334, 26: 39769}
+=== storm 11a4b3dj4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/11a4b3dj4n/i44w233c36ef-000.tab]  23:26 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 336553 walks in 1200s; closings 150003  reductions 563733  distinct 23-landings 67453
+terminal-rank histogram: {23: 67453, 24: 128096, 25: 105182, 26: 35822}
+=== storm 13a2bcdej4n  [nm=3 coinc=6 pairs=4 maxc=1  src=matmul/dbcache/13a2bcdej4n/i141w217c356e-000.tab]  23:46 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 337550 walks in 1200s; closings 148868  reductions 550640  distinct 23-landings 62146
+terminal-rank histogram: {23: 62146, 24: 127429, 25: 109344, 26: 38631}
+=== storm 13a3b2dj4n  [nm=3 coinc=6 pairs=6 maxc=1  src=matmul/dbcache/13a3b2dj4n/i16w215c6acf-000.tab]  00:06 ===
+seed loaded + exactly verified over F_p, p = 18446744069414584321 (23 summands)
+pursue7: 340639 walks in 1200s; closings 145598  reductions 552490  distinct 23-landings 61463
+terminal-rank histogram: {23: 61463, 24: 128498, 25: 111105, 26: 39573}
+=== storm portfolio complete 00:26 ===

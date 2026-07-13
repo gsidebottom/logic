@@ -44,6 +44,17 @@ the two source papers for this track):
   - Campaign: ~35 CPU-years → **>13,000 mutually inequivalent new
     23-schemes** (SAT'19; the public DB snapshot later reached 17,376,
     up from 4 known). None compresses to 22.
+- **Field-novelty screen COMPLETE (2026-07-13)**: the ~215K pooled
+  F_p landings span 170 distinct rank-type multisets; 114 match no
+  DB pattern; after dedup vs our 81 Z-classes + 467 Q-dyadics (63
+  known-novel multisets), **63 truly-new field class-patterns**
+  remain (G: all 63, 22,554 schemes; BB: 36 of them, 11,135 — BB
+  subset of G, no G/BB separation). One-way certified (rank-triple
+  invariants); novelty is vs the known corpus — field-SPECIFICITY
+  (no Q counterpart exists) is a separate open question. The
+  (2,2,2)x4 motif is conserved across all pool classes (inherited
+  from the 4n census seeds). Reps + multisets:
+  new23/fieldnovel_multisets.txt; screen: screen_fieldnovel.py.
 - **Day-2 repair ladders + hi-30 arm COMPLETE (2026-07-13 11:26)**:
   all negative, all exhaustive. 3x3 repair k=5..9 over BOTH fields:
   1,687,257 subsets/field, zero completions -> mm23 seed is k<=9

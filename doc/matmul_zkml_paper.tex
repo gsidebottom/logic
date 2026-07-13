@@ -175,7 +175,7 @@ recursion --- and dyadic coefficients would be equally at home:
 $\tfrac12$ is just the constant 9 in $\mathbb{F}_{17}$
 ($2\cdot9 = 18 \equiv 1$). This is \S\ref{sec:rank}'s story in
 miniature; the rank-23 and rank-48 schemes are the same picture with
-better ratios. (Appendix~\ref{app:tutorial} runs a complete Setup
+better ratios. (Appendix~A runs a complete Setup
 $\to$ Prove $\to$ Verify on a two-constraint slice of this example
 --- the whole SNARK pipeline at hand-checkable scale.)
 
@@ -356,8 +356,8 @@ cargo build --release --bin flip23p
 # found23p/RECORDP_rank*.txt and is announced loudly
 \end{Code}
 
-\appendix
-\section{Setup, Prove, Verify --- a complete toy proof}\label{app:tutorial}
+\section*{Appendix A. Setup, Prove, Verify --- a complete toy
+proof}\label{app:tutorial}
 
 This appendix runs the entire SNARK pipeline, Groth16-shaped, on a
 two-constraint slice of \S\ref{sec:cost}'s example, every number over
@@ -797,6 +797,29 @@ range. The division of labor is exact: the NTT/commitment layer
 fixes the \textbf{cost per constraint}, and the bilinear rank of
 \S3 fixes \textbf{how many constraints there are}. Lower rank does
 not speed up the transform; it shrinks the transform.
+
+\paragraph{What a new record would buy.} Prover time is
+${\approx}$ NTT ($m\log m$) $+$ commitments ($m$), so speedup
+tracks the constraint ratio (the log factor barely moves). At
+$n = 4096$, folding in \S3's exponents:
+\begin{itemize}
+\item a \textbf{rank-47 $4{\times}4$} is a drop-in upgrade of
+  today's best base: $(48/47)^6 \approx \mathbf{1.13\times}$
+  fewer matmul constraints (13.5\%) --- at a 90\% matmul share,
+  ${\approx}12\%$ end-to-end prover time;
+\item a \textbf{rank-22 $3{\times}3$} speeds $3{\times}3$-blocked
+  pipelines by $\mathbf{1.40\times}$ but still trails the rank-48
+  base ($0.84\times$) --- its value is scientific (first sub-23)
+  and field-cartographic, not operational;
+\item a \textbf{rank-21 $3{\times}3$} --- the Strassen-beating
+  line --- would take over as the best known base outright:
+  $\mathbf{1.99\times}$ over rank-23 pipelines and
+  $\mathbf{1.19\times}$ over rank-48, i.e.\ ${\approx}19\%$
+  fewer constraints, NTTs, and committed elements than anything
+  available today.
+\end{itemize}
+End-to-end wall clock scales by the circuit's matmul share
+(80--95\% in typical zkML inference), Amdahl-style.
 
 \section*{Acknowledgments}
 

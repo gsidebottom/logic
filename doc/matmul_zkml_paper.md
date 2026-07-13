@@ -723,6 +723,24 @@ constraint**, and the bilinear rank of §3 fixes **how many
 constraints there are**. Lower rank does not speed up the
 transform; it shrinks the transform.
 
+**What a new record would buy.** Prover time is ≈ NTT (m log m) +
+commitments (m), so speedup tracks the constraint ratio (the log
+factor barely moves). At n = 4096, folding in §3's exponents:
+
+- a **rank-47 4×4** is a drop-in upgrade of today's best base:
+  (48/47)⁶ ≈ **1.13× fewer matmul constraints** (13.5%) — at a 90%
+  matmul share, ≈12% end-to-end prover time;
+- a **rank-22 3×3** speeds 3×3-blocked pipelines by **1.40×** but
+  still trails the rank-48 base (0.84×) — its value is scientific
+  (first sub-23) and field-cartographic, not operational;
+- a **rank-21 3×3** — the Strassen-beating line — would take over
+  as the best known base outright: **1.99× over rank-23** pipelines
+  and **1.19× over rank-48**, i.e. ≈19% fewer constraints, NTTs,
+  and committed elements than anything available today.
+
+End-to-end wall clock scales by the circuit's matmul share (80–95%
+in typical zkML inference), Amdahl-style.
+
 ## Acknowledgments
 
 This work was carried out in an extended interactive collaboration

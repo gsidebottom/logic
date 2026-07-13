@@ -44,6 +44,14 @@ the two source papers for this track):
   - Campaign: ~35 CPU-years → **>13,000 mutually inequivalent new
     23-schemes** (SAT'19; the public DB snapshot later reached 17,376,
     up from 4 known). None compresses to 22.
+- **Challenge-3 sweep (2026-07-12, `matmul/chk_type3.py`)**: no scheme
+  with a type-3-free summand exists in the known+ours corpus — 29,514
+  schemes checked (29,290 dbcache + 4 classics + our 53 + replica4 31
+  + new23 48; verify-gated, monomials from brent_equations rhs=1).
+  Sharper regularity than HKS stated: min type-3 per summand is
+  EXACTLY 1 in all 29,514 — every rank-23 scheme has a boundary
+  summand doing one unit of real work; none reaches min>=2 either.
+  Attack path if wanted: anf portfolio on their MM-23-no-type3.cnf.
 - Challenges (no cash, open since 2019): (1) solve pairing-only instances
   without streamlining — yalsat gets 5/10; (2) prove one of 10
   hardcoded-pairing instances UNSAT; (3) find a scheme with one product

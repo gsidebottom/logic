@@ -44,6 +44,14 @@ the two source papers for this track):
   - Campaign: ~35 CPU-years → **>13,000 mutually inequivalent new
     23-schemes** (SAT'19; the public DB snapshot later reached 17,376,
     up from 4 known). None compresses to 22.
+- **Rank-22 two-arm portfolio COMPLETE (2026-07-13 00:26)**: no 22
+  over Goldilocks or BabyBear. 30 seeds x 1200 s x both arms;
+  G (hi 26): 9.98M walks, 1.93M distinct 23-landings, 61.9K pooled;
+  B (hi 28): 11.45M walks, 743K landings, 60.7K pooled; zero
+  RECORDP. Band verdict: hi 26 out-lands hi 28 ~2.6x throughout.
+  Next options: 3x3 repair ladder k=5..9 (cheap), hotter bands
+  (hi 30+ small arm), field-novelty screen of the 122K pooled
+  schemes, m31 arm, pursue8-repair on exotic pool members.
 - **Challenge-3 sweep (2026-07-12, `matmul/chk_type3.py`)**: no scheme
   with a type-3-free summand exists in the known+ours corpus — 29,514
   schemes checked (29,290 dbcache + 4 classics + our 53 + replica4 31

@@ -86,7 +86,7 @@ gain transparency and plausible post-quantum security, and run over
 small ``FFT-friendly'' primes chosen for fast number-theoretic
 transforms --- Goldilocks $p = 2^{64} - 2^{32} + 1$ (Plonky2
 \cite{plonky2}), BabyBear $p = 2^{31} - 2^{27} + 1$ (RISC~Zero
-\cite{risc0}), and M31 $= 2^{31}-1$ (Circle STARKs \cite{circle}).
+\cite{risc0}), and M31 $= 2^{31}-1$ (Circle STARKs \cite{circle}). (Appendix~B explains the FFT/NTT layer these fields are engineered for.)
 
 The asymmetry that defines the field: verification is cheap,
 \textbf{proving is $10^3$--$10^6\times$ the native computation}, all
@@ -665,6 +665,138 @@ product with a rank-$r$ scheme and this whole pipeline is $r$
 constraints per block instead of $m^3$ --- the scheme's additions
 never appear as constraints at any stage; they live inside the
 linear combinations, which the encodings support for free.
+
+
+\section*{Appendix B. The FFT/NTT layer --- how the polynomial
+pipeline scales}
+
+Appendix A ran the whole pipeline at two constraints, where every
+polynomial step was hand-arithmetic: interpolate from two points,
+one product, one division. A real circuit has \emph{millions} of
+constraints, and each of those steps done naively costs $O(m^2)$
+field operations. The workhorse that makes them $O(m\log m)$ is the
+fast Fourier transform run over $\mathbb{F}_p$ --- the \textbf{NTT}
+(number-theoretic transform). This appendix shows it working at toy
+scale in the same $\mathbb{F}_{17}$, then gives the production
+numbers.
+
+\paragraph{B.1 Where transforms appear.} Four steps of Appendix A
+become transform calls at scale: (1) \emph{interpolation} (Step 0):
+witness columns $\to$ the coefficient polynomials $A, B, C$ --- one
+\textbf{inverse NTT} each replaces the $O(m^2)$ Lagrange formulas;
+(2) \emph{products} such as $A(x)B(x)$: NTT both onto a larger
+domain, multiply \textbf{pointwise}, inverse-NTT back; (3)
+\emph{the quotient} $H = P/Z$: pointwise division on a coset ---
+see B.3, where this becomes almost comically cheap; (4) (STARKs)
+the \emph{low-degree extension}: re-evaluate the trace on a
+2--8$\times$ larger domain --- Reed--Solomon encoding, again NTTs
+--- before Merkle-hashing and FRI.
+
+\paragraph{B.2 The transform itself, at size 4 in
+$\mathbb{F}_{17}$.} The classical FFT evaluates a polynomial at the
+complex $n$-th roots of unity $e^{2\pi i k/n}$; the sines and
+cosines are merely how $\mathbb{C}$ \emph{parametrizes} its roots
+of unity. The algorithm needs only three algebraic facts:
+$\omega^n = 1$, $\omega^{n/2} = -1$, and ``squaring the $n$-th
+roots gives the $(n/2)$-th roots'' (what lets the problem halve
+recursively). Any field with an element of order $n$ runs the
+identical recursion --- exactly, with no rounding. In
+$\mathbb{F}_{17}$, $p-1 = 16$, so orders up to 16 exist;
+$\omega = 4$ has order 4:
+\[
+\omega = 4:\quad \omega^1 = 4,\ \omega^2 = 16 \equiv -1,\
+\omega^3 = 13,\ \omega^4 = 1;\qquad
+H = \{1, 4, 16, 13\}.
+\]
+Run it on Appendix A's own $P(x) = 13x^2 + 12x + 9$. Split by
+even/odd coefficients --- $P(x) = E(x^2) + x\,O(x^2)$ with
+$E(y) = 9 + 13y$, $O(y) = 12$ --- evaluate the halves at the
+\emph{square} domain $\{1, -1\}$, then combine with the butterfly
+$P(\pm\omega^k) = E(\omega^{2k}) \pm \omega^k O(\omega^{2k})$:
+\[
+\begin{aligned}
+&E(1) = 22 \equiv 5, \qquad E(16) = 9 + 208 \equiv 13, \qquad
+ O \equiv 12\ \text{everywhere};\\
+&P(1) = 5 + 1\cdot12 \equiv 0, \quad
+ P(4) = 13 + 4\cdot12 \equiv 10, \quad
+ P(16) = 5 + 16\cdot12 \equiv 10, \quad
+ P(13) = 13 + 13\cdot12 \equiv 16.
+\end{aligned}
+\]
+Eight multiplications instead of the naive twelve --- and the gap
+is the whole point: at size $m$ the recursion costs $m\log m$
+against $m^2$. (Note $P(1) \equiv 0$: $x{=}1$ is one of Appendix
+A's constraint points, and the transform \emph{displays} constraint
+$c_1$ holding. Real systems put \textbf{all} constraints on such a
+domain, so the whole R1CS check is visible in one spectrum.) The
+inverse transform is the same butterfly with $\omega^{-1} = 13$ and
+a global factor $n^{-1} = 4^{-1} \equiv 13$.
+
+\paragraph{B.3 Why roots of unity: the vanishing polynomial
+collapses.} Appendix A built $Z(x) = (x-1)(x-2)$ by multiplying
+linear factors --- fine at 2 points, hopeless at $2^{20}$. On the
+domain $H$ above,
+\[
+Z_H(x) = x^4 - 1 \qquad (\text{generally } x^n - 1),
+\]
+one subtraction to evaluate anywhere. Better still, the quotient
+$H = P/Z$ is computed on a \emph{shifted coset} $g\cdot H$ where
+$Z$ never vanishes --- and there it is not merely cheap but
+\textbf{constant}: on $3H = \{3, 12, 14, 5\}$ every point satisfies
+$x^4 = 3^4 \equiv 13$, so $Z_H \equiv 12$ across the entire coset,
+and ``divide by $Z$'' is one multiplication by $12^{-1} \equiv 10$.
+Appendix A's polynomial long division becomes: NTT $P$ onto the
+coset, scale by a constant, inverse NTT.
+
+\paragraph{B.4 Two-adicity --- why the proof fields look the way
+they do.} A radix-2 NTT of size $2^k$ needs an element of order
+$2^k$, i.e.\ $2^k \mid p-1$. That single divisibility requirement
+shapes the field zoo:
+\begin{center}
+\begin{tabular}{llll}
+field & $p$ & $p-1$ factors as & max radix-2 NTT\\
+\hline
+toy $\mathbb{F}_{17}$ & 17 & $2^4$ & 16\\
+Goldilocks & $2^{64}{-}2^{32}{+}1$ & $2^{32}(2^{32}{-}1)$ & $2^{32}$\\
+BabyBear & $2^{31}{-}2^{27}{+}1$ & $2^{27}\cdot3\cdot5$ & $2^{27}$\\
+BN254-Fr & ${\sim}2^{254}$ & $2^{28}\cdot(\text{odd})$ & $2^{28}$\\
+M31 & $2^{31}{-}1$ & $2\cdot3^2\cdot7\cdot11\cdot31\cdot151\cdot331$
+ & \textbf{2}\\
+\end{tabular}
+\end{center}
+M31 is the cautionary tale: two-adicity 1, no radix-2 domains at
+all --- the reason Circle STARKs \cite{circle} exist (they run the
+transform on the unit circle $x^2 + y^2 = 1$ over $\mathbb{F}_p$,
+which has $2^{31}$ points with perfect 2-adic structure). Two
+further design notes. \emph{Exactness}: a floating-point FFT's
+rounding is harmless in signal processing and fatal here --- one
+wrong field element breaks the divisibility identity --- while the
+NTT is exact by construction. \emph{Reduction cost}: the NTT does
+one modular reduction per multiply, so proof fields are engineered
+for cheap reduction (Goldilocks reduces with shifts and adds;
+BabyBear/M31 fit 32-bit lanes and vectorize).
+
+\paragraph{B.5 Production scale.} Order-of-magnitude anchors (2026
+practice). A single proof segment typically carries
+$2^{20}$--$2^{24}$ constraints or trace rows
+(${\approx}10^{6}$--$1.6\times10^{7}$); STARK blowups of
+2--8$\times$ put the largest NTTs at $2^{23}$--$2^{27}$ points ---
+BabyBear's $2^{27}$ ceiling is not an accident but the binding
+constraint (a $2^{24}$-row trace at blowup 8 uses the whole
+two-adic budget). A Groth16 prover runs ${\approx}7$ size-$m$ FFTs
+plus 4 size-$m$ multi-scalar multiplications; STARK provers are NTT
++ hashing dominated. Computations bigger than one segment shard
+into thousands of segments whose proofs are aggregated by
+recursion. \S3's zkML numbers land here: one $n = 4096$
+witness$\times$witness product costs $1.23\times10^{10}$
+constraints under rank-48 recursion --- ${\approx}10^{4}$ segments
+of $2^{20}$ --- versus $6.87\times10^{10}$ naive, a 5.6$\times$ cut
+in segments, NTTs, and commitments alike; per-layer transformer
+matrices (2048--8192 on a side) sit squarely in the \S3 table's
+range. The division of labor is exact: the NTT/commitment layer
+fixes the \textbf{cost per constraint}, and the bilinear rank of
+\S3 fixes \textbf{how many constraints there are}. Lower rank does
+not speed up the transform; it shrinks the transform.
 
 \section*{Acknowledgments}
 

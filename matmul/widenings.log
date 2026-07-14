@@ -1,0 +1,303 @@
+=== widenings start 07-13 13:52  threads 12 ===
+--- A: 4x4 babybear repair k=3..6 ---
+-- A k=3  13:52
+repair k=3: 17296/17296 subsets in 1s; no-completion 17296; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+-- A k=4  13:52
+repair k=4: 194580/194580 subsets in 11s; no-completion 194580; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+-- A k=5  13:52
+repair k=5: 1712304/1712304 subsets in 146s; no-completion 1712304; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+-- A k=6  13:54
+repair k=6: 12271512/12271512 subsets in 1429s; no-completion 12271512; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+--- B: 3x3 goldilocks repair k=3..9 x 30 census seeds ---
+-- B seed 13a5bd4n  14:18
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 26s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 65s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 136s; no-completion 817190; records 0
+-- B seed 14a5b4n  14:22
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 28s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 63s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 123s; no-completion 817190; records 0
+-- B seed _tgz  14:26
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 26s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 64s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 127s; no-completion 817190; records 0
+-- B seed 12a5bdj4n  14:30
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 25s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 62s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 124s; no-completion 817190; records 0
+-- B seed 12a6bd4n  14:33
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 25s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 61s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 131s; no-completion 817190; records 0
+-- B seed 13a6b4n  14:37
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 25s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 64s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 124s; no-completion 817190; records 0
+-- B seed 11a6bdj4n  14:41
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 27s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 63s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 136s; no-completion 817190; records 0
+-- B seed 11a5b2dj4n  14:45
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 9s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 27s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 65s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 130s; no-completion 817190; records 0
+-- B seed 12abcdegj4ns  14:49
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 25s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 58s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 118s; no-completion 817190; records 0
+-- B seed 12a5b2d4n  14:52
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 25s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 65s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 120s; no-completion 817190; records 0
+-- B seed 14a2b2dj4n  14:56
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 25s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 61s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 129s; no-completion 817190; records 0
+-- B seed 8a3bc3dgjk4ns  15:00
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 24s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 59s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 118s; no-completion 817190; records 0
+-- B seed 10a2bc2dgjk4ns  15:03
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 24s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 59s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 115s; no-completion 817190; records 0
+-- B seed 11a2bcdegj4ns  15:07
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 24s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 60s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 120s; no-completion 817190; records 0
+-- B seed 10a3b3djk4ns  15:10
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 24s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 61s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 119s; no-completion 817190; records 0
+-- B seed 14abcdej4n  15:14
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 24s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 59s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 119s; no-completion 817190; records 0
+-- B seed 13a2bdgjm4n  15:17
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 25s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 61s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 123s; no-completion 817190; records 0
+-- B seed 11a6b2d4n  15:21
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 28s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 63s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 124s; no-completion 817190; records 0
+-- B seed 6a4bc4d4j4n  15:25
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 25s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 62s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 122s; no-completion 817190; records 0
+-- B seed 12a4b2dj4n  15:28
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 9s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 26s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 64s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 126s; no-completion 817190; records 0
+-- B seed 13abcdeg4ns  15:32
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 25s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 60s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 121s; no-completion 817190; records 0
+-- B seed 15abcde4n  15:36
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 25s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 61s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 122s; no-completion 817190; records 0
+-- B seed 12a4bd2m4n  15:39
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 25s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 60s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 121s; no-completion 817190; records 0
+-- B seed 14a3bdj4n  15:43
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 26s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 61s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 120s; no-completion 817190; records 0
+-- B seed 11a4bdj2m4n  15:47
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 26s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 69s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 127s; no-completion 817190; records 0
+-- B seed 8a5b3d2j4ns  15:51
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 25s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 61s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 122s; no-completion 817190; records 0
+-- B seed 8a2b2c2dgjkm4ns  15:54
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 24s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 60s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 119s; no-completion 817190; records 0
+-- B seed 11a4b3dj4n  15:58
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 26s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 63s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 121s; no-completion 817190; records 0
+-- B seed 13a2bcdej4n  16:01
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 25s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 60s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 121s; no-completion 817190; records 0
+-- B seed 13a3b2dj4n  16:05
+repair k=3: 1771/1771 subsets in 0s; no-completion 1771; records 0
+repair k=4: 8855/8855 subsets in 0s; no-completion 8855; records 0
+repair k=5: 33649/33649 subsets in 2s; no-completion 33649; records 0
+repair k=6: 100947/100947 subsets in 8s; no-completion 100947; records 0
+repair k=7: 245157/245157 subsets in 24s; no-completion 245157; records 0
+repair k=8: 490314/490314 subsets in 60s; no-completion 490314; records 0
+repair k=9: 817190/817190 subsets in 120s; no-completion 817190; records 0
+--- C: 4x4 goldilocks repair k=7 (73.6M)  16:09 ---
+repair k=7: 73629072/73629072 subsets in 16305s; no-completion 73629072; records 0
+rebuilt-total histogram (kept + rebuilt): {}
+--- D: m31 3x3 pursue7 arm, top-10 x 1200 s  20:40 ---
+== D m31 13a5bd4n  20:40
+seed loaded + exactly verified over F_p, p = 2147483647 (23 summands)
+pursue7: 779861 walks in 1200s; closings 425902  reductions 1303971  distinct 23-landings 157504
+terminal-rank histogram: {23: 157504, 24: 294097, 25: 243265, 26: 84995}
+== D m31 14a5b4n  21:00
+seed loaded + exactly verified over F_p, p = 2147483647 (23 summands)
+pursue7: 789098 walks in 1200s; closings 191868  reductions 1330932  distinct 23-landings 155534
+terminal-rank histogram: {23: 155534, 24: 308986, 25: 246358, 26: 78220}
+== D m31 _tgz  21:20
+seed loaded + exactly verified over F_p, p = 2147483647 (23 summands)
+pursue7: 780407 walks in 1200s; closings 426200  reductions 1304876  distinct 23-landings 157594
+terminal-rank histogram: {23: 157594, 24: 294331, 25: 243432, 26: 85050}
+== D m31 12a5bdj4n  21:40
+seed loaded + exactly verified over F_p, p = 2147483647 (23 summands)
+pursue7: 784079 walks in 1200s; closings 425070  reductions 1288049  distinct 23-landings 149947
+terminal-rank histogram: {23: 149947, 24: 293946, 25: 250316, 26: 89870}
+== D m31 12a6bd4n  22:00
+seed loaded + exactly verified over F_p, p = 2147483647 (23 summands)
+pursue7: 784721 walks in 1200s; closings 332313  reductions 1305672  distinct 23-landings 153342
+terminal-rank histogram: {23: 153342, 24: 299258, 25: 247130, 26: 84991}
+== D m31 13a6b4n  22:20
+seed loaded + exactly verified over F_p, p = 2147483647 (23 summands)
+pursue7: 785047 walks in 1200s; closings 347375  reductions 1279669  distinct 23-landings 144910
+terminal-rank histogram: {23: 144910, 24: 294857, 25: 255225, 26: 90055}
+== D m31 11a6bdj4n  22:40
+seed loaded + exactly verified over F_p, p = 2147483647 (23 summands)
+pursue7: 800730 walks in 1200s; closings 275319  reductions 1311884  distinct 23-landings 147340
+terminal-rank histogram: {23: 147340, 24: 305571, 25: 258722, 26: 89097}
+== D m31 11a5b2dj4n  23:00
+seed loaded + exactly verified over F_p, p = 2147483647 (23 summands)
+pursue7: 793689 walks in 1200s; closings 279354  reductions 1310039  distinct 23-landings 149512
+terminal-rank histogram: {23: 149512, 24: 303858, 25: 253787, 26: 86532}
+== D m31 12abcdegj4ns  23:20
+seed loaded + exactly verified over F_p, p = 2147483647 (23 summands)
+pursue7: 792790 walks in 1200s; closings 323629  reductions 1304108  distinct 23-landings 148492
+terminal-rank histogram: {23: 148492, 24: 302146, 25: 254340, 26: 87812}
+== D m31 12a5b2d4n  23:40
+seed loaded + exactly verified over F_p, p = 2147483647 (23 summands)
+pursue7: 790232 walks in 1200s; closings 336334  reductions 1322758  distinct 23-landings 157277
+terminal-rank histogram: {23: 157277, 24: 301894, 25: 247139, 26: 83922}
+=== widenings complete 07-14 00:00 ===
+RECORDP files:
+matmul/widenings.sh:43: no matches found: matmul/found23p/RECORDP*
+       0

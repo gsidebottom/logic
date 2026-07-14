@@ -44,6 +44,17 @@ the two source papers for this track):
   - Campaign: ~35 CPU-years → **>13,000 mutually inequivalent new
     23-schemes** (SAT'19; the public DB snapshot later reached 17,376,
     up from 4 known). None compresses to 22.
+- **Widenings batch COMPLETE (2026-07-14 00:00)**: all four stages
+  negative, all exhaustive where finite. A: BabyBear 4x4 repair
+  k<=6 rigid (matches Goldilocks). B: ALL 30 census seeds k<=9
+  rigid over Goldilocks (210 ladders, ~1.7M subsets each). C: 4x4
+  k=7 EXHAUSTIVE — 73,629,072 subsets, 4.5 h, zero completions ->
+  DPS-48 is k<=7 locally rigid over Goldilocks (any 47 shares at
+  most 41/48 terms). D: m31 arm, 10 seeds, 790K walks/seed, 1.52M
+  distinct 23-landings, zero RECORDP — third proof field, same
+  emptiness. Exclusion zone now: bands 26/28/30 x three fields
+  (~31M walks, 4.4M landings) + repair radius 9 (3x3, 30 seeds x
+  2 fields) / 7 (4x4 G) / 6 (4x4 BB).
 - **Commutative record targets (priced 2026-07-13)**: 3x3<=20 comm
   = 7.0% whole-pipeline (4.65%/unit — highest value-per-space on
   the board; Rosowski 21 is constructive, not optimized; LBs leave

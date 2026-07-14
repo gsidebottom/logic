@@ -57,10 +57,11 @@ literature and from this repository's certificates:
   Kauers--Moosbauer's walks from the $3{\times}3$ naive scheme land
   in 584 distinct connected components of the rank-$\le$23 flip
   graph (64{,}061 vertices) \cite{km}. Our $4{\times}4$ fringe
-  certificate is a completeness proof of confinement: the rank-48
-  seed's component under solved dyadic moves at rank $\le 50$ is
-  \emph{finite} --- 920 states in 16 clusters hanging off the seed
-  as a cut vertex, exhaustively enumerated and closed.
+  certificate is a \textbf{component-rigidity} certificate: the
+  rank-48 seed's component under solved dyadic moves at rank
+  $\le 50$ is \emph{finite} --- 920 states in 16 clusters hanging
+  off the seed as a cut vertex, exhaustively enumerated and
+  closed.
 \item \textbf{Altitude connects, but slowly.} Splits (rank$+1$
   excursions) merge components: our chase explored eight levels
   above the $4{\times}4$ seed (1.45B states) without meeting a
@@ -75,6 +76,16 @@ literature and from this repository's certificates:
   naive over Goldilocks produced zero reductions; the same protocol
   over $\mathbb{F}_2$ produced ${\sim}60$ within minutes).
 \end{itemize}
+
+Terminology used throughout the program, in two strengths:
+\textbf{radius rigidity} --- no smaller-rank scheme exists within
+replacement distance $k$ of a seed (bought by exhaustive repair
+ladders, M-8); and \textbf{component rigidity} --- the seed's
+\emph{entire} move-component is finite, enumerated, and contains
+no smaller rank (bought by closure/BFS certificates; strictly
+stronger, and it delivers the component's anatomy as a bonus).
+``Rigid'' without qualification in our companion papers means one
+of these two, and the certificate type is always stated.
 
 \section{The moves}
 
@@ -172,7 +183,7 @@ we know (pure linear algebra).
 \paragraph{M-8. Repair hop} (built: pursue8 \texttt{--repair}).
 Delete $k$ summands, beam-rebuild the residual in $\le k-1$ (record
 event) or $k$ (lateral hop). Exhaustive over $\binom{r}{k}$ at
-small $k$ --- how the local rigidity certificates were bought
+small $k$ --- how the radius-rigidity certificates were bought
 ($3{\times}3$: all 30 census seeds $k \le 9$ rigid over two fields;
 $4{\times}4$: DPS-48 $k \le 7$ rigid over Goldilocks, 73.6M
 subsets). As a walk move ($k=2$ lateral) it hops between flip

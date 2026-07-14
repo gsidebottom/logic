@@ -36,7 +36,7 @@ and from this repository's certificates:
 - **It is disconnected at bounded rank.** Kauers–Moosbauer's walks
   from the 3×3 naive scheme land in 584 distinct connected
   components of the rank-≤23 flip graph (64,061 vertices). Our 4×4
-  fringe certificate is a completeness proof of confinement: the
+  fringe certificate is a **component-rigidity** certificate: the
   rank-48 seed's component under solved dyadic moves at rank ≤ 50
   is *finite* — 920 states in 16 clusters hanging off the seed as
   a cut vertex, exhaustively enumerated and closed.
@@ -53,6 +53,16 @@ and from this repository's certificates:
   small-dyadic λ from naive over Goldilocks produced zero
   reductions; the same protocol over 𝔽₂ produced ~60 within
   minutes).
+
+Terminology used throughout the program, in two strengths:
+**radius rigidity** — no smaller-rank scheme exists within
+replacement distance k of a seed (bought by exhaustive repair
+ladders, M-8); and **component rigidity** — the seed's *entire*
+move-component is finite, enumerated, and contains no smaller
+rank (bought by closure/BFS certificates; strictly stronger, and
+it delivers the component's anatomy as a bonus). "Rigid" without
+qualification in our companion papers means one of these two, and
+the certificate type is always stated.
 
 ## 2. The moves
 
@@ -145,7 +155,7 @@ know that stays field-generic (pure linear algebra).
 
 **M-8. Repair hop** (built: pursue8 --repair). Delete k summands,
 beam-rebuild the residual in ≤ k−1 (record event) or k (lateral
-hop). Exhaustive over C(r,k) at small k — this is how the local
+hop). Exhaustive over C(r,k) at small k — this is how the radius-
 rigidity certificates were bought (3×3: all 30 census seeds k ≤ 9
 rigid over two fields; 4×4: DPS-48 k ≤ 7 rigid over Goldilocks,
 73.6M subsets). As a *walk move* (k = 2 lateral) it hops between

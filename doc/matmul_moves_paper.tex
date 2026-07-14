@@ -24,7 +24,14 @@ engines cited live in this repository.
 
 \section{The space}
 
-Fix a format $\langle m,m,m\rangle$ and a coefficient field $K$. A
+The general \textbf{format} is $\langle m,n,k\rangle$: the tensor
+of the bilinear map that multiplies an $m{\times}n$ matrix by an
+$n{\times}k$ matrix (rank-one terms then have
+$a_t \in K^{m\times n}$, $b_t \in K^{n\times k}$,
+$c_t \in K^{m\times k}$; the literature also writes $(n,m,p)$).
+This note works throughout with the square diagonal
+$\langle m,m,m\rangle$ --- the case that recurses on itself ---
+so fix $\langle m,m,m\rangle$ and a coefficient field $K$. A
 \textbf{scheme of rank $r$} is a decomposition of the
 matrix-multiplication tensor into $r$ rank-one terms,
 \[

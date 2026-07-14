@@ -6,8 +6,13 @@ engines cited live in this repository.*
 
 ## 1. The space
 
-Fix a format ⟨m,m,m⟩ and a coefficient field K. A **scheme of rank
-r** is a decomposition of the matrix-multiplication tensor into r
+The general **format** is ⟨m,n,k⟩: the tensor of the bilinear map
+that multiplies an m×n matrix by an n×k matrix (rank-one terms
+then have a_t ∈ K^(m×n), b_t ∈ K^(n×k), c_t ∈ K^(m×k); the
+literature also writes (n,m,p)). This note works throughout with
+the square diagonal ⟨m,m,m⟩ — the case that recurses on itself —
+so fix ⟨m,m,m⟩ and a coefficient field K. A **scheme of rank r**
+is a decomposition of the matrix-multiplication tensor into r
 rank-one terms,
 
 ```

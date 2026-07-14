@@ -116,7 +116,7 @@ The Brent system is represented natively as cubic-XOR (``ANF'')
 constraints over the 621 real variables --- no Tseitin auxiliaries.
 Flipping a variable touches exactly its 81 incident equations; a
 monomial toggles iff its two partner bits are 1, so incremental
-evaluation is $O(81)$ per flip (0.4--5M flips/s/core measured,
+evaluation is $O(81)$ per flip (0.4 to 5M flips/s/core measured,
 ${\sim}10$M flips/s aggregate over 10 threads). Two policy regimes
 matter (both WalkSAT-family):
 
@@ -140,7 +140,7 @@ Baselines on this machine (the Mac~mini defined in
 60\,s; it needs 41.6\,s to prove even 2$\times$2-in-6 UNSAT), matching
 HKS's finding that CDCL fails here. yalsat (the HKS solver, v1.0.1
 built from source) solves seeded-repair CNFs at their published
-operating point (fix 414/621 bits: ${\sim}0.05$--0.2\,s) but
+operating point (fix 414/621 bits: ${\sim}0.05$ to 0.2\,s) but
 \textbf{times out at 300\,s at fix=300 and fix=250 --- instances the
 native engine solves in 5\,ms and 60\,ms}. On the official challenge-1
 instances (hardcoded pairing cores, no streamliners), native SLS +
@@ -302,7 +302,7 @@ python3 check_their_cnf.py challenges/challenge1/MM-23-2-2-2-2-A.cnf \
 \end{Code}
 
 \textbf{What is and isn't deterministic.} Verification of the
-committed 53 (steps 0--6) is deterministic. \emph{Discovery}
+committed 53 (steps 0 to 6) is deterministic. \emph{Discovery}
 (walk.py) and the challenge-1 solves are stochastic and
 timing-dependent: rerunning reproduces the \emph{phenomena} (similar
 yields/times) but not bit-identical artifacts. kissat may return
@@ -317,8 +317,8 @@ names are the \texttt{NEW} rows of
 \path{matmul/novelty_verdicts.csv}); signed integer forms
 \path{matmul/lifted/walk-*.txt}. Support = number of nonzero
 coefficients; for a $3{\times}3{\times}23$ scheme the naive addition
-count is exactly support $-$ 55. Ours: support 149--164 (median 154)
-= \textbf{94--109 naive additions}; for reference Laderman = 153/98,
+count is exactly support $-$ 55. Ours: support 149 to 164 (median 154)
+= \textbf{94 to 109 naive additions}; for reference Laderman = 153/98,
 Smirnov = 139/84, DB minimum = 139 (support percentiles of the full
 DB: p1 = 146, median = 159 --- our sparsest sits at the 3rd
 percentile; 22 of the 53 need fewer naive additions than Laderman,
@@ -458,16 +458,16 @@ fingerprint and/or exact checks. All 53 are pairwise inequivalent.)}
   Normalized anyway, for scale: SAT~2019 reports ${>}13{,}000$
   mutually inequivalent schemes for ${\approx}35$ CPU-years ---
   ${\approx}370$ schemes per CPU-year on 2019 server cores, or
-  ${\approx}750$--$1{,}100$ per CPU-year after crediting modern
-  cores (M4-class single-thread is roughly 2--3$\times$ a 2019
+  ${\approx}750$ to $1{,}100$ per CPU-year after crediting modern
+  cores (M4-class single-thread is roughly 2 to 3$\times$ a 2019
   cluster Xeon's). Our 53 cost ${\approx}46$ single-core minutes
   end-to-end: ${\approx}6{\times}10^{5}$ schemes per CPU-year,
-  roughly 500--800$\times$ the speed-adjusted HKS rate. The gap
+  roughly 500 to 800$\times$ the speed-adjusted HKS rate. The gap
   persists in class currency: the full 17{,}376-scheme database
   spans 302 de-Groote rank-type patterns (${\lesssim}9$ patterns
   per CPU-year), while our later flip campaigns (companion notes)
   added 81 new patterns for ${\approx}140$ CPU-hours
-  (${\approx}5{,}000$ per CPU-year, ${\approx}200$--$300\times$
+  (${\approx}5{,}000$ per CPU-year, ${\approx}200$ to $300\times$
   adjusted). The warm start is doing real work in these ratios ---
   which is this report's thesis: the database turns discovery from
   search into traversal. A 46-minute controlled pilot replaces
@@ -480,7 +480,7 @@ fingerprint and/or exact checks. All 53 are pairwise inequivalent.)}
   database \emph{re}discovery: the database is the classics'
   method-2 neighborhood). That is ${\approx}3{\times}10^{5}$
   inequivalent schemes per CPU-year from their own starting
-  position, ${\approx}300$--$450\times$ the speed-adjusted HKS
+  position, ${\approx}300$ to $450\times$ the speed-adjusted HKS
   average, before the compounding that carried the warm-pool run to
   ${\sim}3$\,s/scheme. The full campaign (6.8~h at 12 threads,
   ${\approx}82$ CPU-h) then measured the saturation the pilot could
@@ -493,14 +493,14 @@ fingerprint and/or exact checks. All 53 are pairwise inequivalent.)}
   two-method design provided (streamlined cold solves; in our
   machinery, flip/storm moves or lower-\texttt{nfix} jumps).
   Measured rates: ${\approx}63{,}000$ schemes/CPU-year averaged to
-  saturation, ${\approx}15$--$20{,}000$ marginal at saturation,
+  saturation, ${\approx}15$ to $20{,}000$ marginal at saturation,
   versus their 371 whole-campaign average. Full-regeneration
   \textbf{estimates} (model-dependent: assume diversity injection
   sustains between our saturation-marginal and averaged rates):
-  ${\approx}0.2$--$0.9$ CPU-years for 13{,}000 ---
-  \textbf{40--175$\times$ less compute than the original 35
-  CPU-years} unadjusted, ${\approx}13$--$90\times$ after the
-  2--3$\times$ hardware credit --- and ${\approx}0.3$--$1.2$
+  ${\approx}0.2$ to $0.9$ CPU-years for 13{,}000 ---
+  \textbf{40 to 175$\times$ less compute than the original 35
+  CPU-years} unadjusted, ${\approx}13$ to $90\times$ after the
+  2 to 3$\times$ hardware credit --- and ${\approx}0.3$ to $1.2$
   CPU-years for the full 17{,}376-scheme database (no HKS cost is
   published for the DB's post-13{,}000 growth). The measured
   objects are the discovery curve and the ${\approx}700$-scheme

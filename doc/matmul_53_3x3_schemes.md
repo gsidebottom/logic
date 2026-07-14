@@ -83,7 +83,7 @@ The Brent system is represented natively as cubic-XOR ("ANF") constraints
 over the 621 real variables — no Tseitin auxiliaries. Flipping a variable
 touches exactly its 81 incident equations; a monomial toggles iff its two
 partner bits are 1, so incremental evaluation is O(81) per flip
-(0.4–5M flips/s/core measured, ~10M flips/s aggregate over 10 threads).
+(0.4 to 5M flips/s/core measured, ~10M flips/s aggregate over 10 threads).
 Two policy regimes matter (both WalkSAT-family):
 
 - close repair (many bits frozen at a known scheme): WalkSAT/SKC,
@@ -103,7 +103,7 @@ Baselines on this machine (the Mac mini defined in §1): kissat cannot solve the
 60s; it needs 41.6s to prove even 2×2-in-6 UNSAT), matching HKS's
 finding that CDCL fails here. yalsat (the HKS solver, v1.0.1 built from
 source) solves seeded-repair CNFs at their published operating point
-(fix 414/621 bits: ~0.05–0.2s) but **times out at 300s at fix=300 and
+(fix 414/621 bits: ~0.05 to 0.2s) but **times out at 300s at fix=300 and
 fix=250 — instances the native engine solves in 5ms and 60ms**.
 On the official challenge-1 instances (hardcoded pairing cores,
 no streamliners), native SLS + closure solves **8/10** (best two:
@@ -250,7 +250,7 @@ python3 check_their_cnf.py challenges/challenge1/MM-23-2-2-2-2-A.cnf /tmp/solA.t
 ```
 
 **What is and isn't deterministic.** Verification of the committed 53
-(steps 0–6) is deterministic. *Discovery* (walk.py) and the challenge-1
+(steps 0 to 6) is deterministic. *Discovery* (walk.py) and the challenge-1
 solves are stochastic and timing-dependent: rerunning reproduces the
 *phenomena* (similar yields/times) but not bit-identical artifacts.
 kissat may return different sign models in step 6 across versions —
@@ -263,7 +263,7 @@ Files: mod-2 bit-vectors `matmul/found/walk-*.bits` (the 53 names are
 the `NEW` rows of `matmul/novelty_verdicts.csv`); signed integer forms
 `matmul/lifted/walk-*.txt`. Support = number of nonzero coefficients;
 for a 3×3×23 scheme the naive addition count is exactly support − 55.
-Ours: support 149–164 (median 154) = **94–109 naive additions**; for
+Ours: support 149 to 164 (median 154) = **94 to 109 naive additions**; for
 reference Laderman = 153/98, Smirnov = 139/84, DB minimum = 139
 (support percentiles of the full DB: p1 = 146, median = 159 — our
 sparsest sits at the 3rd percentile; 22 of the 53 need fewer naive
@@ -386,14 +386,14 @@ exact checks. All 53 are pairwise inequivalent.)*
   numbers vs yalsat on the same machine (§3.1). Normalized anyway,
   for scale: SAT 2019 reports >13,000 mutually inequivalent schemes
   for ≈35 CPU-years — ≈370 schemes per CPU-year on 2019 server
-  cores, or ≈750–1,100 per CPU-year after crediting modern cores
-  (M4-class single-thread is roughly 2–3× a 2019 cluster Xeon's).
+  cores, or ≈750 to 1,100 per CPU-year after crediting modern cores
+  (M4-class single-thread is roughly 2 to 3× a 2019 cluster Xeon's).
   Our 53 cost ≈46 single-core minutes end-to-end: ≈6×10⁵ schemes
-  per CPU-year, roughly 500–800× the speed-adjusted HKS rate. The
+  per CPU-year, roughly 500 to 800× the speed-adjusted HKS rate. The
   gap persists in class currency: the full 17,376-scheme database
   spans 302 de-Groote rank-type patterns (≲9 patterns per CPU-year),
   while our later flip campaigns (companion notes) added 81 new
-  patterns for ≈140 CPU-hours (≈5,000 per CPU-year, ≈200–300×
+  patterns for ≈140 CPU-hours (≈5,000 per CPU-year, ≈200 to 300×
   adjusted). The warm start is doing real work in these ratios —
   which is this report's thesis: the database turns discovery from
   search into traversal. A controlled replication measured both
@@ -404,7 +404,7 @@ exact checks. All 53 are pairwise inequivalent.)*
   every find inside existing DB rank patterns (database
   *re*discovery: the DB is the classics' method-2 neighborhood);
   that is ≈3×10⁵ inequivalent schemes/CPU-year from their own
-  start, ≈300–450× their speed-adjusted average. *Full campaign*
+  start, ≈300 to 450× their speed-adjusted average. *Full campaign*
   (6.8 h at 12 threads, ≈82 CPU-h) then measured the saturation the
   pilot could only warn about: archive 31 → 618 schemes = 385
   classes, per-half-hour yield decaying 99 → 9; the decay fits
@@ -414,13 +414,13 @@ exact checks. All 53 are pairwise inequivalent.)*
   diversity injections HKS's two-method design provided
   (streamlined cold solves; in our machinery, flip/storm moves or
   lower-nfix jumps). Measured rates: ≈63,000 schemes/CPU-year
-  averaged to saturation, ≈15–20,000 marginal at saturation,
+  averaged to saturation, ≈15 to 20,000 marginal at saturation,
   versus their 371 whole-campaign average. Full-regeneration
   **estimates** (model-dependent: assume diversity injection
   sustains between our saturation-marginal and averaged rates):
-  ≈0.2–0.9 CPU-years for 13,000 — **40–175× less compute than the
-  original 35 CPU-years** unadjusted, ≈13–90× after the 2–3×
-  hardware credit — and ≈0.3–1.2 CPU-years for the full
+  ≈0.2 to 0.9 CPU-years for 13,000 — **40 to 175× less compute than the
+  original 35 CPU-years** unadjusted, ≈13 to 90× after the 2 to 3×
+  hardware credit — and ≈0.3 to 1.2 CPU-years for the full
   17,376-scheme database (no HKS cost is published for the DB's
   post-13,000 growth). The measured objects are the discovery
   curve and the ≈700-scheme method-2 basin; the ratios inherit

@@ -61,7 +61,7 @@ Zero [13]), and M31 = 2³¹ − 1 (Circle STARKs [8]). (Appendix B explains the 
 layer these fields are engineered for.)
 
 The asymmetry that defines the field: verification is cheap, **proving
-is 10³–10⁶× the native computation**, all of it exact arithmetic in
+is 10³ to 10⁶× the native computation**, all of it exact arithmetic in
 the proof field. zkML applications — proving a proprietary model was
 faithfully executed (model privacy), proving an inference inside a
 blockchain rollup, auditable AI where the checker is cheap — inherit
@@ -219,7 +219,7 @@ rank search has ever been run over any of them**: the flip-graph
 literature works over 𝔽₂ (and small extensions) [15], the explicit
 records over ℤ/ℚ. A verified 3×3 rank-22 — or 4×4 rank-47 — over
 Goldilocks would be a new kind of record with an immediate consumer:
-2–4% fewer constraints per recursion level in deployed proof systems,
+2 to 4% fewer constraints per recursion level in deployed proof systems,
 compounding as in §3's table.
 
 `flip23p` is our rational flip engine (splits, λ-flips, reductions,
@@ -624,7 +624,7 @@ transform calls at scale:
 3. *The quotient* H = P/Z: pointwise division on a coset — see B.3,
    where this becomes almost comically cheap.
 4. (STARKs) the *low-degree extension*: re-evaluate the whole trace
-   on a 2–8× larger domain — Reed–Solomon encoding, again NTTs —
+   on a 2 to 8× larger domain — Reed–Solomon encoding, again NTTs —
    before Merkle-hashing and FRI.
 
 **B.2 The transform itself, at size 4 in 𝔽₁₇.** The classical FFT
@@ -719,9 +719,9 @@ fields are engineered for cheap reduction (Goldilocks reduces with
 shifts and adds; BabyBear/M31 fit 32-bit lanes and vectorize).
 
 **B.5 Production scale.** Order-of-magnitude anchors (2026
-practice). A single proof segment typically carries **2²⁰–2²⁴
-constraints or trace rows** (≈10⁶–1.6×10⁷); STARK blowup factors
-of 2–8× put the largest NTTs at 2²³–2²⁷ points — BabyBear's 2²⁷
+practice). A single proof segment typically carries **2²⁰ to 2²⁴
+constraints or trace rows** (≈10⁶ to 1.6×10⁷); STARK blowup factors
+of 2 to 8× put the largest NTTs at 2²³ to 2²⁷ points — BabyBear's 2²⁷
 ceiling is not an accident but the binding constraint (a 2²⁴-row
 trace at blowup 8 uses the whole two-adic budget). A Groth16
 prover runs ≈7 size-m FFTs plus 4 size-m multi-scalar
@@ -731,7 +731,7 @@ segments whose proofs are aggregated by recursion. §3's zkML
 numbers land here: one n = 4096 witness×witness product costs
 1.23×10¹⁰ constraints under rank-48 recursion — ≈10⁴ segments of
 2²⁰ — versus 6.87×10¹⁰ naive, a 5.6× cut in segments, NTTs, and
-commitments alike; per-layer transformer matrices (2048–8192 on a
+commitments alike; per-layer transformer matrices (2048 to 8192 on a
 side) sit squarely in the §3 table's range. The division of labor
 is exact: the NTT/commitment layer fixes the **cost per
 constraint**, and the bilinear rank of §3 fixes **how many
@@ -753,7 +753,7 @@ factor barely moves). At n = 4096, folding in §3's exponents:
   and **1.19× over rank-48**, i.e. ≈19% fewer constraints, NTTs,
   and committed elements than anything available today.
 
-End-to-end wall clock scales by the circuit's matmul share (80–95%
+End-to-end wall clock scales by the circuit's matmul share (80 to 95%
 in typical zkML inference), Amdahl-style.
 
 **Larger bases (records as of July 2026).** The 𝔽_p-valid records
@@ -794,12 +794,12 @@ direction and review.
 ## References
 
 1. V. Strassen. *Gaussian elimination is not optimal.* Numer. Math.
-   13:354–356, 1969.
+   13:354 to 356, 1969.
 2. E. Ben-Sasson, I. Bentov, Y. Horesh, M. Riabzev. *Scalable,
    transparent, and post-quantum secure computational integrity.*
    ePrint 2018/046.
 3. A. Fawzi et al. *Discovering faster matrix multiplication
-   algorithms with reinforcement learning.* Nature 610:47–53, 2022.
+   algorithms with reinforcement learning.* Nature 610:47 to 53, 2022.
    (AlphaTensor; rank 47 over 𝔽₂.)
 4. J. Thaler. *Time-optimal interactive proofs for circuit
    evaluation.* CRYPTO 2013. (Sumcheck matmul in ~n² prover time.)

@@ -89,7 +89,7 @@ transforms --- Goldilocks $p = 2^{64} - 2^{32} + 1$ (Plonky2
 \cite{risc0}), and M31 $= 2^{31}-1$ (Circle STARKs \cite{circle}). (Appendix~B explains the FFT/NTT layer these fields are engineered for.)
 
 The asymmetry that defines the field: verification is cheap,
-\textbf{proving is $10^3$--$10^6\times$ the native computation}, all
+\textbf{proving is $10^3$ to $10^6\times$ the native computation}, all
 of it exact arithmetic in the proof field. zkML applications ---
 proving a proprietary model was faithfully executed (model privacy),
 proving an inference inside a blockchain rollup, auditable AI where
@@ -265,7 +265,7 @@ literature works over $\mathbb{F}_2$ and small extensions
 \cite{km}, the explicit records over $\mathbb{Z}/\mathbb{Q}$. A
 verified $3\times3$ rank-22 --- or $4\times4$ rank-47 --- over
 Goldilocks would be a new kind of record with an immediate consumer:
-2--4\% fewer constraints per recursion level in deployed proof
+2 to 4\% fewer constraints per recursion level in deployed proof
 systems, compounding as in \S\ref{sec:rank}.
 
 \texttt{flip23p} is our rational flip engine (splits,
@@ -689,7 +689,7 @@ domain, multiply \textbf{pointwise}, inverse-NTT back; (3)
 \emph{the quotient} $H = P/Z$: pointwise division on a coset ---
 see B.3, where this becomes almost comically cheap; (4) (STARKs)
 the \emph{low-degree extension}: re-evaluate the trace on a
-2--8$\times$ larger domain --- Reed--Solomon encoding, again NTTs
+2 to 8$\times$ larger domain --- Reed--Solomon encoding, again NTTs
 --- before Merkle-hashing and FRI.
 
 \paragraph{B.2 The transform itself, at size 4 in
@@ -794,9 +794,9 @@ BabyBear/M31 fit 32-bit lanes and vectorize).
 
 \paragraph{B.5 Production scale.} Order-of-magnitude anchors (2026
 practice). A single proof segment typically carries
-$2^{20}$--$2^{24}$ constraints or trace rows
-(${\approx}10^{6}$--$1.6\times10^{7}$); STARK blowups of
-2--8$\times$ put the largest NTTs at $2^{23}$--$2^{27}$ points ---
+$2^{20}$ to $2^{24}$ constraints or trace rows
+(${\approx}10^{6}$ to $1.6\times10^{7}$); STARK blowups of
+2 to 8$\times$ put the largest NTTs at $2^{23}$ to $2^{27}$ points ---
 BabyBear's $2^{27}$ ceiling is not an accident but the binding
 constraint (a $2^{24}$-row trace at blowup 8 uses the whole
 two-adic budget). A Groth16 prover runs ${\approx}7$ size-$m$ FFTs
@@ -808,7 +808,7 @@ witness$\times$witness product costs $1.23\times10^{10}$
 constraints under rank-48 recursion --- ${\approx}10^{4}$ segments
 of $2^{20}$ --- versus $6.87\times10^{10}$ naive, a 5.6$\times$ cut
 in segments, NTTs, and commitments alike; per-layer transformer
-matrices (2048--8192 on a side) sit squarely in the \S3 table's
+matrices (2048 to 8192 on a side) sit squarely in the \S3 table's
 range. The division of labor is exact: the NTT/commitment layer
 fixes the \textbf{cost per constraint}, and the bilinear rank of
 \S3 fixes \textbf{how many constraints there are}. Lower rank does
@@ -835,7 +835,7 @@ $n = 4096$, folding in \S3's exponents:
   available today.
 \end{itemize}
 End-to-end wall clock scales by the circuit's matmul share
-(80--95\% in typical zkML inference), Amdahl-style.
+(80 to 95\% in typical zkML inference), Amdahl-style.
 
 \paragraph{Larger bases (records as of July 2026).} The
 $\mathbb{F}_p$-valid records above $4{\times}4$ --- mod-2 results
@@ -879,13 +879,13 @@ direction and review.
 
 \begin{thebibliography}{19}
 \bibitem{strassen} V. Strassen. \emph{Gaussian elimination is not
-  optimal.} Numer. Math. 13:354--356, 1969.
+  optimal.} Numer. Math. 13:354 to 356, 1969.
 \bibitem{stark} E. Ben-Sasson, I. Bentov, Y. Horesh, M. Riabzev.
   \emph{Scalable, transparent, and post-quantum secure computational
   integrity.} ePrint 2018/046.
 \bibitem{alphatensor} A. Fawzi et al. \emph{Discovering faster matrix
   multiplication algorithms with reinforcement learning.} Nature
-  610:47--53, 2022.
+  610:47 to 53, 2022.
 \bibitem{thaler} J. Thaler. \emph{Time-optimal interactive proofs for
   circuit evaluation.} CRYPTO 2013.
 \bibitem{plonk} A. Gabizon, Z. Williamson, O. Ciobotaru.

@@ -50,6 +50,19 @@ mod m31 {
     include!("../flip23p_engine.rs");
 }
 
+mod f2 {
+    pub const DIM: usize = 3;
+    pub const RANK0: usize = 23;
+    pub const DEF_DIR: &str = "matmul/mm23";
+    pub const DEF_OUT: &str = "matmul/found23p";
+    pub const P: u64 = 2; // mod-2 flip graph (22-hunt over F_2)
+    #[inline(always)]
+    pub fn fmul(a: u64, b: u64) -> u64 {
+        a & b
+    }
+    include!("../flip23p_engine.rs");
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let prime = args
@@ -61,8 +74,9 @@ fn main() {
         "goldilocks" => goldilocks::run(args),
         "babybear" => babybear::run(args),
         "m31" => m31::run(args),
+        "f2" => f2::run(args),
         other => {
-            eprintln!("unknown --prime {other}; use goldilocks | babybear | m31");
+            eprintln!("unknown --prime {other}; use goldilocks | babybear | m31 | f2");
             std::process::exit(2);
         }
     }

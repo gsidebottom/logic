@@ -1,0 +1,338 @@
+% Moves on the Space of Bilinear Schemes
+% Build: tectonic doc/matmul_moves_paper.tex
+\documentclass[10pt]{article}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+\setlength{\emergencystretch}{3em}
+
+\title{\bfseries Moves on the Space of Bilinear Schemes:\\
+a Field Guide to Rank-Hunting Search}
+\author{Greg Sidebottom}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-2.5em}
+\begin{center}\itshape
+Reproducible methods note --- logic repo, matmul track, 2026-07-14.
+Companion to the flower, adds, 53-schemes, and zkML papers; all
+engines cited live in this repository.
+\end{center}
+
+\section{The space}
+
+Fix a format $\langle m,m,m\rangle$ and a coefficient field $K$. A
+\textbf{scheme of rank $r$} is a decomposition of the
+matrix-multiplication tensor into $r$ rank-one terms,
+\[
+T_m = \sum_{t=1}^{r} a_t \otimes b_t \otimes c_t,
+\qquad a_t, b_t, c_t \in K^{m\times m},
+\]
+verified by the $m^6$ Brent equations. The \textbf{space} is the
+union of rank strata: at $3{\times}3$ the stratum $r=27$ contains
+the naive scheme, $r=23$ the records (17{,}376$+$ known classes
+over $\mathbb{Z}$), $r=22$ nothing known; at $4{\times}4$ the
+strata run 64 (naive), 49 (Strassen$^2$), 48 (dyadic records over
+odd characteristic), 47 (characteristic 2 only). Two schemes are
+\textbf{equivalent} (de~Groote) if a sandwich
+$(P a Q^{-1},\, Q b R^{-1},\, R \tilde c P^{-1})$, a cyclic slot
+rotation, or a per-summand rescaling maps one to the other;
+searches operate on gauge-canonical representatives (monic slots
+over $\mathbb{F}_p$; primitive sign-normalized over $\mathbb{Q}$).
+
+What is known about the \emph{shape} of the space, from the
+literature and from this repository's certificates:
+\begin{itemize}
+\item \textbf{It is disconnected at bounded rank.}
+  Kauers--Moosbauer's walks from the $3{\times}3$ naive scheme land
+  in 584 distinct connected components of the rank-$\le$23 flip
+  graph (64{,}061 vertices) \cite{km}. Our $4{\times}4$ fringe
+  certificate is a completeness proof of confinement: the rank-48
+  seed's component under solved dyadic moves at rank $\le 50$ is
+  \emph{finite} --- 920 states in 16 clusters hanging off the seed
+  as a cut vertex, exhaustively enumerated and closed.
+\item \textbf{Altitude connects, but slowly.} Splits (rank$+1$
+  excursions) merge components: our chase explored eight levels
+  above the $4{\times}4$ seed (1.45B states) without meeting a
+  second rank-48 class.
+\item \textbf{The field changes the geometry.} Over $\mathbb{F}_2$
+  the factor value space has $2^{m^2}$ points, so equal factors and
+  coplanar triples arise by birthday collision as a walk churns;
+  over a 64-bit proof field the value space is effectively
+  infinite, collisions never occur, and only \emph{algebraically
+  solved} moves create the coincidences that descents spend
+  (measured: 448M flips with random and small-dyadic $\lambda$ from
+  naive over Goldilocks produced zero reductions; the same protocol
+  over $\mathbb{F}_2$ produced ${\sim}60$ within minutes).
+\end{itemize}
+
+\section{The moves}
+
+Notation for the toy examples: $e_{ij}$ is the matrix unit; the
+naive $2{\times}2$ scheme has eight summands
+$e_{ik}\otimes e_{kj}\otimes e_{ij}$; Strassen's seven summands are
+labeled $M_1..M_7$
+($M_1 = (e_{11}{+}e_{22})\otimes(e_{11}{+}e_{22})\otimes(e_{11}{+}e_{22})$,
+$M_2 = (e_{21}{+}e_{22})\otimes e_{11}\otimes(e_{21}{-}e_{22})$,
+$M_6 = (e_{21}{-}e_{11})\otimes(e_{11}{+}e_{12})\otimes e_{22}$,
+\dots).
+
+\paragraph{M-1. Flip} (rank-preserving; the K--M edge). Two
+summands whose slot-$s$ factors are \emph{equal} (post-gauge)
+exchange material in the other slots: with shared $a$ and transfer
+$\lambda$,
+\[
+u\otimes b_1\otimes c_1 + u\otimes b_2\otimes c_2
+\;\to\;
+u\otimes(b_1{+}\lambda b_2)\otimes c_1 +
+u\otimes b_2\otimes(c_2{-}\lambda c_1).
+\]
+Toy (naive $2{\times}2$, summands $(1,1,1)$ and $(1,1,2)$, both
+with $a = e_{11}$, $\lambda = 1$): $b_1 \leftarrow e_{11}+e_{12}$
+and $c_2 \leftarrow e_{12}-e_{11}$; the two cross terms cancel and
+the sum is unchanged. Over $\mathbb{F}_2$, $\lambda = 1$ is the
+only choice; over $\mathbb{Q}$ we restrict $\lambda$ to dyadics;
+over $\mathbb{F}_p$ any $\lambda \ne 0$ is legal.
+
+\paragraph{M-2. Reduction} (rank $-1$, and the characteristic-2
+$-2$). Two summands sharing \emph{two} slots merge:
+$u\otimes v\otimes c_1 + u\otimes v\otimes c_2 =
+u\otimes v\otimes(c_1{+}c_2)$; if $c_1 + c_2 = 0$ both vanish ---
+over $\mathbb{F}_2$ this fires whenever two summands become fully
+identical, a rank $-2$ event with no analogue over large fields.
+The $\mathbb{Q}/\mathbb{F}_p$ variant also merges shared-slot pairs
+whose third slots are \emph{proportional}. Reductions are the only
+rank-lowering moves.
+
+\paragraph{M-3. Split} (rank $+1$). Rewrite
+$f_i = \mu f_k + (f_i - \mu f_k)$ in one slot, producing a summand
+that \emph{shares} that slot with summand $k$. Toy ($\mu{=}1$, slot
+$a$, $M_1$ against $M_2$): $a(M_1) = e_{11}+e_{22} \to$ parts
+$(e_{21}{+}e_{22})$ and $(e_{11}{-}e_{21})$, each tensored with
+$b(M_1)\otimes c(M_1)$. Splits buy altitude and manufacture shared
+pairs (the flip fuel). A fresh split's two parts share \emph{both}
+other slots, so a reduce-on-sight walk must be gated (the
+split/merge livelock found building pursue9: reductions legal only
+after an intervening flip).
+
+\paragraph{M-4. Solved flip} (coincidence-targeted; ours). For a
+shared pair $(i,j)$ and a third summand $m$, solve
+$f_i(t) + \lambda f_j(t) = \mu f_m(t)$ by $2{\times}2$ Cramer in
+the transfer slot $t$: the flip with \emph{that} $\lambda$ makes
+summand $i$'s $t$-factor proportional to $m$'s --- an alignment
+created by algebra, not luck. Toy: $T_1 = u\otimes b_1\otimes c_1$,
+$T_2 = u\otimes b_2\otimes c_2$,
+$T_3 = u'\otimes(b_1{+}b_2)\otimes c_3$: the pair $(T_1,T_2)$
+shares slot $a$; solving in slot $b$ gives $\lambda = 1$, and after
+the flip $T_1$ and $T_3$ share slot $b$ exactly. Over
+$\mathbb{F}_2$ solved and random flips coincide in \emph{value}
+($\lambda = 1$) and differ only in \emph{selection}; over
+$\mathbb{F}_p$ the solved $\lambda$ is one specific field element
+sampling would never hit --- the only reliable coincidence factory
+(measured, \S1).
+
+\paragraph{M-5. Closing move} (second-alignment factory; ours).
+Given an \emph{already aligned} pair, search for a single flip
+against any third summand that makes a second slot proportional,
+after which M-2 fires. Over $\mathbb{F}_p$ it needs coplanar
+triples in the transfer slot --- generic states lack them (the
+structural reason naive-descent fails over big fields); over
+structured scheme neighborhoods it is routine (every storm
+quench).
+
+\paragraph{M-6. Sandwich (symmetry) move} (planned). Apply
+$(P,Q,R) \in \mathrm{GL}(m,K)^3$: a gauge teleport. Flips are
+equivariant, so flip-graph components come in isomorphic families
+(K--M observe isomorphic components); the sandwich move merges each
+family into one search component. Cheap and strictly
+connectivity-increasing.
+
+\paragraph{M-7. Closure jump} (planned for $\mathbb{F}_p$; exists
+over $\mathbb{F}_2$ in \texttt{anf}). Fix two of the three factor
+tensors; the Brent system becomes $m^2$ independent linear systems
+in the third --- solve exactly. When the current products are
+linearly independent the solution is unique (no move); when
+dependent, the solution space is positive-dimensional and the jump
+teleports across it. Toy: at rank 8 one split above Strassen, the
+eight products span a 7-dimensional space, so fixing
+$\alpha,\beta$ leaves a 1-parameter $\gamma$-family --- the closure
+walks it in one step. The strongest field-generic non-local move
+we know (pure linear algebra).
+
+\paragraph{M-8. Repair hop} (built: pursue8 \texttt{--repair}).
+Delete $k$ summands, beam-rebuild the residual in $\le k-1$ (record
+event) or $k$ (lateral hop). Exhaustive over $\binom{r}{k}$ at
+small $k$ --- how the local rigidity certificates were bought
+($3{\times}3$: all 30 census seeds $k \le 9$ rigid over two fields;
+$4{\times}4$: DPS-48 $k \le 7$ rigid over Goldilocks, 73.6M
+subsets). As a walk move ($k=2$ lateral) it hops between flip
+components at bounded cost.
+
+\paragraph{M-9. Constructor move} (AlphaTensor's game; built:
+pursue8). Hold a residual tensor, subtract arbitrary rank-one
+terms until zero. Complete in principle --- every scheme reachable
+--- but unguided beam search stalls at the Strassen hump
+($3{\times}3$: terminal count 27; measured), precisely the gap a
+learned policy filled for DeepMind \cite{alphatensor}.
+
+\paragraph{M-10. Completion jump} (HKS method 2; built:
+\texttt{walk.py} over $\mathbb{F}_2$). Freeze a random subset of a
+known scheme's bits, re-solve the rest with SLS. Non-local and
+powerful (our 53-scheme discovery; the ${\approx}715$-scheme
+method-2 basin); field-restricted to where a solver exists ---
+over $\mathbb{F}_p$ the analogue is M-7's linear closure.
+
+\section{Search techniques tried (with verdicts)}
+
+\begin{center}\small
+\begin{tabular}{lll}
+\toprule
+technique & engine & verdict (measured)\\
+\midrule
+random-walk storms & flip23/48/23p & 81 new $\mathbb{Z}$-classes; 63 field-novel patterns\\
+exhaustive closure (BFS) & \texttt{--native/--lams} & exact component maps\\
+depth-2 exhaustive fringe & pursue5 & 840 parents closed, 0 reductions\\
+beam on nearmiss & pursue6 chase & 8 levels, 1.45B states, 57$\times$ null, 0 conversions\\
+mix-and-quench & pursue7 & ${\sim}31$M walks over 3 fields; no records\\
+constructor beam & pursue8 & Strassen-hump stall at 27\\
+exhaustive $k$-repair & pursue8 \texttt{--repair} & rigidity radii 9 / 7 / 6\\
+persistent monotone walk & pursue9 & $\mathbb{F}_2$: $64\to53$ then starvation; $\mathbb{F}_p$ sterile\\
+frontier pool ladder & pursue10 & $\mathbb{F}_2$: $64\to49$ in 3 min; running\\
+SAT completion & \texttt{walk.py}+\texttt{anf} & 53 schemes in 6 min; basin ${\approx}715$\\
+native-ANF SLS & \texttt{anf} & 8/10 HKS challenge-1\\
+census-guided seeding & SHORTLIST & mobility metrics; band calibration\\
+null-controlled method & \texttt{nmrand} & gradients real (57$\times$), not rank inflation\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Planned next: M-6 sandwich moves, $\mathbb{F}_2$ solved-flip
+targeting, M-7 closure jumps over $\mathbb{F}_p$, M-8 as walk move,
+Moosbauer--Poole symmetric-subspace walks \cite{mp}, commutative
+flipC, learned guidance (the neural track's gmi/gmi\_mcgs engines).
+
+\section{Classical search algorithms on this space}
+
+The rank hunt is single-agent search: \textbf{state} =
+gauge-canonical scheme; \textbf{actions} = the moves of \S2;
+\textbf{goal} = any state of rank below the record (verification
+$O(m^6)$). The graph has heavy transpositions (hash canonical
+forms). Two cost models matter: \emph{hop count} (every move 1) and
+\emph{altitude} (splits 1, flips 0, reductions $-$).
+
+\paragraph{BFS.} Complete, optimal in hops, memory $O$(frontier).
+This \emph{is} our \texttt{--native} closure and the fringe/flower
+enumerations --- feasible when the reachable set is $10^6$-ish.
+Use for certificates, not hunting.
+
+\paragraph{DFS / iterative deepening.} $O$(depth) memory; our
+random walks are memoryless randomized DFS; principled
+depth-capped DFS appears in cfloor's IDDFS (the adds bounds),
+where it is exact. For hunting, branching ($10^2$--$10^4$) dwarfs
+useful depth ($10^5+$): unattractive.
+
+\paragraph{Uniform-cost / Dijkstra / SPF.} Unit costs: it is BFS.
+Under the altitude model (splits 1, flips $\varepsilon$) UCS
+computes the \emph{minimum-altitude descent} --- ``how high must
+any path climb to leave this basin'' --- the quantity the flower's
+cut-vertex anatomy probes empirically. Frontier memory confines it
+to component scale, where it would upgrade ``no crossing found at
+$+8$'' to ``no crossing exists below $+9$.''
+
+\paragraph{A*.} UCS plus admissible $h$. The obstruction is honest:
+an admissible $h$ must lower-bound \emph{path} distance to a
+smaller-rank scheme, and our rigorous bounds (flattenings,
+counting floors) bound the \emph{tensor}, not the path. Practice
+therefore uses the inadmissible cousins: the chase is
+\textbf{greedy best-first} on nearmiss ($h$ only), null-certified
+to carry signal (57$\times$) yet Goodhart-prone (zero conversions).
+A concrete admissible-within-radius candidate now exists: $h$
+built from the repair-ladder certificates (no scheme within
+replacement-distance $k$ has smaller rank $\Rightarrow$ any descent
+needs $> k$ replacements).
+
+\paragraph{Minimax and $\alpha/\beta$.} No adversary: minimax
+proper does not apply. But $\alpha/\beta$'s soul --- cut a branch
+when a bound proves it cannot beat the incumbent --- is
+\textbf{branch-and-bound}, and we already run it: the adds floors
+prune classes (``$\ge 56$, stop''), the repair ladders prune
+subset-trees by projected completion size. The transferable idea:
+give the rank hunt the same treatment via certified component
+invariants.
+
+\paragraph{MCTS / MCGS.} Best fit, with precedent: AlphaTensor
+\emph{is} MCTS with a learned prior on M-9's space. Formulation:
+node = scheme (graph search with transposition table --- MCGS);
+rollout = storm/pursue10 walk; reward = $-$(best rank reached);
+selection = UCT. Unguided MCTS must be compared at equal budget
+against best-of-$K$ walks (our standing methodology note). The
+repository already carries MCGS scaffolding from the neural track
+(\texttt{gmi}, \texttt{gmi\_mcgs}); the marginal build is the
+environment adapter, and the natural first target is the
+$\mathbb{F}_2$ 47 ladder, where ground truth exists and rollouts
+are cheap.
+
+\begin{center}\small
+\begin{tabular}{llll}
+\toprule
+algorithm & fits? & as what & status\\
+\midrule
+BFS & yes (bounded sets) & closures, certificates & in use\\
+DFS/IDDFS & partially & cfloor sweeps; walks & in use\\
+UCS/Dijkstra/SPF & yes (altitude cost) & min-altitude escape & possible\\
+A* & blocked on admissible $h$ & greedy best-first today & partial\\
+weighted A* & yes & nearmiss $+$ repair-radius $h$ & planned\\
+minimax & no adversary & --- & n/a\\
+$\alpha/\beta$ spirit (B\&B) & yes & floors/repair pruning & in use\\
+MCTS/MCGS & yes & guided constructor/ladder & scaffolding exists\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{One formulation to hold them all}
+
+Define the \textbf{layered scheme multigraph} $G(K,m)$: vertices
+are gauge-canonical schemes stratified by rank; intra-layer edges
+are flips (M-1, M-4, M-6, M-7); downward edges are reductions
+(M-2); upward edges are splits (M-3); non-local chords are repair
+and completion hops (M-8, M-10). Every technique of \S3 is a
+traversal policy on $G$; every algorithm of \S4 is a standard
+policy under a cost model from \{hops, altitude, compute\}; every
+certificate we publish is an exactly-explored finite subgraph. The
+record hunt is: \emph{find any vertex in a layer below the known
+minimum} --- and \S1's disconnection results say the decisive
+question is not which traversal is cleverest but which \emph{edge
+set} makes the target layer reachable. That is why the move
+inventory of \S2, not the algorithm zoo of \S4, is this note's
+center of gravity.
+
+\section*{Acknowledgments}
+
+This note was prepared in an extended interactive collaboration
+with Claude (Anthropic; Fable 5), which implemented the engines and
+drafted the text under the author's direction and review.
+
+\begin{thebibliography}{9}
+\bibitem{km} M. Kauers, J. Moosbauer. \emph{Flip graphs for matrix
+  multiplication.} ISSAC 2023; arXiv:2212.01175.
+\bibitem{mp} J. Moosbauer, M. Poole. \emph{Flip graphs with
+  symmetry and new matrix multiplication schemes.} ISSAC 2025;
+  arXiv:2502.04514.
+\bibitem{arai} Y. Arai et al. \emph{Adaptive flip graph algorithm
+  for matrix multiplication.} 2024.
+\bibitem{alphatensor} A. Fawzi et al. \emph{Discovering faster
+  matrix multiplication algorithms with reinforcement learning.}
+  Nature, 2022.
+\bibitem{hks} M. J. H. Heule, M. Kauers, M. Seidl. \emph{Local
+  search for fast matrix multiplication.} SAT 2019;
+  arXiv:1903.11391.
+\bibitem{degroote} H. F. de Groote. \emph{On varieties of optimal
+  algorithms for the computation of bilinear mappings.} 1978.
+\bibitem{companions} G. Sidebottom. \emph{The Flower}, \emph{53 New
+  Integer Schemes}, \emph{The Additions Ledger}, \emph{Bilinear
+  Rank and zkML.} Companion reports, this repository, 2026.
+\end{thebibliography}
+\end{document}

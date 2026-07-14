@@ -44,6 +44,14 @@ the two source papers for this track):
   - Campaign: ~35 CPU-years → **>13,000 mutually inequivalent new
     23-schemes** (SAT'19; the public DB snapshot later reached 17,376,
     up from 4 known). None compresses to 22.
+- **Moves paper (2026-07-14, doc/matmul_moves_paper)**: the methods
+  paper — space anatomy (disconnection certificates), move field
+  guide M-1..M-10 with toy examples, campaign techniques + verdicts
+  table, classical-algorithm mapping (BFS=closures, IDDFS=cfloor,
+  greedy-best-first=chase, B&B=floors pruning; UCS=min-altitude
+  escape possible; A* blocked on admissible h but repair-radius h
+  is admissible-within-k; minimax n/a; MCTS/MCGS best fit with
+  gmi_mcgs scaffolding). Unifying layered-multigraph formulation.
 - **pursue9/10 descent program (2026-07-14)**: K-M protocol
   reproduced and iterated. pursue9 monotone-from-naive: F2 arm
   64->53 in 10 min then stalled (single trajectory; 1 reduction in

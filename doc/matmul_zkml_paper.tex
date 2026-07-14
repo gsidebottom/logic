@@ -710,7 +710,7 @@ $\omega = 4$ has order 4:
 \[
 \omega = 4:\quad \omega^1 = 4,\ \omega^2 = 16 \equiv -1,\
 \omega^3 = 13,\ \omega^4 = 1;\qquad
-H = \{1, 4, 16, 13\}.
+D = \{1, 4, 16, 13\}.
 \]
 Run it on Appendix A's own $P(x) = 13x^2 + 12x + 9$. Split by
 even/odd coefficients --- $P(x) = E(x^2) + x\,O(x^2)$ with
@@ -748,15 +748,18 @@ a global factor $n^{-1} = 4^{-1} \equiv 13$.
 \paragraph{B.3 Why roots of unity: the vanishing polynomial
 collapses.} Appendix A built $Z(x) = (x-1)(x-2)$ by multiplying
 linear factors --- fine at 2 points, hopeless at $2^{20}$. On the
-domain $H$ above,
+domain $D$ above (we write $D$ for the domain --- $H$ is
+already taken by the quotient polynomial; much of the SNARK
+literature does the opposite, $H$ for the domain and $h(x)$ for
+the quotient),
 \[
-Z_H(x) = x^4 - 1 \qquad (\text{generally } x^n - 1),
+Z_D(x) = x^4 - 1 \qquad (\text{generally } x^n - 1),
 \]
 one subtraction to evaluate anywhere. Better still, the quotient
-$H = P/Z$ is computed on a \emph{shifted coset} $g\cdot H$ where
+$H = P/Z$ is computed on a \emph{shifted coset} $g\cdot D$ where
 $Z$ never vanishes --- and there it is not merely cheap but
-\textbf{constant}: on $3H = \{3, 12, 14, 5\}$ every point satisfies
-$x^4 = 3^4 \equiv 13$, so $Z_H \equiv 12$ across the entire coset,
+\textbf{constant}: on $3D = \{3, 12, 14, 5\}$ every point satisfies
+$x^4 = 3^4 \equiv 13$, so $Z_D \equiv 12$ across the entire coset,
 and ``divide by $Z$'' is one multiplication by $12^{-1} \equiv 10$.
 Appendix A's polynomial long division becomes: NTT $P$ onto the
 coset, scale by a constant, inverse NTT.

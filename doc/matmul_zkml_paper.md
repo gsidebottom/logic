@@ -643,7 +643,7 @@ exist; ω = 4 has order 4:
 
 ```
 ω = 4:   ω¹ = 4   ω² = 16 ≡ −1   ω³ = 13   ω⁴ = 1
-domain H = {1, 4, 16, 13}          (the 4th roots of unity mod 17)
+domain D = {1, 4, 16, 13}          (the 4th roots of unity mod 17)
 ```
 
 Run it on Appendix A's own P(x) = 13x² + 12x + 9. Split by
@@ -675,18 +675,21 @@ butterfly run with ω⁻¹ = 13 and a global factor n⁻¹ = 4⁻¹ ≡ 13.
 
 **B.3 Why roots of unity: the vanishing polynomial collapses.**
 Appendix A built Z(x) = (x−1)(x−2) by multiplying linear factors —
-fine at 2 points, hopeless at 2²⁰. On the domain H above, the
-vanishing polynomial is simply
+fine at 2 points, hopeless at 2²⁰. (We write D for the domain —
+the letter H is already taken by the quotient polynomial; be
+warned that much of the SNARK literature does the opposite, using
+H for the domain and lowercase h(x) for the quotient.) On the
+domain D above, the vanishing polynomial is simply
 
 ```
-Z_H(x) = x⁴ − 1        (generally: xⁿ − 1 on an n-point domain)
+Z_D(x) = x⁴ − 1        (generally: xⁿ − 1 on an n-point domain)
 ```
 
 one subtraction to evaluate anywhere. Better still, the quotient
-H = P/Z is computed on a *shifted coset* g·H where Z never
+H = P/Z is computed on a *shifted coset* g·D where Z never
 vanishes — and there it is not merely cheap but **constant**: on
-3·H = {3, 12, 14, 5} every point satisfies x⁴ = 3⁴ ≡ 13, so
-Z_H ≡ 13 − 1 = 12 across the entire coset, and "divide by Z" is
+3·D = {3, 12, 14, 5} every point satisfies x⁴ = 3⁴ ≡ 13, so
+Z_D ≡ 13 − 1 = 12 across the entire coset, and "divide by Z" is
 one multiplication by 12⁻¹ ≡ 10. Appendix A's polynomial long
 division becomes: NTT P onto the coset, scale by a constant,
 inverse NTT.

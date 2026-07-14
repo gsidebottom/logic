@@ -1412,10 +1412,26 @@ pub fn run(args: Vec<String>) {
                     let (i, j, slot) =
                         eligible[(next() % eligible.len() as u64) as usize];
                     let (i, j) = if next() & 1 == 0 { (i, j) } else { (j, i) };
-                    let lam = loop {
-                        let x = next() % P;
-                        if x != 0 {
-                            break x;
+                    // small-lambda skeleton: over big F_p a uniformly
+                    // random lam makes exact factor coincidences (what
+                    // reductions need) recur with prob ~1/p — never.
+                    // Walk mostly on images of +-1, +-2, +-1/2, with
+                    // occasional generic excursions. At p=2 unchanged.
+                    let lam = if P > 2 && next() % 8 != 0 {
+                        match next() % 6 {
+                            0 => 1,
+                            1 => P - 1,
+                            2 => 2 % P,
+                            3 => P - 2 % P,
+                            4 => (P + 1) / 2,     // 1/2 mod odd p
+                            _ => (P - 1) / 2,     // -1/2 mod odd p
+                        }
+                    } else {
+                        loop {
+                            let x = next() % P;
+                            if x != 0 {
+                                break x;
+                            }
                         }
                     };
                     if try_flip(&mut s, i, j, slot, lam) {

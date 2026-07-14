@@ -44,6 +44,20 @@ the two source papers for this track):
   - Campaign: ~35 CPU-years → **>13,000 mutually inequivalent new
     23-schemes** (SAT'19; the public DB snapshot later reached 17,376,
     up from 4 known). None compresses to 22.
+- **pursue9/10 descent program (2026-07-14)**: K-M protocol
+  reproduced and iterated. pursue9 monotone-from-naive: F2 arm
+  64->53 in 10 min then stalled (single trajectory; 1 reduction in
+  3.8h/3.3B flips); Goldilocks arm STERILE (0 reductions in 448M
+  flips, skeleton lambda included). pursue10 = K-M Algorithm 2
+  (frontier pool + length-limited restarts) + solved flips +
+  periodic closing quench: F2 descends 64->55 in 69s at 4 threads,
+  4h x 12-thread run chasing 47 now. STRUCTURAL INSIGHT: F2
+  naive-descent works by birthday collisions in a 2^16 factor
+  space; over 2^64 fields the factor space is effectively infinite
+  — collisions never, closings need coplanarity generic states
+  lack -> naive-descent is small-characteristic magic; F_p flip
+  search needs scheme seeds (our storms' regime). Explains why
+  HKS/K-M pipelines do not transfer to proof fields directly.
 - **Widenings batch COMPLETE (2026-07-14 00:00)**: all four stages
   negative, all exhaustive where finite. A: BabyBear 4x4 repair
   k<=6 rigid (matches Goldilocks). B: ALL 30 census seeds k<=9

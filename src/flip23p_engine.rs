@@ -1339,6 +1339,180 @@ pub fn run(args: Vec<String>) {
         return;
     }
 
+    if args.iter().any(|a| a == "--pursue10") {
+        // K-M Algorithm 2 (pool ladder) + solved flips for odd p.
+        // Shared frontier pool of schemes at the best rank found;
+        // threads restart length-limited walks from the pool. Flips:
+        // over F_2 random eligible; over odd p, half the flips use
+        // Cramer-SOLVED lambdas (coincidence_lams) that manufacture
+        // alignments — random lambda never recreates coincidences
+        // over a 2^64 field (measured: 0 reductions in 448M flips).
+        let plen = get("--plen", 2_000_000) as u64;
+        let pool_cap = get("--poolcap", 64) as usize;
+        let qevery = get("--qevery", 4000) as u64;
+        let secsp = get("--seconds", 600) as u64;
+        let pool: Mutex<(usize, Vec<Vec<Summand>>)> =
+            Mutex::new((seed.len(), vec![seed.clone()]));
+        let n_red = AtomicU64::new(0);
+        let n_solved = AtomicU64::new(0);
+        let n_flip = AtomicU64::new(0);
+        let n_restart = AtomicU64::new(0);
+        let n_close = AtomicU64::new(0);
+        let global_best = AtomicU32::new(seed.len() as u32);
+        let t0 = Instant::now();
+        (0..threads as u64).into_par_iter().for_each(|tid| {
+            let mut rng = 0xb492_b66f_be98_f273u64
+                ^ (tid.wrapping_mul(0x9e37_79b9_7f4a_7c15) + 1);
+            let mut next = move || {
+                rng ^= rng << 13;
+                rng ^= rng >> 7;
+                rng ^= rng << 17;
+                rng
+            };
+            let mut last_report = 0u64;
+            'outer: while t0.elapsed().as_secs() < secsp {
+                // restart from a random frontier-pool state
+                let mut s = {
+                    let p = pool.lock().unwrap();
+                    p.1[(next() % p.1.len() as u64) as usize].clone()
+                };
+                n_restart.fetch_add(1, Ordering::Relaxed);
+                let mut can_reduce = true;
+                let mut steps = 0u64;
+                while steps < plen {
+                    if t0.elapsed().as_secs() >= secsp {
+                        break 'outer;
+                    }
+                    steps += 1;
+                    let bank = |s: &Vec<Summand>| {
+                        n_red.fetch_add(1, Ordering::Relaxed);
+                        let r = s.len();
+                        let mut p = pool.lock().unwrap();
+                        if r < p.0 {
+                            if verify(s) {
+                                p.0 = r;
+                                p.1.clear();
+                                p.1.push(s.clone());
+                                drop(p);
+                                global_best.store(r as u32, Ordering::Relaxed);
+                                let path = format!(
+                                    "{outdir}/RECORDP_p10_rank{r}_{tid}.txt");
+                                dump(s, &path);
+                                println!(
+                                    "[{:.0}s] *** pursue10 rank {} VERIFIED *** -> {}",
+                                    t0.elapsed().as_secs_f32(), r, path);
+                            }
+                        } else if r == p.0 && p.1.len() < pool_cap {
+                            p.1.push(s.clone());
+                        }
+                    };
+                    if can_reduce && try_reduce(&mut s) {
+                        bank(&s);
+                        continue;
+                    }
+                    if steps % qevery == 0 {
+                        loop {
+                            if try_reduce(&mut s) {
+                                bank(&s);
+                                continue;
+                            }
+                            if try_closing(&mut s) {
+                                n_close.fetch_add(1, Ordering::Relaxed);
+                                continue;
+                            }
+                            break;
+                        }
+                    }
+                    // enumerate shared pairs
+                    use std::collections::HashMap;
+                    let mut eligible: Vec<(usize, usize, usize)> = Vec::new();
+                    for slot in 0..3 {
+                        let mut m: HashMap<&FVec, usize> = HashMap::new();
+                        for (idx, t) in s.iter().enumerate() {
+                            if let Some(&prev) = m.get(fac(t, slot)) {
+                                eligible.push((prev, idx, slot));
+                            } else {
+                                m.insert(fac(t, slot), idx);
+                            }
+                        }
+                    }
+                    if eligible.is_empty() {
+                        break; // dead state: restart from pool
+                    }
+                    let (i, j, slot) =
+                        eligible[(next() % eligible.len() as u64) as usize];
+                    let (i, j) = if next() & 1 == 0 { (i, j) } else { (j, i) };
+                    // odd p: half the moves take a SOLVED lambda
+                    if P > 2 && next() & 1 == 0 {
+                        let cands = coincidence_lams(&s, i, j, slot);
+                        if !cands.is_empty() {
+                            let (t1, lam, _m) =
+                                cands[(next() % cands.len() as u64) as usize];
+                            let others: [usize; 2] = match slot {
+                                0 => [1, 2],
+                                1 => [0, 2],
+                                _ => [0, 1],
+                            };
+                            let ok = if t1 == others[0] {
+                                try_flip(&mut s, i, j, slot, lam)
+                            } else {
+                                try_flip(&mut s, j, i, slot, fneg(lam))
+                            };
+                            if ok {
+                                n_solved.fetch_add(1, Ordering::Relaxed);
+                                can_reduce = true;
+                                continue;
+                            }
+                        }
+                    }
+                    let lam = if P > 2 && next() % 8 != 0 {
+                        match next() % 6 {
+                            0 => 1,
+                            1 => P - 1,
+                            2 => 2 % P,
+                            3 => P - 2 % P,
+                            4 => (P + 1) / 2,
+                            _ => (P - 1) / 2,
+                        }
+                    } else {
+                        loop {
+                            let x = next() % P;
+                            if x != 0 {
+                                break x;
+                            }
+                        }
+                    };
+                    if try_flip(&mut s, i, j, slot, lam) {
+                        n_flip.fetch_add(1, Ordering::Relaxed);
+                        can_reduce = true;
+                    }
+                    if tid == 0 {
+                        let el = t0.elapsed().as_secs();
+                        if el >= last_report + 120 {
+                            last_report = el;
+                            println!(
+                                "[{el}s] pursue10: best {}  red {}  solved {}                                   flips {}  restarts {}",
+                                global_best.load(Ordering::Relaxed),
+                                n_red.load(Ordering::Relaxed),
+                                n_solved.load(Ordering::Relaxed),
+                                n_flip.load(Ordering::Relaxed),
+                                n_restart.load(Ordering::Relaxed));
+                        }
+                    }
+                }
+            }
+        });
+        println!(
+            "pursue10: best rank {} in {:.0}s; reductions {}  solved-flips {}               random-flips {}  restarts {}",
+            global_best.load(Ordering::Relaxed),
+            t0.elapsed().as_secs_f64(),
+            n_red.load(Ordering::Relaxed),
+            n_solved.load(Ordering::Relaxed),
+            n_flip.load(Ordering::Relaxed),
+            n_restart.load(Ordering::Relaxed));
+        return;
+    }
+
     if args.iter().any(|a| a == "--pursue9") {
         // persistent Kauers-Moosbauer walk: test reductions at EVERY
         // step and continue from reduced states (contrast pursue7,

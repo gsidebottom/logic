@@ -1,0 +1,135 @@
+note: seed rank 64 != module default 49 (fine for pursue9/census)
+seed loaded + exactly verified over F_p, p = 2 (49 summands)
+[1s] *** pursue9 rank 63 VERIFIED *** -> matmul/found48p/RECORDP_p9_rank63_0.txt
+[2s] *** pursue9 rank 62 VERIFIED *** -> matmul/found48p/RECORDP_p9_rank62_1.txt
+[4s] *** pursue9 rank 61 VERIFIED *** -> matmul/found48p/RECORDP_p9_rank61_1.txt
+[5s] *** pursue9 rank 60 VERIFIED *** -> matmul/found48p/RECORDP_p9_rank60_1.txt
+[6s] *** pursue9 rank 59 VERIFIED *** -> matmul/found48p/RECORDP_p9_rank59_1.txt
+[8s] *** pursue9 rank 58 VERIFIED *** -> matmul/found48p/RECORDP_p9_rank58_1.txt
+[9s] *** pursue9 rank 57 VERIFIED *** -> matmul/found48p/RECORDP_p9_rank57_1.txt
+[10s] *** pursue9 rank 56 VERIFIED *** -> matmul/found48p/RECORDP_p9_rank56_2.txt
+[14s] *** pursue9 rank 55 VERIFIED *** -> matmul/found48p/RECORDP_p9_rank55_4.txt
+[17s] *** pursue9 rank 54 VERIFIED *** -> matmul/found48p/RECORDP_p9_rank54_4.txt
+[110s] *** pursue9 rank 53 VERIFIED *** -> matmul/found48p/RECORDP_p9_rank53_5.txt
+[120s] pursue9: best rank 53  reductions 57                               flips 25034692  splits 0
+[240s] pursue9: best rank 53  reductions 59                               flips 51233251  splits 0
+[360s] pursue9: best rank 53  reductions 59                               flips 77762797  splits 0
+[480s] pursue9: best rank 53  reductions 59                               flips 104355877  splits 0
+[600s] pursue9: best rank 53  reductions 59                               flips 131199228  splits 0
+[720s] pursue9: best rank 53  reductions 59                               flips 157424820  splits 0
+[840s] pursue9: best rank 53  reductions 60                               flips 184302377  splits 0
+[960s] pursue9: best rank 53  reductions 60                               flips 211152534  splits 0
+[1080s] pursue9: best rank 53  reductions 60                               flips 237810286  splits 0
+[1200s] pursue9: best rank 53  reductions 60                               flips 265027223  splits 0
+[1320s] pursue9: best rank 53  reductions 60                               flips 292348885  splits 0
+[1440s] pursue9: best rank 53  reductions 60                               flips 319722807  splits 0
+[1560s] pursue9: best rank 53  reductions 60                               flips 346926127  splits 0
+[1680s] pursue9: best rank 53  reductions 60                               flips 374199818  splits 0
+[1800s] pursue9: best rank 53  reductions 60                               flips 401480796  splits 0
+[1920s] pursue9: best rank 53  reductions 60                               flips 428815812  splits 0
+[2040s] pursue9: best rank 53  reductions 60                               flips 456389905  splits 0
+[2160s] pursue9: best rank 53  reductions 60                               flips 484053554  splits 0
+[2280s] pursue9: best rank 53  reductions 60                               flips 511554226  splits 0
+[2400s] pursue9: best rank 53  reductions 60                               flips 538903641  splits 0
+[2520s] pursue9: best rank 53  reductions 60                               flips 566510714  splits 0
+[2640s] pursue9: best rank 53  reductions 60                               flips 594043798  splits 0
+[2760s] pursue9: best rank 53  reductions 60                               flips 621530260  splits 0
+[2880s] pursue9: best rank 53  reductions 60                               flips 648959317  splits 0
+[3000s] pursue9: best rank 53  reductions 60                               flips 676343445  splits 0
+[3120s] pursue9: best rank 53  reductions 60                               flips 703792258  splits 0
+[3240s] pursue9: best rank 53  reductions 60                               flips 731107716  splits 0
+[3360s] pursue9: best rank 53  reductions 60                               flips 758370197  splits 0
+[3480s] pursue9: best rank 53  reductions 60                               flips 786108901  splits 0
+[3600s] pursue9: best rank 53  reductions 60                               flips 813627172  splits 0
+[3720s] pursue9: best rank 53  reductions 60                               flips 840900567  splits 0
+[3840s] pursue9: best rank 53  reductions 60                               flips 868219830  splits 0
+[3960s] pursue9: best rank 53  reductions 60                               flips 895933713  splits 0
+[4080s] pursue9: best rank 53  reductions 60                               flips 923745147  splits 0
+[4200s] pursue9: best rank 53  reductions 60                               flips 951183338  splits 0
+[4320s] pursue9: best rank 53  reductions 60                               flips 978495291  splits 0
+[4440s] pursue9: best rank 53  reductions 60                               flips 1005658917  splits 0
+[4560s] pursue9: best rank 53  reductions 60                               flips 1032752315  splits 0
+[4680s] pursue9: best rank 53  reductions 60                               flips 1059891393  splits 0
+[4800s] pursue9: best rank 53  reductions 60                               flips 1087144622  splits 0
+[4920s] pursue9: best rank 53  reductions 60                               flips 1114563601  splits 0
+[5040s] pursue9: best rank 53  reductions 60                               flips 1142137385  splits 0
+[5160s] pursue9: best rank 53  reductions 60                               flips 1169739375  splits 0
+[5280s] pursue9: best rank 53  reductions 60                               flips 1197203982  splits 0
+[5400s] pursue9: best rank 53  reductions 60                               flips 1224774084  splits 0
+[5520s] pursue9: best rank 53  reductions 60                               flips 1252383175  splits 0
+[5640s] pursue9: best rank 53  reductions 60                               flips 1280028915  splits 0
+[5760s] pursue9: best rank 53  reductions 60                               flips 1307610878  splits 0
+[5880s] pursue9: best rank 53  reductions 60                               flips 1335225232  splits 0
+[6000s] pursue9: best rank 53  reductions 60                               flips 1362783280  splits 0
+[6120s] pursue9: best rank 53  reductions 60                               flips 1390326891  splits 0
+[6240s] pursue9: best rank 53  reductions 60                               flips 1417945619  splits 0
+[6360s] pursue9: best rank 53  reductions 60                               flips 1445503048  splits 0
+[6480s] pursue9: best rank 53  reductions 60                               flips 1473138140  splits 0
+[6600s] pursue9: best rank 53  reductions 60                               flips 1500594143  splits 0
+[6720s] pursue9: best rank 53  reductions 60                               flips 1527935710  splits 0
+[6840s] pursue9: best rank 53  reductions 60                               flips 1555269284  splits 0
+[6960s] pursue9: best rank 53  reductions 60                               flips 1582696570  splits 0
+[7080s] pursue9: best rank 53  reductions 60                               flips 1610198498  splits 0
+[7200s] pursue9: best rank 53  reductions 60                               flips 1637742782  splits 0
+[7320s] pursue9: best rank 53  reductions 60                               flips 1665439069  splits 0
+[7440s] pursue9: best rank 53  reductions 60                               flips 1692992661  splits 0
+[7560s] pursue9: best rank 53  reductions 60                               flips 1720629939  splits 0
+[7680s] pursue9: best rank 53  reductions 60                               flips 1748196703  splits 0
+[7800s] pursue9: best rank 53  reductions 60                               flips 1775633932  splits 0
+[7920s] pursue9: best rank 53  reductions 60                               flips 1803143931  splits 0
+[8040s] pursue9: best rank 53  reductions 60                               flips 1830642805  splits 0
+[8160s] pursue9: best rank 53  reductions 60                               flips 1858166594  splits 0
+[8280s] pursue9: best rank 53  reductions 60                               flips 1885697482  splits 0
+[8400s] pursue9: best rank 53  reductions 60                               flips 1913418299  splits 0
+[8520s] pursue9: best rank 53  reductions 60                               flips 1941089361  splits 0
+[8640s] pursue9: best rank 53  reductions 60                               flips 1968453176  splits 0
+[8760s] pursue9: best rank 53  reductions 60                               flips 1996107874  splits 0
+[8880s] pursue9: best rank 53  reductions 60                               flips 2023623212  splits 0
+[9000s] pursue9: best rank 53  reductions 60                               flips 2050961242  splits 0
+[9120s] pursue9: best rank 53  reductions 60                               flips 2078412608  splits 0
+[9240s] pursue9: best rank 53  reductions 60                               flips 2105819247  splits 0
+[9360s] pursue9: best rank 53  reductions 60                               flips 2133283903  splits 0
+[9480s] pursue9: best rank 53  reductions 60                               flips 2160676263  splits 0
+[9600s] pursue9: best rank 53  reductions 60                               flips 2188263958  splits 0
+[9720s] pursue9: best rank 53  reductions 60                               flips 2215693985  splits 0
+[9840s] pursue9: best rank 53  reductions 60                               flips 2243175360  splits 0
+[9960s] pursue9: best rank 53  reductions 60                               flips 2270694908  splits 0
+[10080s] pursue9: best rank 53  reductions 60                               flips 2298240161  splits 0
+[10200s] pursue9: best rank 53  reductions 60                               flips 2325869877  splits 0
+[10320s] pursue9: best rank 53  reductions 60                               flips 2353659733  splits 0
+[10440s] pursue9: best rank 53  reductions 60                               flips 2381398176  splits 0
+[10560s] pursue9: best rank 53  reductions 60                               flips 2409057600  splits 0
+[10680s] pursue9: best rank 53  reductions 60                               flips 2436356967  splits 0
+[10800s] pursue9: best rank 53  reductions 60                               flips 2463802738  splits 0
+[10920s] pursue9: best rank 53  reductions 60                               flips 2491071870  splits 0
+[11040s] pursue9: best rank 53  reductions 60                               flips 2518724258  splits 0
+[11160s] pursue9: best rank 53  reductions 60                               flips 2546155736  splits 0
+[11280s] pursue9: best rank 53  reductions 60                               flips 2573628315  splits 0
+[11400s] pursue9: best rank 53  reductions 60                               flips 2601082451  splits 0
+[11520s] pursue9: best rank 53  reductions 60                               flips 2628569481  splits 0
+[11640s] pursue9: best rank 53  reductions 60                               flips 2656167541  splits 0
+[11760s] pursue9: best rank 53  reductions 60                               flips 2683672133  splits 0
+[11880s] pursue9: best rank 53  reductions 60                               flips 2711160046  splits 0
+[12000s] pursue9: best rank 53  reductions 60                               flips 2738713495  splits 0
+[12120s] pursue9: best rank 53  reductions 60                               flips 2765935419  splits 0
+[12240s] pursue9: best rank 53  reductions 60                               flips 2793355708  splits 0
+[12360s] pursue9: best rank 53  reductions 60                               flips 2820678921  splits 0
+[12480s] pursue9: best rank 53  reductions 60                               flips 2847973288  splits 0
+[12600s] pursue9: best rank 53  reductions 60                               flips 2875398668  splits 0
+[12720s] pursue9: best rank 53  reductions 60                               flips 2902916525  splits 0
+[12840s] pursue9: best rank 53  reductions 60                               flips 2930254904  splits 0
+[12960s] pursue9: best rank 53  reductions 60                               flips 2957695869  splits 0
+[13080s] pursue9: best rank 53  reductions 60                               flips 2985217052  splits 0
+[13200s] pursue9: best rank 53  reductions 60                               flips 3012583292  splits 0
+[13320s] pursue9: best rank 53  reductions 60                               flips 3039855733  splits 0
+[13440s] pursue9: best rank 53  reductions 60                               flips 3067266063  splits 0
+[13560s] pursue9: best rank 53  reductions 60                               flips 3094818992  splits 0
+[13680s] pursue9: best rank 53  reductions 60                               flips 3122271347  splits 0
+[13800s] pursue9: best rank 53  reductions 60                               flips 3149779070  splits 0
+[13920s] pursue9: best rank 53  reductions 60                               flips 3177200025  splits 0
+[14040s] pursue9: best rank 53  reductions 60                               flips 3204792074  splits 0
+[14160s] pursue9: best rank 53  reductions 60                               flips 3232510442  splits 0
+[14280s] pursue9: best rank 53  reductions 60                               flips 3260195584  splits 0
+[14400s] pursue9: best rank 53  reductions 60                               flips 3287832882  splits 0
+pursue9: best rank 53 in 14400s; reductions 60  flips 3287832885  splits 0
+per-trajectory best-rank histogram: {53: 2, 54: 3, 56: 1}

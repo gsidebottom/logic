@@ -714,9 +714,12 @@ H = \{1, 4, 16, 13\}.
 \]
 Run it on Appendix A's own $P(x) = 13x^2 + 12x + 9$. Split by
 even/odd coefficients --- $P(x) = E(x^2) + x\,O(x^2)$ with
-$E(y) = 9 + 13y$, $O(y) = 12$ --- evaluate the halves at the
-\emph{square} domain $\{1, -1\}$, then combine with the butterfly
-$P(\pm\omega^k) = E(\omega^{2k}) \pm \omega^k O(\omega^{2k})$:
+$E(y) = 9 + 13y$, $O(y) = 12$. Now watch the domain collapse: the
+four points square pairwise onto just two values, $1^2 = 1$,
+$4^2 = 16$, $16^2 = 256 \equiv 1$, $13^2 = 169 \equiv 16$ --- so
+$E$ and $O$ need evaluating only at $\{1, 16\} = \{1, -1\}$.
+That collapse \emph{is} the halving. Combine with the butterfly
+$P(x) = E(x^2) + x\,O(x^2)$ at each of the four $x$:
 \[
 \begin{aligned}
 &E(1) = 22 \equiv 5, \qquad E(16) = 9 + 208 \equiv 13, \qquad
@@ -727,9 +730,15 @@ $P(\pm\omega^k) = E(\omega^{2k}) \pm \omega^k O(\omega^{2k})$:
  P(13) = 13 + 13\cdot12 \equiv 16.
 \end{aligned}
 \]
-Eight multiplications instead of the naive twelve --- and the gap
-is the whole point: at size $m$ the recursion costs $m\log m$
-against $m^2$. (Note $P(1) \equiv 0$: $x{=}1$ is one of Appendix
+Six multiplications instead of the naive twelve (naively each
+point costs three: $x\cdot x$, $13\cdot x^2$, $12\cdot x$). At
+this size even the six flatter to deceive --- $13\cdot1$ and
+$1\cdot12$ are multiplications by 1, and since $16 \equiv -1$,
+$13 \equiv -4$, two more are negations or reuses --- but that is
+exactly the right lesson: the honest claim is asymptotic. The
+recursion satisfies $T(n) = 2\,T(n/2) + O(n) = O(n\log n)$
+against $O(n^2)$: invisible at $n = 4$, a ${\sim}10^{5}\times$
+factor at $n = 2^{20}$. (Note $P(1) \equiv 0$: $x{=}1$ is one of Appendix
 A's constraint points, and the transform \emph{displays} constraint
 $c_1$ holding. Real systems put \textbf{all} constraints on such a
 domain, so the whole R1CS check is visible in one spectrum.) The

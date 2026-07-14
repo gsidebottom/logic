@@ -648,8 +648,11 @@ domain H = {1, 4, 16, 13}          (the 4th roots of unity mod 17)
 
 Run it on Appendix A's own P(x) = 13x² + 12x + 9. Split by
 even/odd coefficients — P(x) = E(x²) + x·O(x²) with E(y) = 9 + 13y
-and O(y) = 12 — evaluate the halves at the *square* domain {1, −1},
-then combine with the butterfly P(±ωᵏ) = E(ω²ᵏ) ± ωᵏ·O(ω²ᵏ):
+and O(y) = 12. Now watch the domain collapse: the four points
+square pairwise onto just two values, 1² = 1, 4² = 16, 16² = 256 ≡
+1, 13² = 169 ≡ 16 — so E and O need evaluating only at {1, 16} =
+{1, −1}. That collapse *is* the halving. Combine with the
+butterfly P(x) = E(x²) + x·O(x²) at each of the four x:
 
 ```
 E(1) = 22 ≡ 5    E(16) = 9 + 208 ≡ 13     O ≡ 12 everywhere
@@ -657,8 +660,13 @@ P(1)  = E(1)  +  1·12 = 17  ≡  0     P(16) = E(1)  + 16·12 ≡ 10
 P(4)  = E(16) +  4·12 = 61  ≡ 10     P(13) = E(16) + 13·12 ≡ 16
 ```
 
-Eight multiplications instead of the naive twelve — and the gap is
-the whole point: at size m the recursion costs m log m against m².
+Six multiplications instead of the naive twelve (naively each
+point costs three: x·x, 13·x², 12·x). At this size even the six
+flatter to deceive — 13·1 and 1·12 are multiplications by 1, and
+since 16 ≡ −1 and 13 ≡ −4, two more are negations or reuses — but
+that is exactly the right lesson: the honest claim is asymptotic.
+The recursion satisfies T(n) = 2·T(n/2) + O(n) = O(n log n)
+against O(n²): invisible at n = 4, a ~10⁵× factor at n = 2²⁰.
 (Note P(1) ≡ 0: x = 1 is one of Appendix A's constraint points, and
 the transform *displays* constraint c₁ holding. Real systems put
 **all** constraints on such a domain, so the whole R1CS check is

@@ -1,0 +1,3 @@
+seed loaded + exactly verified over F_p, p = 2 (49 summands)
+pursue7: 25308 walks in 21603s; closings 8340  reductions 20895  distinct 49-landings 54
+terminal-rank histogram: {49: 20895, 50: 4413}

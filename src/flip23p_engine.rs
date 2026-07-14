@@ -1336,6 +1336,139 @@ pub fn run(args: Vec<String>) {
         return;
     }
 
+    if args.iter().any(|a| a == "--pursue9") {
+        // persistent Kauers-Moosbauer walk: test reductions at EVERY
+        // step and continue from reduced states (contrast pursue7,
+        // which quenches only at walk end). Each thread runs one
+        // trajectory for the whole budget: reduce greedily whenever
+        // possible, otherwise a random eligible flip; split (rank+1)
+        // only when stuck, capped at --hi.
+        let hi = get("--hi", (RANK0 + 2) as i64) as usize;
+        let secsp = get("--seconds", 600) as u64;
+        use std::collections::BTreeMap;
+        let best_hist: Mutex<BTreeMap<usize, u64>> = Mutex::new(BTreeMap::new());
+        let n_red = AtomicU64::new(0);
+        let n_flip = AtomicU64::new(0);
+        let n_split = AtomicU64::new(0);
+        let global_best = AtomicU32::new(RANK0 as u32);
+        let t0 = Instant::now();
+        (0..threads as u64).into_par_iter().for_each(|tid| {
+            let mut rng = 0x243f_6a88_85a3_08d3u64
+                ^ (tid.wrapping_mul(0x9e37_79b9_7f4a_7c15) + 1);
+            let mut next = move || {
+                rng ^= rng << 13;
+                rng ^= rng >> 7;
+                rng ^= rng << 17;
+                rng
+            };
+            let mut s = seed.clone();
+            let mut traj_best = s.len();
+            let mut stuck = 0u32;
+            let mut last_report = 0u64;
+            // reductions are only legal after a flip: a fresh split's
+            // two parts share both non-split slots and try_reduce
+            // would instantly undo the split (split/merge livelock)
+            let mut can_reduce = true;
+            while t0.elapsed().as_secs() < secsp {
+                // 1. take every reduction available, immediately
+                if can_reduce && try_reduce(&mut s) {
+                    n_red.fetch_add(1, Ordering::Relaxed);
+                    stuck = 0;
+                    let r = s.len();
+                    if r < traj_best {
+                        traj_best = r;
+                        let gb = global_best.load(Ordering::Relaxed);
+                        if (r as u32) < gb && verify(&s) {
+                            global_best.store(r as u32, Ordering::Relaxed);
+                            let path = format!(
+                                "{outdir}/RECORDP_p9_rank{r}_{tid}.txt");
+                            dump(&s, &path);
+                            println!(
+                                "[{:.0}s] *** pursue9 rank {} VERIFIED *** -> {}",
+                                t0.elapsed().as_secs_f32(), r, path);
+                        }
+                    }
+                    continue;
+                }
+                // 2. random eligible flip (lam = 1 is the only unit at p=2;
+                //    at odd p sample a random nonzero lam)
+                use std::collections::HashMap;
+                let mut eligible: Vec<(usize, usize, usize)> = Vec::new();
+                for slot in 0..3 {
+                    let mut m: HashMap<&FVec, usize> = HashMap::new();
+                    for (idx, t) in s.iter().enumerate() {
+                        if let Some(&prev) = m.get(fac(t, slot)) {
+                            eligible.push((prev, idx, slot));
+                        } else {
+                            m.insert(fac(t, slot), idx);
+                        }
+                    }
+                }
+                let mut moved = false;
+                if !eligible.is_empty() {
+                    let (i, j, slot) =
+                        eligible[(next() % eligible.len() as u64) as usize];
+                    let (i, j) = if next() & 1 == 0 { (i, j) } else { (j, i) };
+                    let lam = loop {
+                        let x = next() % P;
+                        if x != 0 {
+                            break x;
+                        }
+                    };
+                    if try_flip(&mut s, i, j, slot, lam) {
+                        n_flip.fetch_add(1, Ordering::Relaxed);
+                        moved = true;
+                        can_reduce = true;
+                    }
+                }
+                if !moved {
+                    stuck += 1;
+                }
+                // 3. split when stuck or with small probability, capped
+                if (stuck > 8 || next() % 512 == 0) && s.len() < hi {
+                    let i = (next() % s.len() as u64) as usize;
+                    let k = (next() % s.len() as u64) as usize;
+                    let slot = (next() % 3) as usize;
+                    let mu = loop {
+                        let x = next() % P;
+                        if x != 0 {
+                            break x;
+                        }
+                    };
+                    if try_split(&mut s, i, k, slot, mu) {
+                        n_split.fetch_add(1, Ordering::Relaxed);
+                        stuck = 0;
+                        can_reduce = false;
+                    }
+                }
+                // periodic thread-0 status
+                if tid == 0 {
+                    let el = t0.elapsed().as_secs();
+                    if el >= last_report + 120 {
+                        last_report = el;
+                        println!(
+                            "[{el}s] pursue9: best rank {}  reductions {}                               flips {}  splits {}",
+                            global_best.load(Ordering::Relaxed),
+                            n_red.load(Ordering::Relaxed),
+                            n_flip.load(Ordering::Relaxed),
+                            n_split.load(Ordering::Relaxed));
+                    }
+                }
+            }
+            *best_hist.lock().unwrap().entry(traj_best).or_insert(0) += 1;
+        });
+        println!(
+            "pursue9: best rank {} in {:.0}s; reductions {}  flips {}  splits {}",
+            global_best.load(Ordering::Relaxed),
+            t0.elapsed().as_secs_f64(),
+            n_red.load(Ordering::Relaxed),
+            n_flip.load(Ordering::Relaxed),
+            n_split.load(Ordering::Relaxed));
+        println!("per-trajectory best-rank histogram: {:?}",
+                 best_hist.lock().unwrap());
+        return;
+    }
+
     if args.iter().any(|a| a == "--pursue7") {
         // mix-and-quench descent: diffuse at a high rank band, then
         // greedily reduce + close; instrument terminal ranks (the

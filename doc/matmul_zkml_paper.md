@@ -741,6 +741,34 @@ factor barely moves). At n = 4096, folding in §3's exponents:
 End-to-end wall clock scales by the circuit's matmul share (80–95%
 in typical zkML inference), Amdahl-style.
 
+**Larger bases (records as of July 2026).** The 𝔽_p-valid records
+above 4×4 — remember that mod-2 results do *not* transfer to odd
+proof primes — are: 5×5: **93** and 6×6: **153** (Moosbauer–Poole
+[20], explicitly "over arbitrary ground fields"); 7×7: **250**
+(Sedoglavic [21], non-commutative, so any ring); 8×8: **336**
+(= Strassen ⊗ rank-48; mod 2 has 329 = 7×47 — another instance of
+the field divergence this paper's program probes). What beating
+each by 1 or 2 buys same-base pipelines at n = 4096
+(speedup = (r/(r−k))^(log_m 4096); wall clock × matmul share as
+above):
+
+| base | record r | exponent | −1 | −2 | overtakes rank-48 at |
+|---|---|---|---|---|---|
+| 5×5 | 93 | 2.816 | +5.7% | +11.9% | ≤ 89 |
+| 6×6 | 153 | 2.808 | +3.1% | +6.3% | ≤ 148 |
+| 7×7 | 250 | 2.837 | +1.7% | +3.5% | ≤ 229 |
+| 8×8 | 336 | 2.797 | +1.2% | +2.4% | ≤ 332 |
+
+Two readings. A −1 is worth more at smaller bases: the recursion
+depth log_m n shrinks as m grows, so a 5×5 improvement compounds
+through 5.2 levels at n = 4096 while an 8×8 one gets only 4. And
+no −1 or −2 at these sizes overtakes the rank-48 4×4 base — the
+nearest paths to a new best base run through 5×5 ≤ 89 (−4) and
+8×8 ≤ 332 (−4; especially interesting because today's 336 is
+*inherited* from rank-48 via Strassen, so any direct 8×8
+construction at ≤ 332 would beat every 4×4-blocked pipeline at
+once).
+
 ## Acknowledgments
 
 This work was carried out in an extended interactive collaboration
@@ -795,3 +823,8 @@ direction and review.
 19. R. Gennaro, C. Gentry, B. Parno, M. Raykova. *Quadratic span
     programs and succinct NIZKs without PCPs.* EUROCRYPT 2013. (The
     QAP compilation.)
+20. J. Moosbauer, M. Poole. *Flip graphs with symmetry and new
+    matrix multiplication schemes.* ISSAC 2025; arXiv:2502.04514.
+    (5×5:93 and 6×6:153, over arbitrary ground fields.)
+21. A. Sedoglavic. *A non-commutative algorithm for multiplying
+    7×7 matrices using 250 multiplications.* Preprint, 2017.

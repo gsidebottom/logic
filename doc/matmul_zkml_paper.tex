@@ -821,6 +821,39 @@ $n = 4096$, folding in \S3's exponents:
 End-to-end wall clock scales by the circuit's matmul share
 (80--95\% in typical zkML inference), Amdahl-style.
 
+\paragraph{Larger bases (records as of July 2026).} The
+$\mathbb{F}_p$-valid records above $4{\times}4$ --- mod-2 results
+do \emph{not} transfer to odd proof primes --- are: $5{\times}5$:
+\textbf{93} and $6{\times}6$: \textbf{153} (Moosbauer--Poole
+\cite{mp25}, explicitly ``over arbitrary ground fields'');
+$7{\times}7$: \textbf{250} (Sedoglavic \cite{sedo77},
+non-commutative, so any ring); $8{\times}8$: \textbf{336}
+($=$ Strassen $\otimes$ rank-48; mod 2 has $329 = 7\cdot47$ ---
+another instance of the field divergence this paper's program
+probes). What beating each by 1 or 2 buys same-base pipelines at
+$n = 4096$ (speedup $= (r/(r{-}k))^{\log_m 4096}$; wall clock
+$\times$ matmul share as above):
+\begin{center}
+\begin{tabular}{cccccc}
+base & record $r$ & exponent & $-1$ & $-2$ & overtakes rank-48 at\\
+\hline
+$5{\times}5$ & 93 & 2.816 & $+5.7\%$ & $+11.9\%$ & $\le 89$\\
+$6{\times}6$ & 153 & 2.808 & $+3.1\%$ & $+6.3\%$ & $\le 148$\\
+$7{\times}7$ & 250 & 2.837 & $+1.7\%$ & $+3.5\%$ & $\le 229$\\
+$8{\times}8$ & 336 & 2.797 & $+1.2\%$ & $+2.4\%$ & $\le 332$\\
+\end{tabular}
+\end{center}
+Two readings. A $-1$ is worth more at smaller bases: the recursion
+depth $\log_m n$ shrinks as $m$ grows, so a $5{\times}5$
+improvement compounds through 5.2 levels at $n = 4096$ while an
+$8{\times}8$ one gets only 4. And no $-1$ or $-2$ at these sizes
+overtakes the rank-48 $4{\times}4$ base --- the nearest paths to a
+new best base run through $5{\times}5 \le 89$ ($-4$) and
+$8{\times}8 \le 332$ ($-4$; especially interesting because
+today's 336 is \emph{inherited} from rank-48 via Strassen, so any
+direct $8{\times}8$ construction at $\le 332$ would beat every
+$4{\times}4$-blocked pipeline at once).
+
 \section*{Acknowledgments}
 
 This work was carried out in an extended interactive collaboration
@@ -870,6 +903,13 @@ direction and review.
 \bibitem{ggpr} R. Gennaro, C. Gentry, B. Parno, M. Raykova.
   \emph{Quadratic span programs and succinct NIZKs without PCPs.}
   EUROCRYPT 2013. (The QAP compilation.)
+\bibitem{mp25} J. Moosbauer, M. Poole. \emph{Flip graphs with
+  symmetry and new matrix multiplication schemes.} ISSAC 2025;
+  arXiv:2502.04514. ($5{\times}5$:93 and $6{\times}6$:153, over
+  arbitrary ground fields.)
+\bibitem{sedo77} A. Sedoglavic. \emph{A non-commutative algorithm
+  for multiplying $7{\times}7$ matrices using 250
+  multiplications.} Preprint, 2017.
 \end{thebibliography}
 
 \end{document}

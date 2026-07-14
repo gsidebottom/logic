@@ -711,13 +711,13 @@ fn load_seed(dir: &str) -> Vec<Summand> {
     let l = parse(&format!("{dir}/L.sms"));
     let r = parse(&format!("{dir}/R.sms"));
     let p = parse(&format!("{dir}/P.sms")); // NN x RANK0 -> transpose
-    let mut pt: Vec<Vec<(usize, u64)>> = vec![Vec::new(); RANK0];
+    let mut pt: Vec<Vec<(usize, u64)>> = vec![Vec::new(); l.len()];
     for (z, row) in p.iter().enumerate() {
         for &(i, n) in row {
             pt[i].push((z, n));
         }
     }
-    (0..RANK0)
+    (0..l.len())
         .map(|i| Summand::gauge(mk(&l[i]), mk(&r[i]), mk(&pt[i])).expect("seed"))
         .collect()
 }
@@ -761,7 +761,10 @@ pub fn run(args: Vec<String>) {
         .build_global();
 
     let seed = load_seed(&dir);
-    assert_eq!(seed.len(), RANK0);
+    if seed.len() != RANK0 {
+        println!("note: seed rank {} != module default {RANK0} \
+                  (fine for pursue9/census)", seed.len());
+    }
     assert!(verify(&seed), "seed must verify over F_p");
     println!("seed loaded + exactly verified over F_p, p = {P} ({RANK0} summands)");
 
@@ -1350,7 +1353,7 @@ pub fn run(args: Vec<String>) {
         let n_red = AtomicU64::new(0);
         let n_flip = AtomicU64::new(0);
         let n_split = AtomicU64::new(0);
-        let global_best = AtomicU32::new(RANK0 as u32);
+        let global_best = AtomicU32::new(seed.len() as u32);
         let t0 = Instant::now();
         (0..threads as u64).into_par_iter().for_each(|tid| {
             let mut rng = 0x243f_6a88_85a3_08d3u64

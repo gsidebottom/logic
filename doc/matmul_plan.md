@@ -44,6 +44,14 @@ the two source papers for this track):
   - Campaign: ~35 CPU-years → **>13,000 mutually inequivalent new
     23-schemes** (SAT'19; the public DB snapshot later reached 17,376,
     up from 4 known). None compresses to 22.
+- **Multilinear directions (from 2026-07-13 discussion)**: (a)
+  symmetric flip mode (cyclic trace(ABC) invariance, the M-P
+  record technique) for flip23p/flip48p; (b) order-4 fused
+  triple-product constructor (attention's (QK^T)V; wins under
+  degree-3 AIR gates if rank4 < r1+r2) — pursue8-style build; (c)
+  commutative base-tile carve-in written into zkML section 3
+  (Rosowski 21 @ 3x3, 85 @ 5x5; base-tile-only). Border rank: not
+  a constraint-count lever at fixed sizes.
 - **Field-novelty screen COMPLETE (2026-07-13)**: the ~215K pooled
   F_p landings span 170 distinct rank-type multisets; 114 match no
   DB pattern; after dedup vs our 81 Z-classes + 467 Q-dyadics (63

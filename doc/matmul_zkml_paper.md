@@ -172,6 +172,23 @@ absolute numbers but not the ordering):
 | 3×3 : 22 (2.814), *if found* | 1.31×10⁸ | 3.4× | 1.46×10¹⁰ | 4.7× |
 | 4×4 : 47 (2.777), *if found* | 1.03×10⁸ | 4.4× | 1.08×10¹⁰ | **6.4×** |
 
+**A commutative carve-in.** One refinement the table above does not
+yet fold in: bilinear rank assumes non-commuting entries (that is
+what makes block recursion valid), but **R1CS witnesses are field
+elements and commute** — so at the *base tile* of a recursion the
+true cost is the smaller commutative multiplicative complexity.
+Rosowski [22] multiplies 3×3 in **21** products over a commutative
+ring (vs bilinear 23; Makarov's earlier 22), and in general odd-n
+tiles cost n(n²+2n−1)/2: 5×5 in 85 (vs 93), 7×7 in 217 (vs 250).
+Blocks do not commute, so interior levels must stay bilinear —
+this is strictly a base-tile lever (and 2×2 gains nothing: 7 is
+optimal even commutatively) — but any recursion bottoming on 3×3
+tiles saves 21/23 ≈ 8.7% of its *entire* constraint count, and the
+optimal tile choice is a small dynamic program we leave as a
+refinement. Flip-graph search has recently been extended to
+commutative schemes [23], so the discovery machinery of §5 has a
+commutative analogue if the base-tile hunt ever warrants it.
+
 Two readings. First, **the wins in the top half are available today**:
 the rank-48 scheme [3, 10] with dyadic coefficients drops into any
 R1CS/PLONK matmul gadget as-is (our repository carries the verified
@@ -843,3 +860,8 @@ direction and review.
     (5×5:93 and 6×6:153, over arbitrary ground fields.)
 21. A. Sedoglavic. *A non-commutative algorithm for multiplying
     7×7 matrices using 250 multiplications.* Preprint, 2017.
+22. A. Rosowski. *Fast commutative matrix algorithms.* 2019,
+    arXiv:1904.07683. (3×3 in 21 commutative products; odd-n tiles
+    in n(n²+2n−1)/2.)
+23. *Exploring commutative matrix multiplication schemes via flip
+    graphs.* 2025, arXiv:2506.22113.

@@ -212,6 +212,25 @@ $4{\times}4:47$ (2.777), \emph{if found} & $1.03\times10^{8}$ & $4.4\times$ & $1
 \end{tabular}
 \end{center}
 
+\paragraph{A commutative carve-in.} One refinement the table does
+not yet fold in: bilinear rank assumes non-commuting entries (that
+is what makes block recursion valid), but \textbf{R1CS witnesses
+are field elements and commute} --- so at the \emph{base tile} of
+a recursion the true cost is the smaller commutative
+multiplicative complexity. Rosowski \cite{rosowski} multiplies
+$3{\times}3$ in \textbf{21} products over a commutative ring (vs
+bilinear 23; Makarov's earlier 22), and in general odd-$n$ tiles
+cost $n(n^2+2n-1)/2$: $5{\times}5$ in 85 (vs 93), $7{\times}7$ in
+217 (vs 250). Blocks do not commute, so interior levels must stay
+bilinear --- a base-tile lever only (and $2{\times}2$ gains
+nothing: 7 is optimal even commutatively) --- but any recursion
+bottoming on $3{\times}3$ tiles saves $21/23 \approx 8.7\%$ of
+its \emph{entire} constraint count; the optimal tile choice is a
+small dynamic program we leave as a refinement. Flip-graph search
+has recently been extended to commutative schemes
+\cite{commflip}, so \S5's discovery machinery has a commutative
+analogue if the base-tile hunt warrants it.
+
 Two readings. First, \textbf{the wins in the top half are available
 today}: the rank-48 scheme \cite{alphatensor,dps} with dyadic
 coefficients drops into any R1CS/PLONK matmul gadget as-is (our
@@ -926,6 +945,12 @@ direction and review.
 \bibitem{sedo77} A. Sedoglavic. \emph{A non-commutative algorithm
   for multiplying $7{\times}7$ matrices using 250
   multiplications.} Preprint, 2017.
+\bibitem{rosowski} A. Rosowski. \emph{Fast commutative matrix
+  algorithms.} 2019, arXiv:1904.07683. ($3{\times}3$ in 21
+  commutative products; odd-$n$ tiles in $n(n^2+2n-1)/2$.)
+\bibitem{commflip} \emph{Exploring commutative matrix
+  multiplication schemes via flip graphs.} 2025,
+  arXiv:2506.22113.
 \end{thebibliography}
 
 \end{document}

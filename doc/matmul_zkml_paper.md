@@ -632,7 +632,11 @@ evaluates a polynomial at the complex n-th roots of unity
 e^(2πik/n); the sines and cosines are merely how ℂ *parametrizes*
 its roots of unity. The algorithm needs only three algebraic facts:
 ωⁿ = 1, ω^(n/2) = −1, and "squaring the n-th roots gives the
-(n/2)-th roots" (what lets the problem halve recursively). Any
+(n/2)-th roots" (what lets the problem halve recursively). These are
+radix-2 requirements, so n is always a power of two — circuits pad
+to the next 2ᵏ with dummy constraints rather than ever running an
+odd-length transform (mod 17 odd orders don't even exist:
+every element order divides 16). Any
 field with an element of order n runs the identical recursion —
 exactly, with no rounding. In 𝔽₁₇, p − 1 = 16, so orders up to 16
 exist; ω = 4 has order 4:

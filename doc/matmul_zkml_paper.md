@@ -212,8 +212,12 @@ exponent and the tile, are currently unshipped.
 
 Two readings. First, **the wins in the top half are available today**:
 the rank-48 scheme [3, 10] with dyadic coefficients drops into any
-R1CS/PLONK matmul gadget as-is (our repository carries the verified
-scheme and its minimized linear networks). Second, the *marginal* rows
+R1CS/PLONK matmul gadget as-is — and "works over 𝔽_p" is not a
+conjecture: our engines load the scheme and verify all 4096 Brent
+equations exactly over Goldilocks, BabyBear, and M31 (§5; the
+dyadic ½'s are the field constants (p+1)/2 etc.). Only
+characteristic 2 excludes it. (Our repository carries the verified
+scheme and its minimized linear networks.) Second, the *marginal* rows
 show why new records matter here more than in silicon: each rank step
 is a few percent per recursion level, compounding — and unlike
 hardware, nothing eats the margin.
@@ -238,6 +242,15 @@ Rank is **not** the lever everywhere, and a fair statement of scope:
 - **Constraint count is not wall-clock.** Prover time also includes
   commitments (MSMs/hashing) whose cost scales with witness length;
   fewer constraints shrink that too, but constants differ by system.
+  One further assumption our ratios inherit: "additions are free"
+  holds for the constraint *count*, but deep recursion densifies the
+  R1CS rows — each level multiplies the nonzero coefficients in the
+  constraints' linear forms, and the prover's linear-algebra phase
+  (computing A·w, B·w, C·w and the witness itself) scales with that
+  density. This is exactly the lever our companion additions work
+  pulls: low-adds schemes (55-add 3×3; 329-op rank-48 networks)
+  bound the densification rate, so rank and adds are dual levers —
+  rank sets how many constraints, adds set how dense they are.
 - **Nonlinearities dominate some workloads.** ReLU/quantization take
   range checks and lookups; in convolution- or attention-heavy models
   the matmul share is large, in lookup-heavy quantized pipelines less

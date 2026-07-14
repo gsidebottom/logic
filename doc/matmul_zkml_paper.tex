@@ -256,9 +256,13 @@ levers, the exponent and the tile, are currently unshipped.
 
 Two readings. First, \textbf{the wins in the top half are available
 today}: the rank-48 scheme \cite{alphatensor,dps} with dyadic
-coefficients drops into any R1CS/PLONK matmul gadget as-is (our
-repository carries the verified scheme and its minimized linear
-networks). Second, the \emph{marginal} rows show why new records
+coefficients drops into any R1CS/PLONK matmul gadget as-is --- and
+``works over $\mathbb{F}_p$'' is not a conjecture: our engines
+load the scheme and verify all 4096 Brent equations exactly over
+Goldilocks, BabyBear, and M31 (\S5; the dyadic $\tfrac12$'s are
+the field constants $(p{+}1)/2$ etc.). Only characteristic 2
+excludes it. (Our repository carries the verified scheme and its
+minimized linear networks.) Second, the \emph{marginal} rows show why new records
 matter here more than in silicon: each rank step is a few percent per
 recursion level, compounding --- and unlike hardware, nothing eats
 the margin.
@@ -283,7 +287,16 @@ Rank is \textbf{not} the lever everywhere:
 \item \textbf{Constraint count is not wall-clock}: prover time also
   includes commitments (multi-scalar multiplications / hashing);
   fewer constraints shrink those too, but constants differ by
-  system.
+  system. One further assumption our ratios inherit: ``additions
+  are free'' holds for the constraint \emph{count}, but deep
+  recursion densifies the R1CS rows --- each level multiplies the
+  nonzero coefficients in the constraints' linear forms, and the
+  prover's linear-algebra phase (computing $A\cdot w$, $B\cdot w$,
+  $C\cdot w$ and the witness itself) scales with that density.
+  This is exactly the lever our companion additions work pulls:
+  low-adds schemes (55-add $3{\times}3$; 329-op rank-48 networks)
+  bound the densification rate, so rank and adds are dual levers
+  --- rank sets how many constraints, adds set how dense they are.
 \item \textbf{Nonlinearities dominate some workloads} (range checks,
   lookups for ReLU/quantization); the matmul share is large in
   attention/convolution-heavy models, smaller in lookup-heavy

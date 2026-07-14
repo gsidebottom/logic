@@ -188,6 +188,27 @@ optimal tile choice is a small dynamic program we leave as a
 refinement. Flip-graph search has recently been extended to
 commutative schemes [23], so the discovery machinery of §5 has a
 commutative analogue if the base-tile hunt ever warrants it.
+Quantified against Appendix B.5's bilinear wins: stopping the
+rank-48 recursion at an odd tile t and paying Rosowski's R(t)
+multiplies the total by R(t)/t^2.792 — 0.977 at t = 3, 0.950 at
+t = 5, **0.947 at t = 7** (the optimum) — so today's commutative
+ceiling is a ≈5.3% saving, smaller than a rank-47's 13.5% or a
+rank-21's 19%, and for the structural reason one should expect: a
+bilinear record improves the *exponent* and compounds through
+every level, while commutativity improves one *constant* at the
+bottom. It stacks multiplicatively with any bilinear win, costs no
+new mathematics, and — the pricing surprise — is extremely
+sensitive at the smallest tile: each −1 on the 3×3 commutative
+count is worth 4.65% of the entire pipeline (3^2.792 is small), so
+a 3×3 commutative scheme with 20 products would deliver 7.0% and
+with 19 products 11.6% — rank-47-class wins from a search space
+minuscule beside the bilinear ones, with known lower bounds
+leaving room in the mid-teens. We know of no deployed ZK system
+exploiting fast multiplication at all — circuit-based practice
+proves matmul naively, and the systems that escape n³ do so by
+*verification* (Freivalds-style random projection, the sumcheck
+line of §4), not by faster multiplication — so both levers, the
+exponent and the tile, are currently unshipped.
 
 Two readings. First, **the wins in the top half are available today**:
 the rank-48 scheme [3, 10] with dyadic coefficients drops into any

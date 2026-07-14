@@ -44,6 +44,14 @@ the two source papers for this track):
   - Campaign: ~35 CPU-years → **>13,000 mutually inequivalent new
     23-schemes** (SAT'19; the public DB snapshot later reached 17,376,
     up from 4 known). None compresses to 22.
+- **Commutative record targets (priced 2026-07-13)**: 3x3<=20 comm
+  = 7.0% whole-pipeline (4.65%/unit — highest value-per-space on
+  the board; Rosowski 21 is constructive, not optimized; LBs leave
+  mid-teens room); 5x5<=80 = 10.6%; 7x7<=200 = 12.7% (~rank-47
+  class). Tooling: commutative flip graphs (2506.22113); our
+  engine could grow a flipC mode (mixed-variable bilinear forms,
+  symmetrized Brent verify). Today's comm ceiling (t=7 tiles):
+  5.3% — smaller than exponent wins, stacks with them.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

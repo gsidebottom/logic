@@ -55,8 +55,12 @@ the two source papers for this track):
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused
-  triple-product constructor (attention's (QK^T)V; wins under
-  degree-3 AIR gates if rank4 < r1+r2) — pursue8-style build; (c)
+  triple-product constructor — CAVEAT (2026-07-13): standard
+  attention's softmax between QK^T and .V breaks fusion; exact
+  targets are nonlinearity-free chains: LoRA (x.B.A),
+  linear-attention variants (Q.(K^T V) — associativity IS their
+  design), factored projections. Wins under degree-3 AIR gates if
+  rank4 < r1+r2 — pursue8-style build; (c)
   commutative base-tile carve-in written into zkML section 3
   (Rosowski 21 @ 3x3, 85 @ 5x5; base-tile-only). Border rank: not
   a constraint-count lever at fixed sizes.

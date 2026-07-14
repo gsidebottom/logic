@@ -766,7 +766,7 @@ pub fn run(args: Vec<String>) {
                   (fine for pursue9/census)", seed.len());
     }
     assert!(verify(&seed), "seed must verify over F_p");
-    println!("seed loaded + exactly verified over F_p, p = {P} ({RANK0} summands)");
+    println!("seed loaded + exactly verified over F_p, p = {P} ({} summands)", seed.len());
 
     if args.iter().any(|a| a == "--census") {
         let (sh, co, nm) = state_metrics(&seed);

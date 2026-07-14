@@ -1,0 +1,20 @@
+note: seed rank 64 != module default 49 (fine for pursue9/census)
+seed loaded + exactly verified over F_p, p = 2 (64 summands)
+[0s] *** pursue10 rank 63 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank63_6.txt
+[1s] *** pursue10 rank 62 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank62_6.txt
+[1s] *** pursue10 rank 61 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank61_6.txt
+[1s] *** pursue10 rank 60 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank60_6.txt
+[3s] *** pursue10 rank 59 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank59_6.txt
+[6s] *** pursue10 rank 58 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank58_5.txt
+[6s] *** pursue10 rank 57 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank57_5.txt
+[9s] *** pursue10 rank 56 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank56_10.txt
+[10s] *** pursue10 rank 55 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank55_10.txt
+[19s] *** pursue10 rank 54 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank54_10.txt
+[20s] *** pursue10 rank 53 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank53_9.txt
+[20s] *** pursue10 rank 52 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank52_9.txt
+[120s] pursue10: best 52  red 114  solved 0                                   flips 50047516  restarts 12
+[167s] *** pursue10 rank 51 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank51_0.txt
+[167s] *** pursue10 rank 50 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank50_0.txt
+[178s] *** pursue10 rank 49 VERIFIED *** -> matmul/found48p/RECORDP_p10_rank49_7.txt
+[240s] pursue10: best 49  red 135  solved 0                                   flips 98374663  restarts 6784250
+pursue10: best rank 49 in 14400s; reductions 142  solved-flips 0               random-flips 105167500  restarts 6002496101

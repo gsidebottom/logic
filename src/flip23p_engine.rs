@@ -1351,8 +1351,13 @@ pub fn run(args: Vec<String>) {
         let pool_cap = get("--poolcap", 64) as usize;
         let qevery = get("--qevery", 4000) as u64;
         let secsp = get("--seconds", 600) as u64;
-        let pool: Mutex<(usize, Vec<Vec<Summand>>)> =
-            Mutex::new((seed.len(), vec![seed.clone()]));
+        // banded multi-rank pool: buckets at best..best+2 stay live so
+        // a slim (flipless) new-best state cannot starve the ladder
+        // (measured failure: single-state frontier -> 6.0e9 dead
+        // restarts vs 105M flips in 4 h)
+        use std::collections::BTreeMap;
+        let pool: Mutex<BTreeMap<usize, Vec<Vec<Summand>>>> = Mutex::new(
+            BTreeMap::from([(seed.len(), vec![seed.clone()])]));
         let n_red = AtomicU64::new(0);
         let n_solved = AtomicU64::new(0);
         let n_flip = AtomicU64::new(0);
@@ -1374,7 +1379,20 @@ pub fn run(args: Vec<String>) {
                 // restart from a random frontier-pool state
                 let mut s = {
                     let p = pool.lock().unwrap();
-                    p.1[(next() % p.1.len() as u64) as usize].clone()
+                    let best = *p.keys().next().unwrap();
+                    // sample depth 0/1/2 above frontier, weights 4:2:1
+                    let d = match next() % 7 {
+                        0..=3 => 0,
+                        4 | 5 => 1,
+                        _ => 2,
+                    };
+                    let bucket = p
+                        .range(best + d..)
+                        .next()
+                        .or_else(|| p.range(..).next())
+                        .map(|(_, v)| v)
+                        .unwrap();
+                    bucket[(next() % bucket.len() as u64) as usize].clone()
                 };
                 n_restart.fetch_add(1, Ordering::Relaxed);
                 let mut can_reduce = true;
@@ -1388,11 +1406,14 @@ pub fn run(args: Vec<String>) {
                         n_red.fetch_add(1, Ordering::Relaxed);
                         let r = s.len();
                         let mut p = pool.lock().unwrap();
-                        if r < p.0 {
+                        let best = *p.keys().next().unwrap();
+                        if r < best {
                             if verify(s) {
-                                p.0 = r;
-                                p.1.clear();
-                                p.1.push(s.clone());
+                                p.entry(r).or_default().push(s.clone());
+                                // keep bands best..best+2, drop the rest
+                                let keep: Vec<usize> =
+                                    p.keys().copied().filter(|&k| k <= r + 2).collect();
+                                p.retain(|k, _| keep.contains(k));
                                 drop(p);
                                 global_best.store(r as u32, Ordering::Relaxed);
                                 let path = format!(
@@ -1402,8 +1423,14 @@ pub fn run(args: Vec<String>) {
                                     "[{:.0}s] *** pursue10 rank {} VERIFIED *** -> {}",
                                     t0.elapsed().as_secs_f32(), r, path);
                             }
-                        } else if r == p.0 && p.1.len() < pool_cap {
-                            p.1.push(s.clone());
+                        } else if r <= best + 2 {
+                            let b = p.entry(r).or_default();
+                            if b.len() < pool_cap {
+                                b.push(s.clone());
+                            } else {
+                                let i = (s.len() * 31) % pool_cap;
+                                b[i] = s.clone();
+                            }
                         }
                     };
                     if can_reduce && try_reduce(&mut s) {

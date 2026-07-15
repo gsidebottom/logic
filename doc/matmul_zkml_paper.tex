@@ -939,21 +939,22 @@ ${\approx}(\text{ops}/32)\cdot m$ extra \emph{linear}
 constraints --- ${\approx}10{\times}m$ at today's op counts,
 which is why nobody fully materializes; practice interpolates,
 and every point on that tradeoff curve scales monotonically with
-the op count. The record: the DPS emission of the rank-48
-networks costs \textbf{341 operations} --- stated in \cite{dps},
-Appendix~B, with the SLPs ``PLinOpt generated'' \cite{plinopt}
---- (their
-accounting: additions plus shifts; $L = 104$, $R = 84 + 1$ shift,
-$P = 119 + 33$ shifts), obtained with their PLinOpt toolchain ---
-greedy straight-line synthesis (CSE), kernel/factorization routes,
-and Tellegen transposition (optimize $W$ or $W^{\mathsf T}$,
-whichever is cheaper) --- after an isotropy transformation
-rationalized AlphaEvolve's complex scheme to dyadic coefficients.
-Valid over every odd-characteristic field
+the op count. The record: \cite{dps}'s Appendix~B states \textbf{341
+operations} for the rank-48 networks ($L = 104$, $R = 84 + 1$
+shift, $P = 119 + 33$ shifts; ``PLinOpt generated''
+\cite{plinopt}, via greedy straight-line synthesis,
+kernel/factorization routes, and Tellegen transposition, after an
+isotropy transformation rationalized AlphaEvolve's complex scheme
+to dyadic coefficients) --- but the \emph{living} record is
+better: the SLPs distributed in PLinOpt's data directory for the
+identical matrices, checker-verified in this repository, total
+\textbf{315} ($L = 104{+}4$, $R = 75{+}1$, $P = 110{+}21$) ---
+the authors improved their own artifact past their paper. Valid
+over every odd-characteristic field
 (the op count is field-independent; the $\tfrac12$'s are single
 field constants). Our own checker-gated searches have \textbf{not}
 improved it --- the best verified alternative orientation reaches
-365, sixty signed-permutation and forty dyadic-sandwich orbit
+365 (against 315 the gap widens), sixty signed-permutation and forty dyadic-sandwich orbit
 variants bottom out at 371 and 422 respectively, and an
 eight-hour CSE storm found nothing below --- so 341 has survived
 every probe we own and stands, and an earlier in-repo ``329'' is on record as a counting
@@ -961,9 +962,9 @@ artifact caught by output-checker gating (a methodological
 cautionary tale the repository preserves). \textbf{No nontrivial
 lower bound is known}, so whether 341 is tight is open in both
 directions. What reductions would buy if found: both sinks scale
-linearly, so a 300-op network would be worth ${\approx}12\%$ and
-a 250-op network ${\approx}27\%$ \emph{of the adds-driven
-components} (witness generation and the density/materialization
+linearly, so a 300-op network would be worth ${\approx}5\%$ and
+a 250-op network ${\approx}21\%$ \emph{of the adds-driven
+components} (rebased to 315) (witness generation and the density/materialization
 tax) --- constant-class wins, stacking freely with the
 exponent-class wins above.
 

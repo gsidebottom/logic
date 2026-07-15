@@ -848,19 +848,22 @@ keeps rows sparse at the price of ≈ (ops/32)·m extra *linear*
 constraints — ≈10×m at today's op counts, which is why nobody
 fully materializes; practice interpolates (materialize every few
 levels), and every point on that tradeoff curve scales
-monotonically with the op count. The record: the DPS emission of
-the rank-48 networks costs **341 operations** — stated in [10],
-Appendix B, with the SLPs "PLinOpt generated" [25] — (their
-accounting: additions plus shifts; L = 104, R = 84 + 1 shift,
-P = 119 + 33 shifts), obtained with their PLinOpt toolchain —
-greedy straight-line synthesis (CSE), kernel/factorization routes,
-and Tellegen transposition (optimize W or Wᵀ, whichever is
-cheaper) — after an isotropy transformation rationalized
-AlphaEvolve's complex scheme to dyadic coefficients. Valid over
+monotonically with the op count. The record: [10]'s Appendix B
+states **341 operations** for the rank-48 networks (L = 104,
+R = 84 + 1 shift, P = 119 + 33 shifts; "PLinOpt generated" [25],
+via greedy straight-line synthesis, kernel/factorization routes,
+and Tellegen transposition, after an isotropy transformation
+rationalized AlphaEvolve's complex scheme to dyadic
+coefficients) — but the *living* record is better: the SLPs
+distributed in PLinOpt's data directory for the identical
+matrices, checker-verified in this repository, total **315**
+(L = 104 + 4, R = 75 + 1, P = 110 + 21) — the authors improved
+their own artifact past their paper. Valid over
 every odd-characteristic field
 (the op count is field-independent; the ½'s are single field
 constants). Our own checker-gated searches have **not** improved
-it — the best verified alternative orientation reaches 365,
+it — the best verified alternative orientation reaches 365
+(against 315 the gap widens),
 sixty signed-permutation and forty dyadic-sandwich orbit variants
 bottom out at 371 and 422 respectively, and an eight-hour CSE
 storm found nothing below — so 341 has survived every probe we
@@ -870,8 +873,8 @@ by output-checker gating (a methodological cautionary tale the
 repository preserves). **No nontrivial lower bound is known**, so
 whether 341 is tight is open in both directions. What reductions
 would buy if found: both sinks scale linearly, so a 300-op network
-would be worth ≈12% and a 250-op network ≈27% *of the adds-driven
-components* (witness generation and the density/materialization
+would be worth ≈5% and a 250-op network ≈21% *of the adds-driven
+components* (rebased to 315) (witness generation and the density/materialization
 tax) — constant-class wins, stacking freely with the
 exponent-class wins above.
 

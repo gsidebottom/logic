@@ -661,6 +661,110 @@ fn try_closing(st: &mut Vec<Summand>) -> bool {
     false
 }
 
+// ---------- sandwich moves (M-6): gauge teleports ----------
+/// invert a DIM x DIM matrix over F_p; None if singular
+fn matinv_dim(m: &[[u64; DIM]; DIM]) -> Option<[[u64; DIM]; DIM]> {
+    let mut a = *m;
+    let mut inv = [[0u64; DIM]; DIM];
+    for (i, row) in inv.iter_mut().enumerate() {
+        row[i] = 1;
+    }
+    for col in 0..DIM {
+        let piv = (col..DIM).find(|&r| a[r][col] != 0)?;
+        a.swap(col, piv);
+        inv.swap(col, piv);
+        let f = finv(a[col][col]);
+        for j in 0..DIM {
+            a[col][j] = fmul(a[col][j], f);
+            inv[col][j] = fmul(inv[col][j], f);
+        }
+        for r in 0..DIM {
+            if r != col && a[r][col] != 0 {
+                let g = a[r][col];
+                for j in 0..DIM {
+                    a[r][j] = fsub(a[r][j], fmul(g, a[col][j]));
+                    inv[r][j] = fsub(inv[r][j], fmul(g, inv[col][j]));
+                }
+            }
+        }
+    }
+    Some(inv)
+}
+
+fn matmul_dim(x: &[[u64; DIM]; DIM], y: &[[u64; DIM]; DIM]) -> [[u64; DIM]; DIM] {
+    let mut o = [[0u64; DIM]; DIM];
+    for i in 0..DIM {
+        for j in 0..DIM {
+            let mut s = 0u64;
+            for k in 0..DIM {
+                s = fadd(s, fmul(x[i][k], y[k][j]));
+            }
+            o[i][j] = s;
+        }
+    }
+    o
+}
+
+fn vec_as_mat(v: &FVec) -> [[u64; DIM]; DIM] {
+    let mut m = [[0u64; DIM]; DIM];
+    for i in 0..DIM {
+        for j in 0..DIM {
+            m[i][j] = v.nums[DIM * i + j];
+        }
+    }
+    m
+}
+
+fn mat_as_vec(m: &[[u64; DIM]; DIM]) -> FVec {
+    let mut nums = [0u64; NN];
+    for i in 0..DIM {
+        for j in 0..DIM {
+            nums[DIM * i + j] = m[i][j];
+        }
+    }
+    FVec { nums }
+}
+
+/// random invertible DIM x DIM over F_p with small entries
+fn rand_gl(next: &mut dyn FnMut() -> u64) -> [[u64; DIM]; DIM] {
+    loop {
+        let mut m = [[0u64; DIM]; DIM];
+        for row in m.iter_mut() {
+            for e in row.iter_mut() {
+                *e = if P == 2 {
+                    next() & 1
+                } else {
+                    match next() % 4 {
+                        0 => 0,
+                        1 => 1,
+                        2 => P - 1,
+                        _ => u64::from(next() & 1),
+                    }
+                };
+            }
+        }
+        if matinv_dim(&m).is_some() {
+            return m;
+        }
+    }
+}
+
+/// de Groote sandwich: (A,B,C~) -> (P A Q^-1, Q B R^-1, R C~ P^-1)
+fn sandwich(st: &[Summand], p: &[[u64; DIM]; DIM], q: &[[u64; DIM]; DIM],
+            r: &[[u64; DIM]; DIM]) -> Option<Vec<Summand>> {
+    let qi = matinv_dim(q)?;
+    let ri = matinv_dim(r)?;
+    let pi = matinv_dim(p)?;
+    st.iter()
+        .map(|t| {
+            let a = matmul_dim(&matmul_dim(p, &vec_as_mat(&t.a)), &qi);
+            let b = matmul_dim(&matmul_dim(q, &vec_as_mat(&t.b)), &ri);
+            let c = matmul_dim(&matmul_dim(r, &vec_as_mat(&t.c)), &pi);
+            Summand::gauge(mat_as_vec(&a), mat_as_vec(&b), mat_as_vec(&c))
+        })
+        .collect()
+}
+
 // ---------- seed loading (SMS, integers reduced mod p) ----------
 fn load_seed(dir: &str) -> Vec<Summand> {
     let tof = |v: i64| -> u64 {
@@ -1461,6 +1565,18 @@ pub fn run(args: Vec<String>) {
                     bucket[(next() % bucket.len() as u64) as usize].clone()
                 };
                 n_restart.fetch_add(1, Ordering::Relaxed);
+                // lineage-diversity teleport: with prob 1/4 conjugate the
+                // sampled state by a random de Groote sandwich (verified)
+                if next() & 3 == 0 {
+                    let gp = rand_gl(&mut next);
+                    let gq = rand_gl(&mut next);
+                    let gr = rand_gl(&mut next);
+                    if let Some(sw) = sandwich(&s, &gp, &gq, &gr) {
+                        if verify(&sw) {
+                            s = sw;
+                        }
+                    }
+                }
                 let mut can_reduce = true;
                 let mut steps = 0u64;
                 while steps < plen {

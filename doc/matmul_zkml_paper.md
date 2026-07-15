@@ -923,6 +923,27 @@ even single-level rank-48 rows are denser than naive's
 three-entry rows. (The materialization row counts match the
 per-level formula 112·Σ 48^(ℓ−1)·16^(d−ℓ) exactly.)
 
+**Witness generation is friendlier territory.** The prover must
+also *compute* the witness — every intermediate product, in the
+clear, over the field — and here the same networks measure very
+differently (bench315/bench315r; the 315-op PLinOpt SLPs codegen'd
+to Goldilocks, exactness gated at every size):
+
+| n | naive | rank-48 recursive | ratio |
+|---|---|---|---|
+| 16 | 0.049 ms | 0.057 ms | 1.17 |
+| 64 | 3.20 ms | 2.66 ms | **0.83** |
+| 256 | 221 ms | 135 ms | 0.61 |
+| 1024 | 14.9 s | 6.46 s | **0.43** |
+
+The crossover sits at n ≈ 64 (hybrid cutoff: recurse to 16×16
+tiles, naive below), and by n = 1024 the recursion is 2.3× faster
+— with the measured ratio matching the pure multiplication-tree
+prediction (48/64)³ = 0.42 at three levels, i.e. the 289-add
+linear phases are fully amortized. Adds are cheap CPU operations,
+so witness generation inherits the exponent advantage at small n,
+long before the commitment-side density crossover.
+
 **Reading.** The exponent advantage is real and the counts are
 exactly as predicted; the *crossover* where it beats naive wall
 clock on a Groth16-over-BN254 stack sits beyond n = 64 at bounded

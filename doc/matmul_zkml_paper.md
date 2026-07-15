@@ -849,8 +849,14 @@ constraints — ≈10×m at today's op counts, which is why nobody
 fully materializes; practice interpolates (materialize every few
 levels), and every point on that tradeoff curve scales
 monotonically with the op count. The record: the DPS emission of
-the rank-48 networks costs **341 operations** (their accounting:
-additions plus shifts), valid over every odd-characteristic field
+the rank-48 networks [10] costs **341 operations** (their
+accounting: additions plus shifts; L = 104, R = 84 + 1 shift,
+P = 119 + 33 shifts), obtained with their PLinOpt toolchain —
+greedy straight-line synthesis (CSE), kernel/factorization routes,
+and Tellegen transposition (optimize W or Wᵀ, whichever is
+cheaper) — after an isotropy transformation rationalized
+AlphaEvolve's complex scheme to dyadic coefficients. Valid over
+every odd-characteristic field
 (the op count is field-independent; the ½'s are single field
 constants). Our own checker-gated searches have **not** improved
 it — the best verified alternative orientation reaches 365, and an

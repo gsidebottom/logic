@@ -940,8 +940,14 @@ constraints --- ${\approx}10{\times}m$ at today's op counts,
 which is why nobody fully materializes; practice interpolates,
 and every point on that tradeoff curve scales monotonically with
 the op count. The record: the DPS emission of the rank-48
-networks costs \textbf{341 operations} (their accounting:
-additions plus shifts), valid over every odd-characteristic field
+networks \cite{dps} costs \textbf{341 operations} (their
+accounting: additions plus shifts; $L = 104$, $R = 84 + 1$ shift,
+$P = 119 + 33$ shifts), obtained with their PLinOpt toolchain ---
+greedy straight-line synthesis (CSE), kernel/factorization routes,
+and Tellegen transposition (optimize $W$ or $W^{\mathsf T}$,
+whichever is cheaper) --- after an isotropy transformation
+rationalized AlphaEvolve's complex scheme to dyadic coefficients.
+Valid over every odd-characteristic field
 (the op count is field-independent; the $\tfrac12$'s are single
 field constants). Our own checker-gated searches have \textbf{not}
 improved it --- the best verified alternative orientation reaches
@@ -1041,9 +1047,10 @@ direction and review.
 \bibitem{circle} U. Hab\"ock, D. Levit, S. Papini. \emph{Circle
   STARKs.} ePrint 2024/278.
 \bibitem{zkcnn} T. Liu, X. Xie, Y. Zhang. \emph{zkCNN.} CCS 2021.
-\bibitem{dps} J.-G. Dumas, C. Pernet, A. Sedoglavic.
-  arXiv:2506.13242; A. Novikov et al. \emph{AlphaEvolve.}
-  arXiv:2506.13131.
+\bibitem{dps} J.-G. Dumas, C. Pernet, A. Sedoglavic. \emph{A
+  non-commutative algorithm for multiplying $4{\times}4$ matrices
+  using 48 non-complex multiplications.} arXiv:2506.13242 (2025).
+  Also: A. Novikov et al. \emph{AlphaEvolve.} arXiv:2506.13131.
 \bibitem{ezkl} EZKL. \url{github.com/zkonduit/ezkl}.
 \bibitem{plonky2} Polygon Zero. \emph{Plonky2.} Whitepaper, 2022.
 \bibitem{risc0} RISC Zero. \emph{zkVM documentation}, 2023.

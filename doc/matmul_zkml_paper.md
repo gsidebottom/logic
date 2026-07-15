@@ -854,36 +854,46 @@ R = 84 + 1 shift, P = 119 + 33 shifts; "PLinOpt generated" [25],
 via greedy straight-line synthesis, kernel/factorization routes,
 and Tellegen transposition, after an isotropy transformation
 rationalized AlphaEvolve's complex scheme to dyadic
-coefficients) — but the *living* record is better: the SLPs
-distributed in the PLinOpt library's data directory [25]
-(`github.com/jgdumas/plinopt`, `data/4x4x4_48_rational_*.slp`,
-snapshot 2026-07-07) for the identical matrices, checker-verified
-in this repository, total **315** (L = 104 + 4, R = 75 + 1,
-P = 110 + 21) — the authors improved their own artifact past
-their paper. The 315 transfers verbatim to every
+coefficients) — but the *living* record is better, twice over.
+The SLPs distributed in the PLinOpt library's data directory [25]
+(`github.com/jgdumas/plinopt`, snapshot 2026-07-07) improve on the
+paper in two steps. First, `data/4x4x4_48_rational_*.slp`, for the
+identical matrices, checker-verifies in this repository at **315**
+(L = 104 + 4, R = 75 + 1, P = 110 + 21). Second — and easy to
+overlook under its name — `data/4x4x4_48_accurate_*.slp`, a
+*different* rank-48 decomposition distributed for its numerical
+accuracy, checker-verifies at L = 80 + 4, R = 68 + 8,
+P = 108 + 16 = **284 operations** (256 additions + 28 dyadic
+constant-multiplications), and its matrix triple Brent-verifies
+over ℚ as a true ⟨4,4,4⟩ scheme under the same index convention as
+the rational triple (protocol calibrated on the known-good case).
+The living record is therefore **284**, 57 operations below the
+published 341 — the authors improved their own artifact past
+their paper, and the numerically-accurate variant, not the
+rational one, is the cheapest. The 284 transfers verbatim to every
 odd-characteristic 𝔽_p: the divisions /2^k are multiplications by
 the fixed field constants ((p+1)/2)^k, so over a proof field the
-program is 289 additions plus 26 constant-multiplications — and
+program is 256 additions plus 28 constant-multiplications — and
 under the R1CS objective the constant-multiplications fold into
 linear-combination coefficients for free (Appendix C), leaving
-density and witness generation as the quantities the 289 adds
-govern. Valid over
-every odd-characteristic field
-(the op count is field-independent; the ½'s are single field
-constants). Our own checker-gated searches have **not** improved
-it — the best verified alternative orientation reaches 365
-(against 315 the gap widens),
-sixty signed-permutation and forty dyadic-sandwich orbit variants
-bottom out at 371 and 422 respectively, and an eight-hour CSE
-storm found nothing below — so 341 has survived every probe we
-own and stands, and an
+density and witness generation as the quantities the 256 adds
+govern. Over Goldilocks the codegen'd 284-op networks
+(`bench284r`, exactness gated at n = 16 and 64) measure 4–5%
+faster witness generation than the 315-op networks at n = 64 and
+n = 1024 — the expected dilution of a 10% linear-phase cut by the
+multiplication core. Our own checker-gated searches have **not**
+improved on the artifact — the best verified alternative
+orientation reaches 365, sixty signed-permutation and forty
+dyadic-sandwich orbit variants bottom out at 371 and 422
+respectively, and an eight-hour CSE storm found nothing below the
+rational triple's counts — and an
 earlier in-repo "329" is on record as a counting artifact caught
 by output-checker gating (a methodological cautionary tale the
 repository preserves). **No nontrivial lower bound is known**, so
-whether 341 is tight is open in both directions. What reductions
-would buy if found: both sinks scale linearly, so a 300-op network
-would be worth ≈5% and a 250-op network ≈21% *of the adds-driven
-components* (rebased to 315) (witness generation and the density/materialization
+whether 284 is tight is open in both directions. What reductions
+would buy if found: both sinks scale linearly, so a 250-op network
+would be worth ≈12% and a 200-op network ≈30% *of the adds-driven
+components* (rebased to 284) (witness generation and the density/materialization
 tax) — constant-class wins, stacking freely with the
 exponent-class wins above.
 
@@ -927,7 +937,9 @@ per-level formula 112·Σ 48^(ℓ−1)·16^(d−ℓ) exactly.)
 also *compute* the witness — every intermediate product, in the
 clear, over the field — and here the same networks measure very
 differently (bench315/bench315r; the 315-op PLinOpt SLPs codegen'd
-to Goldilocks, exactness gated at every size):
+to Goldilocks, exactness gated at every size — regenerating from
+the 284-op accurate triple (Appendix B.5) improves these rank-48
+times a further 4–5% at n = 64 and 1024 in back-to-back A/B):
 
 | n | naive | blocked naive | rank-48 recursive | ratio vs blocked |
 |---|---|---|---|---|

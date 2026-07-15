@@ -294,9 +294,10 @@ Rank is \textbf{not} the lever everywhere:
   prover's linear-algebra phase (computing $A\cdot w$, $B\cdot w$,
   $C\cdot w$ and the witness itself) scales with that density.
   This is exactly the lever our companion additions work pulls:
-  low-adds schemes (55-add $3{\times}3$; 329-op rank-48 networks)
-  bound the densification rate, so rank and adds are dual levers
-  --- rank sets how many constraints, adds set how dense they are.
+  low-adds schemes (the 55-add $3{\times}3$ networks; the DPS
+  341-op rank-48 networks) bound the densification rate, so rank
+  and adds are dual levers --- rank sets how many constraints,
+  adds set how dense they are.
 \item \textbf{Nonlinearities dominate some workloads} (range checks,
   lookups for ReLU/quantization); the matmul share is large in
   attention/convolution-heavy models, smaller in lookup-heavy
@@ -938,22 +939,23 @@ ${\approx}(\text{ops}/32)\cdot m$ extra \emph{linear}
 constraints --- ${\approx}10{\times}m$ at today's op counts,
 which is why nobody fully materializes; practice interpolates,
 and every point on that tradeoff curve scales monotonically with
-the op count. The records: the DPS emission of the rank-48
-networks costs \textbf{341 operations} (additions plus dyadic
-scalings); this repository's CSE-plus-orbit-twist optimization
-holds the record we know at \textbf{329} ($-3.5\%$), valid over
-every odd-characteristic field (the op count is field-independent;
-the $\tfrac12$'s are single field constants). \textbf{No
-nontrivial lower bound is known}, so unlike rank the slack here is
-unmeasured. What further reductions buy: both sinks scale
-linearly, so a 300-op network is worth ${\approx}9\%$ and a
-250-op network ${\approx}24\%$ \emph{of the adds-driven
+the op count. The record: the DPS emission of the rank-48
+networks costs \textbf{341 operations} (their accounting:
+additions plus shifts), valid over every odd-characteristic field
+(the op count is field-independent; the $\tfrac12$'s are single
+field constants). Our own checker-gated searches have \textbf{not}
+improved it --- the best verified alternative orientation reaches
+365, and an eight-hour CSE storm found nothing below --- so 341
+stands, and an earlier in-repo ``329'' is on record as a counting
+artifact caught by output-checker gating (a methodological
+cautionary tale the repository preserves). \textbf{No nontrivial
+lower bound is known}, so whether 341 is tight is open in both
+directions. What reductions would buy if found: both sinks scale
+linearly, so a 300-op network would be worth ${\approx}12\%$ and
+a 250-op network ${\approx}27\%$ \emph{of the adds-driven
 components} (witness generation and the density/materialization
 tax) --- constant-class wins, stacking freely with the
-exponent-class wins above, and cheap to hunt: the optimization
-that took $341 \to 329$ ran in minutes, and its analogue
-certified the $3{\times}3$ additions floor story in the companion
-ledger.
+exponent-class wins above.
 
 \section*{Appendix C. Measured: the constraint predictions on a
 real Groth16 stack}

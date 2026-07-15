@@ -248,9 +248,10 @@ Rank is **not** the lever everywhere, and a fair statement of scope:
   constraints' linear forms, and the prover's linear-algebra phase
   (computing A·w, B·w, C·w and the witness itself) scales with that
   density. This is exactly the lever our companion additions work
-  pulls: low-adds schemes (55-add 3×3; 329-op rank-48 networks)
-  bound the densification rate, so rank and adds are dual levers —
-  rank sets how many constraints, adds set how dense they are.
+  pulls: low-adds schemes (the 55-add 3×3 networks; the DPS 341-op
+  rank-48 networks) bound the densification rate, so rank and adds
+  are dual levers — rank sets how many constraints, adds set how
+  dense they are.
 - **Nonlinearities dominate some workloads.** ReLU/quantization take
   range checks and lookups; in convolution- or attention-heavy models
   the matmul share is large, in lookup-heavy quantized pipelines less
@@ -847,20 +848,22 @@ keeps rows sparse at the price of ≈ (ops/32)·m extra *linear*
 constraints — ≈10×m at today's op counts, which is why nobody
 fully materializes; practice interpolates (materialize every few
 levels), and every point on that tradeoff curve scales
-monotonically with the op count. The records: the DPS emission of
-the rank-48 networks costs **341 operations** (additions plus
-dyadic scalings); this repository's CSE-plus-orbit-twist
-optimization holds the record we know at **329** (−3.5%), valid
-over every odd-characteristic field (the op count is
-field-independent; the ½'s are single field constants). **No
-nontrivial lower bound is known**, so unlike rank the slack here
-is unmeasured. What further reductions buy: both sinks scale
-linearly, so a 300-op network is worth ≈9% and a 250-op network
-≈24% *of the adds-driven components* (witness generation and the
-density/materialization tax) — constant-class wins, stacking
-freely with the exponent-class wins above, and cheap to hunt: the
-optimization that took 341 → 329 ran in minutes, and its analogue
-certified the 3×3 additions floor story in the companion ledger.
+monotonically with the op count. The record: the DPS emission of
+the rank-48 networks costs **341 operations** (their accounting:
+additions plus shifts), valid over every odd-characteristic field
+(the op count is field-independent; the ½'s are single field
+constants). Our own checker-gated searches have **not** improved
+it — the best verified alternative orientation reaches 365, and an
+eight-hour CSE storm found nothing below — so 341 stands, and an
+earlier in-repo "329" is on record as a counting artifact caught
+by output-checker gating (a methodological cautionary tale the
+repository preserves). **No nontrivial lower bound is known**, so
+whether 341 is tight is open in both directions. What reductions
+would buy if found: both sinks scale linearly, so a 300-op network
+would be worth ≈12% and a 250-op network ≈27% *of the adds-driven
+components* (witness generation and the density/materialization
+tax) — constant-class wins, stacking freely with the
+exponent-class wins above.
 
 ## Appendix C. Measured: the constraint predictions on a real Groth16 stack
 

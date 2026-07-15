@@ -698,6 +698,35 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   (ties back to the neural track); UNSAT side (challenge 2) via our proof
   machinery — a *different* project (algebraic/symmetry lower-bound
   reasoning, not enumeration).
+- **2026-07-15 — machine-aware F_p pivot.** (a) **Living adds record is
+  284, not 315**: DPS data-dir `4x4x4_48_accurate` triple checker-counts
+  ⟨80,4⟩+⟨68,8⟩+⟨108,16⟩; Brent over ℚ under the calibrated convention;
+  Goldilocks codegen (slp284/bench284r) field-gated; 4–5% faster witness
+  gen than 315 at n=64/1024. zkML paper B.5/C updated. (b)
+  **machinecost.py**: machine-cycle scorer — shift dyadics, small-odd
+  chains, delayed reduction (the F_p mult-add-fusion analogue: (lo,hi)
+  accumulators, one reduce per output; eligibility = P-DAG over
+  {+,−,×2^k}). Lane verdict: SWAR/NEON batches *across tiles*, so lanes
+  don't reorder scheme rankings (BB 4×32 ≈2–3×, Goldilocks ≈parity).
+  (c) **machopt.py** exponent-relabel storm (product prescales + P-wire
+  relabels, plateau-shaped objective, ℚ-gated): 48 restarts incl.
+  constructive column-flatten init → **no gated improvement**; mechanism
+  identified: 16 blockers are shared-wire conflicts on output lines —
+  pure relabels provably insufficient; **v2 move = wire duplication**
+  (compute w and 2^k·w separately, ~1 shift each). Complementary fact:
+  converged2k/ours P is already 16/16 delayable at higher op count —
+  attack from both ends. Also queued: delayed-reduction Rust bench (El
+  with dual-accumulator type) to convert model wins into measured ones.
+- **2026-07-15 — benchzk verdicts.** n=256 BN254 Groth16: naive 16.8M
+  constraints, setup 99 s / prove 119 s; strassen 5.8M constraints but
+  433 s / 389 s — **the density inversion measured at scale**. All
+  rank-48 configs (matlv 0,2,3,4) and even naive --full OOM'd: n=256
+  Groth16 sits at this machine's ~32 GB ceiling (RSS-guard kills logged;
+  swap/compression = the 20% CPU stretches). New `--full` scenario mode:
+  witness-gen + NTT fwd/inv at the proof-domain size + setup/prove/verify
+  phase table (n=64: naive domain 2^19 NTT 22/20 ms setup 1.0 s prove
+  1.2 s verify 0.23 s; rank48 matlv2 domain 2^18 NTT 10.6/11 ms setup
+  7.1 s prove 7.8 s). Goldilocks-STARK twin = natural next build.
 
 ## 4. Discipline
 

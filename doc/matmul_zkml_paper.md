@@ -835,6 +835,33 @@ nearest paths to a new best base run through 5×5 ≤ 89 (−4) and
 construction at ≤ 332 would beat every 4×4-blocked pipeline at
 once).
 
+**The additions record — pricing the dual lever.** §4's caveat
+made additions a second lever: they vanish from the constraint
+count but re-enter twice. (i) *Witness generation* evaluates the
+scheme's three linear networks; its cost scales directly with the
+network op count, compounding over recursion exactly like the
+classical additions recursion. (ii) *Circuit shape*: folding the
+linear forms keeps constraints at r^d but densifies R1CS rows
+multiplicatively per level, while materializing intermediates
+keeps rows sparse at the price of ≈ (ops/32)·m extra *linear*
+constraints — ≈10×m at today's op counts, which is why nobody
+fully materializes; practice interpolates (materialize every few
+levels), and every point on that tradeoff curve scales
+monotonically with the op count. The records: the DPS emission of
+the rank-48 networks costs **341 operations** (additions plus
+dyadic scalings); this repository's CSE-plus-orbit-twist
+optimization holds the record we know at **329** (−3.5%), valid
+over every odd-characteristic field (the op count is
+field-independent; the ½'s are single field constants). **No
+nontrivial lower bound is known**, so unlike rank the slack here
+is unmeasured. What further reductions buy: both sinks scale
+linearly, so a 300-op network is worth ≈9% and a 250-op network
+≈24% *of the adds-driven components* (witness generation and the
+density/materialization tax) — constant-class wins, stacking
+freely with the exponent-class wins above, and cheap to hunt: the
+optimization that took 341 → 329 ran in minutes, and its analogue
+certified the 3×3 additions floor story in the companion ledger.
+
 ## Acknowledgments
 
 This work was carried out in an extended interactive collaboration

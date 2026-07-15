@@ -749,17 +749,30 @@ fn rand_gl(next: &mut dyn FnMut() -> u64) -> [[u64; DIM]; DIM] {
     }
 }
 
-/// de Groote sandwich: (A,B,C~) -> (P A Q^-1, Q B R^-1, R C~ P^-1)
+fn mattrans_dim(m: &[[u64; DIM]; DIM]) -> [[u64; DIM]; DIM] {
+    let mut o = [[0u64; DIM]; DIM];
+    for i in 0..DIM {
+        for j in 0..DIM {
+            o[i][j] = m[j][i];
+        }
+    }
+    o
+}
+
+/// de Groote sandwich in THIS engine's index convention (the c
+/// factor is (i,j)-shaped, not transposed):
+///   a' = P a Q^-1,  b' = Q b R^-1,  c' = P^-T c R^T
 fn sandwich(st: &[Summand], p: &[[u64; DIM]; DIM], q: &[[u64; DIM]; DIM],
             r: &[[u64; DIM]; DIM]) -> Option<Vec<Summand>> {
     let qi = matinv_dim(q)?;
     let ri = matinv_dim(r)?;
-    let pi = matinv_dim(p)?;
+    let pit = mattrans_dim(&matinv_dim(p)?);
+    let rt = mattrans_dim(r);
     st.iter()
         .map(|t| {
             let a = matmul_dim(&matmul_dim(p, &vec_as_mat(&t.a)), &qi);
             let b = matmul_dim(&matmul_dim(q, &vec_as_mat(&t.b)), &ri);
-            let c = matmul_dim(&matmul_dim(r, &vec_as_mat(&t.c)), &pi);
+            let c = matmul_dim(&matmul_dim(&pit, &vec_as_mat(&t.c)), &rt);
             Summand::gauge(mat_as_vec(&a), mat_as_vec(&b), mat_as_vec(&c))
         })
         .collect()
@@ -1533,6 +1546,7 @@ pub fn run(args: Vec<String>) {
         let n_flip = AtomicU64::new(0);
         let n_restart = AtomicU64::new(0);
         let n_close = AtomicU64::new(0);
+        let n_sw = AtomicU64::new(0);
         let global_best = AtomicU32::new(init_best as u32);
         let t0 = Instant::now();
         (0..threads as u64).into_par_iter().for_each(|tid| {
@@ -1574,6 +1588,7 @@ pub fn run(args: Vec<String>) {
                     if let Some(sw) = sandwich(&s, &gp, &gq, &gr) {
                         if verify(&sw) {
                             s = sw;
+                            n_sw.fetch_add(1, Ordering::Relaxed);
                         }
                     }
                 }
@@ -1712,13 +1727,14 @@ pub fn run(args: Vec<String>) {
             }
         });
         println!(
-            "pursue10: best rank {} in {:.0}s; reductions {}  solved-flips {}               random-flips {}  restarts {}",
+            "pursue10: best rank {} in {:.0}s; reductions {}  solved-flips {}               random-flips {}  restarts {}  sandwiches {}",
             global_best.load(Ordering::Relaxed),
             t0.elapsed().as_secs_f64(),
             n_red.load(Ordering::Relaxed),
             n_solved.load(Ordering::Relaxed),
             n_flip.load(Ordering::Relaxed),
-            n_restart.load(Ordering::Relaxed));
+            n_restart.load(Ordering::Relaxed),
+            n_sw.load(Ordering::Relaxed));
         return;
     }
 

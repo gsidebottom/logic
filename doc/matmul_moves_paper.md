@@ -179,7 +179,9 @@ slice-rank 6.
 
 **M-10. Completion jump** (HKS method 2; built: walk.py over 𝔽₂).
 Freeze a random subset of a known scheme's coefficient bits,
-re-solve the rest with SLS. Non-local, powerful, and the engine of
+re-solve the rest with **stochastic local search (SLS)** —
+WalkSAT-family bit-flipping with noise over the Brent constraints
+(our native-ANF variant is detailed in the 53-schemes report). Non-local, powerful, and the engine of
 our 53-scheme discovery and the 715-scheme method-2 basin
 measurement; field-restricted to where a solver exists (SAT over
 𝔽₂; over 𝔽_p the analogue is M-7's linear closure or Gröbner

@@ -207,7 +207,10 @@ learned policy filled for DeepMind \cite{alphatensor}.
 
 \paragraph{M-10. Completion jump} (HKS method 2; built:
 \texttt{walk.py} over $\mathbb{F}_2$). Freeze a random subset of a
-known scheme's bits, re-solve the rest with SLS. Non-local and
+known scheme's bits, re-solve the rest with \textbf{stochastic
+local search (SLS)} --- WalkSAT-family bit-flipping with noise over
+the Brent constraints (our native-ANF variant is detailed in the
+53-schemes report). Non-local and
 powerful (our 53-scheme discovery; the ${\approx}715$-scheme
 method-2 basin); field-restricted to where a solver exists ---
 over $\mathbb{F}_p$ the analogue is M-7's linear closure.

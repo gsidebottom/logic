@@ -44,6 +44,19 @@ the two source papers for this track):
   - Campaign: ~35 CPU-years → **>13,000 mutually inequivalent new
     23-schemes** (SAT'19; the public DB snapshot later reached 17,376,
     up from 4 known). None compresses to 22.
+- **Living record 315 + Kaporin F_p obstruction (2026-07-15)**:
+  PLinOpt data-dir SLPs for the identical rational-48 matrices
+  checker-verify at 315 (<104,4>+<75,1>+<110,21>) — 26 below the
+  paper's 341 (artifact ahead of text; zkML B.5 dual-cites with
+  snapshot date). shiftmin: L/R have ZERO label-slack; P needs
+  inline-group emission (v3) for a verdict. Kaporin complex-48:
+  i and sqrt(3) exist in Goldilocks+BabyBear but CBRT(2) DOES NOT
+  (2 not a cubic residue; 3|p-1) -> his 2^(-5/3) instance cannot
+  instantiate over either base field (needs F_p^3) — an F_p
+  obstruction parallel to MSY's R-obstruction; class-level question
+  open (144/192 algebraic forms unpublished; author contact in
+  kaporin/NOTES.md). Pivot begun: F_p witness-gen benchmarking of
+  the 315 networks (bench315 codegen).
 - **Adds-record probes COMPLETE (2026-07-15)**: 341 (DPS, Appendix
   B, PLinOpt kernel route) survives everything: our checker-gated
   365 (their instances, sweep 3); 8h cse48 storm (flat); 40 dyadic

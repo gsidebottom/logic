@@ -44,6 +44,16 @@ the two source papers for this track):
   - Campaign: ~35 CPU-years → **>13,000 mutually inequivalent new
     23-schemes** (SAT'19; the public DB snapshot later reached 17,376,
     up from 4 known). None compresses to 22.
+- **Adds-record probes COMPLETE (2026-07-15)**: 341 (DPS, Appendix
+  B, PLinOpt kernel route) survives everything: our checker-gated
+  365 (their instances, sweep 3); 8h cse48 storm (flat); 40 dyadic
+  sandwiches (>= 422 — dyadic re-gauging strictly adds shift mass);
+  60 signed-permutation sandwiches (>= 371 — coefficient-preserving
+  orbit moves are protocol noise). Sandwich action bug found+fixed
+  en route (c' = P^-T c R^T in our convention; engine teleports had
+  been silently failing verify). Remaining levers: BP-style
+  cancellation-aware CSE; the F_p reframe (shifts free, scheme
+  freedom from our pools). Phantom 329 retracted same morning.
 - **Moves paper (2026-07-14, doc/matmul_moves_paper)**: the methods
   paper — space anatomy (disconnection certificates), move field
   guide M-1..M-10 with toy examples, campaign techniques + verdicts

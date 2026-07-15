@@ -860,8 +860,11 @@ AlphaEvolve's complex scheme to dyadic coefficients. Valid over
 every odd-characteristic field
 (the op count is field-independent; the ½'s are single field
 constants). Our own checker-gated searches have **not** improved
-it — the best verified alternative orientation reaches 365, and an
-eight-hour CSE storm found nothing below — so 341 stands, and an
+it — the best verified alternative orientation reaches 365,
+sixty signed-permutation and forty dyadic-sandwich orbit variants
+bottom out at 371 and 422 respectively, and an eight-hour CSE
+storm found nothing below — so 341 has survived every probe we
+own and stands, and an
 earlier in-repo "329" is on record as a counting artifact caught
 by output-checker gating (a methodological cautionary tale the
 repository preserves). **No nontrivial lower bound is known**, so

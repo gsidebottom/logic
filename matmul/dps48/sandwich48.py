@@ -39,15 +39,18 @@ def mat4_inv(m):
     return [row[4:] for row in a]
 
 
+PERM_ONLY = False
+
 def rand_gauge(rng):
-    """signed permutation times dyadic diagonal: invertible, sparse,
-    keeps coefficients dyadic"""
+    """signed permutation (times dyadic diagonal unless PERM_ONLY):
+    invertible, sparse, keeps coefficients dyadic"""
     perm = list(range(4))
     rng.shuffle(perm)
     m = [[Fraction(0)] * 4 for _ in range(4)]
     for i, p in enumerate(perm):
         s = rng.choice([1, -1])
-        e = rng.choice([Fraction(1, 2), Fraction(1), Fraction(1), Fraction(2)])
+        e = Fraction(1) if PERM_ONLY else rng.choice(
+            [Fraction(1, 2), Fraction(1), Fraction(1), Fraction(2)])
         m[i][p] = s * e
     return m
 
@@ -65,6 +68,8 @@ def sandwich_rows(rows, left, rightinv):
 def main():
     src, outdir, n = sys.argv[1], sys.argv[2], int(sys.argv[3])
     seed = int(sys.argv[4]) if len(sys.argv) > 4 else 1
+    global PERM_ONLY
+    PERM_ONLY = len(sys.argv) > 5 and sys.argv[5] == "perm"
     rng = random.Random(seed)
     L = parse_sms(os.path.join(src, "L.sms"))
     R = parse_sms(os.path.join(src, "R.sms"))

@@ -1,0 +1,68 @@
+orbit_perm/sw23_000/ L=105 R=92 P=192 TOTAL=389
+*** PERM-ORBIT BEST 389 vs published 341 / prior 365 ***
+orbit_perm/sw23_001/ L=105 R=87 P=187 TOTAL=379
+*** PERM-ORBIT BEST 379 vs published 341 / prior 365 ***
+orbit_perm/sw23_002/ L=105 R=92 P=191 TOTAL=388
+orbit_perm/sw23_003/ L=105 R=89 P=182 TOTAL=376
+*** PERM-ORBIT BEST 376 vs published 341 / prior 365 ***
+orbit_perm/sw23_004/ L=104 R=87 P=189 TOTAL=380
+orbit_perm/sw23_005/ L=106 R=90 P=185 TOTAL=381
+orbit_perm/sw23_006/ L=105 R=92 P=189 TOTAL=386
+orbit_perm/sw23_007/ L=104 R=87 P=184 TOTAL=375
+*** PERM-ORBIT BEST 375 vs published 341 / prior 365 ***
+orbit_perm/sw23_008/ L=106 R=90 P=186 TOTAL=382
+orbit_perm/sw23_009/ L=105 R=90 P=189 TOTAL=384
+orbit_perm/sw23_010/ L=105 R=90 P=184 TOTAL=379
+orbit_perm/sw23_011/ L=105 R=92 P=186 TOTAL=383
+orbit_perm/sw23_012/ L=104 R=91 P=194 TOTAL=389
+orbit_perm/sw23_013/ L=104 R=89 P=187 TOTAL=380
+orbit_perm/sw23_014/ L=105 R=90 P=187 TOTAL=382
+orbit_perm/sw23_015/ L=105 R=93 P=186 TOTAL=384
+orbit_perm/sw23_016/ L=105 R=92 P=188 TOTAL=385
+orbit_perm/sw23_017/ L=105 R=87 P=185 TOTAL=377
+orbit_perm/sw23_018/ L=105 R=89 P=190 TOTAL=384
+orbit_perm/sw23_019/ L=106 R=87 P=190 TOTAL=383
+orbit_perm/sw23_020/ L=105 R=87 P=191 TOTAL=383
+orbit_perm/sw23_021/ L=105 R=93 P=187 TOTAL=385
+orbit_perm/sw23_022/ L=105 R=86 P=186 TOTAL=377
+orbit_perm/sw23_023/ L=105 R=92 P=177 TOTAL=374
+*** PERM-ORBIT BEST 374 vs published 341 / prior 365 ***
+orbit_perm/sw23_024/ L=106 R=91 P=186 TOTAL=383
+orbit_perm/sw23_025/ L=105 R=89 P=184 TOTAL=378
+orbit_perm/sw23_026/ L=105 R=87 P=189 TOTAL=381
+orbit_perm/sw23_027/ L=106 R=88 P=190 TOTAL=384
+orbit_perm/sw23_028/ L=105 R=91 P=185 TOTAL=381
+orbit_perm/sw23_029/ L=106 R=88 P=183 TOTAL=377
+orbit_perm/sw23_030/ L=104 R=90 P=186 TOTAL=380
+orbit_perm/sw23_031/ L=105 R=90 P=180 TOTAL=375
+orbit_perm/sw23_032/ L=105 R=90 P=177 TOTAL=372
+*** PERM-ORBIT BEST 372 vs published 341 / prior 365 ***
+orbit_perm/sw23_033/ L=104 R=91 P=189 TOTAL=384
+orbit_perm/sw23_034/ L=105 R=87 P=182 TOTAL=374
+orbit_perm/sw23_035/ L=105 R=89 P=183 TOTAL=377
+orbit_perm/sw23_036/ L=105 R=89 P=177 TOTAL=371
+*** PERM-ORBIT BEST 371 vs published 341 / prior 365 ***
+orbit_perm/sw23_037/ L=105 R=89 P=186 TOTAL=380
+orbit_perm/sw23_038/ L=104 R=91 P=187 TOTAL=382
+orbit_perm/sw23_039/ L=105 R=90 P=184 TOTAL=379
+orbit_perm/sw23_040/ L=105 R=91 P=183 TOTAL=379
+orbit_perm/sw23_041/ L=106 R=90 P=183 TOTAL=379
+orbit_perm/sw23_042/ L=105 R=89 P=186 TOTAL=380
+orbit_perm/sw23_043/ L=105 R=87 P=186 TOTAL=378
+orbit_perm/sw23_044/ L=105 R=84 P=187 TOTAL=376
+orbit_perm/sw23_045/ L=105 R=90 P=185 TOTAL=380
+orbit_perm/sw23_046/ L=106 R=89 P=188 TOTAL=383
+orbit_perm/sw23_047/ L=105 R=88 P=187 TOTAL=380
+orbit_perm/sw23_048/ L=105 R=90 P=185 TOTAL=380
+orbit_perm/sw23_049/ L=105 R=89 P=189 TOTAL=383
+orbit_perm/sw23_050/ L=106 R=88 P=188 TOTAL=382
+orbit_perm/sw23_051/ L=104 R=93 P=181 TOTAL=378
+orbit_perm/sw23_052/ L=106 R=88 P=184 TOTAL=378
+orbit_perm/sw23_053/ L=105 R=89 P=182 TOTAL=376
+orbit_perm/sw23_054/ L=104 R=89 P=185 TOTAL=378
+orbit_perm/sw23_055/ L=105 R=92 P=188 TOTAL=385
+orbit_perm/sw23_056/ L=105 R=92 P=189 TOTAL=386
+orbit_perm/sw23_057/ L=105 R=87 P=187 TOTAL=379
+orbit_perm/sw23_058/ L=106 R=89 P=185 TOTAL=380
+orbit_perm/sw23_059/ L=105 R=89 P=187 TOTAL=381
+perm sweep done: best 371

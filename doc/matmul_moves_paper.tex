@@ -112,8 +112,17 @@ Toy (naive $2{\times}2$, summands $(1,1,1)$ and $(1,1,2)$, both
 with $a = e_{11}$, $\lambda = 1$): $b_1 \leftarrow e_{11}+e_{12}$
 and $c_2 \leftarrow e_{12}-e_{11}$; the two cross terms cancel and
 the sum is unchanged. Over $\mathbb{F}_2$, $\lambda = 1$ is the
-only choice; over $\mathbb{Q}$ we restrict $\lambda$ to dyadics;
-over $\mathbb{F}_p$ any $\lambda \ne 0$ is legal.
+only choice; over $\mathbb{Q}$ we restrict $\lambda$ to dyadics
+(a genuine legality constraint: arbitrary rationals explode
+denominators through repeated flips); over $\mathbb{F}_p$ any
+$\lambda \ne 0$ is legal --- and ``non-integer'' has no meaning
+there, since $\mathbb{Z}$ surjects onto $\mathbb{F}_p$: the
+element $\tfrac12 = (p{+}1)/2$ is as much an integer residue as
+2, and residues that are images of no small rational are equally
+available. The distinctions that matter over $\mathbb{F}_p$ are
+strategic, not legal: small-image $\lambda$ preserve coincidence
+structure, solved $\lambda$ create it, generic $\lambda$ destroy
+it (\S1).
 
 \paragraph{M-2. Reduction} (rank $-1$, and the characteristic-2
 $-2$). Two summands sharing \emph{two} slots merge:

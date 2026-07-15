@@ -82,9 +82,16 @@ u⊗b₁⊗c₁ + u⊗b₂⊗c₂   →   u⊗(b₁+λb₂)⊗c₁ + u⊗b₂⊗
 Toy (naive 2×2, summands (1,1,1) and (1,1,2), both with a = e11,
 λ = 1): b₁ ← e11+e12 and c₂ ← e12−e11; expanding shows the two
 cross terms cancel and the sum is unchanged. Over 𝔽₂, λ = 1 is
-the only choice; over ℚ we restrict λ to dyadics (coefficient
-control); over 𝔽_p any λ ≠ 0 is legal. Engines: every flip
-binary; cost O(m²) per move.
+the only choice; over ℚ we restrict λ to dyadics (a genuine
+legality constraint: arbitrary rationals explode denominators
+through repeated flips); over 𝔽_p any λ ≠ 0 is legal — and
+"non-integer" has no meaning there, since ℤ surjects onto 𝔽_p:
+the element ½ = (p+1)/2 is as much an integer residue as 2, and
+residues that are images of no small rational are equally
+available. The distinctions that matter over 𝔽_p are strategic,
+not legal: small-image λ preserve coincidence structure, solved λ
+create it, generic λ destroy it (§1). Engines: every flip binary;
+cost O(m²) per move.
 
 **M-2. Reduction** (rank −1, and the characteristic-2 −2). Two
 summands sharing *two* slots merge:

@@ -722,6 +722,40 @@ fn load_seed(dir: &str) -> Vec<Summand> {
         .collect()
 }
 
+/// read back a dump()-format file (one scheme: NN-vector triples,
+/// one summand per line). Returns None on parse failure.
+fn load_dump(path: &str) -> Option<Vec<Summand>> {
+    let txt = std::fs::read_to_string(path).ok()?;
+    let mut out = Vec::new();
+    for ln in txt.lines() {
+        let ln = ln.trim();
+        if ln.is_empty() || ln == "---" {
+            continue;
+        }
+        let parts: Vec<&str> = ln.split('|').collect();
+        if parts.len() != 3 {
+            return None;
+        }
+        let mut vecs = Vec::with_capacity(3);
+        for p in &parts {
+            let inner = p.trim().trim_start_matches('[').trim_end_matches(']');
+            let mut nums = [0u64; NN];
+            for (i, tok) in inner.split(',').enumerate() {
+                if i >= NN {
+                    return None;
+                }
+                nums[i] = tok.trim().parse().ok()?;
+            }
+            vecs.push(FVec { nums });
+        }
+        let c = vecs.pop()?;
+        let b = vecs.pop()?;
+        let a = vecs.pop()?;
+        out.push(Summand::gauge(a, b, c)?);
+    }
+    if out.is_empty() { None } else { Some(out) }
+}
+
 fn dump(s: &[Summand], path: &str) {
     let mut txt = String::new();
     for t in s {
@@ -1356,14 +1390,46 @@ pub fn run(args: Vec<String>) {
         // (measured failure: single-state frontier -> 6.0e9 dead
         // restarts vs 105M flips in 4 h)
         use std::collections::BTreeMap;
-        let pool: Mutex<BTreeMap<usize, Vec<Vec<Summand>>>> = Mutex::new(
-            BTreeMap::from([(seed.len(), vec![seed.clone()])]));
+        let mut init: BTreeMap<usize, Vec<Vec<Summand>>> =
+            BTreeMap::from([(seed.len(), vec![seed.clone()])]);
+        // --poolseed DIR: preload every readable dump in DIR whose
+        // scheme verifies; the banded pool then starts at the best
+        // dumped frontier with live states in the bands above it
+        if let Some(pd) = args.iter().position(|a| a == "--poolseed")
+            .and_then(|i| args.get(i + 1)) {
+            let mut n_ok = 0;
+            if let Ok(rd) = std::fs::read_dir(pd) {
+                for e in rd.flatten() {
+                    let p = e.path();
+                    if p.extension().map_or(true, |x| x != "txt") {
+                        continue;
+                    }
+                    if let Some(sch) = load_dump(p.to_str().unwrap()) {
+                        if verify(&sch) {
+                            init.entry(sch.len()).or_default().push(sch);
+                            n_ok += 1;
+                        }
+                    }
+                }
+            }
+            if n_ok > 0 {
+                let best = *init.keys().next().unwrap();
+                init.retain(|&k, _| k <= best + 2);
+            }
+            println!("poolseed: {} dumps loaded; bands {:?}",
+                     n_ok,
+                     init.iter().map(|(k, v)| (*k, v.len()))
+                         .collect::<Vec<_>>());
+        }
+        let init_best = *init.keys().next().unwrap();
+        let pool: Mutex<BTreeMap<usize, Vec<Vec<Summand>>>> =
+            Mutex::new(init);
         let n_red = AtomicU64::new(0);
         let n_solved = AtomicU64::new(0);
         let n_flip = AtomicU64::new(0);
         let n_restart = AtomicU64::new(0);
         let n_close = AtomicU64::new(0);
-        let global_best = AtomicU32::new(seed.len() as u32);
+        let global_best = AtomicU32::new(init_best as u32);
         let t0 = Instant::now();
         (0..threads as u64).into_par_iter().for_each(|tid| {
             let mut rng = 0xb492_b66f_be98_f273u64

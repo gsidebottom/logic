@@ -35,9 +35,12 @@ import sys
 LINE = re.compile(r"^\s*(\w+)\s*:=\s*(.+?);\s*$")
 INPUT = re.compile(r"^i\d+$")
 
-C_ADD, C_MUL, C_ODD = 1.5, 6.5, 4.5
-C_DBL, C_HALF = 1.5, 2.0
-D_MUL, D_ACC, D_SHIFT, D_COMB, C_RED = 2.0, 2.0, 2.5, 7.0, 5.0
+# Calibrated on Apple M-series via benchdr (dependent-chain ns,
+# normalized to C_ADD = 1.5): scalar mul 9.33ns, deferred mul+accum
+# 1.25ns, combine+reduce 10.35ns, fdiv2 1.48ns, add 1.25ns.
+C_ADD, C_MUL, C_ODD = 1.5, 11.2, 4.5
+C_DBL, C_HALF = 1.5, 1.8
+D_MUL, D_ACC, D_SHIFT, D_COMB, C_RED = 0.75, 0.75, 2.0, 12.4, 12.4
 
 
 def parse(path):

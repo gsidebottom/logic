@@ -1,0 +1,3 @@
+baseline delayed 752.8 (P eligible outputs 0/16)
+best gated 752.8 (restart 0, P eligible 0/16, gate True)
+no gated improvement over baseline

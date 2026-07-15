@@ -946,10 +946,20 @@ shift, $P = 119 + 33$ shifts; ``PLinOpt generated''
 kernel/factorization routes, and Tellegen transposition, after an
 isotropy transformation rationalized AlphaEvolve's complex scheme
 to dyadic coefficients) --- but the \emph{living} record is
-better: the SLPs distributed in PLinOpt's data directory for the
-identical matrices, checker-verified in this repository, total
-\textbf{315} ($L = 104{+}4$, $R = 75{+}1$, $P = 110{+}21$) ---
-the authors improved their own artifact past their paper. Valid
+better: the SLPs distributed in the PLinOpt library's data directory
+\cite{plinopt} (\texttt{github.com/jgdumas/plinopt},
+\texttt{data/4x4x4\_48\_rational\_*.slp}, snapshot 2026-07-07)
+for the identical matrices, checker-verified in this repository,
+total \textbf{315} ($L = 104{+}4$, $R = 75{+}1$, $P = 110{+}21$)
+--- the authors improved their own artifact past their paper. The
+315 transfers verbatim to every odd-characteristic $\mathbb{F}_p$:
+the divisions $/2^k$ are multiplications by the fixed field
+constants $((p{+}1)/2)^k$, so over a proof field the program is
+289 additions plus 26 constant-multiplications --- and under the
+R1CS objective the constant-multiplications fold into
+linear-combination coefficients for free (Appendix~C), leaving
+density and witness generation as the quantities the 289 adds
+govern. Valid
 over every odd-characteristic field
 (the op count is field-independent; the $\tfrac12$'s are single
 field constants). Our own checker-gated searches have \textbf{not}

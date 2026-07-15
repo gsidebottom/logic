@@ -255,7 +255,7 @@ sumcheck line of \S4), not by faster multiplication --- so both
 levers, the exponent and the tile, are currently unshipped.
 
 Two readings. First, \textbf{the wins in the top half are available
-today}: the rank-48 scheme \cite{alphatensor,dps} with dyadic
+today}: the rank-48 scheme \cite{alphaevolve,dps} with dyadic
 coefficients drops into any R1CS/PLONK matmul gadget as-is --- and
 ``works over $\mathbb{F}_p$'' is not a conjecture: our engines
 load the scheme and verify all 4096 Brent equations exactly over
@@ -940,7 +940,9 @@ constraints --- ${\approx}10{\times}m$ at today's op counts,
 which is why nobody fully materializes; practice interpolates,
 and every point on that tradeoff curve scales monotonically with
 the op count. The record: the DPS emission of the rank-48
-networks \cite{dps} costs \textbf{341 operations} (their
+networks costs \textbf{341 operations} --- stated in \cite{dps},
+Appendix~B, with the SLPs ``PLinOpt generated'' \cite{plinopt}
+--- (their
 accounting: additions plus shifts; $L = 104$, $R = 84 + 1$ shift,
 $P = 119 + 33$ shifts), obtained with their PLinOpt toolchain ---
 greedy straight-line synthesis (CSE), kernel/factorization routes,
@@ -1050,7 +1052,15 @@ direction and review.
 \bibitem{dps} J.-G. Dumas, C. Pernet, A. Sedoglavic. \emph{A
   non-commutative algorithm for multiplying $4{\times}4$ matrices
   using 48 non-complex multiplications.} arXiv:2506.13242 (2025).
-  Also: A. Novikov et al. \emph{AlphaEvolve.} arXiv:2506.13131.
+  (The 341-operation SLP accounting is its Appendix~B; scheme and
+  SLPs distributed via PLinOpt's data directory \cite{plinopt}.)
+\bibitem{alphaevolve} A. Novikov et al. \emph{AlphaEvolve: a
+  coding agent for scientific and algorithmic discovery.} 2025,
+  arXiv:2506.13131. (Origin of the rank-48 scheme, over
+  $\mathbb{C}$; no operation counts there.)
+\bibitem{plinopt} J.-G. Dumas, B. Grenet, C. Pernet,
+  A. Sedoglavic. \emph{PLinOpt, a library for optimizing linear
+  programs.} \url{github.com/jgdumas/plinopt}.
 \bibitem{ezkl} EZKL. \url{github.com/zkonduit/ezkl}.
 \bibitem{plonky2} Polygon Zero. \emph{Plonky2.} Whitepaper, 2022.
 \bibitem{risc0} RISC Zero. \emph{zkVM documentation}, 2023.

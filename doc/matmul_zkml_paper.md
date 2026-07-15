@@ -211,7 +211,7 @@ line of §4), not by faster multiplication — so both levers, the
 exponent and the tile, are currently unshipped.
 
 Two readings. First, **the wins in the top half are available today**:
-the rank-48 scheme [3, 10] with dyadic coefficients drops into any
+the rank-48 scheme [24, 10] with dyadic coefficients drops into any
 R1CS/PLONK matmul gadget as-is — and "works over 𝔽_p" is not a
 conjecture: our engines load the scheme and verify all 4096 Brent
 equations exactly over Goldilocks, BabyBear, and M31 (§5; the
@@ -849,7 +849,8 @@ constraints — ≈10×m at today's op counts, which is why nobody
 fully materializes; practice interpolates (materialize every few
 levels), and every point on that tradeoff curve scales
 monotonically with the op count. The record: the DPS emission of
-the rank-48 networks [10] costs **341 operations** (their
+the rank-48 networks costs **341 operations** — stated in [10],
+Appendix B, with the SLPs "PLinOpt generated" [25] — (their
 accounting: additions plus shifts; L = 104, R = 84 + 1 shift,
 P = 119 + 33 shifts), obtained with their PLinOpt toolchain —
 greedy straight-line synthesis (CSE), kernel/factorization routes,
@@ -954,8 +955,9 @@ direction and review.
    convolutional neural network predictions and accuracy.* CCS 2021.
 10. J.-G. Dumas, C. Pernet, A. Sedoglavic. *A non-commutative
     algorithm for multiplying 4×4 matrices using 48 non-complex
-    multiplications.* arXiv:2506.13242. Also: A. Novikov et al.
-    *AlphaEvolve.* arXiv:2506.13131.
+    multiplications.* arXiv:2506.13242. (The 341-operation SLP
+    accounting is its Appendix B; scheme + SLPs distributed via
+    PLinOpt's data directory [25].)
 11. EZKL: `github.com/zkonduit/ezkl` (PLONK-family zkML toolchain).
 12. Polygon Zero. *Plonky2: fast recursive arguments with PLONK and
     FRI.* Whitepaper, 2022. (Goldilocks field.)
@@ -986,3 +988,9 @@ direction and review.
     in n(n²+2n−1)/2.)
 23. *Exploring commutative matrix multiplication schemes via flip
     graphs.* 2025, arXiv:2506.22113.
+24. A. Novikov et al. *AlphaEvolve: a coding agent for scientific
+    and algorithmic discovery.* 2025, arXiv:2506.13131. (Origin of
+    the rank-48 scheme, over ℂ; no operation counts there.)
+25. J.-G. Dumas, B. Grenet, C. Pernet, A. Sedoglavic. *PLinOpt, a
+    library for optimizing linear programs.*
+    github.com/jgdumas/plinopt.

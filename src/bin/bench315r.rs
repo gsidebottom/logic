@@ -7,8 +7,35 @@
 const P: u64 = 0xFFFF_FFFF_0000_0001;
 
 #[inline(always)]
-fn fmul(a: u64, b: u64) -> u64 {
+fn fmul_slow(a: u64, b: u64) -> u64 {
     ((a as u128 * b as u128) % (P as u128)) as u64
+}
+
+/// Goldilocks reduction without division: 2^64 = 2^32 - 1 (mod p),
+/// 2^96 = -1 (mod p)  =>  x = lo + hi_lo*(2^32-1) - hi_hi
+#[inline(always)]
+fn reduce128(x: u128) -> u64 {
+    let lo = x as u64;
+    let hi = (x >> 64) as u64;
+    let hi_hi = hi >> 32;
+    let hi_lo = hi & 0xFFFF_FFFF;
+    let t1 = hi_lo * 0xFFFF_FFFF; // < 2^64
+    let mut s = lo as u128 + t1 as u128 + (P as u128 - hi_hi as u128);
+    while s >= P as u128 {
+        s -= P as u128;
+    }
+    s as u64
+}
+
+#[inline(always)]
+fn fmul(a: u64, b: u64) -> u64 {
+    reduce128(a as u128 * b as u128)
+}
+
+/// halve mod odd p: shift plus fixup, no multiply
+#[inline(always)]
+fn fdiv2(x: u64) -> u64 {
+    (x >> 1) + (x & 1) * ((P + 1) >> 1)
 }
 #[inline(always)]
 fn fadd(a: u64, b: u64) -> u64 {
@@ -62,7 +89,17 @@ impl El for u64 {
         fneg_s(*self)
     }
     fn scale2(&self, k: i32) -> Self {
-        fmul(*self, pow2c(k))
+        let mut v = *self;
+        if k >= 0 {
+            for _ in 0..k {
+                v = fadd(v, v); // doubling = one modular add
+            }
+        } else {
+            for _ in 0..(-k) {
+                v = fdiv2(v); // halving = shift + fixup
+            }
+        }
+        v
     }
 }
 
@@ -80,12 +117,54 @@ impl El for Blk {
         Blk(self.0.iter().map(|a| fneg_s(*a)).collect())
     }
     fn scale2(&self, k: i32) -> Self {
-        let c = pow2c(k);
-        Blk(self.0.iter().map(|a| fmul(*a, c)).collect())
+        if k >= 0 {
+            let mut v = self.0.clone();
+            for _ in 0..k {
+                for e in v.iter_mut() {
+                    *e = fadd(*e, *e);
+                }
+            }
+            Blk(v)
+        } else {
+            let mut v = self.0.clone();
+            for _ in 0..(-k) {
+                for e in v.iter_mut() {
+                    *e = fdiv2(*e);
+                }
+            }
+            Blk(v)
+        }
     }
 }
 
 include!("../slp315g.rs");
+
+/// cache-blocked naive control (64-wide tiles, k-inner accumulate)
+fn naive_blocked(n: usize, a: &[u64], b: &[u64], c: &mut [u64]) {
+    const T: usize = 64;
+    for x in c.iter_mut() {
+        *x = 0;
+    }
+    let bs = T.min(n);
+    for ii in (0..n).step_by(bs) {
+        for kk in (0..n).step_by(bs) {
+            for jj in (0..n).step_by(bs) {
+                for i in ii..(ii + bs).min(n) {
+                    for k in kk..(kk + bs).min(n) {
+                        let av = a[i * n + k];
+                        if av == 0 {
+                            continue;
+                        }
+                        for j in jj..(jj + bs).min(n) {
+                            c[i * n + j] =
+                                fadd(c[i * n + j], fmul(av, b[k * n + j]));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 fn naive_n(n: usize, a: &[u64], b: &[u64], c: &mut [u64]) {
     for i in 0..n {
@@ -139,6 +218,20 @@ fn fast_n(n: usize, cutoff: usize, a: &[u64], b: &[u64], c: &mut [u64]) {
 }
 
 fn main() {
+    // gate the fast reduction against the division reduction
+    {
+        let mut r = 0xdeadbeefcafef00du64;
+        for _ in 0..1_000_000 {
+            r ^= r << 13;
+            r ^= r >> 7;
+            r ^= r << 17;
+            let a = r % P;
+            let b = r.rotate_left(17) % P;
+            assert_eq!(fmul(a, b), fmul_slow(a, b));
+            assert_eq!(fdiv2(a), fmul_slow(a, (P + 1) / 2));
+        }
+        println!("fast reduction + fdiv2 gated against division on 1M randoms");
+    }
     let mut rng = 0x243f_6a88_85a3_08d3u64;
     let mut next = move || {
         rng ^= rng << 13;
@@ -168,6 +261,11 @@ fn main() {
             naive_n(n, &a, &b, &mut c);
         }
         let tn = t0.elapsed().as_secs_f64() / reps as f64;
+        let tb0 = std::time::Instant::now();
+        for _ in 0..reps {
+            naive_blocked(n, &a, &b, &mut c);
+        }
+        let tnb = (tb0.elapsed().as_secs_f64() / reps as f64).min(tn);
         let mut best = (f64::MAX, 0usize);
         for &cut in &[4usize, 16, 64] {
             if cut >= n {
@@ -183,11 +281,12 @@ fn main() {
             }
         }
         println!(
-            "n={n:5}  naive {:>10.3} ms   rank48-recursive {:>10.3} ms (cutoff {})   ratio {:.2}",
+            "n={n:5}  naive {:>9.3} ms  blocked {:>9.3} ms  rank48 {:>9.3} ms (cut {})  ratio-vs-blocked {:.2}",
             tn * 1e3,
+            tnb * 1e3,
             best.0 * 1e3,
             best.1,
-            best.0 / tn
+            best.0 / tnb
         );
     }
 }

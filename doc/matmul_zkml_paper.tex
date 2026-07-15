@@ -1026,23 +1026,29 @@ the same networks measure very differently (bench315/bench315r;
 the 315-op PLinOpt SLPs codegen'd to Goldilocks, exactness gated
 at every size):
 \begin{center}
-\begin{tabular}{cccc}
-$n$ & naive & rank-48 recursive & ratio\\
+\begin{tabular}{ccccc}
+$n$ & naive & blocked naive & rank-48 & ratio vs blocked\\
 \hline
-16 & 0.049\,ms & 0.057\,ms & 1.17\\
-64 & 3.20\,ms & 2.66\,ms & \textbf{0.83}\\
-256 & 221\,ms & 135\,ms & 0.61\\
-1024 & 14.9\,s & 6.46\,s & \textbf{0.43}\\
+16 & 0.019\,ms & 0.019\,ms & 0.035\,ms & 1.83\\
+64 & 1.15\,ms & 1.15\,ms & 0.926\,ms & \textbf{0.80}\\
+256 & 80.7\,ms & 79.9\,ms & 47.0\,ms & 0.59\\
+1024 & 6.30\,s & 5.08\,s & 2.32\,s & \textbf{0.46}\\
 \end{tabular}
 \end{center}
-The crossover sits at $n \approx 64$ (hybrid cutoff: recurse to
-$16{\times}16$ tiles, naive below), and by $n = 1024$ the
-recursion is 2.3$\times$ faster --- the measured ratio matching
-the pure multiplication-tree prediction $(48/64)^3 = 0.42$ at
-three levels, i.e.\ the 289-add linear phases are fully
-amortized. Adds are cheap CPU operations, so witness generation
-inherits the exponent advantage at small $n$, long before the
-commitment-side density crossover.
+(Arithmetic tuned to the field's design: division-free Goldilocks
+reduction via $2^{64} \equiv 2^{32}{-}1$, halving as
+shift-plus-fixup, doubling as one modular add,
+\texttt{target-cpu=native} $+$ LTO --- ${\approx}2.7\times$ over
+the first-cut build; a cache-blocked naive is the control, worth
+20\% at $n = 1024$.) The crossover sits at $n \approx 64$
+(hybrid cutoff: recurse to $16{\times}16$ tiles, naive below),
+and by $n = 1024$ the recursion is 2.2$\times$ faster than the
+blocked control --- the measured ratio 0.46 sitting just above the
+pure multiplication-tree limit $(48/64)^3 = 0.42$, i.e.\ the
+289-add linear phases are nearly fully amortized. Adds are cheap
+CPU operations, so witness generation inherits the exponent
+advantage at small $n$, long before the commitment-side density
+crossover.
 
 \paragraph{Reading.} The exponent advantage is real and the counts
 are exactly as predicted; the \emph{crossover} where it beats

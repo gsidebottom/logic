@@ -20,6 +20,7 @@ use ark_r1cs_std::alloc::AllocVar;
 use ark_r1cs_std::eq::EqGadget;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::fields::FieldVar;
+use ark_r1cs_std::R1CSVar;
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, SynthesisError,
 };
@@ -131,7 +132,23 @@ fn dps_const(sign: i8, negexp: u8) -> Fr {
     }
 }
 
-fn rank48_mul(a: &M, b: &M) -> M {
+fn materialize(x: &FpVar<Fr>) -> FpVar<Fr> {
+    let cs = x.cs();
+    let v = FpVar::new_witness(cs, || x.value()).unwrap();
+    v.enforce_equal(x).unwrap();
+    v
+}
+
+fn mat_m(x: M, on: bool) -> M {
+    if !on {
+        return x;
+    }
+    x.into_iter()
+        .map(|row| row.into_iter().map(|e| materialize(&e)).collect())
+        .collect()
+}
+
+fn rank48_mul(a: &M, b: &M, depth: usize, matlv: usize) -> M {
     let n = a.len();
     if n == 1 {
         return vec![vec![&a[0][0] * &b[0][0]]];
@@ -164,7 +181,8 @@ fn rank48_mul(a: &M, b: &M) -> M {
                 }
             }
         }
-        prods.push(rank48_mul(&la, &rb));
+        let on = depth <= matlv;
+        prods.push(rank48_mul(&mat_m(la, on), &mat_m(rb, on), depth + 1, matlv));
     }
     let mut c = zeros(n);
     for t in 0..48 {
@@ -182,12 +200,13 @@ fn rank48_mul(a: &M, b: &M) -> M {
             }
         }
     }
-    c
+    mat_m(c, depth <= matlv)
 }
 
 #[derive(Clone)]
 struct MatMulCircuit {
     n: usize,
+    matlv: usize,
     scheme: String,
     a: Vec<Vec<Fr>>,
     b: Vec<Vec<Fr>>,
@@ -215,7 +234,7 @@ impl ConstraintSynthesizer<Fr> for MatMulCircuit {
         let cv = match self.scheme.as_str() {
             "naive" => naive_mul(&av, &bv),
             "strassen" => strassen_mul(&av, &bv),
-            "rank48" => rank48_mul(&av, &bv),
+            "rank48" => rank48_mul(&av, &bv, 1, self.matlv),
             other => panic!("unknown scheme {other}"),
         };
         for i in 0..n {
@@ -232,6 +251,12 @@ fn main() {
     let n: usize = args[1].parse().unwrap();
     let scheme = args[2].clone();
     let prove = args.iter().any(|a| a == "--prove");
+    let matlv: usize = args
+        .iter()
+        .position(|a| a == "--matlv")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
 
     let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(42);
     let a: Vec<Vec<Fr>> = (0..n)
@@ -251,7 +276,7 @@ fn main() {
             c[i][j] = s;
         }
     }
-    let circuit = MatMulCircuit { n, scheme: scheme.clone(), a, b, c: c.clone() };
+    let circuit = MatMulCircuit { n, matlv, scheme: scheme.clone(), a, b, c: c.clone() };
 
     // constraint count (cheap, no crypto)
     let cs = ConstraintSystem::<Fr>::new_ref();
@@ -260,7 +285,7 @@ fn main() {
     let m = cs.num_constraints();
     let eq = n * n;
     println!(
-        "n={n} scheme={scheme}: constraints {m} (mults {} + {} output-equality rows)",
+        "n={n} scheme={scheme} matlv={matlv}: constraints {m} (mults {} + {} other rows)",
         m - eq, eq
     );
 

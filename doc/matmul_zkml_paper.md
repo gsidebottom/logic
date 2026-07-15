@@ -862,6 +862,57 @@ freely with the exponent-class wins above, and cheap to hunt: the
 optimization that took 341 → 329 ran in minutes, and its analogue
 certified the 3×3 additions floor story in the companion ledger.
 
+## Appendix C. Measured: the constraint predictions on a real Groth16 stack
+
+We implemented the three gadgets — naive, Strassen 2×2:7, and the
+rank-48 4×4 recursion with the Brent-verified DPS coefficients — as
+R1CS circuits over BN254 (arkworks Groth16; `matmul/benchzk/`), and
+measured. Two headlines: one vindication, one warning.
+
+**Constraint counts land exactly on §3's formulas.** n = 4: 64 /
+49 / **48** multiplication constraints — a 4×4 witness×witness
+product proven in 48 constraints, as this paper's premise promises.
+n = 16: 4096 / 2401 / 2304; n = 64: 262,144 / 117,649 / 110,592
+(= n³, 7^log₂ⁿ, 48^log₄ⁿ). Proofs verify; additions and dyadic
+scalings cost zero constraints, folding into linear combinations.
+
+**Wall clock does not follow constraint count at small n — the
+density tax is real.** Fully folded, the depth-3 rank-48 circuit's
+rows carry the *compounded* linear-form support, and at n = 64 its
+proving time loses to naive by 17.6× (42.9 s vs 2.5 s) despite
+2.37× fewer constraints. The §4 materialization analysis, measured
+as a schedule (materialize the top t levels' combinations as
+witness rows, fold below):
+
+| levels materialized | constraints | prove (s) |
+|---|---|---|
+| 0 (fold all) | 114,688 | 42.9 |
+| 1 | 143,360 | 26.4 |
+| **2 (optimum)** | **229,376** | **12.7** |
+| 3 (materialize all) | 487,424 | 13.1 |
+
+The hybrid optimum recovers 3.4× over naive folding — and still
+loses to the naive gadget at this size, because Groth16's prover
+tracks total matrix *nonzeros* more closely than row count, and
+even single-level rank-48 rows are denser than naive's
+three-entry rows. (The materialization row counts match the
+per-level formula 112·Σ 48^(ℓ−1)·16^(d−ℓ) exactly.)
+
+**Reading.** The exponent advantage is real and the counts are
+exactly as predicted; the *crossover* where it beats naive wall
+clock on a Groth16-over-BN254 stack sits beyond n = 64 at bounded
+density (constraint ratio 0.85 at n = 64 → 0.67 at 256 → 0.53 at
+1024, against a ≈2 to 3× density constant), i.e. likely n ≳ 10³ —
+LLM-scale matrices, per §3, not toy benchmarks. Three levers move
+the crossover in: PLONKish custom gates that hard-code the 48
+fixed combinations as selectors (density becomes free); STARK/AIR
+stacks whose cost model is hashing-dominated rather than
+nonzero-dominated; and lower-adds networks (B.5), which shrink the
+density constant directly — the measured reason the adds record
+matters. Reproducible from the repository (`benchzk`, fixed
+seeds); n = 256 and a PLONKish port are the natural next data
+points.
+
 ## Acknowledgments
 
 This work was carried out in an extended interactive collaboration

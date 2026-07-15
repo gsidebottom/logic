@@ -246,11 +246,27 @@ impl ConstraintSynthesizer<Fr> for MatMulCircuit {
     }
 }
 
+fn ntt_bench(m: usize) -> (f64, f64, usize) {
+    use ark_poly::EvaluationDomain;
+    let dom = ark_poly::GeneralEvaluationDomain::<Fr>::new(m).unwrap();
+    let size = dom.size();
+    let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(3);
+    let coeffs: Vec<Fr> = (0..size).map(|_| Fr::rand(&mut rng)).collect();
+    let t0 = Instant::now();
+    let evals = dom.fft(&coeffs);
+    let t_f = t0.elapsed().as_secs_f64();
+    let t1 = Instant::now();
+    let _back = dom.ifft(&evals);
+    let t_i = t1.elapsed().as_secs_f64();
+    (t_f, t_i, size)
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let n: usize = args[1].parse().unwrap();
     let scheme = args[2].clone();
     let prove = args.iter().any(|a| a == "--prove");
+    let full = args.iter().any(|a| a == "--full");
     let matlv: usize = args
         .iter()
         .position(|a| a == "--matlv")
@@ -288,6 +304,50 @@ fn main() {
         "n={n} scheme={scheme} matlv={matlv}: constraints {m} (mults {} + {} other rows)",
         m - eq, eq
     );
+
+    if full {
+        // whole-scenario phase table
+        let t0 = Instant::now();
+        // witness generation = the native product (already computed as
+        // ground truth above; recompute for timing)
+        let mut cw = vec![vec![Fr::zero(); n]; n];
+        for i in 0..n {
+            for j in 0..n {
+                let mut s = Fr::zero();
+                for k in 0..n {
+                    s += circuit.a[i][k] * circuit.b[k][j];
+                }
+                cw[i][j] = s;
+            }
+        }
+        let t_wg = t0.elapsed();
+        let dom_size_hint = m.next_power_of_two();
+        let (t_fft, t_ifft, dsz) = ntt_bench(dom_size_hint);
+        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(7);
+        let t1 = Instant::now();
+        let (pk, vk) =
+            ark_groth16::Groth16::<Bn254>::circuit_specific_setup(circuit.clone(), &mut rng)
+                .unwrap();
+        let t_setup = t1.elapsed();
+        let t2 = Instant::now();
+        let proof = ark_groth16::Groth16::<Bn254>::prove(&pk, circuit.clone(), &mut rng).unwrap();
+        let t_prove = t2.elapsed();
+        let public: Vec<Fr> = c.clone().into_iter().flatten().collect();
+        let t3 = Instant::now();
+        let ok = ark_groth16::Groth16::<Bn254>::verify(&vk, &public, &proof).unwrap();
+        let t_verify = t3.elapsed();
+        assert!(ok);
+        println!("--- full zk scenario: n={n} scheme={scheme} matlv={matlv} ---");
+        println!("constraints            {m}");
+        println!("proof domain (2^k)     {dsz}");
+        println!("witness generation     {:>12.2?}   (native n^3 matmul over Fr)", t_wg);
+        println!("NTT forward @ domain   {:>12.2?}", std::time::Duration::from_secs_f64(t_fft));
+        println!("NTT inverse @ domain   {:>12.2?}", std::time::Duration::from_secs_f64(t_ifft));
+        println!("setup (trusted)        {:>12.2?}", t_setup);
+        println!("prove                  {:>12.2?}", t_prove);
+        println!("verify                 {:>12.2?}   valid={ok}", t_verify);
+        return;
+    }
 
     if prove {
         let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(7);

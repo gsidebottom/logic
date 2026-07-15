@@ -1,0 +1,24 @@
+=== full zk scenario table Wed Jul 15 17:00:02 EDT 2026 ===
+n=64 scheme=naive matlv=0: constraints 266240 (mults 262144 + 4096 other rows)
+--- full zk scenario: n=64 scheme=naive matlv=0 ---
+constraints            266240
+proof domain (2^k)     524288
+witness generation           3.63ms   (native n^3 matmul over Fr)
+NTT forward @ domain        22.33ms
+NTT inverse @ domain        20.03ms
+setup (trusted)               1.01s
+prove                         1.21s
+verify                     225.91ms   valid=true
+n=64 scheme=rank48 matlv=2: constraints 229376 (mults 225280 + 4096 other rows)
+--- full zk scenario: n=64 scheme=rank48 matlv=2 ---
+constraints            229376
+proof domain (2^k)     262144
+witness generation           3.79ms   (native n^3 matmul over Fr)
+NTT forward @ domain        10.56ms
+NTT inverse @ domain        11.02ms
+setup (trusted)               7.13s
+prove                         7.84s
+verify                     224.38ms   valid=true
+n=256 scheme=naive matlv=0: constraints 16842752 (mults 16777216 + 65536 other rows)
+RSS-GUARD: killed './target/release/benchzk 256 naive --full' at 32 GB (cap 26 GB)
+RSS-GUARD: killed './target/release/benchzk 256 rank48 --matlv 3 --full' at 29 GB (cap 26 GB)

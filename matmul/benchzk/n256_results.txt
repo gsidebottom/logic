@@ -1,0 +1,9 @@
+n=256 scheme=naive matlv=0: constraints 16842752 (mults 16777216 + 65536 other rows)
+groth16: setup 99.17s  prove 119.13s  verify 3.61s  valid true
+n=256 scheme=strassen matlv=0: constraints 5830337 (mults 5764801 + 65536 other rows)
+groth16: setup 432.94s  prove 389.15s  verify 3.58s  valid true
+n=256 scheme=rank48 matlv=2: constraints 7208960 (mults 7143424 + 65536 other rows)
+n=256 scheme=rank48 matlv=0: constraints 5373952 (mults 5308416 + 65536 other rows)
+--- retry Wed Jul 15 16:57:41 EDT 2026: matlv 3 then 4, RSS cap 26 GB ---
+RSS-GUARD: killed './target/release/benchzk 256 rank48 --matlv 3 --prove' at 26 GB (cap 26 GB)
+RSS-GUARD: killed './target/release/benchzk 256 rank48 --matlv 4 --prove' at 28 GB (cap 26 GB)

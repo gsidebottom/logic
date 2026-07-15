@@ -166,39 +166,43 @@ def scalar_cost(ops):
 
 
 def p_delayed(ops):
-    """Delayed-reduction cost of a P network; returns
-    (cost, eligible_outputs, outputs, boundary_reduces)."""
-    defs = {v: t for (v, _, t) in ops}
+    """Optimistic delayed-mode accounting: every locally-eligible line
+    (own exponents >= 0, no odd consts — reduced scalars enter (lo,hi)
+    accumulation free as (val,0)) runs delayed; scalar lines run
+    scalar. Products defer (mul 2.0, no reduce128) iff every consumer
+    is delayed; a deferred product or delayed line also read by a
+    scalar line pays one boundary reduce; delayed outputs pay one
+    combine. score() floors the result at the pure-scalar path.
+    Returns (cost, delayed_outputs, outputs, boundary_reduces,
+    deferred_products)."""
     elig = {}
-    for v, _, terms in ops:  # ops are in def order: no recursion needed
-        elig[v] = bool(terms) and all(
-            k >= 0 and o == 1 and (INPUT.match(s) or elig.get(s, False))
-            for (_, s, k, o) in terms
-        )
-    pe = set()  # products actually deferred (have an eligible consumer)
     for v, _, terms in ops:
-        if elig[v]:
-            pe.update(s for (_, s, _, _) in terms if INPUT.match(s))
-    boundary = set()
+        elig[v] = bool(terms) and all(
+            k >= 0 and o == 1 for (_, s, k, o) in terms
+        )
+    prods = {s for (_, _, t) in ops for (_, s, _, _) in t if INPUT.match(s)}
+    scalar_readers = set()
     for v, _, terms in ops:
         if not elig[v]:
-            for _, s, _, _ in terms:
-                if (INPUT.match(s) and s in pe) or elig.get(s, False):
-                    boundary.add(s)
-    cost, ne, no = 0.0, 0, 0
+            scalar_readers.update(s for (_, s, _, _) in terms)
+    deferred = prods - scalar_readers
+    cost, ne, no, nb = 0.0, 0, 0, 0
+    cost += len(deferred & scalar_readers) * C_RED  # (empty by constr.)
     for v, out, terms in ops:
+        a = max(0, len(terms) - 1)
         is_out = out is not None and out.startswith("o")
         if elig[v]:
-            cost += max(0, len(terms) - 1) * D_ACC
-            cost += sum(D_SHIFT for (_, _, k, _) in terms if k > 0)
+            cost += a * D_ACC + sum(D_SHIFT for (_, _, k, _) in terms if k > 0)
             if is_out:
                 cost += D_COMB
                 ne += 1
+            elif v in scalar_readers:
+                cost += C_RED
+                nb += 1
         else:
-            cost += max(0, len(terms) - 1) * C_ADD
-            cost += sum(term_cost(k, o) for (_, _, k, o) in terms)
+            cost += a * C_ADD + sum(term_cost(k, o) for (_, _, k, o) in terms)
         no += is_out
-    return cost + len(boundary) * C_RED, ne, no, len(boundary), len(pe)
+    return cost, ne, no, nb, len(deferred)
 
 
 def score(lp, rp, pp, label, only44=False):
@@ -212,10 +216,13 @@ def score(lp, rp, pp, label, only44=False):
     pa, ps = counts(P)
     sc = scalar_cost(L) + scalar_cost(R) + nprod * C_MUL + scalar_cost(P)
     pdc, ne, no, nb, npe = p_delayed(P)
-    # only products with an eligible consumer defer their reduction;
-    # the rest are computed reduced as in the scalar path.
-    dl = (scalar_cost(L) + scalar_cost(R) + npe * D_MUL
-          + (nprod - npe) * C_MUL + pdc)
+    # deferred products skip reduce128; the rest are computed reduced.
+    # Floor at the scalar path: an implementor can always not delay.
+    dl = min(
+        scalar_cost(L) + scalar_cost(R) + npe * D_MUL
+        + (nprod - npe) * C_MUL + pdc,
+        sc,
+    )
     print(
         f"{label:36s} adds {la + ra + pa:4d}  sh {ls + rs + ps:3d}  "
         f"scalar {sc:7.1f}  delayed {dl:7.1f}  "

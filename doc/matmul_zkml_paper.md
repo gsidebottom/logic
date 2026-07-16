@@ -3,7 +3,9 @@
 *Greg Sidebottom*
 
 *Research note — logic repo (https://github.com/gsidebottom/logic),
-matmul track, 2026-07-11. Companion to the 3×3 additive-complexity
+matmul track. First version 2026-07-11; revised 2026-07-16 with the
+measurement program of Appendices B–C (fields × proving stacks ×
+substrates). Companion to the 3×3 additive-complexity
 paper (`doc/matmul_adds_paper.md`, artifacts DOI
 10.5281/zenodo.21240904), the rank-48 rigidity paper
 (`doc/matmul_rigid48_paper.md`), and the flower note
@@ -41,8 +43,25 @@ field would be a shippable constraint-count reduction with no analog
 in the characteristic-0 literature. We state the cost model precisely,
 including the honest carve-outs (sumcheck/GKR provers multiply
 matrices in ~n² prover work and do not care about rank; public-weight
-linear layers cost no constraints), inventory which of our existing
-artifacts transfer, and report the port's first measurements.
+linear layers cost no constraints), and then *measure* it. The
+measured findings (Appendices B–C): the living operation-count record
+for rank-48 4×4 is **284**, found in the PLinOpt authors' own
+distributed artifacts, 57 below their published 341
+(checker-verified, Brent-verified); on Groth16/R1CS the predicted
+constraint counts land exactly but linear-combination *density*
+charges the rank-48 gadget up to 17.6× — and a PLONKish/AIR port
+(Plonky3 over BabyBear) **erases that tax structurally**, proving at
+parity over identical traces; witness generation inherits the
+exponent advantage with a crossover that is field- *and*
+substrate-dependent (n ≈ 64 over Goldilocks-CPU, n ≈ 10³ over
+BabyBear-CPU where 4-lane NEON favors cheap multiplies, moot on the
+GPU where all algorithms saturate memory bandwidth); and NTT field
+pricing is measured across BabyBear, Goldilocks, BN254-Fr, and an
+Apple-GPU column. One law organizes the machine-level results: the
+winning scheme is decided by the substrate's scarce resource —
+multiplies, additions, or bytes — and in modern AIR stacks the
+scarce resource is committed rows, which is exactly what rank
+reduces. The field-specific rank hunts continue.
 
 ## 1. zkML in one page
 
@@ -339,9 +358,14 @@ the campaigns are the point.
    ~4× faster walks), then BN254-Fr for the pairing world.
 3. **Rectangular tiles**: transformer shapes want ⟨m,n,k⟩ records
    (⟨3,3,6⟩-style); the engine generalizes as flip48 → flip23 did.
-4. **Verified gadget emitter + benchmark note**: constraint-count
-   measurements in an EZKL-style stack, naive vs recursive-scheme,
-   with Lean-certified gadget templates.
+4. **Verified gadget emitter + benchmark note**: *largely done* —
+   Appendix C now carries measured constraint counts and prover
+   times on arkworks Groth16 (`benchzk`) and a Plonky3 AIR gate
+   (`benchair`), with the witness-generation and NTT measurement
+   program beside them; Lean-certified gadget templates remain
+   open. The next deployment-shaped artifact is a memory-mediated
+   zkVM precompile chip, where the rank-48 row reduction becomes
+   prover wall-clock.
 
 ## 8. Reproduction
 
@@ -352,6 +376,17 @@ cargo build --release --bin flip23p
     --seconds 25 --threads 4 --out matmul/found23p       # smoke storm
 # any verified rank <= 22 over Goldilocks lands in
 # found23p/RECORDP_rank*.txt and is announced loudly
+
+# measurement program (Appendices B-C); each binary gates itself
+# (checker / Brent / bit-for-bit reference) before timing
+(cd matmul/benchzk && cargo run --release -- 64 rank48 --matlv 2 --full)
+(cd matmul/benchair && cargo run --release)            # AIR gate A/B
+(cd matmul/benchmetal && cargo run --release)          # GPU tiles
+(cd matmul/benchmetal && cargo run --release --bin benchntt_metal)
+cargo run --release --bin benchntt_g                   # Goldilocks NTT
+cargo run --release --bin benchntt_bb                  # BabyBear NTT
+cargo run --release --bin bench284r                    # witness-gen A/B
+cargo run --release --bin bench_bb                     # NEON lanes
 ```
 
 ## Appendix A. Setup, Prove, Verify — a complete toy proof
@@ -930,12 +965,18 @@ components* (rebased to 284) (witness generation and the density/materialization
 tax) — constant-class wins, stacking freely with the
 exponent-class wins above.
 
-## Appendix C. Measured: the constraint predictions on a real Groth16 stack
+## Appendix C. Measured: the predictions on real proving stacks and real machines
 
 We implemented the three gadgets — naive, Strassen 2×2:7, and the
 rank-48 4×4 recursion with the Brent-verified DPS coefficients — as
 R1CS circuits over BN254 (arkworks Groth16; `matmul/benchzk/`), and
-measured. Two headlines: one vindication, one warning.
+measured; then carried the measurement across proving stacks (a
+PLONKish/AIR port, `matmul/benchair/`) and execution substrates
+(CPU scalar, NEON lanes, Apple GPU). The arc in one line: the
+constraint counts are vindicated exactly; R1CS density is a real
+tax; AIR arithmetization erases it; and witness generation obeys a
+substrate law — multiplies, additions, or bytes decide the winning
+scheme depending on the machine.
 
 **Constraint counts land exactly on §3's formulas.** n = 4: 64 /
 49 / **48** multiplication constraints — a 4×4 witness×witness

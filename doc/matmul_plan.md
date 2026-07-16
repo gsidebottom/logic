@@ -825,6 +825,20 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   measurement program is complete across fields (BN254/G/BB), stacks
   (Groth16/AIR), and substrates (CPU/NEON/GPU).
 
+- **2026-07-16 — zkML paper consolidation pass.** The abstract now owns
+  the measured story (284 record; 17.6× density tax + AIR erasure;
+  field- and substrate-dependent crossovers; NTT pricing incl. GPU;
+  the substrate law and its convergence on rows-as-currency); header
+  carries first-version/revised dates; Appendix C retitled "…on real
+  proving stacks and real machines" with an arc-in-one-line intro
+  replacing the stale "two headlines"; §7 Program item 4 marked
+  largely-done (Lean gadget templates still open; memory-mediated
+  precompile chip named as next); §8 Reproduction now lists the whole
+  gated measurement suite. Meanwhile: rank-47 hunts (G 5T + BB 4T,
+  12 h, pursue10) and the 1500-rep reopt storm on accurate running;
+  bpcse R-lane misclassification corrected → task #29 (x8-space
+  emission mismatch, to be diagnosed properly).
+
 ## 4. Discipline
 
 - Every claimed scheme re-verified by the independent verifier; every A/B at

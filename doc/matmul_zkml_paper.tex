@@ -1232,13 +1232,15 @@ density (constraint ratio 0.85 at $n{=}64$ $\to$ 0.67 at 256
 $\to$ 0.53 at 1024, against a ${\approx}2$ to $3\times$ density
 constant), i.e.\ likely $n \gtrsim 10^3$ --- LLM-scale matrices,
 per \S3, not toy benchmarks. Three levers move the crossover in:
-PLONKish custom gates that hard-code the 48 fixed combinations as
-selectors (density becomes free); STARK/AIR stacks whose cost
-model is hashing-dominated rather than nonzero-dominated; and
+PLONKish/AIR custom gates that hard-code the 48 fixed combinations
+as constraint constants (density becomes free --- now
+\emph{measured}: the Plonky3 gate above proves at parity where
+Groth16 charged 17.6$\times$); STARK/AIR stacks whose cost model
+is hashing-dominated rather than nonzero-dominated; and
 lower-adds networks (B.5), which shrink the density constant
 directly --- the measured reason the adds record matters.
-Reproducible from the repository (\texttt{benchzk}, fixed seeds);
-$n=256$ and a PLONKish port are the natural next data points.
+Reproducible from the repository (\texttt{benchzk},
+\texttt{benchair}, fixed seeds).
 
 \section*{Acknowledgments}
 

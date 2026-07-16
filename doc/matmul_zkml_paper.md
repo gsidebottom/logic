@@ -997,6 +997,34 @@ domain buys a 4× cheaper transform than naive's, a reminder that
 constraint *count* still owns the transform even when density
 owns the MSMs.
 
+**The density tax, erased — measured on a PLONKish/AIR stack.**
+The materialization tables above price R1CS's defect: linear
+combinations live in per-proof constraint rows, so Groth16 charges
+the rank-48 gadget 17.6× over naive for the *same statement*. An
+AIR arithmetization moves those combinations into the constraint
+polynomial's *constants*, where they cost nothing per proof. We
+ported the gate to Plonky3 uni-stark over BabyBear (Poseidon2,
+two-adic FRI): two AIRs over the *identical* 48-column trace — 16
+A, 16 B, 16 C cells per row, one tile per row, commitment work
+held constant — one with the naive gate (64 in-constraint
+multiplies), one with the rank-48 gate, which is the 284-op SLP
+evaluated over AIR expressions (the same El-generic generated code
+that runs witness generation over scalars, blocks, and NEON lanes
+is *literally the gate*; products are never materialized as
+cells). Both accept the honest trace and reject a tampered
+product. Measured: naive-gate 16.9 / 56.1 / 224.1 ms at
+2¹²/2¹⁴/2¹⁶ tiles; rank-48-gate 16.9 / 56.8 / 230.0 ms —
+**parity within 3%, against Groth16's 17.6× inversion**. The
+density tax is an artifact of the MSM cost model, structurally
+absent from AIR stacks. Honestly stated, at flat tile granularity
+the rank-48 gate does not *win* either — in-constraint naive
+materializes nothing, and 48-vs-64 quotient multiplies trade
+against 284 extra additions over a multiply-cheap field. The
+multiplication-count advantage pays where operands and products
+transit committed columns anyway: memory-mediated zkVM precompile
+chips and block-recursive layouts, where cells track operation
+count and 48/64 compounds per level.
+
 **Witness generation is friendlier territory.** The prover must
 also *compute* the witness — every intermediate product, in the
 clear, over the field — and here the same networks measure very
@@ -1112,14 +1140,15 @@ clock on a Groth16-over-BN254 stack sits beyond n = 64 at bounded
 density (constraint ratio 0.85 at n = 64 → 0.67 at 256 → 0.53 at
 1024, against a ≈2 to 3× density constant), i.e. likely n ≳ 10³ —
 LLM-scale matrices, per §3, not toy benchmarks. Three levers move
-the crossover in: PLONKish custom gates that hard-code the 48
-fixed combinations as selectors (density becomes free); STARK/AIR
+the crossover in: PLONKish/AIR custom gates that hard-code the 48
+fixed combinations as constraint constants (density becomes free —
+now *measured*: the Plonky3 gate above proves at parity where
+Groth16 charged 17.6×); STARK/AIR
 stacks whose cost model is hashing-dominated rather than
 nonzero-dominated; and lower-adds networks (B.5), which shrink the
 density constant directly — the measured reason the adds record
-matters. Reproducible from the repository (`benchzk`, fixed
-seeds); n = 256 and a PLONKish port are the natural next data
-points.
+matters. Reproducible from the repository (`benchzk`, `benchair`,
+fixed seeds).
 
 ## Acknowledgments
 

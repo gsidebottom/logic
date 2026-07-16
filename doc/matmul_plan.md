@@ -784,6 +784,23 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   (G vs BB vs M31 incl. two-adicity-1 / circle-STARK obstruction)
   given in chat; M31 arm would require a circle FFT (new build).
 
+- **2026-07-16 — PLONKish/AIR gate port (benchair): density tax ERASED,
+  measured.** Plonky3 uni-stark over BabyBear (Poseidon2 + two-adic
+  FRI). Two AIRs over the IDENTICAL 48-col trace (one 4×4 tile/row;
+  commitment work held constant): naive gate vs rank-48 gate = the
+  284 SLP over AIR expressions (El for the Expr type; slp284g.rs
+  unchanged — codegen now spans u64/u32/blocks/NEON/constraints).
+  Gates: honest accepted, tampered rejected, both AIRs. Prove times:
+  16.9/16.9, 56.1/56.8, 224.1/230.0 ms at 2^12/2^14/2^16 tiles —
+  **parity within 3% where Groth16 charged 17.6×**. Scope note: flat
+  tile gate doesn't WIN either (in-constraint naive materializes
+  nothing; 48-vs-64 quotient mults trade vs 284 adds on a mul-cheap
+  field); mult-count pays in memory-mediated precompile chips /
+  block-recursive layouts where cells track op count. Paper: Appendix
+  C erasure paragraph + Reading lever upgraded to measured. Next
+  candidates: memory-argument precompile chip (multi-table), Goldilocks
+  AIR variant, depth-1 block-recursive AIR.
+
 ## 4. Discipline
 
 - Every claimed scheme re-verified by the independent verifier; every A/B at

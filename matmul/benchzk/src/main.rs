@@ -267,6 +267,15 @@ fn main() {
     let scheme = args[2].clone();
     let prove = args.iter().any(|a| a == "--prove");
     let full = args.iter().any(|a| a == "--full");
+    if scheme == "ntt" {
+        // standalone NTT curve: n is log2 of the largest domain
+        println!("BN254-Fr NTT timing (forward/inverse, seconds)");
+        for k in 14..=n {
+            let (tf, ti, sz) = ntt_bench(1usize << k);
+            println!("domain 2^{k} ({sz}): fwd {tf:.4}  inv {ti:.4}");
+        }
+        return;
+    }
     let matlv: usize = args
         .iter()
         .position(|a| a == "--matlv")

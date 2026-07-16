@@ -251,7 +251,12 @@ fn main() {
     }
     println!("field-verified: recursive rank-48 == naive at n=16, 64");
 
-    for &n in &[16usize, 64, 256, 1024] {
+    let sizes: &[usize] = if std::env::var("BENCH_BIG").is_ok() {
+        &[4096]
+    } else {
+        &[16, 64, 256, 1024]
+    };
+    for &n in sizes {
         let a: Vec<u64> = (0..n * n).map(|_| next()).collect();
         let b: Vec<u64> = (0..n * n).map(|_| next()).collect();
         let mut c = vec![0u64; n * n];

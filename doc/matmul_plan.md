@@ -759,6 +759,19 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   (long all-positive dots — gates + wins in benchdr). Paper subsection
   finalized as the full model→search→refutation arc. Task #27 closed.
 
+- **2026-07-15 (late) — BabyBear NEON arm (bench_bb).** Montgomery
+  32-bit + explicit NEON 4-lane mont-mul (vmull pairs, vshrn, vmin
+  cond-sub); El-generic 284 codegen reused verbatim over Bb/Bb4;
+  4 gates. Measured ns/tile: naive 53.5→20.0 (2.68× lanes), 284
+  177.4→76.8 (2.32×). Cross-field: BB-NEON naive 9.9× over
+  Goldilocks-scalar naive; 284 path 3.7×. Autovectorization only
+  1.47× on mul-bound path — intrinsics required. Economics shift:
+  cheap 32-bit muls make adds dominate → naive beats 284 at BB tile
+  level 3.8× → rank-48 recursion crossover is field-dependent
+  (later over BB). Paper: Appendix C machine subsection extended.
+  Possible next: BB recursion bench (locate the BB crossover), BB
+  NTT curve for the B table, M31/circle-STARK arm.
+
 ## 4. Discipline
 
 - Every claimed scheme re-verified by the independent verifier; every A/B at

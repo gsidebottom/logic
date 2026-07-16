@@ -1179,6 +1179,36 @@ dot products (it gates correct and wins there), i.e.\ naive inner
 loops, not rank-48 product networks. A cost model earns trust only
 against silicon; this one paid for its lesson in one afternoon.
 
+\textbf{The SIMD lever that survives is lane-batching across
+tiles} --- throughput-shaped by construction, so the refutation
+above does not touch it --- and over a 31-bit field it is large.
+BabyBear ($p = 2^{31}{-}2^{27}{+}1$, Montgomery form) with an
+explicit NEON 4-lane Montgomery multiply (widening \texttt{vmull}
+pairs; the same El-generic 284 networks run unchanged over scalars
+and 4-lane batches; all paths field-gated per lane against
+scalar):
+\begin{center}
+\begin{tabular}{lccc}
+path & scalar & 4-lane NEON & lane speedup\\
+\hline
+BabyBear naive tile & 53.5\,ns & \textbf{20.0\,ns} & 2.68$\times$\\
+BabyBear 284 tile & 177.4\,ns & 76.8\,ns & 2.32$\times$\\
+\end{tabular}
+\end{center}
+Auto-vectorization alone bought only 1.47$\times$ on the
+multiply-bound naive path --- compilers will not synthesize
+widening Montgomery chains; the intrinsics nearly double it.
+Cross-field, a BabyBear-NEON naive tile runs \textbf{9.9$\times$
+faster than a Goldilocks-scalar naive tile} (the 284 path
+3.7$\times$). And one structural economics shift rides along: with
+32-bit multiplies this cheap, additions dominate the tile ---
+naive (64 muls, 48 adds) beats the 284 (48 muls, 256 adds) by
+3.8$\times$ at tile level --- so the rank-48 recursion crossover
+is \emph{field-dependent} and sits later over BabyBear than over
+Goldilocks. Field choice moves not just the transform (measured
+above) but which matmul algorithm wins witness generation at
+which scale.
+
 \paragraph{Reading.} The exponent advantage is real and the counts
 are exactly as predicted; the \emph{crossover} where it beats
 naive wall clock on Groth16/BN254 sits beyond $n=64$ at bounded

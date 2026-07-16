@@ -1,0 +1,25 @@
+=== benchntt_bb (BabyBear NTT curve) ===
+gate: root orders + half-order=-1 verified for 2^3..2^27 (generator 31)
+gate: NTT == naive DFT at n=8
+gate: forward+inverse round-trip identity at n=2^16
+gate: NTT polynomial product == schoolbook at n=16
+BabyBear NTT timing (forward/inverse, seconds)
+domain 2^14 (16384): fwd 0.0003  inv 0.0003
+domain 2^15 (32768): fwd 0.0005  inv 0.0005
+domain 2^16 (65536): fwd 0.0012  inv 0.0012
+domain 2^17 (131072): fwd 0.0026  inv 0.0027
+domain 2^18 (262144): fwd 0.0057  inv 0.0057
+domain 2^19 (524288): fwd 0.0121  inv 0.0124
+domain 2^20 (1048576): fwd 0.0260  inv 0.0265
+domain 2^21 (2097152): fwd 0.0563  inv 0.0568
+domain 2^22 (4194304): fwd 0.1175  inv 0.1178
+domain 2^23 (8388608): fwd 0.2449  inv 0.2469
+domain 2^24 (16777216): fwd 0.5165  inv 0.5511
+domain 2^25 (33554432): fwd 1.1463  inv 1.0952
+=== bench_bbr (BabyBear recursion crossover) ===
+Montgomery mul gated against reference on 1M randoms
+field-verified: recursive rank-48 == naive at n=16, 64 over BabyBear
+n=   16  naive     0.004 ms  blocked     0.002 ms  rank48     0.017 ms (cut 4)  ratio-vs-blocked 9.07
+n=   64  naive     0.240 ms  blocked     0.123 ms  rank48     0.199 ms (cut 16)  ratio-vs-blocked 1.61
+n=  256  naive    16.356 ms  blocked     7.603 ms  rank48     9.926 ms (cut 16)  ratio-vs-blocked 1.31
+n= 1024  naive  1231.123 ms  blocked   499.341 ms  rank48   483.484 ms (cut 16)  ratio-vs-blocked 0.97

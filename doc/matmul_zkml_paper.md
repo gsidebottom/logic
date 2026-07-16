@@ -1122,8 +1122,23 @@ adds) beats the 284 (48 muls, 256 adds) by 3.8× at tile level —
 so the rank-48 recursion crossover is *field-dependent* and sits
 later over BabyBear than over Goldilocks. Field choice moves not
 just the transform (measured above) but which matmul algorithm
-wins witness generation at which scale. The recursion bench makes
-that quantitative (scalar Montgomery, methodology matched to the
+wins witness generation at which scale. And the *substrate* moves
+it again: on the Apple M4 Pro GPU (Metal compute, the 284-op SLP
+lowered to a shader — same generated program, sixth target; every
+kernel gated bit-for-bit against the CPU reference), naive and
+rank-48 tile kernels converge to **~0.9 ns/tile regardless of
+algorithm** — 213 GB/s of the chip's ~273 GB/s, memory-bandwidth
+bound, 22× the NEON-naive rate. (An apparent rank-48 win on first
+measurement was a compilation artifact — loop-indexed thread
+arrays spilling to local memory — killed by an unrolled-naive
+control.) Three substrates, three scarce resources, one law:
+CPU-Goldilocks rations multiplies, CPU-BabyBear rations
+additions, the GPU rations bytes; witness-generation algorithm
+choice must follow the machine's binding constraint, and on GPUs
+the mult-count question is moot at tile granularity — which
+converges with the AIR port's deployment conclusion: reduce
+committed cells and rows, not arithmetic. The recursion bench makes
+the field dependence quantitative (scalar Montgomery, methodology matched to the
 Goldilocks table above, gates at every size): over BabyBear the
 rank-48-vs-blocked ratio runs 1.61 at n = 64, 1.31 at 256, and
 crosses at **0.97 at n = 1024** — the crossover sits at n ≈ 10³

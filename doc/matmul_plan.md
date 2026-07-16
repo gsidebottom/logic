@@ -801,6 +801,19 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   candidates: memory-argument precompile chip (multi-table), Goldilocks
   AIR variant, depth-1 block-recursive AIR.
 
+- **2026-07-16 — benchmetal: Apple-GPU tile witness-gen hits the memory
+  wall.** gen_msl.py = sixth codegen target (284 SLP → MSL; 32-bit-only
+  Montgomery via mulhi + parity-carry; wrong hardcoded NP caught by the
+  host assert before any GPU work). M4 Pro, 2^22 tiles, gated
+  bit-for-bit vs CPU: naive-looped 0.95 / naive-unrolled 0.90 /
+  rank48-284 0.93 ns/tile — an apparent 284 win was a loop-indexing
+  spill artifact, killed by the unrolled control. ~0.9 ns/tile ≈
+  213 GB/s of ~273 = bandwidth-bound: on GPU the gate arithmetic is
+  free, bytes are the currency (22× NEON-naive, 59× scalar-naive).
+  Three substrates, one law: mults (G-CPU) → adds (BB-CPU) → bytes
+  (GPU); converges with the AIR verdict (reduce cells/rows). Paper
+  updated (machine subsection). Possible next: Metal NTT stage kernels.
+
 ## 4. Discipline
 
 - Every claimed scheme re-verified by the independent verifier; every A/B at

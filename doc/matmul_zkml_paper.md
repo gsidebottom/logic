@@ -795,13 +795,21 @@ field-choice folklore, quantified: the same radix-2 transform, one
 core, correctness gated (root orders, inverse round-trip, naive-DFT
 cross-check at n = 8, polynomial product vs schoolbook):
 
-| domain | BabyBear, 1 thread | Goldilocks, 1 thread | BN254-Fr, 1 thread | BN254-Fr, 6 threads |
-|---|---|---|---|---|
-| 2¹⁴ | 0.3 ms | 1.1 ms | 2.8 ms | 2.9 ms |
-| 2¹⁸ | 5.7 ms | 34 ms | 55 ms | 74 ms |
-| 2²² | 0.118 s | 0.68 s | 1.11 s | 0.23 s |
-| 2²⁵ | 1.15 s | 7.8 s | — | 2.4 s |
+| domain | BabyBear, GPU (M4 Pro) | BabyBear, 1 thread | Goldilocks, 1 thread | BN254-Fr, 1 thread | BN254-Fr, 6 threads |
+|---|---|---|---|---|---|
+| 2¹⁴ | 0.07 ms | 0.3 ms | 1.1 ms | 2.8 ms | 2.9 ms |
+| 2¹⁸ | 0.17 ms | 5.7 ms | 34 ms | 55 ms | 74 ms |
+| 2²² | 3.0 ms | 0.118 s | 0.68 s | 1.11 s | 0.23 s |
+| 2²⁵ | 44 ms | 1.15 s | 7.8 s | — | 2.4 s |
 
+The GPU column (Metal compute kernels, gated bit-for-bit against
+the CPU implementation, forward and round-trip) is the same
+transform 26–39× faster at proving-relevant domains — and a
+bandwidth audit shows why the substrate law holds here too: at
+2²⁵ the 25 butterfly stages move ≈12.8 GB in 44 ms, ~290 GB/s,
+saturating the chip. Small domains are launch-bound (72 µs at
+2¹⁴ is mostly encoder overhead — the measured reason production
+GPU provers batch many small NTTs into single kernels).
 Small fields win the transform per core, and by more than word
 width alone: BabyBear (Montgomery, two-adicity 2²⁷, generator 31)
 runs 5.8–6.8× faster than Goldilocks — 32-bit multiplies *and* a

@@ -814,6 +814,17 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   (GPU); converges with the AIR verdict (reduce cells/rows). Paper
   updated (machine subsection). Possible next: Metal NTT stage kernels.
 
+- **2026-07-16 — benchntt_metal: GPU column for the transform table.**
+  Radix-2 stages as Metal kernels (encoder-per-stage ordering; MSL
+  gotcha: `half` reserved). Gated bit-for-bit vs CPU (fwd + roundtrip
+  at 2^14/2^18). M4 Pro fwd: 0.17ms @ 2^18 (34×), 3.0ms @ 2^22 (39×),
+  44ms @ 2^25 (26×); 2^25 audit ≈ 290 GB/s — the NTT saturates
+  bandwidth like the tiles did. Small domains launch-bound (72µs @
+  2^14 ≈ encoder overhead — why GPU provers batch small NTTs). Paper:
+  Appendix B table now 5 columns + GPU prose. The Appendix B/C
+  measurement program is complete across fields (BN254/G/BB), stacks
+  (Groth16/AIR), and substrates (CPU/NEON/GPU).
+
 ## 4. Discipline
 
 - Every claimed scheme re-verified by the independent verifier; every A/B at

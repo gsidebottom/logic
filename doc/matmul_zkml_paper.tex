@@ -876,21 +876,27 @@ one core, correctness gated (root orders, inverse round-trip,
 naive-DFT cross-check at $n=8$, polynomial product vs schoolbook):
 \begin{center}
 \begin{tabular}{lcccc}
-domain & Goldilocks, 1T & BN254-Fr, 1T & per-core ratio & BN254-Fr, 6T\\
+domain & BabyBear, 1T & Goldilocks, 1T & BN254-Fr, 1T & BN254-Fr, 6T\\
 \hline
-$2^{14}$ & 1.1\,ms & 2.8\,ms & 2.5$\times$ & 2.9\,ms\\
-$2^{18}$ & 34\,ms & 55\,ms & 1.6$\times$ & 74\,ms\\
-$2^{22}$ & 0.68\,s & 1.11\,s & 1.6$\times$ & 0.23\,s\\
-$2^{25}$ & 7.8\,s & --- & --- & 2.4\,s\\
+$2^{14}$ & 0.3\,ms & 1.1\,ms & 2.8\,ms & 2.9\,ms\\
+$2^{18}$ & 5.7\,ms & 34\,ms & 55\,ms & 74\,ms\\
+$2^{22}$ & 0.118\,s & 0.68\,s & 1.11\,s & 0.23\,s\\
+$2^{25}$ & 1.15\,s & 7.8\,s & --- & 2.4\,s\\
 \end{tabular}
 \end{center}
-The 64-bit field's per-core advantage is 1.6--2.6$\times$ (largest
-while the working set fits in cache); the 254-bit field claws wall
-clock back only through arkworks' parallel FFT (4.7$\times$ at
-$2^{22}$, and \emph{slower} than its own single thread at mid-size
-domains where fork/join overhead dominates) --- parallelism a
-64-bit implementation could match. Measured under concurrent
-background load; the ratios, not the absolutes, are the payload.
+Small fields win the transform per core, and by more than word
+width alone: BabyBear (Montgomery, two-adicity $2^{27}$, generator
+31) runs 5.8--6.8$\times$ faster than Goldilocks --- 32-bit
+multiplies \emph{and} a halved cache footprint compound --- and
+${\approx}9.4\times$ faster than single-thread BN254-Fr at
+$2^{22}$. Goldilocks' own per-core advantage over BN254-Fr is
+1.6--2.6$\times$ (largest while the working set fits in cache);
+the 254-bit field claws wall clock back only through arkworks'
+parallel FFT (4.7$\times$ at $2^{22}$, and \emph{slower} than its
+own single thread at mid-size domains where fork/join overhead
+dominates) --- parallelism the small-field implementations could
+match. Measured under concurrent background load; the ratios, not
+the absolutes, are the payload.
 
 \paragraph{What a new record would buy.} Prover time is
 ${\approx}$ NTT ($m\log m$) $+$ commitments ($m$), so speedup
@@ -1207,7 +1213,17 @@ naive (64 muls, 48 adds) beats the 284 (48 muls, 256 adds) by
 is \emph{field-dependent} and sits later over BabyBear than over
 Goldilocks. Field choice moves not just the transform (measured
 above) but which matmul algorithm wins witness generation at
-which scale.
+which scale. The recursion bench makes that quantitative (scalar
+Montgomery, methodology matched to the Goldilocks table above,
+gates at every size): over BabyBear the rank-48-vs-blocked ratio
+runs 1.61 at $n = 64$, 1.31 at 256, and crosses at \textbf{0.97
+at $n = 1024$} --- the crossover sits at $n \approx 10^3$ over
+BabyBear versus $n \approx 64$ over Goldilocks, two full recursion
+levels later. One program, two honest summaries: over a 64-bit
+field, low rank pays from $n \approx 64$ and reaches 3$\times$ by
+$n = 4096$; over a 31-bit SIMD-friendly field, the same networks
+only break even around $n \approx 10^3$ --- and the NTT table
+above shows where the 31-bit field spends the advantage instead.
 
 \paragraph{Reading.} The exponent advantage is real and the counts
 are exactly as predicted; the \emph{crossover} where it beats

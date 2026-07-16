@@ -772,6 +772,18 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   Possible next: BB recursion bench (locate the BB crossover), BB
   NTT curve for the B table, M31/circle-STARK arm.
 
+- **2026-07-16 — BB arm completed: NTT curve + recursion crossover.**
+  benchntt_bb (two-adicity 2^27, generator 31, Montgomery, 4 gates):
+  5.8–6.8× over Goldilocks per core (0.118 s vs 0.68 s @ 2^22; word
+  width + halved cache footprint compound), ~9.4× over 1T BN254-Fr.
+  bench_bbr (methodology-matched to bench284r, gates at 16/64):
+  rank-48-vs-blocked 1.61/1.31/0.97 at n=64/256/1024 — **BB crossover
+  at n≈10³ vs n≈64 over Goldilocks** (two recursion levels later).
+  Paper: Appendix B table now 4 fields; Appendix C closes the
+  field-dependence story quantitatively. Field-comparison summary
+  (G vs BB vs M31 incl. two-adicity-1 / circle-STARK obstruction)
+  given in chat; M31 arm would require a circle FFT (new build).
+
 ## 4. Discipline
 
 - Every claimed scheme re-verified by the independent verifier; every A/B at

@@ -728,6 +728,23 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   1.2 s verify 0.23 s; rank48 matlv2 domain 2^18 NTT 10.6/11 ms setup
   7.1 s prove 7.8 s). Goldilocks-STARK twin = natural next build.
 
+- **2026-07-15 (evening) — benchmark harvest + calibrated-search verdicts.**
+  NTT field pricing measured (single-core, gated): Goldilocks 1.6–2.6×
+  over BN254-Fr per core; ark's parallel FFT 4.7× at 2²². n=64 --full
+  sweep: strassen still density-benign at depth 6 (prove ≈ naive on
+  2.2× fewer constraints); rank-48 matlv-2 optimum stands. n=256 final:
+  rank-48 unmeasurable on 64 GB at ANY matlv (≤3 swap-balloon 190+ GB
+  footprint; matlv-4 >46 GB resident in synthesis) — needs ~128 GB.
+  n=4096 witness gen measured: rank-48 83 s vs blocked 246 s, ratio
+  0.34 ≈ 0.46×(48/64) — compounding lands as predicted. ourslane
+  (18 variants, checker+machine-score gated): incumbent 705.2
+  (Rt_Lt_Ptt_g2) stands; g2 gauges dominate; runner-up 721.9. bpcse
+  fraction-blindness on accurate_R classified (parser, not search).
+  Paper: Appendix B measured-NTT table; Appendix C n=256 verdict,
+  --full pipeline table, n=4096 row, machine-cost subsection. NEXT:
+  delayed-reduction implementation in bench (model vs silicon);
+  fraction-aware bpcse; longer ourslane converge on R_Ptt_Lt_g2.
+
 ## 4. Discipline
 
 - Every claimed scheme re-verified by the independent verifier; every A/B at

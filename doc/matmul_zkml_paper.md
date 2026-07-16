@@ -790,6 +790,26 @@ constraint**, and the bilinear rank of §3 fixes **how many
 constraints there are**. Lower rank does not speed up the
 transform; it shrinks the transform.
 
+**Measured on this machine (Apple M-series, 10 P-cores).** The
+field-choice folklore, quantified: the same radix-2 transform, one
+core, correctness gated (root orders, inverse round-trip, naive-DFT
+cross-check at n = 8, polynomial product vs schoolbook):
+
+| domain | Goldilocks, 1 thread | BN254-Fr, 1 thread | per-core ratio | BN254-Fr, 6 threads |
+|---|---|---|---|---|
+| 2¹⁴ | 1.1 ms | 2.8 ms | 2.5× | 2.9 ms |
+| 2¹⁸ | 34 ms | 55 ms | 1.6× | 74 ms |
+| 2²² | 0.68 s | 1.11 s | 1.6× | 0.23 s |
+| 2²⁵ | 7.8 s | — | — | 2.4 s |
+
+The 64-bit field's per-core advantage is 1.6–2.6× (largest while
+the working set fits in cache); the 254-bit field claws wall clock
+back only through arkworks' parallel FFT (4.7× at 2²², and *slower*
+than its own single thread at mid-size domains where fork/join
+overhead dominates) — parallelism a 64-bit implementation could
+match. Measured under concurrent background load; the ratios, not
+the absolutes, are the payload.
+
 **What a new record would buy.** Prover time is ≈ NTT (m log m) +
 commitments (m), so speedup tracks the constraint ratio (the log
 factor barely moves). At n = 4096, folding in §3's exponents:
@@ -933,6 +953,45 @@ even single-level rank-48 rows are denser than naive's
 three-entry rows. (The materialization row counts match the
 per-level formula 112·Σ 48^(ℓ−1)·16^(d−ℓ) exactly.)
 
+**At n = 256 (depth 4) the density tax becomes an inversion, then
+a wall.** Naive: 16.8M constraints, setup 99 s, prove 119 s.
+Strassen: 5.83M constraints — 2.9× fewer — setup 433 s, prove
+389 s: **3–4× slower on 2.9× fewer constraints**, because at depth
+8 its folded rows are dense enough that nonzeros, not rows, set
+the price. The rank-48 gadget could not be measured at n = 256 at
+*any* materialization level on this 64 GB machine: folded
+configurations (matlv ≤ 3) balloon past a 190 GB footprint into
+swap (resident memory reads ~14 GB while macOS compresses and
+pages — a measurement hazard in its own right), and
+materialize-everything (matlv 4) exceeded 46 GB resident during
+synthesis. A ~128 GB-class machine is the entry ticket for
+depth-4 rank-48 Groth16 at bounded density.
+
+**The whole pipeline at one scale** (benchzk `--full`: witness
+generation, NTTs at the actual proof-domain size, setup, prove,
+verify; n = 64, six proving threads, background load — the
+relative structure is the payload, and the idle-machine
+materialization optimum above reproduces):
+
+| gadget | constraints | domain | NTT fwd | setup | prove | verify |
+|---|---|---|---|---|---|---|
+| naive | 266,240 | 2¹⁹ | 27 ms | 1.4 s | 1.5 s | 0.23 s |
+| Strassen | 121,745 | 2¹⁷ | 6.6 ms | 1.5 s | 1.4 s | 0.23 s |
+| rank-48, matlv 0 | 114,688 | 2¹⁷ | 7.3 ms | 30.5 s | 27.7 s | 0.23 s |
+| rank-48, matlv 1 | 143,360 | 2¹⁸ | 14 ms | 17.2 s | 17.0 s | 0.23 s |
+| rank-48, matlv 2 | 229,376 | 2¹⁸ | 14 ms | 7.9 s | 8.6 s | 0.24 s |
+| rank-48, matlv 3 | 487,424 | 2¹⁹ | 26 ms | 8.2 s | 8.9 s | 0.23 s |
+
+Strassen at this depth is still density-benign (naive-class prove
+on 2.2× fewer constraints — its inversion only appears at depth
+8); rank-48's fewest-constraint config (matlv 0) is its slowest,
+and the interior optimum at matlv 2 stands. Witness generation
+(3.7–4.0 ms) and verification are scheme-independent here, and
+the NTT column simply tracks domain size — Strassen's smaller
+domain buys a 4× cheaper transform than naive's, a reminder that
+constraint *count* still owns the transform even when density
+owns the MSMs.
+
 **Witness generation is friendlier territory.** The prover must
 also *compute* the witness — every intermediate product, in the
 clear, over the field — and here the same networks measure very
@@ -947,6 +1006,7 @@ times a further 4–5% at n = 64 and 1024 in back-to-back A/B):
 | 64 | 1.15 ms | 1.15 ms | 0.926 ms | **0.80** |
 | 256 | 80.7 ms | 79.9 ms | 47.0 ms | 0.59 |
 | 1024 | 6.30 s | 5.08 s | 2.32 s | **0.46** |
+| 4096 | 936 s | 246 s | 83.0 s | **0.34** |
 
 (Arithmetic tuned to the field's design: division-free Goldilocks
 reduction via 2⁶⁴ ≡ 2³²−1, halving as shift-plus-fixup, doubling
@@ -959,7 +1019,37 @@ ratio 0.46 sitting just above the pure multiplication-tree limit
 (48/64)³ = 0.42, i.e. the 289-add linear phases are nearly fully
 amortized. Adds are cheap CPU operations, so witness generation
 inherits the exponent advantage at small n, long before the
-commitment-side density crossover.
+commitment-side density crossover. At n = 4096 (measured once,
+under background load) the ratio reaches **0.34** against the
+blocked control — almost exactly the compounding prediction
+0.46 × (48/64) = 0.345 — and 11.3× over plain naive; the
+284-vs-315 A/B is within noise at this size.
+
+**Machine-level witness generation: mult–add fusion, calibrated.**
+The 𝔽_p analogue of fused multiply–add is *delayed reduction*:
+accumulate 128-bit products as (lo, hi) pairs of 64-bit sums — two
+plain adds per term — and reduce once per output. Microbenchmarks
+on this machine (dependent-chain methodology, correctness gated on
+10⁵ random dot products) price the scalar Goldilocks multiply at
+9.3 ns, a deferred multiply-accumulate at 1.25 ns, the final
+combine-and-reduce at 10.4 ns, and halvings/adds at 1.2–1.5 ns:
+deferral is ~2.7× cheaper, and reductions ~1.7× dearer, than naive
+op counting assumes. Under these measured constants a cost model
+over the rank-48 linear networks (shift-aware, deferral-aware;
+`machinecost.py`) **reorders the record book**: the 284-op
+accurate triple — whose every output path crosses a halving,
+blocking deferral — models at 753 cycles per 4×4 tile, while a
+357-op triple from this repository's own optimizer runs a fully
+deferrable product side and models at **705**. Machine-optimal and
+operation-minimal are different optima: the 16 halvings that make
+the 284 shortest also make it reduction-bound. Three storm
+searches over exponent-relabel moves confirmed the blockers are
+structural (single-consumer wires, but the combine costs exceed
+the deferral recovered), and an 18-variant orientation×gauge sweep
+under the calibrated score left the 705 incumbent standing. The
+next step is measured, not modeled: a delayed-reduction
+implementation of the deferrable network inside the
+witness-generation benchmark.
 
 **Reading.** The exponent advantage is real and the counts are
 exactly as predicted; the *crossover* where it beats naive wall

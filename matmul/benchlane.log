@@ -1,0 +1,120 @@
+=== BENCHLANE START Wed Jul 15 18:44:52 EDT 2026 ===
+--- [1/5] Goldilocks NTT curve ---
+gate: root orders + half-order=-1 verified for 2^3..2^25
+gate: NTT == naive DFT at n=8
+gate: forward+inverse round-trip identity at n=2^16
+gate: NTT polynomial product == schoolbook at n=16
+Goldilocks NTT timing (forward/inverse, seconds)
+domain 2^14 (16384): fwd 0.0011  inv 0.0011
+domain 2^15 (32768): fwd 0.0023  inv 0.0025
+domain 2^16 (65536): fwd 0.0048  inv 0.0051
+domain 2^17 (131072): fwd 0.0107  inv 0.0123
+domain 2^18 (262144): fwd 0.0338  inv 0.0368
+domain 2^19 (524288): fwd 0.1037  inv 0.0940
+domain 2^20 (1048576): fwd 0.1905  inv 0.2184
+domain 2^21 (2097152): fwd 0.3709  inv 0.4713
+domain 2^22 (4194304): fwd 0.6805  inv 0.7604
+domain 2^23 (8388608): fwd 1.6770  inv 1.6365
+domain 2^24 (16777216): fwd 3.9452  inv 4.0217
+domain 2^25 (33554432): fwd 7.7645  inv 8.0589
+--- [2/5] BN254-Fr NTT curve ---
+BN254-Fr NTT timing (forward/inverse, seconds)
+domain 2^14 (16384): fwd 0.0029  inv 0.0034
+domain 2^15 (32768): fwd 0.0043  inv 0.0046
+domain 2^16 (65536): fwd 0.0053  inv 0.0060
+domain 2^17 (131072): fwd 0.0128  inv 0.0095
+domain 2^18 (262144): fwd 0.0743  inv 0.0866
+domain 2^19 (524288): fwd 0.0757  inv 0.0355
+domain 2^20 (1048576): fwd 0.2040  inv 0.1802
+domain 2^21 (2097152): fwd 0.2772  inv 0.1389
+domain 2^22 (4194304): fwd 0.2328  inv 0.4046
+domain 2^23 (8388608): fwd 0.5226  inv 0.6892
+domain 2^24 (16777216): fwd 1.0936  inv 1.2121
+domain 2^25 (33554432): fwd 2.3825  inv 2.5019
+--- [3/5] n=256 retry at 48 GB cap (64 GB machine; prior 26 GB guard was wrong) ---
+n=256 scheme=rank48 matlv=3: constraints 11337728 (mults 11272192 + 65536 other rows)
+=== BENCHLANE2 START Wed Jul 15 19:09:04 EDT 2026 (swap baseline 4784 MB) ===
+--- [1/4] BN254-Fr NTT curve, single-thread (fair vs Goldilocks) ---
+BN254-Fr NTT timing (forward/inverse, seconds)
+domain 2^14 (16384): fwd 0.0028  inv 0.0042
+domain 2^15 (32768): fwd 0.0059  inv 0.0065
+domain 2^16 (65536): fwd 0.0124  inv 0.0136
+domain 2^17 (131072): fwd 0.0265  inv 0.0293
+domain 2^18 (262144): fwd 0.0552  inv 0.0615
+domain 2^19 (524288): fwd 0.1164  inv 0.1291
+domain 2^20 (1048576): fwd 0.2429  inv 0.2703
+domain 2^21 (2097152): fwd 0.5197  inv 0.5767
+domain 2^22 (4194304): fwd 1.1052  inv 1.2222
+--- [2/4] n=256: the two configs with a real memory profile ---
+GUARD-V2: killed './matmul/benchzk/target/release/benchzk 256 rank48 --matlv 4 --prove' (rss 46 GB, swap +-104 MB)
+n=256 scheme=naive matlv=0: constraints 16842752 (mults 16777216 + 65536 other rows)
+GUARD-V2: killed './matmul/benchzk/target/release/benchzk 256 naive --full' (rss 44 GB, swap +-32 MB)
+--- [3/4] Groth16 n=64 full-scenario sweep ---
+n=64 scheme=naive matlv=0: constraints 266240 (mults 262144 + 4096 other rows)
+--- full zk scenario: n=64 scheme=naive matlv=0 ---
+constraints            266240
+proof domain (2^k)     524288
+witness generation           3.65ms   (native n^3 matmul over Fr)
+NTT forward @ domain        27.24ms
+NTT inverse @ domain        27.79ms
+setup (trusted)               1.43s
+prove                         1.54s
+verify                     228.31ms   valid=true
+n=64 scheme=strassen matlv=0: constraints 121745 (mults 117649 + 4096 other rows)
+--- full zk scenario: n=64 scheme=strassen matlv=0 ---
+constraints            121745
+proof domain (2^k)     131072
+witness generation           3.66ms   (native n^3 matmul over Fr)
+NTT forward @ domain         6.62ms
+NTT inverse @ domain         7.09ms
+setup (trusted)               1.52s
+prove                         1.43s
+verify                     229.09ms   valid=true
+n=64 scheme=rank48 matlv=0: constraints 114688 (mults 110592 + 4096 other rows)
+--- full zk scenario: n=64 scheme=rank48 matlv=0 ---
+constraints            114688
+proof domain (2^k)     131072
+witness generation           3.97ms   (native n^3 matmul over Fr)
+NTT forward @ domain         7.34ms
+NTT inverse @ domain         7.41ms
+setup (trusted)              30.53s
+prove                        27.72s
+verify                     234.12ms   valid=true
+n=64 scheme=rank48 matlv=1: constraints 143360 (mults 139264 + 4096 other rows)
+--- full zk scenario: n=64 scheme=rank48 matlv=1 ---
+constraints            143360
+proof domain (2^k)     262144
+witness generation           3.87ms   (native n^3 matmul over Fr)
+NTT forward @ domain        13.90ms
+NTT inverse @ domain        14.29ms
+setup (trusted)              17.17s
+prove                        17.02s
+verify                     234.80ms   valid=true
+n=64 scheme=rank48 matlv=2: constraints 229376 (mults 225280 + 4096 other rows)
+--- full zk scenario: n=64 scheme=rank48 matlv=2 ---
+constraints            229376
+proof domain (2^k)     262144
+witness generation           3.79ms   (native n^3 matmul over Fr)
+NTT forward @ domain        13.91ms
+NTT inverse @ domain        14.08ms
+setup (trusted)               7.91s
+prove                         8.63s
+verify                     236.42ms   valid=true
+n=64 scheme=rank48 matlv=3: constraints 487424 (mults 483328 + 4096 other rows)
+--- full zk scenario: n=64 scheme=rank48 matlv=3 ---
+constraints            487424
+proof domain (2^k)     524288
+witness generation           3.80ms   (native n^3 matmul over Fr)
+NTT forward @ domain        26.39ms
+NTT inverse @ domain        27.87ms
+setup (trusted)               8.18s
+prove                         8.93s
+verify                     231.48ms   valid=true
+--- [4/4] n=4096 witness-gen A/B (284 vs 315) ---
+fast reduction + fdiv2 gated against division on 1M randoms
+field-verified: recursive rank-48 == naive at n=16, 64
+n= 4096  naive 937242.427 ms  blocked 246223.764 ms  rank48 82981.818 ms (cut 16)  ratio-vs-blocked 0.34
+fast reduction + fdiv2 gated against division on 1M randoms
+field-verified: recursive rank-48 == naive at n=16, 64
+n= 4096  naive 935979.504 ms  blocked 537511.627 ms  rank48 80473.509 ms (cut 16)  ratio-vs-blocked 0.15
+=== BENCHLANE2 DONE Wed Jul 15 20:11:17 EDT 2026 ===

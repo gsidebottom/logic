@@ -1,0 +1,575 @@
+=== OURSLANE START Wed Jul 15 19:58:22 EDT 2026: 24 rounds x 18 variants, 6 jobs ===
+targets: ours 705.2 / accurate 752.8 (calibrated delayed cycles)
+[L_R_Pt_g0 r1] L improved: triple machine score 1154.4 -> 1152.9
+[Lt_Pt_R_g1 r1] P improved: triple machine score 1231.5 -> 1161.6
+[Lt_Pt_R_g1 r1] P improved: triple machine score 1161.6 -> 1159.5
+[Lt_Pt_R_g1 r1] triple: 1159.5 12/16 35
+[Lt_Pt_R_g0 r1] P improved: triple machine score 1219.8 -> 1175.4
+[L_R_Pt_g1 r1] P improved: triple machine score 1285.5 -> 1183.5
+[Lt_Pt_R_g2 r1] triple: 796.9 16/16 0
+[Lt_Pt_R_g0 r1] P improved: triple machine score 1175.4 -> 1162.2
+[L_R_Pt_g2 r1] triple: 810.8 16/16 0
+[L_R_Pt_g1 r1] triple: 1183.5 16/16 39
+[Lt_Pt_R_g0 r1] triple: 1162.2 6/16 32
+[L_R_Pt_g0 r1] triple: 1152.9 16/16 38
+[Ptt_L_Rt_g0 r1] P improved: triple machine score 1229.1 -> 1135.2
+[Ptt_L_Rt_g0 r1] P improved: triple machine score 1135.2 -> 1081.4
+[Ptt_L_Rt_g0 r1] triple: 1081.4 12/16 24
+[Ptt_L_Rt_g1 r1] P improved: triple machine score 1226.7 -> 1021.7
+[Pt_Rt_L_g2 r1] P improved: triple machine score 783.1 -> 773.1
+[Pt_Rt_L_g0 r1] P improved: triple machine score 1284.0 -> 1207.8
+[Ptt_L_Rt_g1 r1] triple: 1021.7 16/16 21
+[Pt_Rt_L_g2 r1] P improved: triple machine score 773.1 -> 770.1
+[Pt_Rt_L_g2 r1] triple: 770.1 16/16 0
+[Pt_Rt_L_g0 r1] triple: 1207.8 16/16 35
+[Pt_Rt_L_g1 r1] P improved: triple machine score 1289.1 -> 1205.4
+[Pt_Rt_L_g1 r1] triple: 1205.4 16/16 32
+[Ptt_L_Rt_g2 r1] triple: 785.8 16/16 0
+[R_Ptt_Lt_g0 r1] P improved: triple machine score 1256.7 -> 1204.2
+[Rt_Lt_Ptt_g0 r1] P improved: triple machine score 1292.1 -> 1161.0
+[R_Ptt_Lt_g2 r1] P improved: triple machine score 783.8 -> 780.6
+[R_Ptt_Lt_g0 r1] P improved: triple machine score 1204.2 -> 1170.3
+[Rt_Lt_Ptt_g0 r1] triple: 1161.0 16/16 42
+[R_Ptt_Lt_g2 r1] P improved: triple machine score 780.6 -> 774.6
+[R_Ptt_Lt_g0 r1] triple: 1170.3 14/16 28
+[Rt_Lt_Ptt_g1 r1] P improved: triple machine score 1278.3 -> 1178.7
+[R_Ptt_Lt_g2 r1] triple: 774.6 16/16 0
+[R_Ptt_Lt_g1 r1] P improved: triple machine score 1277.4 -> 1184.1
+[Rt_Lt_Ptt_g1 r1] triple: 1178.7 16/16 56
+[R_Ptt_Lt_g1 r1] triple: 1184.1 16/16 47
+[Rt_Lt_Ptt_g2 r1] triple: 705.2 16/16 0
+=== round 1: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[Lt_Pt_R_g1 r2] L improved: triple machine score 1159.5 -> 1158.0
+[Lt_Pt_R_g2 r2] L improved: triple machine score 796.9 -> 793.9
+[L_R_Pt_g2 r2] L improved: triple machine score 810.8 -> 809.3
+[L_R_Pt_g0 r2] R improved: triple machine score 1152.9 -> 1149.9
+[L_R_Pt_g1 r2] R improved: triple machine score 1183.5 -> 1182.0
+[Lt_Pt_R_g2 r2] P improved: triple machine score 793.9 -> 792.4
+[L_R_Pt_g1 r2] P improved: triple machine score 1182.0 -> 1150.8
+[L_R_Pt_g0 r2] P improved: triple machine score 1149.9 -> 1145.1
+[Lt_Pt_R_g0 r2] P improved: triple machine score 1162.2 -> 1161.6
+[Lt_Pt_R_g2 r2] triple: 792.4 16/16 0
+[L_R_Pt_g0 r2] triple: 1145.1 10/16 31
+[Lt_Pt_R_g1 r2] triple: 1158.0 12/16 35
+[L_R_Pt_g1 r2] triple: 1150.8 16/16 40
+[Lt_Pt_R_g0 r2] triple: 1161.6 8/16 31
+[L_R_Pt_g2 r2] triple: 809.3 16/16 0
+[Pt_Rt_L_g0 r2] L improved: triple machine score 1207.8 -> 1207.2
+[Pt_Rt_L_g2 r2] L improved: triple machine score 770.1 -> 764.7
+[Ptt_L_Rt_g2 r2] L improved: triple machine score 785.8 -> 783.9
+[Ptt_L_Rt_g1 r2] R improved: triple machine score 1021.7 -> 1018.7
+[Ptt_L_Rt_g1 r2] triple: 1018.7 16/16 21
+[Ptt_L_Rt_g2 r2] triple: 783.9 16/16 0
+[Pt_Rt_L_g1 r2] P improved: triple machine score 1205.4 -> 1177.5
+[Ptt_L_Rt_g0 r2] P improved: triple machine score 1081.4 -> 1073.5
+[Ptt_L_Rt_g0 r2] triple: 1073.5 15/16 25
+[Pt_Rt_L_g1 r2] triple: 1177.5 16/16 38
+[Pt_Rt_L_g0 r2] triple: 1207.2 16/16 35
+[Pt_Rt_L_g2 r2] triple: 764.7 16/16 0
+[R_Ptt_Lt_g1 r2] L improved: triple machine score 1184.1 -> 1181.1
+[R_Ptt_Lt_g2 r2] L improved: triple machine score 774.6 -> 757.8
+[Rt_Lt_Ptt_g0 r2] P improved: triple machine score 1161.0 -> 1140.6
+[R_Ptt_Lt_g2 r2] P improved: triple machine score 757.8 -> 756.5
+[R_Ptt_Lt_g2 r2] triple: 756.5 16/16 0
+[Rt_Lt_Ptt_g0 r2] triple: 1140.6 16/16 36
+[Rt_Lt_Ptt_g2 r2] triple: 705.2 16/16 0
+[R_Ptt_Lt_g1 r2] triple: 1181.1 16/16 47
+[Rt_Lt_Ptt_g1 r2] triple: 1178.7 16/16 56
+[R_Ptt_Lt_g0 r2] triple: 1170.3 14/16 28
+=== round 2: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[L_R_Pt_g1 r3] L improved: triple machine score 1150.8 -> 1149.3
+[L_R_Pt_g0 r3] R improved: triple machine score 1145.1 -> 1137.6
+[L_R_Pt_g1 r3] R improved: triple machine score 1149.3 -> 1147.8
+[Lt_Pt_R_g1 r3] P improved: triple machine score 1158.0 -> 1155.9
+[Lt_Pt_R_g0 r3] P improved: triple machine score 1161.6 -> 1087.3
+[Lt_Pt_R_g2 r3] triple: 792.4 16/16 0
+[L_R_Pt_g0 r3] triple: 1137.6 10/16 31
+[Lt_Pt_R_g1 r3] P improved: triple machine score 1155.9 -> 1032.4
+[Lt_Pt_R_g1 r3] triple: 1032.4 11/16 23
+[Lt_Pt_R_g0 r3] triple: 1087.3 16/16 28
+[L_R_Pt_g2 r3] triple: 809.3 16/16 0
+[L_R_Pt_g1 r3] triple: 1147.8 16/16 40
+[Pt_Rt_L_g0 r3] R improved: triple machine score 1207.2 -> 1199.7
+[Ptt_L_Rt_g2 r3] triple: 783.9 16/16 0
+[Ptt_L_Rt_g1 r3] triple: 1018.7 16/16 21
+[Ptt_L_Rt_g0 r3] triple: 1073.5 15/16 25
+[Pt_Rt_L_g1 r3] triple: 1177.5 16/16 38
+[Pt_Rt_L_g0 r3] P improved: triple machine score 1199.7 -> 1182.3
+[Pt_Rt_L_g0 r3] triple: 1182.3 16/16 28
+[R_Ptt_Lt_g1 r3] L improved: triple machine score 1181.1 -> 1173.6
+[Pt_Rt_L_g2 r3] triple: 764.7 16/16 0
+[R_Ptt_Lt_g2 r3] L improved: triple machine score 756.5 -> 729.8
+[Rt_Lt_Ptt_g0 r3] L improved: triple machine score 1140.6 -> 1139.1
+[Rt_Lt_Ptt_g1 r3] R improved: triple machine score 1178.7 -> 1177.2
+[Rt_Lt_Ptt_g1 r3] triple: 1177.2 16/16 56
+[R_Ptt_Lt_g0 r3] triple: 1170.3 14/16 28
+[Rt_Lt_Ptt_g0 r3] triple: 1139.1 16/16 36
+[R_Ptt_Lt_g1 r3] triple: 1173.6 16/16 47
+[R_Ptt_Lt_g2 r3] triple: 729.8 16/16 0
+[Rt_Lt_Ptt_g2 r3] triple: 705.2 16/16 0
+=== round 3: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[L_R_Pt_g2 r4] L improved: triple machine score 809.3 -> 807.8
+[Lt_Pt_R_g1 r4] triple: 1032.4 11/16 23
+[Lt_Pt_R_g2 r4] triple: 792.4 16/16 0
+[Lt_Pt_R_g0 r4] triple: 1087.3 16/16 28
+[L_R_Pt_g1 r4] triple: 1147.8 16/16 40
+[L_R_Pt_g2 r4] triple: 807.8 16/16 0
+[L_R_Pt_g0 r4] triple: 1137.6 10/16 31
+[Ptt_L_Rt_g2 r4] triple: 783.9 16/16 0
+[Ptt_L_Rt_g1 r4] triple: 1018.7 16/16 21
+[Pt_Rt_L_g1 r4] triple: 1177.5 16/16 38
+[Ptt_L_Rt_g0 r4] triple: 1073.5 15/16 25
+[Pt_Rt_L_g2 r4] triple: 764.7 16/16 0
+[Pt_Rt_L_g0 r4] triple: 1182.3 16/16 28
+[R_Ptt_Lt_g0 r4] L improved: triple machine score 1170.3 -> 1162.8
+[Rt_Lt_Ptt_g1 r4] L improved: triple machine score 1177.2 -> 1174.2
+[Rt_Lt_Ptt_g0 r4] R improved: triple machine score 1139.1 -> 1137.6
+[R_Ptt_Lt_g0 r4] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g1 r4] P improved: triple machine score 1173.6 -> 1159.8
+[R_Ptt_Lt_g1 r4] triple: 1159.8 16/16 34
+[Rt_Lt_Ptt_g0 r4] triple: 1137.6 16/16 36
+[Rt_Lt_Ptt_g1 r4] P improved: triple machine score 1174.2 -> 1158.0
+[Rt_Lt_Ptt_g1 r4] triple: 1158.0 9/16 38
+[Rt_Lt_Ptt_g2 r4] triple: 705.2 16/16 0
+[R_Ptt_Lt_g2 r4] triple: 729.8 16/16 0
+=== round 4: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[Lt_Pt_R_g0 r5] L improved: triple machine score 1087.3 -> 1085.8
+[Lt_Pt_R_g2 r5] triple: 792.4 16/16 0
+[Lt_Pt_R_g0 r5] P improved: triple machine score 1085.8 -> 1040.9
+[L_R_Pt_g0 r5] triple: 1137.6 10/16 31
+[Lt_Pt_R_g0 r5] triple: 1040.9 9/16 25
+[Lt_Pt_R_g1 r5] triple: 1032.4 11/16 23
+[L_R_Pt_g2 r5] triple: 807.8 16/16 0
+[L_R_Pt_g1 r5] triple: 1147.8 16/16 40
+[Pt_Rt_L_g2 r5] L improved: triple machine score 764.7 -> 739.2
+[Pt_Rt_L_g0 r5] triple: 1182.3 16/16 28
+[Ptt_L_Rt_g2 r5] triple: 783.9 16/16 0
+[Pt_Rt_L_g2 r5] triple: 739.2 16/16 0
+[Ptt_L_Rt_g0 r5] triple: 1073.5 15/16 25
+[Ptt_L_Rt_g1 r5] triple: 1018.7 16/16 21
+[Pt_Rt_L_g1 r5] triple: 1177.5 16/16 38
+[R_Ptt_Lt_g0 r5] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g1 r5] triple: 1159.8 16/16 34
+[Rt_Lt_Ptt_g1 r5] triple: 1158.0 9/16 38
+[Rt_Lt_Ptt_g2 r5] triple: 705.2 16/16 0
+[R_Ptt_Lt_g2 r5] P improved: triple machine score 729.8 -> 727.6
+[R_Ptt_Lt_g2 r5] triple: 727.6 16/16 0
+[Rt_Lt_Ptt_g0 r5] triple: 1137.6 16/16 36
+=== round 5: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[L_R_Pt_g0 r6] L improved: triple machine score 1137.6 -> 1136.1
+[Lt_Pt_R_g1 r6] L improved: triple machine score 1032.4 -> 1030.9
+[L_R_Pt_g2 r6] R improved: triple machine score 807.8 -> 806.3
+[Lt_Pt_R_g1 r6] triple: 1030.9 11/16 23
+[L_R_Pt_g0 r6] triple: 1136.1 10/16 31
+[Lt_Pt_R_g0 r6] triple: 1040.9 9/16 25
+[L_R_Pt_g2 r6] triple: 806.3 16/16 0
+[Lt_Pt_R_g2 r6] triple: 792.4 16/16 0
+[L_R_Pt_g1 r6] triple: 1147.8 16/16 40
+[Ptt_L_Rt_g2 r6] L improved: triple machine score 783.9 -> 777.9
+[Ptt_L_Rt_g2 r6] P improved: triple machine score 777.9 -> 777.1
+[Pt_Rt_L_g0 r6] P improved: triple machine score 1182.3 -> 1181.7
+[Pt_Rt_L_g0 r6] triple: 1181.7 14/16 31
+[Ptt_L_Rt_g2 r6] triple: 777.1 16/16 0
+[Ptt_L_Rt_g1 r6] triple: 1018.7 16/16 21
+[Ptt_L_Rt_g0 r6] triple: 1073.5 15/16 25
+[Pt_Rt_L_g1 r6] triple: 1177.5 16/16 38
+[Pt_Rt_L_g2 r6] triple: 739.2 16/16 0
+[Rt_Lt_Ptt_g0 r6] L improved: triple machine score 1137.6 -> 1134.6
+[R_Ptt_Lt_g0 r6] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g1 r6] triple: 1159.8 16/16 34
+[Rt_Lt_Ptt_g2 r6] triple: 705.2 16/16 0
+[Rt_Lt_Ptt_g1 r6] triple: 1158.0 9/16 38
+[R_Ptt_Lt_g2 r6] triple: 727.6 16/16 0
+[Rt_Lt_Ptt_g0 r6] triple: 1134.6 16/16 36
+=== round 6: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[L_R_Pt_g2 r7] R improved: triple machine score 806.3 -> 803.3
+[L_R_Pt_g1 r7] triple: 1147.8 16/16 40
+[Lt_Pt_R_g2 r7] triple: 792.4 16/16 0
+[Lt_Pt_R_g1 r7] triple: 1030.9 11/16 23
+[Lt_Pt_R_g0 r7] triple: 1040.9 9/16 25
+[L_R_Pt_g2 r7] P improved: triple machine score 803.3 -> 803.1
+[L_R_Pt_g2 r7] P improved: triple machine score 803.1 -> 801.6
+[L_R_Pt_g0 r7] triple: 1136.1 10/16 31
+[L_R_Pt_g2 r7] triple: 801.6 16/16 0
+[Ptt_L_Rt_g2 r7] L improved: triple machine score 777.1 -> 767.8
+[Pt_Rt_L_g2 r7] R improved: triple machine score 739.2 -> 737.7
+[Ptt_L_Rt_g1 r7] P improved: triple machine score 1018.7 -> 992.8
+[Ptt_L_Rt_g1 r7] triple: 992.8 8/16 22
+[Pt_Rt_L_g0 r7] triple: 1181.7 14/16 31
+[Pt_Rt_L_g1 r7] triple: 1177.5 16/16 38
+[Ptt_L_Rt_g0 r7] P improved: triple machine score 1073.5 -> 1018.8
+[Ptt_L_Rt_g2 r7] triple: 767.8 16/16 0
+[Pt_Rt_L_g2 r7] P improved: triple machine score 737.7 -> 737.0
+[Pt_Rt_L_g2 r7] triple: 737.0 16/16 0
+[Ptt_L_Rt_g0 r7] triple: 1018.8 16/16 21
+[R_Ptt_Lt_g0 r7] triple: 1162.8 14/16 28
+[Rt_Lt_Ptt_g1 r7] P improved: triple machine score 1158.0 -> 1149.6
+[Rt_Lt_Ptt_g0 r7] triple: 1134.6 16/16 36
+[Rt_Lt_Ptt_g1 r7] triple: 1149.6 16/16 32
+[Rt_Lt_Ptt_g2 r7] triple: 705.2 16/16 0
+[R_Ptt_Lt_g2 r7] triple: 727.6 16/16 0
+[R_Ptt_Lt_g1 r7] triple: 1159.8 16/16 34
+=== round 7: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[L_R_Pt_g2 r8] triple: 801.6 16/16 0
+[Lt_Pt_R_g1 r8] triple: 1030.9 11/16 23
+[Lt_Pt_R_g0 r8] triple: 1040.9 9/16 25
+[Lt_Pt_R_g2 r8] triple: 792.4 16/16 0
+[L_R_Pt_g0 r8] triple: 1136.1 10/16 31
+[L_R_Pt_g1 r8] triple: 1147.8 16/16 40
+[Ptt_L_Rt_g2 r8] R improved: triple machine score 767.8 -> 766.3
+[Ptt_L_Rt_g0 r8] triple: 1018.8 16/16 21
+[Ptt_L_Rt_g2 r8] triple: 766.3 16/16 0
+[Ptt_L_Rt_g1 r8] triple: 992.8 8/16 22
+[Pt_Rt_L_g2 r8] triple: 737.0 16/16 0
+[Pt_Rt_L_g1 r8] triple: 1177.5 16/16 38
+[Pt_Rt_L_g0 r8] triple: 1181.7 14/16 31
+[R_Ptt_Lt_g0 r8] triple: 1162.8 14/16 28
+[Rt_Lt_Ptt_g2 r8] triple: 705.2 16/16 0
+[Rt_Lt_Ptt_g0 r8] triple: 1134.6 16/16 36
+[R_Ptt_Lt_g1 r8] triple: 1159.8 16/16 34
+[Rt_Lt_Ptt_g1 r8] triple: 1149.6 16/16 32
+[R_Ptt_Lt_g2 r8] triple: 727.6 16/16 0
+=== round 8: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[L_R_Pt_g1 r9] R improved: triple machine score 1147.8 -> 1144.8
+[Lt_Pt_R_g2 r9] triple: 792.4 16/16 0
+[Lt_Pt_R_g1 r9] triple: 1030.9 11/16 23
+[L_R_Pt_g1 r9] triple: 1144.8 16/16 40
+[L_R_Pt_g0 r9] triple: 1136.1 10/16 31
+[Lt_Pt_R_g0 r9] triple: 1040.9 9/16 25
+[L_R_Pt_g2 r9] triple: 801.6 16/16 0
+[Pt_Rt_L_g1 r9] L improved: triple machine score 1177.5 -> 1173.6
+[Ptt_L_Rt_g0 r9] R improved: triple machine score 1018.8 -> 1017.3
+[Pt_Rt_L_g0 r9] triple: 1181.7 14/16 31
+[Ptt_L_Rt_g2 r9] triple: 766.3 16/16 0
+[Ptt_L_Rt_g1 r9] triple: 992.8 8/16 22
+[Ptt_L_Rt_g0 r9] triple: 1017.3 16/16 21
+[Pt_Rt_L_g2 r9] triple: 737.0 16/16 0
+[Pt_Rt_L_g1 r9] triple: 1173.6 16/16 38
+[R_Ptt_Lt_g0 r9] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g1 r9] triple: 1159.8 16/16 34
+[Rt_Lt_Ptt_g2 r9] triple: 705.2 16/16 0
+[Rt_Lt_Ptt_g0 r9] triple: 1134.6 16/16 36
+[Rt_Lt_Ptt_g1 r9] triple: 1149.6 16/16 32
+[R_Ptt_Lt_g2 r9] triple: 727.6 16/16 0
+=== round 9: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[Lt_Pt_R_g2 r10] triple: 792.4 16/16 0
+[Lt_Pt_R_g1 r10] triple: 1030.9 11/16 23
+[Lt_Pt_R_g0 r10] triple: 1040.9 9/16 25
+[L_R_Pt_g1 r10] triple: 1144.8 16/16 40
+[L_R_Pt_g2 r10] triple: 801.6 16/16 0
+[L_R_Pt_g0 r10] triple: 1136.1 10/16 31
+[Ptt_L_Rt_g0 r10] L improved: triple machine score 1017.3 -> 1005.9
+[Pt_Rt_L_g0 r10] P improved: triple machine score 1181.7 -> 1169.4
+[Pt_Rt_L_g0 r10] triple: 1169.4 16/16 35
+[Ptt_L_Rt_g2 r10] triple: 766.3 16/16 0
+[Pt_Rt_L_g2 r10] P improved: triple machine score 737.0 -> 735.5
+[Ptt_L_Rt_g1 r10] triple: 992.8 8/16 22
+[Pt_Rt_L_g2 r10] triple: 735.5 16/16 0
+[Ptt_L_Rt_g0 r10] triple: 1005.9 16/16 21
+[Pt_Rt_L_g1 r10] triple: 1173.6 16/16 38
+[R_Ptt_Lt_g0 r10] triple: 1162.8 14/16 28
+[Rt_Lt_Ptt_g1 r10] P improved: triple machine score 1149.6 -> 1140.0
+[R_Ptt_Lt_g2 r10] triple: 727.6 16/16 0
+[Rt_Lt_Ptt_g1 r10] triple: 1140.0 16/16 41
+[Rt_Lt_Ptt_g2 r10] triple: 705.2 16/16 0
+[Rt_Lt_Ptt_g0 r10] triple: 1134.6 16/16 36
+[R_Ptt_Lt_g1 r10] triple: 1159.8 16/16 34
+=== round 10: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[L_R_Pt_g1 r11] L improved: triple machine score 1144.8 -> 1143.3
+[L_R_Pt_g1 r11] R improved: triple machine score 1143.3 -> 1140.3
+[Lt_Pt_R_g2 r11] R improved: triple machine score 792.4 -> 790.0
+[L_R_Pt_g2 r11] triple: 801.6 16/16 0
+[Lt_Pt_R_g0 r11] triple: 1040.9 9/16 25
+[Lt_Pt_R_g2 r11] triple: 790.0 16/16 0
+[L_R_Pt_g0 r11] triple: 1136.1 10/16 31
+[Lt_Pt_R_g1 r11] triple: 1030.9 11/16 23
+[L_R_Pt_g1 r11] triple: 1140.3 16/16 40
+[Pt_Rt_L_g0 r11] triple: 1169.4 16/16 35
+[Pt_Rt_L_g1 r11] triple: 1173.6 16/16 38
+[Ptt_L_Rt_g0 r11] triple: 1005.9 16/16 21
+[Ptt_L_Rt_g1 r11] triple: 992.8 8/16 22
+[Ptt_L_Rt_g2 r11] triple: 766.3 16/16 0
+[Pt_Rt_L_g2 r11] triple: 735.5 16/16 0
+[R_Ptt_Lt_g0 r11] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g1 r11] triple: 1159.8 16/16 34
+[Rt_Lt_Ptt_g2 r11] triple: 705.2 16/16 0
+[Rt_Lt_Ptt_g0 r11] triple: 1134.6 16/16 36
+[Rt_Lt_Ptt_g1 r11] triple: 1140.0 16/16 41
+[R_Ptt_Lt_g2 r11] triple: 727.6 16/16 0
+=== round 11: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[Lt_Pt_R_g1 r12] P improved: triple machine score 1030.9 -> 1030.1
+[Lt_Pt_R_g1 r12] triple: 1030.1 9/16 24
+[Lt_Pt_R_g0 r12] triple: 1040.9 9/16 25
+[L_R_Pt_g0 r12] triple: 1136.1 10/16 31
+[L_R_Pt_g1 r12] triple: 1140.3 16/16 40
+[L_R_Pt_g2 r12] triple: 801.6 16/16 0
+[Lt_Pt_R_g2 r12] triple: 790.0 16/16 0
+[Pt_Rt_L_g1 r12] triple: 1173.6 16/16 38
+[Pt_Rt_L_g0 r12] triple: 1169.4 16/16 35
+[Ptt_L_Rt_g1 r12] triple: 992.8 8/16 22
+[Ptt_L_Rt_g2 r12] triple: 766.3 16/16 0
+[Ptt_L_Rt_g0 r12] triple: 1005.9 16/16 21
+[Pt_Rt_L_g2 r12] triple: 735.5 16/16 0
+[R_Ptt_Lt_g1 r12] triple: 1159.8 16/16 34
+[R_Ptt_Lt_g0 r12] triple: 1162.8 14/16 28
+[Rt_Lt_Ptt_g2 r12] triple: 705.2 16/16 0
+[Rt_Lt_Ptt_g0 r12] triple: 1134.6 16/16 36
+[Rt_Lt_Ptt_g1 r12] triple: 1140.0 16/16 41
+[R_Ptt_Lt_g2 r12] triple: 727.6 16/16 0
+=== round 12: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[Lt_Pt_R_g1 r13] triple: 1030.1 9/16 24
+[Lt_Pt_R_g2 r13] triple: 790.0 16/16 0
+[L_R_Pt_g1 r13] P improved: triple machine score 1140.3 -> 1132.8
+[L_R_Pt_g0 r13] triple: 1136.1 10/16 31
+[Lt_Pt_R_g0 r13] triple: 1040.9 9/16 25
+[L_R_Pt_g2 r13] triple: 801.6 16/16 0
+[L_R_Pt_g1 r13] triple: 1132.8 16/16 49
+[Ptt_L_Rt_g2 r13] L improved: triple machine score 766.3 -> 750.7
+[Ptt_L_Rt_g0 r13] triple: 1005.9 16/16 21
+[Ptt_L_Rt_g2 r13] triple: 750.7 16/16 0
+[Ptt_L_Rt_g1 r13] P improved: triple machine score 992.8 -> 983.5
+[Ptt_L_Rt_g1 r13] triple: 983.5 11/16 21
+[Pt_Rt_L_g0 r13] triple: 1169.4 16/16 35
+[Pt_Rt_L_g1 r13] triple: 1173.6 16/16 38
+[Pt_Rt_L_g2 r13] P improved: triple machine score 735.5 -> 733.5
+[Pt_Rt_L_g2 r13] triple: 733.5 16/16 0
+[Rt_Lt_Ptt_g1 r13] triple: 1140.0 16/16 41
+[Rt_Lt_Ptt_g0 r13] P improved: triple machine score 1134.6 -> 1121.7
+[Rt_Lt_Ptt_g0 r13] P improved: triple machine score 1121.7 -> 1050.2
+[Rt_Lt_Ptt_g0 r13] triple: 1050.2 14/16 26
+[R_Ptt_Lt_g2 r13] triple: 727.6 16/16 0
+[R_Ptt_Lt_g0 r13] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g1 r13] triple: 1159.8 16/16 34
+[Rt_Lt_Ptt_g2 r13] triple: 705.2 16/16 0
+=== round 13: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[L_R_Pt_g0 r14] L improved: triple machine score 1136.1 -> 1134.6
+[Lt_Pt_R_g1 r14] triple: 1030.1 9/16 24
+[Lt_Pt_R_g2 r14] triple: 790.0 16/16 0
+[L_R_Pt_g1 r14] triple: 1132.8 16/16 49
+[Lt_Pt_R_g0 r14] triple: 1040.9 9/16 25
+[L_R_Pt_g0 r14] triple: 1134.6 10/16 31
+[L_R_Pt_g2 r14] triple: 801.6 16/16 0
+[Pt_Rt_L_g0 r14] triple: 1169.4 16/16 35
+[Pt_Rt_L_g1 r14] triple: 1173.6 16/16 38
+[Pt_Rt_L_g2 r14] triple: 733.5 16/16 0
+[Ptt_L_Rt_g0 r14] triple: 1005.9 16/16 21
+[Ptt_L_Rt_g1 r14] triple: 983.5 11/16 21
+[Ptt_L_Rt_g2 r14] triple: 750.7 16/16 0
+[Rt_Lt_Ptt_g1 r14] L improved: triple machine score 1140.0 -> 1138.5
+[R_Ptt_Lt_g0 r14] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g1 r14] triple: 1159.8 16/16 34
+[Rt_Lt_Ptt_g2 r14] triple: 705.2 16/16 0
+[Rt_Lt_Ptt_g0 r14] triple: 1050.2 14/16 26
+[Rt_Lt_Ptt_g1 r14] triple: 1138.5 16/16 41
+[R_Ptt_Lt_g2 r14] triple: 727.6 16/16 0
+=== round 14: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[Lt_Pt_R_g1 r15] triple: 1030.1 9/16 24
+[L_R_Pt_g0 r15] triple: 1134.6 10/16 31
+[Lt_Pt_R_g0 r15] triple: 1040.9 9/16 25
+[Lt_Pt_R_g2 r15] triple: 790.0 16/16 0
+[L_R_Pt_g2 r15] triple: 801.6 16/16 0
+[L_R_Pt_g1 r15] triple: 1132.8 16/16 49
+[Pt_Rt_L_g2 r15] R improved: triple machine score 733.5 -> 732.0
+[Pt_Rt_L_g0 r15] triple: 1169.4 16/16 35
+[Pt_Rt_L_g1 r15] triple: 1173.6 16/16 38
+[Ptt_L_Rt_g2 r15] triple: 750.7 16/16 0
+[Ptt_L_Rt_g1 r15] triple: 983.5 11/16 21
+[Ptt_L_Rt_g0 r15] triple: 1005.9 16/16 21
+[Pt_Rt_L_g2 r15] triple: 732.0 16/16 0
+[R_Ptt_Lt_g1 r15] R improved: triple machine score 1159.8 -> 1150.2
+[R_Ptt_Lt_g0 r15] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g1 r15] triple: 1150.2 16/16 34
+[R_Ptt_Lt_g2 r15] triple: 727.6 16/16 0
+[Rt_Lt_Ptt_g0 r15] triple: 1050.2 14/16 26
+[Rt_Lt_Ptt_g1 r15] triple: 1138.5 16/16 41
+[Rt_Lt_Ptt_g2 r15] triple: 705.2 16/16 0
+=== round 15: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[Lt_Pt_R_g0 r16] triple: 1040.9 9/16 25
+[Lt_Pt_R_g2 r16] triple: 790.0 16/16 0
+[L_R_Pt_g1 r16] triple: 1132.8 16/16 49
+[Lt_Pt_R_g1 r16] triple: 1030.1 9/16 24
+[L_R_Pt_g2 r16] triple: 801.6 16/16 0
+[L_R_Pt_g0 r16] triple: 1134.6 10/16 31
+[Ptt_L_Rt_g1 r16] L improved: triple machine score 983.5 -> 974.2
+[Pt_Rt_L_g2 r16] R improved: triple machine score 732.0 -> 729.2
+[Ptt_L_Rt_g0 r16] P improved: triple machine score 1005.9 -> 979.8
+[Ptt_L_Rt_g2 r16] triple: 750.7 16/16 0
+[Ptt_L_Rt_g1 r16] triple: 974.2 11/16 21
+[Ptt_L_Rt_g0 r16] triple: 979.8 7/16 25
+[Pt_Rt_L_g2 r16] triple: 729.2 16/16 0
+[Pt_Rt_L_g0 r16] triple: 1169.4 16/16 35
+[Pt_Rt_L_g1 r16] triple: 1173.6 16/16 38
+[Rt_Lt_Ptt_g2 r16] triple: 705.2 16/16 0
+[R_Ptt_Lt_g0 r16] triple: 1162.8 14/16 28
+[Rt_Lt_Ptt_g1 r16] triple: 1138.5 16/16 41
+[Rt_Lt_Ptt_g0 r16] triple: 1050.2 14/16 26
+[R_Ptt_Lt_g2 r16] triple: 727.6 16/16 0
+[R_Ptt_Lt_g1 r16] triple: 1150.2 16/16 34
+=== round 16: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[Lt_Pt_R_g2 r17] triple: 790.0 16/16 0
+[L_R_Pt_g2 r17] P improved: triple machine score 801.6 -> 801.3
+[L_R_Pt_g1 r17] triple: 1132.8 16/16 49
+[L_R_Pt_g2 r17] triple: 801.3 16/16 0
+[Lt_Pt_R_g0 r17] triple: 1040.9 9/16 25
+[L_R_Pt_g0 r17] triple: 1134.6 10/16 31
+[Lt_Pt_R_g1 r17] triple: 1030.1 9/16 24
+[Ptt_L_Rt_g1 r17] triple: 974.2 11/16 21
+[Ptt_L_Rt_g2 r17] triple: 750.7 16/16 0
+[Ptt_L_Rt_g0 r17] triple: 979.8 7/16 25
+[Pt_Rt_L_g2 r17] triple: 729.2 16/16 0
+[Pt_Rt_L_g0 r17] triple: 1169.4 16/16 35
+[Pt_Rt_L_g1 r17] triple: 1173.6 16/16 38
+[R_Ptt_Lt_g0 r17] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g2 r17] triple: 727.6 16/16 0
+[R_Ptt_Lt_g1 r17] triple: 1150.2 16/16 34
+[Rt_Lt_Ptt_g0 r17] triple: 1050.2 14/16 26
+[Rt_Lt_Ptt_g1 r17] triple: 1138.5 16/16 41
+[Rt_Lt_Ptt_g2 r17] triple: 705.2 16/16 0
+=== round 17: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[Lt_Pt_R_g0 r18] triple: 1040.9 9/16 25
+[Lt_Pt_R_g2 r18] triple: 790.0 16/16 0
+[Lt_Pt_R_g1 r18] triple: 1030.1 9/16 24
+[L_R_Pt_g2 r18] triple: 801.3 16/16 0
+[L_R_Pt_g1 r18] triple: 1132.8 16/16 49
+[L_R_Pt_g0 r18] triple: 1134.6 10/16 31
+[Pt_Rt_L_g1 r18] triple: 1173.6 16/16 38
+[Ptt_L_Rt_g1 r18] P improved: triple machine score 974.2 -> 941.0
+[Ptt_L_Rt_g2 r18] triple: 750.7 16/16 0
+[Ptt_L_Rt_g0 r18] triple: 979.8 7/16 25
+[Ptt_L_Rt_g1 r18] triple: 941.0 8/16 22
+[Pt_Rt_L_g0 r18] triple: 1169.4 16/16 35
+[Pt_Rt_L_g2 r18] triple: 729.2 16/16 0
+[R_Ptt_Lt_g0 r18] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g1 r18] P improved: triple machine score 1150.2 -> 1146.6
+[Rt_Lt_Ptt_g0 r18] triple: 1050.2 14/16 26
+[Rt_Lt_Ptt_g1 r18] triple: 1138.5 16/16 41
+[R_Ptt_Lt_g2 r18] triple: 727.6 16/16 0
+[R_Ptt_Lt_g1 r18] triple: 1146.6 16/16 37
+[Rt_Lt_Ptt_g2 r18] triple: 705.2 16/16 0
+=== round 18: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[Lt_Pt_R_g0 r19] L improved: triple machine score 1040.9 -> 1039.4
+[Lt_Pt_R_g1 r19] R improved: triple machine score 1030.1 -> 1028.6
+[Lt_Pt_R_g2 r19] triple: 790.0 16/16 0
+[Lt_Pt_R_g1 r19] P improved: triple machine score 1028.6 -> 924.8
+[Lt_Pt_R_g0 r19] triple: 1039.4 9/16 25
+[Lt_Pt_R_g1 r19] triple: 924.8 5/16 22
+[L_R_Pt_g1 r19] triple: 1132.8 16/16 49
+[L_R_Pt_g2 r19] triple: 801.3 16/16 0
+[L_R_Pt_g0 r19] triple: 1134.6 10/16 31
+[Ptt_L_Rt_g2 r19] triple: 750.7 16/16 0
+[Ptt_L_Rt_g1 r19] triple: 941.0 8/16 22
+[Ptt_L_Rt_g0 r19] triple: 979.8 7/16 25
+[Pt_Rt_L_g0 r19] triple: 1169.4 16/16 35
+[Pt_Rt_L_g2 r19] P improved: triple machine score 729.2 -> 728.2
+[Pt_Rt_L_g2 r19] triple: 728.2 16/16 0
+[Pt_Rt_L_g1 r19] triple: 1173.6 16/16 38
+[R_Ptt_Lt_g1 r19] triple: 1146.6 16/16 37
+[Rt_Lt_Ptt_g0 r19] triple: 1050.2 14/16 26
+[R_Ptt_Lt_g0 r19] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g2 r19] triple: 727.6 16/16 0
+[Rt_Lt_Ptt_g2 r19] triple: 705.2 16/16 0
+[Rt_Lt_Ptt_g1 r19] triple: 1138.5 16/16 41
+=== round 19: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[Lt_Pt_R_g0 r20] triple: 1039.4 9/16 25
+[Lt_Pt_R_g1 r20] triple: 924.8 5/16 22
+[L_R_Pt_g1 r20] P improved: triple machine score 1132.8 -> 1091.2
+[L_R_Pt_g2 r20] triple: 801.3 16/16 0
+[L_R_Pt_g0 r20] triple: 1134.6 10/16 31
+[L_R_Pt_g1 r20] triple: 1091.2 7/16 34
+[Lt_Pt_R_g2 r20] triple: 790.0 16/16 0
+[Ptt_L_Rt_g2 r20] P improved: triple machine score 750.7 -> 750.0
+[Ptt_L_Rt_g0 r20] triple: 979.8 7/16 25
+[Ptt_L_Rt_g2 r20] triple: 750.0 16/16 0
+[Pt_Rt_L_g0 r20] triple: 1169.4 16/16 35
+[Ptt_L_Rt_g1 r20] triple: 941.0 8/16 22
+[Pt_Rt_L_g1 r20] triple: 1173.6 16/16 38
+[Pt_Rt_L_g2 r20] triple: 728.2 16/16 0
+[Rt_Lt_Ptt_g0 r20] triple: 1050.2 14/16 26
+[R_Ptt_Lt_g0 r20] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g2 r20] triple: 727.6 16/16 0
+[R_Ptt_Lt_g1 r20] triple: 1146.6 16/16 37
+[Rt_Lt_Ptt_g1 r20] triple: 1138.5 16/16 41
+[Rt_Lt_Ptt_g2 r20] triple: 705.2 16/16 0
+=== round 20: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[L_R_Pt_g0 r21] triple: 1134.6 10/16 31
+[Lt_Pt_R_g2 r21] triple: 790.0 16/16 0
+[Lt_Pt_R_g1 r21] triple: 924.8 5/16 22
+[L_R_Pt_g2 r21] triple: 801.3 16/16 0
+[Lt_Pt_R_g0 r21] P improved: triple machine score 1039.4 -> 967.7
+[Lt_Pt_R_g0 r21] triple: 967.7 8/16 22
+[L_R_Pt_g1 r21] triple: 1091.2 7/16 34
+[Ptt_L_Rt_g1 r21] triple: 941.0 8/16 22
+[Ptt_L_Rt_g0 r21] triple: 979.8 7/16 25
+[Pt_Rt_L_g0 r21] triple: 1169.4 16/16 35
+[Ptt_L_Rt_g2 r21] triple: 750.0 16/16 0
+[Pt_Rt_L_g2 r21] triple: 728.2 16/16 0
+[Pt_Rt_L_g1 r21] triple: 1173.6 16/16 38
+[Rt_Lt_Ptt_g0 r21] triple: 1050.2 14/16 26
+[Rt_Lt_Ptt_g2 r21] triple: 705.2 16/16 0
+[R_Ptt_Lt_g0 r21] triple: 1162.8 14/16 28
+[Rt_Lt_Ptt_g1 r21] triple: 1138.5 16/16 41
+[R_Ptt_Lt_g1 r21] triple: 1146.6 16/16 37
+[R_Ptt_Lt_g2 r21] triple: 727.6 16/16 0
+=== round 21: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[L_R_Pt_g1 r22] triple: 1091.2 7/16 34
+[Lt_Pt_R_g1 r22] triple: 924.8 5/16 22
+[Lt_Pt_R_g2 r22] triple: 790.0 16/16 0
+[L_R_Pt_g2 r22] triple: 801.3 16/16 0
+[Lt_Pt_R_g0 r22] triple: 967.7 8/16 22
+[L_R_Pt_g0 r22] triple: 1134.6 10/16 31
+[Pt_Rt_L_g0 r22] triple: 1169.4 16/16 35
+[Ptt_L_Rt_g1 r22] triple: 941.0 8/16 22
+[Ptt_L_Rt_g2 r22] triple: 750.0 16/16 0
+[Ptt_L_Rt_g0 r22] triple: 979.8 7/16 25
+[Pt_Rt_L_g1 r22] triple: 1173.6 16/16 38
+[Pt_Rt_L_g2 r22] triple: 728.2 16/16 0
+[R_Ptt_Lt_g2 r22] R improved: triple machine score 727.6 -> 721.9
+[Rt_Lt_Ptt_g1 r22] triple: 1138.5 16/16 41
+[Rt_Lt_Ptt_g0 r22] triple: 1050.2 14/16 26
+[Rt_Lt_Ptt_g2 r22] triple: 705.2 16/16 0
+[R_Ptt_Lt_g0 r22] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g2 r22] triple: 721.9 16/16 0
+[R_Ptt_Lt_g1 r22] triple: 1146.6 16/16 37
+=== round 22: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[Lt_Pt_R_g1 r23] R improved: triple machine score 924.8 -> 917.3
+[Lt_Pt_R_g2 r23] triple: 790.0 16/16 0
+[Lt_Pt_R_g1 r23] triple: 917.3 5/16 22
+[Lt_Pt_R_g0 r23] triple: 967.7 8/16 22
+[L_R_Pt_g1 r23] triple: 1091.2 7/16 34
+[L_R_Pt_g2 r23] triple: 801.3 16/16 0
+[L_R_Pt_g0 r23] triple: 1134.6 10/16 31
+[Pt_Rt_L_g1 r23] R improved: triple machine score 1173.6 -> 1172.1
+[Ptt_L_Rt_g2 r23] triple: 750.0 16/16 0
+[Ptt_L_Rt_g0 r23] triple: 979.8 7/16 25
+[Ptt_L_Rt_g1 r23] triple: 941.0 8/16 22
+[Pt_Rt_L_g1 r23] triple: 1172.1 16/16 38
+[Pt_Rt_L_g2 r23] triple: 728.2 16/16 0
+[Pt_Rt_L_g0 r23] triple: 1169.4 16/16 35
+[R_Ptt_Lt_g0 r23] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g1 r23] triple: 1146.6 16/16 37
+[R_Ptt_Lt_g2 r23] triple: 721.9 16/16 0
+[Rt_Lt_Ptt_g0 r23] triple: 1050.2 14/16 26
+[Rt_Lt_Ptt_g2 r23] triple: 705.2 16/16 0
+[Rt_Lt_Ptt_g1 r23] triple: 1138.5 16/16 41
+=== round 23: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+[L_R_Pt_g2 r24] L improved: triple machine score 801.3 -> 799.8
+[L_R_Pt_g0 r24] triple: 1134.6 10/16 31
+[Lt_Pt_R_g0 r24] triple: 967.7 8/16 22
+[Lt_Pt_R_g2 r24] triple: 790.0 16/16 0
+[Lt_Pt_R_g1 r24] triple: 917.3 5/16 22
+[L_R_Pt_g2 r24] triple: 799.8 16/16 0
+[L_R_Pt_g1 r24] triple: 1091.2 7/16 34
+[Pt_Rt_L_g0 r24] triple: 1169.4 16/16 35
+[Pt_Rt_L_g1 r24] triple: 1172.1 16/16 38
+[Ptt_L_Rt_g1 r24] triple: 941.0 8/16 22
+[Ptt_L_Rt_g0 r24] triple: 979.8 7/16 25
+[Ptt_L_Rt_g2 r24] triple: 750.0 16/16 0
+[Pt_Rt_L_g2 r24] triple: 728.2 16/16 0
+[R_Ptt_Lt_g2 r24] triple: 721.9 16/16 0
+[R_Ptt_Lt_g0 r24] triple: 1162.8 14/16 28
+[R_Ptt_Lt_g1 r24] triple: 1146.6 16/16 37
+[Rt_Lt_Ptt_g0 r24] triple: 1050.2 14/16 26
+[Rt_Lt_Ptt_g2 r24] triple: 705.2 16/16 0
+[Rt_Lt_Ptt_g1 r24] triple: 1138.5 16/16 41
+=== round 24: global best 705 (Rt_Lt_Ptt_g2) vs ours 705 / accurate 753 ===
+=== OURSLANE DONE Wed Jul 15 20:04:57 EDT 2026 ===

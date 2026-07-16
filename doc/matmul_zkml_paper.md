@@ -1036,20 +1036,34 @@ combine-and-reduce at 10.4 ns, and halvings/adds at 1.2–1.5 ns:
 deferral is ~2.7× cheaper, and reductions ~1.7× dearer, than naive
 op counting assumes. Under these measured constants a cost model
 over the rank-48 linear networks (shift-aware, deferral-aware;
-`machinecost.py`) **reorders the record book**: the 284-op
-accurate triple — whose every output path crosses a halving,
-blocking deferral — models at 753 cycles per 4×4 tile, while a
-357-op triple from this repository's own optimizer runs a fully
-deferrable product side and models at **705**. Machine-optimal and
-operation-minimal are different optima: the 16 halvings that make
-the 284 shortest also make it reduction-bound. Three storm
-searches over exponent-relabel moves confirmed the blockers are
-structural (single-consumer wires, but the combine costs exceed
-the deferral recovered), and an 18-variant orientation×gauge sweep
-under the calibrated score left the 705 incumbent standing. The
-next step is measured, not modeled: a delayed-reduction
-implementation of the deferrable network inside the
-witness-generation benchmark.
+`machinecost.py`) *appeared to reorder the record book*: the
+284-op accurate triple — whose every output path crosses a
+halving, blocking deferral — modeled at 753 cycles per 4×4 tile,
+while a 357-op triple from this repository's own optimizer, with a
+fully deferrable product side, modeled at **705**. Three storm
+searches over exponent-relabel moves confirmed the 284's blockers
+are structural, and an 18-variant orientation×gauge sweep under
+the calibrated score left the 705 incumbent standing. **Then the
+measured implementation refuted the model.** We codegen'd the
+deferrable network with true delayed reduction — products kept as
+unreduced (lo, hi) pairs, u128 limb-sum accumulation, subtraction
+by bound-tracked negation constants, one combine per output —
+field-gated it against schoolbook on 20,000 random tiles, and
+timed all paths (`bench705`): 284-scalar 282 ns/tile, ours-scalar
+331 ns, ours-*delayed* **461 ns** — 1.63× *slower* where the model
+said 0.94×. The diagnosis is instructive: dependent-chain
+microbenchmarks price *latency*, but a 4×4 tile executes at
+*throughput* — the out-of-order core overlaps 48 independent
+multiply-reduce chains, hiding exactly the reduction latency that
+deferral skips, while the delayed path forfeits that parallelism
+to longer dependency chains and roughly doubled live register
+state. At tile granularity, machine-optimal ≈ operation-minimal
+after all: **the 284 is the measured-fastest rank-48
+witness-generation path**, and delayed reduction stays where it is
+already standard — long, all-positive dot products (it gates
+correct and wins there), i.e. naive inner loops, not rank-48
+product networks. A cost model earns trust only against silicon;
+this one paid for its lesson in one afternoon.
 
 **Reading.** The exponent advantage is real and the counts are
 exactly as predicted; the *crossover* where it beats naive wall

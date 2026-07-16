@@ -745,6 +745,20 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   delayed-reduction implementation in bench (model vs silicon);
   fraction-aware bpcse; longer ourslane converge on R_Ptt_Lt_g2.
 
+- **2026-07-15 (night) — model vs silicon: the flip refuted, cleanly.**
+  bench705 (gen_slp315.py --delayed-P codegen: unreduced (lo,hi) limb
+  pairs, bound-tracked negation constants, one combine/output;
+  field-gated on 20k tiles): 284-scalar 282 ns/tile, ours-scalar 331,
+  ours-DELAYED **461** — 1.63× slower where machinecost said 0.94×.
+  Mechanism: dependent-chain constants price latency; tiles run at
+  throughput (OoO overlaps 48 independent mul+reduce chains — hides
+  exactly what deferral skips; delayed path forfeits ILP to longer
+  chains + 2× register state). Verdict: at tile granularity
+  machine-optimal ≈ op-minimal; **284 = measured-fastest rank-48
+  witness-gen path**; delayed reduction stays where it's standard
+  (long all-positive dots — gates + wins in benchdr). Paper subsection
+  finalized as the full model→search→refutation arc. Task #27 closed.
+
 ## 4. Discipline
 
 - Every claimed scheme re-verified by the independent verifier; every A/B at

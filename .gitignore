@@ -92,3 +92,5 @@ matmul/dps48/plinopt/
 matmul/dps48/stack/
 matmul/found23p/
 matmul/found48p/
+matmul/dps48/orbit/
+matmul/dps48/orbit_perm/

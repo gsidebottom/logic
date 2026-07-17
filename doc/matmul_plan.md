@@ -839,6 +839,23 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   bpcse R-lane misclassification corrected → task #29 (x8-space
   emission mismatch, to be diagnosed properly).
 
+- **2026-07-17 — mul-schedule AIR (task #30): the row lever measured;
+  md/tex divergence caught and repaired.** One parametric 67-col AIR,
+  one row per multiplication, scheme wiring in preprocessed columns
+  (setup_preprocessed/prove_with_preprocessed; selector products
+  precomputed to hold degree ≤ 3; Plonky3 note: extra bounds on the
+  Air impl where-clause; periodic columns rejected — 48 ∤ 2^k).
+  Naive = 64-row / rank-48 = 48-row schedules of the SAME AIR; host
+  trace gen Brent-gates the 284 tables per tile. Verdict at equal
+  trace height: **1.337–1.340× tiles/s (theory 1.333×)** — first
+  measured prover-side win for rank-48; endpoints now bracket
+  deployment (flat-tile parity ↔ full 4/3 when materialized).
+  Paper: row-lever paragraph + thesis-in-one-sentence. ALSO: audit
+  found the tex had silently missed the earlier density-erasure
+  paragraph ("tex updated" print trusted without content
+  verification) — repaired, md/tex grep-balanced. Lesson: verify
+  mirrored-content presence after each patch, not just script exit.
+
 ## 4. Discipline
 
 - Every claimed scheme re-verified by the independent verifier; every A/B at

@@ -1074,6 +1074,28 @@ transit committed columns anyway: memory-mediated zkVM precompile
 chips and block-recursive layouts, where cells track operation
 count and 48/64 compounds per level.
 
+**The row lever, measured.** We then built that shape: one
+parametric mul-schedule AIR — one row per *multiplication*,
+operands and outputs in committed columns, all scheme wiring (L/R
+selection, P scatter, group selectors) in preprocessed columns —
+the honest form of a zkVM precompile's multiply table. Naive and
+rank-48 are two preprocessed schedules of the *same* 67-column
+AIR: 64 versus 48 rows per tile. The trace generator Brent-gates
+the schedule tables (every tile's final accumulator must equal
+schoolbook C — an independent field verification of the 284 triple
+over BabyBear), and both schedules accept honest traces and reject
+tampered outputs. At equal trace height — fixed prover budget, who
+packs more tiles — the rank-48 schedule proves 21,845 tiles where
+naive proves 16,384 in the same 5.75 s at 2²⁰ rows:
+**1.34× throughput, the full 64/48 row advantage delivered as wall
+clock** (1.337× at 2¹⁸; theory 1.333×). The two endpoints bracket
+deployment: materialize nothing and the gate choice is free;
+materialize per multiplication, as memory-mediated precompile
+tables do, and rank pays in full — compounding (48/64)^d through
+recursive schedules. This is the program's thesis reduced to one
+measured sentence: **in modern proving stacks, rank buys committed
+rows, and rows are wall clock.**
+
 **Witness generation is friendlier territory.** The prover must
 also *compute* the witness — every intermediate product, in the
 clear, over the field — and here the same networks measure very

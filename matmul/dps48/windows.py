@@ -20,27 +20,24 @@ import re
 import sys
 from fractions import Fraction
 
-LINE = re.compile(r"^\s*(\w+)\s*:=\s*(.+?);\s*$")
-TERM = re.compile(r"([+-]?)(\w+)((?:[*/]\d+)*)")
+sys.path.insert(0, __file__.rsplit("/", 1)[0])
+from shiftmin import parse as parse_shift
 
 
 def parse(path):
-    """ops: list of (name, [(coef Fraction, src)]) in file order."""
+    """ops: list of (name, [(coef Fraction, src)]) in file order.
+    Uses shiftmin's recursive parser (handles parenthesized groups
+    as virtual nodes, renamed q* to avoid collisions with the o/x/y/z
+    names these SLPs use)."""
+    raw = parse_shift(path)
     ops = []
-    for ln in open(path):
-        m = LINE.match(ln)
-        if not m:
-            continue
-        name, expr = m.group(1), m.group(2).replace(" ", "")
-        terms = []
-        for sign, src, scales in TERM.findall(expr):
-            if not src:
-                continue
-            f = Fraction(-1 if sign == "-" else 1)
-            for op, val in re.findall(r"([*/])(\d+)", scales):
-                f = f * int(val) if op == "*" else f / int(val)
-            terms.append((f, src))
-        ops.append((name, terms))
+    for name, terms in raw:
+        nm = "q" + name[1:] if name.startswith("v") and name[1:].isdigit() else name
+        conv = []
+        for s, src, k in terms:
+            sc = "q" + src[1:] if src.startswith("v") and src[1:].isdigit() else src
+            conv.append((Fraction(s) * Fraction(2) ** k, sc))
+        ops.append((nm, conv))
     return ops
 
 
@@ -142,7 +139,7 @@ def splice(path, solpath):
             break
     assert meta, "instance not in meta"
     i, j = int(meta[2]), int(meta[3])
-    scale = int(meta[6])
+    scale = int(meta[7])
     ins = meta[meta.index("ins") + 1 : meta.index("outs")]
     outs = meta[meta.index("outs") + 1 :]
     ops = parse(path)

@@ -1,0 +1,119 @@
+/tmp/winL/inst0297.txt: OPTIMAL-AT-BUDGET none <= 4
+/tmp/winL/inst0284.txt: OPTIMAL-AT-BUDGET none <= 4
+/tmp/winL/inst0292.txt: OPTIMAL-AT-BUDGET none <= 4
+/tmp/winL/inst0149.txt: OPTIMAL-AT-BUDGET none <= 6
+/tmp/winL/inst0143.txt: OPTIMAL-AT-BUDGET none <= 6
+/tmp/winL/inst0048.txt: OPTIMAL-AT-BUDGET none <= 6
+/tmp/winR/inst0052.txt: OPTIMAL-AT-BUDGET none <= 5
+/tmp/winR/inst0069.txt: OPTIMAL-AT-BUDGET none <= 5
+/tmp/winL/inst0288.txt: OPTIMAL-AT-BUDGET none <= 4
+/tmp/winL/inst0267.txt: OPTIMAL-AT-BUDGET none <= 6
+/tmp/winL/inst0155.txt: OPTIMAL-AT-BUDGET none <= 6
+/tmp/winL/inst0044.txt: OPTIMAL-AT-BUDGET none <= 6
+/tmp/winR/inst0061.txt: OPTIMAL-AT-BUDGET none <= 5
+/tmp/winL/inst0293.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winR/inst0053.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0057.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0086.txt: OPTIMAL-AT-BUDGET none <= 5
+/tmp/winR/inst0056.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winR/inst0058.txt: TIMEOUT at cap 7 (budget 7)
+/tmp/winR/inst0062.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0070.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0078.txt: OPTIMAL-AT-BUDGET none <= 5
+/tmp/winR/inst0071.txt: TIMEOUT at cap 7 (budget 7)
+/tmp/winR/inst0074.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winR/inst0075.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0103.txt: OPTIMAL-AT-BUDGET none <= 6
+/tmp/winR/inst0096.txt: OPTIMAL-AT-BUDGET none <= 5
+/tmp/winR/inst0104.txt: OPTIMAL-AT-BUDGET none <= 7
+/tmp/winR/inst0079.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0087.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0150.txt: OPTIMAL-AT-BUDGET none <= 6
+/tmp/winR/inst0088.txt: TIMEOUT at cap 7 (budget 7)
+/tmp/winR/inst0091.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winR/inst0092.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0214.txt: OPTIMAL-AT-BUDGET none <= 6
+/tmp/winR/inst0093.txt: TIMEOUT at cap 7 (budget 7)
+/tmp/winR/inst0151.txt: OPTIMAL-AT-BUDGET none <= 7
+/tmp/winR/inst0220.txt: OPTIMAL-AT-BUDGET none <= 6
+/tmp/winR/inst0097.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0144.txt: OPTIMAL-AT-BUDGET none <= 5
+/tmp/winR/inst0098.txt: TIMEOUT at cap 7 (budget 7)
+/tmp/winR/inst0140.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winR/inst0141.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0252.txt: OPTIMAL-AT-BUDGET none <= 5
+/tmp/winR/inst0145.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0221.txt: TIMEOUT at cap 7 (budget 7)
+/tmp/winR/inst0271.txt: OPTIMAL-AT-BUDGET none <= 5
+/tmp/winR/inst0227.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0228.txt: TIMEOUT at cap 7 (budget 7)
+/tmp/winR/inst0234.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0240.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0241.txt: TIMEOUT at cap 6 (budget 7)
+/tmp/winP/inst0216.txt: OPTIMAL-AT-BUDGET none <= 5
+/tmp/winR/inst0247.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0253.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0259.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winR/inst0260.txt: TIMEOUT at cap 6 (budget 7)
+/tmp/winR/inst0266.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winP/inst0003.txt: OPTIMAL-AT-BUDGET none <= 6
+/tmp/winP/inst0011.txt: OPTIMAL-AT-BUDGET none <= 6
+/tmp/winP/inst0019.txt: OPTIMAL-AT-BUDGET none <= 6
+/tmp/winR/inst0272.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winP/inst0212.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winP/inst0220.txt: TIMEOUT at cap 6 (budget 6)
+/tmp/winP/inst0221.txt: TIMEOUT at cap 6 (budget 7)
+/tmp/winP/inst0224.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0225.txt: TIMEOUT at cap 5 (budget 6)
+/tmp/winP/inst0229.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0230.txt: TIMEOUT at cap 6 (budget 7)
+/tmp/winP/inst0231.txt: TIMEOUT at cap 6 (budget 8)
+/tmp/winP/inst0234.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0235.txt: TIMEOUT at cap 5 (budget 6)
+/tmp/winP/inst0239.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0240.txt: TIMEOUT at cap 6 (budget 7)
+/tmp/winP/inst0241.txt: TIMEOUT at cap 6 (budget 8)
+/tmp/winP/inst0244.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0245.txt: TIMEOUT at cap 5 (budget 6)
+/tmp/winP/inst0249.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0252.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0253.txt: TIMEOUT at cap 5 (budget 6)
+/tmp/winP/inst0257.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0260.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0261.txt: TIMEOUT at cap 5 (budget 6)
+/tmp/winP/inst0265.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0266.txt: TIMEOUT at cap 6 (budget 7)
+/tmp/winP/inst0267.txt: TIMEOUT at cap 6 (budget 8)
+/tmp/winP/inst0270.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0296.txt: OPTIMAL-AT-BUDGET none <= 4
+/tmp/winP/inst0271.txt: TIMEOUT at cap 5 (budget 6)
+/tmp/winP/inst0275.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0302.txt: OPTIMAL-AT-BUDGET none <= 4
+/tmp/winP/inst0276.txt: TIMEOUT at cap 6 (budget 7)
+/tmp/winP/inst0277.txt: TIMEOUT at cap 6 (budget 8)
+/tmp/winP/inst0308.txt: OPTIMAL-AT-BUDGET none <= 4
+/tmp/winP/inst0280.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0281.txt: TIMEOUT at cap 5 (budget 6)
+/tmp/winP/inst0285.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0314.txt: OPTIMAL-AT-BUDGET none <= 4
+/tmp/winP/inst0288.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0292.txt: TIMEOUT at cap 5 (budget 7)
+/tmp/winP/inst0320.txt: OPTIMAL-AT-BUDGET none <= 4
+/tmp/winP/inst0294.txt: TIMEOUT at cap 5 (budget 5)
+/tmp/winP/inst0326.txt: OPTIMAL-AT-BUDGET none <= 4
+/tmp/winP/inst0297.txt: TIMEOUT at cap 5 (budget 6)
+/tmp/winP/inst0300.txt: TIMEOUT at cap 5 (budget 7)
+/tmp/winP/inst0332.txt: OPTIMAL-AT-BUDGET none <= 4
+/tmp/winP/inst0303.txt: TIMEOUT at cap 5 (budget 6)
+/tmp/winP/inst0306.txt: TIMEOUT at cap 5 (budget 7)
+/tmp/winP/inst0338.txt: OPTIMAL-AT-BUDGET none <= 4
+/tmp/winP/inst0309.txt: TIMEOUT at cap 5 (budget 6)
+/tmp/winP/inst0312.txt: TIMEOUT at cap 5 (budget 7)
+/tmp/winP/inst0315.txt: TIMEOUT at cap 5 (budget 6)
+/tmp/winP/inst0318.txt: TIMEOUT at cap 5 (budget 7)
+/tmp/winP/inst0321.txt: TIMEOUT at cap 5 (budget 6)
+/tmp/winP/inst0324.txt: TIMEOUT at cap 5 (budget 7)
+/tmp/winP/inst0327.txt: TIMEOUT at cap 5 (budget 6)
+/tmp/winP/inst0330.txt: TIMEOUT at cap 5 (budget 7)
+/tmp/winP/inst0333.txt: TIMEOUT at cap 5 (budget 6)
+/tmp/winP/inst0336.txt: TIMEOUT at cap 5 (budget 7)

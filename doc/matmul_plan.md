@@ -856,6 +856,23 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   verification) — repaired, md/tex grep-balanced. Lesson: verify
   mirrored-content presence after each patch, not just script exit.
 
+- **2026-07-17 — exact window resynthesis (task #31): the 284 is locally
+  unimprovable at width 12.** New search family: windows.py extracts
+  every closed sub-DAG window (≤12 ops, ≤8 in, ≤5 out) from the
+  accurate L/R/P programs; exactw.rs answers each exactly
+  (branch-and-bound, dyadic menu ±1/±2/±4, ±2^e output matches,
+  span/proportionality LBs, caps). First sweep produced 28 phantom
+  improvements — traced via checker-reject → Q-evaluator → parser
+  mangling PLinOpt's parenthesized-group syntax ((y+z)/2 → invented
+  input "2"); parser swapped for shiftmin's group-aware one, phantom
+  cluster explained (group-heavy R region). Corrected sweep over 958
+  instances + 300 s deep pass on capped windows: **876 proven exactly
+  tight, 0 improvements, 82 undecided** — a local-optimality
+  certificate strictly stronger than the fixed-point evidence.
+  Paper's adds-record passage updated. Beating 284 now requires
+  either wider windows (≥13 ops — combinatorially steep), a richer
+  coefficient menu, or global restructuring (new decompositions).
+
 ## 4. Discipline
 
 - Every claimed scheme re-verified by the independent verifier; every A/B at

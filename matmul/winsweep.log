@@ -1,0 +1,780 @@
+L inst0000: UNSAT lb 2 > budget 1
+L inst0010: UNSAT lb 4 > budget 3
+L inst0007: UNSAT lb 5 > budget 4
+L inst0003: UNSAT lb 5 > budget 4
+L inst0004: UNSAT lb 2 > budget 1
+L inst0011: UNSAT lb 5 > budget 4
+L inst0009: UNSAT lb 3 > budget 2
+L inst0005: UNSAT lb 3 > budget 2
+L inst0002: UNSAT lb 4 > budget 3
+L inst0001: UNSAT lb 3 > budget 2
+L inst0006: UNSAT lb 4 > budget 3
+L inst0008: UNSAT lb 2 > budget 1
+L inst0012: UNSAT lb 2 > budget 1
+L inst0013: UNSAT lb 3 > budget 2
+L inst0014: UNSAT lb 4 > budget 3
+L inst0015: UNSAT lb 5 > budget 4
+L inst0016: UNSAT lb 2 > budget 1
+L inst0017: UNSAT lb 3 > budget 2
+L inst0018: UNSAT lb 4 > budget 3
+L inst0019: UNSAT lb 5 > budget 4
+L inst0020: UNSAT lb 2 > budget 1
+L inst0021: UNSAT lb 3 > budget 2
+L inst0023: UNSAT lb 5 > budget 4
+L inst0022: UNSAT lb 4 > budget 3
+L inst0025: UNSAT lb 3 > budget 2
+L inst0026: UNSAT lb 4 > budget 3
+L inst0027: UNSAT lb 5 > budget 4
+L inst0024: UNSAT lb 2 > budget 1
+L inst0028: UNSAT lb 2 > budget 1
+L inst0029: UNSAT lb 3 > budget 2
+L inst0030: UNSAT lb 4 > budget 3
+L inst0031: UNSAT lb 5 > budget 4
+L inst0032: UNSAT lb 2 > budget 1
+L inst0033: UNSAT lb 3 > budget 2
+L inst0035: UNSAT lb 2 > budget 1
+L inst0034: UNSAT lb 4 > budget 3
+L inst0039: UNSAT lb 3 > budget 2
+L inst0036: UNSAT lb 3 > budget 2
+L inst0037: UNSAT lb 4 > budget 3
+L inst0038: UNSAT lb 2 > budget 1
+L inst0041: UNSAT lb 2 > budget 1
+L inst0045: OPTIMAL-AT-BUDGET none <= 2
+L inst0042: OPTIMAL-AT-BUDGET none <= 3
+L inst0046: OPTIMAL-AT-BUDGET none <= 3
+L inst0049: OPTIMAL-AT-BUDGET none <= 1
+L inst0050: OPTIMAL-AT-BUDGET none <= 2
+L inst0053: OPTIMAL-AT-BUDGET none <= 2
+L inst0057: OPTIMAL-AT-BUDGET none <= 1
+L inst0054: OPTIMAL-AT-BUDGET none <= 3
+L inst0058: OPTIMAL-AT-BUDGET none <= 2
+L inst0061: UNSAT lb 2 > budget 1
+L inst0059: OPTIMAL-AT-BUDGET none <= 3
+L inst0055: OPTIMAL-AT-BUDGET none <= 4
+L inst0062: UNSAT lb 3 > budget 2
+L inst0063: UNSAT lb 4 > budget 3
+L inst0064: UNSAT lb 5 > budget 4
+L inst0065: UNSAT lb 2 > budget 1
+L inst0066: UNSAT lb 3 > budget 2
+L inst0067: UNSAT lb 4 > budget 3
+L inst0068: UNSAT lb 5 > budget 4
+L inst0069: UNSAT lb 2 > budget 1
+L inst0070: UNSAT lb 3 > budget 2
+L inst0071: UNSAT lb 4 > budget 3
+L inst0073: UNSAT lb 2 > budget 1
+L inst0040: OPTIMAL-AT-BUDGET none <= 4
+L inst0072: UNSAT lb 5 > budget 4
+L inst0043: OPTIMAL-AT-BUDGET none <= 4
+L inst0074: UNSAT lb 3 > budget 2
+L inst0075: UNSAT lb 4 > budget 3
+L inst0077: UNSAT lb 2 > budget 1
+L inst0076: UNSAT lb 5 > budget 4
+L inst0078: UNSAT lb 3 > budget 2
+L inst0079: UNSAT lb 4 > budget 3
+L inst0080: UNSAT lb 5 > budget 4
+L inst0081: UNSAT lb 2 > budget 1
+L inst0082: UNSAT lb 3 > budget 2
+L inst0084: UNSAT lb 5 > budget 4
+L inst0083: UNSAT lb 4 > budget 3
+L inst0085: UNSAT lb 2 > budget 1
+L inst0086: UNSAT lb 3 > budget 2
+L inst0087: UNSAT lb 4 > budget 3
+L inst0089: UNSAT lb 2 > budget 1
+L inst0088: UNSAT lb 5 > budget 4
+L inst0090: UNSAT lb 3 > budget 2
+L inst0091: UNSAT lb 4 > budget 3
+L inst0092: UNSAT lb 5 > budget 4
+L inst0093: UNSAT lb 2 > budget 1
+L inst0094: UNSAT lb 3 > budget 2
+L inst0095: UNSAT lb 4 > budget 3
+L inst0097: UNSAT lb 2 > budget 1
+L inst0096: UNSAT lb 5 > budget 4
+L inst0098: UNSAT lb 3 > budget 2
+L inst0099: UNSAT lb 4 > budget 3
+L inst0100: UNSAT lb 5 > budget 4
+L inst0102: UNSAT lb 3 > budget 2
+L inst0101: UNSAT lb 2 > budget 1
+L inst0060: OPTIMAL-AT-BUDGET none <= 4
+L inst0103: UNSAT lb 4 > budget 3
+L inst0104: UNSAT lb 2 > budget 1
+L inst0105: UNSAT lb 3 > budget 2
+L inst0106: UNSAT lb 4 > budget 3
+L inst0107: UNSAT lb 5 > budget 4
+L inst0108: UNSAT lb 2 > budget 1
+L inst0109: UNSAT lb 3 > budget 2
+L inst0110: UNSAT lb 4 > budget 3
+L inst0111: UNSAT lb 5 > budget 4
+L inst0113: UNSAT lb 3 > budget 2
+L inst0112: UNSAT lb 2 > budget 1
+L inst0114: UNSAT lb 4 > budget 3
+L inst0115: UNSAT lb 5 > budget 4
+L inst0116: UNSAT lb 2 > budget 1
+L inst0117: UNSAT lb 3 > budget 2
+L inst0118: UNSAT lb 4 > budget 3
+L inst0119: UNSAT lb 2 > budget 1
+L inst0121: UNSAT lb 4 > budget 3
+L inst0122: UNSAT lb 5 > budget 4
+L inst0120: UNSAT lb 3 > budget 2
+L inst0123: UNSAT lb 2 > budget 1
+L inst0124: UNSAT lb 3 > budget 2
+L inst0126: UNSAT lb 5 > budget 4
+L inst0125: UNSAT lb 4 > budget 3
+L inst0127: UNSAT lb 2 > budget 1
+L inst0128: UNSAT lb 3 > budget 2
+L inst0129: UNSAT lb 4 > budget 3
+L inst0130: UNSAT lb 5 > budget 4
+L inst0131: UNSAT lb 2 > budget 1
+L inst0133: UNSAT lb 4 > budget 3
+L inst0132: UNSAT lb 3 > budget 2
+L inst0134: UNSAT lb 5 > budget 4
+L inst0135: UNSAT lb 2 > budget 1
+L inst0136: UNSAT lb 3 > budget 2
+L inst0139: UNSAT lb 2 > budget 1
+L inst0137: UNSAT lb 4 > budget 3
+L inst0138: UNSAT lb 5 > budget 4
+L inst0140: UNSAT lb 3 > budget 2
+L inst0141: UNSAT lb 4 > budget 3
+L inst0142: UNSAT lb 5 > budget 4
+L inst0145: UNSAT lb 3 > budget 2
+L inst0144: UNSAT lb 2 > budget 1
+L inst0146: UNSAT lb 4 > budget 3
+L inst0147: UNSAT lb 5 > budget 4
+L inst0150: UNSAT lb 2 > budget 1
+L inst0151: UNSAT lb 3 > budget 2
+L inst0152: UNSAT lb 4 > budget 3
+L inst0153: OPTIMAL-AT-BUDGET none <= 4
+L inst0156: UNSAT lb 2 > budget 1
+L inst0157: UNSAT lb 3 > budget 2
+L inst0056: OPTIMAL-AT-BUDGET none <= 5
+L inst0158: OPTIMAL-AT-BUDGET none <= 3
+L inst0051: OPTIMAL-AT-BUDGET none <= 4
+L inst0161: UNSAT lb 2 > budget 1
+L inst0162: OPTIMAL-AT-BUDGET none <= 2
+L inst0163: OPTIMAL-AT-BUDGET none <= 3
+L inst0164: OPTIMAL-AT-BUDGET none <= 4
+L inst0159: OPTIMAL-AT-BUDGET none <= 4
+L inst0166: UNSAT lb 2 > budget 1
+L inst0167: UNSAT lb 3 > budget 2
+L inst0165: OPTIMAL-AT-BUDGET none <= 5
+L inst0168: UNSAT lb 4 > budget 3
+L inst0169: UNSAT lb 5 > budget 4
+L inst0170: UNSAT lb 2 > budget 1
+L inst0171: UNSAT lb 3 > budget 2
+L inst0172: UNSAT lb 4 > budget 3
+L inst0173: UNSAT lb 5 > budget 4
+L inst0174: UNSAT lb 2 > budget 1
+L inst0175: UNSAT lb 3 > budget 2
+L inst0176: UNSAT lb 4 > budget 3
+L inst0177: UNSAT lb 5 > budget 4
+L inst0178: UNSAT lb 2 > budget 1
+L inst0179: UNSAT lb 3 > budget 2
+L inst0180: UNSAT lb 4 > budget 3
+L inst0181: UNSAT lb 5 > budget 4
+L inst0182: UNSAT lb 2 > budget 1
+L inst0183: UNSAT lb 3 > budget 2
+L inst0184: UNSAT lb 4 > budget 3
+L inst0185: UNSAT lb 5 > budget 4
+L inst0186: UNSAT lb 2 > budget 1
+L inst0187: UNSAT lb 3 > budget 2
+L inst0188: UNSAT lb 4 > budget 3
+L inst0189: UNSAT lb 5 > budget 4
+L inst0190: UNSAT lb 2 > budget 1
+L inst0191: UNSAT lb 3 > budget 2
+L inst0192: UNSAT lb 4 > budget 3
+L inst0193: UNSAT lb 5 > budget 4
+L inst0194: UNSAT lb 2 > budget 1
+L inst0195: UNSAT lb 3 > budget 2
+L inst0197: UNSAT lb 5 > budget 4
+L inst0196: UNSAT lb 4 > budget 3
+L inst0199: UNSAT lb 2 > budget 1
+L inst0200: UNSAT lb 3 > budget 2
+L inst0201: UNSAT lb 4 > budget 3
+L inst0202: OPTIMAL-AT-BUDGET none <= 4
+L inst0198: OPTIMAL-AT-BUDGET none <= 5
+L inst0204: UNSAT lb 2 > budget 1
+L inst0205: UNSAT lb 3 > budget 2
+L inst0206: OPTIMAL-AT-BUDGET none <= 3
+L inst0203: OPTIMAL-AT-BUDGET none <= 5
+L inst0207: OPTIMAL-AT-BUDGET none <= 4
+L inst0209: UNSAT lb 2 > budget 1
+L inst0148: OPTIMAL-AT-BUDGET none <= 5
+L inst0210: OPTIMAL-AT-BUDGET none <= 2
+L inst0211: OPTIMAL-AT-BUDGET none <= 3
+L inst0212: OPTIMAL-AT-BUDGET none <= 4
+L inst0214: UNSAT lb 2 > budget 1
+L inst0215: UNSAT lb 3 > budget 2
+L inst0216: UNSAT lb 4 > budget 3
+L inst0217: UNSAT lb 5 > budget 4
+L inst0218: UNSAT lb 2 > budget 1
+L inst0219: UNSAT lb 3 > budget 2
+L inst0220: UNSAT lb 4 > budget 3
+L inst0221: UNSAT lb 5 > budget 4
+L inst0222: UNSAT lb 2 > budget 1
+L inst0223: UNSAT lb 3 > budget 2
+L inst0224: UNSAT lb 4 > budget 3
+L inst0225: UNSAT lb 5 > budget 4
+L inst0213: OPTIMAL-AT-BUDGET none <= 5
+L inst0226: UNSAT lb 2 > budget 1
+L inst0227: UNSAT lb 3 > budget 2
+L inst0228: UNSAT lb 4 > budget 3
+L inst0229: UNSAT lb 5 > budget 4
+L inst0208: OPTIMAL-AT-BUDGET none <= 5
+L inst0230: UNSAT lb 2 > budget 1
+L inst0231: UNSAT lb 3 > budget 2
+L inst0232: UNSAT lb 4 > budget 3
+L inst0233: UNSAT lb 5 > budget 4
+L inst0234: UNSAT lb 2 > budget 1
+L inst0235: UNSAT lb 3 > budget 2
+L inst0236: UNSAT lb 4 > budget 3
+L inst0237: UNSAT lb 2 > budget 1
+L inst0238: UNSAT lb 3 > budget 2
+L inst0239: UNSAT lb 4 > budget 3
+L inst0240: UNSAT lb 2 > budget 1
+L inst0241: UNSAT lb 3 > budget 2
+L inst0242: UNSAT lb 4 > budget 3
+L inst0244: UNSAT lb 2 > budget 1
+L inst0243: UNSAT lb 5 > budget 4
+L inst0245: UNSAT lb 3 > budget 2
+L inst0246: UNSAT lb 4 > budget 3
+L inst0247: UNSAT lb 2 > budget 1
+L inst0248: UNSAT lb 3 > budget 2
+L inst0249: UNSAT lb 4 > budget 3
+L inst0250: UNSAT lb 5 > budget 4
+L inst0251: UNSAT lb 2 > budget 1
+L inst0252: UNSAT lb 3 > budget 2
+L inst0253: UNSAT lb 4 > budget 3
+L inst0254: UNSAT lb 5 > budget 4
+L inst0256: UNSAT lb 2 > budget 1
+L inst0257: UNSAT lb 3 > budget 2
+L inst0258: UNSAT lb 4 > budget 3
+L inst0259: OPTIMAL-AT-BUDGET none <= 4
+L inst0255: OPTIMAL-AT-BUDGET none <= 5
+L inst0262: UNSAT lb 2 > budget 1
+L inst0260: OPTIMAL-AT-BUDGET none <= 5
+L inst0263: UNSAT lb 3 > budget 2
+L inst0264: OPTIMAL-AT-BUDGET none <= 3
+L inst0265: OPTIMAL-AT-BUDGET none <= 4
+L inst0266: OPTIMAL-AT-BUDGET none <= 5
+L inst0268: UNSAT lb 2 > budget 1
+L inst0269: UNSAT lb 3 > budget 2
+L inst0270: UNSAT lb 4 > budget 3
+L inst0271: OPTIMAL-AT-BUDGET none <= 4
+L inst0154: OPTIMAL-AT-BUDGET none <= 5
+L inst0273: UNSAT lb 2 > budget 1
+L inst0274: UNSAT lb 3 > budget 2
+L inst0275: UNSAT lb 4 > budget 3
+L inst0276: OPTIMAL-AT-BUDGET none <= 4
+L inst0277: UNSAT lb 2 > budget 1
+L inst0278: UNSAT lb 3 > budget 2
+L inst0279: OPTIMAL-AT-BUDGET none <= 3
+L inst0047: OPTIMAL-AT-BUDGET none <= 5
+L inst0281: UNSAT lb 2 > budget 1
+L inst0282: OPTIMAL-AT-BUDGET none <= 2
+L inst0283: OPTIMAL-AT-BUDGET none <= 3
+L inst0261: OPTIMAL-AT-BUDGET none <= 6
+L inst0285: OPTIMAL-AT-BUDGET none <= 1
+L inst0286: OPTIMAL-AT-BUDGET none <= 2
+L inst0287: OPTIMAL-AT-BUDGET none <= 3
+L inst0280: OPTIMAL-AT-BUDGET none <= 4
+L inst0289: OPTIMAL-AT-BUDGET none <= 1
+L inst0290: OPTIMAL-AT-BUDGET none <= 2
+L inst0291: OPTIMAL-AT-BUDGET none <= 3
+L inst0160: OPTIMAL-AT-BUDGET none <= 5
+L inst0052: OPTIMAL-AT-BUDGET none <= 5
+L inst0294: OPTIMAL-AT-BUDGET none <= 1
+L inst0295: OPTIMAL-AT-BUDGET none <= 2
+L inst0296: OPTIMAL-AT-BUDGET none <= 3
+L inst0272: OPTIMAL-AT-BUDGET none <= 5
+L inst0298: OPTIMAL-AT-BUDGET none <= 1
+L inst0299: OPTIMAL-AT-BUDGET none <= 2
+L inst0300: OPTIMAL-AT-BUDGET none <= 3
+L inst0301: OPTIMAL-AT-BUDGET none <= 4
+L inst0302: OPTIMAL-AT-BUDGET none <= 5
+L inst0303: OPTIMAL-AT-BUDGET none <= 1
+L inst0304: OPTIMAL-AT-BUDGET none <= 2
+L inst0305: OPTIMAL-AT-BUDGET none <= 3
+L inst0306: OPTIMAL-AT-BUDGET none <= 4
+L inst0307: OPTIMAL-AT-BUDGET none <= 5
+L inst0308: UNSAT lb 2 > budget 1
+L inst0309: UNSAT lb 3 > budget 2
+L inst0310: UNSAT lb 4 > budget 3
+L inst0311: UNSAT lb 5 > budget 4
+L inst0312: UNSAT lb 2 > budget 1
+L inst0313: UNSAT lb 3 > budget 2
+L inst0314: UNSAT lb 4 > budget 3
+L inst0315: UNSAT lb 5 > budget 4
+L inst0316: UNSAT lb 2 > budget 1
+L inst0317: UNSAT lb 3 > budget 2
+L inst0318: UNSAT lb 4 > budget 3
+L inst0319: UNSAT lb 5 > budget 4
+L inst0320: UNSAT lb 2 > budget 1
+L inst0321: UNSAT lb 3 > budget 2
+L inst0322: UNSAT lb 4 > budget 3
+L inst0323: UNSAT lb 5 > budget 4
+L inst0324: UNSAT lb 2 > budget 1
+L inst0325: UNSAT lb 3 > budget 2
+L inst0326: UNSAT lb 4 > budget 3
+L inst0327: UNSAT lb 2 > budget 1
+L inst0328: UNSAT lb 3 > budget 2
+L inst0329: UNSAT lb 2 > budget 1
+L inst0044: TIMEOUT at cap 6 (budget 6)
+L inst0048: TIMEOUT at cap 6 (budget 6)
+L inst0143: TIMEOUT at cap 6 (budget 6)
+L inst0149: TIMEOUT at cap 6 (budget 6)
+L inst0155: TIMEOUT at cap 6 (budget 6)
+L inst0267: TIMEOUT at cap 6 (budget 6)
+L inst0284: TIMEOUT at cap 4 (budget 4)
+L inst0288: TIMEOUT at cap 4 (budget 4)
+L inst0292: TIMEOUT at cap 4 (budget 4)
+L inst0293: TIMEOUT at cap 5 (budget 5)
+L inst0297: OPTIMAL-AT-BUDGET none <= 4
+R inst0001: UNSAT lb 3 > budget 2
+R inst0000: UNSAT lb 2 > budget 1
+R inst0003: UNSAT lb 5 > budget 4
+R inst0004: UNSAT lb 2 > budget 1
+R inst0005: UNSAT lb 3 > budget 2
+R inst0002: UNSAT lb 4 > budget 3
+R inst0006: UNSAT lb 4 > budget 3
+R inst0007: UNSAT lb 5 > budget 4
+R inst0008: UNSAT lb 2 > budget 1
+R inst0009: UNSAT lb 3 > budget 2
+R inst0010: UNSAT lb 4 > budget 3
+R inst0011: UNSAT lb 5 > budget 4
+R inst0013: UNSAT lb 3 > budget 2
+R inst0012: UNSAT lb 2 > budget 1
+R inst0014: UNSAT lb 4 > budget 3
+R inst0015: UNSAT lb 5 > budget 4
+R inst0017: UNSAT lb 3 > budget 2
+R inst0016: UNSAT lb 2 > budget 1
+R inst0019: UNSAT lb 5 > budget 4
+R inst0018: UNSAT lb 4 > budget 3
+R inst0020: UNSAT lb 2 > budget 1
+R inst0021: UNSAT lb 3 > budget 2
+R inst0022: UNSAT lb 4 > budget 3
+R inst0023: UNSAT lb 5 > budget 4
+R inst0024: UNSAT lb 2 > budget 1
+R inst0025: UNSAT lb 3 > budget 2
+R inst0026: UNSAT lb 4 > budget 3
+R inst0027: UNSAT lb 5 > budget 4
+R inst0028: UNSAT lb 2 > budget 1
+R inst0030: UNSAT lb 4 > budget 3
+R inst0029: UNSAT lb 3 > budget 2
+R inst0031: UNSAT lb 5 > budget 4
+R inst0032: UNSAT lb 2 > budget 1
+R inst0033: UNSAT lb 3 > budget 2
+R inst0034: UNSAT lb 4 > budget 3
+R inst0036: UNSAT lb 2 > budget 1
+R inst0035: UNSAT lb 5 > budget 4
+R inst0038: UNSAT lb 4 > budget 3
+R inst0037: UNSAT lb 3 > budget 2
+R inst0039: UNSAT lb 5 > budget 4
+R inst0040: UNSAT lb 2 > budget 1
+R inst0041: UNSAT lb 3 > budget 2
+R inst0042: UNSAT lb 4 > budget 3
+R inst0043: UNSAT lb 5 > budget 4
+R inst0044: UNSAT lb 2 > budget 1
+R inst0045: UNSAT lb 3 > budget 2
+R inst0046: UNSAT lb 4 > budget 3
+R inst0047: UNSAT lb 2 > budget 1
+R inst0048: UNSAT lb 3 > budget 2
+R inst0049: UNSAT lb 4 > budget 3
+R inst0050: UNSAT lb 2 > budget 1
+R inst0051: UNSAT lb 3 > budget 2
+R inst0052: UNSAT lb 2 > budget 1
+R inst0059: UNSAT lb 2 > budget 1
+R inst0056: OPTIMAL-AT-BUDGET none <= 3
+R inst0063: OPTIMAL-AT-BUDGET none <= 3
+R inst0066: UNSAT lb 2 > budget 1
+R inst0064: OPTIMAL-AT-BUDGET none <= 4
+R inst0057: OPTIMAL-AT-BUDGET none <= 4
+R inst0065: OPTIMAL-AT-BUDGET none <= 5
+R inst0058: OPTIMAL-AT-BUDGET none <= 5
+R inst0071: OPTIMAL-AT-BUDGET none <= 3
+R inst0053: TIMEOUT at cap 5 (budget 5)
+R inst0055: TIMEOUT at cap 5 (budget 5)
+R inst0054: TIMEOUT at cap 4 (budget 4)
+R inst0060: TIMEOUT at cap 5 (budget 5)
+R inst0061: TIMEOUT at cap 4 (budget 4)
+R inst0062: TIMEOUT at cap 5 (budget 5)
+R inst0075: UNSAT lb 2 > budget 1
+R inst0076: UNSAT lb 3 > budget 2
+R inst0077: UNSAT lb 4 > budget 3
+R inst0078: UNSAT lb 5 > budget 4
+R inst0080: UNSAT lb 3 > budget 2
+R inst0079: UNSAT lb 2 > budget 1
+R inst0081: UNSAT lb 4 > budget 3
+R inst0082: UNSAT lb 5 > budget 4
+R inst0083: UNSAT lb 2 > budget 1
+R inst0084: UNSAT lb 3 > budget 2
+R inst0085: UNSAT lb 4 > budget 3
+R inst0086: UNSAT lb 5 > budget 4
+R inst0088: UNSAT lb 3 > budget 2
+R inst0087: UNSAT lb 2 > budget 1
+R inst0090: UNSAT lb 5 > budget 4
+R inst0089: UNSAT lb 4 > budget 3
+R inst0091: UNSAT lb 2 > budget 1
+R inst0092: UNSAT lb 3 > budget 2
+R inst0094: UNSAT lb 5 > budget 4
+R inst0095: UNSAT lb 2 > budget 1
+R inst0093: UNSAT lb 4 > budget 3
+R inst0096: UNSAT lb 3 > budget 2
+R inst0097: UNSAT lb 4 > budget 3
+R inst0098: UNSAT lb 5 > budget 4
+R inst0099: UNSAT lb 2 > budget 1
+R inst0100: UNSAT lb 3 > budget 2
+R inst0101: UNSAT lb 4 > budget 3
+R inst0102: UNSAT lb 2 > budget 1
+R inst0103: UNSAT lb 3 > budget 2
+R inst0104: UNSAT lb 2 > budget 1
+R inst0067: TIMEOUT at cap 5 (budget 5)
+R inst0068: TIMEOUT at cap 4 (budget 4)
+R inst0108: OPTIMAL-AT-BUDGET none <= 3
+R inst0112: UNSAT lb 2 > budget 1
+R inst0113: UNSAT lb 3 > budget 2
+R inst0114: UNSAT lb 4 > budget 3
+R inst0115: UNSAT lb 5 > budget 4
+R inst0116: UNSAT lb 2 > budget 1
+R inst0117: UNSAT lb 3 > budget 2
+R inst0118: UNSAT lb 4 > budget 3
+R inst0119: UNSAT lb 5 > budget 4
+R inst0120: UNSAT lb 2 > budget 1
+R inst0121: UNSAT lb 3 > budget 2
+R inst0122: UNSAT lb 4 > budget 3
+R inst0123: UNSAT lb 5 > budget 4
+R inst0124: UNSAT lb 2 > budget 1
+R inst0125: UNSAT lb 3 > budget 2
+R inst0126: UNSAT lb 4 > budget 3
+R inst0127: UNSAT lb 5 > budget 4
+R inst0128: UNSAT lb 2 > budget 1
+R inst0129: UNSAT lb 3 > budget 2
+R inst0130: UNSAT lb 4 > budget 3
+R inst0131: UNSAT lb 5 > budget 4
+R inst0132: UNSAT lb 2 > budget 1
+R inst0133: UNSAT lb 3 > budget 2
+R inst0134: UNSAT lb 4 > budget 3
+R inst0135: UNSAT lb 5 > budget 4
+R inst0136: UNSAT lb 2 > budget 1
+R inst0137: UNSAT lb 3 > budget 2
+R inst0138: UNSAT lb 4 > budget 3
+R inst0139: UNSAT lb 5 > budget 4
+R inst0140: UNSAT lb 2 > budget 1
+R inst0141: UNSAT lb 3 > budget 2
+R inst0142: UNSAT lb 4 > budget 3
+R inst0143: UNSAT lb 5 > budget 4
+R inst0144: UNSAT lb 2 > budget 1
+R inst0145: UNSAT lb 3 > budget 2
+R inst0146: UNSAT lb 4 > budget 3
+R inst0147: UNSAT lb 5 > budget 4
+R inst0148: UNSAT lb 2 > budget 1
+R inst0149: UNSAT lb 3 > budget 2
+R inst0150: UNSAT lb 4 > budget 3
+R inst0151: UNSAT lb 5 > budget 4
+R inst0152: UNSAT lb 2 > budget 1
+R inst0153: UNSAT lb 3 > budget 2
+R inst0154: UNSAT lb 4 > budget 3
+R inst0155: UNSAT lb 5 > budget 4
+R inst0156: UNSAT lb 2 > budget 1
+R inst0157: UNSAT lb 3 > budget 2
+R inst0158: UNSAT lb 4 > budget 3
+R inst0159: UNSAT lb 2 > budget 1
+R inst0160: UNSAT lb 3 > budget 2
+R inst0161: UNSAT lb 4 > budget 3
+R inst0162: UNSAT lb 2 > budget 1
+R inst0163: UNSAT lb 3 > budget 2
+R inst0164: UNSAT lb 4 > budget 3
+R inst0165: UNSAT lb 2 > budget 1
+R inst0166: UNSAT lb 3 > budget 2
+R inst0167: UNSAT lb 4 > budget 3
+R inst0072: OPTIMAL-AT-BUDGET none <= 4
+R inst0069: TIMEOUT at cap 5 (budget 5)
+R inst0170: UNSAT lb 2 > budget 1
+R inst0171: UNSAT lb 3 > budget 2
+R inst0070: TIMEOUT at cap 6 (budget 6)
+R inst0173: IMPROVED cost 5 (budget 5) -> /tmp/winR/inst0173.sol
+R inst0174: UNSAT lb 2 > budget 1
+R inst0175: OPTIMAL-AT-BUDGET none <= 3
+R inst0176: IMPROVED cost 4 (budget 4) -> /tmp/winR/inst0176.sol
+R inst0109: OPTIMAL-AT-BUDGET none <= 4
+R inst0178: IMPROVED cost 6 (budget 7) -> /tmp/winR/inst0178.sol
+R inst0179: OPTIMAL-AT-BUDGET none <= 2
+R inst0180: IMPROVED cost 3 (budget 3) -> /tmp/winR/inst0180.sol
+R inst0181: IMPROVED cost 5 (budget 5) -> /tmp/winR/inst0181.sol
+R inst0182: IMPROVED cost 5 (budget 6) -> /tmp/winR/inst0182.sol
+R inst0183: OPTIMAL-AT-BUDGET none <= 1
+R inst0184: IMPROVED cost 2 (budget 2) -> /tmp/winR/inst0184.sol
+R inst0172: OPTIMAL-AT-BUDGET none <= 4
+R inst0186: IMPROVED cost 4 (budget 5) -> /tmp/winR/inst0186.sol
+R inst0185: IMPROVED cost 4 (budget 4) -> /tmp/winR/inst0185.sol
+R inst0188: OPTIMAL-AT-BUDGET none <= 2
+R inst0189: IMPROVED cost 3 (budget 3) -> /tmp/winR/inst0189.sol
+R inst0169: IMPROVED cost 6 (budget 6) -> /tmp/winR/inst0169.sol
+R inst0191: IMPROVED cost 5 (budget 6) -> /tmp/winR/inst0191.sol
+R inst0192: OPTIMAL-AT-BUDGET none <= 1
+R inst0193: IMPROVED cost 2 (budget 2) -> /tmp/winR/inst0193.sol
+R inst0194: IMPROVED cost 4 (budget 4) -> /tmp/winR/inst0194.sol
+R inst0195: IMPROVED cost 4 (budget 5) -> /tmp/winR/inst0195.sol
+R inst0190: IMPROVED cost 5 (budget 5) -> /tmp/winR/inst0190.sol
+R inst0197: OPTIMAL-AT-BUDGET none <= 2
+R inst0198: IMPROVED cost 3 (budget 3) -> /tmp/winR/inst0198.sol
+R inst0199: IMPROVED cost 5 (budget 5) -> /tmp/winR/inst0199.sol
+R inst0200: IMPROVED cost 5 (budget 6) -> /tmp/winR/inst0200.sol
+R inst0201: OPTIMAL-AT-BUDGET none <= 1
+R inst0202: IMPROVED cost 2 (budget 2) -> /tmp/winR/inst0202.sol
+R inst0203: IMPROVED cost 4 (budget 4) -> /tmp/winR/inst0203.sol
+R inst0204: IMPROVED cost 4 (budget 5) -> /tmp/winR/inst0204.sol
+R inst0205: OPTIMAL-AT-BUDGET none <= 2
+R inst0206: IMPROVED cost 3 (budget 3) -> /tmp/winR/inst0206.sol
+R inst0207: OPTIMAL-AT-BUDGET none <= 1
+R inst0208: IMPROVED cost 2 (budget 2) -> /tmp/winR/inst0208.sol
+R inst0177: IMPROVED cost 6 (budget 6) -> /tmp/winR/inst0177.sol
+R inst0187: IMPROVED cost 6 (budget 7) -> /tmp/winR/inst0187.sol
+R inst0196: IMPROVED cost 6 (budget 7) -> /tmp/winR/inst0196.sol
+R inst0168: OPTIMAL-AT-BUDGET none <= 5
+R inst0073: OPTIMAL-AT-BUDGET none <= 5
+R inst0110: OPTIMAL-AT-BUDGET none <= 5
+R inst0074: TIMEOUT at cap 6 (budget 6)
+R inst0105: TIMEOUT at cap 5 (budget 5)
+R inst0106: TIMEOUT at cap 4 (budget 4)
+R inst0107: TIMEOUT at cap 5 (budget 5)
+R inst0111: TIMEOUT at cap 6 (budget 6)
+P inst0000: OPTIMAL-AT-BUDGET none <= 2
+P inst0005: OPTIMAL-AT-BUDGET none <= 2
+P inst0004: OPTIMAL-AT-BUDGET none <= 1
+P inst0008: OPTIMAL-AT-BUDGET none <= 2
+P inst0001: OPTIMAL-AT-BUDGET none <= 3
+P inst0009: OPTIMAL-AT-BUDGET none <= 3
+P inst0012: OPTIMAL-AT-BUDGET none <= 1
+P inst0013: OPTIMAL-AT-BUDGET none <= 2
+P inst0016: OPTIMAL-AT-BUDGET none <= 2
+P inst0017: OPTIMAL-AT-BUDGET none <= 3
+P inst0020: OPTIMAL-AT-BUDGET none <= 1
+P inst0021: OPTIMAL-AT-BUDGET none <= 2
+P inst0014: OPTIMAL-AT-BUDGET none <= 4
+P inst0022: OPTIMAL-AT-BUDGET none <= 4
+P inst0006: OPTIMAL-AT-BUDGET none <= 4
+P inst0024: OPTIMAL-AT-BUDGET none <= 2
+P inst0025: OPTIMAL-AT-BUDGET none <= 3
+P inst0028: OPTIMAL-AT-BUDGET none <= 1
+P inst0029: OPTIMAL-AT-BUDGET none <= 2
+P inst0026: OPTIMAL-AT-BUDGET none <= 4
+P inst0030: OPTIMAL-AT-BUDGET none <= 3
+P inst0032: UNSAT lb 2 > budget 1
+P inst0033: UNSAT lb 3 > budget 2
+P inst0034: UNSAT lb 4 > budget 3
+P inst0035: UNSAT lb 5 > budget 4
+P inst0036: UNSAT lb 2 > budget 1
+P inst0037: UNSAT lb 3 > budget 2
+P inst0031: OPTIMAL-AT-BUDGET none <= 4
+P inst0038: UNSAT lb 4 > budget 3
+P inst0039: UNSAT lb 5 > budget 4
+P inst0040: UNSAT lb 2 > budget 1
+P inst0042: UNSAT lb 4 > budget 3
+P inst0041: UNSAT lb 3 > budget 2
+P inst0044: UNSAT lb 2 > budget 1
+P inst0043: UNSAT lb 5 > budget 4
+P inst0045: UNSAT lb 3 > budget 2
+P inst0046: UNSAT lb 4 > budget 3
+P inst0047: UNSAT lb 5 > budget 4
+P inst0048: UNSAT lb 2 > budget 1
+P inst0049: UNSAT lb 3 > budget 2
+P inst0050: UNSAT lb 4 > budget 3
+P inst0051: UNSAT lb 5 > budget 4
+P inst0052: UNSAT lb 2 > budget 1
+P inst0053: UNSAT lb 3 > budget 2
+P inst0054: UNSAT lb 4 > budget 3
+P inst0055: UNSAT lb 5 > budget 4
+P inst0056: UNSAT lb 2 > budget 1
+P inst0057: UNSAT lb 3 > budget 2
+P inst0058: UNSAT lb 4 > budget 3
+P inst0059: UNSAT lb 5 > budget 4
+P inst0060: UNSAT lb 2 > budget 1
+P inst0061: UNSAT lb 3 > budget 2
+P inst0063: UNSAT lb 5 > budget 4
+P inst0062: UNSAT lb 4 > budget 3
+P inst0065: UNSAT lb 3 > budget 2
+P inst0064: UNSAT lb 2 > budget 1
+P inst0067: UNSAT lb 5 > budget 4
+P inst0066: UNSAT lb 4 > budget 3
+P inst0069: UNSAT lb 3 > budget 2
+P inst0068: UNSAT lb 2 > budget 1
+P inst0070: UNSAT lb 4 > budget 3
+P inst0071: UNSAT lb 5 > budget 4
+P inst0072: UNSAT lb 2 > budget 1
+P inst0073: UNSAT lb 3 > budget 2
+P inst0074: UNSAT lb 4 > budget 3
+P inst0075: UNSAT lb 5 > budget 4
+P inst0076: UNSAT lb 2 > budget 1
+P inst0077: UNSAT lb 3 > budget 2
+P inst0078: UNSAT lb 4 > budget 3
+P inst0079: UNSAT lb 5 > budget 4
+P inst0080: UNSAT lb 2 > budget 1
+P inst0081: UNSAT lb 3 > budget 2
+P inst0082: UNSAT lb 4 > budget 3
+P inst0083: UNSAT lb 5 > budget 4
+P inst0084: UNSAT lb 2 > budget 1
+P inst0085: UNSAT lb 3 > budget 2
+P inst0086: UNSAT lb 4 > budget 3
+P inst0088: UNSAT lb 2 > budget 1
+P inst0087: UNSAT lb 5 > budget 4
+P inst0090: UNSAT lb 4 > budget 3
+P inst0089: UNSAT lb 3 > budget 2
+P inst0091: UNSAT lb 5 > budget 4
+P inst0092: UNSAT lb 2 > budget 1
+P inst0094: UNSAT lb 4 > budget 3
+P inst0093: UNSAT lb 3 > budget 2
+P inst0095: UNSAT lb 5 > budget 4
+P inst0096: UNSAT lb 2 > budget 1
+P inst0098: UNSAT lb 4 > budget 3
+P inst0097: UNSAT lb 3 > budget 2
+P inst0099: UNSAT lb 5 > budget 4
+P inst0100: UNSAT lb 2 > budget 1
+P inst0101: UNSAT lb 3 > budget 2
+P inst0102: UNSAT lb 4 > budget 3
+P inst0103: UNSAT lb 5 > budget 4
+P inst0104: UNSAT lb 2 > budget 1
+P inst0105: UNSAT lb 3 > budget 2
+P inst0106: UNSAT lb 4 > budget 3
+P inst0107: UNSAT lb 5 > budget 4
+P inst0108: UNSAT lb 2 > budget 1
+P inst0109: UNSAT lb 3 > budget 2
+P inst0110: UNSAT lb 4 > budget 3
+P inst0111: UNSAT lb 5 > budget 4
+P inst0112: UNSAT lb 2 > budget 1
+P inst0114: UNSAT lb 4 > budget 3
+P inst0113: UNSAT lb 3 > budget 2
+P inst0115: UNSAT lb 5 > budget 4
+P inst0116: UNSAT lb 2 > budget 1
+P inst0117: UNSAT lb 3 > budget 2
+P inst0118: UNSAT lb 4 > budget 3
+P inst0119: UNSAT lb 5 > budget 4
+P inst0120: UNSAT lb 2 > budget 1
+P inst0122: UNSAT lb 4 > budget 3
+P inst0121: UNSAT lb 3 > budget 2
+P inst0123: UNSAT lb 5 > budget 4
+P inst0124: UNSAT lb 2 > budget 1
+P inst0125: UNSAT lb 3 > budget 2
+P inst0126: UNSAT lb 4 > budget 3
+P inst0127: UNSAT lb 5 > budget 4
+P inst0128: UNSAT lb 2 > budget 1
+P inst0129: UNSAT lb 3 > budget 2
+P inst0130: UNSAT lb 4 > budget 3
+P inst0131: UNSAT lb 5 > budget 4
+P inst0132: UNSAT lb 2 > budget 1
+P inst0133: UNSAT lb 3 > budget 2
+P inst0134: UNSAT lb 4 > budget 3
+P inst0135: UNSAT lb 5 > budget 4
+P inst0136: UNSAT lb 2 > budget 1
+P inst0137: UNSAT lb 3 > budget 2
+P inst0138: UNSAT lb 4 > budget 3
+P inst0139: UNSAT lb 5 > budget 4
+P inst0140: UNSAT lb 2 > budget 1
+P inst0141: UNSAT lb 3 > budget 2
+P inst0142: UNSAT lb 4 > budget 3
+P inst0143: UNSAT lb 5 > budget 4
+P inst0144: UNSAT lb 2 > budget 1
+P inst0145: UNSAT lb 3 > budget 2
+P inst0146: UNSAT lb 4 > budget 3
+P inst0147: UNSAT lb 5 > budget 4
+P inst0148: UNSAT lb 2 > budget 1
+P inst0149: UNSAT lb 3 > budget 2
+P inst0150: UNSAT lb 4 > budget 3
+P inst0151: UNSAT lb 5 > budget 4
+P inst0152: UNSAT lb 2 > budget 1
+P inst0153: UNSAT lb 3 > budget 2
+P inst0154: UNSAT lb 4 > budget 3
+P inst0155: UNSAT lb 5 > budget 4
+P inst0156: UNSAT lb 2 > budget 1
+P inst0157: UNSAT lb 3 > budget 2
+P inst0158: UNSAT lb 4 > budget 3
+P inst0159: UNSAT lb 5 > budget 4
+P inst0160: UNSAT lb 2 > budget 1
+P inst0161: UNSAT lb 3 > budget 2
+P inst0162: UNSAT lb 4 > budget 3
+P inst0163: UNSAT lb 5 > budget 4
+P inst0164: UNSAT lb 2 > budget 1
+P inst0165: UNSAT lb 3 > budget 2
+P inst0166: UNSAT lb 4 > budget 3
+P inst0167: UNSAT lb 5 > budget 4
+P inst0168: UNSAT lb 2 > budget 1
+P inst0169: UNSAT lb 3 > budget 2
+P inst0170: UNSAT lb 4 > budget 3
+P inst0171: UNSAT lb 5 > budget 4
+P inst0172: UNSAT lb 2 > budget 1
+P inst0173: UNSAT lb 3 > budget 2
+P inst0174: UNSAT lb 4 > budget 3
+P inst0175: UNSAT lb 5 > budget 4
+P inst0176: UNSAT lb 2 > budget 1
+P inst0178: UNSAT lb 4 > budget 3
+P inst0177: UNSAT lb 3 > budget 2
+P inst0179: UNSAT lb 5 > budget 4
+P inst0180: UNSAT lb 2 > budget 1
+P inst0181: UNSAT lb 3 > budget 2
+P inst0182: UNSAT lb 4 > budget 3
+P inst0183: UNSAT lb 5 > budget 4
+P inst0184: UNSAT lb 2 > budget 1
+P inst0185: UNSAT lb 3 > budget 2
+P inst0186: UNSAT lb 4 > budget 3
+P inst0187: UNSAT lb 5 > budget 4
+P inst0188: UNSAT lb 2 > budget 1
+P inst0189: UNSAT lb 3 > budget 2
+P inst0190: UNSAT lb 4 > budget 3
+P inst0191: UNSAT lb 5 > budget 4
+P inst0192: UNSAT lb 2 > budget 1
+P inst0193: UNSAT lb 3 > budget 2
+P inst0194: UNSAT lb 4 > budget 3
+P inst0195: UNSAT lb 5 > budget 4
+P inst0196: UNSAT lb 2 > budget 1
+P inst0197: UNSAT lb 3 > budget 2
+P inst0198: UNSAT lb 4 > budget 3
+P inst0199: UNSAT lb 5 > budget 4
+P inst0027: OPTIMAL-AT-BUDGET none <= 5
+P inst0200: UNSAT lb 2 > budget 1
+P inst0202: UNSAT lb 4 > budget 3
+P inst0201: UNSAT lb 3 > budget 2
+P inst0203: UNSAT lb 5 > budget 4
+P inst0204: UNSAT lb 2 > budget 1
+P inst0205: UNSAT lb 3 > budget 2
+P inst0206: UNSAT lb 4 > budget 3
+P inst0207: UNSAT lb 5 > budget 4
+P inst0208: UNSAT lb 2 > budget 1
+P inst0209: UNSAT lb 3 > budget 2
+P inst0210: UNSAT lb 4 > budget 3
+P inst0212: UNSAT lb 2 > budget 1
+P inst0213: UNSAT lb 3 > budget 2
+P inst0215: UNSAT lb 2 > budget 1
+P inst0216: OPTIMAL-AT-BUDGET none <= 4
+P inst0217: OPTIMAL-AT-BUDGET none <= 3
+P inst0218: OPTIMAL-AT-BUDGET none <= 2
+P inst0010: OPTIMAL-AT-BUDGET none <= 5
+P inst0018: OPTIMAL-AT-BUDGET none <= 5
+P inst0220: OPTIMAL-AT-BUDGET none <= 2
+P inst0222: OPTIMAL-AT-BUDGET none <= 2
+P inst0002: OPTIMAL-AT-BUDGET none <= 5
+P inst0224: OPTIMAL-AT-BUDGET none <= 2
+P inst0015: OPTIMAL-AT-BUDGET none <= 5
+P inst0226: OPTIMAL-AT-BUDGET none <= 2
+P inst0007: OPTIMAL-AT-BUDGET none <= 5
+P inst0228: OPTIMAL-AT-BUDGET none <= 2
+P inst0023: OPTIMAL-AT-BUDGET none <= 5
+P inst0230: OPTIMAL-AT-BUDGET none <= 2
+P inst0003: TIMEOUT at cap 6 (budget 6)
+P inst0011: TIMEOUT at cap 6 (budget 6)
+P inst0232: OPTIMAL-AT-BUDGET none <= 2
+P inst0019: TIMEOUT at cap 6 (budget 6)
+P inst0211: TIMEOUT at cap 6 (budget 6)
+P inst0214: TIMEOUT at cap 5 (budget 5)
+P inst0221: IMPROVED cost 5 (budget 5) -> /tmp/winP/inst0221.sol
+P inst0219: TIMEOUT at cap 5 (budget 5)
+P inst0223: TIMEOUT at cap 5 (budget 5)
+P inst0225: TIMEOUT at cap 5 (budget 5)
+P inst0227: TIMEOUT at cap 5 (budget 5)
+P inst0229: TIMEOUT at cap 5 (budget 5)
+P inst0231: TIMEOUT at cap 5 (budget 5)
+P inst0233: TIMEOUT at cap 4 (budget 4)
+P inst0234: TIMEOUT at cap 4 (budget 4)
+P inst0235: TIMEOUT at cap 4 (budget 4)
+P inst0236: TIMEOUT at cap 4 (budget 4)
+P inst0237: TIMEOUT at cap 4 (budget 4)
+P inst0238: TIMEOUT at cap 4 (budget 4)
+P inst0239: TIMEOUT at cap 4 (budget 4)
+P inst0240: TIMEOUT at cap 4 (budget 4)

@@ -953,12 +953,22 @@ multiplication core. Our own checker-gated searches have **not**
 improved on the artifact — the best verified alternative
 orientation reaches 365, sixty signed-permutation and forty
 dyadic-sandwich orbit variants bottom out at 371 and 422
-respectively, and an eight-hour CSE storm found nothing below the
-rational triple's counts — and an
+respectively, an eight-hour CSE storm found nothing below the
+rational triple's counts, a 4,500-invocation optimizer-portfolio
+storm converged to exactly the distributed side counts, and —
+the strongest evidence — **exact window resynthesis** certifies
+local optimality: every closed sub-DAG window of the three
+programs up to 12 operations (958 windows; ≤8 inputs, ≤5
+outputs) was posed to an exact branch-and-bound synthesizer over
+the dyadic move menu, and **876 windows are proven exactly tight
+at their current cost, zero admit any improvement, and 82 of the
+largest remain undecided at a 300-second cap** — the 284 is not
+merely a fixed point of the searches that produced it but locally
+unimprovable at width 12. An
 earlier in-repo "329" is on record as a counting artifact caught
 by output-checker gating (a methodological cautionary tale the
 repository preserves). **No nontrivial lower bound is known**, so
-whether 284 is tight is open in both directions. What reductions
+whether 284 is tight globally remains open. What reductions
 would buy if found: both sinks scale linearly, so a 250-op network
 would be worth ≈12% and a 200-op network ≈30% *of the adds-driven
 components* (rebased to 284) (witness generation and the density/materialization

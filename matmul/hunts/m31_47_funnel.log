@@ -1,0 +1,4 @@
+seed loaded + exactly verified over F_p, p = 2147483647 (48 summands)
+funnel: 34705777 splits, 2262963449 targeted flips, 22328050 reductions
+
+2474295 walks, 4168028214 moves in 36000s; best rank 48; distinct rank-23 canonical forms collected: 1

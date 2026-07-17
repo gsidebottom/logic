@@ -207,8 +207,10 @@ fn coef_str(name: &str, num: i64, den: i64, lead: bool) -> String {
         format!("{sgn}{name}")
     } else if den == 1 {
         format!("{sgn}{name}*{mag}")
-    } else {
+    } else if mag == 1 {
         format!("{sgn}{name}/{den}")
+    } else {
+        format!("{sgn}{name}*{mag}/{den}")
     }
 }
 

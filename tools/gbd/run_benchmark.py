@@ -93,6 +93,28 @@ def _find_tool(name: str) -> Optional[str]:
 
 # cake_lpr — formally-verified LRAT/LPR checker (CaDiCaL-path proofs).
 CAKELPR_BIN = _find_tool("cake_lpr")
+
+# ---- global proof-check throttles (set from args in main) -----------------
+# Concurrent cake_lpr/gratchk/veripb processes are the memory killers on
+# giant proofs (each may licence a multi-GB heap): a semaphore caps how
+# many verify at once, independently of -j.  The swap brake aborts a
+# checker when SYSTEM swap grows past a budget over the run's baseline —
+# RSS polling alone is blind to a CakeML heap ballooning into compressed
+# memory/swap (learned the hard way; see matmul/benchlane2.sh guard v2).
+CHECK_SEM: Optional[threading.Semaphore] = None
+SWAP_BASE_MB: int = 0
+SWAP_BRAKE_MB: int = 8192
+
+
+def _swap_used_mb() -> int:
+    if sys.platform != "darwin":
+        return 0
+    try:
+        out = subprocess.run(["sysctl", "-n", "vm.swapusage"],
+                             capture_output=True, text=True, timeout=5).stdout
+        return int(float(out.split()[5].rstrip("M")))
+    except Exception:
+        return 0
 # gratchk — formally-verified GRAT checker (kissat-path proofs; the GRAT
 # tool chain's gratgen elaborates kissat's DRAT, gratchk verifies it).
 GRATCHK_BIN = _find_tool("gratchk")
@@ -610,6 +632,9 @@ def verify_pb_proof(cnf_path: Path, proof_path: Path, timeout_s: int = 300,
             return _abort(f"{checker} timeout ({timeout_s}s)")
         if mem_limit_bytes and _proc_rss_bytes(proc.pid) > mem_limit_bytes:
             return _abort(f"{checker} memout (>{mem_limit_bytes // (1024 ** 3)}GB)")
+        if SWAP_BRAKE_MB and _swap_used_mb() - SWAP_BASE_MB > SWAP_BRAKE_MB:
+            return _abort(f"{checker} memout (system swap grew "
+                          f">{SWAP_BRAKE_MB // 1024}GB — brake)")
         if poll_progress is not None and proof_size:
             off = _fd_offset(proc.pid, str(proof_path))
             if off:
@@ -1443,7 +1468,7 @@ def solve_one(
     verify_unsat_proof: bool = False,
     proof_dir: Optional[Path] = None,
     proof_timeout: int = 300,
-    proof_mem_gb: int = 64,
+    proof_mem_gb: int = 16,
 ) -> dict:
     """Decompress + solve + append row + re-finalize.  Returns result dict.
 
@@ -1595,10 +1620,18 @@ def solve_one(
                         if tui.enabled and _big else None)
             pb_checker = {"lrat": "cake_lpr", "grat": "gratchk",
                           "pbp": "veripb"}.get(_fmt)
-            pb_proof_ok, pb_proof_reason, pb_proof_time = verify_pb_proof(
-                tmp_path, proof_path, timeout_s=proof_timeout,
-                mem_limit_bytes=proof_mem_gb * (1024 ** 3) if proof_mem_gb else 0,
-                fmt=_fmt, on_progress=_on_prog)
+            if CHECK_SEM is not None and tui.enabled:
+                tui.update_worker(worker_idx, display, "verify queued…")
+            if CHECK_SEM is not None:
+                CHECK_SEM.acquire()
+            try:
+                pb_proof_ok, pb_proof_reason, pb_proof_time = verify_pb_proof(
+                    tmp_path, proof_path, timeout_s=proof_timeout,
+                    mem_limit_bytes=proof_mem_gb * (1024 ** 3) if proof_mem_gb else 0,
+                    fmt=_fmt, on_progress=_on_prog)
+            finally:
+                if CHECK_SEM is not None:
+                    CHECK_SEM.release()
             # Keep ONLY rejected COOK-path proofs (move to proof_dir for
             # inspection): they're KB-sized and a rejection there is a real
             # soundness alarm.  Everything else is deleted in `finally` —
@@ -1830,7 +1863,22 @@ def main() -> int:
                     help="Max concurrent giant instances (>4M clauses or >2M "
                          "vars) — each costs 10-25 GB in the engine alone.  "
                          "0 = unlimited.  Default: 2.")
-    ap.add_argument("--proof-mem-gb", type=int, default=64,
+    ap.add_argument("--resume", type=str, default=None, metavar="REPORT_MD",
+                    help="Skip instances that already have a per-problem "
+                         "row in this (partial) report from an interrupted "
+                         "run; new rows append to a fresh auto-numbered "
+                         "report as usual.")
+    ap.add_argument("--check-jobs", type=int, default=2,
+                    help="Max CONCURRENT proof checkers (cake_lpr etc.) "
+                         "across all workers; 0 = unlimited.  Solving "
+                         "stays at -j; only verification is throttled. "
+                         "Default 2 (2 x proof-mem-gb worst case).")
+    ap.add_argument("--swap-brake-gb", type=int, default=8,
+                    help="Abort a running checker (MEMOUT) if system swap "
+                         "grows this many GB over the run baseline; 0 "
+                         "disables.  Catches heap ballooning that RSS "
+                         "polling misses.  Default 8.")
+    ap.add_argument("--proof-mem-gb", type=int, default=16,
                     help="Resident-memory cap (GiB) for VeriPB proof "
                          "verification; if exceeded, VeriPB is killed and the "
                          "proof is reported MEMOUT (like a proof timeout).  "
@@ -1957,6 +2005,11 @@ def main() -> int:
     # so the user knows whether to clean their index file.  Pass
     # `--no-dedupe` to disable (e.g. for genuinely parametrically
     # repeated runs with intentionally same hash).
+    global CHECK_SEM, SWAP_BASE_MB, SWAP_BRAKE_MB
+    CHECK_SEM = threading.Semaphore(args.check_jobs) if args.check_jobs > 0 else None
+    SWAP_BASE_MB = _swap_used_mb()
+    SWAP_BRAKE_MB = args.swap_brake_gb * 1024
+
     if not args.no_dedupe:
         seen = set()
         unique: List[dict] = []
@@ -1972,6 +2025,23 @@ def main() -> int:
                   f"(kept {len(unique)} unique; --no-dedupe to disable)",
                   file=sys.stderr)
             records = unique
+
+    if args.resume:
+        done = set()
+        rowpat = re.compile(r"^\| (\S+) \| (SAT|UNSAT|TIMEOUT|MISMATCH|"
+                            r"UNKNOWN|ERROR|MEMOUT)\b")
+        try:
+            for ln in Path(args.resume).read_text().splitlines():
+                m = rowpat.match(ln)
+                if m:
+                    done.add(m.group(1))
+        except OSError as e:
+            sys.exit(f"--resume: cannot read {args.resume}: {e}")
+        before = len(records)
+        records = [r for r in records if short_name(r) not in done]
+        print(f"--resume: skipping {before - len(records)} already-done "
+              f"instances from {args.resume} ({len(records)} remain)",
+              file=sys.stderr)
 
     if args.limit > 0:
         records = records[: args.limit]

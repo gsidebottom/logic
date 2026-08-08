@@ -117,8 +117,8 @@ def emit_generic(name, slp_path, n_in, n_out):
     ops = parse(slp_path)
     lines = [f"pub fn {name}<T: El>(inp: &[T], out: &mut [T]) {{"]
     defined = {f"i{i}": f"inp[{i}]" for i in range(n_in)}
-    lines.append("    let zz = inp[0].sub(&inp[0]);")
-    defined["0"] = "zz"
+    lines.append("    let _zz = inp[0].sub(&inp[0]);")
+    defined["0"] = "_zz"
     tmp = 0
     for nm, terms in ops:
         expr = None

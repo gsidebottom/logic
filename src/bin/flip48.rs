@@ -47,6 +47,7 @@ struct Vec16 {
 }
 
 impl Vec16 {
+    #[allow(dead_code)]
     fn zero() -> Self {
         Vec16 { nums: [0; 16], exp: 0 }
     }
@@ -936,7 +937,7 @@ fn closure(
 /// closure state.  Exhaustive at split budget 2 (~54M roots, tiny
 /// closures); findings saved + verified.
 fn pursue4(seed: &[Summand], cap: i64, splits: u32, outdir: &str) {
-    use std::collections::HashSet;
+    
     use std::sync::atomic::{AtomicU64, Ordering};
     let seed_hash = scheme_hash(seed);
     let n_states = AtomicU64::new(0);
@@ -1299,7 +1300,7 @@ fn graph_export(seed: &[Summand], cap: i64, path: &str) {
     let mut metrics =
         |st: &Vec<Summand>| -> (usize, usize, usize, i64, usize) { state_metrics(st) };
 
-    let mut add_node = |st: &Vec<Summand>,
+    let add_node = |st: &Vec<Summand>,
                         ids: &mut HashMap<u64, usize>,
                         nodes: &mut Vec<String>,
                         stack: &mut Vec<(Vec<Summand>, usize)>,

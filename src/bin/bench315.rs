@@ -23,6 +23,7 @@ fn fsub(a: u64, b: u64) -> u64 {
     if a >= b { a - b } else { a.wrapping_sub(b).wrapping_add(P) }
 }
 #[inline(always)]
+#[allow(dead_code)]
 fn fneg(a: u64) -> u64 {
     if a == 0 { 0 } else { P - a }
 }

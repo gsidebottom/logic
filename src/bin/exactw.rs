@@ -157,7 +157,7 @@ impl Search {
             for j in (i + 1)..n {
                 for &a in &COEFS {
                     for &b in &COEFS {
-                        let mut w: Vec<i64> = (0..self.inst.m)
+                        let w: Vec<i64> = (0..self.inst.m)
                             .map(|k| a * wires[i][k] + b * wires[j][k])
                             .collect();
                         if w.iter().all(|&x| x == 0) {

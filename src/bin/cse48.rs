@@ -1048,7 +1048,7 @@ fn bp_traced(forms: &[Form], nv: usize, rng: &mut Rng) -> Option<(Vec<TOp>, Vec<
         })
         .collect();
     let mut bh: HashMap<u64, Vec<usize>> = HashMap::new();
-    let mut push_base = |v: Vec<i64>, w: u32,
+    let push_base = |v: Vec<i64>, w: u32,
                          base: &mut Vec<(Vec<i64>, u32)>,
                          bh: &mut HashMap<u64, Vec<usize>>| {
         if let Some((c, _, _)) = bp_canon(&v) {
@@ -1425,11 +1425,12 @@ fn count_ops(ops: &[TOp]) -> (u32, u32) {
 }
 
 /// remap wire ids: inputs via `inmap`, internals shifted to fresh ids
+#[allow(dead_code)]
 fn remap(ops: &[TOp], inmap: &std::collections::HashMap<u32, u32>, next: &mut u32)
     -> (Vec<TOp>, std::collections::HashMap<u32, u32>) {
     let mut m = inmap.clone();
     let mut out = Vec::with_capacity(ops.len());
-    let mut get = |m: &std::collections::HashMap<u32, u32>, x: u32| -> u32 {
+    let get = |m: &std::collections::HashMap<u32, u32>, x: u32| -> u32 {
         *m.get(&x).unwrap_or_else(|| panic!("unmapped wire {x}"))
     };
     for op in ops {

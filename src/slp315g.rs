@@ -2,7 +2,7 @@
 // PLinOpt data-dir SLP triple 4x4x4_48_rational. El is any Goldilocks-
 // element-like type: u64 scalars or matrix blocks.
 pub fn gslp_l<T: El>(inp: &[T], out: &mut [T]) {
-    let zz = inp[0].sub(&inp[0]);
+    let _zz = inp[0].sub(&inp[0]);
     let t0 = inp[2].clone().add(&inp[7]);
     let t1 = inp[3].clone().add(&inp[6]);
     let t2 = inp[1].clone().sub(&inp[4]);
@@ -158,7 +158,7 @@ pub fn gslp_l<T: El>(inp: &[T], out: &mut [T]) {
 }
 
 pub fn gslp_r<T: El>(inp: &[T], out: &mut [T]) {
-    let zz = inp[0].sub(&inp[0]);
+    let _zz = inp[0].sub(&inp[0]);
     let t0 = inp[4].clone().sub(&inp[6]);
     let t1 = inp[9].clone().add(&inp[10]);
     let t2 = inp[13].clone().add(&inp[15]);
@@ -283,7 +283,7 @@ pub fn gslp_r<T: El>(inp: &[T], out: &mut [T]) {
 }
 
 pub fn gslp_p<T: El>(inp: &[T], out: &mut [T]) {
-    let zz = inp[0].sub(&inp[0]);
+    let _zz = inp[0].sub(&inp[0]);
     let t0 = inp[0].clone().add(&inp[44]);
     let t1 = t0.scale2(-2);
     let t2 = inp[24].clone().add(&inp[4]).sub(&inp[32]);

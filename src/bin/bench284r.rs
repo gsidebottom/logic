@@ -55,6 +55,7 @@ fn fneg_s(a: u64) -> u64 {
     if a == 0 { 0 } else { P - a }
 }
 
+#[allow(dead_code)]
 fn pow2c(k: i32) -> u64 {
     // 2^k mod P for k in -4..=4
     let inv2 = (P + 1) / 2;

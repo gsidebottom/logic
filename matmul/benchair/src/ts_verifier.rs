@@ -15,11 +15,12 @@ use p3_util::zip_eq::zip_eq;
 use p3_util::{checked_log_size_sum, checked_pow2};
 use tracing::instrument;
 
+use crate::ts_folder::{TsProof, VerifierConstraintFolder};
 use p3_uni_stark::{InvalidProofShapeError, PeriodicColumnError, VerificationError};
 use p3_uni_stark::get_log_num_quotient_chunks;
 use p3_uni_stark::{
     AirLayout, Domain, PcsError, PreprocessedVerifierKey, Proof, StarkGenericConfig, Val,
-    VerifierConstraintFolder,
+
 };
 
 /// Reject periodic columns the verifier cannot evaluate over the trace domain.
@@ -151,6 +152,9 @@ pub fn verify_constraints<SC, A, PcsErr>(
     zeta: SC::Challenge,
     alpha: SC::Challenge,
     quotient: SC::Challenge,
+    perm_local: &[SC::Challenge],
+    perm_next: &[SC::Challenge],
+    challenges: &[SC::Challenge],
 ) -> Result<(), VerificationError<PcsErr>>
 where
     SC: StarkGenericConfig,
@@ -188,6 +192,9 @@ where
         is_transition: sels.is_transition,
         alpha,
         accumulator: SC::Challenge::ZERO,
+        perm_local,
+        perm_next,
+        challenges,
     };
     air.eval(&mut folder);
     let folded_constraints = folder.accumulator;
@@ -290,6 +297,59 @@ pub fn verify_with_preprocessed<SC, A>(
     proof: &Proof<SC>,
     public_values: &[Val<SC>],
     preprocessed_vk: Option<&PreprocessedVerifierKey<SC>>,
+) -> Result<(), VerificationError<PcsError<SC>>>
+where
+    SC: StarkGenericConfig,
+    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<VerifierConstraintFolder<'a, SC>>,
+{
+    verify_core::<SC, A>(config, air, proof, public_values, preprocessed_vk, None)
+}
+
+/// Two-stage verify: mirrors `prove_two_stage`'s transcript (sample
+/// challenges after the main commitment, observe perm width+commit),
+/// checks the perm opening in the same PCS verification, and hands
+/// the perm openings + challenges to the constraint folder.
+pub fn verify_two_stage<SC, A>(
+    config: &SC,
+    air: &A,
+    ts: &TsProof<SC>,
+    public_values: &[Val<SC>],
+    preprocessed_vk: Option<&PreprocessedVerifierKey<SC>>,
+) -> Result<(), VerificationError<PcsError<SC>>>
+where
+    SC: StarkGenericConfig,
+    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<VerifierConstraintFolder<'a, SC>>,
+{
+    let pc = ts
+        .perm_commit
+        .as_ref()
+        .ok_or(VerificationError::RandomizationError)?;
+    if ts.perm_local.len() != ts.perm_width || ts.perm_next.len() != ts.perm_width {
+        return Err(InvalidProofShapeError::OpenedValuesDimensionMismatch.into());
+    }
+    verify_core::<SC, A>(
+        config,
+        air,
+        &ts.proof,
+        public_values,
+        preprocessed_vk,
+        Some((pc, &ts.perm_local, &ts.perm_next, ts.num_challenges)),
+    )
+}
+
+#[allow(clippy::type_complexity)]
+fn verify_core<SC, A>(
+    config: &SC,
+    air: &A,
+    proof: &Proof<SC>,
+    public_values: &[Val<SC>],
+    preprocessed_vk: Option<&PreprocessedVerifierKey<SC>>,
+    perm: Option<(
+        &<SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment,
+        &[SC::Challenge],
+        &[SC::Challenge],
+        usize,
+    )>,
 ) -> Result<(), VerificationError<PcsError<SC>>>
 where
     SC: StarkGenericConfig,
@@ -411,6 +471,20 @@ where
     }
     challenger.observe_slice(public_values);
 
+    // ---- stage 2: re-derive the permutation challenges and absorb
+    // the perm commitment, mirroring the prover's transcript. ----
+    let (perm_challenges, perm_parts) = match perm {
+        Some((pc, pl, pn, n_ch)) => {
+            let chs: Vec<SC::Challenge> = (0..n_ch)
+                .map(|_| challenger.sample_algebra_element())
+                .collect();
+            challenger.observe(Val::<SC>::from_usize(pl.len()));
+            challenger.observe(pc.clone());
+            (chs, Some((pc, pl, pn)))
+        }
+        None => (Vec::new(), None),
+    };
+
     // Get the first Fiat Shamir challenge which will be used to combine all constraint polynomials
     // into a single polynomial.
     //
@@ -495,6 +569,16 @@ where
         ),
     ]);
 
+    if let Some((pc, pl, pn)) = perm_parts {
+        coms_to_verify.push((
+            (*pc).clone(),
+            vec![(
+                trace_domain,
+                vec![(zeta, pl.to_vec()), (zeta_next, pn.to_vec())],
+            )],
+        ));
+    }
+
     // Add preprocessed commitment verification if present
     if preprocessed_width > 0 {
         let mut pre_points = vec![(zeta, opened_values.preprocessed_local.clone().unwrap())];
@@ -545,6 +629,9 @@ where
         zeta,
         alpha,
         quotient,
+        perm_parts.map_or(&[], |(_, pl, _)| pl),
+        perm_parts.map_or(&[], |(_, _, pn)| pn),
+        &perm_challenges,
     )?;
 
     Ok(())

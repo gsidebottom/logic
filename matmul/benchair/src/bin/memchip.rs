@@ -18,8 +18,11 @@ use p3_uni_stark::{StarkConfig, prove as up_prove, verify as up_verify};
 use rand::rngs::SmallRng;
 use rand::{RngExt, SeedableRng};
 
-use benchair::ts_prover::prove as ts_prove;
-use benchair::ts_verifier::verify as ts_verify;
+use benchair::ts_folder::TwoStageBuilder;
+use benchair::ts_prover::{prove as ts_prove, prove_two_stage};
+use benchair::ts_verifier::{verify as ts_verify, verify_two_stage};
+use p3_field::BasedVectorSpace;
+use p3_matrix::Matrix;
 
 struct MulAir;
 impl<F> BaseAir<F> for MulAir {
@@ -49,6 +52,38 @@ fn trace(rows: usize, tamper: bool) -> RowMajorMatrix<BabyBear> {
         v[2] += BabyBear::ONE;
     }
     RowMajorMatrix::new(v, 3)
+}
+
+/// Minimal two-stage AIR: one main column v; stage-2 ext columns
+/// inv = 1/(z - v) (witnessed inverse against the sampled challenge)
+/// and acc = running sum of inv — the LogUp skeleton.
+struct LogUpTestAir;
+impl<F> BaseAir<F> for LogUpTestAir {
+    fn width(&self) -> usize {
+        1
+    }
+}
+impl<AB: TwoStageBuilder> Air<AB> for LogUpTestAir {
+    fn eval(&self, builder: &mut AB) {
+        let v = builder.main().current(0).unwrap();
+        let z = builder.ts_challenge(0);
+        let inv = builder.perm_local_ext(0);
+        let acc = builder.perm_local_ext(1);
+        let inv_next = builder.perm_next_ext(0);
+        let acc_next = builder.perm_next_ext(1);
+        // inverse witness: inv * (z - v) == 1
+        builder.assert_zero_ext(inv * (z - v.into()) - AB::ExprEF::ONE);
+        // first row: acc == inv
+        let first = builder.is_first_row();
+        builder.assert_zero_ext(
+            (acc.clone() - builder.perm_local_ext(0)) * first,
+        );
+        // transition: acc' == acc + inv'
+        let trans = builder.is_transition();
+        builder.assert_zero_ext(
+            (acc_next - acc - inv_next) * trans,
+        );
+    }
 }
 
 fn main() {
@@ -98,4 +133,58 @@ fn main() {
     assert!(up_verify(&config, &MulAir, &pb, &[]).is_err(), "upstream accepted tamper");
     println!("gate: tampered trace rejected by both verifiers");
     println!("PHASE 1 COMPLETE: two-stage fork is behavior-identical with empty stage-2");
+
+    // ---- Phase 2 gates: real stage-2 round end-to-end ----
+    let rows = 1usize << 10;
+    let mut rng2 = SmallRng::seed_from_u64(9);
+    let vs: Vec<Val> = (0..rows).map(|_| rng2.random()).collect();
+    let d = <Challenge as BasedVectorSpace<Val>>::DIMENSION;
+    let vs_cl = vs.clone();
+    let builder = move |chs: &[Challenge]| -> RowMajorMatrix<Val> {
+        let z = chs[0];
+        let mut m = Val::zero_vec(vs_cl.len() * 2 * d);
+        let mut acc = Challenge::ZERO;
+        for (r, &v) in vs_cl.iter().enumerate() {
+            let inv = (z - v).inverse();
+            acc += inv;
+            for k in 0..d {
+                m[r * 2 * d + k] = inv.as_basis_coefficients_slice()[k];
+                m[r * 2 * d + d + k] = acc.as_basis_coefficients_slice()[k];
+            }
+        }
+        RowMajorMatrix::new(m, 2 * d)
+    };
+    let trace2 = RowMajorMatrix::new(vs.clone(), 1);
+    let tsp = prove_two_stage(&config, &LogUpTestAir, trace2, &[], None, 1, &builder);
+    verify_two_stage(&config, &LogUpTestAir, &tsp, &[], None)
+        .expect("two-stage valid proof rejected");
+    println!("gate: two-stage LogUp AIR proves and verifies (sample -> commit -> fold -> open)");
+
+    // tamper the WITNESS: one bad inverse must be rejected
+    let vs_bad = vs.clone();
+    let bad_builder = move |chs: &[Challenge]| -> RowMajorMatrix<Val> {
+        let z = chs[0];
+        let mut m = Val::zero_vec(vs_bad.len() * 2 * d);
+        let mut acc = Challenge::ZERO;
+        for (r, &v) in vs_bad.iter().enumerate() {
+            let mut inv = (z - v).inverse();
+            if r == 7 {
+                inv += Challenge::ONE; // forged inverse
+            }
+            acc += inv;
+            for k in 0..d {
+                m[r * 2 * d + k] = inv.as_basis_coefficients_slice()[k];
+                m[r * 2 * d + d + k] = acc.as_basis_coefficients_slice()[k];
+            }
+        }
+        RowMajorMatrix::new(m, 2 * d)
+    };
+    let trace3 = RowMajorMatrix::new(vs.clone(), 1);
+    let tsp_bad = prove_two_stage(&config, &LogUpTestAir, trace3, &[], None, 1, &bad_builder);
+    assert!(
+        verify_two_stage(&config, &LogUpTestAir, &tsp_bad, &[], None).is_err(),
+        "two-stage accepted forged inverse"
+    );
+    println!("gate: forged stage-2 inverse rejected");
+    println!("PHASE 2 COMPLETE: sound sample-after-commit round, gated end-to-end");
 }

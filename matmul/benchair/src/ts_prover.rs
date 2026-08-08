@@ -15,9 +15,10 @@ use tracing::{debug_span, info_span, instrument};
 
 use p3_uni_stark::{
     Commitments, Domain, OpenedValues, PackedChallenge, PackedVal, PreprocessedProverData, Proof,
-    ProverConstraintFolder, StarkGenericConfig, Val, get_constraint_layout,
-    get_log_num_quotient_chunks,
+    StarkGenericConfig, Val, get_constraint_layout, get_log_num_quotient_chunks,
 };
+
+use crate::ts_folder::{ProverConstraintFolder, TsProof};
 
 #[instrument(skip_all)]
 #[allow(clippy::multiple_bound_locations, clippy::type_repetition_in_bounds)] // cfg not supported in where clauses?
@@ -32,6 +33,62 @@ pub fn prove_with_preprocessed<
     public_values: &[Val<SC>],
     preprocessed: Option<&PreprocessedProverData<SC>>,
 ) -> Proof<SC>
+where
+    SC: StarkGenericConfig,
+    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<ProverConstraintFolder<'a, SC>>,
+{
+    prove_core::<SC, A>(config, air, trace, public_values, preprocessed, None).proof
+}
+
+/// Two-stage prove: after committing the main trace and observing the
+/// public values, sample `num_challenges` extension challenges, hand
+/// them to `perm_builder` (which returns the stage-2 columns as a
+/// base-field-flattened matrix of the SAME height as the trace),
+/// commit that matrix, and fold its columns into the quotient. The
+/// perm opening rides in the same PCS `open` call (round order:
+/// [random?], trace, quotient, perm, [preprocessed]).
+#[instrument(skip_all)]
+#[allow(clippy::multiple_bound_locations, clippy::type_repetition_in_bounds)]
+pub fn prove_two_stage<
+    SC,
+    #[cfg(debug_assertions)] A: for<'a> Air<p3_air::DebugConstraintBuilder<'a, Val<SC>>>,
+    #[cfg(not(debug_assertions))] A,
+>(
+    config: &SC,
+    air: &A,
+    trace: RowMajorMatrix<Val<SC>>,
+    public_values: &[Val<SC>],
+    preprocessed: Option<&PreprocessedProverData<SC>>,
+    num_challenges: usize,
+    perm_builder: &dyn Fn(&[SC::Challenge]) -> RowMajorMatrix<Val<SC>>,
+) -> TsProof<SC>
+where
+    SC: StarkGenericConfig,
+    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<ProverConstraintFolder<'a, SC>>,
+{
+    prove_core::<SC, A>(
+        config,
+        air,
+        trace,
+        public_values,
+        preprocessed,
+        Some((num_challenges, perm_builder)),
+    )
+}
+
+#[allow(clippy::multiple_bound_locations, clippy::type_repetition_in_bounds)]
+fn prove_core<
+    SC,
+    #[cfg(debug_assertions)] A: for<'a> Air<p3_air::DebugConstraintBuilder<'a, Val<SC>>>,
+    #[cfg(not(debug_assertions))] A,
+>(
+    config: &SC,
+    air: &A,
+    trace: RowMajorMatrix<Val<SC>>,
+    public_values: &[Val<SC>],
+    preprocessed: Option<&PreprocessedProverData<SC>>,
+    perm_spec: Option<(usize, &dyn Fn(&[SC::Challenge]) -> RowMajorMatrix<Val<SC>>)>,
+) -> TsProof<SC>
 where
     SC: StarkGenericConfig,
     A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<ProverConstraintFolder<'a, SC>>,
@@ -172,6 +229,27 @@ where
     // Observe the public input values.
     challenger.observe_slice(public_values);
 
+    // ---- stage 2 (two-stage AIRs only): sample challenges AFTER the
+    // main-trace commitment is in the transcript, then commit the
+    // permutation columns built from them. ----
+    let (perm_challenges, perm_committed) = match perm_spec {
+        Some((n_ch, builder)) => {
+            let chs: Vec<SC::Challenge> = (0..n_ch)
+                .map(|_| challenger.sample_algebra_element())
+                .collect();
+            let perm = builder(&chs);
+            assert_eq!(perm.height(), degree, "perm trace height != trace height");
+            let pw = perm.width();
+            let (pc, pd) = info_span!("commit to perm data")
+                .in_scope(|| pcs.commit([(ext_trace_domain, perm)]));
+            challenger.observe(Val::<SC>::from_usize(pw));
+            challenger.observe(pc.clone());
+            (chs, Some((pc, pd, pw)))
+        }
+        None => (Vec::new(), None),
+    };
+    let perm_committed_width = perm_committed.as_ref().map_or(0, |(_, _, w)| *w);
+
     // Get the first Fiat Shamir challenge which will be used to combine all constraint polynomials
     // into a single polynomial.
     //
@@ -208,6 +286,9 @@ where
     let trace_on_quotient_domain = pcs.get_evaluations_on_domain(&trace_data, 0, quotient_domain);
     let preprocessed_on_quotient_domain = preprocessed_data_ref
         .map(|data| pcs.get_evaluations_on_domain_no_random(data, 0, quotient_domain));
+    let perm_on_quotient_domain = perm_committed
+        .as_ref()
+        .map(|(_, pd, _)| pcs.get_evaluations_on_domain(pd, 0, quotient_domain));
 
     // Compute the quotient polynomial `Q(x)` by evaluating
     //          `C(T_1(x), ..., T_w(x), T_1(hx), ..., T_w(hx), selectors(x)) / Z_H(x)`
@@ -222,6 +303,8 @@ where
         quotient_domain,
         &trace_on_quotient_domain,
         preprocessed_on_quotient_domain.as_ref(),
+        perm_on_quotient_domain.as_ref(),
+        &perm_challenges,
         alpha,
     );
 
@@ -313,6 +396,9 @@ where
         };
         let round1 = (&trace_data, vec![round1_points]);
         let round2 = (&quotient_data, vec![vec![zeta]; num_quotient_chunks]); // open every chunk at zeta
+        let round_perm = perm_committed
+            .as_ref()
+            .map(|(_, pd, _)| (pd, vec![vec![zeta, zeta_next]]));
         let round3 = preprocessed_data_ref.map(|data| {
             let pre_points = if pre_next {
                 vec![zeta, zeta_next]
@@ -325,6 +411,7 @@ where
         let rounds = round0
             .into_iter()
             .chain([round1, round2])
+            .chain(round_perm)
             .chain(round3)
             .collect();
 
@@ -347,10 +434,21 @@ where
     } else {
         None
     };
+    let has_perm = perm_committed.is_some();
+    let perm_idx = quotient_idx + 1;
+    let (perm_local, perm_next) = if has_perm {
+        (
+            opened_values[perm_idx][0][0].clone(),
+            opened_values[perm_idx][0][1].clone(),
+        )
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    let prep_idx = SC::Pcs::PREPROCESSED_TRACE_IDX + has_perm as usize;
     let (preprocessed_local, preprocessed_next) = if preprocessed_width > 0 {
-        let local = Some(opened_values[SC::Pcs::PREPROCESSED_TRACE_IDX][0][0].clone());
+        let local = Some(opened_values[prep_idx][0][0].clone());
         let next = if pre_next {
-            Some(opened_values[SC::Pcs::PREPROCESSED_TRACE_IDX][0][1].clone())
+            Some(opened_values[prep_idx][0][1].clone())
         } else {
             None
         };
@@ -366,11 +464,18 @@ where
         quotient_chunks,
         random,
     };
-    Proof {
-        commitments,
-        opened_values,
-        opening_proof,
-        degree_bits: log_ext_degree,
+    TsProof {
+        proof: Proof {
+            commitments,
+            opened_values,
+            opening_proof,
+            degree_bits: log_ext_degree,
+        },
+        perm_commit: perm_committed.as_ref().map(|(pc, _, _)| pc.clone()),
+        perm_local,
+        perm_next,
+        perm_width: perm_committed_width,
+        num_challenges: perm_challenges.len(),
     }
 }
 
@@ -405,6 +510,8 @@ pub fn quotient_values<SC, A, Mat>(
     quotient_domain: Domain<SC>,
     trace_on_quotient_domain: &Mat,
     preprocessed_on_quotient_domain: Option<&Mat>,
+    perm_on_quotient_domain: Option<&Mat>,
+    perm_challenges: &[SC::Challenge],
     alpha: SC::Challenge,
 ) -> Vec<SC::Challenge>
 where
@@ -460,6 +567,7 @@ where
     struct GroupBuffers<SC: StarkGenericConfig> {
         main: Vec<PackedVal<SC>>,
         preprocessed: Vec<PackedVal<SC>>,
+        perm: Vec<PackedVal<SC>>,
         base_constraints: Vec<PackedVal<SC>>,
         ext_constraints: Vec<PackedChallenge<SC>>,
     }
@@ -474,6 +582,7 @@ where
                 preprocessed: Vec::with_capacity(
                     2 * preprocessed_on_quotient_domain.map_or(0, |p| p.width()),
                 ),
+                perm: Vec::with_capacity(2 * perm_on_quotient_domain.map_or(0, |p| p.width())),
                 base_constraints: Vec::with_capacity(constraint_layout.base_indices.len()),
                 ext_constraints: Vec::with_capacity(constraint_layout.ext_indices.len()),
             },
@@ -511,6 +620,18 @@ where
                     }
                     None => RowMajorMatrixView::new(&[], 0),
                 };
+                let perm_view = match perm_on_quotient_domain {
+                    Some(perm) => {
+                        bufs.perm.clear();
+                        bufs.perm
+                            .extend(perm.vertically_packed_row::<PackedVal<SC>>(i_start));
+                        bufs.perm.extend(
+                            perm.vertically_packed_row::<PackedVal<SC>>(i_start + next_step),
+                        );
+                        RowMajorMatrixView::new(&bufs.perm, perm.width())
+                    }
+                    None => RowMajorMatrixView::new(&[], 0),
+                };
                 let periodic_values: &[PackedVal<SC>] = if periodic_packed.is_empty() {
                     &[]
                 } else {
@@ -531,6 +652,8 @@ where
                     ext_constraints: core::mem::take(&mut bufs.ext_constraints),
                     constraint_index: 0,
                     constraint_count: constraint_layout.total_constraints(),
+                    perm: perm_view,
+                    challenges: perm_challenges,
                 };
                 air.eval(&mut folder);
 

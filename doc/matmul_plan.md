@@ -873,6 +873,27 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
   either wider windows (≥13 ops — combinatorially steep), a richer
   coefficient menu, or global restructuring (new decompositions).
 
+- **2026-08-10 — memchip/tilechip (task #32 COMPLETE): sound memory
+  argument built from primitives; dilution measured on prediction.**
+  Phase 1: uni-stark prover/verifier forked into benchair (compiles
+  against public re-exports, zero vendoring), cross-gated behavior-
+  identical. Phase 2: the two-stage round — challenges sampled AFTER
+  the main commit, perm columns committed second, folded into the
+  same quotient/opening; TwoStageBuilder trait (local; chosen over
+  p3-air's PermutationAirBuilder for packed-folder friction) with
+  prover/verifier/symbolic impls, degree-faithful; LogUp skeleton
+  gate + forged-inverse rejection. Phase 3+4: TileChipAir — compute
+  band (mul-schedule, one preprocessed one-hot memory op per row:
+  32R+16W/tile) + 48-row memory band; last-row LogUp acc==0 IS
+  memory consistency; 10 gates green incl. all four forgery classes.
+  Measured: rank48/naive 1.176×@2^14, 1.163×@2^16 on the 112/96 =
+  1.167× row prediction. Deployment bracket complete: parity (free
+  gate) / 1.17× (sound memory) / 1.34× (replicated ceiling) /
+  drowned (op-per-row). Paper: 'The memory argument, closed'
+  paragraph (md+tex balanced — md anchor wrap caught by the
+  post-patch grep balance this time). Program status: the zkML
+  measurement arc is COMPLETE end to end.
+
 ## 4. Discipline
 
 - Every claimed scheme re-verified by the independent verifier; every A/B at

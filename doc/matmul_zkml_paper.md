@@ -1106,6 +1106,36 @@ recursive schedules. This is the program's thesis reduced to one
 measured sentence: **in modern proving stacks, rank buys committed
 rows, and rows are wall clock.**
 
+**The memory argument, closed.** The mul-schedule chip models
+memory by replicating operands in committed columns; the
+deployment-honest question is what a *sound* memory interface
+costs. We built it: a two-stage prover on Plonky3 primitives
+(LogUp challenges sampled *after* the main-trace commitment — the
+ordering without which any memory argument is forgeable — with the
+permutation columns committed in a second round and folded into
+the same quotient and opening), and on it a tile-interface
+precompile chip: a 48-row-per-tile memory band emitting
+(address, value, multiplicity), a compute band whose first 48 rows
+each carry one memory operation (32 reads + 16 writes per tile,
+identical for both schedules — the SP1/RISC-Zero precompile
+shape), and a running LogUp accumulator whose last-row vanishing
+*is* memory consistency. Soundness is tested, not argued: all
+four forgery classes — corrupted memory value, a compute read
+diverging from the committed image, inflated multiplicity,
+corrupted output write — are rejected; honest traces accept for
+both schedules. Measured at equal trace height: **1.176× at 2¹⁴
+and 1.163× at 2¹⁶ rank-48 throughput over naive, on the row-count
+prediction 112/96 = 1.167×** (each tile pays 48 memory rows
+regardless of schedule, so the flat-schedule 1.33× dilutes to
+~1.17×). The deployment bracket is now measured at all three
+points: materialize nothing → the gate is free (parity);
+memory-mediated with a sound argument → **1.17×**, with 1.34× as
+the replicated-operand ceiling; one row per operation → the
+multiplication advantage drowns. A rank-48 precompile ships with
+a ~17% sound throughput edge on the identical memory interface —
+and every further row saved by lower rank compounds through the
+same arithmetic.
+
 **Witness generation is friendlier territory.** The prover must
 also *compute* the witness — every intermediate product, in the
 clear, over the field — and here the same networks measure very

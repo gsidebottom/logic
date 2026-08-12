@@ -1601,7 +1601,7 @@ def solve_one(
         # docker call, against the exact CNF handed over.  No --proof is
         # passed (binary SR would be misrouted to cake_lpr here), so credit
         # the in-solver verification from the solver's own markers.
-        if backend == "hydra_satsuma" and result == "UNSAT":
+        if backend in ("hydra_satsuma", "satsuma") and result == "UNSAT":
             if "dsr-trim VERIFIED UNSAT" in stderr_text:
                 pb_proof_ok, pb_proof_reason = True, "dsr-trim (in-solver)"
             elif "UNSAT of GE residual" in stderr_text:
@@ -2097,7 +2097,7 @@ def main() -> int:
     global _giant_sem
     if args.giant_slots > 0:
         _giant_sem = threading.BoundedSemaphore(args.giant_slots)
-    if args.backend == "hydra_satsuma":
+    if args.backend in ("hydra_satsuma", "satsuma"):
         if shutil.which("docker") is None:
             print("c WARNING: docker not found — hydra_satsuma cannot run its "
                   "satsuma-iter+kissat fall-through (build: tools/satsuma/build.sh).",

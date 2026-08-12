@@ -2216,6 +2216,12 @@ enum BackendChoice {
     /// dsr-trim (in-container) verifies the COMPOSED proof against the
     /// ORIGINAL formula — certified UNSAT even when symmetries fired.
     HydraSatsuma,
+    /// Bare satsuma-iter+kissat (the SAT Competition 2026 main-track
+    /// winner) with NO hydra preprocessing — no Cook shapes, no XOR/GE:
+    /// the raw formula goes straight to the Docker pipeline. The
+    /// baseline arm for A/B against `hydra_satsuma` (which adds hydra's
+    /// stages in front) on identical hardware.
+    Satsuma,
 }
 
 impl BackendChoice {
@@ -2227,6 +2233,7 @@ impl BackendChoice {
             BackendChoice::Hydra     => "hydra",
             BackendChoice::HydraSymBreak => "hydra_sym_break",
             BackendChoice::HydraSatsuma  => "hydra_satsuma",
+            BackendChoice::Satsuma       => "satsuma",
         }
     }
 
@@ -2267,10 +2274,11 @@ impl BackendChoice {
                          | "hydrasymbreak"  => Ok(BackendChoice::HydraSymBreak),
             "hydra_satsuma" | "hydra-satsuma"
                          | "hydrasatsuma"   => Ok(BackendChoice::HydraSatsuma),
+            "satsuma"                      => Ok(BackendChoice::Satsuma),
             _ => Err(format!(
                 "unknown backend {:?}; expected one of: smart, cdcl, eff, eff_cover, effb, \
                  greedy_cdcl, greedy_eff, greedy_effb, basic_eff, basic_effb, cadical, \
-                 pb-cadical, hydra, hydra_sym_break, hydra_satsuma", s
+                 pb-cadical, hydra, hydra_sym_break, hydra_satsuma, satsuma", s
             )),
         }
     }
@@ -2809,7 +2817,7 @@ fn main() {
     // shell out to the CaDiCaL binary with --veripb so its proof is also
     // VeriPB-checkable.  Either way a solved instance carries a verifiable
     // certificate.  Short-circuits before the matrix search.
-    if matches!(args.backend, BackendChoice::PbCadical | BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma) {
+    if matches!(args.backend, BackendChoice::PbCadical | BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma | BackendChoice::Satsuma) {
         use logic::cook_pbp::{detect_shape, emit_proof, CnfShape};
         use std::io::Write as _;
         let bk = args.backend.name();
@@ -2817,7 +2825,9 @@ fn main() {
         // Cook shapes are all small instances (largest detection in either
         // competition set: <1M clauses); skip the detectors on giants so
         // structure analysis never eats meaningful engine budget there.
-        let try_cook = args.cook && clauses.len() <= 1_000_000;
+        let try_cook = args.cook
+            && !matches!(args.backend, BackendChoice::Satsuma)
+            && clauses.len() <= 1_000_000;
         // Backstop watchdog: the main watchdog spawns after this block, and
         // hydra's XOR stage can run minutes on 100k+-var parity systems.
         // CaDiCaL gets its own (budget-split) -t below, so fire with a 60s
@@ -3091,7 +3101,7 @@ fn main() {
         // CHECKER-CERTIFIED (unlike the native hydra_sym_break stage). On a
         // GE residual the certificate covers only the residual; the verdict
         // stays sound but is flagged uncertified, matching hydra's XOR path.
-        if matches!(args.backend, BackendChoice::HydraSatsuma) {
+        if matches!(args.backend, BackendChoice::HydraSatsuma | BackendChoice::Satsuma) {
             // Mount dir under /tmp: Docker Desktop's default file sharing
             // covers /private/tmp, while std::env::temp_dir()'s
             // /var/folders/... may not be shared.
@@ -3123,7 +3133,9 @@ fn main() {
                  if [ $rc = 20 ]; then echo \"c dsrtrim: $(./dsr-trim/bin/dsr-trim -f /work/f.cnf /work/proof.out /dev/null 2>/dev/null | grep '^s ')\"; fi; exit $rc",
                 if remaining > 0 { format!("timeout {}s", remaining) } else { String::new() });
             eprintln!("c {}: {} -> satsuma-iter+kissat (docker){}", bk,
-                      if forced.is_some() { "GE-simplified residual" } else { "no Cook shape" },
+                      if forced.is_some() { "GE-simplified residual" }
+                      else if matches!(args.backend, BackendChoice::Satsuma) { "raw formula" }
+                      else { "no Cook shape" },
                       if remaining > 0 { format!(" budget={}s", remaining) } else { String::new() });
             let out = std::process::Command::new("docker")
                 .args(["run", "--rm", "-v"])
@@ -3773,7 +3785,8 @@ fn main() {
     let outcome = match args.backend {
         BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
         BackendChoice::PbCadical => unreachable!("pb-cadical is handled before the search dispatch"),
-        BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma =>
+        BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma
+        | BackendChoice::Satsuma =>
             unreachable!("hydra is handled before the search dispatch"),
         BackendChoice::Matrix(m) => {
             // Auto-skip preprocess on very large inputs.  Empirically

@@ -1575,6 +1575,8 @@ def solve_one(
             pb_proof_prover = "kissat"
         elif "prover=cadical" in stderr_text:
             pb_proof_prover = "cadical"
+        elif "prover=satsuma-kissat" in stderr_text:
+            pb_proof_prover = "satsuma-kissat"
         m = re.search(r"elaborated to (?:LRAT|GRAT) at .* \(([0-9.]+)s\)", stderr_text)
         if m:
             elab_s = float(m.group(1))
@@ -1594,6 +1596,18 @@ def solve_one(
         if verify_unsat_proof and result == "UNSAT" and tmp_path is not None:
             unsat_proof_ok, unsat_proof_reason = verify_unsat_cover(
                 tmp_path, backend, timeout_s)
+        # hydra_satsuma: the SR proof (satsuma symmetry steps + kissat
+        # refutation) is composed and dsr-trim-verified INSIDE the solver's
+        # docker call, against the exact CNF handed over.  No --proof is
+        # passed (binary SR would be misrouted to cake_lpr here), so credit
+        # the in-solver verification from the solver's own markers.
+        if backend == "hydra_satsuma" and result == "UNSAT":
+            if "dsr-trim VERIFIED UNSAT" in stderr_text:
+                pb_proof_ok, pb_proof_reason = True, "dsr-trim (in-solver)"
+            elif "UNSAT of GE residual" in stderr_text:
+                pb_proof_ok, pb_proof_reason = None, "SR covers GE residual only"
+            elif "dsr-trim did NOT verify" in stderr_text:
+                pb_proof_ok, pb_proof_reason = False, "dsr-trim rejected/failed"
         # pb-cadical: VeriPB-check the proof the solver just emitted.
         if (proof_path is not None and result == "UNSAT"
                 and tmp_path is not None):
@@ -2083,7 +2097,13 @@ def main() -> int:
     global _giant_sem
     if args.giant_slots > 0:
         _giant_sem = threading.BoundedSemaphore(args.giant_slots)
-    if args.backend in ("pb-cadical", "pb_cadical", "hydra", "hydra_sym_break"):
+    if args.backend == "hydra_satsuma":
+        if shutil.which("docker") is None:
+            print("c WARNING: docker not found — hydra_satsuma cannot run its "
+                  "satsuma-iter+kissat fall-through (build: tools/satsuma/build.sh).",
+                  file=sys.stderr)
+    if args.backend in ("pb-cadical", "pb_cadical", "hydra", "hydra_sym_break",
+                        "hydra_satsuma"):
         if CAKELPR_BIN is None:
             print("c WARNING: cake_lpr not found (PATH or ~/.cargo/bin) — "
                   "CaDiCaL-path LRAT proofs will go UNCHECKED. Build it from "

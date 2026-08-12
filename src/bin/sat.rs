@@ -2208,6 +2208,14 @@ enum BackendChoice {
     /// this variant trades some UNSAT-proof coverage for potential
     /// speed on symmetric instances that escape the Cook shapes.
     HydraSymBreak,
+    /// Hydra whose no-Cook-shape fall-through is the SAT Competition
+    /// 2026 main-track winner satsuma-iter+kissat (M. Anders et al.),
+    /// run via the local `satsuma-iter-kissat` Docker image (build:
+    /// tools/satsuma/build.sh). satsuma breaks symmetries and emits a
+    /// binary-SR proof of the breaking; kissat appends its refutation;
+    /// dsr-trim (in-container) verifies the COMPOSED proof against the
+    /// ORIGINAL formula — certified UNSAT even when symmetries fired.
+    HydraSatsuma,
 }
 
 impl BackendChoice {
@@ -2218,6 +2226,7 @@ impl BackendChoice {
             BackendChoice::PbCadical => "pb-cadical",
             BackendChoice::Hydra     => "hydra",
             BackendChoice::HydraSymBreak => "hydra_sym_break",
+            BackendChoice::HydraSatsuma  => "hydra_satsuma",
         }
     }
 
@@ -2256,10 +2265,12 @@ impl BackendChoice {
             "hydra"                        => Ok(BackendChoice::Hydra),
             "hydra_sym_break" | "hydra-sym-break"
                          | "hydrasymbreak"  => Ok(BackendChoice::HydraSymBreak),
+            "hydra_satsuma" | "hydra-satsuma"
+                         | "hydrasatsuma"   => Ok(BackendChoice::HydraSatsuma),
             _ => Err(format!(
                 "unknown backend {:?}; expected one of: smart, cdcl, eff, eff_cover, effb, \
                  greedy_cdcl, greedy_eff, greedy_effb, basic_eff, basic_effb, cadical, \
-                 pb-cadical, hydra, hydra_sym_break", s
+                 pb-cadical, hydra, hydra_sym_break, hydra_satsuma", s
             )),
         }
     }
@@ -2798,7 +2809,7 @@ fn main() {
     // shell out to the CaDiCaL binary with --veripb so its proof is also
     // VeriPB-checkable.  Either way a solved instance carries a verifiable
     // certificate.  Short-circuits before the matrix search.
-    if matches!(args.backend, BackendChoice::PbCadical | BackendChoice::Hydra | BackendChoice::HydraSymBreak) {
+    if matches!(args.backend, BackendChoice::PbCadical | BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma) {
         use logic::cook_pbp::{detect_shape, emit_proof, CnfShape};
         use std::io::Write as _;
         let bk = args.backend.name();
@@ -2870,7 +2881,7 @@ fn main() {
         // No structural shape.  Hydra inserts the XOR/parity stage here;
         // pb-cadical goes straight to CaDiCaL.
         let mut xor_simplified: Option<(Vec<Vec<i32>>, Vec<Option<bool>>)> = None;
-        if matches!(args.backend, BackendChoice::Hydra | BackendChoice::HydraSymBreak) && clauses.len() <= 5_000_000 {
+        if matches!(args.backend, BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma) && clauses.len() <= 5_000_000 {
             use logic::xor_gauss::{solve_xor_system, XorGaussResult};
             let t_x = Instant::now();
             eprintln!("c {}: structure analysis (xor stage)…", bk);
@@ -3071,6 +3082,147 @@ fn main() {
         } else {
             (solve_clauses, nvars)
         };
+
+        // hydra_satsuma fall-through: hand the residual to the SAT Comp 2026
+        // winner satsuma-iter+kissat inside its Docker image. satsuma emits a
+        // binary-SR proof of its symmetry breaking, kissat appends its
+        // refutation, and on UNSAT dsr-trim verifies the composed proof
+        // against the formula we handed over — so a non-GE UNSAT comes back
+        // CHECKER-CERTIFIED (unlike the native hydra_sym_break stage). On a
+        // GE residual the certificate covers only the residual; the verdict
+        // stays sound but is flagged uncertified, matching hydra's XOR path.
+        if matches!(args.backend, BackendChoice::HydraSatsuma) {
+            // Mount dir under /tmp: Docker Desktop's default file sharing
+            // covers /private/tmp, while std::env::temp_dir()'s
+            // /var/folders/... may not be shared.
+            let mdir = std::path::PathBuf::from(format!("/tmp/pbsatsuma-{}", std::process::id()));
+            if let Err(e) = std::fs::create_dir_all(&mdir) {
+                eprintln!("c ERROR: satsuma mount dir: {}", e);
+                std::process::exit(2);
+            }
+            let cnf_path = mdir.join("f.cnf");
+            {
+                let f = match std::fs::File::create(&cnf_path) {
+                    Ok(f) => f,
+                    Err(e) => { eprintln!("c ERROR: satsuma cnf: {}", e); std::process::exit(2); }
+                };
+                let mut w = io::BufWriter::new(f);
+                let _ = writeln!(w, "p cnf {} {}", solve_nvars, solve_clauses.len());
+                for c in solve_clauses {
+                    for &l in c { let _ = write!(w, "{} ", l); }
+                    let _ = writeln!(w, "0");
+                }
+            }
+            let remaining = if args.timeout_secs > 0 {
+                args.timeout_secs.saturating_sub(t0.elapsed().as_secs()).max(1)
+            } else {
+                0
+            };
+            let inner = format!(
+                "cd /src && {} ./run_satsuma_kissat.sh /work/f.cnf /work; rc=$?; \
+                 if [ $rc = 20 ]; then echo \"c dsrtrim: $(./dsr-trim/bin/dsr-trim -f /work/f.cnf /work/proof.out /dev/null 2>/dev/null | grep '^s ')\"; fi; exit $rc",
+                if remaining > 0 { format!("timeout {}s", remaining) } else { String::new() });
+            eprintln!("c {}: {} -> satsuma-iter+kissat (docker){}", bk,
+                      if forced.is_some() { "GE-simplified residual" } else { "no Cook shape" },
+                      if remaining > 0 { format!(" budget={}s", remaining) } else { String::new() });
+            let out = std::process::Command::new("docker")
+                .args(["run", "--rm", "-v"])
+                .arg(format!("{}:/work", mdir.display()))
+                .args(["satsuma-iter-kissat", "bash", "-c"])
+                .arg(&inner)
+                .output();
+            let out = match out {
+                Ok(o) => o,
+                Err(e) => {
+                    eprintln!("c ERROR: docker run failed: {} (build the image with tools/satsuma/build.sh)", e);
+                    let _ = std::fs::remove_dir_all(&mdir);
+                    std::process::exit(2);
+                }
+            };
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let mut verdict: Option<&str> = None;
+            let mut vline: Vec<i32> = Vec::new();
+            let mut dsr_verified = false;
+            for line in stdout.lines() {
+                if let Some(rest) = line.strip_prefix("s ") {
+                    let v = rest.trim();
+                    if v == "SATISFIABLE" || v == "UNSATISFIABLE" { verdict = Some(if v == "SATISFIABLE" { "SAT" } else { "UNSAT" }); }
+                } else if let Some(rest) = line.strip_prefix("v ") {
+                    for tok in rest.split_whitespace() {
+                        if let Ok(l) = tok.parse::<i32>() {
+                            if l != 0 { vline.push(l); }
+                        }
+                    }
+                } else if line.starts_with("c dsrtrim: s VERIFIED UNSAT") {
+                    dsr_verified = true;
+                }
+            }
+            let el_ms = t0.elapsed().as_secs_f64() * 1000.0;
+            if verdict.is_some() {
+                eprintln!("c {}: prover=satsuma-kissat", bk);
+            }
+            match verdict {
+                Some("UNSAT") => {
+                    eprintln!("c UNSAT in {:.1}ms", el_ms);
+                    if forced.is_some() {
+                        eprintln!("c {}: UNSAT of GE residual (sound; SR certificate covers \
+                                   the residual only — uncertified for the original)", bk);
+                    } else if dsr_verified {
+                        eprintln!("c {}: dsr-trim VERIFIED UNSAT (composed satsuma SR + kissat \
+                                   refutation checks against the input formula)", bk);
+                        if let Some(p) = args.proof.as_ref() {
+                            match std::fs::copy(mdir.join("proof.out"), p) {
+                                Ok(_) => eprintln!("c {}: SR proof copied to {} (binary SR — check \
+                                                    with dsr-trim, not cake_lpr)", bk, p.display()),
+                                Err(e) => eprintln!("c {}: SR proof copy failed: {}", bk, e),
+                            }
+                        }
+                    } else {
+                        eprintln!("c {}: WARNING dsr-trim did NOT verify the proof — verdict \
+                                   sound-if-kissat-correct but UNCERTIFIED", bk);
+                    }
+                    println!("s UNSATISFIABLE");
+                }
+                Some("SAT") => {
+                    eprintln!("c SAT in {:.1}ms", el_ms);
+                    eprintln!("c {}: model over satsuma-augmented vars projected to the \
+                               original {} (model is the certificate)", bk, nvars);
+                    println!("s SATISFIABLE");
+                    // Project: satsuma's SBP aux vars sit above the original
+                    // range; original clauses mention only 1..=nvars, and on a
+                    // GE residual the forced units overwrite eliminated vars.
+                    let mut sign = vec![true; nvars + 1];
+                    for &l in &vline {
+                        let v = l.unsigned_abs() as usize;
+                        if v <= nvars { sign[v] = l > 0; }
+                    }
+                    if let Some(f) = forced {
+                        for (i, ov) in f.iter().enumerate() {
+                            if let Some(b) = ov {
+                                if i + 1 <= nvars { sign[i + 1] = *b; }
+                            }
+                        }
+                    }
+                    let mut line = String::from("v");
+                    for v in 1..=nvars {
+                        line.push(' ');
+                        if !sign[v] { line.push('-'); }
+                        line.push_str(&v.to_string());
+                        if line.len() > 70 {
+                            println!("{}", line);
+                            line = String::from("v");
+                        }
+                    }
+                    println!("{} 0", line);
+                }
+                _ => {
+                    eprintln!("c TIMEOUT after {:.1}ms", el_ms);
+                    eprintln!("c {}: satsuma-iter+kissat reached no verdict (timeout/unknown)", bk);
+                }
+            }
+            let _ = std::fs::remove_dir_all(&mdir);
+            return;
+        }
 
         // Proof routing: a CaDiCaL LRAT proof is only valid against the CNF
         // CaDiCaL actually saw.  On a GE-simplified residual OR a
@@ -3621,7 +3773,7 @@ fn main() {
     let outcome = match args.backend {
         BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
         BackendChoice::PbCadical => unreachable!("pb-cadical is handled before the search dispatch"),
-        BackendChoice::Hydra | BackendChoice::HydraSymBreak =>
+        BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma =>
             unreachable!("hydra is handled before the search dispatch"),
         BackendChoice::Matrix(m) => {
             // Auto-skip preprocess on very large inputs.  Empirically

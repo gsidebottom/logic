@@ -881,3 +881,137 @@ mod timing_diag {
         }
     }
 }
+
+// ===========================================================================
+// Phase 6: VeriPB symmetry-proof emission. A symmetry-breaking clause is a
+// *sound addition* — redundant under the breaking symmetry as witness. VeriPB's
+// `red` (redundancy) rule takes exactly such a witness substitution, so we can
+// certify that the SBPs are legitimately derivable from the original formula.
+// This certifies the novel part (that breaking is sound); composing it with the
+// augmented-formula refutation into an end-to-end certified UNSAT is the
+// remaining integration. Base case here: aux-var-free per-generator leader
+// clauses (`x_v <= x_{sigma v}` for the smallest moved v), whose `red` witness
+// is the full symmetry permutation.
+// ===========================================================================
+
+/// One aux-var-free breaking clause per reduced generator: for the
+/// smallest variable `v` moved by the variable permutation `pi`, the
+/// leader clause `(¬x_v ∨ x_{pi(v)})` (i.e. `x_v ≤ x_{pi(v)}`), paired
+/// with `pi` as its VeriPB redundancy witness.
+pub fn simple_breaks(nvars: usize, clauses: &[Vec<i32>]) -> Vec<(Vec<i32>, Vec<usize>)> {
+    let cg = cnf_to_graph(nvars, clauses);
+    let gens = find_generators(&cg.graph);
+    let var_perms: Vec<Vec<usize>> =
+        gens.iter().filter_map(|g| to_variable_perm(g, nvars)).collect();
+    let reduced = reduce_generators(nvars, &var_perms, None);
+    let mut out = Vec::new();
+    for pi in reduced {
+        if let Some(v) = (0..nvars).find(|&v| pi[v] != v) {
+            let a = v as i32 + 1;
+            let b = pi[v] as i32 + 1;
+            out.push((vec![-a, b], pi));
+        }
+    }
+    out
+}
+
+/// Emit a VeriPB proof that each leader clause in `breaks` is a sound
+/// addition to the CNF (`nclauses` original constraints), justified by
+/// its symmetry permutation witness. `conclusion NONE` — this certifies
+/// the derivations, not a refutation.
+///
+/// A *single* break verifies directly (a lex-leader clause is redundant
+/// under its symmetry — checker-confirmed). Emitting *several* generators'
+/// breaks together does not always auto-verify: once earlier SBP clauses
+/// enter the database, a later clause's redundancy proofgoal needs the
+/// dominance rule or an explicit subproof (BreakID/satsuma's machinery) —
+/// the remaining Phase-6 integration.
+pub fn emit_symmetry_proof<W: std::io::Write>(
+    nclauses: usize,
+    breaks: &[(Vec<i32>, Vec<usize>)],
+    w: &mut W,
+) -> std::io::Result<()> {
+    writeln!(w, "pseudo-Boolean proof version 3.0")?;
+    writeln!(w, "f {};", nclauses)?;
+    for (clause, pi) in breaks {
+        // clause as PB constraint: sum of literals >= 1
+        let mut lhs = String::new();
+        for &l in clause {
+            let name = if l > 0 { format!("x{}", l) } else { format!("~x{}", -l) };
+            lhs.push_str(&format!("1 {} ", name));
+        }
+        // witness: the full permutation substitution over moved variables
+        let mut wit = String::new();
+        for (v, &pv) in pi.iter().enumerate() {
+            if v != pv {
+                wit.push_str(&format!("x{} -> x{} ", v + 1, pv + 1));
+            }
+        }
+        writeln!(w, "red {}>= 1 : {};", lhs, wit.trim_end())?;
+    }
+    writeln!(w, "output NONE;")?;
+    writeln!(w, "conclusion NONE;")?;
+    writeln!(w, "end pseudo-Boolean proof;")?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod phase6_tests {
+    use super::*;
+    fn php(p: usize, h: usize) -> (usize, Vec<Vec<i32>>) {
+        let v = |pp: usize, hh: usize| (pp * h + hh + 1) as i32;
+        let mut cl = Vec::new();
+        for pp in 0..p { cl.push((0..h).map(|hh| v(pp, hh)).collect()); }
+        for hh in 0..h { for pp in 0..p { for qq in pp+1..p { cl.push(vec![-v(pp,hh), -v(qq,hh)]); } } }
+        (p * h, cl)
+    }
+    /// Gate the symmetry derivations against the real VeriPB checker:
+    /// emit `f` + one `red` per leader clause (witness = its symmetry),
+    /// run veripb, and require it to VERIFY that the SBP additions are
+    /// sound. Skips (does not fail) when veripb is unavailable.
+    fn veripb_verifies(p: usize, h: usize) -> Option<bool> {
+        use std::io::Write as _;
+        let veripb = [
+            format!("{}/.cargo/bin/veripb", std::env::var("HOME").unwrap_or_default()),
+            "veripb".to_string(),
+        ]
+        .into_iter()
+        .find(|c| std::process::Command::new(c).arg("--version").output().is_ok())?;
+        let (nv, cl) = php(p, h);
+        let dir = std::env::temp_dir();
+        let cnf = dir.join(format!("sb_php{}{}.cnf", p, h));
+        let pbp = dir.join(format!("sb_php{}{}.pbp", p, h));
+        {
+            let mut f = std::fs::File::create(&cnf).unwrap();
+            writeln!(f, "p cnf {} {}", nv, cl.len()).unwrap();
+            for c in &cl {
+                for &l in c { write!(f, "{} ", l).unwrap(); }
+                writeln!(f, "0").unwrap();
+            }
+        }
+        let breaks = simple_breaks(nv, &cl);
+        assert!(!breaks.is_empty(), "PHP must yield symmetry breaks");
+        // Single-generator break: soundly VeriPB-certified as a redundant
+        // addition. Multi-generator composition needs dominance/subproofs.
+        {
+            let mut f = std::fs::File::create(&pbp).unwrap();
+            emit_symmetry_proof(cl.len(), &breaks[..1], &mut f).unwrap();
+        }
+        let out = std::process::Command::new(&veripb).arg(&cnf).arg(&pbp).output().unwrap();
+        Some(String::from_utf8_lossy(&out.stdout).contains("VERIFIED"))
+    }
+
+    #[test]
+    fn symmetry_proof_veripb_verified() {
+        for (p, h) in [(3usize, 2usize), (4, 3)] {
+            match veripb_verifies(p, h) {
+                Some(true) => {}
+                Some(false) => panic!("veripb rejected PHP_{},{} symmetry proof", p, h),
+                None => {
+                    eprintln!("veripb unavailable — skipping PHP_{},{} proof gate", p, h);
+                    return;
+                }
+            }
+        }
+    }
+}

@@ -42,8 +42,9 @@ this machine); UNSAT verification is a second, separately-budgeted run.
 - Solve: bounded by `timeout` inside the container at the remaining
   budget minus 2 s, so the container always self-terminates and can
   never outlive sat's backstop watchdog (no orphaned containers).
-- `--satsuma-verify-secs N` (default 600, 0 = unlimited): dsr-trim
-  budget. Runs AFTER the verdict + timing line land (verification never
+- `--satsuma-verify-secs N` (default: same as --timeout, matching
+  run_benchmark's --proof-timeout convention for the hydra chain;
+  0 = unlimited): dsr-trim budget. Runs AFTER the verdict + timing line land (verification never
   eats solve budget or inflates recorded solve time). On timeout the
   UNSAT stays sound but is recorded UNCERTIFIED ("dsr-trim timeout").
 - `--satsuma-mem-gb N` (default 0 = uncapped): per-container hard cap

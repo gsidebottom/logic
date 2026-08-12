@@ -2328,8 +2328,10 @@ struct Args {
     /// proof. Runs AFTER the verdict is printed (never eats solve
     /// budget; the watchdog stands down once the verdict lands). On
     /// timeout the UNSAT stays sound but is recorded UNCERTIFIED.
-    /// Default 600; 0 = unlimited.
-    satsuma_verify_secs: u64,
+    /// Default (unset) = same as --timeout, mirroring run_benchmark's
+    /// --proof-timeout convention so hydra and hydra_satsuma proofs get
+    /// equal checking budgets; 0 = unlimited.
+    satsuma_verify_secs: Option<u64>,
     /// hydra_satsuma/satsuma: per-container hard memory cap in GiB
     /// (docker --memory/--memory-swap). 0 = uncapped (competition-
     /// faithful; the Docker VM's total allocation still binds). A
@@ -2443,7 +2445,7 @@ fn parse_args() -> Result<Args, String> {
         preprocess_max_clauses: DEFAULT_PREPROCESS_MAX_CLAUSES,
         xor_gauss: true,
         symbreak: None,
-        satsuma_verify_secs: 600,
+        satsuma_verify_secs: None,
         satsuma_mem_gb: 0,
         cook: true,
         xor_gauss_max_clauses: 1_000_000,
@@ -2535,13 +2537,13 @@ fn parse_args() -> Result<Args, String> {
             "--satsuma-verify-secs" => {
                 let v = iter.next().ok_or_else(||
                     "--satsuma-verify-secs requires a value (seconds; 0 = unlimited)".to_string())?;
-                a.satsuma_verify_secs = v.parse::<u64>().map_err(|_|
-                    format!("--satsuma-verify-secs expects a non-negative integer; got {:?}", v))?;
+                a.satsuma_verify_secs = Some(v.parse::<u64>().map_err(|_|
+                    format!("--satsuma-verify-secs expects a non-negative integer; got {:?}", v))?);
             }
             s2 if s2.starts_with("--satsuma-verify-secs=") => {
                 let v = &s2["--satsuma-verify-secs=".len()..];
-                a.satsuma_verify_secs = v.parse::<u64>().map_err(|_|
-                    format!("--satsuma-verify-secs expects a non-negative integer; got {:?}", v))?;
+                a.satsuma_verify_secs = Some(v.parse::<u64>().map_err(|_|
+                    format!("--satsuma-verify-secs expects a non-negative integer; got {:?}", v))?);
             }
             "--satsuma-mem-gb" => {
                 let v = iter.next().ok_or_else(||
@@ -3260,7 +3262,9 @@ fn main() {
                                    the residual only — uncertified for the original)", bk);
                     } else {
                         // Phase B: bounded in-container dsr-trim verification.
-                        let vb = args.satsuma_verify_secs;
+                        // Unset = the solve timeout (parity with run_benchmark's
+                        // --proof-timeout default for the hydra proof chain).
+                        let vb = args.satsuma_verify_secs.unwrap_or(args.timeout_secs);
                         eprintln!("c {}: verifying composed SR proof (dsr-trim{})…", bk,
                                   if vb > 0 { format!(", budget {}s", vb) } else { ", unbounded".into() });
                         let inner_verify = format!(

@@ -1,0 +1,5 @@
+note: seed rank 64 != module default 48 (fine for pursue9/census)
+seed loaded + exactly verified over F_p, p = 2013265921 (64 summands)
+funnel: 0 splits, 738221620 targeted flips, 0 reductions
+
+3374440 walks, 5669018110 moves in 43200s; best rank 48; distinct rank-23 canonical forms collected: 0

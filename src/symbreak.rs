@@ -265,6 +265,16 @@ pub fn group_order(n: usize, generators: &[Vec<usize>]) -> u128 {
 /// stabilizer) — sound, and what keeps K_n's n! leaves down to a few
 /// generators. A node budget bounds the search.
 pub fn find_generators(g: &Graph) -> Vec<Vec<usize>> {
+    find_generators_timed(g, None)
+}
+
+/// As [`find_generators`], but abort the IR search once `deadline`
+/// passes and return whatever generators were found so far. Each is a
+/// verified automorphism, so a truncated set is still sound (it just
+/// breaks fewer symmetries) — the safety valve that keeps the stage
+/// from ever dominating the solve on a labeling the naive search
+/// handles poorly (the dejavu-competitiveness gap, bounded).
+pub fn find_generators_timed(g: &Graph, deadline: Option<std::time::Instant>) -> Vec<Vec<usize>> {
     let n = g.n;
     // adjacency as a set of ordered pairs (u<w) packed into u64
     let key = |u: usize, w: usize| -> u64 {
@@ -295,11 +305,26 @@ pub fn find_generators(g: &Graph) -> Vec<Vec<usize>> {
         g: &'a Graph,
         n: usize,
         first_inv: Option<Vec<usize>>,
+        /// Partition shape (sorted cell sizes) along the first descent,
+        /// one per depth — the reference invariant for pruning.
+        ref_shape: Vec<Vec<usize>>,
         gens: Vec<Vec<usize>>,
         nodes: usize,
         budget: usize,
+        deadline: Option<std::time::Instant>,
+        aborted: bool,
     }
-    let mut s = Search { g, n, first_inv: None, gens: Vec::new(), nodes: 0, budget: 2_000_000 };
+    let mut s = Search {
+        g,
+        n,
+        first_inv: None,
+        ref_shape: Vec::new(),
+        gens: Vec::new(),
+        nodes: 0,
+        budget: 2_000_000,
+        deadline,
+        aborted: false,
+    };
 
     // Recursive DFS over the IR tree. `path` = individualized vertices.
     fn dfs<F: Fn(&[usize]) -> bool>(
@@ -308,10 +333,41 @@ pub fn find_generators(g: &Graph) -> Vec<Vec<usize>> {
         path: &[usize],
         is_auto: &F,
     ) {
-        if s.nodes >= s.budget {
+        if s.aborted || s.nodes >= s.budget {
             return;
         }
         s.nodes += 1;
+        // Wall-clock safety valve: checked every 256 nodes (Instant::now is
+        // not free). Once tripped, unwind the whole search.
+        if s.nodes & 0xff == 0 {
+            if let Some(dl) = s.deadline {
+                if std::time::Instant::now() >= dl {
+                    s.aborted = true;
+                    return;
+                }
+            }
+        }
+        // First-path invariant pruning: the partition shape (sorted cell
+        // sizes) at each depth. Any automorphism maps the first descent to
+        // an isomorphic path, so a branch whose shape diverges from the
+        // reference at this depth cannot reach an automorphism — prune it.
+        let depth = path.len();
+        let shape: Vec<usize> = {
+            let mut counts = std::collections::HashMap::new();
+            for &c in color {
+                *counts.entry(c).or_insert(0usize) += 1;
+            }
+            let mut v: Vec<usize> = counts.into_values().collect();
+            v.sort_unstable();
+            v
+        };
+        if s.first_inv.is_none() {
+            if depth == s.ref_shape.len() {
+                s.ref_shape.push(shape);
+            }
+        } else if depth < s.ref_shape.len() && shape != s.ref_shape[depth] {
+            return;
+        }
         if num_colors(color) == s.n {
             // discrete: color[v] is v's position; ℓ = color.
             if s.first_inv.is_none() {
@@ -450,19 +506,66 @@ pub fn lex_leader(pi: &[usize], nvars: usize, next_fresh: &mut i32) -> Vec<Vec<i
     cl
 }
 
+/// Reduce a set of permutations to an irredundant generating set: keep
+/// a permutation only if it strictly enlarges the group generated so
+/// far. `find_generators` over-produces (one per IR leaf); the
+/// generating set is what a symmetry tool like dejavu actually returns,
+/// and one lex-leader per generator suffices to break the whole group.
+pub fn reduce_generators(
+    n: usize,
+    gens: &[Vec<usize>],
+    deadline: Option<std::time::Instant>,
+) -> Vec<Vec<usize>> {
+    let mut kept: Vec<Vec<usize>> = Vec::new();
+    let mut order: u128 = 1;
+    for g in gens {
+        if let Some(dl) = deadline {
+            if std::time::Instant::now() >= dl {
+                break; // partial reduction is still a sound generating subset
+            }
+        }
+        if perm_is_identity(g) {
+            continue;
+        }
+        let mut trial = kept.clone();
+        trial.push(g.clone());
+        let o2 = group_order(n, &trial);
+        if o2 > order {
+            kept.push(g.clone());
+            order = o2;
+        }
+    }
+    kept
+}
+
 /// End-to-end Phase 4: detect the formula's symmetries and return the
 /// lex-leader SBP clauses plus the new variable count (originals +
 /// aux). Sound: the augmented formula is equisatisfiable with the
 /// original (SAT-preserving), so a SAT verdict + its witness stay valid.
 pub fn break_symmetries(nvars: usize, clauses: &[Vec<i32>]) -> (Vec<Vec<i32>>, usize) {
+    break_symmetries_within(nvars, clauses, None)
+}
+
+/// As [`break_symmetries`] but abort symmetry *detection* once
+/// `deadline` passes, using the (sound, verified) generators found so
+/// far. Keeps the stage from ever dominating the solve budget.
+pub fn break_symmetries_within(
+    nvars: usize,
+    clauses: &[Vec<i32>],
+    deadline: Option<std::time::Instant>,
+) -> (Vec<Vec<i32>>, usize) {
     let cg = cnf_to_graph(nvars, clauses);
-    let gens = find_generators(&cg.graph);
+    let gens = find_generators_timed(&cg.graph, deadline);
+    // sign-preserving generators -> variable permutations, reduced to an
+    // irredundant generating set (avoids emitting a lex-leader per
+    // redundant automorphism).
+    let var_perms: Vec<Vec<usize>> =
+        gens.iter().filter_map(|g| to_variable_perm(g, nvars)).collect();
+    let reduced = reduce_generators(nvars, &var_perms, deadline);
     let mut next_fresh = nvars as i32 + 1;
     let mut added = Vec::new();
-    for g in &gens {
-        if let Some(pi) = to_variable_perm(g, nvars) {
-            added.extend(lex_leader(&pi, nvars, &mut next_fresh));
-        }
+    for pi in &reduced {
+        added.extend(lex_leader(pi, nvars, &mut next_fresh));
     }
     (added, (next_fresh - 1) as usize)
 }
@@ -746,5 +849,35 @@ mod tests {
         }
         // Positive and negative literals differ (their degrees do).
         assert_ne!(c[lit_node(1) as usize], c[lit_node(-1) as usize]);
+    }
+}
+
+#[cfg(test)]
+mod timing_diag {
+    use super::*;
+    use std::time::Instant;
+    fn php(p: usize, h: usize) -> (usize, Vec<Vec<i32>>) {
+        let v = |pp: usize, hh: usize| (pp * h + hh + 1) as i32;
+        let mut cl = Vec::new();
+        for pp in 0..p { cl.push((0..h).map(|hh| v(pp, hh)).collect()); }
+        for hh in 0..h { for pp in 0..p { for qq in pp+1..p { cl.push(vec![-v(pp,hh), -v(qq,hh)]); } } }
+        (p * h, cl)
+    }
+    #[test]
+    #[ignore]
+    fn diag() {
+        for (p, h) in [(7usize,6usize),(9,8),(11,10)] {
+            let (nv, cl) = php(p, h);
+            let cg = cnf_to_graph(nv, &cl);
+            let t = Instant::now();
+            let gens = find_generators(&cg.graph);
+            let t_fg = t.elapsed().as_secs_f64()*1000.0;
+            let t2 = Instant::now();
+            let vp: Vec<Vec<usize>> = gens.iter().filter_map(|g| to_variable_perm(g, nv)).collect();
+            let red = reduce_generators(nv, &vp, None);
+            let t_rg = t2.elapsed().as_secs_f64()*1000.0;
+            eprintln!("PHP_{},{}: {} gens found in {:.1}ms; reduced to {} in {:.1}ms",
+                      p, h, gens.len(), t_fg, red.len(), t_rg);
+        }
     }
 }

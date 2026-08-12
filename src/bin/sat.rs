@@ -2283,6 +2283,17 @@ struct Args {
     /// the x1/x2 family) in polynomial time, which resolution — and the
     /// matrix search — can't.
     xor_gauss: bool,
+    /// Symmetry-breaking pre-CaDiCaL stage (hydra only): detect the
+    /// formula's automorphisms (`logic::symbreak`, a dejavu-lineage IR
+    /// search) and add lex-leader SBP clauses before the handoff. SAT
+    /// verdicts + witnesses stay sound (SBPs are sat-preserving; the
+    /// model is projected back to the original variables); UNSAT is
+    /// sound but uncertified until the SR/VeriPB symmetry proof (Phase
+    /// 6). Default `true`; `--no-symbreak` disables (for A/B).
+    symbreak: bool,
+    /// Run the Cook PB-prover shape detector (hydra/pb-cadical). Default
+    /// `true`; `--no-cook` disables it (isolates later stages for A/B).
+    cook: bool,
     /// Skip the XOR-GE pass when the input has more than this many
     /// clauses (0 = no cap).  Like `preprocess_max_clauses`, this guards
     /// against the recovery pass — which groups every clause by its
@@ -2386,6 +2397,8 @@ fn parse_args() -> Result<Args, String> {
         preprocess: true,
         preprocess_max_clauses: DEFAULT_PREPROCESS_MAX_CLAUSES,
         xor_gauss: true,
+        symbreak: true,
+        cook: true,
         xor_gauss_max_clauses: 1_000_000,
         emit_cover: None,
         emit_drat: None,
@@ -2468,6 +2481,10 @@ fn parse_args() -> Result<Args, String> {
             "--no-preprocess"   => { a.preprocess = false; }
             "--xor-gauss"       => { a.xor_gauss = true;  }
             "--no-xor-gauss"    => { a.xor_gauss = false; }
+            "--symbreak"        => { a.symbreak = true;  }
+            "--no-symbreak"     => { a.symbreak = false; }
+            "--cook"            => { a.cook = true;  }
+            "--no-cook"         => { a.cook = false; }
             // Cap on input clauses for which preprocess runs (0 = no cap).
             "--preprocess-max-clauses" => {
                 let v = iter.next().ok_or_else(||
@@ -2776,7 +2793,7 @@ fn main() {
         // Cook shapes are all small instances (largest detection in either
         // competition set: <1M clauses); skip the detectors on giants so
         // structure analysis never eats meaningful engine budget there.
-        let try_cook = clauses.len() <= 1_000_000;
+        let try_cook = args.cook && clauses.len() <= 1_000_000;
         // Backstop watchdog: the main watchdog spawns after this block, and
         // hydra's XOR stage can run minutes on 100k+-var parity systems.
         // CaDiCaL gets its own (budget-split) -t below, so fire with a 60s
@@ -2963,11 +2980,91 @@ fn main() {
         let solve_clauses: &[Vec<i32>] =
             xor_simplified.as_ref().map(|(s, _)| s.as_slice()).unwrap_or(&clauses);
         let forced: Option<&Vec<Option<bool>>> = xor_simplified.as_ref().map(|(_, f)| f);
+
+        // Symmetry-breaking stage (hydra only, `logic::symbreak`): detect
+        // the formula's automorphisms and add lex-leader SBP clauses before
+        // the CaDiCaL handoff. Gated to a size where the (not-yet-dejavu-fast)
+        // IR search is affordable, and skipped on a GE-simplified residual so
+        // the two transforms don't stack. SBPs are satisfiability-preserving:
+        // a SAT model of the augmented formula, projected to the original
+        // variables, is a genuine model (the model print below caps at
+        // `nvars`); UNSAT stays sound (equisatisfiable) but uncertified until
+        // the SR/VeriPB symmetry proof (Phase 6), so `emit_lrat` is forced off.
+        const SB_VAR_CAP: usize = 50_000;
+        const SB_CLAUSE_CAP: usize = 200_000;
+        let mut aug_clauses: Vec<Vec<i32>> = Vec::new();
+        let mut aug_nvars = nvars;
+        let mut symbroke = false;
+        if matches!(args.backend, BackendChoice::Hydra)
+            && args.symbreak
+            && forced.is_none()
+            && nvars <= SB_VAR_CAP
+            && solve_clauses.len() <= SB_CLAUSE_CAP
+        {
+            let t_sb = Instant::now();
+            // Detection budget: never let the (not-yet-dejavu-fast) IR search
+            // dominate — cap at min(3s, 10% of the remaining wall-clock). On a
+            // labeling the naive search handles poorly it aborts and uses the
+            // sound partial generator set (or none, falling through to plain
+            // CaDiCaL), so the stage is a strict Pareto safety.
+            let sb_budget = if args.timeout_secs > 0 {
+                let remain = args.timeout_secs.saturating_sub(t0.elapsed().as_secs()).max(1);
+                std::time::Duration::from_secs_f64((remain as f64 * 0.10).min(3.0).max(0.2))
+            } else {
+                std::time::Duration::from_secs(3)
+            };
+            // Run detection on a worker thread and hard-abandon it past the
+            // budget: the internal deadline stops the (dominant) IR search,
+            // but Schreier-Sims reduction is not deadline-perfect, so a
+            // recv_timeout is the bulletproof guarantee the stage never
+            // blocks the solve. An abandoned thread self-terminates via its
+            // deadline; a SAT-preserving stage that produces nothing is fine.
+            let (added, newn) = {
+                let owned: Vec<Vec<i32>> = solve_clauses.to_vec();
+                let dl = t_sb + sb_budget;
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let r = logic::symbreak::break_symmetries_within(nvars, &owned, Some(dl));
+                    let _ = tx.send(r);
+                });
+                match rx.recv_timeout(sb_budget + std::time::Duration::from_millis(500)) {
+                    Ok(r) => r,
+                    Err(_) => {
+                        eprintln!("c {}: symmetry stage: detection over budget, skipped", bk);
+                        (Vec::new(), nvars)
+                    }
+                }
+            };
+            if added.is_empty() {
+                eprintln!("c {}: symmetry stage: no symmetry found ({:.1}ms)",
+                          bk, t_sb.elapsed().as_secs_f64() * 1000.0);
+            } else {
+                eprintln!("c {}: symmetry stage: {} SBP clauses, +{} aux vars ({:.1}ms) \
+                           -> augmented solve", bk, added.len(), newn - nvars,
+                          t_sb.elapsed().as_secs_f64() * 1000.0);
+                aug_clauses.reserve(solve_clauses.len() + added.len());
+                aug_clauses.extend_from_slice(solve_clauses);
+                aug_clauses.extend(added);
+                aug_nvars = newn;
+                symbroke = true;
+            }
+        }
+        // The CNF actually handed to the engine (augmented when symbroke).
+        let (solve_clauses, solve_nvars): (&[Vec<i32>], usize) = if symbroke {
+            (&aug_clauses, aug_nvars)
+        } else {
+            (solve_clauses, nvars)
+        };
+
         // Proof routing: a CaDiCaL LRAT proof is only valid against the CNF
-        // CaDiCaL actually saw.  On a GE-simplified residual it would NOT
-        // certify the original formula, so no proof is emitted there (the
-        // verdict stays sound: GE-forced units are logical consequences).
-        let emit_lrat = args.proof.is_some() && forced.is_none();
+        // CaDiCaL actually saw.  On a GE-simplified residual OR a
+        // symmetry-augmented formula it would NOT certify the original, so no
+        // proof is emitted there (the verdict stays sound: GE-forced units are
+        // logical consequences; SBPs are satisfiability-preserving).
+        let emit_lrat = args.proof.is_some() && forced.is_none() && !symbroke;
+        // SAT models and v-line handling: reconstruct (cap to original vars)
+        // whenever the engine saw a transformed formula.
+        let reconstruct_model = forced.is_some() || symbroke;
         // Engine schedule.  "portfolio[:pct]" = kissat for the first pct% of
         // the remaining budget, then cadical for the rest.  Sizing (from the
         // 5000s baseline runs): both measured kissat wins landed at 165s/345s,
@@ -2999,7 +3096,7 @@ fn main() {
                 Err(e) => { eprintln!("c ERROR: temp cnf: {}", e); std::process::exit(2); }
             };
             let mut w = io::BufWriter::new(f);
-            let _ = writeln!(w, "p cnf {} {}", nvars, solve_clauses.len());
+            let _ = writeln!(w, "p cnf {} {}", solve_nvars, solve_clauses.len());
             for c in solve_clauses {
                 for &l in c { let _ = write!(w, "{} ", l); }
                 let _ = writeln!(w, "0");
@@ -3116,8 +3213,9 @@ fn main() {
                             println!("{}", line);
                         }
                     } else if line.starts_with("v ") {
-                        if forced.is_some() {
-                            // Residual model: collect, reconstruct + print below.
+                        if reconstruct_model {
+                            // Transformed (residual / symmetry-augmented) model:
+                            // collect, reconstruct + print below over original vars.
                             for tok in line[2..].split_whitespace() {
                                 if let Ok(l) = tok.parse::<i32>() {
                                     if l != 0 { vline.push(l); }
@@ -3320,19 +3418,25 @@ fn main() {
                            no refutation proof)", bk,
                           if deciding_kissat { "kissat" } else { "cadical" });
                 if let Some(out) = args.proof.as_ref() { let _ = std::fs::remove_file(out); }
-                if let Some(f) = forced {
-                    // Reconstruct the ORIGINAL formula's model: CaDiCaL's
-                    // assignment over the residual, with every GE-forced var
-                    // overwritten to its forced value (those vars were
-                    // eliminated, so CaDiCaL's values for them are arbitrary).
+                if reconstruct_model {
+                    // Reconstruct the ORIGINAL formula's model from the
+                    // engine's assignment over the transformed formula: keep
+                    // only original variables (aux SBP vars > nvars are
+                    // dropped), and — for a GE residual — overwrite every
+                    // GE-forced var with its forced value (those were
+                    // eliminated, so the engine's values are arbitrary). Sound
+                    // because SBPs only remove models: the projection of any
+                    // augmented model is a genuine original model.
                     let mut sign = vec![true; nvars + 1];
                     for &l in &vline {
                         let v = l.unsigned_abs() as usize;
                         if v <= nvars { sign[v] = l > 0; }
                     }
-                    for (i, ov) in f.iter().enumerate() {
-                        if let Some(b) = ov {
-                            if i + 1 <= nvars { sign[i + 1] = *b; }
+                    if let Some(f) = forced {
+                        for (i, ov) in f.iter().enumerate() {
+                            if let Some(b) = ov {
+                                if i + 1 <= nvars { sign[i + 1] = *b; }
+                            }
                         }
                     }
                     let mut line = String::from("v");

@@ -2199,6 +2199,15 @@ enum BackendChoice {
     /// verdict is sound; certificates per stage (`proof-format=pbp|lrat|
     /// none`).
     Hydra,
+    /// Hydra plus the symmetry-breaking stage (`logic::symbreak`)
+    /// between the Cook/XOR preprocessing and the CaDiCaL handoff.
+    /// Detects the formula's automorphisms and adds lex-leader SBP
+    /// clauses. SAT verdicts stay sound + certified-by-witness; a
+    /// symmetry-broken UNSAT is sound but UNCERTIFIED (no LRAT — the
+    /// augmented formula's proof does not certify the original), so
+    /// this variant trades some UNSAT-proof coverage for potential
+    /// speed on symmetric instances that escape the Cook shapes.
+    HydraSymBreak,
 }
 
 impl BackendChoice {
@@ -2208,6 +2217,7 @@ impl BackendChoice {
             BackendChoice::Cadical   => "cadical",
             BackendChoice::PbCadical => "pb-cadical",
             BackendChoice::Hydra     => "hydra",
+            BackendChoice::HydraSymBreak => "hydra_sym_break",
         }
     }
 
@@ -2244,10 +2254,12 @@ impl BackendChoice {
             "pb-cadical" | "pb_cadical"
                          | "pbcadical"      => Ok(BackendChoice::PbCadical),
             "hydra"                        => Ok(BackendChoice::Hydra),
+            "hydra_sym_break" | "hydra-sym-break"
+                         | "hydrasymbreak"  => Ok(BackendChoice::HydraSymBreak),
             _ => Err(format!(
                 "unknown backend {:?}; expected one of: smart, cdcl, eff, eff_cover, effb, \
                  greedy_cdcl, greedy_eff, greedy_effb, basic_eff, basic_effb, cadical, \
-                 pb-cadical, hydra", s
+                 pb-cadical, hydra, hydra_sym_break", s
             )),
         }
     }
@@ -2289,8 +2301,9 @@ struct Args {
     /// verdicts + witnesses stay sound (SBPs are sat-preserving; the
     /// model is projected back to the original variables); UNSAT is
     /// sound but uncertified until the SR/VeriPB symmetry proof (Phase
-    /// 6). Default `true`; `--no-symbreak` disables (for A/B).
-    symbreak: bool,
+    /// 6). None = default (on for `hydra_sym_break`, off for `hydra`);
+    /// `--symbreak`/`--no-symbreak` force it either way.
+    symbreak: Option<bool>,
     /// Run the Cook PB-prover shape detector (hydra/pb-cadical). Default
     /// `true`; `--no-cook` disables it (isolates later stages for A/B).
     cook: bool,
@@ -2397,7 +2410,7 @@ fn parse_args() -> Result<Args, String> {
         preprocess: true,
         preprocess_max_clauses: DEFAULT_PREPROCESS_MAX_CLAUSES,
         xor_gauss: true,
-        symbreak: true,
+        symbreak: None,
         cook: true,
         xor_gauss_max_clauses: 1_000_000,
         emit_cover: None,
@@ -2481,8 +2494,8 @@ fn parse_args() -> Result<Args, String> {
             "--no-preprocess"   => { a.preprocess = false; }
             "--xor-gauss"       => { a.xor_gauss = true;  }
             "--no-xor-gauss"    => { a.xor_gauss = false; }
-            "--symbreak"        => { a.symbreak = true;  }
-            "--no-symbreak"     => { a.symbreak = false; }
+            "--symbreak"        => { a.symbreak = Some(true);  }
+            "--no-symbreak"     => { a.symbreak = Some(false); }
             "--cook"            => { a.cook = true;  }
             "--no-cook"         => { a.cook = false; }
             // Cap on input clauses for which preprocess runs (0 = no cap).
@@ -2785,7 +2798,7 @@ fn main() {
     // shell out to the CaDiCaL binary with --veripb so its proof is also
     // VeriPB-checkable.  Either way a solved instance carries a verifiable
     // certificate.  Short-circuits before the matrix search.
-    if matches!(args.backend, BackendChoice::PbCadical | BackendChoice::Hydra) {
+    if matches!(args.backend, BackendChoice::PbCadical | BackendChoice::Hydra | BackendChoice::HydraSymBreak) {
         use logic::cook_pbp::{detect_shape, emit_proof, CnfShape};
         use std::io::Write as _;
         let bk = args.backend.name();
@@ -2857,7 +2870,7 @@ fn main() {
         // No structural shape.  Hydra inserts the XOR/parity stage here;
         // pb-cadical goes straight to CaDiCaL.
         let mut xor_simplified: Option<(Vec<Vec<i32>>, Vec<Option<bool>>)> = None;
-        if matches!(args.backend, BackendChoice::Hydra) && clauses.len() <= 5_000_000 {
+        if matches!(args.backend, BackendChoice::Hydra | BackendChoice::HydraSymBreak) && clauses.len() <= 5_000_000 {
             use logic::xor_gauss::{solve_xor_system, XorGaussResult};
             let t_x = Instant::now();
             eprintln!("c {}: structure analysis (xor stage)…", bk);
@@ -2995,8 +3008,11 @@ fn main() {
         let mut aug_clauses: Vec<Vec<i32>> = Vec::new();
         let mut aug_nvars = nvars;
         let mut symbroke = false;
-        if matches!(args.backend, BackendChoice::Hydra)
-            && args.symbreak
+        let want_symbreak = args
+            .symbreak
+            .unwrap_or(matches!(args.backend, BackendChoice::HydraSymBreak));
+        if matches!(args.backend, BackendChoice::Hydra | BackendChoice::HydraSymBreak)
+            && want_symbreak
             && forced.is_none()
             && nvars <= SB_VAR_CAP
             && solve_clauses.len() <= SB_CLAUSE_CAP
@@ -3605,7 +3621,8 @@ fn main() {
     let outcome = match args.backend {
         BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
         BackendChoice::PbCadical => unreachable!("pb-cadical is handled before the search dispatch"),
-        BackendChoice::Hydra => unreachable!("hydra is handled before the search dispatch"),
+        BackendChoice::Hydra | BackendChoice::HydraSymBreak =>
+            unreachable!("hydra is handled before the search dispatch"),
         BackendChoice::Matrix(m) => {
             // Auto-skip preprocess on very large inputs.  Empirically
             // Phase 1 preprocess takes ~150 µs / clause; at 2M

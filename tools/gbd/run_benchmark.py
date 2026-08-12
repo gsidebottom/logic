@@ -2083,7 +2083,7 @@ def main() -> int:
     global _giant_sem
     if args.giant_slots > 0:
         _giant_sem = threading.BoundedSemaphore(args.giant_slots)
-    if args.backend in ("pb-cadical", "pb_cadical", "hydra"):
+    if args.backend in ("pb-cadical", "pb_cadical", "hydra", "hydra_sym_break"):
         if CAKELPR_BIN is None:
             print("c WARNING: cake_lpr not found (PATH or ~/.cargo/bin) — "
                   "CaDiCaL-path LRAT proofs will go UNCHECKED. Build it from "

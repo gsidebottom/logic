@@ -1528,7 +1528,8 @@ def solve_one(
         # MB).  Only proofs that FAIL to verify are kept (moved to proof_dir
         # below).  So we write to a temp file, not proof_dir itself.
         proof_stem = None
-        if proof_dir is not None and backend in ("pb-cadical", "pb_cadical", "hydra"):
+        if proof_dir is not None and backend in ("pb-cadical", "pb_cadical", "hydra",
+                                                 "hydra_satsuma", "satsuma"):
             proof_stem = rec.get("hash") or re.sub(r"[^A-Za-z0-9._-]", "_", display)
             proof_path = Path(tempfile.gettempdir()) / f"pbproof-{proof_stem}.pbp"
             cmd.extend(["--proof", str(proof_path)])
@@ -1612,7 +1613,8 @@ def solve_one(
                 pb_proof_ok, pb_proof_reason = False, "dsr-trim rejected/failed"
         # pb-cadical: VeriPB-check the proof the solver just emitted.
         if (proof_path is not None and result == "UNSAT"
-                and tmp_path is not None):
+                and tmp_path is not None
+                and pb_proof_prover != "satsuma-kissat"):
             tui.update_worker(worker_idx, display, "verifying proof…")
             # Which checker the proof needs, keyed off the deciding engine
             # (reliable; the generic "proof-format=lrat" pre-announcement would

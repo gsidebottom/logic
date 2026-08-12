@@ -3278,6 +3278,7 @@ fn main() {
                     if forced.is_some() {
                         eprintln!("c {}: UNSAT of GE residual (sound; SR certificate covers \
                                    the residual only — uncertified for the original)", bk);
+                        if let Some(p) = args.proof.as_ref() { let _ = std::fs::remove_file(p); }
                     } else {
                         // Phase B: bounded in-container dsr-trim verification.
                         // Unset = the solve timeout (parity with run_benchmark's
@@ -3322,9 +3323,11 @@ fn main() {
                         } else if vtext.contains("c dsrtrim: TIMEOUT") {
                             eprintln!("c {}: dsr-trim verification TIMEOUT (>{}s) — UNSAT is \
                                        sound-if-kissat-correct but UNCERTIFIED", bk, vb);
+                            if let Some(p) = args.proof.as_ref() { let _ = std::fs::remove_file(p); }
                         } else {
                             eprintln!("c {}: WARNING dsr-trim did NOT verify the proof — verdict \
                                        sound-if-kissat-correct but UNCERTIFIED", bk);
+                            if let Some(p) = args.proof.as_ref() { let _ = std::fs::remove_file(p); }
                         }
                     }
                     println!("s UNSATISFIABLE");
@@ -3332,6 +3335,7 @@ fn main() {
                 Some("SAT") => {
                     eprintln!("c SAT in {:.1}ms", el_ms);
                     verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
+                    if let Some(p) = args.proof.as_ref() { let _ = std::fs::remove_file(p); }
                     eprintln!("c {}: model over satsuma-augmented vars projected to the \
                                original {} (model is the certificate)", bk, nvars);
                     println!("s SATISFIABLE");
@@ -3365,6 +3369,7 @@ fn main() {
                 _ => {
                     eprintln!("c TIMEOUT after {:.1}ms", el_ms);
                     verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
+                    if let Some(p) = args.proof.as_ref() { let _ = std::fs::remove_file(p); }
                     eprintln!("c {}: satsuma-iter+kissat reached no verdict (timeout/unknown; \
                                includes an in-container OOM kill under --satsuma-mem-gb)", bk);
                     // Surface WHY: container stdout tail + docker CLI stderr head,

@@ -1606,6 +1606,8 @@ def solve_one(
                 pb_proof_ok, pb_proof_reason = True, "dsr-trim (in-solver)"
             elif "UNSAT of GE residual" in stderr_text:
                 pb_proof_ok, pb_proof_reason = None, "SR covers GE residual only"
+            elif "dsr-trim verification TIMEOUT" in stderr_text:
+                pb_proof_ok, pb_proof_reason = None, "dsr-trim timeout (unchecked)"
             elif "dsr-trim did NOT verify" in stderr_text:
                 pb_proof_ok, pb_proof_reason = False, "dsr-trim rejected/failed"
         # pb-cadical: VeriPB-check the proof the solver just emitted.
@@ -2102,6 +2104,25 @@ def main() -> int:
             print("c WARNING: docker not found — hydra_satsuma cannot run its "
                   "satsuma-iter+kissat fall-through (build: tools/satsuma/build.sh).",
                   file=sys.stderr)
+        else:
+            # The Docker Desktop VM's total memory bounds ALL containers
+            # together; parallel workers × kissat on competition instances
+            # need real headroom or the VM OOM killer turns big instances
+            # into silent fast TIMEOUTs.
+            try:
+                vm_bytes = int(subprocess.run(
+                    ["docker", "info", "--format", "{{.MemTotal}}"],
+                    capture_output=True, text=True, timeout=20).stdout.strip())
+                vm_gb = vm_bytes / (1024 ** 3)
+                if vm_gb < 4 * args.parallel:
+                    print(f"c WARNING: Docker VM memory is {vm_gb:.1f} GiB for "
+                          f"{args.parallel} parallel workers (<4 GiB each). Big "
+                          "instances will be OOM-killed in-container and recorded "
+                          "as fast TIMEOUTs. Raise it in Docker Desktop -> "
+                          "Settings -> Resources -> Memory (e.g. 48 GB), or "
+                          "lower -j.", file=sys.stderr)
+            except Exception:
+                pass
     if args.backend in ("pb-cadical", "pb_cadical", "hydra", "hydra_sym_break",
                         "hydra_satsuma"):
         if CAKELPR_BIN is None:

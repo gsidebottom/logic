@@ -2323,6 +2323,19 @@ struct Args {
     /// 6). None = default (on for `hydra_sym_break`, off for `hydra`);
     /// `--symbreak`/`--no-symbreak` force it either way.
     symbreak: Option<bool>,
+    /// hydra_satsuma/satsuma: wall-clock budget (seconds) for the
+    /// in-container dsr-trim verification of an UNSAT's composed SR
+    /// proof. Runs AFTER the verdict is printed (never eats solve
+    /// budget; the watchdog stands down once the verdict lands). On
+    /// timeout the UNSAT stays sound but is recorded UNCERTIFIED.
+    /// Default 600; 0 = unlimited.
+    satsuma_verify_secs: u64,
+    /// hydra_satsuma/satsuma: per-container hard memory cap in GiB
+    /// (docker --memory/--memory-swap). 0 = uncapped (competition-
+    /// faithful; the Docker VM's total allocation still binds). A
+    /// capped container that OOMs fails only that instance, recorded
+    /// as TIMEOUT/unknown rather than destabilizing neighbors.
+    satsuma_mem_gb: u64,
     /// Run the Cook PB-prover shape detector (hydra/pb-cadical). Default
     /// `true`; `--no-cook` disables it (isolates later stages for A/B).
     cook: bool,
@@ -2430,6 +2443,8 @@ fn parse_args() -> Result<Args, String> {
         preprocess_max_clauses: DEFAULT_PREPROCESS_MAX_CLAUSES,
         xor_gauss: true,
         symbreak: None,
+        satsuma_verify_secs: 600,
+        satsuma_mem_gb: 0,
         cook: true,
         xor_gauss_max_clauses: 1_000_000,
         emit_cover: None,
@@ -2517,6 +2532,28 @@ fn parse_args() -> Result<Args, String> {
             "--no-symbreak"     => { a.symbreak = Some(false); }
             "--cook"            => { a.cook = true;  }
             "--no-cook"         => { a.cook = false; }
+            "--satsuma-verify-secs" => {
+                let v = iter.next().ok_or_else(||
+                    "--satsuma-verify-secs requires a value (seconds; 0 = unlimited)".to_string())?;
+                a.satsuma_verify_secs = v.parse::<u64>().map_err(|_|
+                    format!("--satsuma-verify-secs expects a non-negative integer; got {:?}", v))?;
+            }
+            s2 if s2.starts_with("--satsuma-verify-secs=") => {
+                let v = &s2["--satsuma-verify-secs=".len()..];
+                a.satsuma_verify_secs = v.parse::<u64>().map_err(|_|
+                    format!("--satsuma-verify-secs expects a non-negative integer; got {:?}", v))?;
+            }
+            "--satsuma-mem-gb" => {
+                let v = iter.next().ok_or_else(||
+                    "--satsuma-mem-gb requires a value (GiB; 0 = uncapped)".to_string())?;
+                a.satsuma_mem_gb = v.parse::<u64>().map_err(|_|
+                    format!("--satsuma-mem-gb expects a non-negative integer; got {:?}", v))?;
+            }
+            s2 if s2.starts_with("--satsuma-mem-gb=") => {
+                let v = &s2["--satsuma-mem-gb=".len()..];
+                a.satsuma_mem_gb = v.parse::<u64>().map_err(|_|
+                    format!("--satsuma-mem-gb expects a non-negative integer; got {:?}", v))?;
+            }
             // Cap on input clauses for which preprocess runs (0 = no cap).
             "--preprocess-max-clauses" => {
                 let v = iter.next().ok_or_else(||
@@ -3093,14 +3130,22 @@ fn main() {
             (solve_clauses, nvars)
         };
 
-        // hydra_satsuma fall-through: hand the residual to the SAT Comp 2026
-        // winner satsuma-iter+kissat inside its Docker image. satsuma emits a
-        // binary-SR proof of its symmetry breaking, kissat appends its
-        // refutation, and on UNSAT dsr-trim verifies the composed proof
-        // against the formula we handed over — so a non-GE UNSAT comes back
-        // CHECKER-CERTIFIED (unlike the native hydra_sym_break stage). On a
-        // GE residual the certificate covers only the residual; the verdict
-        // stays sound but is flagged uncertified, matching hydra's XOR path.
+        // hydra_satsuma / satsuma fall-through: hand the formula to the SAT
+        // Comp 2026 winner satsuma-iter+kissat inside its Docker image, in
+        // TWO bounded container runs so nothing here is ever unwatched:
+        //   A) solve  — satsuma (binary-SR symmetry proof) + kissat (appends
+        //      its refutation), under `timeout` at the remaining budget minus
+        //      a 2s margin so it returns before the backstop watchdog fires;
+        //   B) verify — on a non-GE UNSAT, dsr-trim checks the COMPOSED proof
+        //      against the exact CNF handed over, under its own budget
+        //      (--satsuma-verify-secs, default 600, 0 = unlimited), AFTER the
+        //      verdict + timing line are printed and verdict_done is set (the
+        //      watchdog stands down, and solve-time accounting excludes
+        //      verification, matching how the LRAT paths are timed).
+        // --satsuma-mem-gb caps each container (docker --memory); 0 =
+        // uncapped, competition-faithful — the Docker VM allocation still
+        // binds overall. A dsr-trim timeout/failure downgrades the UNSAT to
+        // sound-but-UNCERTIFIED; the verdict itself is never lost.
         if matches!(args.backend, BackendChoice::HydraSatsuma | BackendChoice::Satsuma) {
             // Mount dir under /tmp: Docker Desktop's default file sharing
             // covers /private/tmp, while std::env::temp_dir()'s
@@ -3123,27 +3168,61 @@ fn main() {
                     let _ = writeln!(w, "0");
                 }
             }
+            let mem_flags: Vec<String> = if args.satsuma_mem_gb > 0 {
+                vec![format!("--memory={}g", args.satsuma_mem_gb),
+                     format!("--memory-swap={}g", args.satsuma_mem_gb)]
+            } else {
+                Vec::new()
+            };
+            let docker_run = |inner: &str| -> std::io::Result<std::process::Output> {
+                let mut cmd = std::process::Command::new("docker");
+                cmd.args(["run", "--rm"]);
+                for m in &mem_flags { cmd.arg(m); }
+                cmd.arg("-v")
+                    .arg(format!("{}:/work", mdir.display()))
+                    .args(["satsuma-iter-kissat", "bash", "-c"])
+                    .arg(inner);
+                cmd.output()
+            };
+            // Phase A: solve. 2s under the remaining budget so the container
+            // self-terminates (and docker returns) before the backstop
+            // watchdog would exit(124) and orphan the wait.
             let remaining = if args.timeout_secs > 0 {
                 args.timeout_secs.saturating_sub(t0.elapsed().as_secs()).max(1)
             } else {
                 0
             };
-            let inner = format!(
-                "cd /src && {} ./run_satsuma_kissat.sh /work/f.cnf /work; rc=$?; \
-                 if [ $rc = 20 ]; then echo \"c dsrtrim: $(./dsr-trim/bin/dsr-trim -f /work/f.cnf /work/proof.out /dev/null 2>/dev/null | grep '^s ')\"; fi; exit $rc",
-                if remaining > 0 { format!("timeout {}s", remaining) } else { String::new() });
-            eprintln!("c {}: {} -> satsuma-iter+kissat (docker){}", bk,
+            let solve_budget = if remaining > 0 { remaining.saturating_sub(2).max(1) } else { 0 };
+            // Size guard the winning submission shipped commented-out (their
+            // nodes had 128 GB; a Docker Desktop VM does not): satsuma's
+            // literal graph on multi-million-var instances (md5-equivalence:
+            // 9.4M vars / 25M clauses) is several GB per worker and gets
+            // OOM-killed in seconds under -j 10. Above the caps, skip satsuma
+            // and run kissat directly on the raw formula — still solved, and
+            // an UNSAT proof is still dsr-trim-checkable (kissat's clausal
+            // steps are the suffix of every composed proof).
+            const SATSUMA_VAR_CAP: usize = 1_000_000;
+            const SATSUMA_CLAUSE_CAP: usize = 25_000_000;
+            let satsuma_fits = solve_nvars < SATSUMA_VAR_CAP
+                && solve_clauses.len() < SATSUMA_CLAUSE_CAP;
+            if !satsuma_fits {
+                eprintln!("c {}: size guard ({} vars / {} clauses): satsuma skipped -> kissat direct",
+                          bk, solve_nvars, solve_clauses.len());
+            }
+            let inner_solve = if satsuma_fits {
+                format!("cd /src && {}./run_satsuma_kissat.sh /work/f.cnf /work",
+                        if solve_budget > 0 { format!("timeout {}s ", solve_budget) } else { String::new() })
+            } else {
+                format!("cd /src && {}./kissat /work/f.cnf /work/proof.out",
+                        if solve_budget > 0 { format!("timeout {}s ", solve_budget) } else { String::new() })
+            };
+            eprintln!("c {}: {} -> satsuma-iter+kissat (docker){}{}", bk,
                       if forced.is_some() { "GE-simplified residual" }
                       else if matches!(args.backend, BackendChoice::Satsuma) { "raw formula" }
                       else { "no Cook shape" },
-                      if remaining > 0 { format!(" budget={}s", remaining) } else { String::new() });
-            let out = std::process::Command::new("docker")
-                .args(["run", "--rm", "-v"])
-                .arg(format!("{}:/work", mdir.display()))
-                .args(["satsuma-iter-kissat", "bash", "-c"])
-                .arg(&inner)
-                .output();
-            let out = match out {
+                      if solve_budget > 0 { format!(" budget={}s", solve_budget) } else { String::new() },
+                      if args.satsuma_mem_gb > 0 { format!(" mem={}g", args.satsuma_mem_gb) } else { String::new() });
+            let out = match docker_run(&inner_solve) {
                 Ok(o) => o,
                 Err(e) => {
                     eprintln!("c ERROR: docker run failed: {} (build the image with tools/satsuma/build.sh)", e);
@@ -3154,7 +3233,6 @@ fn main() {
             let stdout = String::from_utf8_lossy(&out.stdout);
             let mut verdict: Option<&str> = None;
             let mut vline: Vec<i32> = Vec::new();
-            let mut dsr_verified = false;
             for line in stdout.lines() {
                 if let Some(rest) = line.strip_prefix("s ") {
                     let v = rest.trim();
@@ -3165,8 +3243,6 @@ fn main() {
                             if l != 0 { vline.push(l); }
                         }
                     }
-                } else if line.starts_with("c dsrtrim: s VERIFIED UNSAT") {
-                    dsr_verified = true;
                 }
             }
             let el_ms = t0.elapsed().as_secs_f64() * 1000.0;
@@ -3175,28 +3251,50 @@ fn main() {
             }
             match verdict {
                 Some("UNSAT") => {
+                    // Verdict + timing land FIRST; the watchdog stands down;
+                    // verification never eats into either.
                     eprintln!("c UNSAT in {:.1}ms", el_ms);
+                    verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
                     if forced.is_some() {
                         eprintln!("c {}: UNSAT of GE residual (sound; SR certificate covers \
                                    the residual only — uncertified for the original)", bk);
-                    } else if dsr_verified {
-                        eprintln!("c {}: dsr-trim VERIFIED UNSAT (composed satsuma SR + kissat \
-                                   refutation checks against the input formula)", bk);
-                        if let Some(p) = args.proof.as_ref() {
-                            match std::fs::copy(mdir.join("proof.out"), p) {
-                                Ok(_) => eprintln!("c {}: SR proof copied to {} (binary SR — check \
-                                                    with dsr-trim, not cake_lpr)", bk, p.display()),
-                                Err(e) => eprintln!("c {}: SR proof copy failed: {}", bk, e),
-                            }
-                        }
                     } else {
-                        eprintln!("c {}: WARNING dsr-trim did NOT verify the proof — verdict \
-                                   sound-if-kissat-correct but UNCERTIFIED", bk);
+                        // Phase B: bounded in-container dsr-trim verification.
+                        let vb = args.satsuma_verify_secs;
+                        eprintln!("c {}: verifying composed SR proof (dsr-trim{})…", bk,
+                                  if vb > 0 { format!(", budget {}s", vb) } else { ", unbounded".into() });
+                        let inner_verify = format!(
+                            "cd /src && r=$({}./dsr-trim/bin/dsr-trim -f /work/f.cnf /work/proof.out /dev/null 2>/dev/null | grep '^s '; exit ${{PIPESTATUS[0]}}); rc=$?; \
+                             if [ -n \"$r\" ]; then echo \"c dsrtrim: $r\"; \
+                             elif [ $rc = 124 ]; then echo 'c dsrtrim: TIMEOUT'; \
+                             else echo \"c dsrtrim: FAILED rc=$rc\"; fi",
+                            if vb > 0 { format!("timeout {}s ", vb) } else { String::new() });
+                        let vout = docker_run(&inner_verify);
+                        let vtext = vout.as_ref().map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+                            .unwrap_or_default();
+                        if vtext.contains("c dsrtrim: s VERIFIED UNSAT") {
+                            eprintln!("c {}: dsr-trim VERIFIED UNSAT (composed satsuma SR + kissat \
+                                       refutation checks against the input formula)", bk);
+                            if let Some(p) = args.proof.as_ref() {
+                                match std::fs::copy(mdir.join("proof.out"), p) {
+                                    Ok(_) => eprintln!("c {}: SR proof copied to {} (binary SR — check \
+                                                        with dsr-trim, not cake_lpr)", bk, p.display()),
+                                    Err(e) => eprintln!("c {}: SR proof copy failed: {}", bk, e),
+                                }
+                            }
+                        } else if vtext.contains("c dsrtrim: TIMEOUT") {
+                            eprintln!("c {}: dsr-trim verification TIMEOUT (>{}s) — UNSAT is \
+                                       sound-if-kissat-correct but UNCERTIFIED", bk, vb);
+                        } else {
+                            eprintln!("c {}: WARNING dsr-trim did NOT verify the proof — verdict \
+                                       sound-if-kissat-correct but UNCERTIFIED", bk);
+                        }
                     }
                     println!("s UNSATISFIABLE");
                 }
                 Some("SAT") => {
                     eprintln!("c SAT in {:.1}ms", el_ms);
+                    verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
                     eprintln!("c {}: model over satsuma-augmented vars projected to the \
                                original {} (model is the certificate)", bk, nvars);
                     println!("s SATISFIABLE");
@@ -3229,7 +3327,19 @@ fn main() {
                 }
                 _ => {
                     eprintln!("c TIMEOUT after {:.1}ms", el_ms);
-                    eprintln!("c {}: satsuma-iter+kissat reached no verdict (timeout/unknown)", bk);
+                    verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
+                    eprintln!("c {}: satsuma-iter+kissat reached no verdict (timeout/unknown; \
+                               includes an in-container OOM kill under --satsuma-mem-gb)", bk);
+                    // Surface WHY: container stdout tail + docker CLI stderr head,
+                    // so a satsuma crash / OOM kill / CLI failure is diagnosable
+                    // from the benchmark log instead of reading as a bare timeout.
+                    for l in stdout.lines().rev().take(3).collect::<Vec<_>>().into_iter().rev() {
+                        eprintln!("c {}: container-out: {}", bk, &l[..l.len().min(200)]);
+                    }
+                    let derr = String::from_utf8_lossy(&out.stderr);
+                    for l in derr.lines().take(3) {
+                        eprintln!("c {}: docker-err: {}", bk, &l[..l.len().min(200)]);
+                    }
                 }
             }
             let _ = std::fs::remove_dir_all(&mdir);

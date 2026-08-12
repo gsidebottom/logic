@@ -379,6 +379,184 @@ pub fn find_generators(g: &Graph) -> Vec<Vec<usize>> {
     s.gens
 }
 
+// ===========================================================================
+// Phase 4: CNF symmetry extraction + symmetry-breaking-predicate generation.
+// A graph automorphism becomes a literal permutation; the sign-preserving
+// ones (all of PHP's, since the encoding colors pos/neg literals apart) give
+// variable permutations, and each gets a lex-leader SBP. Sat-preserving:
+// every orbit keeps its lex-minimal assignment, so a model survives.
+// ===========================================================================
+
+/// Extract the variable permutation induced by a graph automorphism, if
+/// it is sign-preserving (maps every positive-literal node to a
+/// positive-literal node). Returns `None` for polarity-flipping
+/// generators (handled by signed lex-leader in a later extension).
+pub fn to_variable_perm(gamma: &[usize], nvars: usize) -> Option<Vec<usize>> {
+    let mut pi = vec![0usize; nvars];
+    for v in 0..nvars {
+        let img = gamma[2 * v];
+        if img % 2 != 0 {
+            return None; // positive literal maps to a negative literal
+        }
+        let w = img / 2;
+        if w >= nvars || gamma[2 * v + 1] != 2 * w + 1 {
+            return None;
+        }
+        pi[v] = w;
+    }
+    Some(pi)
+}
+
+/// Lex-leader symmetry-breaking clauses for a variable permutation `pi`
+/// under the identity variable order: enforce the assignment is
+/// lexicographically ≤ its `pi`-image. Uses the standard equal-prefix
+/// aux-variable chain (`y_{i+1} ↔ y_i ∧ (a_i = b_i)`); fixed points of
+/// `pi` are skipped. Fresh aux-variable ids are drawn from `next_fresh`.
+pub fn lex_leader(pi: &[usize], nvars: usize, next_fresh: &mut i32) -> Vec<Vec<i32>> {
+    let mut cl = Vec::new();
+    let mut bound: Option<i32> = None; // None ⇒ prefix still all-equal
+    for oi in 0..nvars {
+        let wi = pi[oi];
+        if oi == wi {
+            continue; // pi fixes this variable: no constraint, bound unchanged
+        }
+        let a = oi as i32 + 1;
+        let b = wi as i32 + 1;
+        // bound ⇒ a ≤ b   (i.e. ¬a ∨ b)
+        match bound {
+            None => cl.push(vec![-a, b]),
+            Some(y) => cl.push(vec![-y, -a, b]),
+        }
+        // define y2 ↔ bound ∧ (a = b)
+        let y2 = *next_fresh;
+        *next_fresh += 1;
+        if let Some(y) = bound {
+            cl.push(vec![-y2, y]); // y2 ⇒ bound
+        }
+        cl.push(vec![-y2, -a, b]); // y2 ⇒ (a ⇒ b)
+        cl.push(vec![-y2, a, -b]); // y2 ⇒ (b ⇒ a)
+        match bound {
+            None => {
+                cl.push(vec![a, b, y2]); // a=b=0 ⇒ y2
+                cl.push(vec![-a, -b, y2]); // a=b=1 ⇒ y2
+            }
+            Some(y) => {
+                cl.push(vec![-y, a, b, y2]);
+                cl.push(vec![-y, -a, -b, y2]);
+            }
+        }
+        bound = Some(y2);
+    }
+    cl
+}
+
+/// End-to-end Phase 4: detect the formula's symmetries and return the
+/// lex-leader SBP clauses plus the new variable count (originals +
+/// aux). Sound: the augmented formula is equisatisfiable with the
+/// original (SAT-preserving), so a SAT verdict + its witness stay valid.
+pub fn break_symmetries(nvars: usize, clauses: &[Vec<i32>]) -> (Vec<Vec<i32>>, usize) {
+    let cg = cnf_to_graph(nvars, clauses);
+    let gens = find_generators(&cg.graph);
+    let mut next_fresh = nvars as i32 + 1;
+    let mut added = Vec::new();
+    for g in &gens {
+        if let Some(pi) = to_variable_perm(g, nvars) {
+            added.extend(lex_leader(&pi, nvars, &mut next_fresh));
+        }
+    }
+    (added, (next_fresh - 1) as usize)
+}
+
+#[cfg(test)]
+mod phase4_tests {
+    use super::*;
+
+    /// Assignments (as bitmasks over vars 0..nvars) satisfying `clauses`.
+    fn models(nvars: usize, clauses: &[Vec<i32>]) -> Vec<u64> {
+        let mut out = Vec::new();
+        for mask in 0u64..(1u64 << nvars) {
+            let sat = clauses.iter().all(|cl| {
+                cl.iter().any(|&l| {
+                    let bit = (mask >> (l.unsigned_abs() - 1)) & 1 == 1;
+                    (l > 0) == bit
+                })
+            });
+            if sat {
+                out.push(mask);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn single_generator_is_exact_lex_leader() {
+        // F = (x1 ∨ x2), symmetry swap(x1,x2). Models {01,10,11} fall in
+        // two ⟨swap⟩ orbits; a correct lex-leader keeps exactly one per
+        // orbit → 2 surviving.
+        let clauses = vec![vec![1, 2]];
+        let (added, newn) = break_symmetries(2, &clauses);
+        assert!(!added.is_empty(), "swap symmetry must be found");
+        let mut all = clauses.clone();
+        all.extend(added);
+        // count surviving ORIGINAL assignments (aux vars are determined)
+        let aug = models(newn, &all);
+        let orig_surviving: std::collections::HashSet<u64> =
+            aug.iter().map(|m| m & 0b11).collect();
+        assert_eq!(orig_surviving.len(), 2, "one representative per orbit");
+    }
+
+    #[test]
+    fn multi_generator_is_sat_preserving() {
+        // F = (x1 ∨ x2 ∨ x3), full S_3 symmetry. 7 models in 3 orbits by
+        // weight. Per-generator lex-leader is sound (≥1 per orbit) though
+        // not necessarily exact.
+        let clauses = vec![vec![1, 2, 3]];
+        let orig = models(3, &clauses);
+        assert_eq!(orig.len(), 7);
+        let (added, newn) = break_symmetries(3, &clauses);
+        let mut all = clauses.clone();
+        all.extend(added);
+        let surviving: std::collections::HashSet<u64> =
+            models(newn, &all).iter().map(|m| m & 0b111).collect();
+        assert!(!surviving.is_empty(), "SAT must be preserved");
+        assert!(surviving.len() >= 3, "at least one per S_3 orbit (sound)");
+        assert!(surviving.len() < orig.len(), "must actually break some symmetry");
+    }
+
+    #[test]
+    fn php_symmetries_are_sign_preserving_and_break() {
+        // Every PHP generator is sign-preserving (pos/neg literals are
+        // different colors), so all yield variable permutations, and the
+        // stage adds real clauses. UNSAT is preserved trivially.
+        let v = |p: usize, h: usize| (p * 2 + h + 1) as i32;
+        let mut clauses = Vec::new();
+        for p in 0..3 {
+            clauses.push(vec![v(p, 0), v(p, 1)]);
+        }
+        for h in 0..2 {
+            for p in 0..3 {
+                for q in p + 1..3 {
+                    clauses.push(vec![-v(p, h), -v(q, h)]);
+                }
+            }
+        }
+        let cg = cnf_to_graph(6, &clauses);
+        let gens = find_generators(&cg.graph);
+        assert!(!gens.is_empty());
+        for g in &gens {
+            assert!(to_variable_perm(g, 6).is_some(), "PHP gens are sign-preserving");
+        }
+        let (added, _) = break_symmetries(6, &clauses);
+        assert!(!added.is_empty(), "PHP symmetry must produce SBP clauses");
+        // PHP_3,2 is UNSAT; adding clauses keeps it UNSAT.
+        let mut all = clauses.clone();
+        all.extend(added);
+        assert!(models(6, &clauses).is_empty());
+        // (augmented over aux vars also unsat, but the original projection
+        // is already empty — soundness is trivial here.)
+    }
+}
+
 #[cfg(test)]
 mod group_tests {
     use super::*;

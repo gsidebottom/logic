@@ -3224,6 +3224,23 @@ fn main() {
                       else { "no Cook shape" },
                       if solve_budget > 0 { format!(" budget={}s", solve_budget) } else { String::new() },
                       if args.satsuma_mem_gb > 0 { format!(" mem={}g", args.satsuma_mem_gb) } else { String::new() });
+            // Heartbeat: the competition-built kissat is QUIET and the docker
+            // call is blocking, so without this the benchmark TUI's time row
+            // never moves. "time Ns" lands in run_benchmark's TIME_FRAME_RE.
+            let hb_stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            {
+                let stop = hb_stop.clone();
+                let budget = solve_budget;
+                std::thread::spawn(move || loop {
+                    for _ in 0..10 {
+                        if stop.load(std::sync::atomic::Ordering::Relaxed) { return; }
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                    }
+                    eprintln!("c {}: satsuma-iter+kissat time {}s{}", bk,
+                              t0.elapsed().as_secs(),
+                              if budget > 0 { format!(" / budget {}s", budget) } else { String::new() });
+                });
+            }
             let out = match docker_run(&inner_solve) {
                 Ok(o) => o,
                 Err(e) => {
@@ -3232,6 +3249,7 @@ fn main() {
                     std::process::exit(2);
                 }
             };
+            hb_stop.store(true, std::sync::atomic::Ordering::Relaxed);
             let stdout = String::from_utf8_lossy(&out.stdout);
             let mut verdict: Option<&str> = None;
             let mut vline: Vec<i32> = Vec::new();
@@ -3273,7 +3291,22 @@ fn main() {
                              elif [ $rc = 124 ]; then echo 'c dsrtrim: TIMEOUT'; \
                              else echo \"c dsrtrim: FAILED rc=$rc\"; fi",
                             if vb > 0 { format!("timeout {}s ", vb) } else { String::new() });
+                        let vb_stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                        {
+                            let stop = vb_stop.clone();
+                            let t_v = Instant::now();
+                            std::thread::spawn(move || loop {
+                                for _ in 0..10 {
+                                    if stop.load(std::sync::atomic::Ordering::Relaxed) { return; }
+                                    std::thread::sleep(std::time::Duration::from_millis(500));
+                                }
+                                eprintln!("c {}: dsr-trim verify time {}s{}", bk,
+                                          t_v.elapsed().as_secs(),
+                                          if vb > 0 { format!(" / budget {}s", vb) } else { String::new() });
+                            });
+                        }
                         let vout = docker_run(&inner_verify);
+                        vb_stop.store(true, std::sync::atomic::Ordering::Relaxed);
                         let vtext = vout.as_ref().map(|o| String::from_utf8_lossy(&o.stdout).to_string())
                             .unwrap_or_default();
                         if vtext.contains("c dsrtrim: s VERIFIED UNSAT") {

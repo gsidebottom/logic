@@ -388,11 +388,42 @@ cluster hardware. Our protocol runs 5000\,s \emph{wall-clock} per
 instance with \emph{ten instances concurrently} on one 14-core Apple
 Silicon machine (64\,GB host; the satsuma-based arms execute inside a
 $\sim$47\,GB Linux VM). Per-core, per-second compute on this machine
-substantially exceeds the competition nodes', so equal nominal
-seconds buy more search --- which is why local solve counts (e.g.\
-the \texttt{hydra} baseline's 318 of the 391 deduplicated instances)
-run well above the official 276/400 despite ten-way contention
-working in the opposite direction. The comparisons this note will
+substantially exceeds the competition nodes'. For reference:
+
+\begin{center}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Single-thread benchmark & Apple M4 Pro & Xeon E3-1230~v5 \\
+\midrule
+PassMark ST & 4506 & 2189 \\
+Geekbench~6 ratio & \multicolumn{2}{c}{$\approx 2.9\times$} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+This machine is an Apple M4 Pro (10 performance + 4 efficiency
+cores). The competition node model is \emph{assumed}, not confirmed:
+the 2026 results slides name no hardware (they do confirm CPU-time
+scoring), but the infrastructure is Beyer's LMU cluster --- the
+winning submission's own archive carries that cluster's
+competition-environment Dockerfile --- whose documented SV-COMP node
+is an Intel Xeon E3-1230~v5 @ 3.4\,GHz (Skylake, 2015). Published
+single-thread figures put the M4~Pro P-core at roughly
+\textbf{2--3$\times$} that core (PassMark $4506/2189 \approx
+2.1\times$; Geekbench~6 $\approx 2.9\times$). Two effects pull the
+\emph{effective} per-instance ratio below the raw single-thread
+number: our ten concurrent workers share one machine's memory
+bandwidth, whereas the competition dedicates a node per instance; and
+CPU-second vs.\ wall-second accounting differs. Equal nominal seconds
+still buy roughly twice the search here, which on heavy-tailed
+runtimes pulls many near-timeout instances under the line --- and is
+why local solve counts (e.g.\ the \texttt{hydra} baseline's 318 of
+the 391 deduplicated instances) run well above the official 276/400
+despite the contention working in the opposite direction. The bare
+\texttt{satsuma} arm of the planned comparison is precisely the
+control this argument otherwise lacks: the winner's own pipeline
+under our protocol on our hardware, making the hardware factor
+directly measurable rather than estimated. The comparisons this note will
 report (\S\ref{sec:results}) are therefore \emph{internal}: all three
 arms under one fixed protocol on one machine, where hardware and
 scheduling effects cancel and only the solver pipelines differ. The

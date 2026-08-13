@@ -1,0 +1,402 @@
+% hydra_satsuma: solver description — certified structure dispatch with a
+% satsuma-iter+kissat fall-through.  Build: tectonic doc/hydra_satsuma_solver.tex
+% Performance sections are placeholders until the three-way A/B on the
+% official 2026 set completes (hydra vs satsuma vs hydra_satsuma, this machine).
+\documentclass[10pt]{article}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{fancyvrb}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+\urlstyle{same}
+\setlist{itemsep=2pt,topsep=3pt}
+\setlength{\emergencystretch}{3em}
+\DefineVerbatimEnvironment{Code}{Verbatim}{fontsize=\footnotesize}
+
+\title{\bfseries hydra\_satsuma: Certified Structure Dispatch with a\\
+  satsuma-iter+kissat Fall-Through}
+\author{Greg Sidebottom}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-3em}
+\begin{center}
+\itshape Research note --- logic repo
+(\url{https://github.com/gsidebottom/logic}), SAT track, 2026-08-12.
+Solver description for the \texttt{hydra\_satsuma} backend of
+\texttt{sat}: the certified \texttt{hydra} structure-dispatch pipeline
+(Cook-shape prover, XOR/GF(2) stage) whose fall-through engine is
+satsuma-iter+kissat, winner of the SAT Competition 2026 main track.
+Performance sections will be completed after the three-way
+apples-to-apples run (\texttt{hydra} / \texttt{satsuma} /
+\texttt{hydra\_satsuma}) on the official 2026 benchmark set on this
+machine.
+\end{center}
+
+\section*{Abstract}
+
+\texttt{hydra\_satsuma} is a structure-dispatch SAT solver: before any
+CDCL search, it tests the input for algebraic structure that admits a
+\emph{polynomial-size certificate}, and only when no structure applies
+does it hand the formula to a general-purpose engine. Two structural
+stages run in order: (1) a \emph{Cook-shape prover} that recognizes
+five cardinality-contradiction families (pigeonhole and its
+generalizations) and emits the Cook-1976 extension-variable refutation
+as a VeriPB proof --- families on which resolution, and hence any
+DRAT-based route without new variables, is exponential; (2) an
+\emph{XOR/GF(2) stage} that recovers parity constraints from their
+clausal encodings and runs Gaussian elimination, certifying parity
+refutations in VeriPB after Gocht--Nordstr\"om. The fall-through
+engine is satsuma-iter+kissat (Anders et al.), the SAT Competition
+2026 main-track winner, run unmodified in a container: satsuma
+detects symmetries with dejavu and emits a binary substitution-redundancy
+(SR) proof of its breaking clauses, kissat appends its clausal
+refutation to the same file, and \texttt{dsr-trim} verifies the
+\emph{composed} proof against the exact CNF handed over --- so
+symmetry-broken UNSAT results remain checker-certified. Every
+UNSAT path thus produces a machine-checked certificate in a format on
+the SAT Competition 2026 checker menu (VeriPB) or in the winner's own
+SR chain; SAT results carry the model as witness, projected to the
+original variables.
+
+\section{Pipeline}
+\label{sec:pipeline}
+
+The backend runs the following stages in order; the first stage to
+reach a verdict ends the run. Stage budgets and caps are given with
+each stage.
+
+\subsection{Cook-shape prover}
+\label{sec:cook}
+
+A syntactic detector (inputs up to $10^6$ clauses) recognizes five
+structured UNSAT families, reading the exact clause layout rather than
+solving:
+
+\begin{itemize}
+\item \textbf{PHP-$n$-$m$} --- the canonical pigeonhole formula,
+  $n$ pigeons, $m$ holes, $n > m$;
+\item \textbf{RoundRobin} --- sports-scheduling infeasibility,
+  a per-pair/per-day two-level pigeonhole;
+\item \textbf{Embedded pigeonhole} --- $P$ disjoint at-least-one
+  clauses over $S$ complete slot-mutex cliques with $P > S$, the
+  generalization covering e.g.\ MVRoundRobin;
+\item \textbf{Clique-coloring} --- a graph asserted to contain a
+  $K$-clique yet be $C$-colorable with $K > C$, proved by composing
+  the clique-membership and coloring layers;
+\item \textbf{Mutilated chessboard} --- bipartite perfect-matching
+  infeasibility with imbalanced sides, proved by the two-sided
+  cardinality argument.
+\end{itemize}
+
+On a match the verdict is UNSAT \emph{by construction}, in
+microseconds to milliseconds, and --- when a proof is requested ---
+the module emits the corresponding pseudo-Boolean refutation in VeriPB
+format. For PHP the proof is exactly Cook's 1976 construction: fresh
+variables $Q_{ij} = P_{ij} \lor (P_{im} \land P_{nj})$ encode a
+pigeonhole instance with one fewer pigeon and hole; the reduction
+iterates down to a trivially refutable base. Each layer is polynomial,
+rendered as VeriPB \texttt{red} steps with the definition as witness.
+This matters because Haken's 1985 lower bound makes PHP exponential
+for resolution: a solver-emitted DRAT proof (which cannot introduce
+variables the solver never used) is out of reach at scale, while the
+extension-variable route is short, and VeriPB is one of the three
+checkers on the SAT Competition 2026 menu
+(\S\ref{sec:compliance}).
+
+\subsection{XOR/GF(2) stage}
+\label{sec:xor}
+
+For inputs up to $5\times 10^6$ clauses, the stage recovers XOR
+constraints from their CNF encodings (complete canonical encodings
+only; the certifier re-derives the recovery strictly, so no trusted
+parsing) and runs GF(2) Gaussian elimination. Three outcomes:
+
+\begin{itemize}
+\item \textbf{Inconsistent system} (by unit propagation or by GE): the
+  formula is UNSAT. When a proof is requested the stage emits a
+  parity refutation in VeriPB after Gocht--Nordstr\"om (2021)
+  --- the certificate names the (typically small) subset of recovered
+  XORs whose GF(2) sum is $1 = 0$. Parity families are another
+  resolution-exponential class certified polynomially here.
+\item \textbf{Pure-XOR satisfiable}: GE solves the system outright;
+  the model is the certificate.
+\item \textbf{Partial simplification}: GE forces some variables and
+  simplifies the clause set, yielding an equisatisfiable
+  \emph{residual}. What happens next depends on \emph{certified mode}
+  (\S\ref{sec:certified}).
+\end{itemize}
+
+\subsection{Certified mode}
+\label{sec:certified}
+
+The \texttt{--proof} flag is the certified-mode switch for the whole
+hydra family. The subtlety is the partial-simplification case: an
+engine refutation of the \emph{residual} does not certify the
+\emph{original} formula --- the GE step connecting them is real
+reasoning that the downstream proof does not contain. Therefore:
+
+\begin{itemize}
+\item \textbf{Certified mode} (\texttt{--proof} present; the benchmark
+  harness always passes it): the GE simplification is
+  \emph{discarded} and the engine solves the original formula. Full
+  end-to-end certification beats the simplification --- a trade
+  measured to be nearly free (\S\ref{sec:ge-value}).
+\item \textbf{Uncertified mode} (no \texttt{--proof}): the engine
+  solves the residual. Verdicts remain sound (GE derives only logical
+  consequences; SAT models are reconstructed by overwriting GE-forced
+  variables), but a residual-path UNSAT is reported explicitly as
+  uncertified for the original.
+\end{itemize}
+
+Emitting a proof \emph{of the GE step itself} (deriving the forced
+units and simplified clauses via extension variables, in DSR or
+VeriPB) would close this gap and is well-understood machinery; it is
+deliberately deferred because measurement shows nothing is currently
+lost (\S\ref{sec:ge-value}).
+
+\subsection{Fall-through: satsuma-iter+kissat}
+\label{sec:satsuma}
+
+When no structural stage decides the instance, \texttt{hydra\_satsuma}
+hands it to the SAT Competition 2026 main-track winner, built
+unmodified from the official competition tarball (Anders et al.) and
+run in an Ubuntu~24.04 container:
+
+\begin{enumerate}
+\item \texttt{satsuma fix <cnf> --bsr --proof-file proof.out --out-file sb.cnf}
+  --- symmetry detection with dejavu (graph automorphisms of the
+  colored literal--clause incidence graph), structure-based
+  symmetry-breaking clauses, and a \emph{binary SR proof} justifying
+  each breaking clause with its symmetry as substitution witness;
+\item \texttt{kissat sb.cnf proof.out} --- the CDCL engine solves the
+  broken formula and \emph{appends} its clausal refutation to the same
+  proof file;
+\item on UNSAT, \texttt{dsr-trim -f <cnf> proof.out} verifies the
+  \emph{composed} proof --- satsuma's SR prefix plus kissat's
+  refutation --- against the exact CNF handed over.
+\end{enumerate}
+
+The composition is the point: symmetry-breaking clauses are not
+consequences of the formula (they are satisfiability-preserving, not
+equivalence-preserving), so a bare engine refutation of the broken
+formula certifies nothing about the input. SR's substitution witnesses
+make the breaking steps checkable, and because kissat's clause
+additions are valid SR steps, one checker validates the whole file.
+SAT models over satsuma's augmented variable space are projected back
+to the original variables (sound: breaking clauses only remove
+models).
+
+Operationally the container runs are bounded end to end:
+
+\begin{itemize}
+\item \textbf{Solve phase}: in-container \texttt{timeout} at the
+  remaining budget minus 2\,s, so the container always self-terminates
+  and is never orphaned by the host-side watchdog. The verdict and
+  solve time are recorded \emph{before} any verification.
+\item \textbf{Verify phase}: a second bounded container run
+  (\texttt{--satsuma-verify-secs}, default equal to the solve timeout,
+  matching the harness's proof-check budget convention for the LRAT
+  chain; $0=$ unlimited). A verification timeout downgrades the row to
+  sound-but-unchecked; the verdict is never lost.
+\item \textbf{Memory}: optional per-container hard cap
+  (\texttt{--satsuma-mem-gb}); an instance exceeding it fails alone.
+\item \textbf{Size guard}: instances with $\geq 10^6$ variables or
+  $\geq 2.5\times 10^7$ clauses skip satsuma (its literal graph on
+  such inputs is several~GB) and run kissat directly on the raw
+  formula; an UNSAT proof remains dsr-trim-checkable, since kissat's
+  steps are the suffix of every composed proof.
+\end{itemize}
+
+The sibling backends complete the family: \texttt{hydra} (same
+structural stages, CaDiCaL fall-through with native LRAT checked by
+\texttt{cake\_lpr}) and \texttt{satsuma} (the winner bare, no
+structural stages --- the baseline arm for measuring what the
+dispatch adds).
+
+\section{Certificates by path}
+\label{sec:certs}
+
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Path & Verdict & Certificate & Checker \\
+\midrule
+Cook shape & UNSAT & Cook-1976 extension proof (VeriPB) & \texttt{veripb} \\
+XOR inconsistent & UNSAT & GN21 parity proof (VeriPB) & \texttt{veripb} \\
+Pure-XOR solvable & SAT & model witness & --- \\
+satsuma+kissat & UNSAT & composed binary SR & \texttt{dsr-trim} \\
+satsuma+kissat & SAT & model (projected) & --- \\
+GE residual (uncert.\ mode) & UNSAT & none for the original & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Verification of the SR path happens \emph{in-solver} (the second
+container phase), and the harness credits it from the solver's
+\texttt{dsr-trim VERIFIED UNSAT} marker rather than re-checking ---
+binary SR is not readable by the LRAT/GRAT/VeriPB checkers, and
+routing it to one of them would produce a spurious rejection.
+
+\subsection{Checker cost: hinted vs.\ unhinted}
+\label{sec:checkercost}
+
+The two verification chains do structurally different work.
+\texttt{cake\_lpr} consumes LRAT, where every step carries
+unit-propagation hints computed by CaDiCaL at solve time; checking is
+a near-linear replay. \texttt{dsr-trim} consumes unhinted DSR --- like
+\texttt{drat-trim}, it must find every propagation itself and
+discharge each SR step's redundancy goals, i.e.\ it performs the
+elaboration that the LRAT path amortized into the solve. A same-CNF
+measurement on this machine (instance \texttt{b20}, ISCAS circuit,
+UNSAT):
+
+\begin{center}
+\begin{tabular}{@{}lllr@{}}
+\toprule
+Chain & Proof & Size & Check time \\
+\midrule
+CaDiCaL native LRAT & hinted & 40\,MB & \texttt{cake\_lpr} 1.55\,s \\
+satsuma+kissat DSR & unhinted & 20\,MB & \texttt{dsr-trim} 7.8\,s \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+SR's compensation is succinctness (the same instance's SR proof is
+half the LRAT's size; Codel--Avigad--Heule report SR proofs at 0.4\%
+of the line count of their RAT translations) and expressiveness (the
+symmetry steps have no DRAT analogue without extension variables).
+Memory behaves oppositely: \texttt{dsr-trim} is a compact C program
+(no out-of-memory events across concurrent checking in our runs),
+while \texttt{cake\_lpr}'s CakeML runtime requires a pre-sized heap
+that scales with the proof and is the component our harness bounds
+with a dedicated memory cap and a concurrency semaphore.
+
+\subsection{Competition-format compliance}
+\label{sec:compliance}
+
+SAT Competition 2026 accepts three proof checkers in the main track:
+DPR (\texttt{dpr-trim}), GRAT (\texttt{gratgen}), and VeriPB
+(\texttt{veripb}). The Cook and GN21 certificates are VeriPB proofs
+and verify under the same \texttt{veripb} the competition runs; the SR
+chain is the 2026 winner's own. One gap separates
+\texttt{hydra\_satsuma} from literal entry shape: the rules have a
+solver declare a \emph{single} checker and write one
+\texttt{proof.out}, whereas this backend emits per-path formats.
+Unification is mechanical future work --- either translate the
+engine's clausal refutations into VeriPB (\texttt{rup}/\texttt{del}
+steps map directly; RAT additions become \texttt{red} with witness)
+and declare VeriPB for everything, or render the Cook/GN21
+constructions in DRAT-with-extension-variables and declare the
+clausal chain.
+
+\section{Measured design decisions}
+\label{sec:ge-value}
+
+Two measurements on the official 2026 main-track set (400 instances
+with duplicates; this machine) fixed design choices in advance of the
+full performance run:
+
+\begin{itemize}
+\item \textbf{GE simplification is worth $\approx$\,nothing on this
+  set.} Every instance on which the partial-simplification path fires
+  (twelve, all ISCAS-class circuits) recovers exactly one XOR and
+  forces exactly one variable --- on formulas of $2\times 10^3$ to
+  $3.4\times 10^5$ variables. Solve-only A/B (original vs.\ residual,
+  same engine): \texttt{b20} 7.43\,s vs.\ 7.40\,s, \texttt{s38417}
+  1.66\,s vs.\ 1.68\,s, \texttt{c7552} 0.75\,s vs.\ 0.77\,s ---
+  within noise. Certified mode's ``ignore GE, solve the original''
+  therefore costs nothing measurable, and building the GE-step
+  certifier (\S\ref{sec:certified}) is not currently justified by
+  performance.
+\item \textbf{Where the XOR stage does pay, it is already certified.}
+  In the prior full \texttt{hydra} run on this set, eleven instances
+  were decided outright by the parity stage in $\sim$10\,ms each, all
+  eleven with verified GN21 certificates; twenty-seven more fell to
+  the Cook prover with verified VeriPB proofs.
+\end{itemize}
+
+\section{Results (pending)}
+\label{sec:results}
+
+To be completed: the three-way comparison on the official SAT
+Competition 2026 main-track set (400 instances including duplicates,
+5000\,s per instance, certified mode, ten parallel workers, all arms
+on this machine with the satsuma arms in Linux/Docker):
+
+\begin{itemize}
+\item \texttt{hydra} --- structural stages + CaDiCaL/LRAT
+  (baseline: 318 solved in the initial run of the deduplicated set);
+\item \texttt{satsuma} --- the 2026 winner bare, as shipped;
+\item \texttt{hydra\_satsuma} --- structural stages + the winner.
+\end{itemize}
+
+The comparison will report solved counts, per-instance and cactus
+times, and the certification ledger (verified / unchecked / failed
+per chain), measuring both what structure dispatch adds to the
+winner and what the winner's engine adds to \texttt{hydra}.
+
+\section*{Acknowledgments}
+
+Claude (Fable 5, Anthropic) assisted with the implementation,
+measurement, and drafting throughout. satsuma and dejavu are by
+Markus Anders et al.; kissat by Armin Biere; \texttt{dsr-trim} and
+\texttt{lsr-check} by Cayden Codel; \texttt{cake\_lpr} by Yong Kiam
+Tan, Marijn Heule, and Magnus Myreen; VeriPB by Stephan Gocht, Jakob
+Nordstr\"om, et al. The satsuma-iter+kissat components are built
+unmodified from the official SAT Competition 2026 submission archive
+and run as-is in a container.
+
+\begin{thebibliography}{9}
+\setlength{\itemsep}{2pt}
+
+\bibitem{cook71} S.~A. Cook.
+\newblock The complexity of theorem-proving procedures.
+\newblock \emph{STOC}, 1971.
+
+\bibitem{cook76} S.~A. Cook.
+\newblock A short proof of the pigeon hole principle using extended
+  resolution.
+\newblock \emph{SIGACT News}, 8(4):28--32, 1976.
+
+\bibitem{haken85} A.~Haken.
+\newblock The intractability of resolution.
+\newblock \emph{Theoretical Computer Science}, 39:297--308, 1985.
+
+\bibitem{gn21} S.~Gocht and J.~Nordstr\"om.
+\newblock Certifying parity reasoning efficiently using pseudo-Boolean
+  proofs.
+\newblock \emph{AAAI}, 2021.
+
+\bibitem{srcheck} C.~R. Codel, J.~Avigad, and M.~J.~H. Heule.
+\newblock Verified substitution redundancy checking.
+\newblock \emph{FMCAD}, 2024.
+\newblock \url{https://www.cs.cmu.edu/~mheule/publications/SRcheck.pdf}
+
+\bibitem{cakelpr} Y.~K. Tan, M.~J.~H. Heule, and M.~O. Myreen.
+\newblock \texttt{cake\_lpr}: Verified propagation redundancy checking
+  in CakeML.
+\newblock \emph{TACAS}, 2021.
+
+\bibitem{lratfaster} F.~Pollitt, M.~Fleury, and A.~Biere.
+\newblock Faster LRAT checking than solving with CaDiCaL.
+\newblock \emph{SAT}, 2023.
+
+\bibitem{satcomp26} SAT Competition 2026: certificates and checkers.
+\newblock \url{https://satcompetition.github.io/2026/output.html};
+  winner submission archive
+  \url{https://satcompetition.github.io/2026/downloads/solvers/anders.tar.xz}.
+
+\bibitem{sbr} M.~Anders et al.
+\newblock Simplify, order, break, repeat (satsuma-iter).
+\newblock \emph{SAT}, 2026,
+  \url{https://drops.dagstuhl.de/storage/00lipics/lipics-vol377-sat2026/}.
+\newblock satsuma: \url{https://github.com/markusa4/satsuma}.
+
+\end{thebibliography}
+
+\end{document}

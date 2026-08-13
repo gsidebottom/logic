@@ -53,8 +53,9 @@ clausal encodings and runs Gaussian elimination, certifying parity
 refutations in VeriPB after Gocht--Nordstr\"om. The fall-through
 engine is satsuma-iter+kissat (Anders et al.), the SAT Competition
 2026 main-track winner, run unmodified in a container: satsuma
-detects symmetries with dejavu and emits a binary substitution-redundancy
-(SR) proof of its breaking clauses, kissat appends its clausal
+iterates simplify--order--break rounds, adding only unit and binary
+breaking clauses, and emits a binary substitution-redundancy (SR)
+proof justifying each addition, kissat appends its clausal
 refutation to the same file, and \texttt{dsr-trim} verifies the
 \emph{composed} proof against the exact CNF handed over --- so
 symmetry-broken UNSAT results remain checker-certified. Every
@@ -169,10 +170,18 @@ run in an Ubuntu~24.04 container:
 
 \begin{enumerate}
 \item \texttt{satsuma fix <cnf> --bsr --proof-file proof.out --out-file sb.cnf}
-  --- symmetry detection with dejavu (graph automorphisms of the
-  colored literal--clause incidence graph), structure-based
-  symmetry-breaking clauses, and a \emph{binary SR proof} justifying
-  each breaking clause with its symmetry as substitution witness;
+  --- the Simplify--Order--Break--Repeat algorithm~\cite{sbr} (Best
+  Paper, SAT~2026): iterate \emph{simplify} (CNF preprocessing),
+  \emph{order} (clique-guided variable ordering via the
+  \textsc{cliquer} maximum-clique solver on the variable--clause
+  graph), and \emph{break} (adding \emph{only unit and binary}
+  symmetry-breaking clauses, generated systematically along a
+  Schreier--Sims pointwise-stabilizer chain), until only trivial
+  symmetries remain. Because breaking adds only units and binaries,
+  simplification can shrink the formula --- often below the input
+  size --- and expose new symmetries for the next round. The emitted
+  \emph{binary SR proof} justifies each breaking clause with its
+  symmetry as substitution witness;
 \item \texttt{kissat sb.cnf proof.out} --- the CDCL engine solves the
   broken formula and \emph{appends} its clausal refutation to the same
   proof file;
@@ -292,7 +301,9 @@ engine's clausal refutations into VeriPB (\texttt{rup}/\texttt{del}
 steps map directly; RAT additions become \texttt{red} with witness)
 and declare VeriPB for everything, or render the Cook/GN21
 constructions in DRAT-with-extension-variables and declare the
-clausal chain.
+clausal chain. The VeriPB route is helped by satsuma itself: its SR
+steps can be emitted in either DSR or VeriPB format~\cite{sbr}, so
+only the engine refutation needs translating.
 
 \section{Measured design decisions}
 \label{sec:ge-value}
@@ -391,11 +402,12 @@ and run as-is in a container.
   winner submission archive
   \url{https://satcompetition.github.io/2026/downloads/solvers/anders.tar.xz}.
 
-\bibitem{sbr} M.~Anders et al.
-\newblock Simplify, order, break, repeat (satsuma-iter).
-\newblock \emph{SAT}, 2026,
-  \url{https://drops.dagstuhl.de/storage/00lipics/lipics-vol377-sat2026/}.
-\newblock satsuma: \url{https://github.com/markusa4/satsuma}.
+\bibitem{sbr} M.~Anders, C.~Codel, and M.~J.~H. Heule.
+\newblock Simplify, order, break, repeat.
+\newblock \emph{SAT 2026}, LIPIcs vol.~377, article~4, pp.~4:1--4:19.
+\newblock DOI \path{10.4230/LIPIcs.SAT.2026.4}. Best Paper Award,
+  SAT~2026. Software: DOI \path{10.5281/zenodo.20185023}; satsuma:
+  \url{https://github.com/markusa4/satsuma}.
 
 \end{thebibliography}
 

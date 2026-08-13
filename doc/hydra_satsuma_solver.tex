@@ -331,6 +331,73 @@ full performance run:
   the Cook prover with verified VeriPB proofs.
 \end{itemize}
 
+\section{The benchmark set: construction and comparability}
+\label{sec:benchset}
+
+\subsection{Construction}
+\label{sec:benchset-construction}
+
+The evaluation set is the official SAT Competition 2026 main-track
+selection, reconstructed as follows and auditable at every step:
+
+\begin{itemize}
+\item \textbf{Source of truth}: the competition's
+  benchmark-compilation-script tarball
+  (\url{https://satcompetition.github.io/2026/downloads/}) carries the
+  authoritative \texttt{selected\_benchmarks.csv} with columns
+  \texttt{(isohash2, hash, author, family, result)}. The file is
+  archived in-repo at
+  \path{tools/gbd/sc2026_selected_benchmarks.csv}.
+\item \textbf{Slot count and duplicates}: the CSV has exactly
+  \textbf{400 rows over 391 distinct hashes}: nine hashes each appear
+  twice, \emph{in the official selection itself} (the ISCAS circuit
+  \texttt{b20}, hash \texttt{c4318c6a\ldots}, is one of them).
+  Re-verified from the archived CSV and from the built index at the
+  time of writing.
+\item \textbf{Index}: \path{main_track_2026_official.jsonl} is built
+  row-for-row from the CSV (400 records), each carrying the hash, the
+  original filename, the family/author metadata, and the
+  competition's expected result where known.
+\item \textbf{Instance identity}: instance files are hash-addressed
+  (\texttt{<hash>-<name>.cnf.xz}) and were fetched from the GBD
+  benchmark database \emph{by} those hashes; the GBD hash is the MD5
+  of the normalized formula (not of the file bytes), so agreement
+  between the official CSV and the on-disk files is content-level
+  identity under GBD normalization, not filename trust.
+\item \textbf{Dedup semantics}: the harness by default deduplicates to
+  the 391 unique instances and prints
+  \texttt{deduped 9 duplicate records (kept 391 unique)};
+  \texttt{--no-dedupe} runs all 400 slots exactly as officially
+  scored (a duplicated instance counts twice).
+\item \textbf{Result integrity}: every row is cross-checked against
+  the competition's expected status where recorded (any
+  SAT/UNSAT disagreement is flagged as a mismatch; none has been
+  observed), SAT verdicts carry validated witnesses, and UNSAT
+  verdicts carry the per-chain certificates of
+  \S\ref{sec:certs}.
+\end{itemize}
+
+\subsection{Comparability with the official 2026 standings}
+\label{sec:benchset-comparability}
+
+Absolute solved counts measured here must \emph{not} be read against
+the official competition standings. The official main-track winner,
+satsuma-iter+kissat, scored \textbf{276/400} (PAR-2 3647.02) under
+5000\,s CPU per instance, one instance per node, on the competition's
+cluster hardware. Our protocol runs 5000\,s \emph{wall-clock} per
+instance with \emph{ten instances concurrently} on one 14-core Apple
+Silicon machine (64\,GB host; the satsuma-based arms execute inside a
+$\sim$47\,GB Linux VM). Per-core, per-second compute on this machine
+substantially exceeds the competition nodes', so equal nominal
+seconds buy more search --- which is why local solve counts (e.g.\
+the \texttt{hydra} baseline's 318 of the 391 deduplicated instances)
+run well above the official 276/400 despite ten-way contention
+working in the opposite direction. The comparisons this note will
+report (\S\ref{sec:results}) are therefore \emph{internal}: all three
+arms under one fixed protocol on one machine, where hardware and
+scheduling effects cancel and only the solver pipelines differ. The
+official figures are quoted for context only.
+
 \section{Results (pending)}
 \label{sec:results}
 
@@ -346,10 +413,12 @@ on this machine with the satsuma arms in Linux/Docker):
 \item \texttt{hydra\_satsuma} --- structural stages + the winner.
 \end{itemize}
 
-The comparison will report solved counts, per-instance and cactus
-times, and the certification ledger (verified / unchecked / failed
-per chain), measuring both what structure dispatch adds to the
-winner and what the winner's engine adds to \texttt{hydra}.
+The comparison will report solved counts, PAR-2 under the local
+protocol, per-instance and cactus times, and the certification ledger
+(verified / unchecked / failed per chain), measuring both what
+structure dispatch adds to the winner and what the winner's engine
+adds to \texttt{hydra} --- internal comparisons under the protocol
+and caveats of \S\ref{sec:benchset-comparability}.
 
 \section*{Acknowledgments}
 

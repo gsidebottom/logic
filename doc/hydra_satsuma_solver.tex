@@ -468,9 +468,10 @@ checker-resource casualties, not rejections).}
 \centering
 \includegraphics[width=0.86\linewidth]{hydra_satsuma_solver_cactus.pdf}
 \caption{Cactus plot on the official 400-slot set (5000\,s, certified
-mode, this machine): instances solved (sorted by solve time) against
-per-instance time. \texttt{hydra} is projected onto the 400 official
-slots per hash. The separation from $\sim$250 instances on is the
+mode, this machine): cumulative instances solved within a given
+per-instance time budget; one dot per solved instance.
+\texttt{hydra} is projected onto the 400 official slots per hash.
+The vertical separation from $\sim$250 instances on is the
 satsuma-iter+kissat fall-through's contribution; the bare
 \texttt{satsuma} curve will be added when its run completes.}
 \label{fig:cactus}

@@ -417,9 +417,10 @@ bandwidth, whereas the competition dedicates a node per instance; and
 CPU-second vs.\ wall-second accounting differs. Equal nominal seconds
 still buy roughly twice the search here, which on heavy-tailed
 runtimes pulls many near-timeout instances under the line --- and is
-why local solve counts (e.g.\ the \texttt{hydra} baseline's 318 of
-the 391 deduplicated instances) run well above the official 276/400
-despite the contention working in the opposite direction. The bare
+why local solve counts (e.g.\ the \texttt{hydra} baseline's 311 of
+the 391 unique instances, 318 of the 400 official slots) run well
+above the official 276/400 despite the contention working in the
+opposite direction. The bare
 \texttt{satsuma} arm of the planned comparison is precisely the
 control this argument otherwise lacks: the winner's own pipeline
 under our protocol on our hardware, making the hardware factor
@@ -436,27 +437,69 @@ arms under one fixed protocol on one machine, where hardware and
 scheduling effects cancel and only the solver pipelines differ. The
 official figures are quoted for context only.
 
-\section{Results (pending)}
+\section{Interim results}
 \label{sec:results}
 
-To be completed: the three-way comparison on the official SAT
-Competition 2026 main-track set (400 instances including duplicates,
-5000\,s per instance, certified mode, ten parallel workers, all arms
-on this machine with the satsuma arms in Linux/Docker):
+Two of the three arms have completed on the official 400-slot set
+(5000\,s per instance, certified mode, ten parallel workers, this
+machine; satsuma arms in Linux/Docker). The bare \texttt{satsuma}
+arm is running; its column will complete the comparison. All numbers
+below are internal to the protocol and caveats of
+\S\ref{sec:benchset-comparability}.
 
-\begin{itemize}
-\item \texttt{hydra} --- structural stages + CaDiCaL/LRAT
-  (baseline: 318 solved in the initial run of the deduplicated set);
-\item \texttt{satsuma} --- the 2026 winner bare, as shipped;
-\item \texttt{hydra\_satsuma} --- structural stages + the winner.
-\end{itemize}
+\begin{center}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+Arm & Solved/400 & SAT & UNSAT & PAR-2 & UNSAT certified \\
+\midrule
+\texttt{hydra} & 318 & --- & --- & 2459 & 179/181$^{\dagger}$ \\
+\texttt{hydra\_satsuma} & \textbf{335} & 139 & 196 & \textbf{1988} & 170/196 \\
+\texttt{satsuma} & \multicolumn{5}{c}{\emph{running}} \\
+\bottomrule
+\end{tabular}
 
-The comparison will report solved counts, PAR-2 under the local
-protocol, per-instance and cactus times, and the certification ledger
-(verified / unchecked / failed per chain), measuring both what
-structure dispatch adds to the winner and what the winner's engine
-adds to \texttt{hydra} --- internal comparisons under the protocol
-and caveats of \S\ref{sec:benchset-comparability}.
+{\footnotesize $^{\dagger}$per unique instance (the \texttt{hydra}
+run predates the 400-slot protocol; its two unchecked proofs are
+checker-resource casualties, not rejections).}
+\end{center}
+
+\textbf{Head-to-head.} On the 391 unique instances common to both
+runs there are \emph{zero} contradictory verdicts, \emph{zero}
+expected-status mismatches, and \emph{zero} witness failures.
+\texttt{hydra\_satsuma} solves 326 unique to \texttt{hydra}'s 311:
+eighteen instances only the satsuma arm solves, against three only
+\texttt{hydra} solves. The eighteen wins concentrate precisely in
+the symmetric families the fall-through exists for: both
+\texttt{SC25\_Timetable} instances, the \texttt{lockchart} design
+families, \texttt{ramsey\_4\_4\_18}, \texttt{oddball} instances, a
+\texttt{le450} graph coloring, and several multiplier-equivalence
+UNSATs. The three losses (two \texttt{oddball\_79/80\_5}, one random
+CSP SAT) have no structural signature and look like engine variance.
+PAR-2 under the local protocol improves 19\%, 2459 $\to$ 1988.
+
+\textbf{Certification ledger} (\texttt{hydra\_satsuma}, 400-slot
+run): of 196 UNSAT verdicts, 170 carry machine-verified certificates
+--- 27 Cook proofs and 11 GN21 parity proofs (VeriPB, all verified)
+plus 132 composed SR proofs (\texttt{dsr-trim} verified in-solver).
+The 26 unchecked rows are all satsuma-path UNSATs whose solve
+finished (64--3650\,s) but whose \texttt{dsr-trim} pass did not
+complete inside the solver's $\sim$5060\,s process wall
+(solve\,+\,verify exceeded it; mostly multiplier- and
+equivalence-checking circuits with large unhinted proofs, cf.\
+\S\ref{sec:checkercost}). None was \emph{rejected}. Under the
+competition's separate 45{,}000\,s-per-proof checking budget
+(\S\ref{sec:benchset-comparability}) these verifications get
+$12\times$ more room; re-checking the 26 offline is planned.
+
+\textbf{Reading.} With the engine held to the same structural
+front-end, replacing CaDiCaL by satsuma-iter+kissat is worth $+17$
+slots and $-19\%$ PAR-2 on this set --- and the win profile
+(symmetric design families) matches the fall-through's design intent
+rather than generic engine speed. What remains open until the bare
+\texttt{satsuma} arm completes: how much of \texttt{hydra\_satsuma}'s
+count the winner achieves alone, i.e.\ whether the structural stages
+add solves beyond their certified instant verdicts (38 of the 196
+UNSATs) or mainly add certification quality and speed.
 
 \section*{Acknowledgments}
 

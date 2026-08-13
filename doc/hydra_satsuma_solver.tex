@@ -10,6 +10,7 @@
 \usepackage{fancyvrb}
 \usepackage{enumitem}
 \usepackage{microtype}
+\usepackage{graphicx}
 \usepackage[hidelinks]{hyperref}
 \urlstyle{same}
 \setlist{itemsep=2pt,topsep=3pt}
@@ -462,6 +463,18 @@ Arm & Solved/400 & SAT & UNSAT & PAR-2 & UNSAT certified \\
 run predates the 400-slot protocol; its two unchecked proofs are
 checker-resource casualties, not rejections).}
 \end{center}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.86\linewidth]{hydra_satsuma_solver_cactus.pdf}
+\caption{Cactus plot on the official 400-slot set (5000\,s, certified
+mode, this machine): instances solved (sorted by solve time) against
+per-instance time. \texttt{hydra} is projected onto the 400 official
+slots per hash. The separation from $\sim$250 instances on is the
+satsuma-iter+kissat fall-through's contribution; the bare
+\texttt{satsuma} curve will be added when its run completes.}
+\label{fig:cactus}
+\end{figure}
 
 \textbf{Head-to-head.} On the 391 unique instances common to both
 runs there are \emph{zero} contradictory verdicts, \emph{zero}

@@ -423,7 +423,14 @@ despite the contention working in the opposite direction. The bare
 \texttt{satsuma} arm of the planned comparison is precisely the
 control this argument otherwise lacks: the winner's own pipeline
 under our protocol on our hardware, making the hardware factor
-directly measurable rather than estimated. The comparisons this note will
+directly measurable rather than estimated. One axis runs the \emph{other} way: the competition
+checks proofs under a 45{,}000\,s budget per certificate ($9\times$
+the solve timeout; stated for SC2020 and SC2025, the standing
+convention), whereas our protocol checks under 5{,}000\,s (plus a
+16\,GB heap cap for \texttt{cake\_lpr}) --- so local
+\emph{certification} counts are conservative relative to competition
+conditions: a proof recorded here as unchecked-on-timeout might well
+verify under the official budget. The comparisons this note will
 report (\S\ref{sec:results}) are therefore \emph{internal}: all three
 arms under one fixed protocol on one machine, where hardware and
 scheduling effects cancel and only the solver pipelines differ. The

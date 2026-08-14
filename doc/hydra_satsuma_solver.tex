@@ -50,7 +50,8 @@ as a VeriPB proof --- families on which resolution, and hence any
 DRAT-based route without new variables, is exponential; (2) an
 \emph{XOR/GF(2) stage} that recovers parity constraints from their
 clausal encodings and runs Gaussian elimination, certifying parity
-refutations in VeriPB after Gocht--Nordstr\"om. The fall-through
+refutations in VeriPB by Gocht--Nordstr\"om's division-based method
+(GN21). The fall-through
 engine is satsuma-iter+kissat (Anders et al.), the SAT Competition
 2026 main-track winner, run unmodified in a container: satsuma
 iterates simplify--order--break rounds, adding only unit and binary
@@ -120,10 +121,18 @@ parsing) and runs GF(2) Gaussian elimination. Three outcomes:
 \begin{itemize}
 \item \textbf{Inconsistent system} (by unit propagation or by GE): the
   formula is UNSAT. When a proof is requested the stage emits a
-  parity refutation in VeriPB after Gocht--Nordstr\"om (2021)
-  --- the certificate names the (typically small) subset of recovered
-  XORs whose GF(2) sum is $1 = 0$. Parity families are another
-  resolution-exponential class certified polynomially here.
+  parity refutation following Gocht and Nordstr\"om's method
+  \cite{gn21} (henceforth \textbf{GN21}): parity reasoning, though
+  exponential for resolution, has short pseudo-Boolean certificates,
+  because cutting planes' \emph{division} rule captures mod-2
+  arithmetic --- encode each recovered XOR as pseudo-Boolean
+  constraints, and summing two of them followed by division by two
+  derives their GF(2) sum in a constant number of proof steps. Our
+  certificate names the (typically small) refuting subset of
+  recovered XORs and derives the contradiction $0 \geq 1$ from their
+  sum, checkable by \texttt{veripb} in milliseconds. (The certifier
+  re-derives the XOR recovery itself from the clausal encodings, so
+  the proof does not trust the recovery code.)
 \item \textbf{Pure-XOR satisfiable}: GE solves the system outright;
   the model is the certificate.
 \item \textbf{Partial simplification}: GE forces some variables and

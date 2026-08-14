@@ -505,6 +505,36 @@ competition's separate 45{,}000\,s-per-proof checking budget
 (\S\ref{sec:benchset-comparability}) these verifications get
 $12\times$ more room; re-checking the 26 offline is planned.
 
+\textbf{Strict (official-semantics) scoring.} Main-track scoring
+counts an UNSAT as solved \emph{only if its proof verifies}. Re-scoring
+both arms under that rule --- every unchecked-proof UNSAT counted as
+unsolved at $2\times$ timeout --- reverses the headline \emph{at our
+checking budget}:
+
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+ & verdict scoring & strict scoring \\
+\midrule
+\texttt{hydra} & 318/400 \;(PAR-2 2459) & \textbf{316/400} \;(2507) \\
+\texttt{hydra\_satsuma} & \textbf{335/400} \;(1988) & 309/400 \;(2542) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The reversal is a checking-budget artifact, not a proof-quality one:
+\texttt{hydra}'s LRAT chain is hint-replay (cheap to check within our
+5000\,s), while the SR chain pays hint discovery at check time
+(\S\ref{sec:checkercost}) --- and the 26 affected verifications were
+additionally starved by a since-fixed harness bug that capped the
+whole process at solve-timeout${}+60$\,s, so a verification never
+actually had more than $5060 - t_{\mathrm{solve}}$ seconds. None of
+the 26 was rejected. Under the competition's own $45{,}000$\,s
+checking budget these verifications get $12\times$ more room; a
+re-check of the 25 unique affected instances at that budget is
+prepared and will move the strict row toward the verdict row to the
+extent \texttt{dsr-trim} completes.
+
 \textbf{Reading.} With the engine held to the same structural
 front-end, replacing CaDiCaL by satsuma-iter+kissat is worth $+17$
 slots and $-19\%$ PAR-2 on this set --- and the win profile

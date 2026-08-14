@@ -2886,7 +2886,21 @@ fn main() {
             } else {
                 0
             };
-            let limit = args.timeout_secs + elab_budget + 60;
+            // satsuma backends verify AFTER the verdict in a second bounded
+            // container phase; the backstop must outlive solve + verify or it
+            // guillotines the checker mid-flight (the 26 unchecked proofs of
+            // the _2 run: verify never had more than 5060s - solve). 0 =
+            // unlimited verify gets a day.
+            let verify_budget = if matches!(args.backend,
+                    BackendChoice::HydraSatsuma | BackendChoice::Satsuma) {
+                match args.satsuma_verify_secs.unwrap_or(args.timeout_secs) {
+                    0 => 86_400,
+                    v => v,
+                }
+            } else {
+                0
+            };
+            let limit = args.timeout_secs + elab_budget + verify_budget + 60;
             let vd = verdict_done.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(limit));

@@ -32,10 +32,9 @@ Solver description for the \texttt{hydra\_satsuma} backend of
 \texttt{sat}: the certified \texttt{hydra} structure-dispatch pipeline
 (Cook-shape prover, XOR/GF(2) stage) whose fall-through engine is
 satsuma-iter+kissat, winner of the SAT Competition 2026 main track.
-Performance sections will be completed after the three-way
-apples-to-apples run (\texttt{hydra} / \texttt{satsuma} /
-\texttt{hydra\_satsuma}) on the official 2026 benchmark set on this
-machine.
+Includes the completed three-way apples-to-apples comparison
+(\texttt{hydra} / \texttt{satsuma} / \texttt{hydra\_satsuma}) on the
+official 2026 benchmark set on this machine.
 \end{center}
 
 \section*{Abstract}
@@ -438,15 +437,16 @@ arms under one fixed protocol on one machine, where hardware and
 scheduling effects cancel and only the solver pipelines differ. The
 official figures are quoted for context only.
 
-\section{Interim results}
+\section{Results}
 \label{sec:results}
 
-Two of the three arms have completed on the official 400-slot set
-(5000\,s per instance, certified mode, ten parallel workers, this
-machine; satsuma arms in Linux/Docker). The bare \texttt{satsuma}
-arm is running; its column will complete the comparison. All numbers
-below are internal to the protocol and caveats of
-\S\ref{sec:benchset-comparability}.
+All three arms have completed on the official 400-slot set (5000\,s
+per instance, certified mode, ten parallel workers, this machine;
+satsuma arms in Linux/Docker). All numbers are internal to the
+protocol and caveats of \S\ref{sec:benchset-comparability}; soundness
+was clean across all three runs (zero expected-status mismatches, zero
+witness failures, zero contradictory verdicts between any pair of
+arms).
 
 \begin{center}
 \begin{tabular}{@{}lrrrrr@{}}
@@ -454,90 +454,135 @@ below are internal to the protocol and caveats of
 Arm & Solved/400 & SAT & UNSAT & PAR-2 & UNSAT certified \\
 \midrule
 \texttt{hydra} & 318 & 132 & 186 & 2459 & 184/186 \\
+\texttt{satsuma} & 334 & 139 & 195 & 2015 & 177/195 \\
 \texttt{hydra\_satsuma} & \textbf{335} & 139 & 196 & \textbf{1988} & 170/196 \\
-\texttt{satsuma} & \multicolumn{5}{c}{\emph{running}} \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 Both completed runs use the identical protocol on all 400 official
 slots (the selection's nine duplicate hashes each occupy two slots and
-count twice, as in official scoring); per-unique-instance counts in
-the head-to-head below differ from slot counts only through those
-duplicates. \texttt{hydra}'s two unchecked proofs are
-\texttt{cake\_lpr} memouts (\S above), not rejections.
+count twice, as in official scoring). \texttt{hydra}'s two unchecked
+proofs are \texttt{cake\_lpr} memouts; the satsuma-chain unchecked
+proofs are \texttt{dsr-trim} timeouts (\S\ref{sec:budgetnote}).
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.86\linewidth]{hydra_satsuma_solver_cactus.pdf}
-\caption{Cactus plot on the official 400-slot set (5000\,s, certified
-mode, this machine): cumulative instances solved within a given
-per-instance time budget; one dot per solved instance.
-\texttt{hydra} is projected onto the 400 official slots per hash.
-The vertical separation from $\sim$250 instances on is the
-satsuma-iter+kissat fall-through's contribution; the bare
-\texttt{satsuma} curve will be added when its run completes.}
+\caption{Cactus plot on the official 400-slot set: cumulative
+instances solved within a given per-instance time budget; one dot per
+solved instance. \texttt{hydra} is aligned to the official slots per
+hash. \texttt{satsuma} is drawn as a wide translucent band beneath
+\texttt{hydra\_satsuma}'s thin line because the two curves coincide
+almost everywhere --- that near-total overlap is itself the finding
+(\S\ref{sec:structval}): with a symmetry-capable engine, the
+structural front-end changes the curve only at the chessboard pair,
+while the engine swap separates both from \texttt{hydra} from
+$\sim$250 instances on.}
 \label{fig:cactus}
 \end{figure}
 
-\textbf{Head-to-head.} On the 391 unique instances common to both
-runs there are \emph{zero} contradictory verdicts, \emph{zero}
-expected-status mismatches, and \emph{zero} witness failures.
-\texttt{hydra\_satsuma} solves 326 unique to \texttt{hydra}'s 311:
-eighteen instances only the satsuma arm solves, against three only
-\texttt{hydra} solves. The eighteen wins concentrate precisely in
-the symmetric families the fall-through exists for: both
-\texttt{SC25\_Timetable} instances, the \texttt{lockchart} design
-families, \texttt{ramsey\_4\_4\_18}, \texttt{oddball} instances, a
-\texttt{le450} graph coloring, and several multiplier-equivalence
-UNSATs. The three losses (two \texttt{oddball\_79/80\_5}, one random
-CSP SAT) have no structural signature and look like engine variance.
-PAR-2 under the local protocol improves 19\%, 2459 $\to$ 1988.
+\textbf{Engine effect} (\texttt{hydra} vs.\ \texttt{hydra\_satsuma},
+structure held fixed): replacing CaDiCaL by satsuma-iter+kissat is
+worth $+17$ slots and $-19\%$ PAR-2. On the 391 unique instances the
+satsuma arm solves eighteen that \texttt{hydra} does not ---
+concentrated in symmetric design families (both
+\texttt{SC25\_Timetable} instances, the \texttt{lockchart} families,
+\texttt{ramsey\_4\_4\_18}, \texttt{oddball}, a \texttt{le450}
+coloring, several multiplier-equivalence UNSATs) --- against three in
+the other direction with no structural signature.
 
-\textbf{Certification ledger} (\texttt{hydra\_satsuma}, 400-slot
-run): of 196 UNSAT verdicts, 170 carry machine-verified certificates
---- 27 Cook proofs and 11 GN21 parity proofs (VeriPB, all verified)
-plus 132 composed SR proofs (\texttt{dsr-trim} verified in-solver).
-The 26 unchecked rows are all satsuma-path UNSATs whose solve
-finished (64--3650\,s) but whose \texttt{dsr-trim} pass did not
-complete inside the solver's $\sim$5060\,s process wall
-(solve\,+\,verify exceeded it; mostly multiplier- and
-equivalence-checking circuits with large unhinted proofs, cf.\
-\S\ref{sec:checkercost}). None was \emph{rejected}. Under the
-competition's separate 45{,}000\,s-per-proof checking budget
-(\S\ref{sec:benchset-comparability}) these verifications get
-$9\times$ the wall-clock time --- and effectively more, since locally
-each received only what remained of the process wall after its solve;
-re-checking the 25 unique instances offline is planned.
+\subsection{What the structural front-end is worth}
+\label{sec:structval}
 
-\textbf{Checker-budget note.} Scores above count solved verdicts;
-they are \emph{not} adjusted for local proof-checking timeouts, since
-our checking budget (5000\,s) is $9\times$ tighter than the official
-45{,}000\,s. The ledger: of \texttt{hydra\_satsuma}'s 196 UNSATs, 26
-rows (25 unique instances) hit the local checking budget --- all of
-them satsuma-emitted SR proofs, none rejected --- and in fact received
-even less than the nominal 5000\,s due to a since-fixed process-wall
-bug. We assume these verifications complete within the official
-45{,}000\,s: the competition counts an instance only if its proof
-checks, SR was an official 2026 checker, and the winner's official
-276/400 is therefore by definition net of SR verification at that
-budget on competition hardware. The structural certificates never
-strain any budget: all 27 Cook and 11 GN21 proofs verified (in
-seconds) in both runs, zero timeouts. \texttt{hydra}'s own two
-unchecked proofs are \texttt{cake\_lpr} \emph{memouts} under the local
-16\,GB heap cap (CaDiCaL-LRAT chain; not rejections). A re-check of
-the 25 instances at the official budget is prepared to confirm the
-assumption.
+The \texttt{satsuma} vs.\ \texttt{hydra\_satsuma} pair isolates the
+Cook/XOR machinery exactly: same engine, same container, same
+protocol; the only difference is the structural front-end. Across the
+362 slots where no structure applies the two arms' solved sets are
+\emph{identical} (zero flips in either direction); every count and
+score difference between them traces to the 38 structural slots plus
+measurement noise.
 
-\textbf{Reading.} With the engine held to the same structural
-front-end, replacing CaDiCaL by satsuma-iter+kissat is worth $+17$
-slots and $-19\%$ PAR-2 on this set --- and the win profile
-(symmetric design families) matches the fall-through's design intent
-rather than generic engine speed. What remains open until the bare
-\texttt{satsuma} arm completes: how much of \texttt{hydra\_satsuma}'s
-count the winner achieves alone, i.e.\ whether the structural stages
-add solves beyond their certified instant verdicts (38 of the 196
-UNSATs) or mainly add certification quality and speed.
+\textbf{Benefit where it applies} (38 slots: 27 Cook, 11 GN21):
+\texttt{hydra\_satsuma} decides all 38 in \textbf{0.68\,s total},
+every verdict carrying a verified VeriPB certificate. Bare
+\texttt{satsuma} solves 37 of 38 at a PAR-2 cost of 14{,}431\,s:
+\texttt{mchess\_20} times out (the run's only count flip, worth 25 of
+the 27-point final PAR-2 gap), \texttt{mchess\_17} barely lands at
+4392.7\,s --- 88\% of budget, and its SR proof check then times out,
+so under official only-verified-counts semantics the solve would not
+score --- and \texttt{tseitingrid6x185\_shuffled}, a Tseitin parity
+contradiction, takes 14.1\,s against the GN21 path's 0.025\,s. The
+honest fine print: 35 of the 38 are easy for the winner too
+(median 0.4\,s), so \emph{nearly the whole structural credit
+concentrates in the mutilated-chessboard pair} --- the one family in
+this set that is resolution-exponential, not rescued by SOBR-style
+unit/binary symmetry breaking, and trivial for the two-sided
+cardinality argument. The front-end's value against a
+symmetry-capable engine is thus a \emph{hard floor under structured
+families}, plus instant polynomial certificates, rather than a broad
+speedup: on a set without such families it would contribute
+certification and latency only; on a set with more of them (larger
+chessboards, larger Tseitin grids --- both grow without bound) the
+count gap widens mechanically.
+
+\textbf{Overhead where it does not apply} (362 slots): measured as the
+median paired solve-time difference on the 297 instances both arms
+solved --- same formula, same engine, so the pairing isolates the
+detection prefix --- the cost is \textbf{$+1.16$\,s per instance},
+i.e.\ $\approx 420$\,s over the whole run, or \textbf{1.05 PAR-2
+points}. (The paired-difference \emph{sum} is larger, $+3684$\,s, but
+the excess beyond the median-based prefix sits in a handful of
+multi-thousand-second solves stretching 5--13\% --- proportional to
+solve time, the wrong shape for a fixed prefix, and consistent with
+wall-clock load variance between runs; kissat's search on identical
+input is deterministic.) Detection never caused a flip: no instance
+was lost to overhead.
+
+The ledger closes: $+36.1$ PAR-2 points of structural credit against
+$\approx 1$ point of measured prefix (and $\approx 8$ of tail noise)
+nets the observed 27-point, one-solve advantage --- a
+$\sim$34:1 benefit-to-overhead ratio on the honest fixed-cost
+accounting, delivered almost entirely by one family.
+
+\subsection{Certification ledger}
+\label{sec:budgetnote}
+
+Scores above count solved verdicts; they are \emph{not} adjusted for
+local proof-checking timeouts, since our checking budget (5000\,s) is
+$9\times$ tighter than the official 45{,}000\,s
+(\S\ref{sec:benchset-comparability}). Per arm: \texttt{hydra}
+certified 184/186 UNSATs (2 \texttt{cake\_lpr} memouts under the
+local 16\,GB heap cap); \texttt{hydra\_satsuma} 170/196 (26
+\texttt{dsr-trim} timeouts, which additionally received less than
+nominal budget due to a since-fixed process-wall bug);
+\texttt{satsuma} 177/195 (18 \texttt{dsr-trim} timeouts --- fewer
+than \texttt{hydra\_satsuma} despite near-identical workload because
+this run included the wall fix, so its verify budgets were fully
+usable). No proof was \emph{rejected} anywhere; every gap is a
+resource limit. The 38 structural certificates and the SAT witnesses
+never strain any budget. We assume the \texttt{dsr-trim} timeouts
+complete within the official 45{,}000\,s: the competition counts an
+instance only if its proof checks, SR was an official 2026 checker,
+and the winner's official 276/400 is therefore net of SR verification
+at that budget on competition hardware
+(\texttt{custmulsb2x32o}, unchecked in both satsuma-chain runs here,
+is the strongest candidate to need the full official budget).
+Offline re-checks at 45{,}000\,s are prepared for both the 25 unique
+\texttt{hydra\_satsuma} instances and \texttt{hydra}'s two memouts
+(48\,GB heap).
+
+\textbf{Reading.} The three-way resolves cleanly. The engine is worth
+$+16$/$+17$ slots over CaDiCaL on this set; the structural front-end
+is worth $+1$ slot and 27 PAR-2 points against the strongest
+available engine --- all of it from one resolution-exponential family
+--- at a measured cost of $\approx 1$ PAR-2 point of detection prefix
+and zero lost instances. Its deeper contributions are invariants the
+count does not show: every structural verdict is instantaneous and
+carries a polynomial VeriPB certificate (against engine-time SR
+proofs that are expensive to check and, twice here, uncheckable in
+budget), and the floor it provides is unbounded in the direction the
+engine's weakness grows.
 
 \section*{Acknowledgments}
 

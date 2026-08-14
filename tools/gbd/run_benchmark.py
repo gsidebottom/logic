@@ -106,6 +106,14 @@ SWAP_BASE_MB: int = 0
 SWAP_BRAKE_MB: int = 8192
 
 
+def _disk_free_gb(path: str = "/tmp") -> float:
+    try:
+        u = shutil.disk_usage(path)
+        return u.free / (1024 ** 3)
+    except Exception:
+        return float("inf")
+
+
 def _swap_used_mb() -> int:
     if sys.platform != "darwin":
         return 0
@@ -118,6 +126,10 @@ def _swap_used_mb() -> int:
 # gratchk — formally-verified GRAT checker (kissat-path proofs; the GRAT
 # tool chain's gratgen elaborates kissat's DRAT, gratchk verifies it).
 GRATCHK_BIN = _find_tool("gratchk")
+
+# Free-space floor (GiB) under which new instance launches pause; set from
+# --disk-brake-gb in main().
+DISK_BRAKE_GB = 50
 
 # At most N instances above the "giant" thresholds solve concurrently —
 # a 100M-clause instance costs 10-25 GB inside the engine plus hydra's own
@@ -1490,6 +1502,23 @@ def solve_one(
     if is_giant and _giant_sem is not None:
         tui.update_worker(worker_idx, display, "waiting (giant slot)…")
         _giant_sem.acquire()
+    # Disk brake: a full /tmp does not fail cleanly — xz and the solver
+    # error at launch and the row records as a bogus fast TIMEOUT (the
+    # 2026-08-12 incident). Hold the launch until space recovers; live
+    # instances keep finishing and freeing their proof dirs.
+    if DISK_BRAKE_GB > 0:
+        waited = False
+        while not _shutdown.is_set() and _disk_free_gb() < DISK_BRAKE_GB:
+            if not waited:
+                tui.log(f"disk brake: free space on /tmp under "
+                        f"{DISK_BRAKE_GB} GiB — holding new launches",
+                        color=COLOR_ORANGE)
+                waited = True
+            tui.update_worker(worker_idx, display,
+                              f"disk brake ({_disk_free_gb():.0f} GiB free)…")
+            _shutdown.wait(30)
+        if _shutdown.is_set():
+            return None
     tui.update_worker(worker_idx, display, "decompressing…")
 
     tmp_path: Optional[Path] = None
@@ -1891,6 +1920,12 @@ def main() -> int:
                          "across all workers; 0 = unlimited.  Solving "
                          "stays at -j; only verification is throttled. "
                          "Default 2 (2 x proof-mem-gb worst case).")
+    ap.add_argument("--disk-brake-gb", type=int, default=50,
+                    help="Pause launching new instances while free disk space "
+                         "on /tmp is below this many GiB (satsuma-backend "
+                         "proof streams are written there; a full disk turns "
+                         "launches into garbage TIMEOUT rows). Re-checked "
+                         "every 30s; 0 disables.")
     ap.add_argument("--swap-brake-gb", type=int, default=8,
                     help="Abort a running checker (MEMOUT) if system swap "
                          "grows this many GB over the run baseline; 0 "
@@ -2027,6 +2062,8 @@ def main() -> int:
     CHECK_SEM = threading.Semaphore(args.check_jobs) if args.check_jobs > 0 else None
     SWAP_BASE_MB = _swap_used_mb()
     SWAP_BRAKE_MB = args.swap_brake_gb * 1024
+    global DISK_BRAKE_GB
+    DISK_BRAKE_GB = args.disk_brake_gb
 
     if not args.no_dedupe:
         seen = set()

@@ -2893,6 +2893,12 @@ fn main() {
                 if !vd.load(std::sync::atomic::Ordering::Relaxed) {
                     eprintln!("c TIMEOUT after {:.1}ms", (limit as f64) * 1000.0);
                 }
+                // The satsuma mount dir is deterministic per pid; the branch's
+                // own cleanup never runs when this exit fires mid-phase, and a
+                // leaked dir holds a multi-GB proof (the disk-exhaustion
+                // incident of 2026-08-12). Remove it before dying; harmless
+                // when the dir does not exist (non-satsuma backends).
+                let _ = std::fs::remove_dir_all(format!("/tmp/pbsatsuma-{}", std::process::id()));
                 std::process::exit(124);
             });
         }
@@ -3149,6 +3155,34 @@ fn main() {
         // binds overall. A dsr-trim timeout/failure downgrades the UNSAT to
         // sound-but-UNCERTIFIED; the verdict itself is never lost.
         if matches!(args.backend, BackendChoice::HydraSatsuma | BackendChoice::Satsuma) {
+            // Self-healing sweep: remove pbsatsuma-<pid> dirs whose owning
+            // sat process is gone (crashed/killed runs leak them, each
+            // holding a multi-GB proof). `kill -0` succeeding means the pid
+            // is alive AND signalable by us — necessary for it to be a live
+            // sat of ours, so those dirs are conservatively kept. A probe
+            // failure (ESRCH or EPERM-on-foreign-reuse) means the owning sat
+            // is gone either way: stale, removed.
+            if let Ok(entries) = std::fs::read_dir("/tmp") {
+                for e in entries.flatten() {
+                    let name = e.file_name().to_string_lossy().into_owned();
+                    if let Some(pid_s) = name.strip_prefix("pbsatsuma-") {
+                        if let Ok(pid) = pid_s.parse::<u32>() {
+                            if pid != std::process::id() {
+                                let alive = std::process::Command::new("kill")
+                                    .args(["-0", &pid.to_string()])
+                                    .output()
+                                    .map(|o| o.status.success())
+                                    .unwrap_or(true);
+                                if !alive {
+                                    eprintln!("c {}: sweeping stale mount dir {} (owner {} gone)",
+                                              args.backend.name(), name, pid);
+                                    let _ = std::fs::remove_dir_all(e.path());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             // Mount dir under /tmp: Docker Desktop's default file sharing
             // covers /private/tmp, while std::env::temp_dir()'s
             // /var/folders/... may not be shared.

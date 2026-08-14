@@ -453,16 +453,19 @@ below are internal to the protocol and caveats of
 \toprule
 Arm & Solved/400 & SAT & UNSAT & PAR-2 & UNSAT certified \\
 \midrule
-\texttt{hydra} & 318 & --- & --- & 2459 & 179/181$^{\dagger}$ \\
+\texttt{hydra} & 318 & 132 & 186 & 2459 & 184/186 \\
 \texttt{hydra\_satsuma} & \textbf{335} & 139 & 196 & \textbf{1988} & 170/196 \\
 \texttt{satsuma} & \multicolumn{5}{c}{\emph{running}} \\
 \bottomrule
 \end{tabular}
-
-{\footnotesize $^{\dagger}$per unique instance (the \texttt{hydra}
-run predates the 400-slot protocol; its two unchecked proofs are
-checker-resource casualties, not rejections).}
 \end{center}
+
+Both completed runs use the identical protocol on all 400 official
+slots (the selection's nine duplicate hashes each occupy two slots and
+count twice, as in official scoring); per-unique-instance counts in
+the head-to-head below differ from slot counts only through those
+duplicates. \texttt{hydra}'s two unchecked proofs are
+\texttt{cake\_lpr} memouts (\S above), not rejections.
 
 \begin{figure}[h]
 \centering

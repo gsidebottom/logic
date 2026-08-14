@@ -2767,6 +2767,22 @@ fn parse_args() -> Result<Args, String> {
     Ok(a)
 }
 
+
+/// Remove a satsuma mount dir, truncating every file first: Docker's
+/// file-sharing server can hold a deleted file's handle open past
+/// container teardown (unlink-while-open), pinning a multi-GB proof's
+/// blocks until the VM restarts. A truncated file pins nothing.
+fn cleanup_satsuma_dir(dir: &std::path::Path) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for e in entries.flatten() {
+            if let Ok(f) = std::fs::OpenOptions::new().write(true).open(e.path()) {
+                let _ = f.set_len(0);
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 fn main() {
     let args = match parse_args() {
         Ok(a) => a,
@@ -2912,7 +2928,7 @@ fn main() {
                 // leaked dir holds a multi-GB proof (the disk-exhaustion
                 // incident of 2026-08-12). Remove it before dying; harmless
                 // when the dir does not exist (non-satsuma backends).
-                let _ = std::fs::remove_dir_all(format!("/tmp/pbsatsuma-{}", std::process::id()));
+                cleanup_satsuma_dir(std::path::Path::new(&format!("/tmp/pbsatsuma-{}", std::process::id())));
                 std::process::exit(124);
             });
         }
@@ -3190,7 +3206,7 @@ fn main() {
                                 if !alive {
                                     eprintln!("c {}: sweeping stale mount dir {} (owner {} gone)",
                                               args.backend.name(), name, pid);
-                                    let _ = std::fs::remove_dir_all(e.path());
+                                    cleanup_satsuma_dir(&e.path());
                                 }
                             }
                         }
@@ -3293,7 +3309,7 @@ fn main() {
                 Ok(o) => o,
                 Err(e) => {
                     eprintln!("c ERROR: docker run failed: {} (build the image with tools/satsuma/build.sh)", e);
-                    let _ = std::fs::remove_dir_all(&mdir);
+                    cleanup_satsuma_dir(&mdir);
                     std::process::exit(2);
                 }
             };
@@ -3434,7 +3450,7 @@ fn main() {
                     }
                 }
             }
-            let _ = std::fs::remove_dir_all(&mdir);
+            cleanup_satsuma_dir(&mdir);
             return;
         }
 

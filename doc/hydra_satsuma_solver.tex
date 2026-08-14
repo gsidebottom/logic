@@ -433,11 +433,27 @@ runtimes pulls many near-timeout instances under the line --- and is
 why local solve counts (e.g.\ the \texttt{hydra} baseline's 311 of
 the 391 unique instances, 318 of the 400 official slots) run well
 above the official 276/400 despite the contention working in the
-opposite direction. The bare
-\texttt{satsuma} arm of the planned comparison is precisely the
-control this argument otherwise lacks: the winner's own pipeline
-under our protocol on our hardware, making the hardware factor
-directly measurable rather than estimated. One axis runs the \emph{other} way: the competition
+opposite direction. The bare \texttt{satsuma} arm turns this from estimate into
+measurement: it is the winner's own pipeline, built unmodified from
+the official submission archive, on the official instance set --- so
+its local 334/400 against the official 276/400 is a pure environment
+delta. Reading it off the cactus curve: local \texttt{satsuma}
+reaches 276 solves at a per-instance budget of only \textbf{653\,s},
+where the competition needed its full 5000\,s (CPU) for the same
+count --- an effective environment factor of
+$5000/653 \approx \mathbf{7.7\times}$, and conservative in
+direction, since our ten-way contention slows the local arm while
+competition instances ran on dedicated nodes. (The estimate is
+count-based, not instance-matched: official per-instance results are
+not published alongside the standings.) Notably, the single-thread
+microbenchmark ratios above (2--3$\times$) substantially
+\emph{underpredict} the measured end-to-end factor: CDCL search is
+memory-latency-bound, and the M4~Pro's memory subsystem advantage
+over a 2015 Skylake-E3 core far exceeds its arithmetic advantage ---
+a reminder that microbenchmark constants do not price real workloads.
+Local solve counts therefore overshoot official standings
+mechanically, by roughly this factor's worth of extra effective
+budget per instance. One axis runs the \emph{other} way: the competition
 checks proofs under a 45{,}000\,s budget per certificate ($9\times$
 the solve timeout; stated for SC2020 and SC2025, the standing
 convention), whereas our protocol checks under 5{,}000\,s (plus a

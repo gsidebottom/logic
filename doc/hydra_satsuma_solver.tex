@@ -406,34 +406,33 @@ substantially exceeds the competition nodes'. For reference:
 \begin{center}
 \begin{tabular}{@{}lrr@{}}
 \toprule
-Single-thread benchmark & Apple M4 Pro & Xeon E3-1230~v5 \\
+Single-thread benchmark & Apple M4 Pro & Xeon Platinum 8368 \\
 \midrule
-PassMark ST & 4506 & 2189 \\
-Geekbench~6 ratio & \multicolumn{2}{c}{$\approx 2.9\times$} \\
+PassMark ST & 4506 & 2345 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 The evaluation machine is the Mac~mini described in
-\S\ref{sec:checkercost}. The competition node model is \emph{assumed}, not confirmed:
-the 2026 results slides name no hardware (they do confirm CPU-time
-scoring), but the infrastructure is Beyer's LMU cluster --- the
-winning submission's own archive carries that cluster's
-competition-environment Dockerfile --- whose documented SV-COMP node
-is an Intel Xeon E3-1230~v5 @ 3.4\,GHz (Skylake, 2015). Published
-single-thread figures put the M4~Pro P-core at roughly
-\textbf{2--3$\times$} that core (PassMark $4506/2189 \approx
-2.1\times$; Geekbench~6 $\approx 2.9\times$). Two effects pull the
-\emph{effective} per-instance ratio below the raw single-thread
-number: our ten concurrent workers share one machine's memory
-bandwidth, whereas the competition dedicates a node per instance; and
-CPU-second vs.\ wall-second accounting differs. Equal nominal seconds
-still buy roughly twice the search here, which on heavy-tailed
-runtimes pulls many near-timeout instances under the line --- and is
-why local solve counts (e.g.\ the \texttt{hydra} baseline's 311 of
-the 391 unique instances, 318 of the 400 official slots) run well
-above the official 276/400 despite the contention working in the
-opposite direction. The bare \texttt{satsuma} arm turns this from estimate into
+\S\ref{sec:checkercost}. SAT Competition 2026 ran --- for the first
+time --- on the NHR@KIT system \emph{HoreKa}, Blue partition, whose
+documented nodes are dual Intel Xeon Platinum~8368 (Ice Lake, 2021;
+76 cores and $\geq 256$\,GB per node). (An earlier draft assumed the
+LMU/SV-COMP cluster from the BenchExec-style Dockerfile in the
+winning submission's archive; that Dockerfile pins the benchmarking
+\emph{tooling}, not the site.) With 76-core nodes and per-run
+CPU-time and memory limits (30\,GB per solver in 2025), many solver
+runs share a node --- so \emph{both} environments schedule concurrent
+runs against shared memory, ours ten per 14-core machine, theirs
+batched per node, and neither side's times are contention-free.
+Published single-thread figures put the M4~Pro P-core at roughly
+$1.9\times$ the 8368 core (PassMark $4506/2345$); CPU-second vs.\
+wall-second accounting differs on top. Equal nominal seconds still
+buy substantially more search here, which on heavy-tailed runtimes
+pulls many near-timeout instances under the line --- and is why local
+solve counts (e.g.\ the \texttt{hydra} baseline's 311 of the 391
+unique instances, 318 of the 400 official slots) run well above the
+official 276/400. The bare \texttt{satsuma} arm turns this from estimate into
 measurement: it is the winner's own pipeline, built unmodified from
 the official submission archive, on the official instance set --- so
 its local 334/400 against the official 276/400 is a pure environment
@@ -441,16 +440,17 @@ delta. Reading it off the cactus curve: local \texttt{satsuma}
 reaches 276 solves at a per-instance budget of only \textbf{653\,s},
 where the competition needed its full 5000\,s (CPU) for the same
 count --- an effective environment factor of
-$5000/653 \approx \mathbf{7.7\times}$, and conservative in
-direction, since our ten-way contention slows the local arm while
-competition instances ran on dedicated nodes. (The estimate is
-count-based, not instance-matched: official per-instance results are
-not published alongside the standings.) Notably, the single-thread
-microbenchmark ratios above (2--3$\times$) substantially
-\emph{underpredict} the measured end-to-end factor: CDCL search is
-memory-latency-bound, and the M4~Pro's memory subsystem advantage
-over a 2015 Skylake-E3 core far exceeds its arithmetic advantage ---
-a reminder that microbenchmark constants do not price real workloads.
+$5000/653 \approx \mathbf{7.7\times}$. This is the all-in
+environment difference --- per-core hardware, node scheduling and
+contention on both sides, and CPU- vs.\ wall-second accounting fold
+into it, and count data alone cannot decompose them. (The estimate is
+also count-based, not instance-matched: official per-instance results
+are not published alongside the standings.) Notably, the
+single-thread microbenchmark ratio above ($\approx 1.9\times$)
+\emph{dramatically} underpredicts the measured end-to-end factor:
+CDCL search is memory-latency-bound and scheduling-sensitive, and
+neither effect is priced by an arithmetic microbenchmark --- a
+reminder that microbenchmark constants do not price real workloads.
 Local solve counts therefore overshoot official standings
 mechanically, by roughly this factor's worth of extra effective
 budget per instance. One axis runs the \emph{other} way: the competition

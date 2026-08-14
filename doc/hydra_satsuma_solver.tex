@@ -34,7 +34,8 @@ Solver description for the \texttt{hydra\_satsuma} backend of
 satsuma-iter+kissat, winner of the SAT Competition 2026 main track.
 Includes the completed three-way apples-to-apples comparison
 (\texttt{hydra} / \texttt{satsuma} / \texttt{hydra\_satsuma}) on the
-official 2026 benchmark set on this machine.
+official 2026 benchmark set, all on one Mac~mini (M4~Pro,
+64\,GB; \S\ref{sec:checkercost}).
 \end{center}
 
 \section*{Abstract}
@@ -270,7 +271,10 @@ a near-linear replay. \texttt{dsr-trim} consumes unhinted DSR --- like
 \texttt{drat-trim}, it must find every propagation itself and
 discharge each SR step's redundancy goals, i.e.\ it performs the
 elaboration that the LRAT path amortized into the solve. A same-CNF
-measurement on this machine (instance \texttt{b20}, ISCAS circuit,
+measurement on the evaluation machine --- an Apple Mac~mini with the
+M4~Pro chip (10 performance + 4 efficiency cores), 64\,GB RAM, macOS~26,
+the satsuma toolchain in an Ubuntu~24.04 Docker VM; every run in this
+note uses it --- (instance \texttt{b20}, ISCAS circuit,
 UNSAT):
 
 \begin{center}
@@ -318,7 +322,7 @@ only the engine refutation needs translating.
 \label{sec:ge-value}
 
 Two measurements on the official 2026 main-track set (400 instances
-with duplicates; this machine) fixed design choices in advance of the
+with duplicates; the evaluation machine) fixed design choices in advance of the
 full performance run:
 
 \begin{itemize}
@@ -396,7 +400,7 @@ satsuma-iter+kissat, scored \textbf{276/400} (PAR-2 3647.02) under
 cluster hardware. Our protocol runs 5000\,s \emph{wall-clock} per
 instance with \emph{ten instances concurrently} on one 14-core Apple
 Silicon machine (64\,GB host; the satsuma-based arms execute inside a
-$\sim$47\,GB Linux VM). Per-core, per-second compute on this machine
+$\sim$47\,GB Linux VM). Per-core, per-second compute on the M4~Pro
 substantially exceeds the competition nodes'. For reference:
 
 \begin{center}
@@ -410,8 +414,8 @@ Geekbench~6 ratio & \multicolumn{2}{c}{$\approx 2.9\times$} \\
 \end{tabular}
 \end{center}
 
-This machine is an Apple M4 Pro (10 performance + 4 efficiency
-cores). The competition node model is \emph{assumed}, not confirmed:
+The evaluation machine is the Mac~mini described in
+\S\ref{sec:checkercost}. The competition node model is \emph{assumed}, not confirmed:
 the 2026 results slides name no hardware (they do confirm CPU-time
 scoring), but the infrastructure is Beyer's LMU cluster --- the
 winning submission's own archive carries that cluster's
@@ -450,7 +454,8 @@ official figures are quoted for context only.
 \label{sec:results}
 
 All three arms have completed on the official 400-slot set (5000\,s
-per instance, certified mode, ten parallel workers, this machine;
+per instance, certified mode, ten parallel workers, the evaluation
+machine;
 satsuma arms in Linux/Docker). All numbers are internal to the
 protocol and caveats of \S\ref{sec:benchset-comparability}; soundness
 was clean across all three runs (zero expected-status mismatches, zero

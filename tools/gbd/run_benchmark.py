@@ -785,8 +785,8 @@ ROW_RE = re.compile(
     r"\|\s*([^|]+?)\s*"                                               # restarts
     r"\|\s*$"
 )
-HDR_LINE = "| Problem | Result | Time | Paths | Total | Conf | Rst |"
-SEP_LINE = "|---------|--------|------|-------|-------|------|-----|"
+HDR_LINE = "| Problem | Result | Solve time | UNSAT proof time | Paths | Total | Conf | Rst |"
+SEP_LINE = "|---------|--------|------------|------------------|-------|-------|------|-----|"
 
 
 def fmt_count(n: Optional[float]) -> str:
@@ -1640,6 +1640,13 @@ def solve_one(
                 pb_proof_ok, pb_proof_reason = None, "dsr-trim timeout (unchecked)"
             elif "dsr-trim did NOT verify" in stderr_text:
                 pb_proof_ok, pb_proof_reason = False, "dsr-trim rejected/failed"
+            else:
+                # No verification marker at all (process killed mid-verify,
+                # truncated stderr): unchecked, never a bare green check.
+                pb_proof_ok, pb_proof_reason = None, "verification incomplete (no marker)"
+            m = re.search(r"dsr-trim verify ([0-9.]+)s total", stderr_text)
+            if m:
+                pb_proof_time = float(m.group(1))
         # pb-cadical: VeriPB-check the proof the solver just emitted.
         if (proof_path is not None and result == "UNSAT"
                 and tmp_path is not None
@@ -1754,11 +1761,10 @@ def solve_one(
         md_result = result
         md_time = f"{time_str} (CaDiCaL proof unverified)"
     elif pb_proof_ok is None and pb_proof_reason:
-        # Verification was ATTEMPTED but couldn't conclude (VeriPB timed out
-        # on a large proof, veripb missing, no proof emitted, …).  Surface
-        # the reason rather than printing a bare ✓ with no proof mention.
+        # Verification couldn't conclude; the reason lives in the dedicated
+        # "UNSAT proof time" column now — keep the solve-time cell clean.
         md_result = result
-        md_time = f"{time_str} (proof unchecked: {pb_proof_reason})"
+        md_time = time_str
     elif mismatch:
         md_result = "MISMATCH"
         md_time = f"got={result} expected={known}, {time_str}"
@@ -1776,7 +1782,18 @@ def solve_one(
     conf_cell  = fmt_count(stats.conflicts) if stats.conflicts is not None else "—"
     rst_cell   = fmt_count(stats.restarts)  if stats.restarts  is not None else "—"
 
-    row = (f"| {display} | {md_result} | {md_time} "
+    if result == "UNSAT":
+        if pb_proof_ok is True and pb_proof_time is not None:
+            proof_cell = f"{pb_proof_time:.1f}s"
+        elif pb_proof_ok is True:
+            proof_cell = "✓"
+        elif pb_proof_reason:
+            proof_cell = pb_proof_reason
+        else:
+            proof_cell = "—"
+    else:
+        proof_cell = "—"
+    row = (f"| {display} | {md_result} | {md_time} | {proof_cell} "
            f"| {paths_cell} | {total_cell} | {conf_cell} | {rst_cell} |\n")
     md_writer.append_row(row)
 

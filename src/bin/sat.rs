@@ -3340,10 +3340,10 @@ fn main() {
                              elif [ $rc = 124 ]; then echo 'c dsrtrim: TIMEOUT'; \
                              else echo \"c dsrtrim: FAILED rc=$rc\"; fi",
                             if vb > 0 { format!("timeout {}s ", vb) } else { String::new() });
+                        let t_v = Instant::now();
                         let vb_stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
                         {
                             let stop = vb_stop.clone();
-                            let t_v = Instant::now();
                             std::thread::spawn(move || loop {
                                 for _ in 0..10 {
                                     if stop.load(std::sync::atomic::Ordering::Relaxed) { return; }
@@ -3356,6 +3356,8 @@ fn main() {
                         }
                         let vout = docker_run(&inner_verify);
                         vb_stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                        eprintln!("c {}: dsr-trim verify {:.1}s total", bk,
+                                  t_v.elapsed().as_secs_f64());
                         let vtext = vout.as_ref().map(|o| String::from_utf8_lossy(&o.stdout).to_string())
                             .unwrap_or_default();
                         if vtext.contains("c dsrtrim: s VERIFIED UNSAT") {

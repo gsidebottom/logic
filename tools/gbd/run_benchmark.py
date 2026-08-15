@@ -1679,6 +1679,12 @@ def solve_one(
                 tui.update_worker(worker_idx, display, "verify queued…")
             if CHECK_SEM is not None:
                 CHECK_SEM.acquire()
+            # cake_lpr emits no progress output, so this is the last label
+            # the row gets for the whole check — make it say so rather than
+            # leaving a stale "verify queued…".
+            tui.update_worker(worker_idx, display,
+                              f"verifying proof ({pb_checker or 'checker'}; "
+                              "no progress output)…")
             try:
                 pb_proof_ok, pb_proof_reason, pb_proof_time = verify_pb_proof(
                     tmp_path, proof_path, timeout_s=proof_timeout,

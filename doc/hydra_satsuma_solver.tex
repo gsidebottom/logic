@@ -86,8 +86,9 @@ solving:
 \item \textbf{RoundRobin} --- sports-scheduling infeasibility,
   a per-pair/per-day two-level pigeonhole;
 \item \textbf{Embedded pigeonhole} --- $P$ disjoint at-least-one
-  clauses over $S$ complete slot-mutex cliques with $P > S$, the
-  generalization covering e.g.\ MVRoundRobin;
+  clauses over $S$ complete slot-mutex cliques (a \emph{slot}
+  generalizes a hole: a hole for PHP, a day for RoundRobin) with
+  $P > S$, the generalization covering e.g.\ MVRoundRobin;
 \item \textbf{Clique-coloring} --- a graph asserted to contain a
   $K$-clique yet be $C$-colorable with $K > C$, proved by composing
   the clique-membership and coloring layers;
@@ -380,7 +381,7 @@ selection, reconstructed as follows and auditable at every step:
 \item \textbf{Dedup semantics}: the harness by default deduplicates to
   the 391 unique instances and prints
   \texttt{deduped 9 duplicate records (kept 391 unique)};
-  \texttt{--no-dedupe} runs all 400 slots exactly as officially
+  \texttt{--no-dedupe} runs all 400 benchmarks exactly as officially
   scored (a duplicated instance counts twice).
 \item \textbf{Result integrity}: every row is cross-checked against
   the competition's expected status where recorded (any
@@ -431,7 +432,7 @@ wall-second accounting differs on top. Equal nominal seconds still
 buy substantially more search here, which on heavy-tailed runtimes
 pulls many near-timeout instances under the line --- and is why local
 solve counts (e.g.\ the \texttt{hydra} baseline's 311 of the 391
-unique instances, 318 of the 400 official slots) run well above the
+unique instances, 318 of the 400 official benchmarks) run well above the
 official 276/400. The bare \texttt{satsuma} arm turns this from estimate into
 measurement: it is the winner's own pipeline, built unmodified from
 the official submission archive, on the official instance set --- so
@@ -470,7 +471,7 @@ We report these results \emph{as if the competition were run on an
 Apple M4~Pro Mac~mini} (\S\ref{sec:checkercost}), with
 the satsuma-toolchain components (satsuma, kissat, \texttt{dsr-trim})
 executing under Ubuntu~24.04 in Docker containers. All three arms
-completed the official 400-slot set at 5000\,s per instance in
+completed the official 400-benchmark set at 5000\,s per instance in
 certified mode, running ten benchmark processes in parallel
 (\texttt{-j 10}) so as to fully utilize the machine's ten
 performance cores. Certification is scored under
@@ -500,16 +501,16 @@ Arm & Solved/400 & SAT & UNSAT & UNSAT certified & PAR-2$^{\ast}$ \\
 uncertified UNSATs and timeouts contribute $2\times 5000$\,s.}
 \end{center}
 
-All three runs use the identical protocol on all 400 official slots
-(the selection's nine duplicate hashes each occupy two slots and
-count twice, as in official scoring).
+All three runs use the identical protocol on all 400 official
+benchmarks (the selection's nine duplicate hashes each appear as two
+benchmarks and count twice, as in official scoring).
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.86\linewidth]{hydra_satsuma_solver_cactus.pdf}
-\caption{Cactus plot on the official 400-slot set: cumulative
+\caption{Cactus plot on the official 400-benchmark set: cumulative
 instances solved within a given per-instance time budget; one dot per
-solved instance. \texttt{hydra} is aligned to the official slots per
+solved instance. \texttt{hydra} is aligned to the official benchmarks per
 hash. \texttt{satsuma} is drawn as a wide translucent band beneath
 \texttt{hydra\_satsuma}'s thin line because the two curves coincide
 almost everywhere --- that near-total overlap is itself the finding
@@ -537,12 +538,12 @@ direction with no structural signature.
 The \texttt{satsuma} vs.\ \texttt{hydra\_satsuma} pair isolates the
 Cook/XOR machinery exactly: same engine, same container, same
 protocol; the only difference is the structural front-end. Across the
-362 slots where no structure applies the two arms' solved sets are
+362 benchmarks where no structure applies the two arms' solved sets are
 \emph{identical} (zero flips in either direction); every count and
-score difference between them traces to the 38 structural slots plus
+score difference between them traces to the 38 structural benchmarks plus
 measurement noise.
 
-\textbf{Benefit where it applies} (38 slots: 27 Cook, 11 GN21):
+\textbf{Benefit where it applies} (38 benchmarks: 27 Cook, 11 GN21):
 \texttt{hydra\_satsuma} decides all 38 in \textbf{0.68\,s total},
 every verdict carrying a VeriPB certificate that checks in
 milliseconds. Bare \texttt{satsuma} solves 37 of 38 at a PAR-2 cost
@@ -563,7 +564,7 @@ without such families it would contribute certification and latency
 only; on a set with more of them (larger chessboards, larger Tseitin
 grids --- both grow without bound) the count gap widens mechanically.
 
-\textbf{Overhead where it does not apply} (362 slots): measured as the
+\textbf{Overhead where it does not apply} (362 benchmarks): measured as the
 median paired solve-time difference on the 297 instances both arms
 solved --- same formula, same engine, so the pairing isolates the
 detection prefix --- the cost is \textbf{$+1.16$\,s per instance},

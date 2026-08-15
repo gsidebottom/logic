@@ -591,16 +591,63 @@ than \texttt{hydra\_satsuma} despite near-identical workload because
 this run included the wall fix, so its verify budgets were fully
 usable). No proof was \emph{rejected} anywhere; every gap is a
 resource limit. The 38 structural certificates and the SAT witnesses
-never strain any budget. We assume the \texttt{dsr-trim} timeouts
-complete within the official 45{,}000\,s: the competition counts an
-instance only if its proof checks, SR was an official 2026 checker,
-and the winner's official 276/400 is therefore net of SR verification
-at that budget on competition hardware
-(\texttt{custmulsb2x32o}, unchecked in both satsuma-chain runs here,
-is the strongest candidate to need the full official budget).
-Offline re-checks at 45{,}000\,s are prepared for both the 25 unique
-\texttt{hydra\_satsuma} instances and \texttt{hydra}'s two memouts
-(48\,GB heap).
+never strain any budget.
+
+\textbf{Re-checks at the official 45{,}000\,s budget.} The formerly
+assumed ``these would verify officially'' is now measured. Re-running
+the \texttt{hydra\_satsuma} unchecked set with
+\texttt{--satsuma-verify-secs 45000}: \textbf{23 of 25 unique
+instances verified}, with checking times of 4{,}296--23{,}809\,s
+(median 8{,}671\,s; 17 of the 23 needed more than the old 5{,}000\,s
+budget; \texttt{custmulsb2x32o} verified at 14{,}347\,s). satsuma's
+\texttt{mchess\_17} proof verified in its own re-run after
+28{,}505\,s of checking. One instance defeated even the official
+budget: \texttt{stone-width3chain-nmarkers-13\_shuffled}, a
+\emph{62-second} solve whose SR proof \texttt{dsr-trim} could not
+check in 45{,}000\,s --- a $>$700$\times$ check-to-solve ratio and
+the study's cleanest exhibit of unhinted proof-checking cost
+(\S\ref{sec:checkercost}). One instance
+(\texttt{hash\_table\_find\_safety\_size\_21}) is still checking
+at the time of writing.
+
+\textbf{Official-rules scoring on this machine.} The competition
+rule is that an instance whose proof check times out counts as
+\emph{not solved} (checker budget 45{,}000\,s, separate from the
+solve budget; incorrect proofs disqualify, timeouts merely do not
+count). Applying that rule to the three arms, with the re-check
+outcomes resolving the formerly-unchecked rows:
+
+\begin{center}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Arm & Solved/400 & SAT & UNSAT counted & PAR-2 \\
+\midrule
+\texttt{hydra} & 316$^{a}$ & 132 & 184 & 2507 \\
+\texttt{satsuma} & 333$^{b,c}$ & 139 & 194 & 2040 \\
+\texttt{hydra\_satsuma} & \textbf{334}$^{c}$ & 139 & 195 & \textbf{2013} \\
+\bottomrule
+\end{tabular}
+
+{\footnotesize $^{a}$\texttt{hydra}'s two \texttt{cake\_lpr}
+memouts remain unresolved (their 48\,GB-heap re-check has not run;
+the same instances' \emph{SR} proofs verified, but a different
+chain's certificate does not certify \texttt{hydra}'s LRAT under
+competition rules). $^{b}$satsuma's 16 shared unchecked instances
+are credited from the \texttt{hydra\_satsuma}-chain re-checks ---
+same instance, same solver family, comparable proofs --- an
+assumption; its \texttt{mchess\_17} outcome is its own measurement.
+$^{c}$\texttt{hash\_table\_find\_safety\_size\_21} counted
+provisionally while its check runs; both arms lose one solve and
+$\approx$24 PAR-2 points if it times out.
+\texttt{stone-width3chain} is counted \emph{not solved} in both
+satsuma-chain arms per the rule.}
+\end{center}
+
+Under official semantics the structural front-end's margin over the
+bare winner is unchanged (+1 solve, now 334 vs.\ 333, with
+\texttt{mchess\_20} still the separator), and both satsuma-chain
+arms hold a $\sim$17-solve margin over \texttt{hydra} pending its
+memout re-check.
 
 \textbf{Reading.} The three-way resolves cleanly. The engine is worth
 $+16$/$+17$ slots over CaDiCaL on this set; the structural front-end

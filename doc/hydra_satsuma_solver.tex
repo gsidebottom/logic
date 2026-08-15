@@ -466,9 +466,14 @@ official figures are quoted for context only.
 \section{Results}
 \label{sec:results}
 
-All three arms have completed on the official 400-slot set (5000\,s
-per instance, certified mode, ten parallel workers, the evaluation
-machine; satsuma arms in Linux/Docker). Certification is scored under
+We report these results \emph{as if the competition were run on this
+machine}: the Apple M4~Pro Mac~mini of \S\ref{sec:checkercost}, with
+the satsuma-toolchain components (satsuma, kissat, \texttt{dsr-trim})
+executing under Ubuntu~24.04 in Docker containers. All three arms
+completed the official 400-slot set at 5000\,s per instance in
+certified mode, running ten benchmark processes in parallel
+(\texttt{-j 10}) so as to fully utilize the machine's ten
+performance cores. Certification is scored under
 the competition's conditions: an UNSAT instance counts toward PAR-2
 only if its proof verifies within the official 45{,}000\,s checking
 budget, with checker memory ample for the chain

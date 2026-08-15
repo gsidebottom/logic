@@ -1,0 +1,86 @@
+{
+  "metadata": {
+    "index": "/Users/greg/projects/sat_benchmarks/mchess17.jsonl",
+    "backend": "satsuma",
+    "timeout_s": 5000,
+    "parallel": 1,
+    "preprocess": null,
+    "sat_args": [
+      "--satsuma-verify-secs=45000"
+    ],
+    "md_path": "/Users/greg/projects/logic/doc/competition-benchmark_mchess17_5000_satsuma.md"
+  },
+  "summary": {
+    "by_verdict": {
+      "UNSAT": {
+        "count": 1,
+        "time_s": {
+          "n": 1,
+          "mean": 4776.3823,
+          "min": 4776.3823,
+          "max": 4776.3823
+        },
+        "paths_fraction": null,
+        "conflicts": null,
+        "conflicts_per_s": null,
+        "restarts": null,
+        "restarts_per_s": null
+      }
+    },
+    "total": {
+      "count": 1,
+      "time_s": {
+        "n": 1,
+        "mean": 4776.3823,
+        "min": 4776.3823,
+        "max": 4776.3823
+      },
+      "paths_fraction": null,
+      "conflicts": null,
+      "conflicts_per_s": null,
+      "restarts": null,
+      "restarts_per_s": null
+    },
+    "soundness": {
+      "mismatch": 0,
+      "guard_abort": 0,
+      "bad_witness": 0,
+      "witness_checked": 0,
+      "bad_unsat_proof": 0,
+      "proven_unsat": 0,
+      "unproven_unsat": 0,
+      "pb_proof_verified": 1,
+      "pb_proof_failed": 0,
+      "pb_proof_unverified": 0
+    }
+  },
+  "results": [
+    {
+      "hash": "2c3c28f6d939d157e909c57a265fc908",
+      "name": "mchess_17",
+      "result": "UNSAT",
+      "expected": "UNSAT",
+      "mismatch": false,
+      "guard_abort": false,
+      "witness_ok": null,
+      "witness_reason": null,
+      "unsat_proof_ok": null,
+      "unsat_proof_reason": null,
+      "pb_proof_ok": true,
+      "pb_proof_reason": "dsr-trim (in-solver)",
+      "pb_proof_prover": "satsuma-kissat",
+      "pb_checker": null,
+      "elab_time_s": null,
+      "pb_proof_time_s": 28504.9,
+      "pb_proof_path": null,
+      "time_s": 4776.3823,
+      "time_str": "4776.3823s",
+      "paths": null,
+      "log10_total_paths": null,
+      "paths_fraction": null,
+      "conflicts": null,
+      "restarts": null,
+      "elapsed_ms": null
+    }
+  ]
+}

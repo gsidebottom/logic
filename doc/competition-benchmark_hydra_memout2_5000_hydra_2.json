@@ -1,0 +1,151 @@
+{
+  "metadata": {
+    "index": "/Users/greg/projects/sat_benchmarks/hydra_memout2.jsonl",
+    "backend": "hydra",
+    "timeout_s": 5000,
+    "parallel": 1,
+    "preprocess": null,
+    "sat_args": [],
+    "md_path": "/Users/greg/projects/logic/doc/competition-benchmark_hydra_memout2_5000_hydra_2.md"
+  },
+  "summary": {
+    "by_verdict": {
+      "UNSAT": {
+        "count": 2,
+        "time_s": {
+          "n": 2,
+          "mean": 222.4477,
+          "min": 189.1526,
+          "max": 255.7428
+        },
+        "paths_fraction": null,
+        "conflicts": {
+          "n": 2,
+          "mean": 49512.0,
+          "min": 12324.0,
+          "max": 86700.0
+        },
+        "conflicts_per_s": {
+          "n": 2,
+          "mean": 202.08311009436753,
+          "min": 65.15374359115339,
+          "max": 339.01247659758167
+        },
+        "restarts": {
+          "n": 2,
+          "mean": 1497.0,
+          "min": 45.0,
+          "max": 2949.0
+        },
+        "restarts_per_s": {
+          "n": 2,
+          "mean": 5.884509785926868,
+          "min": 0.2379031533269963,
+          "max": 11.53111641852674
+        }
+      }
+    },
+    "total": {
+      "count": 2,
+      "time_s": {
+        "n": 2,
+        "mean": 222.4477,
+        "min": 189.1526,
+        "max": 255.7428
+      },
+      "paths_fraction": null,
+      "conflicts": {
+        "n": 2,
+        "mean": 49512.0,
+        "min": 12324.0,
+        "max": 86700.0
+      },
+      "conflicts_per_s": {
+        "n": 2,
+        "mean": 202.08311009436753,
+        "min": 65.15374359115339,
+        "max": 339.01247659758167
+      },
+      "restarts": {
+        "n": 2,
+        "mean": 1497.0,
+        "min": 45.0,
+        "max": 2949.0
+      },
+      "restarts_per_s": {
+        "n": 2,
+        "mean": 5.884509785926868,
+        "min": 0.2379031533269963,
+        "max": 11.53111641852674
+      }
+    },
+    "soundness": {
+      "mismatch": 0,
+      "guard_abort": 0,
+      "bad_witness": 0,
+      "witness_checked": 0,
+      "bad_unsat_proof": 0,
+      "proven_unsat": 0,
+      "unproven_unsat": 1,
+      "pb_proof_verified": 1,
+      "pb_proof_failed": 0,
+      "pb_proof_unverified": 0
+    }
+  },
+  "results": [
+    {
+      "hash": "dff4ea0af62900ab4d404f3bf7649a4d",
+      "name": "nla-digbench-scaling_dijkstra-u_valuebound1_step",
+      "result": "UNSAT",
+      "expected": "",
+      "mismatch": false,
+      "guard_abort": false,
+      "witness_ok": null,
+      "witness_reason": null,
+      "unsat_proof_ok": null,
+      "unsat_proof_reason": null,
+      "pb_proof_ok": true,
+      "pb_proof_reason": "ok",
+      "pb_proof_prover": "cadical",
+      "pb_checker": "cake_lpr",
+      "elab_time_s": null,
+      "pb_proof_time_s": 62.76356816291809,
+      "pb_proof_path": null,
+      "time_s": 255.7428,
+      "time_str": "255.7428s",
+      "paths": null,
+      "log10_total_paths": null,
+      "paths_fraction": null,
+      "conflicts": 86700,
+      "restarts": 2949,
+      "elapsed_ms": null
+    },
+    {
+      "hash": "6e31e88a5dadaa3876eb5ff4293134c2",
+      "name": "hash_table_find_safety_size_21",
+      "result": "UNSAT",
+      "expected": "UNSAT",
+      "mismatch": false,
+      "guard_abort": false,
+      "witness_ok": null,
+      "witness_reason": null,
+      "unsat_proof_ok": null,
+      "unsat_proof_reason": null,
+      "pb_proof_ok": null,
+      "pb_proof_reason": "cake_lpr out of memory (heap cap; not a rejection)",
+      "pb_proof_prover": "cadical",
+      "pb_checker": "cake_lpr",
+      "elab_time_s": null,
+      "pb_proof_time_s": 949.0707788467407,
+      "pb_proof_path": null,
+      "time_s": 189.1526,
+      "time_str": "189.1526s",
+      "paths": null,
+      "log10_total_paths": null,
+      "paths_fraction": null,
+      "conflicts": 12324,
+      "restarts": 45,
+      "elapsed_ms": null
+    }
+  ]
+}

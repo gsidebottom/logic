@@ -778,7 +778,8 @@ def verify_unsat_cover(cnf_path: Path, backend: str,
 ROW_RE = re.compile(
     r"^\|\s*([^|]+?)\s*"                                              # name
     r"\|\s*(SAT|UNSAT|TIMEOUT|UNKNOWN|MISMATCH)\s*"                   # result
-    r"\|\s*([^|]+?)\s*"                                               # time
+    r"\|\s*([^|]+?)\s*"                                               # solve time
+    r"(?:\|\s*([^|]+?)\s*)?"                                          # UNSAT proof time (new format; absent in old files)
     r"\|\s*([^|]+?)\s*"                                               # paths
     r"\|\s*([^|]+?)\s*"                                               # total
     r"\|\s*([^|]+?)\s*"                                               # conflicts
@@ -912,7 +913,7 @@ def build_summary(md_path: Path) -> str:
         m = ROW_RE.match(line)
         if not m:
             continue
-        _name, result, t_cell, p_cell, tot_cell, c_cell, r_cell = m.groups()
+        _name, result, t_cell, _pf_cell, p_cell, tot_cell, c_cell, r_cell = m.groups()
         counts[result] = counts.get(result, 0) + 1
         total += 1
         paths = _parse_cell_count(p_cell)

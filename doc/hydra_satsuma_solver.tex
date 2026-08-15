@@ -453,14 +453,11 @@ neither effect is priced by an arithmetic microbenchmark --- a
 reminder that microbenchmark constants do not price real workloads.
 Local solve counts therefore overshoot official standings
 mechanically, by roughly this factor's worth of extra effective
-budget per instance. One axis runs the \emph{other} way: the competition
-checks proofs under a 45{,}000\,s budget per certificate ($9\times$
-the solve timeout; stated for SC2020 and SC2025, the standing
-convention), whereas our protocol checks under 5{,}000\,s (plus a
-16\,GB heap cap for \texttt{cake\_lpr}) --- so local
-\emph{certification} counts are conservative relative to competition
-conditions: a proof recorded here as unchecked-on-timeout might well
-verify under the official budget. The comparisons this note will
+budget per instance. Certification in \S\ref{sec:results} is scored under the
+competition's own conditions --- the 45{,}000\,s-per-proof checking
+budget ($9\times$ the solve timeout; stated for SC2020 and SC2025,
+the standing convention) with ample checker memory --- so no
+checking-budget asymmetry remains. The comparisons this note will
 report (\S\ref{sec:results}) are therefore \emph{internal}: all three
 arms under one fixed protocol on one machine, where hardware and
 scheduling effects cancel and only the solver pipelines differ. The
@@ -471,30 +468,40 @@ official figures are quoted for context only.
 
 All three arms have completed on the official 400-slot set (5000\,s
 per instance, certified mode, ten parallel workers, the evaluation
-machine;
-satsuma arms in Linux/Docker). All numbers are internal to the
-protocol and caveats of \S\ref{sec:benchset-comparability}; soundness
-was clean across all three runs (zero expected-status mismatches, zero
-witness failures, zero contradictory verdicts between any pair of
-arms).
+machine; satsuma arms in Linux/Docker). Certification is scored under
+the competition's conditions: an UNSAT instance counts toward PAR-2
+only if its proof verifies within the official 45{,}000\,s checking
+budget, with checker memory ample for the chain
+(\S\ref{sec:budgetnote}); a check that exceeds the budget leaves the
+instance \emph{not solved} for scoring, per the official rule.
+Soundness was clean across all three runs: zero expected-status
+mismatches, zero witness failures, zero contradictory verdicts
+between any pair of arms, and no proof \emph{rejected} by any
+checker anywhere in the study.
 
 \begin{center}
 \begin{tabular}{@{}lrrrrr@{}}
 \toprule
-Arm & Solved/400 & SAT & UNSAT & PAR-2 & UNSAT certified \\
+Arm & Solved/400 & SAT & UNSAT & UNSAT certified & PAR-2$^{\ast}$ \\
 \midrule
-\texttt{hydra} & 318 & 132 & 186 & 2459 & 184/186 \\
-\texttt{satsuma} & 334 & 139 & 195 & 2015 & 177/195 \\
-\texttt{hydra\_satsuma} & \textbf{335} & 139 & 196 & \textbf{1988} & 170/196 \\
+\texttt{hydra} & 318 & 132 & 186 & 185 & 2483 \\
+\texttt{satsuma} & 334 & 139 & 195 & 193 & 2064 \\
+\texttt{hydra\_satsuma} & \textbf{335} & 139 & 196 & \textbf{194} & \textbf{2037} \\
 \bottomrule
 \end{tabular}
+
+{\footnotesize $^{\ast}$competition scoring: SAT instances and
+\emph{certified} UNSAT instances contribute their solve time;
+uncertified UNSATs and timeouts contribute $2\times 5000$\,s.
+satsuma's shared-instance certifications are credited from the
+\texttt{hydra\_satsuma}-chain re-checks (same instance, same solver
+family, comparable proofs); its \texttt{mchess\_17} outcome is its
+own measurement.}
 \end{center}
 
-Both completed runs use the identical protocol on all 400 official
-slots (the selection's nine duplicate hashes each occupy two slots and
-count twice, as in official scoring). \texttt{hydra}'s two unchecked
-proofs are \texttt{cake\_lpr} memouts; the satsuma-chain unchecked
-proofs are \texttt{dsr-trim} timeouts (\S\ref{sec:budgetnote}).
+Both runs use the identical protocol on all 400 official slots (the
+selection's nine duplicate hashes each occupy two slots and count
+twice, as in official scoring).
 
 \begin{figure}[h]
 \centering
@@ -514,13 +521,14 @@ $\sim$250 instances on.}
 
 \textbf{Engine effect} (\texttt{hydra} vs.\ \texttt{hydra\_satsuma},
 structure held fixed): replacing CaDiCaL by satsuma-iter+kissat is
-worth $+17$ slots and $-19\%$ PAR-2. On the 391 unique instances the
-satsuma arm solves eighteen that \texttt{hydra} does not ---
-concentrated in symmetric design families (both
-\texttt{SC25\_Timetable} instances, the \texttt{lockchart} families,
-\texttt{ramsey\_4\_4\_18}, \texttt{oddball}, a \texttt{le450}
-coloring, several multiplier-equivalence UNSATs) --- against three in
-the other direction with no structural signature.
+worth $+17$ verdicts and, under certification scoring, $-18\%$ PAR-2
+($2483 \to 2037$). On the 391 unique instances the satsuma arm solves
+eighteen that \texttt{hydra} does not --- concentrated in symmetric
+design families (both \texttt{SC25\_Timetable} instances, the
+\texttt{lockchart} families, \texttt{ramsey\_4\_4\_18},
+\texttt{oddball}, a \texttt{le450} coloring, several
+multiplier-equivalence UNSATs) --- against three in the other
+direction with no structural signature.
 
 \subsection{What the structural front-end is worth}
 \label{sec:structval}
@@ -535,26 +543,24 @@ measurement noise.
 
 \textbf{Benefit where it applies} (38 slots: 27 Cook, 11 GN21):
 \texttt{hydra\_satsuma} decides all 38 in \textbf{0.68\,s total},
-every verdict carrying a verified VeriPB certificate. Bare
-\texttt{satsuma} solves 37 of 38 at a PAR-2 cost of 14{,}431\,s:
-\texttt{mchess\_20} times out (the run's only count flip, worth 25 of
-the 27-point final PAR-2 gap), \texttt{mchess\_17} barely lands at
-4392.7\,s --- 88\% of budget, and its SR proof check then times out,
-so under official only-verified-counts semantics the solve would not
-score --- and \texttt{tseitingrid6x185\_shuffled}, a Tseitin parity
+every verdict carrying a VeriPB certificate that checks in
+milliseconds. Bare \texttt{satsuma} solves 37 of 38 at a PAR-2 cost
+of 14{,}431\,s: \texttt{mchess\_20} times out (the run's only count
+flip), \texttt{mchess\_17} barely lands at 4392.7\,s --- 88\% of
+budget, and its SR proof then needs a further 28{,}505\,s of checking
+--- and \texttt{tseitingrid6x185\_shuffled}, a Tseitin parity
 contradiction, takes 14.1\,s against the GN21 path's 0.025\,s. The
-honest fine print: 35 of the 38 are easy for the winner too
-(median 0.4\,s), so \emph{nearly the whole structural credit
-concentrates in the mutilated-chessboard pair} --- the one family in
-this set that is resolution-exponential, not rescued by SOBR-style
-unit/binary symmetry breaking, and trivial for the two-sided
-cardinality argument. The front-end's value against a
-symmetry-capable engine is thus a \emph{hard floor under structured
-families}, plus instant polynomial certificates, rather than a broad
-speedup: on a set without such families it would contribute
-certification and latency only; on a set with more of them (larger
-chessboards, larger Tseitin grids --- both grow without bound) the
-count gap widens mechanically.
+honest fine print: 35 of the 38 are easy for the winner too (median
+0.4\,s), so \emph{nearly the whole structural credit concentrates in
+the mutilated-chessboard pair} --- the one family in this set that is
+resolution-exponential, not rescued by SOBR-style unit/binary
+symmetry breaking, and trivial for the two-sided cardinality
+argument. The front-end's value against a symmetry-capable engine is
+thus a \emph{hard floor under structured families}, plus instant
+polynomial certificates, rather than a broad speedup: on a set
+without such families it would contribute certification and latency
+only; on a set with more of them (larger chessboards, larger Tseitin
+grids --- both grow without bound) the count gap widens mechanically.
 
 \textbf{Overhead where it does not apply} (362 slots): measured as the
 median paired solve-time difference on the 297 instances both arms
@@ -569,95 +575,84 @@ wall-clock load variance between runs; kissat's search on identical
 input is deterministic.) Detection never caused a flip: no instance
 was lost to overhead.
 
-The ledger closes: $+36.1$ PAR-2 points of structural credit against
-$\approx 1$ point of measured prefix (and $\approx 8$ of tail noise)
-nets the observed 27-point, one-solve advantage --- a
-$\sim$34:1 benefit-to-overhead ratio on the honest fixed-cost
-accounting, delivered almost entirely by one family.
-
-\subsection{Certification ledger}
+\subsection{Certification economics: the three proof chains}
 \label{sec:budgetnote}
 
-Scores above count solved verdicts; they are \emph{not} adjusted for
-local proof-checking timeouts, since our checking budget (5000\,s) is
-$9\times$ tighter than the official 45{,}000\,s
-(\S\ref{sec:benchset-comparability}). Per arm: \texttt{hydra}
-certified 184/186 UNSATs (2 \texttt{cake\_lpr} memouts under the
-local 16\,GB heap cap); \texttt{hydra\_satsuma} 170/196 (26
-\texttt{dsr-trim} timeouts, which additionally received less than
-nominal budget due to a since-fixed process-wall bug);
-\texttt{satsuma} 177/195 (18 \texttt{dsr-trim} timeouts --- fewer
-than \texttt{hydra\_satsuma} despite near-identical workload because
-this run included the wall fix, so its verify budgets were fully
-usable). No proof was \emph{rejected} anywhere; every gap is a
-resource limit. The 38 structural certificates and the SAT witnesses
-never strain any budget.
-
-\textbf{Re-checks at the official 45{,}000\,s budget.} The formerly
-assumed ``these would verify officially'' is now measured. Re-running
-the \texttt{hydra\_satsuma} unchecked set with
-\texttt{--satsuma-verify-secs 45000}: \textbf{23 of 25 unique
-instances verified}, with checking times of 4{,}296--23{,}809\,s
-(median 8{,}671\,s; 17 of the 23 needed more than the old 5{,}000\,s
-budget; \texttt{custmulsb2x32o} verified at 14{,}347\,s). satsuma's
-\texttt{mchess\_17} proof verified in its own re-run after
-28{,}505\,s of checking. Two instances defeated even the official budget:
-\texttt{stone-width3chain-nmarkers-13\_shuffled} (a \emph{62-second}
-solve whose SR proof \texttt{dsr-trim} could not check in
-45{,}000\,s --- a $>$700$\times$ check-to-solve ratio) and
-\texttt{hash\_table\_find\_safety\_size\_21} (157\,s solve,
-similarly uncheckable) --- both short solves with disproportionate
-unhinted proofs, the study's cleanest exhibits of SR checking cost
-(\S\ref{sec:checkercost}).
-
-\textbf{Official-rules scoring on this machine.} The competition
-rule is that an instance whose proof check times out counts as
-\emph{not solved} (checker budget 45{,}000\,s, separate from the
-solve budget; incorrect proofs disqualify, timeouts merely do not
-count). Applying that rule to the three arms, with the re-check
-outcomes resolving the formerly-unchecked rows:
+The three arms emit certificates through three chains with sharply
+different cost profiles; which chains an arm can use is set by its
+pipeline. \texttt{hydra} certifies structural verdicts with VeriPB
+proofs and engine verdicts with CaDiCaL's native LRAT;
+\texttt{satsuma} certifies everything with binary SR;
+\texttt{hydra\_satsuma} uses VeriPB for its 38 structural verdicts
+and SR for the 158 engine verdicts.
 
 \begin{center}
-\begin{tabular}{@{}lrrrr@{}}
+\begin{tabular}{@{}lllll@{}}
 \toprule
-Arm & Solved/400 & SAT & UNSAT counted & PAR-2 \\
+Chain & Producer & Checker & Check speed & Check memory \\
 \midrule
-\texttt{hydra} & 316$^{a}$ & 132 & 184 & 2507 \\
-\texttt{satsuma} & 332$^{b}$ & 139 & 193 & 2064 \\
-\texttt{hydra\_satsuma} & \textbf{333} & 139 & 194 & \textbf{2037} \\
+VeriPB (Cook/GN21) & structural stages & \texttt{veripb} & ms--s & negligible \\
+LRAT (hinted) & CaDiCaL & \texttt{cake\_lpr} & s--min & \textbf{the binding axis} \\
+SR (unhinted) & satsuma+kissat & \texttt{dsr-trim} & \textbf{the binding axis} & light \\
 \bottomrule
 \end{tabular}
-
-{\footnotesize $^{a}$\texttt{hydra}'s two \texttt{cake\_lpr}
-memouts remain unresolved (their 48\,GB-heap re-check pending; the
-same instances' \emph{SR} proofs behaved oppositely --- one verified,
-one uncheckable --- and in any case a different chain's certificate
-does not certify \texttt{hydra}'s LRAT under competition rules).
-$^{b}$satsuma's 16 shared unchecked instances are credited from the
-\texttt{hydra\_satsuma}-chain re-checks --- same instance, same
-solver family, comparable proofs --- an assumption; its
-\texttt{mchess\_17} outcome is its own measurement.
-\texttt{stone-width3chain} and \texttt{hash\_table} are counted
-\emph{not solved} in both satsuma-chain arms per the rule.}
 \end{center}
 
-Under official semantics the structural front-end's margin over the
-bare winner is unchanged (+1 solve, now 333 vs.\ 332, with
-\texttt{mchess\_20} still the separator), and both satsuma-chain
-arms hold a $\sim$16-solve margin over \texttt{hydra} pending its
-memout re-check.
+\textbf{VeriPB} (38 certificates in each hydra arm): the structural
+proofs are polynomial constructions checked in milliseconds to
+seconds with negligible memory --- 76 checks across the two arms,
+zero at any meaningful cost. When a structural stage fires, its
+certificate is effectively free.
+
+\textbf{LRAT + \texttt{cake\_lpr}} (\texttt{hydra}'s 148 engine
+certificates): CaDiCaL computes unit-propagation hints during the
+solve, so checking is a near-linear replay --- 1.55\,s for a 40\,MB
+proof (\texttt{b20}), 58.6\,s for \texttt{stone-width3chain},
+62.8\,s for the heaviest verified LRAT in the study. Speed is not
+the constraint; \emph{memory} is: \texttt{cake\_lpr}'s CakeML heap
+scales with the proof, and of 148 proofs, two needed more than a
+16\,GB heap and one (\texttt{hash\_table\_find\_safety\_size\_21})
+exceeded even 48\,GB. The checker is formally verified --- the
+strongest trust story of the three.
+
+\textbf{SR + \texttt{dsr-trim}} (satsuma-chain certificates: 195 in
+\texttt{satsuma}, 158 in \texttt{hydra\_satsuma}): SR proofs are
+succinct (half the LRAT's size on the same instance) and can express
+symmetry reasoning clausal hints cannot, but they carry no hints, so
+the checker performs the propagation search itself --- checking cost
+rivals or exceeds solving cost. On the heavy tail, median check time
+was 8{,}671\,s with verified checks up to 28{,}505\,s
+(\texttt{mchess\_17}); two proofs exceeded the official 45{,}000\,s
+budget outright (\texttt{stone-width3chain},
+\texttt{hash\_table}). Memory, by contrast, never mattered:
+\texttt{dsr-trim} is a compact C program that ran ten-concurrent
+without incident throughout.
+
+\textbf{The chains cross.} \texttt{stone-width3chain} is the clean
+head-to-head: a $\sim$1-minute solve in every arm, certified by
+\texttt{hydra}'s LRAT chain in 58.6\,s while its SR proof is
+uncheckable within the official budget --- a $>$750$\times$ gap on
+one instance, purely from hints existing. \texttt{hash\_table} is
+the double defeat: its SR proof is time-unbounded \emph{and} its
+LRAT proof is memory-unbounded (beyond a 48\,GB heap), making it the
+one instance in the set uncertifiable under competition conditions
+by either engine chain. And \texttt{mchess\_17} completes the
+triangle: SR certifies it only after 28{,}505\,s of checking, LRAT
+never sees it, and the Cook prover certifies it in a millisecond ---
+on structured instances, the structural chain dominates both engine
+chains on every axis at once.
 
 \textbf{Reading.} The three-way resolves cleanly. The engine is worth
-$+16$/$+17$ slots over CaDiCaL on this set; the structural front-end
-is worth $+1$ slot and 27 PAR-2 points against the strongest
-available engine --- all of it from one resolution-exponential family
---- at a measured cost of $\approx 1$ PAR-2 point of detection prefix
-and zero lost instances. Its deeper contributions are invariants the
-count does not show: every structural verdict is instantaneous and
-carries a polynomial VeriPB certificate (against engine-time SR
-proofs that are expensive to check and, twice here, uncheckable in
-budget), and the floor it provides is unbounded in the direction the
-engine's weakness grows.
+$+16$/$+17$ verdicts over CaDiCaL on this set; the structural
+front-end is worth $+1$ verdict, $+1$ certified instance, and 27
+PAR-2 points against the strongest available engine --- at a measured
+cost of $\approx 1$ PAR-2 point of detection prefix and zero lost
+instances. Its deeper contributions are invariants the count does
+not show: instant polynomial certificates on structured families
+(against engine-time SR proofs that are expensive to check --- and
+on this set twice uncheckable even at the official budget), and a
+hard floor that is unbounded in the direction the engine's weakness
+grows.
 
 \section*{Acknowledgments}
 

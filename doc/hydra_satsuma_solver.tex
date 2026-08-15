@@ -1,7 +1,7 @@
 % hydra_satsuma: solver description — certified structure dispatch with a
 % satsuma-iter+kissat fall-through.  Build: tectonic doc/hydra_satsuma_solver.tex
 % Performance sections are placeholders until the three-way A/B on the
-% official 2026 set completes (hydra vs satsuma vs hydra_satsuma, this machine).
+% official 2026 set completes (hydra vs satsuma vs hydra_satsuma, M4 Pro Mac mini).
 \documentclass[10pt]{article}
 \usepackage[margin=2.4cm]{geometry}
 \usepackage{amsmath,amssymb}
@@ -271,8 +271,8 @@ a near-linear replay. \texttt{dsr-trim} consumes unhinted DSR --- like
 \texttt{drat-trim}, it must find every propagation itself and
 discharge each SR step's redundancy goals, i.e.\ it performs the
 elaboration that the LRAT path amortized into the solve. A same-CNF
-measurement on the evaluation machine --- an Apple Mac~mini with the
-M4~Pro chip (10 performance + 4 efficiency cores), 64\,GB RAM, macOS~26,
+measurement on the paper's single test platform --- an Apple M4~Pro
+Mac~mini (10 performance + 4 efficiency cores), 64\,GB RAM, macOS~26,
 the satsuma toolchain in an Ubuntu~24.04 Docker VM; every run in this
 note uses it --- (instance \texttt{b20}, ISCAS circuit,
 UNSAT):
@@ -322,7 +322,7 @@ only the engine refutation needs translating.
 \label{sec:ge-value}
 
 Two measurements on the official 2026 main-track set (400 instances
-with duplicates; the evaluation machine) fixed design choices in advance of the
+with duplicates; the M4~Pro Mac~mini) fixed design choices in advance of the
 full performance run:
 
 \begin{itemize}
@@ -413,7 +413,7 @@ PassMark ST & 4506 & 2345 \\
 \end{tabular}
 \end{center}
 
-The evaluation machine is the Mac~mini described in
+The local side is the Apple M4~Pro Mac~mini described in
 \S\ref{sec:checkercost}. SAT Competition 2026 ran --- for the first
 time --- on the NHR@KIT system \emph{HoreKa}, Blue partition, whose
 documented nodes are dual Intel Xeon Platinum~8368 (Ice Lake, 2021;
@@ -466,8 +466,8 @@ official figures are quoted for context only.
 \section{Results}
 \label{sec:results}
 
-We report these results \emph{as if the competition were run on this
-machine}: the Apple M4~Pro Mac~mini of \S\ref{sec:checkercost}, with
+We report these results \emph{as if the competition were run on an
+Apple M4~Pro Mac~mini} (\S\ref{sec:checkercost}), with
 the satsuma-toolchain components (satsuma, kissat, \texttt{dsr-trim})
 executing under Ubuntu~24.04 in Docker containers. All three arms
 completed the official 400-slot set at 5000\,s per instance in

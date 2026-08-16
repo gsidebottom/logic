@@ -21,5 +21,17 @@ c-side (output recombination), minimized over the 6 tensor orientations.
 Scope: all {-1,0,1}-signed realizations of the enumerated mod-2
 classes (same stratum scope as the 55-minimality result).
 
+## Final census (complete over every class that could reach 40)
+
+- 145,951 candidates scored; the remaining ~21.6k were skipped by
+  design — their certified floors are >= 41, so they provably cannot
+  beat 40 (the floor sweep covers all 167,512 classes).
+- Of the 7,784 floor-40 classes: 7,781 achieve online 40 (floor tight,
+  99.96%); exactly one scheme (i46w205c23ci-017-v4-s26-54_120_44,
+  stored in 3 directories) floors at 40 but achieves only 41 — a
+  genuine sign obstruction: no {-1,0,1} realization of that class
+  meets its GF(2) floor.
+
 Headline: fixed-weight 3x3 multiply in 23 mults + 40 online adds
-(vs 42 online by reusing the symmetric record), floor-tight.
+(vs 42 online by reusing the symmetric record), floor-tight, with
+~7.8k distinct schemes attaining the optimum.

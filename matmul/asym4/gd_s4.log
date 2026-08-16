@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/Users/greg/projects/logic/matmul/asym4/gauge_direct.py", line 65, in <module>
+    base = online_of((al, be, ga), "base", reps)
+  File "/Users/greg/projects/logic/matmul/asym4/gauge_direct.py", line 54, in online_of
+    os.unlink(f"{HERE}/{tag}_o{k}_{suf}.sms")
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/greg/projects/logic/matmul/asym4/base_o0_L.sms'

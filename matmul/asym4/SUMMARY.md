@@ -10,11 +10,15 @@ scheme; online cost = (non-free side) + P, minimized over the 6 tensor
 orientations. Control: our DPS-48 measurement reproduces the README's
 independent number at equal budget (365 here vs 364 there).
 
-| scheme        | multiplies | total ops | ONLINE ops (weight side free) |
-|---------------|-----------:|----------:|------------------------------:|
-| naive-64      |         64 |        48 |                        **48** |
-| Strassen^2-49 |         49 |       208 |                       **145** |
-| DPS rank-48   |         48 |       365 |                       **248** |
+| scheme          | multiplies | ONLINE ops (weight side free) |
+|-----------------|-----------:|------------------------------:|
+| naive-64        |         64 |                        **48** |
+| gauge-49 (ours) |         49 |                       **128** |
+| Strassen^2-49   |         49 |                       **133** |
+| DPS rank-48     |         48 |                       **231** |
+
+(Corrected counter — see "Counter bug" below; earlier drafts of this
+file reported 145/248, inflated by miscounted unary negations.)
 
 Schemes gated exact before measurement: Strassen^2 and naive both
 verified to compute 4x4 matmul on random integer matrices (mk49.py).
@@ -54,7 +58,7 @@ different right answers.
 | scheme                  | multiplies | total ops | ONLINE ops |
 |-------------------------|-----------:|----------:|-----------:|
 | naive-27                |         27 |        18 |     **18** |
-| rank-23 (online-40 winner, signed) | 23 | 64 (PLinOpt) | **44** PLinOpt / **40** our exact |
+| rank-23 (online-40 winner, signed) | 23 | - | **42** PLinOpt / **40** our exact |
 
 Both gated exact (compute 3x3 matmul on random integer matrices); the
 rank-23 signed coefficients were extracted from the winner's bits via
@@ -103,3 +107,32 @@ To revive the 4x4 hunt one must search where liftability is
 guaranteed: gauge/orbit images of verified schemes (the route the
 DPS-48 artifact used), a direct search over Z (flip48p's field
 engine), or lifts with larger coefficient alphabets.
+
+
+## Counter bug (found and fixed)
+
+The op counter inherited from `run_plinopt.sh` runs
+`gsub(/[+-]/,"",r2)` and only THEN tests `substr(r2,1,1)=="-"` for a
+leading unary negation — but the signs are already stripped, so the
+test never fires and unary negations are counted as operations.  All
+figures here now come from `measure.py`, which tests the original
+string.  Relative orderings were unaffected (every scheme was
+miscounted the same way), but absolute counts dropped 5-10%.
+
+## Gauge/orbit search (verified territory)
+
+Gauge action: A -> P A Q^-1, B -> Q B R^-1 sends C -> P C R^-1, so
+  alpha -> P^-T alpha Q^T,  beta -> Q^-T beta R^T,  gamma -> P gamma R^-1
+is again an exact scheme for unimodular P,Q,R.  Every image is valid by
+construction and re-verified here by exact evaluation.
+
+Searching gauge images of Strassen^2-49 on the TRUE objective (PLinOpt
+achieved online cost) found **online 128 vs the seed's 133** — a new
+best rank-49 online scheme, still pure +-1 (no scalar multiplies),
+exactly verified.
+
+Method warning: an earlier pass searched on the cheap nt-based FLOOR
+instead.  It drove the floor from 123 down to 113 but the achieved cost
+went UP (148) — the floor counts distinct multi-term rows and is blind
+to the cross-row common subexpressions PLinOpt exploits.  A valid
+lower bound is not automatically a good search objective.

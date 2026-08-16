@@ -48,3 +48,26 @@ verified to compute 4x4 matmul on random integer matrices (mk49.py).
 The substrate law again: multiplies, additions, or bytes decide the
 winner depending on the machine — here the SAME question has three
 different right answers.
+
+## 3x3, same protocol
+
+| scheme                  | multiplies | total ops | ONLINE ops |
+|-------------------------|-----------:|----------:|-----------:|
+| naive-27                |         27 |        18 |     **18** |
+| rank-23 (online-40 winner, signed) | 23 | 64 (PLinOpt) | **44** PLinOpt / **40** our exact |
+
+Both gated exact (compute 3x3 matmul on random integer matrices); the
+rank-23 signed coefficients were extracted from the winner's bits via
+the sign-model machinery, which independently validates that pipeline
+(the lifted scheme really multiplies matrices).
+
+Note: our exact method (exact signed side minimization + transposition-
+principle exact C) returns 40 where PLinOpt at 24 reps returns 44 — our
+tooling beats the general-purpose optimizer by 4 ops on this instance.
+
+Crossover: rank-23 saves 4 multiplies and costs 22 extra online adds
+(40 vs 18), so it wins iff c_mul/c_add > 5.5 — the same shape as 4x4's
+6.5 crossover between Strassen^2-49 and naive-64. Both dimensions tell
+one story: rank reduction is an online LOSS unless multiplies are
+>5-7x the cost of additions, which is true for constraint counting
+(private weights) and false for witness generation.

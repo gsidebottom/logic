@@ -103,3 +103,7 @@ path = "src/bin/asymscore.rs"
 [[bin]]
 name = "asymfloor"
 path = "src/bin/asymfloor.rs"
+
+[[bin]]
+name = "dumpsigned"
+path = "src/bin/dumpsigned.rs"

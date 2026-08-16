@@ -71,3 +71,35 @@ Crossover: rank-23 saves 4 multiplies and costs 22 extra online adds
 one story: rank reduction is an online LOSS unless multiplies are
 >5-7x the cost of additions, which is true for constraint counting
 (private weights) and false for witness generation.
+
+## The 4x4 sweep is blocked: found4r schemes do not lift to Z
+
+Floors over all 40,238 rank-49 mod-2 schemes: 35 seconds, global min
+116 (4 schemes), Strassen^2-49 mid-pack at 123.  So the DB *looked*
+like it held ~5% better online candidates.
+
+Then sign-lifting (lift4.py: support fixed, each coefficient +-1, a
+Brent equation with k covering terms and RHS r needs exactly (k-r)/2
+terms negative, term sign = XOR of its three coefficient signs; SAT,
+then exact evaluation against 4x4 matmul):
+
+  floor 116 (all 4):        0 lifted
+  floor 117 (40 sampled):   0 lifted
+  floors 118-123 (30 each): 0 lifted
+  TOTAL: 0 / 224
+
+Lifter validated on Strassen^2-49's own support (LIFTED + VERIFIED),
+and the candidates are genuine mod-2 solutions (brent.py verifier: 0
+violations).  For contrast, in 3x3 every one of the 145,951 scored
+schemes had a sign model — lifting is essentially free there.
+
+Conclusion: found4r is a GF(2)-only population.  Its members satisfy
+the Brent equations mod 2 but are not matrix-multiplication algorithms
+over Z, so their floors are not attainable and the DB cannot supply a
+better rank-49 scheme.  Strassen^2-49 (online 145) stands as the only
+verified rank-49 scheme we hold.
+
+To revive the 4x4 hunt one must search where liftability is
+guaranteed: gauge/orbit images of verified schemes (the route the
+DPS-48 artifact used), a direct search over Z (flip48p's field
+engine), or lifts with larger coefficient alphabets.

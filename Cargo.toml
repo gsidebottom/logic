@@ -95,3 +95,11 @@ num-traits = "0.2"
 burn = { version = "0.21", features = ["ndarray", "autodiff"], optional = true }
 rayon = "1"
 
+
+[[bin]]
+name = "asymscore"
+path = "src/bin/asymscore.rs"
+
+[[bin]]
+name = "asymfloor"
+path = "src/bin/asymfloor.rs"

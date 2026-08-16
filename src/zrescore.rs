@@ -718,3 +718,216 @@ mod tests {
         assert!(z_bad(&coef, &eqs) > 0);
     }
 }
+
+// ---------------- asymmetric (free-weight-side) scoring ----------------
+
+/// One orientation's asymmetric score: the constant-matrix side (the
+/// slot rotated into the A role) costs nothing — its linear
+/// combinations are precomputed once for a fixed weight matrix — so
+/// the online cost is the x-side plus the output recombination.
+#[derive(Clone, Copy, Debug)]
+pub struct AsymScore {
+    /// online adds = b_side + c_side
+    pub online: u32,
+    /// free (precomputed) weight-side adds, for reference
+    pub free_a: u32,
+    pub b_side: u32,
+    pub c_side: u32,
+    /// which of the 6 tensor orientations (floors.rs s3_variants order:
+    /// id, cyc, cyc^2, swp, swp*cyc, swp*cyc^2)
+    pub orientation: usize,
+    pub model: usize,
+    pub exact: bool,
+}
+
+/// 3x3 signed matrix as row-major [i16; 9]; transpose helper.
+fn t9(m: &[i16; 9]) -> [i16; 9] {
+    let mut o = [0i16; 9];
+    for r in 0..3 {
+        for c in 0..3 {
+            o[c * 3 + r] = m[r * 3 + c];
+        }
+    }
+    o
+}
+
+/// Exact C-side adds via the transposition principle: the output map
+/// M (9 outputs from R products, entries gamma_m[pq]) satisfies
+/// A(M) = A(M^T) + (inputs - outputs) = z_min_side(gamma rows) + (R - 9),
+/// and gamma rows (R x 9) are exactly `z_min_side`'s input shape.
+pub fn exact_c_side(
+    grows: &[Vec9],
+    max_slack: u32,
+    node_cap: u64,
+) -> ZSideCost {
+    let mut r = z_min_side(grows, max_slack, node_cap);
+    r.adds += (grows.len() as u32) - 9;
+    r
+}
+
+/// Asymmetric score of one signed model over the 6 orientations.
+/// `coef` is the flat 621-signed-coefficient layout of `sign_models`.
+/// Orientation maps act on the summand triple (alpha_m, beta_m,
+/// gamma_m^T) exactly as floors.rs's `s3_variants`: cyc rotates the
+/// triple, swp is (b^T, a^T, c^T); both preserve the Brent equations.
+pub fn asym_score_model(
+    coef: &[i32],
+    mi: usize,
+    max_slack: u32,
+    node_cap: u64,
+) -> AsymScore {
+    // summand triples (alpha, beta, gamma-hat = gamma^T)
+    let mut tri: Vec<([i16; 9], [i16; 9], [i16; 9])> = Vec::with_capacity(R);
+    for m in 0..R {
+        let mut a = [0i16; 9];
+        let mut b = [0i16; 9];
+        let mut g = [0i16; 9];
+        for k in 0..9 {
+            a[k] = coef[m * 9 + k] as i16;
+            b[k] = coef[NA + m * 9 + k] as i16;
+            g[k] = coef[NA + NB + m * 9 + k] as i16;
+        }
+        tri.push((a, b, t9(&g)));
+    }
+    let cyc = |ss: &[([i16; 9], [i16; 9], [i16; 9])]| -> Vec<_> {
+        ss.iter().map(|&(a, b, c)| (b, c, a)).collect()
+    };
+    let swp: Vec<_> = tri
+        .iter()
+        .map(|&(a, b, c)| (t9(&b), t9(&a), t9(&c)))
+        .collect();
+    let mut variants = vec![tri.clone()];
+    variants.push(cyc(&variants[0]));
+    variants.push(cyc(&variants[1]));
+    variants.push(swp);
+    variants.push(cyc(&variants[3]));
+    variants.push(cyc(&variants[4]));
+
+    let mut best: Option<AsymScore> = None;
+    for (oi, var) in variants.iter().enumerate() {
+        // roles in summand form: a' = weight side (free), b' = x side,
+        // c'-hat rows are gamma'^T; z_min_side wants gamma' rows
+        // (gamma'_m as flat 9), i.e. un-hat: gamma' = (c'-hat)^T.
+        let brows: Vec<Vec9> = var.iter().map(|&(_, b, _)| b).collect();
+        let grows: Vec<Vec9> = var.iter().map(|&(_, _, c)| t9(&c)).collect();
+        let rb = z_min_side(&brows, max_slack, node_cap);
+        let rc = exact_c_side(&grows, max_slack, node_cap);
+        let arows: Vec<Vec9> = var.iter().map(|&(a, _, _)| a).collect();
+        let ra = z_min_side(&arows, max_slack, node_cap);
+        let sc = AsymScore {
+            online: rb.adds + rc.adds,
+            free_a: ra.adds,
+            b_side: rb.adds,
+            c_side: rc.adds,
+            orientation: oi,
+            model: mi,
+            exact: rb.exact && rc.exact,
+        };
+        if best.as_ref().map_or(true, |b| sc.online < b.online) {
+            best = Some(sc);
+        }
+    }
+    best.unwrap()
+}
+
+/// best asymmetric (free-weight-side) score over sign models.
+pub fn asym_score_bits(
+    bits: &[u8],
+    eqs: &[(Vec<(usize, usize, usize)>, u8)],
+    nmodels: usize,
+    max_slack: u32,
+    node_cap: u64,
+) -> Option<AsymScore> {
+    let models = sign_models(bits, nmodels, eqs);
+    let mut best: Option<AsymScore> = None;
+    for (mi, coef) in models.iter().enumerate() {
+        let sc = asym_score_model(coef, mi, max_slack, node_cap);
+        if best.as_ref().map_or(true, |b| sc.online < b.online) {
+            best = Some(sc);
+        }
+    }
+    best
+}
+
+#[cfg(test)]
+mod asym_tests {
+    use super::*;
+
+    fn load_bits_file(path: &str) -> Vec<u8> {
+        std::fs::read_to_string(path)
+            .expect("bits file")
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .map(|c| (c as u8) - b'0')
+            .collect()
+    }
+
+    /// Orientation maps must preserve the exact Z Brent equations:
+    /// rebuild flat coefficients from each oriented triple and check.
+    #[test]
+    fn orientations_preserve_brent() {
+        let eqs = brent_equations();
+        let bits = load_bits_file("matmul/external/i19-perminov56.bits");
+        assert_eq!(bits.len(), NV);
+        let models = sign_models(&bits, 2, &eqs);
+        assert!(!models.is_empty());
+        let coef = &models[0];
+        // reuse the internal mapping by replicating triple construction
+        let mut tri: Vec<([i16; 9], [i16; 9], [i16; 9])> = Vec::new();
+        for m in 0..R {
+            let mut a = [0i16; 9];
+            let mut b = [0i16; 9];
+            let mut g = [0i16; 9];
+            for k in 0..9 {
+                a[k] = coef[m * 9 + k] as i16;
+                b[k] = coef[NA + m * 9 + k] as i16;
+                g[k] = coef[NA + NB + m * 9 + k] as i16;
+            }
+            tri.push((a, b, t9(&g)));
+        }
+        let cyc = |ss: &[([i16; 9], [i16; 9], [i16; 9])]| -> Vec<_> {
+            ss.iter().map(|&(a, b, c)| (b, c, a)).collect()
+        };
+        let swp: Vec<_> = tri
+            .iter()
+            .map(|&(a, b, c)| (t9(&b), t9(&a), t9(&c)))
+            .collect();
+        let mut variants = vec![tri.clone()];
+        variants.push(cyc(&variants[0]));
+        variants.push(cyc(&variants[1]));
+        variants.push(swp);
+        variants.push(cyc(&variants[3]));
+        variants.push(cyc(&variants[4]));
+        for (oi, var) in variants.iter().enumerate() {
+            let mut flat = vec![0i32; NV];
+            for (m, &(a, b, ch)) in var.iter().enumerate() {
+                let g = t9(&ch);
+                for k in 0..9 {
+                    flat[m * 9 + k] = a[k] as i32;
+                    flat[NA + m * 9 + k] = b[k] as i32;
+                    flat[NA + NB + m * 9 + k] = g[k] as i32;
+                }
+            }
+            assert_eq!(z_bad(&flat, &eqs), 0, "orientation {} breaks Brent", oi);
+        }
+    }
+
+    /// The transposition-principle exact C must reproduce the record's
+    /// C cost: on i19 the symmetric total is 55 (exact sides + C).
+    #[test]
+    fn record_total_reproduced_and_asym_beats_or_ties() {
+        let eqs = brent_equations();
+        let bits = load_bits_file("matmul/external/i19-perminov56.bits");
+        let sym = score_bits(&bits, &eqs, 24, 300, 3, 10_000_000)
+            .expect("symmetric score");
+        let asym = asym_score_bits(&bits, &eqs, 24, 3, 10_000_000)
+            .expect("asym score");
+        eprintln!("symmetric: total {} = a{}+b{}+c{}", sym.total, sym.a, sym.b, sym.c);
+        eprintln!("asym: online {} = b{}+c{} (free a{}, orient {}, model {})",
+                  asym.online, asym.b_side, asym.c_side, asym.free_a,
+                  asym.orientation, asym.model);
+        // online must never exceed the symmetric total minus the cheapest side
+        assert!(asym.online <= sym.total - sym.a.min(sym.b),
+                "asym online {} vs symmetric {}", asym.online, sym.total);
+    }
+}

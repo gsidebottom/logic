@@ -1,4 +1,4 @@
-import Mm55proof.Rigid48
+import Mm.Rigid48
 open Rigid48
 def main : IO Unit := do
   let r := explore seed 20000

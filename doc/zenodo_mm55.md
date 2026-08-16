@@ -10,7 +10,7 @@ referenced from the arXiv paper.
 - `matmul/external/i19-perminov56.bits` — the committed representative
 - `matmul/verify_slp_file.py` — independent from-scratch verifier
 - `src/mm55.rs` — runnable Rust transcription + fuzz tests
-- `matmul/mm55proof/` (zip of the Lake project, without `.lake/`) — Lean proof
+- `matmul/mm55proof/` (now `proof/` in the repo; zip of the Lake project, without `.lake/`) — Lean proof
 - `doc/matmul_adds_paper.pdf` — the paper
 - (optional) a full `git archive v1.0-mm55` tarball of the repository
 

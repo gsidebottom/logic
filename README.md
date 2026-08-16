@@ -22,7 +22,7 @@ sub-55 scheme would require a rank-23 class nobody has catalogued.
 |---|---|---|
 | The 55-operation program | [matmul/external/i19-55adds-slp.txt](matmul/external/i19-55adds-slp.txt) | `python3 matmul/verify_slp_file.py matmul/external/i19-55adds-slp.txt --trials 5000` |
 | Runnable Rust version + fuzz vs naive | [src/mm55.rs](src/mm55.rs) | `cargo test --release --lib mm55::` |
-| Machine-checked proof (Lean 4 + Mathlib) | [matmul/mm55proof/](matmul/mm55proof) | `cd matmul/mm55proof && lake exe cache get && lake build` |
+| Machine-checked proof (Lean 4 + Mathlib) | [proof/](proof) | `cd proof && lake exe cache get && lake build` |
 | Paper (method + reproduction) | [doc/matmul_adds_paper.pdf](doc/matmul_adds_paper.pdf) | §7 lists every command |
 | Archived artifacts (citable) | [DOI 10.5281/zenodo.21240904](https://doi.org/10.5281/zenodo.21240904) | program + verifier + proof + snapshot |
 
@@ -54,7 +54,7 @@ the 55-operation program computes the matrix product — sorry-free,
   the only characteristic-0 rank-48 scheme is provably rigid under
   rational flip moves — no rank-47 is reachable — certified in Lean 4
   ([doc/matmul_rigid48_paper.pdf](doc/matmul_rigid48_paper.pdf),
-  `Rigid48.rigid` in [matmul/mm55proof/](matmul/mm55proof)).
+  `Rigid48.rigid` in [proof/](proof)).
 - **SAT benchmarks** with known ground truth from the additive-
   complexity work ([doc/matmul_cxlb_satcomp.pdf](doc/matmul_cxlb_satcomp.pdf)).
 - A native-ANF SLS solver for the Heule matrix-multiplication

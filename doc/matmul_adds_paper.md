@@ -29,7 +29,7 @@ against the naive 27-multiplication triple loop on 500,000 random
 integer inputs **and** 50,000 non-commutative 2×2-block inputs — so it
 holds over any ring and recurses on block matrices — with an operation
 counter confirming exactly 23 × and 55 ± (`cargo test mm55`). Its
-correctness is additionally machine-checked in Lean 4 (`matmul/mm55proof/`):
+correctness is additionally machine-checked in Lean 4 (`proof/`):
 a sorry-free proof that, over a general non-commutative ring, the
 program's 9 outputs are the entries of A·B — and, in Mathlib's own
 `Matrix` API, that the scheme equals `A * B`.
@@ -362,7 +362,7 @@ python3 cfloor.py sweep i19w225c4efh-000 i46w213c23ci-016   # spot-check
 
 # machine-checked proof (Lean 4 + Mathlib) that the 55-addition scheme
 # equals A*B over a general non-commutative ring — sorry-free
-cd mm55proof && lake exe cache get && lake build
+cd proof && lake exe cache get && lake build
 #   Matmul55.correct       depends on axioms: [propext]
 #   Matmul55.scheme_eq_mul depends on axioms: [propext, Classical.choice, Quot.sound]
 ```

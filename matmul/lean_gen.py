@@ -17,7 +17,7 @@ import re, sys, pathlib
 
 RS = pathlib.Path(__file__).with_name("..") / "src" / "mm55.rs"
 RS = (pathlib.Path(__file__).parent.parent / "src" / "mm55.rs").resolve()
-OUT = pathlib.Path(__file__).parent / "mm55proof" / "Mm55proof" / "Correct.lean"
+OUT = pathlib.Path(__file__).parent.parent / "proof" / "Mm" / "Correct.lean"
 
 BASE_A = [f"a{i}{j}" for i in range(1,4) for j in range(1,4)]
 BASE_B = [f"b{i}{j}" for i in range(1,4) for j in range(1,4)]

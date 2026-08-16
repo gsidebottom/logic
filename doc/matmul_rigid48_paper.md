@@ -248,7 +248,7 @@ and outside any current method's reach — is discussed in §6.
 
 Exhaustive computational claims deserve mechanical verification; the
 enumeration above is small enough to re-run inside a proof assistant.
-The Lean 4 development `matmul/mm55proof/Mm55proof/Rigid48.lean`
+The Lean 4 development `proof/Mm/Rigid48.lean`
 (same Lake project as the 3×3 correctness proof of the companion
 paper) re-implements the entire move system — gauge, λ-flips, splits,
 all three reduction patterns, the Cramer solver, the DFS — as *total*
@@ -330,7 +330,7 @@ cargo build --release --bin flip48
 ./target/release/flip48 --pursue3 10 --cap 1024        # cap-independence
 
 # the machine-checked theorem
-cd matmul/mm55proof
+cd proof
 lake exe cache get     # prebuilt Mathlib
 lake build             # elaborates rigid + seed_valid (native_decide;
                        # the Rigid48 module takes ~15 minutes)

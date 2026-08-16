@@ -1,7 +1,7 @@
-name = "mm55proof"
+name = "proof"
 version = "0.1.0"
 keywords = ["math"]
-defaultTargets = ["Mm55proof"]
+defaultTargets = ["Mm"]
 
 [leanOptions]
 pp.unicode.fun = true # pretty-prints `fun a ↦ b`
@@ -15,7 +15,7 @@ scope = "leanprover-community"
 rev = "v4.32.0-rc1"
 
 [[lean_lib]]
-name = "Mm55proof"
+name = "Mm"
 
 [[lean_exe]]
 name = "rigid48probe"

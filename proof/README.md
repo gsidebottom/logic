@@ -1,48 +1,63 @@
-# `mm55proof` — a Lean 4 proof that the 55-addition scheme multiplies matrices
+# `proof` — machine-checked results, in Lean 4 + Mathlib
 
-This Lake project machine-checks that the rank-23 (23-multiplication),
-**55-addition** straight-line program for 3×3 matrix multiplication —
-de Groote class `i19w225c4efh`, fewer additions than any previously
-published rank-23 3×3 scheme (the prior record was 56) — actually
-computes the matrix product.
+A Lake project collecting the formal half of this repository's research:
+where a search produces a claim, the claim gets a proof Lean's kernel
+accepts. Currently three lines of work — correctness of a
+straight-line matrix-multiplication program, rigidity of a rank-48
+decomposition, and a covering argument for a rank-22 lower bound —
+with more to come. The Lean library is [`Mm`](Mm); results live in one
+module each and carry a `#print axioms` audit printed during the build.
 
-The program itself is `../external/i19-55adds-slp.txt`, transcribed and
-fuzz-tested in Rust at `../../src/mm55.rs`. The Lean files here are
-generated from that Rust source by `../lean_gen.py`, which also
-independently pre-verifies the scheme over a non-commutative polynomial
-ring before emitting the proof.
+| result | module | status |
+|---|---|---|
+| 55-addition 3×3 scheme computes `A * B` | [`Mm/Correct.lean`](Mm/Correct.lean), [`Mm/Matrix.lean`](Mm/Matrix.lean) | proved |
+| rank-48 4×4 scheme is rigid under solved flips | [`Mm/Rigid48.lean`](Mm/Rigid48.lean) | proved (`native_decide`) |
+| rank-22 root-strata covering | [`Mm/Rank22Covering.lean`](Mm/Rank22Covering.lean) | skeleton — 5 `sorry`s |
 
-## What is proved
+## Correctness of the 55-addition scheme
+
+Machine-checks that the rank-23 (23-multiplication), **55-addition**
+straight-line program for 3×3 matrix multiplication — de Groote class
+`i19w225c4efh`, fewer additions than any previously published rank-23
+3×3 scheme (the prior record was 56) — actually computes the matrix
+product.
+
+The program itself is
+[`matmul/external/i19-55adds-slp.txt`](../matmul/external/i19-55adds-slp.txt),
+transcribed and fuzz-tested in Rust at [`src/mm55.rs`](../src/mm55.rs).
+The Lean files are generated from that Rust source by
+[`matmul/lean_gen.py`](../matmul/lean_gen.py), which also independently
+pre-verifies the scheme over a non-commutative polynomial ring before
+emitting the proof.
 
 Both statements are over a **general, not-necessarily-commutative**
 ring `R`. Because every product keeps its left factor on the left, this
 certifies a genuine bilinear algorithm that applies recursively to
 block matrices.
 
-- **`Matmul55.correct`** (`Mm55proof/Correct.lean`) — the faithful
-  straight-line program: the 78 intermediate wires (`aw*`, `bw*`, `m*`,
-  `cw*`) appear as hypotheses fixing them to their defining expressions,
-  and the theorem concludes each of the 9 outputs equals the
-  matrix-product entry `∑ₖ aᵢₖ bₖⱼ`. Proof: `subst_vars; noncomm_ring`
-  (with `abel` for the one output that is a pure additive reordering).
-  Depends only on the axiom `propext`.
+- **`Matmul55.correct`** ([`Mm/Correct.lean`](Mm/Correct.lean)) — the
+  faithful straight-line program: the 78 intermediate wires (`aw*`,
+  `bw*`, `m*`, `cw*`) appear as hypotheses fixing them to their
+  defining expressions, and the theorem concludes each of the 9 outputs
+  equals the matrix-product entry `∑ₖ aᵢₖ bₖⱼ`. Proof:
+  `subst_vars; noncomm_ring` (with `abel` for the one output that is a
+  pure additive reordering). Depends only on the axiom `propext`.
 
-- **`Matmul55.scheme_eq_mul`** (`Mm55proof/Matrix.lean`) — the same
-  scheme written as a function `scheme : Matrix (Fin 3) (Fin 3) R →
-  Matrix (Fin 3) (Fin 3) R → Matrix (Fin 3) (Fin 3) R` in four labeled
-  sections — `A_in` (13 adds on the A input side), `B_in` (14 on the
-  B side), `M` (the 23 multiplies), `C_out` (28 adds on the C output
-  side) — proved equal to Mathlib's own matrix product `A * B`. This
-  packages the result in Mathlib's native `Matrix` API. Depends on the
-  three standard foundational axioms `propext, Classical.choice,
+- **`Matmul55.scheme_eq_mul`** ([`Mm/Matrix.lean`](Mm/Matrix.lean)) —
+  the same scheme written as a function `scheme : Matrix (Fin 3) (Fin 3)
+  R → Matrix (Fin 3) (Fin 3) R → Matrix (Fin 3) (Fin 3) R` in four
+  labeled sections — `A_in` (13 adds on the A input side), `B_in` (14
+  on the B side), `M` (the 23 multiplies), `C_out` (28 adds on the C
+  output side) — proved equal to Mathlib's own matrix product `A * B`.
+  This packages the result in Mathlib's native `Matrix` API. Depends on
+  the three standard foundational axioms `propext, Classical.choice,
   Quot.sound`.
 
-Neither proof uses `sorry` (each file ends with a `#print axioms`
-audit, printed during the build).
+Neither proof uses `sorry`.
 
-## Second result: rigidity of the rational rank-48 4×4 scheme
+## Rigidity of the rational rank-48 4×4 scheme
 
-- **`Rigid48.rigid`** (`Mm55proof/Rigid48.lean`) — the
+- **`Rigid48.rigid`** ([`Mm/Rigid48.lean`](Mm/Rigid48.lean)) — the
   Dumas–Pernet–Sedoglavic rational `⟨4×4×4:48⟩` decomposition (the
   only known rank-48 class with real points) is **rigid under solved
   flip moves**: the graph generated by one split (any pair of
@@ -60,24 +75,54 @@ audit, printed during the build).
   Trust base: the standard axioms plus Lean's compiler
   (`native_decide`); the statement covers split scalar μ = 1 (the
   coincidence spans are μ-independent — symbolic lemma left as
-  future work). `lake exe rigid48probe` reruns the exploration and
-  prints the component statistics (~3½ minutes).
+  future work). `lake exe rigid48probe`
+  ([`Probe48.lean`](Probe48.lean)) reruns the exploration and prints
+  the component statistics (~3½ minutes).
+
+## Rank-22 root-strata covering (in progress)
+
+- [`Mm/Rank22Covering.lean`](Mm/Rank22Covering.lean) carries the
+  symmetry half of a certified lower-bound argument for 3×3 rank 22
+  over 𝔽₂: the Brent equations, the product-relabeling and sandwich
+  group actions, and the statement that every solution maps into one of
+  four root strata (dead product / minimum α-rank 1, 2, 3). Each
+  stratum's emptiness is then a separate SAT certificate; this file is
+  what licenses the canonical pins those CNFs use.
+  `Rank22.brent_perm` (S₂₂ relabeling preserves the equations) is
+  proved; `brent_act`, the two rank canonical forms, and `covering`
+  are stated and `sorry`-stubbed — five `sorry`s, and the build reports
+  them. The same group action is checked numerically by
+  [`matmul/r22/strata.py`](../matmul/r22/strata.py) (Laderman
+  canonicalizes with the Brent equations preserved).
 
 ## Reproduce
 
 Requires [`elan`](https://github.com/leanprover/elan) (the Lean version
-manager); the toolchain (`lean-toolchain`) and the exact Mathlib commit
-(`lake-manifest.json`) are pinned.
+manager); the toolchain ([`lean-toolchain`](lean-toolchain), currently
+Lean 4.33.0) and the exact Mathlib commit
+([`lake-manifest.json`](lake-manifest.json)) are pinned.
 
 ```sh
 lake exe cache get      # fetch prebuilt Mathlib oleans (no local Mathlib build)
-lake build              # elaborate both proofs; prints the #print axioms audits
+lake build              # elaborate the proofs; prints the #print axioms audits
 ```
 
 A successful `lake build` *is* the verification: Lean's kernel accepts
-the proof terms. To regenerate the Lean sources from the Rust program:
+the proof terms. Budget ~16 minutes for a cold build —
+`Mm/Rigid48.lean` is `native_decide`-heavy and dominates; the other
+modules take seconds.
+
+To regenerate the generated Lean sources from the Rust program:
 
 ```sh
-python3 ../lean_gen.py  # re-emits Correct.lean and Matrix.lean, with a
-                        # non-commutative pre-check of all 9 outputs
+python3 ../matmul/lean_gen.py   # re-emits Mm/Correct.lean and Mm/Matrix.lean,
+                                # with a non-commutative pre-check of all 9 outputs
 ```
+
+## Adding a result
+
+One module per result under [`Mm/`](Mm), imported from
+[`Mm.lean`](Mm.lean). End each with `#print axioms` on the headline
+theorem so the trust base is visible in the build log — and if a proof
+leans on `native_decide`, say so in the module docstring and here,
+since that admits Lean's compiler to the trust base.

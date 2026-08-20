@@ -108,6 +108,20 @@ the two source papers for this track):
   engine could grow a flipC mode (mixed-variable bilinear forms,
   symmetrized Brent verify). Today's comm ceiling (t=7 tiles):
   5.3% — smaller than exponent wins, stacks with them.
+- **Rosowski tilechip MEASURED (2026-08-19, commit 4cac27b)**:
+  commutative <4,4,4>=46 (Thm 2, verified over Z + BabyBear in
+  matmul/comm/rosowski.py) prototyped in the benchair tilechip with
+  lr_w=32 mixed A|B forms; all gates pass (selfcheck + honest +
+  4 tampers x 3 schedules). Verdict: rosowski46/rank48 =
+  0.95-0.98x at 2^14/16/18 — the 48-io-op floor pins the tile at
+  96 rows, so sub-48 products buy nothing and the doubled form
+  width is pure cost; rank-48 bilinear is the 4x4 geometry
+  optimum (rank48/naive reproduced at 1.166-1.169x vs predicted
+  1.167x). Amortized-40 shared-S rejected analytically: a shared-S
+  memory read costs >= the compute row it saves. Commutative wins
+  rows only when the floor stops binding: 8x8 projection
+  Rosowski-316 -> 508 rows/tile vs naive 704 / Strassen^2-343 ->
+  535 (matmul/comm/SUMMARY.md) — follow-up if tile size flexes.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

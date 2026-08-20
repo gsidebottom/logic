@@ -34,6 +34,47 @@ per-tile multiplication-constraint count under weight reuse:
   <3,3,3>: 21 standalone -> 18 + 3/T  -> 18    (vs 23: -21.7%)
   <4,4,8>: 86 standalone -> 72 + 14/T -> 72    (vs 96: -25.0%)
 
+## MEASURED: tilechip verdict (2026-08-19)
+
+The tilechip prototype (`matmul/benchair/src/bin/tilechip.rs`,
+`rosowski46_schedule`) settles it for the 4x4 tile-interface chip.
+Setup: the 48 io ops ride one-per-compute-row, so rows/tile is floored
+at max(rpt, 48) + 48 = 96 regardless of product count — rank-48 sits
+exactly on that floor, and rosowski-46 pads to the same 96 rows.
+The commutative mixed A|B linear forms need lr_w = 32 (vs 16),
+i.e. 32-term lsum/rsum constraints and preprocessed width 135 vs 103.
+Gates: schedule selfcheck (reproduces A*B on random tiles), honest
+proof accepted, all 4 tamper classes rejected — for all three
+schedules.
+
+    2^14: rank48 1651 t/s, rosowski46 1611 t/s  (0.976x)
+    2^16: rank48 1607 t/s, rosowski46 1532 t/s  (0.953x)
+    2^18: rank48 1564 t/s, rosowski46 1536 t/s  (0.982x)
+    (rank48/naive: 1.166-1.169x, matching the 112/96 = 1.167x
+     row prediction at every height)
+
+**Verdict: at the 4x4 tile size, Rosowski LOSES 2-5%.** Below 48
+products the io floor makes further product reduction worthless, and
+the doubled linear-form width is pure cost. Rank-48 bilinear is the
+optimum for this geometry.
+
+The amortized-40 variant (S-products shared across activation tiles)
+was analyzed and NOT built: reading a shared S-product through the
+memory argument costs one memory row per use — at least as much as
+the single compute row it saves — so sharing cannot win in this
+row-cost model either. The 40/18/72 numbers above price
+constraint-COUNT models (R1CS-style), not tilechip rows.
+
+**Where commutative wins rows: bigger tiles.** The io floor is
+2*3n^2 rows (3n^2 io carriers + 3n^2 memory rows) and scales n^2,
+while products scale ~n^3/2 commutative — so at 8x8 the floor stops
+binding: naive 512 products -> 704 rows/tile;
+bilinear Strassen^2-343 -> 535; Rosowski Thm 2 gives
+8*(64+8+8-1)/2 = 316 -> 508 rows/tile (1.39x over naive, 1.05x over
+rank-343, before the width tax of ~2-5% measured here). An 8x8
+tilechip is the natural follow-up if tile-size flexibility is on the
+table.
+
 ## Caveats (honest scope)
 
 - Non-bilinear => NO block recursion. Applies at the flat/leaf tile

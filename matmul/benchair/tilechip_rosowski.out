@@ -1,0 +1,33 @@
+selfcheck [naive]: 64 products, lr_w 16, reproduces A*B on 8 random tiles
+selfcheck [rank48]: 48 products, lr_w 16, reproduces A*B on 8 random tiles
+selfcheck [rosowski46]: 46 products, lr_w 32, reproduces A*B on 8 random tiles
+gate [naive] honest: accepted
+gate [naive] memory-value: rejected
+gate [naive] compute-read: rejected
+gate [naive] multiplicity: rejected
+gate [naive] output-write: rejected
+gate [rank48] honest: accepted
+gate [rank48] memory-value: rejected
+gate [rank48] compute-read: rejected
+gate [rank48] multiplicity: rejected
+gate [rank48] output-write: rejected
+gate [rosowski46] honest: accepted
+gate [rosowski46] memory-value: rejected
+gate [rosowski46] compute-read: rejected
+gate [rosowski46] multiplicity: rejected
+gate [rosowski46] output-write: rejected
+2^14 rows  naive   tiles   146  prove 103.047ms  verify  9.928ms  1417 tiles/s
+2^14 rows  rank48  tiles   170  prove 102.947ms  verify  9.871ms  1651 tiles/s
+2^14 rows  rosowski46 tiles   170  prove 105.529ms  verify 10.221ms  1611 tiles/s
+        -> rank48/naive throughput 1.166x (row-count prediction 112/96 = 1.167x)
+        -> rosowski46/rank48 throughput 0.976x (equal 96-row geometry; cost delta = 32-wide mixed forms + 32 extra preprocessed cols)
+2^16 rows  naive   tiles   585  prove 425.206ms  verify 11.554ms  1376 tiles/s
+2^16 rows  rank48  tiles   682  prove 424.282ms  verify 11.677ms  1607 tiles/s
+2^16 rows  rosowski46 tiles   682  prove 445.280ms  verify 11.909ms  1532 tiles/s
+        -> rank48/naive throughput 1.168x (row-count prediction 112/96 = 1.167x)
+        -> rosowski46/rank48 throughput 0.953x (equal 96-row geometry; cost delta = 32-wide mixed forms + 32 extra preprocessed cols)
+2^18 rows  naive   tiles  2340  prove    1.750s  verify 13.231ms  1337 tiles/s
+2^18 rows  rank48  tiles  2730  prove    1.746s  verify 13.373ms  1564 tiles/s
+2^18 rows  rosowski46 tiles  2730  prove    1.778s  verify 13.772ms  1536 tiles/s
+        -> rank48/naive throughput 1.169x (row-count prediction 112/96 = 1.167x)
+        -> rosowski46/rank48 throughput 0.982x (equal 96-row geometry; cost delta = 32-wide mixed forms + 32 extra preprocessed cols)

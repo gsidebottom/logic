@@ -140,9 +140,9 @@ the two source papers for this track):
 - **3x3 rank ladder — direct CDCL cannot deliver lower bounds
   (2026-08-22)**: certified hydra_satsuma on brent_3x3x{r}.cnf
   (brent.py encoding, 27r base vars / 729 equations): r=1 1 ms,
-  r=2-4 ~0.5 s (container-bound), r=5 1.5 s, r=6 19.9 s, r=7 530 s
-  (certificate check overran the 10-min budget — certified re-run
-  pending), r=8 pending (2 h bound); r=9,12,15,17,18,19,20 ALL
+  r=2-4 ~0.5 s (container-bound), r=5 1.5 s, r=6 19.9 s, r=7 487-530 s
+  (dsr-trim VERIFIED in 1,232 s on a 1.29 GB binary SR certificate —
+  proof checking now outweighs solving), r=8 pending (2 h bound); r=9,12,15,17,18,19,20 ALL
   TIMEOUT at 30 min. Per-product factor x13 (5->6), x27 (6->7) —
   matching the 2x2 ladder (r=4/5/6: 0.18/1.65/21.9 s, x9-13): fully
   free Brent instances grow ~x10-30 per product regardless of

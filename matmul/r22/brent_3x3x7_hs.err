@@ -1,0 +1,350 @@
+c parsed 9666 variables, 38637 clauses
+c hydra_satsuma: structure analysis (xor stage)…
+c hydra_satsuma: xor stage: 5103 XOR(s), 729 var(s) GE-forced — ignored in certified mode (43.8ms)
+c hydra_satsuma: no Cook shape -> satsuma-iter+kissat (docker) budget=1798s
+c hydra_satsuma: satsuma-iter+kissat time 5s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 10s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 15s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 20s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 25s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 30s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 35s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 40s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 45s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 50s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 55s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 60s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 66s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 71s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 76s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 81s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 86s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 91s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 96s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 101s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 106s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 111s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 116s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 121s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 126s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 132s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 137s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 142s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 147s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 152s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 157s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 162s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 167s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 172s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 177s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 182s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 187s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 192s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 198s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 203s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 208s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 213s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 218s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 223s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 228s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 233s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 238s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 243s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 248s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 253s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 258s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 263s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 268s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 274s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 279s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 284s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 289s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 294s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 299s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 304s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 309s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 314s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 319s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 324s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 329s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 334s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 339s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 345s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 350s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 355s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 360s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 365s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 370s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 375s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 380s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 385s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 390s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 395s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 400s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 405s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 410s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 416s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 421s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 426s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 431s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 436s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 441s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 446s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 451s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 456s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 461s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 466s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 471s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 476s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 481s / budget 1798s
+c hydra_satsuma: satsuma-iter+kissat time 486s / budget 1798s
+c hydra_satsuma: prover=satsuma-kissat
+c UNSAT in 487088.5ms
+c hydra_satsuma: verifying composed SR proof (dsr-trim, budget 3600s)…
+c hydra_satsuma: dsr-trim verify time 5s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 10s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 15s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 20s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 25s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 30s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 35s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 40s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 45s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 50s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 55s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 60s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 65s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 70s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 75s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 80s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 86s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 91s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 96s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 101s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 106s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 111s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 116s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 121s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 126s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 131s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 136s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 141s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 146s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 151s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 156s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 161s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 166s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 172s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 177s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 182s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 187s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 192s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 197s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 202s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 207s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 212s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 217s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 222s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 227s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 232s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 237s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 242s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 247s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 252s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 258s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 263s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 268s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 273s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 278s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 283s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 288s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 293s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 298s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 303s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 308s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 313s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 318s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 323s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 328s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 333s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 339s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 344s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 349s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 354s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 359s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 364s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 369s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 374s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 379s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 384s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 389s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 394s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 399s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 404s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 409s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 414s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 419s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 425s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 430s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 435s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 440s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 445s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 450s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 455s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 460s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 465s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 470s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 475s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 480s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 485s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 490s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 495s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 501s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 506s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 511s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 516s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 521s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 526s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 531s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 536s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 541s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 546s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 551s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 556s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 561s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 566s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 571s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 576s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 582s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 587s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 592s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 597s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 602s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 607s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 612s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 617s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 622s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 627s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 632s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 637s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 642s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 647s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 652s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 657s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 663s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 668s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 673s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 678s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 683s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 688s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 693s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 698s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 703s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 708s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 713s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 718s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 723s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 728s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 733s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 738s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 744s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 749s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 754s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 759s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 764s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 769s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 774s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 779s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 784s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 789s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 794s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 799s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 804s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 809s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 814s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 819s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 825s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 830s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 835s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 840s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 845s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 850s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 855s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 860s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 865s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 870s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 875s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 880s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 885s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 890s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 895s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 900s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 905s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 911s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 916s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 921s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 926s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 931s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 936s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 941s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 946s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 951s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 956s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 961s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 966s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 971s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 976s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 981s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 986s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 991s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 997s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1002s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1007s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1012s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1017s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1022s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1027s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1032s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1037s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1042s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1047s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1052s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1057s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1062s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1067s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1072s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1077s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1083s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1088s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1093s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1098s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1103s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1108s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1113s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1118s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1123s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1128s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1133s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1138s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1143s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1148s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1153s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1158s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1164s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1169s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1174s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1179s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1184s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1189s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1194s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1199s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1204s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1209s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1214s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1219s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1224s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 1229s / budget 3600s
+c hydra_satsuma: dsr-trim verify 1231.7s total
+c hydra_satsuma: dsr-trim VERIFIED UNSAT (composed satsuma SR + kissat refutation checks against the input formula)
+c hydra_satsuma: SR proof copied to matmul/r22/brent_3x3x7.sr (binary SR — check with dsr-trim, not cake_lpr)
+EXIT=0

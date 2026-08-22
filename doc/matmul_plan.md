@@ -122,6 +122,21 @@ the two source papers for this track):
   rows only when the floor stops binding: 8x8 projection
   Rosowski-316 -> 508 rows/tile vs naive 704 / Strassen^2-343 ->
   535 (matmul/comm/SUMMARY.md) — follow-up if tile size flexes.
+- **2x2 calibration of the certified pipeline (2026-08-22)**:
+  brent_2x2x6.cnf (776 vars / 2,880 clauses, rank one below the
+  proven-optimal 7 of Hopcroft-Kerr/Winograd): hydra_satsuma in
+  certified mode (GE-forced units ignored, so the certificate covers
+  the input formula) — UNSAT in 21.9 s; composed satsuma-SR + kissat
+  proof dsr-trim VERIFIED in-pipeline (56 s) AND by an independent
+  dsr-trim run on the saved 59 MB binary SR certificate (56.4 s,
+  forward checking). First end-to-end machine-checked UNSAT on a
+  Brent instance: the rank-7 lower bound for 2x2 over F_2.
+  brent_2x2x7.cnf control: SAT in 346 ms; witness verified (0/64
+  Brent violations) and equal to Strassen under A->AJ, B->JB (the
+  k-swap) with products relabeled — de Groote uniqueness in
+  practice. Gate: matmul/r22/check_2x2.py (4 gates). Scale note:
+  the 3x3 rank-22 leaves are the same object at 594 base vars / 729
+  equations (vs 84 / 64) where the level-1 strata time out at 2 h.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

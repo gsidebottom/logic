@@ -1,0 +1,8 @@
+c parsed 916 variables, 3392 clauses
+c hydra_satsuma: structure analysis (xor stage)…
+c hydra_satsuma: xor stage: 448 XOR(s), 64 var(s) GE-forced; residual 3200 clauses (0.6ms)
+c hydra_satsuma: GE-simplified residual -> satsuma-iter+kissat (docker) budget=3598s
+c hydra_satsuma: prover=satsuma-kissat
+c SAT in 346.5ms
+c hydra_satsuma: model over satsuma-augmented vars projected to the original 916 (model is the certificate)
+EXIT=0

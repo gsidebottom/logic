@@ -95,3 +95,6 @@ matmul/found23p/
 matmul/found48p/
 matmul/dps48/orbit/
 matmul/dps48/orbit_perm/
+
+# binary SR certificates (tens of MB; regenerable with sat -b hydra_satsuma --proof)
+matmul/r22/*.sr

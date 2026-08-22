@@ -1,0 +1,14 @@
+c CNF file path: /work/f.cnf
+c DSR file path: /work/proof.out
+c LSR file path: /dev/null
+c Using a STREAMING parsing strategy.
+c Doing FORWARDS proof checking.
+c The CNF formula has 2880 clauses and 776 variables.
+c Parsing the CNF took 0.001 secs
+c Detected that the DSR proof is in binary format.
+c The emitted LSR proof will also be in binary format.
+c Checking proof...
+c Proof checking took 56.431 secs
+s VERIFIED UNSAT
+c Total runtime took 56.432 secs
+DSRTRIM-RC=0

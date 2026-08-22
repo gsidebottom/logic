@@ -1,0 +1,26 @@
+c parsed 776 variables, 2880 clauses
+c hydra_satsuma: structure analysis (xor stage)…
+c hydra_satsuma: xor stage: 384 XOR(s), 64 var(s) GE-forced — ignored in certified mode (0.7ms)
+c hydra_satsuma: no Cook shape -> satsuma-iter+kissat (docker) budget=3598s
+c hydra_satsuma: satsuma-iter+kissat time 5s / budget 3598s
+c hydra_satsuma: satsuma-iter+kissat time 10s / budget 3598s
+c hydra_satsuma: satsuma-iter+kissat time 15s / budget 3598s
+c hydra_satsuma: satsuma-iter+kissat time 20s / budget 3598s
+c hydra_satsuma: prover=satsuma-kissat
+c UNSAT in 21875.9ms
+c hydra_satsuma: verifying composed SR proof (dsr-trim, budget 3600s)…
+c hydra_satsuma: dsr-trim verify time 5s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 10s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 15s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 20s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 25s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 30s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 35s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 40s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 45s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 50s / budget 3600s
+c hydra_satsuma: dsr-trim verify time 55s / budget 3600s
+c hydra_satsuma: dsr-trim verify 56.1s total
+c hydra_satsuma: dsr-trim VERIFIED UNSAT (composed satsuma SR + kissat refutation checks against the input formula)
+c hydra_satsuma: SR proof copied to matmul/r22/brent_2x2x6.sr (binary SR — check with dsr-trim, not cake_lpr)
+EXIT=0

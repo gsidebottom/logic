@@ -1,0 +1,8 @@
+c parsed 756 variables, 3645 clauses
+c hydra_satsuma: structure analysis (xor stage)…
+c hydra_satsuma: prover=xor
+c hydra_satsuma: unit propagation refutes the formula (1.0ms) -> UNSAT
+c hydra_satsuma: proof-format=pbp
+c hydra_satsuma: wrote trivial RUP proof matmul/r22/brent_3x3x1.sr
+c UNSAT in 1.4ms
+EXIT=0

@@ -1,0 +1,11 @@
+c parsed 5211 variables, 21141 clauses
+c hydra_satsuma: structure analysis (xor stage)…
+c hydra_satsuma: xor stage: 2916 XOR(s), 729 var(s) GE-forced — ignored in certified mode (17.8ms)
+c hydra_satsuma: no Cook shape -> satsuma-iter+kissat (docker) budget=598s
+c hydra_satsuma: prover=satsuma-kissat
+c UNSAT in 625.6ms
+c hydra_satsuma: verifying composed SR proof (dsr-trim, budget 600s)…
+c hydra_satsuma: dsr-trim verify 0.5s total
+c hydra_satsuma: dsr-trim VERIFIED UNSAT (composed satsuma SR + kissat refutation checks against the input formula)
+c hydra_satsuma: SR proof copied to matmul/r22/brent_3x3x4.sr (binary SR — check with dsr-trim, not cake_lpr)
+EXIT=0

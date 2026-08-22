@@ -1,0 +1,17 @@
+brent_3x3x1.cnf: base vars 27, cnf 756 vars / 3645 clauses
+brent_3x3x2.cnf: base vars 54, cnf 2241 vars / 9477 clauses
+brent_3x3x3.cnf: base vars 81, cnf 3726 vars / 15309 clauses
+brent_3x3x4.cnf: base vars 108, cnf 5211 vars / 21141 clauses
+brent_3x3x5.cnf: base vars 135, cnf 6696 vars / 26973 clauses
+brent_3x3x6.cnf: base vars 162, cnf 8181 vars / 32805 clauses
+brent_3x3x7.cnf: base vars 189, cnf 9666 vars / 38637 clauses
+brent_3x3x8.cnf: base vars 216, cnf 11151 vars / 44469 clauses
+r=1: s UNSATISFIABLE | UNSAT in 1.4ms | 
+r=2: s UNSATISFIABLE | UNSAT in 631.0ms | dsr-trim verify 0.3s total dsr-trim VERIFIED UNSAT 
+r=3: s UNSATISFIABLE | UNSAT in 486.5ms | dsr-trim verify 0.4s total dsr-trim VERIFIED UNSAT 
+r=4: s UNSATISFIABLE | UNSAT in 625.6ms | dsr-trim verify 0.5s total dsr-trim VERIFIED UNSAT 
+r=5: s UNSATISFIABLE | UNSAT in 1511.0ms | dsr-trim verify 1.4s total dsr-trim VERIFIED UNSAT 
+r=6: s UNSATISFIABLE | UNSAT in 19872.8ms | dsr-trim verify 38.7s total dsr-trim VERIFIED UNSAT 
+r=7: s UNSATISFIABLE | UNSAT in 530311.5ms | dsr-trim verify 600.4s total 
+stopping at r=7 (timeout)
+SMALL LADDER DONE

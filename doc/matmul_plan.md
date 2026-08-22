@@ -137,6 +137,38 @@ the two source papers for this track):
   practice. Gate: matmul/r22/check_2x2.py (4 gates). Scale note:
   the 3x3 rank-22 leaves are the same object at 594 base vars / 729
   equations (vs 84 / 64) where the level-1 strata time out at 2 h.
+- **3x3 rank ladder — direct CDCL cannot deliver lower bounds
+  (2026-08-22)**: certified hydra_satsuma on brent_3x3x{r}.cnf
+  (brent.py encoding, 27r base vars / 729 equations): r=1 1 ms,
+  r=2-4 ~0.5 s (container-bound), r=5 1.5 s, r=6 19.9 s, r=7 530 s
+  (certificate check overran the 10-min budget — certified re-run
+  pending), r=8 pending (2 h bound); r=9,12,15,17,18,19,20 ALL
+  TIMEOUT at 30 min. Per-product factor x13 (5->6), x27 (6->7) —
+  matching the 2x2 ladder (r=4/5/6: 0.18/1.65/21.9 s, x9-13): fully
+  free Brent instances grow ~x10-30 per product regardless of
+  distance to the threshold, T(r) ~ 20 s * 13^(r-6) -> r=9 ~12 h,
+  r=19 ~1e8 yr. So a certified UNSAT at rank 19 — which would lift
+  the F_2 lower bound from Blaser's 19 to 20 (also for Z; not Q/C/F_4)
+  — is not a compute question for resolution. <2,2,3> r=10 (160 base
+  vars; the rank-11 control is SAT in 13 s, witness verified):
+  TIMEOUT at 1 h -> per-variable extrapolation >= 1e8 yr for a direct
+  rank-22 run. CryptoMiniSat (XOR recovery + in-search Gauss-Jordan):
+  r=5 2.8 s, r=6 115 s (x41), r=7 INDETERMINATE at 15 min — parity
+  reasoning cannot reach through the AND-gated XORs. Diagnosis: two
+  obstacles. (1) parity-of-products: resolution is exponential on it;
+  (2) INVISIBLE LINEAR SYMMETRY: satsuma breaks permutation symmetries
+  only, while the GL_3(F_2)^3 sandwich mixes variables and is unseen
+  — 168^3/6^3 ~ 22,000x left on the table, exactly what the
+  Lean-licensed strata exploit by hand. Candidate native proof
+  systems: Res(xor) (linear literals = XOR boxes in the matrix
+  method), Polynomial Calculus / Grobner over F_2 with Nullstellensatz
+  certificates a Lean tactic can check, and symmetry-native
+  cube-and-conquer with Gaussian-elimination leaves (the equations
+  are linear in gamma once alpha, beta are fixed). Decisive next
+  experiments before building solver boxes: (a) XL/Grobner refutation
+  degree growth on r=1..7; (b) canonical-(alpha,beta)+GE prototype
+  growth factor on r=5..9. Scripts matmul/r22/ladder_3x3.sh,
+  ladder_small.sh (self-regenerating CNFs); run records committed.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

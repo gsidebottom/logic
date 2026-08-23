@@ -249,6 +249,29 @@ the two source papers for this track):
   canonicalization (~70 ms/state at depth 6); next levers: cheaper
   canonical forms (incremental stabilizers), parallel adversary
   branches, then the F_2 refinements for 18-20.
+- **Step 2 GATE PASSED — rank_F2(<3,3,3>) >= 17 by search, and >= 18
+  (2026-08-23)**: the {A,B} mixed substitution game with sandwich
+  symmetry proves 17 (the classical 2n^2-1) in 556 s sequential /
+  375 s with --par 3 (82,747 canonical states); its 57,133-state
+  certificate (matmul/r22/subgame_3x3_17.json.gz) replays from
+  scratch in matmul/r22/subgame_verify.py. The same run proved
+  **>= 18** in 2,576 s (805,565 nodes, 725,899 states; certificate
+  too large for the size guard — an uncertified-by-replay search
+  result until a compact certificate format exists); k=19 capped at
+  1 h. Pre-optimization baseline for the record: the old binary could
+  not finish k=16 in 2 h. What made it tractable: (1) A-only is
+  exactly 15 (exhaustive, 2.3 s) — the classical proof needs mixed
+  kills, like the 2x2 proof (A,B,A); (2) the hidden cost was
+  'B-first' mixed states (4.7M-candidate sweeps) — excluded WLOG by
+  the S_3 tensor symmetry (--sides AB, root on A); (3) sibling
+  orbit-merging under the parent stabilizer (80% of canonical forms
+  are merges), L2-resident factored action tables, early rejection:
+  ~0.5 ms per one-sided form. Profile of the 1 h run: canonical
+  forms 82% (5.7M forms), stabilizers 8%, orbit-merge 5%. State
+  growth ~x9 per level -> 19 ~ 9 core-hours, 20 ~ days at the current
+  per-form cost; an 8 h --par 4 attempt at 19 is running
+  (subgame_3x3_19.out). Whether the plain game's VALUE reaches 19/20
+  is the open question (Blaser's 19 used extra arguments).
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

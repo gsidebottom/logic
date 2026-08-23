@@ -1,0 +1,15 @@
+symmetry tables built (0.0s); sandwich action verified on the tensor
+k=9: PROVED val >= 9  (+0.00s, 1 nodes total, 1 states)
+k=10: PROVED val >= 10  (+0.03s, 5 nodes total, 4 states)
+k=11: PROVED val >= 11  (+0.04s, 26 nodes total, 20 states)
+k=12: PROVED val >= 12  (+0.10s, 141 nodes total, 109 states)
+k=13: PROVED val >= 13  (+0.67s, 531 nodes total, 343 states)
+k=14: PROVED val >= 14  (+1.98s, 1578 nodes total, 674 states)
+k=15: PROVED val >= 15  (+1.97s, 3140 nodes total, 910 states)
+k=16: PROVED val >= 16  (+67.19s, 22745 nodes total, 17018 states)
+k=17: PROVED val >= 17  (+302.99s, 108731 nodes total, 82747 states)
+stopping at --to 17
+=> rank_F2(<3,3,3>) >= 17 by the substitution game
+profile: total 375.0s | canon 4536.6s thread-time (612065 computed, 6109269 cache hits) | stabilizer 336.8s | phi_reps 4.5s | quotient+flat 20.8s | support 0.4s | orbit-merge 108.4s | states lo=82747 hi=18899 stab_cache=52058
+certificate: matmul/r22/subgame_3x3_17.json (38855307 bytes)
+EXIT=0

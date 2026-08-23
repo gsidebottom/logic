@@ -16,7 +16,7 @@
 //! RREF bases.
 //!
 //!   subgame --n 2 [--cert FILE]              exact game value (memoized)
-//!   subgame --n 3 --ladder [--from K] [--cert FILE] [--nodes N] [--time S]
+//!   subgame --n 3 --ladder [--from K] [--to K] [--cert FILE] [--nodes N] [--time S]
 //!                                            decision procedure "val >= k",
 //!                                            k = from, from+1, ... until it fails
 //!   --coset                                  add the F_2 coset-counting leaf bound
@@ -26,6 +26,8 @@
 //!                                            lower bound); the root kill is on the
 //!                                            first listed side (WLOG by the S_3
 //!                                            tensor symmetry)
+//!   --par D                                  evaluate adversary branches in parallel
+//!                                            while the state has <= D kills
 //!   --sym                                    memoize up to the GL_3(F_2)^3 sandwich
 //!                                            symmetry (n = 3); certificates carry
 //!                                            an explicit group element per child
@@ -34,6 +36,8 @@
 //! children, leaf facts) replay in matmul/r22/subgame_verify.py.
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::Instant;
 
 use rayon::prelude::*;
@@ -766,23 +770,28 @@ struct Game {
     rank_ub: u32,
     coset: bool,
     stay: bool,
+    par_depth: usize, // adversary branches evaluated in parallel while kills <= par_depth
     sides: Vec<u8>,
     sym: Option<Sym>,
-    stab_cache: HashMap<State, Vec<(usize, usize, usize)>>,
-    canon_cache: HashMap<State, (State, (usize, usize, usize))>,
-    isos: HashMap<State, (State, (usize, usize, usize))>, // raw child -> (canonical, g) for the certificate
+    stab_cache: Mutex<HashMap<State, Vec<(usize, usize, usize)>>>,
+    canon_cache: Mutex<HashMap<State, (State, (usize, usize, usize))>>,
+    isos: Mutex<HashMap<State, (State, (usize, usize, usize))>>, // raw child -> (canonical, g)
     memo: HashMap<State, Proof>,
-    lo: HashMap<State, u32>,
-    hi: HashMap<State, u32>,
-    proofs: HashMap<State, Proof>,
-    prof: [f64; 6], // canon, stabilizer, phi_reps, quotient+flattening, support, forced_ext
-    n_canon: u64,
-    n_canon_hit: u64,
-    nodes: u64,
+    lo: Mutex<HashMap<State, u32>>,
+    hi: Mutex<HashMap<State, u32>>,
+    proofs: Mutex<HashMap<State, Proof>>,
+    prof: [AtomicU64; 6], // nanoseconds: canon, stabilizer, phi_reps, quotient+flattening, support, orbit-merge
+    n_canon: AtomicU64,
+    n_canon_hit: AtomicU64,
+    nodes: AtomicU64,
     node_cap: u64,
     t_start: Instant,
     time_cap: f64,
-    capped: bool,
+    capped: AtomicBool,
+}
+
+fn ns(t: Instant) -> u64 {
+    t.elapsed().as_nanos() as u64
 }
 
 impl Game {
@@ -836,24 +845,24 @@ impl Game {
     }
 
     /// canonical representative of a state (identity when symmetry is off)
-    fn canon(&mut self, s: &State) -> State {
+    fn canon(&self, s: &State) -> State {
         let Some(sym) = &self.sym else { return s.clone() };
-        if let Some((c, _)) = self.canon_cache.get(s) {
-            self.n_canon_hit += 1;
+        if let Some((c, _)) = self.canon_cache.lock().unwrap().get(s) {
+            self.n_canon_hit.fetch_add(1, Ordering::Relaxed);
             return c.clone();
         }
         let t = Instant::now();
         let (c, g) = sym.canon(s);
-        self.prof[0] += t.elapsed().as_secs_f64();
-        self.n_canon += 1;
-        self.canon_cache.insert(s.clone(), (c.clone(), g));
-        self.isos.insert(s.clone(), (c.clone(), g));
+        self.prof[0].fetch_add(ns(t), Ordering::Relaxed);
+        self.n_canon.fetch_add(1, Ordering::Relaxed);
+        self.canon_cache.lock().unwrap().insert(s.clone(), (c.clone(), g));
+        self.isos.lock().unwrap().insert(s.clone(), (c.clone(), g));
         c
     }
 
     /// stabilizer of a canonical state (its own minimizer set), cached
-    fn stabilizer(&mut self, c: &State) -> Vec<(usize, usize, usize)> {
-        if let Some(st) = self.stab_cache.get(c) {
+    fn stabilizer(&self, c: &State) -> Vec<(usize, usize, usize)> {
+        if let Some(st) = self.stab_cache.lock().unwrap().get(c) {
             return st.clone();
         }
         let t = Instant::now();
@@ -861,60 +870,81 @@ impl Game {
             Some(sym) => sym.canon_full(c).2,
             None => vec![],
         };
-        self.prof[1] += t.elapsed().as_secs_f64();
-        self.stab_cache.insert(c.clone(), st.clone());
+        self.prof[1].fetch_add(ns(t), Ordering::Relaxed);
+        self.stab_cache.lock().unwrap().insert(c.clone(), st.clone());
         st
     }
 
     // ---------------- decision procedure: val(s) >= k ? ----------------
-    fn record(&mut self, s: &State, p: Proof) {
-        let cur = self.proofs.get(s).map(|q| q.value).unwrap_or(0);
+    fn record(&self, s: &State, p: Proof) {
+        let mut pr = self.proofs.lock().unwrap();
+        let cur = pr.get(s).map(|q| q.value).unwrap_or(0);
         if p.value > cur {
-            self.proofs.insert(s.clone(), p);
+            pr.insert(s.clone(), p);
+        }
+    }
+    fn get_lo(&self, s: &State) -> u32 {
+        *self.lo.lock().unwrap().get(s).unwrap_or(&0)
+    }
+    fn set_lo(&self, s: &State, v: u32) {
+        let mut m = self.lo.lock().unwrap();
+        let e = m.entry(s.clone()).or_insert(0);
+        if v > *e {
+            *e = v;
+        }
+    }
+    fn get_hi(&self, s: &State) -> u32 {
+        *self.hi.lock().unwrap().get(s).unwrap_or(&u32::MAX)
+    }
+    fn set_hi(&self, s: &State, v: u32) {
+        let mut m = self.hi.lock().unwrap();
+        let e = m.entry(s.clone()).or_insert(u32::MAX);
+        if v < *e {
+            *e = v;
         }
     }
 
-    fn prove(&mut self, s: &State, k: u32) -> bool {
+    fn prove(&self, s: &State, k: u32) -> bool {
         if k == 0 {
             return true;
         }
-        let lo = *self.lo.get(s).unwrap_or(&0);
+        let lo = self.get_lo(s);
         if k <= lo {
             return true;
         }
-        let hi = *self.hi.get(s).unwrap_or(&u32::MAX);
+        let hi = self.get_hi(s);
         if k >= hi {
             return false;
         }
-        self.nodes += 1;
-        if self.nodes > self.node_cap || self.t_start.elapsed().as_secs_f64() > self.time_cap {
-            self.capped = true;
+        let n = self.nodes.fetch_add(1, Ordering::Relaxed) + 1;
+        if n > self.node_cap || self.t_start.elapsed().as_secs_f64() > self.time_cap {
+            self.capped.store(true, Ordering::Relaxed);
             return false;
         }
         let tq = Instant::now();
         let t = quotient(&self.t0, &s.u, &s.v, &s.x);
         let leaf = flattenings(&t);
-        self.prof[3] += tq.elapsed().as_secs_f64();
+        self.prof[3].fetch_add(ns(tq), Ordering::Relaxed);
         let dims = (t.da, t.db, t.dc);
         let mut lb = *leaf.iter().max().unwrap() as u32;
         if self.coset {
             lb = lb.max(coset_bound(&t) as u32);
         }
         if lb > lo {
-            self.lo.insert(s.clone(), lb);
+            self.set_lo(s, lb);
             self.record(s, Proof { value: lb, choice: 0, phi: 0, leaf, dims });
         }
         if lb >= k {
             return true;
         }
         if lb == 0 {
-            self.hi.insert(s.clone(), 1);
+            self.set_hi(s, 1);
             return false;
         }
         let ub = (dims.0 * dims.1).min(dims.0 * dims.2).min(dims.1 * dims.2) as u32;
         let ub = ub.min(self.rank_ub);
         if k > ub {
-            self.hi.insert(s.clone(), hi.min(ub + 1));
+            self.set_hi(s, ub + 1);
             return false;
         }
         // prover: sides ordered by free support dimension (largest first), phi by weight
@@ -933,7 +963,7 @@ impl Game {
             }
             let ts = Instant::now();
             let supp = support(&t, side, cur, self.d);
-            self.prof[4] += ts.elapsed().as_secs_f64();
+            self.prof[4].fetch_add(ns(ts), Ordering::Relaxed);
             let free_dim = supp.len() - cur.len();
             if free_dim == 0 {
                 continue;
@@ -958,12 +988,10 @@ impl Game {
             if let Some(sym) = &self.sym {
                 let tp = Instant::now();
                 phis = sym.phi_reps(&stab, side, &phis, is_root);
-                self.prof[2] += tp.elapsed().as_secs_f64();
+                self.prof[2].fetch_add(ns(tp), Ordering::Relaxed);
             }
             for phi in phis {
-                let te = Instant::now();
                 let exts = forced_extensions(&supp_el, &cur, phi);
-                self.prof[5] += te.elapsed().as_secs_f64();
                 // adversary: hardest children first (smallest quick lower bound)
                 // group the raw children by the parent's stabilizer orbits: the
                 // extension cur + <v> maps under a stabilizer element t to
@@ -1025,17 +1053,24 @@ impl Game {
                         entry.1.push((raw, best_t));
                     }
                     reps = groups.into_values().collect();
-                    self.prof[5] += tc0.elapsed().as_secs_f64();
+                    self.prof[5].fetch_add(ns(tc0), Ordering::Relaxed);
                     // canonicalize the representatives in parallel (cache misses only)
-                    let need: Vec<State> = reps.iter().map(|(r, _)| r.clone()).filter(|r| !self.canon_cache.contains_key(r)).collect();
+                    let need: Vec<State> = {
+                        let cc = self.canon_cache.lock().unwrap();
+                        reps.iter().map(|(r, _)| r.clone()).filter(|r| !cc.contains_key(r)).collect()
+                    };
                     let tcn = Instant::now();
                     let done: Vec<(State, (State, (usize, usize, usize)))> =
                         need.par_iter().map(|r| (r.clone(), sym.canon(r))).collect();
-                    self.prof[0] += tcn.elapsed().as_secs_f64();
-                    self.n_canon += done.len() as u64;
-                    for (r, cg) in done {
-                        self.canon_cache.insert(r.clone(), cg.clone());
-                        self.isos.insert(r, cg);
+                    self.prof[0].fetch_add(ns(tcn), Ordering::Relaxed);
+                    self.n_canon.fetch_add(done.len() as u64, Ordering::Relaxed);
+                    {
+                        let mut cc = self.canon_cache.lock().unwrap();
+                        let mut is = self.isos.lock().unwrap();
+                        for (r, cg) in done {
+                            cc.insert(r.clone(), cg.clone());
+                            is.insert(r, cg);
+                        }
                     }
                 } else {
                     reps = exts.into_iter().map(|e| { let raw = s.with(side, e); (raw.clone(), vec![(raw, (0, 0, 0))]) }).collect();
@@ -1044,45 +1079,54 @@ impl Game {
                 for (rep, members) in reps {
                     let c = self.canon(&rep);
                     if let Some(sym) = &self.sym {
-                        let g_rep = self.canon_cache[&rep].1;
+                        let g_rep = self.canon_cache.lock().unwrap()[&rep].1;
+                        let mut is = self.isos.lock().unwrap();
                         for (raw, t) in members {
-                            if !self.isos.contains_key(&raw) {
-                                self.isos.insert(raw, (c.clone(), sym.compose(t, g_rep)));
+                            if !is.contains_key(&raw) {
+                                is.insert(raw, (c.clone(), sym.compose(t, g_rep)));
                             }
                         }
                     }
-                    let known = *self.lo.get(&c).unwrap_or(&0);
+                    let known = self.get_lo(&c);
                     let q = if known >= k - 1 {
                         known
                     } else {
                         let tq = Instant::now();
                         let tc = quotient(&self.t0, &c.u, &c.v, &c.x);
                         let f = *flattenings(&tc).iter().max().unwrap() as u32;
-                        self.prof[3] += tq.elapsed().as_secs_f64();
+                        self.prof[3].fetch_add(ns(tq), Ordering::Relaxed);
                         f
                     };
                     kids.push((q, c));
                 }
                 kids.sort_by_key(|(q, _)| *q);
                 kids.dedup_by(|a, b| a.1 == b.1);
-                let mut all_ok = true;
-                for (_, c) in &kids {
-                    if !self.prove(c, k - 1) {
-                        all_ok = false;
-                        break;
+                let kills = s.u.len() + s.v.len() + s.x.len();
+                let all_ok = if kills <= self.par_depth && kids.len() >= 2 {
+                    // adversary branches in parallel (all must succeed; rayon
+                    // stops scheduling new ones after the first failure)
+                    kids.par_iter().all(|(_, c)| self.prove(c, k - 1))
+                } else {
+                    let mut ok = true;
+                    for (_, c) in &kids {
+                        if !self.prove(c, k - 1) {
+                            ok = false;
+                            break;
+                        }
                     }
-                }
-                if self.capped {
+                    ok
+                };
+                if self.capped.load(Ordering::Relaxed) {
                     return false;
                 }
                 if all_ok {
-                    self.lo.insert(s.clone(), k);
+                    self.set_lo(s, k);
                     self.record(s, Proof { value: k, choice: side, phi, leaf, dims });
                     return true;
                 }
             }
         }
-        self.hi.insert(s.clone(), k);
+        self.set_hi(s, k);
         false
     }
 }
@@ -1118,14 +1162,15 @@ fn certificate(g: &Game, n: usize, root: &State, proofs: &HashMap<State, Proof>)
             let mut ks = Vec::new();
             for e in forced_extensions(&elements(&supp), cur, node.phi) {
                 let child = s.with(node.choice, e);
-                match g.isos.get(&child) {
+                let iso = g.isos.lock().unwrap().get(&child).cloned();
+                match iso {
                     Some((c, gg)) if g.sym.is_some() => {
                         let sym = g.sym.as_ref().unwrap();
                         ks.push(format!(
                             "{{\"raw\":\"{}\",\"canon\":\"{}\",\"g\":[{},{},{}]}}",
-                            key(&child), key(c), sym.gl[gg.0], sym.gl[gg.1], sym.gl[gg.2]
+                            key(&child), key(&c), sym.gl[gg.0], sym.gl[gg.1], sym.gl[gg.2]
                         ));
-                        stack.push(c.clone());
+                        stack.push(c);
                     }
                     _ => {
                         ks.push(format!("{{\"raw\":\"{}\"}}", key(&child)));
@@ -1175,21 +1220,22 @@ fn main() {
             spec.chars().filter_map(|ch| match ch { 'A' => Some(1u8), 'B' => Some(2), 'C' => Some(3), _ => None }).collect()
         },
         sym,
-        stab_cache: HashMap::new(),
-        canon_cache: HashMap::new(),
-        isos: HashMap::new(),
+        par_depth: get("--par").and_then(|v| v.parse().ok()).unwrap_or(0),
+        stab_cache: Mutex::new(HashMap::new()),
+        canon_cache: Mutex::new(HashMap::new()),
+        isos: Mutex::new(HashMap::new()),
         memo: HashMap::new(),
-        lo: HashMap::new(),
-        hi: HashMap::new(),
-        proofs: HashMap::new(),
-        prof: [0.0; 6],
-        n_canon: 0,
-        n_canon_hit: 0,
-        nodes: 0,
+        lo: Mutex::new(HashMap::new()),
+        hi: Mutex::new(HashMap::new()),
+        proofs: Mutex::new(HashMap::new()),
+        prof: [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)],
+        n_canon: AtomicU64::new(0),
+        n_canon_hit: AtomicU64::new(0),
+        nodes: AtomicU64::new(0),
         node_cap: get("--nodes").and_then(|v| v.parse().ok()).unwrap_or(50_000_000),
         t_start: Instant::now(),
         time_cap: get("--time").and_then(|v| v.parse().ok()).unwrap_or(600.0),
-        capped: false,
+        capped: AtomicBool::new(false),
     };
     let root = State { u: vec![], v: vec![], x: vec![] };
     if flag("--bench-canon") {
@@ -1217,15 +1263,20 @@ fn main() {
     }
     if flag("--ladder") {
         let from: u32 = get("--from").and_then(|v| v.parse().ok()).unwrap_or(1);
+        let to: u32 = get("--to").and_then(|v| v.parse().ok()).unwrap_or(u32::MAX);
         let mut proven = 0u32;
         let mut k = from;
         loop {
+            if k > to {
+                println!("stopping at --to {to}");
+                break;
+            }
             let t = Instant::now();
             let ok = g.prove(&root, k);
-            if g.capped {
+            if g.capped.load(Ordering::Relaxed) {
                 println!(
                     "k={k}: CAP (nodes {} / {:.1}s) — last proven {proven}",
-                    g.nodes,
+                    g.nodes.load(Ordering::Relaxed),
                     g.t_start.elapsed().as_secs_f64()
                 );
                 break;
@@ -1235,14 +1286,14 @@ fn main() {
                 println!(
                     "k={k}: PROVED val >= {k}  (+{:.2}s, {} nodes total, {} states)",
                     t.elapsed().as_secs_f64(),
-                    g.nodes,
-                    g.lo.len()
+                    g.nodes.load(Ordering::Relaxed),
+                    g.lo.lock().unwrap().len()
                 );
                 k += 1;
             } else {
                 println!(
                     "k={k}: FAILS — exact game value = {proven}  ({} nodes, {:.2}s)",
-                    g.nodes,
+                    g.nodes.load(Ordering::Relaxed),
                     g.t_start.elapsed().as_secs_f64()
                 );
                 break;
@@ -1254,17 +1305,20 @@ fn main() {
         );
         if flag("--prof") {
             let tot = g.t_start.elapsed().as_secs_f64();
+            let pf = |i: usize| g.prof[i].load(Ordering::Relaxed) as f64 / 1e9;
             println!(
-                "profile: total {tot:.1}s | canon {:.1}s ({} computed, {} cache hits) | stabilizer {:.1}s | phi_reps {:.1}s | quotient+flat {:.1}s | support {:.1}s | orbit-merge {:.1}s | states lo={} hi={} stab_cache={}",
-                g.prof[0], g.n_canon, g.n_canon_hit, g.prof[1], g.prof[2], g.prof[3], g.prof[4], g.prof[5], g.lo.len(), g.hi.len(), g.stab_cache.len()
+                "profile: total {tot:.1}s | canon {:.1}s thread-time ({} computed, {} cache hits) | stabilizer {:.1}s | phi_reps {:.1}s | quotient+flat {:.1}s | support {:.1}s | orbit-merge {:.1}s | states lo={} hi={} stab_cache={}",
+                pf(0), g.n_canon.load(Ordering::Relaxed), g.n_canon_hit.load(Ordering::Relaxed), pf(1), pf(2), pf(3), pf(4), pf(5),
+                g.lo.lock().unwrap().len(), g.hi.lock().unwrap().len(), g.stab_cache.lock().unwrap().len()
             );
         }
         if let Some(path) = cert {
             if proven > 0 {
-                if g.proofs.len() > 300_000 {
-                    println!("certificate skipped: {} proof records (too large to write)", g.proofs.len());
+                let proofs = g.proofs.lock().unwrap().clone();
+                if proofs.len() > 300_000 {
+                    println!("certificate skipped: {} proof records (too large to write)", proofs.len());
                 } else {
-                    let c = certificate(&g, n, &root, &g.proofs);
+                    let c = certificate(&g, n, &root, &proofs);
                     std::fs::write(&path, &c).expect("write cert");
                     println!("certificate: {} ({} bytes)", path, c.len());
                 }

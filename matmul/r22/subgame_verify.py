@@ -144,21 +144,40 @@ def m3_tr(a):
     return c
 
 
+_inv_cache = {}
+
+
 def m3_inv(a):
+    if a in _inv_cache:
+        return _inv_cache[a]
     ident = 0b100010001
     for b in range(512):
         if m3_mul(a, b) == ident:
+            _inv_cache[a] = b
             return b
     raise AssertionError("singular group element")
 
 
+_mul_cache = {}
+
+
+def m3_mul_c(a, b):
+    k = (a, b)
+    r = _mul_cache.get(k)
+    if r is None:
+        r = m3_mul(a, b)
+        _mul_cache[k] = r
+    return r
+
+
 def apply_sandwich(P, Q, R, state, d):
+    """same computation as before; products and inverses memoized (speed only)"""
     u, v, x = state
     Pt, Qt, Rt = m3_tr(P), m3_tr(Q), m3_tr(R)
     Qit, Pi, Ri = m3_tr(m3_inv(Q)), m3_inv(P), m3_inv(R)
-    fa = lambda m: m3_mul(m3_mul(Pt, m), Qt)
-    fb = lambda m: m3_mul(m3_mul(Qit, m), Rt)
-    fc = lambda m: m3_mul(m3_mul(Pi, m), Ri)
+    fa = lambda m: m3_mul_c(m3_mul_c(Pt, m), Qt)
+    fb = lambda m: m3_mul_c(m3_mul_c(Qit, m), Rt)
+    fc = lambda m: m3_mul_c(m3_mul_c(Pi, m), Ri)
     return (rref([fa(m) for m in u]), rref([fb(m) for m in v]), rref([fc(m) for m in x]))
 
 

@@ -1,0 +1,22 @@
+symmetry tables built (0.0s); sandwich action verified on the tensor
+k=9: PROVED val >= 9  (+0.00s, 1 nodes total, 1 states)
+k=10: PROVED val >= 10  (+0.01s, 5 nodes total, 4 states)
+k=11: PROVED val >= 11  (+0.03s, 25 nodes total, 20 states)
+k=12: PROVED val >= 12  (+0.09s, 134 nodes total, 109 states)
+k=13: PROVED val >= 13  (+0.36s, 477 nodes total, 343 states)
+k=14: PROVED val >= 14  (+1.89s, 1176 nodes total, 670 states)
+k=15: PROVED val >= 15  (+2.02s, 2026 nodes total, 899 states)
+k=16: PROVED val >= 16  (+130.92s, 19373 nodes total, 16914 states)
+k=17: PROVED val >= 17  (+555.75s, 97676 nodes total, 82285 states)
+k=18: PROVED val >= 18  (+2575.82s, 805565 nodes total, 725899 states)
+k=19: CAP (nodes 830748 / 3600.0s) — last proven 18
+=> rank_F2(<3,3,3>) >= 18 by the substitution game
+profile: total 3600.0s | canon 2969.4s (5685968 computed, 47261566 cache hits) | stabilizer 296.9s | phi_reps 2.3s | quotient+flat 90.8s | support 1.9s | orbit-merge 191.8s | states lo=741951 hi=144946 stab_cache=460849
+certificate skipped: 741951 proof records (too large to write)
+EXIT=0
+Traceback (most recent call last):
+  File "/Users/greg/projects/logic/matmul/r22/subgame_verify.py", line 385, in <module>
+    main(sys.argv[1])
+  File "/Users/greg/projects/logic/matmul/r22/subgame_verify.py", line 328, in main
+    cert = json.load(open(path))
+FileNotFoundError: [Errno 2] No such file or directory: 'matmul/r22/subgame_3x3_ab.json'

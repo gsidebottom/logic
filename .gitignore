@@ -99,3 +99,4 @@ matmul/dps48/orbit_perm/
 # binary SR certificates (tens of MB; regenerable with sat -b hydra_satsuma --proof)
 matmul/r22/*.sr
 matmul/r22/subgame_3x3_17.json
+matmul/r22/subgame_3x3_ab_koszul.json

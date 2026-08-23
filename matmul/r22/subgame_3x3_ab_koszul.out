@@ -1,0 +1,24 @@
+symmetry tables built (0.0s); sandwich action verified on the tensor
+k=9: PROVED val >= 9  (+0.00s, 1 nodes total, 1 states)
+k=10: PROVED val >= 10  (+0.00s, 2 nodes total, 1 states)
+k=11: PROVED val >= 11  (+0.00s, 2 nodes total, 1 states)
+k=12: PROVED val >= 12  (+0.00s, 2 nodes total, 1 states)
+k=13: PROVED val >= 13  (+0.00s, 2 nodes total, 1 states)
+k=14: PROVED val >= 14  (+0.00s, 2 nodes total, 1 states)
+k=15: PROVED val >= 15  (+0.06s, 13 nodes total, 11 states)
+c heartbeat 120s: nodes 6295 states 5639 failed 3469 forms 27913 hits 383826
+k=16: PROVED val >= 16  (+179.61s, 9424 nodes total, 8541 states)
+c heartbeat 240s: nodes 13260 states 12198 failed 6100 forms 58681 hits 803714
+c heartbeat 360s: nodes 20479 states 19227 failed 7152 forms 101038 hits 1184340
+c heartbeat 480s: nodes 27214 states 25405 failed 8867 forms 147613 hits 1639510
+c heartbeat 600s: nodes 33031 states 30991 failed 10966 forms 180862 hits 1972688
+c heartbeat 720s: nodes 40407 states 37946 failed 12417 forms 217593 hits 2404467
+c heartbeat 840s: nodes 44923 states 41239 failed 13793 forms 260003 hits 2941914
+c heartbeat 960s: nodes 52733 states 47889 failed 15211 forms 326255 hits 3843192
+c heartbeat 1089s: nodes 62324 states 57224 failed 16832 forms 370894 hits 4066548
+k=17: CAP (nodes 63458 / 1200.0s) — last proven 16
+=> rank_F2(<3,3,3>) >= 16 by the substitution game
+profile: total 1200.0s | canon 1964.5s thread-time (380678 computed, 4195516 cache hits) | stabilizer 1216.3s | phi_reps 0.9s | quotient+flat 12.7s | support 20.7s | orbit-merge 18.6s | states lo=57854 hi=17332 stab_cache=29260
+certificate: matmul/r22/subgame_3x3_ab_koszul.json (17767241 bytes)
+EXIT=0
+VERIFIED: 30209 states replayed from scratch; rank_F2(<3,3,3>) >= 16

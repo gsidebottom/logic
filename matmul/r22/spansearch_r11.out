@@ -1,0 +1,5 @@
+n=3 N=9 r=11: 261121 rank-one matrices, 13 orbits under GL_n(F_2)^3 (0.04s); dim W = 9; rank-one elements of W: 0
+t=1 (rank <= 10): 13 cubes decided in 0.00s — no scheme
+t=2 (rank <= 11): 3394560 cubes decided in 2.75s — no scheme
+VERDICT n=3 r=11 (t<=2): UNSAT; 3394573 cubes total, 2.79s
+EXIT=0

@@ -169,6 +169,40 @@ the two source papers for this track):
   degree growth on r=1..7; (b) canonical-(alpha,beta)+GE prototype
   growth factor on r=5..9. Scripts matmul/r22/ladder_3x3.sh,
   ladder_small.sh (self-regenerating CNFs); run records committed.
+- **Two proof-system experiments (2026-08-22)** — which native
+  inference could carry an F_2 rank lower bound? (a) EXACT degree-D
+  Polynomial Calculus closure over F_2 (src/bin/pcxl.rs: Macaulay/XL
+  fixpoint, multilinear Boolean ring): refutation degree of the Brent
+  system at rank r is r=1 -> 3, r=2 -> 4, r=3 -> 5 (3.85M rows, 61 s),
+  r=4 -> >= 6 (the degree-5 closure completes at 4.29M rows / 158 s
+  without deriving 1); r=5,6 open at degree 4. PC degree = r+2 on the
+  measured range with ~x100 cost per step: algebraic refutation scales
+  WORSE than CDCL; rank 19 would need degree ~21 over 513 variables
+  (~1e36 monomials). Singular's degBound std (matmul/r22/pcdeg.py) is
+  not an instrument — claims degree 6 for r=1, times out at D=4 for
+  r>=2. (b) Symmetry-aware span search (src/bin/spansearch.rs): a
+  rank-r scheme = r rank-one 9x9 matrices alpha(x)beta whose span
+  contains W = span{E_pq} (gamma = the coefficients); enumerate
+  T = W + <extenders>, v_1 up to GL_3(F_2)^3 (13 orbits of the 261,121
+  rank-one matrices), decide each cube by Gaussian elimination. Gate:
+  2x2 r=6 UNSAT (1,123 cubes), r=7 SAT with a Brent-re-verified
+  scheme. 3x3: r=9 UNSAT with 0 cubes (W has no rank-one element),
+  r=10 13 cubes, r=11 3.4M cubes in 2.7 s; x261k cubes per extender
+  -> enumeration is hopeless (~1e5 per product). FINDING: the
+  structure yields a three-line bound — W's 511 nonzero elements are
+  X(x)I_3 with ranks {3:49, 6:294, 9:168}, none of rank <= 2; distinct
+  rank-one products inject into the nonzero cosets of W in their span
+  (u_i + u_j in W would have rank <= 2), so r <= 2^(r-9) - 1, i.e.
+  **rank_F2(<3,3,3>) >= 13** (checker matmul/r22/coset_bound.py;
+  F_2-specific coset counting; weaker than Blaser's 19 but instant
+  where CDCL needs ~1e9 yr at r=12 and enumeration ~1e11 cubes).
+  Dependent coset k-subsets force sums of products to be 0 or rank-3
+  elements of W — a finite combinatorial structure for an automated
+  substitution-method search (a "rank box"). Conclusion for the
+  native-solver design: the inference rules that matter are rank
+  subadditivity + coset counting, not parity (PC degree grows with
+  r), not permutation symmetry breaking, not enumeration. CDCL
+  ladder addendum: r=8 TIMEOUT at 2 h (>= x14 over r=7).
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

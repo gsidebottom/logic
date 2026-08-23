@@ -1,0 +1,12 @@
+pcxl n=3 r=1 deg=3: REFUTED  rows=1123 products=29889 vars=27 0.0s
+pcxl n=3 r=1 deg=4: REFUTED  rows=951 products=19683 vars=27 0.0s
+pcxl n=3 r=2 deg=3: OPEN  rows=729 products=39366 vars=54 0.0s
+pcxl n=3 r=2 deg=4: REFUTED  rows=99752 products=3166776 vars=54 0.5s
+pcxl n=3 r=2 deg=5: REFUTED  rows=61565 products=2165130 vars=54 0.3s
+pcxl n=3 r=3 deg=4: OPEN  rows=59778 products=4842018 vars=81 1.2s
+pcxl n=3 r=3 deg=5: REFUTED  rows=3853618 products=230177376 vars=81 60.8s
+pcxl n=3 r=4 deg=4: OPEN  rows=79461 products=8581788 vars=108 2.7s
+pcxl n=3 r=4 deg=5: OPEN  rows=4291623 products=463495284 vars=108 157.8s
+pcxl n=3 r=5 deg=4: OPEN  rows=99144 products=13384440 vars=135 5.0s
+pcxl n=3 r=6 deg=4: OPEN  rows=118827 products=19249974 vars=162 8.3s
+PCXL DONE

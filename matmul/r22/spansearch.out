@@ -1,0 +1,25 @@
+=== n=2 r=6 ===
+n=2 N=4 r=6: 225 rank-one matrices, 5 orbits under GL_n(F_2)^3 (0.00s); dim W = 4; rank-one elements of W: 0
+t=1 (rank <= 5): 5 cubes decided in 0.00s — no scheme
+t=2 (rank <= 6): 1118 cubes decided in 0.00s — no scheme
+VERDICT n=2 r=6 (t<=2): UNSAT; 1123 cubes total, 0.00s
+=== n=2 r=7 ===
+n=2 N=4 r=7: 225 rank-one matrices, 5 orbits under GL_n(F_2)^3 (0.00s); dim W = 4; rank-one elements of W: 0
+t=1 (rank <= 5): 5 cubes decided in 0.00s — no scheme
+t=2 (rank <= 6): 1118 cubes decided in 0.00s — no scheme
+SAT-CANDIDATE: 7 rank-one products span W (t=3) — Brent re-verification: VALID SCHEME
+t=3 (rank <= 7): 440 cubes decided in 0.00s — SAT
+VERDICT n=2 r=7 (t<=3): SAT; 1563 cubes total, 0.00s
+=== n=3 r=9 ===
+n=3 N=9 r=9: 261121 rank-one matrices, 13 orbits under GL_n(F_2)^3 (0.04s); dim W = 9; rank-one elements of W: 0
+rank 9: scheme exists iff W has a rank-one basis — UNSAT (no rank-one element in W)
+VERDICT n=3 r=9 (t<=0): UNSAT; 0 cubes total, 0.04s
+=== n=3 r=10 ===
+n=3 N=9 r=10: 261121 rank-one matrices, 13 orbits under GL_n(F_2)^3 (0.04s); dim W = 9; rank-one elements of W: 0
+t=1 (rank <= 10): 13 cubes decided in 0.00s — no scheme
+VERDICT n=3 r=10 (t<=1): UNSAT; 13 cubes total, 0.04s
+=== n=3 r=11 ===
+n=3 N=9 r=11: 261121 rank-one matrices, 13 orbits under GL_n(F_2)^3 (0.04s); dim W = 9; rank-one elements of W: 0
+t=1 (rank <= 10): 13 cubes decided in 0.00s — no scheme
+t=2 (rank <= 11): 3394560 cubes decided in 2.72s — no scheme
+VERDICT n=3 r=11 (t<=2): UNSAT; 3394573 cubes total, 2.76s

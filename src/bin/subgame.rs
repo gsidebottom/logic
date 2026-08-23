@@ -26,6 +26,8 @@
 //!                                            lower bound); the root kill is on the
 //!                                            first listed side (WLOG by the S_3
 //!                                            tensor symmetry)
+//!   --cert-max N                             skip the certificate above N proof records
+//!   --heartbeat S                            progress line on stderr every S seconds
 //!   --par D                                  evaluate adversary branches in parallel
 //!                                            while the state has <= D kills
 //!   --sym                                    memoize up to the GL_3(F_2)^3 sandwich
@@ -784,6 +786,8 @@ struct Game {
     n_canon: AtomicU64,
     n_canon_hit: AtomicU64,
     nodes: AtomicU64,
+    heartbeat: f64,
+    last_beat: AtomicU64,
     node_cap: u64,
     t_start: Instant,
     time_cap: f64,
@@ -920,6 +924,25 @@ impl Game {
         if n > self.node_cap || self.t_start.elapsed().as_secs_f64() > self.time_cap {
             self.capped.store(true, Ordering::Relaxed);
             return false;
+        }
+        if self.heartbeat > 0.0 {
+            // progress heartbeat (stderr): nodes, canonical states, forms, elapsed
+            let el = self.t_start.elapsed().as_secs_f64();
+            let last_ms = self.last_beat.load(Ordering::Relaxed);
+            let el_ms = (el * 1000.0) as u64;
+            if el_ms.saturating_sub(last_ms) as f64 >= self.heartbeat * 1000.0
+                && self.last_beat.compare_exchange(last_ms, el_ms, Ordering::Relaxed, Ordering::Relaxed).is_ok()
+            {
+                eprintln!(
+                    "c heartbeat {:.0}s: nodes {} states {} failed {} forms {} hits {}",
+                    el,
+                    n,
+                    self.lo.lock().unwrap().len(),
+                    self.hi.lock().unwrap().len(),
+                    self.n_canon.load(Ordering::Relaxed),
+                    self.n_canon_hit.load(Ordering::Relaxed)
+                );
+            }
         }
         let tq = Instant::now();
         let t = quotient(&self.t0, &s.u, &s.v, &s.x);
@@ -1232,6 +1255,8 @@ fn main() {
         n_canon: AtomicU64::new(0),
         n_canon_hit: AtomicU64::new(0),
         nodes: AtomicU64::new(0),
+        heartbeat: get("--heartbeat").and_then(|v| v.parse().ok()).unwrap_or(0.0),
+        last_beat: AtomicU64::new(0),
         node_cap: get("--nodes").and_then(|v| v.parse().ok()).unwrap_or(50_000_000),
         t_start: Instant::now(),
         time_cap: get("--time").and_then(|v| v.parse().ok()).unwrap_or(600.0),
@@ -1315,8 +1340,9 @@ fn main() {
         if let Some(path) = cert {
             if proven > 0 {
                 let proofs = g.proofs.lock().unwrap().clone();
-                if proofs.len() > 300_000 {
-                    println!("certificate skipped: {} proof records (too large to write)", proofs.len());
+                let max_records: usize = get("--cert-max").and_then(|v| v.parse().ok()).unwrap_or(3_000_000);
+                if proofs.len() > max_records {
+                    println!("certificate skipped: {} proof records (> --cert-max {})", proofs.len(), max_records);
                 } else {
                     let c = certificate(&g, n, &root, &proofs);
                     std::fs::write(&path, &c).expect("write cert");

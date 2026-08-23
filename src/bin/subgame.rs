@@ -20,6 +20,8 @@
 //!                                            decision procedure "val >= k",
 //!                                            k = from, from+1, ... until it fails
 //!   --coset                                  add the F_2 coset-counting leaf bound
+//!   --koszul P                               add Koszul-flattening leaves (p <= P)
+//!   --root-bounds                            print the root's leaf bounds and exit
 //!   --stay                                   prover prefers the side with the most
 //!                                            kills so far (one-sided strategies)
 //!   --sides AB | --onesided (= A)            restrict the prover's sides (still a
@@ -274,6 +276,138 @@ fn coset_bound(t: &Tensor) -> usize {
             r += 1;
         }
         best = best.max(r);
+    }
+    best
+}
+
+/// rank over F_2 of a wide 0/1 matrix given as rows of u64 bitsets
+fn rank_wide(rows: &mut Vec<Vec<u64>>, words: usize) -> usize {
+    let mut rk = 0;
+    let nrows = rows.len();
+    for w in (0..words).rev() {
+        for bit in (0..64).rev() {
+            if rk >= nrows {
+                return rk;
+            }
+            let piv = (rk..nrows).find(|&i| rows[i][w] >> bit & 1 == 1);
+            let Some(piv) = piv else { continue };
+            rows.swap(rk, piv);
+            let (head, tail) = rows.split_at_mut(rk + 1);
+            let prow = &head[rk];
+            for r in tail.iter_mut() {
+                if r[w] >> bit & 1 == 1 {
+                    for x in 0..words {
+                        r[x] ^= prow[x];
+                    }
+                }
+            }
+            rk += 1;
+        }
+    }
+    rk
+}
+
+fn binom(n: usize, k: usize) -> usize {
+    if k > n {
+        return 0;
+    }
+    let mut r = 1usize;
+    for i in 0..k {
+        r = r * (n - i) / (i + 1);
+    }
+    r
+}
+
+/// Koszul flattening bound on side A with parameter p (1 <= p <= da-2):
+/// rank(T^{wedge p}) / C(da-1, p), rounded up. Rows (S' in Λ^{p+1}, k in C),
+/// columns (S in Λ^p, j in B); entry T[i][j][k] at (S u {i}, k), (S, j) for
+/// i not in S (signs vanish over F_2). Valid over any field.
+fn koszul_side(t: &Tensor, p: usize) -> usize {
+    let (da, db, dc) = (t.da, t.db, t.dc);
+    if da < 3 || p == 0 || p + 2 > da {
+        return 0;
+    }
+    let mut idx_p: HashMap<u32, usize> = HashMap::new();
+    let mut idx_q: HashMap<u32, usize> = HashMap::new();
+    for m in 0..(1u32 << da) {
+        let c = m.count_ones() as usize;
+        if c == p {
+            let n = idx_p.len();
+            idx_p.insert(m, n);
+        } else if c == p + 1 {
+            let n = idx_q.len();
+            idx_q.insert(m, n);
+        }
+    }
+    let ncols = idx_p.len() * db;
+    let nrows = idx_q.len() * dc;
+    let words = (ncols + 63) / 64;
+    let mut rows = vec![vec![0u64; words]; nrows];
+    for (&sm, &si) in &idx_p {
+        for i in 0..da {
+            if sm >> i & 1 == 1 {
+                continue;
+            }
+            let qi = idx_q[&(sm | (1 << i))];
+            for j in 0..db {
+                let col = si * db + j;
+                let bits = t.t[i][j];
+                if bits == 0 {
+                    continue;
+                }
+                for k in 0..dc {
+                    if bits >> k & 1 == 1 {
+                        rows[qi * dc + k][col / 64] |= 1u64 << (col % 64);
+                    }
+                }
+            }
+        }
+    }
+    let rk = rank_wide(&mut rows, words);
+    let denom = binom(da - 1, p);
+    (rk + denom - 1) / denom
+}
+
+/// the tensor with the roles of the sides permuted so that `side` becomes A
+fn with_side_first(t: &Tensor, side: u8) -> Tensor {
+    match side {
+        1 => t.clone(),
+        2 => {
+            let mut nt = vec![vec![0u32; t.da]; t.db];
+            for i in 0..t.da {
+                for j in 0..t.db {
+                    nt[j][i] = t.t[i][j];
+                }
+            }
+            Tensor { da: t.db, db: t.da, dc: t.dc, t: nt }
+        }
+        _ => {
+            let mut nt = vec![vec![0u32; t.da]; t.dc];
+            for i in 0..t.da {
+                for j in 0..t.db {
+                    for k in 0..t.dc {
+                        if t.t[i][j] >> k & 1 == 1 {
+                            nt[k][i] |= 1 << j;
+                        }
+                    }
+                }
+            }
+            Tensor { da: t.dc, db: t.da, dc: t.db, t: nt }
+        }
+    }
+}
+
+/// max Koszul bound over the three sides and all p <= pmax (0 = none)
+fn koszul_bound(t: &Tensor, pmax: usize) -> usize {
+    let mut best = 0;
+    for side in 1..=3u8 {
+        let ts = with_side_first(t, side);
+        if ts.da < 3 {
+            continue;
+        }
+        for p in 1..=(ts.da - 2).min(pmax) {
+            best = best.max(koszul_side(&ts, p));
+        }
     }
     best
 }
@@ -771,6 +905,7 @@ struct Game {
     d: usize,
     rank_ub: u32,
     coset: bool,
+    koszul: usize, // 0 = off; else max p for Koszul flattening leaves
     stay: bool,
     par_depth: usize, // adversary branches evaluated in parallel while kills <= par_depth
     sides: Vec<u8>,
@@ -809,6 +944,9 @@ impl Game {
         let mut best = *leaf.iter().max().unwrap() as u32;
         if self.coset {
             best = best.max(coset_bound(&t) as u32);
+        }
+        if self.koszul > 0 {
+            best = best.max(koszul_bound(&t, self.koszul) as u32);
         }
         let mut choice = 0u8;
         let mut best_phi: V = 0;
@@ -952,6 +1090,11 @@ impl Game {
         let mut lb = *leaf.iter().max().unwrap() as u32;
         if self.coset {
             lb = lb.max(coset_bound(&t) as u32);
+        }
+        if self.koszul > 0 && lb < k {
+            let tk = Instant::now();
+            lb = lb.max(koszul_bound(&t, self.koszul) as u32);
+            self.prof[4].fetch_add(ns(tk), Ordering::Relaxed);
         }
         if lb > lo {
             self.set_lo(s, lb);
@@ -1206,7 +1349,7 @@ fn certificate(g: &Game, n: usize, root: &State, proofs: &HashMap<State, Proof>)
         line.push('}');
         lines.push(line);
     }
-    writeln!(out, "{{\"n\":{n},\"coset\":{},\"root\":\"{}\",\"nodes\":[", g.coset, key(root)).unwrap();
+    writeln!(out, "{{\"n\":{n},\"coset\":{},\"koszul\":{},\"root\":\"{}\",\"nodes\":[", g.coset, g.koszul, key(root)).unwrap();
     out.push_str(&lines.join(",\n"));
     out.push_str("\n]}\n");
     out
@@ -1237,6 +1380,7 @@ fn main() {
         d,
         rank_ub,
         coset,
+        koszul: get("--koszul").and_then(|v| v.parse().ok()).unwrap_or(0),
         stay: flag("--stay"),
         sides: {
             let spec = if flag("--onesided") { "A".to_string() } else { get("--sides").unwrap_or_else(|| "ABC".to_string()) };
@@ -1263,6 +1407,16 @@ fn main() {
         capped: AtomicBool::new(false),
     };
     let root = State { u: vec![], v: vec![], x: vec![] };
+    if flag("--root-bounds") {
+        let t = &g.t0;
+        println!(
+            "root flattenings {:?}; coset {}; koszul per p: {:?}",
+            flattenings(t),
+            coset_bound(t),
+            (1..=(d - 2)).map(|p| koszul_side(t, p)).collect::<Vec<_>>()
+        );
+        return;
+    }
     if flag("--bench-canon") {
         // microbenchmark: canonical form of random one-sided states per dimension
         let sym = g.sym.as_ref().expect("--bench-canon needs --sym");

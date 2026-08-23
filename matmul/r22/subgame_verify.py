@@ -8,7 +8,8 @@ three sides of T = <n,n,n>, each with a claimed lower bound `value` on
 the rank of the quotient tensor T/(U,V,X), and either
   choice 0 (leaf): value <= max flattening rank of T/(U,V,X) (or, when
       the certificate header says coset: true, the F_2 coset-counting
-      bound recomputed here), or
+      bound, or koszul: P, the Koszul flattening bound with p <= P —
+      both recomputed here), or
   choice s in {1,2,3} with functional phi: the tensor is NONZERO, phi
       lies in the annihilator of the killed subspace and does not vanish
       on the side's SUPPORT (the smallest subspace S with T' in S (x) ..),
@@ -266,6 +267,67 @@ def coset_bound(dims, t):
     return best
 
 
+def binom(n, k):
+    from math import comb
+    return comb(n, k) if 0 <= k <= n else 0
+
+
+def koszul_side(dims, t, p):
+    """Koszul flattening bound on side A (recomputed): rows (S' in Λ^{p+1}, k),
+    columns (S in Λ^p, j); entry T[i][j][k] at (S u {i}, k), (S, j), i not in S.
+    R >= ceil(rank / C(da-1, p)). Valid over any field; signs vanish over F_2."""
+    da, db, dc = dims
+    if da < 3 or p == 0 or p + 2 > da:
+        return 0
+    subs_p = [m for m in range(1 << da) if bin(m).count("1") == p]
+    subs_q = [m for m in range(1 << da) if bin(m).count("1") == p + 1]
+    ip = {m: i for i, m in enumerate(subs_p)}
+    iq = {m: i for i, m in enumerate(subs_q)}
+    rows = [0] * (len(subs_q) * dc)
+    for sm, si in ip.items():
+        for i in range(da):
+            if sm >> i & 1:
+                continue
+            qi = iq[sm | (1 << i)]
+            for j in range(db):
+                bits = t[i][j]
+                if not bits:
+                    continue
+                col = si * db + j
+                for k in range(dc):
+                    if bits >> k & 1:
+                        rows[qi * dc + k] |= 1 << col
+    rk = rank(rows)
+    den = binom(da - 1, p)
+    return -(-rk // den)
+
+
+def with_side_first(dims, t, side):
+    da, db, dc = dims
+    if side == 1:
+        return dims, t
+    if side == 2:
+        return (db, da, dc), [[t[i][j] for i in range(da)] for j in range(db)]
+    nt = [[0] * da for _ in range(dc)]
+    for i in range(da):
+        for j in range(db):
+            for k in range(dc):
+                if t[i][j] >> k & 1:
+                    nt[k][i] |= 1 << j
+    return (dc, da, db), nt
+
+
+def koszul_bound(dims, t, pmax):
+    best = 0
+    for side in (1, 2, 3):
+        d2, t2 = with_side_first(dims, t, side)
+        if d2[0] < 3:
+            continue
+        for p in range(1, min(d2[0] - 2, pmax) + 1):
+            best = max(best, koszul_side(d2, t2, p))
+    return best
+
+
 def parse_key(k):
     parts = k.split("|")
     return tuple(tuple(int(x, 16) for x in p.split(",")) if p else () for p in parts)
@@ -361,6 +423,8 @@ def main(path):
         leaf_bound = max(fl)
         if cert.get("coset"):
             leaf_bound = max(leaf_bound, coset_bound(dims, t))
+        if cert.get("koszul", 0) and nd["choice"] == 0 and value > leaf_bound:
+            leaf_bound = max(leaf_bound, koszul_bound(dims, t, cert["koszul"]))
         if nd["choice"] == 0:
             assert value <= leaf_bound, f"leaf claim too strong at {k}: {value} > {leaf_bound}"
         else:

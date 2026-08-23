@@ -22,6 +22,10 @@
 //!   --coset                                  add the F_2 coset-counting leaf bound
 //!   --stay                                   prover prefers the side with the most
 //!                                            kills so far (one-sided strategies)
+//!   --sides AB | --onesided (= A)            restrict the prover's sides (still a
+//!                                            lower bound); the root kill is on the
+//!                                            first listed side (WLOG by the S_3
+//!                                            tensor symmetry)
 //!   --sym                                    memoize up to the GL_3(F_2)^3 sandwich
 //!                                            symmetry (n = 3); certificates carry
 //!                                            an explicit group element per child
@@ -31,6 +35,8 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::time::Instant;
+
+use rayon::prelude::*;
 
 type V = u16; // vector in F_2^d, d <= 9
 
@@ -413,8 +419,12 @@ struct Sym {
     idx: Vec<u16>,           // matrix -> index (u16::MAX if singular)
     inv: Vec<usize>,         // index -> index of inverse
     tr: Vec<usize>,          // index -> index of transpose
-    // act[(p * 168 + q) * 512 + m] = gl[p] * m * gl[q]
-    act: Vec<u16>,
+    mul: Vec<usize>,         // mul[a * 168 + b] = index of gl[a] * gl[b]
+    id: usize,               // index of the identity
+    // factored action tables (each 168 x 512, L2-resident):
+    // left[p * 512 + m] = gl[p] * m,  right[q * 512 + m] = m * gl[q]
+    left: Vec<u16>,
+    right: Vec<u16>,
 }
 
 impl Sym {
@@ -434,19 +444,47 @@ impl Sym {
         }
         let inv: Vec<usize> = gl.iter().map(|&m| gl.iter().position(|&b| m3_mul(m, b) == id).unwrap()).collect();
         let tr: Vec<usize> = gl.iter().map(|&m| idx[m3_tr(m) as usize] as usize).collect();
-        let mut act = vec![0u16; 168 * 168 * 512];
+        let mut left = vec![0u16; 168 * 512];
+        let mut right = vec![0u16; 168 * 512];
         for p in 0..168 {
-            for q in 0..168 {
-                for m in 0..512u16 {
-                    act[(p * 168 + q) * 512 + m as usize] = m3_mul(m3_mul(gl[p], m), gl[q]);
-                }
+            for m in 0..512u16 {
+                left[p * 512 + m as usize] = m3_mul(gl[p], m);
+                right[p * 512 + m as usize] = m3_mul(m, gl[p]);
             }
         }
-        Sym { gl, idx, inv, tr, act }
+        let mut mul = vec![0usize; 168 * 168];
+        for a in 0..168 {
+            for b in 0..168 {
+                mul[a * 168 + b] = idx[m3_mul(gl[a], gl[b]) as usize] as usize;
+            }
+        }
+        let id = idx[id as usize] as usize;
+        Sym { gl, idx, inv, tr, mul, id, left, right }
+    }
+    /// composition "apply s first, then g". P acts on the LEFT (as P^T or
+    /// P^-1) so P_g^T P_s^T = (P_s P_g)^T; Q and R act on the RIGHT so
+    /// Q_s^T Q_g^T = (Q_g Q_s)^T: composed = (P_s P_g, Q_g Q_s, R_g R_s).
+    /// r = MAX (any R) is resolved to the identity.
+    fn compose(&self, s: (usize, usize, usize), g: (usize, usize, usize)) -> (usize, usize, usize) {
+        let fix = |r: usize| if r == usize::MAX { self.id } else { r };
+        (
+            self.mul[fix(s.0) * 168 + fix(g.0)],
+            self.mul[fix(g.1) * 168 + fix(s.1)],
+            self.mul[fix(g.2) * 168 + fix(s.2)],
+        )
+    }
+    /// vector action of g on one side (A: P^T a Q^T, B: Q^-T b R^T, C: P^-1 c R^-1)
+    fn act_vec(&self, g: (usize, usize, usize), side: u8, v: V) -> V {
+        let fix = |r: usize| if r == usize::MAX { self.id } else { r };
+        match side {
+            1 => self.ap(self.tr[g.0], self.tr[g.1], v),
+            2 => self.ap(self.tr[self.inv[g.1]], self.tr[fix(g.2)], v),
+            _ => self.ap(self.inv[g.0], self.inv[fix(g.2)], v),
+        }
     }
     #[inline]
     fn ap(&self, p: usize, q: usize, m: V) -> V {
-        self.act[(p * 168 + q) * 512 + m as usize]
+        self.right[q * 512 + self.left[p * 512 + m as usize] as usize]
     }
     /// transform a subspace basis and re-echelonize
     fn sub(&self, p: usize, q: usize, rows: &[V]) -> Vec<V> {
@@ -488,17 +526,57 @@ impl Sym {
             }
             best_u = Some(vec![]);
         } else {
-            for p in 0..168 {
-                for q in 0..168 {
-                    let img = self.sub(self.tr[p], self.tr[q], &s.u);
-                    match &best_u {
-                        Some(b) if img > *b => {}
-                        Some(b) if img == *b => s1.push((p, q)),
-                        _ => {
-                            best_u = Some(img);
-                            s1.clear();
-                            s1.push((p, q));
+            // parallel over P: per-thread (best, minimizers), then merge
+            // early rejection: the least RREF basis has the lowest possible top
+            // pivot, and a candidate's top pivot is the max leading bit of its
+            // transformed basis vectors — no row reduction needed to reject.
+            let n = s.u.len();
+            let parts: Vec<(Vec<V>, Vec<(usize, usize)>)> = (0..168usize)
+                .into_par_iter()
+                .map(|p| {
+                    let tp = self.tr[p];
+                    let mut lm = [0u16; 9];
+                    for i in 0..n {
+                        lm[i] = self.left[tp * 512 + s.u[i] as usize];
+                    }
+                    let mut best: Option<Vec<V>> = None;
+                    let mut best_top: u32 = u32::MAX;
+                    let mut mins: Vec<(usize, usize)> = Vec::new();
+                    let mut buf = [0u16; 9];
+                    for q in 0..168 {
+                        let tq = self.tr[q];
+                        let rq = &self.right[tq * 512..(tq + 1) * 512];
+                        let mut top = 0u32;
+                        for i in 0..n {
+                            let v = rq[lm[i] as usize];
+                            buf[i] = v;
+                            top = top.max(16 - v.leading_zeros());
                         }
+                        if top > best_top {
+                            continue;
+                        }
+                        let img = rref(&buf[..n]);
+                        match &best {
+                            Some(b) if img > *b => {}
+                            Some(b) if img == *b => mins.push((p, q)),
+                            _ => {
+                                best_top = top;
+                                best = Some(img);
+                                mins.clear();
+                                mins.push((p, q));
+                            }
+                        }
+                    }
+                    (best.unwrap(), mins)
+                })
+                .collect();
+            for (b, mins) in parts {
+                match &best_u {
+                    Some(bb) if b > *bb => {}
+                    Some(bb) if b == *bb => s1.extend(mins),
+                    _ => {
+                        best_u = Some(b);
+                        s1 = mins;
                     }
                 }
             }
@@ -513,14 +591,33 @@ impl Sym {
                 s2.push((p, q, usize::MAX));
             }
         } else {
+            let nv = s.v.len();
+            let mut best_top: u32 = u32::MAX;
             for &(p, q) in &s1 {
                 let qi = self.tr[self.inv[q]];
+                let mut lm = [0u16; 9];
+                for i in 0..nv {
+                    lm[i] = self.left[qi * 512 + s.v[i] as usize];
+                }
+                let mut buf = [0u16; 9];
                 for r in 0..168 {
-                    let img = self.sub(qi, self.tr[r], &s.v);
+                    let tr_r = self.tr[r];
+                    let rq = &self.right[tr_r * 512..(tr_r + 1) * 512];
+                    let mut top = 0u32;
+                    for i in 0..nv {
+                        let v = rq[lm[i] as usize];
+                        buf[i] = v;
+                        top = top.max(16 - v.leading_zeros());
+                    }
+                    if top > best_top {
+                        continue;
+                    }
+                    let img = rref(&buf[..nv]);
                     match &best_v {
                         Some(b) if img > *b => {}
                         Some(b) if img == *b => s2.push((p, q, r)),
                         _ => {
+                            best_top = top;
                             best_v = Some(img);
                             s2.clear();
                             s2.push((p, q, r));
@@ -669,6 +766,7 @@ struct Game {
     rank_ub: u32,
     coset: bool,
     stay: bool,
+    sides: Vec<u8>,
     sym: Option<Sym>,
     stab_cache: HashMap<State, Vec<(usize, usize, usize)>>,
     canon_cache: HashMap<State, (State, (usize, usize, usize))>,
@@ -677,6 +775,9 @@ struct Game {
     lo: HashMap<State, u32>,
     hi: HashMap<State, u32>,
     proofs: HashMap<State, Proof>,
+    prof: [f64; 6], // canon, stabilizer, phi_reps, quotient+flattening, support, forced_ext
+    n_canon: u64,
+    n_canon_hit: u64,
     nodes: u64,
     node_cap: u64,
     t_start: Instant,
@@ -738,9 +839,13 @@ impl Game {
     fn canon(&mut self, s: &State) -> State {
         let Some(sym) = &self.sym else { return s.clone() };
         if let Some((c, _)) = self.canon_cache.get(s) {
+            self.n_canon_hit += 1;
             return c.clone();
         }
+        let t = Instant::now();
         let (c, g) = sym.canon(s);
+        self.prof[0] += t.elapsed().as_secs_f64();
+        self.n_canon += 1;
         self.canon_cache.insert(s.clone(), (c.clone(), g));
         self.isos.insert(s.clone(), (c.clone(), g));
         c
@@ -751,10 +856,12 @@ impl Game {
         if let Some(st) = self.stab_cache.get(c) {
             return st.clone();
         }
+        let t = Instant::now();
         let st = match &self.sym {
             Some(sym) => sym.canon_full(c).2,
             None => vec![],
         };
+        self.prof[1] += t.elapsed().as_secs_f64();
         self.stab_cache.insert(c.clone(), st.clone());
         st
     }
@@ -784,8 +891,10 @@ impl Game {
             self.capped = true;
             return false;
         }
+        let tq = Instant::now();
         let t = quotient(&self.t0, &s.u, &s.v, &s.x);
         let leaf = flattenings(&t);
+        self.prof[3] += tq.elapsed().as_secs_f64();
         let dims = (t.da, t.db, t.dc);
         let mut lb = *leaf.iter().max().unwrap() as u32;
         if self.coset {
@@ -810,12 +919,21 @@ impl Game {
         }
         // prover: sides ordered by free support dimension (largest first), phi by weight
         let mut sides: Vec<(usize, u8, Vec<V>, Vec<V>)> = Vec::new();
+        let is_root0 = s.u.is_empty() && s.v.is_empty() && s.x.is_empty();
         for side in 1..=3u8 {
+            if !self.sides.contains(&side) {
+                continue; // restricted prover (still a valid lower bound)
+            }
+            if is_root0 && side != self.sides[0] {
+                continue; // WLOG by the S_3 tensor symmetry: the first kill is on the first allowed side
+            }
             let cur = s.side(side);
             if cur.len() >= self.d {
                 continue;
             }
+            let ts = Instant::now();
             let supp = support(&t, side, cur, self.d);
+            self.prof[4] += ts.elapsed().as_secs_f64();
             let free_dim = supp.len() - cur.len();
             if free_dim == 0 {
                 continue;
@@ -838,26 +956,113 @@ impl Game {
             phis.retain(|&p| supp.iter().any(|&sv| dot(p, sv) == 1));
             phis.sort_by_key(|p| p.count_ones());
             if let Some(sym) = &self.sym {
+                let tp = Instant::now();
                 phis = sym.phi_reps(&stab, side, &phis, is_root);
+                self.prof[2] += tp.elapsed().as_secs_f64();
             }
             for phi in phis {
+                let te = Instant::now();
                 let exts = forced_extensions(&supp_el, &cur, phi);
+                self.prof[5] += te.elapsed().as_secs_f64();
                 // adversary: hardest children first (smallest quick lower bound)
-                let mut kids: Vec<(u32, State)> = exts
-                    .into_iter()
-                    .map(|e| {
+                // group the raw children by the parent's stabilizer orbits: the
+                // extension cur + <v> maps under a stabilizer element t to
+                // cur + <t v>; key = least coset representative of t v over t.
+                // One canonical form per orbit; the others get the composed iso.
+                let mut reps: Vec<(State, Vec<(State, (usize, usize, usize))>)> = Vec::new();
+                if let Some(sym) = &self.sym {
+                    let tc0 = Instant::now();
+                    // stabilizer elements deduplicated by the components this side uses
+                    let mut elems: Vec<(usize, usize, usize)> = Vec::new();
+                    {
+                        let mut seen = HashSet::new();
+                        for &(p0, q0, r0) in &stab {
+                            let rs: Vec<usize> = if r0 == usize::MAX && side != 1 { (0..168).collect() } else { vec![r0] };
+                            for r in rs {
+                                let k3 = match side {
+                                    1 => (p0, q0, usize::MAX),
+                                    2 => (usize::MAX, q0, r),
+                                    _ => (p0, usize::MAX, r),
+                                };
+                                if seen.insert(k3) {
+                                    elems.push((p0, q0, r));
+                                }
+                            }
+                            if elems.len() > 400_000 {
+                                break;
+                            }
+                        }
+                    }
+                    let cur_r = rref(&cur);
+                    let coset_rep = |mut v: V| {
+                        for &o in &cur_r {
+                            let pv = 15 - o.leading_zeros();
+                            if v >> pv & 1 == 1 {
+                                v ^= o;
+                            }
+                        }
+                        v
+                    };
+                    let mut groups: HashMap<V, (State, Vec<(State, (usize, usize, usize))>)> = HashMap::new();
+                    for e in exts {
+                        // a vector of e outside cur
+                        let v = *e.iter().find(|&&x| coset_rep(x) != 0).unwrap();
+                        let mut best_key = coset_rep(v);
+                        let mut best_t = (self.sym.as_ref().unwrap().id, self.sym.as_ref().unwrap().id, self.sym.as_ref().unwrap().id);
+                        for &t in &elems {
+                            let img = coset_rep(sym.act_vec(t, side, v));
+                            if img < best_key {
+                                best_key = img;
+                                best_t = t;
+                            }
+                        }
                         let raw = s.with(side, e);
-                        let c = self.canon(&raw);
-                        let known = *self.lo.get(&c).unwrap_or(&0);
-                        let q = if known >= k - 1 {
-                            known
-                        } else {
-                            let tc = quotient(&self.t0, &c.u, &c.v, &c.x);
-                            *flattenings(&tc).iter().max().unwrap() as u32
-                        };
-                        (q, c)
-                    })
-                    .collect();
+                        let entry = groups.entry(best_key).or_insert_with(|| {
+                            let mut rows = cur.clone();
+                            rows.push(best_key);
+                            (s.with(side, rref(&rows)), Vec::new())
+                        });
+                        entry.1.push((raw, best_t));
+                    }
+                    reps = groups.into_values().collect();
+                    self.prof[5] += tc0.elapsed().as_secs_f64();
+                    // canonicalize the representatives in parallel (cache misses only)
+                    let need: Vec<State> = reps.iter().map(|(r, _)| r.clone()).filter(|r| !self.canon_cache.contains_key(r)).collect();
+                    let tcn = Instant::now();
+                    let done: Vec<(State, (State, (usize, usize, usize)))> =
+                        need.par_iter().map(|r| (r.clone(), sym.canon(r))).collect();
+                    self.prof[0] += tcn.elapsed().as_secs_f64();
+                    self.n_canon += done.len() as u64;
+                    for (r, cg) in done {
+                        self.canon_cache.insert(r.clone(), cg.clone());
+                        self.isos.insert(r, cg);
+                    }
+                } else {
+                    reps = exts.into_iter().map(|e| { let raw = s.with(side, e); (raw.clone(), vec![(raw, (0, 0, 0))]) }).collect();
+                }
+                let mut kids: Vec<(u32, State)> = Vec::new();
+                for (rep, members) in reps {
+                    let c = self.canon(&rep);
+                    if let Some(sym) = &self.sym {
+                        let g_rep = self.canon_cache[&rep].1;
+                        for (raw, t) in members {
+                            if !self.isos.contains_key(&raw) {
+                                self.isos.insert(raw, (c.clone(), sym.compose(t, g_rep)));
+                            }
+                        }
+                    }
+                    let known = *self.lo.get(&c).unwrap_or(&0);
+                    let q = if known >= k - 1 {
+                        known
+                    } else {
+                        let tq = Instant::now();
+                        let tc = quotient(&self.t0, &c.u, &c.v, &c.x);
+                        let f = *flattenings(&tc).iter().max().unwrap() as u32;
+                        self.prof[3] += tq.elapsed().as_secs_f64();
+                        f
+                    };
+                    kids.push((q, c));
+                }
                 kids.sort_by_key(|(q, _)| *q);
                 kids.dedup_by(|a, b| a.1 == b.1);
                 let mut all_ok = true;
@@ -965,6 +1170,10 @@ fn main() {
         rank_ub,
         coset,
         stay: flag("--stay"),
+        sides: {
+            let spec = if flag("--onesided") { "A".to_string() } else { get("--sides").unwrap_or_else(|| "ABC".to_string()) };
+            spec.chars().filter_map(|ch| match ch { 'A' => Some(1u8), 'B' => Some(2), 'C' => Some(3), _ => None }).collect()
+        },
         sym,
         stab_cache: HashMap::new(),
         canon_cache: HashMap::new(),
@@ -973,6 +1182,9 @@ fn main() {
         lo: HashMap::new(),
         hi: HashMap::new(),
         proofs: HashMap::new(),
+        prof: [0.0; 6],
+        n_canon: 0,
+        n_canon_hit: 0,
         nodes: 0,
         node_cap: get("--nodes").and_then(|v| v.parse().ok()).unwrap_or(50_000_000),
         t_start: Instant::now(),
@@ -980,6 +1192,29 @@ fn main() {
         capped: false,
     };
     let root = State { u: vec![], v: vec![], x: vec![] };
+    if flag("--bench-canon") {
+        // microbenchmark: canonical form of random one-sided states per dimension
+        let sym = g.sym.as_ref().expect("--bench-canon needs --sym");
+        let mut seed = 12345u64;
+        let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+        for dim in 1..=8usize {
+            let mut states = Vec::new();
+            while states.len() < 10 {
+                let rows: Vec<V> = (0..dim).map(|_| (rnd() % 511 + 1) as V).collect();
+                let r = rref(&rows);
+                if r.len() == dim { states.push(State { u: r, v: vec![], x: vec![] }); }
+            }
+            let t = Instant::now();
+            let mut stab_sizes = 0usize;
+            for st in &states {
+                let (_, _, s3) = sym.canon_full(st);
+                stab_sizes += s3.len();
+            }
+            let per = t.elapsed().as_secs_f64() / states.len() as f64 * 1000.0;
+            println!("dim {dim}: canon_full {per:.2} ms/state (parallel stage 1), mean |stabilizer| {:.0}", stab_sizes as f64 / states.len() as f64);
+        }
+        return;
+    }
     if flag("--ladder") {
         let from: u32 = get("--from").and_then(|v| v.parse().ok()).unwrap_or(1);
         let mut proven = 0u32;
@@ -1017,6 +1252,13 @@ fn main() {
             "=> rank_F2(<{n},{n},{n}>) >= {proven} by the substitution game{}",
             if coset { " + coset bound" } else { "" }
         );
+        if flag("--prof") {
+            let tot = g.t_start.elapsed().as_secs_f64();
+            println!(
+                "profile: total {tot:.1}s | canon {:.1}s ({} computed, {} cache hits) | stabilizer {:.1}s | phi_reps {:.1}s | quotient+flat {:.1}s | support {:.1}s | orbit-merge {:.1}s | states lo={} hi={} stab_cache={}",
+                g.prof[0], g.n_canon, g.n_canon_hit, g.prof[1], g.prof[2], g.prof[3], g.prof[4], g.prof[5], g.lo.len(), g.hi.len(), g.stab_cache.len()
+            );
+        }
         if let Some(path) = cert {
             if proven > 0 {
                 if g.proofs.len() > 300_000 {

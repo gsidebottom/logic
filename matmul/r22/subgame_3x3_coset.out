@@ -1,0 +1,5 @@
+k=13: PROVED val >= 13  (+0.00s, 1 nodes total, 1 states)
+k=14: CAP (nodes 47035405 / 1800.0s) — last proven 13
+=> rank_F2(<3,3,3>) >= 13 by the substitution game + coset bound
+certificate: matmul/r22/subgame_3x3_coset.json (118 bytes)
+EXIT=0

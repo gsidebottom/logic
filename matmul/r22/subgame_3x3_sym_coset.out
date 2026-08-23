@@ -1,0 +1,12 @@
+symmetry tables built (0.0s); sandwich action verified on the tensor
+k=13: PROVED val >= 13  (+0.00s, 1 nodes total, 1 states)
+k=14: CAP (nodes 158128 / 900.0s) — last proven 13
+=> rank_F2(<3,3,3>) >= 13 by the substitution game + coset bound
+certificate: matmul/r22/subgame_3x3_sym_coset.json (118 bytes)
+EXIT=0
+Traceback (most recent call last):
+  File "/Users/greg/projects/logic/matmul/r22/subgame_verify.py", line 328, in <module>
+    main(sys.argv[1])
+  File "/Users/greg/projects/logic/matmul/r22/subgame_verify.py", line 289, in main
+    assert value <= max(fl), f"leaf claim too strong at {k}: {value} > {max(fl)}"
+AssertionError: leaf claim too strong at ||: 13 > 9

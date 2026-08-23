@@ -1,0 +1,13 @@
+symmetry tables built (0.0s); sandwich action verified on the tensor
+k=9: PROVED val >= 9  (+0.00s, 1 nodes total, 1 states)
+k=10: PROVED val >= 10  (+0.86s, 5 nodes total, 4 states)
+k=11: PROVED val >= 11  (+1.34s, 25 nodes total, 20 states)
+k=12: PROVED val >= 12  (+3.85s, 134 nodes total, 109 states)
+k=13: PROVED val >= 13  (+11.56s, 477 nodes total, 343 states)
+k=14: PROVED val >= 14  (+95.03s, 1629 nodes total, 945 states)
+k=15: PROVED val >= 15  (+294.21s, 4118 nodes total, 2330 states)
+k=16: CAP (nodes 6656 / 900.3s) — last proven 15
+=> rank_F2(<3,3,3>) >= 15 by the substitution game
+certificate: matmul/r22/subgame_3x3_stay.json (761800 bytes)
+EXIT=0
+VERIFIED: 714 states replayed from scratch; rank_F2(<3,3,3>) >= 15

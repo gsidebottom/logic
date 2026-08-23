@@ -1,0 +1,7 @@
+k=9: PROVED val >= 9  (+0.00s, 1 nodes total, 1 states)
+k=10: PROVED val >= 10  (+0.00s, 258 nodes total, 257 states)
+k=11: PROVED val >= 11  (+0.48s, 66051 nodes total, 65793 states)
+k=12: CAP (nodes 50000001 / 409.3s) — last proven 11
+=> rank_F2(<3,3,3>) >= 11 by the substitution game
+certificate: matmul/r22/subgame_3x3.json (4947316132 bytes)
+EXIT=0

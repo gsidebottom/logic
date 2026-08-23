@@ -224,6 +224,31 @@ the two source papers for this track):
   gate: reproduce the classical >= 17 (2n^2 - 1); then step 3 = F_2
   refinements (coset injectivity, rank-of-sum, aligned/naive-block
   triples) toward >= 19/20; step 4 = Lean replay of the certificate.
+- **Automated substitution method, step 2 in progress (2026-08-23)**:
+  subgame gains a DECISION mode (prove val >= k with memoized lower/
+  upper bounds, leaf and rank-upper-bound cutoffs, hardest-child-first
+  adversary order), canonical forms under the GL_3(F_2)^3 sandwich
+  (staged: U over all 28k (P,Q) via action tables, V under the
+  stabilizer with R free, X last; phi-orbit reduction under the state
+  stabilizer) and certificates that carry an explicit group element per
+  merged adversary edge — the checker verifies each element preserves
+  the tensor and maps the child onto the canonical node. Measurements:
+  plain rules, no symmetry: >= 11 then CAP at k=12 (50M nodes; fan-out
+  x256 per level); symmetry: >= 12 in 3,358 nodes but CAP at 13 — the
+  prover wandered into the MIXED (U,V) state space (orbits of subspace
+  pairs explode); the classical 2n^2-1 = 17 is a ONE-SIDED strategy
+  (eight A-kills steering the surviving functional psi to be
+  invertible, leaf = the slice psi^T (x) I of rank 9), so --stay
+  (prefer the side with the most kills) collapses the search: >= 13
+  in 477 nodes / 12 s, >= 14 in 1,629, **>= 15 in 4,118 nodes /
+  294 s, 714-state certificate replayed from scratch**
+  (matmul/r22/subgame_3x3_stay.json); k=16 capped at 15 min; 2 h run
+  pending for 16/17. F_2 coset leaf bound: 13 at the root but the
+  adversary breaks its premise with one kill (k=14 CAP at 158k nodes
+  with symmetry, 47M without) — a root-only shortcut. Cost is
+  canonicalization (~70 ms/state at depth 6); next levers: cheaper
+  canonical forms (incremental stabilizers), parallel adversary
+  branches, then the F_2 refinements for 18-20.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

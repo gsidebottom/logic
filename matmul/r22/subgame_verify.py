@@ -6,12 +6,17 @@
 The certificate is a DAG of states (U, V, X) = killed subspaces of the
 three sides of T = <n,n,n>, each with a claimed lower bound `value` on
 the rank of the quotient tensor T/(U,V,X), and either
-  choice 0 (leaf): value <= max flattening rank of T/(U,V,X), or
+  choice 0 (leaf): value <= max flattening rank of T/(U,V,X) (or, when
+      the certificate header says coset: true, the F_2 coset-counting
+      bound recomputed here), or
   choice s in {1,2,3} with functional phi: the tensor is NONZERO, phi
       lies in the annihilator of the killed subspace and does not vanish
       on the side's SUPPORT (the smallest subspace S with T' in S (x) ..),
       value <= 1 + min over the extensions U + <v>, v in S with phi.v = 1,
-      of the child's claimed value, and every such child is present.
+      of the child's claimed value, and every such child is present —
+      either literally, or via an explicit sandwich-group element g
+      (checked here to preserve the tensor) mapping it onto a node that
+      is present; isomorphic states have equal rank.
 Soundness: R(T') >= flattening ranks; a minimal decomposition of T' can
 be taken with its side-s vectors in S, and they span S, so for any phi
 not vanishing on S some product vector v has phi.v = 1; quotienting by
@@ -119,6 +124,129 @@ def flattenings(dims, t):
     return [rank(ra), rank(rb), rank(rc)]
 
 
+# ---- sandwich symmetry (3x3): g = (P,Q,R) acts A: P^T a Q^T, B: Q^-T b R^T, C: P^-1 c R^-1
+def m3_mul(a, b):
+    c = 0
+    for i in range(3):
+        for j in range(3):
+            s = 0
+            for k in range(3):
+                s ^= (a >> (i * 3 + k) & 1) & (b >> (k * 3 + j) & 1)
+            c |= s << (i * 3 + j)
+    return c
+
+
+def m3_tr(a):
+    c = 0
+    for i in range(3):
+        for j in range(3):
+            c |= (a >> (i * 3 + j) & 1) << (j * 3 + i)
+    return c
+
+
+def m3_inv(a):
+    ident = 0b100010001
+    for b in range(512):
+        if m3_mul(a, b) == ident:
+            return b
+    raise AssertionError("singular group element")
+
+
+def apply_sandwich(P, Q, R, state, d):
+    u, v, x = state
+    Pt, Qt, Rt = m3_tr(P), m3_tr(Q), m3_tr(R)
+    Qit, Pi, Ri = m3_tr(m3_inv(Q)), m3_inv(P), m3_inv(R)
+    fa = lambda m: m3_mul(m3_mul(Pt, m), Qt)
+    fb = lambda m: m3_mul(m3_mul(Qit, m), Rt)
+    fc = lambda m: m3_mul(m3_mul(Pi, m), Ri)
+    return (rref([fa(m) for m in u]), rref([fb(m) for m in v]), rref([fc(m) for m in x]))
+
+
+_sym_cache = {}
+
+
+def is_symmetry(n, P, Q, R):
+    """does g preserve the matmul tensor? (recomputed, cached per g)"""
+    if (P, Q, R) in _sym_cache:
+        return _sym_cache[(P, Q, R)]
+    d, t0 = matmul_tensor(n)
+    Pt, Qt, Rt = m3_tr(P), m3_tr(Q), m3_tr(R)
+    Qit, Pi, Ri = m3_tr(m3_inv(Q)), m3_inv(P), m3_inv(R)
+    fa = lambda m: m3_mul(m3_mul(Pt, m), Qt)
+    fb = lambda m: m3_mul(m3_mul(Qit, m), Rt)
+    fc = lambda m: m3_mul(m3_mul(Pi, m), Ri)
+    tt = [[0] * d for _ in range(d)]
+    for a in range(d):
+        ia = fa(1 << a)
+        for b in range(d):
+            ib = fb(1 << b)
+            for c in range(d):
+                if not t0[a][b] >> c & 1:
+                    continue
+                ic = fc(1 << c)
+                for a2 in range(d):
+                    if not ia >> a2 & 1:
+                        continue
+                    for b2 in range(d):
+                        if ib >> b2 & 1:
+                            tt[a2][b2] ^= ic
+    ok = tt == t0
+    _sym_cache[(P, Q, R)] = ok
+    return ok
+
+
+def matrix_rank_bits(v, rows, cols):
+    mask = (1 << cols) - 1
+    return rank([(v >> (r * cols)) & mask for r in range(rows)])
+
+
+def coset_bound(dims, t):
+    """F_2 coset-counting leaf bound (recomputed): per side, if every
+    nonzero element of the slice span (dim w) has rank >= 3, distinct
+    rank-one products inject into the nonzero cosets of the span inside
+    their own span, so r <= 2^(r-w) - 1; least such r. 0 if no side
+    satisfies the premise."""
+    da, db, dc = dims
+    best = 0
+    for side in (1, 2, 3):
+        if side == 1:
+            rows_n, cols_n = db, dc
+            sl = [sum(t[a][b] << (b * dc) for b in range(db)) for a in range(da)]
+        elif side == 2:
+            rows_n, cols_n = da, dc
+            sl = [sum(t[a][b] << (a * dc) for a in range(da)) for b in range(db)]
+        else:
+            rows_n, cols_n = da, db
+            sl = []
+            for c in range(dc):
+                v = 0
+                for a in range(da):
+                    for b in range(db):
+                        if t[a][b] >> c & 1:
+                            v |= 1 << (a * db + b)
+                sl.append(v)
+        basis = list(rref(sl))
+        w = len(basis)
+        if w == 0:
+            continue
+        ok = True
+        for code in range(1, 1 << w):
+            m = 0
+            for i, b in enumerate(basis):
+                if code >> i & 1:
+                    m ^= b
+            if matrix_rank_bits(m, rows_n, cols_n) <= 2:
+                ok = False
+                break
+        if not ok:
+            continue
+        r = w
+        while not (r <= 2 ** (r - w) - 1):
+            r += 1
+        best = max(best, r)
+    return best
+
+
 def parse_key(k):
     parts = k.split("|")
     return tuple(tuple(int(x, 16) for x in p.split(",")) if p else () for p in parts)
@@ -211,23 +339,42 @@ def main(path):
         fl = flattenings(dims, t)
         assert fl == nd["leaf"], f"flattening mismatch at {k}: {fl} vs {nd['leaf']}"
         value = nd["value"]
+        leaf_bound = max(fl)
+        if cert.get("coset"):
+            leaf_bound = max(leaf_bound, coset_bound(dims, t))
         if nd["choice"] == 0:
-            assert value <= max(fl), f"leaf claim too strong at {k}: {value} > {max(fl)}"
+            assert value <= leaf_bound, f"leaf claim too strong at {k}: {value} > {leaf_bound}"
         else:
             assert max(fl) > 0, f"kill move on the zero tensor at {k} (no product to kill)"
             side = nd["choice"]
             cur = [u, v, x][side - 1]
             assert len(cur) < d, f"killing on an exhausted side at {k}"
             exts = forced_extensions(dims, t, side, list(cur), d, nd["phi"])
-            child_keys = set(nd["children"])
-            # every extension must appear as a child with a claimed value
+            # children are listed raw, optionally with an isomorphism to a
+            # canonical node: child = g^-1(canon), g = (P, Q, R) a sandwich
+            # element (verified to preserve the tensor)
+            kids = {}
+            for ch in nd["children"]:
+                if isinstance(ch, str):
+                    kids[ch] = (ch, None)
+                else:
+                    kids[ch["raw"]] = (ch.get("canon", ch["raw"]), ch.get("g"))
             worst = None
             for e in exts:
                 parts = [u, v, x]
                 parts[side - 1] = e
                 ck = "|".join(",".join(format(r, "x") for r in p) for p in parts)
-                assert ck in child_keys and ck in nodes, f"missing child {ck} at {k}"
-                cv = nodes[ck]["value"]
+                assert ck in kids, f"missing child {ck} at {k}"
+                target, gel = kids[ck]
+                assert target in nodes, f"child node {target} missing at {k}"
+                if gel is not None:
+                    P, Q, R = gel
+                    assert is_symmetry(n, P, Q, R), f"g = {gel} is not a symmetry of the tensor"
+                    img = apply_sandwich(P, Q, R, parse_key(ck), d)
+                    assert img == parse_key(target), f"iso edge {ck} -> {target} does not hold"
+                else:
+                    assert target == ck
+                cv = nodes[target]["value"]
                 worst = cv if worst is None else min(worst, cv)
             assert value <= 1 + worst, f"kill claim too strong at {k}: {value} > 1 + {worst}"
         checked += 1

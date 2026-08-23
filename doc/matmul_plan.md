@@ -203,6 +203,27 @@ the two source papers for this track):
   subadditivity + coset counting, not parity (PC degree grows with
   r), not permutation symmetry breaking, not enumeration. CDCL
   ladder addendum: r=8 TIMEOUT at 2 h (>= x14 over r=7).
+- **Automated substitution method, step 1 PASSED (2026-08-22)**:
+  src/bin/subgame.rs plays the kill-one-product game over F_2 exactly
+  (state = killed subspaces (U,V,X) as RREF bases, memoized):
+  val(T) = max(flattening ranks, max over side and functional phi of
+  1 + min over v in the side's SUPPORT with phi.v = 1 of val(T/v)),
+  kill only for T != 0. Two lessons from the gate: the plain game
+  (adversary kills ANY vector) first returned 12 — a kill-on-zero
+  bug the certificate checker could not catch because it encodes the
+  same rule (checker != gate: gate on KNOWN values) — then 6, i.e.
+  strictly weaker than the literature's substitution method; adding
+  the two facts every hand proof uses (a minimal decomposition's
+  vectors lie in the side's support, and span it, so the prover may
+  force the kill outside any hyperplane not containing the support)
+  gives **7 = the exact rank of <2,2,2>**: 132,486 states in 0.55 s,
+  373-state certificate replayed from scratch by
+  matmul/r22/subgame_verify.py (matmul/r22/subgame_2x2.json). Next:
+  step 2 = <3,3,3> as a DECISION procedure ("prove val >= k") with
+  alpha-beta pruning and canonical forms under GL_3(F_2)^3 x S_3 —
+  gate: reproduce the classical >= 17 (2n^2 - 1); then step 3 = F_2
+  refinements (coset injectivity, rank-of-sum, aligned/naive-block
+  triples) toward >= 19/20; step 4 = Lean replay of the certificate.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

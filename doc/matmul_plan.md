@@ -295,7 +295,12 @@ the two source papers for this track):
   up are: (a) --sides ABC (three-sided strategies, the one dimension
   this verdict does not cover; run queued), (b) refinement 2
   (rank-profile case splits) and 3 (coset/alignment structure as
-  dynamic rules). Refinement 2 v1 IMPLEMENTED (2026-08-24, --splits):
+  dynamic rules). ABC verdict (2026-08-24 13:51): CAPPED inside
+  k=17 at 12 h / 14.6M nodes / 86M forms — level 17 alone cost 2x the
+  whole {A,B} level-19 refutation; the three-sided 18-vs-19 question
+  is unanswerable at current per-state cost (needs the round-3
+  speedups; deprioritized behind splits). Refinement 2 v1 IMPLEMENTED
+  (2026-08-24, --splits):
   per-side min-rank constraints on alive products (state 'u|v|x|r,r,r'),
   split move + kill-coset viability filtering, checker rules from
   scratch; gates passed (2x2 exact 7 with splits; one-sided 3x3 still

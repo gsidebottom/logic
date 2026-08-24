@@ -1419,18 +1419,23 @@ impl Game {
             // and rmin_s ratchets to m+1 free of charge.
             if self.splits {
                 for m in rmin_s..=2 {
-                    let mut b1_kids: Vec<GState> = Vec::new();
+                    let mut seen_kids: HashSet<GState> = HashSet::new();
+                    let mut b1_kids: Vec<(u32, GState)> = Vec::new();
                     let mut viable = true;
                     for e in all_extensions(&supp_el, &cur) {
                         if !coset_has_rank(&e, &cur, rmin_s, m) {
                             continue;
                         }
                         let c = self.canon(&s.with(side, e));
-                        b1_kids.push(GState { s: c, rmin: gs.rmin });
+                        let g = GState { s: c, rmin: gs.rmin };
+                        if !seen_kids.insert(g.clone()) {
+                            continue;
+                        }
+                        let q = self.get_lo(&g); // snapshot ONCE: sorting by a live map is not a total order
+                        b1_kids.push((q, g));
                     }
-                    b1_kids.sort_by_key(|g| self.get_lo(g));
-                    b1_kids.dedup_by(|a, b| a == b);
-                    for g in &b1_kids {
+                    b1_kids.sort_by_key(|(q, _)| *q);
+                    for (_, g) in &b1_kids {
                         if !self.prove(g, k - 1) {
                             viable = false;
                             break;

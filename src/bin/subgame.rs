@@ -905,6 +905,7 @@ struct Game {
     d: usize,
     rank_ub: u32,
     coset: bool,
+    want_cert: bool, // when false, skip iso bookkeeping (memory)
     koszul: usize, // 0 = off; else max p for Koszul flattening leaves
     stay: bool,
     par_depth: usize, // adversary branches evaluated in parallel while kills <= par_depth
@@ -998,7 +999,9 @@ impl Game {
         self.prof[0].fetch_add(ns(t), Ordering::Relaxed);
         self.n_canon.fetch_add(1, Ordering::Relaxed);
         self.canon_cache.lock().unwrap().insert(s.clone(), (c.clone(), g));
-        self.isos.lock().unwrap().insert(s.clone(), (c.clone(), g));
+        if self.want_cert {
+            self.isos.lock().unwrap().insert(s.clone(), (c.clone(), g));
+        }
         c
     }
 
@@ -1232,10 +1235,14 @@ impl Game {
                     self.n_canon.fetch_add(done.len() as u64, Ordering::Relaxed);
                     {
                         let mut cc = self.canon_cache.lock().unwrap();
-                        let mut is = self.isos.lock().unwrap();
-                        for (r, cg) in done {
+                        for (r, cg) in &done {
                             cc.insert(r.clone(), cg.clone());
-                            is.insert(r, cg);
+                        }
+                        if self.want_cert {
+                            let mut is = self.isos.lock().unwrap();
+                            for (r, cg) in done {
+                                is.insert(r, cg);
+                            }
                         }
                     }
                 } else {
@@ -1244,12 +1251,14 @@ impl Game {
                 let mut kids: Vec<(u32, State)> = Vec::new();
                 for (rep, members) in reps {
                     let c = self.canon(&rep);
-                    if let Some(sym) = &self.sym {
-                        let g_rep = self.canon_cache.lock().unwrap()[&rep].1;
-                        let mut is = self.isos.lock().unwrap();
-                        for (raw, t) in members {
-                            if !is.contains_key(&raw) {
-                                is.insert(raw, (c.clone(), sym.compose(t, g_rep)));
+                    if self.want_cert {
+                        if let Some(sym) = &self.sym {
+                            let g_rep = self.canon_cache.lock().unwrap()[&rep].1;
+                            let mut is = self.isos.lock().unwrap();
+                            for (raw, t) in members {
+                                if !is.contains_key(&raw) {
+                                    is.insert(raw, (c.clone(), sym.compose(t, g_rep)));
+                                }
                             }
                         }
                     }
@@ -1380,6 +1389,7 @@ fn main() {
         d,
         rank_ub,
         coset,
+        want_cert: get("--cert").is_some(),
         koszul: get("--koszul").and_then(|v| v.parse().ok()).unwrap_or(0),
         stay: flag("--stay"),
         sides: {

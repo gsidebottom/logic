@@ -295,7 +295,13 @@ the two source papers for this track):
   up are: (a) --sides ABC (three-sided strategies, the one dimension
   this verdict does not cover; run queued), (b) refinement 2
   (rank-profile case splits) and 3 (coset/alignment structure as
-  dynamic rules). The 18-certificate re-run
+  dynamic rules). Refinement 2 v1 IMPLEMENTED (2026-08-24, --splits):
+  per-side min-rank constraints on alive products (state 'u|v|x|r,r,r'),
+  split move + kill-coset viability filtering, checker rules from
+  scratch; gates passed (2x2 exact 7 with splits; one-sided 3x3 still
+  exactly 16; tamper-test negative gate: inflated certificates
+  rejected); no gate proof needed a split yet — the {A,B}+koszul+splits
+  measurement is armed behind the ABC run. The 18-certificate re-run
   VERIFIED (2026-08-24 01:50): 175,932-state certificate
   (subgame_3x3_18.json.gz) replays from scratch — **rank_F2(<3,3,3>)
   >= 18 is now a certified bound**, one short of Blaser.

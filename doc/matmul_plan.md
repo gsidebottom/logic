@@ -272,6 +272,20 @@ the two source papers for this track):
   per-form cost; an 8 h --par 4 attempt at 19 is running
   (subgame_3x3_19.out). Whether the plain game's VALUE reaches 19/20
   is the open question (Blaser's 19 used extra arguments).
+- **Rank-19 attempt round 1 (2026-08-23, 8 h cap): CAPPED inside
+  k=19** — 8.1M nodes, 7.4M proven states, 83.5M canonical forms
+  (~102 core-hours): level 19 is >10x level 18 unfinished, worse than
+  the x9 extrapolation, and the run spent its last hours under memory
+  pressure (31.8 GB RSS, swap 7.3/8 GB — the isos certificate
+  bookkeeping). Fixes landed for round 2 (launched at the cap,
+  24 h budget): Koszul leaves (--koszul 4; k=17 in 171 s vs 303 s
+  parallel-plain, 58,842 states vs 82,531 — real pruning), iso
+  bookkeeping skipped without --cert (RSS 1.1 GB vs 31.8 GB),
+  5-minute heartbeats. Milestone watcher armed for the k=19 verdict;
+  PROVED would match Blaser's 19 by search (certificate re-run
+  needed, compact format first); FAILS pins the Koszul+{A,B} game's
+  exact value at 18 and makes refinements 2/3 (rank-profile case
+  splits, coset/alignment structure) the path to 19/20.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

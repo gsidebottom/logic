@@ -1,0 +1,15 @@
+symmetry tables built (0.0s); sandwich action verified on the tensor
+k=9: PROVED val >= 9  (+0.00s, 1 nodes total, 1 states)
+k=10: PROVED val >= 10  (+0.01s, 5 nodes total, 4 states)
+k=11: PROVED val >= 11  (+0.03s, 25 nodes total, 20 states)
+k=12: PROVED val >= 12  (+0.09s, 150 nodes total, 109 states)
+k=13: PROVED val >= 13  (+0.44s, 535 nodes total, 343 states)
+k=14: PROVED val >= 14  (+1.79s, 1621 nodes total, 674 states)
+k=15: PROVED val >= 15  (+1.61s, 3157 nodes total, 910 states)
+k=16: PROVED val >= 16  (+72.30s, 22989 nodes total, 16969 states)
+k=17: PROVED val >= 17  (+292.86s, 108115 nodes total, 82531 states)
+k=18: PROVED val >= 18  (+2065.11s, 847552 nodes total, 744866 states)
+k=19: CAP (nodes 8119884 / 28800.0s) — last proven 18
+=> rank_F2(<3,3,3>) >= 18 by the substitution game
+profile: total 28800.0s | canon 367264.2s thread-time (83547487 computed, 791115422 cache hits) | stabilizer 23935.6s | phi_reps 22.5s | quotient+flat 2849.1s | support 38.4s | orbit-merge 554.7s | states lo=7401281 hi=1171876 stab_cache=5829196
+EXIT=0

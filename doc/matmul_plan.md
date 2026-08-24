@@ -286,6 +286,17 @@ the two source papers for this track):
   needed, compact format first); FAILS pins the Koszul+{A,B} game's
   exact value at 18 and makes refinements 2/3 (rank-profile case
   splits, coset/alignment structure) the path to 19/20.
+- **Rank-19 round 2 VERDICT (2026-08-24, 01:03): k=19 FAILS — the
+  Koszul+{A,B} substitution game has EXACT value 18.** Exhaustive
+  refutation, not a cap: 7,482,463 nodes / 4.15 h / 69.3M canonical
+  forms, RSS ~2-3 GB (iso-skip fix). Level 19 (koszul) = 6.79M nodes
+  ~ 1.1x round 1's unfinished plain prefix. So the search frontier of
+  this rule set is exactly 18 — one short of Blaser — and the paths
+  up are: (a) --sides ABC (three-sided strategies, the one dimension
+  this verdict does not cover; run queued), (b) refinement 2
+  (rank-profile case splits) and 3 (coset/alignment structure as
+  dynamic rules). The 18-certificate re-run (--to 18 --cert) is
+  queued for replay + commit.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

@@ -205,7 +205,13 @@ summands at their known values:
   \qquad |P| = n_{\mathrm{fix}} .
 \end{equation}
 Only $22-n_{\mathrm{fix}}$ summands are free, so the instance asks
-whether a local repair of the wound exists. This family is how the
+whether a local repair of the wound exists. (``Wound'' as in injury:
+the metaphor is to take a healthy rank-23 scheme, wound it by deleting
+one of its 23 products, freeze most of the survivors, and ask the
+solver whether the few free products can heal the damage --- complete
+the tensor with 22. The term is this project's coinage, not standard
+terminology; the closest published relative is the deletion/repair or
+completion notion in the flip-graph literature.) This family is how the
 solver was priced: 414 attacks, 273 certified UNSAT and 141 timeouts,
 with difficulty rising roughly $15\times$ for every 4 additional free
 products and the 90-second frontier sitting at

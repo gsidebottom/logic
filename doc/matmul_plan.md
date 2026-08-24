@@ -305,8 +305,17 @@ the two source papers for this track):
   split move + kill-coset viability filtering, checker rules from
   scratch; gates passed (2x2 exact 7 with splits; one-sided 3x3 still
   exactly 16; tamper-test negative gate: inflated certificates
-  rejected); no gate proof needed a split yet — the {A,B}+koszul+splits
-  measurement is armed behind the ABC run. The 18-certificate re-run
+  rejected); no gate proof needed a split yet.
+  **v1 VERDICT (2026-08-24 19:37): k=19 FAILS with splits too — exact
+  value still 18** (7.87M nodes / 5.6 h = the koszul-only refutation
+  plus ~50% split overhead; the constraints were explored everywhere
+  and bought nothing). Design lesson: using min-rank constraints only
+  to FILTER kill cosets is too weak — most cosets contain high-rank
+  representatives, so the filter rarely bites. v2 must make the
+  constraints strengthen LEAF bounds (rank-profile-aware flattening/
+  Koszul/coset arguments) and/or use structured split predicates
+  (Blaser cases on subspace shapes, not rank thresholds), and/or
+  refinement 3's coset/alignment rules as dynamic moves. The 18-certificate re-run
   VERIFIED (2026-08-24 01:50): 175,932-state certificate
   (subgame_3x3_18.json.gz) replays from scratch — **rank_F2(<3,3,3>)
   >= 18 is now a certified bound**, one short of Blaser.

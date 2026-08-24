@@ -1,0 +1,82 @@
+symmetry tables built (0.0s); sandwich action verified on the tensor
+k=9: PROVED val >= 9  (+0.00s, 1 nodes total, 1 states)
+k=10: PROVED val >= 10  (+0.00s, 2 nodes total, 1 states)
+k=11: PROVED val >= 11  (+0.00s, 2 nodes total, 1 states)
+k=12: PROVED val >= 12  (+0.00s, 2 nodes total, 1 states)
+k=13: PROVED val >= 13  (+0.00s, 2 nodes total, 1 states)
+k=14: PROVED val >= 14  (+0.00s, 2 nodes total, 1 states)
+k=15: PROVED val >= 15  (+0.03s, 13 nodes total, 11 states)
+k=16: PROVED val >= 16  (+82.95s, 13773 nodes total, 12407 states)
+c heartbeat 300s: nodes 74530 states 63088 failed 17560 forms 512697 hits 5382840
+k=17: PROVED val >= 17  (+264.77s, 81591 nodes total, 68769 states)
+c heartbeat 600s: nodes 180145 states 141520 failed 40188 forms 1200357 hits 14616702
+c heartbeat 900s: nodes 296518 states 242922 failed 63473 forms 2117462 hits 21878920
+c heartbeat 1200s: nodes 408129 states 341640 failed 83259 forms 3162206 hits 32889670
+c heartbeat 1500s: nodes 512464 states 440482 failed 104361 forms 4202026 hits 42043449
+c heartbeat 1800s: nodes 652063 states 575627 failed 124774 forms 5318325 hits 49554039
+c heartbeat 2100s: nodes 810023 states 732821 failed 141935 forms 6289425 hits 55698973
+k=18: PROVED val >= 18  (+1792.83s, 837947 nodes total, 760454 states)
+c heartbeat 2400s: nodes 947744 states 833498 failed 171991 forms 7103276 hits 64849723
+c heartbeat 2700s: nodes 1075690 states 928999 failed 197063 forms 7956673 hits 74779172
+c heartbeat 3000s: nodes 1192543 states 1015422 failed 221838 forms 8818839 hits 85356970
+c heartbeat 3300s: nodes 1317354 states 1106256 failed 250409 forms 9708426 hits 96700037
+c heartbeat 3600s: nodes 1441956 states 1201298 failed 276406 forms 10622606 hits 107713786
+c heartbeat 3900s: nodes 1563936 states 1297818 failed 298109 forms 11555251 hits 118227926
+c heartbeat 4200s: nodes 1677007 states 1387085 failed 321446 forms 12498299 hits 129648583
+c heartbeat 4500s: nodes 1795191 states 1473408 failed 352203 forms 13462614 hits 144365345
+c heartbeat 4800s: nodes 1915249 states 1568386 failed 379149 forms 14457131 hits 160583014
+c heartbeat 5100s: nodes 2029663 states 1662643 failed 401439 forms 15425609 hits 171358133
+c heartbeat 5400s: nodes 2138179 states 1751625 failed 424019 forms 16402983 hits 183074817
+c heartbeat 5700s: nodes 2245272 states 1843273 failed 445889 forms 17412608 hits 193895868
+c heartbeat 6000s: nodes 2360406 states 1941585 failed 466578 forms 18434550 hits 204934804
+c heartbeat 6300s: nodes 2477469 states 2041872 failed 490263 forms 19468688 hits 215446332
+c heartbeat 6600s: nodes 2589449 states 2136842 failed 511831 forms 20477042 hits 226658352
+c heartbeat 6900s: nodes 2696517 states 2230200 failed 532489 forms 21500973 hits 237159161
+c heartbeat 7200s: nodes 2791544 states 2310859 failed 553279 forms 22534408 hits 249626404
+c heartbeat 7500s: nodes 2896354 states 2399994 failed 574321 forms 23588880 hits 262517641
+c heartbeat 7800s: nodes 3001066 states 2490228 failed 597333 forms 24639182 hits 275200776
+c heartbeat 8100s: nodes 3120380 states 2598840 failed 618474 forms 25760278 hits 287589750
+c heartbeat 8400s: nodes 3238933 states 2704671 failed 637406 forms 26858161 hits 299995684
+c heartbeat 8700s: nodes 3358851 states 2810670 failed 658205 forms 27999253 hits 313448918
+c heartbeat 9000s: nodes 3473251 states 2914021 failed 677175 forms 29142748 hits 326839050
+c heartbeat 9300s: nodes 3590832 states 3022150 failed 693915 forms 30274055 hits 340295595
+c heartbeat 9600s: nodes 3733445 states 3155317 failed 711469 forms 31498078 hits 353306466
+c heartbeat 9900s: nodes 3873904 states 3286869 failed 728864 forms 32765886 hits 367564653
+c heartbeat 10200s: nodes 4025784 states 3430645 failed 744472 forms 33986036 hits 381234941
+c heartbeat 10500s: nodes 4143977 states 3540855 failed 764674 forms 35219465 hits 395648634
+c heartbeat 10800s: nodes 4247169 states 3629849 failed 786103 forms 36429040 hits 411939767
+c heartbeat 11100s: nodes 4370198 states 3744830 failed 802542 forms 37676650 hits 424857287
+c heartbeat 11400s: nodes 4491963 states 3860180 failed 817088 forms 38959505 hits 438399558
+c heartbeat 11700s: nodes 4614391 states 3975763 failed 833936 forms 40239390 hits 451659108
+c heartbeat 12000s: nodes 4717027 states 4071157 failed 854494 forms 41464347 hits 464740711
+c heartbeat 12300s: nodes 4818586 states 4165873 failed 876379 forms 42817452 hits 480749501
+c heartbeat 12600s: nodes 4927212 states 4268477 failed 895365 forms 44123749 hits 494640066
+c heartbeat 12900s: nodes 5039829 states 4376998 failed 916412 forms 45435311 hits 508744407
+c heartbeat 13200s: nodes 5171910 states 4506193 failed 934131 forms 46773655 hits 522418524
+c heartbeat 13500s: nodes 5310933 states 4642653 failed 951394 forms 48161034 hits 536225906
+c heartbeat 13800s: nodes 5439814 states 4770339 failed 965419 forms 49505755 hits 548986608
+c heartbeat 14100s: nodes 5561385 states 4890921 failed 978279 forms 50835196 hits 560649536
+c heartbeat 14400s: nodes 5677978 states 5006557 failed 990975 forms 52170400 hits 573070055
+c heartbeat 14700s: nodes 5801191 states 5128185 failed 1002875 forms 53516455 hits 585301806
+c heartbeat 15000s: nodes 5916446 states 5241639 failed 1015834 forms 54939727 hits 598853864
+c heartbeat 15300s: nodes 6025240 states 5349536 failed 1026323 forms 56303733 hits 612390489
+c heartbeat 15600s: nodes 6128567 states 5452048 failed 1034763 forms 57695879 hits 625412007
+c heartbeat 15900s: nodes 6224696 states 5545089 failed 1048901 forms 59166472 hits 642874204
+c heartbeat 16200s: nodes 6342981 states 5660831 failed 1059951 forms 60680773 hits 658241625
+c heartbeat 16500s: nodes 6450320 states 5766418 failed 1070623 forms 62308829 hits 675999463
+c heartbeat 16800s: nodes 6544581 states 5858099 failed 1083945 forms 63772549 hits 691378378
+c heartbeat 17100s: nodes 6638097 states 5948525 failed 1104151 forms 65333033 hits 708357229
+c heartbeat 17400s: nodes 6732664 states 6041275 failed 1121339 forms 66982188 hits 729055974
+c heartbeat 17700s: nodes 6844316 states 6150222 failed 1136532 forms 68744545 hits 751693335
+c heartbeat 18000s: nodes 6989342 states 6293515 failed 1148168 forms 70499493 hits 771871761
+c heartbeat 18300s: nodes 7128058 states 6430851 failed 1159350 forms 72251904 hits 791326294
+c heartbeat 18600s: nodes 7257365 states 6559354 failed 1175870 forms 73967228 hits 810932572
+c heartbeat 18900s: nodes 7369348 states 6670741 failed 1188607 forms 75755887 hits 832062140
+c heartbeat 19200s: nodes 7479864 states 6780693 failed 1200050 forms 77621511 hits 854796780
+c heartbeat 19500s: nodes 7642260 states 6942441 failed 1209986 forms 79549090 hits 879303352
+c heartbeat 19800s: nodes 7804566 states 7102934 failed 1215938 forms 81401150 hits 902586547
+c heartbeat 20100s: nodes 7867232 states 7162115 failed 1222596 forms 82864930 hits 917606624
+k=19: FAILS — exact game value = 18  (7870537 nodes, 20143.65s)
+=> rank_F2(<3,3,3>) >= 18 by the substitution game
+profile: total 20143.6s | canon 260120.3s thread-time (83115280 computed, 918778903 cache hits) | stabilizer 11366.9s | phi_reps 16.0s | quotient+flat 2501.5s | support 3506.0s | orbit-merge 477.6s | states lo=7164935 hi=1223454 stab_cache=4051869
+EXIT=0

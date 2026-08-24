@@ -484,6 +484,67 @@ fn elements(basis: &[V]) -> Vec<V> {
     out
 }
 
+/// per-side minimum-rank constraints on ALIVE products' original-space
+/// vectors (1 = trivial). Sound semantics: a product alive at (U,V,X)
+/// (contributing nonzero to the quotient) has side-s vector of rank >= r_s.
+/// Aliveness only shrinks as kills accumulate, so constraints persist.
+type Rmin = [u8; 3];
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct GState {
+    s: State,
+    rmin: Rmin,
+}
+
+/// rank of a 3x3 bit matrix (9-bit row-major)
+fn rank3(m: V) -> u8 {
+    let mut rows = [(m & 7) as u16, (m >> 3 & 7) as u16, (m >> 6 & 7) as u16];
+    let mut rk = 0u8;
+    for c in (0..3).rev() {
+        if let Some(pi) = (rk as usize..3).find(|&i| rows[i] >> c & 1 == 1) {
+            rows.swap(rk as usize, pi);
+            for i in 0..3 {
+                if i != rk as usize && rows[i] >> c & 1 == 1 {
+                    rows[i] ^= rows[rk as usize];
+                }
+            }
+            rk += 1;
+        }
+    }
+    rk
+}
+
+/// does the coset (ext \ cur) contain a representative with rank in [lo, hi]?
+/// (enumerates span(ext), skipping span(cur))
+fn coset_has_rank(ext: &[V], cur: &[V], lo: u8, hi: u8) -> bool {
+    let cur_r = rref(cur);
+    let in_cur = |mut v: V| {
+        for &o in &cur_r {
+            let p = 15 - o.leading_zeros();
+            if v >> p & 1 == 1 {
+                v ^= o;
+            }
+        }
+        v == 0
+    };
+    for code in 1u32..(1u32 << ext.len()) {
+        let mut v: V = 0;
+        for (i, &b) in ext.iter().enumerate() {
+            if code >> i & 1 == 1 {
+                v ^= b;
+            }
+        }
+        if v == 0 || in_cur(v) {
+            continue;
+        }
+        let r = rank3(v);
+        if r >= lo && r <= hi {
+            return true;
+        }
+    }
+    false
+}
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct State {
     u: Vec<V>,
@@ -506,6 +567,22 @@ impl State {
             _ => State { u: self.u.clone(), v: self.v.clone(), x: e },
         }
     }
+}
+
+/// every coset extension U + <v>, v in supp (no functional filter)
+fn all_extensions(supp_el: &[V], cur: &[V]) -> Vec<Vec<V>> {
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for &v in supp_el {
+        let mut rows = cur.to_vec();
+        rows.push(v);
+        let e = rref(&rows);
+        if e.len() == cur.len() || !seen.insert(e.clone()) {
+            continue;
+        }
+        out.push(e);
+    }
+    out
 }
 
 /// the adversary's options for (side, phi): U + <v>, v in supp, phi.v = 1
@@ -894,8 +971,8 @@ fn check_symmetry(sym: &Sym, t0: &Tensor) {
 #[derive(Clone)]
 struct Proof {
     value: u32, // proven lower bound
-    choice: u8, // 0 = leaf, 1/2/3 = kill on A/B/C
-    phi: V,
+    choice: u8, // 0 = leaf, 1/2/3 = kill on A/B/C, 4/5/6 = split on A/B/C
+    phi: V,     // kill: the functional; split: the threshold m (in the low bits)
     leaf: [usize; 3],
     dims: (usize, usize, usize),
 }
@@ -905,6 +982,7 @@ struct Game {
     d: usize,
     rank_ub: u32,
     coset: bool,
+    splits: bool, // rank-profile case splits (refinement 2)
     want_cert: bool, // when false, skip iso bookkeeping (memory)
     koszul: usize, // 0 = off; else max p for Koszul flattening leaves
     stay: bool,
@@ -914,10 +992,10 @@ struct Game {
     stab_cache: Mutex<HashMap<State, Vec<(usize, usize, usize)>>>,
     canon_cache: Mutex<HashMap<State, (State, (usize, usize, usize))>>,
     isos: Mutex<HashMap<State, (State, (usize, usize, usize))>>, // raw child -> (canonical, g)
-    memo: HashMap<State, Proof>,
-    lo: Mutex<HashMap<State, u32>>,
-    hi: Mutex<HashMap<State, u32>>,
-    proofs: Mutex<HashMap<State, Proof>>,
+    memo: HashMap<GState, Proof>,
+    lo: Mutex<HashMap<GState, u32>>,
+    hi: Mutex<HashMap<GState, u32>>,
+    proofs: Mutex<HashMap<GState, Proof>>,
     prof: [AtomicU64; 6], // nanoseconds: canon, stabilizer, phi_reps, quotient+flattening, support, orbit-merge
     n_canon: AtomicU64,
     n_canon_hit: AtomicU64,
@@ -936,10 +1014,11 @@ fn ns(t: Instant) -> u64 {
 
 impl Game {
     // ---------------- exact game (small n) ----------------
-    fn val(&mut self, s: &State) -> u32 {
-        if let Some(n) = self.memo.get(s) {
+    fn val(&mut self, gs: &GState) -> u32 {
+        if let Some(n) = self.memo.get(gs) {
             return n.value;
         }
+        let s = gs.s.clone();
         let t = quotient(&self.t0, &s.u, &s.v, &s.x);
         let leaf = flattenings(&t);
         let mut best = *leaf.iter().max().unwrap() as u32;
@@ -961,6 +1040,7 @@ impl Game {
             if cur.len() >= self.d {
                 continue;
             }
+            let rmin_s = gs.rmin[side as usize - 1];
             let supp = support(&t, side, cur, self.d);
             let supp_el = elements(&supp);
             let (ann, _) = annihilator_free(cur, self.d);
@@ -970,7 +1050,10 @@ impl Game {
                 }
                 let mut worst = u32::MAX;
                 for e in forced_extensions(&supp_el, cur, phi) {
-                    let cv = self.val(&s.with(side, e));
+                    if rmin_s > 1 && !coset_has_rank(&e, cur, rmin_s, 3) {
+                        continue; // no viable representative: not a legal product coset
+                    }
+                    let cv = self.val(&GState { s: s.with(side, e), rmin: gs.rmin });
                     worst = worst.min(cv);
                     if 1 + worst <= best {
                         break;
@@ -982,8 +1065,32 @@ impl Game {
                     best_phi = phi;
                 }
             }
+            // rank-profile split: some alive product has rank <= m (kill it,
+            // adversary over rank-windowed cosets, no phi), or none does
+            // (ratchet rmin to m+1 free of charge)
+            if self.splits {
+                for m in rmin_s..=2 {
+                    let mut b1 = u32::MAX; // min over B1 children
+                    for e in all_extensions(&supp_el, cur) {
+                        if !coset_has_rank(&e, cur, rmin_s, m) {
+                            continue;
+                        }
+                        let cv = self.val(&GState { s: s.with(side, e), rmin: gs.rmin });
+                        b1 = b1.min(cv);
+                    }
+                    let mut r2 = gs.rmin;
+                    r2[side as usize - 1] = m + 1;
+                    let b2 = self.val(&GState { s: s.clone(), rmin: r2 });
+                    let opt = if b1 == u32::MAX { b2 } else { b2.min(1 + b1) };
+                    if opt > best {
+                        best = opt;
+                        choice = 3 + side;
+                        best_phi = m as V;
+                    }
+                }
+            }
         }
-        self.memo.insert(s.clone(), Proof { value: best, choice, phi: best_phi, leaf, dims });
+        self.memo.insert(gs.clone(), Proof { value: best, choice, phi: best_phi, leaf, dims });
         best
     }
 
@@ -1021,27 +1128,27 @@ impl Game {
     }
 
     // ---------------- decision procedure: val(s) >= k ? ----------------
-    fn record(&self, s: &State, p: Proof) {
+    fn record(&self, s: &GState, p: Proof) {
         let mut pr = self.proofs.lock().unwrap();
         let cur = pr.get(s).map(|q| q.value).unwrap_or(0);
         if p.value > cur {
             pr.insert(s.clone(), p);
         }
     }
-    fn get_lo(&self, s: &State) -> u32 {
+    fn get_lo(&self, s: &GState) -> u32 {
         *self.lo.lock().unwrap().get(s).unwrap_or(&0)
     }
-    fn set_lo(&self, s: &State, v: u32) {
+    fn set_lo(&self, s: &GState, v: u32) {
         let mut m = self.lo.lock().unwrap();
         let e = m.entry(s.clone()).or_insert(0);
         if v > *e {
             *e = v;
         }
     }
-    fn get_hi(&self, s: &State) -> u32 {
+    fn get_hi(&self, s: &GState) -> u32 {
         *self.hi.lock().unwrap().get(s).unwrap_or(&u32::MAX)
     }
-    fn set_hi(&self, s: &State, v: u32) {
+    fn set_hi(&self, s: &GState, v: u32) {
         let mut m = self.hi.lock().unwrap();
         let e = m.entry(s.clone()).or_insert(u32::MAX);
         if v < *e {
@@ -1049,15 +1156,16 @@ impl Game {
         }
     }
 
-    fn prove(&self, s: &State, k: u32) -> bool {
+    fn prove(&self, gs: &GState, k: u32) -> bool {
+        let s = &gs.s;
         if k == 0 {
             return true;
         }
-        let lo = self.get_lo(s);
+        let lo = self.get_lo(gs);
         if k <= lo {
             return true;
         }
-        let hi = self.get_hi(s);
+        let hi = self.get_hi(gs);
         if k >= hi {
             return false;
         }
@@ -1100,20 +1208,20 @@ impl Game {
             self.prof[4].fetch_add(ns(tk), Ordering::Relaxed);
         }
         if lb > lo {
-            self.set_lo(s, lb);
-            self.record(s, Proof { value: lb, choice: 0, phi: 0, leaf, dims });
+            self.set_lo(gs, lb);
+            self.record(gs, Proof { value: lb, choice: 0, phi: 0, leaf, dims });
         }
         if lb >= k {
             return true;
         }
         if lb == 0 {
-            self.set_hi(s, 1);
+            self.set_hi(gs, 1);
             return false;
         }
         let ub = (dims.0 * dims.1).min(dims.0 * dims.2).min(dims.1 * dims.2) as u32;
         let ub = ub.min(self.rank_ub);
         if k > ub {
-            self.set_hi(s, ub + 1);
+            self.set_hi(gs, ub + 1);
             return false;
         }
         // prover: sides ordered by free support dimension (largest first), phi by weight
@@ -1149,6 +1257,7 @@ impl Game {
         let is_root = s.u.is_empty() && s.v.is_empty() && s.x.is_empty();
         let stab = if self.sym.is_some() { self.stabilizer(s) } else { vec![] };
         for (_, side, supp, cur) in sides {
+            let rmin_s = gs.rmin[side as usize - 1];
             let supp_el = elements(&supp);
             let (ann, _) = annihilator_free(&cur, self.d);
             let mut phis: Vec<V> = elements(&ann).into_iter().filter(|&p| p != 0).collect();
@@ -1160,7 +1269,10 @@ impl Game {
                 self.prof[2].fetch_add(ns(tp), Ordering::Relaxed);
             }
             for phi in phis {
-                let exts = forced_extensions(&supp_el, &cur, phi);
+                let mut exts = forced_extensions(&supp_el, &cur, phi);
+                if rmin_s > 1 {
+                    exts.retain(|e| coset_has_rank(e, &cur, rmin_s, 3));
+                }
                 // adversary: hardest children first (smallest quick lower bound)
                 // group the raw children by the parent's stabilizer orbits: the
                 // extension cur + <v> maps under a stabilizer element t to
@@ -1248,7 +1360,7 @@ impl Game {
                 } else {
                     reps = exts.into_iter().map(|e| { let raw = s.with(side, e); (raw.clone(), vec![(raw, (0, 0, 0))]) }).collect();
                 }
-                let mut kids: Vec<(u32, State)> = Vec::new();
+                let mut kids: Vec<(u32, GState)> = Vec::new();
                 for (rep, members) in reps {
                     let c = self.canon(&rep);
                     if self.want_cert {
@@ -1262,17 +1374,18 @@ impl Game {
                             }
                         }
                     }
-                    let known = self.get_lo(&c);
+                    let gc = GState { s: c, rmin: gs.rmin };
+                    let known = self.get_lo(&gc);
                     let q = if known >= k - 1 {
                         known
                     } else {
                         let tq = Instant::now();
-                        let tc = quotient(&self.t0, &c.u, &c.v, &c.x);
+                        let tc = quotient(&self.t0, &gc.s.u, &gc.s.v, &gc.s.x);
                         let f = *flattenings(&tc).iter().max().unwrap() as u32;
                         self.prof[3].fetch_add(ns(tq), Ordering::Relaxed);
                         f
                     };
-                    kids.push((q, c));
+                    kids.push((q, gc));
                 }
                 kids.sort_by_key(|(q, _)| *q);
                 kids.dedup_by(|a, b| a.1 == b.1);
@@ -1295,64 +1408,133 @@ impl Game {
                     return false;
                 }
                 if all_ok {
-                    self.set_lo(s, k);
-                    self.record(s, Proof { value: k, choice: side, phi, leaf, dims });
+                    self.set_lo(gs, k);
+                    self.record(gs, Proof { value: k, choice: side, phi, leaf, dims });
                     return true;
                 }
             }
+            // rank-profile split (refinement 2): either some alive product's
+            // side-s vector has rank in [rmin_s, m] — kill one, adversary over
+            // ALL rank-windowed support cosets (no functional) — or none does
+            // and rmin_s ratchets to m+1 free of charge.
+            if self.splits {
+                for m in rmin_s..=2 {
+                    let mut b1_kids: Vec<GState> = Vec::new();
+                    let mut viable = true;
+                    for e in all_extensions(&supp_el, &cur) {
+                        if !coset_has_rank(&e, &cur, rmin_s, m) {
+                            continue;
+                        }
+                        let c = self.canon(&s.with(side, e));
+                        b1_kids.push(GState { s: c, rmin: gs.rmin });
+                    }
+                    b1_kids.sort_by_key(|g| self.get_lo(g));
+                    b1_kids.dedup_by(|a, b| a == b);
+                    for g in &b1_kids {
+                        if !self.prove(g, k - 1) {
+                            viable = false;
+                            break;
+                        }
+                    }
+                    if self.capped.load(Ordering::Relaxed) {
+                        return false;
+                    }
+                    if !viable {
+                        continue;
+                    }
+                    let mut r2 = gs.rmin;
+                    r2[side as usize - 1] = m + 1;
+                    let b2 = GState { s: s.clone(), rmin: r2 };
+                    if self.prove(&b2, k) {
+                        self.set_lo(gs, k);
+                        self.record(gs, Proof { value: k, choice: 3 + side, phi: m as V, leaf, dims });
+                        return true;
+                    }
+                }
+            }
         }
-        self.set_hi(s, k);
+        self.set_hi(gs, k);
         false
     }
 }
 
-fn key(s: &State) -> String {
+fn key(g: &GState) -> String {
     let f = |v: &[V]| v.iter().map(|x| format!("{x:x}")).collect::<Vec<_>>().join(",");
-    format!("{}|{}|{}", f(&s.u), f(&s.v), f(&s.x))
+    format!("{}|{}|{}|{},{},{}", f(&g.s.u), f(&g.s.v), f(&g.s.x), g.rmin[0], g.rmin[1], g.rmin[2])
 }
 
 /// certificate DAG from the proof records: chosen side/phi at prover nodes,
 /// ALL forced children at adversary nodes, leaf facts
-fn certificate(g: &Game, n: usize, root: &State, proofs: &HashMap<State, Proof>) -> String {
+fn certificate(g: &Game, n: usize, root: &GState, proofs: &HashMap<GState, Proof>) -> String {
     let mut out = String::new();
     let mut seen = HashSet::new();
     let mut stack = vec![root.clone()];
     let mut lines = Vec::new();
-    while let Some(s) = stack.pop() {
-        if !seen.insert(key(&s)) {
+    while let Some(gsn) = stack.pop() {
+        if !seen.insert(key(&gsn)) {
             continue;
         }
-        let node = proofs.get(&s).expect("proof record missing");
+        let s = &gsn.s;
+        let node = proofs.get(&gsn).expect("proof record missing");
         let mut line = String::new();
         write!(
             line,
             "{{\"key\":\"{}\",\"dims\":[{},{},{}],\"value\":{},\"choice\":{},\"phi\":{},\"leaf\":[{},{},{}]",
-            key(&s), node.dims.0, node.dims.1, node.dims.2, node.value, node.choice, node.phi, node.leaf[0], node.leaf[1], node.leaf[2]
+            key(&gsn), node.dims.0, node.dims.1, node.dims.2, node.value, node.choice, node.phi, node.leaf[0], node.leaf[1], node.leaf[2]
         )
         .unwrap();
-        if node.choice != 0 {
-            let cur = s.side(node.choice);
-            let t = quotient(&g.t0, &s.u, &s.v, &s.x);
-            let supp = support(&t, node.choice, cur, g.d);
+        let emit_children = |g: &Game, exts: Vec<Vec<V>>, side: u8, rmin: Rmin, stack: &mut Vec<GState>| -> Vec<String> {
             let mut ks = Vec::new();
-            for e in forced_extensions(&elements(&supp), cur, node.phi) {
-                let child = s.with(node.choice, e);
+            for e in exts {
+                let child = s.with(side, e);
                 let iso = g.isos.lock().unwrap().get(&child).cloned();
                 match iso {
                     Some((c, gg)) if g.sym.is_some() => {
                         let sym = g.sym.as_ref().unwrap();
+                        let gc = GState { s: c, rmin };
                         ks.push(format!(
                             "{{\"raw\":\"{}\",\"canon\":\"{}\",\"g\":[{},{},{}]}}",
-                            key(&child), key(&c), sym.gl[gg.0], sym.gl[gg.1], sym.gl[gg.2]
+                            key(&GState { s: child, rmin }), key(&gc), sym.gl[gg.0], sym.gl[gg.1], sym.gl[gg.2]
                         ));
-                        stack.push(c);
+                        stack.push(gc);
                     }
                     _ => {
-                        ks.push(format!("{{\"raw\":\"{}\"}}", key(&child)));
-                        stack.push(child);
+                        let gc = GState { s: child, rmin };
+                        ks.push(format!("{{\"raw\":\"{}\"}}", key(&gc)));
+                        stack.push(gc);
                     }
                 }
             }
+            ks
+        };
+        if node.choice >= 4 {
+            // split node: B1 = rank-windowed cosets (no functional); B2 = ratcheted rmin
+            let side = node.choice - 3;
+            let m = node.phi as u8;
+            let cur = s.side(side);
+            let t = quotient(&g.t0, &s.u, &s.v, &s.x);
+            let supp = support(&t, side, cur, g.d);
+            let rs = gsn.rmin[side as usize - 1];
+            let exts: Vec<Vec<V>> = all_extensions(&elements(&supp), cur)
+                .into_iter()
+                .filter(|e| coset_has_rank(e, cur, rs, m))
+                .collect();
+            let ks = emit_children(g, exts, side, gsn.rmin, &mut stack);
+            let mut r2 = gsn.rmin;
+            r2[side as usize - 1] = m + 1;
+            let b2 = GState { s: s.clone(), rmin: r2 };
+            write!(line, ",\"b1\":[{}],\"b2\":\"{}\"", ks.join(","), key(&b2)).unwrap();
+            stack.push(b2);
+        } else if node.choice != 0 {
+            let cur = s.side(node.choice);
+            let t = quotient(&g.t0, &s.u, &s.v, &s.x);
+            let supp = support(&t, node.choice, cur, g.d);
+            let rs = gsn.rmin[node.choice as usize - 1];
+            let mut exts = forced_extensions(&elements(&supp), cur, node.phi);
+            if rs > 1 {
+                exts.retain(|e| coset_has_rank(e, cur, rs, 3));
+            }
+            let ks = emit_children(g, exts, node.choice, gsn.rmin, &mut stack);
             write!(line, ",\"children\":[{}]", ks.join(",")).unwrap();
         }
         line.push('}');
@@ -1389,6 +1571,7 @@ fn main() {
         d,
         rank_ub,
         coset,
+        splits: flag("--splits"),
         want_cert: get("--cert").is_some(),
         koszul: get("--koszul").and_then(|v| v.parse().ok()).unwrap_or(0),
         stay: flag("--stay"),
@@ -1416,7 +1599,7 @@ fn main() {
         time_cap: get("--time").and_then(|v| v.parse().ok()).unwrap_or(600.0),
         capped: AtomicBool::new(false),
     };
-    let root = State { u: vec![], v: vec![], x: vec![] };
+    let root = GState { s: State { u: vec![], v: vec![], x: vec![] }, rmin: [1, 1, 1] };
     if flag("--root-bounds") {
         let t = &g.t0;
         println!(

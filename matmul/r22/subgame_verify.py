@@ -330,7 +330,46 @@ def koszul_bound(dims, t, pmax):
 
 def parse_key(k):
     parts = k.split("|")
-    return tuple(tuple(int(x, 16) for x in p.split(",")) if p else () for p in parts)
+    geo = tuple(tuple(int(x, 16) for x in p.split(",")) if p else () for p in parts[:3])
+    rmin = tuple(int(x) for x in parts[3].split(",")) if len(parts) > 3 else (1, 1, 1)
+    return geo, rmin
+
+
+def rank3(m):
+    rows = [m & 7, m >> 3 & 7, m >> 6 & 7]
+    return rank(rows)
+
+
+def coset_has_rank(ext, cur, lo, hi):
+    """does the coset (span(ext) minus span(cur)) contain a vector of
+    3x3-rank in [lo, hi]?"""
+    cur_r = rref(cur)
+    def in_cur(v):
+        for o in cur_r:
+            p = o.bit_length() - 1
+            if v >> p & 1:
+                v ^= o
+        return v == 0
+    for code in range(1, 1 << len(ext)):
+        v = 0
+        for i, b in enumerate(ext):
+            if code >> i & 1:
+                v ^= b
+        if v == 0 or in_cur(v):
+            continue
+        if lo <= rank3(v) <= hi:
+            return True
+    return False
+
+
+def all_extensions(supp_el, cur):
+    seen = set()
+    for v in supp_el:
+        r = rref(list(cur) + [v])
+        if len(r) == len(cur):
+            continue
+        seen.add(r)
+    return seen
 
 
 def annihilator_free(u, d):
@@ -414,7 +453,7 @@ def main(path):
     assert root in nodes, "root missing"
     checked = 0
     for k, nd in nodes.items():
-        u, v, x = parse_key(k)
+        (u, v, x), rmin = parse_key(k)
         dims, t = quotient(d, t0, list(u), list(v), list(x))
         assert list(dims) == nd["dims"], f"dims mismatch at {k}"
         fl = flattenings(dims, t)
@@ -427,6 +466,55 @@ def main(path):
             leaf_bound = max(leaf_bound, koszul_bound(dims, t, cert["koszul"]))
         if nd["choice"] == 0:
             assert value <= leaf_bound, f"leaf claim too strong at {k}: {value} > {leaf_bound}"
+        elif nd["choice"] >= 4:
+            # rank-profile split on side s with threshold m: EITHER some alive
+            # product's side-s vector (original space) has rank in
+            # [rmin_s, m] — kill it: ALL support cosets containing such a
+            # representative must appear as B1 children (no functional) — OR
+            # none does: the same geometry with rmin_s := m+1 (B2). The
+            # claimed value must be <= min(1 + min B1 claims, B2 claim).
+            assert max(fl) > 0, f"split on the zero tensor at {k}"
+            side = nd["choice"] - 3
+            m = nd["phi"]
+            rs = rmin[side - 1]
+            assert rs <= m <= 2, f"bad split threshold at {k}"
+            cur = [u, v, x][side - 1]
+            supp = support(dims, t, side, list(cur), d)
+            kids = {}
+            for ch in nd["b1"]:
+                if isinstance(ch, str):
+                    kids[ch] = (ch, None)
+                else:
+                    kids[ch["raw"]] = (ch.get("canon", ch["raw"]), ch.get("g"))
+            b1_worst = None
+            for e in all_extensions(elements(supp), list(cur)):
+                if not coset_has_rank(list(e), list(cur), rs, m):
+                    continue
+                parts = [list(u), list(v), list(x)]
+                parts[side - 1] = list(e)
+                ck = "|".join(",".join(format(r, "x") for r in pp) for pp in parts)
+                ck += "|" + ",".join(str(r) for r in rmin)
+                assert ck in kids, f"missing B1 child {ck} at {k}"
+                target, gel = kids[ck]
+                assert target in nodes, f"B1 child node {target} missing at {k}"
+                if gel is not None:
+                    P, Q, R = gel
+                    assert is_symmetry(n, P, Q, R), f"bad iso at {k}"
+                    img = apply_sandwich(P, Q, R, (tuple(e) if side == 1 else u, tuple(e) if side == 2 else v, tuple(e) if side == 3 else x), d)
+                    timg = parse_key(target)
+                    assert img == timg[0] and timg[1] == rmin, f"B1 iso edge does not hold at {k}"
+                else:
+                    assert target == ck
+                cv = nodes[target]["value"]
+                b1_worst = cv if b1_worst is None else min(b1_worst, cv)
+            r2 = list(rmin); r2[side - 1] = m + 1
+            b2k = nd["b2"]
+            assert b2k in nodes, f"B2 node missing at {k}"
+            (bu, bv, bx), brm = parse_key(b2k)
+            assert (bu, bv, bx) == (u, v, x) and list(brm) == r2, f"B2 key mismatch at {k}"
+            b2v = nodes[b2k]["value"]
+            bound = b2v if b1_worst is None else min(1 + b1_worst, b2v)
+            assert value <= bound, f"split claim too strong at {k}: {value} > {bound}"
         else:
             assert max(fl) > 0, f"kill move on the zero tensor at {k} (no product to kill)"
             side = nd["choice"]
@@ -444,17 +532,21 @@ def main(path):
                     kids[ch["raw"]] = (ch.get("canon", ch["raw"]), ch.get("g"))
             worst = None
             for e in exts:
+                if rmin[side - 1] > 1 and not coset_has_rank(list(e), list([u, v, x][side - 1]), rmin[side - 1], 3):
+                    continue  # not a legal product coset under the rank constraint
                 parts = [u, v, x]
                 parts[side - 1] = e
                 ck = "|".join(",".join(format(r, "x") for r in p) for p in parts)
+                ck += "|" + ",".join(str(r) for r in rmin)
                 assert ck in kids, f"missing child {ck} at {k}"
                 target, gel = kids[ck]
                 assert target in nodes, f"child node {target} missing at {k}"
                 if gel is not None:
                     P, Q, R = gel
                     assert is_symmetry(n, P, Q, R), f"g = {gel} is not a symmetry of the tensor"
-                    img = apply_sandwich(P, Q, R, parse_key(ck), d)
-                    assert img == parse_key(target), f"iso edge {ck} -> {target} does not hold"
+                    img = apply_sandwich(P, Q, R, parse_key(ck)[0], d)
+                    timg = parse_key(target)
+                    assert img == timg[0] and timg[1] == rmin, f"iso edge {ck} -> {target} does not hold"
                 else:
                     assert target == ck
                 cv = nodes[target]["value"]

@@ -1,0 +1,21 @@
+symmetry tables built (0.0s); sandwich action verified on the tensor
+k=9: PROVED val >= 9  (+0.00s, 1 nodes total, 1 states)
+k=10: PROVED val >= 10  (+0.00s, 2 nodes total, 1 states)
+k=11: PROVED val >= 11  (+0.00s, 2 nodes total, 1 states)
+k=12: PROVED val >= 12  (+0.00s, 2 nodes total, 1 states)
+k=13: PROVED val >= 13  (+0.00s, 2 nodes total, 1 states)
+k=14: PROVED val >= 14  (+0.00s, 2 nodes total, 1 states)
+k=15: PROVED val >= 15  (+0.04s, 13 nodes total, 11 states)
+k=16: PROVED val >= 16  (+47.93s, 10992 nodes total, 8738 states)
+k=17: PROVED val >= 17  (+201.86s, 69304 nodes total, 58645 states)
+c heartbeat 300s: nodes 87604 states 70155 failed 23467 forms 535941 hits 6737303
+c heartbeat 600s: nodes 200022 states 161649 failed 48524 forms 1231394 hits 15679468
+c heartbeat 900s: nodes 309918 states 256996 failed 73628 forms 2101948 hits 25131128
+c heartbeat 1200s: nodes 422876 states 364512 failed 94629 forms 3002026 hits 33547680
+c heartbeat 1500s: nodes 560942 states 499389 failed 120999 forms 3948262 hits 42160736
+k=18: PROVED val >= 18  (+1503.40s, 687499 nodes total, 625438 states)
+stopping at --to 18
+=> rank_F2(<3,3,3>) >= 18 by the substitution game
+certificate: matmul/r22/subgame_3x3_18.json (103173621 bytes)
+EXIT=0
+VERIFIED: 175932 states replayed from scratch; rank_F2(<3,3,3>) >= 18

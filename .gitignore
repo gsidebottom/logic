@@ -100,3 +100,4 @@ matmul/dps48/orbit_perm/
 matmul/r22/*.sr
 matmul/r22/subgame_3x3_17.json
 matmul/r22/subgame_3x3_ab_koszul.json
+matmul/r22/subgame_3x3_18.json

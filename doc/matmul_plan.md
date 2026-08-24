@@ -295,8 +295,10 @@ the two source papers for this track):
   up are: (a) --sides ABC (three-sided strategies, the one dimension
   this verdict does not cover; run queued), (b) refinement 2
   (rank-profile case splits) and 3 (coset/alignment structure as
-  dynamic rules). The 18-certificate re-run (--to 18 --cert) is
-  queued for replay + commit.
+  dynamic rules). The 18-certificate re-run
+  VERIFIED (2026-08-24 01:50): 175,932-state certificate
+  (subgame_3x3_18.json.gz) replays from scratch — **rank_F2(<3,3,3>)
+  >= 18 is now a certified bound**, one short of Blaser.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

@@ -340,6 +340,19 @@ the two source papers for this track):
   re-verification of his certificate, Lean kernel-checked replay
   (his verifier is auditable but unverified), pushing 21 with a
   merged rule set, and the coset/alignment machinery.
+  **21-push de-risk (2026-08-24 evening)**: (a) his >= 20 certificate
+  REPRODUCED locally (verifier built with bazel: 'OK ... lower bound
+  is 20', ~2 s); (b) Koszul-graft experiment NEGATIVE and decisive
+  (matmul/r22/koszul_vs_wang.py): our Koszul bound beats his recorded
+  orbit bounds on 1 of 496 orbits (dim-6 index 70: 13 -> 14), and at
+  the load-bearing dims 0-4 sits at 14-15 vs his backtracking's
+  17-20 — his recursive backtracking dominates all our leaf bounds.
+  Revised 21 levers: (i) budget probe — rerun his DP at dims 0-2 with
+  enlarged backtracking_step_limit / forced_product iterations to
+  learn whether 21-at-root is budget-limited; (ii) symmetry probe —
+  whether his backtracking exploits B/C-side symmetry (our sandwich
+  machinery) inside the recursion; (iii) new techniques (coset/
+  alignment; multi-mode forced product).
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

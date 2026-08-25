@@ -362,8 +362,16 @@ the two source papers for this track):
   (his caches; watchdog added), but 30x budget with 2M-entry caches
   lifted EVERY dim-2 orbit: shipped {17x1,18x13} -> {18x12,19x2} in
   ~55 min — the near-root layer is BUDGET-LIMITED, not fundamental.
-  Cascade (dims 1-0 on the improved layer, root currently 20) is
-  running; if the root lifts, 21 is a compute problem.
+  Cascade dims 1-0 on the enriched dim-2 layer alone: root UNCHANGED
+  at 20 (dim-1 stays 19; with only 2/14 dim-2 orbits at 19 the root
+  arithmetic 1+19 cannot exceed 20) — as expected, the lift must be a
+  wave from the deep layers (shipped maxima: dim-4 17, dim-3 18).
+  FULL-depth cascade (all dims, 30x budget, 2M caches, 24 h cap)
+  launched 2026-08-24 23:07; if the wave carries the root to 21, the
+  bound is a compute problem and the scale-out (rented cores /
+  bigger budgets) is priced; if the root stalls at 20 with the full
+  wave, the fifth-technique design (B-side substitution with our
+  sandwich canonicalization inside his DFS) takes over.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

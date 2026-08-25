@@ -366,12 +366,24 @@ the two source papers for this track):
   at 20 (dim-1 stays 19; with only 2/14 dim-2 orbits at 19 the root
   arithmetic 1+19 cannot exceed 20) — as expected, the lift must be a
   wave from the deep layers (shipped maxima: dim-4 17, dim-3 18).
-  FULL-depth cascade (all dims, 30x budget, 2M caches, 24 h cap)
-  launched 2026-08-24 23:07; if the wave carries the root to 21, the
-  bound is a compute problem and the scale-out (rented cores /
-  bigger budgets) is priced; if the root stalls at 20 with the full
-  wave, the fifth-technique design (B-side substitution with our
-  sandwich canonicalization inside his DFS) takes over.
+  FULL-depth cascade VERDICT (2026-08-25 15:13, 16.1 h; certificate
+  VERIFIED by his verifier after repairing my output_path mistake —
+  a fresh --output_path starts an EMPTY .btp archive, orphaning the
+  shipped traces of unimproved orbits; merged per-orbit, 20 new
+  traces + 238 shipped, matmul/r22 merge note): the wave lifted the
+  WHOLE lattice — dim 4 max 17 x73, dim 3 {17x23, 18x41}, dim 2
+  {18x6, 19x8} (shipped {17x1, 18x13}), dim 1 all 19 — but the ROOT
+  HELD AT 20. A 21 root needs dim-1 at 20 needs all 14 dim-2
+  branches at 19 (8/14 are). Returns per budget multiple are
+  decaying near the root (30x: dim-2 all +1 initially, full wave
+  8/14 to 19, root +0). Reading: not provably fundamental, but
+  budget-only scaling is in diminishing returns — the fork is
+  ~10-30x more budget (days; REQUIRES the memory fixes: inline map
+  keys, malloc_zone_pressure_relief between orbits, byte-budgeted
+  caches, per-dim process runs — footprint hit 100 GB from allocator
+  retention) vs the fifth technique (B-side substitution inside his
+  DFS with our sandwich canonicalization; his framework is A-side
+  only and our measurements show mixed-side is strictly stronger).
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

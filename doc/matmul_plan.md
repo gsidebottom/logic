@@ -353,6 +353,17 @@ the two source papers for this track):
   whether his backtracking exploits B/C-side symmetry (our sandwich
   machinery) inside the recursion; (iii) new techniques (coset/
   alignment; multi-mode forced product).
+  **Probe results (2026-08-24 23:00)**: (ii) READ — his backtracking
+  is A-side-only substitution chains (rank >= |S| + orbit bound);
+  NO technique constrains B/C (forced product only cyclic-transposes
+  at leaves) — with our measured A-only=16 vs mixed=18, B-side
+  substitution inside the recursion is the leading fifth-technique
+  candidate. (i) POSITIVE at dim 2: 200x budget OOM-killed at 72 min
+  (his caches; watchdog added), but 30x budget with 2M-entry caches
+  lifted EVERY dim-2 orbit: shipped {17x1,18x13} -> {18x12,19x2} in
+  ~55 min — the near-root layer is BUDGET-LIMITED, not fundamental.
+  Cascade (dims 1-0 on the improved layer, root currently 20) is
+  running; if the root lifts, 21 is a compute problem.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

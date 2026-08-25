@@ -1,0 +1,37 @@
+I20260824 22:03:55.777626 0x1f0ad5d80 proto_io.h:20] Reading from probe/cert_probe2.pb.txt ...
+I20260824 22:03:55.779530 0x1f0ad5d80 proto_io.h:47] Read 15528 bytes
+I20260824 22:03:55.781569 0x1f0ad5d80 rank_lower_bound_computer.h:191] Processing dim=2, count=14
+I20260824 22:15:53.169190 0x170377000 rank_lower_bound_computer.h:211] ProcessOrbitsAtDim P1: 1 / 14 = 7.14%
+I20260824 22:25:50.430917 0x1713a7000 rank_lower_bound_computer.h:211] ProcessOrbitsAtDim P1: 2 / 14 = 14.29%
+I20260824 22:27:20.840368 0x1717b3000 rank_lower_bound_computer.h:211] ProcessOrbitsAtDim P1: 3 / 14 = 21.43%
+I20260824 22:31:47.054527 0x170b8f000 rank_lower_bound_computer.h:211] ProcessOrbitsAtDim P1: 4 / 14 = 28.57%
+I20260824 22:32:11.300042 0x170783000 rank_lower_bound_computer.h:211] ProcessOrbitsAtDim P1: 5 / 14 = 35.71%
+I20260824 22:34:19.825852 0x171bbf000 rank_lower_bound_computer.h:211] ProcessOrbitsAtDim P1: 6 / 14 = 42.86%
+I20260824 22:34:41.280108 0x170f9b000 rank_lower_bound_computer.h:211] ProcessOrbitsAtDim P1: 7 / 14 = 50.00%
+I20260824 22:37:21.463711 0x16f753000 rank_lower_bound_computer.h:204] Better LB for index=478: 17->18
+I20260824 22:37:21.464331 0x16f753000 rank_lower_bound_computer.h:211] ProcessOrbitsAtDim P1: 9 / 14 = 64.29%
+I20260824 22:40:41.298918 0x1723d7000 rank_lower_bound_computer.h:211] ProcessOrbitsAtDim P1: 11 / 14 = 78.57%
+I20260824 22:43:43.079486 0x1713a7000 rank_lower_bound_computer.h:211] ProcessOrbitsAtDim P1: 12 / 14 = 85.71%
+I20260824 22:43:43.093771 0x1727e3000 rank_lower_bound_computer.h:204] Better LB for index=489: 18->19
+I20260824 22:54:06.520497 0x171fcb000 rank_lower_bound_computer.h:204] Better LB for index=486: 18->19
+I20260824 22:54:06.521551 0x171fcb000 rank_lower_bound_computer.h:211] ProcessOrbitsAtDim P1: 14 / 14 = 100.00%
+I20260824 22:54:06.521604 0x1f0ad5d80 rank_lower_bound_computer.h:216] ProcessOrbitsAtDim P2...
+I20260824 22:54:06.521728 0x1f0ad5d80 rank_lower_bound_computer.h:228] ProcessOrbitsAtDim P3...
+I20260824 22:54:44.530577 0x1f0ad5d80 rank_lower_bound_computer.h:255] ProcessOrbitsAtDim done. duration=3048.8
+I20260824 22:54:44.575663 0x1f0ad5d80 proto_io.h:56] Writing to probe/cert_probe2_out.pb.txt ...
+I20260824 22:54:44.576520 0x1f0ad5d80 proto_io.h:79] Written 15492 bytes
+I20260824 22:54:44.782566 0x1f0ad5d80 rank_lower_bound_main.cc:121] UNCONSTRAINED TENSOR RANK LOWER BOUND: 20
+I20260824 22:54:44.782584 0x1f0ad5d80 rank_lower_bound_main.cc:124] Done. Wrote probe/cert_probe2_out.pb.txt
+EXIT=0
+  index: 490
+  rank_lower_bound: 18
+  index: 491
+  rank_lower_bound: 18
+  index: 492
+  rank_lower_bound: 19
+  index: 493
+  rank_lower_bound: 19
+  index: 494
+  rank_lower_bound: 19
+  index: 495
+  rank_lower_bound: 20

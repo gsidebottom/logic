@@ -319,6 +319,27 @@ the two source papers for this track):
   VERIFIED (2026-08-24 01:50): 175,932-state certificate
   (subgame_3x3_18.json.gz) replays from scratch — **rank_F2(<3,3,3>)
   >= 18 is now a certified bound**, one short of Blaser.
+- **EXTERNAL (found 2026-08-24): rank_F2(<3,3,3>) >= 20 is already
+  proven** — Chengu Wang, arXiv:2603.07280 (v1 2026-03-07, v10
+  2026-07-30, 'Automated Lower Bounds for Bilinear Complexity over
+  Finite Fields'; repo cloned at ~/projects/mmlb-wang, 203 MB with
+  certificates + verifier). Method: orbit DP over restriction
+  subspaces under (GL x GL) x C2 with four techniques — flattening,
+  Hopcroft-Kerr FORCED PRODUCT (extract explicit rank-1 terms,
+  enumerate residual coefficients), DEGENERATE REDUCTION (R(T_X) >=
+  R(T_Y) for Y within X), substitution with backtracking; 32 MiB
+  certificate for >= 20, verifies in ~3 s (their verifier; not
+  kernel-checked). Also <2,3,4> >= 19, <3,3,4> >= 25, <3,4,4> >= 29
+  over F_2 + 18 polynomial-multiplication bounds. CONSEQUENCES for
+  us: the 19/20 target of the substitution-game program is settled
+  (our game's exhaustive value 18 stands as OUR engine's ceiling;
+  his forced-product + restriction-subspace rules are the leaf
+  strengthening v2 was seeking, already worked out); the F_2 open
+  band for 3x3 is now 21..23, the rank-22 SAT/certified-tree program
+  gains standing; unique niches left for us: independent from-scratch
+  re-verification of his certificate, Lean kernel-checked replay
+  (his verifier is auditable but unverified), pushing 21 with a
+  merged rule set, and the coset/alignment machinery.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

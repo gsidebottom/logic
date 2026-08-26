@@ -409,7 +409,32 @@ the two source papers for this track):
   (arm A: A-only control; arm B: --b_side), same input copies of the
   cascade cert, bound histograms + verification + B-usage dump at
   the end (probe/dim2_arms.{sh,log} in trlb-wang).
-- **Multilinear directions (from 2026-07-13 discussion)**: (a)
+- **Two-arm equal-budget dim-2 verdict + mixed-leaf soundness fork
+  (2026-08-26, trlb-wang fb16252)**: the 3B-step arms were infeasible
+  (all 14 orbits burn full budget at depth; deep harvest cost => >3 h
+  for orbit 1; also the first launch dragged the 976 MB trace archive
+  resident (~30 GB) into swap — archive is save-time-only, stripped
+  thereafter). At 300M steps: arm A (A-only) {18x6,19x8} -> unchanged;
+  arm B (--b_side, B-after-full-A-failure) also unchanged — but
+  instrumentation proved arm B VACUOUS: A 'fails' by budget
+  exhaustion, then B runs against the dead counter (B tried, 0 mixed
+  leaf evals). Fixed by alternating per-node side priority (odd
+  depths B-first; sound wrt the proof contract — only the winning
+  side is recorded). The instrumented 10M rerun then exposed the real
+  fork: 48k B-attempts, 99.99% rescue rate, 43.5M mixed-leaf evals —
+  implausible; the mixed-leaf rule (popcount + flatten of the
+  doubly-restricted tensor) assumes every chain constraint stays
+  active, which pure-A chains get free (A-flattening injectivity)
+  but mixed restrictions violate (A columns vs B rows can annihilate
+  products) — each inactive constraint inflates +1. No false lift
+  escaped (adversary-min held roots; histograms flat) and the n222
+  root-7 gate does not certify the rule (checker is not a gate).
+  OPTIONS: (a) activity guards at mixed leaves — require full
+  marginals of the doubly-restricted tensor (two rank checks per
+  eval), then rerun the arms; (b) graft subgame support/spanning
+  discipline; (c) B-side orbit-map canonicalization (the original
+  'sandwich' plan) replacing flatten leaves. --b_side stays
+  experimental; no bound from it is to be believed yet.
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused
   triple-product constructor — CAVEAT (2026-07-13): standard

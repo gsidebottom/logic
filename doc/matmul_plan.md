@@ -435,6 +435,31 @@ the two source papers for this track):
   discipline; (c) B-side orbit-map canonicalization (the original
   'sandwich' plan) replacing flatten leaves. --b_side stays
   experimental; no bound from it is to be believed yet.
+- **Equal-budget dim-2 arms, guarded rerun — REAL NULL (2026-08-26,
+  trlb-wang d7c9cee)**: activity guard implemented, validated (python
+  formula check on engineered deactivations; C++ probe — initial FAIL
+  was the probe writing GFVec elements via operator[], a silent no-op
+  on the bit-packed type; known-value gates 7/11 green), and BINDING
+  in production: per-orbit deficit_total ranged 0 .. 8.6B docked
+  credits (transpose-dual orbit pairs show mirrored search counts
+  with opposite-side activity). Arm A (A-only, 300M steps):
+  {18x6,19x8} unchanged, ~1 h. Arm B (--b_side, alternating,
+  guarded, 300M steps): {18x6,19x8} unchanged, 8.5 h, ~100B sound
+  mixed-leaf evals total, B-rescue rates 92-99.99% at internal
+  nodes, 0 surviving traces. The treatment provably ran (millions of
+  rescues); no orbit's root fanout closed within budget — mixed
+  steps cost ~40-80x more evals per step, and the B fanout has NO
+  coset reduction (no base on B) and NO iso-dedup of mixed subsets,
+  so the ~100B evals are largely isomorphic repeats. DIAGNOSIS: raw
+  mixed search is eval-starved by redundancy, exactly what A-side
+  orbit canonicalization cured in Wang's DP. Fork: (c) B-side/mixed
+  orbit-map canonicalization (the original sandwich plan) is the
+  remaining lever inside his framework; alternatively fold the
+  residual-rank + GE + dynamic sandwich-symmetry stack into a
+  CDCL(T)/SMS-style propagator architecture (discussion recorded
+  2026-08-26) and pursue the certified-search route. --b_side +
+  guard stay sound and committed; no bound changed.
+- **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused
   triple-product constructor — CAVEAT (2026-07-13): standard

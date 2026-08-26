@@ -988,6 +988,14 @@ struct Game {
     stay: bool,
     par_depth: usize, // adversary branches evaluated in parallel while kills <= par_depth
     sides: Vec<u8>,
+    // Wang's verified A-side orbit bounds (arXiv:2603.07280 + our 30x-cascade
+    // lifts), keyed by OUR canonical form of the pure-A state. Sound leaf for
+    // states with v and x empty: his constraint rows are exactly our u-rows
+    // (matmul/r22/koszul_vs_wang.py established the correspondence), so his
+    // orbit bound lower-bounds the same quotient tensor. His group includes
+    // the A-transpose our sandwich group lacks, so the loader inserts each
+    // orbit under both tau-variants.
+    wang: Option<HashMap<State, u32>>,
     sym: Option<Sym>,
     stab_cache: Mutex<HashMap<State, Vec<(usize, usize, usize)>>>,
     canon_cache: Mutex<HashMap<State, (State, (usize, usize, usize))>>,
@@ -1027,6 +1035,13 @@ impl Game {
         }
         if self.koszul > 0 {
             best = best.max(koszul_bound(&t, self.koszul) as u32);
+        }
+        if let Some(wt) = &self.wang {
+            if s.v.is_empty() && s.x.is_empty() {
+                if let Some(&b) = wt.get(&self.canon(&s)) {
+                    best = best.max(b);
+                }
+            }
         }
         let mut choice = 0u8;
         let mut best_phi: V = 0;
@@ -1206,6 +1221,15 @@ impl Game {
             let tk = Instant::now();
             lb = lb.max(koszul_bound(&t, self.koszul) as u32);
             self.prof[4].fetch_add(ns(tk), Ordering::Relaxed);
+        }
+        if lb < k {
+            if let Some(wt) = &self.wang {
+                if s.v.is_empty() && s.x.is_empty() {
+                    if let Some(&b) = wt.get(&self.canon(s)) {
+                        lb = lb.max(b);
+                    }
+                }
+            }
         }
         if lb > lo {
             self.set_lo(gs, lb);
@@ -1584,6 +1608,7 @@ fn main() {
             let spec = if flag("--onesided") { "A".to_string() } else { get("--sides").unwrap_or_else(|| "ABC".to_string()) };
             spec.chars().filter_map(|ch| match ch { 'A' => Some(1u8), 'B' => Some(2), 'C' => Some(3), _ => None }).collect()
         },
+        wang: None,
         sym,
         par_depth: get("--par").and_then(|v| v.parse().ok()).unwrap_or(0),
         stab_cache: Mutex::new(HashMap::new()),
@@ -1604,7 +1629,51 @@ fn main() {
         time_cap: get("--time").and_then(|v| v.parse().ok()).unwrap_or(600.0),
         capped: AtomicBool::new(false),
     };
-    let root = GState { s: State { u: vec![], v: vec![], x: vec![] }, rmin: [1, 1, 1] };
+    if let Some(path) = get("--wang-table") {
+        // <bound>:<row,row,...> per line; insert both tau-variants (his
+        // A-side group has the transpose, our canon group does not).
+        let ts = Instant::now();
+        let mut map: HashMap<State, u32> = HashMap::new();
+        let txt = std::fs::read_to_string(&path).expect("--wang-table file");
+        let mut n_entries = 0usize;
+        for line in txt.lines() {
+            let Some((b, rows)) = line.split_once(':') else { continue };
+            let bound: u32 = b.trim().parse().expect("table bound");
+            let rows: Vec<V> = rows
+                .split(',')
+                .filter(|r| !r.trim().is_empty())
+                .map(|r| r.trim().parse::<V>().expect("table row"))
+                .collect();
+            n_entries += 1;
+            for variant in [rows.clone(), rows.iter().map(|&r| m3_tr(r)).collect::<Vec<V>>()] {
+                let st = State { u: rref(&variant), v: vec![], x: vec![] };
+                let key = g.canon(&st);
+                let e = map.entry(key).or_insert(0);
+                *e = (*e).max(bound);
+            }
+        }
+        eprintln!(
+            "wang table: {} orbits -> {} canonical keys ({:.1}s)",
+            n_entries,
+            map.len(),
+            ts.elapsed().as_secs_f64()
+        );
+        g.wang = Some(map);
+    }
+    let root = if let Some(spec) = get("--root-u") {
+        let rows: Vec<V> = spec.split(',').map(|r| r.trim().parse::<V>().expect("--root-u row")).collect();
+        let u = rref(&rows);
+        assert_eq!(u.len(), rows.len(), "--root-u rows must be independent");
+        eprintln!("root state: u = {:?} (dim {})", u, u.len());
+        GState { s: State { u, v: vec![], x: vec![] }, rmin: [1, 1, 1] }
+    } else {
+        GState { s: State { u: vec![], v: vec![], x: vec![] }, rmin: [1, 1, 1] }
+    };
+    let scope = if root.s.u.is_empty() && root.s.v.is_empty() && root.s.x.is_empty() {
+        format!("rank_F2(<{n},{n},{n}>)")
+    } else {
+        format!("rank_F2(<{n},{n},{n}> | A-restricted u={:?})", root.s.u)
+    };
     if flag("--root-bounds") {
         let t = &g.t0;
         println!(
@@ -1677,7 +1746,7 @@ fn main() {
             }
         }
         println!(
-            "=> rank_F2(<{n},{n},{n}>) >= {proven} by the substitution game{}",
+"=> {scope} >= {proven} by the substitution game{}",
             if coset { " + coset bound" } else { "" }
         );
         if flag("--prof") {
@@ -1714,7 +1783,7 @@ fn main() {
             t.elapsed().as_secs_f64()
         );
         println!(
-            "=> rank_F2(<{n},{n},{n}>) >= {value} by the substitution game{}",
+"=> {scope} >= {value} by the substitution game{}",
             if coset { " + coset bound" } else { "" }
         );
         if let Some(path) = cert {

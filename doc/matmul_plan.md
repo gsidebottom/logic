@@ -384,6 +384,31 @@ the two source papers for this track):
   retention) vs the fifth technique (B-side substitution inside his
   DFS with our sandwich canonicalization; his framework is A-side
   only and our measurements show mixed-side is strictly stronger).
+- **B-side substitution implemented in Wang's DFS (2026-08-25,
+  trlb-wang branch bside-memfix, commits b576508 memfix + 06b1225
+  b_side)**: the fifth technique — when a node's A-children all fail,
+  roll the trace back and extend on B (all leading-One covectors);
+  pure-A subsets still bound via the orbit map, mixed subsets via the
+  flattening rank of the doubly-restricted tensor (j-axis mirror of
+  ApplyConstraintsToTensor). Proof body v2: per-record leaf_kind +
+  pre-order side-bit stream for internal nodes, EOF-probed for
+  backward compat; A-only runs stay byte-compatible (side slots only
+  reserved under --b_side — an unconditional slot polluted archives
+  and broke asym verification until guarded). Verifier replays
+  recorded side choices and recomputes mixed leaves from scratch.
+  Gates green: n222 --b_side root 7 (known exact), n223 asym root 11
+  (Hopcroft–Kerr exact) + clean --b_side refusal (kNB != kNA), both
+  n333 certs (shipped + 30x-cascade) verify at 20 under new binaries.
+  M-gate: memfix binary reproduces the 30x probe bounds {18x12,19x2}
+  exactly (memory trace inconclusive — sampler tracked wrong PID; RSS
+  now sampled inside the arms run instead). NOTE: no mixed record has
+  yet passed the verifier — tiny problems never fail on A, and 100M
+  steps can't lift cascade dim-2 (at {18x6, 19x8}), so the mixed
+  replay's first real exercise is the production experiment. Launched
+  2026-08-25 ~22:00: two-arm equal-budget dim-2 at 3B steps/orbit
+  (arm A: A-only control; arm B: --b_side), same input copies of the
+  cascade cert, bound histograms + verification + B-usage dump at
+  the end (probe/dim2_arms.{sh,log} in trlb-wang).
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

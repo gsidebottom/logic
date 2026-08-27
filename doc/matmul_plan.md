@@ -459,6 +459,27 @@ the two source papers for this track):
   CDCL(T)/SMS-style propagator architecture (discussion recorded
   2026-08-26) and pursue the certified-search route. --b_side +
   guard stay sound and committed; no bound changed.
+- **(c) Wang-table graft + dim-2 mixed-play campaign — 14/14 CAP
+  (2026-08-27, logic 46dd1ea)**: subgame gained --wang-table (his 496
+  verified A-side orbit bounds, exported from the cascade cert, keyed
+  by OUR canonical forms, both tau-variants) as a sound pure-A leaf,
+  and --root-u ladders from any A-restricted state. Gates: full root
+  k=20 and dim-2 root k=18 prove in 1 node. Campaign: all 14 dim-2
+  orbits at k=table+1 (--sides AB --sym --par 4, 1 h/orbit): every
+  orbit CAP at 500-850K nodes, ~200 states/s, canon-cache >90% hits,
+  adversary refuting 97-99.99% of explored states; koszul-4 arm on
+  orbit 0 (2 h): identical texture, null. Third independent null
+  (after C++ arm B and the guarded rerun): budget, symmetry,
+  soundness, and koszul are all eliminated — the binding constraint
+  is MIXED-LEAF STRENGTH (flattening-class ~14-16 once play leaves
+  the pure-A lattice). Fleet math for a k=21 push (Greg's question):
+  ~50-400 machine-days on 512-core/TB nodes IF the answers are
+  PROVED — but linear frontier growth at 2x budget and the refutation
+  rates lean FAILS, and one FAILS among the six 18s kills the route.
+  CALIBRATION launched on campaign completion: 8 dim-4 + 6 dim-3
+  orbits at table+1 (45 min / 2 h caps) to fit exhaustion node-counts
+  vs quotient dim and decide PROVED-vs-FAILS cheaply
+  (matmul/r22/calibration.sh).
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

@@ -1,0 +1,43 @@
+=== orbit 0 (u=1,2, table 18) ladder k=19 start 19:17:34 ===
+k=19: CAP (nodes 698346 / 3600.0s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[2, 1]) >= 0 by the substitution game
+=== orbit 1 (u=1,10, table 18) ladder k=19 start 20:17:35 ===
+k=19: CAP (nodes 791415 / 3600.0s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[10, 1]) >= 0 by the substitution game
+=== orbit 2 (u=1,16, table 18) ladder k=19 start 21:17:37 ===
+k=19: CAP (nodes 516355 / 3600.1s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[16, 1]) >= 0 by the substitution game
+=== orbit 3 (u=1,20, table 18) ladder k=19 start 22:17:38 ===
+k=19: CAP (nodes 512301 / 3600.1s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[20, 1]) >= 0 by the substitution game
+=== orbit 4 (u=1,84, table 18) ladder k=19 start 23:17:39 ===
+k=19: CAP (nodes 784307 / 3600.0s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[84, 1]) >= 0 by the substitution game
+=== orbit 5 (u=1,160, table 18) ladder k=19 start 00:17:40 ===
+k=19: CAP (nodes 850469 / 3600.0s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[160, 1]) >= 0 by the substitution game
+=== orbit 6 (u=10,19, table 19) ladder k=20 start 01:17:42 ===
+k=20: CAP (nodes 799271 / 3600.0s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[19, 10]) >= 0 by the substitution game
+=== orbit 7 (u=10,20, table 19) ladder k=20 start 02:17:43 ===
+k=20: CAP (nodes 725791 / 3600.0s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[20, 10]) >= 0 by the substitution game
+=== orbit 8 (u=10,68, table 19) ladder k=20 start 03:17:44 ===
+k=20: CAP (nodes 675117 / 3600.0s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[68, 10]) >= 0 by the substitution game
+=== orbit 9 (u=10,84, table 19) ladder k=20 start 04:17:45 ===
+k=20: CAP (nodes 708447 / 3600.0s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[84, 10]) >= 0 by the substitution game
+=== orbit 10 (u=10,96, table 19) ladder k=20 start 05:17:47 ===
+k=20: CAP (nodes 689329 / 3600.0s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[96, 10]) >= 0 by the substitution game
+=== orbit 11 (u=10,258, table 19) ladder k=20 start 06:17:48 ===
+k=20: CAP (nodes 818103 / 3600.0s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[258, 10]) >= 0 by the substitution game
+=== orbit 12 (u=10,275, table 19) ladder k=20 start 07:17:49 ===
+k=20: CAP (nodes 745319 / 3600.0s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[275, 10]) >= 0 by the substitution game
+=== orbit 13 (u=84,163, table 19) ladder k=20 start 08:17:50 ===
+k=20: CAP (nodes 823085 / 3600.0s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[163, 84]) >= 0 by the substitution game
+CAMPAIGN DONE 09:17:52

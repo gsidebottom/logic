@@ -480,6 +480,29 @@ the two source papers for this track):
   orbits at table+1 (45 min / 2 h caps) to fit exhaustion node-counts
   vs quotient dim and decide PROVED-vs-FAILS cheaply
   (matmul/r22/calibration.sh).
+- **Exhaustion calibration + CDCL(T) stage-1 (2026-08-28, logic
+  ede3f87/79e4393)**: dim-4 sample (8 orbits, table+1): 7 FAILS
+  exhausted at 137-391K nodes (16-40 min each), 1 CAP >492K; dim-3
+  sample (6): 1 FAILS at 206K (the hyper-symmetric u=1,2,4 root —
+  big stabilizer collapses the space), 5 CAP at 1.10-1.34M after 2 h.
+  Fit: exhaustion grows >=5-10x per lattice level; generic dim-2
+  verdicts ~10^7-10^8+ nodes = 16-160+ h/orbit on the M-series Mac;
+  dim-1/root multiply again (fleet scale). Decisive datum: ALL EIGHT
+  exhaustive verdicts are FAILS — no PROVED anywhere in the sample;
+  the mixed game with flattening-class leaves provably cannot lift
+  table+1 down-lattice, so fleet compute would buy confirmations of
+  impossibility, not lifts. ABC campaign (C-side move set, route 1)
+  auto-launched at calibration close. CDCL(T) stage-1 (route 2,
+  src/bin/schemesearch.rs): product-level search + residual-rank
+  propagators reproduces BOTH certified 2x2 values — r=6 UNSAT
+  exhausted (3.22B nodes/192 s structural prunes; 4.3M/6.7 s with the
+  sound full-lambda 1-ply substitution probe = 746x tree cut, the
+  architecture thesis quantified) and r=7 SAT with an independently
+  verified witness. Two unsound cuts (alpha-canonical first product;
+  lambda=0-only probe) produced a false r=7 UNSAT and were caught by
+  known-value gates — proof logging is mandatory before any novel
+  UNSAT claim. Next: SMS set-prefix canon, proof logging, 3x3 lazy
+  product enumeration with Wang-cert gates at every rank <= 19.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

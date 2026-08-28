@@ -1,0 +1,28 @@
+symmetry tables built (0.0s); sandwich action verified on the tensor
+wang table: 496 orbits -> 710 canonical keys (0.2s)
+root state: u = [84, 2, 1] (dim 3)
+c heartbeat 300s: nodes 81460 states 81439 failed 79897 forms 642833 hits 4595538
+c heartbeat 600s: nodes 143428 states 143397 failed 140364 forms 1322456 hits 10557400
+c heartbeat 900s: nodes 195358 states 195326 failed 190464 forms 1988983 hits 17253068
+c heartbeat 1200s: nodes 243139 states 243106 failed 236920 forms 2651083 hits 24401957
+c heartbeat 1500s: nodes 287816 states 287776 failed 280065 forms 3313304 hits 32457463
+c heartbeat 1800s: nodes 327046 states 327003 failed 318294 forms 3963820 hits 41443392
+c heartbeat 2100s: nodes 367677 states 367631 failed 356998 forms 4635128 hits 50581319
+c heartbeat 2400s: nodes 409543 states 409495 failed 397554 forms 5330596 hits 59548408
+c heartbeat 2700s: nodes 448541 states 448493 failed 435158 forms 5998158 hits 68962701
+c heartbeat 3000s: nodes 486615 states 486562 failed 471875 forms 6669737 hits 79135798
+c heartbeat 3300s: nodes 524915 states 524862 failed 508824 forms 7344331 hits 89225128
+c heartbeat 3600s: nodes 562519 states 562465 failed 545152 forms 8033086 hits 99944092
+c heartbeat 3900s: nodes 598100 states 598039 failed 580206 forms 8737553 hits 111576045
+c heartbeat 4200s: nodes 632382 states 632315 failed 613873 forms 9419058 hits 123169260
+c heartbeat 4500s: nodes 678807 states 678740 failed 659216 forms 10313032 hits 138288504
+c heartbeat 4800s: nodes 728873 states 728804 failed 707905 forms 11289971 hits 155054343
+c heartbeat 5100s: nodes 778714 states 778644 failed 756782 forms 12303889 hits 173539528
+c heartbeat 5400s: nodes 830743 states 830649 failed 807925 forms 13336000 hits 192286005
+c heartbeat 5700s: nodes 882568 states 882470 failed 859027 forms 14375744 hits 210708725
+c heartbeat 6000s: nodes 930324 states 930207 failed 906104 forms 15380043 hits 230289980
+c heartbeat 6300s: nodes 974607 states 974486 failed 949614 forms 16377409 hits 251056060
+c heartbeat 6600s: nodes 1018411 states 1018286 failed 992795 forms 17392730 hits 272896889
+c heartbeat 6900s: nodes 1061626 states 1061492 failed 1035283 forms 18419208 hits 295743541
+k=18: CAP (nodes 1105929 / 7200.0s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[84, 2, 1]) >= 0 by the substitution game

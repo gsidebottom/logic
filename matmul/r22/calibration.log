@@ -1,0 +1,29 @@
+=== calib dim-4 #0 (u=1,2,4,8, table 14) k=15 start 09:19:09 ===
+k=15: FAILS — exact game value = 0  (186159 nodes, 1497.69s)
+=== calib dim-4 #1 (u=1,2,4,80, table 14) k=15 start 09:44:07 ===
+k=15: FAILS — exact game value = 0  (195279 nodes, 1611.05s)
+=== calib dim-4 #2 (u=1,2,8,16, table 15) k=16 start 10:10:58 ===
+k=16: FAILS — exact game value = 0  (137447 nodes, 972.35s)
+=== calib dim-4 #3 (u=1,2,8,20, table 16) k=17 start 10:27:11 ===
+k=17: FAILS — exact game value = 0  (382044 nodes, 2418.11s)
+=== calib dim-4 #4 (u=1,2,8,32, table 15) k=16 start 11:07:30 ===
+k=16: FAILS — exact game value = 0  (222880 nodes, 1650.16s)
+=== calib dim-4 #5 (u=1,2,8,68, table 16) k=17 start 11:35:00 ===
+k=17: FAILS — exact game value = 0  (390633 nodes, 2181.46s)
+=== calib dim-4 #6 (u=1,2,8,84, table 16) k=17 start 12:11:23 ===
+k=17: FAILS — exact game value = 0  (311886 nodes, 2143.14s)
+=== calib dim-4 #7 (u=1,2,8,96, table 16) k=17 start 12:47:06 ===
+k=17: CAP (nodes 492052 / 2700.0s) — last proven 0
+=== calib dim-3 #0 (u=1,2,4, table 15) k=16 start 13:32:08 ===
+k=16: FAILS — exact game value = 0  (206424 nodes, 1894.61s)
+=== calib dim-3 #1 (u=1,2,8, table 16) k=17 start 14:03:43 ===
+k=17: CAP (nodes 1216571 / 7200.0s) — last proven 0
+=== calib dim-3 #2 (u=1,2,12, table 17) k=18 start 16:03:45 ===
+k=18: CAP (nodes 1101589 / 7200.0s) — last proven 0
+=== calib dim-3 #3 (u=1,2,32, table 16) k=17 start 18:03:47 ===
+k=17: CAP (nodes 1337127 / 7200.0s) — last proven 0
+=== calib dim-3 #4 (u=1,2,80, table 17) k=18 start 20:03:50 ===
+k=18: CAP (nodes 1212866 / 7200.1s) — last proven 0
+=== calib dim-3 #5 (u=1,2,84, table 17) k=18 start 22:03:53 ===
+k=18: CAP (nodes 1105929 / 7200.0s) — last proven 0
+CALIBRATION DONE 00:03:55

@@ -1,0 +1,13 @@
+symmetry tables built (0.0s); sandwich action verified on the tensor
+wang table: 496 orbits -> 710 canonical keys (8.9s)
+root state: u = [80, 4, 2, 1] (dim 4)
+c heartbeat 600s: nodes 14284 states 13154 failed 3395 forms 23759 hits 81927
+c heartbeat 1200s: nodes 27477 states 25729 failed 6115 forms 46541 hits 173469
+c heartbeat 1801s: nodes 38242 states 35711 failed 9725 forms 70753 hits 305742
+c heartbeat 2401s: nodes 49368 states 45795 failed 13949 forms 94600 hits 431166
+c heartbeat 3002s: nodes 63208 states 59056 failed 17143 forms 121467 hits 557315
+c heartbeat 3602s: nodes 76402 states 71751 failed 20170 forms 147625 hits 677830
+c heartbeat 4202s: nodes 87214 states 81960 failed 25011 forms 185043 hits 902247
+c heartbeat 4802s: nodes 95739 states 89824 failed 29176 forms 210706 hits 1063787
+k=15: CAP (nodes 106195 / 5400.4s) — last proven 0
+=> rank_F2(<3,3,3> | A-restricted u=[80, 4, 2, 1]) >= 0 by the substitution game

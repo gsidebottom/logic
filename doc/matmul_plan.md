@@ -503,6 +503,24 @@ the two source papers for this track):
   known-value gates — proof logging is mandatory before any novel
   UNSAT claim. Next: SMS set-prefix canon, proof logging, 3x3 lazy
   product enumeration with Wang-cert gates at every rank <= 19.
+- **Route 1 (C-side move set) CLOSED — inflation without power
+  (2026-08-28)**: ABC campaign, all 14 dim-2 orbits at table+1, same
+  protocol as AB: 14/14 CAP. Texture: 1.2-5.9M nodes/orbit (2-8x the
+  AB counts) but refutation saturation COLLAPSED from ~98% (AB) to
+  5-13% (ABC) — the three-sided fanout sprawls through a vastly
+  larger, mostly unresolved space (canon revisit rates way down =
+  virgin territory, not contest). Discriminators on dim-4 states
+  where AB FAILS exhaustively in 16-40 min (par 4): four ABC par-1
+  runs all CAP at 90 min; the equal-parallelism rerun of d4_0 (AB:
+  FAILS 186K nodes/25 min) CAPs at 4 h / 1.23M nodes — >=6.6x node
+  inflation, verdict unreached, and NO PROVED appeared anywhere in
+  18 ABC runs on spaces where a real lift should be easy to exhibit.
+  Verdict: C-moves inflate the game without observed proving power;
+  consistent with (and further evidence for) the mixed-leaf-strength
+  diagnosis. Remaining levers: route 4 (mixed-orbit DP with his
+  P2/P3 techniques on doubly-restricted tensors), route 2 (CDCL(T)
+  stage 2+: SMS canon, proof logging, 3x3 lazy products), route 3
+  (upper-bound hunt at rank 22 via flip/LLM-evolution), write-up.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

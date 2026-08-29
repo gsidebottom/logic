@@ -521,6 +521,27 @@ the two source papers for this track):
   P2/P3 techniques on doubly-restricted tensors), route 2 (CDCL(T)
   stage 2+: SMS canon, proof logging, 3x3 lazy products), route 3
   (upper-bound hunt at rank 22 via flip/LLM-evolution), write-up.
+- **CDCL(T) stage 2 — 3x3 ladder measured; reach = rank > 10
+  (2026-08-29, schemesearch3)**: lazy 511^3 product space (no
+  materialized list), 729-bit residuals, sound alpha-rep WLOG
+  (over-counting form), 12-thread parallel top level (deterministic
+  node totals; ~10x wall). Ladder: r=9 UNSAT 783K nodes/0.1 s
+  (flatten alone) => rank > 9; r=10 plain CAP 437M/10 min but probe
+  UNSAT at the SAME 783K frontier in 23.6 s => rank > 10 — one ply
+  of substitution reasoning moves the ceiling exactly one rung at
+  ~0.36 ms/probe (256-fold lambda range); r=11 plain CAP 3.44B
+  (5.7M nodes/s), r=11/12/13 probe CAP at 113M/227M/485M over
+  1/2/4 h — the 1-ply bound saturates at 10, so its prunes start at
+  depth 2 and the fanout wins. STAGE-3 REQUIREMENTS (data-fixed):
+  (i) Koszul-strength propagator on residuals (general-tensor, up
+  to ~14-16, port koszul_side; depth-gated), (ii) second-level
+  stabilizer symmetry (enumerate product 2 modulo stab of the
+  alpha-rep residual; fanout_orbits says 10-100x), (iii) on-demand
+  2-ply probes at frontier nodes only, (iv) proof logging BEFORE
+  any r >= 20 rung (stage-1 lesson: two unsound cuts already died
+  on known-value gates), (v) flatten kernel optimization (~10x:
+  extract81 loop -> precomputed transposes; probes are
+  flatten-bound). Output phrasing now 'rank > r' (Greg 2026-08-28).
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

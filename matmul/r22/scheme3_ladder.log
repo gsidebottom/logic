@@ -1,0 +1,9 @@
+=== r=11 plain (cap 600s) 19:59:25 ===
+r=11: CAP (3436380160 nodes, 600.1s, prunes flat 3436380100 sub 0)
+=== r=11 sub-probe (cap 3600s) 20:09:25 ===
+r=11: CAP (113377280 nodes, 3618.5s, prunes flat 0 sub 113377256)
+=== r=12 sub-probe (cap 7200s) 21:09:43 ===
+r=12: CAP (227344384 nodes, 7221.3s, prunes flat 0 sub 227344348)
+=== r=13 sub-probe (cap 14400s) 23:10:05 ===
+r=13: CAP (484573184 nodes, 14419.2s, prunes flat 0 sub 484573136)
+LADDER DONE 03:10:24

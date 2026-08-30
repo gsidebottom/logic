@@ -417,7 +417,108 @@ fn rank_wide_minor(rows: &mut Vec<Vec<u64>>, words: usize) -> (usize, Vec<u32>, 
     (rk, orig[..rk].to_vec(), pivot_cols)
 }
 
+/// Forward-only M4R rank over F2: process pivot columns in blocks of k=8;
+/// within a block, reduce the k pivot rows against each other so any row's
+/// k pivot-column bits directly index a 2^k table of pivot-row combinations
+/// (built Gray-code incrementally), clearing all k pivots with ONE row-XOR.
+/// ~7x fewer word-ops than the full-Jordan path at koszul sizes; rank-only
+/// (the minor-extracting variant keeps the legacy elimination).
 fn rank_wide(rows: &mut Vec<Vec<u64>>, words: usize) -> usize {
+    const K: usize = 8;
+    let n = rows.len();
+    let ncols = words * 64;
+    let mut rk = 0usize;
+    let mut c = 0usize;
+    while c < ncols && rk < n {
+        // collect up to K pivots starting at column c
+        let mut piv_cols: Vec<usize> = Vec::with_capacity(K);
+        let block_start = rk;
+        while piv_cols.len() < K && c < ncols && rk < n {
+            let (w, b) = (c / 64, c % 64);
+            let mut found = None;
+            for i in rk..n {
+                // reduce the candidate against the block's pivots first —
+                // an unreduced 1 at column c can be a dependency in disguise
+                // (idempotent: earlier-cleared bits stay cleared)
+                for (bi, &pc) in piv_cols.iter().enumerate() {
+                    let (pw, pb) = (pc / 64, pc % 64);
+                    if rows[i][pw] >> pb & 1 == 1 {
+                        let (head, tail) = rows.split_at_mut(i);
+                        let src = &head[block_start + bi];
+                        for x in 0..words {
+                            tail[0][x] ^= src[x];
+                        }
+                    }
+                }
+                if rows[i][w] >> b & 1 == 1 {
+                    found = Some(i);
+                    break;
+                }
+            }
+            if let Some(p) = found {
+                rows.swap(rk, p);
+                // clear this column in the block's other pivot rows only
+                for j in block_start..rk {
+                    if rows[j][w] >> b & 1 == 1 {
+                        let (a, bb) = rows.split_at_mut(rk);
+                        for x in 0..words {
+                            a[j][x] ^= bb[0][x];
+                        }
+                    }
+                }
+                // and clear the new pivot row at earlier block pivot columns
+                for (bi, &pc) in piv_cols.iter().enumerate() {
+                    let (pw, pb) = (pc / 64, pc % 64);
+                    if rows[rk][pw] >> pb & 1 == 1 {
+                        let (a, bb) = rows.split_at_mut(rk);
+                        for x in 0..words {
+                            bb[0][x] ^= a[block_start + bi][x];
+                        }
+                    }
+                }
+                piv_cols.push(c);
+                rk += 1;
+            }
+            c += 1;
+        }
+        let kk = piv_cols.len();
+        if kk == 0 {
+            continue;
+        }
+        // Gray-code table of the 2^kk pivot-row combinations
+        let mut table = vec![vec![0u64; words]; 1 << kk];
+        let mut prev = 0usize;
+        for g in 1..(1usize << kk) {
+            let gray = g ^ (g >> 1);
+            let bit = (gray ^ prev).trailing_zeros() as usize;
+            let (dst, src) = (gray, prev);
+            let row_src = table[src].clone();
+            let piv = rows[block_start + bit].clone();
+            let d = &mut table[dst];
+            for x in 0..words {
+                d[x] = row_src[x] ^ piv[x];
+            }
+            prev = gray;
+        }
+        // clear all kk pivots in every remaining row with one XOR
+        for i in rk..n {
+            let mut idx = 0usize;
+            for (bi, &pc) in piv_cols.iter().enumerate() {
+                let (w, b) = (pc / 64, pc % 64);
+                idx |= ((rows[i][w] >> b & 1) as usize) << bi;
+            }
+            if idx != 0 {
+                let t = &table[idx];
+                for x in 0..words {
+                    rows[i][x] ^= t[x];
+                }
+            }
+        }
+    }
+    rk
+}
+
+fn rank_wide_legacy(rows: &mut Vec<Vec<u64>>, words: usize) -> usize {
     rank_wide_minor(rows, words).0
 }
 
@@ -457,10 +558,25 @@ fn wedge_indices(da: usize, p: usize) -> (Vec<u32>, Vec<i32>, Vec<u32>, Vec<i32>
     (masks_p, pos_p, masks_q, pos_q)
 }
 
+/// cached wedge tables for da=9, p=1..=7 (index p)
+fn wedge_cached(p: usize) -> &'static (Vec<u32>, Vec<i32>, Vec<u32>, Vec<i32>) {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<Vec<(Vec<u32>, Vec<i32>, Vec<u32>, Vec<i32>)>> = OnceLock::new();
+    &CACHE.get_or_init(|| (0..=7).map(|q| wedge_indices(9, q.max(1))).collect())[p]
+}
+
 /// Koszul wedge matrix rows for tensor t (side already rotated to A-first).
 fn koszul_rows(t: &KT, p: usize) -> (Vec<Vec<u64>>, usize) {
     let (da, db, dc) = (t.da, t.db, t.dc);
-    let (masks_p, pos_p, _masks_q, pos_q) = wedge_indices(da, p);
+    let cached;
+    let computed;
+    let (masks_p, pos_p, pos_q): (&Vec<u32>, &Vec<i32>, &Vec<i32>) = if da == 9 && p <= 7 {
+        cached = wedge_cached(p);
+        (&cached.0, &cached.1, &cached.3)
+    } else {
+        computed = wedge_indices(da, p);
+        (&computed.0, &computed.1, &computed.3)
+    };
     let ncols = masks_p.len() * db;
     let nrows = pos_q.iter().filter(|&&x| x >= 0).count() * dc;
     let words = (ncols + 63) / 64;
@@ -494,10 +610,17 @@ fn koszul_side(t: &KT, p: usize) -> usize {
         return 0;
     }
     let (mut rows, words) = koszul_rows(t, p);
-    let rk = rank_wide(&mut rows, words);
+    // Legacy elimination: on the sparse wedge shape it beats M4R 1.5x
+    // (measured 2026-08-30) — sparsity short-circuits row-XORs naturally,
+    // while M4R pays table + scan-reduction costs regardless.
+    let rk = rank_wide_legacy(&mut rows, words);
     let denom = binom(da - 1, p);
     (rk + denom - 1) / denom
 }
+
+// NOTE: koszul_rows still allocates per call; buffer reuse measured second-
+// order once the wedge tables are cached (allocation is arena-friendly on
+// macOS for these sizes). Revisit only if the profile says so.
 
 /// Learned rank certificate: side s, parameter p, pivot columns J of a
 /// v-rank minor of K_p(side-rotated R_base). Transfers to residuals R' as
@@ -1000,6 +1123,78 @@ fn strassen_bound3(r: &R3, tries: u32) -> u32 {
     best
 }
 
+/// Tier 2: 1-ply substitution probe with KOSZUL leaves — bound(R) =
+/// 1 + min over (side, last active pivot, all 2^8 lambdas) of
+/// koszul(fold(R)). Sound (substitution lemma; folds are restrictions).
+/// The target short-circuits the lambda scan; per-eval cost ~ koszul.
+fn koszul_probe3(r: &R3, masks: &Masks, pmax: usize, target: u32) -> u32 {
+    let mut best = 0u32;
+    let layouts = |r: &R3| [r.abc, r.bca, r.cab];
+    for side in 0..3usize {
+        let sidx = STRIDE_IDX[side];
+        let major_layout = sidx.iter().position(|&x| x == 0).unwrap();
+        let lts = layouts(r);
+        let p = match (0..9)
+            .rev()
+            .find(|&p| !is_zero(&layout_slice(&lts[major_layout], masks, 0, p)))
+        {
+            Some(p) => p,
+            None => continue,
+        };
+        let mut bases = lts;
+        let mut slices = [[0u64; W]; 3];
+        for l in 0..3 {
+            slices[l] = layout_slice(&lts[l], masks, sidx[l], p);
+            for i in 0..W {
+                bases[l][i] ^= slices[l][i];
+            }
+        }
+        let others: Vec<usize> = (0..9).filter(|&i| i != p).collect();
+        let mut shifted: Vec<[T3; 3]> = Vec::with_capacity(8);
+        for &q in &others {
+            let mut sh = [[0u64; W]; 3];
+            for l in 0..3 {
+                sh[l] = layout_shift(&slices[l], sidx[l], p, q);
+            }
+            shifted.push(sh);
+        }
+        let mut worst = u32::MAX;
+        for lam in 0..256u32 {
+            let mut m = bases;
+            for (bi, sh) in shifted.iter().enumerate() {
+                if lam >> bi & 1 == 1 {
+                    for l in 0..3 {
+                        for i in 0..W {
+                            m[l][i] ^= sh[l][i];
+                        }
+                    }
+                }
+            }
+            let folded = R3 { abc: m[0], bca: m[1], cab: m[2] };
+            // cheap floor first: flatten, then strassen, then koszul
+            let mut f = max_flatten3(&folded).max(strassen_bound3(&folded, 8));
+            if f + 1 > worst.saturating_add(1).min(target) {
+                // this fold cannot lower the min below current worst; but we
+                // still need its koszul only if it could DROP the min
+            }
+            if f < worst {
+                f = f.max(koszul_bound3(&folded, pmax));
+            }
+            worst = worst.min(f);
+            if 1 + worst <= best || 1 + worst < target {
+                break; // adversary already spoils the target
+            }
+        }
+        if worst != u32::MAX {
+            best = best.max(1 + worst);
+        }
+        if best >= target {
+            return best;
+        }
+    }
+    best
+}
+
 struct Shared {
     capped: AtomicBool,
     found: AtomicBool,
@@ -1017,6 +1212,7 @@ struct Search<'a> {
     koszul_min_remaining: u32, // apply only at shallow nodes
     stab: &'a [StabElem],      // stabilizer of the current root rep
     strassen: bool,
+    chosen: Vec<(u32, u32, u32)>,
     level2_remaining: u32,     // remaining value at level-2 nodes (= r-1)
     nodes: u64,
     prune_flat: u64,
@@ -1117,15 +1313,178 @@ impl<'a> Search<'a> {
             }
             let mut nr = *r;
             nr.xor_product(al, be, ga);
+            self.chosen.push((al, be, ga));
             if self.dfs(&nr, remaining - 1, id, skip) {
                 return true;
             }
+            self.chosen.pop();
             if self.capped {
                 return false;
             }
         }
         false
     }
+}
+
+/// independent check: rebuild the tensor entrywise from the product triples
+fn verify_scheme(products: &[(u32, u32, u32)]) -> bool {
+    let t = build_t3();
+    for a in 0..9 {
+        for b in 0..9 {
+            for c in 0..9 {
+                let mut bit = 0u32;
+                for &(al, be, ga) in products {
+                    bit ^= (al >> a) & (be >> b) & (ga >> c) & 1;
+                }
+                if (bit == 1) != get(&t, a * 81 + b * 9 + c) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+fn parse_products(spec: &str) -> Vec<(u32, u32, u32)> {
+    spec.split(';')
+        .filter(|s| !s.trim().is_empty())
+        .map(|p| {
+            let v: Vec<u32> = p.split(',').map(|x| x.trim().parse().unwrap()).collect();
+            (v[0], v[1], v[2])
+        })
+        .collect()
+}
+
+fn masks_ref(m: &Masks) -> &Masks { m }
+
+/// ply-2 value at a root: 1 + min over folds of koszul_probe3(fold, target-1)
+fn ply2_root_t(r3: &R3, masks: &Masks, target: u32) -> u32 {
+    let mut best = 0u32;
+    let layouts = |r: &R3| [r.abc, r.bca, r.cab];
+    for side in 0..3usize {
+        let sidx = STRIDE_IDX[side];
+        let major_layout = sidx.iter().position(|&x| x == 0).unwrap();
+        let lts = layouts(r3);
+        let p = match (0..9)
+            .rev()
+            .find(|&p| !is_zero(&layout_slice(&lts[major_layout], masks, 0, p)))
+        {
+            Some(p) => p,
+            None => continue,
+        };
+        let mut bases = lts;
+        let mut slices = [[0u64; W]; 3];
+        for l in 0..3 {
+            slices[l] = layout_slice(&lts[l], masks, sidx[l], p);
+            for w in 0..W {
+                bases[l][w] ^= slices[l][w];
+            }
+        }
+        let others: Vec<usize> = (0..9).filter(|&x| x != p).collect();
+        let shifted: Vec<[T3; 3]> = others
+            .iter()
+            .map(|&q| {
+                let mut sh = [[0u64; W]; 3];
+                for l in 0..3 {
+                    sh[l] = layout_shift(&slices[l], sidx[l], p, q);
+                }
+                sh
+            })
+            .collect();
+        let mut worst = u32::MAX;
+        for lam in 0..256u32 {
+            let mut m = bases;
+            for (bi, sh) in shifted.iter().enumerate() {
+                if lam >> bi & 1 == 1 {
+                    for l in 0..3 {
+                        for w in 0..W {
+                            m[l][w] ^= sh[l][w];
+                        }
+                    }
+                }
+            }
+            let folded = R3 { abc: m[0], bca: m[1], cab: m[2] };
+            let pv = koszul_probe3(&folded, masks, 4, target - 1);
+            worst = worst.min(pv);
+            if 1 + worst < target {
+                break;
+            }
+        }
+        if worst != u32::MAX {
+            best = best.max(1 + worst);
+        }
+        if best >= target {
+            break;
+        }
+    }
+    best
+}
+
+fn ply2_root(r3: &R3, masks: &Masks) -> u32 {
+    ply2_root_t(r3, masks, 15)
+}
+
+/// ply-3: 1 + min over folds of ply2(fold, target-1); target-aware exits
+fn ply3_root(r3: &R3, masks: &Masks, target: u32) -> u32 {
+    let mut best = 0u32;
+    let layouts = |r: &R3| [r.abc, r.bca, r.cab];
+    for side in 0..3usize {
+        let sidx = STRIDE_IDX[side];
+        let major_layout = sidx.iter().position(|&x| x == 0).unwrap();
+        let lts = layouts(r3);
+        let p = match (0..9)
+            .rev()
+            .find(|&p| !is_zero(&layout_slice(&lts[major_layout], masks, 0, p)))
+        {
+            Some(p) => p,
+            None => continue,
+        };
+        let mut bases = lts;
+        let mut slices = [[0u64; W]; 3];
+        for l in 0..3 {
+            slices[l] = layout_slice(&lts[l], masks, sidx[l], p);
+            for w in 0..W {
+                bases[l][w] ^= slices[l][w];
+            }
+        }
+        let others: Vec<usize> = (0..9).filter(|&x| x != p).collect();
+        let shifted: Vec<[T3; 3]> = others
+            .iter()
+            .map(|&q| {
+                let mut sh = [[0u64; W]; 3];
+                for l in 0..3 {
+                    sh[l] = layout_shift(&slices[l], sidx[l], p, q);
+                }
+                sh
+            })
+            .collect();
+        let mut worst = u32::MAX;
+        for lam in 0..256u32 {
+            let mut m = bases;
+            for (bi, sh) in shifted.iter().enumerate() {
+                if lam >> bi & 1 == 1 {
+                    for l in 0..3 {
+                        for w in 0..W {
+                            m[l][w] ^= sh[l][w];
+                        }
+                    }
+                }
+            }
+            let folded = R3 { abc: m[0], bca: m[1], cab: m[2] };
+            let pv = ply2_root_t(&folded, masks, target - 1);
+            worst = worst.min(pv);
+            if 1 + worst < target {
+                break;
+            }
+        }
+        if worst != u32::MAX {
+            best = best.max(1 + worst);
+        }
+        if best >= target {
+            break;
+        }
+    }
+    best
 }
 
 fn main() {
@@ -1306,6 +1665,358 @@ fn main() {
         }
         return;
     }
+    if args.iter().any(|a| a == "--corridor") {
+        // Guided randomized descent toward rank-22 near-misses: choose
+        // products minimizing cheap successor bounds; a prefix of length
+        // 22-E whose residual bound <= E is a near-miss for the endgame.
+        let target: u32 = get("--target").and_then(|v| v.parse().ok()).unwrap_or(22);
+        let egame: u32 = get("--endgame-budget").and_then(|v| v.parse().ok()).unwrap_or(7);
+        let restarts: u32 = get("--restarts").and_then(|v| v.parse().ok()).unwrap_or(200);
+        let cands: u32 = get("--cands").and_then(|v| v.parse().ok()).unwrap_or(2048);
+        let mut seed: u64 = get("--seed").and_then(|v| v.parse().ok()).unwrap_or(42);
+        let mut rnd = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let masks = Masks::build();
+        let mut best_depth = 0u32;
+        let mut near_misses = 0u32;
+        for restart in 0..restarts {
+            let mut r3 = R3::from_abc(&build_t3());
+            let mut prefix: Vec<(u32, u32, u32)> = Vec::new();
+            loop {
+                let remaining = target - prefix.len() as u32;
+                let fb = max_flatten3(&r3);
+                if fb > remaining {
+                    break; // corridor left
+                }
+                if remaining <= egame {
+                    let pv = sub_bound3(&r3, &masks, fb, remaining + 1);
+                    if pv > remaining {
+                        break; // probe refutes the handoff: not a real near-miss
+                    }
+                    near_misses += 1;
+                    let spec: Vec<String> =
+                        prefix.iter().map(|&(a, b, g)| format!("{a},{b},{g}")).collect();
+                    println!("NEARMISS restart {restart} flatten {fb} remaining {remaining}: {}", spec.join(";"));
+                    break;
+                }
+                // sample candidates; keep the best by (flatten, strassen tiebreak)
+                let mut best: Option<((u32, u32), (u32, u32, u32), R3)> = None;
+                for _ in 0..cands {
+                    let (al, be, ga) =
+                        ((rnd() % 511 + 1) as u32, (rnd() % 511 + 1) as u32, (rnd() % 511 + 1) as u32);
+                    let mut nr = r3;
+                    nr.xor_product(al, be, ga);
+                    let f = max_flatten3(&nr);
+                    if f > remaining - 1 {
+                        continue;
+                    }
+                    let key = (f, 0u32);
+                    if best.as_ref().map_or(true, |(bk, _, _)| key < *bk) {
+                        best = Some((key, (al, be, ga), nr));
+                    }
+                }
+                let Some((_, prod, nr)) = best else { break };
+                // probe-gate the step: descend only through states no cheap
+                // bound refutes (strassen 20us, then the 1-ply probe 0.36ms)
+                let rem_after = remaining - 1;
+                if strassen_bound3(&nr, 8) > rem_after {
+                    break;
+                }
+                let fb2 = max_flatten3(&nr);
+                if sub_bound3(&nr, &masks, fb2, rem_after + 1) > rem_after {
+                    break;
+                }
+                prefix.push(prod);
+                r3 = nr;
+                best_depth = best_depth.max(prefix.len() as u32);
+            }
+        }
+        eprintln!("corridor: {restarts} restarts, deepest prefix {best_depth}, near-misses {near_misses}");
+        return;
+    }
+    if let Some(spec) = get("--endgame") {
+        // exhaust the remaining budget below a given prefix exactly
+        let prefix = parse_products(&spec);
+        let egame: u32 = get("--endgame-budget").and_then(|v| v.parse().ok()).unwrap_or(7);
+        let mut r3 = R3::from_abc(&build_t3());
+        for &(al, be, ga) in &prefix {
+            r3.xor_product(al, be, ga);
+        }
+        let masks = Masks::build();
+        let shared = Shared {
+            capped: AtomicBool::new(false),
+            found: AtomicBool::new(false),
+            nodes: AtomicU64::new(0),
+            prune_flat: AtomicU64::new(0),
+            prune_sub: AtomicU64::new(0),
+            prune_koszul: AtomicU64::new(0),
+            prune_strassen: AtomicU64::new(0),
+            work: AtomicUsize::new(0),
+        };
+        let cap: f64 = get("--time").and_then(|v| v.parse().ok()).unwrap_or(600.0);
+        let mut w = Search {
+            masks: &masks,
+            koszul: 0,
+            koszul_min_remaining: u32::MAX,
+            stab: &[],
+            strassen: true,
+            chosen: Vec::new(),
+            level2_remaining: u32::MAX,
+            nodes: 0,
+            prune_flat: 0,
+            prune_sub: 0,
+            prune_koszul: 0,
+            prune_strassen: 0,
+            sub_probe: true,
+            probe_min_remaining: 3,
+            cap,
+            start: Instant::now(),
+            capped: false,
+            shared: &shared,
+        };
+        let full: u32 = (511 << 18) | (511 << 9) | 511;
+        let found = w.dfs(&r3, egame, full + 1, 0);
+        if found {
+            let mut scheme = prefix.clone();
+            scheme.extend(w.chosen.iter());
+            let ok = verify_scheme(&scheme);
+            println!(
+                "ENDGAME SAT — {} products, independent verify {}",
+                scheme.len(),
+                if ok { "OK" } else { "FAILED" }
+            );
+            for (i, (a, b, g)) in scheme.iter().enumerate() {
+                println!("  p{}: {a},{b},{g}", i + 1);
+            }
+            assert!(ok);
+        } else if w.capped {
+            println!("ENDGAME CAP ({} nodes)", w.nodes);
+        } else {
+            println!("ENDGAME UNSAT ({} nodes) — prefix refuted", w.nodes);
+        }
+        return;
+    }
+    if args.iter().any(|a| a == "--root-probe3") {
+        let reps = first_product_reps();
+        let masks = Masks::build();
+        let t3 = build_t3();
+        let threads: usize = get("--threads").and_then(|v| v.parse().ok()).unwrap_or(12);
+        let hist_m = std::sync::Mutex::new(std::collections::BTreeMap::new());
+        let widx = AtomicUsize::new(0);
+        let done = AtomicU64::new(0);
+        let t0 = Instant::now();
+        std::thread::scope(|scope| {
+            for _ in 0..threads {
+                scope.spawn(|| loop {
+                    let i = widx.fetch_add(1, Ordering::Relaxed);
+                    if i >= reps.len() {
+                        break;
+                    }
+                    let (al, be, ga, _) = reps[i];
+                    let mut r3 = R3::from_abc(&t3);
+                    r3.xor_product(al, be, ga);
+                    let p2 = ply2_root_t(&r3, &masks, 15);
+                    let v = if p2 >= 15 { 15 } else { ply3_root(&r3, &masks, 15).max(p2).max(14) };
+                    *hist_m.lock().unwrap().entry(v).or_insert(0u32) += 1;
+                    let d = done.fetch_add(1, Ordering::Relaxed) + 1;
+                    if d % 8 == 0 {
+                        eprintln!("  {d}/211 ({:.0}s)", t0.elapsed().as_secs_f64());
+                    }
+                });
+            }
+        });
+        eprintln!(
+            "root ply-3 histogram: {:?} ({:.0}s)",
+            hist_m.into_inner().unwrap(),
+            t0.elapsed().as_secs_f64()
+        );
+        return;
+    }
+    if args.iter().any(|a| a == "--m4r-test") {
+        // gate: M4R rank must equal the legacy elimination on random matrices
+        let mut seed = 0xfeedfacecafebeefu64;
+        let mut rnd = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let t0 = Instant::now();
+        for trial in 0..300 {
+            let n = (rnd() % 200 + 1) as usize;
+            let words = (rnd() % 20 + 1) as usize;
+            let density = rnd() % 100;
+            let mut m: Vec<Vec<u64>> = (0..n)
+                .map(|_| {
+                    (0..words)
+                        .map(|_| if rnd() % 100 < density { rnd() } else { 0 })
+                        .collect()
+                })
+                .collect();
+            let mut m2 = m.clone();
+            let r_new = rank_wide(&mut m, words);
+            let r_old = rank_wide_legacy(&mut m2, words);
+            assert_eq!(r_new, r_old, "M4R rank mismatch on trial {trial}");
+        }
+        eprintln!("m4r-test: 300 random matrices, ranks identical ({:.1}s)", t0.elapsed().as_secs_f64());
+        // timing on koszul-shaped matrices (1134 x 18 words)
+        for name in ["m4r", "legacy"] {
+            let mut seed2 = 7u64;
+            let mut rnd2 = move || {
+                seed2 ^= seed2 << 13;
+                seed2 ^= seed2 >> 7;
+                seed2 ^= seed2 << 17;
+                seed2
+            };
+            let t1 = Instant::now();
+            for _ in 0..20 {
+                let mut m: Vec<Vec<u64>> =
+                    (0..1134).map(|_| (0..18).map(|_| rnd2()).collect()).collect();
+                if name == "m4r" {
+                    rank_wide(&mut m, 18);
+                } else {
+                    rank_wide_legacy(&mut m, 18);
+                }
+            }
+            eprintln!("  {name}: {:.2} ms/elimination (1134x1152)", t1.elapsed().as_secs_f64() / 20.0 * 1000.0);
+        }
+        return;
+    }
+    if args.iter().any(|a| a == "--root-probe2") {
+        // ply-2: per root, 1 + min over folds of koszul_probe3(fold, 14);
+        // >= 15 everywhere <=> r=15 falls at the 211 roots.
+        let reps = first_product_reps();
+        let masks = Masks::build();
+        let t3 = build_t3();
+        let threads: usize = get("--threads").and_then(|v| v.parse().ok()).unwrap_or(12);
+        let hist_m = std::sync::Mutex::new(std::collections::BTreeMap::new());
+        let widx = AtomicUsize::new(0);
+        let done = AtomicU64::new(0);
+        let t0 = Instant::now();
+        std::thread::scope(|scope| {
+            for _ in 0..threads {
+                scope.spawn(|| loop {
+                    let i = widx.fetch_add(1, Ordering::Relaxed);
+                    if i >= reps.len() {
+                        break;
+                    }
+                    let (al, be, ga, _) = reps[i];
+                    let mut r3 = R3::from_abc(&t3);
+                    r3.xor_product(al, be, ga);
+                    let best = ply2_root(&r3, &masks);
+                    *hist_m.lock().unwrap().entry(best).or_insert(0u32) += 1;
+                    let d = done.fetch_add(1, Ordering::Relaxed) + 1;
+                    if d % 16 == 0 {
+                        eprintln!("  {d}/211 done ({:.0}s)", t0.elapsed().as_secs_f64());
+                    }
+                });
+            }
+        });
+        let hist = hist_m.into_inner().unwrap();
+        eprintln!("root ply-2 histogram: {:?} ({:.0}s)", hist, t0.elapsed().as_secs_f64());
+        return;
+    }
+    if false {
+        // (retired serial ply-2 body below, kept for reference)
+        let reps = first_product_reps();
+        let masks = Masks::build();
+        let t3 = build_t3();
+        let mut hist = std::collections::BTreeMap::new();
+        let t0 = Instant::now();
+        for (i, &(al, be, ga, _)) in reps.iter().enumerate() {
+            let mut r3 = R3::from_abc(&t3);
+            r3.xor_product(al, be, ga);
+            // inline the fold loop of koszul_probe3 but with probe leaves
+            let mut best = 0u32;
+            let layouts = |r: &R3| [r.abc, r.bca, r.cab];
+            for side in 0..3usize {
+                let sidx = STRIDE_IDX[side];
+                let major_layout = sidx.iter().position(|&x| x == 0).unwrap();
+                let lts = layouts(&r3);
+                let p = match (0..9)
+                    .rev()
+                    .find(|&p| !is_zero(&layout_slice(&lts[major_layout], masks_ref(&masks), 0, p)))
+                {
+                    Some(p) => p,
+                    None => continue,
+                };
+                let mut bases = lts;
+                let mut slices = [[0u64; W]; 3];
+                for l in 0..3 {
+                    slices[l] = layout_slice(&lts[l], &masks, sidx[l], p);
+                    for w in 0..W {
+                        bases[l][w] ^= slices[l][w];
+                    }
+                }
+                let others: Vec<usize> = (0..9).filter(|&x| x != p).collect();
+                let shifted: Vec<[T3; 3]> = others
+                    .iter()
+                    .map(|&q| {
+                        let mut sh = [[0u64; W]; 3];
+                        for l in 0..3 {
+                            sh[l] = layout_shift(&slices[l], sidx[l], p, q);
+                        }
+                        sh
+                    })
+                    .collect();
+                let mut worst = u32::MAX;
+                for lam in 0..256u32 {
+                    let mut m = bases;
+                    for (bi, sh) in shifted.iter().enumerate() {
+                        if lam >> bi & 1 == 1 {
+                            for l in 0..3 {
+                                for w in 0..W {
+                                    m[l][w] ^= sh[l][w];
+                                }
+                            }
+                        }
+                    }
+                    let folded = R3 { abc: m[0], bca: m[1], cab: m[2] };
+                    let pv = koszul_probe3(&folded, &masks, 4, 14);
+                    worst = worst.min(pv);
+                    if 1 + worst < 15 {
+                        break;
+                    }
+                }
+                if worst != u32::MAX {
+                    best = best.max(1 + worst);
+                }
+                if best >= 15 {
+                    break;
+                }
+            }
+            *hist.entry(best).or_insert(0u32) += 1;
+            if i % 16 == 0 {
+                eprintln!("  root {i}: ply2 {best} ({:.0}s)", t0.elapsed().as_secs_f64());
+            }
+        }
+        eprintln!("root ply-2 histogram: {:?} ({:.0}s)", hist, t0.elapsed().as_secs_f64());
+        return;
+    }
+    if args.iter().any(|a| a == "--root-probe") {
+        // tier-2 measurement: koszul-leaf 1-ply probe on all 211 roots;
+        // >= 15 everywhere means r=15 falls at 211 nodes.
+        let reps = first_product_reps();
+        let masks = Masks::build();
+        let t3 = build_t3();
+        let mut hist = std::collections::BTreeMap::new();
+        let t0 = Instant::now();
+        for (i, &(al, be, ga, _)) in reps.iter().enumerate() {
+            let mut r3 = R3::from_abc(&t3);
+            r3.xor_product(al, be, ga);
+            let b = koszul_probe3(&r3, &masks, 4, 15);
+            *hist.entry(b).or_insert(0u32) += 1;
+            if i % 32 == 0 {
+                eprintln!("  root {i}: probe {b} ({:.0}s elapsed)", t0.elapsed().as_secs_f64());
+            }
+        }
+        eprintln!("root koszul-probe histogram: {:?} ({:.0}s)", hist, t0.elapsed().as_secs_f64());
+        return;
+    }
     if args.iter().any(|a| a == "--koszul-p-profile") {
         // per-p koszul strength and cost on level-2 residuals
         let mut seed = 0x123456789abcdefu64;
@@ -1450,6 +2161,7 @@ fn main() {
                     koszul_min_remaining,
                     stab: &[],
                     strassen: use_strassen,
+                    chosen: Vec::new(),
                     level2_remaining: r - 1,
                     nodes: 0,
                     prune_flat: 0,

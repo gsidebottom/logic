@@ -542,6 +542,29 @@ the two source papers for this track):
   on known-value gates), (v) flatten kernel optimization (~10x:
   extract81 loop -> precomputed transposes; probes are
   flatten-bound). Output phrasing now 'rank > r' (Greg 2026-08-28).
+- **CDCL(T) stages 3-4 complete — rank > 14 in 0.1 s; the routes
+  converge (2026-08-29, logic 88d88fb/501f33d/03d9d52)**: stage 3
+  (triple-layout kernels; 211 first-product orbit reps of 133.4M —
+  632384x; Koszul propagator) took rungs 11-14 at 211 nodes / 0.1 s
+  each — level-1 Koszul is uniformly 14 across all 211 root
+  residuals. Stage 4a (level-2 stabilizer minimality, median 16x):
+  sound, regressions green, r=15 still CAP at 456M nodes/2 h. Stage
+  4b (learned rank certificates): minor extraction + restricted-
+  generator transfer implemented; the design's risk gates fired —
+  transfer decay is EXACTLY 1 per product (300/300; perturbation
+  generators always full-rank in the minor), koszul rises on random
+  paths (alignment is rare, no filter variance), and the per-p curve
+  on level-2 residuals (11/12/13.5/14 at 0.27/1.2/3.3/6.1 ms) means
+  only p=4 prunes r=15's level 2 — pricing that rung at ~100
+  Mac-days (~2.5 days on a 512-core node) and rungs >= 16 above
+  Koszul's ceiling entirely. VERDICT: route 2's architecture thesis
+  is proven (structure-aware inference: 6 rungs in 0.1 s where plain
+  search capped at 10, each propagator worth its exact theoretical
+  strength), and its bound-strength converges with route (c) on the
+  identical missing object: a cheap strength-15..19 rank oracle for
+  arbitrary (not lattice-restricted) tensors. The week's three
+  independent programs — Wang-DP mixed play, the exhaustive game,
+  and certified scheme search — all terminate at that one gap.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

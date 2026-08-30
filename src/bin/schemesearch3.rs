@@ -793,6 +793,213 @@ fn first_product_reps() -> Vec<(u32, u32, u32, Vec<StabElem>)> {
     reps
 }
 
+// ---- tier-1 oracle ensemble: forced-product and Strassen commutator ----
+
+/// 9x9 F2 matrix as 9 rows of 9 bits
+type M9 = [u16; 9];
+
+fn m9_rank(m: &M9) -> u32 {
+    let mut rows = *m;
+    let mut rk = 0usize;
+    for c in (0..9).rev() {
+        if let Some(p) = (rk..9).find(|&i| rows[i] >> c & 1 == 1) {
+            rows.swap(rk, p);
+            for i in 0..9 {
+                if i != rk && rows[i] >> c & 1 == 1 {
+                    rows[i] ^= rows[rk];
+                }
+            }
+            rk += 1;
+        }
+    }
+    rk as u32
+}
+
+fn m9_mul(a: &M9, b: &M9) -> M9 {
+    let mut c = [0u16; 9];
+    for i in 0..9 {
+        let mut row = 0u16;
+        for j in 0..9 {
+            if a[i] >> j & 1 == 1 {
+                row ^= b[j];
+            }
+        }
+        c[i] = row;
+    }
+    c
+}
+
+fn m9_inv(a: &M9) -> Option<M9> {
+    let mut m = *a;
+    let mut inv: M9 = [0u16; 9];
+    for i in 0..9 {
+        inv[i] = 1 << i;
+    }
+    for c in (0..9).rev() {
+        let rk = 8 - c;
+        let p = (rk..9).find(|&i| m[i] >> c & 1 == 1)?;
+        m.swap(rk, p);
+        inv.swap(rk, p);
+        for i in 0..9 {
+            if i != rk && m[i] >> c & 1 == 1 {
+                m[i] ^= m[rk];
+                inv[i] ^= inv[rk];
+            }
+        }
+    }
+    // High-to-low column processing leaves m as the reversal permutation J,
+    // so the accumulated ops E satisfy E*A = J and A^-1 = J*E: reverse rows.
+    inv.reverse();
+    Some(inv)
+}
+
+/// slice i of a layout (major axis) as a 9x9 matrix over the two minor axes
+fn slice_m9(t: &T3, i: usize) -> M9 {
+    let row = extract81(t, i * 81);
+    let mut m = [0u16; 9];
+    for j in 0..9 {
+        m[j] = ((row >> (j * 9)) & 0x1FF) as u16;
+    }
+    m
+}
+
+/// flatten bound of a tensor given as <= 9 slices (81-bit rows, A-major)
+fn flatten_of_rows(rows: &[u128]) -> u32 {
+    let mut fa = [0u128; 9];
+    let mut fb = [0u128; 9];
+    let mut fc = [0u128; 9];
+    for (a, &r) in rows.iter().enumerate() {
+        fa[a] = r;
+        for b in 0..9 {
+            let chunk = (r >> (b * 9)) & 0x1FF;
+            fb[b] |= chunk << (a * 9);
+            if chunk != 0 {
+                for c in 0..9 {
+                    if chunk >> c & 1 == 1 {
+                        fc[c] |= 1u128 << (a * 9 + b);
+                    }
+                }
+            }
+        }
+    }
+    rank9(&mut fa).max(rank9(&mut fb)).max(rank9(&mut fc))
+}
+
+/// Forced-product bound (Hopcroft-Kerr Lemma 2, Wang's technique ported):
+/// per side, independent rank-1 slices become forced products; bound =
+/// r1 + min over ALL F2 foldings of the remaining slices' flatten bound.
+/// The min must be complete for soundness; widths above the cap return 0.
+fn forced_bound3(r: &R3, cap_bits: u32) -> u32 {
+    let mut best = 0u32;
+    for layout in [&r.abc, &r.bca, &r.cab] {
+        let mut r1_rows: Vec<u128> = Vec::new();
+        let mut r2p: Vec<u128> = Vec::new();
+        for i in 0..9 {
+            let row = extract81(layout, i * 81);
+            if row == 0 {
+                continue;
+            }
+            let rk = m9_rank(&slice_m9(layout, i));
+            if rk == 1 {
+                // keep if independent of the chosen r1 rows (GE over 81 bits)
+                let mut v = row;
+                for &b in &r1_rows {
+                    let hb = 127 - b.leading_zeros() as usize;
+                    if v >> hb & 1 == 1 {
+                        v ^= b;
+                    }
+                }
+                if v != 0 {
+                    r1_rows.push(row);
+                    continue;
+                }
+            }
+            r2p.push(row);
+        }
+        let r1 = r1_rows.len() as u32;
+        if r1 == 0 {
+            continue;
+        }
+        let width = r1 * r2p.len() as u32;
+        if width > cap_bits {
+            continue;
+        }
+        let mut minv = u32::MAX;
+        for combo in 0..(1u64 << width) {
+            let mut rows: Vec<u128> = r2p.clone();
+            for bit in 0..width {
+                if combo >> bit & 1 == 1 {
+                    let ri = (bit % r1) as usize;
+                    let si = (bit / r1) as usize;
+                    rows[si] ^= r1_rows[ri];
+                }
+            }
+            minv = minv.min(flatten_of_rows(&rows));
+            if minv == 0 {
+                break;
+            }
+        }
+        best = best.max(r1 + minv);
+    }
+    best
+}
+
+/// Strassen commutator bound (valid over arbitrary fields; char-2 gated
+/// empirically): per side, find an invertible slice-span element S; bound =
+/// 9 + ceil(max over slice pairs rank(S1*S2 xor S2*S1) / 2) with
+/// Si = S^-1 * slice_i.
+fn strassen_bound3(r: &R3, tries: u32) -> u32 {
+    let mut best = 0u32;
+    let mut seed = 0xabcdef0123456789u64;
+    let mut rnd = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        seed
+    };
+    for layout in [&r.abc, &r.bca, &r.cab] {
+        let slices: Vec<M9> = (0..9).map(|i| slice_m9(layout, i)).collect();
+        // find invertible S in the span: individual slices, then random combos
+        let mut sinv: Option<M9> = None;
+        for s in &slices {
+            if let Some(inv) = m9_inv(s) {
+                sinv = Some(inv);
+                break;
+            }
+        }
+        let mut t = 0;
+        while sinv.is_none() && t < tries {
+            let mask = (rnd() % 511 + 1) as u16;
+            let mut s = [0u16; 9];
+            for (i, sl) in slices.iter().enumerate() {
+                if mask >> i & 1 == 1 {
+                    for j in 0..9 {
+                        s[j] ^= sl[j];
+                    }
+                }
+            }
+            sinv = m9_inv(&s);
+            t += 1;
+        }
+        let Some(sinv) = sinv else { continue };
+        let norm: Vec<M9> = slices.iter().map(|s| m9_mul(&sinv, s)).collect();
+        let mut cmax = 0u32;
+        for i in 0..9 {
+            for j in i + 1..9 {
+                let xy = m9_mul(&norm[i], &norm[j]);
+                let yx = m9_mul(&norm[j], &norm[i]);
+                let mut comm = [0u16; 9];
+                for k in 0..9 {
+                    comm[k] = xy[k] ^ yx[k];
+                }
+                cmax = cmax.max(m9_rank(&comm));
+            }
+        }
+        best = best.max(9 + (cmax + 1) / 2);
+    }
+    best
+}
+
 struct Shared {
     capped: AtomicBool,
     found: AtomicBool,
@@ -800,6 +1007,7 @@ struct Shared {
     prune_flat: AtomicU64,
     prune_sub: AtomicU64,
     prune_koszul: AtomicU64,
+    prune_strassen: AtomicU64,
     work: AtomicUsize,
 }
 
@@ -808,11 +1016,13 @@ struct Search<'a> {
     koszul: usize,             // 0 = off; else max p
     koszul_min_remaining: u32, // apply only at shallow nodes
     stab: &'a [StabElem],      // stabilizer of the current root rep
+    strassen: bool,
     level2_remaining: u32,     // remaining value at level-2 nodes (= r-1)
     nodes: u64,
     prune_flat: u64,
     prune_sub: u64,
     prune_koszul: u64,
+    prune_strassen: u64,
     sub_probe: bool,
     probe_min_remaining: u32,
     cap: f64,
@@ -848,6 +1058,16 @@ impl<'a> Search<'a> {
         if fr > remaining {
             self.prune_flat += 1;
             return false;
+        }
+        // Strassen commutator: strength ~13 at ~20us — the mid-level pruner
+        // (bites when remaining <= 13; below 10 flatten handles, above 13 it
+        // cannot reach). Gate-validated on constructed-rank tensors.
+        if self.strassen && (10..=13).contains(&remaining) {
+            if strassen_bound3(r, 8) > remaining {
+                self.prune_strassen += 1;
+                self.shared.prune_strassen.fetch_add(1, Ordering::Relaxed);
+                return false;
+            }
         }
         if self.sub_probe && remaining >= self.probe_min_remaining {
             if sub_bound3(r, self.masks, fr, remaining + 1) > remaining {
@@ -917,6 +1137,7 @@ fn main() {
     let probe_min_remaining: u32 =
         get("--probe-min-remaining").and_then(|v| v.parse().ok()).unwrap_or(3);
     let koszul: usize = get("--koszul").and_then(|v| v.parse().ok()).unwrap_or(0);
+    let use_strassen = args.iter().any(|a| a == "--strassen");
     let koszul_min_remaining: u32 =
         get("--koszul-min-remaining").and_then(|v| v.parse().ok()).unwrap_or(r.saturating_sub(1));
 
@@ -950,6 +1171,138 @@ fn main() {
                 sum += k;
             }
             eprintln!("depth {depth}: koszul mean {:.2} min {min_k} (n={n})", sum as f64 / n as f64);
+        }
+        return;
+    }
+    if args.iter().any(|a| a == "--oracle-profile") {
+        // Strength/cost curves for the tier-1 ensemble on residuals, plus the
+        // constructed-rank soundness gate: R = xor of k random products has
+        // rank <= k, so any bound > k is UNSOUND.
+        let mut seed = 0x5eed5eed5eed5eedu64;
+        let mut rnd = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        // m9_inv self-test: inverse must verify on random invertible matrices
+        {
+            let mut sd = 0x1234u64;
+            let mut r2 = move || {
+                sd ^= sd << 13;
+                sd ^= sd >> 7;
+                sd ^= sd << 17;
+                sd
+            };
+            let mut tested = 0;
+            while tested < 200 {
+                let mut m = [0u16; 9];
+                for i in 0..9 {
+                    m[i] = (r2() % 512) as u16;
+                }
+                if let Some(inv) = m9_inv(&m) {
+                    let prod = m9_mul(&m, &inv);
+                    let mut ident = [0u16; 9];
+                    for i in 0..9 {
+                        ident[i] = 1 << i;
+                    }
+                    assert_eq!(prod, ident, "m9_inv broken on {:?}", m);
+                    tested += 1;
+                }
+            }
+            eprintln!("m9_inv self-test: 200 inverses verified");
+        }
+        eprintln!("=== soundness gate: constructed rank <= k tensors ===");
+        let mut violations = 0u32;
+        for k in [5usize, 8, 11, 14, 17] {
+            for _ in 0..12 {
+                let mut r3 = R3 { abc: [0; W], bca: [0; W], cab: [0; W] };
+                for _ in 0..k {
+                    r3.xor_product(
+                        (rnd() % 511 + 1) as u32,
+                        (rnd() % 511 + 1) as u32,
+                        (rnd() % 511 + 1) as u32,
+                    );
+                }
+                let f = max_flatten3(&r3);
+                let st = strassen_bound3(&r3, 24);
+                let fo = forced_bound3(&r3, 12);
+                let kz = koszul_bound3(&r3, 4);
+                for (name, v) in [("flat", f), ("strassen", st), ("forced", fo), ("koszul", kz)] {
+                    if v as usize > k {
+                        eprintln!("  UNSOUND: {name}={v} > k={k}");
+                        violations += 1;
+                    }
+                }
+            }
+        }
+        eprintln!("gate violations: {violations}");
+        eprintln!("=== T3 sanity (true rank in [20,23]) ===");
+        let t3 = R3::from_abc(&build_t3());
+        eprintln!(
+            "  flat {} strassen {} forced {} koszul {}",
+            max_flatten3(&t3),
+            strassen_bound3(&t3, 24),
+            forced_bound3(&t3, 12),
+            koszul_bound3(&t3, 4)
+        );
+        eprintln!("=== residual profile (T xor d products), n=24 per depth ===");
+        for depth in [1usize, 2, 3, 4, 6] {
+            let n = 24;
+            let mut stats = [[0u32; 4]; 3]; // [sum, min, fired] x bound — use rows: sum/min/fire
+            let mut sums = [0u32; 4];
+            let mut mins = [u32::MAX; 4];
+            let mut fires = [0u32; 4];
+            let mut costs = [0f64; 4];
+            for _ in 0..n {
+                let mut r3 = R3::from_abc(&build_t3());
+                for _ in 0..depth {
+                    r3.xor_product(
+                        (rnd() % 511 + 1) as u32,
+                        (rnd() % 511 + 1) as u32,
+                        (rnd() % 511 + 1) as u32,
+                    );
+                }
+                let evals: [(usize, u32, f64); 4] = {
+                    let t0 = Instant::now();
+                    let f = max_flatten3(&r3);
+                    let c0 = t0.elapsed().as_secs_f64();
+                    let t0 = Instant::now();
+                    let st = strassen_bound3(&r3, 24);
+                    let c1 = t0.elapsed().as_secs_f64();
+                    let t0 = Instant::now();
+                    let fo = forced_bound3(&r3, 12);
+                    let c2 = t0.elapsed().as_secs_f64();
+                    let t0 = Instant::now();
+                    let kz = koszul_bound3(&r3, 4);
+                    let c3 = t0.elapsed().as_secs_f64();
+                    [(0, f, c0), (1, st, c1), (2, fo, c2), (3, kz, c3)]
+                };
+                for (i, v, c) in evals {
+                    sums[i] += v;
+                    mins[i] = mins[i].min(v);
+                    if v > 0 {
+                        fires[i] += 1;
+                    }
+                    costs[i] += c;
+                }
+                let _ = &mut stats;
+            }
+            let names = ["flat", "strassen", "forced", "koszul4"];
+            let line: Vec<String> = (0..4)
+                .map(|i| {
+                    format!(
+                        "{}: mean {:.1} min {} fire {}/{} {:.2}ms",
+                        names[i],
+                        sums[i] as f64 / n as f64,
+                        if mins[i] == u32::MAX { 0 } else { mins[i] },
+                        fires[i],
+                        n,
+                        costs[i] / n as f64 * 1000.0
+                    )
+                })
+                .collect();
+            eprintln!("depth {depth}: {}", line.join(" | "));
         }
         return;
     }
@@ -1068,8 +1421,8 @@ fn main() {
         stab_sizes.iter().max().unwrap()
     );
 
-    struct Tally { nodes: u64, prune_flat: u64, prune_sub: u64, prune_koszul: u64, capped: bool }
-    let mut s = Tally { nodes: 0, prune_flat: 0, prune_sub: 0, prune_koszul: 0, capped: false };
+    struct Tally { nodes: u64, prune_flat: u64, prune_sub: u64, prune_koszul: u64, prune_strassen: u64, capped: bool }
+    let mut s = Tally { nodes: 0, prune_flat: 0, prune_sub: 0, prune_koszul: 0, prune_strassen: 0, capped: false };
 
     let full: u32 = (511 << 18) | (511 << 9) | 511;
     let threads: usize = get("--threads").and_then(|v| v.parse().ok()).unwrap_or(12);
@@ -1082,6 +1435,7 @@ fn main() {
         prune_flat: AtomicU64::new(0),
         prune_sub: AtomicU64::new(0),
         prune_koszul: AtomicU64::new(0),
+        prune_strassen: AtomicU64::new(0),
         work: AtomicUsize::new(0),
     };
     let masks = Masks::build();
@@ -1095,11 +1449,13 @@ fn main() {
                     koszul,
                     koszul_min_remaining,
                     stab: &[],
+                    strassen: use_strassen,
                     level2_remaining: r - 1,
                     nodes: 0,
                     prune_flat: 0,
                     prune_sub: 0,
                     prune_koszul: 0,
+                    prune_strassen: 0,
                     sub_probe,
                     probe_min_remaining,
                     cap,
@@ -1136,6 +1492,7 @@ fn main() {
     s.prune_flat = shared.prune_flat.load(Ordering::Relaxed);
     s.prune_sub = shared.prune_sub.load(Ordering::Relaxed);
     s.prune_koszul = shared.prune_koszul.load(Ordering::Relaxed);
+    s.prune_strassen = shared.prune_strassen.load(Ordering::Relaxed);
     s.capped = shared.capped.load(Ordering::Relaxed);
 
     let el = start.elapsed().as_secs_f64();
@@ -1143,17 +1500,18 @@ fn main() {
         println!("r={r}: SAT?! — a scheme surfaced; INVESTIGATE (should be impossible for r<20)");
     } else if s.capped {
         println!(
-            "r={r}: CAP ({} nodes, {:.1}s, prunes flat {} sub {} koszul {})",
-            s.nodes, el, s.prune_flat, s.prune_sub, s.prune_koszul
+            "r={r}: CAP ({} nodes, {:.1}s, prunes flat {} sub {} koszul {} strassen {})",
+            s.nodes, el, s.prune_flat, s.prune_sub, s.prune_koszul, s.prune_strassen
         );
     } else {
         println!(
-            "r={r}: UNSAT — exhausted ({} nodes, {:.1}s, prunes flat {} sub {} koszul {}) => rank_F2(<3,3,3>) > {}",
+            "r={r}: UNSAT — exhausted ({} nodes, {:.1}s, prunes flat {} sub {} koszul {} strassen {}) => rank_F2(<3,3,3>) > {}",
             s.nodes,
             el,
             s.prune_flat,
             s.prune_sub,
             s.prune_koszul,
+            s.prune_strassen,
             r
         );
     }

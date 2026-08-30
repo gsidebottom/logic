@@ -543,7 +543,29 @@ fn m3_inv(gl: &[u16], a: u16) -> u16 {
 /// Stab(alpha) x R; stage C: gamma minimized over Stab(alpha, beta).
 /// Sound by construction: every product is equivalent to a listed rep, and
 /// the search's over-counting form needs nothing more.
-fn first_product_reps() -> Vec<(u32, u32, u32)> {
+/// Precomputed stabilizer element: the six matrices needed to act on a
+/// product triple: (P^T, Q^T, Q^-T, R^T, P^-1, R^-1).
+#[derive(Clone, Copy)]
+struct StabElem {
+    pt: u16,
+    qt: u16,
+    qit: u16,
+    rt: u16,
+    pi: u16,
+    ri: u16,
+}
+
+impl StabElem {
+    fn act(&self, al: u16, be: u16, ga: u16) -> (u16, u16, u16) {
+        (
+            m3_mul(m3_mul(self.pt, al), self.qt),
+            m3_mul(m3_mul(self.qit, be), self.rt),
+            m3_mul(m3_mul(self.pi, ga), self.ri),
+        )
+    }
+}
+
+fn first_product_reps() -> Vec<(u32, u32, u32, Vec<StabElem>)> {
     let gl = gl3();
     // alpha action table entries: (pt = P^T, qt = Q^T, pinv, rinv-free later)
     // alpha reps: min over all (P,Q)
@@ -591,19 +613,19 @@ fn first_product_reps() -> Vec<(u32, u32, u32)> {
         let beta_reps: Vec<u16> =
             (1u16..512).filter(|&be| beta_min[be as usize] == be).collect();
         for &br in &beta_reps {
-            // stabilizer triples fixing (ar, br)
-            let mut stab2: Vec<(u16, u16)> = Vec::new(); // (P, R)
+            // stabilizer triples (P, Q, R) fixing (ar, br)
+            let mut stab2: Vec<(u16, u16, u16)> = Vec::new();
             for &(p, q) in &stab {
                 let qit = m3_tr(m3_inv(&gl, q));
                 for &r in &gl {
                     if m3_mul(m3_mul(qit, br), m3_tr(r)) == br {
-                        stab2.push((p, r));
+                        stab2.push((p, q, r));
                     }
                 }
             }
             // gamma reps: min over stab2: gamma -> P^-1 gamma R^-1
             let mut gamma_min = [u16::MAX; 512];
-            for &(p, r) in &stab2 {
+            for &(p, _, r) in &stab2 {
                 let pi = m3_inv(&gl, p);
                 let ri = m3_inv(&gl, r);
                 for ga in 1u16..512 {
@@ -614,9 +636,30 @@ fn first_product_reps() -> Vec<(u32, u32, u32)> {
                 }
             }
             for ga in 1u16..512 {
-                if gamma_min[ga as usize] == ga {
-                    reps.push((ar as u32, br as u32, ga as u32));
+                if gamma_min[ga as usize] != ga {
+                    continue;
                 }
+                // full stabilizer of the triple (ar, br, ga)
+                let elems: Vec<StabElem> = stab2
+                    .iter()
+                    .filter_map(|&(p, q, r)| {
+                        let pi = m3_inv(&gl, p);
+                        let ri = m3_inv(&gl, r);
+                        if m3_mul(m3_mul(pi, ga), ri) == ga {
+                            Some(StabElem {
+                                pt: m3_tr(p),
+                                qt: m3_tr(q),
+                                qit: m3_tr(m3_inv(&gl, q)),
+                                rt: m3_tr(r),
+                                pi,
+                                ri,
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                reps.push((ar as u32, br as u32, ga as u32, elems));
             }
         }
     }
@@ -637,6 +680,8 @@ struct Search<'a> {
     masks: &'a Masks,
     koszul: usize,             // 0 = off; else max p
     koszul_min_remaining: u32, // apply only at shallow nodes
+    stab: &'a [StabElem],      // stabilizer of the current root rep
+    level2_remaining: u32,     // remaining value at level-2 nodes (= r-1)
     nodes: u64,
     prune_flat: u64,
     prune_sub: u64,
@@ -690,6 +735,7 @@ impl<'a> Search<'a> {
                 return false;
             }
         }
+        let at_level2 = remaining == self.level2_remaining;
         let mut id = max;
         while id > 0 {
             id -= 1;
@@ -703,6 +749,24 @@ impl<'a> Search<'a> {
             }
             if id == skip {
                 continue;
+            }
+            // 4a: at level 2, keep only Stab(root)-orbit-minimal products —
+            // sound by the one-deeper normalization (some member of the
+            // remaining set is normalizable; levels 3+ stay full-space).
+            if at_level2 && !self.stab.is_empty() {
+                let (a16, b16, g16) = (al as u16, be as u16, ga as u16);
+                let mut minimal = true;
+                for e in self.stab {
+                    let (ia, ib, ig) = e.act(a16, b16, g16);
+                    let iid = (ia as u32) << 18 | (ib as u32) << 9 | ig as u32;
+                    if iid < id {
+                        minimal = false;
+                        break;
+                    }
+                }
+                if !minimal {
+                    continue;
+                }
             }
             let mut nr = *r;
             nr.xor_product(al, be, ga);
@@ -734,10 +798,14 @@ fn main() {
 
     let t_reps = Instant::now();
     let reps = first_product_reps();
+    let stab_sizes: Vec<usize> = reps.iter().map(|r| r.3.len()).collect();
     eprintln!(
-        "first-product orbit reps: {} (of 133432831 products; {:.1}s)",
+        "first-product orbit reps: {} (of 133432831 products; {:.1}s); stab sizes min {} med {} max {}",
         reps.len(),
-        t_reps.elapsed().as_secs_f64()
+        t_reps.elapsed().as_secs_f64(),
+        stab_sizes.iter().min().unwrap(),
+        { let mut v = stab_sizes.clone(); v.sort(); v[v.len() / 2] },
+        stab_sizes.iter().max().unwrap()
     );
 
     struct Tally { nodes: u64, prune_flat: u64, prune_sub: u64, prune_koszul: u64, capped: bool }
@@ -745,8 +813,8 @@ fn main() {
 
     let full: u32 = (511 << 18) | (511 << 9) | 511;
     let threads: usize = get("--threads").and_then(|v| v.parse().ok()).unwrap_or(12);
-    // work units: one per first-product orbit representative
-    let units: Vec<(u32, u32, u32)> = reps;
+    // work units: one per first-product orbit representative (with stab)
+    let units: Vec<(u32, u32, u32, Vec<StabElem>)> = reps;
     let shared = Shared {
         capped: AtomicBool::new(false),
         found: AtomicBool::new(false),
@@ -766,6 +834,8 @@ fn main() {
                     masks: &masks,
                     koszul,
                     koszul_min_remaining,
+                    stab: &[],
+                    level2_remaining: r - 1,
                     nodes: 0,
                     prune_flat: 0,
                     prune_sub: 0,
@@ -785,13 +855,15 @@ fn main() {
                     {
                         break;
                     }
-                    let (al, be, ga) = units[u];
+                    let (al, be, ga, ref stab_elems) = units[u];
                     let first_id = (al << 18) | (be << 9) | ga;
                     let mut nr = r3_root;
                     nr.xor_product(al, be, ga);
+                    w.stab = stab_elems;
                     if w.dfs(&nr, r - 1, full + 1, first_id) {
                         shared.found.store(true, Ordering::Relaxed);
                     }
+                    w.stab = &[];
                 }
                 shared.nodes.fetch_add(w.nodes, Ordering::Relaxed);
                 shared.prune_flat.fetch_add(w.prune_flat, Ordering::Relaxed);

@@ -379,13 +379,20 @@ fn with_side_first(t: &KT, side: u8) -> KT {
     }
 }
 
-fn rank_wide(rows: &mut Vec<Vec<u64>>, words: usize) -> usize {
+/// GE over F2 rows; returns (rank, pivot original-row ids, pivot columns).
+/// Origin tracking makes the certifying minor extractable: the original rows
+/// selected as pivots I and the pivot columns J satisfy rank(M[I,J]) = rank
+/// (the same elimination restricted to I-rows reproduces the pivots).
+fn rank_wide_minor(rows: &mut Vec<Vec<u64>>, words: usize) -> (usize, Vec<u32>, Vec<u32>) {
     let n = rows.len();
+    let mut orig: Vec<u32> = (0..n as u32).collect();
     let mut rk = 0usize;
+    let mut pivot_cols = Vec::new();
     for c in 0..words * 64 {
         let (w, b) = (c / 64, c % 64);
         if let Some(p) = (rk..n).find(|&i| rows[i][w] >> b & 1 == 1) {
             rows.swap(rk, p);
+            orig.swap(rk, p);
             for i in 0..n {
                 if i != rk && rows[i][w] >> b & 1 == 1 {
                     let (head, tail) = rows.split_at_mut(rk.max(i));
@@ -400,13 +407,18 @@ fn rank_wide(rows: &mut Vec<Vec<u64>>, words: usize) -> usize {
                     }
                 }
             }
+            pivot_cols.push(c as u32);
             rk += 1;
             if rk == n {
                 break;
             }
         }
     }
-    rk
+    (rk, orig[..rk].to_vec(), pivot_cols)
+}
+
+fn rank_wide(rows: &mut Vec<Vec<u64>>, words: usize) -> usize {
+    rank_wide_minor(rows, words).0
 }
 
 fn binom(n: usize, k: usize) -> usize {
@@ -422,34 +434,43 @@ fn binom(n: usize, k: usize) -> usize {
 
 /// Koszul flattening bound on side A with parameter p (verbatim port of
 /// subgame.rs koszul_side; valid over any field, signs vanish over F2).
-fn koszul_side(t: &KT, p: usize) -> usize {
-    let (da, db, dc) = (t.da, t.db, t.dc);
-    if da < 3 || p == 0 || p + 2 > da {
-        return 0;
-    }
-    use std::collections::HashMap;
-    let mut idx_p: HashMap<u32, usize> = HashMap::new();
-    let mut idx_q: HashMap<u32, usize> = HashMap::new();
+/// deterministic wedge index tables: sorted masks of popcount p and p+1
+fn wedge_indices(da: usize, p: usize) -> (Vec<u32>, Vec<i32>, Vec<u32>, Vec<i32>) {
+    let mut masks_p = Vec::new();
+    let mut masks_q = Vec::new();
     for m in 0..(1u32 << da) {
         let c = m.count_ones() as usize;
         if c == p {
-            let n = idx_p.len();
-            idx_p.insert(m, n);
+            masks_p.push(m);
         } else if c == p + 1 {
-            let n = idx_q.len();
-            idx_q.insert(m, n);
+            masks_q.push(m);
         }
     }
-    let ncols = idx_p.len() * db;
-    let nrows = idx_q.len() * dc;
+    let mut pos_p = vec![-1i32; 1 << da];
+    for (i, &m) in masks_p.iter().enumerate() {
+        pos_p[m as usize] = i as i32;
+    }
+    let mut pos_q = vec![-1i32; 1 << da];
+    for (i, &m) in masks_q.iter().enumerate() {
+        pos_q[m as usize] = i as i32;
+    }
+    (masks_p, pos_p, masks_q, pos_q)
+}
+
+/// Koszul wedge matrix rows for tensor t (side already rotated to A-first).
+fn koszul_rows(t: &KT, p: usize) -> (Vec<Vec<u64>>, usize) {
+    let (da, db, dc) = (t.da, t.db, t.dc);
+    let (masks_p, pos_p, _masks_q, pos_q) = wedge_indices(da, p);
+    let ncols = masks_p.len() * db;
+    let nrows = pos_q.iter().filter(|&&x| x >= 0).count() * dc;
     let words = (ncols + 63) / 64;
     let mut rows = vec![vec![0u64; words]; nrows];
-    for (&sm, &si) in &idx_p {
+    for (si, &sm) in masks_p.iter().enumerate() {
         for i in 0..da {
             if sm >> i & 1 == 1 {
                 continue;
             }
-            let qi = idx_q[&(sm | (1 << i))];
+            let qi = pos_q[(sm | (1 << i)) as usize] as usize;
             for j in 0..db {
                 let col = si * db + j;
                 let bits = t.t[i][j];
@@ -464,9 +485,115 @@ fn koszul_side(t: &KT, p: usize) -> usize {
             }
         }
     }
+    (rows, words)
+}
+
+fn koszul_side(t: &KT, p: usize) -> usize {
+    let (da, _, _) = (t.da, t.db, t.dc);
+    if da < 3 || p == 0 || p + 2 > da {
+        return 0;
+    }
+    let (mut rows, words) = koszul_rows(t, p);
     let rk = rank_wide(&mut rows, words);
     let denom = binom(da - 1, p);
     (rk + denom - 1) / denom
+}
+
+/// Learned rank certificate: side s, parameter p, pivot columns J of a
+/// v-rank minor of K_p(side-rotated R_base). Transfers to residuals R' as
+///   bound(R') >= ceil((v - rank(K(Delta)[.,J])) / D),
+/// with rank(K(Delta)[.,J]) upper-bounded by the restricted generator span
+/// (sound: over-subtracting only weakens the bound).
+struct Lemma {
+    side: u8,
+    p: usize,
+    v: usize,
+    jcols: Vec<u32>,
+    jpos: Vec<i32>, // column id -> position in J, dense (-1 = absent)
+}
+
+fn learn_lemma(t: &KT, side: u8, p: usize) -> Option<Lemma> {
+    let ts = with_side_first(t, side);
+    if ts.da < 3 || p == 0 || p + 2 > ts.da {
+        return None;
+    }
+    let (mut rows, words) = koszul_rows(&ts, p);
+    let ncols = words * 64;
+    let (v, _i, j) = rank_wide_minor(&mut rows, words);
+    let mut jpos = vec![-1i32; ncols];
+    for (x, &c) in j.iter().enumerate() {
+        jpos[c as usize] = x as i32;
+    }
+    Some(Lemma { side, p, v, jcols: j, jpos })
+}
+
+impl Lemma {
+    /// rotated (alpha, beta, gamma) for this lemma's side
+    fn rotate(&self, al: u16, be: u16, ga: u16) -> (u16, u16, u16) {
+        match self.side {
+            1 => (al, be, ga),
+            2 => (be, al, ga),
+            _ => (ga, al, be),
+        }
+    }
+
+    /// generators of K(m)[., J] for one product (already side-rotated):
+    /// u(S') restricted to J, for S' of popcount p+1 (gamma scaling drops:
+    /// rows are u(S') where gamma has a 1, zero otherwise).
+    fn gen_rows(&self, al: u16, be: u16, out: &mut Vec<Vec<u64>>, masks_p: &[u32], pos_p: &[i32]) {
+        let words = (self.jcols.len() + 63) / 64;
+        let da = 9usize;
+        for sp in 0..(1u32 << da) {
+            if sp.count_ones() as usize != self.p + 1 {
+                continue;
+            }
+            let mut row = vec![0u64; words];
+            let mut nz = false;
+            for i in 0..da {
+                if sp >> i & 1 == 0 || al >> i & 1 == 0 {
+                    continue;
+                }
+                let sm = sp & !(1 << i);
+                let si = pos_p[sm as usize];
+                if si < 0 {
+                    continue;
+                }
+                for j in 0..9 {
+                    if be >> j & 1 == 0 {
+                        continue;
+                    }
+                    let col = si as usize * 9 + j;
+                    let x = self.jpos[col];
+                    if x >= 0 {
+                        row[(x as usize) / 64] |= 1u64 << ((x as usize) % 64);
+                        nz = true;
+                    }
+                }
+            }
+            if nz {
+                out.push(row);
+            }
+        }
+        let _ = masks_p;
+    }
+
+    /// transferred bound for residual differing from the base by `delta`
+    /// products (side-rotated internally)
+    fn bound(&self, delta: &[(u16, u16, u16)], masks_p: &[u32], pos_p: &[i32]) -> u32 {
+        let words = (self.jcols.len() + 63) / 64;
+        let mut gens: Vec<Vec<u64>> = Vec::new();
+        for &(al, be, ga) in delta {
+            let (ra, rb, rg) = self.rotate(al, be, ga);
+            if rg == 0 {
+                continue;
+            }
+            self.gen_rows(ra, rb, &mut gens, masks_p, pos_p);
+        }
+        let sub = rank_wide(&mut gens, words);
+        let d = binom(8, self.p);
+        let v = self.v.saturating_sub(sub);
+        ((v + d - 1) / d) as u32
+    }
 }
 
 /// max Koszul bound over the three sides, p <= pmax
@@ -796,6 +923,139 @@ fn main() {
     let t = build_t3();
     assert_eq!(max_flatten(&t), 9, "matmul flattening sanity");
 
+    if args.iter().any(|a| a == "--koszul-depth") {
+        // koszul along random product paths: does the 14 persist with depth?
+        let mut seed = 0xdeadbeefcafef00du64;
+        let mut rnd = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for depth in 1..=7usize {
+            let mut min_k = u32::MAX;
+            let mut sum = 0u32;
+            let n = 24;
+            for _ in 0..n {
+                let mut r3 = R3::from_abc(&build_t3());
+                for _ in 0..depth {
+                    r3.xor_product(
+                        (rnd() % 511 + 1) as u32,
+                        (rnd() % 511 + 1) as u32,
+                        (rnd() % 511 + 1) as u32,
+                    );
+                }
+                let k = koszul_bound3(&r3, 4);
+                min_k = min_k.min(k);
+                sum += k;
+            }
+            eprintln!("depth {depth}: koszul mean {:.2} min {min_k} (n={n})", sum as f64 / n as f64);
+        }
+        return;
+    }
+    if args.iter().any(|a| a == "--koszul-p-profile") {
+        // per-p koszul strength and cost on level-2 residuals
+        let mut seed = 0x123456789abcdefu64;
+        let mut rnd = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for p in 1..=4usize {
+            let mut min_k = usize::MAX;
+            let mut sum = 0usize;
+            let n = 24;
+            let t0 = Instant::now();
+            for _ in 0..n {
+                let mut r3 = R3::from_abc(&build_t3());
+                for _ in 0..2 {
+                    r3.xor_product(
+                        (rnd() % 511 + 1) as u32,
+                        (rnd() % 511 + 1) as u32,
+                        (rnd() % 511 + 1) as u32,
+                    );
+                }
+                let kt = kt_from_abc(&r3.abc);
+                let mut best = 0usize;
+                for side in 1..=3u8 {
+                    let ts = with_side_first(&kt, side);
+                    best = best.max(koszul_side(&ts, p));
+                }
+                min_k = min_k.min(best);
+                sum += best;
+            }
+            let per = t0.elapsed().as_secs_f64() / n as f64 * 1000.0;
+            eprintln!(
+                "p={p}: koszul mean {:.2} min {min_k} cost {per:.2} ms/eval (3 sides)",
+                sum as f64 / n as f64
+            );
+        }
+        return;
+    }
+    if args.iter().any(|a| a == "--lemma-decay") {
+        let reps = first_product_reps();
+        let (masks_p, pos_p, _mq, _pq) = wedge_indices(9, 4);
+        let mut seed = 0x9e3779b97f4a7c15u64;
+        let mut rnd = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for ri in [0usize, 40, 90, 140, 200] {
+            let (al, be, ga, ref stab) = reps[ri.min(reps.len() - 1)];
+            let mut r1 = R3::from_abc(&build_t3());
+            r1.xor_product(al, be, ga);
+            let kt1 = kt_from_abc(&r1.abc);
+            // learn on the strongest side at p=4
+            let mut best_side = 1u8;
+            let mut best_v = 0usize;
+            for side in 1..=3u8 {
+                let ts = with_side_first(&kt1, side);
+                let (mut rows, words) = koszul_rows(&ts, 4);
+                let v = rank_wide(&mut rows, words);
+                if v > best_v {
+                    best_v = v;
+                    best_side = side;
+                }
+            }
+            let lem = learn_lemma(&kt1, best_side, 4).unwrap();
+            let fresh1 = (lem.v + 69) / 70;
+            eprintln!(
+                "root {ri}: rep=({al},{be},{ga}) |stab|={} lemma side {} v={} (koszul1={})",
+                stab.len(),
+                best_side,
+                lem.v,
+                fresh1
+            );
+            let mut n = 0;
+            let mut sum_fresh = 0u32;
+            let mut sum_trans = 0u32;
+            let mut hist = [0u32; 8]; // decay 0..7+
+            while n < 60 {
+                let m2a = (rnd() % 511 + 1) as u16;
+                let m2b = (rnd() % 511 + 1) as u16;
+                let m2g = (rnd() % 511 + 1) as u16;
+                let mut r2 = r1;
+                r2.xor_product(m2a as u32, m2b as u32, m2g as u32);
+                let fresh = koszul_bound3(&r2, 4);
+                let trans = lem.bound(&[(m2a, m2b, m2g)], &masks_p, &pos_p);
+                let decay = fresh.saturating_sub(trans) as usize;
+                hist[decay.min(7)] += 1;
+                sum_fresh += fresh;
+                sum_trans += trans;
+                n += 1;
+            }
+            eprintln!(
+                "  60 samples: mean fresh {:.2} mean transferred {:.2} decay hist {:?}",
+                sum_fresh as f64 / 60.0,
+                sum_trans as f64 / 60.0,
+                hist
+            );
+        }
+        return;
+    }
     let t_reps = Instant::now();
     let reps = first_product_reps();
     let stab_sizes: Vec<usize> = reps.iter().map(|r| r.3.len()).collect();

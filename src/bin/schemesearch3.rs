@@ -1062,7 +1062,7 @@ impl<'a> Search<'a> {
         // Strassen commutator: strength ~13 at ~20us — the mid-level pruner
         // (bites when remaining <= 13; below 10 flatten handles, above 13 it
         // cannot reach). Gate-validated on constructed-rank tensors.
-        if self.strassen && (10..=13).contains(&remaining) {
+        if self.strassen && (9..=13).contains(&remaining) {
             if strassen_bound3(r, 8) > remaining {
                 self.prune_strassen += 1;
                 self.shared.prune_strassen.fetch_add(1, Ordering::Relaxed);

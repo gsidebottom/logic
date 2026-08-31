@@ -596,6 +596,24 @@ the two source papers for this track):
   (endgame engine built, refutes junk prefixes in ms). best_gamma
   (greedy-optimal gamma for fixed alpha,beta) is retained: it is the
   exact inner step for the SLS bridge.
+- **INDEPENDENT rank > 15 — killer-directed deep probe takes the rung
+  (2026-08-31, logic 656876a + this commit)**: ply-3 fixed sweeps
+  died (16h44m untimed: <8/211 roots; 15-min boxes: 72/72 core roots
+  unresolved — {15(ply2):139, unresolved:72} final). Item 1 replaced
+  them: deep_probe = lazy substitution recursion, cheap-floor chain
+  (flatten -> strassen -> koszul) at every node, recursion only into
+  KILLER folds (koszul-droppers); targets fall into strassen range
+  within ~2 levels so depth self-limits. Measurement: all 211 roots
+  prove >= 15 in 3.2 h/12 threads (fixed ply-3 couldn't touch one in
+  16 h). Official ladder: r=15 UNSAT — exhausted at 211 nodes,
+  3.25 h => rank_F2(<3,3,3>) > 15 with the engine's own machinery
+  (no Wang citation). deep_probe_par added (fanned 2^8-fold sweep,
+  conjunction w/ early abort) for one-root x huge-probe shapes; the
+  t=16 reach test runs on it next (~46 core-h/root naive estimate;
+  killer early-exits may beat it). Perspective kept honest: r <= 19
+  rungs are trivial via subadditivity + Wang (20 - k floor);
+  independent rungs measure ENGINE strength, and novelty still
+  starts at r=20 where every bound is structurally +1 short.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

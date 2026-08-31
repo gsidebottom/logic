@@ -1,0 +1,2 @@
+first-product orbit reps: 211 (of 133432831 products; 0.1s); stab sizes min 2 med 16 max 768
+r=15: UNSAT — exhausted (211 nodes, 11710.1s, prunes flat 0 sub 0 koszul 211 strassen 0) => rank_F2(<3,3,3>) > 15

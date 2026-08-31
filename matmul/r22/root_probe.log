@@ -1,0 +1,8 @@
+  root 0: probe 14 (0s elapsed)
+  root 32: probe 14 (0s elapsed)
+  root 64: probe 14 (1s elapsed)
+  root 96: probe 14 (1s elapsed)
+  root 128: probe 14 (2s elapsed)
+  root 160: probe 14 (2s elapsed)
+  root 192: probe 14 (2s elapsed)
+root koszul-probe histogram: {14: 211} (3s)

@@ -88,7 +88,44 @@ fn product_mask(alpha: u32, beta: u32, gamma: u32) -> T3 {
     m
 }
 
-fn rank9(rows: &mut [u128; 9]) -> u32 {
+/// Leading-bit reduction: maintains <= 9 pivot rows sorted by leading bit,
+/// so the work is O(9^2) leading-zero+XOR steps instead of the 81-column
+/// Gauss-Jordan scan. Same rank, ~5-9x fewer iterations; the hot kernel
+/// under every flatten, probe and ply.
+fn rank9_fast(rows: &[u128; 9]) -> u32 {
+    let mut piv = [0u128; 9]; // descending by leading bit
+    let mut n = 0usize;
+    for &r in rows.iter() {
+        let mut v = r;
+        let mut i = 0usize;
+        while v != 0 && i < n {
+            let hv = 127 - v.leading_zeros();
+            let hp = 127 - piv[i].leading_zeros();
+            if hp > hv {
+                i += 1;
+            } else if hp == hv {
+                v ^= piv[i];
+                i += 1;
+            } else {
+                break;
+            }
+        }
+        if v == 0 {
+            continue;
+        }
+        let mut j = n;
+        while j > i {
+            piv[j] = piv[j - 1];
+            j -= 1;
+        }
+        piv[i] = v;
+        n += 1;
+    }
+    n as u32
+}
+
+#[allow(dead_code)]
+fn rank9_legacy(rows: &mut [u128; 9]) -> u32 {
     let mut rk = 0usize;
     for c in (0..81).rev() {
         if let Some(p) = (rk..9).find(|&i| rows[i] >> c & 1 == 1) {
@@ -161,7 +198,7 @@ fn major_rank(t: &T3) -> u32 {
     for a in 0..9 {
         rows[a] = extract81(t, a * 81);
     }
-    rank9(&mut rows)
+    rank9_fast(&rows)
 }
 
 fn flatten_ranks3(r: &R3) -> [u32; 3] {
@@ -1005,7 +1042,7 @@ fn flatten_of_rows(rows: &[u128]) -> u32 {
             }
         }
     }
-    rank9(&mut fa).max(rank9(&mut fb)).max(rank9(&mut fc))
+    rank9_fast(&fa).max(rank9_fast(&fb)).max(rank9_fast(&fc))
 }
 
 /// Forced-product bound (Hopcroft-Kerr Lemma 2, Wang's technique ported):
@@ -1357,6 +1394,10 @@ fn parse_products(spec: &str) -> Vec<(u32, u32, u32)> {
 
 fn masks_ref(m: &Masks) -> &Masks { m }
 
+fn key_dbg(h: &std::sync::Mutex<std::collections::BTreeMap<String, u32>>) -> String {
+    format!("{:?}", h.lock().unwrap())
+}
+
 /// ply-2 value at a root: 1 + min over folds of koszul_probe3(fold, target-1)
 fn ply2_root_t(r3: &R3, masks: &Masks, target: u32) -> u32 {
     let mut best = 0u32;
@@ -1424,7 +1465,81 @@ fn ply2_root(r3: &R3, masks: &Masks) -> u32 {
     ply2_root_t(r3, masks, 15)
 }
 
-/// ply-3: 1 + min over folds of ply2(fold, target-1); target-aware exits
+/// ply-3 with a wall-clock budget. Returns None when the budget expires
+/// mid-sweep: the min over the adversary's folds is then incomplete, so the
+/// value would NOT be a sound lower bound. Only complete sweeps are values.
+fn ply3_root_budget(
+    r3: &R3,
+    masks: &Masks,
+    target: u32,
+    start: Instant,
+    budget_s: f64,
+) -> Option<u32> {
+    let mut best = 0u32;
+    let layouts = |r: &R3| [r.abc, r.bca, r.cab];
+    for side in 0..3usize {
+        let sidx = STRIDE_IDX[side];
+        let major_layout = sidx.iter().position(|&x| x == 0).unwrap();
+        let lts = layouts(r3);
+        let p = match (0..9)
+            .rev()
+            .find(|&p| !is_zero(&layout_slice(&lts[major_layout], masks, 0, p)))
+        {
+            Some(p) => p,
+            None => continue,
+        };
+        let mut bases = lts;
+        let mut slices = [[0u64; W]; 3];
+        for l in 0..3 {
+            slices[l] = layout_slice(&lts[l], masks, sidx[l], p);
+            for w in 0..W {
+                bases[l][w] ^= slices[l][w];
+            }
+        }
+        let others: Vec<usize> = (0..9).filter(|&x| x != p).collect();
+        let shifted: Vec<[T3; 3]> = others
+            .iter()
+            .map(|&q| {
+                let mut sh = [[0u64; W]; 3];
+                for l in 0..3 {
+                    sh[l] = layout_shift(&slices[l], sidx[l], p, q);
+                }
+                sh
+            })
+            .collect();
+        let mut worst = u32::MAX;
+        for lam in 0..256u32 {
+            if start.elapsed().as_secs_f64() > budget_s {
+                return None; // incomplete min: unresolved, not a bound
+            }
+            let mut m = bases;
+            for (bi, sh) in shifted.iter().enumerate() {
+                if lam >> bi & 1 == 1 {
+                    for l in 0..3 {
+                        for w in 0..W {
+                            m[l][w] ^= sh[l][w];
+                        }
+                    }
+                }
+            }
+            let folded = R3 { abc: m[0], bca: m[1], cab: m[2] };
+            let pv = ply2_root_t(&folded, masks, target - 1);
+            worst = worst.min(pv);
+            if 1 + worst < target {
+                break; // adversary spoils the target: complete refutation
+            }
+        }
+        if worst != u32::MAX {
+            best = best.max(1 + worst);
+        }
+        if best >= target {
+            break;
+        }
+    }
+    Some(best)
+}
+
+#[allow(dead_code)]
 fn ply3_root(r3: &R3, masks: &Masks, target: u32) -> u32 {
     let mut best = 0u32;
     let layouts = |r: &R3| [r.abc, r.bca, r.cab];
@@ -1801,6 +1916,7 @@ fn main() {
         return;
     }
     if args.iter().any(|a| a == "--root-probe3") {
+        let budget_s: f64 = get("--root-budget").and_then(|v| v.parse().ok()).unwrap_or(1200.0);
         let reps = first_product_reps();
         let masks = Masks::build();
         let t3 = build_t3();
@@ -1820,12 +1936,19 @@ fn main() {
                     let mut r3 = R3::from_abc(&t3);
                     r3.xor_product(al, be, ga);
                     let p2 = ply2_root_t(&r3, &masks, 15);
-                    let v = if p2 >= 15 { 15 } else { ply3_root(&r3, &masks, 15).max(p2).max(14) };
-                    *hist_m.lock().unwrap().entry(v).or_insert(0u32) += 1;
+                    let key: String = if p2 >= 15 {
+                        "15(ply2)".to_string()
+                    } else {
+                        let t_root = Instant::now();
+                        match ply3_root_budget(&r3, &masks, 15, t_root, budget_s) {
+                            Some(v) if v >= 15 => "15(ply3)".to_string(),
+                            Some(v) => format!("{}(ply3-complete)", v.max(14)),
+                            None => "unresolved".to_string(),
+                        }
+                    };
+                    *hist_m.lock().unwrap().entry(key).or_insert(0u32) += 1;
                     let d = done.fetch_add(1, Ordering::Relaxed) + 1;
-                    if d % 8 == 0 {
-                        eprintln!("  {d}/211 ({:.0}s)", t0.elapsed().as_secs_f64());
-                    }
+                    eprintln!("  {d}/211 root {i} -> {} ({:.0}s)", key_dbg(&hist_m), t0.elapsed().as_secs_f64());
                 });
             }
         });
@@ -1833,6 +1956,56 @@ fn main() {
             "root ply-3 histogram: {:?} ({:.0}s)",
             hist_m.into_inner().unwrap(),
             t0.elapsed().as_secs_f64()
+        );
+        return;
+    }
+    if args.iter().any(|a| a == "--rank9-test") {
+        let mut seed = 0x0badc0ffee123456u64;
+        let mut rnd = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mask81 = (1u128 << 81) - 1;
+        let mut cases: Vec<[u128; 9]> = Vec::new();
+        for t in 0..200000 {
+            let mut rows = [0u128; 9];
+            let sparse = t % 3;
+            for i in 0..9 {
+                let mut v = ((rnd() as u128) << 64 | rnd() as u128) & mask81;
+                if sparse == 1 {
+                    v &= ((rnd() as u128) << 64 | rnd() as u128) & mask81;
+                } else if sparse == 2 && i > 4 {
+                    v = 0; // rank-deficient shapes
+                }
+                rows[i] = v;
+            }
+            cases.push(rows);
+        }
+        for (i, c) in cases.iter().enumerate() {
+            let mut legacy_in = *c;
+            let a = rank9_fast(c);
+            let b = rank9_legacy(&mut legacy_in);
+            assert_eq!(a, b, "rank9 mismatch at case {i}");
+        }
+        eprintln!("rank9-test: 200000 cases, ranks identical");
+        let t0 = Instant::now();
+        let mut acc = 0u64;
+        for c in &cases {
+            acc += rank9_fast(c) as u64;
+        }
+        let fast_ns = t0.elapsed().as_secs_f64() / cases.len() as f64 * 1e9;
+        let t1 = Instant::now();
+        let mut acc2 = 0u64;
+        for c in &cases {
+            let mut m = *c;
+            acc2 += rank9_legacy(&mut m) as u64;
+        }
+        let slow_ns = t1.elapsed().as_secs_f64() / cases.len() as f64 * 1e9;
+        eprintln!(
+            "  fast {fast_ns:.1} ns/call | legacy {slow_ns:.1} ns/call | speedup {:.2}x (checksums {acc}/{acc2})",
+            slow_ns / fast_ns
         );
         return;
     }

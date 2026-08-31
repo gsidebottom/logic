@@ -565,6 +565,37 @@ the two source papers for this track):
   arbitrary (not lattice-restricted) tensors. The week's three
   independent programs — Wang-DP mixed play, the exhaustive game,
   and certified scheme search — all terminate at that one gap.
+- **Tier-2 ply ladder + kernel work + corridor verdict (2026-08-30/31,
+  logic da94bce/841a13b)**: TIER 2 REFRAMED — the sound "for all
+  children" quantifier IS a game ply, so tier 2 = substitution probe
+  with KOSZUL leaves. Ply-1: exactly 14 on all 211 roots (adversary
+  always owns a koszul-dropping fold). Ply-2 (33 min, 12 threads):
+  {14: 72, 15: 139} — two thirds of the roots refute their whole
+  r=15 subtree at level 1, leaving a 72-root hard core. Ply-3
+  untimed was measured INTRACTABLE (16h44m at 1190% CPU, <8 of 211
+  roots); relaunched time-boxed (--root-budget, expired budget =
+  'unresolved', never a value: an incomplete min over adversary
+  folds is not a sound bound). KERNELS: M4R forward-only rank
+  implemented and equality-gated, then benched OUT of the koszul
+  path (1.26x dense but 1.5x SLOWER on the sparse wedge shape —
+  legacy short-circuits on sparsity; dense-benchmark extrapolation
+  was the error); wedge index tables cached; rank9 rewritten to
+  leading-bit reduction (O(9^2) instead of an 81-column scan) =
+  2.10x gate-verified on 200K cases, universal since rank9 sits
+  under every flatten/probe/ply. NEON intrinsics deliberately not
+  used: the cost was iteration count, not lane width. CORRIDOR
+  (rank-22 arm) FAILS GEOMETRICALLY: prefix descent has no guidance
+  signal — flatten is capped at 9 (constant while remaining >= 9)
+  and popcount descent is stuck at the start because T has 27 of 729
+  bits set while a random rank-one sets ~91 (greedy: depth 1, 30
+  restarts; v2 flatten-guided: depth 9, 0 near-misses at the
+  known-SAT target 23). True-scheme intermediates are low-RANK, not
+  low-popcount. Correct pipeline instead: src/bin/anf.rs (native-ANF
+  Brent SLS mod 2, --emit-best) supplies near-misses -> drop k
+  products -> schemesearch3 --endgame completes or refutes exactly
+  (endgame engine built, refutes junk prefixes in ms). best_gamma
+  (greedy-optimal gamma for fixed alpha,beta) is retained: it is the
+  exact inner step for the SLS bridge.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

@@ -1394,6 +1394,42 @@ fn parse_products(spec: &str) -> Vec<(u32, u32, u32)> {
 
 fn masks_ref(m: &Masks) -> &Masks { m }
 
+fn popcount3(t: &T3) -> u32 {
+    t.iter().map(|w| w.count_ones()).sum()
+}
+
+/// Greedy-optimal gamma for a fixed (alpha, beta): the product contributes
+/// the outer product alpha*beta^T to the c-slice of every c with gamma_c=1,
+/// so each c is an independent decision — include it iff it lowers that
+/// slice's popcount. Exact optimum of popcount over all 2^9 gammas.
+fn best_gamma(r: &R3, alpha: u32, beta: u32) -> (u32, u32) {
+    // outer product mask over (a,b) pairs, as a 81-bit map
+    let mut ab = [0u16; 9]; // ab[a] = beta if alpha_a else 0
+    for a in 0..9 {
+        ab[a] = if alpha >> a & 1 == 1 { beta as u16 } else { 0 };
+    }
+    let mut gamma = 0u32;
+    let mut delta: i32 = 0;
+    for c in 0..9 {
+        // popcount change for slice c
+        let mut before = 0i32;
+        let mut after = 0i32;
+        for a in 0..9 {
+            for b in 0..9 {
+                let bit = get(&r.abc, bit(a, b, c)) as i32;
+                let prod = (ab[a] >> b & 1) as i32;
+                before += bit;
+                after += bit ^ prod;
+            }
+        }
+        if after < before {
+            gamma |= 1 << c;
+            delta += after - before;
+        }
+    }
+    (gamma, (-delta) as u32) // gamma and the popcount reduction achieved
+}
+
 fn key_dbg(h: &std::sync::Mutex<std::collections::BTreeMap<String, u32>>) -> String {
     format!("{:?}", h.lock().unwrap())
 }
@@ -1818,20 +1854,24 @@ fn main() {
                     println!("NEARMISS restart {restart} flatten {fb} remaining {remaining}: {}", spec.join(";"));
                     break;
                 }
-                // sample candidates; keep the best by (flatten, strassen tiebreak)
-                let mut best: Option<((u32, u32), (u32, u32, u32), R3)> = None;
+                // Sample (alpha, beta) and complete gamma greedily-optimally;
+                // score by residual popcount (flatten is capped at 9 and thus
+                // a constant, useless signal until the very end).
+                let mut best: Option<(u32, (u32, u32, u32), R3)> = None;
                 for _ in 0..cands {
-                    let (al, be, ga) =
-                        ((rnd() % 511 + 1) as u32, (rnd() % 511 + 1) as u32, (rnd() % 511 + 1) as u32);
-                    let mut nr = r3;
-                    nr.xor_product(al, be, ga);
-                    let f = max_flatten3(&nr);
-                    if f > remaining - 1 {
+                    let (al, be) = ((rnd() % 511 + 1) as u32, (rnd() % 511 + 1) as u32);
+                    let (ga, gain) = best_gamma(&r3, al, be);
+                    if ga == 0 || gain == 0 {
                         continue;
                     }
-                    let key = (f, 0u32);
-                    if best.as_ref().map_or(true, |(bk, _, _)| key < *bk) {
-                        best = Some((key, (al, be, ga), nr));
+                    let mut nr = r3;
+                    nr.xor_product(al, be, ga);
+                    if max_flatten3(&nr) > remaining - 1 {
+                        continue;
+                    }
+                    let pc = popcount3(&nr.abc);
+                    if best.as_ref().map_or(true, |(bp, _, _)| pc < *bp) {
+                        best = Some((pc, (al, be, ga), nr));
                     }
                 }
                 let Some((_, prod, nr)) = best else { break };

@@ -1232,6 +1232,170 @@ fn koszul_probe3(r: &R3, masks: &Masks, pmax: usize, target: u32) -> u32 {
     best
 }
 
+/// Item 1 (2026-08-31): killer-directed deep probe. Proves rank(R) >= t by
+/// the substitution recursion with lazy evaluation: cheap floors first
+/// (flatten 0.2us -> strassen 20us -> koszul ~6ms; leaf if any reaches t),
+/// else some (side, last-active-pivot) must have ALL 2^8 folds proving
+/// >= t-1. Non-killer folds terminate at their own floor checks; only
+/// koszul-dropping folds (the killers) recurse, and recursion targets fall
+/// into strassen range within ~2 levels, so depth is self-limiting.
+/// Soundness: substitution lemma at every level, sound leaves — the same
+/// class as the fixed-ply probes, evaluated adversary-directed.
+fn deep_probe(r: &R3, masks: &Masks, t: u32, depth_left: u32) -> bool {
+    if max_flatten3(r) >= t {
+        return true;
+    }
+    if t <= 13 && strassen_bound3(r, 8) >= t {
+        return true;
+    }
+    if koszul_bound3(r, 4) >= t {
+        return true;
+    }
+    if depth_left == 0 {
+        return false;
+    }
+    let layouts = |r: &R3| [r.abc, r.bca, r.cab];
+    for side in 0..3usize {
+        let sidx = STRIDE_IDX[side];
+        let major_layout = sidx.iter().position(|&x| x == 0).unwrap();
+        let lts = layouts(r);
+        let p = match (0..9)
+            .rev()
+            .find(|&p| !is_zero(&layout_slice(&lts[major_layout], masks, 0, p)))
+        {
+            Some(p) => p,
+            None => continue,
+        };
+        let mut bases = lts;
+        let mut slices = [[0u64; W]; 3];
+        for l in 0..3 {
+            slices[l] = layout_slice(&lts[l], masks, sidx[l], p);
+            for w in 0..W {
+                bases[l][w] ^= slices[l][w];
+            }
+        }
+        let others: Vec<usize> = (0..9).filter(|&x| x != p).collect();
+        let shifted: Vec<[T3; 3]> = others
+            .iter()
+            .map(|&q| {
+                let mut sh = [[0u64; W]; 3];
+                for l in 0..3 {
+                    sh[l] = layout_shift(&slices[l], sidx[l], p, q);
+                }
+                sh
+            })
+            .collect();
+        let mut all_ok = true;
+        for lam in 0..256u32 {
+            let mut m = bases;
+            for (bi, sh) in shifted.iter().enumerate() {
+                if lam >> bi & 1 == 1 {
+                    for l in 0..3 {
+                        for w in 0..W {
+                            m[l][w] ^= sh[l][w];
+                        }
+                    }
+                }
+            }
+            let folded = R3 { abc: m[0], bca: m[1], cab: m[2] };
+            if !deep_probe(&folded, masks, t - 1, depth_left - 1) {
+                all_ok = false;
+                break;
+            }
+        }
+        if all_ok {
+            return true;
+        }
+    }
+    false
+}
+
+/// Parallel deep probe: the top-level fold sweep (the 2^8 lambdas of each
+/// side) fans across a thread pool; every fold still runs the SERIAL
+/// deep_probe recursion below it. Conjunction semantics with early abort:
+/// one failed fold cancels the side. Eliminates the single-threaded tail
+/// when slow roots dominate (units-parallel scheduling starves late).
+fn deep_probe_par(r: &R3, masks: &Masks, t: u32, depth_left: u32, threads: usize) -> bool {
+    if max_flatten3(r) >= t {
+        return true;
+    }
+    if t <= 13 && strassen_bound3(r, 8) >= t {
+        return true;
+    }
+    if koszul_bound3(r, 4) >= t {
+        return true;
+    }
+    if depth_left == 0 {
+        return false;
+    }
+    let layouts = |r: &R3| [r.abc, r.bca, r.cab];
+    for side in 0..3usize {
+        let sidx = STRIDE_IDX[side];
+        let major_layout = sidx.iter().position(|&x| x == 0).unwrap();
+        let lts = layouts(r);
+        let p = match (0..9)
+            .rev()
+            .find(|&p| !is_zero(&layout_slice(&lts[major_layout], masks, 0, p)))
+        {
+            Some(p) => p,
+            None => continue,
+        };
+        let mut bases = lts;
+        let mut slices = [[0u64; W]; 3];
+        for l in 0..3 {
+            slices[l] = layout_slice(&lts[l], masks, sidx[l], p);
+            for w in 0..W {
+                bases[l][w] ^= slices[l][w];
+            }
+        }
+        let others: Vec<usize> = (0..9).filter(|&x| x != p).collect();
+        let shifted: Vec<[T3; 3]> = others
+            .iter()
+            .map(|&q| {
+                let mut sh = [[0u64; W]; 3];
+                for l in 0..3 {
+                    sh[l] = layout_shift(&slices[l], sidx[l], p, q);
+                }
+                sh
+            })
+            .collect();
+        let failed = AtomicBool::new(false);
+        let next = AtomicUsize::new(0);
+        std::thread::scope(|scope| {
+            for _ in 0..threads {
+                scope.spawn(|| loop {
+                    if failed.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    let lam = next.fetch_add(1, Ordering::Relaxed) as u32;
+                    if lam >= 256 {
+                        break;
+                    }
+                    let mut m = bases;
+                    for (bi, sh) in shifted.iter().enumerate() {
+                        if lam >> bi & 1 == 1 {
+                            for l in 0..3 {
+                                for w in 0..W {
+                                    m[l][w] ^= sh[l][w];
+                                }
+                            }
+                        }
+                    }
+                    let folded = R3 { abc: m[0], bca: m[1], cab: m[2] };
+                    if !deep_probe(&folded, masks, t - 1, depth_left - 1) {
+                        failed.store(true, Ordering::Relaxed);
+                        break;
+                    }
+                });
+            }
+        });
+        if !failed.load(Ordering::Relaxed) {
+            return true;
+        }
+    }
+    false
+}
+
 struct Shared {
     capped: AtomicBool,
     found: AtomicBool,
@@ -1249,6 +1413,7 @@ struct Search<'a> {
     koszul_min_remaining: u32, // apply only at shallow nodes
     stab: &'a [StabElem],      // stabilizer of the current root rep
     strassen: bool,
+    deep_probe: u32,
     chosen: Vec<(u32, u32, u32)>,
     level2_remaining: u32,     // remaining value at level-2 nodes (= r-1)
     nodes: u64,
@@ -1310,6 +1475,13 @@ impl<'a> Search<'a> {
         }
         if self.koszul > 0 && remaining >= self.koszul_min_remaining {
             if koszul_bound3(r, self.koszul) > remaining {
+                self.prune_koszul += 1;
+                self.shared.prune_koszul.fetch_add(1, Ordering::Relaxed);
+                return false;
+            }
+        }
+        if self.deep_probe > 0 && remaining >= self.koszul_min_remaining {
+            if deep_probe(r, self.masks, remaining + 1, self.deep_probe) {
                 self.prune_koszul += 1;
                 self.shared.prune_koszul.fetch_add(1, Ordering::Relaxed);
                 return false;
@@ -1648,6 +1820,7 @@ fn main() {
         get("--probe-min-remaining").and_then(|v| v.parse().ok()).unwrap_or(3);
     let koszul: usize = get("--koszul").and_then(|v| v.parse().ok()).unwrap_or(0);
     let use_strassen = args.iter().any(|a| a == "--strassen");
+    let deep_probe_d: u32 = get("--deep-probe").and_then(|v| v.parse().ok()).unwrap_or(0);
     let koszul_min_remaining: u32 =
         get("--koszul-min-remaining").and_then(|v| v.parse().ok()).unwrap_or(r.saturating_sub(1));
 
@@ -1919,6 +2092,7 @@ fn main() {
             koszul_min_remaining: u32::MAX,
             stab: &[],
             strassen: true,
+            deep_probe: 0,
             chosen: Vec::new(),
             level2_remaining: u32::MAX,
             nodes: 0,
@@ -1953,6 +2127,77 @@ fn main() {
         } else {
             println!("ENDGAME UNSAT ({} nodes) — prefix refuted", w.nodes);
         }
+        return;
+    }
+    if args.iter().any(|a| a == "--root-probe-deep") {
+        let t: u32 = get("--target-bound").and_then(|v| v.parse().ok()).unwrap_or(15);
+        let dmax: u32 = get("--depth").and_then(|v| v.parse().ok()).unwrap_or(6);
+        let reps = first_product_reps();
+        let masks = Masks::build();
+        let t3 = build_t3();
+        let threads: usize = get("--threads").and_then(|v| v.parse().ok()).unwrap_or(12);
+        if args.iter().any(|a| a == "--probe-par") {
+            // sequential roots, each probe fanned across all threads —
+            // no single-threaded tail
+            let t0 = Instant::now();
+            let mut ok_c = 0u32;
+            let mut fail_c = 0u32;
+            for (i, &(al, be, ga, _)) in reps.iter().enumerate() {
+                let mut r3 = R3::from_abc(&t3);
+                r3.xor_product(al, be, ga);
+                let tr = Instant::now();
+                if deep_probe_par(&r3, &masks, t, dmax, threads) {
+                    ok_c += 1;
+                } else {
+                    fail_c += 1;
+                    eprintln!("  root {i} FAILS deep({t}) [{:.1}s]", tr.elapsed().as_secs_f64());
+                }
+                if (i + 1) % 16 == 0 {
+                    eprintln!("  {}/211 ok={ok_c} fail={fail_c} ({:.0}s)", i + 1, t0.elapsed().as_secs_f64());
+                }
+            }
+            eprintln!("deep-probe t={t}: ok {ok_c} fail {fail_c} of 211 ({:.0}s)", t0.elapsed().as_secs_f64());
+            return;
+        }
+        let ok_n = AtomicU64::new(0);
+        let fail_n = AtomicU64::new(0);
+        let widx = AtomicUsize::new(0);
+        let t0 = Instant::now();
+        std::thread::scope(|scope| {
+            for _ in 0..threads {
+                scope.spawn(|| loop {
+                    let i = widx.fetch_add(1, Ordering::Relaxed);
+                    if i >= reps.len() {
+                        break;
+                    }
+                    let (al, be, ga, _) = reps[i];
+                    let mut r3 = R3::from_abc(&t3);
+                    r3.xor_product(al, be, ga);
+                    let tr = Instant::now();
+                    let ok = deep_probe(&r3, &masks, t, dmax);
+                    let d = if ok {
+                        ok_n.fetch_add(1, Ordering::Relaxed) + fail_n.load(Ordering::Relaxed)
+                    } else {
+                        eprintln!("  root {i} FAILS deep({t}) [{:.1}s]", tr.elapsed().as_secs_f64());
+                        fail_n.fetch_add(1, Ordering::Relaxed) + ok_n.load(Ordering::Relaxed)
+                    } + 1;
+                    if d % 16 == 0 {
+                        eprintln!(
+                            "  {d}/211 ok={} fail={} ({:.0}s)",
+                            ok_n.load(Ordering::Relaxed),
+                            fail_n.load(Ordering::Relaxed),
+                            t0.elapsed().as_secs_f64()
+                        );
+                    }
+                });
+            }
+        });
+        eprintln!(
+            "deep-probe t={t}: ok {} fail {} of 211 ({:.0}s)",
+            ok_n.load(Ordering::Relaxed),
+            fail_n.load(Ordering::Relaxed),
+            t0.elapsed().as_secs_f64()
+        );
         return;
     }
     if args.iter().any(|a| a == "--root-probe3") {
@@ -2374,6 +2619,7 @@ fn main() {
                     koszul_min_remaining,
                     stab: &[],
                     strassen: use_strassen,
+                    deep_probe: deep_probe_d,
                     chosen: Vec::new(),
                     level2_remaining: r - 1,
                     nodes: 0,

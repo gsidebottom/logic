@@ -2129,6 +2129,92 @@ fn main() {
         }
         return;
     }
+    if args.iter().any(|a| a == "--killer-dump") {
+        // For each root rep: enumerate the probe's folds (per side, LAST
+        // ACTIVE pivot, all 2^8 lambdas — the probe's own convention) and
+        // dump every KILLER: a fold whose koszul(p<=4) drops below the
+        // node's own value (uniformly 14 at these roots). One line per
+        // killer: root, rep, side, pivot, lambda, koszul(fold).
+        let reps = first_product_reps();
+        let masks = Masks::build();
+        let t3 = build_t3();
+        let threads: usize = get("--threads").and_then(|v| v.parse().ok()).unwrap_or(12);
+        let out = std::sync::Mutex::new(Vec::<String>::new());
+        let widx = AtomicUsize::new(0);
+        let t0 = Instant::now();
+        std::thread::scope(|scope| {
+            for _ in 0..threads {
+                scope.spawn(|| loop {
+                    let i = widx.fetch_add(1, Ordering::Relaxed);
+                    if i >= reps.len() {
+                        break;
+                    }
+                    let (al, be, ga, _) = reps[i];
+                    let mut r3 = R3::from_abc(&t3);
+                    r3.xor_product(al, be, ga);
+                    let own = koszul_bound3(&r3, 4);
+                    let mut lines = Vec::new();
+                    let layouts = [r3.abc, r3.bca, r3.cab];
+                    for side in 0..3usize {
+                        let sidx = STRIDE_IDX[side];
+                        let major_layout = sidx.iter().position(|&x| x == 0).unwrap();
+                        let p = match (0..9).rev().find(|&p| {
+                            !is_zero(&layout_slice(&layouts[major_layout], &masks, 0, p))
+                        }) {
+                            Some(p) => p,
+                            None => continue,
+                        };
+                        let mut bases = layouts;
+                        let mut slices = [[0u64; W]; 3];
+                        for l in 0..3 {
+                            slices[l] = layout_slice(&layouts[l], &masks, sidx[l], p);
+                            for w in 0..W {
+                                bases[l][w] ^= slices[l][w];
+                            }
+                        }
+                        let others: Vec<usize> = (0..9).filter(|&x| x != p).collect();
+                        let shifted: Vec<[T3; 3]> = others
+                            .iter()
+                            .map(|&q| {
+                                let mut sh = [[0u64; W]; 3];
+                                for l in 0..3 {
+                                    sh[l] = layout_shift(&slices[l], sidx[l], p, q);
+                                }
+                                sh
+                            })
+                            .collect();
+                        for lam in 0..256u32 {
+                            let mut m = bases;
+                            for (bi, sh) in shifted.iter().enumerate() {
+                                if lam >> bi & 1 == 1 {
+                                    for l in 0..3 {
+                                        for w in 0..W {
+                                            m[l][w] ^= sh[l][w];
+                                        }
+                                    }
+                                }
+                            }
+                            let folded = R3 { abc: m[0], bca: m[1], cab: m[2] };
+                            let kf = koszul_bound3(&folded, 4);
+                            if kf < own {
+                                lines.push(format!(
+                                    "root {i} rep {al},{be},{ga} own {own} side {side} pivot {p} lam {lam} koszul {kf}"
+                                ));
+                            }
+                        }
+                    }
+                    out.lock().unwrap().extend(lines);
+                });
+            }
+        });
+        let mut lines = out.into_inner().unwrap();
+        lines.sort();
+        for l in &lines {
+            println!("{l}");
+        }
+        eprintln!("killer-dump: {} killers across 211 roots ({:.0}s)", lines.len(), t0.elapsed().as_secs_f64());
+        return;
+    }
     if args.iter().any(|a| a == "--root-probe-deep") {
         let t: u32 = get("--target-bound").and_then(|v| v.parse().ok()).unwrap_or(15);
         let dmax: u32 = get("--depth").and_then(|v| v.parse().ok()).unwrap_or(6);
@@ -2138,11 +2224,13 @@ fn main() {
         let threads: usize = get("--threads").and_then(|v| v.parse().ok()).unwrap_or(12);
         if args.iter().any(|a| a == "--probe-par") {
             // sequential roots, each probe fanned across all threads —
-            // no single-threaded tail
+            // no single-threaded tail. --max-roots N limits the sample.
+            let max_roots: usize =
+                get("--max-roots").and_then(|v| v.parse().ok()).unwrap_or(reps.len());
             let t0 = Instant::now();
             let mut ok_c = 0u32;
             let mut fail_c = 0u32;
-            for (i, &(al, be, ga, _)) in reps.iter().enumerate() {
+            for (i, &(al, be, ga, _)) in reps.iter().enumerate().take(max_roots) {
                 let mut r3 = R3::from_abc(&t3);
                 r3.xor_product(al, be, ga);
                 let tr = Instant::now();

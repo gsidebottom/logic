@@ -623,6 +623,23 @@ the two source papers for this track):
   point: rank > 15 (602baf7). Post-update agenda: r=20 mathematics
   (killer-variety characterization from the banked fold data,
   decomposition-structure theorems), and the write-up.
+- **THE RANK LAW of killer folds (2026-08-31, killer-dump)**: dumped
+  all koszul-dropping folds at the 211 roots (10,338 killers, 90 s).
+  Every killer drops 14 -> exactly 13; pivot always cell (2,2). LAW:
+  with the folding covector phi = e_(2,2)+lambda viewed as a 3x3 F2
+  matrix — rank(phi)=1 => killer (633/633 pairs, no exceptions;
+  the 16 rectangle indicators through the pivot = the observed 16
+  killers/pair); rank(phi)=3 => non-killer (no exceptions);
+  rank(phi)=2 => killer only at 38 exceptional pairs on 30 roots
+  (210 extras; reps skew low-rank-factored, but two (2,2,2) cases
+  say factor ranks alone don't decide the boundary). READING: the
+  adversary's dangerous moves are PRODUCT-SHAPED (rank-1, aligned
+  with the tensor's rank-one structure) — same objects as the
+  subgame's rank-profile splits. CONJECTURE (case-split lemma):
+  rank-3 folds preserve koszul >= 14; proven, ~168/256 probe evals
+  vanish (rank-2 boundary too: 240/256), repricing t=16 from
+  >= 1.5 core-years to days. Files: matmul/r22/killers.txt,
+  killer_analysis.py. Write-up in progress.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

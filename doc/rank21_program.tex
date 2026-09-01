@@ -1,0 +1,296 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1.1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{conjecture}{Conjecture}
+\newtheorem{observation}{Observation}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+
+\newcommand{\F}{\mathbb{F}_2}
+\newcommand{\T}{\mathcal{T}}
+\newcommand{\rk}{\operatorname{rank}}
+\newcommand{\kos}{\operatorname{K}}
+
+\title{The Rank-21 Program: Reproduction, Soundness, Exhaustive Negatives,
+and a Certified-Search Architecture for $\langle 3,3,3\rangle$ over $\F$}
+\author{Greg Sidebottom}
+\date{August 31, 2026 (working note)}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We report on a program aimed at improving the lower bound for the rank of the
+$3\times 3$ matrix multiplication tensor over $\F$, currently
+$20 \le R_{\F}(\langle 3,3,3\rangle) \le 23$ (Wang's automated lower bound;
+Laderman's scheme reduced mod~2). The contributions are:
+(i) an independent reproduction and strengthening of Wang's certified
+DP-over-restrictions bound, including budget-scaled lifts of his orbit
+lattice; (ii) a sound extension of his framework to \emph{mixed-side}
+substitution, including an activity guard whose necessity we demonstrate by
+measurement, and a family of exhaustive negative results showing that
+substitution with flattening-class leaves cannot exceed the lattice values;
+(iii) an exact determination of our substitution game's value ($18$) under
+successively stronger rule sets, with machine-checked certificates;
+(iv) a certified-search (CDCL(T)-style) architecture over scheme space whose
+propagator and symmetry components each deliver their theoretical strength
+(measured ablations of $746\times$ and $632{,}384\times$), reaching an
+independent, exhaustively-searched $R_{\F} > 15$ in $3.25$ hours; and
+(v) an empirical structure theorem for the adversary's dangerous moves in the
+substitution game --- \emph{the Rank Law} --- identifying them with rank-one
+covectors, which yields a concrete, well-posed lemma whose proof would
+extend the certified ladder at $\sim$$15\times$ reduced cost. We close with a
+convergence thesis: three structurally different attacks terminate at the
+same missing object, a cheap rank lower-bound oracle of strength 15--19 for
+arbitrary tensors, and we locate the genuine frontier at scheme size $20$,
+where every known bound is structurally one short of what novelty requires.
+\end{abstract}
+
+\section{Setting and known bounds}
+
+Let $\T = \langle 3,3,3\rangle \in \F^9 \otimes \F^9 \otimes \F^9$ denote the
+matrix multiplication tensor in the trace convention
+$\T = \sum_{i,j,k} x_{ij}\otimes y_{jk} \otimes z_{ki}$, a $729$-bit object
+with $27$ nonzero entries. Its rank $R_{\F}(\T)$ is the minimum number of
+products $\alpha\otimes\beta\otimes\gamma$ (rank-one tensors) whose XOR is
+$\T$; schemes of $r$ products are exactly solutions of the Brent equations
+with $r$ multiplications. Known bounds:
+$R_{\F}(\T)\ge 20$ (Wang, arXiv:2603.07280, with a machine-verifiable
+certificate of $\sim$32\,MiB), and $R_{\F}(\T)\le 23$ (Laderman's scheme
+reduced mod 2; independently, our 55-addition rank-23 scheme). Bl\"aser's
+$\ge 19$ holds over every field. The program's goal is $21$.
+
+Throughout, \emph{flattening} bounds are matrix ranks of the three
+unfoldings ($\le 9$ here); $\kos_p$ denotes the Koszul flattening with wedge
+parameter $p$ (division bound $\lceil \rk/\binom{8}{p}\rceil$); and the
+\emph{substitution lemma} is used in the form: for an active direction
+(one the tensor depends on), $R(T) \ge 1 + \min_\lambda R(T|_{\lambda})$
+where $\lambda$ ranges over all foldings of that direction.
+
+A structural datum that organizes everything below: rank methods ---
+bounds expressible as matrix ranks of linearly-constructed flattenings,
+including Koszul, Young and Strassen's equations --- are barrier-limited
+near $2n^2 = 18$ for matmul-type tensors. Our measurements respect this
+barrier with uncanny precision: flattenings reach $9$, Strassen's
+commutator bound $12$--$13$, Koszul $14$--$16$, our exhaustive game with
+such leaves exactly $18$. Wang's $20$ lives beyond the barrier because
+substitution-DP is \emph{recursive amplification}, not a rank method. This
+is the frame in which ``new leaf mathematics'' must be read
+(\S\ref{sec:ranklaw}, \S\ref{sec:outlook}).
+
+\section{Reproducing and strengthening the lattice DP}
+
+We reproduced Wang's result locally from his repository (verifier
+included), then strengthened his certificate by re-running his
+backtracking technique at $30\times$ the shipped step budget over the whole
+restriction lattice. The wave lifted every layer --- e.g.\ the fourteen
+codimension-2 orbits from $\{17{\times}1, 18{\times}13\}$ to
+$\{18{\times}6, 19{\times}8\}$ --- but the root held at $20$: a
+diminishing-returns profile, quantified. (A root of $21$ requires, among
+more, all fourteen codim-2 orbits at $\ge 19$; six remain at $18$ and
+resisted $3\times 10^9$ steps each.) Two engineering contributions
+accompany the reproduction: a diagnosis and fix of an allocator-retention
+memory ratchet in long runs (inline DFS-cache keys; heap pressure relief),
+and per-orbit byte-level certificate merging. All lifted certificates
+re-verify under his verifier.
+
+\section{Mixed-side substitution: soundness and negatives}
+\label{sec:mixed}
+
+Wang's framework restricts only the $A$-side. Motivated by our game
+measurements ($A$-only value $16$ vs.\ mixed value $18$;
+\S\ref{sec:game}), we implemented the \emph{fifth technique}: chains
+mixing $A$- and $B$-side substitutions inside his backtracking DFS, with a
+backward-compatible proof format (per-record leaf kinds, per-node side
+bits) and a mirrored verifier.
+
+\paragraph{The activity guard.} The naive mixed-leaf bound
+(chain length plus flattening of the doubly-restricted tensor) is
+\emph{unsound}: pure-$A$ chains get activity for free ($A$-flattening
+injectivity survives $A$-restriction), but under double-sided restriction
+a substitution can kill a direction the tensor no longer depends on,
+inflating the bound by $+1$ per inactive step. The sound credit is
+rank-based: $k_B = \dim B - \dim(W + D)$, where $W$ is the kernel of the
+$B$-rows and $D$ the dead $B$-subspace of the $A$-restricted tensor. We
+validated the formula on engineered deactivations (independent Python
+implementation and a C++ probe), then measured it in production: per-orbit
+docked credit ranged from $0$ to $8.6\times 10^9$ --- the guard is not
+vacuous, and the unguarded rule's $99.99\%$ ``rescue rates'' were partly
+phantom credits.
+
+\paragraph{Exhaustive negatives.} With soundness in place, equal-budget
+experiments returned a clean null: guarded mixed play lifted no codim-2
+orbit at $3\times 10^8$ steps (nor did $A$-only). Escalating down-lattice
+where exhaustion is affordable produced eight decisive verdicts, \emph{all}
+FAILS: at codim-4 and codim-3, mixed substitution with table leaves cannot
+lift Wang's values by one, exhaustively. A three-sided variant ($C$-moves)
+inflates the game ($\ge 6.6\times$ nodes on refutations that were
+16--40 minutes under two sides) with no observed proving power. The
+binding constraint is identified and measured: once play leaves the
+pure-$A$ lattice, every available leaf collapses to flattening class
+($\approx$14--16), and the adversary grinds targets down against them.
+
+\section{The exhaustive substitution game}
+\label{sec:game}
+
+Independently of Wang's framework, we built an exact game engine over
+$(U_A, U_B, U_C)$ restriction states with sandwich-group canonicalization,
+stabilizer-reduced adversary fanouts, and memoized decision ladders. Its
+verdicts, each with machine-checked certificates replayed by an
+independent Python checker (including isomorphism edges):
+game value $17$, then $18$ under support/spanning refinements and
+rank-profile case splits; three exhaustive FAILS at $19$ under every rule
+set tried. A methodological lesson is recorded with the mathematics: an
+early version ``proved'' $R_{\F}(\langle 2,2,2\rangle)\ge 12$ (true value
+$7$) because kill moves scored on the zero tensor \emph{and the checker
+re-encoded the same rule}. Certificate checkers validate transcription,
+not semantics; every new proof rule since has been gated on known exact
+values first.
+
+\section{Certified scheme search (CDCL(T) over products)}
+\label{sec:cdclt}
+
+The constructive dual: prove $R_{\F} > r$ by exhausting $r$-product
+schemes, with theory propagators supplying the reasoning that resolution
+lacks. Decisions are whole products; the residual (tensor XOR chosen
+products) carries native parity; propagators prune by residual rank
+bounds; symmetry enters as constructive orbit enumeration.
+
+\paragraph{Gates at $2\times 2$.} The stage-1 prototype reproduces both
+certified values: $r=6$ UNSAT (matching our hydra\_satsuma DRAT-verified
+result) and $r=7$ SAT with an independently verified Strassen-class
+witness. The measured ablation: one ply of sound substitution reasoning
+cut the $r=6$ tree from $3.22\times 10^9$ to $4.3\times 10^6$ nodes
+($746\times$).
+
+\paragraph{Scaling to $3\times 3$.} Lazy enumeration over the $511^3
+\approx 1.3\times 10^8$ products; triple-layout residuals making every
+flattening nine contiguous 81-bit extracts; constructive first-product
+canonicalization under the sandwich group ($133{,}432{,}831 \to 211$
+orbit representatives; the level-1 frontier \emph{is} the orbit count);
+level-2 stabilizer minimality (median $16\times$); a Strassen-commutator
+propagator (strength 12--13 at 10--30\,$\mu$s, validated by a
+constructed-rank gate: tensors built as XOR of $k$ products have rank
+$\le k$ by construction); Koszul at the shallow levels. The ladder:
+
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+rung & verdict & nodes & wall \\
+\midrule
+$r=9$ & UNSAT (flatten) & $783{,}363 \to 211$ & 0.1\,s \\
+$r=10$ & UNSAT (probe) & $211$ & 0.1\,s \\
+$r=11$--$14$ & UNSAT (Koszul at level 1) & $211$ each & 0.1\,s each \\
+$r=15$ & UNSAT (killer-directed deep probe) & $211$ & 3.25\,h \\
+$r=16$ & out of reach & --- & $\ge 70$ core-h on one root, unresolved \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The $r=15$ rung is the architecture's current independent reach,
+$R_{\F} > 15$: two rungs past the Koszul ceiling, taken by \emph{lazy
+adversary-directed recursion} --- at each node a cheap-floor chain
+(flatten $\to$ Strassen $\to$ Koszul) settles most folds, and only the
+\emph{killers} (Koszul-dropping folds) recurse, with targets falling into
+Strassen range within two levels. Fixed-sweep plies, by contrast, were
+measured intractable (16.7 hours resolving fewer than 8 of 211 roots).
+Engineering lessons are recorded honestly: Method-of-Four-Russians
+elimination, equality-gated, was \emph{benched out} (dense wins do not
+transfer to the sparse wedge shape); a leading-bit rewrite of the
+$9\times 81$ rank kernel gave a universal $2.1\times$; five unsound
+artifacts across the program (an $\alpha$-canonical cut, a
+$\lambda{=}0$-only probe, side-slot pollution, activity-free mixed
+leaves, a row-reversed matrix inverse) were all caught by known-value or
+constructed-value gates before contaminating any claim.
+
+\section{The Rank Law}
+\label{sec:ranklaw}
+
+Instrumenting the $r=15$ probes produced a dataset of every
+Koszul-dropping fold at the 211 roots (10{,}338 killers; the probe's
+pivot is always the cell $(2,2)$; every drop is $14 \to 13$ exactly).
+Writing the folding covector as $\varphi = e_{(2,2)} + \lambda$ and
+viewing it as a $3\times 3$ matrix over $\F$:
+
+\begin{observation}[Rank Law; $211$ roots $\times$ $3$ sides $=633$ pairs]
+\leavevmode
+\begin{enumerate}
+\item $\rk(\varphi) = 1 \implies$ killer, with zero exceptions. These are
+the $4\times 4 = 16$ rectangle indicators through the pivot cell ---
+exactly the observed sixteen killers per pair.
+\item $\rk(\varphi) = 3 \implies$ non-killer, with zero exceptions.
+\item $\rk(\varphi) = 2$: non-killer at $595$ of $633$ pairs; killer only
+at $38$ exceptional pairs concentrated on $30$ roots (210 extra folds).
+\end{enumerate}
+\end{observation}
+
+The reading: the adversary's dangerous moves are \emph{product-shaped} ---
+rank-one covectors aligned with the tensor's own rank-one structure, the
+same objects our game's rank-profile splits singled out. The law
+immediately poses a well-defined lemma:
+
+\begin{conjecture}[case-split lemma]
+On the level-1 residuals (matmul minus one product, restricted as in the
+probe), folding by a covector of matrix rank $3$ preserves
+$\kos_4 \ge 14$.
+\end{conjecture}
+
+Proven --- and extended across the rank-2 boundary, whose 38 exceptions
+appear tied to low-rank structure of the root representatives --- the
+lemma removes $168$--$240$ of every $256$ probe evaluations, repricing the
+$r=16$ rung from $\ge 1.5$ core-years to days. Independent of that
+payoff, the law is the first structural characterization of the
+substitution game's critical directions that we are aware of, and the
+killer set's algebraic description (points of an affine determinantal
+pencil over $\F^8$) suggests it is provable.
+
+\section{Convergence, the frontier at $r=20$, and outlook}
+\label{sec:outlook}
+
+Three structurally different programs --- mixed-side substitution inside
+Wang's DP, the exhaustive game, and certified scheme search --- terminate
+at the same gap: a cheap ($\lesssim$\,ms) rank lower-bound oracle of
+strength 15--19 for \emph{arbitrary} tensors (lattice-restricted tensors
+have Wang's table; residuals do not). The barrier section explains why
+the gap is stubborn: that strength range spans the rank-method ceiling,
+so the oracle must itself be amplification-shaped.
+
+For the program's actual goal, the frontier is sharper than any oracle
+question. Subadditivity plus Wang's certificate gives
+$\rk(T \oplus m_1 \oplus \cdots \oplus m_k) \ge 20-k$ for free, which
+trivializes every rung $r \le 19$; proving $R_{\F} > 20$ requires
+certifying $21-k$ on \emph{scheme-consistent} prefixes --- beating
+subadditivity by exactly one, which at $k=0$ is the theorem itself. The
+$+1$ must come from knowledge about minimal decompositions of $\T$
+specifically. Two routes: (a) prove and iterate the Rank Law (killer
+varieties as case-split rules --- the game's critical directions may
+thin as prefixes accumulate); (b) decomposition-structure theorems in
+the tradition of de~Groote's uniqueness and Burichenko's symmetries,
+mined from the known scheme corpora and imported as WLOG prunes.
+On the constructive side, the corridor experiment established that prefix
+descent has no usable guidance signal (flattening is capped and constant;
+true schemes' intermediates are low-rank, not low-popcount), so the
+rank-22 search correctly factors as SLS near-misses (native-ANF Brent
+engine) finished or refuted by the exact endgame engine, which refutes
+junk prefixes in milliseconds.
+
+All measurements, certificates, logs and the killer dataset are in the
+repository; every number above is reproducible from committed artifacts.
+
+\begin{center}\emph{---}\end{center}
+
+\noindent\textbf{Acknowledgment of method.} The program's productivity
+traces to two disciplines applied without exception: gate every new rule
+on known exact values (five unsound artifacts caught), and distrust
+suspicious nulls until the treatment is proven applied (three vacuous
+experiments unmasked). The instruments built for soundness --- the
+activity-deficit counters, the killer dump --- produced the
+mathematical discoveries.
+
+\end{document}

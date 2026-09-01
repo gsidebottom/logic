@@ -2129,6 +2129,182 @@ fn main() {
         }
         return;
     }
+    if args.iter().any(|a| a == "--wedge-correlate") {
+        // The alignment correlate: for sampled roots and every fold phi
+        // (side A, pivot 8), compute on the p=4 side-A wedge:
+        //   v_T = rank K(T|ker phi),  b = rank K(m1|ker phi),
+        //   d = dim(rowspace K(m1|phi) ∩ rowspace K(T|phi))
+        //     = v_T + b - rank(stacked),
+        //   drop = v_T - v_R  (R = T xor m1)
+        // and correlate with killer status (full koszul_bound3 < 14).
+        let reps = first_product_reps();
+        let masks = Masks::build();
+        let t3 = R3::from_abc(&build_t3());
+        let sample: Vec<usize> = vec![0, 1, 4, 10, 25, 58, 92, 143];
+        fn rank3m(bits9: u32) -> u32 {
+            let mut rows = [bits9 & 7, bits9 >> 3 & 7, bits9 >> 6 & 7];
+            let mut rk = 0usize;
+            for c in (0..3).rev() {
+                if let Some(p) = (rk..3).find(|&i| rows[i] >> c & 1 == 1) {
+                    rows.swap(rk, p);
+                    for i in 0..3 {
+                        if i != rk && rows[i] >> c & 1 == 1 {
+                            rows[i] ^= rows[rk];
+                        }
+                    }
+                    rk += 1;
+                }
+            }
+            rk as u32
+        }
+        let fold_r3 = |r: &R3, lam: u32| -> R3 {
+            let p = 8usize;
+            let sidx = STRIDE_IDX[0];
+            let lts = [r.abc, r.bca, r.cab];
+            let mut bases = lts;
+            let mut slices = [[0u64; W]; 3];
+            for l in 0..3 {
+                slices[l] = layout_slice(&lts[l], &masks, sidx[l], p);
+                for w in 0..W {
+                    bases[l][w] ^= slices[l][w];
+                }
+            }
+            let others: Vec<usize> = (0..8).collect();
+            for (bi, &q) in others.iter().enumerate() {
+                if lam >> bi & 1 == 1 {
+                    for l in 0..3 {
+                        let sh = layout_shift(&slices[l], sidx[l], p, q);
+                        for w in 0..W {
+                            bases[l][w] ^= sh[w];
+                        }
+                    }
+                }
+            }
+            R3 { abc: bases[0], bca: bases[1], cab: bases[2] }
+        };
+        let wedge_rank = |r3: &R3| -> (usize, Vec<Vec<u64>>, usize) {
+            let kt = kt_from_abc(&r3.abc);
+            let (rows, words) = koszul_rows(&kt, 4);
+            let mut rr = rows.clone();
+            let rk = rank_wide_legacy(&mut rr, words);
+            (rk, rows, words)
+        };
+        // per (rank_phi, killer): distributions of d and drop
+        use std::collections::BTreeMap;
+        let mut agg: BTreeMap<(u32, bool), BTreeMap<(usize, usize), u32>> = BTreeMap::new();
+        for &ri in &sample {
+            let (al, be, ga, _) = reps[ri];
+            let mut m1 = R3 { abc: [0; W], bca: [0; W], cab: [0; W] };
+            m1.xor_product(al, be, ga);
+            let mut rr3 = t3;
+            rr3.xor_product(al, be, ga);
+            for lam in 0..256u32 {
+                let phi_rank = rank3m((1 << 8) | lam);
+                let tf = fold_r3(&t3, lam);
+                let mf = fold_r3(&m1, lam);
+                let rf = fold_r3(&rr3, lam);
+                let (v_t, rows_t, words) = wedge_rank(&tf);
+                let (b, rows_m, _) = wedge_rank(&mf);
+                let (v_r, _, _) = wedge_rank(&rf);
+                let mut stacked = rows_t.clone();
+                stacked.extend(rows_m.iter().cloned());
+                let v_stack = rank_wide_legacy(&mut stacked, words);
+                let d = v_t + b - v_stack;
+                let drop = v_t.saturating_sub(v_r);
+                let killer = koszul_bound3(&rf, 4) < 14;
+                if (phi_rank == 2 && killer) || (lam % 61 == 0) {
+                    println!(
+                        "  root {ri} lam {lam:3} rankphi {phi_rank} killer {killer}: v_T {v_t} b {b} d {d} contain {} drop {drop} v_R {v_r}",
+                        d == b
+                    );
+                }
+                *agg.entry((phi_rank, killer)).or_default().entry((d, drop)).or_insert(0) += 1;
+            }
+            eprintln!("root {ri} done");
+        }
+        println!("(rank_phi, killer) -> {{(intersection d, wedge drop): count}}");
+        for (k, v) in &agg {
+            // summarize: d range and drop range
+            let dmin = v.keys().map(|x| x.0).min().unwrap();
+            let dmax = v.keys().map(|x| x.0).max().unwrap();
+            let drmin = v.keys().map(|x| x.1).min().unwrap();
+            let drmax = v.keys().map(|x| x.1).max().unwrap();
+            let n: u32 = v.values().sum();
+            println!("  {k:?}: n={n} d in [{dmin},{dmax}] drop in [{drmin},{drmax}]");
+        }
+        return;
+    }
+    if args.iter().any(|a| a == "--hyperplane-koszul") {
+        // The three base values: koszul(T | ker phi) for every nonzero
+        // covector phi on each side, grouped by matrix rank of phi (as a
+        // 3x3 F2 matrix). The sandwich orbits on covectors are exactly the
+        // rank classes, so each class should be constant — measured, not
+        // assumed. Embedded convention (9-dim arrays, denominator C(8,p)),
+        // matching the killer dump and the subadditivity argument.
+        let masks = Masks::build();
+        let t3 = R3::from_abc(&build_t3());
+        fn rank3m(bits9: u32) -> u32 {
+            let mut rows = [bits9 & 7, bits9 >> 3 & 7, bits9 >> 6 & 7];
+            let mut rk = 0usize;
+            for c in (0..3).rev() {
+                if let Some(p) = (rk..3).find(|&i| rows[i] >> c & 1 == 1) {
+                    rows.swap(rk, p);
+                    for i in 0..3 {
+                        if i != rk && rows[i] >> c & 1 == 1 {
+                            rows[i] ^= rows[rk];
+                        }
+                    }
+                    rk += 1;
+                }
+            }
+            rk as u32
+        }
+        for side in 0..3usize {
+            let sidx = STRIDE_IDX[side];
+            let mut per_rank: std::collections::BTreeMap<u32, std::collections::BTreeMap<u32, u32>> =
+                Default::default();
+            for phi in 1u32..512 {
+                let p = (31 - phi.leading_zeros()) as usize; // leading coordinate
+                let rest = phi & !(1 << p);
+                // lambda over others = coords != p in increasing order
+                let others: Vec<usize> = (0..9).filter(|&x| x != p).collect();
+                let mut lam = 0u32;
+                for (bi, &c) in others.iter().enumerate() {
+                    if rest >> c & 1 == 1 {
+                        lam |= 1 << bi;
+                    }
+                }
+                let lts = [t3.abc, t3.bca, t3.cab];
+                let mut bases = lts;
+                let mut slices = [[0u64; W]; 3];
+                for l in 0..3 {
+                    slices[l] = layout_slice(&lts[l], &masks, sidx[l], p);
+                    for w in 0..W {
+                        bases[l][w] ^= slices[l][w];
+                    }
+                }
+                for (bi, &q) in others.iter().enumerate() {
+                    if lam >> bi & 1 == 1 {
+                        for l in 0..3 {
+                            let sh = layout_shift(&slices[l], sidx[l], p, q);
+                            for w in 0..W {
+                                bases[l][w] ^= sh[w];
+                            }
+                        }
+                    }
+                }
+                let folded = R3 { abc: bases[0], bca: bases[1], cab: bases[2] };
+                let k = koszul_bound3(&folded, 4);
+                *per_rank
+                    .entry(rank3m(phi))
+                    .or_default()
+                    .entry(k)
+                    .or_insert(0) += 1;
+            }
+            println!("side {side}: koszul(T|ker phi) by rank(phi): {:?}", per_rank);
+        }
+        return;
+    }
     if args.iter().any(|a| a == "--killer-dump") {
         // For each root rep: enumerate the probe's folds (per side, LAST
         // ACTIVE pivot, all 2^8 lambdas — the probe's own convention) and

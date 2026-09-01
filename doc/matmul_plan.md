@@ -640,6 +640,24 @@ the two source papers for this track):
   vanish (rank-2 boundary too: 240/256), repricing t=16 from
   >= 1.5 core-years to days. Files: matmul/r22/killers.txt,
   killer_analysis.py. Write-up in progress.
+- **The killer mechanism, fully quantified (2026-09-01,
+  --hyperplane-koszul + --wedge-correlate)**: base values by finite
+  verification — koszul(T|ker phi) depends only on rank(phi) (all
+  511 covectors x 3 sides): 13/14/14 for ranks 1/2/3; class
+  constancy exact, so the sandwich-orbit invariance is now a
+  theorem-by-exhaustion. Subadditivity alone does NOT give the
+  case-split lemma (k3 = 14, not 15). The correlate (8 roots x 256
+  folds; side-A p=4 wedge): perturbation wedge b = 70 always;
+  v_T = 918 (rank-2/3) / 900 (rank-1); wedge drops are QUANTIZED to
+  {0, 6, 12} — the 8..11 band killerhood must cross is empty.
+  Killer <=> two 6-units of drop; rank-2 aligned cases hit 12
+  exactly (v_R = 906); rank-3 never exceeds one unit; rank-1 kills
+  by inheritance (base 900 <= 910, drop irrelevant). Intersection
+  dims step in 3s (35/38/41). LEMMA, proof-shaped: for rank-3
+  covectors the perturbation achieves at most one 6-unit of drop —
+  WLOG phi = identity (orbit transitivity measured), decompose the
+  wedge under Stab(phi), bound the aligned piece. The 6- and
+  3-quantization points at small isotypic components.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

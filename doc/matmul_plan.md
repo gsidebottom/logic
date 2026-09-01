@@ -614,6 +614,15 @@ the two source papers for this track):
   rungs are trivial via subadditivity + Wang (20 - k floor);
   independent rungs measure ENGINE strength, and novelty still
   starts at r=20 where every bound is structurally +1 short.
+- **t=16 reach test verdict — out of reach; ladder rests at rank > 15
+  (2026-08-31 21:31)**: root 0 alone consumed >= 70 core-hours
+  without resolving (killed for a system update; vs 0.65 core-h/root
+  at t=15). Scaling: the r=16 rung >= 1.5 core-years on this Mac.
+  The recurring law: each technique buys its theoretical strength
+  then walls one rung later at ~100x. Independent-engine resting
+  point: rank > 15 (602baf7). Post-update agenda: r=20 mathematics
+  (killer-variety characterization from the banked fold data,
+  decomposition-structure theorems), and the write-up.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

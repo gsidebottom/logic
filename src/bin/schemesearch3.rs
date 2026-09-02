@@ -1406,6 +1406,253 @@ fn deep_probe_par(r: &R3, masks: &Masks, t: u32, depth_left: u32, threads: usize
     false
 }
 
+/// Work-queue deep probe (2026-09-01): the same AND-OR tree as deep_probe
+/// (OR over sides in order, AND over the 2^8 folds of a side, cheap-floor
+/// leaves, depth cap) evaluated by `threads` workers over ONE global task
+/// queue: every fold at every depth is a task, so hard folds deep in the
+/// recursion no longer serialize a worker (deep_probe_par fans only the
+/// top level and idles ~4 of 12 cores on hard roots). Sides stay
+/// sequential (side s+1 starts only when side s fails), so the work is
+/// the serial tree's work plus early-abort latency. Truth value identical
+/// to deep_probe by construction (gate: --probe-pool-test).
+struct PoolOr {
+    r: R3,
+    t: u32,
+    depth_left: u32,
+    parent: Option<std::sync::Arc<PoolAnd>>,
+    resolved: AtomicBool,
+    value: AtomicBool,
+}
+
+struct PoolAnd {
+    parent: std::sync::Arc<PoolOr>,
+    side: usize,
+    pending: AtomicUsize,
+    failed: AtomicBool,
+}
+
+struct PoolTask {
+    r: R3,
+    t: u32,
+    depth_left: u32,
+    parent: std::sync::Arc<PoolAnd>,
+}
+
+struct Pool<'a> {
+    masks: &'a Masks,
+    queue: std::sync::Mutex<Vec<PoolTask>>,
+    cv: std::sync::Condvar,
+    done: AtomicBool,
+    result: AtomicBool,
+    tasks_run: AtomicU64,
+    tasks_skipped: AtomicU64,
+}
+
+impl<'a> Pool<'a> {
+    fn push_side(&self, or: &std::sync::Arc<PoolOr>, from_side: usize) {
+        use std::sync::Arc;
+        let masks = self.masks;
+        let r = &or.r;
+        let lts = [r.abc, r.bca, r.cab];
+        for side in from_side..3usize {
+            let sidx = STRIDE_IDX[side];
+            let major_layout = sidx.iter().position(|&x| x == 0).unwrap();
+            let p = match (0..9)
+                .rev()
+                .find(|&p| !is_zero(&layout_slice(&lts[major_layout], masks, 0, p)))
+            {
+                Some(p) => p,
+                None => continue,
+            };
+            let mut bases = lts;
+            let mut slices = [[0u64; W]; 3];
+            for l in 0..3 {
+                slices[l] = layout_slice(&lts[l], masks, sidx[l], p);
+                for w in 0..W {
+                    bases[l][w] ^= slices[l][w];
+                }
+            }
+            let others: Vec<usize> = (0..9).filter(|&x| x != p).collect();
+            let shifted: Vec<[T3; 3]> = others
+                .iter()
+                .map(|&q| {
+                    let mut sh = [[0u64; W]; 3];
+                    for l in 0..3 {
+                        sh[l] = layout_shift(&slices[l], sidx[l], p, q);
+                    }
+                    sh
+                })
+                .collect();
+            let and = Arc::new(PoolAnd {
+                parent: or.clone(),
+                side,
+                pending: AtomicUsize::new(256),
+                failed: AtomicBool::new(false),
+            });
+            let mut batch = Vec::with_capacity(256);
+            for lam in (0..256u32).rev() {
+                let mut m = bases;
+                for (bi, sh) in shifted.iter().enumerate() {
+                    if lam >> bi & 1 == 1 {
+                        for l in 0..3 {
+                            for w in 0..W {
+                                m[l][w] ^= sh[l][w];
+                            }
+                        }
+                    }
+                }
+                batch.push(PoolTask {
+                    r: R3 { abc: m[0], bca: m[1], cab: m[2] },
+                    t: or.t - 1,
+                    depth_left: or.depth_left - 1,
+                    parent: and.clone(),
+                });
+            }
+            self.queue.lock().unwrap().extend(batch);
+            self.cv.notify_all();
+            return;
+        }
+        // no foldable side: the OR fails
+        self.or_resolve(or, false);
+    }
+
+    fn or_resolve(&self, or: &std::sync::Arc<PoolOr>, value: bool) {
+        if or.resolved.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        or.value.store(value, Ordering::Release);
+        match &or.parent {
+            Some(pand) => {
+                if value {
+                    self.and_child_ok(pand);
+                } else {
+                    self.and_child_fail(pand);
+                }
+            }
+            None => {
+                self.result.store(value, Ordering::Release);
+                self.done.store(true, Ordering::Release);
+                let _g = self.queue.lock().unwrap();
+                self.cv.notify_all();
+            }
+        }
+    }
+
+    fn and_child_ok(&self, and: &std::sync::Arc<PoolAnd>) {
+        if and.failed.load(Ordering::Acquire) {
+            return;
+        }
+        if and.pending.fetch_sub(1, Ordering::AcqRel) == 1 {
+            self.or_resolve(&and.parent, true);
+        }
+    }
+
+    fn and_child_fail(&self, and: &std::sync::Arc<PoolAnd>) {
+        if and.failed.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let or = and.parent.clone();
+        self.push_side(&or, and.side + 1);
+    }
+
+    /// any ancestor AND already failed or OR already resolved => stale
+    fn stale(and: &std::sync::Arc<PoolAnd>) -> bool {
+        let mut cur: Option<&std::sync::Arc<PoolAnd>> = Some(and);
+        while let Some(a) = cur {
+            if a.failed.load(Ordering::Acquire) || a.parent.resolved.load(Ordering::Acquire) {
+                return true;
+            }
+            cur = a.parent.parent.as_ref();
+        }
+        false
+    }
+
+    fn run_task(&self, task: PoolTask) {
+        use std::sync::Arc;
+        if Self::stale(&task.parent) {
+            self.tasks_skipped.fetch_add(1, Ordering::Relaxed);
+            return;
+        }
+        self.tasks_run.fetch_add(1, Ordering::Relaxed);
+        let (r, t) = (&task.r, task.t);
+        let leaf_ok = max_flatten3(r) >= t
+            || (t <= 13 && strassen_bound3(r, 8) >= t)
+            || koszul_bound3(r, 4) >= t;
+        if leaf_ok {
+            self.and_child_ok(&task.parent);
+            return;
+        }
+        if task.depth_left == 0 {
+            self.and_child_fail(&task.parent);
+            return;
+        }
+        let or = Arc::new(PoolOr {
+            r: task.r,
+            t,
+            depth_left: task.depth_left,
+            parent: Some(task.parent.clone()),
+            resolved: AtomicBool::new(false),
+            value: AtomicBool::new(false),
+        });
+        self.push_side(&or, 0);
+    }
+}
+
+fn deep_probe_pool(r: &R3, masks: &Masks, t: u32, depth_left: u32, threads: usize) -> (bool, u64, u64) {
+    use std::sync::Arc;
+    if max_flatten3(r) >= t
+        || (t <= 13 && strassen_bound3(r, 8) >= t)
+        || koszul_bound3(r, 4) >= t
+    {
+        return (true, 0, 0);
+    }
+    if depth_left == 0 {
+        return (false, 0, 0);
+    }
+    let pool = Pool {
+        masks,
+        queue: std::sync::Mutex::new(Vec::new()),
+        cv: std::sync::Condvar::new(),
+        done: AtomicBool::new(false),
+        result: AtomicBool::new(false),
+        tasks_run: AtomicU64::new(0),
+        tasks_skipped: AtomicU64::new(0),
+    };
+    let root = Arc::new(PoolOr {
+        r: *r,
+        t,
+        depth_left,
+        parent: None,
+        resolved: AtomicBool::new(false),
+        value: AtomicBool::new(false),
+    });
+    pool.push_side(&root, 0);
+    std::thread::scope(|scope| {
+        for _ in 0..threads {
+            scope.spawn(|| loop {
+                let task = {
+                    let mut q = pool.queue.lock().unwrap();
+                    loop {
+                        if pool.done.load(Ordering::Acquire) {
+                            return;
+                        }
+                        if let Some(t) = q.pop() {
+                            break t;
+                        }
+                        q = pool.cv.wait(q).unwrap();
+                    }
+                };
+                pool.run_task(task);
+            });
+        }
+    });
+    (
+        pool.result.load(Ordering::Acquire),
+        pool.tasks_run.load(Ordering::Relaxed),
+        pool.tasks_skipped.load(Ordering::Relaxed),
+    )
+}
+
 struct Shared {
     capped: AtomicBool,
     found: AtomicBool,
@@ -2946,6 +3193,81 @@ fn main() {
         let masks = Masks::build();
         let t3 = build_t3();
         let threads: usize = get("--threads").and_then(|v| v.parse().ok()).unwrap_or(12);
+        if args.iter().any(|a| a == "--probe-pool-test") {
+            // gate: pooled == serial truth value on a few (root, t, depth)
+            // default cases by rep index; --pool-test-cases "al,be,ga,t,d;..."
+            // gives explicit products (e.g. the repaired roots).
+            // case = al,be,ga,t,d[,expected]: without `expected` the serial
+            // probe is run as the baseline (single-threaded — only for cheap
+            // cases); with expected 0/1 the case runs POOLED ONLY and is
+            // checked against that recorded verdict (e.g. a root already
+            // proven by the fanned probe).
+            let mut cases: Vec<(u32, u32, u32, u32, u32, Option<bool>)> = Vec::new();
+            match get("--pool-test-cases") {
+                Some(spec) => {
+                    for c in spec.split(';') {
+                        let v: Vec<u32> = c.split(',').map(|x| x.trim().parse().unwrap()).collect();
+                        cases.push((v[0], v[1], v[2], v[3], v[4], v.get(5).map(|&x| x != 0)));
+                    }
+                }
+                None => {
+                    for &(ri, tt, dd) in &[(0usize, 14u32, 6u32), (0, 15, 1), (0, 16, 1), (0, 15, 2), (7, 15, 2), (0, 12, 6)] {
+                        let (al, be, ga, _) = reps[ri];
+                        cases.push((al, be, ga, tt, dd, None));
+                    }
+                }
+            }
+            for &(al, be, ga, tt, dd, expected) in &cases {
+                let ri = format!("{al},{be},{ga}");
+                let mut r3 = R3::from_abc(&t3);
+                r3.xor_product(al, be, ga);
+                let (baseline, ts, how) = match expected {
+                    Some(e) => (e, 0.0, "recorded"),
+                    None => {
+                        let t0 = Instant::now();
+                        let s = deep_probe(&r3, &masks, tt, dd);
+                        (s, t0.elapsed().as_secs_f64(), "serial")
+                    }
+                };
+                let t0 = Instant::now();
+                let (pooled, run, skipped) = deep_probe_pool(&r3, &masks, tt, dd, threads);
+                let tp = t0.elapsed().as_secs_f64();
+                println!(
+                    "root {ri} t={tt} depth={dd}: {how} {baseline} [{ts:.2}s] pooled {pooled} [{tp:.2}s; {run} tasks run, {skipped} skipped]"
+                );
+                assert_eq!(baseline, pooled, "pooled probe disagrees with {how}");
+            }
+            println!("probe-pool-test: all cases agree");
+            return;
+        }
+        if args.iter().any(|a| a == "--probe-pool") {
+            // sequential roots, each probe over the global work queue
+            let max_roots: usize =
+                get("--max-roots").and_then(|v| v.parse().ok()).unwrap_or(reps.len());
+            let t0 = Instant::now();
+            let (mut ok_c, mut fail_c) = (0u32, 0u32);
+            for (i, &(al, be, ga, _)) in reps.iter().enumerate().take(max_roots) {
+                let mut r3 = R3::from_abc(&t3);
+                r3.xor_product(al, be, ga);
+                let tr = Instant::now();
+                let (ok, run, skipped) = deep_probe_pool(&r3, &masks, t, dmax, threads);
+                if ok {
+                    ok_c += 1;
+                } else {
+                    fail_c += 1;
+                }
+                eprintln!(
+                    "  root {i} ({al},{be},{ga}) deep({t}) {} [{:.1}s; {run} tasks, {skipped} skipped] {}/{} ok={ok_c} fail={fail_c} ({:.0}s)",
+                    if ok { "ok" } else { "FAILS" },
+                    tr.elapsed().as_secs_f64(),
+                    i + 1,
+                    reps.len(),
+                    t0.elapsed().as_secs_f64()
+                );
+            }
+            eprintln!("deep-probe t={t} (pool): ok {ok_c} fail {fail_c} of {} ({:.0}s)", reps.len(), t0.elapsed().as_secs_f64());
+            return;
+        }
         if args.iter().any(|a| a == "--probe-par") {
             // sequential roots, each probe fanned across all threads —
             // no single-threaded tail. --max-roots N limits the sample.

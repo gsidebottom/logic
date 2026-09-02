@@ -21,6 +21,15 @@ FINDINGS (2026-08-31):
     preserves koszul >= 14 on these residuals. Proven, it removes
     ~168/256 evals per probe sweep; with the rank-2 boundary handled,
     240/256 — repricing the t=16 rung from >= 1.5 core-years to days.
+
+UPDATE (2026-09-01): the conjecture is PROVED by orbit exhaustion
+  (schemesearch3 --fold-lemma; tables matmul/r22/fold_lemma_rank{1,2,3}.txt):
+  rank-3 folds never kill for ANY rank-one m; rank-2 kills on exactly 108
+  Stab(v)-orbits; rank-1 always kills. The orbit tables reproduce this
+  dump byte-for-byte. NOTE: the 211 roots of this dump were computed with
+  a wrong gamma action (fixed the same day); they cover 159 of the 211 true
+  first-product orbits. The Rank Law statements above are about the dumped
+  residuals themselves and stand.
 """
 import re
 from collections import Counter, defaultdict

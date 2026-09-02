@@ -1,0 +1,7 @@
+cpu-sample 17083  1101.4 13/12
+root 1,10,64 t=15 depth=6: recorded true [0.00s] pooled true [12.85s; 65792 tasks run, 0 skipped]
+cpu-sample 17083  1089.1 13/12
+root 1,10,66 t=15 depth=6: recorded true [0.00s] pooled true [3.73s; 12544 tasks run, 0 skipped]
+root 84,10,142 t=15 depth=6: recorded true [0.00s] pooled true [0.80s; 4352 tasks run, 0 skipped]
+probe-pool-test: all cases agree
+exit 0

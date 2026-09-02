@@ -709,6 +709,27 @@ the two source papers for this track):
   statement — (T+m)|ker<v,v'> for 2-dim fold subspaces; same
   machinery (pencil classes of <v,v'> x Stab-orbits of m), larger
   but finite.
+- **r=15 rung REPAIRED on the 52 uncovered orbits; work-queue probe
+  for full 12-core use (2026-09-01 evening)**: deep probe t=15,
+  depth 6 on the 52 true first-product orbits the pre-fix roots never
+  hit: 52/52 prove rank >= 15 (394 s wall, --probe-par, 0 failures;
+  matmul/r22/r15_uncovered.err). With the 159 orbits the old roots did
+  cover (their proofs transfer orbit-wise), the independent ladder
+  rank_F2(<3,3,3>) > 15 now rests on a COMPLETE, gate-verified set of
+  211 true orbit reps; r=14 re-exhausted the same way (0.7 s). Core
+  utilization (Greg: always use the 12 performance cores): the
+  root-parallel mode tails to one busy core (1 hard root of 52 ran
+  ~4 min alone at 100%); --probe-par fans only the top level and sat
+  at ~8 cores (each hard fold's recursion is serial inside its
+  worker). New deep_probe_pool (--probe-pool): one global task queue
+  over the whole AND-OR tree (sides sequential, so the serial tree's
+  work; every fold at every depth is a task; early abort by ancestor
+  flags) — truth value gated against the serial probe on six cheap
+  recursion cases and against the recorded fanned verdicts on three
+  deep t=15 roots (--probe-pool-test): all agree; sustained 1090-1100%
+  CPU with 12/12 workers busy (matmul/r22/pool_gate.log; 1,10,64 in
+  12.9 s over 65,792 tasks). Use --probe-pool for hard roots and any
+  t=16 attempt.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

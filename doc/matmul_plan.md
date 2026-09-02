@@ -896,6 +896,21 @@ the two source papers for this track):
   trimmed Koszul. Root 0 (the hardest, |Stab| 216) now running with a
   4-h cap (t16_root0_long.*); if it resolves, the full 211-root r=16
   rung is next.
+- **r=16 UNSAT — EXHAUSTED: rank_F2(<3,3,3>) > 16, independent
+  (2026-09-02 10:xx, r16_ladder.err)**: deep probe t=16, depth 12,
+  pooled+concise+trimmed-Koszul, on all 211 true first-product orbit
+  reps: 211/211 ok, 0 fail, 3,893 s wall on 12 cores (median 9.6 s per
+  root, max 124.6 s; 367,575,689 tasks). Two rungs past yesterday's
+  resting point in one morning, with no new mathematics: the wall was
+  the probe evaluating concise 3x6x6 residuals in 9x9 coordinates
+  (fans of 2^8 where 2^5 suffices, and a 6-ms wedge where a 6-us one
+  suffices). Soundness chain per node: concision (isomorphism) ->
+  cheap floors (flatten / Strassen / Koszul on the honest small
+  tensor) -> substitution over active coordinates of the last pivot
+  (all lambdas, one rep per stabilizer orbit where stabilizers are
+  still valid) -> depth cap => 'unresolved' never 'proven'. Gates:
+  known values, recorded verdicts, and the r=15 rung reproduced at
+  ~100x lower cost. Next: r=17 (root 0 launched, 1-h cap, depth 13).
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

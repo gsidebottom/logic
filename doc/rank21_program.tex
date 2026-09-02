@@ -394,11 +394,34 @@ depths $5$--$6$: $3$- and $4$-slice residuals that must be proved to have
 rank $10$--$11$, where Koszul caps at $13$ but fails on the hard
 instances and no cheap exact method is in sight.
 
-\textbf{Standing verdict.} The independent ladder rests at $R_{\F} > 15$
-on a complete representative set. The certified-search route's next rung
-is not a search-engineering problem; it needs a rank oracle of strength
-$10$--$11$ on $3$--$4$-slice residuals over $\F$, the same missing object
-as Section~\ref{sec:outlook} names, one size smaller.
+\textbf{Standing verdict (superseded the same day).} The paragraph
+above was written before the frontier was examined directly. Dumping
+the depth-5/6 residuals showed them to be \emph{concise} $3\times 6\times 6$
+and $4\times 6\times 6$ tensors (common kernels of dimension $3$, row and
+column spans $6$) of rank exactly the target --- true nodes that Koszul
+misses by one --- being folded in the original $9\times 9$ coordinates
+(fans of $2^8$ where $2^5$ suffices) and evaluated with a $9$-dimensional
+wedge (milliseconds where microseconds suffice), under a depth cap that
+cut off the small subtrees that finish such proofs by flatten. Rewriting
+every residual in bases of its slice spans (an isomorphism), keying the
+memo by the concise tensor, trimming the Koszul wedge to the concise
+dimensions and allowing depth $12$ --- each step gated on known values
+($\langle 2,2,2\rangle$ proves $7$ and refuses $8$; $\langle 2,2,3\rangle$
+refuses $12$) and on the recorded $r=15$ verdicts --- reduced the hardest
+$r=15$ root from $42.8$\,s to $0.18$\,s and resolved root~$0$ at $r=16$
+in $4.6$\,s.
+
+\begin{theorem}[$r=16$ rung, independent]
+$R_{\F}(\langle 3,3,3\rangle) > 16$: the killer-directed deep probe at
+target $16$ proves $\rk(\T+m) \ge 16$ on all $211$ true first-product
+orbit representatives ($3{,}893$\,s on 12 cores; median $9.6$\,s per
+root, maximum $124.6$\,s; $3.68\times 10^8$ tasks).
+\end{theorem}
+
+The lesson is methodological and belongs with the acknowledgment below:
+when a search explodes, dump its frontier and look at the objects before
+theorizing about the oracle it lacks. The rung $r=17$ is running as this
+note is finalized.
 
 \section{Convergence, the frontier at $r=20$, and outlook}
 \label{sec:outlook}

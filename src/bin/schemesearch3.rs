@@ -1564,6 +1564,118 @@ fn staged_reps(stab: &[(u16, u16)], gl: &[u16], inv: &[u16; 512]) -> Vec<(u16, u
     out
 }
 
+/// CONCISION (2026-09-02): rewrite a residual in bases of its slice spans
+/// on all three sides (row-reduce the 9 slices of each layout; a change
+/// of basis on that factor, hence an isomorphism). A concise 3x6x5
+/// residual then fans 2^5 on side B instead of 2^8 in the original 9x9
+/// coordinates, and the depth cap no longer cuts off the small subtrees
+/// that finish proofs by flatten. Returns the concise residual and
+/// whether anything changed (if so, stabilizer elements in the old
+/// coordinates are dropped by the caller).
+fn rref81(slices: &mut [u128; 9]) -> (usize, bool) {
+    let mut rows = *slices;
+    let mut rank = 0usize;
+    for bit in (0..81).rev() {
+        if let Some(pi) = (rank..9).find(|&i| rows[i] >> bit & 1 == 1) {
+            rows.swap(rank, pi);
+            for i in 0..9 {
+                if i != rank && rows[i] >> bit & 1 == 1 {
+                    rows[i] ^= rows[rank];
+                }
+            }
+            rank += 1;
+        }
+    }
+    let changed = rows != *slices;
+    *slices = rows;
+    (rank, changed)
+}
+
+fn layout_from_slices(slices: &[u128; 9]) -> T3 {
+    let mut t = [0u64; W];
+    for a in 0..9 {
+        let s = slices[a];
+        if s == 0 {
+            continue;
+        }
+        for j in 0..81 {
+            if s >> j & 1 == 1 {
+                set(&mut t, a * 81 + j);
+            }
+        }
+    }
+    t
+}
+
+/// convert a layout (0 abc, 1 bca, 2 cab) into the abc layout
+fn layout_to_abc(t: &T3, which: usize) -> T3 {
+    if which == 0 {
+        return *t;
+    }
+    let mut out = [0u64; W];
+    for i in 0..729 {
+        if get(t, i) {
+            let (x, y, z) = (i / 81, i / 9 % 9, i % 9);
+            let (a, b, c) = match which {
+                1 => (z, x, y), // bca: (b, c, a)
+                _ => (y, z, x), // cab: (c, a, b)
+            };
+            set(&mut out, bit(a, b, c));
+        }
+    }
+    out
+}
+
+fn concise(r: &R3) -> (R3, bool) {
+    let mut cur = *r;
+    let mut any = false;
+    for side in 0..3usize {
+        let layout = [cur.abc, cur.bca, cur.cab][side];
+        let mut slices = [0u128; 9];
+        for a in 0..9 {
+            slices[a] = extract81(&layout, a * 81);
+        }
+        let (_, changed) = rref81(&mut slices);
+        if changed {
+            any = true;
+            let nl = layout_from_slices(&slices);
+            cur = R3::from_abc(&layout_to_abc(&nl, side));
+        }
+    }
+    (cur, any)
+}
+
+fn fold_key_hash(f: &FoldSet) -> [u64; 2] {
+    let k = f.key();
+    [(k[0] ^ k[1].rotate_left(37) ^ k[2].rotate_left(83)) as u64, ((k[0] >> 64) ^ (k[1] >> 64).rotate_left(11) ^ (k[2] >> 64).rotate_left(53)) as u64]
+}
+
+fn tensor_hash(t: &T3) -> [u64; 2] {
+    let mut h0 = 0x243f6a8885a308d3u64;
+    let mut h1 = 0x13198a2e03707344u64;
+    for (i, &w) in t.iter().enumerate() {
+        h0 = (h0 ^ w.rotate_left((i * 7) as u32 % 64)).wrapping_mul(0x9e3779b97f4a7c15);
+        h1 = (h1.wrapping_add(w ^ (i as u64 * 0xa5a5a5a5a5a5a5a5))).wrapping_mul(0xc2b2ae3d27d4eb4f);
+        h0 ^= h0 >> 29;
+        h1 ^= h1 >> 31;
+    }
+    [h0, h1]
+}
+
+/// <2,2,2> and <2,2,3> embedded in the 9x9x9 frame (known-value gates:
+/// rank_F2 = 7 and 11; the probe must never certify 8 or 12).
+fn build_small_matmul(n1: usize, n2: usize, n3: usize) -> T3 {
+    let mut t = [0u64; W];
+    for i in 0..n1 {
+        for j in 0..n2 {
+            for k in 0..n3 {
+                set(&mut t, bit(3 * i + j, 3 * j + k, 3 * k + i));
+            }
+        }
+    }
+    t
+}
+
 /// Work-queue deep probe (2026-09-01): the same AND-OR tree as deep_probe
 /// (OR over sides in order, AND over the folds of a side, cheap-floor
 /// leaves, depth cap) evaluated by `threads` workers over ONE global task
@@ -1629,21 +1741,21 @@ impl FoldSet {
 
 /// transposition table: residual key -> verdict (sharded)
 struct Memo {
-    shards: Vec<std::sync::Mutex<std::collections::HashMap<[u128; 3], bool>>>,
+    shards: Vec<std::sync::Mutex<std::collections::HashMap<([u64; 2], u32), bool>>>,
 }
 
 impl Memo {
     fn new() -> Memo {
         Memo { shards: (0..64).map(|_| std::sync::Mutex::new(Default::default())).collect() }
     }
-    fn shard(&self, k: &[u128; 3]) -> &std::sync::Mutex<std::collections::HashMap<[u128; 3], bool>> {
-        let h = (k[0] ^ k[1].rotate_left(37) ^ k[2].rotate_left(83)) as u64;
+    fn shard(&self, k: &([u64; 2], u32)) -> &std::sync::Mutex<std::collections::HashMap<([u64; 2], u32), bool>> {
+        let h = k.0[0] ^ k.0[1].rotate_left(17) ^ (k.1 as u64).wrapping_mul(0x9e3779b97f4a7c15);
         &self.shards[(h.wrapping_mul(0x9e3779b97f4a7c15) >> 58) as usize]
     }
-    fn get(&self, k: &[u128; 3]) -> Option<bool> {
+    fn get(&self, k: &([u64; 2], u32)) -> Option<bool> {
         self.shard(k).lock().unwrap().get(k).copied()
     }
-    fn put(&self, k: [u128; 3], v: bool) {
+    fn put(&self, k: ([u64; 2], u32), v: bool) {
         self.shard(&k).lock().unwrap().insert(k, v);
     }
     fn len(&self) -> usize {
@@ -1656,6 +1768,7 @@ struct PoolOr {
     t: u32,
     depth_left: u32,
     depth: usize,
+    key: ([u64; 2], u32),
     folds: FoldSet,
     sym: std::sync::Arc<Vec<StabElem>>,
     parent: Option<std::sync::Arc<PoolAnd>>,
@@ -1824,6 +1937,7 @@ struct Pool<'a> {
     /// Koszul settles ("leaf"), for the oracle study (2026-09-02).
     dump: Option<std::sync::Mutex<(std::fs::File, [u32; 2], [u32; 2])>>,
     ub_fail: bool,
+    concise: bool,
     /// BALANCED side order (2026-09-01): try the side with the MOST active
     /// coordinates first (ties A,B,C). Always folding A first drives the
     /// residual to a near-matrix (1-2 A-slices) where flatten caps at 9
@@ -1974,7 +2088,7 @@ impl<'a> Pool<'a> {
         }
         or.value.store(value, Ordering::Release);
         if let (Some(memo), Some(_)) = (&self.memo, &or.parent) {
-            memo.put(or.folds.key(), value);
+            memo.put(or.key, value);
         }
         match &or.parent {
             Some(pand) => {
@@ -2029,7 +2143,14 @@ impl<'a> Pool<'a> {
             self.stats.skipped[d].fetch_add(1, Ordering::Relaxed);
             return;
         }
-        let key = task.folds.key();
+        // concision: isomorphic residual with independent slices on every side
+        let (rc, changed) = if self.concise { concise(&task.r) } else { (task.r, false) };
+        let task = PoolTask {
+            r: rc,
+            sym: if changed { std::sync::Arc::new(Vec::new()) } else { task.sym },
+            ..task
+        };
+        let key = if self.concise { (tensor_hash(&task.r.abc), task.t) } else { (fold_key_hash(&task.folds), task.t) };
         if let Some(memo) = &self.memo {
             match memo.get(&key) {
                 Some(true) => {
@@ -2128,6 +2249,7 @@ impl<'a> Pool<'a> {
             t,
             depth_left: task.depth_left,
             depth: d,
+            key,
             folds: task.folds,
             sym: task.sym.clone(),
             parent: Some(task.parent.clone()),
@@ -2171,6 +2293,7 @@ fn deep_probe_pool(
         memo: if memo { Some(Memo::new()) } else { None },
         dump: dump_path.map(|p| std::sync::Mutex::new((std::fs::File::create(p).unwrap(), [0; 2], [0; 2]))),
         ub_fail: !std::env::args().any(|a| a == "--no-ub-fail"),
+        concise: !std::env::args().any(|a| a == "--no-concise"),
         balanced,
     };
     let root = Arc::new(PoolOr {
@@ -2178,6 +2301,7 @@ fn deep_probe_pool(
         t,
         depth_left,
         depth: 0,
+        key: ([0, 0], t),
         folds: FoldSet::empty(),
         sym: Arc::new(sym.to_vec()),
         parent: None,
@@ -4012,6 +4136,27 @@ fn main() {
         let masks = Masks::build();
         let t3 = build_t3();
         let threads: usize = get("--threads").and_then(|v| v.parse().ok()).unwrap_or(12);
+        if args.iter().any(|a| a == "--pool-known-gate") {
+            // known exact ranks over F2: <2,2,2> = 7, <2,2,3> = 11. The
+            // probe must never certify one more; it should reach the
+            // true value on <2,2,2> (substitution proves 7 classically).
+            for &(n1, n2, n3, rk) in &[(2usize, 2usize, 2usize, 7u32), (2, 2, 3, 11)] {
+                let r3 = R3::from_abc(&build_small_matmul(n1, n2, n3));
+                for &tt in &[rk, rk + 1] {
+                    let t0 = Instant::now();
+                    let (ok, run, _, rep) = deep_probe_pool(&r3, &masks, tt, dmax, threads, &[], 0, args.iter().any(|a| a == "--balanced"), !args.iter().any(|a| a == "--no-memo"), None);
+                    println!(
+                        "<{n1},{n2},{n3}> (rank {rk}) target {tt}: pooled {ok} [{:.2}s; {run} tasks]\n{rep}",
+                        t0.elapsed().as_secs_f64()
+                    );
+                    if tt == rk + 1 {
+                        assert!(!ok, "UNSOUND: certified rank >= {tt} for <{n1},{n2},{n3}> of rank {rk}");
+                    }
+                }
+            }
+            println!("known-value gate passed (no over-certification)");
+            return;
+        }
         if args.iter().any(|a| a == "--probe-pool-test") {
             // gate: pooled == serial truth value on a few (root, t, depth)
             // default cases by rep index; --pool-test-cases "al,be,ga,t,d;..."

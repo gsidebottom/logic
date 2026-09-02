@@ -862,6 +862,25 @@ the two source papers for this track):
   (about 3,000 depth-3 nodes x their subtrees) then fits a day is the
   measurement to make. t=16 remains unresolved at 30 min x 12 cores in
   all three configurations tried today (memo, ub-fail naive, greedy).
+- **CONCISION changes the game (2026-09-02 morning, cf0f089)**: every
+  residual is rewritten in bases of its slice spans on all three sides
+  (rref of the 9 slices per layout = change of basis on that factor,
+  an isomorphism); the memo is keyed by the concise tensor + target;
+  stabilizer pruning is dropped wherever coordinates changed. Gates:
+  known values (<2,2,2>: proves 7 in 0.03 s, refuses 8; <2,2,3>:
+  refuses 12) and the recorded t=15 verdicts. Hardest t=15 root
+  (1,1,1): 42.8 s / 96K tasks -> 13.3 s (memo) -> 0.31 s / 668 tasks
+  — all level-2 nodes become leaves once the fans are 2^5 instead of
+  2^8. t=16 root 0, depth 12, 30-min cap: still unresolved (exit 124)
+  but the profile is now a search, not a thrash: all 28 level-1 folds
+  expanded; 3,372 of 3,584 level-2 nodes evaluated (before: 12), 2,325
+  Koszul leaves = the level-2 lemma's 72%; depth-3 fan 64, depth-4 32,
+  depth-5 16; deep layers memo-dominated (depth 10: 6.1M hits vs 2.1M
+  runs); 789 cap failures at depth 12 (was 181K at depth 8); 4.4M memo
+  entries. Evaluated fractions per depth (94/81/71/76/49/39%) put the
+  full root-0 tree at ~2-3x the 29 min done. Launched: t=16 on the
+  fast root 1,10,64 (30-min cap; would be the first t=16 verdict), then
+  root 0 with a 4-hour cap (t16_fastroot.*, t16_root0_long.*).
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

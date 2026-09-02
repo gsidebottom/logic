@@ -2057,19 +2057,23 @@ impl<'a> Pool<'a> {
         }
         let dump_line = |kind: &str, kos: u32| {
             if let Some(dm) = &self.dump {
-                if task.folds.n[1] == 0 && task.folds.n[2] == 0 && (task.folds.n[0] == 5 || task.folds.n[0] == 6) {
+                // thinnest side with 3 or 4 active slices (any side mix)
+                let act = self.active_counts(r);
+                let (side_min, nmin) = (0..3).map(|s| (s, act[s])).min_by_key(|&(_, n)| n).unwrap();
+                if nmin == 3 || nmin == 4 {
                     let mut g = dm.lock().unwrap();
-                    let slot = (task.folds.n[0] - 5) as usize;
+                    let slot = (4 - nmin) as usize;
                     let cap = 1500u32;
                     let ok = if kind == "hard" { g.1[slot] < cap } else { g.2[slot] < cap };
                     if ok {
                         if kind == "hard" { g.1[slot] += 1 } else { g.2[slot] += 1 }
-                        let kt = kt_from_abc(&r.abc);
+                        let layout = [&r.abc, &r.bca, &r.cab][side_min];
+                        let kt = kt_from_abc(layout);
                         let mut s = format!(
                             "{kind} depth {} target {} folds {} flatten {:?} koszul {kos} slices",
-                            task.folds.n[0],
+                            task.folds.n.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("/"),
                             t,
-                            task.folds.v[0][..task.folds.n[0] as usize].iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","),
+                            format!("side{side_min}:ub{}", rank_upper_bound(r)),
                             flatten_ranks3(r)
                         );
                         for a in 0..9 {

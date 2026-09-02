@@ -38,7 +38,7 @@ def common_kernel_dim(slices):   # vectors x with M x = 0 for all M: stack rows
 def parse(path):
     out = []
     import re
-    pat = re.compile(r"(\w+) depth (\d+) target (\d+) folds (\S+) flatten \[([^\]]*)\] koszul (\d+) slices (.*)")
+    pat = re.compile(r"(\w+) depth (\S+) target (\d+) folds (\S+) flatten \[([^\]]*)\] koszul (\d+) slices (.*)")
     for line in open(path):
         m = pat.match(line.strip())
         if not m:
@@ -47,7 +47,7 @@ def parse(path):
         slices = []
         for tok in rest.split():
             slices.append([int(tok[3 * j:3 * j + 3], 16) for j in range(9)])
-        out.append((kind, int(depth), int(target), int(kos), slices, folds))
+        out.append((kind, depth, int(target), int(kos), slices, folds))
     return out
 
 def profile(slices):

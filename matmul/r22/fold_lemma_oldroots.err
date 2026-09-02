@@ -1,0 +1,4 @@
+fold-lemma: gates passed (T fixed by 20 random sandwich elements; 40 random (m,v) transports agree)
+rank 3: v0 = 0b100010001 |Stab(v0)| = 168 |G| = 28224 orbits = 7029 (sizes sum to 511^3) [0.0s]
+rank 2: v0 = 0b100010000 |Stab(v0)| = 96 |G| = 16128 orbits = 14070 (sizes sum to 511^3) [0.0s]
+rank 1: v0 = 0b100000000 |Stab(v0)| = 576 |G| = 96768 orbits = 3556 (sizes sum to 511^3) [0.1s]

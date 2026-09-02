@@ -1,0 +1,62 @@
+  root 0 lam   0 rankphi 1 killer true: v_T 900 b 70 d 41 contain false drop 6 v_R 894
+  root 0 lam  61 rankphi 3 killer false: v_T 918 b 70 d 38 contain false drop 6 v_R 912
+  root 0 lam  68 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 0 lam 108 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 0 lam 122 rankphi 2 killer false: v_T 918 b 70 d 38 contain false drop 6 v_R 912
+  root 0 lam 183 rankphi 2 killer false: v_T 918 b 70 d 41 contain false drop 6 v_R 912
+  root 0 lam 198 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 0 lam 244 rankphi 3 killer false: v_T 918 b 70 d 38 contain false drop 6 v_R 912
+  root 0 lam 254 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 1 lam   0 rankphi 1 killer true: v_T 900 b 70 d 41 contain false drop 0 v_R 900
+  root 1 lam  61 rankphi 3 killer false: v_T 918 b 70 d 38 contain false drop 0 v_R 918
+  root 1 lam 122 rankphi 2 killer false: v_T 918 b 70 d 38 contain false drop 0 v_R 918
+  root 1 lam 183 rankphi 2 killer false: v_T 918 b 70 d 41 contain false drop 0 v_R 918
+  root 1 lam 244 rankphi 3 killer false: v_T 918 b 70 d 38 contain false drop 0 v_R 918
+  root 4 lam   0 rankphi 1 killer true: v_T 900 b 70 d 41 contain false drop 6 v_R 894
+  root 4 lam  61 rankphi 3 killer false: v_T 918 b 70 d 38 contain false drop 6 v_R 912
+  root 4 lam  68 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 4 lam 105 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 4 lam 122 rankphi 2 killer false: v_T 918 b 70 d 38 contain false drop 6 v_R 912
+  root 4 lam 183 rankphi 2 killer false: v_T 918 b 70 d 41 contain false drop 6 v_R 912
+  root 4 lam 198 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 4 lam 244 rankphi 3 killer false: v_T 918 b 70 d 38 contain false drop 6 v_R 912
+  root 4 lam 249 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 10 lam   0 rankphi 1 killer true: v_T 900 b 70 d 41 contain false drop 0 v_R 900
+  root 10 lam  61 rankphi 3 killer false: v_T 918 b 70 d 38 contain false drop 0 v_R 918
+  root 10 lam 122 rankphi 2 killer false: v_T 918 b 70 d 38 contain false drop 0 v_R 918
+  root 10 lam 183 rankphi 2 killer false: v_T 918 b 70 d 41 contain false drop 0 v_R 918
+  root 10 lam 244 rankphi 3 killer false: v_T 918 b 70 d 38 contain false drop 0 v_R 918
+  root 25 lam   0 rankphi 1 killer true: v_T 900 b 70 d 41 contain false drop 6 v_R 894
+  root 25 lam  61 rankphi 3 killer false: v_T 918 b 70 d 38 contain false drop 6 v_R 912
+  root 25 lam  68 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 25 lam 108 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 25 lam 122 rankphi 2 killer false: v_T 918 b 70 d 38 contain false drop 6 v_R 912
+  root 25 lam 183 rankphi 2 killer false: v_T 918 b 70 d 41 contain false drop 6 v_R 912
+  root 25 lam 198 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 25 lam 244 rankphi 3 killer false: v_T 918 b 70 d 38 contain false drop 6 v_R 912
+  root 25 lam 254 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 58 lam   0 rankphi 1 killer true: v_T 900 b 70 d 35 contain false drop 6 v_R 894
+  root 58 lam  61 rankphi 3 killer false: v_T 918 b 70 d 38 contain false drop 6 v_R 912
+  root 58 lam  68 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 58 lam 108 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 58 lam 122 rankphi 2 killer false: v_T 918 b 70 d 38 contain false drop 6 v_R 912
+  root 58 lam 177 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 58 lam 183 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 58 lam 198 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 58 lam 244 rankphi 3 killer false: v_T 918 b 70 d 38 contain false drop 6 v_R 912
+  root 58 lam 249 rankphi 2 killer true: v_T 918 b 70 d 41 contain false drop 12 v_R 906
+  root 92 lam   0 rankphi 1 killer true: v_T 900 b 70 d 38 contain false drop 0 v_R 900
+  root 92 lam  61 rankphi 3 killer false: v_T 918 b 70 d 35 contain false drop 0 v_R 918
+  root 92 lam 122 rankphi 2 killer false: v_T 918 b 70 d 35 contain false drop 0 v_R 918
+  root 92 lam 183 rankphi 2 killer false: v_T 918 b 70 d 35 contain false drop 0 v_R 918
+  root 92 lam 244 rankphi 3 killer false: v_T 918 b 70 d 35 contain false drop 0 v_R 918
+  root 143 lam   0 rankphi 1 killer true: v_T 900 b 70 d 32 contain false drop 0 v_R 906
+  root 143 lam  61 rankphi 3 killer false: v_T 918 b 70 d 35 contain false drop 0 v_R 918
+  root 143 lam 122 rankphi 2 killer false: v_T 918 b 70 d 35 contain false drop 0 v_R 918
+  root 143 lam 183 rankphi 2 killer false: v_T 918 b 70 d 35 contain false drop 0 v_R 918
+  root 143 lam 244 rankphi 3 killer false: v_T 918 b 70 d 35 contain false drop 0 v_R 918
+(rank_phi, killer) -> {(intersection d, wedge drop): count}
+  (1, true): n=128 d in [32,41] drop in [0,6]
+  (2, false): n=1134 d in [35,41] drop in [0,6]
+  (2, true): n=18 d in [41,41] drop in [12,12]
+  (3, false): n=768 d in [35,38] drop in [0,6]

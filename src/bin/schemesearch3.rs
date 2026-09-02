@@ -825,7 +825,7 @@ fn m3_inv(gl: &[u16], a: u16) -> u16 {
 
 /// Constructive first-product orbit representatives under the sandwich
 /// group (P,Q,R): alpha -> P^T alpha Q^T, beta -> Q^-T beta R^T,
-/// gamma -> P^-1 gamma R^-1 (subgame.rs convention, tensor-verified there).
+/// gamma -> R^-T gamma P^-T (see act_gamma; T-invariance gated in --fold-lemma).
 /// Stage A: canonical alpha = min over (P,Q); stage B: beta minimized over
 /// Stab(alpha) x R; stage C: gamma minimized over Stab(alpha, beta).
 /// Sound by construction: every product is equivalent to a listed rep, and
@@ -847,9 +847,19 @@ impl StabElem {
         (
             m3_mul(m3_mul(self.pt, al), self.qt),
             m3_mul(m3_mul(self.qit, be), self.rt),
-            m3_mul(m3_mul(self.pi, ga), self.ri),
+            act_gamma(self.pi, self.ri, ga),
         )
     }
+}
+
+/// C-side action for THIS binary's trace layout (c = 3k+i, i.e. gamma is
+/// the (k,i)-indexed matrix): gamma -> R^-T gamma P^-T. subgame.rs uses
+/// the (i,k) layout, where the same group element acts as P^-1 gamma R^-1;
+/// the two differ by the transpose gamma -> gamma^T. The port carried the
+/// (i,k) form verbatim until 2026-09-01, when the --fold-lemma T-invariance
+/// gate caught it (the (i,k) form is NOT a symmetry of the (k,i) tensor).
+fn act_gamma(pi: u16, ri: u16, ga: u16) -> u16 {
+    m3_tr(m3_mul(m3_mul(pi, m3_tr(ga)), ri))
 }
 
 fn first_product_reps() -> Vec<(u32, u32, u32, Vec<StabElem>)> {
@@ -916,7 +926,7 @@ fn first_product_reps() -> Vec<(u32, u32, u32, Vec<StabElem>)> {
                 let pi = m3_inv(&gl, p);
                 let ri = m3_inv(&gl, r);
                 for ga in 1u16..512 {
-                    let im = m3_mul(m3_mul(pi, ga), ri);
+                    let im = act_gamma(pi, ri, ga);
                     if im < gamma_min[ga as usize] {
                         gamma_min[ga as usize] = im;
                     }
@@ -932,7 +942,7 @@ fn first_product_reps() -> Vec<(u32, u32, u32, Vec<StabElem>)> {
                     .filter_map(|&(p, q, r)| {
                         let pi = m3_inv(&gl, p);
                         let ri = m3_inv(&gl, r);
-                        if m3_mul(m3_mul(pi, ga), ri) == ga {
+                        if act_gamma(pi, ri, ga) == ga {
                             Some(StabElem {
                                 pt: m3_tr(p),
                                 qt: m3_tr(q),
@@ -2234,6 +2244,526 @@ fn main() {
         }
         return;
     }
+    if args.iter().any(|a| a == "--orbit-audit") {
+        // Coverage audit of the pre-fix 211 roots (rep triples read from
+        // matmul/r22/killers.txt) against the TRUE first-product orbits:
+        // each old root is canonicalized under the correct action and the
+        // set of true orbits it hits is counted.
+        let reps = first_product_reps();
+        let gl = gl3();
+        let mut inv = [0u16; 512];
+        for &p in &gl {
+            inv[p as usize] = m3_inv(&gl, p);
+        }
+        let rep_set: std::collections::HashSet<(u16, u16, u16)> =
+            reps.iter().map(|&(a, b, g, _)| (a as u16, b as u16, g as u16)).collect();
+        println!("true first-product orbits: {}", reps.len());
+        let mut old: Vec<(u16, u16, u16)> = Vec::new();
+        for line in std::fs::read_to_string("matmul/r22/killers.txt").unwrap().lines() {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            if f.len() > 3 && f[2] == "rep" {
+                let v: Vec<u16> = f[3].split(',').map(|x| x.parse().unwrap()).collect();
+                let t = (v[0], v[1], v[2]);
+                if !old.contains(&t) {
+                    old.push(t);
+                }
+            }
+        }
+        println!("old roots: {}", old.len());
+        let canon = |al: u16, be: u16, ga: u16| -> (u16, u16, u16) {
+            let mut amin = u16::MAX;
+            let mut g1: Vec<(u16, u16)> = Vec::new();
+            for &p in &gl {
+                for &q in &gl {
+                    let im = m3_mul(m3_mul(m3_tr(p), al), m3_tr(q));
+                    if im < amin {
+                        amin = im;
+                        g1.clear();
+                    }
+                    if im == amin {
+                        g1.push((p, q));
+                    }
+                }
+            }
+            let mut bmin = u16::MAX;
+            let mut g2: Vec<(u16, u16, u16)> = Vec::new();
+            for &(p, q) in &g1 {
+                let qit = m3_tr(inv[q as usize]);
+                for &r in &gl {
+                    let im = m3_mul(m3_mul(qit, be), m3_tr(r));
+                    if im < bmin {
+                        bmin = im;
+                        g2.clear();
+                    }
+                    if im == bmin {
+                        g2.push((p, q, r));
+                    }
+                }
+            }
+            let gmin = g2
+                .iter()
+                .map(|&(p, _, r)| act_gamma(inv[p as usize], inv[r as usize], ga))
+                .min()
+                .unwrap();
+            (amin, bmin, gmin)
+        };
+        let mut covered: std::collections::HashSet<(u16, u16, u16)> = Default::default();
+        let mut ab_changed = 0;
+        for &(al, be, ga) in &old {
+            let c = canon(al, be, ga);
+            assert!(rep_set.contains(&c), "canonical form {c:?} of old root {:?} missing from reps", (al, be, ga));
+            if (c.0, c.1) != (al, be) {
+                ab_changed += 1;
+            }
+            covered.insert(c);
+        }
+        println!(
+            "old roots cover {} of {} true orbits ({} old roots had a non-canonical (alpha,beta))",
+            covered.len(),
+            reps.len(),
+            ab_changed
+        );
+        let missing: Vec<(u16, u16, u16)> = reps
+            .iter()
+            .map(|&(a, b, g, _)| (a as u16, b as u16, g as u16))
+            .filter(|t| !covered.contains(t))
+            .collect();
+        println!("uncovered true orbits: {}", missing.len());
+        for t in &missing {
+            println!("  uncovered {},{},{}", t.0, t.1, t.2);
+        }
+        return;
+    }
+    if args.iter().any(|a| a == "--fold-lemma") {
+        // THE CASE-SPLIT LEMMA by orbit exhaustion (2026-09-01).
+        // For every rank-one m = al x be x ga (511^3) and every fold
+        // vector v in A (511), the side-A Koszul data of (T + m) folded
+        // by v is a sandwich invariant of the pair (m, v). The sandwich
+        // group is transitive on the rank classes of v, so WLOG v is a
+        // class rep (E33 / E22+E33 / I, all with the probe's pivot 8);
+        // the orbits of m under Stab(v) x GL3(R) are enumerated exactly
+        // by a staged lex-min canonical form, and the orbit sizes must
+        // sum to 511^3 (completeness gate). Every orbit is evaluated:
+        // embedded p=4 wedge rank e4 (the probe's quantity, threshold
+        // 911 for koszul 14), the honest 8-dim ranks h3, h4 on A/v
+        // (e4 == h3 + h4, asserted), and the full koszul_bound3.
+        // Transport: every (root, side, lambda) of the killer-dump is
+        // mapped to its rep and the table value is compared with the
+        // direct computation (value-by-value gate against the dump).
+        let masks = Masks::build();
+        let t3 = R3::from_abc(&build_t3());
+        assert_eq!(t3.bca, t3.abc, "T cyclic invariance");
+        assert_eq!(t3.cab, t3.abc, "T cyclic invariance");
+        let gl = gl3();
+        let mut inv = [0u16; 512];
+        for &p in &gl {
+            inv[p as usize] = m3_inv(&gl, p);
+        }
+        let threads: usize = get("--threads").and_then(|v| v.parse().ok()).unwrap_or(12);
+        let ranks: Vec<u32> = get("--fold-rank")
+            .map(|v| v.split(',').map(|x| x.parse().unwrap()).collect())
+            .unwrap_or(vec![3, 2, 1]);
+        fn rank3m(bits9: u32) -> u32 {
+            let mut rows = [bits9 & 7, bits9 >> 3 & 7, bits9 >> 6 & 7];
+            let mut rk = 0usize;
+            for c in (0..3).rev() {
+                if let Some(p) = (rk..3).find(|&i| rows[i] >> c & 1 == 1) {
+                    rows.swap(rk, p);
+                    for i in 0..3 {
+                        if i != rk && rows[i] >> c & 1 == 1 {
+                            rows[i] ^= rows[rk];
+                        }
+                    }
+                    rk += 1;
+                }
+            }
+            rk as u32
+        }
+        let mk = |p: u16, q: u16, r: u16| StabElem {
+            pt: m3_tr(p),
+            qt: m3_tr(q),
+            qit: m3_tr(inv[q as usize]),
+            rt: m3_tr(r),
+            pi: inv[p as usize],
+            ri: inv[r as usize],
+        };
+        let act_v = |e: &StabElem, v: u16| m3_mul(m3_mul(e.pt, v), e.qt);
+        // side-A fold by v: pivot = leading set bit, lambda = the rest
+        // (hyperplane-koszul convention; == the probe for v_8 = 1).
+        let fold_v = |r: &R3, v: u32| -> R3 {
+            let p = (31 - v.leading_zeros()) as usize;
+            let sidx = STRIDE_IDX[0];
+            let lts = [r.abc, r.bca, r.cab];
+            let mut bases = lts;
+            let mut slices = [[0u64; W]; 3];
+            for l in 0..3 {
+                slices[l] = layout_slice(&lts[l], &masks, sidx[l], p);
+                for w in 0..W {
+                    bases[l][w] ^= slices[l][w];
+                }
+            }
+            for q in 0..9 {
+                if q != p && v >> q & 1 == 1 {
+                    for l in 0..3 {
+                        let sh = layout_shift(&slices[l], sidx[l], p, q);
+                        for w in 0..W {
+                            bases[l][w] ^= sh[w];
+                        }
+                    }
+                }
+            }
+            R3 { abc: bases[0], bca: bases[1], cab: bases[2] }
+        };
+        // (embedded p=4 rank, honest r3, honest r4 on the 8-dim A/v)
+        let wedge_ranks = |r: &R3, piv: usize| -> (usize, usize, usize) {
+            let kt = kt_from_abc(&r.abc);
+            assert!(kt.t[piv].iter().all(|&x| x == 0), "folded slice must vanish");
+            let (mut rows, words) = koszul_rows(&kt, 4);
+            let e4 = rank_wide_legacy(&mut rows, words);
+            let mut t8 = kt.t.clone();
+            t8.remove(piv);
+            let kt8 = KT { da: 8, db: 9, dc: 9, t: t8 };
+            let (mut r3, w3) = koszul_rows(&kt8, 3);
+            let h3 = rank_wide_legacy(&mut r3, w3);
+            let (mut r4, w4) = koszul_rows(&kt8, 4);
+            let h4 = rank_wide_legacy(&mut r4, w4);
+            assert_eq!(e4, h3 + h4, "embedded p=4 == honest r3 + r4");
+            (e4, h3, h4)
+        };
+        // gate 1: the action convention preserves T (27 terms).
+        let mut seed = 0x9e3779b97f4a7c15u64;
+        let mut rnd = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for _ in 0..20 {
+            let e = mk(gl[(rnd() % 168) as usize], gl[(rnd() % 168) as usize], gl[(rnd() % 168) as usize]);
+            let mut acc = [0u64; W];
+            for i in 0..3 {
+                for j in 0..3 {
+                    for k in 0..3 {
+                        let (a, b, c) = e.act(1 << (3 * i + j), 1 << (3 * j + k), 1 << (3 * k + i));
+                        xor(&mut acc, &product_mask(a as u32, b as u32, c as u32));
+                    }
+                }
+            }
+            assert_eq!(acc, t3.abc, "sandwich action must fix T");
+        }
+        // gate 2: the fold data is a sandwich invariant of (m, v).
+        for _ in 0..40 {
+            let e = mk(gl[(rnd() % 168) as usize], gl[(rnd() % 168) as usize], gl[(rnd() % 168) as usize]);
+            let (al, be, ga) = ((rnd() % 511 + 1) as u16, (rnd() % 511 + 1) as u16, (rnd() % 511 + 1) as u16);
+            let v = (rnd() % 511 + 1) as u16;
+            let (al2, be2, ga2) = e.act(al, be, ga);
+            let v2 = act_v(&e, v);
+            let mut r1 = t3;
+            r1.xor_product(al as u32, be as u32, ga as u32);
+            let mut r2 = t3;
+            r2.xor_product(al2 as u32, be2 as u32, ga2 as u32);
+            let f1 = fold_v(&r1, v as u32);
+            let f2 = fold_v(&r2, v2 as u32);
+            let w1 = wedge_ranks(&f1, (31 - (v as u32).leading_zeros()) as usize);
+            let w2 = wedge_ranks(&f2, (31 - (v2 as u32).leading_zeros()) as usize);
+            assert_eq!(w1, w2, "fold wedge data must be a sandwich invariant");
+            assert_eq!(koszul_bound3(&f1, 4), koszul_bound3(&f2, 4), "koszul_bound3 invariant");
+        }
+        eprintln!("fold-lemma: gates passed (T fixed by 20 random sandwich elements; 40 random (m,v) transports agree)");
+        let reps = first_product_reps();
+        let v_rep: [u16; 4] = [0, 1 << 8, (1 << 4) | (1 << 8), 1 | (1 << 4) | (1 << 8)];
+        for &rk in &ranks {
+            let t0 = Instant::now();
+            let v0 = v_rep[rk as usize];
+            assert_eq!(rank3m(v0 as u32), rk);
+            // Stab(v0) in (P,Q): P^T v0 Q^T == v0
+            let mut stab: Vec<(u16, u16)> = Vec::new();
+            for &p in &gl {
+                let pt = m3_tr(p);
+                for &q in &gl {
+                    if m3_mul(m3_mul(pt, v0), m3_tr(q)) == v0 {
+                        stab.push((p, q));
+                    }
+                }
+            }
+            let gsize = stab.len() * 168;
+            // staged lex-min orbit reps of (al, be, ga) under Stab(v0) x GL3
+            let mut alpha_min = [u16::MAX; 512];
+            for &(p, q) in &stab {
+                let (pt, qt) = (m3_tr(p), m3_tr(q));
+                for al in 1u16..512 {
+                    let im = m3_mul(m3_mul(pt, al), qt);
+                    if im < alpha_min[al as usize] {
+                        alpha_min[al as usize] = im;
+                    }
+                }
+            }
+            let mut orbit_reps: Vec<(u16, u16, u16, u64)> = Vec::new();
+            for ar in 1u16..512 {
+                if alpha_min[ar as usize] != ar {
+                    continue;
+                }
+                let g1: Vec<(u16, u16)> = stab
+                    .iter()
+                    .copied()
+                    .filter(|&(p, q)| m3_mul(m3_mul(m3_tr(p), ar), m3_tr(q)) == ar)
+                    .collect();
+                let mut beta_min = [u16::MAX; 512];
+                for &(_, q) in &g1 {
+                    let qit = m3_tr(inv[q as usize]);
+                    for &r in &gl {
+                        let rt = m3_tr(r);
+                        for be in 1u16..512 {
+                            let im = m3_mul(m3_mul(qit, be), rt);
+                            if im < beta_min[be as usize] {
+                                beta_min[be as usize] = im;
+                            }
+                        }
+                    }
+                }
+                for br in 1u16..512 {
+                    if beta_min[br as usize] != br {
+                        continue;
+                    }
+                    let mut g2: Vec<(u16, u16, u16)> = Vec::new();
+                    for &(p, q) in &g1 {
+                        let qit = m3_tr(inv[q as usize]);
+                        for &r in &gl {
+                            if m3_mul(m3_mul(qit, br), m3_tr(r)) == br {
+                                g2.push((p, q, r));
+                            }
+                        }
+                    }
+                    let mut gamma_min = [u16::MAX; 512];
+                    for &(p, _, r) in &g2 {
+                        let (pi, ri) = (inv[p as usize], inv[r as usize]);
+                        for ga in 1u16..512 {
+                            let im = act_gamma(pi, ri, ga);
+                            if im < gamma_min[ga as usize] {
+                                gamma_min[ga as usize] = im;
+                            }
+                        }
+                    }
+                    for ga in 1u16..512 {
+                        if gamma_min[ga as usize] != ga {
+                            continue;
+                        }
+                        let g3 = g2
+                            .iter()
+                            .filter(|&&(p, _, r)| act_gamma(inv[p as usize], inv[r as usize], ga) == ga)
+                            .count();
+                        assert_eq!(gsize % g3, 0);
+                        orbit_reps.push((ar, br, ga, (gsize / g3) as u64));
+                    }
+                }
+            }
+            let total: u64 = orbit_reps.iter().map(|x| x.3).sum();
+            assert_eq!(total, 511u64 * 511 * 511, "orbit sizes must partition the 511^3 products");
+            eprintln!(
+                "rank {rk}: v0 = {v0:#011b} |Stab(v0)| = {} |G| = {gsize} orbits = {} (sizes sum to 511^3) [{:.1}s]",
+                stab.len(),
+                orbit_reps.len(),
+                t0.elapsed().as_secs_f64()
+            );
+            let piv = (31 - (v0 as u32).leading_zeros()) as usize;
+            let base_f = fold_v(&t3, v0 as u32);
+            let base = wedge_ranks(&base_f, piv);
+            let base_k = koszul_bound3(&base_f, 4);
+            println!("rank {rk}: base T|v: e4 {} h3 {} h4 {} koszul {base_k}", base.0, base.1, base.2);
+            // evaluate every orbit
+            let results: std::sync::Mutex<Vec<(usize, (usize, usize, usize), u32)>> =
+                std::sync::Mutex::new(vec![(0, (0, 0, 0), 0); orbit_reps.len()]);
+            let widx = AtomicUsize::new(0);
+            std::thread::scope(|scope| {
+                for _ in 0..threads {
+                    scope.spawn(|| loop {
+                        let i = widx.fetch_add(1, Ordering::Relaxed);
+                        if i >= orbit_reps.len() {
+                            break;
+                        }
+                        let (al, be, ga, _) = orbit_reps[i];
+                        let mut r = t3;
+                        r.xor_product(al as u32, be as u32, ga as u32);
+                        let f = fold_v(&r, v0 as u32);
+                        let w = wedge_ranks(&f, piv);
+                        let k = koszul_bound3(&f, 4);
+                        results.lock().unwrap()[i] = (i, w, k);
+                    });
+                }
+            });
+            let results = results.into_inner().unwrap();
+            use std::collections::BTreeMap;
+            let mut hist: BTreeMap<(i64, i64, i64, u32), (u64, u64)> = BTreeMap::new();
+            let mut min_e4 = usize::MAX;
+            let fname = format!("matmul/r22/fold_lemma_rank{rk}.txt");
+            let mut out = String::new();
+            out.push_str(&format!(
+                "# v0 {v0} rank {rk} base e4 {} h3 {} h4 {} koszul {base_k}; columns: al be ga orbit e4 h3 h4 koszul rk(al) rk(be) rk(ga)\n",
+                base.0, base.1, base.2
+            ));
+            for (i, w, k) in &results {
+                let (al, be, ga, sz) = orbit_reps[*i];
+                let key = (
+                    base.0 as i64 - w.0 as i64,
+                    base.1 as i64 - w.1 as i64,
+                    base.2 as i64 - w.2 as i64,
+                    *k,
+                );
+                let e = hist.entry(key).or_insert((0, 0));
+                e.0 += 1;
+                e.1 += sz;
+                min_e4 = min_e4.min(w.0);
+                out.push_str(&format!(
+                    "{al} {be} {ga} {sz} {} {} {} {k} {} {} {}\n",
+                    w.0,
+                    w.1,
+                    w.2,
+                    rank3m(al as u32),
+                    rank3m(be as u32),
+                    rank3m(ga as u32)
+                ));
+            }
+            std::fs::write(&fname, out).unwrap();
+            println!("rank {rk}: (e4 drop, h3 drop, h4 drop, koszul) -> (orbits, products):");
+            for (k, v) in &hist {
+                println!("  {k:?}: {} orbits, {} products", v.0, v.1);
+            }
+            let killers: u64 = results
+                .iter()
+                .filter(|(_, _, k)| *k < 14)
+                .map(|(i, _, _)| orbit_reps[*i].3)
+                .sum();
+            println!(
+                "rank {rk}: min e4 {min_e4} (threshold 911); koszul<14 products: {killers} of {total}; table {fname} [{:.1}s]",
+                t0.elapsed().as_secs_f64()
+            );
+            // transport check against the killer-dump convention: every
+            // root x side x lambda (v = e8 + lambda) of matrix rank rk.
+            let table: std::collections::HashMap<(u16, u16, u16), ((usize, usize, usize), u32)> = results
+                .iter()
+                .map(|(i, w, k)| {
+                    let (al, be, ga, _) = orbit_reps[*i];
+                    ((al, be, ga), (*w, *k))
+                })
+                .collect();
+            let full: Vec<StabElem> = stab
+                .iter()
+                .flat_map(|&(p, q)| gl.iter().map(move |&r| (p, q, r)))
+                .map(|(p, q, r)| mk(p, q, r))
+                .collect();
+            // one sandwich element carrying v -> v0, per v of rank rk
+            let mut carry: Vec<Option<StabElem>> = vec![None; 512];
+            for v in 1u16..512 {
+                if rank3m(v as u32) != rk {
+                    continue;
+                }
+                'outer: for &p in &gl {
+                    for &q in &gl {
+                        let e = mk(p, q, M3_ID);
+                        if act_v(&e, v) == v0 {
+                            carry[v as usize] = Some(e);
+                            break 'outer;
+                        }
+                    }
+                }
+                assert!(carry[v as usize].is_some());
+            }
+            // --transport-roots FILE: use these "al,be,ga" triples (in
+            // file order) instead of the orbit reps, e.g. the pre-fix 211
+            // roots of the killer-dump; --transport-dump FILE: write the
+            // predicted killers in the killer-dump line format.
+            let roots: Vec<(u32, u32, u32)> = match get("--transport-roots") {
+                Some(path) => std::fs::read_to_string(&path)
+                    .unwrap()
+                    .lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .map(|l| {
+                        let v: Vec<u32> = l.trim().split(',').map(|x| x.parse().unwrap()).collect();
+                        (v[0], v[1], v[2])
+                    })
+                    .collect(),
+                None => reps.iter().map(|r| (r.0, r.1, r.2)).collect(),
+            };
+            let dump = std::sync::Mutex::new(Vec::<String>::new());
+            let t1 = Instant::now();
+            let mism = AtomicUsize::new(0);
+            let checked = AtomicUsize::new(0);
+            let kill_ct = AtomicUsize::new(0);
+            let widx = AtomicUsize::new(0);
+            std::thread::scope(|scope| {
+                for _ in 0..threads {
+                    scope.spawn(|| loop {
+                        let ri = widx.fetch_add(1, Ordering::Relaxed);
+                        if ri >= roots.len() {
+                            break;
+                        }
+                        let (al, be, ga) = roots[ri];
+                        for side in 0..3usize {
+                            let m = match side {
+                                0 => (al as u16, be as u16, ga as u16),
+                                1 => (be as u16, ga as u16, al as u16),
+                                _ => (ga as u16, al as u16, be as u16),
+                            };
+                            let mut r = t3;
+                            r.xor_product(m.0 as u32, m.1 as u32, m.2 as u32);
+                            let own = koszul_bound3(&r, 4);
+                            for lam in 0..256u32 {
+                                let v = (1u32 << 8) | lam;
+                                if rank3m(v) != rk {
+                                    continue;
+                                }
+                                let f = fold_v(&r, v);
+                                let w = wedge_ranks(&f, 8);
+                                let k = koszul_bound3(&f, 4);
+                                if k < 14 {
+                                    kill_ct.fetch_add(1, Ordering::Relaxed);
+                                }
+                                if k < own {
+                                    dump.lock().unwrap().push(format!(
+                                        "root {ri} rep {al},{be},{ga} own {own} side {side} pivot 8 lam {lam} koszul {k}"
+                                    ));
+                                }
+                                let e = carry[v as usize].unwrap();
+                                let m2 = e.act(m.0, m.1, m.2);
+                                let mut best = (u16::MAX, u16::MAX, u16::MAX);
+                                for g in &full {
+                                    let x = g.act(m2.0, m2.1, m2.2);
+                                    if x < best {
+                                        best = x;
+                                    }
+                                }
+                                let tv = table.get(&best).copied();
+                                checked.fetch_add(1, Ordering::Relaxed);
+                                if tv != Some((w, k)) {
+                                    mism.fetch_add(1, Ordering::Relaxed);
+                                    eprintln!(
+                                        "  MISMATCH root {ri} side {side} lam {lam}: direct {w:?}/{k} table {tv:?} canon {best:?}"
+                                    );
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+            if let Some(path) = get("--transport-dump") {
+                let mut lines = dump.into_inner().unwrap();
+                lines.sort();
+                let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&path).unwrap();
+                use std::io::Write;
+                for l in &lines {
+                    writeln!(f, "{l}").unwrap();
+                }
+            }
+            println!(
+                "rank {rk}: transport check {} (root,side,lambda) triples, mismatches {}, direct koszul<14 count {} [{:.1}s]",
+                checked.load(Ordering::Relaxed),
+                mism.load(Ordering::Relaxed),
+                kill_ct.load(Ordering::Relaxed),
+                t1.elapsed().as_secs_f64()
+            );
+        }
+        return;
+    }
     if args.iter().any(|a| a == "--hyperplane-koszul") {
         // The three base values: koszul(T | ker phi) for every nonzero
         // covector phi on each side, grouped by matrix rank of phi (as a
@@ -2394,7 +2924,25 @@ fn main() {
     if args.iter().any(|a| a == "--root-probe-deep") {
         let t: u32 = get("--target-bound").and_then(|v| v.parse().ok()).unwrap_or(15);
         let dmax: u32 = get("--depth").and_then(|v| v.parse().ok()).unwrap_or(6);
-        let reps = first_product_reps();
+        let mut reps = first_product_reps();
+        if let Some(path) = get("--root-filter") {
+            // restrict to the rep triples "al,be,ga" listed one per line
+            // (e.g. the 52 true orbits the pre-fix roots never covered)
+            let keep: std::collections::HashSet<(u32, u32, u32)> = std::fs::read_to_string(&path)
+                .unwrap()
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .map(|l| {
+                    let v: Vec<u32> = l.trim().split(',').map(|x| x.parse().unwrap()).collect();
+                    (v[0], v[1], v[2])
+                })
+                .collect();
+            reps.retain(|r| keep.contains(&(r.0, r.1, r.2)));
+            eprintln!("root filter {path}: {} of {} roots kept", reps.len(), keep.len());
+            for (i, r) in reps.iter().enumerate() {
+                eprintln!("  root {i} = {},{},{}", r.0, r.1, r.2);
+            }
+        }
         let masks = Masks::build();
         let t3 = build_t3();
         let threads: usize = get("--threads").and_then(|v| v.parse().ok()).unwrap_or(12);

@@ -658,6 +658,57 @@ the two source papers for this track):
   WLOG phi = identity (orbit transitivity measured), decompose the
   wedge under Stab(phi), bound the aligned piece. The 6- and
   3-quantization points at small isotypic components.
+- **CASE-SPLIT LEMMA PROVED by orbit exhaustion; sandwich-action bug
+  found and fixed; 52/211 roots were never probed (2026-09-01,
+  --fold-lemma / --orbit-audit)**: THEOREM: for every rank-one m
+  (all 511^3) and every fold vector v of matrix rank 3, on any side,
+  koszul(p<=4) of (T+m)|ker v is exactly 14 — the side-A p=4 embedded
+  wedge never drops below 912 (threshold 911); rank-3 folds never
+  kill. Proof = finite verification: sandwich transitivity puts v at
+  the class rep I; the 7,029 orbits of m under Stab(I) x GL3(R) are
+  enumerated by a staged lex-min canonical form whose orbit sizes sum
+  to exactly 511^3 (completeness gate); every orbit evaluated (5 s).
+  Drops: 0 on 6,505 orbits (122,193,407 products), exactly 6 on 524
+  (11,239,424) — each 6-unit is 3+3 across the two HONEST 8-dim
+  wedges (p=3 and p=4 on A/v, both of rank 459; the embedded p=4 rank
+  918 = h3 + h4, asserted throughout). Rank-2 class (v = E22+E33,
+  14,070 orbits): drop 0 / 6 / 12 on 12,898 / 1,064 / 108 orbits;
+  the 108 killer orbits (774,144 products, 0.58%) drop exactly 6+6 to
+  koszul 13 — the rank-2 boundary is now a finite TABLE (Stab(v)-orbit
+  lookup), not a search. Rank-1 class (3,556 orbits): base 900, every
+  product is a killer by inheritance; drops -6/0/6/12/22 (rank can
+  RISE by 6; the 22 = 10+12 asymmetric cases break the 6-quantization
+  where it no longer matters). Necessary conditions for the rank-2
+  killers (all 108): tr(alpha beta gamma) = 1, tr(v beta gamma) = 0,
+  rank(alpha) <= 2, alpha != v; no combination of <=3 matrix-rank/
+  trace invariants is a pure classifier, so the structural (isotypic)
+  proof stays open — the exhaustion IS the proof. GATES: T-invariance
+  of the action on 20 random elements; 40 random (m, v) transports;
+  transport of every (root, side, lambda) probe fold to its orbit rep
+  — 162,048 triples on the corrected roots and again on the pre-fix
+  roots, 0 mismatches; the predicted killer set of the pre-fix roots
+  is BYTE-IDENTICAL to killers.txt (10,338 lines). Files:
+  matmul/r22/fold_lemma_rank{1,2,3}.txt (orbit tables), fold_lemma*.out.
+  BUG (caught by gate 1): first_product_reps ported subgame.rs's
+  C-side action gamma -> P^-1 gamma R^-1 verbatim, but subgame indexes
+  C as (i,k) and schemesearch3 as (k,i); in the (k,i) layout the
+  action is R^-T gamma P^-T (transpose). The ported action is NOT a
+  symmetry of T, so the 211 "orbit reps" were reps of a fake orbit
+  partition: --orbit-audit shows they hit only 159 of the 211 TRUE
+  first-product orbits (52 never probed; alpha/beta stages were
+  correct, only gamma minimization was off). Fixed in act_gamma (one
+  site; stabilizer elements — hence the level-2 4a pruning — are now
+  true stabilizers). Repairs: r=14 rung re-exhausted on the corrected
+  211 roots (0.7 s, koszul 211/211); r=15 deep probe re-run on the 52
+  uncovered orbits (matmul/r22/uncovered_roots.txt, r15_uncovered.*)
+  — see the next bullet for the verdict. Every root-set statistic
+  before this date (killer dump, ply-2 histogram, t=16 root-0 cost)
+  was measured on the 159-orbit subset plus 52 fake reps; the Rank
+  Law and the killer mechanism are unaffected (the lemma quantifies
+  over ALL products). NEXT: the t=16 reprice needs the LEVEL-2
+  statement — (T+m)|ker<v,v'> for 2-dim fold subspaces; same
+  machinery (pencil classes of <v,v'> x Stab-orbits of m), larger
+  but finite.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

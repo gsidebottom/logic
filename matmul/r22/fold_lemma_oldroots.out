@@ -1,0 +1,23 @@
+rank 3: base T|v: e4 918 h3 459 h4 459 koszul 14
+rank 3: (e4 drop, h3 drop, h4 drop, koszul) -> (orbits, products):
+  (0, 0, 0, 14): 6505 orbits, 122193407 products
+  (6, 3, 3, 14): 524 orbits, 11239424 products
+rank 3: min e4 912 (threshold 911); koszul<14 products: 0 of 133432831; table matmul/r22/fold_lemma_rank3.txt [8.0s]
+rank 3: transport check 60768 (root,side,lambda) triples, mismatches 0, direct koszul<14 count 0 [74.2s]
+rank 2: base T|v: e4 918 h3 459 h4 459 koszul 14
+rank 2: (e4 drop, h3 drop, h4 drop, koszul) -> (orbits, products):
+  (0, 0, 0, 14): 12898 orbits, 122365439 products
+  (6, 3, 3, 14): 1064 orbits, 10293248 products
+  (12, 6, 6, 13): 108 orbits, 774144 products
+rank 2: min e4 906 (threshold 911); koszul<14 products: 774144 of 133432831; table matmul/r22/fold_lemma_rank2.txt [15.3s]
+rank 2: transport check 91152 (root,side,lambda) triples, mismatches 0, direct koszul<14 count 210 [111.5s]
+rank 1: base T|v: e4 900 h3 450 h4 450 koszul 13
+rank 1: (e4 drop, h3 drop, h4 drop, koszul) -> (orbits, products):
+  (-6, -3, -3, 13): 1760 orbits, 92080128 products
+  (0, 0, 0, 13): 1666 orbits, 38213119 products
+  (6, 3, 3, 13): 100 orbits, 2451456 products
+  (12, 6, 6, 13): 16 orbits, 516096 products
+  (22, 10, 12, 13): 7 orbits, 86016 products
+  (22, 12, 10, 13): 7 orbits, 86016 products
+rank 1: min e4 878 (threshold 911); koszul<14 products: 133432831 of 133432831; table matmul/r22/fold_lemma_rank1.txt [3.8s]
+rank 1: transport check 10128 (root,side,lambda) triples, mismatches 0, direct koszul<14 count 10128 [13.9s]

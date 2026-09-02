@@ -790,6 +790,41 @@ the two source papers for this track):
   3-4-slice residuals), not more search engineering. Machinery kept:
   --probe-pool (12-core work queue, per-depth stats every 60 s,
   --no-fold-sym, --balanced), --fold-lemma / --fold-lemma2 tables.
+- **Subspace MEMO TABLE in the pooled probe; SAT oracle ruled out;
+  pencil formula over F2 is NOT n+m (2026-09-02)**: the residual after
+  any fold chain is the projection of the root along U = span(folds)
+  onto the non-pivot coordinates, a function of U alone, so the
+  reduced-echelon bases of (U_A, U_B, U_C) are an EXACT key (same
+  embedded tensor, same target, same depth budget). Implemented as a
+  sharded transposition table (--no-memo to disable); genuine OR/leaf
+  verdicts only (stale-skipped children never report, so orphans are
+  never stored). Gates: serial equality on 6 cases, recorded verdicts
+  on 4 t=15 roots. Root 1,1,1 at t=15: 42.8 s -> 13.3 s (96K -> 30K
+  tasks). t=16 root 0, 30-min cap: STILL UNRESOLVED; 3.83M memo
+  entries, hit rates 15-50% by depth (t16_root0_memo.err). Why the
+  pure-A redundancy (2^10 at depth 5, 2^28 at depth 8) does not
+  materialize: pure-A chains bottom out at depth 7-8 (pencils whose
+  three combinations all have rank <= 7), the probe then folds side B
+  or C, and the mixed keys (7 A-folds + 1 B-fold: 2^14 x 256) are
+  millions — the deep layers are side-switch fan-outs, not
+  revisits. Profile at 1740 s: depth 7 847K run, depth 8 2.83M run
+  (181K genuine failures at target 8). SAT AS ORACLE (cadical, naive
+  Tseitin of the k x 9 x 9 rank-<=r system, matmul/r22/tensor_sat.py):
+  DEAD — a 9x9 pencil of known rank 9 (3 x L_2) needs 3.5 s for the
+  SAT side and >60 s for rank<=8 UNSAT; random pencils time out at
+  every r in 8..11. PENCIL FORMULA: brute-force min_X [rank X +
+  rank(I+X) + rank(A+X)] on regular pencils (I, A), n<=4
+  (matmul/r22/pencil_check.py): the classical n + #(non-squarefree-
+  split invariant factors) is WRONG over F2 — an irreducible cubic
+  block contributes +2, (x+1)^4 contributes +2, an irreducible quartic
+  +2; block additivity held in every sample. An exact pencil oracle
+  therefore needs Kronecker form over F2 + a per-block rank table
+  (blocks up to size 9, computable by brute force/SAT once) + a
+  verified additivity gate. Expected value: removes the depth-8 layer
+  (~70% of t=16 work) and settles depth-7 pencils exactly — roughly
+  3x, which does NOT reach t=16 on its own; the wall is depths 5-6
+  (3-4-slice residuals at targets 10-11) where no cheap exact oracle
+  is in sight.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

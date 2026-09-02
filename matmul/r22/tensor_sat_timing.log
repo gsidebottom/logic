@@ -1,0 +1,20 @@
+3 x L_2 (expected rank 9):
+   r=7: TIMEOUT 60.01s
+   r=8: TIMEOUT 60.00s
+   r=9: SAT 3.54s
+random pencil 0:
+   r=8: TIMEOUT 60.00s
+   r=9: TIMEOUT 60.01s
+   r=10: TIMEOUT 60.01s
+   r=11: TIMEOUT 60.01s
+random pencil 1:
+   r=8: TIMEOUT 60.00s
+   r=9: TIMEOUT 60.01s
+   r=10: TIMEOUT 60.01s
+   r=11: TIMEOUT 60.01s
+random pencil 2:
+   r=8: TIMEOUT 60.01s
+   r=9: TIMEOUT 60.01s
+   r=10: TIMEOUT 60.01s
+   r=11: TIMEOUT 60.00s
+random 3-slice 0:

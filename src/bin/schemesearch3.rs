@@ -1579,11 +1579,84 @@ fn staged_reps(stab: &[(u16, u16)], gl: &[u16], inv: &[u16; 512]) -> Vec<(u16, u
 /// rank(R|ker v): one representative per H-orbit (within the fold set)
 /// proves the whole AND — sound because the substitution lemma needs
 /// the RANK bound on every fold, which is an isomorphism invariant.
+/// The fold vectors accumulated per side on the path to a residual. The
+/// residual is the projection of the root along U = span(folds) onto the
+/// non-pivot coordinates — a function of U alone, so the reduced echelon
+/// basis of U (per side) is an EXACT key for the residual and, since
+/// target and depth budget are fixed by dim U, for the probe's verdict.
+#[derive(Clone, Copy)]
+struct FoldSet {
+    v: [[u16; 9]; 3],
+    n: [u8; 3],
+}
+
+impl FoldSet {
+    fn empty() -> FoldSet {
+        FoldSet { v: [[0; 9]; 3], n: [0; 3] }
+    }
+    fn with(&self, side: usize, vec: u16) -> FoldSet {
+        let mut f = *self;
+        f.v[side][f.n[side] as usize] = vec;
+        f.n[side] += 1;
+        f
+    }
+    /// reduced echelon rows packed by descending pivot (canonical for U)
+    fn key(&self) -> [u128; 3] {
+        let mut key = [0u128; 3];
+        for side in 0..3 {
+            let mut rows: Vec<u16> = self.v[side][..self.n[side] as usize].to_vec();
+            let mut rank = 0usize;
+            for bit in (0..9).rev() {
+                if let Some(pi) = (rank..rows.len()).find(|&i| rows[i] >> bit & 1 == 1) {
+                    rows.swap(rank, pi);
+                    for i in 0..rows.len() {
+                        if i != rank && rows[i] >> bit & 1 == 1 {
+                            rows[i] ^= rows[rank];
+                        }
+                    }
+                    rank += 1;
+                }
+            }
+            let mut k = 0u128;
+            for (i, &r) in rows[..rank].iter().enumerate() {
+                k |= (r as u128) << (9 * i);
+            }
+            key[side] = k | ((rank as u128) << 100);
+        }
+        key
+    }
+}
+
+/// transposition table: residual key -> verdict (sharded)
+struct Memo {
+    shards: Vec<std::sync::Mutex<std::collections::HashMap<[u128; 3], bool>>>,
+}
+
+impl Memo {
+    fn new() -> Memo {
+        Memo { shards: (0..64).map(|_| std::sync::Mutex::new(Default::default())).collect() }
+    }
+    fn shard(&self, k: &[u128; 3]) -> &std::sync::Mutex<std::collections::HashMap<[u128; 3], bool>> {
+        let h = (k[0] ^ k[1].rotate_left(37) ^ k[2].rotate_left(83)) as u64;
+        &self.shards[(h.wrapping_mul(0x9e3779b97f4a7c15) >> 58) as usize]
+    }
+    fn get(&self, k: &[u128; 3]) -> Option<bool> {
+        self.shard(k).lock().unwrap().get(k).copied()
+    }
+    fn put(&self, k: [u128; 3], v: bool) {
+        self.shard(&k).lock().unwrap().insert(k, v);
+    }
+    fn len(&self) -> usize {
+        self.shards.iter().map(|s| s.lock().unwrap().len()).sum()
+    }
+}
+
 struct PoolOr {
     r: R3,
     t: u32,
     depth_left: u32,
     depth: usize,
+    folds: FoldSet,
     sym: std::sync::Arc<Vec<StabElem>>,
     parent: Option<std::sync::Arc<PoolAnd>>,
     resolved: AtomicBool,
@@ -1602,6 +1675,7 @@ struct PoolTask {
     t: u32,
     depth_left: u32,
     depth: usize,
+    folds: FoldSet,
     sym: std::sync::Arc<Vec<StabElem>>,
     parent: std::sync::Arc<PoolAnd>,
 }
@@ -1616,6 +1690,8 @@ struct PoolStats {
     failed: Vec<AtomicU64>,
     folds_total: Vec<AtomicU64>,
     folds_kept: Vec<AtomicU64>,
+    memo_t: Vec<AtomicU64>,
+    memo_f: Vec<AtomicU64>,
 }
 
 impl PoolStats {
@@ -1631,17 +1707,19 @@ impl PoolStats {
             failed: mk(),
             folds_total: mk(),
             folds_kept: mk(),
+            memo_t: mk(),
+            memo_f: mk(),
         }
     }
     fn report(&self) -> String {
-        let mut s = String::from("  depth: run skipped | leaf flat/strassen/koszul | expanded failed | folds kept/total\n");
+        let mut s = String::from("  depth: run skipped | leaf flat/strassen/koszul | expanded failed | folds kept/total | memo hits T/F\n");
         for d in 0..self.run.len() {
             let g = |v: &Vec<AtomicU64>| v[d].load(Ordering::Relaxed);
             if g(&self.run) == 0 && g(&self.folds_total) == 0 {
                 continue;
             }
             s.push_str(&format!(
-                "  {d}: {} {} | {}/{}/{} | {} {} | {}/{}\n",
+                "  {d}: {} {} | {}/{}/{} | {} {} | {}/{} | {}/{}\n",
                 g(&self.run),
                 g(&self.skipped),
                 g(&self.leaf_flat),
@@ -1650,7 +1728,9 @@ impl PoolStats {
                 g(&self.expanded),
                 g(&self.failed),
                 g(&self.folds_kept),
-                g(&self.folds_total)
+                g(&self.folds_total),
+                g(&self.memo_t),
+                g(&self.memo_f)
             ));
         }
         s
@@ -1673,6 +1753,7 @@ struct Pool<'a> {
     done: AtomicBool,
     result: AtomicBool,
     stats: PoolStats,
+    memo: Option<Memo>,
     /// BALANCED side order (2026-09-01): try the side with the MOST active
     /// coordinates first (ties A,B,C). Always folding A first drives the
     /// residual to a near-matrix (1-2 A-slices) where flatten caps at 9
@@ -1804,6 +1885,7 @@ impl<'a> Pool<'a> {
                     t: or.t - 1,
                     depth_left: or.depth_left - 1,
                     depth: or.depth + 1,
+                    folds: or.folds.with(side, vec_of(lam)),
                     sym,
                     parent: and.clone(),
                 });
@@ -1821,6 +1903,9 @@ impl<'a> Pool<'a> {
             return;
         }
         or.value.store(value, Ordering::Release);
+        if let (Some(memo), Some(_)) = (&self.memo, &or.parent) {
+            memo.put(or.folds.key(), value);
+        }
         match &or.parent {
             Some(pand) => {
                 if value {
@@ -1874,25 +1959,48 @@ impl<'a> Pool<'a> {
             self.stats.skipped[d].fetch_add(1, Ordering::Relaxed);
             return;
         }
+        let key = task.folds.key();
+        if let Some(memo) = &self.memo {
+            match memo.get(&key) {
+                Some(true) => {
+                    self.stats.memo_t[d].fetch_add(1, Ordering::Relaxed);
+                    self.and_child_ok(&task.parent);
+                    return;
+                }
+                Some(false) => {
+                    self.stats.memo_f[d].fetch_add(1, Ordering::Relaxed);
+                    self.and_child_fail(&task.parent);
+                    return;
+                }
+                None => {}
+            }
+        }
         self.stats.run[d].fetch_add(1, Ordering::Relaxed);
         let (r, t) = (&task.r, task.t);
-        if max_flatten3(r) >= t {
+        let leaf = if max_flatten3(r) >= t {
             self.stats.leaf_flat[d].fetch_add(1, Ordering::Relaxed);
-            self.and_child_ok(&task.parent);
-            return;
-        }
-        if t <= 13 && strassen_bound3(r, 8) >= t {
+            true
+        } else if t <= 13 && strassen_bound3(r, 8) >= t {
             self.stats.leaf_str[d].fetch_add(1, Ordering::Relaxed);
-            self.and_child_ok(&task.parent);
-            return;
-        }
-        if koszul_bound3(r, 4) >= t {
+            true
+        } else if koszul_bound3(r, 4) >= t {
             self.stats.leaf_kos[d].fetch_add(1, Ordering::Relaxed);
+            true
+        } else {
+            false
+        };
+        if leaf {
+            if let Some(memo) = &self.memo {
+                memo.put(key, true);
+            }
             self.and_child_ok(&task.parent);
             return;
         }
         if task.depth_left == 0 {
             self.stats.failed[d].fetch_add(1, Ordering::Relaxed);
+            if let Some(memo) = &self.memo {
+                memo.put(key, false);
+            }
             self.and_child_fail(&task.parent);
             return;
         }
@@ -1902,6 +2010,7 @@ impl<'a> Pool<'a> {
             t,
             depth_left: task.depth_left,
             depth: d,
+            folds: task.folds,
             sym: task.sym.clone(),
             parent: Some(task.parent.clone()),
             resolved: AtomicBool::new(false),
@@ -1921,6 +2030,7 @@ fn deep_probe_pool(
     sym: &[StabElem],
     report_every_s: u64,
     balanced: bool,
+    memo: bool,
 ) -> (bool, u64, u64, String) {
     use std::sync::Arc;
     if max_flatten3(r) >= t
@@ -1939,6 +2049,7 @@ fn deep_probe_pool(
         done: AtomicBool::new(false),
         result: AtomicBool::new(false),
         stats: PoolStats::new(depth_left as usize + 2),
+        memo: if memo { Some(Memo::new()) } else { None },
         balanced,
     };
     let root = Arc::new(PoolOr {
@@ -1946,6 +2057,7 @@ fn deep_probe_pool(
         t,
         depth_left,
         depth: 0,
+        folds: FoldSet::empty(),
         sym: Arc::new(sym.to_vec()),
         parent: None,
         resolved: AtomicBool::new(false),
@@ -1980,7 +2092,12 @@ fn deep_probe_pool(
                         return;
                     }
                     if t0.elapsed().as_secs() >= next {
-                        eprintln!("pool stats at {}s:\n{}", t0.elapsed().as_secs(), pool.stats.report());
+                        eprintln!(
+                            "pool stats at {}s (memo entries {}):\n{}",
+                            t0.elapsed().as_secs(),
+                            pool.memo.as_ref().map_or(0, |m| m.len()),
+                            pool.stats.report()
+                        );
                         next += report_every_s;
                     }
                 }
@@ -1989,7 +2106,8 @@ fn deep_probe_pool(
     });
     let run: u64 = pool.stats.run.iter().map(|x| x.load(Ordering::Relaxed)).sum();
     let skipped: u64 = pool.stats.skipped.iter().map(|x| x.load(Ordering::Relaxed)).sum();
-    (pool.result.load(Ordering::Acquire), run, skipped, pool.stats.report())
+    let rep = format!("{}  memo entries: {}\n", pool.stats.report(), pool.memo.as_ref().map_or(0, |m| m.len()));
+    (pool.result.load(Ordering::Acquire), run, skipped, rep)
 }
 
 struct Shared {
@@ -3816,7 +3934,7 @@ fn main() {
                     .find(|x| (x.0, x.1, x.2) == (al, be, ga))
                     .map(|x| x.3.clone())
                     .unwrap_or_default();
-                let (pooled, run, skipped, rep) = deep_probe_pool(&r3, &masks, tt, dd, threads, &sym, 0, args.iter().any(|a| a == "--balanced"));
+                let (pooled, run, skipped, rep) = deep_probe_pool(&r3, &masks, tt, dd, threads, &sym, 0, args.iter().any(|a| a == "--balanced"), !args.iter().any(|a| a == "--no-memo"));
                 let tp = t0.elapsed().as_secs_f64();
                 println!(
                     "root {ri} t={tt} depth={dd}: {how} {baseline} [{ts:.2}s] pooled {pooled} [{tp:.2}s; {run} tasks run, {skipped} skipped; |Stab| {}]\n{rep}",
@@ -3840,7 +3958,7 @@ fn main() {
                 r3.xor_product(al, be, ga);
                 let tr = Instant::now();
                 let sym: &[StabElem] = if no_sym { &[] } else { elems };
-                let (ok, run, skipped, rep) = deep_probe_pool(&r3, &masks, t, dmax, threads, sym, 60, args.iter().any(|a| a == "--balanced"));
+                let (ok, run, skipped, rep) = deep_probe_pool(&r3, &masks, t, dmax, threads, sym, 60, args.iter().any(|a| a == "--balanced"), !args.iter().any(|a| a == "--no-memo"));
                 eprintln!("{rep}");
                 if ok {
                     ok_c += 1;

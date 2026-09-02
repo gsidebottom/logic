@@ -1,0 +1,54 @@
+subspace classes: 17 (orbit sizes sum to 43435)
+class 0: rep U=<1,2> ranks [1, 1, 1] orbit 49 |Stab| 576 base koszul 12 e4 834
+class 1: rep U=<1,8> ranks [1, 1, 1] orbit 49 |Stab| 576 base koszul 12 e4 834
+class 2: rep U=<1,10> ranks [1, 2, 2] orbit 441 |Stab| 64 base koszul 13 e4 882
+class 3: rep U=<1,16> ranks [1, 1, 2] orbit 882 |Stab| 32 base koszul 13 e4 882
+class 4: rep U=<1,20> ranks [1, 2, 2] orbit 1764 |Stab| 16 base koszul 13 e4 900
+class 5: rep U=<1,80> ranks [1, 2, 2] orbit 1764 |Stab| 16 base koszul 13 e4 900
+class 6: rep U=<1,84> ranks [1, 3, 3] orbit 1764 |Stab| 16 base koszul 13 e4 900
+class 7: rep U=<1,160> ranks [1, 2, 3] orbit 4704 |Stab| 6 base koszul 13 e4 900
+class 8: rep U=<10,19> ranks [2, 2, 2] orbit 98 |Stab| 288 base koszul 13 e4 882
+class 9: rep U=<10,20> ranks [2, 2, 2] orbit 1176 |Stab| 24 base koszul 14 e4 918
+class 10: rep U=<10,68> ranks [2, 2, 2] orbit 1176 |Stab| 24 base koszul 14 e4 918
+class 11: rep U=<10,80> ranks [2, 2, 2] orbit 1176 |Stab| 24 base koszul 14 e4 918
+class 12: rep U=<10,84> ranks [2, 3, 3] orbit 3528 |Stab| 8 base koszul 14 e4 918
+class 13: rep U=<10,96> ranks [2, 2, 3] orbit 14112 |Stab| 2 base koszul 14 e4 918
+class 14: rep U=<10,258> ranks [2, 2, 2] orbit 4704 |Stab| 6 base koszul 14 e4 918
+class 15: rep U=<10,275> ranks [2, 3, 3] orbit 4704 |Stab| 6 base koszul 14 e4 918
+class 16: rep U=<84,163> ranks [3, 3, 3] orbit 1344 |Stab| 21 base koszul 14 e4 918
+class 0: 3556 m-orbits; (koszul, e4 drop) -> (orbits, products): {(12, 0): (991, 16895487), (12, 6): (86, 2107392), (12, 16): (22, 516096), (12, 18): (7, 107520), (12, 53): (3, 7168), (13, -22): (1791, 92187648), (13, -16): (624, 20063232), (13, -10): (32, 1548288)}
+class 0: leaf(koszul>=14) products 0 of 133432831 (0.00%); weighted by 49 subspaces [2s]
+class 1: 3556 m-orbits; (koszul, e4 drop) -> (orbits, products): {(12, 0): (991, 16895487), (12, 6): (86, 2107392), (12, 16): (22, 516096), (12, 18): (7, 107520), (12, 53): (3, 7168), (13, -22): (1791, 92187648), (13, -16): (624, 20063232), (13, -10): (32, 1548288)}
+class 1: leaf(koszul>=14) products 0 of 133432831 (0.00%); weighted by 49 subspaces [2s]
+class 2: 23146 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, -12): (10856, 82345984), (13, -6): (6664, 36771840), (13, 0): (4967, 12178943), (13, 3): (44, 172032), (13, 6): (453, 1533952), (13, 12): (8, 86016), (13, 16): (138, 315392), (13, 22): (16, 28672)}
+class 2: leaf(koszul>=14) products 0 of 133432831 (0.00%); weighted by 441 subspaces [13s]
+class 3: 40668 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, -12): (14371, 60675328), (13, -6): (15897, 52510976), (13, 0): (9059, 16682239), (13, 3): (48, 86016), (13, 6): (805, 2352896), (13, 12): (156, 451584), (13, 16): (200, 465920), (13, 22): (112, 193536), (13, 32): (20, 14336)}
+class 3: leaf(koszul>=14) products 0 of 133432831 (0.00%); weighted by 882 subspaces [23s]
+class 4: 75796 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, -6): (40312, 82302976), (13, 0): (29584, 42334719), (13, 6): (4407, 6823936), (13, 12): (1008, 1390592), (13, 18): (132, 236544), (13, 22): (275, 265216), (13, 28): (78, 78848)}
+class 4: leaf(koszul>=14) products 0 of 133432831 (0.00%); weighted by 1764 subspaces [46s]
+class 5: 75796 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, -6): (40312, 82302976), (13, 0): (29584, 42334719), (13, 6): (4407, 6823936), (13, 12): (1008, 1390592), (13, 18): (132, 236544), (13, 22): (275, 265216), (13, 28): (78, 78848)}
+class 5: leaf(koszul>=14) products 0 of 133432831 (0.00%); weighted by 1764 subspaces [46s]
+class 6: 72787 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, -6): (39232, 82001920), (13, 0): (29061, 44578303), (13, 6): (3436, 5218304), (13, 12): (718, 1290240), (13, 22): (340, 344064)}
+class 6: leaf(koszul>=14) products 0 of 133432831 (0.00%); weighted by 1764 subspaces [45s]
+class 7: 179568 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, -6): (103032, 81663232), (13, 0): (66936, 44385663), (13, 6): (7484, 5644800), (13, 12): (1636, 1395072), (13, 22): (480, 344064)}
+class 7: leaf(koszul>=14) products 0 of 133432831 (0.00%); weighted by 4704 subspaces [110s]
+class 8: 5212 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, -12): (3788, 108041472), (13, -6): (572, 17950464), (13, 0): (810, 7041279), (13, 6): (42, 399616)}
+class 8: leaf(koszul>=14) products 0 of 133432831 (0.00%); weighted by 98 subspaces [3s]
+class 9: 49198 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, 12): (1140, 2494464), (13, 18): (632, 1634304), (14, 0): (41544, 111986175), (14, 6): (5882, 17317888)}
+class 9: leaf(koszul>=14) products 129304063 of 133432831 (96.91%); weighted by 1176 subspaces [31s]
+class 10: 46189 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, 12): (1419, 4300800), (13, 18): (47, 114688), (14, 0): (39599, 111986175), (14, 6): (5124, 17031168)}
+class 10: leaf(koszul>=14) products 129017343 of 133432831 (96.69%); weighted by 1176 subspaces [31s]
+class 11: 49198 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, 12): (1140, 2494464), (13, 18): (632, 1634304), (14, 0): (41544, 111986175), (14, 6): (5882, 17317888)}
+class 11: leaf(koszul>=14) products 129304063 of 133432831 (96.91%); weighted by 1176 subspaces [33s]
+class 12: 135910 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, 12): (1487, 1433600), (13, 18): (113, 114688), (14, 0): (115838, 111298047), (14, 6): (18472, 20586496)}
+class 12: leaf(koszul>=14) products 131884543 of 133432831 (98.84%); weighted by 3528 subspaces [92s]
+class 13: 533649 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, 12): (10152, 2895872), (13, 18): (332, 100352), (14, 0): (455377, 111642111), (14, 6): (67788, 18794496)}
+class 13: leaf(koszul>=14) products 130436607 of 133432831 (97.75%); weighted by 14112 subspaces [343s]
+class 14: 179568 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, 12): (5255, 4381440), (13, 18): (115, 87808), (14, 0): (153537, 111898367), (14, 6): (20661, 17065216)}
+class 14: leaf(koszul>=14) products 128963583 of 133432831 (96.65%); weighted by 4704 subspaces [115s]
+class 15: 179568 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, 12): (1803, 1435392), (13, 18): (149, 112896), (14, 0): (153069, 111410943), (14, 6): (24547, 20473600)}
+class 15: leaf(koszul>=14) products 131884543 of 133432831 (98.84%); weighted by 4704 subspaces [119s]
+class 16: 50687 m-orbits; (koszul, e4 drop) -> (orbits, products): {(13, 18): (56, 130816), (14, 0): (43011, 110823167), (14, 6): (7620, 22478848)}
+class 16: leaf(koszul>=14) products 133302015 of 133432831 (99.90%); weighted by 1344 subspaces [35s]
+ALL (U, m) pairs evaluated: leaf fraction 71.9167% (4168045110096 of 5795655014485)
+transport gate: 300 random (m, U) checked, 0 mismatches

@@ -1284,7 +1284,15 @@ fn deep_probe(r: &R3, masks: &Masks, t: u32, depth_left: u32) -> bool {
                 bases[l][w] ^= slices[l][w];
             }
         }
-        let others: Vec<usize> = (0..9).filter(|&x| x != p).collect();
+        // lambda ranges only over ACTIVE coordinates (nonzero slices): a
+        // minimal decomposition can be projected off any zero slice, so
+        // its alphas vanish there; a fold INTO a zero slice is a relabeling
+        // (isomorphic residual), not a quotient — sound to skip, and it
+        // halves the fan at every dead coordinate (2026-09-01).
+        let others: Vec<usize> = (0..9)
+            .filter(|&x| x != p && !is_zero(&layout_slice(&lts[major_layout], masks, 0, x)))
+            .collect();
+        let nfold = 1u32 << others.len();
         let shifted: Vec<[T3; 3]> = others
             .iter()
             .map(|&q| {
@@ -1296,7 +1304,7 @@ fn deep_probe(r: &R3, masks: &Masks, t: u32, depth_left: u32) -> bool {
             })
             .collect();
         let mut all_ok = true;
-        for lam in 0..256u32 {
+        for lam in 0..nfold {
             let mut m = bases;
             for (bi, sh) in shifted.iter().enumerate() {
                 if lam >> bi & 1 == 1 {
@@ -1358,7 +1366,15 @@ fn deep_probe_par(r: &R3, masks: &Masks, t: u32, depth_left: u32, threads: usize
                 bases[l][w] ^= slices[l][w];
             }
         }
-        let others: Vec<usize> = (0..9).filter(|&x| x != p).collect();
+        // lambda ranges only over ACTIVE coordinates (nonzero slices): a
+        // minimal decomposition can be projected off any zero slice, so
+        // its alphas vanish there; a fold INTO a zero slice is a relabeling
+        // (isomorphic residual), not a quotient — sound to skip, and it
+        // halves the fan at every dead coordinate (2026-09-01).
+        let others: Vec<usize> = (0..9)
+            .filter(|&x| x != p && !is_zero(&layout_slice(&lts[major_layout], masks, 0, x)))
+            .collect();
+        let nfold = 1u32 << others.len();
         let shifted: Vec<[T3; 3]> = others
             .iter()
             .map(|&q| {
@@ -1378,7 +1394,7 @@ fn deep_probe_par(r: &R3, masks: &Masks, t: u32, depth_left: u32, threads: usize
                         break;
                     }
                     let lam = next.fetch_add(1, Ordering::Relaxed) as u32;
-                    if lam >= 256 {
+                    if lam >= nfold {
                         break;
                     }
                     let mut m = bases;
@@ -1404,6 +1420,148 @@ fn deep_probe_par(r: &R3, masks: &Masks, t: u32, depth_left: u32, threads: usize
         }
     }
     false
+}
+
+// ---- level-2 fold lemma helpers (2026-09-01) ----
+fn rank3m_top(bits9: u32) -> u32 {
+    let mut rows = [bits9 & 7, bits9 >> 3 & 7, bits9 >> 6 & 7];
+    let mut rk = 0usize;
+    for c in (0..3).rev() {
+        if let Some(p) = (rk..3).find(|&i| rows[i] >> c & 1 == 1) {
+            rows.swap(rk, p);
+            for i in 0..3 {
+                if i != rk && rows[i] >> c & 1 == 1 {
+                    rows[i] ^= rows[rk];
+                }
+            }
+            rk += 1;
+        }
+    }
+    rk as u32
+}
+
+/// fold `side` by vector v (pivot = leading set bit, lambda = the rest),
+/// across all three layouts — the probe's substitution step.
+fn fold_side(r: &R3, masks: &Masks, side: usize, v: u32) -> R3 {
+    let p = (31 - v.leading_zeros()) as usize;
+    let sidx = STRIDE_IDX[side];
+    let lts = [r.abc, r.bca, r.cab];
+    let mut bases = lts;
+    let mut slices = [[0u64; W]; 3];
+    for l in 0..3 {
+        slices[l] = layout_slice(&lts[l], masks, sidx[l], p);
+        for w in 0..W {
+            bases[l][w] ^= slices[l][w];
+        }
+    }
+    for q in 0..9 {
+        if q != p && v >> q & 1 == 1 {
+            for l in 0..3 {
+                let sh = layout_shift(&slices[l], sidx[l], p, q);
+                for w in 0..W {
+                    bases[l][w] ^= sh[w];
+                }
+            }
+        }
+    }
+    R3 { abc: bases[0], bca: bases[1], cab: bases[2] }
+}
+
+fn mk_elem(p: u16, q: u16, r: u16, inv: &[u16; 512]) -> StabElem {
+    StabElem {
+        pt: m3_tr(p),
+        qt: m3_tr(q),
+        qit: m3_tr(inv[q as usize]),
+        rt: m3_tr(r),
+        pi: inv[p as usize],
+        ri: inv[r as usize],
+    }
+}
+
+/// (koszul_bound3(., 4), embedded side-A p=4 wedge rank)
+fn leaf_data(r: &R3) -> (u32, usize) {
+    let kt = kt_from_abc(&r.abc);
+    let (mut rows, words) = koszul_rows(&kt, 4);
+    let e4 = rank_wide_legacy(&mut rows, words);
+    (koszul_bound3(r, 4), e4)
+}
+
+/// staged lex-min orbit reps of (al, be, ga) under `stab` (pairs (P,Q)
+/// acting on alpha) x GL3 (R free): returns (al, be, ga, orbit size).
+fn staged_reps(stab: &[(u16, u16)], gl: &[u16], inv: &[u16; 512]) -> Vec<(u16, u16, u16, u64)> {
+    let gsize = stab.len() * 168;
+    let mut alpha_min = [u16::MAX; 512];
+    for &(p, q) in stab {
+        let (pt, qt) = (m3_tr(p), m3_tr(q));
+        for al in 1u16..512 {
+            let im = m3_mul(m3_mul(pt, al), qt);
+            if im < alpha_min[al as usize] {
+                alpha_min[al as usize] = im;
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for ar in 1u16..512 {
+        if alpha_min[ar as usize] != ar {
+            continue;
+        }
+        let g1: Vec<(u16, u16)> = stab
+            .iter()
+            .copied()
+            .filter(|&(p, q)| m3_mul(m3_mul(m3_tr(p), ar), m3_tr(q)) == ar)
+            .collect();
+        let mut beta_min = [u16::MAX; 512];
+        for &(_, q) in &g1 {
+            let qit = m3_tr(inv[q as usize]);
+            for &r in gl {
+                let rt = m3_tr(r);
+                for be in 1u16..512 {
+                    let im = m3_mul(m3_mul(qit, be), rt);
+                    if im < beta_min[be as usize] {
+                        beta_min[be as usize] = im;
+                    }
+                }
+            }
+        }
+        for br in 1u16..512 {
+            if beta_min[br as usize] != br {
+                continue;
+            }
+            let mut g2: Vec<(u16, u16, u16)> = Vec::new();
+            for &(p, q) in &g1 {
+                let qit = m3_tr(inv[q as usize]);
+                for &r in gl {
+                    if m3_mul(m3_mul(qit, br), m3_tr(r)) == br {
+                        g2.push((p, q, r));
+                    }
+                }
+            }
+            let mut gamma_min = [u16::MAX; 512];
+            for &(p, _, r) in &g2 {
+                let (pi, ri) = (inv[p as usize], inv[r as usize]);
+                for ga in 1u16..512 {
+                    let im = act_gamma(pi, ri, ga);
+                    if im < gamma_min[ga as usize] {
+                        gamma_min[ga as usize] = im;
+                    }
+                }
+            }
+            for ga in 1u16..512 {
+                if gamma_min[ga as usize] != ga {
+                    continue;
+                }
+                let g3 = g2
+                    .iter()
+                    .filter(|&&(p, _, r)| act_gamma(inv[p as usize], inv[r as usize], ga) == ga)
+                    .count();
+                assert_eq!(gsize % g3, 0);
+                out.push((ar, br, ga, (gsize / g3) as u64));
+            }
+        }
+    }
+    let total: u64 = out.iter().map(|x| x.3).sum();
+    assert_eq!(total, 511u64 * 511 * 511, "orbit sizes must partition the 511^3 products");
+    out
 }
 
 /// Work-queue deep probe (2026-09-01): the same AND-OR tree as deep_probe
@@ -1472,7 +1630,11 @@ impl<'a> Pool<'a> {
                     bases[l][w] ^= slices[l][w];
                 }
             }
-            let others: Vec<usize> = (0..9).filter(|&x| x != p).collect();
+            // active coordinates only (see deep_probe)
+            let others: Vec<usize> = (0..9)
+                .filter(|&x| x != p && !is_zero(&layout_slice(&lts[major_layout], masks, 0, x)))
+                .collect();
+            let nfold = 1usize << others.len();
             let shifted: Vec<[T3; 3]> = others
                 .iter()
                 .map(|&q| {
@@ -1486,11 +1648,11 @@ impl<'a> Pool<'a> {
             let and = Arc::new(PoolAnd {
                 parent: or.clone(),
                 side,
-                pending: AtomicUsize::new(256),
+                pending: AtomicUsize::new(nfold),
                 failed: AtomicBool::new(false),
             });
-            let mut batch = Vec::with_capacity(256);
-            for lam in (0..256u32).rev() {
+            let mut batch = Vec::with_capacity(nfold);
+            for lam in (0..nfold as u32).rev() {
                 let mut m = bases;
                 for (bi, sh) in shifted.iter().enumerate() {
                     if lam >> bi & 1 == 1 {
@@ -2579,6 +2741,247 @@ fn main() {
         for t in &missing {
             println!("  uncovered {},{},{}", t.0, t.1, t.2);
         }
+        return;
+    }
+    if args.iter().any(|a| a == "--fold-lemma2") {
+        // LEVEL-2 FOLD LEMMA (2026-09-01): two successive side-A folds =
+        // quotient by a 2-dim subspace U of A. At t=16 the level-2 nodes
+        // of the deep probe are leaves iff koszul(p<=4) of (T+m)|ker U is
+        // still 14 (targets 16/15/14; flatten/strassen cannot reach 14), so
+        // this table prices the rung exactly. Classes: GL3xGL3-orbits of
+        // 2-dim subspaces of M3(F2) (43,435 subspaces; pencil classes);
+        // per class, Stab(U) x GL3(R)-orbits of m by the staged lex-min
+        // canonical form (sizes sum to 511^3); every orbit evaluated.
+        let masks = Masks::build();
+        let t3 = R3::from_abc(&build_t3());
+        let gl = gl3();
+        let mut inv = [0u16; 512];
+        for &p in &gl {
+            inv[p as usize] = m3_inv(&gl, p);
+        }
+        let threads: usize = get("--threads").and_then(|v| v.parse().ok()).unwrap_or(12);
+        let bases_only = args.iter().any(|a| a == "--bases-only");
+        let class_filter: Option<Vec<usize>> =
+            get("--classes").map(|v| v.split(',').map(|x| x.parse().unwrap()).collect());
+        let act_v = |pt: u16, qt: u16, v: u16| m3_mul(m3_mul(pt, v), qt);
+        let canon_sub = |a: u16, b: u16| -> (u16, u16) {
+            let mut t = [a, b, a ^ b];
+            t.sort();
+            (t[0], t[1])
+        };
+        // rref basis of U = {a, b, a^b}: v1 = largest leading bit, v2 = the
+        // other element with v1's pivot clear; fold v1 then v2.
+        let rref2 = |a: u16, b: u16| -> (u32, u32) {
+            let els = [a, b, a ^ b];
+            let lead = |x: u16| 15 - (x as u16).leading_zeros();
+            let v1 = *els.iter().max_by_key(|&&x| lead(x)).unwrap();
+            let p1 = lead(v1);
+            let v2 = *els.iter().find(|&&x| x != v1 && x >> p1 & 1 == 0).unwrap();
+            (v1 as u32, v2 as u32)
+        };
+        let fold_u = |r: &R3, a: u16, b: u16| -> R3 {
+            let (v1, v2) = rref2(a, b);
+            fold_side(&fold_side(r, &masks, 0, v1), &masks, 0, v2)
+        };
+        // gate: level-2 data is a sandwich invariant of (m, U)
+        let mut seed = 0x5851f42d4c957f2du64;
+        let mut rnd = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for _ in 0..30 {
+            let e = mk_elem(gl[(rnd() % 168) as usize], gl[(rnd() % 168) as usize], gl[(rnd() % 168) as usize], &inv);
+            let (al, be, ga) = ((rnd() % 511 + 1) as u16, (rnd() % 511 + 1) as u16, (rnd() % 511 + 1) as u16);
+            let (a, b) = loop {
+                let (a, b) = ((rnd() % 511 + 1) as u16, (rnd() % 511 + 1) as u16);
+                if a != b {
+                    break (a, b);
+                }
+            };
+            let (al2, be2, ga2) = e.act(al, be, ga);
+            let (a2, b2) = (act_v(e.pt, e.qt, a), act_v(e.pt, e.qt, b));
+            let mut r1 = t3;
+            r1.xor_product(al as u32, be as u32, ga as u32);
+            let mut r2 = t3;
+            r2.xor_product(al2 as u32, be2 as u32, ga2 as u32);
+            assert_eq!(leaf_data(&fold_u(&r1, a, b)), leaf_data(&fold_u(&r2, a2, b2)), "level-2 fold data must be a sandwich invariant");
+        }
+        eprintln!("fold-lemma2: invariance gate passed (30 random (m, U) transports)");
+        // subspace classes
+        let mut keys: Vec<(u16, u16)> = Vec::new();
+        for a in 1u16..512 {
+            for b in (a + 1)..512 {
+                if b < (a ^ b) {
+                    keys.push((a, b));
+                }
+            }
+        }
+        assert_eq!(keys.len(), 43435);
+        let kidx: std::collections::HashMap<(u16, u16), usize> =
+            keys.iter().enumerate().map(|(i, &k)| (k, i)).collect();
+        let pairs: Vec<(u16, u16)> = gl.iter().flat_map(|&p| gl.iter().map(move |&q| (p, q))).collect();
+        let mut class_of = vec![usize::MAX; keys.len()];
+        // transporter[key] = (P,Q) with (P,Q).rep = key
+        let mut transporter: Vec<(u16, u16)> = vec![(0, 0); keys.len()];
+        struct Class {
+            rep: (u16, u16),
+            size: usize,
+            stab: Vec<(u16, u16)>,
+        }
+        let mut classes: Vec<Class> = Vec::new();
+        for ki in 0..keys.len() {
+            if class_of[ki] != usize::MAX {
+                continue;
+            }
+            let (a, b) = keys[ki];
+            let ci = classes.len();
+            let mut stab = Vec::new();
+            let mut size = 0usize;
+            for &(p, q) in &pairs {
+                let (pt, qt) = (m3_tr(p), m3_tr(q));
+                let k2 = canon_sub(act_v(pt, qt, a), act_v(pt, qt, b));
+                let j = kidx[&k2];
+                if k2 == (a, b) {
+                    stab.push((p, q));
+                }
+                if class_of[j] == usize::MAX {
+                    class_of[j] = ci;
+                    transporter[j] = (p, q);
+                    size += 1;
+                }
+            }
+            assert_eq!(size * stab.len(), pairs.len());
+            classes.push(Class { rep: (a, b), size, stab });
+        }
+        let total_sub: usize = classes.iter().map(|c| c.size).sum();
+        assert_eq!(total_sub, 43435);
+        println!("subspace classes: {} (orbit sizes sum to 43435)", classes.len());
+        let mut base: Vec<(u32, usize)> = Vec::new();
+        for (ci, c) in classes.iter().enumerate() {
+            let (a, b) = c.rep;
+            let f = fold_u(&t3, a, b);
+            let d = leaf_data(&f);
+            let mut rk = [rank3m_top(a as u32), rank3m_top(b as u32), rank3m_top((a ^ b) as u32)];
+            rk.sort();
+            println!(
+                "class {ci}: rep U=<{a},{b}> ranks {:?} orbit {} |Stab| {} base koszul {} e4 {}",
+                rk, c.size, c.stab.len(), d.0, d.1
+            );
+            base.push(d);
+        }
+        if bases_only {
+            return;
+        }
+        // per class: m-orbits and evaluation
+        let mut tables: Vec<std::collections::HashMap<(u16, u16, u16), (u32, usize)>> =
+            (0..classes.len()).map(|_| Default::default()).collect();
+        let mut grand_leaf = 0u128;
+        let mut grand_all = 0u128;
+        for (ci, c) in classes.iter().enumerate() {
+            if let Some(f) = &class_filter {
+                if !f.contains(&ci) {
+                    continue;
+                }
+            }
+            let t0 = Instant::now();
+            let reps = staged_reps(&c.stab, &gl, &inv);
+            let (a, b) = c.rep;
+            let results: std::sync::Mutex<Vec<(u32, usize)>> = std::sync::Mutex::new(vec![(0, 0); reps.len()]);
+            let widx = AtomicUsize::new(0);
+            std::thread::scope(|scope| {
+                for _ in 0..threads {
+                    scope.spawn(|| loop {
+                        let i = widx.fetch_add(1, Ordering::Relaxed);
+                        if i >= reps.len() {
+                            break;
+                        }
+                        let (al, be, ga, _) = reps[i];
+                        let mut r = t3;
+                        r.xor_product(al as u32, be as u32, ga as u32);
+                        let d = leaf_data(&fold_u(&r, a, b));
+                        results.lock().unwrap()[i] = d;
+                    });
+                }
+            });
+            let results = results.into_inner().unwrap();
+            use std::collections::BTreeMap;
+            let mut hist: BTreeMap<(u32, i64), (u64, u64)> = BTreeMap::new();
+            let mut out = String::new();
+            out.push_str(&format!(
+                "# class {ci} rep U=<{a},{b}> base koszul {} e4 {}; columns: al be ga orbit koszul e4\n",
+                base[ci].0, base[ci].1
+            ));
+            let mut leaf_products = 0u64;
+            for (i, d) in results.iter().enumerate() {
+                let (al, be, ga, sz) = reps[i];
+                let e = hist.entry((d.0, base[ci].1 as i64 - d.1 as i64)).or_insert((0, 0));
+                e.0 += 1;
+                e.1 += sz;
+                if d.0 >= 14 {
+                    leaf_products += sz;
+                }
+                out.push_str(&format!("{al} {be} {ga} {sz} {} {}\n", d.0, d.1));
+                tables[ci].insert((al, be, ga), *d);
+            }
+            std::fs::write(format!("matmul/r22/fold_lemma2_class{ci}.txt"), out).unwrap();
+            println!(
+                "class {ci}: {} m-orbits; (koszul, e4 drop) -> (orbits, products): {:?}",
+                reps.len(),
+                hist
+            );
+            println!(
+                "class {ci}: leaf(koszul>=14) products {leaf_products} of 133432831 ({:.2}%); weighted by {} subspaces [{:.0}s]",
+                100.0 * leaf_products as f64 / 133432831.0,
+                c.size,
+                t0.elapsed().as_secs_f64()
+            );
+            grand_leaf += leaf_products as u128 * c.size as u128;
+            grand_all += 133432831u128 * c.size as u128;
+        }
+        if grand_all > 0 {
+            println!(
+                "ALL (U, m) pairs evaluated: leaf fraction {:.4}% ({grand_leaf} of {grand_all})",
+                100.0 * grand_leaf as f64 / grand_all as f64
+            );
+        }
+        // gate: random (m, U) direct vs table via transporter + canonical form
+        let mut mism = 0;
+        let mut checked = 0;
+        for _ in 0..300 {
+            let (al, be, ga) = ((rnd() % 511 + 1) as u16, (rnd() % 511 + 1) as u16, (rnd() % 511 + 1) as u16);
+            let ki = (rnd() % keys.len() as u64) as usize;
+            let ci = class_of[ki];
+            if tables[ci].is_empty() {
+                continue;
+            }
+            let (a, b) = keys[ki];
+            let mut r = t3;
+            r.xor_product(al as u32, be as u32, ga as u32);
+            let direct = leaf_data(&fold_u(&r, a, b));
+            // g.rep = U  =>  g^-1.U = rep; transport m by g^-1 = (P^-1, Q^-1)
+            let (p, q) = transporter[ki];
+            let ginv = mk_elem(inv[p as usize], inv[q as usize], M3_ID, &inv);
+            let (a0, b0) = classes[ci].rep;
+            assert_eq!(canon_sub(act_v(ginv.pt, ginv.qt, a), act_v(ginv.pt, ginv.qt, b)), (a0, b0));
+            let m2 = ginv.act(al, be, ga);
+            let mut best = (u16::MAX, u16::MAX, u16::MAX);
+            for &(p, q) in &classes[ci].stab {
+                for &rr in &gl {
+                    let x = mk_elem(p, q, rr, &inv).act(m2.0, m2.1, m2.2);
+                    if x < best {
+                        best = x;
+                    }
+                }
+            }
+            checked += 1;
+            if tables[ci].get(&best).copied() != Some(direct) {
+                mism += 1;
+                eprintln!("  MISMATCH m=({al},{be},{ga}) U=<{a},{b}> class {ci}: direct {direct:?} table {:?}", tables[ci].get(&best));
+            }
+        }
+        println!("transport gate: {checked} random (m, U) checked, {mism} mismatches");
         return;
     }
     if args.iter().any(|a| a == "--fold-lemma") {

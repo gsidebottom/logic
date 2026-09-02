@@ -730,6 +730,32 @@ the two source papers for this track):
   CPU with 12/12 workers busy (matmul/r22/pool_gate.log; 1,10,64 in
   12.9 s over 65,792 tasks). Use --probe-pool for hard roots and any
   t=16 attempt.
+- **LEVEL-2 FOLD LEMMA by orbit exhaustion + the no-op-fold finding
+  (2026-09-01 night, --fold-lemma2)**: two side-A folds = quotient by a
+  2-dim subspace U of A. Classes: 17 GL3xGL3-orbits of the 43,435
+  2-dim subspaces (pencil types; orbit sizes sum exactly). BASE
+  koszul(T|ker U): 12 or 13 for the 9 classes whose pencil contains a
+  rank-1 matrix or is the (2,2,2) pencil with |Stab| = 288 (class 8);
+  exactly 14 with e4 = 918 (the level-1 value!) for the 8 classes of
+  rank profile (2,2,2)/(2,2,3)/(2,3,3)/(3,3,3) without a rank-1
+  member. Then every Stab(U)xGL3-orbit of m evaluated (1.65M orbits,
+  25 min on 12 cores; sizes sum to 511^3 per class; transport gate
+  300/300): classes 0-8 have ZERO leaves for any m (rank can rise by
+  up to 12 and never reaches 911) — the Rank Law one level down: a
+  rank-1 vector anywhere in the fold subspace kills; classes 9-16
+  keep koszul 14 on 96.65-99.90% of products (killers drop exactly
+  12 or 18 = 6-units again). Over ALL (U, m) pairs the level-2 leaf
+  fraction is 71.92%. Tables: matmul/r22/fold_lemma2_tables.tgz
+  (per-class orbit tables), fold_lemma2.out. NO-OP FOLDS: after a
+  fold the pivot coordinate is a zero slice, but deep_probe's lambda
+  still ranged over all 8 other coordinates; a fold INTO a zero slice
+  is an isomorphic relabeling, not a quotient (a minimal decomposition
+  projects off any zero slice, so alpha vanishes there). Half of the
+  level-2 folds, 3/4 of level-3, 7/8 of level-4 were wasted evals.
+  Fixed in deep_probe / deep_probe_par / the pool (lambda over ACTIVE
+  coordinates only; sound; cheap gate + recorded-verdict gate agree).
+  t=16 reach test relaunched on root 0 with the pooled probe + fix
+  (30-min cap) — verdict in the next bullet.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

@@ -1,0 +1,11 @@
+pattern 3/2/3 target 8 koszul 7 side2:ub8: compressed 3x6x5
+   rank<=7: TIMEOUT 120.0s
+   rank<=8: SAT 0.0s
+pattern 3/2/3 target 8 koszul 7 side2:ub8: compressed 3x6x5
+   rank<=7: TIMEOUT 120.0s
+   rank<=8: SAT 0.0s
+pattern 3/2/3 target 8 koszul 7 side2:ub8: compressed 3x6x6
+   rank<=7: TIMEOUT 120.0s
+   rank<=8: SAT 0.0s
+pattern 5/3/0 target 8 koszul 7 side0:ub11: compressed 4x6x6
+   rank<=7: TIMEOUT 120.0s

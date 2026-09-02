@@ -825,6 +825,43 @@ the two source papers for this track):
   3x, which does NOT reach t=16 on its own; the wall is depths 5-6
   (3-4-slice residuals at targets 10-11) where no cheap exact oracle
   is in sight.
+- **The depth-5/6 failures, dissected (2026-09-02, --dump-hard +
+  hard_residual_analysis.py + compressed_sat.py)**: 4,498 residuals
+  dumped from a 3-min t=16 run on root 0 (thinnest side with 3-4
+  active slices; "hard" = every floor fails, "leaf" = Koszul settles;
+  any side mix). STRUCTURE: hard and leaf residuals look the SAME —
+  common kernel of dimension 3 (occasionally 4-5), row span 6, column
+  span 6, slice ranks 2-3 (3-slice) or 1-4 (4-slice) — i.e. they are
+  CONCISE 3x6x6 / 4x6x6 / 3x6x5 tensors embedded in 9x9 coordinates;
+  the only difference is Koszul 8 (leaf) vs 7 (hard) at target 8.
+  The pure-side-A hard nodes (14 of 4,498) are the degenerate ones
+  (slice ranks 2,3,3 -> rank <= 8 < 10): an upper-bound early-fail
+  (sum of ranks of a greedy low-rank basis of the slice span, sound
+  and verdict-preserving, --no-ub-fail to disable) catches exactly
+  those and fires only ~2,300 times in 29 min — the bulk is NOT
+  refutable that way. EXACT RANK by SAT on the compressed instances
+  (98-140 variables): rank <= target is SAT in 0.0 s on every sample
+  (so true rank <= target), rank <= target-1 times out at 120 s on
+  every sample: the hard nodes are (almost certainly) TRUE nodes of
+  rank exactly the target that Koszul misses by one and nothing cheap
+  certifies. ORACLE VERDICT: no lower-bound oracle is in sight for
+  concise 3-4 x 6 x 6 tensors at ranks 7-9 over F2 (SAT UNSAT-side is
+  minutes+, no closed form). What IS in sight, and is the real
+  diagnosis of the wall: the probe folds in the 9x9 coordinates, so a
+  concise 3x6x5 residual still fans 2^8 on sides B and C where a
+  basis of the 6-dim slice span would fan 2^5; and the depth cap 8
+  cuts exactly where those small subtrees (fans 4/32/16/8...) would
+  finish the proof by flatten. RECOMMENDATION if the t=16 push is
+  reopened: (1) reduce every residual to its concise form (rref the
+  slice matrices on all three sides; an isomorphism, so sound), (2)
+  key the memo by the concise tensor + (target, depth) instead of the
+  fold subspaces, (3) raise the depth cap to ~12, (4) gate with
+  known-value tensors (<2,2,2>: true at 7, must be false at 8).
+  Expected effect: the deep layers' fans drop by 8-16x per level and
+  the cap failures (181K/run) disappear; whether the level 1-4 tree
+  (about 3,000 depth-3 nodes x their subtrees) then fits a day is the
+  measurement to make. t=16 remains unresolved at 30 min x 12 cores in
+  all three configurations tried today (memo, ub-fail naive, greedy).
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

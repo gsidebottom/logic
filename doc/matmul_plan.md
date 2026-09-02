@@ -911,6 +911,15 @@ the two source papers for this track):
   still valid) -> depth cap => 'unresolved' never 'proven'. Gates:
   known values, recorded verdicts, and the r=15 rung reproduced at
   ~100x lower cost. Next: r=17 (root 0 launched, 1-h cap, depth 13).
+- **r=17 root 0: unresolved at 1 h, but a search in progress, not a
+  wall (2026-09-02 midday, t17_root0.err)**: depth 13, 12 cores: 312M
+  nodes run, 12 of 28 level-1 reps and 835 of 1,536 level-2 nodes
+  evaluated (no leaves before depth 3 at these targets); memo grew to
+  286M entries (~12 GB) — a per-shard entry cap with clear-on-overflow
+  added (--memo-cap, default 120M). Extrapolating the level-1/2
+  fractions, root 0 at r=17 is a few hours; the 211-root rung would be
+  days at this rate unless the deep layers (depths 9-11: 260M nodes,
+  memo hits 2x runs) shrink further. Relaunched with a 4-h cap.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

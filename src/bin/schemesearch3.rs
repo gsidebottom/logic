@@ -1781,11 +1781,25 @@ impl FoldSet {
 /// transposition table: residual key -> verdict (sharded)
 struct Memo {
     shards: Vec<std::sync::Mutex<std::collections::HashMap<([u64; 2], u32), bool>>>,
+    /// entry cap: when exceeded (checked per shard, cap/64 each) the shard
+    /// is cleared — bounded memory, transient hit-rate loss (2026-09-02:
+    /// r=17 root 0 reached 286M entries in an hour).
+    cap_per_shard: usize,
+    clears: AtomicU64,
 }
 
 impl Memo {
     fn new() -> Memo {
-        Memo { shards: (0..64).map(|_| std::sync::Mutex::new(Default::default())).collect() }
+        let cap: usize = std::env::args()
+            .position(|a| a == "--memo-cap")
+            .and_then(|i| std::env::args().nth(i + 1))
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(120_000_000);
+        Memo {
+            shards: (0..64).map(|_| std::sync::Mutex::new(Default::default())).collect(),
+            cap_per_shard: cap / 64,
+            clears: AtomicU64::new(0),
+        }
     }
     fn shard(&self, k: &([u64; 2], u32)) -> &std::sync::Mutex<std::collections::HashMap<([u64; 2], u32), bool>> {
         let h = k.0[0] ^ k.0[1].rotate_left(17) ^ (k.1 as u64).wrapping_mul(0x9e3779b97f4a7c15);
@@ -1795,7 +1809,13 @@ impl Memo {
         self.shard(k).lock().unwrap().get(k).copied()
     }
     fn put(&self, k: ([u64; 2], u32), v: bool) {
-        self.shard(&k).lock().unwrap().insert(k, v);
+        let mut s = self.shard(&k).lock().unwrap();
+        if s.len() >= self.cap_per_shard {
+            s.clear();
+            s.shrink_to_fit();
+            self.clears.fetch_add(1, Ordering::Relaxed);
+        }
+        s.insert(k, v);
     }
     fn len(&self) -> usize {
         self.shards.iter().map(|s| s.lock().unwrap().len()).sum()
@@ -2377,9 +2397,10 @@ fn deep_probe_pool(
                     }
                     if t0.elapsed().as_secs() >= next {
                         eprintln!(
-                            "pool stats at {}s (memo entries {}):\n{}",
+                            "pool stats at {}s (memo entries {}, shard clears {}):\n{}",
                             t0.elapsed().as_secs(),
                             pool.memo.as_ref().map_or(0, |m| m.len()),
+                            pool.memo.as_ref().map_or(0, |m| m.clears.load(Ordering::Relaxed)),
                             pool.stats.report()
                         );
                         next += report_every_s;

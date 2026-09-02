@@ -766,6 +766,30 @@ the two source papers for this track):
   in Stab(R), so one rep per orbit proves the whole AND); recurse
   with Stab(m, v). Plus per-depth task/leaf statistics from the pool
   to see where the tree actually spends.
+- **t=16 verdict with every lever applied: still a wall; the profile
+  says why (2026-09-01/02 night)**: pooled probe + active-coordinate
+  folds + FOLD-ORBIT PRUNING under Stab(root) (root 0 = (E11,E11,E11),
+  |Stab| = 216: level-1 fan 256 -> 28 reps, level-2 1536 -> 1440;
+  sound, gated: verdicts equal the serial probe on 6 recursion cases
+  and the recorded t=15 verdicts on 4 roots; t=15 on root 1,10,64
+  went 65,792 -> 6,144 -> 1,473 tasks through the three levers) —
+  30-min cap, 12 cores: UNRESOLVED (exit 124). Per-depth profile at
+  1740 s (t16_root0_sym.err): depths 0-3 run 0/12/12/24 nodes, depth 4
+  1,331, depth 5 82K, depth 6 266K, depth 7 991K, depth 8 3.36M with
+  427,697 failures AT THE DEPTH CAP (target 8 on a 1-slice residual
+  needs flatten >= 8) — i.e. in 29 min the search had not finished
+  ONE level-2 subtree; the cost is intrinsic to targets 11..8 at
+  depths 5..8, where the floors (flatten <= 9, koszul ~10-11 on 3-4
+  A-slices) sit below the target. BALANCED side order (fold the side
+  with most active coords) tested as --balanced: verdict-equivalent,
+  but LOSES at t=15 (root 84,10,142: 0.44 s -> 126 s; 1,10,64: 0.39 s
+  -> 11.8 s) because keeping all sides near 9 active keeps every
+  level's fan at 256 while A-first halves it per level; not the
+  lever. STANDING VERDICT: rank > 15 is where substitution+Koszul
+  rests; t=16 needs a stronger intermediate oracle (rank >= 11..13 on
+  3-4-slice residuals), not more search engineering. Machinery kept:
+  --probe-pool (12-core work queue, per-depth stats every 60 s,
+  --no-fold-sym, --balanced), --fold-lemma / --fold-lemma2 tables.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

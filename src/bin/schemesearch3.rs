@@ -1692,6 +1692,7 @@ struct PoolStats {
     folds_kept: Vec<AtomicU64>,
     memo_t: Vec<AtomicU64>,
     memo_f: Vec<AtomicU64>,
+    ub_fail: Vec<AtomicU64>,
 }
 
 impl PoolStats {
@@ -1709,17 +1710,18 @@ impl PoolStats {
             folds_kept: mk(),
             memo_t: mk(),
             memo_f: mk(),
+            ub_fail: mk(),
         }
     }
     fn report(&self) -> String {
-        let mut s = String::from("  depth: run skipped | leaf flat/strassen/koszul | expanded failed | folds kept/total | memo hits T/F\n");
+        let mut s = String::from("  depth: run skipped | leaf flat/strassen/koszul | expanded failed | folds kept/total | memo hits T/F | ub-fail\n");
         for d in 0..self.run.len() {
             let g = |v: &Vec<AtomicU64>| v[d].load(Ordering::Relaxed);
             if g(&self.run) == 0 && g(&self.folds_total) == 0 {
                 continue;
             }
             s.push_str(&format!(
-                "  {d}: {} {} | {}/{}/{} | {} {} | {}/{} | {}/{}\n",
+                "  {d}: {} {} | {}/{}/{} | {} {} | {}/{} | {}/{} | {}\n",
                 g(&self.run),
                 g(&self.skipped),
                 g(&self.leaf_flat),
@@ -1730,11 +1732,74 @@ impl PoolStats {
                 g(&self.folds_kept),
                 g(&self.folds_total),
                 g(&self.memo_t),
-                g(&self.memo_f)
+                g(&self.memo_f),
+                g(&self.ub_fail)
             ));
         }
         s
     }
+}
+
+/// Sum-of-slice-ranks UPPER bound on the rank of a residual, minimized over
+/// the three sides (each side's slices are the rows of the residual in its
+/// major layout). A residual whose upper bound is below the target cannot
+/// be proven to the target by any sound probe, so the node FAILS at once
+/// (genuine adversary win) instead of after fanning its subtree to the
+/// depth cap. Verdicts are unchanged; only the work is (2026-09-02).
+fn rank_upper_bound(r: &R3) -> u32 {
+    // rank(T) <= sum of ranks of ANY basis of the slice span; pick the
+    // basis greedily from the lowest-rank combinations (all 2^k - 1 for
+    // k <= 6 active slices, else the plain slice sum).
+    let mut best = u32::MAX;
+    for layout in [&r.abc, &r.bca, &r.cab] {
+        let slices: Vec<M9> = (0..9)
+            .map(|i| slice_m9(layout, i))
+            .filter(|m| m.iter().any(|&x| x != 0))
+            .collect();
+        let k = slices.len();
+        let s = if k == 0 {
+            0
+        } else if k > 6 {
+            slices.iter().map(m9_rank).sum()
+        } else {
+            let mut combos: Vec<(u32, u32)> = Vec::with_capacity((1 << k) - 1);
+            for mask in 1u32..(1 << k) {
+                let mut m = [0u16; 9];
+                for i in 0..k {
+                    if mask >> i & 1 == 1 {
+                        for j in 0..9 {
+                            m[j] ^= slices[i][j];
+                        }
+                    }
+                }
+                combos.push((m9_rank(&m), mask));
+            }
+            combos.sort();
+            // greedy basis of the k-dim coefficient space (masks as vectors)
+            let mut basis: Vec<u32> = Vec::new(); // reduced masks
+            let mut total = 0u32;
+            for &(rk, mask) in &combos {
+                let mut v = mask;
+                for &b in &basis {
+                    if v >> (31 - b.leading_zeros()) & 1 == 1 {
+                        v ^= b;
+                    }
+                }
+                if v != 0 {
+                    // keep basis sorted by leading bit descending for reduction
+                    basis.push(v);
+                    basis.sort_by_key(|b| std::cmp::Reverse(31 - b.leading_zeros()));
+                    total += rk;
+                    if basis.len() == k {
+                        break;
+                    }
+                }
+            }
+            total
+        };
+        best = best.min(s);
+    }
+    best
 }
 
 /// side action of a sandwich element on a 9-bit vector of that side
@@ -1754,6 +1819,11 @@ struct Pool<'a> {
     result: AtomicBool,
     stats: PoolStats,
     memo: Option<Memo>,
+    /// --dump-hard FILE: pure-side-A residuals at depths 5-6 (3-4 active
+    /// A-slices) that fail every floor ("hard") plus a matched sample that
+    /// Koszul settles ("leaf"), for the oracle study (2026-09-02).
+    dump: Option<std::sync::Mutex<(std::fs::File, [u32; 2], [u32; 2])>>,
+    ub_fail: bool,
     /// BALANCED side order (2026-09-01): try the side with the MOST active
     /// coordinates first (ties A,B,C). Always folding A first drives the
     /// residual to a near-matrix (1-2 A-slices) where flatten caps at 9
@@ -1977,17 +2047,61 @@ impl<'a> Pool<'a> {
         }
         self.stats.run[d].fetch_add(1, Ordering::Relaxed);
         let (r, t) = (&task.r, task.t);
+        if self.ub_fail && rank_upper_bound(r) < t {
+            self.stats.ub_fail[d].fetch_add(1, Ordering::Relaxed);
+            if let Some(memo) = &self.memo {
+                memo.put(key, false);
+            }
+            self.and_child_fail(&task.parent);
+            return;
+        }
+        let dump_line = |kind: &str, kos: u32| {
+            if let Some(dm) = &self.dump {
+                if task.folds.n[1] == 0 && task.folds.n[2] == 0 && (task.folds.n[0] == 5 || task.folds.n[0] == 6) {
+                    let mut g = dm.lock().unwrap();
+                    let slot = (task.folds.n[0] - 5) as usize;
+                    let cap = 1500u32;
+                    let ok = if kind == "hard" { g.1[slot] < cap } else { g.2[slot] < cap };
+                    if ok {
+                        if kind == "hard" { g.1[slot] += 1 } else { g.2[slot] += 1 }
+                        let kt = kt_from_abc(&r.abc);
+                        let mut s = format!(
+                            "{kind} depth {} target {} folds {} flatten {:?} koszul {kos} slices",
+                            task.folds.n[0],
+                            t,
+                            task.folds.v[0][..task.folds.n[0] as usize].iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","),
+                            flatten_ranks3(r)
+                        );
+                        for a in 0..9 {
+                            if kt.t[a].iter().any(|&x| x != 0) {
+                                s.push(' ');
+                                for j in 0..9 {
+                                    s.push_str(&format!("{:03x}", kt.t[a][j]));
+                                }
+                            }
+                        }
+                        use std::io::Write;
+                        writeln!(g.0, "{s}").unwrap();
+                    }
+                }
+            }
+        };
         let leaf = if max_flatten3(r) >= t {
             self.stats.leaf_flat[d].fetch_add(1, Ordering::Relaxed);
             true
         } else if t <= 13 && strassen_bound3(r, 8) >= t {
             self.stats.leaf_str[d].fetch_add(1, Ordering::Relaxed);
             true
-        } else if koszul_bound3(r, 4) >= t {
-            self.stats.leaf_kos[d].fetch_add(1, Ordering::Relaxed);
-            true
         } else {
-            false
+            let kos = koszul_bound3(r, 4);
+            if kos >= t {
+                self.stats.leaf_kos[d].fetch_add(1, Ordering::Relaxed);
+                dump_line("leaf", kos);
+                true
+            } else {
+                dump_line("hard", kos);
+                false
+            }
         };
         if leaf {
             if let Some(memo) = &self.memo {
@@ -2031,6 +2145,7 @@ fn deep_probe_pool(
     report_every_s: u64,
     balanced: bool,
     memo: bool,
+    dump_path: Option<String>,
 ) -> (bool, u64, u64, String) {
     use std::sync::Arc;
     if max_flatten3(r) >= t
@@ -2050,6 +2165,8 @@ fn deep_probe_pool(
         result: AtomicBool::new(false),
         stats: PoolStats::new(depth_left as usize + 2),
         memo: if memo { Some(Memo::new()) } else { None },
+        dump: dump_path.map(|p| std::sync::Mutex::new((std::fs::File::create(p).unwrap(), [0; 2], [0; 2]))),
+        ub_fail: !std::env::args().any(|a| a == "--no-ub-fail"),
         balanced,
     };
     let root = Arc::new(PoolOr {
@@ -3934,7 +4051,7 @@ fn main() {
                     .find(|x| (x.0, x.1, x.2) == (al, be, ga))
                     .map(|x| x.3.clone())
                     .unwrap_or_default();
-                let (pooled, run, skipped, rep) = deep_probe_pool(&r3, &masks, tt, dd, threads, &sym, 0, args.iter().any(|a| a == "--balanced"), !args.iter().any(|a| a == "--no-memo"));
+                let (pooled, run, skipped, rep) = deep_probe_pool(&r3, &masks, tt, dd, threads, &sym, 0, args.iter().any(|a| a == "--balanced"), !args.iter().any(|a| a == "--no-memo"), None);
                 let tp = t0.elapsed().as_secs_f64();
                 println!(
                     "root {ri} t={tt} depth={dd}: {how} {baseline} [{ts:.2}s] pooled {pooled} [{tp:.2}s; {run} tasks run, {skipped} skipped; |Stab| {}]\n{rep}",
@@ -3958,7 +4075,7 @@ fn main() {
                 r3.xor_product(al, be, ga);
                 let tr = Instant::now();
                 let sym: &[StabElem] = if no_sym { &[] } else { elems };
-                let (ok, run, skipped, rep) = deep_probe_pool(&r3, &masks, t, dmax, threads, sym, 60, args.iter().any(|a| a == "--balanced"), !args.iter().any(|a| a == "--no-memo"));
+                let (ok, run, skipped, rep) = deep_probe_pool(&r3, &masks, t, dmax, threads, sym, 60, args.iter().any(|a| a == "--balanced"), !args.iter().any(|a| a == "--no-memo"), get("--dump-hard"));
                 eprintln!("{rep}");
                 if ok {
                     ok_c += 1;

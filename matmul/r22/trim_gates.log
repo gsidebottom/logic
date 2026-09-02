@@ -1,0 +1,63 @@
+<2,2,2> (rank 7) target 7: pooled true [0.01s; 83 tasks]
+  depth: run skipped | leaf flat/strassen/koszul | expanded failed | folds kept/total | memo hits T/F | ub-fail
+  0: 0 0 | 0/0/0 | 0 0 | 8/8 | 0/0 | 0
+  1: 8 0 | 0/0/4 | 4 0 | 56/56 | 0/0 | 0
+  2: 40 4 | 0/0/14 | 15 0 | 88/88 | 11/1 | 11
+  3: 35 12 | 16/0/17 | 0 0 | 0/0 | 36/5 | 2
+  memo entries: 63
+
+<2,2,2> (rank 7) target 8: pooled false [0.00s; 8 tasks]
+  depth: run skipped | leaf flat/strassen/koszul | expanded failed | folds kept/total | memo hits T/F | ub-fail
+  0: 0 0 | 0/0/0 | 0 0 | 24/24 | 0/0 | 0
+  1: 8 10 | 0/0/0 | 0 0 | 0/0 | 0/2 | 8
+  memo entries: 6
+
+<2,2,3> (rank 11) target 11: pooled false [0.00s; 114 tasks]
+  depth: run skipped | leaf flat/strassen/koszul | expanded failed | folds kept/total | memo hits T/F | ub-fail
+  0: 0 0 | 0/0/0 | 0 0 | 72/72 | 0/0 | 0
+  1: 22 4 | 0/0/0 | 18 0 | 720/720 | 0/0 | 4
+  2: 39 0 | 0/0/0 | 20 0 | 280/280 | 0/10 | 19
+  3: 26 19 | 0/0/0 | 15 0 | 144/144 | 0/0 | 11
+  4: 11 23 | 0/0/0 | 7 0 | 88/88 | 0/0 | 4
+  5: 12 8 | 1/0/0 | 5 0 | 30/30 | 6/0 | 6
+  6: 3 8 | 0/0/0 | 2 0 | 10/10 | 0/0 | 1
+  7: 1 7 | 0/0/0 | 0 0 | 0/0 | 0/0 | 1
+  memo entries: 49
+
+<2,2,3> (rank 11) target 12: pooled false [0.00s; 12 tasks]
+  depth: run skipped | leaf flat/strassen/koszul | expanded failed | folds kept/total | memo hits T/F | ub-fail
+  0: 0 0 | 0/0/0 | 0 0 | 72/72 | 0/0 | 0
+  1: 12 11 | 0/0/0 | 0 0 | 0/0 | 0/0 | 12
+  memo entries: 10
+
+known-value gate passed (no over-certification)
+root 1,10,64 t=15 depth=6: recorded true [0.00s] pooled true [0.20s; 809 tasks run, 0 skipped; |Stab| 96]
+  depth: run skipped | leaf flat/strassen/koszul | expanded failed | folds kept/total | memo hits T/F | ub-fail
+  0: 0 0 | 0/0/0 | 0 0 | 41/256 | 0/0 | 0
+  1: 41 0 | 0/0/35 | 6 0 | 768/768 | 0/0 | 0
+  2: 768 0 | 0/213/555 | 0 0 | 0/0 | 0/0 | 0
+  memo entries: 809
+
+root 1,10,66 t=15 depth=6: recorded true [0.00s] pooled true [0.28s; 1213 tasks run, 0 skipped; |Stab| 32]
+  depth: run skipped | leaf flat/strassen/koszul | expanded failed | folds kept/total | memo hits T/F | ub-fail
+  0: 0 0 | 0/0/0 | 0 0 | 61/256 | 0/0 | 0
+  1: 61 0 | 0/0/52 | 9 0 | 1152/1152 | 0/0 | 0
+  2: 1152 0 | 0/414/738 | 0 0 | 0/0 | 0/0 | 0
+  memo entries: 1213
+
+root 84,10,142 t=15 depth=6: recorded true [0.00s] pooled true [0.45s; 2248 tasks run, 0 skipped; |Stab| 2]
+  depth: run skipped | leaf flat/strassen/koszul | expanded failed | folds kept/total | memo hits T/F | ub-fail
+  0: 0 0 | 0/0/0 | 0 0 | 200/256 | 0/0 | 0
+  1: 200 0 | 0/0/184 | 16 0 | 2048/2048 | 0/0 | 0
+  2: 2048 0 | 0/1232/816 | 0 0 | 0/0 | 0/0 | 0
+  memo entries: 2248
+
+root 1,1,1 t=15 depth=6: recorded true [0.00s] pooled true [0.18s; 668 tasks run, 0 skipped; |Stab| 216]
+  depth: run skipped | leaf flat/strassen/koszul | expanded failed | folds kept/total | memo hits T/F | ub-fail
+  0: 0 0 | 0/0/0 | 0 0 | 28/256 | 0/0 | 0
+  1: 28 0 | 0/0/23 | 5 0 | 640/640 | 0/0 | 0
+  2: 640 0 | 0/56/584 | 0 0 | 0/0 | 0/0 | 0
+  memo entries: 668
+
+probe-pool-test: all cases agree
+gates passed

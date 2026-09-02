@@ -757,6 +757,45 @@ impl Lemma {
 }
 
 /// max Koszul bound over the three sides, p <= pmax
+/// Koszul bound on a CONCISE residual using its own dimensions: the KT is
+/// trimmed to the active slices on each side (after concision these are
+/// the leading ones), so a 3x4x4 residual builds wedge tables over 3-4
+/// coordinates instead of 9 (microseconds instead of milliseconds). Same
+/// Koszul flattening of the same (honest, small) tensor: sound, and the
+/// bound cannot be weaker than the embedded one on the same side/p since
+/// the embedded rank splits as sum of honest ranks with the same
+/// denominator identity (it is exactly the honest bound at p and p-1).
+fn koszul_bound3_trim(r: &R3, pmax: usize) -> u32 {
+    let kt9 = kt_from_abc(&r.abc);
+    let na = (0..9).filter(|&a| kt9.t[a].iter().any(|&x| x != 0)).count();
+    let nb = (0..9).filter(|&b| (0..9).any(|a| kt9.t[a][b] != 0)).count();
+    let mut cmask = 0u32;
+    for a in 0..9 {
+        for b in 0..9 {
+            cmask |= kt9.t[a][b];
+        }
+    }
+    let nc = cmask.count_ones() as usize;
+    // after concision the active indices are contiguous from 0 on each side;
+    // if not (caller skipped concision), fall back to the embedded bound.
+    let contiguous = (0..9).all(|a| (kt9.t[a].iter().any(|&x| x != 0)) == (a < na))
+        && (0..9).all(|b| ((0..9).any(|a| kt9.t[a][b] != 0)) == (b < nb))
+        && cmask == ((1u32 << nc) - 1);
+    if !contiguous || na == 9 {
+        return koszul_bound3(r, pmax);
+    }
+    let t: Vec<Vec<u32>> = (0..na).map(|a| kt9.t[a][..nb].to_vec()).collect();
+    let kt = KT { da: na, db: nb, dc: nc, t };
+    let mut best = 0usize;
+    for side in 1..=3u8 {
+        let ts = with_side_first(&kt, side);
+        for p in 1..=pmax.min(ts.da.saturating_sub(2)) {
+            best = best.max(koszul_side(&ts, p));
+        }
+    }
+    best as u32
+}
+
 fn koszul_bound3(r: &R3, pmax: usize) -> u32 {
     let kt = kt_from_abc(&r.abc);
     let mut best = 0usize;
@@ -2218,7 +2257,7 @@ impl<'a> Pool<'a> {
             self.stats.leaf_str[d].fetch_add(1, Ordering::Relaxed);
             true
         } else {
-            let kos = koszul_bound3(r, 4);
+            let kos = if self.concise { koszul_bound3_trim(r, 4) } else { koszul_bound3(r, 4) };
             if kos >= t {
                 self.stats.leaf_kos[d].fetch_add(1, Ordering::Relaxed);
                 dump_line("leaf", kos);

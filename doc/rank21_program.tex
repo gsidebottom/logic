@@ -20,7 +20,7 @@
 \title{The Rank-21 Program: Reproduction, Soundness, Exhaustive Negatives,
 and a Certified-Search Architecture for $\langle 3,3,3\rangle$ over $\F$}
 \author{Greg Sidebottom}
-\date{August 31, 2026 (working note)}
+\date{August 31, 2026 (working note); postscript September 2, 2026}
 
 \begin{document}
 \maketitle
@@ -41,11 +41,12 @@ successively stronger rule sets, with machine-checked certificates;
 (iv) a certified-search (CDCL(T)-style) architecture over scheme space whose
 propagator and symmetry components each deliver their theoretical strength
 (measured ablations of $746\times$ and $632{,}384\times$), reaching an
-independent, exhaustively-searched $R_{\F} > 15$ in $3.25$ hours; and
+independent, exhaustively-searched $R_{\F} > 15$ in $3.25$ hours (root set
+completed in the postscript); and
 (v) an empirical structure theorem for the adversary's dangerous moves in the
 substitution game --- \emph{the Rank Law} --- identifying them with rank-one
-covectors, which yields a concrete, well-posed lemma whose proof would
-extend the certified ladder at $\sim$$15\times$ reduced cost. We close with a
+covectors, which yields a concrete, well-posed lemma --- proved by orbit
+exhaustion in the postscript, together with its level-2 form. We close with a
 convergence thesis: three structurally different attacks terminate at the
 same missing object, a cheap rank lower-bound oracle of strength 15--19 for
 arbitrary tensors, and we locate the genuine frontier at scheme size $20$,
@@ -154,6 +155,7 @@ not semantics; every new proof rule since has been gated on known exact
 values first.
 
 \section{Certified scheme search (CDCL(T) over products)}
+\label{sec:search}
 \label{sec:cdclt}
 
 The constructive dual: prove $R_{\F} > r$ by exhausting $r$-product
@@ -248,7 +250,155 @@ $r=16$ rung from $\ge 1.5$ core-years to days. Independent of that
 payoff, the law is the first structural characterization of the
 substitution game's critical directions that we are aware of, and the
 killer set's algebraic description (points of an affine determinantal
-pencil over $\F^8$) suggests it is provable.
+pencil over $\F^8$) suggests it is provable. \emph{(It is: see
+Section~\ref{sec:postscript}, where the lemma and its level-2 form are
+proved by orbit exhaustion, and where the repricing estimate above is
+corrected by measurement.)}
+
+
+\section{Postscript (September 2, 2026): the lemma proved, a symmetry
+defect repaired, and the $r=16$ wall quantified}
+\label{sec:postscript}
+
+\subsection{The case-split lemma, by orbit exhaustion}
+
+Fix a fold vector $v \in A = M_3(\F)$ (the covector of
+Section~\ref{sec:ranklaw} is $\operatorname{tr}(\cdot\, v)$) and a rank-one
+$m = \alpha\otimes\beta\otimes\gamma$. The Koszul data of
+$(\T + m)|_{\ker v}$ is a sandwich invariant of the pair $(m, v)$, and the
+sandwich group is transitive on the rank classes of $v$; so it suffices to
+fix $v$ at a class representative and to enumerate the orbits of $m$ under
+$\mathrm{Stab}(v)\times GL_3$. We enumerate them exactly by a staged
+lexicographically-minimal canonical form and require the orbit sizes to
+sum to $511^3 = 133{,}432{,}831$; every orbit is then evaluated.
+
+\begin{theorem}[case-split lemma, level 1]
+For every rank-one $m$ over $\F$ and every $v$ of matrix rank~$3$, on any
+side, $\kos_{\le 4}\big((\T+m)|_{\ker v}\big) = 14$. The side-$A$, $p=4$
+wedge rank never drops below $912$ (threshold $911$); over the $7{,}029$
+orbits the drop is $0$ (6{,}505 orbits, $122{,}193{,}407$ products) or
+exactly $6$ ($524$ orbits, $11{,}239{,}424$ products), each $6$ split
+$3+3$ across the two honest $8$-dimensional wedges $p=3,4$ on $A/v$
+(both of rank $459$).
+\end{theorem}
+
+\begin{theorem}[rank-2 boundary and rank-1 inheritance]
+For $v$ of rank~$2$ ($14{,}070$ orbits) the fold kills on exactly $108$
+orbits ($774{,}144$ products, $0.58\%$), each dropping the wedge by
+exactly $12 = 6+6$ to Koszul~$13$; the boundary is a finite table.
+For $v$ of rank~$1$ ($3{,}556$ orbits) the base value is $900$ and every
+product is a killer; the perturbation can raise the wedge rank by $6$,
+and the $6$-quantization breaks ($+22 = 10+12$) only where it no longer
+matters.
+\end{theorem}
+
+Gates: the encoded action fixes $\T$ term-by-term (random elements); random
+$(m,v)$ transports agree; every (root, side, $\lambda$) fold of the
+$r=15$ probes is transported to its representative and compared with the
+direct computation ($162{,}048$ triples, zero mismatches), and the
+predicted killer set of the Rank Law's roots reproduces the
+$10{,}338$-line dump byte for byte. The necessary conditions for the
+$108$ rank-2 killers are $\operatorname{tr}(\alpha\beta\gamma)=1$,
+$\operatorname{tr}(v\beta\gamma)=0$, $\rk\alpha\le 2$, $\alpha\ne v$; no
+combination of up to three matrix-rank/trace invariants is a pure
+classifier, so the structural (isotypic) proof stays open --- the
+exhaustion is the proof.
+
+\begin{theorem}[level 2]
+Two successive side-$A$ folds quotient by a $2$-dimensional $U\subset A$.
+The $43{,}435$ such $U$ fall into $17$ pencil classes. Every class whose
+pencil contains a rank-one matrix, and the $(2,2,2)$ pencil with
+stabilizer of order $288$, has $\kos(\T|_{\ker U})\in\{12,13\}$ and admits
+\emph{no} leaf for any $m$ (the perturbation raises the wedge by at most
+$12$, short of $911$). The remaining eight classes keep Koszul $14$ (wedge
+$918$, the level-1 value) on $96.65$--$99.90\%$ of products, the killers
+dropping by exactly $12$ or $18$. Over all $(U,m)$ pairs the level-2 leaf
+fraction is $71.92\%$ ($1.65$ million orbits evaluated; $300$ random
+transports agree).
+\end{theorem}
+
+\subsection{A symmetry defect and its repair}
+
+The invariance gate of the lemma tool failed on first run: the scheme
+search's C-side action, $\gamma\mapsto P^{-1}\gamma R^{-1}$, had been ported
+verbatim from the game engine, which indexes $C$ as $(i,k)$; the search
+indexes $C$ as $(k,i)$, where the same group element acts as
+$R^{-T}\gamma P^{-T}$. The ported action is \emph{not} a symmetry of $\T$,
+so the ``211 first-product orbit representatives'' of
+Section~\ref{sec:search} were representatives of a fake partition: an
+audit under the correct action shows they meet $159$ of the $211$ true
+orbits, leaving $52$ never probed. (The $\alpha$ and $\beta$ stages were
+correct; the counts coincide because the defect is a bijection of the
+orbit set.) Repair: $r=14$ re-exhausts on the corrected representatives
+in $0.7$\,s; the killer-directed deep probe proves $\rk \ge 15$ on all
+$52$ missed orbits in $394$\,s. The $r=15$ row of the ladder now rests on
+a complete, gate-verified representative set. The Rank Law's statements
+concern the dumped residuals themselves and stand; the lemma above
+quantifies over all products. The lesson belongs with the method
+acknowledgment: an orbit reduction must be gated on the object it claims
+to preserve, not on a comment saying it was verified elsewhere.
+
+\subsection{The $r=16$ wall, quantified}
+
+With the lemma in hand we rebuilt the probe for the rung: a work-queue
+implementation that holds all twelve cores (the fanned and root-parallel
+modes tail to eight and one), removal of \emph{no-op folds} (a fold into
+a zero slice is a relabeling, not a quotient; a minimal decomposition
+projects off any zero slice, so half of level-2 and three quarters of
+level-3 evaluations were wasted), fold-orbit pruning under the root's
+stabilizer (one representative per orbit proves the whole conjunction,
+since the rank bound is an isomorphism invariant), and a transposition
+table keyed by the reduced bases of the folded subspaces (an exact key:
+the residual is the projection along $U$ onto the non-pivot coordinates,
+unique given $U$). Verdicts were gated against the serial probe at every
+step. Cumulatively, the $r=15$ proof of one root went from $65{,}792$ to
+$1{,}473$ tasks, and the hardest root from $42.8$ to $13.3$ seconds.
+The $r=16$ rung on root~$0$ nevertheless stayed unresolved at every
+attempt (30 minutes on 12 cores each; the August~31 attempt had reached 70
+core-hours). The per-depth profile explains why
+(nodes evaluated after 29 minutes, memo run):
+\begin{center}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+depth (target) & 4 (12) & 5 (11) & 6 (10) & 7 (9) & 8 (8) \\
+\midrule
+nodes evaluated & 2{,}674 & 87{,}050 & 199{,}245 & 846{,}677 & 2{,}825{,}251 \\
+Koszul leaves & 14 & 78{,}414 & 143{,}622 & 413{,}355 & 2{,}564{,}972 \\
+genuine failures & 0 & 0 & 0 & 0 & 181{,}398 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Pure side-$A$ chains bottom out at depth $7$--$8$ on pencils all three of
+whose combinations have rank $\le 7$; the probe then switches sides, and
+the mixed keys (seven $A$-folds and one $B$-fold: $2^{14}\times 256$) are
+millions, so the deep layers are side-switch fan-outs, not revisits
+(memo hit rate $15$--$50\%$). Balanced side selection (fold the side with
+most active coordinates) is verdict-equivalent but loses at $r=15$ by two
+orders of magnitude, because it keeps every level's fan at $256$.
+In 29 minutes the search had completed $36$ of the roughly $3{,}000$
+depth-3 nodes: the tree is $\sim 100\times$ the budget with every lever
+applied.
+
+Two oracle routes for the small residuals were tested. Plain SAT
+(cadical on a Tseitin encoding of ``rank $\le r$'') is dead: a $9\times 9$
+pencil of known rank $9$ needs $3.5$\,s for the satisfiable side and
+exceeds $60$\,s to refute rank~$8$; random pencils time out at every
+$r\in[8,11]$. An exact pencil oracle via the Kronecker form is feasible
+but the textbook count is wrong over $\F$: brute force
+($\min_X \rk X + \rk(I{+}X) + \rk(A{+}X)$, $n\le 4$) shows an irreducible
+cubic block contributes $+2$, not $+1$, as do $(x+1)^4$ and irreducible
+quartics; block additivity held in every sample. Such an oracle would
+settle depth~$7$ exactly and remove the depth-$8$ layer --- about $70\%$
+of the work, a $3\times$ --- and would not reach the rung. The wall is
+depths $5$--$6$: $3$- and $4$-slice residuals that must be proved to have
+rank $10$--$11$, where Koszul caps at $13$ but fails on the hard
+instances and no cheap exact method is in sight.
+
+\textbf{Standing verdict.} The independent ladder rests at $R_{\F} > 15$
+on a complete representative set. The certified-search route's next rung
+is not a search-engineering problem; it needs a rank oracle of strength
+$10$--$11$ on $3$--$4$-slice residuals over $\F$, the same missing object
+as Section~\ref{sec:outlook} names, one size smaller.
 
 \section{Convergence, the frontier at $r=20$, and outlook}
 \label{sec:outlook}

@@ -607,7 +607,7 @@ fn koszul_rows(t: &KT, p: usize) -> (Vec<Vec<u64>>, usize) {
     let (da, db, dc) = (t.da, t.db, t.dc);
     let cached;
     let computed;
-    let (masks_p, pos_p, pos_q): (&Vec<u32>, &Vec<i32>, &Vec<i32>) = if da == 9 && p <= 7 {
+    let (masks_p, _pos_p, pos_q): (&Vec<u32>, &Vec<i32>, &Vec<i32>) = if da == 9 && p <= 7 {
         cached = wedge_cached(p);
         (&cached.0, &cached.1, &cached.3)
     } else {

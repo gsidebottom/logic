@@ -10,7 +10,7 @@
 //!   asymscore FILE.bits [...] [--models 24] [--max-slack 3]
 //!             [--node-cap 10000000] [--threads N] [--jackpot 40]
 
-use logic::zrescore::*;
+use logic::zrescore::{asym_score_bits, brent_equations, NV};
 use rayon::prelude::*;
 
 fn load_bits(path: &str) -> Vec<u8> {

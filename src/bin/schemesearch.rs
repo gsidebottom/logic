@@ -175,7 +175,6 @@ struct Search {
     products: Vec<(u64, u32, u32, u32)>, // (mask, alpha, beta, gamma), id = index
     suffix_or: Vec<u64>, // suffix_or[i] = OR of masks of ids 0..i (exclusive)
     sub_probe: bool,     // 1-ply substitution probe on top of flattenings
-    t: u64,
     nodes: u64,
     prune_flat: u64,
     prune_cover: u64,
@@ -283,7 +282,6 @@ fn main() {
         products,
         suffix_or,
         sub_probe: args.iter().any(|a| a == "--sub-probe"),
-        t,
         nodes: 0,
         prune_flat: 0,
         prune_cover: 0,

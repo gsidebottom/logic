@@ -633,7 +633,6 @@ fn m3_tr(a: u16) -> u16 {
 
 struct Sym {
     gl: Vec<u16>,            // the 168 invertible matrices
-    idx: Vec<u16>,           // matrix -> index (u16::MAX if singular)
     inv: Vec<usize>,         // index -> index of inverse
     tr: Vec<usize>,          // index -> index of transpose
     mul: Vec<usize>,         // mul[a * 168 + b] = index of gl[a] * gl[b]
@@ -676,7 +675,7 @@ impl Sym {
             }
         }
         let id = idx[id as usize] as usize;
-        Sym { gl, idx, inv, tr, mul, id, left, right }
+        Sym { gl, inv, tr, mul, id, left, right }
     }
     /// composition "apply s first, then g". P acts on the LEFT (as P^T or
     /// P^-1) so P_g^T P_s^T = (P_s P_g)^T; Q and R act on the RIGHT so
@@ -707,19 +706,6 @@ impl Sym {
     fn sub(&self, p: usize, q: usize, rows: &[V]) -> Vec<V> {
         let v: Vec<V> = rows.iter().map(|&m| self.ap(p, q, m)).collect();
         rref(&v)
-    }
-    /// the three side actions for g = (P, Q, R) given as indices
-    fn act_a(&self, g: (usize, usize, usize), rows: &[V]) -> Vec<V> {
-        self.sub(self.tr[g.0], self.tr[g.1], rows)
-    }
-    fn act_b(&self, g: (usize, usize, usize), rows: &[V]) -> Vec<V> {
-        self.sub(self.tr[self.inv[g.1]], self.tr[g.2], rows)
-    }
-    fn act_c(&self, g: (usize, usize, usize), rows: &[V]) -> Vec<V> {
-        self.sub(self.inv[g.0], self.inv[g.2], rows)
-    }
-    fn apply(&self, g: (usize, usize, usize), s: &State) -> State {
-        State { u: self.act_a(g, &s.u), v: self.act_b(g, &s.v), x: self.act_c(g, &s.x) }
     }
     /// lexicographically least image of the state under the group, with a
     /// group element realizing it. Staged: U over all (P,Q); V over the
@@ -1302,7 +1288,7 @@ impl Game {
                 // extension cur + <v> maps under a stabilizer element t to
                 // cur + <t v>; key = least coset representative of t v over t.
                 // One canonical form per orbit; the others get the composed iso.
-                let mut reps: Vec<(State, Vec<(State, (usize, usize, usize))>)> = Vec::new();
+                let reps: Vec<(State, Vec<(State, (usize, usize, usize))>)>;
                 if let Some(sym) = &self.sym {
                     let tc0 = Instant::now();
                     // stabilizer elements deduplicated by the components this side uses

@@ -184,7 +184,7 @@ fn orbit_reps(g: &Geo) -> Vec<(u32, u32)> {
         }
         x
     }
-    let mut union = |p: &mut Vec<u32>, x: u32, y: u32| {
+    let union = |p: &mut Vec<u32>, x: u32, y: u32| {
         let (rx, ry) = (find(p, x), find(p, y));
         if rx != ry {
             p[rx as usize] = ry;

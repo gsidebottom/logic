@@ -756,6 +756,16 @@ the two source papers for this track):
   coordinates only; sound; cheap gate + recorded-verdict gate agree).
   t=16 reach test relaunched on root 0 with the pooled probe + fix
   (30-min cap) — verdict in the next bullet.
+- **t=16 root 0 still out of reach at 6 core-h (2026-09-01 late)**:
+  pooled probe + active-coordinate folds, depth 8, 12 cores, 30-min
+  cap: unresolved (exit 124; t16_root0_pool.err). Better than the
+  70-core-h no-verdict of 2026-08-31 in cost, not in outcome. NEXT
+  LEVER: fold-orbit pruning under the residual's stabilizer — root 0
+  = (E11,E11,E11) has |Stab| = 768, so its 256 level-1 folds collapse
+  to a handful of orbits (sound: rank(R|ker gv) = rank(R|ker v) for g
+  in Stab(R), so one rep per orbit proves the whole AND); recurse
+  with Stab(m, v). Plus per-depth task/leaf statistics from the pool
+  to see where the tree actually spends.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

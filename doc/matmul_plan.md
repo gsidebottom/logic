@@ -881,6 +881,21 @@ the two source papers for this track):
   full root-0 tree at ~2-3x the 29 min done. Launched: t=16 on the
   fast root 1,10,64 (30-min cap; would be the first t=16 verdict), then
   root 0 with a 4-hour cap (t16_fastroot.*, t16_root0_long.*).
+- **FIRST t=16 VERDICT (2026-09-02 ~09:00, 079ea49)**: with the Koszul
+  wedge trimmed to the concise dimensions (a 3x4x4 residual builds
+  tables over 3-4 coordinates, not 9: microseconds, not milliseconds;
+  same flattening of the same honest tensor, sound), the pooled probe
+  proves rank(T + m) >= 16 for root 1,10,64 in 6.1 s (415,993 tasks,
+  261,384 early-aborted) — the same root timed out at 30 min an hour
+  earlier with the 9-dim wedge, and every prior t=16 attempt since
+  2026-08-31 (70 core-h, then 30-min caps x5) was unresolved. Gates
+  before the run: <2,2,2> proves 7 / refuses 8, <2,2,3> refuses 12,
+  recorded t=15 verdicts reproduced. The levers that compounded (all
+  verdict-preserving, all gated): 12-core work queue, active-coordinate
+  folds, fold-orbit pruning, subspace/tensor memo, CONCISION, depth 12,
+  trimmed Koszul. Root 0 (the hardest, |Stab| 216) now running with a
+  4-h cap (t16_root0_long.*); if it resolves, the full 211-root r=16
+  rung is next.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

@@ -920,6 +920,22 @@ the two source papers for this track):
   fractions, root 0 at r=17 is a few hours; the 211-root rung would be
   days at this rate unless the deep layers (depths 9-11: 260M nodes,
   memo hits 2x runs) shrink further. Relaunched with a 4-h cap.
+- **r=17 root 0: unresolved at 4 h — the new wall, ~100x beyond the
+  r=16 cost (2026-09-02 evening, t17_root0_long.err)**: depth 13, 12
+  cores, memo cap 600M (126 shard clears — the key space exceeds the
+  cap, so hits were lost): level-1 24/28 reps expanded, level-2
+  2,937/3,072 evaluated, level-3 145K of 965K folds (15%) after 4 h;
+  depth 7 alone 34M nodes (30% expanded). Extrapolation: ~1 day for
+  root 0, weeks for the rung. NOTE root 0 was not the hardest root at
+  r=16 (4.6 s vs median 9.6 s, max 124.6 s), so the rung is not
+  rescued by easy roots. Where the work is: depths 8-13 (tiny concise
+  residuals, targets 9..4) whose exhaustive substitution subtrees are
+  re-derived because the memo churns. Candidate next levers, in order:
+  (1) exact-rank TABLES for tiny concise tensors (all 3x3x3 over F2 by
+  BFS from rank-ones: 2^27 entries, a 134 MB table; 2xnxn via the
+  Kronecker/block-rank route) so depths >= 9 become leaves; (2) memo
+  keys canonical under the small tensors' own GL symmetries; (3) a
+  larger/hierarchical memo. The r=16 rung stands as the resting point.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

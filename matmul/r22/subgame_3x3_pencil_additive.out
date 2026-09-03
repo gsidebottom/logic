@@ -1,0 +1,2 @@
+k=19: FAILS — exact game value = 0  (11074873 nodes, 26659.84s)
+=> rank_F2(<3,3,3>) >= 0 by the substitution game

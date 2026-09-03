@@ -970,6 +970,17 @@ the two source papers for this track):
   running: --pencil-additive (the optimistic block sum, unsound in
   1.6% of small cases) at k=19 to measure the leaf's CEILING — if
   even that cannot reach 19, the pencil direction is closed for 21.
+- **Pencil CEILING verdict: k=19 FAILS with --pencil-additive too
+  (2026-09-03 morning)**: 11,074,873 nodes / 26,660 s (7.4 h). The
+  optimistic block sum overshoots the true rank in 1.6% of small
+  cases, so this is an upper estimate of what any pencil leaf can do:
+  NOTHING at the root of the Koszul+{A,B} game. Pencil direction closed
+  for 21 regardless of additivity. Automatic follow-up running: k=19
+  with --dump-frontier (3-h sample of the adversary's winning frontier)
+  -> frontier_analysis.py (SAT exact-rank verdicts on the compressed
+  small frontier states: leaf-limited vs genuine) ->
+  frontier19_report.txt. (The "exact game value = 0" line in the
+  additive output is a display artifact of running level 19 alone.)
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

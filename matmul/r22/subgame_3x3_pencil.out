@@ -1,0 +1,4 @@
+k=17: PROVED val >= 17  (+161.05s, 169097 nodes total, 166351 states)
+k=18: PROVED val >= 18  (+2580.93s, 2292271 nodes total, 2150860 states)
+k=19: FAILS — exact game value = 18  (12965832 nodes, 22437.47s)
+=> rank_F2(<3,3,3>) >= 18 by the substitution game

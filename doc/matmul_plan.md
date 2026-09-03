@@ -958,6 +958,18 @@ the two source papers for this track):
   Gates: 2x2 game value stays 7 under both; 3x3 root bounds unchanged.
   Ladder k=17..19 with --pencil launched (8-h cap,
   subgame_3x3_pencil.*): k=17 PROVED in 161 s.
+- **Pencil-leaf ladder VERDICT: k=19 FAILS — the Koszul+{A,B}+pencil
+  game still has exact value 18 (2026-09-03 02:xx,
+  subgame_3x3_pencil.out)**: k=17 PROVED 161 s, k=18 PROVED 2,581 s,
+  k=19 exhaustively refuted at 12,965,832 nodes / 22,437 s (6.2 h; the
+  Koszul-only refutation was 6.79M nodes / 4.15 h — the pencil leaf
+  costs nodes and lifts nothing at the root). The sound leaf (sum of
+  algebraically-closed block values + one F2 excess; exact by brute
+  force for m*n <= 16) is tight on 308/312 random small pencils, so
+  the loss to non-additivity is not the explanation. Follow-up
+  running: --pencil-additive (the optimistic block sum, unsound in
+  1.6% of small cases) at k=19 to measure the leaf's CEILING — if
+  even that cannot reach 19, the pencil direction is closed for 21.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

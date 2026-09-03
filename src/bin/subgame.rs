@@ -412,6 +412,35 @@ fn koszul_bound(t: &Tensor, pmax: usize) -> usize {
     best
 }
 
+/// Pencil leaf (2026-09-02): when a side of the quotient tensor has
+/// dimension exactly 2, the tensor is a matrix pencil and its rank is
+/// computed exactly (Kronecker form over F_2 with brute-forced block
+/// ranks; a sound lower bound for large regular blocks) — strictly
+/// stronger than substitution + flattening on such states (3 x L_2 has
+/// rank 9, substitution certifies 7).
+/// --pencil-additive: the optimistic block-additive value (NOT sound over
+/// F_2; measures the leaf's ceiling only — never for a certificate)
+static PENCIL_ADDITIVE: AtomicBool = AtomicBool::new(false);
+
+fn pencil_bound(t: &Tensor) -> usize {
+    let mut best = 0usize;
+    for side in 1..=3u8 {
+        let ts = with_side_first(t, side);
+        if ts.da != 2 || ts.db == 0 || ts.dc == 0 || ts.db > 9 || ts.dc > 9 {
+            continue;
+        }
+        let a: Vec<u16> = (0..ts.db).map(|b| ts.t[0][b] as u16).collect();
+        let b: Vec<u16> = (0..ts.db).map(|b| ts.t[1][b] as u16).collect();
+        let v = if PENCIL_ADDITIVE.load(Ordering::Relaxed) {
+            logic::pencil::pencil_rank_additive(&a, &b, ts.db, ts.dc)
+        } else {
+            logic::pencil::pencil_rank_lb(&a, &b, ts.db, ts.dc)
+        };
+        best = best.max(v);
+    }
+    best
+}
+
 /// support of the quotient tensor on one side, as a subspace of the
 /// ORIGINAL space containing the killed subspace
 fn support(t: &Tensor, side: u8, killed: &[V], d: usize) -> Vec<V> {
@@ -971,6 +1000,7 @@ struct Game {
     splits: bool, // rank-profile case splits (refinement 2)
     want_cert: bool, // when false, skip iso bookkeeping (memory)
     koszul: usize, // 0 = off; else max p for Koszul flattening leaves
+    pencil: bool,  // exact/sound pencil-rank leaf on any side of dimension 2 (logic::pencil)
     stay: bool,
     par_depth: usize, // adversary branches evaluated in parallel while kills <= par_depth
     sides: Vec<u8>,
@@ -1021,6 +1051,9 @@ impl Game {
         }
         if self.koszul > 0 {
             best = best.max(koszul_bound(&t, self.koszul) as u32);
+        }
+        if self.pencil {
+            best = best.max(pencil_bound(&t) as u32);
         }
         if let Some(wt) = &self.wang {
             if s.v.is_empty() && s.x.is_empty() {
@@ -1207,6 +1240,9 @@ impl Game {
             let tk = Instant::now();
             lb = lb.max(koszul_bound(&t, self.koszul) as u32);
             self.prof[4].fetch_add(ns(tk), Ordering::Relaxed);
+        }
+        if self.pencil && lb < k {
+            lb = lb.max(pencil_bound(&t) as u32);
         }
         if lb < k {
             if let Some(wt) = &self.wang {
@@ -1581,6 +1617,9 @@ fn main() {
     } else {
         None
     };
+    if flag("--pencil-additive") {
+        PENCIL_ADDITIVE.store(true, Ordering::Relaxed);
+    }
     let mut g = Game {
         t0,
         d,
@@ -1589,6 +1628,7 @@ fn main() {
         splits: flag("--splits"),
         want_cert: get("--cert").is_some(),
         koszul: get("--koszul").and_then(|v| v.parse().ok()).unwrap_or(0),
+        pencil: flag("--pencil") || flag("--pencil-additive"),
         stay: flag("--stay"),
         sides: {
             let spec = if flag("--onesided") { "A".to_string() } else { get("--sides").unwrap_or_else(|| "ABC".to_string()) };

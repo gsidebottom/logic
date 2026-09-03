@@ -3,6 +3,7 @@ pub mod cadical;
 pub mod controller;
 pub mod cook_pbp;
 pub mod parity_pbp;
+pub mod pencil;
 pub mod dual;
 pub mod flip;
 pub mod floors;

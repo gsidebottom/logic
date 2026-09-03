@@ -981,6 +981,33 @@ the two source papers for this track):
   small frontier states: leaf-limited vs genuine) ->
   frontier19_report.txt. (The "exact game value = 0" line in the
   additive output is a display artifact of running level 19 alone.)
+- **FRONTIER VERDICT: the substitution game is MOVE-SET-limited, not
+  leaf-limited (2026-09-03, frontier19.txt / frontier19_report.txt)**:
+  a 3-h sample of the k=19 refutation (6.9M of its ~13M nodes) dumped
+  822,622 refuted states (all prover moves failed; 783,417 distinct
+  quotient tensors). Where they sit: depths 8-13, quotient dims
+  (4,5,9), (3,4,9), (4,4,9), (3,5,9), ... — side C is never killed
+  ({A,B} game), A and B are cut to 2-4 and 3-7; the gap k - leaf is 1
+  (408K) or 2 (337K), rarely more. Exact-rank verdicts by SAT on the
+  compressed small states (rank <= k-1; 24 samples per class, 60-s
+  cap; the analysis hit its 2-h cap before the summary, 331 verdicts):
+  213 GENUINE (a decomposition of rank k-1 exists: the adversary's
+  kills really did push the rank below target), 5 LEAF-LIMITED (true
+  rank >= k, Koszul one short; all in the (3,3,9) k=7 class), 113
+  unknown (timeouts, concentrated in the 4-slice classes). Every
+  2-slice class (2,n,9) is 100% genuine — consistent with both pencil
+  leaves lifting nothing. READING: at the frontier the current leaves
+  are already (almost) exact; the adversary's strategy is genuinely
+  good there. A lift at the root would need a leaf that certifies the
+  target at SHALLOWER states (5-6 slices x 5-7 x 9 at targets 12-13),
+  where SAT already cannot decide 4-slice cases. Combined with the
+  eight exhaustive FAILs in Wang's lattice (codim 3-4, table leaves),
+  the value 18 of the Koszul+{A,B} game and Wang's 20 are properties
+  of the substitution MOVE SET over F2, not of leaf strength; the
+  route to 21 is new rules (coset/alignment dynamics, proven WLOG
+  structure) or arguments outside substitution+flattening. Closed
+  this week: pencil leaves (sound and optimistic), small-tensor leaf
+  strength at the frontier.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

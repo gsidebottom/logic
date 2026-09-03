@@ -936,6 +936,28 @@ the two source papers for this track):
   Kronecker/block-rank route) so depths >= 9 become leaves; (2) memo
   keys canonical under the small tensors' own GL symmetries; (3) a
   larger/hierarchical memo. The r=16 rung stands as the resting point.
+- **Kronecker pencil oracle over F2 built; F2 breaks BOTH textbook
+  facts (2026-09-02 evening, c83b292, src/pencil.rs)**: exact rank of a
+  2 x m x n tensor via Kronecker structure (column/row minimal indices
+  from block-Toeplitz nullities; elementary divisors from the Smith form
+  over F2[x] of A + xB and xA + B) + per-block ranks BRUTE-FORCED
+  (min_X rank X + rank(A+X) + rank(B+X); L_eps for eps <= 4, regular
+  blocks of degree <= 5). Findings, all by brute force against random
+  small pencils: (1) L_3 has rank 5 over F2, not Ja'Ja''s eps+1 = 4
+  (the L block is multiplication of a linear form by a degree-(eps-1)
+  polynomial; eps+1 evaluation points are needed and F2 has three);
+  (2) regular blocks: irreducible cubic 5 (= D+2), (x+1)^4 6,
+  irreducible quartic 6; (3) BLOCK ADDITIVITY FAILS: (x+1)^2 (+) N_2
+  has rank 5, not 3+3 — so the block sum is UNSOUND as a lower bound
+  over F2 (Ja'Ja''s additivity is for algebraically closed fields).
+  Sound leaf actually installed (--pencil): sum of the blocks'
+  algebraically-closed values + the single largest F2 excess (the
+  cross-block substitution argument rank(P(+)Q) >= rank(P) + side-dim
+  Q); exact brute force for pencils with m*n <= 16. --pencil-additive
+  = the optimistic block sum, for measuring the leaf's ceiling only.
+  Gates: 2x2 game value stays 7 under both; 3x3 root bounds unchanged.
+  Ladder k=17..19 with --pencil launched (8-h cap,
+  subgame_3x3_pencil.*): k=17 PROVED in 161 s.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

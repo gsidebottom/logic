@@ -1001,6 +1001,12 @@ struct Game {
     want_cert: bool, // when false, skip iso bookkeeping (memory)
     koszul: usize, // 0 = off; else max p for Koszul flattening leaves
     pencil: bool,  // exact/sound pencil-rank leaf on any side of dimension 2 (logic::pencil)
+    /// --dump-frontier FILE (2026-09-03): every refuted state (all prover
+    /// moves failed, or refuted by the dimension upper bound / zero leaf)
+    /// with depth, quotient dims, target, leaf value and, when a side has
+    /// dimension <= 4, the quotient tensor itself — the adversary's
+    /// winning frontier, for exact-rank analysis of the small states.
+    dump: Option<Mutex<(std::fs::File, u64)>>,
     stay: bool,
     par_depth: usize, // adversary branches evaluated in parallel while kills <= par_depth
     sides: Vec<u8>,
@@ -1182,6 +1188,34 @@ impl Game {
     fn get_hi(&self, s: &GState) -> u32 {
         *self.hi.lock().unwrap().get(s).unwrap_or(&u32::MAX)
     }
+    fn dump_state(&self, gs: &GState, kind: &str, k: u32, lb: u32, leaf: [usize; 3], dims: (usize, usize, usize), t: &Tensor) {
+        let Some(dm) = &self.dump else { return };
+        let mut g = dm.lock().unwrap();
+        if g.1 >= 2_000_000 {
+            return;
+        }
+        g.1 += 1;
+        let fmt = |v: &Vec<V>| v.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",");
+        let mut line = format!(
+            "{kind} depth {} dims {},{},{} k {k} lb {lb} leaf {},{},{} u {} v {} x {}",
+            gs.s.u.len() + gs.s.v.len() + gs.s.x.len(),
+            dims.0, dims.1, dims.2,
+            leaf[0], leaf[1], leaf[2],
+            fmt(&gs.s.u), fmt(&gs.s.v), fmt(&gs.s.x)
+        );
+        if dims.0.min(dims.1).min(dims.2) <= 4 {
+            line.push_str(" tensor");
+            for a in 0..t.da {
+                line.push(' ');
+                for b in 0..t.db {
+                    line.push_str(&format!("{:03x}", t.t[a][b]));
+                }
+            }
+        }
+        use std::io::Write;
+        let _ = writeln!(g.0, "{line}");
+    }
+
     fn set_hi(&self, s: &GState, v: u32) {
         let mut m = self.hi.lock().unwrap();
         let e = m.entry(s.clone()).or_insert(u32::MAX);
@@ -1262,12 +1296,14 @@ impl Game {
         }
         if lb == 0 {
             self.set_hi(gs, 1);
+            self.dump_state(gs, "zero", k, lb, leaf, dims, &t);
             return false;
         }
         let ub = (dims.0 * dims.1).min(dims.0 * dims.2).min(dims.1 * dims.2) as u32;
         let ub = ub.min(self.rank_ub);
         if k > ub {
             self.set_hi(gs, ub + 1);
+            self.dump_state(gs, "ub", k, lb, leaf, dims, &t);
             return false;
         }
         // prover: sides ordered by free support dimension (largest first), phi by weight
@@ -1505,6 +1541,7 @@ impl Game {
             }
         }
         self.set_hi(gs, k);
+        self.dump_state(gs, "final", k, lb, leaf, dims, &t);
         false
     }
 }
@@ -1629,6 +1666,7 @@ fn main() {
         want_cert: get("--cert").is_some(),
         koszul: get("--koszul").and_then(|v| v.parse().ok()).unwrap_or(0),
         pencil: flag("--pencil") || flag("--pencil-additive"),
+        dump: get("--dump-frontier").map(|p| Mutex::new((std::fs::File::create(p).unwrap(), 0u64))),
         stay: flag("--stay"),
         sides: {
             let spec = if flag("--onesided") { "A".to_string() } else { get("--sides").unwrap_or_else(|| "ABC".to_string()) };

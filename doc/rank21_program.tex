@@ -494,10 +494,10 @@ lever for exact rank by SAT on these instances is the product-permutation
 symmetry, broken by hand; neither kissat nor satsuma's automatic breaking
 converted it into speed within the budget.
 
-\begin{center}
+\begin{center}\small
 \begin{tabular}{@{}lrrrrr@{}}
 \toprule
-class (sorted dims, target) & population & genuine & leaf-limited & open & est.\ leaf-limited \\
+class (dims, target) & population & genuine & leaf-lim. & open & est.\ leaf-lim. \\
 \midrule
 $(2,\cdot,9)$, $k=6$--$10$ & 96{,}878 & 119 & 1 & 0 & $\sim$1{,}500 \\
 $(3,3,9)$, $k=7$ & 34{,}749 & 16 & 8 & 0 & $\sim$11{,}600 \\
@@ -511,6 +511,7 @@ every side $\ge 5$ & 37{,}904 & --- & --- & --- & no tensor recorded \\
 \bottomrule
 \end{tabular}
 \end{center}
+\normalsize
 \noindent Columns three to five are sample counts ($24$ per class); the last
 column extrapolates proportionally and carries a sampling error of roughly
 $\pm 20\%$ of the class.

@@ -20,7 +20,7 @@
 \title{The Rank-21 Program: Reproduction, Soundness, Exhaustive Negatives,
 and a Certified-Search Architecture for $\langle 3,3,3\rangle$ over $\F$}
 \author{Greg Sidebottom}
-\date{August 31, 2026 (working note); postscript September 2, 2026}
+\date{August 31, 2026 (working note); postscripts September 2 and 4, 2026}
 
 \begin{document}
 \maketitle
@@ -422,6 +422,125 @@ The lesson is methodological and belongs with the acknowledgment below:
 when a search explodes, dump its frontier and look at the objects before
 theorizing about the oracle it lacks. The rung $r=17$ is running as this
 note is finalized.
+
+
+\section{Postscript II (September 4, 2026): pencils, the frontier, and where the
+game actually loses}
+\label{sec:postscript2}
+
+The $r=16$ rung raised the question whether a stronger \emph{leaf} could
+lift the substitution game past its exact value $18$ (Section~\ref{sec:game}).
+We answered it in three steps: an exact pencil oracle, a dump of the
+adversary's winning frontier, and exact-rank verdicts on that frontier.
+
+\subsection{An exact pencil-rank oracle over $\F$, and three textbook facts
+that fail}
+
+A state whose thinnest side has dimension $2$ is a matrix pencil $sA+tB$,
+whose rank is determined by its Kronecker canonical form. We implemented the
+form over $\F$ (minimal indices from the nullities of the block-Toeplitz
+matrices; elementary divisors from the Smith normal form of $A+xB$ and of
+$xA+B$ over $\F[x]$) and computed the rank of each indecomposable block by
+brute force, $\min_X \rk X + \rk(I{+}X) + \rk(C{+}X)$, for $L_\varepsilon$
+with $\varepsilon\le 4$ and regular blocks of degree $\le 5$. Three
+statements that hold over algebraically closed fields fail over $\F$
+(each a brute-force fact, checked against $312$ random small pencils):
+\begin{enumerate}
+\item $\rk L_3 = 5$, not Ja'Ja''s $\varepsilon+1 = 4$: $L_\varepsilon$ is the
+multiplication of a linear form by a polynomial of degree $\varepsilon-1$,
+which needs $\varepsilon+1$ evaluation points, and $\F\cup\{\infty\}$ has
+three.
+\item Regular blocks exceed $D + [\text{non-split}]$: an irreducible cubic
+contributes $D+2 = 5$, $(x+1)^4$ and an irreducible quartic contribute $6$.
+\item \emph{Block additivity fails}: $(x+1)^2 \oplus N_2$ has rank $5$,
+not $3+3$. The block sum is therefore unsound as a lower bound over $\F$;
+it overshot the true rank in $5$ of $312$ random pencils.
+\end{enumerate}
+The leaf actually installed is the sound cross-block substitution bound,
+$\sum_i s_i + \max_i e_i$ ($s_i$ the block's algebraically-closed value,
+$e_i$ its $\F$ excess), exact by brute force for $mn \le 16$; it is tight on
+$308$ of the $312$ pencils.
+
+\begin{observation}[pencil leaves lift nothing]
+With the sound pencil leaf the Koszul$+\{A,B\}$ game still has exact value
+$18$ ($k=19$ refuted exhaustively, $12{,}965{,}832$ nodes, $6.2$\,h). With the
+optimistic block-additive leaf --- unsound, hence an upper estimate of any
+pencil leaf's power --- $k=19$ is again refuted ($11{,}074{,}873$ nodes,
+$7.4$\,h).
+\end{observation}
+
+\subsection{The adversary's winning frontier}
+
+We instrumented the game to dump every refuted state (all prover moves
+failed) with its depth, quotient dimensions, target $k$, leaf value, and
+--- when some side has dimension $\le 4$ --- the quotient tensor itself. A
+$3$-hour sample of the $k=19$ refutation ($6.9$M of its $\sim$$13$M nodes)
+produced $822{,}622$ refuted states, $783{,}417$ distinct tensors, at depths
+$8$--$13$; side $C$ is never killed in the $\{A,B\}$ game, and the target
+exceeds the leaf by $1$ ($408$K states) or $2$ ($337$K), rarely more.
+
+For each dimension class we sampled $24$ states, compressed each to its
+concise form, and asked a SAT solver whether $\rk \le k-1$: satisfiable means
+the adversary's kills genuinely pushed the rank below the target
+(\emph{genuine}); unsatisfiable means the true rank meets the target and the
+leaf is short (\emph{leaf-limited}). Plain cadical at $60$\,s decided $218$
+of $331$: $213$ genuine, $5$ leaf-limited. A four-arm A/B on the $113$
+timeouts at $300$\,s per call (cadical; cadical with a hand lex-leader
+ordering of the products on their $(a,b)$ bits; kissat; and the in-tree
+\texttt{hydra\_satsuma} pipeline, Cook/XOR-GE/satsuma/kissat) decided $47$
+more, all leaf-limited, $46$ of them by the lex-leader arm alone; the other
+three arms decided $3$--$4$ each, and no two arms disagreed. The measured
+lever for exact rank by SAT on these instances is the product-permutation
+symmetry, broken by hand; neither kissat nor satsuma's automatic breaking
+converted it into speed within the budget.
+
+\begin{center}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+class (sorted dims, target) & population & genuine & leaf-limited & open & est.\ leaf-limited \\
+\midrule
+$(2,\cdot,9)$, $k=6$--$10$ & 96{,}878 & 119 & 1 & 0 & $\sim$1{,}500 \\
+$(3,3,9)$, $k=7$ & 34{,}749 & 16 & 8 & 0 & $\sim$11{,}600 \\
+$(3,4,9)$, $k=8$ & 163{,}835 & 12 & 12 & 0 & $\sim$81{,}900 \\
+$(3,5,9)$, $k=9$ & 136{,}424 & 16 & 8 & 0 & $\sim$45{,}500 \\
+$(4,4,9)$, $k=9$ & 137{,}424 & 10 & 14 & 0 & $\sim$80{,}200 \\
+$(3,6,9)$, $k=10$ & 20{,}766 & 13 & 9 & 2 & $\sim$7{,}800 \\
+$(4,5,9)$, $k=10$ & 174{,}556 & 7 & 0 & 17 & unknown \\
+$(3,7,9)$, $(4,6,9)$, $(4,7,9)$, $k=11$--$12$ & 18{,}785 & 21 & 0 & 46 & unknown \\
+every side $\ge 5$ & 37{,}904 & --- & --- & --- & no tensor recorded \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent Columns three to five are sample counts ($24$ per class); the last
+column extrapolates proportionally and carries a sampling error of roughly
+$\pm 20\%$ of the class.
+
+\subsection{Reading}
+
+The game loses in two different ways at two different scales. At the small
+end --- every $2$-dimensional side, and the smallest $3$-dimensional states
+--- the refutations are genuine: the adversary's kills lower the rank below
+the target, and no leaf can change that; this is why both pencil leaves
+lifted nothing. At the mid-size frontier --- concise tensors of roughly
+$3$--$4 \times 6$--$7 \times 6$--$7$ at targets $8$--$10$ --- the decided
+states are leaf-limited $47$ times out of $48$: their true rank meets the
+target and Koszul is one short. Over the sampled classes the extrapolation is
+about $414$K genuine, $228$K leaf-limited and $141$K open states, the open
+mass sitting in $(4,5,9)$ at $k=10$ and above, where lex-leader cadical at
+$300$\,s decided nothing, and in the $37{,}904$ states with every side of
+dimension $\ge 5$, which the dump did not record.
+
+Two consequences. A leaf that certifies $8$--$10$ on those mid-size shapes
+would invalidate the adversary's refutations there; whether the root then
+reaches $19$ is a new question, because the adversary may have other
+replies. And no such leaf is a table or a SAT call: the sample holds $783$K
+distinct tensors, lex-leader SAT needs $0.3$--$267$\,s each, and the number
+of $GL$-orbits of concise $3\times 6\times 7$ tensors over $\F$ is about
+$2^{26}$. What is needed is a cheap bound that closes a gap of exactly one
+on these specific shapes. The natural test set is the class $(3,4,9)$ at
+$k=8$: $164$K states, half leaf-limited on the sample, compressed shape about
+$3\times 4\times 5$; its $47$ refuted instances are archived with their CNFs
+in the repository.
 
 \section{Convergence, the frontier at $r=20$, and outlook}
 \label{sec:outlook}

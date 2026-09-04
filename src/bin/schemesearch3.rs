@@ -1997,6 +1997,10 @@ struct Pool<'a> {
     dump: Option<std::sync::Mutex<(std::fs::File, [u32; 2], [u32; 2])>>,
     ub_fail: bool,
     concise: bool,
+    /// POOL_TASK_CAP env: stop (unresolved) after this many popped tasks
+    popped: AtomicU64,
+    cap: u64,
+    capped: AtomicBool,
     /// BALANCED side order (2026-09-01): try the side with the MOST active
     /// coordinates first (ties A,B,C). Always folding A first drives the
     /// residual to a near-matrix (1-2 A-slices) where flatten caps at 9
@@ -2353,6 +2357,9 @@ fn deep_probe_pool(
         dump: dump_path.map(|p| std::sync::Mutex::new((std::fs::File::create(p).unwrap(), [0; 2], [0; 2]))),
         ub_fail: !std::env::args().any(|a| a == "--no-ub-fail"),
         concise: !std::env::args().any(|a| a == "--no-concise"),
+        popped: AtomicU64::new(0),
+        cap: std::env::var("POOL_TASK_CAP").ok().and_then(|v| v.parse().ok()).unwrap_or(u64::MAX),
+        capped: AtomicBool::new(false),
         balanced,
     };
     let root = Arc::new(PoolOr {
@@ -2384,6 +2391,13 @@ fn deep_probe_pool(
                         q = pool.cv.wait(q).unwrap();
                     }
                 };
+                if pool.popped.fetch_add(1, Ordering::Relaxed) >= pool.cap {
+                    pool.capped.store(true, Ordering::Release);
+                    pool.done.store(true, Ordering::Release);
+                    let _g = pool.queue.lock().unwrap();
+                    pool.cv.notify_all();
+                    return;
+                }
                 pool.run_task(task);
             });
         }
@@ -2411,7 +2425,12 @@ fn deep_probe_pool(
     });
     let run: u64 = pool.stats.run.iter().map(|x| x.load(Ordering::Relaxed)).sum();
     let skipped: u64 = pool.stats.skipped.iter().map(|x| x.load(Ordering::Relaxed)).sum();
-    let rep = format!("{}  memo entries: {}\n", pool.stats.report(), pool.memo.as_ref().map_or(0, |m| m.len()));
+    let rep = format!(
+        "{}  memo entries: {}{}\n",
+        pool.stats.report(),
+        pool.memo.as_ref().map_or(0, |m| m.len()),
+        if pool.capped.load(Ordering::Acquire) { "  CAPPED" } else { "" }
+    );
     (pool.result.load(Ordering::Acquire), run, skipped, rep)
 }
 
@@ -4196,6 +4215,53 @@ fn main() {
         let masks = Masks::build();
         let t3 = build_t3();
         let threads: usize = get("--threads").and_then(|v| v.parse().ok()).unwrap_or(12);
+        if let Some(path) = get("--probe-tensor-file") {
+            // Frontier test (2026-09-04): each line "VERDICT k da db dc <da*db
+            // hex masks t[a][b] over c>" is a quotient tensor of the
+            // substitution game with its exact-rank verdict (leaflim: rank
+            // >= k; genuine: rank <= k-1; open). Run the pooled probe at
+            // target k with all sides; it should certify the leaflim set and
+            // must certify none of the genuine set (POOL_TASK_CAP bounds it).
+            use std::collections::BTreeMap;
+            let mut tally: BTreeMap<(String, &str), u32> = BTreeMap::new();
+            let mut unsound = 0u32;
+            for line in std::fs::read_to_string(&path).unwrap().lines() {
+                let f: Vec<&str> = line.split_whitespace().collect();
+                if f.len() < 5 {
+                    continue;
+                }
+                let verdict = f[0].to_string();
+                let k: u32 = f[1].parse().unwrap();
+                let (da, db, dc): (usize, usize, usize) = (f[2].parse().unwrap(), f[3].parse().unwrap(), f[4].parse().unwrap());
+                let mut tt = [0u64; W];
+                for a in 0..da {
+                    for b in 0..db {
+                        let m = u32::from_str_radix(f[5 + a * db + b], 16).unwrap();
+                        for c in 0..dc {
+                            if m >> c & 1 == 1 {
+                                set(&mut tt, bit(a, b, c));
+                            }
+                        }
+                    }
+                }
+                let r3 = R3::from_abc(&tt);
+                let t0 = Instant::now();
+                let (ok, run, _skipped, rep) = deep_probe_pool(&r3, &masks, k, dmax, threads, &[], 0, false, true, None);
+                let outcome = if ok { "certified" } else if rep.contains("CAPPED") { "capped" } else { "exhausted" };
+                if ok && verdict == "genuine" {
+                    unsound += 1;
+                    eprintln!("UNSOUND: certified rank >= {k} on a genuine (rank <= {}) state: {line}", k - 1);
+                }
+                println!("{verdict} k={k} dims {da}x{db}x{dc}: {outcome} [{:.2}s; {run} tasks]", t0.elapsed().as_secs_f64());
+                *tally.entry((verdict, outcome)).or_insert(0) += 1;
+            }
+            println!("\nTALLY (verdict, probe outcome) -> count:");
+            for (kv, n) in &tally {
+                println!("  {kv:?}: {n}");
+            }
+            println!("unsound certifications: {unsound}");
+            return;
+        }
         if args.iter().any(|a| a == "--pool-known-gate") {
             // known exact ranks over F2: <2,2,2> = 7, <2,2,3> = 11. The
             // probe must never certify one more; it should reach the

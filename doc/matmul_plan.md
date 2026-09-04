@@ -1035,6 +1035,25 @@ the two source papers for this track):
   table nor per-node SAT is a leaf — it needs a cheap bound that closes
   a gap of exactly one on these shapes. Measured lever for exact rank
   by SAT: hand lex-leader (47 vs 3); not kissat, not satsuma.
+- **The pooled probe as a frontier leaf: sound, cheap, certifies ~40%
+  (2026-09-04, --probe-tensor-file, frontier_probe*.out)**: the 331
+  sampled frontier states (52 leaf-limited by SAT, 214 genuine, 65
+  open) run through schemesearch3's pooled probe (concise, ALL three
+  sides — the {A,B} game never kills C, and at a (3,4,9) state side C
+  still has dimension 9 — trimmed Koszul, memo) at target k. Depth 6,
+  2M-task cap: genuine 0/214 certified (negative control holds);
+  leaf-limited 19/52; open 25/65 (4 capped). Median 0.0 s, max 4.5 s
+  per state. Depth 10, 20M cap, on the 73 non-certified: +1
+  leaf-limited, +8 open, the other 64 EXHAUSTED (full tree, no proof)
+  — depth is not the limit; those states are beyond bounded
+  substitution + Koszul from any side. Totals: leaf-limited 20/52,
+  open 33/65, genuine 0/214, zero unsound. By class the probe helps
+  where sides are balanced ((4,4,9) 9/14, (4,6,9) 12/20) and not where
+  a side has dimension 3 ((3,3,9) 0/8, (3,4,9) 3/12 at depth 6): the
+  (3,4,9) k=8 class stays the "gap of one" test set. Decision pending:
+  installing the probe as a budgeted leaf in subgame (the pool lives in
+  schemesearch3.rs; a library refactor of ~1 day) and rerunning k=19 is
+  the experiment that says whether the root moves.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

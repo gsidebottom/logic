@@ -1008,6 +1008,33 @@ the two source papers for this track):
   structure) or arguments outside substitution+flattening. Closed
   this week: pencil leaves (sound and optimistic), small-tensor leaf
   strength at the frontier.
+- **Four-arm A/B on the 113 undecided frontier states — CORRECTS the
+  frontier reading (2026-09-03/04, frontier_ab.py, frontier_ab/results.csv)**:
+  each instance ("rank <= k-1" for a compressed 3- or 4-slice frontier
+  tensor) under cadical, cadical + hand lex-leader on the products'
+  (a,b) bits, kissat, and hydra_satsuma (Cook -> XOR/GE -> satsuma +
+  kissat in Docker; the image was built for this), 300 s per call,
+  12-way parallel, 4 x 113 calls. Verdicts: cadical 3 UNSAT / 1 SAT /
+  109 timeouts; kissat identical; hydra_satsuma identical (its GE
+  stage forced 108 of 1,278 variables but satsuma did not convert the
+  product-permutation symmetry into speed); cadical+lex 47 UNSAT / 0
+  SAT / 66 timeouts, solve times 0.3-267 s. Zero SAT-vs-UNSAT
+  disagreements across arms. Decided instances by slice count: 3-slice
+  32 UNSAT + 1 SAT (11 open), 4-slice 14 UNSAT (54 open), 2-slice 1
+  UNSAT. READING CORRECTION: the earlier 213-genuine sample was
+  dominated by 2-slice and tiny 3-slice states; at the mid-size
+  frontier (3 x ~6 x ~7 at targets 7-10, 4 x ~6 x ~7 at target 9) the
+  decided states are 47 of 48 LEAF-LIMITED — their true rank meets the
+  target and Koszul is one short. So the substitution game is
+  move-set-limited at the small end and LEAF-limited at the mid-size
+  end; a leaf certifying 8-10 on concise 3-4 x 6-7 x 6-7 tensors would
+  invalidate the adversary's refutations there (whether the root then
+  reaches 19 is a new question). Cost reality: 783K distinct frontier
+  tensors in the 3-h sample; lex-SAT decides one in 0.3-267 s; the GL
+  orbit count of concise 3x6x7 tensors over F2 is ~2^26, so neither a
+  table nor per-node SAT is a leaf — it needs a cheap bound that closes
+  a gap of exactly one on these shapes. Measured lever for exact rank
+  by SAT: hand lex-leader (47 vs 3); not kissat, not satsuma.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

@@ -1071,6 +1071,19 @@ the two source papers for this track):
   Run 2 launched: probe depth 5, cap 20K tasks (about 10x cheaper per
   non-certifying call; the frontier test showed depth beyond 6 adds
   little), 24-h ceiling (subgame_3x3_probe2.*).
+- **Probe leaf in the game, run 2: k=19 FAILS — exact value 18 under a
+  FOURTH rule set (2026-09-05, subgame_3x3_probe2.out)**: Koszul + {A,B}
+  + pencil + probe(depth 5, cap 20K tasks): exhaustive refutation at
+  8,280,527 nodes / 32,095 s (8.9 h). Probe: 2,771,435 calls,
+  1,580,481 certifications (57%) — the leaf certified 1.58M states the
+  game could not, and the adversary routed the refutation around all
+  of them. Reading: the root value 18 is not a property of any leaf we
+  can build from bounded substitution + Koszul from any side; the
+  adversary's winning strategy passes through states that are
+  genuinely below target (the small end of the frontier) or beyond the
+  probe (3-dimensional-side classes). Next decisive, cheap test: the
+  probe on the codim-3 children of Wang's six stuck codim-2 orbits at
+  target 18 (his table value 17) — condition 3 of the route to 21.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

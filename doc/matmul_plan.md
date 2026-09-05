@@ -1054,6 +1054,23 @@ the two source papers for this track):
   installing the probe as a budgeted leaf in subgame (the pool lives in
   schemesearch3.rs; a library refactor of ~1 day) and rerunning k=19 is
   the experiment that says whether the root moves.
+- **Probe leaf in the game, run 1: CAP at 12 h (2026-09-05,
+  subgame_3x3_probe.*)**: the probe engine moved into the library
+  (src/probe.rs; schemesearch3 is a thin binary; both gates
+  reproduce), subgame --probe-leaf D / --probe-cap N / --probe-min-dim M
+  (pooled probe at the target on states with a side of dimension <= 4,
+  memoized per canonical state; 2x2 gate: 7 proved, 8 refused). k=19
+  with Koszul + {A,B} + pencil + probe(depth 6, cap 200K tasks):
+  CAPPED at 42,000 s / 6,549,345 nodes, no verdict. Probe: 2,124,162
+  calls, 1,247,003 certifications (59%). Cost: the node rate fell from
+  ~185K per 10 min to ~22K as the search reached regions where the
+  non-certifying 41% of calls ran to the 200K-task cap (~0.8 s of a
+  thread each). Equal-node comparison (6.5M nodes): pencil-only run had
+  667K refuted states at 8,400 s; this run 819K at 42,000 s — the
+  probe changes the tree's shape but the root question stays open.
+  Run 2 launched: probe depth 5, cap 20K tasks (about 10x cheaper per
+  non-certifying call; the frontier test showed depth beyond 6 adds
+  little), 24-h ceiling (subgame_3x3_probe2.*).
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

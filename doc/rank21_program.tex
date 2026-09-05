@@ -543,6 +543,27 @@ $k=8$: $164$K states, half leaf-limited on the sample, compressed shape about
 $3\times 4\times 5$; its $47$ refuted instances are archived with their CNFs
 in the repository.
 
+\paragraph{The probe as a leaf, and the lattice test.} We then tried the
+one leaf we had that is not in the flattening class: the pooled deep
+probe itself (concise residuals, kills on all three sides, trimmed Koszul,
+memo, bounded depth). On the $331$ sampled frontier states it is sound
+($0$ certifications on the $214$ genuine states) and certifies $20$ of the
+$52$ leaf-limited and $33$ of the $65$ open states at depth $6$, most in
+under a second; depth $10$ adds $9$ more and exhausts the rest. Installed in
+the game as a budgeted, memoized leaf at states with a side of dimension
+$\le 4$, it was called $2.77$ million times and certified $57\%$ of those
+states --- and $k=19$ was refuted anyway ($8.28$M nodes, $8.9$\,h): the
+adversary routes the refutation through the genuine half of the frontier
+and the $3$-dimensional-side classes. The exact value $18$ now stands under
+four rule sets. Finally, on Wang's own lattice --- all $14$ codim-2 and $68$
+codim-3 orbits, quotients $7\times 9\times 9$ and $6\times 9\times 9$ --- the
+probe at depth $8$ certifies $0$ of $164$ targets, failing even his table
+values: his DP proves $17$ and $18$ by full-depth substitution memoized over
+the orbit lattice, while a bounded probe from target $18$ must prove
+$10$--$11$ on residuals with two $9$-dimensional sides, which no leaf in this
+class can do. The route to $21$ through a stronger leaf is closed; what
+remains is a change of move set or an argument outside substitution.
+
 \section{Convergence, the frontier at $r=20$, and outlook}
 \label{sec:outlook}
 

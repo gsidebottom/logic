@@ -1084,6 +1084,25 @@ the two source papers for this track):
   probe (3-dimensional-side classes). Next decisive, cheap test: the
   probe on the codim-3 children of Wang's six stuck codim-2 orbits at
   target 18 (his table value 17) — condition 3 of the route to 21.
+- **Condition 3 FAILS: the probe cannot reach Wang's lattice values,
+  let alone lift them (2026-09-05, wang_orbit_probe.*)**: all 14
+  codim-2 and 68 codim-3 orbits of his table (quotients T|ker U,
+  7x9x9 and 6x9x9) run through the pooled probe at depth 8, 20M-task
+  cap, both at table+1 (lift) and at the table value (control): 0 of
+  164 certified — 160 exhausted (full tree, no proof; most in under 2
+  s), 2 capped, max 125 s. The probe does not even reproduce his 18s
+  and 17s: his DP proves them by full-depth substitution memoized over
+  the orbit lattice, while a depth-8 probe from target 18 must prove
+  targets 10-11 on residuals that still have two 9-dimensional sides,
+  which its leaves cannot do. It certified our game's frontier
+  because those states had targets 7-10 at dimensions 3-4 on every
+  side. VERDICT on the route to 21 via the probe: closed. Standing
+  results: game value 18 under four rule sets; Wang's 20 unmatched by
+  anything we built; the leaf-limited frontier of our game is real
+  but irrelevant to his lattice's frontier, which sits at targets
+  15-18 with two full sides. What remains for 21 is items 3 and 4:
+  new move rules with content (coset/alignment dynamics, proved Rank
+  Law case splits) or arguments outside substitution + flattening.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

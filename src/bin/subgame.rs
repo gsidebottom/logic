@@ -1001,6 +1001,18 @@ struct Game {
     want_cert: bool, // when false, skip iso bookkeeping (memory)
     koszul: usize, // 0 = off; else max p for Koszul flattening leaves
     pencil: bool,  // exact/sound pencil-rank leaf on any side of dimension 2 (logic::pencil)
+    /// --probe-leaf D (2026-09-04): at a state whose bound is below the
+    /// target and whose thinnest side has dimension <= probe_min_dim, run
+    /// the pooled deep probe (logic::probe: concise, all three sides,
+    /// trimmed Koszul, memo) at the target with depth D and a task cap
+    /// (--probe-cap, env POOL_TASK_CAP); a certification is a sound
+    /// substitution proof of rank >= target. Memoized per canonical state
+    /// by the game's own lo/hi tables.
+    probe_depth: u32,
+    probe_min_dim: usize,
+    probe_masks: Option<logic::probe::Masks>,
+    probe_calls: AtomicU64,
+    probe_hits: AtomicU64,
     /// --dump-frontier FILE (2026-09-03): every refuted state (all prover
     /// moves failed, or refuted by the dimension upper bound / zero leaf)
     /// with depth, quotient dims, target, leaf value and, when a side has
@@ -1251,14 +1263,16 @@ impl Game {
                 && self.last_beat.compare_exchange(last_ms, el_ms, Ordering::Relaxed, Ordering::Relaxed).is_ok()
             {
                 eprintln!(
-                    "c heartbeat {:.0}s: nodes {} states {} failed {} forms {} hits {}",
+                    "c heartbeat {:.0}s: nodes {} states {} failed {} forms {} hits {} probe {}/{}",
                     el,
                     n,
                     self.lo.lock().unwrap().len(),
                     self.hi.lock().unwrap().len(),
                     self.n_canon.load(Ordering::Relaxed),
                     self.n_canon_hit.load(Ordering::Relaxed)
-                );
+                ,
+                    self.probe_calls.load(Ordering::Relaxed),
+                    self.probe_hits.load(Ordering::Relaxed));
             }
         }
         let tq = Instant::now();
@@ -1277,6 +1291,27 @@ impl Game {
         }
         if self.pencil && lb < k {
             lb = lb.max(pencil_bound(&t) as u32);
+        }
+        if self.probe_depth > 0 && lb < k && t.da.min(t.db).min(t.dc) <= self.probe_min_dim && t.da <= 9 && t.db <= 9 && t.dc <= 9 {
+            if let Some(masks) = &self.probe_masks {
+                let mut tt = [0u64; logic::probe::W];
+                for a in 0..t.da {
+                    for b in 0..t.db {
+                        for c in 0..t.dc {
+                            if t.t[a][b] >> c & 1 == 1 {
+                                logic::probe::set(&mut tt, logic::probe::bit(a, b, c));
+                            }
+                        }
+                    }
+                }
+                let r3 = logic::probe::R3::from_abc(&tt);
+                self.probe_calls.fetch_add(1, Ordering::Relaxed);
+                let (ok, _, _, _) = logic::probe::deep_probe_pool(&r3, masks, k, self.probe_depth, 1, &[], 0, false, true, None);
+                if ok {
+                    self.probe_hits.fetch_add(1, Ordering::Relaxed);
+                    lb = k;
+                }
+            }
         }
         if lb < k {
             if let Some(wt) = &self.wang {
@@ -1635,6 +1670,12 @@ fn certificate(g: &Game, n: usize, root: &GState, proofs: &HashMap<GState, Proof
 }
 
 fn main() {
+    if let Some(i) = std::env::args().position(|a| a == "--probe-cap") {
+        if let Some(v) = std::env::args().nth(i + 1) {
+            // single-threaded here (before any worker starts): sound to set
+            unsafe { std::env::set_var("POOL_TASK_CAP", v) };
+        }
+    }
     let args: Vec<String> = std::env::args().collect();
     let get = |k: &str| args.iter().position(|a| a == k).and_then(|i| args.get(i + 1).cloned());
     let flag = |k: &str| args.iter().any(|a| a == k);
@@ -1666,6 +1707,11 @@ fn main() {
         want_cert: get("--cert").is_some(),
         koszul: get("--koszul").and_then(|v| v.parse().ok()).unwrap_or(0),
         pencil: flag("--pencil") || flag("--pencil-additive"),
+        probe_depth: get("--probe-leaf").and_then(|v| v.parse().ok()).unwrap_or(0),
+        probe_min_dim: get("--probe-min-dim").and_then(|v| v.parse().ok()).unwrap_or(4),
+        probe_masks: if get("--probe-leaf").is_some() { Some(logic::probe::Masks::build()) } else { None },
+        probe_calls: AtomicU64::new(0),
+        probe_hits: AtomicU64::new(0),
         dump: get("--dump-frontier").map(|p| Mutex::new((std::fs::File::create(p).unwrap(), 0u64))),
         stay: flag("--stay"),
         sides: {

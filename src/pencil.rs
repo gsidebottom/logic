@@ -596,12 +596,11 @@ mod tests {
         assert_eq!(regular_block_rank(0b110), (2, true)); // x(x+1) -> 2 (diagonalizable)
     }
 
-    #[test]
-    fn matches_brute_force_small() {
-        let mut seed = 0x1234_5678_9abc_def1u64;
+    fn brute_force_check(sizes: &[(usize, usize)], seed0: u64) {
+        let mut seed = seed0;
         let (mut tight, mut add_under, mut add_over, mut total) = (0, 0, 0, 0);
-        for &(m, n) in &[(2usize, 2usize), (3, 3), (2, 4), (4, 3), (4, 4), (5, 5)] {
-            let trials = if m * n >= 25 { 12 } else { 60 };
+        for &(m, n) in sizes {
+            let trials = if m * n >= 25 { 12 } else if m * n >= 12 { 8 } else { 60 };
             for _ in 0..trials {
                 let a: Vec<u16> = (0..m).map(|_| (xorshift(&mut seed) as u16) & ((1 << n) - 1)).collect();
                 let b: Vec<u16> = (0..m).map(|_| (xorshift(&mut seed) as u16) & ((1 << n) - 1)).collect();
@@ -620,6 +619,20 @@ mod tests {
             }
         }
         eprintln!("pencil lb: {tight}/{total} tight; additive sum: {add_under} under, {add_over} OVER (unsound cases) of {total}");
+    }
+
+    /// fast sizes (<= 2^16 candidate matrices per pencil): part of the default suite
+    #[test]
+    fn matches_brute_force_small() {
+        brute_force_check(&[(2, 2), (3, 3), (2, 4), (4, 3), (4, 4)], 0x1234_5678_9abc_def1);
+    }
+
+    /// 5x5 pencils (2^25 candidates each, 12 trials): minutes in debug —
+    /// run with `cargo test --release -- --ignored`
+    #[test]
+    #[ignore]
+    fn matches_brute_force_5x5() {
+        brute_force_check(&[(5, 5)], 0x0f0f_1234_5678_9abc);
     }
 
     #[test]

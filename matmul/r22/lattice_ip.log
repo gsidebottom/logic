@@ -1,0 +1,6 @@
+constraints: 44457 (511 codim-1, 43435 codim-2, 511 slice-rank); variables: 511
+LP relaxation: 19.0941 [39.7s] -> ceil 20
+MIP: status 1 (Time limit reached. (HiGHS Status 13: Time limit reached)); objective 21.0; mip_dual_bound 20.0; mip_gap 0.047619047619047616 [2404.3s]
+an optimal type distribution (c, m_c): [(1, np.int64(1)), (5, np.int64(1)), (6, np.int64(1)), (7, np.int64(1)), (9, np.int64(1)), (27, np.int64(1)), (45, np.int64(1)), (64, np.int64(1)), (70, np.int64(1)), (72, np.int64(1)), (125, np.int64(1)), (130, np.int64(1)), (187, np.int64(1)), (292, np.int64(1)), (310, np.int64(1)), (351, np.int64(1)), (379, np.int64(1)), (438, np.int64(1)), (455, np.int64(1)), (461, np.int64(1)), (507, np.int64(1))]
+ranks of the types: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3]
+exit 0

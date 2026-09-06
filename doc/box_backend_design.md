@@ -409,7 +409,16 @@ checked propositionally as two valid implications:
 - **completeness** — `adder ⇒ full_adder`: every model of the box, restricted
   to the interface, is a row (0 uncovered paths);
 - **soundness** — `full_adder ⇒ adder[U1 := X·Y, U3 := X ⊕ Y, U2 := U3·C1]`:
-  every row extends to a model, with the definitions as the witnesses.
+  every row extends to a model, with the definitions as the witnesses.  The substitution is done by unfolding each internal's defining
+  equation in dependency order (`U1`, `U3`, then `U2 := U3·C1` becomes
+  `(X ⊕ Y)·C1`), which turns the three definitional equations into
+  tautologies and leaves `full_adder`.  In jq it is just a **call with the
+  definitions as the internal parameters** —
+  `adder("X";"Y";"C1";"Z";"C"; "(X Y)"; "((X ⊕ Y) C1)"; "(X ⊕ Y)")` —
+  the payoff of internals-as-parameters (verified: the generated formula
+  makes the implication valid, and the combined
+  `(adder ⇒ full_adder) (full_adder ⇒ adder[U := defs])` is valid with
+  0 uncovered paths).
 
 The first is exactly the §4.1 obligation a projected table must certify; the
 second is what the compiler's self-check (set equality of the interface

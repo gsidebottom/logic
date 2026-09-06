@@ -1174,7 +1174,9 @@ the two source papers for this track):
   (2026-09-05). PRICE of the r=16->17 rung: ~33 core-h per root x 211
   = ~7,000 core-h if root 0 is typical (it was average at r=16) — a
   cluster afternoon at 1,000 cores, ~24 days on this Mac. Second root
-  (1,10,64) launched to measure variance.
+  (1,10,64): PROVED at r=17 in 1,542 s (26 min, 1.02M tasks) — 6.4x
+  cheaper than root 0; per-root cost spans 0.4-2.75 h on two samples,
+  so the rung is ~2,500-7,000 core-h (9-24 Mac-days).
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

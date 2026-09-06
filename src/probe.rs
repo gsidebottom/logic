@@ -4454,6 +4454,56 @@ pub fn main() {
             });
             std::fs::write("matmul/r22/lattice_values.txt", out.into_inner().unwrap()).unwrap();
             eprintln!("wrote matmul/r22/lattice_values.txt: 511 vectors + {} subspaces; unmatched subspaces: {}", keys.len(), missing.load(Ordering::Relaxed));
+            if args.iter().any(|a| a == "--lattice-dim3") {
+                // all 3-dim subspaces, each once: (e1, e2) its two smallest
+                // elements (e1 < e2 < e1^e2), e3 the smallest element outside
+                // the pencil <e1,e2> (min of its coset); values from the dim-3
+                // table entries (68 orbits)
+                let mut tab3: std::collections::HashMap<Vec<u16>, u32> = Default::default();
+                for line in std::fs::read_to_string(&table_path).unwrap().lines() {
+                    let Some((b, rows)) = line.split_once(':') else { continue };
+                    let rows: Vec<u16> = rows.split(',').filter(|r| !r.trim().is_empty()).map(|r| r.trim().parse().unwrap()).collect();
+                    if rows.len() == 3 {
+                        let key = canon_sub(&rows);
+                        let e = tab3.entry(key).or_insert(0);
+                        *e = (*e).max(b.trim().parse().unwrap());
+                    }
+                }
+                eprintln!("dim-3 table entries canonicalized: {}", tab3.len());
+                let mut trips: Vec<(u16, u16, u16)> = Vec::new();
+                for e1 in 1u16..512 {
+                    for e2 in (e1 + 1)..512 {
+                        if e2 >= (e1 ^ e2) { continue; }
+                        for e3 in (e2 + 1)..512 {
+                            if e3 == (e1 ^ e2) { continue; }
+                            let coset = [e3, e3 ^ e1, e3 ^ e2, e3 ^ e1 ^ e2];
+                            if coset.iter().any(|&x| x < e3) { continue; }
+                            trips.push((e1, e2, e3));
+                        }
+                    }
+                }
+                eprintln!("3-dim subspaces enumerated: {} (expect 788035)", trips.len());
+                let out3 = std::sync::Mutex::new(String::new());
+                let widx = AtomicUsize::new(0);
+                let missing3 = AtomicUsize::new(0);
+                let t0 = Instant::now();
+                std::thread::scope(|scope| {
+                    for _ in 0..threads {
+                        scope.spawn(|| loop {
+                            let i = widx.fetch_add(1, Ordering::Relaxed);
+                            if i >= trips.len() { break; }
+                            let (a, b, c) = trips[i];
+                            let key = canon_sub(&[a, b, c]);
+                            let val = tab3.get(&key).copied();
+                            if val.is_none() { missing3.fetch_add(1, Ordering::Relaxed); }
+                            out3.lock().unwrap().push_str(&format!("3 {a} {b} {c} {}\n", val.unwrap_or(0)));
+                            if i % 50000 == 0 { eprintln!("  dim3 {i}/{} [{:.0}s]", trips.len(), t0.elapsed().as_secs_f64()); }
+                        });
+                    }
+                });
+                std::fs::write("matmul/r22/lattice_values_dim3.txt", out3.into_inner().unwrap()).unwrap();
+                eprintln!("wrote matmul/r22/lattice_values_dim3.txt: {} subspaces; unmatched: {} [{:.0}s]", trips.len(), missing3.load(Ordering::Relaxed), t0.elapsed().as_secs_f64());
+            }
             return;
         }
         if args.iter().any(|a| a == "--code-bound-test") {

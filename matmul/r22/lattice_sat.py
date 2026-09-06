@@ -55,12 +55,28 @@ for line in open('matmul/r22/lattice_values.txt'):
 for phi in range(1,512):
     lits=[x(c) for c in allv if bin(c&phi).count('1')%2==1]
     at_least_k(lits, 3*rank3(phi))
-path='matmul/r22/lattice20.cnf'
+# codim-3 (optional, --dim3 FILE): at most 20 - t_U of the 7 nonzero vectors of U
+n3=0
+if "--dim3" in sys.argv:
+    path3=sys.argv[sys.argv.index("--dim3")+1]
+    for line in open(path3):
+        f=line.split()
+        if f[0]!='3': continue
+        a,b,c,t=int(f[1]),int(f[2]),int(f[3]),int(f[4])
+        if t==0: continue
+        els=[a,b,c,a^b,a^c,b^c,a^b^c]
+        k=20-t
+        if k>=7: continue
+        n3+=1
+        for sub in itertools.combinations(els,k+1):
+            cls.append([-x(e) for e in sub])
+    print(f"codim-3 constraints: {n3} subspaces", flush=True)
+path='matmul/r22/lattice20_dim3.cnf' if '--dim3' in sys.argv else 'matmul/r22/lattice20.cnf'
 with open(path,'w') as f:
     f.write(f"p cnf {nv[0]} {len(cls)}\n")
     for c in cls: f.write(" ".join(map(str,c))+" 0\n")
 print(f"CNF: {nv[0]} vars, {len(cls)} clauses ({n19} 19-pencils, {n18} 18-pencils, 511 slice constraints)", flush=True)
-tmo=int(sys.argv[1]) if len(sys.argv)>1 else 1800
+tmo=int(sys.argv[1]) if len(sys.argv)>1 and sys.argv[1].isdigit() else 1800
 t0=time.time()
 try:
     out=subprocess.run(["cadical","-q",path],capture_output=True,text=True,timeout=tmo)

@@ -1103,6 +1103,28 @@ the two source papers for this track):
   15-18 with two full sides. What remains for 21 is items 3 and 4:
   new move rules with content (coset/alignment dynamics, proved Rank
   Law case splits) or arguments outside substitution + flattening.
+- **THE CODE BOUND: an F2-specific LP lower bound; rank >= 16 at the
+  root by one LP with an exact dual certificate; the r=16 rung by 263
+  LPs (2026-09-05, matmul/r22/code_bound.py)**: in a decomposition
+  T = sum_i a_i x b_i x c_i concise on a side of dimension k, the
+  covector phi's slice T(phi,.,.) is the sum of the rank-one matrices
+  of the products with phi(a_i) = 1, so |S_phi| >= rank(T(phi,.,.));
+  over F2 the map phi -> S_phi is linear and injective, so {S_phi} is a
+  k-dim binary linear code in F2^r whose weights are bounded below by
+  slice ranks. With m_c = number of products of coefficient type c:
+  rank(T) >= min sum_c m_c s.t. sum_{c: <c,phi>=1} m_c >= rank(T(phi,.,.))
+  for all phi != 0 — an LP/ILP in 2^k - 1 variables, max over sides.
+  The coset bound is the special case "all slice ranks >= 3". Root:
+  LP 15.75 on every side; the rationalized dual (max column load
+  257/256) gives the EXACT bound 4032/257 = 15.69 => rank >= 16, a
+  certificate checkable in integer arithmetic. Gates: <2,2,2> and
+  <2,2,3> below their known ranks (see the run log). Measurements:
+  all 263 level-1 residual tensors (all 211 true orbits) >= 16 by LP
+  (the r=16 rung in seconds; 3,893 s by search); the 256 folds of a
+  root: 240 at 16, 16 at 15 (the rank-1 killers) — r=17 may reduce to
+  16 recursions per root; Wang's codim-2/3 orbits: 13-15 vs his 17-19
+  (not a lattice lift). Next: a rigorous LP leaf in the probe (solve the
+  dual, rationalize, exact bound) and the r=17 rung.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

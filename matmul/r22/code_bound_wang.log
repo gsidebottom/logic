@@ -1,0 +1,11 @@
+  wangd2_lift_table18 k=19 dims 7x9x9: sides [(0, 14, None), (1, 13, None), (2, 13, None)] -> no
+  wangd2_control_table18 k=18 dims 7x9x9: sides [(0, 14, None), (1, 13, None), (2, 13, None)] -> no
+  wangd2_lift_table18 k=19 dims 7x9x9: sides [(0, 15, None), (1, 13, None), (2, 13, None)] -> no
+  wangd2_control_table18 k=18 dims 7x9x9: sides [(0, 15, None), (1, 13, None), (2, 13, None)] -> no
+  wangd2_lift_table18 k=19 dims 7x9x9: sides [(0, 15, None), (1, 13, None), (2, 13, None)] -> no
+  wangd2_control_table18 k=18 dims 7x9x9: sides [(0, 15, None), (1, 13, None), (2, 13, None)] -> no
+  wangd2_lift_table18 k=19 dims 7x9x9: sides [(0, 15, None), (1, 13, None), (2, 13, None)] -> no
+  wangd2_control_table18 k=18 dims 7x9x9: sides [(0, 15, None), (1, 13, None), (2, 13, None)] -> no
+
+TALLY: {('wangd2_lift_table18', 'no'): 6, ('wangd2_control_table18', 'no'): 6, ('wangd2_lift_table19', 'no'): 8, ('wangd2_control_table19', 'no'): 8, ('wangd3_lift_table15', 'no'): 1, ('wangd3_control_table15', 'no'): 1, ('wangd3_lift_table16', 'no'): 3, ('wangd3_control_table16', 'no'): 3, ('wangd3_lift_table17', 'no'): 23, ('wangd3_control_table17', 'no'): 23, ('wangd3_lift_table18', 'no'): 41, ('wangd3_control_table18', 'no'): 41}
+exit 0

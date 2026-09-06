@@ -686,6 +686,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // > 1 s in a debug build; run with `cargo test --release -- --ignored`
     fn reference_totals_match_python() {
         // the committed reference numbers from matmul/sidemin.py runs
         let eqs = brent_equations();
@@ -915,6 +916,7 @@ mod asym_tests {
     /// The transposition-principle exact C must reproduce the record's
     /// C cost: on i19 the symmetric total is 55 (exact sides + C).
     #[test]
+    #[ignore] // > 1 s in a debug build; run with `cargo test --release -- --ignored`
     fn record_total_reproduced_and_asym_beats_or_ties() {
         let eqs = brent_equations();
         let bits = load_bits_file("matmul/external/i19-perminov56.bits");

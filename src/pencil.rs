@@ -621,21 +621,22 @@ mod tests {
         eprintln!("pencil lb: {tight}/{total} tight; additive sum: {add_under} under, {add_over} OVER (unsound cases) of {total}");
     }
 
-    /// fast sizes (<= 2^16 candidate matrices per pencil): part of the default suite
+    /// sub-second sizes (<= 2^12 candidate matrices per pencil): the default suite
     #[test]
     fn matches_brute_force_small() {
-        brute_force_check(&[(2, 2), (3, 3), (2, 4), (4, 3), (4, 4)], 0x1234_5678_9abc_def1);
+        brute_force_check(&[(2, 2), (3, 3), (2, 4), (4, 3)], 0x1234_5678_9abc_def1);
     }
 
-    /// 5x5 pencils (2^25 candidates each, 12 trials): minutes in debug —
+    /// 4x4 (2^16 candidates) and 5x5 (2^25) pencils: seconds to minutes —
     /// run with `cargo test --release -- --ignored`
     #[test]
     #[ignore]
-    fn matches_brute_force_5x5() {
-        brute_force_check(&[(5, 5)], 0x0f0f_1234_5678_9abc);
+    fn matches_brute_force_large() {
+        brute_force_check(&[(4, 4), (5, 5)], 0x0f0f_1234_5678_9abc);
     }
 
     #[test]
+    #[ignore] // brute force on 4x4 companions: > 1 s in a debug build; `cargo test --release -- --ignored`
     fn regular_structured_vs_brute() {
         // (I, A) with chosen invariant structure: direct sums of companion blocks
         let cases: Vec<Vec<u64>> = vec![

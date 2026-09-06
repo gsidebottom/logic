@@ -1198,6 +1198,18 @@ the two source papers for this track):
   Wang's certificate plus this counting; SAT would exhibit the
   20-configuration and say which further constraint (codim-3 values,
   B/C-side types) to add.
+- **Lattice IP at codim <= 2 has optimum 20; codim-3 kills the witness
+  (2026-09-06 evening)**: cadical on the boolean 20-set formulation
+  (32.9M vars with sequential counters, 65.9M clauses): SAT in 111 s —
+  S = {2,4,7,8,11,13,14,32,63,128,144,192,195,216,219,260,288,325,
+  360,448}: 17 rank-1 and 3 rank-2 A-types. So Wang's codim-1 and
+  codim-2 values plus the slice ranks do not force 21. Checked against
+  his codim-3 values on the 1,080 subspaces spanned by S's own triples:
+  2 violations (17-orbit subspaces containing 4 of S where at most
+  20 - 17 = 3 are allowed). Running: the labeling of all 788,035 3-dim
+  subspaces (--lattice-dim3; 68 table orbits, values 15-18) followed by
+  the SAT with codim-3 constraints (at most 20 - t_U of the 7 vectors of
+  each U). UNSAT there = rank >= 21 from Wang's certificate + counting.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

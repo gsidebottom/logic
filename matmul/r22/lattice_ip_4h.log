@@ -1,0 +1,3 @@
+constraints: 44457 (511 codim-1, 43435 codim-2, 511 slice-rank); variables: 511
+LP relaxation: 19.0941 [41.2s] -> ceil 20
+exit killed (MIP stopped after the SAT verdict made it moot)

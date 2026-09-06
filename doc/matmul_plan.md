@@ -1228,6 +1228,21 @@ the two source papers for this track):
   mixed leaves are flattening-class there, so the expectation is low.
   Codim-4 on the A side alone (3.3M subspaces, counters not clauses) is
   the other option; by the trend it would admit 20 as well.
+- **Joint two-side lattice model: dead on arrival, by arithmetic
+  (2026-09-07)**: with per-type counts on sides A and B and pair counts
+  m_ab, the row for a doubly restricted tensor reads
+  r - m_A(U_A) - m_B(U_B) + m_AB(U_A,U_B) >= LB(T|U_A,U_B). At r = 20
+  with each type used at most once, a codim-(1,1) row can bind only if
+  LB(T|v,w) >= 19 and a codim-(2,2) row only if LB >= 17 (two used
+  types per pencil, the most the A/B codim-2 rows allow). Measured: the
+  code bound on T|v,w (8x8x9) is 14 on every sample, on T|U_A,U_B
+  (7x7x9) 11-13; Koszul is lower; the mixed game's exhaustive FAILs put
+  every mixed leaf in the flattening class. Gaps of 4-5 at every level:
+  no joint row can bind, so the joint model adds nothing to the A-side
+  hierarchy, which itself converges to Wang's 20. Time-box closed at
+  ~1 h of analysis instead of a day's build. The lattice counting idea
+  is therefore fully explored: it reproduces 20 (integrality on codim-1)
+  and cannot pass it with any bound we can certify on restrictions.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

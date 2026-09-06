@@ -4385,6 +4385,77 @@ pub fn main() {
             println!("unsound certifications: {unsound}");
             return;
         }
+        if let Some(table_path) = get("--lattice-values") {
+            // LATTICE VALUES (2026-09-06): label every nonzero vector and every
+            // 2-dim subspace of F2^9 with Wang's verified bound for its orbit
+            // (his table: "<bound>:<u-rows>", our canonical forms under the
+            // A-side action a -> P^T a Q^T with the transpose variant), for the
+            // lattice integer program. Output: "1 v bound" and "2 a b bound".
+            let gl = gl3();
+            let pairs: Vec<(u16, u16)> = gl.iter().flat_map(|&p| gl.iter().map(move |&q| (m3_tr(p), m3_tr(q)))).collect();
+            let canon_sub = |vs: &[u16]| -> Vec<u16> {
+                // canonical form of span(vs): lex-min sorted nonzero elements over the group x transpose
+                let mut best: Option<Vec<u16>> = None;
+                for &(pt, qt) in &pairs {
+                    for tr in 0..2 {
+                        let img: Vec<u16> = vs.iter().map(|&v| {
+                            let w = m3_mul(m3_mul(pt, v), qt);
+                            if tr == 1 { m3_tr(w) } else { w }
+                        }).collect();
+                        // all nonzero elements of the span
+                        let mut els: Vec<u16> = Vec::new();
+                        let k = img.len();
+                        for mask in 1..(1u32 << k) {
+                            let mut e = 0u16;
+                            for i in 0..k { if mask >> i & 1 == 1 { e ^= img[i]; } }
+                            els.push(e);
+                        }
+                        els.sort();
+                        els.dedup();
+                        if best.as_ref().map_or(true, |b| els < *b) { best = Some(els); }
+                    }
+                }
+                best.unwrap()
+            };
+            // table -> canonical form -> bound (dims 1 and 2)
+            let mut tab: std::collections::HashMap<Vec<u16>, u32> = Default::default();
+            for line in std::fs::read_to_string(&table_path).unwrap().lines() {
+                let Some((b, rows)) = line.split_once(':') else { continue };
+                let rows: Vec<u16> = rows.split(',').filter(|r| !r.trim().is_empty()).map(|r| r.trim().parse().unwrap()).collect();
+                if rows.len() == 1 || rows.len() == 2 {
+                    let key = canon_sub(&rows);
+                    let e = tab.entry(key).or_insert(0);
+                    *e = (*e).max(b.trim().parse().unwrap());
+                }
+            }
+            eprintln!("table entries (dim 1,2) canonicalized: {}", tab.len());
+            let out = std::sync::Mutex::new(String::new());
+            for v in 1u16..512 {
+                let key = canon_sub(&[v]);
+                let b = tab.get(&key).copied().unwrap_or(0);
+                out.lock().unwrap().push_str(&format!("1 {v} {b}\n"));
+            }
+            let mut keys: Vec<(u16, u16)> = Vec::new();
+            for a in 1u16..512 { for b in (a + 1)..512 { if b < (a ^ b) { keys.push((a, b)); } } }
+            let widx = AtomicUsize::new(0);
+            let missing = AtomicUsize::new(0);
+            std::thread::scope(|scope| {
+                for _ in 0..threads {
+                    scope.spawn(|| loop {
+                        let i = widx.fetch_add(1, Ordering::Relaxed);
+                        if i >= keys.len() { break; }
+                        let (a, b) = keys[i];
+                        let key = canon_sub(&[a, b]);
+                        let val = tab.get(&key).copied();
+                        if val.is_none() { missing.fetch_add(1, Ordering::Relaxed); }
+                        out.lock().unwrap().push_str(&format!("2 {a} {b} {}\n", val.unwrap_or(0)));
+                    });
+                }
+            });
+            std::fs::write("matmul/r22/lattice_values.txt", out.into_inner().unwrap()).unwrap();
+            eprintln!("wrote matmul/r22/lattice_values.txt: 511 vectors + {} subspaces; unmatched subspaces: {}", keys.len(), missing.load(Ordering::Relaxed));
+            return;
+        }
         if args.iter().any(|a| a == "--code-bound-test") {
             use std::io::Write;
             for &(n1, n2, n3, rk) in &[(2usize, 2usize, 2usize, 7u32), (2, 2, 3, 11), (2, 3, 3, 15)] {

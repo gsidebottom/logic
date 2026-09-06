@@ -1166,6 +1166,7 @@ export default function App() {
   const [pathsUncovSel,  setPathsUncovSel]  = useState(new Set()); // selected uncovered path indices
   const [pathsRunning,   setPathsRunning]   = useState(false); // server-side path generation in progress
   const [pathsTreeExpanded, setPathsTreeExpanded] = useState(new Set()); // Set<nodeKey> of expanded prefix-tree nodes
+  const [pathsCanonical, setPathsCanonical] = useState(false); // uncovered-path tree: trace order (false) or canonical (sorted/deduped) form
   const pathsPollRef = useRef(null);
   const [loading,        setLoading]        = useState(false);
   const [jqFilter,       setJqFilter]       = useState('');
@@ -3686,33 +3687,52 @@ export default function App() {
                     const n = resolvePosition(ast, pos)?.n ?? pos.join(',');
                     return pathsResult.isComplement ? compName(n) : n;
                   };
-                  // Build a trie of uncovered paths keyed on literal positions.
-                  const root = { children: new Map(), pathIndex: null, key: '', position: null };
+                  // Literal name minus its complement mark — the sort key of the
+                  // canonical view (numeric-aware, so x2 sorts before x10).
+                  const varName = n => n.endsWith("'") ? n.slice(0, -1) : n;
+                  const byVar = (a, b) =>
+                    varName(a).localeCompare(varName(b), undefined, { numeric: true, sensitivity: 'base' })
+                    || a.localeCompare(b);
+                  // Canonical form of one path: literals sorted by variable name,
+                  // duplicate literals dropped.
+                  const canonicalize = names => {
+                    const sorted = [...names].sort(byVar);
+                    return sorted.filter((n, i) => i === 0 || n !== sorted[i - 1]);
+                  };
+                  // Build a trie of uncovered paths.  Trace mode keys on literal
+                  // positions (the paths exactly as the algorithm produced them);
+                  // canonical mode keys on literal names, so paths that
+                  // canonicalize identically share one leaf.  Every node carries
+                  // the ORIGINAL path indices that end there (several per leaf in
+                  // canonical mode).  Selection and highlighting work on those
+                  // indices, so clicking a canonical path lights up every literal
+                  // occurrence of every original path it stands for.
+                  const mkNode = (key, position, name) => ({ children: new Map(), pathIndices: [], key, position, name });
+                  const root = mkNode('', null, null);
                   (pathsResult.uncoveredPositions || []).forEach((posList, i) => {
                     let node = root;
                     let chain = '';
-                    posList.forEach(pos => {
-                      const k = pos.join(',');
-                      chain = chain ? chain + '|' + k : k;
-                      if (!node.children.has(k)) {
-                        node.children.set(k, { children: new Map(), pathIndex: null, key: chain, position: pos });
-                      }
+                    const steps = pathsCanonical
+                      ? canonicalize(posList.map(resName)).map(n => ({ k: n, position: null, name: n }))
+                      : posList.map(pos => ({ k: pos.join(','), position: pos, name: null }));
+                    steps.forEach(({ k, position, name }) => {
+                      chain = chain ? chain + '|' + k : (pathsCanonical ? 'c:' + k : k);
+                      if (!node.children.has(k)) node.children.set(k, mkNode(chain, position, name));
                       node = node.children.get(k);
                     });
-                    node.pathIndex = i;
+                    node.pathIndices.push(i);
                   });
+                  // Distinct paths in the tree (== uncovered paths in trace mode;
+                  // fewer in canonical mode when paths merge).
+                  let treePathCount = 0;
+                  { const walk = n => { if (n.pathIndices.length) treePathCount++; n.children.forEach(walk); }; walk(root); }
+                  const labelOf = cn => cn.name ?? resName(cn.position);
                   const toggleExpand = key => setPathsTreeExpanded(prev => {
                     const s = new Set(prev); if (s.has(key)) s.delete(key); else s.add(key); return s;
                   });
-                  const toggleSel = i => setPathsUncovSel(prev => {
-                    const s = new Set(prev); if (s.has(i)) s.delete(i); else s.add(i); return s;
-                  });
                   const collectIndices = node => {
                     const out = [];
-                    const walk = n => {
-                      if (n.pathIndex !== null) out.push(n.pathIndex);
-                      n.children.forEach(walk);
-                    };
+                    const walk = n => { out.push(...n.pathIndices); n.children.forEach(walk); };
                     walk(node);
                     return out;
                   };
@@ -3722,7 +3742,7 @@ export default function App() {
                   const collapseChain = startNode => {
                     const chain = [startNode];
                     let cur = startNode;
-                    while (cur.children.size === 1 && cur.pathIndex === null) {
+                    while (cur.children.size === 1 && cur.pathIndices.length === 0) {
                       cur = cur.children.values().next().value;
                       chain.push(cur);
                     }
@@ -3735,12 +3755,14 @@ export default function App() {
                       const chainKey = end.key;
                       const hasChildren = end.children.size > 0;
                       const expanded = pathsTreeExpanded.has(chainKey);
-                      const isLeaf = end.pathIndex !== null && !hasChildren;
+                      const isLeaf = end.pathIndices.length > 0 && !hasChildren;
                       const subIdxs = collectIndices(end);
-                      const allSel = subIdxs.length > 0 && subIdxs.every(i => pathsUncovSel.has(i));
-                      const opacity = isLeaf
-                        ? (pathsUncovSel.has(end.pathIndex) ? 1 : 0.35)
-                        : (allSel ? 1 : 0.6);
+                      const selCount = subIdxs.filter(i => pathsUncovSel.has(i)).length;
+                      const allSel = subIdxs.length > 0 && selCount === subIdxs.length;
+                      // A single-path leaf is bright when selected, dim when not;
+                      // a multi-path node (canonical leaf or internal node) is
+                      // bright only when every path under it is selected.
+                      const opacity = allSel ? 1 : (isLeaf && selCount === 0 ? 0.35 : 0.6);
                       return (
                         <div key={child.key} style={{ marginLeft: depth === 0 ? 0 : 14, lineHeight: 1.5 }}>
                           <span>
@@ -3753,23 +3775,22 @@ export default function App() {
                               <span style={{ display: 'inline-block', width: 12 }} />
                             )}
                             <span
-                              onClick={() => {
-                                if (isLeaf) toggleSel(end.pathIndex);
-                                else {
-                                  setPathsUncovSel(prev => {
-                                    const s = new Set(prev);
-                                    if (allSel) subIdxs.forEach(i => s.delete(i));
-                                    else subIdxs.forEach(i => s.add(i));
-                                    return s;
-                                  });
-                                }
-                              }}
+                              onClick={() => setPathsUncovSel(prev => {
+                                // Toggle every original path under this node (a
+                                // canonical leaf may stand for several): deselect
+                                // them all if all are selected, else select all.
+                                const s = new Set(prev);
+                                if (allSel) subIdxs.forEach(i => s.delete(i));
+                                else subIdxs.forEach(i => s.add(i));
+                                return s;
+                              })}
                               style={{ cursor: 'pointer', opacity }}>
                               <b style={{ fontFamily: 'Georgia, serif' }}>
-                                {chain.map((cn, ci) => <span key={ci}>{ci > 0 && ' '}<VarLabel name={resName(cn.position)} /></span>)}
+                                {chain.map((cn, ci) => <span key={ci}>{ci > 0 && ' '}<VarLabel name={labelOf(cn)} /></span>)}
                               </b>
-                              {!isLeaf && (
-                                <span style={{ fontWeight: 'normal', color: '#888', fontSize: 11 }}>
+                              {(!isLeaf || subIdxs.length > 1) && (
+                                <span style={{ fontWeight: 'normal', color: '#888', fontSize: 11 }}
+                                      title={isLeaf ? `${subIdxs.length} uncovered paths canonicalize to this one` : undefined}>
                                   {' '}({subIdxs.length})
                                 </span>
                               )}
@@ -3784,7 +3805,15 @@ export default function App() {
                     <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
-                        {fmtNum(pathsResult.uncoveredPaths.length)} uncovered {pathsResult.uncoveredPaths.length === 1 ? 'path' : 'paths'}{' '}
+                        {pathsCanonical
+                          ? `${fmtNum(treePathCount)} canonical ${treePathCount === 1 ? 'path' : 'paths'} from ${fmtNum(pathsResult.uncoveredPaths.length)} uncovered`
+                          : `${fmtNum(pathsResult.uncoveredPaths.length)} uncovered ${pathsResult.uncoveredPaths.length === 1 ? 'path' : 'paths'}`}{' '}
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 11, color: '#888' }}
+                               title="Canonical view: each path's literals sorted by variable name with duplicate literals removed, and identical paths merged. Clicking a canonical path highlights every literal occurrence of each original path it stands for.">
+                          <input type="checkbox" checked={pathsCanonical}
+                                 onChange={e => { setPathsCanonical(e.target.checked); setPathsTreeExpanded(new Set()); }} />
+                          canonical
+                        </label>{' '}
                         <a href="#" onClick={e => { e.preventDefault();
                           // Expand all internal nodes.
                           const all = new Set();

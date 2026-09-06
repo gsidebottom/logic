@@ -1,4 +1,4 @@
-{"n":2,"root":"||","nodes":[
+{"n":2,"coset":false,"root":"||","nodes":[
 {"key":"||","dims":[4,4,4],"value":7,"choice":1,"phi":1,"leaf":[4,4,4],"children":["1||","9||","5||","d||","3||","b||","7||","f||"]},
 {"key":"f||","dims":[3,4,4],"value":6,"choice":2,"phi":5,"leaf":[3,4,4],"children":["f|4|","f|c|","f|6|","f|e|","f|1|","f|9|","f|3|","f|b|"]},
 {"key":"f|b|","dims":[3,3,4],"value":5,"choice":1,"phi":10,"leaf":[3,3,4],"children":["8,7|b|","c,3|b|","d,2|b|","9,6|b|"]},

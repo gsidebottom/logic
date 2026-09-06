@@ -7,3 +7,4 @@ k=13: CAP (nodes 149938 / 900.3s) — last proven 12
 => rank_F2(<3,3,3>) >= 12 by the substitution game
 certificate: matmul/r22/subgame_3x3_sym.json (35740665 bytes)
 EXIT=0
+VERIFIED: 147260 states replayed from scratch; rank_F2(<3,3,3>) >= 12

@@ -1,0 +1,19 @@
+    Finished `release` profile [optimized] target(s) in 0.33s
+     Running unittests src/lib.rs (target/release/deps/logic-e8df2327f4bef4d3)
+
+running 4 tests
+test pencil::tests::polynomial_arithmetic ... ok
+test pencil::tests::l_blocks_and_known_pencils ... ok
+blocks [5, 7]: brute 6 additive 6 sound-lb 5
+blocks [4, 2]: brute 4 additive 4 sound-lb 4
+blocks [11, 3]: brute 6 additive 6 sound-lb 6
+blocks [4, 4]: brute 6 additive 6 sound-lb 5
+blocks [19, 1]: brute 6 additive 6 sound-lb 6
+test pencil::tests::regular_structured_vs_brute ... ok
+test pencil::tests::matches_brute_force_small has been running for over 60 seconds
+pencil lb: 308/312 tight; additive sum: 0 under, 5 OVER (unsound cases) of 312
+test pencil::tests::matches_brute_force_small ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 352 filtered out; finished in 434.33s
+
+exit 0

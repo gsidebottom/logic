@@ -102,3 +102,37 @@ matmul/r22/subgame_3x3_17.json
 matmul/r22/subgame_3x3_ab_koszul.json
 matmul/r22/subgame_3x3_18.json
 target_pool/
+
+# --- 2026-09-05 cleanup: regenerable / bulk artifacts of the r22 track ---
+# CNF instances (brent.py, tensor_sat.py, frontier_ab.py regenerate them; the
+# frontier A/B CNFs are archived in frontier_ab_cnfs.tgz)
+matmul/r22/*.cnf
+matmul/r22/frontier_ab/*.cnf
+# raw dumps whose compressed or archived copies are tracked
+matmul/r22/frontier19.txt
+matmul/r22/fold_lemma2_class*.txt
+matmul/r22/killers_predicted.txt
+matmul/r22/subgame_3x3_sym.json
+# sharded LP-ladder / LP-recursion intermediates (totals are in the plan doc)
+matmul/r22/lp_ladder_t16*.log
+matmul/r22/lp_ladder_unresolved_t16*.txt
+matmul/r22/lp_ladder_probe_t16.*
+matmul/r22/lp_rec_deferred_*
+matmul/r22/lp_rec_*sample*
+matmul/r22/lp_rec_probe_t17.*
+matmul/r22/lp_rec_t17_s*.log
+# raw .err logs whose .err.gz is tracked
+matmul/r22/subgame_3x3_pencil.err
+matmul/r22/subgame_3x3_pencil_additive.err
+matmul/r22/subgame_3x3_probe.err
+matmul/r22/subgame_3x3_probe2.err
+matmul/r22/t17_root0_long.err
+matmul/r22/t17_root0_code.err
+# build logs
+matmul/r22/highs_build.log
+matmul/r22/satsuma_build.log
+matmul/r22/cargo_test.log
+# asym sweep intermediates (tens of MB, regenerable by the tracked drivers)
+matmul/asym/*.out
+matmul/asym/*.err
+matmul/asym/*.list

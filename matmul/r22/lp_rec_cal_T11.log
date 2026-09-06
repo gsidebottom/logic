@@ -1,0 +1,3 @@
+root_1,1,1: deferred; deferred 15294; stats {('deferred', 6): 15294, ('expanded', 0): 1, ('expanded', 1): 16, ('expanded', 2): 58, ('expanded', 3): 358, ('expanded', 4): 1754, ('expanded', 5): 4280, ('lp', 0): 1, ('lp', 1): 256, ('lp', 2): 1984, ('lp', 3): 3520, ('lp', 4): 8734, ('lp', 5): 18104, ('lp-leaf', 1): 240, ('lp-leaf', 2): 1926, ('lp-leaf', 3): 3162, ('lp-leaf', 4): 6980, ('lp-leaf', 5): 13824, ('memo', 2): 64, ('memo', 3): 192, ('memo', 4): 2722, ('memo', 5): 9960, ('memo', 6): 18946}
+done
+elapsed 55s exit 0

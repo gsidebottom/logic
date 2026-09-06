@@ -1,0 +1,19 @@
+symmetry tables built (0.0s); sandwich action verified on the tensor
+c heartbeat 600s: nodes 406151 states 406073 failed 127403 forms 2002169 hits 12981786
+c heartbeat 1200s: nodes 846672 states 846559 failed 217716 forms 4285212 hits 30075960
+c heartbeat 1800s: nodes 1338739 states 1338613 failed 289636 forms 6666132 hits 47187099
+c heartbeat 2400s: nodes 1807609 states 1807459 failed 352651 forms 9109488 hits 65645269
+c heartbeat 3000s: nodes 2292702 states 2292545 failed 403184 forms 11672287 hits 84189852
+c heartbeat 3600s: nodes 2728576 states 2728411 failed 453976 forms 14264323 hits 105331272
+c heartbeat 4200s: nodes 3184189 states 3184016 failed 500526 forms 16915872 hits 125818507
+c heartbeat 4800s: nodes 3625849 states 3625676 failed 541928 forms 19645806 hits 146914539
+c heartbeat 5400s: nodes 4056428 states 4056248 failed 582947 forms 22513533 hits 169024300
+c heartbeat 6000s: nodes 4462574 states 4462255 failed 620239 forms 25308351 hits 189845411
+c heartbeat 6600s: nodes 4848497 states 4848175 failed 659175 forms 28093691 hits 211988095
+c heartbeat 7200s: nodes 5217830 states 5217496 failed 696049 forms 30921447 hits 235068232
+c heartbeat 7800s: nodes 5546845 states 5546493 failed 737098 forms 33804635 hits 258226481
+c heartbeat 8400s: nodes 5859263 states 5858826 failed 773342 forms 36693740 hits 283287637
+c heartbeat 9000s: nodes 6147088 states 6146632 failed 805509 forms 39557211 hits 309485769
+c heartbeat 9600s: nodes 6456481 states 6456022 failed 834861 forms 42594551 hits 335470787
+c heartbeat 10200s: nodes 6776725 states 6776262 failed 861595 forms 45739364 hits 360390479
+exit 0

@@ -396,6 +396,26 @@ internals are fresh to the box, which the jq convention guarantees unless
 `expose` says otherwise; and the §4.2 certificate covers projected tables
 without change.
 
+**What projection does *not* claim.**  `adder ⇔ full_adder` — the
+five-equation form *equivalent to* the two-equation form over all eight
+variables — is **not** valid, and a SAT solver correctly rejects it: the
+two-equation form says nothing about `U1,U2,U3`, so it has 64 models to the
+five-equation form's 8 (every interface row × 2³ free internals), and the
+engine finds 86 uncovered (falsifying) paths, e.g. `X=Y=C1=1, Z=C=1, U1=0`,
+where the two-equation form holds but `U1 = X·Y` fails.  The statement that
+*is* true is the quantified one, `(∃U1 U2 U3. adder) ⇔ full_adder`, and it is
+checked propositionally as two valid implications:
+
+- **completeness** — `adder ⇒ full_adder`: every model of the box, restricted
+  to the interface, is a row (0 uncovered paths);
+- **soundness** — `full_adder ⇒ adder[U1 := X·Y, U3 := X ⊕ Y, U2 := U3·C1]`:
+  every row extends to a model, with the definitions as the witnesses.
+
+The first is exactly the §4.1 obligation a projected table must certify; the
+second is what the compiler's self-check (set equality of the interface
+tables) adds on top.  Neither direction is the bare equivalence, and the
+converse `full_adder ⇒ adder` is not valid.
+
 ## 6. Boxes compile to Rust — not tables interpreted at run time
 
 ### 6.1 What the generator emits

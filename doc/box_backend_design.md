@@ -1,4 +1,4 @@
-# Box-matrix SAT backend — compiled nested boxes, parallel + distributed
+# Box-matrix SAT (Boolean satisfiability) backend — compiled nested boxes, parallel + distributed
 
 *Design document — no implementation yet.  Companion to
 [dual-search-design.md](dual-search-design.md) (the current matrix engine) and
@@ -7,7 +7,7 @@ honouring).*
 
 ## 0. The idea in one paragraph
 
-Today every matrix backend (`smart`, `cdcl`, `eff`, …) walks the NNF of the
+Today every matrix backend (`smart`, `cdcl`, `eff`, …) walks the negation normal form (NNF) of the
 complement literal by literal, discovering complementary pairs at proof time.
 For a structured sub-formula that is wasteful: a full adder's complement has
 **972 matrix paths, only 13 of which are open, and only 8 distinct once
@@ -54,11 +54,11 @@ Three things to take from this:
   instance in every problem.
 - **13 → 8.**  The open paths are not even distinct; the same model is reached
   by up to 4 different traversals.  Canonical form (sorted literals, duplicates
-  dropped — exactly the UI's new `canonical` view) removes that redundancy.
+  dropped — exactly the new `canonical` view in the web user interface (UI)) removes that redundancy.
 - **It composes multiplicatively.**  A ripple-carry adder of `k` full adders
   has `972^k` primitive complement paths but `8^k` row combinations — and with
   propagation on shared carries, far fewer are ever visited.  Multipliers, the
-  classic CDCL-hard circuit family, are grids of exactly these boxes.
+  circuit family classically hard for conflict-driven clause learning (CDCL) solvers, are grids of exactly these boxes.
 
 ## 2. Semantics
 
@@ -68,8 +68,8 @@ The engine walks the NNF of the complement `G = ¬F`.  A path picks **one**
 child at each `Prod` (AND) and traverses **all** children at each `Sum` (OR)
 — the `EffectiveCountIndex` recurrence `Sum → ∏, Prod → ∑` in
 `src/dual/effective_count.rs`.  A path is *closed* if it contains a
-complementary pair `ℓ, ¬ℓ`.  `F` is UNSAT iff every path of `G` is closed; an
-open path is a consistent way to falsify `G`, i.e. a model of `F`.
+complementary pair `ℓ, ¬ℓ`.  `F` is UNSAT (unsatisfiable) iff every path of `G` is closed; an
+open path is a consistent way to falsify `G`, i.e. a model of `F` (so `F` is SAT, satisfiable).
 
 A **box** is any sub-tree of the matrix that can answer "what are your open
 paths, given what is already on the path?"  `Sum`/`Prod` boxes answer this
@@ -81,7 +81,7 @@ a precomputed list of canonical rows.
 Path literals are the literals of the *complement's* NNF.  An open path is
 made consistent by making every literal on it **false** (this is what
 [cover_certify.md](cover_certify.md) means by "each visited lit is the negation
-of the original CNF lit").  So a compiled box's canonical open path
+of the original CNF lit" — CNF being conjunctive normal form).  So a compiled box's canonical open path
 `{C, C1, U1, U2, U3', X', Y, Z'}` is the model `X=1 Y=0 C1=0 → Z=1 C=0,
 U1=0 U2=0 U3=1`.  The table above is shown decoded; the engine stores rows in
 path-literal form, because that is what complementarity is tested against.
@@ -123,7 +123,7 @@ options:
 - **Assignment** (current path prefix) = `(pos, neg)` plus a trail for undo.
 - **Closedness of a row against the prefix**:
   `row.pos & pre.neg == 0 && row.neg & pre.pos == 0` — 2 ANDs, 2 compares per
-  word, SIMD-friendly.  This *is* the complementary-pair test, hoisted from
+  word, and vectorizable with SIMD (single instruction, multiple data).  This *is* the complementary-pair test, hoisted from
   "per literal" to "per row".
 - **Box** (compiled): `rows: Vec<Row>`, plus per-literal row indexes
   (`rows_with[lit]: RowBitset`) so that "rows still consistent" after adding a
@@ -143,7 +143,7 @@ pub trait Box_ {
 }
 ```
 
-### 3.2 Search = DPLL over box rows, with table propagation
+### 3.2 Search = DPLL (Davis–Putnam–Logemann–Loveland) over box rows, with table propagation
 
 ```
 solve(prefix):
@@ -175,12 +175,12 @@ narrow `live &= rows_with[¬lit]`-complement.  Then:
   a table constraint).  For an adder with `X,Y` fixed this immediately fixes
   `U1, U3`; with `C1` also fixed, everything.
 
-Cascade to fixpoint.  This is exactly table-constraint GAC as in CP solvers,
-and it is far stronger than clause-level BCP on the Tseitin encoding of the
-same gates — the reason CP/SMT solvers beat plain CDCL on word-level
+Cascade to fixpoint.  This is exactly table-constraint generalized arc consistency (GAC) as in constraint programming (CP) solvers,
+and it is far stronger than clause-level Boolean constraint propagation (BCP) on the Tseitin encoding of the
+same gates — the reason CP and satisfiability-modulo-theories (SMT) solvers beat plain CDCL on word-level
 arithmetic.
 
-### 3.4 Branching heuristic — EFF, lifted
+### 3.4 Branching heuristic — EFF (effective path count), lifted
 
 `EffectiveCountWrapper` orders `Sum`/`Prod` children by the effective path
 count under the current prefix.  The lifted version is immediate: a compiled
@@ -193,7 +193,7 @@ Structural boxes keep the existing EFF ordering, so the heuristic is uniform.
 A dead box (0 live rows) has an explanation: for each row, one prefix literal
 that killed it; the set of those literals is a **nogood** — a learned clause
 over the prefix, exactly as in lazy clause generation (CP-with-learning).  Add
-1UIP-style analysis and restarts by reusing `CdclController`'s machinery over
+first-unique-implication-point (1UIP) analysis and restarts by reusing `CdclController`'s machinery over
 these nogoods.  This makes the backend a CDCL solver whose propagators are
 compiled boxes.  Off by default until the A/B in §9 shows it pays — the
 `phase4_cubes` result (learned-cube sharing: "overhead with no benefit") is the
@@ -235,7 +235,7 @@ compactness — a `k`-adder proof shrinks by roughly the internal-cover size per
 instance — but it is an optimization, gated on the primitive path being green.
 
 Gate for either: reproduce known values first (the adder examples in the UI —
-"Full Adder", "123+47=170", "Adder Unsat" — and the PHP/RoundRobin corpus).
+"Full Adder", "123+47=170", "Adder Unsat" — and the pigeonhole-principle (PHP)/RoundRobin corpus).
 A checker re-encodes the rule it checks, so a new proof system is validated
 on instances whose answer is independently known — never on the checker's
 say-so alone.
@@ -302,10 +302,10 @@ because a compiled box is just a `Box_`).
 - **Nogood sharing** (with §3.5): a lock-free append-only pool, drained in
   batches — the phase-4 write-up's "pool contention / O(N²) drain" risk is
   handled by batching from the start, and sharing stays off until measured.
-- Target: saturate 12 P-cores (project rule); watch for single-threaded tails
+- Target: saturate all 12 performance cores (P-cores), a project rule; watch for single-threaded tails
   when few tasks remain (re-split the survivors, §7.4).
 
-## 7. Distributed execution (AWS-ready)
+## 7. Distributed execution — ready for Amazon Web Services (AWS)
 
 The multi-core design already speaks in prefix-partitioned, self-contained
 work units with mergeable certificates; distribution is the same protocol over
@@ -317,7 +317,7 @@ a queue.
   loads the problem + library, runs the top of the search to depth `k`
   (deterministic split), emits work units, tracks completion, assembles the
   certificate, enforces the budget.
-- **Workers** (ECS/Fargate or EC2 spot; AWS Batch is a natural fit; Lambda for
+- **Workers** (ECS/Fargate containers or EC2 spot instances — Elastic Container Service, Elastic Compute Cloud; AWS Batch is a natural fit; Lambda for
   units expected < 15 min): stateless.  Pull a unit, solve it with the
   multi-core engine, upload `{OPEN: model | CLOSED: cover | SPLIT: children}`.
 
@@ -325,8 +325,8 @@ a queue.
 
 | concern | choice | why |
 |---|---|---|
-| work queue | SQS (FIFO not required; units are idempotent) | at-least-once is fine: a duplicate solve returns an identical cover |
-| artifacts | S3: problem, library, per-unit certs, assembled proof | workers need no shared state |
+| work queue | SQS (Simple Queue Service); FIFO — first-in-first-out — ordering not required, units are idempotent | at-least-once is fine: a duplicate solve returns an identical cover |
+| artifacts | S3 (Simple Storage Service): problem, library, per-unit certs, assembled proof | workers need no shared state |
 | box library | S3 + local cache, content-addressed by definition hash | compile once, everywhere |
 | coordination | DynamoDB unit table (`pending/running/done`, attempt count) | visibility timeout + retries give fault tolerance |
 | observability | CloudWatch: units/s, open-row histograms, cover sizes | spot the single-tail unit early |
@@ -378,10 +378,10 @@ believed without an equal-budget comparison.
 | phase | build | gate |
 |---|---|---|
 | **M0** (done, this doc) | verify 972/13/8 and extract the table on the real engine | ✓ table matches the adder truth table row for row |
-| **M1** core | bitset rows, table + structural boxes, DFS + propagation, single core; explicit box syntax | same verdicts as `eff`/`cdcl` on the UI adder examples and the test corpus; **every UNSAT certifies** via the primitive cover |
+| **M1** core | bitset rows, table + structural boxes, depth-first search (DFS) + propagation, single core; explicit box syntax | same verdicts as `eff`/`cdcl` on the UI adder examples and the test corpus; **every UNSAT certifies** via the primitive cover |
 | **M2** compiler + library | `box-compile`, parametric instances, per-box certificate, static internal cover | a `k`-bit ripple adder assembled from `FullAdder` instances certifies for `k` up to the largest the current engine can do, and beyond |
 | **M3** multi-core | work stealing, deterministic mode, cover merge | ≥ 8× on 12 cores on a multiplier-verification instance; certificate byte-identical in deterministic mode |
-| **M4** measure | `run_benchmark` A/B vs `eff`, `cdcl`, `cadical`, `hydra` on an arithmetic-circuit set (adders, multipliers, the CLP(B) examples), **equal wall-clock**, sound gates on | the honest question: does it beat cadical on the circuit slice? |
+| **M4** measure | `run_benchmark` A/B vs `eff`, `cdcl`, `cadical`, `hydra` on an arithmetic-circuit set (adders, multipliers, the CLP(B) — constraint logic programming over Booleans — examples), **equal wall-clock**, sound gates on | the honest question: does it beat cadical on the circuit slice? |
 | **M5** learning | nogoods + 1UIP + restarts (§3.5), on/off | only kept if M4's numbers improve |
 | **M6** detection | gate/adder/multiplier detector into hydra | competition CNF instances routed and solved+certified |
 | **M7** distributed | coordinator/worker on AWS, split-tree certificates | a multi-hour instance solved across N spot workers with an assembled, checked proof; cost within cap |

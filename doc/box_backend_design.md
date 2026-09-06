@@ -12,16 +12,23 @@ complement literal by literal, discovering complementary pairs at proof time.
 For a structured sub-formula that is wasteful: a full adder's complement has
 **972 matrix paths, only 13 of which are uncovered, and only 8 distinct once
 canonicalized** — and those 8 are just its truth table.  This backend makes the
-matrix a tree of **boxes**.  The built-in `and`/`or` boxes behave as now; a
+matrix a tree of **boxes**, and the boxes are **designed by the user for the
+problem at hand** — as jq definitions, the way `lib/adder.jq` already builds
+adders — then **compiled to Rust code** (a per-problem specialized solver, or
+dynamically loaded plug-ins), not interpreted from tables at run time.  The
+built-in `and`/`or` boxes behave as now; a
 **compiled box** (e.g. `FullAdder(X,Y,C1,Z,C,U1,U2,U3)`) contributes its
 precomputed canonical uncovered paths directly, so the search never re-derives the
 959 internally covered paths, and coverage is tested per *box row* with a couple
 of bitset ops instead of per literal.  Rows are bitsets, so canonical form is the
 native representation, propagation is table-constraint propagation, and the
 search parallelizes by splitting on box rows — locally over cores, and over
-machines with a coordinator/worker layout.  Proofs stay in the existing
-primitive cover-certificate format (compiled boxes are *search accelerators*,
-never a trust boundary), so `sat-cover-verify` keeps working unchanged.
+machines with a Mallob-style malleable, clause-sharing layout.  Proofs never
+trust box code: each box ships an ordinary UNSAT certificate that its table is
+complete, a small **formally verified** checker composes those with the
+box-level cover (compiled boxes are *search accelerators*, never a trust
+boundary), and phase 1 can still expand everything into today's primitive
+cover format so `sat-cover-verify` keeps working unchanged.
 
 ## 1. Motivation — the adder, measured
 
@@ -195,227 +202,418 @@ that killed it; the set of those literals is a **nogood** — a learned clause
 over the prefix, exactly as in lazy clause generation (CP-with-learning).  Add
 first-unique-implication-point (1UIP) analysis and restarts by reusing `CdclController`'s machinery over
 these nogoods.  This makes the backend a CDCL solver whose propagators are
-compiled boxes.  Off by default until the A/B in §9 shows it pays — the
-`phase4_cubes` result (learned-cube sharing: "overhead with no benefit") is the
-cautionary precedent for assuming learned information helps the cover search.
+compiled boxes.  Learning matters more than in the first draft of this design: Mallob's
+evidence (§8) is that *sharing* learned clauses is what makes distributed
+solving scale, so nogoods and their sharing are first-class components — but
+still gated by the A/B in §10; the `phase4_cubes` result (learned-cube
+sharing: "overhead with no benefit") is the cautionary precedent for assuming
+learned information helps the *cover* search.
 
-## 4. Certification — compiled boxes are accelerators, not a trust boundary
+## 4. Certification and formal verification — the UNSAT decision must be trustworthy
 
-Every UNSAT verdict must still certify, and the checker must not have to trust
-the compiler.  Two layers:
+The requirement is the project's standing one, sharpened: an UNSAT answer
+must be checkable **without trusting the solver, the box compiler, the
+generated box code, or the cluster**.  The plan has three layers, and only the
+smallest is in the trusted computing base (TCB — the code whose bugs could
+make us accept a false UNSAT).
 
-### 4.1 Compilation soundness (per box, once)
+### 4.1 The obligation on a box table
 
-A compiled table is accepted only with a **certificate that it equals the
-box's uncovered paths**.  For boxes of ≤ ~20 variables, exhaustive enumeration by
-the *existing* engine (which is how the table above was produced) plus a
-cross-check that the row set equals the canonicalized enumeration is itself
-the certificate; the compiler records, per row, the primitive **trace paths**
-(the `uncovered_path_positions` the engine already emits) and the box's
-**static internal cover** — the complementary pairs closing its other paths
-(the same construction as `emit_static_cover` in `controller/cdcl.rs`, which
-enumerates every complementary pair over positions independent of search
-order).  Both are stored with the box in the library.
+Let box `B` have definition `φ_B` and table `T_B` (rows = canonical uncovered
+paths of `¬B`, i.e. models, §2.2).  For UNSAT soundness the table must be
+**complete**:
 
-### 4.2 Proof soundness (per problem)
+```
+Complete(B, T_B)  :=  ∀ m ⊨ φ_B,  ∃ r ∈ T_B,  r ⊆ m        (rows in model polarity)
+```
 
-Phase 1 emits proofs at the **primitive level**, unchanged in format:
+Every model of the box must contain some row.  Extra rows (`T_B ⊋ models`)
+only make the search slower, never unsound; **missing** rows are what would
+let a real model slip past the cover.  So the obligation is one-directional,
+and it is the *only* thing that needs to be true about a table for UNSAT.
+(The other direction — every row really is a model — matters only for SAT
+answers, which are certified anyway by evaluating the model against `F`.)
 
-- the certificate is the union of every box instance's static internal cover
-  (positions re-based to the instance's location in the NNF) and the cross-box
-  pairs the search found;
-- `sat-cover-verify` checks it exactly as today, with no knowledge that boxes
-  existed.
+For a **projected** table (§5.3) the statement is unchanged with rows over the
+interface variables: `∀ m ⊨ φ_B, ∃ r, r ⊆ m|_I`.  The internals are
+existentially absorbed by quantifying over all models of `φ_B`.
 
-This is the honest baseline: whatever the compiled search did, the proof it
-hands over is a plain complementary cover of the primitive matrix.  A later
-**box-aware certificate** (`v4`: `box <name> <instance-positions>` entries
-whose rows are checked against the shipped per-box certificate) buys
-compactness — a `k`-adder proof shrinks by roughly the internal-cover size per
-instance — but it is an optimization, gated on the primitive path being green.
+### 4.2 The box certificate is an ordinary UNSAT proof
 
-Gate for either: reproduce known values first (the adder examples in the UI —
-"Full Adder", "123+47=170", "Adder Unsat" — and the pigeonhole-principle (PHP)/RoundRobin corpus).
-A checker re-encodes the rule it checks, so a new proof system is validated
-on instances whose answer is independently known — never on the checker's
-say-so alone.
+`Complete(B, T_B)` is equivalent to unsatisfiability of
 
-## 5. Compilation and the box library
+```
+φ_B  ∧  ⋀_{r ∈ T_B} ¬(⋀ r)          ("a model of B that contains no row")
+```
 
-### 5.1 Compiler
+which is a plain propositional formula.  So a box's certificate is a
+**standard UNSAT proof** of that formula — LRAT (the hint-carrying clausal
+proof format checked by `cake_lpr`) or VeriPB — produced once at compile time
+by any trusted-checkable solver, and checked by the **same verified checkers
+hydra already uses** (`cake_lpr` is itself a CakeML-verified LRAT checker).
+No new proof system is needed for boxes, and the box's Rust code never enters
+the argument.  For the adder this proof is trivial (256 assignments); for a
+projected 4-bit adder it is a small SAT instance.
 
-`box-compile <definition> → <table + certificate>`: parse the definition (the
-existing formula language), build both complements' matrices, enumerate uncovered
-paths with the existing engine, canonicalize (sorted, deduped — the UI's
-canonical view is the interactive front end of this), record trace paths and
-the static cover, write a library entry.  Embarrassingly parallel across boxes.
+### 4.3 The composition theorem (to be stated and proved in Lean)
 
-### 5.2 Parametric boxes
+```
+Theorem box_cover_sound (F : Formula) (boxes : List Box) (T : Box → Table)
+  (h_complete : ∀ B ∈ boxes, Complete B (T B))
+  (h_cover    : ∀ p : BoxPath F T, Covered p) :
+  ¬ ∃ m, m ⊨ F
+```
 
-A library entry is over **formal** parameters; an instance is a renaming
-(`FullAdder(a3, b3, c3, s3, c4, u1_3, u2_3, u3_3)`), which is a bitset
-column permutation — no re-compilation.  Row masks are stored over the formal
-index space and mapped at instantiation.
+where a `BoxPath` chooses one row per box instance plus one child at each
+structural `Prod` (§2.1), `Covered p := ∃ ℓ, ℓ ∈ p ∧ ¬ℓ ∈ p`, and the row
+literals are taken in path polarity.  Proof sketch: a model `m` of `F`
+restricts to a model of every `φ_B`, hence (by completeness) contains a row of
+every table; those rows together with `m`'s structural choices form a
+`BoxPath` all of whose literals are consistent with `m` — an uncovered box
+path, contradicting `h_cover`.  This is a short Lean development over finite
+literal sets (Mathlib `Finset`), and it is the *entire* meta-theory: the
+composed UNSAT proof for a formula with plugged-in boxes is exactly
+`{ per-box UNSAT proofs of §4.2 } + { a cover of the box paths }`.
 
-### 5.3 Hierarchical boxes
+`h_cover` is discharged by a **box-level cover certificate**: the existing
+`v3` idea (per-variable position lists whose cross products are the pairs,
+[cover_certify.md](cover_certify.md)) with positions extended to
+`(instance, row)` for compiled boxes.  Phase 1 may instead **expand** each
+box cover to primitive positions (per-box trace paths + static internal cover,
+§6.1) and hand today's `sat-cover-verify` a plain primitive cover — a valid,
+if larger, instance of the same theorem.
 
-A box may be defined in terms of boxes (`RippleAdder4 = FullAdder × 4` with
-internal carries).  Compile by running *this* engine on the definition (boxes
-inside), then **project** the local internals (§2.4).  Tables grow with the
-interface, not the internals — a 4-bit adder projected to its 13 interface
-signals has at most 2^9 = 512 rows (one per input combination), independent
-of the 20 gate outputs inside.  Where projection would still blow up, keep the
-box hierarchical at solve time (the engine handles nested compiled boxes
-because a compiled box is just a `Box_`).
+### 4.4 What gets formally verified, and with what
 
-### 5.4 Getting boxes into a problem
-
-- **Explicit (first):** box syntax in the formula language and the web UI —
-  `FullAdder(X,Y,C1,Z,C,U1,U2,U3)` resolves against a library file; the UI's
-  paths view shows compiled rows in the canonical tree (they *are* canonical
-  paths) and highlights them in the diagram exactly as now.
-- **Detected (later):** for competition CNF, recognise gate clusters
-  (Tseitin-encoded XOR/AND/majority, adder and multiplier cells) and replace
-  them by library instances.  This plugs into hydra's structure dispatch
-  (`cook_pbp::detect_shape` and siblings) as one more detector, routing
-  circuit-shaped instances to this backend.
-
-## 6. Multi-core parallelism (out of the box)
-
-- **Unit of work = a sub-tree of the row search** (a prefix of row choices).
-  Workers run the §3.2 loop on their own `Assignment`; the compiled tables and
-  the arena are shared read-only (`Arc`).  Per-worker state is a few bitsets —
-  cheap to fork.
-- **Work stealing** via `rayon::scope`/`crossbeam-deque` (rayon is already a
-  dependency, 43 `par_iter` sites): a worker that reaches a node with `n` uncovered
-  rows on a wide box pushes `n−1` siblings as stealable tasks.  Splitting
-  prefers boxes with many live rows near the top of the tree so tasks are
-  balanced.
-- **Determinism mode**: fixed split depth `k` and a fixed task order, so the
-  set of tasks — and therefore the certificate — is reproducible.  Off, the
-  scheduler is free-running (faster, non-deterministic).  The `eff` A/B
-  history showed how much a nondeterministic engine costs in measurement
-  trust, so the deterministic mode is the default for benchmarks.
-- **Proof assembly**: each task returns its cover (or a model); the parent
-  concatenates.  Because tasks partition the path space by prefix, the union
-  is a cover of the whole — no merge logic beyond position re-basing.
-- **Nogood sharing** (with §3.5): a lock-free append-only pool, drained in
-  batches — the phase-4 write-up's "pool contention / O(N²) drain" risk is
-  handled by batching from the start, and sharing stays off until measured.
-- Target: saturate all 12 performance cores (P-cores), a project rule; watch for single-threaded tails
-  when few tasks remain (re-split the survivors, §7.4).
-
-## 7. Distributed execution — ready for Amazon Web Services (AWS)
-
-The multi-core design already speaks in prefix-partitioned, self-contained
-work units with mergeable certificates; distribution is the same protocol over
-a queue.
-
-### 7.1 Roles
-
-- **Coordinator** (one small instance, or a Step Functions state machine):
-  loads the problem + library, runs the top of the search to depth `k`
-  (deterministic split), emits work units, tracks completion, assembles the
-  certificate, enforces the budget.
-- **Workers** (ECS/Fargate containers or EC2 spot instances — Elastic Container Service, Elastic Compute Cloud; AWS Batch is a natural fit; Lambda for
-  units expected < 15 min): stateless.  Pull a unit, solve it with the
-  multi-core engine, upload `{UNCOVERED: model | COVERED: cover | SPLIT: children}`.
-
-### 7.2 Plumbing
-
-| concern | choice | why |
+| artifact | tool | why this tool |
 |---|---|---|
-| work queue | SQS (Simple Queue Service); FIFO — first-in-first-out — ordering not required, units are idempotent | at-least-once is fine: a duplicate solve returns an identical cover |
-| artifacts | S3 (Simple Storage Service): problem, library, per-unit certs, assembled proof | workers need no shared state |
-| box library | S3 + local cache, content-addressed by definition hash | compile once, everywhere |
-| coordination | DynamoDB unit table (`pending/running/done`, attempt count) | visibility timeout + retries give fault tolerance |
-| observability | CloudWatch: units/s, uncovered-row histograms, cover sizes | spot the single-tail unit early |
+| `box_cover_sound` and the definitions above | **Lean 4 + Mathlib** | the meta-theorem is finite combinatorics; Lean's kernel is the smallest trust anchor available |
+| the executable **box-cover checker** (Rust) | **Verus** | Verus verifies performant, idiomatic Rust (`exec` code against `spec`/`proof` functions) with SMT automation — right for a checker that must scan large covers fast |
+| the link between them | **Aeneas** (optional) | translate the Rust checker to Lean and prove it decides exactly the `h_cover` premise, so the whole chain lives in one logic; if Aeneas's Rust subset proves limiting, Verus's own spec, stated to mirror the Lean definitions, is the fallback |
+| per-box completeness proofs | `cake_lpr` / VeriPB | already verified / already trusted in hydra |
 
-### 7.3 Certificate assembly
+TCB after this: Lean's kernel, Verus's checker (Z3) or the Aeneas translation,
+`cake_lpr`/VeriPB, the certificate and formula parsers, and the operating-system (OS) / application-binary-interface (ABI) glue.
+**Untrusted**: the search engine, the jq → formula step, the box compiler,
+`rustc`, and every generated plug-in.  That is the de Bruijn discipline the
+project already follows with hydra, extended to boxes.
 
-The final proof = the split tree (which prefixes were assigned to which
-units) + each unit's cover.  A checker verifies (a) the prefixes at depth `k`
-partition the row space of the split boxes and (b) each unit cover closes
-every path under its prefix.  Both are local checks; the checker itself
-parallelizes per unit.  The whole proof remains a primitive cover after
-re-basing, so `sat-cover-verify` can check the assembled file end to end.
+### 4.5 Optional stronger layer: verified propagators
 
-### 7.4 Hard units and budget
+The generated box code (§6) can additionally be verified with Verus against
+the table semantics — `propagate` returns only literals implied by every live
+row, reports `covered` only when no row is live, and `uncovered_rows`
+enumerates exactly the live rows.  This does not shrink the TCB for UNSAT
+(certificates already cover that) but it makes the engine's *SAT-side* and
+nogood-sharing behaviour trustworthy without per-instance checking, which
+matters for the distributed on-the-fly scheme in §8.4.
 
-A worker that exceeds its per-unit budget returns `SPLIT` with its own
-children (deeper prefixes) rather than failing — the tree deepens where the
-problem is hard.  The coordinator enforces a global wall-clock and dollar cap
-(spot pricing, max instances), and reports *what was proved* on timeout: the
-covered units are a partial cover, exactly the "partial cover" the current
-`Paths` UI already visualizes.
+## 5. The box specifier language — jq
 
-### 7.5 What this is *not*
+### 5.1 A box is a jq definition
 
-Not a shared-memory CDCL portfolio.  Learned nogoods are not exchanged across
-machines in v1 (workers are stateless by design); the parallelism is search-
-space partitioning, which is what a prefix-partitioned proof format supports
-cleanly.  Cross-machine sharing is a measured extension, same rule as §3.5.
+The repository already generates its adder problems from jq: `lib/adder.jq`
+defines
 
-## 8. Integration with the existing code
+```jq
+def adder(a;b;c_in;s;c_out;u1;u2;u3):
+    prod(
+        br(eq(prod(a, b), u1)),
+        br(eq(prod(u3, c_in), u2)),
+        br(eq(sum(u1, u2), c_out)),
+        br(eq(xor(a, b), u3)),
+        br(eq(xor(u3, c_in), s))
+    );
+```
+
+over the `expr.jq` constructors (`prod`, `sum`, `eq`, `xor`, `imp`, `br`,
+`vi`), and `/jq` evaluates any filter against a transitively resolved
+preamble (`resolve_preamble` over the `# === deps ===` sections) with the
+`xq` engine.  A **box is such a `def`**: its **parameters are the interface**,
+and any other variable it introduces is **internal**.  The two-equation form
+of the same adder, in the same idiom:
+
+```jq
+def full_adder(x;y;c_in;s;c_out):
+    prod(
+        br(eq(sum(prod(x, y), prod(br(xor(x, y)), c_in)), c_out)),
+        br(eq(xor(x, y, c_in), s))
+    );
+# → "(x y + (x ⊕ y) c_in = c_out) (x ⊕ y ⊕ c_in = s)"
+```
+
+A `.jq` file exports boxes through one more section, alongside the existing
+`deps`/`tests` blocks:
+
+```
+# === boxes ===
+# full_adder(x;y;c_in;s;c_out)
+# adder(a;b;c_in;s;c_out;u1;u2;u3)   expose u1,u2,u3
+# === end boxes ===
+```
+
+`expose` keeps internals as table columns (§2.4); the default is to project
+them out.  The `# === tests ===` block gains table-level assertions
+(`full_adder | table | length == 8`), and the compiler adds its own check
+that the compiled table equals the definition's projection — the check that
+produced the result below.
+
+### 5.2 Compilation pipeline
+
+```
+jq def  ──/jq──►  formula text  ──parse──►  abstract syntax tree (AST) with box-call nodes
+        ──resolve──►  nested boxes compiled first (deps; cycles reported)
+        ──enumerate (existing engine)──►  canonical uncovered paths of ¬B
+        ──project internals──►  table T_B      ──§4.2──►  certificate
+        ──§6 codegen──►  Rust source  ──rustc──►  plug-in / linked module
+```
+
+The formula language gains a **box-call form**, `full_adder(a_0, b_0, c_0,
+s_0, c_1)`, parsed as a `Box` node and resolved against the library.  That is
+what lets a jq definition **emit box calls in its output** instead of
+expanding them:
+
+```jq
+def add4(a;b;c_in;s;c_out):
+    prod([range(4) | br("full_adder(\(a(.)), \(b(.)), \(carry(.)), \(s(.)), \(carry(.+1)))")]),
+    ...  # with carry(0) = c_in, carry(4) = c_out
+```
+
+so hierarchy is expressed in jq, resolved by the same dependency machinery,
+and compiled bottom-up.
+
+### 5.3 Projection — verified on the engine
+
+Projection drops internal columns and dedups rows, yielding the table of
+`∃U1 U2 U3. adder`.  Measured: the 8-row `adder(...)` table projected onto
+`{X,Y,C1,Z,C}` is **set-equal** to the canonical table of
+`(C = X·Y + (X ⊕ Y)·C1)·(Z = X ⊕ Y ⊕ C1)` — the two-equation adder — as
+computed independently by the engine.  (The two-equation complement also has
+only 208 paths to the five-equation form's 972, with the same 8 uncovered
+canonical rows: a more compact definition is cheaper to *compile*, and the
+compiled box is identical either way.)  Projection is sound exactly when the
+internals are fresh to the box, which the jq convention guarantees unless
+`expose` says otherwise; and the §4.2 certificate covers projected tables
+without change.
+
+## 6. Boxes compile to Rust — not tables interpreted at run time
+
+### 6.1 What the generator emits
+
+For a box over `n` interface variables the compiler emits a Rust module
+implementing the `Box_` trait (§3.1) with everything specialized:
+
+- **Propagation as a lookup table (LUT).**  The current partial assignment
+  restricted to the box is a 3-valued vector (unassigned/true/false) — `3^n`
+  states.  For `n ≤ 10` the generator precomputes, per state, the
+  forced-literal mask and the covered flag: 243 entries for the 5-variable
+  adder, 6 561 for the 8-variable one.  Propagation is one table lookup.
+- **Otherwise, per-literal row masks as constants** (`const ROWS_WITH_X_POS:
+  u64 = 0b…`): live rows = AND of the masks of the prefix's literals;
+  forced literals = literals present in every live row (AND over rows, or a
+  second small table); all branchless, all `#[inline]`.
+- **`uncovered_rows`** iterates the live mask; **`explain`** (for nogoods,
+  §3.5) returns, per dead row, the prefix literal that killed it — also a
+  constant table.
+- **Per-box static data** used by certificates: trace paths and the static
+  internal cover, emitted as data next to the code.
+
+This is the classic specialization step: the table interpreter of §3
+partially evaluated on a fixed table *is* this generated code.
+
+### 6.2 Two delivery modes
+
+| mode | mechanism | when |
+|---|---|---|
+| **plug-in** | each box (or box family) is a generated crate built as a `cdylib` behind a versioned C ABI (a vtable of `extern "C"` function pointers — Rust-to-Rust ABI is not stable) and loaded with `libloading` | the core solver stays fixed; boxes arrive per problem; interactive use |
+| **specialized solver** | the generated modules are linked into a per-problem binary; bitset width fixed by `const W: usize` from the problem's variable count; full inlining and link-time optimization (LTO) | batch/cloud runs where a per-problem build is amortized over hours of solving |
+
+Both key their artifacts by a content hash of the definition, so a box is
+compiled once and reused across problems and machines (the library lives in
+object storage for the cluster, §8).  Because compile latency is seconds, the
+interactive path is **two-tier**: the §3 table interpreter runs immediately
+while the compiled box builds in the background and is hot-swapped in.
+
+### 6.3 Safety at the boundary
+
+A dynamically loaded plug-in is native code; the engine treats it as
+untrusted for correctness (§4) and as trusted only for memory safety, the way
+any `cdylib` is.  Mitigations: the plug-in is generated by *our* compiler from
+a checked table (no hand-written unsafe code crosses the boundary), the ABI is
+versioned and validated at load, and the specialized-solver mode has no
+boundary at all.
+
+## 7. Multi-core parallelism
+
+Unchanged in structure from the first draft — prefix-partitioned work units
+over the row search, work stealing via rayon/`crossbeam-deque`, shared
+read-only tables and arena, a **deterministic mode** for benchmarks, and
+mergeable covers — with one promotion: **nogood sharing between workers is
+built in from the start** (a batched, append-only pool, imported at decision
+boundaries), because §8's evidence says sharing is where scale comes from.
+It remains switchable, and §10's A/B decides whether it stays on.
+
+## 8. Distributed execution — informed by Mallob
+
+### 8.1 What Mallob established
+
+Mallob (Schreiber & Sanders, Karlsruhe Institute of Technology — KIT) is the repeated winner of the SAT
+Competition's cloud track.  Its design points that matter here:
+
+- **Malleable scheduling.**  Many jobs share a cluster; each job's worker
+  allocation grows and shrinks at run time, and cores are rebalanced in
+  milliseconds.  Utilization, not per-job speed, is what makes cloud SAT
+  affordable.
+- **Job trees.**  A job's processes form a binary tree; clause exchange is a
+  periodic aggregate-up / broadcast-down over that tree with bounded buffers,
+  so communication scales logarithmically.
+- **Diversified portfolio + clause sharing**, not pure partitioning.  Every
+  process searches the whole problem (differently seeded/configured CDCL
+  solvers) and they exchange filtered learned clauses (by size, literal block
+  distance (LBD), and deduplication).  Their measurements show this scales
+  better than cube-and-conquer partitioning on most instances: partitioning
+  suffers load imbalance and throws away learning at the cut.
+- **Certification.**  First (Michaelson, Schreiber, Heule, Kiesl-Reiter,
+  Whalen, TACAS 2023 — Tools and Algorithms for the Construction and Analysis of Systems) by tracking clause identifiers (IDs) across solvers and reconstructing
+  a single LRAT proof — correct but heavy.  Then (Schreiber, SAT 2024)
+  **on-the-fly trusted checking**: every solver process is paired with a
+  small trusted checker that validates each learned clause from hints as it
+  is produced; clauses that cross process boundaries carry a message
+  authentication code (MAC) from the producing checker, so the importing
+  checker accepts them without re-derivation; UNSAT is trusted the moment a
+  checker validates the empty clause.  No monolithic proof is ever written.
+
+### 8.2 What changes in this design
+
+- **Sharing is the primary scaling mechanism; partitioning is secondary.**
+  The default distributed mode is a Mallob-style job tree of engines that each
+  search the whole box matrix with diversified branching (different box
+  orders, row orders, seeds) and exchange **nogoods** (§3.5) with the same
+  filtering discipline.  Prefix partitioning (the first draft's only
+  mechanism) is kept for two jobs it does well: giving the *cover*
+  certificate a clean tree structure, and spanning high-latency boundaries
+  (regions, spot fleets) where sharing would starve.
+- **Interconnect.**  Clause sharing at Mallob rates wants a low-latency
+  fabric: EC2 (Elastic Compute Cloud) instances in a cluster placement group with EFA (Elastic
+  Fabric Adapter) running MPI (Message Passing Interface), or AWS (Amazon Web Services)
+  ParallelCluster — not SQS (Simple Queue Service).  The queue-based layer of the first draft
+  (SQS/S3 (Simple Storage Service)/DynamoDB) remains the *outer* tier that hands whole prefixes to
+  such clusters and collects results.
+- **Malleable coordinator.**  The coordinator becomes a scheduler in
+  Mallob's sense: it admits many jobs, assigns each a dynamic share of the
+  fleet, rebalances on arrivals/completions, and drives spot capacity up and
+  down against a dollar cap.  Mallob's JSON (JavaScript Object Notation) job
+  API (application programming interface) — submit, incremental, cancel, query
+  — is the template for the service surface.
+
+### 8.3 Certification, distributed
+
+Adopt the on-the-fly model rather than assembling a global cover:
+
+- each engine process is paired with a **trusted checker** running the
+  Verus-verified cover/nogood checker (§4.4) in incremental mode: every cover
+  pair and every learned nogood is validated from its hints as produced;
+- a nogood that is shared carries its checker's MAC; the importing checker
+  accepts a signed nogood without re-deriving it;
+- UNSAT is trusted when some checker validates that the box-path space is
+  covered (in nogood terms: derives the empty nogood);
+- the per-box completeness certificates (§4.2) are validated once, at
+  library load, by every checker.
+
+A monolithic assembled cover (the first draft's assembly scheme) remains available as an
+**offline audit artifact** — Mallob's TACAS-2023 route — when a proof must be
+archived, at the cost that paper measured.
+
+### 8.4 Budget and failure
+
+Unchanged: per-unit budgets, `SPLIT` on overrun for the partitioned tier,
+idempotent units, retries, a global wall-clock/dollar cap, and *what was
+proved* reported on timeout.  With sharing, a worker loss loses no proof
+state — validated nogoods already imported elsewhere survive — which is the
+fault-tolerance argument Mallob makes and we inherit.
+
+## 9. Integration with the existing code
 
 | seam | change |
 |---|---|
+| `lib/*.jq`, `resolve_preamble`, `/jq` (`web_app.rs`) | box sources; new `# === boxes ===` section; compiler calls `/jq`-equivalent in-process |
+| `src/formula.rs` parser | box-call node `name(v1, …)` |
 | `src/bin/sat.rs` `MatrixBackend` | new variant `Boxes` (`matrix.boxes`), same `-b`/`--emit-cover` plumbing as `eff_cover` |
-| `src/controller/mod.rs` `PathSearchController` | the box engine is a controller for structural sub-trees, so mixed matrices reuse `classify_paths_with_arena` unchanged |
-| `src/dual/effective_count.rs` | lifted count = live-row popcount; one new arm |
-| `src/controller/cdcl.rs` `emit_static_cover` | reused per box at compile time (§4.1) |
-| `src/bin/sat_cover_verify.rs` | unchanged in phase 1; `v4` box entries later |
-| `src/bin/web_app.rs` `/paths` | serve compiled rows as canonical paths with trace positions, so the UI's canonical tree + diagram highlighting work as-is |
-| `tools/gbd/run_benchmark.py` | `-b boxes`, existing soundness gates (witness + cover verify) |
-| hydra dispatch (`cook_pbp::detect_shape` family) | circuit detector → route to `boxes` |
-| new `src/boxes/` | `row.rs` (bitsets), `table.rs`, `engine.rs`, `compile.rs`, `library.rs`, `par.rs`, `dist/` |
+| `src/controller/mod.rs` `PathSearchController` | box engine as a controller for structural sub-trees; mixed matrices reuse `classify_paths_with_arena` |
+| `src/dual/effective_count.rs` | lifted count = live-row popcount |
+| `src/controller/cdcl.rs` `emit_static_cover` | reused per box at compile time |
+| new `src/boxes/` | `row.rs`, `table.rs`, `engine.rs`, `compile.rs` (jq→table→cert), `codegen.rs` (Rust emitter), `plugin.rs` (`libloading`, versioned ABI), `library.rs`, `par.rs`, `dist/` |
+| new `verify/` | Lean project (`box_cover_sound`), Verus checker crate, Aeneas bridge |
+| `Cargo.toml` | `libloading`; generated crates use `crate-type = ["cdylib"]` |
+| `src/bin/sat_cover_verify.rs` | unchanged in phase 1; `v4` `(instance,row)` positions later |
+| `src/bin/web_app.rs` `/paths` | compiled rows served as canonical paths with trace positions (the UI's canonical tree/highlighting work as-is) |
+| `tools/gbd/run_benchmark.py` | `-b boxes`, existing soundness gates |
+| hydra dispatch (`cook_pbp::detect_shape` family) | later: circuit detector routing to `boxes` |
 
-## 9. Phased plan, with gates
-
-Cheap de-risks first; every phase has a measurable gate and nothing is
-believed without an equal-budget comparison.
+## 10. Phased plan, with gates
 
 | phase | build | gate |
 |---|---|---|
-| **M0** (done, this doc) | verify 972/13/8 and extract the table on the real engine | ✓ table matches the adder truth table row for row |
-| **M1** core | bitset rows, table + structural boxes, depth-first search (DFS) + propagation, single core; explicit box syntax | same verdicts as `eff`/`cdcl` on the UI adder examples and the test corpus; **every UNSAT certifies** via the primitive cover |
-| **M2** compiler + library | `box-compile`, parametric instances, per-box certificate, static internal cover | a `k`-bit ripple adder assembled from `FullAdder` instances certifies for `k` up to the largest the current engine can do, and beyond |
-| **M3** multi-core | work stealing, deterministic mode, cover merge | ≥ 8× on 12 cores on a multiplier-verification instance; certificate byte-identical in deterministic mode |
-| **M4** measure | `run_benchmark` A/B vs `eff`, `cdcl`, `cadical`, `hydra` on an arithmetic-circuit set (adders, multipliers, the CLP(B) — constraint logic programming over Booleans — examples), **equal wall-clock**, sound gates on | the honest question: does it beat cadical on the circuit slice? |
-| **M5** learning | nogoods + 1UIP + restarts (§3.5), on/off | only kept if M4's numbers improve |
-| **M6** detection | gate/adder/multiplier detector into hydra | competition CNF instances routed and solved+certified |
-| **M7** distributed | coordinator/worker on AWS, split-tree certificates | a multi-hour instance solved across N spot workers with an assembled, checked proof; cost within cap |
+| **M0** (done) | 972/13/8 verified; table extracted; projection `∃U.adder ≡` two-equation adder verified as set equality | ✓ |
+| **M1** core | bitset rows, table + structural boxes, DPLL-over-rows with table propagation, single core; `# === boxes ===` + box-call syntax; interpreted tables | same verdicts as `eff`/`cdcl` on the UI adder examples and the test corpus; every UNSAT certifies via the expanded primitive cover |
+| **M2** certificates | per-box completeness proofs via `cake_lpr`/VeriPB; box-level `v4` cover format; unverified checker | known-value gate: pigeonhole-principle (PHP)/RoundRobin corpus and the adder examples all check; a deliberately corrupted table is rejected |
+| **M3** formalization | Lean `box_cover_sound`; Verus checker; Aeneas bridge attempted | checker verified; the Lean theorem's premises match the checker's spec by inspection or translation |
+| **M4** codegen | LUT/mask propagators, `cdylib` plug-ins via `libloading`, specialized-solver mode, content-hash cache, two-tier hot-swap | compiled boxes byte-identical in behaviour to interpreted ones on the corpus; measured speedup per propagation |
+| **M5** multi-core | work stealing + built-in nogood sharing, deterministic mode | ≥ 8× on 12 cores on a multiplier instance; deterministic certificates byte-identical |
+| **M6** measure | equal-wall-clock A/B vs `eff`, `cdcl`, `cadical`, `hydra` on adders, multipliers, the CLP(B) (constraint logic programming over Booleans) examples, with user-supplied boxes | the honest question: a certified win on the circuit slice? |
+| **M7** distributed | Mallob-style job tree + sharing on an EFA placement group; malleable coordinator; on-the-fly trusted checkers with MACs; queue tier for prefixes | a multi-hour instance solved across N spot workers, UNSAT trusted by the checkers, cost within cap |
+| **M8** detection | gate/adder/multiplier detector into hydra | competition CNF routed and certified — lower priority now that users supply boxes |
 
-M4 is the gate that decides whether M5–M7 are worth building.  Its framing
-follows the project's hydra lesson: we do not expect to beat CDCL at general
-search; the claim is a **certified win on the circuit slice**, where CDCL's
-clause-level view of arithmetic is its known weakness.
+M6 decides whether M7–M8 are built.
 
-## 10. Risks
+## 11. Risks
 
-1. **The win is family-specific.**  Boxes help where the formula *has* boxes.
-   Random/industrial CNF without recoverable structure gains nothing — that
-   is the hydra premise, and M4 must say so if true.
-2. **Negative-occurrence tables can be large** (§2.3).  Mitigation: keep the
-   structural definition for that polarity, or compile lazily on first use.
-3. **Projection blow-up** for wide interfaces (§5.3).  Mitigation: stay
-   hierarchical; measure row counts at compile time and refuse to flatten past
-   a threshold.
-4. **Certificate size** in phase 1 scales with static internal covers per
-   instance.  Acceptable for correctness; `v4` fixes it if it matters.
-5. **Position re-basing bugs** when expanding box covers into primitive
-   positions.  Mitigation: the checker catches them — that is the point of
-   not trusting the compiler — and the gate reproduces known values first.
-6. **Parallel measurement trust.**  Deterministic mode for all benchmarks.
+1. **The premise is now "the user supplies the boxes."**  That converts the
+   first draft's biggest risk (no recoverable structure) into a modelling
+   task — but also means results only apply where a modeller has done that
+   work.  M8 keeps the automatic route alive.
+2. **Compile latency** for interactive use.  Two-tier hot-swap (§6.2)
+   hides it; cache hits make repeats free.
+3. **Native plug-ins** cross a memory-safety boundary.  Generated-only code,
+   versioned ABI, and the no-boundary specialized mode (§6.3); correctness
+   never depends on them (§4).
+4. **Verification tooling maturity.**  Aeneas's supported Rust subset may not
+   cover the checker; Verus's spec is the fallback (§4.4).  The Lean theorem
+   stands regardless.
+5. **Low-latency fabric on AWS** costs more than a queue; sharing may not pay
+   for small instances.  The two-tier layout (§8.2) lets the queue tier run
+   alone.
+6. **Negative-occurrence tables** and **projection blow-up** (first-draft
+   risks) stand; hierarchical boxes and lazy compilation mitigate.
+7. **Parallel measurement trust.**  Deterministic mode for every benchmark.
 
-## 11. Questions for Greg
+## 12. Questions for Greg
 
-1. Box syntax: `FullAdder(X,Y,C1,Z,C,U1,U2,U3)` with a library file, or
-   `let FullAdder(...) = …` definitions inline in the formula?
-2. Should internals default to *projected* (fresh, local) or *exposed*?  The
-   adder example exposes them; hierarchical boxes want projection.
-3. Priority of M6 (CNF detection) vs M7 (distributed): detection is what
-   makes competition instances reachable; distribution is what makes the
-   big ones finish.
-4. Is AWS Batch acceptable as the first worker substrate (simplest), or do
-   you want Lambda-first for cost granularity?
+1. Box export: the `# === boxes ===` section as sketched, or a jq-level
+   annotation on the `def` itself?
+2. Internals default to *projected* (fresh, local) with `expose` as the
+   opt-out — agreed?
+3. Verus for the checker with Lean for the theorem (recommended), or
+   Aeneas-first so everything lands in Lean from the start?
+4. Plug-ins (`libloading`) first, or the specialized-solver build first?
+   Plug-ins serve the UI; the specialized build serves the cluster.
+5. Cluster substrate for M7: ParallelCluster with EFA (Mallob's natural home)
+   versus Batch/containers with the queue tier only.
+
+## 13. References
+
+- Schreiber, D., Sanders, P.  *Scalable SAT Solving in the Cloud.*  SAT 2021
+  — Mallob: malleable job scheduling, job trees, clause-sharing portfolio.
+- Michaelson, D., Schreiber, D., Heule, M., Kiesl-Reiter, B., Whalen, M.
+  *Unsatisfiability Proofs for Distributed Clause-Sharing SAT Solvers.*  TACAS
+  2023 — reconstructing one LRAT proof from distributed solving.
+- Schreiber, D.  *Trusted Scalable SAT Solving with On-the-fly LRAT
+  Checking.*  SAT 2024 — per-process trusted checkers, signed shared clauses.
+- Mallob project page: https://satres.kikit.kit.edu/research/mallob/
+- Verus — SMT-based verification of Rust (`exec`/`spec`/`proof`).
+- Aeneas — Rust verification by translation to Lean/Coq/F*.
+- `cake_lpr` — CakeML-verified LRAT checker (already hydra's UNSAT checker).
+- Lazy clause generation (CP with learning) — the propagator-plus-learning
+  architecture §3.5 mirrors.
+- [dual-search-design.md](dual-search-design.md), [cover_certify.md](cover_certify.md),
+  and the `phase4_cubes` branch write-up for this repository's own precedents.

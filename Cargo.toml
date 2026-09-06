@@ -94,6 +94,7 @@ num-integer = "0.1"
 num-traits = "0.2"
 burn = { version = "0.21", features = ["ndarray", "autodiff"], optional = true }
 rayon = "1"
+highs = "2.4.0"
 
 
 [[bin]]

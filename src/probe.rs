@@ -1748,89 +1748,26 @@ fn code_bound_side(slices: &[Vec<u16>]) -> u32 {
         }
         rk[phi] = crate::pencil::rank_u16(&acc) as u32;
     }
-    // DUAL packing LP: maximize sum_phi rk[phi] y_phi  s.t.  for each column
-    // type c: sum_{phi: <c,phi>=1} y_phi <= 1, y >= 0. The origin is feasible,
-    // so a dense primal simplex with Bland's rule needs no phase 1.
-    let n = nphi; // variables y_phi (index phi-1)
-    let m = nphi; // constraints (index c-1)
-    let w = n + m + 1; // columns: y vars, slacks, rhs
-    let mut tab: Vec<Vec<f64>> = vec![vec![0.0; w]; m + 1];
+    // DUAL packing LP via HiGHS: maximize sum_phi rk[phi] y_phi  s.t.  for
+    // each column type c: sum_{phi: <c,phi>=1} y_phi <= 1, y >= 0.
+    let n = nphi;
+    let m = nphi;
+    let mut pb = highs::RowProblem::default();
+    let cols: Vec<highs::Col> = (1..=n).map(|phi| pb.add_column(rk[phi] as f64, 0.0..=1.0)).collect();
     for c in 1..=m {
-        let row = &mut tab[c - 1];
-        for phi in 1..=n {
-            if (c & phi).count_ones() % 2 == 1 {
-                row[phi - 1] = 1.0;
-            }
-        }
-        row[n + c - 1] = 1.0; // slack
-        row[w - 1] = 1.0; // rhs
+        let row: Vec<(highs::Col, f64)> = (1..=n)
+            .filter(|&phi| (c & phi).count_ones() % 2 == 1)
+            .map(|phi| (cols[phi - 1], 1.0))
+            .collect();
+        pb.add_row(..=1.0, row);
     }
-    // objective row: maximize c.y  <=>  z - c.y = 0  stored as -c
-    for phi in 1..=n {
-        tab[m][phi - 1] = -(rk[phi] as f64);
-    }
-    let mut basis: Vec<usize> = (0..m).map(|c| n + c).collect();
-    let mut iters = 0usize;
-    let mut last_obj = f64::NEG_INFINITY;
-    let mut stall = 0usize;
-    loop {
-        // entering: most negative reduced cost (Dantzig); after a stall of
-        // 50 non-improving pivots fall back to Bland's smallest index
-        let e = if stall < 50 {
-            let mut best_j = None;
-            let mut best_v = -1e-9;
-            for j in 0..n + m {
-                if tab[m][j] < best_v {
-                    best_v = tab[m][j];
-                    best_j = Some(j);
-                }
-            }
-            match best_j { Some(j) => j, None => break }
-        } else {
-            match (0..n + m).find(|&j| tab[m][j] < -1e-9) { Some(j) => j, None => break }
-        };
-        let obj = tab[m][w - 1];
-        if obj > last_obj + 1e-12 { stall = 0; last_obj = obj; } else { stall += 1; }
-        // leaving: min ratio, ties by smallest basis index (Bland)
-        let mut leave: Option<usize> = None;
-        let mut best = f64::INFINITY;
-        for i in 0..m {
-            let a = tab[i][e];
-            if a > 1e-9 {
-                let ratio = tab[i][w - 1] / a;
-                if ratio < best - 1e-12 || (ratio <= best + 1e-12 && leave.map_or(true, |l| basis[i] < basis[l])) {
-                    best = ratio;
-                    leave = Some(i);
-                }
-            }
-        }
-        let Some(l) = leave else { break }; // unbounded: cannot happen (loads <= 1)
-        let piv = tab[l][e];
-        for j in 0..w {
-            tab[l][j] /= piv;
-        }
-        for i in 0..=m {
-            if i != l {
-                let f = tab[i][e];
-                if f != 0.0 {
-                    for j in 0..w {
-                        tab[i][j] -= f * tab[l][j];
-                    }
-                }
-            }
-        }
-        basis[l] = e;
-        iters += 1;
-        if iters > 200_000 {
-            break;
-        }
-    }
-    // read y from the basis
-    let mut y = vec![0.0f64; n];
-    for i in 0..m {
-        if basis[i] < n {
-            y[basis[i]] = tab[i][w - 1];
-        }
+    let mut model = pb.optimise(highs::Sense::Maximise);
+    model.make_quiet();
+    model.set_threads(std::num::NonZeroU32::new(1).unwrap());
+    let solved = model.solve();
+    let y: Vec<f64> = solved.get_solution().columns().to_vec();
+    if y.len() != n {
+        return 0;
     }
     // exact certificate: rationalize (floor to 2^-20), scale by the max column load
     const D: i128 = 1 << 20;

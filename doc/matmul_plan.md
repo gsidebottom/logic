@@ -1144,6 +1144,23 @@ the two source papers for this track):
   that needs a fast, correct LP in Rust (the in-tree simplex is 185 s
   at 511 variables and stalls on this degenerate 0/1 LP; HiGHS via
   the highs crate is the route, cmake permitting).
+- **Code bound as a probe leaf via HiGHS (2026-09-05 night)**: cmake
+  installed at user level (pip), highs crate built; code_bound in
+  probe.rs solves the dual packing LP with HiGHS and keeps the exact
+  rational certificate; values match Python exactly at 0.1-0.4 s per
+  LP (root 16 in 0.36 s; the in-tree simplex took 185 s and stalled).
+  --code-leaf: gates pass (known values; recorded verdicts — the LP now
+  certifies the roots at 15 and 16 with 0 tasks). r=17 root 0, depth
+  12, 30-min cap: CAPPED, but the tree's top is collapsed — level-1
+  folds 10/12 code leaves, level-2 61/64, level-3 134/156, level-4 20
+  code + 409 Koszul/Strassen of 507 — while the middle (depths 6-11,
+  4-6-dim sides at targets 11-13) still holds 20M+ nodes with the code
+  leaf certifying only 10-15% there (consistent with its 5/117 at the
+  frontier). Only 2 of ~28 level-1 subtrees were entered in 30 min;
+  a 4-h run on root 0 is measuring the full per-root cost. Reading so
+  far: the LP moves r=17 from ~1 day/root (previous attempt) toward
+  hours/root — a ~10^3-core-hour rung, cluster-scale, not Mac-scale —
+  unless a mid-size leaf appears.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

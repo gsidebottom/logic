@@ -20,7 +20,7 @@
 \title{The Rank-21 Program: Reproduction, Soundness, Exhaustive Negatives,
 and a Certified-Search Architecture for $\langle 3,3,3\rangle$ over $\F$}
 \author{Greg Sidebottom}
-\date{August 31, 2026 (working note); postscripts September 2 and 4, 2026}
+\date{August 31, 2026 (working note); postscripts September 2, 4 and 6, 2026}
 
 \begin{document}
 \maketitle
@@ -563,6 +563,68 @@ the orbit lattice, while a bounded probe from target $18$ must prove
 $10$--$11$ on residuals with two $9$-dimensional sides, which no leaf in this
 class can do. The route to $21$ through a stronger leaf is closed; what
 remains is a change of move set or an argument outside substitution.
+
+
+\section{Postscript III (September 6, 2026): the code bound, the $r=17$
+verdicts, and a standing assessment}
+\label{sec:postscript3}
+
+\paragraph{The code bound.} In a decomposition $\T=\sum_{i\le r} a_i\otimes
+b_i\otimes c_i$, the slice $\T(\varphi,\cdot,\cdot)$ of a covector $\varphi$
+on side $A$ is the sum of the rank-one matrices of the products with
+$\varphi(a_i)=1$, so $|\{i:\varphi(a_i)=1\}|\ge \rk \T(\varphi,\cdot,\cdot)$.
+Over $\F$ the map $\varphi\mapsto\{i:\varphi(a_i)=1\}$ is linear, so the
+products' coefficient vectors form a $k$-dimensional binary linear code in
+$\F^r$ whose weights are bounded below by slice ranks. With $m_c$ the
+number of products of coefficient type $c\in\F^k\setminus 0$,
+\[
+\rk(\T)\;\ge\;\min\Big\{\sum_c m_c \;:\; \sum_{c:\langle c,\varphi\rangle=1} m_c
+\ge \rk\,\T(\varphi,\cdot,\cdot)\ \text{ for all } \varphi\ne 0\Big\},
+\]
+an integer program with $2^k-1$ variables, maximized over the three sides;
+its LP relaxation is made rigorous by rationalizing the dual and computing
+the value-to-load ratio in exact integers. The coset bound of
+Section~\ref{sec:game} is the special case ``every slice has rank $\ge 3$''.
+At the root the bound is $16$ --- above Koszul's $14$ and the coset bound's
+$13$ --- with the exact certificate $4032/257$; it is $16$ on all $211$
+level-1 residual orbits (the $r=16$ rung, proved by search in $65$ minutes,
+follows from $263$ LPs), $16$ on $94\%$ of a root's $256$ folds and $15$ on
+the rank-one killers, $13$--$15$ on Wang's codim-2/3 orbits against his
+$17$--$19$, and it certifies $5$ of $117$ frontier states. Known values are
+never exceeded ($\langle2,2,2\rangle$: $6$; $\langle2,2,3\rangle$: $9$;
+$\langle2,3,3\rangle$: $11$). Its strength is at the top of the search tree,
+the opposite profile from the deep probe.
+
+\paragraph{$r=17$ verdicts.} Installed as a leaf in the pooled probe
+(HiGHS, $0.1$--$0.4$\,s per LP), the code bound collapses the top of the
+tree: at $r=17$ on root~$0$ it certifies $24$ of $28$ level-1
+representatives, $491$ of $512$ level-2 and $1{,}148$ of $1{,}240$ level-3
+nodes, and root~$0$ --- unresolved after $70$ core-hours on August~31 and
+after two further $48$-core-hour attempts --- is proved in $2.75$\,h
+($33$ core-hours; $74$M tasks). A second root takes $26$ minutes. The
+rung $r=17$ (which proves $\rk\ge 18$) is therefore $2{,}500$--$7{,}000$
+core-hours: $9$--$24$ days on this machine, an afternoon on a thousand
+cores. Wang's DP proves $\ge 20$ here in under an hour.
+
+\paragraph{Standing assessment.} On the rank bound itself, nothing in
+this program competes with Wang's DP: it reaches $20$ in under an hour
+where our independent ladder reaches $17$ now and $18$ in days, and the
+reason is structural (his memo shares work across a group of order
+$168^3$; ours across stabilizers of order $2$--$768$). We are not on track
+to $21$. The substitution game's value $18$ has held under four rule sets,
+every leaf that beat flattening was routed around by the adversary, and the
+deep probe cannot reproduce his codim-2/3 values, let alone lift them. What
+the program has produced are results about the problem's structure --- the
+two fold lemmas, the corrected orbit set, the $\F$ pencil oracle with its
+three corrections to textbook values, the frontier map, and the code bound
+--- each backed by an exhaustive run or an exact certificate, and none a
+step toward $21$. The one candidate still untested is an argument of a
+different shape: a single integer program over the products' coefficient
+types whose constraints are \emph{all} of Wang's verified lattice values at
+once ($\sum_{c\notin U} m_c \ge t_U$ for every killed subspace $U$), which
+his DP uses only one child at a time; it reproduces his $20$ from the
+codim-1 values by integrality alone, and whether the codim-2 and codim-3
+values force $21$ is a computation, reported below if it is run.
 
 \section{Convergence, the frontier at $r=20$, and outlook}
 \label{sec:outlook}

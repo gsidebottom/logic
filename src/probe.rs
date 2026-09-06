@@ -1718,6 +1718,165 @@ fn build_small_matmul(n1: usize, n2: usize, n3: usize) -> T3 {
     t
 }
 
+/// THE CODE BOUND over F_2 (2026-09-05). In a decomposition T = sum_i
+/// a_i x b_i x c_i, the slice T(phi,.,.) of a covector phi on side A is
+/// the sum of the rank-one matrices of the products with phi(a_i) = 1, so
+/// |{i : phi(a_i) = 1}| >= rank T(phi,.,.). Over F_2 the map phi -> that
+/// set is linear, so with m_c = #products whose coefficient vector is c:
+///   rank(T) >= min sum_c m_c  s.t.  sum_{c: <c,phi>=1} m_c >= rank T(phi,.,.)  (all phi != 0).
+/// We solve the DUAL (maximize sum_phi y_phi r_phi s.t. every column load
+/// sum_{phi: <c,phi>=1} y_phi <= 1, y >= 0): ANY feasible y certifies the
+/// bound, so the solver's y is rationalized (floor to 2^-20) and the
+/// value / max-load ratio is computed exactly in integers — floating-point
+/// error cannot over-certify. Max over the three sides. Root <3,3,3>: 16.
+fn code_bound_side(slices: &[Vec<u16>]) -> u32 {
+    let k = slices.len();
+    if k == 0 || k > 9 {
+        return 0;
+    }
+    let nphi = (1usize << k) - 1;
+    let rows = slices[0].len();
+    let mut rk = vec![0u32; nphi + 1];
+    for phi in 1..=nphi {
+        let mut acc = vec![0u16; rows];
+        for i in 0..k {
+            if phi >> i & 1 == 1 {
+                for r in 0..rows {
+                    acc[r] ^= slices[i][r];
+                }
+            }
+        }
+        rk[phi] = crate::pencil::rank_u16(&acc) as u32;
+    }
+    // DUAL packing LP: maximize sum_phi rk[phi] y_phi  s.t.  for each column
+    // type c: sum_{phi: <c,phi>=1} y_phi <= 1, y >= 0. The origin is feasible,
+    // so a dense primal simplex with Bland's rule needs no phase 1.
+    let n = nphi; // variables y_phi (index phi-1)
+    let m = nphi; // constraints (index c-1)
+    let w = n + m + 1; // columns: y vars, slacks, rhs
+    let mut tab: Vec<Vec<f64>> = vec![vec![0.0; w]; m + 1];
+    for c in 1..=m {
+        let row = &mut tab[c - 1];
+        for phi in 1..=n {
+            if (c & phi).count_ones() % 2 == 1 {
+                row[phi - 1] = 1.0;
+            }
+        }
+        row[n + c - 1] = 1.0; // slack
+        row[w - 1] = 1.0; // rhs
+    }
+    // objective row: maximize c.y  <=>  z - c.y = 0  stored as -c
+    for phi in 1..=n {
+        tab[m][phi - 1] = -(rk[phi] as f64);
+    }
+    let mut basis: Vec<usize> = (0..m).map(|c| n + c).collect();
+    let mut iters = 0usize;
+    let mut last_obj = f64::NEG_INFINITY;
+    let mut stall = 0usize;
+    loop {
+        // entering: most negative reduced cost (Dantzig); after a stall of
+        // 50 non-improving pivots fall back to Bland's smallest index
+        let e = if stall < 50 {
+            let mut best_j = None;
+            let mut best_v = -1e-9;
+            for j in 0..n + m {
+                if tab[m][j] < best_v {
+                    best_v = tab[m][j];
+                    best_j = Some(j);
+                }
+            }
+            match best_j { Some(j) => j, None => break }
+        } else {
+            match (0..n + m).find(|&j| tab[m][j] < -1e-9) { Some(j) => j, None => break }
+        };
+        let obj = tab[m][w - 1];
+        if obj > last_obj + 1e-12 { stall = 0; last_obj = obj; } else { stall += 1; }
+        // leaving: min ratio, ties by smallest basis index (Bland)
+        let mut leave: Option<usize> = None;
+        let mut best = f64::INFINITY;
+        for i in 0..m {
+            let a = tab[i][e];
+            if a > 1e-9 {
+                let ratio = tab[i][w - 1] / a;
+                if ratio < best - 1e-12 || (ratio <= best + 1e-12 && leave.map_or(true, |l| basis[i] < basis[l])) {
+                    best = ratio;
+                    leave = Some(i);
+                }
+            }
+        }
+        let Some(l) = leave else { break }; // unbounded: cannot happen (loads <= 1)
+        let piv = tab[l][e];
+        for j in 0..w {
+            tab[l][j] /= piv;
+        }
+        for i in 0..=m {
+            if i != l {
+                let f = tab[i][e];
+                if f != 0.0 {
+                    for j in 0..w {
+                        tab[i][j] -= f * tab[l][j];
+                    }
+                }
+            }
+        }
+        basis[l] = e;
+        iters += 1;
+        if iters > 200_000 {
+            break;
+        }
+    }
+    // read y from the basis
+    let mut y = vec![0.0f64; n];
+    for i in 0..m {
+        if basis[i] < n {
+            y[basis[i]] = tab[i][w - 1];
+        }
+    }
+    // exact certificate: rationalize (floor to 2^-20), scale by the max column load
+    const D: i128 = 1 << 20;
+    let yq: Vec<i128> = y.iter().map(|&v| if v.is_finite() && v > 0.0 { (v * D as f64).floor() as i128 } else { 0 }).collect();
+    let mut max_load: i128 = 0;
+    for c in 1..=m {
+        let load: i128 = (1..=n).filter(|&phi| (c & phi).count_ones() % 2 == 1).map(|phi| yq[phi - 1]).sum();
+        max_load = max_load.max(load);
+    }
+    if max_load == 0 {
+        return 0;
+    }
+    let value: i128 = (1..=n).map(|phi| yq[phi - 1] * rk[phi] as i128).sum();
+    ((value + max_load - 1) / max_load) as u32
+}
+
+/// code bound of a (concise) residual, max over sides; the slices of each
+/// side are taken over its active coordinates (contiguous after concision).
+pub fn code_bound(r: &R3) -> u32 {
+    let kt = kt_from_abc(&r.abc);
+    let na = (0..9).filter(|&a| kt.t[a].iter().any(|&x| x != 0)).count();
+    let nb = (0..9).filter(|&b| (0..9).any(|a| kt.t[a][b] != 0)).count();
+    let mut cmask = 0u32;
+    for a in 0..9 {
+        for b in 0..9 {
+            cmask |= kt.t[a][b];
+        }
+    }
+    let nc = cmask.count_ones() as usize;
+    let mut best = 0u32;
+    // side A: slice a = matrix (b x c): rows b -> mask over c
+    let sa: Vec<Vec<u16>> = (0..9).filter(|&a| kt.t[a].iter().any(|&x| x != 0)).map(|a| (0..9).map(|b| kt.t[a][b] as u16).collect()).collect();
+    best = best.max(code_bound_side(&sa));
+    // side B: slice b = matrix (a x c)
+    let sb: Vec<Vec<u16>> = (0..9).filter(|&b| (0..9).any(|a| kt.t[a][b] != 0)).map(|b| (0..9).map(|a| kt.t[a][b] as u16).collect()).collect();
+    best = best.max(code_bound_side(&sb));
+    // side C: slice c = matrix (a x b): rows a -> mask over b
+    let sc: Vec<Vec<u16>> = (0..9)
+        .filter(|&c| cmask >> c & 1 == 1)
+        .map(|c| (0..9).map(|a| (0..9).fold(0u16, |m, b| m | (((kt.t[a][b] >> c) & 1) as u16) << b)).collect())
+        .collect();
+    best = best.max(code_bound_side(&sc));
+    let _ = (na, nb, nc);
+    best
+}
+
 /// Work-queue deep probe (2026-09-01): the same AND-OR tree as deep_probe
 /// (OR over sides in order, AND over the folds of a side, cheap-floor
 /// leaves, depth cap) evaluated by `threads` workers over ONE global task
@@ -1868,6 +2027,7 @@ struct PoolStats {
     memo_t: Vec<AtomicU64>,
     memo_f: Vec<AtomicU64>,
     ub_fail: Vec<AtomicU64>,
+    leaf_code: Vec<AtomicU64>,
 }
 
 impl PoolStats {
@@ -1886,17 +2046,18 @@ impl PoolStats {
             memo_t: mk(),
             memo_f: mk(),
             ub_fail: mk(),
+            leaf_code: mk(),
         }
     }
     fn report(&self) -> String {
-        let mut s = String::from("  depth: run skipped | leaf flat/strassen/koszul | expanded failed | folds kept/total | memo hits T/F | ub-fail\n");
+        let mut s = String::from("  depth: run skipped | leaf flat/strassen/koszul | expanded failed | folds kept/total | memo hits T/F | ub-fail | code-leaf\n");
         for d in 0..self.run.len() {
             let g = |v: &Vec<AtomicU64>| v[d].load(Ordering::Relaxed);
             if g(&self.run) == 0 && g(&self.folds_total) == 0 {
                 continue;
             }
             s.push_str(&format!(
-                "  {d}: {} {} | {}/{}/{} | {} {} | {}/{} | {}/{} | {}\n",
+                "  {d}: {} {} | {}/{}/{} | {} {} | {}/{} | {}/{} | {} | {}\n",
                 g(&self.run),
                 g(&self.skipped),
                 g(&self.leaf_flat),
@@ -1908,7 +2069,8 @@ impl PoolStats {
                 g(&self.folds_total),
                 g(&self.memo_t),
                 g(&self.memo_f),
-                g(&self.ub_fail)
+                g(&self.ub_fail),
+                g(&self.leaf_code)
             ));
         }
         s
@@ -2004,6 +2166,8 @@ struct Pool<'a> {
     popped: AtomicU64,
     cap: u64,
     capped: AtomicBool,
+    /// the code bound as a leaf after Koszul (--no-code-leaf disables)
+    code_leaf: bool,
     /// BALANCED side order (2026-09-01): try the side with the MOST active
     /// coordinates first (ties A,B,C). Always folding A first drives the
     /// residual to a near-matrix (1-2 A-slices) where flatten caps at 9
@@ -2289,6 +2453,9 @@ impl<'a> Pool<'a> {
                 self.stats.leaf_kos[d].fetch_add(1, Ordering::Relaxed);
                 dump_line("leaf", kos);
                 true
+            } else if self.code_leaf && code_bound(r) >= t {
+                self.stats.leaf_code[d].fetch_add(1, Ordering::Relaxed);
+                true
             } else {
                 dump_line("hard", kos);
                 false
@@ -2343,6 +2510,7 @@ pub fn deep_probe_pool(
     if max_flatten3(r) >= t
         || (t <= 13 && strassen_bound3(r, 8) >= t)
         || koszul_bound3(r, 4) >= t
+        || (std::env::args().any(|a| a == "--code-leaf") && code_bound(r) >= t)
     {
         return (true, 0, 0, String::new());
     }
@@ -2363,6 +2531,9 @@ pub fn deep_probe_pool(
         popped: AtomicU64::new(0),
         cap: std::env::var("POOL_TASK_CAP").ok().and_then(|v| v.parse().ok()).unwrap_or(u64::MAX),
         capped: AtomicBool::new(false),
+        // OFF by default (2026-09-05): the in-tree simplex is too slow at 511
+        // variables; the LP runs in Python/HiGHS (matmul/r22/lp_ladder.py).
+        code_leaf: std::env::args().any(|a| a == "--code-leaf"),
         balanced,
     };
     let root = Arc::new(PoolOr {
@@ -4263,6 +4434,31 @@ pub fn main() {
                 println!("  {kv:?}: {n}");
             }
             println!("unsound certifications: {unsound}");
+            return;
+        }
+        if args.iter().any(|a| a == "--code-bound-test") {
+            use std::io::Write;
+            for &(n1, n2, n3, rk) in &[(2usize, 2usize, 2usize, 7u32), (2, 2, 3, 11), (2, 3, 3, 15)] {
+                let t1 = Instant::now();
+                let v = code_bound(&R3::from_abc(&build_small_matmul(n1, n2, n3)));
+                println!("<{n1},{n2},{n3}> (rank {rk}): code bound {v} [{:.3}s]{}", t1.elapsed().as_secs_f64(), if v > rk { "  UNSOUND" } else { "" });
+                std::io::stdout().flush().unwrap();
+                assert!(v <= rk);
+            }
+            // an 8-dim-side residual: root 0 folded by v = e8 (concise 8x9x9)
+            let (al, be, ga, _) = reps[0];
+            let mut r3 = R3::from_abc(&t3);
+            r3.xor_product(al, be, ga);
+            let f = fold_side(&r3, &masks, 0, 1 << 8);
+            let (fc, _) = concise(&f);
+            let t1 = Instant::now();
+            println!("residual ({al},{be},{ga}) folded by e8 (8x9x9): code bound {} [{:.3}s]", code_bound(&fc), t1.elapsed().as_secs_f64());
+            std::io::stdout().flush().unwrap();
+            let t1 = Instant::now();
+            println!("residual ({al},{be},{ga}) (9x9x9): code bound {} [{:.3}s]", code_bound(&r3), t1.elapsed().as_secs_f64());
+            std::io::stdout().flush().unwrap();
+            let t0 = Instant::now();
+            println!("<3,3,3>: code bound {} [{:.3}s]", code_bound(&R3::from_abc(&t3)), t0.elapsed().as_secs_f64());
             return;
         }
         if args.iter().any(|a| a == "--pool-known-gate") {

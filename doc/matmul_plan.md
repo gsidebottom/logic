@@ -1210,6 +1210,24 @@ the two source papers for this track):
   subspaces (--lattice-dim3; 68 table orbits, values 15-18) followed by
   the SAT with codim-3 constraints (at most 20 - t_U of the 7 vectors of
   each U). UNSAT there = rank >= 21 from Wang's certificate + counting.
+- **Codim-3 lattice SAT: still a 20-set (2026-09-06 night)**: with all
+  788,035 codim-3 values added (at most 20 - t_U of the 7 vectors of
+  each 3-dim U; CNF 93.3M clauses) cadical finds a 20-set in 139 s:
+  {1,3,6,8,18,33,35,54,56,63,64,73,161,177,195,216,384,432,504,511} — 16
+  rank-1, 2 rank-2, 2 rank-3 A-types. So Wang's verified A-side values
+  through codim 3, combined by counting across all children at once,
+  still admit 20; the witnesses resemble real schemes (Laderman-like
+  rank-1-heavy A-factors). Trend: each level kills the previous
+  witness and admits a new one — the A-side hierarchy converges to his
+  20, not past it. Untested extension that uses what his framework
+  lacks: the JOINT two-side model — variables m_{(a,b)} over pairs of
+  A- and B-types (511^2), constraints from doubly restricted tensors
+  sum_{a not in U_A, b not in U_B} m_ab >= LB(T|U_A,U_B) (LB by code
+  bound/Koszul on the 8x8x9 restrictions; 261K codim-(1,1) pairs) plus
+  the per-side lattice rows. A day of work; the mixed-game FAILs say
+  mixed leaves are flattening-class there, so the expectation is low.
+  Codim-4 on the A side alone (3.3M subspaces, counters not clauses) is
+  the other option; by the trend it would admit 20 as well.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

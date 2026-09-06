@@ -1,0 +1,5 @@
+codim-3 constraints: 788035 subspaces
+CNF: 32874240 vars, 93334225 clauses (32018 19-pencils, 11417 18-pencils, 511 slice constraints)
+a 20-set: [1, 3, 6, 8, 18, 33, 35, 54, 56, 63, 64, 73, 161, 177, 195, 216, 384, 432, 504, 511] ranks: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3]
+cadical: SAT [139s]
+exit 0

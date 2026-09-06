@@ -10,12 +10,12 @@ honouring).*
 Today every matrix backend (`smart`, `cdcl`, `eff`, …) walks the negation normal form (NNF) of the
 complement literal by literal, discovering complementary pairs at proof time.
 For a structured sub-formula that is wasteful: a full adder's complement has
-**972 matrix paths, only 13 of which are open, and only 8 distinct once
+**972 matrix paths, only 13 of which are uncovered, and only 8 distinct once
 canonicalized** — and those 8 are just its truth table.  This backend makes the
 matrix a tree of **boxes**.  The built-in `and`/`or` boxes behave as now; a
 **compiled box** (e.g. `FullAdder(X,Y,C1,Z,C,U1,U2,U3)`) contributes its
-precomputed canonical open paths directly, so the search never re-derives the
-959 closed internal paths, and closedness is tested per *box row* with a couple
+precomputed canonical uncovered paths directly, so the search never re-derives the
+959 internally covered paths, and coverage is tested per *box row* with a couple
 of bitset ops instead of per literal.  Rows are bitsets, so canonical form is the
 native representation, propagation is table-constraint propagation, and the
 search parallelizes by splitting on box rows — locally over cores, and over
@@ -32,7 +32,7 @@ Formula (five definitional equivalences):
 ```
 
 Run through the current engine on the complement (`/paths`, `complement:true`):
-**972 paths, 13 uncomplementary (open), 8 canonical.**  The 8 canonical open
+**972 paths, 13 uncovered, 8 canonical.**  The 8 canonical uncovered
 paths, decoded to assignments (see §2.2 for the polarity convention), are the
 adder's truth table — the internal signals come along for free:
 
@@ -49,10 +49,10 @@ adder's truth table — the internal signals come along for free:
 
 Three things to take from this:
 
-- **972 → 8.**  Of the complement's paths, 98.7 % are closed *internally* —
+- **972 → 8.**  Of the complement's paths, 98.7 % are covered *internally* —
   work that a compiled box does once, at compile time, instead of on every
   instance in every problem.
-- **13 → 8.**  The open paths are not even distinct; the same model is reached
+- **13 → 8.**  The uncovered paths are not even distinct; the same model is reached
   by up to 4 different traversals.  Canonical form (sorted literals, duplicates
   dropped — exactly the new `canonical` view in the web user interface (UI)) removes that redundancy.
 - **It composes multiplicatively.**  A ripple-carry adder of `k` full adders
@@ -67,21 +67,21 @@ Three things to take from this:
 The engine walks the NNF of the complement `G = ¬F`.  A path picks **one**
 child at each `Prod` (AND) and traverses **all** children at each `Sum` (OR)
 — the `EffectiveCountIndex` recurrence `Sum → ∏, Prod → ∑` in
-`src/dual/effective_count.rs`.  A path is *closed* if it contains a
-complementary pair `ℓ, ¬ℓ`.  `F` is UNSAT (unsatisfiable) iff every path of `G` is closed; an
-open path is a consistent way to falsify `G`, i.e. a model of `F` (so `F` is SAT, satisfiable).
+`src/dual/effective_count.rs`.  A path is *covered* if it contains a
+complementary pair `ℓ, ¬ℓ` (the pair *covers* it), *uncovered* otherwise.  `F` is UNSAT (unsatisfiable) iff every path of `G` is covered; an
+uncovered path is a consistent way to falsify `G`, i.e. a model of `F` (so `F` is SAT, satisfiable).
 
-A **box** is any sub-tree of the matrix that can answer "what are your open
+A **box** is any sub-tree of the matrix that can answer "what are your uncovered
 paths, given what is already on the path?"  `Sum`/`Prod` boxes answer this
 structurally (that *is* the current search).  A **table box** answers it from
 a precomputed list of canonical rows.
 
 ### 2.2 Polarity convention (the trap)
 
-Path literals are the literals of the *complement's* NNF.  An open path is
+Path literals are the literals of the *complement's* NNF.  An uncovered path is
 made consistent by making every literal on it **false** (this is what
 [cover_certify.md](cover_certify.md) means by "each visited lit is the negation
-of the original CNF lit" — CNF being conjunctive normal form).  So a compiled box's canonical open path
+of the original CNF lit" — CNF being conjunctive normal form).  So a compiled box's canonical uncovered path
 `{C, C1, U1, U2, U3', X', Y, Z'}` is the model `X=1 Y=0 C1=0 → Z=1 C=0,
 U1=0 U2=0 U3=1`.  The table above is shown decoded; the engine stores rows in
 path-literal form, because that is what complementarity is tested against.
@@ -91,9 +91,9 @@ path-literal form, because that is what complementarity is tested against.
 A box `B` occurs in `F` either positively (walked as `¬B` inside `G`) or
 negatively (walked as `B`).  Each needs its own compiled table:
 
-- **`¬B` table** — open paths of `¬B`'s matrix = models of `B`.  For the adder,
+- **`¬B` table** — uncovered paths of `¬B`'s matrix = models of `B`.  For the adder,
   8 total rows.  This is the common case (a constraint used positively).
-- **`B` table** — open paths of `B`'s matrix = falsifications of `B`.  For the
+- **`B` table** — uncovered paths of `B`'s matrix = falsifications of `B`.  For the
   adder these are the assignments violating some equation; larger, but still
   finite and precomputable, and usually *partial* rows.
 
@@ -121,7 +121,7 @@ options:
 - **Row** = `(pos, neg)`.  A row *is* its canonical form: no order, no
   duplicates.
 - **Assignment** (current path prefix) = `(pos, neg)` plus a trail for undo.
-- **Closedness of a row against the prefix**:
+- **Is a row covered against the prefix?**
   `row.pos & pre.neg == 0 && row.neg & pre.pos == 0` — 2 ANDs, 2 compares per
   word, and vectorizable with SIMD (single instruction, multiple data).  This *is* the complementary-pair test, hoisted from
   "per literal" to "per row".
@@ -135,10 +135,10 @@ options:
 ```rust
 pub trait Box_ {
     fn vars(&self) -> &VarSet;
-    /// Rows of this box still open under `prefix`; iterated lazily.
-    fn open_rows<'a>(&'a self, prefix: &Assignment, live: &RowBitset)
+    /// Rows of this box still uncovered under `prefix` (the `live` set); iterated lazily.
+    fn uncovered_rows<'a>(&'a self, prefix: &Assignment, live: &RowBitset)
         -> impl Iterator<Item = RowId> + 'a;
-    /// Literals every open row agrees on (forced), or None if no row is open.
+    /// Literals every uncovered row agrees on (forced), or None if no row is uncovered.
     fn implied(&self, live: &RowBitset) -> Option<LitSet>;
 }
 ```
@@ -148,12 +148,12 @@ pub trait Box_ {
 ```
 solve(prefix):
     propagate(prefix)                       # §3.3; may close the path
-    if some box has 0 open rows: return CLOSED (record reason)
-    if every box is decided (1 open row each): return OPEN (model = prefix)
+    if some box has 0 uncovered rows: return COVERED (record reason)
+    if every box is decided (1 uncovered row each): return UNCOVERED (model = prefix)
     b := choose_box(prefix)                 # §3.4
-    for r in b.open_rows(prefix):
-        push(r); if solve(prefix) == OPEN: return OPEN; pop()
-    return CLOSED
+    for r in b.uncovered_rows(prefix):
+        push(r); if solve(prefix) == UNCOVERED: return UNCOVERED; pop()
+    return COVERED
 ```
 
 Choosing a row appends its literals to the prefix.  A path through the whole
@@ -166,8 +166,8 @@ revisits a box's sub-tree for every prefix that reaches it.
 After each push, for every box that shares a variable with the new literals,
 narrow `live &= rows_with[¬lit]`-complement.  Then:
 
-- **Box with 0 live rows** → every completion is closed → backtrack.  This is
-  the closedness test at box granularity: for a `FullAdder` it kills 959
+- **Box with 0 live rows** → every completion is covered → backtrack.  This is
+  the cover test at box granularity: for a `FullAdder` it kills 959
   paths' worth of exploration in one bitset op.
 - **Box with 1 live row** → that row is forced; push its literals (unit
   propagation over the table).
@@ -207,7 +207,7 @@ the compiler.  Two layers:
 ### 4.1 Compilation soundness (per box, once)
 
 A compiled table is accepted only with a **certificate that it equals the
-box's open paths**.  For boxes of ≤ ~20 variables, exhaustive enumeration by
+box's uncovered paths**.  For boxes of ≤ ~20 variables, exhaustive enumeration by
 the *existing* engine (which is how the table above was produced) plus a
 cross-check that the row set equals the canonicalized enumeration is itself
 the certificate; the compiler records, per row, the primitive **trace paths**
@@ -245,7 +245,7 @@ say-so alone.
 ### 5.1 Compiler
 
 `box-compile <definition> → <table + certificate>`: parse the definition (the
-existing formula language), build both complements' matrices, enumerate open
+existing formula language), build both complements' matrices, enumerate uncovered
 paths with the existing engine, canonicalize (sorted, deduped — the UI's
 canonical view is the interactive front end of this), record trace paths and
 the static cover, write a library entry.  Embarrassingly parallel across boxes.
@@ -287,7 +287,7 @@ because a compiled box is just a `Box_`).
   the arena are shared read-only (`Arc`).  Per-worker state is a few bitsets —
   cheap to fork.
 - **Work stealing** via `rayon::scope`/`crossbeam-deque` (rayon is already a
-  dependency, 43 `par_iter` sites): a worker that reaches a node with `n` open
+  dependency, 43 `par_iter` sites): a worker that reaches a node with `n` uncovered
   rows on a wide box pushes `n−1` siblings as stealable tasks.  Splitting
   prefers boxes with many live rows near the top of the tree so tasks are
   balanced.
@@ -319,7 +319,7 @@ a queue.
   certificate, enforces the budget.
 - **Workers** (ECS/Fargate containers or EC2 spot instances — Elastic Container Service, Elastic Compute Cloud; AWS Batch is a natural fit; Lambda for
   units expected < 15 min): stateless.  Pull a unit, solve it with the
-  multi-core engine, upload `{OPEN: model | CLOSED: cover | SPLIT: children}`.
+  multi-core engine, upload `{UNCOVERED: model | COVERED: cover | SPLIT: children}`.
 
 ### 7.2 Plumbing
 
@@ -329,7 +329,7 @@ a queue.
 | artifacts | S3 (Simple Storage Service): problem, library, per-unit certs, assembled proof | workers need no shared state |
 | box library | S3 + local cache, content-addressed by definition hash | compile once, everywhere |
 | coordination | DynamoDB unit table (`pending/running/done`, attempt count) | visibility timeout + retries give fault tolerance |
-| observability | CloudWatch: units/s, open-row histograms, cover sizes | spot the single-tail unit early |
+| observability | CloudWatch: units/s, uncovered-row histograms, cover sizes | spot the single-tail unit early |
 
 ### 7.3 Certificate assembly
 
@@ -346,7 +346,7 @@ A worker that exceeds its per-unit budget returns `SPLIT` with its own
 children (deeper prefixes) rather than failing — the tree deepens where the
 problem is hard.  The coordinator enforces a global wall-clock and dollar cap
 (spot pricing, max instances), and reports *what was proved* on timeout: the
-closed units are a partial cover, exactly the "partial cover" the current
+covered units are a partial cover, exactly the "partial cover" the current
 `Paths` UI already visualizes.
 
 ### 7.5 What this is *not*
@@ -408,7 +408,7 @@ clause-level view of arithmetic is its known weakness.
    not trusting the compiler — and the gate reproduces known values first.
 6. **Parallel measurement trust.**  Deterministic mode for all benchmarks.
 
-## 11. Open questions for Greg
+## 11. Questions for Greg
 
 1. Box syntax: `FullAdder(X,Y,C1,Z,C,U1,U2,U3)` with a library file, or
    `let FullAdder(...) = …` definitions inline in the formula?

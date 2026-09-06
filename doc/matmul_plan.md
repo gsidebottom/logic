@@ -1125,6 +1125,25 @@ the two source papers for this track):
   16 recursions per root; Wang's codim-2/3 orbits: 13-15 vs his 17-19
   (not a lattice lift). Next: a rigorous LP leaf in the probe (solve the
   dual, rationalize, exact bound) and the r=17 rung.
+- **LP-pruned recursion for r=17: the code bound prunes 76-97% per
+  level but a side-A-only chain bottoms out on genuinely low pencils
+  (2026-09-05 late, lp_recursion.py, lp_rec_*)**: folded-side LP only
+  (the two 9-dim sides never certified a fold and cost 27x more), LP
+  leaf at every level, all 263 residuals in 12 shards (~60 s per
+  root). LP-leaf rates by level for root 0 at target 17: 240/256,
+  1926/1984, 3162/3520, 6980/8734, 13824/18104, 9200/15294; 5,274
+  pencils deferred at target 10 per root (560,118 over all roots).
+  Pencil batch: 244,969 certified by the Kronecker oracle + 4,153 by
+  the probe; 310,996 EXHAUSTED (56%) — the surviving chains are the
+  adversary's rank-1 kills and end in pencils of rank < 10, so a
+  single-side chain cannot prove the rung (the r=16 rung was proved
+  by the probe SWITCHING sides where side A failed). Cutoff 11
+  instead (3x9x9 at target 11 to the all-sides probe): 400-node
+  sample 98 certified / 118 exhausted / 184 capped at 500K tasks.
+  Conclusion: the LP must be a leaf INSIDE the side-switching probe;
+  that needs a fast, correct LP in Rust (the in-tree simplex is 185 s
+  at 511 variables and stalls on this degenerate 0/1 LP; HiGHS via
+  the highs crate is the route, cmake permitting).
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

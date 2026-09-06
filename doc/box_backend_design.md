@@ -292,6 +292,9 @@ if larger, instance of the same theorem.
 | the link between them | **Aeneas** (optional) | translate the Rust checker to Lean and prove it decides exactly the `h_cover` premise, so the whole chain lives in one logic; if Aeneas's Rust subset proves limiting, Verus's own spec, stated to mirror the Lean definitions, is the fallback |
 | per-box completeness proofs | `cake_lpr` / VeriPB | already verified / already trusted in hydra |
 
+**Decided (2026-09-06): Verus for the checker, Lean for the theorem, Aeneas as the
+optional bridge.**
+
 TCB after this: Lean's kernel, Verus's checker (Z3) or the Aeneas translation,
 `cake_lpr`/VeriPB, the certificate and formula parsers, and the operating-system (OS) / application-binary-interface (ABI) glue.
 **Untrusted**: the search engine, the jq → formula step, the box compiler,
@@ -353,7 +356,7 @@ A `.jq` file exports boxes through one more section, alongside the existing
 ```
 
 `expose` keeps internals as table columns (§2.4); the default is to project
-them out.  The `# === tests ===` block gains table-level assertions
+them out.  **Decided (2026-09-06): both as sketched.**  The `# === tests ===` block gains table-level assertions
 (`full_adder | table | length == 8`), and the compiler adds its own check
 that the compiled table equals the definition's projection — the check that
 produced the result below.
@@ -467,6 +470,9 @@ partially evaluated on a fixed table *is* this generated code.
 
 ### 6.2 Two delivery modes
 
+**Decided (2026-09-06): plug-ins first; the specialized-solver build follows once
+the plug-in path is proven.**
+
 | mode | mechanism | when |
 |---|---|---|
 | **plug-in** | each box (or box family) is a generated crate built as a `cdylib` behind a versioned C ABI (a vtable of `extern "C"` function pointers — Rust-to-Rust ABI is not stable) and loaded with `libloading` | the core solver stays fixed; boxes arrive per problem; interactive use |
@@ -542,7 +548,8 @@ Competition's cloud track.  Its design points that matter here:
   Fabric Adapter) running MPI (Message Passing Interface), or AWS (Amazon Web Services)
   ParallelCluster — not SQS (Simple Queue Service).  The queue-based layer of the first draft
   (SQS/S3 (Simple Storage Service)/DynamoDB) remains the *outer* tier that hands whole prefixes to
-  such clusters and collects results.
+  such clusters and collects results.  **Decided (2026-09-06): AWS ParallelCluster with
+  EFA is the M7 substrate.**
 - **Malleable coordinator.**  The coordinator becomes a scheduler in
   Mallob's sense: it admits many jobs, assigns each a dynamic share of the
   fleet, rebalances on arrivals/completions, and drives spot capacity up and
@@ -602,10 +609,10 @@ fault-tolerance argument Mallob makes and we inherit.
 | **M1** core | bitset rows, table + structural boxes, DPLL-over-rows with table propagation, single core; `# === boxes ===` + box-call syntax; interpreted tables | same verdicts as `eff`/`cdcl` on the UI adder examples and the test corpus; every UNSAT certifies via the expanded primitive cover |
 | **M2** certificates | per-box completeness proofs via `cake_lpr`/VeriPB; box-level `v4` cover format; unverified checker | known-value gate: pigeonhole-principle (PHP)/RoundRobin corpus and the adder examples all check; a deliberately corrupted table is rejected |
 | **M3** formalization | Lean `box_cover_sound`; Verus checker; Aeneas bridge attempted | checker verified; the Lean theorem's premises match the checker's spec by inspection or translation |
-| **M4** codegen | LUT/mask propagators, `cdylib` plug-ins via `libloading`, specialized-solver mode, content-hash cache, two-tier hot-swap | compiled boxes byte-identical in behaviour to interpreted ones on the corpus; measured speedup per propagation |
+| **M4** codegen | LUT/mask propagators, `cdylib` plug-ins via `libloading` **first**, content-hash cache, two-tier hot-swap; specialized-solver mode afterwards | compiled boxes byte-identical in behaviour to interpreted ones on the corpus; measured speedup per propagation |
 | **M5** multi-core | work stealing + built-in nogood sharing, deterministic mode | ≥ 8× on 12 cores on a multiplier instance; deterministic certificates byte-identical |
 | **M6** measure | equal-wall-clock A/B vs `eff`, `cdcl`, `cadical`, `hydra` on adders, multipliers, the CLP(B) (constraint logic programming over Booleans) examples, with user-supplied boxes | the honest question: a certified win on the circuit slice? |
-| **M7** distributed | Mallob-style job tree + sharing on an EFA placement group; malleable coordinator; on-the-fly trusted checkers with MACs; queue tier for prefixes | a multi-hour instance solved across N spot workers, UNSAT trusted by the checkers, cost within cap |
+| **M7** distributed | Mallob-style job tree + sharing on **AWS ParallelCluster with EFA**; malleable coordinator; on-the-fly trusted checkers with MACs; queue tier for prefixes | a multi-hour instance solved across N spot workers, UNSAT trusted by the checkers, cost within cap |
 | **M8** detection | gate/adder/multiplier detector into hydra | competition CNF routed and certified — lower priority now that users supply boxes |
 
 M6 decides whether M7–M8 are built.
@@ -631,18 +638,18 @@ M6 decides whether M7–M8 are built.
    risks) stand; hierarchical boxes and lazy compilation mitigate.
 7. **Parallel measurement trust.**  Deterministic mode for every benchmark.
 
-## 12. Questions for Greg
+## 12. Decisions (2026-09-06)
 
-1. Box export: the `# === boxes ===` section as sketched, or a jq-level
-   annotation on the `def` itself?
-2. Internals default to *projected* (fresh, local) with `expose` as the
-   opt-out — agreed?
-3. Verus for the checker with Lean for the theorem (recommended), or
-   Aeneas-first so everything lands in Lean from the start?
-4. Plug-ins (`libloading`) first, or the specialized-solver build first?
-   Plug-ins serve the UI; the specialized build serves the cluster.
-5. Cluster substrate for M7: ParallelCluster with EFA (Mallob's natural home)
-   versus Batch/containers with the queue tier only.
+The five questions the first drafts left open, and Greg's answers:
+
+1. **Box export** — the `# === boxes ===` section, as sketched in §5.1.
+2. **Internals** — default to *projected* (fresh, local); `expose` is the opt-out.
+3. **Verification** — Verus for the executable checker, Lean for
+   `box_cover_sound`; Aeneas as the optional bridge (§4.4).
+4. **Delivery order** — plug-ins (`libloading`, versioned C ABI) first; the
+   specialized-solver build second (§6.2, M4).
+5. **Cluster substrate** — AWS ParallelCluster with EFA for the sharing tier
+   (§8.2, M7); the queue tier stays outside it.
 
 ## 13. References
 

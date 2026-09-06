@@ -1177,6 +1177,27 @@ the two source papers for this track):
   (1,10,64): PROVED at r=17 in 1,542 s (26 min, 1.02M tasks) — 6.4x
   cheaper than root 0; per-root cost spans 0.4-2.75 h on two samples,
   so the rung is ~2,500-7,000 core-h (9-24 Mac-days).
+- **THE LATTICE INTEGER PROGRAM: 20 or 21, undecided after 40 min
+  (2026-09-06, lattice_ip.py, lattice_sat.py)**: variables m_c = number
+  of products with A-coefficient c (511); constraints from Wang's
+  verified table, sum_{c not in U} m_c >= t_U for every vector (all 19)
+  and every 2-dim subspace (11,417 at 18, 32,018 at 19; labeled by
+  --lattice-values), plus the slice-rank (code-bound) rows; objective
+  min sum m_c. Sound: products with a_i in U vanish in T|U. LP
+  relaxation 19.09 -> 20 (= Wang's DP by integrality on codim-1);
+  HiGHS MIP: incumbent 21, dual bound 20 at the 40-min limit. At r = 20
+  the program is boolean (each type at most once): a 20-set of vectors
+  with no two in a 19-pencil, no full 18-pencil, and >= 3 rank(phi)
+  members pairing to 1 with every covector phi. The pairwise condition
+  alone does not bite (clique number of the 18-pencil graph is 57:
+  rank-1 vectors are universal, every pencil containing one is an
+  18-orbit); the slice-rank counts are the binding part (rank-2 phi
+  need 6 of 20 where a rank-1 type pairs to 1 with 16 of 49). Running:
+  cadical on the 20-set CNF (30-min cap) and the MIP for 4 h. UNSAT /
+  optimum 21 would be a NEW THEOREM: rank_F2(<3,3,3>) >= 21 from
+  Wang's certificate plus this counting; SAT would exhibit the
+  20-configuration and say which further constraint (codim-3 values,
+  B/C-side types) to add.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

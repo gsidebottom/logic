@@ -1,0 +1,22 @@
+table entries (dim 1,2) canonicalized: 17
+wrote matmul/r22/lattice_values.txt: 511 vectors + 43435 subspaces; unmatched subspaces: 0
+dim-3 table entries canonicalized: 68
+3-dim subspaces enumerated: 788035 (expect 788035)
+  dim3 0/788035 [0s]
+  dim3 50000/788035 [59s]
+  dim3 100000/788035 [115s]
+  dim3 150000/788035 [168s]
+  dim3 200000/788035 [223s]
+  dim3 250000/788035 [277s]
+  dim3 300000/788035 [333s]
+  dim3 350000/788035 [383s]
+  dim3 400000/788035 [436s]
+  dim3 450000/788035 [483s]
+  dim3 500000/788035 [532s]
+  dim3 550000/788035 [583s]
+  dim3 600000/788035 [633s]
+  dim3 650000/788035 [681s]
+  dim3 700000/788035 [727s]
+  dim3 750000/788035 [772s]
+wrote matmul/r22/lattice_values_dim3.txt: 788035 subspaces; unmatched: 0 [809s]
+exit 0

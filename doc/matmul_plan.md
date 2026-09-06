@@ -1161,6 +1161,20 @@ the two source papers for this track):
   far: the LP moves r=17 from ~1 day/root (previous attempt) toward
   hours/root — a ~10^3-core-hour rung, cluster-scale, not Mac-scale —
   unless a mid-size leaf appears.
+- **FIRST r=17 VERDICT: root 0 proves rank(T + m) >= 17 in 2.75 h with
+  the code-bound leaf (2026-09-06 early, t17_root0_code4h.*)**: pooled
+  probe, concise, all sides, trimmed Koszul, memo (70M entries, no
+  clears), HiGHS code bound as a leaf after Koszul: 9,882 s on 12
+  cores, 74.0M tasks run, 66.1M skipped. Profile: levels 1-3 almost
+  entirely code-bound leaves (24/28, 491/512, 1148/1240); the work is
+  at depths 7-11 (2M / 7.9M / 20.8M / 28.0M / 14.3M nodes), where the
+  code leaf still certifies 0.3-1.3M nodes per level and Koszul the
+  bulk. The same root was unresolved at 70 core-h (2026-08-31), at 4 h
+  with concision (2026-09-02), and at 4 h with concision + memo
+  (2026-09-05). PRICE of the r=16->17 rung: ~33 core-h per root x 211
+  = ~7,000 core-h if root 0 is typical (it was average at r=16) — a
+  cluster afternoon at 1,000 cores, ~24 days on this Mac. Second root
+  (1,10,64) launched to measure variance.
 - **Multilinear directions (from 2026-07-13 discussion)**: (a)
   symmetric flip mode (cyclic trace(ABC) invariance, the M-P
   record technique) for flip23p/flip48p; (b) order-4 fused

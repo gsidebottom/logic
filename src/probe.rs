@@ -4420,8 +4420,20 @@ pub fn main() {
                 }
                 let r3 = R3::from_abc(&tt);
                 let t0 = Instant::now();
-                let (ok, run, _skipped, rep) = deep_probe_pool(&r3, &masks, k, dmax, threads, &[], 0, false, true, None);
-                let outcome = if ok { "certified" } else if rep.contains("CAPPED") { "capped" } else { "exhausted" };
+                // a side of dimension 2 is a pencil: the Kronecker oracle
+                // (sound lower bound, exact for tabulated blocks) decides it
+                let mut pencil_ok = false;
+                if da == 2 && db <= 9 && dc <= 9 {
+                    let a: Vec<u16> = (0..db).map(|b| u32::from_str_radix(f[5 + b], 16).unwrap() as u16).collect();
+                    let b: Vec<u16> = (0..db).map(|b| u32::from_str_radix(f[5 + db + b], 16).unwrap() as u16).collect();
+                    pencil_ok = crate::pencil::pencil_rank_lb(&a, &b, db, dc) as u32 >= k;
+                }
+                let (ok, run, _skipped, rep) = if pencil_ok {
+                    (true, 0u64, 0u64, String::from("pencil"))
+                } else {
+                    deep_probe_pool(&r3, &masks, k, dmax, threads, &[], 0, false, true, None)
+                };
+                let outcome = if ok && pencil_ok { "certified-pencil" } else if ok { "certified" } else if rep.contains("CAPPED") { "capped" } else { "exhausted" };
                 if ok && verdict == "genuine" {
                     unsound += 1;
                     eprintln!("UNSOUND: certified rank >= {k} on a genuine (rank <= {}) state: {line}", k - 1);

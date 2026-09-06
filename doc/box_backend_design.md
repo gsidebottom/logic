@@ -425,6 +425,21 @@ second is what the compiler's self-check (set equality of the interface
 tables) adds on top.  Neither direction is the bare equivalence, and the
 converse `full_adder ⇒ adder` is not valid.
 
+**When the checks are trivial, and when they are not.**  For a *purely
+definitional* box — every equation defines one variable, acyclically, as the
+adder's five do — `B[U := defs]` minus its tautologies *is* the projected
+formula by construction (`FA` is literally "the output definitions with the
+internals unfolded"), so both implications are rewrites up to `a = b` ↔
+`b = a` and associative regrouping, and `∃U. B ≡ P` is a **syntactic** fact
+the compiler can take as a fast path (unfold, drop tautologies, normalize
+orientation and associativity, compare).  The implications carry real
+content only when `P` is *not* the literal unfolding: a hand-written
+interface specification, a formula recovered from a projected *table*, or a
+box with a constraint that is not a definition — e.g. `adder ∧ (Z ⇒ C)`, for
+which `full_adder ⇒ B[U := defs]` fails (the constraint is missing from
+`P`) and the right projection is `full_adder ∧ (Z ⇒ C)`.  `faulty_adder`'s
+`d_i ⇒ (equation)` guards are the same situation in the library today.
+
 ## 6. Boxes compile to Rust — not tables interpreted at run time
 
 ### 6.1 What the generator emits

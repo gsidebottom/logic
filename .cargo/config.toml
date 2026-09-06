@@ -1,0 +1,4 @@
+# highs-sys (HiGHS LP solver, for the code-bound leaf) builds with cmake;
+# the cmake here is the user-level pip install, which is not on the shell PATH.
+[env]
+CMAKE = "/Users/greg/Library/Python/3.9/bin/cmake"

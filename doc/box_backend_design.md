@@ -617,6 +617,45 @@ fault-tolerance argument Mallob makes and we inherit.
 
 M6 decides whether M7–M8 are built.
 
+### 10.1 Status (2026-09-06): M1 delivered
+
+**Built.**  `logic::boxes` — table boxes (canonical rows in model polarity,
+per-literal row masks), DPLL over rows with table propagation (dead box →
+backtrack, forced literals by subset test), iterative search with a decision
+budget; `sat -b boxes [--boxes instances.json]`; `box-compile` (from a bare
+formula, or from a jq library's `# === boxes ===` declarations with
+`--lib adder.jq --box full_adder | --all`); `logic::jqlib` — the `.jq`
+section/preamble machinery extracted from `web_app` (which now uses it) plus
+`run_filter`, the box-declaration parser and `box_formula`; `lib/adder.jq`
+gained the two-equation `full_adder` and declares both it and `adder` as
+boxes; `tools/boxes_verdict_check.py` and `tools/gen_adder_boxes.py`.
+
+**Gates met.**
+- Unit tests: trivial CNFs, pigeonhole, 300 random 3-SAT instances against
+  brute force, and the compiled adder box (fixed inputs propagate the whole
+  cell with 0 decisions).  Full library suite: 338 passed, 0 failed.
+- Corpus (`evo/curated_struct_eff.jsonl`, ≤1000 clauses, 30 s each):
+  **26 agree, 0 disagree**, 22 unfinished — pigeonhole, Urquhart/`x1`,`x2`
+  parity, `mod2`, 3-colouring, SMT benches — the families a learning-free
+  DPLL is expected to lose (that is M5's job).  Soundness held on everything
+  that finished.
+- Adder problems (`gen_adder_boxes.py`, k = 8/16/32; fixed and free inputs;
+  SAT and UNSAT): fully expanded CNF, residual + compiled `full_adder`
+  instances, and residual + exposed-internals `adder` instances all agree
+  with cadical.  Fixed inputs: 0 decisions either way, but the boxed form
+  propagates less (k=32: 129 vs 223 propagations — one step per cell instead
+  of per gate); free inputs (k=16, SAT): 15 decisions / 30 propagations
+  boxed vs 16 / 97 expanded.
+- `box-compile`: `full_adder` 12 uncovered paths → 8 rows over the
+  5-variable interface; `adder` 13 → 8 rows over its 8 parameters; the
+  library-compiled table equals the formula-compiled one.
+
+**Not yet (M1 remainder).**  The box-call form in the formula language / UI
+(boxes enter through `--boxes` instance files today), and a one-command
+certified boxed run: certifying a `-b boxes` UNSAT currently means running the
+existing certified pipeline on the expanded CNF — sound by construction
+(§4.3, phase 1), but not yet wired behind `--emit-cover`.
+
 ## 11. Risks
 
 1. **The premise is now "the user supplies the boxes."**  That converts the

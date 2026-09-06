@@ -1624,6 +1624,72 @@ fn spawn_dual_matrix_search(
 /// time.  The Rust binding doesn't expose CaDiCaL's full statistics
 /// counters, so this is the most useful proxy we can render without
 /// extending the bindings.
+/// Box-matrix engine (`-b boxes`): every clause a table box, DPLL over rows
+/// with table propagation.  See `logic::boxes` and `doc/box_backend_design.md`.
+fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::path::Path>) -> SearchOutcome {
+    let t = Instant::now();
+    let mut eng = logic::boxes::Engine::from_cnf(nvars, clauses);
+    let mut n_inst = 0usize;
+    if let Some(path) = boxes_path {
+        match load_box_instances(path) {
+            Ok(boxes) => { n_inst = boxes.len(); for b in boxes { eng.add_box(b); } }
+            Err(e) => { eprintln!("c ERROR: --boxes {}: {}", path.display(), e); std::process::exit(2); }
+        }
+    }
+    let verdict = eng.solve();
+    let s = &eng.stats;
+    eprintln!("c boxes: {} boxes ({} compiled instances), {} decisions, {} propagations, {} conflicts, {:.3}s",
+              eng.nboxes(), n_inst, s.decisions, s.propagations, s.conflicts, t.elapsed().as_secs_f64());
+    match verdict {
+        logic::boxes::Verdict::Sat(m)   => SearchOutcome::Sat(m),
+        logic::boxes::Verdict::Unsat    => SearchOutcome::Unsat,
+        logic::boxes::Verdict::Unknown  => SearchOutcome::Interrupted,
+    }
+}
+
+/// Load `--boxes` instances: a JSON array of `{"table": "<file>", "args": [dimacs
+/// vars...]}` where each table file (written by `box-compile`) is
+/// `{"vars": [...], "rows": [[1|0|null, ...], ...]}`; `args[i]` is the DIMACS
+/// variable bound to the table's i-th column.
+fn load_box_instances(path: &std::path::Path) -> Result<Vec<logic::boxes::TableBox>, String> {
+    use logic::matrix::Lit;
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let insts: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    let mut cache: std::collections::HashMap<String, serde_json::Value> = Default::default();
+    let mut out = Vec::new();
+    for inst in insts.as_array().ok_or("instances: expected a JSON array")? {
+        let table = inst["table"].as_str().ok_or("instance: missing \"table\"")?.to_string();
+        let args: Vec<i64> = inst["args"].as_array().ok_or("instance: missing \"args\"")?
+            .iter().map(|v| v.as_i64().unwrap_or(0)).collect();
+        if args.iter().any(|&a| a < 1) { return Err(format!("{table}: args must be DIMACS variables >= 1")); }
+        if !cache.contains_key(&table) {
+            let t = std::fs::read_to_string(dir.join(&table)).map_err(|e| format!("{table}: {e}"))?;
+            cache.insert(table.clone(), serde_json::from_str(&t).map_err(|e| format!("{table}: {e}"))?);
+        }
+        let tv = &cache[&table];
+        let ncols = tv["vars"].as_array().map(|a| a.len()).unwrap_or(0);
+        if args.len() != ncols {
+            return Err(format!("{table}: expects {ncols} args, instance has {}", args.len()));
+        }
+        let rows = tv["rows"].as_array().ok_or_else(|| format!("{table}: missing rows"))?;
+        let mut trows = Vec::with_capacity(rows.len());
+        for r in rows {
+            let mut lits = Vec::new();
+            for (ci, cell) in r.as_array().ok_or("row: expected an array")?.iter().enumerate() {
+                match cell.as_i64() {
+                    Some(1) => lits.push(Lit { var: (args[ci] - 1) as u32, neg: false }),
+                    Some(0) => lits.push(Lit { var: (args[ci] - 1) as u32, neg: true }),
+                    _ => {}
+                }
+            }
+            trows.push(lits);
+        }
+        out.push(logic::boxes::TableBox::new(trows));
+    }
+    Ok(out)
+}
+
 fn cadical_search(nvars: usize, clauses: Vec<Vec<i32>>, show_progress: bool) -> SearchOutcome {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -2179,6 +2245,11 @@ fn write_v_line<W: io::Write>(w: &mut W, asgn: &[bool]) -> io::Result<()> {
 enum BackendChoice {
     Matrix(MatrixBackend),
     Cadical,
+    /// Box-matrix engine (`doc/box_backend_design.md`): DPLL over table-box
+    /// rows with table propagation.  In M1 every clause is a box; compiled
+    /// boxes plug in alongside (M1c).  Verdict only — certification goes
+    /// through the primitive cover of the expanded CNF (phase 1).
+    Boxes,
     /// Verified portfolio: first try the standalone Cook PB-prover (a
     /// structure pattern-match → polynomial VeriPB PB proof for PHP /
     /// RoundRobin / MVRoundRobin / clique-coloring / mutilated-chessboard),
@@ -2229,6 +2300,7 @@ impl BackendChoice {
         match self {
             BackendChoice::Matrix(m) => m.name(),
             BackendChoice::Cadical   => "cadical",
+            BackendChoice::Boxes     => "boxes",
             BackendChoice::PbCadical => "pb-cadical",
             BackendChoice::Hydra     => "hydra",
             BackendChoice::HydraSymBreak => "hydra_sym_break",
@@ -2250,6 +2322,7 @@ impl BackendChoice {
     /// trusted backend before trusting any UNSAT.
     fn parse(s: &str) -> Result<Self, String> {
         match s {
+            "boxes"      | "matrix.boxes"  => Ok(BackendChoice::Boxes),
             "smart"      | "matrix.smart"  => Ok(BackendChoice::Matrix(MatrixBackend::Smart)),
             "cdcl"       | "matrix.cdcl"   => Ok(BackendChoice::Matrix(MatrixBackend::Cdcl)),
             "eff"        | "matrix.eff"    => Ok(BackendChoice::Matrix(MatrixBackend::Eff)),
@@ -2288,6 +2361,9 @@ impl BackendChoice {
 struct Args {
     show_progress: bool,
     backend:       BackendChoice,
+    /// `-b boxes` only: compiled box instances (JSON written by `box-compile`;
+    /// see doc/box_backend_design.md §5).
+    boxes:         Option<std::path::PathBuf>,
     /// Hard wall-clock limit in seconds.  When the search runs longer
     /// than this, the binary prints `c TIMEOUT after Ns` and exits
     /// with status 124 (the GNU `timeout` exit code for "command
@@ -2438,6 +2514,7 @@ const DEFAULT_PREPROCESS_MAX_CLAUSES: usize = 250_000;
 
 fn parse_args() -> Result<Args, String> {
     let mut a = Args {
+        boxes: None,
         show_progress: false,
         backend: BackendChoice::Matrix(MatrixBackend::Eff),
         timeout_secs: DEFAULT_TIMEOUT_SECS,
@@ -2468,6 +2545,10 @@ fn parse_args() -> Result<Args, String> {
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--progress" | "-p" => a.show_progress = true,
+            "--boxes" => {
+                let v = iter.next().ok_or_else(|| "--boxes requires a path".to_string())?;
+                a.boxes = Some(std::path::PathBuf::from(v));
+            }
             // Unified backend selector — preferred form.
             "--backend"  | "-b" => {
                 let v = iter.next().ok_or_else(||
@@ -4002,6 +4083,7 @@ fn main() {
     let t = Instant::now();
     let outcome = match args.backend {
         BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
+        BackendChoice::Boxes => boxes_search(nvars, &clauses, args.boxes.as_deref()),
         BackendChoice::PbCadical => unreachable!("pb-cadical is handled before the search dispatch"),
         BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma
         | BackendChoice::Satsuma =>

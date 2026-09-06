@@ -37,6 +37,19 @@ def adder(a;b;c_in;s;c_out;u1;u2;u3):
     )
 ;
 
+# full adder with the internals projected out: (c_out = x y + (x ⊕ y) c_in) (s = x ⊕ y ⊕ c_in)
+def full_adder(x;y;c_in;s;c_out):
+    prod(
+        br(eq(sum(prod(x, y), prod(br(xor(x, y)), c_in)), c_out)),
+        br(eq(xor(x, y, c_in), s))
+    )
+;
+
+# === boxes ===
+# full_adder(x;y;c_in;s;c_out)
+# adder(a;b;c_in;s;c_out;u1;u2;u3)
+# === end boxes ===
+
 # faulty adder
 def faulty_adder(a;b;c_in;s;c_out;u1;u2;u3;d0;d1;d2;d3;d4):
     prod(

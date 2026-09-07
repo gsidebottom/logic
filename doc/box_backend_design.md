@@ -678,8 +678,9 @@ internals renamed `<v>__<k>` per call site (the ∃ of §2.4), recursively for
 hierarchical boxes, so every existing backend and the diagram work on the
 expansion; unloading a library turns its calls back into errors.
 
-**`boxes` backend in the web app** (2026-09-07): a backend-selector option
-for Valid? / Satisfiable?, *matrix-native*: the ordinary path search
+**`boxes` backend in the web app** (2026-09-07): the default backend-selector
+option for Valid? / Satisfiable? (a formula without box calls runs greedy×eff
+as before), *matrix-native*: the ordinary path search
 (`SmartController`) runs on the collapsed NNF where every box call is an atom
 (`BOXCALL_k`, `expand::atomize_box_calls`), wrapped in
 `boxes::controller::BoxAwareController`, which adds table propagation to any

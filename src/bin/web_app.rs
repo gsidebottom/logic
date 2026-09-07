@@ -728,14 +728,15 @@ struct FormulaRequest {
     formula: String,
     #[serde(default)]
     no_cover: bool,
-    /// Backend selector — one of "smart", "cdcl", "eff",
-    /// "greedy_cdcl", "greedy_eff".  Defaults to `greedy_eff`
-    /// (matches the UI selector's initial value).
+    /// Backend selector — one of "boxes", "smart", "cdcl", "eff",
+    /// "greedy_cdcl", "greedy_eff".  Defaults to `boxes` (matches the UI
+    /// selector's initial value); `boxes` falls back to `greedy_eff` when the
+    /// formula has no box calls.
     #[serde(default = "default_backend")]
     backend: String,
 }
 
-fn default_backend() -> String { "greedy_eff".to_string() }
+fn default_backend() -> String { "boxes".to_string() }
 
 /// Internal enum form of the request's `backend` string.  Constructed
 /// in the handler via `parse_backend(&req.backend)`; on unknown
@@ -1578,6 +1579,10 @@ async fn valid_handler(
     let backend = parse_backend(&req.backend);
     if matches!(backend, Backend::Boxes) {
         return match build_box_context(&state, &req.formula) {
+            // No box calls: nothing for the tables to do — run greedy×eff (the
+            // previous default, with preprocessing) exactly as before.
+            Ok((_, ctx)) if ctx.calls.is_empty() =>
+                reset_and_start(&state.valid_job, &req.formula, false, params, Backend::GreedyEff, /*preprocess=*/ true, None),
             Ok((text, ctx)) => reset_and_start(&state.valid_job, &text, false, params, Backend::Boxes, /*preprocess=*/ false, Some(ctx)),
             Err(e) => Json(serde_json::json!({ "error": e })),
         };
@@ -1641,6 +1646,10 @@ async fn satisfiable_handler(
     let backend = parse_backend(&req.backend);
     if matches!(backend, Backend::Boxes) {
         return match build_box_context(&state, &req.formula) {
+            // No box calls: nothing for the tables to do — run greedy×eff (the
+            // previous default, with preprocessing) exactly as before.
+            Ok((_, ctx)) if ctx.calls.is_empty() =>
+                reset_and_start(&state.sat_job, &req.formula, true, params, Backend::GreedyEff, /*preprocess=*/ true, None),
             Ok((text, ctx)) => reset_and_start(&state.sat_job, &text, true, params, Backend::Boxes, /*preprocess=*/ false, Some(ctx)),
             Err(e) => Json(serde_json::json!({ "error": e })),
         };

@@ -1145,7 +1145,9 @@ export default function App() {
   // One of: 'smart', 'cdcl', 'eff', 'greedy_cdcl', 'greedy_eff'.  Default
   // 'greedy_eff' — currently the strongest matrix-method configuration on
   // most rows of the focused 27-bit bench.
-  const [matrixBackend,         setMatrixBackend]         = useState('greedy_eff');
+  // Default: compiled box tables where the formula has box calls; without
+  // calls the server runs greedy×eff (the previous default) unchanged.
+  const [matrixBackend,         setMatrixBackend]         = useState('boxes');
   const [cadicalValidResult,    setCadicalValidResult]    = useState(null); // {assignment, learnedClauses, elapsedSecs, error}
   const [cadicalSatResult,      setCadicalSatResult]      = useState(null);
   const [cadicalValidRunning,   setCadicalValidRunning]   = useState(false);

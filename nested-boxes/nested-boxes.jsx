@@ -605,7 +605,9 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
           padding: compView ? '6px 4px' : '4px 6px',
           fontSize: 17, fontFamily: 'Georgia, serif',
           fontWeight: 'bold', lineHeight: 1, userSelect: 'none',
-          ...(node.box ? { border: '2px solid #5a5a9a', borderRadius: 5, background: '#eef0fb', padding: compView ? '8px 6px' : '6px 10px', fontSize: 15 } : {}),
+          // A box leaf is laid out un-rotated (flex-centered label) and turns with
+          // the diagram in complement view, so its label reads top-to-bottom.
+          ...(node.box ? { border: '2px solid #5a5a9a', borderRadius: 5, background: '#eef0fb', padding: '6px 10px', fontSize: 15, minWidth: undefined, minHeight: undefined } : {}),
           ...(bgColor ? { background: bgColor, borderRadius: 3 } : {}),
         }}
       >
@@ -613,7 +615,7 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
         {uncovBars}
         <span style={{
           display: 'inline-block',
-          transform: compView ? 'rotate(-90deg)' : 'rotate(0deg)',
+          transform: compView && !node.box ? 'rotate(-90deg)' : 'rotate(0deg)',
           transition: 'transform 0.4s ease',
         }}>
           <VarLabel name={displayName} />
@@ -945,7 +947,7 @@ function DiagramWithConnections({ node, coverGroups, selectedGroups, highlighted
 }
 
 // ─── Zoom / Pan wrapper ────────────────────────────────────────────────────────
-function ZoomPanWrapper({ children, bg = '#f8f9fc', border = '1px solid #dde', opacity = 1, rotated = false }) {
+function ZoomPanWrapper({ children, bg = '#f8f9fc', border = '1px solid #dde', opacity = 1, rotated = false, recenterKey }) {
   const viewRef    = useRef(null);
   const contentRef = useRef(null);
   const scaleRef   = useRef(1);
@@ -967,13 +969,36 @@ function ZoomPanWrapper({ children, bg = '#f8f9fc', border = '1px solid #dde', o
     if (!view || !content) return;
     const vw = view.offsetWidth,  vh = view.offsetHeight;
     const cw = content.offsetWidth, ch = content.offsetHeight;
-    if (!cw || !ch) return;
+    // No size yet (e.g. the pane is hidden): keep scale 1 rather than fitting to 0.
+    if (!cw || !ch || !vw || !vh) return;
     const s  = Math.min(vw / cw, vh / ch, 1);
     const tx = (vw - cw * s) / 2;
     const ty = (vh - ch * s) / 2;
     fitRef.current = { scale: s, x: tx, y: ty };
     commit(s, tx, ty);
   }, []); // runs once on mount; key prop remounts on formula change
+
+  // A re-layout without a remount (e.g. the box-aware toggle swaps the
+  // collapsed and expanded renditions): keep the content's visual center
+  // where it was, at the current zoom, so the new rendition is centered on
+  // the old one instead of landing at the old top-left corner.
+  const lastRawRef = useRef(null);
+  const prevKeyRef = useRef(recenterKey);
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    const w = content.offsetWidth, h = content.offsetHeight;
+    if (prevKeyRef.current !== recenterKey) {
+      prevKeyRef.current = recenterKey;
+      const prev = lastRawRef.current;
+      if (prev && w && h) {
+        const s = scaleRef.current;
+        const cx = txRef.current + (prev.w / 2) * s, cy = tyRef.current + (prev.h / 2) * s;
+        commit(s, cx - (w / 2) * s, cy - (h / 2) * s);
+      }
+    }
+    lastRawRef.current = { w, h };
+  });
 
   // Non-passive wheel for zoom-to-cursor
   useEffect(() => {
@@ -1845,10 +1870,11 @@ export default function App() {
   // Stop polling on unmount.
   useEffect(() => () => { stopPathsPolling(); stopValidPolling(); stopSatPolling(); stopCadicalValidPolling(); stopCadicalSatPolling(); }, []);
 
-  // Re-fetch paths when the limit or complement checkbox changes while the display is open
+  // Re-fetch paths when the limit, complement or box-aware checkbox changes
+  // while the display is open (the paths panel stays up and is recomputed).
   useEffect(() => {
     if (pathsResult && !pathsResult.error) fetchPaths();
-  }, [pathsLimit, pathsComp]);
+  }, [pathsLimit, pathsComp, boxAware]);
 
   // Auto-rotate to complement when sat selections are active, rotate back when none
   useEffect(() => {
@@ -2774,7 +2800,7 @@ export default function App() {
           <div style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
             {complementData ? 'Complement' : simplified ? 'Original' : 'Diagram'}{error ? ' (last valid formula)' : ''} — border colors show nesting depth:
           </div>
-          <ZoomPanWrapper key={input} bg={complementData ? '#f0fafa' : '#f8f9fc'} border={complementData ? '1px solid #a0d4d4' : '1px solid #dde'} opacity={error ? 0.5 : 1} rotated={!!complementData}>
+          <ZoomPanWrapper key={input} bg={complementData ? '#f0fafa' : '#f8f9fc'} border={complementData ? '1px solid #a0d4d4' : '1px solid #dde'} opacity={error ? 0.5 : 1} rotated={!!complementData} recenterKey={boxAware}>
             <DiagramWithConnections
               node={ast}
               complementView={!!complementData}
@@ -2986,7 +3012,7 @@ export default function App() {
         <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: boxCalls.length ? 'pointer' : 'default', fontSize: 13, color: boxCalls.length ? undefined : '#aaa' }}
                title={boxCalls.length ? "Box aware: draw each box call as one rectangle labelled with the call, and show paths through the collapsed matrix — every candidate path is checked against the box's compiled table" : "No box calls in the formula"}>
           <input type="checkbox" checked={pathsBoxAware} disabled={!boxCalls.length}
-                 onChange={e => { setPathsBoxAware(e.target.checked); setPathsResult(null); }} />
+                 onChange={e => setPathsBoxAware(e.target.checked)} />
           box aware
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 13 }}

@@ -416,3 +416,4 @@ mod tests {
 }
 
 pub mod compile;
+pub mod expand;

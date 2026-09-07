@@ -663,11 +663,27 @@ with `box-compile` and `sat --boxes`).
   5-variable interface; `adder` 13 → 8 rows over its 8 parameters; the
   library-compiled table equals the formula-compiled one.
 
-**Not yet (M1 remainder).**  The box-call form in the formula language / UI
-(boxes enter through `--boxes` instance files today), and a one-command
-certified boxed run: certifying a `-b boxes` UNSAT currently means running the
-existing certified pipeline on the expanded CNF — sound by construction
-(§4.3, phase 1), but not yet wired behind `--emit-cover`.
+**Box calls in the formula language** (2026-09-07): `name(a1, a2, …)` or
+`name(a1; a2; …)` refers to a compiled box (`logic::boxes::expand`, mirrored
+in `formula.jsx` so the live parser and the server agree).  A call is
+recognised when the parenthesised text is an argument list and the name is a
+known box, or there are two or more arguments (or none, or `;`); `A(B+C)` and
+`A(B)` keep meaning AND.  Inside an argument list a comma continues a name
+only within a numeric subscript (`d_0,1`).  An **unknown box or a wrong
+argument count is an error** — immediately in the UI, and from every formula
+endpoint (`/valid`, `/satisfiable`, `/paths`, `/cadical/*`, `/simplify`, plus
+`POST /expand`).  A known box expands to its definition with the arguments
+substituted (primes compose; `0`/`1` constants allowed) and its projected
+internals renamed `<v>__<k>` per call site (the ∃ of §2.4), recursively for
+hierarchical boxes, so every existing backend and the diagram work on the
+expansion; unloading a library turns its calls back into errors.
+
+**Not yet (M1 remainder).**  The web app's `boxes` backend arm consuming calls
+as table boxes (today a call expands to a formula; the row engine is
+CLI-only via `--boxes`), and a one-command certified boxed run: certifying a
+`-b boxes` UNSAT currently means running the existing certified pipeline on
+the expanded CNF — sound by construction (§4.3, phase 1), but not yet wired
+behind `--emit-cover`.
 
 ## 11. Risks
 

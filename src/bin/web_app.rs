@@ -7,6 +7,7 @@ use axum::{
 use logic::matrix::PathClassificationHandle;
 use logic::jqlib::{split_file, join_file, split_boxes, join_boxes, resolve_preamble, parse_box_decl, box_formula};
 use logic::boxes::compile::{compile_box, Table};
+use logic::boxes::expand::{expand_box_calls, BoxSig};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, sync::{Arc, Mutex}};
 use tower_http::cors::{Any, CorsLayer};
@@ -147,6 +148,27 @@ struct AppState {
     cadical_sat_job:   Arc<Mutex<CaDiCaLJob>>,
 }
 
+
+/// Expand box calls (`name(a, b, …)`) against the compiled boxes.  Every
+/// formula-taking handler runs this first, so the backends and the client's
+/// live parser agree on what a formula with boxes means.
+fn expand_formula(state: &AppState, formula: &str) -> Result<String, String> {
+    let store = state.compiled_boxes.lock().unwrap().clone();
+    expand_box_calls(formula, &|name| store.iter().find(|b| b.name == name).map(|b| BoxSig {
+        params: b.vars.clone(), internals: b.internals.clone(), formula: b.formula.clone(),
+    }))
+}
+
+#[derive(Deserialize)]
+struct ExpandRequest { formula: String }
+
+async fn expand_handler(State(state): State<AppState>, Json(req): Json<ExpandRequest>) -> Json<serde_json::Value> {
+    match expand_formula(&state, &req.formula) {
+        Ok(expanded) => Json(serde_json::json!({ "expanded": expanded })),
+        Err(e) => Json(serde_json::json!({ "error": e })),
+    }
+}
+
 // ── jq handlers ───────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
@@ -243,6 +265,8 @@ struct CompiledBox {
     rows: usize,
     uncovered_paths: usize,
     formula: String,
+    /// Projected internals of the definition (renamed per call site on expansion).
+    internals: Vec<String>,
     #[serde(skip)]
     table: Table,
 }
@@ -304,7 +328,7 @@ async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, t
                 compiled_now.push(CompiledBox {
                     name: d.name.clone(), lib: lib.path.clone(), params: d.params.clone(), expose: d.expose.clone(),
                     vars: table.vars.clone(), rows: table.rows.len(), uncovered_paths: table.uncovered_paths,
-                    formula: table.formula.clone(), table,
+                    formula: table.formula.clone(), internals: table.internals_projected.clone(), table,
                 });
             }
         }
@@ -710,11 +734,15 @@ fn classify_status(job: &ClassifyJob) -> ClassifyStatusResponse {
     }
 }
 
-async fn simplify_handler(Json(req): Json<SimplifyRequest>) -> Json<SimplifyResponse> {
+async fn simplify_handler(State(state): State<AppState>, Json(req): Json<SimplifyRequest>) -> Json<SimplifyResponse> {
+    let formula = match expand_formula(&state, &req.formula) {
+        Ok(f) => f,
+        Err(e) => return Json(SimplifyResponse { result: None, error: Some(e) }),
+    };
     let result = if req.cnf {
-        logic::simplify_cnf(&req.formula)
+        logic::simplify_cnf(&formula)
     } else {
-        logic::simplify_dnf(&req.formula)
+        logic::simplify_dnf(&formula)
     };
     match result {
         Ok(r)  => Json(SimplifyResponse { result: Some(r), error: None }),
@@ -1373,7 +1401,11 @@ async fn valid_handler(
         no_cover: req.no_cover,
     });
     let backend = parse_backend(&req.backend);
-    reset_and_start(&state.valid_job, &req.formula, false, params,
+    let formula = match expand_formula(&state, &req.formula) {
+        Ok(f) => f,
+        Err(e) => return Json(serde_json::json!({ "error": e })),
+    };
+    reset_and_start(&state.valid_job, &formula, false, params,
                     backend, /*preprocess=*/ true)
 }
 
@@ -1391,7 +1423,11 @@ async fn paths_handler(
 ) -> Json<serde_json::Value> {
     use logic::matrix::PathParams;
     let params = Some(PathParams { paths_class_limit: req.paths_class_limit, ..Default::default() });
-    reset_and_start(&state.paths_job, &req.formula, req.complement, params,
+    let formula = match expand_formula(&state, &req.formula) {
+        Ok(f) => f,
+        Err(e) => return Json(serde_json::json!({ "error": e })),
+    };
+    reset_and_start(&state.paths_job, &formula, req.complement, params,
                     Backend::Backtrack, /*preprocess=*/ false)
 }
 
@@ -1415,7 +1451,11 @@ async fn satisfiable_handler(
         no_cover: req.no_cover,
     });
     let backend = parse_backend(&req.backend);
-    reset_and_start(&state.sat_job, &req.formula, true, params,
+    let formula = match expand_formula(&state, &req.formula) {
+        Ok(f) => f,
+        Err(e) => return Json(serde_json::json!({ "error": e })),
+    };
+    reset_and_start(&state.sat_job, &formula, true, params,
                     backend, /*preprocess=*/ true)
 }
 
@@ -1540,7 +1580,11 @@ async fn cadical_valid_handler(
     State(state): State<AppState>,
     Json(req): Json<FormulaRequest>,
 ) -> Json<serde_json::Value> {
-    start_cadical_job(&state.cadical_valid_job, &req.formula, true)
+    let formula = match expand_formula(&state, &req.formula) {
+        Ok(f) => f,
+        Err(e) => return Json(serde_json::json!({ "error": e })),
+    };
+    start_cadical_job(&state.cadical_valid_job, &formula, true)
 }
 
 async fn cadical_valid_status_handler(State(state): State<AppState>) -> Json<CaDiCaLStatusResponse> {
@@ -1559,7 +1603,11 @@ async fn cadical_sat_handler(
     State(state): State<AppState>,
     Json(req): Json<FormulaRequest>,
 ) -> Json<serde_json::Value> {
-    start_cadical_job(&state.cadical_sat_job, &req.formula, false)
+    let formula = match expand_formula(&state, &req.formula) {
+        Ok(f) => f,
+        Err(e) => return Json(serde_json::json!({ "error": e })),
+    };
+    start_cadical_job(&state.cadical_sat_job, &formula, false)
 }
 
 async fn cadical_sat_status_handler(State(state): State<AppState>) -> Json<CaDiCaLStatusResponse> {
@@ -1643,6 +1691,7 @@ async fn main() {
                                    .delete(jq_lib_unload_handler))
         .route("/jq-lib/file",  delete(jq_lib_delete_handler))
         .route("/jq-lib/files", get(jq_lib_files_handler))
+        .route("/expand",        post(expand_handler))
         .route("/boxes",         get(boxes_list_handler))
         .route("/boxes/compile", post(boxes_compile_handler))
         .route("/boxes/table",   get(boxes_table_handler).delete(boxes_delete_handler))

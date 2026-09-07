@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useMemo } from "react";
-import { parse, complementAst, astToString, resolvePosition, VarLabel } from "./formula.jsx";
+import { parse, complementAst, astToString, resolvePosition, VarLabel, expandBoxCalls } from "./formula.jsx";
 
 // Base URL for API calls.  In `vite dev` we hit the separate Rust service on
 // :3001 (same as before).  In a production build — e.g. the Docker image —
@@ -1194,10 +1194,13 @@ export default function App() {
   const inputRef = useRef(null);
 
   // Parse synchronously so ast is always current on the same render as input
+  // Box calls (`full_adder(a, b, …)`) are expanded against the compiled boxes
+  // before parsing — the server does the same — so an unknown box is a
+  // syntax error right here.
   const [ast, error] = useMemo(() => {
-    try { return [parse(input), '']; }
+    try { return [parse(expandBoxCalls(input, boxes)), '']; }
     catch (e) { return [null, e.message]; }
-  }, [input]);
+  }, [input, boxes]);
 
   // Run jq filter live as it is typed; push result into formula input
   useEffect(() => {

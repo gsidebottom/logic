@@ -186,3 +186,93 @@ export function VarLabel({ name }) {
   if (uscore === -1) return <>{name}</>;
   return <>{base.slice(0, uscore)}<span style={{ fontSize: '0.55em', position: 'relative', top: '0.5em' }}>{base.slice(uscore + 1)}</span>{primes}</>;
 }
+
+// ─── Box calls ─────────────────────────────────────────────────────────────────
+// `name(a1, a2, …)` (or `name(a1; a2; …)`) refers to a compiled box (see
+// doc/box_backend_design.md §5.2).  Expansion substitutes the arguments for the
+// box's parameters in its definition, renames its projected internals per call
+// site, and recurses — the server does exactly the same (logic::boxes::expand),
+// so the diagram and the backends agree.  Unknown box / wrong arity ⇒ error.
+// `name(` is a call when the parenthesised text is an argument list and the
+// name is a known box, or there are ≥2 arguments (or none, or `;`); `A(B+C)`
+// and `A(B)` stay ANDs.  In an argument list a comma continues a name only
+// inside a numeric subscript (`d_0,1`); elsewhere it separates arguments.
+const isNameChar = c => /[\p{L}\p{N}_,]/u.test(c);
+function readName(str, i, inArgs) {
+  let name = '', inSub = false;
+  while (i < str.length) {
+    const c = str[i];
+    if (c === '_') inSub = true;
+    else if (c === ',') { if (inArgs && !(inSub && /[0-9]/.test(str[i + 1] ?? ''))) break; }
+    else if (!/[\p{L}\p{N}]/u.test(c)) break;
+    name += c; i++;
+  }
+  return [name, i];
+}
+function parseArgs(str, i) {           // str[i] === '('
+  i++;
+  const args = []; let semi = false;
+  for (;;) {
+    while (i < str.length && /\s/.test(str[i])) i++;
+    if (i >= str.length) return null;
+    if (str[i] === ')') return args.length === 0 ? [args, i + 1, semi] : null;
+    let name;
+    if (/[A-Za-z]/.test(str[i])) { [name, i] = readName(str, i, true); }
+    else if (str[i] === '0' || str[i] === '1') { name = str[i]; i++; }
+    else return null;
+    let k = i; while (k < str.length && /\s/.test(str[k])) k++;
+    let primes = 0; while (k < str.length && str[k] === "'") { primes++; k++; }
+    if (primes > 0) { i = k; if (primes % 2 === 1) name += "'"; }
+    args.push(name);
+    while (i < str.length && /\s/.test(str[i])) i++;
+    if (i >= str.length) return null;
+    if (str[i] === ')') return [args, i + 1, semi];
+    if (str[i] === ',') i++;
+    else if (str[i] === ';') { semi = true; i++; }
+    else return null;
+  }
+}
+function substitute(sig, args, k) {
+  const map = new Map(sig.params.map((p, j) => [p, args[j]]));
+  for (const v of sig.internals) if (!map.has(v)) map.set(v, `${v}__${k}`);
+  let out = '', i = 0;
+  const f = sig.formula;
+  while (i < f.length) {
+    const prevIsName = i > 0 && (isNameChar(f[i - 1]) || f[i - 1] === "'");
+    if (/[A-Za-z]/.test(f[i]) && !prevIsName) { const [name, j] = readName(f, i, false); out += map.get(name) ?? name; i = j; }
+    else { out += f[i]; i++; }
+  }
+  return out;
+}
+function expandRec(text, lookup, counter, depth) {
+  if (depth > 16) throw new Error('box expansion nested more than 16 levels — is a box defined in terms of itself?');
+  let out = '', i = 0;
+  while (i < text.length) {
+    const prevIsName = i > 0 && (isNameChar(text[i - 1]) || text[i - 1] === "'");
+    if (/[A-Za-z]/.test(text[i]) && !prevIsName) {
+      const [name, j] = readName(text, i, false);
+      if (text[j] === '(') {
+        const parsed = parseArgs(text, j);
+        if (parsed) {
+          const [args, after, semi] = parsed;
+          const sig = lookup(name);
+          if (sig || args.length !== 1 || semi) {
+            if (!sig) throw new Error(`unknown box \`${name}\` — load and compile its library (jq panel), or check the spelling`);
+            if (args.length !== sig.params.length)
+              throw new Error(`box \`${name}\` expects ${sig.params.length} argument${sig.params.length === 1 ? '' : 's'} (${sig.params.join('; ')}), got ${args.length}`);
+            counter.n++;
+            out += '(' + expandRec(substitute(sig, args, counter.n), lookup, counter, depth + 1) + ')';
+            i = after; continue;
+          }
+        }
+      }
+      out += name; i = j;
+    } else { out += text[i]; i++; }
+  }
+  return out;
+}
+/** Expand box calls against `boxes` ([{name, vars, internals, formula}], as served by GET /boxes). */
+export function expandBoxCalls(str, boxes) {
+  const byName = new Map((boxes ?? []).map(b => [b.name, { params: b.vars, internals: b.internals ?? [], formula: b.formula }]));
+  return expandRec(str, name => byName.get(name), { n: 0 }, 0);
+}

@@ -254,7 +254,7 @@ function substitute(sig, args, k) {
   }
   return out;
 }
-function walkCalls(text, lookup, onCall) {
+function walkCalls(text, lookup, onCall, lenient = false) {
   let out = '', i = 0;
   while (i < text.length) {
     const prevIsName = i > 0 && (isNameChar(text[i - 1]) || text[i - 1] === "'");
@@ -266,10 +266,12 @@ function walkCalls(text, lookup, onCall) {
           const [args, after, semi] = parsed;
           const sig = lookup(name);
           if (sig || args.length !== 1 || semi) {
-            if (!sig) throw new Error(`unknown box \`${name}\` — load and compile its library (jq panel), or check the spelling`);
-            if (args.length !== sig.params.length)
-              throw new Error(`box \`${name}\` expects ${sig.params.length} argument${sig.params.length === 1 ? '' : 's'} (${sig.params.join('; ')}), got ${args.length}`);
-            out += onCall(name, args, sig);
+            if (!lenient) {
+              if (!sig) throw new Error(`unknown box \`${name}\` — load and compile its library (jq panel), or check the spelling`);
+              if (args.length !== sig.params.length)
+                throw new Error(`box \`${name}\` expects ${sig.params.length} argument${sig.params.length === 1 ? '' : 's'} (${sig.params.join('; ')}), got ${args.length}`);
+            }
+            out += onCall(name, args, sig, text.slice(i, after));
             i = after; continue;
           }
         }
@@ -297,14 +299,21 @@ export function expandBoxCalls(str, boxes) {
 export const BOX_ATOM_PREFIX = 'BOXCALL_';
 /** Replace each box call by an atom `BOXCALL_k` (mirrors logic::boxes::expand::atomize_box_calls).
  *  Returns {text, calls: [{atom, name, args, label}]}; `label` is `name(a,b,…)`. */
-export function atomizeBoxCalls(str, boxes) {
-  if (str.includes(BOX_ATOM_PREFIX)) throw new Error(`variable names starting with \`${BOX_ATOM_PREFIX}\` are reserved for box calls`);
+/** With `lenient`, unknown boxes and arity mismatches are not errors: anything
+ *  that reads as a call (≥2 arguments, `;`, or a known box) is atomized — for
+ *  text-level tools like the formatter that must keep `f(a, b)` together even
+ *  before the box is loaded.  Each call records its source `text`. */
+export function atomizeBoxCalls(str, boxes, { lenient = false } = {}) {
+  if (str.includes(BOX_ATOM_PREFIX)) {
+    if (lenient) return { text: str, calls: [] };
+    throw new Error(`variable names starting with \`${BOX_ATOM_PREFIX}\` are reserved for box calls`);
+  }
   const calls = [];
-  const text = walkCalls(str, lookupOf(boxes), (name, args) => {
+  const text = walkCalls(str, lookupOf(boxes), (name, args, _sig, src) => {
     const atom = `${BOX_ATOM_PREFIX}${calls.length + 1}`;
-    calls.push({ atom, name, args, label: `${name}(${args.join(',')})` });
+    calls.push({ atom, name, args, label: `${name}(${args.join(',')})`, text: src });
     return atom;
-  });
+  }, lenient);
   return { text, calls };
 }
 /** In an AST parsed from atomized text, turn the atom leaves into box leaves:

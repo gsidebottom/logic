@@ -94,9 +94,18 @@ function fmtClause(clause, vars) {
 // Format a formula with one top-level expression per line.
 // If a top-level operator (⇒, ⊕, =, +) is present, split at the loosest one
 // (each operand on its own line). Otherwise, split at every top-level factor
-// boundary (implicit AND between groups / variables).
-function formatFormula(s) {
+// boundary (implicit AND between groups / variables).  Box calls
+// `f(a, b, …)` are one factor: they are swapped for placeholder tokens while
+// splitting and put back verbatim (lenient — the box need not be loaded).
+function formatFormula(s, boxes) {
   if (!s || !s.trim()) return s;
+  let text = s, calls = [];
+  try { ({ text, calls } = atomizeBoxCalls(s, boxes, { lenient: true })); } catch { text = s; calls = []; }
+  const out = formatFormulaCore(text);
+  return calls.length ? out.replace(/BOXCALL_(\d+)/g, (m, k) => calls[k - 1]?.text ?? m) : out;
+}
+
+function formatFormulaCore(s) {
   const prec = { '⇒': 1, '⊕': 2, '≠': 2, '=': 3, '⇔': 3, '⊙': 3, '+': 4 };
   const isVarChar = ch => /[A-Za-z0-9_,]/.test(ch);
 
@@ -1234,7 +1243,7 @@ export default function App() {
           const out = data.results;
           if (out && out.length > 0) {
             const val = out[0];
-            setInput(formatFormula(typeof val === 'string' ? val : JSON.stringify(val)));
+            setInput(formatFormula(typeof val === 'string' ? val : JSON.stringify(val), boxes));
             setJqError('');
           } else {
             setJqError('Filter produced no output');
@@ -1417,7 +1426,7 @@ export default function App() {
         } else {
           setSimplifyMsg({ text: `✓ Simplified ${form}!`, ok: true });
           setSimplified({ formula: result, ast: parse(result) });
-          setInput(formatFormula(result));
+          setInput(formatFormula(result, boxes));
         }
       }
     } catch (e) {
@@ -2615,7 +2624,7 @@ export default function App() {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6, alignItems: 'center' }}>
               {examples.map(({ label, f }, i) => (
                 <span key={i} style={{ display: 'inline-flex', alignItems: 'center' }}>
-                  <button onClick={() => setInput(formatFormula(f))} style={{
+                  <button onClick={() => setInput(formatFormula(f, boxes))} style={{
                     padding: '4px 11px', fontSize: 12, fontFamily: 'Georgia, serif',
                     border: '1px solid #ccc', borderRadius: '4px 0 0 4px', cursor: 'pointer',
                     background: input === f ? '#e8eeff' : '#fafafa', color: '#333',
@@ -2718,7 +2727,7 @@ export default function App() {
             ))}
           </span>
           {btn("A'  Complement", handleComplement,  '#2a6a6a', !ast,            !ast ? "Fix syntax errors first" : "Show the complement as a nested box diagram")}
-          {btn("Format", () => setInput(formatFormula(input)), '#6a4a8a', !input.trim(), !input.trim() ? "Enter a formula first" : "Reformat the formula with one top-level expression per line")}
+          {btn("Format", () => setInput(formatFormula(input, boxes)), '#6a4a8a', !input.trim(), !input.trim() ? "Enter a formula first" : "Reformat the formula with one top-level expression per line")}
         </div>
       </div>
 
@@ -2846,7 +2855,7 @@ export default function App() {
                 <DiagramWithConnections node={simplified.ast} coverGroups={null} selectedGroups={new Set()} highlightedPaths={null} />
               </ZoomPanWrapper>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
-                {btn('Use simplified formula', () => setInput(formatFormula(simplified.formula)), '#2a7a2a')}
+                {btn('Use simplified formula', () => setInput(formatFormula(simplified.formula, boxes)), '#2a7a2a')}
               </div>
             </>
           )}

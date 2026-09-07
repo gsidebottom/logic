@@ -82,5 +82,9 @@
   {
     "label": "Adder Unsat",
     "f": "X Y C1'\n(C = X Y+(X ⊕ Y) C1)\n(Z = X ⊕ Y ⊕ C1)\nZ' C'"
+  },
+  {
+    "label": "Full Adder Projected",
+    "f": "(C = X Y + (X ⊕ Y) C1)\n(Z = X ⊕ Y ⊕ C1) "
   }
 ]

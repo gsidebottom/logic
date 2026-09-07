@@ -14,6 +14,7 @@
 # faulty_add_at_most(27;0;134217727;1;134217727;1;1) (unsat)
 # faulty_add_at_most(27;0;134217727;1;134217727;1;2) (sat)
 # 
+# prod(range(2) as $i | full_adder_box(x($i); y($i); c($i); z($i); c($i+1)))
 
 def a(i): vi("a";i);
 def b(i): vi("b";i);
@@ -44,6 +45,8 @@ def full_adder(x;y;c_in;s;c_out):
         br(eq(xor(x, y, c_in), s))
     )
 ;
+
+def full_adder_box(x;y;c_in;s;c_out): box("full_adder"; x, y, c_in, s, c_out);
 
 
 # faulty adder
@@ -163,6 +166,10 @@ def test_faulty_add_at_most:
   faulty_add_at_most(6;3;19;0;21;0;1) | length == 2525
 ;
 
+def test_full_adder_box: 
+  full_adder_box("x"; "y"; "c_in"; "s"; "c_out") == "full_adder(x, y, c_in, s, c_out)"
+;
+
 # === boxes ===
 # full_adder(x;y;c_in;s;c_out)
 # adder(a;b;c_in;s;c_out;u1;u2;u3)
@@ -175,3 +182,4 @@ def test_faulty_add_at_most:
 , test_faulty_add
 , test_diags
 , test_faulty_add_at_most
+, test_full_adder_box

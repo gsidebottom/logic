@@ -628,7 +628,14 @@ formula, or from a jq library's `# === boxes ===` declarations with
 section/preamble machinery extracted from `web_app` (which now uses it) plus
 `run_filter`, the box-declaration parser and `box_formula`; `lib/adder.jq`
 gained the two-equation `full_adder` and declares both it and `adder` as
-boxes; `tools/boxes_verdict_check.py` and `tools/gen_adder_boxes.py`.
+boxes; `tools/boxes_verdict_check.py` and `tools/gen_adder_boxes.py`.  **Dynamic boxes in the web app** (2026-09-07): `POST /boxes/compile`
+compiles every box declared in the *loaded* jq libraries into an in-memory
+table (bounded by a path limit and a timeout; `save` writes the CLI table
+format to `boxes/`), `GET /boxes` lists them, `GET|DELETE /boxes/table?name=`
+fetches or drops one, and the jq panel has a *Compile boxes* button with a chip
+per compiled box — define a box in the UI's jq editor, click, it is live, no
+restart.  The compiler itself moved into the library
+(`logic::boxes::compile`, shared with `box-compile` and `sat --boxes`).
 
 **Gates met.**
 - Unit tests: trivial CNFs, pigeonhole, 300 random 3-SAT instances against

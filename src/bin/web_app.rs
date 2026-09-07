@@ -1,11 +1,12 @@
 use axum::{
-    extract::{Json, State},
+    extract::{Json, Query, State},
     http::Method,
     routing::{delete, get, post},
     Router,
 };
 use logic::matrix::PathClassificationHandle;
-use logic::jqlib::{split_file, join_file, resolve_preamble};
+use logic::jqlib::{split_file, join_file, resolve_preamble, parse_boxes, box_formula};
+use logic::boxes::compile::{compile_box, Table};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, sync::{Arc, Mutex}};
 use tower_http::cors::{Any, CorsLayer};
@@ -133,6 +134,8 @@ struct CaDiCaLStatusResponse {
 #[derive(Clone)]
 struct AppState {
     jq_libs:     Arc<Mutex<Vec<JqLibEntry>>>,
+    /// Boxes compiled from the loaded libraries' `# === boxes ===` declarations.
+    compiled_boxes: Arc<Mutex<Vec<CompiledBox>>>,
     server_root: PathBuf,
     valid_job:   Arc<Mutex<ClassifyJob>>,
     sat_job:     Arc<Mutex<ClassifyJob>>,
@@ -221,6 +224,129 @@ async fn jq_handler(
             }
         }
     }
+}
+
+
+// ── boxes: compile declared jq boxes into tables (doc/box_backend_design.md §5) ──
+
+/// A box compiled from a loaded library, held in memory for this server.
+#[derive(Clone, Serialize)]
+struct CompiledBox {
+    name: String,
+    lib: String,
+    params: Vec<String>,
+    expose: Vec<String>,
+    vars: Vec<String>,
+    rows: usize,
+    uncovered_paths: usize,
+    formula: String,
+    #[serde(skip)]
+    table: Table,
+}
+
+#[derive(Deserialize)]
+struct BoxesCompileRequest {
+    /// Only these libraries (paths); default: every loaded library.
+    #[serde(default)] libs: Vec<String>,
+    /// Only these box names; default: every declared box.
+    #[serde(default)] names: Vec<String>,
+    #[serde(default = "BoxesCompileRequest::default_max")] max_uncovered_paths: usize,
+    #[serde(default = "BoxesCompileRequest::default_timeout")] timeout_secs: u64,
+    /// Also write `<server_root>/boxes/<name>.json` (the `sat --boxes` table format).
+    #[serde(default)] save: bool,
+}
+impl BoxesCompileRequest {
+    fn default_max() -> usize { 1_000_000 }
+    fn default_timeout() -> u64 { 120 }
+}
+
+fn store_compiled_box(state: &AppState, cb: CompiledBox) -> serde_json::Value {
+    let mut store = state.compiled_boxes.lock().unwrap();
+    store.retain(|b| b.name != cb.name);
+    let v = serde_json::to_value(&cb).unwrap();
+    store.push(cb);
+    v
+}
+
+async fn boxes_compile_handler(
+    State(state): State<AppState>,
+    Json(req): Json<BoxesCompileRequest>,
+) -> Json<serde_json::Value> {
+    let libs = state.jq_libs.lock().unwrap().clone();
+    let roots: Vec<String> = libs.iter().map(|l| l.path.clone()).collect();
+    let mut overrides = HashMap::new();
+    for lib in &libs { overrides.insert(lib.path.clone(), (lib.deps.clone(), lib.content.clone())); }
+    let preamble = match resolve_preamble(&roots, &overrides, &state.server_root.join("lib")) {
+        Ok(p) => p,
+        Err(e) => return Json(serde_json::json!({ "compiled": [], "errors": [e] })),
+    };
+    let (mut compiled, mut errors) = (Vec::new(), Vec::new());
+    for lib in &libs {
+        if !req.libs.is_empty() && !req.libs.contains(&lib.path) { continue; }
+        let decls = match parse_boxes(&lib.content) {
+            Ok(d) => d,
+            Err(e) => { errors.push(format!("{}: {}", lib.path, e)); continue; }
+        };
+        for d in decls {
+            if !req.names.is_empty() && !req.names.contains(&d.name) { continue; }
+            let formula = match box_formula(&preamble, &d, None) {
+                Ok(f) => f,
+                Err(e) => { errors.push(e); continue; }
+            };
+            let mut cols = d.params.clone();
+            for e in &d.expose { if !cols.contains(e) { cols.push(e.clone()); } }
+            let fut = compile_box(&d.name, &formula, &cols, req.max_uncovered_paths);
+            match tokio::time::timeout(std::time::Duration::from_secs(req.timeout_secs), fut).await {
+                Err(_) => errors.push(format!("{}: compile timed out after {} s", d.name, req.timeout_secs)),
+                Ok(Err(e)) => errors.push(e),
+                Ok(Ok(table)) => {
+                    if req.save {
+                        let dir = state.server_root.join("boxes");
+                        let _ = std::fs::create_dir_all(&dir);
+                        if let Err(e) = std::fs::write(dir.join(format!("{}.json", d.name)),
+                                                       serde_json::to_string_pretty(&table.to_json()).unwrap()) {
+                            errors.push(format!("{}: save: {}", d.name, e));
+                        }
+                    }
+                    let cb = CompiledBox {
+                        name: d.name.clone(), lib: lib.path.clone(), params: d.params.clone(), expose: d.expose.clone(),
+                        vars: table.vars.clone(), rows: table.rows.len(), uncovered_paths: table.uncovered_paths,
+                        formula: table.formula.clone(), table,
+                    };
+                    compiled.push(store_compiled_box(&state, cb));
+                }
+            }
+        }
+    }
+    Json(serde_json::json!({ "compiled": compiled, "errors": errors }))
+}
+
+async fn boxes_list_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let boxes = state.compiled_boxes.lock().unwrap().clone();
+    Json(serde_json::json!({ "boxes": boxes }))
+}
+
+async fn boxes_table_handler(
+    State(state): State<AppState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Json<serde_json::Value> {
+    let name = q.get("name").cloned().unwrap_or_default();
+    let store = state.compiled_boxes.lock().unwrap();
+    match store.iter().find(|b| b.name == name) {
+        Some(b) => Json(b.table.to_json()),
+        None => Json(serde_json::json!({ "error": format!("no compiled box named {name}") })),
+    }
+}
+
+async fn boxes_delete_handler(
+    State(state): State<AppState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Json<serde_json::Value> {
+    let name = q.get("name").cloned().unwrap_or_default();
+    let mut store = state.compiled_boxes.lock().unwrap();
+    let before = store.len();
+    store.retain(|b| b.name != name);
+    Json(serde_json::json!({ "ok": true, "removed": before - store.len() }))
 }
 
 // ── jq-lib handlers ───────────────────────────────────────────────────────────
@@ -1433,6 +1559,7 @@ async fn main() {
 
     let state = AppState {
         jq_libs: Arc::new(Mutex::new(default_libs)),
+        compiled_boxes: Arc::new(Mutex::new(Vec::new())),
         server_root,
         valid_job: Arc::new(Mutex::new(ClassifyJob::default())),
         sat_job:   Arc::new(Mutex::new(ClassifyJob::default())),
@@ -1474,6 +1601,9 @@ async fn main() {
                                    .delete(jq_lib_unload_handler))
         .route("/jq-lib/file",  delete(jq_lib_delete_handler))
         .route("/jq-lib/files", get(jq_lib_files_handler))
+        .route("/boxes",         get(boxes_list_handler))
+        .route("/boxes/compile", post(boxes_compile_handler))
+        .route("/boxes/table",   get(boxes_table_handler).delete(boxes_delete_handler))
         .route("/examples",    get(load_examples_handler).post(save_examples_handler))
         .with_state(state);
 

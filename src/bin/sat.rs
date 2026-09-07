@@ -1652,11 +1652,11 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
 /// `{"vars": [...], "rows": [[1|0|null, ...], ...]}`; `args[i]` is the DIMACS
 /// variable bound to the table's i-th column.
 fn load_box_instances(path: &std::path::Path) -> Result<Vec<logic::boxes::TableBox>, String> {
-    use logic::matrix::Lit;
+    use logic::boxes::compile::Table;
     let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let insts: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-    let mut cache: std::collections::HashMap<String, serde_json::Value> = Default::default();
+    let mut cache: std::collections::HashMap<String, Table> = Default::default();
     let mut out = Vec::new();
     for inst in insts.as_array().ok_or("instances: expected a JSON array")? {
         let table = inst["table"].as_str().ok_or("instance: missing \"table\"")?.to_string();
@@ -1665,27 +1665,11 @@ fn load_box_instances(path: &std::path::Path) -> Result<Vec<logic::boxes::TableB
         if args.iter().any(|&a| a < 1) { return Err(format!("{table}: args must be DIMACS variables >= 1")); }
         if !cache.contains_key(&table) {
             let t = std::fs::read_to_string(dir.join(&table)).map_err(|e| format!("{table}: {e}"))?;
-            cache.insert(table.clone(), serde_json::from_str(&t).map_err(|e| format!("{table}: {e}"))?);
+            let v: serde_json::Value = serde_json::from_str(&t).map_err(|e| format!("{table}: {e}"))?;
+            cache.insert(table.clone(), Table::from_json(&v).map_err(|e| format!("{table}: {e}"))?);
         }
-        let tv = &cache[&table];
-        let ncols = tv["vars"].as_array().map(|a| a.len()).unwrap_or(0);
-        if args.len() != ncols {
-            return Err(format!("{table}: expects {ncols} args, instance has {}", args.len()));
-        }
-        let rows = tv["rows"].as_array().ok_or_else(|| format!("{table}: missing rows"))?;
-        let mut trows = Vec::with_capacity(rows.len());
-        for r in rows {
-            let mut lits = Vec::new();
-            for (ci, cell) in r.as_array().ok_or("row: expected an array")?.iter().enumerate() {
-                match cell.as_i64() {
-                    Some(1) => lits.push(Lit { var: (args[ci] - 1) as u32, neg: false }),
-                    Some(0) => lits.push(Lit { var: (args[ci] - 1) as u32, neg: true }),
-                    _ => {}
-                }
-            }
-            trows.push(lits);
-        }
-        out.push(logic::boxes::TableBox::new(trows));
+        let zero_based: Vec<u32> = args.iter().map(|&a| (a - 1) as u32).collect();
+        out.push(cache[&table].instantiate(&zero_based)?);
     }
     Ok(out)
 }

@@ -6,7 +6,7 @@ import { parse, complementAst, astToString, resolvePosition, VarLabel } from "./
 // the Rust backend also serves the built frontend static files, so relative
 // URLs keep everything same-origin no matter what hostname/port the user
 // reaches the container on.
-const API_BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_API_BASE ?? (import.meta.env.PROD ? '' : 'http://localhost:3001');
 
 // ─── Cover context (for highlighting complementary pairs in diagrams) ──────────
 const CoverContext = createContext(null);
@@ -1183,6 +1183,9 @@ export default function App() {
   const [jqLibTestRunning, setJqLibTestRunning] = useState(false);
   const [jqLibTestResult,  setJqLibTestResult]  = useState(null); // {ok: bool, message: string} | null
   const [jqLibClosePrompt, setJqLibClosePrompt] = useState(false); // unsaved-changes confirm
+  const [boxes,          setBoxes]          = useState([]);    // compiled boxes from /boxes
+  const [boxesCompiling, setBoxesCompiling] = useState(false);
+  const [boxesMsg,       setBoxesMsg]       = useState('');
   const [jqLibDeps,      setJqLibDeps]      = useState([]);    // editable dep list
   const [jqLibDepInput,  setJqLibDepInput]  = useState('');    // dep picker input
   const [jqLibFiles,     setJqLibFiles]     = useState([]);   // available .jq filenames
@@ -1250,6 +1253,34 @@ export default function App() {
     setJqLibLoading(false);
   };
 
+  const fetchBoxes = async () => {
+    try {
+      const res  = await fetch(API_BASE + '/boxes');
+      const data = await res.json();
+      setBoxes(data.boxes ?? []);
+    } catch { /* backend unreachable */ }
+  };
+  // Compile every box declared in a `# === boxes ===` section of the loaded
+  // libraries into its table (doc/box_backend_design.md §5).
+  const handleCompileBoxes = async () => {
+    setBoxesCompiling(true); setBoxesMsg('');
+    try {
+      const res  = await fetch(API_BASE + '/boxes/compile', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      const n = (data.compiled ?? []).length;
+      setBoxesMsg(data.errors?.length ? '✗ ' + data.errors.join('; ') : `✓ compiled ${n} box${n === 1 ? '' : 'es'}`);
+      await fetchBoxes();
+    } catch (e) { setBoxesMsg('✗ ' + (e.message || 'Could not reach Rust service')); }
+    setBoxesCompiling(false);
+  };
+  const handleDeleteBox = async (name) => {
+    try {
+      await fetch(API_BASE + '/boxes/table?name=' + encodeURIComponent(name), { method: 'DELETE' });
+      await fetchBoxes();
+    } catch { /* ignore */ }
+  };
   const handleUnloadJqLib = async (path) => {
     try {
       await fetch(API_BASE + '/jq-lib', {
@@ -1316,6 +1347,7 @@ export default function App() {
   // Load jq lib list and available files from server on mount
   useEffect(() => {
     refreshJqLibs();
+    fetchBoxes();
     fetch(API_BASE + '/jq-lib/files')
       .then(r => r.json())
       .then(data => { if (data.files) setJqLibFiles(data.files); })
@@ -2125,6 +2157,26 @@ export default function App() {
                 ))}
               </div>
             )}
+
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+              <button onClick={handleCompileBoxes} disabled={boxesCompiling || jqLibs.length === 0}
+                      title="Compile every box declared in a `# === boxes ===` section of the loaded libraries into its table: the canonical uncovered paths of its complement, internals projected out"
+                      style={{ padding: '2px 8px', fontSize: 12, border: '1px solid #bbb', borderRadius: 4, cursor: 'pointer', background: '#f5f5f5' }}>
+                {boxesCompiling ? '…' : 'Compile boxes'}
+              </button>
+              {boxes.map(b => (
+                <span key={b.name} title={`${b.lib}: ${b.formula}\n${b.uncovered_paths} uncovered paths → ${b.rows} rows`} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e3f2fd',
+                  border: '1px solid #90caf9', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontFamily: 'monospace',
+                }}>
+                  {b.name}({b.vars.join(',')}) <span style={{ color: '#666' }}>· {b.rows} rows</span>
+                  <button onClick={() => handleDeleteBox(b.name)} title="Remove this compiled box" style={{
+                    border: 'none', background: 'none', cursor: 'pointer', color: '#888', padding: 0, fontSize: 11, lineHeight: 1,
+                  }}>✕</button>
+                </span>
+              ))}
+              {boxesMsg && <span style={{ color: boxesMsg.startsWith('✗') ? '#c00' : '#2a7a2a' }}>{boxesMsg}</span>}
+            </div>
 
             {jqLibViewing && (() => {
               const savedDeps = jqLibViewing.deps ?? [];

@@ -136,3 +136,8 @@ matmul/r22/cargo_test.log
 matmul/asym/*.out
 matmul/asym/*.err
 matmul/asym/*.list
+
+# local vite env overrides (per-mode)
+nested-boxes/.env.*.local
+# compiled box tables written by /boxes/compile {save:true}
+/boxes/

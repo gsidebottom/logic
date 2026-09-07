@@ -16,74 +16,16 @@
 //! from every row, duplicate rows merged — unless exposed.  Rows are in model
 //! polarity: `1` = true, `0` = false, `null` = don't care.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use logic::controller::SmartController;
+use logic::boxes::compile::compile_box_blocking;
 use logic::jqlib::{box_formula, parse_boxes, resolve_preamble, split_file};
-use logic::matrix::{DynOnClass, Matrix, PathParams, PathsClass};
 
 fn split_list(s: &str) -> Vec<String> {
     s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()
 }
 
 fn die(msg: String) -> ! { eprintln!("box-compile: {msg}"); std::process::exit(2) }
-
-/// Enumerate the definition's models (uncovered paths of its complement) and
-/// project them onto `cols`.  Returns the table as JSON.
-fn compile_box(name: &str, formula: &str, cols: &[String]) -> serde_json::Value {
-    let m = Matrix::try_from(formula.trim()).unwrap_or_else(|e| die(format!("{name}: parse error: {e}")));
-    let names = m.ast.vars.clone();
-    for c in cols {
-        if !names.contains(c) { eprintln!("box-compile: warning: {name}: column {c} does not occur in the formula"); }
-    }
-    let internals: Vec<String> = names.iter().filter(|n| !cols.contains(n)).cloned().collect();
-    let col_of: HashMap<&str, usize> = cols.iter().enumerate().map(|(i, c)| (c.as_str(), i)).collect();
-    let nnf = m.nnf_complement.clone();
-    let params = Some(PathParams {
-        paths_class_limit: usize::MAX / 2, uncovered_path_limit: usize::MAX / 2, ..Default::default()
-    });
-    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("tokio runtime");
-    let (set, n_uncovered) = rt.block_on(async {
-        let nnf_for_builder = nnf.clone();
-        let (handle, mut rx, _cancel) = nnf.classify_paths_uncovered_only(
-            64,
-            move |tx: tokio::sync::mpsc::Sender<(PathsClass, bool)>| {
-                let on_class: DynOnClass =
-                    Box::new(move |class, hit_limit| tx.blocking_send((class, hit_limit)).is_ok());
-                SmartController::for_nnf(&nnf_for_builder, params, on_class)
-            },
-        );
-        let mut set: HashSet<Vec<Option<bool>>> = HashSet::new();
-        let mut n = 0usize;
-        while let Some((class, _hit_limit)) = rx.recv().await {
-            if let PathsClass::Uncovered(up) = class {
-                n += 1;
-                // A path literal is made FALSE by the model (§2.2): model value = l.neg.
-                let mut row = vec![None; cols.len()];
-                for l in &up.lits {
-                    if let Some(&ci) = col_of.get(names[l.var as usize].as_str()) { row[ci] = Some(l.neg); }
-                }
-                set.insert(row);
-            }
-        }
-        let _ = handle.await;
-        (set, n)
-    });
-    let mut rows: Vec<Vec<Option<bool>>> = set.into_iter().collect();
-    rows.sort();
-    eprintln!("box-compile: {name}: {n_uncovered} uncovered paths -> {} canonical rows over {:?} ({} internal variables projected)",
-              rows.len(), cols, internals.len());
-    serde_json::json!({
-        "name": name,
-        "vars": cols,
-        "rows": rows.iter().map(|r| r.iter().map(|c| match c {
-            Some(true) => serde_json::Value::from(1), Some(false) => serde_json::Value::from(0), None => serde_json::Value::Null,
-        }).collect::<Vec<_>>()).collect::<Vec<_>>(),
-        "formula": formula.trim(),
-        "internals_projected": internals,
-        "uncovered_paths": n_uncovered,
-    })
-}
 
 fn write_json(v: &serde_json::Value, out: Option<&str>) {
     let text = serde_json::to_string_pretty(v).unwrap();
@@ -100,6 +42,7 @@ fn main() {
     let (mut expose, mut all) = (Vec::new(), false);
     let mut name = "box".to_string();
     let mut lib_dir = "lib".to_string();
+    let mut max_paths: usize = 1_000_000;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -114,6 +57,7 @@ fn main() {
             "--lib-dir"      => lib_dir = it.next().cloned().unwrap_or(lib_dir),
             "--box"          => box_name = it.next().cloned(),
             "--all"          => all = true,
+            "--max-paths"    => max_paths = it.next().and_then(|v| v.parse().ok()).unwrap_or(max_paths),
             other => die(format!("unknown argument {other}")),
         }
     }
@@ -136,7 +80,9 @@ fn main() {
             let formula = box_formula(&preamble, &d, None).unwrap_or_else(|e| die(e));
             let mut cols = d.params.clone();
             for e in &d.expose { if !cols.contains(e) { cols.push(e.clone()); } }
-            let table = compile_box(&d.name, &formula, &cols);
+            let table = compile_box_blocking(&d.name, &formula, &cols, max_paths).unwrap_or_else(|e| die(e));
+            eprintln!("box-compile: {}: {} uncovered paths -> {} canonical rows over {:?} ({} internal variables projected)", d.name, table.uncovered_paths, table.rows.len(), table.vars, table.internals_projected.len());
+            let table = table.to_json();
             let target = match (&out_dir, &out) {
                 (Some(dir), _) => Some(format!("{dir}/{}.json", d.name)),
                 (None, Some(o)) => Some(o.clone()),
@@ -157,5 +103,7 @@ fn main() {
     if interface.is_empty() { die("--interface required".into()); }
     let mut cols = interface;
     for e in &expose { if !cols.contains(e) { cols.push(e.clone()); } }
-    write_json(&compile_box(&name, &formula, &cols), out.as_deref());
+    let table = compile_box_blocking(&name, &formula, &cols, max_paths).unwrap_or_else(|e| die(e));
+    eprintln!("box-compile: {}: {} uncovered paths -> {} canonical rows over {:?} ({} internal variables projected)", name, table.uncovered_paths, table.rows.len(), table.vars, table.internals_projected.len());
+    write_json(&table.to_json(), out.as_deref());
 }

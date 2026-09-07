@@ -45,10 +45,6 @@ def full_adder(x;y;c_in;s;c_out):
     )
 ;
 
-# === boxes ===
-# full_adder(x;y;c_in;s;c_out)
-# adder(a;b;c_in;s;c_out;u1;u2;u3)
-# === end boxes ===
 
 # faulty adder
 def faulty_adder(a;b;c_in;s;c_out;u1;u2;u3;d0;d1;d2;d3;d4):
@@ -167,6 +163,10 @@ def test_faulty_add_at_most:
   faulty_add_at_most(6;3;19;0;21;0;1) | length == 2525
 ;
 
+# === boxes ===
+# full_adder(x;y;c_in;s;c_out)
+# adder(a;b;c_in;s;c_out;u1;u2;u3)
+# === end boxes ===
 # === tests ===
   test_faulty_adder
 , test_bit_adder

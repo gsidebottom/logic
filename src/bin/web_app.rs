@@ -5,7 +5,7 @@ use axum::{
     Router,
 };
 use logic::matrix::PathClassificationHandle;
-use logic::jqlib::{split_file, join_file, resolve_preamble, parse_boxes, box_formula};
+use logic::jqlib::{split_file, join_file, split_boxes, join_boxes, resolve_preamble, parse_box_decl, box_formula};
 use logic::boxes::compile::{compile_box, Table};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, sync::{Arc, Mutex}};
@@ -26,6 +26,9 @@ struct JqLibEntry {
     content: String,
     /// Saved test filter.  Empty string if there are no tests.
     tests:   String,
+    /// Box declarations (`name(p1;p2;…) [expose …]`) from the `# === boxes ===`
+    /// block, kept out of `content`; compiled on load and on save.
+    boxes:   Vec<String>,
 }
 
 const PREFIX_DETAIL_LIMIT: usize = 1000;
@@ -248,8 +251,6 @@ struct CompiledBox {
 struct BoxesCompileRequest {
     /// Only these libraries (paths); default: every loaded library.
     #[serde(default)] libs: Vec<String>,
-    /// Only these box names; default: every declared box.
-    #[serde(default)] names: Vec<String>,
     #[serde(default = "BoxesCompileRequest::default_max")] max_uncovered_paths: usize,
     #[serde(default = "BoxesCompileRequest::default_timeout")] timeout_secs: u64,
     /// Also write `<server_root>/boxes/<name>.json` (the `sat --boxes` table format).
@@ -260,61 +261,82 @@ impl BoxesCompileRequest {
     fn default_timeout() -> u64 { 120 }
 }
 
-fn store_compiled_box(state: &AppState, cb: CompiledBox) -> serde_json::Value {
+/// Compile (or recompile) the boxes declared by one loaded library, replacing
+/// that library's entries in the store — so a declaration that was removed or
+/// now fails disappears.  Returns one status per declaration.
+async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, timeout_secs: u64) -> Vec<serde_json::Value> {
+    let libs = state.jq_libs.lock().unwrap().clone();
+    let Some(lib) = libs.iter().find(|l| l.path == lib_path).cloned() else {
+        return vec![serde_json::json!({ "error": format!("{lib_path} is not loaded") })];
+    };
+    if lib.boxes.is_empty() {
+        state.compiled_boxes.lock().unwrap().retain(|b| b.lib != lib.path);
+        return Vec::new();
+    }
+    let roots: Vec<String> = libs.iter().map(|l| l.path.clone()).collect();
+    let mut overrides = HashMap::new();
+    for l in &libs { overrides.insert(l.path.clone(), (l.deps.clone(), l.content.clone())); }
+    let preamble = match resolve_preamble(&roots, &overrides, &state.server_root.join("lib")) {
+        Ok(p) => p,
+        Err(e) => return vec![serde_json::json!({ "error": e })],
+    };
+    let (mut statuses, mut compiled_now) = (Vec::new(), Vec::new());
+    for line in &lib.boxes {
+        let d = match parse_box_decl(line) {
+            Ok(d) => d,
+            Err(e) => { statuses.push(serde_json::json!({ "decl": line, "name": line.split('(').next().unwrap_or("").trim(), "error": e })); continue; }
+        };
+        let formula = match box_formula(&preamble, &d, None) {
+            Ok(f) => f,
+            Err(e) => { statuses.push(serde_json::json!({ "name": d.name, "error": e })); continue; }
+        };
+        let mut cols = d.params.clone();
+        for e in &d.expose { if !cols.contains(e) { cols.push(e.clone()); } }
+        let fut = compile_box(&d.name, &formula, &cols, max_paths);
+        match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), fut).await {
+            Err(_) => statuses.push(serde_json::json!({ "name": d.name, "error": format!("compile timed out after {timeout_secs} s") })),
+            Ok(Err(e)) => statuses.push(serde_json::json!({ "name": d.name, "error": e })),
+            Ok(Ok(table)) => {
+                statuses.push(serde_json::json!({
+                    "name": d.name, "vars": table.vars, "rows": table.rows.len(),
+                    "uncovered_paths": table.uncovered_paths, "formula": table.formula,
+                }));
+                compiled_now.push(CompiledBox {
+                    name: d.name.clone(), lib: lib.path.clone(), params: d.params.clone(), expose: d.expose.clone(),
+                    vars: table.vars.clone(), rows: table.rows.len(), uncovered_paths: table.uncovered_paths,
+                    formula: table.formula.clone(), table,
+                });
+            }
+        }
+    }
     let mut store = state.compiled_boxes.lock().unwrap();
-    store.retain(|b| b.name != cb.name);
-    let v = serde_json::to_value(&cb).unwrap();
-    store.push(cb);
-    v
+    store.retain(|b| b.lib != lib.path);
+    store.extend(compiled_now);
+    statuses
 }
 
+/// Recompile the boxes of the loaded libraries (all, or `libs`).  Boxes are
+/// compiled automatically on library load and save; this is the manual /
+/// scripted entry point, and the one that can `save` the tables to disk.
 async fn boxes_compile_handler(
     State(state): State<AppState>,
     Json(req): Json<BoxesCompileRequest>,
 ) -> Json<serde_json::Value> {
-    let libs = state.jq_libs.lock().unwrap().clone();
-    let roots: Vec<String> = libs.iter().map(|l| l.path.clone()).collect();
-    let mut overrides = HashMap::new();
-    for lib in &libs { overrides.insert(lib.path.clone(), (lib.deps.clone(), lib.content.clone())); }
-    let preamble = match resolve_preamble(&roots, &overrides, &state.server_root.join("lib")) {
-        Ok(p) => p,
-        Err(e) => return Json(serde_json::json!({ "compiled": [], "errors": [e] })),
-    };
+    let paths: Vec<String> = state.jq_libs.lock().unwrap().iter()
+        .map(|l| l.path.clone()).filter(|p| req.libs.is_empty() || req.libs.contains(p)).collect();
     let (mut compiled, mut errors) = (Vec::new(), Vec::new());
-    for lib in &libs {
-        if !req.libs.is_empty() && !req.libs.contains(&lib.path) { continue; }
-        let decls = match parse_boxes(&lib.content) {
-            Ok(d) => d,
-            Err(e) => { errors.push(format!("{}: {}", lib.path, e)); continue; }
-        };
-        for d in decls {
-            if !req.names.is_empty() && !req.names.contains(&d.name) { continue; }
-            let formula = match box_formula(&preamble, &d, None) {
-                Ok(f) => f,
-                Err(e) => { errors.push(e); continue; }
-            };
-            let mut cols = d.params.clone();
-            for e in &d.expose { if !cols.contains(e) { cols.push(e.clone()); } }
-            let fut = compile_box(&d.name, &formula, &cols, req.max_uncovered_paths);
-            match tokio::time::timeout(std::time::Duration::from_secs(req.timeout_secs), fut).await {
-                Err(_) => errors.push(format!("{}: compile timed out after {} s", d.name, req.timeout_secs)),
-                Ok(Err(e)) => errors.push(e),
-                Ok(Ok(table)) => {
-                    if req.save {
-                        let dir = state.server_root.join("boxes");
-                        let _ = std::fs::create_dir_all(&dir);
-                        if let Err(e) = std::fs::write(dir.join(format!("{}.json", d.name)),
-                                                       serde_json::to_string_pretty(&table.to_json()).unwrap()) {
-                            errors.push(format!("{}: save: {}", d.name, e));
-                        }
-                    }
-                    let cb = CompiledBox {
-                        name: d.name.clone(), lib: lib.path.clone(), params: d.params.clone(), expose: d.expose.clone(),
-                        vars: table.vars.clone(), rows: table.rows.len(), uncovered_paths: table.uncovered_paths,
-                        formula: table.formula.clone(), table,
-                    };
-                    compiled.push(store_compiled_box(&state, cb));
-                }
+    for path in &paths {
+        for st in compile_lib_boxes(&state, path, req.max_uncovered_paths, req.timeout_secs).await {
+            if let Some(e) = st.get("error").and_then(|e| e.as_str()) { errors.push(format!("{}: {}", path, e)); } else { compiled.push(st); }
+        }
+    }
+    if req.save {
+        let dir = state.server_root.join("boxes");
+        let _ = std::fs::create_dir_all(&dir);
+        let store = state.compiled_boxes.lock().unwrap();
+        for b in store.iter().filter(|b| paths.contains(&b.lib)) {
+            if let Err(e) = std::fs::write(dir.join(format!("{}.json", b.name)), serde_json::to_string_pretty(&b.table.to_json()).unwrap()) {
+                errors.push(format!("{}: save: {}", b.name, e));
             }
         }
     }
@@ -377,31 +399,36 @@ async fn jq_lib_files_handler(State(state): State<AppState>) -> Json<serde_json:
     }
 }
 
+/// Build a library entry from a `.jq` file's raw text: split off deps, tests
+/// and the box declarations.
+fn lib_entry_from_raw(path: &str, raw: &str) -> Result<JqLibEntry, String> {
+    let (deps, content_raw, tests) = split_file(raw);
+    let (content, boxes) = split_boxes(&content_raw);
+    let name = std::path::Path::new(path).file_stem().and_then(|s| s.to_str())
+        .ok_or_else(|| "invalid file path".to_string())?.to_string();
+    Ok(JqLibEntry { path: path.to_string(), name, deps, content, tests, boxes })
+}
+
 async fn jq_lib_load_handler(
     State(state): State<AppState>,
     Json(req): Json<JqLibRequest>,
 ) -> Json<serde_json::Value> {
     let full_path = state.server_root.join("lib").join(&req.path);
-
     let raw = match std::fs::read_to_string(&full_path) {
-        Ok(c)   => c,
-        Err(e)  => return Json(serde_json::json!({ "error": e.to_string() })),
+        Ok(c)  => c,
+        Err(e) => return Json(serde_json::json!({ "error": e.to_string() })),
     };
-    let (deps, content, tests) = split_file(&raw);
-
-    let name = match full_path.file_stem().and_then(|s| s.to_str()) {
-        Some(n) => n.to_string(),
-        None    => return Json(serde_json::json!({ "error": "invalid file path" })),
+    let entry = match lib_entry_from_raw(&req.path, &raw) {
+        Ok(e)  => e,
+        Err(e) => return Json(serde_json::json!({ "error": e })),
     };
-
-    let mut libs = state.jq_libs.lock().unwrap();
-    if let Some(pos) = libs.iter().position(|e| e.path == req.path) {
-        libs[pos] = JqLibEntry { path: req.path, name, deps, content, tests };
-    } else {
-        libs.push(JqLibEntry { path: req.path, name, deps, content, tests });
+    {
+        let mut libs = state.jq_libs.lock().unwrap();
+        if let Some(pos) = libs.iter().position(|e| e.path == req.path) { libs[pos] = entry; } else { libs.push(entry); }
     }
-
-    Json(serde_json::json!({ "ok": true }))
+    // Boxes follow the library: compile its declarations now.
+    let boxes = compile_lib_boxes(&state, &req.path, BoxesCompileRequest::default_max(), BoxesCompileRequest::default_timeout()).await;
+    Json(serde_json::json!({ "ok": true, "boxes": boxes }))
 }
 
 async fn jq_lib_unload_handler(
@@ -409,6 +436,7 @@ async fn jq_lib_unload_handler(
     Json(req): Json<JqLibRequest>,
 ) -> Json<serde_json::Value> {
     state.jq_libs.lock().unwrap().retain(|e| e.path != req.path);
+    state.compiled_boxes.lock().unwrap().retain(|b| b.lib != req.path);
     Json(serde_json::json!({ "ok": true }))
 }
 
@@ -475,6 +503,8 @@ struct JqLibSaveRequest {
     content: String,
     #[serde(default)]
     tests:   String,
+    #[serde(default)]
+    boxes:   Vec<String>,
 }
 
 /// Write a library's deps / content / tests back to `lib/{path}` on disk and
@@ -498,19 +528,30 @@ async fn jq_lib_save_handler(
             return Json(serde_json::json!({ "error": "a library cannot depend on itself" }));
         }
     }
+    // Validate the box declarations before anything touches the disk.
+    let boxes: Vec<String> = req.boxes.iter().map(|b| b.trim().to_string()).filter(|b| !b.is_empty()).collect();
+    for b in &boxes {
+        if let Err(e) = parse_box_decl(b) {
+            return Json(serde_json::json!({ "error": format!("box declaration {b:?}: {e}") }));
+        }
+    }
     let full_path = state.server_root.join("lib").join(&req.path);
-    let on_disk = join_file(&req.deps, &req.content, &req.tests);
+    let on_disk = join_file(&req.deps, &join_boxes(&req.content, &boxes), &req.tests);
     if let Err(e) = std::fs::write(&full_path, &on_disk) {
         return Json(serde_json::json!({ "error": e.to_string() }));
     }
-    // Update any loaded in-memory copy.
-    let mut libs = state.jq_libs.lock().unwrap();
-    if let Some(entry) = libs.iter_mut().find(|e| e.path == req.path) {
-        entry.deps = req.deps;
-        entry.content = req.content;
-        entry.tests = req.tests;
-    }
-    Json(serde_json::json!({ "ok": true }))
+    // Update any loaded in-memory copy, then recompile its boxes.
+    let loaded = {
+        let mut libs = state.jq_libs.lock().unwrap();
+        match libs.iter_mut().find(|e| e.path == req.path) {
+            Some(entry) => { entry.deps = req.deps; entry.content = req.content; entry.tests = req.tests; entry.boxes = boxes; true }
+            None => false,
+        }
+    };
+    let statuses = if loaded {
+        compile_lib_boxes(&state, &req.path, BoxesCompileRequest::default_max(), BoxesCompileRequest::default_timeout()).await
+    } else { Vec::new() };
+    Json(serde_json::json!({ "ok": true, "boxes": statuses }))
 }
 
 // ── Examples handlers ─────────────────────────────────────────────────────────
@@ -1547,14 +1588,10 @@ async fn main() {
     let expr_path = server_root.join("lib").join("expr.jq");
     if let Ok(raw) = std::fs::read_to_string(&expr_path) {
         println!("Auto-loaded: {}", expr_path.display());
-        let (deps, content, tests) = split_file(&raw);
-        default_libs.push(JqLibEntry {
-            path:    "expr.jq".to_string(),
-            name:    "expr".to_string(),
-            deps,
-            content,
-            tests,
-        });
+        match lib_entry_from_raw("expr.jq", &raw) {
+            Ok(entry) => default_libs.push(entry),
+            Err(e) => eprintln!("expr.jq: {e}"),
+        }
     }
 
     let state = AppState {
@@ -1567,6 +1604,11 @@ async fn main() {
         cadical_valid_job: Arc::new(Mutex::new(CaDiCaLJob::default())),
         cadical_sat_job:   Arc::new(Mutex::new(CaDiCaLJob::default())),
     };
+    for path in ["expr.jq"] {
+        for st in compile_lib_boxes(&state, path, BoxesCompileRequest::default_max(), BoxesCompileRequest::default_timeout()).await {
+            if let Some(e) = st.get("error").and_then(|e| e.as_str()) { eprintln!("{path}: box: {e}"); }
+        }
+    }
 
     let cors = CorsLayer::new()
         .allow_origin(Any)

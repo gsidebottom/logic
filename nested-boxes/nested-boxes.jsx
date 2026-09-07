@@ -1184,7 +1184,8 @@ export default function App() {
   const [jqLibTestResult,  setJqLibTestResult]  = useState(null); // {ok: bool, message: string} | null
   const [jqLibClosePrompt, setJqLibClosePrompt] = useState(false); // unsaved-changes confirm
   const [boxes,          setBoxes]          = useState([]);    // compiled boxes from /boxes
-  const [boxesCompiling, setBoxesCompiling] = useState(false);
+  const [boxStatus,      setBoxStatus]      = useState({});    // name -> {rows|error} from the last load/save
+  const [jqLibBoxes,     setJqLibBoxes]     = useState([]);    // editor buffer: box declarations
   const [boxesMsg,       setBoxesMsg]       = useState('');
   const [jqLibDeps,      setJqLibDeps]      = useState([]);    // editable dep list
   const [jqLibDepInput,  setJqLibDepInput]  = useState('');    // dep picker input
@@ -1246,7 +1247,7 @@ export default function App() {
       });
       const data = await res.json();
       if (data.error) { setJqLibError(data.error); }
-      else { setJqLibPath(''); await refreshJqLibs(); }
+      else { setJqLibPath(''); applyBoxStatuses(data.boxes); await refreshJqLibs(); await fetchBoxes(); }
     } catch {
       setJqLibError('Could not reach Rust service');
     }
@@ -1260,26 +1261,16 @@ export default function App() {
       setBoxes(data.boxes ?? []);
     } catch { /* backend unreachable */ }
   };
-  // Compile every box declared in a `# === boxes ===` section of the loaded
-  // libraries into its table (doc/box_backend_design.md §5).
-  const handleCompileBoxes = async () => {
-    setBoxesCompiling(true); setBoxesMsg('');
-    try {
-      const res  = await fetch(API_BASE + '/boxes/compile', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
-      });
-      const data = await res.json();
-      const n = (data.compiled ?? []).length;
-      setBoxesMsg(data.errors?.length ? '✗ ' + data.errors.join('; ') : `✓ compiled ${n} box${n === 1 ? '' : 'es'}`);
-      await fetchBoxes();
-    } catch (e) { setBoxesMsg('✗ ' + (e.message || 'Could not reach Rust service')); }
-    setBoxesCompiling(false);
-  };
-  const handleDeleteBox = async (name) => {
-    try {
-      await fetch(API_BASE + '/boxes/table?name=' + encodeURIComponent(name), { method: 'DELETE' });
-      await fetchBoxes();
-    } catch { /* ignore */ }
+  // Per-box compile statuses come back from library load and save.
+  const applyBoxStatuses = (statuses) => {
+    if (!Array.isArray(statuses)) return;
+    setBoxStatus(prev => {
+      const next = { ...prev };
+      for (const st of statuses) if (st.name) next[st.name] = st.error ? { error: st.error } : { rows: st.rows };
+      return next;
+    });
+    const errs = statuses.filter(st => st.error).map(st => (st.name ? st.name + ': ' : '') + st.error);
+    setBoxesMsg(errs.length ? '✗ ' + errs.join('; ') : '');
   };
   const handleUnloadJqLib = async (path) => {
     try {
@@ -1287,7 +1278,7 @@ export default function App() {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path }),
       });
-      await refreshJqLibs();
+      await refreshJqLibs(); await fetchBoxes();
     } catch {}
   };
 
@@ -2144,7 +2135,7 @@ export default function App() {
                     background: '#e8f5e9', border: '1px solid #a5d6a7',
                     borderRadius: 4, padding: '1px 6px', fontSize: 11,
                   }}>
-                    <button onClick={() => { setJqLibViewing(lib); setJqLibEditContent(lib.content); setJqLibTest(lib.tests ?? ''); setJqLibDeps(lib.deps ?? []); setJqLibDepInput(''); setJqLibSaveError(''); setJqLibTestResult(null); setJqLibClosePrompt(false); }} title={lib.path} style={{
+                    <button onClick={() => { setJqLibViewing(lib); setJqLibEditContent(lib.content); setJqLibTest(lib.tests ?? ''); setJqLibDeps(lib.deps ?? []); setJqLibBoxes(lib.boxes ?? []); setJqLibDepInput(''); setJqLibSaveError(''); setJqLibTestResult(null); setJqLibClosePrompt(false); }} title={lib.path} style={{
                       border: 'none', background: 'none', cursor: 'pointer',
                       fontFamily: 'monospace', color: '#2a7a2a', padding: 0,
                       fontSize: 11, textDecoration: 'underline dotted',
@@ -2158,33 +2149,31 @@ export default function App() {
               </div>
             )}
 
-            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
-              <button onClick={handleCompileBoxes} disabled={boxesCompiling || jqLibs.length === 0}
-                      title="Compile every box declared in a `# === boxes ===` section of the loaded libraries into its table: the canonical uncovered paths of its complement, internals projected out"
-                      style={{ padding: '2px 8px', fontSize: 12, border: '1px solid #bbb', borderRadius: 4, cursor: 'pointer', background: '#f5f5f5' }}>
-                {boxesCompiling ? '…' : 'Compile boxes'}
-              </button>
-              {boxes.map(b => (
-                <span key={b.name} title={`${b.lib}: ${b.formula}\n${b.uncovered_paths} uncovered paths → ${b.rows} rows`} style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e3f2fd',
-                  border: '1px solid #90caf9', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontFamily: 'monospace',
-                }}>
-                  {b.name}({b.vars.join(',')}) <span style={{ color: '#666' }}>· {b.rows} rows</span>
-                  <button onClick={() => handleDeleteBox(b.name)} title="Remove this compiled box" style={{
-                    border: 'none', background: 'none', cursor: 'pointer', color: '#888', padding: 0, fontSize: 11, lineHeight: 1,
-                  }}>✕</button>
-                </span>
-              ))}
-              {boxesMsg && <span style={{ color: boxesMsg.startsWith('✗') ? '#c00' : '#2a7a2a' }}>{boxesMsg}</span>}
-            </div>
+            {(boxes.length > 0 || boxesMsg) && (
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+                <span style={{ color: '#aaa' }} title="Boxes declared in the loaded libraries, compiled on load and on save">boxes:</span>
+                {boxes.map(b => (
+                  <span key={b.name} title={`${b.lib}: ${b.formula}\n${b.uncovered_paths} uncovered paths → ${b.rows} rows`} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e3f2fd',
+                    border: '1px solid #90caf9', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontFamily: 'monospace',
+                  }}>
+                    {b.name}({b.vars.join(',')}) <span style={{ color: '#666' }}>· {b.rows} rows</span>
+                  </span>
+                ))}
+                {boxesMsg && <span style={{ color: '#c00' }}>{boxesMsg}</span>}
+              </div>
+            )}
 
             {jqLibViewing && (() => {
               const savedDeps = jqLibViewing.deps ?? [];
               const depsChanged = jqLibDeps.length !== savedDeps.length
                 || jqLibDeps.some((d, i) => d !== savedDeps[i]);
+              const savedBoxes = jqLibViewing.boxes ?? [];
+              const boxesChanged = jqLibBoxes.length !== savedBoxes.length
+                || jqLibBoxes.some((b, i) => b !== savedBoxes[i]);
               const dirty = jqLibEditContent !== jqLibViewing.content
                           || jqLibTest         !== (jqLibViewing.tests ?? '')
-                          || depsChanged;
+                          || depsChanged || boxesChanged;
               const closeNow = () => { setJqLibClosePrompt(false); setJqLibViewing(null); };
               const attemptClose = () => { if (dirty) setJqLibClosePrompt(true); else closeNow(); };
               // Run the current tests against the current editor buffer.
@@ -2232,12 +2221,14 @@ export default function App() {
                 try {
                   const res = await fetch(API_BASE + '/jq-lib', {
                     method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path: jqLibViewing.path, deps: jqLibDeps, content: jqLibEditContent, tests: jqLibTest }),
+                    body: JSON.stringify({ path: jqLibViewing.path, deps: jqLibDeps, content: jqLibEditContent, tests: jqLibTest, boxes: jqLibBoxes }),
                   });
                   const data = await res.json();
                   if (data.error) { setJqLibSaveError(data.error); setJqLibSaving(false); return false; }
-                  setJqLibViewing(v => v && { ...v, deps: [...jqLibDeps], content: jqLibEditContent, tests: jqLibTest });
+                  setJqLibViewing(v => v && { ...v, deps: [...jqLibDeps], content: jqLibEditContent, tests: jqLibTest, boxes: [...jqLibBoxes] });
+                  applyBoxStatuses(data.boxes);
                   await refreshJqLibs();
+                  await fetchBoxes();
                   setJqLibSaving(false);
                   // Auto-run tests on every successful save.
                   setJqLibTestRunning(true);
@@ -2352,6 +2343,63 @@ export default function App() {
                       }}
                     >Add</button>
                   </div>
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', gap: 4,
+                    padding: '8px 16px', borderBottom: '1px solid #e0e0e0',
+                    background: '#fff', fontSize: 12,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ color: '#666', fontWeight: 600 }}>Boxes:</span>
+                      <span style={{ color: '#aaa' }}
+                            title="One declaration per line: name(p1;p2;…) [expose v1,v2]. The parameters are the box's interface; any other variable its definition introduces is projected out unless exposed. Boxes are compiled when the library is loaded and whenever it is saved.">
+                        name(p1;p2;…) [expose v1,v2] — compiled on load and save
+                      </span>
+                      <span style={{ flex: 1 }} />
+                      <button
+                        onClick={() => { setJqLibBoxes([...jqLibBoxes, '']); setJqLibSaveError(''); }}
+                        style={{
+                          padding: '3px 10px', fontSize: 12,
+                          border: '1px solid #1a6bcc', borderRadius: 4,
+                          background: '#fff', color: '#1a6bcc', cursor: 'pointer',
+                        }}
+                      >Add box</button>
+                    </div>
+                    {jqLibBoxes.length === 0 && (
+                      <span style={{ color: '#aaa', fontStyle: 'italic' }}>(no boxes declared)</span>
+                    )}
+                    {jqLibBoxes.map((decl, i) => {
+                      const nm = decl.split('(')[0].trim();
+                      const st = boxStatus[nm];
+                      const compiled = boxes.find(b => b.name === nm);
+                      const status = st?.error ? '✗ ' + st.error : compiled ? `✓ ${compiled.rows} rows` : (nm ? 'not compiled' : '');
+                      return (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <input
+                            value={decl}
+                            spellCheck={false}
+                            onChange={e => { const next = [...jqLibBoxes]; next[i] = e.target.value; setJqLibBoxes(next); setJqLibSaveError(''); }}
+                            placeholder="full_adder(x;y;c_in;s;c_out)"
+                            style={{
+                              flex: 1, padding: '3px 8px', fontSize: 12, fontFamily: 'monospace',
+                              border: '1px solid #ccc', borderRadius: 4,
+                            }}
+                          />
+                          <span style={{ fontSize: 11, minWidth: 100, color: st?.error ? '#c00' : '#2a7a2a' }}
+                                title={st?.error || (compiled ? `${compiled.formula}\n${compiled.uncovered_paths} uncovered paths → ${compiled.rows} rows` : '')}>
+                            {status}
+                          </span>
+                          <button
+                            onClick={() => { setJqLibBoxes(jqLibBoxes.filter((_, j) => j !== i)); setJqLibSaveError(''); }}
+                            title="Remove this declaration"
+                            style={{
+                              border: 'none', background: 'none', cursor: 'pointer',
+                              color: '#888', padding: '0 2px', fontSize: 13, lineHeight: 1,
+                            }}
+                          >×</button>
+                        </div>
+                      );
+                    })}
+                  </div>
                   <textarea
                     value={jqLibEditContent}
                     onChange={e => { setJqLibEditContent(e.target.value); setJqLibSaveError(''); }}
@@ -2377,7 +2425,7 @@ export default function App() {
                     )}
                     {!jqLibSaveError && !dirty && <span style={{ flex: 1 }} />}
                     <button
-                      onClick={() => { setJqLibEditContent(jqLibViewing.content); setJqLibTest(jqLibViewing.tests ?? ''); setJqLibDeps(jqLibViewing.deps ?? []); setJqLibSaveError(''); }}
+                      onClick={() => { setJqLibEditContent(jqLibViewing.content); setJqLibTest(jqLibViewing.tests ?? ''); setJqLibDeps(jqLibViewing.deps ?? []); setJqLibBoxes(jqLibViewing.boxes ?? []); setJqLibSaveError(''); }}
                       disabled={jqLibSaving || !dirty}
                       style={{
                         padding: '5px 12px', fontSize: 12,

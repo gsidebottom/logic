@@ -226,32 +226,62 @@ pub struct BoxDecl {
     pub expose: Vec<String>,
 }
 
-/// Parse the `# === boxes ===` … `# === end boxes ===` block of a library's
-/// content.  Lines are jq comments, so the block is inert for jq itself.
-pub fn parse_boxes(content: &str) -> Result<Vec<BoxDecl>, String> {
-    let mut out = Vec::new();
-    let mut inside = false;
-    for (i, line) in content.lines().enumerate() {
-        let t = line.trim();
+/// Split the `# === boxes ===` … `# === end boxes ===` block out of a library's
+/// content: `(content without the block, declaration lines)`.  Declarations
+/// are returned without their leading `#`; the block may sit anywhere.
+pub fn split_boxes(content: &str) -> (String, Vec<String>) {
+    let (mut out, mut decls, mut inside) = (String::new(), Vec::new(), false);
+    for line in content.split_inclusive('\n') {
+        let t = line.trim_end_matches('\n').trim_end_matches('\r').trim();
         if t == BOXES_MARKER { inside = true; continue; }
         if t == BOXES_END_MARKER { inside = false; continue; }
-        if !inside || t.is_empty() { continue; }
-        let body = t.strip_prefix('#').ok_or_else(|| format!("line {}: box declarations must be comment lines", i + 1))?.trim();
-        if body.is_empty() { continue; }
-        let open = body.find('(').ok_or_else(|| format!("line {}: expected name(params…)", i + 1))?;
-        let close = body[open..].find(')').ok_or_else(|| format!("line {}: unclosed parameter list", i + 1))? + open;
-        let name = body[..open].trim().to_string();
-        let params: Vec<String> = body[open + 1..close].split(';').map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect();
-        let rest = body[close + 1..].trim();
-        let expose: Vec<String> = match rest.strip_prefix("expose") {
-            Some(r) => r.split(',').map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect(),
-            None if rest.is_empty() => Vec::new(),
-            None => return Err(format!("line {}: unexpected text after the parameter list: {rest}", i + 1)),
-        };
-        if name.is_empty() || params.is_empty() { return Err(format!("line {}: bad box declaration", i + 1)); }
-        out.push(BoxDecl { name, params, expose });
+        if inside {
+            let body = t.strip_prefix('#').map(str::trim).unwrap_or(t);
+            if !body.is_empty() { decls.push(body.to_string()); }
+            continue;
+        }
+        out.push_str(line);
     }
-    Ok(out)
+    (out, decls)
+}
+
+/// Re-attach declarations to `content` as a `# === boxes ===` block at its end
+/// (the inverse of [`split_boxes`] up to block position).
+pub fn join_boxes(content: &str, decls: &[String]) -> String {
+    let decls: Vec<&str> = decls.iter().map(|d| d.trim()).filter(|d| !d.is_empty()).collect();
+    let mut out = content.to_string();
+    if decls.is_empty() { return out; }
+    if !out.is_empty() && !out.ends_with('\n') { out.push('\n'); }
+    if !out.is_empty() && !out.ends_with("\n\n") { out.push('\n'); }
+    out.push_str(BOXES_MARKER); out.push('\n');
+    for d in decls { out.push_str("# "); out.push_str(d); out.push('\n'); }
+    out.push_str(BOXES_END_MARKER); out.push('\n');
+    out
+}
+
+/// Parse one declaration, `name(p1;p2;…) [expose v1,v2]`.
+pub fn parse_box_decl(body: &str) -> Result<BoxDecl, String> {
+    let body = body.trim().strip_prefix('#').map(str::trim).unwrap_or(body.trim());
+    let open = body.find('(').ok_or("expected name(params…)")?;
+    let close = body[open..].find(')').ok_or("unclosed parameter list")? + open;
+    let name = body[..open].trim().to_string();
+    let params: Vec<String> = body[open + 1..close].split(';').map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect();
+    let rest = body[close + 1..].trim();
+    let expose: Vec<String> = match rest.strip_prefix("expose") {
+        Some(r) => r.split(',').map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect(),
+        None if rest.is_empty() => Vec::new(),
+        None => return Err(format!("unexpected text after the parameter list: {rest}")),
+    };
+    if name.is_empty() || name.contains(char::is_whitespace) { return Err(format!("bad box name in {body:?}")); }
+    if params.is_empty() { return Err(format!("{name}: a box needs at least one parameter")); }
+    Ok(BoxDecl { name, params, expose })
+}
+
+/// All declarations in a library's content (its `# === boxes ===` block).
+pub fn parse_boxes(content: &str) -> Result<Vec<BoxDecl>, String> {
+    split_boxes(content).1.iter().enumerate()
+        .map(|(i, d)| parse_box_decl(d).map_err(|e| format!("box declaration {}: {e}", i + 1)))
+        .collect()
 }
 
 /// The formula text of a declared box: call its jq definition with the formal
@@ -283,7 +313,22 @@ mod tests {
         assert_eq!(d.len(), 2);
         assert_eq!(d[0], BoxDecl { name: "full_adder".into(), params: ["x","y","c_in","s","c_out"].map(String::from).to_vec(), expose: vec![] });
         assert_eq!(d[1].expose, ["u1","u2","u3"].map(String::from).to_vec());
-        assert!(parse_boxes("# === boxes ===\nnot a comment\n# === end boxes ===").is_err());
+        assert!(parse_boxes("# === boxes ===\nnot a declaration\n# === end boxes ===").is_err());
+    }
+
+    #[test]
+    fn split_join_boxes_round_trip() {
+        let c = "def x: 1;\n\n# === boxes ===\n# fa(x;y)\n# === end boxes ===\ndef y: 2;\n";
+        let (content, decls) = split_boxes(c);
+        assert_eq!(decls, vec!["fa(x;y)".to_string()]);
+        assert_eq!(content, "def x: 1;\n\ndef y: 2;\n");
+        let joined = join_boxes(&content, &decls);
+        assert_eq!(joined, "def x: 1;\n\ndef y: 2;\n\n# === boxes ===\n# fa(x;y)\n# === end boxes ===\n");
+        let (c2, d2) = split_boxes(&joined);
+        assert_eq!((c2.as_str(), d2), ("def x: 1;\n\ndef y: 2;\n\n", decls));
+        assert_eq!(join_boxes("def z: 3;", &[]), "def z: 3;");
+        assert!(parse_box_decl("fa x").is_err());
+        assert!(parse_box_decl("fa()").is_err());
     }
 
     #[test]

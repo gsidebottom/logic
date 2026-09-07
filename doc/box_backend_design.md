@@ -628,14 +628,20 @@ formula, or from a jq library's `# === boxes ===` declarations with
 section/preamble machinery extracted from `web_app` (which now uses it) plus
 `run_filter`, the box-declaration parser and `box_formula`; `lib/adder.jq`
 gained the two-equation `full_adder` and declares both it and `adder` as
-boxes; `tools/boxes_verdict_check.py` and `tools/gen_adder_boxes.py`.  **Dynamic boxes in the web app** (2026-09-07): `POST /boxes/compile`
-compiles every box declared in the *loaded* jq libraries into an in-memory
-table (bounded by a path limit and a timeout; `save` writes the CLI table
-format to `boxes/`), `GET /boxes` lists them, `GET|DELETE /boxes/table?name=`
-fetches or drops one, and the jq panel has a *Compile boxes* button with a chip
-per compiled box — define a box in the UI's jq editor, click, it is live, no
-restart.  The compiler itself moved into the library
-(`logic::boxes::compile`, shared with `box-compile` and `sat --boxes`).
+boxes; `tools/boxes_verdict_check.py` and `tools/gen_adder_boxes.py`.  **Dynamic boxes in the web app** (2026-09-07): boxes are a section of a jq
+library like `deps` and `tests` — the `# === boxes ===` block is split out on
+load (`JqLibEntry.boxes`) and re-attached on save — and they **follow the
+library lifecycle**: compiled when a library is loaded and whenever it is
+saved (`compile_lib_boxes`, replacing that library's entries in the in-memory
+store, with per-box statuses returned in the load/save responses), dropped on
+unload.  The editor popup has a *Boxes* section: one editable declaration per
+line with its status (✓ rows / ✗ error), add/remove; a malformed declaration
+is rejected on save before anything is written.  `GET /boxes` lists the
+compiled boxes (shown as chips in the jq panel), `GET|DELETE
+/boxes/table?name=` fetches or drops one, and `POST /boxes/compile` remains as
+the scripted entry point (`save` writes the CLI table format to `boxes/`).
+The compiler itself lives in the library (`logic::boxes::compile`, shared
+with `box-compile` and `sat --boxes`).
 
 **Gates met.**
 - Unit tests: trivial CNFs, pigeonhole, 300 random 3-SAT instances against

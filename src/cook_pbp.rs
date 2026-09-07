@@ -43,6 +43,8 @@
 //! the at-most-1-from-pairwise-mutex subroutine.  See the module's
 //! `emit_php` / `emit_roundrobin` functions for details.
 
+#![allow(clippy::needless_range_loop)]
+
 use std::io::{self, Write};
 
 // ─── Shape detection ───────────────────────────────────────────────────────
@@ -211,7 +213,7 @@ fn detect_php(clauses: &[Vec<i32>], nvars: usize) -> Option<CnfShape> {
     if clauses.is_empty() { return None; }
     let m = clauses[0].len();
     if m < 2 { return None; }
-    if nvars % m != 0 { return None; }
+    if !nvars.is_multiple_of(m) { return None; }
     let n = nvars / m;
     if n <= m { return None; }   // PHP UNSAT requires N > M
     // Expected clause count: N pigeons + M * C(N, 2) mutex.
@@ -243,7 +245,7 @@ fn detect_roundrobin(clauses: &[Vec<i32>], nvars: usize) -> Option<CnfShape> {
     let d = clauses[0].len();
     if d < 1 { return None; }
     // nvars = n_pairs * d.  Find n such that nvars = C(n, 2) * d.
-    if nvars % d != 0 { return None; }
+    if !nvars.is_multiple_of(d) { return None; }
     let n_pairs = nvars / d;
     // n_pairs = n*(n-1)/2 → solve for n: n = (1 + sqrt(1 + 8*n_pairs)) / 2
     let disc = 1 + 8 * n_pairs;
@@ -813,12 +815,11 @@ fn recover_component(
     let p = pigeons.len();
     let mut adj: HashMap<i32, HashSet<i32>> = HashMap::new();
     for &(la, lb) in mutex_ids.keys() {
-        if let (Some(&pa), Some(&pb)) = (lit2pig.get(&la), lit2pig.get(&lb)) {
-            if pa != pb {
+        if let (Some(&pa), Some(&pb)) = (lit2pig.get(&la), lit2pig.get(&lb))
+            && pa != pb {
                 adj.entry(la).or_default().insert(lb);
                 adj.entry(lb).or_default().insert(la);
             }
-        }
     }
     let mut seen: HashSet<i32> = HashSet::new();
     let mut holes: Vec<Vec<i32>> = Vec::new();
@@ -850,7 +851,7 @@ fn recover_component(
         }
         for i in 0..comp.len() {
             for j in (i + 1)..comp.len() {
-                if !adj.get(&comp[i]).map_or(false, |ns| ns.contains(&comp[j])) {
+                if !adj.get(&comp[i]).is_some_and(|ns| ns.contains(&comp[j])) {
                     return None;
                 }
             }

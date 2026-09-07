@@ -52,6 +52,12 @@
 //! solver and for inputs where the SmartController's propagation-driven
 //! search wins.
 
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
+
+#![allow(clippy::needless_range_loop)]
+
+#![allow(clippy::doc_lazy_continuation)]
+
 use std::collections::HashSet;
 // `IsTerminal` is needed for the `.is_terminal()` method calls below
 // but rustc occasionally flags it as unused in this edition; the
@@ -419,10 +425,10 @@ impl CoverWriter {
         let (pos_pos, neg_pos) = if !na { (&cpp.cover.0, &cpp.cover.1) }
                                  else  { (&cpp.cover.1, &cpp.cover.0) };
         self.positive.entry(va)
-            .or_insert_with(std::collections::HashSet::new)
+            .or_default()
             .insert((pos_pos[0], pos_pos[1]));
         self.negative.entry(va)
-            .or_insert_with(std::collections::HashSet::new)
+            .or_default()
             .insert((neg_pos[0], neg_pos[1]));
         Ok(())
     }
@@ -3055,8 +3061,8 @@ fn main() {
                         // A BCP refutation has the simplest certificate of
                         // all: VeriPB unit-propagates the formula to the
                         // conflict, so the whole proof is one `rup >= 1`.
-                        if let Some(out) = args.proof.as_ref() {
-                            if let Ok(f) = std::fs::File::create(out) {
+                        if let Some(out) = args.proof.as_ref()
+                            && let Ok(f) = std::fs::File::create(out) {
                                 let mut w = io::BufWriter::new(f);
                                 let ok = writeln!(w, "pseudo-Boolean proof version 3.0")
                                     .and_then(|_| writeln!(w, "f {};", clauses.len()))
@@ -3071,7 +3077,6 @@ fn main() {
                                               out.display());
                                 }
                             }
-                        }
                     }
                     if let (false, Some(out)) = (certified, args.proof.as_ref()) {
                         use logic::parity_pbp::{detect_parity_refutation, emit_parity_proof};
@@ -3260,9 +3265,9 @@ fn main() {
             if let Ok(entries) = std::fs::read_dir("/tmp") {
                 for e in entries.flatten() {
                     let name = e.file_name().to_string_lossy().into_owned();
-                    if let Some(pid_s) = name.strip_prefix("pbsatsuma-") {
-                        if let Ok(pid) = pid_s.parse::<u32>() {
-                            if pid != std::process::id() {
+                    if let Some(pid_s) = name.strip_prefix("pbsatsuma-")
+                        && let Ok(pid) = pid_s.parse::<u32>()
+                            && pid != std::process::id() {
                                 let alive = std::process::Command::new("kill")
                                     .args(["-0", &pid.to_string()])
                                     .output()
@@ -3274,8 +3279,6 @@ fn main() {
                                     cleanup_satsuma_dir(&e.path());
                                 }
                             }
-                        }
-                    }
                 }
             }
             // Mount dir under /tmp: Docker Desktop's default file sharing
@@ -3388,9 +3391,8 @@ fn main() {
                     if v == "SATISFIABLE" || v == "UNSATISFIABLE" { verdict = Some(if v == "SATISFIABLE" { "SAT" } else { "UNSAT" }); }
                 } else if let Some(rest) = line.strip_prefix("v ") {
                     for tok in rest.split_whitespace() {
-                        if let Ok(l) = tok.parse::<i32>() {
-                            if l != 0 { vline.push(l); }
-                        }
+                        if let Ok(l) = tok.parse::<i32>()
+                            && l != 0 { vline.push(l); }
                     }
                 }
             }
@@ -3480,9 +3482,8 @@ fn main() {
                     }
                     if let Some(f) = forced {
                         for (i, ov) in f.iter().enumerate() {
-                            if let Some(b) = ov {
-                                if i + 1 <= nvars { sign[i + 1] = *b; }
-                            }
+                            if let Some(b) = ov
+                                && i < nvars { sign[i + 1] = *b; }
                         }
                     }
                     let mut line = String::from("v");
@@ -3537,11 +3538,7 @@ fn main() {
         // risk.  Single-engine modes are a 1-phase schedule.
         let portfolio_pct: Option<u64> = if args.engine == "portfolio" {
             Some(10)
-        } else if let Some(p) = args.engine.strip_prefix("portfolio:") {
-            Some(p.parse::<u64>().unwrap_or(10).clamp(1, 99))
-        } else {
-            None
-        };
+        } else { args.engine.strip_prefix("portfolio:").map(|p| p.parse::<u64>().unwrap_or(10).clamp(1, 99)) };
         let schedule: Vec<bool> = match portfolio_pct {
             Some(_) => vec![true, false],            // kissat slice, cadical rest
             None => vec![args.engine == "kissat"],
@@ -3574,7 +3571,7 @@ fn main() {
         // "c " a single non-space phase marker, then whitespace, then a digit.
         // The 2-/3-line column headers ("c  seconds …") and banner don't match.
         let is_report = |line: &str| -> bool {
-            line.strip_prefix("c ").map_or(false, |r| {
+            line.strip_prefix("c ").is_some_and(|r| {
                 let mut ch = r.chars();
                 matches!(ch.next(), Some(m) if !m.is_whitespace())
                     && ch.as_str().trim_start().starts_with(|c: char| c.is_ascii_digit())
@@ -3680,9 +3677,8 @@ fn main() {
                             // Transformed (residual / symmetry-augmented) model:
                             // collect, reconstruct + print below over original vars.
                             for tok in line[2..].split_whitespace() {
-                                if let Ok(l) = tok.parse::<i32>() {
-                                    if l != 0 { vline.push(l); }
-                                }
+                                if let Ok(l) = tok.parse::<i32>()
+                                    && l != 0 { vline.push(l); }
                             }
                         } else {
                             println!("{}", line);
@@ -3723,14 +3719,13 @@ fn main() {
             // CaDiCaL has no clean stat lines; scrape its last report row
             // (column positions are CaDiCaL-specific).
             let f: Vec<&str> = row.trim_start_matches("c ").split_whitespace().collect();
-            if f.len() >= 8 {
-                if let (Ok(restarts), Ok(conflicts)) =
+            if f.len() >= 8
+                && let (Ok(restarts), Ok(conflicts)) =
                     (f[5].parse::<u64>(), f[7].parse::<u64>())
                 {
                     eprintln!("c {}: stats conflicts={} restarts={}", bk,
                               conflicts, restarts);
                 }
-            }
         }
         // Standard timing line (stderr) so run_benchmark's parser records
         // the time; the verdict comes from the relayed `s` line on stdout.
@@ -3897,9 +3892,8 @@ fn main() {
                     }
                     if let Some(f) = forced {
                         for (i, ov) in f.iter().enumerate() {
-                            if let Some(b) = ov {
-                                if i + 1 <= nvars { sign[i + 1] = *b; }
-                            }
+                            if let Some(b) = ov
+                                && i < nvars { sign[i + 1] = *b; }
                         }
                     }
                     let mut line = String::from("v");

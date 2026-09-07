@@ -9,6 +9,8 @@
 //!   on top of `BacktrackWhenCoveredController`; usable for either
 //!   validity or satisfiability searches.
 
+#![allow(clippy::doc_lazy_continuation)]
+
 pub mod backtrack;
 pub mod cancel;
 pub mod cdcl;

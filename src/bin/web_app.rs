@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 use axum::{
     extract::{Json, Query, State},
     http::Method,
@@ -115,6 +117,7 @@ struct CaDiCaLJobResult {
     elapsed_secs:    f64,
 }
 
+#[derive(Default)]
 struct CaDiCaLJob {
     result:   Option<CaDiCaLJobResult>,
     cancel:   Option<PathClassificationHandle>,
@@ -122,11 +125,6 @@ struct CaDiCaLJob {
     error:    Option<String>,
 }
 
-impl Default for CaDiCaLJob {
-    fn default() -> Self {
-        Self { result: None, cancel: None, running: false, error: None }
-    }
-}
 
 #[derive(Serialize)]
 struct CaDiCaLStatusResponse {
@@ -875,7 +873,7 @@ fn start_classify_job(
         ctx.count
     }
 
-    let matrix = Matrix::try_from(formula).map_err(|e| e)?;
+    let matrix = Matrix::try_from(formula)?;
     // Snapshot of the original NNF needed for lemma-cover sizing
     // (we count leaves on covered paths through the *original*
     // matrix, not the preprocessed one).  Kept separately so the
@@ -960,7 +958,7 @@ fn start_classify_job(
     // can display them; `for_nnf` is the cheaper uncovered-only
     // variant that suppresses `Covered` events.  Pick based on the
     // request's `no_cover` flag.
-    let want_cover = params.as_ref().map_or(true, |p| !p.no_cover);
+    let want_cover = params.as_ref().is_none_or(|p| !p.no_cover);
     let buffer_size = 64usize;
 
     // Dispatch by backend.  Single-DFS backends (smart, cdcl, eff,
@@ -1530,9 +1528,8 @@ fn start_cadical_job(
             job.running = false;
             job.cancel = None;
             // Store elapsed if not already set
-            if let Some(ref mut r) = job.result {
-                if r.elapsed_secs == 0.0 { r.elapsed_secs = elapsed; }
-            }
+            if let Some(ref mut r) = job.result
+                && r.elapsed_secs == 0.0 { r.elapsed_secs = elapsed; }
         });
     } else {
         let (handle, cancel) = matrix.cadical_satisfiable();
@@ -1567,9 +1564,8 @@ fn start_cadical_job(
             let mut job = js.lock().unwrap();
             job.running = false;
             job.cancel = None;
-            if let Some(ref mut r) = job.result {
-                if r.elapsed_secs == 0.0 { r.elapsed_secs = elapsed; }
-            }
+            if let Some(ref mut r) = job.result
+                && r.elapsed_secs == 0.0 { r.elapsed_secs = elapsed; }
         });
     }
 

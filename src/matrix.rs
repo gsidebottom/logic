@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity, clippy::result_unit_err, clippy::redundant_closure, clippy::doc_lazy_continuation)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -641,12 +643,11 @@ impl NNF {
             'found: for pos_a in positions {
                 if let Some(lit_a) = self.lit_at(pos_a) {
                     for pos_b in positions {
-                        if let Some(lit_b) = self.lit_at(pos_b) {
-                            if lit_a.is_complement_of(lit_b) {
+                        if let Some(lit_b) = self.lit_at(pos_b)
+                            && lit_a.is_complement_of(lit_b) {
                                 result.push((pos_a.clone(), pos_b.clone()));
                                 break 'found;
                             }
-                        }
                     }
                 }
             }

@@ -129,7 +129,7 @@ impl CnfBansCoverState {
         for c in 0..self.arities.len() {
             let k = self.arities[c];
             // at-least-one: (var[c][0] ∨ var[c][1] ∨ ...)
-            let alo: Vec<i32> = self.var_map[c].iter().copied().collect();
+            let alo: Vec<i32> = self.var_map[c].to_vec();
             solver.add_clause(alo);
             // at-most-one: pairwise (¬var[c][a] ∨ ¬var[c][b]) for a < b.
             for a in 0..k {

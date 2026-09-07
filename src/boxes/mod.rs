@@ -23,7 +23,7 @@ use crate::matrix::Lit;
 /// Bitset over the rows of one box.
 pub type RowMask = Vec<u64>;
 
-fn mask_new(n: usize) -> RowMask { vec![0; (n + 63) / 64] }
+fn mask_new(n: usize) -> RowMask { vec![0; n.div_ceil(64)] }
 fn mask_set(m: &mut RowMask, i: usize) { m[i / 64] |= 1u64 << (i % 64); }
 fn mask_and_not(a: &RowMask, b: &RowMask) -> RowMask {
     a.iter().zip(b).map(|(x, y)| x & !y).collect()
@@ -275,7 +275,7 @@ impl Engine {
         for b in 0..self.boxes.len() {
             if self.satisfied(b) { continue; }
             let c = mask_count(&self.live[b]);
-            if best.map_or(true, |(_, bc)| c < bc) { best = Some((b, c)); }
+            if best.is_none_or(|(_, bc)| c < bc) { best = Some((b, c)); }
             if c <= 1 { break; }
         }
         best.map(|(b, _)| b)
@@ -309,9 +309,8 @@ impl Engine {
                 Some(b) => stack.push(Frame { b, rows: mask_ones(&self.live[b]), next: 0 }),
             }
             loop {
-                if let Some(max) = self.max_decisions {
-                    if self.stats.decisions >= max { return Verdict::Unknown; }
-                }
+                if let Some(max) = self.max_decisions
+                    && self.stats.decisions >= max { return Verdict::Unknown; }
                 let Some(fr) = stack.last_mut() else { return Verdict::Unsat };
                 if fr.next >= fr.rows.len() {
                     stack.pop();

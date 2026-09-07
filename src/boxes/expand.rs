@@ -111,8 +111,8 @@ fn expand_rec(text: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>, counter: &mut
         let prev_is_name = i > 0 && (is_name_char(chars[i - 1]) || chars[i - 1] == '\'');
         if c.is_ascii_alphabetic() && !prev_is_name {
             let (name, j) = read_name(&chars, i, false);
-            if j < chars.len() && chars[j] == '(' {
-                if let Some((args, after, semi)) = parse_args(&chars, j) {
+            if j < chars.len() && chars[j] == '('
+                && let Some((args, after, semi)) = parse_args(&chars, j) {
                     let sig = lookup(&name);
                     if sig.is_some() || args.len() != 1 || semi {
                         let sig = sig.ok_or_else(|| format!(
@@ -130,7 +130,6 @@ fn expand_rec(text: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>, counter: &mut
                         continue;
                     }
                 }
-            }
             out.push_str(&name);
             i = j;
         } else { out.push(c); i += 1; }

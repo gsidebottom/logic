@@ -149,6 +149,8 @@ pub struct Engine {
     pub stats: Stats,
     /// Optional decision budget; `solve` returns `Unknown` when exceeded.
     pub max_decisions: Option<u64>,
+    /// Cooperative cancellation: checked every 256 decisions; `solve` returns `Unknown`.
+    pub cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl Engine {
@@ -157,7 +159,7 @@ impl Engine {
             nvars, boxes: Vec::new(), occ: vec![Vec::new(); nvars],
             vals: vec![Val::U; nvars], trail: Vec::new(), trail_lim: Vec::new(),
             live: Vec::new(), live_undo: Vec::new(), live_undo_lim: Vec::new(),
-            in_queue: Vec::new(), stats: Stats::default(), max_decisions: None,
+            in_queue: Vec::new(), stats: Stats::default(), max_decisions: None, cancel: None,
         };
         for b in boxes { e.add_box(b) }
         e
@@ -311,6 +313,9 @@ impl Engine {
             loop {
                 if let Some(max) = self.max_decisions
                     && self.stats.decisions >= max { return Verdict::Unknown; }
+                if self.stats.decisions & 255 == 0
+                    && let Some(c) = &self.cancel
+                    && c.load(std::sync::atomic::Ordering::Relaxed) { return Verdict::Unknown; }
                 let Some(fr) = stack.last_mut() else { return Verdict::Unsat };
                 if fr.next >= fr.rows.len() {
                     stack.pop();

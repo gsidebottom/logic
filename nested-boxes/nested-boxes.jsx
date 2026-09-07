@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useMemo } from "react";
-import { parse, complementAst, astToString, resolvePosition, VarLabel, expandBoxCalls } from "./formula.jsx";
+import { parse, complementAst, astToString, resolvePosition, VarLabel, expandBoxCalls, atomizeBoxCalls, relabelBoxAtoms } from "./formula.jsx";
 
 // Base URL for API calls.  In `vite dev` we hit the separate Rust service on
 // :3001 (same as before).  In a production build — e.g. the Docker image —
@@ -586,6 +586,7 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
     return (
       <div
         data-position={posKey}
+        title={node.box ? node.n : undefined}
         style={{
           position: 'relative',
           minWidth: compView ? undefined : 26,
@@ -595,6 +596,7 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
           padding: compView ? '6px 4px' : '4px 6px',
           fontSize: 17, fontFamily: 'Georgia, serif',
           fontWeight: 'bold', lineHeight: 1, userSelect: 'none',
+          ...(node.box ? { border: '2px solid #5a5a9a', borderRadius: 5, background: '#eef0fb', padding: compView ? '8px 6px' : '6px 10px', fontSize: 15 } : {}),
           ...(bgColor ? { background: bgColor, borderRadius: 3 } : {}),
         }}
       >
@@ -1160,6 +1162,9 @@ export default function App() {
   const [cadicalSatClausesExpanded,   setCadicalSatClausesExpanded]   = useState(false);
   const [pathsResult,    setPathsResult]    = useState(null); // {uncoveredPaths, coverGroups, totalPrefixCount} | {error}
   const [pathsLimit,     setPathsLimit]     = useState(100);
+  // Box aware: draw each box call as one labelled rectangle and compute paths
+  // through the collapsed matrix (server checks candidates against the tables).
+  const [pathsBoxAware,  setPathsBoxAware]  = useState(false);
   const [pathsComp,      setPathsComp]      = useState(false); // show paths of complement
   const [pathsSelected,  setPathsSelected]  = useState(new Set());
   const [pathsExpanded,  setPathsExpanded]  = useState(new Set());
@@ -1194,13 +1199,22 @@ export default function App() {
   const inputRef = useRef(null);
 
   // Parse synchronously so ast is always current on the same render as input
-  // Box calls (`full_adder(a, b, …)`) are expanded against the compiled boxes
-  // before parsing — the server does the same — so an unknown box is a
-  // syntax error right here.
+  // Box calls (`full_adder(a, b, …)`): expanded to their definitions for the
+  // diagram (the server does the same), or — box-aware mode — kept as single
+  // leaves labelled with the call, mirroring the server's atomized matrix so
+  // path positions line up.  An unknown box is a syntax error right here.
+  const boxCalls = useMemo(() => { try { return atomizeBoxCalls(input, boxes).calls; } catch { return []; } }, [input, boxes]);
+  const boxAware = pathsBoxAware && boxCalls.length > 0;
   const [ast, error] = useMemo(() => {
-    try { return [parse(expandBoxCalls(input, boxes)), '']; }
+    try {
+      if (boxAware) {
+        const at = atomizeBoxCalls(input, boxes);
+        return [relabelBoxAtoms(parse(at.text), at.calls), ''];
+      }
+      return [parse(expandBoxCalls(input, boxes)), ''];
+    }
     catch (e) { return [null, e.message]; }
-  }, [input, boxes]);
+  }, [input, boxes, boxAware]);
 
   // Run jq filter live as it is typed; push result into formula input
   useEffect(() => {
@@ -1466,7 +1480,7 @@ export default function App() {
     try {
       const res = await fetch(API_BASE + '/paths', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input, paths_class_limit: pathsLimit, complement: complementFlag }),
+        body: JSON.stringify({ formula: input, paths_class_limit: pathsLimit, complement: complementFlag, box_aware: boxAware }),
       });
       if (!res.ok) throw new Error('start failed');
     } catch (e) {
@@ -2849,6 +2863,7 @@ export default function App() {
               background: 'white',
             }}
           >
+            <option value="boxes">boxes (compiled tables)</option>
             <option value="smart">matrix.smart</option>
             <option value="cdcl">matrix.cdcl</option>
             <option value="eff">matrix.eff</option>
@@ -2957,6 +2972,12 @@ export default function App() {
           CaDiCaL
         </label>
         {btn('ρ  Paths',       handlePaths,       '#4a4a8a', !ast || loading, !ast ? "Fix syntax errors first" : "Show paths through the matrix")}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: boxCalls.length ? 'pointer' : 'default', fontSize: 13, color: boxCalls.length ? undefined : '#aaa' }}
+               title={boxCalls.length ? "Box aware: draw each box call as one rectangle labelled with the call, and show paths through the collapsed matrix — every candidate path is checked against the box's compiled table" : "No box calls in the formula"}>
+          <input type="checkbox" checked={pathsBoxAware} disabled={!boxCalls.length}
+                 onChange={e => { setPathsBoxAware(e.target.checked); setPathsResult(null); }} />
+          box aware
+        </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 13 }}
                title="Show paths of the complement">
           <input type="checkbox" checked={pathsComp} onChange={e => setPathsComp(e.target.checked)} />

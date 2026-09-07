@@ -144,7 +144,7 @@ export function parse(str) {
 export function complementAst(node) {
   if (node.t === 'VAR') {
     const n = node.n.endsWith("'") ? node.n.slice(0, -1) : node.n + "'";
-    return { t: 'VAR', n };
+    return { ...node, n };
   }
   if (node.t === 'AND') return { t: 'OR',  c: node.c.map(complementAst) };
   if (node.t === 'OR')  return { t: 'AND', c: node.c.map(complementAst) };
@@ -180,6 +180,16 @@ export function resolvePosition(ast, pos) {
 // ─── Variable label with subscript support ────────────────────────────────────
 // Renders "x_1'" as x<sub>1</sub>' (splits on first underscore).
 export function VarLabel({ name }) {
+  const paren = name.indexOf('(');
+  if (paren !== -1) {                       // a box-call label: name(a,b,…)[']
+    const close = name.lastIndexOf(')');
+    const primes = close !== -1 ? name.slice(close + 1) : '';
+    const parsed = close !== -1 ? parseArgs(name.slice(paren, close + 1), 0) : null;
+    if (parsed) {
+      return <>{name.slice(0, paren)}(<span style={{ fontSize: '0.85em' }}>{parsed[0].map((a, i) => <span key={i}>{i > 0 && ','}<VarLabel name={a} /></span>)}</span>){primes}</>;
+    }
+    return <>{name}</>;
+  }
   const primes = name.match(/'+$/)?.[0] ?? '';
   const base   = name.slice(0, name.length - primes.length);
   const uscore = base.indexOf('_');
@@ -244,8 +254,7 @@ function substitute(sig, args, k) {
   }
   return out;
 }
-function expandRec(text, lookup, counter, depth) {
-  if (depth > 16) throw new Error('box expansion nested more than 16 levels — is a box defined in terms of itself?');
+function walkCalls(text, lookup, onCall) {
   let out = '', i = 0;
   while (i < text.length) {
     const prevIsName = i > 0 && (isNameChar(text[i - 1]) || text[i - 1] === "'");
@@ -260,8 +269,7 @@ function expandRec(text, lookup, counter, depth) {
             if (!sig) throw new Error(`unknown box \`${name}\` — load and compile its library (jq panel), or check the spelling`);
             if (args.length !== sig.params.length)
               throw new Error(`box \`${name}\` expects ${sig.params.length} argument${sig.params.length === 1 ? '' : 's'} (${sig.params.join('; ')}), got ${args.length}`);
-            counter.n++;
-            out += '(' + expandRec(substitute(sig, args, counter.n), lookup, counter, depth + 1) + ')';
+            out += onCall(name, args, sig);
             i = after; continue;
           }
         }
@@ -271,8 +279,48 @@ function expandRec(text, lookup, counter, depth) {
   }
   return out;
 }
+function expandRec(text, lookup, counter, depth) {
+  if (depth > 16) throw new Error('box expansion nested more than 16 levels — is a box defined in terms of itself?');
+  return walkCalls(text, lookup, (name, args, sig) => {
+    counter.n++;
+    return '(' + expandRec(substitute(sig, args, counter.n), lookup, counter, depth + 1) + ')';
+  });
+}
+const lookupOf = boxes => {
+  const m = new Map((boxes ?? []).map(b => [b.name, { params: b.vars, internals: b.internals ?? [], formula: b.formula }]));
+  return name => m.get(name);
+};
 /** Expand box calls against `boxes` ([{name, vars, internals, formula}], as served by GET /boxes). */
 export function expandBoxCalls(str, boxes) {
-  const byName = new Map((boxes ?? []).map(b => [b.name, { params: b.vars, internals: b.internals ?? [], formula: b.formula }]));
-  return expandRec(str, name => byName.get(name), { n: 0 }, 0);
+  return expandRec(str, lookupOf(boxes), { n: 0 }, 0);
+}
+export const BOX_ATOM_PREFIX = 'BOXCALL_';
+/** Replace each box call by an atom `BOXCALL_k` (mirrors logic::boxes::expand::atomize_box_calls).
+ *  Returns {text, calls: [{atom, name, args, label}]}; `label` is `name(a,b,…)`. */
+export function atomizeBoxCalls(str, boxes) {
+  if (str.includes(BOX_ATOM_PREFIX)) throw new Error(`variable names starting with \`${BOX_ATOM_PREFIX}\` are reserved for box calls`);
+  const calls = [];
+  const text = walkCalls(str, lookupOf(boxes), (name, args) => {
+    const atom = `${BOX_ATOM_PREFIX}${calls.length + 1}`;
+    calls.push({ atom, name, args, label: `${name}(${args.join(',')})` });
+    return atom;
+  });
+  return { text, calls };
+}
+/** In an AST parsed from atomized text, turn the atom leaves into box leaves:
+ *  {t:'VAR', n: label(+primes), box: {name, args}} — same tree shape as the
+ *  server's atomized matrix, so path positions line up. */
+export function relabelBoxAtoms(ast, calls) {
+  if (!calls.length) return ast;
+  const byAtom = new Map(calls.map(c => [c.atom, c]));
+  const walk = node => {
+    if (node.t === 'VAR') {
+      const primes = node.n.match(/'+$/)?.[0] ?? '';
+      const base = node.n.slice(0, node.n.length - primes.length);
+      const c = byAtom.get(base);
+      return c ? { t: 'VAR', n: c.label + primes, box: { name: c.name, args: c.args } } : node;
+    }
+    return { ...node, c: node.c.map(walk) };
+  };
+  return walk(ast);
 }

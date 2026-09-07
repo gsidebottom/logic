@@ -1,10 +1,16 @@
 //! Box calls in the formula language (`doc/box_backend_design.md` §5.2):
-//! `name(a1, a2, …)` (or `name(a1; a2; …)`) refers to a compiled box.  Expansion
-//! substitutes the arguments for the box's parameters in its definition,
-//! renames the box's projected internals freshly per call site (they are local
-//! — the ∃ of §2.4), and recurses, so every formula-level backend and the
-//! diagram see an ordinary formula.  An unknown box or a wrong argument count
-//! is an error.
+//! `name(a1, a2, …)` (or `name(a1; a2; …)`) refers to a compiled box.
+//!
+//! Two consumers share one scanner:
+//! * [`expand_box_calls`] — substitute the arguments for the box's parameters
+//!   in its definition, rename its projected internals freshly per call site
+//!   (they are local — the ∃ of §2.4), and recurse, so every formula-level
+//!   backend and the diagram see an ordinary formula.
+//! * [`atomize_box_calls`] — replace each call by a fresh atom `BOXCALL_k` and
+//!   record the call, so the `boxes` backend and the box-aware paths view can
+//!   treat the call as a unit (a table constraint on the atom's polarity).
+//!
+//! An unknown box or a wrong argument count is an error.
 //!
 //! Call vs. juxtaposition: `name(` starts a call when the parenthesised text is
 //! an argument list and either `name` is a known box, or there are two or more
@@ -26,6 +32,55 @@ pub struct BoxSig {
     /// The definition, over `params` and `internals`.
     pub formula: String,
 }
+
+/// One argument of a box call, as written.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Arg {
+    /// A variable, possibly complemented (`x'` binds the parameter to ¬x).
+    Var { name: String, neg: bool },
+    /// The constant `0` or `1`.
+    Const(bool),
+}
+
+impl Arg {
+    fn parse(s: &str) -> Arg {
+        match s {
+            "0" => Arg::Const(false),
+            "1" => Arg::Const(true),
+            _ => match s.strip_suffix('\'') {
+                Some(base) => Arg::Var { name: base.to_string(), neg: true },
+                None => Arg::Var { name: s.to_string(), neg: false },
+            },
+        }
+    }
+    fn text(&self) -> String {
+        match self {
+            Arg::Const(b) => if *b { "1".into() } else { "0".into() },
+            Arg::Var { name, neg } => if *neg { format!("{name}'") } else { name.clone() },
+        }
+    }
+}
+
+/// A box call replaced by an atom (see [`atomize_box_calls`]).
+#[derive(Clone, Debug)]
+pub struct BoxCall {
+    /// The variable standing for the call in the atomized text (`BOXCALL_k`).
+    pub atom: String,
+    pub name: String,
+    pub args: Vec<Arg>,
+    /// Display label: `name(a1,a2,…)`.
+    pub label: String,
+}
+
+/// Result of [`atomize_box_calls`].
+#[derive(Clone, Debug, Default)]
+pub struct Atomized {
+    pub text: String,
+    pub calls: Vec<BoxCall>,
+}
+
+/// Prefix of the atoms standing for box calls in atomized text.
+pub const ATOM_PREFIX: &str = "BOXCALL_";
 
 fn is_name_char(c: char) -> bool { c.is_alphanumeric() || c == '_' || c == ',' }
 
@@ -100,10 +155,13 @@ fn substitute(sig: &BoxSig, args: &[String], k: usize) -> String {
     out
 }
 
-fn expand_rec(text: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>, counter: &mut usize, depth: usize) -> Result<String, String> {
-    if depth > 16 {
-        return Err("box expansion nested more than 16 levels — is a box defined in terms of itself?".into());
-    }
+/// Scan `text` for box calls; `on_call(name, args, sig)` returns the text that
+/// replaces a recognised call.  Everything else is copied through.
+fn walk_calls(
+    text: &str,
+    lookup: &dyn Fn(&str) -> Option<BoxSig>,
+    on_call: &mut dyn FnMut(&str, &[String], BoxSig) -> Result<String, String>,
+) -> Result<String, String> {
     let chars: Vec<char> = text.chars().collect();
     let (mut out, mut i) = (String::new(), 0);
     while i < chars.len() {
@@ -111,8 +169,7 @@ fn expand_rec(text: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>, counter: &mut
         let prev_is_name = i > 0 && (is_name_char(chars[i - 1]) || chars[i - 1] == '\'');
         if c.is_ascii_alphabetic() && !prev_is_name {
             let (name, j) = read_name(&chars, i, false);
-            if j < chars.len() && chars[j] == '('
-                && let Some((args, after, semi)) = parse_args(&chars, j) {
+            if j < chars.len() && chars[j] == '(' && let Some((args, after, semi)) = parse_args(&chars, j) {
                     let sig = lookup(&name);
                     if sig.is_some() || args.len() != 1 || semi {
                         let sig = sig.ok_or_else(|| format!(
@@ -122,14 +179,11 @@ fn expand_rec(text: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>, counter: &mut
                                 sig.params.len(), if sig.params.len() == 1 { "" } else { "s" },
                                 sig.params.join("; "), args.len()));
                         }
-                        *counter += 1;
-                        let body = substitute(&sig, &args, *counter);
-                        let expanded = expand_rec(&body, lookup, counter, depth + 1)?;
-                        out.push('('); out.push_str(&expanded); out.push(')');
+                        out.push_str(&on_call(&name, &args, sig)?);
                         i = after;
                         continue;
                     }
-                }
+            }
             out.push_str(&name);
             i = j;
         } else { out.push(c); i += 1; }
@@ -137,10 +191,41 @@ fn expand_rec(text: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>, counter: &mut
     Ok(out)
 }
 
+fn expand_rec(text: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>, counter: &mut usize, depth: usize) -> Result<String, String> {
+    if depth > 16 {
+        return Err("box expansion nested more than 16 levels — is a box defined in terms of itself?".into());
+    }
+    walk_calls(text, lookup, &mut |_name, args, sig| {
+        *counter += 1;
+        let body = substitute(&sig, args, *counter);
+        let expanded = expand_rec(&body, lookup, counter, depth + 1)?;
+        Ok(format!("({expanded})"))
+    })
+}
+
 /// Expand every box call in `formula`.  `lookup` resolves a box name.
 pub fn expand_box_calls(formula: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>) -> Result<String, String> {
     let mut counter = 0;
     expand_rec(formula, lookup, &mut counter, 0)
+}
+
+/// Replace every box call in `formula` by a fresh atom `BOXCALL_k` (a plain
+/// variable of the formula language) and record the calls.  A following `'`
+/// attaches to the atom, so the call's polarity in the NNF is the atom's.
+pub fn atomize_box_calls(formula: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>) -> Result<Atomized, String> {
+    if formula.contains(ATOM_PREFIX) {
+        return Err(format!("variable names starting with `{ATOM_PREFIX}` are reserved for box calls"));
+    }
+    let mut calls: Vec<BoxCall> = Vec::new();
+    let text = walk_calls(formula, lookup, &mut |name, args, _sig| {
+        let k = calls.len() + 1;
+        let atom = format!("{ATOM_PREFIX}{k}");
+        let args: Vec<Arg> = args.iter().map(|a| Arg::parse(a)).collect();
+        let label = format!("{name}({})", args.iter().map(Arg::text).collect::<Vec<_>>().join(","));
+        calls.push(BoxCall { atom: atom.clone(), name: name.to_string(), args, label });
+        Ok(atom)
+    })?;
+    Ok(Atomized { text, calls })
 }
 
 #[cfg(test)]
@@ -200,5 +285,20 @@ mod tests {
                    "((d_0,1 e_0,2 + (d_0,1 ⊕ e_0,2) c = t) (d_0,1 ⊕ e_0,2 ⊕ c = s))");
         assert_eq!(expand_box_calls("two(a, b, s)", &lib).unwrap(),
                    "(((a b + (a ⊕ b) 0 = c__1) (a ⊕ b ⊕ 0 = s)))");
+    }
+
+    #[test]
+    fn atomizes_calls() {
+        let at = atomize_box_calls("fa(a, b', 0, s, c)' (s = c) fa(p,q,r,t,u)", &lib).unwrap();
+        assert_eq!(at.text, "BOXCALL_1' (s = c) BOXCALL_2");
+        assert_eq!(at.calls.len(), 2);
+        assert_eq!(at.calls[0].label, "fa(a,b',0,s,c)");
+        assert_eq!(at.calls[0].args[1], Arg::Var { name: "b".into(), neg: true });
+        assert_eq!(at.calls[0].args[2], Arg::Const(false));
+        let m = Matrix::try_from(at.text.as_str()).unwrap();
+        assert!(m.ast.vars.iter().any(|v| v == "BOXCALL_1"));
+        assert!(atomize_box_calls("fa(x, y)", &lib).is_err());
+        assert!(atomize_box_calls("BOXCALL_1 x", &lib).unwrap_err().contains("reserved"));
+        assert_eq!(atomize_box_calls("A(B+C)", &lib).unwrap().text, "A(B+C)");
     }
 }

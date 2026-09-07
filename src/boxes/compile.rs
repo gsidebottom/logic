@@ -78,14 +78,89 @@ impl Table {
     }
 }
 
+
+/// How a call binds one table column: to a (possibly complemented) variable
+/// of the enclosing problem, or to a constant.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArgBinding {
+    Var { id: u32, neg: bool },
+    Const(bool),
+}
+
+impl Table {
+    /// Rows of this table over the problem's variables, for one call.
+    /// A complemented argument flips the column; a constant filters the rows
+    /// (and drops the column).
+    pub fn instantiate_args(&self, args: &[ArgBinding]) -> Result<Vec<Vec<Lit>>, String> {
+        if args.len() != self.vars.len() {
+            return Err(format!("{}: expects {} arguments, call has {}", self.name, self.vars.len(), args.len()));
+        }
+        let mut out = Vec::with_capacity(self.rows.len());
+        'rows: for r in &self.rows {
+            let mut lits = Vec::new();
+            for (ci, c) in r.iter().enumerate() {
+                let Some(b) = *c else { continue };
+                match args[ci] {
+                    ArgBinding::Var { id, neg } => lits.push(Lit { var: id, neg: !(b ^ neg) }),
+                    ArgBinding::Const(k) => if k != b { continue 'rows; },
+                }
+            }
+            out.push(lits);
+        }
+        Ok(out)
+    }
+
+    /// The table of the box's negation over the same columns: every full
+    /// assignment of the columns matched by no row.  Exact for projected boxes
+    /// (¬∃U.B = ∀U.¬B); rows are full assignments (no don't-cares).  Errors when
+    /// the column count exceeds `max_cols` (2^k enumeration).
+    pub fn complement(&self, max_cols: usize) -> Result<Table, String> {
+        let k = self.vars.len();
+        if k > max_cols {
+            return Err(format!("{}: negative table needs 2^{k} assignments over {k} columns (limit {max_cols})", self.name));
+        }
+        let mut rows = Vec::new();
+        for a in 0u64..(1u64 << k) {
+            let asg: Vec<bool> = (0..k).map(|i| (a >> i) & 1 == 1).collect();
+            let covered = self.rows.iter().any(|r| r.iter().zip(&asg).all(|(c, &v)| c.is_none_or(|b| b == v)));
+            if !covered { rows.push(asg.iter().map(|&v| Some(v)).collect()); }
+        }
+        Ok(Table { name: format!("{}'", self.name), vars: self.vars.clone(), rows, formula: format!("({})'", self.formula),
+                   internals_projected: self.internals_projected.clone(), uncovered_paths: 0 })
+    }
+}
+
+/// The table `sel = sel_value ⇒ (one of `rows`)`: every row gets the selector
+/// literal, plus one escape row that only fixes the selector to the other
+/// value.  With `sel_value = true` this is `atom ⇒ box`; with `false`,
+/// `¬atom ⇒ ¬box` when `rows` is the negative table — together they make the
+/// atom equivalent to the box (§2.2: two tables per box).
+pub fn implication_box(rows: Vec<Vec<Lit>>, sel: u32, sel_value: bool) -> TableBox {
+    let mut all: Vec<Vec<Lit>> = Vec::with_capacity(rows.len() + 1);
+    all.push(vec![Lit { var: sel, neg: sel_value }]);          // escape: sel ≠ sel_value
+    for mut r in rows {
+        r.push(Lit { var: sel, neg: !sel_value });               // sel = sel_value
+        all.push(r);
+    }
+    TableBox::new(all)
+}
+
 /// Compile a definition into its table over `cols` (interface + exposed
 /// internals): enumerate the uncovered paths of the complement, decode each
 /// to model polarity, project onto `cols`, dedup.  Must run inside a tokio
 /// runtime; errors if more than `max_uncovered_paths` paths are found.
 pub async fn compile_box(name: &str, formula: &str, cols: &[String], max_uncovered_paths: usize) -> Result<Table, String> {
+    compile_box_polarity(name, formula, cols, max_uncovered_paths, false).await
+}
+
+/// Like [`compile_box`]; with `negate` the table of the *complement* of the
+/// definition is compiled (its uncovered paths are those of the definition's
+/// own NNF).  Only exact when nothing is projected: ¬(∃U.B) ≠ ∃U.¬B — use
+/// [`Table::complement`] for a box with projected internals.
+pub async fn compile_box_polarity(name: &str, formula: &str, cols: &[String], max_uncovered_paths: usize, negate: bool) -> Result<Table, String> {
     let (names, nnf) = {
         let m = Matrix::try_from(formula.trim()).map_err(|e| format!("{name}: parse error: {e}"))?;
-        (m.ast.vars.clone(), m.nnf_complement.clone())
+        (m.ast.vars.clone(), if negate { m.nnf.clone() } else { m.nnf_complement.clone() })
     };
     let internals: Vec<String> = names.iter().filter(|n| !cols.contains(n)).cloned().collect();
     let col_of: HashMap<String, usize> = cols.iter().enumerate().map(|(i, c)| (c.clone(), i)).collect();
@@ -162,5 +237,26 @@ mod tests {
         assert_eq!(t.internals_projected, ["U1", "U2", "U3"].map(String::from).to_vec());
         let two = compile_box_blocking("full_adder", "(C = X Y + (X ⊕ Y) C1) (Z = X ⊕ Y ⊕ C1)", &cols, 100_000).unwrap();
         assert_eq!(t.rows, two.rows, "∃U.adder == full_adder as tables");
+    }
+
+    #[test]
+    fn arg_bindings_constants_and_complement() {
+        let t = Table { name: "and".into(), vars: vec!["a".into(), "b".into(), "z".into()],
+            rows: vec![vec![Some(true), Some(true), Some(true)], vec![Some(false), None, Some(false)], vec![None, Some(false), Some(false)]],
+            formula: "z = a b".into(), internals_projected: vec![], uncovered_paths: 3 };
+        // z = a b with a := x', b := 1, z := y  →  y = x'
+        let rows = t.instantiate_args(&[ArgBinding::Var { id: 0, neg: true }, ArgBinding::Const(true), ArgBinding::Var { id: 1, neg: false }]).unwrap();
+        assert_eq!(rows, vec![
+            vec![Lit { var: 0, neg: true }, Lit { var: 1, neg: false }],   // a=1 ⇒ x=0, z=1
+            vec![Lit { var: 0, neg: false }, Lit { var: 1, neg: true }],   // a=0 ⇒ x=1, z=0
+        ]);                                                                 // row 3 (b=0) filtered by b := 1
+        let c = t.complement(8).unwrap();
+        assert_eq!(c.rows.len(), 8 - 4);   // z = a b has 4 models of (a,b,z)
+        assert!(c.rows.iter().all(|r| { let (a, b, z) = (r[0].unwrap(), r[1].unwrap(), r[2].unwrap()); z != (a && b) }));
+        // atom ⇒ box: the escape row plus each row tagged with the atom
+        let ib = implication_box(rows.clone(), 5, true);
+        assert_eq!(ib.rows.len(), 3);
+        let mut e = crate::boxes::Engine::new(6, vec![ib, TableBox::clause(&[6]), TableBox::clause(&[1])]);   // atom=true, x=true ⇒ y=false
+        match e.solve() { crate::boxes::Verdict::Sat(m) => assert!(!m[1]), v => panic!("{v:?}") }
     }
 }

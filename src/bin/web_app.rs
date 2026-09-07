@@ -6,10 +6,12 @@ use axum::{
     routing::{delete, get, post},
     Router,
 };
-use logic::matrix::PathClassificationHandle;
+use logic::matrix::{PathClassificationHandle, Matrix, NNF, Lit};
 use logic::jqlib::{split_file, join_file, split_boxes, join_boxes, resolve_preamble, parse_box_decl, box_formula};
 use logic::boxes::compile::{compile_box, Table};
-use logic::boxes::expand::{expand_box_calls, BoxSig};
+use logic::boxes::expand::{expand_box_calls, atomize_box_calls, Arg, BoxCall, BoxSig};
+use logic::boxes::compile::{compile_box_polarity, implication_box, ArgBinding};
+use logic::boxes::{Engine, TableBox, Verdict};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, sync::{Arc, Mutex}};
 use tower_http::cors::{Any, CorsLayer};
@@ -157,6 +159,178 @@ fn expand_formula(state: &AppState, formula: &str) -> Result<String, String> {
     }))
 }
 
+
+/// A formula's box calls turned into atoms, with the compiled boxes they name.
+#[derive(Clone)]
+struct BoxContext {
+    calls: Vec<BoxCall>,
+    boxes: HashMap<String, CompiledBox>,
+}
+
+/// Atomize the box calls of `formula` (`BOXCALL_k` per call) and collect the
+/// compiled boxes involved.  Returns the atomized text and the context.
+fn build_box_context(state: &AppState, formula: &str) -> Result<(String, BoxContext), String> {
+    let store = state.compiled_boxes.lock().unwrap().clone();
+    let at = atomize_box_calls(formula, &|name| store.iter().find(|b| b.name == name).map(|b| BoxSig {
+        params: b.vars.clone(), internals: b.internals.clone(), formula: b.formula.clone(),
+    }))?;
+    let mut boxes = HashMap::new();
+    for c in &at.calls {
+        if !boxes.contains_key(&c.name) {
+            let cb = store.iter().find(|b| b.name == c.name).cloned().ok_or_else(|| format!("unknown box `{}`", c.name))?;
+            boxes.insert(c.name.clone(), cb);
+        }
+    }
+    Ok((at.text, BoxContext { calls: at.calls, boxes }))
+}
+
+/// Variable ids for a box-aware run: the atomized formula's variables plus
+/// fresh ids for call arguments that occur only inside calls.
+struct VarAlloc { index: HashMap<String, u32>, names: Vec<String> }
+impl VarAlloc {
+    fn new(m: &Matrix) -> VarAlloc { VarAlloc { index: m.ast.var_index.clone(), names: m.ast.vars.clone() } }
+    fn id(&mut self, name: &str) -> u32 {
+        if let Some(&i) = self.index.get(name) { return i; }
+        let i = self.names.len() as u32;
+        self.names.push(name.to_string());
+        self.index.insert(name.to_string(), i);
+        i
+    }
+    fn bind(&mut self, args: &[Arg]) -> Vec<ArgBinding> {
+        args.iter().map(|a| match a {
+            Arg::Const(b) => ArgBinding::Const(*b),
+            Arg::Var { name, neg } => ArgBinding::Var { id: self.id(name), neg: *neg },
+        }).collect()
+    }
+}
+
+/// One call's tables over problem variables: rows of the box (`pos`) and of
+/// its negation (`neg`), and the id of the atom standing for the call.
+struct CallTables { atom: u32, pos: Vec<Vec<Lit>>, neg: Vec<Vec<Lit>> }
+
+/// Instantiate every call of `ctx`; relabels the atoms in `m.ast.vars` with the
+/// call text so path / model strings read `full_adder(x,y,c_in,s,c_out)`.
+fn instantiate_calls(ctx: &BoxContext, m: &mut Matrix, alloc: &mut VarAlloc) -> Result<Vec<CallTables>, String> {
+    let mut out = Vec::new();
+    for call in &ctx.calls {
+        let cb = ctx.boxes.get(&call.name).ok_or_else(|| format!("unknown box `{}`", call.name))?;
+        let atom = *m.ast.var_index.get(&call.atom).ok_or_else(|| format!("internal: atom {} missing", call.atom))?;
+        m.ast.vars[atom as usize] = call.label.clone();
+        alloc.names[atom as usize] = call.label.clone();
+        let b = alloc.bind(&call.args);
+        let pos = cb.table.instantiate_args(&b)?;
+        let neg = cb.table_neg.as_ref()
+            .ok_or_else(|| format!("box `{}`: negative table unavailable (too many columns?)", call.name))?
+            .instantiate_args(&b)?;
+        out.push(CallTables { atom, pos, neg });
+    }
+    Ok(out)
+}
+
+/// Box-aware paths: a candidate uncovered path of the atomized matrix is kept
+/// iff its literals (negated — model polarity) are consistent with the tables
+/// of the box atoms it fixes: `atom'` on the path means the call holds (rows
+/// of the box), `atom` that it fails (rows of the negation).
+fn box_path_filter(ctx: &BoxContext, m: &mut Matrix) -> Result<Arc<dyn Fn(&[Lit]) -> bool + Send + Sync>, String> {
+    let mut alloc = VarAlloc::new(m);
+    let tables = instantiate_calls(ctx, m, &mut alloc)?;
+    let nvars = alloc.names.len();
+    Ok(Arc::new(move |path: &[Lit]| {
+        let units: Vec<Vec<i32>> = path.iter().map(|l| { let v = l.var as i32 + 1; vec![if l.neg { v } else { -v }] }).collect();
+        let mut eng = Engine::from_cnf(nvars, &units);
+        for t in &tables {
+            if let Some(l) = path.iter().find(|l| l.var == t.atom) {
+                eng.add_box(TableBox::new(if l.neg { t.pos.clone() } else { t.neg.clone() }));
+            }
+        }
+        eng.max_decisions = Some(1_000_000);
+        matches!(eng.solve(), Verdict::Sat(_))
+    }))
+}
+
+/// Occurrence polarities of each variable in an NNF: (positive, negative).
+fn nnf_polarities(nnf: &NNF, out: &mut HashMap<u32, (bool, bool)>) {
+    match nnf {
+        NNF::Lit(l) => { let e = out.entry(l.var).or_insert((false, false)); if l.neg { e.1 = true } else { e.0 = true } }
+        NNF::Sum(ch) | NNF::Prod(ch) => for c in ch { nnf_polarities(c, out); },
+    }
+}
+
+/// The `boxes` backend for Valid? / Satisfiable?: keep box calls as atoms,
+/// Tseitin-encode the (complemented) formula, tie each atom to its box with
+/// `atom ⇒ rows(box)` and `¬atom ⇒ rows(¬box)` tables (only the polarities the
+/// NNF uses), and run the row engine.  A model is reported as one "uncovered
+/// path" in the UI's display polarity (the user negates to read the witness).
+fn start_boxes_job(job_state: Arc<Mutex<ClassifyJob>>, state: &AppState, formula: &str, complement: bool) -> Result<(), String> {
+    use logic::matrix::{format_lits, PathClassificationHandle};
+    let (text, ctx) = build_box_context(state, formula)?;
+    let mut matrix = Matrix::try_from(text.as_str()).map_err(|e| e.to_string())?;
+    // `target` is the matrix the paths view shows; its uncovered paths, negated,
+    // are models of ¬target (paths are falsification branches).  So the engine
+    // searches models of the *other* NNF: NNF(φ) for Satisfiable?, NNF(¬φ)
+    // (countermodels) for Valid?.
+    let target = if complement { matrix.nnf_complement.clone() } else { matrix.nnf.clone() };
+    let total_paths = target.path_count();
+    let search = if complement { matrix.nnf.clone() } else { matrix.nnf_complement.clone() };
+    let mut pol = HashMap::new();
+    nnf_polarities(&search, &mut pol);
+    let mut alloc = VarAlloc::new(&matrix);
+    let tables = instantiate_calls(&ctx, &mut matrix, &mut alloc)?;
+    let n_display = alloc.names.len();
+    let names = alloc.names.clone();
+    let atoms: std::collections::HashSet<u32> = tables.iter().map(|t| t.atom).collect();
+    let mut next_var = n_display as i32 + 1;
+    let (root, mut clauses) = logic::cadical::tseitin_encode(&search, &mut next_var);
+    clauses.push(vec![root]);
+    let mut engine = Engine::from_cnf((next_var - 1) as usize, &clauses);
+    for t in tables {
+        let (p, n) = pol.get(&t.atom).copied().unwrap_or((false, false));
+        if p { engine.add_box(implication_box(t.pos, t.atom, true)); }
+        if n { engine.add_box(implication_box(t.neg, t.atom, false)); }
+    }
+    let handle = PathClassificationHandle::new();
+    engine.cancel = Some(handle.cancel_flag());
+    {
+        let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+        job.cancel = Some(handle);
+        job.total_path_count = total_paths;
+        job.start_time = Some(std::time::Instant::now());
+    }
+    tokio::task::spawn_blocking(move || {
+        let verdict = engine.solve();
+        let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+        match verdict {
+            Verdict::Sat(model) => {
+                let lits: Vec<Lit> = (0..n_display).filter(|v| !atoms.contains(&(*v as u32)))
+                    .map(|v| Lit { var: v as u32, neg: model[v] }).collect();
+                job.snapshot.uncovered_paths.push(format_lits(&lits, &names));
+                job.snapshot.uncovered_path_positions.push(Vec::new());
+            }
+            Verdict::Unsat => {}
+            Verdict::Unknown => { job.error = Some("boxes: search cancelled".into()); }
+        }
+        job.snapshot.classified_count = engine.stats.decisions as f64;
+        job.running = false;
+    });
+    Ok(())
+}
+
+fn reset_and_start_boxes(job_state: &Arc<Mutex<ClassifyJob>>, state: &AppState, formula: &str, complement: bool) -> Json<serde_json::Value> {
+    {
+        let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+        if let Some(c) = job.cancel.take() { c.cancel(); }
+        *job = ClassifyJob::default();
+        job.running = true;
+        job.is_complement = complement;
+    }
+    if let Err(e) = start_boxes_job(job_state.clone(), state, formula, complement) {
+        let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+        job.running = false;
+        job.error = Some(e);
+    }
+    Json(serde_json::json!({ "ok": true }))
+}
+
 #[derive(Deserialize)]
 struct ExpandRequest { formula: String }
 
@@ -265,8 +439,14 @@ struct CompiledBox {
     formula: String,
     /// Projected internals of the definition (renamed per call site on expansion).
     internals: Vec<String>,
+    /// Rows of the negative table (models of ¬box over the same columns).
+    rows_neg: usize,
     #[serde(skip)]
     table: Table,
+    /// The negative table — compiled from the definition's own NNF when nothing
+    /// is projected, else the complement of `table` (¬∃U.B = ∀U.¬B).
+    #[serde(skip)]
+    table_neg: Option<Table>,
 }
 
 #[derive(Deserialize)]
@@ -312,21 +492,42 @@ async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, t
             Ok(f) => f,
             Err(e) => { statuses.push(serde_json::json!({ "name": d.name, "error": e })); continue; }
         };
+        // A definition may call boxes declared earlier (in this library or a
+        // loaded one): expand those before compiling.
+        let formula = {
+            let store = state.compiled_boxes.lock().unwrap().clone();
+            let lookup = |name: &str| compiled_now.iter().chain(store.iter()).find(|b: &&CompiledBox| b.name == name)
+                .map(|b| BoxSig { params: b.vars.clone(), internals: b.internals.clone(), formula: b.formula.clone() });
+            match expand_box_calls(&formula, &lookup) {
+                Ok(f) => f,
+                Err(e) => { statuses.push(serde_json::json!({ "name": d.name, "error": format!("definition: {e}") })); continue; }
+            }
+        };
         let mut cols = d.params.clone();
         for e in &d.expose { if !cols.contains(e) { cols.push(e.clone()); } }
+        let dur = std::time::Duration::from_secs(timeout_secs);
         let fut = compile_box(&d.name, &formula, &cols, max_paths);
-        match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), fut).await {
+        match tokio::time::timeout(dur, fut).await {
             Err(_) => statuses.push(serde_json::json!({ "name": d.name, "error": format!("compile timed out after {timeout_secs} s") })),
             Ok(Err(e)) => statuses.push(serde_json::json!({ "name": d.name, "error": e })),
             Ok(Ok(table)) => {
+                // The negative table (§2.2: two tables per box).  Exact from the
+                // definition's own NNF only when nothing is projected.
+                let table_neg: Option<Table> = if table.internals_projected.is_empty() {
+                    match tokio::time::timeout(dur, compile_box_polarity(&d.name, &formula, &cols, max_paths, true)).await {
+                        Ok(Ok(t)) => Some(t),
+                        _ => table.complement(20).ok(),
+                    }
+                } else { table.complement(20).ok() };
+                let rows_neg = table_neg.as_ref().map_or(0, |t| t.rows.len());
                 statuses.push(serde_json::json!({
-                    "name": d.name, "vars": table.vars, "rows": table.rows.len(),
+                    "name": d.name, "vars": table.vars, "rows": table.rows.len(), "rows_neg": rows_neg,
                     "uncovered_paths": table.uncovered_paths, "formula": table.formula,
                 }));
                 compiled_now.push(CompiledBox {
                     name: d.name.clone(), lib: lib.path.clone(), params: d.params.clone(), expose: d.expose.clone(),
                     vars: table.vars.clone(), rows: table.rows.len(), uncovered_paths: table.uncovered_paths,
-                    formula: table.formula.clone(), internals: table.internals_projected.clone(), table,
+                    formula: table.formula.clone(), internals: table.internals_projected.clone(), rows_neg, table, table_neg,
                 });
             }
         }
@@ -629,6 +830,10 @@ fn default_backend() -> String { "greedy_eff".to_string() }
 /// send anything).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Backend {
+    /// Row engine over compiled box tables (`logic::boxes::Engine`): box
+    /// calls stay atoms, the residual is Tseitin-encoded, each atom is tied
+    /// to its box by `atom ⇒ table` / `¬atom ⇒ ¬table` rows.
+    Boxes,
     /// Single-DFS `BacktrackWhenCoveredController`.  Used by the
     /// `paths` view (it needs the full cover certificates).  Not
     /// exposed in the UI selector.
@@ -656,6 +861,7 @@ enum Backend {
 
 fn parse_backend(s: &str) -> Backend {
     match s {
+        "boxes"       => Backend::Boxes,
         "smart"       => Backend::Smart,
         "cdcl"        => Backend::Cdcl,
         "eff"         => Backend::Eff,
@@ -679,6 +885,10 @@ struct PathsRequest {
     paths_class_limit: usize,
     #[serde(default)]
     complement: bool,
+    /// Keep box calls as units: paths of the collapsed matrix, each checked
+    /// against the box tables.
+    #[serde(default)]
+    box_aware: bool,
 }
 
 fn default_paths_class_limit() -> usize { 100 }
@@ -772,6 +982,7 @@ fn start_classify_job(
     params: Option<logic::matrix::PathParams>,
     backend: Backend,
     preprocess: bool,
+    boxctx: Option<BoxContext>,
 ) -> Result<(), String> {
     use logic::matrix::{
         Matrix, DynOnClass, PathsClass, NNF, Lit,
@@ -873,7 +1084,13 @@ fn start_classify_job(
         ctx.count
     }
 
-    let matrix = Matrix::try_from(formula)?;
+    let mut matrix = Matrix::try_from(formula)?;
+    // Box-aware paths: candidate paths of the atomized matrix are checked
+    // against the box tables before they are reported (see `box_path_filter`).
+    let box_filter_for_drainer: Option<Arc<dyn Fn(&[Lit]) -> bool + Send + Sync>> = match &boxctx {
+        Some(ctx) => Some(box_path_filter(ctx, &mut matrix)?),
+        None => None,
+    };
     // Snapshot of the original NNF needed for lemma-cover sizing
     // (we count leaves on covered paths through the *original*
     // matrix, not the preprocessed one).  Kept separately so the
@@ -1037,7 +1254,7 @@ fn start_classify_job(
                 EffectiveCountWrapper::new(cdcl, idx, counts)
             })
         }
-        Backend::GreedyCdcl | Backend::GreedyEff => {
+        Backend::GreedyCdcl | Backend::GreedyEff | Backend::Boxes => {
             spawn_dual_classify_job(backend, target_nnf.clone(), buffer_size)
         }
     };
@@ -1124,6 +1341,11 @@ fn start_classify_job(
                     }
                 }
                 PathsClass::Uncovered(up) => {
+                    let keep = box_filter_for_drainer.as_ref().is_none_or(|f| {
+                        let lits: Vec<Lit> = if !up.lits.is_empty() { up.lits.clone() }
+                            else { target.lits_on_path(&up.prod_path).iter().map(|&l| l.clone()).collect() };
+                        f(&lits)
+                    });
                     // Use the engine-provided positions and lits when
                     // they're populated (positions-ON engines —
                     // matrix.eff / greedy×eff in particular).  Fall
@@ -1184,9 +1406,11 @@ fn start_classify_job(
                     } else {
                         format_path(&up.prod_path, &target, &vars)
                     };
-                    job.snapshot.classified_count += 1.0;
-                    job.snapshot.uncovered_paths.push(path_str);
-                    job.snapshot.uncovered_path_positions.push(translated);
+                    if keep {
+                        job.snapshot.classified_count += 1.0;
+                        job.snapshot.uncovered_paths.push(path_str);
+                        job.snapshot.uncovered_path_positions.push(translated);
+                    }
                 }
             }
             if hit_limit { job.snapshot.hit_limit = true; }
@@ -1320,7 +1544,7 @@ fn spawn_dual_classify_job(
                     external_cancel,
                 )
             }
-            Backend::GreedyEff => {
+            Backend::GreedyEff | Backend::Boxes => {
                 let cover = GreedyMaxCoverController::default();
                 let path  = EffectivePathController::<BasicCoverState>::with_stream(tx);
                 solve_dual_with_cancel(
@@ -1342,6 +1566,7 @@ fn reset_and_start(
     params: Option<logic::matrix::PathParams>,
     backend: Backend,
     preprocess: bool,
+    boxctx: Option<BoxContext>,
 ) -> Json<serde_json::Value> {
     {
         let mut job = match job_state.lock() {
@@ -1354,7 +1579,7 @@ fn reset_and_start(
         job.is_complement = complement;
     }
     if let Err(e) = start_classify_job(
-        job_state.clone(), formula, complement, params, backend, preprocess,
+        job_state.clone(), formula, complement, params, backend, preprocess, boxctx,
     ) {
         let mut job = match job_state.lock() {
             Ok(g)  => g,
@@ -1399,12 +1624,15 @@ async fn valid_handler(
         no_cover: req.no_cover,
     });
     let backend = parse_backend(&req.backend);
+    if matches!(backend, Backend::Boxes) {
+        return reset_and_start_boxes(&state.valid_job, &state, &req.formula, false);
+    }
     let formula = match expand_formula(&state, &req.formula) {
         Ok(f) => f,
         Err(e) => return Json(serde_json::json!({ "error": e })),
     };
     reset_and_start(&state.valid_job, &formula, false, params,
-                    backend, /*preprocess=*/ true)
+                    backend, /*preprocess=*/ true, None)
 }
 
 async fn valid_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {
@@ -1421,12 +1649,19 @@ async fn paths_handler(
 ) -> Json<serde_json::Value> {
     use logic::matrix::PathParams;
     let params = Some(PathParams { paths_class_limit: req.paths_class_limit, ..Default::default() });
+    if req.box_aware {
+        return match build_box_context(&state, &req.formula) {
+            Ok((text, ctx)) => reset_and_start(&state.paths_job, &text, req.complement, params,
+                                               Backend::Backtrack, /*preprocess=*/ false, Some(ctx)),
+            Err(e) => Json(serde_json::json!({ "error": e })),
+        };
+    }
     let formula = match expand_formula(&state, &req.formula) {
         Ok(f) => f,
         Err(e) => return Json(serde_json::json!({ "error": e })),
     };
     reset_and_start(&state.paths_job, &formula, req.complement, params,
-                    Backend::Backtrack, /*preprocess=*/ false)
+                    Backend::Backtrack, /*preprocess=*/ false, None)
 }
 
 async fn paths_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {
@@ -1449,12 +1684,15 @@ async fn satisfiable_handler(
         no_cover: req.no_cover,
     });
     let backend = parse_backend(&req.backend);
+    if matches!(backend, Backend::Boxes) {
+        return reset_and_start_boxes(&state.sat_job, &state, &req.formula, true);
+    }
     let formula = match expand_formula(&state, &req.formula) {
         Ok(f) => f,
         Err(e) => return Json(serde_json::json!({ "error": e })),
     };
     reset_and_start(&state.sat_job, &formula, true, params,
-                    backend, /*preprocess=*/ true)
+                    backend, /*preprocess=*/ true, None)
 }
 
 async fn satisfiable_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {

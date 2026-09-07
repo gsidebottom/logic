@@ -95,6 +95,19 @@ impl TableBox {
         TableBox::new(lits.iter().map(|&l| vec![lit_of_dimacs(l)]).collect())
     }
 
+    /// Does some row survive the partial assignment `value_of` (true = the
+    /// variable is TRUE)?  A row dies when it needs the opposite value.
+    pub fn has_live_row(&self, value_of: &dyn Fn(u32) -> Option<bool>) -> bool {
+        let mut live = self.all_mask();
+        for (i, &v) in self.vars.iter().enumerate() {
+            if let Some(b) = value_of(v) {
+                live = mask_and_not(&live, if b { &self.mask_neg[i] } else { &self.mask_pos[i] });
+                if mask_is_zero(&live) { return false; }
+            }
+        }
+        !mask_is_zero(&live)
+    }
+
     pub fn all_mask(&self) -> RowMask {
         let mut m = mask_new(self.rows.len());
         for i in 0..self.rows.len() { mask_set(&mut m, i) }
@@ -421,3 +434,4 @@ mod tests {
 
 pub mod compile;
 pub mod expand;
+pub mod controller;

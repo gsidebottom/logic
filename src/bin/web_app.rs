@@ -6,12 +6,13 @@ use axum::{
     routing::{delete, get, post},
     Router,
 };
-use logic::matrix::{PathClassificationHandle, Matrix, NNF, Lit};
+use logic::matrix::{PathClassificationHandle, Matrix, Lit};
 use logic::jqlib::{split_file, join_file, split_boxes, join_boxes, resolve_preamble, parse_box_decl, box_formula};
 use logic::boxes::compile::{compile_box, Table};
 use logic::boxes::expand::{expand_box_calls, atomize_box_calls, Arg, BoxCall, BoxSig};
-use logic::boxes::compile::{compile_box_polarity, implication_box, ArgBinding};
-use logic::boxes::{Engine, TableBox, Verdict};
+use logic::boxes::compile::{compile_box_polarity, ArgBinding};
+use logic::boxes::controller::{BoxAwareController, BoxTables, CallBoxes};
+use logic::boxes::TableBox;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, sync::{Arc, Mutex}};
 use tower_http::cors::{Any, CorsLayer};
@@ -204,131 +205,44 @@ impl VarAlloc {
     }
 }
 
-/// One call's tables over problem variables: rows of the box (`pos`) and of
-/// its negation (`neg`), and the id of the atom standing for the call.
-struct CallTables { atom: u32, pos: Vec<Vec<Lit>>, neg: Vec<Vec<Lit>> }
-
-/// Instantiate every call of `ctx`; relabels the atoms in `m.ast.vars` with the
-/// call text so path / model strings read `full_adder(x,y,c_in,s,c_out)`.
-fn instantiate_calls(ctx: &BoxContext, m: &mut Matrix, alloc: &mut VarAlloc) -> Result<Vec<CallTables>, String> {
-    let mut out = Vec::new();
+/// Instantiate every call of `ctx` as a pair of row-tables over the problem's
+/// variables (call arguments that occur only inside calls get fresh ids), and
+/// relabel the atoms in `m.ast.vars` with the call text so path strings read
+/// `full_adder(x,y,c_in,s,c_out)`.  Returns the tables, the extended variable
+/// names, and the ids of the call-argument variables (for the witness).
+fn build_box_tables(ctx: &BoxContext, m: &mut Matrix) -> Result<(BoxTables, Vec<String>, Vec<u32>), String> {
+    let mut alloc = VarAlloc::new(m);
+    let mut calls = Vec::new();
+    let mut arg_vars: Vec<u32> = Vec::new();
     for call in &ctx.calls {
         let cb = ctx.boxes.get(&call.name).ok_or_else(|| format!("unknown box `{}`", call.name))?;
         let atom = *m.ast.var_index.get(&call.atom).ok_or_else(|| format!("internal: atom {} missing", call.atom))?;
         m.ast.vars[atom as usize] = call.label.clone();
         alloc.names[atom as usize] = call.label.clone();
         let b = alloc.bind(&call.args);
-        let pos = cb.table.instantiate_args(&b)?;
-        let neg = cb.table_neg.as_ref()
+        for a in &b { if let ArgBinding::Var { id, .. } = a && !arg_vars.contains(id) { arg_vars.push(*id); } }
+        let pos = TableBox::new(cb.table.instantiate_args(&b)?);
+        let neg = TableBox::new(cb.table_neg.as_ref()
             .ok_or_else(|| format!("box `{}`: negative table unavailable (too many columns?)", call.name))?
-            .instantiate_args(&b)?;
-        out.push(CallTables { atom, pos, neg });
+            .instantiate_args(&b)?);
+        calls.push(CallBoxes { atom, pos, neg });
     }
-    Ok(out)
-}
-
-/// Box-aware paths: a candidate uncovered path of the atomized matrix is kept
-/// iff its literals (negated — model polarity) are consistent with the tables
-/// of the box atoms it fixes: `atom'` on the path means the call holds (rows
-/// of the box), `atom` that it fails (rows of the negation).
-fn box_path_filter(ctx: &BoxContext, m: &mut Matrix) -> Result<Arc<dyn Fn(&[Lit]) -> bool + Send + Sync>, String> {
-    let mut alloc = VarAlloc::new(m);
-    let tables = instantiate_calls(ctx, m, &mut alloc)?;
     let nvars = alloc.names.len();
-    Ok(Arc::new(move |path: &[Lit]| {
-        let units: Vec<Vec<i32>> = path.iter().map(|l| { let v = l.var as i32 + 1; vec![if l.neg { v } else { -v }] }).collect();
-        let mut eng = Engine::from_cnf(nvars, &units);
-        for t in &tables {
-            if let Some(l) = path.iter().find(|l| l.var == t.atom) {
-                eng.add_box(TableBox::new(if l.neg { t.pos.clone() } else { t.neg.clone() }));
-            }
-        }
-        eng.max_decisions = Some(1_000_000);
-        matches!(eng.solve(), Verdict::Sat(_))
-    }))
+    Ok((BoxTables { calls, nvars }, alloc.names, arg_vars))
 }
 
-/// Occurrence polarities of each variable in an NNF: (positive, negative).
-fn nnf_polarities(nnf: &NNF, out: &mut HashMap<u32, (bool, bool)>) {
-    match nnf {
-        NNF::Lit(l) => { let e = out.entry(l.var).or_insert((false, false)); if l.neg { e.1 = true } else { e.0 = true } }
-        NNF::Sum(ch) | NNF::Prod(ch) => for c in ch { nnf_polarities(c, out); },
-    }
-}
-
-/// The `boxes` backend for Valid? / Satisfiable?: keep box calls as atoms,
-/// Tseitin-encode the (complemented) formula, tie each atom to its box with
-/// `atom ⇒ rows(box)` and `¬atom ⇒ rows(¬box)` tables (only the polarities the
-/// NNF uses), and run the row engine.  A model is reported as one "uncovered
-/// path" in the UI's display polarity (the user negates to read the witness).
-fn start_boxes_job(job_state: Arc<Mutex<ClassifyJob>>, state: &AppState, formula: &str, complement: bool) -> Result<(), String> {
-    use logic::matrix::{format_lits, PathClassificationHandle};
-    let (text, ctx) = build_box_context(state, formula)?;
-    let mut matrix = Matrix::try_from(text.as_str()).map_err(|e| e.to_string())?;
-    // `target` is the matrix the paths view shows; its uncovered paths, negated,
-    // are models of ¬target (paths are falsification branches).  So the engine
-    // searches models of the *other* NNF: NNF(φ) for Satisfiable?, NNF(¬φ)
-    // (countermodels) for Valid?.
-    let target = if complement { matrix.nnf_complement.clone() } else { matrix.nnf.clone() };
-    let total_paths = target.path_count();
-    let search = if complement { matrix.nnf.clone() } else { matrix.nnf_complement.clone() };
-    let mut pol = HashMap::new();
-    nnf_polarities(&search, &mut pol);
-    let mut alloc = VarAlloc::new(&matrix);
-    let tables = instantiate_calls(&ctx, &mut matrix, &mut alloc)?;
-    let n_display = alloc.names.len();
-    let names = alloc.names.clone();
-    let atoms: std::collections::HashSet<u32> = tables.iter().map(|t| t.atom).collect();
-    let mut next_var = n_display as i32 + 1;
-    let (root, mut clauses) = logic::cadical::tseitin_encode(&search, &mut next_var);
-    clauses.push(vec![root]);
-    let mut engine = Engine::from_cnf((next_var - 1) as usize, &clauses);
-    for t in tables {
-        let (p, n) = pol.get(&t.atom).copied().unwrap_or((false, false));
-        if p { engine.add_box(implication_box(t.pos, t.atom, true)); }
-        if n { engine.add_box(implication_box(t.neg, t.atom, false)); }
-    }
-    let handle = PathClassificationHandle::new();
-    engine.cancel = Some(handle.cancel_flag());
-    {
-        let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
-        job.cancel = Some(handle);
-        job.total_path_count = total_paths;
-        job.start_time = Some(std::time::Instant::now());
-    }
-    tokio::task::spawn_blocking(move || {
-        let verdict = engine.solve();
-        let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
-        match verdict {
-            Verdict::Sat(model) => {
-                let lits: Vec<Lit> = (0..n_display).filter(|v| !atoms.contains(&(*v as u32)))
-                    .map(|v| Lit { var: v as u32, neg: model[v] }).collect();
-                job.snapshot.uncovered_paths.push(format_lits(&lits, &names));
-                job.snapshot.uncovered_path_positions.push(Vec::new());
-            }
-            Verdict::Unsat => {}
-            Verdict::Unknown => { job.error = Some("boxes: search cancelled".into()); }
-        }
-        job.snapshot.classified_count = engine.stats.decisions as f64;
-        job.running = false;
-    });
-    Ok(())
-}
-
-fn reset_and_start_boxes(job_state: &Arc<Mutex<ClassifyJob>>, state: &AppState, formula: &str, complement: bool) -> Json<serde_json::Value> {
-    {
-        let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
-        if let Some(c) = job.cancel.take() { c.cancel(); }
-        *job = ClassifyJob::default();
-        job.running = true;
-        job.is_complement = complement;
-    }
-    if let Err(e) = start_boxes_job(job_state.clone(), state, formula, complement) {
-        let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
-        job.running = false;
-        job.error = Some(e);
-    }
-    Json(serde_json::json!({ "ok": true }))
+/// For an uncovered path of the collapsed matrix: the values of the call
+/// arguments that are not on the path (display polarity), from the tables'
+/// joint witness — `None` if the path is table-inconsistent (the search
+/// already prunes those; this is the safety net).
+fn box_witness(tables: Arc<BoxTables>, arg_vars: Vec<u32>) -> Arc<dyn Fn(&[Lit]) -> Option<Vec<Lit>> + Send + Sync> {
+    Arc::new(move |path: &[Lit]| {
+        let refs: Vec<&Lit> = path.iter().collect();
+        let Some(asg) = BoxTables::assignment(&refs) else { return Some(Vec::new()) };
+        let model = tables.witness(&asg)?;
+        Some(arg_vars.iter().filter(|v| !asg.contains_key(v))
+            .map(|&v| Lit { var: v, neg: model[v as usize] }).collect())
+    })
 }
 
 #[derive(Deserialize)]
@@ -1085,11 +999,18 @@ fn start_classify_job(
     }
 
     let mut matrix = Matrix::try_from(formula)?;
-    // Box-aware paths: candidate paths of the atomized matrix are checked
-    // against the box tables before they are reported (see `box_path_filter`).
-    let box_filter_for_drainer: Option<Arc<dyn Fn(&[Lit]) -> bool + Send + Sync>> = match &boxctx {
-        Some(ctx) => Some(box_path_filter(ctx, &mut matrix)?),
-        None => None,
+    // Box-aware search (`boxes` backend, box-aware paths): the matrix search
+    // runs on the collapsed NNF and `BoxAwareController` prunes prefixes by
+    // the box tables; the drainer decorates each uncovered path with the
+    // call-argument values of the tables' witness.
+    type Witness = Arc<dyn Fn(&[Lit]) -> Option<Vec<Lit>> + Send + Sync>;
+    let (box_tables, box_witness_for_drainer, box_names): (Option<Arc<BoxTables>>, Option<Witness>, Option<Vec<String>>) = match &boxctx {
+        Some(ctx) => {
+            let (t, names, arg_vars) = build_box_tables(ctx, &mut matrix)?;
+            let t = Arc::new(t);
+            (Some(t.clone()), Some(box_witness(t, arg_vars)), Some(names))
+        }
+        None => (None, None, None),
     };
     // Snapshot of the original NNF needed for lemma-cover sizing
     // (we count leaves on covered paths through the *original*
@@ -1140,7 +1061,7 @@ fn start_classify_job(
         matrix.nnf_complement.path_count()
     };
     let target = target_nnf.clone();
-    let vars = matrix.ast.vars.clone();
+    let vars = box_names.clone().unwrap_or_else(|| matrix.ast.vars.clone());
 
     // Detect whether preprocessing already reduced the search target
     // to a constant — `Prod([])` (TRUE) means the search will find no
@@ -1186,7 +1107,31 @@ fn start_classify_job(
     let (handle, mut rx, cancel) = match backend {
         Backend::Backtrack => {
             let p = params_for_builder.clone();
-            target_nnf.classify_paths(buffer_size, move |tx| default_classify_controller(p, tx))
+            match box_tables.clone() {
+                Some(t) => target_nnf.classify_paths(buffer_size, move |tx|
+                    BoxAwareController::new(default_classify_controller(p, tx), t)),
+                None => target_nnf.classify_paths(buffer_size, move |tx| default_classify_controller(p, tx)),
+            }
+        }
+        Backend::Boxes => {
+            // Matrix-native boxes: the single-DFS SmartController on the
+            // collapsed NNF, with table propagation from the box tables.
+            let t = box_tables.clone().ok_or_else(|| "boxes backend: the formula has no box calls".to_string())?;
+            let nnf_for_builder = target.clone();
+            let p = params_for_builder.clone();
+            if want_cover {
+                target_nnf.classify_paths(buffer_size, move |tx| {
+                    let on_class: DynOnClass = Box::new(move |class, hit_limit|
+                        tx.blocking_send((class, hit_limit)).is_ok());
+                    BoxAwareController::new(SmartController::for_nnf_with_cover(&nnf_for_builder, p, on_class), t)
+                })
+            } else {
+                target_nnf.classify_paths_uncovered_only(buffer_size, move |tx| {
+                    let on_class: DynOnClass = Box::new(move |class, hit_limit|
+                        tx.blocking_send((class, hit_limit)).is_ok());
+                    BoxAwareController::new(SmartController::for_nnf(&nnf_for_builder, p, on_class), t)
+                })
+            }
         }
         Backend::Smart => {
             let nnf_for_builder = target.clone();
@@ -1254,7 +1199,7 @@ fn start_classify_job(
                 EffectiveCountWrapper::new(cdcl, idx, counts)
             })
         }
-        Backend::GreedyCdcl | Backend::GreedyEff | Backend::Boxes => {
+        Backend::GreedyCdcl | Backend::GreedyEff => {
             spawn_dual_classify_job(backend, target_nnf.clone(), buffer_size)
         }
     };
@@ -1341,11 +1286,12 @@ fn start_classify_job(
                     }
                 }
                 PathsClass::Uncovered(up) => {
-                    let keep = box_filter_for_drainer.as_ref().is_none_or(|f| {
-                        let lits: Vec<Lit> = if !up.lits.is_empty() { up.lits.clone() }
-                            else { target.lits_on_path(&up.prod_path).iter().map(|&l| l.clone()).collect() };
-                        f(&lits)
-                    });
+                    let box_lits: Vec<Lit> = if !up.lits.is_empty() { up.lits.clone() }
+                        else { target.lits_on_path(&up.prod_path).iter().map(|&l| l.clone()).collect() };
+                    let (keep, extra_lits): (bool, Vec<Lit>) = match &box_witness_for_drainer {
+                        None => (true, Vec::new()),
+                        Some(f) => match f(&box_lits) { Some(extra) => (true, extra), None => (false, Vec::new()) },
+                    };
                     // Use the engine-provided positions and lits when
                     // they're populated (positions-ON engines —
                     // matrix.eff / greedy×eff in particular).  Fall
@@ -1405,6 +1351,12 @@ fn start_classify_job(
                         format_lits(&up.lits, &vars)
                     } else {
                         format_path(&up.prod_path, &target, &vars)
+                    };
+                    // Box-aware: append the call-argument values the tables fix.
+                    let path_str = if extra_lits.is_empty() { path_str } else {
+                        let mut all = box_lits.clone();
+                        all.extend(extra_lits.iter().cloned());
+                        format_lits(&all, &vars)
                     };
                     if keep {
                         job.snapshot.classified_count += 1.0;
@@ -1625,7 +1577,10 @@ async fn valid_handler(
     });
     let backend = parse_backend(&req.backend);
     if matches!(backend, Backend::Boxes) {
-        return reset_and_start_boxes(&state.valid_job, &state, &req.formula, false);
+        return match build_box_context(&state, &req.formula) {
+            Ok((text, ctx)) => reset_and_start(&state.valid_job, &text, false, params, Backend::Boxes, /*preprocess=*/ false, Some(ctx)),
+            Err(e) => Json(serde_json::json!({ "error": e })),
+        };
     }
     let formula = match expand_formula(&state, &req.formula) {
         Ok(f) => f,
@@ -1685,7 +1640,10 @@ async fn satisfiable_handler(
     });
     let backend = parse_backend(&req.backend);
     if matches!(backend, Backend::Boxes) {
-        return reset_and_start_boxes(&state.sat_job, &state, &req.formula, true);
+        return match build_box_context(&state, &req.formula) {
+            Ok((text, ctx)) => reset_and_start(&state.sat_job, &text, true, params, Backend::Boxes, /*preprocess=*/ false, Some(ctx)),
+            Err(e) => Json(serde_json::json!({ "error": e })),
+        };
     }
     let formula = match expand_formula(&state, &req.formula) {
         Ok(f) => f,

@@ -679,28 +679,36 @@ hierarchical boxes, so every existing backend and the diagram work on the
 expansion; unloading a library turns its calls back into errors.
 
 **`boxes` backend in the web app** (2026-09-07): a backend-selector option
-for Valid? / Satisfiable?.  Box calls stay atoms (`BOXCALL_k`), the formula
-to refute (NNF(φ) for Satisfiable?, NNF(¬φ) for Valid? — the negations of the
-matrices whose uncovered paths the other backends enumerate) is
-Tseitin-encoded, and each atom is tied to its box by two row-tables,
-`atom ⇒ rows(B)` and `¬atom ⇒ rows(¬B)`, only for the polarities the NNF
-uses; the row engine solves it (`start_boxes_job`).  Both polarities of every
-box are compiled at library load: the negative table from the definition's own
-NNF when nothing is projected, else the complement of the projected table
+for Valid? / Satisfiable?, *matrix-native*: the ordinary path search
+(`SmartController`) runs on the collapsed NNF where every box call is an atom
+(`BOXCALL_k`, `expand::atomize_box_calls`), wrapped in
+`boxes::controller::BoxAwareController`, which adds table propagation to any
+`PathSearchController` through `should_continue_on_prefix`: at every prefix
+step each call whose atom is fixed on the prefix must keep a row consistent
+with the prefix (bit-parallel row masks — the "dead box → backtrack" rule of
+§3), and when a path completes the rows of all fixed calls must be jointly
+consistent with it (row engine over the path's literals as units), so an
+uncovered path is always a genuine model and the run stops at the first one.
+No CNF, no Tseitin, no auxiliary variables — only the CaDiCaL backend
+Tseitin-encodes; positions, covers and certificates keep their meaning.  The
+polarity rule: a path literal is FALSE in the model it stands for, so `atom'`
+on a prefix means the call holds (rows of B) and `atom` that it fails (rows of
+¬B).  These runs skip preprocessing (unit propagation could fix an atom before
+the search sees it).  The drainer appends to each reported path the values of
+the call arguments that are not on the path, from the tables' witness.
+
+Both polarities of every box are compiled at library load: the negative table
+from the definition's own NNF when nothing is projected
+(`compile_box_polarity`), else the complement of the projected table
 (¬∃U.B = ∀U.¬B — compiling ¬B and projecting would be wrong).  Definitions may
-call boxes declared earlier (expanded before compiling).  Verified: adder ⇒
-full_adder valid; full_adder = adder invalid (§5.3); two adders on the same
-inputs with differing sums UNSAT in 6 decisions; an 8-bit ripple adder with a
-wrong sum bit UNSAT with **0 decisions** (pure table propagation — the
-expanded matrix has 1.1e19 paths).  A model is reported as one "uncovered
-path" in the UI's display polarity.
+call boxes declared earlier (expanded before compiling).
 
 **Box-aware Paths**: a `box aware` option next to Paths collapses each call
-to one rectangle labelled `name(args)` and computes paths through the
-collapsed matrix (the client parses the same atomized text, so path positions
-line up); every candidate uncovered path is checked against the tables
-(`atom'` on a path ⇒ the call holds ⇒ rows of B; `atom` ⇒ rows of ¬B), so only
-paths that extend to real models are reported.  Example:
+to one rectangle labelled `name(args)` and enumerates the paths of the
+collapsed matrix with the same `BoxAwareController` around the paths
+controller (the client parses the same atomized text, so path positions line
+up): prefixes the tables refute are pruned during the search, so only paths
+that extend to real models are reported.  Example:
 `full_adder(x,y,c_in,s,c_out) (s = c_out)` — 2 collapsed uncovered paths of
 the complement vs 5 expanded.
 

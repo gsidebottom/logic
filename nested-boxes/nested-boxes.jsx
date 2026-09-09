@@ -382,7 +382,10 @@ function cmpVarName(a, b, reverse = false) {
 // e.g. "a_5'" → "a", "c_0" → "c", "x" → "x".
 function baseOf(name) {
   const noPrime = name.endsWith("'") ? name.slice(0, -1) : name;
-  if (noPrime.includes('(')) return noPrime;   // a box-call label is one name, not `full`_`adder(…)`
+  // A box-call label `name(args)`: the arguments act like subscripts, so the
+  // base is the box name — one filter chip for every call of that box.
+  const paren = noPrime.indexOf('(');
+  if (paren !== -1) return noPrime.slice(0, paren);
   const ui = noPrime.indexOf('_');
   return ui === -1 ? noPrime : noPrime.slice(0, ui);
 }

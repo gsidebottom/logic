@@ -356,12 +356,40 @@ function parseSubscript(name) {
   return { rank: 2, nums, sub };
 }
 
-// Comparator for variable names. Groups by baseOf() alphabetically, then orders
-// within a base: bare name first, integer-list subscripts lexicographic, then
-// non-integer subscripts alphabetic.
+// A box-call label `name(a1,a2,…)` (possibly primed).
+const isBoxLabel = name => name.includes('(');
+// The arguments of a box-call label `name(a1;a2;…)` (labels join with `;`,
+// which never continues a name — an argument may carry a subscript comma
+// itself, as in `d_0,1`).
+function argsOfLabel(name) {
+  const noPrime = name.endsWith("'") ? name.slice(0, -1) : name;
+  const i = noPrime.indexOf('('), j = noPrime.lastIndexOf(')');
+  if (i === -1 || j <= i) return [];
+  return noPrime.slice(i + 1, j).split(';').map(a => a.trim());
+}
+
+// Comparator for variable names. Variables come first, then box calls.
+// Variables group by baseOf() alphabetically, then order within a base: bare
+// name first, integer-list subscripts lexicographic, then non-integer
+// subscripts alphabetic.  Box calls group by box name alphabetically, then
+// order within a box by their arguments (argument by argument, with the
+// variable ordering) — the arguments play the role of subscripts, so ⇅
+// reverses that order just as it reverses subscript order.
 function cmpVarName(a, b, reverse = false) {
+  const boxA = isBoxLabel(a), boxB = isBoxLabel(b);
+  if (boxA !== boxB) return boxA ? 1 : -1;
   const ba = baseOf(a), bb = baseOf(b);
   if (ba !== bb) return ba < bb ? -1 : 1;
+  if (boxA) {
+    const pa = argsOfLabel(a), pb = argsOfLabel(b);
+    let r = 0;
+    for (let i = 0; i < Math.max(pa.length, pb.length) && r === 0; i++) {
+      if (pa[i] === undefined) r = -1;
+      else if (pb[i] === undefined) r = 1;
+      else r = cmpVarName(pa[i], pb[i]);
+    }
+    return reverse ? -r : r;
+  }
   const sa = parseSubscript(a), sb = parseSubscript(b);
   let r = 0;
   if (sa.rank !== sb.rank) r = sa.rank - sb.rank;
@@ -416,15 +444,21 @@ function spacedVals(entries, decimal = false, reverseBaseOrder = false) {
   }).join(' ');
 }
 
-function formulaBases(ast) {
-  if (!ast) return [];
-  return [...new Set(extractVars(ast).map(baseOf))].sort();
+// Bases for the filter chips: variables first, then box names.  `extraAst`
+// (the expanded formula) adds the bases of variables that only occur inside
+// box calls, so every assignment entry has a chip in box-aware mode.
+function formulaBases(ast, extraAst = null) {
+  if (!ast && !extraAst) return [];
+  const vars = [...(ast ? extractVars(ast) : []), ...(extraAst ? extractVars(extraAst) : [])];
+  const boxNames = new Set(vars.filter(isBoxLabel).map(baseOf));
+  return [...new Set(vars.map(baseOf))]
+    .sort((x, y) => (boxNames.has(x) !== boxNames.has(y)) ? (boxNames.has(x) ? 1 : -1) : (x < y ? -1 : x > y ? 1 : 0));
 }
 
 // Filter chip strip used next to the expanded/factored/value link in assignment
 // displays. Toggles inclusion of variables matching a given base name.
-function AsgnFilter({ ast, hiddenBases, setHiddenBases, reverseBaseOrder, setReverseBaseOrder, decimalValues, setDecimalValues }) {
-  const bases = formulaBases(ast);
+function AsgnFilter({ ast, hiddenBases, setHiddenBases, reverseBaseOrder, setReverseBaseOrder, decimalValues, setDecimalValues, extraAst = null }) {
+  const bases = formulaBases(ast, extraAst);
   if (bases.length === 0) return null;
   return <>
     {' · '}
@@ -3265,7 +3299,7 @@ export default function App() {
                       </span>
                       {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidAsgnFmt(f => (f + 1) % 3); }}
                         style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][validAsgnFmt]}</a>
-                      <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
+                      <AsgnFilter ast={ast} extraAst={expandedAst} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
                       <br />
                       <span onClick={() => setValidUncovOn(prev => !prev)}
                         style={{ cursor: 'pointer', opacity: validUncovOn ? 1 : 0.35 }}>
@@ -3523,7 +3557,7 @@ export default function App() {
                       </span>
                       {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatAsgnFmt(f => (f + 1) % 3); }}
                         style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][satAsgnFmt]}</a>
-                      <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
+                      <AsgnFilter ast={ast} extraAst={expandedAst} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
                       <br />
                       <span onClick={() => setSatUncovOn(prev => !prev)}
                         style={{ cursor: 'pointer', opacity: satUncovOn ? 1 : 0.35 }}>

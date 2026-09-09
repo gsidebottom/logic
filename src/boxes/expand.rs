@@ -68,7 +68,8 @@ pub struct BoxCall {
     pub atom: String,
     pub name: String,
     pub args: Vec<Arg>,
-    /// Display label: `name(a1,a2,…)`.
+    /// Display label: `name(a1;a2;…)` — `;` never continues a name, so the label
+    /// re-parses unambiguously and splits cleanly inside path strings.
     pub label: String,
 }
 
@@ -175,7 +176,10 @@ fn walk_calls(
                         let sig = sig.ok_or_else(|| format!(
                             "unknown box `{name}` — load and compile its library (jq panel), or check the spelling"))?;
                         if args.len() != sig.params.len() {
-                            return Err(format!("box `{name}` expects {} argument{} ({}), got {}",
+                            let hint = if args.iter().any(|a| a.contains(',')) {
+                                " — a comma directly followed by a digit continues a subscript (`b_0,0` is one two-index name); write `b_0, 0` or separate arguments with `;`"
+                            } else { "" };
+                            return Err(format!("box `{name}` expects {} argument{} ({}), got {}{hint}",
                                 sig.params.len(), if sig.params.len() == 1 { "" } else { "s" },
                                 sig.params.join("; "), args.len()));
                         }
@@ -221,7 +225,7 @@ pub fn atomize_box_calls(formula: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>)
         let k = calls.len() + 1;
         let atom = format!("{ATOM_PREFIX}{k}");
         let args: Vec<Arg> = args.iter().map(|a| Arg::parse(a)).collect();
-        let label = format!("{name}({})", args.iter().map(Arg::text).collect::<Vec<_>>().join(","));
+        let label = format!("{name}({})", args.iter().map(Arg::text).collect::<Vec<_>>().join(";"));
         calls.push(BoxCall { atom: atom.clone(), name: name.to_string(), args, label });
         Ok(atom)
     })?;
@@ -292,12 +296,15 @@ mod tests {
         let at = atomize_box_calls("fa(a, b', 0, s, c)' (s = c) fa(p,q,r,t,u)", &lib).unwrap();
         assert_eq!(at.text, "BOXCALL_1' (s = c) BOXCALL_2");
         assert_eq!(at.calls.len(), 2);
-        assert_eq!(at.calls[0].label, "fa(a,b',0,s,c)");
+        assert_eq!(at.calls[0].label, "fa(a;b';0;s;c)");
         assert_eq!(at.calls[0].args[1], Arg::Var { name: "b".into(), neg: true });
         assert_eq!(at.calls[0].args[2], Arg::Const(false));
         let m = Matrix::try_from(at.text.as_str()).unwrap();
         assert!(m.ast.vars.iter().any(|v| v == "BOXCALL_1"));
         assert!(atomize_box_calls("fa(x, y)", &lib).is_err());
+        assert!(expand_box_calls("fa(a_0,b_0,0,s_0,c_1)", &lib).unwrap_err().contains("continues a subscript"));
+        assert!(expand_box_calls("fa(a_0, b_0, 0, s_0, c_1)", &lib).is_ok());
+        assert!(expand_box_calls("fa(a_0;b_0;0;s_0;c_1)", &lib).is_ok());
         assert!(atomize_box_calls("BOXCALL_1 x", &lib).unwrap_err().contains("reserved"));
         assert_eq!(atomize_box_calls("A(B+C)", &lib).unwrap().text, "A(B+C)");
     }

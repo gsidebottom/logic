@@ -268,8 +268,10 @@ function walkCalls(text, lookup, onCall, lenient = false) {
           if (sig || args.length !== 1 || semi) {
             if (!lenient) {
               if (!sig) throw new Error(`unknown box \`${name}\` — load and compile its library (jq panel), or check the spelling`);
-              if (args.length !== sig.params.length)
-                throw new Error(`box \`${name}\` expects ${sig.params.length} argument${sig.params.length === 1 ? '' : 's'} (${sig.params.join('; ')}), got ${args.length}`);
+              if (args.length !== sig.params.length) {
+                const hint = args.some(a => a.includes(',')) ? ' — a comma directly followed by a digit continues a subscript (`b_0,0` is one two-index name); write `b_0, 0` or separate arguments with `;`' : '';
+                throw new Error(`box \`${name}\` expects ${sig.params.length} argument${sig.params.length === 1 ? '' : 's'} (${sig.params.join('; ')}), got ${args.length}${hint}`);
+              }
             }
             out += onCall(name, args, sig, text.slice(i, after));
             i = after; continue;
@@ -298,7 +300,7 @@ export function expandBoxCalls(str, boxes) {
 }
 export const BOX_ATOM_PREFIX = 'BOXCALL_';
 /** Replace each box call by an atom `BOXCALL_k` (mirrors logic::boxes::expand::atomize_box_calls).
- *  Returns {text, calls: [{atom, name, args, label}]}; `label` is `name(a,b,…)`. */
+ *  Returns {text, calls: [{atom, name, args, label}]}; `label` is `name(a;b;…)`. */
 /** With `lenient`, unknown boxes and arity mismatches are not errors: anything
  *  that reads as a call (≥2 arguments, `;`, or a known box) is atomized — for
  *  text-level tools like the formatter that must keep `f(a, b)` together even
@@ -311,7 +313,7 @@ export function atomizeBoxCalls(str, boxes, { lenient = false } = {}) {
   const calls = [];
   const text = walkCalls(str, lookupOf(boxes), (name, args, _sig, src) => {
     const atom = `${BOX_ATOM_PREFIX}${calls.length + 1}`;
-    calls.push({ atom, name, args, label: `${name}(${args.join(',')})`, text: src });
+    calls.push({ atom, name, args, label: `${name}(${args.join(';')})`, text: src });   // `;` never continues a name
     return atom;
   }, lenient);
   return { text, calls };

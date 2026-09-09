@@ -382,6 +382,7 @@ function cmpVarName(a, b, reverse = false) {
 // e.g. "a_5'" → "a", "c_0" → "c", "x" → "x".
 function baseOf(name) {
   const noPrime = name.endsWith("'") ? name.slice(0, -1) : name;
+  if (noPrime.includes('(')) return noPrime;   // a box-call label is one name, not `full`_`adder(…)`
   const ui = noPrime.indexOf('_');
   return ui === -1 ? noPrime : noPrime.slice(0, ui);
 }
@@ -1200,7 +1201,7 @@ export default function App() {
   const [pathsLimit,     setPathsLimit]     = useState(100);
   // Box aware: draw each box call as one labelled rectangle and compute paths
   // through the collapsed matrix (server checks candidates against the tables).
-  const [pathsBoxAware,  setPathsBoxAware]  = useState(false);
+  const [pathsBoxAware,  setPathsBoxAware]  = useState(true);
   const [pathsComp,      setPathsComp]      = useState(false); // show paths of complement
   const [pathsSelected,  setPathsSelected]  = useState(new Set());
   const [pathsExpanded,  setPathsExpanded]  = useState(new Set());
@@ -1244,7 +1245,13 @@ export default function App() {
   // leaves labelled with the call, mirroring the server's atomized matrix so
   // path positions line up.  An unknown box is a syntax error right here.
   const boxCalls = useMemo(() => { try { return atomizeBoxCalls(input, boxes).calls; } catch { return []; } }, [input, boxes]);
-  const boxAware = pathsBoxAware && boxCalls.length > 0;
+  // Box aware applies to Valid?, Satisfiable? and Paths, and needs the boxes
+  // backend (the only one that can use the compiled tables).
+  const canBoxAware = matrixBackend === 'boxes' && boxCalls.length > 0;
+  const boxAware = pathsBoxAware && canBoxAware;
+  // The expanded formula's AST, whatever the mode: CaDiCaL always solves the
+  // expanded formula, so its variable order and names come from here.
+  const expandedAst = useMemo(() => { try { return parse(expandBoxCalls(input, boxes)); } catch { return null; } }, [input, boxes]);
   const [ast, error] = useMemo(() => {
     try {
       if (boxAware) {
@@ -1601,7 +1608,7 @@ export default function App() {
     try {
       const res = await fetch(API_BASE + '/valid', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input, no_cover: noCoverEnabled, backend: matrixBackend }),
+        body: JSON.stringify({ formula: input, no_cover: noCoverEnabled, backend: matrixBackend, box_aware: boxAware }),
       });
       if (!res.ok) throw new Error('start failed');
     } catch (e) {
@@ -1682,7 +1689,7 @@ export default function App() {
     try {
       const res = await fetch(API_BASE + '/satisfiable', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input, no_cover: noCoverEnabled, backend: matrixBackend }),
+        body: JSON.stringify({ formula: input, no_cover: noCoverEnabled, backend: matrixBackend, box_aware: boxAware }),
       });
       if (!res.ok) throw new Error('start failed');
     } catch (e) {
@@ -1977,7 +1984,7 @@ export default function App() {
       fetchSat();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matrixBackend]);
+  }, [matrixBackend, boxAware]);
 
   // When "CaDiCaL" toggles while a valid/sat display is open, start or stop
   // the cadical-side job to match the checkbox.
@@ -2897,7 +2904,7 @@ export default function App() {
           backend:
           <select
             value={matrixBackend}
-            onChange={e => setMatrixBackend(e.target.value)}
+            onChange={e => { clearPathsSelection(); setMatrixBackend(e.target.value); }}
             style={{
               fontSize: 12, padding: '2px 4px',
               border: '1px solid #c8c8c8', borderRadius: 4,
@@ -2911,6 +2918,12 @@ export default function App() {
             <option value="greedy_cdcl">greedy×cdcl</option>
             <option value="greedy_eff">greedy×eff</option>
           </select>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: canBoxAware ? 'pointer' : 'default', fontSize: 13, color: canBoxAware ? undefined : '#aaa' }}
+                 title={canBoxAware ? "Box aware: each box call is one unit — drawn as a labelled rectangle, and Valid?, Satisfiable? and Paths run on the collapsed matrix with the boxes' compiled tables" : matrixBackend !== 'boxes' ? "Box aware needs the boxes backend" : "No box calls in the formula"}>
+            <input type="checkbox" checked={boxAware} disabled={!canBoxAware}
+                   onChange={e => { clearPathsSelection(); setPathsBoxAware(e.target.checked); }} />
+            box aware
+          </label>
         </label>
         {btn('✓ Valid?',       handleValid,       '#6a2a9a', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula is a tautology")}
         {validRunning && (
@@ -3013,12 +3026,6 @@ export default function App() {
           CaDiCaL
         </label>
         {btn('ρ  Paths',       handlePaths,       '#4a4a8a', !ast || loading, !ast ? "Fix syntax errors first" : "Show paths through the matrix")}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: boxCalls.length ? 'pointer' : 'default', fontSize: 13, color: boxCalls.length ? undefined : '#aaa' }}
-               title={boxCalls.length ? "Box aware: draw each box call as one rectangle labelled with the call, and show paths through the collapsed matrix — every candidate path is checked against the box's compiled table" : "No box calls in the formula"}>
-          <input type="checkbox" checked={pathsBoxAware} disabled={!boxCalls.length}
-                 onChange={e => { clearPathsSelection(); setPathsBoxAware(e.target.checked); }} />
-          box aware
-        </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 13 }}
                title="Show paths of the complement">
           <input type="checkbox" checked={pathsComp} onChange={e => { clearPathsSelection(); setPathsComp(e.target.checked); }} />
@@ -3392,14 +3399,14 @@ export default function App() {
                     {cadicalValidClausesExpanded ? '▾' : '▸'} {cadicalValidResult.learnedClauses.length} learned clause{cadicalValidResult.learnedClauses.length !== 1 ? 's' : ''}
                   </span>
                   {cadicalValidClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
-                    {cadicalValidResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, ast ? extractVars(ast) : [])}</div>)}
+                    {cadicalValidResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, expandedAst ? extractVars(expandedAst) : [])}</div>)}
                   </div>}
                 </span>}
               </span>
             : <span>
                 CaDiCaL: not valid in {(cadicalValidResult.elapsedSecs * 1000).toFixed(0)}ms
                 {cadicalValidResult.assignment && (() => {
-                  const allVarsRaw = ast ? extractVars(ast) : [];
+                  const allVarsRaw = expandedAst ? extractVars(expandedAst) : [];
                   const asgnEntries = cadicalValidResult.assignment.map(([varIdx, neg]) => ({
                     name: allVarsRaw[varIdx] ?? `v${varIdx}`, val: neg ? '0' : '1',
                   })).filter(e => !hiddenBases.has(baseOf(e.name))).sort((a, b) => cmpVarName(a.name, b.name, reverseBaseOrder));
@@ -3432,7 +3439,7 @@ export default function App() {
                     </span>
                     {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setCadicalValidAsgnFmt(f => (f + 1) % 3); }}
                       style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][cadicalValidAsgnFmt]}</a>
-                    <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
+                    <AsgnFilter ast={expandedAst} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
                   </span>;
                 })()}
                 {cadicalValidResult.learnedClauses?.length > 0 && <span style={{ fontWeight: 'normal' }}>
@@ -3442,7 +3449,7 @@ export default function App() {
                     {cadicalValidClausesExpanded ? '▾' : '▸'} {cadicalValidResult.learnedClauses.length} learned clause{cadicalValidResult.learnedClauses.length !== 1 ? 's' : ''}
                   </span>
                   {cadicalValidClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
-                    {cadicalValidResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, ast ? extractVars(ast) : [])}</div>)}
+                    {cadicalValidResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, expandedAst ? extractVars(expandedAst) : [])}</div>)}
                   </div>}
                 </span>}
               </span>}
@@ -3761,7 +3768,7 @@ export default function App() {
             ? <span>
                 CaDiCaL: satisfiable in {(cadicalSatResult.elapsedSecs * 1000).toFixed(0)}ms
                 {(() => {
-                  const allVarsRaw = ast ? extractVars(ast) : [];
+                  const allVarsRaw = expandedAst ? extractVars(expandedAst) : [];
                   const asgnEntries = cadicalSatResult.assignment.map(([varIdx, neg]) => ({
                     name: allVarsRaw[varIdx] ?? `v${varIdx}`, val: neg ? '0' : '1',
                   })).filter(e => !hiddenBases.has(baseOf(e.name))).sort((a, b) => cmpVarName(a.name, b.name, reverseBaseOrder));
@@ -3794,7 +3801,7 @@ export default function App() {
                     </span>
                     {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setCadicalSatAsgnFmt(f => (f + 1) % 3); }}
                       style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][cadicalSatAsgnFmt]}</a>
-                    <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
+                    <AsgnFilter ast={expandedAst} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
                   </span>;
                 })()}
                 {cadicalSatResult.learnedClauses?.length > 0 && <span style={{ fontWeight: 'normal' }}>
@@ -3804,7 +3811,7 @@ export default function App() {
                     {cadicalSatClausesExpanded ? '▾' : '▸'} {cadicalSatResult.learnedClauses.length} learned clause{cadicalSatResult.learnedClauses.length !== 1 ? 's' : ''}
                   </span>
                   {cadicalSatClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
-                    {cadicalSatResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, ast ? extractVars(ast) : [])}</div>)}
+                    {cadicalSatResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, expandedAst ? extractVars(expandedAst) : [])}</div>)}
                   </div>}
                 </span>}
               </span>
@@ -3816,7 +3823,7 @@ export default function App() {
                     {cadicalSatClausesExpanded ? '▾' : '▸'} {cadicalSatResult.learnedClauses.length} learned clause{cadicalSatResult.learnedClauses.length !== 1 ? 's' : ''}
                   </span>
                   {cadicalSatClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
-                    {cadicalSatResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, ast ? extractVars(ast) : [])}</div>)}
+                    {cadicalSatResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, expandedAst ? extractVars(expandedAst) : [])}</div>)}
                   </div>}
                 </span>}
               </span>}

@@ -734,7 +734,14 @@ struct FormulaRequest {
     /// formula has no box calls.
     #[serde(default = "default_backend")]
     backend: String,
+    /// With the `boxes` backend: keep box calls as units (collapsed matrix +
+    /// compiled tables).  Off, the boxes backend runs `greedy_eff` on the
+    /// expanded formula like any other backend.
+    #[serde(default = "default_true")]
+    box_aware: bool,
 }
+
+fn default_true() -> bool { true }
 
 fn default_backend() -> String { "boxes".to_string() }
 
@@ -1577,6 +1584,7 @@ async fn valid_handler(
         no_cover: req.no_cover,
     });
     let backend = parse_backend(&req.backend);
+    let backend = if matches!(backend, Backend::Boxes) && !req.box_aware { Backend::GreedyEff } else { backend };
     if matches!(backend, Backend::Boxes) {
         return match build_box_context(&state, &req.formula) {
             // No box calls: nothing for the tables to do — run greedy×eff (the
@@ -1644,6 +1652,7 @@ async fn satisfiable_handler(
         no_cover: req.no_cover,
     });
     let backend = parse_backend(&req.backend);
+    let backend = if matches!(backend, Backend::Boxes) && !req.box_aware { Backend::GreedyEff } else { backend };
     if matches!(backend, Backend::Boxes) {
         return match build_box_context(&state, &req.formula) {
             // No box calls: nothing for the tables to do — run greedy×eff (the

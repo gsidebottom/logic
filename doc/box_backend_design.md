@@ -704,9 +704,10 @@ from the definition's own NNF when nothing is projected
 (¬∃U.B = ∀U.¬B — compiling ¬B and projecting would be wrong).  Definitions may
 call boxes declared earlier (expanded before compiling).
 
-**Box-aware Paths**: a `box aware` option next to Paths collapses each call
-to one rectangle labelled `name(args)` and enumerates the paths of the
-collapsed matrix with the same `BoxAwareController` around the paths
+**Box aware** (checkbox after the backend selector, on by default, active
+with the `boxes` backend): each call is one unit for Valid?, Satisfiable?
+and Paths, drawn as one rectangle labelled `name(args)`; Paths enumerates
+the paths of the collapsed matrix with the same `BoxAwareController` around the paths
 controller (the client parses the same atomized text, so path positions line
 up): prefixes the tables refute are pruned during the search, so only paths
 that extend to real models are reported.  Example:

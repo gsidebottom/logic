@@ -1207,6 +1207,10 @@ export default function App() {
   const [pathsUncovSel,  setPathsUncovSel]  = useState(new Set()); // selected uncovered path indices
   const [pathsRunning,   setPathsRunning]   = useState(false); // server-side path generation in progress
   const [pathsTreeExpanded, setPathsTreeExpanded] = useState(new Set()); // Set<nodeKey> of expanded prefix-tree nodes
+  // Selections are indices into the current paths result; a mode switch
+  // (complement, box aware) recomputes the paths against a different matrix,
+  // so the old selections would highlight the wrong things.
+  const clearPathsSelection = () => { setPathsSelected(new Set()); setPathsUncovSel(new Set()); setPathsExpanded(new Set()); };
   const [pathsCanonical, setPathsCanonical] = useState(false); // uncovered-path tree: trace order (false) or canonical (sorted/deduped) form
   const pathsPollRef = useRef(null);
   const [loading,        setLoading]        = useState(false);
@@ -3012,12 +3016,12 @@ export default function App() {
         <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: boxCalls.length ? 'pointer' : 'default', fontSize: 13, color: boxCalls.length ? undefined : '#aaa' }}
                title={boxCalls.length ? "Box aware: draw each box call as one rectangle labelled with the call, and show paths through the collapsed matrix — every candidate path is checked against the box's compiled table" : "No box calls in the formula"}>
           <input type="checkbox" checked={pathsBoxAware} disabled={!boxCalls.length}
-                 onChange={e => setPathsBoxAware(e.target.checked)} />
+                 onChange={e => { clearPathsSelection(); setPathsBoxAware(e.target.checked); }} />
           box aware
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 13 }}
                title="Show paths of the complement">
-          <input type="checkbox" checked={pathsComp} onChange={e => setPathsComp(e.target.checked)} />
+          <input type="checkbox" checked={pathsComp} onChange={e => { clearPathsSelection(); setPathsComp(e.target.checked); }} />
           <span style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold' }}>'</span>
         </label>
         <input

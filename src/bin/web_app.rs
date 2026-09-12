@@ -357,6 +357,8 @@ async fn jq_handler(
 struct CompiledBox {
     name: String,
     lib: String,
+    /// The declaration line as written in the library's boxes section.
+    decl: String,
     params: Vec<String>,
     expose: Vec<String>,
     vars: Vec<String>,
@@ -449,7 +451,7 @@ async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, t
                     "uncovered_paths": table.uncovered_paths, "formula": table.formula,
                 }));
                 compiled_now.push(CompiledBox {
-                    name: d.name.clone(), lib: lib.path.clone(), params: d.params.clone(), expose: d.expose.clone(),
+                    name: d.name.clone(), lib: lib.path.clone(), decl: line.trim().to_string(), params: d.params.clone(), expose: d.expose.clone(),
                     vars: table.vars.clone(), rows: table.rows.len(), uncovered_paths: table.uncovered_paths,
                     formula: table.formula.clone(), internals: table.internals_projected.clone(), rows_neg, table, table_neg,
                 });

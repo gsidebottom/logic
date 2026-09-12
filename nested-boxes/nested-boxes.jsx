@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useMemo } from "react";
-import { parse, complementAst, astToString, resolvePosition, VarLabel, expandBoxCalls, atomizeBoxCalls, relabelBoxAtoms } from "./formula.jsx";
+import { parse, complementAst, astToString, resolvePosition, VarLabel, expandBoxCalls, atomizeBoxCalls, relabelBoxAtoms, familyOf } from "./formula.jsx";
 
 // Base URL for API calls.  In `vite dev` we hit the separate Rust service on
 // :3001 (same as before).  In a production build — e.g. the Docker image —
@@ -10,6 +10,23 @@ const API_BASE = import.meta.env.VITE_API_BASE ?? (import.meta.env.PROD ? '' : '
 
 // ─── Cover context (for highlighting complementary pairs in diagrams) ──────────
 const CoverContext = createContext(null);
+// Box registry for the diagram: { byName: Map<name, box>, open(name) } — a box
+// leaf shows the box's definition as a tooltip and opens it on click.
+const BoxInfoContext = createContext(null);
+
+// Interface of a compiled box as `name(p1;p2;…)` (parameters, then exposed families).
+const boxInterface = b => `${b.name}(${[...(b.params ?? b.vars), ...(b.expose ?? [])].join(';')})`;
+// Multi-line definition summary, for tooltips.
+function boxTooltip(b) {
+  const lines = [`${boxInterface(b)}   —   ${b.lib}`];
+  if (b.decl) lines.push(b.decl);
+  lines.push(`= ${b.formula}`);
+  lines.push(`columns: ${b.vars.join(', ')}`);
+  if (b.internals?.length) lines.push(`hidden (∃): ${b.internals.join(', ')}`);
+  lines.push(`${b.rows} rows (negation: ${b.rows_neg ?? '?'}), ${b.uncovered_paths} uncovered paths`);
+  lines.push('click for the full definition');
+  return lines.join('\n');
+}
 
 const PAIR_COLORS = ['#e63946', '#1d7cc4', '#2a9d8f', '#e07c00', '#8e44ad', '#555'];
 
@@ -510,6 +527,7 @@ const BORDER_COLORS = ['#111', '#1a6bcc', '#b35000', '#2a7a2a', '#7a1a7a'];
 
 function BoxNode({ node, depth = 0, position = [], complementView = false }) {
   const cover = useContext(CoverContext);
+  const boxInfo = useContext(BoxInfoContext);
   const compView = cover?.complementView ?? complementView;
   if (!node) return null;
 
@@ -633,7 +651,8 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
     return (
       <div
         data-position={posKey}
-        title={node.box ? node.n : undefined}
+        title={node.box ? (boxInfo?.byName.get(node.box.name) ? boxTooltip(boxInfo.byName.get(node.box.name)) : node.n) : undefined}
+        onClick={node.box && boxInfo ? (e => { e.stopPropagation(); boxInfo.open(node.box.name); }) : undefined}
         style={{
           position: 'relative',
           minWidth: compView ? undefined : 26,
@@ -645,7 +664,7 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
           fontWeight: 'bold', lineHeight: 1, userSelect: 'none',
           // A box leaf is laid out un-rotated (flex-centered label) and turns with
           // the diagram in complement view, so its label reads top-to-bottom.
-          ...(node.box ? { border: '2px solid #5a5a9a', borderRadius: 5, background: '#eef0fb', padding: '6px 10px', fontSize: 15, minWidth: undefined, minHeight: undefined } : {}),
+          ...(node.box ? { border: '2px solid #5a5a9a', borderRadius: 5, background: '#eef0fb', padding: '6px 10px', fontSize: 15, minWidth: undefined, minHeight: undefined, cursor: boxInfo ? 'pointer' : undefined } : {}),
           ...(bgColor ? { background: bgColor, borderRadius: 3 } : {}),
         }}
       >
@@ -687,7 +706,7 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
 }
 
 // ─── Diagram with SVG arc connections for covering pairs ──────────────────────
-function DiagramWithConnections({ node, coverGroups, selectedGroups, highlightedPaths, assignmentEval = null, complementView = false, coverProdType = 'AND' }) {
+function DiagramWithConnections({ node, coverGroups, selectedGroups, highlightedPaths, assignmentEval = null, complementView = false, coverProdType = 'AND', boxInfo = null }) {
   const containerRef = useRef(null);
   const [arcs, setArcs] = useState([]);
   const [pathLines, setPathLines] = useState([]);
@@ -937,6 +956,7 @@ function DiagramWithConnections({ node, coverGroups, selectedGroups, highlighted
   });
 
   return (
+    <BoxInfoContext.Provider value={boxInfo}>
     <CoverContext.Provider value={(Object.keys(posToPairIndices).length || Object.keys(posToPrefixIndices).length || Object.keys(posToHighlightIndices).length || Object.keys(posToCoveredPathIndices).length || assignmentEval || complementView) ? { posToPairIndices, posToPrefixIndices, posToHighlightIndices, posToCoveredPathIndices, maxBarCount, idxToGroupColor, assignmentEval, complementView } : null}>
       <div ref={containerRef} style={{
         position: 'relative', display: 'inline-block',
@@ -981,6 +1001,7 @@ function DiagramWithConnections({ node, coverGroups, selectedGroups, highlighted
         )}
       </div>
     </CoverContext.Provider>
+    </BoxInfoContext.Provider>
   );
 }
 
@@ -1267,6 +1288,18 @@ export default function App() {
   const [jqLibTestResult,  setJqLibTestResult]  = useState(null); // {ok: bool, message: string} | null
   const [jqLibClosePrompt, setJqLibClosePrompt] = useState(false); // unsaved-changes confirm
   const [boxes,          setBoxes]          = useState([]);    // compiled boxes from /boxes
+  // Box definition popup: the box being shown and its compiled table (fetched on open).
+  const [boxInfoName,    setBoxInfoName]    = useState(null);
+  const [boxInfoTable,   setBoxInfoTable]   = useState(null);
+  const openBoxInfo = async name => {
+    setBoxInfoName(name); setBoxInfoTable(null);
+    try {
+      const res = await fetch(API_BASE + '/boxes/table?name=' + encodeURIComponent(name));
+      const data = await res.json();
+      if (!data.error) setBoxInfoTable(data);
+    } catch { /* table stays unavailable */ }
+  };
+  const boxInfoCtx = useMemo(() => ({ byName: new Map(boxes.map(b => [b.name, b])), open: openBoxInfo }), [boxes]);
   const [boxStatus,      setBoxStatus]      = useState({});    // name -> {rows|error} from the last load/save
   const [jqLibBoxes,     setJqLibBoxes]     = useState([]);    // editor buffer: box declarations
   const [boxesMsg,       setBoxesMsg]       = useState('');
@@ -2255,8 +2288,8 @@ export default function App() {
               <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
                 <span style={{ color: '#aaa' }} title="Boxes declared in the loaded libraries, compiled on load and on save">boxes:</span>
                 {boxes.map(b => (
-                  <span key={b.name} title={`${b.lib}: ${b.formula}\n${b.uncovered_paths} uncovered paths → ${b.rows} rows`} style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e3f2fd',
+                  <span key={b.name} title={boxTooltip(b)} onClick={() => openBoxInfo(b.name)} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e3f2fd', cursor: 'pointer',
                     border: '1px solid #90caf9', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontFamily: 'monospace',
                   }}>
                     {b.name}({[...(b.params ?? b.vars), ...(b.expose ?? [])].join(';')}) <span style={{ color: '#666' }}>· {b.rows} rows</span>
@@ -2266,6 +2299,54 @@ export default function App() {
               </div>
             )}
 
+            {boxInfoName && (() => {
+              const b = boxes.find(x => x.name === boxInfoName);
+              if (!b) return null;
+              const families = [...(b.params ?? b.vars), ...(b.expose ?? [])];
+              const t = boxInfoTable;
+              const cell = c => c === 1 || c === true ? '1' : c === 0 || c === false ? '0' : '·';
+              return (
+                <div onClick={() => setBoxInfoName(null)} style={{
+                  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+                  zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <div onClick={e => e.stopPropagation()} style={{
+                    background: '#fff', borderRadius: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+                    width: 'min(780px, 92vw)', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                  }}>
+                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <b style={{ fontFamily: 'monospace', fontSize: 15 }}>{boxInterface(b)}</b>
+                      <span style={{ color: '#888', fontSize: 12 }}>{b.lib}</span>
+                      <span style={{ flex: 1 }} />
+                      <button onClick={() => setBoxInfoName(null)} title="Close" style={{ border: 'none', background: 'none', fontSize: 16, cursor: 'pointer', color: '#666' }}>✕</button>
+                    </div>
+                    <div style={{ padding: '10px 14px', overflow: 'auto', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {b.decl && <div><span style={{ color: '#888' }}>declaration&nbsp; </span><code style={{ fontSize: 13 }}>{b.decl}</code></div>}
+                      <div>
+                        <span style={{ color: '#888' }}>definition</span>
+                        <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', fontFamily: 'Georgia, serif', fontSize: 14 }}>{formatFormula(b.formula)}</pre>
+                      </div>
+                      <div>
+                        <span style={{ color: '#888' }}>interface&nbsp; </span>
+                        {families.map((f, fi) => {
+                          const members = b.vars.filter(v => familyOf(v, families) === fi);
+                          return <span key={f} style={{ marginRight: 12 }}><b>{f}</b>{members.length ? <>: {members.map((m, i) => <span key={m}>{i > 0 && ', '}<VarLabel name={m} /></span>)}</> : ' (no variables)'}</span>;
+                        })}
+                      </div>
+                      {b.internals?.length > 0 && <div><span style={{ color: '#888' }}>hidden (∃)&nbsp; </span>{b.internals.map((m, i) => <span key={m}>{i > 0 && ', '}<VarLabel name={m} /></span>)}</div>}
+                      <div><span style={{ color: '#888' }}>table&nbsp; </span>{b.rows} rows over {b.vars.length} columns — {b.uncovered_paths} uncovered paths of the complement, canonicalized; negation: {b.rows_neg ?? '?'} rows</div>
+                      {t?.rows && (t.rows.length <= 256 ? (
+                        <table style={{ borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 12, alignSelf: 'flex-start' }}>
+                          <thead><tr>{t.vars.map(v => <th key={v} style={{ padding: '2px 7px', borderBottom: '1px solid #bbb', fontWeight: 'normal', fontFamily: 'Georgia, serif', fontSize: 13 }}><VarLabel name={v} /></th>)}</tr></thead>
+                          <tbody>{t.rows.map((r, ri) => <tr key={ri} style={{ background: ri % 2 ? '#f7f7fb' : undefined }}>{r.map((c, ci) => <td key={ci} style={{ padding: '1px 7px', textAlign: 'center', color: c === null ? '#bbb' : undefined }}>{cell(c)}</td>)}</tr>)}</tbody>
+                        </table>
+                      ) : <div style={{ color: '#888' }}>{t.rows.length} rows — too many to list here</div>)}
+                      {!t && <div style={{ color: '#aaa' }}>loading table…</div>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
             {jqLibViewing && (() => {
               const savedDeps = jqLibViewing.deps ?? [];
               const depsChanged = jqLibDeps.length !== savedDeps.length
@@ -2850,6 +2931,7 @@ export default function App() {
           </div>
           <ZoomPanWrapper key={input} bg={complementData ? '#f0fafa' : '#f8f9fc'} border={complementData ? '1px solid #a0d4d4' : '1px solid #dde'} opacity={error ? 0.5 : 1} rotated={!!complementData} recenterKey={boxAware}>
             <DiagramWithConnections
+              boxInfo={boxInfoCtx}
               node={ast}
               complementView={!!complementData}
               coverGroups={pathsResult?.coverGroups ?? (complementData ? satResult?.coverGroups : validResult?.coverGroups) ?? null}

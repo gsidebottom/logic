@@ -3356,7 +3356,13 @@ export default function App() {
                       .filter(v => !hiddenBases.has(baseOf(v)))
                       .map(v => ({ name: v, val: asgn[v] }));
                     const aLong = asgnEntries.length > 10;
-                    const allVars = ast ? extractVars(ast).filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder)) : [];
+                    // Numeric views group bits by base; a box atom is a single boolean, not a bit — keep it to the entry list.
+                    const numEntries = asgnEntries.filter(e => !isBoxLabel(e.name));
+                    // Value string over the formula's real variables (the expanded
+                    // formula: in box-aware mode the diagram AST holds box atoms, not
+                    // the call arguments the witness assigns); box atoms are listed as
+                    // `name(args)=1` entries above, not as number groups.
+                    const allVars = expandedAst ? extractVars(expandedAst).filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder)) : [];
                     const valueStr = spacedVals(allVars.map(v => ({ name: v, val: v in asgn ? asgn[v] : '-' })), decimalValues, reverseBaseOrder);
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
@@ -3374,8 +3380,8 @@ export default function App() {
                             style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
                         </>}
                         {validAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
-                          {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
-                          {' = '}{spacedVals(asgnEntries, decimalValues, reverseBaseOrder)}
+                          {numEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
+                          {' = '}{spacedVals(numEntries, decimalValues, reverseBaseOrder)}
                         </b>}
                         {validAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
                       </span>
@@ -3530,6 +3536,8 @@ export default function App() {
                     name: allVarsRaw[varIdx] ?? `v${varIdx}`, val: neg ? '0' : '1',
                   })).filter(e => !hiddenBases.has(baseOf(e.name))).sort((a, b) => cmpVarName(a.name, b.name, reverseBaseOrder));
                   const aLong = asgnEntries.length > 10;
+                    // Numeric views group bits by base; a box atom is a single boolean, not a bit — keep it to the entry list.
+                    const numEntries = asgnEntries.filter(e => !isBoxLabel(e.name));
                   const allVars = allVarsRaw.filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder));
                   const valueStr = spacedVals(allVars.map(v => {
                     const e = asgnEntries.find(a => a.name === v);
@@ -3614,7 +3622,13 @@ export default function App() {
                       .filter(v => !hiddenBases.has(baseOf(v)))
                       .map(v => ({ name: v, val: asgn[v] }));
                     const aLong = asgnEntries.length > 10;
-                    const allVars = ast ? extractVars(ast).filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder)) : [];
+                    // Numeric views group bits by base; a box atom is a single boolean, not a bit — keep it to the entry list.
+                    const numEntries = asgnEntries.filter(e => !isBoxLabel(e.name));
+                    // Value string over the formula's real variables (the expanded
+                    // formula: in box-aware mode the diagram AST holds box atoms, not
+                    // the call arguments the witness assigns); box atoms are listed as
+                    // `name(args)=1` entries above, not as number groups.
+                    const allVars = expandedAst ? extractVars(expandedAst).filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder)) : [];
                     const valueStr = spacedVals(allVars.map(v => ({ name: v, val: v in asgn ? asgn[v] : '-' })), decimalValues, reverseBaseOrder);
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
@@ -3632,8 +3646,8 @@ export default function App() {
                             style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
                         </>}
                         {satAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
-                          {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
-                          {' = '}{spacedVals(asgnEntries, decimalValues, reverseBaseOrder)}
+                          {numEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
+                          {' = '}{spacedVals(numEntries, decimalValues, reverseBaseOrder)}
                         </b>}
                         {satAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
                       </span>
@@ -3892,6 +3906,8 @@ export default function App() {
                     name: allVarsRaw[varIdx] ?? `v${varIdx}`, val: neg ? '0' : '1',
                   })).filter(e => !hiddenBases.has(baseOf(e.name))).sort((a, b) => cmpVarName(a.name, b.name, reverseBaseOrder));
                   const aLong = asgnEntries.length > 10;
+                    // Numeric views group bits by base; a box atom is a single boolean, not a bit — keep it to the entry list.
+                    const numEntries = asgnEntries.filter(e => !isBoxLabel(e.name));
                   const allVars = allVarsRaw.filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder));
                   const valueStr = spacedVals(allVars.map(v => {
                     const e = asgnEntries.find(a => a.name === v);

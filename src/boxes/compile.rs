@@ -5,6 +5,7 @@
 //! Design: `doc/box_backend_design.md` §5.
 
 use std::collections::{HashMap, HashSet};
+use super::expand::family_of;
 
 use super::TableBox;
 use crate::controller::SmartController;
@@ -14,6 +15,10 @@ use crate::matrix::{DynOnClass, Lit, Matrix, PathParams, PathsClass};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Table {
     pub name: String,
+    /// Interface families in call order (parameters, then exposed families).
+    /// Every column belongs to exactly one (`expand::family_of`).
+    pub params: Vec<String>,
+    /// Columns: the members of each family in turn, in subscript order.
     pub vars: Vec<String>,
     pub rows: Vec<Vec<Option<bool>>>,
     pub formula: String,
@@ -26,6 +31,7 @@ impl Table {
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "name": self.name,
+            "params": self.params,
             "vars": self.vars,
             "rows": self.rows.iter().map(|r| r.iter().map(|c| match c {
                 Some(true) => serde_json::Value::from(1),
@@ -45,6 +51,7 @@ impl Table {
         };
         let vars = strs("vars");
         if vars.is_empty() { return Err("table: missing \"vars\"".into()); }
+        let params = { let p = strs("params"); if p.is_empty() { vars.clone() } else { p } };
         let rows_v = v["rows"].as_array().ok_or("table: missing \"rows\"")?;
         let mut rows = Vec::with_capacity(rows_v.len());
         for r in rows_v {
@@ -58,6 +65,7 @@ impl Table {
             }).collect::<Result<Vec<_>, String>>()?);
         }
         Ok(Table {
+            params,
             name: v["name"].as_str().unwrap_or("box").to_string(),
             vars, rows,
             formula: v["formula"].as_str().unwrap_or("").to_string(),
@@ -125,7 +133,7 @@ impl Table {
             let covered = self.rows.iter().any(|r| r.iter().zip(&asg).all(|(c, &v)| c.is_none_or(|b| b == v)));
             if !covered { rows.push(asg.iter().map(|&v| Some(v)).collect()); }
         }
-        Ok(Table { name: format!("{}'", self.name), vars: self.vars.clone(), rows, formula: format!("({})'", self.formula),
+        Ok(Table { name: format!("{}'", self.name), params: self.params.clone(), vars: self.vars.clone(), rows, formula: format!("({})'", self.formula),
                    internals_projected: self.internals_projected.clone(), uncovered_paths: 0 })
     }
 }
@@ -145,24 +153,54 @@ pub fn implication_box(rows: Vec<Vec<Lit>>, sel: u32, sel_value: bool) -> TableB
     TableBox::new(all)
 }
 
-/// Compile a definition into its table over `cols` (interface + exposed
-/// internals): enumerate the uncovered paths of the complement, decode each
-/// to model polarity, project onto `cols`, dedup.  Must run inside a tokio
-/// runtime; errors if more than `max_uncovered_paths` paths are found.
-pub async fn compile_box(name: &str, formula: &str, cols: &[String], max_uncovered_paths: usize) -> Result<Table, String> {
-    compile_box_polarity(name, formula, cols, max_uncovered_paths, false).await
+/// Sort key for the members of a family: the bare name first, then integer
+/// subscripts numerically (`a_2` before `a_10`, lists lexicographic), then
+/// other subscripts alphabetically.
+fn subscript_key(name: &str, prefix: &str) -> (u8, Vec<i64>, String) {
+    let suffix = name[prefix.len()..].trim_start_matches('_');
+    if suffix.is_empty() { return (0, Vec::new(), String::new()); }
+    match suffix.split(',').map(|p| p.parse::<i64>()).collect::<Result<Vec<_>, _>>() {
+        Ok(nums) => (1, nums, String::new()),
+        Err(_) => (2, Vec::new(), suffix.to_string()),
+    }
+}
+
+/// The interface of a definition over its variables `names`: the families
+/// `params ++ expose` (a family is a name prefix, see `expand::family_of`),
+/// their member columns in subscript order, and the hidden variables.
+pub fn interface_columns(names: &[String], params: &[String], expose: &[String]) -> (Vec<String>, Vec<String>, Vec<String>) {
+    let mut families: Vec<String> = params.to_vec();
+    for e in expose { if !families.contains(e) { families.push(e.clone()); } }
+    let mut cols = Vec::new();
+    for (fi, f) in families.iter().enumerate() {
+        let mut members: Vec<&String> = names.iter().filter(|n| family_of(n, &families) == Some(fi)).collect();
+        members.sort_by_key(|n| subscript_key(n, f));
+        cols.extend(members.into_iter().cloned());
+    }
+    let hidden = names.iter().filter(|n| family_of(n, &families).is_none()).cloned().collect();
+    (families, cols, hidden)
+}
+
+/// Compile a definition into its table over the interface `params ++ expose`
+/// (families of variables — see [`interface_columns`]): enumerate the
+/// uncovered paths of the complement, decode each to model polarity, project
+/// onto the interface columns (every other variable is hidden — ∃), dedup.
+/// Must run inside a tokio runtime; errors if more than `max_uncovered_paths`
+/// paths are found.
+pub async fn compile_box(name: &str, formula: &str, params: &[String], expose: &[String], max_uncovered_paths: usize) -> Result<Table, String> {
+    compile_box_polarity(name, formula, params, expose, max_uncovered_paths, false).await
 }
 
 /// Like [`compile_box`]; with `negate` the table of the *complement* of the
 /// definition is compiled (its uncovered paths are those of the definition's
 /// own NNF).  Only exact when nothing is projected: ¬(∃U.B) ≠ ∃U.¬B — use
 /// [`Table::complement`] for a box with projected internals.
-pub async fn compile_box_polarity(name: &str, formula: &str, cols: &[String], max_uncovered_paths: usize, negate: bool) -> Result<Table, String> {
+pub async fn compile_box_polarity(name: &str, formula: &str, params: &[String], expose: &[String], max_uncovered_paths: usize, negate: bool) -> Result<Table, String> {
     let (names, nnf) = {
         let m = Matrix::try_from(formula.trim()).map_err(|e| format!("{name}: parse error: {e}"))?;
         (m.ast.vars.clone(), if negate { m.nnf.clone() } else { m.nnf_complement.clone() })
     };
-    let internals: Vec<String> = names.iter().filter(|n| !cols.contains(n)).cloned().collect();
+    let (families, cols, internals) = interface_columns(&names, params, expose);
     let col_of: HashMap<String, usize> = cols.iter().enumerate().map(|(i, c)| (c.clone(), i)).collect();
     let params = Some(PathParams {
         paths_class_limit: usize::MAX / 2, uncovered_path_limit: max_uncovered_paths, ..Default::default()
@@ -197,15 +235,15 @@ pub async fn compile_box_polarity(name: &str, formula: &str, cols: &[String], ma
     let mut rows: Vec<Vec<Option<bool>>> = set.into_iter().collect();
     rows.sort();
     Ok(Table {
-        name: name.to_string(), vars: cols.to_vec(), rows,
+        name: name.to_string(), params: families, vars: cols, rows,
         formula: formula.trim().to_string(), internals_projected: internals, uncovered_paths: n,
     })
 }
 
 /// [`compile_box`] on a private runtime, for command-line use.
-pub fn compile_box_blocking(name: &str, formula: &str, cols: &[String], max_uncovered_paths: usize) -> Result<Table, String> {
+pub fn compile_box_blocking(name: &str, formula: &str, params: &[String], expose: &[String], max_uncovered_paths: usize) -> Result<Table, String> {
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| e.to_string())?;
-    rt.block_on(compile_box(name, formula, cols, max_uncovered_paths))
+    rt.block_on(compile_box(name, formula, params, expose, max_uncovered_paths))
 }
 
 #[cfg(test)]
@@ -215,7 +253,7 @@ mod tests {
     #[test]
     fn adder_compiles_to_its_truth_table() {
         let cols: Vec<String> = ["X", "Y", "C1", "Z", "C"].map(String::from).to_vec();
-        let t = compile_box_blocking("full_adder", "(C = X Y + (X ⊕ Y) C1) (Z = X ⊕ Y ⊕ C1)", &cols, 100_000).unwrap();
+        let t = compile_box_blocking("full_adder", "(C = X Y + (X ⊕ Y) C1) (Z = X ⊕ Y ⊕ C1)", &cols, &[], 100_000).unwrap();
         assert_eq!(t.rows.len(), 8);
         for r in &t.rows {
             let v = |i: usize| r[i].unwrap() as u32;
@@ -233,15 +271,15 @@ mod tests {
     fn projection_drops_internals() {
         let cols: Vec<String> = ["X", "Y", "C1", "Z", "C"].map(String::from).to_vec();
         let five = "(U1 = X Y) (U2 = U3 C1) (C = U1+U2) (U3 = X ⊕ Y) (Z = U3 ⊕ C1)";
-        let t = compile_box_blocking("adder", five, &cols, 100_000).unwrap();
+        let t = compile_box_blocking("adder", five, &cols, &[], 100_000).unwrap();
         assert_eq!(t.internals_projected, ["U1", "U2", "U3"].map(String::from).to_vec());
-        let two = compile_box_blocking("full_adder", "(C = X Y + (X ⊕ Y) C1) (Z = X ⊕ Y ⊕ C1)", &cols, 100_000).unwrap();
+        let two = compile_box_blocking("full_adder", "(C = X Y + (X ⊕ Y) C1) (Z = X ⊕ Y ⊕ C1)", &cols, &[], 100_000).unwrap();
         assert_eq!(t.rows, two.rows, "∃U.adder == full_adder as tables");
     }
 
     #[test]
     fn arg_bindings_constants_and_complement() {
-        let t = Table { name: "and".into(), vars: vec!["a".into(), "b".into(), "z".into()],
+        let t = Table { name: "and".into(), params: vec!["a".into(), "b".into(), "z".into()], vars: vec!["a".into(), "b".into(), "z".into()],
             rows: vec![vec![Some(true), Some(true), Some(true)], vec![Some(false), None, Some(false)], vec![None, Some(false), Some(false)]],
             formula: "z = a b".into(), internals_projected: vec![], uncovered_paths: 3 };
         // z = a b with a := x', b := 1, z := y  →  y = x'
@@ -258,5 +296,31 @@ mod tests {
         assert_eq!(ib.rows.len(), 3);
         let mut e = crate::boxes::Engine::new(6, vec![ib, TableBox::clause(&[6]), TableBox::clause(&[1])]);   // atom=true, x=true ⇒ y=false
         match e.solve() { crate::boxes::Verdict::Sat(m) => assert!(!m[1]), v => panic!("{v:?}") }
+    }
+
+    #[test]
+    fn families_group_subscripted_variables_and_hide_the_rest() {
+        let (fam, cols, hidden) = interface_columns(
+            &["b_10", "a_2", "a_0", "c_1", "a", "b_1"].map(String::from), &["a".into(), "b".into()], &[]);
+        assert_eq!(fam, ["a", "b"].map(String::from).to_vec());
+        assert_eq!(cols, ["a", "a_0", "a_2", "b_1", "b_10"].map(String::from).to_vec());   // numeric subscript order
+        assert_eq!(hidden, vec!["c_1".to_string()]);
+        // a 2-bit equality box: 4 columns, 4 rows
+        let t = compile_box_blocking("eq2", "(a_0 = b_0) (a_1 = b_1)", &["a".into(), "b".into()], &[], 100_000).unwrap();
+        assert_eq!(t.params, ["a", "b"].map(String::from).to_vec());
+        assert_eq!(t.vars, ["a_0", "a_1", "b_0", "b_1"].map(String::from).to_vec());
+        assert_eq!(t.rows.len(), 4);
+        // a carry family c_* is hidden unless exposed
+        let f = "(c_1 = a_0 b_0) (s_0 = a_0 ⊕ b_0) (s_1 = c_1 ⊕ a_1 ⊕ b_1)";
+        let h = compile_box_blocking("half2", f, &["a".into(), "b".into(), "s".into()], &[], 100_000).unwrap();
+        assert_eq!(h.internals_projected, vec!["c_1".to_string()]);
+        assert_eq!(h.vars, ["a_0", "a_1", "b_0", "b_1", "s_0", "s_1"].map(String::from).to_vec());
+        assert_eq!(h.rows.len(), 16);
+        let e = compile_box_blocking("half2", f, &["a".into(), "b".into(), "s".into()], &["c".into()], 100_000).unwrap();
+        assert_eq!(e.params, ["a", "b", "s", "c"].map(String::from).to_vec());
+        assert_eq!(e.vars.last().map(String::as_str), Some("c_1"));
+        assert!(e.internals_projected.is_empty());
+        let j = e.to_json(); let back = Table::from_json(&j).unwrap();
+        assert_eq!(back.params, e.params);
     }
 }

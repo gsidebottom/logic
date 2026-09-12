@@ -78,9 +78,7 @@ fn main() {
         if selected.is_empty() { die(format!("{lib}: no box named {}", box_name.unwrap_or_default())); }
         for d in selected {
             let formula = box_formula(&preamble, &d, None).unwrap_or_else(|e| die(e));
-            let mut cols = d.params.clone();
-            for e in &d.expose { if !cols.contains(e) { cols.push(e.clone()); } }
-            let table = compile_box_blocking(&d.name, &formula, &cols, max_paths).unwrap_or_else(|e| die(e));
+            let table = compile_box_blocking(&d.name, &formula, &d.params, &d.expose, max_paths).unwrap_or_else(|e| die(e));
             eprintln!("box-compile: {}: {} uncovered paths -> {} canonical rows over {:?} ({} internal variables projected)", d.name, table.uncovered_paths, table.rows.len(), table.vars, table.internals_projected.len());
             let table = table.to_json();
             let target = match (&out_dir, &out) {
@@ -101,9 +99,7 @@ fn main() {
     };
     let interface = interface.unwrap_or_default();
     if interface.is_empty() { die("--interface required".into()); }
-    let mut cols = interface;
-    for e in &expose { if !cols.contains(e) { cols.push(e.clone()); } }
-    let table = compile_box_blocking(&name, &formula, &cols, max_paths).unwrap_or_else(|e| die(e));
+    let table = compile_box_blocking(&name, &formula, &interface, &expose, max_paths).unwrap_or_else(|e| die(e));
     eprintln!("box-compile: {}: {} uncovered paths -> {} canonical rows over {:?} ({} internal variables projected)", name, table.uncovered_paths, table.rows.len(), table.vars, table.internals_projected.len());
     write_json(&table.to_json(), out.as_deref());
 }

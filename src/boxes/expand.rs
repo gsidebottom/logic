@@ -20,12 +20,25 @@
 //! arguments, so `x,y` is two arguments even though `x,y` is one variable
 //! name in the rest of the language.
 
-use std::collections::HashMap;
+use std::collections::HashSet;
+
+/// The interface family a variable belongs to: the longest parameter `p` with
+/// `name == p` or `name` starting with `p_` (a parameter is a name prefix — a
+/// bit vector `a` owns `a_0, a_1, …`; a plain variable is a family of one).
+pub fn family_of(name: &str, params: &[String]) -> Option<usize> {
+    let mut best: Option<usize> = None;
+    for (i, p) in params.iter().enumerate() {
+        let member = name == p || (name.len() > p.len() && name.starts_with(p.as_str()) && name.as_bytes()[p.len()] == b'_');
+        if member && best.is_none_or(|b| p.len() > params[b].len()) { best = Some(i); }
+    }
+    best
+}
 
 /// What expansion needs to know about a compiled box.
 #[derive(Clone, Debug)]
 pub struct BoxSig {
-    /// The call's arguments bind to these, in order (interface + exposed internals).
+    /// The call's arguments bind to these families, in order (parameters, then
+    /// exposed families).
     pub params: Vec<String>,
     /// Projected internals of the definition: renamed `<name>__<k>` per call site.
     pub internals: Vec<String>,
@@ -137,11 +150,12 @@ fn parse_args(chars: &[char], mut i: usize) -> Option<(Vec<String>, usize, bool)
     }
 }
 
-/// Substitute a call's arguments for the parameters in the definition, and
-/// give the internals call-site-unique names.
+/// Substitute a call's arguments for the parameter families in the definition
+/// (`a_3` with `a := x` becomes `x_3`; a primed argument primes each member; a
+/// constant replaces every member), and give the hidden internals
+/// call-site-unique names.
 fn substitute(sig: &BoxSig, args: &[String], k: usize) -> String {
-    let mut map: HashMap<&str, String> = sig.params.iter().zip(args).map(|(p, a)| (p.as_str(), a.clone())).collect();
-    for v in &sig.internals { map.entry(v.as_str()).or_insert_with(|| format!("{v}__{k}")); }
+    let internals: HashSet<&str> = sig.internals.iter().map(String::as_str).collect();
     let chars: Vec<char> = sig.formula.chars().collect();
     let (mut out, mut i) = (String::new(), 0);
     while i < chars.len() {
@@ -149,7 +163,14 @@ fn substitute(sig: &BoxSig, args: &[String], k: usize) -> String {
         let prev_is_name = i > 0 && (is_name_char(chars[i - 1]) || chars[i - 1] == '\'');
         if c.is_ascii_alphabetic() && !prev_is_name {
             let (name, j) = read_name(&chars, i, false);
-            out.push_str(map.get(name.as_str()).map(String::as_str).unwrap_or(&name));
+            let rep = if let Some(fi) = family_of(&name, &sig.params) {
+                let suffix = &name[sig.params[fi].len()..];
+                let a = &args[fi];
+                if a == "0" || a == "1" { a.clone() }
+                else if let Some(base) = a.strip_suffix('\'') { format!("{base}{suffix}'") }
+                else { format!("{a}{suffix}") }
+            } else if internals.contains(name.as_str()) { format!("{name}__{k}") } else { name.clone() };
+            out.push_str(&rep);
             i = j;
         } else { out.push(c); i += 1; }
     }
@@ -249,6 +270,12 @@ mod tests {
                 params: ["a", "b", "s"].map(String::from).to_vec(), internals: vec!["c".into()],
                 formula: "fa(a, b, 0, s, c)".into() }),
             "loop" => Some(BoxSig { params: vec!["x".into()], internals: vec![], formula: "loop(x)".into() }),
+            "eq2" => Some(BoxSig {   // a bit-vector box: parameters are prefixes
+                params: ["a", "b"].map(String::from).to_vec(), internals: vec![],
+                formula: "(a_0 = b_0) (a_1 = b_1)".into() }),
+            "half2" => Some(BoxSig {   // hidden carry family c_*
+                params: ["a", "b", "s"].map(String::from).to_vec(), internals: vec!["c_1".into()],
+                formula: "(c_1 = a_0 b_0) (s_0 = a_0 ⊕ b_0) (s_1 = c_1 ⊕ a_1 ⊕ b_1)".into() }),
             _ => None,
         }
     }
@@ -289,6 +316,19 @@ mod tests {
                    "((d_0,1 e_0,2 + (d_0,1 ⊕ e_0,2) c = t) (d_0,1 ⊕ e_0,2 ⊕ c = s))");
         assert_eq!(expand_box_calls("two(a, b, s)", &lib).unwrap(),
                    "(((a b + (a ⊕ b) 0 = c__1) (a ⊕ b ⊕ 0 = s)))");
+    }
+
+    #[test]
+    fn families_bind_by_prefix() {
+        assert_eq!(expand_box_calls("eq2(x, y)", &lib).unwrap(), "((x_0 = y_0) (x_1 = y_1))");
+        assert_eq!(expand_box_calls("eq2(x', 0)", &lib).unwrap(), "((x_0' = 0) (x_1' = 0))");
+        assert_eq!(expand_box_calls("half2(p, q, r)", &lib).unwrap(),
+                   "((c_1__1 = p_0 q_0) (r_0 = p_0 ⊕ q_0) (r_1 = c_1__1 ⊕ p_1 ⊕ q_1))");
+        let fams = ["c", "c_in", "s"].map(String::from).to_vec();
+        assert_eq!(family_of("c_in", &fams), Some(1));      // longest match wins
+        assert_eq!(family_of("c_in_2", &fams), Some(1));
+        assert_eq!(family_of("c_3", &fams), Some(0));
+        assert_eq!(family_of("cs", &fams), None);
     }
 
     #[test]

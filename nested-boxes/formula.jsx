@@ -242,14 +242,36 @@ function parseArgs(str, i) {           // str[i] === '('
     else return null;
   }
 }
+/** The interface family a variable belongs to: the longest parameter `p` with
+ *  name === p or name starting with `p_` (a parameter is a name prefix — a bit
+ *  vector `a` owns a_0, a_1, …; a plain variable is a family of one). */
+export function familyOf(name, params) {
+  let best = -1;
+  params.forEach((p, i) => {
+    const member = name === p || (name.length > p.length && name.startsWith(p) && name[p.length] === '_');
+    if (member && (best === -1 || p.length > params[best].length)) best = i;
+  });
+  return best;
+}
+// Substitute the call's arguments for the parameter families (`a_3` with
+// a := x becomes x_3; a primed argument primes each member; a constant
+// replaces every member); hidden internals get call-site-unique names.
 function substitute(sig, args, k) {
-  const map = new Map(sig.params.map((p, j) => [p, args[j]]));
-  for (const v of sig.internals) if (!map.has(v)) map.set(v, `${v}__${k}`);
+  const internals = new Set(sig.internals);
   let out = '', i = 0;
   const f = sig.formula;
   while (i < f.length) {
     const prevIsName = i > 0 && (isNameChar(f[i - 1]) || f[i - 1] === "'");
-    if (/[A-Za-z]/.test(f[i]) && !prevIsName) { const [name, j] = readName(f, i, false); out += map.get(name) ?? name; i = j; }
+    if (/[A-Za-z]/.test(f[i]) && !prevIsName) {
+      const [name, j] = readName(f, i, false);
+      const fi = familyOf(name, sig.params);
+      let rep;
+      if (fi !== -1) {
+        const suffix = name.slice(sig.params[fi].length), a = args[fi];
+        rep = (a === '0' || a === '1') ? a : a.endsWith("'") ? a.slice(0, -1) + suffix + "'" : a + suffix;
+      } else rep = internals.has(name) ? `${name}__${k}` : name;
+      out += rep; i = j;
+    }
     else { out += f[i]; i++; }
   }
   return out;
@@ -291,7 +313,8 @@ function expandRec(text, lookup, counter, depth) {
   });
 }
 const lookupOf = boxes => {
-  const m = new Map((boxes ?? []).map(b => [b.name, { params: b.vars, internals: b.internals ?? [], formula: b.formula }]));
+  // `params` (+ `expose`) are the call's families; `vars` are the table columns.
+  const m = new Map((boxes ?? []).map(b => [b.name, { params: b.params ? [...b.params, ...(b.expose ?? [])] : b.vars, internals: b.internals ?? [], formula: b.formula }]));
   return name => m.get(name);
 };
 /** Expand box calls against `boxes` ([{name, vars, internals, formula}], as served by GET /boxes). */

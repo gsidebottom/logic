@@ -222,8 +222,15 @@ pub const BOXES_END_MARKER: &str = "# === end boxes ===";
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BoxDecl {
     pub name: String,
+    /// Interface parameters.  Each is a *family* prefix: it binds the variable
+    /// named like it and every `p_<subscript>` the definition generates.
     pub params: Vec<String>,
+    /// Hidden families to add to the interface (after `params`, in this order).
     pub expose: Vec<String>,
+    /// Optional jq expression defining the box (`:= …`); each parameter is
+    /// bound to its name as a zero-arity definition while it is evaluated.
+    /// `None` means the definition is the jq function `name(p1;…;pn)`.
+    pub rhs: Option<String>,
 }
 
 /// Split the `# === boxes ===` … `# === end boxes ===` block out of a library's
@@ -259,7 +266,13 @@ pub fn join_boxes(content: &str, decls: &[String]) -> String {
     out
 }
 
-/// Parse one declaration, `name(p1;p2;…) [expose v1,v2]`.
+/// Is `s` a jq-style identifier (usable as a zero-arity `def`)?
+fn is_ident(s: &str) -> bool {
+    let mut cs = s.chars();
+    matches!(cs.next(), Some(c) if c.is_ascii_alphabetic() || c == '_') && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Parse one declaration, `name(p1;p2;…) [:= <jq expression>] [expose f1,f2]`.
 pub fn parse_box_decl(body: &str) -> Result<BoxDecl, String> {
     let body = body.trim().strip_prefix('#').map(str::trim).unwrap_or(body.trim());
     let open = body.find('(').ok_or("expected name(params…)")?;
@@ -267,14 +280,25 @@ pub fn parse_box_decl(body: &str) -> Result<BoxDecl, String> {
     let name = body[..open].trim().to_string();
     let params: Vec<String> = body[open + 1..close].split(';').map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect();
     let rest = body[close + 1..].trim();
-    let expose: Vec<String> = match rest.strip_prefix("expose") {
-        Some(r) => r.split(',').map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect(),
-        None if rest.is_empty() => Vec::new(),
-        None => return Err(format!("unexpected text after the parameter list: {rest}")),
+    // `expose …` is the last clause; what precedes it may be `:= <jq expression>`.
+    let (rhs_part, expose_part): (&str, Option<&str>) = match rest.rfind(" expose ") {
+        Some(i) => (&rest[..i], Some(&rest[i + 8..])),
+        None => match rest.strip_prefix("expose ") { Some(r) => ("", Some(r)), None => (rest, None) },
     };
+    let rhs_part = rhs_part.trim();
+    let rhs = match rhs_part.strip_prefix(":=") {
+        Some(r) if r.trim().is_empty() => return Err(format!("{name}: empty definition after `:=`")),
+        Some(r) => Some(r.trim().to_string()),
+        None if rhs_part.is_empty() => None,
+        None => return Err(format!("unexpected text after the parameter list: {rhs_part}")),
+    };
+    let expose: Vec<String> = expose_part.map(|r| r.split(',').map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect()).unwrap_or_default();
     if name.is_empty() || name.contains(char::is_whitespace) { return Err(format!("bad box name in {body:?}")); }
     if params.is_empty() { return Err(format!("{name}: a box needs at least one parameter")); }
-    Ok(BoxDecl { name, params, expose })
+    for p in params.iter().chain(&expose) {
+        if !is_ident(p) { return Err(format!("{name}: parameter {p:?} must be an identifier (letters, digits, `_`)")); }
+    }
+    Ok(BoxDecl { name, params, expose, rhs })
 }
 
 /// All declarations in a library's content (its `# === boxes ===` block).
@@ -284,16 +308,24 @@ pub fn parse_boxes(content: &str) -> Result<Vec<BoxDecl>, String> {
         .collect()
 }
 
-/// The formula text of a declared box: call its jq definition with the formal
-/// parameter names (or `args`) as the variable names.
+/// The formula text of a declared box.  Each parameter becomes a zero-arity
+/// jq definition bound to its own name (or the given argument), so the
+/// right-hand side — or the default call `name(p1;…;pn)` — can pass it to
+/// any generator next to literals: `eq4(a;b) := eq(a;b;4)` evaluates
+/// `def a: "a"; def b: "b"; eq(a;b;4)`.
 pub fn box_formula(preamble: &str, decl: &BoxDecl, args: Option<&[String]>) -> Result<String, String> {
     let names: Vec<String> = match args {
         Some(a) if a.len() == decl.params.len() => a.to_vec(),
         Some(a) => return Err(format!("{}: expects {} arguments, got {}", decl.name, decl.params.len(), a.len())),
         None => decl.params.clone(),
     };
-    let call = format!("{}({})", decl.name, names.iter().map(|n| format!("\"{n}\"")).collect::<Vec<_>>().join(";"));
-    let vals = run_filter(preamble, &call)?;
+    let mut program = String::new();
+    for (p, n) in decl.params.iter().zip(&names) { program.push_str(&format!("def {p}: \"{n}\"; ")); }
+    match &decl.rhs {
+        Some(r) => program.push_str(r),
+        None => program.push_str(&format!("{}({})", decl.name, decl.params.join(";"))),
+    }
+    let vals = run_filter(preamble, &program)?;
     match vals.as_slice() {
         [serde_json::Value::String(s)] => Ok(s.clone()),
         [] => Err(format!("{}: the definition produced no output", decl.name)),
@@ -311,8 +343,14 @@ mod tests {
         let c = "def x: 1;\n# === boxes ===\n# full_adder(x;y;c_in;s;c_out)\n# adder(a;b;c_in;s;c_out;u1;u2;u3) expose u1, u2,u3\n# === end boxes ===\ndef y: 2;\n";
         let d = parse_boxes(c).unwrap();
         assert_eq!(d.len(), 2);
-        assert_eq!(d[0], BoxDecl { name: "full_adder".into(), params: ["x","y","c_in","s","c_out"].map(String::from).to_vec(), expose: vec![] });
+        assert_eq!(d[0], BoxDecl { name: "full_adder".into(), params: ["x","y","c_in","s","c_out"].map(String::from).to_vec(), expose: vec![], rhs: None });
         assert_eq!(d[1].expose, ["u1","u2","u3"].map(String::from).to_vec());
+        let g = parse_box_decl("eq4(a;b) := eq(a;b;4)").unwrap();
+        assert_eq!((g.params.len(), g.rhs.as_deref(), g.expose.len()), (2, Some("eq(a;b;4)"), 0));
+        let g = parse_box_decl("add4(a;b;s) := add(a; b; s; 4) expose c").unwrap();
+        assert_eq!((g.rhs.as_deref(), g.expose.clone()), (Some("add(a; b; s; 4)"), vec!["c".to_string()]));
+        assert!(parse_box_decl("f(a;b) := ").is_err());
+        assert!(parse_box_decl("f(a,b;c)").is_err());   // `a,b` is not an identifier
         assert!(parse_boxes("# === boxes ===\nnot a declaration\n# === end boxes ===").is_err());
     }
 
@@ -335,8 +373,13 @@ mod tests {
     fn run_filter_and_box_formula() {
         let pre = "def sum(s): [s] | join(\" + \");\ndef full_adder(x;y): sum(x, y);\n";
         assert_eq!(run_filter(pre, "full_adder(\"a\";\"b\")").unwrap(), vec![serde_json::json!("a + b")]);
-        let d = BoxDecl { name: "full_adder".into(), params: vec!["x".into(), "y".into()], expose: vec![] };
+        let d = BoxDecl { name: "full_adder".into(), params: vec!["x".into(), "y".into()], expose: vec![], rhs: None };
         assert_eq!(box_formula(pre, &d, None).unwrap(), "x + y");
         assert_eq!(box_formula(pre, &d, Some(&["P".to_string(), "Q".to_string()])).unwrap(), "P + Q");
+        // a right-hand side with a literal argument, parameters bound as definitions
+        let pre2 = "def sum(s): [s] | join(\" + \");\ndef rep(a; n): sum(range(n) | \"\\(a)_\\(.)\");\n";
+        let g = BoxDecl { name: "rep2".into(), params: vec!["a".into()], expose: vec![], rhs: Some("rep(a; 2)".into()) };
+        assert_eq!(box_formula(pre2, &g, None).unwrap(), "a_0 + a_1");
+        assert_eq!(box_formula(pre2, &g, Some(&["x".to_string()])).unwrap(), "x_0 + x_1");
     }
 }

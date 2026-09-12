@@ -2259,7 +2259,7 @@ export default function App() {
                     display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e3f2fd',
                     border: '1px solid #90caf9', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontFamily: 'monospace',
                   }}>
-                    {b.name}({b.vars.join(',')}) <span style={{ color: '#666' }}>· {b.rows} rows</span>
+                    {b.name}({[...(b.params ?? b.vars), ...(b.expose ?? [])].join(';')}) <span style={{ color: '#666' }}>· {b.rows} rows</span>
                   </span>
                 ))}
                 {boxesMsg && <span style={{ color: '#c00' }}>{boxesMsg}</span>}
@@ -2480,7 +2480,7 @@ export default function App() {
                             value={decl}
                             spellCheck={false}
                             onChange={e => { const next = [...jqLibBoxes]; next[i] = e.target.value; setJqLibBoxes(next); setJqLibSaveError(''); }}
-                            placeholder="full_adder(x;y;c_in;s;c_out)"
+                            placeholder="full_adder(x;y;c_in;s;c_out)  or  eq4(a;b) := eq(a;b;4) expose c"
                             style={{
                               flex: 1, padding: '3px 8px', fontSize: 12, fontFamily: 'monospace',
                               border: '1px solid #ccc', borderRadius: 4,

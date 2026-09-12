@@ -361,6 +361,25 @@ them out.  **Decided (2026-09-06): both as sketched.**  The `# === tests ===` bl
 that the compiled table equals the definition's projection — the check that
 produced the result below.
 
+**Generalized declarations** (2026-09-12).  `name(p1;…;pn) [:= <jq expression>]
+[expose f1,f2]`:
+
+* **Right-hand side.**  With `:=`, the box is the formula produced by the jq
+  expression; each parameter is bound to its own name as a zero-arity
+  definition while it is evaluated (`def a: "a"; def b: "b"; eq(a;b;4)`), so
+  generators take parameters next to literals: `eq4(a;b) := eq(a;b;4)`.
+  Without `:=`, the definition is the jq function `name(p1;…;pn)` as before.
+* **Parameters are families.**  A parameter `p` binds the variable `p` and
+  every `p_<subscript>` the definition generates (`expand::family_of`, longest
+  prefix wins, so `c_in` is not a member of `c`).  Table columns are the
+  members of each family in subscript order; a call `eq4(x, y)` binds by
+  prefix, `a_i → x_i`, a primed argument primes every member, a constant
+  applies to every member.  A plain variable is a family of one, which is the
+  old behaviour.
+* **Hidden by construction.**  Every generated variable that belongs to no
+  family is hidden (∃-projected); `expose c` adds the family `c` to the
+  interface as a further call parameter after the declared ones.
+
 ### 5.2 Compilation pipeline
 
 ```

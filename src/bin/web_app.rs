@@ -9,7 +9,7 @@ use axum::{
 use logic::matrix::{PathClassificationHandle, Matrix, Lit};
 use logic::jqlib::{split_file, join_file, split_boxes, join_boxes, resolve_preamble, parse_box_decl, box_formula};
 use logic::boxes::compile::{compile_box, Table};
-use logic::boxes::expand::{expand_box_calls, atomize_box_calls, Arg, BoxCall, BoxSig};
+use logic::boxes::expand::{expand_box_calls, atomize_box_calls, family_of, Arg, BoxCall, BoxSig};
 use logic::boxes::compile::{compile_box_polarity, ArgBinding};
 use logic::boxes::controller::{BoxAwareController, BoxTables, CallBoxes};
 use logic::boxes::TableBox;
@@ -156,7 +156,7 @@ struct AppState {
 fn expand_formula(state: &AppState, formula: &str) -> Result<String, String> {
     let store = state.compiled_boxes.lock().unwrap().clone();
     expand_box_calls(formula, &|name| store.iter().find(|b| b.name == name).map(|b| BoxSig {
-        params: b.vars.clone(), internals: b.internals.clone(), formula: b.formula.clone(),
+        params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone(),
     }))
 }
 
@@ -173,7 +173,7 @@ struct BoxContext {
 fn build_box_context(state: &AppState, formula: &str) -> Result<(String, BoxContext), String> {
     let store = state.compiled_boxes.lock().unwrap().clone();
     let at = atomize_box_calls(formula, &|name| store.iter().find(|b| b.name == name).map(|b| BoxSig {
-        params: b.vars.clone(), internals: b.internals.clone(), formula: b.formula.clone(),
+        params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone(),
     }))?;
     let mut boxes = HashMap::new();
     for c in &at.calls {
@@ -197,11 +197,23 @@ impl VarAlloc {
         self.index.insert(name.to_string(), i);
         i
     }
-    fn bind(&mut self, args: &[Arg]) -> Vec<ArgBinding> {
-        args.iter().map(|a| match a {
-            Arg::Const(b) => ArgBinding::Const(*b),
-            Arg::Var { name, neg } => ArgBinding::Var { id: self.id(name), neg: *neg },
-        }).collect()
+    /// One binding per table column: the call's argument for the column's
+    /// family, with the column's subscript carried over (`a_3` bound to `x`
+    /// is `x_3`; a constant applies to every member).
+    fn bind_columns(&mut self, table: &Table, args: &[Arg]) -> Result<Vec<ArgBinding>, String> {
+        let mut out = Vec::with_capacity(table.vars.len());
+        for col in &table.vars {
+            let fi = family_of(col, &table.params).ok_or_else(|| format!("{}: column {col} belongs to no parameter", table.name))?;
+            let a = args.get(fi).ok_or_else(|| format!("{}: no argument for {}", table.name, table.params[fi]))?;
+            out.push(match a {
+                Arg::Const(b) => ArgBinding::Const(*b),
+                Arg::Var { name, neg } => {
+                    let suffix = &col[table.params[fi].len()..];
+                    ArgBinding::Var { id: self.id(&format!("{name}{suffix}")), neg: *neg }
+                }
+            });
+        }
+        Ok(out)
     }
 }
 
@@ -219,7 +231,7 @@ fn build_box_tables(ctx: &BoxContext, m: &mut Matrix) -> Result<(BoxTables, Vec<
         let atom = *m.ast.var_index.get(&call.atom).ok_or_else(|| format!("internal: atom {} missing", call.atom))?;
         m.ast.vars[atom as usize] = call.label.clone();
         alloc.names[atom as usize] = call.label.clone();
-        let b = alloc.bind(&call.args);
+        let b = alloc.bind_columns(&cb.table, &call.args)?;
         for a in &b { if let ArgBinding::Var { id, .. } = a && !arg_vars.contains(id) { arg_vars.push(*id); } }
         let pos = TableBox::new(cb.table.instantiate_args(&b)?);
         let neg = TableBox::new(cb.table_neg.as_ref()
@@ -411,16 +423,14 @@ async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, t
         let formula = {
             let store = state.compiled_boxes.lock().unwrap().clone();
             let lookup = |name: &str| compiled_now.iter().chain(store.iter()).find(|b: &&CompiledBox| b.name == name)
-                .map(|b| BoxSig { params: b.vars.clone(), internals: b.internals.clone(), formula: b.formula.clone() });
+                .map(|b| BoxSig { params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone() });
             match expand_box_calls(&formula, &lookup) {
                 Ok(f) => f,
                 Err(e) => { statuses.push(serde_json::json!({ "name": d.name, "error": format!("definition: {e}") })); continue; }
             }
         };
-        let mut cols = d.params.clone();
-        for e in &d.expose { if !cols.contains(e) { cols.push(e.clone()); } }
         let dur = std::time::Duration::from_secs(timeout_secs);
-        let fut = compile_box(&d.name, &formula, &cols, max_paths);
+        let fut = compile_box(&d.name, &formula, &d.params, &d.expose, max_paths);
         match tokio::time::timeout(dur, fut).await {
             Err(_) => statuses.push(serde_json::json!({ "name": d.name, "error": format!("compile timed out after {timeout_secs} s") })),
             Ok(Err(e)) => statuses.push(serde_json::json!({ "name": d.name, "error": e })),
@@ -428,14 +438,14 @@ async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, t
                 // The negative table (§2.2: two tables per box).  Exact from the
                 // definition's own NNF only when nothing is projected.
                 let table_neg: Option<Table> = if table.internals_projected.is_empty() {
-                    match tokio::time::timeout(dur, compile_box_polarity(&d.name, &formula, &cols, max_paths, true)).await {
+                    match tokio::time::timeout(dur, compile_box_polarity(&d.name, &formula, &d.params, &d.expose, max_paths, true)).await {
                         Ok(Ok(t)) => Some(t),
                         _ => table.complement(20).ok(),
                     }
                 } else { table.complement(20).ok() };
                 let rows_neg = table_neg.as_ref().map_or(0, |t| t.rows.len());
                 statuses.push(serde_json::json!({
-                    "name": d.name, "vars": table.vars, "rows": table.rows.len(), "rows_neg": rows_neg,
+                    "name": d.name, "params": table.params, "vars": table.vars, "rows": table.rows.len(), "rows_neg": rows_neg,
                     "uncovered_paths": table.uncovered_paths, "formula": table.formula,
                 }));
                 compiled_now.push(CompiledBox {

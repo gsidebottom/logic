@@ -415,4 +415,40 @@ mod tests {
         assert_eq!(box_formula(pre2, &g, None).unwrap(), "a_0 + a_1");
         assert_eq!(box_formula(pre2, &g, Some(&["x".to_string()])).unwrap(), "x_0 + x_1");
     }
+
+    /// Every library under `lib/` has its `# === tests ===` block evaluated
+    /// with the library and its deps as the preamble — the same check the
+    /// web UI runs — and every result must be `true`.  Failures are reported
+    /// by test name (`cargo test library_test_blocks_pass -- --nocapture`
+    /// also prints a per-library summary).
+    #[test]
+    fn library_test_blocks_pass() {
+        let lib_dir = std::path::Path::new("lib");
+        let mut libs: Vec<String> = std::fs::read_dir(lib_dir).expect("lib/ next to Cargo.toml")
+            .filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.ends_with(".jq")).collect();
+        libs.sort();
+        assert!(!libs.is_empty(), "no .jq libraries found in lib/");
+        let (mut failures, mut summary) = (Vec::new(), Vec::new());
+        for name in &libs {
+            let raw = std::fs::read_to_string(lib_dir.join(name)).unwrap();
+            let (_deps, _content, tests) = split_file(&raw);
+            if tests.trim().is_empty() { summary.push(format!("{name}: no tests block")); continue; }
+            let preamble = resolve_preamble(&[name.clone()], &std::collections::HashMap::new(), lib_dir)
+                .unwrap_or_else(|e| panic!("{name}: cannot resolve the library and its deps: {e}"));
+            let results = run_filter(&preamble, &tests)
+                .unwrap_or_else(|e| panic!("{name}: the tests block failed to evaluate: {e}"));
+            // one name per top-level comma-separated entry; only trusted when
+            // the count matches (a test expression may itself contain commas)
+            let names: Vec<&str> = tests.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+            let label = |i: usize| if names.len() == results.len() { names[i].to_string() } else { format!("#{}", i + 1) };
+            let mut failed = 0;
+            for (i, r) in results.iter().enumerate() {
+                if *r != serde_json::Value::Bool(true) { failed += 1; failures.push(format!("{name}: {} → {r}", label(i))); }
+            }
+            summary.push(format!("{name}: {} tests, {failed} failed", results.len()));
+        }
+        eprintln!("{}", summary.join("\n"));
+        assert!(failures.is_empty(), "jq library test failures:\n{}", failures.join("\n"));
+    }
 }

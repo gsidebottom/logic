@@ -366,6 +366,8 @@ def test_at_most: [range(4) | vi("x";.)] | at_most(2) ==
 # v_eq_0_4(x) := prod(v_eq(x; 0; 4))
 # v_eq_1_4(x) := prod(v_eq(x; 1; 4))
 # plus_4(a;b;c) := plus(a; b; c; 4)
+# lt_4(a;b) := lt(a; b; 4)
+# le_4(a;b) := le(a; b; 4)
 # === end boxes ===
 # === tests ===
 test_x_eq_5,

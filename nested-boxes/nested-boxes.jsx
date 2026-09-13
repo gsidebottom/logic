@@ -23,7 +23,8 @@ function boxTooltip(b) {
   lines.push(`= ${b.formula}`);
   lines.push(`columns: ${b.vars.join(', ')}`);
   if (b.internals?.length) lines.push(`hidden (∃): ${b.internals.join(', ')}`);
-  lines.push(`${b.rows} rows (negation: ${b.rows_neg ?? '?'}) — ${b.exact_min ? 'minimum covers' : 'irredundant covers'}; ${b.uncovered_paths} uncovered paths`);
+  const st = (ok, ms) => `${ok ? 'minimum' : 'irredundant'}${ms != null ? `, ${ms} ms` : ''}`;
+  lines.push(`${b.rows} rows (${st(b.exact_min_pos ?? b.exact_min, b.minimize_ms_pos)}); negation: ${b.rows_neg ?? '?'} rows (${st(b.exact_min_neg ?? b.exact_min, b.minimize_ms_neg)}); ${b.uncovered_paths} uncovered paths`);
   if (b.budget_cubes != null) lines.push(`minimization budget: ${b.budget_cubes} cubes, ${b.budget_ms} ms (took ${b.minimize_ms ?? '?'} ms)`);
   lines.push('click for the full definition');
   return lines.join('\n');
@@ -2369,7 +2370,8 @@ export default function App() {
                         })}
                       </div>
                       {b.internals?.length > 0 && <div><span style={{ color: '#888' }}>hidden (∃)&nbsp; </span>{b.internals.map((m, i) => <span key={m}>{i > 0 && ', '}<VarLabel name={m} /></span>)}</div>}
-                      <div><span style={{ color: '#888' }}>table&nbsp; </span>{b.rows} rows over {b.vars.length} columns ({b.exact_min ? 'a minimum cover — exact Quine–McCluskey' : 'an irredundant prime cover'}), from {b.uncovered_paths} uncovered paths of the complement; negation: {b.rows_neg ?? '?'} rows</div>
+                      <div><span style={{ color: '#888' }}>table&nbsp; </span>{b.rows} rows over {b.vars.length} columns — {(b.exact_min_pos ?? b.exact_min) ? 'minimum cover (exact Quine–McCluskey)' : 'irredundant prime cover (over budget)'}{b.minimize_ms_pos != null && `, ${b.minimize_ms_pos} ms`}; from {b.uncovered_paths} uncovered paths of the complement</div>
+          <div><span style={{ color: '#888' }}>negation&nbsp; </span>{b.rows_neg ?? '?'} rows — {(b.exact_min_neg ?? b.exact_min) ? 'minimum cover' : 'irredundant prime cover (over budget)'}{b.minimize_ms_neg != null && `, ${b.minimize_ms_neg} ms`}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ color: '#888' }}>minimization&nbsp; </span>
             <span>budget: cubes</span>
@@ -2382,7 +2384,7 @@ export default function App() {
             <button onClick={() => recomputeBox(b)} disabled={boxRecompute.busy}
                     style={{ padding: '2px 10px', fontSize: 12, border: '1px solid #1a6bcc', borderRadius: 4, background: '#fff', color: '#1a6bcc', cursor: boxRecompute.busy ? 'wait' : 'pointer' }}
                     title="Rewrite the declaration's budget clause, save the library and recompile its boxes">{boxRecompute.busy ? 'recomputing…' : 'Recompute'}</button>
-            <span style={{ color: '#888' }}>took {b.minimize_ms ?? '?'} ms — {b.exact_min ? 'minimum' : 'over budget: irredundant cover kept'}</span>
+            <span style={{ color: '#888' }}>took {b.minimize_ms ?? '?'} ms — table {(b.exact_min_pos ?? b.exact_min) ? 'minimum' : 'over budget'}, negation {(b.exact_min_neg ?? b.exact_min) ? 'minimum' : 'over budget'}</span>
             {boxRecompute.error && <span style={{ color: '#c00' }}>{boxRecompute.error}</span>}
           </div>
                       {t?.rows && (t.rows.length <= 256 ? (

@@ -369,8 +369,13 @@ struct CompiledBox {
     internals: Vec<String>,
     /// Rows of the negative table (models of ¬box over the same columns).
     rows_neg: usize,
-    /// The tables are proven minimum covers (exact Quine–McCluskey).
+    /// Both tables are proven minimum covers (exact Quine–McCluskey).
     exact_min: bool,
+    /// Per table: proven minimum, and milliseconds spent minimizing.
+    exact_min_pos: bool,
+    exact_min_neg: bool,
+    minimize_ms_pos: u64,
+    minimize_ms_neg: u64,
     /// Effective minimization budget (declaration override or default).
     budget_cubes: usize,
     budget_ms: u64,
@@ -455,16 +460,20 @@ async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, t
                 } else { table.complement(20, &budget).ok() };
                 let rows_neg = table_neg.as_ref().map_or(0, |t| t.rows.len());
                 let exact_min = table.exact_min && table_neg.as_ref().is_none_or(|t| t.exact_min);
-                let minimize_ms = table.minimize_ms + table_neg.as_ref().map_or(0, |t| t.minimize_ms);
+                let (exact_min_pos, exact_min_neg) = (table.exact_min, table_neg.as_ref().is_none_or(|t| t.exact_min));
+                let (minimize_ms_pos, minimize_ms_neg) = (table.minimize_ms, table_neg.as_ref().map_or(0, |t| t.minimize_ms));
+                let minimize_ms = minimize_ms_pos + minimize_ms_neg;
                 statuses.push(serde_json::json!({
                     "name": d.name, "params": table.params, "vars": table.vars, "rows": table.rows.len(), "rows_neg": rows_neg,
                     "exact_min": exact_min, "minimize_ms": minimize_ms, "budget_cubes": budget.max_cubes, "budget_ms": budget.time.as_millis() as u64,
+                    "exact_min_pos": exact_min_pos, "exact_min_neg": exact_min_neg, "minimize_ms_pos": minimize_ms_pos, "minimize_ms_neg": minimize_ms_neg,
                     "uncovered_paths": table.uncovered_paths, "formula": table.formula,
                 }));
                 compiled_now.push(CompiledBox {
                     name: d.name.clone(), lib: lib.path.clone(), decl: line.trim().to_string(), params: d.params.clone(), expose: d.expose.clone(),
                     vars: table.vars.clone(), rows: table.rows.len(), uncovered_paths: table.uncovered_paths,
                     formula: table.formula.clone(), internals: table.internals_projected.clone(), rows_neg, exact_min,
+                    exact_min_pos, exact_min_neg, minimize_ms_pos, minimize_ms_neg,
                     budget_cubes: budget.max_cubes, budget_ms: budget.time.as_millis() as u64, minimize_ms, table, table_neg,
                 });
             }

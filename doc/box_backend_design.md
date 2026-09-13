@@ -389,8 +389,11 @@ produced the result below.
 **Minimized tables** (2026-09-13).  After canonicalization, rows are minimized
 (`compile::minimize_rows`).  Up to 14 columns the result is the true minimum:
 Quine–McCluskey prime implicants and an exact cover of the prime-implicant
-chart (essential primes, dominance reductions, branch-and-bound on the cyclic
-core, with work budgets).  Beyond that, or over budget, an irredundant cover by
+chart: essential primes and prime dominance at every node, minterm dominance
+at the root, component decomposition, a greedy prime cover as the initial
+bound, an independent-set lower bound, and branch-and-bound on the least-
+covered minterm of the cyclic core, under work budgets (over budget, the best
+cover found is kept and reported as irredundant, per table).  Beyond that, or over budget, an irredundant cover by
 prime implicants (EXPAND + IRREDUNDANT over the 2^k assignments, k ≤ 20 — the
 same cap as the negative table).  Coverage is unchanged; row counts stop
 depending on how a definition is spelled (`le` as `lt + eq` and `¬lt(b;a)`

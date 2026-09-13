@@ -239,94 +239,188 @@ fn qm_primes(f: &[bool], k: usize, max_cubes: usize) -> Option<Vec<(u32, u32)>> 
     Some(primes)
 }
 
-/// Minimum cover of the prime-implicant chart: essential primes and dominance
-/// reductions, then branch-and-bound on the cyclic core.  `None` if the node
-/// budget is exceeded.
-fn exact_cover(primes: &[(u32, u32)], minterms: &[u32], initial_best: Option<Vec<usize>>, time: std::time::Duration) -> Option<Vec<usize>> {
-    let words = minterms.len().div_ceil(64);
-    let idx_of: HashMap<u32, usize> = minterms.iter().enumerate().map(|(i, &m)| (m, i)).collect();
-    // coverage bitsets over minterm indices
-    let covers: Vec<Vec<u64>> = primes.iter().map(|&(v, m)| {
-        let mut bs = vec![0u64; words];
-        for mi in cube_minterms_vm(v, m) { if let Some(&i) = idx_of.get(&mi) { bs[i / 64] |= 1 << (i % 64); } }
-        bs
-    }).collect();
-    let mut all = vec![0u64; words];
-    for i in 0..minterms.len() { all[i / 64] |= 1 << (i % 64); }
-    let is_empty = |b: &[u64]| b.iter().all(|&w| w == 0);
-    let subset = |a: &[u64], b: &[u64]| a.iter().zip(b).all(|(&x, &y)| x & !y == 0);
-    let count = |b: &[u64]| b.iter().map(|w| w.count_ones() as usize).sum::<usize>();
-    struct S<'a> { covers: &'a [Vec<u64>], best: Option<Vec<usize>>, nodes: usize, deadline: std::time::Instant }
-    fn search(st: &mut S, remaining: Vec<u64>, alive: Vec<usize>, chosen: Vec<usize>,
-              is_empty: &dyn Fn(&[u64]) -> bool, subset: &dyn Fn(&[u64], &[u64]) -> bool, count: &dyn Fn(&[u64]) -> usize) -> bool {
-        st.nodes += 1;
-        if st.nodes & 255 == 0 && std::time::Instant::now() > st.deadline { return false; }
-        let mut remaining = remaining; let mut alive = alive; let mut chosen = chosen;
+// ─── Prime-implicant chart: exact minimum cover ──────────────────────────────
+type Bits = Vec<u64>;
+fn bits_new(n: usize) -> Bits { vec![0; n.div_ceil(64).max(1)] }
+fn bits_set(b: &mut Bits, i: usize) { b[i / 64] |= 1 << (i % 64); }
+fn bits_clear(b: &mut Bits, i: usize) { b[i / 64] &= !(1 << (i % 64)); }
+fn bits_get(b: &Bits, i: usize) -> bool { b[i / 64] >> (i % 64) & 1 == 1 }
+fn bits_and(a: &Bits, b: &Bits) -> Bits { a.iter().zip(b).map(|(x, y)| x & y).collect() }
+fn bits_and_not(a: &Bits, b: &Bits) -> Bits { a.iter().zip(b).map(|(x, y)| x & !y).collect() }
+fn bits_or_into(a: &mut Bits, b: &Bits) { for (x, y) in a.iter_mut().zip(b) { *x |= y; } }
+fn bits_count(a: &Bits) -> usize { a.iter().map(|w| w.count_ones() as usize).sum() }
+fn bits_is_zero(a: &Bits) -> bool { a.iter().all(|&w| w == 0) }
+fn bits_subset(a: &Bits, b: &Bits) -> bool { a.iter().zip(b).all(|(x, y)| x & !y == 0) }
+fn bits_intersects(a: &Bits, b: &Bits) -> bool { a.iter().zip(b).any(|(x, y)| x & y != 0) }
+fn bits_ones(a: &Bits) -> Vec<usize> {
+    let mut out = Vec::new();
+    for (wi, &w) in a.iter().enumerate() { let mut w = w; while w != 0 { out.push(wi * 64 + w.trailing_zeros() as usize); w &= w - 1; } }
+    out
+}
+
+/// The chart: which minterms each prime covers and which primes cover each
+/// minterm, as bitsets, plus the search's time budget.
+struct Chart { covers: Vec<Bits>, primes_of: Vec<Bits>, nmin: usize, nprimes: usize, deadline: std::time::Instant, timed_out: bool, nodes: usize }
+
+impl Chart {
+    /// Essential primes and prime dominance, to a fixpoint.  Forced primes
+    /// are appended to `forced`; `remaining` / `alive` shrink.
+    fn reduce(&self, remaining: &mut Bits, alive: &mut Bits, forced: &mut Vec<usize>) {
         loop {
-            if is_empty(&remaining) {
-                if st.best.as_ref().is_none_or(|b| chosen.len() < b.len()) { st.best = Some(chosen); }
-                return true;
+            let mut changed = false;
+            let mut ess: Vec<usize> = Vec::new();
+            for m in bits_ones(remaining) {
+                let pm = bits_and(&self.primes_of[m], alive);
+                if bits_count(&pm) == 1 { let p = bits_ones(&pm)[0]; if !ess.contains(&p) { ess.push(p); } }
             }
-            if let Some(b) = &st.best && chosen.len() + 1 >= b.len() { return true; }   // cannot beat the best
-            // essential primes: a remaining minterm covered by exactly one alive prime
-            let words = remaining.len();
-            let mut essential: Vec<usize> = Vec::new();
-            for w in 0..words {
-                let mut bits = remaining[w];
-                while bits != 0 {
-                    let t = bits.trailing_zeros() as usize; bits &= bits - 1;
-                    let mut hit = None; let mut n = 0;
-                    for &p in &alive { if st.covers[p][w] >> t & 1 == 1 { n += 1; hit = Some(p); if n > 1 { break; } } }
-                    if n == 0 { return true; }   // uncoverable (cannot happen with all primes)
-                    if n == 1 && let Some(p) = hit && !essential.contains(&p) { essential.push(p); }
+            if !ess.is_empty() {
+                for p in ess { forced.push(p); *remaining = bits_and_not(remaining, &self.covers[p]); bits_clear(alive, p); }
+                changed = true;
+            }
+            if bits_is_zero(remaining) { break; }
+            let al = bits_ones(alive);
+            if al.len() <= 3000 {
+                let cov: Vec<Bits> = al.iter().map(|&p| bits_and(&self.covers[p], remaining)).collect();
+                let cnt: Vec<usize> = cov.iter().map(bits_count).collect();
+                for i in 0..al.len() {
+                    let dominated = cnt[i] == 0 || (0..al.len()).any(|j| j != i && bits_subset(&cov[i], &cov[j]) && (cnt[j] > cnt[i] || j < i));
+                    if dominated { bits_clear(alive, al[i]); changed = true; }
                 }
             }
-            if !essential.is_empty() {
-                for &p in &essential {
-                    chosen.push(p);
-                    for w in 0..words { remaining[w] &= !st.covers[p][w]; }
-                }
-                alive.retain(|p| !essential.contains(p));
-                continue;
-            }
-            // dominance: drop a prime whose remaining coverage is within another's
-            // (quadratic — only while the chart is small)
-            if alive.len() > 1500 { break; }
-            let cov: Vec<(usize, Vec<u64>)> = alive.iter().map(|&p| (p, (0..words).map(|w| st.covers[p][w] & remaining[w]).collect())).collect();
-            let mut keep: Vec<usize> = Vec::new();
-            for (i, (p, c)) in cov.iter().enumerate() {
-                if is_empty(c) { continue; }
-                let dominated = cov.iter().enumerate().any(|(j, (_, d))| j != i && subset(c, d) && (count(d) > count(c) || j < i));
-                if !dominated { keep.push(*p); }
-            }
-            if keep.len() < alive.len() { alive = keep; continue; }
-            break;
+            if !changed { break; }
         }
-        // branch on the minterm with the fewest covering primes
-        let words = remaining.len();
-        let mut best_m: Option<(usize, usize, Vec<usize>)> = None;   // (word, bit, covering primes)
-        for w in 0..words {
-            let mut bits = remaining[w];
-            while bits != 0 {
-                let t = bits.trailing_zeros() as usize; bits &= bits - 1;
-                let ps: Vec<usize> = alive.iter().copied().filter(|&p| st.covers[p][w] >> t & 1 == 1).collect();
-                if best_m.as_ref().is_none_or(|(_, _, b)| ps.len() < b.len()) { best_m = Some((w, t, ps)); }
-            }
-        }
-        let Some((_, _, ps)) = best_m else { return true };
-        for p in ps {
-            let mut rem = remaining.clone();
-            for w in 0..words { rem[w] &= !st.covers[p][w]; }
-            let mut ch = chosen.clone(); ch.push(p);
-            let al: Vec<usize> = alive.iter().copied().filter(|&q| q != p).collect();
-            if !search(st, rem, al, ch, is_empty, subset, count) { return false; }
-        }
-        true
     }
-    let mut st = S { covers: &covers, best: initial_best, nodes: 0, deadline: std::time::Instant::now() + time };
-    let alive: Vec<usize> = (0..primes.len()).collect();
-    if !search(&mut st, all, alive, Vec::new(), &is_empty, &subset, &count) { return None; }
-    st.best
+
+    /// Minterm dominance (root only — quadratic in the minterms): a minterm
+    /// whose covering primes include another's can be dropped.
+    fn minterm_dominance(&self, remaining: &mut Bits, alive: &Bits) {
+        let ms = bits_ones(remaining);
+        if ms.len() > 6000 { return; }
+        let pm: Vec<Bits> = ms.iter().map(|&m| bits_and(&self.primes_of[m], alive)).collect();
+        let cnt: Vec<usize> = pm.iter().map(bits_count).collect();
+        for i in 0..ms.len() {
+            if (0..ms.len()).any(|j| j != i && bits_subset(&pm[j], &pm[i]) && (cnt[j] < cnt[i] || j < i)) { bits_clear(remaining, ms[i]); }
+        }
+    }
+
+    fn greedy(&self, remaining: &Bits, alive: &Bits) -> Vec<usize> {
+        let mut rem = remaining.clone(); let mut out = Vec::new();
+        let al = bits_ones(alive);
+        while !bits_is_zero(&rem) {
+            let Some(&p) = al.iter().filter(|&&p| !out.contains(&p)).max_by_key(|&&p| bits_count(&bits_and(&self.covers[p], &rem))) else { break };
+            out.push(p); rem = bits_and_not(&rem, &self.covers[p]);
+        }
+        out
+    }
+
+    /// Independent-set lower bound: minterms no two of which share a prime
+    /// each need a prime of their own.
+    fn lower_bound(&self, remaining: &Bits, alive: &Bits) -> usize {
+        let mut ms = bits_ones(remaining);
+        ms.sort_by_key(|&m| bits_count(&bits_and(&self.primes_of[m], alive)));
+        let mut blocked = bits_new(self.nmin); let mut lb = 0;
+        for m in ms {
+            if bits_get(&blocked, m) { continue; }
+            lb += 1;
+            for p in bits_ones(&bits_and(&self.primes_of[m], alive)) { bits_or_into(&mut blocked, &self.covers[p]); }
+        }
+        lb
+    }
+
+    /// Connected components of the chart (minterms linked through primes).
+    fn components(&self, remaining: &Bits, alive: &Bits) -> Vec<Bits> {
+        let ms = bits_ones(remaining);
+        let mut parent: Vec<usize> = (0..self.nmin).collect();
+        fn find(parent: &mut [usize], x: usize) -> usize { let mut x = x; while parent[x] != x { parent[x] = parent[parent[x]]; x = parent[x]; } x }
+        for p in bits_ones(alive) {
+            let ones = bits_ones(&bits_and(&self.covers[p], remaining));
+            for w in ones.windows(2) { let (a, b) = (find(&mut parent, w[0]), find(&mut parent, w[1])); if a != b { parent[a] = b; } }
+        }
+        let mut groups: HashMap<usize, Bits> = HashMap::new();
+        for m in ms { bits_set(groups.entry(find(&mut parent, m)).or_insert_with(|| bits_new(self.nmin)), m); }
+        groups.into_values().collect()
+    }
+
+    fn alive_for(&self, comp: &Bits, alive: &Bits) -> Bits {
+        let mut out = bits_new(self.nprimes);
+        for p in bits_ones(alive) { if bits_intersects(&self.covers[p], comp) { bits_set(&mut out, p); } }
+        out
+    }
+
+    /// A cover of `remaining` by `alive` primes of size < `bound`, minimum
+    /// among those, or `None` (none exists, or the time budget ran out —
+    /// see `timed_out`).
+    fn solve(&mut self, remaining: Bits, alive: Bits, bound: usize) -> Option<Vec<usize>> {
+        self.nodes += 1;
+        if self.nodes & 63 == 0 && std::time::Instant::now() > self.deadline { self.timed_out = true; }
+        if self.timed_out || bound == 0 { return None; }
+        let (mut remaining, mut alive, mut forced) = (remaining, alive, Vec::new());
+        self.reduce(&mut remaining, &mut alive, &mut forced);
+        if forced.len() >= bound { return None; }
+        if bits_is_zero(&remaining) { return Some(forced); }
+        let bound_rest = bound - forced.len();
+        let comps = self.components(&remaining, &alive);
+        if comps.len() > 1 {
+            let alives: Vec<Bits> = comps.iter().map(|c| self.alive_for(c, &alive)).collect();
+            let lbs: Vec<usize> = comps.iter().zip(&alives).map(|(c, a)| self.lower_bound(c, a)).collect();
+            if lbs.iter().sum::<usize>() >= bound_rest { return None; }
+            let mut result = forced; let mut used = 0usize;
+            for i in 0..comps.len() {
+                let others_lb: usize = lbs[i + 1..].iter().sum();
+                if used + others_lb >= bound_rest { return None; }
+                let sub = self.solve(comps[i].clone(), alives[i].clone(), bound_rest - used - others_lb)?;
+                used += sub.len(); result.extend(sub);
+            }
+            return Some(result);
+        }
+        let lb = self.lower_bound(&remaining, &alive);
+        if lb >= bound_rest { return None; }
+        let (mut best, mut bound_rest) = (None, bound_rest);
+        let g = self.greedy(&remaining, &alive);
+        if g.len() < bound_rest { bound_rest = g.len(); best = Some(g); }
+        if lb < bound_rest {
+            let m = bits_ones(&remaining).into_iter().min_by_key(|&m| bits_count(&bits_and(&self.primes_of[m], &alive))).unwrap();
+            let mut ps = bits_ones(&bits_and(&self.primes_of[m], &alive));
+            ps.sort_by_key(|&p| std::cmp::Reverse(bits_count(&bits_and(&self.covers[p], &remaining))));
+            for p in ps {
+                if bound_rest <= 1 { break; }
+                let rem = bits_and_not(&remaining, &self.covers[p]);
+                let mut al = alive.clone(); bits_clear(&mut al, p);
+                if let Some(sub) = self.solve(rem, al, bound_rest - 1) { let mut cand = vec![p]; cand.extend(sub); bound_rest = cand.len(); best = Some(cand); }
+                if self.timed_out { break; }
+            }
+        }
+        best.map(|b| { let mut r = forced; r.extend(b); r })
+    }
+}
+
+/// Minimum cover of the prime-implicant chart.  Returns the best cover found
+/// (never worse than `initial_best`, if given) and whether it is a proven
+/// minimum (the search finished within `time`).
+fn exact_cover(primes: &[(u32, u32)], minterms: &[u32], initial_best: Option<Vec<usize>>, time: std::time::Duration) -> (Option<Vec<usize>>, bool) {
+    let (nmin, nprimes) = (minterms.len(), primes.len());
+    let idx_of: HashMap<u32, usize> = minterms.iter().enumerate().map(|(i, &m)| (m, i)).collect();
+    let mut covers: Vec<Bits> = vec![bits_new(nmin); nprimes];
+    let mut primes_of: Vec<Bits> = vec![bits_new(nprimes); nmin];
+    for (p, &(v, m)) in primes.iter().enumerate() {
+        for mi in cube_minterms_vm(v, m) { if let Some(&i) = idx_of.get(&mi) { bits_set(&mut covers[p], i); bits_set(&mut primes_of[i], p); } }
+    }
+    let mut chart = Chart { covers, primes_of, nmin, nprimes, deadline: std::time::Instant::now() + time, timed_out: false, nodes: 0 };
+    let mut remaining = bits_new(nmin); for i in 0..nmin { bits_set(&mut remaining, i); }
+    let mut alive = bits_new(nprimes); for p in 0..nprimes { bits_set(&mut alive, p); }
+    // root reductions, then a greedy seed
+    let mut forced = Vec::new();
+    chart.reduce(&mut remaining, &mut alive, &mut forced);
+    chart.minterm_dominance(&mut remaining, &alive);
+    let mut best: Option<Vec<usize>> = initial_best;
+    let mut seed = forced.clone(); seed.extend(chart.greedy(&remaining, &alive));
+    if best.as_ref().is_none_or(|b| seed.len() < b.len()) { best = Some(seed); }
+    let bound = best.as_ref().map_or(usize::MAX, |b| b.len());
+    if let Some(found) = chart.solve(remaining, alive, bound.saturating_sub(forced.len())) {
+        let mut cover = forced; cover.extend(found);
+        if best.as_ref().is_none_or(|b| cover.len() < b.len()) { best = Some(cover); }
+    }
+    (best, !chart.timed_out)
 }
 
 /// The assignment indices a `(value, mask)` cube covers.
@@ -337,9 +431,9 @@ fn cube_minterms_vm(v: u32, m: u32) -> Vec<u32> {
 
 /// Exact minimum cover for small column counts: Quine–McCluskey primes and an
 /// exact cover.  `None` when over budget (the caller falls back to the heuristic).
-fn minimize_exact(f: &[bool], k: usize, heuristic: &[Vec<Option<bool>>], budget: &MinimizeBudget) -> Option<Vec<Vec<Option<bool>>>> {
+fn minimize_exact(f: &[bool], k: usize, heuristic: &[Vec<Option<bool>>], budget: &MinimizeBudget) -> Option<(Vec<Vec<Option<bool>>>, bool)> {
     let minterms: Vec<u32> = (0..f.len()).filter(|&m| f[m]).map(|m| m as u32).collect();
-    if minterms.is_empty() { return Some(Vec::new()); }
+    if minterms.is_empty() { return Some((Vec::new(), true)); }
     let primes = qm_primes(f, k, budget.max_cubes)?;
     // the heuristic cover consists of primes: use it as the initial upper bound
     let index: HashMap<(u32, u32), usize> = primes.iter().enumerate().map(|(i, &c)| (c, i)).collect();
@@ -348,13 +442,16 @@ fn minimize_exact(f: &[bool], k: usize, heuristic: &[Vec<Option<bool>>], budget:
         for (c, x) in r.iter().enumerate() { match x { Some(true) => v |= 1 << c, Some(false) => {}, None => m |= 1 << c } }
         index.get(&(v, m)).copied()
     }).collect();
-    let chosen = exact_cover(&primes, &minterms, bound, budget.time)?;
+    // On a timeout the best cover found so far (never worse than the
+    // heuristic seed) is still returned, just not as a proven minimum.
+    let (chosen, exact) = exact_cover(&primes, &minterms, bound, budget.time);
+    let chosen = chosen?;
     let mut rows: Vec<Vec<Option<bool>>> = chosen.iter().map(|&i| {
         let (v, m) = primes[i];
         (0..k).map(|c| if m >> c & 1 == 1 { None } else { Some(v >> c & 1 == 1) }).collect()
     }).collect();
     rows.sort();
-    Some(rows)
+    Some((rows, exact))
 }
 /// Minimize a table's rows — a DNF cover with don't-cares — without changing
 /// the set of assignments covered.  Up to [`QM_MAX_COLS`] columns the result is
@@ -397,7 +494,7 @@ pub fn minimize_rows(rows: Vec<Vec<Option<bool>>>, k: usize, budget: &MinimizeBu
     }
     kept.sort();
     // exact minimum when small enough and within budget
-    if k <= QM_MAX_COLS && let Some(exact) = minimize_exact(&f, k, &kept, budget) { return (exact, true); }
+    if k <= QM_MAX_COLS && let Some((rows, exact)) = minimize_exact(&f, k, &kept, budget) { return (rows, exact); }
     (kept, false)
 }
 
@@ -628,5 +725,17 @@ mod tests {
         assert!(!exact);
         assert_eq!(w.len(), 1);                                   // the four rows merge into one cube
         assert_eq!(cover(&w), cover(&wide));
+    }
+
+    #[test]
+    fn exact_cover_decomposes_independent_charts() {
+        // f = x0 x1 + x2 x3 + x4 x5: three primes on disjoint variables — the
+        // chart splits into three components, each covered by its prime.
+        let mut rows = Vec::new();
+        for m in 0..64usize { if (m & 3) == 3 || (m >> 2 & 3) == 3 || (m >> 4 & 3) == 3 { rows.push((0..6).map(|i| Some(m >> i & 1 == 1)).collect::<Vec<_>>()); } }
+        let (r, exact) = minimize_rows(rows, 6, &MinimizeBudget::default());
+        assert!(exact);
+        assert_eq!(r.len(), 3);
+        assert!(r.iter().all(|row| row.iter().filter(|c| c.is_some()).count() == 2));
     }
 }

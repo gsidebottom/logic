@@ -133,6 +133,7 @@ impl Table {
             let covered = self.rows.iter().any(|r| r.iter().zip(&asg).all(|(c, &v)| c.is_none_or(|b| b == v)));
             if !covered { rows.push(asg.iter().map(|&v| Some(v)).collect()); }
         }
+        let rows = minimize_rows(rows, k);
         Ok(Table { name: format!("{}'", self.name), params: self.params.clone(), vars: self.vars.clone(), rows, formula: format!("({})'", self.formula),
                    internals_projected: self.internals_projected.clone(), uncovered_paths: 0 })
     }
@@ -151,6 +152,65 @@ pub fn implication_box(rows: Vec<Vec<Lit>>, sel: u32, sel_value: bool) -> TableB
         all.push(r);
     }
     TableBox::new(all)
+}
+
+
+/// Columns up to which tables are minimized (the function is enumerated over
+/// 2^k assignments — the same cap as the negative-table complement).
+pub const MINIMIZE_MAX_COLS: usize = 20;
+
+/// The assignment indices (bit i = column i) a row with don't-cares covers.
+fn cube_minterms(row: &[Option<bool>]) -> Vec<usize> {
+    let mut base = 0usize;
+    let mut dcs = Vec::new();
+    for (i, c) in row.iter().enumerate() {
+        match c { Some(true) => base |= 1 << i, Some(false) => {}, None => dcs.push(i) }
+    }
+    (0..1usize << dcs.len()).map(|m| {
+        let mut idx = base;
+        for (j, &i) in dcs.iter().enumerate() { if (m >> j) & 1 == 1 { idx |= 1 << i; } }
+        idx
+    }).collect()
+}
+
+/// Minimize a table's rows — a DNF cover with don't-cares — to an irredundant
+/// cover by prime implicants, without changing the set of assignments covered:
+/// EXPAND grows every row to a maximal cube (a fixed column becomes a
+/// don't-care when the flipped half-cube also lies inside the function), then
+/// IRREDUNDANT drops rows covered by the others (smallest first).  Row counts
+/// then no longer depend on how the definition was written — `lt + eq` and
+/// `¬lt(b;a)` compile to covers of the same size — and fewer, wider rows
+/// propagate faster.  Rows are returned sorted.  Left unchanged when the box
+/// has more than [`MINIMIZE_MAX_COLS`] columns.
+pub fn minimize_rows(rows: Vec<Vec<Option<bool>>>, k: usize) -> Vec<Vec<Option<bool>>> {
+    if k > MINIMIZE_MAX_COLS || rows.is_empty() { return rows; }
+    let mut f = vec![false; 1usize << k];
+    for r in &rows { for m in cube_minterms(r) { f[m] = true; } }
+    // EXPAND
+    let mut cubes: HashSet<Vec<Option<bool>>> = HashSet::new();
+    for r in &rows {
+        let mut cube = r.clone();
+        for c in 0..k {
+            if let Some(v) = cube[c] {
+                let mut flipped = cube.clone();
+                flipped[c] = Some(!v);
+                if cube_minterms(&flipped).into_iter().all(|m| f[m]) { cube[c] = None; }
+            }
+        }
+        cubes.insert(cube);
+    }
+    // IRREDUNDANT: smallest cubes first
+    let mut cubes: Vec<Vec<Option<bool>>> = cubes.into_iter().collect();
+    cubes.sort_by_key(|c| (c.iter().filter(|x| x.is_none()).count(), c.clone()));
+    let mut count = vec![0u32; 1usize << k];
+    for c in &cubes { for m in cube_minterms(c) { count[m] += 1; } }
+    let mut kept = Vec::with_capacity(cubes.len());
+    for c in cubes {
+        let ms = cube_minterms(&c);
+        if ms.iter().all(|&m| count[m] >= 2) { for m in ms { count[m] -= 1; } } else { kept.push(c); }
+    }
+    kept.sort();
+    kept
 }
 
 /// Sort key for the members of a family: the bare name first, then integer
@@ -184,9 +244,9 @@ pub fn interface_columns(names: &[String], params: &[String], expose: &[String])
 /// Compile a definition into its table over the interface `params ++ expose`
 /// (families of variables — see [`interface_columns`]): enumerate the
 /// uncovered paths of the complement, decode each to model polarity, project
-/// onto the interface columns (every other variable is hidden — ∃), dedup.
-/// Must run inside a tokio runtime; errors if more than `max_uncovered_paths`
-/// paths are found.
+/// onto the interface columns (every other variable is hidden — ∃), dedup,
+/// and minimize ([`minimize_rows`]).  Must run inside a tokio runtime; errors
+/// if more than `max_uncovered_paths` paths are found.
 pub async fn compile_box(name: &str, formula: &str, params: &[String], expose: &[String], max_uncovered_paths: usize) -> Result<Table, String> {
     compile_box_polarity(name, formula, params, expose, max_uncovered_paths, false).await
 }
@@ -232,8 +292,7 @@ pub async fn compile_box_polarity(name: &str, formula: &str, params: &[String], 
     if hit {
         return Err(format!("{name}: more than {max_uncovered_paths} uncovered paths — raise the limit or split the box"));
     }
-    let mut rows: Vec<Vec<Option<bool>>> = set.into_iter().collect();
-    rows.sort();
+    let rows = minimize_rows(set.into_iter().collect(), cols.len());
     Ok(Table {
         name: name.to_string(), params: families, vars: cols, rows,
         formula: formula.trim().to_string(), internals_projected: internals, uncovered_paths: n,
@@ -289,8 +348,9 @@ mod tests {
             vec![Lit { var: 0, neg: false }, Lit { var: 1, neg: true }],   // a=0 ⇒ x=1, z=0
         ]);                                                                 // row 3 (b=0) filtered by b := 1
         let c = t.complement(8).unwrap();
-        assert_eq!(c.rows.len(), 8 - 4);   // z = a b has 4 models of (a,b,z)
-        assert!(c.rows.iter().all(|r| { let (a, b, z) = (r[0].unwrap(), r[1].unwrap(), r[2].unwrap()); z != (a && b) }));
+        // z = a b has 4 non-models of (a,b,z); minimized to the 3 primes (0,-,1), (-,0,1), (1,1,0)
+        assert_eq!(c.rows.len(), 3);
+        assert!(c.rows.iter().all(|r| cube_minterms(r).into_iter().all(|m| { let (a, b, z) = (m & 1 == 1, m & 2 == 2, m & 4 == 4); z != (a && b) })));
         // atom ⇒ box: the escape row plus each row tagged with the atom
         let ib = implication_box(rows.clone(), 5, true);
         assert_eq!(ib.rows.len(), 3);
@@ -322,5 +382,35 @@ mod tests {
         assert!(e.internals_projected.is_empty());
         let j = e.to_json(); let back = Table::from_json(&j).unwrap();
         assert_eq!(back.params, e.params);
+    }
+
+    #[test]
+    fn minimization_is_exact_and_formula_independent() {
+        // Coverage is preserved and every kept row is a prime implicant.
+        let rows = vec![vec![Some(false), Some(false)], vec![Some(false), Some(true)], vec![Some(true), Some(true)]];
+        let m = minimize_rows(rows.clone(), 2);
+        let cover = |rs: &Vec<Vec<Option<bool>>>| { let mut v: Vec<usize> = rs.iter().flat_map(|r| cube_minterms(r)).collect(); v.sort(); v.dedup(); v };
+        assert_eq!(cover(&m), cover(&rows));
+        assert_eq!(m, vec![vec![None, Some(true)], vec![Some(false), None]]);   // b + a' (sorted)
+        // a ≤ b over 4-bit vectors has 23 prime implicants, all essential: the
+        // minimum cover is 23 rows however the relation is written — as
+        // lt + eq, or as the negation of lt(b; a).
+        let lt = |a: &str, b: &str| -> String {
+            (0..4).rev().map(|i| {
+                let mut t: Vec<String> = ((i + 1)..4).map(|j| format!("({a}_{j} = {b}_{j})")).collect();
+                t.push(format!("{a}_{i}' {b}_{i}"));
+                t.join(" ")
+            }).collect::<Vec<_>>().join(" + ")
+        };
+        let eq: String = (0..4).map(|i| format!("(a_{i} = b_{i})")).collect::<Vec<_>>().join(" ");
+        let le = format!("{} + {}", lt("a", "b"), eq);
+        let ab = ["a".to_string(), "b".to_string()];
+        let le_t = compile_box_blocking("le4", &le, &ab, &[], 100_000).unwrap();
+        assert_eq!(le_t.rows.len(), 23);
+        let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+        let lt_ba_neg = rt.block_on(compile_box_polarity("lt4", &lt("b", "a"), &ab, &[], 100_000, true)).unwrap();
+        assert_eq!(lt_ba_neg.rows.len(), 23);
+        assert_eq!(cover(&le_t.rows), cover(&lt_ba_neg.rows));   // the same 136 assignments
+        assert_eq!(cover(&le_t.rows).len(), 136);
     }
 }

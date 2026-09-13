@@ -24,6 +24,8 @@ pub struct Table {
     pub formula: String,
     pub internals_projected: Vec<String>,
     pub uncovered_paths: usize,
+    /// The rows are a proven minimum cover (exact Quine–McCluskey), not just irredundant.
+    pub exact_min: bool,
 }
 
 impl Table {
@@ -41,6 +43,7 @@ impl Table {
             "formula": self.formula,
             "internals_projected": self.internals_projected,
             "uncovered_paths": self.uncovered_paths,
+            "exact_min": self.exact_min,
         })
     }
 
@@ -70,6 +73,7 @@ impl Table {
             vars, rows,
             formula: v["formula"].as_str().unwrap_or("").to_string(),
             internals_projected: strs("internals_projected"),
+            exact_min: v["exact_min"].as_bool().unwrap_or(false),
             uncovered_paths: v["uncovered_paths"].as_u64().unwrap_or(0) as usize,
         })
     }
@@ -133,9 +137,9 @@ impl Table {
             let covered = self.rows.iter().any(|r| r.iter().zip(&asg).all(|(c, &v)| c.is_none_or(|b| b == v)));
             if !covered { rows.push(asg.iter().map(|&v| Some(v)).collect()); }
         }
-        let rows = minimize_rows(rows, k);
+        let (rows, exact_min) = minimize_rows(rows, k);
         Ok(Table { name: format!("{}'", self.name), params: self.params.clone(), vars: self.vars.clone(), rows, formula: format!("({})'", self.formula),
-                   internals_projected: self.internals_projected.clone(), uncovered_paths: 0 })
+                   internals_projected: self.internals_projected.clone(), uncovered_paths: 0, exact_min })
     }
 }
 
@@ -173,17 +177,178 @@ fn cube_minterms(row: &[Option<bool>]) -> Vec<usize> {
     }).collect()
 }
 
-/// Minimize a table's rows — a DNF cover with don't-cares — to an irredundant
-/// cover by prime implicants, without changing the set of assignments covered:
-/// EXPAND grows every row to a maximal cube (a fixed column becomes a
-/// don't-care when the flipped half-cube also lies inside the function), then
-/// IRREDUNDANT drops rows covered by the others (smallest first).  Row counts
-/// then no longer depend on how the definition was written — `lt + eq` and
-/// `¬lt(b;a)` compile to covers of the same size — and fewer, wider rows
-/// propagate faster.  Rows are returned sorted.  Left unchanged when the box
-/// has more than [`MINIMIZE_MAX_COLS`] columns.
-pub fn minimize_rows(rows: Vec<Vec<Option<bool>>>, k: usize) -> Vec<Vec<Option<bool>>> {
-    if k > MINIMIZE_MAX_COLS || rows.is_empty() { return rows; }
+
+/// Columns up to which the exact minimum is computed (Quine–McCluskey primes +
+/// an exact cover); above this, or when the work budgets below are exceeded,
+/// [`minimize_rows`] falls back to the EXPAND + IRREDUNDANT heuristic.
+pub const QM_MAX_COLS: usize = 14;
+const QM_MAX_CUBES: usize = 2_000_000;
+/// Wall-clock budget for the exact cover search of one table; over it, the
+/// heuristic cover (used as the search's initial bound) is kept.
+const COVER_TIME_BUDGET: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// All prime implicants of the function with minterm set `f` (bit i of an
+/// index = column i), as `(value, mask)` cubes — `mask` bits are don't-cares.
+/// Quine–McCluskey: merge cubes of equal mask whose values differ in one bit.
+fn qm_primes(f: &[bool], k: usize) -> Option<Vec<(u32, u32)>> {
+    let mut level: HashSet<(u32, u32)> = (0..f.len()).filter(|&m| f[m]).map(|m| (m as u32, 0u32)).collect();
+    let mut primes = Vec::new();
+    let mut total = 0usize;
+    while !level.is_empty() {
+        total += level.len();
+        if total > QM_MAX_CUBES { return None; }
+        let mut merged: HashSet<(u32, u32)> = HashSet::new();
+        let mut next: HashSet<(u32, u32)> = HashSet::new();
+        // A cube with bit b = 0 merges with its partner that has bit b = 1
+        // (same mask): one hash lookup per (cube, free bit).
+        for &(v, m) in &level {
+            for b in 0..k as u32 {
+                let bit = 1u32 << b;
+                if m & bit != 0 || v & bit != 0 { continue; }
+                let partner = (v | bit, m);
+                if level.contains(&partner) {
+                    next.insert((v, m | bit));
+                    merged.insert((v, m)); merged.insert(partner);
+                }
+            }
+        }
+        for c in &level { if !merged.contains(c) { primes.push(*c); } }
+        level = next;
+    }
+    Some(primes)
+}
+
+/// Minimum cover of the prime-implicant chart: essential primes and dominance
+/// reductions, then branch-and-bound on the cyclic core.  `None` if the node
+/// budget is exceeded.
+fn exact_cover(primes: &[(u32, u32)], minterms: &[u32], initial_best: Option<Vec<usize>>) -> Option<Vec<usize>> {
+    let words = minterms.len().div_ceil(64);
+    let idx_of: HashMap<u32, usize> = minterms.iter().enumerate().map(|(i, &m)| (m, i)).collect();
+    // coverage bitsets over minterm indices
+    let covers: Vec<Vec<u64>> = primes.iter().map(|&(v, m)| {
+        let mut bs = vec![0u64; words];
+        for mi in cube_minterms_vm(v, m) { if let Some(&i) = idx_of.get(&mi) { bs[i / 64] |= 1 << (i % 64); } }
+        bs
+    }).collect();
+    let mut all = vec![0u64; words];
+    for i in 0..minterms.len() { all[i / 64] |= 1 << (i % 64); }
+    let is_empty = |b: &[u64]| b.iter().all(|&w| w == 0);
+    let subset = |a: &[u64], b: &[u64]| a.iter().zip(b).all(|(&x, &y)| x & !y == 0);
+    let count = |b: &[u64]| b.iter().map(|w| w.count_ones() as usize).sum::<usize>();
+    struct S<'a> { covers: &'a [Vec<u64>], best: Option<Vec<usize>>, nodes: usize, deadline: std::time::Instant }
+    fn search(st: &mut S, remaining: Vec<u64>, alive: Vec<usize>, chosen: Vec<usize>,
+              is_empty: &dyn Fn(&[u64]) -> bool, subset: &dyn Fn(&[u64], &[u64]) -> bool, count: &dyn Fn(&[u64]) -> usize) -> bool {
+        st.nodes += 1;
+        if st.nodes & 255 == 0 && std::time::Instant::now() > st.deadline { return false; }
+        let mut remaining = remaining; let mut alive = alive; let mut chosen = chosen;
+        loop {
+            if is_empty(&remaining) {
+                if st.best.as_ref().is_none_or(|b| chosen.len() < b.len()) { st.best = Some(chosen); }
+                return true;
+            }
+            if let Some(b) = &st.best && chosen.len() + 1 >= b.len() { return true; }   // cannot beat the best
+            // essential primes: a remaining minterm covered by exactly one alive prime
+            let words = remaining.len();
+            let mut essential: Vec<usize> = Vec::new();
+            for w in 0..words {
+                let mut bits = remaining[w];
+                while bits != 0 {
+                    let t = bits.trailing_zeros() as usize; bits &= bits - 1;
+                    let mut hit = None; let mut n = 0;
+                    for &p in &alive { if st.covers[p][w] >> t & 1 == 1 { n += 1; hit = Some(p); if n > 1 { break; } } }
+                    if n == 0 { return true; }   // uncoverable (cannot happen with all primes)
+                    if n == 1 && let Some(p) = hit && !essential.contains(&p) { essential.push(p); }
+                }
+            }
+            if !essential.is_empty() {
+                for &p in &essential {
+                    chosen.push(p);
+                    for w in 0..words { remaining[w] &= !st.covers[p][w]; }
+                }
+                alive.retain(|p| !essential.contains(p));
+                continue;
+            }
+            // dominance: drop a prime whose remaining coverage is within another's
+            // (quadratic — only while the chart is small)
+            if alive.len() > 1500 { break; }
+            let cov: Vec<(usize, Vec<u64>)> = alive.iter().map(|&p| (p, (0..words).map(|w| st.covers[p][w] & remaining[w]).collect())).collect();
+            let mut keep: Vec<usize> = Vec::new();
+            for (i, (p, c)) in cov.iter().enumerate() {
+                if is_empty(c) { continue; }
+                let dominated = cov.iter().enumerate().any(|(j, (_, d))| j != i && subset(c, d) && (count(d) > count(c) || j < i));
+                if !dominated { keep.push(*p); }
+            }
+            if keep.len() < alive.len() { alive = keep; continue; }
+            break;
+        }
+        // branch on the minterm with the fewest covering primes
+        let words = remaining.len();
+        let mut best_m: Option<(usize, usize, Vec<usize>)> = None;   // (word, bit, covering primes)
+        for w in 0..words {
+            let mut bits = remaining[w];
+            while bits != 0 {
+                let t = bits.trailing_zeros() as usize; bits &= bits - 1;
+                let ps: Vec<usize> = alive.iter().copied().filter(|&p| st.covers[p][w] >> t & 1 == 1).collect();
+                if best_m.as_ref().is_none_or(|(_, _, b)| ps.len() < b.len()) { best_m = Some((w, t, ps)); }
+            }
+        }
+        let Some((_, _, ps)) = best_m else { return true };
+        for p in ps {
+            let mut rem = remaining.clone();
+            for w in 0..words { rem[w] &= !st.covers[p][w]; }
+            let mut ch = chosen.clone(); ch.push(p);
+            let al: Vec<usize> = alive.iter().copied().filter(|&q| q != p).collect();
+            if !search(st, rem, al, ch, is_empty, subset, count) { return false; }
+        }
+        true
+    }
+    let mut st = S { covers: &covers, best: initial_best, nodes: 0, deadline: std::time::Instant::now() + COVER_TIME_BUDGET };
+    let alive: Vec<usize> = (0..primes.len()).collect();
+    if !search(&mut st, all, alive, Vec::new(), &is_empty, &subset, &count) { return None; }
+    st.best
+}
+
+/// The assignment indices a `(value, mask)` cube covers.
+fn cube_minterms_vm(v: u32, m: u32) -> Vec<u32> {
+    let bits: Vec<u32> = (0..32).filter(|&i| m >> i & 1 == 1).collect();
+    (0..1u32 << bits.len()).map(|s| { let mut x = v; for (j, &b) in bits.iter().enumerate() { if s >> j & 1 == 1 { x |= 1 << b; } } x }).collect()
+}
+
+/// Exact minimum cover for small column counts: Quine–McCluskey primes and an
+/// exact cover.  `None` when over budget (the caller falls back to the heuristic).
+fn minimize_exact(f: &[bool], k: usize, heuristic: &[Vec<Option<bool>>]) -> Option<Vec<Vec<Option<bool>>>> {
+    let minterms: Vec<u32> = (0..f.len()).filter(|&m| f[m]).map(|m| m as u32).collect();
+    if minterms.is_empty() { return Some(Vec::new()); }
+    let primes = qm_primes(f, k)?;
+    // the heuristic cover consists of primes: use it as the initial upper bound
+    let index: HashMap<(u32, u32), usize> = primes.iter().enumerate().map(|(i, &c)| (c, i)).collect();
+    let bound: Option<Vec<usize>> = heuristic.iter().map(|r| {
+        let (mut v, mut m) = (0u32, 0u32);
+        for (c, x) in r.iter().enumerate() { match x { Some(true) => v |= 1 << c, Some(false) => {}, None => m |= 1 << c } }
+        index.get(&(v, m)).copied()
+    }).collect();
+    let chosen = exact_cover(&primes, &minterms, bound)?;
+    let mut rows: Vec<Vec<Option<bool>>> = chosen.iter().map(|&i| {
+        let (v, m) = primes[i];
+        (0..k).map(|c| if m >> c & 1 == 1 { None } else { Some(v >> c & 1 == 1) }).collect()
+    }).collect();
+    rows.sort();
+    Some(rows)
+}
+/// Minimize a table's rows — a DNF cover with don't-cares — without changing
+/// the set of assignments covered.  Up to [`QM_MAX_COLS`] columns the result is
+/// a true minimum: Quine–McCluskey prime implicants and an exact cover of the
+/// prime-implicant chart ([`minimize_exact`]).  Beyond that, or if the work
+/// budgets are exceeded, an irredundant cover by prime implicants: EXPAND grows
+/// every row to a maximal cube (a fixed column becomes a don't-care when the
+/// flipped half-cube also lies inside the function), then IRREDUNDANT drops
+/// rows covered by the others (smallest first).  Row counts then no longer
+/// depend on how the definition was written — `lt + eq` and `¬lt(b;a)` compile
+/// to the same table — and fewer, wider rows propagate faster.  Rows are
+/// returned sorted, with `true` when they are a proven minimum.  Left
+/// unchanged when the box has more than [`MINIMIZE_MAX_COLS`] columns.
+pub fn minimize_rows(rows: Vec<Vec<Option<bool>>>, k: usize) -> (Vec<Vec<Option<bool>>>, bool) {
+    if k > MINIMIZE_MAX_COLS || rows.is_empty() { return (rows, false); }
     let mut f = vec![false; 1usize << k];
     for r in &rows { for m in cube_minterms(r) { f[m] = true; } }
     // EXPAND
@@ -210,7 +375,9 @@ pub fn minimize_rows(rows: Vec<Vec<Option<bool>>>, k: usize) -> Vec<Vec<Option<b
         if ms.iter().all(|&m| count[m] >= 2) { for m in ms { count[m] -= 1; } } else { kept.push(c); }
     }
     kept.sort();
-    kept
+    // exact minimum when small enough and within budget
+    if k <= QM_MAX_COLS && let Some(exact) = minimize_exact(&f, k, &kept) { return (exact, true); }
+    (kept, false)
 }
 
 /// Sort key for the members of a family: the bare name first, then integer
@@ -292,10 +459,10 @@ pub async fn compile_box_polarity(name: &str, formula: &str, params: &[String], 
     if hit {
         return Err(format!("{name}: more than {max_uncovered_paths} uncovered paths — raise the limit or split the box"));
     }
-    let rows = minimize_rows(set.into_iter().collect(), cols.len());
+    let (rows, exact_min) = minimize_rows(set.into_iter().collect(), cols.len());
     Ok(Table {
         name: name.to_string(), params: families, vars: cols, rows,
-        formula: formula.trim().to_string(), internals_projected: internals, uncovered_paths: n,
+        formula: formula.trim().to_string(), internals_projected: internals, uncovered_paths: n, exact_min,
     })
 }
 
@@ -340,7 +507,7 @@ mod tests {
     fn arg_bindings_constants_and_complement() {
         let t = Table { name: "and".into(), params: vec!["a".into(), "b".into(), "z".into()], vars: vec!["a".into(), "b".into(), "z".into()],
             rows: vec![vec![Some(true), Some(true), Some(true)], vec![Some(false), None, Some(false)], vec![None, Some(false), Some(false)]],
-            formula: "z = a b".into(), internals_projected: vec![], uncovered_paths: 3 };
+            formula: "z = a b".into(), internals_projected: vec![], uncovered_paths: 3, exact_min: false };
         // z = a b with a := x', b := 1, z := y  →  y = x'
         let rows = t.instantiate_args(&[ArgBinding::Var { id: 0, neg: true }, ArgBinding::Const(true), ArgBinding::Var { id: 1, neg: false }]).unwrap();
         assert_eq!(rows, vec![
@@ -388,7 +555,8 @@ mod tests {
     fn minimization_is_exact_and_formula_independent() {
         // Coverage is preserved and every kept row is a prime implicant.
         let rows = vec![vec![Some(false), Some(false)], vec![Some(false), Some(true)], vec![Some(true), Some(true)]];
-        let m = minimize_rows(rows.clone(), 2);
+        let (m, exact) = minimize_rows(rows.clone(), 2);
+        assert!(exact);
         let cover = |rs: &Vec<Vec<Option<bool>>>| { let mut v: Vec<usize> = rs.iter().flat_map(|r| cube_minterms(r)).collect(); v.sort(); v.dedup(); v };
         assert_eq!(cover(&m), cover(&rows));
         assert_eq!(m, vec![vec![None, Some(true)], vec![Some(false), None]]);   // b + a' (sorted)
@@ -412,5 +580,25 @@ mod tests {
         assert_eq!(lt_ba_neg.rows.len(), 23);
         assert_eq!(cover(&le_t.rows), cover(&lt_ba_neg.rows));   // the same 136 assignments
         assert_eq!(cover(&le_t.rows).len(), 136);
+    }
+
+    #[test]
+    fn exact_minimum_on_a_cyclic_cover() {
+        // f(a,b,c) = Σm(0,1,2,5,6,7): six primes of two minterms each, none
+        // essential; an irredundant cover can have 4 rows, the minimum is 3.
+        let bits = |m: usize| (0..3).map(|i| Some(m >> i & 1 == 1)).collect::<Vec<_>>();
+        let rows: Vec<Vec<Option<bool>>> = [0usize, 1, 2, 5, 6, 7].iter().map(|&m| bits(m)).collect();
+        let (m, exact) = minimize_rows(rows.clone(), 3);
+        assert!(exact);
+        assert_eq!(m.len(), 3, "{m:?}");
+        let cover = |rs: &Vec<Vec<Option<bool>>>| { let mut v: Vec<usize> = rs.iter().flat_map(|r| cube_minterms(r)).collect(); v.sort(); v.dedup(); v };
+        assert_eq!(cover(&m), vec![0, 1, 2, 5, 6, 7]);
+        // the heuristic path (above QM_MAX_COLS) still preserves coverage
+        let k = QM_MAX_COLS + 1;
+        let wide: Vec<Vec<Option<bool>>> = (0..4).map(|j| (0..k).map(|c| if c < 2 { Some(j >> c & 1 == 1) } else if c == 2 { Some(true) } else { None }).collect()).collect();
+        let (w, exact) = minimize_rows(wide.clone(), k);
+        assert!(!exact);
+        assert_eq!(w.len(), 1);                                   // the four rows merge into one cube
+        assert_eq!(cover(&w), cover(&wide));
     }
 }

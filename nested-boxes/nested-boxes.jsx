@@ -23,7 +23,7 @@ function boxTooltip(b) {
   lines.push(`= ${b.formula}`);
   lines.push(`columns: ${b.vars.join(', ')}`);
   if (b.internals?.length) lines.push(`hidden (∃): ${b.internals.join(', ')}`);
-  lines.push(`${b.rows} rows (negation: ${b.rows_neg ?? '?'}), ${b.uncovered_paths} uncovered paths`);
+  lines.push(`${b.rows} rows (negation: ${b.rows_neg ?? '?'}) — ${b.exact_min ? 'minimum covers' : 'irredundant covers'}; ${b.uncovered_paths} uncovered paths`);
   lines.push('click for the full definition');
   return lines.join('\n');
 }
@@ -2334,7 +2334,7 @@ export default function App() {
                         })}
                       </div>
                       {b.internals?.length > 0 && <div><span style={{ color: '#888' }}>hidden (∃)&nbsp; </span>{b.internals.map((m, i) => <span key={m}>{i > 0 && ', '}<VarLabel name={m} /></span>)}</div>}
-                      <div><span style={{ color: '#888' }}>table&nbsp; </span>{b.rows} rows over {b.vars.length} columns — {b.uncovered_paths} uncovered paths of the complement, canonicalized; negation: {b.rows_neg ?? '?'} rows</div>
+                      <div><span style={{ color: '#888' }}>table&nbsp; </span>{b.rows} rows over {b.vars.length} columns ({b.exact_min ? 'a minimum cover — exact Quine–McCluskey' : 'an irredundant prime cover'}), from {b.uncovered_paths} uncovered paths of the complement; negation: {b.rows_neg ?? '?'} rows</div>
                       {t?.rows && (t.rows.length <= 256 ? (
                         <table style={{ borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 12, alignSelf: 'flex-start' }}>
                           <thead><tr>{t.vars.map(v => <th key={v} style={{ padding: '2px 7px', borderBottom: '1px solid #bbb', fontWeight: 'normal', fontFamily: 'Georgia, serif', fontSize: 13 }}><VarLabel name={v} /></th>)}</tr></thead>

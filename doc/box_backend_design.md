@@ -381,11 +381,15 @@ produced the result below.
   interface as a further call parameter after the declared ones.
 
 **Minimized tables** (2026-09-13).  After canonicalization, rows are minimized
-to an irredundant cover by prime implicants (`compile::minimize_rows`, EXPAND +
-IRREDUNDANT over the 2^k assignments, k ≤ 20 — the same cap as the negative
-table).  Coverage is unchanged; row counts stop depending on how a definition
-is spelled (`le` as `lt + eq` and `¬lt(b;a)` both give the 23-row minimum for
-4-bit `a ≤ b`), and fewer, wider rows propagate faster.
+(`compile::minimize_rows`).  Up to 14 columns the result is the true minimum:
+Quine–McCluskey prime implicants and an exact cover of the prime-implicant
+chart (essential primes, dominance reductions, branch-and-bound on the cyclic
+core, with work budgets).  Beyond that, or over budget, an irredundant cover by
+prime implicants (EXPAND + IRREDUNDANT over the 2^k assignments, k ≤ 20 — the
+same cap as the negative table).  Coverage is unchanged; row counts stop
+depending on how a definition is spelled (`le` as `lt + eq` and `¬lt(b;a)`
+both give the 23-row minimum for 4-bit `a ≤ b`), and fewer, wider rows
+propagate faster.
 
 ### 5.2 Compilation pipeline
 

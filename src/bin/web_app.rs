@@ -369,6 +369,8 @@ struct CompiledBox {
     internals: Vec<String>,
     /// Rows of the negative table (models of ¬box over the same columns).
     rows_neg: usize,
+    /// The tables are proven minimum covers (exact Quine–McCluskey).
+    exact_min: bool,
     #[serde(skip)]
     table: Table,
     /// The negative table — compiled from the definition's own NNF when nothing
@@ -446,6 +448,7 @@ async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, t
                     }
                 } else { table.complement(20).ok() };
                 let rows_neg = table_neg.as_ref().map_or(0, |t| t.rows.len());
+                let exact_min = table.exact_min && table_neg.as_ref().is_none_or(|t| t.exact_min);
                 statuses.push(serde_json::json!({
                     "name": d.name, "params": table.params, "vars": table.vars, "rows": table.rows.len(), "rows_neg": rows_neg,
                     "uncovered_paths": table.uncovered_paths, "formula": table.formula,
@@ -453,7 +456,7 @@ async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, t
                 compiled_now.push(CompiledBox {
                     name: d.name.clone(), lib: lib.path.clone(), decl: line.trim().to_string(), params: d.params.clone(), expose: d.expose.clone(),
                     vars: table.vars.clone(), rows: table.rows.len(), uncovered_paths: table.uncovered_paths,
-                    formula: table.formula.clone(), internals: table.internals_projected.clone(), rows_neg, table, table_neg,
+                    formula: table.formula.clone(), internals: table.internals_projected.clone(), rows_neg, exact_min, table, table_neg,
                 });
             }
         }

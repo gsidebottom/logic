@@ -25,6 +25,7 @@ use std::sync::Arc;
 use crate::controller::PathSearchController;
 use crate::matrix::{Lit, NNF, PathPrefix, PathsClass, ProdPath};
 use super::{Engine, TableBox, Verdict};
+use super::compile::implication_box;
 
 /// One box call: the atom standing for it and its two tables over the
 /// problem's variables (the call's arguments already bound).
@@ -85,13 +86,38 @@ impl BoxTables {
 pub struct BoxAwareController<Inner> {
     inner: Inner,
     tables: Arc<BoxTables>,
+    /// One engine over every call's `atom ⇒ rows(B)` / `¬atom ⇒ rows(¬B)`
+    /// tables, built once; completed paths are checked with `solve_under`.
+    engine: Engine,
+    engine_ok: bool,
     /// Prefixes pruned by the tables (dead box, or no joint row assignment).
     pub table_prunes: u64,
+    // timing / counters, reported on drop when LOGIC_BOX_TIMING is set
+    started: std::time::Instant,
+    prefix_checks: u64,
+    completions: u64,
+    witness_time: std::time::Duration,
 }
 
 impl<Inner> BoxAwareController<Inner> {
     pub fn new(inner: Inner, tables: Arc<BoxTables>) -> Self {
-        BoxAwareController { inner, tables, table_prunes: 0 }
+        let mut boxes = Vec::with_capacity(tables.calls.len() * 2);
+        for c in &tables.calls {
+            boxes.push(implication_box(c.pos.rows.clone(), c.atom, true));
+            boxes.push(implication_box(c.neg.rows.clone(), c.atom, false));
+        }
+        let mut engine = Engine::new(tables.nvars, boxes);
+        let engine_ok = engine.init();
+        BoxAwareController { inner, tables, engine, engine_ok, table_prunes: 0, started: std::time::Instant::now(), prefix_checks: 0, completions: 0, witness_time: std::time::Duration::ZERO }
+    }
+}
+
+impl<Inner> Drop for BoxAwareController<Inner> {
+    fn drop(&mut self) {
+        if std::env::var_os("LOGIC_BOX_TIMING").is_some() {
+            eprintln!("[box-timing] search {:?}: {} prefix checks, {} completions, witness solves {:?}, {} table prunes",
+                      self.started.elapsed(), self.prefix_checks, self.completions, self.witness_time, self.table_prunes);
+        }
     }
 }
 
@@ -105,12 +131,20 @@ impl<Inner: PathSearchController> PathSearchController for BoxAwareController<In
         prefix_prod_path: &ProdPath,
         is_complete: bool,
     ) -> Option<usize> {
+        self.prefix_checks += 1;
         if let Some(asg) = BoxTables::assignment(prefix_literals) {
-            if !self.tables.prefix_consistent(&asg)
-                || (is_complete && self.tables.witness(&asg).is_none())
-            {
+            if !self.tables.prefix_consistent(&asg) {
                 self.table_prunes += 1;
                 return Some(0);   // dead box: backtrack, like a covered prefix
+            }
+            if is_complete {
+                self.completions += 1;
+                let t0 = std::time::Instant::now();
+                // the path's literals are FALSE in the model it stands for
+                let units: Vec<Lit> = asg.iter().map(|(&v, &b)| Lit { var: v, neg: !b }).collect();
+                let ok = self.engine_ok && matches!(self.engine.solve_under(&units), Verdict::Sat(_));
+                self.witness_time += t0.elapsed();
+                if !ok { self.table_prunes += 1; return Some(0); }
             }
         }
         self.inner.should_continue_on_prefix(prefix_literals, prefix_positions, prefix_prod_path, is_complete)

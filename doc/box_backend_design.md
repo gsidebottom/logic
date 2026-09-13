@@ -400,6 +400,23 @@ depending on how a definition is spelled (`le` as `lt + eq` and `¬lt(b;a)`
 both give the 23-row minimum for 4-bit `a ≤ b`), and fewer, wider rows
 propagate faster.
 
+**Compile by composition** (2026-09-13, `compile::compile_box_by_join`).  A
+definition that is a conjunction of box calls (and literals) is compiled by
+joining the callees' tables — each instantiated over the definition's
+variables — one call at a time, projecting every hidden variable as soon as
+no later conjunct mentions it, then minimizing the interface columns.  The
+expanded matrix is never enumerated, so an n-step unrolling compiles in
+milliseconds to a table over its interface only.  That table carries what
+per-step propagation cannot: for the 4-bit counter `bmc8_w4(a;c8) :=
+bmc_chain_w4(a; "c"; 8)` (bmc.jq) the 256 reachable `(a, c8)` rows make
+`c8 ≤ 8` a propagation fact, and `bmc_w4_n8_box` — one call plus `c8 > 8` — is
+refuted with zero decisions in ~0.3 ms on the boxes backend, faster than
+CaDiCaL's ~0.4 ms on the same formula; the original 17-call form takes
+1.4 ms because table propagation is per step and the row engine, having no
+learning, enumerates the 2^8 `a`-vectors on every completed path.  Negated or
+disjoined calls are not composable and fall back to path enumeration; the
+negation table of a composed box comes from the complement.
+
 ### 5.2 Compilation pipeline
 
 ```

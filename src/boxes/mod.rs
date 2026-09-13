@@ -313,10 +313,49 @@ impl Engine {
         if self.propagate(touched) { true } else { self.backtrack_level(); false }
     }
 
-    pub fn solve(&mut self) -> Verdict {
+    /// Level-0 propagation of every box.  `false` if the boxes alone conflict.
+    pub fn init(&mut self) -> bool {
         let all: Vec<usize> = (0..self.boxes.len()).collect();
         for &b in &all { self.in_queue[b] = true; }
-        if !self.propagate(all) { return Verdict::Unsat; }
+        self.propagate(all)
+    }
+
+    /// Undo decision levels until only `levels` remain.
+    fn unwind_to(&mut self, levels: usize) {
+        while self.trail_lim.len() > levels { self.backtrack_level(); }
+    }
+
+    /// Solve under extra unit assumptions, leaving the engine as it was: one
+    /// engine serves many queries (the box-aware path search checks every
+    /// completed path this way instead of rebuilding an engine per path).
+    /// Assumes [`init`](Self::init) was run.
+    pub fn solve_under(&mut self, units: &[Lit]) -> Verdict {
+        let base = self.trail_lim.len();
+        self.new_level();
+        let mut touched = Vec::new();
+        for l in units {
+            if !self.assign(l.var, if l.neg { Val::F } else { Val::T }, &mut touched) {
+                for &q in &touched { self.in_queue[q] = false; }
+                self.stats.conflicts += 1;
+                self.unwind_to(base);
+                return Verdict::Unsat;
+            }
+        }
+        if !self.propagate(touched) { self.unwind_to(base); return Verdict::Unsat; }
+        let v = self.search();
+        self.unwind_to(base);
+        v
+    }
+
+    pub fn solve(&mut self) -> Verdict {
+        if !self.init() { return Verdict::Unsat; }
+        self.search()
+    }
+
+    /// The DFS over rows from the current state; on `Sat` the model is read
+    /// before any unwinding, on `Unsat` every level opened here is undone.
+    fn search(&mut self) -> Verdict {
+        let base = self.trail_lim.len();
         let mut stack: Vec<Frame> = Vec::new();
         loop {
             match self.choose_box() {
@@ -329,10 +368,10 @@ impl Engine {
                 if self.stats.decisions & 255 == 0
                     && let Some(c) = &self.cancel
                     && c.load(std::sync::atomic::Ordering::Relaxed) { return Verdict::Unknown; }
-                let Some(fr) = stack.last_mut() else { return Verdict::Unsat };
+                let Some(fr) = stack.last_mut() else { self.unwind_to(base); return Verdict::Unsat };
                 if fr.next >= fr.rows.len() {
                     stack.pop();
-                    if stack.is_empty() { return Verdict::Unsat; }
+                    if stack.is_empty() { self.unwind_to(base); return Verdict::Unsat; }
                     self.backtrack_level();          // undo the parent's current row
                     continue;
                 }

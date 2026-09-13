@@ -26,6 +26,7 @@ function boxTooltip(b) {
   const st = (ok, ms) => `${ok ? 'minimum' : 'irredundant'}${ms != null ? `, ${ms} ms` : ''}`;
   lines.push(`${b.rows} rows (${st(b.exact_min_pos ?? b.exact_min, b.minimize_ms_pos)}); negation: ${b.rows_neg ?? '?'} rows (${st(b.exact_min_neg ?? b.exact_min, b.minimize_ms_neg)}); ${b.uncovered_paths} uncovered paths`);
   if (b.budget_cubes != null) lines.push(`minimization budget: ${b.budget_cubes} cubes, ${b.budget_ms} ms (took ${b.minimize_ms ?? '?'} ms)`);
+  if (b.composed) lines.push('compiled by composition: the callees\' tables joined, hidden variables projected');
   lines.push('click for the full definition');
   return lines.join('\n');
 }
@@ -2370,7 +2371,7 @@ export default function App() {
                         })}
                       </div>
                       {b.internals?.length > 0 && <div><span style={{ color: '#888' }}>hidden (∃)&nbsp; </span>{b.internals.map((m, i) => <span key={m}>{i > 0 && ', '}<VarLabel name={m} /></span>)}</div>}
-                      <div><span style={{ color: '#888' }}>table&nbsp; </span>{b.rows} rows over {b.vars.length} columns — {(b.exact_min_pos ?? b.exact_min) ? 'minimum cover (exact Quine–McCluskey)' : 'irredundant prime cover (over budget)'}{b.minimize_ms_pos != null && `, ${b.minimize_ms_pos} ms`}; from {b.uncovered_paths} uncovered paths of the complement</div>
+                      <div><span style={{ color: '#888' }}>table&nbsp; </span>{b.rows} rows over {b.vars.length} columns — {(b.exact_min_pos ?? b.exact_min) ? 'minimum cover (exact Quine–McCluskey)' : 'irredundant prime cover (over budget)'}{b.minimize_ms_pos != null && `, ${b.minimize_ms_pos} ms`}; {b.composed ? 'compiled by composition (the callees\' tables joined, hidden variables projected)' : `from ${b.uncovered_paths} uncovered paths of the complement`}</div>
           <div><span style={{ color: '#888' }}>negation&nbsp; </span>{b.rows_neg ?? '?'} rows — {(b.exact_min_neg ?? b.exact_min) ? 'minimum cover' : 'irredundant prime cover (over budget)'}{b.minimize_ms_neg != null && `, ${b.minimize_ms_neg} ms`}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ color: '#888' }}>minimization&nbsp; </span>

@@ -5,7 +5,7 @@
 //! Design: `doc/box_backend_design.md` §5.
 
 use std::collections::{HashMap, HashSet};
-use super::expand::family_of;
+use super::expand::{atomize_box_calls, family_of, Arg, BoxSig};
 
 use super::TableBox;
 use crate::controller::SmartController;
@@ -211,18 +211,21 @@ impl MinimizeBudget {
 /// All prime implicants of the function with minterm set `f` (bit i of an
 /// index = column i), as `(value, mask)` cubes — `mask` bits are don't-cares.
 /// Quine–McCluskey: merge cubes of equal mask whose values differ in one bit.
-fn qm_primes(f: &[bool], k: usize, max_cubes: usize) -> Option<Vec<(u32, u32)>> {
+fn qm_primes(f: &[bool], k: usize, max_cubes: usize, deadline: std::time::Instant) -> Option<Vec<(u32, u32)>> {
     let mut level: HashSet<(u32, u32)> = (0..f.len()).filter(|&m| f[m]).map(|m| (m as u32, 0u32)).collect();
     let mut primes = Vec::new();
     let mut total = 0usize;
     while !level.is_empty() {
         total += level.len();
-        if total > max_cubes { return None; }
+        if total > max_cubes || std::time::Instant::now() > deadline { return None; }
         let mut merged: HashSet<(u32, u32)> = HashSet::new();
         let mut next: HashSet<(u32, u32)> = HashSet::new();
         // A cube with bit b = 0 merges with its partner that has bit b = 1
         // (same mask): one hash lookup per (cube, free bit).
+        let mut seen = 0usize;
         for &(v, m) in &level {
+            seen += 1;
+            if seen & 4095 == 0 && std::time::Instant::now() > deadline { return None; }
             for b in 0..k as u32 {
                 let bit = 1u32 << b;
                 if m & bit != 0 || v & bit != 0 { continue; }
@@ -279,7 +282,7 @@ impl Chart {
             }
             if bits_is_zero(remaining) { break; }
             let al = bits_ones(alive);
-            if al.len() <= 3000 {
+            if al.len() <= 1500 && std::time::Instant::now() < self.deadline {
                 let cov: Vec<Bits> = al.iter().map(|&p| bits_and(&self.covers[p], remaining)).collect();
                 let cnt: Vec<usize> = cov.iter().map(bits_count).collect();
                 for i in 0..al.len() {
@@ -295,10 +298,11 @@ impl Chart {
     /// whose covering primes include another's can be dropped.
     fn minterm_dominance(&self, remaining: &mut Bits, alive: &Bits) {
         let ms = bits_ones(remaining);
-        if ms.len() > 6000 { return; }
+        if ms.len() > 2000 || std::time::Instant::now() > self.deadline { return; }
         let pm: Vec<Bits> = ms.iter().map(|&m| bits_and(&self.primes_of[m], alive)).collect();
         let cnt: Vec<usize> = pm.iter().map(bits_count).collect();
         for i in 0..ms.len() {
+            if i & 255 == 0 && std::time::Instant::now() > self.deadline { return; }
             if (0..ms.len()).any(|j| j != i && bits_subset(&pm[j], &pm[i]) && (cnt[j] < cnt[i] || j < i)) { bits_clear(remaining, ms[i]); }
         }
     }
@@ -351,8 +355,12 @@ impl Chart {
     /// among those, or `None` (none exists, or the time budget ran out —
     /// see `timed_out`).
     fn solve(&mut self, remaining: Bits, alive: Bits, bound: usize) -> Option<Vec<usize>> {
+        self.solve_at(remaining, alive, bound, 0)
+    }
+
+    fn solve_at(&mut self, remaining: Bits, alive: Bits, bound: usize, depth: usize) -> Option<Vec<usize>> {
         self.nodes += 1;
-        if self.nodes & 63 == 0 && std::time::Instant::now() > self.deadline { self.timed_out = true; }
+        if std::time::Instant::now() > self.deadline { self.timed_out = true; }
         if self.timed_out || bound == 0 { return None; }
         let (mut remaining, mut alive, mut forced) = (remaining, alive, Vec::new());
         self.reduce(&mut remaining, &mut alive, &mut forced);
@@ -368,7 +376,7 @@ impl Chart {
             for i in 0..comps.len() {
                 let others_lb: usize = lbs[i + 1..].iter().sum();
                 if used + others_lb >= bound_rest { return None; }
-                let sub = self.solve(comps[i].clone(), alives[i].clone(), bound_rest - used - others_lb)?;
+                let sub = self.solve_at(comps[i].clone(), alives[i].clone(), bound_rest - used - others_lb, depth + 1)?;
                 used += sub.len(); result.extend(sub);
             }
             return Some(result);
@@ -376,8 +384,12 @@ impl Chart {
         let lb = self.lower_bound(&remaining, &alive);
         if lb >= bound_rest { return None; }
         let (mut best, mut bound_rest) = (None, bound_rest);
-        let g = self.greedy(&remaining, &alive);
-        if g.len() < bound_rest { bound_rest = g.len(); best = Some(g); }
+        // a greedy cover re-seeds the bound at the root and on small remainders
+        // (it is the expensive part of a node on large charts)
+        if depth == 0 || bits_count(&remaining) <= 256 {
+            let g = self.greedy(&remaining, &alive);
+            if g.len() < bound_rest { bound_rest = g.len(); best = Some(g); }
+        }
         if lb < bound_rest {
             let m = bits_ones(&remaining).into_iter().min_by_key(|&m| bits_count(&bits_and(&self.primes_of[m], &alive))).unwrap();
             let mut ps = bits_ones(&bits_and(&self.primes_of[m], &alive));
@@ -386,7 +398,7 @@ impl Chart {
                 if bound_rest <= 1 { break; }
                 let rem = bits_and_not(&remaining, &self.covers[p]);
                 let mut al = alive.clone(); bits_clear(&mut al, p);
-                if let Some(sub) = self.solve(rem, al, bound_rest - 1) { let mut cand = vec![p]; cand.extend(sub); bound_rest = cand.len(); best = Some(cand); }
+                if let Some(sub) = self.solve_at(rem, al, bound_rest - 1, depth + 1) { let mut cand = vec![p]; cand.extend(sub); bound_rest = cand.len(); best = Some(cand); }
                 if self.timed_out { break; }
             }
         }
@@ -397,7 +409,7 @@ impl Chart {
 /// Minimum cover of the prime-implicant chart.  Returns the best cover found
 /// (never worse than `initial_best`, if given) and whether it is a proven
 /// minimum (the search finished within `time`).
-fn exact_cover(primes: &[(u32, u32)], minterms: &[u32], initial_best: Option<Vec<usize>>, time: std::time::Duration) -> (Option<Vec<usize>>, bool) {
+fn exact_cover(primes: &[(u32, u32)], minterms: &[u32], initial_best: Option<Vec<usize>>, deadline: std::time::Instant) -> (Option<Vec<usize>>, bool) {
     let (nmin, nprimes) = (minterms.len(), primes.len());
     let idx_of: HashMap<u32, usize> = minterms.iter().enumerate().map(|(i, &m)| (m, i)).collect();
     let mut covers: Vec<Bits> = vec![bits_new(nmin); nprimes];
@@ -405,7 +417,7 @@ fn exact_cover(primes: &[(u32, u32)], minterms: &[u32], initial_best: Option<Vec
     for (p, &(v, m)) in primes.iter().enumerate() {
         for mi in cube_minterms_vm(v, m) { if let Some(&i) = idx_of.get(&mi) { bits_set(&mut covers[p], i); bits_set(&mut primes_of[i], p); } }
     }
-    let mut chart = Chart { covers, primes_of, nmin, nprimes, deadline: std::time::Instant::now() + time, timed_out: false, nodes: 0 };
+    let mut chart = Chart { covers, primes_of, nmin, nprimes, deadline, timed_out: false, nodes: 0 };
     let mut remaining = bits_new(nmin); for i in 0..nmin { bits_set(&mut remaining, i); }
     let mut alive = bits_new(nprimes); for p in 0..nprimes { bits_set(&mut alive, p); }
     // root reductions, then a greedy seed
@@ -434,7 +446,8 @@ fn cube_minterms_vm(v: u32, m: u32) -> Vec<u32> {
 fn minimize_exact(f: &[bool], k: usize, heuristic: &[Vec<Option<bool>>], budget: &MinimizeBudget) -> Option<(Vec<Vec<Option<bool>>>, bool)> {
     let minterms: Vec<u32> = (0..f.len()).filter(|&m| f[m]).map(|m| m as u32).collect();
     if minterms.is_empty() { return Some((Vec::new(), true)); }
-    let primes = qm_primes(f, k, budget.max_cubes)?;
+    let deadline = std::time::Instant::now() + budget.time;
+    let primes = qm_primes(f, k, budget.max_cubes, deadline)?;
     // the heuristic cover consists of primes: use it as the initial upper bound
     let index: HashMap<(u32, u32), usize> = primes.iter().enumerate().map(|(i, &c)| (c, i)).collect();
     let bound: Option<Vec<usize>> = heuristic.iter().map(|r| {
@@ -444,7 +457,7 @@ fn minimize_exact(f: &[bool], k: usize, heuristic: &[Vec<Option<bool>>], budget:
     }).collect();
     // On a timeout the best cover found so far (never worse than the
     // heuristic seed) is still returned, just not as a proven minimum.
-    let (chosen, exact) = exact_cover(&primes, &minterms, bound, budget.time);
+    let (chosen, exact) = exact_cover(&primes, &minterms, bound, deadline);
     let chosen = chosen?;
     let mut rows: Vec<Vec<Option<bool>>> = chosen.iter().map(|&i| {
         let (v, m) = primes[i];
@@ -586,6 +599,133 @@ pub async fn compile_box_polarity(name: &str, formula: &str, params: &[String], 
     })
 }
 
+
+/// Rows a definition may reach while being composed before it is declared
+/// too large for composition (the caller falls back to path enumeration).
+pub const COMPOSE_MAX_ROWS: usize = 200_000;
+
+/// Compile a definition that is a conjunction of box calls (and literals) by
+/// **composition**: instantiate each callee's table over the definition's
+/// variables, join the tables one by one, and project every hidden variable
+/// as soon as no later conjunct mentions it.  This never looks at the
+/// expanded matrix, so a long chain of boxes (a bounded-model-checking
+/// unrolling) compiles in milliseconds to a table over its interface only —
+/// where a single table carries what per-step propagation cannot.  `lookup`
+/// gives a callee's signature and positive table.  Errors when the
+/// definition is not such a conjunction (negated or disjoined calls) or grows
+/// past [`COMPOSE_MAX_ROWS`]; the caller then falls back to [`compile_box`].
+pub fn compile_box_by_join(
+    name: &str, formula: &str, params: &[String], expose: &[String],
+    lookup: &dyn Fn(&str) -> Option<(BoxSig, Table)>, budget: &MinimizeBudget,
+) -> Result<Table, String> {
+    let at = atomize_box_calls(formula, &|n| lookup(n).map(|(sig, _)| sig))?;
+    if at.calls.is_empty() { return Err(format!("{name}: no box calls to compose")); }
+    let m = Matrix::try_from(at.text.trim()).map_err(|e| format!("{name}: parse error: {e}"))?;
+    let lits: Vec<Lit> = match &m.nnf {
+        crate::matrix::NNF::Lit(l) => vec![l.clone()],
+        crate::matrix::NNF::Prod(ch) => ch.iter().map(|c| match c { crate::matrix::NNF::Lit(l) => Ok(l.clone()), _ => Err(()) })
+            .collect::<Result<Vec<_>, ()>>().map_err(|_| format!("{name}: not a conjunction of box calls and literals"))?,
+        _ => return Err(format!("{name}: not a conjunction of box calls and literals")),
+    };
+    let atom_index: HashMap<&str, usize> = at.calls.iter().enumerate().map(|(i, c)| (c.atom.as_str(), i)).collect();
+    // the variable universe: residual literals and every column of every call
+    let mut names: Vec<String> = Vec::new();
+    let mut index: HashMap<String, usize> = HashMap::new();
+    let id = |n: &str, names: &mut Vec<String>, index: &mut HashMap<String, usize>| -> usize {
+        if let Some(&i) = index.get(n) { i } else { names.push(n.to_string()); index.insert(n.to_string(), names.len() - 1); names.len() - 1 }
+    };
+    let mut residual: Vec<(usize, bool)> = Vec::new();
+    for l in &lits {
+        let vname = &m.ast.vars[l.var as usize];
+        if let Some(&ci) = atom_index.get(vname.as_str()) {
+            if l.neg { return Err(format!("{name}: call {} is negated — not composable", at.calls[ci].label)); }
+        } else {
+            let i = id(vname, &mut names, &mut index);
+            residual.push((i, !l.neg));
+        }
+    }
+    // per call: the callee's rows over universe columns (constants filter rows)
+    struct CallRows { cols: Vec<usize>, rows: Vec<Vec<Option<bool>>> }
+    let mut calls: Vec<CallRows> = Vec::new();
+    for c in &at.calls {
+        let (sig, table) = lookup(&c.name).ok_or_else(|| format!("{name}: unknown box `{}`", c.name))?;
+        let _ = sig;
+        let mut colmap: Vec<Option<(usize, bool)>> = Vec::with_capacity(table.vars.len());   // None = constant column
+        let mut consts: Vec<Option<bool>> = Vec::with_capacity(table.vars.len());
+        for col in &table.vars {
+            let fi = family_of(col, &table.params).ok_or_else(|| format!("{}: column {col} belongs to no parameter", table.name))?;
+            match &c.args[fi] {
+                Arg::Const(b) => { colmap.push(None); consts.push(Some(*b)); }
+                Arg::Var { name: an, neg } => {
+                    let global = format!("{an}{}", &col[table.params[fi].len()..]);
+                    colmap.push(Some((id(&global, &mut names, &mut index), *neg))); consts.push(None);
+                }
+            }
+        }
+        let mut rows = Vec::with_capacity(table.rows.len());
+        'rows: for r in &table.rows {
+            let mut row: Vec<(usize, bool)> = Vec::new();
+            for (ci, cell) in r.iter().enumerate() {
+                let Some(v) = *cell else { continue };
+                match colmap[ci] {
+                    None => if consts[ci] != Some(v) { continue 'rows; },
+                    Some((gi, neg)) => row.push((gi, v ^ neg)),
+                }
+            }
+            rows.push(row);
+        }
+        let cols: Vec<usize> = colmap.iter().filter_map(|c| c.map(|(gi, _)| gi)).collect();
+        // rows as sparse (col, value) lists → dense later once the universe is known
+        calls.push(CallRows { cols, rows: rows.into_iter().map(|r| r.into_iter().map(|(gi, v)| (gi, v)).collect::<Vec<_>>())
+            .map(|r: Vec<(usize, bool)>| { let mut d: Vec<Option<bool>> = Vec::new(); for (gi, v) in r { if d.len() <= gi { d.resize(gi + 1, None); } d[gi] = Some(v); } d }).collect() });
+    }
+    let width = names.len();
+    let widen = |r: &Vec<Option<bool>>| { let mut d = r.clone(); d.resize(width, None); d };
+    // interface families and which universe columns are hidden
+    let mut families: Vec<String> = params.to_vec();
+    for e in expose { if !families.contains(e) { families.push(e.clone()); } }
+    let hidden: Vec<bool> = names.iter().map(|n| family_of(n, &families).is_none()).collect();
+    // last conjunct mentioning each column (residual counts as conjunct 0)
+    let mut last_use: Vec<usize> = vec![0; width];
+    for (k, c) in calls.iter().enumerate() { for &gi in &c.cols { last_use[gi] = k + 1; } }
+    // start: one row with the residual literals
+    let mut acc: Vec<Vec<Option<bool>>> = vec![vec![None; width]];
+    for &(i, v) in &residual { acc[0][i] = Some(v); }
+    for (k, c) in calls.iter().enumerate() {
+        let mut next: HashSet<Vec<Option<bool>>> = HashSet::new();
+        for a in &acc {
+            for r in &c.rows {
+                let r = widen(r);
+                let mut merged = a.clone(); let mut ok = true;
+                for gi in 0..width {
+                    match (a[gi], r[gi]) {
+                        (Some(x), Some(y)) if x != y => { ok = false; break; }
+                        (None, Some(y)) => merged[gi] = Some(y),
+                        _ => {}
+                    }
+                }
+                if ok {
+                    // project hidden columns nothing later mentions
+                    for gi in 0..width { if hidden[gi] && last_use[gi] <= k + 1 { merged[gi] = None; } }
+                    next.insert(merged);
+                    if next.len() > COMPOSE_MAX_ROWS { return Err(format!("{name}: composition exceeds {COMPOSE_MAX_ROWS} rows")); }
+                }
+            }
+        }
+        acc = next.into_iter().collect();
+        if acc.is_empty() { break; }   // the definition is unsatisfiable: an empty table
+    }
+    // final table over the interface columns, in family order
+    let iface_names: Vec<String> = names.iter().filter(|n| family_of(n, &families).is_some()).cloned().collect();
+    let (fams, cols, _) = interface_columns(&iface_names, params, expose);
+    let col_ids: Vec<usize> = cols.iter().map(|c| index[c]).collect();
+    let rows_set: HashSet<Vec<Option<bool>>> = acc.iter().map(|r| col_ids.iter().map(|&gi| r[gi]).collect()).collect();
+    let t0 = std::time::Instant::now();
+    let (rows, exact_min) = minimize_rows(rows_set.into_iter().collect(), cols.len(), budget);
+    let internals: Vec<String> = names.iter().enumerate().filter(|(gi, _)| hidden[*gi]).map(|(_, n)| n.clone()).collect();
+    Ok(Table { name: name.to_string(), params: fams, vars: cols, rows, formula: formula.trim().to_string(),
+               internals_projected: internals, uncovered_paths: 0, exact_min, minimize_ms: t0.elapsed().as_millis() as u64 })
+}
 /// [`compile_box`] on a private runtime, for command-line use.
 pub fn compile_box_blocking(name: &str, formula: &str, params: &[String], expose: &[String], max_uncovered_paths: usize, budget: &MinimizeBudget) -> Result<Table, String> {
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| e.to_string())?;
@@ -737,5 +877,23 @@ mod tests {
         assert!(exact);
         assert_eq!(r.len(), 3);
         assert!(r.iter().all(|row| row.iter().filter(|c| c.is_some()).count() == 2));
+    }
+
+    #[test]
+    fn composition_joins_tables_and_projects_the_chain() {
+        // inc(c; d): d = c + 1 over 2 bits, no overflow — 3 rows over c_0,c_1,d_0,d_1
+        let inc = compile_box_blocking("inc", "(d_0 = c_0') (d_1 = c_1 ⊕ c_0) (c_0 c_1)'", &["c".into(), "d".into()], &[], 1000, &MinimizeBudget::default()).unwrap();
+        assert_eq!(inc.rows.len(), 3);
+        let lookup = |n: &str| if n == "inc" { Some((BoxSig { params: inc.params.clone(), internals: vec![], formula: inc.formula.clone() }, inc.clone())) } else { None };
+        // chain2(c0; c2) := inc(c0; c1) inc(c1; c2), c1 hidden: c2 = c0 + 2 → rows (0,2), (1,3)
+        let t = compile_box_by_join("chain2", "inc(c0; c1) inc(c1; c2)", &["c0".into(), "c2".into()], &[], &lookup, &MinimizeBudget::default()).unwrap();
+        assert_eq!(t.vars, ["c0_0", "c0_1", "c2_0", "c2_1"].map(String::from).to_vec());
+        assert_eq!(t.internals_projected, ["c1_0", "c1_1"].map(String::from).to_vec());
+        let mut rows = t.rows.clone(); rows.sort();
+        assert_eq!(rows, vec![vec![Some(false), Some(false), Some(false), Some(true)], vec![Some(true), Some(false), Some(true), Some(true)]]);
+        // a residual literal joins in; a negated call is refused
+        let t2 = compile_box_by_join("chain2b", "inc(c0; c1) inc(c1; c2) c0_0", &["c0".into(), "c2".into()], &[], &lookup, &MinimizeBudget::default()).unwrap();
+        assert_eq!(t2.rows.len(), 1);
+        assert!(compile_box_by_join("bad", "inc(c0; c1)' inc(c1; c2)", &["c0".into(), "c2".into()], &[], &lookup, &MinimizeBudget::default()).is_err());
     }
 }

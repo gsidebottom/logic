@@ -10,7 +10,7 @@ use logic::matrix::{PathClassificationHandle, Matrix, Lit};
 use logic::jqlib::{split_file, join_file, split_boxes, join_boxes, resolve_preamble, parse_box_decl, box_formula};
 use logic::boxes::compile::{compile_box, Table};
 use logic::boxes::expand::{expand_box_calls, atomize_box_calls, family_of, Arg, BoxCall, BoxSig};
-use logic::boxes::compile::{compile_box_polarity, ArgBinding, MinimizeBudget};
+use logic::boxes::compile::{compile_box_polarity, compile_box_by_join, ArgBinding, MinimizeBudget};
 use logic::boxes::controller::{BoxAwareController, BoxTables, CallBoxes};
 use logic::boxes::TableBox;
 use serde::{Deserialize, Serialize};
@@ -82,6 +82,8 @@ struct ClassifyJob {
     snapshot: ClassifySnapshot,
     total_path_count:         f64,
     start_time:               Option<std::time::Instant>,
+    /// Elapsed seconds frozen when the job finished (status reads it instead of the clock).
+    finished_secs:            Option<f64>,
     cancel:   Option<PathClassificationHandle>,
     running:  bool,
     error:    Option<String>,
@@ -106,6 +108,7 @@ impl Default for ClassifyJob {
             preprocessed: false,
             total_path_count: 0.0,
             start_time: None,
+            finished_secs: None,
         }
     }
 }
@@ -359,6 +362,9 @@ struct CompiledBox {
     lib: String,
     /// The declaration line as written in the library's boxes section.
     decl: String,
+    /// Compiled by composition (joining the callees' tables) rather than by
+    /// enumerating the expanded matrix.
+    composed: bool,
     params: Vec<String>,
     expose: Vec<String>,
     vars: Vec<String>,
@@ -432,27 +438,39 @@ async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, t
             Ok(f) => f,
             Err(e) => { statuses.push(serde_json::json!({ "name": d.name, "error": e })); continue; }
         };
+        let budget = MinimizeBudget::new(d.budget.cubes, d.budget.ms);
         // A definition may call boxes declared earlier (in this library or a
-        // loaded one): expand those before compiling.
-        let formula = {
+        // loaded one).  A conjunction of calls is compiled by composition —
+        // joining the callees' tables, hidden variables projected as the
+        // join proceeds — which never touches the expanded matrix; anything
+        // else expands the calls and enumerates paths.
+        let (formula, composed): (String, Option<Table>) = {
             let store = state.compiled_boxes.lock().unwrap().clone();
-            let lookup = |name: &str| compiled_now.iter().chain(store.iter()).find(|b: &&CompiledBox| b.name == name)
-                .map(|b| BoxSig { params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone() });
+            let find = |name: &str| compiled_now.iter().chain(store.iter()).find(|b: &&CompiledBox| b.name == name);
+            let lookup = |name: &str| find(name).map(|b| BoxSig { params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone() });
+            let lookup_t = |name: &str| find(name).map(|b| (BoxSig { params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone() }, b.table.clone()));
+            let composed = compile_box_by_join(&d.name, &formula, &d.params, &d.expose, &lookup_t, &budget).ok();
             match expand_box_calls(&formula, &lookup) {
-                Ok(f) => f,
+                Ok(f) => (f, composed),
                 Err(e) => { statuses.push(serde_json::json!({ "name": d.name, "error": format!("definition: {e}") })); continue; }
             }
         };
         let dur = std::time::Duration::from_secs(timeout_secs);
-        let budget = MinimizeBudget::new(d.budget.cubes, d.budget.ms);
-        let fut = compile_box(&d.name, &formula, &d.params, &d.expose, max_paths, &budget);
-        match tokio::time::timeout(dur, fut).await {
-            Err(_) => statuses.push(serde_json::json!({ "name": d.name, "error": format!("compile timed out after {timeout_secs} s") })),
-            Ok(Err(e)) => statuses.push(serde_json::json!({ "name": d.name, "error": e })),
-            Ok(Ok(table)) => {
+        let is_composed = composed.is_some();
+        let result: Result<Table, String> = match composed {
+            Some(t) => Ok(t),
+            None => match tokio::time::timeout(dur, compile_box(&d.name, &formula, &d.params, &d.expose, max_paths, &budget)).await {
+                Err(_) => Err(format!("compile timed out after {timeout_secs} s")),
+                Ok(r) => r,
+            },
+        };
+        match result {
+            Err(e) => statuses.push(serde_json::json!({ "name": d.name, "error": e })),
+            Ok(table) => {
                 // The negative table (§2.2: two tables per box).  Exact from the
-                // definition's own NNF only when nothing is projected.
-                let table_neg: Option<Table> = if table.internals_projected.is_empty() {
+                // definition's own NNF only when nothing is projected (and the
+                // box was not composed — its expansion may be enormous).
+                let table_neg: Option<Table> = if table.internals_projected.is_empty() && !is_composed {
                     match tokio::time::timeout(dur, compile_box_polarity(&d.name, &formula, &d.params, &d.expose, max_paths, true, &budget)).await {
                         Ok(Ok(t)) => Some(t),
                         _ => table.complement(20, &budget).ok(),
@@ -467,10 +485,11 @@ async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, t
                     "name": d.name, "params": table.params, "vars": table.vars, "rows": table.rows.len(), "rows_neg": rows_neg,
                     "exact_min": exact_min, "minimize_ms": minimize_ms, "budget_cubes": budget.max_cubes, "budget_ms": budget.time.as_millis() as u64,
                     "exact_min_pos": exact_min_pos, "exact_min_neg": exact_min_neg, "minimize_ms_pos": minimize_ms_pos, "minimize_ms_neg": minimize_ms_neg,
+                    "composed": is_composed,
                     "uncovered_paths": table.uncovered_paths, "formula": table.formula,
                 }));
                 compiled_now.push(CompiledBox {
-                    name: d.name.clone(), lib: lib.path.clone(), decl: line.trim().to_string(), params: d.params.clone(), expose: d.expose.clone(),
+                    name: d.name.clone(), lib: lib.path.clone(), decl: line.trim().to_string(), composed: is_composed, params: d.params.clone(), expose: d.expose.clone(),
                     vars: table.vars.clone(), rows: table.rows.len(), uncovered_paths: table.uncovered_paths,
                     formula: table.formula.clone(), internals: table.internals_projected.clone(), rows_neg, exact_min,
                     exact_min_pos, exact_min_neg, minimize_ms_pos, minimize_ms_neg,
@@ -888,7 +907,7 @@ fn classify_status(job: &ClassifyJob) -> ClassifyStatusResponse {
         total_prefix_count:       job.snapshot.total_prefix_count,
         classified_count:         classified,
         total_path_count:         job.total_path_count,
-        elapsed_secs:             job.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64()),
+        elapsed_secs:             job.finished_secs.unwrap_or_else(|| job.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64())),
         hit_limit:                job.snapshot.hit_limit,
         running:                  job.running,
         is_complement:            job.is_complement,
@@ -1039,7 +1058,9 @@ fn start_classify_job(
         ctx.count
     }
 
+    let timing = std::env::var_os("LOGIC_BOX_TIMING").is_some();
     let mut matrix = Matrix::try_from(formula)?;
+    if timing && boxctx.is_some() { eprintln!("[box-timing] parse done at {:?}", job_start.elapsed()); }
     // Box-aware search (`boxes` backend, box-aware paths): the matrix search
     // runs on the collapsed NNF and `BoxAwareController` prunes prefixes by
     // the box tables; the drainer decorates each uncovered path with the
@@ -1048,6 +1069,7 @@ fn start_classify_job(
     let (box_tables, box_witness_for_drainer, box_names): (Option<Arc<BoxTables>>, Option<Witness>, Option<Vec<String>>) = match &boxctx {
         Some(ctx) => {
             let (t, names, arg_vars) = build_box_tables(ctx, &mut matrix)?;
+            if timing { eprintln!("[box-timing] tables built at {:?} ({} calls)", job_start.elapsed(), t.calls.len()); }
             let t = Arc::new(t);
             (Some(t.clone()), Some(box_witness(t, arg_vars)), Some(names))
         }
@@ -1476,6 +1498,7 @@ fn start_classify_job(
             g.prefix_length_max = g.prefix_length_max.max(leaf_count);
         }
         job.running = false;
+        if job.finished_secs.is_none() { job.finished_secs = job.start_time.map(|t| t.elapsed().as_secs_f64()); }
         let cancelled = job.cancel.as_ref().is_some_and(|c| c.is_cancelled());
         job.cancel = None;
         // On clean completion every path has been classified — even in
@@ -1579,6 +1602,7 @@ fn reset_and_start(
             Err(p) => p.into_inner(),
         };
         job.running = false;
+        if job.finished_secs.is_none() { job.finished_secs = job.start_time.map(|t| t.elapsed().as_secs_f64()); }
         job.error = Some(e);
     }
     Json(serde_json::json!({ "ok": true }))
@@ -1602,6 +1626,7 @@ fn cancel_handler(job_state: &Arc<Mutex<ClassifyJob>>) -> Json<serde_json::Value
     };
     if let Some(c) = job.cancel.take() { c.cancel(); }
     job.running = false;
+        if job.finished_secs.is_none() { job.finished_secs = job.start_time.map(|t| t.elapsed().as_secs_f64()); }
     Json(serde_json::json!({ "ok": true }))
 }
 

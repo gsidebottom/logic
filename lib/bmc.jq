@@ -66,10 +66,37 @@ def bmc_w4_n8_test:
   bmc_w4_n8 == "v_eq_0_4(c0) c8_3 (c8_2 + c8_1 + c8_0) a_i_zero_w4(a_0;c0;c1) a_i_not_zero_w4(a_0;c0;c1) a_i_zero_w4(a_1;c1;c2) a_i_not_zero_w4(a_1;c1;c2) a_i_zero_w4(a_2;c2;c3) a_i_not_zero_w4(a_2;c2;c3) a_i_zero_w4(a_3;c3;c4) a_i_not_zero_w4(a_3;c3;c4) a_i_zero_w4(a_4;c4;c5) a_i_not_zero_w4(a_4;c4;c5) a_i_zero_w4(a_5;c5;c6) a_i_not_zero_w4(a_5;c5;c6) a_i_zero_w4(a_6;c6;c7) a_i_not_zero_w4(a_6;c6;c7) a_i_zero_w4(a_7;c7;c8) a_i_not_zero_w4(a_7;c7;c8)"
 ;
 
+# The whole n-step unrolling as ONE box over (a, c_n) — the intermediate
+# counters are hidden, so the compiled table itself holds the reachable
+# (a, c_n) pairs and "c_n ≤ n" is available to propagation without any
+# search.  A conjunction of box calls compiles by composition: the callees'
+# tables are joined and the hidden counters projected step by step (never the
+# expanded matrix).
+def bmc_chain_w4(a; c; n):
+  prod(
+    "v_eq_0_4(\(c)0)",
+    (
+      range(n) |
+      . as $i |
+      vi(a; $i) as $a_i |
+      "a_i_zero_w4(\($a_i);\(c)\($i);\(c)\($i+1))",
+      "a_i_not_zero_w4(\($a_i);\(c)\($i);\(c)\($i+1))"
+    )
+  )
+;
+def bmc_chain_w4_test: (bmc_chain_w4("a"; "c"; 1) == "v_eq_0_4(c0) a_i_zero_w4(a_0;c0;c1) a_i_not_zero_w4(a_0;c0;c1)");
+
+# bmc_w4_n8 with the unrolling as a single box: bmc8_w4(a;c8) c8_3 (c8_2 + c8_1 + c8_0)
+def bmc_w4_n8_box: prod("bmc8_w4(a;c8)", v_gt("c8"; 8; 4));
+def bmc_w4_n8_box_test: bmc_w4_n8_box == "bmc8_w4(a;c8) c8_3 (c8_2 + c8_1 + c8_0)";
+
 # === boxes ===
 # a_i_zero_w4(a_i;c_i;c_ip1) := imp((a_i|c), plus1(c_i; c_ip1; 4))
 # a_i_not_zero_w4(a_i;c_i;c_ip1) := imp(a_i, eq(c_i; c_ip1; 4))
+# bmc8_w4(a;c8) := bmc_chain_w4(a; "c"; 8)
 # === end boxes ===
 # === tests ===
 bmc_test
 , bmc_w4_n8_test
+, bmc_chain_w4_test
+, bmc_w4_n8_box_test

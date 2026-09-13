@@ -26,6 +26,8 @@ pub struct Table {
     pub uncovered_paths: usize,
     /// The rows are a proven minimum cover (exact Quine–McCluskey), not just irredundant.
     pub exact_min: bool,
+    /// Milliseconds spent minimizing this table.
+    pub minimize_ms: u64,
 }
 
 impl Table {
@@ -44,6 +46,7 @@ impl Table {
             "internals_projected": self.internals_projected,
             "uncovered_paths": self.uncovered_paths,
             "exact_min": self.exact_min,
+            "minimize_ms": self.minimize_ms,
         })
     }
 
@@ -74,6 +77,7 @@ impl Table {
             formula: v["formula"].as_str().unwrap_or("").to_string(),
             internals_projected: strs("internals_projected"),
             exact_min: v["exact_min"].as_bool().unwrap_or(false),
+            minimize_ms: v["minimize_ms"].as_u64().unwrap_or(0),
             uncovered_paths: v["uncovered_paths"].as_u64().unwrap_or(0) as usize,
         })
     }
@@ -126,7 +130,7 @@ impl Table {
     /// assignment of the columns matched by no row.  Exact for projected boxes
     /// (¬∃U.B = ∀U.¬B); rows are full assignments (no don't-cares).  Errors when
     /// the column count exceeds `max_cols` (2^k enumeration).
-    pub fn complement(&self, max_cols: usize) -> Result<Table, String> {
+    pub fn complement(&self, max_cols: usize, budget: &MinimizeBudget) -> Result<Table, String> {
         let k = self.vars.len();
         if k > max_cols {
             return Err(format!("{}: negative table needs 2^{k} assignments over {k} columns (limit {max_cols})", self.name));
@@ -137,9 +141,10 @@ impl Table {
             let covered = self.rows.iter().any(|r| r.iter().zip(&asg).all(|(c, &v)| c.is_none_or(|b| b == v)));
             if !covered { rows.push(asg.iter().map(|&v| Some(v)).collect()); }
         }
-        let (rows, exact_min) = minimize_rows(rows, k);
+        let t0 = std::time::Instant::now();
+        let (rows, exact_min) = minimize_rows(rows, k, budget);
         Ok(Table { name: format!("{}'", self.name), params: self.params.clone(), vars: self.vars.clone(), rows, formula: format!("({})'", self.formula),
-                   internals_projected: self.internals_projected.clone(), uncovered_paths: 0, exact_min })
+                   internals_projected: self.internals_projected.clone(), uncovered_paths: 0, exact_min, minimize_ms: t0.elapsed().as_millis() as u64 })
     }
 }
 
@@ -182,21 +187,37 @@ fn cube_minterms(row: &[Option<bool>]) -> Vec<usize> {
 /// an exact cover); above this, or when the work budgets below are exceeded,
 /// [`minimize_rows`] falls back to the EXPAND + IRREDUNDANT heuristic.
 pub const QM_MAX_COLS: usize = 14;
-const QM_MAX_CUBES: usize = 2_000_000;
-/// Wall-clock budget for the exact cover search of one table; over it, the
-/// heuristic cover (used as the search's initial bound) is kept.
-const COVER_TIME_BUDGET: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// Work budgets for the exact minimization of one table (settable per box:
+/// `budget cubes=N ms=M` in the declaration).  Over either, the heuristic
+/// cover — which seeds the exact search as its upper bound — is kept.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MinimizeBudget {
+    /// Cubes the Quine–McCluskey prime enumeration may generate in total.
+    pub max_cubes: usize,
+    /// Wall-clock budget for the exact cover search.
+    pub time: std::time::Duration,
+}
+impl Default for MinimizeBudget {
+    fn default() -> Self { MinimizeBudget { max_cubes: 2_000_000, time: std::time::Duration::from_millis(1500) } }
+}
+impl MinimizeBudget {
+    pub fn new(max_cubes: Option<usize>, ms: Option<u64>) -> Self {
+        let d = Self::default();
+        MinimizeBudget { max_cubes: max_cubes.unwrap_or(d.max_cubes), time: ms.map(std::time::Duration::from_millis).unwrap_or(d.time) }
+    }
+}
 
 /// All prime implicants of the function with minterm set `f` (bit i of an
 /// index = column i), as `(value, mask)` cubes — `mask` bits are don't-cares.
 /// Quine–McCluskey: merge cubes of equal mask whose values differ in one bit.
-fn qm_primes(f: &[bool], k: usize) -> Option<Vec<(u32, u32)>> {
+fn qm_primes(f: &[bool], k: usize, max_cubes: usize) -> Option<Vec<(u32, u32)>> {
     let mut level: HashSet<(u32, u32)> = (0..f.len()).filter(|&m| f[m]).map(|m| (m as u32, 0u32)).collect();
     let mut primes = Vec::new();
     let mut total = 0usize;
     while !level.is_empty() {
         total += level.len();
-        if total > QM_MAX_CUBES { return None; }
+        if total > max_cubes { return None; }
         let mut merged: HashSet<(u32, u32)> = HashSet::new();
         let mut next: HashSet<(u32, u32)> = HashSet::new();
         // A cube with bit b = 0 merges with its partner that has bit b = 1
@@ -221,7 +242,7 @@ fn qm_primes(f: &[bool], k: usize) -> Option<Vec<(u32, u32)>> {
 /// Minimum cover of the prime-implicant chart: essential primes and dominance
 /// reductions, then branch-and-bound on the cyclic core.  `None` if the node
 /// budget is exceeded.
-fn exact_cover(primes: &[(u32, u32)], minterms: &[u32], initial_best: Option<Vec<usize>>) -> Option<Vec<usize>> {
+fn exact_cover(primes: &[(u32, u32)], minterms: &[u32], initial_best: Option<Vec<usize>>, time: std::time::Duration) -> Option<Vec<usize>> {
     let words = minterms.len().div_ceil(64);
     let idx_of: HashMap<u32, usize> = minterms.iter().enumerate().map(|(i, &m)| (m, i)).collect();
     // coverage bitsets over minterm indices
@@ -302,7 +323,7 @@ fn exact_cover(primes: &[(u32, u32)], minterms: &[u32], initial_best: Option<Vec
         }
         true
     }
-    let mut st = S { covers: &covers, best: initial_best, nodes: 0, deadline: std::time::Instant::now() + COVER_TIME_BUDGET };
+    let mut st = S { covers: &covers, best: initial_best, nodes: 0, deadline: std::time::Instant::now() + time };
     let alive: Vec<usize> = (0..primes.len()).collect();
     if !search(&mut st, all, alive, Vec::new(), &is_empty, &subset, &count) { return None; }
     st.best
@@ -316,10 +337,10 @@ fn cube_minterms_vm(v: u32, m: u32) -> Vec<u32> {
 
 /// Exact minimum cover for small column counts: Quine–McCluskey primes and an
 /// exact cover.  `None` when over budget (the caller falls back to the heuristic).
-fn minimize_exact(f: &[bool], k: usize, heuristic: &[Vec<Option<bool>>]) -> Option<Vec<Vec<Option<bool>>>> {
+fn minimize_exact(f: &[bool], k: usize, heuristic: &[Vec<Option<bool>>], budget: &MinimizeBudget) -> Option<Vec<Vec<Option<bool>>>> {
     let minterms: Vec<u32> = (0..f.len()).filter(|&m| f[m]).map(|m| m as u32).collect();
     if minterms.is_empty() { return Some(Vec::new()); }
-    let primes = qm_primes(f, k)?;
+    let primes = qm_primes(f, k, budget.max_cubes)?;
     // the heuristic cover consists of primes: use it as the initial upper bound
     let index: HashMap<(u32, u32), usize> = primes.iter().enumerate().map(|(i, &c)| (c, i)).collect();
     let bound: Option<Vec<usize>> = heuristic.iter().map(|r| {
@@ -327,7 +348,7 @@ fn minimize_exact(f: &[bool], k: usize, heuristic: &[Vec<Option<bool>>]) -> Opti
         for (c, x) in r.iter().enumerate() { match x { Some(true) => v |= 1 << c, Some(false) => {}, None => m |= 1 << c } }
         index.get(&(v, m)).copied()
     }).collect();
-    let chosen = exact_cover(&primes, &minterms, bound)?;
+    let chosen = exact_cover(&primes, &minterms, bound, budget.time)?;
     let mut rows: Vec<Vec<Option<bool>>> = chosen.iter().map(|&i| {
         let (v, m) = primes[i];
         (0..k).map(|c| if m >> c & 1 == 1 { None } else { Some(v >> c & 1 == 1) }).collect()
@@ -347,7 +368,7 @@ fn minimize_exact(f: &[bool], k: usize, heuristic: &[Vec<Option<bool>>]) -> Opti
 /// to the same table — and fewer, wider rows propagate faster.  Rows are
 /// returned sorted, with `true` when they are a proven minimum.  Left
 /// unchanged when the box has more than [`MINIMIZE_MAX_COLS`] columns.
-pub fn minimize_rows(rows: Vec<Vec<Option<bool>>>, k: usize) -> (Vec<Vec<Option<bool>>>, bool) {
+pub fn minimize_rows(rows: Vec<Vec<Option<bool>>>, k: usize, budget: &MinimizeBudget) -> (Vec<Vec<Option<bool>>>, bool) {
     if k > MINIMIZE_MAX_COLS || rows.is_empty() { return (rows, false); }
     let mut f = vec![false; 1usize << k];
     for r in &rows { for m in cube_minterms(r) { f[m] = true; } }
@@ -376,7 +397,7 @@ pub fn minimize_rows(rows: Vec<Vec<Option<bool>>>, k: usize) -> (Vec<Vec<Option<
     }
     kept.sort();
     // exact minimum when small enough and within budget
-    if k <= QM_MAX_COLS && let Some(exact) = minimize_exact(&f, k, &kept) { return (exact, true); }
+    if k <= QM_MAX_COLS && let Some(exact) = minimize_exact(&f, k, &kept, budget) { return (exact, true); }
     (kept, false)
 }
 
@@ -414,15 +435,15 @@ pub fn interface_columns(names: &[String], params: &[String], expose: &[String])
 /// onto the interface columns (every other variable is hidden — ∃), dedup,
 /// and minimize ([`minimize_rows`]).  Must run inside a tokio runtime; errors
 /// if more than `max_uncovered_paths` paths are found.
-pub async fn compile_box(name: &str, formula: &str, params: &[String], expose: &[String], max_uncovered_paths: usize) -> Result<Table, String> {
-    compile_box_polarity(name, formula, params, expose, max_uncovered_paths, false).await
+pub async fn compile_box(name: &str, formula: &str, params: &[String], expose: &[String], max_uncovered_paths: usize, budget: &MinimizeBudget) -> Result<Table, String> {
+    compile_box_polarity(name, formula, params, expose, max_uncovered_paths, false, budget).await
 }
 
 /// Like [`compile_box`]; with `negate` the table of the *complement* of the
 /// definition is compiled (its uncovered paths are those of the definition's
 /// own NNF).  Only exact when nothing is projected: ¬(∃U.B) ≠ ∃U.¬B — use
 /// [`Table::complement`] for a box with projected internals.
-pub async fn compile_box_polarity(name: &str, formula: &str, params: &[String], expose: &[String], max_uncovered_paths: usize, negate: bool) -> Result<Table, String> {
+pub async fn compile_box_polarity(name: &str, formula: &str, params: &[String], expose: &[String], max_uncovered_paths: usize, negate: bool, budget: &MinimizeBudget) -> Result<Table, String> {
     let (names, nnf) = {
         let m = Matrix::try_from(formula.trim()).map_err(|e| format!("{name}: parse error: {e}"))?;
         (m.ast.vars.clone(), if negate { m.nnf.clone() } else { m.nnf_complement.clone() })
@@ -459,17 +480,19 @@ pub async fn compile_box_polarity(name: &str, formula: &str, params: &[String], 
     if hit {
         return Err(format!("{name}: more than {max_uncovered_paths} uncovered paths — raise the limit or split the box"));
     }
-    let (rows, exact_min) = minimize_rows(set.into_iter().collect(), cols.len());
+    let t0 = std::time::Instant::now();
+    let (rows, exact_min) = minimize_rows(set.into_iter().collect(), cols.len(), budget);
     Ok(Table {
         name: name.to_string(), params: families, vars: cols, rows,
         formula: formula.trim().to_string(), internals_projected: internals, uncovered_paths: n, exact_min,
+        minimize_ms: t0.elapsed().as_millis() as u64,
     })
 }
 
 /// [`compile_box`] on a private runtime, for command-line use.
-pub fn compile_box_blocking(name: &str, formula: &str, params: &[String], expose: &[String], max_uncovered_paths: usize) -> Result<Table, String> {
+pub fn compile_box_blocking(name: &str, formula: &str, params: &[String], expose: &[String], max_uncovered_paths: usize, budget: &MinimizeBudget) -> Result<Table, String> {
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| e.to_string())?;
-    rt.block_on(compile_box(name, formula, params, expose, max_uncovered_paths))
+    rt.block_on(compile_box(name, formula, params, expose, max_uncovered_paths, budget))
 }
 
 #[cfg(test)]
@@ -479,7 +502,7 @@ mod tests {
     #[test]
     fn adder_compiles_to_its_truth_table() {
         let cols: Vec<String> = ["X", "Y", "C1", "Z", "C"].map(String::from).to_vec();
-        let t = compile_box_blocking("full_adder", "(C = X Y + (X ⊕ Y) C1) (Z = X ⊕ Y ⊕ C1)", &cols, &[], 100_000).unwrap();
+        let t = compile_box_blocking("full_adder", "(C = X Y + (X ⊕ Y) C1) (Z = X ⊕ Y ⊕ C1)", &cols, &[], 100_000, &MinimizeBudget::default()).unwrap();
         assert_eq!(t.rows.len(), 8);
         for r in &t.rows {
             let v = |i: usize| r[i].unwrap() as u32;
@@ -497,9 +520,9 @@ mod tests {
     fn projection_drops_internals() {
         let cols: Vec<String> = ["X", "Y", "C1", "Z", "C"].map(String::from).to_vec();
         let five = "(U1 = X Y) (U2 = U3 C1) (C = U1+U2) (U3 = X ⊕ Y) (Z = U3 ⊕ C1)";
-        let t = compile_box_blocking("adder", five, &cols, &[], 100_000).unwrap();
+        let t = compile_box_blocking("adder", five, &cols, &[], 100_000, &MinimizeBudget::default()).unwrap();
         assert_eq!(t.internals_projected, ["U1", "U2", "U3"].map(String::from).to_vec());
-        let two = compile_box_blocking("full_adder", "(C = X Y + (X ⊕ Y) C1) (Z = X ⊕ Y ⊕ C1)", &cols, &[], 100_000).unwrap();
+        let two = compile_box_blocking("full_adder", "(C = X Y + (X ⊕ Y) C1) (Z = X ⊕ Y ⊕ C1)", &cols, &[], 100_000, &MinimizeBudget::default()).unwrap();
         assert_eq!(t.rows, two.rows, "∃U.adder == full_adder as tables");
     }
 
@@ -507,14 +530,14 @@ mod tests {
     fn arg_bindings_constants_and_complement() {
         let t = Table { name: "and".into(), params: vec!["a".into(), "b".into(), "z".into()], vars: vec!["a".into(), "b".into(), "z".into()],
             rows: vec![vec![Some(true), Some(true), Some(true)], vec![Some(false), None, Some(false)], vec![None, Some(false), Some(false)]],
-            formula: "z = a b".into(), internals_projected: vec![], uncovered_paths: 3, exact_min: false };
+            formula: "z = a b".into(), internals_projected: vec![], uncovered_paths: 3, exact_min: false, minimize_ms: 0 };
         // z = a b with a := x', b := 1, z := y  →  y = x'
         let rows = t.instantiate_args(&[ArgBinding::Var { id: 0, neg: true }, ArgBinding::Const(true), ArgBinding::Var { id: 1, neg: false }]).unwrap();
         assert_eq!(rows, vec![
             vec![Lit { var: 0, neg: true }, Lit { var: 1, neg: false }],   // a=1 ⇒ x=0, z=1
             vec![Lit { var: 0, neg: false }, Lit { var: 1, neg: true }],   // a=0 ⇒ x=1, z=0
         ]);                                                                 // row 3 (b=0) filtered by b := 1
-        let c = t.complement(8).unwrap();
+        let c = t.complement(8, &MinimizeBudget::default()).unwrap();
         // z = a b has 4 non-models of (a,b,z); minimized to the 3 primes (0,-,1), (-,0,1), (1,1,0)
         assert_eq!(c.rows.len(), 3);
         assert!(c.rows.iter().all(|r| cube_minterms(r).into_iter().all(|m| { let (a, b, z) = (m & 1 == 1, m & 2 == 2, m & 4 == 4); z != (a && b) })));
@@ -533,17 +556,17 @@ mod tests {
         assert_eq!(cols, ["a", "a_0", "a_2", "b_1", "b_10"].map(String::from).to_vec());   // numeric subscript order
         assert_eq!(hidden, vec!["c_1".to_string()]);
         // a 2-bit equality box: 4 columns, 4 rows
-        let t = compile_box_blocking("eq2", "(a_0 = b_0) (a_1 = b_1)", &["a".into(), "b".into()], &[], 100_000).unwrap();
+        let t = compile_box_blocking("eq2", "(a_0 = b_0) (a_1 = b_1)", &["a".into(), "b".into()], &[], 100_000, &MinimizeBudget::default()).unwrap();
         assert_eq!(t.params, ["a", "b"].map(String::from).to_vec());
         assert_eq!(t.vars, ["a_0", "a_1", "b_0", "b_1"].map(String::from).to_vec());
         assert_eq!(t.rows.len(), 4);
         // a carry family c_* is hidden unless exposed
         let f = "(c_1 = a_0 b_0) (s_0 = a_0 ⊕ b_0) (s_1 = c_1 ⊕ a_1 ⊕ b_1)";
-        let h = compile_box_blocking("half2", f, &["a".into(), "b".into(), "s".into()], &[], 100_000).unwrap();
+        let h = compile_box_blocking("half2", f, &["a".into(), "b".into(), "s".into()], &[], 100_000, &MinimizeBudget::default()).unwrap();
         assert_eq!(h.internals_projected, vec!["c_1".to_string()]);
         assert_eq!(h.vars, ["a_0", "a_1", "b_0", "b_1", "s_0", "s_1"].map(String::from).to_vec());
         assert_eq!(h.rows.len(), 16);
-        let e = compile_box_blocking("half2", f, &["a".into(), "b".into(), "s".into()], &["c".into()], 100_000).unwrap();
+        let e = compile_box_blocking("half2", f, &["a".into(), "b".into(), "s".into()], &["c".into()], 100_000, &MinimizeBudget::default()).unwrap();
         assert_eq!(e.params, ["a", "b", "s", "c"].map(String::from).to_vec());
         assert_eq!(e.vars.last().map(String::as_str), Some("c_1"));
         assert!(e.internals_projected.is_empty());
@@ -555,7 +578,7 @@ mod tests {
     fn minimization_is_exact_and_formula_independent() {
         // Coverage is preserved and every kept row is a prime implicant.
         let rows = vec![vec![Some(false), Some(false)], vec![Some(false), Some(true)], vec![Some(true), Some(true)]];
-        let (m, exact) = minimize_rows(rows.clone(), 2);
+        let (m, exact) = minimize_rows(rows.clone(), 2, &MinimizeBudget::default());
         assert!(exact);
         let cover = |rs: &Vec<Vec<Option<bool>>>| { let mut v: Vec<usize> = rs.iter().flat_map(|r| cube_minterms(r)).collect(); v.sort(); v.dedup(); v };
         assert_eq!(cover(&m), cover(&rows));
@@ -573,10 +596,10 @@ mod tests {
         let eq: String = (0..4).map(|i| format!("(a_{i} = b_{i})")).collect::<Vec<_>>().join(" ");
         let le = format!("{} + {}", lt("a", "b"), eq);
         let ab = ["a".to_string(), "b".to_string()];
-        let le_t = compile_box_blocking("le4", &le, &ab, &[], 100_000).unwrap();
+        let le_t = compile_box_blocking("le4", &le, &ab, &[], 100_000, &MinimizeBudget::default()).unwrap();
         assert_eq!(le_t.rows.len(), 23);
         let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
-        let lt_ba_neg = rt.block_on(compile_box_polarity("lt4", &lt("b", "a"), &ab, &[], 100_000, true)).unwrap();
+        let lt_ba_neg = rt.block_on(compile_box_polarity("lt4", &lt("b", "a"), &ab, &[], 100_000, true, &MinimizeBudget::default())).unwrap();
         assert_eq!(lt_ba_neg.rows.len(), 23);
         assert_eq!(cover(&le_t.rows), cover(&lt_ba_neg.rows));   // the same 136 assignments
         assert_eq!(cover(&le_t.rows).len(), 136);
@@ -588,15 +611,20 @@ mod tests {
         // essential; an irredundant cover can have 4 rows, the minimum is 3.
         let bits = |m: usize| (0..3).map(|i| Some(m >> i & 1 == 1)).collect::<Vec<_>>();
         let rows: Vec<Vec<Option<bool>>> = [0usize, 1, 2, 5, 6, 7].iter().map(|&m| bits(m)).collect();
-        let (m, exact) = minimize_rows(rows.clone(), 3);
+        let (m, exact) = minimize_rows(rows.clone(), 3, &MinimizeBudget::default());
         assert!(exact);
         assert_eq!(m.len(), 3, "{m:?}");
+
         let cover = |rs: &Vec<Vec<Option<bool>>>| { let mut v: Vec<usize> = rs.iter().flat_map(|r| cube_minterms(r)).collect(); v.sort(); v.dedup(); v };
         assert_eq!(cover(&m), vec![0, 1, 2, 5, 6, 7]);
+        // an exhausted cube budget keeps the (irredundant) heuristic cover
+        let (h, exact) = minimize_rows(rows.clone(), 3, &MinimizeBudget::new(Some(1), None));
+        assert!(!exact);
+        assert_eq!(cover(&h), vec![0, 1, 2, 5, 6, 7]);
         // the heuristic path (above QM_MAX_COLS) still preserves coverage
         let k = QM_MAX_COLS + 1;
         let wide: Vec<Vec<Option<bool>>> = (0..4).map(|j| (0..k).map(|c| if c < 2 { Some(j >> c & 1 == 1) } else if c == 2 { Some(true) } else { None }).collect()).collect();
-        let (w, exact) = minimize_rows(wide.clone(), k);
+        let (w, exact) = minimize_rows(wide.clone(), k, &MinimizeBudget::default());
         assert!(!exact);
         assert_eq!(w.len(), 1);                                   // the four rows merge into one cube
         assert_eq!(cover(&w), cover(&wide));

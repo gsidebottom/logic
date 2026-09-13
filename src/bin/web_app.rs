@@ -10,7 +10,7 @@ use logic::matrix::{PathClassificationHandle, Matrix, Lit};
 use logic::jqlib::{split_file, join_file, split_boxes, join_boxes, resolve_preamble, parse_box_decl, box_formula};
 use logic::boxes::compile::{compile_box, Table};
 use logic::boxes::expand::{expand_box_calls, atomize_box_calls, family_of, Arg, BoxCall, BoxSig};
-use logic::boxes::compile::{compile_box_polarity, ArgBinding};
+use logic::boxes::compile::{compile_box_polarity, ArgBinding, MinimizeBudget};
 use logic::boxes::controller::{BoxAwareController, BoxTables, CallBoxes};
 use logic::boxes::TableBox;
 use serde::{Deserialize, Serialize};
@@ -371,6 +371,11 @@ struct CompiledBox {
     rows_neg: usize,
     /// The tables are proven minimum covers (exact Quine–McCluskey).
     exact_min: bool,
+    /// Effective minimization budget (declaration override or default).
+    budget_cubes: usize,
+    budget_ms: u64,
+    /// Milliseconds spent minimizing both tables.
+    minimize_ms: u64,
     #[serde(skip)]
     table: Table,
     /// The negative table — compiled from the definition's own NNF when nothing
@@ -434,7 +439,8 @@ async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, t
             }
         };
         let dur = std::time::Duration::from_secs(timeout_secs);
-        let fut = compile_box(&d.name, &formula, &d.params, &d.expose, max_paths);
+        let budget = MinimizeBudget::new(d.budget.cubes, d.budget.ms);
+        let fut = compile_box(&d.name, &formula, &d.params, &d.expose, max_paths, &budget);
         match tokio::time::timeout(dur, fut).await {
             Err(_) => statuses.push(serde_json::json!({ "name": d.name, "error": format!("compile timed out after {timeout_secs} s") })),
             Ok(Err(e)) => statuses.push(serde_json::json!({ "name": d.name, "error": e })),
@@ -442,21 +448,24 @@ async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, t
                 // The negative table (§2.2: two tables per box).  Exact from the
                 // definition's own NNF only when nothing is projected.
                 let table_neg: Option<Table> = if table.internals_projected.is_empty() {
-                    match tokio::time::timeout(dur, compile_box_polarity(&d.name, &formula, &d.params, &d.expose, max_paths, true)).await {
+                    match tokio::time::timeout(dur, compile_box_polarity(&d.name, &formula, &d.params, &d.expose, max_paths, true, &budget)).await {
                         Ok(Ok(t)) => Some(t),
-                        _ => table.complement(20).ok(),
+                        _ => table.complement(20, &budget).ok(),
                     }
-                } else { table.complement(20).ok() };
+                } else { table.complement(20, &budget).ok() };
                 let rows_neg = table_neg.as_ref().map_or(0, |t| t.rows.len());
                 let exact_min = table.exact_min && table_neg.as_ref().is_none_or(|t| t.exact_min);
+                let minimize_ms = table.minimize_ms + table_neg.as_ref().map_or(0, |t| t.minimize_ms);
                 statuses.push(serde_json::json!({
                     "name": d.name, "params": table.params, "vars": table.vars, "rows": table.rows.len(), "rows_neg": rows_neg,
+                    "exact_min": exact_min, "minimize_ms": minimize_ms, "budget_cubes": budget.max_cubes, "budget_ms": budget.time.as_millis() as u64,
                     "uncovered_paths": table.uncovered_paths, "formula": table.formula,
                 }));
                 compiled_now.push(CompiledBox {
                     name: d.name.clone(), lib: lib.path.clone(), decl: line.trim().to_string(), params: d.params.clone(), expose: d.expose.clone(),
                     vars: table.vars.clone(), rows: table.rows.len(), uncovered_paths: table.uncovered_paths,
-                    formula: table.formula.clone(), internals: table.internals_projected.clone(), rows_neg, exact_min, table, table_neg,
+                    formula: table.formula.clone(), internals: table.internals_projected.clone(), rows_neg, exact_min,
+                    budget_cubes: budget.max_cubes, budget_ms: budget.time.as_millis() as u64, minimize_ms, table, table_neg,
                 });
             }
         }

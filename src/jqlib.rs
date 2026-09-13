@@ -231,6 +231,28 @@ pub struct BoxDecl {
     /// bound to its name as a zero-arity definition while it is evaluated.
     /// `None` means the definition is the jq function `name(p1;…;pn)`.
     pub rhs: Option<String>,
+    /// Per-box minimization budget: `budget cubes=N ms=M` (either key optional).
+    pub budget: BoxBudget,
+}
+
+/// Minimization budget overrides of a declaration (`None` = the default).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BoxBudget {
+    pub cubes: Option<usize>,
+    pub ms: Option<u64>,
+}
+
+fn parse_budget(s: &str) -> Result<BoxBudget, String> {
+    let mut b = BoxBudget::default();
+    for tok in s.split(|c: char| c.is_whitespace() || c == ',').filter(|t| !t.is_empty()) {
+        let (k, v) = tok.split_once('=').ok_or_else(|| format!("budget: expected key=value, got {tok:?}"))?;
+        match k.trim() {
+            "cubes" => b.cubes = Some(v.trim().parse().map_err(|_| format!("budget cubes: not a number: {v:?}"))?),
+            "ms" => b.ms = Some(v.trim().parse().map_err(|_| format!("budget ms: not a number: {v:?}"))?),
+            other => return Err(format!("budget: unknown key {other:?} (cubes, ms)")),
+        }
+    }
+    Ok(b)
 }
 
 /// Split the `# === boxes ===` … `# === end boxes ===` block out of a library's
@@ -272,7 +294,8 @@ fn is_ident(s: &str) -> bool {
     matches!(cs.next(), Some(c) if c.is_ascii_alphabetic() || c == '_') && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// Parse one declaration, `name(p1;p2;…) [:= <jq expression>] [expose f1,f2]`.
+/// Parse one declaration,
+/// `name(p1;p2;…) [:= <jq expression>] [expose f1,f2] [budget cubes=N ms=M]`.
 pub fn parse_box_decl(body: &str) -> Result<BoxDecl, String> {
     let body = body.trim().strip_prefix('#').map(str::trim).unwrap_or(body.trim());
     let open = body.find('(').ok_or("expected name(params…)")?;
@@ -280,7 +303,12 @@ pub fn parse_box_decl(body: &str) -> Result<BoxDecl, String> {
     let name = body[..open].trim().to_string();
     let params: Vec<String> = body[open + 1..close].split(';').map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect();
     let rest = body[close + 1..].trim();
-    // `expose …` is the last clause; what precedes it may be `:= <jq expression>`.
+    // `budget …` is the last clause, `expose …` the one before; what precedes
+    // them may be `:= <jq expression>`.
+    let (rest, budget): (&str, BoxBudget) = match rest.rfind(" budget ") {
+        Some(i) => (rest[..i].trim_end(), parse_budget(&rest[i + 8..])?),
+        None => match rest.strip_prefix("budget ") { Some(r) => ("", parse_budget(r)?), None => (rest, BoxBudget::default()) },
+    };
     let (rhs_part, expose_part): (&str, Option<&str>) = match rest.rfind(" expose ") {
         Some(i) => (&rest[..i], Some(&rest[i + 8..])),
         None => match rest.strip_prefix("expose ") { Some(r) => ("", Some(r)), None => (rest, None) },
@@ -298,7 +326,7 @@ pub fn parse_box_decl(body: &str) -> Result<BoxDecl, String> {
     for p in params.iter().chain(&expose) {
         if !is_ident(p) { return Err(format!("{name}: parameter {p:?} must be an identifier (letters, digits, `_`)")); }
     }
-    Ok(BoxDecl { name, params, expose, rhs })
+    Ok(BoxDecl { name, params, expose, rhs, budget })
 }
 
 /// All declarations in a library's content (its `# === boxes ===` block).
@@ -343,7 +371,12 @@ mod tests {
         let c = "def x: 1;\n# === boxes ===\n# full_adder(x;y;c_in;s;c_out)\n# adder(a;b;c_in;s;c_out;u1;u2;u3) expose u1, u2,u3\n# === end boxes ===\ndef y: 2;\n";
         let d = parse_boxes(c).unwrap();
         assert_eq!(d.len(), 2);
-        assert_eq!(d[0], BoxDecl { name: "full_adder".into(), params: ["x","y","c_in","s","c_out"].map(String::from).to_vec(), expose: vec![], rhs: None });
+        assert_eq!(d[0], BoxDecl { name: "full_adder".into(), params: ["x","y","c_in","s","c_out"].map(String::from).to_vec(), expose: vec![], rhs: None, budget: BoxBudget::default() });
+        let g = parse_box_decl("plus_4(a;b;c) := plus(a; b; c; 4) budget cubes=5000000 ms=30000").unwrap();
+        assert_eq!((g.rhs.as_deref(), g.budget), (Some("plus(a; b; c; 4)"), BoxBudget { cubes: Some(5_000_000), ms: Some(30_000) }));
+        let g = parse_box_decl("f(a;b) expose c budget ms=10").unwrap();
+        assert_eq!((g.expose.clone(), g.budget), (vec!["c".to_string()], BoxBudget { cubes: None, ms: Some(10) }));
+        assert!(parse_box_decl("f(a;b) budget nodes=3").is_err());
         assert_eq!(d[1].expose, ["u1","u2","u3"].map(String::from).to_vec());
         let g = parse_box_decl("eq4(a;b) := eq(a;b;4)").unwrap();
         assert_eq!((g.params.len(), g.rhs.as_deref(), g.expose.len()), (2, Some("eq(a;b;4)"), 0));
@@ -373,12 +406,12 @@ mod tests {
     fn run_filter_and_box_formula() {
         let pre = "def sum(s): [s] | join(\" + \");\ndef full_adder(x;y): sum(x, y);\n";
         assert_eq!(run_filter(pre, "full_adder(\"a\";\"b\")").unwrap(), vec![serde_json::json!("a + b")]);
-        let d = BoxDecl { name: "full_adder".into(), params: vec!["x".into(), "y".into()], expose: vec![], rhs: None };
+        let d = BoxDecl { name: "full_adder".into(), params: vec!["x".into(), "y".into()], expose: vec![], rhs: None, budget: BoxBudget::default() };
         assert_eq!(box_formula(pre, &d, None).unwrap(), "x + y");
         assert_eq!(box_formula(pre, &d, Some(&["P".to_string(), "Q".to_string()])).unwrap(), "P + Q");
         // a right-hand side with a literal argument, parameters bound as definitions
         let pre2 = "def sum(s): [s] | join(\" + \");\ndef rep(a; n): sum(range(n) | \"\\(a)_\\(.)\");\n";
-        let g = BoxDecl { name: "rep2".into(), params: vec!["a".into()], expose: vec![], rhs: Some("rep(a; 2)".into()) };
+        let g = BoxDecl { name: "rep2".into(), params: vec!["a".into()], expose: vec![], rhs: Some("rep(a; 2)".into()), budget: BoxBudget::default() };
         assert_eq!(box_formula(pre2, &g, None).unwrap(), "a_0 + a_1");
         assert_eq!(box_formula(pre2, &g, Some(&["x".to_string()])).unwrap(), "x_0 + x_1");
     }

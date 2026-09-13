@@ -24,6 +24,7 @@ function boxTooltip(b) {
   lines.push(`columns: ${b.vars.join(', ')}`);
   if (b.internals?.length) lines.push(`hidden (∃): ${b.internals.join(', ')}`);
   lines.push(`${b.rows} rows (negation: ${b.rows_neg ?? '?'}) — ${b.exact_min ? 'minimum covers' : 'irredundant covers'}; ${b.uncovered_paths} uncovered paths`);
+  if (b.budget_cubes != null) lines.push(`minimization budget: ${b.budget_cubes} cubes, ${b.budget_ms} ms (took ${b.minimize_ms ?? '?'} ms)`);
   lines.push('click for the full definition');
   return lines.join('\n');
 }
@@ -1291,8 +1292,12 @@ export default function App() {
   // Box definition popup: the box being shown and its compiled table (fetched on open).
   const [boxInfoName,    setBoxInfoName]    = useState(null);
   const [boxInfoTable,   setBoxInfoTable]   = useState(null);
+  const [boxBudgetEdit,  setBoxBudgetEdit]  = useState({ cubes: '', ms: '' });   // popup inputs
+  const [boxRecompute,   setBoxRecompute]   = useState({ busy: false, error: '' });
   const openBoxInfo = async name => {
-    setBoxInfoName(name); setBoxInfoTable(null);
+    setBoxInfoName(name); setBoxInfoTable(null); setBoxRecompute({ busy: false, error: '' });
+    const b0 = boxes.find(x => x.name === name);
+    if (b0) setBoxBudgetEdit({ cubes: String(b0.budget_cubes ?? 2000000), ms: String(b0.budget_ms ?? 1500) });
     try {
       const res = await fetch(API_BASE + '/boxes/table?name=' + encodeURIComponent(name));
       const data = await res.json();
@@ -1300,6 +1305,36 @@ export default function App() {
     } catch { /* table stays unavailable */ }
   };
   const boxInfoCtx = useMemo(() => ({ byName: new Map(boxes.map(b => [b.name, b])), open: openBoxInfo }), [boxes]);
+  // Recompute a box with an edited minimization budget: the budget lives in
+  // the declaration (`budget cubes=N ms=M`), so rewrite that line and save
+  // the library — the server recompiles its boxes — then refresh.
+  const BUDGET_DEFAULTS = { cubes: 2000000, ms: 1500 };
+  const declWithBudget = (decl, cubes, ms) => {
+    const base = decl.replace(/\s+budget\s.*$/, '').trim();
+    return (cubes === BUDGET_DEFAULTS.cubes && ms === BUDGET_DEFAULTS.ms) ? base : `${base} budget cubes=${cubes} ms=${ms}`;
+  };
+  const recomputeBox = async b => {
+    const cubes = parseInt(boxBudgetEdit.cubes, 10), ms = parseInt(boxBudgetEdit.ms, 10);
+    if (!(cubes > 0) || !(ms >= 0)) { setBoxRecompute({ busy: false, error: 'budget: cubes must be a positive number, ms a non-negative number' }); return; }
+    const lib = jqLibs.find(l => l.path === b.lib);
+    if (!lib) { setBoxRecompute({ busy: false, error: `library ${b.lib} is not loaded` }); return; }
+    const newDecl = declWithBudget(b.decl, cubes, ms);
+    const lines = (lib.boxes ?? []).map(line => line.trim() === b.decl.trim() ? newDecl : line);
+    setBoxRecompute({ busy: true, error: '' });
+    try {
+      const res = await fetch(API_BASE + '/jq-lib', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: lib.path, deps: lib.deps ?? [], content: lib.content ?? '', tests: lib.tests ?? '', boxes: lines }),
+      });
+      const data = await res.json();
+      if (data.error) { setBoxRecompute({ busy: false, error: data.error }); return; }
+      if (data.boxes) applyBoxStatuses(data.boxes);
+      await refreshJqLibs(); await fetchBoxes();
+      setBoxRecompute({ busy: false, error: '' });
+      // refresh the table grid
+      try { const t = await (await fetch(API_BASE + '/boxes/table?name=' + encodeURIComponent(b.name))).json(); if (!t.error) setBoxInfoTable(t); } catch {}
+    } catch { setBoxRecompute({ busy: false, error: 'Could not reach Rust service' }); }
+  };
   const [boxStatus,      setBoxStatus]      = useState({});    // name -> {rows|error} from the last load/save
   const [jqLibBoxes,     setJqLibBoxes]     = useState([]);    // editor buffer: box declarations
   const [boxesMsg,       setBoxesMsg]       = useState('');
@@ -2335,6 +2370,21 @@ export default function App() {
                       </div>
                       {b.internals?.length > 0 && <div><span style={{ color: '#888' }}>hidden (∃)&nbsp; </span>{b.internals.map((m, i) => <span key={m}>{i > 0 && ', '}<VarLabel name={m} /></span>)}</div>}
                       <div><span style={{ color: '#888' }}>table&nbsp; </span>{b.rows} rows over {b.vars.length} columns ({b.exact_min ? 'a minimum cover — exact Quine–McCluskey' : 'an irredundant prime cover'}), from {b.uncovered_paths} uncovered paths of the complement; negation: {b.rows_neg ?? '?'} rows</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ color: '#888' }}>minimization&nbsp; </span>
+            <span>budget: cubes</span>
+            <input type="number" min={1} step={100000} value={boxBudgetEdit.cubes} onChange={e => setBoxBudgetEdit(v => ({ ...v, cubes: e.target.value }))}
+                   style={{ width: 110, fontSize: 12, padding: '1px 4px' }} title="Cubes the Quine–McCluskey prime enumeration may generate before falling back to the heuristic cover" />
+            <span>· time</span>
+            <input type="number" min={0} step={500} value={boxBudgetEdit.ms} onChange={e => setBoxBudgetEdit(v => ({ ...v, ms: e.target.value }))}
+                   style={{ width: 80, fontSize: 12, padding: '1px 4px' }} title="Wall-clock budget (ms) for the exact cover search before falling back to the heuristic cover" />
+            <span>ms</span>
+            <button onClick={() => recomputeBox(b)} disabled={boxRecompute.busy}
+                    style={{ padding: '2px 10px', fontSize: 12, border: '1px solid #1a6bcc', borderRadius: 4, background: '#fff', color: '#1a6bcc', cursor: boxRecompute.busy ? 'wait' : 'pointer' }}
+                    title="Rewrite the declaration's budget clause, save the library and recompile its boxes">{boxRecompute.busy ? 'recomputing…' : 'Recompute'}</button>
+            <span style={{ color: '#888' }}>took {b.minimize_ms ?? '?'} ms — {b.exact_min ? 'minimum' : 'over budget: irredundant cover kept'}</span>
+            {boxRecompute.error && <span style={{ color: '#c00' }}>{boxRecompute.error}</span>}
+          </div>
                       {t?.rows && (t.rows.length <= 256 ? (
                         <table style={{ borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 12, alignSelf: 'flex-start' }}>
                           <thead><tr>{t.vars.map(v => <th key={v} style={{ padding: '2px 7px', borderBottom: '1px solid #bbb', fontWeight: 'normal', fontFamily: 'Georgia, serif', fontSize: 13 }}><VarLabel name={v} /></th>)}</tr></thead>

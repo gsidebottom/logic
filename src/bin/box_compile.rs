@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 
-use logic::boxes::compile::compile_box_blocking;
+use logic::boxes::compile::{compile_box_blocking, MinimizeBudget};
 use logic::jqlib::{box_formula, parse_boxes, resolve_preamble, split_file};
 
 fn split_list(s: &str) -> Vec<String> {
@@ -78,7 +78,8 @@ fn main() {
         if selected.is_empty() { die(format!("{lib}: no box named {}", box_name.unwrap_or_default())); }
         for d in selected {
             let formula = box_formula(&preamble, &d, None).unwrap_or_else(|e| die(e));
-            let table = compile_box_blocking(&d.name, &formula, &d.params, &d.expose, max_paths).unwrap_or_else(|e| die(e));
+            let budget = MinimizeBudget::new(d.budget.cubes, d.budget.ms);
+            let table = compile_box_blocking(&d.name, &formula, &d.params, &d.expose, max_paths, &budget).unwrap_or_else(|e| die(e));
             eprintln!("box-compile: {}: {} uncovered paths -> {} canonical rows over {:?} ({} internal variables projected)", d.name, table.uncovered_paths, table.rows.len(), table.vars, table.internals_projected.len());
             let table = table.to_json();
             let target = match (&out_dir, &out) {
@@ -99,7 +100,7 @@ fn main() {
     };
     let interface = interface.unwrap_or_default();
     if interface.is_empty() { die("--interface required".into()); }
-    let table = compile_box_blocking(&name, &formula, &interface, &expose, max_paths).unwrap_or_else(|e| die(e));
+    let table = compile_box_blocking(&name, &formula, &interface, &expose, max_paths, &MinimizeBudget::default()).unwrap_or_else(|e| die(e));
     eprintln!("box-compile: {}: {} uncovered paths -> {} canonical rows over {:?} ({} internal variables projected)", name, table.uncovered_paths, table.rows.len(), table.vars, table.internals_projected.len());
     write_json(&table.to_json(), out.as_deref());
 }

@@ -362,7 +362,7 @@ that the compiled table equals the definition's projection — the check that
 produced the result below.
 
 **Generalized declarations** (2026-09-12).  `name(p1;…;pn) [:= <jq expression>]
-[expose f1,f2]`:
+[expose f1,f2] [budget cubes=N ms=M]`:
 
 * **Right-hand side.**  With `:=`, the box is the formula produced by the jq
   expression; each parameter is bound to its own name as a zero-arity
@@ -379,6 +379,12 @@ produced the result below.
 * **Hidden by construction.**  Every generated variable that belongs to no
   family is hidden (∃-projected); `expose c` adds the family `c` to the
   interface as a further call parameter after the declared ones.
+* **Minimization budget** (2026-09-13).  `budget cubes=N ms=M` overrides,
+  per box, the cube budget of the Quine–McCluskey prime enumeration (default
+  2,000,000) and the wall-clock budget of the exact cover search (default
+  1500 ms); over either, the irredundant heuristic cover is kept.  The box
+  popup shows the effective values, the time spent and whether the tables are
+  proven minima, and its Recompute button rewrites the clause and recompiles.
 
 **Minimized tables** (2026-09-13).  After canonicalization, rows are minimized
 (`compile::minimize_rows`).  Up to 14 columns the result is the true minimum:

@@ -908,6 +908,48 @@ generation now guards the state), and the learned database grew without
 bound (propagation fell to a seventh of its speed on long runs; LBD-based
 deletion holds it at 2–4M propagations/s).
 
+**XOR straight-line programs — the SAT-competition family
+(2026-09-14, `lib/slp.jq`).**  SLP(k) of `doc/matmul_cxlb_satcomp.md`: do
+k XOR additions compute the given forms (vectors in GF(2)^n) from the n
+unit-vector inputs?  The encoding is `matmul/cxlb.py`'s, as boxes: per
+step a `cnt2` chain (exactly two sources among the inputs and the earlier
+steps), per value bit a `gx` chain (`q = p ⊕ s x`: the AND-guarded parity
+x_t_i = s_t_i ⊕ ⊕_u (s_t_{n+u} ∧ x_u_i)), outputs as `imp` boxes guarded
+by o_f_t with an `orb` chain for at-least-one, and the paper's symmetry
+breaking (nonzero step values; adjacent independent steps strictly
+lex-increasing — a `lexstep` chain).  Instances: Strassen's output side
+(`strassen_out`, 4 forms over 7 products: SLP(8) SAT, SLP(7) UNSAT), the
+four seed cells' output forms as data (`sun56_cell`, `cn120_cell`,
+`i19_cell`, `i12_cell`), and `slp_window(cell; indices)` sub-instances over
+the inputs the chosen forms use.  `tools/slp_program.py` decodes a
+witness into the program and replays it; `tools/slp_bench.py` descends k
+with CaDiCaL to each instance's minimum and times both engines at
+min−1, min, min+1 (60 s cap; the same box formula for both engines,
+CaDiCaL through the expansion):
+
+| instance (cell[form indices]) | n | weights | k | boxes | CaDiCaL |
+|---|---|---|---|---|---|
+| strassen_out | 7 | 4,2,2,4 | 7 / 8 / 9 | UNSAT 0.7 s / SAT 0.7 s / SAT 0.2 s | UNSAT 0.2 s / SAT 0.01 s / SAT 0.04 s |
+| sun56[0,3,7] | 9 | 3,3,3 | 5 / 6 / 7 | UNSAT 0.01 s / SAT 0.02 s / SAT 0.07 s | UNSAT 0.02 s / SAT 0.01 s / SAT 0.02 s |
+| sun56[0,5,7] | 11 | 3,5,3 | 7 / 8 / 9 | UNSAT 5.5 s / SAT 41.5 s / SAT 26.0 s | UNSAT 0.33 s / SAT 0.19 s / SAT 0.11 s |
+| i12[0,1,3] | 11 | 3,5,3 | 7 / 8 / 9 | UNSAT 2.2 s / > 60 s / > 60 s | UNSAT 0.31 s / SAT 0.43 s / SAT 0.21 s |
+| i19[4,6,7] | 11 | 3,5,3 | 7 / 8 / 9 | UNSAT 1.6 s / SAT 42.8 s / > 60 s | UNSAT 0.30 s / SAT 0.28 s / SAT 0.23 s |
+| cn120[0,6,8] | 9 | 5,5,3 | 7 / 8 / 9 | UNSAT 1.7 s / SAT 39.8 s / SAT 11.0 s | UNSAT 0.21 s / SAT 0.48 s / SAT 0.19 s |
+| i12[0,3,4] | 12 | 3,3,7 | 9 / 10 / 11 | > 60 s / > 60 s / SAT 26.4 s | UNSAT 10.0 s / SAT 0.43 s / SAT 0.43 s |
+| sun56[1,2,4] | 14 | 7,7,7 | 13 / 14 / 15 | > 60 s / > 60 s / > 60 s | > 60 s / SAT 15.7 s / SAT 58.2 s |
+
+Three-form windows with n ≤ 12 and minimum ≤ 10 are the tractable
+range: both engines decide them, the box engine within 60 s except the
+harder SAT rows.  The box engine refutes the min−1 rows (UNSAT) in
+0.7–5.5 s where CaDiCaL takes 0.2–0.3 s, but is 30–150× slower on the
+SAT rows and times out on three of them; the n = 12 UNSAT boundary
+(CaDiCaL 10 s) and the three-weight-7 window (min 14, its k = 13
+undecided by either engine in 60 s) are beyond it.  As on the Brent
+equations, the tables give it nothing here that unit propagation on the
+same clauses lacks — the family's AND-guarded parities defeat table
+propagation exactly as they defeat Gaussian elimination — and the gap is
+CDCL maturity (heuristics, restarts, inprocessing) on the SAT side.
+
 **Not yet (M1 remainder).**  A one-command certified boxed run: certifying a
 `-b boxes` UNSAT currently means running the existing certified pipeline on
 the expanded CNF — sound by construction (§4.3, phase 1), but not yet wired

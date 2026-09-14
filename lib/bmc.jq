@@ -66,25 +66,25 @@ def bmc_chain_w4_test: (bmc_chain_w4("a"; "c"; 1) == "v_eq_0_4(c0) a_i_zero_w4(a
 
 # 4 as $w | 8 as $n | prod(bmc($n;$w), br(v_gt("c\($n)"; $n; $w)))
 # with boxes: the unrolling, and "c can't count more than 8" — unsatisfiable
-def bmc_w4_n8:
+def bmc_w4_n8_gt8:
   8 as $n |
   prod(bmc_chain_w4("a"; "c"; $n), v_gt("c\($n)"; $n; 4))
 ;
-def bmc_w4_n8_test:
-  bmc_w4_n8 == "v_eq_0_4(c0) a_i_zero_w4(a_0;c0;c1) a_i_not_zero_w4(a_0;c0;c1) a_i_zero_w4(a_1;c1;c2) a_i_not_zero_w4(a_1;c1;c2) a_i_zero_w4(a_2;c2;c3) a_i_not_zero_w4(a_2;c2;c3) a_i_zero_w4(a_3;c3;c4) a_i_not_zero_w4(a_3;c3;c4) a_i_zero_w4(a_4;c4;c5) a_i_not_zero_w4(a_4;c4;c5) a_i_zero_w4(a_5;c5;c6) a_i_not_zero_w4(a_5;c5;c6) a_i_zero_w4(a_6;c6;c7) a_i_not_zero_w4(a_6;c6;c7) a_i_zero_w4(a_7;c7;c8) a_i_not_zero_w4(a_7;c7;c8) c8_3 (c8_2 + c8_1 + c8_0)"
+def bmc_w4_n8_gt8_test:
+  bmc_w4_n8_gt8 == "v_eq_0_4(c0) a_i_zero_w4(a_0;c0;c1) a_i_not_zero_w4(a_0;c0;c1) a_i_zero_w4(a_1;c1;c2) a_i_not_zero_w4(a_1;c1;c2) a_i_zero_w4(a_2;c2;c3) a_i_not_zero_w4(a_2;c2;c3) a_i_zero_w4(a_3;c3;c4) a_i_not_zero_w4(a_3;c3;c4) a_i_zero_w4(a_4;c4;c5) a_i_not_zero_w4(a_4;c4;c5) a_i_zero_w4(a_5;c5;c6) a_i_not_zero_w4(a_5;c5;c6) a_i_zero_w4(a_6;c6;c7) a_i_not_zero_w4(a_6;c6;c7) a_i_zero_w4(a_7;c7;c8) a_i_not_zero_w4(a_7;c7;c8) c8_3 (c8_2 + c8_1 + c8_0)"
 ;
 
 # bmc_w4_n8 with the unrolling as a single box: bmc8_w4(a;c8) c8_3 (c8_2 + c8_1 + c8_0)
-def bmc_w4_n8_box: prod("bmc8_w4(a;c8)", v_gt("c8"; 8; 4));
-def bmc_w4_n8_box_test: bmc_w4_n8_box == "bmc8_w4(a;c8) c8_3 (c8_2 + c8_1 + c8_0)";
+def bmc_w4_n8_gt8_single_box: prod("bmc_w4_n8_box(a;c8)", v_gt("c8"; 8; 4));
+def bmc_w4_n8_gt8_single_box_test: bmc_w4_n8_gt8_single_box == "bmc_w4_n8_box(a;c8) c8_3 (c8_2 + c8_1 + c8_0)";
 
 # === boxes ===
 # a_i_zero_w4(a_i;c_i;c_ip1) := imp((a_i|c), plus1(c_i; c_ip1; 4))
 # a_i_not_zero_w4(a_i;c_i;c_ip1) := imp(a_i, eq(c_i; c_ip1; 4))
-# bmc8_w4(a;c8) := bmc_chain_w4(a; "c"; 8)
+# bmc_w4_n8_box(a;c8) := bmc_chain_w4(a; "c"; 8)
 # === end boxes ===
 # === tests ===
 bmc_test
-, bmc_w4_n8_test
+, bmc_w4_n8_gt8_test
 , bmc_chain_w4_test
-, bmc_w4_n8_box_test
+, bmc_w4_n8_gt8_single_box_test

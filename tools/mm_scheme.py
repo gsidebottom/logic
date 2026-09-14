@@ -4,10 +4,13 @@
 Runs the web app's boxes backend (default) or CaDiCaL on a formula from
 lib/matmul.jq — e.g. mm_boxes_sym(2; 7) — decodes the witness into the
 matrices alpha^m, beta^m, gamma^m of each product, prints the scheme
-(M_m = (sum of A entries)(sum of B entries), C_pq = xor of M's) and checks it:
+(M_m = (sum of A entries)(sum of B entries), C_pq = sum of M's, all over GF(2)) and checks it:
 every Brent equation over GF(2), and C = A·B on random matrices.
 
-    tools/mm_scheme.py 'mm_boxes_sym(2; 7)' [--n 2] [--r 7] [--cadical] [--url http://localhost:3001]
+    tools/mm_scheme.py 'mm_boxes_sym(2; 7)' [--cadical] [--url http://localhost:3001]
+
+n and r are read off the witness (the largest product and entry index among
+the a_m_k variables), so any generator of the library works as the argument.
 """
 import argparse, itertools, json, random, sys, time, urllib.request
 
@@ -47,6 +50,19 @@ def witness_cadical(base, formula):
     names = res["vars"]
     return {names[i]: (0 if neg else 1) for i, neg in res["assignment"]}, res
 
+def shape(asg):
+    """(n, r) from the a_m_k names of the witness."""
+    ms, ks = set(), set()
+    for name in asg:
+        parts = name.split("_")
+        if len(parts) == 3 and parts[0] == "a" and parts[1].isdigit() and parts[2].isdigit():
+            ms.add(int(parts[1])); ks.add(int(parts[2]))
+    if not ms: sys.exit("no a_m_k variables in the witness — not a matmul.jq formula?")
+    r, n2 = max(ms), max(ks) + 1
+    n = int(round(n2 ** 0.5))
+    if n * n != n2: sys.exit(f"entry indices 0..{n2 - 1} do not form a square matrix")
+    return n, r
+
 def matrices(asg, n, r):
     out = []
     for m in range(1, r + 1):
@@ -78,7 +94,6 @@ def entries(mat, name, n):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("filter", help="jq expression producing the formula, e.g. 'mm_boxes_sym(2; 7)'")
-    ap.add_argument("--n", type=int, default=2); ap.add_argument("--r", type=int, default=7)
     ap.add_argument("--cadical", action="store_true"); ap.add_argument("--url", default="http://localhost:3001")
     args = ap.parse_args()
     call(args.url, "POST", "/jq-lib", {"path": "matmul.jq"})
@@ -87,14 +102,15 @@ def main():
     asg, raw = (witness_cadical if args.cadical else witness_boxes)(args.url, formula)
     print(f"{'CaDiCaL' if args.cadical else 'boxes backend'}: {'SAT' if asg else 'UNSAT'} in {time.time() - t0:.2f}s")
     if not asg: return
-    scheme = matrices(asg, args.n, args.r)
-    n = args.n
+    n, r = shape(asg)
+    print(f"{n}x{n} matrices, {r} products")
+    scheme = matrices(asg, n, r)
     for m, (al, be, ga) in enumerate(scheme, 1):
         print(f"M{m} = ({entries(al, 'A', n)}) ({entries(be, 'B', n)})")
     for p in range(n):
         for q in range(n):
             terms = [f"M{m}" for m, (_, _, ga) in enumerate(scheme, 1) if ga[p][q]]
-            print(f"C{p + 1}{q + 1} = {' ⊕ '.join(terms) or '0'}")
+            print(f"C{p + 1}{q + 1} = {' + '.join(terms) or '0'}")      # + is XOR over GF(2)
     print("Brent equations:", "all satisfied" if brent_ok(scheme, n) else "VIOLATED")
     rnd = random.Random(1)
     for _ in range(200):
@@ -102,7 +118,7 @@ def main():
         B = [[rnd.randint(0, 1) for _ in range(n)] for _ in range(n)]
         AB = [[sum(A[i][k] & B[k][j] for k in range(n)) % 2 for j in range(n)] for i in range(n)]
         if multiply(scheme, A, B, n) != AB: sys.exit("scheme gives a wrong product on a random pair")
-    print("C = A·B on 200 random pairs over GF(2): ok;", sum(1 for al, _, _ in scheme if any(map(any, al))), "non-zero products")
+    print("C = AB on 200 random pairs over GF(2): ok;", sum(1 for al, _, _ in scheme if any(map(any, al))), "non-zero products")
 
 if __name__ == "__main__":
     main()

@@ -364,15 +364,74 @@ defects in the box backend, both fixed: cancellation did not reach the
 completion engine, and the learned database grew without bound
 (propagation fell to a seventh of its speed on long runs).
 
+\paragraph{Reading a scheme off the witness.}
+A satisfying assignment \emph{is} a scheme: \texttt{a\_m\_k} are the
+entries of $\al{m}$, likewise $\be{m}$, $\ga{m}$, so product $m$ is
+$\big(\sum_k \al{m}_k A_k\big)\big(\sum_k \be{m}_k B_k\big)$ and
+$C_{pq} = \bigoplus_m \ga{m}_{pq} M_m$. \texttt{tools/mm\_scheme.py} runs
+a formula of the library against the web app (the boxes backend, or CaDiCaL
+with \texttt{-{}-cadical}; \texttt{-{}-url} for a port other than 3001),
+reads $n$ and $r$ off the witness's variable names, prints the scheme and
+checks it twice --- every Brent equation, and $C = AB$ on 200 random pairs
+over $\F$. In the printout \texttt{+} is addition in $\F$ (XOR).
+\begin{small}
+\begin{verbatim}
+$ tools/mm_scheme.py 'mm_chain(2; 7)'
+boxes backend: SAT in 4.12s
+2x2 matrices, 7 products
+M1 = (A11 + A21) (B11 + B12 + B21 + B22)
+M2 = (A11 + A21 + A22) (B12 + B21 + B22)
+M3 = (A11 + A12 + A21 + A22) (B21 + B22)
+M4 = (A22) (B12 + B22)
+M5 = (A12) (B21)
+M6 = (A21 + A22) (B12)
+M7 = (A11) (B11)
+C11 = M5 + M7
+C12 = M2 + M3 + M5 + M6
+C21 = M1 + M2 + M4 + M7
+C22 = M4 + M6
+Brent equations: all satisfied
+C = AB on 200 random pairs over GF(2): ok; 7 non-zero products
+
+$ tools/mm_scheme.py 'mm_cnf_sym(2; 8)' --cadical
+CaDiCaL: SAT in 0.06s
+2x2 matrices, 8 products
+M1 = (A12) (B11 + B12 + B22)
+M2 = (A11 + A12) (B11 + B12)
+M3 = (A21) (B12 + B21 + B22)
+M4 = (A21) (B11)
+M5 = (A11 + A21) (B11)
+M6 = (A12 + A21) (B11 + B12 + B21 + B22)
+M7 = (A12 + A22) (B21)
+M8 = (A21 + A22) (B21 + B22)
+C11 = M1 + M3 + M5 + M6
+C12 = M1 + M2 + M4 + M5
+C21 = M1 + M3 + M6 + M7
+C22 = M1 + M4 + M6 + M7 + M8
+Brent equations: all satisfied
+C = AB on 200 random pairs over GF(2): ok; 8 non-zero products
+
+$ tools/mm_scheme.py 'mm_boxes_sym(2; 6)'
+boxes backend: UNSAT in 2.91s
+\end{verbatim}
+\end{small}
+(The rank-7 witness is Strassen's scheme up to the group of \S3; the
+rank-8 one uses all eight products.)
+
 \paragraph{Reading it against rank 22.}
 Everything above scales by the formula: \texttt{brent\_eqs(3)} is the 729
-equations, \texttt{mm\_boxes(3; 22)} the 16{,}038 \texttt{and3} boxes and
-729 \texttt{xor22} parity boxes (the chain compiles by composition to
-$2^{21}$ rows --- too large; \texttt{mm\_chain(3; 22)} or a CNF form is
-the practical shape), \texttt{mm\_sym\_boxes(22)} the $S_{22}$ ordering
-over 9-bit $\alpha$ vectors (\texttt{le\_9}). What does not scale is the
-solving: with the 2$\times$2 UNSAT proof already needing the symmetry
-breaking for both engines, the rank-22 instance is the stratum-and-cube
-programme of \S4--\S5, not a single solver call.
+equations; \texttt{mm\_boxes(3; 22)} the 16{,}038 \texttt{and3} boxes and,
+per equation, the 22-term parity as a chain of three \texttt{xor8} blocks
+carrying intermediate parities (a single \texttt{xor22} table would have
+$2^{21}$ rows; the blocks propagate exactly as it would);
+\texttt{mm\_sym\_boxes(3; 22)} the $S_{22}$ ordering over 9-bit $\alpha$
+vectors (\texttt{le\_9}, whose negative table comes from the declaration's
+\texttt{negation lt(b; a; 9)} clause). The rank-21 instance
+\texttt{mm\_boxes\_sym(3; 21)} --- 17{,}516 calls --- parses in 4\,ms,
+builds its tables in 0.2\,s and searches; it is the $S_0$ stratum of \S4,
+which ran for two hours without a verdict, so no verdict is expected. What
+does not scale is the solving: with the 2$\times$2 UNSAT proof already
+needing the symmetry breaking for both engines, the rank-22 instance is the
+stratum-and-cube programme of \S4--\S5, not a single solver call.
 
 \end{document}

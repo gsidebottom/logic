@@ -40,51 +40,39 @@ def bmc_test:
   bmc(2;2) == $result
 ;
 
-# 4 as $w | 8 as $n | prod(bmc($n;$w), br(v_gt("c\($n)"; $n; $w))) 
-# with boxes
-def bmc_w4_n8:
-  def c(i): "c\(i)";
-  8 as $n |
-  prod(
-    # c starts at zero
-    "v_eq_0_4(c0)",
-    # c can't count more than 8, this is unsatisfiable
-    v_gt(c($n); $n; 4),
-    (
-      range($n) | 
-      . as $i |
-      vi("a"; $i) as $a_i |
-      # c increments if a[0] == 0
-      "a_i_zero_w4(\($a_i);\(c($i));\(c($i+1)))",
-      # c does not increment if a[0] != 0
-      "a_i_not_zero_w4(\($a_i);\(c($i));\(c($i+1)))"
-    )
-  )
-;
-
-def bmc_w4_n8_test:
-  bmc_w4_n8 == "v_eq_0_4(c0) c8_3 (c8_2 + c8_1 + c8_0) a_i_zero_w4(a_0;c0;c1) a_i_not_zero_w4(a_0;c0;c1) a_i_zero_w4(a_1;c1;c2) a_i_not_zero_w4(a_1;c1;c2) a_i_zero_w4(a_2;c2;c3) a_i_not_zero_w4(a_2;c2;c3) a_i_zero_w4(a_3;c3;c4) a_i_not_zero_w4(a_3;c3;c4) a_i_zero_w4(a_4;c4;c5) a_i_not_zero_w4(a_4;c4;c5) a_i_zero_w4(a_5;c5;c6) a_i_not_zero_w4(a_5;c5;c6) a_i_zero_w4(a_6;c6;c7) a_i_not_zero_w4(a_6;c6;c7) a_i_zero_w4(a_7;c7;c8) a_i_not_zero_w4(a_7;c7;c8)"
-;
-
-# The whole n-step unrolling as ONE box over (a, c_n) — the intermediate
-# counters are hidden, so the compiled table itself holds the reachable
-# (a, c_n) pairs and "c_n ≤ n" is available to propagation without any
-# search.  A conjunction of box calls compiles by composition: the callees'
-# tables are joined and the hidden counters projected step by step (never the
-# expanded matrix).
+# The n-step unrolling with boxes: c starts at zero, then one step per
+# a[i] — the two step boxes are the two branches of the `if`.  Used both
+# as a formula generator (bmc_w4_n8) and as the definition of the single
+# box bmc8_w4 (see the boxes block): the callees' tables are joined and the
+# hidden counters projected step by step (never the expanded matrix), so
+# the compiled table itself holds the reachable (a, c_n) pairs and "c_n ≤ n"
+# is available to propagation without any search.
 def bmc_chain_w4(a; c; n):
   prod(
+    # c starts at zero
     "v_eq_0_4(\(c)0)",
     (
       range(n) |
       . as $i |
       vi(a; $i) as $a_i |
+      # c increments if a[i] == 0
       "a_i_zero_w4(\($a_i);\(c)\($i);\(c)\($i+1))",
+      # c does not increment if a[i] != 0
       "a_i_not_zero_w4(\($a_i);\(c)\($i);\(c)\($i+1))"
     )
   )
 ;
 def bmc_chain_w4_test: (bmc_chain_w4("a"; "c"; 1) == "v_eq_0_4(c0) a_i_zero_w4(a_0;c0;c1) a_i_not_zero_w4(a_0;c0;c1)");
+
+# 4 as $w | 8 as $n | prod(bmc($n;$w), br(v_gt("c\($n)"; $n; $w)))
+# with boxes: the unrolling, and "c can't count more than 8" — unsatisfiable
+def bmc_w4_n8:
+  8 as $n |
+  prod(bmc_chain_w4("a"; "c"; $n), v_gt("c\($n)"; $n; 4))
+;
+def bmc_w4_n8_test:
+  bmc_w4_n8 == "v_eq_0_4(c0) a_i_zero_w4(a_0;c0;c1) a_i_not_zero_w4(a_0;c0;c1) a_i_zero_w4(a_1;c1;c2) a_i_not_zero_w4(a_1;c1;c2) a_i_zero_w4(a_2;c2;c3) a_i_not_zero_w4(a_2;c2;c3) a_i_zero_w4(a_3;c3;c4) a_i_not_zero_w4(a_3;c3;c4) a_i_zero_w4(a_4;c4;c5) a_i_not_zero_w4(a_4;c4;c5) a_i_zero_w4(a_5;c5;c6) a_i_not_zero_w4(a_5;c5;c6) a_i_zero_w4(a_6;c6;c7) a_i_not_zero_w4(a_6;c6;c7) a_i_zero_w4(a_7;c7;c8) a_i_not_zero_w4(a_7;c7;c8) c8_3 (c8_2 + c8_1 + c8_0)"
+;
 
 # bmc_w4_n8 with the unrolling as a single box: bmc8_w4(a;c8) c8_3 (c8_2 + c8_1 + c8_0)
 def bmc_w4_n8_box: prod("bmc8_w4(a;c8)", v_gt("c8"; 8; 4));

@@ -169,6 +169,9 @@ enum Conflict {
     Forced { b: u32, var: u32, val: bool },
 }
 
+/// Growth of the learned-clause budget after each reduction.
+const REDUCE_STEP: usize = 300;
+
 #[inline] fn code(var: u32, neg: bool) -> u32 { var << 1 | neg as u32 }
 /// The value of literal code `c` under `vals`.
 #[inline] fn lit_val(vals: &[Val], c: u32) -> Val {
@@ -212,6 +215,17 @@ pub struct Engine {
     watches: Vec<Vec<(u32, u32)>>,
     /// Clauses `[first_learnt..]` were learned.
     first_learnt: usize,
+    /// Per learned clause (index − first_learnt): literal block distance and
+    /// activity; a deleted clause keeps its slot (watches drop it lazily).
+    learnt_lbd: Vec<u32>,
+    learnt_act: Vec<f64>,
+    deleted: Vec<bool>,
+    cla_inc: f64,
+    /// Conflicts until the next reduction of the learned clauses.
+    reduce_at: u64,
+    /// Learned clauses kept before the first reduction (grows by
+    /// `REDUCE_STEP` each time); a test may lower it.
+    pub reduce_start: usize,
     unsat_at_init: bool,
     // assignment
     vals: Vec<Val>,
@@ -237,7 +251,9 @@ impl Engine {
     pub fn new(nvars: usize, boxes: Vec<TableBox>) -> Engine {
         let mut e = Engine {
             nvars: 0, hdr: Vec::new(), vars_all: Vec::new(), kill_all: Vec::new(), occ: Vec::new(), live: Vec::new(), snap: Vec::new(), in_queue: Vec::new(), queue: Vec::new(),
-            clauses: Vec::new(), watches: Vec::new(), first_learnt: 0, unsat_at_init: false,
+            clauses: Vec::new(), watches: Vec::new(), first_learnt: 0,
+            learnt_lbd: Vec::new(), learnt_act: Vec::new(), deleted: Vec::new(), cla_inc: 1.0, reduce_at: 0, reduce_start: 2000,
+            unsat_at_init: false,
             vals: Vec::new(), level: Vec::new(), reason: Vec::new(), trail_pos: Vec::new(),
             trail: Vec::new(), trail_lim: Vec::new(), qhead: 0,
             activity: Vec::new(), var_inc: 1.0, phase: Vec::new(), seen: Vec::new(),
@@ -301,6 +317,7 @@ impl Engine {
                 self.watches[c[0] as usize].push((ci, c[1]));
                 self.watches[c[1] as usize].push((ci, c[0]));
                 self.clauses.push(c);
+                self.deleted.push(false);
                 self.first_learnt = self.clauses.len();
             }
         }
@@ -389,6 +406,7 @@ impl Engine {
                 while i < ws.len() {
                     let (ci, blocker) = ws[i];
                     i += 1;
+                    if self.deleted[ci as usize] { continue; }
                     if self.lit_value(blocker) == Val::T { ws[j] = (ci, blocker); j += 1; continue; }
                     let c = &mut self.clauses[ci as usize];
                     if c[0] == false_lit { c.swap(0, 1); }
@@ -520,6 +538,44 @@ impl Engine {
         }
     }
 
+    fn bump_clause(&mut self, ci: u32) {
+        let Some(k) = (ci as usize).checked_sub(self.first_learnt) else { return };
+        self.learnt_act[k] += self.cla_inc;
+        if self.learnt_act[k] > 1e20 {
+            for a in &mut self.learnt_act { *a *= 1e-20; }
+            self.cla_inc *= 1e-20;
+        }
+    }
+
+    /// The literal block distance of a clause: its literals' distinct levels.
+    fn lbd(&self, c: &[u32]) -> u32 {
+        let mut levels: Vec<u32> = c.iter().map(|&l| self.level[(l >> 1) as usize]).collect();
+        levels.sort_unstable(); levels.dedup();
+        levels.len() as u32
+    }
+
+    /// Delete the less useful half of the learned clauses — glue clauses
+    /// (LBD ≤ 2) and current reasons are kept; the rest go by LBD, then
+    /// activity.  Watches drop deleted clauses lazily.
+    fn reduce_db(&mut self) {
+        let n = self.clauses.len() - self.first_learnt;
+        let mut order: Vec<usize> = (0..n).filter(|&k| !self.deleted[self.first_learnt + k]).collect();
+        order.sort_by(|&a, &b| self.learnt_lbd[b].cmp(&self.learnt_lbd[a])
+            .then(self.learnt_act[a].partial_cmp(&self.learnt_act[b]).unwrap_or(std::cmp::Ordering::Equal)));
+        let mut removed = 0usize;
+        for &k in order.iter().take(order.len() / 2) {
+            if self.learnt_lbd[k] <= 2 { continue; }
+            let ci = self.first_learnt + k;
+            // a clause that is the reason for its first literal stays
+            let l0 = self.clauses[ci][0];
+            if self.reason[(l0 >> 1) as usize] == Reason::Clause(ci as u32) && self.vals[(l0 >> 1) as usize] != Val::U { continue; }
+            self.deleted[ci] = true;
+            self.clauses[ci] = Vec::new();
+            removed += 1;
+        }
+        let _ = removed;
+    }
+
     fn bump(&mut self, v: usize) {
         self.activity[v] += self.var_inc;
         if self.activity[v] > 1e100 {
@@ -554,6 +610,7 @@ impl Engine {
                 learnt[0] = code(v, self.vals[v as usize] == Val::T);   // the UIP's false literal
                 break;
             }
+            if let Reason::Clause(ci) = self.reason[v as usize] { self.bump_clause(ci); }
             lits.clear();
             self.reason_lits(v, &mut lits);
         }
@@ -625,10 +682,21 @@ impl Engine {
                     let ci = self.clauses.len() as u32;
                     self.watches[learnt[0] as usize].push((ci, learnt[1]));
                     self.watches[learnt[1] as usize].push((ci, learnt[0]));
+                    let lbd = self.lbd(&learnt);
                     self.clauses.push(learnt);
+                    self.deleted.push(false);
+                    self.learnt_lbd.push(lbd);
+                    self.learnt_act.push(self.cla_inc);
                     self.assign(l0 >> 1, if l0 & 1 == 1 { Val::F } else { Val::T }, Reason::Clause(ci));
                 }
                 self.var_inc *= 1.0 / 0.95;
+                self.cla_inc *= 1.0 / 0.999;
+                if self.reduce_at == 0 { self.reduce_at = self.stats.conflicts + self.reduce_start as u64; }
+                if self.stats.conflicts >= self.reduce_at {
+                    self.reduce_db();
+                    self.reduce_start += REDUCE_STEP;
+                    self.reduce_at = self.stats.conflicts + self.reduce_start as u64;
+                }
                 if conflicts_here >= 64 * Self::luby(restarts) {
                     restarts += 1; conflicts_here = 0;
                     self.backjump(base);
@@ -755,6 +823,36 @@ mod tests {
                 Verdict::Unknown => panic!("no budget set"),
             }
         }
+    }
+
+    /// Learned-clause deletion is exercised (a low `reduce_start`) on random
+    /// 3-SAT near the threshold, checked against brute force.
+    #[test]
+    fn deletion_keeps_answers() {
+        let mut seed: u64 = 0xC0FFEE_1234_5678;
+        let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+        let (n, m) = (16usize, 76usize);   // ratio 4.75: mostly UNSAT, hundreds of conflicts
+        let mut deletions_seen = false;
+        for trial in 0..12 {
+            let cls: Vec<Vec<i32>> = (0..m).map(|_| {
+                let mut c = Vec::new();
+                while c.len() < 3 { let v = (rnd() % n as u64) as i32 + 1; if !c.iter().any(|&x: &i32| x.abs() == v) { c.push(if rnd() % 2 == 0 { v } else { -v }); } }
+                c
+            }).collect();
+            let brute = (0..1u32 << n).any(|bits| check_model(&cls, &(0..n).map(|i| bits >> i & 1 == 1).collect::<Vec<_>>()));
+            let mut e = Engine::from_cnf(n, &cls);
+            e.reduce_start = 8;
+            let v = e.solve();
+            let ndel = e.deleted.iter().filter(|&&d| d).count();
+            eprintln!("trial {trial}: {} conflicts, {} learned, {ndel} deleted", e.stats.conflicts, e.clauses.len() - e.first_learnt);
+            deletions_seen |= ndel > 0;
+            match v {
+                Verdict::Sat(model) => { assert!(brute, "trial {trial}: engine SAT, brute UNSAT"); assert!(check_model(&cls, &model), "trial {trial}: bad model"); }
+                Verdict::Unsat => assert!(!brute, "trial {trial}: engine UNSAT, brute SAT"),
+                Verdict::Unknown => panic!("no budget set"),
+            }
+        }
+        assert!(deletions_seen, "the test never deleted a clause — lower reduce_start or raise m");
     }
 
     /// Solving under assumptions keeps the engine reusable, and the clauses

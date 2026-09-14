@@ -373,50 +373,57 @@ a formula of the library against the web app (the boxes backend, or CaDiCaL
 with \texttt{-{}-cadical}; \texttt{-{}-url} for a port other than 3001),
 reads $n$ and $r$ off the witness's variable names, prints the scheme and
 checks it twice --- every Brent equation, and $C = AB$ on 200 random pairs
-over $\F$. In the printout \texttt{+} is addition in $\F$ (XOR).
+over $\F$. In the printout \texttt{+} is addition in $\F$ (XOR). The same
+formula serves both engines: for CaDiCaL the box calls are expanded to
+their definitions (\texttt{and3}, the \texttt{xor2} chains, \texttt{le\_4})
+and Tseitin-encoded, which is even smaller than the explicit CNF forms
+(30K characters against 93K for rank 8) and solves as fast; the results
+table used \texttt{mm\_cnf} for its CaDiCaL columns only so that those
+numbers do not depend on our expansion.
 \begin{small}
 \begin{verbatim}
-$ tools/mm_scheme.py 'mm_chain(2; 7)'
-boxes backend: SAT in 4.12s
+$ tools/mm_scheme.py 'mm_boxes_sym(2; 7)'
+boxes backend: SAT in 30.56s
 2x2 matrices, 7 products
-M1 = (A11 + A21) (B11 + B12 + B21 + B22)
-M2 = (A11 + A21 + A22) (B12 + B21 + B22)
-M3 = (A11 + A12 + A21 + A22) (B21 + B22)
-M4 = (A22) (B12 + B22)
-M5 = (A12) (B21)
-M6 = (A21 + A22) (B12)
-M7 = (A11) (B11)
-C11 = M5 + M7
-C12 = M2 + M3 + M5 + M6
-C21 = M1 + M2 + M4 + M7
-C22 = M4 + M6
+M1 = (A11) (B11 + B21)
+M2 = (A11 + A12) (B21)
+M3 = (A21) (B11 + B12)
+M4 = (A22) (B21 + B22)
+M5 = (A12 + A22) (B12 + B22)
+M6 = (A11 + A12 + A22) (B12 + B21)
+M7 = (A11 + A12 + A21 + A22) (B12)
+C11 = M1 + M2
+C12 = M2 + M4 + M5 + M6
+C21 = M2 + M3 + M6 + M7
+C22 = M2 + M4 + M6 + M7
 Brent equations: all satisfied
 C = AB on 200 random pairs over GF(2): ok; 7 non-zero products
 
-$ tools/mm_scheme.py 'mm_cnf_sym(2; 8)' --cadical
-CaDiCaL: SAT in 0.06s
-2x2 matrices, 8 products
-M1 = (A12) (B11 + B12 + B22)
+$ tools/mm_scheme.py 'mm_boxes_sym(2; 7)' --cadical
+CaDiCaL: SAT in 0.12s
+2x2 matrices, 7 products
+M1 = (A12) (B11 + B12 + B21 + B22)
 M2 = (A11 + A12) (B11 + B12)
-M3 = (A21) (B12 + B21 + B22)
-M4 = (A21) (B11)
-M5 = (A11 + A21) (B11)
-M6 = (A12 + A21) (B11 + B12 + B21 + B22)
-M7 = (A12 + A22) (B21)
-M8 = (A21 + A22) (B21 + B22)
-C11 = M1 + M3 + M5 + M6
-C12 = M1 + M2 + M4 + M5
-C21 = M1 + M3 + M6 + M7
-C22 = M1 + M4 + M6 + M7 + M8
+M3 = (A21) (B11)
+M4 = (A11 + A21) (B12 + B22)
+M5 = (A11 + A12 + A21) (B11 + B12 + B22)
+M6 = (A22) (B21)
+M7 = (A11 + A12 + A21 + A22) (B22)
+C11 = M1 + M3 + M4 + M5
+C12 = M2 + M3 + M4 + M5
+C21 = M3 + M6
+C22 = M2 + M3 + M5 + M7
 Brent equations: all satisfied
-C = AB on 200 random pairs over GF(2): ok; 8 non-zero products
+C = AB on 200 random pairs over GF(2): ok; 7 non-zero products
 
 $ tools/mm_scheme.py 'mm_boxes_sym(2; 6)'
-boxes backend: UNSAT in 2.91s
+boxes backend: UNSAT in 2.92s
+$ tools/mm_scheme.py 'mm_boxes_sym(2; 6)' --cadical
+CaDiCaL: UNSAT in 0.30s
 \end{verbatim}
 \end{small}
-(The rank-7 witness is Strassen's scheme up to the group of \S3; the
-rank-8 one uses all eight products.)
+(The two engines return different 7-product schemes; each is checked as
+above.)
 
 \paragraph{Reading it against rank 22.}
 Everything above scales by the formula: \texttt{brent\_eqs(3)} is the 729

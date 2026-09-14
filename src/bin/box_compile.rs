@@ -69,7 +69,7 @@ fn main() {
         let (_deps, content, _tests) = split_file(&raw);
         let decls = parse_boxes(&content).unwrap_or_else(|e| die(format!("{lib}: {e}")));
         if decls.is_empty() { die(format!("{lib}: no `# === boxes ===` declarations")); }
-        let preamble = resolve_preamble(&[lib.clone()], &HashMap::new(), lib_path).unwrap_or_else(|e| die(e));
+        let preamble = resolve_preamble(std::slice::from_ref(&lib), &HashMap::new(), lib_path).unwrap_or_else(|e| die(e));
         let selected: Vec<_> = match (&box_name, all) {
             (Some(b), _) => decls.iter().filter(|d| &d.name == b).cloned().collect(),
             (None, true) => decls.clone(),

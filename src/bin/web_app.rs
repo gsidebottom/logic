@@ -401,7 +401,7 @@ async fn jq_handler(
             for item in iter {
                 match item {
                     Err(e) => { err_msg = Some(e.to_string()); break; }
-                    Ok(v)  => match serde_json::from_str::<serde_json::Value>(&v.to_string()) {
+                    Ok(v)  => match serde_json::to_value(&v) {
                         Err(e) => { err_msg = Some(e.to_string()); break; }
                         Ok(jv) => results.push(jv),
                     },

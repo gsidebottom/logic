@@ -366,7 +366,7 @@ that the compiled table equals the definition's projection — the check that
 produced the result below.
 
 **Generalized declarations** (2026-09-12).  `name(p1;…;pn) [:= <jq expression>]
-[expose f1,f2] [budget cubes=N ms=M]`:
+[negation <jq expression>] [expose f1,f2] [budget cubes=N ms=M]`:
 
 * **Right-hand side.**  With `:=`, the box is the formula produced by the jq
   expression; each parameter is bound to its own name as a zero-arity
@@ -383,6 +383,14 @@ produced the result below.
 * **Hidden by construction.**  Every generated variable that belongs to no
   family is hidden (∃-projected); `expose c` adds the family `c` to the
   interface as a further call parameter after the declared ones.
+* **Negation clause** (2026-09-14).  `negation <jq expression>` defines the
+  box's negative table directly — evaluated like the definition, over the
+  same parameters, and compiled like a positive table (its columns must be
+  the definition's).  For a definition whose falsifying branches are too
+  many paths to enumerate but whose negation has a definition of its own:
+  `le_9(a;b) := le(a; b; 9) negation lt(b; a; 9)` (the definition's own NNF
+  has over 3·10⁷ uncovered paths for 511 rows; the complement over 2¹⁸
+  assignments gives 130 816 raw rows; the clause gives 511 rows at once).
 * **Minimization budget** (2026-09-13).  `budget cubes=N ms=M` overrides,
   per box, the cube budget of the Quine–McCluskey prime enumeration (default
   2,000,000) and the wall-clock budget of the exact cover search (default

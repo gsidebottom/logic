@@ -7,7 +7,7 @@ use axum::{
     Router,
 };
 use logic::matrix::{PathClassificationHandle, Matrix, Lit};
-use logic::jqlib::{split_file, join_file, split_boxes, join_boxes, resolve_preamble, resolve_lib_order, parse_box_decl, box_formula};
+use logic::jqlib::{split_file, join_file, split_boxes, join_boxes, resolve_preamble, resolve_lib_order, parse_box_decl, box_formula, box_negation_formula};
 use logic::boxes::compile::{compile_box, Table};
 use logic::boxes::expand::{expand_box_calls_with, atomize_box_calls_with, family_of, Arg, BoxCall, BoxSig};
 use logic::boxes::compile::{compile_box_polarity, compile_box_by_join, ArgBinding, MinimizeBudget};
@@ -621,6 +621,10 @@ async fn compile_lib_boxes(state: &AppState, lib: &JqLibEntry, max_paths: usize,
             Ok(f) => f,
             Err(e) => { statuses.push(serde_json::json!({ "name": d.name, "error": e })); continue; }
         };
+        let neg_formula = match box_negation_formula(&preamble, &d) {
+            Ok(f) => f,
+            Err(e) => { statuses.push(serde_json::json!({ "name": d.name, "error": format!("negation: {e}") })); continue; }
+        };
         let budget = MinimizeBudget::new(d.budget.cubes, d.budget.ms);
         // A definition may call boxes declared earlier (in this library or a
         // loaded one).  A conjunction of calls is compiled by composition —
@@ -660,13 +664,23 @@ async fn compile_lib_boxes(state: &AppState, lib: &JqLibEntry, max_paths: usize,
         match result {
             Err(e) => statuses.push(serde_json::json!({ "name": d.name, "error": e })),
             Ok(table) => {
-                // The negative table (§2.2: two tables per box).  Exact from the
-                // definition's own NNF only when nothing is projected (and the
-                // box was not composed — its expansion may be enormous).
-                let table_neg: Option<Table> = if table.internals_projected.is_empty() && !is_composed {
+                // The negative table (§2.2: two tables per box): from the
+                // declaration's `negation` clause when it has one (compiled like a
+                // positive table, over the same interface), else exact from the
+                // definition's own NNF when nothing is projected (and the box was
+                // not composed — its expansion may be enormous), else the complement.
+                let table_neg: Option<Table> = if let Some(nf) = &neg_formula {
+                    match tokio::time::timeout(dur, compile_box(&format!("{}'", d.name), nf, &d.params, &d.expose, max_paths, &budget)).await {
+                        Ok(Ok(t)) if t.vars == table.vars => Some(t),
+                        Ok(Ok(t)) => { statuses.push(serde_json::json!({ "name": d.name, "error": format!("negation: its variables {:?} differ from the definition's {:?}", t.vars, table.vars) })); continue; }
+                        Ok(Err(e)) => { statuses.push(serde_json::json!({ "name": d.name, "error": format!("negation: {e}") })); continue; }
+                        Err(_) => { statuses.push(serde_json::json!({ "name": d.name, "error": format!("negation: compile timed out after {timeout_secs} s") })); continue; }
+                    }
+                } else if table.internals_projected.is_empty() && !is_composed {
                     match tokio::time::timeout(dur, compile_box_polarity(&d.name, &formula, &d.params, &d.expose, max_paths, true, &budget)).await {
                         Ok(Ok(t)) => Some(t),
-                        _ => table.complement(20, &budget).ok(),
+                        Ok(Err(e)) => { eprintln!("{}: negative table from the definition failed ({e}); using the complement", d.name); table.complement(20, &budget).ok() }
+                        Err(_) => { eprintln!("{}: negative table from the definition timed out after {timeout_secs} s; using the complement", d.name); table.complement(20, &budget).ok() }
                     }
                 } else { table.complement(20, &budget).ok() };
                 let rows_neg = table_neg.as_ref().map_or(0, |t| t.rows.len());

@@ -167,6 +167,9 @@ pub fn implication_box(rows: Vec<Vec<Lit>>, sel: u32, sel_value: bool) -> TableB
 /// Columns up to which tables are minimized (the function is enumerated over
 /// 2^k assignments — the same cap as the negative-table complement).
 pub const MINIMIZE_MAX_COLS: usize = 20;
+/// Minterm visits the EXPAND + IRREDUNDANT heuristic may spend on one table
+/// before giving up and keeping the rows as they are.
+pub const MINIMIZE_MAX_WORK: u64 = 40_000_000;
 
 /// The assignment indices (bit i = column i) a row with don't-cares covers.
 fn cube_minterms(row: &[Option<bool>]) -> Vec<usize> {
@@ -482,6 +485,12 @@ pub fn minimize_rows(rows: Vec<Vec<Option<bool>>>, k: usize, budget: &MinimizeBu
     if k > MINIMIZE_MAX_COLS || rows.is_empty() { return (rows, false); }
     let mut f = vec![false; 1usize << k];
     for r in &rows { for m in cube_minterms(r) { f[m] = true; } }
+    // The heuristic enumerates a cube's minterms once per column it tries
+    // to free; wide cubes over many columns make that explode (a 9-bit ≤
+    // over 18 columns: 10⁹ minterm visits).  Past the work budget the rows
+    // are kept as they are — a cover already, just not a small one.
+    let mut work: u64 = 0;
+    let cost = |c: &[Option<bool>]| 1u64 << c.iter().filter(|x| x.is_none()).count();
     // EXPAND
     let mut cubes: HashSet<Vec<Option<bool>>> = HashSet::new();
     for r in &rows {
@@ -490,6 +499,8 @@ pub fn minimize_rows(rows: Vec<Vec<Option<bool>>>, k: usize, budget: &MinimizeBu
             if let Some(v) = cube[c] {
                 let mut flipped = cube.clone();
                 flipped[c] = Some(!v);
+                work += cost(&flipped);
+                if work > MINIMIZE_MAX_WORK { return (rows, false); }
                 if cube_minterms(&flipped).into_iter().all(|m| f[m]) { cube[c] = None; }
             }
         }
@@ -498,6 +509,8 @@ pub fn minimize_rows(rows: Vec<Vec<Option<bool>>>, k: usize, budget: &MinimizeBu
     // IRREDUNDANT: smallest cubes first
     let mut cubes: Vec<Vec<Option<bool>>> = cubes.into_iter().collect();
     cubes.sort_by_key(|c| (c.iter().filter(|x| x.is_none()).count(), c.clone()));
+    work += 2 * cubes.iter().map(|c| cost(c)).sum::<u64>();
+    if work > MINIMIZE_MAX_WORK { return (rows, false); }
     let mut count = vec![0u32; 1usize << k];
     for c in &cubes { for m in cube_minterms(c) { count[m] += 1; } }
     let mut kept = Vec::with_capacity(cubes.len());

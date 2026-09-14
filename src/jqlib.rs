@@ -245,6 +245,12 @@ pub struct BoxDecl {
     /// bound to its name as a zero-arity definition while it is evaluated.
     /// `None` means the definition is the jq function `name(p1;…;pn)`.
     pub rhs: Option<String>,
+    /// Optional jq expression defining the box's *negation* (`negation …`),
+    /// evaluated like `rhs`: its formula compiles to the negative table
+    /// directly — for a definition whose falsifying branches are too many to
+    /// enumerate (a 9-bit ≤: over 10⁷ paths for 511 rows) but whose negation
+    /// has a definition of its own (`lt(b; a; 9)`).
+    pub negation: Option<String>,
     /// Per-box minimization budget: `budget cubes=N ms=M` (either key optional).
     pub budget: BoxBudget,
 }
@@ -327,6 +333,12 @@ pub fn parse_box_decl(body: &str) -> Result<BoxDecl, String> {
         Some(i) => (&rest[..i], Some(&rest[i + 8..])),
         None => match rest.strip_prefix("expose ") { Some(r) => ("", Some(r)), None => (rest, None) },
     };
+    // `negation <jq expression>` sits between the definition and `expose`
+    let (rhs_part, negation): (&str, Option<String>) = match rhs_part.rfind(" negation ") {
+        Some(i) => (&rhs_part[..i], Some(rhs_part[i + 10..].trim().to_string())),
+        None => match rhs_part.trim().strip_prefix("negation ") { Some(r) => ("", Some(r.trim().to_string())), None => (rhs_part, None) },
+    };
+    if negation.as_deref().is_some_and(str::is_empty) { return Err(format!("{name}: empty expression after `negation`")); }
     let rhs_part = rhs_part.trim();
     let rhs = match rhs_part.strip_prefix(":=") {
         Some(r) if r.trim().is_empty() => return Err(format!("{name}: empty definition after `:=`")),
@@ -340,7 +352,7 @@ pub fn parse_box_decl(body: &str) -> Result<BoxDecl, String> {
     for p in params.iter().chain(&expose) {
         if !is_ident(p) { return Err(format!("{name}: parameter {p:?} must be an identifier (letters, digits, `_`)")); }
     }
-    Ok(BoxDecl { name, params, expose, rhs, budget })
+    Ok(BoxDecl { name, params, expose, rhs, negation, budget })
 }
 
 /// All declarations in a library's content (its `# === boxes ===` block).
@@ -367,7 +379,22 @@ pub fn box_formula(preamble: &str, decl: &BoxDecl, args: Option<&[String]>) -> R
         Some(r) => program.push_str(r),
         None => program.push_str(&format!("{}({})", decl.name, decl.params.join(";"))),
     }
-    let vals = run_filter(preamble, &program)?;
+    formula_of(preamble, decl, &program)
+}
+
+/// The formula of a declaration's `negation` clause over its parameters
+/// (`None` without the clause).
+pub fn box_negation_formula(preamble: &str, decl: &BoxDecl) -> Result<Option<String>, String> {
+    let Some(neg) = &decl.negation else { return Ok(None) };
+    let mut program = String::new();
+    for p in &decl.params { program.push_str(&format!("def {p}: \"{p}\"; ")); }
+    program.push_str(neg);
+    formula_of(preamble, decl, &program).map(Some)
+}
+
+/// Run a definition's jq program and take its single string output.
+fn formula_of(preamble: &str, decl: &BoxDecl, program: &str) -> Result<String, String> {
+    let vals = run_filter(preamble, program)?;
     match vals.as_slice() {
         [serde_json::Value::String(s)] => Ok(s.clone()),
         [] => Err(format!("{}: the definition produced no output", decl.name)),
@@ -385,7 +412,12 @@ mod tests {
         let c = "def x: 1;\n# === boxes ===\n# full_adder(x;y;c_in;s;c_out)\n# adder(a;b;c_in;s;c_out;u1;u2;u3) expose u1, u2,u3\n# === end boxes ===\ndef y: 2;\n";
         let d = parse_boxes(c).unwrap();
         assert_eq!(d.len(), 2);
-        assert_eq!(d[0], BoxDecl { name: "full_adder".into(), params: ["x","y","c_in","s","c_out"].map(String::from).to_vec(), expose: vec![], rhs: None, budget: BoxBudget::default() });
+        assert_eq!(d[0], BoxDecl { name: "full_adder".into(), params: ["x","y","c_in","s","c_out"].map(String::from).to_vec(), expose: vec![], rhs: None, negation: None, budget: BoxBudget::default() });
+        let g = parse_box_decl("le_9(a;b) := le(a; b; 9) negation lt(b; a; 9) expose c budget ms=10").unwrap();
+        assert_eq!((g.rhs.as_deref(), g.negation.as_deref(), g.expose.len(), g.budget.ms), (Some("le(a; b; 9)"), Some("lt(b; a; 9)"), 1, Some(10)));
+        let g = parse_box_decl("le_9(a;b) negation lt(b; a; 9)").unwrap();
+        assert_eq!((g.rhs, g.negation.as_deref()), (None, Some("lt(b; a; 9)")));
+        assert!(parse_box_decl("f(a;b) negation ").is_err());
         let g = parse_box_decl("plus_4(a;b;c) := plus(a; b; c; 4) budget cubes=5000000 ms=30000").unwrap();
         assert_eq!((g.rhs.as_deref(), g.budget), (Some("plus(a; b; c; 4)"), BoxBudget { cubes: Some(5_000_000), ms: Some(30_000) }));
         let g = parse_box_decl("f(a;b) expose c budget ms=10").unwrap();
@@ -420,12 +452,12 @@ mod tests {
     fn run_filter_and_box_formula() {
         let pre = "def sum(s): [s] | join(\" + \");\ndef full_adder(x;y): sum(x, y);\n";
         assert_eq!(run_filter(pre, "full_adder(\"a\";\"b\")").unwrap(), vec![serde_json::json!("a + b")]);
-        let d = BoxDecl { name: "full_adder".into(), params: vec!["x".into(), "y".into()], expose: vec![], rhs: None, budget: BoxBudget::default() };
+        let d = BoxDecl { name: "full_adder".into(), params: vec!["x".into(), "y".into()], expose: vec![], rhs: None, negation: None, budget: BoxBudget::default() };
         assert_eq!(box_formula(pre, &d, None).unwrap(), "x + y");
         assert_eq!(box_formula(pre, &d, Some(&["P".to_string(), "Q".to_string()])).unwrap(), "P + Q");
         // a right-hand side with a literal argument, parameters bound as definitions
         let pre2 = "def sum(s): [s] | join(\" + \");\ndef rep(a; n): sum(range(n) | \"\\(a)_\\(.)\");\n";
-        let g = BoxDecl { name: "rep2".into(), params: vec!["a".into()], expose: vec![], rhs: Some("rep(a; 2)".into()), budget: BoxBudget::default() };
+        let g = BoxDecl { name: "rep2".into(), params: vec!["a".into()], expose: vec![], rhs: Some("rep(a; 2)".into()), negation: None, budget: BoxBudget::default() };
         assert_eq!(box_formula(pre2, &g, None).unwrap(), "a_0 + a_1");
         assert_eq!(box_formula(pre2, &g, Some(&["x".to_string()])).unwrap(), "x_0 + x_1");
     }

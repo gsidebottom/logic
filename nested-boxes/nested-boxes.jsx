@@ -2619,8 +2619,8 @@ export default function App() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ color: '#666', fontWeight: 600 }}>Boxes:</span>
                       <span style={{ color: '#aaa' }}
-                            title="One declaration per line: name(p1;p2;…) [expose v1,v2]. The parameters are the box's interface; any other variable its definition introduces is projected out unless exposed. Boxes are compiled when the library is loaded and whenever it is saved.">
-                        name(p1;p2;…) [expose v1,v2] — compiled on load and save
+                            title="One declaration per line: name(p1;p2;…) [:= jq expression] [negation jq expression] [expose v1,v2] [budget cubes=N ms=M]. The parameters are the box's interface; any other variable its definition introduces is projected out unless exposed. `negation` defines the negative table directly (for a definition whose falsifying branches are too many to enumerate). Boxes are compiled when the library is loaded and whenever it is saved.">
+                        name(p1;p2;…) [:= …] [negation …] [expose v1,v2] [budget …] — compiled on load and save
                       </span>
                       <span style={{ flex: 1 }} />
                       <button

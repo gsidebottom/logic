@@ -38,13 +38,36 @@ def mm_c(q; m): "c_\(m)_\(q.kc)";
 def mm_t(q; m): "t_\(q.e)_\(m)";
 
 # ── box formulations ─────────────────────────────────────────────────────────
-# each term as an and3 box and each equation as one parity box (xor{r}, its
-# right-hand side a constant argument): the engine propagates the parity
-# table to arc consistency — an XOR constraint, not a clause set
-def mm_boxes(n; r):
+# the parity t_1 ⊕ … ⊕ t_r = rhs of equation q as xor boxes of at most k
+# inputs: one box when r ≤ k, else a chain of blocks — the first over the
+# first k terms with its output q_e_1 a variable, each next one over the
+# previous output and k-1 more terms, the last with the constant rhs.  The
+# blocks propagate exactly as a single xor{r} table would (a parity forces
+# its last unknown, and the block outputs are forced along the chain from
+# both ends) at 2^(k-1) rows per box instead of 2^(r-1).
+# the blocks from term index lo on (0-based), block number j: the carry in is
+# q_e_{j-1} (none for the first block), the carry out q_e_j (the rhs for the last)
+def mm_parity_blocks($q; $r; $k; $t; $lo; $j):
+  (if $j == 1 then [] else ["q_\($q.e)_\($j - 1)"] end) as $in |
+  ($k - ($in | length)) as $take |
+  if $r - $lo <= $take
+  then "xor\($r - $lo + ($in | length))(\(($in + $t[$lo:]) | join(";"));\($q.rhs))"
+  else "xor\($k)(\(($in + $t[$lo:$lo + $take]) | join(";"));q_\($q.e)_\($j))",
+       mm_parity_blocks($q; $r; $k; $t; $lo + $take; $j + 1)
+  end;
+def mm_parity(q; r; k):
+  q as $q | r as $r | k as $k |
+  [range($r) + 1 | mm_t($q; .)] as $t |
+  if $r <= $k then "xor\($r)(\($t | join(";"));\($q.rhs))"
+  else mm_parity_blocks($q; $r; $k; $t; 0; 1) end;
+# each term as an and3 box and each equation as parity boxes (xor{r} for
+# r ≤ 8, else blocks of 8): the engine propagates the parity tables to arc
+# consistency — an XOR constraint, not a clause set
+def mm_boxes(n; r; k):
   prod(brent_eqs(n)[] | . as $q |
     (range(r) + 1 | "and3(\(mm_a($q; .));\(mm_b($q; .));\(mm_c($q; .));\(mm_t($q; .)))"),
-    "xor\(r)(\([range(r) + 1 | mm_t($q; .)] | join(";"));\($q.rhs))");
+    mm_parity($q; r; k));
+def mm_boxes(n; r): mm_boxes(n; r; 8);
 
 # each equation as a chain of xstep boxes (q = p ⊕ a b c), the running parity
 # p_e_m an ordinary variable, the first p a constant 0 and the last the
@@ -89,13 +112,16 @@ def mm_cnf_direct(n; r):
 # the products in non-decreasing order of their α vectors (as 4-bit numbers):
 # the sum does not depend on the order of its terms, so this keeps
 # satisfiability — every scheme has a reordering that obeys it
-def mm_sym_boxes(r): prod(range(1; r) | "le_4(a_\(.);a_\(. + 1))");
-def mm_sym(r):       prod(range(1; r) | . as $m | br(le("a_\($m)"; "a_\($m + 1)"; 4)));
+# (the α vector of an n×n scheme has n² bits: le_4 for 2×2, le_9 for 3×3)
+def mm_sym_boxes(n; r): prod(range(1; r) | "le_\(n * n)(a_\(.);a_\(. + 1))");
+def mm_sym_boxes(r):    mm_sym_boxes(2; r);
+def mm_sym(n; r):       prod(range(1; r) | . as $m | br(le("a_\($m)"; "a_\($m + 1)"; n * n)));
+def mm_sym(r):          mm_sym(2; r);
 # the formulations with the symmetry breaking attached (what to type in the
 # jq filter box for the UNSAT ranks: mm_boxes_sym(2; 6), mm_chain_sym(2; 6))
-def mm_boxes_sym(n; r): prod(mm_boxes(n; r), mm_sym_boxes(r));
-def mm_chain_sym(n; r): prod(mm_chain(n; r), mm_sym_boxes(r));
-def mm_cnf_sym(n; r):   prod(mm_cnf(n; r), mm_sym(r));
+def mm_boxes_sym(n; r): prod(mm_boxes(n; r), mm_sym_boxes(n; r));
+def mm_chain_sym(n; r): prod(mm_chain(n; r), mm_sym_boxes(n; r));
+def mm_cnf_sym(n; r):   prod(mm_cnf(n; r), mm_sym(n; r));
 
 # the parity boxes: xor{r}(t_1;…;t_r;d) ≡ t_1 ⊕ … ⊕ t_r = d, defined as a
 # chain of xor2 with the running parities hidden — compiled by composition
@@ -121,10 +147,15 @@ def xor_chain(r):
 ([brent_eqs(2)[] | select(.rhs == 1)] | length) == 8,
 (brent_eqs(1)) == [{e: 0, ka: 0, kb: 0, kc: 0, rhs: 1}],
 mm_boxes(1; 2) == "and3(a_1_0;b_1_0;c_1_0;t_0_1) and3(a_2_0;b_2_0;c_2_0;t_0_2) xor2(t_0_1;t_0_2;1)",
+([mm_parity({e: 5, rhs: 0}; 10; 4)] | join(" ")) == "xor4(t_5_1;t_5_2;t_5_3;t_5_4;q_5_1) xor4(q_5_1;t_5_5;t_5_6;t_5_7;q_5_2) xor4(q_5_2;t_5_8;t_5_9;t_5_10;0)",
+([mm_parity({e: 0, rhs: 1}; 5; 4)] | join(" ")) == "xor4(t_0_1;t_0_2;t_0_3;t_0_4;q_0_1) xor2(q_0_1;t_0_5;1)",
+(mm_boxes(3; 21) | [scan("xor[0-9]+")] | unique) == ["xor7", "xor8"],
+(mm_boxes(3; 21) | [scan("q_[0-9]+_[0-9]+")] | unique | length) == 729 * 2,
 mm_chain(1; 2) == "xstep(0;a_1_0;b_1_0;c_1_0;p_0_1) xstep(p_0_1;a_2_0;b_2_0;c_2_0;1)",
 mm_cnf(1; 2) == "(t_0_1' + a_1_0) (t_0_1' + b_1_0) (t_0_1' + c_1_0) (t_0_1 + a_1_0' + b_1_0' + c_1_0') (t_0_2' + a_2_0) (t_0_2' + b_2_0) (t_0_2' + c_2_0) (t_0_2 + a_2_0' + b_2_0' + c_2_0') (t_0_1 + t_0_2) (t_0_1' + t_0_2')",
 mm_cnf_direct(1; 2) == "(t_0_1' + a_1_0) (t_0_1' + b_1_0) (t_0_1' + c_1_0) (t_0_1 + a_1_0' + b_1_0' + c_1_0') (t_0_2' + a_2_0) (t_0_2' + b_2_0) (t_0_2' + c_2_0) (t_0_2 + a_2_0' + b_2_0' + c_2_0') (t_0_1 + t_0_2) (t_0_1' + t_0_2')",
 xor_chain(3) == "xor2(t_1;t_2;p_2) xor2(p_2;t_3;d)",
 mm_sym_boxes(3) == "le_4(a_1;a_2) le_4(a_2;a_3)",
-mm_boxes_sym(1; 2) == "and3(a_1_0;b_1_0;c_1_0;t_0_1) and3(a_2_0;b_2_0;c_2_0;t_0_2) xor2(t_0_1;t_0_2;1) le_4(a_1;a_2)",
+mm_sym_boxes(3; 3) == "le_9(a_1;a_2) le_9(a_2;a_3)",
+mm_boxes_sym(1; 2) == "and3(a_1_0;b_1_0;c_1_0;t_0_1) and3(a_2_0;b_2_0;c_2_0;t_0_2) xor2(t_0_1;t_0_2;1) le_1(a_1;a_2)",
 mm_sym(2) == "(a_1_3' a_2_3 + (a_1_3 = a_2_3) a_1_2' a_2_2 + (a_1_2 = a_2_2) (a_1_3 = a_2_3) a_1_1' a_2_1 + (a_1_1 = a_2_1) (a_1_2 = a_2_2) (a_1_3 = a_2_3) a_1_0' a_2_0 + (a_1_0 = a_2_0) (a_1_1 = a_2_1) (a_1_2 = a_2_2) (a_1_3 = a_2_3))"

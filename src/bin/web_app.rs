@@ -79,6 +79,10 @@ struct ClassifySnapshot {
 }
 
 struct ClassifyJob {
+    /// Incremented by every start; a drainer only writes while its own
+    /// generation is current, so a job cancelled and replaced (its search
+    /// may still be winding down) never overwrites its successor's state.
+    generation: u64,
     snapshot: ClassifySnapshot,
     total_path_count:         f64,
     start_time:               Option<std::time::Instant>,
@@ -100,6 +104,7 @@ struct ClassifyJob {
 impl Default for ClassifyJob {
     fn default() -> Self {
         Self {
+            generation: 0,
             snapshot: ClassifySnapshot::default(),
             cancel: None,
             running: false,
@@ -1471,7 +1476,7 @@ fn start_classify_job(
             spawn_dual_classify_job(backend, target_nnf.clone(), buffer_size)
         }
     };
-    {
+    let my_gen = {
         let mut job = job_state.lock().unwrap();
         job.cancel = Some(cancel);
         job.total_path_count = total_path_count;
@@ -1481,7 +1486,8 @@ fn start_classify_job(
         job.start_time = Some(job_start);
         job.preprocessed = preprocess;
         job.snapshot.preprocessed_to = preprocessed_to;
-    }
+        job.generation
+    };
 
     let js = job_state.clone();
     tokio::spawn(async move {
@@ -1498,6 +1504,7 @@ fn start_classify_job(
                 Ok(g)  => g,
                 Err(p) => p.into_inner(),
             };
+            if job.generation != my_gen { break; }   // a newer job owns this state
             // Catch panics inside the per-event processing so a
             // single bad event (e.g. an Uncovered ProdPath that
             // doesn't resolve under declaration-order
@@ -1664,6 +1671,7 @@ fn start_classify_job(
             Ok(g)  => g,
             Err(p) => p.into_inner(),
         };
+        if job.generation != my_gen { return; }   // a newer job owns this state
         // Append preprocessing-derived lemma covers to the cover-group
         // list.  Their positions are already in the original NNF; for
         // each lemma cover we simulate the matrix-method search's DFS
@@ -1795,7 +1803,9 @@ fn reset_and_start(
             Err(p) => p.into_inner(),
         };
         if let Some(c) = job.cancel.take() { c.cancel(); }
+        let generation = job.generation + 1;
         *job = ClassifyJob::default();
+        job.generation = generation;
         job.running = true;
         job.is_complement = complement;
     }

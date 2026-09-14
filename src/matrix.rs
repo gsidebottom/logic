@@ -762,7 +762,8 @@ impl NNF {
         let cancel = PathClassificationHandle::new();
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            let inner = controller_builder(tx);
+            let mut inner = controller_builder(tx);
+            inner.set_cancel(cancel_for_thread.cancel_flag());
             let cancel_check = cancel_for_thread.clone();
             let mut ctrl = crate::controller::CancelController::new(inner, cancel_for_thread);
             // Restart loop — mirror of `run_uncovered_only_dfs` for
@@ -819,7 +820,8 @@ impl NNF {
         let cancel = PathClassificationHandle::new();
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            let inner = controller_builder(&self, tx);
+            let mut inner = controller_builder(&self, tx);
+            inner.set_cancel(cancel_for_thread.cancel_flag());
             // Need an extra clone of the cancel handle: `cancel_for_thread`
             // moves into CancelController below, but the outer restart
             // loop still needs to poll for cancellation between
@@ -887,7 +889,8 @@ impl NNF {
         let cancel = PathClassificationHandle::new();
         let cancel_for_step = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            let ctrl = controller_builder(&m, tx);
+            let mut ctrl = controller_builder(&m, tx);
+            ctrl.set_cancel(cancel_for_step.cancel_flag());
             run_uncovered_only_dfs(m, ctrl, cancel_for_step);
             Ok::<(), Box<dyn std::error::Error + Send>>(())
         });
@@ -912,7 +915,8 @@ impl NNF {
         let cancel = PathClassificationHandle::new();
         let cancel_for_step = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            let ctrl = controller_builder(tx);
+            let mut ctrl = controller_builder(tx);
+            ctrl.set_cancel(cancel_for_step.cancel_flag());
             run_uncovered_only_dfs(m, ctrl, cancel_for_step);
             Ok::<(), Box<dyn std::error::Error + Send>>(())
         });

@@ -615,6 +615,7 @@ impl Engine {
                 self.stats.conflicts += 1;
                 conflicts_here += 1;
                 if self.decision_level() <= base { return Verdict::Unsat; }
+                if self.stats.conflicts & 255 == 0 && let Some(c) = &self.cancel && c.load(std::sync::atomic::Ordering::Relaxed) { return Verdict::Unknown; }
                 let (learnt, bj) = self.analyze(conflict);
                 self.backjump(bj.max(base));
                 let l0 = learnt[0];

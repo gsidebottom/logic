@@ -190,6 +190,11 @@ impl<Inner> Drop for BoxAwareController<Inner> {
 impl<Inner: PathSearchController> PathSearchController for BoxAwareController<Inner> {
     type OnClass = ();
 
+    fn set_cancel(&mut self, flag: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        self.engine.cancel = Some(flag.clone());
+        self.inner.set_cancel(flag);
+    }
+
     fn should_continue_on_prefix(
         &mut self,
         prefix_literals: &Vec<&Lit>,
@@ -222,7 +227,8 @@ impl<Inner: PathSearchController> PathSearchController for BoxAwareController<In
                         let asg: HashMap<u32, bool> = prefix_literals.iter().map(|l| (l.var, l.neg)).collect();
                         if let Ok(mut memo) = self.tables.memo.lock() { *memo = Some((asg, model)); }
                     }
-                    _ => { self.table_prunes += 1; return Some(0); }
+                    Verdict::Unsat => { self.table_prunes += 1; return Some(0); }
+                    Verdict::Unknown => return Some(0),   // cancelled (or out of budget): stop, the job is being discarded
                 }
             }
         }

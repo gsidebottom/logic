@@ -33,6 +33,12 @@ use crate::matrix::{Lit, NNF, PathParams, PathPrefix, PathsClass, ProdPath};
 /// per-node ordering hooks — so a controller can both decide *what* to
 /// backtrack and *how* the search visits Sum/Prod children.
 pub trait PathSearchController {
+    /// Hand the controller the job's cancellation flag, for any search it
+    /// runs inside a prefix check (the box-aware controller's completion
+    /// engine).  The DFS drivers call this once before the traversal;
+    /// the default ignores it.
+    fn set_cancel(&mut self, _flag: std::sync::Arc<std::sync::atomic::AtomicBool>) {}
+
     /// Type of the `on_class` callback used by this controller's
     /// constructors.  For controllers parameterized on a closure type
     /// `F: FnMut(PathsClass, bool) -> bool` (such as

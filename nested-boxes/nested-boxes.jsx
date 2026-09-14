@@ -1430,6 +1430,13 @@ export default function App() {
       const res  = await fetch(API_BASE + '/boxes');
       const data = await res.json();
       setBoxes(data.boxes ?? []);
+      // Declarations that did not compile (any library, loaded or a
+      // dependency) keep their error status across reloads of the page.
+      if (Array.isArray(data.failed)) setBoxStatus(prev => {
+        const next = { ...prev };
+        for (const st of data.failed) if (st.name) next[st.name] = { error: st.error };
+        return next;
+      });
     } catch { /* backend unreachable */ }
   };
   // Per-box compile statuses come back from library load and save.

@@ -12,13 +12,15 @@
 //!
 //! An unknown box or a wrong argument count is an error.
 //!
-//! Call vs. juxtaposition: `name(` starts a call when the parenthesised text is
-//! an argument list and either `name` is a known box, or there are two or more
-//! arguments (or none, or `;` separators).  `A(B+C)` and `A(B)` keep their old
-//! meaning (AND by juxtaposition).  Inside an argument list a comma continues a
-//! name only within a numeric subscript (`d_0,1`); elsewhere it separates
-//! arguments, so `x,y` is two arguments even though `x,y` is one variable
-//! name in the rest of the language.
+//! Call vs. juxtaposition: `name(` starts a call whenever the parenthesised
+//! text is an argument list — names and constants separated by `,` or `;`, or
+//! empty.  An unknown name there is an error (never a silent AND: a one-argument
+//! call to a box that is not loaded would otherwise turn into two free
+//! variables, and a definition that uses it would compile to the wrong table).
+//! `A(B+C)` and `A (B)` keep meaning AND.  Inside an argument list a comma
+//! continues a name only within a numeric subscript (`d_0,1`); elsewhere it
+//! separates arguments, so `x,y` is two arguments even though `x,y` is one
+//! variable name in the rest of the language.
 
 use std::collections::HashSet;
 
@@ -177,13 +179,27 @@ fn substitute(sig: &BoxSig, args: &[String], k: usize) -> String {
     out
 }
 
+/// Why a name is not a compiled box, for the error message: e.g. "declared
+/// in math.jq, which is not loaded".  `None` when nothing is known about it.
+pub type UnknownHint<'a> = &'a dyn Fn(&str) -> Option<String>;
+
+/// The error for a call to a box that is not compiled.
+fn unknown_box_error(name: &str, args: &[String], hint: UnknownHint) -> String {
+    if let Some(h) = hint(name) { return format!("unknown box `{name}` — {h}"); }
+    let mut msg = format!("unknown box `{name}` — load and compile its library (jq panel), or check the spelling");
+    if args.len() == 1 {
+        msg.push_str(&format!(" (an AND of `{name}` and `{}` is written `{name} {}` or `{name} ({})`, not `{name}({})`)",
+            args[0], args[0], args[0], args[0]));
+    }
+    msg
+}
+
+/// What replaces a recognised call `name(args)` with signature `sig`.
+type OnCall<'a> = &'a mut dyn FnMut(&str, &[String], BoxSig) -> Result<String, String>;
+
 /// Scan `text` for box calls; `on_call(name, args, sig)` returns the text that
 /// replaces a recognised call.  Everything else is copied through.
-fn walk_calls(
-    text: &str,
-    lookup: &dyn Fn(&str) -> Option<BoxSig>,
-    on_call: &mut dyn FnMut(&str, &[String], BoxSig) -> Result<String, String>,
-) -> Result<String, String> {
+fn walk_calls(text: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>, hint: UnknownHint, on_call: OnCall) -> Result<String, String> {
     let chars: Vec<char> = text.chars().collect();
     let (mut out, mut i) = (String::new(), 0);
     while i < chars.len() {
@@ -191,23 +207,19 @@ fn walk_calls(
         let prev_is_name = i > 0 && (is_name_char(chars[i - 1]) || chars[i - 1] == '\'');
         if c.is_ascii_alphabetic() && !prev_is_name {
             let (name, j) = read_name(&chars, i, false);
-            if j < chars.len() && chars[j] == '(' && let Some((args, after, semi)) = parse_args(&chars, j) {
-                    let sig = lookup(&name);
-                    if sig.is_some() || args.len() != 1 || semi {
-                        let sig = sig.ok_or_else(|| format!(
-                            "unknown box `{name}` — load and compile its library (jq panel), or check the spelling"))?;
-                        if args.len() != sig.params.len() {
-                            let hint = if args.iter().any(|a| a.contains(',')) {
-                                " — a comma directly followed by a digit continues a subscript (`b_0,0` is one two-index name); write `b_0, 0` or separate arguments with `;`"
-                            } else { "" };
-                            return Err(format!("box `{name}` expects {} argument{} ({}), got {}{hint}",
-                                sig.params.len(), if sig.params.len() == 1 { "" } else { "s" },
-                                sig.params.join("; "), args.len()));
-                        }
-                        out.push_str(&on_call(&name, &args, sig)?);
-                        i = after;
-                        continue;
-                    }
+            if j < chars.len() && chars[j] == '(' && let Some((args, after, _semi)) = parse_args(&chars, j) {
+                let sig = lookup(&name).ok_or_else(|| unknown_box_error(&name, &args, hint))?;
+                if args.len() != sig.params.len() {
+                    let hint = if args.iter().any(|a| a.contains(',')) {
+                        " — a comma directly followed by a digit continues a subscript (`b_0,0` is one two-index name); write `b_0, 0` or separate arguments with `;`"
+                    } else { "" };
+                    return Err(format!("box `{name}` expects {} argument{} ({}), got {}{hint}",
+                        sig.params.len(), if sig.params.len() == 1 { "" } else { "s" },
+                        sig.params.join("; "), args.len()));
+                }
+                out.push_str(&on_call(&name, &args, sig)?);
+                i = after;
+                continue;
             }
             out.push_str(&name);
             i = j;
@@ -216,33 +228,43 @@ fn walk_calls(
     Ok(out)
 }
 
-fn expand_rec(text: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>, counter: &mut usize, depth: usize) -> Result<String, String> {
+fn expand_rec(text: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>, hint: UnknownHint, counter: &mut usize, depth: usize) -> Result<String, String> {
     if depth > 16 {
         return Err("box expansion nested more than 16 levels — is a box defined in terms of itself?".into());
     }
-    walk_calls(text, lookup, &mut |_name, args, sig| {
+    walk_calls(text, lookup, hint, &mut |_name, args, sig| {
         *counter += 1;
         let body = substitute(&sig, args, *counter);
-        let expanded = expand_rec(&body, lookup, counter, depth + 1)?;
+        let expanded = expand_rec(&body, lookup, hint, counter, depth + 1)?;
         Ok(format!("({expanded})"))
     })
 }
 
 /// Expand every box call in `formula`.  `lookup` resolves a box name.
 pub fn expand_box_calls(formula: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>) -> Result<String, String> {
+    expand_box_calls_with(formula, lookup, &|_| None)
+}
+
+/// [`expand_box_calls`] with a [`UnknownHint`] for the error message.
+pub fn expand_box_calls_with(formula: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>, hint: UnknownHint) -> Result<String, String> {
     let mut counter = 0;
-    expand_rec(formula, lookup, &mut counter, 0)
+    expand_rec(formula, lookup, hint, &mut counter, 0)
 }
 
 /// Replace every box call in `formula` by a fresh atom `BOXCALL_k` (a plain
 /// variable of the formula language) and record the calls.  A following `'`
 /// attaches to the atom, so the call's polarity in the NNF is the atom's.
 pub fn atomize_box_calls(formula: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>) -> Result<Atomized, String> {
+    atomize_box_calls_with(formula, lookup, &|_| None)
+}
+
+/// [`atomize_box_calls`] with a [`UnknownHint`] for the error message.
+pub fn atomize_box_calls_with(formula: &str, lookup: &dyn Fn(&str) -> Option<BoxSig>, hint: UnknownHint) -> Result<Atomized, String> {
     if formula.contains(ATOM_PREFIX) {
         return Err(format!("variable names starting with `{ATOM_PREFIX}` are reserved for box calls"));
     }
     let mut calls: Vec<BoxCall> = Vec::new();
-    let text = walk_calls(formula, lookup, &mut |name, args, _sig| {
+    let text = walk_calls(formula, lookup, hint, &mut |name, args, _sig| {
         let k = calls.len() + 1;
         let atom = format!("{ATOM_PREFIX}{k}");
         let args: Vec<Arg> = args.iter().map(|a| Arg::parse(a)).collect();
@@ -305,9 +327,21 @@ mod tests {
 
     #[test]
     fn juxtaposition_is_preserved() {
-        for f in ["A(B+C)", "A(B)", "A (B, C)", "x'(y)", "A(B C)"] {
+        // (a primed name cannot start a call — the prime of a call follows its
+        // closing paren — so `x'(y)` is an AND too)
+        for f in ["A(B+C)", "A (B)", "A (B, C)", "x'(y)", "A(B C)", "A (1)"] {
             assert_eq!(expand_box_calls(f, &lib).unwrap(), f);
         }
+        // `name(arg)` is always a call attempt: an unknown name is an error, not
+        // a silent AND of two free variables.
+        for f in ["A(B)", "x(y')", "v_eq_0_4(c0)", "A(1)"] {
+            let e = expand_box_calls(f, &lib).unwrap_err();
+            assert!(e.contains("unknown box") && e.contains("is written"), "{f}: {e}");
+        }
+        let hint = |name: &str| (name == "le_4").then(|| "declared in math.jq, which is not loaded".to_string());
+        let e = expand_box_calls_with("le_4(a; b)", &lib, &hint).unwrap_err();
+        assert_eq!(e, "unknown box `le_4` — declared in math.jq, which is not loaded");
+        assert!(atomize_box_calls_with("le_4(a)", &lib, &hint).unwrap_err().contains("math.jq"));
     }
 
     #[test]

@@ -203,9 +203,11 @@ export function VarLabel({ name }) {
 // box's parameters in its definition, renames its projected internals per call
 // site, and recurses — the server does exactly the same (logic::boxes::expand),
 // so the diagram and the backends agree.  Unknown box / wrong arity ⇒ error.
-// `name(` is a call when the parenthesised text is an argument list and the
-// name is a known box, or there are ≥2 arguments (or none, or `;`); `A(B+C)`
-// and `A(B)` stay ANDs.  In an argument list a comma continues a name only
+// `name(` is a call whenever the parenthesised text is an argument list
+// (names and constants separated by `,` or `;`, or empty); an unknown name
+// there is an error, never a silent AND — a one-argument call to a box that
+// is not loaded would otherwise become two free variables.  `A(B+C)` and
+// `A (B)` stay ANDs.  In an argument list a comma continues a name only
 // inside a numeric subscript (`d_0,1`); elsewhere it separates arguments.
 const isNameChar = c => /[\p{L}\p{N}_,]/u.test(c);
 function readName(str, i, inArgs) {
@@ -285,19 +287,20 @@ function walkCalls(text, lookup, onCall, lenient = false) {
       if (text[j] === '(') {
         const parsed = parseArgs(text, j);
         if (parsed) {
-          const [args, after, semi] = parsed;
+          const [args, after] = parsed;
           const sig = lookup(name);
-          if (sig || args.length !== 1 || semi) {
-            if (!lenient) {
-              if (!sig) throw new Error(`unknown box \`${name}\` — load and compile its library (jq panel), or check the spelling`);
-              if (args.length !== sig.params.length) {
-                const hint = args.some(a => a.includes(',')) ? ' — a comma directly followed by a digit continues a subscript (`b_0,0` is one two-index name); write `b_0, 0` or separate arguments with `;`' : '';
-                throw new Error(`box \`${name}\` expects ${sig.params.length} argument${sig.params.length === 1 ? '' : 's'} (${sig.params.join('; ')}), got ${args.length}${hint}`);
-              }
+          if (!lenient) {
+            if (!sig) {
+              const and = args.length === 1 ? ` (an AND of \`${name}\` and \`${args[0]}\` is written \`${name} ${args[0]}\` or \`${name} (${args[0]})\`, not \`${name}(${args[0]})\`)` : '';
+              throw new Error(`unknown box \`${name}\` — load and compile its library (jq panel), or check the spelling${and}`);
             }
-            out += onCall(name, args, sig, text.slice(i, after));
-            i = after; continue;
+            if (args.length !== sig.params.length) {
+              const hint = args.some(a => a.includes(',')) ? ' — a comma directly followed by a digit continues a subscript (`b_0,0` is one two-index name); write `b_0, 0` or separate arguments with `;`' : '';
+              throw new Error(`box \`${name}\` expects ${sig.params.length} argument${sig.params.length === 1 ? '' : 's'} (${sig.params.join('; ')}), got ${args.length}${hint}`);
+            }
           }
+          out += onCall(name, args, sig, text.slice(i, after));
+          i = after; continue;
         }
       }
       out += name; i = j;
@@ -325,9 +328,10 @@ export const BOX_ATOM_PREFIX = 'BOXCALL_';
 /** Replace each box call by an atom `BOXCALL_k` (mirrors logic::boxes::expand::atomize_box_calls).
  *  Returns {text, calls: [{atom, name, args, label}]}; `label` is `name(a;b;…)`. */
 /** With `lenient`, unknown boxes and arity mismatches are not errors: anything
- *  that reads as a call (≥2 arguments, `;`, or a known box) is atomized — for
- *  text-level tools like the formatter that must keep `f(a, b)` together even
- *  before the box is loaded.  Each call records its source `text`. */
+ *  that reads as a call (a name directly followed by an argument list) is
+ *  atomized — for text-level tools like the formatter that must keep
+ *  `f(a, b)` together even before the box is loaded.  Each call records its
+ *  source `text`. */
 export function atomizeBoxCalls(str, boxes, { lenient = false } = {}) {
   if (str.includes(BOX_ATOM_PREFIX)) {
     if (lenient) return { text: str, calls: [] };

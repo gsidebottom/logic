@@ -127,30 +127,21 @@ pub fn join_file(deps: &[String], content: &str, tests: &str) -> String {
     out
 }
 
-/// Build a concatenated jq preamble from a set of root libraries, pulling in
-/// their transitive dependencies in topological order.  Each library
-/// contributes its `content` (not its tests).  Cycles are reported.
-///
-/// `roots` are the libraries the caller starts from, in order.  `overrides`
-/// maps `path` → `(deps, content)` — typically the currently-loaded
-/// in-memory libs plus any editor preamble override.  Unknown paths fall
-/// through to a disk read from `lib_dir`.
-pub fn resolve_preamble(
+/// The transitive dependency closure of `roots` in dependency order: every
+/// library after everything it depends on (and otherwise in the roots'
+/// order), each once.  `deps_of(path)` yields a library's declared deps or an
+/// error (unreadable, invalid path).  Cycles are reported.
+pub fn resolve_lib_order(
     roots: &[String],
-    overrides: &HashMap<String, (Vec<String>, String)>,
-    lib_dir: &std::path::Path,
-) -> Result<String, String> {
+    deps_of: &dyn Fn(&str) -> Result<Vec<String>, String>,
+) -> Result<Vec<String>, String> {
     enum State { InProgress, Done }
-    let mut state: HashMap<String, State> = HashMap::new();
-    let mut out = String::new();
-
     fn visit(
         path: &str,
-        overrides: &HashMap<String, (Vec<String>, String)>,
-        lib_dir: &std::path::Path,
+        deps_of: &dyn Fn(&str) -> Result<Vec<String>, String>,
         state: &mut HashMap<String, State>,
         stack: &mut Vec<String>,
-        out: &mut String,
+        out: &mut Vec<String>,
     ) -> Result<(), String> {
         match state.get(path) {
             Some(State::Done) => return Ok(()),
@@ -167,30 +158,53 @@ pub fn resolve_preamble(
         if path.contains('/') || path.contains('\\') || path.contains("..") {
             return Err(format!("invalid dependency path: {}", path));
         }
-        let (deps, content) = match overrides.get(path) {
-            Some(v) => v.clone(),
-            None => {
-                let raw = std::fs::read_to_string(lib_dir.join(path))
-                    .map_err(|e| format!("reading dependency {}: {}", path, e))?;
-                let (d, c, _t) = split_file(&raw);
-                (d, c)
-            }
-        };
+        let deps = deps_of(path)?;
         state.insert(path.to_string(), State::InProgress);
         stack.push(path.to_string());
         for d in &deps {
-            visit(d, overrides, lib_dir, state, stack, out)?;
+            visit(d, deps_of, state, stack, out)?;
         }
         stack.pop();
-        out.push_str(&content);
-        if !content.ends_with('\n') { out.push('\n'); }
+        out.push(path.to_string());
         state.insert(path.to_string(), State::Done);
         Ok(())
     }
-
-    let mut stack = Vec::new();
+    let (mut state, mut stack, mut out) = (HashMap::new(), Vec::new(), Vec::new());
     for r in roots {
-        visit(r, overrides, lib_dir, &mut state, &mut stack, &mut out)?;
+        visit(r, deps_of, &mut state, &mut stack, &mut out)?;
+    }
+    Ok(out)
+}
+
+/// Build a concatenated jq preamble from a set of root libraries, pulling in
+/// their transitive dependencies in dependency order ([`resolve_lib_order`]).
+/// Each library contributes its `content` (not its tests).
+///
+/// `roots` are the libraries the caller starts from, in order.  `overrides`
+/// maps `path` → `(deps, content)` — typically the currently-loaded
+/// in-memory libs plus any editor preamble override.  Unknown paths fall
+/// through to a disk read from `lib_dir`.
+pub fn resolve_preamble(
+    roots: &[String],
+    overrides: &HashMap<String, (Vec<String>, String)>,
+    lib_dir: &std::path::Path,
+) -> Result<String, String> {
+    let disk: std::cell::RefCell<HashMap<String, (Vec<String>, String)>> = std::cell::RefCell::new(HashMap::new());
+    let read = |path: &str| -> Result<(Vec<String>, String), String> {
+        if let Some(v) = overrides.get(path) { return Ok(v.clone()); }
+        if let Some(v) = disk.borrow().get(path) { return Ok(v.clone()); }
+        let raw = std::fs::read_to_string(lib_dir.join(path))
+            .map_err(|e| format!("reading dependency {}: {}", path, e))?;
+        let (d, c, _t) = split_file(&raw);
+        disk.borrow_mut().insert(path.to_string(), (d.clone(), c.clone()));
+        Ok((d, c))
+    };
+    let order = resolve_lib_order(roots, &|path| read(path).map(|(d, _c)| d))?;
+    let mut out = String::new();
+    for path in &order {
+        let (_d, content) = read(path)?;
+        out.push_str(&content);
+        if !content.ends_with('\n') { out.push('\n'); }
     }
     Ok(out)
 }
@@ -414,6 +428,27 @@ mod tests {
         let g = BoxDecl { name: "rep2".into(), params: vec!["a".into()], expose: vec![], rhs: Some("rep(a; 2)".into()), budget: BoxBudget::default() };
         assert_eq!(box_formula(pre2, &g, None).unwrap(), "a_0 + a_1");
         assert_eq!(box_formula(pre2, &g, Some(&["x".to_string()])).unwrap(), "x_0 + x_1");
+    }
+
+    #[test]
+    fn lib_order_is_dependency_order() {
+        // diamond: app → {ui, db}, ui → core, db → core
+        let deps = |p: &str| -> Result<Vec<String>, String> {
+            Ok(match p {
+                "app.jq" => vec!["ui.jq".into(), "db.jq".into()],
+                "ui.jq" | "db.jq" => vec!["core.jq".into()],
+                "core.jq" => vec![],
+                "a.jq" => vec!["b.jq".into()],
+                "b.jq" => vec!["a.jq".into()],
+                other => return Err(format!("no such library {other}")),
+            })
+        };
+        assert_eq!(resolve_lib_order(&["app.jq".to_string()], &deps).unwrap(), ["core.jq", "ui.jq", "db.jq", "app.jq"]);
+        // roots keep their order; a root that is also a dep appears once, first
+        assert_eq!(resolve_lib_order(&["db.jq".to_string(), "app.jq".to_string()], &deps).unwrap(), ["core.jq", "db.jq", "ui.jq", "app.jq"]);
+        assert!(resolve_lib_order(&["a.jq".to_string()], &deps).unwrap_err().contains("dependency cycle: a.jq → b.jq → a.jq"));
+        assert!(resolve_lib_order(&["zz.jq".to_string()], &deps).unwrap_err().contains("no such library"));
+        assert!(resolve_lib_order(&["../x.jq".to_string()], &deps).unwrap_err().contains("invalid dependency path"));
     }
 
     /// Every library under `lib/` has its `# === tests ===` block evaluated

@@ -7,9 +7,9 @@ use axum::{
     Router,
 };
 use logic::matrix::{PathClassificationHandle, Matrix, Lit};
-use logic::jqlib::{split_file, join_file, split_boxes, join_boxes, resolve_preamble, parse_box_decl, box_formula};
+use logic::jqlib::{split_file, join_file, split_boxes, join_boxes, resolve_preamble, resolve_lib_order, parse_box_decl, box_formula};
 use logic::boxes::compile::{compile_box, Table};
-use logic::boxes::expand::{expand_box_calls, atomize_box_calls, family_of, Arg, BoxCall, BoxSig};
+use logic::boxes::expand::{expand_box_calls_with, atomize_box_calls_with, family_of, Arg, BoxCall, BoxSig};
 use logic::boxes::compile::{compile_box_polarity, compile_box_by_join, ArgBinding, MinimizeBudget};
 use logic::boxes::controller::{BoxAwareController, BoxTables, CallBoxes};
 use logic::boxes::TableBox;
@@ -142,8 +142,13 @@ struct CaDiCaLStatusResponse {
 #[derive(Clone)]
 struct AppState {
     jq_libs:     Arc<Mutex<Vec<JqLibEntry>>>,
-    /// Boxes compiled from the loaded libraries' `# === boxes ===` declarations.
+    /// Boxes compiled from the `# === boxes ===` declarations of the loaded
+    /// libraries and of the libraries they depend on.
     compiled_boxes: Arc<Mutex<Vec<CompiledBox>>>,
+    /// Per library whose boxes were compiled (loaded, or pulled in as a
+    /// dependency): the source key they were compiled from and the statuses;
+    /// see [`ensure_boxes_compiled`].
+    compiled_libs: Arc<Mutex<HashMap<String, CompiledLib>>>,
     server_root: PathBuf,
     valid_job:   Arc<Mutex<ClassifyJob>>,
     sat_job:     Arc<Mutex<ClassifyJob>>,
@@ -158,9 +163,46 @@ struct AppState {
 /// live parser agree on what a formula with boxes means.
 fn expand_formula(state: &AppState, formula: &str) -> Result<String, String> {
     let store = state.compiled_boxes.lock().unwrap().clone();
-    expand_box_calls(formula, &|name| store.iter().find(|b| b.name == name).map(|b| BoxSig {
+    expand_box_calls_with(formula, &|name| store.iter().find(|b| b.name == name).map(|b| BoxSig {
         params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone(),
-    }))
+    }), &|name| unknown_box_hint(state, name))
+}
+
+/// Why `name` is not a compiled box, when the server can tell: declared in a
+/// loaded library whose compile failed, or declared in a library file that
+/// is neither loaded nor a dependency of a loaded one.
+fn unknown_box_hint(state: &AppState, name: &str) -> Option<String> {
+    let declares = |decls: &[String]| decls.iter().any(|d| parse_box_decl(d).is_ok_and(|b| b.name == name));
+    let libs = state.jq_libs.lock().unwrap().clone();
+    let compiled = state.compiled_libs.lock().unwrap().clone();
+    let mut in_compiled: Vec<&String> = compiled.keys().collect();
+    in_compiled.sort();
+    // A library whose boxes were compiled (loaded or dependency): its statuses say why.
+    for path in in_compiled {
+        let c = &compiled[path];
+        let declared = libs.iter().find(|l| &l.path == path).map(|l| declares(&l.boxes))
+            .unwrap_or_else(|| c.statuses.iter().any(|st| st["name"] == name));
+        if !declared { continue; }
+        return Some(match c.statuses.iter().find(|st| st["name"] == name).and_then(|st| st["error"].as_str()) {
+            Some(e) => format!("declared in {path}, but it did not compile: {e}"),
+            None => format!("declared in {path}, but not compiled — reload the library"),
+        });
+    }
+    // Otherwise a library on disk that nothing loaded depends on.
+    let lib_dir = state.server_root.join("lib");
+    let mut files: Vec<String> = std::fs::read_dir(&lib_dir).ok()?.filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok()).filter(|n| n.ends_with(".jq")).collect();
+    files.sort();
+    for file in files {
+        if compiled.contains_key(&file) { continue; }
+        let Ok(raw) = std::fs::read_to_string(lib_dir.join(&file)) else { continue };
+        let (_deps, content, _tests) = split_file(&raw);
+        let (_content, decls) = split_boxes(&content);
+        if declares(&decls) {
+            return Some(format!("declared in {file}, which is not loaded — load it, or list it in the deps of the library that uses it"));
+        }
+    }
+    None
 }
 
 
@@ -175,9 +217,9 @@ struct BoxContext {
 /// compiled boxes involved.  Returns the atomized text and the context.
 fn build_box_context(state: &AppState, formula: &str) -> Result<(String, BoxContext), String> {
     let store = state.compiled_boxes.lock().unwrap().clone();
-    let at = atomize_box_calls(formula, &|name| store.iter().find(|b| b.name == name).map(|b| BoxSig {
+    let at = atomize_box_calls_with(formula, &|name| store.iter().find(|b| b.name == name).map(|b| BoxSig {
         params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone(),
-    }))?;
+    }), &|name| unknown_box_hint(state, name))?;
     let mut boxes = HashMap::new();
     for c in &at.calls {
         if !boxes.contains_key(&c.name) {
@@ -409,21 +451,110 @@ impl BoxesCompileRequest {
     fn default_timeout() -> u64 { 120 }
 }
 
-/// Compile (or recompile) the boxes declared by one loaded library, replacing
-/// that library's entries in the store — so a declaration that was removed or
-/// now fails disappears.  Returns one status per declaration.
-async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, timeout_secs: u64) -> Vec<serde_json::Value> {
-    let libs = state.jq_libs.lock().unwrap().clone();
-    let Some(lib) = libs.iter().find(|l| l.path == lib_path).cloned() else {
-        return vec![serde_json::json!({ "error": format!("{lib_path} is not loaded") })];
+/// A library whose boxes have been compiled: the key of the source they were
+/// compiled from ([`lib_key`]) and the per-declaration statuses.
+#[derive(Clone)]
+struct CompiledLib { key: u64, statuses: Vec<serde_json::Value> }
+
+/// A library's source: the loaded copy if it is loaded, else `lib/<path>` on
+/// disk — a dependency that is not loaded, whose jq definitions the preamble
+/// pulls in the same way (`resolve_preamble`).
+fn lib_source(state: &AppState, path: &str) -> Result<JqLibEntry, String> {
+    if let Some(l) = state.jq_libs.lock().unwrap().iter().find(|l| l.path == path) { return Ok(l.clone()); }
+    if path.is_empty() || path.contains('/') || path.contains('\\') || path.contains("..") {
+        return Err(format!("invalid dependency path: {path}"));
+    }
+    let raw = std::fs::read_to_string(state.server_root.join("lib").join(path))
+        .map_err(|e| format!("reading dependency {path}: {e}"))?;
+    lib_entry_from_raw(path, &raw)
+}
+
+/// What a library's compiled boxes depend on: its deps list, its jq content,
+/// its box declarations, and the keys of its dependencies' compiled boxes
+/// (so a change deep in a dependency recompiles every dependant).
+fn lib_key(entry: &JqLibEntry, dep_keys: &HashMap<String, u64>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    entry.deps.hash(&mut h);
+    entry.content.hash(&mut h);
+    entry.boxes.hash(&mut h);
+    for d in &entry.deps { dep_keys.get(d).copied().unwrap_or(0).hash(&mut h); }
+    h.finish()
+}
+
+/// Bring the boxes of `roots` and of every library they (transitively)
+/// depend on up to date, in dependency order — a definition may call boxes
+/// of a dependency, and a dependency's boxes are available whether or not it
+/// is loaded, exactly like its jq definitions.  A library is (re)compiled when
+/// it is listed in `force` or its [`lib_key`] differs from the one its boxes
+/// were compiled from; the rest are left alone.  Returns the statuses of the
+/// libraries compiled in this pass, in that order, each tagged with `lib`.
+async fn ensure_boxes_compiled(state: &AppState, roots: &[String], force: &[String], max_paths: usize, timeout_secs: u64) -> Vec<serde_json::Value> {
+    // Read every library once (the order resolver asks for deps; the loop
+    // below for the rest) — finished before the first await so the handler
+    // futures stay `Send`.
+    let (order, sources) = {
+        let sources: std::cell::RefCell<HashMap<String, Result<JqLibEntry, String>>> = std::cell::RefCell::new(HashMap::new());
+        let source = |path: &str| -> Result<JqLibEntry, String> {
+            sources.borrow_mut().entry(path.to_string()).or_insert_with(|| lib_source(state, path)).clone()
+        };
+        let order = resolve_lib_order(roots, &|path| source(path).map(|l| l.deps));
+        (order, sources.into_inner())
     };
+    let order = match order {
+        Ok(o) => o,
+        Err(e) => return vec![serde_json::json!({ "error": e })],
+    };
+    let (mut keys, mut out) = (HashMap::<String, u64>::new(), Vec::new());
+    for path in &order {
+        let entry = match sources.get(path).cloned().unwrap_or_else(|| lib_source(state, path)) {
+            Ok(e) => e,
+            Err(e) => { out.push(serde_json::json!({ "lib": path, "error": e })); continue; }
+        };
+        let key = lib_key(&entry, &keys);
+        let current = state.compiled_libs.lock().unwrap().get(path).map(|c| c.key);
+        if force.contains(path) || current != Some(key) {
+            let statuses = compile_lib_boxes(state, &entry, max_paths, timeout_secs).await;
+            state.compiled_libs.lock().unwrap().insert(path.clone(), CompiledLib { key, statuses: statuses.clone() });
+            out.extend(statuses.into_iter().map(|mut st| { st["lib"] = serde_json::json!(path); st }));
+        }
+        keys.insert(path.clone(), key);
+    }
+    out
+}
+
+/// The loaded libraries' paths, in load order.
+fn loaded_paths(state: &AppState) -> Vec<String> {
+    state.jq_libs.lock().unwrap().iter().map(|l| l.path.clone()).collect()
+}
+
+/// Forget a library: its loaded copy, its compiled boxes and their record.
+/// (A following [`ensure_boxes_compiled`] pulls it back in from disk if a
+/// loaded library still depends on it.)
+fn unload_lib(state: &AppState, path: &str) {
+    state.jq_libs.lock().unwrap().retain(|e| e.path != path);
+    state.compiled_boxes.lock().unwrap().retain(|b| b.lib != path);
+    state.compiled_libs.lock().unwrap().remove(path);
+}
+
+/// Compile (or recompile) the boxes declared by one library (loaded, or a
+/// dependency read from disk), replacing that library's entries in the store
+/// — so a declaration that was removed or now fails disappears.  Callees
+/// must already be compiled (the dependencies' boxes: [`ensure_boxes_compiled`];
+/// this library's own: declared earlier in the block).  Returns one status
+/// per declaration.
+async fn compile_lib_boxes(state: &AppState, lib: &JqLibEntry, max_paths: usize, timeout_secs: u64) -> Vec<serde_json::Value> {
     if lib.boxes.is_empty() {
         state.compiled_boxes.lock().unwrap().retain(|b| b.lib != lib.path);
         return Vec::new();
     }
-    let roots: Vec<String> = libs.iter().map(|l| l.path.clone()).collect();
+    // The jq preamble: every loaded library plus this one (and their deps).
+    let libs = state.jq_libs.lock().unwrap().clone();
+    let mut roots: Vec<String> = libs.iter().map(|l| l.path.clone()).collect();
+    if !roots.contains(&lib.path) { roots.push(lib.path.clone()); }
     let mut overrides = HashMap::new();
     for l in &libs { overrides.insert(l.path.clone(), (l.deps.clone(), l.content.clone())); }
+    overrides.insert(lib.path.clone(), (lib.deps.clone(), lib.content.clone()));
     let preamble = match resolve_preamble(&roots, &overrides, &state.server_root.join("lib")) {
         Ok(p) => p,
         Err(e) => return vec![serde_json::json!({ "error": e })],
@@ -445,12 +576,19 @@ async fn compile_lib_boxes(state: &AppState, lib_path: &str, max_paths: usize, t
         // join proceeds — which never touches the expanded matrix; anything
         // else expands the calls and enumerates paths.
         let (formula, composed): (String, Option<Table>) = {
+            // This library's previous tables are stale (being replaced): only
+            // the declarations compiled so far in this pass count for it.
             let store = state.compiled_boxes.lock().unwrap().clone();
-            let find = |name: &str| compiled_now.iter().chain(store.iter()).find(|b: &&CompiledBox| b.name == name);
+            let find = |name: &str| compiled_now.iter().chain(store.iter().filter(|b| b.lib != lib.path)).find(|b: &&CompiledBox| b.name == name);
             let lookup = |name: &str| find(name).map(|b| BoxSig { params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone() });
             let lookup_t = |name: &str| find(name).map(|b| (BoxSig { params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone() }, b.table.clone()));
+            let hint = |name: &str| {
+                if lib.boxes.iter().any(|l| parse_box_decl(l).is_ok_and(|b| b.name == name)) {
+                    Some(format!("declared later in {} — a definition may only call boxes declared before it", lib.path))
+                } else { unknown_box_hint(state, name) }
+            };
             let composed = compile_box_by_join(&d.name, &formula, &d.params, &d.expose, &lookup_t, &budget).ok();
-            match expand_box_calls(&formula, &lookup) {
+            match expand_box_calls_with(&formula, &lookup, &hint) {
                 Ok(f) => (f, composed),
                 Err(e) => { statuses.push(serde_json::json!({ "name": d.name, "error": format!("definition: {e}") })); continue; }
             }
@@ -511,13 +649,11 @@ async fn boxes_compile_handler(
     State(state): State<AppState>,
     Json(req): Json<BoxesCompileRequest>,
 ) -> Json<serde_json::Value> {
-    let paths: Vec<String> = state.jq_libs.lock().unwrap().iter()
-        .map(|l| l.path.clone()).filter(|p| req.libs.is_empty() || req.libs.contains(p)).collect();
+    let paths: Vec<String> = loaded_paths(&state).into_iter().filter(|p| req.libs.is_empty() || req.libs.contains(p)).collect();
     let (mut compiled, mut errors) = (Vec::new(), Vec::new());
-    for path in &paths {
-        for st in compile_lib_boxes(&state, path, req.max_uncovered_paths, req.timeout_secs).await {
-            if let Some(e) = st.get("error").and_then(|e| e.as_str()) { errors.push(format!("{}: {}", path, e)); } else { compiled.push(st); }
-        }
+    for st in ensure_boxes_compiled(&state, &paths, &paths, req.max_uncovered_paths, req.timeout_secs).await {
+        let lib = st["lib"].as_str().unwrap_or("").to_string();
+        if let Some(e) = st.get("error").and_then(|e| e.as_str()) { errors.push(format!("{lib}: {e}")); } else { compiled.push(st); }
     }
     if req.save {
         let dir = state.server_root.join("boxes");
@@ -532,9 +668,22 @@ async fn boxes_compile_handler(
     Json(serde_json::json!({ "compiled": compiled, "errors": errors }))
 }
 
+/// The compiled boxes, plus the declarations that failed to compile
+/// (`failed: [{name, lib, error}]`) so a client can tell "not a box" from
+/// "a box that did not compile".
 async fn boxes_list_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
     let boxes = state.compiled_boxes.lock().unwrap().clone();
-    Json(serde_json::json!({ "boxes": boxes }))
+    let compiled = state.compiled_libs.lock().unwrap().clone();
+    let mut failed: Vec<serde_json::Value> = Vec::new();
+    for (lib, c) in &compiled {
+        for st in &c.statuses {
+            if let Some(e) = st["error"].as_str() {
+                failed.push(serde_json::json!({ "name": st["name"], "lib": lib, "error": e }));
+            }
+        }
+    }
+    failed.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+    Json(serde_json::json!({ "boxes": boxes, "failed": failed }))
 }
 
 async fn boxes_table_handler(
@@ -556,7 +705,11 @@ async fn boxes_delete_handler(
     let name = q.get("name").cloned().unwrap_or_default();
     let mut store = state.compiled_boxes.lock().unwrap();
     let before = store.len();
+    let libs: Vec<String> = store.iter().filter(|b| b.name == name).map(|b| b.lib.clone()).collect();
     store.retain(|b| b.name != name);
+    // The library's boxes are no longer complete: the next load/save/compile recompiles it.
+    let mut compiled = state.compiled_libs.lock().unwrap();
+    for lib in libs { compiled.remove(&lib); }
     Json(serde_json::json!({ "ok": true, "removed": before - store.len() }))
 }
 
@@ -615,8 +768,10 @@ async fn jq_lib_load_handler(
         let mut libs = state.jq_libs.lock().unwrap();
         if let Some(pos) = libs.iter().position(|e| e.path == req.path) { libs[pos] = entry; } else { libs.push(entry); }
     }
-    // Boxes follow the library: compile its declarations now.
-    let boxes = compile_lib_boxes(&state, &req.path, BoxesCompileRequest::default_max(), BoxesCompileRequest::default_timeout()).await;
+    // Boxes follow the libraries: compile what changed — this library's
+    // declarations, first its dependencies' if they are new, then those of
+    // any loaded library that depends on it.
+    let boxes = ensure_boxes_compiled(&state, &loaded_paths(&state), &[], BoxesCompileRequest::default_max(), BoxesCompileRequest::default_timeout()).await;
     Json(serde_json::json!({ "ok": true, "boxes": boxes }))
 }
 
@@ -624,9 +779,10 @@ async fn jq_lib_unload_handler(
     State(state): State<AppState>,
     Json(req): Json<JqLibRequest>,
 ) -> Json<serde_json::Value> {
-    state.jq_libs.lock().unwrap().retain(|e| e.path != req.path);
-    state.compiled_boxes.lock().unwrap().retain(|b| b.lib != req.path);
-    Json(serde_json::json!({ "ok": true }))
+    unload_lib(&state, &req.path);
+    // A loaded library may still depend on it: then its boxes come back from disk.
+    let boxes = ensure_boxes_compiled(&state, &loaded_paths(&state), &[], BoxesCompileRequest::default_max(), BoxesCompileRequest::default_timeout()).await;
+    Json(serde_json::json!({ "ok": true, "boxes": boxes }))
 }
 
 /// Delete a `.jq` file from `lib/` on disk.  Refuses if any other `.jq` file
@@ -679,8 +835,8 @@ async fn jq_lib_delete_handler(
     if let Err(e) = std::fs::remove_file(&full_path) {
         return Json(serde_json::json!({ "error": e.to_string() }));
     }
-    // Drop from in-memory loaded libs if present.
-    state.jq_libs.lock().unwrap().retain(|e| e.path != req.path);
+    // Drop from in-memory loaded libs (and the compiled boxes) if present.
+    unload_lib(&state, &req.path);
     Json(serde_json::json!({ "ok": true }))
 }
 
@@ -737,8 +893,10 @@ async fn jq_lib_save_handler(
             None => false,
         }
     };
-    let statuses = if loaded {
-        compile_lib_boxes(&state, &req.path, BoxesCompileRequest::default_max(), BoxesCompileRequest::default_timeout()).await
+    // Recompile its boxes and those of every loaded library that depends on
+    // it (a dependency read from disk is refreshed by the same rule).
+    let statuses = if loaded || state.compiled_libs.lock().unwrap().contains_key(&req.path) {
+        ensure_boxes_compiled(&state, &loaded_paths(&state), &[], BoxesCompileRequest::default_max(), BoxesCompileRequest::default_timeout()).await
     } else { Vec::new() };
     Json(serde_json::json!({ "ok": true, "boxes": statuses }))
 }
@@ -1913,6 +2071,7 @@ async fn main() {
     let state = AppState {
         jq_libs: Arc::new(Mutex::new(default_libs)),
         compiled_boxes: Arc::new(Mutex::new(Vec::new())),
+        compiled_libs: Arc::new(Mutex::new(HashMap::new())),
         server_root,
         valid_job: Arc::new(Mutex::new(ClassifyJob::default())),
         sat_job:   Arc::new(Mutex::new(ClassifyJob::default())),
@@ -1920,9 +2079,9 @@ async fn main() {
         cadical_valid_job: Arc::new(Mutex::new(CaDiCaLJob::default())),
         cadical_sat_job:   Arc::new(Mutex::new(CaDiCaLJob::default())),
     };
-    for path in ["expr.jq"] {
-        for st in compile_lib_boxes(&state, path, BoxesCompileRequest::default_max(), BoxesCompileRequest::default_timeout()).await {
-            if let Some(e) = st.get("error").and_then(|e| e.as_str()) { eprintln!("{path}: box: {e}"); }
+    {
+        for st in ensure_boxes_compiled(&state, &loaded_paths(&state), &[], BoxesCompileRequest::default_max(), BoxesCompileRequest::default_timeout()).await {
+            if let Some(e) = st.get("error").and_then(|e| e.as_str()) { eprintln!("{}: box: {e}", st["lib"].as_str().unwrap_or("")); }
         }
     }
 

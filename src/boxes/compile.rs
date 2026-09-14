@@ -676,7 +676,7 @@ pub fn compile_box_by_join(
         }
         let cols: Vec<usize> = colmap.iter().filter_map(|c| c.map(|(gi, _)| gi)).collect();
         // rows as sparse (col, value) lists → dense later once the universe is known
-        calls.push(CallRows { cols, rows: rows.into_iter().map(|r| r.into_iter().map(|(gi, v)| (gi, v)).collect::<Vec<_>>())
+        calls.push(CallRows { cols, rows: rows.into_iter().map(|r| r.into_iter().collect::<Vec<_>>())
             .map(|r: Vec<(usize, bool)>| { let mut d: Vec<Option<bool>> = Vec::new(); for (gi, v) in r { if d.len() <= gi { d.resize(gi + 1, None); } d[gi] = Some(v); } d }).collect() });
     }
     let width = names.len();

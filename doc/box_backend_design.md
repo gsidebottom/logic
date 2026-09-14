@@ -722,17 +722,43 @@ with `box-compile` and `sat --boxes`).
 **Box calls in the formula language** (2026-09-07): `name(a1, a2, …)` or
 `name(a1; a2; …)` refers to a compiled box (`logic::boxes::expand`, mirrored
 in `formula.jsx` so the live parser and the server agree).  A call is
-recognised when the parenthesised text is an argument list and the name is a
-known box, or there are two or more arguments (or none, or `;`); `A(B+C)` and
-`A(B)` keep meaning AND.  Inside an argument list a comma continues a name
-only within a numeric subscript (`d_0,1`).  An **unknown box or a wrong
-argument count is an error** — immediately in the UI, and from every formula
-endpoint (`/valid`, `/satisfiable`, `/paths`, `/cadical/*`, `/simplify`, plus
-`POST /expand`).  A known box expands to its definition with the arguments
+recognised whenever the parenthesised text is an argument list — names and
+constants separated by `,` or `;`, or empty; `A(B+C)` and `A (B)` keep
+meaning AND.  Inside an argument list a comma continues a name only within a
+numeric subscript (`d_0,1`).  An **unknown box or a wrong argument count is
+an error** — immediately in the UI, and from every formula endpoint
+(`/valid`, `/satisfiable`, `/paths`, `/cadical/*`, `/simplify`, plus
+`POST /expand`).  This includes the one-argument form `name(x)`: until
+2026-09-13 an unknown one-argument name fell back to juxtaposition
+(`name · x`), and `v_eq_0_4(c0)` inside a definition compiled with
+`math.jq` not loaded silently became two free variables, hidden by
+construction — a wrong table (`bmc8_w4` SAT at `c8 = 12`).  The error names
+the library that declares the box when the server can tell (declared in a
+library on disk that is not loaded / a dependency; declared in a loaded
+library whose compile failed, with that error; declared later in the same
+boxes block).  A known box expands to its definition with the arguments
 substituted (primes compose; `0`/`1` constants allowed) and its projected
 internals renamed `<v>__<k>` per call site (the ∃ of §2.4), recursively for
 hierarchical boxes, so every existing backend and the diagram work on the
 expansion; unloading a library turns its calls back into errors.
+
+**Libraries, dependencies and recompilation** (2026-09-13): a library's
+boxes are compiled *after* the boxes of the libraries in its `# === deps ===`
+block, transitively (`jqlib::resolve_lib_order`), and a dependency's boxes
+are available whether or not it is loaded — read from `lib/` on disk exactly
+as its jq definitions are for the preamble — so `bmc.jq` (deps: `math.jq`)
+compiles `bmc8_w4` by composition over `v_eq_0_4` in any load order.  The
+server keeps, per compiled library, a key over its deps list, jq content,
+box declarations and its dependencies' keys (`web_app::lib_key`,
+"make"-style): a load, save or unload recompiles exactly the libraries whose
+key changed — the edited one and every loaded library that depends on it,
+in dependency order — and leaves the rest (the exact-minimisation budgets
+make `math.jq` ~1.6 s).  A box's right-hand side may use any loaded
+library's jq definitions, but only declared deps trigger recompilation and
+only their boxes can be called from a definition: declare them.  A
+definition may call boxes declared earlier in its own block.  `GET /boxes`
+also lists the declarations that failed (`failed: [{name, lib, error}]`),
+and the UI keeps those statuses across page reloads.
 
 **`boxes` backend in the web app** (2026-09-07): the default backend-selector
 option for Valid? / Satisfiable? (a formula without box calls runs greedy×eff

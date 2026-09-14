@@ -1339,6 +1339,16 @@ export default function App() {
   };
   const [boxStatus,      setBoxStatus]      = useState({});    // name -> {rows|error} from the last load/save
   const [jqLibBoxes,     setJqLibBoxes]     = useState([]);    // editor buffer: box declarations
+  // The declaration list scrolls within a few rows; after "Add box" (one new,
+  // empty row — not the list filling when a library is opened) show the new row.
+  const jqLibBoxListRef = useRef(null);
+  const jqLibBoxCountRef = useRef(0);
+  useEffect(() => {
+    const el = jqLibBoxListRef.current;
+    const added = jqLibBoxes.length === jqLibBoxCountRef.current + 1 && jqLibBoxes[jqLibBoxes.length - 1] === '';
+    if (el && added) el.scrollTop = el.scrollHeight;
+    jqLibBoxCountRef.current = jqLibBoxes.length;
+  }, [jqLibBoxes]);
   const [boxesMsg,       setBoxesMsg]       = useState('');
   const [jqLibDeps,      setJqLibDeps]      = useState([]);    // editable dep list
   const [jqLibDepInput,  setJqLibDepInput]  = useState('');    // dep picker input
@@ -2615,6 +2625,9 @@ export default function App() {
                     {jqLibBoxes.length === 0 && (
                       <span style={{ color: '#aaa', fontStyle: 'italic' }}>(no boxes declared)</span>
                     )}
+                    {/* about five declarations visible; the rest scroll, so a library with
+                        many boxes keeps the code, tests and save controls in view */}
+                    <div ref={jqLibBoxListRef} style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 150, overflowY: 'auto', paddingRight: 2 }}>
                     {jqLibBoxes.map((decl, i) => {
                       const nm = decl.split('(')[0].trim();
                       const st = boxStatus[nm];
@@ -2647,6 +2660,7 @@ export default function App() {
                         </div>
                       );
                     })}
+                    </div>
                   </div>
                   <textarea
                     value={jqLibEditContent}

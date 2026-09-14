@@ -168,27 +168,40 @@ fn expand_formula(state: &AppState, formula: &str) -> Result<String, String> {
     }), &|name| unknown_box_hint(state, name))
 }
 
+/// The library whose boxes were compiled (loaded, or a dependency) that
+/// declares box `name`, with the declaration's compile error if it failed.
+fn declaring_compiled_lib(state: &AppState, name: &str) -> Option<(String, Option<String>)> {
+    let declares = |decls: &[String]| decls.iter().any(|d| parse_box_decl(d).is_ok_and(|b| b.name == name));
+    let libs = state.jq_libs.lock().unwrap().clone();
+    let compiled = state.compiled_libs.lock().unwrap().clone();
+    let mut paths: Vec<&String> = compiled.keys().collect();
+    paths.sort();
+    for path in paths {
+        let c = &compiled[path];
+        let declared = libs.iter().find(|l| &l.path == path).map(|l| declares(&l.boxes))
+            .unwrap_or_else(|| c.statuses.iter().any(|st| st["name"] == name));
+        if declared {
+            let error = c.statuses.iter().find(|st| st["name"] == name).and_then(|st| st["error"].as_str()).map(String::from);
+            return Some((path.clone(), error));
+        }
+    }
+    None
+}
+
 /// Why `name` is not a compiled box, when the server can tell: declared in a
 /// loaded library whose compile failed, or declared in a library file that
 /// is neither loaded nor a dependency of a loaded one.
 fn unknown_box_hint(state: &AppState, name: &str) -> Option<String> {
     let declares = |decls: &[String]| decls.iter().any(|d| parse_box_decl(d).is_ok_and(|b| b.name == name));
-    let libs = state.jq_libs.lock().unwrap().clone();
-    let compiled = state.compiled_libs.lock().unwrap().clone();
-    let mut in_compiled: Vec<&String> = compiled.keys().collect();
-    in_compiled.sort();
     // A library whose boxes were compiled (loaded or dependency): its statuses say why.
-    for path in in_compiled {
-        let c = &compiled[path];
-        let declared = libs.iter().find(|l| &l.path == path).map(|l| declares(&l.boxes))
-            .unwrap_or_else(|| c.statuses.iter().any(|st| st["name"] == name));
-        if !declared { continue; }
-        return Some(match c.statuses.iter().find(|st| st["name"] == name).and_then(|st| st["error"].as_str()) {
+    if let Some((path, error)) = declaring_compiled_lib(state, name) {
+        return Some(match error {
             Some(e) => format!("declared in {path}, but it did not compile: {e}"),
             None => format!("declared in {path}, but not compiled — reload the library"),
         });
     }
     // Otherwise a library on disk that nothing loaded depends on.
+    let compiled = state.compiled_libs.lock().unwrap().clone();
     let lib_dir = state.server_root.join("lib");
     let mut files: Vec<String> = std::fs::read_dir(&lib_dir).ok()?.filter_map(|e| e.ok())
         .filter_map(|e| e.file_name().into_string().ok()).filter(|n| n.ends_with(".jq")).collect();
@@ -487,9 +500,35 @@ fn lib_key(entry: &JqLibEntry, dep_keys: &HashMap<String, u64>) -> u64 {
 /// of a dependency, and a dependency's boxes are available whether or not it
 /// is loaded, exactly like its jq definitions.  A library is (re)compiled when
 /// it is listed in `force` or its [`lib_key`] differs from the one its boxes
-/// were compiled from; the rest are left alone.  Returns the statuses of the
-/// libraries compiled in this pass, in that order, each tagged with `lib`.
+/// were compiled from; the rest are left alone.  First, the boxes of every
+/// library that no loaded library depends on any more are dropped
+/// ([`prune_unreachable_boxes`]) — a dependency's boxes come and go with its
+/// dependants, and a definition must not compile against a table that is
+/// about to disappear.  Returns the statuses of the libraries compiled in
+/// this pass, in that order, each tagged with `lib`.
 async fn ensure_boxes_compiled(state: &AppState, roots: &[String], force: &[String], max_paths: usize, timeout_secs: u64) -> Vec<serde_json::Value> {
+    prune_unreachable_boxes(state);
+    compile_stale_boxes(state, roots, force, max_paths, timeout_secs).await
+}
+
+/// Drop the compiled boxes (and the compile record) of every library outside
+/// the loaded libraries' dependency closure — a dependency that was pulled in
+/// for a library since unloaded, or removed from a library's deps.  Left alone
+/// when the closure cannot be resolved (a cycle, a missing file): nothing is
+/// dropped on an error.  Returns the paths pruned.
+fn prune_unreachable_boxes(state: &AppState) -> Vec<String> {
+    let deps_of = |path: &str| lib_source(state, path).map(|l| l.deps);
+    let Ok(reachable) = resolve_lib_order(&loaded_paths(state), &deps_of) else { return Vec::new() };
+    let mut compiled = state.compiled_libs.lock().unwrap();
+    let mut pruned: Vec<String> = compiled.keys().filter(|p| !reachable.contains(p)).cloned().collect();
+    pruned.sort();
+    for p in &pruned { compiled.remove(p); }
+    state.compiled_boxes.lock().unwrap().retain(|b| reachable.contains(&b.lib));
+    pruned
+}
+
+/// The compile part of [`ensure_boxes_compiled`].
+async fn compile_stale_boxes(state: &AppState, roots: &[String], force: &[String], max_paths: usize, timeout_secs: u64) -> Vec<serde_json::Value> {
     // Read every library once (the order resolver asks for deps; the loop
     // below for the rest) — finished before the first await so the handler
     // futures stay `Send`.
@@ -530,7 +569,8 @@ fn loaded_paths(state: &AppState) -> Vec<String> {
 
 /// Forget a library: its loaded copy, its compiled boxes and their record.
 /// (A following [`ensure_boxes_compiled`] pulls it back in from disk if a
-/// loaded library still depends on it.)
+/// loaded library still depends on it, and drops the boxes of dependencies
+/// only it needed.)
 fn unload_lib(state: &AppState, path: &str) {
     state.jq_libs.lock().unwrap().retain(|e| e.path != path);
     state.compiled_boxes.lock().unwrap().retain(|b| b.lib != path);
@@ -539,15 +579,19 @@ fn unload_lib(state: &AppState, path: &str) {
 
 /// Compile (or recompile) the boxes declared by one library (loaded, or a
 /// dependency read from disk), replacing that library's entries in the store
-/// — so a declaration that was removed or now fails disappears.  Callees
-/// must already be compiled (the dependencies' boxes: [`ensure_boxes_compiled`];
-/// this library's own: declared earlier in the block).  Returns one status
-/// per declaration.
+/// — so a declaration that was removed or now fails disappears.  A definition
+/// may call the boxes of the library's dependency closure (compiled first:
+/// [`ensure_boxes_compiled`]) and those declared earlier in its own block —
+/// not the boxes of an unrelated loaded library: only declared deps trigger
+/// recompilation.  Returns one status per declaration.
 async fn compile_lib_boxes(state: &AppState, lib: &JqLibEntry, max_paths: usize, timeout_secs: u64) -> Vec<serde_json::Value> {
     if lib.boxes.is_empty() {
         state.compiled_boxes.lock().unwrap().retain(|b| b.lib != lib.path);
         return Vec::new();
     }
+    // This library and its transitive deps (empty only if unresolvable —
+    // then every compiled box is visible, as a fallback).
+    let closure: Vec<String> = resolve_lib_order(std::slice::from_ref(&lib.path), &|p| lib_source(state, p).map(|l| l.deps)).unwrap_or_default();
     // The jq preamble: every loaded library plus this one (and their deps).
     let libs = state.jq_libs.lock().unwrap().clone();
     let mut roots: Vec<String> = libs.iter().map(|l| l.path.clone()).collect();
@@ -579,12 +623,15 @@ async fn compile_lib_boxes(state: &AppState, lib: &JqLibEntry, max_paths: usize,
             // This library's previous tables are stale (being replaced): only
             // the declarations compiled so far in this pass count for it.
             let store = state.compiled_boxes.lock().unwrap().clone();
-            let find = |name: &str| compiled_now.iter().chain(store.iter().filter(|b| b.lib != lib.path)).find(|b: &&CompiledBox| b.name == name);
+            let visible = |b: &&CompiledBox| b.lib != lib.path && (closure.is_empty() || closure.contains(&b.lib));
+            let find = |name: &str| compiled_now.iter().chain(store.iter().filter(visible)).find(|b: &&CompiledBox| b.name == name);
             let lookup = |name: &str| find(name).map(|b| BoxSig { params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone() });
             let lookup_t = |name: &str| find(name).map(|b| (BoxSig { params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone() }, b.table.clone()));
             let hint = |name: &str| {
                 if lib.boxes.iter().any(|l| parse_box_decl(l).is_ok_and(|b| b.name == name)) {
                     Some(format!("declared later in {} — a definition may only call boxes declared before it", lib.path))
+                } else if let Some((other, _)) = declaring_compiled_lib(state, name) && !closure.contains(&other) {
+                    Some(format!("declared in {other}, which is not a dependency of {} — list it in the deps block", lib.path))
                 } else { unknown_box_hint(state, name) }
             };
             let composed = compile_box_by_join(&d.name, &formula, &d.params, &d.expose, &lookup_t, &budget).ok();

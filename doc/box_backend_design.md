@@ -753,10 +753,17 @@ box declarations and its dependencies' keys (`web_app::lib_key`,
 "make"-style): a load, save or unload recompiles exactly the libraries whose
 key changed — the edited one and every loaded library that depends on it,
 in dependency order — and leaves the rest (the exact-minimisation budgets
-make `math.jq` ~1.6 s).  A box's right-hand side may use any loaded
-library's jq definitions, but only declared deps trigger recompilation and
-only their boxes can be called from a definition: declare them.  A
-definition may call boxes declared earlier in its own block.  `GET /boxes`
+make `math.jq` ~1.6 s).  Before compiling, it drops the boxes of every
+library outside the loaded libraries' dependency closure, so a dependency's
+boxes come and go with its dependants (unload `bmc.jq` and `math.jq`'s
+boxes go too, unless `math.jq` is loaded itself or another loaded library
+needs it; drop `math.jq` from `bmc.jq`'s deps and its boxes go before
+`bmc.jq` recompiles — no definition compiles against a table that is about
+to disappear).  A box's right-hand side may use any loaded library's jq
+definitions, but a definition can only *call* boxes of its library's
+dependency closure (and earlier declarations of its own block) — the error
+names the library and says to list it in the deps block — because only
+declared deps trigger recompilation.  `GET /boxes`
 also lists the declarations that failed (`failed: [{name, lib, error}]`),
 and the UI keeps those statuses across page reloads.
 

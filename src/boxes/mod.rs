@@ -9,42 +9,26 @@
 //! matrix of clause boxes and the engine is a complete SAT procedure; a
 //! compiled box (an adder, …) is a table with more rows over more variables.
 //!
-//! Search (§3.2): pick a row of the most constrained undecided box, assign its
-//! literals, propagate (§3.3: a box with no live row is a covered path →
-//! backtrack; a literal shared by every live row is forced), repeat until
-//! every box has a satisfied row (SAT, the assignment is a model) or the row
-//! choices are exhausted (UNSAT).  Per-box row bitsets make "rows still live
-//! after adding a literal" one AND and "is this literal forced" one subset
-//! test, exactly the lifted form of unit propagation / generalized arc
-//! consistency.
+//! Propagation (§3.3): a box with no live row is a covered path → conflict;
+//! a literal shared by every live row is forced.  Per-box row bitsets make
+//! "rows still live after adding a literal" one AND and "is this literal
+//! forced" one subset test, exactly the lifted form of unit propagation /
+//! generalized arc consistency.  Search (§3.2, §3.5): conflict-driven —
+//! conflicts and forced literals are explained from the kill masks, learned
+//! clauses are propagated with watched literals.  A box may also be given in
+//! **clause form** (the negated rows of its negation): the same constraint,
+//! cheaper to propagate when the tables are tiny.
 
 use crate::matrix::Lit;
 
 /// Bitset over the rows of one box.
 pub type RowMask = Vec<u64>;
 
-fn mask_new(n: usize) -> RowMask { vec![0; n.div_ceil(64)] }
 fn mask_set(m: &mut RowMask, i: usize) { m[i / 64] |= 1u64 << (i % 64); }
 fn mask_and_not(a: &RowMask, b: &RowMask) -> RowMask {
     a.iter().zip(b).map(|(x, y)| x & !y).collect()
 }
 fn mask_is_zero(a: &RowMask) -> bool { a.iter().all(|&w| w == 0) }
-fn mask_count(a: &RowMask) -> usize { a.iter().map(|w| w.count_ones() as usize).sum() }
-/// `a ⊆ b`
-fn mask_subset(a: &RowMask, b: &RowMask) -> bool { a.iter().zip(b).all(|(x, y)| x & !y == 0) }
-fn mask_ones(a: &RowMask) -> Vec<usize> {
-    let mut out = Vec::new();
-    for (wi, &w) in a.iter().enumerate() {
-        let mut w = w;
-        while w != 0 {
-            let t = w.trailing_zeros() as usize;
-            out.push(wi * 64 + t);
-            w &= w - 1;
-        }
-    }
-    out
-}
-
 /// A table box: canonical rows over a set of (0-based) variables, plus the
 /// per-literal row masks that make propagation bit-parallel.
 #[derive(Clone, Debug)]
@@ -57,6 +41,12 @@ pub struct TableBox {
     /// Per local variable index: rows where that variable is TRUE / FALSE.
     mask_pos: Vec<RowMask>,
     mask_neg: Vec<RowMask>,
+    /// Flat kill masks: the rows that die when local variable `li` is
+    /// assigned FALSE (`mask_pos`, at `(2·li)·nwords`) or TRUE (`mask_neg`,
+    /// at `(2·li + 1)·nwords`) — one contiguous array per box.
+    kill: Vec<u64>,
+    /// Words in a row mask (at least one, so an empty box has a zero word).
+    nwords: usize,
 }
 
 impl TableBox {
@@ -79,16 +69,20 @@ impl TableBox {
         vars.sort_unstable();
         vars.dedup();
         let n = canon.len();
-        let mut mask_pos = vec![mask_new(n); vars.len()];
-        let mut mask_neg = vec![mask_new(n); vars.len()];
+        let nwords = n.div_ceil(64).max(1);
+        let mut mask_pos = vec![vec![0u64; nwords]; vars.len()];
+        let mut mask_neg = vec![vec![0u64; nwords]; vars.len()];
         for (ri, row) in canon.iter().enumerate() {
             for l in row {
                 let li = vars.binary_search(&l.var).unwrap();
                 if l.neg { mask_set(&mut mask_neg[li], ri) } else { mask_set(&mut mask_pos[li], ri) }
             }
         }
-        TableBox { vars, rows: canon, mask_pos, mask_neg }
+        let mut kill = Vec::with_capacity(2 * vars.len() * nwords);
+        for li in 0..vars.len() { kill.extend_from_slice(&mask_pos[li]); kill.extend_from_slice(&mask_neg[li]); }
+        TableBox { vars, rows: canon, mask_pos, mask_neg, kill, nwords }
     }
+
 
     /// The smallest box: a CNF clause in DIMACS form (1-based, sign = polarity).
     pub fn clause(lits: &[i32]) -> TableBox {
@@ -109,7 +103,7 @@ impl TableBox {
     }
 
     pub fn all_mask(&self) -> RowMask {
-        let mut m = mask_new(self.rows.len());
+        let mut m = vec![0u64; self.nwords];
         for i in 0..self.rows.len() { mask_set(&mut m, i) }
         m
     }
@@ -139,26 +133,99 @@ pub struct Stats {
     pub conflicts: u64,
 }
 
-struct Frame {
-    b: usize,
-    rows: Vec<usize>,
-    next: usize,
+/// Where a box's data lives in the engine's flat arrays.
+#[derive(Clone, Copy)]
+struct BoxHdr {
+    /// First word of the box's live mask in `live`.
+    off: u32,
+    /// Words per row mask.
+    nw: u32,
+    /// The box's variables: `vars_all[vbase .. vbase + nvars]`.
+    vbase: u32,
+    nvars: u32,
+    /// Kill masks: local variable `li` assigned FALSE kills the rows in
+    /// `kill_all[kbase + 2·li·nw ..]`, TRUE those at `kbase + (2·li + 1)·nw`.
+    kbase: u32,
+    nrows: u32,
 }
 
-/// The engine: boxes, the current partial assignment with a trail, and the
-/// per-box live-row masks with their undo log.
+/// One occurrence of a variable: the box and the start of the variable's
+/// FALSE-kill mask in `kill_all` (the TRUE-kill mask follows it).
+#[derive(Clone, Copy)]
+struct Occ { b: u32, koff: u32 }
+
+/// Why a variable holds its value.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Reason { None, Box(u32), Clause(u32) }
+
+/// What propagation ran into.
+#[derive(Clone, Copy, Debug)]
+enum Conflict {
+    /// The clause is false.
+    Clause(u32),
+    /// The box has no live row.
+    Box(u32),
+    /// The box forces `var := val`, which is already assigned the other way.
+    Forced { b: u32, var: u32, val: bool },
+}
+
+#[inline] fn code(var: u32, neg: bool) -> u32 { var << 1 | neg as u32 }
+/// The value of literal code `c` under `vals`.
+#[inline] fn lit_val(vals: &[Val], c: u32) -> Val {
+    match vals[(c >> 1) as usize] { Val::U => Val::U, v => if (v == Val::T) != (c & 1 == 1) { Val::T } else { Val::F } }
+}
+
+/// The engine: conflict-driven search (§3.2, §3.5) over two kinds of
+/// constraint — **table boxes**, propagated to generalized arc consistency
+/// with bit-parallel live-row masks, and **clauses** (a box's clause form,
+/// and the clauses learned from conflicts), propagated with two watched
+/// literals.
+///
+/// A conflict, or a literal a table forces, is explained lazily from the
+/// table's kill masks: the assigned literals of the box whose kill masks
+/// together cover the rows that had to die (fewest, oldest levels first).
+/// With that, 1-UIP conflict analysis, backjumping, learned clauses, VSIDS
+/// branching with phase saving and Luby restarts are the textbook ones.
+///
+/// The hot path is allocation-free: every box's data sits in flat arrays
+/// indexed through a small header; an assignment ANDs the killed rows out of
+/// each live word; opening a decision level snapshots the whole live array
+/// (a few hundred words) and backjumping copies one back.
 pub struct Engine {
     nvars: usize,
-    boxes: Vec<TableBox>,
-    /// var → (box index, local variable index) occurrences.
-    occ: Vec<Vec<(usize, usize)>>,
+    // tables
+    hdr: Vec<BoxHdr>,
+    vars_all: Vec<u32>,
+    kill_all: Vec<u64>,
+    /// var → occurrences in tables.
+    occ: Vec<Vec<Occ>>,
+    /// Live-row masks, box `b` at words `hdr[b].off ..`.
+    live: Vec<u64>,
+    /// Snapshots of `live` at the start of each open decision level.
+    snap: Vec<u64>,
+    in_queue: Vec<bool>,
+    queue: Vec<u32>,
+    // clauses
+    clauses: Vec<Vec<u32>>,
+    /// Per literal code: the clauses watching it (visited when it becomes
+    /// FALSE), each with a blocker literal.
+    watches: Vec<Vec<(u32, u32)>>,
+    /// Clauses `[first_learnt..]` were learned.
+    first_learnt: usize,
+    unsat_at_init: bool,
+    // assignment
     vals: Vec<Val>,
+    level: Vec<u32>,
+    reason: Vec<Reason>,
+    trail_pos: Vec<u32>,
     trail: Vec<u32>,
     trail_lim: Vec<usize>,
-    live: Vec<RowMask>,
-    live_undo: Vec<(usize, RowMask)>,
-    live_undo_lim: Vec<usize>,
-    in_queue: Vec<bool>,
+    qhead: usize,
+    // heuristic
+    activity: Vec<f64>,
+    var_inc: f64,
+    phase: Vec<bool>,
+    seen: Vec<bool>,
     pub stats: Stats,
     /// Optional decision budget; `solve` returns `Unknown` when exceeded.
     pub max_decisions: Option<u64>,
@@ -169,61 +236,117 @@ pub struct Engine {
 impl Engine {
     pub fn new(nvars: usize, boxes: Vec<TableBox>) -> Engine {
         let mut e = Engine {
-            nvars, boxes: Vec::new(), occ: vec![Vec::new(); nvars],
-            vals: vec![Val::U; nvars], trail: Vec::new(), trail_lim: Vec::new(),
-            live: Vec::new(), live_undo: Vec::new(), live_undo_lim: Vec::new(),
-            in_queue: Vec::new(), stats: Stats::default(), max_decisions: None, cancel: None,
+            nvars: 0, hdr: Vec::new(), vars_all: Vec::new(), kill_all: Vec::new(), occ: Vec::new(), live: Vec::new(), snap: Vec::new(), in_queue: Vec::new(), queue: Vec::new(),
+            clauses: Vec::new(), watches: Vec::new(), first_learnt: 0, unsat_at_init: false,
+            vals: Vec::new(), level: Vec::new(), reason: Vec::new(), trail_pos: Vec::new(),
+            trail: Vec::new(), trail_lim: Vec::new(), qhead: 0,
+            activity: Vec::new(), var_inc: 1.0, phase: Vec::new(), seen: Vec::new(),
+            stats: Stats::default(), max_decisions: None, cancel: None,
         };
+        e.grow(nvars);
         for b in boxes { e.add_box(b) }
         e
     }
 
-    /// Every clause becomes a clause box.
+    /// Every clause becomes a watched clause.
     pub fn from_cnf(nvars: usize, clauses: &[Vec<i32>]) -> Engine {
-        Engine::new(nvars, clauses.iter().map(|c| TableBox::clause(c)).collect())
+        let mut e = Engine::new(nvars, Vec::new());
+        for c in clauses { e.add_clause(&c.iter().map(|&l| lit_of_dimacs(l)).collect::<Vec<_>>()); }
+        e
     }
 
+    fn grow(&mut self, nvars: usize) {
+        if nvars <= self.nvars { return; }
+        self.nvars = nvars;
+        self.occ.resize(nvars, Vec::new());
+        self.vals.resize(nvars, Val::U);
+        self.level.resize(nvars, 0);
+        self.reason.resize(nvars, Reason::None);
+        self.trail_pos.resize(nvars, 0);
+        self.activity.resize(nvars, 0.0);
+        self.phase.resize(nvars, false);
+        self.seen.resize(nvars, false);
+        self.watches.resize(2 * nvars, Vec::new());
+    }
+
+    /// Add a table box (before solving).
     pub fn add_box(&mut self, b: TableBox) {
-        let bi = self.boxes.len();
+        let bi = self.hdr.len() as u32;
+        let nw = b.nwords as u32;
+        let (vbase, kbase) = (self.vars_all.len() as u32, self.kill_all.len() as u32);
+        if let Some(&max) = b.vars.iter().max() { self.grow(max as usize + 1); }
         for (li, &v) in b.vars.iter().enumerate() {
-            let v = v as usize;
-            if v >= self.nvars {
-                self.nvars = v + 1;
-                self.occ.resize(self.nvars, Vec::new());
-                self.vals.resize(self.nvars, Val::U);
-            }
-            self.occ[v].push((bi, li));
+            self.occ[v as usize].push(Occ { b: bi, koff: kbase + 2 * li as u32 * nw });
         }
-        self.live.push(b.all_mask());
+        self.vars_all.extend_from_slice(&b.vars);
+        self.kill_all.extend_from_slice(&b.kill);
+        self.hdr.push(BoxHdr { off: self.live.len() as u32, nw, vbase, nvars: b.vars.len() as u32, kbase, nrows: b.rows.len() as u32 });
+        self.live.extend_from_slice(&b.all_mask());
         self.in_queue.push(false);
-        self.boxes.push(b);
+    }
+
+    /// Add a clause (before solving).  Tautologies are dropped, duplicate
+    /// literals merged; the empty clause makes the engine unsatisfiable, a
+    /// unit clause is a level-0 assignment.
+    pub fn add_clause(&mut self, lits: &[Lit]) {
+        if let Some(max) = lits.iter().map(|l| l.var).max() { self.grow(max as usize + 1); }
+        let mut c: Vec<u32> = lits.iter().map(|l| code(l.var, l.neg)).collect();
+        c.sort_unstable(); c.dedup();
+        if c.windows(2).any(|w| w[0] >> 1 == w[1] >> 1) { return; }   // x ∨ ¬x
+        match c.len() {
+            0 => self.unsat_at_init = true,
+            1 => { let l = c[0]; if !self.assign(l >> 1, if l & 1 == 1 { Val::F } else { Val::T }, Reason::None) { self.unsat_at_init = true; } }
+            _ => {
+                let ci = self.clauses.len() as u32;
+                self.watches[c[0] as usize].push((ci, c[1]));
+                self.watches[c[1] as usize].push((ci, c[0]));
+                self.clauses.push(c);
+                self.first_learnt = self.clauses.len();
+            }
+        }
     }
 
     pub fn nvars(&self) -> usize { self.nvars }
-    pub fn nboxes(&self) -> usize { self.boxes.len() }
+    pub fn nboxes(&self) -> usize { self.hdr.len() }
+    pub fn nclauses(&self) -> usize { self.clauses.len() }
+    fn decision_level(&self) -> usize { self.trail_lim.len() }
+
+    #[inline] fn lit_value(&self, c: u32) -> Val { lit_val(&self.vals, c) }
 
     fn new_level(&mut self) {
         self.trail_lim.push(self.trail.len());
-        self.live_undo_lim.push(self.live_undo.len());
+        self.snap.extend_from_slice(&self.live);
     }
 
-    fn backtrack_level(&mut self) {
-        let t = self.trail_lim.pop().expect("backtrack below level 0");
+    /// Undo decision levels above `lvl`.
+    fn backjump(&mut self, lvl: usize) {
+        if self.decision_level() <= lvl { return; }
+        let t = self.trail_lim[lvl];
         while self.trail.len() > t {
-            let v = self.trail.pop().unwrap();
-            self.vals[v as usize] = Val::U;
+            let v = self.trail.pop().unwrap() as usize;
+            self.phase[v] = self.vals[v] == Val::T;
+            self.vals[v] = Val::U;
+            self.reason[v] = Reason::None;
         }
-        let u = self.live_undo_lim.pop().unwrap();
-        while self.live_undo.len() > u {
-            let (b, prev) = self.live_undo.pop().unwrap();
-            self.live[b] = prev;
-        }
+        let n = self.live.len();
+        let start = self.trail_lim.len() - lvl;   // levels popped
+        let from = self.snap.len() - start * n;
+        self.live.copy_from_slice(&self.snap[from..from + n]);
+        self.snap.truncate(from);
+        self.trail_lim.truncate(lvl);
+        self.qhead = self.trail.len();
+        self.clear_queue();
     }
 
-    /// Assign `var := val`; narrows the live rows of every box containing
-    /// `var` and records the touched boxes.  `false` if already assigned the
-    /// opposite value.
-    fn assign(&mut self, var: u32, val: Val, touched: &mut Vec<usize>) -> bool {
+    fn clear_queue(&mut self) {
+        for &q in &self.queue { self.in_queue[q as usize] = false; }
+        self.queue.clear();
+    }
+
+    /// Assign `var := val`: narrow the live rows of every box containing
+    /// `var`, queueing the box for propagation when they changed.  `false`
+    /// if already assigned the opposite value.
+    fn assign(&mut self, var: u32, val: Val, reason: Reason) -> bool {
         let v = var as usize;
         match self.vals[v] {
             x if x == val => return true,
@@ -231,154 +354,309 @@ impl Engine {
             _ => return false,
         }
         self.vals[v] = val;
+        self.level[v] = self.decision_level() as u32;
+        self.reason[v] = reason;
+        self.trail_pos[v] = self.trail.len() as u32;
         self.trail.push(var);
-        for &(b, li) in &self.occ[v] {
-            let kill = if val == Val::T { &self.boxes[b].mask_neg[li] } else { &self.boxes[b].mask_pos[li] };
-            let nl = mask_and_not(&self.live[b], kill);
-            if nl != self.live[b] {
-                let prev = std::mem::replace(&mut self.live[b], nl);
-                self.live_undo.push((b, prev));
-                if !self.in_queue[b] { self.in_queue[b] = true; touched.push(b); }
+        for k in 0..self.occ[v].len() {
+            let Occ { b, koff } = self.occ[v][k];
+            let h = self.hdr[b as usize];
+            let (off, nw) = (h.off as usize, h.nw as usize);
+            let kb = koff as usize + if val == Val::T { nw } else { 0 };
+            let mut changed = false;
+            for w in 0..nw {
+                let old = self.live[off + w];
+                let new = old & !self.kill_all[kb + w];
+                if new != old { self.live[off + w] = new; changed = true; }
             }
+            if changed && !self.in_queue[b as usize] { self.in_queue[b as usize] = true; self.queue.push(b); }
         }
         true
     }
 
-    /// Table propagation to fixpoint over the touched boxes.  `false` on a
-    /// conflict (some box has no live row).
-    fn propagate(&mut self, mut queue: Vec<usize>) -> bool {
-        while let Some(b) = queue.pop() {
-            self.in_queue[b] = false;
-            if mask_is_zero(&self.live[b]) {
-                self.stats.conflicts += 1;
-                for &q in &queue { self.in_queue[q] = false; }
-                return false;
+    /// Propagate to fixpoint: clauses through the trail (two watched
+    /// literals), tables through the queue of boxes whose live rows shrank.
+    fn propagate(&mut self) -> Option<Conflict> {
+        loop {
+            while self.qhead < self.trail.len() {
+                let v = self.trail[self.qhead];
+                self.qhead += 1;
+                let false_lit = code(v, self.vals[v as usize] == Val::T);   // the literal made FALSE
+                let mut ws = std::mem::take(&mut self.watches[false_lit as usize]);
+                let mut i = 0;
+                let mut j = 0;
+                let mut conflict = None;
+                while i < ws.len() {
+                    let (ci, blocker) = ws[i];
+                    i += 1;
+                    if self.lit_value(blocker) == Val::T { ws[j] = (ci, blocker); j += 1; continue; }
+                    let c = &mut self.clauses[ci as usize];
+                    if c[0] == false_lit { c.swap(0, 1); }
+                    let other = c[0];
+                    if other != blocker && lit_val(&self.vals, other) == Val::T { ws[j] = (ci, other); j += 1; continue; }
+                    // a new watch: any literal not false
+                    let mut found = false;
+                    for k in 2..c.len() {
+                        if lit_val(&self.vals, c[k]) != Val::F {
+                            c.swap(1, k);
+                            let w = c[1];
+                            self.watches[w as usize].push((ci, other));
+                            found = true;
+                            break;
+                        }
+                    }
+                    if found { continue; }
+                    ws[j] = (ci, other); j += 1;
+                    if self.lit_value(other) == Val::F {
+                        conflict = Some(Conflict::Clause(ci));
+                        while i < ws.len() { ws[j] = ws[i]; i += 1; j += 1; }
+                        break;
+                    }
+                    self.stats.propagations += 1;
+                    self.assign(other >> 1, if other & 1 == 1 { Val::F } else { Val::T }, Reason::Clause(ci));
+                }
+                ws.truncate(j);
+                self.watches[false_lit as usize] = ws;
+                if let Some(c) = conflict { self.clear_queue(); return Some(c); }
             }
-            for li in 0..self.boxes[b].vars.len() {
-                let var = self.boxes[b].vars[li];
+            let b = self.queue.pop()?;
+            let b = b as usize;
+            self.in_queue[b] = false;
+            let h = self.hdr[b];
+            let (off, nw) = (h.off as usize, h.nw as usize);
+            if (0..nw).all(|w| self.live[off + w] == 0) { self.clear_queue(); return Some(Conflict::Box(b as u32)); }
+            for li in 0..h.nvars as usize {
+                let var = self.vars_all[h.vbase as usize + li];
                 if self.vals[var as usize] != Val::U { continue; }
-                let forced = if mask_subset(&self.live[b], &self.boxes[b].mask_pos[li]) { Some(Val::T) }
-                             else if mask_subset(&self.live[b], &self.boxes[b].mask_neg[li]) { Some(Val::F) }
+                // every live row has var TRUE ⇔ assigning FALSE would kill them all
+                let kf = h.kbase as usize + 2 * li * nw;
+                let kt = kf + nw;
+                let forced = if (0..nw).all(|w| self.live[off + w] & !self.kill_all[kf + w] == 0) { Some(Val::T) }
+                             else if (0..nw).all(|w| self.live[off + w] & !self.kill_all[kt + w] == 0) { Some(Val::F) }
                              else { None };
                 if let Some(val) = forced {
                     self.stats.propagations += 1;
-                    if !self.assign(var, val, &mut queue) {
-                        self.stats.conflicts += 1;
-                        for &q in &queue { self.in_queue[q] = false; }
-                        return false;
+                    if !self.assign(var, val, Reason::Box(b as u32)) {
+                        self.clear_queue();
+                        return Some(Conflict::Forced { b: b as u32, var, val: val == Val::T });
                     }
                 }
             }
         }
-        true
     }
 
-    fn row_satisfied(&self, b: usize, r: usize) -> bool {
-        self.boxes[b].rows[r].iter().all(|l| {
-            self.vals[l.var as usize] == if l.neg { Val::F } else { Val::T }
-        })
-    }
-
-    fn satisfied(&self, b: usize) -> bool {
-        mask_ones(&self.live[b]).into_iter().any(|r| self.row_satisfied(b, r))
-    }
-
-    /// The undecided box with the fewest live rows; `None` when every box is
-    /// satisfied (the current assignment is a model).
-    fn choose_box(&self) -> Option<usize> {
-        let mut best: Option<(usize, usize)> = None;
-        for b in 0..self.boxes.len() {
-            if self.satisfied(b) { continue; }
-            let c = mask_count(&self.live[b]);
-            if best.is_none_or(|(_, bc)| c < bc) { best = Some((b, c)); }
-            if c <= 1 { break; }
+    /// The literals (all FALSE now) explaining why the rows in `target` of
+    /// box `b` are dead: assigned variables of the box, oldest levels first,
+    /// whose kill masks cover `target`; only assignments before trail
+    /// position `before` count.
+    fn explain_box(&self, b: u32, target: &mut [u64], before: usize, out: &mut Vec<u32>) {
+        let h = self.hdr[b as usize];
+        let nw = h.nw as usize;
+        let mut cands: Vec<(u32, u32, usize)> = (0..h.nvars as usize)
+            .map(|li| (self.vars_all[h.vbase as usize + li], li))
+            .filter(|&(v, _)| self.vals[v as usize] != Val::U && (self.trail_pos[v as usize] as usize) < before)
+            .map(|(v, li)| (self.level[v as usize], self.trail_pos[v as usize], li)).collect();
+        cands.sort_unstable();
+        for (_, _, li) in cands {
+            if target.iter().all(|&w| w == 0) { break; }
+            let var = self.vars_all[h.vbase as usize + li];
+            let val = self.vals[var as usize];
+            let kb = h.kbase as usize + 2 * li * nw + if val == Val::T { nw } else { 0 };
+            let mut hit = false;
+            for (w, t) in target.iter_mut().enumerate().take(nw) {
+                let x = *t & self.kill_all[kb + w];
+                if x != 0 { *t &= !x; hit = true; }
+            }
+            if hit { out.push(code(var, val == Val::T)); }   // the false literal ¬(var = val)
         }
-        best.map(|(b, _)| b)
+        debug_assert!(target.iter().all(|&w| w == 0), "explanation does not cover the dead rows");
     }
 
-    /// Choose row `r` of box `b` at a fresh decision level and propagate.
-    fn try_row(&mut self, b: usize, r: usize) -> bool {
-        self.new_level();
-        self.stats.decisions += 1;
-        let mut touched = Vec::new();
-        let lits = self.boxes[b].rows[r].clone();
-        for l in lits {
-            if !self.assign(l.var, if l.neg { Val::F } else { Val::T }, &mut touched) {
-                for &q in &touched { self.in_queue[q] = false; }
-                self.stats.conflicts += 1;
-                self.backtrack_level();
-                return false;
+    /// The rows of box `b` (all of them, or those not having `var = val`).
+    fn rows_mask(&self, b: u32, except: Option<(usize, bool)>) -> Vec<u64> {
+        let h = self.hdr[b as usize];
+        let nw = h.nw as usize;
+        let mut m = vec![0u64; nw];
+        for r in 0..h.nrows as usize { m[r / 64] |= 1 << (r % 64); }
+        if let Some((li, val)) = except {
+            // rows having var = val: the rows killed by the opposite value
+            let kb = h.kbase as usize + 2 * li * nw + if val { 0 } else { nw };
+            for (w, mw) in m.iter_mut().enumerate() { *mw &= !self.kill_all[kb + w]; }
+        }
+        m
+    }
+
+    fn local_index(&self, b: u32, var: u32) -> usize {
+        let h = self.hdr[b as usize];
+        let s = h.vbase as usize;
+        self.vars_all[s..s + h.nvars as usize].binary_search(&var).expect("variable not in box")
+    }
+
+    /// The false literals of the reason for `var`'s value (its own literal excluded).
+    fn reason_lits(&self, var: u32, out: &mut Vec<u32>) {
+        match self.reason[var as usize] {
+            Reason::None => {}
+            Reason::Clause(ci) => for &l in &self.clauses[ci as usize] { if l >> 1 != var { out.push(l); } },
+            Reason::Box(b) => {
+                let li = self.local_index(b, var);
+                let val = self.vals[var as usize] == Val::T;
+                let mut target = self.rows_mask(b, Some((li, val)));
+                self.explain_box(b, &mut target, self.trail_pos[var as usize] as usize, out);
             }
         }
-        if self.propagate(touched) { true } else { self.backtrack_level(); false }
     }
 
-    /// Level-0 propagation of every box.  `false` if the boxes alone conflict.
+    /// The false literals of a conflict.
+    fn conflict_lits(&self, conflict: Conflict, out: &mut Vec<u32>) {
+        match conflict {
+            Conflict::Clause(ci) => out.extend_from_slice(&self.clauses[ci as usize]),
+            Conflict::Box(b) => { let mut target = self.rows_mask(b, None); self.explain_box(b, &mut target, self.trail.len(), out); }
+            Conflict::Forced { b, var, val } => {
+                let li = self.local_index(b, var);
+                let mut target = self.rows_mask(b, Some((li, val)));
+                self.explain_box(b, &mut target, self.trail.len(), out);
+                out.push(code(var, !val));   // "var = val" — false, since var holds the other value
+            }
+        }
+    }
+
+    fn bump(&mut self, v: usize) {
+        self.activity[v] += self.var_inc;
+        if self.activity[v] > 1e100 {
+            for a in &mut self.activity { *a *= 1e-100; }
+            self.var_inc *= 1e-100;
+        }
+    }
+
+    /// 1-UIP conflict analysis: the learned clause (asserting literal first)
+    /// and the level to backjump to.
+    fn analyze(&mut self, conflict: Conflict) -> (Vec<u32>, usize) {
+        let current = self.decision_level() as u32;
+        let mut learnt: Vec<u32> = vec![0];
+        let mut lits: Vec<u32> = Vec::new();
+        self.conflict_lits(conflict, &mut lits);
+        let mut path = 0usize;
+        let mut idx = self.trail.len();
+        loop {
+            for &q in &lits {
+                let v = (q >> 1) as usize;
+                if self.seen[v] || self.level[v] == 0 { continue; }
+                self.seen[v] = true;
+                self.bump(v);
+                if self.level[v] == current { path += 1; } else { learnt.push(q); }
+            }
+            // the next seen variable down the trail
+            loop { idx -= 1; if self.seen[self.trail[idx] as usize] { break; } }
+            let v = self.trail[idx];
+            self.seen[v as usize] = false;
+            path -= 1;
+            if path == 0 {
+                learnt[0] = code(v, self.vals[v as usize] == Val::T);   // the UIP's false literal
+                break;
+            }
+            lits.clear();
+            self.reason_lits(v, &mut lits);
+        }
+        for &q in &learnt[1..] { self.seen[(q >> 1) as usize] = false; }
+        // backjump level: the highest level among the other literals (moved to position 1)
+        let mut bj = 0usize;
+        if learnt.len() > 1 {
+            let mut best = 1;
+            for i in 1..learnt.len() { if self.level[(learnt[i] >> 1) as usize] > self.level[(learnt[best] >> 1) as usize] { best = i; } }
+            learnt.swap(1, best);
+            bj = self.level[(learnt[1] >> 1) as usize] as usize;
+        }
+        (learnt, bj)
+    }
+
+    /// Level-0 propagation of every box and clause.  `false` if they alone conflict.
     pub fn init(&mut self) -> bool {
-        let all: Vec<usize> = (0..self.boxes.len()).collect();
-        for &b in &all { self.in_queue[b] = true; }
-        self.propagate(all)
-    }
-
-    /// Undo decision levels until only `levels` remain.
-    fn unwind_to(&mut self, levels: usize) {
-        while self.trail_lim.len() > levels { self.backtrack_level(); }
+        if self.unsat_at_init { return false; }
+        self.clear_queue();
+        for b in 0..self.hdr.len() { self.in_queue[b] = true; self.queue.push(b as u32); }
+        self.qhead = 0;
+        if self.propagate().is_some() { self.unsat_at_init = true; return false; }
+        true
     }
 
     /// Solve under extra unit assumptions, leaving the engine as it was: one
     /// engine serves many queries (the box-aware path search checks every
     /// completed path this way instead of rebuilding an engine per path).
-    /// Assumes [`init`](Self::init) was run.
+    /// Each assumption is a decision at its own level, so the clauses learned
+    /// meanwhile hold without them and are kept.  Assumes [`init`](Self::init) was run.
     pub fn solve_under(&mut self, units: &[Lit]) -> Verdict {
-        let base = self.trail_lim.len();
-        self.new_level();
-        let mut touched = Vec::new();
-        for l in units {
-            if !self.assign(l.var, if l.neg { Val::F } else { Val::T }, &mut touched) {
-                for &q in &touched { self.in_queue[q] = false; }
-                self.stats.conflicts += 1;
-                self.unwind_to(base);
-                return Verdict::Unsat;
-            }
-        }
-        if !self.propagate(touched) { self.unwind_to(base); return Verdict::Unsat; }
-        let v = self.search();
-        self.unwind_to(base);
+        if self.unsat_at_init { return Verdict::Unsat; }
+        let base = self.decision_level();
+        let v = self.search(base, units);
+        self.backjump(base);
         v
     }
 
     pub fn solve(&mut self) -> Verdict {
         if !self.init() { return Verdict::Unsat; }
-        self.search()
+        self.solve_under(&[])
     }
 
-    /// The DFS over rows from the current state; on `Sat` the model is read
-    /// before any unwinding, on `Unsat` every level opened here is undone.
-    fn search(&mut self) -> Verdict {
-        let base = self.trail_lim.len();
-        let mut stack: Vec<Frame> = Vec::new();
+    /// The Luby sequence (1, 1, 2, 1, 1, 2, 4, …).
+    fn luby(mut i: u64) -> u64 {
+        let (mut size, mut seq) = (1u64, 0u32);
+        while size < i + 1 { seq += 1; size = 2 * size + 1; }
+        while size - 1 != i { size = (size - 1) >> 1; seq -= 1; i %= size; }
+        1u64 << seq
+    }
+
+    /// Conflict-driven search above level `base`, deciding `assumptions`
+    /// first (each at its own level).
+    fn search(&mut self, base: usize, assumptions: &[Lit]) -> Verdict {
+        let mut restarts = 0u64;
+        let mut conflicts_here = 0u64;
         loop {
-            match self.choose_box() {
-                None => return Verdict::Sat(self.vals.iter().map(|&v| v == Val::T).collect()),
-                Some(b) => stack.push(Frame { b, rows: mask_ones(&self.live[b]), next: 0 }),
-            }
-            loop {
-                if let Some(max) = self.max_decisions
-                    && self.stats.decisions >= max { return Verdict::Unknown; }
-                if self.stats.decisions & 255 == 0
-                    && let Some(c) = &self.cancel
-                    && c.load(std::sync::atomic::Ordering::Relaxed) { return Verdict::Unknown; }
-                let Some(fr) = stack.last_mut() else { self.unwind_to(base); return Verdict::Unsat };
-                if fr.next >= fr.rows.len() {
-                    stack.pop();
-                    if stack.is_empty() { self.unwind_to(base); return Verdict::Unsat; }
-                    self.backtrack_level();          // undo the parent's current row
-                    continue;
+            if let Some(conflict) = self.propagate() {
+                self.stats.conflicts += 1;
+                conflicts_here += 1;
+                if self.decision_level() <= base { return Verdict::Unsat; }
+                let (learnt, bj) = self.analyze(conflict);
+                self.backjump(bj.max(base));
+                let l0 = learnt[0];
+                if learnt.len() == 1 {
+                    self.assign(l0 >> 1, if l0 & 1 == 1 { Val::F } else { Val::T }, Reason::None);
+                } else {
+                    let ci = self.clauses.len() as u32;
+                    self.watches[learnt[0] as usize].push((ci, learnt[1]));
+                    self.watches[learnt[1] as usize].push((ci, learnt[0]));
+                    self.clauses.push(learnt);
+                    self.assign(l0 >> 1, if l0 & 1 == 1 { Val::F } else { Val::T }, Reason::Clause(ci));
                 }
-                let (b, r) = (fr.b, fr.rows[fr.next]);
-                fr.next += 1;
-                if self.try_row(b, r) { break; }
+                self.var_inc *= 1.0 / 0.95;
+                if conflicts_here >= 64 * Self::luby(restarts) {
+                    restarts += 1; conflicts_here = 0;
+                    self.backjump(base);
+                }
+                continue;
             }
+            if let Some(max) = self.max_decisions && self.stats.decisions >= max { return Verdict::Unknown; }
+            if self.stats.decisions & 255 == 0 && let Some(c) = &self.cancel && c.load(std::sync::atomic::Ordering::Relaxed) { return Verdict::Unknown; }
+            // assumptions first, one level each
+            let lvl = self.decision_level();
+            if lvl < base + assumptions.len() {
+                let a = &assumptions[lvl - base];
+                let want = if a.neg { Val::F } else { Val::T };
+                match self.vals[a.var as usize] {
+                    x if x == want => { self.new_level(); }
+                    Val::U => { self.new_level(); self.assign(a.var, want, Reason::None); }
+                    _ => return Verdict::Unsat,
+                }
+                continue;
+            }
+            // VSIDS decision
+            let mut best: Option<usize> = None;
+            for v in 0..self.nvars {
+                if self.vals[v] == Val::U && best.is_none_or(|b| self.activity[v] > self.activity[b]) { best = Some(v); }
+            }
+            let Some(v) = best else { return Verdict::Sat(self.vals.iter().map(|&x| x == Val::T).collect()) };
+            self.new_level();
+            self.stats.decisions += 1;
+            self.assign(v as u32, if self.phase[v] { Val::T } else { Val::F }, Reason::None);
         }
     }
 }
@@ -436,6 +714,109 @@ mod tests {
                 Verdict::Sat(model) => { assert!(brute, "trial {trial}: engine SAT, brute UNSAT"); assert!(check_model(&cls, &model), "trial {trial}: bad model"); }
                 Verdict::Unsat => assert!(!brute, "trial {trial}: engine UNSAT, brute SAT: {cls:?}"),
                 Verdict::Unknown => panic!("no budget set"),
+            }
+        }
+    }
+
+    /// Random table boxes (and some clauses) against brute force: exercises
+    /// table propagation, lazy explanations and learning together.
+    #[test]
+    fn random_tables_vs_bruteforce() {
+        let mut seed: u64 = 0x1234_5678_9ABC_DEF1;
+        let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+        for trial in 0..400 {
+            let n = 3 + (rnd() % 6) as usize;
+            let nboxes = 1 + (rnd() % 5) as usize;
+            let mut boxes: Vec<Vec<Vec<Lit>>> = Vec::new();
+            for _ in 0..nboxes {
+                let k = 2 + (rnd() % 3) as usize;                 // columns
+                let mut cols: Vec<u32> = Vec::new();
+                while cols.len() < k.min(n) { let v = (rnd() % n as u64) as u32; if !cols.contains(&v) { cols.push(v); } }
+                let nrows = 1 + (rnd() % 5) as usize;
+                let mut rows: Vec<Vec<Lit>> = Vec::new();
+                for _ in 0..nrows {
+                    let mut row = Vec::new();
+                    for &v in &cols { if rnd() % 3 != 0 { let neg = rnd() % 2 == 0; row.push(Lit { var: v, neg }); } }
+                    rows.push(row);
+                }
+                boxes.push(rows);
+            }
+            let nclauses = (rnd() % 4) as usize;
+            let cls: Vec<Vec<i32>> = (0..nclauses).map(|_| (0..3).map(|_| { let v = (rnd() % n as u64) as i32 + 1; if rnd() % 2 == 0 { v } else { -v } }).collect()).collect();
+            let row_holds = |row: &[Lit], m: &[bool]| row.iter().all(|l| m[l.var as usize] == !l.neg);
+            let holds = |m: &[bool]| boxes.iter().all(|rows| rows.iter().any(|r| row_holds(r, m))) && check_model(&cls, m);
+            let brute = (0..1u32 << n).any(|bits| holds(&(0..n).map(|i| bits >> i & 1 == 1).collect::<Vec<_>>()));
+            let mut e = Engine::new(n, boxes.iter().map(|rows| TableBox::new(rows.clone())).collect());
+            for c in &cls { e.add_clause(&c.iter().map(|&l| lit_of_dimacs(l)).collect::<Vec<_>>()); }
+            match e.solve() {
+                Verdict::Sat(m) => { assert!(brute, "trial {trial}: engine SAT, brute UNSAT"); assert!(holds(&m), "trial {trial}: bad model"); }
+                Verdict::Unsat => assert!(!brute, "trial {trial}: engine UNSAT, brute SAT: {boxes:?} {cls:?}"),
+                Verdict::Unknown => panic!("no budget set"),
+            }
+        }
+    }
+
+    /// Solving under assumptions keeps the engine reusable, and the clauses
+    /// learned under one set of assumptions stay valid for the next.
+    #[test]
+    fn assumptions_are_reusable() {
+        // (a ∨ b) (¬a ∨ c) (¬b ∨ c): c is forced; under ¬c: UNSAT, under c: SAT, twice
+        let mut e = Engine::from_cnf(3, &[vec![1, 2], vec![-1, 3], vec![-2, 3]]);
+        assert!(e.init());
+        let c = |var: u32, neg: bool| Lit { var, neg };
+        assert_eq!(e.solve_under(&[c(2, true)]), Verdict::Unsat);
+        assert!(matches!(e.solve_under(&[c(2, false)]), Verdict::Sat(_)));
+        assert_eq!(e.solve_under(&[c(2, true), c(0, false)]), Verdict::Unsat);
+        assert!(matches!(e.solve_under(&[c(0, false)]), Verdict::Sat(m) if m[0] && m[2]));
+        assert!(matches!(e.solve_under(&[]), Verdict::Sat(_)));
+    }
+
+    /// w(4;4;n): every 4-term arithmetic progression in 1..n as an `ap4` box
+    /// — the compiled minimal table of "not all equal": a cyclic cover
+    /// {c=0 d=1}, {b=0 c=1}, {a=0 b=1}, {a=1 d=0}.
+    fn waerden4(n: usize) -> (usize, Vec<TableBox>) {
+        let lit = |v: usize, value: bool| Lit { var: v as u32 - 1, neg: !value };
+        let mut boxes = Vec::new();
+        for d in 1..=n {
+            for i in 1..=n {
+                if i + 3 * d > n { break; }
+                let (a, b, c, e) = (i, i + d, i + 2 * d, i + 3 * d);
+                boxes.push(TableBox::new(vec![
+                    vec![lit(c, false), lit(e, true)], vec![lit(b, false), lit(c, true)],
+                    vec![lit(a, false), lit(b, true)], vec![lit(a, true), lit(e, false)]]));
+            }
+        }
+        (n, boxes)
+    }
+
+    /// Engine speed on van der Waerden: `cargo test --release --lib bench_waerden -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn bench_waerden() {
+        let iters: usize = std::env::var("BENCH_ITERS").ok().and_then(|s| s.parse().ok()).unwrap_or(5);
+        for form in ["tables", "clauses"] {
+            for n in [35usize, 34] {
+                let (nv, boxes) = waerden4(n);
+                let mut best = std::time::Duration::MAX;
+                let mut stats = Stats::default();
+                let mut verdict = "?";
+                for _ in 0..iters {
+                    let mut e = if form == "tables" { Engine::new(nv, boxes.clone()) } else {
+                        // the two clauses of each progression: not all 0, not all 1
+                        let mut e = Engine::new(nv, Vec::new());
+                        for b in &boxes {
+                            e.add_clause(&b.vars.iter().map(|&v| Lit { var: v, neg: false }).collect::<Vec<_>>());
+                            e.add_clause(&b.vars.iter().map(|&v| Lit { var: v, neg: true }).collect::<Vec<_>>());
+                        }
+                        e
+                    };
+                    let t0 = std::time::Instant::now();
+                    let v = e.solve();
+                    best = best.min(t0.elapsed());
+                    stats = e.stats.clone();
+                    verdict = match v { Verdict::Sat(_) => "SAT", Verdict::Unsat => "UNSAT", Verdict::Unknown => "?" };
+                }
+                eprintln!("w(4;4;{n}) as {form}: {verdict} best of {iters}: {best:?}; {stats:?}");
             }
         }
     }

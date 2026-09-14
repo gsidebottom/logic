@@ -298,7 +298,7 @@ fn build_box_tables(ctx: &BoxContext, m: &mut Matrix) -> Result<(BoxTables, Vec<
         calls.push(CallBoxes { atom, pos, neg });
     }
     let nvars = alloc.names.len();
-    Ok((BoxTables { calls, nvars }, alloc.names, arg_vars))
+    Ok((BoxTables { calls, nvars, memo: std::sync::Mutex::new(None) }, alloc.names, arg_vars))
 }
 
 /// For an uncovered path of the collapsed matrix: the values of the call

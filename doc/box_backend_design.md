@@ -152,6 +152,10 @@ pub trait Box_ {
 
 ### 3.2 Search = DPLL (Davis–Putnam–Logemann–Loveland) over box rows, with table propagation
 
+*(The M1 engine.  Since 2026-09-13 the engine is conflict-driven — §3.5,
+§10.1 — with the propagation below unchanged; decisions are single literals
+chosen by activity rather than rows.)*
+
 ```
 solve(prefix):
     propagate(prefix)                       # §3.3; may close the path
@@ -195,7 +199,7 @@ box's effective count *is* `popcount(live rows)`.  Branch on the box with the
 fewest live rows (most constrained first), tie-break by shared-variable degree.
 Structural boxes keep the existing EFF ordering, so the heuristic is uniform.
 
-### 3.5 Learning (phase 2, measured)
+### 3.5 Learning (phase 2, measured — delivered 2026-09-13, see §10.1)
 
 A dead box (0 live rows) has an explanation: for each row, one prefix literal
 that killed it; the set of those literals is a **nogood** — a learned clause
@@ -802,6 +806,48 @@ up): prefixes the tables refute are pruned during the search, so only paths
 that extend to real models are reported.  Example:
 `full_adder(x,y,c_in,s,c_out) (s = c_out)` — 2 collapsed uncovered paths of
 the complement vs 5 expanded.
+
+**Learning (M5, 2026-09-13)** — the completion engine
+(`boxes::Engine`) is conflict-driven: a box with no live row, or a literal a
+box forces, is *explained* lazily from the kill masks (the assigned literals
+of the box, oldest levels first, whose kill masks cover the rows that had to
+die — the lazy-clause-generation explanation of §3.5), then 1-UIP analysis,
+backjumping, learned clauses propagated with two watched literals, VSIDS
+with phase saving and Luby restarts are the textbook ones.  A call whose
+tables are tiny (≤ 8 rows, negation ≤ 4 rows) goes into the engine in
+**clause form** — `atom ⇒ B` is one clause per row of ¬B, `¬atom ⇒ ¬B` one
+per row of B — the same constraint, but propagated by watched literals
+(visited only when a watched literal is falsified) instead of live-row masks
+(visited at every assignment of any of its variables); larger tables keep
+the mask form, whose propagation is stronger.  `solve_under` takes its units
+as assumptions, one decision level each, so the clauses learned during one
+path's check hold for the next.  Also: the path search's prefix check is
+incremental (only the calls touched by literals beyond the common prefix
+with the previous one — "some row survives" is monotone), and the witness
+reuses the completion engine's model instead of solving again.
+
+Measured on van der Waerden (`lib/waerden.jq`, `w(4;4;35)` UNSAT and
+`w(4;4;34)` SAT, 35 variables, 374 clauses; times as the UI reports them,
+best of 5): with one `ap4(x_i;x_{i+d};x_{i+2d};x_{i+3d})` box per
+progression (`w4_ap(n)`, 187 calls, examples `w4435 boxes` / `w4434 boxes`)
+the boxes backend refutes n = 35 in **1.5 ms** (306 conflicts) and solves
+n = 34 in **0.7 ms** (49 conflicts) against CaDiCaL's 1.2–1.4 ms (287
+conflicts) and 0.4–0.5 ms.  Before this work the same formulas took 30 ms
+and 10 ms (DFS over rows: 1572 decisions / 790 conflicts, ~19 µs per
+decision in allocation-heavy masks); the steps were allocation-free flat
+masks with per-level snapshots (6.5 / 1.4 ms), the incremental prefix check
+(−1.3 ms per job), learning (−2.5× conflicts) and the clause form (−5× per
+assignment).  Wider boxes do **not** help here: sliding windows of width 7,
+10 or 13 (`win7`…, generalized arc consistency over all progressions inside
+the window) plus chain boxes for the longer differences (`norun4_L`,
+`w4_win(n; W)`) leave the conflict count unchanged (GAC on a window adds
+little over unit propagation on these sparse clauses) and cost more per
+assignment (5–9 ms) — the strength of boxes is tables whose GAC beats unit
+propagation (adders, counters, the bmc chain), not sparse clause sets.
+Colour-flip symmetry breaking (`… x_1`) halves the box engine's conflicts
+and leaves CaDiCaL's unchanged.  The bmc benchmarks did not regress
+(`bmc_w4_n8_gt8` 1.1 ms, its single-box form 0.5 ms of which 0.25 ms is
+building the 647-row tables).
 
 **Not yet (M1 remainder).**  A one-command certified boxed run: certifying a
 `-b boxes` UNSAT currently means running the existing certified pipeline on

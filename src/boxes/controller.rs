@@ -42,7 +42,14 @@ pub struct BoxTables {
     pub calls: Vec<CallBoxes>,
     /// Number of variables including call arguments that occur only inside calls.
     pub nvars: usize,
+    /// The model the completion engine found for the last consistent complete
+    /// path (its assignment, the model): [`witness`](Self::witness) returns
+    /// it instead of solving again.
+    pub memo: std::sync::Mutex<Option<Memo>>,
 }
+
+/// A remembered witness: a path's assignment and the engine's model for it.
+pub type Memo = (HashMap<u32, bool>, Vec<bool>);
 
 impl BoxTables {
     /// The partial model a prefix stands for (a path literal is FALSE), or
@@ -69,8 +76,10 @@ impl BoxTables {
     }
 
     /// Exact joint check: the fixed calls' rows and `asg` together are
-    /// satisfiable.  Returns the row engine's model (over all `nvars`).
+    /// satisfiable.  Returns the row engine's model (over all `nvars`) — the
+    /// one remembered from the path search when `asg` is the path it completed.
     pub fn witness(&self, asg: &HashMap<u32, bool>) -> Option<Vec<bool>> {
+        if let Ok(memo) = self.memo.lock() && let Some((a, m)) = memo.as_ref() && a == asg { return Some(m.clone()); }
         let units: Vec<Vec<i32>> = asg.iter()
             .map(|(&v, &b)| vec![if b { v as i32 + 1 } else { -(v as i32 + 1) }]).collect();
         let mut eng = Engine::from_cnf(self.nvars, &units);
@@ -82,6 +91,12 @@ impl BoxTables {
     }
 }
 
+/// A call goes into the completion engine in clause form when its box has
+/// at most this many rows …
+pub const CLAUSE_FORM_MAX_ROWS: usize = 8;
+/// … and its negation at most this many (each row of ¬B is one clause of B).
+pub const CLAUSE_FORM_MAX_NEG_ROWS: usize = 4;
+
 /// Wraps any controller with table propagation over the box calls.
 pub struct BoxAwareController<Inner> {
     inner: Inner,
@@ -90,6 +105,14 @@ pub struct BoxAwareController<Inner> {
     /// tables, built once; completed paths are checked with `solve_under`.
     engine: Engine,
     engine_ok: bool,
+    /// The previous prefix and its partial model (`Some(value)` per variable):
+    /// a prefix is checked incrementally — "some row survives" is monotone in
+    /// the assignment, so only the calls touched by literals beyond the common
+    /// prefix with the previous one can have died.
+    prev_prefix: Vec<Lit>,
+    asg: Vec<Option<bool>>,
+    /// var → calls whose atom it is or whose tables mention it.
+    calls_of_var: Vec<Vec<u32>>,
     /// Prefixes pruned by the tables (dead box, or no joint row assignment).
     pub table_prunes: u64,
     // timing / counters, reported on drop when LOGIC_BOX_TIMING is set
@@ -101,22 +124,65 @@ pub struct BoxAwareController<Inner> {
 
 impl<Inner> BoxAwareController<Inner> {
     pub fn new(inner: Inner, tables: Arc<BoxTables>) -> Self {
-        let mut boxes = Vec::with_capacity(tables.calls.len() * 2);
+        // A call whose tables are tiny goes in as clauses — `atom ⇒ B` is
+        // one clause per row of ¬B, `¬atom ⇒ ¬B` one per row of B — which the
+        // engine propagates with watched literals (visited only when a
+        // watched literal is falsified, no live-row masks to update); larger
+        // tables keep the mask form, whose propagation is stronger.
+        let mut engine = Engine::new(tables.nvars, Vec::new());
         for c in &tables.calls {
-            boxes.push(implication_box(c.pos.rows.clone(), c.atom, true));
-            boxes.push(implication_box(c.neg.rows.clone(), c.atom, false));
+            if c.pos.rows.len() <= CLAUSE_FORM_MAX_ROWS && c.neg.rows.len() <= CLAUSE_FORM_MAX_NEG_ROWS {
+                let atom = |neg: bool| Lit { var: c.atom, neg };
+                for row in &c.neg.rows {
+                    let cl: Vec<Lit> = std::iter::once(atom(true)).chain(row.iter().map(|l| Lit { var: l.var, neg: !l.neg })).collect();
+                    engine.add_clause(&cl);
+                }
+                for row in &c.pos.rows {
+                    let cl: Vec<Lit> = std::iter::once(atom(false)).chain(row.iter().map(|l| Lit { var: l.var, neg: !l.neg })).collect();
+                    engine.add_clause(&cl);
+                }
+            } else {
+                engine.add_box(implication_box(c.pos.rows.clone(), c.atom, true));
+                engine.add_box(implication_box(c.neg.rows.clone(), c.atom, false));
+            }
         }
-        let mut engine = Engine::new(tables.nvars, boxes);
         let engine_ok = engine.init();
-        BoxAwareController { inner, tables, engine, engine_ok, table_prunes: 0, started: std::time::Instant::now(), prefix_checks: 0, completions: 0, witness_time: std::time::Duration::ZERO }
+        let nvars = engine.nvars().max(tables.nvars);
+        let mut calls_of_var: Vec<Vec<u32>> = vec![Vec::new(); nvars];
+        for (ci, c) in tables.calls.iter().enumerate() {
+            let mut vars: Vec<u32> = c.pos.vars.iter().chain(c.neg.vars.iter()).copied().chain(std::iter::once(c.atom)).collect();
+            vars.sort_unstable(); vars.dedup();
+            for v in vars { calls_of_var[v as usize].push(ci as u32); }
+        }
+        BoxAwareController { inner, tables, engine, engine_ok, prev_prefix: Vec::new(), asg: vec![None; nvars], calls_of_var,
+            table_prunes: 0, started: std::time::Instant::now(), prefix_checks: 0, completions: 0, witness_time: std::time::Duration::ZERO }
+    }
+
+    /// Bring `asg` to the partial model of `prefix` (a path literal is FALSE
+    /// in the model it stands for), returning the index of the first literal
+    /// that is new relative to the previous prefix — or `None` when the prefix
+    /// carries a complementary pair (covered by literals; the inner controller
+    /// decides, and `asg` is left at the consistent part).
+    fn update_assignment(&mut self, prefix: &[&Lit]) -> Option<usize> {
+        let common = self.prev_prefix.iter().zip(prefix).take_while(|(a, b)| a.var == b.var && a.neg == b.neg).count();
+        for l in &self.prev_prefix[common..] { self.asg[l.var as usize] = None; }
+        self.prev_prefix.truncate(common);
+        for l in &prefix[common..] {
+            match self.asg[l.var as usize] {
+                Some(v) if v != l.neg => return None,
+                _ => { self.asg[l.var as usize] = Some(l.neg); self.prev_prefix.push(Lit { var: l.var, neg: l.neg }); }
+            }
+        }
+        Some(common)
     }
 }
 
 impl<Inner> Drop for BoxAwareController<Inner> {
     fn drop(&mut self) {
         if std::env::var_os("LOGIC_BOX_TIMING").is_some() {
-            eprintln!("[box-timing] search {:?}: {} prefix checks, {} completions, witness solves {:?}, {} table prunes",
-                      self.started.elapsed(), self.prefix_checks, self.completions, self.witness_time, self.table_prunes);
+            eprintln!("[box-timing] search {:?}: {} prefix checks, {} completions, witness solves {:?}, {} table prunes; engine: {} decisions, {} propagations, {} conflicts",
+                      self.started.elapsed(), self.prefix_checks, self.completions, self.witness_time, self.table_prunes,
+                      self.engine.stats.decisions, self.engine.stats.propagations, self.engine.stats.conflicts);
         }
     }
 }
@@ -132,19 +198,32 @@ impl<Inner: PathSearchController> PathSearchController for BoxAwareController<In
         is_complete: bool,
     ) -> Option<usize> {
         self.prefix_checks += 1;
-        if let Some(asg) = BoxTables::assignment(prefix_literals) {
-            if !self.tables.prefix_consistent(&asg) {
-                self.table_prunes += 1;
-                return Some(0);   // dead box: backtrack, like a covered prefix
+        if let Some(first_new) = self.update_assignment(prefix_literals) {
+            // only the calls touched by the new literals can have lost their last live row
+            for l in &prefix_literals[first_new..] {
+                for k in 0..self.calls_of_var[l.var as usize].len() {
+                    let c = &self.tables.calls[self.calls_of_var[l.var as usize][k] as usize];
+                    let table = match self.asg[c.atom as usize] { Some(true) => &c.pos, Some(false) => &c.neg, None => continue };
+                    if !table.has_live_row(&|v| self.asg[v as usize]) {
+                        self.table_prunes += 1;
+                        return Some(0);   // dead box: backtrack, like a covered prefix
+                    }
+                }
             }
             if is_complete {
                 self.completions += 1;
                 let t0 = std::time::Instant::now();
                 // the path's literals are FALSE in the model it stands for
-                let units: Vec<Lit> = asg.iter().map(|(&v, &b)| Lit { var: v, neg: !b }).collect();
-                let ok = self.engine_ok && matches!(self.engine.solve_under(&units), Verdict::Sat(_));
+                let units: Vec<Lit> = prefix_literals.iter().map(|l| Lit { var: l.var, neg: !l.neg }).collect();
+                let verdict = if self.engine_ok { self.engine.solve_under(&units) } else { Verdict::Unsat };
                 self.witness_time += t0.elapsed();
-                if !ok { self.table_prunes += 1; return Some(0); }
+                match verdict {
+                    Verdict::Sat(model) => {
+                        let asg: HashMap<u32, bool> = prefix_literals.iter().map(|l| (l.var, l.neg)).collect();
+                        if let Ok(mut memo) = self.tables.memo.lock() { *memo = Some((asg, model)); }
+                    }
+                    _ => { self.table_prunes += 1; return Some(0); }
+                }
             }
         }
         self.inner.should_continue_on_prefix(prefix_literals, prefix_positions, prefix_prod_path, is_complete)
@@ -207,7 +286,7 @@ mod tests {
         // table two paths look uncovered.
         let m = Matrix::try_from("A' + (x = y)").unwrap();
         let (a, x, y) = (m.ast.var_index["A"], m.ast.var_index["x"], m.ast.var_index["y"]);
-        let eq = BoxTables { nvars: 3, calls: vec![CallBoxes {
+        let eq = BoxTables { nvars: 3, memo: std::sync::Mutex::new(None), calls: vec![CallBoxes {
             atom: a,
             pos: TableBox::new(vec![vec![lit(x, false), lit(y, false)], vec![lit(x, true), lit(y, true)]]),
             neg: TableBox::new(vec![vec![lit(x, false), lit(y, true)], vec![lit(x, true), lit(y, false)]]),

@@ -221,7 +221,8 @@ pub fn run_filter(preamble: &str, filter: &str) -> Result<Vec<serde_json::Value>
     let mut results = Vec::new();
     for item in iter {
         let v = item.map_err(|e| e.to_string())?;
-        results.push(serde_json::from_str::<serde_json::Value>(&v.to_string()).map_err(|e| e.to_string())?);
+        // xq's `Display` is not JSON for objects (unquoted keys); serialize instead
+        results.push(serde_json::to_value(&v).map_err(|e| e.to_string())?);
     }
     Ok(results)
 }
@@ -460,6 +461,12 @@ mod tests {
         let g = BoxDecl { name: "rep2".into(), params: vec!["a".into()], expose: vec![], rhs: Some("rep(a; 2)".into()), negation: None, budget: BoxBudget::default() };
         assert_eq!(box_formula(pre2, &g, None).unwrap(), "a_0 + a_1");
         assert_eq!(box_formula(pre2, &g, Some(&["x".to_string()])).unwrap(), "x_0 + x_1");
+    }
+
+    #[test]
+    fn run_filter_returns_objects_as_json() {
+        let v = run_filter("", "{n: 2, forms: [[1, 1]]}").unwrap();
+        assert_eq!(v, vec![serde_json::json!({"n": 2, "forms": [[1, 1]]})]);
     }
 
     #[test]

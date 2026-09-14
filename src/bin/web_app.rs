@@ -2097,8 +2097,23 @@ async fn cadical_sat_cancel_handler(State(state): State<AppState>) -> Json<serde
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-#[tokio::main]
-async fn main() {
+/// Thread stack size for the runtime: the path search nests a frame set
+/// per Sum child it descends into (`traverse_sum`), so deep formulas need
+/// far more than the 2 MB default.  Virtual reservation only; pages are
+/// committed as touched.
+const THREAD_STACK: usize = 256 << 20;
+
+fn main() {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(THREAD_STACK)
+        .max_blocking_threads(64)
+        .build()
+        .expect("tokio runtime")
+        .block_on(async_main());
+}
+
+async fn async_main() {
     let server_root = std::env::var("SERVER_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().expect("cannot determine working directory"));

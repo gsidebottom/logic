@@ -849,6 +849,20 @@ and leaves CaDiCaL's unchanged.  The bmc benchmarks did not regress
 (`bmc_w4_n8_gt8` 1.1 ms, its single-box form 0.5 ms of which 0.25 ms is
 building the 647-row tables).
 
+**Deep formulas (2026-09-14).**  The path traversal extends a Sum's path by
+all of its children through one nested continuation per child
+(`traverse_sum`), so a Sum of 4 000 atoms — `w5_ap(178)`'s collapsed
+complement — nested ~4 000 frame sets and overflowed a 2 MB stack (the
+server aborted).  A Sum's trailing run of literal children — the whole Sum
+for a box formula or a clause — is now extended in a loop (`literal_tail`,
+both the uncovered-only and the positions/bubble-up traversals; the level
+arithmetic of a prune is applied at once), and the runtime's threads get
+256 MB stacks for the shapes that still nest (a Sum of thousands of
+products).  With that, w(5;5;n) as `ap5` boxes: n = 177 (SAT) 0.42 s vs
+CaDiCaL 1.21 s; n = 178 (UNSAT, 3 872 boxes) CaDiCaL 9.6 s, the box engine
+not within 150 s — a plain CDCL without clause deletion or inprocessing is
+the gap on hard UNSAT instances, the next engine work if it matters.
+
 **Not yet (M1 remainder).**  A one-command certified boxed run: certifying a
 `-b boxes` UNSAT currently means running the existing certified pipeline on
 the expanded CNF — sound by construction (§4.3, phase 1), but not yet wired

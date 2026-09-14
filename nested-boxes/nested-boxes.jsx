@@ -2329,17 +2329,22 @@ export default function App() {
             )}
 
             {(boxes.length > 0 || boxesMsg) && (
-              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
-                <span style={{ color: '#aaa' }} title="Boxes declared in the loaded libraries, compiled on load and on save">boxes:</span>
-                {boxes.map(b => (
-                  <span key={b.name} title={boxTooltip(b)} onClick={() => openBoxInfo(b.name)} style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e3f2fd', cursor: 'pointer',
-                    border: '1px solid #90caf9', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontFamily: 'monospace',
-                  }}>
-                    {b.name}({[...(b.params ?? b.vars), ...(b.expose ?? [])].join(';')}) <span style={{ color: '#666' }}>· {b.rows} rows</span>
-                  </span>
-                ))}
-                {boxesMsg && <span style={{ color: '#c00' }}>{boxesMsg}</span>}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: 4 }}>
+                <span style={{ color: '#aaa', flex: 'none', paddingTop: 2 }} title="Boxes declared in the loaded libraries, compiled on load and on save">boxes:</span>
+                {/* the chips scroll within about three rows, so a library with many boxes
+                    does not push the editor, save and test areas off the bottom */}
+                <div style={{ display: 'flex', alignItems: 'center', alignContent: 'flex-start', flexWrap: 'wrap', gap: 4,
+                              flex: 1, minWidth: 0, maxHeight: 76, overflowY: 'auto', paddingRight: 2 }}>
+                  {boxes.map(b => (
+                    <span key={b.name} title={boxTooltip(b)} onClick={() => openBoxInfo(b.name)} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e3f2fd', cursor: 'pointer',
+                      border: '1px solid #90caf9', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontFamily: 'monospace',
+                    }}>
+                      {b.name}({[...(b.params ?? b.vars), ...(b.expose ?? [])].join(';')}) <span style={{ color: '#666' }}>· {b.rows} rows</span>
+                    </span>
+                  ))}
+                  {boxesMsg && <span style={{ color: '#c00' }}>{boxesMsg}</span>}
+                </div>
               </div>
             )}
 

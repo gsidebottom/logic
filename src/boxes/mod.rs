@@ -252,7 +252,7 @@ impl Engine {
         let mut e = Engine {
             nvars: 0, hdr: Vec::new(), vars_all: Vec::new(), kill_all: Vec::new(), occ: Vec::new(), live: Vec::new(), snap: Vec::new(), in_queue: Vec::new(), queue: Vec::new(),
             clauses: Vec::new(), watches: Vec::new(), first_learnt: 0,
-            learnt_lbd: Vec::new(), learnt_act: Vec::new(), deleted: Vec::new(), cla_inc: 1.0, reduce_at: 0, reduce_start: 2000,
+            learnt_lbd: Vec::new(), learnt_act: Vec::new(), deleted: Vec::new(), cla_inc: 1.0, reduce_at: 0, reduce_start: 4000,
             unsat_at_init: false,
             vals: Vec::new(), level: Vec::new(), reason: Vec::new(), trail_pos: Vec::new(),
             trail: Vec::new(), trail_lim: Vec::new(), qhead: 0,

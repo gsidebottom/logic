@@ -863,6 +863,43 @@ CaDiCaL 1.21 s; n = 178 (UNSAT, 3 872 boxes) CaDiCaL 9.6 s, the box engine
 not within 150 s — a plain CDCL without clause deletion or inprocessing is
 the gap on hard UNSAT instances, the next engine work if it matters.
 
+**Matrix multiplication, the tractable relative of `rank22_logical_form.tex`
+(2026-09-14, `lib/matmul.jq`).**  The 2×2 Brent equations over GF(2) with r
+products: 64 equations ⊕_m α^m_{ab} β^m_{cd} γ^m_{pq} = [b=c][a=p][d=q] over
+12r variables.  Box forms: `mm_chain` (each equation a chain of
+`xstep(p;a;b;c;q) ≡ q = p ⊕ abc` boxes) and `mm_boxes` (each term an `and3`
+box — clause form in the engine — and each equation one parity box `xor{r}`
+with its right-hand side a constant argument; `xor3…xor8` are chains of
+`xor2` with the running parities hidden, compiled by composition); CNF forms
+for CaDiCaL: `mm_cnf` (xor2 chain) and `mm_cnf_direct` (one clause per
+wrong assignment of the r term variables); `mm_sym_boxes` / `mm_sym`: the
+products in non-decreasing order of their α vectors (`le_4`), which keeps
+satisfiability.  Rank 7 is Strassen; 7 is the rank, so 6 is UNSAT (and
+with it every smaller r, a zero product being allowed).  Times as the UI
+reports them, 60 s cap, the engine with learned-clause deletion
+(`reduce_start` 4000):
+
+| r | verdict | boxes `mm_chain` | `mm_chain`+sym | `mm_boxes` | `mm_boxes`+sym | CaDiCaL `mm_cnf` | +sym | `mm_cnf_direct` | +sym |
+|---|---|---|---|---|---|---|---|---|---|
+| 8 | SAT | 0.06 s | 0.12 s | 0.41 s | 6.5 s | 0.07 s | 0.01 s | 0.02 s | 0.07 s |
+| 7 | SAT | 4.3 s | 4.4 s | 19.3 s | 30.7 s | 0.13 s | 0.39 s | 0.04 s | 0.06 s |
+| 6 | UNSAT | > 60 s | 1.8 s | > 60 s | 3.0 s | 52.8 s | 0.26 s | 55.9 s | 0.37 s |
+| 5 | UNSAT | 2.4 s | 0.11 s | 4.1 s | 0.14 s | 0.59 s | 0.04 s | 0.35 s | 0.07 s |
+
+(rank 5 box times from the run before the deletion budget was raised.)  So
+rank 8 and 7 SAT and rank 6 UNSAT are all decided within 60 s by both
+engines; the UNSAT proof needs the symmetry breaking on both (without it
+CaDiCaL takes 53–56 s and the box engine does not finish).  CaDiCaL is
+10–100× faster on this family: the parity structure gives the box tables
+nothing that unit propagation on the exact CNF does not have, and SAT
+times are search luck (the four box variants of rank 7 span 4–31 s).
+Two engine defects the benchmark exposed are fixed: cancellation did not
+reach the completion engine (a cancelled job kept a core busy, and its
+late verdict could be reported under the next job's name — a job
+generation now guards the state), and the learned database grew without
+bound (propagation fell to a seventh of its speed on long runs; LBD-based
+deletion holds it at 2–4M propagations/s).
+
 **Not yet (M1 remainder).**  A one-command certified boxed run: certifying a
 `-b boxes` UNSAT currently means running the existing certified pipeline on
 the expanded CNF — sound by construction (§4.3, phase 1), but not yet wired

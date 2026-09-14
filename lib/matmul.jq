@@ -5,9 +5,10 @@
 # examples (2×2 matrix multiplication over GF(2); Strassen: rank 7, and 7 is the rank)
 #  mm_boxes(2; 8)                          (SAT)
 #  mm_boxes(2; 7)                          (SAT)
-#  prod(mm_boxes(2; 6), mm_sym_boxes(6))   (UNSAT — hence rank ≤ 6 impossible)
+#  mm_boxes_sym(2; 6)                      (UNSAT — hence rank ≤ 6 impossible)
 #  mm_chain(2; 7)                          (SAT, one 5-column box per product)
-#  prod(mm_cnf(2; 6), mm_sym(6))           (UNSAT, the CNF form for CaDiCaL)
+#  mm_chain_sym(2; 6)                      (UNSAT, the chain form)
+#  mm_cnf_sym(2; 6)                        (UNSAT, the CNF form for CaDiCaL)
 #
 # The Brent equations of ⟨n,n,n⟩ matrix multiplication with r products over
 # GF(2) (doc/rank22_logical_form.tex, here for n = 2): for every index tuple
@@ -90,6 +91,11 @@ def mm_cnf_direct(n; r):
 # satisfiability — every scheme has a reordering that obeys it
 def mm_sym_boxes(r): prod(range(1; r) | "le_4(a_\(.);a_\(. + 1))");
 def mm_sym(r):       prod(range(1; r) | . as $m | br(le("a_\($m)"; "a_\($m + 1)"; 4)));
+# the formulations with the symmetry breaking attached (what to type in the
+# jq filter box for the UNSAT ranks: mm_boxes_sym(2; 6), mm_chain_sym(2; 6))
+def mm_boxes_sym(n; r): prod(mm_boxes(n; r), mm_sym_boxes(r));
+def mm_chain_sym(n; r): prod(mm_chain(n; r), mm_sym_boxes(r));
+def mm_cnf_sym(n; r):   prod(mm_cnf(n; r), mm_sym(r));
 
 # the parity boxes: xor{r}(t_1;…;t_r;d) ≡ t_1 ⊕ … ⊕ t_r = d, defined as a
 # chain of xor2 with the running parities hidden — compiled by composition
@@ -120,4 +126,5 @@ mm_cnf(1; 2) == "(t_0_1' + a_1_0) (t_0_1' + b_1_0) (t_0_1' + c_1_0) (t_0_1 + a_1
 mm_cnf_direct(1; 2) == "(t_0_1' + a_1_0) (t_0_1' + b_1_0) (t_0_1' + c_1_0) (t_0_1 + a_1_0' + b_1_0' + c_1_0') (t_0_2' + a_2_0) (t_0_2' + b_2_0) (t_0_2' + c_2_0) (t_0_2 + a_2_0' + b_2_0' + c_2_0') (t_0_1 + t_0_2) (t_0_1' + t_0_2')",
 xor_chain(3) == "xor2(t_1;t_2;p_2) xor2(p_2;t_3;d)",
 mm_sym_boxes(3) == "le_4(a_1;a_2) le_4(a_2;a_3)",
+mm_boxes_sym(1; 2) == "and3(a_1_0;b_1_0;c_1_0;t_0_1) and3(a_2_0;b_2_0;c_2_0;t_0_2) xor2(t_0_1;t_0_2;1) le_4(a_1;a_2)",
 mm_sym(2) == "(a_1_3' a_2_3 + (a_1_3 = a_2_3) a_1_2' a_2_2 + (a_1_2 = a_2_2) (a_1_3 = a_2_3) a_1_1' a_2_1 + (a_1_1 = a_2_1) (a_1_2 = a_2_2) (a_1_3 = a_2_3) a_1_0' a_2_0 + (a_1_0 = a_2_0) (a_1_1 = a_2_1) (a_1_2 = a_2_2) (a_1_3 = a_2_3))"

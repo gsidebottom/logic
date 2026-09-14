@@ -1,6 +1,9 @@
 # === deps ===
 # math.jq
 # === end deps ===
+# examples
+#  bmc_w4_n8_gt8_single_box
+
 # bounded model check for
 #
 # int a[N]; unsigned c;

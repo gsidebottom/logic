@@ -1,6 +1,11 @@
 # === deps ===
 # expr.jq
 # === end deps ===
+# examples
+#  w4_ap(35) (USAT)
+#  w4_ap(34) (SAT)
+#  w5_ap(178) (UNSAT)
+#  w5_ap(177) (SAT)
 
 # waerden's example
 
@@ -30,22 +35,30 @@ def w(j; k; n):
 # experiment that showed wider boxes do not help this problem.
 # the arithmetic progressions of length j inside 1..n, as [start, difference]
 def aps(j; n): (range(n) + 1) as $d | (range(n - ((j-1) * $d)) + 1) as $i | [$i, $d];
+
 # the members of the progression [i, d] (length j) as variables x_i, x_{i+d}, …
 def ap_vars(j; i; d): i as $i | d as $d | range(j) | "x_\($i + . * $d)";
+
 # w(4;4;n) with every progression a box: ap4(x_i; x_{i+d}; x_{i+2d}; x_{i+3d})
 def w4_ap(n): prod(aps(4; n) | "ap4(\([ap_vars(4; .[0]; .[1])] | join(";")))");
+
+# w(5;5;n) with every progression a box: ap5(x_i; x_{i+d}; x_{i+2d}; x_{i+3d}; x_{i+4d})
+def w5_ap(n): prod(aps(5; n) | "ap5(\([ap_vars(5; .[0]; .[1])] | join(";")))");
+
 # no monochromatic 4-progression inside a window of W positions x_0 … x_{W-1}
 # (the definition of the window boxes: parameters x_0 … x_{W-1})
 def win4(W):
   prod(aps(4; W) | . as [$i, $d] |
     br(sum(range(4) | "x_\($i - 1 + . * $d)")),
     br(sum(range(4) | "x_\($i - 1 + . * $d)'")));
+
 # no 4 consecutive equal values in v_0 … v_{L-1} (the definition of the chain
 # boxes: a progression's residue class r, r+d, r+2d, … has this shape)
 def norun4(L):
   prod(range(L - 3) as $s |
     br(sum(range(4) | "v_\($s + .)")),
     br(sum(range(4) | "v_\($s + .)'")));
+
 # w(4;4;n) as windows of width W (every progression with 3d+1 ≤ W lies in some
 # window) plus, for the larger differences, one chain box per residue class
 def w4_win(n; W):
@@ -55,6 +68,7 @@ def w4_win(n; W):
       range($d) + 1 | [range(.; n + 1; $d)] | select(length >= 4) |
       "norun4_\(length)(\([.[] | "x_\(.)"] | join(";")))")
   );
+
 # === boxes ===
 # ap4(a;b;c;d) := "(a + b + c + d) (a' + b' + c' + d')"
 # win7(x_0;x_1;x_2;x_3;x_4;x_5;x_6) := win4(7)
@@ -67,6 +81,7 @@ def w4_win(n; W):
 # norun4_10(v_0;v_1;v_2;v_3;v_4;v_5;v_6;v_7;v_8;v_9) := norun4(10)
 # norun4_11(v_0;v_1;v_2;v_3;v_4;v_5;v_6;v_7;v_8;v_9;v_10) := norun4(11)
 # norun4_12(v_0;v_1;v_2;v_3;v_4;v_5;v_6;v_7;v_8;v_9;v_10;v_11) := norun4(12)
+# ap5(a;b;c;d;e) := "(a + b + c + d + e) (a' + b' + c' + d' + e')"
 # === end boxes ===
 # === tests ===
 w4_ap(5) == "ap4(x_1;x_2;x_3;x_4) ap4(x_2;x_3;x_4;x_5)",

@@ -324,6 +324,19 @@ const lookupOf = boxes => {
 export function expandBoxCalls(str, boxes) {
   return expandRec(str, lookupOf(boxes), { n: 0 }, 0);
 }
+/** Like expandBoxCalls, also returning each top-level call's own expansion
+ *  (document order, the counter shared with the full expansion, so hidden
+ *  internals carry the same `__k` names as in `text`): {text, perCall}. */
+export function expandBoxCallsPerCall(str, boxes) {
+  const lookup = lookupOf(boxes), counter = { n: 0 }, perCall = [];
+  const text = walkCalls(str, lookup, (name, args, sig) => {
+    counter.n++;
+    const expanded = '(' + expandRec(substitute(sig, args, counter.n), lookup, counter, 1) + ')';
+    perCall.push(expanded);
+    return expanded;
+  });
+  return { text, perCall };
+}
 export const BOX_ATOM_PREFIX = 'BOXCALL_';
 /** Replace each box call by an atom `BOXCALL_k` (mirrors logic::boxes::expand::atomize_box_calls).
  *  Returns {text, calls: [{atom, name, args, label}]}; `label` is `name(a;b;…)`. */
@@ -350,13 +363,16 @@ export function atomizeBoxCalls(str, boxes, { lenient = false } = {}) {
  *  server's atomized matrix, so path positions line up. */
 export function relabelBoxAtoms(ast, calls) {
   if (!calls.length) return ast;
-  const byAtom = new Map(calls.map(c => [c.atom, c]));
+  const byAtom = new Map(calls.map((c, k) => [c.atom, { ...c, idx: k }]));
   const walk = node => {
     if (node.t === 'VAR') {
       const primes = node.n.match(/'+$/)?.[0] ?? '';
       const base = node.n.slice(0, node.n.length - primes.length);
       const c = byAtom.get(base);
-      return c ? { t: 'VAR', n: c.label + primes, box: { name: c.name, args: c.args } } : node;
+      // `idx` is the call's position in document order — the same order the
+      // expansion numbers calls, so expandBoxCallsPerCall(...).perCall[idx] is
+      // this leaf's definition with the internals named as in the expansion.
+      return c ? { t: 'VAR', n: c.label + primes, box: { name: c.name, args: c.args, idx: c.idx } } : node;
     }
     return { ...node, c: node.c.map(walk) };
   };

@@ -123,6 +123,9 @@ impl Default for ClassifyJob {
 struct CaDiCaLJobResult {
     /// The assignment (if any). Each entry is [var_index, neg_bool].
     assignment:      Option<Vec<(u32, bool)>>,
+    /// The variable names the indices refer to (the expanded formula's,
+    /// constants excluded) — the client must not rebuild this order itself.
+    vars:            Vec<String>,
     /// Learned clauses as raw cadical literal vectors.
     learned_clauses: Vec<Vec<i32>>,
     elapsed_secs:    f64,
@@ -1982,6 +1985,7 @@ fn start_cadical_job(
     let start = std::time::Instant::now();
 
     if is_valid {
+        let vars = matrix.ast.vars.clone();
         let (handle, cancel) = matrix.cadical_valid();
         { job_state.lock().unwrap().cancel = Some(cancel); }
         tokio::spawn(async move {
@@ -1995,6 +1999,7 @@ fn start_cadical_job(
                     };
                     job.result = Some(CaDiCaLJobResult {
                         assignment: asgn,
+                        vars: vars.clone(),
                         learned_clauses: r.learned_clauses,
                         elapsed_secs: elapsed,
                     });
@@ -2019,6 +2024,7 @@ fn start_cadical_job(
                 && r.elapsed_secs == 0.0 { r.elapsed_secs = elapsed; }
         });
     } else {
+        let vars = matrix.ast.vars.clone();
         let (handle, cancel) = matrix.cadical_satisfiable();
         { job_state.lock().unwrap().cancel = Some(cancel); }
         tokio::spawn(async move {
@@ -2032,6 +2038,7 @@ fn start_cadical_job(
                     };
                     job.result = Some(CaDiCaLJobResult {
                         assignment: asgn,
+                        vars: vars.clone(),
                         learned_clauses: r.learned_clauses,
                         elapsed_secs: elapsed,
                     });

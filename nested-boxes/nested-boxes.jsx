@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useMemo } from "react";
-import { parse, complementAst, astToString, resolvePosition, VarLabel, expandBoxCalls, atomizeBoxCalls, relabelBoxAtoms, familyOf } from "./formula.jsx";
+import { parse, complementAst, astToString, resolvePosition, VarLabel, expandBoxCalls, expandBoxCallsPerCall, atomizeBoxCalls, relabelBoxAtoms, familyOf } from "./formula.jsx";
 
 // Base URL for API calls.  In `vite dev` we hit the separate Rust service on
 // :3001 (same as before).  In a production build — e.g. the Docker image —
@@ -181,14 +181,20 @@ const compName = n => n?.endsWith("'") ? n.slice(0, -1) : (n ? n + "'" : n);
 
 // Evaluate an AST against a variable assignment { varName: '0'|'1' }.
 // Returns a Map<positionKey, 'true'|'false'|'undetermined'> for every node.
-function evaluateAst(node, assignment, position = []) {
+// `boxValue(idx)`, when given, values a box-call leaf (box-aware diagram)
+// that the assignment does not name directly: the call's definition under
+// the assignment — 'true' | 'false' | 'undetermined'.
+function evaluateAst(node, assignment, position = [], boxValue = null) {
   const result = new Map();
   const posKey = position.join(',');
 
   if (node.t === 'VAR') {
     const neg = node.n.endsWith("'");
     const base = neg ? node.n.slice(0, -1) : node.n;
-    if (base === '1') {
+    if (node.box && boxValue && !(base in assignment)) {
+      const v = boxValue(node.box.idx);
+      result.set(posKey, !neg || v === 'undetermined' ? v : (v === 'true' ? 'false' : 'true'));
+    } else if (base === '1') {
       // Constant 1: true; 1': false
       result.set(posKey, neg ? 'false' : 'true');
     } else if (base === '0') {
@@ -203,7 +209,7 @@ function evaluateAst(node, assignment, position = []) {
   } else if (node.t === 'OR') {
     let hasTrue = false, hasUndetermined = false;
     node.c.forEach((child, i) => {
-      const childResult = evaluateAst(child, assignment, [...position, i]);
+      const childResult = evaluateAst(child, assignment, [...position, i], boxValue);
       childResult.forEach((v, k) => result.set(k, v));
       const cv = childResult.get([...position, i].join(','));
       if (cv === 'true') hasTrue = true;
@@ -213,7 +219,7 @@ function evaluateAst(node, assignment, position = []) {
   } else if (node.t === 'AND') {
     let hasFalse = false, hasUndetermined = false;
     node.c.forEach((child, i) => {
-      const childResult = evaluateAst(child, assignment, [...position, i]);
+      const childResult = evaluateAst(child, assignment, [...position, i], boxValue);
       childResult.forEach((v, k) => result.set(k, v));
       const cv = childResult.get([...position, i].join(','));
       if (cv === 'false') hasFalse = true;
@@ -344,7 +350,7 @@ function extractVars(node) {
     if (n.t === 'VAR') {
       const name = n.n;
       const base = name.endsWith("'") ? name.slice(0, -1) : name;
-      vars.add(base);
+      if (base !== '0' && base !== '1') vars.add(base);   // constants are not variables
     } else if (n.c) {
       n.c.forEach(walk);
     }
@@ -1369,6 +1375,8 @@ export default function App() {
   // The expanded formula's AST, whatever the mode: CaDiCaL always solves the
   // expanded formula, so its variable order and names come from here.
   const expandedAst = useMemo(() => { try { return parse(expandBoxCalls(input, boxes)); } catch { return null; } }, [input, boxes]);
+  // each top-level call's own expansion (box-aware highlighting of an assignment over the expanded formula)
+  const perCallExpansions = useMemo(() => { try { return expandBoxCallsPerCall(input, boxes).perCall; } catch { return []; } }, [input, boxes]);
   const [ast, error] = useMemo(() => {
     try {
       if (boxAware) {
@@ -1858,6 +1866,7 @@ export default function App() {
       const r = data.result;
       setCadicalValidResult(r ? {
         assignment: r.assignment,
+        vars: r.vars,
         learnedClauses: r.learned_clauses,
         elapsedSecs: r.elapsed_secs,
       } : { assignment: null, learnedClauses: [], elapsedSecs: 0 });
@@ -1929,6 +1938,7 @@ export default function App() {
       const r = data.result;
       setCadicalSatResult(r ? {
         assignment: r.assignment,
+        vars: r.vars,
         learnedClauses: r.learned_clauses,
         elapsedSecs: r.elapsed_secs,
       } : { assignment: null, learnedClauses: [], elapsedSecs: 0 });
@@ -3049,16 +3059,30 @@ export default function App() {
                   });
                   return asgn;
                 };
-                // Build assignment from cadical [var_index, is_negated] pairs
+                // Build assignment from cadical [var_index, is_negated] pairs — the
+                // names come with the result (the expanded formula's variables).
                 const buildCadicalAsgn = (cadResult) => {
                   if (!cadResult?.assignment) return null;
-                  const allVars = extractVars(ast);
+                  const allVars = cadResult.vars ?? extractVars(expandedAst ?? ast);
                   const asgn = {};
                   cadResult.assignment.forEach(([varIdx, neg]) => {
                     const varName = allVars[varIdx];
                     if (varName) asgn[varName] = neg ? '0' : '1';
                   });
                   return asgn;
+                };
+                // In the box-aware diagram a leaf is a call: its value is its
+                // definition's under the assignment (internals included).
+                const boxValueFor = (asgn) => {
+                  if (!perCallExpansions.length) return null;
+                  const cache = new Map();
+                  return idx => {
+                    if (cache.has(idx)) return cache.get(idx);
+                    let v = 'undetermined';
+                    try { const txt = perCallExpansions[idx]; if (txt) v = evaluateAst(parse(txt), asgn).get('') ?? 'undetermined'; } catch { /* leave undetermined */ }
+                    cache.set(idx, v);
+                    return v;
+                  };
                 };
                 if (validAsgnOn && validResult?.path) {
                   const asgn = buildAsgn(validResult.path);
@@ -3070,11 +3094,11 @@ export default function App() {
                 }
                 if (cadicalValidAsgnOn && cadicalValidResult?.assignment) {
                   const asgn = buildCadicalAsgn(cadicalValidResult);
-                  return asgn ? evaluateAst(ast, asgn) : null;
+                  return asgn ? evaluateAst(ast, asgn, [], boxValueFor(asgn)) : null;
                 }
                 if (cadicalSatAsgnOn && cadicalSatResult?.assignment) {
                   const asgn = buildCadicalAsgn(cadicalSatResult);
-                  return asgn ? evaluateAst(ast, asgn) : null;
+                  return asgn ? evaluateAst(ast, asgn, [], boxValueFor(asgn)) : null;
                 }
                 return null;
               })()}
@@ -3603,14 +3627,14 @@ export default function App() {
                     {cadicalValidClausesExpanded ? '▾' : '▸'} {cadicalValidResult.learnedClauses.length} learned clause{cadicalValidResult.learnedClauses.length !== 1 ? 's' : ''}
                   </span>
                   {cadicalValidClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
-                    {cadicalValidResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, expandedAst ? extractVars(expandedAst) : [])}</div>)}
+                    {cadicalValidResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, cadicalValidResult.vars ?? (expandedAst ? extractVars(expandedAst) : []))}</div>)}
                   </div>}
                 </span>}
               </span>
             : <span>
                 CaDiCaL: not valid in {(cadicalValidResult.elapsedSecs * 1000).toFixed(0)}ms
                 {cadicalValidResult.assignment && (() => {
-                  const allVarsRaw = expandedAst ? extractVars(expandedAst) : [];
+                  const allVarsRaw = cadicalValidResult.vars ?? (expandedAst ? extractVars(expandedAst) : []);
                   const asgnEntries = cadicalValidResult.assignment.map(([varIdx, neg]) => ({
                     name: allVarsRaw[varIdx] ?? `v${varIdx}`, val: neg ? '0' : '1',
                   })).filter(e => !hiddenBases.has(baseOf(e.name))).sort((a, b) => cmpVarName(a.name, b.name, reverseBaseOrder));
@@ -3655,7 +3679,7 @@ export default function App() {
                     {cadicalValidClausesExpanded ? '▾' : '▸'} {cadicalValidResult.learnedClauses.length} learned clause{cadicalValidResult.learnedClauses.length !== 1 ? 's' : ''}
                   </span>
                   {cadicalValidClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
-                    {cadicalValidResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, expandedAst ? extractVars(expandedAst) : [])}</div>)}
+                    {cadicalValidResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, cadicalValidResult.vars ?? (expandedAst ? extractVars(expandedAst) : []))}</div>)}
                   </div>}
                 </span>}
               </span>}
@@ -3980,7 +4004,7 @@ export default function App() {
             ? <span>
                 CaDiCaL: satisfiable in {(cadicalSatResult.elapsedSecs * 1000).toFixed(0)}ms
                 {(() => {
-                  const allVarsRaw = expandedAst ? extractVars(expandedAst) : [];
+                  const allVarsRaw = cadicalSatResult.vars ?? (expandedAst ? extractVars(expandedAst) : []);
                   const asgnEntries = cadicalSatResult.assignment.map(([varIdx, neg]) => ({
                     name: allVarsRaw[varIdx] ?? `v${varIdx}`, val: neg ? '0' : '1',
                   })).filter(e => !hiddenBases.has(baseOf(e.name))).sort((a, b) => cmpVarName(a.name, b.name, reverseBaseOrder));
@@ -4025,7 +4049,7 @@ export default function App() {
                     {cadicalSatClausesExpanded ? '▾' : '▸'} {cadicalSatResult.learnedClauses.length} learned clause{cadicalSatResult.learnedClauses.length !== 1 ? 's' : ''}
                   </span>
                   {cadicalSatClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
-                    {cadicalSatResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, expandedAst ? extractVars(expandedAst) : [])}</div>)}
+                    {cadicalSatResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, cadicalSatResult.vars ?? (expandedAst ? extractVars(expandedAst) : []))}</div>)}
                   </div>}
                 </span>}
               </span>
@@ -4037,7 +4061,7 @@ export default function App() {
                     {cadicalSatClausesExpanded ? '▾' : '▸'} {cadicalSatResult.learnedClauses.length} learned clause{cadicalSatResult.learnedClauses.length !== 1 ? 's' : ''}
                   </span>
                   {cadicalSatClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
-                    {cadicalSatResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, expandedAst ? extractVars(expandedAst) : [])}</div>)}
+                    {cadicalSatResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, cadicalSatResult.vars ?? (expandedAst ? extractVars(expandedAst) : []))}</div>)}
                   </div>}
                 </span>}
               </span>}

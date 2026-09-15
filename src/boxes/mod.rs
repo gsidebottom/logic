@@ -296,8 +296,21 @@ impl Engine {
         }
         self.vars_all.extend_from_slice(&b.vars);
         self.kill_all.extend_from_slice(&b.kill);
-        self.hdr.push(BoxHdr { off: self.live.len() as u32, nw, vbase, nvars: b.vars.len() as u32, kbase, nrows: b.rows.len() as u32 });
+        let off = self.live.len();
+        self.hdr.push(BoxHdr { off: off as u32, nw, vbase, nvars: b.vars.len() as u32, kbase, nrows: b.rows.len() as u32 });
         self.live.extend_from_slice(&b.all_mask());
+        // Rows already killed by the level-0 assignment (a unit clause added
+        // before the box, say): `live` must always reflect the whole trail,
+        // or the table looks alive when it is dead and its conflict surfaces
+        // levels later with no literal of the current level.
+        debug_assert!(self.decision_level() == 0, "boxes are added before solving");
+        let nw = nw as usize;
+        for (li, &v) in b.vars.iter().enumerate() {
+            let val = self.vals[v as usize];
+            if val == Val::U { continue; }
+            let kb = kbase as usize + 2 * li * nw + if val == Val::T { nw } else { 0 };
+            for w in 0..nw { self.live[off + w] &= !self.kill_all[kb + w]; }
+        }
         self.in_queue.push(false);
     }
 
@@ -584,13 +597,12 @@ impl Engine {
         }
     }
 
-    /// 1-UIP conflict analysis: the learned clause (asserting literal first)
-    /// and the level to backjump to.
-    fn analyze(&mut self, conflict: Conflict) -> (Vec<u32>, usize) {
+    /// 1-UIP conflict analysis of a conflict given by its (false) literals,
+    /// at least one of them at the current level: the learned clause
+    /// (asserting literal first) and the level to backjump to.
+    fn analyze(&mut self, mut lits: Vec<u32>) -> (Vec<u32>, usize) {
         let current = self.decision_level() as u32;
         let mut learnt: Vec<u32> = vec![0];
-        let mut lits: Vec<u32> = Vec::new();
-        self.conflict_lits(conflict, &mut lits);
         let mut path = 0usize;
         let mut idx = self.trail.len();
         loop {
@@ -671,9 +683,18 @@ impl Engine {
             if let Some(conflict) = self.propagate() {
                 self.stats.conflicts += 1;
                 conflicts_here += 1;
+                let mut lits = Vec::new();
+                self.conflict_lits(conflict, &mut lits);
+                // A conflict whose literals all lie below the current level
+                // is a conflict at the highest of their levels: analysis
+                // starts there (it cannot happen while `live` tracks the
+                // trail, but a conflict with no current-level literal would
+                // otherwise walk off the trail).
+                let top = lits.iter().map(|&q| self.level[(q >> 1) as usize] as usize).max().unwrap_or(0);
+                if top < self.decision_level() { self.backjump(top.max(base)); }
                 if self.decision_level() <= base { return Verdict::Unsat; }
                 if self.stats.conflicts & 255 == 0 && let Some(c) = &self.cancel && c.load(std::sync::atomic::Ordering::Relaxed) { return Verdict::Unknown; }
-                let (learnt, bj) = self.analyze(conflict);
+                let (learnt, bj) = self.analyze(lits);
                 self.backjump(bj.max(base));
                 let l0 = learnt[0];
                 if learnt.len() == 1 {
@@ -820,6 +841,53 @@ mod tests {
             match e.solve() {
                 Verdict::Sat(m) => { assert!(brute, "trial {trial}: engine SAT, brute UNSAT"); assert!(holds(&m), "trial {trial}: bad model"); }
                 Verdict::Unsat => assert!(!brute, "trial {trial}: engine UNSAT, brute SAT: {boxes:?} {cls:?}"),
+                Verdict::Unknown => panic!("no budget set"),
+            }
+        }
+    }
+
+    /// Tables added after the clauses — after unit clauses in particular,
+    /// which assign at level 0 before the tables exist (the `sat -b boxes
+    /// --boxes` order): the new table's live rows must reflect those
+    /// assignments.  Checked against brute force.
+    #[test]
+    fn tables_after_units_vs_bruteforce() {
+        let mut seed: u64 = 0x0DDB_1A5E_5BAD_5EED;
+        let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+        for trial in 0..400 {
+            let n = 3 + (rnd() % 6) as usize;
+            let nboxes = 1 + (rnd() % 5) as usize;
+            let mut boxes: Vec<Vec<Vec<Lit>>> = Vec::new();
+            for _ in 0..nboxes {
+                let k = 2 + (rnd() % 3) as usize;
+                let mut cols: Vec<u32> = Vec::new();
+                while cols.len() < k.min(n) { let v = (rnd() % n as u64) as u32; if !cols.contains(&v) { cols.push(v); } }
+                let nrows = 1 + (rnd() % 5) as usize;
+                let mut rows: Vec<Vec<Lit>> = Vec::new();
+                for _ in 0..nrows {
+                    let mut row = Vec::new();
+                    for &v in &cols { if rnd() % 3 != 0 { let neg = rnd() % 2 == 0; row.push(Lit { var: v, neg }); } }
+                    rows.push(row);
+                }
+                boxes.push(rows);
+            }
+            // clauses of 1..3 literals: units assign at level 0 during `from_cnf`
+            let nclauses = 1 + (rnd() % 4) as usize;
+            let mut cls: Vec<Vec<i32>> = Vec::new();
+            for _ in 0..nclauses {
+                let len = 1 + (rnd() % 3) as usize;
+                let mut c = Vec::new();
+                for _ in 0..len { let v = (rnd() % n as u64) as i32 + 1; c.push(if rnd() % 2 == 0 { v } else { -v }); }
+                cls.push(c);
+            }
+            let row_holds = |row: &[Lit], m: &[bool]| row.iter().all(|l| m[l.var as usize] == !l.neg);
+            let holds = |m: &[bool]| boxes.iter().all(|rows| rows.iter().any(|r| row_holds(r, m))) && check_model(&cls, m);
+            let brute = (0..1u32 << n).any(|bits| holds(&(0..n).map(|i| bits >> i & 1 == 1).collect::<Vec<_>>()));
+            let mut e = Engine::from_cnf(n, &cls);
+            for rows in &boxes { e.add_box(TableBox::new(rows.clone())); }
+            match e.solve() {
+                Verdict::Sat(m) => { assert!(brute, "trial {trial}: engine SAT, brute UNSAT"); assert!(holds(&m), "trial {trial}: bad model"); }
+                Verdict::Unsat => assert!(!brute, "trial {trial}: engine UNSAT, brute SAT: {cls:?} {boxes:?}"),
                 Verdict::Unknown => panic!("no budget set"),
             }
         }

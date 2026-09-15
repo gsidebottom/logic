@@ -122,6 +122,53 @@ cardinality third is not ours.  Caveat from §10.1: on the two families
 measured so far the engine is 10–100× slower than CaDiCaL per search, so
 the cones must change the *search*, not just the propagation, to matter.
 
+## First measurement: `tools/cnf2boxes.py` on the three small circuit families
+
+`tools/cnf2boxes.py` reads the gates off a CNF, merges single-fanout gates
+bottom-up into cones of at most K inputs, hides the cones' internal gate
+outputs, compiles each cone to a table (Quine–McCluskey cover of the
+function and its complement; `--verify` re-evaluates every table), and
+writes the residual CNF plus the instances for `sat -b boxes --boxes`.  On
+the two smallest instances of each family it hides 40–70 % of the
+variables and absorbs 50–90 % of the clauses in 0.1–0.6 s (K = 8; K = 12
+takes up to 30 s in Python).  Four configurations per instance, 60 s cap
+(2026-09-14, one core each): CaDiCaL on the plain CNF, the box engine on
+the plain CNF (the engine alone, watched clauses), and the box engine with
+K = 8 and K = 12 cones.
+
+| instance | CaDiCaL | box engine, plain CNF | cones K = 8 | cones K = 12 |
+|---|---|---|---|---|
+| belpyramid c3540 (2,163 vars, ISCAS-85) | UNSAT 0.46 s | UNSAT 3.7 s (122 K conflicts) | UNSAT 6.6 s (212 K) | UNSAT 6.5 s (207 K) |
+| belpyramid c5315 (3,801 vars) | UNSAT 0.16 s | UNSAT 1.7 s (57 K) | UNSAT 2.7 s (104 K) | UNSAT 2.9 s (101 K) |
+| multiplier-equivalence bit28 / bit29 (2.5 K vars) | > 60 s | > 60 s | > 60 s | > 60 s |
+| miter eq.atree.braun.13 (2.0 K vars) | > 60 s | > 60 s | > 60 s | > 60 s |
+| miter lec_mult_CvW_11x10 (2.6 K vars) | > 60 s | > 60 s | > 60 s | > 60 s |
+
+Two diagnostics on the ISCAS pair explain the slowdown.  Keeping *all*
+original clauses next to the K = 8 cones (redundant tables) brings the
+conflicts back to the plain count (c3540: 129 K, c5315: 62 K) at 30 %
+more time — so the extra conflicts of the cones-only runs come from
+*learning*: a table's lazy explanation (the assigned literals of the box
+whose kill masks cover the dead rows, oldest levels first) is coarser than
+the gate clauses it replaces, and the learned clauses are weaker.
+And with the clauses present the tables prune nothing further: unit
+propagation on AND/OR gates is already the cone's arc consistency for this
+kind of circuit.  Emitting only cones of ≥ 4 gates changes neither.
+
+What follows.  (1) Hidden internals are worth having only with
+*minimal* explanations — a hitting-set minimisation of the kill-mask
+explanation, or explaining a table's propagation through the cone's own
+gate clauses kept as explanation-only clauses — that is the engine change
+this experiment asks for.  (2) The propagation gain of cones needs
+cones where arc consistency beats gate-level unit propagation — XOR- and
+adder-rich cones, as in the multiplier and miter families — and those
+instances are beyond 60 s for CaDiCaL too (the family wants algebraic
+reasoning), so the comparison needs a larger budget or the adder-rich but
+moderate `prime-factoring` / `sum-of-3-cubes` instances.  (3) On the
+ISCAS-style AND circuits the box engine is 5–10× slower than CaDiCaL on
+the plain CNF already; that gap is the engine's CDCL maturity, not the
+boxes.
+
 ## Per-family scan (families with ≥ 2 instances across both years)
 
 | family | 2025 | 2026 | class | vars (median) | AND gates | XOR gates | gate % | scope % | binary |

@@ -106,6 +106,30 @@ def extract_gates(clauses):
                     if need == tset and o not in defined:
                         gates.append(Gate("maj3", o, sorted(ins), terns, (lambda vals: sum(vals) >= 2)))
                         defined.add(o); break
+    # majority carries whose six clauses are spread over three 3-variable scopes:
+    # for each pair of input literals (li, lj) the clauses (¬li ∨ ¬lj ∨ o) and (li ∨ lj ∨ ¬o)
+    clause_set = {frozenset(c): i for i, c in enumerate(clauses)}
+    pairs = collections.defaultdict(dict)   # output literal -> {frozenset(li, lj): (clause indices)}
+    for scope, idxs in by_scope.items():
+        if len(scope) != 3 or len(idxs) < 2: continue
+        tern = [i for i in idxs if len(clauses[i]) == 3]
+        for i in tern:
+            c = clauses[i]
+            for o in c:
+                ins = [-l for l in c if l != o]          # (¬li ∨ ¬lj ∨ o) → li, lj
+                j = clause_set.get(frozenset(ins + [-o]))   # (li ∨ lj ∨ ¬o)
+                if j is not None: pairs[o][frozenset(ins)] = (i, j)
+    for o, pr in pairs.items():
+        if abs(o) in defined or len(pr) < 3: continue
+        lits = set()
+        for pq in pr: lits |= pq
+        for trio in itertools.combinations(sorted(lits), 3):
+            combos = [frozenset(x) for x in itertools.combinations(trio, 2)]
+            if all(c in pr for c in combos) and abs(o) not in defined and len({abs(l) for l in trio}) == 3:
+                cls = [i for c in combos for i in pr[c]]
+                pos = o > 0
+                gates.append(Gate("maj3", abs(o), list(trio), cls, (lambda vals, pos=pos: (sum(vals) >= 2) == pos)))
+                defined.add(abs(o)); break
     return gates
 
 def lit_value(lit, val_of_var):
@@ -113,50 +137,93 @@ def lit_value(lit, val_of_var):
     return v if lit > 0 else (not v)
 
 # ── cones ───────────────────────────────────────────────────────────────────
-def build_cones(nv, clauses, gates, K):
-    gate_of = {g.out: g for g in gates}
-    # occurrences outside gate definitions decide what may be hidden
-    in_def = collections.defaultdict(set)   # var -> clause indices that define or consume it inside gates
-    consumers = collections.defaultdict(set)  # var -> gates (outputs) that take it as input
+# A unit is one gate, or a full adder (an XOR3 and a MAJ3 over the same inputs:
+# one unit, two outputs).  A cone is a set of units with inputs (variables fed
+# from outside), outputs (unit outputs consumed outside, or observable) and
+# hidden outputs (consumed only inside): merging a producer cone into its
+# consumer's is always sound — an output stays visible while something outside
+# reads it — and hides what it can.  Bounded by K inputs and MAXCOLS columns.
+MAXCOLS = 14
+
+class Unit:
+    __slots__ = ("gates", "outs", "ins")
+    def __init__(self, gates):
+        self.gates = gates                       # evaluation order
+        self.outs = [g.out for g in gates]
+        self.ins = sorted({abs(l) for g in gates for l in g.inputs} - set(self.outs))
+
+def make_units(gates):
+    by_inputs = collections.defaultdict(list)
     for g in gates:
-        for i in g.clauses: in_def[g.out].add(i)
-        for l in g.inputs:
-            consumers[abs(l)].add(g.out)
-            for i in g.clauses: in_def[abs(l)].add(i)
+        if g.kind in ("xor3", "maj3"): by_inputs[frozenset(abs(l) for l in g.inputs)].append(g)
+    used, units = set(), []
+    for ins, gs in by_inputs.items():
+        xs = [g for g in gs if g.kind == "xor3"]; ms = [g for g in gs if g.kind == "maj3"]
+        for x, m in zip(xs, ms):
+            units.append(Unit([x, m])); used.add(x.out); used.add(m.out)
+    for g in gates:
+        if g.out not in used: units.append(Unit([g]))
+    return units
+
+def build_cones(nv, clauses, gates, K):
+    units = make_units(gates)
+    unit_of = {}                       # output var -> unit
+    for u in units:
+        for o in u.outs: unit_of[o] = u
+    in_def = collections.defaultdict(set); consumers = collections.defaultdict(set)
+    for u in units:
+        for g in u.gates:
+            for i in g.clauses:
+                in_def[g.out].add(i)
+                for l in g.inputs: in_def[abs(l)].add(i)
+            for l in g.inputs: consumers[abs(l)].add(id(u))
     occ = collections.defaultdict(set)
     for i, c in enumerate(clauses):
         for l in c: occ[abs(l)].add(i)
-    observable = {v for v in gate_of if occ[v] - in_def[v]}   # used by a non-gate clause: stays visible
-    # topological order of gates (inputs first); drop gates on cycles
-    indeg = {g.out: sum(1 for l in g.inputs if abs(l) in gate_of) for g in gates}
-    order, queue = [], collections.deque(v for v, d in indeg.items() if d == 0)
+    observable = {v for v in unit_of if occ[v] - in_def[v]}
+    # topological order of units; units on cycles are dropped
+    uid = {id(u): u for u in units}
+    indeg = {id(u): sum(1 for v in u.ins if v in unit_of) for u in units}
+    order, queue = [], collections.deque(k for k, d in indeg.items() if d == 0)
     while queue:
-        v = queue.popleft(); order.append(v)
-        for w in consumers.get(v, ()):
-            if w in indeg:
-                indeg[w] -= 1
-                if indeg[w] == 0: queue.append(w)
-    cyclic = set(gate_of) - set(order)
-    for v in cyclic: del gate_of[v]
-    gates = [gate_of[v] for v in order if v in gate_of]
-    # bottom-up merging: a cone is (root, members, inputs); a single-fanout, unobservable
-    # gate output whose only consumer is the root is hidden if the merged inputs fit in K
-    cone_of = {}     # root -> dict(members=[outs], inputs=set(vars))
+        k = queue.popleft(); order.append(k)
+        for o in uid[k].outs:
+            for c in consumers.get(o, ()):
+                if c in indeg:
+                    indeg[c] -= 1
+                    if indeg[c] == 0: queue.append(c)
+    cyclic = [uid[k] for k in indeg if k not in set(order)]
+    for u in cyclic:
+        for o in u.outs: unit_of.pop(o, None)
+    ordered = [uid[k] for k in order]
+    # bottom-up merging
+    cone = {}          # id(unit) -> dict(members=[units], inputs=set)
     absorbed = set()
-    for g in gates:
-        members, inputs = [g.out], {abs(l) for l in g.inputs}
+    for u in ordered:
+        members, inputs = [u], set(u.ins)
         changed = True
         while changed:
             changed = False
             for v in sorted(inputs):
-                h = gate_of.get(v)
-                if h is None or v in observable or consumers[v] != {g.out} or v not in cone_of or v in absorbed: continue
-                merged = (inputs - {v}) | cone_of[v]["inputs"]
-                if len(merged) > K: continue
-                inputs = merged; members = cone_of[v]["members"] + members; absorbed.add(v); changed = True
-        cone_of[g.out] = {"members": members, "inputs": inputs}
-    roots = [v for v in cone_of if v not in absorbed]
-    return gate_of, cone_of, roots, cyclic
+                pu = unit_of.get(v)
+                if pu is None or id(pu) in absorbed or id(pu) not in cone or pu is u: continue
+                pc = cone[id(pu)]
+                m_members = pc["members"] + members
+                m_inputs = (inputs | pc["inputs"]) - {o for m in m_members for o in m.outs}
+                inside = {id(m) for m in m_members}
+                visible = [o for m in m_members for o in m.outs if o in observable or (consumers[o] - inside)]
+                if len(m_inputs) > K or len(m_inputs) + len(visible) > MAXCOLS: continue
+                members, inputs = m_members, m_inputs; absorbed.add(id(pu)); changed = True
+        cone[id(u)] = {"members": members, "inputs": inputs}
+    roots = [k for k in cone if k not in absorbed]
+    result = []
+    for k in roots:
+        c = cone[k]; inside = {id(m) for m in c["members"]}
+        outs = [o for m in c["members"] for o in m.outs]
+        visible = [o for o in outs if o in observable or (consumers[o] - inside)]
+        hidden = [o for o in outs if o not in visible]
+        result.append({"members": c["members"], "inputs": sorted(c["inputs"]), "visible": visible, "hidden": hidden})
+    return result, len(cyclic), len(units)
 
 # ── tables ──────────────────────────────────────────────────────────────────
 def qm_cover(k, minterms):
@@ -176,7 +243,6 @@ def qm_cover(k, minterms):
                     nxt.add((v, m | bit)); merged.add((v, m)); merged.add((v | bit, m))
         primes += [c for c in level if c not in merged]
         level = nxt
-    # cover
     def covers(c, x): v, m = c; return (x & ~m) == (v & ~m)
     uncovered = set(minterms); chosen = []
     by_min = {x: [c for c in primes if covers(c, x)] for x in minterms}
@@ -188,24 +254,31 @@ def qm_cover(k, minterms):
         chosen.append(best); uncovered -= {y for y in uncovered if covers(best, y)}
     return chosen
 
-def cone_table(cone, gate_of, K):
-    inputs = sorted(cone["inputs"]); members = cone["members"]; root = members[-1]
-    k = len(inputs)
+def cone_table(cone):
+    """Columns: inputs then visible outputs.  Rows: a cube cover of the relation
+    {(x, F(x))}, F the cone's function (hidden outputs evaluated inside)."""
+    inputs, visible = cone["inputs"], cone["visible"]
+    k, kv = len(inputs), len(visible)
     idx = {v: i for i, v in enumerate(inputs)}
-    f = []
-    val = {}
+    # members in dependency order (merging may have placed a producer after its consumer)
+    pending, ordered, known = list(cone["members"]), [], set(inputs)
+    while pending:
+        ready = [m for m in pending if all(abs(l) in known for g in m.gates for l in g.inputs if abs(l) not in m.outs)]
+        if not ready: raise RuntimeError("cone members do not form a DAG")
+        for m in ready:
+            ordered.append(m); known.update(m.outs); pending.remove(m)
+    gates = [g for m in ordered for g in m.gates]
+    val = {}; minterms = []; f = []
     for a in range(1 << k):
         for v, i in idx.items(): val[v] = bool(a >> i & 1)
-        for m in members:      # topological within the cone (absorbed cones precede their consumer)
-            g = gate_of[m]
-            val[m] = g.fn([lit_value(l, val) for l in g.inputs])
-        f.append(val[root])
-    ones = [a for a in range(1 << k) if f[a]]; zeros = [a for a in range(1 << k) if not f[a]]
-    rows = []
-    for cubes, o in ((qm_cover(k, ones), 1), (qm_cover(k, zeros), 0)):
-        for v, m in cubes:
-            rows.append([None if m >> i & 1 else int(v >> i & 1) for i in range(k)] + [o])
-    return inputs, root, rows, tuple(f)
+        for g in gates: val[g.out] = g.fn([lit_value(l, val) for l in g.inputs])
+        y = 0
+        for j, o in enumerate(visible):
+            if val[o]: y |= 1 << j
+        minterms.append(a | (y << k)); f.append(y)
+    cubes = qm_cover(k + kv, minterms)
+    rows = [[None if m >> i & 1 else int(v >> i & 1) for i in range(k + kv)] for v, m in cubes]
+    return rows, tuple(f)
 
 # ── main ────────────────────────────────────────────────────────────────────
 def main():
@@ -218,37 +291,39 @@ def main():
     nv, clauses = read_cnf(args.cnf)
     gates = extract_gates(clauses)
     kinds = collections.Counter(g.kind for g in gates)
-    gate_of, cone_of, roots, cyclic = build_cones(nv, clauses, gates, args.k)
+    cones, ncyclic, nunits = build_cones(nv, clauses, gates, args.k)
     os.makedirs(os.path.join(args.out, "tables"), exist_ok=True)
     instances, absorbed_clauses, tables = [], set(), {}
-    nhidden = 0; sizes = collections.Counter()
-    for r in roots:
-        cone = cone_of[r]
-        if len(cone["members"]) < args.min_gates: continue
-        inputs, root, rows, f = cone_table(cone, gate_of, args.k)
+    nhidden = 0; sizes = collections.Counter(); nfa = sum(1 for c in cones for m in c["members"] if len(m.gates) == 2)
+    for cone in cones:
+        ngates = sum(len(m.gates) for m in cone["members"])
+        if ngates < args.min_gates or not cone["visible"] and not cone["hidden"]: continue
+        rows, f = cone_table(cone)
+        k, kv = len(cone["inputs"]), len(cone["visible"])
         if args.verify:
-            k = len(inputs)
             for a in range(1 << k):
                 bits = [a >> i & 1 for i in range(k)]
-                fit = [r for r in rows if all(c is None or c == b for c, b in zip(r[:-1], bits))]
-                outs = {r[-1] for r in fit}
-                assert outs == {int(f[a])}, f"cone {root}: input {bits} → rows give {outs}, function {int(f[a])}"
-        key = (len(inputs), f)
+                fit = [r for r in rows if all(c is None or c == b for c, b in zip(r[:k], bits))]
+                ys = {tuple(r[k:]) for r in fit}
+                want = tuple(f[a] >> j & 1 for j in range(kv))
+                assert all(all(c is None or c == w for c, w in zip(y, want)) for y in ys) and ys, f"cone {cone['visible']}: input {bits} → rows {ys}, function {want}"
+        key = (k, kv, f)
         if key not in tables:
             name = f"t{len(tables)}.json"
-            json.dump({"name": name[:-5], "vars": [f"i{j}" for j in range(len(inputs))] + ["o"], "rows": rows},
+            json.dump({"name": name[:-5], "vars": [f"i{j}" for j in range(k)] + [f"o{j}" for j in range(kv)], "rows": rows},
                       open(os.path.join(args.out, "tables", name), "w"))
             tables[key] = name
-        instances.append({"table": "tables/" + tables[key], "args": inputs + [root]})
-        for m in cone["members"]: absorbed_clauses.update(gate_of[m].clauses)
-        nhidden += len(cone["members"]) - 1; sizes[len(cone["members"])] += 1
+        instances.append({"table": "tables/" + tables[key], "args": cone["inputs"] + cone["visible"]})
+        for m in cone["members"]:
+            for g in m.gates: absorbed_clauses.update(g.clauses)
+        nhidden += len(cone["hidden"]); sizes[ngates] += 1
     with open(os.path.join(args.out, "residual.cnf"), "w") as out:
         rest = [c for i, c in enumerate(clauses) if i not in absorbed_clauses]
         out.write(f"p cnf {nv} {len(rest)}\n")
         for c in rest: out.write(" ".join(map(str, c)) + " 0\n")
     json.dump(instances, open(os.path.join(args.out, "boxes.json"), "w"))
-    print(f"{os.path.basename(args.cnf)}: {nv} vars, {len(clauses)} clauses; gates {dict(kinds)} ({len(cyclic)} dropped on cycles); "
-          f"cones {len(instances)} (sizes {dict(sorted(sizes.items()))}), {len(tables)} distinct tables, {nhidden} hidden vars, "
+    print(f"{os.path.basename(args.cnf)}: {nv} vars, {len(clauses)} clauses; gates {dict(kinds)} ({nunits} units, {nfa} full adders, {ncyclic} dropped on cycles); "
+          f"cones {len(instances)} (gates per cone {dict(sorted(sizes.items()))}), {len(tables)} distinct tables, {nhidden} hidden vars, "
           f"{len(absorbed_clauses)} clauses absorbed, {len(rest)} residual")
 
 if __name__ == "__main__":

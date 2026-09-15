@@ -246,6 +246,30 @@ scheme without its target phases; a restart reuses the trail down to
 the first decision the heap would now make differently.  Measured in
 §10.1.
 
+**Which phase.**  Saved phases, and (`BOXES_PHASES=1`, 2026-09-15, off
+by default — §10.1) CaDiCaL's target and best phases: after every conflict-free propagation
+a trail longer than any since the last restart stores its assignment as
+the *target* phases, longer than any ever as the *best*; stable-mode
+decisions take the target phase, and every 1,000·k conflicts the saved
+phases are rephased — best, original, best, inverted, best, random, in
+turn.
+
+**Inprocessing (`BOXES_INPROCESS=1`, 2026-09-15, off by default —
+§10.1).**  Every 10,000
+conflicts (the interval growing by 10,000), at a restart and at level 0:
+the elimination below is run again over the original clauses under the
+current level-0 assignment (learned clauses that mention an eliminated
+variable are dropped, the rest survive), then the kept learned clauses
+of LBD ≤ 6 are *vivified* (Luo et al. 2017) — the negations of a
+clause's literals are assigned one by one with the engine's own
+propagation, tables included; a literal found true is implied by those
+before it and the clause shrinks to them, one found false is dropped,
+a conflict ends the clause early — within 2 M propagations a round,
+the saved phases restored afterwards.  Elimination during the search
+needs the engine's variables never to be assumed, so it runs only where
+`simplify` ran (the CLI); vivification runs in the path search's
+completion engine too.
+
 **Preprocessing (2026-09-15).**  `Engine::simplify` is SatELite's
 bounded variable elimination on the clauses: after level-0 propagation,
 a variable in no table and still unassigned is resolved away when its
@@ -871,7 +895,8 @@ binary heap of the unassigned variables (ties to the lower variable),
 phase saving and restarts (Luby, or Glucose's dynamic ones with stable
 phases and trail reuse, §3.5) are the textbook ones, and the learned
 clause is minimised (§3.5); the CLI runs bounded variable elimination
-first (§3.5).  A call whose
+first (§3.5).  Inprocessing rounds and target phases exist behind
+switches and are off (§3.5, §10.1).  A call whose
 tables are tiny (≤ 8 rows, negation ≤ 4 rows) goes into the engine in
 **clause form** — `atom ⇒ B` is one clause per row of ¬B, `¬atom ⇒ ¬B` one
 per row of B — the same constraint, but propagated by watched literals
@@ -1014,6 +1039,41 @@ the SLP window table of `doc/matmul_cxlb_satcomp.md` re-measured —
 1.4–6× behind CaDiCaL on the refutations, 2–25× ahead on eight
 satisfiable rows and 13–17× behind on three, the weight-7 window's
 k = 15 solve (23 s under Luby) lost within 60 s.
+
+**Target phases and inprocessing (2026-09-15).**  Both implemented as
+§3.5 describes and measured in the four combinations against the
+engine above (Glucose restarts, elimination in the CLI), the box-native
+rows on four servers running concurrently, the CLI rows two at a time:
+
+| instance | neither | target phases | inprocessing | both |
+|---|---|---|---|---|
+| w5_ap(178) (UNSAT) | 71 s | 197 s | 95 s | 78 s |
+| w5_ap(177) (SAT) | 0.08 s | 2.2 s | 0.08 s | 0.63 s |
+| matmul rank 6 + symmetry, boxes / chain (UNSAT) | 5.6 / 1.7 s | 2.8 / 2.4 s | 2.9 / 5.5 s | 5.6 / 5.5 s |
+| matmul rank 7, chain / boxes (SAT) | 0.07 s / > 60 s | 0.24 s / > 60 s | 0.07 s / 52 s | 0.24 s / > 60 s |
+| the five SLP window refutations together | 5.3 s | 7.0 s | 6.3 s | 6.9 s |
+| c3540 plain / cones K = 8 (UNSAT) | 1.6 / 2.4 s | 1.7 / 2.8 s | 1.7 / 2.5 s | 1.6 / 2.8 s |
+| c5315 plain / cones K = 8 (UNSAT) | 0.25 / 0.36 s | 0.23 / 0.35 s | 0.32 / 0.49 s | 0.32 / 0.67 s |
+| toughsat plain CNF (SAT) | 158 s | 39 s | 17 s | 40 s |
+| toughsat cones K = 12 (SAT) | 252 s | 24 s | > 300 s | > 300 s |
+| pyhala-braun-sat plain CNF (SAT) | 122 s | 161 s | 217 s | 163 s |
+| pyhala-braun-sat cones K = 8 (SAT) | 157 s | 103 s | 310 s | 94 s |
+
+Neither pays on this set.  Target phases cost the refutations — the
+waerden one 2.8×, the SLP ones 33 % together — and move the satisfiable
+rows both ways (toughsat 4–10× faster, w5_ap(177) 30× slower); without
+CaDiCaL's local-search rephasing ("walk") the target/best/random cycle
+mostly perturbs.  Inprocessing works as intended — vivification takes
+3–4 literals off each of thousands of kept clauses per run (c3540:
+7,385 clauses, −27,955 literals in four rounds; re-elimination finds
+4–35 more variables) — but the rounds cost more than the shorter
+clauses return at these run lengths: refutations 20–30 % slower on the
+box-native rows, ±10 % on the circuits, the long satisfiable rows
+again both ways (it does raise the conflict rate where nothing is
+decided — the 33 K-variable sum-of-3-cubes instance makes 472 K
+conflicts in 60 s against 368 K, the vivified clauses propagating
+faster).  Both stay behind their switches, off; the paper's window
+table and the numbers above stand.
 
 Measured on van der Waerden (`lib/waerden.jq`, `w(4;4;35)` UNSAT and
 `w(4;4;34)` SAT, 35 variables, 374 clauses; times as the UI reports them,

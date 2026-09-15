@@ -150,6 +150,13 @@ pub struct Stats {
     pub eliminated: u64,
     pub clauses_before: u64,
     pub clauses_after: u64,
+    /// Inprocessing rounds, variables eliminated in them, learned clauses
+    /// vivified (shortened) and the literals they lost; rephases.
+    pub inprocess_rounds: u64,
+    pub inprocess_eliminated: u64,
+    pub vivified: u64,
+    pub vivified_lits: u64,
+    pub rephases: u64,
 }
 
 /// How a table's explanation is chosen among the assigned literals whose
@@ -341,6 +348,27 @@ pub struct Engine {
     /// backwards to extend a model.
     eliminated: Vec<bool>,
     elim: Vec<(u32, Vec<Vec<u32>>)>,
+    /// Elimination may run during the search (set by `simplify`: no
+    /// variable of this engine is ever assumed).
+    elim_enabled: bool,
+    /// Target and best phases (`BOXES_PHASES=1`, off by default: §10.1 of
+    /// the design doc): the assignment of the longest trail since the last
+    /// restart, used in stable mode, and of the longest ever, used by
+    /// rephasing.
+    pub phases: bool,
+    target_phase: Vec<bool>,
+    target_size: usize,
+    best_phase: Vec<bool>,
+    best_size: usize,
+    rephase_at: u64,
+    rephase_count: u64,
+    rng: u64,
+    /// Inprocessing (`BOXES_INPROCESS=1`, off by default: §10.1 of the
+    /// design doc): every `inprocess_interval` conflicts, at level 0,
+    /// re-eliminate and vivify.
+    pub inprocess: bool,
+    inprocess_at: u64,
+    inprocess_interval: u64,
     pub stats: Stats,
     /// Optional decision budget; `solve` returns `Unknown` when exceeded.
     pub max_decisions: Option<u64>,
@@ -374,7 +402,12 @@ impl Engine {
             lbd_q: std::collections::VecDeque::new(), lbd_q_sum: 0, lbd_sum: 0,
             trail_q: std::collections::VecDeque::new(), trail_q_sum: 0,
             stable: false, stable_len: 1000, stable_toggle_at: 1000,
-            eliminated: Vec::new(), elim: Vec::new(),
+            eliminated: Vec::new(), elim: Vec::new(), elim_enabled: false,
+            phases: matches!(std::env::var("BOXES_PHASES").as_deref(), Ok("1") | Ok("on")),
+            target_phase: Vec::new(), target_size: 0, best_phase: Vec::new(), best_size: 0,
+            rephase_at: 1000, rephase_count: 0, rng: 0x9E37_79B9_7F4A_7C15,
+            inprocess: matches!(std::env::var("BOXES_INPROCESS").as_deref(), Ok("1") | Ok("on")),
+            inprocess_at: 10_000, inprocess_interval: 10_000,
             stats: Stats::default(), max_decisions: None, cancel: None,
             explain: ExplainMode::from_env(),
             expl_cands: Vec::new(), expl_orig: Vec::new(), expl_picked: Vec::new(), expl_keep: Vec::new(), expl_used: Vec::new(),
@@ -406,6 +439,8 @@ impl Engine {
         self.expl_cache.resize_with(nvars, Vec::new);
         self.expl_ok.resize(nvars, false);
         self.eliminated.resize(nvars, false);
+        self.target_phase.resize(nvars, false);
+        self.best_phase.resize(nvars, false);
         let old = self.heap_pos.len();
         self.heap_pos.resize(nvars, u32::MAX);
         for v in old..nvars { self.heap_insert(v as u32); }
@@ -1011,6 +1046,16 @@ impl Engine {
     pub fn simplify(&mut self) -> bool {
         debug_assert!(self.decision_level() == 0, "simplify runs before the search");
         if !self.init() { return false; }
+        self.elim_enabled = true;
+        self.eliminate_round();
+        if self.unsat_at_init { return false; }
+        self.init()
+    }
+
+    /// One elimination round at level 0 over the original clauses under
+    /// the current assignment; learned clauses that mention an eliminated
+    /// variable are dropped, the rest survive the rebuild.
+    fn eliminate_round(&mut self) {
         let n = self.nvars;
         // the original clauses under the level-0 assignment
         let mut cls: Vec<Vec<u32>> = Vec::new();
@@ -1020,6 +1065,10 @@ impl Engine {
             debug_assert!(c.len() >= 2, "level-0 propagation left a unit or empty clause");
             cls.push(c);
         }
+        let learned: Vec<(Vec<u32>, u32, f64)> = (self.first_learnt..self.clauses.len())
+            .filter(|&ci| !self.deleted[ci] && !self.clauses[ci].iter().any(|&l| self.lit_value(l) == Val::T))
+            .map(|ci| (self.clauses[ci].iter().copied().filter(|&l| self.lit_value(l) != Val::F).collect(), self.learnt_lbd[ci - self.first_learnt], self.learnt_act[ci - self.first_learnt]))
+            .collect();
         self.stats.clauses_before = cls.len() as u64;
         let mut alive = vec![true; cls.len()];
         let mut occ: Vec<Vec<usize>> = vec![Vec::new(); 2 * n];
@@ -1061,10 +1110,12 @@ impl Engine {
                 }
             }
         }
-        // rebuild the clause store from the survivors
+        // rebuild the clause store: the surviving originals, then the
+        // learned clauses free of eliminated variables
         self.clauses.clear(); self.deleted.clear(); self.learnt_lbd.clear(); self.learnt_act.clear();
         self.first_learnt = 0;
         for w in &mut self.watches { w.clear(); }
+        for v in 0..n { if self.vals[v] != Val::U { self.reason[v] = Reason::None; } }   // level-0 reasons pointed into the old store
         let mut kept = 0u64;
         for (i, c) in cls.iter().enumerate() {
             if !alive[i] { continue; }
@@ -1073,8 +1124,11 @@ impl Engine {
             self.add_clause(&lits);
         }
         self.stats.clauses_after = kept;
-        if self.unsat_at_init { return false; }
-        self.init()
+        for (c, lbd, act) in learned {
+            if c.iter().any(|&l| self.eliminated[(l >> 1) as usize]) { continue; }
+            self.add_learned(c, lbd, act);
+        }
+        self.qhead = 0;
     }
 
     pub fn solve(&mut self) -> Verdict {
@@ -1118,6 +1172,8 @@ impl Engine {
     /// whose decision still outranks the variable the heap would pick.
     fn restart(&mut self, base: usize) {
         self.stats.restarts += 1;
+        self.target_size = 0;
+        if self.phases && self.stats.conflicts >= self.rephase_at { self.rephase(); }
         let mut keep = base;
         if self.restart == RestartMode::Glucose && let Some(next) = self.heap_peek_unassigned() {
             while keep < self.decision_level() {
@@ -1129,6 +1185,120 @@ impl Engine {
             }
         }
         self.backjump(keep);
+    }
+
+    /// After a conflict-free propagation: a trail longer than any since
+    /// the last restart becomes the target phases, longer than any ever
+    /// the best phases.
+    fn update_phases(&mut self) {
+        let n = self.trail.len();
+        if n > self.target_size {
+            self.target_size = n;
+            for &v in &self.trail { self.target_phase[v as usize] = self.vals[v as usize] == Val::T; }
+        }
+        if n > self.best_size {
+            self.best_size = n;
+            for &v in &self.trail { self.best_phase[v as usize] = self.vals[v as usize] == Val::T; }
+        }
+    }
+
+    /// Reset the saved phases: best, original (false), best, inverted
+    /// (true), best, random — in turn, at intervals growing by 1000.
+    fn rephase(&mut self) {
+        self.stats.rephases += 1;
+        let k = self.rephase_count % 6;
+        self.rephase_count += 1;
+        self.rephase_at = self.stats.conflicts + 1000 * (self.rephase_count + 1);
+        for v in 0..self.nvars {
+            self.phase[v] = match k {
+                0 | 2 | 4 => self.best_phase[v],
+                1 => false,
+                3 => true,
+                _ => { self.rng ^= self.rng << 13; self.rng ^= self.rng >> 7; self.rng ^= self.rng << 17; self.rng & 1 == 1 }
+            };
+        }
+        self.target_size = 0;
+    }
+
+    /// An inprocessing round at level 0: re-eliminate (when the engine's
+    /// variables are never assumed) and vivify the kept learned clauses.
+    fn inprocess_round(&mut self) {
+        debug_assert!(self.decision_level() == 0);
+        self.stats.inprocess_rounds += 1;
+        if self.elim_enabled {
+            let before = self.stats.eliminated;
+            self.eliminate_round();
+            self.stats.inprocess_eliminated += self.stats.eliminated - before;
+            if self.unsat_at_init { return; }
+            if self.propagate().is_some() { self.unsat_at_init = true; return; }
+        }
+        self.vivify();
+    }
+
+    /// Vivification (Luo et al.): for each kept learned clause, assign the
+    /// negations of its literals one by one with propagation; a literal
+    /// found true is implied by the ones before it (the clause shrinks to
+    /// them plus it), one found false is dropped, a conflict ends the
+    /// clause at the literals so far.  At most 2 M propagations a round;
+    /// the saved phases are restored afterwards.
+    fn vivify(&mut self) {
+        let saved_phase = self.phase.clone();
+        let budget_end = self.stats.propagations + 2_000_000;
+        let mut cands: Vec<usize> = (self.first_learnt..self.clauses.len()).filter(|&ci| !self.deleted[ci] && self.learnt_lbd[ci - self.first_learnt] <= 6 && self.clauses[ci].len() > 2).collect();
+        cands.sort_by_key(|&ci| (self.learnt_lbd[ci - self.first_learnt], self.clauses[ci].len()));
+        for ci in cands {
+            if self.stats.propagations > budget_end { break; }
+            let lits = self.clauses[ci].clone();
+            // under the level-0 assignment
+            if lits.iter().any(|&l| self.lit_value(l) == Val::T) { self.deleted[ci] = true; self.clauses[ci] = Vec::new(); continue; }
+            let lits: Vec<u32> = lits.into_iter().filter(|&l| self.lit_value(l) != Val::F).collect();
+            self.deleted[ci] = true;   // out of the way of its own propagation
+            let mut kept: Vec<u32> = Vec::new();
+            let mut shortened = false;
+            let mut conflict = false;
+            for &l in &lits {
+                match self.lit_value(l) {
+                    Val::T => { kept.push(l); shortened = true; break; }   // implied by the negations so far
+                    Val::F => { shortened = true; continue; }                 // dropped
+                    Val::U => {
+                        kept.push(l);
+                        self.new_level();
+                        self.assign(l >> 1, if l & 1 == 1 { Val::T } else { Val::F }, Reason::None);   // ¬l
+                        if self.propagate().is_some() { conflict = true; break; }
+                    }
+                }
+            }
+            self.backjump(0);
+            if conflict && kept.len() < lits.len() { shortened = true; }
+            if !shortened || kept.len() == lits.len() { self.deleted[ci] = false; continue; }
+            self.stats.vivified += 1;
+            self.stats.vivified_lits += (lits.len() - kept.len()) as u64;
+            self.clauses[ci] = Vec::new();
+            let lbd = self.learnt_lbd[ci - self.first_learnt];
+            let act = self.learnt_act[ci - self.first_learnt];
+            self.add_learned(kept, lbd, act);
+            if self.unsat_at_init { break; }
+        }
+        self.phase = saved_phase;
+    }
+
+    /// Add a learned clause at level 0 (an inprocessing result): a unit is
+    /// assigned, the empty clause makes the engine unsatisfiable.
+    fn add_learned(&mut self, mut c: Vec<u32>, lbd: u32, act: f64) {
+        c.sort_unstable(); c.dedup();
+        match c.len() {
+            0 => self.unsat_at_init = true,
+            1 => { let l = c[0]; if !self.assign(l >> 1, if l & 1 == 1 { Val::F } else { Val::T }, Reason::None) { self.unsat_at_init = true; } else if self.propagate().is_some() { self.unsat_at_init = true; } }
+            _ => {
+                let ci = self.clauses.len() as u32;
+                self.watches[c[0] as usize].push((ci, c[1]));
+                self.watches[c[1] as usize].push((ci, c[0]));
+                self.clauses.push(c);
+                self.deleted.push(false);
+                self.learnt_lbd.push(lbd);
+                self.learnt_act.push(act);
+            }
+        }
     }
 
     /// The Luby sequence (1, 1, 2, 1, 1, 2, 4, …).
@@ -1188,11 +1358,19 @@ impl Engine {
                 if self.restart_due(lbd, trail_len, conflicts_here, restarts) {
                     restarts += 1; conflicts_here = 0;
                     self.restart(base);
+                    if self.inprocess && base == 0 && self.stats.conflicts >= self.inprocess_at {
+                        self.inprocess_at = self.stats.conflicts + self.inprocess_interval;
+                        self.inprocess_interval += 10_000;
+                        self.backjump(0);
+                        self.inprocess_round();
+                        if self.unsat_at_init { return Verdict::Unsat; }
+                    }
                 }
                 continue;
             }
             if let Some(max) = self.max_decisions && self.stats.decisions >= max { return Verdict::Unknown; }
             if self.stats.decisions & 255 == 0 && let Some(c) = &self.cancel && c.load(std::sync::atomic::Ordering::Relaxed) { return Verdict::Unknown; }
+            if self.phases { self.update_phases(); }
             // assumptions first, one level each
             let lvl = self.decision_level();
             if lvl < base + assumptions.len() {
@@ -1215,7 +1393,8 @@ impl Engine {
             let v = v as usize;
             self.new_level();
             self.stats.decisions += 1;
-            self.assign(v as u32, if self.phase[v] { Val::T } else { Val::F }, Reason::None);
+            let ph = if self.phases && self.stable && self.target_size > 0 { self.target_phase[v] } else { self.phase[v] };
+            self.assign(v as u32, if ph { Val::T } else { Val::F }, Reason::None);
         }
     }
 }
@@ -1415,6 +1594,43 @@ mod tests {
         let mut e = Engine::from_cnf(n, &c);
         assert!(e.simplify());
         assert_eq!(e.solve(), Verdict::Unsat);
+    }
+
+    /// Inprocessing (re-elimination, vivification) and rephasing forced to
+    /// run every few conflicts on random 3-SAT of 70 variables near the
+    /// threshold, under both restart policies, against CaDiCaL; models are
+    /// checked against the clauses.
+    #[test]
+    fn inprocessing_vs_cadical() {
+        let mut seed: u64 = 0x1F1F_2E2E_3D3D_4C4C;
+        let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+        let (n, m) = (70usize, 298usize);
+        let mut rounds = 0u64; let mut vivified = 0u64;
+        for trial in 0..20 {
+            let mut cls: Vec<Vec<i32>> = Vec::new();
+            for _ in 0..m {
+                let mut c = Vec::new();
+                while c.len() < 3 { let v = (rnd() % n as u64) as i32 + 1; if !c.iter().any(|&x: &i32| x.abs() == v) { c.push(if rnd() % 2 == 0 { v } else { -v }); } }
+                cls.push(c);
+            }
+            let mut cad: cadical::Solver<cadical::Timeout> = cadical::Solver::new();
+            for c in &cls { cad.add_clause(c.iter().copied()); }
+            let expect = cad.solve().expect("cadical");
+            let mut e = Engine::from_cnf(n, &cls);
+            e.inprocess_at = 30; e.inprocess_interval = 30; e.rephase_at = 20; e.reduce_start = 50;
+            e.inprocess = true; e.phases = true;
+            e.restart = if trial % 2 == 0 { RestartMode::Luby } else { RestartMode::Glucose };
+            let ok = e.simplify();
+            let v = if ok { e.solve() } else { Verdict::Unsat };
+            rounds += e.stats.inprocess_rounds; vivified += e.stats.vivified;
+            match v {
+                Verdict::Sat(model) => { assert!(expect, "trial {trial}: engine SAT, CaDiCaL UNSAT"); assert!(check_model(&cls, &model), "trial {trial}: bad model"); }
+                Verdict::Unsat => assert!(!expect, "trial {trial}: engine UNSAT, CaDiCaL SAT"),
+                Verdict::Unknown => panic!("no budget set"),
+            }
+        }
+        eprintln!("inprocessing rounds {rounds}, clauses vivified {vivified}");
+        assert!(rounds > 0, "no inprocessing round ran — lower the interval or raise m");
     }
 
     /// Learned-clause deletion is exercised (a low `reduce_start`) on random

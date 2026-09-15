@@ -1665,7 +1665,8 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
               eng.explain, s.explanations, s.explanation_lits as f64 / s.explanations.max(1) as f64, s.explanation_dropped,
               s.learned, s.learned_lits as f64 / s.learned.max(1) as f64, s.learned_lits_raw as f64 / s.learned.max(1) as f64,
               if eng.minimize { "" } else { ", off" });
-    eprintln!("c boxes: learned DB {} clauses kept of {} ({} deleted in {} reductions); {} explanation cache hits; {} restarts ({:?})", s.learned - s.deleted, s.learned, s.deleted, s.reductions, s.explanation_hits, s.restarts, eng.restart);
+    eprintln!("c boxes: learned DB {} clauses kept of {} ({} deleted in {} reductions); {} explanation cache hits; {} restarts ({:?}); {} rephases; {} inprocessing rounds: {} variables eliminated, {} clauses vivified (-{} literals)",
+              s.learned - s.deleted, s.learned, s.deleted, s.reductions, s.explanation_hits, s.restarts, eng.restart, s.rephases, s.inprocess_rounds, s.inprocess_eliminated, s.vivified, s.vivified_lits);
     match verdict {
         logic::boxes::Verdict::Sat(m)   => SearchOutcome::Sat(m),
         logic::boxes::Verdict::Unsat    => SearchOutcome::Unsat,

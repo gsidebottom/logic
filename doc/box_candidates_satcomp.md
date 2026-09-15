@@ -375,6 +375,35 @@ satisfiable instances, not a trend; the refutations do not move.  The
 box-native side of the same change is in the design doc's §10.1: van
 der Waerden's w(5;5;178) refutation 6× faster under Glucose restarts.
 
+## Sixth measurement: target phases and inprocessing (2026-09-15)
+
+CaDiCaL's target/best phases with rephasing (`BOXES_PHASES=1`) and
+inprocessing rounds — re-elimination plus vivification of the kept
+learned clauses (`BOXES_INPROCESS=1`) — measured in the four
+combinations; both are off by default afterwards (the design doc's
+§10.1 has the box-native side, where both cost the refutations).  The
+competition rows, two processes at a time:
+
+| instance | neither | target phases | inprocessing | both |
+|---|---|---|---|---|
+| c3540 plain / c5315 plain (UNSAT) | 1.6 / 0.25 s | 1.7 / 0.23 s | 1.7 / 0.32 s | 1.6 / 0.32 s |
+| c3540 cones K = 8 / c5315 cones K = 8 | 2.4 / 0.36 s | 2.8 / 0.35 s | 2.5 / 0.49 s | 2.8 / 0.67 s |
+| toughsat plain (SAT; CaDiCaL 205 s) | 158 s | 39 s | 17 s | 40 s |
+| toughsat cones K = 12 (SAT) | 252 s | 24 s | > 300 s | > 300 s |
+| pyhala-braun-sat plain (SAT; CaDiCaL 5.8 s) | 122 s | 161 s | 217 s | 163 s |
+| pyhala-braun-sat cones K = 8 | 157 s | 103 s | 310 s | 94 s |
+| pyhala-braun-unsat cones K = 8 (CaDiCaL 53 s) | > 600 s | > 600 s | > 600 s | > 600 s |
+
+Vivification does what it should (3–4 literals off each of thousands
+of kept clauses per run) and the refutations do not get faster for it
+at these run lengths; target phases move the satisfiable rows both
+ways, as every search change has.  The circuit third still wants the
+same two things it wanted before this round: a faster core on the plain
+CNF, and hidden-internal cones on top of it.  (pyhala-braun-unsat was
+rerun only for the default configuration here, at > 600 s; the switch-on
+columns are inferred — it exceeds 600 s under every policy measured, and
+target phases and inprocessing only add work.)
+
 ## Per-family scan (families with ≥ 2 instances across both years)
 
 | family | 2025 | 2026 | class | vars (median) | AND gates | XOR gates | gate % | scope % | binary |

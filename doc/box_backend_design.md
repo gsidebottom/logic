@@ -829,7 +829,15 @@ per row of B — the same constraint, but propagated by watched literals
 (visited at every assignment of any of its variables); larger tables keep
 the mask form, whose propagation is stronger.  `solve_under` takes its units
 as assumptions, one decision level each, so the clauses learned during one
-path's check hold for the next.  Also: the path search's prefix check is
+path's check hold for the next.  One invariant the explanations rest on:
+the live-row masks reflect the *whole* trail, so a table added after
+level-0 units (the CLI and the witness check build the engine from the
+clauses first) is narrowed by the current assignment as it is added — a
+table that looks alive with all its rows dead surfaces its conflict
+levels later with no literal of the current level, which once meant a
+panic in the trail walk or a model violating the table; `search` also
+starts analysis at the conflict's own level when that is below the
+current one.  Also: the path search's prefix check is
 incremental (only the calls touched by literals beyond the common prefix
 with the previous one — "some row survives" is monotone), and the witness
 reuses the completion engine's model instead of solving again.

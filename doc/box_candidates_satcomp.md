@@ -114,13 +114,20 @@ no propagation scheme matters.
 
 About a third of both competitions is circuits whose gate structure a
 translator can read off the CNF, and that is the box backend's thesis in
-its purest form (hidden internals, k-consistency over cones).  The next
-step is `tools/cnf2boxes.py` and a measurement on the small circuit
-families — multiplier-equivalence-checking, miter, belpyramid — before
-anything else; the parity third would need a Gauss box, and the
-cardinality third is not ours.  Caveat from §10.1: on the two families
-measured so far the engine is 10–100× slower than CaDiCaL per search, so
-the cones must change the *search*, not just the propagation, to matter.
+its purest form (hidden internals, k-consistency over cones).
+`tools/cnf2boxes.py` is that translator, and the two measurements below
+(the small circuit families, then the adder-rich prime-factoring and
+sum-of-3-cubes families) say where it stands: it absorbs 50–98 % of the
+clauses of these instances, and the box engine solves none of them
+within 60 s that CaDiCaL does not — nor most that CaDiCaL does.  Two
+things dominate: the engine is 10–100× slower than CaDiCaL per search
+on the plain CNF (§10.1), and a cone whose outputs stay visible trades
+gate clauses for a table with a coarser explanation, so learning gets
+weaker.  The one gain is where cones hide real internals (pyhala-braun,
+39 % of the variables: 2.1× faster than the plain engine at 600 s), and
+that is the direction — hidden-internal cones with *minimal*
+explanations — if the circuit third is to be ours; the parity third
+would need a Gauss box, and the cardinality third is not ours.
 
 ## First measurement: `tools/cnf2boxes.py` on the three small circuit families
 
@@ -168,6 +175,93 @@ moderate `prime-factoring` / `sum-of-3-cubes` instances.  (3) On the
 ISCAS-style AND circuits the box engine is 5–10× slower than CaDiCaL on
 the plain CNF already; that gap is the engine's CDCL maturity, not the
 boxes.
+
+## Second measurement: the adder-rich `prime-factoring` and `sum-of-3-cubes` families
+
+The same four configurations (60 s cap, one core each, 2026-09-14) on
+every local instance of the two families the first measurement pointed
+at.  `tools/cnf2boxes.py` now also recognises full adders (an XOR3 and a
+majority over the same three inputs become one two-output unit) and
+emits multi-output cones, so ripple-carry arithmetic can be absorbed at
+all.  Translation times are Python; K = 12 was only run below 50 K
+variables.
+
+| instance (vars / clauses) | CaDiCaL | box engine, plain CNF | cones K = 8 | cones K = 12 |
+|---|---|---|---|---|
+| toughsat_factoring_895s (2,009 / 10,745) | > 60 s | > 60 s | > 60 s (248 cones, 952 hidden, 251 residual) | > 60 s (194 cones, 1,053 hidden, 227 residual) |
+| ezfact64_6 (3,073 / 19,785) | > 60 s | > 60 s | > 60 s (152 cones, 0 hidden, 17,213 residual) | > 60 s (152 cones, 0 hidden) |
+| pyhala-braun-unsat-40-4-02 (9,638 / 31,795) | UNSAT 53.4 s | > 60 s | > 60 s (861 cones, 3,784 hidden, 7,032 residual) | > 60 s (853 cones, 3,834 hidden) |
+| pyhala-braun-sat-40-4-03 (9,638 / 31,795) | SAT 5.8 s | > 60 s | > 60 s (852 cones, 3,740 hidden, 7,243 residual) | > 60 s (853 cones, 3,791 hidden) |
+| sum_of_3_cubes_37_bits_87 (33,163 / 161,461) | > 60 s | > 60 s | > 60 s (3,979 cones, 64 hidden, 71,244 residual; 18 s to translate) | > 60 s (3,914 cones, 74 hidden) |
+| sum_of_3_cubes_94_bits_30 (154,021 / 764,638) | > 60 s | > 60 s | > 60 s (17,245 cones, 88 hidden; 180 s) | — |
+| sum_of_3_cubes_108_bits_52 (203,042 / 1,010,065) | > 60 s | > 60 s | > 60 s (22,909 cones, 98 hidden; 402 s) | — |
+| sum_of_3_cubes_145_bits_74 (366,442 / 1,829,989) | > 60 s | > 60 s | > 60 s (41,646 cones, 110 hidden; 1,581 s) | — |
+
+Nothing is solved by the box engine in any configuration, and CaDiCaL
+solves only the two pyhala-braun instances.  What the translation
+found, per family:
+
+- **toughsat** (719 AND, 94 XOR2, 572 XOR3, 572 MAJ3 — 572 full
+  adders): the most absorbable instance of the survey, 47 % of the
+  variables hidden and 98 % of the clauses absorbed at K = 8, 52 % and
+  98 % at K = 12.  It is a 60-bit factoring instance; nothing solves it
+  in 60 s, so absorption alone is not the question here.
+- **ezfact64_6** (838 XOR3, 28 XOR2, no AND or majority the extractor
+  recognises — its carries are not in Tseitin form): every gate output
+  has fan-out ≥ 2, so no cone hides anything; the 152 cones are pairs
+  of XOR3 gates over shared inputs, each a 32-row two-output table
+  replacing 16 clauses (13 % of the clauses absorbed).
+- **pyhala-braun** (6,358 AND/OR — the extractor reports an OR as an AND
+  of complemented inputs — and 1,483 XOR2: a Braun array multiplier whose
+  full adders are built from half adders, XOR2 + AND + OR): 39 % of the
+  variables hidden and 78 % of the
+  clauses absorbed, the best-shaped pair of the set, and the only one
+  with a CaDiCaL answer.  The box engine is not within 60 s on the SAT
+  instance CaDiCaL does in 5.8 s, plain or with cones.
+- **sum-of-3-cubes** (8.8 K AND, 475 XOR2, 7.7 K XOR3 at 37 bits, and
+  proportionally up to 366 K variables): the adders' sums and carries
+  all fan out, so at K = 8 only 64–110 variables are hidden and the
+  cones are FA units and XOR pairs with visible outputs — a table per
+  cell, 56 % of the clauses absorbed, no structural gain.  CaDiCaL times
+  out on all four as well.
+
+The reading is the same as on the circuit families, and sharper: the
+translation is now capable of absorbing ripple-carry arithmetic, and
+within 60 s it does not help because (1) the engine is not competitive
+with CaDiCaL on the plain CNF of any of these instances to begin with,
+and (2) a cone whose outputs stay visible replaces gate clauses by a
+table whose lazy explanation is coarser, so learning is weaker with
+cones than without (the ISCAS diagnosis).  Multi-output cones with
+visible outputs (the sum-of-3-cubes and ezfact case) are pure overhead:
+arc consistency on a full-adder table is exactly what unit propagation
+on its clauses does.
+
+Where the cones do hide internals the picture changes.  With a 600 s
+budget on the pyhala-braun pair (the only instances CaDiCaL answers),
+the box engine solves the SAT instance on the plain CNF in **408 s**
+(2.6 M conflicts, 3.1 M decisions, 7.2 M propagations/s) and with the
+K = 8 cones in **179–191 s** over two runs (634 K conflicts, 722 K
+decisions, 3.6 M propagations/s; the model's 5,898 visible literals
+extend to a model of the original CNF, `tools/cnf2boxes_verify.py`) —
+the one instance of the study where cones help: 4×
+fewer conflicts at twice the cost per conflict, 2.1× faster overall,
+still 33× behind CaDiCaL's 5.8 s.  The UNSAT instance is beyond 600 s
+both ways (CaDiCaL 53 s).  What differs from the ISCAS circuits is what
+the cones are: multi-gate half-adder cells with 39 % of the variables
+hidden here, single AND gates with visible outputs there.
+
+One engine bug came out of this run, fixed in the engine at the same
+time: `sat -b boxes --boxes` builds the engine from the CNF (unit
+clauses assign at level 0) and adds the tables afterwards, and the new
+tables' live rows did not reflect those level-0 literals.  A table
+could look alive with all its rows dead; the conflict then surfaced
+levels later with no literal of the current level (a panic in the 1-UIP
+trail walk on ezfact64_6) or, worse, let a model through that violated
+the table (sum_of_3_cubes_37_bits_87 "SAT" in 0.1 s; it times out now).
+The controller's witness check builds its engine in the same order, so
+the fix matters for the UI too.  `add_box` now applies the current
+assignment to a new table, `search` starts analysis at the conflict's
+own level, and a randomized test adds tables after unit clauses.
 
 ## Per-family scan (families with ≥ 2 instances across both years)
 

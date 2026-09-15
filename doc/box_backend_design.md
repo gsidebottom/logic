@@ -1075,6 +1075,33 @@ conflicts in 60 s against 368 K, the vivified clauses propagating
 faster).  Both stay behind their switches, off; the paper's window
 table and the numbers above stand.
 
+**The w(5;5) family, boxes against CaDiCaL (2026-09-15).**  Through
+the web app's `/satisfiable` (boxed form `w5_ap(n)`, one `ap5` box per
+progression) and `/cadical/sat` (the same boxed formula, and the plain
+clause form `w(5;5;n)`, which CaDiCaL solves in identical time — the
+endpoint expands the boxes to the same clauses); the engine's defaults
+(cover explanations, heap, minimisation, Glucose restarts):
+
+| n | boxes `w5_ap(n)` | CaDiCaL `w5_ap(n)` | CaDiCaL `w(5;5;n)` |
+|---|---|---|---|
+| 150–176 (SAT) | 0.010–0.014 s | 0.005–0.008 s | 0.005–0.008 s |
+| 177 (SAT, the last satisfiable size) | **0.066 s** | 1.22 s | 1.22 s |
+| 178 (UNSAT, w(5;5) = 178) | 56 s | 9.7 s | 9.7 s |
+
+and w(4;4;n) for n = 30–35 in a millisecond on both.  Every satisfiable
+size but the boundary is trivial for both engines, so the one hard
+satisfiable instance is n = 177, where the box engine is 18× faster
+than CaDiCaL on the same clauses — and that is one trajectory, not a
+property of the engine: the same formula with its progressions in five
+orders (which renumbers the variables and reorders the atoms for both
+solvers) gives boxes 0.07 / 0.96 / 0.61 / 1.53 / 2.89 s against CaDiCaL
+1.25 / 0.02 / 0.30 / 1.10 / 1.22 s.  Each engine scatters 10–60× with
+the ordering and each has an order it is lucky on; over the five the
+two are comparable, CaDiCaL a little ahead on the median.  The
+satisfiable side of the w(5;5) family is therefore not a box-engine
+win to report; the refutation (n = 178, 56 s against 9.7 s) is the
+number that means something, and it is 6× behind.
+
 Measured on van der Waerden (`lib/waerden.jq`, `w(4;4;35)` UNSAT and
 `w(4;4;34)` SAT, 35 variables, 374 clauses; times as the UI reports them,
 best of 5): with one `ap4(x_i;x_{i+d};x_{i+2d};x_{i+3d})` box per

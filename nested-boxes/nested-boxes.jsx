@@ -3327,7 +3327,7 @@ export default function App() {
                     const total = validResult.totalPathCount ?? 0;
                     const elapsed = validResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((validResult.classifiedCount ?? 0) / elapsed) : 0;
-                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
+                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)}${matrixBackend !== 'boxes' && rate > 0 ? ` at ${fmtNum(rate)} paths/s` : ''}` : '';
                     if (validResult.preprocessedTo) {
                       return `✓ Valid — decided by preprocessing alone, no search of the ${fmtNum(total)} path matrix needed${ratePart}`;
                     }
@@ -3439,7 +3439,7 @@ export default function App() {
                     const total = validResult.totalPathCount ?? 0;
                     const elapsed = validResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((validResult.classifiedCount ?? 0) / elapsed) : 0;
-                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
+                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)}${matrixBackend !== 'boxes' && rate > 0 ? ` at ${fmtNum(rate)} paths/s` : ''}` : '';
                     const ppNote = validResult.preprocessedTo ? ' (decided by preprocessing alone)' : '';
                     return `✗ Not valid — falsifying assignment and uncovered path in ${fmtNum(total)} path matrix${ratePart}${ppNote}:`;
                   })()}
@@ -3705,7 +3705,7 @@ export default function App() {
                     const total = satResult.totalPathCount ?? 0;
                     const elapsed = satResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((satResult.classifiedCount ?? 0) / elapsed) : 0;
-                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
+                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)}${matrixBackend !== 'boxes' && rate > 0 ? ` at ${fmtNum(rate)} paths/s` : ''}` : '';
                     const ppNote = satResult.preprocessedTo ? ' (decided by preprocessing alone)' : '';
                     return `✓ Satisfiable — satisfying assignment and uncovered path in complement of ${fmtNum(total)} path matrix${ratePart}${ppNote}:`;
                   })()}
@@ -3877,7 +3877,7 @@ export default function App() {
                     const total = satResult.totalPathCount ?? 0;
                     const elapsed = satResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((satResult.classifiedCount ?? 0) / elapsed) : 0;
-                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
+                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)}${matrixBackend !== 'boxes' && rate > 0 ? ` at ${fmtNum(rate)} paths/s` : ''}` : '';
                     if (satResult.preprocessedTo) {
                       return `✗ Unsatisfiable — decided by preprocessing alone, no search of the ${fmtNum(total)} path complement matrix needed${ratePart}`;
                     }
@@ -4085,7 +4085,7 @@ export default function App() {
                   const total = pathsResult.totalPathCount ?? 0;
                   const elapsed = pathsResult.elapsedSecs ?? 0;
                   const rate = elapsed > 0 ? Math.round(classified / elapsed) : 0;
-                  const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
+                  const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)}${matrixBackend !== 'boxes' && rate > 0 ? ` at ${fmtNum(rate)} paths/s` : ''}` : '';
                   if (pathsResult.hitLimit) {
                     const pct = total > 0 ? ((classified / total) * 100).toFixed(1) : '0';
                     return `${fmtNum(classified)} of ${fmtNum(total)} paths (${pct}%) through the ${pathsResult.isComplement ? 'complement ' : ''}matrix${ratePart}`;

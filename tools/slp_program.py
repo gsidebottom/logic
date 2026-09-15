@@ -79,7 +79,7 @@ def main():
     t0 = time.time()
     verdict, asg = (witness_cadical if args.cadical else witness_boxes)(args.url, formula, args.cap)
     engine = "CaDiCaL" if args.cadical else "boxes backend"
-    print(f"{engine}: SLP({args.k}) on {args.instance} (n = {n}, {len(forms)} forms of weight ≥ 2, {formula.count('(')} boxes): {verdict} in {time.time() - t0:.2f}s")
+    print(f"{engine}: SLP({args.k}) on {args.instance} (n = {n}, {len(forms)} forms of weight >= 2, {formula.count('(')} boxes): {verdict} in {time.time() - t0:.2f}s")
     if verdict != "SAT": return
     steps = decode(asg, n, args.k)
     vals = replay(steps, n)

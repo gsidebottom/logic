@@ -136,6 +136,15 @@ pub struct Stats {
     pub explanations: u64,
     pub explanation_lits: u64,
     pub explanation_dropped: u64,
+    /// Reason explanations served from the per-assignment cache.
+    pub explanation_hits: u64,
+    /// Learned clauses, and their literals before and after minimisation.
+    pub learned: u64,
+    pub learned_lits_raw: u64,
+    pub learned_lits: u64,
+    /// Learned clauses deleted by the reductions, and reductions run.
+    pub deleted: u64,
+    pub reductions: u64,
 }
 
 /// How a table's explanation is chosen among the assigned literals whose
@@ -275,6 +284,22 @@ pub struct Engine {
     var_inc: f64,
     phase: Vec<bool>,
     seen: Vec<bool>,
+    /// Decision order: a binary max-heap on activity (ties to the lower
+    /// variable) holding every unassigned variable, and some assigned ones
+    /// dropped lazily when popped.
+    heap: Vec<u32>,
+    /// Variable → position in `heap`, `u32::MAX` when absent.
+    heap_pos: Vec<u32>,
+    /// Recursive minimisation of learned clauses (`BOXES_MINIMIZE`).
+    pub minimize: bool,
+    min_stack: Vec<u32>,
+    min_clear: Vec<u32>,
+    min_lits: Vec<u32>,
+    /// A table-propagated variable's explanation, computed once per
+    /// assignment (`expl_ok`) and reused by every analysis until the
+    /// variable is unassigned.
+    expl_cache: Vec<Vec<u32>>,
+    expl_ok: Vec<bool>,
     pub stats: Stats,
     /// Optional decision budget; `solve` returns `Unknown` when exceeded.
     pub max_decisions: Option<u64>,
@@ -300,6 +325,10 @@ impl Engine {
             vals: Vec::new(), level: Vec::new(), reason: Vec::new(), trail_pos: Vec::new(),
             trail: Vec::new(), trail_lim: Vec::new(), qhead: 0,
             activity: Vec::new(), var_inc: 1.0, phase: Vec::new(), seen: Vec::new(),
+            heap: Vec::new(), heap_pos: Vec::new(),
+            minimize: !matches!(std::env::var("BOXES_MINIMIZE").as_deref(), Ok("0") | Ok("none") | Ok("off")),
+            min_stack: Vec::new(), min_clear: Vec::new(), min_lits: Vec::new(),
+            expl_cache: Vec::new(), expl_ok: Vec::new(),
             stats: Stats::default(), max_decisions: None, cancel: None,
             explain: ExplainMode::from_env(),
             expl_cands: Vec::new(), expl_orig: Vec::new(), expl_picked: Vec::new(), expl_keep: Vec::new(), expl_used: Vec::new(),
@@ -328,6 +357,67 @@ impl Engine {
         self.phase.resize(nvars, false);
         self.seen.resize(nvars, false);
         self.watches.resize(2 * nvars, Vec::new());
+        self.expl_cache.resize_with(nvars, Vec::new);
+        self.expl_ok.resize(nvars, false);
+        let old = self.heap_pos.len();
+        self.heap_pos.resize(nvars, u32::MAX);
+        for v in old..nvars { self.heap_insert(v as u32); }
+    }
+
+    // --- the decision heap ---
+
+    /// `a` before `b`: higher activity, then the lower variable (the order the
+    /// linear scan it replaces had).
+    #[inline] fn heap_before(&self, a: u32, b: u32) -> bool {
+        let (x, y) = (self.activity[a as usize], self.activity[b as usize]);
+        x > y || (x == y && a < b)
+    }
+
+    fn heap_up(&mut self, mut i: usize) {
+        let v = self.heap[i];
+        while i > 0 {
+            let p = (i - 1) / 2;
+            let u = self.heap[p];
+            if !self.heap_before(v, u) { break; }
+            self.heap[i] = u; self.heap_pos[u as usize] = i as u32;
+            i = p;
+        }
+        self.heap[i] = v; self.heap_pos[v as usize] = i as u32;
+    }
+
+    fn heap_down(&mut self, mut i: usize) {
+        let v = self.heap[i];
+        let n = self.heap.len();
+        loop {
+            let l = 2 * i + 1;
+            if l >= n { break; }
+            let r = l + 1;
+            let c = if r < n && self.heap_before(self.heap[r], self.heap[l]) { r } else { l };
+            let u = self.heap[c];
+            if !self.heap_before(u, v) { break; }
+            self.heap[i] = u; self.heap_pos[u as usize] = i as u32;
+            i = c;
+        }
+        self.heap[i] = v; self.heap_pos[v as usize] = i as u32;
+    }
+
+    fn heap_insert(&mut self, v: u32) {
+        if self.heap_pos[v as usize] != u32::MAX { return; }
+        self.heap_pos[v as usize] = self.heap.len() as u32;
+        self.heap.push(v);
+        self.heap_up(self.heap.len() - 1);
+    }
+
+    /// The variable of highest activity in the heap (assigned or not).
+    fn heap_pop(&mut self) -> Option<u32> {
+        let top = *self.heap.first()?;
+        let last = self.heap.pop().unwrap();
+        self.heap_pos[top as usize] = u32::MAX;
+        if !self.heap.is_empty() {
+            self.heap[0] = last; self.heap_pos[last as usize] = 0;
+            self.heap_down(0);
+        }
+        Some(top)
     }
 
     /// Add a table box (before solving).
@@ -402,6 +492,8 @@ impl Engine {
             self.phase[v] = self.vals[v] == Val::T;
             self.vals[v] = Val::U;
             self.reason[v] = Reason::None;
+            self.expl_ok[v] = false;
+            self.heap_insert(v as u32);
         }
         let n = self.live.len();
         let start = self.trail_lim.len() - lvl;   // levels popped
@@ -641,10 +733,21 @@ impl Engine {
             Reason::None => {}
             Reason::Clause(ci) => for &l in &self.clauses[ci as usize] { if l >> 1 != var { out.push(l); } },
             Reason::Box(b) => {
+                if self.expl_ok[var as usize] {
+                    self.stats.explanation_hits += 1;
+                    out.extend_from_slice(&self.expl_cache[var as usize]);
+                    return;
+                }
                 let li = self.local_index(b, var);
                 let val = self.vals[var as usize] == Val::T;
                 let mut target = self.rows_mask(b, Some((li, val)));
+                let start = out.len();
                 self.explain_box(b, &mut target, self.trail_pos[var as usize] as usize, out);
+                let mut cache = std::mem::take(&mut self.expl_cache[var as usize]);
+                cache.clear();
+                cache.extend_from_slice(&out[start..]);
+                self.expl_cache[var as usize] = cache;
+                self.expl_ok[var as usize] = true;
             }
         }
     }
@@ -698,15 +801,50 @@ impl Engine {
             self.clauses[ci] = Vec::new();
             removed += 1;
         }
-        let _ = removed;
+        self.stats.deleted += removed as u64;
+        self.stats.reductions += 1;
     }
 
     fn bump(&mut self, v: usize) {
         self.activity[v] += self.var_inc;
         if self.activity[v] > 1e100 {
-            for a in &mut self.activity { *a *= 1e-100; }
+            for a in &mut self.activity { *a *= 1e-100; }   // order preserved: the heap stands
             self.var_inc *= 1e-100;
         }
+        let i = self.heap_pos[v];
+        if i != u32::MAX { self.heap_up(i as usize); }
+    }
+
+    /// MiniSat's recursive test: the false literal of `v` is redundant in
+    /// the learned clause when its reason's literals are all in the clause
+    /// (seen) or level 0 or themselves redundant.  `levels` is the clause's
+    /// abstract level set; a reason literal outside it ends the search.
+    fn lit_redundant(&mut self, v: u32, levels: u32) -> bool {
+        let top = self.min_clear.len();
+        self.min_stack.clear();
+        self.min_stack.push(v);
+        while let Some(p) = self.min_stack.pop() {
+            let mut lits = std::mem::take(&mut self.min_lits);
+            lits.clear();
+            self.reason_lits(p, &mut lits);
+            let mut ok = true;
+            for &q in &lits {
+                let u = (q >> 1) as usize;
+                if self.seen[u] || self.level[u] == 0 { continue; }
+                if self.reason[u] != Reason::None && (1u32 << (self.level[u] & 31)) & levels != 0 {
+                    self.seen[u] = true;
+                    self.min_stack.push(u as u32);
+                    self.min_clear.push(u as u32);
+                } else { ok = false; break; }
+            }
+            self.min_lits = lits;
+            if !ok {
+                for &x in &self.min_clear[top..] { self.seen[x as usize] = false; }
+                self.min_clear.truncate(top);
+                return false;
+            }
+        }
+        true
     }
 
     /// 1-UIP conflict analysis of a conflict given by its (false) literals,
@@ -738,6 +876,23 @@ impl Engine {
             lits.clear();
             self.reason_lits(v, &mut lits);
         }
+        self.stats.learned += 1;
+        self.stats.learned_lits_raw += learnt.len() as u64;
+        if self.minimize && learnt.len() > 2 {
+            let levels = learnt[1..].iter().fold(0u32, |m, &q| m | 1 << (self.level[(q >> 1) as usize] & 31));
+            // every variable marked seen — the clause's own (dropped ones included)
+            // and those the redundancy search marks — is cleared at the end
+            self.min_clear.clear();
+            self.min_clear.extend(learnt[1..].iter().map(|&q| q >> 1));
+            let mut j = 1;
+            for i in 1..learnt.len() {
+                let v = learnt[i] >> 1;
+                if self.reason[v as usize] == Reason::None || !self.lit_redundant(v, levels) { learnt[j] = learnt[i]; j += 1; }
+            }
+            learnt.truncate(j);
+            for k in 0..self.min_clear.len() { let x = self.min_clear[k]; self.seen[x as usize] = false; }
+        }
+        self.stats.learned_lits += learnt.len() as u64;
         for &q in &learnt[1..] { self.seen[(q >> 1) as usize] = false; }
         // backjump level: the highest level among the other literals (moved to position 1)
         let mut bj = 0usize;
@@ -850,12 +1005,14 @@ impl Engine {
                 }
                 continue;
             }
-            // VSIDS decision
-            let mut best: Option<usize> = None;
-            for v in 0..self.nvars {
-                if self.vals[v] == Val::U && best.is_none_or(|b| self.activity[v] > self.activity[b]) { best = Some(v); }
+            // VSIDS decision: the most active unassigned variable (assigned
+            // ones still in the heap are dropped as they surface)
+            let mut best: Option<u32> = None;
+            while let Some(v) = self.heap_pop() {
+                if self.vals[v as usize] == Val::U { best = Some(v); break; }
             }
             let Some(v) = best else { return Verdict::Sat(self.vals.iter().map(|&x| x == Val::T).collect()) };
+            let v = v as usize;
             self.new_level();
             self.stats.decisions += 1;
             self.assign(v as u32, if self.phase[v] { Val::T } else { Val::F }, Reason::None);
@@ -1032,6 +1189,14 @@ mod tests {
                 Verdict::Unknown => panic!("no budget set"),
             }
         }
+        // php(7,6) needs thousands of conflicts whatever the minimisation: deletions for sure
+        let (n, c) = php(7, 6);
+        let mut e = Engine::from_cnf(n, &c);
+        e.reduce_start = 8;
+        assert_eq!(e.solve(), Verdict::Unsat);
+        let ndel = e.deleted.iter().filter(|&&d| d).count();
+        eprintln!("php(7,6): {} conflicts, {} learned, {ndel} deleted", e.stats.conflicts, e.clauses.len() - e.first_learnt);
+        deletions_seen |= ndel > 0;
         assert!(deletions_seen, "the test never deleted a clause — lower reduce_start or raise m");
     }
 

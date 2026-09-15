@@ -1632,9 +1632,19 @@ fn spawn_dual_matrix_search(
 /// extending the bindings.
 /// Box-matrix engine (`-b boxes`): every clause a table box, DPLL over rows
 /// with table propagation.  See `logic::boxes` and `doc/box_backend_design.md`.
-fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::path::Path>) -> SearchOutcome {
+fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::path::Path>, timeout_secs: u64) -> SearchOutcome {
     let t = Instant::now();
     let mut eng = logic::boxes::Engine::from_cnf(nvars, clauses);
+    // Cooperative timeout a second ahead of the hard watchdog, so the
+    // statistics line is printed on a timeout too.
+    if timeout_secs > 1 {
+        let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        eng.cancel = Some(flag.clone());
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(timeout_secs - 1));
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        });
+    }
     let mut n_inst = 0usize;
     if let Some(path) = boxes_path {
         match load_box_instances(path) {
@@ -1644,13 +1654,19 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
     }
     let verdict = eng.solve();
     let s = &eng.stats;
-    eprintln!("c boxes: {} boxes ({} compiled instances), {} decisions, {} propagations, {} conflicts, {:.3}s; {:?} explanations: {} of {:.2} literals ({} dropped)",
+    eprintln!("c boxes: {} boxes ({} compiled instances), {} decisions, {} propagations, {} conflicts, {:.3}s; {:?} explanations: {} of {:.2} literals ({} dropped); learned {} clauses of {:.1} literals ({:.1} before minimisation{})",
               eng.nboxes(), n_inst, s.decisions, s.propagations, s.conflicts, t.elapsed().as_secs_f64(),
-              eng.explain, s.explanations, s.explanation_lits as f64 / s.explanations.max(1) as f64, s.explanation_dropped);
+              eng.explain, s.explanations, s.explanation_lits as f64 / s.explanations.max(1) as f64, s.explanation_dropped,
+              s.learned, s.learned_lits as f64 / s.learned.max(1) as f64, s.learned_lits_raw as f64 / s.learned.max(1) as f64,
+              if eng.minimize { "" } else { ", off" });
+    eprintln!("c boxes: learned DB {} clauses kept of {} ({} deleted in {} reductions); {} explanation cache hits", s.learned - s.deleted, s.learned, s.deleted, s.reductions, s.explanation_hits);
     match verdict {
         logic::boxes::Verdict::Sat(m)   => SearchOutcome::Sat(m),
         logic::boxes::Verdict::Unsat    => SearchOutcome::Unsat,
-        logic::boxes::Verdict::Unknown  => SearchOutcome::Interrupted,
+        logic::boxes::Verdict::Unknown  => {
+            eprintln!("c TIMEOUT after {}s", timeout_secs);
+            std::process::exit(124);
+        }
     }
 }
 
@@ -4062,7 +4078,7 @@ fn main() {
     let t = Instant::now();
     let outcome = match args.backend {
         BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
-        BackendChoice::Boxes => boxes_search(nvars, &clauses, args.boxes.as_deref()),
+        BackendChoice::Boxes => boxes_search(nvars, &clauses, args.boxes.as_deref(), args.timeout_secs),
         BackendChoice::PbCadical => unreachable!("pb-cadical is handled before the search dispatch"),
         BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma
         | BackendChoice::Satsuma =>

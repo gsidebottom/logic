@@ -123,12 +123,15 @@ the gate clauses they replaced), and with the minimal hitting-set
 explanations of 2026-09-15 it makes it better: the ISCAS cones beat the
 plain-CNF engine, pyhala-braun-sat goes from 191 s to 42 s, and
 toughsat_factoring_895s (SAT Competition 2026, prime-factoring) is
-solved in 26 s against CaDiCaL's 205 s — the first competition instance
-the box engine wins.  What still dominates elsewhere is the engine's
-plain-CNF gap to CaDiCaL (6–15× on the ISCAS instances, §10.1), which is
-CDCL maturity, not boxes; the direction for the circuit third is
-hidden-internal cones on top of a faster core.  The parity third would
-need a Gauss box, and the cardinality third is not ours.
+solved in 26–30 s against CaDiCaL's 205 s — the first competition
+instance the box engine wins, though only on the one search trajectory:
+the fourth measurement's learned-clause minimisation loses it again.
+What still dominates elsewhere is the engine's plain-CNF gap to CaDiCaL
+(4–5× on the ISCAS instances after the decision heap and the
+minimisation, §10.1), which is CDCL maturity, not boxes; the direction
+for the circuit third is hidden-internal cones on top of a faster core.
+The parity third would need a Gauss box, and the cardinality third is
+not ours.
 
 ## First measurement: `tools/cnf2boxes.py` on the three small circuit families
 
@@ -313,6 +316,37 @@ tables at all — and that is the engine's CDCL maturity: no learned-clause
 minimisation, no inprocessing, and a decision heuristic that scans every
 variable (a heap would make the 366 K-variable sum-of-3-cubes instances
 searchable at all).
+
+## Fourth measurement: decision heap and learned-clause minimisation (2026-09-15)
+
+Two textbook pieces the engine lacked: the VSIDS decision was a scan of
+every variable (a binary heap now, same order), and the 1-UIP clause was
+learned as analysed (MiniSat's recursive minimisation now, over the lazy
+table explanations, which are cached per assignment; `BOXES_MINIMIZE=0`
+turns it off).  The rows above, three processes sharing the machine;
+each cell is minimisation off → on, the heap in both:
+
+| instance | CaDiCaL | plain CNF | cones K = 8 | cones K = 12 |
+|---|---|---|---|---|
+| belpyramid c3540 | UNSAT 0.50 s | 2.7 s (123 K) → **1.9 s (91 K)** | 2.9 s (151 K) → **2.0 s (106 K)** | 2.8 s (153 K) → 2.5 s (131 K) |
+| belpyramid c5315 | UNSAT 0.15 s | 1.5 s (87 K) → **0.76 s (50 K)** | 0.51 s (44 K) → 0.45 s (37 K) | 0.67 s (56 K) → 0.76 s (62 K) |
+| toughsat_factoring_895s | SAT 205 s | > 300 s | > 300 s | **SAT 30 s (301 K) → > 300 s (2.1 M)** |
+| pyhala-braun-sat-40-4-03 | SAT 5.8 s | 408 s (2.6 M) → 204 s (1.5 M) | 43 s (182 K) → 70 s (222 K) | — |
+| pyhala-braun-unsat-40-4-02 | UNSAT 53 s | > 600 s | > 600 s (3.3 M conflicts) | — |
+| sum_of_3_cubes 37 / 145 bits (33 K / 366 K vars) | > 60 s | > 60 s; 6.4 K / 2.2 K conflicts per second now | — | — |
+
+The learned clauses shrink 2–13× (c3540 plain CNF: 107 → 20 literals;
+the pyhala-braun cones: 454 → 34) and on the refutations the conflicts
+fall with them: the plain-CNF gap to CaDiCaL on the ISCAS pair is 4–5×
+now, from 6–15×.  The two satisfiable competition instances go the
+other way — toughsat's 30 s solve is one trajectory among many (the
+minimised run makes 2.1 M conflicts in 300 s without a model) and
+pyhala-braun-sat takes 22 % more conflicts — which is the usual
+variance of satisfiable instances under any change to the search, not
+a property of the minimisation; the refutations are the reproducible
+side, so minimisation stays on and the switch stays.  The heap is what
+lets the 366 K-variable sum-of-3-cubes instance run at 16 K decisions a
+second; it does not bring it within reach.
 
 ## Per-family scan (families with ≥ 2 instances across both years)
 

@@ -227,6 +227,15 @@ inclusion-minimal — the default.  On the adder cones of §10.1 `cover`
 halves the explanation (2.2 literals against greedy's 4.9) and with it
 the conflicts; the measurement is in §10.1.
 
+**Which clause.**  The 1-UIP clause is minimised the MiniSat way before
+it is learned: a literal whose reason consists of literals already in the
+clause, or at level 0, or themselves redundant by the same test, is
+dropped — the recursive test with the abstract-level filter, run over the
+same lazy explanations.  Those are cached per assignment, so an analysis
+and its minimisation explain a table-propagated variable once and later
+conflicts reuse it until the variable is unassigned (`BOXES_MINIMIZE`,
+on by default; measured in §10.1).
+
 ## 4. Certification and formal verification — the UNSAT decision must be trustworthy
 
 The requirement is the project's standing one, sharpened: an UNSAT answer
@@ -834,8 +843,10 @@ the complement vs 5 expanded.
 box forces, is *explained* lazily from the kill masks (the assigned literals
 of the box, oldest levels first, whose kill masks cover the rows that had to
 die — the lazy-clause-generation explanation of §3.5), then 1-UIP analysis,
-backjumping, learned clauses propagated with two watched literals, VSIDS
-with phase saving and Luby restarts are the textbook ones.  A call whose
+backjumping, learned clauses propagated with two watched literals, VSIDS over a
+binary heap of the unassigned variables (ties to the lower variable),
+phase saving and Luby restarts are the textbook ones, and the learned
+clause is minimised (§3.5).  A call whose
 tables are tiny (≤ 8 rows, negation ≤ 4 rows) goes into the engine in
 **clause form** — `atom ⇒ B` is one clause per row of ¬B, `¬atom ⇒ ¬B` one
 per row of B — the same constraint, but propagated by watched literals
@@ -902,6 +913,41 @@ engine; the 186 s of 2026-09-14 was the engine before the live-row fix),
 and the SLP window table of `doc/matmul_cxlb_satcomp.md` is re-measured
 there: the box engine is now at or below CaDiCaL on every satisfiable
 row it finishes.
+
+**Decision heap and learned-clause minimisation (2026-09-15).**  The
+VSIDS decision was a scan of every variable; it is a binary heap now
+with the same tie order, so with minimisation off the searches are the
+runs above, only faster (c3540 K = 8 cones 3.3 → 2.9 s, plain 2.9 →
+2.7 s; the 366 K-variable sum-of-3-cubes instance from a crawl to 16 K
+decisions a second).  The 1-UIP clause is then minimised (§3.5) over the
+lazy explanations, cached per assignment — without the cache the
+redundancy probes quadrupled the explanation computations and halved the
+conflict rate on the toughsat cones.  Minimisation off → on, the heap in
+both, three processes sharing the machine:
+
+| instance | minimisation off | on |
+|---|---|---|
+| c3540 plain CNF (UNSAT) | 123 K conflicts, 2.7 s, 107 literals per learned clause | 91 K, 1.9 s, 20 literals |
+| c3540 cones K = 8 | 151 K, 2.9 s, 66 | 106 K, 2.0 s, 16 |
+| c5315 plain CNF | 87 K, 1.5 s, 68 | 50 K, 0.76 s, 14 |
+| c5315 cones K = 8 | 44 K, 0.51 s, 26 | 37 K, 0.45 s, 15 |
+| toughsat K = 12 (SAT) | SAT 30 s, 301 K | > 300 s, 2.1 M |
+| pyhala-braun-sat K = 8 | SAT 43 s, 182 K, 454 | SAT 70 s, 222 K, 34 |
+| pyhala-braun-sat plain CNF | SAT 408 s (before the heap) | SAT 204 s, 1.5 M |
+| matmul rank 6 + symmetry (UNSAT), boxes / chain | 1.7 s / 1.6 s | 2.5 s / 1.0 s |
+| SLP window refutations (five rows) | 0.47–2.5 s | 0.40–1.3 s |
+| w5_ap(177) SAT / w5_ap(178) UNSAT | 2.1 s / 283 s | 0.58 s / 315 s |
+
+Circuit refutations gain 25–45 % (the clauses shrink 2–13×); the
+box-native benchmarks move within ±10 % either way, except matmul's
+rank-6 refutation (+45 %) and its chain form (−40 %); the satisfiable
+competition instances lose their trajectory (toughsat) or 22 % more
+conflicts (pyhala-braun).  On by default, `BOXES_MINIMIZE=0` for the
+CLI and the server.  On the quiet machine with everything on, the SLP
+window table of `doc/matmul_cxlb_satcomp.md`: 2–6× slower than CaDiCaL
+on the refutations, 3–28× faster on six satisfiable rows and 7–14×
+slower on three, and the weight-7 window sun56[1,2,4] at k = 15 now
+solved in 23 s where CaDiCaL takes 58 s.
 
 Measured on van der Waerden (`lib/waerden.jq`, `w(4;4;35)` UNSAT and
 `w(4;4;34)` SAT, 35 variables, 374 clauses; times as the UI reports them,

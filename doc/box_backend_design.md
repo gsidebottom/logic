@@ -213,6 +213,20 @@ still gated by the A/B in §10; the `phase4_cubes` result (learned-cube
 sharing: "overhead with no benefit") is the cautionary precedent for assuming
 learned information helps the *cover* search.
 
+**Which explanation.**  The kill masks give, for every dead row, the set
+of assigned literals that killed it; any hitting set of those sets is a
+valid explanation, and the obvious one — trail order, every literal that
+kills a row not yet covered — is not minimal: a literal picked early is
+often redundant given the later picks.  The engine chooses among three
+(`BOXES_EXPLAIN`, 2026-09-15): `greedy`, that baseline; `minimal`, the
+same pass preferring literals that cost the learned clause nothing (level
+0, or already seen by the analysis) and then made inclusion-minimal,
+newest pick first; and `cover`, largest remaining coverage first (the
+set-cover greedy, ties by the same preference) and then made
+inclusion-minimal — the default.  On the adder cones of §10.1 `cover`
+halves the explanation (2.2 literals against greedy's 4.9) and with it
+the conflicts; the measurement is in §10.1.
+
 ## 4. Certification and formal verification — the UNSAT decision must be trustworthy
 
 The requirement is the project's standing one, sharpened: an UNSAT answer
@@ -841,6 +855,53 @@ current one.  Also: the path search's prefix check is
 incremental (only the calls touched by literals beyond the common prefix
 with the previous one — "some row survives" is monotone), and the witness
 reuses the completion engine's model instead of solving again.
+
+**Explanation minimisation (2026-09-15).**  The three explanation modes
+of §3.5 on the instances where the engine terminates — the ISCAS cones
+and the two competition instances of `doc/box_candidates_satcomp.md`,
+and the box-native benchmarks below — same machine, one core each, the
+three modes run concurrently (conflicts are deterministic, times
+indicative):
+
+| instance | greedy (trail order) | minimal | cover (default) |
+|---|---|---|---|
+| belpyramid c3540, cones K = 8 (UNSAT) | 247 K conflicts, 6.0 s | 150 K, 3.0 s | 151 K, 3.1 s |
+| c3540, K = 12 | 250 K, 6.2 s | 149 K, 3.6 s | 153 K, 3.1 s |
+| c5315, K = 8 | 59 K, 1.5 s | 56 K, 1.2 s | 44 K, 0.96 s |
+| c5315, K = 12 | 54 K, 1.5 s | 55 K, 1.1 s | 56 K, 1.2 s |
+| toughsat_factoring_895s, K = 12 (SAT; CaDiCaL 205 s) | 1.32 M, 146 s | > 300 s | 301 K, 32 s |
+| pyhala-braun-sat, K = 8 (SAT; CaDiCaL 5.8 s) | 634 K, 191 s | 1.17 M, 314 s | 182 K, 49 s |
+| — literals per explanation there | 4.93 | 3.99 | 2.19 |
+| SLP sun56[0,5,7] k = 7 (UNSAT) | 6.7 s | 1.5 s | 1.2 s |
+| SLP sun56[0,5,7] k = 8 (SAT) | 50.9 s | 0.02 s | 0.03 s |
+| SLP cn120[0,6,8] k = 8 (SAT) | 50.0 s | 5.3 s | 0.48 s |
+| matmul rank 6 + symmetry (UNSAT) | 3.5 s | 1.9 s | 1.7 s |
+| matmul rank 7 (SAT) | 23.7 s | 22.8 s | 4.6 s |
+| waerden w4_ap(35), w5_ap(177), w5_ap(178) | unchanged | unchanged | unchanged |
+
+Two effects.  Minimality alone (`minimal`) removes the redundant old
+literals the trail order keeps — the ISCAS conflicts fall by 40 % on
+c3540 and the K = 8 cones now beat the plain CNF in time — but on wide
+tables (K = 12 cones, the half-adder cells of pyhala-braun, the
+9-column `orb` boxes of SLP) the trail order still lands on long covers,
+and there choosing by coverage (`cover`) is what finds the 2–3-literal
+explanations: toughsat K = 12 goes from 146 s to 32 s (the first
+competition instance the engine solves faster than CaDiCaL), pyhala-braun
+from 191 s to 49 s, the SLP SAT rows from tens of seconds to well under
+one.  Explanations cost more each (every pick scans the candidates) but
+there are fewer of them per conflict, and the count of conflicts is what
+moves.  Waerden is unchanged: a progression box's explanation is its
+three assigned literals whichever way it is chosen.  Not tried: the
+exact minimum-cardinality hitting set (a subset search per explanation is
+too much at 10⁷ explanations a minute) and explanation-only gate clauses.
+Rerun one process at a time with `cover` as the default: c3540 cones
+K = 8 3.3 s (plain CNF 2.9 s), c5315 1.0 s (plain 2.2 s), toughsat
+K = 12 26 s (model verified; CaDiCaL 205 s), pyhala-braun-sat K = 8
+42 s, w5_ap(178) 283 s against 300 s with the trail order (today's
+engine; the 186 s of 2026-09-14 was the engine before the live-row fix),
+and the SLP window table of `doc/matmul_cxlb_satcomp.md` is re-measured
+there: the box engine is now at or below CaDiCaL on every satisfiable
+row it finishes.
 
 Measured on van der Waerden (`lib/waerden.jq`, `w(4;4;35)` UNSAT and
 `w(4;4;34)` SAT, 35 variables, 374 clauses; times as the UI reports them,

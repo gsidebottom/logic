@@ -186,26 +186,26 @@ runs — Strassen's output side needs exactly 8 additions over GF(2):
 
 ```
 $ tools/slp_program.py strassen_out 8
-boxes backend: SLP(8) on strassen_out (n = 7, 4 forms of weight >= 2, 576 boxes): SAT in 0.72s
-y1 = x1 + x5    = 1000100
-y2 = x3 + x5    = 0010100
-y3 = y1 + y2    = 1010000
-y4 = x2 + x4    = 0101000
-y5 = x6 + y3    = 1010010
-y6 = x2 + y5    = 1110010
-y7 = x7 + y1    = 1000101
-y8 = x4 + y7    = 1001101
+boxes backend: SLP(8) on strassen_out (n = 7, 4 forms of weight >= 2, 576 boxes): SAT in 0.06s
+y1 = x2 + x4    = 0101000
+y2 = x3 + x4    = 0011000
+y3 = x1 + y2    = 1011000
+y4 = x3 + x5    = 0010100
+y5 = y3 + y4    = 1001100
+y6 = x6 + y1    = 0101010
+y7 = y3 + y6    = 1110010
+y8 = x7 + y5    = 1001101
 form 1001101: y8
-form 0010100: y2
-form 0101000: y4
-form 1110010: y6
+form 0010100: y4
+form 0101000: y1
+form 1110010: y7
 replay: every form computed
 
 $ tools/slp_program.py strassen_out 7
-boxes backend: SLP(7) on strassen_out (n = 7, 4 forms of weight >= 2, 472 boxes): UNSAT in 0.77s
+boxes backend: SLP(7) on strassen_out (n = 7, 4 forms of weight >= 2, 472 boxes): UNSAT in 0.51s
 
 $ tools/slp_program.py 'slp_window(sun56_cell; [0, 5, 7])' 8 --cadical
-CaDiCaL: SLP(8) on slp_window(sun56_cell; [0, 5, 7]) (n = 11, 3 forms of weight >= 2, 794 boxes): SAT in 0.23s
+CaDiCaL: SLP(8) on slp_window(sun56_cell; [0, 5, 7]) (n = 11, 3 forms of weight >= 2, 794 boxes): SAT in 0.25s
 y1 = x5 + x6    = 00001100000
 y2 = x9 + y1    = 00001100100
 y3 = x7 + x10    = 00000010010
@@ -222,31 +222,38 @@ replay: every form computed
 
 **Tractable windows.** `tools/slp_bench.py` descends k with CaDiCaL to
 each instance's minimum and times both engines at min−1, min, min+1
-under a 60-second cap (run of 2026-09-14, Apple M4 Pro, one core per
-solver, times as the web app reports them). Each cell is
-k = min−1 / min / min+1.
+under a 60-second cap (run of 2026-09-15, with the engine's minimal
+hitting-set explanations, Apple M4 Pro, one core per solver, times as
+the web app reports them). Each cell is k = min−1 / min / min+1.
 
 | instance | n | weights | k | boxes backend | CaDiCaL |
 |---|---|---|---|---|---|
-| strassen_out | 7 | 4,2,2,4 | 7 / 8 / 9 | UNSAT 0.7 s / SAT 0.7 s / SAT 0.2 s | UNSAT 0.2 s / SAT 0.01 s / SAT 0.04 s |
-| sun56[0,3,7] | 9 | 3,3,3 | 5 / 6 / 7 | UNSAT 0.01 s / SAT 0.02 s / SAT 0.07 s | UNSAT 0.02 s / SAT 0.01 s / SAT 0.02 s |
-| sun56[0,5,7] | 11 | 3,5,3 | 7 / 8 / 9 | UNSAT 5.5 s / SAT 41.5 s / SAT 26.0 s | UNSAT 0.33 s / SAT 0.19 s / SAT 0.11 s |
-| i12[0,1,3] | 11 | 3,5,3 | 7 / 8 / 9 | UNSAT 2.2 s / > 60 s / > 60 s | UNSAT 0.31 s / SAT 0.43 s / SAT 0.21 s |
-| i19[4,6,7] | 11 | 3,5,3 | 7 / 8 / 9 | UNSAT 1.6 s / SAT 42.8 s / > 60 s | UNSAT 0.30 s / SAT 0.28 s / SAT 0.23 s |
-| cn120[0,6,8] | 9 | 5,5,3 | 7 / 8 / 9 | UNSAT 1.7 s / SAT 39.8 s / SAT 11.0 s | UNSAT 0.21 s / SAT 0.48 s / SAT 0.19 s |
-| i12[0,3,4] | 12 | 3,3,7 | 9 / 10 / 11 | > 60 s / > 60 s / SAT 26.4 s | UNSAT 10.0 s / SAT 0.43 s / SAT 0.43 s |
-| sun56[1,2,4] | 14 | 7,7,7 | 13 / 14 / 15 | > 60 s / > 60 s / > 60 s | > 60 s / SAT 15.7 s / SAT 58.2 s |
+| strassen_out | 7 | 4,2,2,4 | 7 / 8 / 9 | UNSAT 0.4 s / SAT 0.01 s / SAT 0.05 s | UNSAT 0.2 s / SAT 0.01 s / SAT 0.04 s |
+| sun56[0,3,7] | 9 | 3,3,3 | 5 / 6 / 7 | UNSAT 0.01 s / SAT 0.01 s / SAT 0.00 s | UNSAT 0.02 s / SAT 0.01 s / SAT 0.02 s |
+| sun56[0,5,7] | 11 | 3,5,3 | 7 / 8 / 9 | UNSAT 1.1 s / SAT 0.03 s / SAT 0.01 s | UNSAT 0.3 s / SAT 0.2 s / SAT 0.1 s |
+| i12[0,1,3] | 11 | 3,5,3 | 7 / 8 / 9 | UNSAT 2.2 s / SAT 0.5 s / SAT 0.05 s | UNSAT 0.3 s / SAT 0.4 s / SAT 0.2 s |
+| i19[4,6,7] | 11 | 3,5,3 | 7 / 8 / 9 | UNSAT 1.3 s / SAT 0.2 s / SAT 0.02 s | UNSAT 0.3 s / SAT 0.3 s / SAT 0.2 s |
+| cn120[0,6,8] | 9 | 5,5,3 | 7 / 8 / 9 | UNSAT 1.0 s / SAT 0.4 s / SAT 0.08 s | UNSAT 0.2 s / SAT 0.5 s / SAT 0.2 s |
+| i12[0,3,4] | 12 | 3,3,7 | 9 / 10 / 11 | > 60 s / SAT 0.05 s / SAT 0.2 s | UNSAT 10.1 s / SAT 0.4 s / SAT 0.4 s |
+| sun56[1,2,4] | 14 | 7,7,7 | 13 / 14 / 15 | > 60 s / > 60 s / > 60 s | > 60 s / SAT 15.7 s / SAT 58.3 s |
 
 Windows of three forms with n ≤ 12 and minimum ≤ 10 are decidable by
 both engines within the budget, which places them well below the seed
 cells of §3 on the hardness dial. The box engine refutes the min−1 rows
-in 0.7–5.5 s where CaDiCaL needs 0.2–0.3 s, but is 30–150× slower on
-the satisfiable rows and exceeds the cap on three of them; the n = 12
-boundary (CaDiCaL 10 s) and the window of three weight-7 forms (minimum
-14; its k = 13 undecided by either engine in 60 s) are beyond it. The
-AND-guarded parities defeat table propagation exactly as they defeat
-Gaussian elimination: arc consistency on the `gx` chains forces nothing
-that unit propagation on the same clauses does not.
+in 0.4–2.2 s where CaDiCaL needs 0.2–0.35 s, and is at or below CaDiCaL
+on the satisfiable rows (sun56[0,5,7] at k = 8 in 0.03 s against 0.21 s,
+i12[0,3,4] at k = 10 in 0.05 s against 0.43 s); the n = 12 boundary
+(CaDiCaL 10 s) and the window of three weight-7 forms (minimum 14; its
+k = 13 undecided by either engine in 60 s) are beyond it. The AND-guarded
+parities defeat table *propagation* exactly as they defeat Gaussian
+elimination — arc consistency on the `gx` chains forces nothing that
+unit propagation on the same clauses does not — and with the engine's
+earlier trail-order explanations (run of 2026-09-14) the satisfiable
+rows were 30–150× slower than CaDiCaL, three of them beyond the cap.
+What the tables contribute is the *explanation*: the engine's minimal
+hitting-set reason for a forced literal or a dead table is two or three
+literals where the trail-order one was longer, and the learned clauses
+are correspondingly stronger.
 
 ## Acknowledgments
 

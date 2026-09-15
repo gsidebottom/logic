@@ -115,19 +115,20 @@ no propagation scheme matters.
 About a third of both competitions is circuits whose gate structure a
 translator can read off the CNF, and that is the box backend's thesis in
 its purest form (hidden internals, k-consistency over cones).
-`tools/cnf2boxes.py` is that translator, and the two measurements below
-(the small circuit families, then the adder-rich prime-factoring and
-sum-of-3-cubes families) say where it stands: it absorbs 50–98 % of the
-clauses of these instances, and the box engine solves none of them
-within 60 s that CaDiCaL does not — nor most that CaDiCaL does.  Two
-things dominate: the engine is 10–100× slower than CaDiCaL per search
-on the plain CNF (§10.1), and a cone whose outputs stay visible trades
-gate clauses for a table with a coarser explanation, so learning gets
-weaker.  The one gain is where cones hide real internals (pyhala-braun,
-39 % of the variables: 2.1× faster than the plain engine at 600 s), and
-that is the direction — hidden-internal cones with *minimal*
-explanations — if the circuit third is to be ours; the parity third
-would need a Gauss box, and the cardinality third is not ours.
+`tools/cnf2boxes.py` is that translator, and the three measurements
+below say where it stands.  It absorbs 50–98 % of the clauses of the
+instances tried; with the engine's original trail-order explanations
+that made the search *worse* (the tables' explanations were coarser than
+the gate clauses they replaced), and with the minimal hitting-set
+explanations of 2026-09-15 it makes it better: the ISCAS cones beat the
+plain-CNF engine, pyhala-braun-sat goes from 191 s to 42 s, and
+toughsat_factoring_895s (SAT Competition 2026, prime-factoring) is
+solved in 26 s against CaDiCaL's 205 s — the first competition instance
+the box engine wins.  What still dominates elsewhere is the engine's
+plain-CNF gap to CaDiCaL (6–15× on the ISCAS instances, §10.1), which is
+CDCL maturity, not boxes; the direction for the circuit third is
+hidden-internal cones on top of a faster core.  The parity third would
+need a Gauss box, and the cardinality third is not ours.
 
 ## First measurement: `tools/cnf2boxes.py` on the three small circuit families
 
@@ -166,7 +167,8 @@ What follows.  (1) Hidden internals are worth having only with
 *minimal* explanations — a hitting-set minimisation of the kill-mask
 explanation, or explaining a table's propagation through the cone's own
 gate clauses kept as explanation-only clauses — that is the engine change
-this experiment asks for.  (2) The propagation gain of cones needs
+this experiment asks for (delivered 2026-09-15: the third measurement
+below).  (2) The propagation gain of cones needs
 cones where arc consistency beats gate-level unit propagation — XOR- and
 adder-rich cones, as in the multiplier and miter families — and those
 instances are beyond 60 s for CaDiCaL too (the family wants algebraic
@@ -197,9 +199,11 @@ variables.
 | sum_of_3_cubes_108_bits_52 (203,042 / 1,010,065) | > 60 s | > 60 s | > 60 s (22,909 cones, 98 hidden; 402 s) | — |
 | sum_of_3_cubes_145_bits_74 (366,442 / 1,829,989) | > 60 s | > 60 s | > 60 s (41,646 cones, 110 hidden; 1,581 s) | — |
 
-Nothing is solved by the box engine in any configuration, and CaDiCaL
-solves only the two pyhala-braun instances.  What the translation
-found, per family:
+Nothing is solved by the box engine in any configuration (with the
+trail-order explanations of the time; the third measurement below
+changes the toughsat and pyhala-braun rows), and CaDiCaL solves only
+the two pyhala-braun instances.  What the translation found, per
+family:
 
 - **toughsat** (719 AND, 94 XOR2, 572 XOR3, 572 MAJ3 — 572 full
   adders): the most absorbable instance of the survey, 47 % of the
@@ -262,6 +266,53 @@ The controller's witness check builds its engine in the same order, so
 the fix matters for the UI too.  `add_box` now applies the current
 assignment to a new table, `search` starts analysis at the conflict's
 own level, and a randomized test adds tables after unit clauses.
+
+## Third measurement: minimal hitting-set explanations (2026-09-15)
+
+The engine change the first measurement asked for.  A table's
+explanation — the assigned literals of the box whose kill masks cover
+the rows that had to die — is now a minimal hitting set of those rows'
+killers, chosen by coverage (`cover`, the default; the design doc's
+§3.5 has the three modes and §10.1 their A/B).  The rows above that the
+engine can finish, rerun on a quiet machine one process at a time,
+trail-order explanation → minimal (CaDiCaL and the plain-CNF engine do
+not change):
+
+| instance | CaDiCaL | box engine, plain CNF | cones K = 8 | cones K = 12 |
+|---|---|---|---|---|
+| belpyramid c3540 | UNSAT 0.50 s | UNSAT 2.9 s (123 K conflicts) | 5.6 s (247 K) → **3.3 s (151 K)** | 5.6 s (250 K) → **3.2 s (153 K)** |
+| belpyramid c5315 | UNSAT 0.15 s | UNSAT 2.2 s (87 K) | 1.3 s (59 K) → **1.0 s (44 K)** | 1.3 s (54 K) → 1.3 s (56 K) |
+| toughsat_factoring_895s | SAT 205 s | > 300 s | > 300 s → > 300 s | SAT 146 s (1.3 M) → **SAT 26 s (301 K)** |
+| pyhala-braun-sat-40-4-03 | SAT 5.8 s | SAT 408 s (2.6 M) | SAT 191 s (634 K) → **SAT 42 s (182 K)** | — |
+| pyhala-braun-unsat-40-4-02 | UNSAT 53 s | > 600 s | > 600 s → > 600 s | — |
+
+(The trail-order ISCAS columns are today's rerun with the current
+engine; they supersede the 2026-09-14 rows, which the live-row fix of
+ccacc11 changed.  Both SAT models were checked against the original
+CNF with `tools/cnf2boxes_verify.py`.)
+
+What changed, and what did not.  The cones' propagation was never the
+problem — with the gate clauses present the tables pruned nothing
+further — the explanations were: a coverage-chosen minimal explanation
+averages 2.2 literals on the pyhala-braun cells where the trail order
+gave 4.9, and the conflicts fall 3.5× there, 4.4× on toughsat K = 12,
+1.6× on c3540.  Three consequences.  (1) On the AND circuits the cones
+now beat the plain-CNF engine — c5315 2.2× faster, c3540 on par — where
+before they were 2× slower.  (2) toughsat_factoring_895s, a SAT
+Competition 2026 instance, is solved in 26 s with K = 12 cones against
+CaDiCaL's 205 s: the first competition instance the box engine solves
+faster than CaDiCaL.  The K = 8 cones (single full adders, 47 % of the
+variables hidden) do not do it in 300 s and the K = 12 cones (two-adder
+cones, 52 % hidden) do, so the win is in the wider cones' explanations,
+not in absorption alone.  (3) pyhala-braun-sat is at 42 s, 7× behind
+CaDiCaL where it was 33×; its UNSAT twin stays beyond 600 s (CaDiCaL
+53 s) — the refutation side of the multiplier is where the plain-CNF
+gap bites hardest.  What remains is the plain-CNF gap — the
+engine is 6–15× slower than CaDiCaL on the ISCAS instances with no
+tables at all — and that is the engine's CDCL maturity: no learned-clause
+minimisation, no inprocessing, and a decision heuristic that scans every
+variable (a heap would make the 366 K-variable sum-of-3-cubes instances
+searchable at all).
 
 ## Per-family scan (families with ≥ 2 instances across both years)
 

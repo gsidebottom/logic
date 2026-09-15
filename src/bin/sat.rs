@@ -1644,8 +1644,9 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
     }
     let verdict = eng.solve();
     let s = &eng.stats;
-    eprintln!("c boxes: {} boxes ({} compiled instances), {} decisions, {} propagations, {} conflicts, {:.3}s",
-              eng.nboxes(), n_inst, s.decisions, s.propagations, s.conflicts, t.elapsed().as_secs_f64());
+    eprintln!("c boxes: {} boxes ({} compiled instances), {} decisions, {} propagations, {} conflicts, {:.3}s; {:?} explanations: {} of {:.2} literals ({} dropped)",
+              eng.nboxes(), n_inst, s.decisions, s.propagations, s.conflicts, t.elapsed().as_secs_f64(),
+              eng.explain, s.explanations, s.explanation_lits as f64 / s.explanations.max(1) as f64, s.explanation_dropped);
     match verdict {
         logic::boxes::Verdict::Sat(m)   => SearchOutcome::Sat(m),
         logic::boxes::Verdict::Unsat    => SearchOutcome::Unsat,

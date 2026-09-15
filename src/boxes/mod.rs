@@ -131,6 +131,41 @@ pub struct Stats {
     pub decisions: u64,
     pub propagations: u64,
     pub conflicts: u64,
+    /// Table explanations computed (conflicts and reasons), the literals
+    /// they contained, and the literals minimisation dropped.
+    pub explanations: u64,
+    pub explanation_lits: u64,
+    pub explanation_dropped: u64,
+}
+
+/// How a table's explanation is chosen among the assigned literals whose
+/// kill masks cover the rows that had to die (`BOXES_EXPLAIN` selects it).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum ExplainMode {
+    /// Trail order, oldest levels first, every literal that kills a row
+    /// not yet covered — not minimal (the baseline before minimisation).
+    Greedy,
+    /// The same pass, preferring level-0 and already-seen literals, then
+    /// made inclusion-minimal: newest pick first, a literal the others
+    /// cover for is dropped (a minimal hitting set of the rows' killers).
+    Minimal,
+    /// Largest remaining coverage first (set-cover greedy, ties by the same
+    /// preference), then made inclusion-minimal — the shortest explanations
+    /// of the three and the default (§10.1 of the design doc: 2.2 literals
+    /// against greedy's 4.9 on the pyhala-braun cones, 3.9× faster).
+    #[default]
+    Cover,
+}
+
+impl ExplainMode {
+    /// `BOXES_EXPLAIN=greedy|minimal|cover`, default `cover`.
+    pub fn from_env() -> ExplainMode {
+        match std::env::var("BOXES_EXPLAIN").as_deref() {
+            Ok("greedy") => ExplainMode::Greedy,
+            Ok("minimal") => ExplainMode::Minimal,
+            _ => ExplainMode::Cover,
+        }
+    }
 }
 
 /// Where a box's data lives in the engine's flat arrays.
@@ -245,6 +280,14 @@ pub struct Engine {
     pub max_decisions: Option<u64>,
     /// Cooperative cancellation: checked every 256 decisions; `solve` returns `Unknown`.
     pub cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// How table explanations are chosen.
+    pub explain: ExplainMode,
+    // scratch for `explain_box`: (class, level, trail position, local index, kill-mask base)
+    expl_cands: Vec<(u8, u32, u32, u32, u32)>,
+    expl_orig: Vec<u64>,
+    expl_picked: Vec<(u32, u32, u8)>,
+    expl_keep: Vec<bool>,
+    expl_used: Vec<bool>,
 }
 
 impl Engine {
@@ -258,6 +301,8 @@ impl Engine {
             trail: Vec::new(), trail_lim: Vec::new(), qhead: 0,
             activity: Vec::new(), var_inc: 1.0, phase: Vec::new(), seen: Vec::new(),
             stats: Stats::default(), max_decisions: None, cancel: None,
+            explain: ExplainMode::from_env(),
+            expl_cands: Vec::new(), expl_orig: Vec::new(), expl_picked: Vec::new(), expl_keep: Vec::new(), expl_used: Vec::new(),
         };
         e.grow(nvars);
         for b in boxes { e.add_box(b) }
@@ -477,30 +522,97 @@ impl Engine {
     }
 
     /// The literals (all FALSE now) explaining why the rows in `target` of
-    /// box `b` are dead: assigned variables of the box, oldest levels first,
-    /// whose kill masks cover `target`; only assignments before trail
-    /// position `before` count.
-    fn explain_box(&self, b: u32, target: &mut [u64], before: usize, out: &mut Vec<u32>) {
+    /// box `b` are dead: assigned variables of the box whose kill masks
+    /// cover `target`; only assignments before trail position `before`
+    /// count.  Which cover, per `self.explain`: the greedy trail-order one
+    /// (oldest levels first), or an inclusion-minimal one — a minimal
+    /// hitting set of the rows' killers — preferring literals that cost a
+    /// learned clause nothing (level 0, or already seen by the analysis).
+    fn explain_box(&mut self, b: u32, target: &mut [u64], before: usize, out: &mut Vec<u32>) {
         let h = self.hdr[b as usize];
         let nw = h.nw as usize;
-        let mut cands: Vec<(u32, u32, usize)> = (0..h.nvars as usize)
-            .map(|li| (self.vars_all[h.vbase as usize + li], li))
-            .filter(|&(v, _)| self.vals[v as usize] != Val::U && (self.trail_pos[v as usize] as usize) < before)
-            .map(|(v, li)| (self.level[v as usize], self.trail_pos[v as usize], li)).collect();
-        cands.sort_unstable();
-        for (_, _, li) in cands {
-            if target.iter().all(|&w| w == 0) { break; }
-            let var = self.vars_all[h.vbase as usize + li];
-            let val = self.vals[var as usize];
+        let mode = self.explain;
+        let mut cands = std::mem::take(&mut self.expl_cands);
+        cands.clear();
+        for li in 0..h.nvars as usize {
+            let v = self.vars_all[h.vbase as usize + li] as usize;
+            let val = self.vals[v];
+            if val == Val::U || self.trail_pos[v] as usize >= before { continue; }
+            // `Greedy` is the plain trail order (the baseline); the others
+            // put the free literals first
+            let class = if mode == ExplainMode::Greedy { 2 } else if self.level[v] == 0 { 0 } else if self.seen[v] { 1 } else { 2 };
             let kb = h.kbase as usize + 2 * li * nw + if val == Val::T { nw } else { 0 };
-            let mut hit = false;
-            for (w, t) in target.iter_mut().enumerate().take(nw) {
-                let x = *t & self.kill_all[kb + w];
-                if x != 0 { *t &= !x; hit = true; }
-            }
-            if hit { out.push(code(var, val == Val::T)); }   // the false literal ¬(var = val)
+            cands.push((class, self.level[v], self.trail_pos[v], li as u32, kb as u32));
         }
-        debug_assert!(target.iter().all(|&w| w == 0), "explanation does not cover the dead rows");
+        cands.sort_unstable();
+        let mut orig = std::mem::take(&mut self.expl_orig);
+        orig.clear();
+        orig.extend_from_slice(&target[..nw]);
+        let mut picked = std::mem::take(&mut self.expl_picked);
+        picked.clear();
+        let mut used = std::mem::take(&mut self.expl_used);
+        match mode {
+            ExplainMode::Greedy | ExplainMode::Minimal => {
+                for &(class, _, _, li, kb) in &cands {
+                    if target[..nw].iter().all(|&w| w == 0) { break; }
+                    let kb = kb as usize;
+                    let mut hit = false;
+                    for w in 0..nw {
+                        let x = target[w] & self.kill_all[kb + w];
+                        if x != 0 { target[w] &= !x; hit = true; }
+                    }
+                    if hit { picked.push((li, kb as u32, class)); }
+                }
+            }
+            ExplainMode::Cover => {
+                used.clear();
+                used.resize(cands.len(), false);
+                while target[..nw].iter().any(|&w| w != 0) {
+                    let mut best: Option<(u32, usize)> = None;
+                    for (ci, &(_, _, _, _, kb)) in cands.iter().enumerate() {
+                        if used[ci] { continue; }
+                        let kb = kb as usize;
+                        let cnt: u32 = (0..nw).map(|w| (target[w] & self.kill_all[kb + w]).count_ones()).sum();
+                        if cnt > 0 && best.is_none_or(|(c, _)| cnt > c) { best = Some((cnt, ci)); }
+                    }
+                    let Some((_, ci)) = best else { break };
+                    used[ci] = true;
+                    let (class, _, _, li, kb) = cands[ci];
+                    for w in 0..nw { target[w] &= !self.kill_all[kb as usize + w]; }
+                    picked.push((li, kb, class));
+                }
+            }
+        }
+        debug_assert!(target[..nw].iter().all(|&w| w == 0), "explanation does not cover the dead rows");
+        let mut keep = std::mem::take(&mut self.expl_keep);
+        keep.clear();
+        keep.resize(picked.len(), true);
+        if mode != ExplainMode::Greedy && picked.len() > 1 {
+            // inclusion-minimal: newest pick first, drop a literal the kept
+            // others cover for (free literals — level 0, seen — stay)
+            for i in (0..picked.len()).rev() {
+                if picked[i].2 < 2 { continue; }
+                let mut covered = true;
+                for w in 0..nw {
+                    let mut c = 0u64;
+                    for (j, p) in picked.iter().enumerate() { if j != i && keep[j] { c |= self.kill_all[p.1 as usize + w]; } }
+                    if c & orig[w] != orig[w] { covered = false; break; }
+                }
+                if covered { keep[i] = false; self.stats.explanation_dropped += 1; }
+            }
+        }
+        self.stats.explanations += 1;
+        for (i, &(li, _, _)) in picked.iter().enumerate() {
+            if !keep[i] { continue; }
+            let var = self.vars_all[h.vbase as usize + li as usize];
+            out.push(code(var, self.vals[var as usize] == Val::T));   // the false literal ¬(var = val)
+            self.stats.explanation_lits += 1;
+        }
+        self.expl_cands = cands;
+        self.expl_orig = orig;
+        self.expl_picked = picked;
+        self.expl_keep = keep;
+        self.expl_used = used;
     }
 
     /// The rows of box `b` (all of them, or those not having `var = val`).
@@ -524,7 +636,7 @@ impl Engine {
     }
 
     /// The false literals of the reason for `var`'s value (its own literal excluded).
-    fn reason_lits(&self, var: u32, out: &mut Vec<u32>) {
+    fn reason_lits(&mut self, var: u32, out: &mut Vec<u32>) {
         match self.reason[var as usize] {
             Reason::None => {}
             Reason::Clause(ci) => for &l in &self.clauses[ci as usize] { if l >> 1 != var { out.push(l); } },
@@ -538,7 +650,7 @@ impl Engine {
     }
 
     /// The false literals of a conflict.
-    fn conflict_lits(&self, conflict: Conflict, out: &mut Vec<u32>) {
+    fn conflict_lits(&mut self, conflict: Conflict, out: &mut Vec<u32>) {
         match conflict {
             Conflict::Clause(ci) => out.extend_from_slice(&self.clauses[ci as usize]),
             Conflict::Box(b) => { let mut target = self.rows_mask(b, None); self.explain_box(b, &mut target, self.trail.len(), out); }

@@ -225,7 +225,16 @@ newest pick first; and `cover`, largest remaining coverage first (the
 set-cover greedy, ties by the same preference) and then made
 inclusion-minimal — the default.  On the adder cones of §10.1 `cover`
 halves the explanation (2.2 literals against greedy's 4.9) and with it
-the conflicts; the measurement is in §10.1.
+the conflicts; the measurement is in §10.1.  A table can also carry
+**explanation-only clauses** (`add_explain_clause`, 2026-09-15): a
+cone's own gate clauses, kept beside its table but never propagated;
+when the table forces a literal and one of them is unit for that
+literal under the assignment that preceded it, the clause is the reason
+instead of the cover — the gate's antecedents, which on a multi-gate
+table are the true minimum hitting set the coverage-greedy cover misses
+(§10.1).  `tools/cnf2boxes.py` writes them (`explain.cnf`) for the
+cones with no hidden variable, and `sat -b boxes --boxes` loads the
+file beside `boxes.json` (`BOXES_GATE_EXPLAIN=0` to skip).
 
 **Which clause.**  The 1-UIP clause is minimised the MiniSat way before
 it is learned: a literal whose reason consists of literals already in the
@@ -1074,6 +1083,64 @@ decided — the 33 K-variable sum-of-3-cubes instance makes 472 K
 conflicts in 60 s against 368 K, the vivified clauses propagating
 faster).  Both stay behind their switches, off; the paper's window
 table and the numbers above stand.
+
+**Propagation core (2026-09-15).**  A 10 s sample of the engine on
+pyhala-braun-sat's plain CNF puts 65 % of the time in `propagate`, 16 %
+in analysis and minimisation, 7.5 % in explanations and 5 % in the
+decision heap.  Three changes to the clause store: binary clauses
+propagate from per-literal implication lists without touching clause
+memory (and are never deleted, so the lists never dangle); literal
+values are a per-literal array (one load); and the clauses live in one
+contiguous arena (`cstart`/`clen` per clause, a deleted clause keeps its
+index, `reduce_db` compacts).  The arena changes no trajectory (the
+c3540 cones reproduce their conflicts to the unit); the implication
+lists do (propagation order).  On the ISCAS pair, whose whole store
+fits in cache, nothing moves — c3540 plain 7.2 → 6.9 M propagations/s
+at 12 µs a conflict, c5315 8.3 → 8.3 M/s at 6.6 µs — and where the
+store does not fit it does: sum_of_3_cubes at 33 K variables 9.7 → 12.6
+M propagations/s and 6.2 → 8.4 K conflicts/s, at 366 K variables 10.5 →
+14.2 M/s and 2.5 → 3.9 K conflicts/s; pyhala-braun plain (9.6 K
+variables) 8.3 → 8.5 M/s (the satisfiable rows change trajectory with
+the implication lists: pyhala plain 103 → 135 s, toughsat plain's 78 s
+model is not found again in 300 s).  So the 1.3–2.6× to CaDiCaL on the small
+circuits is not propagation speed: c3540 plain is 137 K conflicts at
+12 µs each against CaDiCaL's 0.5 s in total, and what is left to close
+is the number of conflicts — search quality, not the core.
+
+**Explanation-only gate clauses (2026-09-15).**  The box-specific
+open item, built and measured on the regenerated K = 8 translations
+(the current translator; the ISCAS cones it now makes differ from the
+2026-09-14 ones — c3540: 272 cones, 138 residual clauses — so the rows
+below compare against themselves).  Same instance, gate reasons off →
+on; the cones with a hidden variable contribute no gate clause, so the
+ISCAS pair has 15 and 6 of them, ezfact and sum-of-3-cubes all of
+theirs:
+
+| instance | gate reasons off | on |
+|---|---|---|
+| ezfact64_6 cones K = 8 (SAT; nothing had solved it: CaDiCaL > 60 s, every box configuration > 300 s) | > 120 s, 1.0 M conflicts | **SAT 18.8 s, 161 K conflicts** (17.7 s on a rerun; model checked against all 19,785 original clauses); 4.7 M of 7.1 M table reasons from gate clauses |
+| sum_of_3_cubes_37 cones K = 8 (60 s) | 222 K conflicts | 324 K conflicts (+46 %); 62 M gate reasons |
+| c3540 cones K = 8 (15 gate clauses) | 187 K, 4.2 s | 201 K, 4.6 s |
+| c5315 cones K = 8 (6 gate clauses) | 90 K, 1.3 s | 55 K, 0.8 s |
+
+The prediction that the cover explanation already matched the gate
+clauses was wrong, and the reason sizes say why: on ezfact's two-XOR3
+tables the cover averages 4.6 literals where the gate clause gives 3 —
+the coverage-greedy hitting set is not the minimum on a joint table,
+and the gate clause is that minimum for free.  With most reasons taken
+from the gates the learned clauses follow the circuit's own implication
+structure, and ezfact, the instance the survey had written off ("every
+gate output fans out, nothing hidden"), is the second competition
+instance the engine solves that CaDiCaL does not in 60 s — CaDiCaL
+takes 111 s with a 600 s budget, so 6× on the instance.  With the
+caveat every satisfiable row has carried: under Luby restarts neither
+configuration finds the model in 300 s (2.9 M conflicts without gate
+reasons, 2.8 M with, the same rate), so the 18 s is the Glucose
+trajectory with gate reasons finding a model at 161 K conflicts, not
+the instance becoming easy; and sum_of_3_cubes_37, 46 % more conflicts
+a second, is still beyond 300 s.  What survives the caveat is
+structural: the gate reasons are shorter, cost nothing, and are the
+right reasons on principle — on by default.
 
 **The w(5;5) family, boxes against CaDiCaL (2026-09-15).**  Through
 the web app's `/satisfiable` (boxed form `w5_ap(n)`, one `ap5` box per

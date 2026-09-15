@@ -138,6 +138,8 @@ pub struct Stats {
     pub explanation_dropped: u64,
     /// Reason explanations served from the per-assignment cache.
     pub explanation_hits: u64,
+    /// Table reasons taken from an explanation-only gate clause instead.
+    pub explanation_gate: u64,
     /// Learned clauses, and their literals before and after minimisation.
     pub learned: u64,
     pub learned_lits_raw: u64,
@@ -250,10 +252,6 @@ enum Conflict {
 const REDUCE_STEP: usize = 300;
 
 #[inline] fn code(var: u32, neg: bool) -> u32 { var << 1 | neg as u32 }
-/// The value of literal code `c` under `vals`.
-#[inline] fn lit_val(vals: &[Val], c: u32) -> Val {
-    match vals[(c >> 1) as usize] { Val::U => Val::U, v => if (v == Val::T) != (c & 1 == 1) { Val::T } else { Val::F } }
-}
 
 /// The engine: conflict-driven search (§3.2, §3.5) over two kinds of
 /// constraint — **table boxes**, propagated to generalized arc consistency
@@ -286,10 +284,27 @@ pub struct Engine {
     in_queue: Vec<bool>,
     queue: Vec<u32>,
     // clauses
-    clauses: Vec<Vec<u32>>,
+    /// The clause store: clause `ci` is `arena[cstart[ci] .. + clen[ci]]`,
+    /// contiguous so a watch visit touches one cache line; a deleted clause
+    /// keeps its index with `clen` 0 and `reduce_db` compacts the arena.
+    arena: Vec<u32>,
+    cstart: Vec<u32>,
+    clen: Vec<u32>,
     /// Per literal code: the clauses watching it (visited when it becomes
-    /// FALSE), each with a blocker literal.
+    /// FALSE), each with a blocker literal.  Binary clauses are not here:
     watches: Vec<Vec<(u32, u32)>>,
+    /// per literal code, the literals a binary clause implies when it
+    /// becomes FALSE, with the clause (never deleted).
+    bins: Vec<Vec<(u32, u32)>>,
+    /// Explanation-only clauses (`add_explain_clause`): a cone's gate
+    /// clauses kept beside its table, never propagated; when the table
+    /// forces a literal and one of them is unit for it under the earlier
+    /// assignment, that clause is the reason instead of the table's cover.
+    xarena: Vec<u32>,
+    xstart: Vec<u32>,
+    xlen: Vec<u32>,
+    /// per literal code: the explanation-only clauses containing it
+    xidx: Vec<Vec<u32>>,
     /// Clauses `[first_learnt..]` were learned.
     first_learnt: usize,
     /// Per learned clause (index − first_learnt): literal block distance and
@@ -306,6 +321,8 @@ pub struct Engine {
     unsat_at_init: bool,
     // assignment
     vals: Vec<Val>,
+    /// Per literal code: its value (`lit_value` is one load).
+    lvals: Vec<Val>,
     level: Vec<u32>,
     reason: Vec<Reason>,
     trail_pos: Vec<u32>,
@@ -388,10 +405,11 @@ impl Engine {
     pub fn new(nvars: usize, boxes: Vec<TableBox>) -> Engine {
         let mut e = Engine {
             nvars: 0, hdr: Vec::new(), vars_all: Vec::new(), kill_all: Vec::new(), occ: Vec::new(), live: Vec::new(), snap: Vec::new(), in_queue: Vec::new(), queue: Vec::new(),
-            clauses: Vec::new(), watches: Vec::new(), first_learnt: 0,
+            arena: Vec::new(), cstart: Vec::new(), clen: Vec::new(), watches: Vec::new(), bins: Vec::new(), first_learnt: 0,
+            xarena: Vec::new(), xstart: Vec::new(), xlen: Vec::new(), xidx: Vec::new(),
             learnt_lbd: Vec::new(), learnt_act: Vec::new(), deleted: Vec::new(), cla_inc: 1.0, reduce_at: 0, reduce_start: 4000,
             unsat_at_init: false,
-            vals: Vec::new(), level: Vec::new(), reason: Vec::new(), trail_pos: Vec::new(),
+            vals: Vec::new(), lvals: Vec::new(), level: Vec::new(), reason: Vec::new(), trail_pos: Vec::new(),
             trail: Vec::new(), trail_lim: Vec::new(), qhead: 0,
             activity: Vec::new(), var_inc: 1.0, phase: Vec::new(), seen: Vec::new(),
             heap: Vec::new(), heap_pos: Vec::new(),
@@ -436,6 +454,9 @@ impl Engine {
         self.phase.resize(nvars, false);
         self.seen.resize(nvars, false);
         self.watches.resize(2 * nvars, Vec::new());
+        self.bins.resize(2 * nvars, Vec::new());
+        self.xidx.resize(2 * nvars, Vec::new());
+        self.lvals.resize(2 * nvars, Val::U);
         self.expl_cache.resize_with(nvars, Vec::new);
         self.expl_ok.resize(nvars, false);
         self.eliminated.resize(nvars, false);
@@ -553,22 +574,69 @@ impl Engine {
             0 => self.unsat_at_init = true,
             1 => { let l = c[0]; if !self.assign(l >> 1, if l & 1 == 1 { Val::F } else { Val::T }, Reason::None) { self.unsat_at_init = true; } }
             _ => {
-                let ci = self.clauses.len() as u32;
-                self.watches[c[0] as usize].push((ci, c[1]));
-                self.watches[c[1] as usize].push((ci, c[0]));
-                self.clauses.push(c);
+                let ci = self.cstart.len() as u32;
+                if c.len() == 2 {
+                    self.bins[c[0] as usize].push((c[1], ci));
+                    self.bins[c[1] as usize].push((c[0], ci));
+                } else {
+                    self.watches[c[0] as usize].push((ci, c[1]));
+                    self.watches[c[1] as usize].push((ci, c[0]));
+                }
+                self.push_clause(&c);
                 self.deleted.push(false);
-                self.first_learnt = self.clauses.len();
+                self.first_learnt = self.cstart.len();
             }
         }
     }
 
+    /// Add an explanation-only clause (before solving): never propagated,
+    /// only offered as the reason for a literal a table forces.
+    pub fn add_explain_clause(&mut self, lits: &[Lit]) {
+        if let Some(max) = lits.iter().map(|l| l.var).max() { self.grow(max as usize + 1); }
+        let mut c: Vec<u32> = lits.iter().map(|l| code(l.var, l.neg)).collect();
+        c.sort_unstable(); c.dedup();
+        if c.len() < 2 || c.windows(2).any(|w| w[0] >> 1 == w[1] >> 1) { return; }
+        let xi = self.xstart.len() as u32;
+        self.xstart.push(self.xarena.len() as u32);
+        self.xlen.push(c.len() as u32);
+        for &l in &c { self.xidx[l as usize].push(xi); }
+        self.xarena.extend_from_slice(&c);
+    }
+
+    pub fn nexplain(&self) -> usize { self.xstart.len() }
+
     pub fn nvars(&self) -> usize { self.nvars }
     pub fn nboxes(&self) -> usize { self.hdr.len() }
-    pub fn nclauses(&self) -> usize { self.clauses.len() }
+    pub fn nclauses(&self) -> usize { self.cstart.len() }
+
+    #[inline] fn clause(&self, ci: usize) -> &[u32] {
+        let s = self.cstart[ci] as usize;
+        &self.arena[s..s + self.clen[ci] as usize]
+    }
+
+    fn push_clause(&mut self, lits: &[u32]) -> usize {
+        let ci = self.cstart.len();
+        self.cstart.push(self.arena.len() as u32);
+        self.clen.push(lits.len() as u32);
+        self.arena.extend_from_slice(lits);
+        ci
+    }
+
+    fn delete_clause(&mut self, ci: usize) { self.deleted[ci] = true; self.clen[ci] = 0; }
+
+    /// Drop the deleted clauses' literals; indices stay, offsets move.
+    fn compact_arena(&mut self) {
+        let mut arena = Vec::with_capacity(self.arena.len());
+        for ci in 0..self.cstart.len() {
+            let (s, n) = (self.cstart[ci] as usize, self.clen[ci] as usize);
+            self.cstart[ci] = arena.len() as u32;
+            arena.extend_from_slice(&self.arena[s..s + n]);
+        }
+        self.arena = arena;
+    }
     fn decision_level(&self) -> usize { self.trail_lim.len() }
 
-    #[inline] fn lit_value(&self, c: u32) -> Val { lit_val(&self.vals, c) }
+    #[inline] fn lit_value(&self, c: u32) -> Val { self.lvals[c as usize] }
 
     fn new_level(&mut self) {
         self.trail_lim.push(self.trail.len());
@@ -583,6 +651,8 @@ impl Engine {
             let v = self.trail.pop().unwrap() as usize;
             self.phase[v] = self.vals[v] == Val::T;
             self.vals[v] = Val::U;
+            self.lvals[2 * v] = Val::U;
+            self.lvals[2 * v + 1] = Val::U;
             self.reason[v] = Reason::None;
             self.expl_ok[v] = false;
             self.heap_insert(v as u32);
@@ -613,6 +683,8 @@ impl Engine {
             _ => return false,
         }
         self.vals[v] = val;
+        self.lvals[2 * v] = val;
+        self.lvals[2 * v + 1] = if val == Val::T { Val::F } else { Val::T };
         self.level[v] = self.decision_level() as u32;
         self.reason[v] = reason;
         self.trail_pos[v] = self.trail.len() as u32;
@@ -641,6 +713,18 @@ impl Engine {
                 let v = self.trail[self.qhead];
                 self.qhead += 1;
                 let false_lit = code(v, self.vals[v as usize] == Val::T);   // the literal made FALSE
+                // binary clauses: no clause memory touched
+                for k in 0..self.bins[false_lit as usize].len() {
+                    let (other, ci) = self.bins[false_lit as usize][k];
+                    match self.lvals[other as usize] {
+                        Val::T => {}
+                        Val::F => { self.clear_queue(); return Some(Conflict::Clause(ci)); }
+                        Val::U => {
+                            self.stats.propagations += 1;
+                            self.assign(other >> 1, if other & 1 == 1 { Val::F } else { Val::T }, Reason::Clause(ci));
+                        }
+                    }
+                }
                 let mut ws = std::mem::take(&mut self.watches[false_lit as usize]);
                 let mut i = 0;
                 let mut j = 0;
@@ -649,25 +733,26 @@ impl Engine {
                     let (ci, blocker) = ws[i];
                     i += 1;
                     if self.deleted[ci as usize] { continue; }
-                    if self.lit_value(blocker) == Val::T { ws[j] = (ci, blocker); j += 1; continue; }
-                    let c = &mut self.clauses[ci as usize];
-                    if c[0] == false_lit { c.swap(0, 1); }
-                    let other = c[0];
-                    if other != blocker && lit_val(&self.vals, other) == Val::T { ws[j] = (ci, other); j += 1; continue; }
+                    if self.lvals[blocker as usize] == Val::T { ws[j] = (ci, blocker); j += 1; continue; }
+                    let s = self.cstart[ci as usize] as usize;
+                    let len = self.clen[ci as usize] as usize;
+                    if self.arena[s] == false_lit { self.arena.swap(s, s + 1); }
+                    let other = self.arena[s];
+                    if other != blocker && self.lvals[other as usize] == Val::T { ws[j] = (ci, other); j += 1; continue; }
                     // a new watch: any literal not false
                     let mut found = false;
-                    for k in 2..c.len() {
-                        if lit_val(&self.vals, c[k]) != Val::F {
-                            c.swap(1, k);
-                            let w = c[1];
-                            self.watches[w as usize].push((ci, other));
+                    for k in 2..len {
+                        let l = self.arena[s + k];
+                        if self.lvals[l as usize] != Val::F {
+                            self.arena.swap(s + 1, s + k);
+                            self.watches[l as usize].push((ci, other));
                             found = true;
                             break;
                         }
                     }
                     if found { continue; }
                     ws[j] = (ci, other); j += 1;
-                    if self.lit_value(other) == Val::F {
+                    if self.lvals[other as usize] == Val::F {
                         conflict = Some(Conflict::Clause(ci));
                         while i < ws.len() { ws[j] = ws[i]; i += 1; j += 1; }
                         break;
@@ -823,18 +908,36 @@ impl Engine {
     fn reason_lits(&mut self, var: u32, out: &mut Vec<u32>) {
         match self.reason[var as usize] {
             Reason::None => {}
-            Reason::Clause(ci) => for &l in &self.clauses[ci as usize] { if l >> 1 != var { out.push(l); } },
+            Reason::Clause(ci) => for &l in self.clause(ci as usize) { if l >> 1 != var { out.push(l); } },
             Reason::Box(b) => {
                 if self.expl_ok[var as usize] {
                     self.stats.explanation_hits += 1;
                     out.extend_from_slice(&self.expl_cache[var as usize]);
                     return;
                 }
-                let li = self.local_index(b, var);
-                let val = self.vals[var as usize] == Val::T;
-                let mut target = self.rows_mask(b, Some((li, val)));
                 let start = out.len();
-                self.explain_box(b, &mut target, self.trail_pos[var as usize] as usize, out);
+                // a gate clause of the cone, unit for this literal under the
+                // assignment that preceded it, is a shorter reason than the cover
+                let t = code(var, self.vals[var as usize] == Val::F);   // the TRUE literal of var
+                let pos = self.trail_pos[var as usize];
+                let mut found = false;
+                for k in 0..self.xidx[t as usize].len() {
+                    let xi = self.xidx[t as usize][k] as usize;
+                    let (s, n) = (self.xstart[xi] as usize, self.xlen[xi] as usize);
+                    let unit = (0..n).all(|j| { let l = self.xarena[s + j]; l == t || (self.lvals[l as usize] == Val::F && self.trail_pos[(l >> 1) as usize] < pos) });
+                    if unit {
+                        for j in 0..n { let l = self.xarena[s + j]; if l != t { out.push(l); } }
+                        self.stats.explanation_gate += 1;
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    let li = self.local_index(b, var);
+                    let val = self.vals[var as usize] == Val::T;
+                    let mut target = self.rows_mask(b, Some((li, val)));
+                    self.explain_box(b, &mut target, self.trail_pos[var as usize] as usize, out);
+                }
                 let mut cache = std::mem::take(&mut self.expl_cache[var as usize]);
                 cache.clear();
                 cache.extend_from_slice(&out[start..]);
@@ -847,7 +950,7 @@ impl Engine {
     /// The false literals of a conflict.
     fn conflict_lits(&mut self, conflict: Conflict, out: &mut Vec<u32>) {
         match conflict {
-            Conflict::Clause(ci) => out.extend_from_slice(&self.clauses[ci as usize]),
+            Conflict::Clause(ci) => out.extend_from_slice(self.clause(ci as usize)),
             Conflict::Box(b) => { let mut target = self.rows_mask(b, None); self.explain_box(b, &mut target, self.trail.len(), out); }
             Conflict::Forced { b, var, val } => {
                 let li = self.local_index(b, var);
@@ -878,7 +981,7 @@ impl Engine {
     /// (LBD ≤ 2) and current reasons are kept; the rest go by LBD, then
     /// activity.  Watches drop deleted clauses lazily.
     fn reduce_db(&mut self) {
-        let n = self.clauses.len() - self.first_learnt;
+        let n = self.cstart.len() - self.first_learnt;
         let mut order: Vec<usize> = (0..n).filter(|&k| !self.deleted[self.first_learnt + k]).collect();
         order.sort_by(|&a, &b| self.learnt_lbd[b].cmp(&self.learnt_lbd[a])
             .then(self.learnt_act[a].partial_cmp(&self.learnt_act[b]).unwrap_or(std::cmp::Ordering::Equal)));
@@ -886,15 +989,16 @@ impl Engine {
         for &k in order.iter().take(order.len() / 2) {
             if self.learnt_lbd[k] <= 2 { continue; }
             let ci = self.first_learnt + k;
+            if self.clen[ci] <= 2 { continue; }
             // a clause that is the reason for its first literal stays
-            let l0 = self.clauses[ci][0];
+            let l0 = self.clause(ci)[0];
             if self.reason[(l0 >> 1) as usize] == Reason::Clause(ci as u32) && self.vals[(l0 >> 1) as usize] != Val::U { continue; }
-            self.deleted[ci] = true;
-            self.clauses[ci] = Vec::new();
+            self.delete_clause(ci);
             removed += 1;
         }
         self.stats.deleted += removed as u64;
         self.stats.reductions += 1;
+        self.compact_arena();
     }
 
     fn bump(&mut self, v: usize) {
@@ -1060,14 +1164,14 @@ impl Engine {
         // the original clauses under the level-0 assignment
         let mut cls: Vec<Vec<u32>> = Vec::new();
         for ci in 0..self.first_learnt {
-            if self.deleted[ci] || self.clauses[ci].iter().any(|&l| self.lit_value(l) == Val::T) { continue; }
-            let c: Vec<u32> = self.clauses[ci].iter().copied().filter(|&l| self.lit_value(l) != Val::F).collect();
+            if self.deleted[ci] || self.clause(ci).iter().any(|&l| self.lit_value(l) == Val::T) { continue; }
+            let c: Vec<u32> = self.clause(ci).iter().copied().filter(|&l| self.lit_value(l) != Val::F).collect();
             debug_assert!(c.len() >= 2, "level-0 propagation left a unit or empty clause");
             cls.push(c);
         }
-        let learned: Vec<(Vec<u32>, u32, f64)> = (self.first_learnt..self.clauses.len())
-            .filter(|&ci| !self.deleted[ci] && !self.clauses[ci].iter().any(|&l| self.lit_value(l) == Val::T))
-            .map(|ci| (self.clauses[ci].iter().copied().filter(|&l| self.lit_value(l) != Val::F).collect(), self.learnt_lbd[ci - self.first_learnt], self.learnt_act[ci - self.first_learnt]))
+        let learned: Vec<(Vec<u32>, u32, f64)> = (self.first_learnt..self.cstart.len())
+            .filter(|&ci| !self.deleted[ci] && !self.clause(ci).iter().any(|&l| self.lit_value(l) == Val::T))
+            .map(|ci| (self.clause(ci).iter().copied().filter(|&l| self.lit_value(l) != Val::F).collect(), self.learnt_lbd[ci - self.first_learnt], self.learnt_act[ci - self.first_learnt]))
             .collect();
         self.stats.clauses_before = cls.len() as u64;
         let mut alive = vec![true; cls.len()];
@@ -1112,9 +1216,10 @@ impl Engine {
         }
         // rebuild the clause store: the surviving originals, then the
         // learned clauses free of eliminated variables
-        self.clauses.clear(); self.deleted.clear(); self.learnt_lbd.clear(); self.learnt_act.clear();
+        self.arena.clear(); self.cstart.clear(); self.clen.clear(); self.deleted.clear(); self.learnt_lbd.clear(); self.learnt_act.clear();
         self.first_learnt = 0;
         for w in &mut self.watches { w.clear(); }
+        for w in &mut self.bins { w.clear(); }
         for v in 0..n { if self.vals[v] != Val::U { self.reason[v] = Reason::None; } }   // level-0 reasons pointed into the old store
         let mut kept = 0u64;
         for (i, c) in cls.iter().enumerate() {
@@ -1244,13 +1349,13 @@ impl Engine {
     fn vivify(&mut self) {
         let saved_phase = self.phase.clone();
         let budget_end = self.stats.propagations + 2_000_000;
-        let mut cands: Vec<usize> = (self.first_learnt..self.clauses.len()).filter(|&ci| !self.deleted[ci] && self.learnt_lbd[ci - self.first_learnt] <= 6 && self.clauses[ci].len() > 2).collect();
-        cands.sort_by_key(|&ci| (self.learnt_lbd[ci - self.first_learnt], self.clauses[ci].len()));
+        let mut cands: Vec<usize> = (self.first_learnt..self.cstart.len()).filter(|&ci| !self.deleted[ci] && self.learnt_lbd[ci - self.first_learnt] <= 6 && self.clen[ci] > 2).collect();
+        cands.sort_by_key(|&ci| (self.learnt_lbd[ci - self.first_learnt], self.clen[ci]));
         for ci in cands {
             if self.stats.propagations > budget_end { break; }
-            let lits = self.clauses[ci].clone();
+            let lits = self.clause(ci).to_vec();
             // under the level-0 assignment
-            if lits.iter().any(|&l| self.lit_value(l) == Val::T) { self.deleted[ci] = true; self.clauses[ci] = Vec::new(); continue; }
+            if lits.iter().any(|&l| self.lit_value(l) == Val::T) { self.delete_clause(ci); continue; }
             let lits: Vec<u32> = lits.into_iter().filter(|&l| self.lit_value(l) != Val::F).collect();
             self.deleted[ci] = true;   // out of the way of its own propagation
             let mut kept: Vec<u32> = Vec::new();
@@ -1273,7 +1378,7 @@ impl Engine {
             if !shortened || kept.len() == lits.len() { self.deleted[ci] = false; continue; }
             self.stats.vivified += 1;
             self.stats.vivified_lits += (lits.len() - kept.len()) as u64;
-            self.clauses[ci] = Vec::new();
+            self.clen[ci] = 0;
             let lbd = self.learnt_lbd[ci - self.first_learnt];
             let act = self.learnt_act[ci - self.first_learnt];
             self.add_learned(kept, lbd, act);
@@ -1290,10 +1395,15 @@ impl Engine {
             0 => self.unsat_at_init = true,
             1 => { let l = c[0]; if !self.assign(l >> 1, if l & 1 == 1 { Val::F } else { Val::T }, Reason::None) { self.unsat_at_init = true; } else if self.propagate().is_some() { self.unsat_at_init = true; } }
             _ => {
-                let ci = self.clauses.len() as u32;
-                self.watches[c[0] as usize].push((ci, c[1]));
-                self.watches[c[1] as usize].push((ci, c[0]));
-                self.clauses.push(c);
+                let ci = self.cstart.len() as u32;
+                if c.len() == 2 {
+                    self.bins[c[0] as usize].push((c[1], ci));
+                    self.bins[c[1] as usize].push((c[0], ci));
+                } else {
+                    self.watches[c[0] as usize].push((ci, c[1]));
+                    self.watches[c[1] as usize].push((ci, c[0]));
+                }
+                self.push_clause(&c);
                 self.deleted.push(false);
                 self.learnt_lbd.push(lbd);
                 self.learnt_act.push(act);
@@ -1337,11 +1447,16 @@ impl Engine {
                 if learnt.len() == 1 {
                     self.assign(l0 >> 1, if l0 & 1 == 1 { Val::F } else { Val::T }, Reason::None);
                 } else {
-                    let ci = self.clauses.len() as u32;
-                    self.watches[learnt[0] as usize].push((ci, learnt[1]));
-                    self.watches[learnt[1] as usize].push((ci, learnt[0]));
+                    let ci = self.cstart.len() as u32;
+                    if learnt.len() == 2 {
+                        self.bins[learnt[0] as usize].push((learnt[1], ci));
+                        self.bins[learnt[1] as usize].push((learnt[0], ci));
+                    } else {
+                        self.watches[learnt[0] as usize].push((ci, learnt[1]));
+                        self.watches[learnt[1] as usize].push((ci, learnt[0]));
+                    }
                     lbd = self.lbd(&learnt);
-                    self.clauses.push(learnt);
+                    self.push_clause(&learnt);
                     self.deleted.push(false);
                     self.learnt_lbd.push(lbd);
                     self.learnt_act.push(self.cla_inc);
@@ -1652,7 +1767,7 @@ mod tests {
             e.reduce_start = 8;
             let v = e.solve();
             let ndel = e.deleted.iter().filter(|&&d| d).count();
-            eprintln!("trial {trial}: {} conflicts, {} learned, {ndel} deleted", e.stats.conflicts, e.clauses.len() - e.first_learnt);
+            eprintln!("trial {trial}: {} conflicts, {} learned, {ndel} deleted", e.stats.conflicts, e.nclauses() - e.first_learnt);
             deletions_seen |= ndel > 0;
             match v {
                 Verdict::Sat(model) => { assert!(brute, "trial {trial}: engine SAT, brute UNSAT"); assert!(check_model(&cls, &model), "trial {trial}: bad model"); }
@@ -1666,7 +1781,7 @@ mod tests {
         e.reduce_start = 8;
         assert_eq!(e.solve(), Verdict::Unsat);
         let ndel = e.deleted.iter().filter(|&&d| d).count();
-        eprintln!("php(7,6): {} conflicts, {} learned, {ndel} deleted", e.stats.conflicts, e.clauses.len() - e.first_learnt);
+        eprintln!("php(7,6): {} conflicts, {} learned, {ndel} deleted", e.stats.conflicts, e.nclauses() - e.first_learnt);
         deletions_seen |= ndel > 0;
         assert!(deletions_seen, "the test never deleted a clause — lower reduce_start or raise m");
     }

@@ -1651,6 +1651,18 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
             Ok(boxes) => { n_inst = boxes.len(); for b in boxes { eng.add_box(b); } }
             Err(e) => { eprintln!("c ERROR: --boxes {}: {}", path.display(), e); std::process::exit(2); }
         }
+        // explanation-only gate clauses beside the instances (cnf2boxes writes them for cones with visible outputs)
+        let xpath = path.parent().map(|d| d.join("explain.cnf")).unwrap_or_default();
+        if xpath.exists() && !matches!(std::env::var("BOXES_GATE_EXPLAIN").as_deref(), Ok("0") | Ok("off")) {
+            if let Ok(text) = std::fs::read_to_string(&xpath) {
+                for line in text.lines() {
+                    if line.starts_with('p') || line.starts_with('c') || line.trim().is_empty() { continue; }
+                    let lits = line.split_whitespace().filter_map(|t| t.parse::<i32>().ok()).take_while(|&l| l != 0).map(logic::boxes::lit_of_dimacs).collect::<Vec<_>>();
+                    eng.add_explain_clause(&lits);
+                }
+            }
+            eprintln!("c boxes: {} explanation-only gate clauses loaded from {}", eng.nexplain(), xpath.display());
+        }
     }
     if !matches!(std::env::var("BOXES_PREPROCESS").as_deref(), Ok("0") | Ok("none") | Ok("off")) {
         let tp = Instant::now();
@@ -1667,6 +1679,7 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
               if eng.minimize { "" } else { ", off" });
     eprintln!("c boxes: learned DB {} clauses kept of {} ({} deleted in {} reductions); {} explanation cache hits; {} restarts ({:?}); {} rephases; {} inprocessing rounds: {} variables eliminated, {} clauses vivified (-{} literals)",
               s.learned - s.deleted, s.learned, s.deleted, s.reductions, s.explanation_hits, s.restarts, eng.restart, s.rephases, s.inprocess_rounds, s.inprocess_eliminated, s.vivified, s.vivified_lits);
+    if eng.nexplain() > 0 { eprintln!("c boxes: {} table reasons taken from gate clauses", s.explanation_gate); }
     match verdict {
         logic::boxes::Verdict::Sat(m)   => SearchOutcome::Sat(m),
         logic::boxes::Verdict::Unsat    => SearchOutcome::Unsat,

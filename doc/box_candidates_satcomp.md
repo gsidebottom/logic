@@ -126,6 +126,9 @@ toughsat_factoring_895s (SAT Competition 2026, prime-factoring) is
 solved in 26–30 s against CaDiCaL's 205 s — the first competition
 instance the box engine wins, though only on the one search trajectory:
 the fourth measurement's learned-clause minimisation loses it again.
+The seventh measurement adds a second, ezfact64_6 in 18 s against
+CaDiCaL's 111 s, once a cone's own gate clauses serve as the reasons
+for what its table forces — with the same one-trajectory caveat.
 What still dominates elsewhere is the engine's plain-CNF gap to CaDiCaL
 (1.3–2.6× on the ISCAS instances after the decision heap, the
 minimisation and variable elimination, §10.1), which is CDCL maturity,
@@ -135,6 +138,16 @@ The parity third would need a Gauss box, and the cardinality third is
 not ours.
 
 ## First measurement: `tools/cnf2boxes.py` on the three small circuit families
+
+(A note on the family names, added 2026-09-15: the benchmark database's
+"belpyramid-puzzle" label mixes the pyramid-puzzle encodings proper —
+`bp4_…`/`bp5_…`, 75 K–380 K variables, about 45 % XOR-heavy gate
+structure — with classic hardware circuits its family inference filed
+under the same name: ISCAS-85 c3540 and c5315, ISCAS-89 s15850, ITC-99
+b14/b20/b22.  The "belpyramid" rows below are those two ISCAS-85
+circuits, and the per-family scan's "circuit, 96 % gates" description of
+the family came from them, its two smallest members.  The puzzle
+instances themselves are far beyond the 60 s budgets here.)
 
 `tools/cnf2boxes.py` reads the gates off a CNF, merges single-fanout gates
 bottom-up into cones of at most K inputs, hides the cones' internal gate
@@ -403,6 +416,36 @@ CNF, and hidden-internal cones on top of it.  (pyhala-braun-unsat was
 rerun only for the default configuration here, at > 600 s; the switch-on
 columns are inferred — it exceeds 600 s under every policy measured, and
 target phases and inprocessing only add work.)
+
+## Seventh measurement: explanation-only gate clauses (2026-09-15)
+
+The box-specific open item.  `tools/cnf2boxes.py` now also writes
+`explain.cnf`: the gate clauses of every cone with no hidden variable,
+which `sat -b boxes --boxes` loads beside `boxes.json` and the engine
+uses only as reasons — when a table forces a literal and a gate clause
+is unit for it under the earlier assignment, that clause (the gate's
+antecedents, 2–3 literals) is the reason instead of the table's cover
+(4–5 literals on a two-gate table).  Measured on regenerated K = 8
+translations (the current translator's; not the 2026-09-14 ISCAS
+files):
+
+| instance | gate reasons off | on |
+|---|---|---|
+| ezfact64_6 cones K = 8 (SAT) | > 120 s (1.0 M conflicts) | **SAT 18.8 s** (161 K conflicts; model verified) |
+| sum_of_3_cubes_37 cones K = 8 | 222 K conflicts in 60 s | 324 K in 60 s, no verdict |
+| c3540 / c5315 cones K = 8 (15 / 6 gate clauses) | 4.2 s / 1.3 s | 4.6 s / 0.8 s |
+
+ezfact64_6 — the instance the second measurement wrote off because
+every gate output fans out and nothing can be hidden — is solved in
+19 s where CaDiCaL exceeds 60 s and every earlier box configuration
+exceeded 300 s.  The visible-output cones that were "pure overhead" were
+overhead only for want of the right reasons.  Placement: CaDiCaL
+solves ezfact64_6 in 111 s given 600 s, so the box engine is 6× ahead
+on the instance — on that trajectory: under Luby restarts neither
+configuration finds the model in 300 s, which is the satisfiable-row
+caveat of every measurement here, and sum_of_3_cubes_37 stays beyond
+300 s with the reasons on.  The structural part stands: shorter
+reasons at no cost, on by default.
 
 ## Per-family scan (families with ≥ 2 instances across both years)
 

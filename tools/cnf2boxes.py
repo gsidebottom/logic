@@ -294,6 +294,7 @@ def main():
     cones, ncyclic, nunits = build_cones(nv, clauses, gates, args.k)
     os.makedirs(os.path.join(args.out, "tables"), exist_ok=True)
     instances, absorbed_clauses, tables = [], set(), {}
+    explain = set()   # absorbed clauses of the cones with no hidden variable: explanation-only clauses for the engine
     nhidden = 0; sizes = collections.Counter(); nfa = sum(1 for c in cones for m in c["members"] if len(m.gates) == 2)
     for cone in cones:
         ngates = sum(len(m.gates) for m in cone["members"])
@@ -316,15 +317,22 @@ def main():
         instances.append({"table": "tables/" + tables[key], "args": cone["inputs"] + cone["visible"]})
         for m in cone["members"]:
             for g in m.gates: absorbed_clauses.update(g.clauses)
+        if not cone["hidden"]:
+            for m in cone["members"]:
+                for g in m.gates: explain.update(g.clauses)
         nhidden += len(cone["hidden"]); sizes[ngates] += 1
     with open(os.path.join(args.out, "residual.cnf"), "w") as out:
         rest = [c for i, c in enumerate(clauses) if i not in absorbed_clauses]
         out.write(f"p cnf {nv} {len(rest)}\n")
         for c in rest: out.write(" ".join(map(str, c)) + " 0\n")
     json.dump(instances, open(os.path.join(args.out, "boxes.json"), "w"))
+    with open(os.path.join(args.out, "explain.cnf"), "w") as out:
+        xs = [clauses[i] for i in sorted(explain)]
+        out.write(f"p cnf {nv} {len(xs)}\n")
+        for c in xs: out.write(" ".join(map(str, c)) + " 0\n")
     print(f"{os.path.basename(args.cnf)}: {nv} vars, {len(clauses)} clauses; gates {dict(kinds)} ({nunits} units, {nfa} full adders, {ncyclic} dropped on cycles); "
           f"cones {len(instances)} (gates per cone {dict(sorted(sizes.items()))}), {len(tables)} distinct tables, {nhidden} hidden vars, "
-          f"{len(absorbed_clauses)} clauses absorbed, {len(rest)} residual")
+          f"{len(absorbed_clauses)} clauses absorbed, {len(rest)} residual, {len(xs)} explanation-only (cones with visible outputs)")
 
 if __name__ == "__main__":
     main()

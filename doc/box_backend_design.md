@@ -236,6 +236,29 @@ and its minimisation explain a table-propagated variable once and later
 conflicts reuse it until the variable is unassigned (`BOXES_MINIMIZE`,
 on by default; measured in §10.1).
 
+**When to restart.**  Two policies (`BOXES_RESTART`): Luby restarts
+with a 64-conflict unit, and — the default — Glucose's dynamic rule — restart when the
+last 50 learned clauses' LBD average exceeds 0.8× the running average,
+blocked while the trail is 40 % longer than usual — alternating with
+stable phases of Luby restarts (unit 512) whose length doubles from
+1,000 conflicts, the SAT-side half of CaDiCaL's stable/unstable
+scheme without its target phases; a restart reuses the trail down to
+the first decision the heap would now make differently.  Measured in
+§10.1.
+
+**Preprocessing (2026-09-15).**  `Engine::simplify` is SatELite's
+bounded variable elimination on the clauses: after level-0 propagation,
+a variable in no table and still unassigned is resolved away when its
+resolvents (tautologies dropped, at most 20 literals) are no more than
+the clauses they replace, two passes cheapest first; the removed
+clauses are kept and a model is extended over the eliminated variables
+last-eliminated first.  Table variables are frozen, so it is a pure
+clause-side pass — and a variable that will be assumed must not be
+eliminated, so the completion engine of the path search does not run
+it; `sat -b boxes` does (`BOXES_PREPROCESS=0` to skip).  On the plain
+ISCAS circuits it removes 65–70 % of the variables in milliseconds
+(§10.1).
+
 ## 4. Certification and formal verification — the UNSAT decision must be trustworthy
 
 The requirement is the project's standing one, sharpened: an UNSAT answer
@@ -845,8 +868,10 @@ of the box, oldest levels first, whose kill masks cover the rows that had to
 die — the lazy-clause-generation explanation of §3.5), then 1-UIP analysis,
 backjumping, learned clauses propagated with two watched literals, VSIDS over a
 binary heap of the unassigned variables (ties to the lower variable),
-phase saving and Luby restarts are the textbook ones, and the learned
-clause is minimised (§3.5).  A call whose
+phase saving and restarts (Luby, or Glucose's dynamic ones with stable
+phases and trail reuse, §3.5) are the textbook ones, and the learned
+clause is minimised (§3.5); the CLI runs bounded variable elimination
+first (§3.5).  A call whose
 tables are tiny (≤ 8 rows, negation ≤ 4 rows) goes into the engine in
 **clause form** — `atom ⇒ B` is one clause per row of ¬B, `¬atom ⇒ ¬B` one
 per row of B — the same constraint, but propagated by watched literals
@@ -948,6 +973,47 @@ window table of `doc/matmul_cxlb_satcomp.md`: 2–6× slower than CaDiCaL
 on the refutations, 3–28× faster on six satisfiable rows and 7–14×
 slower on three, and the weight-7 window sun56[1,2,4] at k = 15 now
 solved in 23 s where CaDiCaL takes 58 s.
+
+**Restarts and preprocessing (2026-09-15).**  The three
+configurations — the engine above (Luby restarts, no preprocessing),
+with bounded variable elimination, and with elimination and Glucose
+restarts — on the same rows, two or three processes sharing the
+machine; the box-native rows from two servers run concurrently:
+
+| instance | Luby, no preprocessing | + elimination, Luby | + elimination, Glucose |
+|---|---|---|---|
+| c3540 plain CNF (UNSAT; CaDiCaL 0.50 s) | 91 K conflicts, 1.7 s | 1,483 of 2,163 variables gone, 116 K, 1.3 s | 128 K, 1.4 s |
+| c5315 plain CNF (UNSAT; CaDiCaL 0.15 s) | 50 K, 0.67 s | 2,755 of 3,801 gone, 28 K, 0.20 s | 32 K, 0.22 s |
+| c3540 cones K = 8 / 12 | 1.8 s / 2.5 s | 2.3 s / 2.6 s (56 gone) | 2.1 s / 2.5 s |
+| c5315 cones K = 8 / 12 | 0.40 s / 0.75 s | 0.44 s / 0.46 s (256 / 229 gone) | 0.31 s / 0.27 s |
+| toughsat plain CNF (SAT; CaDiCaL 205 s) | > 300 s | SAT 78 s (4 gone) | SAT 132 s |
+| toughsat cones K = 12 | > 300 s | > 300 s | SAT 235 s |
+| pyhala-braun-sat plain CNF (SAT; CaDiCaL 5.8 s) | SAT 221 s | SAT 250 s (3,262 gone) | SAT 103 s |
+| pyhala-braun-sat cones K = 8 | SAT 65 s | SAT 65 s (nothing to eliminate) | SAT 142 s |
+| pyhala-braun-unsat cones K = 8 (CaDiCaL 53 s) | > 600 s | > 600 s | > 600 s |
+| w5_ap(178) (UNSAT; CaDiCaL 9.6 s) | 394 s | — | **64 s** |
+| w5_ap(177) (SAT) | 0.64 s | — | 0.074 s |
+| matmul rank 6 + symmetry (UNSAT), boxes / chain | 2.9 s / 1.1 s | — | 5.2 s / 1.6 s |
+| matmul rank 7, chain / boxes / boxes + symmetry (SAT) | 0.11 s / 5.0 s / 30 s | — | 0.07 s / > 120 s / 19 s |
+| SLP window refutations, five rows | 0.40–1.3 s | — | 0.33–2.2 s |
+
+Elimination is the plain-circuit win it is everywhere: 65–70 % of the
+ISCAS variables go in 5 ms, c5315 runs 3.4× faster and lands 30 %
+behind CaDiCaL, c3540 2.6× behind; it does nothing on the cones (their
+variables are in tables) and little on the multipliers (the adder
+variables occur too often; nothing on the pyhala cones, 10 % of the
+plain CNF).  Glucose restarts are a structural win on van der Waerden —
+6× on the refutation and 9× on the satisfiable side at equal load — and
+find the toughsat K = 12 model and halve pyhala-braun-sat on the plain
+CNF (103 s), at the price of 1.5–1.8× on the matmul refutations and 2×
+on the pyhala-braun cones; the ISCAS refutations move within ±30 %
+either way.  Glucose is the default (`BOXES_RESTART=luby`
+keeps the other), elimination is on in the CLI.  On the quiet machine
+with the defaults: w5_ap(178) refuted in 59 s (283 s under Luby), and
+the SLP window table of `doc/matmul_cxlb_satcomp.md` re-measured —
+1.4–6× behind CaDiCaL on the refutations, 2–25× ahead on eight
+satisfiable rows and 13–17× behind on three, the weight-7 window's
+k = 15 solve (23 s under Luby) lost within 60 s.
 
 Measured on van der Waerden (`lib/waerden.jq`, `w(4;4;35)` UNSAT and
 `w(4;4;34)` SAT, 35 variables, 374 clauses; times as the UI reports them,

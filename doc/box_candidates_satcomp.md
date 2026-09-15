@@ -127,9 +127,10 @@ solved in 26–30 s against CaDiCaL's 205 s — the first competition
 instance the box engine wins, though only on the one search trajectory:
 the fourth measurement's learned-clause minimisation loses it again.
 What still dominates elsewhere is the engine's plain-CNF gap to CaDiCaL
-(4–5× on the ISCAS instances after the decision heap and the
-minimisation, §10.1), which is CDCL maturity, not boxes; the direction
-for the circuit third is hidden-internal cones on top of a faster core.
+(1.3–2.6× on the ISCAS instances after the decision heap, the
+minimisation and variable elimination, §10.1), which is CDCL maturity,
+not boxes; the direction for the circuit third is hidden-internal cones
+on top of a faster core.
 The parity third would need a Gauss box, and the cardinality third is
 not ours.
 
@@ -347,6 +348,32 @@ a property of the minimisation; the refutations are the reproducible
 side, so minimisation stays on and the switch stays.  The heap is what
 lets the 366 K-variable sum-of-3-cubes instance run at 16 K decisions a
 second; it does not bring it within reach.
+
+## Fifth measurement: preprocessing and restarts (2026-09-15)
+
+Bounded variable elimination before the search (`BOXES_PREPROCESS=0`
+skips it; table variables are frozen) and Glucose's dynamic restarts
+with stable phases and trail reuse (`BOXES_RESTART=luby` keeps the
+old policy).  Same rows, two or three processes sharing the machine:
+
+| instance | before (Luby, no preprocessing) | + elimination, Luby | + elimination, Glucose |
+|---|---|---|---|
+| belpyramid c3540 plain / c5315 plain (CaDiCaL 0.50 s / 0.15 s) | 1.7 s / 0.67 s | 1.3 s / **0.20 s** (65–70 % of the variables eliminated) | 1.4 s / 0.22 s |
+| c3540 cones K = 8 / c5315 cones K = 8 | 1.8 s / 0.40 s | 2.3 s / 0.44 s | 2.1 s / 0.31 s |
+| toughsat plain / cones K = 12 (SAT; CaDiCaL 205 s) | > 300 s / > 300 s | **SAT 78 s** / > 300 s | SAT 132 s / SAT 235 s |
+| pyhala-braun-sat plain / cones K = 8 (CaDiCaL 5.8 s) | SAT 221 s / 65 s | SAT 250 s / 65 s | SAT 103 s / 142 s |
+| pyhala-braun-unsat cones K = 8 (CaDiCaL 53 s) | > 600 s | > 600 s | > 600 s |
+| ezfact64_6 cones K = 8 | > 300 s | > 300 s | > 300 s |
+
+Elimination is what the plain circuits wanted — c5315 is now within
+30 % of CaDiCaL, c3540 within 2.6× — and it has nothing to work on in
+the cone translations or the multipliers.  The satisfiable competition
+rows keep flipping with every change to the search (toughsat plain:
+> 300 s → 78 s from four eliminated variables; its K = 12 cones solved
+under Glucose restarts and not under Luby), which is the variance of
+satisfiable instances, not a trend; the refutations do not move.  The
+box-native side of the same change is in the design doc's §10.1: van
+der Waerden's w(5;5;178) refutation 6× faster under Glucose restarts.
 
 ## Per-family scan (families with ≥ 2 instances across both years)
 

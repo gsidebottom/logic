@@ -145,6 +145,11 @@ pub struct Stats {
     /// Learned clauses deleted by the reductions, and reductions run.
     pub deleted: u64,
     pub reductions: u64,
+    pub restarts: u64,
+    /// Variables eliminated by `simplify`, and its clause counts before and after.
+    pub eliminated: u64,
+    pub clauses_before: u64,
+    pub clauses_after: u64,
 }
 
 /// How a table's explanation is chosen among the assigned literals whose
@@ -164,6 +169,27 @@ pub enum ExplainMode {
     /// against greedy's 4.9 on the pyhala-braun cones, 3.9× faster).
     #[default]
     Cover,
+}
+
+/// Restart policy (`BOXES_RESTART` selects it).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum RestartMode {
+    /// Luby sequence, unit 64 conflicts.
+    Luby,
+    /// Glucose's dynamic restarts — the last 50 learned clauses' LBD against
+    /// the running average, blocked while the trail is long — alternating
+    /// with stable phases of Luby restarts (unit 512) whose length doubles;
+    /// on a restart the trail is reused down to the first decision the
+    /// heap would now make differently.
+    #[default]
+    Glucose,
+}
+
+impl RestartMode {
+    /// `BOXES_RESTART=luby|glucose`, default `glucose`.
+    pub fn from_env() -> RestartMode {
+        match std::env::var("BOXES_RESTART").as_deref() { Ok("luby") => RestartMode::Luby, _ => RestartMode::Glucose }
+    }
 }
 
 impl ExplainMode {
@@ -300,6 +326,21 @@ pub struct Engine {
     /// variable is unassigned.
     expl_cache: Vec<Vec<u32>>,
     expl_ok: Vec<bool>,
+    /// Restart policy and its state (see `RestartMode`).
+    pub restart: RestartMode,
+    lbd_q: std::collections::VecDeque<u32>,
+    lbd_q_sum: u64,
+    lbd_sum: u64,
+    trail_q: std::collections::VecDeque<u32>,
+    trail_q_sum: u64,
+    stable: bool,
+    stable_len: u64,
+    stable_toggle_at: u64,
+    /// Variables `simplify` resolved away (never decided) and, per
+    /// elimination in order, the clauses removed with it — replayed
+    /// backwards to extend a model.
+    eliminated: Vec<bool>,
+    elim: Vec<(u32, Vec<Vec<u32>>)>,
     pub stats: Stats,
     /// Optional decision budget; `solve` returns `Unknown` when exceeded.
     pub max_decisions: Option<u64>,
@@ -329,6 +370,11 @@ impl Engine {
             minimize: !matches!(std::env::var("BOXES_MINIMIZE").as_deref(), Ok("0") | Ok("none") | Ok("off")),
             min_stack: Vec::new(), min_clear: Vec::new(), min_lits: Vec::new(),
             expl_cache: Vec::new(), expl_ok: Vec::new(),
+            restart: RestartMode::from_env(),
+            lbd_q: std::collections::VecDeque::new(), lbd_q_sum: 0, lbd_sum: 0,
+            trail_q: std::collections::VecDeque::new(), trail_q_sum: 0,
+            stable: false, stable_len: 1000, stable_toggle_at: 1000,
+            eliminated: Vec::new(), elim: Vec::new(),
             stats: Stats::default(), max_decisions: None, cancel: None,
             explain: ExplainMode::from_env(),
             expl_cands: Vec::new(), expl_orig: Vec::new(), expl_picked: Vec::new(), expl_keep: Vec::new(), expl_used: Vec::new(),
@@ -359,6 +405,7 @@ impl Engine {
         self.watches.resize(2 * nvars, Vec::new());
         self.expl_cache.resize_with(nvars, Vec::new);
         self.expl_ok.resize(nvars, false);
+        self.eliminated.resize(nvars, false);
         let old = self.heap_pos.len();
         self.heap_pos.resize(nvars, u32::MAX);
         for v in old..nvars { self.heap_insert(v as u32); }
@@ -406,6 +453,16 @@ impl Engine {
         self.heap_pos[v as usize] = self.heap.len() as u32;
         self.heap.push(v);
         self.heap_up(self.heap.len() - 1);
+    }
+
+    /// The most active unassigned variable, left in the heap (assigned or
+    /// eliminated ones above it are dropped).
+    fn heap_peek_unassigned(&mut self) -> Option<u32> {
+        while let Some(&v) = self.heap.first() {
+            if self.vals[v as usize] == Val::U && !self.eliminated[v as usize] { return Some(v); }
+            self.heap_pop();
+        }
+        None
     }
 
     /// The variable of highest activity in the heap (assigned or not).
@@ -922,15 +979,156 @@ impl Engine {
     /// meanwhile hold without them and are kept.  Assumes [`init`](Self::init) was run.
     pub fn solve_under(&mut self, units: &[Lit]) -> Verdict {
         if self.unsat_at_init { return Verdict::Unsat; }
+        debug_assert!(units.iter().all(|u| !self.eliminated[u.var as usize]), "an eliminated variable cannot be assumed");
         let base = self.decision_level();
         let v = self.search(base, units);
         self.backjump(base);
-        v
+        match v {
+            Verdict::Sat(mut m) => { self.reconstruct(&mut m); Verdict::Sat(m) }
+            v => v,
+        }
+    }
+
+    /// Extend a model over the surviving variables to the eliminated ones:
+    /// last eliminated first, each takes the value satisfying every clause
+    /// removed with it (TRUE if some removed clause with the positive
+    /// literal has no other true literal, else FALSE).
+    fn reconstruct(&self, m: &mut [bool]) {
+        let holds = |m: &[bool], l: u32| m[(l >> 1) as usize] == (l & 1 == 0);
+        for (v, clauses) in self.elim.iter().rev() {
+            let v = *v as usize;
+            let pos = code(v as u32, false);
+            m[v] = clauses.iter().any(|c| c.contains(&pos) && !c.iter().any(|&l| (l >> 1) as usize != v && holds(m, l)));
+        }
+    }
+
+    /// Bounded variable elimination on the clauses (SatELite): after the
+    /// level-0 propagation, a variable in no table and still unassigned is
+    /// resolved away when its resolvents (tautologies dropped, at most 20
+    /// literals) are no more than the clauses they replace; the removed
+    /// clauses are kept for `reconstruct`.  Two passes, cheapest variables
+    /// first.  `false` if the formula is found unsatisfiable.
+    pub fn simplify(&mut self) -> bool {
+        debug_assert!(self.decision_level() == 0, "simplify runs before the search");
+        if !self.init() { return false; }
+        let n = self.nvars;
+        // the original clauses under the level-0 assignment
+        let mut cls: Vec<Vec<u32>> = Vec::new();
+        for ci in 0..self.first_learnt {
+            if self.deleted[ci] || self.clauses[ci].iter().any(|&l| self.lit_value(l) == Val::T) { continue; }
+            let c: Vec<u32> = self.clauses[ci].iter().copied().filter(|&l| self.lit_value(l) != Val::F).collect();
+            debug_assert!(c.len() >= 2, "level-0 propagation left a unit or empty clause");
+            cls.push(c);
+        }
+        self.stats.clauses_before = cls.len() as u64;
+        let mut alive = vec![true; cls.len()];
+        let mut occ: Vec<Vec<usize>> = vec![Vec::new(); 2 * n];
+        for (i, c) in cls.iter().enumerate() { for &l in c { occ[l as usize].push(i); } }
+        let frozen: Vec<bool> = (0..n).map(|v| !self.occ[v].is_empty() || self.vals[v] != Val::U).collect();
+        let resolve = |a: &[u32], b: &[u32], v: usize| -> Option<Vec<u32>> {
+            let mut r: Vec<u32> = a.iter().chain(b.iter()).copied().filter(|&l| (l >> 1) as usize != v).collect();
+            r.sort_unstable(); r.dedup();
+            if r.windows(2).any(|w| w[0] >> 1 == w[1] >> 1) { return None; }   // tautology
+            Some(r)
+        };
+        for _pass in 0..2 {
+            let mut order: Vec<usize> = (0..n).filter(|&v| !frozen[v] && !self.eliminated[v]).collect();
+            order.retain(|&v| occ[2 * v].iter().any(|&i| alive[i]) || occ[2 * v + 1].iter().any(|&i| alive[i]));
+            order.sort_by_key(|&v| occ[2 * v].len() * occ[2 * v + 1].len());
+            for v in order {
+                let pos: Vec<usize> = occ[2 * v].iter().copied().filter(|&i| alive[i]).collect();
+                let neg: Vec<usize> = occ[2 * v + 1].iter().copied().filter(|&i| alive[i]).collect();
+                if pos.len() > 16 || neg.len() > 16 { continue; }
+                let mut resolvents: Vec<Vec<u32>> = Vec::new();
+                let mut ok = true;
+                'outer: for &i in &pos {
+                    for &j in &neg {
+                        if let Some(r) = resolve(&cls[i], &cls[j], v) {
+                            if r.len() > 20 || resolvents.len() >= pos.len() + neg.len() { ok = false; break 'outer; }
+                            resolvents.push(r);
+                        }
+                    }
+                }
+                if !ok { continue; }
+                let removed: Vec<Vec<u32>> = pos.iter().chain(neg.iter()).map(|&i| { alive[i] = false; std::mem::take(&mut cls[i]) }).collect();
+                self.elim.push((v as u32, removed));
+                self.eliminated[v] = true;
+                self.stats.eliminated += 1;
+                for r in resolvents {
+                    let idx = cls.len();
+                    for &l in &r { occ[l as usize].push(idx); }
+                    cls.push(r); alive.push(true);
+                }
+            }
+        }
+        // rebuild the clause store from the survivors
+        self.clauses.clear(); self.deleted.clear(); self.learnt_lbd.clear(); self.learnt_act.clear();
+        self.first_learnt = 0;
+        for w in &mut self.watches { w.clear(); }
+        let mut kept = 0u64;
+        for (i, c) in cls.iter().enumerate() {
+            if !alive[i] { continue; }
+            kept += 1;
+            let lits: Vec<Lit> = c.iter().map(|&l| Lit { var: l >> 1, neg: l & 1 == 1 }).collect();
+            self.add_clause(&lits);
+        }
+        self.stats.clauses_after = kept;
+        if self.unsat_at_init { return false; }
+        self.init()
     }
 
     pub fn solve(&mut self) -> Verdict {
         if !self.init() { return Verdict::Unsat; }
         self.solve_under(&[])
+    }
+
+    /// Whether to restart after a conflict that learned a clause of LBD
+    /// `lbd` with `trail_len` literals assigned when it happened;
+    /// `conflicts_here` / `restarts` count since this search began.
+    fn restart_due(&mut self, lbd: u32, trail_len: u32, conflicts_here: u64, restarts: u64) -> bool {
+        match self.restart {
+            RestartMode::Luby => conflicts_here >= 64 * Self::luby(restarts),
+            RestartMode::Glucose => {
+                if self.stats.conflicts >= self.stable_toggle_at {
+                    self.stable = !self.stable;
+                    self.stable_len *= 2;
+                    self.stable_toggle_at = self.stats.conflicts + self.stable_len;
+                    self.lbd_q.clear(); self.lbd_q_sum = 0;
+                }
+                self.lbd_sum += lbd as u64;
+                if self.lbd_q.len() == 50 { self.lbd_q_sum -= self.lbd_q.pop_front().unwrap() as u64; }
+                self.lbd_q.push_back(lbd); self.lbd_q_sum += lbd as u64;
+                if self.trail_q.len() == 5000 { self.trail_q_sum -= self.trail_q.pop_front().unwrap() as u64; }
+                self.trail_q.push_back(trail_len); self.trail_q_sum += trail_len as u64;
+                if self.stable { return conflicts_here >= 512 * Self::luby(restarts); }
+                // blocking: a trail much longer than usual may be near a model
+                if self.stats.conflicts > 10_000 && self.trail_q.len() == 5000 && trail_len as f64 > 1.4 * self.trail_q_sum as f64 / 5000.0 {
+                    self.lbd_q.clear(); self.lbd_q_sum = 0;
+                }
+                if self.lbd_q.len() == 50 && self.lbd_q_sum as f64 / 50.0 * 0.8 > self.lbd_sum as f64 / self.stats.learned.max(1) as f64 {
+                    self.lbd_q.clear(); self.lbd_q_sum = 0;
+                    return true;
+                }
+                false
+            }
+        }
+    }
+
+    /// Restart: back to `base`, or — reusing the trail — to the last level
+    /// whose decision still outranks the variable the heap would pick.
+    fn restart(&mut self, base: usize) {
+        self.stats.restarts += 1;
+        let mut keep = base;
+        if self.restart == RestartMode::Glucose && let Some(next) = self.heap_peek_unassigned() {
+            while keep < self.decision_level() {
+                let at = self.trail_lim[keep];
+                if at >= self.trail.len() { break; }
+                let d = self.trail[at];
+                if self.heap_before(next, d) { break; }
+                keep += 1;
+            }
+        }
+        self.backjump(keep);
     }
 
     /// The Luby sequence (1, 1, 2, 1, 1, 2, 4, …).
@@ -950,6 +1148,7 @@ impl Engine {
             if let Some(conflict) = self.propagate() {
                 self.stats.conflicts += 1;
                 conflicts_here += 1;
+                let trail_len = self.trail.len() as u32;
                 let mut lits = Vec::new();
                 self.conflict_lits(conflict, &mut lits);
                 // A conflict whose literals all lie below the current level
@@ -964,13 +1163,14 @@ impl Engine {
                 let (learnt, bj) = self.analyze(lits);
                 self.backjump(bj.max(base));
                 let l0 = learnt[0];
+                let mut lbd = 1;
                 if learnt.len() == 1 {
                     self.assign(l0 >> 1, if l0 & 1 == 1 { Val::F } else { Val::T }, Reason::None);
                 } else {
                     let ci = self.clauses.len() as u32;
                     self.watches[learnt[0] as usize].push((ci, learnt[1]));
                     self.watches[learnt[1] as usize].push((ci, learnt[0]));
-                    let lbd = self.lbd(&learnt);
+                    lbd = self.lbd(&learnt);
                     self.clauses.push(learnt);
                     self.deleted.push(false);
                     self.learnt_lbd.push(lbd);
@@ -985,9 +1185,9 @@ impl Engine {
                     self.reduce_start += REDUCE_STEP;
                     self.reduce_at = self.stats.conflicts + self.reduce_start as u64;
                 }
-                if conflicts_here >= 64 * Self::luby(restarts) {
+                if self.restart_due(lbd, trail_len, conflicts_here, restarts) {
                     restarts += 1; conflicts_here = 0;
-                    self.backjump(base);
+                    self.restart(base);
                 }
                 continue;
             }
@@ -1009,7 +1209,7 @@ impl Engine {
             // ones still in the heap are dropped as they surface)
             let mut best: Option<u32> = None;
             while let Some(v) = self.heap_pop() {
-                if self.vals[v as usize] == Val::U { best = Some(v); break; }
+                if self.vals[v as usize] == Val::U && !self.eliminated[v as usize] { best = Some(v); break; }
             }
             let Some(v) = best else { return Verdict::Sat(self.vals.iter().map(|&x| x == Val::T).collect()) };
             let v = v as usize;
@@ -1160,6 +1360,61 @@ mod tests {
                 Verdict::Unknown => panic!("no budget set"),
             }
         }
+    }
+
+    /// `simplify` (bounded variable elimination) on random 3-SAT near the
+    /// threshold and on random tables with clauses, against brute force: the
+    /// verdicts agree and the reconstructed models satisfy the *original*
+    /// clauses, eliminated variables included.
+    #[test]
+    fn simplify_vs_bruteforce() {
+        let mut seed: u64 = 0x5EED_0F_E11A_1234;
+        let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+        let mut eliminated_total = 0u64;
+        for trial in 0..300 {
+            let n = 4 + (rnd() % 9) as usize;
+            let m = 2 + (rnd() % (5 * n as u64)) as usize;
+            let mut cls: Vec<Vec<i32>> = Vec::new();
+            for _ in 0..m {
+                let len = 1 + (rnd() % 3) as usize;
+                let mut c = Vec::new();
+                for _ in 0..len { let v = (rnd() % n as u64) as i32 + 1; c.push(if rnd() % 2 == 0 { v } else { -v }); }
+                cls.push(c);
+            }
+            // sometimes a table over a few variables too (its variables stay frozen)
+            let boxes: Vec<Vec<Vec<Lit>>> = if rnd() % 2 == 0 {
+                let k = 2 + (rnd() % 3) as usize;
+                let mut cols: Vec<u32> = Vec::new();
+                while cols.len() < k.min(n) { let v = (rnd() % n as u64) as u32; if !cols.contains(&v) { cols.push(v); } }
+                let nrows = 1 + (rnd() % 5) as usize;
+                let mut rows = Vec::new();
+                for _ in 0..nrows {
+                    let mut row = Vec::new();
+                    for &v in &cols { if rnd() % 3 != 0 { let neg = rnd() % 2 == 0; row.push(Lit { var: v, neg }); } }
+                    rows.push(row);
+                }
+                vec![rows]
+            } else { Vec::new() };
+            let row_holds = |row: &[Lit], m: &[bool]| row.iter().all(|l| m[l.var as usize] == !l.neg);
+            let holds = |m: &[bool]| boxes.iter().all(|rows| rows.iter().any(|r| row_holds(r, m))) && check_model(&cls, m);
+            let brute = (0..1u32 << n).any(|bits| holds(&(0..n).map(|i| bits >> i & 1 == 1).collect::<Vec<_>>()));
+            let mut e = Engine::from_cnf(n, &cls);
+            for rows in &boxes { e.add_box(TableBox::new(rows.clone())); }
+            let ok = e.simplify();
+            eliminated_total += e.stats.eliminated;
+            let v = if ok { e.solve() } else { Verdict::Unsat };
+            match v {
+                Verdict::Sat(model) => { assert!(brute, "trial {trial}: engine SAT, brute UNSAT"); assert!(holds(&model), "trial {trial}: reconstructed model violates the original {cls:?} {boxes:?}"); }
+                Verdict::Unsat => assert!(!brute, "trial {trial}: engine UNSAT, brute SAT: {cls:?} {boxes:?}"),
+                Verdict::Unknown => panic!("no budget set"),
+            }
+        }
+        assert!(eliminated_total > 0, "simplify never eliminated a variable");
+        // pigeonhole survives elimination
+        let (n, c) = php(4, 3);
+        let mut e = Engine::from_cnf(n, &c);
+        assert!(e.simplify());
+        assert_eq!(e.solve(), Verdict::Unsat);
     }
 
     /// Learned-clause deletion is exercised (a low `reduce_start`) on random

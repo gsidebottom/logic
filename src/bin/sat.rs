@@ -1652,6 +1652,12 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
             Err(e) => { eprintln!("c ERROR: --boxes {}: {}", path.display(), e); std::process::exit(2); }
         }
     }
+    if !matches!(std::env::var("BOXES_PREPROCESS").as_deref(), Ok("0") | Ok("none") | Ok("off")) {
+        let tp = Instant::now();
+        let ok = eng.simplify();
+        eprintln!("c boxes: preprocessing eliminated {} variables, {} clauses -> {}, {:.3}s{}",
+                  eng.stats.eliminated, eng.stats.clauses_before, eng.stats.clauses_after, tp.elapsed().as_secs_f64(), if ok { "" } else { " (unsatisfiable)" });
+    }
     let verdict = eng.solve();
     let s = &eng.stats;
     eprintln!("c boxes: {} boxes ({} compiled instances), {} decisions, {} propagations, {} conflicts, {:.3}s; {:?} explanations: {} of {:.2} literals ({} dropped); learned {} clauses of {:.1} literals ({:.1} before minimisation{})",
@@ -1659,7 +1665,7 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
               eng.explain, s.explanations, s.explanation_lits as f64 / s.explanations.max(1) as f64, s.explanation_dropped,
               s.learned, s.learned_lits as f64 / s.learned.max(1) as f64, s.learned_lits_raw as f64 / s.learned.max(1) as f64,
               if eng.minimize { "" } else { ", off" });
-    eprintln!("c boxes: learned DB {} clauses kept of {} ({} deleted in {} reductions); {} explanation cache hits", s.learned - s.deleted, s.learned, s.deleted, s.reductions, s.explanation_hits);
+    eprintln!("c boxes: learned DB {} clauses kept of {} ({} deleted in {} reductions); {} explanation cache hits; {} restarts ({:?})", s.learned - s.deleted, s.learned, s.deleted, s.reductions, s.explanation_hits, s.restarts, eng.restart);
     match verdict {
         logic::boxes::Verdict::Sat(m)   => SearchOutcome::Sat(m),
         logic::boxes::Verdict::Unsat    => SearchOutcome::Unsat,

@@ -1299,8 +1299,12 @@ ezfact64_6 SAT 31.2 s → 0.07 s, pyhala-braun-sat-40 SAT 41.6 s →
 0.20 s (both witnesses re-evaluated against every clause),
 pyhala-braun-unsat-40 UNSAT 41.2 s → 36.9 s (the proof is still kissat's,
 dsr-trim verified), toughsat_factoring_895s unchanged (not recognised);
-the stage costs ≤ 90 ms on the largest instances under its 5 M-clause
-cap.  See the eighth measurement in `box_candidates_satcomp.md`.
+the stage's cost elsewhere, measured on all 391 unique official
+instances, is at most 0.45 s (median 0.2 ms, 7 s over the run, 0.017
+PAR-2 points) — after plausibility bounds, an incremental 4-core peel
+and a 1 s budget replaced the unbounded first version, which spent 44 s
+on one verification circuit with 427,000 candidate bits.  See the eighth
+measurement in `box_candidates_satcomp.md`.
 
 **Deep formulas (2026-09-14).**  The path traversal extends a Sum's path by
 all of its children through one nested continuation per child

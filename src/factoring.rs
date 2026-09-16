@@ -301,11 +301,20 @@ fn parity_relations(clauses: &[Vec<i32>]) -> Vec<(Vec<u32>, bool)> {
 }
 
 fn recognise_structure(nvars: usize, clauses: &[Vec<i32>]) -> Result<Structure, String> {
+    let dbg = std::env::var("FACTORING_DEBUG").is_ok();
+    let t0 = std::time::Instant::now();
+    let phase = |what: &str| { if dbg { eprintln!("dbg structure: {what} at {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0); } };
+    let deadline = t0 + budget();
+    let over = |what: &str| -> Result<(), String> { if std::time::Instant::now() > deadline { Err(format!("budget exhausted {what}")) } else { Ok(()) } };
     let pins: Vec<i32> = clauses.iter().filter(|c| c.len() == 1).map(|c| c[0]).collect();
+    // a pinned product has at least a byte of output bits
+    if pins.len() < 8 { return Err(format!("{} pinned variables", pins.len())); }
     let pinned: std::collections::HashSet<u32> = pins.iter().map(|l| l.unsigned_abs()).collect();
     let rels_q = parity_relations(clauses);
     if rels_q.len() < 4 { return Err(format!("{} parity relations", rels_q.len())); }
     let rels: Vec<Vec<u32>> = rels_q.into_iter().map(|(r, _)| r).collect();
+    phase(&format!("{} parity relations, {} pins", rels.len(), pins.len()));
+    over("after the parity relations")?;
     let mut in_rel = vec![false; nvars + 1];
     for r in &rels { for &v in r { in_rel[v as usize] = true; } }
     // columns: union-find over the unpinned members of each relation
@@ -327,21 +336,39 @@ fn recognise_structure(nvars: usize, clauses: &[Vec<i32>]) -> Result<Structure, 
     let mut occ = vec![0usize; nvars + 1];
     for c in clauses { for &l in c { occ[l.unsigned_abs() as usize] += 1; } }
     let mut inputs: Vec<i32> = (1..=nvars as i32).filter(|&v| !pinned.contains(&(v as u32)) && !in_rel[v as usize] && occ[v as usize] >= 4).collect();
+    // Plausibility bounds before anything superlinear: a multiplier of a
+    // few hundred bits per factor has a few hundred candidate bits, about
+    // n_a·n_b sum cells, and pins for its product bits plus a few
+    // constants — a verification circuit with thousands of units or
+    // hundreds of thousands of candidates is rejected here in linear time.
+    if inputs.len() < 4 { return Err(format!("{} candidate factor bits", inputs.len())); }
+    if inputs.len() > 4096 { return Err(format!("{} candidate factor bits, more than any multiplier", inputs.len())); }
+    if rels.len() > 4 * inputs.len() * inputs.len() + 64 { return Err(format!("{} parity relations for {} candidate bits", rels.len(), inputs.len())); }
+    if pins.len() > 4 * inputs.len() + 64 { return Err(format!("{} pins for {} candidate bits", pins.len(), inputs.len())); }
     // … and among those, the ones meeting at least four other candidates in
-    // clauses: a factor bit meets every bit of the other factor in its
-    // partial-product gates, a gate output only its few inputs (4-core)
-    loop {
-        let set: std::collections::HashSet<i32> = inputs.iter().copied().collect();
-        let mut nb: std::collections::HashMap<i32, std::collections::HashSet<i32>> = std::collections::HashMap::new();
+    // gate clauses: a factor bit meets every bit of the other factor in its
+    // partial-product gates, a gate output only its few inputs (4-core,
+    // peeled incrementally on a co-occurrence graph built once)
+    {
+        let idx: std::collections::HashMap<i32, usize> = inputs.iter().enumerate().map(|(i, &v)| (v, i)).collect();
+        let mut nb: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); inputs.len()];
         for c in clauses.iter().filter(|c| c.len() <= 3) {
-            let ins: Vec<i32> = c.iter().map(|l| l.abs()).filter(|v| set.contains(v)).collect();
-            for &x in &ins { for &y in &ins { if x != y { nb.entry(x).or_default().insert(y); } } }
+            let ins: Vec<usize> = c.iter().filter_map(|l| idx.get(&l.abs()).copied()).collect();
+            for &x in &ins { for &y in &ins { if x != y { nb[x].insert(y); } } }
         }
-        let survivors: Vec<i32> = inputs.iter().copied().filter(|v| nb.get(v).map_or(0, |s| s.len()) >= 4).collect();
-        if survivors.len() == inputs.len() { break; }
-        inputs = survivors;
+        let mut alive = vec![true; inputs.len()];
+        let mut deg: Vec<usize> = nb.iter().map(|s| s.len()).collect();
+        let mut stack: Vec<usize> = (0..inputs.len()).filter(|&i| deg[i] < 4).collect();
+        while let Some(i) = stack.pop() {
+            if !alive[i] { continue; }
+            alive[i] = false;
+            for &j in &nb[i] { if alive[j] { deg[j] -= 1; if deg[j] < 4 { stack.push(j); } } }
+        }
+        inputs = inputs.iter().enumerate().filter(|(i, _)| alive[*i]).map(|(_, &v)| v).collect();
     }
     if inputs.len() < 4 { return Err(format!("{} candidate factor bits", inputs.len())); }
+    over("after the candidate filter")?;
+    phase(&format!("{} candidate factor bits after the 4-core", inputs.len()));
     let is_input = |v: i32| inputs.binary_search(&v).is_ok();
     // co-occurrence: bits of different factors meet in a gate clause (their partial
     // product), same-factor bits never do — longer clauses are side constraints
@@ -364,6 +391,8 @@ fn recognise_structure(nvars: usize, clauses: &[Vec<i32>]) -> Result<Structure, 
     if side.len() != inputs.len() { return Err("factor bits do not form one bipartite component".into()); }
     let a_bits: Vec<i32> = inputs.iter().copied().filter(|v| side[v] == 0).collect();
     let b_bits: Vec<i32> = inputs.iter().copied().filter(|v| side[v] == 1).collect();
+    phase(&format!("bipartite {}x{}", a_bits.len(), b_bits.len()));
+    over("after the bipartite split")?;
     // the column of each cross pair: the column of the other variables in a clause holding both
     let mut col_pair: std::collections::HashMap<(i32, i32), usize> = std::collections::HashMap::new();
     for c in clauses {
@@ -414,6 +443,7 @@ fn recognise_structure(nvars: usize, clauses: &[Vec<i32>]) -> Result<Structure, 
         }
     }
     if wa.len() != a_bits.len() || wb.len() != b_bits.len() { return Err("some factor bit has no weight".into()); }
+    phase("addition table labelled");
     let mut a: Vec<(usize, i32)> = wa.iter().map(|(&v, &w)| (w, v)).collect(); a.sort();
     let mut b: Vec<(usize, i32)> = wb.iter().map(|(&v, &w)| (w, v)).collect(); b.sort();
     if a.iter().enumerate().any(|(i, &(w, _))| w != i) || b.iter().enumerate().any(|(j, &(w, _))| w != j) { return Err("factor weights are not 0..n−1".into()); }
@@ -481,6 +511,15 @@ fn recognise_structure(nvars: usize, clauses: &[Vec<i32>]) -> Result<Structure, 
     let mut qa = Vec::new(); for &(_, v) in &a { qa.push(polarity(&vote_a, v)?); }
     let mut qb = Vec::new(); for &(_, v) in &b { qb.push(polarity(&vote_b, v)?); }
     Ok(Structure { a: a.into_iter().map(|(_, v)| v).collect(), b: b.into_iter().map(|(_, v)| v).collect(), qa, qb, cols })
+}
+
+/// The stage's wall-clock budget: `FACTORING_BUDGET_MS` (default 1000).
+/// A multiplier of competition size is read in well under 200 ms; the
+/// budget is the backstop for circuits that pass the cheap plausibility
+/// bounds and still are not multipliers.
+fn budget() -> std::time::Duration {
+    let ms = std::env::var("FACTORING_BUDGET_MS").ok().and_then(|v| v.parse::<u64>().ok()).unwrap_or(1000);
+    std::time::Duration::from_millis(ms)
 }
 
 /// Deterministic xorshift for the probes.
@@ -562,8 +601,11 @@ pub fn factoring_tactic(nvars: usize, clauses: &[Vec<i32>], rho_budget: u64) -> 
     let mut vals: Vec<Vec<Option<bool>>> = vec![vec![None; npins]; P];
     let mut base_conf = vec![0usize; P];   // falsified clauses per probe: folded cells disagreeing with N
     let mut violated: Vec<std::collections::HashSet<Vec<u32>>> = vec![std::collections::HashSet::new(); P];
+    let deadline = t0 + budget();
+    let over = |what: &str| -> Option<Tactic> { if std::time::Instant::now() > deadline { Some(Tactic::NotRecognised(format!("budget exhausted {what}"))) } else { None } };
     loop {
         for p in 0..P {
+            if let Some(t) = over("while probing") { return t; }
             base_conf[p] = probe(&mut bcp, &keep, &st.a, &st.b, &ra[p], &rb[p]);
             for (k, &l) in pins.iter().enumerate() { vals[p][k] = bcp.lit_val(l); }
             violated[p] = violated_groups(&bcp);
@@ -573,6 +615,7 @@ pub fn factoring_tactic(nvars: usize, clauses: &[Vec<i32>], rho_budget: u64) -> 
         open.sort_by_key(|&k| std::cmp::Reverse(occ[pins[k].unsigned_abs() as usize]));
         let mut progress = false;
         for k in open {
+            if let Some(t) = over("while classifying constants") { return t; }
             // a constant adds no falsified clause to any probe
             keep.push(pins[k]);
             if (0..P).all(|p| probe(&mut bcp, &keep, &st.a, &st.b, &ra[p], &rb[p]) == base_conf[p]) { kept[k] = true; progress = true; } else { keep.pop(); }
@@ -596,6 +639,7 @@ pub fn factoring_tactic(nvars: usize, clauses: &[Vec<i32>], rho_budget: u64) -> 
         for p in 0..P { vals[p].push(Some(violated[p].contains(&obs_group(&obs[k])))); }
     }
     fn obs_group(o: &Obs) -> Vec<u32> { match o { Obs::Violated(g) => g.clone(), Obs::Pin(_) => Vec::new() } }
+    if dbg { eprintln!("dbg tactic: constants classified at {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0); }
     let outputs: Vec<usize> = (0..obs.len()).filter(|&k| match &obs[k] { Obs::Pin(_) => !kept[k] && varies[k], Obs::Violated(_) => true }).collect();
     let nfold = groups.len();
     if dbg { eprintln!("dbg {} constants kept {:?}, {} side pins, {} outputs ({} violated clause groups)", keep.len(), keep, nside, outputs.len(), nfold); }
@@ -651,6 +695,7 @@ pub fn factoring_tactic(nvars: usize, clauses: &[Vec<i32>], rho_budget: u64) -> 
     let mut tried = 0usize;
     let mut first_info: Option<Multiplier> = None;
     for (n, rd, matched, _) in &candidates {
+        if let Some(t) = over("while factoring") { return t; }
         let (a, b): (Vec<i32>, Vec<i32>) = if rd.orientation { (st.a.iter().rev().copied().collect(), st.b.iter().rev().copied().collect()) } else { (st.a.clone(), st.b.clone()) };
         let (qa, qb): (Vec<bool>, Vec<bool>) = if rd.orientation { (st.qa.iter().rev().copied().collect(), st.qb.iter().rev().copied().collect()) } else { (st.qa.clone(), st.qb.clone()) };
         let info = Multiplier { a: a.clone(), b: b.clone(), out: matched.iter().map(|&(_, v)| v).collect(), n: n.clone() };

@@ -508,9 +508,17 @@ report: `competition-benchmark_main_track_2026_factoring_5000_hydra_satsuma.md/.
 
 Two of the four go from tens of seconds to milliseconds; the UNSAT one
 gains nothing, because the certificate is still the kissat refutation
-(the numeric verdict only annotates); toughsat is untouched.  The stage
-costs nothing measurable elsewhere: it is skipped above 5 M clauses and
-returns at the structure pass on everything else — case19.normalised: 4,688,613 clauses, 87.5ms; lockchart-group1-L190-K276-p8d4j1.normalised: 3,410,378 clauses, 2.2ms; lockchart-group1-L190-K276-p8d4j1.normalised: 3,410,378 clauses, 2.3ms.
+(the numeric verdict only annotates); toughsat is untouched.  The stage's
+cost elsewhere was measured on all 391 unique official instances (the
+57 above the 5 M-clause cap skip it): median 0.2 ms, 90th percentile
+70 ms, maximum 0.45 s (`q_query_3_L200_coli`, 3.5 M clauses), 7.0 s in
+total — 0.017 PAR-2 points.  That is after plausibility bounds (at
+least eight pins, at most 4096 candidate bits, relation and pin counts
+consistent with the candidate count), an incremental 4-core peel and a
+1 s budget (`FACTORING_BUDGET_MS`) were added: the unbounded first
+version cost 238 s over the same set, 44 s of it on
+`x-epic_a19-p16_step`, whose 427,000 candidate bits sent the peel into
+quadratic rebuilds of the co-occurrence graph.
 
 ## Per-family scan (families with ≥ 2 instances across both years)
 

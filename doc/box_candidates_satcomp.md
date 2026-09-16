@@ -129,8 +129,8 @@ the fourth measurement's learned-clause minimisation loses it again.
 The seventh measurement looked like a second — ezfact64_6 in 18 s
 against CaDiCaL's 111 s once a cone's own gate clauses serve as the
 reasons for what its table forces — and the family sweep took it back:
-one shuffling of one instance, with CaDiCaL ahead on the other six
-64-bit ezfact instances and on the same number reshuffled.
+one shuffling of one instance, with CaDiCaL ahead on the other five
+64-bit ezfact numbers and on the same number reshuffled twice.
 What still dominates elsewhere is the engine's plain-CNF gap to CaDiCaL
 (1.3–2.6× on the ISCAS instances after the decision heap, the
 minimisation and variable elimination, §10.1), which is CDCL maturity,
@@ -444,7 +444,7 @@ exceeded 300 s.  It is one shuffling of one instance.  The whole local
 ezfact family through the same pipeline (300 s caps): the five 16-bit
 refutations and the ten 32-bit instances are milliseconds for both
 engines (the box engine 1.5–13× slower on the 32-bit ones); of the
-seven 64-bit instances CaDiCaL solves all seven in 42–190 s and the box
+eight 64-bit rows (six numbers) CaDiCaL solves all in 42–190 s and the box
 engine solves this one — the same number in its two other shufflings,
 and 64_3, 64_5, 64_8, 64_9 and 64_10, are all beyond 300 s.  So the
 "win" was a trajectory, not a capability, and the engine is behind

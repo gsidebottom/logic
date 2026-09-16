@@ -1184,7 +1184,7 @@ commands (translate, solve; 300 s caps on the 64-bit ones):
 | 64_3, 64_5, 64_8, 64_9, 64_10 (SAT) | > 300 s, all five | 41.8 / 66.9 / 189.7 / 102.5 / 45.5 s |
 
 The same number reshuffled twice is not found in 300 s; CaDiCaL solves
-all seven 64-bit instances and the engine one.  Under Luby restarts the
+all eight 64-bit rows (six numbers) and the engine one.  Under Luby restarts the
 tuned shuffling is not found either (2.9 M conflicts without gate
 reasons, 2.8 M with, the same rate).  So the 18 s was the Glucose
 trajectory on one variable order, and the engine is behind CaDiCaL on

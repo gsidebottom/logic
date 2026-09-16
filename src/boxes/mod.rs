@@ -399,6 +399,21 @@ pub struct Engine {
     expl_picked: Vec<(u32, u32, u8)>,
     expl_keep: Vec<bool>,
     expl_used: Vec<bool>,
+    // ── proof logging (§4 of the design doc; `proof.rs`) ──────────────
+    /// DRAT sink for the refutation; `None` (the default) logs nothing.
+    pub proof: Option<proof::Proof>,
+    /// The clauses the plugged-in boxes stand for in the original formula.
+    /// A box propagation is justified against these; without them the proof
+    /// of a boxed run is incomplete.
+    box_src: Vec<Vec<i32>>,
+    /// The sub-engine that derives box lemmas from `box_src` (built on
+    /// first use, holds no boxes, so its own learned clauses are ordinary
+    /// RUP additions).
+    justifier: Option<Box<Engine>>,
+    /// Box lemmas already emitted, as sorted literal codes.
+    lemma_seen: std::collections::HashSet<Vec<u32>>,
+    /// Level-0 trail entries whose box reasons have been justified.
+    proof_l0: usize,
 }
 
 impl Engine {
@@ -429,6 +444,7 @@ impl Engine {
             stats: Stats::default(), max_decisions: None, cancel: None,
             explain: ExplainMode::from_env(),
             expl_cands: Vec::new(), expl_orig: Vec::new(), expl_picked: Vec::new(), expl_keep: Vec::new(), expl_used: Vec::new(),
+            proof: None, box_src: Vec::new(), justifier: None, lemma_seen: Default::default(), proof_l0: 0,
         };
         e.grow(nvars);
         for b in boxes { e.add_box(b) }
@@ -440,6 +456,93 @@ impl Engine {
         let mut e = Engine::new(nvars, Vec::new());
         for c in clauses { e.add_clause(&c.iter().map(|&l| lit_of_dimacs(l)).collect::<Vec<_>>()); }
         e
+    }
+
+    /// Log the refutation to `p` as DRAT, checked against the formula this
+    /// engine was built from plus [`set_box_source`](Self::set_box_source).
+    /// Preprocessing and inprocessing are not logged, so proving mode turns
+    /// them off (the same trade hydra's certified mode makes for the
+    /// GE-simplified residual, §4 of the design doc).
+    pub fn set_proof(&mut self, p: proof::Proof) {
+        self.proof = Some(p);
+        self.elim_enabled = false;
+        self.inprocess = false;
+    }
+
+    /// The clauses the plugged-in boxes stand for.  Every box propagation is
+    /// derived from these before the clause that used it is logged.
+    pub fn set_box_source(&mut self, clauses: &[Vec<i32>]) {
+        self.box_src = clauses.to_vec();
+        self.justifier = None;
+    }
+
+    /// Log a derived clause.  Level-0 box reasons are justified first: the
+    /// analysis drops level-0 literals from a learned clause, so the checker
+    /// must be able to propagate them itself.
+    fn log_learned(&mut self, c: &[u32]) {
+        if self.proof.is_none() { return; }
+        self.proof_sync();
+        if let Some(p) = &mut self.proof { p.add(c); }
+    }
+
+    /// Derive the box reasons of the level-0 trail entries added since the
+    /// last call.  Cheap once caught up: the level-0 trail only grows.
+    fn proof_sync(&mut self) {
+        if self.proof.is_none() || !self.trail_lim.is_empty() { return; }
+        while self.proof_l0 < self.trail.len() {
+            let v = self.trail[self.proof_l0];
+            self.proof_l0 += 1;
+            if matches!(self.reason[v as usize], Reason::Box(_)) {
+                let mut out = Vec::new();
+                self.reason_lits(v, &mut out);   // justifies the lemma as a side effect
+            }
+        }
+    }
+
+    /// Emit the clause `lemma` (a box reason or a box conflict, as literal
+    /// codes) with a derivation from the box source clauses.  A lemma the
+    /// sub-engine cannot refute marks the proof incomplete.
+    fn justify_box(&mut self, lemma: &[u32]) {
+        if self.proof.is_none() { return; }
+        let mut key: Vec<u32> = lemma.to_vec();
+        key.sort_unstable(); key.dedup();
+        if !self.lemma_seen.insert(key) { return; }
+        if self.justifier.is_none() {
+            if self.box_src.is_empty() {
+                if let Some(p) = &mut self.proof {
+                    p.fail("a box propagated and no source clauses were given (--boxes-source)");
+                }
+                return;
+            }
+            let src = std::mem::take(&mut self.box_src);
+            let mut j = Box::new(Engine::from_cnf(self.nvars, &src));
+            self.box_src = src;
+            j.proof = Some(proof::Proof::buffer());
+            j.init();
+            self.justifier = Some(j);
+        }
+        let mut j = self.justifier.take().expect("justifier built above");
+        // ¬lemma: every literal of the lemma false
+        let units: Vec<Lit> = lemma.iter().map(|&l| Lit { var: l >> 1, neg: (l & 1) == 0 }).collect();
+        let verdict = j.solve_under(&units);
+        let steps = j.proof.as_mut().map(|p| p.take_buffer()).unwrap_or_default();
+        self.justifier = Some(j);
+        match verdict {
+            Verdict::Unsat => {
+                if let Some(p) = &mut self.proof {
+                    p.lemmas += 1;
+                    p.lemma_steps += steps.len() as u64;
+                    for d in &steps { if d.is_empty() { p.empty(); } else { p.add_dimacs(d); } }
+                    p.add(lemma);
+                }
+            }
+            _ => {
+                let show: Vec<i32> = lemma.iter().map(|&l| { let v = (l >> 1) as i32 + 1; if l & 1 == 1 { -v } else { v } }).collect();
+                if let Some(p) = &mut self.proof {
+                    p.fail(format!("a box lemma does not follow from the source clauses: {show:?}"));
+                }
+            }
+        }
     }
 
     fn grow(&mut self, nvars: usize) {
@@ -570,6 +673,7 @@ impl Engine {
         let mut c: Vec<u32> = lits.iter().map(|l| code(l.var, l.neg)).collect();
         c.sort_unstable(); c.dedup();
         if c.windows(2).any(|w| w[0] >> 1 == w[1] >> 1) { return; }   // x ∨ ¬x
+        if let Some(p) = &mut self.proof { p.add(&c); }   // a resolvent; the input clauses precede the sink
         match c.len() {
             0 => self.unsat_at_init = true,
             1 => { let l = c[0]; if !self.assign(l >> 1, if l & 1 == 1 { Val::F } else { Val::T }, Reason::None) { self.unsat_at_init = true; } }
@@ -622,7 +726,13 @@ impl Engine {
         ci
     }
 
-    fn delete_clause(&mut self, ci: usize) { self.deleted[ci] = true; self.clen[ci] = 0; }
+    fn delete_clause(&mut self, ci: usize) {
+        if self.proof.is_some() {
+            let lits = self.clause(ci).to_vec();
+            if let Some(p) = &mut self.proof { p.del(&lits); }
+        }
+        self.deleted[ci] = true; self.clen[ci] = 0;
+    }
 
     /// Drop the deleted clauses' literals; indices stay, offsets move.
     fn compact_arena(&mut self) {
@@ -943,6 +1053,11 @@ impl Engine {
                 cache.extend_from_slice(&out[start..]);
                 self.expl_cache[var as usize] = cache;
                 self.expl_ok[var as usize] = true;
+                if self.proof.is_some() {
+                    let mut lemma: Vec<u32> = out[start..].to_vec();
+                    lemma.push(t);
+                    self.justify_box(&lemma);
+                }
             }
         }
     }
@@ -1107,7 +1222,19 @@ impl Engine {
         self.clear_queue();
         for b in 0..self.hdr.len() { self.in_queue[b] = true; self.queue.push(b as u32); }
         self.qhead = 0;
-        if self.propagate().is_some() { self.unsat_at_init = true; return false; }
+        if let Some(conflict) = self.propagate() {
+            if self.proof.is_some() {
+                let from_box = !matches!(conflict, Conflict::Clause(_));
+                let mut lits = Vec::new();
+                self.conflict_lits(conflict, &mut lits);
+                self.proof_sync();
+                if from_box { self.justify_box(&lits); }
+                if let Some(p) = &mut self.proof { p.empty(); }
+            }
+            self.unsat_at_init = true;
+            return false;
+        }
+        self.proof_sync();
         true
     }
 
@@ -1391,6 +1518,7 @@ impl Engine {
     /// assigned, the empty clause makes the engine unsatisfiable.
     fn add_learned(&mut self, mut c: Vec<u32>, lbd: u32, act: f64) {
         c.sort_unstable(); c.dedup();
+        if self.proof.is_some() { if c.is_empty() { if let Some(p) = &mut self.proof { p.empty(); } } else { self.log_learned(&c); } }
         match c.len() {
             0 => self.unsat_at_init = true,
             1 => { let l = c[0]; if !self.assign(l >> 1, if l & 1 == 1 { Val::F } else { Val::T }, Reason::None) { self.unsat_at_init = true; } else if self.propagate().is_some() { self.unsat_at_init = true; } }
@@ -1429,8 +1557,10 @@ impl Engine {
                 self.stats.conflicts += 1;
                 conflicts_here += 1;
                 let trail_len = self.trail.len() as u32;
+                let from_box = !matches!(conflict, Conflict::Clause(_));
                 let mut lits = Vec::new();
                 self.conflict_lits(conflict, &mut lits);
+                if from_box && self.proof.is_some() { let c = lits.clone(); self.justify_box(&c); }
                 // A conflict whose literals all lie below the current level
                 // is a conflict at the highest of their levels: analysis
                 // starts there (it cannot happen while `live` tracks the
@@ -1438,9 +1568,13 @@ impl Engine {
                 // otherwise walk off the trail).
                 let top = lits.iter().map(|&q| self.level[(q >> 1) as usize] as usize).max().unwrap_or(0);
                 if top < self.decision_level() { self.backjump(top.max(base)); }
-                if self.decision_level() <= base { return Verdict::Unsat; }
+                if self.decision_level() <= base {
+                    if base == 0 { self.proof_sync(); if let Some(p) = &mut self.proof { p.empty(); } }
+                    return Verdict::Unsat;
+                }
                 if self.stats.conflicts & 255 == 0 && let Some(c) = &self.cancel && c.load(std::sync::atomic::Ordering::Relaxed) { return Verdict::Unknown; }
                 let (learnt, bj) = self.analyze(lits);
+                self.log_learned(&learnt);
                 self.backjump(bj.max(base));
                 let l0 = learnt[0];
                 let mut lbd = 1;
@@ -1853,6 +1987,177 @@ mod tests {
 
     /// The full-adder table from doc/box_backend_design.md §1 (model polarity),
     /// vars X=0 Y=1 C1=2 Z=3 C=4 U1=5 U2=6 U3=7.
+    // ── certified refutations (§4 of the design doc; `proof.rs`) ──────
+
+    /// Replay a DRAT proof: every step must be RUP over the clauses before
+    /// it, and the last must be the empty clause.  A second, deliberately
+    /// naive implementation of the rule the prover has to satisfy — the
+    /// external gate is `drat-trim` on the generated files.
+    fn rup_replay(nvars: usize, formula: &[Vec<i32>], steps: &[Vec<i32>]) -> Result<(), String> {
+        let mut cls: Vec<Vec<i32>> = formula.to_vec();
+        for (k, step) in steps.iter().enumerate() {
+            let mut val: Vec<Option<bool>> = vec![None; nvars + 1];
+            let mut tautology = false;
+            for &l in step {
+                let v = l.unsigned_abs() as usize;
+                let want = l < 0;                       // ¬step: the literal is false
+                match val[v] { Some(b) if b != want => tautology = true, _ => val[v] = Some(want) }
+            }
+            if !tautology {
+                let mut conflict = false;
+                let mut changed = true;
+                while changed && !conflict {
+                    changed = false;
+                    for c in &cls {
+                        let mut open: Option<i32> = None;
+                        let mut count = 0;
+                        let mut sat = false;
+                        for &l in c {
+                            match val[l.unsigned_abs() as usize] {
+                                Some(b) if b == (l > 0) => { sat = true; break; }
+                                Some(_) => {}
+                                None => { open = Some(l); count += 1; }
+                            }
+                        }
+                        if sat { continue; }
+                        match (count, open) {
+                            (0, _) => { conflict = true; break; }
+                            (1, Some(l)) => { val[l.unsigned_abs() as usize] = Some(l > 0); changed = true; }
+                            _ => {}
+                        }
+                    }
+                }
+                if !conflict { return Err(format!("step {k} is not RUP: {step:?}")); }
+            }
+            cls.push(step.clone());
+        }
+        match steps.last() {
+            Some(s) if s.is_empty() => Ok(()),
+            _ => Err("the proof does not end in the empty clause".into()),
+        }
+    }
+
+    /// A `k`-bit ripple-carry adder `a + b = s` (carry-in 0) in two forms:
+    /// the Tseitin gate clauses (the box source) and one full-adder table
+    /// per bit.  Variables: a_i, b_i, c_i, s_i, then three internals per
+    /// cell.  Returns (nvars, gate clauses, boxes).
+    fn adder_chain(k: usize) -> (usize, Vec<Vec<i32>>, Vec<TableBox>) {
+        let (a, b, c, s) = (|i: usize| i as i32 + 1, |i: usize| (k + i) as i32 + 1,
+                            |i: usize| (2 * k + i) as i32 + 1, |i: usize| (3 * k + i) as i32 + 2);
+        let base = 4 * k as i32 + 1;
+        let (u, v, w) = (|i: usize| base + 3 * i as i32 + 1, |i: usize| base + 3 * i as i32 + 2, |i: usize| base + 3 * i as i32 + 3);
+        let and = |z: i32, x: i32, y: i32| vec![vec![-z, x], vec![-z, y], vec![z, -x, -y]];
+        let or  = |z: i32, x: i32, y: i32| vec![vec![z, -x], vec![z, -y], vec![-z, x, y]];
+        let xor = |z: i32, x: i32, y: i32| vec![vec![-z, x, y], vec![-z, -x, -y], vec![z, -x, y], vec![z, x, -y]];
+        let mut gates = Vec::new();
+        let mut boxes = Vec::new();
+        for i in 0..k {
+            gates.extend(and(u(i), a(i), b(i)));
+            gates.extend(and(v(i), w(i), c(i)));
+            gates.extend(or(c(i + 1), u(i), v(i)));
+            gates.extend(xor(w(i), a(i), b(i)));
+            gates.extend(xor(s(i), w(i), c(i)));
+            // the cell's table over (a_i, b_i, c_i, s_i, c_i+1), model polarity
+            let cols = [a(i), b(i), c(i), s(i), c(i + 1)];
+            let rows: Vec<Vec<Lit>> = (0..8).map(|m: u32| {
+                let (x, y, ci) = (m & 1, (m >> 1) & 1, (m >> 2) & 1);
+                let sum = x ^ y ^ ci;
+                let co = ((x + y + ci) >= 2) as u32;
+                [x, y, ci, sum, co].iter().enumerate()
+                    .map(|(j, &bit)| Lit { var: cols[j] as u32 - 1, neg: bit == 0 }).collect()
+            }).collect();
+            boxes.push(TableBox::new(rows));
+        }
+        (base as usize + 3 * k, gates, boxes)
+    }
+
+    /// Units fixing a and b free below `maxbits`, carry-in 0 and the sum to
+    /// `sum` — unsatisfiable when `sum` exceeds what those bits can reach.
+    fn adder_units(k: usize, maxbits: usize, sum: u64) -> Vec<Vec<i32>> {
+        let (a, b, c, s) = (|i: usize| i as i32 + 1, |i: usize| (k + i) as i32 + 1,
+                            |i: usize| (2 * k + i) as i32 + 1, |i: usize| (3 * k + i) as i32 + 2);
+        let mut units = vec![vec![-c(0)]];
+        for i in maxbits..k { units.push(vec![-a(i)]); units.push(vec![-b(i)]); }
+        for i in 0..k { units.push(if sum >> i & 1 == 1 { vec![s(i)] } else { vec![-s(i)] }); }
+        units.push(if sum >> k & 1 == 1 { vec![c(k)] } else { vec![-c(k)] });
+        units
+    }
+
+    #[test]
+    fn drat_proof_of_a_clausal_refutation_replays() {
+        let (nvars, cls) = php(5, 4);
+        let mut e = Engine::from_cnf(nvars, &cls);
+        e.set_proof(proof::Proof::buffer());
+        assert_eq!(e.solve(), Verdict::Unsat);
+        let p = e.proof.as_mut().expect("proof");
+        assert!(p.incomplete.is_none(), "{:?}", p.incomplete);
+        let steps = p.take_buffer();
+        assert!(steps.len() > 1, "a pigeonhole refutation takes more than one step");
+        rup_replay(nvars, &cls, &steps).unwrap();
+    }
+
+    /// The box lemmas are the point: a table propagates to generalized arc
+    /// consistency, which unit propagation over the gate clauses does not
+    /// reach, so each one is derived before the clause that used it.
+    #[test]
+    fn drat_proof_of_a_boxed_refutation_replays() {
+        let k = 8;
+        let (nvars, gates, boxes) = adder_chain(k);
+        let units = adder_units(k, 4, 200);   // a, b < 16 cannot sum to 200
+        let mut e = Engine::new(nvars, boxes);
+        for c in &units { e.add_clause(&c.iter().map(|&l| lit_of_dimacs(l)).collect::<Vec<_>>()); }
+        e.set_proof(proof::Proof::buffer());
+        e.set_box_source(&gates);
+        assert_eq!(e.solve(), Verdict::Unsat);
+        let p = e.proof.as_mut().expect("proof");
+        assert!(p.incomplete.is_none(), "{:?}", p.incomplete);
+        assert!(p.lemmas > 0, "the refutation used no box lemma");
+        let steps = p.take_buffer();
+        // the proof certifies the ORIGINAL formula: gate clauses plus units
+        let formula: Vec<Vec<i32>> = gates.iter().chain(units.iter()).cloned().collect();
+        rup_replay(nvars, &formula, &steps).unwrap();
+    }
+
+    /// The design doc's soundness gate (§4.1): a table missing a row is
+    /// incomplete, so the engine may refute a satisfiable formula.  The
+    /// verdict is not caught — the table is trusted for it — but the
+    /// certificate is: the lemma that row would have blocked does not follow
+    /// from the box's source clauses, and no proof is offered.
+    #[test]
+    fn a_corrupted_table_cannot_be_certified() {
+        let k = 4;
+        let (nvars, gates, mut boxes) = adder_chain(k);
+        for b in &mut boxes {
+            let mut rows = b.rows.clone();
+            rows.remove(0);                       // drop the all-zero row
+            *b = TableBox::new(rows);
+        }
+        let units = adder_units(k, k, 9);         // 4 + 5 = 9: satisfiable
+        let mut e = Engine::new(nvars, boxes);
+        for c in &units { e.add_clause(&c.iter().map(|&l| lit_of_dimacs(l)).collect::<Vec<_>>()); }
+        e.set_proof(proof::Proof::buffer());
+        e.set_box_source(&gates);
+        let v = e.solve();
+        let p = e.proof.as_ref().expect("proof");
+        if v == Verdict::Unsat {
+            assert!(p.incomplete.is_some(), "a refutation from a corrupted table was certified");
+        }
+    }
+
+    /// Without the source clauses a box propagation cannot be derived, so
+    /// the proof says so instead of offering an unjustified step.
+    #[test]
+    fn a_boxed_refutation_without_sources_is_uncertified() {
+        let k = 8;
+        let (nvars, _gates, boxes) = adder_chain(k);
+        let units = adder_units(k, 4, 200);
+        let mut e = Engine::new(nvars, boxes);
+        for c in &units { e.add_clause(&c.iter().map(|&l| lit_of_dimacs(l)).collect::<Vec<_>>()); }
+        e.set_proof(proof::Proof::buffer());
+        assert_eq!(e.solve(), Verdict::Unsat);
+        assert!(e.proof.as_ref().unwrap().incomplete.is_some());
+    }
+
     fn adder_box() -> TableBox {
         let table = [
             [0,0,0, 0,0, 0,0,0], [0,0,1, 1,0, 0,0,0], [0,1,0, 1,0, 0,0,1], [0,1,1, 0,1, 0,1,1],
@@ -1883,5 +2188,6 @@ mod tests {
 }
 
 pub mod compile;
+pub mod proof;
 pub mod expand;
 pub mod controller;

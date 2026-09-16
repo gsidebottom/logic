@@ -326,6 +326,13 @@ def main():
         out.write(f"p cnf {nv} {len(rest)}\n")
         for c in rest: out.write(" ".join(map(str, c)) + " 0\n")
     json.dump(instances, open(os.path.join(args.out, "boxes.json"), "w"))
+    # the clauses the boxes stand for: `sat -b boxes --proof` derives every
+    # box propagation from these, so residual + absorbed = the original CNF
+    # is the formula the DRAT proof certifies
+    with open(os.path.join(args.out, "absorbed.cnf"), "w") as out:
+        ab = [clauses[i] for i in sorted(absorbed_clauses)]
+        out.write(f"p cnf {nv} {len(ab)}\n")
+        for c in ab: out.write(" ".join(map(str, c)) + " 0\n")
     with open(os.path.join(args.out, "explain.cnf"), "w") as out:
         xs = [clauses[i] for i in sorted(explain)]
         out.write(f"p cnf {nv} {len(xs)}\n")

@@ -1632,9 +1632,25 @@ fn spawn_dual_matrix_search(
 /// extending the bindings.
 /// Box-matrix engine (`-b boxes`): every clause a table box, DPLL over rows
 /// with table propagation.  See `logic::boxes` and `doc/box_backend_design.md`.
-fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::path::Path>, timeout_secs: u64) -> SearchOutcome {
+fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::path::Path>, timeout_secs: u64,
+                proof_path: Option<&std::path::Path>, source_path: Option<&std::path::Path>) -> SearchOutcome {
     let t = Instant::now();
     let mut eng = logic::boxes::Engine::from_cnf(nvars, clauses);
+    // Proof mode (§4 of the design doc): the refutation is logged as DRAT.
+    // It certifies the clauses handed in plus, with boxes, the clauses they
+    // stand for — check against the concatenation, i.e. the original CNF.
+    if let Some(out) = proof_path {
+        match logic::boxes::proof::Proof::to_file(out) {
+            Ok(p) => eng.set_proof(p),
+            Err(e) => { eprintln!("c ERROR: cannot create proof {}: {}", out.display(), e); std::process::exit(2); }
+        }
+        if let Some(src) = source_path {
+            match std::fs::File::open(src).map_err(|e| e.to_string()).and_then(|f| parse_dimacs(io::BufReader::new(f))) {
+                Ok((_, cls)) => { eprintln!("c boxes: {} box source clauses from {}", cls.len(), src.display()); eng.set_box_source(&cls); }
+                Err(e) => { eprintln!("c ERROR: --boxes-source {}: {}", src.display(), e); std::process::exit(2); }
+            }
+        }
+    }
     // Cooperative timeout a second ahead of the hard watchdog, so the
     // statistics line is printed on a timeout too.
     if timeout_secs > 1 {
@@ -1664,7 +1680,7 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
             eprintln!("c boxes: {} explanation-only gate clauses loaded from {}", eng.nexplain(), xpath.display());
         }
     }
-    if !matches!(std::env::var("BOXES_PREPROCESS").as_deref(), Ok("0") | Ok("none") | Ok("off")) {
+    if proof_path.is_none() && !matches!(std::env::var("BOXES_PREPROCESS").as_deref(), Ok("0") | Ok("none") | Ok("off")) {
         let tp = Instant::now();
         let ok = eng.simplify();
         eprintln!("c boxes: preprocessing eliminated {} variables, {} clauses -> {}, {:.3}s{}",
@@ -1680,6 +1696,30 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
     eprintln!("c boxes: learned DB {} clauses kept of {} ({} deleted in {} reductions); {} explanation cache hits; {} restarts ({:?}); {} rephases; {} inprocessing rounds: {} variables eliminated, {} clauses vivified (-{} literals)",
               s.learned - s.deleted, s.learned, s.deleted, s.reductions, s.explanation_hits, s.restarts, eng.restart, s.rephases, s.inprocess_rounds, s.inprocess_eliminated, s.vivified, s.vivified_lits);
     if eng.nexplain() > 0 { eprintln!("c boxes: {} table reasons taken from gate clauses", s.explanation_gate); }
+    if let Some(p) = &mut eng.proof {
+        p.flush();
+        let (steps, dels, lemmas, lsteps) = (p.steps, p.deletions, p.lemmas, p.lemma_steps);
+        let why = p.incomplete.clone();
+        let out = proof_path.expect("a proof exists only when one was asked for");
+        match (&why, verdict == logic::boxes::Verdict::Unsat) {
+            (None, true) => {
+                eprintln!("c boxes: proof-format=drat");
+                eprintln!("c boxes: wrote DRAT proof {} ({} clause additions, {} deletions; {} box lemmas derived in {} steps)",
+                          out.display(), steps, dels, lemmas, lsteps);
+                match source_path {
+                    None => eprintln!("c boxes: the proof certifies the input CNF (drat-trim <input.cnf> {})", out.display()),
+                    Some(src) => eprintln!("c boxes: the proof certifies the input CNF together with {} — check against their concatenation (cat input.cnf {} > original.cnf; drat-trim original.cnf {})",
+                                           src.display(), src.display(), out.display()),
+                }
+            }
+            (Some(w), _) => {
+                let _ = std::fs::remove_file(out);
+                eprintln!("c boxes: proof-format=none");
+                eprintln!("c boxes: UNCERTIFIED — {} ({} steps written and discarded)", w, steps);
+            }
+            (None, false) => { let _ = std::fs::remove_file(out); }
+        }
+    }
     match verdict {
         logic::boxes::Verdict::Sat(m)   => SearchOutcome::Sat(m),
         logic::boxes::Verdict::Unsat    => SearchOutcome::Unsat,
@@ -2407,6 +2447,12 @@ struct Args {
     /// `-b boxes` only: compiled box instances (JSON written by `box-compile`;
     /// see doc/box_backend_design.md §5).
     boxes:         Option<std::path::PathBuf>,
+    /// `-b boxes --proof` only: the clauses the boxes stand for in the
+    /// original formula (`cnf2boxes.py` writes them as `absorbed.cnf`).
+    /// Every box propagation is derived from these, so the DRAT proof
+    /// certifies the ORIGINAL formula — residual plus absorbed — not the
+    /// residual the engine was handed.
+    boxes_source:  Option<std::path::PathBuf>,
     /// Hard wall-clock limit in seconds.  When the search runs longer
     /// than this, the binary prints `c TIMEOUT after Ns` and exits
     /// with status 124 (the GNU `timeout` exit code for "command
@@ -2562,6 +2608,7 @@ const DEFAULT_PREPROCESS_MAX_CLAUSES: usize = 250_000;
 fn parse_args() -> Result<Args, String> {
     let mut a = Args {
         boxes: None,
+        boxes_source: None,
         show_progress: false,
         backend: BackendChoice::Matrix(MatrixBackend::Eff),
         timeout_secs: DEFAULT_TIMEOUT_SECS,
@@ -2596,6 +2643,10 @@ fn parse_args() -> Result<Args, String> {
             "--boxes" => {
                 let v = iter.next().ok_or_else(|| "--boxes requires a path".to_string())?;
                 a.boxes = Some(std::path::PathBuf::from(v));
+            }
+            "--boxes-source" => {
+                let v = iter.next().ok_or_else(|| "--boxes-source requires a path".to_string())?;
+                a.boxes_source = Some(std::path::PathBuf::from(v));
             }
             // Unified backend selector — preferred form.
             "--backend"  | "-b" => {
@@ -2824,7 +2875,12 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                      pb-cadical   — verified portfolio: Cook PB-prover");
                 eprintln!("                                     for structured shapes, else CaDiCaL");
                 eprintln!("                                     (--lrat); every proof machine-checkable");
-                eprintln!("  --proof FILE      Proof output for pb-cadical (UNSAT verdicts).");
+                eprintln!("  --boxes-source FILE  `-b boxes --proof` only: the clauses the boxes stand
+                    for (cnf2boxes.py writes them as absorbed.cnf; the
+                    original CNF also works).  Every box propagation is
+                    derived from these, so the DRAT proof certifies the
+                    input CNF together with this file.
+  --proof FILE      Proof output for pb-cadical (UNSAT verdicts).");
                 eprintln!("                    Cook path: VeriPB pbp (veripb <cnf> FILE);");
                 eprintln!("                    CaDiCaL path: LRAT (cake_lpr <cnf> FILE);");
                 eprintln!("                    kissat path: GRAT (gratchk unsat <cnf> FILE).");
@@ -3259,6 +3315,14 @@ fn main() {
             // hydra_box: no verdict from the structure stages — the box engine
             // below searches the formula (GE-simplified when the XOR stage
             // forced units; the final model overlays the forced values).
+            // Certified mode keeps the original instead: the engine's DRAT
+            // proof certifies the formula it was handed, and a refutation of
+            // the residual does not certify the original (the same trade the
+            // CaDiCaL fall-through makes above).
+            if args.proof.is_some() && xor_simplified.is_some() {
+                eprintln!("c {}: xor stage: GE simplification ignored in certified mode", bk);
+                xor_simplified = None;
+            }
             if let Some((simp, forced)) = xor_simplified.take() { clauses = simp; xor_forced = Some(forced); }
             eprintln!("c {}: no structure verdict -> boxes engine ({:.1}ms)", bk, t0.elapsed().as_secs_f64() * 1000.0);
             break 'hydra;
@@ -4167,7 +4231,9 @@ fn main() {
     let t = Instant::now();
     let outcome = match args.backend {
         BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
-        BackendChoice::Boxes | BackendChoice::HydraBox => boxes_search(nvars, &clauses, args.boxes.as_deref(), args.timeout_secs),
+        BackendChoice::Boxes | BackendChoice::HydraBox =>
+            boxes_search(nvars, &clauses, args.boxes.as_deref(), args.timeout_secs,
+                         args.proof.as_deref(), args.boxes_source.as_deref()),
         BackendChoice::PbCadical => unreachable!("pb-cadical is handled before the search dispatch"),
         BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma
         | BackendChoice::Satsuma =>

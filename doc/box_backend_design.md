@@ -338,6 +338,20 @@ No new proof system is needed for boxes, and the box's Rust code never enters
 the argument.  For the adder this proof is trivial (256 assignments); for a
 projected 4-bit adder it is a small SAT instance.
 
+**Delivered differently, and better (2026-09-16).**  The engine does not
+emit per-box completeness proofs and compose them: it emits **one ordinary
+DRAT proof of the whole refutation**, and derives each box propagation
+where it is used.  A learned clause is RUP over the clauses already in the
+proof, as in any clausal CDCL solver; a table propagation is *not* unit
+propagation, so the clause `ℓ ∨ ¬A` it justifies is emitted first, with a
+sub-refutation by a second engine over the box's source clauses under the
+assumption `¬(ℓ ∨ ¬A)`.  That sub-engine holds no boxes, so its own
+learned clauses are ordinary RUP additions and the recursion bottoms out;
+the lemma is RUP once they are in the file.  The upshot is that no new
+composition step enters the trusted base and the artifact is a single
+file the same checkers take (`drat-trim`, and `cake_lpr` after
+elaboration) — §10.1.
+
 ### 4.3 The composition theorem (to be stated and proved in Lean)
 
 ```
@@ -357,6 +371,12 @@ path, contradicting `h_cover`.  This is a short Lean development over finite
 literal sets (Mathlib `Finset`), and it is the *entire* meta-theory: the
 composed UNSAT proof for a formula with plugged-in boxes is exactly
 `{ per-box UNSAT proofs of §4.2 } + { a cover of the box paths }`.
+
+The clausal route of §4.2 discharges the whole obligation without this
+theorem, because it never trusts a table: a lemma the source clauses do
+not imply fails to derive and the proof is withheld.  The theorem remains
+the meta-theory for a *cover*-shaped certificate, which the path
+enumerator — not the CDCL engine — would produce:
 
 `h_cover` is discharged by a **box-level cover certificate**: the existing
 `v3` idea (per-variable position lists whose cross products are the pairs,
@@ -784,6 +804,7 @@ fault-tolerance argument Mallob makes and we inherit.
 | new `verify/` | Lean project (`box_cover_sound`), Verus checker crate, Aeneas bridge |
 | `Cargo.toml` | `libloading`; generated crates use `crate-type = ["cdylib"]` |
 | `src/bin/sat_cover_verify.rs` | unchanged in phase 1; `v4` `(instance,row)` positions later |
+| `src/boxes/proof.rs`, `sat --proof` / `--boxes-source` | DRAT logging for the box engine (2026-09-16): learned clauses plus derived box lemmas, checked by `drat-trim` and, after elaboration, `cake_lpr` |
 | `src/bin/web_app.rs` `/paths` | compiled rows served as canonical paths with trace positions (the UI's canonical tree/highlighting work as-is) |
 | `tools/gbd/run_benchmark.py` | `-b boxes`, existing soundness gates |
 | hydra dispatch (`cook_pbp::detect_shape` family) | `src/factoring.rs`: multiplier recogniser + numeric factoring as a hydra stage (2026-09-15); `hydra_box` = the structure stages, then `boxes_search`; the web app's `boxes` backend runs the stages before the box search (`hydra_then_boxes`, a stage's model shown as the UI path) |
@@ -794,7 +815,7 @@ fault-tolerance argument Mallob makes and we inherit.
 |---|---|---|
 | **M0** (done) | 972/13/8 verified; table extracted; projection `∃U.adder ≡` two-equation adder verified as set equality | ✓ |
 | **M1** core | bitset rows, table + structural boxes, DPLL-over-rows with table propagation, single core; `# === boxes ===` + box-call syntax; interpreted tables | same verdicts as `eff`/`cdcl` on the UI adder examples and the test corpus; every UNSAT certifies via the expanded primitive cover |
-| **M2** certificates | per-box completeness proofs via `cake_lpr`/VeriPB; box-level `v4` cover format; unverified checker | known-value gate: pigeonhole-principle (PHP)/RoundRobin corpus and the adder examples all check; a deliberately corrupted table is rejected |
+| **M2** certificates | ✓ clausal route delivered 2026-09-16 (`src/boxes/proof.rs`: one DRAT proof of the whole refutation, box propagations derived where used); box-level `v4` cover format still open | gate met: PHP (5) / RoundRobin (3) / Steiner (4) / dlx1c / w(5;5;178) and the two boxed adder examples all check under `drat-trim` **and** `cake_lpr`; a table with a row removed fails to derive its lemma and no proof is offered |
 | **M3** formalization | Lean `box_cover_sound`; Verus checker; Aeneas bridge attempted | checker verified; the Lean theorem's premises match the checker's spec by inspection or translation |
 | **M4** codegen | LUT/mask propagators, `cdylib` plug-ins via `libloading` **first**, content-hash cache, two-tier hot-swap; specialized-solver mode afterwards | compiled boxes byte-identical in behaviour to interpreted ones on the corpus; measured speedup per propagation |
 | **M5** multi-core | work stealing + built-in nogood sharing, deterministic mode | ≥ 8× on 12 cores on a multiplier instance; deterministic certificates byte-identical |
@@ -1399,10 +1420,68 @@ same clauses lacks — the family's AND-guarded parities defeat table
 propagation exactly as they defeat Gaussian elimination — and the gap is
 CDCL maturity (heuristics, restarts, inprocessing) on the SAT side.
 
-**Not yet (M1 remainder).**  A one-command certified boxed run: certifying a
-`-b boxes` UNSAT currently means running the existing certified pipeline on
-the expanded CNF — sound by construction (§4.3, phase 1), but not yet wired
-behind `--emit-cover`.
+**Certified refutations (2026-09-16).**  `sat -b boxes --proof P` writes the
+refutation as DRAT (`src/boxes/proof.rs`), and `--boxes-source S` gives the
+clauses the plugged-in boxes stand for (`cnf2boxes.py` now writes them as
+`absorbed.cnf`; the original CNF also works).  The file certifies the input
+CNF together with `S`, i.e. the original formula — the engine says so on
+the line after it writes the proof.  Three things had to be logged, not
+one: the learned clauses (RUP, as in any clausal solver); the box lemmas,
+each derived once by a sub-engine over the source clauses under the
+negation of the lemma, emitted before the clause that used it; and the
+*level-0* box propagations, because conflict analysis drops level-0
+literals from a learned clause and the checker has to re-derive them
+itself.  Preprocessing and inprocessing are not logged, so proving mode
+turns them off — the trade hydra's certified mode already makes for the
+GE-simplified residual, and `hydra_box` now makes it too.
+
+Measured (Apple M4 Pro Mac mini), `tools/boxes_certify_corpus.sh`, results
+in `doc/data/`.  Twenty refutations, every one accepted by `drat-trim` and
+by the CakeML-verified `cake_lpr` after elaboration.
+
+Plain CNF (sixteen): PHP-5-4 to PHP-9-8, RoundRobin 6/4, 8/6, 10/8,
+Steiner-9/15/27/45, dlx1c, w(5;5;178), and two boxed adder instances.  The
+headline is w(5;5;178) (the direct CNF encoding): 9.3 s unproved, 11.2 s
+with logging — that 20 % covers both the logging and the loss of variable
+elimination — a 63 MB proof, `drat-trim` 14.2 s, `cake_lpr` 2.5 s.  A
+refutation that takes CaDiCaL 9.7 s here is now checkable end to end for
+about the cost of finding it.
+
+Boxed, at scale (four): the ISCAS circuits `c3540` and `c5315` through
+`cnf2boxes.py` at K = 8 and 12, where the proof's box lemmas are the whole
+point — ten to twenty-eight thousand of them derived per run, none of them
+a unit-propagation consequence of the gate clauses.
+
+| instance | boxes | +proof | proof | box lemmas | drat-trim | cake_lpr |
+|---|---|---|---|---|---|---|
+| c3540 K=8  | 3.62 s | 3.95 s | 26 MB | 10,353 | 5.8 s | 1.5 s |
+| c3540 K=12 | 3.92 s | 3.56 s | 21 MB | 12,427 | 5.1 s | 1.2 s |
+| c5315 K=8  | 0.73 s | 1.39 s | 14 MB | 16,317 | 1.0 s | 0.35 s |
+| c5315 K=12 | 0.66 s | 2.00 s | 19 MB | 28,417 | 1.1 s | 0.33 s |
+
+The cost of certifying a boxed run is not a fixed percentage: it is one
+sub-refutation per *distinct* lemma, so it is noise on `c3540` (a longer
+search that reuses its lemmas) and 2–3× on `c5315` (a 0.7 s search that
+needs 16–28 thousand of them).  On a long boxed run it settles to about a
+tenth of the search rate — `eq.atree.braun.13.unsat` at K = 8, 60 s:
+908,386 conflicts with the proof against 1,011,442 without — because most
+table reasons are already gate clauses of the original formula (956,171 of
+them there) and each distinct lemma is derived once and cached.  (None of
+this changes where the engine stands: CaDiCaL refutes `c3540` in 0.41 s
+and `c5315` in 0.14 s, and on these two the boxed form is slower than the
+box engine on the plain CNF, 1.6 s and 0.2 s.)
+
+The soundness gate is the interesting one.  A table with one row removed
+is *incomplete* (§4.1), so the engine refutes a satisfiable adder instance
+— and the certificate catches what the verdict does not: the lemma that
+row would have blocked does not follow from the source clauses, the run
+prints `UNCERTIFIED` with the offending lemma, and no file is left behind.
+The tables stay outside the trusted base, which is the whole point of §4.
+
+Not yet: the `v4` box-level cover certificate of §4.3 is untouched, nothing
+here is in Lean, and the checking chain ends at DRAT — a VeriPB rendering
+(§4.6) would let one format carry the Cook, GN21 and box paths together.
+
 
 ## 11. Risks
 

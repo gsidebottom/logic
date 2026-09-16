@@ -394,6 +394,46 @@ enumerates exactly the live rows.  This does not shrink the TCB for UNSAT
 nogood-sharing behaviour trustworthy without per-instance checking, which
 matters for the distributed on-the-fly scheme in §8.4.
 
+### 4.6 The proof format is VeriPB (decided 2026-09-15)
+
+The engine's own UNSAT proof — the search's learned clauses, each a RUP
+consequence of the clauses, the tables' explanations and the earlier
+learned clauses — is clausal and translates into any of the accepted
+formats.  What decides the format is the rest of what the engine does:
+
+- a table's propagation is explained by a cover, which is a clause; but
+  the *table itself* is a constraint the clausal systems can only carry
+  as its clause form, whereas pseudo-Boolean reasoning carries its
+  obligation (§4.1–4.2) and its propagations in one calculus;
+- parity chains (`xor_k`, the SLP `gx` chains) and cardinality
+  (`at_most`, the waerden windows) have polynomial cutting-planes
+  derivations and no short clausal ones without new variables;
+- adders and multipliers — the arithmetic the cone translation absorbs —
+  are linear identities per cell, and their word-level identity is a
+  weighted sum of them: a cutting-planes derivation, not a clausal one;
+- the symmetry breaking the matmul benchmarks rest on is certified by
+  VeriPB's dominance rule, or by substitution redundancy.
+
+VeriPB is cutting planes plus redundance-based strengthening plus
+dominance, checked by CakePB (CakeML-verified); the substitution
+redundancy system whose verified Lean 4 checker the 2026 competition
+also accepts is VeriPB's strengthening rule restricted to clauses (the
+SR paper's own formulation is Gocht and Nordström's), the strongest
+purely clausal system, with no arithmetic.  The SAT Competition main
+track has accepted VeriPB proofs alongside the DRAT family since 2023
+(2025 and 2026: dpr-trim, GRAT, VeriPB; 2026 adds the verified SR
+checker), and a DRAT proof rewrites into a VeriPB proof syntactically.
+
+So: the engine emits VeriPB; the per-box obligation of §4.2 is a VeriPB
+proof of `Complete(B, T_B)` produced at compile time; the composition of
+§4.3 stays within one format and one verified checker.  A purely clausal
+component (a symmetry-breaking preprocessor on its own) may emit SR for
+the smaller checker.  What no accepted system expresses is a
+number-theoretic UNSAT — a factoring instance refuted by primality —
+which stays a composed certificate outside the competition (§10.1, the
+factoring discussion), and is the one class of answer the engine must
+report as uncertified.
+
 ## 5. The box specifier language — jq
 
 ### 5.1 A box is a jq definition
@@ -1129,18 +1169,29 @@ tables the cover averages 4.6 literals where the gate clause gives 3 —
 the coverage-greedy hitting set is not the minimum on a joint table,
 and the gate clause is that minimum for free.  With most reasons taken
 from the gates the learned clauses follow the circuit's own implication
-structure, and ezfact, the instance the survey had written off ("every
-gate output fans out, nothing hidden"), is the second competition
-instance the engine solves that CaDiCaL does not in 60 s — CaDiCaL
-takes 111 s with a 600 s budget, so 6× on the instance.  With the
-caveat every satisfiable row has carried: under Luby restarts neither
-configuration finds the model in 300 s (2.9 M conflicts without gate
-reasons, 2.8 M with, the same rate), so the 18 s is the Glucose
-trajectory with gate reasons finding a model at 161 K conflicts, not
-the instance becoming easy; and sum_of_3_cubes_37, 46 % more conflicts
-a second, is still beyond 300 s.  What survives the caveat is
-structural: the gate reasons are shorter, cost nothing, and are the
-right reasons on principle — on by default.
+structure, and ezfact64_6, the instance the survey had written off
+("every gate output fans out, nothing hidden"), is solved in 18 s where
+CaDiCaL takes 111 s.  That is one shuffling of one instance, and the
+family says so.  Every local ezfact instance through the same two
+commands (translate, solve; 300 s caps on the 64-bit ones):
+
+| ezfact | boxes, cones K = 8 with gate reasons | CaDiCaL |
+|---|---|---|
+| 16-bit, five instances (UNSAT) | 1.4–2.2 ms | 0.5–2.1 ms |
+| 32-bit, ten instances (SAT) | 6–105 ms | 3–17 ms |
+| 64_6, the shuffling above (SAT) | **17.8 s** | 108.5 s |
+| 64_6 in its two other shufflings | > 300 s, > 300 s | 43.6 s, 84.2 s |
+| 64_3, 64_5, 64_8, 64_9, 64_10 (SAT) | > 300 s, all five | 41.8 / 66.9 / 189.7 / 102.5 / 45.5 s |
+
+The same number reshuffled twice is not found in 300 s; CaDiCaL solves
+all seven 64-bit instances and the engine one.  Under Luby restarts the
+tuned shuffling is not found either (2.9 M conflicts without gate
+reasons, 2.8 M with, the same rate).  So the 18 s was the Glucose
+trajectory on one variable order, and the engine is behind CaDiCaL on
+this family as it is on the multipliers generally.  What survives is
+structural and modest: the gate reasons are shorter, cost nothing,
+raise the conflict rate (sum_of_3_cubes_37: +46 %, still no verdict at
+300 s), and are the right reasons on principle — on by default.
 
 **The w(5;5) family, boxes against CaDiCaL (2026-09-15).**  Through
 the web app's `/satisfiable` (boxed form `w5_ap(n)`, one `ap5` box per

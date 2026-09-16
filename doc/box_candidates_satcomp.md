@@ -126,9 +126,11 @@ toughsat_factoring_895s (SAT Competition 2026, prime-factoring) is
 solved in 26–30 s against CaDiCaL's 205 s — the first competition
 instance the box engine wins, though only on the one search trajectory:
 the fourth measurement's learned-clause minimisation loses it again.
-The seventh measurement adds a second, ezfact64_6 in 18 s against
-CaDiCaL's 111 s, once a cone's own gate clauses serve as the reasons
-for what its table forces — with the same one-trajectory caveat.
+The seventh measurement looked like a second — ezfact64_6 in 18 s
+against CaDiCaL's 111 s once a cone's own gate clauses serve as the
+reasons for what its table forces — and the family sweep took it back:
+one shuffling of one instance, with CaDiCaL ahead on the other six
+64-bit ezfact instances and on the same number reshuffled.
 What still dominates elsewhere is the engine's plain-CNF gap to CaDiCaL
 (1.3–2.6× on the ISCAS instances after the decision heap, the
 minimisation and variable elimination, §10.1), which is CDCL maturity,
@@ -437,15 +439,18 @@ files):
 
 ezfact64_6 — the instance the second measurement wrote off because
 every gate output fans out and nothing can be hidden — is solved in
-19 s where CaDiCaL exceeds 60 s and every earlier box configuration
-exceeded 300 s.  The visible-output cones that were "pure overhead" were
-overhead only for want of the right reasons.  Placement: CaDiCaL
-solves ezfact64_6 in 111 s given 600 s, so the box engine is 6× ahead
-on the instance — on that trajectory: under Luby restarts neither
-configuration finds the model in 300 s, which is the satisfiable-row
-caveat of every measurement here, and sum_of_3_cubes_37 stays beyond
-300 s with the reasons on.  The structural part stands: shorter
-reasons at no cost, on by default.
+19 s where CaDiCaL takes 111 s and every earlier box configuration
+exceeded 300 s.  It is one shuffling of one instance.  The whole local
+ezfact family through the same pipeline (300 s caps): the five 16-bit
+refutations and the ten 32-bit instances are milliseconds for both
+engines (the box engine 1.5–13× slower on the 32-bit ones); of the
+seven 64-bit instances CaDiCaL solves all seven in 42–190 s and the box
+engine solves this one — the same number in its two other shufflings,
+and 64_3, 64_5, 64_8, 64_9 and 64_10, are all beyond 300 s.  So the
+"win" was a trajectory, not a capability, and the engine is behind
+CaDiCaL on this family like the others.  The structural part stands:
+shorter reasons at no cost, on by default, and a 46 % higher conflict
+rate on sum-of-3-cubes that still yields no verdict.
 
 ## Per-family scan (families with ≥ 2 instances across both years)
 

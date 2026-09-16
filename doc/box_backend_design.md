@@ -786,7 +786,7 @@ fault-tolerance argument Mallob makes and we inherit.
 | `src/bin/sat_cover_verify.rs` | unchanged in phase 1; `v4` `(instance,row)` positions later |
 | `src/bin/web_app.rs` `/paths` | compiled rows served as canonical paths with trace positions (the UI's canonical tree/highlighting work as-is) |
 | `tools/gbd/run_benchmark.py` | `-b boxes`, existing soundness gates |
-| hydra dispatch (`cook_pbp::detect_shape` family) | later: circuit detector routing to `boxes` |
+| hydra dispatch (`cook_pbp::detect_shape` family) | `src/factoring.rs`: multiplier recogniser + numeric factoring as a hydra stage (2026-09-15); `hydra_box` = the structure stages, then `boxes_search`; the web app's `boxes` backend runs the stages before the box search (`hydra_then_boxes`, a stage's model shown as the UI path) |
 
 ## 10. Phased plan, with gates
 
@@ -800,7 +800,7 @@ fault-tolerance argument Mallob makes and we inherit.
 | **M5** multi-core | work stealing + built-in nogood sharing, deterministic mode | ≥ 8× on 12 cores on a multiplier instance; deterministic certificates byte-identical |
 | **M6** measure | equal-wall-clock A/B vs `eff`, `cdcl`, `cadical`, `hydra` on adders, multipliers, the CLP(B) (constraint logic programming over Booleans) examples, with user-supplied boxes | the honest question: a certified win on the circuit slice? |
 | **M7** distributed | Mallob-style job tree + sharing on **AWS ParallelCluster with EFA**; malleable coordinator; on-the-fly trusted checkers with MACs; queue tier for prefixes | a multi-hour instance solved across N spot workers, UNSAT trusted by the checkers, cost within cap |
-| **M8** detection | gate/adder/multiplier detector into hydra | competition CNF routed and certified — lower priority now that users supply boxes |
+| **M8** detection | gate/adder/multiplier detector into hydra | multiplier detector delivered 2026-09-15 (`factoring.rs`: ezfact and pyhala-braun read, factored and modelled in 3–200 ms; toughsat not recognised); general gate/adder detection still open |
 
 M6 decides whether M7–M8 are built.
 
@@ -1242,6 +1242,57 @@ Colour-flip symmetry breaking (`… x_1`) halves the box engine's conflicts
 and leaves CaDiCaL's unchanged.  The bmc benchmarks did not regress
 (`bmc_w4_n8_gt8` 1.1 ms, its single-box form 0.5 ms of which 0.25 ms is
 building the 647-row tables).
+
+**Factoring tactic and `hydra_box` (2026-09-15).**  `src/factoring.rs`
+recognises a multiplier circuit whose product is pinned to N and factors N
+numerically.  Structure from the clauses: parity relations (3/4-variable
+sets carrying every clause of one parity) are the sum cells, union-find
+over their unpinned members gives the product columns; the factor bits are
+the 4-core of the co-occurrence graph among unpinned non-relation
+variables (a factor bit meets every bit of the other factor in its
+partial-product gates, a gate output only its few inputs), split bipartite
+and labelled by weight through the addition table; each bit's polarity is
+read off its AND gates (a shuffled instance flips every variable
+independently — the first version assumed one polarity per factor and read
+nothing).  Conventions from the circuit's behaviour: 48 random factor
+assignments propagated leniently through the pin-free CNF; pins the factor
+bits never determine and that add no falsified clause are constants (ezfact
+carries one), pins that never vary are side constraints (pyhala-braun pins
+"the factor is not 1" on each factor), every other pin — and every clause
+group some probe violates, for product bits folded into the last cells —
+is matched against the bits of the product under orientation × implicit
+odd bit readings; a reading leaving at most six bits of N unread fixes N.
+Then Pollard–Brent + Miller–Rabin, and every divisor pair of the circuit's
+widths tried by propagation through the full CNF (the model is checked
+against every clause, so a wrong reading can only miss, never mislead).
+Results over the 49 factoring instances of the benchmark set, `hydra`,
+60 s: ezfact16 (5, N a 16-bit prime)
+numeric UNSAT in 3 ms, CaDiCaL proof in 7 ms; ezfact32 (10, N = p², p
+16-bit) SAT in 11 ms; ezfact64 (8, N = p², p 32-bit) SAT in 50–73 ms where
+CaDiCaL alone needed 111 s on ezfact64_6 and the box engine timed out at
+300 s; pyhala-braun sat-30/35/40 (4+4+5, N = 23173×23197, 131101×131113,
+741457×741469 — the five 40-bit instances share N) SAT in 0.09/0.13/0.19 s
+against CaDiCaL's 0.4–1.8 / 0.15–5.8 / 3.4–46 s; pyhala-braun-unsat-40
+numeric UNSAT in 0.18 s, the proof by the CaDiCaL fall-through in 46 s.
+toughsat (12) is not recognised: its product bits are folded into the last
+cells as constants that unit propagation reads backwards, so a probe
+violates clauses all over the circuit, and the `toughsat_*bits` family is
+not an array multiplier at all — CaDiCaL takes 13–25 s or times out.
+Integration: the stage runs after the Cook shapes and before the XOR stage
+in every hydra variant; the new `hydra_box` backend runs Cook, factoring
+and XOR and then `boxes_search` (the GE-simplified residual when the XOR
+stage forced units, with the forced values overlaid on the model); the web
+app's `boxes` backend runs the same stages on the clausal CNF of the
+expanded formula before the box search (`hydra_then_boxes`), turns a
+stage's model into the path the UI expects (`path_of_model`: box-call
+atoms evaluated through their tables, the path descending into the false
+nodes of the collapsed complement) and reports the stage in `solved_by`.
+A soundness bug surfaced on the way: the clique-coloring Cook detector
+accepted the two at-least-one layers alone, so the unit-propagated
+residual of a *satisfiable* 6×6 multiplier was reported UNSAT (`Cook shape
+clique-coloring K=3 N=3 C=2`); it now verifies every mutex its proof's rup
+steps consume, directly or through the standard encoding's edge variables
+(regression tests in `factoring::tests`).
 
 **Deep formulas (2026-09-14).**  The path traversal extends a Sum's path by
 all of its children through one nested continuation per child

@@ -99,6 +99,10 @@ struct ClassifyJob {
     /// the original formula's diagram; this flag is informational
     /// (e.g. for the cover-group display to label lemma covers).
     preprocessed: bool,
+    /// A note from hydra's structure stages (`hydra_then_boxes`): the stage
+    /// that decided the job, or — while the box search runs — a numeric
+    /// verdict the search is asked to prove.
+    solved_by: Option<String>,
 }
 
 impl Default for ClassifyJob {
@@ -111,6 +115,7 @@ impl Default for ClassifyJob {
             error: None,
             is_complement: false,
             preprocessed: false,
+            solved_by: None,
             total_path_count: 0.0,
             start_time: None,
             finished_secs: None,
@@ -1115,6 +1120,7 @@ struct ClassifyStatusResponse {
     is_complement:              bool,
     error:                      Option<String>,
     preprocessed_to:            Option<String>,
+    solved_by:                  Option<String>,
 }
 
 fn classify_status(job: &ClassifyJob) -> ClassifyStatusResponse {
@@ -1140,6 +1146,7 @@ fn classify_status(job: &ClassifyJob) -> ClassifyStatusResponse {
         is_complement:            job.is_complement,
         error:                    job.error.clone(),
         preprocessed_to:          job.snapshot.preprocessed_to.clone(),
+        solved_by:                job.solved_by.clone(),
     }
 }
 
@@ -1499,8 +1506,9 @@ fn start_classify_job(
         job.total_path_count = total_path_count;
         // Use the timer started at the very top of this function so
         // preprocessing + search-setup are included in `elapsed_secs`
-        // (the UI's "at N paths/s in T ms" reading).
-        job.start_time = Some(job_start);
+        // (the UI's "at N paths/s in T ms" reading) — unless a pre-stage
+        // (`hydra_then_boxes`) started the clock earlier.
+        if job.start_time.is_none() { job.start_time = Some(job_start); }
         job.preprocessed = preprocess;
         job.snapshot.preprocessed_to = preprocessed_to;
         job.generation
@@ -1948,8 +1956,8 @@ async fn satisfiable_handler(
             // No box calls: nothing for the tables to do — run greedy×eff (the
             // previous default, with preprocessing) exactly as before.
             Ok((_, ctx)) if ctx.calls.is_empty() =>
-                reset_and_start(&state.sat_job, &req.formula, true, params, Backend::GreedyEff, /*preprocess=*/ true, None),
-            Ok((text, ctx)) => reset_and_start(&state.sat_job, &text, true, params, Backend::Boxes, /*preprocess=*/ false, Some(ctx)),
+                hydra_then_boxes(&state, &req.formula, req.formula.clone(), ctx, params, Backend::GreedyEff, /*preprocess=*/ true),
+            Ok((text, ctx)) => hydra_then_boxes(&state, &req.formula, text, ctx, params, Backend::Boxes, /*preprocess=*/ false),
             Err(e) => Json(serde_json::json!({ "error": e })),
         };
     }
@@ -1959,6 +1967,229 @@ async fn satisfiable_handler(
     };
     reset_and_start(&state.sat_job, &formula, true, params,
                     backend, /*preprocess=*/ true, None)
+}
+
+// ── hydra before the box search ──────────────────────────────────────────────
+
+/// What hydra's structure stages made of the formula.
+enum HydraOutcome {
+    /// A model: its uncovered path through the collapsed complement matrix
+    /// (display polarity, box-call argument values appended) and the leaf
+    /// positions, plus the stage's note.
+    Sat { path: String, positions: Vec<Vec<usize>>, note: String },
+    Unsat { note: String },
+    /// No verdict; the note (if any) is a numeric finding the search should prove.
+    Fallthrough { note: Option<String> },
+}
+
+/// The `boxes` backend's `satisfiable` route: hydra's structure stages on
+/// the CNF of the expanded formula first (Cook shape, factoring, XOR), the
+/// search (`backend`: the box search with calls, greedy×eff without) only
+/// when they reach no verdict.  A stage's model is turned into the
+/// path the UI expects — the uncovered path of the collapsed complement
+/// matrix that the model falsifies, with the tables' argument values — so
+/// the result reads exactly like a searched one.
+fn hydra_then_boxes(state: &AppState, original: &str, text: String, ctx: BoxContext, params: Option<logic::matrix::PathParams>, backend: Backend, preprocess: bool) -> Json<serde_json::Value> {
+    let job_state = state.sat_job.clone();
+    let my_gen = {
+        let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+        if let Some(c) = job.cancel.take() { c.cancel(); }
+        let generation = job.generation + 1;
+        *job = ClassifyJob::default();
+        job.generation = generation;
+        job.running = true;
+        job.is_complement = true;
+        job.start_time = Some(std::time::Instant::now());
+        generation
+    };
+    let expanded = match expand_formula(state, original) {
+        Ok(f) => f,
+        Err(e) => {
+            let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+            job.running = false; job.error = Some(e);
+            return Json(serde_json::json!({ "ok": true }));
+        }
+    };
+    let (text_for_stage, ctx_for_stage) = (text.clone(), ctx.clone());
+    tokio::spawn(async move {
+        let stage = tokio::task::spawn_blocking(move || hydra_stage(&expanded, &text_for_stage, &ctx_for_stage)).await;
+        let outcome = match stage {
+            Ok(Ok(o)) => o,
+            Ok(Err(e)) => { eprintln!("[hydra] stage error, falling through to the box search: {e}"); HydraOutcome::Fallthrough { note: None } }
+            Err(e) => { eprintln!("[hydra] stage panicked, falling through to the box search: {e}"); HydraOutcome::Fallthrough { note: None } }
+        };
+        {
+            let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+            if job.generation != my_gen { return; }   // a newer job owns this state
+            match outcome {
+                HydraOutcome::Sat { path, positions, note } => {
+                    job.snapshot.uncovered_paths.push(path);
+                    job.snapshot.uncovered_path_positions.push(positions);
+                    job.snapshot.classified_count = 1.0;
+                    job.total_path_count = collapsed_path_count(&text).unwrap_or(0.0);
+                    job.solved_by = Some(note);
+                    job.running = false;
+                    job.finished_secs = job.start_time.map(|t| t.elapsed().as_secs_f64());
+                    return;
+                }
+                HydraOutcome::Unsat { note } => {
+                    job.total_path_count = collapsed_path_count(&text).unwrap_or(0.0);
+                    job.snapshot.classified_count = job.total_path_count;
+                    job.solved_by = Some(note);
+                    job.running = false;
+                    job.finished_secs = job.start_time.map(|t| t.elapsed().as_secs_f64());
+                    return;
+                }
+                HydraOutcome::Fallthrough { note } => { job.solved_by = note; }
+            }
+        }
+        let boxctx = if ctx.calls.is_empty() { None } else { Some(ctx) };
+        if let Err(e) = start_classify_job(job_state.clone(), &text, true, params, backend, preprocess, boxctx) {
+            let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+            if job.generation != my_gen { return; }
+            job.running = false;
+            if job.finished_secs.is_none() { job.finished_secs = job.start_time.map(|t| t.elapsed().as_secs_f64()); }
+            job.error = Some(e);
+        }
+    });
+    Json(serde_json::json!({ "ok": true }))
+}
+
+/// The path count the UI shows for a satisfiable job on `text` (as
+/// `start_classify_job` computes it: the complement's, or the formula's own
+/// when the complement collapsed to zero paths).
+fn collapsed_path_count(text: &str) -> Result<f64, String> {
+    let m = logic::matrix::Matrix::try_from(text)?;
+    let c = m.nnf_complement.path_count();
+    Ok(if c > 0.0 { c } else { m.nnf.path_count() })
+}
+
+/// Run hydra's structure stages on the CNF of the expanded formula.
+fn hydra_stage(expanded: &str, text: &str, ctx: &BoxContext) -> Result<HydraOutcome, String> {
+    use logic::matrix::Matrix;
+    let t0 = std::time::Instant::now();
+    let m_e = Matrix::try_from(expanded)?;
+    let n_base = m_e.ast.vars.len() as i32;
+    let mut next_var = n_base + 1;
+    let (clauses, nvars) = clausal_cnf(&m_e.nnf, &mut next_var);
+    let overlay = |model: Vec<bool>| -> Vec<bool> { model };
+    // Cook shapes: a polynomial refutation of a known cardinality structure
+    if clauses.len() <= 1_000_000 {
+        let shape = logic::cook_pbp::detect_shape(&clauses, nvars);
+        if !matches!(shape, logic::cook_pbp::CnfShape::Unknown) {
+            return Ok(HydraOutcome::Unsat { note: format!("hydra: Cook shape {} ({:.0} ms)", shape.describe(), t0.elapsed().as_secs_f64() * 1000.0) });
+        }
+    }
+    // factoring: a multiplier with a pinned product, solved numerically
+    match logic::factoring::factoring_tactic(nvars, &clauses, 20_000_000) {
+        logic::factoring::Tactic::Sat { model, info } => {
+            let (path, positions) = path_of_model(&m_e, &overlay(model), text, ctx)?;
+            return Ok(HydraOutcome::Sat { path, positions, note: format!("hydra factoring: {} — factored numerically ({:.0} ms)", info.describe(), t0.elapsed().as_secs_f64() * 1000.0) });
+        }
+        logic::factoring::Tactic::NoFactorPair { info } => {
+            return Ok(HydraOutcome::Fallthrough { note: Some(format!("hydra factoring: {} has no factor pair of the circuit's widths (numeric, unproven) — the box search supplies the proof", info.describe())) });
+        }
+        logic::factoring::Tactic::NotRecognised(_) => {}
+    }
+    // XOR / parity: pure parity systems are decided by Gaussian elimination
+    if clauses.len() <= 5_000_000 {
+        match logic::xor_gauss::solve_xor_system(nvars, &clauses, 50_000_000) {
+            logic::xor_gauss::XorGaussResult::Unsat { by_bcp } => {
+                return Ok(HydraOutcome::Unsat { note: format!("hydra xor stage: {} ({:.0} ms)", if by_bcp { "unit propagation refutes the formula" } else { "the XOR system is inconsistent (GF(2) elimination)" }, t0.elapsed().as_secs_f64() * 1000.0) });
+            }
+            logic::xor_gauss::XorGaussResult::Sat(model) => {
+                let (path, positions) = path_of_model(&m_e, &overlay(model), text, ctx)?;
+                return Ok(HydraOutcome::Sat { path, positions, note: format!("hydra xor stage: pure-XOR formula solved by Gaussian elimination ({:.0} ms)", t0.elapsed().as_secs_f64() * 1000.0) });
+            }
+            _ => {}
+        }
+    }
+    Ok(HydraOutcome::Fallthrough { note: None })
+}
+
+/// The CNF of an NNF for the structure stages: a formula that is already a
+/// conjunction of clauses (a product of sums of literals) is emitted as those
+/// clauses — a full Tseitin encoding would hide every clause behind a gate
+/// variable and the recognisers would see gates, not the multiplier — and any
+/// other subformula is Tseitin-encoded with its gate variable asserted.
+fn clausal_cnf(nnf: &logic::matrix::NNF, next_var: &mut i32) -> (Vec<Vec<i32>>, usize) {
+    use logic::matrix::NNF;
+    let lit = |l: &logic::matrix::Lit| -> i32 { let v = l.var as i32 + 1; if l.neg { -v } else { v } };
+    let mut clauses: Vec<Vec<i32>> = Vec::new();
+    let emit = |n: &NNF, clauses: &mut Vec<Vec<i32>>, next_var: &mut i32| {
+        match n {
+            NNF::Lit(l) => clauses.push(vec![lit(l)]),
+            NNF::Sum(ch) if ch.iter().all(|c| matches!(c, NNF::Lit(_))) =>
+                clauses.push(ch.iter().map(|c| if let NNF::Lit(l) = c { lit(l) } else { unreachable!() }).collect()),
+            other => { let (root, mut cc) = logic::cadical::tseitin_encode(other, next_var); clauses.append(&mut cc); clauses.push(vec![root]); }
+        }
+    };
+    match nnf {
+        NNF::Prod(ch) => for c in ch { emit(c, &mut clauses, next_var); },
+        other => emit(other, &mut clauses, next_var),
+    }
+    let nvars = (*next_var - 1) as usize;
+    (clauses, nvars)
+}
+
+/// The uncovered path of the collapsed complement matrix that a model of the
+/// expanded formula stands for: every variable of the collapsed formula takes
+/// its value from the model (a box-call atom from its table on the call's
+/// arguments), and the path descends into the false nodes of the complement
+/// — one false child of every Prod, every child of a Sum — exactly the path
+/// the search would report for this model.  Returns the display string
+/// (path literals, then the call arguments the tables fix) and the leaf
+/// positions.
+fn path_of_model(m_e: &logic::matrix::Matrix, model: &[bool], text: &str, ctx: &BoxContext) -> Result<(String, Vec<Vec<usize>>), String> {
+    use logic::matrix::{Matrix, NNF, Lit, format_lits};
+    let mut m_c = Matrix::try_from(text)?;
+    let (tables, names, arg_vars) = build_box_tables(ctx, &mut m_c)?;
+    let atoms: HashMap<u32, usize> = tables.calls.iter().enumerate().map(|(i, c)| (c.atom, i)).collect();
+    // values of the collapsed variables: base variables by name, atoms by table
+    let mut vals: Vec<Option<bool>> = vec![None; names.len()];
+    for (v, name) in names.iter().enumerate() {
+        if atoms.contains_key(&(v as u32)) { continue; }
+        if let Some(&i) = m_e.ast.var_index.get(name) { vals[v] = model.get(i as usize).copied(); }
+    }
+    for (v, name) in names.iter().enumerate() {
+        if let Some(&i) = atoms.get(&(v as u32)) {
+            let c = &tables.calls[i];
+            let holds = c.pos.has_live_row(&|u| vals.get(u as usize).copied().flatten());
+            let fails = c.neg.has_live_row(&|u| vals.get(u as usize).copied().flatten());
+            vals[v] = match (holds, fails) {
+                (true, false) => Some(true),
+                (false, true) => Some(false),
+                _ => return Err(format!("box call {name}: the model does not decide it (holds={holds}, fails={fails})")),
+            };
+        }
+    }
+    let asg: Vec<Lit> = vals.iter().enumerate().filter_map(|(v, b)| b.map(|b| if b { Lit::pos(v as u32) } else { Lit::neg(v as u32) })).collect();
+    fn walk(n: &NNF, asg: &[Lit], pos: &mut Vec<usize>, positions: &mut Vec<Vec<usize>>, lits: &mut Vec<Lit>) -> Result<(), String> {
+        match n {
+            NNF::Lit(l) => {
+                if n.evaluate(asg) != Ok(false) { return Err("the model does not falsify a path literal of the complement".into()); }
+                positions.push(pos.clone()); lits.push(l.clone()); Ok(())
+            }
+            NNF::Prod(ch) => {
+                let k = ch.iter().position(|c| c.evaluate(asg) == Ok(false)).ok_or_else(|| "the model falsifies no child of a Prod node of the complement".to_string())?;
+                pos.push(k); let r = walk(&ch[k], asg, pos, positions, lits); pos.pop(); r
+            }
+            NNF::Sum(ch) => {
+                for (k, c) in ch.iter().enumerate() { pos.push(k); let r = walk(c, asg, pos, positions, lits); pos.pop(); r?; }
+                Ok(())
+            }
+        }
+    }
+    let (mut positions, mut lits) = (Vec::new(), Vec::new());
+    walk(&m_c.nnf_complement, &asg, &mut Vec::new(), &mut positions, &mut lits)?;
+    // the call arguments the path leaves open, in display polarity (the user
+    // negates path literals to read the witness), as the drainer appends them
+    let on_path: std::collections::HashSet<u32> = lits.iter().map(|l| l.var).collect();
+    let mut all = lits.clone();
+    for &v in &arg_vars {
+        if !on_path.contains(&v) && let Some(b) = vals[v as usize] { all.push(Lit { var: v, neg: b }); }
+    }
+    Ok((format_lits(&all, &names), positions))
 }
 
 async fn satisfiable_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {

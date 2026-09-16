@@ -452,6 +452,44 @@ CaDiCaL on this family like the others.  The structural part stands:
 shorter reasons at no cost, on by default, and a 46 % higher conflict
 rate on sum-of-3-cubes that still yields no verdict.
 
+## Eighth measurement: the factoring tactic (2026-09-15)
+
+The ezfact "win" of the seventh measurement was one trajectory; the
+family is now solved by reading the number off the circuit instead.
+`src/factoring.rs` (hydra's factoring stage, in every hydra variant and
+in the new `hydra_box` backend) recognises the multiplier, reads N off the
+pinned outputs by probing the circuit with random factor assignments,
+factors N (Pollard–Brent) and rebuilds the model by propagation through
+the full CNF.  All 49 factoring instances of the set, `--backend hydra
+--timeout 60` (the fall-through is CaDiCaL):
+
+| family | instances | tactic | verdict and time | CaDiCaL alone |
+|---|---|---|---|---|
+| ezfact16 | 5 | N a 16-bit prime → numeric UNSAT (3 ms) | UNSAT, CaDiCaL proof in 7 ms | 7 ms |
+| ezfact32 | 10 | N = p², p a 16-bit prime | SAT in 11 ms | < 1 s |
+| ezfact64 | 8 | N = p², p a 32-bit prime | SAT in 50–73 ms | 111 s (ezfact64_6); box engine 300 s timeout |
+| pyhala-braun-sat-30 | 4 | N = 23173 × 23197 | SAT in 0.09–0.10 s | 0.4–1.8 s |
+| pyhala-braun-sat-35 | 4 | N = 131101 × 131113 | SAT in 0.13–0.14 s | 0.15–5.8 s |
+| pyhala-braun-sat-40 | 5 | N = 741457 × 741469 (all five) | SAT in 0.18–0.20 s | 3.4–46 s |
+| pyhala-braun-unsat-40 | 1 | N = 549755813951, no pair of the widths → numeric UNSAT (0.18 s) | UNSAT, CaDiCaL proof in 46 s | 46 s |
+| toughsat_factoring | 8 | not recognised (product bits folded into the last cells) | CaDiCaL: 13–23 s, 3 timeouts | same |
+| toughsat_*bits | 4 | not recognised (not an array multiplier) | CaDiCaL: 16–25 s, 2 timeouts | same |
+
+The numeric UNSAT is never reported as a verdict: it annotates the run
+(`factoring-verdict=unsat`) and the proof comes from the fall-through —
+CaDiCaL for `hydra`, the box engine for `hydra_box` (ezfact16 through the
+box engine: 44 conflicts, 2 ms).  What the recogniser had to learn from
+the real instances, in order: ezfact's shuffled polarities are per
+variable, not per factor (read off the partial-product AND gates); ezfact
+pins one constant the circuit's cells share; pyhala-braun's labelling
+comes out mirrored (the orientation reading) and its two extra pins are
+"the factor is not 1" side constraints that never vary under probing;
+toughsat's "the factor is not 1" is a 22-literal clause over one factor's
+bits, so gate co-occurrence is read from clauses of at most three
+literals.  Not learned: toughsat's folded outputs, which need a forward
+gate-by-gate evaluation instead of unit propagation (deferred; CaDiCaL
+handles the family in 13–25 s).
+
 ## Per-family scan (families with ≥ 2 instances across both years)
 
 | family | 2025 | 2026 | class | vars (median) | AND gates | XOR gates | gate % | scope % | binary |

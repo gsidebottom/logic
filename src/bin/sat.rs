@@ -2287,15 +2287,20 @@ enum BackendChoice {
     /// announced as `c pb-cadical: proof-format=pbp|lrat`).  Short-circuits
     /// before the matrix search.
     PbCadical,
-    /// Hydra: the structure-dispatch portfolio — pb-cadical plus an
-    /// XOR/parity stage between the Cook prover and CaDiCaL.  Stages:
-    /// (1) Cook shape → polynomial VeriPB PB proof; (2) XOR recovery +
-    /// GF(2) Gaussian elimination → decides pure-parity formulas outright
-    /// (SAT with a checkable witness; UNSAT currently uncertified) and
-    /// simplifies mixed formulas via GE-forced units; (3) residual →
-    /// CaDiCaL with native LRAT (cake_lpr-checkable).  Every stage's
-    /// verdict is sound; certificates per stage (`proof-format=pbp|lrat|
-    /// none`).
+    /// Hydra: the structure-dispatch portfolio — pb-cadical plus the
+    /// factoring and XOR/parity stages between the Cook prover and
+    /// CaDiCaL.  Stages: (1) Cook shape → polynomial VeriPB PB proof;
+    /// (2) factoring (`logic::factoring`): a multiplier circuit with its
+    /// product pinned to N is recognised, N factored numerically and the
+    /// model rebuilt by propagation (SAT with the model as witness; a
+    /// number with no fitting factor pair is a numeric UNSAT that only
+    /// annotates the run — the proof comes from a later stage); (3) XOR
+    /// recovery + GF(2) Gaussian elimination → decides pure-parity
+    /// formulas outright (SAT with a checkable witness; UNSAT currently
+    /// uncertified) and simplifies mixed formulas via GE-forced units;
+    /// (4) residual → CaDiCaL with native LRAT (cake_lpr-checkable).
+    /// Every stage's verdict is sound; certificates per stage
+    /// (`proof-format=pbp|witness|lrat|none`).
     Hydra,
     /// Hydra plus the symmetry-breaking stage (`logic::symbreak`)
     /// between the Cook/XOR preprocessing and the CaDiCaL handoff.
@@ -2314,6 +2319,14 @@ enum BackendChoice {
     /// dsr-trim (in-container) verifies the COMPOSED proof against the
     /// ORIGINAL formula — certified UNSAT even when symmetries fired.
     HydraSatsuma,
+    /// Hydra's structure stages (Cook shape, factoring, XOR/parity) with
+    /// the box-matrix engine as the fall-through instead of CaDiCaL: a
+    /// verdict from a stage is printed as for `hydra` (SAT models are
+    /// witnesses; a numeric factoring UNSAT is not a verdict and only
+    /// annotates the run), otherwise the formula — GE-simplified when the
+    /// XOR stage forced units — goes to `boxes_search` exactly as the
+    /// `boxes` backend would run it.
+    HydraBox,
     /// Bare satsuma-iter+kissat (the SAT Competition 2026 main-track
     /// winner) with NO hydra preprocessing — no Cook shapes, no XOR/GE:
     /// the raw formula goes straight to the Docker pipeline. The
@@ -2332,6 +2345,7 @@ impl BackendChoice {
             BackendChoice::Hydra     => "hydra",
             BackendChoice::HydraSymBreak => "hydra_sym_break",
             BackendChoice::HydraSatsuma  => "hydra_satsuma",
+            BackendChoice::HydraBox      => "hydra_box",
             BackendChoice::Satsuma       => "satsuma",
         }
     }
@@ -2374,11 +2388,13 @@ impl BackendChoice {
                          | "hydrasymbreak"  => Ok(BackendChoice::HydraSymBreak),
             "hydra_satsuma" | "hydra-satsuma"
                          | "hydrasatsuma"   => Ok(BackendChoice::HydraSatsuma),
+            "hydra_box" | "hydra-box"
+                         | "hydrabox"       => Ok(BackendChoice::HydraBox),
             "satsuma"                      => Ok(BackendChoice::Satsuma),
             _ => Err(format!(
                 "unknown backend {:?}; expected one of: smart, cdcl, eff, eff_cover, effb, \
                  greedy_cdcl, greedy_eff, greedy_effb, basic_eff, basic_effb, cadical, \
-                 pb-cadical, hydra, hydra_sym_break, hydra_satsuma, satsuma", s
+                 pb-cadical, hydra, hydra_sym_break, hydra_satsuma, hydra_box, satsuma", s
             )),
         }
     }
@@ -2444,6 +2460,10 @@ struct Args {
     /// Run the Cook PB-prover shape detector (hydra/pb-cadical). Default
     /// `true`; `--no-cook` disables it (isolates later stages for A/B).
     cook: bool,
+    /// Run the factoring stage (hydra variants): recognise a multiplier
+    /// circuit with a pinned product and factor the number numerically.
+    /// Default `true`; `--no-factoring` disables it.
+    factoring: bool,
     /// Skip the XOR-GE pass when the input has more than this many
     /// clauses (0 = no cap).  Like `preprocess_max_clauses`, this guards
     /// against the recovery pass — which groups every clause by its
@@ -2552,6 +2572,7 @@ fn parse_args() -> Result<Args, String> {
         satsuma_verify_secs: None,
         satsuma_mem_gb: 0,
         cook: true,
+        factoring: true,
         xor_gauss_max_clauses: 1_000_000,
         emit_cover: None,
         emit_drat: None,
@@ -2642,6 +2663,8 @@ fn parse_args() -> Result<Args, String> {
             "--no-symbreak"     => { a.symbreak = Some(false); }
             "--cook"            => { a.cook = true;  }
             "--no-cook"         => { a.cook = false; }
+            "--factoring"       => { a.factoring = true; }
+            "--no-factoring"    => { a.factoring = false; }
             "--satsuma-verify-secs" => {
                 let v = iter.next().ok_or_else(||
                     "--satsuma-verify-secs requires a value (seconds; 0 = unlimited)".to_string())?;
@@ -2980,7 +3003,10 @@ fn main() {
     // shell out to the CaDiCaL binary with --veripb so its proof is also
     // VeriPB-checkable.  Either way a solved instance carries a verifiable
     // certificate.  Short-circuits before the matrix search.
-    if matches!(args.backend, BackendChoice::PbCadical | BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma | BackendChoice::Satsuma) {
+    // XOR-GE forced constants overlaid on the final model (set by the XOR
+    // stage of hydra_box or of the matrix backends below).
+    let mut xor_forced: Option<Vec<Option<bool>>> = None;
+    if matches!(args.backend, BackendChoice::PbCadical | BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma | BackendChoice::HydraBox | BackendChoice::Satsuma) { 'hydra: {
         use logic::cook_pbp::{detect_shape, emit_proof, CnfShape};
         use std::io::Write as _;
         let bk = args.backend.name();
@@ -3071,10 +3097,46 @@ fn main() {
             println!("s UNSATISFIABLE");
             return;
         }
+        // Factoring stage (`logic::factoring`): a multiplier circuit with its
+        // product pinned to N is solved numerically — recognise the circuit,
+        // read N off the pins, factor N (Pollard–Brent) and rebuild the model
+        // by propagation through the full CNF.  SAT is self-certifying (the
+        // model); a number with no factor pair of the circuit's widths is a
+        // numeric UNSAT that is NOT a proof — the instance goes on to the
+        // proof-producing stages with the verdict only annotated.
+        let hydra_stages = matches!(args.backend, BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma | BackendChoice::HydraBox);
+        if hydra_stages && args.factoring && clauses.len() <= 5_000_000 {
+            use logic::factoring::{factoring_tactic, Tactic};
+            let t_f = Instant::now();
+            match factoring_tactic(nvars, &clauses, 20_000_000) {
+                Tactic::Sat { model, info } => {
+                    eprintln!("c {}: prover=factoring", bk);
+                    eprintln!("c {}: proof-format=witness", bk);
+                    eprintln!("c {}: {} — factored numerically ({:.1}ms); the model is the certificate",
+                              bk, info.describe(), t_f.elapsed().as_secs_f64() * 1000.0);
+                    if let Some(out) = args.proof.as_ref() { let _ = std::fs::remove_file(out); }
+                    verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
+                    eprintln!("c SAT in {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
+                    println!("s SATISFIABLE");
+                    let stdout = io::stdout();
+                    let mut w = stdout.lock();
+                    write_v_line(&mut w, &model).unwrap();
+                    return;
+                }
+                Tactic::NoFactorPair { info } => {
+                    eprintln!("c {}: factoring stage: {} has no factor pair of the circuit's widths — numeric UNSAT, uncertified ({:.1}ms); continuing for a proof",
+                              bk, info.describe(), t_f.elapsed().as_secs_f64() * 1000.0);
+                    eprintln!("c {}: factoring-verdict=unsat", bk);
+                }
+                Tactic::NotRecognised(why) => {
+                    eprintln!("c {}: factoring stage: not a multiplier ({}, {:.1}ms)", bk, why, t_f.elapsed().as_secs_f64() * 1000.0);
+                }
+            }
+        }
         // No structural shape.  Hydra inserts the XOR/parity stage here;
         // pb-cadical goes straight to CaDiCaL.
         let mut xor_simplified: Option<(Vec<Vec<i32>>, Vec<Option<bool>>)> = None;
-        if matches!(args.backend, BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma) && clauses.len() <= 5_000_000 {
+        if hydra_stages && clauses.len() <= 5_000_000 {
             use logic::xor_gauss::{solve_xor_system, XorGaussResult};
             let t_x = Instant::now();
             eprintln!("c {}: structure analysis (xor stage)…", bk);
@@ -3192,6 +3254,14 @@ fn main() {
                     }
                 }
             }
+        }
+        if matches!(args.backend, BackendChoice::HydraBox) {
+            // hydra_box: no verdict from the structure stages — the box engine
+            // below searches the formula (GE-simplified when the XOR stage
+            // forced units; the final model overlays the forced values).
+            if let Some((simp, forced)) = xor_simplified.take() { clauses = simp; xor_forced = Some(forced); }
+            eprintln!("c {}: no structure verdict -> boxes engine ({:.1}ms)", bk, t0.elapsed().as_secs_f64() * 1000.0);
+            break 'hydra;
         }
         let solve_clauses: &[Vec<i32>] =
             xor_simplified.as_ref().map(|(s, _)| s.as_slice()).unwrap_or(&clauses);
@@ -3956,7 +4026,7 @@ fn main() {
         let _ = std::fs::remove_file(&tmp);
         let _ = std::fs::remove_file(&drat_tmp);
         return;
-    }
+    } }
 
     // Quick edge cases handled before invoking either backend.  We
     // still emit the standard `c UNSAT|SAT in 0.0ms` timing line on
@@ -4026,7 +4096,6 @@ fn main() {
     // mixed formula: the matrix search runs on the residual (which no
     // longer mentions the forced vars), so on SAT we must overlay these
     // constants back onto the search's model before printing it.
-    let mut xor_forced: Option<Vec<Option<bool>>> = None;
 
     // Structure-based visit-order routing for eff backends.  Detect an
     // "exactly-one" cardinality CSP (PHP / RoundRobin / MVRoundRobin /
@@ -4098,7 +4167,7 @@ fn main() {
     let t = Instant::now();
     let outcome = match args.backend {
         BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
-        BackendChoice::Boxes => boxes_search(nvars, &clauses, args.boxes.as_deref(), args.timeout_secs),
+        BackendChoice::Boxes | BackendChoice::HydraBox => boxes_search(nvars, &clauses, args.boxes.as_deref(), args.timeout_secs),
         BackendChoice::PbCadical => unreachable!("pb-cadical is handled before the search dispatch"),
         BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma
         | BackendChoice::Satsuma =>

@@ -1793,6 +1793,7 @@ export default function App() {
       hitLimit: data.hit_limit,
       isComplement: true,
       preprocessedTo: data.preprocessed_to ?? null,
+      solvedBy: data.solved_by ?? null,
     });
     setSatRunning(!!data.running);
     if (!data.running) stopSatPolling();
@@ -3698,7 +3699,7 @@ export default function App() {
           {satResult.error
             ? `✗ ${satResult.error}`
             : satResult.satisfiable === null
-              ? <span>Checking satisfiability{satResult.totalPathCount > 0 ? ` — ${fmtNum(satResult.classifiedCount ?? 0)} / ${fmtNum(satResult.totalPathCount)} paths classified` : ''}...</span>
+              ? <span>Checking satisfiability{satResult.totalPathCount > 0 ? ` — ${fmtNum(satResult.classifiedCount ?? 0)} / ${fmtNum(satResult.totalPathCount)} paths classified` : ''}{satResult.solvedBy ? ` — ${satResult.solvedBy}` : ''}...</span>
               : satResult.satisfiable
               ? <span>
                   {(() => {
@@ -3707,7 +3708,8 @@ export default function App() {
                     const rate = elapsed > 0 ? Math.round((satResult.classifiedCount ?? 0) / elapsed) : 0;
                     const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)}${matrixBackend !== 'boxes' && rate > 0 ? ` at ${fmtNum(rate)} paths/s` : ''}` : '';
                     const ppNote = satResult.preprocessedTo ? ' (decided by preprocessing alone)' : '';
-                    return `✓ Satisfiable — satisfying assignment and uncovered path in complement of ${fmtNum(total)} path matrix${ratePart}${ppNote}:`;
+                    const hydraNote = satResult.solvedBy ? ` (${satResult.solvedBy})` : '';
+                    return `✓ Satisfiable — satisfying assignment and uncovered path in complement of ${fmtNum(total)} path matrix${ratePart}${ppNote}${hydraNote}:`;
                   })()}
                   {satResult.path && (() => {
                     const p = satResult.path;
@@ -3881,7 +3883,10 @@ export default function App() {
                     if (satResult.preprocessedTo) {
                       return `✗ Unsatisfiable — decided by preprocessing alone, no search of the ${fmtNum(total)} path complement matrix needed${ratePart}`;
                     }
-                    return `✗ Unsatisfiable — all ${fmtNum(total)} paths in the complement are covered${ratePart}`;
+                    if (satResult.solvedBy && !satResult.solvedBy.includes('the box search supplies')) {
+                      return `✗ Unsatisfiable — decided without searching the ${fmtNum(total)} path complement matrix${ratePart} (${satResult.solvedBy})`;
+                    }
+                    return `✗ Unsatisfiable — all ${fmtNum(total)} paths in the complement are covered${ratePart}${satResult.solvedBy ? ` (${satResult.solvedBy})` : ''}`;
                   })()}
                   {satResult.coverGroups?.length > 0 && ast && (() => {
                     const resName = pos => compName(resolvePosition(ast, pos)?.n) ?? pos.join(',');

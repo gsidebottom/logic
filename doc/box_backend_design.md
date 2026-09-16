@@ -1292,7 +1292,15 @@ accepted the two at-least-one layers alone, so the unit-propagated
 residual of a *satisfiable* 6×6 multiplier was reported UNSAT (`Cook shape
 clique-coloring K=3 N=3 C=2`); it now verifies every mutex its proof's rup
 steps consume, directly or through the standard encoding's edge variables
-(regression tests in `factoring::tests`).
+(regression tests in
+`factoring::tests`).  Against the official 2026 main-track run
+(2026-09-16, `hydra_satsuma` through the competition runner at 5000 s):
+ezfact64_6 SAT 31.2 s → 0.07 s, pyhala-braun-sat-40 SAT 41.6 s →
+0.20 s (both witnesses re-evaluated against every clause),
+pyhala-braun-unsat-40 UNSAT 41.2 s → 36.9 s (the proof is still kissat's,
+dsr-trim verified), toughsat_factoring_895s unchanged (not recognised);
+the stage costs ≤ 90 ms on the largest instances under its 5 M-clause
+cap.  See the eighth measurement in `box_candidates_satcomp.md`.
 
 **Deep formulas (2026-09-14).**  The path traversal extends a Sum's path by
 all of its children through one nested continuation per child

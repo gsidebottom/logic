@@ -490,6 +490,28 @@ literals.  Not learned: toughsat's folded outputs, which need a forward
 gate-by-gate evaluation instead of unit propagation (deferred; CaDiCaL
 handles the family in 13–25 s).
 
+### Against the official 2026 run (2026-09-16)
+
+The 2026 main track has four instances of the family.  Re-run through
+the competition runner (`tools/gbd/run_benchmark.py`, the official index,
+5000 s, `hydra_satsuma` — the structure stages, then satsuma-iter+kissat
+in Docker), against the official `satsuma` run
+(`competition-benchmark_main_track_2026_official_5000_satsuma.json`);
+report: `competition-benchmark_main_track_2026_factoring_5000_hydra_satsuma.md/.json`.
+
+| instance | official satsuma run | hydra_satsuma now | check |
+|---|---|---|---|
+| ezfact64_6 | SAT 31.2 s | SAT 0.07 s (factoring stage) | witness re-evaluated against all 19,785 clauses |
+| pyhala-braun-sat-40-4-03 | SAT 41.6 s | SAT 0.20 s (factoring stage) | witness re-evaluated against all 31,795 clauses |
+| pyhala-braun-unsat-40-4-02 | UNSAT 41.2 s, proof ok | UNSAT 36.9 s (numeric UNSAT annotated in 0.2 s; satsuma+kissat proof, dsr-trim verified in 74 s) | proof verified |
+| toughsat_factoring_895s | SAT 272.5 s | SAT 225.8 s (not recognised; plain satsuma path) | run-to-run variation |
+
+Two of the four go from tens of seconds to milliseconds; the UNSAT one
+gains nothing, because the certificate is still the kissat refutation
+(the numeric verdict only annotates); toughsat is untouched.  The stage
+costs nothing measurable elsewhere: it is skipped above 5 M clauses and
+returns at the structure pass on everything else — case19.normalised: 4,688,613 clauses, 87.5ms; lockchart-group1-L190-K276-p8d4j1.normalised: 3,410,378 clauses, 2.2ms; lockchart-group1-L190-K276-p8d4j1.normalised: 3,410,378 clauses, 2.3ms.
+
 ## Per-family scan (families with ≥ 2 instances across both years)
 
 | family | 2025 | 2026 | class | vars (median) | AND gates | XOR gates | gate % | scope % | binary |

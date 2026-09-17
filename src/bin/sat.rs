@@ -1701,6 +1701,8 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
               s.subsume_rounds, s.subsumed, s.strengthened, s.strengthened_lits, if eng.subsume { "" } else { ", off" });
     eprintln!("c boxes: shrinking: {} of {} level blocks replaced by their UIP, {} literals removed{}",
               s.shrink_blocks, s.shrink_tried, s.shrunk_lits, if eng.shrink { "" } else { ", off" });
+    eprintln!("c boxes: chronological backtracking: {} chronological backtracks, {} literals kept out of order{}",
+              s.chrono_backtracks, s.chrono_kept, if eng.chrono { format!(" (threshold {} levels)", eng.chrono_levels) } else { ", off".to_string() });
     if eng.nexplain() > 0 { eprintln!("c boxes: {} table reasons taken from gate clauses", s.explanation_gate); }
     if let Some(p) = &mut eng.proof {
         p.flush();

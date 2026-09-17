@@ -207,12 +207,42 @@ pub enum RestartMode {
     /// heap would now make differently.
     #[default]
     Glucose,
+    /// CaDiCaL's focused-mode restarts: a fast (1/33) and a slow (1/10⁵)
+    /// bias-corrected exponential moving average of learned-clause LBD, and a
+    /// restart whenever fast exceeds slow by `restart_margin` (1.10) after
+    /// at least two conflicts — no queue to refill, no blocking.  Stable
+    /// phases alternate as for `Glucose` unless `BOXES_STABLE=0`.
+    ///
+    /// Why it exists (2026-09-17): the engine restarted once per ~700
+    /// conflicts on c3540 where CaDiCaL restarts once per 20, and CaDiCaL's
+    /// own ablation there puts restarts at 2.7-4.3x its conflict count.
+    Ema,
+}
+
+/// An exponential moving average with Biere and Fröhlich's bias correction
+/// ("Evaluating CDCL restart schemes", 2015): early values are not dragged
+/// towards the zero it starts from.
+#[derive(Clone, Copy, Debug)]
+pub struct Ema { alpha: f64, biased: f64, exp: f64, pub value: f64 }
+
+impl Ema {
+    pub fn new(alpha: f64) -> Ema { Ema { alpha, biased: 0.0, exp: 1.0, value: 0.0 } }
+    pub fn update(&mut self, y: f64) {
+        self.biased += self.alpha * (y - self.biased);
+        if self.exp > 0.0 {
+            self.exp *= 1.0 - self.alpha;
+            self.value = self.biased / (1.0 - self.exp);
+            if self.exp < 1e-12 { self.exp = 0.0; }
+        } else {
+            self.value = self.biased;
+        }
+    }
 }
 
 impl RestartMode {
     /// `BOXES_RESTART=luby|glucose`, default `glucose`.
     pub fn from_env() -> RestartMode {
-        match std::env::var("BOXES_RESTART").as_deref() { Ok("luby") => RestartMode::Luby, _ => RestartMode::Glucose }
+        match std::env::var("BOXES_RESTART").as_deref() { Ok("luby") => RestartMode::Luby, Ok("ema") => RestartMode::Ema, _ => RestartMode::Glucose }
     }
 }
 
@@ -387,6 +417,13 @@ pub struct Engine {
     /// `chrono_levels` below it backtracks one level instead of all the way.
     pub chrono: bool,
     pub chrono_levels: usize,
+    /// Trail reuse on backjumps (`BOXES_CHRONO_REUSE=0` turns it off; only
+    /// with `chrono`): CaDiCaL's `chronoreusetrail`, read from its source.
+    /// Among the literals assigned above the asserting level, take the most
+    /// active variable and backtrack only to the level that keeps it.
+    /// CaDiCaL's own ablation on c3540 puts this at 2.03x its conflict count
+    /// — the whole of its chronological-backtracking benefit there.
+    pub chrono_reuse: bool,
     /// `BOXES_DEBUG_WATCHES=1`: check the watch invariant during search.
     debug_watches: bool,
     chrono_kept_scratch: Vec<u32>,
@@ -403,6 +440,13 @@ pub struct Engine {
     trail_q: std::collections::VecDeque<u32>,
     trail_q_sum: u64,
     stable: bool,
+    /// `BOXES_STABLE=0`: never enter stable phases (focused restarts only).
+    pub stabilize: bool,
+    /// Fast and slow LBD averages for `RestartMode::Ema`, and its margin
+    /// (`BOXES_RESTART_MARGIN`, default 1.10).
+    glue_fast: Ema,
+    glue_slow: Ema,
+    pub restart_margin: f64,
     stable_len: u64,
     stable_toggle_at: u64,
     /// Variables `simplify` resolved away (never decided) and, per
@@ -490,6 +534,7 @@ impl Engine {
             shrink_mark: Vec::new(),
             chrono: matches!(std::env::var("BOXES_CHRONO").as_deref(), Ok("1") | Ok("on")),
             chrono_levels: env_usize("BOXES_CHRONO_LEVELS", 100),
+            chrono_reuse: !matches!(std::env::var("BOXES_CHRONO_REUSE").as_deref(), Ok("0") | Ok("off")),
             debug_watches: std::env::var("BOXES_DEBUG_WATCHES").is_ok(),
             chrono_kept_scratch: Vec::new(),
             expl_cache: Vec::new(), expl_ok: Vec::new(),
@@ -497,6 +542,9 @@ impl Engine {
             lbd_q: std::collections::VecDeque::new(), lbd_q_sum: 0, lbd_sum: 0,
             trail_q: std::collections::VecDeque::new(), trail_q_sum: 0,
             stable: false, stable_len: 1000, stable_toggle_at: 1000,
+            stabilize: !matches!(std::env::var("BOXES_STABLE").as_deref(), Ok("0") | Ok("off")),
+            glue_fast: Ema::new(1.0 / 33.0), glue_slow: Ema::new(1.0 / 1e5),
+            restart_margin: std::env::var("BOXES_RESTART_MARGIN").ok().and_then(|v| v.parse().ok()).unwrap_or(1.10),
             eliminated: Vec::new(), elim: Vec::new(), elim_enabled: false,
             phases: matches!(std::env::var("BOXES_PHASES").as_deref(), Ok("1") | Ok("on")),
             target_phase: Vec::new(), target_size: 0, best_phase: Vec::new(), best_size: 0,
@@ -1608,8 +1656,19 @@ impl Engine {
     fn restart_due(&mut self, lbd: u32, trail_len: u32, conflicts_here: u64, restarts: u64) -> bool {
         match self.restart {
             RestartMode::Luby => conflicts_here >= 64 * Self::luby(restarts),
+            RestartMode::Ema => {
+                if self.stabilize && self.stats.conflicts >= self.stable_toggle_at {
+                    self.stable = !self.stable;
+                    self.stable_len *= 2;
+                    self.stable_toggle_at = self.stats.conflicts + self.stable_len;
+                }
+                self.glue_fast.update(lbd as f64);
+                self.glue_slow.update(lbd as f64);
+                if self.stable { return conflicts_here >= 512 * Self::luby(restarts); }
+                conflicts_here >= 2 && self.glue_fast.value > self.restart_margin * self.glue_slow.value
+            }
             RestartMode::Glucose => {
-                if self.stats.conflicts >= self.stable_toggle_at {
+                if self.stabilize && self.stats.conflicts >= self.stable_toggle_at {
                     self.stable = !self.stable;
                     self.stable_len *= 2;
                     self.stable_toggle_at = self.stats.conflicts + self.stable_len;
@@ -1641,7 +1700,7 @@ impl Engine {
         self.target_size = 0;
         if self.phases && self.stats.conflicts >= self.rephase_at { self.rephase(); }
         let mut keep = base;
-        if self.restart == RestartMode::Glucose && let Some(next) = self.heap_peek_unassigned() {
+        if matches!(self.restart, RestartMode::Glucose | RestartMode::Ema) && let Some(next) = self.heap_peek_unassigned() {
             while keep < self.decision_level() {
                 let at = self.trail_lim[keep];
                 if at >= self.trail.len() { break; }
@@ -1978,9 +2037,25 @@ impl Engine {
                 let (learnt, bj) = self.analyze(lits);
                 self.log_learned(&learnt);
                 let now = self.decision_level();
-                let target = if self.chrono && learnt.len() > 1 && assumptions.is_empty() && now > bj + self.chrono_levels {
+                // CaDiCaL's determine_actual_backtrack_level
+                let target = if !self.chrono || learnt.len() == 1 || !assumptions.is_empty() || bj + 1 >= now {
+                    bj
+                } else if now - bj > self.chrono_levels {
                     self.stats.chrono_backtracks += 1;
                     now - 1
+                } else if self.chrono_reuse {
+                    // the most active variable assigned above the asserting level
+                    let start = self.trail_lim[bj];
+                    let (mut best_pos, mut best_act) = (start, f64::NEG_INFINITY);
+                    for i in start..self.trail.len() {
+                        let a = self.activity[self.trail[i] as usize];
+                        if a > best_act { best_act = a; best_pos = i; }
+                    }
+                    // keep every level whose decision sits at or before it
+                    let mut res = bj;
+                    while res < now - 1 && self.trail_lim[res] <= best_pos { res += 1; }
+                    if res > bj { self.stats.chrono_backtracks += 1; }
+                    res
                 } else { bj };
                 self.backjump(target.max(base));
                 let l0 = learnt[0];

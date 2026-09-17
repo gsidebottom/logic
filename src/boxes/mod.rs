@@ -160,6 +160,15 @@ pub struct Stats {
     pub vivified_lits: u64,
     /// Subsumption rounds, clauses subsumed away, and clauses strengthened
     /// by self-subsuming resolution (with the literals they lost).
+    /// Learned-clause shrinking: level blocks replaced by their block UIP,
+    /// blocks tried, and the literals removed.
+    /// Conflicts resolved by backtracking one level instead of to the
+    /// asserting level, and literals kept by backtracking out of order.
+    pub chrono_backtracks: u64,
+    pub chrono_kept: u64,
+    pub shrink_blocks: u64,
+    pub shrink_tried: u64,
+    pub shrunk_lits: u64,
     pub subsume_rounds: u64,
     pub subsumed: u64,
     pub strengthened: u64,
@@ -365,6 +374,22 @@ pub struct Engine {
     min_stack: Vec<u32>,
     min_clear: Vec<u32>,
     min_lits: Vec<u32>,
+    /// Learned-clause shrinking (`BOXES_SHRINK=1` turns it on; off until its
+    /// A/B says otherwise): per variable, marked while its block is shrunk.
+    pub shrink: bool,
+    shrink_mark: Vec<bool>,
+    /// Chronological backtracking (Nadel and Ryvchin, SAT 2018; Möhle and
+    /// Biere, "Backing Backtracking", SAT 2019), `BOXES_CHRONO=1`.  A literal
+    /// implied by a clause takes the highest level among the clause's other
+    /// literals, which may be below the current decision level; a backjump
+    /// keeps every literal whose level survives it, wherever it sits on the
+    /// trail; and a conflict whose asserting level is more than
+    /// `chrono_levels` below it backtracks one level instead of all the way.
+    pub chrono: bool,
+    pub chrono_levels: usize,
+    /// `BOXES_DEBUG_WATCHES=1`: check the watch invariant during search.
+    debug_watches: bool,
+    chrono_kept_scratch: Vec<u32>,
     /// A table-propagated variable's explanation, computed once per
     /// assignment (`expl_ok`) and reused by every analysis until the
     /// variable is unassigned.
@@ -461,6 +486,12 @@ impl Engine {
             heap: Vec::new(), heap_pos: Vec::new(),
             minimize: !matches!(std::env::var("BOXES_MINIMIZE").as_deref(), Ok("0") | Ok("none") | Ok("off")),
             min_stack: Vec::new(), min_clear: Vec::new(), min_lits: Vec::new(),
+            shrink: matches!(std::env::var("BOXES_SHRINK").as_deref(), Ok("1") | Ok("on")),
+            shrink_mark: Vec::new(),
+            chrono: matches!(std::env::var("BOXES_CHRONO").as_deref(), Ok("1") | Ok("on")),
+            chrono_levels: env_usize("BOXES_CHRONO_LEVELS", 100),
+            debug_watches: std::env::var("BOXES_DEBUG_WATCHES").is_ok(),
+            chrono_kept_scratch: Vec::new(),
             expl_cache: Vec::new(), expl_ok: Vec::new(),
             restart: RestartMode::from_env(),
             lbd_q: std::collections::VecDeque::new(), lbd_q_sum: 0, lbd_sum: 0,
@@ -592,6 +623,7 @@ impl Engine {
         self.activity.resize(nvars, 0.0);
         self.phase.resize(nvars, false);
         self.seen.resize(nvars, false);
+        self.shrink_mark.resize(nvars, false);
         self.watches.resize(2 * nvars, Vec::new());
         self.bins.resize(2 * nvars, Vec::new());
         self.xidx.resize(2 * nvars, Vec::new());
@@ -793,8 +825,11 @@ impl Engine {
     fn backjump(&mut self, lvl: usize) {
         if self.decision_level() <= lvl { return; }
         let t = self.trail_lim[lvl];
+        let mut kept = std::mem::take(&mut self.chrono_kept_scratch);
+        kept.clear();
         while self.trail.len() > t {
             let v = self.trail.pop().unwrap() as usize;
+            if self.chrono && self.level[v] as usize <= lvl { kept.push(v as u32); continue; }
             self.phase[v] = self.vals[v] == Val::T;
             self.vals[v] = Val::U;
             self.lvals[2 * v] = Val::U;
@@ -809,8 +844,27 @@ impl Engine {
         self.live.copy_from_slice(&self.snap[from..from + n]);
         self.snap.truncate(from);
         self.trail_lim.truncate(lvl);
-        self.qhead = self.trail.len();
         self.clear_queue();
+        // The kept literals go back on in their original order, so each still
+        // follows everything that implied it.  The snapshot restored above
+        // predates them, so their kills are re-applied (which re-queues the
+        // boxes they touch).  And they are propagated again: propagation stops
+        // at the first conflict, so a kept literal may never have been
+        // propagated at all, and skipping it leaves its consequences — a
+        // binary clause against another kept literal, say — underived for
+        // good.  (Measured: PHP-9-8 with backtracking forced chronological
+        // returned a model violating a binary clause, which the model
+        // self-check refused.)  Without chronological mode nothing is kept and
+        // this is the usual `qhead = trail.len()`.
+        for &v in kept.iter().rev() {
+            self.trail_pos[v as usize] = self.trail.len() as u32;
+            self.trail.push(v);
+            let val = self.vals[v as usize];
+            self.apply_kills(v as usize, val);
+        }
+        self.stats.chrono_kept += kept.len() as u64;
+        self.chrono_kept_scratch = kept;
+        self.qhead = t;
     }
 
     fn clear_queue(&mut self) {
@@ -831,10 +885,30 @@ impl Engine {
         self.vals[v] = val;
         self.lvals[2 * v] = val;
         self.lvals[2 * v + 1] = if val == Val::T { Val::F } else { Val::T };
-        self.level[v] = self.decision_level() as u32;
+        self.level[v] = match reason {
+            // chronological mode: an implied literal lives at the highest level
+            // of the literals that imply it, so a later backjump to any level
+            // at or above that keeps it.  A table reason keeps the current
+            // level — computing its explanation here would undo the laziness
+            // that makes boxes cheap, and a level that is too high is sound
+            // (the literal is just unassigned more eagerly).
+            Reason::Clause(ci) if self.chrono && !self.trail_lim.is_empty() => {
+                let mut m = 0u32;
+                for &l in self.clause(ci as usize) { let u = (l >> 1) as usize; if u != v && self.level[u] > m { m = self.level[u]; } }
+                m
+            }
+            _ => self.decision_level() as u32,
+        };
         self.reason[v] = reason;
         self.trail_pos[v] = self.trail.len() as u32;
         self.trail.push(var);
+        self.apply_kills(v, val);
+        true
+    }
+
+    /// Remove from every box the rows `v = val` kills, queueing the boxes that
+    /// changed.
+    fn apply_kills(&mut self, v: usize, val: Val) {
         for k in 0..self.occ[v].len() {
             let Occ { b, koff } = self.occ[v][k];
             let h = self.hdr[b as usize];
@@ -848,7 +922,6 @@ impl Engine {
             }
             if changed && !self.in_queue[b as usize] { self.in_queue[b as usize] = true; self.queue.push(b); }
         }
-        true
     }
 
     /// Propagate to fixpoint: clauses through the trail (two watched
@@ -879,7 +952,16 @@ impl Engine {
                     let (ci, blocker) = ws[i];
                     i += 1;
                     if self.deleted[ci as usize] { continue; }
-                    if self.lvals[blocker as usize] == Val::T { ws[j] = (ci, blocker); j += 1; continue; }
+                    // A true blocker lets a false watch skip the clause only if a
+                    // backtrack that unassigns the blocker must unassign the
+                    // watch too: in chronological mode that needs the blocker's
+                    // level to be no higher than the watch's.  Otherwise both
+                    // watches could stay false above an unassigned literal and a
+                    // later conflict on it would go unseen.
+                    if self.lvals[blocker as usize] == Val::T
+                        && (!self.chrono || self.level[(blocker >> 1) as usize] <= self.level[(false_lit >> 1) as usize]) {
+                        ws[j] = (ci, blocker); j += 1; continue;
+                    }
                     let s = self.cstart[ci as usize] as usize;
                     let len = self.clen[ci as usize] as usize;
                     if self.arena[s] == false_lit { self.arena.swap(s, s + 1); }
@@ -897,7 +979,26 @@ impl Engine {
                         }
                     }
                     if found { continue; }
-                    ws[j] = (ci, other); j += 1;
+                    // No replacement: the clause is unit on `other` or false.  In
+                    // chronological mode the false watch must be the literal of
+                    // highest level, so that any backtrack that unassigns a
+                    // literal of the clause also unassigns this watch.
+                    let mut moved = false;
+                    if self.chrono && len > 2 {
+                        let mut best = s + 1;
+                        let mut bl = self.level[(self.arena[s + 1] >> 1) as usize];
+                        for k in 2..len {
+                            let lv = self.level[(self.arena[s + k] >> 1) as usize];
+                            if lv > bl { best = s + k; bl = lv; }
+                        }
+                        if best != s + 1 {
+                            self.arena.swap(s + 1, best);
+                            let nl = self.arena[s + 1];
+                            self.watches[nl as usize].push((ci, other));
+                            moved = true;
+                        }
+                    }
+                    if !moved { ws[j] = (ci, other); j += 1; }
                     if self.lvals[other as usize] == Val::F {
                         conflict = Some(Conflict::Clause(ci));
                         while i < ws.len() { ws[j] = ws[i]; i += 1; j += 1; }
@@ -1171,6 +1272,61 @@ impl Engine {
     /// the learned clause when its reason's literals are all in the clause
     /// (seen) or level 0 or themselves redundant.  `levels` is the clause's
     /// abstract level set; a reason literal outside it ends the search.
+    /// Shrink one level block of a learned clause (Fleury and Biere, "Efficient
+    /// All-UIP Learned Clause Minimization", SAT 2021): the clause's literals
+    /// at `lvl`, all false, are replaced by a single literal at `lvl` that
+    /// implies them — the block's UIP.  Walk the block's literals from the
+    /// highest trail position down, resolving each with its reason; a reason
+    /// literal at `lvl` joins the walk, one at a lower level must already be
+    /// in the clause (`seen`) or be redundant by minimisation, anything else
+    /// abandons the block.  When one literal is left open it dominates the
+    /// whole block.  The walk cannot run out: the level's decision has the
+    /// lowest trail position of any literal at `lvl`, so it is always the
+    /// last one open.  Returns the UIP's variable on success.
+    ///
+    /// The shrunk clause stays RUP: setting the UIP to its trail value
+    /// re-derives every literal of the block through the reasons the walk
+    /// resolved on, whose lower-level literals are in the clause or implied
+    /// by it — so the certified path needs nothing new.
+    fn shrink_block(&mut self, lvl: u32, block: &[u32], levels: u32) -> Option<u32> {
+        use std::collections::BinaryHeap;
+        self.stats.shrink_tried += 1;
+        let mut heap: BinaryHeap<(u32, u32)> = BinaryHeap::with_capacity(2 * block.len());
+        let mut marked: Vec<u32> = Vec::with_capacity(2 * block.len());
+        for &v in block {
+            self.shrink_mark[v as usize] = true;
+            marked.push(v);
+            heap.push((self.trail_pos[v as usize], v));
+        }
+        let mut open = block.len();
+        let mut lits: Vec<u32> = Vec::new();
+        let mut uip = None;
+        'walk: while let Some((_, v)) = heap.pop() {
+            if open == 1 { uip = Some(v); break; }
+            if self.reason[v as usize] == Reason::None { break; }   // cannot happen with open > 1; be safe
+            lits.clear();
+            self.reason_lits(v, &mut lits);
+            for i in 0..lits.len() {
+                let u = (lits[i] >> 1) as usize;
+                let lu = self.level[u];
+                if lu == 0 { continue; }
+                if lu == lvl {
+                    if !self.shrink_mark[u] { self.shrink_mark[u] = true; marked.push(u as u32); heap.push((self.trail_pos[u], u as u32)); open += 1; }
+                } else if lu < lvl {
+                    if self.seen[u] { continue; }
+                    if self.reason[u] != Reason::None && self.lit_redundant(u as u32, levels) { continue; }
+                    break 'walk;
+                } else {
+                    break 'walk;
+                }
+            }
+            open -= 1;
+        }
+        for &v in &marked { self.shrink_mark[v as usize] = false; }
+        if uip.is_some() { self.stats.shrink_blocks += 1; }
+        uip
+    }
+
     fn lit_redundant(&mut self, v: u32, levels: u32) -> bool {
         let top = self.min_clear.len();
         self.min_stack.clear();
@@ -1215,8 +1371,10 @@ impl Engine {
                 self.bump(v);
                 if self.level[v] == current { path += 1; } else { learnt.push(q); }
             }
-            // the next seen variable down the trail
-            loop { idx -= 1; if self.seen[self.trail[idx] as usize] { break; } }
+            // the next seen variable of the conflict level down the trail (a
+            // lower-level literal can sit above it when trail order is not
+            // level order)
+            loop { idx -= 1; let t = self.trail[idx] as usize; if self.seen[t] && self.level[t] == current { break; } }
             let v = self.trail[idx];
             self.seen[v as usize] = false;
             path -= 1;
@@ -1243,6 +1401,38 @@ impl Engine {
             }
             learnt.truncate(j);
             for k in 0..self.min_clear.len() { let x = self.min_clear[k]; self.seen[x as usize] = false; }
+        }
+        if self.shrink && learnt.len() > 2 {
+            // blocks from the highest level down: a block's reasons only reach
+            // levels at or below it, so the lower blocks it consults are still
+            // exactly as analysis left them
+            self.min_clear.clear();
+            for &q in &learnt[1..] { let v = q >> 1; self.seen[v as usize] = true; self.min_clear.push(v); }
+            let levels = learnt[1..].iter().fold(0u32, |m, &q| m | 1 << (self.level[(q >> 1) as usize] & 31));
+            let mut by_level: Vec<(u32, u32)> = learnt[1..].iter().map(|&q| (self.level[(q >> 1) as usize], q)).collect();
+            by_level.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+            let mut out: Vec<u32> = vec![learnt[0]];
+            let mut i = 0;
+            while i < by_level.len() {
+                let lvl = by_level[i].0;
+                let mut k = i;
+                while k < by_level.len() && by_level[k].0 == lvl { k += 1; }
+                if k - i >= 2 {
+                    let block: Vec<u32> = by_level[i..k].iter().map(|&(_, q)| q >> 1).collect();
+                    match self.shrink_block(lvl, &block, levels) {
+                        Some(u) => {
+                            self.stats.shrunk_lits += (k - i - 1) as u64;
+                            out.push(code(u, self.vals[u as usize] == Val::T));   // the UIP's false literal
+                        }
+                        None => out.extend(by_level[i..k].iter().map(|&(_, q)| q)),
+                    }
+                } else {
+                    out.push(by_level[i].1);
+                }
+                i = k;
+            }
+            for k in 0..self.min_clear.len() { let x = self.min_clear[k]; self.seen[x as usize] = false; }
+            learnt = out;
         }
         self.stats.learned_lits += learnt.len() as u64;
         for &q in &learnt[1..] { self.seen[(q >> 1) as usize] = false; }
@@ -1560,6 +1750,31 @@ impl Engine {
 
     /// Add a learned clause at level 0 (an inprocessing result): a unit is
     /// assigned, the empty clause makes the engine unsatisfiable.
+    /// Debug check (`BOXES_DEBUG_WATCHES=1`): after propagation has reached a
+    /// fixpoint, no clause may have a false watch while it is neither
+    /// satisfied nor fully false — that is the state in which a later conflict
+    /// on the clause goes unseen.  Returns a description of the first
+    /// violation.
+    fn debug_watch_violation(&self) -> Option<String> {
+        for ci in 0..self.cstart.len() {
+            let len = self.clen[ci] as usize;
+            if self.deleted[ci] || len < 3 { continue; }
+            let c = self.clause(ci);
+            if c.iter().any(|&l| self.lvals[l as usize] == Val::T) { continue; }
+            let w_false = self.lvals[c[0] as usize] == Val::F || self.lvals[c[1] as usize] == Val::F;
+            let some_open = c.iter().any(|&l| self.lvals[l as usize] == Val::U);
+            // a false watch next to an open literal, with the other watch not
+            // the single open one (a unit clause waiting in the queue is fine)
+            let open = c.iter().filter(|&&l| self.lvals[l as usize] == Val::U).count();
+            let both_false = self.lvals[c[0] as usize] == Val::F && self.lvals[c[1] as usize] == Val::F;
+            if w_false && some_open && (both_false || open >= 2) {
+                let show: Vec<(i32, Val, u32)> = c.iter().map(|&l| (if l & 1 == 1 { -((l >> 1) as i32 + 1) } else { (l >> 1) as i32 + 1 }, self.lvals[l as usize], self.level[(l >> 1) as usize])).collect();
+                return Some(format!("clause {ci} (learnt: {}, level {}): {show:?}", ci >= self.first_learnt, self.decision_level()));
+            }
+        }
+        None
+    }
+
     /// Backward subsumption and self-subsuming resolution over the whole
     /// clause store, at level 0.
     ///
@@ -1691,6 +1906,20 @@ impl Engine {
 
     fn add_learned(&mut self, mut c: Vec<u32>, lbd: u32, act: f64) {
         c.sort_unstable(); c.dedup();
+        // At level 0 a clause is watched on its first two literals, and a
+        // literal already false there is never made false again, so its watch
+        // would never be visited: with both watches on such literals the
+        // clause could be falsified without anyone noticing.  Level-0 truths
+        // are permanent too.  So a satisfied clause is dropped and false
+        // literals are removed (each removal is a resolution with a level-0
+        // unit, so the clause stays RUP for the proof).  Found by the model
+        // self-check: a clause strengthened by subsumption was born with a
+        // dead watch, and the engine answered SAT on an unsatisfiable shuffle
+        // of c5315 under chronological backtracking.
+        if self.trail_lim.is_empty() {
+            if c.iter().any(|&l| self.lvals[l as usize] == Val::T) { return; }
+            c.retain(|&l| self.lvals[l as usize] != Val::F);
+        }
         if self.proof.is_some() { if c.is_empty() { if let Some(p) = &mut self.proof { p.empty(); } } else { self.log_learned(&c); } }
         match c.len() {
             0 => self.unsat_at_init = true,
@@ -1748,7 +1977,12 @@ impl Engine {
                 if self.stats.conflicts & 255 == 0 && let Some(c) = &self.cancel && c.load(std::sync::atomic::Ordering::Relaxed) { return Verdict::Unknown; }
                 let (learnt, bj) = self.analyze(lits);
                 self.log_learned(&learnt);
-                self.backjump(bj.max(base));
+                let now = self.decision_level();
+                let target = if self.chrono && learnt.len() > 1 && assumptions.is_empty() && now > bj + self.chrono_levels {
+                    self.stats.chrono_backtracks += 1;
+                    now - 1
+                } else { bj };
+                self.backjump(target.max(base));
                 let l0 = learnt[0];
                 let mut lbd = 1;
                 if learnt.len() == 1 {
@@ -1786,8 +2020,11 @@ impl Engine {
                         self.backjump(0);
                         self.subsume_round();
                         if self.unsat_at_init { return Verdict::Unsat; }
+                        if std::env::var("BOXES_DEBUG_WATCHES").is_ok() && self.propagate().is_none() {
+                            if let Some(v) = self.debug_watch_violation() { panic!("watch invariant broken after a subsumption round: {v}"); }
+                        }
                     }
-                    if self.inprocess && base == 0 && self.stats.conflicts >= self.inprocess_at {
+                    if self.inprocess && !self.chrono && base == 0 && self.stats.conflicts >= self.inprocess_at {
                         self.inprocess_at = self.stats.conflicts + self.inprocess_interval;
                         self.inprocess_interval += 10_000;
                         self.backjump(0);
@@ -1798,6 +2035,9 @@ impl Engine {
                 continue;
             }
             if let Some(max) = self.max_decisions && self.stats.decisions >= max { return Verdict::Unknown; }
+            if self.debug_watches && self.stats.decisions % 64 == 0 {
+                if let Some(v) = self.debug_watch_violation() { panic!("watch invariant broken at a decision (conflicts {}): {v}", self.stats.conflicts); }
+            }
             if self.stats.decisions & 255 == 0 && let Some(c) = &self.cancel && c.load(std::sync::atomic::Ordering::Relaxed) { return Verdict::Unknown; }
             if self.phases { self.update_phases(); }
             // assumptions first, one level each
@@ -2095,6 +2335,148 @@ mod tests {
         assert!(subsumed_total > 0, "subsumption never fired");
     }
 
+    /// Chronological backtracking changes the trail invariants everything else
+    /// leans on (level order, the watch discipline, the analysis walk), so it
+    /// is tested with backtracking forced chronological on every conflict
+    /// (`chrono_levels = 0`), against brute force on tables and clauses.
+    #[test]
+    fn chrono_vs_bruteforce() {
+        let mut seed: u64 = 0xC4_0E0_BAC4_7EAC;
+        let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+        let mut chrono_total = 0u64; let mut kept_total = 0u64;
+        for trial in 0..500 {
+            let n = 8 + (rnd() % 7) as usize;
+            let m = 3 * n + (rnd() % (2 * n as u64)) as usize;
+            let cls: Vec<Vec<i32>> = (0..m).map(|_| {
+                let mut c: Vec<i32> = Vec::new();
+                while c.len() < 3 { let v = (rnd() % n as u64) as i32 + 1; if !c.iter().any(|&x| x.abs() == v) { c.push(if rnd() % 2 == 0 { v } else { -v }); } }
+                c
+            }).collect();
+            // sometimes tables too, whose propagations keep the current level
+            let mut boxes: Vec<Vec<Vec<Lit>>> = Vec::new();
+            for _ in 0..(rnd() % 3) as usize {
+                let k = 2 + (rnd() % 3) as usize;
+                let mut cols: Vec<u32> = Vec::new();
+                while cols.len() < k.min(n) { let v = (rnd() % n as u64) as u32; if !cols.contains(&v) { cols.push(v); } }
+                let mut rows: Vec<Vec<Lit>> = Vec::new();
+                for _ in 0..2 + (rnd() % 5) as usize {
+                    let mut row = Vec::new();
+                    for &v in &cols { if rnd() % 3 != 0 { let neg = rnd() % 2 == 0; row.push(Lit { var: v, neg }); } }
+                    rows.push(row);
+                }
+                boxes.push(rows);
+            }
+            let row_holds = |row: &[Lit], mm: &[bool]| row.iter().all(|l| mm[l.var as usize] == !l.neg);
+            let holds = |mm: &[bool]| boxes.iter().all(|rows| rows.iter().any(|r| row_holds(r, mm))) && check_model(&cls, mm);
+            let brute = (0..1u32 << n).any(|bits| holds(&(0..n).map(|i| bits >> i & 1 == 1).collect::<Vec<_>>()));
+            let mut e = Engine::new(n, boxes.iter().map(|rows| TableBox::new(rows.clone())).collect());
+            for c in &cls { e.add_clause(&c.iter().map(|&l| lit_of_dimacs(l)).collect::<Vec<_>>()); }
+            e.chrono = true; e.chrono_levels = 0;
+            e.reduce_start = 20; e.subsume_at = 5; e.subsume_interval = 5;
+            e.restart = if trial % 2 == 0 { RestartMode::Luby } else { RestartMode::Glucose };
+            match e.solve() {
+                Verdict::Sat(mm) => { assert!(brute, "trial {trial}: engine SAT, brute UNSAT"); assert!(holds(&mm), "trial {trial}: model violates the formula: {cls:?} {boxes:?}"); }
+                Verdict::Unsat => assert!(!brute, "trial {trial}: engine UNSAT, brute SAT: {cls:?} {boxes:?}"),
+                Verdict::Unknown => panic!("no budget set"),
+            }
+            chrono_total += e.stats.chrono_backtracks; kept_total += e.stats.chrono_kept;
+        }
+        eprintln!("chronological backtracks {chrono_total}, literals kept out of order {kept_total}");
+        assert!(chrono_total > 0 && kept_total > 0, "chronological backtracking never kept a literal: the test exercises nothing");
+    }
+
+    /// Pigeonhole with every search feature on and backtracking forced
+    /// chronological: unsatisfiable, so any model is a soundness failure.
+    /// This is the shape that exposed kept literals going unpropagated.
+    #[test]
+    fn chrono_on_pigeonhole() {
+        for p in 5..=9 {
+            let (n, cls) = php(p, p - 1);
+            for simplify in [false, true] {
+                let mut e = Engine::from_cnf(n, &cls);
+                e.chrono = true; e.chrono_levels = 0; e.shrink = true;
+                e.reduce_start = 100; e.subsume_at = 50; e.subsume_interval = 50;
+                let ok = if simplify { e.simplify() } else { true };
+                let v = if ok { e.solve() } else { Verdict::Unsat };
+                if let Verdict::Sat(m) = &v { panic!("PHP-{p}-{} (simplify {simplify}): SAT, model valid: {}", p - 1, check_model(&cls, m)); }
+                assert_eq!(v, Verdict::Unsat, "PHP-{p}-{}", p - 1);
+            }
+        }
+    }
+
+    /// The watch invariant, checked during search while subsumption runs
+    /// often, with and without chronological backtracking.  A clause added at
+    /// level 0 with a watch on a literal already false there has a watch that
+    /// is never visited again; subsumption's strengthening used to create
+    /// exactly that, and the engine then answered SAT on an unsatisfiable
+    /// formula.  `debug_watches` panics on the first such clause.
+    #[test]
+    fn watch_invariant_holds_under_subsumption() {
+        let mut seed: u64 = 0x0D0D_EAD0_5A7C_4411;
+        let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+        let mut strengthened = 0u64;
+        for trial in 0..40 {
+            let n = 120 + (rnd() % 80) as usize;
+            let m = (4.2 * n as f64) as usize;
+            let cls: Vec<Vec<i32>> = (0..m).map(|_| {
+                let mut c: Vec<i32> = Vec::new();
+                while c.len() < 3 { let v = (rnd() % n as u64) as i32 + 1; if !c.iter().any(|&x| x.abs() == v) { c.push(if rnd() % 2 == 0 { v } else { -v }); } }
+                c
+            }).collect();
+            let mut cad: cadical::Solver<cadical::Timeout> = cadical::Solver::new();
+            for c in &cls { cad.add_clause(c.iter().copied()); }
+            let expect = cad.solve().expect("cadical");
+            let mut e = Engine::from_cnf(n, &cls);
+            e.debug_watches = true;
+            e.chrono = trial % 2 == 1; e.chrono_levels = (trial % 4) as usize;
+            e.shrink = trial % 3 != 0;
+            e.reduce_start = 60; e.subsume_at = 10; e.subsume_interval = 10;
+            let v = e.solve();
+            strengthened += e.stats.strengthened;
+            match v {
+                Verdict::Sat(mm) => { assert!(expect, "trial {trial}: engine SAT, CaDiCaL UNSAT"); assert!(check_model(&cls, &mm), "trial {trial}: bad model"); }
+                Verdict::Unsat => assert!(!expect, "trial {trial}: engine UNSAT, CaDiCaL SAT"),
+                Verdict::Unknown => panic!("no budget set"),
+            }
+        }
+        assert!(strengthened > 0, "no clause was strengthened: the test exercises nothing");
+    }
+
+    /// The same at a size where out-of-order trails get long, against CaDiCaL.
+    #[test]
+    fn chrono_vs_cadical() {
+        let mut seed: u64 = 0x0B0B_C4C4_1234_5555;
+        let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+        let mut kept_total = 0u64;
+        for trial in 0..60 {
+            let n = 90 + (rnd() % 60) as usize;
+            let m = (4.2 * n as f64) as usize + (rnd() % 12) as usize;
+            let cls: Vec<Vec<i32>> = (0..m).map(|_| {
+                let mut c: Vec<i32> = Vec::new();
+                while c.len() < 3 { let v = (rnd() % n as u64) as i32 + 1; if !c.iter().any(|&x| x.abs() == v) { c.push(if rnd() % 2 == 0 { v } else { -v }); } }
+                c
+            }).collect();
+            let mut cad: cadical::Solver<cadical::Timeout> = cadical::Solver::new();
+            for c in &cls { cad.add_clause(c.iter().copied()); }
+            let expect = cad.solve().expect("cadical");
+            let mut e = Engine::from_cnf(n, &cls);
+            e.chrono = true; e.chrono_levels = (trial % 3) as usize;   // 0, 1, 2: always, and nearly always, chronological
+            e.shrink = trial % 2 == 0;
+            e.reduce_start = 200; e.subsume_at = 50; e.subsume_interval = 50;
+            e.restart = if trial % 2 == 0 { RestartMode::Luby } else { RestartMode::Glucose };
+            let ok = e.simplify();
+            let v = if ok { e.solve() } else { Verdict::Unsat };
+            kept_total += e.stats.chrono_kept;
+            match v {
+                Verdict::Sat(mm) => { assert!(expect, "trial {trial}: engine SAT, CaDiCaL UNSAT"); assert!(check_model(&cls, &mm), "trial {trial}: model violates the formula"); }
+                Verdict::Unsat => assert!(!expect, "trial {trial}: engine UNSAT, CaDiCaL SAT"),
+                Verdict::Unknown => panic!("no budget set"),
+            }
+        }
+        eprintln!("literals kept out of order: {kept_total}");
+        assert!(kept_total > 0, "no literal was ever kept out of order");
+    }
+
     #[test]
     fn inprocessing_vs_cadical() {
         let mut seed: u64 = 0x1F1F_2E2E_3D3D_4C4C;
@@ -2114,6 +2496,7 @@ mod tests {
             let mut e = Engine::from_cnf(n, &cls);
             e.inprocess_at = 30; e.inprocess_interval = 30; e.rephase_at = 20; e.reduce_start = 50;
             e.inprocess = true; e.phases = true;
+            e.chrono = false;   // vivification assumes a level-ordered trail and is off under chrono
             e.restart = if trial % 2 == 0 { RestartMode::Luby } else { RestartMode::Glucose };
             let ok = e.simplify();
             let v = if ok { e.solve() } else { Verdict::Unsat };
@@ -2340,6 +2723,25 @@ mod tests {
         let steps = p.take_buffer();
         assert!(steps.len() > 1, "a pigeonhole refutation takes more than one step");
         rup_replay(nvars, &cls, &steps).unwrap();
+    }
+
+    /// Shrinking and chronological backtracking both change which clauses the
+    /// search learns and in what order; neither may produce a step that is not
+    /// RUP.  PHP-7-6 with every search feature on, replayed naively.
+    #[test]
+    fn drat_proof_with_every_search_feature_replays() {
+        let (nvars, cls) = php(7, 6);
+        for (shrink, chrono) in [(true, false), (false, true), (true, true)] {
+            let mut e = Engine::from_cnf(nvars, &cls);
+            e.shrink = shrink; e.chrono = chrono; e.chrono_levels = 0;
+            e.reduce_start = 100; e.subsume_at = 40; e.subsume_interval = 40;
+            e.set_proof(proof::Proof::buffer());
+            assert_eq!(e.solve(), Verdict::Unsat);
+            let p = e.proof.as_mut().expect("proof");
+            assert!(p.incomplete.is_none(), "{:?}", p.incomplete);
+            let steps = p.take_buffer();
+            rup_replay(nvars, &cls, &steps).unwrap_or_else(|err| panic!("shrink {shrink} chrono {chrono}: {err}"));
+        }
     }
 
     /// The box lemmas are the point: a table propagates to generalized arc

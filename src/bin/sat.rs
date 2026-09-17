@@ -1662,9 +1662,11 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
         });
     }
     let mut n_inst = 0usize;
+    // kept for the model self-check below
+    let mut checked_boxes: Vec<logic::boxes::TableBox> = Vec::new();
     if let Some(path) = boxes_path {
         match load_box_instances(path) {
-            Ok(boxes) => { n_inst = boxes.len(); for b in boxes { eng.add_box(b); } }
+            Ok(boxes) => { n_inst = boxes.len(); checked_boxes = boxes.clone(); for b in boxes { eng.add_box(b); } }
             Err(e) => { eprintln!("c ERROR: --boxes {}: {}", path.display(), e); std::process::exit(2); }
         }
         // explanation-only gate clauses beside the instances (cnf2boxes writes them for cones with visible outputs)
@@ -1697,6 +1699,8 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
               s.learned - s.deleted, s.learned, s.deleted, s.reductions, s.explanation_hits, s.restarts, eng.restart, s.rephases, s.inprocess_rounds, s.inprocess_eliminated, s.vivified, s.vivified_lits);
     eprintln!("c boxes: {} subsumption rounds: {} clauses subsumed, {} strengthened ({} literals dropped){}",
               s.subsume_rounds, s.subsumed, s.strengthened, s.strengthened_lits, if eng.subsume { "" } else { ", off" });
+    eprintln!("c boxes: shrinking: {} of {} level blocks replaced by their UIP, {} literals removed{}",
+              s.shrink_blocks, s.shrink_tried, s.shrunk_lits, if eng.shrink { "" } else { ", off" });
     if eng.nexplain() > 0 { eprintln!("c boxes: {} table reasons taken from gate clauses", s.explanation_gate); }
     if let Some(p) = &mut eng.proof {
         p.flush();
@@ -1723,7 +1727,25 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
         }
     }
     match verdict {
-        logic::boxes::Verdict::Sat(m)   => SearchOutcome::Sat(m),
+        logic::boxes::Verdict::Sat(m) => {
+            // A model that violates the formula is a solver bug, never an answer:
+            // the engine's trail and watch invariants are what make SAT
+            // trustworthy, and they are exactly what search-quality changes
+            // (chronological backtracking above all) put at risk.  Checking
+            // is linear in the formula; a failure refuses to answer.
+            let holds = |l: i32| m.get(l.unsigned_abs() as usize - 1).copied().unwrap_or(false) == (l > 0);
+            if let Some(bad) = clauses.iter().position(|c| !c.iter().any(|&l| holds(l))) {
+                eprintln!("c ERROR: boxes produced a model violating input clause {} {:?} — refusing to answer", bad, clauses[bad]);
+                std::process::exit(3);
+            }
+            for (i, b) in checked_boxes.iter().enumerate() {
+                if !b.rows.iter().any(|r| r.iter().all(|l| m.get(l.var as usize).copied().unwrap_or(false) == !l.neg)) {
+                    eprintln!("c ERROR: boxes produced a model no row of box instance {} accepts — refusing to answer", i);
+                    std::process::exit(3);
+                }
+            }
+            SearchOutcome::Sat(m)
+        }
         logic::boxes::Verdict::Unsat    => SearchOutcome::Unsat,
         logic::boxes::Verdict::Unknown  => {
             eprintln!("c TIMEOUT after {}s", timeout_secs);

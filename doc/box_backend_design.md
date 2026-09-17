@@ -1395,6 +1395,72 @@ already in the proof, and a deletion never has to be emitted), so the
 certified path runs the same configuration as the fast one and every
 verdict in the A/B carries a `drat-trim` and `cake_lpr` check.
 
+**Chronological backtracking, shrinking, and where CaDiCaL's lead really is
+(2026-09-17).**  Both techniques were built as requested, measured, and
+found not to be the lever; finding the lever took ablating CaDiCaL itself.
+Every comparison below checks verdicts against CaDiCaL, and the engine now
+refuses to print a model that violates the formula (exit 3) — that check
+caught three soundness bugs this round, none of which would otherwise have
+been visible.
+
+*Soundness first.*  (1) Subsumption's strengthening, committed the day
+before, added clauses at level 0 with a watch on a literal already false
+there; that watch is never visited again, and with both watches dead the
+engine answered SAT on an unsatisfiable c5315 shuffle.  `add_learned` now
+drops level-0-satisfied clauses and removes level-0-false literals.
+(2) Under chronological backtracking a backjump kept literals that had
+never been propagated (propagation stops at the first conflict), so their
+consequences were never derived; kept literals are now re-propagated.  A
+debug watch-invariant checker (`BOXES_DEBUG_WATCHES=1`) found (1)
+directly; the regression tests for both were each shown to fail with its
+fix removed.
+
+*Shrinking* (`BOXES_SHRINK=1`, off): Fleury and Biere's all-UIP shrinking
+after minimisation.  Correct (proofs replay and check), and harmful: over
+17 refutations 0.86x the conflicts of leaving it off, worst on PHP-9-8
+(0.24x) and RoundRobin 10/8 (0.37x).  CaDiCaL's ablation agrees it is not
+what matters here (0.98x).
+
+*Chronological backtracking* (`BOXES_CHRONO=1`, off): exact levels for
+clause reasons, backjumps that keep surviving literals, the Möhle–Biere
+watch discipline, the 100-level threshold, and trail reuse read from
+CaDiCaL's `determine_actual_backtrack_level`.  Without trail reuse it
+almost never fired (0 times on four of five instances); with it, it fires
+on 24.7% of c3540's conflicts against CaDiCaL's 25.3% — and still does not
+pay: 1.08x fewer conflicts over 17 refutations on top of the new restarts
+against 1.11x without it, 0.89x with the old ones.
+
+*The ablation* (`doc/data/cadical_ablation_2026-09-17.txt`): CaDiCaL with
+one feature off at a time over seven instances, conflicts off over
+default.  Restarts 1.85x (2.7–4.3x on the c3540 shuffles), reduction 1.28x,
+minimisation 1.16x, chronological trail reuse 1.13x, inprocessing 1.12x;
+all preprocessing and inprocessing together (`--plain`) 0.95x — so its
+lead is in the core loop — and stable phases 0.80x, a loss on the circuits.
+The engine restarted once per ~700 conflicts where CaDiCaL restarts once
+per 11–33.
+
+*Restarts* (`RestartMode::Ema`, now the default, stable phases off): fast
+and slow bias-corrected moving averages of LBD with a 1.10 margin and a
+two-conflict minimum, as CaDiCaL's focused mode.  Over 17 refutations,
+1.11x fewer conflicts than the old Glucose default, taking the engine from
+1.69x CaDiCaL's conflict count to 1.52x.  Consistent across the shuffles:
+c5315 from ~25k conflicts to 13–16k, at or below CaDiCaL's own; c3540
+0.98–1.21x.  Worse on four single combinatorial instances — RoundRobin
+10/8 0.69x, w(5;5;178) 0.75x, pyhala-braun-unsat-40 0.84x, Steiner-45
+0.86x — which is where a real stable phase (CaDiCaL's switches decision
+heuristic and phases, not just the restart schedule) would earn its keep.
+The four satisfiable instances in the set swing from 0.1x to 50x between
+configurations and decide nothing.  The old behaviour is
+`BOXES_RESTART=glucose BOXES_STABLE=1`.  All 20 corpus refutations still
+certify under `drat-trim` and `cake_lpr` with the new defaults.
+
+*Next*, by the same ablation: CaDiCaL's reduction, which differs in four
+ways — clauses protected by recent use rather than activity, glue
+recomputed and promoted on use, 75% of the unprotected rest deleted rather
+than half, and the first reduction at 300 conflicts rather than 4,000.  It
+is worth 2.1–2.3x to CaDiCaL on the c3540 shuffles, where the engine is
+still at about three times CaDiCaL's conflicts.
+
 **Deep formulas (2026-09-14).**  The path traversal extends a Sum's path by
 all of its children through one nested continuation per child
 (`traverse_sum`), so a Sum of 4 000 atoms — `w5_ap(178)`'s collapsed

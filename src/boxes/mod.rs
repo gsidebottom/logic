@@ -205,7 +205,6 @@ pub enum RestartMode {
     /// with stable phases of Luby restarts (unit 512) whose length doubles;
     /// on a restart the trail is reused down to the first decision the
     /// heap would now make differently.
-    #[default]
     Glucose,
     /// CaDiCaL's focused-mode restarts: a fast (1/33) and a slow (1/10⁵)
     /// bias-corrected exponential moving average of learned-clause LBD, and a
@@ -216,6 +215,13 @@ pub enum RestartMode {
     /// Why it exists (2026-09-17): the engine restarted once per ~700
     /// conflicts on c3540 where CaDiCaL restarts once per 20, and CaDiCaL's
     /// own ablation there puts restarts at 2.7-4.3x its conflict count.
+    ///
+    /// The default since 2026-09-17: over 17 verdict-checked refutations it
+    /// needs 1.11x fewer conflicts than `Glucose` (1.52x CaDiCaL's count
+    /// instead of 1.69x), consistently on the c3540/c5315 shuffles and worse
+    /// on four single combinatorial instances (RoundRobin 10/8, w(5;5;178),
+    /// pyhala-braun-unsat-40, Steiner-45).
+    #[default]
     Ema,
 }
 
@@ -242,7 +248,7 @@ impl Ema {
 impl RestartMode {
     /// `BOXES_RESTART=luby|glucose`, default `glucose`.
     pub fn from_env() -> RestartMode {
-        match std::env::var("BOXES_RESTART").as_deref() { Ok("luby") => RestartMode::Luby, Ok("ema") => RestartMode::Ema, _ => RestartMode::Glucose }
+        match std::env::var("BOXES_RESTART").as_deref() { Ok("luby") => RestartMode::Luby, Ok("glucose") => RestartMode::Glucose, _ => RestartMode::Ema }
     }
 }
 
@@ -440,7 +446,11 @@ pub struct Engine {
     trail_q: std::collections::VecDeque<u32>,
     trail_q_sum: u64,
     stable: bool,
-    /// `BOXES_STABLE=0`: never enter stable phases (focused restarts only).
+    /// `BOXES_STABLE=1`: alternate focused and stable phases.  Off by default:
+    /// the engine's stable phase is Luby restarts with the same decision
+    /// heuristic and phases, and on the verdict-checked set it costs
+    /// conflicts with either restart mode (CaDiCaL's own ablation finds its
+    /// far stronger stable mode a loss on the circuits too, 0.57-0.72x).
     pub stabilize: bool,
     /// Fast and slow LBD averages for `RestartMode::Ema`, and its margin
     /// (`BOXES_RESTART_MARGIN`, default 1.10).
@@ -542,7 +552,7 @@ impl Engine {
             lbd_q: std::collections::VecDeque::new(), lbd_q_sum: 0, lbd_sum: 0,
             trail_q: std::collections::VecDeque::new(), trail_q_sum: 0,
             stable: false, stable_len: 1000, stable_toggle_at: 1000,
-            stabilize: !matches!(std::env::var("BOXES_STABLE").as_deref(), Ok("0") | Ok("off")),
+            stabilize: matches!(std::env::var("BOXES_STABLE").as_deref(), Ok("1") | Ok("on")),
             glue_fast: Ema::new(1.0 / 33.0), glue_slow: Ema::new(1.0 / 1e5),
             restart_margin: std::env::var("BOXES_RESTART_MARGIN").ok().and_then(|v| v.parse().ok()).unwrap_or(1.10),
             eliminated: Vec::new(), elim: Vec::new(), elim_enabled: false,

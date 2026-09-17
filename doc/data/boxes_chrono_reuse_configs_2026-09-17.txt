@@ -1,0 +1,40 @@
+# Box engine chronological trail reuse on top of the restart configurations (2026-09-17), verdicts checked.
+
+instance                         ref                 glucose         ema_nostable  ema_nostable_chrono           ema_chrono       glucose_chrono cadical_c
+Steiner-45-16-bce                UNSAT          162593               189523               185990               184224               157311          223933
+c3540_k8                         UNSAT          120581                99242               106888               106647               124119           39303
+c3540_k8_s1                      UNSAT          149508               152250               135829               134083               156055           33420
+c3540_k8_s2                      UNSAT          148873               138485               119115               139727               156629           45535
+c3540_k8_s3                      UNSAT          156979               132945               152290               134503               138725           40100
+c5315_k8                         UNSAT           26543                16081                16542                22788                37010           18250
+c5315_k8_s1                      UNSAT           24958                13277                12606                20470                43818           13662
+c5315_k8_s2                      UNSAT           24617                15199                14940                22163                28795           13403
+c5315_k8_s3                      UNSAT           26348                13763                12856                24974                27297           12367
+dlx1c.ucl.sat.chaff.4.1.bryant   UNSAT             761                  683                  664                  664                  772             746
+php9_8                           UNSAT           11292                 9530                12135                 9905                10965            1550
+pyhala_unsat40                   UNSAT         1548409              1846177              2131123              2307438              2039298          922111
+r3sat_0                          UNSAT          198886               178206               187470               175078               169729          218524
+r3sat_1                          UNSAT          196630               212323               248117               241427               282204          575450
+r3sat_2                          SATIS           52631                46659                84446                52442                61529           18854
+r3sat_3                          UNSAT          141092               180126               183969               186634               166854          265920
+r3sat_4                          SATIS            4954                44996                79289                35972                23749           27496
+r3sat_5                          SATIS           23740                76622                18636                92112                19778           91030
+rr10_8                           UNSAT           18832                27258                24393                33275                24795            7004
+w55_177                          SATIS          125773                73165                19806               335013                 9295           13346
+w55_178                          UNSAT          647200               868230               937407               835985               717266          641860
+CFG2 EXIT
+
+21 instances, baseline = glucose; ratio = baseline conflicts / config conflicts (>1 = fewer)
+verdict problems: none
+-- UNSAT (17 instances)
+   glucose                vs baseline  1.00x  vs CaDiCaL  1.69x  TO 0  best  1.00x w55_178            worst  1.00x Steiner-45-16-bce
+   ema_nostable           vs baseline  1.11x  vs CaDiCaL  1.52x  TO 0  best  1.91x c5315_k8_s3        worst  0.69x rr10_8
+   ema_nostable_chrono    vs baseline  1.08x  vs CaDiCaL  1.56x  TO 0  best  2.05x c5315_k8_s3        worst  0.69x w55_178
+   ema_chrono             vs baseline  0.97x  vs CaDiCaL  1.74x  TO 0  best  1.22x c5315_k8_s1        worst  0.57x rr10_8
+   glucose_chrono         vs baseline  0.89x  vs CaDiCaL  1.91x  TO 0  best  1.17x r3sat_0            worst  0.57x c5315_k8_s1
+-- SATIS (4 instances)
+   glucose                vs baseline  1.00x  vs CaDiCaL  1.05x  TO 0  best  1.00x w55_177            worst  1.00x r3sat_2
+   ema_nostable           vs baseline  0.51x  vs CaDiCaL  2.08x  TO 0  best  1.72x w55_177            worst  0.11x r3sat_4
+   ema_nostable_chrono    vs baseline  0.75x  vs CaDiCaL  1.41x  TO 0  best  6.35x w55_177            worst  0.06x r3sat_4
+   ema_chrono             vs baseline  0.34x  vs CaDiCaL  3.10x  TO 0  best  1.00x r3sat_2            worst  0.14x r3sat_4
+   glucose_chrono         vs baseline  1.30x  vs CaDiCaL  0.81x  TO 0  best 13.53x w55_177            worst  0.21x r3sat_4

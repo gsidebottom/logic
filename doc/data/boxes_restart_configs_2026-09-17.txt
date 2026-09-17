@@ -1,0 +1,40 @@
+# Box engine restart configurations (2026-09-17), conflicts per instance, verdicts checked against CaDiCaL (no mismatches).
+
+instance                         ref                 glucose     glucose_nostable                  ema         ema_nostable    ema_nostable_m125 cadical_c
+Steiner-45-16-bce                UNSAT          162593               177542               177777               189523               177877          223933
+c3540_k8                         UNSAT          120581               136899               117777                99242               113913           39303
+c3540_k8_s1                      UNSAT          149508               142274               142545               152250               143273           33420
+c3540_k8_s2                      UNSAT          148873               127152               139441               138485               126395           45535
+c3540_k8_s3                      UNSAT          156979               145632               135991               132945               127254           40100
+c5315_k8                         UNSAT           26543                21961                20340                16081                26726           18250
+c5315_k8_s1                      UNSAT           24958                25102                21096                13277                17265           13662
+c5315_k8_s2                      UNSAT           24617                24147                22974                15199                17354           13403
+c5315_k8_s3                      UNSAT           26348                21853                24417                13763                15577           12367
+dlx1c.ucl.sat.chaff.4.1.bryant   UNSAT             761                  761                  683                  683                  761             746
+php9_8                           UNSAT           11292                10410                12472                 9530                11872            1550
+pyhala_unsat40                   UNSAT         1548409              1509256              1666424              1846177              1852957          922111
+r3sat_0                          UNSAT          198886               196449               160681               178206               181266          218524
+r3sat_1                          UNSAT          196630               193781               258297               212323               204854          575450
+r3sat_2                          SATIS           52631                50429                40958                46659                55263           18854
+r3sat_3                          UNSAT          141092               157865               184619               180126               177997          265920
+r3sat_4                          SATIS            4954                62397                42054                44996                52470           27496
+r3sat_5                          SATIS           23740                50205                25223                76622                42090           91030
+rr10_8                           UNSAT           18832                13983                33283                27258                16279            7004
+w55_177                          SATIS          125773                25866                 2532                73165               131604           13346
+w55_178                          UNSAT          647200               566186               789069               868230               629856          641860
+CFG EXIT
+
+21 instances, baseline = glucose; ratio = baseline conflicts / config conflicts (>1 = fewer)
+verdict problems: none
+-- UNSAT (17 instances)
+   glucose                vs baseline  1.00x  vs CaDiCaL  1.69x  TO 0  best  1.00x w55_178            worst  1.00x Steiner-45-16-bce
+   glucose_nostable       vs baseline  1.06x  vs CaDiCaL  1.60x  TO 0  best  1.35x rr10_8             worst  0.88x c3540_k8
+   ema                    vs baseline  0.98x  vs CaDiCaL  1.73x  TO 0  best  1.30x c5315_k8           worst  0.57x rr10_8
+   ema_nostable           vs baseline  1.11x  vs CaDiCaL  1.52x  TO 0  best  1.91x c5315_k8_s3        worst  0.69x rr10_8
+   ema_nostable_m125      vs baseline  1.08x  vs CaDiCaL  1.56x  TO 0  best  1.69x c5315_k8_s3        worst  0.79x r3sat_3
+-- SATIS (4 instances)
+   glucose                vs baseline  1.00x  vs CaDiCaL  1.05x  TO 0  best  1.00x w55_177            worst  1.00x r3sat_2
+   glucose_nostable       vs baseline  0.66x  vs CaDiCaL  1.60x  TO 0  best  4.86x w55_177            worst  0.08x r3sat_4
+   ema                    vs baseline  1.63x  vs CaDiCaL  0.65x  TO 0  best 49.67x w55_177            worst  0.12x r3sat_4
+   ema_nostable           vs baseline  0.51x  vs CaDiCaL  2.08x  TO 0  best  1.72x w55_177            worst  0.11x r3sat_4
+   ema_nostable_m125      vs baseline  0.47x  vs CaDiCaL  2.25x  TO 0  best  0.96x w55_177            worst  0.09x r3sat_4

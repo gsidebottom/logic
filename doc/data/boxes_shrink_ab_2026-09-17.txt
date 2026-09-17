@@ -1,0 +1,26 @@
+# Shrinking A/B on the fixed build (2026-09-17): BOXES_SHRINK=0 vs 1, chrono off, verdicts checked.
+
+instance                           ref    v0     v1          conf0      conf1   ratio       t0       t1  cadical
+Steiner-45-16-bce                  UNSAT  UNSAT  UNSAT      162593     182403   0.89x    1.884    2.314     2.85
+c3540_k8                           UNSAT  UNSAT  UNSAT      120581     127145   0.95x    1.591    1.791     0.45
+c3540_k8_s1                        UNSAT  UNSAT  UNSAT      149508     149172   1.00x    1.995    2.158     0.40
+c3540_k8_s2                        UNSAT  UNSAT  UNSAT      148873     129461   1.15x    1.961    1.738     0.54
+c3540_k8_s3                        UNSAT  UNSAT  UNSAT      156979     155405   1.01x    2.129    2.170     0.47
+c5315_k8                           UNSAT  UNSAT  UNSAT       26543      25677   1.03x    0.221    0.217     0.18
+c5315_k8_s1                        UNSAT  UNSAT  UNSAT       24958      23453   1.06x    0.195    0.206     0.15
+c5315_k8_s2                        UNSAT  UNSAT  UNSAT       24617      30342   0.81x    0.203    0.258     0.14
+c5315_k8_s3                        UNSAT  UNSAT  UNSAT       26348      30454   0.87x    0.203    0.256     0.12
+dlx1c.ucl.sat.chaff.4.1.bryant     UNSAT  UNSAT  UNSAT         761        642   1.19x    0.027    0.026     0.05
+eq.atree.braun.13.unsat            ?      TO     TO        3797691    3658539   1.04x  299.026  299.015   400.01
+php9_8                             UNSAT  UNSAT  UNSAT       11292      46619   0.24x    0.119    0.461     0.01
+pyhala_unsat40                     UNSAT  UNSAT  UNSAT     1548409    1498998   1.03x  177.889  171.073    67.23
+r3sat_0                            UNSAT  UNSAT  UNSAT      198886     187648   1.06x    3.280    3.267     3.33
+r3sat_1                            UNSAT  UNSAT  UNSAT      196630     226696   0.87x    3.244    4.200     9.11
+r3sat_2                            SATIS  SATIS  SATIS       52631      78070   0.67x    0.621    1.081     0.18
+r3sat_3                            UNSAT  UNSAT  UNSAT      141092     149859   0.94x    2.086    2.413     4.11
+r3sat_4                            SATIS  SATIS  SATIS        4954      37979   0.13x    0.037    0.487     0.29
+r3sat_5                            SATIS  SATIS  SATIS       23740      41189   0.58x    0.248    0.524     1.15
+rr10_8                             UNSAT  UNSAT  UNSAT       18832      50330   0.37x    0.218    0.404     0.05
+w55_177                            SATIS  SATIS  SATIS      125773     141425   0.89x    1.858    2.317     0.13
+w55_178                            UNSAT  UNSAT  UNSAT      647200     615451   1.05x   15.042   15.088    19.11
+AB EXIT

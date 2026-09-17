@@ -110,6 +110,49 @@ sudoku (842 K vars), pigeonhole variants, waerden (ours): combinatorial
 families where the encoding is mostly cardinality, and hard cores where
 no propagation scheme matters.
 
+## Standing against CaDiCaL, re-measured (2026-09-17)
+
+Two corrections to everything below, both measured
+(`doc/data/boxes_vs_cadical_2026-09-17.txt`,
+`doc/data/boxes_speed_2026-09-17.txt`).
+
+**The CaDiCaL baseline in this document is the wrong CaDiCaL.**  Every
+"CaDiCaL" time here comes from `sat -b cadical`, which is the bundled
+crate's CaDiCaL 1.9.5.  On `toughsat_factoring_895s` that version takes
+170 s where standalone CaDiCaL 3.0.0 takes 19 s.  The comparisons below
+therefore flatter the engine by an unknown and sometimes large factor and
+need re-running against 3.0.0.
+
+**Against 3.0.0, the box form wins nothing.**  Seven boxed instances, one
+solver at a time, 240 s cap, verdicts agreeing:
+
+| instance | CaDiCaL 3.0.0 | engine, plain CNF | cones K=8 | cones K=12 |
+|---|---|---|---|---|
+| c3540 | 0.4 s | 1.2 s | 4.2 s | 2.5 s |
+| c5315 | 0.1 s | 0.1 s | 0.3 s | 0.2 s |
+| toughsat_factoring_895s | 17.4 s | timeout | timeout | 162 s |
+| pyhala-braun-sat-40-4-03 | 8.0 s | 147 s | 131 s | **59 s** |
+| ezfact64_6 | 28.8 s | timeout | timeout | timeout |
+| 16_16_booth bit28 | timeout | timeout | timeout | timeout |
+| lec_mult_CvW_11x10 | timeout | timeout | timeout | timeout |
+
+So the third measurement's claim that the cones beat the plain-CNF engine
+survives on exactly one instance — pyhala-braun-sat-40, where K = 12
+cones are 2.5× the plain engine — and not on the AND circuits, where the
+restart fix of 2026-09-17 made the plain engine faster than the cones
+again.  The two competition wins this document recorded are both gone:
+`toughsat_factoring_895s` was 26 s against a 205 s CaDiCaL 1.9.5 and is
+now 162 s against 17 s, and `ezfact64_6` (18 s against 111 s) times out
+where 3.0.0 takes 29 s.  On plain CNF over 21 instances the engine is
+1.77× behind 3.0.0 by geomean and ahead on 8 of them (Steiner-45, dlx1c,
+two c5315 shuffles, four random 3-SAT).
+
+What boxes still demonstrably give is propagation strength (the boxed
+adder refutes with no decisions where the expanded CNF searches) and
+certified table reasoning (§4 of the design doc), not speed.  The M6 gate
+— user-supplied boxes with hidden internals, not translator-extracted
+cones — is what would decide whether the speed thesis holds at all.
+
 ## Bottom line
 
 About a third of both competitions is circuits whose gate structure a

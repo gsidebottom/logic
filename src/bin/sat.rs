@@ -1680,7 +1680,7 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
             eprintln!("c boxes: {} explanation-only gate clauses loaded from {}", eng.nexplain(), xpath.display());
         }
     }
-    if proof_path.is_none() && !matches!(std::env::var("BOXES_PREPROCESS").as_deref(), Ok("0") | Ok("none") | Ok("off")) {
+    if !matches!(std::env::var("BOXES_PREPROCESS").as_deref(), Ok("0") | Ok("none") | Ok("off")) {
         let tp = Instant::now();
         let ok = eng.simplify();
         eprintln!("c boxes: preprocessing eliminated {} variables, {} clauses -> {}, {:.3}s{}",
@@ -1695,6 +1695,8 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
               if eng.minimize { "" } else { ", off" });
     eprintln!("c boxes: learned DB {} clauses kept of {} ({} deleted in {} reductions); {} explanation cache hits; {} restarts ({:?}); {} rephases; {} inprocessing rounds: {} variables eliminated, {} clauses vivified (-{} literals)",
               s.learned - s.deleted, s.learned, s.deleted, s.reductions, s.explanation_hits, s.restarts, eng.restart, s.rephases, s.inprocess_rounds, s.inprocess_eliminated, s.vivified, s.vivified_lits);
+    eprintln!("c boxes: {} subsumption rounds: {} clauses subsumed, {} strengthened ({} literals dropped){}",
+              s.subsume_rounds, s.subsumed, s.strengthened, s.strengthened_lits, if eng.subsume { "" } else { ", off" });
     if eng.nexplain() > 0 { eprintln!("c boxes: {} table reasons taken from gate clauses", s.explanation_gate); }
     if let Some(p) = &mut eng.proof {
         p.flush();

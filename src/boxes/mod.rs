@@ -158,6 +158,12 @@ pub struct Stats {
     pub inprocess_eliminated: u64,
     pub vivified: u64,
     pub vivified_lits: u64,
+    /// Subsumption rounds, clauses subsumed away, and clauses strengthened
+    /// by self-subsuming resolution (with the literals they lost).
+    pub subsume_rounds: u64,
+    pub subsumed: u64,
+    pub strengthened: u64,
+    pub strengthened_lits: u64,
     pub rephases: u64,
 }
 
@@ -251,6 +257,12 @@ enum Conflict {
 /// Growth of the learned-clause budget after each reduction.
 const REDUCE_STEP: usize = 300;
 
+/// Read a `usize` knob from the environment (experiment support: the
+/// clause-database policy is the one CDCL lever with no A/B behind it).
+fn env_usize(name: &str, default: usize) -> usize {
+    std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+}
+
 #[inline] fn code(var: u32, neg: bool) -> u32 { var << 1 | neg as u32 }
 
 /// The engine: conflict-driven search (§3.2, §3.5) over two kinds of
@@ -318,6 +330,14 @@ pub struct Engine {
     /// Learned clauses kept before the first reduction (grows by
     /// `REDUCE_STEP` each time); a test may lower it.
     pub reduce_start: usize,
+    /// How much the interval grows per reduction (`BOXES_REDUCE_STEP`).
+    reduce_step: usize,
+    /// Fraction of the learned database a reduction drops: `1/reduce_frac`
+    /// of the surviving clauses, worst first (`BOXES_REDUCE_FRAC`).
+    reduce_frac: usize,
+    /// Learned clauses of at most this LBD are never deleted
+    /// (`BOXES_KEEP_LBD`; CaDiCaL's "core" tier).
+    keep_lbd: u32,
     unsat_at_init: bool,
     // assignment
     vals: Vec<Val>,
@@ -386,6 +406,13 @@ pub struct Engine {
     pub inprocess: bool,
     inprocess_at: u64,
     inprocess_interval: u64,
+    /// Subsumption and self-subsuming resolution at level 0
+    /// (`BOXES_SUBSUME=0` turns it off).  CaDiCaL subsumes a fifth to two
+    /// fifths of the clauses on the instances this engine is behind on and
+    /// the engine had none of it (§10.1, 2026-09-16).
+    pub subsume: bool,
+    subsume_at: u64,
+    subsume_interval: u64,
     pub stats: Stats,
     /// Optional decision budget; `solve` returns `Unknown` when exceeded.
     pub max_decisions: Option<u64>,
@@ -422,7 +449,11 @@ impl Engine {
             nvars: 0, hdr: Vec::new(), vars_all: Vec::new(), kill_all: Vec::new(), occ: Vec::new(), live: Vec::new(), snap: Vec::new(), in_queue: Vec::new(), queue: Vec::new(),
             arena: Vec::new(), cstart: Vec::new(), clen: Vec::new(), watches: Vec::new(), bins: Vec::new(), first_learnt: 0,
             xarena: Vec::new(), xstart: Vec::new(), xlen: Vec::new(), xidx: Vec::new(),
-            learnt_lbd: Vec::new(), learnt_act: Vec::new(), deleted: Vec::new(), cla_inc: 1.0, reduce_at: 0, reduce_start: 4000,
+            learnt_lbd: Vec::new(), learnt_act: Vec::new(), deleted: Vec::new(), cla_inc: 1.0, reduce_at: 0,
+            reduce_start: env_usize("BOXES_REDUCE_START", 4000),
+            reduce_step: env_usize("BOXES_REDUCE_STEP", REDUCE_STEP),
+            reduce_frac: env_usize("BOXES_REDUCE_FRAC", 2),
+            keep_lbd: env_usize("BOXES_KEEP_LBD", 2) as u32,
             unsat_at_init: false,
             vals: Vec::new(), lvals: Vec::new(), level: Vec::new(), reason: Vec::new(), trail_pos: Vec::new(),
             trail: Vec::new(), trail_lim: Vec::new(), qhead: 0,
@@ -441,6 +472,9 @@ impl Engine {
             rephase_at: 1000, rephase_count: 0, rng: 0x9E37_79B9_7F4A_7C15,
             inprocess: matches!(std::env::var("BOXES_INPROCESS").as_deref(), Ok("1") | Ok("on")),
             inprocess_at: 10_000, inprocess_interval: 10_000,
+            subsume: !matches!(std::env::var("BOXES_SUBSUME").as_deref(), Ok("0") | Ok("off") | Ok("none")),
+            subsume_at: env_usize("BOXES_SUBSUME_START", 2000) as u64,
+            subsume_interval: env_usize("BOXES_SUBSUME_START", 2000) as u64,
             stats: Stats::default(), max_decisions: None, cancel: None,
             explain: ExplainMode::from_env(),
             expl_cands: Vec::new(), expl_orig: Vec::new(), expl_picked: Vec::new(), expl_keep: Vec::new(), expl_used: Vec::new(),
@@ -460,12 +494,14 @@ impl Engine {
 
     /// Log the refutation to `p` as DRAT, checked against the formula this
     /// engine was built from plus [`set_box_source`](Self::set_box_source).
-    /// Preprocessing and inprocessing are not logged, so proving mode turns
-    /// them off (the same trade hydra's certified mode makes for the
-    /// GE-simplified residual, §4 of the design doc).
+    ///
+    /// Variable elimination and subsumption are logged: a resolvent is RUP
+    /// against the clauses already in the proof, and a deletion never has to
+    /// be emitted at all (dropping one only makes later checks harder).
+    /// Inprocessing's vivification is left off, the trade hydra's certified
+    /// mode makes for the GE-simplified residual (§4 of the design doc).
     pub fn set_proof(&mut self, p: proof::Proof) {
         self.proof = Some(p);
-        self.elim_enabled = false;
         self.inprocess = false;
     }
 
@@ -1101,8 +1137,13 @@ impl Engine {
         order.sort_by(|&a, &b| self.learnt_lbd[b].cmp(&self.learnt_lbd[a])
             .then(self.learnt_act[a].partial_cmp(&self.learnt_act[b]).unwrap_or(std::cmp::Ordering::Equal)));
         let mut removed = 0usize;
-        for &k in order.iter().take(order.len() / 2) {
-            if self.learnt_lbd[k] <= 2 { continue; }
+        let drop = order.len() / self.reduce_frac.max(1);
+        for &k in order.iter().take(drop) {
+            // LBD 0 is not a real LBD (it counts distinct levels, so it is at
+            // least 1): it marks a clause promoted by subsumption, standing in
+            // for an original clause that was deleted.  Dropping one would
+            // lose a constraint of the input formula.
+            if self.learnt_lbd[k] == 0 || self.learnt_lbd[k] <= self.keep_lbd { continue; }
             let ci = self.first_learnt + k;
             if self.clen[ci] <= 2 { continue; }
             // a clause that is the reason for its first literal stays
@@ -1287,6 +1328,9 @@ impl Engine {
     /// the current assignment; learned clauses that mention an eliminated
     /// variable are dropped, the rest survive the rebuild.
     fn eliminate_round(&mut self) {
+        // the reasons of the level-0 trail are cleared below, so any box
+        // lemma among them has to reach the proof first
+        self.proof_sync();
         let n = self.nvars;
         // the original clauses under the level-0 assignment
         let mut cls: Vec<Vec<u32>> = Vec::new();
@@ -1516,6 +1560,135 @@ impl Engine {
 
     /// Add a learned clause at level 0 (an inprocessing result): a unit is
     /// assigned, the empty clause makes the engine unsatisfiable.
+    /// Backward subsumption and self-subsuming resolution over the whole
+    /// clause store, at level 0.
+    ///
+    /// For each clause `C`, shortest first, the rarest of its literals names
+    /// the candidates `D` that could contain it; a 64-bit signature rejects
+    /// most of them without touching the arena.  `C ⊆ D` deletes `D`;
+    /// `C \ {l} ⊆ D` with `¬l ∈ D` drops `¬l` from `D` (the resolvent of the
+    /// two, so an ordinary RUP addition for the proof).  Clauses that are a
+    /// reason for an assigned literal are left alone, and binaries are never
+    /// deleted because the implication lists do not carry deletions.
+    fn subsume_round(&mut self) {
+        const LEN_CAP: usize = 64;
+        let budget: u64 = env_usize("BOXES_SUBSUME_BUDGET", 20_000_000) as u64;
+        let mut work: u64 = 0;
+        self.stats.subsume_rounds += 1;
+        let n = self.cstart.len();
+        // two signatures: over literals, which subsumption needs (`C ⊆ D`),
+        // and over variables, which is all strengthening may assume (`C`'s
+        // clashing literal appears in `D` negated, so its literal bit is
+        // absent there — filtering strengthening on the literal signature
+        // rejects every candidate, which is how the first version of this
+        // round came to strengthen almost nothing).
+        let mut sig: Vec<u64> = vec![0; n];
+        let mut vsig: Vec<u64> = vec![0; n];
+        let mut occ: Vec<Vec<u32>> = vec![Vec::new(); 2 * self.nvars];
+        let mut cands: Vec<u32> = Vec::new();
+        for ci in 0..n {
+            let len = self.clen[ci] as usize;
+            if self.deleted[ci] || len < 2 || len > LEN_CAP { continue; }
+            let st = self.cstart[ci] as usize;
+            let mut sg = 0u64;
+            let mut vg = 0u64;
+            for k in 0..len {
+                let l = self.arena[st + k];
+                sg |= 1u64 << (l & 63);
+                vg |= 1u64 << ((l >> 1) & 63);
+                occ[l as usize].push(ci as u32);
+            }
+            sig[ci] = sg;
+            vsig[ci] = vg;
+            cands.push(ci as u32);
+        }
+        cands.sort_by_key(|&ci| self.clen[ci as usize]);
+        let mut mark: Vec<u32> = vec![0; 2 * self.nvars];
+        let mut stamp: u32 = 0;
+        let mut strengthen: Vec<(u32, u32)> = Vec::new();
+        // A clause carries a constraint of the input formula when it is an
+        // original or stands in for one (LBD 0, set below).  Deleting such a
+        // clause is only sound while whatever replaces it is itself
+        // permanent, and the property has to travel: a promoted clause that
+        // is later strengthened or subsumed hands the duty on, or the input
+        // constraint is lost and the engine answers SAT on an unsatisfiable
+        // formula (measured on c3540, 2026-09-16).
+        let is_permanent = |e: &Engine, ci: usize| -> bool {
+            ci < e.first_learnt || e.learnt_lbd[ci - e.first_learnt] == 0
+        };
+        // a clause propagating an assigned literal is its reason: untouchable
+        let is_reason = |e: &Engine, ci: usize| -> bool {
+            let l0 = e.arena[e.cstart[ci] as usize];
+            e.vals[(l0 >> 1) as usize] != Val::U && e.reason[(l0 >> 1) as usize] == Reason::Clause(ci as u32)
+        };
+        for idx in 0..cands.len() {
+            if work > budget { break; }
+            let ci = cands[idx] as usize;
+            if self.deleted[ci] { continue; }
+            let len = self.clen[ci] as usize;
+            let st = self.cstart[ci] as usize;
+            let lits: Vec<u32> = self.arena[st..st + len].to_vec();
+            // the rarest literal of `C` names the candidates.  Both of its
+            // occurrence lists are needed: a clause `D` that `C` strengthens
+            // holds the clashing literal negated, so when the pivot is the
+            // one that clashes, `D` sits in the opposite list.
+            let Some(&pivot) = lits.iter().min_by_key(|&&l| occ[l as usize].len() + occ[(l ^ 1) as usize].len()) else { continue };
+            stamp += 1;
+            for &l in &lits { mark[l as usize] = stamp; }
+            let others = std::mem::take(&mut occ[pivot as usize]);
+            let clashing = std::mem::take(&mut occ[(pivot ^ 1) as usize]);
+            for &cj in others.iter().chain(clashing.iter()) {
+                let cj = cj as usize;
+                if cj == ci || self.deleted[cj] { continue; }
+                let lj = self.clen[cj] as usize;
+                if lj < len || vsig[ci] & !vsig[cj] != 0 { continue; }
+                work += lj as u64;
+                let sj = self.cstart[cj] as usize;
+                let (mut hit, mut neg, mut negl) = (0usize, 0usize, 0u32);
+                for k in 0..lj {
+                    let l = self.arena[sj + k];
+                    if mark[l as usize] == stamp { hit += 1; }
+                    else if mark[(l ^ 1) as usize] == stamp { neg += 1; negl = l; }
+                }
+                if neg == 0 && hit == len && sig[ci] & !sig[cj] == 0 {
+                    if lj > 2 && !is_reason(self, cj) {
+                        // deleting a permanent clause is only sound while the
+                        // clause that subsumes it survives, so its subsumer
+                        // inherits permanence
+                        if is_permanent(self, cj) && !is_permanent(self, ci) {
+                            self.learnt_lbd[ci - self.first_learnt] = 0;
+                        }
+                        self.delete_clause(cj);
+                        self.stats.subsumed += 1;
+                    }
+                } else if neg == 1 && hit + 1 == len && !is_reason(self, cj) {
+                    strengthen.push((cj as u32, negl));
+                }
+            }
+            occ[pivot as usize] = others;
+            occ[(pivot ^ 1) as usize] = clashing;
+        }
+        // apply the strengthenings: add the resolvent, then drop the original
+        for (cj, negl) in strengthen {
+            let cj = cj as usize;
+            if self.deleted[cj] || is_reason(self, cj) { continue; }
+            let lj = self.clen[cj] as usize;
+            let sj = self.cstart[cj] as usize;
+            let c: Vec<u32> = self.arena[sj..sj + lj].iter().copied().filter(|&l| l != negl).collect();
+            if c.len() == lj { continue; }
+            // strengthening a permanent clause replaces it, so the
+            // replacement inherits its permanence; a merely learned clause is
+            // redundant either way and keeps an ordinary LBD
+            let lbd = if is_permanent(self, cj) { 0 } else { self.lbd(&c) };
+            let act = self.cla_inc;
+            self.add_learned(c, lbd, act);
+            self.delete_clause(cj);
+            self.stats.strengthened += 1;
+            self.stats.strengthened_lits += 1;
+            if self.unsat_at_init { return; }
+        }
+    }
+
     fn add_learned(&mut self, mut c: Vec<u32>, lbd: u32, act: f64) {
         c.sort_unstable(); c.dedup();
         if self.proof.is_some() { if c.is_empty() { if let Some(p) = &mut self.proof { p.empty(); } } else { self.log_learned(&c); } }
@@ -1601,12 +1774,19 @@ impl Engine {
                 if self.reduce_at == 0 { self.reduce_at = self.stats.conflicts + self.reduce_start as u64; }
                 if self.stats.conflicts >= self.reduce_at {
                     self.reduce_db();
-                    self.reduce_start += REDUCE_STEP;
+                    self.reduce_start += self.reduce_step;
                     self.reduce_at = self.stats.conflicts + self.reduce_start as u64;
                 }
                 if self.restart_due(lbd, trail_len, conflicts_here, restarts) {
                     restarts += 1; conflicts_here = 0;
                     self.restart(base);
+                    if self.subsume && base == 0 && self.stats.conflicts >= self.subsume_at {
+                        self.subsume_at = self.stats.conflicts + self.subsume_interval;
+                        self.subsume_interval += self.subsume_interval / 2;
+                        self.backjump(0);
+                        self.subsume_round();
+                        if self.unsat_at_init { return Verdict::Unsat; }
+                    }
                     if self.inprocess && base == 0 && self.stats.conflicts >= self.inprocess_at {
                         self.inprocess_at = self.stats.conflicts + self.inprocess_interval;
                         self.inprocess_interval += 10_000;
@@ -1849,6 +2029,72 @@ mod tests {
     /// run every few conflicts on random 3-SAT of 70 variables near the
     /// threshold, under both restart policies, against CaDiCaL; models are
     /// checked against the clauses.
+    /// The rule itself, on hand-made cases.
+    #[test]
+    fn subsume_round_does_what_it_says() {
+        // (1 2) subsumes (1 2 3); (1 2) and (-1 2 3) resolve to (2 3)
+        let mut e = Engine::from_cnf(4, &[vec![1, 2], vec![1, 2, 3], vec![-1, 2, 3, 4]]);
+        assert!(e.init());
+        e.subsume_round();
+        eprintln!("subsumed {} strengthened {} (clauses {})", e.stats.subsumed, e.stats.strengthened, e.nclauses());
+        for ci in 0..e.nclauses() { if !e.deleted[ci] { eprintln!("  kept {:?}", e.clause(ci).iter().map(|&l| if l & 1 == 1 { -((l >> 1) as i32 + 1) } else { (l >> 1) as i32 + 1 }).collect::<Vec<_>>()); } }
+        assert_eq!(e.stats.subsumed, 1, "(1 2) should subsume (1 2 3)");
+        assert_eq!(e.stats.strengthened, 1, "(1 2) should strengthen (-1 2 3 4) to (2 3 4)");
+    }
+
+    /// Subsumption runs after variable elimination on the real instances,
+    /// so the two have to be tested together: BVE's resolvents subsume the
+    /// originals they came from, and a wrong deletion there loses a clause
+    /// the reconstructed model must still satisfy.
+    #[test]
+    fn subsumption_with_elimination_vs_bruteforce() {
+        let mut seed: u64 = 0xB0_5E_1234_9ABC;
+        let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+        let mut subsumed_total = 0u64;
+        for trial in 0..400 {
+            // dense enough that elimination cannot dissolve the instance and
+            // the search has real work left for subsumption to help with
+            let n = 10 + (rnd() % 8) as usize;
+            let m = 4 * n + (rnd() % (3 * n as u64)) as usize;
+            let mut cls: Vec<Vec<i32>> = Vec::new();
+            for _ in 0..m {
+                let len = 2 + (rnd() % 2) as usize;
+                let mut c = Vec::new();
+                for _ in 0..len { let v = (rnd() % n as u64) as i32 + 1; c.push(if rnd() % 2 == 0 { v } else { -v }); }
+                // half the time also plant something for subsumption to find:
+                // a superset of `c` (subsumable) or `c` with one literal
+                // flipped (strengthenable)
+                match rnd() % 4 {
+                    0 => { let mut d = c.clone(); for _ in 0..1 + rnd() % 2 { let v = (rnd() % n as u64) as i32 + 1; d.push(if rnd() % 2 == 0 { v } else { -v }); } cls.push(d); }
+                    1 => { let mut d = c.clone(); if !d.is_empty() { d[0] = -d[0]; } let v = (rnd() % n as u64) as i32 + 1; d.push(if rnd() % 2 == 0 { v } else { -v }); cls.push(d); }
+                    _ => {}
+                }
+                cls.push(c);
+            }
+            let brute = (0..1u32 << n).any(|bits| check_model(&cls, &(0..n).map(|i| bits >> i & 1 == 1).collect::<Vec<_>>()));
+            let mut e = Engine::from_cnf(n, &cls);
+            e.subsume = true; e.subsume_at = 0; e.subsume_interval = 1;
+            e.reduce_start = 30;   // the reduction must run: subsumption deletes
+                                   // originals, and their survivor must outlive it
+            let ok = e.simplify();
+            let v = if ok {
+                let inited = e.init();
+                if inited { e.subsume_round(); }
+                if e.unsat_at_init { Verdict::Unsat } else { e.solve_under(&[]) }
+            } else { Verdict::Unsat };
+            subsumed_total += e.stats.subsumed + e.stats.strengthened;
+            match v {
+                Verdict::Sat(model) => {
+                    assert!(brute, "trial {trial}: engine SAT, brute UNSAT: {cls:?}");
+                    assert!(check_model(&cls, &model), "trial {trial}: model violates the original: {cls:?}");
+                }
+                Verdict::Unsat => assert!(!brute, "trial {trial}: engine UNSAT, brute SAT: {cls:?}"),
+                Verdict::Unknown => panic!("no budget set"),
+            }
+        }
+        assert!(subsumed_total > 0, "subsumption never fired");
+    }
+
     #[test]
     fn inprocessing_vs_cadical() {
         let mut seed: u64 = 0x1F1F_2E2E_3D3D_4C4C;

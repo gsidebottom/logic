@@ -1360,10 +1360,19 @@ disable).  The rarest literal of a clause names the candidates, and two
 signatures filter them — over literals for subsumption (`C ⊆ D`), over
 variables for strengthening, because a strengthened clause holds the
 clashing literal *negated* and so fails the literal signature.  Measured
-on the circuit family with four shuffles each, verdicts compared and
-every UNSAT independently proof-checked: 0.92× to 1.54× fewer conflicts,
-median about 1.08×, best on `c5315` (29,030 → 18,821).  Real, modest, and
-nowhere near the 3.1×.
+over fifteen instances (the two circuits with three shuffles each, plus
+Steiner-45, dlx1c, `eq.atree.braun.13`, pyhala-braun-unsat-40, PHP-9-8,
+RoundRobin 10/8 and w(5;5;178)), verdicts compared in both arms and every
+UNSAT independently checked by `drat-trim` and `cake_lpr`, zero
+mismatches (`doc/data/boxes_subsumption_ab_2026-09-16.txt`): conflict
+ratio 0.76× to 1.54×, geomean 1.076×, best on `c5315` (29,030 → 18,821),
+worst on RoundRobin 10/8 (0.76×).  Total wall clock over the set is
+*worse*, 160.1 s to 176.9 s, because pyhala-braun-unsat-40 regresses by
+16 s — and on conflicts, not on round overhead (1.52 M → 1.63 M), so the
+schedule is not the problem there, the search is.  Real, marginal, and
+nowhere near the 3.1×.  It is left on by default as the standard
+technique it is, with the RoundRobin and pyhala regressions the first
+thing to tune.
 
 The value of the exercise was a soundness bug, and how it was found.
 Deleting an original clause is only sound while the clause that subsumed

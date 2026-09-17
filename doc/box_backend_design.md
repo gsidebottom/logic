@@ -1327,6 +1327,65 @@ and a 1 s budget replaced the unbounded first version, which spent 44 s
 on one verification circuit with 427,000 candidate bits.  See the eighth
 measurement in `box_candidates_satcomp.md`.
 
+**Where the gap to CaDiCaL actually is (2026-09-16).**  Before building
+the M4 code generator, the engine was profiled against CaDiCaL on the
+same formulas, and the answer redirected the work.  On `c3540` as plain
+CNF the engine propagates at 7.0 M/s against CaDiCaL's 6.25 M/s — it is
+*faster* per propagation — and needs 3.1× the conflicts (122,413 against
+39,303) to finish.  All eight combinations of the restart, phase and
+inprocessing knobs land between 122k and 155k conflicts with the
+propagation rate pinned at 7 M/s, and a sweep of the clause-database
+policy (retention fraction, kept-LBD tier, interval) moves conflicts by
+at most 22 %.  Variable elimination is not the difference either: the
+engine eliminates 68.6 % of `c3540`'s variables against CaDiCaL's 72.0 %.
+So the gap is search quality, and *any* propagation speedup — compiled
+boxes included — divides the smaller number.  The profile of a boxed run
+is 64 % propagation and 13 % explanation, but the boxed form needs 1.2–2.6×
+more conflicts than the same engine on the plain CNF of the same circuit,
+so its ceiling is the plain-CNF path, which is the path that is behind.
+The gap is also instance-dependent: 3.1× on `c3540`, 1.6× on `c5315`, and
+on w(5;5;178) the engine beats standalone CaDiCaL outright, 9.3 s to
+16.8 s.
+
+CaDiCaL's own run report names what is missing on that instance:
+subsumption of 22 % of clauses (41 % on w(5;5;178)), chronological
+backtracking on 25 % of conflicts, learned-literal shrinking on 39 % of
+literals, equivalent-literal substitution, probing, ternary resolution.
+The engine had none of them.
+
+**Subsumption (2026-09-16).**  The first of that list: backward
+subsumption with self-subsuming resolution over the whole clause store at
+level 0, on a growing schedule after a restart (`BOXES_SUBSUME=0` to
+disable).  The rarest literal of a clause names the candidates, and two
+signatures filter them — over literals for subsumption (`C ⊆ D`), over
+variables for strengthening, because a strengthened clause holds the
+clashing literal *negated* and so fails the literal signature.  Measured
+on the circuit family with four shuffles each, verdicts compared and
+every UNSAT independently proof-checked: 0.92× to 1.54× fewer conflicts,
+median about 1.08×, best on `c5315` (29,030 → 18,821).  Real, modest, and
+nowhere near the 3.1×.
+
+The value of the exercise was a soundness bug, and how it was found.
+Deleting an original clause is only sound while the clause that subsumed
+it survives — and a *learned* subsumer is fair game for the next
+reduction, so an input constraint could disappear.  With variable
+elimination also on, the engine then answered SATISFIABLE on `c3540`,
+`c5315` and their shuffles.  Clauses carrying an input constraint are now
+marked permanent (LBD 0, which is not a real LBD since LBD counts
+distinct levels), and the property travels: a subsumer inherits it from
+what it deletes, a strengthened replacement from what it replaces.  The
+bug is also why the first measurements read as a 7×–36× win.  An A/B that
+records conflicts and seconds but not verdicts reports a soundness bug as
+a speedup, and perturbation testing does not catch it because the bug is
+deterministic — three shuffles of two circuits all "confirmed" it.  The
+`--proof` path of the previous entry is the check that does work: a
+wrongly deleted clause cannot make a DRAT proof pass, because deletions
+only make later RUP checks harder.  Variable elimination is logged rather
+than disabled under `--proof` now (a resolvent is RUP against what is
+already in the proof, and a deletion never has to be emitted), so the
+certified path runs the same configuration as the fast one and every
+verdict in the A/B carries a `drat-trim` and `cake_lpr` check.
+
 **Deep formulas (2026-09-14).**  The path traversal extends a Sum's path by
 all of its children through one nested continuation per child
 (`traverse_sum`), so a Sum of 4 000 atoms — `w5_ap(178)`'s collapsed

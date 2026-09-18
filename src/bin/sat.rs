@@ -73,6 +73,7 @@ use logic::matrix::{
     Lit, NNF, PathClassificationHandle, PathParams, PathsClass, Var,
     CdclController, DynOnClass, SmartController, cdcl_controller_builder, smart_controller_builder,
 };
+use logic::cadical;
 
 // ─── DIMACS parser ─────────────────────────────────────────────────────────
 
@@ -1787,6 +1788,12 @@ fn cadical_search(nvars: usize, clauses: Vec<Vec<i32>>, show_progress: bool) -> 
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
+    // Which CaDiCaL this is, on the record.  Every "vs CaDiCaL" number in
+    // `doc/` was taken through this backend, and for a long time it was
+    // silently the `cadical` crate's 1.9.5 while the certification scripts
+    // used a 3.x from `PATH`.
+    eprintln!("c {}", cadical::solver::signature());
+
     let cancel = Arc::new(AtomicBool::new(false));
     let cancel_for_solver = cancel.clone();
 
@@ -1876,7 +1883,11 @@ struct CadicalProgressCallbacks {
 }
 
 impl cadical::Callbacks for CadicalProgressCallbacks {
-    fn max_length(&self) -> i32 { i32::MAX }
+    /// Only the progress line counts learned clauses, so with progress off
+    /// we decline them: a disconnected learner keeps CaDiCaL's clause-export
+    /// path out of the conflict loop, which is what makes `-b cadical` a
+    /// fair proxy for the standalone solver in benchmarks.
+    fn max_length(&self) -> i32 { if self.show_progress { i32::MAX } else { 0 } }
 
     fn learn(&mut self, _clause: &[i32]) {
         self.learned = self.learned.saturating_add(1);

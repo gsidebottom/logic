@@ -4,6 +4,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use crate::matrix::{PathClassificationHandle, Lit, Matrix, NNF};
 
+/// CaDiCaL itself: the vendored 3.0.1 source behind a Rust API.
+pub mod solver;
+pub use solver::{Callbacks, Solver, Timeout};
+
 // ─── Tseitin encoding ────────────────────────────────────────────────────────
 
 /// Tseitin encoding: convert an NNF to CNF clauses for CaDiCaL.
@@ -64,7 +68,7 @@ struct SolverCallbacks {
     learned_clauses: Vec<Vec<i32>>,
 }
 
-impl cadical::Callbacks for SolverCallbacks {
+impl Callbacks for SolverCallbacks {
     fn max_length(&self) -> i32 { i32::MAX }
 
     fn learn(&mut self, clause: &[i32]) {
@@ -90,7 +94,7 @@ pub struct CaDiCaLSatisfiableResult {
 
 // ─── Extract assignment from solver ──────────────────────────────────────────
 
-fn extract_assignment(solver: &cadical::Solver<SolverCallbacks>, n_vars: i32) -> Vec<Lit> {
+fn extract_assignment(solver: &Solver<SolverCallbacks>, n_vars: i32) -> Vec<Lit> {
     (0..n_vars as u32).filter_map(|v| {
         solver.value((v as i32) + 1).map(|val|
             if val { Lit::pos(v) } else { Lit::neg(v) }
@@ -117,7 +121,7 @@ impl Matrix {
         let handle = tokio::task::spawn_blocking(move || {
             let mut next_var = n_vars + 1;
             let (root, clauses) = tseitin_encode(&nnf_complement, &mut next_var);
-            let mut solver: cadical::Solver<SolverCallbacks> = cadical::Solver::new();
+            let mut solver: Solver<SolverCallbacks> = Solver::new();
             solver.set_callbacks(Some(SolverCallbacks {
                 cancel: cancel_for_callback,
                 learned_clauses: Vec::new(),
@@ -182,7 +186,7 @@ impl Matrix {
         let handle = tokio::task::spawn_blocking(move || {
             let mut next_var = n_vars + 1;
             let (root, clauses) = tseitin_encode(&nnf, &mut next_var);
-            let mut solver: cadical::Solver<SolverCallbacks> = cadical::Solver::new();
+            let mut solver: Solver<SolverCallbacks> = Solver::new();
             solver.set_callbacks(Some(SolverCallbacks {
                 cancel: cancel_for_callback,
                 learned_clauses: Vec::new(),

@@ -2156,6 +2156,7 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cadical;
 
     fn solve(nvars: usize, cls: &[Vec<i32>]) -> Verdict { Engine::from_cnf(nvars, cls).solve() }
 

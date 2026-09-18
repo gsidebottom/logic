@@ -93,6 +93,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use logic::cadical;
 
 // ─── CNF parsing ────────────────────────────────────────────────────────────
 

@@ -42,6 +42,7 @@
 
 use crate::dual::{flat, is_flat_sum_of_prods, CoverState, flat_pair_triggers};
 use crate::matrix::{NNF, Pair};
+use crate::cadical;
 
 pub struct CnfBansCoverState {
     pairs: Vec<Pair>,

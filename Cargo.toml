@@ -85,7 +85,6 @@ serde_json = "1"
 tower-http = { version = "0.5", features = ["cors", "fs"] }
 xq          = "0.5"
 xq-lang     = "0.0.1"
-cadical     = "0.1"
 biodivine-lib-bdd = "0.6"
 libc = "0.2.186"
 num-bigint = "0.4"
@@ -108,3 +107,8 @@ path = "src/bin/asymfloor.rs"
 [[bin]]
 name = "dumpsigned"
 path = "src/bin/dumpsigned.rs"
+
+[build-dependencies]
+# Builds the vendored CaDiCaL 3.0.1 (see /build.rs).  `parallel` matters:
+# the solver is ~160 translation units.
+cc = { version = "1", features = ["parallel"] }

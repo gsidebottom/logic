@@ -395,10 +395,15 @@ pub struct Engine {
     occ: Vec<Vec<Occ>>,
     /// Live-row masks, box `b` at words `hdr[b].off ..`.
     live: Vec<u64>,
-    /// Live rows per box — the popcount of its words in `live`, maintained
-    /// incrementally because every writer of `live` already touches each
-    /// word.  This is §3.4's "effective path count": the exact number of
-    /// paths the box still admits under the trail, not an estimate of it.
+    /// Live rows per box — the popcount of its words in `live`, i.e. §3.4's
+    /// "effective path count": the exact number of paths the box still
+    /// admits under the trail, not an estimate of it.
+    ///
+    /// Maintained **only under `eff_study`**.  It is cheap (every writer of
+    /// `live` already touches each word, and it made the dead-box test a
+    /// counter read instead of a scan) but it still measured 1.019× on the
+    /// cone corpus, and after the 2026-09-18 study nothing reads it in a
+    /// normal run — see [`EffStudy`] for why no heuristic was built on it.
     live_count: Vec<u32>,
     /// Snapshots of `live_count`, in step with `snap`.
     snap_count: Vec<u32>,
@@ -833,6 +838,27 @@ impl Engine {
     }
 
     /// Add a table box (before solving).
+    /// Turn the branching-heuristic study on or off before solving
+    /// (`BOXES_EFF_STUDY=1` does it at construction, which is the usual
+    /// route).  Recomputes the live counts from the masks, because turning
+    /// it on after unit clauses have already killed rows at level 0 would
+    /// otherwise leave every count at the value it had when its box was
+    /// added.
+    pub fn set_eff_study(&mut self, on: bool) {
+        assert_eq!(self.decision_level(), 0, "the study is switched before solving");
+        self.eff_study = on;
+        self.snap_count.clear();
+        self.live_count.clear();
+        if on {
+            for h in &self.hdr {
+                let (off, nw) = (h.off as usize, h.nw as usize);
+                if self.eff_study {
+            self.live_count.push((0..nw).map(|w| self.live[off + w].count_ones()).sum());
+        }
+            }
+        }
+    }
+
     pub fn add_box(&mut self, b: TableBox) {
         let bi = self.hdr.len() as u32;
         let nw = b.nwords as u32;
@@ -948,7 +974,7 @@ impl Engine {
     fn new_level(&mut self) {
         self.trail_lim.push(self.trail.len());
         self.snap.extend_from_slice(&self.live);
-        self.snap_count.extend_from_slice(&self.live_count);
+        if self.eff_study { self.snap_count.extend_from_slice(&self.live_count); }
     }
 
     /// Undo decision levels above `lvl`.
@@ -973,10 +999,12 @@ impl Engine {
         let from = self.snap.len() - start * n;
         self.live.copy_from_slice(&self.snap[from..from + n]);
         self.snap.truncate(from);
-        let nc = self.live_count.len();
-        let fromc = self.snap_count.len() - start * nc;
-        self.live_count.copy_from_slice(&self.snap_count[fromc..fromc + nc]);
-        self.snap_count.truncate(fromc);
+        if self.eff_study {
+            let nc = self.live_count.len();
+            let fromc = self.snap_count.len() - start * nc;
+            self.live_count.copy_from_slice(&self.snap_count[fromc..fromc + nc]);
+            self.snap_count.truncate(fromc);
+        }
         self.trail_lim.truncate(lvl);
         self.clear_queue();
         // The kept literals go back on in their original order, so each still
@@ -1048,16 +1076,18 @@ impl Engine {
             let h = self.hdr[b as usize];
             let (off, nw) = (h.off as usize, h.nw as usize);
             let kb = koff as usize + if val == Val::T { nw } else { 0 };
-            let mut removed = 0u32;
+            let (mut changed, mut removed) = (false, 0u32);
             for w in 0..nw {
                 let old = self.live[off + w];
                 let new = old & !self.kill_all[kb + w];
-                if new != old { self.live[off + w] = new; removed += (old & !new).count_ones(); }
+                if new != old {
+                    self.live[off + w] = new;
+                    changed = true;
+                    if self.eff_study { removed += (old & !new).count_ones(); }
+                }
             }
-            if removed > 0 {
-                self.live_count[b as usize] -= removed;
-                if !self.in_queue[b as usize] { self.in_queue[b as usize] = true; self.queue.push(b); }
-            }
+            if self.eff_study { self.live_count[b as usize] -= removed; }
+            if changed && !self.in_queue[b as usize] { self.in_queue[b as usize] = true; self.queue.push(b); }
         }
     }
 
@@ -1153,9 +1183,9 @@ impl Engine {
             self.in_queue[b] = false;
             let h = self.hdr[b];
             let (off, nw) = (h.off as usize, h.nw as usize);
-            debug_assert_eq!(self.live_count[b], (0..nw).map(|w| self.live[off + w].count_ones()).sum::<u32>(),
-                             "live_count out of step with live for box {b}");
-            if self.live_count[b] == 0 { self.clear_queue(); return Some(Conflict::Box(b as u32)); }
+            debug_assert!(!self.eff_study || self.live_count[b] == (0..nw).map(|w| self.live[off + w].count_ones()).sum::<u32>(),
+                          "live_count out of step with live for box {b}");
+            if (0..nw).all(|w| self.live[off + w] == 0) { self.clear_queue(); return Some(Conflict::Box(b as u32)); }
             for li in 0..h.nvars as usize {
                 let var = self.vars_all[h.vbase as usize + li];
                 if self.vals[var as usize] != Val::U { continue; }
@@ -2973,6 +3003,7 @@ mod tests {
         // UNSAT with real search, so the counts go through the incremental
         // subtraction and the wholesale restore many times over.
         let mut e = boxed_php(8, 7);
+        e.set_eff_study(true);   // what drives the maintenance being checked
         assert_eq!(e.solve(), Verdict::Unsat);
         counts_agree(&e);
         assert!(e.stats.eff.box_conflicts > 0, "the fixture should fail inside the tables");
@@ -2981,6 +3012,7 @@ mod tests {
         // (GAC over the cells is enough), which exercises `apply_kills`
         // without ever restoring a snapshot.
         let mut e = boxed_adder(8, 4, 200);
+        e.set_eff_study(true);
         assert_eq!(e.solve(), Verdict::Unsat);
         counts_agree(&e);
         assert_eq!(e.stats.conflicts, 0, "the boxed adder should not need to search");
@@ -2988,6 +3020,7 @@ mod tests {
         // SAT, so the run ends mid-trail with counts reflecting a partial
         // assignment rather than a refutation.
         let mut e = boxed_adder(8, 8, 200);
+        e.set_eff_study(true);
         assert!(matches!(e.solve(), Verdict::Sat(_)));
         counts_agree(&e);
     }
@@ -2995,7 +3028,7 @@ mod tests {
     #[test]
     fn the_eff_study_ranks_the_conflicting_box() {
         let mut e = boxed_php(8, 7);
-        e.eff_study = true;
+        e.set_eff_study(true);
         assert_eq!(e.solve(), Verdict::Unsat);
         let s = &e.stats.eff;
         assert!(s.sampled > 0, "no box conflict was ranked: {s:?}");

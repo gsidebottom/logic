@@ -199,6 +199,47 @@ box's effective count *is* `popcount(live rows)`.  Branch on the box with the
 fewest live rows (most constrained first), tie-break by shared-variable degree.
 Structural boxes keep the existing EFF ordering, so the heuristic is uniform.
 
+**Measured, and not supported (2026-09-18).**  This was never built — the
+engine decides by VSIDS (§10.1) — and before building it the premise was
+measured directly.  `BOXES_EFF_STUDY=1` records, at every conflict, where
+the failing box ranked among all boxes by live rows at the moment of the
+preceding decision, which the per-level snapshots already hold; the counter
+it needs is free, since every writer of `live` already touches each word.
+Over 29 compiled cone instances (`doc/data/boxes_eff_study_2026-09-18.txt`):
+
+* On **18 of 29** the failing box had *more* live rows than the average
+  box — the rule backwards.
+* A raw count conflates "constrained now" with "big table to begin with",
+  and on **26 of 29** the failing box is a bigger table than the mean.
+  Normalising to the *fraction* of rows still live — which is what the CSP
+  heuristic being lifted actually compares, and not what the paragraph
+  above says — rescues the direction on only **8 of 29**, and flips sign
+  inside a family: c3540 K = 8 puts 57.7 % of conflicts in the tighter
+  half, K = 12 only 34.8 %.
+* An argmin rule is hopeless either way.  The failing box was the most
+  constrained box a median **0.1 %** of the time (max 1.9 %), with ties
+  counted in its favour.
+
+The study is observational — it samples the trajectory VSIDS takes, and an
+EFF-driven search would take another — so it cannot prove the heuristic
+would lose.  What it removes is the reason to expect it to win, at the cost
+of a counter rather than a heuristic, a search-quality A/B and the usual
+argument about which instances count.
+
+It also fixes a ceiling that binds *any* box-guided decision rule: the
+share of conflicts that happen inside a table at all runs from 16 % to
+92 %, median 73 %.  On eq.atree.braun, ezfact64_6 and the 16_16_booth
+multipliers — the factoring and multiplier families this backend most wants
+to win — four conflicts in five are in clauses, where a box heuristic has
+nothing to say however good it is.
+
+What survives is the one consistent pattern, that failing boxes are bigger
+tables.  That is an exposure effect (a bigger table touches more variables
+and so joins more conflicts), it is static, and it is the term dom/wdeg
+normalises away rather than one to branch on.  The live counter is
+therefore gated behind the study flag: unconditional maintenance measured
+1.019× on the cone corpus, gated it is 0.997×.
+
 ### 3.5 Learning (phase 2, measured — delivered 2026-09-13, see §10.1)
 
 A dead box (0 live rows) has an explanation: for each row, one prefix literal

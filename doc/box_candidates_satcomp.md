@@ -112,16 +112,62 @@ no propagation scheme matters.
 
 ## Standing against CaDiCaL, re-measured (2026-09-17)
 
-Two corrections to everything below, both measured
+Corrections to everything below, all measured
 (`doc/data/boxes_vs_cadical_2026-09-17.txt`,
-`doc/data/boxes_speed_2026-09-17.txt`).
+`doc/data/boxes_speed_2026-09-17.txt`, and the four
+`doc/data/boxes_cadical_*_2026-09-18.txt` files).
 
-**The CaDiCaL baseline in this document is the wrong CaDiCaL.**  Every
-"CaDiCaL" time here comes from `sat -b cadical`, which is the bundled
-crate's CaDiCaL 1.9.5.  On `toughsat_factoring_895s` that version takes
-170 s where standalone CaDiCaL 3.0.0 takes 19 s.  The comparisons below
-therefore flatter the engine by an unknown and sometimes large factor and
-need re-running against 3.0.0.
+**Every "CaDiCaL" time below this section was the wrong CaDiCaL.**  They
+come from `sat -b cadical`, which until 2026-09-17 was the `cadical`
+crate — whose last release bundles CaDiCaL **1.9.5**, while every
+certified path in `tools/` shells out to the `cadical` on `PATH`, 3.0.0
+here.  Nothing in either output said which.  Re-measured head to head
+(`doc/data/boxes_cadical_old_baseline_1_9_5_partial_2026-09-18.txt`):
+`ezfact64_6` 110.2 s against 30.6 s — **3.6×** — `c5315` 1.34×, `c3540`
+1.09×, with `toughsat_factoring_895s` 170 s against 19 s from the earlier
+spot check.  The flattery was real and it was not uniform, which is why
+the per-instance tables in the older sections cannot be salvaged by a
+single correction factor.  They stand as dated records; read their
+CaDiCaL column as 1.9.5.
+
+### Which CaDiCaL (2026-09-18)
+
+The crate is gone: `vendor/cadical-3.0.1/` holds upstream's MIT source,
+`build.rs` compiles it, and `sat -b cadical` prints what it is —
+`c cadical-3.0.1 (release defaults)` — with a test tying that signature to
+the vendored `VERSION` file so the mix-up cannot recur silently.
+
+Three things were measured before trusting it, all in `doc/data/`:
+
+* **The bundling costs nothing.**  Against a standalone binary linked from
+  the same objects, going through the shim's incremental API is **1.00×**
+  on every instance (`…_decomposition_2026-09-18.txt`); the harness's
+  fixed cost is 3 ms, and CaDiCaL throttles the terminator callback to one
+  poll per ten search-loop iterations.
+* **The bundled 3.0.1 is nonetheless 1.47× behind the 3.0.0 on `PATH`**
+  by geomean over the 17 instances both solve
+  (`…_bundled_vs_standalone_2026-09-18.txt`).  Release 3.0.0 defaults
+  `factor` (bounded variable addition) and `preprocesslight` on; 3.0.1
+  defaults both off.
+* **Turning them on does not recover it** (`…_options_2026-09-18.txt`).
+  It reproduces 3.0.0 exactly on `php9_8` (0.01 s from 0.22 s), `c3540`
+  and `pyhala-braun-sat-40-4-03` (7.7 s from 24.6 s), and makes things
+  worse on `toughsat_factoring_148s` and `ezfact64_6` (76 s from 20 s):
+  four of six instances get slower, and each version is fastest at its own
+  default.  So the backend runs the vendored release's defaults and
+  hand-picks nothing; `--cadical-opt factor=1 --cadical-opt
+  preprocesslight=1` asks for 3.0.0's configuration explicitly.
+
+**The tables therefore keep quoting the standalone 3.0.0** — the fastest
+CaDiCaL measured here, and the one the recent numbers were taken
+against — rather than the bundled solver, which would make the engine look
+1.5× better for no reason but a release default.  The side-by-side data
+file converts between the two columns.  Note the 3.0.0 on `PATH` is a
+snapshot: Homebrew's formula has already moved to 3.0.1, so a `brew
+upgrade` replaces it, and from then on only the vendored solver is
+reproducible.  Also in the same commit: the CaDiCaL backend
+self-checks its models now and refuses to answer on a violation, as the
+boxes backend already did.
 
 **Against 3.0.0, the box form wins nothing.**  Seven boxed instances, one
 solver at a time, 240 s cap, verdicts agreeing:
@@ -183,6 +229,11 @@ The parity third would need a Gauss box, and the cardinality third is
 not ours.
 
 ## First measurement: `tools/cnf2boxes.py` on the three small circuit families
+
+*(The "CaDiCaL" column in this and every measurement section below is
+CaDiCaL 1.9.5 through the old `cadical` crate — see "Which CaDiCaL"
+above.  On the factoring families it is 3.6× slower than the 3.0.0 these
+sections were implicitly claiming, so treat the gaps as lower bounds.)*
 
 (A note on the family names, added 2026-09-15: the benchmark database's
 "belpyramid-puzzle" label mixes the pyramid-puzzle encodings proper —

@@ -85,6 +85,15 @@ int c3_val (void *s, int lit) {
 
 int c3_max_var (void *s) { return self (s)->solver.vars (); }
 
+// Initializes `n` further variables and protects them from being taken as
+// bounded-variable-addition extension variables.  With `factor` on,
+// CaDiCaL 3.0.1 *requires* user variables to be declared this way before
+// they appear in a clause (`factorcheck`) and aborts the process
+// otherwise; the standalone binary does it from the `p cnf` header.
+int c3_declare_vars (void *s, int n) {
+  return self (s)->solver.declare_more_variables (n);
+}
+
 // Most options may only be set before the first clause (CaDiCaL requires
 // the CONFIGURING state); `solver.rs` enforces that, and an unknown name
 // returns false rather than aborting.

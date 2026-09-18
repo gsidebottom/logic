@@ -1,0 +1,46 @@
+# The bundled CaDiCaL against the standalone one (2026-09-17/18), one solver
+# at a time on a quiet machine, 120 s cap, same files, verdicts agreeing
+# wherever both answered.
+#
+# 'bundled 3.0.1' is `sat -b cadical` after vendor/cadical-3.0.1 replaced the
+# `cadical` crate; 'standalone 3.0.0' is the `cadical` on PATH (Homebrew).
+# Both at their own release defaults -- which turned out to be the whole
+# story, see boxes_cadical_vendored_decomposition_2026-09-18.txt.
+#
+# Read the per-instance ratios with the shuffling spread in mind: four
+# shufflings of pyhala-braun-sat-40 span 33-65 s for the same solver.
+
+
+instance                                       verdict   bundled 3.0.1  standalone 3.0.0  bundled slower by
+16_16_booth_dadda_origin_and_and_dadda_origin_ TO                   TO                TO               nanx
+16_16_booth_dadda_origin_and_and_dadda_origin_ TO                   TO                TO               nanx
+c3540                                          UNSAT             0.29s             0.45s              0.64x
+c5315                                          UNSAT             0.15s             0.12s              1.31x
+eq.atree.braun.13.unsat                        TO                   TO                TO               nanx
+ezfact64_6.shuffled-as.sat05-453               SATIS            20.90s            28.69s              0.73x
+lec_mult_CvW_11x10.sanitized                   TO                   TO                TO               nanx
+pyhala-braun-sat-40-4-03.shuffled-as.sat03-154 SATIS            25.57s             7.99s              3.20x
+pyhala-braun-unsat-40-4-02.shuffled-as.sat05-4 UNSAT            53.01s            62.48s              0.85x
+sum_of_3_cubes_108_bits_52                     TO                   TO                TO               nanx
+sum_of_3_cubes_145_bits_74                     TO                   TO                TO               nanx
+sum_of_3_cubes_37_bits_87                      TO                   TO                TO               nanx
+sum_of_3_cubes_94_bits_30                      TO                   TO                TO               nanx
+toughsat_factoring_895s                        SATIS           108.24s            18.42s              5.88x
+ezfact16_5.shuffled                            UNSAT             0.01s             0.00s              1.24x
+ezfact32_5.shuffled                            SATIS             0.01s             0.02s              0.40x
+toughsat_factoring_148s                        SATIS            23.78s            13.00s              1.83x
+toughsat_factoring_426s                        SATIS             5.07s                TO               nanx
+toughsat_factoring_inf                         TO                   TO                TO               nanx
+pyhala-braun-sat-30-4-01.shuffled              SATIS             2.11s             0.77s              2.75x
+pyhala-braun-sat-35-4-01.shuffled              SATIS             1.37s             1.60s              0.86x
+w55_177                                        SATIS             0.06s             0.12s              0.48x
+w55_178                                        UNSAT            17.41s            17.40s              1.00x
+Steiner-45-16-bce                              UNSAT             3.44s             2.66s              1.29x
+php9_8                                         UNSAT             0.23s             0.01s             20.82x
+rr10_8                                         UNSAT             0.20s             0.05s              4.05x
+dlx1c.ucl.sat.chaff.4.1.bryant                 UNSAT             0.04s             0.05s              0.65x
+
+bundled/standalone 1.47x geomean over 17 instances both solved (bundled total 257s, standalone 154s)
+solved only by bundled: ['toughsat_factoring_426s']
+solved only by standalone: []
+SWEEP EXIT

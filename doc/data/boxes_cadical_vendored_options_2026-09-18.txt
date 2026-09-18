@@ -1,0 +1,45 @@
+# Why the bundled CaDiCaL 3.0.1 is not the CaDiCaL 3.0.0 on PATH
+# (2026-09-18, 120 s cap, one solver at a time, both standalone binaries
+# on the same files).
+#
+# Release 3.0.0 defaults `factor` (bounded variable addition) and
+# `preprocesslight` ON; the vendored 3.0.1 defaults both OFF
+# (vendor/cadical-3.0.1/src/options.hpp:119,163).  Tested from both sides.
+#
+# On the five instances every arm answered (php9_8, c3540,
+# toughsat_factoring_148s, pyhala-braun-sat-40-4-03, ezfact64_6):
+#
+#   3.0.1 default      / 3.0.0 default  2.27x slower   (1.29x excluding php9_8)
+#   3.0.1 +factor+light/ 3.0.0 default  1.47x slower   (1.62x excluding php9_8)
+#   3.0.1 default      / 3.0.0 -f-light 0.64x  -- 3.0.1's core is 1.56x faster
+#   3.0.1 +factor+light/ 3.0.1 default  0.65x  (1.26x SLOWER excluding php9_8)
+#
+# So the options explain 3.0.0's edge exactly on php9_8, c3540 and
+# pyhala-40, and not at all on toughsat_148s and ezfact64_6, where each
+# version is fastest at its own default.  Enabling them in the vendored
+# solver is not an improvement: 4 of 6 instances get slower.  Hence
+# `sat -b cadical` runs the vendored release's own defaults, and the
+# tables keep quoting the standalone 3.0.0 as the baseline -- the fastest
+# CaDiCaL measured here -- rather than the configuration that flatters us.
+#
+# Read every single-instance ratio against the family's own spread: four
+# shufflings of pyhala-braun-sat-40 span 33-65 s for one fixed solver, and
+# toughsat_factoring_895s lands at 17.9 s, 108.9 s or a timeout depending
+# on arm with no consistent option effect.
+
+instance                    3.0.0 dflt  3.0.0 -f-p  3.0.1 dflt  3.0.1 +f+p
+php9_8                           0.01s       0.20s       0.22s       0.01s
+c3540                            0.43s       0.36s       0.28s       0.43s
+toughsat_factoring_895s         17.90s          TO     108.85s          TO
+toughsat_factoring_148s         13.20s      28.92s      23.92s      33.66s
+pyhala-braun-sat-40-4-03         8.05s      36.50s      25.66s       7.98s
+ezfact64_6                      28.74s      97.10s      21.00s      78.42s
+
+3.0.1 default / 3.0.0 default:      2.65x over 6
+3.0.1 +factor+light / 3.0.0 default: 1.44x over 5
+3.0.1 default / 3.0.0 -factor-light: 0.64x over 5
+OPTIONS EXIT
+
+# php9_8 is 72 variables and 297 clauses: its 0.01s-vs-0.22s is a real
+# behaviour difference but a 0.2 s one, which is why the geomeans are
+# given with and without it.

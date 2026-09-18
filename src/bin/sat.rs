@@ -1784,21 +1784,30 @@ fn load_box_instances(path: &std::path::Path) -> Result<Vec<logic::boxes::TableB
     Ok(out)
 }
 
-fn cadical_search(nvars: usize, clauses: Vec<Vec<i32>>, show_progress: bool) -> SearchOutcome {
+/// `NAME=VALUE` for `--cadical-opt`.  CaDiCaL takes `bool` options as
+/// 0/1, so `true`/`false` are accepted for them.
+fn parse_cadical_opt(s: &str) -> Result<(String, i32), String> {
+    let (name, value) = s.split_once('=').ok_or_else(||
+        format!("--cadical-opt wants NAME=VALUE, got {s:?}"))?;
+    let value = match value {
+        "true" => 1,
+        "false" => 0,
+        v => v.parse().map_err(|e| format!("--cadical-opt {name}: bad value {v:?}: {e}"))?,
+    };
+    Ok((name.to_string(), value))
+}
+
+fn cadical_search(nvars: usize, clauses: Vec<Vec<i32>>, show_progress: bool,
+                  extra_opts: &[(String, i32)]) -> SearchOutcome {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
-
-    // Which CaDiCaL this is, on the record.  Every "vs CaDiCaL" number in
-    // `doc/` was taken through this backend, and for a long time it was
-    // silently the `cadical` crate's 1.9.5 while the certification scripts
-    // used a 3.x from `PATH`.
-    eprintln!("c {}", cadical::solver::signature());
 
     let cancel = Arc::new(AtomicBool::new(false));
     let cancel_for_solver = cancel.clone();
 
     let want_progress = show_progress && io::stderr().is_terminal();
     let start = Instant::now();
+    let opts = extra_opts.to_vec();
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -1810,6 +1819,41 @@ fn cadical_search(nvars: usize, clauses: Vec<Vec<i32>>, show_progress: bool) -> 
 
         let solver_task = tokio::task::spawn_blocking(move || {
             let mut solver: cadical::Solver<CadicalProgressCallbacks> = cadical::Solver::new();
+            // The vendored release's own defaults, plus whatever
+            // `--cadical-opt` asked for (options have to be set before the
+            // first clause).  Both are printed, because a reference
+            // solver's version *and* configuration are part of every
+            // number it produces — this repo has already published two
+            // "wins" that turned out to be against a different solver than
+            // the one the certification scripts ran.
+            //
+            // Nothing is forced on top of the defaults.  Release 3.0.0 had
+            // `factor` and `preprocesslight` on and is faster than 3.0.1
+            // for it on some instances, but 3.0.1 *with* them on is slower
+            // than 3.0.1 without on four of the six measured
+            // (`doc/data/boxes_cadical_vendored_options_2026-09-18.txt`),
+            // so there is no configuration here that is simply better —
+            // and picking one by hand is how a baseline stops meaning
+            // anything.  `RELEASE_3_0_0_DEFAULTS` names the 3.0.0 set for
+            // anyone who wants to reproduce it.
+            let mut applied: Vec<String> = Vec::new();
+            for (name, value) in opts.iter() {
+                if solver.set_option(name, *value) {
+                    applied.push(format!("{name}={value}"));
+                } else {
+                    eprintln!("c ERROR: cadical rejected option {name}={value}");
+                    std::process::exit(2);
+                }
+            }
+            if applied.is_empty() {
+                eprintln!("c {} (release defaults)", cadical::solver::signature());
+            } else {
+                eprintln!("c {} ({})", cadical::solver::signature(), applied.join(" "));
+            }
+            // What the standalone binary's parser does from the `p cnf`
+            // line.  Required, not optional, once `--cadical-opt factor=1`
+            // is in play: BVA has to know which indices are ours.
+            solver.reserve(nvars as i32);
             solver.set_callbacks(Some(CadicalProgressCallbacks {
                 cancel: cancel_for_solver,
                 learned: 0,
@@ -1823,12 +1867,24 @@ fn cadical_search(nvars: usize, clauses: Vec<Vec<i32>>, show_progress: bool) -> 
             let result = solver.solve();
             match result {
                 Some(true) => {
-                    // Extract truth values for each variable.  Free
-                    // variables (`solver.value` returns None) default to
-                    // `true` so the output stays a complete assignment.
+                    // Extract truth values for each variable.  CaDiCaL 3
+                    // values declared-but-unused variables by default, so
+                    // the `unwrap_or` is only for indices it never saw.
                     let asgn: Vec<bool> = (1..=nvars).map(|v|
                         solver.value(v as i32).unwrap_or(true)
                     ).collect();
+                    // A model that violates the formula is a solver bug,
+                    // never an answer — the same refusal the boxes backend
+                    // makes.  Linear in the formula, and it is what lets us
+                    // turn options like `factor` (which adds variables and
+                    // reconstructs their values) on without taking the
+                    // solver's word for the result.
+                    let holds = |l: i32| asgn.get(l.unsigned_abs() as usize - 1).copied().unwrap_or(false) == (l > 0);
+                    if let Some(bad) = clauses.iter().position(|c| !c.iter().any(|&l| holds(l))) {
+                        eprintln!("c ERROR: cadical produced a model violating input clause {} {:?} — refusing to answer",
+                                  bad, clauses[bad]);
+                        std::process::exit(3);
+                    }
                     SolverResult::Sat(asgn)
                 }
                 Some(false) => SolverResult::Unsat,
@@ -2594,6 +2650,13 @@ struct Args {
     /// as `c pb-cadical: proof-format=pbp|lrat`.  Optional: without it,
     /// `pb-cadical` still solves and prints the verdict but writes no proof.
     proof: Option<std::path::PathBuf>,
+    /// CaDiCaL options for the `cadical` backend, `NAME=VALUE`, in
+    /// command-line order, on top of the vendored release's own defaults.
+    /// For ablating the reference solver, which is how a gap to it gets
+    /// attributed to a technique, and for reproducing another release's
+    /// configuration
+    /// ([`logic::cadical::solver::RELEASE_3_0_0_DEFAULTS`]).
+    cadical_opts: Vec<(String, i32)>,
     /// CDCL engine for the pb-cadical / hydra final stage: "cadical"
     /// (default; native LRAT) or "kissat" (binary DRAT, elaborated to LRAT
     /// via `drat-trim -L` when a proof is requested).
@@ -2657,6 +2720,7 @@ fn parse_args() -> Result<Args, String> {
         satsuma_mem_gb: 0,
         cook: true,
         factoring: true,
+        cadical_opts: Vec::new(),
         xor_gauss_max_clauses: 1_000_000,
         emit_cover: None,
         emit_drat: None,
@@ -2831,6 +2895,14 @@ fn parse_args() -> Result<Args, String> {
             s if s.starts_with("--emit-cook-pbp=") => {
                 a.emit_cook_pbp = Some(s["--emit-cook-pbp=".len()..].to_string().into());
             }
+            "--cadical-opt" => {
+                let v = iter.next().ok_or_else(||
+                    "--cadical-opt requires NAME=VALUE".to_string())?;
+                a.cadical_opts.push(parse_cadical_opt(&v)?);
+            }
+            s if s.starts_with("--cadical-opt=") => {
+                a.cadical_opts.push(parse_cadical_opt(&s["--cadical-opt=".len()..])?);
+            }
             "--proof" => {
                 let v = iter.next().ok_or_else(||
                     "--proof requires a file path".to_string())?;
@@ -2922,6 +2994,10 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    CaDiCaL path: LRAT (cake_lpr <cnf> FILE);");
                 eprintln!("                    kissat path: GRAT (gratchk unsat <cnf> FILE).");
                 eprintln!("                    The format is on stderr: c pb-cadical: proof-format=…");
+                eprintln!("  --cadical-opt N=V CaDiCaL option for the cadical backend, repeatable.");
+                eprintln!("                    The backend otherwise runs the vendored 3.0.1's own");
+                eprintln!("                    defaults; release 3.0.0's stronger preprocessing is");
+                eprintln!("                    --cadical-opt factor=1 --cadical-opt preprocesslight=1.");
                 eprintln!("  --engine NAME     CDCL engine for pb-cadical/hydra: cadical (default,");
                 eprintln!("                    native LRAT), kissat (binary DRAT, elaborated to GRAT");
                 eprintln!("                    via gratgen and checked by gratchk), or portfolio[:pct]");
@@ -4267,7 +4343,7 @@ fn main() {
 
     let t = Instant::now();
     let outcome = match args.backend {
-        BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
+        BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress, &args.cadical_opts),
         BackendChoice::Boxes | BackendChoice::HydraBox =>
             boxes_search(nvars, &clauses, args.boxes.as_deref(), args.timeout_secs,
                          args.proof.as_deref(), args.boxes_source.as_deref()),
@@ -4477,7 +4553,7 @@ mod tests {
     fn solve_cadical(nvars: usize, clauses: &[Vec<i32>]) -> Result<Vec<bool>, ()> {
         if clauses.iter().any(|c| c.is_empty()) { return Err(()); }
         if clauses.is_empty() { return Ok(vec![true; nvars]); }
-        match cadical_search(nvars, clauses.to_vec(), /*show_progress=*/ false) {
+        match cadical_search(nvars, clauses.to_vec(), /*show_progress=*/ false, &[]) {
             SearchOutcome::Sat(asgn) => Ok(asgn),
             SearchOutcome::Unsat => Err(()),
             SearchOutcome::Interrupted => panic!("test cadical_search reported interrupted"),
@@ -4788,11 +4864,11 @@ mod tests {
     fn cadical_search_smoke() {
         // Same shape as `matrix_search_smoke` but going through the
         // CaDiCaL backend.
-        match cadical_search(3, vec![vec![1, -2], vec![2, 3], vec![-1, -3]], false) {
+        match cadical_search(3, vec![vec![1, -2], vec![2, 3], vec![-1, -3]], false, &[]) {
             SearchOutcome::Sat(_) => {}
             other => panic!("expected Sat, got {:?}", outcome_kind(&other)),
         }
-        match cadical_search(1, vec![vec![1], vec![-1]], false) {
+        match cadical_search(1, vec![vec![1], vec![-1]], false, &[]) {
             SearchOutcome::Unsat => {}
             other => panic!("expected Unsat, got {:?}", outcome_kind(&other)),
         }

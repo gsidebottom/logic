@@ -1,0 +1,57 @@
+# Where does the bundled solver's gap to the standalone one come from?
+# (2026-09-18, 120 s cap, one solver at a time.)
+#
+# Three arms over the same files:
+#   A  `cadical` on PATH, 3.0.0, file input          -- the reference quoted in doc/
+#   B  3.0.1 linked standalone from the SAME objects `sat -b cadical` uses,
+#      file input                                    -- isolates version + build flags
+#   C  `sat -b cadical`, those objects through the shim's incremental API
+#                                                    -- isolates our harness
+#
+# C/B = 1.00 on every instance: the shim, the incremental clause API and the
+# sat harness cost nothing measurable (fixed cost 3 ms on a 2-clause CNF, and
+# CaDiCaL throttles the terminator callback to one poll per `terminateint`=10
+# search-loop iterations).  The whole 1.73x is A vs B, standalone vs
+# standalone -- and that turned out to be two option defaults, see
+# boxes_cadical_vendored_options_2026-09-18.txt.
+
+fixed cost on a 2-clause CNF: sat -b cadical 3 ms, standalone 3 ms
+
+instance                    A 3.0.0 file  B 3.0.1 file   C 3.0.1 sat     B/A     C/B
+toughsat_factoring_895s           17.65s       105.92s       107.25s    6.00    1.01
+toughsat_factoring_148s           12.91s        23.60s        23.61s    1.83    1.00
+toughsat_factoring_426s               TO         5.04s         5.03s       -    1.00
+pyhala-braun-sat-40-4-03           7.94s        25.41s        25.43s    3.20    1.00
+pyhala-braun-sat-30-4-01           0.76s         2.10s         2.10s    2.75    1.00
+ezfact64_6                        28.42s        20.77s        20.78s    0.73    1.00
+c3540                              0.44s         0.28s         0.29s    0.64    1.02
+php9_8                             0.01s         0.23s         0.23s   21.42    1.00
+
+same family, four shufflings (does a single-instance ratio mean anything?)
+  pyhala-braun-sat-40-4-01  3.0.0   64.77s   3.0.1   32.61s
+  pyhala-braun-sat-40-4-02  3.0.0   43.02s   3.0.1   44.03s
+  pyhala-braun-sat-40-4-03  3.0.0   54.69s   3.0.1   49.30s
+  pyhala-braun-sat-40-4-04  3.0.0   33.61s   3.0.1   31.89s
+
+B/A (vendored 3.0.1 vs brew 3.0.0, both file input): 1.73x geomean over 11
+C/B (same objects through sat's API vs standalone): 1.00x geomean over 8
+DECOMPOSE EXIT
+
+# End-to-end check after `Solver::reserve` was added (it declares the `p cnf`
+# header's variables, which CaDiCaL 3.0.1 *requires* before a clause once
+# `factor` is on -- it aborts the process otherwise, and that is how this was
+# found).  `sat -b cadical` at release defaults, then asking for 3.0.0's
+# configuration through the new flag; last column is the same configuration
+# measured on the standalone binary above.
+
+instance                     defaults    (sweep)      +f+p   (standalone +f+p)
+php9_8                          0.53s      0.23s     0.01s      0.01s
+c3540                           0.27s      0.29s     0.42s      0.43s
+pyhala-braun-sat-40-4-03       24.57s     25.43s     7.68s      7.98s
+ezfact64_6                     20.29s     20.78s    76.19s     78.42s
+
+# The flag reaches exactly the configuration it names, through the API.  The
+# declaration left the release-default column alone except on php9_8, where
+# initializing all 72 variables up front instead of as clauses arrive moved a
+# tiny symmetric instance from 0.23 s to 0.53 s -- a trajectory difference,
+# not a cost: c3540, pyhala-40 and ezfact64_6 are unchanged within noise.

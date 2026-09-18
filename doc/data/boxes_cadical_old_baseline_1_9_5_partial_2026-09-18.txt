@@ -1,0 +1,15 @@
+# The old bundled baseline against the standalone 3.0.0 (2026-09-17),
+# 120 s cap.  'cadical 1.9.5' is `sat -b cadical` as it was before
+# vendor/cadical-3.0.1 replaced the `cadical` crate -- i.e. the solver
+# every CaDiCaL column in doc/box_candidates_satcomp.md's measurement
+# sections was taken against.  Partial: the run was stopped once the
+# vendoring made its 1.9.5 column redundant (those numbers are the
+# doc's existing ones), but the size of the error is the point.
+
+instance                                       verdict   cadical 1.9.5  cadical 3.0.0  3.0.0 faster by
+16_16_booth_dadda_origin_and_and_dadda_origin_ TO                   TO             TO             nanx
+16_16_booth_dadda_origin_and_and_dadda_origin_ TO                   TO             TO             nanx
+c3540                                          UNSAT             0.49s          0.45s            1.09x
+c5315                                          UNSAT             0.16s          0.12s            1.34x
+eq.atree.braun.13.unsat                        TO                   TO             TO             nanx
+ezfact64_6.shuffled-as.sat05-453               SATIS           110.17s         30.55s            3.61x

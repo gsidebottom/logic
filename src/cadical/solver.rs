@@ -16,10 +16,13 @@
 //! The API is deliberately the crate's, so the call sites did not change:
 //! [`Solver`] parameterized by a [`Callbacks`] implementation, `solve`
 //! returning `Option<bool>` with `None` for "terminated without an answer".
-//! What is gone is `reserve` (3.0.1 dropped it) and the `Option` in
-//! `value`: CaDiCaL 3 gives declared-but-unused variables a default value,
-//! so a model covers every variable in range.  `value` still answers
-//! `None`, but only outside a satisfied state.
+//! What changed is `value`'s `Option`: CaDiCaL 3 gives
+//! declared-but-unused variables a default value, so a model covers every
+//! variable in range, and `value` answers `None` only outside a satisfied
+//! state.  `reserve` is still here, but backed by 3.0.1's
+//! `declare_more_variables` rather than the `reserve` it renamed to
+//! `resize` — see [`Solver::reserve`], which is a correctness requirement
+//! and not just an optimization now.
 
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::panic::AssertUnwindSafe;
@@ -37,6 +40,7 @@ unsafe extern "C" {
     fn c3_status(s: *mut c_void) -> c_int;
     fn c3_val(s: *mut c_void, lit: c_int) -> c_int;
     fn c3_max_var(s: *mut c_void) -> c_int;
+    fn c3_declare_vars(s: *mut c_void, n: c_int) -> c_int;
     fn c3_set_option(s: *mut c_void, name: *const c_char, val: c_int) -> c_int;
     fn c3_connect(
         s: *mut c_void,
@@ -47,6 +51,24 @@ unsafe extern "C" {
     );
     fn c3_disconnect(s: *mut c_void);
 }
+
+/// The two options release **3.0.0** had on and 3.0.1 ships off.
+///
+/// A release's defaults are part of its identity, and these two are worth
+/// 1.73× by geomean over this repo's benchmark set — measured both ways
+/// (`doc/data/cadical_vendored_options_2026-09-18.txt`): 3.0.1 with them on
+/// matches 3.0.0's default times, and 3.0.0 with them off matches 3.0.1's.
+/// On `php9_8` it is 0.01 s against 0.22 s.
+///
+/// Nothing applies them: `sat -b cadical` runs the vendored release's own
+/// defaults, because 3.0.1 *with* them on is slower than 3.0.1 without on
+/// four of the six instances measured — 3.0.0 is faster than both, but not
+/// for a reason either configuration of 3.0.1 reproduces.  They are named
+/// here because every "vs CaDiCaL" number in `doc/` predates the vendoring
+/// and was taken against a solver that had them on, and
+/// `sat -b cadical --cadical-opt factor=1 --cadical-opt preprocesslight=1`
+/// is how to ask for that configuration.
+pub const RELEASE_3_0_0_DEFAULTS: [(&str, i32); 2] = [("factor", 1), ("preprocesslight", 1)];
 
 /// CaDiCaL's build identification, e.g. `3.0.1 <sha> <date> <compiler>`.
 pub fn signature() -> &'static str {
@@ -230,6 +252,26 @@ impl<C: Callbacks> Solver<C> {
     /// The largest variable index seen so far.
     pub fn max_variable(&self) -> i32 {
         unsafe { c3_max_var(self.ptr) }
+    }
+
+    /// Declare variables up to `max_var` before adding clauses.
+    ///
+    /// Not merely an optimization: with `factor` (bounded variable
+    /// addition) enabled, CaDiCaL 3.0.1 **aborts the process** on a clause
+    /// mentioning a variable that was never declared, because BVA needs to
+    /// know which indices are the caller's to keep (`factorcheck`).  The
+    /// standalone binary declares them from the `p cnf` header; a caller
+    /// going through this API has to say so itself.
+    ///
+    /// CaDiCaL leaves its configuring state here, so
+    /// [`Solver::set_option`] must come first — and afterwards answers
+    /// `false` rather than letting CaDiCaL abort.
+    pub fn reserve(&mut self, max_var: i32) {
+        let have = unsafe { c3_max_var(self.ptr) };
+        if max_var > have {
+            self.configuring = false;
+            unsafe { c3_declare_vars(self.ptr, max_var - have) };
+        }
     }
 
     /// Set a CaDiCaL option (`"restart"`, `"chrono"`, …), as
@@ -447,6 +489,42 @@ mod tests {
         assert!(!solver.set_option("restart", 1), "too late to configure");
         assert_eq!(solver.solve(), Some(true));
         assert_eq!(solver.max_variable(), 1);
+    }
+
+    /// If a re-vendoring renames or drops one of these, the reference
+    /// configuration silently stops being applied — which is the failure
+    /// this constant exists to prevent.
+    #[test]
+    fn the_reference_options_still_exist() {
+        let mut solver: Solver = Solver::new();
+        for (name, value) in RELEASE_3_0_0_DEFAULTS {
+            assert!(solver.set_option(name, value), "CaDiCaL 3.0.1 has no option {name:?}");
+        }
+        // `factor` is on: without this the next line aborts the process.
+        solver.reserve(2);
+        assert!(!solver.set_option("factor", 1), "no options after a declaration");
+        solver.add_clause([1, 2]);
+        solver.add_clause([-1]);
+        assert_eq!(solver.solve(), Some(true));
+        assert_eq!(solver.value(2), Some(true));
+        assert!(solver.max_variable() >= 2);
+    }
+
+    #[test]
+    fn reserving_does_not_disturb_the_answer() {
+        let mut a: Solver = Solver::new();
+        let mut b: Solver = Solver::new();
+        b.reserve(5);
+        for s in [&mut a, &mut b] {
+            s.add_clause([1, 2]);
+            s.add_clause([-1, 3]);
+            s.add_clause([-3, -2]);
+        }
+        assert_eq!(a.solve(), Some(true));
+        assert_eq!(b.solve(), Some(true));
+        // Declared but unmentioned: valued, not refused.
+        assert!(b.value(5).is_some());
+        assert!(b.max_variable() >= 5);
     }
 
     #[test]

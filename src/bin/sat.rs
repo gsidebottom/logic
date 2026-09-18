@@ -1705,6 +1705,37 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
     eprintln!("c boxes: chronological backtracking: {} chronological backtracks, {} literals kept out of order{}",
               s.chrono_backtracks, s.chrono_kept, if eng.chrono { format!(" (threshold {} levels)", eng.chrono_levels) } else { ", off".to_string() });
     if eng.nexplain() > 0 { eprintln!("c boxes: {} table reasons taken from gate clauses", s.explanation_gate); }
+    // Where the search actually fails, and — with BOXES_EFF_STUDY=1 — where
+    // the failing box ranked by live rows when the last decision was made.
+    // The first line alone bounds what a box-guided decision heuristic
+    // (design doc §3.4) could steer; the rest says whether the ranking
+    // carries any signal to steer it with.
+    {
+        let f = &s.eff;
+        let box_pct = 100.0 * f.box_conflicts as f64 / (f.box_conflicts + f.clause_conflicts).max(1) as f64;
+        eprintln!("c boxes: conflicts by source: {} in tables ({:.1}%), {} in clauses",
+                  f.box_conflicts, box_pct, f.clause_conflicts);
+        if f.sampled > 0 {
+            let pct = |x: u64| 100.0 * x as f64 / f.sampled as f64;
+            eprintln!("c boxes: eff study: {} table conflicts ranked ({} at level 0 unranked); \
+                       failing box had {:.1} live rows against a {:.1} mean; \
+                       most constrained {:.1}% of the time, in the ten most constrained {:.1}%",
+                      f.sampled, f.unsampled,
+                      f.conflict_rows as f64 / f.sampled as f64,
+                      f.population_rows / f.sampled as f64,
+                      pct(f.top1), pct(f.top10));
+            let d: Vec<String> = f.deciles.iter().map(|&x| format!("{:.1}", pct(x))).collect();
+            eprintln!("c boxes: eff study: rank deciles by live rows (most constrained first), % of conflicts: {} \
+                       [uniform = 10.0 each, i.e. no signal]", d.join(" "));
+            let df: Vec<String> = f.deciles_frac.iter().map(|&x| format!("{:.1}", pct(x))).collect();
+            eprintln!("c boxes: eff study: rank deciles by fraction of rows live: {} \
+                       (failing box {:.3} alive against a {:.3} mean; most constrained {:.1}%)",
+                      df.join(" "), f.conflict_frac / f.sampled as f64,
+                      f.population_frac / f.sampled as f64, pct(f.top1_frac));
+            eprintln!("c boxes: eff study: failing box started with {:.1} rows against a {:.1} mean table",
+                      f.conflict_nrows as f64 / f.sampled as f64, f.population_nrows / f.sampled as f64);
+        }
+    }
     if let Some(p) = &mut eng.proof {
         p.flush();
         let (steps, dels, lemmas, lsteps) = (p.steps, p.deletions, p.lemmas, p.lemma_steps);

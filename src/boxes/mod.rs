@@ -126,6 +126,63 @@ pub enum Verdict {
     Unknown,
 }
 
+/// Does box constrainedness say anything about where the search fails?
+///
+/// §3.4 of the design doc specifies branching on the box with the fewest
+/// live rows — the fail-first / MRV argument that a box near failing is the
+/// cheapest place to discover the failure.  The premise is testable without
+/// building the heuristic: at every conflict, ask where the conflicting
+/// box's live count ranked among all boxes *at the moment of the preceding
+/// decision*, which the per-level snapshots already hold.
+///
+/// Uniform deciles mean constrainedness says nothing about which box fails
+/// next, and every heuristic built on it is dead on arrival.  Concentration
+/// in the lowest decile is necessary evidence and not sufficient: this
+/// samples the trajectory VSIDS takes, and an MRV-driven search would take
+/// a different one.
+///
+/// `BOXES_EFF_STUDY=1`; off by default because ranking costs O(boxes) per
+/// conflict.
+#[derive(Default, Debug, Clone)]
+pub struct EffStudy {
+    /// Conflicts by where they came from.  A box-guided decision heuristic
+    /// can only steer the box ones, so this ratio bounds what it could buy
+    /// — and on a plain CNF, where every constraint is a watched clause and
+    /// `hdr` is empty, it bounds it at nothing.
+    pub box_conflicts: u64,
+    pub clause_conflicts: u64,
+    /// Box conflicts with a preceding decision to rank against, and those
+    /// at level 0 with none.
+    pub sampled: u64,
+    pub unsampled: u64,
+    /// Where the conflicting box ranked; `deciles[0]` is the most
+    /// constrained tenth.
+    pub deciles: [u64; 10],
+    /// It was among the most constrained boxes, and among the ten most
+    /// constrained.  Ties count in the box's favour, so both are upper
+    /// bounds on what a heuristic could actually hit.
+    pub top1: u64,
+    pub top10: u64,
+    /// Live rows of the conflicting box, summed over samples, against the
+    /// all-box mean summed once per sample — both as of that decision.
+    pub conflict_rows: u64,
+    pub population_rows: f64,
+    /// The same ranking by *fraction* of rows still live rather than by
+    /// count.  §3.4 says "fewest live rows" literally, but a raw count
+    /// conflates being tightly constrained now with having been a big table
+    /// to begin with — a K = 8 cone can start with 256 rows and a small one
+    /// with 4 — and the CSP heuristic this lifts compares domains against
+    /// their own size.  Both readings get measured.
+    pub deciles_frac: [u64; 10],
+    pub top1_frac: u64,
+    pub conflict_frac: f64,
+    pub population_frac: f64,
+    /// Initial table size of the conflicting box against the mean, which
+    /// exposes that confound directly.
+    pub conflict_nrows: u64,
+    pub population_nrows: f64,
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct Stats {
     pub decisions: u64,
@@ -160,6 +217,8 @@ pub struct Stats {
     pub vivified_lits: u64,
     /// Subsumption rounds, clauses subsumed away, and clauses strengthened
     /// by self-subsuming resolution (with the literals they lost).
+    /// Branching-heuristic study (`BOXES_EFF_STUDY=1`), all zero otherwise.
+    pub eff: EffStudy,
     /// Learned-clause shrinking: level blocks replaced by their block UIP,
     /// blocks tried, and the literals removed.
     /// Conflicts resolved by backtracking one level instead of to the
@@ -336,6 +395,15 @@ pub struct Engine {
     occ: Vec<Vec<Occ>>,
     /// Live-row masks, box `b` at words `hdr[b].off ..`.
     live: Vec<u64>,
+    /// Live rows per box — the popcount of its words in `live`, maintained
+    /// incrementally because every writer of `live` already touches each
+    /// word.  This is §3.4's "effective path count": the exact number of
+    /// paths the box still admits under the trail, not an estimate of it.
+    live_count: Vec<u32>,
+    /// Snapshots of `live_count`, in step with `snap`.
+    snap_count: Vec<u32>,
+    /// Sample the branching-heuristic premise (`BOXES_EFF_STUDY=1`).
+    eff_study: bool,
     /// Snapshots of `live` at the start of each open decision level.
     snap: Vec<u64>,
     in_queue: Vec<bool>,
@@ -525,7 +593,9 @@ pub struct Engine {
 impl Engine {
     pub fn new(nvars: usize, boxes: Vec<TableBox>) -> Engine {
         let mut e = Engine {
-            nvars: 0, hdr: Vec::new(), vars_all: Vec::new(), kill_all: Vec::new(), occ: Vec::new(), live: Vec::new(), snap: Vec::new(), in_queue: Vec::new(), queue: Vec::new(),
+            nvars: 0, hdr: Vec::new(), vars_all: Vec::new(), kill_all: Vec::new(), occ: Vec::new(), live: Vec::new(), live_count: Vec::new(), snap_count: Vec::new(),
+            eff_study: matches!(std::env::var("BOXES_EFF_STUDY").as_deref(), Ok("1") | Ok("on")),
+            snap: Vec::new(), in_queue: Vec::new(), queue: Vec::new(),
             arena: Vec::new(), cstart: Vec::new(), clen: Vec::new(), watches: Vec::new(), bins: Vec::new(), first_learnt: 0,
             xarena: Vec::new(), xstart: Vec::new(), xlen: Vec::new(), xidx: Vec::new(),
             learnt_lbd: Vec::new(), learnt_act: Vec::new(), deleted: Vec::new(), cla_inc: 1.0, reduce_at: 0,
@@ -788,6 +858,7 @@ impl Engine {
             let kb = kbase as usize + 2 * li * nw + if val == Val::T { nw } else { 0 };
             for w in 0..nw { self.live[off + w] &= !self.kill_all[kb + w]; }
         }
+        self.live_count.push((0..nw).map(|w| self.live[off + w].count_ones()).sum());
         self.in_queue.push(false);
     }
 
@@ -877,6 +948,7 @@ impl Engine {
     fn new_level(&mut self) {
         self.trail_lim.push(self.trail.len());
         self.snap.extend_from_slice(&self.live);
+        self.snap_count.extend_from_slice(&self.live_count);
     }
 
     /// Undo decision levels above `lvl`.
@@ -901,6 +973,10 @@ impl Engine {
         let from = self.snap.len() - start * n;
         self.live.copy_from_slice(&self.snap[from..from + n]);
         self.snap.truncate(from);
+        let nc = self.live_count.len();
+        let fromc = self.snap_count.len() - start * nc;
+        self.live_count.copy_from_slice(&self.snap_count[fromc..fromc + nc]);
+        self.snap_count.truncate(fromc);
         self.trail_lim.truncate(lvl);
         self.clear_queue();
         // The kept literals go back on in their original order, so each still
@@ -972,13 +1048,16 @@ impl Engine {
             let h = self.hdr[b as usize];
             let (off, nw) = (h.off as usize, h.nw as usize);
             let kb = koff as usize + if val == Val::T { nw } else { 0 };
-            let mut changed = false;
+            let mut removed = 0u32;
             for w in 0..nw {
                 let old = self.live[off + w];
                 let new = old & !self.kill_all[kb + w];
-                if new != old { self.live[off + w] = new; changed = true; }
+                if new != old { self.live[off + w] = new; removed += (old & !new).count_ones(); }
             }
-            if changed && !self.in_queue[b as usize] { self.in_queue[b as usize] = true; self.queue.push(b); }
+            if removed > 0 {
+                self.live_count[b as usize] -= removed;
+                if !self.in_queue[b as usize] { self.in_queue[b as usize] = true; self.queue.push(b); }
+            }
         }
     }
 
@@ -1074,7 +1153,9 @@ impl Engine {
             self.in_queue[b] = false;
             let h = self.hdr[b];
             let (off, nw) = (h.off as usize, h.nw as usize);
-            if (0..nw).all(|w| self.live[off + w] == 0) { self.clear_queue(); return Some(Conflict::Box(b as u32)); }
+            debug_assert_eq!(self.live_count[b], (0..nw).map(|w| self.live[off + w].count_ones()).sum::<u32>(),
+                             "live_count out of step with live for box {b}");
+            if self.live_count[b] == 0 { self.clear_queue(); return Some(Conflict::Box(b as u32)); }
             for li in 0..h.nvars as usize {
                 let var = self.vars_all[h.vbase as usize + li];
                 if self.vals[var as usize] != Val::U { continue; }
@@ -1093,6 +1174,53 @@ impl Engine {
                 }
             }
         }
+    }
+
+    /// Record where the conflicting box ranked by live rows at the
+    /// preceding decision — see [`EffStudy`].  Called before the conflict
+    /// is analysed, while the top snapshot is still that decision's.
+    fn eff_sample(&mut self, conflict: Conflict) {
+        let b = match conflict {
+            Conflict::Clause(_) => { self.stats.eff.clause_conflicts += 1; return; }
+            Conflict::Box(b) | Conflict::Forced { b, .. } => b as usize,
+        };
+        self.stats.eff.box_conflicts += 1;
+        if !self.eff_study { return; }
+        let n = self.live_count.len();
+        if n == 0 || self.trail_lim.is_empty() { self.stats.eff.unsampled += 1; return; }
+        let at = &self.snap_count[self.snap_count.len() - n..];
+        let size = |i: usize| self.hdr[i].nrows.max(1) as f64;
+        let mine = at[b];
+        let mine_frac = mine as f64 / size(b);
+        let (mut less, mut equal, mut total) = (0usize, 0usize, 0u64);
+        let (mut less_f, mut equal_f) = (0usize, 0usize);
+        let (mut total_f, mut total_n) = (0.0f64, 0u64);
+        for (i, &x) in at.iter().enumerate() {
+            if x < mine { less += 1 } else if x == mine { equal += 1 }
+            total += x as u64;
+            let f = x as f64 / size(i);
+            if f < mine_frac { less_f += 1 } else if f == mine_frac { equal_f += 1 }
+            total_f += f;
+            total_n += self.hdr[i].nrows as u64;
+        }
+        // Mid-rank within the tied block, so a population of equal counts
+        // lands mid-scale instead of pretending to be most constrained.
+        let rank = less as f64 + (equal as f64 - 1.0) / 2.0;
+        let rank_f = less_f as f64 + (equal_f as f64 - 1.0) / 2.0;
+        let nrows = self.hdr[b].nrows;
+        let e = &mut self.stats.eff;
+        e.sampled += 1;
+        e.deciles[((rank / n as f64) * 10.0) as usize % 10] += 1;
+        if less == 0 { e.top1 += 1; }
+        if less < 10 { e.top10 += 1; }
+        e.conflict_rows += mine as u64;
+        e.population_rows += total as f64 / n as f64;
+        e.deciles_frac[((rank_f / n as f64) * 10.0) as usize % 10] += 1;
+        if less_f == 0 { e.top1_frac += 1; }
+        e.conflict_frac += mine_frac;
+        e.population_frac += total_f / n as f64;
+        e.conflict_nrows += nrows as u64;
+        e.population_nrows += total_n as f64 / n as f64;
     }
 
     /// The literals (all FALSE now) explaining why the rows in `target` of
@@ -2027,6 +2155,7 @@ impl Engine {
             if let Some(conflict) = self.propagate() {
                 self.stats.conflicts += 1;
                 conflicts_here += 1;
+                self.eff_sample(conflict);
                 let trail_len = self.trail.len() as u32;
                 let from_box = !matches!(conflict, Conflict::Clause(_));
                 let mut lits = Vec::new();
@@ -2784,6 +2913,112 @@ mod tests {
             boxes.push(TableBox::new(rows));
         }
         (base as usize + 3 * k, gates, boxes)
+    }
+
+    /// `live_count` is a cache of a popcount, and a cache that drifts from
+    /// what it caches is worse than no cache: the dead-box test reads it
+    /// instead of scanning the words, so a stale count either invents a
+    /// conflict or hides one.  The `debug_assert` in `propagate` checks it
+    /// on every dequeue of every debug run; this pins the two paths that
+    /// the assert alone would not distinguish — the incremental subtraction
+    /// in `apply_kills`, and the wholesale restore in `backjump`.
+    fn counts_agree(e: &Engine) {
+        for b in 0..e.hdr.len() {
+            let h = e.hdr[b];
+            let (off, nw) = (h.off as usize, h.nw as usize);
+            let want: u32 = (0..nw).map(|w| e.live[off + w].count_ones()).sum();
+            assert_eq!(e.live_count[b], want, "box {b}: count {} but {want} rows live", e.live_count[b]);
+        }
+    }
+
+    /// The boxed form of the adder — tables and the units, no gate clauses.
+    /// With the gates present every conflict arrives through unit
+    /// propagation and the tables never fail at all.
+    fn boxed_adder(k: usize, maxbits: usize, sum: u64) -> Engine {
+        let (n, _gates, boxes) = adder_chain(k);
+        let mut e = Engine::new(n, boxes);
+        for c in &adder_units(k, maxbits, sum) {
+            e.add_clause(&c.iter().map(|&l| lit_of_dimacs(l)).collect::<Vec<_>>());
+        }
+        e
+    }
+
+    /// Pigeonhole as tables only: one exactly-one box per pigeon (one row
+    /// per hole) and one at-most-one box per hole (all-empty, plus one row
+    /// per pigeon).  Unlike the adder, GAC over these cannot refute it —
+    /// the pigeonhole is the standard example of a formula whose
+    /// unsatisfiability no amount of local consistency sees — so the engine
+    /// has to search, and the tables are where it fails.  That is what a
+    /// study of box constrainedness needs.
+    fn boxed_php(pigeons: usize, holes: usize) -> Engine {
+        let x = |p: usize, h: usize| (p * holes + h) as u32;
+        let mut boxes = Vec::new();
+        for p in 0..pigeons {
+            boxes.push(TableBox::new((0..holes).map(|j|
+                (0..holes).map(|h| Lit { var: x(p, h), neg: h != j }).collect()
+            ).collect()));
+        }
+        for h in 0..holes {
+            let mut rows: Vec<Vec<Lit>> = vec![(0..pigeons).map(|p| Lit { var: x(p, h), neg: true }).collect()];
+            rows.extend((0..pigeons).map(|i|
+                (0..pigeons).map(|p| Lit { var: x(p, h), neg: p != i }).collect::<Vec<_>>()
+            ));
+            boxes.push(TableBox::new(rows));
+        }
+        Engine::new(pigeons * holes, boxes)
+    }
+
+    #[test]
+    fn live_counts_track_the_masks() {
+        // UNSAT with real search, so the counts go through the incremental
+        // subtraction and the wholesale restore many times over.
+        let mut e = boxed_php(8, 7);
+        assert_eq!(e.solve(), Verdict::Unsat);
+        counts_agree(&e);
+        assert!(e.stats.eff.box_conflicts > 0, "the fixture should fail inside the tables");
+
+        // Propagation only: the boxed adder refutes with no conflict at all
+        // (GAC over the cells is enough), which exercises `apply_kills`
+        // without ever restoring a snapshot.
+        let mut e = boxed_adder(8, 4, 200);
+        assert_eq!(e.solve(), Verdict::Unsat);
+        counts_agree(&e);
+        assert_eq!(e.stats.conflicts, 0, "the boxed adder should not need to search");
+
+        // SAT, so the run ends mid-trail with counts reflecting a partial
+        // assignment rather than a refutation.
+        let mut e = boxed_adder(8, 8, 200);
+        assert!(matches!(e.solve(), Verdict::Sat(_)));
+        counts_agree(&e);
+    }
+
+    #[test]
+    fn the_eff_study_ranks_the_conflicting_box() {
+        let mut e = boxed_php(8, 7);
+        e.eff_study = true;
+        assert_eq!(e.solve(), Verdict::Unsat);
+        let s = &e.stats.eff;
+        assert!(s.sampled > 0, "no box conflict was ranked: {s:?}");
+        assert_eq!(s.sampled + s.unsampled, s.box_conflicts, "every box conflict is sampled or explained");
+        assert_eq!(s.deciles.iter().sum::<u64>(), s.sampled, "every sample lands in exactly one decile");
+        assert!(s.top1 <= s.top10 && s.top10 <= s.sampled);
+        assert!(s.conflict_rows > 0 && s.population_rows > 0.0);
+        // The ranking is over boxes, so a conflict in a clause is not one.
+        assert!(s.clause_conflicts + s.box_conflicts >= e.stats.conflicts);
+    }
+
+    /// The two conflict tallies are free and always on — they bound what a
+    /// box-guided heuristic could steer at all — while the ranking that
+    /// costs O(boxes) per conflict waits to be asked for.
+    #[test]
+    fn the_study_is_off_unless_asked_for() {
+        let mut e = boxed_php(7, 6);
+        assert!(!e.eff_study, "BOXES_EFF_STUDY must not be on by default");
+        assert_eq!(e.solve(), Verdict::Unsat);
+        let s = &e.stats.eff;
+        assert!(s.box_conflicts > 0, "{s:?}");
+        assert_eq!((s.sampled, s.unsampled, s.top1, s.conflict_rows), (0, 0, 0, 0));
+        assert_eq!(s.deciles, [0; 10]);
     }
 
     /// Units fixing a and b free below `maxbits`, carry-in 0 and the sum to

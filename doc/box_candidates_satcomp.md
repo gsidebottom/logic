@@ -169,6 +169,45 @@ reproducible.  Also in the same commit: the CaDiCaL backend
 self-checks its models now and refuses to answer on a violation, as the
 boxes backend already did.
 
+### Where the search actually fails (2026-09-18)
+
+`BOXES_EFF_STUDY=1` splits every conflict three ways
+(`doc/data/boxes_conflict_sources_2026-09-18.txt`): inside a compiled box,
+inside an **original** clause the translator left in the residual CNF, or
+inside a clause **learned** during the search.  Only the middle one is
+headroom for a better cut — a learned clause did not exist when the
+instance was compiled, so no translator can reach it.
+
+The headroom is not uniform.  It is concentrated on exactly the families
+where the box form loses:
+
+| | original-clause conflicts |
+|---|---|
+| c3540 K=8 / K=12, c5315, toughsat, lec_mult, sum_of_3_cubes | 0.1–4.8 % |
+| pyhala-braun-sat-40 | 16.8 % |
+| ezfact64_6 | 22.2 % |
+| eq.atree.braun.13 | 28.4 % |
+| 16_16_booth | 30.3 % |
+
+So on the ISCAS circuits and toughsat the translator has finished its job —
+a bigger or differently-shaped cone would absorb clauses the search almost
+never fails on — while on the multiplier, miter and factoring families a
+fifth to a third of all conflicts land in clauses nobody compiled.  That is
+where `tools/cnf2boxes.py` has something left to do, and it is the same set
+of families flagged by the 16–24 % table share in §3.4's study.
+
+Two cautions on that headroom.  On those same families **48–56 % of
+conflicts are in learned clauses**, so absorbing every residual original
+clause would still leave the majority of this run's failures out of reach —
+not a hard bound, since absorbing the residual changes the search and the
+learned clauses with it, but enough to say the translator is optimising a
+minority term even where it has room.  And conflict concentration argues
+against mining for a few especially powerful boxes: on the interesting
+families *every* box fails (152/152, 470/477, 308/308), with the busiest
+10 % carrying half to two thirds.  If there is powerful structure left to
+find it is in the residual clauses, not in a subset of the tables already
+built.
+
 **Against 3.0.0, the box form wins nothing.**  Seven boxed instances, one
 solver at a time, 240 s cap, verdicts agreeing:
 

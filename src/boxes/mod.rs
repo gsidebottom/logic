@@ -151,6 +151,12 @@ pub struct EffStudy {
     /// `hdr` is empty, it bounds it at nothing.
     pub box_conflicts: u64,
     pub clause_conflicts: u64,
+    /// Of the clause conflicts, those in a *learned* clause.  The
+    /// distinction bounds the translator: an original clause that keeps
+    /// producing conflicts is one a bigger or better-shaped box could have
+    /// absorbed, and a learned clause is one no translator can ever reach,
+    /// because it did not exist when the instance was compiled.
+    pub clause_conflicts_learned: u64,
     /// Box conflicts with a preceding decision to rank against, and those
     /// at level 0 with none.
     pub sampled: u64,
@@ -409,6 +415,8 @@ pub struct Engine {
     snap_count: Vec<u32>,
     /// Sample the branching-heuristic premise (`BOXES_EFF_STUDY=1`).
     eff_study: bool,
+    /// Conflicts per box, under `eff_study` — see [`Engine::eff_concentration`].
+    eff_box_hits: Vec<u32>,
     /// Snapshots of `live` at the start of each open decision level.
     snap: Vec<u64>,
     in_queue: Vec<bool>,
@@ -600,6 +608,7 @@ impl Engine {
         let mut e = Engine {
             nvars: 0, hdr: Vec::new(), vars_all: Vec::new(), kill_all: Vec::new(), occ: Vec::new(), live: Vec::new(), live_count: Vec::new(), snap_count: Vec::new(),
             eff_study: matches!(std::env::var("BOXES_EFF_STUDY").as_deref(), Ok("1") | Ok("on")),
+            eff_box_hits: Vec::new(),
             snap: Vec::new(), in_queue: Vec::new(), queue: Vec::new(),
             arena: Vec::new(), cstart: Vec::new(), clen: Vec::new(), watches: Vec::new(), bins: Vec::new(), first_learnt: 0,
             xarena: Vec::new(), xstart: Vec::new(), xlen: Vec::new(), xidx: Vec::new(),
@@ -849,14 +858,32 @@ impl Engine {
         self.eff_study = on;
         self.snap_count.clear();
         self.live_count.clear();
+        self.eff_box_hits.clear();
         if on {
             for h in &self.hdr {
                 let (off, nw) = (h.off as usize, h.nw as usize);
-                if self.eff_study {
-            self.live_count.push((0..nw).map(|w| self.live[off + w].count_ones()).sum());
-        }
+                self.live_count.push((0..nw).map(|w| self.live[off + w].count_ones()).sum());
             }
+            self.eff_box_hits.resize(self.hdr.len(), 0);
         }
+    }
+
+    /// How concentrated the table conflicts are: the share carried by the
+    /// busiest 1% and 10% of boxes, and how many boxes failed at all out of
+    /// how many.
+    ///
+    /// Mining a benchmark for structure worth compiling only pays if the
+    /// failures concentrate — if every box fails about equally often there
+    /// is no "powerful box" to find, only a uniform cost of doing business.
+    pub fn eff_concentration(&self) -> Option<(f64, f64, usize, usize)> {
+        if !self.eff_study || self.eff_box_hits.is_empty() { return None; }
+        let mut v = self.eff_box_hits.clone();
+        v.sort_unstable_by(|a, b| b.cmp(a));
+        let total: u64 = v.iter().map(|&x| x as u64).sum();
+        if total == 0 { return None; }
+        let share = |k: usize| v.iter().take(k.max(1)).map(|&x| x as u64).sum::<u64>() as f64 / total as f64;
+        let hit = v.iter().filter(|&&x| x > 0).count();
+        Some((share(v.len() / 100), share(v.len() / 10), hit, v.len()))
     }
 
     pub fn add_box(&mut self, b: TableBox) {
@@ -884,7 +911,10 @@ impl Engine {
             let kb = kbase as usize + 2 * li * nw + if val == Val::T { nw } else { 0 };
             for w in 0..nw { self.live[off + w] &= !self.kill_all[kb + w]; }
         }
-        self.live_count.push((0..nw).map(|w| self.live[off + w].count_ones()).sum());
+        if self.eff_study {
+            self.live_count.push((0..nw).map(|w| self.live[off + w].count_ones()).sum());
+            self.eff_box_hits.push(0);
+        }
         self.in_queue.push(false);
     }
 
@@ -1211,11 +1241,16 @@ impl Engine {
     /// is analysed, while the top snapshot is still that decision's.
     fn eff_sample(&mut self, conflict: Conflict) {
         let b = match conflict {
-            Conflict::Clause(_) => { self.stats.eff.clause_conflicts += 1; return; }
+            Conflict::Clause(ci) => {
+                self.stats.eff.clause_conflicts += 1;
+                if ci as usize >= self.first_learnt { self.stats.eff.clause_conflicts_learned += 1; }
+                return;
+            }
             Conflict::Box(b) | Conflict::Forced { b, .. } => b as usize,
         };
         self.stats.eff.box_conflicts += 1;
         if !self.eff_study { return; }
+        self.eff_box_hits[b] += 1;
         let n = self.live_count.len();
         if n == 0 || self.trail_lim.is_empty() { self.stats.eff.unsampled += 1; return; }
         let at = &self.snap_count[self.snap_count.len() - n..];
@@ -3038,6 +3073,14 @@ mod tests {
         assert!(s.conflict_rows > 0 && s.population_rows > 0.0);
         // The ranking is over boxes, so a conflict in a clause is not one.
         assert!(s.clause_conflicts + s.box_conflicts >= e.stats.conflicts);
+        // This fixture is boxes only: every clause it can fail on was
+        // learned during the search, so none of them is structure a
+        // translator could ever have absorbed.
+        assert_eq!(s.clause_conflicts, s.clause_conflicts_learned);
+        let (t1, t10, hit, all) = e.eff_concentration().expect("the study counts per-box failures");
+        assert_eq!(all, 15, "8 pigeon boxes and 7 hole boxes");
+        assert!(hit > 0 && hit <= all);
+        assert!(t1 <= t10 && t10 <= 1.0 && t10 > 0.0);
     }
 
     /// The two conflict tallies are free and always on — they bound what a

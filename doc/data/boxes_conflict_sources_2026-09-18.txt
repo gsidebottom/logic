@@ -1,0 +1,65 @@
+# Where does the search actually fail, and what could a translator do about
+# it?  (2026-09-18, `BOXES_EFF_STUDY=1`, 120 s cap, compiled cones on disk.)
+#
+# Every conflict falls into exactly one of three places, and they have very
+# different implications for `tools/cnf2boxes.py`:
+#
+#   table    inside a compiled box -- structure the translator already
+#            absorbed, and the only conflicts a box-guided decision
+#            heuristic could ever steer
+#   orig     inside an ORIGINAL clause the translator left in the residual
+#            CNF -- structure a bigger or differently-shaped box might have
+#            absorbed.  This is the headroom for "bigger cones".
+#   learnt   inside a clause DERIVED during the search -- no translator can
+#            reach it, because it did not exist when the instance was
+#            compiled
+#
+# Concentration is over boxes: the share of table conflicts carried by the
+# busiest 1% and 10% of boxes, and how many boxes ever failed.  It says
+# whether there is a small set of "powerful boxes" to mine for.
+
+instance                            conflicts  table%   orig%  learnt%  concentration
+c3540-k8                               198388   84.5%    0.6%    14.9%  6.5%/51.6% in top 1%/10%, 264/272 boxes fail
+c3540-k12                              138968   78.6%    2.5%    18.9%  9.0%/45.7% in top 1%/10%, 295/301 boxes fail
+c5315-k8                                23814   85.7%    1.1%    13.2%  6.1%/33.7% in top 1%/10%, 329/330 boxes fail
+ezfact64_6.shuffled-as.sat05-453-k    1355858   24.0%   22.2%    53.8%  7.0%/49.6% in top 1%/10%, 152/152 boxes fail
+16_16_booth_dadda_origin_and_and_d    1744009   21.5%   30.3%    48.2%  15.4%/63.9% in top 1%/10%, 470/477 boxes fail
+eq.atree.braun.13.unsat-k8            1853184   15.8%   28.4%    55.8%  18.1%/56.7% in top 1%/10%, 308/308 boxes fail
+toughsat_factoring_895s-k12           1054099   72.8%    0.1%    27.1%  2.1%/26.0% in top 1%/10%, 192/194 boxes fail
+pyhala-braun-sat-40-4-03.shuffled-     181053   77.8%   16.8%     5.5%  7.9%/46.0% in top 1%/10%, 813/853 boxes fail
+sum_of_3_cubes_37_bits_87-k8           685430   87.9%    4.8%     7.3%  10.4%/60.8% in top 1%/10%, 2045/3978 boxes fail
+lec_mult_CvW_11x10.sanitized-k8       1701696   67.9%    3.1%    29.0%  6.1%/34.6% in top 1%/10%, 558/559 boxes fail
+
+# Reading it.
+#
+# The headroom for bigger or less conic cones is NOT uniform -- it is
+# concentrated on exactly the families where the box backend is weakest:
+#
+#   almost nothing left to absorb   c3540 (0.6-2.5%), c5315 (1.1%),
+#                                   toughsat (0.1%), lec_mult (3.1%),
+#                                   sum_of_3_cubes (4.8%)
+#   real headroom                   16_16_booth (30.3%), eq.atree.braun
+#                                   (28.4%), ezfact64_6 (22.2%),
+#                                   pyhala-braun-sat (16.8%)
+#
+# So on the ISCAS circuits and toughsat the translator has essentially
+# finished its job and a better cut would buy nothing; on the multiplier,
+# miter and factoring families a fifth to a third of all conflicts are still
+# landing in clauses nobody compiled.  That is the target, and it is the
+# same set of families the 16-24% table share flagged in
+# boxes_eff_study_2026-09-18.txt.
+#
+# The sobering half: on those same families 48-56% of conflicts are in
+# LEARNED clauses.  Absorbing every residual original clause would still
+# leave the majority of this run's failures in derived clauses.  That figure
+# is not a hard bound -- absorbing the residual changes the search, so the
+# learned clauses would be different ones -- but it does say the translator
+# is optimising a minority term on the instances where it has room at all.
+#
+# Concentration argues against the "find a few especially powerful boxes"
+# framing, at least among cones as currently cut: on the interesting
+# families EVERY box fails (152/152, 470/477, 308/308), with the busiest
+# 10% carrying half to two thirds.  Failure is spread across the whole
+# compiled structure rather than concentrated in a few tables.  If there is
+# powerful structure to mine, it is in the residual clauses above, not in a
+# subset of the boxes already built.

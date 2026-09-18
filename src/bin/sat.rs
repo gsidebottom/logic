@@ -1713,8 +1713,14 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
     {
         let f = &s.eff;
         let box_pct = 100.0 * f.box_conflicts as f64 / (f.box_conflicts + f.clause_conflicts).max(1) as f64;
-        eprintln!("c boxes: conflicts by source: {} in tables ({:.1}%), {} in clauses",
-                  f.box_conflicts, box_pct, f.clause_conflicts);
+        let orig = f.clause_conflicts - f.clause_conflicts_learned;
+        eprintln!("c boxes: conflicts by source: {} in tables ({:.1}%), {} in original clauses, \
+                   {} in learned clauses (absorbable by no translator)",
+                  f.box_conflicts, box_pct, orig, f.clause_conflicts_learned);
+        if let Some((t1, t10, hit, all)) = eng.eff_concentration() {
+            eprintln!("c boxes: eff study: table conflicts concentrate {:.1}% in the busiest 1% of boxes, \
+                       {:.1}% in the busiest 10%; {} of {} boxes ever failed", 100.0 * t1, 100.0 * t10, hit, all);
+        }
         if f.sampled > 0 {
             let pct = |x: u64| 100.0 * x as f64 / f.sampled as f64;
             eprintln!("c boxes: eff study: {} table conflicts ranked ({} at level 0 unranked); \

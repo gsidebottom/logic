@@ -925,6 +925,11 @@ impl Engine {
         out
     }
 
+    /// Conflicts per box, in box order — empty unless the study is on.
+    /// Boxes appended to a `--boxes` set land at the end, so a mined box's
+    /// share of the failures is the tail of this.
+    pub fn eff_box_hits(&self) -> &[u32] { &self.eff_box_hits }
+
     /// How concentrated the table conflicts are: the share carried by the
     /// busiest 1% and 10% of boxes, and how many boxes failed at all out of
     /// how many.

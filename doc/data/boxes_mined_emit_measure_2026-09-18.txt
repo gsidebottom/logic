@@ -1,0 +1,63 @@
+# Emit and measure: do mined boxes convert a propagation gap into time?
+# (2026-09-18, ezfact64_6 K=8, 300 s cap, one solver at a time.)
+#
+# Six boxes mined from the clauses the search kept failing on, scored at
+# 7-27% GAC gap, added to the 152 cone boxes.  The residual CNF is
+# byte-identical in both arms: mined boxes are ADDITIVE, they absorb
+# nothing, so any difference is propagation strength against its cost.
+#
+# Verdicts first: ezfact64_6 is SATISFIABLE, so a box that was not actually
+# implied would surface as a bogus UNSAT.  None did, in either arm.
+
+arm                        verdict    time     conflicts    propagations    rate
+cones only (152)                TO   299.4s     2853858     1695809273    9532/s
+cones + 6 wide  (158)           TO   299.0s     2853328     1687554309    9542/s
+cones only (152, rerun)         TO   299.0s     2857453     1697912203    9556/s
+cones + 6 narrow (158)          TO   299.0s     2819072     1692546091    9428/s
+
+#   wide   = 16 variables per box, 10084 rows total, gaps 7.3-27.2%
+#   narrow = 10 variables per box,   692 rows total, gaps 5.0-22.0%
+
+# Do the mined boxes fire at all?  (study on, 120 s cap, per-box counts.)
+#
+#   wide    1369 of 250961 table conflicts = 0.55%   per box [845,9,38,36,0,441]
+#   narrow  2117 of 274502 table conflicts = 0.77%   per box [25,566,36,1474,16,0]
+#
+#   cone mean 1642-1792 conflicts/box; mined mean 228 (wide), 353 (narrow).
+#   One box in each set never fired at all.
+
+=== What this says ===
+#
+# No speedup, and no cost either -- throughput is within 1.3% across all
+# four runs.  The boxes are simply almost never the constraint that speaks.
+#
+# The scoring function was measured under the wrong distribution.  GAC
+# versus UP was sampled over UNIFORM random partial assignments, and the
+# search does not visit uniform random partial assignments.  A gap that
+# exists is not a gap that triggers.
+#
+# The first explanation -- tables too WIDE to speak, since a 16-variable
+# table needs most of its variables assigned while a 3-literal clause
+# speaks when two literals die -- is only weakly supported.  Shrinking the
+# tables 15x moved firing from 0.55% to 0.77%.
+#
+# The better explanation is the ADDITIVE invariant itself.  Because a mined
+# box absorbs nothing, every clause it was built from is still present,
+# still watched, still propagating; the box only earns its keep where the
+# CONJUNCTION forces something no single clause does, and the clauses get
+# there first the rest of the time.  The property that made mined boxes
+# safe to add and sound to delete is the property that makes them
+# redundant.  A box pays when it is the ONLY carrier of its structure --
+# which means absorbing its clauses, which is what cone boxes do and why
+# they cannot be deleted.
+#
+# The decisive follow-up, if this is pursued: emit a mined box AND remove
+# the residual clauses inside its variable set.  That is sound (the table
+# is exactly the models of those clauses over those variables, so the box
+# entails them) and it forces the search through the stronger propagator.
+# It also gives up deletability and makes the mining correctness-critical,
+# which is the whole trade.
+#
+# A second refinement worth having either way: score candidates against the
+# TRAIL STATES the search actually visits, by dumping a sample of trails
+# beside the conflict clauses, instead of sampling assignments uniformly.

@@ -197,6 +197,36 @@ def selftest(samples=2000):
     return 0 if ok else 1
 
 
+def emit(base_json, groups_scored, out_name="boxes_mined.json", prefix="m"):
+    """Write the scored groups as extra boxes beside an existing cone set.
+
+    The mined boxes are ADDITIVE: the residual CNF is untouched and no
+    clause is absorbed, so each one is a redundant constraint implied by
+    clauses that remain.  That is what makes this safe to try (and, later,
+    safe to delete) — unlike a cone box, which replaces what it compiled.
+    """
+    import os, shutil
+    base = json.load(open(base_json))
+    d = os.path.dirname(os.path.abspath(base_json))
+    os.makedirs(os.path.join(d, "tables"), exist_ok=True)
+    added = []
+    for i, (V, rows) in enumerate(groups_scored):
+        name = f"{prefix}{i}"
+        tbl = {"name": name,
+               "vars": [f"v{j}" for j in range(len(V))],
+               "rows": [[(r >> j) & 1 for j in range(len(V))] for r in rows]}
+        with open(os.path.join(d, "tables", f"{name}.json"), "w") as f:
+            json.dump(tbl, f)
+        added.append({"table": f"tables/{name}.json", "args": list(V)})
+    out = os.path.join(d, out_name)
+    with open(out, "w") as f:
+        json.dump(base + added, f)
+    print(f"\nemitted {len(added)} mined boxes ({sum(len(r) for _, r in groups_scored)} rows total)")
+    print(f"  base {len(base)} boxes -> {out}")
+    print(f"  run: sat -b boxes --boxes {out} < residual.cnf")
+    return out
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if "--selftest" in sys.argv:
@@ -206,6 +236,9 @@ def main():
         print(__doc__)
         return 1
     var_budget = int(opt.get("--vars", 16))
+    emit_base = opt.get("--emit")
+    min_gap = float(opt.get("--min-gap", 5.0))
+    keep = []
     n_groups = int(opt.get("--groups", 8))
     samples = int(opt.get("--samples", 400))
     rng = random.Random(20260918)
@@ -242,10 +275,18 @@ def main():
         el, ec, w = score(rows, ms, n, samples, rng)
         print(f"{gi:5d} {n:5d} {len(inside):5d} {len(rows):9d} {len(rows) / (1 << n):7.3f} "
               f"{100 * conf / total_conf:6.2f}% {el:7.2f} {ec:7.3f} {100 * w:5.1f}%")
+        if 100 * w >= min_gap:
+            keep.append((V, rows))
     print("\nrows = the box's table size; tight = rows / 2^vars (small is a strong constraint).")
     print("+lits = mean literals GAC forces that UP does not, per sampled partial assignment;")
     print("+confl = conflicts GAC sees that UP misses; gap% = samples where the table won.")
     print("A group with gap% ~ 0 propagates nothing its clauses do not already, whatever its conflict share.")
+    if emit_base:
+        if not keep:
+            print(f"\nnothing scored at or above --min-gap={min_gap}; emitting nothing")
+        else:
+            name = opt.get("--emit-name", "mined")
+            emit(emit_base, keep, out_name=f"boxes_{name}.json", prefix=name)
     return 0
 
 

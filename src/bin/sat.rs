@@ -1732,7 +1732,12 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
                                     lits.join(","), c.conflicts, c.learned, c.lbd, c.activity, c.deleted,
                                     if i + 1 == dump.len() { "" } else { "," }));
             }
-            j.push_str(" ]\n}\n");
+            j.push_str(" ],\n \"box_conflicts\": [");
+            let hits = eng.eff_box_hits();
+            for (i, h) in hits.iter().enumerate() {
+                j.push_str(&format!("{}{}", h, if i + 1 == hits.len() { "" } else { "," }));
+            }
+            j.push_str("]\n}\n");
             match std::fs::write(&path, j) {
                 Ok(()) => eprintln!("c boxes: eff study: wrote {} conflict-carrying clauses to {}", dump.len(), path),
                 Err(e) => eprintln!("c boxes: eff study: could not write {path}: {e}"),

@@ -959,9 +959,34 @@ cost-normalised activity — propagations and conflicts per unit of
 footprint — because box costs vary by orders of magnitude where clause
 costs do not.
 
-The open step is to emit the mined tables into a `boxes.json` beside the
-cones and measure a solve, which is the only test that settles whether a
-propagation gap converts into time.
+**Emitted and measured (2026-09-18**,
+`doc/data/boxes_mined_emit_measure_2026-09-18.txt`**): the gap does not
+convert.**  Six mined boxes added to `ezfact64_6`'s 152 cones leave the
+instance timing out at 300 s exactly as before, with throughput within
+1.3 %, because they are almost never the constraint that speaks — they
+carry **0.55 %** of table conflicts against a cone average seven times
+higher, and one of the six never fires at all.  Narrowing them from 16
+variables and 10 084 rows to 10 variables and 692 rows moves that only to
+0.77 %, so "too wide to speak" is not the reason.
+
+The reason is the additive invariant itself.  A mined box absorbs nothing,
+so every clause it was built from is still present and still propagating;
+the box earns its keep only where the *conjunction* forces something no
+single clause does, and the clauses get there first the rest of the time.
+The property that makes a mined box safe to add and sound to delete is the
+property that makes it redundant.  **A box pays when it is the only carrier
+of its structure** — which means absorbing its clauses, which is what cone
+boxes do and why they cannot be deleted.
+
+Two follow-ups if this is pursued.  Emit a mined box *and* remove the
+residual clauses inside its variable set: sound, since the table is exactly
+those clauses' models over those variables, and it forces the search
+through the stronger propagator — at the price of deletability, and of
+making the mining correctness-critical.  And score candidates against the
+**trail states the search actually visits**, dumped beside the conflict
+clauses, rather than the uniform random partial assignments this scoring
+used; a gap that exists is not a gap that triggers, which is the whole
+lesson here.
 
 ### 10.1 Status (2026-09-06): M1 delivered
 

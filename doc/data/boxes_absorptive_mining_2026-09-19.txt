@@ -1,0 +1,68 @@
+# Absorptive mining: the box REPLACES the clauses in its variable set
+# (2026-09-19, ezfact64_6 K=8, 300 s cap, one solver at a time).
+#
+# The additive version (boxes_mined_emit_measure_2026-09-18.txt) fired on
+# 0.55-0.77% of table conflicts and changed nothing, because the clauses it
+# was built from stayed in the formula and went on propagating.  This
+# removes them, so the box is the only carrier of that structure.
+#
+# Sound because the table is exactly those clauses' models over those
+# variables: every row satisfies every clause removed.  Verified per row in
+# the EMITTED representation, where args[i] binds column i to a DIMACS
+# variable -- a mismatch there would delete a constraint nothing carries,
+# which is the shape of the subsumption bug this repo already shipped once.
+
+=== soundness canary (removing clauses can only turn UNSAT into SAT) ===
+
+c3540 K=8, UNSAT             verdict          time
+  baseline                   UNSATISFIABLE    4.15s
+  absorbed 13% of clauses    UNSATISFIABLE    6.38s
+# (those boxes were forced in at --min-gap=0 for the canary, so they are
+#  useless by construction; the 1.5x is the cost of a box that never helps)
+
+=== ezfact64_6 K=8 (SAT), 14 boxes / 4740 rows absorbing 288 of 17213 clauses ===
+
+arm                          verdict    time     conflicts      rate
+cones only (152)                  TO   299.0s     2870016    9598/s
+cones + 14 absorbed (166)         TO   299.0s     2681600    8968/s
+
+=== do the boxes fire now? (study on, 120 s cap) ===
+
+                         additive          absorptive
+mined share of table       0.55-0.77%         21.92%
+conflicts                                     (83557 of 381198)
+per box                    228-353/box        5968/box
+cones                      1642-1792/box      1958/box
+never fired                1 of 6             0 of 14
+per box (absorptive): [9666,2744,5738,5371,7742,4285,3190,9724,646,8620,1217,16053,5651,2910]
+
+conflict source           additive          absorptive
+  tables                    18.8%              30.1%
+  original clauses          25.2%              20.9%
+  learned clauses           56.0%              48.6%
+
+=== What this says ===
+#
+# The mechanism is CONFIRMED.  Sole carriage was exactly what the additive
+# version lacked: firing rose ~30x, every box fires, and the mined boxes now
+# fire three times as often as the cones they sit beside.  Failure mass moved
+# out of clauses and into tables exactly as the design predicted.
+#
+# It still does not pay.  Both arms time out, and the absorptive arm is 6.6%
+# slower in throughput.  GAC over these tables is stronger, is genuinely
+# being used, and does not reduce the search enough to cover its cost.
+#
+# And the experiment cannot be pushed further on this instance, because of a
+# bind worth naming: the families where mining FINDS propagation gaps
+# (ezfact, the multipliers) are exactly the families this engine cannot
+# solve, and the families it solves (the ISCAS circuits) have no gaps left
+# to find -- c3540's groups all score 0%.  So there is currently no instance
+# on which an end-to-end absorptive speedup could be observed at all.
+# Both arms timing out measures throughput, not progress.
+#
+# To settle it one would need either a member of the factoring family small
+# enough for this engine to finish and large enough to mine (ezfact16/32 are
+# solved in milliseconds and have nothing to mine), or a progress measure
+# that does not require finishing.  Scaling the absorption further -- more
+# groups, more clauses -- would raise the firing share but cannot answer the
+# question on an instance neither arm solves.

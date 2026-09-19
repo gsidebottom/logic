@@ -978,11 +978,27 @@ property that makes it redundant.  **A box pays when it is the only carrier
 of its structure** — which means absorbing its clauses, which is what cone
 boxes do and why they cannot be deleted.
 
-Two follow-ups if this is pursued.  Emit a mined box *and* remove the
-residual clauses inside its variable set: sound, since the table is exactly
-those clauses' models over those variables, and it forces the search
-through the stronger propagator — at the price of deletability, and of
-making the mining correctness-critical.  And score candidates against the
+**Absorptive mining, measured (2026-09-19**,
+`doc/data/boxes_absorptive_mining_2026-09-19.txt`**): the mechanism is
+confirmed and it still does not pay.**  Removing the clauses inside a mined
+box's variable set — sound, since the table is exactly their models over
+those variables, and verified row by row against every clause removed —
+raises the mined boxes' share of table conflicts from 0.55 % to **21.9 %**.
+Every box fires, and they fire three times as often as the cones beside
+them; failure mass moves out of clauses into tables as designed.  But both
+arms still time out on `ezfact64_6`, with the absorptive arm 6.6 % slower
+in throughput.  Stronger propagation, genuinely used, that does not repay
+its cost.
+
+That leaves a bind worth naming, because it limits any further box work:
+**the families where mining finds propagation gaps are the families this
+engine cannot solve, and the families it solves have no gaps left to
+find.**  `ezfact64_6` yields groups at 7–27 % gap and neither arm finishes
+it; c3540's groups all score 0 % and it refutes in seconds.  So there is at
+present no instance on which an end-to-end absorptive speedup could be
+observed, and two timeouts measure throughput rather than progress.
+Settling it needs a factoring instance small enough to finish and large
+enough to mine, or a progress measure that does not require finishing.  And score candidates against the
 **trail states the search actually visits**, dumped beside the conflict
 clauses, rather than the uniform random partial assignments this scoring
 used; a gap that exists is not a gap that triggers, which is the whole

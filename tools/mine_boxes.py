@@ -197,20 +197,32 @@ def selftest(samples=2000):
     return 0 if ok else 1
 
 
-def emit(base_json, groups_scored, out_name="boxes_mined.json", prefix="m"):
+def emit(base_json, groups_scored, out_name="boxes_mined.json", prefix="m",
+         absorb=False, cnf=None, cnf_path=None):
     """Write the scored groups as extra boxes beside an existing cone set.
 
-    The mined boxes are ADDITIVE: the residual CNF is untouched and no
-    clause is absorbed, so each one is a redundant constraint implied by
-    clauses that remain.  That is what makes this safe to try (and, later,
-    safe to delete) — unlike a cone box, which replaces what it compiled.
+    **Additive** (the default): the residual CNF is untouched and no clause
+    is absorbed, so each box is a redundant constraint implied by clauses
+    that remain — safe to add and sound to delete.  Measured 2026-09-18:
+    also nearly useless, because those same clauses go on propagating and
+    the box is almost never the constraint that speaks.
+
+    **Absorptive** (`--absorb`): the clauses inside a box's variable set are
+    removed from the CNF, so the box becomes the only carrier of that
+    structure and the search must go through it.  Sound because the table is
+    exactly those clauses' models over those variables — every row satisfies
+    every one of them — so the replacement preserves the model set.  The
+    price is that the box can no longer be deleted and the mining becomes
+    correctness-critical, which is why the harness re-checks any model
+    against the ORIGINAL clauses.
     """
-    import os, shutil
+    import os
     base = json.load(open(base_json))
     d = os.path.dirname(os.path.abspath(base_json))
     os.makedirs(os.path.join(d, "tables"), exist_ok=True)
-    added = []
-    for i, (V, rows) in enumerate(groups_scored):
+    added, absorbed = [], set()
+    for i, g in enumerate(groups_scored):
+        V, rows = g[0], g[1]
         name = f"{prefix}{i}"
         tbl = {"name": name,
                "vars": [f"v{j}" for j in range(len(V))],
@@ -218,12 +230,38 @@ def emit(base_json, groups_scored, out_name="boxes_mined.json", prefix="m"):
         with open(os.path.join(d, "tables", f"{name}.json"), "w") as f:
             json.dump(tbl, f)
         added.append({"table": f"tables/{name}.json", "args": list(V)})
+        if absorb:
+            # Removing a clause is sound only if the box entails it.  That
+            # holds by construction -- the rows are models of these very
+            # clauses -- but it is verified here in the EMITTED
+            # representation, where args[i] binds column i to a DIMACS
+            # variable, because a mismatch between that mapping and the one
+            # the rows were built with is exactly the bug that would delete
+            # a constraint nothing carries any more.
+            pos = {v: j for j, v in enumerate(V)}
+            for c in g[2]:
+                for row in tbl["rows"]:
+                    if not any((row[pos[abs(l)]] == 1) == (l > 0) for l in c):
+                        raise SystemExit(f"UNSOUND: {name} row {row} falsifies absorbed clause {c}")
+            absorbed |= {tuple(sorted(c)) for c in g[2]}
     out = os.path.join(d, out_name)
     with open(out, "w") as f:
         json.dump(base + added, f)
-    print(f"\nemitted {len(added)} mined boxes ({sum(len(r) for _, r in groups_scored)} rows total)")
+    print(f"\nemitted {len(added)} mined boxes ({sum(len(g[1]) for g in groups_scored)} rows total)")
     print(f"  base {len(base)} boxes -> {out}")
-    print(f"  run: sat -b boxes --boxes {out} < residual.cnf")
+    if absorb:
+        kept = [c for c in cnf if tuple(sorted(c)) not in absorbed]
+        red = os.path.join(d, out_name.replace(".json", ".cnf"))
+        nv = max((abs(l) for c in cnf for l in c), default=0)
+        with open(red, "w") as f:
+            f.write(f"p cnf {nv} {len(kept)}\n")
+            for c in kept:
+                f.write(" ".join(map(str, c)) + " 0\n")
+        print(f"  absorbed {len(cnf) - len(kept)} of {len(cnf)} clauses ({100 * (len(cnf) - len(kept)) / max(len(cnf), 1):.1f}%) -> {red}")
+        print(f"  run: sat -b boxes --boxes {out} < {red}")
+        print(f"  CHECK any model against the ORIGINAL {cnf_path}, not the reduced file")
+    else:
+        print(f"  run: sat -b boxes --boxes {out} < residual.cnf")
     return out
 
 
@@ -249,6 +287,7 @@ def main():
     if empty:
         print(f"note: dropped {empty} clause(s) with no literals (deleted slots)")
     cnf = load_cnf(args[1]) if len(args) > 1 else []
+    cnf_set = {tuple(sorted(c)) for c in cnf}
     total_conf = sum(totals.values()) or 1
     print(f"dump: {len(clauses)} conflict-carrying clauses; conflicts {totals}")
     print(f"      {100 * sum(c['conflicts'] for c in clauses) / total_conf:.1f}% of all conflicts are in the dumped clauses")
@@ -266,6 +305,7 @@ def main():
             extra = [c for c in cnf if all(abs(l) in vs for l in c)]
             seen = {tuple(sorted(c)) for c in inside}
             inside += [c for c in extra if tuple(sorted(c)) not in seen]
+        mine_cnf = [c for c in inside if tuple(sorted(c)) in cnf_set] if cnf else []
         ms = masks(inside, index)
         rows = models(ms, n)
         conf = sum(c["conflicts"] for c in members)
@@ -276,7 +316,7 @@ def main():
         print(f"{gi:5d} {n:5d} {len(inside):5d} {len(rows):9d} {len(rows) / (1 << n):7.3f} "
               f"{100 * conf / total_conf:6.2f}% {el:7.2f} {ec:7.3f} {100 * w:5.1f}%")
         if 100 * w >= min_gap:
-            keep.append((V, rows))
+            keep.append((V, rows, mine_cnf))
     print("\nrows = the box's table size; tight = rows / 2^vars (small is a strong constraint).")
     print("+lits = mean literals GAC forces that UP does not, per sampled partial assignment;")
     print("+confl = conflicts GAC sees that UP misses; gap% = samples where the table won.")
@@ -286,7 +326,9 @@ def main():
             print(f"\nnothing scored at or above --min-gap={min_gap}; emitting nothing")
         else:
             name = opt.get("--emit-name", "mined")
-            emit(emit_base, keep, out_name=f"boxes_{name}.json", prefix=name)
+            emit(emit_base, keep, out_name=f"boxes_{name}.json", prefix=name,
+                 absorb="--absorb" in sys.argv, cnf=cnf,
+                 cnf_path=args[1] if len(args) > 1 else None)
     return 0
 
 

@@ -898,13 +898,30 @@ is a fraction of it, and `--cadical-opt` can measure that directly by
 coarsening CaDiCaL's own policy toward ours, before a line of Rust is
 written.
 
-Measured so far (2026-09-18, vendored 3.0.1 standalone): on ten
-UNSAT-weighted instances, whose refutation times are stable enough to mean
-something, `reducetarget=50` — deleting half the candidates instead of
-three quarters — costs **1.26×**.  That points at *deletion aggression*
-rather than tiering as the lever, and this engine already exposes it as
-`BOXES_REDUCE_FRAC`, so the first experiment is an A/B of our own knob and
-costs nothing to run.
+Measured (2026-09-18,
+`doc/data/boxes_reduce_policy_2026-09-18.txt`), and the answer is *not*
+deletion aggression.  Our own knob says the default is already at a local
+optimum: `BOXES_REDUCE_FRAC=1` (delete every unprotected clause) times out
+on `w55_178` where the default refutes in 23 s and is 2–3× worse on the
+circuits, while 3 and 4 are neutral once one volatile SAT instance is
+removed.  "Delete more" does not transfer from CaDiCaL in any case, because
+the knobs act on different pools — CaDiCaL's 75 % applies to *candidates*,
+with tier1 never a candidate and recently-used tier2 clauses granted a
+grace period, where our fraction applies to the whole database behind only
+the glue/binary/reason protection.
+
+What the CaDiCaL side does point at is **what it protects**.  Collapsing
+tier2 into tier1 (`tier2limit=50`), which removes the grace period for
+recently-used mid-glue clauses, cost **1.30×**; freezing the dynamic tier
+recomputation altogether (`recomputetier=false`) cost nothing and measured
+slightly *faster*.  So the piece to build is the `used`-counter grace
+period — not the dynamic percentile tiering, and not a blunter deletion
+fraction.
+
+Confidence is low and the data file says why: every geomean in these runs
+is dominated by one or two instances swinging 7–28× on trajectory luck, and
+ten instances cannot price an effect that small.  This says what to build
+first *if* we build it, not that it is worth building.
 
 Two cautions from getting this wrong twice.  A first run over a SAT-heavy
 set reported the same option **0.489× — faster** — carried entirely by

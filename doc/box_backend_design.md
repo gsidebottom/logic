@@ -875,21 +875,47 @@ reduces (`reduce_db`): learned clauses sorted worst-first by LBD then
 activity, `1/reduce_frac` of them dropped, LBD ≤ `keep_lbd` kept, binaries
 and reason clauses and the LBD-0 permanence marking protected, interval
 growing by a flat 300.  That is the Glucose/MiniSat policy.  CaDiCaL 3 adds
-four things on top: three tiers by glue (`reducetier1glue=2`,
-`reducetier2glue=6`) with **`used` counters** giving tier-2 clauses a grace
-period across reductions; **glue recomputation and promotion** when a
-clause is used in analysis, so a clause can earn its way into a better
-tier; a **target fraction of the candidate set** (`reducetarget=75`) rather
-than a fraction of the whole database; and `sqrt`-shaped interval growth
-(`reduceopt=1`).
+four things on top: **tiers set from the usage distribution** — `tier.cpp`
+recomputes tier1 and tier2 on a doubling conflict schedule as the glue
+covering the first 50 % and 90 % of accumulated clause usage
+(`tier1limit`, `tier2limit`), with the static `reducetier1glue=2` /
+`reducetier2glue=6` only a fallback for before any usage data exists —
+together with **`used` counters** giving tier-2 clauses a grace period
+across reductions; **glue recomputation and promotion** when a clause is
+used in analysis, so a clause earns its way into a better tier
+(`clause.cpp`); a **target fraction of the candidate set**
+(`reducetarget=75`) rather than a fraction of the whole database; and
+`sqrt`-shaped interval growth (`reduceopt=1`).
+
+The dynamic tiering is the part worth noticing: the thresholds are not
+constants to port but percentiles of how clauses are actually being used,
+which is a different idea from the fixed glue ≤ 2 this engine keeps.
 
 A caution on sizing it: the 2026-09-17 ablation ranked reduce second at
 **1.28×**, but that arm turned reduce *off entirely*, so it prices the
 feature we already have, not the refinement.  What the refinement is worth
 is a fraction of it, and `--cadical-opt` can measure that directly by
-coarsening CaDiCaL's own policy toward ours
-(`--cadical-opt reducetier2glue=2 --cadical-opt reducetarget=50`) before a
-line of Rust is written.  Implementation, once it is justified: a
+coarsening CaDiCaL's own policy toward ours, before a line of Rust is
+written.
+
+Measured so far (2026-09-18, vendored 3.0.1 standalone): on ten
+UNSAT-weighted instances, whose refutation times are stable enough to mean
+something, `reducetarget=50` — deleting half the candidates instead of
+three quarters — costs **1.26×**.  That points at *deletion aggression*
+rather than tiering as the lever, and this engine already exposes it as
+`BOXES_REDUCE_FRAC`, so the first experiment is an A/B of our own knob and
+costs nothing to run.
+
+Two cautions from getting this wrong twice.  A first run over a SAT-heavy
+set reported the same option **0.489× — faster** — carried entirely by
+`pyhala-braun-sat-40` and `toughsat_factoring_895s`, which swing 3–16× on
+trajectory luck alone; the same table contradicted itself, since the arm
+combining that option with others was slower on both.  Reduce policy must
+be measured on refutations.  And an arm setting `reducetier2glue` was
+**inert**, reproducing default timings to the hundredth of a second,
+because the tiers are recomputed dynamically and that option is only the
+fallback — the knobs that bite are `recomputetier` and `tier1limit` /
+`tier2limit`.  Implementation, once it is justified: a
 `used: Vec<u8>` beside `learnt_lbd`, LBD recomputation in `analyze` (the
 level-stamp machinery already exists for new clauses), tiered selection in
 `reduce_db`, and the interval growth — on the order of a hundred lines,

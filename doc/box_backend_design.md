@@ -866,6 +866,60 @@ fault-tolerance argument Mallob makes and we inherit.
 
 M6 decides whether M7–M8 are built.
 
+### Next levers (2026-09-18)
+
+Two items on the agenda, both with their evidence and both still unbuilt.
+
+**1. CaDiCaL's refinement of the reduce policy.**  The engine already
+reduces (`reduce_db`): learned clauses sorted worst-first by LBD then
+activity, `1/reduce_frac` of them dropped, LBD ≤ `keep_lbd` kept, binaries
+and reason clauses and the LBD-0 permanence marking protected, interval
+growing by a flat 300.  That is the Glucose/MiniSat policy.  CaDiCaL 3 adds
+four things on top: three tiers by glue (`reducetier1glue=2`,
+`reducetier2glue=6`) with **`used` counters** giving tier-2 clauses a grace
+period across reductions; **glue recomputation and promotion** when a
+clause is used in analysis, so a clause can earn its way into a better
+tier; a **target fraction of the candidate set** (`reducetarget=75`) rather
+than a fraction of the whole database; and `sqrt`-shaped interval growth
+(`reduceopt=1`).
+
+A caution on sizing it: the 2026-09-17 ablation ranked reduce second at
+**1.28×**, but that arm turned reduce *off entirely*, so it prices the
+feature we already have, not the refinement.  What the refinement is worth
+is a fraction of it, and `--cadical-opt` can measure that directly by
+coarsening CaDiCaL's own policy toward ours
+(`--cadical-opt reducetier2glue=2 --cadical-opt reducetarget=50`) before a
+line of Rust is written.  Implementation, once it is justified: a
+`used: Vec<u8>` beside `learnt_lbd`, LBD recomputation in `analyze` (the
+level-stamp machinery already exists for new clauses), tiered selection in
+`reduce_db`, and the interval growth — on the order of a hundred lines,
+with the only hot-path cost being the recomputation in `analyze`.
+
+**2. Boxes mined from learned clauses.**  §3.4's study found that box
+*ordering* carries no signal, but the mining measurements of the same day
+(`doc/data/boxes_mined_candidates_2026-09-18.txt`) found compilable
+structure in the clauses the search keeps failing on: on `ezfact64_6` a
+16-variable, 1036-row group whose table forces literals unit propagation
+misses on 27 % of sampled partial assignments — close to twice the gap of
+a full adder's gate CNF, which is this document's own example of an
+encoding that loses propagation.
+
+The design invariant that makes this safe is worth stating once: a mined
+box is **additive**, never absorptive.  It is implied by clauses that stay
+in the formula, so it adds propagation strength and carries no constraint
+of its own — which means it may be *deleted* like a learned clause (a cone
+box may not, having replaced what it compiled), and it certifies for free
+because its sources are already in the proof.  Deletion would want real
+compaction rather than tombstoning, because `new_level` snapshots the whole
+`live` array and a tombstoned box keeps paying that; and the policy wants
+cost-normalised activity — propagations and conflicts per unit of
+footprint — because box costs vary by orders of magnitude where clause
+costs do not.
+
+The open step is to emit the mined tables into a `boxes.json` beside the
+cones and measure a solve, which is the only test that settles whether a
+propagation gap converts into time.
+
 ### 10.1 Status (2026-09-06): M1 delivered
 
 **Built.**  `logic::boxes` — table boxes (canonical rows in model polarity,

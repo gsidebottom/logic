@@ -1717,6 +1717,27 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
         eprintln!("c boxes: conflicts by source: {} in tables ({:.1}%), {} in original clauses, \
                    {} in learned clauses (absorbable by no translator)",
                   f.box_conflicts, box_pct, orig, f.clause_conflicts_learned);
+        // BOXES_EFF_DUMP=<path>: the clauses the search kept failing on, for
+        // `tools/mine_boxes.py` to group into box candidates and score.
+        if let Ok(path) = std::env::var("BOXES_EFF_DUMP") {
+            let top: usize = std::env::var("BOXES_EFF_DUMP_TOP").ok()
+                .and_then(|v| v.parse().ok()).unwrap_or(2000);
+            let dump = eng.eff_clause_dump(top);
+            let mut j = String::with_capacity(64 * dump.len() + 256);
+            j.push_str(&format!("{{\n \"conflicts\": {{\"table\": {}, \"original\": {}, \"learned\": {}}},\n \"clauses\": [\n",
+                                f.box_conflicts, orig, f.clause_conflicts_learned));
+            for (i, c) in dump.iter().enumerate() {
+                let lits: Vec<String> = c.lits.iter().map(|l| l.to_string()).collect();
+                j.push_str(&format!("  {{\"lits\": [{}], \"conflicts\": {}, \"learned\": {}, \"lbd\": {}, \"activity\": {:.6}, \"deleted\": {}}}{}\n",
+                                    lits.join(","), c.conflicts, c.learned, c.lbd, c.activity, c.deleted,
+                                    if i + 1 == dump.len() { "" } else { "," }));
+            }
+            j.push_str(" ]\n}\n");
+            match std::fs::write(&path, j) {
+                Ok(()) => eprintln!("c boxes: eff study: wrote {} conflict-carrying clauses to {}", dump.len(), path),
+                Err(e) => eprintln!("c boxes: eff study: could not write {path}: {e}"),
+            }
+        }
         if let Some((t1, t10, hit, all)) = eng.eff_concentration() {
             eprintln!("c boxes: eff study: table conflicts concentrate {:.1}% in the busiest 1% of boxes, \
                        {:.1}% in the busiest 10%; {} of {} boxes ever failed", 100.0 * t1, 100.0 * t10, hit, all);

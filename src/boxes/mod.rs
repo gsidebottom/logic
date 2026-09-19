@@ -189,6 +189,28 @@ pub struct EffStudy {
     pub population_nrows: f64,
 }
 
+/// One clause the search kept failing on: the seed for mining a box out of
+/// the region it belongs to.
+///
+/// A box's power over a group of clauses is GAC on their *conjunction*,
+/// which unit propagation does not give — UP achieves arc consistency on
+/// each clause separately.  So any group of clauses sharing variables is a
+/// box candidate, and the ones worth trying first are the ones the search
+/// demonstrably keeps failing on.
+#[derive(Clone, Debug)]
+pub struct EffClause {
+    pub lits: Vec<i32>,
+    pub conflicts: u32,
+    pub learned: bool,
+    /// Literal block distance (learned clauses only): how many decision
+    /// levels the clause spans, i.e. how *local* it is.  A box wants local
+    /// clauses — their variables cluster, so the table stays small — and a
+    /// low LBD also means the clause is one `reduce_db` keeps.
+    pub lbd: u32,
+    pub activity: f64,
+    pub deleted: bool,
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct Stats {
     pub decisions: u64,
@@ -417,6 +439,10 @@ pub struct Engine {
     eff_study: bool,
     /// Conflicts per box, under `eff_study` — see [`Engine::eff_concentration`].
     eff_box_hits: Vec<u32>,
+    /// Conflicts per clause, under `eff_study` — see
+    /// [`Engine::eff_clause_dump`].  Indexed by clause index, so it is
+    /// cleared wherever `simplify` rebuilds the clause store.
+    eff_clause_hits: Vec<u32>,
     /// Snapshots of `live` at the start of each open decision level.
     snap: Vec<u64>,
     in_queue: Vec<bool>,
@@ -609,6 +635,7 @@ impl Engine {
             nvars: 0, hdr: Vec::new(), vars_all: Vec::new(), kill_all: Vec::new(), occ: Vec::new(), live: Vec::new(), live_count: Vec::new(), snap_count: Vec::new(),
             eff_study: matches!(std::env::var("BOXES_EFF_STUDY").as_deref(), Ok("1") | Ok("on")),
             eff_box_hits: Vec::new(),
+            eff_clause_hits: Vec::new(),
             snap: Vec::new(), in_queue: Vec::new(), queue: Vec::new(),
             arena: Vec::new(), cstart: Vec::new(), clen: Vec::new(), watches: Vec::new(), bins: Vec::new(), first_learnt: 0,
             xarena: Vec::new(), xstart: Vec::new(), xlen: Vec::new(), xidx: Vec::new(),
@@ -859,6 +886,7 @@ impl Engine {
         self.snap_count.clear();
         self.live_count.clear();
         self.eff_box_hits.clear();
+        self.eff_clause_hits.clear();
         if on {
             for h in &self.hdr {
                 let (off, nw) = (h.off as usize, h.nw as usize);
@@ -866,6 +894,35 @@ impl Engine {
             }
             self.eff_box_hits.resize(self.hdr.len(), 0);
         }
+    }
+
+    /// The clauses carrying the most conflicts, most first — the mining
+    /// seed described on [`EffClause`].
+    ///
+    /// Counts are keyed by clause index and reset whenever `simplify`
+    /// renumbers the store, so this covers the run since the last rebuild.
+    pub fn eff_clause_dump(&self, top: usize) -> Vec<EffClause> {
+        let mut out: Vec<EffClause> = (0..self.eff_clause_hits.len().min(self.cstart.len()))
+            .filter(|&ci| self.eff_clause_hits[ci] > 0)
+            .map(|ci| {
+                let learned = ci >= self.first_learnt;
+                let k = ci.wrapping_sub(self.first_learnt);
+                EffClause {
+                    lits: self.clause(ci).iter().map(|&l| {
+                        let v = (l >> 1) as i32 + 1;
+                        if l & 1 == 1 { -v } else { v }
+                    }).collect(),
+                    conflicts: self.eff_clause_hits[ci],
+                    learned,
+                    lbd: if learned { self.learnt_lbd.get(k).copied().unwrap_or(0) } else { 0 },
+                    activity: if learned { self.learnt_act.get(k).copied().unwrap_or(0.0) } else { 0.0 },
+                    deleted: self.deleted.get(ci).copied().unwrap_or(false),
+                }
+            })
+            .collect();
+        out.sort_unstable_by(|a, b| b.conflicts.cmp(&a.conflicts));
+        out.truncate(top);
+        out
     }
 
     /// How concentrated the table conflicts are: the share carried by the
@@ -1244,6 +1301,10 @@ impl Engine {
             Conflict::Clause(ci) => {
                 self.stats.eff.clause_conflicts += 1;
                 if ci as usize >= self.first_learnt { self.stats.eff.clause_conflicts_learned += 1; }
+                if self.eff_study {
+                    if self.eff_clause_hits.len() <= ci as usize { self.eff_clause_hits.resize(ci as usize + 1, 0); }
+                    self.eff_clause_hits[ci as usize] += 1;
+                }
                 return;
             }
             Conflict::Box(b) | Conflict::Forced { b, .. } => b as usize,
@@ -1829,6 +1890,9 @@ impl Engine {
         // rebuild the clause store: the surviving originals, then the
         // learned clauses free of eliminated variables
         self.arena.clear(); self.cstart.clear(); self.clen.clear(); self.deleted.clear(); self.learnt_lbd.clear(); self.learnt_act.clear();
+        // The counts are keyed by clause index and everything is about to
+        // be renumbered.
+        self.eff_clause_hits.clear();
         self.first_learnt = 0;
         for w in &mut self.watches { w.clear(); }
         for w in &mut self.bins { w.clear(); }

@@ -261,6 +261,10 @@ pub struct Stats {
     pub strengthened: u64,
     pub strengthened_lits: u64,
     pub rephases: u64,
+    /// Learned clauses whose recomputed LBD beat the one they were born
+    /// with, and clauses a reduction spared because analysis had used them.
+    pub promoted: u64,
+    pub spared: u64,
 }
 
 /// How a table's explanation is chosen among the assigned literals whose
@@ -389,6 +393,15 @@ enum Conflict {
 /// Growth of the learned-clause budget after each reduction.
 const REDUCE_STEP: usize = 300;
 
+/// What a clause's `used` counter is set to when conflict analysis
+/// resolves it, and therefore how many reductions it can survive unused.
+/// CaDiCaL's value; it has to fit in a clause header there, and matches
+/// the two sparing rules in [`Engine::reduce_db`]: `used > 0` means "used
+/// within the last 31 reductions" (a long tier-1 lifespan) and
+/// `used >= MAX_USED - 1` means "used since the last one" (a short tier-2
+/// grace).
+const MAX_USED: u8 = 31;
+
 /// Read a `usize` knob from the environment (experiment support: the
 /// clause-database policy is the one CDCL lever with no A/B behind it).
 fn env_usize(name: &str, default: usize) -> usize {
@@ -490,6 +503,29 @@ pub struct Engine {
     /// Learned clauses of at most this LBD are never deleted
     /// (`BOXES_KEEP_LBD`; CaDiCaL's "core" tier).
     keep_lbd: u32,
+    /// Tier-2 bound: a clause at or below this LBD is spared a reduction
+    /// if conflict analysis resolved it since the previous one.  This is
+    /// the grace period CaDiCaL's `used` counter buys, and the one part of
+    /// its reduce policy that measured worth having — collapsing tier 2
+    /// into tier 1 cost CaDiCaL 1.30×
+    /// (`doc/data/boxes_reduce_policy_2026-09-18.txt`).
+    tier2_lbd: u32,
+    /// Percent of the *candidate* set a reduction drops once the grace
+    /// period is on.  CaDiCaL's 75, against our `reduce_frac`'s fraction of
+    /// the whole database — the pools are not the same thing.
+    reduce_target: usize,
+    /// Reductions a learned clause may still survive unused; `MAX_USED`
+    /// when analysis last resolved it, decremented once per reduction.
+    learnt_used: Vec<u8>,
+    /// `BOXES_USED=1`: spare recently-used clauses and target the
+    /// candidate set.  `BOXES_PROMOTE=1`: also recompute a resolved
+    /// clause's LBD and promote it when the glue shrinks.
+    used_grace: bool,
+    promote: bool,
+    /// Level stamps for recomputing LBD without allocating, and the
+    /// generation that makes clearing them unnecessary.
+    lbd_stamp: Vec<u64>,
+    lbd_gen: u64,
     unsat_at_init: bool,
     // assignment
     vals: Vec<Val>,
@@ -644,6 +680,12 @@ impl Engine {
             reduce_step: env_usize("BOXES_REDUCE_STEP", REDUCE_STEP),
             reduce_frac: env_usize("BOXES_REDUCE_FRAC", 2),
             keep_lbd: env_usize("BOXES_KEEP_LBD", 2) as u32,
+            tier2_lbd: env_usize("BOXES_TIER2_LBD", 6) as u32,
+            reduce_target: env_usize("BOXES_REDUCE_TARGET", 75),
+            learnt_used: Vec::new(),
+            used_grace: matches!(std::env::var("BOXES_USED").as_deref(), Ok("1") | Ok("on")),
+            promote: matches!(std::env::var("BOXES_PROMOTE").as_deref(), Ok("1") | Ok("on")),
+            lbd_stamp: Vec::new(), lbd_gen: 0,
             unsat_at_init: false,
             vals: Vec::new(), lvals: Vec::new(), level: Vec::new(), reason: Vec::new(), trail_pos: Vec::new(),
             trail: Vec::new(), trail_lim: Vec::new(), qhead: 0,
@@ -1537,6 +1579,35 @@ impl Engine {
             for a in &mut self.learnt_act { *a *= 1e-20; }
             self.cla_inc *= 1e-20;
         }
+        if self.used_grace { self.learnt_used[k] = MAX_USED; }
+        // A clause's LBD is not a constant: the trail it was learned from
+        // is gone, and the levels its literals sit at now may be fewer.
+        // Recomputing on use lets a clause earn its way into a better tier
+        // instead of being judged once, at birth.  LBD 0 is the permanence
+        // marker, never a real LBD, so it is left alone.
+        if self.promote && self.learnt_lbd[k] != 0 {
+            let g = self.recompute_lbd(ci as usize);
+            if g < self.learnt_lbd[k] {
+                self.learnt_lbd[k] = g;
+                self.learnt_used[k] = MAX_USED;
+                self.stats.promoted += 1;
+            }
+        }
+    }
+
+    /// The LBD of clause `ci` under the *current* trail, without
+    /// allocating: a generation-stamped array over levels, so nothing has
+    /// to be cleared between calls.
+    fn recompute_lbd(&mut self, ci: usize) -> u32 {
+        let (start, len) = (self.cstart[ci] as usize, self.clen[ci] as usize);
+        self.lbd_gen += 1;
+        let (stamp, mut g) = (self.lbd_gen, 0u32);
+        for i in 0..len {
+            let lv = self.level[(self.arena[start + i] >> 1) as usize] as usize;
+            if self.lbd_stamp.len() <= lv { self.lbd_stamp.resize(lv + 1, 0); }
+            if self.lbd_stamp[lv] != stamp { self.lbd_stamp[lv] = stamp; g += 1; }
+        }
+        g.max(1)
     }
 
     /// The literal block distance of a clause: its literals' distinct levels.
@@ -1551,22 +1622,49 @@ impl Engine {
     /// activity.  Watches drop deleted clauses lazily.
     fn reduce_db(&mut self) {
         let n = self.cstart.len() - self.first_learnt;
-        let mut order: Vec<usize> = (0..n).filter(|&k| !self.deleted[self.first_learnt + k]).collect();
+        // A clause that is the reason for its first literal is still needed.
+        let is_reason = |e: &Engine, ci: usize| {
+            let l0 = e.clause(ci)[0];
+            e.reason[(l0 >> 1) as usize] == Reason::Clause(ci as u32) && e.vals[(l0 >> 1) as usize] != Val::U
+        };
+        // LBD 0 is not a real LBD (it counts distinct levels, so it is at
+        // least 1): it marks a clause promoted by subsumption, standing in
+        // for an original clause that was deleted.  Dropping one would lose
+        // a constraint of the input formula.
+        let mut order: Vec<usize>;
+        let drop;
+        if self.used_grace {
+            // CaDiCaL's rule, ported: decay every clause's `used` once per
+            // reduction, then spare a tier-1 clause that has been resolved
+            // within the last `MAX_USED` reductions, and a tier-2 clause
+            // only if analysis resolved it since the previous reduction.
+            // What is left is the candidate set, and a fixed percentage of
+            // *that* is dropped — not a fraction of the whole database,
+            // which is a different and much blunter pool.
+            order = Vec::with_capacity(n);
+            for k in 0..n {
+                let ci = self.first_learnt + k;
+                if self.deleted[ci] || self.learnt_lbd[k] == 0 || self.clen[ci] <= 2 { continue; }
+                if is_reason(self, ci) { continue; }
+                let used = self.learnt_used[k];
+                if used > 0 { self.learnt_used[k] = used - 1; }
+                if self.learnt_lbd[k] <= self.keep_lbd && used > 0 { self.stats.spared += 1; continue; }
+                if self.learnt_lbd[k] <= self.tier2_lbd && used + 1 >= MAX_USED { self.stats.spared += 1; continue; }
+                order.push(k);
+            }
+            drop = order.len() * self.reduce_target.min(100) / 100;
+        } else {
+            order = (0..n).filter(|&k| !self.deleted[self.first_learnt + k]).collect();
+            drop = order.len() / self.reduce_frac.max(1);
+        }
         order.sort_by(|&a, &b| self.learnt_lbd[b].cmp(&self.learnt_lbd[a])
             .then(self.learnt_act[a].partial_cmp(&self.learnt_act[b]).unwrap_or(std::cmp::Ordering::Equal)));
         let mut removed = 0usize;
-        let drop = order.len() / self.reduce_frac.max(1);
         for &k in order.iter().take(drop) {
-            // LBD 0 is not a real LBD (it counts distinct levels, so it is at
-            // least 1): it marks a clause promoted by subsumption, standing in
-            // for an original clause that was deleted.  Dropping one would
-            // lose a constraint of the input formula.
-            if self.learnt_lbd[k] == 0 || self.learnt_lbd[k] <= self.keep_lbd { continue; }
+            if !self.used_grace && (self.learnt_lbd[k] == 0 || self.learnt_lbd[k] <= self.keep_lbd) { continue; }
             let ci = self.first_learnt + k;
-            if self.clen[ci] <= 2 { continue; }
-            // a clause that is the reason for its first literal stays
-            let l0 = self.clause(ci)[0];
-            if self.reason[(l0 >> 1) as usize] == Reason::Clause(ci as u32) && self.vals[(l0 >> 1) as usize] != Val::U { continue; }
+            if !self.used_grace && self.clen[ci] <= 2 { continue; }
+            if !self.used_grace && is_reason(self, ci) { continue; }
             self.delete_clause(ci);
             removed += 1;
         }
@@ -1894,7 +1992,7 @@ impl Engine {
         }
         // rebuild the clause store: the surviving originals, then the
         // learned clauses free of eliminated variables
-        self.arena.clear(); self.cstart.clear(); self.clen.clear(); self.deleted.clear(); self.learnt_lbd.clear(); self.learnt_act.clear();
+        self.arena.clear(); self.cstart.clear(); self.clen.clear(); self.deleted.clear(); self.learnt_lbd.clear(); self.learnt_act.clear(); self.learnt_used.clear();
         // The counts are keyed by clause index and everything is about to
         // be renumbered.
         self.eff_clause_hits.clear();
@@ -2268,6 +2366,7 @@ impl Engine {
                 self.deleted.push(false);
                 self.learnt_lbd.push(lbd);
                 self.learnt_act.push(act);
+                self.learnt_used.push(MAX_USED);
             }
         }
     }
@@ -2349,6 +2448,7 @@ impl Engine {
                     self.deleted.push(false);
                     self.learnt_lbd.push(lbd);
                     self.learnt_act.push(self.cla_inc);
+                    self.learnt_used.push(MAX_USED);
                     self.assign(l0 >> 1, if l0 & 1 == 1 { Val::F } else { Val::T }, Reason::Clause(ci));
                 }
                 self.var_inc *= 1.0 / 0.95;
@@ -3155,6 +3255,65 @@ mod tests {
     /// The two conflict tallies are free and always on — they bound what a
     /// box-guided heuristic could steer at all — while the ranking that
     /// costs O(boxes) per conflict waits to be asked for.
+    /// The grace period decides which learned clauses survive a reduction,
+    /// so it changes the search on every instance that reduces at all — and
+    /// must change no answer.  Deleting a clause that is still a reason, or
+    /// sparing nothing and collapsing the database, would both show up here
+    /// as a disagreement with brute force.
+    #[test]
+    fn used_grace_vs_bruteforce() {
+        let mut seed: u64 = 0x51ED_0A27_1CE5_11FE;
+        let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+        let (mut spared, mut promoted) = (0u64, 0u64);
+        for trial in 0..400 {
+            let n = 8 + (rnd() % 7) as usize;
+            let m = 4 * n + (rnd() % (3 * n as u64)) as usize;
+            let cls: Vec<Vec<i32>> = (0..m).map(|_| {
+                let mut c: Vec<i32> = Vec::new();
+                while c.len() < 3 {
+                    let v = (rnd() % n as u64) as i32 + 1;
+                    if !c.iter().any(|&x| x.abs() == v) { c.push(if rnd() % 2 == 0 { v } else { -v }); }
+                }
+                c
+            }).collect();
+            let brute = (0..1u32 << n).any(|bits| {
+                let m: Vec<bool> = (0..n).map(|i| bits >> i & 1 == 1).collect();
+                check_model(&cls, &m)
+            });
+            let mut e = Engine::from_cnf(n, &cls);
+            e.used_grace = true;
+            e.promote = true;
+            // Reduce constantly, so a short random instance still exercises
+            // the sparing and the decay many times over.
+            e.reduce_start = 8;
+            e.reduce_step = 8;
+            match e.solve() {
+                Verdict::Sat(m) => {
+                    assert!(brute, "trial {trial}: engine SAT, brute UNSAT");
+                    assert!(check_model(&cls, &m), "trial {trial}: bad model");
+                }
+                Verdict::Unsat => assert!(!brute, "trial {trial}: engine UNSAT, brute SAT"),
+                Verdict::Unknown => panic!("no budget set"),
+            }
+            spared += e.stats.spared;
+            promoted += e.stats.promoted;
+        }
+        assert!(spared > 0, "the grace period never spared a clause");
+        assert!(promoted > 0, "no clause ever had its glue improve");
+    }
+
+    /// With the knobs off nothing changes: same verdicts, and the counters
+    /// stay at zero, so the default path is the one that has been measured
+    /// all along.
+    #[test]
+    fn the_grace_period_is_off_by_default() {
+        let mut e = boxed_php(9, 8);
+        assert!(!e.used_grace && !e.promote, "BOXES_USED/BOXES_PROMOTE must default off");
+        assert_eq!(e.solve(), Verdict::Unsat);
+        assert_eq!((e.stats.spared, e.stats.promoted), (0, 0));
+        assert!(e.stats.reductions > 0, "the fixture should reduce at least once ({} conflicts)", e.stats.conflicts);
+    }
+
     #[test]
     fn the_study_is_off_unless_asked_for() {
         let mut e = boxed_php(7, 6);

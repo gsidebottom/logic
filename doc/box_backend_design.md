@@ -910,6 +910,27 @@ with tier1 never a candidate and recently-used tier2 clauses granted a
 grace period, where our fraction applies to the whole database behind only
 the glue/binary/reason protection.
 
+**Built and measured (2026-09-19**,
+`doc/data/boxes_reduce_grace_2026-09-19.txt`**): neutral.**  The grace
+period is ported behind `BOXES_USED` (the `used` counter, tier-2 sparing
+and a candidate-set target) and `BOXES_PROMOTE` (LBD recomputation and
+promotion on use), both default off.  Over 20 instances it measures 0.927×
+and 0.918× — but that is carried entirely by four SAT instances, and on
+the sixteen refutations, whose times are readable, it is 0.978× and
+1.023×.  Nothing.
+
+The 1.30× below measured what *CaDiCaL* loses by giving up a grace period
+its whole reduce machinery is tuned around; what this engine gains by
+adopting one piece of it is a different quantity, and this is that
+quantity.
+
+One sub-finding is worth keeping: the two halves are **one mechanism**.
+Sparing clauses without re-judging their glue keeps the wrong ones —
+`w55_178` needs 868 k conflicts by default, 1 088 k with the counter alone
+and 784 k with promotion; `c3540_k8_s3` goes 132 k → 160 k → 130 k — which
+is why CaDiCaL sets `used` inside `bump_clause`, in the same breath as
+recomputing the glue.  If it is ever turned on, it goes on as a pair.
+
 What the CaDiCaL side does point at is **what it protects**.  Collapsing
 tier2 into tier1 (`tier2limit=50`), which removes the grace period for
 recently-used mid-glue clauses, cost **1.30×**; freezing the dynamic tier

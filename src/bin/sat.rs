@@ -84,10 +84,53 @@ use logic::cadical;
 /// integers terminated by `0`.  Whitespace (including newlines) inside a
 /// clause is ignored, so a clause may span multiple lines.  Trailing
 /// content with no terminating `0` is silently included as a final clause.
-fn parse_dimacs<R: BufRead>(r: R) -> Result<(usize, Vec<Vec<i32>>), String> {
+/// Bytes the clause list and the engine's copy of it will need, given
+/// `clauses` clauses holding `lits` literals in total.
+///
+/// `Vec<Vec<i32>>` is a heap allocation *per clause*: 24 bytes for the
+/// `Vec` in the outer buffer, plus the allocator's metadata and 16-byte
+/// alignment on the clause's own block — about 40 bytes of overhead
+/// against 12 bytes of payload for a ternary clause.  The engine then
+/// copies the literals into its flat arena, so both representations are
+/// live at once (4 more bytes per literal, 8 per clause for the index).
+///
+/// Measured 2026-09-20 on a 7.5 GB md5-equivalence-checking instance: the
+/// parser grew at 250 MB/s, dead linear, and was still parsing — zero
+/// conflicts — when it passed 8 GB.  Left alone it reached past this
+/// machine's 64 GB and drove it into swap.  This is an estimate rather
+/// than a measurement because it has to be known *before* the memory is
+/// committed, and because `ulimit -v` does nothing on macOS.
+/// This process's peak resident size, in bytes.  Resident undercounts a
+/// footprint the kernel has compressed or swapped — which is exactly how a
+/// 64 GB process read as 8 GB in `ps` — but during a parse nothing has gone
+/// cold yet, so here it tracks the real cost closely and costs a syscall.
+fn peak_rss_bytes() -> u64 {
+    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) } != 0 { return 0; }
+    // macOS reports bytes, Linux kilobytes.
+    if cfg!(target_os = "macos") { ru.ru_maxrss as u64 } else { ru.ru_maxrss as u64 * 1024 }
+}
+
+/// 60 % of physical RAM, or 8 GB if the machine will not say.
+fn default_max_memory() -> u64 {
+    let out = std::process::Command::new("sysctl").args(["-n", "hw.memsize"]).output();
+    match out {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).trim().parse::<u64>()
+            .map(|b| b * 3 / 5).unwrap_or(8_000_000_000),
+        Err(_) => 8_000_000_000,
+    }
+}
+
+fn clause_list_bytes(clauses: usize, lits: usize) -> u64 {
+    clauses as u64 * 48 + lits as u64 * 8
+}
+
+fn parse_dimacs<R: BufRead>(r: R, max_bytes: u64) -> Result<(usize, Vec<Vec<i32>>), String> {
     let mut nvars: usize = 0;
     let mut clauses: Vec<Vec<i32>> = Vec::new();
     let mut current: Vec<i32> = Vec::new();
+    let mut lits: usize = 0;
+    let mut check_at: usize = 1 << 20;
 
     for (lineno, line) in r.lines().enumerate() {
         let line = line.map_err(|e| format!("read error at line {}: {}", lineno + 1, e))?;
@@ -114,6 +157,29 @@ fn parse_dimacs<R: BufRead>(r: R) -> Result<(usize, Vec<Vec<i32>>), String> {
                 let abs = n.unsigned_abs() as usize;
                 if abs > nvars { nvars = abs; }
                 current.push(n);
+                lits += 1;
+                // Cheap, and it has to happen while parsing: by the time the
+                // file is read the memory is already committed.
+                if lits >= check_at {
+                    check_at = lits + (1 << 20);
+                    // Two checks, because neither alone is enough.  The
+                    // estimate sees what the clause list *will* cost and can
+                    // stop before it is committed; the measurement catches
+                    // what the estimate cannot model — chiefly the outer
+                    // `Vec`'s doubling, which at 400 M clauses transiently
+                    // needs the old 10 GB buffer and a new 20 GB one at the
+                    // same time.  Calibrated 2026-09-20: at an 8 GB estimate
+                    // the real peak was 4.85 GB, so the estimate leads early
+                    // in a parse and the measurement takes over late.
+                    let need = clause_list_bytes(clauses.len(), lits).max(peak_rss_bytes());
+                    if max_bytes > 0 && need > max_bytes {
+                        return Err(format!(
+                            "input needs about {:.1} GB for the clause list after {} clauses \
+                             and {} literals, over the {:.1} GB --max-memory limit; \
+                             raise it or pass --max-memory 0 to disable",
+                            need as f64 / 1e9, clauses.len(), lits, max_bytes as f64 / 1e9));
+                    }
+                }
             }
         }
     }
@@ -1646,7 +1712,7 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
             Err(e) => { eprintln!("c ERROR: cannot create proof {}: {}", out.display(), e); std::process::exit(2); }
         }
         if let Some(src) = source_path {
-            match std::fs::File::open(src).map_err(|e| e.to_string()).and_then(|f| parse_dimacs(io::BufReader::new(f))) {
+            match std::fs::File::open(src).map_err(|e| e.to_string()).and_then(|f| parse_dimacs(io::BufReader::new(f), default_max_memory())) {
                 Ok((_, cls)) => { eprintln!("c boxes: {} box source clauses from {}", cls.len(), src.display()); eng.set_box_source(&cls); }
                 Err(e) => { eprintln!("c ERROR: --boxes-source {}: {}", src.display(), e); std::process::exit(2); }
             }
@@ -2713,6 +2779,12 @@ struct Args {
     /// as `c pb-cadical: proof-format=pbp|lrat`.  Optional: without it,
     /// `pb-cadical` still solves and prints the verdict but writes no proof.
     proof: Option<std::path::PathBuf>,
+    /// Abort rather than let the clause list exhaust the machine, in
+    /// bytes; 0 disables.  Defaults to 60 % of physical RAM — enough for
+    /// any instance this solver can actually search, and short of the
+    /// point where the kernel starts compressing and swapping, which is
+    /// where a run stops being slow and starts taking the machine with it.
+    max_memory: u64,
     /// CaDiCaL options for the `cadical` backend, `NAME=VALUE`, in
     /// command-line order, on top of the vendored release's own defaults.
     /// For ablating the reference solver, which is how a gap to it gets
@@ -2783,6 +2855,7 @@ fn parse_args() -> Result<Args, String> {
         satsuma_mem_gb: 0,
         cook: true,
         factoring: true,
+        max_memory: default_max_memory(),
         cadical_opts: Vec::new(),
         xor_gauss_max_clauses: 1_000_000,
         emit_cover: None,
@@ -2958,6 +3031,16 @@ fn parse_args() -> Result<Args, String> {
             s if s.starts_with("--emit-cook-pbp=") => {
                 a.emit_cook_pbp = Some(s["--emit-cook-pbp=".len()..].to_string().into());
             }
+            "--max-memory" => {
+                let v = iter.next().ok_or_else(|| "--max-memory requires a size in GB".to_string())?;
+                a.max_memory = (v.parse::<f64>().map_err(|_| format!("--max-memory: bad size {v:?}"))?
+                                * 1e9) as u64;
+            }
+            s if s.starts_with("--max-memory=") => {
+                let v = &s["--max-memory=".len()..];
+                a.max_memory = (v.parse::<f64>().map_err(|_| format!("--max-memory: bad size {v:?}"))?
+                                * 1e9) as u64;
+            }
             "--cadical-opt" => {
                 let v = iter.next().ok_or_else(||
                     "--cadical-opt requires NAME=VALUE".to_string())?;
@@ -3057,6 +3140,9 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    CaDiCaL path: LRAT (cake_lpr <cnf> FILE);");
                 eprintln!("                    kissat path: GRAT (gratchk unsat <cnf> FILE).");
                 eprintln!("                    The format is on stderr: c pb-cadical: proof-format=…");
+                eprintln!("  --max-memory GB  Abort if the clause list would exceed this (default 60%");
+                eprintln!("                    of RAM, 0 disables).  A 7.5 GB CNF needs tens of GB as");
+                eprintln!("                    Vec<Vec<i32>> and will otherwise swap the machine.");
                 eprintln!("  --cadical-opt N=V CaDiCaL option for the cadical backend, repeatable.");
                 eprintln!("                    The backend otherwise runs the vendored 3.0.1's own");
                 eprintln!("                    defaults; release 3.0.0's stronger preprocessing is");
@@ -3157,7 +3243,7 @@ fn main() {
 
     // Parse stdin (buffered) into a clause set.
     let stdin = io::stdin();
-    let (nvars, mut clauses) = match parse_dimacs(stdin.lock()) {
+    let (nvars, mut clauses) = match parse_dimacs(stdin.lock(), args.max_memory) {
         Ok(x) => x,
         Err(e) => {
             eprintln!("c parse error: {}", e);
@@ -4651,7 +4737,7 @@ mod tests {
     #[test]
     fn parse_simple() {
         let input = b"c hello\np cnf 3 2\n1 -2 0\n2 3 0\n" as &[_];
-        let (nvars, clauses) = parse_dimacs(input).unwrap();
+        let (nvars, clauses) = parse_dimacs(input, 0).unwrap();
         assert_eq!(nvars, 3);
         assert_eq!(clauses, vec![vec![1, -2], vec![2, 3]]);
     }
@@ -4660,7 +4746,7 @@ mod tests {
     fn parse_clause_spans_lines() {
         // Whitespace inside a clause is ignored; clauses can wrap.
         let input = b"p cnf 3 1\n1\n-2\n3 0\n" as &[_];
-        let (nvars, clauses) = parse_dimacs(input).unwrap();
+        let (nvars, clauses) = parse_dimacs(input, 0).unwrap();
         assert_eq!(nvars, 3);
         assert_eq!(clauses, vec![vec![1, -2, 3]]);
     }
@@ -4669,7 +4755,7 @@ mod tests {
     fn parse_no_problem_line_infers_nvars() {
         // No `p cnf ...` header; nvars is inferred from max abs literal.
         let input = b"3 -7 0\n2 -1 0\n" as &[_];
-        let (nvars, clauses) = parse_dimacs(input).unwrap();
+        let (nvars, clauses) = parse_dimacs(input, 0).unwrap();
         assert_eq!(nvars, 7);
         assert_eq!(clauses, vec![vec![3, -7], vec![2, -1]]);
     }
@@ -4678,14 +4764,14 @@ mod tests {
     fn parse_trailing_clause_without_zero() {
         // A trailing fragment with no `0` is still kept as a final clause.
         let input = b"p cnf 2 2\n1 -2 0\n1 2" as &[_];
-        let (_, clauses) = parse_dimacs(input).unwrap();
+        let (_, clauses) = parse_dimacs(input, 0).unwrap();
         assert_eq!(clauses, vec![vec![1, -2], vec![1, 2]]);
     }
 
     #[test]
     fn parse_rejects_garbage() {
         let input = b"p cnf 1 1\n1 banana 0\n" as &[_];
-        assert!(parse_dimacs(input).is_err());
+        assert!(parse_dimacs(input, 0).is_err());
     }
 
     // ── End-to-end SAT/UNSAT ─────────────────────────────────────────────

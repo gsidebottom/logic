@@ -1,0 +1,83 @@
+# Why a single solve reached 64 GB, and what was done about it (2026-09-20)
+#
+# Found the hard way: an 8-way parallel probe over the balanced study set
+# drove a 64 GB machine into swap.  `ps -o rss` showed the worst process at
+# 7.9 GB, which was wrong -- resident size drops pages the kernel has
+# compressed or swapped, and the corroborating state was 5.4 GB of swap in
+# use with 949,297 pages in the compressor and 80 M compressions.  The
+# metric that tells the truth on macOS is phys_footprint (`vmmap -summary`,
+# and what Activity Monitor shows).  `ulimit -v` does nothing here.
+
+=== 1. Where the memory goes ===
+
+# 7.5 GB md5-equivalence-checking instance, footprint sampled every 1.5 s,
+# hard-killed at 8 GB:
+#
+#   t=0.4s   11 MB      t=14.1s  4096 MB
+#   t=2.4s  727 MB      t=22.6s  6042 MB
+#   t=4.5s 1434 MB      t=32.1s  7987 MB
+#   t=6.7s 2048 MB      t=35.5s  8704 MB  -> killed
+#
+#   parsed: NEVER REACHED.  conflicts: 0.
+#
+# Dead linear at ~250 MB/s, entirely before search starts.  A clause-database
+# bound -- the fix originally proposed -- would not have helped at all.
+#
+# Search-phase baseline, cryptography-cbmc (33 MB file, 266 K vars,
+# 1.58 M clauses, solved UNSAT in 88 s over 808,883 conflicts):
+#
+#   410 MB by t=2.3s (the parse), then 410 -> 471 MB across the whole search
+#
+#   parse and setup   410 MB   (87% of peak, ~12x the CNF file size)
+#   808 K conflicts    60 MB   (13%)
+#
+# So: not a leak, and not the learned-clause database.  It is the INPUT
+# REPRESENTATION.  `parse_dimacs` builds Vec<Vec<i32>> -- a heap allocation
+# per clause, ~24 bytes for the Vec in the outer buffer plus allocator
+# metadata and 16-byte alignment on the clause's own block, against 12 bytes
+# of payload for a ternary clause -- and `Engine::from_cnf` then copies the
+# literals into its flat arena, so both representations are live at once.
+# The outer Vec's doubling is the late-parse hazard: at ~400 M clauses that
+# buffer alone is ~10 GB, and a realloc transiently needs the old one and a
+# new one twice its size.
+
+=== 2. The bound ===
+
+# `--max-memory GB` (default 60% of physical RAM; 0 disables), checked
+# during the parse every 1 M literals, against the greater of:
+#
+#   an ESTIMATE, clauses*48 + lits*8, which sees what the clause list will
+#   cost before it is committed; and
+#   a MEASUREMENT, getrusage's peak RSS, which catches what the estimate
+#   cannot model.
+#
+# Calibration on the md5 instance: at an 8 GB estimate real peak RSS was
+# 4.85 GB, so the estimate leads early in a parse and the measurement takes
+# over late.  Neither alone is enough.
+#
+# Effect on the instance that started this:
+#
+#   before   climbed past 64 GB, swapped the machine, never finished parsing
+#   after    aborts in 3.3 s at 1.2 GB peak with
+#            "input needs about 2.0 GB for the clause list after 30,340,222
+#             clauses and 69,206,016 literals, over the 2.0 GB --max-memory
+#             limit; raise it or pass --max-memory 0 to disable"
+#
+# Normal instances are untouched (c3540_k8 parses and refutes as before).
+
+=== 3. What this does NOT fix ===
+#
+# The guard makes a hopeless instance fail fast and legibly instead of
+# taking the machine down.  It does not make the instance solvable.  The
+# real fix is flat clause storage -- parse into (lits: Vec<i32>, ends:
+# Vec<u32>) and hand the engine slices, instead of a Vec per clause --
+# which would cut the input representation by roughly 3x for ternary
+# clauses and remove the doubling hazard entirely.  That is a refactor
+# across a dozen signatures in sat.rs and every stage that mutates the
+# clause list (preprocessing, xor-gauss, factoring, the cook detector), so
+# it is its own piece of work rather than a footnote to this one.
+#
+# Worth noting for the competition claims: SAT Competition enforces a hard
+# per-solve memory limit, and nothing in doc/box_candidates_satcomp.md was
+# measured under one.  On the large instances of the balanced set this
+# solver would be killed on memory before its search quality mattered.

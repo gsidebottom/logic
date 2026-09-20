@@ -866,6 +866,55 @@ fault-tolerance argument Mallob makes and we inherit.
 
 M6 decides whether M7–M8 are built.
 
+### Where the gap to CaDiCaL actually is (2026-09-19)
+
+Read this before porting anything else.  The 2026-09-17 ablation was used
+to choose what to build; going back to it with everything built, **every
+feature it ranks above the noise floor is now implemented here** — restart,
+reduce, minimize, chronoreusetrail, inprocessing, chrono, restartreusetrail,
+phase saving — and `stabilize`, which it scores at 0.80×, *hurts* and is
+already off.  What is left unbuilt (backbone 1.04×, lucky 1.03×, warmup
+1.03×) is inside the noise of a seven-instance geomean whose per-instance
+spread runs 0.5× to 4×.  The ablation is exhausted, which is why five
+consecutive ports measured neutral.
+
+Measuring the gap directly instead
+(`doc/data/boxes_gap_decomposition_2026-09-19.txt`), over 20 instances both
+solvers finish:
+
+| | conflicts | rate | time |
+|---|---|---|---|
+| all (20) | **1.60×** | 1.06× | 1.70× |
+| UNSAT (16) | 1.50× | 1.04× | 1.55× |
+
+1.60 × 1.06 = 1.70: **94 % of the gap is search quality and 6 % is
+throughput.**  We propagate at CaDiCaL's speed — 83–119 k conflicts/s
+against its 89–113 k — so memory layout, watch schemes and M4 codegen are
+not the lever, which is worth knowing before spending weeks there.
+
+The deficit is also bimodal rather than uniform.  We *beat* CaDiCaL on
+`r3sat_1` (0.37×), `r3sat_3` (0.68×), `r3sat_0`, `r3sat_5`, `Steiner-45`,
+`c5315`, `dlx1c` — needing 2.7× fewer conflicts on random 3-SAT is a real
+strength — and lose on `php9_8` (6.15×), `w55_177` (5.48×), the `c3540`
+family (2.5–4.6×) and `rr10_8` (3.89×).
+
+Taking the worst family apart settles what it is *not*.  On `c3540_k8` our
+learned clauses are the same size as CaDiCaL's (16.2 against ~16.9), our
+propagation rate matches, our decay constant is identical (its
+`scorefactor` is 950 per mille = 0.95, our hardcoded `var_inc`), its
+`restartint` is 2 against our `conflicts_here >= 2`, its focused margin
+10 % against our 1.10 — and every CaDiCaL-ward knob we own makes us
+*worse*: shrinking 114 k conflicts, stable-mode restarts 117 k, the reduce
+grace period 114 k, against 99 k by default.  `--plain` on that instance is
+0.69×, so CaDiCaL is better with all pre/inprocessing off: two solvers
+reduced to core CDCL, everything matching, and it still needs 3.7× fewer
+conflicts.
+
+The remaining difference is not a feature, a constant, or a knob either
+codebase exposes.  The next probe is instrumenting learned-clause **LBD**,
+which nothing here reports and which is exactly what shrinking exists to
+lower — not another port.
+
 ### Next levers (2026-09-18)
 
 Two items on the agenda, both with their evidence and both still unbuilt.

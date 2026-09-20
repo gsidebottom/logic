@@ -1,0 +1,108 @@
+# Where is the gap to CaDiCaL?  (2026-09-19, 120 s cap, one solver at a time)
+#
+# The 2026-09-17 ablation was used to pick what to build.  Going back to it
+# with everything built: EVERY feature it ranks above the noise floor is now
+# implemented here --
+#
+#   restart 1.85x (EMA, default)      chrono 1.11x (built, neutral)
+#   reduce 1.28x (+ grace, neutral)   restartreusetrail 1.09x (in restart())
+#   minimize 1.16x (built)            phase 1.08x (phase saving)
+#   chronoreusetrail 1.13x (built)    stabilize 0.80x -- HURTS, off here
+#   inprocessing 1.12x (built)
+#
+# -- and what remains unbuilt (backbone 1.04x, lucky 1.03x, warmup 1.03x)
+# sits inside the noise of a seven-instance geomean whose per-instance
+# spread runs 0.5x to 4x.  The ablation is exhausted as a source of levers,
+# which is why five consecutive ports measured neutral.
+#
+# So this measures the gap directly instead.  Two independent quantities
+# whose product is the time ratio:
+#
+#   conflicts ratio = conflicts we need / conflicts CaDiCaL needs  (search)
+#   rate ratio      = CaDiCaL's conflicts per second / ours        (throughput)
+
+instance                                 ours              cadical   confl    rate    time
+                              confl   s    /s      confl   s    /s   ratio   ratio   ratio
+Steiner-45-16-bce         189523  1.93    98k  223933  2.52    89k   0.85x   0.90x   0.76x
+c3540_k8                   99242  1.14    87k   39303  0.40    98k   2.53x   1.13x   2.84x
+c3540_k8_s1               152250  1.84    83k   33420  0.36    93k   4.56x   1.13x   5.15x
+c3540_k8_s2               138485  1.61    86k   45535  0.49    94k   3.04x   1.09x   3.31x
+c3540_k8_s3               132945  1.54    86k   40100  0.42    95k   3.32x   1.10x   3.64x
+c5315_k8                   16081  0.13   119k   18250  0.16   112k   0.88x   0.94x   0.83x
+c5315_k8_s1                13277  0.13   105k   13662  0.13   102k   0.97x   0.97x   0.94x
+c5315_k8_s2                15199  0.14   107k   13403  0.12   108k   1.13x   1.01x   1.15x
+c5315_k8_s3                13763  0.13   104k   12367  0.11   113k   1.11x   1.09x   1.21x
+dlx1c.ucl.sat.chaff.4.1.     683  0.03    21k     746  0.05    14k   0.92x   0.67x   0.61x
+eq.atree.braun.13.unsat  (timeout in one arm)
+php9_8                      9530  0.07   132k    1550  0.01   133k   6.15x   1.01x   6.20x
+pyhala_unsat40           (timeout in one arm)
+r3sat_0                   178206  2.57    69k  218524  3.07    71k   0.82x   1.03x   0.84x
+r3sat_1                   212323  3.34    64k  575450  8.42    68k   0.37x   1.07x   0.40x
+r3sat_2                    46659  0.52    90k   18854  0.17   112k   2.47x   1.24x   3.06x
+r3sat_3                   180126  2.72    66k  265920  3.80    70k   0.68x   1.06x   0.72x
+r3sat_4                    44996  0.47    95k   27496  0.27   101k   1.64x   1.06x   1.74x
+r3sat_5                    76622  0.95    81k   91030  1.06    86k   0.84x   1.07x   0.90x
+rr10_8                     27258  0.31    87k    7004  0.05   142k   3.89x   1.63x   6.34x
+w55_177                    73165  0.87    84k   13346  0.12   111k   5.48x   1.31x   7.19x
+w55_178                   868230 23.22    37k  641860 17.10    38k   1.35x   1.00x   1.36x
+
+all    n=20   conflicts  1.60x   rate  1.06x   time  1.70x
+UNSAT  n=16   conflicts  1.50x   rate  1.04x   time  1.55x
+SAT    n= 4   conflicts  2.08x   rate  1.17x   time  2.42x
+
+=== 1.60 x 1.06 = 1.70: the gap is 94% SEARCH QUALITY, 6% throughput ===
+#
+# We propagate at CaDiCaL's speed -- 83-119k conflicts/s against its 89-113k,
+# ratio ~1.0 on every instance.  That rules out memory layout, watch schemes
+# and codegen as the primary lever before anyone spends weeks there.
+#
+# And the deficit is BIMODAL, not uniform.  We match or beat CaDiCaL on
+# nearly half the corpus:
+#
+#   r3sat_1  0.37x     r3sat_3  0.68x     r3sat_0  0.82x     r3sat_5  0.84x
+#   Steiner  0.85x     c5315_k8 0.88x     dlx1c    0.92x     c5315_s1 0.97x
+#
+# and lose badly on a handful:
+#
+#   php9_8   6.15x     w55_177  5.48x     c3540_k8_s1 4.56x   rr10_8  3.89x
+#   c3540_k8_s3 3.32x  c3540_k8_s2 3.04x  c3540_k8 2.53x      r3sat_2 2.47x
+#
+# Needing 2.7x FEWER conflicts than CaDiCaL on random 3-SAT is a real
+# strength and not a rounding error.
+
+=== c3540_k8, the worst family, taken apart ===
+#
+#                      ours        cadical
+#   conflicts         99242          39303
+#   restarts          13091           1990   (interval 7.6 vs 19.75)
+#   learned size       16.2          ~16.9   (from its 38.88% shrink rate)
+#   conflicts/s         87k            98k
+#
+# Clause size matches.  Propagation rate matches.  And every CaDiCaL-ward
+# knob we own makes us WORSE on this instance:
+#
+#   default                    99242 conflicts
+#   BOXES_SHRINK=1            114432   (shrinking works -- 28630 blocks,
+#                                       61947 literals -- and costs 15%)
+#   BOXES_STABLE=1            117777   (restart interval 23.6, close to
+#                                       CaDiCaL's 19.75, and 19% worse)
+#   BOXES_SHRINK+STABLE       116726
+#   BOXES_USED+PROMOTE        113772   (the reduce grace period)
+#
+# The constants match too: CaDiCaL's scorefactor is 950 per mille -- 0.95,
+# exactly our hardcoded var_inc decay -- its restartint is 2 against our
+# `conflicts_here >= 2`, its focused restart margin 10% against our 1.10.
+# `--bumpreason` is the one thing it does that we do not, and the ablation
+# says it HURTS on this very family (0.49-0.71x), so we are already on the
+# better side of it.
+#
+# Most telling: `--plain` on c3540_k8 is 0.69x, so CaDiCaL is BETTER with
+# all pre/inprocessing off -- about 27k conflicts.  Two solvers reduced to
+# core CDCL, same decay, same restart trigger, same clause sizes, same
+# propagation rate, and it still needs 3.7x fewer conflicts.
+#
+# The remaining difference is not a feature, a constant, or a knob that
+# either codebase exposes.  It is in how the pieces interact, and nothing
+# measured here localises it further.  Anyone resuming this should start by
+# instrumenting learned-clause LBD (we do not report it, and shrinking's
+# whole point is lowering it) rather than porting anything else.

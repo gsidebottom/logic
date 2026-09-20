@@ -81,3 +81,35 @@
 # per-solve memory limit, and nothing in doc/box_candidates_satcomp.md was
 # measured under one.  On the large instances of the balanced set this
 # solver would be killed on memory before its search quality mattered.
+
+=== 4. Re-run of the balanced probe, bounded (step 3) ===
+#
+# 97 instances / 69 families, 4 workers x 4 GB, 120 s cap, with a watchdog
+# killing the job if total solver footprint crossed 20 GB.
+#
+#   solved            21  (22%)  across 18 of 69 families (26%)
+#   timeout           73
+#   memory bound       3  across 2 families
+#   verdict mismatches 0
+#
+#   total solver footprint held at ~3.2 GB; system stayed at 94% free.
+#   (The unbounded 8-way run had taken all 64 GB and swapped.)
+#
+# Two results worth keeping:
+#
+# The bounded run SOLVED MORE than the unbounded one -- 21 against 18 --
+# because the machine was not thrashing.  The earlier probe was degrading
+# its own measurements, which is a reason to bound runs even when memory
+# is not the object of study.
+#
+# And the three-way split separates two problems that the first probe
+# conflated.  Only 3 instances (3%) cannot be LOADED -- two
+# md5-equivalence-checking and one hashtable-safety.  The other 73 failures
+# are genuine: the engine loads them and cannot search them in 120 s.  So
+# the memory defect, dramatic as its symptom was, blocks a small slice of
+# the balanced set; the engine's real limitation here is search capability,
+# and fixing the parser would move 3 instances, not 73.
+#
+# The A/B set this leaves: 21 instances across 18 families, against the 22
+# instances / ~10 families (14 of them from two) that every engine A/B in
+# this repo has used.

@@ -915,9 +915,31 @@ codebase exposes.  The next probe is instrumenting learned-clause **LBD**,
 which nothing here reports and which is exactly what shrinking exists to
 lower — not another port.
 
+**Re-measured on the balanced set (2026-09-21**,
+`doc/data/boxes_balanced_suite_2026-09-21.txt`**), and both halves of the
+paragraph above need correcting.**  On the 20 competition instances both
+solvers finish, we need *fewer* conflicts than CaDiCaL on 13 — geomean
+0.25×, median 0.53× — and are faster in wall time (0.64× geomean).  The
+old corpus's 1.60× conflict deficit was two ISCAS circuits and their
+shuffles; on the families this engine can solve, it searches well.  But
+"throughput is not the gap" was a small-instance artifact: on the eight
+instances with ≥300 k conflicts in both arms our conflict rate is
+**1.3–2.8× slower** than CaDiCaL's, consistent with the cache-hostile
+`Vec<Vec<_>>` watch and occurrence layout that the memory work exposed.
+And the 20 are the instances *we* solve — the 76 the balanced set holds
+that we cannot are where the real gap lives, and no comparison on the
+solvable subset can see it.
+
 ### Next levers (2026-09-18)
 
 Two items on the agenda, both with their evidence and both still unbuilt.
+
+*Balanced-set re-run, 2026-09-21: the old verdicts hold.  Chrono is harmful
+on both the easy and the hard set (sign tests against; 115× on
+graph-isomorphism), stable mode loses on 16 of 20, glucose restarts are
+catastrophic (418× on ramseycube) so the EMA default is validated, and
+shrinking and the grace period stay neutral.  The biased-corpus worry was
+legitimate; on these questions its answers were right.*
 
 **1. CaDiCaL's refinement of the reduce policy.**  The engine already
 reduces (`reduce_db`): learned clauses sorted worst-first by LBD then

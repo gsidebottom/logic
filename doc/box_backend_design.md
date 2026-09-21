@@ -940,6 +940,16 @@ reached 64 GB is gone by construction.  The ~90 % that remains is the
 engine's own per-literal and per-variable `Vec<Vec<_>>` structures, which
 is the next target and the same layout implicated in the throughput gap.*
 
+*Engine memory decomposed (2026-09-21, `BOXES_MEM_REPORT=1`; §6 of the
+same data file).  At 7.3 M variables the engine retained 4.3 GB at build,
+700 MB of it empty containers: `xidx`, `occ` and `expl_cache` were a `Vec`
+per literal or variable sized eagerly on every instance, boxes or not.
+They are now created only when a box or an explain clause exists — build
+peak 4189 → 3488 MB, search unchanged.  The remaining order of business is
+measured: level-0 simplification's transient copy of every clause is where
+the peak is actually reached (it more than doubles it on both instances
+measured), then the per-literal headers inside `watches` and `bins`.*
+
 ### Next levers (2026-09-18)
 
 Two items on the agenda, both with their evidence and both still unbuilt.

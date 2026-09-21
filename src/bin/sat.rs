@@ -1712,6 +1712,7 @@ fn boxes_search(nvars: usize, cnf: &Cnf, boxes_path: Option<&std::path::Path>, t
                 proof_path: Option<&std::path::Path>, source_path: Option<&std::path::Path>) -> SearchOutcome {
     let t = Instant::now();
     let mut eng = logic::boxes::Engine::from_cnf(nvars, cnf.iter());
+    eng.mem_report("engine built from the parsed clauses");
     // Proof mode (§4 of the design doc): the refutation is logged as DRAT.
     // It certifies the clauses handed in plus, with boxes, the clauses they
     // stand for — check against the concatenation, i.e. the original CNF.
@@ -3260,6 +3261,10 @@ fn main() {
         }
     };
     eprintln!("c parsed {} variables, {} clauses", nvars, parsed.len());
+    if matches!(std::env::var("BOXES_MEM_REPORT").as_deref(), Ok("1") | Ok("on")) {
+        eprintln!("c boxes: mem [parsed]: peak RSS {:.0} MB (the flat clause list: {:.0} MB)",
+                  peak_rss_bytes() as f64 / 1e6, (parsed.num_lits() * 4 + parsed.len() * 4) as f64 / 1e6);
+    }
     // Two facts every backend needs, taken once here so neither form of
     // the clause list has to be consulted for them later.
     let has_empty_clause = parsed.iter().any(|c| c.is_empty());

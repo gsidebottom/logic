@@ -156,3 +156,51 @@
 # Next target, now measured rather than guessed: the engine's own
 # Vec<Vec<_>> structures, ~90% of the peak on large instances, and the same
 # layout the balanced-set suite implicates in the 1.69x throughput gap.
+
+=== 6. Where the engine's memory goes (2026-09-21, BOXES_MEM_REPORT=1) ===
+#
+# Peak RSS at three points and the retained size of each structure.  The
+# parser's flat list is now a small share; this is the rest.
+#
+# 4d6e18e5, 7.3 M variables, 40.7 M clauses (1288 MB file):
+#   parsed          peak  785 MB   (the flat clause list: 782 MB)
+#   engine built    peak 4189 MB   4312 MB retained:
+#       1191 MB  watches   14.6 M inner vecs = 350 MB of headers
+#       1074 MB  arena
+#        437 MB  bins      14.6 M inner vecs = 350 MB of headers
+#        350 MB  xidx      14.6 M inner vecs, ALL EMPTY -- headers only
+#        268 MB  cstart      268 MB  clen
+#        175 MB  occ        7.3 M inner vecs, ALL EMPTY
+#        175 MB  expl_cache 7.3 M inner vecs, ALL EMPTY
+#         67 MB  deleted      58 MB  reason
+#   after init      not reached in 20 s.  The 8.9 GB peak measured in §5
+#                   is therefore INSIDE level-0 simplification.
+#
+# 3a07646b, 266 K variables, 1.58 M clauses (32 MB file):
+#   parsed          peak  26 MB    (flat list 23)
+#   engine built    peak 158 MB    155 retained: bins 40, arena 34,
+#                   watches 24, xidx 13 (empty), cstart 8, clen 8,
+#                   occ 6 (empty), expl_cache 6 (empty)
+#   after init      peak 379 MB    207 retained (elim 45, the clauses of
+#                   116 K eliminated variables) -- so ~170 MB of transient
+#                   inside simplify, more than doubling the peak.
+#
+# First free win: `xidx`, `occ` and `expl_cache` are now created only when
+# a box or an explain clause exists (`grow` keeps them in step after that).
+# On a plain CNF they were 24 bytes of empty header per literal or
+# variable -- 700 MB here, 22 GB at the 117 M variables of the instance
+# that started this.  Re-measured on 4d6e18e5:
+#
+#   engine built    peak 4189 -> 3488 MB   retained 4312 -> 3612 MB
+#
+# Search unchanged (400 tests, including the boxed-with and boxed-without
+# explain-clause paths that exercise the lazy creation).
+#
+# What remains, by size:
+#   1. simplify's transient -- the actual peak on both instances; it builds
+#      a Vec<Vec<u32>> copy of every clause plus per-literal occurrence
+#      lists, then rebuilds the store.
+#   2. headers inside watches and bins: 700 MB of 24-byte per-literal
+#      headers at 7.3 M variables -- a CSR layout, and the hot path, so
+#      last and with throughput measured.
+#   3. arena + cstart + clen: 1.6 GB, inherent to the clause set.

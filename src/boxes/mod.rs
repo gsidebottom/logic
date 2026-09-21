@@ -402,6 +402,25 @@ const REDUCE_STEP: usize = 300;
 /// grace).
 const MAX_USED: u8 = 31;
 
+/// This process's peak resident size in bytes (macOS reports bytes, Linux
+/// kilobytes).  Resident undercounts a footprint the kernel has compressed,
+/// but at the points this is read nothing has gone cold yet.
+fn peak_rss_bytes() -> usize {
+    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) } != 0 { return 0; }
+    if cfg!(target_os = "macos") { ru.ru_maxrss as usize } else { ru.ru_maxrss as usize * 1024 }
+}
+
+/// Bytes a `Vec` holds, counting capacity: slack is resident once it has
+/// been written through, and a doubled buffer's slack is the cost.
+fn vec_bytes<T>(v: &[T]) -> usize { v.len() * std::mem::size_of::<T>() }
+fn vec_cap_bytes<T>(v: &Vec<T>) -> usize { v.capacity() * std::mem::size_of::<T>() }
+/// A `Vec<Vec<T>>`: the outer buffer of 24-byte headers plus every inner
+/// buffer's capacity.  Returns (bytes, inner vecs).
+fn vecvec_bytes<T>(v: &Vec<Vec<T>>) -> (usize, usize) {
+    (v.capacity() * std::mem::size_of::<Vec<T>>() + v.iter().map(vec_cap_bytes).sum::<usize>(), v.len())
+}
+
 /// Read a `usize` knob from the environment (experiment support: the
 /// clause-database policy is the one CDCL lever with no A/B behind it).
 fn env_usize(name: &str, default: usize) -> usize {
@@ -835,7 +854,12 @@ impl Engine {
     fn grow(&mut self, nvars: usize) {
         if nvars <= self.nvars { return; }
         self.nvars = nvars;
-        self.occ.resize(nvars, Vec::new());
+        // The box occurrence lists, the explanation cache and the explain-
+        // clause index exist only once something uses them (add_box,
+        // add_explain_clause); on a plain CNF each was a 24-byte empty
+        // header per variable or literal -- 700 MB at 7.3 M variables, and
+        // 22 GB at the 117 M of the instance that started the memory work.
+        if !self.occ.is_empty() { self.occ.resize(nvars, Vec::new()); }
         self.vals.resize(nvars, Val::U);
         self.level.resize(nvars, 0);
         self.reason.resize(nvars, Reason::None);
@@ -846,9 +870,9 @@ impl Engine {
         self.shrink_mark.resize(nvars, false);
         self.watches.resize(2 * nvars, Vec::new());
         self.bins.resize(2 * nvars, Vec::new());
-        self.xidx.resize(2 * nvars, Vec::new());
+        if !self.xidx.is_empty() { self.xidx.resize(2 * nvars, Vec::new()); }
         self.lvals.resize(2 * nvars, Val::U);
-        self.expl_cache.resize_with(nvars, Vec::new);
+        if !self.expl_cache.is_empty() { self.expl_cache.resize_with(nvars, Vec::new); }
         self.expl_ok.resize(nvars, false);
         self.eliminated.resize(nvars, false);
         self.target_phase.resize(nvars, false);
@@ -999,11 +1023,46 @@ impl Engine {
         Some((share(v.len() / 100), share(v.len() / 10), hit, v.len()))
     }
 
+    /// `BOXES_MEM_REPORT=1`: the process's peak RSS so far and the retained
+    /// size of each structure, at a named point.  Exists because flattening
+    /// the parser's clause list moved peak memory by only 6-11 % on large
+    /// instances (2026-09-21): the rest is in here, and which structure it
+    /// is was a guess until this printed it.  A jump in peak RSS between
+    /// two reports with no matching growth in the table is a transient —
+    /// level-0 simplification builds and drops its own copies.
+    pub fn mem_report(&self, label: &str) {
+        if !matches!(std::env::var("BOXES_MEM_REPORT").as_deref(), Ok("1") | Ok("on")) { return; }
+        let mut rows: Vec<(String, usize)> = Vec::new();
+        macro_rules! flat { ($($f:ident),*) => { $( rows.push((stringify!($f).to_string(), vec_cap_bytes(&self.$f))); )* } }
+        macro_rules! nested { ($($f:ident),*) => { $( { let (b, n) = vecvec_bytes(&self.$f);
+            rows.push((format!("{} ({} inner vecs = {:.0} MB of headers)", stringify!($f), n, n as f64 * 24.0 / 1e6), b)); } )* } }
+        flat!(arena, cstart, clen, xarena, xstart, xlen, learnt_lbd, learnt_act, learnt_used, deleted,
+              vals, lvals, level, reason, trail_pos, trail, activity, phase, seen, heap, heap_pos,
+              target_phase, best_phase, eliminated, expl_ok, hdr, vars_all, kill_all, live, snap,
+              in_queue, queue, lbd_stamp, live_count, snap_count);
+        nested!(watches, bins, occ, xidx, expl_cache, box_src);
+        let elim = self.elim.capacity() * std::mem::size_of::<(u32, Vec<Vec<u32>>)>()
+            + self.elim.iter().map(|(_, cs)| vecvec_bytes(cs).0).sum::<usize>();
+        rows.push((format!("elim ({} eliminated vars' clauses)", self.elim.len()), elim));
+        rows.sort_by(|a, b| b.1.cmp(&a.1));
+        let total: usize = rows.iter().map(|r| r.1).sum();
+        eprintln!("c boxes: mem [{}]: peak RSS {:.0} MB; {:.0} MB retained in engine structures, largest:",
+                  label, peak_rss_bytes() as f64 / 1e6, total as f64 / 1e6);
+        for (n, b) in rows.iter().take(10) {
+            if *b > 0 { eprintln!("c boxes: mem   {:>8.0} MB  {}", *b as f64 / 1e6, n); }
+        }
+        let _ = vec_bytes::<u32>;
+    }
+
     pub fn add_box(&mut self, b: TableBox) {
         let bi = self.hdr.len() as u32;
         let nw = b.nwords as u32;
         let (vbase, kbase) = (self.vars_all.len() as u32, self.kill_all.len() as u32);
         if let Some(&max) = b.vars.iter().max() { self.grow(max as usize + 1); }
+        // First box: the per-variable tables come into existence now, sized
+        // to the variables so far; `grow` keeps them in step from here on.
+        if self.occ.len() < self.nvars { self.occ.resize(self.nvars, Vec::new()); }
+        if self.expl_cache.len() < self.nvars { self.expl_cache.resize_with(self.nvars, Vec::new); }
         for (li, &v) in b.vars.iter().enumerate() {
             self.occ[v as usize].push(Occ { b: bi, koff: kbase + 2 * li as u32 * nw });
         }
@@ -1069,6 +1128,7 @@ impl Engine {
         let xi = self.xstart.len() as u32;
         self.xstart.push(self.xarena.len() as u32);
         self.xlen.push(c.len() as u32);
+        if self.xidx.len() < 2 * self.nvars { self.xidx.resize(2 * self.nvars, Vec::new()); }
         for &l in &c { self.xidx[l as usize].push(xi); }
         self.xarena.extend_from_slice(&c);
     }
@@ -1214,6 +1274,7 @@ impl Engine {
     /// Remove from every box the rows `v = val` kills, queueing the boxes that
     /// changed.
     fn apply_kills(&mut self, v: usize, val: Val) {
+        if self.occ.is_empty() { return; }   // no boxes: nothing to kill
         for k in 0..self.occ[v].len() {
             let Occ { b, koff } = self.occ[v][k];
             let h = self.hdr[b as usize];
@@ -1536,7 +1597,7 @@ impl Engine {
                 let t = code(var, self.vals[var as usize] == Val::F);   // the TRUE literal of var
                 let pos = self.trail_pos[var as usize];
                 let mut found = false;
-                for k in 0..self.xidx[t as usize].len() {
+                for k in 0..self.xidx.get(t as usize).map_or(0, |x| x.len()) {
                     let xi = self.xidx[t as usize][k] as usize;
                     let (s, n) = (self.xstart[xi] as usize, self.xlen[xi] as usize);
                     let unit = (0..n).all(|j| { let l = self.xarena[s + j]; l == t || (self.lvals[l as usize] == Val::F && self.trail_pos[(l >> 1) as usize] < pos) });
@@ -1962,7 +2023,7 @@ impl Engine {
         let mut alive = vec![true; cls.len()];
         let mut occ: Vec<Vec<usize>> = vec![Vec::new(); 2 * n];
         for (i, c) in cls.iter().enumerate() { for &l in c { occ[l as usize].push(i); } }
-        let frozen: Vec<bool> = (0..n).map(|v| !self.occ[v].is_empty() || self.vals[v] != Val::U).collect();
+        let frozen: Vec<bool> = (0..n).map(|v| self.occ.get(v).is_some_and(|o| !o.is_empty()) || self.vals[v] != Val::U).collect();
         let resolve = |a: &[u32], b: &[u32], v: usize| -> Option<Vec<u32>> {
             let mut r: Vec<u32> = a.iter().chain(b.iter()).copied().filter(|&l| (l >> 1) as usize != v).collect();
             r.sort_unstable(); r.dedup();
@@ -2026,6 +2087,7 @@ impl Engine {
 
     pub fn solve(&mut self) -> Verdict {
         if !self.init() { return Verdict::Unsat; }
+        self.mem_report("after init (level-0 simplification done)");
         self.solve_under(&[])
     }
 

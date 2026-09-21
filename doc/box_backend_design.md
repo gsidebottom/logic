@@ -950,6 +950,14 @@ measured: level-0 simplification's transient copy of every clause is where
 the peak is actually reached (it more than doubles it on both instances
 measured), then the per-literal headers inside `watches` and `bins`.*
 
+*Simplification's transient, first cut (2026-09-21, §7 of the same file):
+the elimination round's working copy is a flat pool, the old store is freed
+as soon as the copy exists, the occurrence lists are exact-sized `u32` and
+dropped before the rebuild.  Peak through init on the 40.7 M-clause
+instance 8.9 → 7.35 GB, search identical (verified on an instance that
+eliminates).  Checkpoints inside the round now show where the rest is: the
+pool doubling on resolvents, and the rebuild allocating on top of it.*
+
 ### Next levers (2026-09-18)
 
 Two items on the agenda, both with their evidence and both still unbuilt.

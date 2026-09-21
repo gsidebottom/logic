@@ -204,3 +204,44 @@
 #      headers at 7.3 M variables -- a CSR layout, and the hot path, so
 #      last and with throughput measured.
 #   3. arena + cstart + clen: 1.6 GB, inherent to the clause set.
+
+=== 7. Level-0 simplification's transient, first cut (2026-09-21) ===
+#
+# eliminate_round copied every live clause into a Vec<Vec<u32>>, built
+# per-literal occurrence lists of usize with doubling growth, and kept the
+# whole old store -- arena, index, watches, bins -- alive until the rebuild.
+# Now: the copy is a flat pool (one literal array, start and length per
+# clause); the old store's buffers are freed as soon as the copy exists
+# (nothing in the round reads them again); the occurrence lists are u32,
+# sized exactly by a counting pass, and dropped before the rebuild; the
+# rebuild reserves the store exactly for the survivors.  Same algorithm,
+# same order, so the search is unchanged.
+#
+# Identity, on an instance that actually eliminates (cryptography-cbmc):
+#   old  1006433 clauses -> 545033, 808883 conflicts, UNSAT
+#   new  1006433 clauses -> 545033, 808883 conflicts, UNSAT      IDENTICAL
+# (The "0 variables eliminated" on the stats line is the INPROCESSING
+#  counter; preprocessing's own line reads "eliminated N variables".)
+#
+# Checkpoints through the round, 4d6e18e5 (7.3 M vars, 40.7 M clauses,
+# 268 M literals -- 6.6 per clause, not the 2.3 of the md5 instance):
+#
+#   engine built                              3488 MB
+#   elim: working copy built                  5171     (+1683: the pool)
+#   elim: old store freed                     5171
+#   elim: occurrence lists built              5171     fits in the freed store
+#   elim: passes done, lists dropped          6755     (+1584: the pool DOUBLES
+#                                                       when resolvents push past
+#                                                       its exact capacity; elim
+#                                                       retains 507)
+#   elim: store rebuilt                       7349     (+594: new store on top of
+#                                                       the still-live pool)
+#   after init                                7382     3173 retained
+#
+#   peak through init: 8.9 GB (before) -> 7.35 GB.  Init completes in 25 s,
+#   eliminating 1.88 M variables, 36.3 M -> 32.9 M clauses.
+#
+# Next two cuts, both located by the checkpoints: reserve the pool with
+# headroom up front (untouched capacity is free, a doubling copy is not),
+# and split the rebuild so the pool is dropped before the watch lists --
+# the largest part of the new store -- are allocated.

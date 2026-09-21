@@ -1030,6 +1030,16 @@ impl Engine {
     /// is was a guess until this printed it.  A jump in peak RSS between
     /// two reports with no matching growth in the table is a transient —
     /// level-0 simplification builds and drops its own copies.
+    /// A bare peak-RSS checkpoint, for points inside a routine where the
+    /// retained table would say nothing about the transients that are the
+    /// question.  Peak RSS is monotonic, so the first checkpoint at which
+    /// it rises is where the peak is.
+    fn mem_mark(&self, label: &str) {
+        if matches!(std::env::var("BOXES_MEM_REPORT").as_deref(), Ok("1") | Ok("on")) {
+            eprintln!("c boxes: mem [{}]: peak RSS {:.0} MB", label, peak_rss_bytes() as f64 / 1e6);
+        }
+    }
+
     pub fn mem_report(&self, label: &str) {
         if !matches!(std::env::var("BOXES_MEM_REPORT").as_deref(), Ok("1") | Ok("on")) { return; }
         let mut rows: Vec<(String, usize)> = Vec::new();
@@ -2008,21 +2018,59 @@ impl Engine {
         self.proof_sync();
         let n = self.nvars;
         // the original clauses under the level-0 assignment
-        let mut cls: Vec<Vec<u32>> = Vec::new();
+        // The working copy is a flat pool, not a Vec per clause: at 40 M
+        // clauses the per-clause form was ~1.6 GB of container for
+        // ~0.4 GB of literals (2026-09-21, doc/data/boxes_memory_2026-09-20.txt §6).
+        struct Pool { lits: Vec<u32>, start: Vec<u32>, len: Vec<u32> }
+        impl Pool {
+            fn get(&self, i: usize) -> &[u32] {
+                let s = self.start[i] as usize;
+                &self.lits[s..s + self.len[i] as usize]
+            }
+            fn push(&mut self, c: &[u32]) {
+                self.start.push(self.lits.len() as u32);
+                self.len.push(c.len() as u32);
+                self.lits.extend_from_slice(c);
+            }
+            fn n(&self) -> usize { self.start.len() }
+        }
+        let mut cls = Pool { lits: Vec::with_capacity(self.arena.len()),
+                             start: Vec::with_capacity(self.first_learnt), len: Vec::with_capacity(self.first_learnt) };
+        let mut buf: Vec<u32> = Vec::new();
         for ci in 0..self.first_learnt {
             if self.deleted[ci] || self.clause(ci).iter().any(|&l| self.lit_value(l) == Val::T) { continue; }
-            let c: Vec<u32> = self.clause(ci).iter().copied().filter(|&l| self.lit_value(l) != Val::F).collect();
-            debug_assert!(c.len() >= 2, "level-0 propagation left a unit or empty clause");
-            cls.push(c);
+            buf.clear();
+            buf.extend(self.clause(ci).iter().copied().filter(|&l| self.lit_value(l) != Val::F));
+            debug_assert!(buf.len() >= 2, "level-0 propagation left a unit or empty clause");
+            cls.push(&buf);
         }
         let learned: Vec<(Vec<u32>, u32, f64)> = (self.first_learnt..self.cstart.len())
             .filter(|&ci| !self.deleted[ci] && !self.clause(ci).iter().any(|&l| self.lit_value(l) == Val::T))
             .map(|ci| (self.clause(ci).iter().copied().filter(|&l| self.lit_value(l) != Val::F).collect(), self.learnt_lbd[ci - self.first_learnt], self.learnt_act[ci - self.first_learnt]))
             .collect();
-        self.stats.clauses_before = cls.len() as u64;
-        let mut alive = vec![true; cls.len()];
-        let mut occ: Vec<Vec<usize>> = vec![Vec::new(); 2 * n];
-        for (i, c) in cls.iter().enumerate() { for &l in c { occ[l as usize].push(i); } }
+        self.mem_mark("elim: working copy built");
+        self.stats.clauses_before = cls.n() as u64;
+        // Nothing below reads the store again until it is rebuilt from the
+        // pool, so its buffers go now rather than sitting under the
+        // occurrence lists and the resolvents: arena, index, watches and
+        // binaries were ~3 GB of the 8.9 GB peak on the 40 M-clause
+        // instance.  (The headers of the per-literal vectors stay; they
+        // are the next item.)  Level-0 reasons that pointed into the store
+        // are cleared where the store is rebuilt, as before -- no
+        // propagation happens in between.
+        self.arena = Vec::new(); self.cstart = Vec::new(); self.clen = Vec::new();
+        for w in &mut self.watches { *w = Vec::new(); }
+        for w in &mut self.bins { *w = Vec::new(); }
+        self.mem_mark("elim: old store freed");
+        let mut alive = vec![true; cls.n()];
+        // Occurrence lists with u32 indices, sized exactly by a counting
+        // pass: half the entry size of usize, and no doubling slack.
+        let mut cnt = vec![0u32; 2 * n];
+        for i in 0..cls.n() { for &l in cls.get(i) { cnt[l as usize] += 1; } }
+        let mut occ: Vec<Vec<u32>> = cnt.iter().map(|&k| Vec::with_capacity(k as usize)).collect();
+        drop(cnt);
+        for i in 0..cls.n() { for &l in cls.get(i) { occ[l as usize].push(i as u32); } }
+        self.mem_mark("elim: occurrence lists built");
         let frozen: Vec<bool> = (0..n).map(|v| self.occ.get(v).is_some_and(|o| !o.is_empty()) || self.vals[v] != Val::U).collect();
         let resolve = |a: &[u32], b: &[u32], v: usize| -> Option<Vec<u32>> {
             let mut r: Vec<u32> = a.iter().chain(b.iter()).copied().filter(|&l| (l >> 1) as usize != v).collect();
@@ -2032,37 +2080,46 @@ impl Engine {
         };
         for _pass in 0..2 {
             let mut order: Vec<usize> = (0..n).filter(|&v| !frozen[v] && !self.eliminated[v]).collect();
-            order.retain(|&v| occ[2 * v].iter().any(|&i| alive[i]) || occ[2 * v + 1].iter().any(|&i| alive[i]));
+            order.retain(|&v| occ[2 * v].iter().any(|&i| alive[i as usize]) || occ[2 * v + 1].iter().any(|&i| alive[i as usize]));
             order.sort_by_key(|&v| occ[2 * v].len() * occ[2 * v + 1].len());
             for v in order {
-                let pos: Vec<usize> = occ[2 * v].iter().copied().filter(|&i| alive[i]).collect();
-                let neg: Vec<usize> = occ[2 * v + 1].iter().copied().filter(|&i| alive[i]).collect();
+                let pos: Vec<usize> = occ[2 * v].iter().map(|&i| i as usize).filter(|&i| alive[i]).collect();
+                let neg: Vec<usize> = occ[2 * v + 1].iter().map(|&i| i as usize).filter(|&i| alive[i]).collect();
                 if pos.len() > 16 || neg.len() > 16 { continue; }
                 let mut resolvents: Vec<Vec<u32>> = Vec::new();
                 let mut ok = true;
                 'outer: for &i in &pos {
                     for &j in &neg {
-                        if let Some(r) = resolve(&cls[i], &cls[j], v) {
+                        if let Some(r) = resolve(cls.get(i), cls.get(j), v) {
                             if r.len() > 20 || resolvents.len() >= pos.len() + neg.len() { ok = false; break 'outer; }
                             resolvents.push(r);
                         }
                     }
                 }
                 if !ok { continue; }
-                let removed: Vec<Vec<u32>> = pos.iter().chain(neg.iter()).map(|&i| { alive[i] = false; std::mem::take(&mut cls[i]) }).collect();
+                let removed: Vec<Vec<u32>> = pos.iter().chain(neg.iter()).map(|&i| { alive[i] = false; cls.get(i).to_vec() }).collect();
                 self.elim.push((v as u32, removed));
                 self.eliminated[v] = true;
                 self.stats.eliminated += 1;
                 for r in resolvents {
-                    let idx = cls.len();
+                    let idx = cls.n() as u32;
                     for &l in &r { occ[l as usize].push(idx); }
-                    cls.push(r); alive.push(true);
+                    cls.push(&r); alive.push(true);
                 }
             }
         }
+        // The occurrence lists have done their work; the rebuild below
+        // allocates a whole new store, and they need not sit under it.
+        drop(occ);
+        self.mem_mark("elim: passes done, occurrence lists dropped");
         // rebuild the clause store: the surviving originals, then the
         // learned clauses free of eliminated variables
-        self.arena.clear(); self.cstart.clear(); self.clen.clear(); self.deleted.clear(); self.learnt_lbd.clear(); self.learnt_act.clear(); self.learnt_used.clear();
+        // The store was freed above; size it exactly for the survivors so
+        // the rebuild does not double its way back up.
+        let (mut kept_n, mut kept_lits) = (0usize, 0usize);
+        for i in 0..cls.n() { if alive[i] { kept_n += 1; kept_lits += cls.len[i] as usize; } }
+        self.arena.reserve_exact(kept_lits); self.cstart.reserve_exact(kept_n); self.clen.reserve_exact(kept_n);
+        self.deleted.clear(); self.learnt_lbd.clear(); self.learnt_act.clear(); self.learnt_used.clear();
         // The counts are keyed by clause index and everything is about to
         // be renumbered.
         self.eff_clause_hits.clear();
@@ -2071,10 +2128,12 @@ impl Engine {
         for w in &mut self.bins { w.clear(); }
         for v in 0..n { if self.vals[v] != Val::U { self.reason[v] = Reason::None; } }   // level-0 reasons pointed into the old store
         let mut kept = 0u64;
-        for (i, c) in cls.iter().enumerate() {
+        let mut lits: Vec<Lit> = Vec::new();
+        for i in 0..cls.n() {
             if !alive[i] { continue; }
             kept += 1;
-            let lits: Vec<Lit> = c.iter().map(|&l| Lit { var: l >> 1, neg: l & 1 == 1 }).collect();
+            lits.clear();
+            lits.extend(cls.get(i).iter().map(|&l| Lit { var: l >> 1, neg: l & 1 == 1 }));
             self.add_clause(&lits);
         }
         self.stats.clauses_after = kept;
@@ -2082,6 +2141,7 @@ impl Engine {
             if c.iter().any(|&l| self.eliminated[(l >> 1) as usize]) { continue; }
             self.add_learned(c, lbd, act);
         }
+        self.mem_mark("elim: store rebuilt");
         self.qhead = 0;
     }
 

@@ -1711,7 +1711,7 @@ fn spawn_dual_matrix_search(
 fn boxes_search(nvars: usize, cnf: &Cnf, boxes_path: Option<&std::path::Path>, timeout_secs: u64,
                 proof_path: Option<&std::path::Path>, source_path: Option<&std::path::Path>) -> SearchOutcome {
     let t = Instant::now();
-    let mut eng = logic::boxes::Engine::from_cnf(nvars, cnf.iter());
+    let mut eng = logic::boxes::Engine::from_cnf_sized(nvars, cnf.len(), cnf.num_lits(), cnf.iter());
     eng.mem_report("engine built from the parsed clauses");
     // Proof mode (§4 of the design doc): the refutation is logged as DRAT.
     // It certifies the clauses handed in plus, with boxes, the clauses they

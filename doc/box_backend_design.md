@@ -958,6 +958,17 @@ instance 8.9 → 7.35 GB, search identical (verified on an instance that
 eliminates).  Checkpoints inside the round now show where the rest is: the
 pool doubling on resolvents, and the rebuild allocating on top of it.*
 
+*Second cut (2026-09-21, §8): the rebuild in two halves with the pool gone
+before the watch lists exist, watch lists sized by a counting pass (also at
+`from_cnf`), the store reserved from the parsed sizes.  Peak through init
+7366 → 6554 MB, search identical on 14 fast instances and the eliminating
+cbmc instance.  Two macOS accounting traps documented there — a doubled
+buffer's copied pages are uncharged until touched, freed large blocks stay
+charged until pressure relief — the checkpoints now read after
+`malloc_zone_pressure_relief`.  Remaining, by size: 1.7 GB of allocator
+fragments from the occurrence lists doubling during the passes, the 700 MB
+of watch/bin headers, `elim` at 507 MB, the parsed CNF at 782 MB.*
+
 ### Next levers (2026-09-18)
 
 Two items on the agenda, both with their evidence and both still unbuilt.

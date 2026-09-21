@@ -245,3 +245,71 @@
 # headroom up front (untouched capacity is free, a doubling copy is not),
 # and split the rebuild so the pool is dropped before the watch lists --
 # the largest part of the new store -- are allocated.
+
+=== 8. Second cut: split rebuild, exact watch lists, sized store, honest
+       checkpoints (2026-09-21) ===
+#
+# Four changes, search unchanged (verified below):
+#   - the rebuild after elimination is two halves: the clauses go into the
+#     store first, the pool is dropped, THEN the watch lists are sized by a
+#     counting pass and filled from the store (attach_watches).  Per-literal
+#     order is the same as before -- increasing clause index -- so
+#     propagation visits the same clauses in the same order.
+#   - from_cnf uses the same counting pass: every watch list allocated once
+#     at its exact size instead of doubling from 4 entries (in isolation on
+#     the big instance's lists: 1449 MB vs 1777, 1.1 s vs 2.7 s).
+#   - the store is reserved from the parsed sizes (from_cnf_sized), so
+#     arena/cstart/clen never double; the working pool is reserved at 2x
+#     (untouched capacity is free, see below).
+#   - checkpoints print the current footprint and malloc's live/freed-and-
+#     kept bytes, after malloc_zone_pressure_relief.
+#
+# Two accounting traps found on the way (reproducers: scratchpad
+# mem/charge*.rs; memory note macos-memory-accounting):
+#   - a large Vec that libmalloc doubles by vm_copy leaves the copied prefix
+#     UNCHARGED until the pages are next touched: 512 MB written +604,
+#     right after the doubling push +67, after a strided read +604.  The
+#     old binary's "engine built" 3488 MB was this: the same physical
+#     memory read 4222 once a pass had touched the pages.  Not a regression.
+#   - a freed large block stays charged until reuse or pressure: a 1.2 GB
+#     pool dropped, footprint moved 0.  Pressure relief before reading
+#     fixes the checkpoint; the peak-RSS column still carries the ghosts
+#     (reclaimable, so not pressure).
+#   - reserved, untouched capacity is free: with_capacity(1.2 GB) reads +0.
+#
+# 4d6e18e5 (7.3 M vars, 40.7 M clauses, 155 M literals -- 3.8 per clause,
+# not the 6.6 §7 inferred from a doubled capacity), old (94b26fe) and new,
+# run back to back alone on the machine, peak RSS / footprint after relief:
+#
+#                                   old 94b26fe      new
+#   parsed                           785               785
+#   engine built                    3488 (uncharged) 3609 / 3610  (2638 MB of
+#                                                                  capacity, 2629 in use)
+#   elim: working copy built        5171             4533 / 4533
+#   elim: old store freed           5171             4533 / 2839
+#   elim: occurrence lists built    5171             4533 / 3644
+#   elim: passes done, lists gone   6792             5780 / 4349  (malloc keeps 1734
+#                                                                  of freed fragments)
+#   elim: clauses rebuilt, pool gone   -             6395 / 5176
+#   elim: watch lists attached      7332 (rebuilt)   6554 / 5335  (fragments reused: 1193 left)
+#   after init                      7366             6554 / 5335
+#
+#   peak through init 7366 -> 6554 MB (-11%); footprint after init 5335,
+#   of which 2909 engine (2888 in use), 782 the parsed CNF kept for the
+#   model check, ~1200 allocator fragments.
+#
+# Identity: 14 balanced-set instances the probe solves in < 60 s (conflicts,
+# eliminated-variable counts, clause counts, verdict, exit code) and the
+# eliminating cryptography-cbmc instance (116,008 vars eliminated, 808,883
+# conflicts): all IDENTICAL to 94b26fe.  400 lib tests pass.
+#
+# What the checkpoints now point at, in order of size:
+#   - 1.7 GB of allocator fragments after the passes: the occurrence lists
+#     double as resolvents are pushed, interleaved with the eliminated
+#     clauses' small allocations, so the freed halves are stranded in
+#     partly-used regions.  A CSR occurrence structure with an ordered
+#     overflow list for resolvents would keep the passes flat.
+#   - the 1.1 GB pool and 1.0 GB occurrence lists themselves (transients).
+#   - watches/bins headers, 700 MB retained (the CSR-watch item).
+#   - elim, 507 MB retained as Vec<Vec<u32>> per eliminated variable.
+#   - the parsed CNF, 782 MB retained through the search for the model check.

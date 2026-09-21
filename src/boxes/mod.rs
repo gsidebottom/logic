@@ -411,6 +411,43 @@ fn peak_rss_bytes() -> usize {
     if cfg!(target_os = "macos") { ru.ru_maxrss as usize } else { ru.ru_maxrss as usize * 1024 }
 }
 
+/// The process's physical footprint right now: what Activity Monitor
+/// charges it, compressed and swapped pages included, which RSS drops.
+/// The peak says how high the water got; this says what is live at a
+/// checkpoint, so the two together locate a transient.
+/// What the allocator holds: (bytes handed out and live, bytes freed but
+/// kept for reuse).  Footprint minus the sum is what the process maps
+/// outside malloc; the second number is fragmentation.  macOS only.
+fn malloc_stats() -> (usize, usize) {
+    #[cfg(target_os = "macos")]
+    { let m = unsafe { libc::mstats() }; return (m.bytes_used, m.bytes_free); }
+    #[allow(unreachable_code)] (0, 0)
+}
+
+fn cur_footprint_bytes() -> usize {
+    #[cfg(target_os = "macos")]
+    {
+        // libmalloc keeps freed large blocks until reuse or memory
+        // pressure, and the process is charged for them meanwhile: a
+        // 1.2 GB pool dropped in the elimination round did not move the
+        // footprint at all.  Asking for the release first makes the
+        // reading the live memory, which is what a checkpoint is for.
+        unsafe extern "C" { fn malloc_zone_pressure_relief(zone: *mut libc::c_void, goal: usize) -> usize; }
+        unsafe { malloc_zone_pressure_relief(std::ptr::null_mut(), 0); }
+        let mut ri: libc::rusage_info_v2 = unsafe { std::mem::zeroed() };
+        let rc = unsafe { libc::proc_pid_rusage(std::process::id() as libc::c_int, libc::RUSAGE_INFO_V2,
+                                                 &mut ri as *mut libc::rusage_info_v2 as *mut libc::rusage_info_t) };
+        if rc == 0 { return ri.ri_phys_footprint as usize; }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(t) = std::fs::read_to_string("/proc/self/statm") {
+            if let Some(r) = t.split_whitespace().nth(1).and_then(|x| x.parse::<usize>().ok()) { return r * 4096; }
+        }
+    }
+    0
+}
+
 /// Bytes a `Vec` holds, counting capacity: slack is resident once it has
 /// been written through, and a doubled buffer's slack is the cost.
 fn vec_bytes<T>(v: &[T]) -> usize { v.len() * std::mem::size_of::<T>() }
@@ -752,13 +789,27 @@ impl Engine {
     /// large-instance path must never have to materialise a `Vec` per
     /// clause just to get here.
     pub fn from_cnf<C: AsRef<[i32]>>(nvars: usize, clauses: impl IntoIterator<Item = C>) -> Engine {
+        Self::from_cnf_sized(nvars, 0, 0, clauses)
+    }
+
+    /// `from_cnf` with the clause and literal counts known up front, so the
+    /// clause store is reserved once instead of doubling its way up.  A
+    /// doubling large buffer costs its own size again while it is copied,
+    /// and on macOS the copy is charged to the process only as the pages
+    /// are next touched, which hid ~0.8 GB of the 40 M-clause instance's
+    /// build from every checkpoint (2026-09-21).
+    pub fn from_cnf_sized<C: AsRef<[i32]>>(nvars: usize, nclauses: usize, nlits: usize,
+                                          clauses: impl IntoIterator<Item = C>) -> Engine {
         let mut e = Engine::new(nvars, Vec::new());
+        e.arena.reserve_exact(nlits); e.cstart.reserve_exact(nclauses); e.clen.reserve_exact(nclauses);
+        e.deleted.reserve_exact(nclauses);
         let mut buf: Vec<Lit> = Vec::new();
         for c in clauses {
             buf.clear();
             buf.extend(c.as_ref().iter().map(|&l| lit_of_dimacs(l)));
-            e.add_clause(&buf);
+            e.add_clause_impl(&buf, false);
         }
+        e.attach_watches(0, e.cstart.len());
         e
     }
 
@@ -1036,16 +1087,22 @@ impl Engine {
     /// it rises is where the peak is.
     fn mem_mark(&self, label: &str) {
         if matches!(std::env::var("BOXES_MEM_REPORT").as_deref(), Ok("1") | Ok("on")) {
-            eprintln!("c boxes: mem [{}]: peak RSS {:.0} MB", label, peak_rss_bytes() as f64 / 1e6);
+            let (used, free) = malloc_stats();
+            eprintln!("c boxes: mem [{}]: peak RSS {:.0} MB, footprint now {:.0} MB (malloc: {:.0} live, {:.0} freed-and-kept)",
+                      label, peak_rss_bytes() as f64 / 1e6, cur_footprint_bytes() as f64 / 1e6, used as f64 / 1e6, free as f64 / 1e6);
         }
     }
 
     pub fn mem_report(&self, label: &str) {
         if !matches!(std::env::var("BOXES_MEM_REPORT").as_deref(), Ok("1") | Ok("on")) { return; }
-        let mut rows: Vec<(String, usize)> = Vec::new();
-        macro_rules! flat { ($($f:ident),*) => { $( rows.push((stringify!($f).to_string(), vec_cap_bytes(&self.$f))); )* } }
+        // (label, capacity bytes, bytes in use): the gap is doubling slack,
+        // resident wherever a buffer has been copied into (always, for the
+        // small per-literal vectors; only up to the copy for a large one).
+        let mut rows: Vec<(String, usize, usize)> = Vec::new();
+        macro_rules! flat { ($($f:ident),*) => { $( rows.push((stringify!($f).to_string(), vec_cap_bytes(&self.$f), vec_bytes(&self.$f))); )* } }
         macro_rules! nested { ($($f:ident),*) => { $( { let (b, n) = vecvec_bytes(&self.$f);
-            rows.push((format!("{} ({} inner vecs = {:.0} MB of headers)", stringify!($f), n, n as f64 * 24.0 / 1e6), b)); } )* } }
+            let used = n * 24 + self.$f.iter().map(|v| vec_bytes(v)).sum::<usize>();
+            rows.push((format!("{} ({} inner vecs = {:.0} MB of headers)", stringify!($f), n, n as f64 * 24.0 / 1e6), b, used)); } )* } }
         flat!(arena, cstart, clen, xarena, xstart, xlen, learnt_lbd, learnt_act, learnt_used, deleted,
               vals, lvals, level, reason, trail_pos, trail, activity, phase, seen, heap, heap_pos,
               target_phase, best_phase, eliminated, expl_ok, hdr, vars_all, kill_all, live, snap,
@@ -1053,15 +1110,20 @@ impl Engine {
         nested!(watches, bins, occ, xidx, expl_cache, box_src);
         let elim = self.elim.capacity() * std::mem::size_of::<(u32, Vec<Vec<u32>>)>()
             + self.elim.iter().map(|(_, cs)| vecvec_bytes(cs).0).sum::<usize>();
-        rows.push((format!("elim ({} eliminated vars' clauses)", self.elim.len()), elim));
+        let elim_used = self.elim.len() * std::mem::size_of::<(u32, Vec<Vec<u32>>)>()
+            + self.elim.iter().map(|(_, cs)| cs.len() * 24 + cs.iter().map(|c| vec_bytes(c)).sum::<usize>()).sum::<usize>();
+        rows.push((format!("elim ({} eliminated vars' clauses)", self.elim.len()), elim, elim_used));
         rows.sort_by(|a, b| b.1.cmp(&a.1));
         let total: usize = rows.iter().map(|r| r.1).sum();
-        eprintln!("c boxes: mem [{}]: peak RSS {:.0} MB; {:.0} MB retained in engine structures, largest:",
-                  label, peak_rss_bytes() as f64 / 1e6, total as f64 / 1e6);
-        for (n, b) in rows.iter().take(10) {
-            if *b > 0 { eprintln!("c boxes: mem   {:>8.0} MB  {}", *b as f64 / 1e6, n); }
+        let used: usize = rows.iter().map(|r| r.2).sum();
+        let (mused, mfree) = malloc_stats();
+        eprintln!("c boxes: mem [{}]: peak RSS {:.0} MB, footprint now {:.0} MB (malloc: {:.0} live, {:.0} freed-and-kept); engine structures hold {:.0} MB of capacity, {:.0} in use, largest:",
+                  label, peak_rss_bytes() as f64 / 1e6, cur_footprint_bytes() as f64 / 1e6, mused as f64 / 1e6, mfree as f64 / 1e6, total as f64 / 1e6, used as f64 / 1e6);
+        for (n, b, u) in rows.iter().take(10) {
+            if *b == 0 { continue; }
+            if *u < *b / 20 * 19 { eprintln!("c boxes: mem   {:>8.0} MB  {} ({:.0} in use)", *b as f64 / 1e6, n, *u as f64 / 1e6); }
+            else { eprintln!("c boxes: mem   {:>8.0} MB  {}", *b as f64 / 1e6, n); }
         }
-        let _ = vec_bytes::<u32>;
     }
 
     pub fn add_box(&mut self, b: TableBox) {
@@ -1103,7 +1165,13 @@ impl Engine {
     /// Add a clause (before solving).  Tautologies are dropped, duplicate
     /// literals merged; the empty clause makes the engine unsatisfiable, a
     /// unit clause is a level-0 assignment.
-    pub fn add_clause(&mut self, lits: &[Lit]) {
+    pub fn add_clause(&mut self, lits: &[Lit]) { self.add_clause_impl(lits, true) }
+
+    /// `add_clause` with the watches left for
+    /// [`attach_watches`](Self::attach_watches) when `attach` is false: a
+    /// bulk load can then size every watch list exactly, and a rebuild can
+    /// drop its source before the watch lists exist.
+    fn add_clause_impl(&mut self, lits: &[Lit], attach: bool) {
         if let Some(max) = lits.iter().map(|l| l.var).max() { self.grow(max as usize + 1); }
         let mut c: Vec<u32> = lits.iter().map(|l| code(l.var, l.neg)).collect();
         c.sort_unstable(); c.dedup();
@@ -1114,12 +1182,14 @@ impl Engine {
             1 => { let l = c[0]; if !self.assign(l >> 1, if l & 1 == 1 { Val::F } else { Val::T }, Reason::None) { self.unsat_at_init = true; } }
             _ => {
                 let ci = self.cstart.len() as u32;
-                if c.len() == 2 {
-                    self.bins[c[0] as usize].push((c[1], ci));
-                    self.bins[c[1] as usize].push((c[0], ci));
-                } else {
-                    self.watches[c[0] as usize].push((ci, c[1]));
-                    self.watches[c[1] as usize].push((ci, c[0]));
+                if attach {
+                    if c.len() == 2 {
+                        self.bins[c[0] as usize].push((c[1], ci));
+                        self.bins[c[1] as usize].push((c[0], ci));
+                    } else {
+                        self.watches[c[0] as usize].push((ci, c[1]));
+                        self.watches[c[1] as usize].push((ci, c[0]));
+                    }
                 }
                 self.push_clause(&c);
                 self.deleted.push(false);
@@ -1152,6 +1222,42 @@ impl Engine {
     #[inline] fn clause(&self, ci: usize) -> &[u32] {
         let s = self.cstart[ci] as usize;
         &self.arena[s..s + self.clen[ci] as usize]
+    }
+
+    /// Watch clauses `from..to` of the store on their first two literals,
+    /// in index order -- exactly what `add_clause` does as each arrives --
+    /// after a counting pass sizes every per-literal list, so a bulk load
+    /// neither doubles its way up (millions of small reallocations) nor
+    /// keeps the slack.  Per-literal order is unchanged: increasing clause
+    /// index either way, so propagation visits the same clauses in the same
+    /// order and the search is identical.
+    fn attach_watches(&mut self, from: usize, to: usize) {
+        let nl = self.watches.len();
+        let (mut cw, mut cb) = (vec![0u32; nl], vec![0u32; nl]);
+        for ci in from..to {
+            if self.deleted[ci] { continue; }
+            let st = self.cstart[ci] as usize;
+            let (a, b) = (self.arena[st] as usize, self.arena[st + 1] as usize);
+            let cnt = if self.clen[ci] == 2 { &mut cb } else { &mut cw };
+            cnt[a] += 1; cnt[b] += 1;
+        }
+        for l in 0..nl {
+            if cw[l] > 0 { self.watches[l].reserve_exact(cw[l] as usize); }
+            if cb[l] > 0 { self.bins[l].reserve_exact(cb[l] as usize); }
+        }
+        drop(cw); drop(cb);
+        for ci in from..to {
+            if self.deleted[ci] { continue; }
+            let st = self.cstart[ci] as usize;
+            let (a, b) = (self.arena[st], self.arena[st + 1]);
+            if self.clen[ci] == 2 {
+                self.bins[a as usize].push((b, ci as u32));
+                self.bins[b as usize].push((a, ci as u32));
+            } else {
+                self.watches[a as usize].push((ci as u32, b));
+                self.watches[b as usize].push((ci as u32, a));
+            }
+        }
     }
 
     fn push_clause(&mut self, lits: &[u32]) -> usize {
@@ -2034,8 +2140,12 @@ impl Engine {
             }
             fn n(&self) -> usize { self.start.len() }
         }
-        let mut cls = Pool { lits: Vec::with_capacity(self.arena.len()),
-                             start: Vec::with_capacity(self.first_learnt), len: Vec::with_capacity(self.first_learnt) };
+        // Reserved with room for the resolvents: capacity nobody writes is
+        // free, while growing past an exact reservation copies the whole
+        // pool at its fullest (a 1.6 GB transient on the 40 M-clause
+        // instance, 2026-09-21).
+        let mut cls = Pool { lits: Vec::with_capacity(2 * self.arena.len()),
+                             start: Vec::with_capacity(2 * self.first_learnt), len: Vec::with_capacity(2 * self.first_learnt) };
         let mut buf: Vec<u32> = Vec::new();
         for ci in 0..self.first_learnt {
             if self.deleted[ci] || self.clause(ci).iter().any(|&l| self.lit_value(l) == Val::T) { continue; }
@@ -2111,7 +2221,9 @@ impl Engine {
         // The occurrence lists have done their work; the rebuild below
         // allocates a whole new store, and they need not sit under it.
         drop(occ);
-        self.mem_mark("elim: passes done, occurrence lists dropped");
+        self.mem_mark(&format!("elim: passes done, occurrence lists dropped; pool {} of {} M literals, {} of {} M clauses",
+                               cls.lits.len() / 1_000_000, cls.lits.capacity() / 1_000_000,
+                               cls.n() / 1_000_000, cls.start.capacity() / 1_000_000));
         // rebuild the clause store: the surviving originals, then the
         // learned clauses free of eliminated variables
         // The store was freed above; size it exactly for the survivors so
@@ -2127,6 +2239,10 @@ impl Engine {
         for w in &mut self.watches { w.clear(); }
         for w in &mut self.bins { w.clear(); }
         for v in 0..n { if self.vals[v] != Val::U { self.reason[v] = Reason::None; } }   // level-0 reasons pointed into the old store
+        // First the clauses alone, then the pool goes, then the watch lists
+        // -- the largest part of the new store -- are sized and filled from
+        // the store itself.  Learned clauses come last, as before, so every
+        // per-literal list is in the same order as a one-pass rebuild.
         let mut kept = 0u64;
         let mut lits: Vec<Lit> = Vec::new();
         for i in 0..cls.n() {
@@ -2134,9 +2250,13 @@ impl Engine {
             kept += 1;
             lits.clear();
             lits.extend(cls.get(i).iter().map(|&l| Lit { var: l >> 1, neg: l & 1 == 1 }));
-            self.add_clause(&lits);
+            self.add_clause_impl(&lits, false);
         }
         self.stats.clauses_after = kept;
+        drop(cls); drop(alive);
+        self.mem_mark("elim: clauses rebuilt, pool dropped");
+        self.attach_watches(0, self.cstart.len());
+        self.mem_mark("elim: watch lists attached");
         for (c, lbd, act) in learned {
             if c.iter().any(|&l| self.eliminated[(l >> 1) as usize]) { continue; }
             self.add_learned(c, lbd, act);

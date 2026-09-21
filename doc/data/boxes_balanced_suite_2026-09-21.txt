@@ -167,3 +167,27 @@ default on 21/21: no sat.rs stage runs for -b boxes).  Wall time under 4-way par
 # So the standing on families this engine can solve: it searches well and
 # propagates slowly.  On the families it cannot solve at all, nothing here
 # says anything, and that remains the honest headline.
+
+=== Serial confirmation of the rate ratio (2026-09-21, one solver at a time, idle machine) ===
+#
+# Rates, unlike conflict counts, are contaminated by contention, so the
+# 1.3-2.8x above was provisional.  Re-timed serially on the instances with
+# >=300k conflicts in both arms:
+#
+  family                     ours confl       s      /s    cadical       s      /s rate ratio  (parallel run said)
+  agile                          365172    37.1     10k     612761    27.2     23k       2.29  (2.59)
+  cryptography-cbmc              997577    83.0     12k     873119    40.2     22k       1.81  (1.96)
+  cryptography-cbmc              808883    71.6     11k     885534    42.0     21k       1.87  (1.99)
+  hardware-verification         1462192    87.6     17k     488981    21.6     23k       1.36  (1.27)
+  planning                       531071    12.6     42k     495102    14.8     33k       0.79  (0.77)
+  set-covering                  1312022    96.9     14k    1301427    33.8     39k       2.85  (2.76)
+  
+  serial rate ratio (CaDiCaL conflicts/s over ours): geomean 1.69x over 6, range 0.79-2.85
+#
+# Confirmed: the serial ratios track the parallel ones within ~10% per
+# instance (parenthesised), geomean 1.69x.  Two things the absolute numbers
+# add.  BOTH solvers propagate far slower at this scale than on the old
+# corpus -- ours 10-17k conflicts/s against ~90k/s there, CaDiCaL 21-39k/s
+# against ~95k/s -- and ours degrades more, which is the cache story.  And
+# planning is the exception (0.79x, we are faster), so the throughput gap is
+# not uniform either.

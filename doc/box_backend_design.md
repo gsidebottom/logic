@@ -922,9 +922,9 @@ solvers finish, we need *fewer* conflicts than CaDiCaL on 13 — geomean
 0.25×, median 0.53× — and are faster in wall time (0.64× geomean).  The
 old corpus's 1.60× conflict deficit was two ISCAS circuits and their
 shuffles; on the families this engine can solve, it searches well.  But
-"throughput is not the gap" was a small-instance artifact: on the eight
+"throughput is not the gap" was a small-instance artifact: on the six
 instances with ≥300 k conflicts in both arms our conflict rate is
-**1.3–2.8× slower** than CaDiCaL's, consistent with the cache-hostile
+**1.7× slower** — geomean of a serial re-timing, range 0.8–2.9× — than CaDiCaL's, consistent with the cache-hostile
 `Vec<Vec<_>>` watch and occurrence layout that the memory work exposed.
 And the 20 are the instances *we* solve — the 76 the balanced set holds
 that we cannot are where the real gap lives, and no comparison on the

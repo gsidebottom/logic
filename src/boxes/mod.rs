@@ -728,9 +728,18 @@ impl Engine {
     }
 
     /// Every clause becomes a watched clause.
-    pub fn from_cnf(nvars: usize, clauses: &[Vec<i32>]) -> Engine {
+    /// Anything that yields clauses of DIMACS literals: a `&[Vec<i32>]`,
+    /// or a `Cnf::iter()` on the flat form the parser now builds — the
+    /// large-instance path must never have to materialise a `Vec` per
+    /// clause just to get here.
+    pub fn from_cnf<C: AsRef<[i32]>>(nvars: usize, clauses: impl IntoIterator<Item = C>) -> Engine {
         let mut e = Engine::new(nvars, Vec::new());
-        for c in clauses { e.add_clause(&c.iter().map(|&l| lit_of_dimacs(l)).collect::<Vec<_>>()); }
+        let mut buf: Vec<Lit> = Vec::new();
+        for c in clauses {
+            buf.clear();
+            buf.extend(c.as_ref().iter().map(|&l| lit_of_dimacs(l)));
+            e.add_clause(&buf);
+        }
         e
     }
 

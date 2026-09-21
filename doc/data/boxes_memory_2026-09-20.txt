@@ -113,3 +113,46 @@
 # The A/B set this leaves: 21 instances across 18 families, against the 22
 # instances / ~10 families (14 of them from two) that every engine A/B in
 # this repo has used.
+
+=== 5. Flattening the parser's clause list (2026-09-21) ===
+#
+# `src/cnf.rs`: a CNF as one literal array plus one array of clause ends --
+# 4 bytes per literal and 4 per clause, reserved from the `p cnf` header so
+# neither array ever reallocates.  `-b boxes` and `-b cadical` consume it
+# directly; the structural stages (hydra, cook, xor-gauss, matrix
+# preprocessing) keep their Vec<Vec<i32>> behind a lazy conversion, so no
+# other path changed.
+#
+# Correctness: conflict counts and verdicts identical to the pre-flattening
+# binary on five instances (72 / 10 / 10 / 453 / 12 conflicts) -- the clause
+# stream reaching the engine is unchanged.  427 tests pass.
+#
+# Effect, exact kernel-reported peak RSS, parse + 5 s of search, one solver
+# at a time (an earlier sampled comparison, and a first exact one whose
+# "before" arm had silently exited on a flag it predates, were both wrong):
+#
+#   instance                        file     before      after
+#   4d6e18e5 7.3M vars 40.7M cls  1288 MB   9506 MB    8924 MB   -6%
+#   a0bbdb34 180K vars 24.9M cls   594 MB   4818 MB    4831 MB   noise
+#   3a07646b 266K vars  1.6M cls    32 MB    545 MB     486 MB  -11%
+#
+# Not the 3x predicted for the clause list -- because the clause list is not
+# where the steady peak is.  The 0.58 GB saved on the 40.7M-clause instance
+# is exactly what the per-clause overhead should give (calibrated ~29 B per
+# clause = 1.18 GB, less the flat form's 0.54 GB); the remaining ~8 GB is the
+# ENGINE: per-literal watch lists and per-variable occurrence lists as
+# Vec<Vec<_>> (a 24-byte header per literal and per variable before a single
+# entry), the arena and its index, the per-variable arrays, and the
+# occurrence structures that level-0 simplification builds.
+#
+# What the parser change does buy is the spike: the doubling of an outer
+# Vec<Vec<i32>> at hundreds of millions of clauses -- old buffer and a new
+# one twice its size live at once -- is what reached 64 GB, and a flat form
+# reserved from the header cannot do it.  Verified structurally rather than
+# measured, since the only instance that shows it does not fit in any form
+# (a micro-test confirms a 1.6 GB reservation costs 1.6 MB resident until
+# written).
+#
+# Next target, now measured rather than guessed: the engine's own
+# Vec<Vec<_>> structures, ~90% of the peak on large instances, and the same
+# layout the balanced-set suite implicates in the 1.69x throughput gap.

@@ -74,6 +74,7 @@ use logic::matrix::{
     CdclController, DynOnClass, SmartController, cdcl_controller_builder, smart_controller_builder,
 };
 use logic::cadical;
+use logic::cnf::Cnf;
 
 // ─── DIMACS parser ─────────────────────────────────────────────────────────
 
@@ -122,12 +123,14 @@ fn default_max_memory() -> u64 {
 }
 
 fn clause_list_bytes(clauses: usize, lits: usize) -> u64 {
-    clauses as u64 * 48 + lits as u64 * 8
+    // The flat `Cnf` (4 per literal, 4 per clause) plus the engine's arena
+    // copy (4 per literal, 8 per clause of index) that is live beside it.
+    lits as u64 * 8 + clauses as u64 * 12
 }
 
-fn parse_dimacs<R: BufRead>(r: R, max_bytes: u64) -> Result<(usize, Vec<Vec<i32>>), String> {
+fn parse_dimacs<R: BufRead>(r: R, max_bytes: u64) -> Result<(usize, Cnf), String> {
     let mut nvars: usize = 0;
-    let mut clauses: Vec<Vec<i32>> = Vec::new();
+    let mut clauses = Cnf::new();
     let mut current: Vec<i32> = Vec::new();
     let mut lits: usize = 0;
     let mut check_at: usize = 1 << 20;
@@ -146,13 +149,19 @@ fn parse_dimacs<R: BufRead>(r: R, max_bytes: u64) -> Result<(usize, Vec<Vec<i32>
             }
             nvars = parts[2].parse()
                 .map_err(|e| format!("bad variable count {:?}: {}", parts[2], e))?;
+            // Reserve from the header so the arrays never double while
+            // parsing -- the doubling was the spike that reached 64 GB.
+            // Over-reserving literals is free: untouched capacity is
+            // address space, not resident memory.
+            if let Ok(m) = parts[3].parse::<usize>() { clauses.reserve(m, 4 * m); }
             continue;
         }
         for tok in trimmed.split_whitespace() {
             let n: i32 = tok.parse().map_err(|e|
                 format!("bad token {:?} at line {}: {}", tok, lineno + 1, e))?;
             if n == 0 {
-                clauses.push(std::mem::take(&mut current));
+                clauses.push(&current);
+                current.clear();
             } else {
                 let abs = n.unsigned_abs() as usize;
                 if abs > nvars { nvars = abs; }
@@ -184,7 +193,7 @@ fn parse_dimacs<R: BufRead>(r: R, max_bytes: u64) -> Result<(usize, Vec<Vec<i32>
         }
     }
     if !current.is_empty() {
-        clauses.push(current);
+        clauses.push(&current);
     }
     Ok((nvars, clauses))
 }
@@ -1699,10 +1708,10 @@ fn spawn_dual_matrix_search(
 /// extending the bindings.
 /// Box-matrix engine (`-b boxes`): every clause a table box, DPLL over rows
 /// with table propagation.  See `logic::boxes` and `doc/box_backend_design.md`.
-fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::path::Path>, timeout_secs: u64,
+fn boxes_search(nvars: usize, cnf: &Cnf, boxes_path: Option<&std::path::Path>, timeout_secs: u64,
                 proof_path: Option<&std::path::Path>, source_path: Option<&std::path::Path>) -> SearchOutcome {
     let t = Instant::now();
-    let mut eng = logic::boxes::Engine::from_cnf(nvars, clauses);
+    let mut eng = logic::boxes::Engine::from_cnf(nvars, cnf.iter());
     // Proof mode (§4 of the design doc): the refutation is logged as DRAT.
     // It certifies the clauses handed in plus, with boxes, the clauses they
     // stand for — check against the concatenation, i.e. the original CNF.
@@ -1713,7 +1722,7 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
         }
         if let Some(src) = source_path {
             match std::fs::File::open(src).map_err(|e| e.to_string()).and_then(|f| parse_dimacs(io::BufReader::new(f), default_max_memory())) {
-                Ok((_, cls)) => { eprintln!("c boxes: {} box source clauses from {}", cls.len(), src.display()); eng.set_box_source(&cls); }
+                Ok((_, cls)) => { eprintln!("c boxes: {} box source clauses from {}", cls.len(), src.display()); eng.set_box_source(&cls.to_vecs()); }
                 Err(e) => { eprintln!("c ERROR: --boxes-source {}: {}", src.display(), e); std::process::exit(2); }
             }
         }
@@ -1866,8 +1875,8 @@ fn boxes_search(nvars: usize, clauses: &[Vec<i32>], boxes_path: Option<&std::pat
             // (chronological backtracking above all) put at risk.  Checking
             // is linear in the formula; a failure refuses to answer.
             let holds = |l: i32| m.get(l.unsigned_abs() as usize - 1).copied().unwrap_or(false) == (l > 0);
-            if let Some(bad) = clauses.iter().position(|c| !c.iter().any(|&l| holds(l))) {
-                eprintln!("c ERROR: boxes produced a model violating input clause {} {:?} — refusing to answer", bad, clauses[bad]);
+            if let Some(bad) = cnf.iter().position(|c| !c.iter().any(|&l| holds(l))) {
+                eprintln!("c ERROR: boxes produced a model violating input clause {} {:?} — refusing to answer", bad, cnf.get(bad));
                 std::process::exit(3);
             }
             for (i, b) in checked_boxes.iter().enumerate() {
@@ -1926,7 +1935,7 @@ fn parse_cadical_opt(s: &str) -> Result<(String, i32), String> {
     Ok((name.to_string(), value))
 }
 
-fn cadical_search(nvars: usize, clauses: Vec<Vec<i32>>, show_progress: bool,
+fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
                   extra_opts: &[(String, i32)]) -> SearchOutcome {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -1990,7 +1999,7 @@ fn cadical_search(nvars: usize, clauses: Vec<Vec<i32>>, show_progress: bool,
                 last_render: start,
                 show_progress: want_progress,
             }));
-            for clause in &clauses {
+            for clause in cnf.iter() {
                 solver.add_clause(clause.iter().copied());
             }
             let result = solver.solve();
@@ -2009,9 +2018,9 @@ fn cadical_search(nvars: usize, clauses: Vec<Vec<i32>>, show_progress: bool,
                     // reconstructs their values) on without taking the
                     // solver's word for the result.
                     let holds = |l: i32| asgn.get(l.unsigned_abs() as usize - 1).copied().unwrap_or(false) == (l > 0);
-                    if let Some(bad) = clauses.iter().position(|c| !c.iter().any(|&l| holds(l))) {
+                    if let Some(bad) = cnf.iter().position(|c| !c.iter().any(|&l| holds(l))) {
                         eprintln!("c ERROR: cadical produced a model violating input clause {} {:?} — refusing to answer",
-                                  bad, clauses[bad]);
+                                  bad, cnf.get(bad));
                         std::process::exit(3);
                     }
                     SolverResult::Sat(asgn)
@@ -3243,14 +3252,28 @@ fn main() {
 
     // Parse stdin (buffered) into a clause set.
     let stdin = io::stdin();
-    let (nvars, mut clauses) = match parse_dimacs(stdin.lock(), args.max_memory) {
+    let (nvars, parsed) = match parse_dimacs(stdin.lock(), args.max_memory) {
         Ok(x) => x,
         Err(e) => {
             eprintln!("c parse error: {}", e);
             std::process::exit(1);
         }
     };
-    eprintln!("c parsed {} variables, {} clauses", nvars, clauses.len());
+    eprintln!("c parsed {} variables, {} clauses", nvars, parsed.len());
+    // Two facts every backend needs, taken once here so neither form of
+    // the clause list has to be consulted for them later.
+    let has_empty_clause = parsed.iter().any(|c| c.is_empty());
+    let no_clauses = parsed.is_empty();
+    // The flat form is the one that scales.  The structural stages below
+    // (hydra, cook, xor-gauss, the matrix preprocessing) are written
+    // against `Vec<Vec<i32>>` and run only for the backends that use them,
+    // so on the two backends that take large instances the per-clause form
+    // is never built -- 40 bytes of container per clause, and a doubling
+    // outer buffer, that the parser used to hand every backend.
+    let flat = args.emit_cook_pbp.is_none()
+        && matches!(args.backend, BackendChoice::Boxes | BackendChoice::Cadical);
+    let mut clauses: Vec<Vec<i32>> = if flat { Vec::new() } else { parsed.to_vecs() };
+    let cnf: Cnf = if flat { parsed } else { drop(parsed); Cnf::new() };
 
     // Neural warm-start (--initial-phases): load the predicted per-variable
     // phase seed once and stash it for the cdcl/eff controller builders.
@@ -4359,12 +4382,12 @@ fn main() {
     // these fast paths so downstream consumers (the
     // doc/competition-benchmarks.sh parser, etc.) get a uniform
     // result format regardless of which path the solver took.
-    if clauses.iter().any(|c| c.is_empty()) {
+    if has_empty_clause {
         eprintln!("c UNSAT in 0.0ms");
         println!("s UNSATISFIABLE");
         return;
     }
-    if clauses.is_empty() {
+    if no_clauses {
         eprintln!("c SAT in 0.0ms");
         println!("s SATISFIABLE");
         let stdout = io::stdout();
@@ -4492,9 +4515,14 @@ fn main() {
 
     let t = Instant::now();
     let outcome = match args.backend {
-        BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress, &args.cadical_opts),
-        BackendChoice::Boxes | BackendChoice::HydraBox =>
-            boxes_search(nvars, &clauses, args.boxes.as_deref(), args.timeout_secs,
+        BackendChoice::Cadical => cadical_search(nvars, cnf, args.show_progress, &args.cadical_opts),
+        BackendChoice::Boxes =>
+            boxes_search(nvars, &cnf, args.boxes.as_deref(), args.timeout_secs,
+                         args.proof.as_deref(), args.boxes_source.as_deref()),
+        // hydra_box arrives here with the formula its tactics left, in the
+        // per-clause form those tactics work in.
+        BackendChoice::HydraBox =>
+            boxes_search(nvars, &Cnf::from_vecs(&clauses), args.boxes.as_deref(), args.timeout_secs,
                          args.proof.as_deref(), args.boxes_source.as_deref()),
         BackendChoice::PbCadical => unreachable!("pb-cadical is handled before the search dispatch"),
         BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma
@@ -4702,7 +4730,7 @@ mod tests {
     fn solve_cadical(nvars: usize, clauses: &[Vec<i32>]) -> Result<Vec<bool>, ()> {
         if clauses.iter().any(|c| c.is_empty()) { return Err(()); }
         if clauses.is_empty() { return Ok(vec![true; nvars]); }
-        match cadical_search(nvars, clauses.to_vec(), /*show_progress=*/ false, &[]) {
+        match cadical_search(nvars, Cnf::from_vecs(clauses), /*show_progress=*/ false, &[]) {
             SearchOutcome::Sat(asgn) => Ok(asgn),
             SearchOutcome::Unsat => Err(()),
             SearchOutcome::Interrupted => panic!("test cadical_search reported interrupted"),
@@ -4739,7 +4767,7 @@ mod tests {
         let input = b"c hello\np cnf 3 2\n1 -2 0\n2 3 0\n" as &[_];
         let (nvars, clauses) = parse_dimacs(input, 0).unwrap();
         assert_eq!(nvars, 3);
-        assert_eq!(clauses, vec![vec![1, -2], vec![2, 3]]);
+        assert_eq!(clauses.to_vecs(), vec![vec![1, -2], vec![2, 3]]);
     }
 
     #[test]
@@ -4748,7 +4776,7 @@ mod tests {
         let input = b"p cnf 3 1\n1\n-2\n3 0\n" as &[_];
         let (nvars, clauses) = parse_dimacs(input, 0).unwrap();
         assert_eq!(nvars, 3);
-        assert_eq!(clauses, vec![vec![1, -2, 3]]);
+        assert_eq!(clauses.to_vecs(), vec![vec![1, -2, 3]]);
     }
 
     #[test]
@@ -4757,7 +4785,7 @@ mod tests {
         let input = b"3 -7 0\n2 -1 0\n" as &[_];
         let (nvars, clauses) = parse_dimacs(input, 0).unwrap();
         assert_eq!(nvars, 7);
-        assert_eq!(clauses, vec![vec![3, -7], vec![2, -1]]);
+        assert_eq!(clauses.to_vecs(), vec![vec![3, -7], vec![2, -1]]);
     }
 
     #[test]
@@ -4765,7 +4793,7 @@ mod tests {
         // A trailing fragment with no `0` is still kept as a final clause.
         let input = b"p cnf 2 2\n1 -2 0\n1 2" as &[_];
         let (_, clauses) = parse_dimacs(input, 0).unwrap();
-        assert_eq!(clauses, vec![vec![1, -2], vec![1, 2]]);
+        assert_eq!(clauses.to_vecs(), vec![vec![1, -2], vec![1, 2]]);
     }
 
     #[test]
@@ -5013,11 +5041,11 @@ mod tests {
     fn cadical_search_smoke() {
         // Same shape as `matrix_search_smoke` but going through the
         // CaDiCaL backend.
-        match cadical_search(3, vec![vec![1, -2], vec![2, 3], vec![-1, -3]], false, &[]) {
+        match cadical_search(3, Cnf::from_vecs(vec![vec![1, -2], vec![2, 3], vec![-1, -3]]), false, &[]) {
             SearchOutcome::Sat(_) => {}
             other => panic!("expected Sat, got {:?}", outcome_kind(&other)),
         }
-        match cadical_search(1, vec![vec![1], vec![-1]], false, &[]) {
+        match cadical_search(1, Cnf::from_vecs(vec![vec![1], vec![-1]]), false, &[]) {
             SearchOutcome::Unsat => {}
             other => panic!("expected Unsat, got {:?}", outcome_kind(&other)),
         }

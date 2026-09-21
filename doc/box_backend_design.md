@@ -930,6 +930,16 @@ And the 20 are the instances *we* solve — the 76 the balanced set holds
 that we cannot are where the real gap lives, and no comparison on the
 solvable subset can see it.
 
+*Parser flattened (2026-09-21, `src/cnf.rs`; §5 of
+`doc/data/boxes_memory_2026-09-20.txt`): the clause list is now one literal
+array and one array of clause ends, reserved from the header, consumed
+directly by `-b boxes` and `-b cadical`.  The search is byte-identical.
+Exact peak memory moves 6–11 % on instances that load — the clause list
+was a minor share of the steady peak — while the doubling transient that
+reached 64 GB is gone by construction.  The ~90 % that remains is the
+engine's own per-literal and per-variable `Vec<Vec<_>>` structures, which
+is the next target and the same layout implicated in the throughput gap.*
+
 ### Next levers (2026-09-18)
 
 Two items on the agenda, both with their evidence and both still unbuilt.

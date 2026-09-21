@@ -2,6 +2,7 @@ pub mod anf;
 pub mod boxes;
 pub mod jqlib;
 pub mod cadical;
+pub mod cnf;
 pub mod controller;
 pub mod cook_pbp;
 pub mod parity_pbp;

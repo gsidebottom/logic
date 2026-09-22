@@ -496,6 +496,14 @@ impl ElimStore {
 
 #[inline] fn code(var: u32, neg: bool) -> u32 { var << 1 | neg as u32 }
 
+/// Capacity to reserve for a clause store holding `n` of something
+/// (literals, clauses) with the learned clauses still to come: a quarter
+/// more, at least `min_extra`.  Capacity nobody writes is free, while the
+/// first learned clause pushing past an exact reservation doubles the
+/// store -- a copy of the whole arena, and twice its capacity (568 MB on
+/// the 40 M-clause instance, 2026-09-21).
+#[inline] fn with_headroom(n: usize, min_extra: usize) -> usize { n + n / 4 + min_extra }
+
 /// The engine: conflict-driven search (§3.2, §3.5) over two kinds of
 /// constraint — **table boxes**, propagated to generalized arc consistency
 /// with bit-parallel live-row masks, and **clauses** (a box's clause form,
@@ -837,8 +845,9 @@ impl Engine {
     pub fn from_cnf_sized<C: AsRef<[i32]>>(nvars: usize, nclauses: usize, nlits: usize,
                                           clauses: impl IntoIterator<Item = C>) -> Engine {
         let mut e = Engine::new(nvars, Vec::new());
-        e.arena.reserve_exact(nlits); e.cstart.reserve_exact(nclauses); e.clen.reserve_exact(nclauses);
-        e.deleted.reserve_exact(nclauses);
+        let (lit_cap, cl_cap) = (with_headroom(nlits, 1 << 20), with_headroom(nclauses, 1 << 17));
+        e.arena.reserve_exact(lit_cap); e.cstart.reserve_exact(cl_cap); e.clen.reserve_exact(cl_cap);
+        e.deleted.reserve_exact(cl_cap);
         let mut buf: Vec<Lit> = Vec::new();
         for c in clauses {
             buf.clear();
@@ -1310,13 +1319,23 @@ impl Engine {
 
     /// Drop the deleted clauses' literals; indices stay, offsets move.
     fn compact_arena(&mut self) {
-        let mut arena = Vec::with_capacity(self.arena.len());
-        for ci in 0..self.cstart.len() {
+        // Only the learned tail moves, and in place: storage is monotone
+        // in clause index (push_clause appends, compaction keeps the
+        // order), so a clause only ever moves left.  The originals stay
+        // where they are -- a subsumed original's slack is bounded by the
+        // input, while copying the whole store into a fresh arena on every
+        // reduction was 15 x 561 MB on the 40 M-clause instance, with the
+        // freed arena staying charged: 2 GB of the search's peak RSS
+        // (2026-09-21, doc/data/boxes_memory_2026-09-20.txt s10).
+        let mut w = if self.first_learnt < self.cstart.len() { self.cstart[self.first_learnt] as usize } else { self.arena.len() };
+        for ci in self.first_learnt..self.cstart.len() {
             let (s, n) = (self.cstart[ci] as usize, self.clen[ci] as usize);
-            self.cstart[ci] = arena.len() as u32;
-            arena.extend_from_slice(&self.arena[s..s + n]);
+            debug_assert!(s >= w, "clause storage not monotone in clause index");
+            if n > 0 && s != w { self.arena.copy_within(s..s + n, w); }
+            self.cstart[ci] = w as u32;
+            w += n;
         }
-        self.arena = arena;
+        self.arena.truncate(w);
     }
     fn decision_level(&self) -> usize { self.trail_lim.len() }
 
@@ -2268,7 +2287,8 @@ impl Engine {
         // the rebuild does not double its way back up.
         let (mut kept_n, mut kept_lits) = (0usize, 0usize);
         for i in 0..cls.n() { if alive[i] { kept_n += 1; kept_lits += cls.len[i] as usize; } }
-        self.arena.reserve_exact(kept_lits); self.cstart.reserve_exact(kept_n); self.clen.reserve_exact(kept_n);
+        let (lit_cap, cl_cap) = (with_headroom(kept_lits, 1 << 20), with_headroom(kept_n, 1 << 17));
+        self.arena.reserve_exact(lit_cap); self.cstart.reserve_exact(cl_cap); self.clen.reserve_exact(cl_cap);
         self.deleted.clear(); self.learnt_lbd.clear(); self.learnt_act.clear(); self.learnt_used.clear();
         // The counts are keyed by clause index and everything is about to
         // be renumbered.

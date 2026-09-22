@@ -362,3 +362,30 @@
 # region of a few MB -- leaving the freed arena charged until reuse (s8's
 # second trap) and 750 MB more of allocator fragments.  Compacting only the
 # learned tail, in place, removes the copies and the transient.
+
+=== 11. compact_arena in place from the learned tail; store headroom (2026-09-21) ===
+#
+# compact_arena copied every clause into a fresh arena on each reduction.
+# Storage is monotone in clause index (push_clause appends, compaction
+# keeps the order), so the learned tail is now compacted in place with
+# copy_within and the originals are left alone.  And both store
+# reservations -- from the parse and the post-elimination rebuild -- now
+# carry a quarter of headroom (with_headroom): the first learned clause no
+# longer doubles arena/cstart/clen (the rebuild's exact reservation had
+# undone the parse-time headroom; a first attempt shadowed the pool's name
+# and the measurement ran on the previous binary -- caught by the absent
+# signature, memory note updated).
+#
+# 4d6e18e5, --timeout 60 (~96 K conflicts, 15 reductions), peak RSS /
+# engine capacity at the end of the search:
+#
+#   before (f2df748)                 8363 MB   3039 MB capacity (arena 1128, cstart/clen 263 each)
+#   tail-only compaction             7488      3607 (the store then doubled once)
+#   + headroom in both reservations  7282      3002 (arena 709 for 586 in use, cstart/clen 165)
+#
+#   after init -> end of search now +1180 MB of peak RSS for +50 MB of
+#   engine data; the rest is allocator fragments (freed-and-kept 1137 ->
+#   1664) and RSS ghosts.
+#
+# Identity vs 94b26fe (compaction binary): 14/14 fast instances and
+# cryptography-cbmc IDENTICAL; 400 lib tests.

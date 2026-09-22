@@ -4425,8 +4425,15 @@ fn main() {
         // calls `restore_terminal()` before exit so the cursor
         // stays sane when `--progress` was used.
         let limit = args.timeout_secs;
+        // The box engine stops cooperatively a second before this and
+        // prints its statistics and, under BOXES_MEM_REPORT, its memory
+        // report; on a 7 M-variable instance the second was not enough
+        // (2026-09-21).  Reporting mode therefore gets a minute of grace
+        // -- the reports are the point of such a run, and the wall-clock
+        // limit is still what the search was told.
+        let grace = if matches!(std::env::var("BOXES_MEM_REPORT").as_deref(), Ok("1") | Ok("on")) { 60 } else { 0 };
         std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(limit));
+            std::thread::sleep(std::time::Duration::from_secs(limit + grace));
             restore_terminal();
             // Stats first (so the canonical line is present before
             // the timeout marker), then the human-readable timeout

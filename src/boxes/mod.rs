@@ -724,8 +724,14 @@ pub struct Engine {
     pub stats: Stats,
     /// Optional decision budget; `solve` returns `Unknown` when exceeded.
     pub max_decisions: Option<u64>,
-    /// Cooperative cancellation: checked every 256 decisions; `solve` returns `Unknown`.
+    /// Cooperative cancellation: checked every 256 conflicts or decisions
+    /// and every 4096 propagated literals; `solve` returns `Unknown`.
     pub cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// `cancel` seen set inside `propagate`, which then returns early with
+    /// the trail not fully propagated; the search returns `Unknown` next.
+    /// On a 7 M-variable instance 256 decisions took longer than the
+    /// watchdog's grace and the timeout lost the statistics (2026-09-21).
+    cancelled: bool,
     /// How table explanations are chosen.
     pub explain: ExplainMode,
     // scratch for `explain_box`: (class, level, trail position, local index, kill-mask base)
@@ -803,7 +809,7 @@ impl Engine {
             subsume: !matches!(std::env::var("BOXES_SUBSUME").as_deref(), Ok("0") | Ok("off") | Ok("none")),
             subsume_at: env_usize("BOXES_SUBSUME_START", 2000) as u64,
             subsume_interval: env_usize("BOXES_SUBSUME_START", 2000) as u64,
-            stats: Stats::default(), max_decisions: None, cancel: None,
+            stats: Stats::default(), max_decisions: None, cancel: None, cancelled: false,
             explain: ExplainMode::from_env(),
             expl_cands: Vec::new(), expl_orig: Vec::new(), expl_picked: Vec::new(), expl_keep: Vec::new(), expl_used: Vec::new(),
             proof: None, box_src: Vec::new(), justifier: None, lemma_seen: Default::default(), proof_l0: 0,
@@ -1444,6 +1450,10 @@ impl Engine {
             while self.qhead < self.trail.len() {
                 let v = self.trail[self.qhead];
                 self.qhead += 1;
+                if self.qhead & 4095 == 0 && let Some(c) = &self.cancel && c.load(std::sync::atomic::Ordering::Relaxed) {
+                    self.cancelled = true;
+                    return None;
+                }
                 let false_lit = code(v, self.vals[v as usize] == Val::T);   // the literal made FALSE
                 // binary clauses: no clause memory touched
                 for k in 0..self.bins[false_lit as usize].len() {
@@ -2104,6 +2114,7 @@ impl Engine {
     pub fn solve_under(&mut self, units: &[Lit]) -> Verdict {
         if self.unsat_at_init { return Verdict::Unsat; }
         debug_assert!(units.iter().all(|u| !self.eliminated[u.var as usize]), "an eliminated variable cannot be assumed");
+        self.cancelled = self.cancel.as_ref().is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed));
         let base = self.decision_level();
         let v = self.search(base, units);
         self.backjump(base);
@@ -2762,6 +2773,7 @@ impl Engine {
                 }
                 continue;
             }
+            if self.cancelled { return Verdict::Unknown; }
             if let Some(max) = self.max_decisions && self.stats.decisions >= max { return Verdict::Unknown; }
             if self.debug_watches && self.stats.decisions % 64 == 0 {
                 if let Some(v) = self.debug_watch_violation() { panic!("watch invariant broken at a decision (conflicts {}): {v}", self.stats.conflicts); }

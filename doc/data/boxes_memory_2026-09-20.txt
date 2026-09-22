@@ -335,3 +335,30 @@
 # the cooperative stop is checked every 256 conflicts or decisions, and on
 # 7.3 M variables that took longer than the second between the flag and
 # the hard watchdog.  Fixed next (a check every 4096 propagated literals).
+
+=== 10. The search phase, from the end-of-search report (2026-09-21) ===
+#
+# The cooperative stop is now also checked every 4096 propagated literals,
+# and under BOXES_MEM_REPORT the hard watchdog waits a minute longer, so a
+# timeout reaches the statistics and the memory report even on 7 M
+# variables (256 decisions took longer than the old one-second grace).
+#
+# 4d6e18e5, --timeout 60: 96,038 conflicts, 22.8 M decisions, 261 M
+# propagations, 10,906 restarts, 15 reductions (18,252 learned kept):
+#
+#                       after init     end of search
+#   peak RSS               6272           8363   (+2091)
+#   footprint              5034           5986   (+952)
+#   malloc live            3660           4043   (+383)
+#   malloc freed-and-kept  1292           2042   (+750)
+#   engine capacity        2721           3039   (+318: cstart/clen doubled
+#                                                 past their exact reservation
+#                                                 on the first learned clause)
+#   engine in use          2647           2671   (+24)
+#
+# The search added 24 MB of engine data.  The two gigabytes of peak RSS are
+# compact_arena: every reduce_db allocates a fresh arena the size of the old
+# one and copies EVERY clause into it -- 15 x 561 MB here, for a learned
+# region of a few MB -- leaving the freed arena charged until reuse (s8's
+# second trap) and 750 MB more of allocator fragments.  Compacting only the
+# learned tail, in place, removes the copies and the transient.

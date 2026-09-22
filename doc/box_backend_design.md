@@ -969,6 +969,19 @@ charged until pressure relief — the checkpoints now read after
 fragments from the occurrence lists doubling during the passes, the 700 MB
 of watch/bin headers, `elim` at 507 MB, the parsed CNF at 782 MB.*
 
+*Search phase (2026-09-21, §9–§11): `elim` flattened to one literal array
+with two levels of end offsets (507 → 319 MB); a memory report at the end of
+the search, reachable on a timeout now that the cooperative stop is also
+checked every 4096 propagated literals (and reporting mode gives the hard
+watchdog a minute of grace).  The first such report showed 60 s of search
+adding 24 MB of engine data and 2 GB of peak RSS: `compact_arena` was
+copying the whole 561 MB arena into a fresh one on each of 15 reductions.
+It now compacts the learned tail in place (storage is monotone in clause
+index), and both store reservations carry a quarter of headroom so the
+first learned clause no longer doubles the store.  Peak RSS over the 60 s
+search 8363 → 7282 MB; the remaining growth is allocator fragments and RSS
+ghosts, not engine data.*
+
 ### Next levers (2026-09-18)
 
 Two items on the agenda, both with their evidence and both still unbuilt.

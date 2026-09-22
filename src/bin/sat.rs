@@ -2004,6 +2004,8 @@ fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
                 solver.add_clause(clause.iter().copied());
             }
             let result = solver.solve();
+            eprintln!("c cadical: {} conflicts, {} decisions, {} propagations",
+                      solver.conflicts(), solver.decisions(), solver.propagations());
             match result {
                 Some(true) => {
                     // Extract truth values for each variable.  CaDiCaL 3

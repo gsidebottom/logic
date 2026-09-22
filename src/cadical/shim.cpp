@@ -9,7 +9,13 @@
 // owns nothing but the solver and the literal buffer a learned clause is
 // assembled in (CaDiCaL hands them over one literal at a time).
 
+// The counters behind the summary line: CaDiCaL 3.0.1's public API prints
+// its statistics but does not expose them, and the internal solver is a
+// private member.  Read through the usual hack, for diagnostics only.
+#define private public
 #include "cadical.hpp"
+#include "internal.hpp"
+#undef private
 
 #include <cstddef>
 #include <vector>
@@ -84,6 +90,10 @@ int c3_val (void *s, int lit) {
 }
 
 int c3_max_var (void *s) { return self (s)->solver.vars (); }
+
+int64_t c3_conflicts (void *s) { return self (s)->solver.internal->stats.conflicts; }
+int64_t c3_decisions (void *s) { return self (s)->solver.internal->stats.decisions; }
+int64_t c3_propagations (void *s) { return self (s)->solver.internal->stats.propagations.search; }
 
 // Initializes `n` further variables and protects them from being taken as
 // bounded-variable-addition extension variables.  With `factor` on,

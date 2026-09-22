@@ -40,6 +40,9 @@ unsafe extern "C" {
     fn c3_status(s: *mut c_void) -> c_int;
     fn c3_val(s: *mut c_void, lit: c_int) -> c_int;
     fn c3_max_var(s: *mut c_void) -> c_int;
+    fn c3_conflicts(s: *mut c_void) -> i64;
+    fn c3_decisions(s: *mut c_void) -> i64;
+    fn c3_propagations(s: *mut c_void) -> i64;
     fn c3_declare_vars(s: *mut c_void, n: c_int) -> c_int;
     fn c3_set_option(s: *mut c_void, name: *const c_char, val: c_int) -> c_int;
     fn c3_connect(
@@ -253,6 +256,12 @@ impl<C: Callbacks> Solver<C> {
     pub fn max_variable(&self) -> i32 {
         unsafe { c3_max_var(self.ptr) }
     }
+
+    /// Search statistics so far (CaDiCaL's own counters; propagations are
+    /// the search's, not preprocessing's).
+    pub fn conflicts(&self) -> i64 { unsafe { c3_conflicts(self.ptr) } }
+    pub fn decisions(&self) -> i64 { unsafe { c3_decisions(self.ptr) } }
+    pub fn propagations(&self) -> i64 { unsafe { c3_propagations(self.ptr) } }
 
     /// Declare variables up to `max_var` before adding clauses.
     ///

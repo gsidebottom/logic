@@ -216,6 +216,15 @@ pub struct Stats {
     pub decisions: u64,
     pub propagations: u64,
     pub conflicts: u64,
+    /// Propagation's work, counted under `BOXES_COUNT_VISITS`: entries of
+    /// binary lists visited; entries of long-clause watch lists visited,
+    /// of which skipped by a true blocker; clauses whose literals were
+    /// read; literal steps taken looking for a replacement watch.
+    pub bin_visits: u64,
+    pub watch_visits: u64,
+    pub blocker_hits: u64,
+    pub clause_visits: u64,
+    pub lit_steps: u64,
     /// Table explanations computed (conflicts and reasons), the literals
     /// they contained, and the literals minimisation dropped.
     pub explanations: u64,
@@ -820,6 +829,8 @@ pub struct Engine {
     /// On a 7 M-variable instance 256 decisions took longer than the
     /// watchdog's grace and the timeout lost the statistics (2026-09-21).
     cancelled: bool,
+    /// `BOXES_COUNT_VISITS`: count propagation's work (see `Stats`).
+    count_visits: bool,
     /// How table explanations are chosen.
     pub explain: ExplainMode,
     // scratch for `explain_box`: (class, level, trail position, local index, kill-mask base)
@@ -898,6 +909,7 @@ impl Engine {
             subsume_at: env_usize("BOXES_SUBSUME_START", 2000) as u64,
             subsume_interval: env_usize("BOXES_SUBSUME_START", 2000) as u64,
             stats: Stats::default(), max_decisions: None, cancel: None, cancelled: false,
+            count_visits: matches!(std::env::var("BOXES_COUNT_VISITS").as_deref(), Ok("1") | Ok("on")),
             explain: ExplainMode::from_env(),
             expl_cands: Vec::new(), expl_orig: Vec::new(), expl_picked: Vec::new(), expl_keep: Vec::new(), expl_used: Vec::new(),
             proof: None, box_src: Vec::new(), justifier: None, lemma_seen: Default::default(), proof_l0: 0,
@@ -1547,6 +1559,7 @@ impl Engine {
     /// Propagate to fixpoint: clauses through the trail (two watched
     /// literals), tables through the queue of boxes whose live rows shrank.
     fn propagate(&mut self) -> Option<Conflict> {
+        let count = self.count_visits;
         loop {
             while self.qhead < self.trail.len() {
                 let v = self.trail[self.qhead];
@@ -1559,6 +1572,7 @@ impl Engine {
                 // binary clauses: no clause memory touched
                 for k in self.bins.range(false_lit as usize) {
                     let (other, ci) = self.bins.data[k];
+                    if count { self.stats.bin_visits += 1; }
                     match self.lvals[other as usize] {
                         Val::T => {}
                         Val::F => { self.clear_queue(); return Some(Conflict::Clause(ci)); }
@@ -1580,6 +1594,7 @@ impl Engine {
                 while i < n0 {
                     let (ci, blocker) = self.watches.data[s0 + i];
                     i += 1;
+                    if count { self.stats.watch_visits += 1; }
                     if self.deleted[ci as usize] { continue; }
                     // A true blocker lets a false watch skip the clause only if a
                     // backtrack that unassigns the blocker must unassign the
@@ -1589,10 +1604,12 @@ impl Engine {
                     // later conflict on it would go unseen.
                     if self.lvals[blocker as usize] == Val::T
                         && (!self.chrono || self.level[(blocker >> 1) as usize] <= self.level[(false_lit >> 1) as usize]) {
+                        if count { self.stats.blocker_hits += 1; }
                         self.watches.data[s0 + j] = (ci, blocker); j += 1; continue;
                     }
                     let s = self.cstart[ci as usize] as usize;
                     let len = self.clen[ci as usize] as usize;
+                    if count { self.stats.clause_visits += 1; }
                     if self.arena[s] == false_lit { self.arena.swap(s, s + 1); }
                     let other = self.arena[s];
                     if other != blocker && self.lvals[other as usize] == Val::T { self.watches.data[s0 + j] = (ci, other); j += 1; continue; }
@@ -1600,6 +1617,7 @@ impl Engine {
                     let mut found = false;
                     for k in 2..len {
                         let l = self.arena[s + k];
+                        if count { self.stats.lit_steps += 1; }
                         if self.lvals[l as usize] != Val::F {
                             self.arena.swap(s + 1, s + k);
                             self.watches.push(l as usize, (ci, other));
@@ -2416,6 +2434,11 @@ impl Engine {
         self.mem_report("after init (level-0 simplification done)");
         let v = self.solve_under(&[]);
         self.mem_report("at the end of the search");
+        if self.count_visits {
+            let s = &self.stats;
+            eprintln!("c boxes: propagation work: {} binary visits; {} watch visits, {} blocked, {} clause visits, {} literal steps; for {} propagations, {} conflicts",
+                      s.bin_visits, s.watch_visits, s.blocker_hits, s.clause_visits, s.lit_steps, s.propagations, s.conflicts);
+        }
         v
     }
 

@@ -1,0 +1,68 @@
+# Where the conflict-rate gap to CaDiCaL is: a profile of both solvers on
+# one instance (2026-09-22)
+#
+# Instance: set-covering 48eacbc1 (balanced set; 15,372 clauses, 80% binary,
+# the rest 14-38 literals -- 71% of the literals), UNSAT in both solvers,
+# the largest serial rate gap of the suite (2.85x on 2026-09-21).  Both
+# binaries are the same `sat` (2a999e6 + counters), one solver at a time,
+# idle machine.  `sample` at 1 ms for 30 s from t = 8 s; main-thread
+# samples only (the timer threads' __semwait_signal dropped).
+#
+# === Self time, top of stack ===
+#
+#   ours (25,100 samples ~ 30 s)                 CaDiCaL (16,800 samples ~ 30 s)
+#   propagate            21,145   84%           Internal::propagate      11,082   66%
+#   Lists::push           2,047    8%  (not     walk_* (local search)     1,244    7%
+#   solve_under             462    2%   inlined) search_assign              445    3%
+#   reason_lits             298    1%           vivify_propagate            367    2%
+#   lit_redundant           173                 analyze_* (3)               641    4%
+#   heap_up/heap_pop        202                 subsumption (2)             455    3%
+#   assign                   92                 shrink/minimize (4)         ~500   3%
+#   backjump                 88                 Reap (2)                    270
+#   sorts, malloc, lbd     ~100                 heap up/down                238
+#                                               backtrack                   110
+#
+#   propagation (propagate + push + assign):  ours 93% of the time,
+#   CaDiCaL 66%; analysis and minimisation ~3% here against ~10% there.
+#
+# === Work counted (BOXES_COUNT_VISITS=1; CaDiCaL's counters via the shim) ===
+#
+#                                   ours              CaDiCaL
+#   conflicts                     1,312,022          1,225,907
+#   decisions                     4,084,995          1,661,032
+#   propagations                143,658,902         74,011,855
+#   wall                             99.96 s            29.57 s   (ours 97 s uncounted)
+#
+#   per conflict:  decisions        3.11               1.35
+#                  propagations   109.5               60.4
+#                  time             76 us              24 us          3.2x
+#
+#   ours per propagation: 1.75 binary-list visits; 41.9 long-list watch
+#   visits, of which 43% skipped by the blocker; 23.9 clause visits;
+#   89.6 literal steps (3.75 per clause visit).  12.9 BILLION literal
+#   steps in the run, each an lvals lookup.  Learned clauses average
+#   34.1 literals (50.1 before minimisation).
+#
+# === Reading it ===
+#
+# The 3.2x per conflict on this instance is two measured factors:
+#
+#   1.8x more propagations per conflict -- our search needs 3.1 decisions
+#       per conflict against CaDiCaL's 1.35 (propagations per decision are
+#       similar, 35 vs 45).  That is search shape (branching, phases,
+#       restarts), not throughput; it also shows as 7% more conflicts.
+#
+#   ~1.8x per propagation (647 ns against ~264 ns), and the profile puts
+#       it inside propagate.  The counts say where: 90 literal steps per
+#       propagation, because every visit of a long clause rescans it from
+#       position 2 for a replacement watch.  CaDiCaL saves the position
+#       where the last search stopped (Clause::pos) and resumes there,
+#       wrapping once -- amortised O(1) per visit instead of O(length).
+#       Second: a clause visit here is three dependent random accesses
+#       (cstart[ci], clen[ci], arena) against CaDiCaL's one (the watch
+#       holds the clause pointer; header and literals are contiguous).
+#       Third: Lists::push is not inlined (8%).
+#
+# Position saving is the first experiment (it changes which replacement
+# watch is taken, so the search changes: A/B on conflicts, verdicts and
+# time, not identity).  Then the clause-pointer watch layout.

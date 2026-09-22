@@ -313,3 +313,25 @@
 #   - watches/bins headers, 700 MB retained (the CSR-watch item).
 #   - elim, 507 MB retained as Vec<Vec<u32>> per eliminated variable.
 #   - the parsed CNF, 782 MB retained through the search for the model check.
+
+=== 9. Flat elimination store (2026-09-21) ===
+#
+# elim was a Vec<Vec<u32>> per eliminated variable: 9.1 M small clauses
+# behind 1.88 M variables, 507 MB, most of it 24-byte headers and
+# allocator rounding, allocated one clause at a time in the middle of the
+# passes.  Now one literal array with two levels of end offsets (variable
+# -> clauses -> literals), pushed in the same order; reconstruct walks it
+# in reverse as before.
+#
+#   elim after init, 4d6e18e5:   507 MB  ->  319 MB capacity, 259 in use
+#   footprint after init         5335    ->  5217
+#   engine structures            2909    ->  2721 capacity (2647 in use)
+#   peak RSS through init        6554    ->  6535
+#
+# Identity vs 94b26fe: 14/14 fast instances and cryptography-cbmc IDENTICAL
+# (the SAT ones exercise reconstruct through the harness's model check).
+#
+# The end-of-search report added with it did NOT print on this instance:
+# the cooperative stop is checked every 256 conflicts or decisions, and on
+# 7.3 M variables that took longer than the second between the flag and
+# the hard watchdog.  Fixed next (a check every 4096 propagated literals).

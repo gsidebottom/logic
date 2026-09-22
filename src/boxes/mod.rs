@@ -464,6 +464,36 @@ fn env_usize(name: &str, default: usize) -> usize {
     std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
 }
 
+/// The clauses removed by variable elimination, kept for `reconstruct`:
+/// per eliminated variable, in elimination order, the clauses that went
+/// with it.  Two levels of end offsets over one literal array -- a Vec per
+/// clause was 507 MB for 9 M small clauses on the 40 M-clause instance
+/// (2026-09-21), most of it headers and allocator rounding, and 9 M small
+/// allocations interleaved with the occurrence lists' growth.
+#[derive(Default)]
+struct ElimStore {
+    var: Vec<u32>,     // the eliminated variable
+    cend: Vec<u32>,    // per variable: end of its clauses in the clause table
+    lend: Vec<u32>,    // per clause: end of its literals in `lits`
+    lits: Vec<u32>,
+}
+impl ElimStore {
+    fn push_clause(&mut self, c: &[u32]) { self.lits.extend_from_slice(c); self.lend.push(self.lits.len() as u32); }
+    /// Close the variable whose clauses were just pushed.
+    fn push_var(&mut self, v: u32) { self.var.push(v); self.cend.push(self.lend.len() as u32); }
+    fn len(&self) -> usize { self.var.len() }
+    fn clause(&self, j: usize) -> &[u32] {
+        let l0 = if j == 0 { 0 } else { self.lend[j - 1] as usize };
+        &self.lits[l0..self.lend[j] as usize]
+    }
+    /// The clause-table range of variable `i`.
+    fn clauses(&self, i: usize) -> std::ops::Range<usize> {
+        (if i == 0 { 0 } else { self.cend[i - 1] as usize })..self.cend[i] as usize
+    }
+    fn cap_bytes(&self) -> usize { vec_cap_bytes(&self.var) + vec_cap_bytes(&self.cend) + vec_cap_bytes(&self.lend) + vec_cap_bytes(&self.lits) }
+    fn used_bytes(&self) -> usize { vec_bytes(&self.var) + vec_bytes(&self.cend) + vec_bytes(&self.lend) + vec_bytes(&self.lits) }
+}
+
 #[inline] fn code(var: u32, neg: bool) -> u32 { var << 1 | neg as u32 }
 
 /// The engine: conflict-driven search (§3.2, §3.5) over two kinds of
@@ -662,7 +692,7 @@ pub struct Engine {
     /// elimination in order, the clauses removed with it — replayed
     /// backwards to extend a model.
     eliminated: Vec<bool>,
-    elim: Vec<(u32, Vec<Vec<u32>>)>,
+    elim: ElimStore,
     /// Elimination may run during the search (set by `simplify`: no
     /// variable of this engine is ever assumed).
     elim_enabled: bool,
@@ -764,7 +794,7 @@ impl Engine {
             stabilize: matches!(std::env::var("BOXES_STABLE").as_deref(), Ok("1") | Ok("on")),
             glue_fast: Ema::new(1.0 / 33.0), glue_slow: Ema::new(1.0 / 1e5),
             restart_margin: std::env::var("BOXES_RESTART_MARGIN").ok().and_then(|v| v.parse().ok()).unwrap_or(1.10),
-            eliminated: Vec::new(), elim: Vec::new(), elim_enabled: false,
+            eliminated: Vec::new(), elim: ElimStore::default(), elim_enabled: false,
             phases: matches!(std::env::var("BOXES_PHASES").as_deref(), Ok("1") | Ok("on")),
             target_phase: Vec::new(), target_size: 0, best_phase: Vec::new(), best_size: 0,
             rephase_at: 1000, rephase_count: 0, rng: 0x9E37_79B9_7F4A_7C15,
@@ -1108,11 +1138,7 @@ impl Engine {
               target_phase, best_phase, eliminated, expl_ok, hdr, vars_all, kill_all, live, snap,
               in_queue, queue, lbd_stamp, live_count, snap_count);
         nested!(watches, bins, occ, xidx, expl_cache, box_src);
-        let elim = self.elim.capacity() * std::mem::size_of::<(u32, Vec<Vec<u32>>)>()
-            + self.elim.iter().map(|(_, cs)| vecvec_bytes(cs).0).sum::<usize>();
-        let elim_used = self.elim.len() * std::mem::size_of::<(u32, Vec<Vec<u32>>)>()
-            + self.elim.iter().map(|(_, cs)| cs.len() * 24 + cs.iter().map(|c| vec_bytes(c)).sum::<usize>()).sum::<usize>();
-        rows.push((format!("elim ({} eliminated vars' clauses)", self.elim.len()), elim, elim_used));
+        rows.push((format!("elim ({} eliminated vars' clauses)", self.elim.len()), self.elim.cap_bytes(), self.elim.used_bytes()));
         rows.sort_by(|a, b| b.1.cmp(&a.1));
         let total: usize = rows.iter().map(|r| r.1).sum();
         let used: usize = rows.iter().map(|r| r.2).sum();
@@ -2093,10 +2119,11 @@ impl Engine {
     /// literal has no other true literal, else FALSE).
     fn reconstruct(&self, m: &mut [bool]) {
         let holds = |m: &[bool], l: u32| m[(l >> 1) as usize] == (l & 1 == 0);
-        for (v, clauses) in self.elim.iter().rev() {
-            let v = *v as usize;
+        for i in (0..self.elim.len()).rev() {
+            let v = self.elim.var[i] as usize;
             let pos = code(v as u32, false);
-            m[v] = clauses.iter().any(|c| c.contains(&pos) && !c.iter().any(|&l| (l >> 1) as usize != v && holds(m, l)));
+            m[v] = self.elim.clauses(i).any(|j| { let c = self.elim.clause(j);
+                c.contains(&pos) && !c.iter().any(|&l| (l >> 1) as usize != v && holds(m, l)) });
         }
     }
 
@@ -2207,8 +2234,8 @@ impl Engine {
                     }
                 }
                 if !ok { continue; }
-                let removed: Vec<Vec<u32>> = pos.iter().chain(neg.iter()).map(|&i| { alive[i] = false; cls.get(i).to_vec() }).collect();
-                self.elim.push((v as u32, removed));
+                for &i in pos.iter().chain(neg.iter()) { alive[i] = false; self.elim.push_clause(cls.get(i)); }
+                self.elim.push_var(v as u32);
                 self.eliminated[v] = true;
                 self.stats.eliminated += 1;
                 for r in resolvents {
@@ -2268,7 +2295,9 @@ impl Engine {
     pub fn solve(&mut self) -> Verdict {
         if !self.init() { return Verdict::Unsat; }
         self.mem_report("after init (level-0 simplification done)");
-        self.solve_under(&[])
+        let v = self.solve_under(&[]);
+        self.mem_report("at the end of the search");
+        v
     }
 
     /// Whether to restart after a conflict that learned a clause of LBD

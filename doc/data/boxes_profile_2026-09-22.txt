@@ -66,3 +66,34 @@
 # Position saving is the first experiment (it changes which replacement
 # watch is taken, so the search changes: A/B on conflicts, verdicts and
 # time, not identity).  Then the clause-pointer watch layout.
+
+# === Position saving, tried and not adopted (2026-09-22) ===
+#
+# A per-clause saved position, searched from and wrapping once (CaDiCaL's
+# Clause::pos).  On set-covering it does what the counts predicted:
+#
+#                        before          with position saving
+#   literal steps      12.88 billion        7.10 billion     (3.75 -> 2.14 per clause visit)
+#   propagations         143.7 M            162.9 M
+#   conflicts            1.312 M            1.497 M          (the search changed)
+#   wall                 97.6 s             95.5 s
+#   time per conflict    74 us              64 us            (-14%)
+#
+# But which literal becomes the new watch changes propagation order, and
+# the search with it.  A/B on the 18 fast balanced-set instances plus
+# set-covering (both binaries per instance, alternating order, verdicts
+# checked): conflicts B/A median 1.000, fewer on 5/17; heavy tails both
+# ways -- graph-isomorphism 139x more, agile 4.1x, floodit from 20 s to a
+# 400 s timeout; software-bmc 0.29x, argumentation 0.54x, petrinet 0.70x.
+# Time B/A median 1.015.  Reverted: a 14% throughput gain on the worst
+# instance does not pay for a search perturbation of that size, and the
+# rate cannot be read off unequal searches (later conflicts cost more).
+#
+# What the profile leaves standing, in order:
+#   1. the search shape -- 3.1 decisions per conflict against CaDiCaL's
+#      1.35 -- is the larger factor and is a heuristics question (VMTF in
+#      focused mode, target phases, restarts), not a layout one;
+#   2. the clause access pattern (three dependent random accesses per
+#      clause visit against one) is the remaining per-propagation lever,
+#      and it is search-neutral, so it can be measured at equal search;
+#   3. Lists::push not inlined, 8% of self time, also search-neutral.

@@ -982,6 +982,16 @@ first learned clause no longer doubles the store.  Peak RSS over the 60 s
 search 8363 → 7282 MB; the remaining growth is allocator fragments and RSS
 ghosts, not engine data.*
 
+*Flat watch and binary lists (2026-09-21, §12): one arena per structure
+with (start, len, cap) per literal, lists relocating to the end when they
+outgrow their slot, holes reclaimed at reduce time; bulk loads lay every
+list out exactly.  Order within a list unchanged, search identical.  Peak
+RSS at engine built 3609 → 3190 MB, over the 60 s search 7282 → 6521 MB.
+Throughput at equal search on 18 instances: median 0.976, B faster on
+13/18 — the headers were ~3%, so the 1.69× conflict-rate gap to CaDiCaL is
+not the watch-list layout; attributing it needs a profile of both solvers
+on one instance.*
+
 ### Next levers (2026-09-18)
 
 Two items on the agenda, both with their evidence and both still unbuilt.

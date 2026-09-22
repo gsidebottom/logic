@@ -494,6 +494,85 @@ impl ElimStore {
     fn used_bytes(&self) -> usize { vec_bytes(&self.var) + vec_bytes(&self.cend) + vec_bytes(&self.lend) + vec_bytes(&self.lits) }
 }
 
+/// Per-literal lists in one arena: list `l` is
+/// `data[start[l] .. start[l] + len[l]]` with `cap[l]` slots reserved.  A
+/// list that outgrows its slot moves to the end of the arena with twice
+/// the room, and the hole it leaves is reclaimed by `defrag` at a safe
+/// point (nothing holds an index across it).  Twelve bytes per literal
+/// instead of a 24-byte `Vec` header and a malloc block each: the watch
+/// and binary lists of 14.6 M literals were 700 MB of headers on the
+/// 40 M-clause instance (2026-09-21).  Order within a list is exactly a
+/// `Vec`'s, so propagation visits the same clauses in the same order.
+#[derive(Default)]
+struct Lists {
+    data: Vec<(u32, u32)>,
+    start: Vec<u32>,
+    len: Vec<u32>,
+    cap: Vec<u32>,
+    /// slots of `data` no list owns
+    holes: usize,
+}
+impl Lists {
+    fn n(&self) -> usize { self.start.len() }
+    fn resize(&mut self, n: usize) { self.start.resize(n, 0); self.len.resize(n, 0); self.cap.resize(n, 0); }
+    #[inline] fn range(&self, l: usize) -> std::ops::Range<usize> {
+        let s = self.start[l] as usize;
+        s..s + self.len[l] as usize
+    }
+    #[inline] fn push(&mut self, l: usize, w: (u32, u32)) {
+        let n = self.len[l];
+        if n >= self.cap[l] { self.relocate(l, (2 * self.cap[l]).max(4)); }
+        self.data[self.start[l] as usize + n as usize] = w;
+        self.len[l] = n + 1;
+    }
+    /// Move list `l` to the end of the arena with `newcap` slots.
+    fn relocate(&mut self, l: usize, newcap: u32) {
+        let (s, n) = (self.start[l] as usize, self.len[l] as usize);
+        let ns = self.data.len();
+        self.data.reserve(newcap as usize);
+        self.data.extend_from_within(s..s + n);
+        self.data.resize(ns + newcap as usize, (0, 0));
+        self.holes += self.cap[l] as usize;
+        self.start[l] = ns as u32;
+        self.cap[l] = newcap;
+    }
+    /// Every list empty, the arena gone.
+    fn clear(&mut self) {
+        self.data = Vec::new();
+        self.start.iter_mut().for_each(|x| *x = 0);
+        self.len.iter_mut().for_each(|x| *x = 0);
+        self.cap.iter_mut().for_each(|x| *x = 0);
+        self.holes = 0;
+    }
+    /// Lay the (empty) lists out with exactly `counts[l]` slots each.
+    fn layout_exact(&mut self, counts: &[u32]) {
+        debug_assert!(self.len.iter().all(|&n| n == 0), "layout_exact over non-empty lists");
+        debug_assert_eq!(counts.len(), self.n());
+        let mut total = 0u64;
+        for l in 0..self.n() { self.start[l] = total as u32; self.cap[l] = counts[l]; total += counts[l] as u64; }
+        assert!(total <= u32::MAX as u64, "watch arena exceeds u32 indexing");
+        self.data = vec![(0, 0); total as usize];
+        self.holes = 0;
+    }
+    /// Reclaim the holes: every list contiguous in literal order, room
+    /// exactly for its entries.  Only where nothing holds an index.
+    fn defrag(&mut self) {
+        if self.holes < self.data.len() / 3 { return; }
+        let live = self.data.len() - self.holes;
+        let mut data: Vec<(u32, u32)> = Vec::with_capacity(live);
+        for l in 0..self.n() {
+            let r = self.range(l);
+            self.start[l] = data.len() as u32;
+            self.cap[l] = self.len[l];
+            data.extend_from_slice(&self.data[r]);
+        }
+        self.data = data;
+        self.holes = 0;
+    }
+    fn cap_bytes(&self) -> usize { vec_cap_bytes(&self.data) + vec_cap_bytes(&self.start) + vec_cap_bytes(&self.len) + vec_cap_bytes(&self.cap) }
+    fn used_bytes(&self) -> usize { self.len.iter().map(|&n| n as usize * 8).sum::<usize>() + 12 * self.n() }
+}
+
 #[inline] fn code(var: u32, neg: bool) -> u32 { var << 1 | neg as u32 }
 
 /// Capacity to reserve for a clause store holding `n` of something
@@ -562,11 +641,12 @@ pub struct Engine {
     cstart: Vec<u32>,
     clen: Vec<u32>,
     /// Per literal code: the clauses watching it (visited when it becomes
-    /// FALSE), each with a blocker literal.  Binary clauses are not here:
-    watches: Vec<Vec<(u32, u32)>>,
+    /// FALSE), each with a blocker literal, as `(clause, blocker)`.  Binary
+    /// clauses are not here:
+    watches: Lists,
     /// per literal code, the literals a binary clause implies when it
-    /// becomes FALSE, with the clause (never deleted).
-    bins: Vec<Vec<(u32, u32)>>,
+    /// becomes FALSE, with the clause, as `(literal, clause)` (never deleted).
+    bins: Lists,
     /// Explanation-only clauses (`add_explain_clause`): a cone's gate
     /// clauses kept beside its table, never propagated; when the table
     /// forces a literal and one of them is unit for it under the earlier
@@ -773,7 +853,7 @@ impl Engine {
             eff_box_hits: Vec::new(),
             eff_clause_hits: Vec::new(),
             snap: Vec::new(), in_queue: Vec::new(), queue: Vec::new(),
-            arena: Vec::new(), cstart: Vec::new(), clen: Vec::new(), watches: Vec::new(), bins: Vec::new(), first_learnt: 0,
+            arena: Vec::new(), cstart: Vec::new(), clen: Vec::new(), watches: Lists::default(), bins: Lists::default(), first_learnt: 0,
             xarena: Vec::new(), xstart: Vec::new(), xlen: Vec::new(), xidx: Vec::new(),
             learnt_lbd: Vec::new(), learnt_act: Vec::new(), deleted: Vec::new(), cla_inc: 1.0, reduce_at: 0,
             reduce_start: env_usize("BOXES_REDUCE_START", 4000),
@@ -964,8 +1044,8 @@ impl Engine {
         self.phase.resize(nvars, false);
         self.seen.resize(nvars, false);
         self.shrink_mark.resize(nvars, false);
-        self.watches.resize(2 * nvars, Vec::new());
-        self.bins.resize(2 * nvars, Vec::new());
+        self.watches.resize(2 * nvars);
+        self.bins.resize(2 * nvars);
         if !self.xidx.is_empty() { self.xidx.resize(2 * nvars, Vec::new()); }
         self.lvals.resize(2 * nvars, Val::U);
         if !self.expl_cache.is_empty() { self.expl_cache.resize_with(nvars, Vec::new); }
@@ -1152,7 +1232,11 @@ impl Engine {
               vals, lvals, level, reason, trail_pos, trail, activity, phase, seen, heap, heap_pos,
               target_phase, best_phase, eliminated, expl_ok, hdr, vars_all, kill_all, live, snap,
               in_queue, queue, lbd_stamp, live_count, snap_count);
-        nested!(watches, bins, occ, xidx, expl_cache, box_src);
+        nested!(occ, xidx, expl_cache, box_src);
+        for (name, ls) in [("watches", &self.watches), ("bins", &self.bins)] {
+            rows.push((format!("{} (flat: {} lists = {:.0} MB of headers, {:.0} MB of holes)", name, ls.n(),
+                               ls.n() as f64 * 12.0 / 1e6, ls.holes as f64 * 8.0 / 1e6), ls.cap_bytes(), ls.used_bytes()));
+        }
         rows.push((format!("elim ({} eliminated vars' clauses)", self.elim.len()), self.elim.cap_bytes(), self.elim.used_bytes()));
         rows.sort_by(|a, b| b.1.cmp(&a.1));
         let total: usize = rows.iter().map(|r| r.1).sum();
@@ -1225,11 +1309,11 @@ impl Engine {
                 let ci = self.cstart.len() as u32;
                 if attach {
                     if c.len() == 2 {
-                        self.bins[c[0] as usize].push((c[1], ci));
-                        self.bins[c[1] as usize].push((c[0], ci));
+                        self.bins.push(c[0] as usize, (c[1], ci));
+                        self.bins.push(c[1] as usize, (c[0], ci));
                     } else {
-                        self.watches[c[0] as usize].push((ci, c[1]));
-                        self.watches[c[1] as usize].push((ci, c[0]));
+                        self.watches.push(c[0] as usize, (ci, c[1]));
+                        self.watches.push(c[1] as usize, (ci, c[0]));
                     }
                 }
                 self.push_clause(&c);
@@ -1273,7 +1357,7 @@ impl Engine {
     /// index either way, so propagation visits the same clauses in the same
     /// order and the search is identical.
     fn attach_watches(&mut self, from: usize, to: usize) {
-        let nl = self.watches.len();
+        let nl = self.watches.n();
         let (mut cw, mut cb) = (vec![0u32; nl], vec![0u32; nl]);
         for ci in from..to {
             if self.deleted[ci] { continue; }
@@ -1282,21 +1366,19 @@ impl Engine {
             let cnt = if self.clen[ci] == 2 { &mut cb } else { &mut cw };
             cnt[a] += 1; cnt[b] += 1;
         }
-        for l in 0..nl {
-            if cw[l] > 0 { self.watches[l].reserve_exact(cw[l] as usize); }
-            if cb[l] > 0 { self.bins[l].reserve_exact(cb[l] as usize); }
-        }
+        self.watches.layout_exact(&cw);
+        self.bins.layout_exact(&cb);
         drop(cw); drop(cb);
         for ci in from..to {
             if self.deleted[ci] { continue; }
             let st = self.cstart[ci] as usize;
             let (a, b) = (self.arena[st], self.arena[st + 1]);
             if self.clen[ci] == 2 {
-                self.bins[a as usize].push((b, ci as u32));
-                self.bins[b as usize].push((a, ci as u32));
+                self.bins.push(a as usize, (b, ci as u32));
+                self.bins.push(b as usize, (a, ci as u32));
             } else {
-                self.watches[a as usize].push((ci as u32, b));
-                self.watches[b as usize].push((ci as u32, a));
+                self.watches.push(a as usize, (ci as u32, b));
+                self.watches.push(b as usize, (ci as u32, a));
             }
         }
     }
@@ -1475,8 +1557,8 @@ impl Engine {
                 }
                 let false_lit = code(v, self.vals[v as usize] == Val::T);   // the literal made FALSE
                 // binary clauses: no clause memory touched
-                for k in 0..self.bins[false_lit as usize].len() {
-                    let (other, ci) = self.bins[false_lit as usize][k];
+                for k in self.bins.range(false_lit as usize) {
+                    let (other, ci) = self.bins.data[k];
                     match self.lvals[other as usize] {
                         Val::T => {}
                         Val::F => { self.clear_queue(); return Some(Conflict::Clause(ci)); }
@@ -1486,12 +1568,17 @@ impl Engine {
                         }
                     }
                 }
-                let mut ws = std::mem::take(&mut self.watches[false_lit as usize]);
+                // The list is compacted in its own slot; a new watch pushed
+                // onto another literal's list can move THAT list to the end
+                // of the arena, never this one (the new watch is not false,
+                // so it is not `false_lit`).
+                let s0 = self.watches.start[false_lit as usize] as usize;
+                let n0 = self.watches.len[false_lit as usize] as usize;
                 let mut i = 0;
                 let mut j = 0;
                 let mut conflict = None;
-                while i < ws.len() {
-                    let (ci, blocker) = ws[i];
+                while i < n0 {
+                    let (ci, blocker) = self.watches.data[s0 + i];
                     i += 1;
                     if self.deleted[ci as usize] { continue; }
                     // A true blocker lets a false watch skip the clause only if a
@@ -1502,20 +1589,20 @@ impl Engine {
                     // later conflict on it would go unseen.
                     if self.lvals[blocker as usize] == Val::T
                         && (!self.chrono || self.level[(blocker >> 1) as usize] <= self.level[(false_lit >> 1) as usize]) {
-                        ws[j] = (ci, blocker); j += 1; continue;
+                        self.watches.data[s0 + j] = (ci, blocker); j += 1; continue;
                     }
                     let s = self.cstart[ci as usize] as usize;
                     let len = self.clen[ci as usize] as usize;
                     if self.arena[s] == false_lit { self.arena.swap(s, s + 1); }
                     let other = self.arena[s];
-                    if other != blocker && self.lvals[other as usize] == Val::T { ws[j] = (ci, other); j += 1; continue; }
+                    if other != blocker && self.lvals[other as usize] == Val::T { self.watches.data[s0 + j] = (ci, other); j += 1; continue; }
                     // a new watch: any literal not false
                     let mut found = false;
                     for k in 2..len {
                         let l = self.arena[s + k];
                         if self.lvals[l as usize] != Val::F {
                             self.arena.swap(s + 1, s + k);
-                            self.watches[l as usize].push((ci, other));
+                            self.watches.push(l as usize, (ci, other));
                             found = true;
                             break;
                         }
@@ -1536,21 +1623,20 @@ impl Engine {
                         if best != s + 1 {
                             self.arena.swap(s + 1, best);
                             let nl = self.arena[s + 1];
-                            self.watches[nl as usize].push((ci, other));
+                            self.watches.push(nl as usize, (ci, other));
                             moved = true;
                         }
                     }
-                    if !moved { ws[j] = (ci, other); j += 1; }
+                    if !moved { self.watches.data[s0 + j] = (ci, other); j += 1; }
                     if self.lvals[other as usize] == Val::F {
                         conflict = Some(Conflict::Clause(ci));
-                        while i < ws.len() { ws[j] = ws[i]; i += 1; j += 1; }
+                        while i < n0 { self.watches.data[s0 + j] = self.watches.data[s0 + i]; i += 1; j += 1; }
                         break;
                     }
                     self.stats.propagations += 1;
                     self.assign(other >> 1, if other & 1 == 1 { Val::F } else { Val::T }, Reason::Clause(ci));
                 }
-                ws.truncate(j);
-                self.watches[false_lit as usize] = ws;
+                self.watches.len[false_lit as usize] = j as u32;
                 if let Some(c) = conflict { self.clear_queue(); return Some(c); }
             }
             let b = self.queue.pop()?;
@@ -1912,6 +1998,10 @@ impl Engine {
         self.stats.deleted += removed as u64;
         self.stats.reductions += 1;
         self.compact_arena();
+        // Reclaim the holes relocated watch lists left; the search holds
+        // no index into the arenas here.
+        self.watches.defrag();
+        self.bins.defrag();
     }
 
     fn bump(&mut self, v: usize) {
@@ -2226,8 +2316,7 @@ impl Engine {
         // are cleared where the store is rebuilt, as before -- no
         // propagation happens in between.
         self.arena = Vec::new(); self.cstart = Vec::new(); self.clen = Vec::new();
-        for w in &mut self.watches { *w = Vec::new(); }
-        for w in &mut self.bins { *w = Vec::new(); }
+        self.watches.clear(); self.bins.clear();
         self.mem_mark("elim: old store freed");
         let mut alive = vec![true; cls.n()];
         // Occurrence lists with u32 indices, sized exactly by a counting
@@ -2294,8 +2383,7 @@ impl Engine {
         // be renumbered.
         self.eff_clause_hits.clear();
         self.first_learnt = 0;
-        for w in &mut self.watches { w.clear(); }
-        for w in &mut self.bins { w.clear(); }
+        self.watches.clear(); self.bins.clear();
         for v in 0..n { if self.vals[v] != Val::U { self.reason[v] = Reason::None; } }   // level-0 reasons pointed into the old store
         // First the clauses alone, then the pool goes, then the watch lists
         // -- the largest part of the new store -- are sized and filled from
@@ -2667,11 +2755,11 @@ impl Engine {
             _ => {
                 let ci = self.cstart.len() as u32;
                 if c.len() == 2 {
-                    self.bins[c[0] as usize].push((c[1], ci));
-                    self.bins[c[1] as usize].push((c[0], ci));
+                    self.bins.push(c[0] as usize, (c[1], ci));
+                    self.bins.push(c[1] as usize, (c[0], ci));
                 } else {
-                    self.watches[c[0] as usize].push((ci, c[1]));
-                    self.watches[c[1] as usize].push((ci, c[0]));
+                    self.watches.push(c[0] as usize, (ci, c[1]));
+                    self.watches.push(c[1] as usize, (ci, c[0]));
                 }
                 self.push_clause(&c);
                 self.deleted.push(false);
@@ -2748,11 +2836,11 @@ impl Engine {
                 } else {
                     let ci = self.cstart.len() as u32;
                     if learnt.len() == 2 {
-                        self.bins[learnt[0] as usize].push((learnt[1], ci));
-                        self.bins[learnt[1] as usize].push((learnt[0], ci));
+                        self.bins.push(learnt[0] as usize, (learnt[1], ci));
+                        self.bins.push(learnt[1] as usize, (learnt[0], ci));
                     } else {
-                        self.watches[learnt[0] as usize].push((ci, learnt[1]));
-                        self.watches[learnt[1] as usize].push((ci, learnt[0]));
+                        self.watches.push(learnt[0] as usize, (ci, learnt[1]));
+                        self.watches.push(learnt[1] as usize, (ci, learnt[0]));
                     }
                     lbd = self.lbd(&learnt);
                     self.push_clause(&learnt);

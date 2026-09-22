@@ -389,3 +389,38 @@
 #
 # Identity vs 94b26fe (compaction binary): 14/14 fast instances and
 # cryptography-cbmc IDENTICAL; 400 lib tests.
+
+=== 12. Flat watch and binary lists (2026-09-21) ===
+#
+# watches and bins were a Vec per literal: 14.6 M literals x 2 lists x
+# 24-byte header, plus a malloc block each.  Now each is one arena with
+# (start, len, cap) per literal -- 12 bytes -- a list that outgrows its slot
+# moving to the end of the arena with twice the room, the holes reclaimed
+# by defrag at reduce_db when they reach a third of the arena; a bulk load
+# (from_cnf, the rebuild) lays every list out at its exact size.  Order
+# within a list is exactly a Vec's, so the search is identical.
+#
+# 4d6e18e5:                     before (87385de)    flat
+#   engine built, peak RSS         3609              3190
+#   after init: watches            837                662  (175 MB of headers)
+#               bins               389                214
+#               engine capacity   2943               2593  (2297 in use)
+#               peak RSS          6102               5919
+#   end of 60 s search: peak RSS  7282               6521
+#               conflicts in 60 s 96123              97019
+#
+# Identity vs 94b26fe: 14/14 fast instances and cryptography-cbmc IDENTICAL.
+#
+# Throughput, equal search (conflicts identical per instance, each instance
+# run under both binaries with alternating order, machine otherwise idle),
+# 18 balanced-set instances the probe solves in < 120 s, wall time B/A:
+#
+#   median 0.976, geomean 0.968, B faster on 13/18 (sign test p = 0.096);
+#   largest: subgraph-isomorphism 0.865, cryptography-cbmc 0.885,
+#   floodit 0.908; none slower than 1.054.
+#
+# So the per-literal headers were worth ~3% of throughput, not the 1.69x
+# conflict-rate gap to CaDiCaL: that gap is not the watch-list layout.
+# Attributing it needs a profile of both solvers on the same instance
+# (where propagation time goes: the deleted[ci] lookup per blocked watch,
+# lvals, the chrono level check, analysis), not another layout guess.

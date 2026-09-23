@@ -78,3 +78,37 @@
 # runs, and the closest thing we never tried is stable mode WITH target
 # phases (our stable A/B ran without them; BOXES_PHASES is off) and
 # stable-only.  Next.
+
+# === 3. Stable mode and target phases for the box engine ===
+#
+# Three arms against the default (VSIDS, EMA restarts), fast set plus
+# set-covering, same binary, 400 s cap, conflicts B/A:
+#
+#   BOXES_STABLE=1 + BOXES_PHASES=1   (alternating, target phases)
+#     median 1.000, fewer on 5/17; subgraph-isomorphism 0.066,
+#     software-bmc 0.095, argumentation 0.38 against floodit 13x,
+#     agile 4.2x, cbmc 1.9x (cap), planning 1.6x
+#   BOXES_STABLE=only + BOXES_PHASES=1  (CaDiCaL's stabilizeonly)
+#     median 1.431, fewer on 4/17 (p = 0.049 AGAINST); subgraph 0.028,
+#     agile 0.33 against argumentation 30x, graph-isomorphism 15x,
+#     floodit 10x, software-bmc 8x, cbmc 5.8x (cap)
+#   BOXES_PHASES=1 alone (rephasing; target phases need stable)
+#     median 1.000, fewer on 3/16 (p = 0.021 against); floodit to the cap
+#
+# The arm that gains CaDiCaL 0.61x loses us 1.43x: our stable mode is not
+# its stable mode.  What CaDiCaL's has that ours does not, from the
+# profile and the source: rephasing that includes a local-search WALK
+# phase (walk_* was 7% of its time), a reluctant-doubling restart
+# schedule with trail reuse, and target/best phases updated at conflicts.
+# On set-covering every arm is worse than the default (1.11-1.23x), as
+# VMTF was (1.9x): the 1.35 vs 3.1 decisions per conflict is not
+# reproduced by any branching or phase setting we can switch on.
+#
+# Two defects surfaced.  The harness's verdict check (fixed, s2).  And
+# `update_phases` runs after every conflict-free propagation and copies
+# the trail's phases whenever the trail is a new maximum -- every decision
+# of a conflict-free run: software-bmc, solved with 0 conflicts, took
+# 350 s instead of 51 under BOXES_PHASES=1, and cbmc reached 274 K
+# conflicts in 400 s instead of 809 K in 72.  CaDiCaL updates target and
+# best phases at conflicts and restarts only.  Fixed next; it does not
+# change the conflict counts above, only the wall times of the phases arms.

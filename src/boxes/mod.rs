@@ -804,7 +804,8 @@ pub struct Engine {
     trail_q: std::collections::VecDeque<u32>,
     trail_q_sum: u64,
     stable: bool,
-    /// `BOXES_STABLE=1`: alternate focused and stable phases.  Off by default:
+    /// `BOXES_STABLE=1`: alternate focused and stable phases (`only`: stable
+    /// throughout).  Off by default:
     /// the engine's stable phase is Luby restarts with the same decision
     /// heuristic and phases, and on the verdict-checked set it costs
     /// conflicts with either restart mode (CaDiCaL's own ablation finds its
@@ -930,7 +931,10 @@ impl Engine {
             restart: RestartMode::from_env(),
             lbd_q: std::collections::VecDeque::new(), lbd_q_sum: 0, lbd_sum: 0,
             trail_q: std::collections::VecDeque::new(), trail_q_sum: 0,
-            stable: false, stable_len: 1000, stable_toggle_at: 1000,
+            // `BOXES_STABLE=only`: stable from the first conflict and never
+            // toggled -- CaDiCaL's `stabilizeonly`, the arm that gained 0.61x
+            // on the balanced set (doc/data/boxes_branching_2026-09-22.txt).
+            stable: matches!(std::env::var("BOXES_STABLE").as_deref(), Ok("only")), stable_len: 1000, stable_toggle_at: 1000,
             stabilize: matches!(std::env::var("BOXES_STABLE").as_deref(), Ok("1") | Ok("on")),
             glue_fast: Ema::new(1.0 / 33.0), glue_slow: Ema::new(1.0 / 1e5),
             restart_margin: std::env::var("BOXES_RESTART_MARGIN").ok().and_then(|v| v.parse().ok()).unwrap_or(1.10),
@@ -2614,9 +2618,13 @@ impl Engine {
         self.backjump(keep);
     }
 
-    /// After a conflict-free propagation: a trail longer than any since
-    /// the last restart becomes the target phases, longer than any ever
-    /// the best phases.
+    /// At a conflict (and a restart): a trail longer than any since the
+    /// last restart becomes the target phases, longer than any ever the
+    /// best phases -- CaDiCaL's update_target_and_best, at the same
+    /// points.  It used to run before every decision, and a conflict-free
+    /// run makes every decision a new maximum: a copy of the trail per
+    /// decision, 350 s instead of 51 on an instance solved with 0
+    /// conflicts (doc/data/boxes_branching_2026-09-22.txt s3).
     fn update_phases(&mut self) {
         let n = self.trail.len();
         if n > self.target_size {
@@ -2918,6 +2926,7 @@ impl Engine {
         let mut conflicts_here = 0u64;
         loop {
             if let Some(conflict) = self.propagate() {
+                if self.phases { self.update_phases(); }
                 self.stats.conflicts += 1;
                 conflicts_here += 1;
                 self.eff_sample(conflict);
@@ -3020,7 +3029,6 @@ impl Engine {
                 if let Some(v) = self.debug_watch_violation() { panic!("watch invariant broken at a decision (conflicts {}): {v}", self.stats.conflicts); }
             }
             if self.stats.decisions & 255 == 0 && let Some(c) = &self.cancel && c.load(std::sync::atomic::Ordering::Relaxed) { return Verdict::Unknown; }
-            if self.phases { self.update_phases(); }
             // assumptions first, one level each
             let lvl = self.decision_level();
             if lvl < base + assumptions.len() {

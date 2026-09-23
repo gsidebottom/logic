@@ -46,3 +46,35 @@
 #
 #   Lesson for every branching A/B here: control the initial order first;
 #   four of the fast set are decided by it alone.
+
+# === 2. Ablating CaDiCaL's branching options (the reference first) ===
+#
+# The vendored 3.0.1 through `sat -b cadical --cadical-opt`, balanced EASY
+# set (21 instances), 600 s cap, 4 workers, scored on conflicts.  (The
+# suite flagged 65 "verdict mismatches": exactly the 65 SAT answers, every
+# one correct -- the harness's backwards startswith, fixed now for good.)
+#
+#   arm        option              median conflicts   fewer on   range        lost
+#   score0     score=0 (VMTF in     1.466  [signal]     1/17     0.20-10.2    2
+#              both modes)
+#   stab0      stabilize=0          1.000                8/17     0.07-8.8     2
+#              (focused only)
+#   stabonly   stabilizeonly=1      0.613               13/19     0.01-6.4     0
+#              (stable only)
+#   bumprsn0   bumpreason=0         0.941               11/19     0.10-8.3     0
+#   target0    target=0             1.015                7/19     0.21-2.7     0
+#
+# Reading it.  Taking VSIDS away from CaDiCaL (score=0: VMTF in both
+# modes) costs it a signal-level 1.47x -- the same verdict our own VMTF
+# experiment reached from the other side.  Reason-side bumping and
+# target phases move nothing on their own.  The one arm that moves is the
+# opposite direction from focused mode: STABLE ONLY -- VSIDS on a heap,
+# reluctant-doubling restarts, target phases -- is better on 13/19 with a
+# median of 0.61 (cryptography 4751 -> 36, argumentation 271 K -> 6.7 K,
+# circuit-multiplier 915 K -> 120 K, set-covering 1.23 M -> 625 K; the
+# UNSAT cbmc pair 3.5-5x worse, planning 3x).  This set is mostly what we
+# can solve, and on it CaDiCaL's decisions-per-conflict edge is not the
+# queue; the profile's 1.35 vs 3.1 comes from the combination stable mode
+# runs, and the closest thing we never tried is stable mode WITH target
+# phases (our stable A/B ran without them; BOXES_PHASES is off) and
+# stable-only.  Next.

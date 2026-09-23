@@ -295,6 +295,22 @@ pub enum ExplainMode {
     Cover,
 }
 
+/// Decision-variable order (`BOXES_BRANCH` selects it).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BranchMode {
+    /// A max-heap on exponentially decayed activity (MiniSat's VSIDS).
+    Vsids,
+    /// Variable move-to-front (Ryan 2004; Biere and Froehlich, SAT 2015):
+    /// a queue ordered by last-bump time, decisions taken from its newest
+    /// unassigned entry, the variables of each conflict moved to the front
+    /// in the order of their old stamps.  CaDiCaL's and Kissat's
+    /// focused-mode order.  `BOXES_BRANCH=vmtf`.
+    Vmtf,
+}
+
+/// No neighbour in the VMTF queue.
+const NONE: u32 = u32::MAX;
+
 /// Restart policy (`BOXES_RESTART` selects it).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum RestartMode {
@@ -731,6 +747,22 @@ pub struct Engine {
     heap: Vec<u32>,
     /// Variable → position in `heap`, `u32::MAX` when absent.
     heap_pos: Vec<u32>,
+    branch: BranchMode,
+    /// VMTF's queue (only under `BranchMode::Vmtf`): doubly linked by
+    /// variable, `NONE` at the ends, stamps increasing toward `q_last`
+    /// (the newest).  `q_unassigned` is the newest entry known unassigned
+    /// -- everything newer is assigned -- where the next decision starts
+    /// looking; `backjump` moves it to a newer entry it unassigns.
+    q_prev: Vec<u32>,
+    q_next: Vec<u32>,
+    q_stamp: Vec<u64>,
+    q_first: u32,
+    q_last: u32,
+    q_unassigned: u32,
+    q_time: u64,
+    /// The variables bumped by the current conflict, moved to the front
+    /// together once analysis has seen them all.
+    analyzed: Vec<u32>,
     /// Recursive minimisation of learned clauses (`BOXES_MINIMIZE`).
     pub minimize: bool,
     min_stack: Vec<u32>,
@@ -882,6 +914,9 @@ impl Engine {
             trail: Vec::new(), trail_lim: Vec::new(), qhead: 0,
             activity: Vec::new(), var_inc: 1.0, phase: Vec::new(), seen: Vec::new(),
             heap: Vec::new(), heap_pos: Vec::new(),
+            branch: match std::env::var("BOXES_BRANCH").as_deref() { Ok("vmtf") => BranchMode::Vmtf, _ => BranchMode::Vsids },
+            q_prev: Vec::new(), q_next: Vec::new(), q_stamp: Vec::new(),
+            q_first: NONE, q_last: NONE, q_unassigned: NONE, q_time: 0, analyzed: Vec::new(),
             minimize: !matches!(std::env::var("BOXES_MINIMIZE").as_deref(), Ok("0") | Ok("none") | Ok("off")),
             min_stack: Vec::new(), min_clear: Vec::new(), min_lits: Vec::new(),
             shrink: matches!(std::env::var("BOXES_SHRINK").as_deref(), Ok("1") | Ok("on")),
@@ -1068,6 +1103,68 @@ impl Engine {
         let old = self.heap_pos.len();
         self.heap_pos.resize(nvars, u32::MAX);
         for v in old..nvars { self.heap_insert(v as u32); }
+        if self.branch == BranchMode::Vmtf { self.q_grow(nvars); }
+    }
+
+    /// Select the decision order.  Switching to VMTF builds its queue over
+    /// the variables so far, the lowest index newest: the same first
+    /// decisions as VSIDS with its activities at zero, so an A/B between
+    /// the two compares the dynamics rather than the initial order (the
+    /// first VMTF run, highest index first, lost four instances that VSIDS
+    /// solves in 0-12 conflicts by initial order alone, 2026-09-22).
+    pub fn set_branch(&mut self, m: BranchMode) {
+        self.branch = m;
+        if m == BranchMode::Vmtf { self.q_grow(self.nvars); }
+    }
+
+    fn q_grow(&mut self, nvars: usize) {
+        let old = self.q_stamp.len();
+        if old >= nvars { return; }
+        self.q_prev.resize(nvars, NONE); self.q_next.resize(nvars, NONE); self.q_stamp.resize(nvars, 0);
+        for v in (old..nvars).rev() { self.q_enqueue(v as u32); }
+    }
+
+    /// Append `v` at the newest end with a fresh stamp.
+    fn q_enqueue(&mut self, v: u32) {
+        let vi = v as usize;
+        self.q_prev[vi] = self.q_last; self.q_next[vi] = NONE;
+        if self.q_last != NONE { self.q_next[self.q_last as usize] = v; } else { self.q_first = v; }
+        self.q_last = v;
+        self.q_time += 1; self.q_stamp[vi] = self.q_time;
+        if self.vals[vi] == Val::U { self.q_unassigned = v; }
+    }
+
+    /// Unlink `v`.  If it was the search pointer, the pointer moves to its
+    /// older neighbour: everything newer was assigned, and still is.
+    fn q_dequeue(&mut self, v: u32) {
+        let vi = v as usize;
+        let (p, n) = (self.q_prev[vi], self.q_next[vi]);
+        if p != NONE { self.q_next[p as usize] = n; } else { self.q_first = n; }
+        if n != NONE { self.q_prev[n as usize] = p; } else { self.q_last = p; }
+        if self.q_unassigned == v { self.q_unassigned = p; }
+        self.q_prev[vi] = NONE; self.q_next[vi] = NONE;
+    }
+
+    /// VMTF: the newest unassigned, non-eliminated variable, walking from
+    /// the search pointer toward older entries and leaving the pointer
+    /// there.  `None` when every variable is assigned.
+    fn q_next_decision(&mut self) -> Option<u32> {
+        let mut v = self.q_unassigned;
+        while v != NONE && (self.vals[v as usize] != Val::U || self.eliminated[v as usize]) { v = self.q_prev[v as usize]; }
+        if v == NONE { return None; }
+        self.q_unassigned = v;
+        Some(v)
+    }
+
+    /// VMTF: move this conflict's variables to the front, oldest stamp
+    /// first, so their order among themselves is kept (CaDiCaL sorts the
+    /// analyzed variables by `bumped` before `bump_queue`).
+    fn bump_analyzed(&mut self) {
+        let mut vs = std::mem::take(&mut self.analyzed);
+        vs.sort_unstable_by_key(|&v| self.q_stamp[v as usize]);
+        for &v in &vs { self.q_dequeue(v); self.q_enqueue(v); }
+        vs.clear();
+        self.analyzed = vs;
     }
 
     // --- the decision heap ---
@@ -1240,7 +1337,7 @@ impl Engine {
         macro_rules! nested { ($($f:ident),*) => { $( { let (b, n) = vecvec_bytes(&self.$f);
             let used = n * 24 + self.$f.iter().map(|v| vec_bytes(v)).sum::<usize>();
             rows.push((format!("{} ({} inner vecs = {:.0} MB of headers)", stringify!($f), n, n as f64 * 24.0 / 1e6), b, used)); } )* } }
-        flat!(arena, cstart, clen, xarena, xstart, xlen, learnt_lbd, learnt_act, learnt_used, deleted,
+        flat!(arena, cstart, clen, q_prev, q_next, q_stamp, xarena, xstart, xlen, learnt_lbd, learnt_act, learnt_used, deleted,
               vals, lvals, level, reason, trail_pos, trail, activity, phase, seen, heap, heap_pos,
               target_phase, best_phase, eliminated, expl_ok, hdr, vars_all, kill_all, live, snap,
               in_queue, queue, lbd_stamp, live_count, snap_count);
@@ -1456,7 +1553,12 @@ impl Engine {
             self.lvals[2 * v + 1] = Val::U;
             self.reason[v] = Reason::None;
             self.expl_ok[v] = false;
-            self.heap_insert(v as u32);
+            match self.branch {
+                BranchMode::Vsids => self.heap_insert(v as u32),
+                BranchMode::Vmtf => {
+                    if self.q_unassigned == NONE || self.q_stamp[v] > self.q_stamp[self.q_unassigned as usize] { self.q_unassigned = v as u32; }
+                }
+            }
         }
         let n = self.live.len();
         let start = self.trail_lim.len() - lvl;   // levels popped
@@ -2023,6 +2125,7 @@ impl Engine {
     }
 
     fn bump(&mut self, v: usize) {
+        if self.branch == BranchMode::Vmtf { self.analyzed.push(v as u32); return; }
         self.activity[v] += self.var_inc;
         if self.activity[v] > 1e100 {
             for a in &mut self.activity { *a *= 1e-100; }   // order preserved: the heap stands
@@ -2201,6 +2304,7 @@ impl Engine {
         self.stats.learned_lits += learnt.len() as u64;
         for &q in &learnt[1..] { self.seen[(q >> 1) as usize] = false; }
         // backjump level: the highest level among the other literals (moved to position 1)
+        if self.branch == BranchMode::Vmtf { self.bump_analyzed(); }
         let mut bj = 0usize;
         if learnt.len() > 1 {
             let mut best = 1;
@@ -2374,6 +2478,7 @@ impl Engine {
                 for &i in pos.iter().chain(neg.iter()) { alive[i] = false; self.elim.push_clause(cls.get(i)); }
                 self.elim.push_var(v as u32);
                 self.eliminated[v] = true;
+                if self.branch == BranchMode::Vmtf { self.q_dequeue(v as u32); }
                 self.stats.eliminated += 1;
                 for r in resolvents {
                     let idx = cls.n() as u32;
@@ -2492,12 +2597,17 @@ impl Engine {
         self.target_size = 0;
         if self.phases && self.stats.conflicts >= self.rephase_at { self.rephase(); }
         let mut keep = base;
-        if matches!(self.restart, RestartMode::Glucose | RestartMode::Ema) && let Some(next) = self.heap_peek_unassigned() {
+        let next = match self.branch { BranchMode::Vsids => self.heap_peek_unassigned(), BranchMode::Vmtf => self.q_next_decision() };
+        if matches!(self.restart, RestartMode::Glucose | RestartMode::Ema) && let Some(next) = next {
             while keep < self.decision_level() {
                 let at = self.trail_lim[keep];
                 if at >= self.trail.len() { break; }
                 let d = self.trail[at];
-                if self.heap_before(next, d) { break; }
+                let next_first = match self.branch {
+                    BranchMode::Vsids => self.heap_before(next, d),
+                    BranchMode::Vmtf => self.q_stamp[next as usize] > self.q_stamp[d as usize],
+                };
+                if next_first { break; }
                 keep += 1;
             }
         }
@@ -2926,8 +3036,11 @@ impl Engine {
             // VSIDS decision: the most active unassigned variable (assigned
             // ones still in the heap are dropped as they surface)
             let mut best: Option<u32> = None;
-            while let Some(v) = self.heap_pop() {
-                if self.vals[v as usize] == Val::U && !self.eliminated[v as usize] { best = Some(v); break; }
+            match self.branch {
+                BranchMode::Vsids => while let Some(v) = self.heap_pop() {
+                    if self.vals[v as usize] == Val::U && !self.eliminated[v as usize] { best = Some(v); break; }
+                },
+                BranchMode::Vmtf => best = self.q_next_decision(),
             }
             let Some(v) = best else { return Verdict::Sat(self.vals.iter().map(|&x| x == Val::T).collect()) };
             let v = v as usize;
@@ -2990,6 +3103,31 @@ mod tests {
                 check_model(&cls, &m)
             });
             match solve(n, &cls) {
+                Verdict::Sat(model) => { assert!(brute, "trial {trial}: engine SAT, brute UNSAT"); assert!(check_model(&cls, &model), "trial {trial}: bad model"); }
+                Verdict::Unsat => assert!(!brute, "trial {trial}: engine UNSAT, brute SAT: {cls:?}"),
+                Verdict::Unknown => panic!("no budget set"),
+            }
+        }
+    }
+
+    /// The same random formulas under VMTF branching.
+    #[test]
+    fn random_vmtf_vs_bruteforce() {
+        let mut seed: u64 = 0x2545F4914F6CDD1D;
+        let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+        for trial in 0..300 {
+            let n = 3 + (rnd() % 6) as usize;
+            let m = 2 + (rnd() % (4 * n as u64)) as usize;
+            let cls: Vec<Vec<i32>> = (0..m).map(|_| {
+                (0..3).map(|_| { let v = (rnd() % n as u64) as i32 + 1; if rnd() % 2 == 0 { v } else { -v } }).collect()
+            }).collect();
+            let brute = (0..1u32 << n).any(|bits| {
+                let m: Vec<bool> = (0..n).map(|i| bits >> i & 1 == 1).collect();
+                check_model(&cls, &m)
+            });
+            let mut e = Engine::from_cnf(n, &cls);
+            e.set_branch(BranchMode::Vmtf);
+            match e.solve() {
                 Verdict::Sat(model) => { assert!(brute, "trial {trial}: engine SAT, brute UNSAT"); assert!(check_model(&cls, &model), "trial {trial}: bad model"); }
                 Verdict::Unsat => assert!(!brute, "trial {trial}: engine UNSAT, brute SAT: {cls:?}"),
                 Verdict::Unknown => panic!("no budget set"),

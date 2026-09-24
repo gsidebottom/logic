@@ -113,3 +113,20 @@
 #
 # Next: ablate the reference on exactly these (shrink, minimize,
 # eagersubsume, vivify, subsume), and A/B our shrinking.
+
+# === Our shrinking (BOXES_SHRINK=1), fast set plus set-covering, conflicts B/A ===
+#
+#   set-covering        0.427   1.31 M -> 560 K; learned 34.1 -> 15.7 literals
+#                               (CaDiCaL 18.5); 106 s -> 19.6 s, now under
+#                               CaDiCaL's 29.6 s on the profile's instance
+#   software-bmc        0.309   argumentation 0.633   cbmc 0.946   ascon 1.000
+#   subgraph 1.18   hashtable 1.22   agile 1.87   planning 3.65 (531 K -> 1.94 M)
+#   the fragile SAT four, lucky under the default and lost under every
+#   perturbation tried this week: floodit 7.8x, ramseycube 27x,
+#   graph-isomorphism 135x, petrinet 4349 -> the cap at 10.5 M
+#   median 1.000, fewer on 6/17.
+#
+# So on the long-clause UNSAT instance the whole gap was clause quality
+# and shrinking closes it; on planning (UNSAT, 1.4x behind CaDiCaL
+# without shrinking) it costs 3.65x, which CaDiCaL's shrink=0 arm will
+# say is either trajectory or a difference between the two shrinkings.

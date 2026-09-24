@@ -154,3 +154,36 @@
 # CaDiCaL's best arm at 1.08 M) and LOSES 3.65x on planning, where
 # CaDiCaL gains: our shrinking is not its shrinking on that instance.
 # That difference is the next thing to find.
+
+# === Planning under shrinking: what differs from CaDiCaL's ===
+#
+# With shrinking our planning clauses match CaDiCaL's (stored 13.6 vs 13.9
+# literals, first-UIP 20.4 vs 18.1) and our decisions per conflict drop
+# below its (1.8 vs 2.0), yet we need 1.94 M conflicts to its 379 K -- so
+# on planning the loss is not clause size but what surrounds it.  Only
+# 9.7% of level blocks are replaceable there (49% on set-covering), and
+# the run restarts every 6.9 conflicts.
+#
+#   restart policy x shrinking, planning, conflicts:
+#     EMA (default)   531 K -> 1.94 M with shrinking
+#     Glucose          2.03 M ->  517 K with shrinking   (!)
+#     Luby              768 K -> 1.37 M with shrinking
+#   (a first pass of this was invalid -- zsh's `env $e` handed env one
+#    variable named BOXES_SHRINK with the value "1 BOXES_RESTART=luby";
+#    both arms reproduced the default to the conflict; memory note added)
+#
+# So shrinking's effect on planning depends on the restart signal.  Two
+# source differences from CaDiCaL's shrink.cpp / analyze.cpp:
+#   1. the block's UIP joins `analyzed` there (shrunken_block_uip), so it is
+#      bumped; ours was not.  Ported (BOXES_SHRINK=1, A = before, B = after):
+#        planning 0.394, floodit 0.259, subgraph 0.296, cbmc 0.839, ramseycube 0.96
+#        argumentation 15.4x, graph-isomorphism 8.4x, software-bmc 3.6x,
+#        software-verification 1.76x, hashtable 1.63x, set-covering 1.10x
+#        median 1.000, fewer on 5/17 -- planning recovers most of its loss
+#        (1.44x over the unshrunk default instead of 3.65x); the rest is the
+#        usual heavy-tailed trajectory noise of this set.
+#   2. the glue fed to the restart EMAs and stored on the clause is the
+#      first-UIP clause's, before minimisation and shrinking (analyze.cpp
+#      computes `glue` as the UIP is pushed and hands the same value to
+#      new_driving_clause); ours is the final clause's LBD.  BOXES_GLUE=uip
+#      ports it; A/B pending.

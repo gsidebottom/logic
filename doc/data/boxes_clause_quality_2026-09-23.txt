@@ -134,3 +134,23 @@
 # The shrinking run's UNSAT on set-covering, proof-checked: 559,699
 # conflicts (the A/B's count exactly), DRAT proof of 620,395 lemmas,
 # drat-trim `s VERIFIED` in 13.6 s (364,632 lemmas in core).
+
+# === Ablating CaDiCaL's clause pipeline (balanced EASY set, 600 s, conflicts) ===
+#
+#   arm         option           median   fewer on   range        notes
+#   shrink0     shrink=0          1.000     9/19      0.22-2.30    set-covering 1.23 M -> 1.54 M,
+#                                                                  planning 379 K -> 526 K
+#   minimize0   minimize=0        1.106     7/19      0.16-9.70
+#   eagersub0   eagersubsume=0    1.000     7/19      0.56-7.88
+#   vivify0     vivify=0          1.000     5/19      0.50-2.45    [signal: better with it]
+#   subsume0    subsume=0         1.000     7/19      0.27-2.99
+#   0 verdict mismatches (the fixed check).
+#
+# On this set -- mostly what we solve in few conflicts -- every piece of
+# the pipeline is neutral on the median with wide per-instance ranges;
+# only vivification carries a sign-test signal.  But on the two long
+# UNSAT searches CaDiCaL gains from shrinking too: 1.25x on set-covering
+# and 1.39x on planning.  Ours gains 2.3x on set-covering (560 K, below
+# CaDiCaL's best arm at 1.08 M) and LOSES 3.65x on planning, where
+# CaDiCaL gains: our shrinking is not its shrinking on that instance.
+# That difference is the next thing to find.

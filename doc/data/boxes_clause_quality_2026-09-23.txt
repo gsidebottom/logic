@@ -187,3 +187,16 @@
 #      computes `glue` as the UIP is pushed and hands the same value to
 #      new_driving_clause); ours is the final clause's LBD.  BOXES_GLUE=uip
 #      ports it; A/B pending.
+#
+#   2, measured: BOXES_GLUE=uip was identical to the conflict on all 19
+#      instances, with and without shrinking -- and rightly so.  The
+#      first-UIP clause and the final clause always have the same level
+#      set: minimisation never empties a level (a level-L literal's reason
+#      holds another level-L literal, and the chain ends at the level's
+#      decision, which has no reason and stays), and shrinking replaces a
+#      block by a literal of its own level.  CaDiCaL's pre-shrink glue is
+#      the post-shrink glue.  Knob removed; the UIP bump stays inside
+#      shrinking as CaDiCaL's.  (Where the two solvers' restart signals
+#      can still differ: CaDiCaL's glue excludes the conflict level and
+#      its EMA parameters are its own -- a restart-tuning question, not a
+#      clause-quality one.)

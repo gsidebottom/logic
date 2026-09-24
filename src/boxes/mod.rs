@@ -2259,6 +2259,12 @@ impl Engine {
         }
         self.stats.learned += 1;
         self.stats.learned_lits_raw += learnt.len() as u64;
+        // (The LBD is taken from the final clause.  It equals the first-UIP
+        // clause's, which CaDiCaL uses: minimisation never empties a level --
+        // a level's literals' reasons chain to its decision, which has no
+        // reason -- and shrinking replaces a block by a literal of its own
+        // level.  Measured identical to the conflict on 19 instances,
+        // 2026-09-23, before the argument was made.)
         if self.minimize && learnt.len() > 2 {
             let levels = learnt[1..].iter().fold(0u32, |m, &q| m | 1 << (self.level[(q >> 1) as usize] & 31));
             // every variable marked seen — the clause's own (dropped ones included)
@@ -2294,6 +2300,11 @@ impl Engine {
                         Some(u) => {
                             self.stats.shrunk_lits += (k - i - 1) as u64;
                             out.push(code(u, self.vals[u as usize] == Val::T));   // the UIP's false literal
+                            // The block's UIP joins the analysed variables, as in
+                            // CaDiCaL (shrunken_block_uip pushes it to `analyzed`,
+                            // so bump_variables bumps it): it is a variable the
+                            // conflict is about, one analysis itself never visited.
+                            self.bump(u as usize);
                         }
                         None => out.extend(by_level[i..k].iter().map(|&(_, q)| q)),
                     }

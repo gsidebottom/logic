@@ -1,0 +1,115 @@
+# Learned-clause quality, ours against CaDiCaL (2026-09-23)
+#
+# CaDiCaL's counters through the shim (learned literals are counted at the
+# first UIP, before minimisation and shrinking; the stored size is that less
+# what the two removed).  Fast balanced-set instances plus set-covering,
+# 400 s cap; ours default, ours with BOXES_INPROCESS=1, CaDiCaL default.
+#
+# agile                  |       ours SATIS   365172 confl, size  15.0 (before  19.1) | ours+inpro    TO    10238 confl, size   7.7 (before   8.6) |    cadical SATIS   100794 confl, size  28.2 (before  30.5)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  10850 subsumed, 18879 strengthened
+#       ours+inpro: 1 rounds, 2681 elim, 244 vivified (-297 lits)  7612 subsumed, 3821 strengthened
+#          cadical: 6390 vivified, 24676 subsumed, 12891 strengthened, 3775 eager  
+# argumentation          |       ours SATIS    16689 confl, size 103.4 (before 121.7) | ours+inpro SATIS    16689 confl, size 103.4 (before 121.7) |    cadical SATIS   271285 confl, size  35.5 (before  84.2)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 194 strengthened
+#       ours+inpro: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 194 strengthened
+#          cadical: 0 vivified, 139710 subsumed, 58354 strengthened, 81753 eager  
+# cryptography           |       ours SATIS       12 confl, size  12.7 (before 191.2) | ours+inpro SATIS       12 confl, size  12.7 (before 191.2) |    cadical SATIS     4751 confl, size 217.2 (before 240.2)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#       ours+inpro: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#          cadical: 0 vivified, 32355 subsumed, 19052 strengthened, 230 eager  
+# cryptography-ascon     |       ours UNSAT    65581 confl, size   9.2 (before 334.2) | ours+inpro    TO  6491648 confl, size  24.1 (before  25.9) |    cadical UNSAT  2103834 confl, size  42.2 (before  58.4)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  30387 subsumed, 724 strengthened
+#       ours+inpro: 36 rounds, 410 elim, 27618 vivified (-33050 lits)  78429 subsumed, 11151 strengthened
+#          cadical: 89358 vivified, 223261 subsumed, 234107 strengthened, 204091 eager  
+# cryptography-cbmc      |       ours UNSAT   808883 confl, size  29.5 (before  40.6) | ours+inpro    TO    10009 confl, size   9.6 (before  10.6) |    cadical UNSAT   995031 confl, size  16.1 (before  17.2)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  36953 subsumed, 94717 strengthened
+#       ours+inpro: 1 rounds, 7140 elim, 1425 vivified (-1532 lits)  20281 subsumed, 42259 strengthened
+#          cadical: 30759 vivified, 464227 subsumed, 649185 strengthened, 144895 eager  
+# floodit-puzzle         |       ours SATIS     6516 confl, size  27.6 (before  40.7) | ours+inpro SATIS     6516 confl, size  27.6 (before  40.7) |    cadical SATIS    91029 confl, size 182.8 (before 218.2)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  220047 subsumed, 455849 strengthened
+#       ours+inpro: 0 rounds, 0 elim, 0 vivified (-0 lits)  220047 subsumed, 455849 strengthened
+#          cadical: 2813 vivified, 1148374 subsumed, 741279 strengthened, 4530 eager  
+# graph-isomorphism      |       ours SATIS      945 confl, size 219.4 (before 222.0) | ours+inpro SATIS      945 confl, size 219.4 (before 222.0) |    cadical SATIS   167683 confl, size  10.3 (before 140.5)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#       ours+inpro: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#          cadical: 0 vivified, 78099 subsumed, 14704 strengthened, 52011 eager  
+# hashtable-safety       |       ours UNSAT    16640 confl, size  88.2 (before 121.8) | ours+inpro    TO    10866 confl, size 116.5 (before 141.6) |    cadical UNSAT    15716 confl, size  35.4 (before  56.1)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  6046 subsumed, 54919 strengthened
+#       ours+inpro: 1 rounds, 44717 elim, 243 vivified (-1255 lits)  6046 subsumed, 54891 strengthened
+#          cadical: 828 vivified, 777985 subsumed, 57747 strengthened, 1776 eager  
+# multiplier-verificatio |       ours UNSAT       10 confl, size   2.6 (before  51.3) | ours+inpro UNSAT       10 confl, size   2.6 (before  51.3) |    cadical UNSAT      873 confl, size  19.1 (before 549.3)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#       ours+inpro: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#          cadical: 0 vivified, 579 subsumed, 6 strengthened, 579 eager  
+# multiplier-verificatio |       ours UNSAT       10 confl, size   2.6 (before  65.3) | ours+inpro UNSAT       10 confl, size   2.6 (before  65.3) |    cadical UNSAT     1229 confl, size  43.9 (before 158.4)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#       ours+inpro: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#          cadical: 0 vivified, 254 subsumed, 4 strengthened, 254 eager  
+# petrinet-concurrency   |       ours SATIS     4349 confl, size 302.0 (before 303.9) | ours+inpro SATIS     4349 confl, size 302.0 (before 303.9) |    cadical    TO        0 confl, size   nan (before   nan)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#       ours+inpro: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+# planning               |       ours UNSAT   531071 confl, size  16.7 (before  25.6) | ours+inpro UNSAT   986461 confl, size  15.7 (before  25.8) |    cadical UNSAT   378796 confl, size  13.9 (before  18.1)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  11058 subsumed, 19611 strengthened
+#       ours+inpro: 14 rounds, 15 elim, 11855 vivified (-23789 lits)  25050 subsumed, 29827 strengthened
+#          cadical: 15252 vivified, 74324 subsumed, 75804 strengthened, 49753 eager  
+# ramseycube             |       ours SATIS      453 confl, size  34.1 (before  35.5) | ours+inpro SATIS      453 confl, size  34.1 (before  35.5) |    cadical SATIS     1799 confl, size  33.5 (before  34.8)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#       ours+inpro: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#          cadical: 0 vivified, 299 subsumed, 81 strengthened, 299 eager  
+# relational-dependencie |       ours SATIS       72 confl, size   8.5 (before   9.3) | ours+inpro SATIS       72 confl, size   8.5 (before   9.3) |    cadical SATIS       87 confl, size   8.7 (before   8.8)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#       ours+inpro: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#          cadical: 0 vivified, 4 subsumed, 8 strengthened, 4 eager  
+# software-bmc           |       ours SATIS        0 confl, size   0.0 (before   0.0) | ours+inpro SATIS        0 confl, size   0.0 (before   0.0) |    cadical SATIS        0 confl, size   0.0 (before   0.0)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#       ours+inpro: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#          cadical: 0 vivified, 0 subsumed, 0 strengthened, 0 eager  
+# software-bmc           |       ours SATIS    31567 confl, size  19.8 (before  25.4) | ours+inpro    TO    13115 confl, size  20.6 (before  25.4) |    cadical SATIS     7034 confl, size  24.6 (before  28.1)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  1057 subsumed, 7260 strengthened
+#       ours+inpro: 1 rounds, 503 elim, 293 vivified (-390 lits)  796 subsumed, 5677 strengthened
+#          cadical: 0 vivified, 1424 subsumed, 5271 strengthened, 292 eager  
+# software-verification  |       ours UNSAT      942 confl, size 430.8 (before 1485.1) | ours+inpro UNSAT      942 confl, size 430.8 (before 1485.1) |    cadical UNSAT    42389 confl, size 969.7 (before 1082.7)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#       ours+inpro: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 0 strengthened
+#          cadical: 416 vivified, 17700788 subsumed, 1164661 strengthened, 3034 eager  
+# subgraph-isomorphism   |       ours SATIS   562141 confl, size  13.5 (before  14.9) | ours+inpro    TO   149668 confl, size  13.5 (before  15.0) |    cadical SATIS    39917 confl, size  17.3 (before  19.0)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 749292 strengthened
+#       ours+inpro: 5 rounds, 0 elim, 10320 vivified (-14623 lits)  0 subsumed, 746471 strengthened
+#          cadical: 0 vivified, 47692 subsumed, 40096 strengthened, 5679 eager  
+# set-covering           |       ours UNSAT  1312022 confl, size  34.1 (before  50.1) | ours+inpro UNSAT  2282563 confl, size  36.3 (before  49.8) |    cadical UNSAT  1225907 confl, size  18.5 (before  37.9)
+#             ours: 0 rounds, 0 elim, 0 vivified (-0 lits)  0 subsumed, 47283 strengthened
+#       ours+inpro: 21 rounds, 0 elim, 30226 vivified (-60436 lits)  0 subsumed, 43483 strengthened
+#          cadical: 13723 vivified, 461534 subsumed, 98861 strengthened, 352620 eager  
+#
+# === Reading it ===
+#
+# Where CaDiCaL needs fewer conflicts at real search sizes, its stored
+# learned clauses are 2-2.5x shorter than ours:
+#
+#                      ours   before      CaDiCaL   before     conflicts ours / CaDiCaL
+#   set-covering       34.1    50.1        18.5      37.9      1.31 M / 1.23 M
+#   cryptography-cbmc  29.5    40.6        16.1      17.2      0.81 M / 1.00 M
+#   hashtable-safety   88.2   121.8        35.4      56.1      16.6 K / 15.7 K
+#   planning           16.7    25.6        13.9      18.1      531 K / 379 K
+#
+# On set-covering its first-UIP clauses are already a quarter shorter
+# (37.9 against 50.1 -- conflicts reached through fewer levels, the same
+# fact as its 1.35 decisions per conflict), and its minimisation then
+# removes 51% of the literals where ours removes 32%: shrinking is on
+# there (opts.shrink) and off here (BOXES_SHRINK, "neutral" on the old
+# 22-instance corpus).  Its clause database is also cleaned throughout:
+# 352 K recently learned clauses eagerly subsumed, 462 K subsumed, 99 K
+# strengthened, 14 K vivified on set-covering; ours 0 / 0 / 47 K / 0.
+# Where we need fewer conflicts (argumentation, graph-isomorphism,
+# software-verification, cryptography, the multipliers) the counts are
+# tiny -- level-0 simplification, not learned-clause quality -- and our
+# clauses there are the longer ones.
+#
+# BOXES_INPROCESS=1 is HARMFUL as it stands: six instances to the cap
+# (agile 365 K -> cap at 10 K conflicts, ascon 65 K -> 6.5 M, cbmc,
+# hashtable, software-bmc, subgraph-isomorphism), set-covering 1.31 M ->
+# 2.28 M.  Off by default, so nothing above depends on it; a defect to
+# take apart separately (the round rebuilds the store mid-search).
+#
+# Next: ablate the reference on exactly these (shrink, minimize,
+# eagersubsume, vivify, subsume), and A/B our shrinking.

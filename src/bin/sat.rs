@@ -2006,6 +2006,15 @@ fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
             let result = solver.solve();
             eprintln!("c cadical: {} conflicts, {} decisions, {} propagations",
                       solver.conflicts(), solver.decisions(), solver.propagations());
+            // CaDiCaL counts learned literals at the first UIP, BEFORE
+            // minimisation and shrinking (analyze.cpp: the statistics are
+            // updated as the UIP is pushed); the stored size is that less
+            // what the two removed.
+            let (lc, ll, mn, sh) = (solver.learned_clauses(), solver.learned_literals(), solver.minimized(), solver.shrunken());
+            eprintln!("c cadical: learned {} clauses of {:.1} literals ({:.1} before minimisation: {} minimised, {} shrunken); \
+                       inprocessing: {} clauses vivified, {} subsumed, {} strengthened, {} recently learned eagerly subsumed",
+                      lc, (ll - mn - sh) as f64 / lc.max(1) as f64, ll as f64 / lc.max(1) as f64,
+                      mn, sh, solver.vivified(), solver.subsumed(), solver.strengthened(), solver.eagersub());
             match result {
                 Some(true) => {
                     // Extract truth values for each variable.  CaDiCaL 3

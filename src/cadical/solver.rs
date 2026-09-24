@@ -43,6 +43,14 @@ unsafe extern "C" {
     fn c3_conflicts(s: *mut c_void) -> i64;
     fn c3_decisions(s: *mut c_void) -> i64;
     fn c3_propagations(s: *mut c_void) -> i64;
+    fn c3_learned_clauses(s: *mut c_void) -> i64;
+    fn c3_learned_literals(s: *mut c_void) -> i64;
+    fn c3_minimized(s: *mut c_void) -> i64;
+    fn c3_shrunken(s: *mut c_void) -> i64;
+    fn c3_vivified(s: *mut c_void) -> i64;
+    fn c3_subsumed(s: *mut c_void) -> i64;
+    fn c3_strengthened(s: *mut c_void) -> i64;
+    fn c3_eagersub(s: *mut c_void) -> i64;
     fn c3_declare_vars(s: *mut c_void, n: c_int) -> c_int;
     fn c3_set_option(s: *mut c_void, name: *const c_char, val: c_int) -> c_int;
     fn c3_connect(
@@ -262,6 +270,18 @@ impl<C: Callbacks> Solver<C> {
     pub fn conflicts(&self) -> i64 { unsafe { c3_conflicts(self.ptr) } }
     pub fn decisions(&self) -> i64 { unsafe { c3_decisions(self.ptr) } }
     pub fn propagations(&self) -> i64 { unsafe { c3_propagations(self.ptr) } }
+    /// Learned clauses and their literals as stored, and the literals
+    /// minimisation and shrinking removed before storing.
+    pub fn learned_clauses(&self) -> i64 { unsafe { c3_learned_clauses(self.ptr) } }
+    pub fn learned_literals(&self) -> i64 { unsafe { c3_learned_literals(self.ptr) } }
+    pub fn minimized(&self) -> i64 { unsafe { c3_minimized(self.ptr) } }
+    pub fn shrunken(&self) -> i64 { unsafe { c3_shrunken(self.ptr) } }
+    /// Inprocessing on the clause database: vivified, subsumed and
+    /// strengthened clauses, and recently learned clauses eagerly subsumed.
+    pub fn vivified(&self) -> i64 { unsafe { c3_vivified(self.ptr) } }
+    pub fn subsumed(&self) -> i64 { unsafe { c3_subsumed(self.ptr) } }
+    pub fn strengthened(&self) -> i64 { unsafe { c3_strengthened(self.ptr) } }
+    pub fn eagersub(&self) -> i64 { unsafe { c3_eagersub(self.ptr) } }
 
     /// Declare variables up to `max_var` before adding clauses.
     ///

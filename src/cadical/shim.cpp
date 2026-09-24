@@ -95,6 +95,21 @@ int64_t c3_conflicts (void *s) { return self (s)->solver.internal->stats.conflic
 int64_t c3_decisions (void *s) { return self (s)->solver.internal->stats.decisions; }
 int64_t c3_propagations (void *s) { return self (s)->solver.internal->stats.propagations.search; }
 
+// Clause quality: learned clauses and their literals as stored (after
+// minimisation and shrinking), the literals those two removed, and what
+// inprocessing did to the clause database.
+int64_t c3_learned_clauses (void *s) { return self (s)->solver.internal->stats.learned.clauses; }
+int64_t c3_learned_literals (void *s) { return self (s)->solver.internal->stats.learned.literals; }
+int64_t c3_minimized (void *s) { return self (s)->solver.internal->stats.minimized; }
+int64_t c3_shrunken (void *s) { return self (s)->solver.internal->stats.shrunken; }
+int64_t c3_vivified (void *s) {
+  CaDiCaL::Stats &st = self (s)->solver.internal->stats;
+  return st.vivifiedirred + st.vivifiedtier1 + st.vivifiedtier2 + st.vivifiedtier3;
+}
+int64_t c3_subsumed (void *s) { return self (s)->solver.internal->stats.subsumed; }
+int64_t c3_strengthened (void *s) { return self (s)->solver.internal->stats.strengthened; }
+int64_t c3_eagersub (void *s) { return self (s)->solver.internal->stats.eagersub; }
+
 // Initializes `n` further variables and protects them from being taken as
 // bounded-variable-addition extension variables.  With `factor` on,
 // CaDiCaL 3.0.1 *requires* user variables to be declared this way before

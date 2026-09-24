@@ -200,3 +200,28 @@
 #      can still differ: CaDiCaL's glue excludes the conflict level and
 #      its EMA parameters are its own -- a restart-tuning question, not a
 #      clause-quality one.)
+
+# === LBD as CaDiCaL's glue (conflict level excluded), BOXES_LBD=glue -- not adopted ===
+#
+# Our lbd() counts every distinct level of the clause, the conflict level
+# included; CaDiCaL's glue is levels.size() - 1.  So every glue we feed the
+# restart EMAs (same alphas 1/33 and 1/1e5, same margin 1.10, same
+# bias-corrected form, same minimum interval 2) and the reduce tiers
+# (keep <= 2, tier 2 <= 6, CaDiCaL's numbers) is CaDiCaL's plus one.
+# Measured, conflicts B/A on the fast set plus set-covering:
+#   without shrinking: median 1.000, fewer on 3/18 (p = 0.008 AGAINST);
+#     planning 2.42x, floodit 10.7x, graph-isomorphism 100x; subgraph 0.35,
+#     software-bmc 0.35
+#   with shrinking:    median 1.000, fewer on 7/17, geomean 0.93;
+#     argumentation 0.29, hashtable 0.47, software-bmc 0.44, cbmc 0.83,
+#     graph-isomorphism 0.69 against subgraph 4.8x, floodit 2.0x,
+#     planning 1.49x (1.14 M; CaDiCaL 379 K)
+# The policies were tuned to our LBD; the offset is not a lever.  Reverted.
+#
+# === Where this leaves clause quality ===
+#
+# Shrinking (now CaDiCaL-faithful with the UIP bump) is the one real lever
+# the comparison produced: 2.3x fewer conflicts and 5x less time on
+# set-covering, verified; on the fast set a wash on the median with heavy
+# tails either way, and planning 1.44x behind the unshrunk default.  Its
+# proper test is the 76 balanced-set instances we cannot solve at 600 s.

@@ -130,3 +130,7 @@
 # and shrinking closes it; on planning (UNSAT, 1.4x behind CaDiCaL
 # without shrinking) it costs 3.65x, which CaDiCaL's shrink=0 arm will
 # say is either trajectory or a difference between the two shrinkings.
+#
+# The shrinking run's UNSAT on set-covering, proof-checked: 559,699
+# conflicts (the A/B's count exactly), DRAT proof of 620,395 lemmas,
+# drat-trim `s VERIFIED` in 13.6 s (364,632 lemmas in core).

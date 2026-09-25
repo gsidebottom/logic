@@ -1008,6 +1008,64 @@ async fn save_examples_handler(Json(list): Json<Vec<Example>>) -> Json<serde_jso
 // ── Logic handlers ────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
+struct ExportRequest {
+    formula: String,
+    dir: String,
+}
+
+/// Write a box formula as files for the CLI: `residual.cnf` (Tseitin of
+/// the formula with its box calls atomized, satisfiability form),
+/// `boxes.json` (each call's two implication tables as rows over DIMACS
+/// variables, the direct form `sat --boxes` reads), and `expanded.cnf`
+/// (Tseitin of the formula with every call expanded -- the plain CNF).
+async fn boxes_export_handler(State(state): State<AppState>, Json(req): Json<ExportRequest>) -> Json<serde_json::Value> {
+    match boxes_export(&state, &req.formula, std::path::Path::new(&req.dir)) {
+        Ok(v) => Json(v),
+        Err(e) => Json(serde_json::json!({ "error": e })),
+    }
+}
+
+fn write_dimacs(path: &std::path::Path, nvars: i32, clauses: &[Vec<i32>]) -> Result<(), String> {
+    let mut s = String::with_capacity(clauses.len() * 16 + 32);
+    s.push_str(&format!("p cnf {} {}\n", nvars, clauses.len()));
+    for c in clauses { for l in c { s.push_str(&l.to_string()); s.push(' '); } s.push_str("0\n"); }
+    std::fs::write(path, s).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn boxes_export(state: &AppState, formula: &str, dir: &std::path::Path) -> Result<serde_json::Value, String> {
+    use logic::cadical::tseitin_encode;
+    use logic::boxes::compile::implication_box;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let (text, ctx) = build_box_context(state, formula)?;
+    let mut m = Matrix::try_from(text.as_str())?;
+    let (tables, names, _) = build_box_tables(&ctx, &mut m)?;
+    let mut next = names.len() as i32 + 1;
+    let (root, mut clauses) = tseitin_encode(&m.nnf, &mut next);
+    clauses.push(vec![root]);
+    write_dimacs(&dir.join("residual.cnf"), next - 1, &clauses)?;
+    let mut insts = Vec::new();
+    let (mut nrows, mut nb) = (0usize, 0usize);
+    for c in &tables.calls {
+        for b in [implication_box(c.pos.rows.clone(), c.atom, true), implication_box(c.neg.rows.clone(), c.atom, false)] {
+            let rows: Vec<Vec<i32>> = b.rows.iter()
+                .map(|r| r.iter().map(|l| if l.neg { -(l.var as i32 + 1) } else { l.var as i32 + 1 }).collect()).collect();
+            nrows += rows.len(); nb += 1;
+            insts.push(serde_json::json!({ "rows": rows }));
+        }
+    }
+    std::fs::write(dir.join("boxes.json"), serde_json::to_string(&insts).unwrap()).map_err(|e| e.to_string())?;
+    let expanded = expand_formula(state, formula)?;
+    let me = Matrix::try_from(expanded.as_str())?;
+    let mut next_e = me.ast.vars.len() as i32 + 1;
+    let (root_e, mut clauses_e) = tseitin_encode(&me.nnf, &mut next_e);
+    clauses_e.push(vec![root_e]);
+    write_dimacs(&dir.join("expanded.cnf"), next_e - 1, &clauses_e)?;
+    Ok(serde_json::json!({ "calls": tables.calls.len(), "boxes": nb, "rows": nrows,
+                            "residual_vars": next - 1, "residual_clauses": clauses.len(),
+                            "expanded_vars": next_e - 1, "expanded_clauses": clauses_e.len() }))
+}
+
+#[derive(Deserialize)]
 struct FormulaRequest {
     formula: String,
     #[serde(default)]
@@ -2435,6 +2493,7 @@ async fn async_main() {
         .route("/cadical/valid/cancel", post(cadical_valid_cancel_handler))
         .route("/cadical/sat",          get(cadical_sat_status_handler).post(cadical_sat_handler))
         .route("/cadical/sat/cancel",   post(cadical_sat_cancel_handler))
+        .route("/boxes/export",         post(boxes_export_handler))
         .route("/jq",          post(jq_handler))
         .route("/jq-lib",      get(jq_lib_list_handler)
                                    .post(jq_lib_load_handler)

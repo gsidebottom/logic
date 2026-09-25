@@ -1908,6 +1908,22 @@ fn load_box_instances(path: &std::path::Path) -> Result<Vec<logic::boxes::TableB
     let mut cache: std::collections::HashMap<String, Table> = Default::default();
     let mut out = Vec::new();
     for inst in insts.as_array().ok_or("instances: expected a JSON array")? {
+        // The direct form: the rows themselves, over DIMACS literals (the
+        // web app's `/boxes/export` writes it).
+        if let Some(rows) = inst.get("rows").and_then(|r| r.as_array()) {
+            let mut table_rows: Vec<Vec<logic::matrix::Lit>> = Vec::with_capacity(rows.len());
+            for r in rows {
+                let mut row = Vec::new();
+                for l in r.as_array().ok_or("instance: a row must be an array")? {
+                    let x = l.as_i64().ok_or("instance: a row literal must be an integer")?;
+                    if x == 0 { return Err("instance: 0 is not a literal".into()); }
+                    row.push(logic::matrix::Lit { var: (x.unsigned_abs() - 1) as u32, neg: x < 0 });
+                }
+                table_rows.push(row);
+            }
+            out.push(logic::boxes::TableBox::new(table_rows));
+            continue;
+        }
         let table = inst["table"].as_str().ok_or("instance: missing \"table\"")?.to_string();
         let args: Vec<i64> = inst["args"].as_array().ok_or("instance: missing \"args\"")?
             .iter().map(|v| v.as_i64().unwrap_or(0)).collect();

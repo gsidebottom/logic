@@ -143,6 +143,77 @@ void c3_connect (void *s, void *data, c3_terminate_fn on_terminate,
     w->solver.disconnect_learner ();
 }
 
+// ---- IPASIR-UP: an external propagator whose callbacks live in Rust ----
+//
+// A clause callback fills `out` with a reason clause for `lit` (lit != 0,
+// the clause containing lit) or an external clause (lit == 0, a conflict
+// under the current assignment), returning its length, 0 for none.
+typedef void (*c3_pnotify_fn) (void *, const int *, size_t);
+typedef void (*c3_plevel_fn) (void *);
+typedef void (*c3_pbacktrack_fn) (void *, size_t);
+typedef int (*c3_pcheck_fn) (void *, const int *, size_t);
+typedef int (*c3_ppropagate_fn) (void *);
+typedef size_t (*c3_pclause_fn) (void *, int, int *, size_t);
+
+struct BoxProp : CaDiCaL::ExternalPropagator {
+  void *data = 0;
+  c3_pnotify_fn notify = 0;
+  c3_plevel_fn level = 0;
+  c3_pbacktrack_fn backtrack = 0;
+  c3_pcheck_fn check = 0;
+  c3_ppropagate_fn propagate = 0;
+  c3_pclause_fn clause = 0;
+  std::vector<int> rbuf, ebuf;
+  size_t rpos = 0, rlen = 0, epos = 0, elen = 0;
+  BoxProp () { rbuf.resize (1 << 16); ebuf.resize (1 << 16); }
+  void notify_assignment (const std::vector<int> &lits) override {
+    notify (data, lits.data (), lits.size ());
+  }
+  void notify_new_decision_level () override { level (data); }
+  void notify_backtrack (size_t l) override { backtrack (data, l); }
+  bool cb_check_found_model (const std::vector<int> &m) override {
+    return check (data, m.data (), m.size ()) != 0;
+  }
+  int cb_propagate () override { return propagate (data); }
+  // CaDiCaL pulls a reason literal by literal until 0; the first call for
+  // a literal fetches the whole clause.
+  int cb_add_reason_clause_lit (int lit) override {
+    if (!rlen) { rlen = clause (data, lit, rbuf.data (), rbuf.size ()); rpos = 0; }
+    if (rpos < rlen) return rbuf[rpos++];
+    rlen = rpos = 0;
+    return 0;
+  }
+  bool cb_has_external_clause (bool &forgettable) override {
+    elen = clause (data, 0, ebuf.data (), ebuf.size ());
+    epos = 0;
+    forgettable = true;
+    return elen > 0;
+  }
+  int cb_add_external_clause_lit () override {
+    if (epos < elen) return ebuf[epos++];
+    elen = epos = 0;
+    return 0;
+  }
+};
+
+void *c3_connect_propagator (void *s, void *data, c3_pnotify_fn notify, c3_plevel_fn level,
+                             c3_pbacktrack_fn backtrack, c3_pcheck_fn check,
+                             c3_ppropagate_fn propagate, c3_pclause_fn clause) {
+  BoxProp *p = new BoxProp ();
+  p->data = data; p->notify = notify; p->level = level; p->backtrack = backtrack;
+  p->check = check; p->propagate = propagate; p->clause = clause;
+  p->are_reasons_forgettable = true;
+  self (s)->solver.connect_external_propagator (p);
+  return p;
+}
+
+void c3_disconnect_propagator (void *s, void *p) {
+  self (s)->solver.disconnect_external_propagator ();
+  delete (BoxProp *) p;
+}
+
+void c3_add_observed_var (void *s, int var) { self (s)->solver.add_observed_var (var); }
+
 void c3_disconnect (void *s) {
   Wrapper *w = self (s);
   w->solver.disconnect_terminator ();

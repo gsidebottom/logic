@@ -1937,7 +1937,7 @@ fn parse_cadical_opt(s: &str) -> Result<(String, i32), String> {
 }
 
 fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
-                  extra_opts: &[(String, i32)]) -> SearchOutcome {
+                  extra_opts: &[(String, i32)], boxes_path: Option<&std::path::Path>) -> SearchOutcome {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -1947,6 +1947,12 @@ fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
     let want_progress = show_progress && io::stderr().is_terminal();
     let start = Instant::now();
     let opts = extra_opts.to_vec();
+    // `--boxes` with this backend: the tables ride inside CaDiCaL as an
+    // external propagator (IPASIR-UP), the residual CNF as its clauses.
+    let boxes: Vec<logic::boxes::TableBox> = match boxes_path {
+        None => Vec::new(),
+        Some(p) => match load_box_instances(p) { Ok(b) => b, Err(e) => { eprintln!("error: --boxes: {e}"); std::process::exit(2); } },
+    };
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -2003,9 +2009,17 @@ fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
             for clause in cnf.iter() {
                 solver.add_clause(clause.iter().copied());
             }
+            if !boxes.is_empty() {
+                let prop = logic::boxes::upprop::BoxPropagator::new(boxes.clone());
+                let observed = prop.observed_vars();
+                solver.connect_propagator(Box::new(prop));
+                for v in &observed { solver.add_observed_var(*v); }
+                eprintln!("c cadical: {} boxes as an external propagator over {} observed variables", boxes.len(), observed.len());
+            }
             let result = solver.solve();
             eprintln!("c cadical: {} conflicts, {} decisions, {} propagations",
                       solver.conflicts(), solver.decisions(), solver.propagations());
+            if !boxes.is_empty() { eprintln!("{}", solver.propagator_report()); }
             // CaDiCaL counts learned literals at the first UIP, BEFORE
             // minimisation and shrinking (analyze.cpp: the statistics are
             // updated as the UIP is pushed); the stored size is that less
@@ -2034,6 +2048,12 @@ fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
                         eprintln!("c ERROR: cadical produced a model violating input clause {} {:?} — refusing to answer",
                                   bad, cnf.get(bad));
                         std::process::exit(3);
+                    }
+                    for (i, b) in boxes.iter().enumerate() {
+                        if !b.rows.iter().any(|r| r.iter().all(|l| asgn.get(l.var as usize).copied().unwrap_or(false) == !l.neg)) {
+                            eprintln!("c ERROR: cadical produced a model no row of box instance {} accepts — refusing to answer", i);
+                            std::process::exit(3);
+                        }
                     }
                     SolverResult::Sat(asgn)
                 }
@@ -4538,7 +4558,7 @@ fn main() {
 
     let t = Instant::now();
     let outcome = match args.backend {
-        BackendChoice::Cadical => cadical_search(nvars, cnf, args.show_progress, &args.cadical_opts),
+        BackendChoice::Cadical => cadical_search(nvars, cnf, args.show_progress, &args.cadical_opts, args.boxes.as_deref()),
         BackendChoice::Boxes =>
             boxes_search(nvars, &cnf, args.boxes.as_deref(), args.timeout_secs,
                          args.proof.as_deref(), args.boxes_source.as_deref()),
@@ -4753,7 +4773,7 @@ mod tests {
     fn solve_cadical(nvars: usize, clauses: &[Vec<i32>]) -> Result<Vec<bool>, ()> {
         if clauses.iter().any(|c| c.is_empty()) { return Err(()); }
         if clauses.is_empty() { return Ok(vec![true; nvars]); }
-        match cadical_search(nvars, Cnf::from_vecs(clauses), /*show_progress=*/ false, &[]) {
+        match cadical_search(nvars, Cnf::from_vecs(clauses), /*show_progress=*/ false, &[], None) {
             SearchOutcome::Sat(asgn) => Ok(asgn),
             SearchOutcome::Unsat => Err(()),
             SearchOutcome::Interrupted => panic!("test cadical_search reported interrupted"),

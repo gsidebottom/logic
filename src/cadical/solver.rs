@@ -30,6 +30,70 @@ use std::time::{Duration, Instant};
 
 type TerminateFn = extern "C" fn(*mut c_void) -> c_int;
 type LearnFn = extern "C" fn(*mut c_void, *const c_int, usize);
+type PNotifyFn = extern "C" fn(*mut c_void, *const c_int, usize);
+type PLevelFn = extern "C" fn(*mut c_void);
+type PBacktrackFn = extern "C" fn(*mut c_void, usize);
+type PCheckFn = extern "C" fn(*mut c_void, *const c_int, usize) -> c_int;
+type PPropagateFn = extern "C" fn(*mut c_void) -> c_int;
+type PClauseFn = extern "C" fn(*mut c_void, c_int, *mut c_int, usize) -> usize;
+
+/// An external propagator in CaDiCaL's IPASIR-UP sense: told of every
+/// assignment to an observed variable, of new decision levels and of
+/// backtracks; asked for propagations, for the reason of one (lazily, at
+/// conflict analysis), for an external clause (a conflict under the
+/// current assignment), and to accept a model.  Literals are DIMACS.
+pub trait Propagator {
+    fn notify_assignment(&mut self, lits: &[i32]);
+    fn notify_new_decision_level(&mut self);
+    fn notify_backtrack(&mut self, new_level: usize);
+    fn check_found_model(&mut self, model: &[i32]) -> bool;
+    /// A literal to propagate, or 0.
+    fn propagate(&mut self) -> i32;
+    /// The reason clause of a literal this propagator propagated; it must
+    /// contain the literal.
+    fn reason(&mut self, lit: i32, out: &mut Vec<i32>);
+    /// An external clause to add now (a conflict under the assignment),
+    /// if any.
+    fn external_clause(&mut self, out: &mut Vec<i32>) -> bool;
+    /// One line for the statistics.
+    fn report(&self) -> String { String::new() }
+}
+
+type DynProp = Box<dyn Propagator>;
+
+extern "C" fn pnotify_trampoline(data: *mut c_void, lits: *const c_int, len: usize) {
+    let p = unsafe { &mut *(data as *mut DynProp) };
+    let lits: &[i32] = if len == 0 { &[] } else { unsafe { std::slice::from_raw_parts(lits, len) } };
+    let _ = std::panic::catch_unwind(AssertUnwindSafe(|| p.notify_assignment(lits)));
+}
+extern "C" fn plevel_trampoline(data: *mut c_void) {
+    let p = unsafe { &mut *(data as *mut DynProp) };
+    let _ = std::panic::catch_unwind(AssertUnwindSafe(|| p.notify_new_decision_level()));
+}
+extern "C" fn pbacktrack_trampoline(data: *mut c_void, level: usize) {
+    let p = unsafe { &mut *(data as *mut DynProp) };
+    let _ = std::panic::catch_unwind(AssertUnwindSafe(|| p.notify_backtrack(level)));
+}
+extern "C" fn pcheck_trampoline(data: *mut c_void, model: *const c_int, len: usize) -> c_int {
+    let p = unsafe { &mut *(data as *mut DynProp) };
+    let model: &[i32] = if len == 0 { &[] } else { unsafe { std::slice::from_raw_parts(model, len) } };
+    std::panic::catch_unwind(AssertUnwindSafe(|| p.check_found_model(model))).unwrap_or(false) as c_int
+}
+extern "C" fn ppropagate_trampoline(data: *mut c_void) -> c_int {
+    let p = unsafe { &mut *(data as *mut DynProp) };
+    std::panic::catch_unwind(AssertUnwindSafe(|| p.propagate())).unwrap_or(0)
+}
+extern "C" fn pclause_trampoline(data: *mut c_void, lit: c_int, out: *mut c_int, cap: usize) -> usize {
+    let p = unsafe { &mut *(data as *mut DynProp) };
+    let mut buf: Vec<i32> = Vec::new();
+    let some = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        if lit != 0 { p.reason(lit, &mut buf); true } else { p.external_clause(&mut buf) }
+    })).unwrap_or(false);
+    if !some { return 0; }
+    assert!(buf.len() <= cap, "propagator clause of {} literals exceeds the shim buffer", buf.len());
+    unsafe { std::ptr::copy_nonoverlapping(buf.as_ptr(), out, buf.len()) };
+    buf.len()
+}
 
 unsafe extern "C" {
     fn c3_new() -> *mut c_void;
@@ -43,6 +107,10 @@ unsafe extern "C" {
     fn c3_conflicts(s: *mut c_void) -> i64;
     fn c3_decisions(s: *mut c_void) -> i64;
     fn c3_propagations(s: *mut c_void) -> i64;
+    fn c3_connect_propagator(s: *mut c_void, data: *mut c_void, notify: PNotifyFn, level: PLevelFn,
+                             backtrack: PBacktrackFn, check: PCheckFn, propagate: PPropagateFn, clause: PClauseFn) -> *mut c_void;
+    fn c3_disconnect_propagator(s: *mut c_void, p: *mut c_void);
+    fn c3_add_observed_var(s: *mut c_void, var: c_int);
     fn c3_learned_clauses(s: *mut c_void) -> i64;
     fn c3_learned_literals(s: *mut c_void) -> i64;
     fn c3_minimized(s: *mut c_void) -> i64;
@@ -165,6 +233,9 @@ pub struct Solver<C: Callbacks = Timeout> {
     ptr: *mut c_void,
     /// Boxed for a stable address to hand the trampolines.
     cbs: Option<Box<C>>,
+    /// The external propagator, if connected: the Rust object (boxed twice
+    /// for a stable address) and CaDiCaL's side of it.
+    prop: Option<(Box<DynProp>, *mut c_void)>,
     /// Still in CaDiCaL's `CONFIGURING` state — options may be set.
     configuring: bool,
     /// Reused by `add_clause`, so a clause per call is not an allocation
@@ -186,7 +257,7 @@ impl<C: Callbacks> Solver<C> {
     pub fn new() -> Solver<C> {
         let ptr = unsafe { c3_new() };
         assert!(!ptr.is_null(), "CaDiCaL allocation failed");
-        Solver { ptr, cbs: None, configuring: true, buf: Vec::new() }
+        Solver { ptr, cbs: None, prop: None, configuring: true, buf: Vec::new() }
     }
 
     /// CaDiCaL's build identification — see [`signature`].
@@ -217,6 +288,29 @@ impl<C: Callbacks> Solver<C> {
                 };
             }
         }
+    }
+
+    /// Connect an external propagator (IPASIR-UP).  Its variables must
+    /// then be observed with [`add_observed_var`](Self::add_observed_var).
+    pub fn connect_propagator(&mut self, p: Box<dyn Propagator>) {
+        self.disconnect_propagator();
+        let mut boxed: Box<DynProp> = Box::new(p);
+        let data = (&raw mut *boxed).cast::<c_void>();
+        let cp = unsafe { c3_connect_propagator(self.ptr, data, pnotify_trampoline, plevel_trampoline, pbacktrack_trampoline,
+                                                pcheck_trampoline, ppropagate_trampoline, pclause_trampoline) };
+        self.prop = Some((boxed, cp));
+    }
+
+    pub fn disconnect_propagator(&mut self) {
+        if let Some((_, cp)) = self.prop.take() { unsafe { c3_disconnect_propagator(self.ptr, cp) }; }
+    }
+
+    pub fn add_observed_var(&mut self, var: i32) {
+        unsafe { c3_add_observed_var(self.ptr, var) };
+    }
+
+    pub fn propagator_report(&self) -> String {
+        self.prop.as_ref().map(|(p, _)| p.report()).unwrap_or_default()
     }
 
     pub fn get_callbacks(&self) -> Option<&C> {
@@ -330,6 +424,7 @@ fn decode(status: c_int) -> Option<bool> {
 impl<C: Callbacks> Drop for Solver<C> {
     fn drop(&mut self) {
         // Before the callbacks' box does.
+        self.disconnect_propagator();
         unsafe {
             c3_disconnect(self.ptr);
             c3_delete(self.ptr);

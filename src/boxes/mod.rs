@@ -50,6 +50,13 @@ pub struct TableBox {
 }
 
 impl TableBox {
+    pub fn nwords(&self) -> usize { self.nwords }
+    /// The rows that die when local variable `li` is assigned `value`.
+    pub fn kill_rows(&self, li: usize, value: bool) -> &[u64] {
+        let at = (2 * li + value as usize) * self.nwords;
+        &self.kill[at..at + self.nwords]
+    }
+
     /// Build a box from rows (0-based `Lit.var`).  Rows are canonicalized:
     /// literals sorted and deduplicated, rows containing a complementary
     /// pair dropped (they can never be chosen), duplicate rows merged.
@@ -4041,6 +4048,7 @@ mod tests {
 }
 
 pub mod compile;
+pub mod upprop;
 pub mod proof;
 pub mod expand;
 pub mod controller;

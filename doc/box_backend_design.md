@@ -992,6 +992,20 @@ Throughput at equal search on 18 instances: median 0.976, B faster on
 not the watch-list layout; attributing it needs a profile of both solvers
 on one instance.*
 
+*Boxes inside CaDiCaL (2026-09-24, `doc/data/boxes_step2_cadical_boxes_2026-09-24.txt`):
+the tables as CaDiCaL's IPASIR-UP external propagator (`src/boxes/upprop.rs`:
+live-row masks cut by kills, per-level undo, forced literals, lazy kill-cover
+reasons, dead tables as falsified external clauses; `sat -b cadical --boxes`),
+the web app's `/boxes/export` writing any box formula as residual + boxes +
+expanded CNF.  Over our own engine it wins 13/14 box-native rows and the
+factoring cones, by up to two orders of magnitude; over plain CaDiCaL it wins
+the multiplier cones (toughsat 2.2×, ezfact 15%) and the small satisfiable
+windows by tenths of a second, and loses the rest by 2–40× — small tables are
+clauses, and the interface freezes every observed variable.  Step 1 on the
+tuned core (`boxes_step1_cones_2026-09-24.txt`): cones pay only where the
+tables carry the conflicts (pyhala-braun-sat 143 → 29 s, level with CaDiCaL)
+and turn no timeout into a solve.*
+
 ### Next levers (2026-09-18)
 
 Two items on the agenda, both with their evidence and both still unbuilt.

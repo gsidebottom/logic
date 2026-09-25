@@ -852,6 +852,10 @@ fault-tolerance argument Mallob makes and we inherit.
 
 ## 10. Phased plan, with gates
 
+*Status as of 2026-09-25: `doc/box_status_2026-09-25.md` — where boxes
+stand after the core tuning, the CaDiCaL bridge and the cone selection, with
+the conclusions and what would change them.*
+
 | phase | build | gate |
 |---|---|---|
 | **M0** (done) | 972/13/8 verified; table extracted; projection `∃U.adder ≡` two-equation adder verified as set equality | ✓ |

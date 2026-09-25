@@ -1,0 +1,40 @@
+# Step 1: where boxes stand on the tuned core (2026-09-24)
+#
+# The cone corpus, cones recompiled with tools/cnf2boxes.py (K = 8, and 12
+# where the record had it), three arms one at a time on an idle machine,
+# 200 s cap: our engine on the plain CNF, our engine on residual + cones
+# (tbl% = share of conflicts inside a table), CaDiCaL 3.0.1 on the plain CNF.
+# The three 'VERDICT PROBLEM' flags are the checker (expect[:5] = 'SAT' against
+# the solver's 'SATIS'): every flagged row is a correct SAT answer, and the
+# UNSAT rows compared cleanly.  Third time this project's harness did that.
+#
+# binary /private/tmp/claude-501/-Users-greg-projects-logic/fdf9efe8-cc23-466a-af28-b22f9fdc339a/scratchpad/mem/sat_lbd, cap 200 s
+# instance                                        K |                        plain |                                cones |                cadical | check
+# c3540                                           8 | UNSAT     1.2s    107072 | UNSAT     3.3s    166357 tbl  81.0% [ 273] | UNSAT     0.3s     28007 | ok
+# c3540                                          12 | UNSAT     1.2s    107072 | UNSAT     4.1s    195524 tbl  83.8% [ 204] | UNSAT     0.3s     28007 | ok
+# c5315                                           8 | UNSAT     0.1s     12412 | UNSAT     0.4s     28336 tbl  86.3% [ 331] | UNSAT     0.1s     14537 | ok
+# c5315                                          12 | UNSAT     0.1s     12412 | UNSAT     0.5s     34736 tbl  87.7% [ 271] | UNSAT     0.1s     14537 | ok
+# eq.atree.braun.13.unsat                         8 |    TO   199.0s   3667712 |    TO   199.0s   2579931 tbl  33.1% [ 199] |    TO   200.0s         - | ok
+# eq.atree.braun.13.unsat                        12 |    TO   199.0s   3667712 |    TO   199.0s   2692608 tbl  36.6% [ 182] |    TO   200.0s         - | ok
+# ezfact64_6.shuffled-as.sat05-453                8 |    TO   199.0s   2257748 |    TO   199.0s   2110712 tbl  22.2% [ 152] | SATIS    21.1s    444532 | VERDICT PROBLEM ['TO', 'TO', 'SATIS']
+# pyhala-braun-sat-40-4-03.shuffled-as.sat03-154  8 | SATIS   142.8s   1442065 | SATIS    28.9s    100507 tbl  77.1% [ 853] | SATIS    25.8s    455202 | VERDICT PROBLEM ['SATIS', 'SATIS', 'SATIS']
+# pyhala-braun-unsat-40-4-02.shuffled-as.sat05-4  8 |    TO   199.0s   1791224 |    TO   199.0s    977569 tbl  71.8% [ 858] | UNSAT    53.5s    976129 | ok
+# toughsat_factoring_895s                        12 |    TO   199.0s   2604800 |    TO   199.1s   1765120 tbl  64.8% [ 194] | SATIS   108.9s   2047858 | VERDICT PROBLEM ['TO', 'TO', 'SATIS']
+# 16_16_booth_dadda_mapped_and_booth_wallace_ori  8 |    TO   199.0s   2993918 |    TO   199.0s   1495461 tbl  82.9% [ 392] |    TO   200.0s         - | ok
+# lec_mult_CvW_11x10.sanitized                    8 |    TO   199.0s   3257344 |    TO   199.0s   2984850 tbl  69.6% [ 184] |    TO   200.0s         - | ok
+# STEP1 EXIT
+#
+# === Reading it ===
+#
+# Cones pay where the tables carry the conflicts: pyhala-braun-sat (K = 8,
+# 853 cones, 77% of conflicts in tables) 142.8 s -> 28.9 s, 1.44 M -> 100 K
+# conflicts, level with CaDiCaL's 25.8 s.  They cost on the ISCAS pair
+# (c3540 1.2 -> 3.3 s, c5315 0.1 -> 0.4 s: more conflicts, all in tables,
+# and CaDiCaL at 0.3 / 0.1 s either way), and they turn no timeout into a
+# solve: eq.atree, pyhala-unsat, toughsat, booth, lec_mult stay at the cap
+# with or without them, though with fewer conflicts in the same time on
+# pyhala-unsat (1.79 M -> 978 K) and booth (2.99 M -> 1.50 M).  CaDiCaL
+# solves ezfact64_6 (21 s), pyhala-unsat (54 s) and toughsat (109 s) where
+# we time out both ways.  On this corpus the tuned core did not change the
+# picture the old one gave: the cones are a propagator, and the search
+# around them is the limit.

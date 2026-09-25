@@ -294,6 +294,7 @@ def main():
     cones, ncyclic, nunits = build_cones(nv, clauses, gates, args.k)
     os.makedirs(os.path.join(args.out, "tables"), exist_ok=True)
     instances, absorbed_clauses, tables = [], set(), {}
+    cone_records = []
     explain = set()   # absorbed clauses of the cones with no hidden variable: explanation-only clauses for the engine
     nhidden = 0; sizes = collections.Counter(); nfa = sum(1 for c in cones for m in c["members"] if len(m.gates) == 2)
     for cone in cones:
@@ -315,6 +316,9 @@ def main():
                       open(os.path.join(args.out, "tables", name), "w"))
             tables[key] = name
         instances.append({"table": "tables/" + tables[key], "args": cone["inputs"] + cone["visible"]})
+        # the cone's own clauses, for a per-cone selection (tools/select_cones.py)
+        cone_records.append({"instance": len(instances) - 1, "inputs": cone["inputs"], "visible": cone["visible"],
+                             "hidden": cone["hidden"], "clauses": sorted({ci for m in cone["members"] for g in m.gates for ci in g.clauses})})
         for m in cone["members"]:
             for g in m.gates: absorbed_clauses.update(g.clauses)
         if not cone["hidden"]:
@@ -326,6 +330,8 @@ def main():
         out.write(f"p cnf {nv} {len(rest)}\n")
         for c in rest: out.write(" ".join(map(str, c)) + " 0\n")
     json.dump(instances, open(os.path.join(args.out, "boxes.json"), "w"))
+    for r in cone_records: r["clauses"] = [clauses[i] for i in r["clauses"]]
+    json.dump(cone_records, open(os.path.join(args.out, "cones.json"), "w"))
     # the clauses the boxes stand for: `sat -b boxes --proof` derives every
     # box propagation from these, so residual + absorbed = the original CNF
     # is the formula the DRAT proof certifies

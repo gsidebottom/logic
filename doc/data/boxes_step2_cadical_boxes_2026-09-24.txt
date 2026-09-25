@@ -1,0 +1,39 @@
+# Step 2: the box technology inside CaDiCaL (2026-09-24)
+#
+# The cone compilations of step 1, with the cones as CaDiCaL's external
+# propagator (IPASIR-UP; src/boxes/upprop.rs) against CaDiCaL on the plain
+# CNF; one at a time, idle machine, 200 s cap.  Box work: propagations the
+# tables made, dead-table conflicts, reasons served at analysis and their
+# mean length.
+#
+# binary /private/tmp/claude-501/-Users-greg-projects-logic/fdf9efe8-cc23-466a-af28-b22f9fdc339a/scratchpad/mem/sat_up2, cap 200 s, 12 cone compilations
+# instance                                        K |              cadical plain |            cadical + cones  box work | check
+# 16_16_booth_dadda_mapped_and_booth_wallace_ori  8 |    TO   200.0s         - |    TO   200.0s         -  - | ok
+# c3540                                          12 | UNSAT     0.3s     28007 | UNSAT     1.6s     91091  187K props, 2866 box confl, reasons 6.44 lits | ok
+# c3540                                           8 | UNSAT     0.3s     28007 | UNSAT     1.2s     70441  142K props, 2109 box confl, reasons 5.31 lits | ok
+# c5315                                          12 | UNSAT     0.2s     14537 | UNSAT     0.9s     46766  200K props, 17451 box confl, reasons 7.58 lits | ok
+# c5315                                           8 | UNSAT     0.2s     14537 | UNSAT     0.6s     30229  185K props, 8022 box confl, reasons 5.76 lits | ok
+# eq.atree.braun.13.unsat                        12 |    TO   200.0s         - |    TO   200.0s         -  - | ok
+# eq.atree.braun.13.unsat                         8 |    TO   200.0s         - |    TO   200.0s         -  - | ok
+# ezfact64_6.shuffled-as.sat05-453                8 | SATIS    21.0s    444532 | SATIS    17.9s    336280  117K props, 531 box confl, reasons 6.11 lits | ok
+# lec_mult_CvW_11x10.sanitized                    8 |    TO   200.0s         - |    TO   200.0s         -  - | ok
+# pyhala-braun-sat-40-4-03.shuffled-as.sat03-154  8 | SATIS    25.7s    455202 | SATIS   145.3s   1486553  1175K props, 4904 box confl, reasons 6.60 lits | ok
+# pyhala-braun-unsat-40-4-02.shuffled-as.sat05-4  8 | UNSAT    53.3s    976129 | UNSAT   121.1s   1429969  920K props, 5373 box confl, reasons 6.52 lits | ok
+# toughsat_factoring_895s                        12 | SATIS   108.8s   2047858 | SATIS    50.2s    891231  2018K props, 8739 box confl, reasons 8.70 lits | ok
+# STEP2 CONES EXIT
+#
+# === Reading the cone half ===
+#
+# Inside CaDiCaL the same cones win where they never won in our engine and
+# lose where they won.  Wins: toughsat_factoring 108.8 s -> 50.2 s (2.05 M
+# -> 891 K conflicts, 2.0 M table propagations), ezfact64_6 21.0 -> 17.9 s
+# (445 K -> 336 K).  Losses: pyhala-braun-sat 25.7 -> 145.3 s (455 K ->
+# 1.49 M conflicts) -- the instance our engine's cones took from 143 s to
+# 29 s -- pyhala-unsat 53 -> 121 s, the ISCAS pair 4x.  Timeouts unchanged.
+# Two costs are structural to the interface: every observed variable is
+# frozen, so CaDiCaL's elimination and inprocessing cannot touch the cone
+# variables (853 cones on pyhala), and each table propagation is a callback
+# with a lazily built reason of 5-9 literals against a watched clause.
+# The factoring instances (multiplier cones, long UNSAT-ish searches) pay
+# for the propagator; pyhala, which our engine solves through the tables'
+# conflicts (77% of them), CaDiCaL solves better on the clauses alone.

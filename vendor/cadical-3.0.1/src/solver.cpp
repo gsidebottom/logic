@@ -1181,6 +1181,29 @@ void Solver::freeze (int lit) {
   LOG_API_CALL_END ("freeze", lit);
 }
 
+void Solver::add_table (const std::vector<int> &vars, const std::vector<std::vector<int>> &rows) {
+  TRACE ("add_table", (int) vars.size ());
+  REQUIRE_VALID_STATE ();
+  REQUIRE (!internal->proof, "tables are not supported with proof tracing");
+  std::vector<int> ivars;
+  for (const int v : vars) {
+    REQUIRE_VALID_LIT (v);
+    external->freeze (v);
+    ivars.push_back (abs (external->internalize (v)));
+  }
+  std::vector<std::vector<int>> irows;
+  for (const auto &row : rows) {
+    std::vector<int> r;
+    for (const int lit : row) {
+      REQUIRE_VALID_LIT (lit);
+      r.push_back (external->internalize (lit));
+    }
+    irows.push_back (r);
+  }
+  internal->add_table (ivars, irows);
+  LOG_API_CALL_END ("add_table", (int) vars.size ());
+}
+
 void Solver::melt (int lit) {
   TRACE ("melt", lit);
   REQUIRE_VALID_STATE ();

@@ -1953,7 +1953,8 @@ fn parse_cadical_opt(s: &str) -> Result<(String, i32), String> {
 }
 
 fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
-                  extra_opts: &[(String, i32)], boxes_path: Option<&std::path::Path>) -> SearchOutcome {
+                  extra_opts: &[(String, i32)], boxes_path: Option<&std::path::Path>,
+                  freeze_from: Option<&std::path::Path>, boxes_native: bool) -> SearchOutcome {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -1968,6 +1969,13 @@ fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
     let boxes: Vec<logic::boxes::TableBox> = match boxes_path {
         None => Vec::new(),
         Some(p) => match load_box_instances(p) { Ok(b) => b, Err(e) => { eprintln!("error: --boxes: {e}"); std::process::exit(2); } },
+    };
+    let frozen: Vec<i32> = match freeze_from {
+        None => Vec::new(),
+        Some(p) => match load_box_instances(p) {
+            Ok(b) => { let mut v: Vec<i32> = b.iter().flat_map(|t| t.vars.iter().map(|&x| x as i32 + 1)).collect(); v.sort_unstable(); v.dedup(); v }
+            Err(e) => { eprintln!("error: --freeze-from: {e}"); std::process::exit(2); }
+        },
     };
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -2025,7 +2033,20 @@ fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
             for clause in cnf.iter() {
                 solver.add_clause(clause.iter().copied());
             }
-            if !boxes.is_empty() {
+            if !frozen.is_empty() {
+                for &v in &frozen { solver.freeze(v); }
+                eprintln!("c cadical: {} variables frozen (the boxes' variables, no boxes)", frozen.len());
+            }
+            if !boxes.is_empty() && boxes_native {
+                let (mut nrows, mut nvars_t) = (0usize, 0usize);
+                for b in &boxes {
+                    let vars: Vec<i32> = b.vars.iter().map(|&v| v as i32 + 1).collect();
+                    let rows: Vec<Vec<i32>> = b.rows.iter().map(|r| r.iter().map(|l| if l.neg { -(l.var as i32 + 1) } else { l.var as i32 + 1 }).collect()).collect();
+                    nrows += rows.len(); nvars_t += vars.len();
+                    solver.add_table(&vars, &rows);
+                }
+                eprintln!("c cadical: {} boxes as native tables ({} rows, {} variable slots)", boxes.len(), nrows, nvars_t);
+            } else if !boxes.is_empty() {
                 let prop = logic::boxes::upprop::BoxPropagator::new(boxes.clone());
                 let observed = prop.observed_vars();
                 solver.connect_propagator(Box::new(prop));
@@ -2035,7 +2056,7 @@ fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
             let result = solver.solve();
             eprintln!("c cadical: {} conflicts, {} decisions, {} propagations",
                       solver.conflicts(), solver.decisions(), solver.propagations());
-            if !boxes.is_empty() { eprintln!("{}", solver.propagator_report()); }
+            if !boxes.is_empty() && !boxes_native { eprintln!("{}", solver.propagator_report()); }
             // CaDiCaL counts learned literals at the first UIP, BEFORE
             // minimisation and shrinking (analyze.cpp: the statistics are
             // updated as the UIP is pushed); the stored size is that less
@@ -2726,6 +2747,13 @@ struct Args {
     /// `-b boxes` only: compiled box instances (JSON written by `box-compile`;
     /// see doc/box_backend_design.md §5).
     boxes:         Option<std::path::PathBuf>,
+    /// `-b cadical --freeze-from boxes.json`: freeze every variable of these
+    /// boxes without adding them -- the cost of frozen variables alone.
+    freeze_from:   Option<std::path::PathBuf>,
+    /// `-b cadical --boxes ... --boxes-native`: the tables propagated inside
+    /// CaDiCaL's own loop (Solver::add_table) instead of as an external
+    /// propagator.
+    boxes_native:  bool,
     /// `-b boxes --proof` only: the clauses the boxes stand for in the
     /// original formula (`cnf2boxes.py` writes them as `absorbed.cnf`).
     /// Every box propagation is derived from these, so the DRAT proof
@@ -2899,7 +2927,7 @@ const DEFAULT_PREPROCESS_MAX_CLAUSES: usize = 250_000;
 
 fn parse_args() -> Result<Args, String> {
     let mut a = Args {
-        boxes: None,
+        boxes: None, freeze_from: None, boxes_native: false,
         boxes_source: None,
         show_progress: false,
         backend: BackendChoice::Matrix(MatrixBackend::Eff),
@@ -2938,6 +2966,11 @@ fn parse_args() -> Result<Args, String> {
                 let v = iter.next().ok_or_else(|| "--boxes requires a path".to_string())?;
                 a.boxes = Some(std::path::PathBuf::from(v));
             }
+            "--freeze-from" => {
+                let v = iter.next().ok_or_else(|| "--freeze-from requires a path".to_string())?;
+                a.freeze_from = Some(std::path::PathBuf::from(v));
+            }
+            "--boxes-native" => { a.boxes_native = true; }
             "--boxes-source" => {
                 let v = iter.next().ok_or_else(|| "--boxes-source requires a path".to_string())?;
                 a.boxes_source = Some(std::path::PathBuf::from(v));
@@ -4574,7 +4607,7 @@ fn main() {
 
     let t = Instant::now();
     let outcome = match args.backend {
-        BackendChoice::Cadical => cadical_search(nvars, cnf, args.show_progress, &args.cadical_opts, args.boxes.as_deref()),
+        BackendChoice::Cadical => cadical_search(nvars, cnf, args.show_progress, &args.cadical_opts, args.boxes.as_deref(), args.freeze_from.as_deref(), args.boxes_native),
         BackendChoice::Boxes =>
             boxes_search(nvars, &cnf, args.boxes.as_deref(), args.timeout_secs,
                          args.proof.as_deref(), args.boxes_source.as_deref()),
@@ -4789,7 +4822,7 @@ mod tests {
     fn solve_cadical(nvars: usize, clauses: &[Vec<i32>]) -> Result<Vec<bool>, ()> {
         if clauses.iter().any(|c| c.is_empty()) { return Err(()); }
         if clauses.is_empty() { return Ok(vec![true; nvars]); }
-        match cadical_search(nvars, Cnf::from_vecs(clauses), /*show_progress=*/ false, &[], None) {
+        match cadical_search(nvars, Cnf::from_vecs(clauses), /*show_progress=*/ false, &[], None, None, false) {
             SearchOutcome::Sat(asgn) => Ok(asgn),
             SearchOutcome::Unsat => Err(()),
             SearchOutcome::Interrupted => panic!("test cadical_search reported interrupted"),

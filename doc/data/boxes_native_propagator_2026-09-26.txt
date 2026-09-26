@@ -1,0 +1,48 @@
+# A native table propagator inside CaDiCaL's propagate loop (2026-09-26)
+#
+# The question the IPASIR-UP results left: do the tables lose to clauses, or
+# does the interface -- a call-back per propagation, notifications, polling,
+# and every observed variable frozen against elimination -- lose to clauses?
+#
+# === 1. The control: plain CaDiCaL with the cone variables frozen and no tables ===
+#
+# Same binary, one at a time, 300 s cap.  (n) = variables frozen.
+#
+# instance                     |                 plain |           plain + frozen (n) |               + cones
+# c3540                        | UNSAT    0.5s    28007 | UNSAT    0.3s    24718 (  645) | UNSAT    1.2s    70441
+# ezfact64_6.shuffled-as.sat05 | SATIS   19.9s   444532 | SATIS   20.3s   425072 ( 1090) | SATIS   17.1s   336280
+# pyhala-braun-sat-40-4-03     | SATIS   24.6s   455202 | SATIS   26.5s   438438 ( 5832) | SATIS  142.0s  1486553
+# pyhala-braun-unsat-40-4-02   | UNSAT   52.6s   976129 | UNSAT   60.8s  1050666 ( 5799) | UNSAT  121.5s  1429969
+# toughsat_factoring_895s      | SATIS  109.1s  2047858 | SATIS   93.0s  1674379 (  948) | SATIS   52.2s   891231
+# toughsat_factoring_958s      | SATIS   10.4s   266526 | SATIS   64.9s  1093325 (  846) | SATIS   29.5s   525210
+# toughsat_24bits_0            | SATIS  103.5s  1702904 | SATIS  143.9s  2090080 (   77) | SATIS   78.5s  1396870
+#
+# Freezing alone costs 8-15% on pyhala (24.6 -> 26.5 s, 52.6 -> 60.8 s),
+# nothing on c3540 and ezfact, 6x on toughsat_958s (10.4 -> 64.9 s -- a
+# satisfiable instance whose trajectory changes when 846 variables are
+# kept from elimination) and 40% on 24bits; the interface arm costs 2.4x
+# on c3540, 5.8x on pyhala-sat, 2.3x on pyhala-unsat.  So the interface,
+# not the freezing, is most of the loss, and a native propagator has room.
+#
+# === 2. The native propagator (src patches in vendor/cadical-3.0.1, `--boxes-native`) ===
+#
+# Tables live in Internal: kill masks per (variable, value), per-variable
+# occurrence lists.  At the end of propagate ()'s loop body the assigned
+# variable's tables are visited; a table's live rows are recomputed from
+# the current values (no undo); a forced literal is assigned with the
+# external_reason sentinel and its reason built lazily at analysis (a
+# trail-order cover of the rows not specifying the forced value, through
+# the external-clause path), or, at the root, assigned as a unit; a dead
+# table becomes a learned conflict clause built directly (a one-literal
+# cover: backtrack to the root and a unit; at the root: the empty clause).
+# Table variables are frozen and activated; lucky phases are skipped, as
+# for an external propagator.  Three defects found by the brute-force
+# test on the way: reasons targeting only the rows specifying the
+# opposite value (rows leaving the variable unspecified must be dead
+# too); table-only variables never decided (unused, so never assigned,
+# so SAT with the table unchecked); and re-entrancy -- a unit installed
+# through the clause path propagates inside the hook and corrupts the
+# clause under construction (the trace showed the nested clause [-7 1 7]
+# skipped as satisfied).  Gates: 400 random table-and-clause instances
+# against brute force; 60 larger random instances with inprocessing on,
+# native against the external propagator, 0 disagreements; the suite.

@@ -463,8 +463,9 @@ int Internal::lucky_phases () {
     return 0;
   // TODO: Some of the lucky assignments can also be found if there are
   // constraint.
-  // External propagator assumes a CDCL loop, so lucky is not tried here.
-  if (!constraint.empty () || external_prop)
+  // External propagator assumes a CDCL loop, so lucky is not tried here;
+  // nor with native tables, which lucky's clause-only checks do not see.
+  if (!constraint.empty () || external_prop || !ttables.empty ())
     return 0;
   if (!propagate ()) {
     learn_empty_clause ();

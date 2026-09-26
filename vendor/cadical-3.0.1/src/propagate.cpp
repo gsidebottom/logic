@@ -1,5 +1,7 @@
 #include "internal.hpp"
 
+#include <unordered_set>
+
 namespace CaDiCaL {
 
 /*------------------------------------------------------------------------*/
@@ -217,6 +219,215 @@ void Internal::search_assign_external (int lit) {
 // replacement in 'pos', which in turn reduces certain quadratic accumulated
 // propagation costs (2013 JAIR article by Ian Gent) at the expense of four
 // more bytes for each clause.
+
+/*------------------------------------------------------------------------*/
+
+// Native table constraints (see 'internal.hpp').
+
+void Internal::add_table (const std::vector<int> &vars,
+                          const std::vector<std::vector<int>> &rows) {
+  TTable T;
+  T.vars = vars;
+  const size_t nr = rows.size ();
+  T.nwords = (int) ((nr + 63) / 64);
+  if (!T.nwords) T.nwords = 1;
+  T.full.assign (T.nwords, 0);
+  for (size_t r = 0; r < nr; r++) T.full[r / 64] |= (uint64_t) 1 << (r % 64);
+  T.kill.assign (2 * vars.size () * T.nwords, 0);
+  for (size_t r = 0; r < nr; r++) {
+    for (const int lit : rows[r]) {
+      const int v = abs (lit);
+      size_t li = 0;
+      while (li < vars.size () && vars[li] != v) li++;
+      assert (li < vars.size ());
+      // specified TRUE dies when assigned FALSE (value 0); FALSE dies at TRUE
+      const size_t slot = (2 * li + (lit > 0 ? 0 : 1)) * T.nwords;
+      T.kill[slot + r / 64] |= (uint64_t) 1 << (r % 64);
+    }
+  }
+  const int t = (int) ttables.size ();
+  if (tocc.size () < vsize) { tocc.resize (vsize); treason.resize (vsize, -1); }
+  for (size_t li = 0; li < vars.size (); li++) {
+    // a variable only tables mention is still one the search must assign
+    if (flags (vars[li]).unused ()) mark_active (vars[li]);
+    tocc[vars[li]].push_back (std::make_pair (t, (int) li));
+  }
+  ttables.push_back (T);
+}
+
+// The assigned variables of table 't' among 'trail[..limit)' in trail
+// order whose kills cover 'target', pushed negated onto 'tclause'.
+
+void Internal::table_cover (int t, const uint64_t *target, size_t limit) {
+  const TTable &T = ttables[t];
+  const int nw = T.nwords;
+  std::vector<uint64_t> rem (target, target + nw);
+  std::vector<std::pair<int, int>> order; // (trail position, local index)
+  for (size_t li = 0; li < T.vars.size (); li++) {
+    const int v = T.vars[li];
+    if (!val (v)) continue;
+    const Var &x = var (v);
+    if ((size_t) x.trail >= limit) continue;
+    order.push_back (std::make_pair (x.trail, (int) li));
+  }
+  std::sort (order.begin (), order.end ());
+  for (const auto &pr : order) {
+    bool any = false;
+    for (int w = 0; w < nw; w++) if (rem[w]) { any = true; break; }
+    if (!any) break;
+    const int li = pr.second;
+    const int v = T.vars[li];
+    const signed char x = val (v);
+    const uint64_t *k = &T.kill[(2 * li + (x > 0 ? 1 : 0)) * nw];
+    bool hits = false;
+    for (int w = 0; w < nw; w++) if (rem[w] & k[w]) { hits = true; break; }
+    if (!hits) continue;
+    tclause.push_back (x > 0 ? -v : v);
+    for (int w = 0; w < nw; w++) rem[w] &= ~k[w];
+  }
+#ifndef NDEBUG
+  for (int w = 0; w < nw; w++) assert (!rem[w]);
+#endif
+}
+
+// 'tclause' into the clause data base through the external-clause path
+// ('add_new_original_clause' with 'from_propagator'): a falsified clause
+// sets 'conflict', a unit is assigned, a propagating clause becomes the
+// reason of its literal.  Returns the clause, or 0 for a unit / empty one.
+
+static bool table_trace () { static int t = -1; if (t < 0) t = getenv ("CADICAL_TABLE_TRACE") ? 1 : 0; return t; }
+
+Clause *Internal::install_table_clause (bool no_backtrack) {
+  if (table_trace ()) {
+    fprintf (stderr, "[table] install%s level %d:", no_backtrack ? " reason" : "", level);
+    for (const int l : tclause) fprintf (stderr, " %d(%d@%d)", l, (int) val (l), val (l) ? var (l).level : -1);
+    fprintf (stderr, "\n");
+  }
+  assert (original.empty ());
+  auto clause_tmp = std::move (clause);
+  clause.clear ();
+  std::vector<int64_t> chain_tmp = std::move (lrat_chain);
+  lrat_chain.clear ();
+  assert (!force_no_backtrack);
+  assert (!from_propagator);
+  force_no_backtrack = no_backtrack;
+  from_propagator = true;
+  ext_clause_forgettable = true;
+  for (const int lit : tclause) add_original_lit (lit);
+  add_original_lit (0);
+  force_no_backtrack = false;
+  from_propagator = false;
+  if (table_trace ())
+    fprintf (stderr, "[table]   -> clause %p, conflict %p, unsat %d, level %d, trail %zu, propagated %zu\n",
+             (void *) newest_clause, (void *) conflict, (int) unsat, level, trail.size (), (size_t) propagated);
+  assert (original.empty ());
+  assert (clause.empty ());
+  clause = std::move (clause_tmp);
+  lrat_chain = std::move (chain_tmp);
+  return newest_clause;
+}
+
+Clause *Internal::learn_table_reason_clause (int ilit, bool no_backtrack) {
+  const int idx = vidx (ilit);
+  const int t = treason[idx];
+  assert (t >= 0);
+  const TTable &T = ttables[t];
+  const int nw = T.nwords;
+  const int tlit = val (ilit) > 0 ? ilit : -ilit; // the literal that was propagated
+  size_t li = 0;
+  while (li < T.vars.size () && T.vars[li] != idx) li++;
+  assert (li < T.vars.size ());
+  // forced TRUE: every row not specifying the variable TRUE (FALSE or
+  // unspecified) is dead -- those rows are the target of the cover
+  const uint64_t *spec = &T.kill[(2 * li + (tlit > 0 ? 0 : 1)) * nw];
+  std::vector<uint64_t> target (nw);
+  for (int w = 0; w < nw; w++) target[w] = T.full[w] & ~spec[w];
+  tclause.clear ();
+  tclause.push_back (tlit);
+  table_cover (t, target.data (), (size_t) var (idx).trail);
+  return install_table_clause (no_backtrack);
+}
+
+void Internal::propagate_table (int t) {
+  const TTable &T = ttables[t];
+  const int nw = T.nwords;
+  tlive.assign (T.full.begin (), T.full.end ());
+  for (size_t li = 0; li < T.vars.size (); li++) {
+    const signed char x = val (T.vars[li]);
+    if (!x) continue;
+    const uint64_t *k = &T.kill[(2 * li + (x > 0 ? 1 : 0)) * nw];
+    for (int w = 0; w < nw; w++) tlive[w] &= ~k[w];
+  }
+  bool dead = true;
+  for (int w = 0; w < nw; w++) if (tlive[w]) { dead = false; break; }
+  if (table_trace ()) {
+    fprintf (stderr, "[table] visit %d at level %d: live %llx; vals", t, level, (unsigned long long) tlive[0]);
+    for (size_t li = 0; li < T.vars.size (); li++) fprintf (stderr, " %d=%d", T.vars[li], (int) val (T.vars[li]));
+    fprintf (stderr, "%s\n", dead ? " DEAD" : "");
+  }
+  // Nothing here goes through the clause-adding path: that path assigns
+  // units with 'assign_original_unit', which propagates, and a nested
+  // 'propagate' inside this one corrupts the clause under construction.
+  if (dead) {
+    if (!level) { learn_empty_clause (); return; }
+    tclause.clear ();
+    table_cover (t, T.full.data (), trail.size ());
+    if (table_trace ()) {
+      fprintf (stderr, "[table] conflict at level %d:", level);
+      for (const int l : tclause) fprintf (stderr, " %d@%d", l, var (l).level);
+      fprintf (stderr, "\n");
+    }
+    if (tclause.size () == 1) {
+      // a single assignment kills every row: a root unit
+      const int u = tclause[0];
+      backtrack (0);
+      assign_unit (u);
+      return;
+    }
+    assert (clause.empty ());
+    for (const int l : tclause) clause.push_back (l);
+    move_literals_to_watch ();
+    std::unordered_set<int> levels;
+    for (const int l : clause) levels.insert (var (l).level);
+    Clause *c = new_clause (true, (int) levels.size ());
+    watch_clause (c);
+    clause.clear ();
+    conflict = c;
+    return;
+  }
+  for (size_t li = 0; li < T.vars.size (); li++) {
+    const int v = T.vars[li];
+    if (val (v)) continue;
+    const uint64_t *kf = &T.kill[(2 * li + 0) * nw];
+    const uint64_t *kt = &T.kill[(2 * li + 1) * nw];
+    bool forced_true = true, forced_false = true;
+    for (int w = 0; w < nw; w++) {
+      if (tlive[w] & ~kf[w]) forced_true = false;  // a live row without the var TRUE
+      if (tlive[w] & ~kt[w]) forced_false = false;
+      if (!forced_true && !forced_false) break;
+    }
+    if (!forced_true && !forced_false) continue;
+    const int lit = forced_true ? v : -v;
+    if (table_trace ()) fprintf (stderr, "[table]   forced %d at level %d by table %d\n", lit, level, t);
+    if (!level) {
+      assign_unit (lit); // implied by the table under the root assignment
+    } else {
+      search_assign (lit, external_reason);
+      treason[v] = t;
+    }
+  }
+}
+
+void Internal::propagate_tables (int lit) {
+  const int idx = vidx (lit);
+  if ((size_t) idx >= tocc.size ()) return;
+  const size_t n = tocc[idx].size ();
+  const int level_before = level;
+  for (size_t i = 0; i < n && !conflict && !unsat && level == level_before; i++)
+    propagate_table (tocc[idx][i].first);
+}
+
+/*------------------------------------------------------------------------*/
 
 bool Internal::propagate () {
 
@@ -452,6 +663,11 @@ bool Internal::propagate () {
         *j++ = *i++;
 
       ws.resize (j - ws.begin ());
+    }
+    if (!conflict && !ttables.empty ()) {
+      propagate_tables (lit);
+      if (unsat)
+        break;
     }
   }
 

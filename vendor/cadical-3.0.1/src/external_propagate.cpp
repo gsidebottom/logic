@@ -871,6 +871,8 @@ void Internal::explain_external_propagations () {
 Clause *Internal::learn_external_reason_clause (int ilit,
                                                 int falsified_elit,
                                                 bool no_backtrack) {
+  if (!falsified_elit && !ttables.empty () && treason[vidx (ilit)] >= 0)
+    return learn_table_reason_clause (ilit, no_backtrack);
   assert (external->propagator); // REQ is defined by not allowing
                                  // unobserving during conflict
   // we cannot modify clause during analysis

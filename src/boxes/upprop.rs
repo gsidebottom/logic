@@ -234,6 +234,55 @@ mod tests {
         cls.iter().all(|c| c.iter().any(|&l| m[l.unsigned_abs() as usize - 1] == (l > 0)))
     }
 
+    /// The same instances with the tables propagated natively inside
+    /// CaDiCaL (`Solver::add_table`).
+    #[test]
+    fn random_tables_vs_bruteforce_native_in_cadical() {
+        let mut seed: u64 = 0x1234_5678_9ABC_DEF1;
+        let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+        for trial in 0..400 {
+            let n = 3 + (rnd() % 6) as usize;
+            let nboxes = 1 + (rnd() % 5) as usize;
+            let mut boxes: Vec<Vec<Vec<Lit>>> = Vec::new();
+            for _ in 0..nboxes {
+                let k = 2 + (rnd() % 3) as usize;
+                let mut cols: Vec<u32> = Vec::new();
+                while cols.len() < k.min(n) { let v = (rnd() % n as u64) as u32; if !cols.contains(&v) { cols.push(v); } }
+                let nrows = 1 + (rnd() % 5) as usize;
+                let mut rows: Vec<Vec<Lit>> = Vec::new();
+                for _ in 0..nrows {
+                    let mut row = Vec::new();
+                    for &v in &cols { if rnd() % 3 != 0 { let neg = rnd() % 2 == 0; row.push(Lit { var: v, neg }); } }
+                    rows.push(row);
+                }
+                boxes.push(rows);
+            }
+            let nclauses = (rnd() % 4) as usize;
+            let cls: Vec<Vec<i32>> = (0..nclauses).map(|_| (0..3).map(|_| { let v = (rnd() % n as u64) as i32 + 1; if rnd() % 2 == 0 { v } else { -v } }).collect()).collect();
+            let row_holds = |row: &[Lit], m: &[bool]| row.iter().all(|l| m[l.var as usize] == !l.neg);
+            let holds = |m: &[bool]| boxes.iter().all(|rows| rows.iter().any(|r| row_holds(r, m))) && check_model(&cls, m);
+            let brute = (0..1u32 << n).any(|bits| holds(&(0..n).map(|i| bits >> i & 1 == 1).collect::<Vec<_>>()));
+            let mut solver: cadical::Solver = cadical::Solver::new();
+            solver.reserve(n as i32);
+            for c in &cls { solver.add_clause(c.iter().copied()); }
+            for rows in &boxes {
+                let t = TableBox::new(rows.clone());
+                let vars: Vec<i32> = t.vars.iter().map(|&v| v as i32 + 1).collect();
+                let trows: Vec<Vec<i32>> = t.rows.iter().map(|r| r.iter().map(|l| if l.neg { -(l.var as i32 + 1) } else { l.var as i32 + 1 }).collect()).collect();
+                solver.add_table(&vars, &trows);
+            }
+            match solver.solve() {
+                Some(true) => {
+                    let m: Vec<bool> = (1..=n as i32).map(|v| solver.value(v).unwrap_or(true)).collect();
+                    assert!(brute, "trial {trial}: native tables SAT, brute UNSAT: {boxes:?} {cls:?}");
+                    assert!(holds(&m), "trial {trial}: bad model {m:?} for {boxes:?} {cls:?}");
+                }
+                Some(false) => assert!(!brute, "trial {trial}: native tables UNSAT, brute SAT: {boxes:?} {cls:?}"),
+                None => panic!("no budget set"),
+            }
+        }
+    }
+
     /// Random tables and clauses through CaDiCaL with the propagator,
     /// against brute force -- the box engine's own test, on the other core.
     #[test]

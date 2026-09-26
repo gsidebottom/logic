@@ -214,6 +214,21 @@ void c3_disconnect_propagator (void *s, void *p) {
 
 void c3_add_observed_var (void *s, int var) { self (s)->solver.add_observed_var (var); }
 
+void c3_freeze (void *s, int var) { self (s)->solver.freeze (var); }
+
+// A native table: 'vars', and 'nrows' rows laid out flat in 'lits' with
+// 'rowlens' literals each.
+void c3_add_table (void *s, const int *vars, size_t nvars, const int *lits, const int *rowlens, size_t nrows) {
+  std::vector<int> v (vars, vars + nvars);
+  std::vector<std::vector<int>> rows;
+  size_t at = 0;
+  for (size_t r = 0; r < nrows; r++) {
+    rows.push_back (std::vector<int> (lits + at, lits + at + rowlens[r]));
+    at += rowlens[r];
+  }
+  self (s)->solver.add_table (v, rows);
+}
+
 void c3_disconnect (void *s) {
   Wrapper *w = self (s);
   w->solver.disconnect_terminator ();

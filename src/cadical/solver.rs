@@ -111,6 +111,8 @@ unsafe extern "C" {
                              backtrack: PBacktrackFn, check: PCheckFn, propagate: PPropagateFn, clause: PClauseFn) -> *mut c_void;
     fn c3_disconnect_propagator(s: *mut c_void, p: *mut c_void);
     fn c3_add_observed_var(s: *mut c_void, var: c_int);
+    fn c3_freeze(s: *mut c_void, var: c_int);
+    fn c3_add_table(s: *mut c_void, vars: *const c_int, nvars: usize, lits: *const c_int, rowlens: *const c_int, nrows: usize);
     fn c3_learned_clauses(s: *mut c_void) -> i64;
     fn c3_learned_literals(s: *mut c_void) -> i64;
     fn c3_minimized(s: *mut c_void) -> i64;
@@ -307,6 +309,22 @@ impl<C: Callbacks> Solver<C> {
 
     pub fn add_observed_var(&mut self, var: i32) {
         unsafe { c3_add_observed_var(self.ptr, var) };
+    }
+
+    /// Keep `var` out of elimination and substitution (what observing it
+    /// does, without a propagator): the control arm for the interface cost.
+    pub fn freeze(&mut self, var: i32) {
+        unsafe { c3_freeze(self.ptr, var) };
+    }
+
+    /// A table constraint propagated natively inside CaDiCaL: one of
+    /// `rows` must hold, a row being the DIMACS literals it specifies.
+    /// The variables are frozen.
+    pub fn add_table(&mut self, vars: &[i32], rows: &[Vec<i32>]) {
+        let lits: Vec<c_int> = rows.iter().flatten().copied().collect();
+        let lens: Vec<c_int> = rows.iter().map(|r| r.len() as c_int).collect();
+        self.configuring = false;
+        unsafe { c3_add_table(self.ptr, vars.as_ptr(), vars.len(), lits.as_ptr(), lens.as_ptr(), rows.len()) };
     }
 
     pub fn propagator_report(&self) -> String {

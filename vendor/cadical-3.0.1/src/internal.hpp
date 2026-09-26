@@ -243,6 +243,21 @@ struct Internal {
   Clause *ignore;               // ignored during 'vivify_propagate'
   Clause *dummy_binary;         // Dummy binary clause for subsumption
   Clause *external_reason;      // used as reason at external propagations
+  // Native table constraints: rows over a few variables, propagated inside
+  // 'propagate ()' by live-row masks recomputed from the assignment, reasons
+  // built lazily as a trail-order cover of the dead rows (the box engine's
+  // tables, without the IPASIR-UP call-backs; see 'add_table').
+  struct TTable {
+    std::vector<int> vars;        // internal variable indices, local order
+    int nwords;                   // words per row mask
+    std::vector<uint64_t> kill;   // (2*li + value) * nwords: rows that die when var li takes value
+    std::vector<uint64_t> full;   // every row
+  };
+  std::vector<TTable> ttables;
+  std::vector<std::vector<std::pair<int, int>>> tocc; // per variable index: (table, local index)
+  std::vector<int> treason;       // per variable index: the table that propagated it, else -1
+  std::vector<uint64_t> tlive;    // scratch
+  std::vector<int> tclause;       // scratch
   Clause *newest_clause;        // used in external_propagate
   bool force_no_backtrack;      // for new clauses with external propagator
   bool from_propagator;         // differentiate new clauses...
@@ -815,6 +830,12 @@ struct Internal {
   bool external_check_solution ();
   void add_external_clause (int propagated_lit = 0,
                             bool no_backtrack = false);
+  void add_table (const std::vector<int> &vars, const std::vector<std::vector<int>> &rows);
+  void propagate_tables (int lit);
+  void propagate_table (int t);
+  void table_cover (int t, const uint64_t *target, size_t limit);
+  Clause *install_table_clause (bool no_backtrack);
+  Clause *learn_table_reason_clause (int ilit, bool no_backtrack);
   Clause *learn_external_reason_clause (int lit, int falsified_elit = 0,
                                         bool no_backtrack = false);
   Clause *wrapped_learn_external_reason_clause (int lit);

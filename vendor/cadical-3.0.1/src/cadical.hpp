@@ -828,6 +828,14 @@ public:
   //
   bool frozen (int lit) const;
   void freeze (int lit);
+  // A table constraint over 'vars': one of 'rows' must hold, a row being
+  // the literals it specifies (a variable a row leaves out is free in it).
+  // The variables are frozen.  Propagated natively; no proof support.
+  //
+  //   require (VALID)
+  //   ensure (VALID)
+  //
+  void add_table (const std::vector<int> &vars, const std::vector<std::vector<int>> &rows);
   void melt (int lit); // Also needs 'require (frozen (lit))'.
 
   //------------------------------------------------------------------------

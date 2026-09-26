@@ -142,6 +142,10 @@ void Internal::enlarge (int new_max_var) {
   enlarge_only (ftab, new_vsize);
   enlarge_vals (new_vsize);
   vsize = new_vsize;
+  if (!ttables.empty ()) {
+    tocc.resize (new_vsize);
+    treason.resize (new_vsize, -1);
+  }
   if (external)
     enlarge_zero (relevanttab, new_vsize);
   const signed char val = opts.phase ? 1 : -1;

@@ -1,6 +1,30 @@
 #include "internal.hpp"
 
 #include <unordered_set>
+#include <chrono>
+#include <cstdlib>
+
+// CADICAL_TABLE_STATS=1: counters and timers for the native table hook,
+// printed at exit (the sampling profilers are unavailable on this host).
+namespace {
+struct TStats {
+  uint64_t calls = 0, visits = 0, forced = 0, conflicts = 0, reasons = 0;
+  uint64_t ns_hook = 0, ns_reason = 0;
+  bool on = false, registered = false;
+} tstats;
+static inline uint64_t tnow () {
+  return (uint64_t) std::chrono::duration_cast<std::chrono::nanoseconds> (
+             std::chrono::steady_clock::now ().time_since_epoch ()).count ();
+}
+static void tstats_print () {
+  fprintf (stderr,
+           "c tables: %llu hook calls, %llu visits, %llu forced, %llu conflicts, "
+           "%llu reasons; %.2f s in the hook, %.2f s building reasons\n",
+           (unsigned long long) tstats.calls, (unsigned long long) tstats.visits,
+           (unsigned long long) tstats.forced, (unsigned long long) tstats.conflicts,
+           (unsigned long long) tstats.reasons, tstats.ns_hook * 1e-9, tstats.ns_reason * 1e-9);
+}
+} // namespace
 
 namespace CaDiCaL {
 
@@ -226,6 +250,13 @@ void Internal::search_assign_external (int lit) {
 
 void Internal::add_table (const std::vector<int> &vars,
                           const std::vector<std::vector<int>> &rows) {
+  ttouched_flag.resize (ttables.size () + 1, 0);
+  table_eager = getenv ("CADICAL_TABLE_EAGER") != 0;
+  if (!tstats.registered) {
+    tstats.registered = true;
+    tstats.on = getenv ("CADICAL_TABLE_STATS") != 0;
+    if (tstats.on) atexit (tstats_print);
+  }
   TTable T;
   T.vars = vars;
   const size_t nr = rows.size ();
@@ -328,6 +359,9 @@ Clause *Internal::install_table_clause (bool no_backtrack) {
 }
 
 Clause *Internal::learn_table_reason_clause (int ilit, bool no_backtrack) {
+  const uint64_t t0 = tstats.on ? tnow () : 0;
+  tstats.reasons++;
+  struct Timer { uint64_t t0; ~Timer () { if (tstats.on) tstats.ns_reason += tnow () - t0; } } timer{t0};
   const int idx = vidx (ilit);
   const int t = treason[idx];
   assert (t >= 0);
@@ -369,6 +403,7 @@ void Internal::propagate_table (int t) {
   // units with 'assign_original_unit', which propagates, and a nested
   // 'propagate' inside this one corrupts the clause under construction.
   if (dead) {
+    tstats.conflicts++;
     if (!level) { learn_empty_clause (); return; }
     tclause.clear ();
     table_cover (t, T.full.data (), trail.size ());
@@ -408,6 +443,7 @@ void Internal::propagate_table (int t) {
     }
     if (!forced_true && !forced_false) continue;
     const int lit = forced_true ? v : -v;
+    tstats.forced++;
     if (table_trace ()) fprintf (stderr, "[table]   forced %d at level %d by table %d\n", lit, level, t);
     if (!level) {
       assign_unit (lit); // implied by the table under the root assignment
@@ -422,9 +458,45 @@ void Internal::propagate_tables (int lit) {
   const int idx = vidx (lit);
   if ((size_t) idx >= tocc.size ()) return;
   const size_t n = tocc[idx].size ();
+  if (!n) return;
   const int level_before = level;
+  const uint64_t t0 = tstats.on ? tnow () : 0;
+  tstats.calls++; tstats.visits += n;
   for (size_t i = 0; i < n && !conflict && !unsat && level == level_before; i++)
     propagate_table (tocc[idx][i].first);
+  if (tstats.on) tstats.ns_hook += tnow () - t0;
+}
+
+// The second design: an assignment only marks its tables; they are visited
+// at the fixpoint of clause propagation (as an external propagator is asked
+// to propagate).  Visiting at every assignment made the tables force ~130
+// literals per conflict that the learned clauses would have implied anyway
+// (the external propagator forced 0.6 per conflict), each needing a lazily
+// built reason clause in the database: 63 reason clauses per conflict, and
+// the watch lists drowned (pyhala-unsat: 626 us/conflict against 139 us).
+void Internal::touch_tables (int lit) {
+  const int idx = vidx (lit);
+  if ((size_t) idx >= tocc.size ()) return;
+  for (const auto &p : tocc[idx]) {
+    const int t = p.first;
+    if (ttouched_flag[t]) continue;
+    ttouched_flag[t] = 1;
+    ttouched.push_back (t);
+  }
+}
+
+void Internal::propagate_touched_tables () {
+  const int level_before = level;
+  const uint64_t t0 = tstats.on ? tnow () : 0;
+  tstats.calls++;
+  while (!ttouched.empty () && !conflict && !unsat && level == level_before) {
+    const int t = ttouched.back ();
+    ttouched.pop_back ();
+    ttouched_flag[t] = 0;
+    tstats.visits++;
+    propagate_table (t);
+  }
+  if (tstats.on) tstats.ns_hook += tnow () - t0;
 }
 
 /*------------------------------------------------------------------------*/
@@ -665,7 +737,13 @@ bool Internal::propagate () {
       ws.resize (j - ws.begin ());
     }
     if (!conflict && !ttables.empty ()) {
-      propagate_tables (lit);
+      if (table_eager)
+        propagate_tables (lit);
+      else {
+        touch_tables (lit);
+        if (propagated == trail.size () && !ttouched.empty ())
+          propagate_touched_tables ();
+      }
       if (unsat)
         break;
     }

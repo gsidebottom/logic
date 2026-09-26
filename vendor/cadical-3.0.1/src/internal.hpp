@@ -257,7 +257,10 @@ struct Internal {
   std::vector<std::vector<std::pair<int, int>>> tocc; // per variable index: (table, local index)
   std::vector<int> treason;       // per variable index: the table that propagated it, else -1
   std::vector<uint64_t> tlive;    // scratch
-  std::vector<int> tclause;       // scratch
+  std::vector<int> tclause;
+  std::vector<int> ttouched;     // tables touched since their last visit
+  std::vector<char> ttouched_flag;
+  bool table_eager = false;      // CADICAL_TABLE_EAGER=1: visit at every assignment (the first design)       // scratch
   Clause *newest_clause;        // used in external_propagate
   bool force_no_backtrack;      // for new clauses with external propagator
   bool from_propagator;         // differentiate new clauses...
@@ -832,6 +835,8 @@ struct Internal {
                             bool no_backtrack = false);
   void add_table (const std::vector<int> &vars, const std::vector<std::vector<int>> &rows);
   void propagate_tables (int lit);
+  void touch_tables (int lit);
+  void propagate_touched_tables ();
   void propagate_table (int t);
   void table_cover (int t, const uint64_t *target, size_t limit);
   Clause *install_table_clause (bool no_backtrack);

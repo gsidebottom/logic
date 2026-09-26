@@ -126,6 +126,12 @@ int c3_set_option (void *s, const char *name, int val) {
   return self (s)->solver.set (name, val) ? 1 : 0;
 }
 
+// CaDiCaL::Solver::limit: "conflicts", "decisions", "preprocessing",
+// "localsearch"; a budget for one 'solve' call (equal-budget A/Bs).
+int c3_limit (void *s, const char *name, int val) {
+  return self (s)->solver.limit (name, val) ? 1 : 0;
+}
+
 void c3_connect (void *s, void *data, c3_terminate_fn on_terminate,
                  c3_learn_fn on_learn, int max_length) {
   Wrapper *w = self (s);

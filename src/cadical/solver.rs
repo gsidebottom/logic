@@ -123,6 +123,7 @@ unsafe extern "C" {
     fn c3_eagersub(s: *mut c_void) -> i64;
     fn c3_declare_vars(s: *mut c_void, n: c_int) -> c_int;
     fn c3_set_option(s: *mut c_void, name: *const c_char, val: c_int) -> c_int;
+    fn c3_limit(s: *mut c_void, name: *const c_char, val: c_int) -> c_int;
     fn c3_connect(
         s: *mut c_void,
         data: *mut c_void,
@@ -427,6 +428,13 @@ impl<C: Callbacks> Solver<C> {
         }
         let Ok(name) = CString::new(name) else { return false };
         unsafe { c3_set_option(self.ptr, name.as_ptr(), value) != 0 }
+    }
+
+    /// A budget for the next `solve` (`conflicts`, `decisions`,
+    /// `preprocessing`, `localsearch`); false for an unknown name.
+    pub fn limit(&mut self, name: &str, value: i32) -> bool {
+        let Ok(name) = CString::new(name) else { return false };
+        unsafe { c3_limit(self.ptr, name.as_ptr(), value) != 0 }
     }
 }
 

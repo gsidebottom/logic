@@ -2007,7 +2007,11 @@ fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
             // anyone who wants to reproduce it.
             let mut applied: Vec<String> = Vec::new();
             for (name, value) in opts.iter() {
-                if solver.set_option(name, *value) {
+                let ok = match name.strip_prefix("limit:") {
+                    Some(l) => solver.limit(l, *value),
+                    None => solver.set_option(name, *value),
+                };
+                if ok {
                     applied.push(format!("{name}={value}"));
                 } else {
                     eprintln!("c ERROR: cadical rejected option {name}={value}");
@@ -3130,6 +3134,12 @@ fn parse_args() -> Result<Args, String> {
                 let v = &s["--max-memory=".len()..];
                 a.max_memory = (v.parse::<f64>().map_err(|_| format!("--max-memory: bad size {v:?}"))?
                                 * 1e9) as u64;
+            }
+            "--cadical-limit" => {
+                let v = iter.next().ok_or_else(||
+                    "--cadical-limit requires NAME=VALUE (conflicts, decisions, preprocessing, localsearch)".to_string())?;
+                let (name, value) = parse_cadical_opt(&v)?;
+                a.cadical_opts.push((format!("limit:{name}"), value));
             }
             "--cadical-opt" => {
                 let v = iter.next().ok_or_else(||

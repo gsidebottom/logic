@@ -5133,11 +5133,11 @@ mod tests {
     fn cadical_search_smoke() {
         // Same shape as `matrix_search_smoke` but going through the
         // CaDiCaL backend.
-        match cadical_search(3, Cnf::from_vecs(vec![vec![1, -2], vec![2, 3], vec![-1, -3]]), false, &[]) {
+        match cadical_search(3, Cnf::from_vecs(vec![vec![1, -2], vec![2, 3], vec![-1, -3]]), false, &[], None, None, false) {
             SearchOutcome::Sat(_) => {}
             other => panic!("expected Sat, got {:?}", outcome_kind(&other)),
         }
-        match cadical_search(1, Cnf::from_vecs(vec![vec![1], vec![-1]]), false, &[]) {
+        match cadical_search(1, Cnf::from_vecs(vec![vec![1], vec![-1]]), false, &[], None, None, false) {
             SearchOutcome::Unsat => {}
             other => panic!("expected Unsat, got {:?}", outcome_kind(&other)),
         }

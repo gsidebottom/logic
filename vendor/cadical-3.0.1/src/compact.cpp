@@ -15,6 +15,10 @@ bool Internal::compacting () {
     return false;
   if (!opts.compact)
     return false;
+  // Native tables store internal variable indices ('TTable::vars',
+  // 'tocc', 'treason') which compaction would renumber; skip it.
+  if (!ttables.empty ())
+    return false;
   if (stats.conflicts < lim.compact)
     return false;
   int inactive = max_var - active ();

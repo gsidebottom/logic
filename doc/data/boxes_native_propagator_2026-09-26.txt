@@ -46,3 +46,161 @@
 # skipped as satisfied).  Gates: 400 random table-and-clause instances
 # against brute force; 60 larger random instances with inprocessing on,
 # native against the external propagator, 0 disagreements; the suite.
+#
+# === 3. Two defects the corpus found that the gates had not ===
+#
+# 3a. Compaction.  The first native-arm run segfaulted at 0.2 s on ezfact,
+# pyhala and toughsat, answered c3540/strassen/sun56 "UNSAT" at 2002-2009
+# conflicts, and failed the model check on the w5_ap rows.  CaDiCaL
+# renumbers its internal variables at the root once 10% are inactive and
+# 'compactint' (2000) conflicts have passed; the tables keep internal
+# indices (TTable::vars, tocc, treason) and were not remapped, so the first
+# compaction turned every table into a random one -- an empty clause on the
+# UNSAT rows (the right verdict from a wrong proof), a crash or a wrong model
+# elsewhere.  Fix: no compaction while tables exist (compacting () returns
+# false).  What that costs plain CaDiCaL on the control set, one run each:
+#
+# instance                     |          plain (default) |          plain compact=0
+# c3540                        |   UNSAT    0.3s    28007 |   UNSAT    0.3s    28358
+# ezfact64_6.shuffled-as.sat05 |   SATIS   21.8s   444532 |   SATIS   94.1s  1596862
+# pyhala-braun-sat-40-4-03     |   SATIS   27.4s   455202 |   SATIS    0.9s    15294
+# pyhala-braun-unsat-40-4-02   |   UNSAT   57.7s   976129 |   UNSAT   66.0s  1072516
+# toughsat_factoring_895s      |   SATIS  118.6s  2047858 |   SATIS   54.4s  1061580
+# toughsat_factoring_958s      |   SATIS   11.0s   266526 |   SATIS   90.1s  1641119
+# toughsat_24bits_0            |   SATIS  111.9s  1702904 |   SATIS  111.2s  1702904
+#
+# On the one unsatisfiable row compaction is worth 14% (57.7 vs 66.0 s;
+# 60.2 vs 60.5 us per conflict at an equal budget of 200K conflicts, so it
+# is the trajectory, not the throughput); on the satisfiable rows the
+# trajectory swings 4x either way (pyhala-sat 27 -> 0.9 s, 958s 11 -> 90 s).
+# Single-run wall clock on satisfiable instances says nothing about the
+# propagator; the per-conflict cost at an equal budget does.
+#
+# 3b. Visiting at every assignment.  With compaction off the native arm
+# ran, and lost everywhere: pyhala-sat, pyhala-unsat, 895s and 958s all at
+# the 300 s cap (plain 27/58/119/11 s, the interface arm 145/121/50/30 s).
+# At an equal budget of 200K conflicts on pyhala-unsat (an UNSAT instance,
+# so no trajectory luck), `--cadical-limit conflicts=200000`:
+#
+# arm              wall   us/conflict  propagations  learned lits   tables: visits  forced  reasons
+# plain            11.7s     58.4        97.7 M         43.8
+# IPASIR-UP        26.5s    132.5       170.0 M         48.1
+# native, eager   121.8s    609.0       131.5 M         52.2          242.5 M   23.4 M   10.7 M
+# native, fixpoint 21.9s    109.3       137.8 M         44.0           55.5 M    0.7 M    0.14 M
+#
+# The eager hook (visit a table at every assignment of one of its
+# variables, inside the propagate loop) forced 117 table literals per
+# conflict where the external propagator, asked only at the fixpoint of
+# clause propagation, forced 0.6: firing first, it pre-empted the learned
+# clauses that would have implied the same literals for free, and every
+# pre-empted literal that analysis touched needed a lazily built reason
+# clause -- 53 per conflict, 10.7 M in the run -- which went into the
+# watch lists.  The hook's own time was 20 s and the reasons 8 s of the
+# 122 s; the other 94 s were CaDiCaL propagating through the reason
+# clauses.  The second design marks an assignment's tables in a touched
+# list and visits them when the clause propagation has nothing left (as
+# CaDiCaL treats an external propagator): 3.5 forced literals and 0.7
+# reasons per conflict, 4.1 s in the hook, and 109 us per conflict --
+# 17% under the interface arm, 1.9x plain.  What is left of the gap to
+# plain is not the hook (19% of the run) but 41% more propagations per
+# conflict (689 vs 488 -- the residual with 858 cones replaced by tables
+# is a different instance to search) at the same 0.12-0.13 us each.
+# CADICAL_TABLE_EAGER=1 keeps the first design for the A/B;
+# CADICAL_TABLE_STATS=1 prints the hook's counters at exit.
+#
+# The same budget on toughsat_895s (K=12 cones; the interface arm's best
+# win in step 2, 109 -> 50 s):
+#
+# arm              wall   us/conflict  propagations  learned lits   tables: visits  forced  reasons
+# plain             7.9s     39.6        54.0 M         32.8
+# IPASIR-UP        10.8s     53.8        28.0 M         33.8
+# native, fixpoint 11.4s     56.9        25.2 M         33.2           17.6 M    1.0 M   0.16 M
+#
+# Here the native arm is 6% slower per conflict than the interface arm
+# (hook 1.6 s of 11.4), and both are 1.4x plain per conflict while doing
+# half plain's propagations: the tables replace a lot of clause
+# propagation on these wide cones, and the per-conflict work that is left
+# (analysis, minimisation, bumping, reduce) is the same in every arm.  The
+# 2x wall-clock win of step 2 was 891K conflicts against 2.05M -- a
+# trajectory, not a throughput.
+#
+# And freezing alone at the same budget (plain, cone variables frozen, no
+# tables): pyhala-unsat 58.1 us/conflict (plain 58.4), toughsat_895s 41.4
+# (39.6).  So at an equal budget: plain = frozen < native = interface at
+# 1.4x (895s) to 1.9-2.3x (pyhala-unsat) plain.  Section 1's reading --
+# "the interface, not the freezing, is most of the loss" -- was wrong: the
+# interface is 0-20% of it, the freezing none, and the rest is the tables'
+# propagation itself, which the learned clauses make mostly redundant.
+#
+# === 3c. Results: the native arm (fixpoint visiting) on the control set and the box-native rows ===
+#
+# One run each, 300 s cap.  Plain / frozen / IPASIR-UP from sections 1-2;
+# the eager column is the first native design (compaction off).
+#
+# instance                     |                  plain |         plain + frozen |       IPASIR-UP tables |          native, eager |       native, fixpoint
+# c3540                        | UNSAT    0.5s    28007 | UNSAT    0.3s    24718 | UNSAT    1.2s    70441 | UNSAT    3.1s   119945 | UNSAT    1.9s    99321
+# ezfact64_6.shuffled-as.sat05 | SATIS   19.9s   444532 | SATIS   20.3s   425072 | SATIS   17.1s   336280 | SATIS  168.3s  2148994 | SATIS   82.1s  1120327
+# pyhala-braun-sat-40-4-03     | SATIS   24.6s   455202 | SATIS   26.5s   438438 | SATIS  142.0s  1486553 |    TO  300.0s        - | SATIS    9.8s    85251
+# pyhala-braun-unsat-40-4-02   | UNSAT   52.6s   976129 | UNSAT   60.8s  1050666 | UNSAT  121.5s  1429969 |    TO  300.0s        - | UNSAT  124.1s  1251703
+# toughsat_factoring_895s      | SATIS  109.1s  2047858 | SATIS   93.0s  1674379 | SATIS   52.2s   891231 |    TO  300.0s        - |    TO  300.0s        -
+# toughsat_factoring_958s      | SATIS   10.4s   266526 | SATIS   64.9s  1093325 | SATIS   29.5s   525210 |    TO  300.0s        - | SATIS   34.6s   606827
+# toughsat_24bits_0            | SATIS  103.5s  1702904 | SATIS  143.9s  2090080 | SATIS   78.5s  1396870 | SATIS   68.6s  1271543 | SATIS   87.5s  1511066
+
+# instance             |           engine+boxes |          cadical plain |       IPASIR-UP tables |          native, eager |       native, fixpoint
+# cn120[0,6,8] k=7     | UNSAT   0.30s    12209 | UNSAT   0.25s    17002 | UNSAT   0.26s    12746 | UNSAT   0.30s    12871 | UNSAT   0.30s    13420
+# cn120[0,6,8] k=8     | SATIS   2.91s    80732 | SATIS   0.44s    28282 | SATIS   0.32s    13423 | SATIS   1.50s    48145 | SATIS   0.30s    16576
+# i12                  | SATIS   0.23s     7740 | SATIS   0.22s     9720 | SATIS   0.13s     4172 | SATIS   0.00s      678 | SATIS   0.00s      928
+# i19                  | SATIS   0.21s     7424 | SATIS   0.20s     8189 | SATIS   0.15s     5172 | SATIS   0.30s     7911 | SATIS   0.20s     6109
+# mm_boxes_sym(2;6)    | UNSAT   0.74s    36033 | UNSAT   0.22s    21093 | UNSAT   0.66s    40978 | UNSAT   1.00s    54832 | UNSAT   0.60s    40905
+# mm_boxes_sym(2;7)    | SATIS   4.34s   171971 | SATIS   0.10s     4408 | SATIS   0.03s      479 | SATIS   0.10s     7314 | SATIS   0.10s     8284
+# strassen_out k=7     | UNSAT   0.20s     9560 | UNSAT   0.22s    15691 | UNSAT   0.20s    10731 | UNSAT   0.30s    12963 | UNSAT   0.20s    12384
+# sun56[0,3,7] k=6     | SATIS   0.03s     1627 | SATIS   0.05s     1436 | SATIS   0.03s      972 | SATIS   0.00s       38 | SATIS   0.00s       38
+# sun56[0,5,7] k=7     | UNSAT   0.44s    15305 | UNSAT   0.27s    16314 | UNSAT   0.34s    15537 | UNSAT   0.60s    16707 | UNSAT   0.30s    14282
+# sun56[0,5,7] k=8     | SATIS   0.07s     2553 | SATIS   0.23s    10942 | SATIS   0.08s     2221 | SATIS   0.40s    11320 | SATIS   0.10s     5951
+# sun56[1,2,4] k=14    |    TO 199.01s  2259219 | SATIS   0.83s    29286 | SATIS  33.54s   595196 | SATIS 156.80s  1331402 | SATIS  39.80s   741068
+# sun56[1,2,4] k=15    |    TO 199.03s  2535591 | SATIS  17.12s   650187 | SATIS  21.09s   358796 | SATIS 206.30s  1510054 | SATIS  24.00s   453650
+# w5_ap(177)           | SATIS  35.26s   340686 | SATIS   0.59s    54859 | SATIS  11.96s   229431 | SATIS   5.20s    62640 | SATIS   7.60s   149776
+# w5_ap(178)           | UNSAT 129.58s  1226167 | UNSAT  17.53s   658944 | UNSAT  45.55s   876333 | UNSAT 162.60s  1229743 | UNSAT  51.10s   974638
+#
+# The hook's own share (CADICAL_TABLE_STATS): visits per conflict, forced
+# literals per conflict, and seconds in the hook over the run:
+#
+# c3540 83 / 2.1 / 0.4 of 1.9 s; ezfact 46 / 0.14 / 2.7 of 82; pyhala-sat
+# 296 / 8.2 / 1.9 of 9.8; pyhala-unsat 233 / 1.0 / 20.3 of 124; 958s 86 /
+# 3.3 / 4.2 of 35; 24bits 3.6 / 0.004 / 0.2 of 88; sun56[1,2,4] k=14 866 /
+# 1.7 / 11.3 of 40; k=15 943 / 2.5 / 7.5 of 24; w5_ap(177) 1944 / 0.08 /
+# 5.8 of 7.6; w5_ap(178) 1879 / 0.01 / 36.6 of 51.  A visit costs 20-90 ns;
+# what varies is how many tables an assignment touches -- on the waerden
+# windows every variable sits in hundreds, so the hook is 72% of the run
+# while forcing one literal per hundred conflicts.
+#
+# Per conflict, native against the interface arm: c3540 1.12x, ezfact
+# 1.44x, pyhala-sat 1.21x, pyhala-unsat 0.82x, 958s 1.02x, 24bits 1.03x,
+# sun56 k=14 0.95x, k=15 0.90x, w5_ap(177) 0.97x, w5_ap(178) 1.01x.
+# Native against plain: c3540 1.06x, ezfact 1.62x, pyhala-sat 2.1x,
+# pyhala-unsat 1.8x, 958s 1.5x, 24bits 0.95x (its 77-variable tables
+# forced 5501 literals in 1.5 M conflicts: a table that does nothing costs
+# nothing), sun56 k=14 1.9x, k=15 2.0x, w5_ap(177) 4.7x, w5_ap(178) 2.0x.
+#
+# === 4. Verdict ===
+#
+# The interface was not the loss.  Done natively, with the visits at the
+# fixpoint where CaDiCaL puts an external propagator's, the tables cost
+# what they cost through IPASIR-UP, within 20% either way: 1.5-2x plain
+# per conflict wherever they fire, level with plain where they do not.
+# The wall-clock wins over plain in the table (pyhala-sat 9.8 s against
+# 24.6, 24bits 88 against 104, 958s and 895s in step 2) are trajectories
+# on satisfiable instances, of the size that switching compaction off
+# produces on its own (section 3a); every unsatisfiable row loses --
+# c3540 3.8x, pyhala-unsat 2.4x, mm(2;6) 2.7x, w5_ap(178) 2.9x -- because
+# there the per-conflict cost is the result.  A compact-table hook
+# (incremental masks, scan only the tables whose live set changed) would
+# take perhaps a third off the hook, which is 4-28% of a cone run and 72%
+# of a waerden run; it cannot reach plain, because the cost that remains
+# is the search doing 1.4x the propagations per conflict through a
+# residual whose structure the learned clauses now have to rediscover.
+# Small tables are clauses.  The box track's open item on the native
+# propagator is closed with this: tables do not beat CaDiCaL's clauses on
+# what CaDiCaL can already solve; the remaining question is the 76
+# unsolved balanced instances, where a trajectory that never converges
+# might be changed by cones -- a different experiment, scored on solves.

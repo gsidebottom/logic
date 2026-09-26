@@ -1010,6 +1010,31 @@ tuned core (`boxes_step1_cones_2026-09-24.txt`): cones pay only where the
 tables carry the conflicts (pyhala-braun-sat 143 → 29 s, level with CaDiCaL)
 and turn no timeout into a solve.*
 
+*A native table propagator inside CaDiCaL's propagate loop (2026-09-26,
+`doc/data/boxes_native_propagator_2026-09-26.txt`; `sat -b cadical --boxes
+… --boxes-native`, patches in `vendor/cadical-3.0.1/src`): tables in
+`Internal`, kill masks per (variable, value), an assignment marks its tables
+in a touched list and they are visited at the fixpoint of clause propagation,
+forced literals assigned with the `external_reason` sentinel and explained
+lazily through the external-clause path, dead tables as learned conflict
+clauses built in place.  Two defects the gates had not caught: CaDiCaL's
+variable compaction renumbered the tables' variables (segfaults, "UNSAT" at
+2002 conflicts, wrong models; compaction is off while tables exist), and the
+first design visited a table at every assignment, which pre-empted the
+learned clauses and installed 53 reason clauses per conflict (626 µs per
+conflict on pyhala-unsat against 139 for the interface).  At an equal budget
+of 200K conflicts the fixpoint design costs 109 µs per conflict on
+pyhala-unsat (interface 133, plain 58, plain with the cone variables frozen
+58) and 57 on toughsat_895s (interface 54, plain 40, frozen 41): the
+interface was 0–20 % of the loss and the freezing none; the rest is the
+tables' propagation, which the learned clauses make mostly redundant.
+Over 21 rows native is within 20 % of the interface arm per conflict and
+1.5–2× plain wherever the tables fire (level where they do not: 24bits);
+the wall-clock wins over plain (pyhala-sat 9.8 vs 24.6 s, 24bits 88 vs
+104 s, the step-2 toughsat rows) are satisfiable-instance trajectories of
+the size that disabling compaction alone produces, and every unsatisfiable
+row loses 2–4×.  The interface was not the loss; small tables are clauses.*
+
 ### Next levers (2026-09-18)
 
 Two items on the agenda, both with their evidence and both still unbuilt.

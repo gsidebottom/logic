@@ -88,13 +88,41 @@ small-instance artifact — at competition scale it is 1.7×.
 - **A native table propagator inside CaDiCaL's propagate loop** rather than
   IPASIR-UP: no callback, no freezing, tables watched like clauses.  It is
   the experiment that separates "tables lose to clauses" from "the
-  interface loses to clauses"; a week's work in the vendored source.
+  interface loses to clauses".  *Done 2026-09-26, see the addendum below:
+  tables lose to clauses.*
 - **The web app's hybrid, measured properly**: the matrix-method search with
   table completions is where box-native rows won; it was never run through
   the verdict-checked harness against CaDiCaL on the same formulas.
 - **The 76 balanced instances we cannot solve**: cones inside CaDiCaL on the
   arithmetic families among them (hardware-verification, multiplier
   families) at 600 s, scored on newly solved.
+
+## Addendum (2026-09-26): the native table propagator, done
+
+`sat -b cadical --boxes … --boxes-native` puts the tables inside CaDiCaL's
+propagate loop (`vendor/cadical-3.0.1/src/propagate.cpp`; data in
+`doc/data/boxes_native_propagator_2026-09-26.txt`).  Two defects the
+brute-force gates could not see: CaDiCaL's variable compaction renumbered
+the tables' variables at 2000 conflicts (segfaults, "UNSAT" at 2002
+conflicts, wrong models — compaction is off while tables exist, which by
+itself swings satisfiable trajectories 4× either way), and visiting a table
+at every assignment pre-empted the learned clauses and installed 53 reason
+clauses per conflict (626 µs per conflict; visiting at the fixpoint of
+clause propagation, as CaDiCaL asks an external propagator, gives 109).
+
+The verdict, at equal conflict budgets and over 21 rows: **the interface
+was not the loss.**  Native tables cost what IPASIR-UP tables cost, within
+20 %; freezing costs nothing; both table arms are 1.5–2× plain per conflict
+wherever the tables fire and level with plain where they do not.  Wall-clock
+wins over plain (pyhala-sat 9.8 vs 24.6 s, 24bits 88 vs 104 s, the step-2
+toughsat rows) are satisfiable-instance trajectories; every unsatisfiable
+row loses 2–4×.  The hook is 4–28 % of a cone run and 72 % of a waerden run
+(1900 table visits per conflict at 20 ns), so a compact-table hook would
+trim it, not close it: the rest is the search doing 1.4× the propagations
+per conflict through a residual whose structure the learned clauses
+rediscover.  Small tables are clauses.  What remains open for tables is the
+one thing this corpus cannot show — a trajectory that never converges
+changed by cones on the 76 unsolved balanced instances, scored on solves.
 
 ## What to keep regardless
 

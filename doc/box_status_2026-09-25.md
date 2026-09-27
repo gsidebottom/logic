@@ -139,6 +139,17 @@ One win (case18, 0.38×), nothing that predicts it.  Data in
 question is answered: tables do not beat CaDiCaL's clauses on
 gate-structured instances, at any cone width the compiler can produce.**
 
+*AIG rewriting as a preprocessor (2026-09-27,
+`doc/data/aig_rewriting_2026-09-27.txt`, `tools/cnf2aig.py`).*  The same
+extracted circuit, handed to ABC and written back as CNF, is the first use
+of the gate structure that pays: structural hashing plus ABC's cut-based
+re-encoding, no rewriting, is faster than plain CaDiCaL on 6 of the 7
+unsatisfiable rows (geometric mean 0.64×, none slower than 1.02×, cost
+charged); FRAIGing collapses the two equivalence-checking miters 3–8×; AIG
+rewriting proper adds nothing consistent, and the satisfiable rows are
+trajectory either way.  The gain comes from a smaller, hashed, better-encoded
+clause set, not from changing the solver.
+
 ## What to keep regardless
 
 The measurement infrastructure paid for itself this fortnight and is worth

@@ -1,0 +1,134 @@
+# AIG rewriting as a preprocessor for CaDiCaL (2026-09-27)
+#
+# The box track ended with: tables inside CaDiCaL do not beat CaDiCaL's
+# clauses on gate-structured instances (doc/data/boxes_native_propagator
+# _2026-09-26.txt §6).  The remaining question about circuit structure
+# was whether logic synthesis on the extracted circuit -- ABC's AIG
+# rewriting (Mishchenko, Chatterjee, Brayton 2006) and FRAIGing (SAT
+# sweeping) -- gives CaDiCaL a better CNF than the one it was handed.
+#
+# === Method ===
+#
+# tools/cnf2aig.py: the gate definitions read off the CNF by
+# cnf2boxes.extract_gates (AND/OR of any width, XOR2, XOR3, MAJ3 -- each a
+# complete Tseitin definition) become an And-Inverter Graph: primary
+# inputs are the undefined variables, primary outputs the gate outputs
+# that some other clause mentions, gates on definition cycles stay in the
+# residual, cones nobody observes are dropped (their definitions are
+# always satisfiable).  ABC (github.com/berkeley-abc/abc, built from
+# source) rewrites the AIG -- its primary-output functions are preserved
+# -- and the result goes back to CNF with the residual appended, inputs
+# and outputs keeping their variable numbers.  Two back-ends: one AND at
+# a time (Tseitin, 3 clauses per AND), or ABC's cut-based generator
+# (&write_cnf, K=8 cuts, minimal covers per cut: it recovers an XOR3 or a
+# majority as one 8- or 6-clause block where the Tseitin of its ANDs is
+# 3-4x that).  Scripts: resyn2 (balance/rewrite/refactor rounds), resyn2f
+# (resyn2 + fraig), dc2f (dc2 + fraig + dc2), and "none" (strash only: the
+# round trip).  Equisatisfiability by construction; brute-force self-tests
+# against CaDiCaL (random gate circuits + residual clauses, both
+# back-ends, three scripts): 1185 + 3144 checks, 0 failures -- after three
+# defects: ABC reads only binary AIGER; an empty or output-less AIG makes
+# ABC assert (the circuit is dead logic, dropped); ABC's CNF writer forces
+# unused objects false, which pinned an unused primary input the residual
+# then contradicted (units on inputs are dropped).
+#
+# Corpus: the 15 gate-structured instances of the balanced set used for
+# the wide-cone experiment (§6 there): two prime-factoring rows, md5_48_3,
+# ascon, bitvector 31.smt2, agile bench_5078, the hwmcc10 miter, oski
+# equivalence checking, the DIMACS sorter, philips, squ_ali, hardware-
+# verification k40, summle, bvsub, case18; verdicts known from the
+# portfolio.  Plain CaDiCaL 3.0.1 (the same binary) at 600 s on the
+# original CNF is the baseline (doc/data/boxes_native_propagator §6);
+# every arm's time below is bridge + ABC + CaDiCaL, verdict-checked.
+# Runs 3-6 at a time on the 12-core machine.
+#
+# === Results (600 s cap; one run each) ===
+#
+# times are preprocessing (bridge + ABC) plus CaDiCaL; ratio against plain CaDiCaL on the original CNF
+# instance          truth |            plain |             none |           resyn2 |          resyn2f |             dc2f |         none/abc |      resyn2f/abc |         dc2f/abc
+# toughsat_895s     SAT   |   SAT  152.1s       |   SAT  145.0s 0.95x |   SAT  111.9s 0.74x |   SAT  155.3s 1.02x |   SAT  106.5s 0.70x |   SAT   41.7s 0.27x |   SAT  101.7s 0.67x |   SAT  248.6s 1.63x
+# pyhala_unsat      UNSAT | UNSAT   68.1s       | UNSAT   77.7s 1.14x | UNSAT   71.7s 1.05x | UNSAT   69.4s 1.02x | UNSAT   69.2s 1.02x | UNSAT   58.7s 0.86x | UNSAT   62.9s 0.92x | UNSAT   63.8s 0.94x
+# md5_48_3          SAT   |   SAT   22.0s       |   SAT  111.7s 5.08x |   SAT   56.9s 2.59x |   SAT   37.1s 1.69x |   SAT  271.2s 12.33x |   SAT  301.4s 13.70x |   SAT  237.8s 10.81x |   SAT   33.0s 1.50x
+# ascon_m2_6        SAT   |   SAT   29.1s       |   SAT  523.7s 18.00x |   SAT   41.2s 1.42x |   SAT  116.0s 3.99x |   SAT  357.2s 12.27x |   SAT  277.7s 9.54x |   SAT  427.0s 14.67x |   SAT  279.2s 9.59x
+# bitvector_31      SAT   |   SAT  195.9s       |   SAT   98.8s 0.50x |   SAT   79.0s 0.40x |   SAT   14.2s 0.07x |   SAT  117.8s 0.60x |   SAT   31.9s 0.16x |   SAT   46.1s 0.24x |   SAT   17.7s 0.09x
+# agile_5078        SAT   |   SAT   91.6s       |   SAT   32.7s 0.36x |   SAT  121.2s 1.32x |   SAT   22.1s 0.24x |   SAT   58.1s 0.63x |   SAT   17.3s 0.19x |   SAT    8.9s 0.10x |   SAT   16.3s 0.18x
+# miter_goodbakery  UNSAT | UNSAT   67.5s       | UNSAT   57.8s 0.86x | UNSAT   55.8s 0.83x | UNSAT   19.6s 0.29x | UNSAT   14.4s 0.21x | UNSAT   57.9s 0.86x | UNSAT   22.2s 0.33x | UNSAT   16.8s 0.25x
+# eqchk_oski        UNSAT | UNSAT  532.2s       | UNSAT  247.5s 0.47x | UNSAT   65.5s 0.12x | UNSAT   83.0s 0.16x | UNSAT   83.2s 0.16x | UNSAT  164.6s 0.31x | UNSAT   89.4s 0.17x | UNSAT   91.3s 0.17x
+# dimacs_sorter     SAT   |   SAT   92.6s       |   SAT  439.5s 4.75x |    TO          -  |   SAT  574.8s 6.21x |    TO          -  |   SAT  413.4s 4.46x |   SAT  353.8s 3.82x |   SAT   75.6s 0.82x
+# philips           UNSAT | UNSAT  138.4s       | UNSAT  111.7s 0.81x | UNSAT  126.7s 0.92x | UNSAT  111.9s 0.81x | UNSAT  111.2s 0.80x | UNSAT  106.3s 0.77x | UNSAT  121.0s 0.87x | UNSAT  102.4s 0.74x
+# card_squ_ali      SAT   |   SAT    4.6s       |   SAT  102.5s 22.28x |   SAT   34.6s 7.52x |   SAT  104.3s 22.67x |   SAT   15.7s 3.41x |   SAT    2.9s 0.63x |   SAT   18.8s 4.09x |   SAT   20.7s 4.50x
+# hwverif_k40       UNSAT | UNSAT  269.9s       | UNSAT  228.0s 0.84x | UNSAT  233.7s 0.87x | UNSAT  271.8s 1.01x | UNSAT  229.7s 0.85x | UNSAT  196.5s 0.73x | UNSAT  204.4s 0.76x | UNSAT  211.9s 0.79x
+# summle            SAT   |   SAT   64.6s       |   SAT   21.1s 0.33x |   SAT   38.0s 0.59x |   SAT   41.8s 0.65x |   SAT   22.1s 0.34x |   SAT   28.1s 0.43x |   SAT   17.9s 0.28x |   SAT   17.4s 0.27x
+# bvsub             UNSAT | UNSAT   30.3s       | UNSAT   63.9s 2.11x |    TO          -  |    TO          -  | UNSAT  122.5s 4.04x | UNSAT   30.8s 1.02x | UNSAT  131.7s 4.35x | UNSAT  128.6s 4.24x
+# case18            UNSAT | UNSAT  394.4s       | UNSAT  149.9s 0.38x | UNSAT  360.2s 0.91x | UNSAT  374.8s 0.95x | UNSAT  363.0s 0.92x | UNSAT  135.6s 0.34x | UNSAT  232.3s 0.59x | UNSAT  176.2s 0.45x
+# faster (<0.8x) / slower (>1.25x) / measured: none 5/5/15, resyn2 4/4/13, resyn2f 5/4/14, dc2f 6/4/14, none/abc 9/3/15, resyn2f/abc 8/5/15, dc2f/abc 8/5/15
+
+# instance          |     ands |                 resyn2 |                resyn2f |                   dc2f |  clauses: original -> none / resyn2f / resyn2f-abc
+# toughsat_895s     |    13585 |     5377 ands    0.4s |     5313 ands    0.4s |     5376 ands    0.3s |  10745 -> 32603 / 16205 / 13834
+# pyhala_unsat      |    10807 |     9330 ands    0.4s |     9330 ands    0.4s |     9324 ands    0.4s |  31795 -> 42040 / 37903 / 38405
+# md5_48_3          |   208845 |   100967 ands    8.4s |   100901 ands    8.6s |   103062 ands    7.5s |  279258 -> 601252 / 311036 / 331650
+# ascon_m2_6        |   256900 |   232207 ands   11.2s |   232192 ands   13.0s |   231787 ands   13.9s |  373656 -> 762871 / 697043 / 381901
+# bitvector_31      |   104693 |    98592 ands    3.6s |    97246 ands    5.2s |    96422 ands    6.0s |  270930 -> 325010 / 304649 / 202719
+# agile_5078        |    59520 |    33288 ands    2.3s |    28874 ands    2.4s |    28517 ands    1.8s |  103124 -> 178633 / 87157 / 72125
+# miter_goodbakery  |    98801 |    83364 ands    4.7s |    22317 ands   14.6s |    18066 ands   13.3s |  296405 -> 296405 / 66953 / 34857
+# eqchk_oski        |   720439 |   311641 ands   21.6s |   183908 ands   77.7s |   172920 ands   80.7s |  1550275 -> 1803760 / 552889 / 307066
+# dimacs_sorter     |     9214 |     7546 ands    0.3s |     7450 ands    0.4s |     7421 ands    0.3s |  28853 -> 27946 / 26313 / 24592
+# philips           |     1500 |     1103 ands    0.1s |     1079 ands    0.1s |     1041 ands    0.1s |  4456 -> 5242 / 4330 / 4210
+# card_squ_ali      |     2052 |     1690 ands    0.1s |     1674 ands    0.1s |     1668 ands    0.1s |  5262 -> 6400 / 5494 / 5526
+# hwverif_k40       |    15309 |     7225 ands    1.6s |     6500 ands    1.6s |     6082 ands    1.6s |  261916 -> 269318 / 255742 / 254347
+# summle            |   141638 |    82981 ands    3.0s |    82981 ands    6.8s |    82463 ands    7.8s |  234322 -> 480049 / 342423 / 269870
+# bvsub             |   160786 |   160785 ands    7.7s |   160785 ands  106.9s |   146803 ands  106.5s |  901810 -> 901810 / 915793 / 850534
+# case18            |   180358 |    90810 ands    9.4s |    90605 ands   14.9s |    90200 ands   14.5s |  1089830 -> 1171825 / 1119101 / 1071965
+#
+# (The AIG columns: ands after each script and the bridge + ABC seconds;
+# the last column the clause counts of the original, the Tseitin round
+# trip, resyn2f Tseitin, and resyn2f through ABC's cut-based writer.)
+#
+# === Reading ===
+#
+# 1. The re-encoding alone is the consistent gain.  "none/abc" -- read
+# the circuit, structurally hash it, drop dead cones, write it back with
+# ABC's cut-based CNF generator, no rewriting -- is faster than plain
+# CaDiCaL on 9 of 15 rows counting its own cost, and on 6 of the 7
+# unsatisfiable rows (0.31-1.02x, geometric mean 0.64x): the miter and
+# oski 0.86x and 0.31x, philips 0.77x, hardware-verification 0.73x,
+# case18 0.34x, pyhala 0.86x, bvsub level.  It costs seconds up to 300K
+# clauses and 13 s on the 1.5M-clause oski.
+#
+# 2. FRAIGing (SAT sweeping) collapses the equivalence-checking miters:
+# the hwmcc10 miter from 67.5 s to 14.4 s (13 s of it in ABC's own solver
+# proving equivalences, 1.1 s in CaDiCaL), oski from 532 s to 65-91 s (up
+# to 80 s in ABC, 2-5 s in CaDiCaL; 1,619 conflicts against 3.06 M).
+# That is the algorithm those instances are for, and the win is real
+# either way: with the preprocessing charged, 3-8x.
+#
+# 3. Rewriting proper (resyn2, dc2) removes 20-57% of the ANDs (md5 -52%,
+# agile -52%, oski -57%, summle -42%) and that does not translate into
+# CaDiCaL time in any consistent direction: on the unsatisfiable rows it
+# is level with the plain re-encoding except where fraig fires, and
+# bvsub's fraig costs 100 s of ABC time for nothing (4x slower).  On the
+# satisfiable rows the outcome is trajectory: bitvector 31 from 196 s to
+# 14-18 s, agile 92 s to 9-22 s, summle 65 s to 17-22 s, and ascon 29 s
+# to 116-427 s, card 4.6 s to 16-104 s, md5 22 s to 33-301 s.
+#
+# 4. The back-end matters as much as the rewriting.  The AND-at-a-time
+# Tseitin inflates XOR- and majority-rich circuits (md5 279K -> 601K
+# clauses for the same function, ascon 374K -> 763K) and CaDiCaL pays for
+# it (md5 5x, ascon 18x slower on the round trip); ABC's cut-based writer
+# recovers the gates as minimal covers (ascon 382K, md5 332K after
+# resyn2f) and takes the round trip from 5 wins to 9.
+#
+# === Verdict ===
+#
+# Structural hashing plus a cut-based re-encoding is a cheap, consistent
+# preprocessing gain on unsatisfiable circuit instances (0.64x geometric
+# mean over the seven, none slower than 1.02x); FRAIGing is a large one
+# on equivalence-checking miters; AIG rewriting beyond those two is
+# noise at the CNF level.  Against the box track's tables, which cost
+# 1.5-2x per conflict and lost every unsatisfiable row, this is the first
+# use of the extracted circuit that pays, and it pays by handing CaDiCaL
+# a smaller, hashed, better-encoded clause set rather than by changing
+# what the solver does.  The satisfiable rows say nothing either way.
+# What would settle its worth is the same protocol on the full circuit
+# classes of the competition set (290 instances), with the re-encoding
+# alone and with fraig, scored on solves at the competition cap.

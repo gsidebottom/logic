@@ -128,10 +128,17 @@ matmul/r22/subgame_3x3_probe.err
 matmul/r22/subgame_3x3_probe2.err
 matmul/r22/t17_root0_long.err
 matmul/r22/t17_root0_code.err
+matmul/r22/t17_root0_code4h.err
+matmul/r22/t17_fastroot_code.err
 # build logs
 matmul/r22/highs_build.log
 matmul/r22/satsuma_build.log
-matmul/r22/cargo_test.log
+matmul/r22/cargo_test*.log
+matmul/r22/test_timings.txt
+# lattice label tables (derived: `probe --lattice-values` rebuilds them from
+# the tracked certs; lattice_ip.py / lattice_sat.py read them)
+matmul/r22/lattice_values.txt
+matmul/r22/lattice_values_dim3.txt
 # asym sweep intermediates (tens of MB, regenerable by the tracked drivers)
 matmul/asym/*.out
 matmul/asym/*.err

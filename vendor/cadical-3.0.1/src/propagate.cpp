@@ -8,7 +8,7 @@
 // printed at exit (the sampling profilers are unavailable on this host).
 namespace {
 struct TStats {
-  uint64_t calls = 0, visits = 0, forced = 0, conflicts = 0, reasons = 0;
+  uint64_t calls = 0, updates = 0, visits = 0, forced = 0, conflicts = 0, reasons = 0;
   uint64_t ns_hook = 0, ns_reason = 0;
   bool on = false, registered = false;
 } tstats;
@@ -18,9 +18,9 @@ static inline uint64_t tnow () {
 }
 static void tstats_print () {
   fprintf (stderr,
-           "c tables: %llu hook calls, %llu visits, %llu forced, %llu conflicts, "
+           "c tables: %llu fixpoint passes, %llu updates, %llu visits, %llu forced, %llu conflicts, "
            "%llu reasons; %.2f s in the hook, %.2f s building reasons\n",
-           (unsigned long long) tstats.calls, (unsigned long long) tstats.visits,
+           (unsigned long long) tstats.calls, (unsigned long long) tstats.updates, (unsigned long long) tstats.visits,
            (unsigned long long) tstats.forced, (unsigned long long) tstats.conflicts,
            (unsigned long long) tstats.reasons, tstats.ns_hook * 1e-9, tstats.ns_reason * 1e-9);
 }
@@ -250,8 +250,6 @@ void Internal::search_assign_external (int lit) {
 
 void Internal::add_table (const std::vector<int> &vars,
                           const std::vector<std::vector<int>> &rows) {
-  ttouched_flag.resize (ttables.size () + 1, 0);
-  table_eager = getenv ("CADICAL_TABLE_EAGER") != 0;
   if (!tstats.registered) {
     tstats.registered = true;
     tstats.on = getenv ("CADICAL_TABLE_STATS") != 0;
@@ -271,24 +269,95 @@ void Internal::add_table (const std::vector<int> &vars,
       size_t li = 0;
       while (li < vars.size () && vars[li] != v) li++;
       assert (li < vars.size ());
-      // specified TRUE dies when assigned FALSE (value 0); FALSE dies at TRUE
+      // a row with the variable TRUE dies when it is assigned FALSE (value 0)
       const size_t slot = (2 * li + (lit > 0 ? 0 : 1)) * T.nwords;
       T.kill[slot + r / 64] |= (uint64_t) 1 << (r % 64);
     }
   }
+  // Variables already assigned at the root (unit clauses added before the
+  // table) were propagated before the table existed: fold them in now.
+  if (level) backtrack (0);
+  T.words = T.full;
+  for (size_t li = 0; li < vars.size (); li++) {
+    const signed char x = val (vars[li]);
+    if (!x) continue;
+    const uint64_t *k = &T.kill[(2 * li + (x > 0 ? 1 : 0)) * T.nwords];
+    for (int w = 0; w < T.nwords; w++) T.words[w] &= ~k[w];
+  }
+  T.index.resize (T.nwords);
+  T.limit = 0;
+  for (int w = 0; w < T.nwords; w++) if (T.words[w]) T.index[T.limit++] = w;
+  for (int w = 0, i = T.limit; w < T.nwords; w++) if (!T.words[w]) T.index[i++] = w;
+  T.stamp.assign (T.nwords, -1);
+  T.limit_stamp = -1;
+  T.residue.assign (2 * vars.size (), 0);
   const int t = (int) ttables.size ();
   if (tocc.size () < vsize) { tocc.resize (vsize); treason.resize (vsize, -1); }
   for (size_t li = 0; li < vars.size (); li++) {
-    // a variable only tables mention is still one the search must assign
     if (flags (vars[li]).unused ()) mark_active (vars[li]);
     tocc[vars[li]].push_back (std::make_pair (t, (int) li));
   }
   ttables.push_back (T);
+  ttouched_flag.resize (ttables.size () + 1, 0);
+  ttouched_flag[t] = 1;
+  ttouched.push_back (t); // examined once before any assignment: it may force at the root
 }
 
-// The assigned variables of table 't' among 'trail[..limit)' in trail
-// order whose kills cover 'target', pushed negated onto 'tclause'.
+// AND the assigned literal's kill masks into the non-zero words of its
+// tables; a table whose rows changed is touched.  Called from the
+// propagate loop as the literal is processed, so kept literals that
+// CaDiCaL re-propagates after a backtrack are applied again.
+void Internal::table_assign (int lit) {
+  const int idx = vidx (lit);
+  if ((size_t) idx >= tocc.size ()) return;
+  const int value = lit > 0 ? 1 : 0;
+  for (const auto &p : tocc[idx]) {
+    const int t = p.first;
+    TTable &T = ttables[t];
+    const uint64_t *k = &T.kill[(2 * p.second + value) * T.nwords];
+    bool changed = false;
+    int i = 0;
+    while (i < T.limit) {
+      const int w = T.index[i];
+      const uint64_t old = T.words[w];
+      const uint64_t nv = old & ~k[w];
+      if (nv == old) { i++; continue; }
+      if (level && T.stamp[w] != level) {
+        tundo.push_back ({t, w, level, old});
+        T.stamp[w] = level;
+      }
+      T.words[w] = nv;
+      changed = true;
+      if (nv) { i++; continue; }
+      if (level && T.limit_stamp != level) {
+        tundo.push_back ({t, -1, level, (uint64_t) T.limit});
+        T.limit_stamp = level;
+      }
+      T.limit--;
+      T.index[i] = T.index[T.limit];
+      T.index[T.limit] = w;
+    }
+    tstats.updates++;
+    if (changed && !ttouched_flag[t]) {
+      ttouched_flag[t] = 1;
+      ttouched.push_back (t);
+    }
+  }
+}
 
+void Internal::tables_backtrack (int new_level) {
+  while (!tundo.empty () && tundo.back ().level > new_level) {
+    const TUndo &u = tundo.back ();
+    TTable &T = ttables[u.table];
+    if (u.word < 0) { T.limit = (int) u.old; T.limit_stamp = -1; }
+    else { T.words[u.word] = u.old; T.stamp[u.word] = -1; }
+    tundo.pop_back ();
+  }
+}
+
+// A trail-order cover: literals of the assigned variables (trail position
+// below 'limit') whose kill masks together kill every row of 'target';
+// pushed on 'tclause' negated, i.e. as the clause literals.
 void Internal::table_cover (int t, const uint64_t *target, size_t limit) {
   const TTable &T = ttables[t];
   const int nw = T.nwords;
@@ -321,19 +390,12 @@ void Internal::table_cover (int t, const uint64_t *target, size_t limit) {
 #endif
 }
 
-// 'tclause' into the clause data base through the external-clause path
-// ('add_new_original_clause' with 'from_propagator'): a falsified clause
-// sets 'conflict', a unit is assigned, a propagating clause becomes the
-// reason of its literal.  Returns the clause, or 0 for a unit / empty one.
-
 static bool table_trace () { static int t = -1; if (t < 0) t = getenv ("CADICAL_TABLE_TRACE") ? 1 : 0; return t; }
 
+// Install 'tclause' through the external-clause path (as an external
+// propagator's reason or conflict clause would be), without disturbing
+// the clause under construction or the LRAT chain.
 Clause *Internal::install_table_clause (bool no_backtrack) {
-  if (table_trace ()) {
-    fprintf (stderr, "[table] install%s level %d:", no_backtrack ? " reason" : "", level);
-    for (const int l : tclause) fprintf (stderr, " %d(%d@%d)", l, (int) val (l), val (l) ? var (l).level : -1);
-    fprintf (stderr, "\n");
-  }
   assert (original.empty ());
   auto clause_tmp = std::move (clause);
   clause.clear ();
@@ -348,9 +410,6 @@ Clause *Internal::install_table_clause (bool no_backtrack) {
   add_original_lit (0);
   force_no_backtrack = false;
   from_propagator = false;
-  if (table_trace ())
-    fprintf (stderr, "[table]   -> clause %p, conflict %p, unsat %d, level %d, trail %zu, propagated %zu\n",
-             (void *) newest_clause, (void *) conflict, (int) unsat, level, trail.size (), (size_t) propagated);
   assert (original.empty ());
   assert (clause.empty ());
   clause = std::move (clause_tmp);
@@ -371,8 +430,8 @@ Clause *Internal::learn_table_reason_clause (int ilit, bool no_backtrack) {
   size_t li = 0;
   while (li < T.vars.size () && T.vars[li] != idx) li++;
   assert (li < T.vars.size ());
-  // forced TRUE: every row not specifying the variable TRUE (FALSE or
-  // unspecified) is dead -- those rows are the target of the cover
+  // the rows with the variable at its forced value survive; every other
+  // root row must be dead, and the cover says by which literals
   const uint64_t *spec = &T.kill[(2 * li + (tlit > 0 ? 0 : 1)) * nw];
   std::vector<uint64_t> target (nw);
   for (int w = 0; w < nw; w++) target[w] = T.full[w] & ~spec[w];
@@ -382,27 +441,27 @@ Clause *Internal::learn_table_reason_clause (int ilit, bool no_backtrack) {
   return install_table_clause (no_backtrack);
 }
 
+// Every live row has variable 'li' at 'value' iff no live row lies outside
+// the rows that die when the variable takes the other value.
+bool Internal::table_forced (TTable &T, int li, int value) {
+  const uint64_t *k = &T.kill[(2 * li + (1 - value)) * T.nwords];
+  int &r = T.residue[2 * li + value];
+  if (T.words[r] & ~k[r]) return false;
+  for (int i = 0; i < T.limit; i++) {
+    const int w = T.index[i];
+    if (T.words[w] & ~k[w]) { r = w; return false; }
+  }
+  return true;
+}
+
 void Internal::propagate_table (int t) {
-  const TTable &T = ttables[t];
-  const int nw = T.nwords;
-  tlive.assign (T.full.begin (), T.full.end ());
-  for (size_t li = 0; li < T.vars.size (); li++) {
-    const signed char x = val (T.vars[li]);
-    if (!x) continue;
-    const uint64_t *k = &T.kill[(2 * li + (x > 0 ? 1 : 0)) * nw];
-    for (int w = 0; w < nw; w++) tlive[w] &= ~k[w];
-  }
-  bool dead = true;
-  for (int w = 0; w < nw; w++) if (tlive[w]) { dead = false; break; }
+  TTable &T = ttables[t];
   if (table_trace ()) {
-    fprintf (stderr, "[table] visit %d at level %d: live %llx; vals", t, level, (unsigned long long) tlive[0]);
+    fprintf (stderr, "[table] visit %d at level %d: live words %d; vals", t, level, T.limit);
     for (size_t li = 0; li < T.vars.size (); li++) fprintf (stderr, " %d=%d", T.vars[li], (int) val (T.vars[li]));
-    fprintf (stderr, "%s\n", dead ? " DEAD" : "");
+    fprintf (stderr, "%s\n", T.limit ? "" : " DEAD");
   }
-  // Nothing here goes through the clause-adding path: that path assigns
-  // units with 'assign_original_unit', which propagates, and a nested
-  // 'propagate' inside this one corrupts the clause under construction.
-  if (dead) {
+  if (!T.limit) {
     tstats.conflicts++;
     if (!level) { learn_empty_clause (); return; }
     tclause.clear ();
@@ -413,7 +472,6 @@ void Internal::propagate_table (int t) {
       fprintf (stderr, "\n");
     }
     if (tclause.size () == 1) {
-      // a single assignment kills every row: a root unit
       const int u = tclause[0];
       backtrack (0);
       assign_unit (u);
@@ -433,16 +491,11 @@ void Internal::propagate_table (int t) {
   for (size_t li = 0; li < T.vars.size (); li++) {
     const int v = T.vars[li];
     if (val (v)) continue;
-    const uint64_t *kf = &T.kill[(2 * li + 0) * nw];
-    const uint64_t *kt = &T.kill[(2 * li + 1) * nw];
-    bool forced_true = true, forced_false = true;
-    for (int w = 0; w < nw; w++) {
-      if (tlive[w] & ~kf[w]) forced_true = false;  // a live row without the var TRUE
-      if (tlive[w] & ~kt[w]) forced_false = false;
-      if (!forced_true && !forced_false) break;
-    }
-    if (!forced_true && !forced_false) continue;
-    const int lit = forced_true ? v : -v;
+    int value;
+    if (table_forced (T, (int) li, 1)) value = 1;
+    else if (table_forced (T, (int) li, 0)) value = 0;
+    else continue;
+    const int lit = value ? v : -v;
     tstats.forced++;
     if (table_trace ()) fprintf (stderr, "[table]   forced %d at level %d by table %d\n", lit, level, t);
     if (!level) {
@@ -454,37 +507,10 @@ void Internal::propagate_table (int t) {
   }
 }
 
-void Internal::propagate_tables (int lit) {
-  const int idx = vidx (lit);
-  if ((size_t) idx >= tocc.size ()) return;
-  const size_t n = tocc[idx].size ();
-  if (!n) return;
-  const int level_before = level;
-  const uint64_t t0 = tstats.on ? tnow () : 0;
-  tstats.calls++; tstats.visits += n;
-  for (size_t i = 0; i < n && !conflict && !unsat && level == level_before; i++)
-    propagate_table (tocc[idx][i].first);
-  if (tstats.on) tstats.ns_hook += tnow () - t0;
-}
-
-// The second design: an assignment only marks its tables; they are visited
-// at the fixpoint of clause propagation (as an external propagator is asked
-// to propagate).  Visiting at every assignment made the tables force ~130
-// literals per conflict that the learned clauses would have implied anyway
-// (the external propagator forced 0.6 per conflict), each needing a lazily
-// built reason clause in the database: 63 reason clauses per conflict, and
-// the watch lists drowned (pyhala-unsat: 626 us/conflict against 139 us).
-void Internal::touch_tables (int lit) {
-  const int idx = vidx (lit);
-  if ((size_t) idx >= tocc.size ()) return;
-  for (const auto &p : tocc[idx]) {
-    const int t = p.first;
-    if (ttouched_flag[t]) continue;
-    ttouched_flag[t] = 1;
-    ttouched.push_back (t);
-  }
-}
-
+// Visit the touched tables at the fixpoint of clause propagation (as
+// CaDiCaL asks an external propagator).  Visiting at every assignment
+// pre-empted the learned clauses and built 53 reason clauses per
+// conflict (pyhala-unsat: 626 us per conflict against 109).
 void Internal::propagate_touched_tables () {
   const int level_before = level;
   const uint64_t t0 = tstats.on ? tnow () : 0;
@@ -737,13 +763,9 @@ bool Internal::propagate () {
       ws.resize (j - ws.begin ());
     }
     if (!conflict && !ttables.empty ()) {
-      if (table_eager)
-        propagate_tables (lit);
-      else {
-        touch_tables (lit);
-        if (propagated == trail.size () && !ttouched.empty ())
-          propagate_touched_tables ();
-      }
+      table_assign (-lit);
+      if (propagated == trail.size () && !ttouched.empty ())
+        propagate_touched_tables ();
       if (unsat)
         break;
     }

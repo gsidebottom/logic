@@ -15,10 +15,6 @@ bool Internal::compacting () {
     return false;
   if (!opts.compact)
     return false;
-  // Native tables store internal variable indices ('TTable::vars',
-  // 'tocc', 'treason') which compaction would renumber; skip it.
-  if (!ttables.empty ())
-    return false;
   if (stats.conflicts < lim.compact)
     return false;
   int inactive = max_var - active ();
@@ -414,6 +410,62 @@ void Internal::compact () {
 
   // Special case for 'val' as for 'val' we trade branch less code for
   // memory and always allocated an [-maxvar,...,maxvar] array.
+  // Native tables: fold the root-fixed variables into the tables (their
+  // kill masks are already in 'words'; the root rows become 'full'),
+  // drop the slots and the tables with none left, renumber the rest,
+  // and rebuild the per-variable arrays.  Every table is revisited once.
+  if (!ttables.empty ()) {
+    assert (tundo.empty ());
+    std::vector<TTable> old;
+    old.swap (ttables);
+    size_t folded = 0, dropped = 0;
+    for (auto &T : old) {
+      std::vector<int> keep;
+      for (size_t li = 0; li < T.vars.size (); li++)
+        if (!val (T.vars[li]))
+          keep.push_back ((int) li);
+      if (!T.limit) { // dead at the root: caught at its last visit, but be safe
+        if (!unsat)
+          learn_empty_clause ();
+        continue;
+      }
+      folded += T.vars.size () - keep.size ();
+      if (keep.empty ()) { dropped++; continue; } // fully assigned and alive
+      TTable N;
+      N.nwords = T.nwords;
+      N.full = T.words;
+      N.words = T.words;
+      N.index = T.index;
+      N.limit = T.limit;
+      N.stamp.assign (T.nwords, -1);
+      N.limit_stamp = -1;
+      N.residue.assign (2 * keep.size (), 0);
+      N.kill.resize (2 * keep.size () * T.nwords);
+      for (size_t j = 0; j < keep.size (); j++) {
+        const int li = keep[j];
+        N.vars.push_back (mapper.map_idx (T.vars[li]));
+        for (int value = 0; value < 2; value++)
+          std::copy (T.kill.begin () + (2 * li + value) * T.nwords,
+                     T.kill.begin () + (2 * li + value + 1) * T.nwords,
+                     N.kill.begin () + (2 * j + value) * T.nwords);
+      }
+      ttables.push_back (N);
+    }
+    tocc.assign (mapper.new_vsize, {});
+    treason.assign (mapper.new_vsize, -1);
+    ttouched.clear ();
+    ttouched_flag.assign (ttables.size () + 1, 0);
+    for (size_t t = 0; t < ttables.size (); t++) {
+      for (size_t li = 0; li < ttables[t].vars.size (); li++)
+        tocc[ttables[t].vars[li]].push_back (std::make_pair ((int) t, (int) li));
+      ttouched_flag[t] = 1;
+      ttouched.push_back ((int) t);
+    }
+    PHASE ("compact", stats.compacts,
+           "tables: %zd variable slots folded, %zd tables dropped, %zd kept",
+           folded, dropped, ttables.size ());
+  }
+
   {
     signed char *new_vals = new signed char[2 * mapper.new_vsize];
     ignore_clang_analyze_memory_leak_warning = new_vals;

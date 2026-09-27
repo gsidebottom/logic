@@ -243,24 +243,41 @@ struct Internal {
   Clause *ignore;               // ignored during 'vivify_propagate'
   Clause *dummy_binary;         // Dummy binary clause for subsumption
   Clause *external_reason;      // used as reason at external propagations
-  // Native table constraints: rows over a few variables, propagated inside
-  // 'propagate ()' by live-row masks recomputed from the assignment, reasons
-  // built lazily as a trail-order cover of the dead rows (the box engine's
-  // tables, without the IPASIR-UP call-backs; see 'add_table').
+  // Native table constraints (the box engine's tables inside CaDiCaL,
+  // without the IPASIR-UP call-backs; 'add_table').  A table keeps its
+  // live rows as a reversible sparse bitset: 'words' is the row mask and
+  // the first 'limit' entries of 'index' are the non-zero words.  An
+  // assignment ANDs its (variable, value) kill mask into the non-zero
+  // words of its tables ('table_assign'), saving each changed word and
+  // the limit once per decision level on 'tundo'; 'tables_backtrack'
+  // restores them.  A table whose rows changed goes on 'ttouched' and is
+  // visited at the fixpoint of clause propagation: dead, it is a conflict
+  // clause built from a trail-order cover of its root rows; a variable
+  // with no live row of one value is forced with the 'external_reason'
+  // sentinel and explained lazily the same way.  'residue' remembers per
+  // (variable, value) the word that last witnessed a live row of the
+  // other value, so a forced check usually reads one word.  Compaction
+  // folds the root-fixed variables into 'full' and renumbers the rest.
   struct TTable {
     std::vector<int> vars;        // internal variable indices, local order
     int nwords;                   // words per row mask
     std::vector<uint64_t> kill;   // (2*li + value) * nwords: rows that die when var li takes value
-    std::vector<uint64_t> full;   // every row
+    std::vector<uint64_t> full;   // rows alive at the root
+    std::vector<uint64_t> words;  // rows alive under the current assignment
+    std::vector<int> index;       // word indices, the non-zero ones first
+    int limit;                    // number of non-zero words
+    std::vector<int> stamp;       // per word: level at which it was last saved
+    int limit_stamp;              // level at which 'limit' was last saved
+    std::vector<int> residue;     // per (li, value): witness word for the forced check
   };
+  struct TUndo { int table, word, level; uint64_t old; }; // word < 0: the limit
   std::vector<TTable> ttables;
   std::vector<std::vector<std::pair<int, int>>> tocc; // per variable index: (table, local index)
   std::vector<int> treason;       // per variable index: the table that propagated it, else -1
-  std::vector<uint64_t> tlive;    // scratch
+  std::vector<TUndo> tundo;
   std::vector<int> tclause;
-  std::vector<int> ttouched;     // tables touched since their last visit
+  std::vector<int> ttouched;      // tables whose rows changed since their last visit
   std::vector<char> ttouched_flag;
-  bool table_eager = false;      // CADICAL_TABLE_EAGER=1: visit at every assignment (the first design)       // scratch
   Clause *newest_clause;        // used in external_propagate
   bool force_no_backtrack;      // for new clauses with external propagator
   bool from_propagator;         // differentiate new clauses...
@@ -834,10 +851,11 @@ struct Internal {
   void add_external_clause (int propagated_lit = 0,
                             bool no_backtrack = false);
   void add_table (const std::vector<int> &vars, const std::vector<std::vector<int>> &rows);
-  void propagate_tables (int lit);
-  void touch_tables (int lit);
+  void table_assign (int lit);
+  void tables_backtrack (int new_level);
   void propagate_touched_tables ();
   void propagate_table (int t);
+  bool table_forced (TTable &T, int li, int value);
   void table_cover (int t, const uint64_t *target, size_t limit);
   Clause *install_table_clause (bool no_backtrack);
   Clause *learn_table_reason_clause (int ilit, bool no_backtrack);

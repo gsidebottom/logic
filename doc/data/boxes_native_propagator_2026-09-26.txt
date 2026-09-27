@@ -204,3 +204,33 @@
 # what CaDiCaL can already solve; the remaining question is the 76
 # unsolved balanced instances, where a trajectory that never converges
 # might be changed by cones -- a different experiment, scored on solves.
+#
+# === 5. The second implementation (2026-09-27): sparse masks, undo, residues, compaction ===
+#
+# Live rows as a reversible sparse bitset per table (compact-table's
+# structure): an assignment ANDs its kill mask into the non-zero words of
+# each of its tables as the propagate loop processes it, saving each
+# changed word and the non-zero count once per level on an undo stack
+# that backtrack restores; only tables whose rows changed are visited at
+# the fixpoint, and the forced check reads a residue word first.
+# Compaction is on again: root-fixed variables are folded into the tables
+# and fully assigned tables dropped, the rest renumbered.  A new table
+# folds the current root assignment in (unit clauses added before the
+# table had been propagated before it existed -- a wrong model on
+# toughsat/w5_ap and in the brute-force test, the same symptom as the
+# compaction defect).  Gates: brute force; 60-instance stress vs the
+# external propagator; 2 x 60 with compaction forced at every conflict.
+#
+# At 200K conflicts (us per conflict; the visit timer excludes the
+# per-assignment updates):
+#
+# instance        v1 fixpoint   v2      plain   IPASIR-UP    v2 updates/conflict  visits/conflict  visit time
+# pyhala-unsat        109       118       58       133            1300                 228           2.1 s
+# toughsat_895s        57        49       40        54             327                  81           0.8 s
+# w5_ap(178)           52        50       27        52            3270                 880           3.7 s
+#
+# The waerden windows share every variable with hundreds of others, so an
+# assignment updates 3,300 tables per conflict whatever the mask
+# representation; that is the table's cost, not the hook's.  v2 is level
+# with or better than v1 everywhere and is the version the wide-cone
+# experiment runs on.

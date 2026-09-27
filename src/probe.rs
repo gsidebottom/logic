@@ -1,6 +1,11 @@
 //! The 3x3 certified-search / deep-probe engine (formerly the schemesearch3
 //! binary; moved into the library 2026-09-04 so the game engine can call the
 //! pooled probe as a leaf). The binary src/bin/schemesearch3.rs calls `main`.
+// Index-explicit loops mirror the tensor math (a/b/c/side are semantic
+// indices across parallel arrays), and the measurement modes return tuple
+// bundles; the iterator and alias rewrites clippy suggests would obscure
+// both, so these two style lints are opted out module-wide.
+#![allow(clippy::needless_range_loop, clippy::type_complexity)]
 // CDCL(T) prototype, stage 2: 3x3 scaling probe. Product-level UNSAT ladder
 // for <3,3,3> over F_2 with lazy product enumeration (511^3 products — no
 // materialized list) and residual-rank theory pruning.
@@ -352,7 +357,7 @@ fn sub_bound3(r: &R3, masks: &Masks, best_so_far: u32, target: u32) -> u32 {
             }
             let f = major_rank(&m[0]).max(major_rank(&m[1])).max(major_rank(&m[2]));
             worst = worst.min(f);
-            if 1 + worst <= best {
+            if worst < best {
                 break;
             }
         }
@@ -423,7 +428,7 @@ fn with_side_first(t: &KT, side: u8) -> KT {
 /// Origin tracking makes the certifying minor extractable: the original rows
 /// selected as pivots I and the pivot columns J satisfy rank(M[I,J]) = rank
 /// (the same elimination restricted to I-rows reproduces the pivots).
-fn rank_wide_minor(rows: &mut Vec<Vec<u64>>, words: usize) -> (usize, Vec<u32>, Vec<u32>) {
+fn rank_wide_minor(rows: &mut [Vec<u64>], words: usize) -> (usize, Vec<u32>, Vec<u32>) {
     let n = rows.len();
     let mut orig: Vec<u32> = (0..n as u32).collect();
     let mut rk = 0usize;
@@ -463,7 +468,7 @@ fn rank_wide_minor(rows: &mut Vec<Vec<u64>>, words: usize) -> (usize, Vec<u32>, 
 /// (built Gray-code incrementally), clearing all k pivots with ONE row-XOR.
 /// ~7x fewer word-ops than the full-Jordan path at koszul sizes; rank-only
 /// (the minor-extracting variant keeps the legacy elimination).
-fn rank_wide(rows: &mut Vec<Vec<u64>>, words: usize) -> usize {
+fn rank_wide(rows: &mut [Vec<u64>], words: usize) -> usize {
     const K: usize = 8;
     let n = rows.len();
     let ncols = words * 64;
@@ -558,7 +563,7 @@ fn rank_wide(rows: &mut Vec<Vec<u64>>, words: usize) -> usize {
     rk
 }
 
-fn rank_wide_legacy(rows: &mut Vec<Vec<u64>>, words: usize) -> usize {
+fn rank_wide_legacy(rows: &mut [Vec<u64>], words: usize) -> usize {
     rank_wide_minor(rows, words).0
 }
 
@@ -619,7 +624,7 @@ fn koszul_rows(t: &KT, p: usize) -> (Vec<Vec<u64>>, usize) {
     };
     let ncols = masks_p.len() * db;
     let nrows = pos_q.iter().filter(|&&x| x >= 0).count() * dc;
-    let words = (ncols + 63) / 64;
+    let words = ncols.div_ceil(64);
     let mut rows = vec![vec![0u64; words]; nrows];
     for (si, &sm) in masks_p.iter().enumerate() {
         for i in 0..da {
@@ -655,7 +660,7 @@ fn koszul_side(t: &KT, p: usize) -> usize {
     // while M4R pays table + scan-reduction costs regardless.
     let rk = rank_wide_legacy(&mut rows, words);
     let denom = binom(da - 1, p);
-    (rk + denom - 1) / denom
+    rk.div_ceil(denom)
 }
 
 // NOTE: koszul_rows still allocates per call; buffer reuse measured second-
@@ -704,7 +709,7 @@ impl Lemma {
     /// u(S') restricted to J, for S' of popcount p+1 (gamma scaling drops:
     /// rows are u(S') where gamma has a 1, zero otherwise).
     fn gen_rows(&self, al: u16, be: u16, out: &mut Vec<Vec<u64>>, masks_p: &[u32], pos_p: &[i32]) {
-        let words = (self.jcols.len() + 63) / 64;
+        let words = self.jcols.len().div_ceil(64);
         let da = 9usize;
         for sp in 0..(1u32 << da) {
             if sp.count_ones() as usize != self.p + 1 {
@@ -743,7 +748,7 @@ impl Lemma {
     /// transferred bound for residual differing from the base by `delta`
     /// products (side-rotated internally)
     fn bound(&self, delta: &[(u16, u16, u16)], masks_p: &[u32], pos_p: &[i32]) -> u32 {
-        let words = (self.jcols.len() + 63) / 64;
+        let words = self.jcols.len().div_ceil(64);
         let mut gens: Vec<Vec<u64>> = Vec::new();
         for &(al, be, ga) in delta {
             let (ra, rb, rg) = self.rotate(al, be, ga);
@@ -755,7 +760,7 @@ impl Lemma {
         let sub = rank_wide(&mut gens, words);
         let d = binom(8, self.p);
         let v = self.v.saturating_sub(sub);
-        ((v + d - 1) / d) as u32
+        v.div_ceil(d) as u32
     }
 }
 
@@ -1207,7 +1212,7 @@ fn strassen_bound3(r: &R3, tries: u32) -> u32 {
                 cmax = cmax.max(m9_rank(&comm));
             }
         }
-        best = best.max(9 + (cmax + 1) / 2);
+        best = best.max(9 + cmax.div_ceil(2));
     }
     best
 }
@@ -1270,7 +1275,7 @@ fn koszul_probe3(r: &R3, masks: &Masks, pmax: usize, target: u32) -> u32 {
                 f = f.max(koszul_bound3(&folded, pmax));
             }
             worst = worst.min(f);
-            if 1 + worst <= best || 1 + worst < target {
+            if worst < best || 1 + worst < target {
                 break; // adversary already spoils the target
             }
         }
@@ -1289,10 +1294,10 @@ fn koszul_probe3(r: &R3, masks: &Masks, pmax: usize, target: u32) -> u32 {
 /// (flatten 0.2us -> strassen 20us -> koszul ~6ms; leaf if any reaches t),
 /// else some (side, last-active-pivot) must have ALL 2^8 folds proving
 /// >= t-1. Non-killer folds terminate at their own floor checks; only
-/// koszul-dropping folds (the killers) recurse, and recursion targets fall
-/// into strassen range within ~2 levels, so depth is self-limiting.
-/// Soundness: substitution lemma at every level, sound leaves — the same
-/// class as the fixed-ply probes, evaluated adversary-directed.
+/// > koszul-dropping folds (the killers) recurse, and recursion targets fall
+/// > into strassen range within ~2 levels, so depth is self-limiting.
+/// > Soundness: substitution lemma at every level, sound leaves — the same
+/// > class as the fixed-ply probes, evaluated adversary-directed.
 fn deep_probe(r: &R3, masks: &Masks, t: u32, depth_left: u32) -> bool {
     if max_flatten3(r) >= t {
         return true;
@@ -2350,7 +2355,7 @@ impl<'a> Pool<'a> {
                 let (side_min, nmin) = (0..3).map(|s| (s, act[s])).min_by_key(|&(_, n)| n).unwrap();
                 if nmin == 3 || nmin == 4 {
                     let mut g = dm.lock().unwrap();
-                    let slot = (4 - nmin) as usize;
+                    let slot = 4 - nmin;
                     let cap = 1500u32;
                     let ok = if kind == "hard" { g.1[slot] < cap } else { g.2[slot] < cap };
                     if ok {
@@ -2358,10 +2363,10 @@ impl<'a> Pool<'a> {
                         let layout = [&r.abc, &r.bca, &r.cab][side_min];
                         let kt = kt_from_abc(layout);
                         let mut s = format!(
-                            "{kind} depth {} target {} folds {} flatten {:?} koszul {kos} slices",
+                            "{kind} depth {} target {} folds side{side_min}:ub{} flatten {:?} koszul {kos} slices",
                             task.folds.n.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("/"),
                             t,
-                            format!("side{side_min}:ub{}", rank_upper_bound(r)),
+                            rank_upper_bound(r),
                             flatten_ranks3(r)
                         );
                         for a in 0..9 {
@@ -2431,6 +2436,7 @@ impl<'a> Pool<'a> {
 }
 
 /// returns (verdict, tasks run, tasks skipped, per-depth report)
+#[allow(clippy::too_many_arguments)] // pool knobs are individually meaningful
 pub fn deep_probe_pool(
     r: &R3,
     masks: &Masks,
@@ -2589,7 +2595,7 @@ impl<'a> Search<'a> {
             return false;
         }
         self.nodes += 1;
-        if self.nodes % (1 << 16) == 0 {
+        if self.nodes.is_multiple_of(1 << 16) {
             if self.start.elapsed().as_secs_f64() > self.cap {
                 self.capped = true;
                 self.shared.capped.store(true, Ordering::Relaxed);
@@ -2609,33 +2615,29 @@ impl<'a> Search<'a> {
         // Strassen commutator: strength ~13 at ~20us — the mid-level pruner
         // (bites when remaining <= 13; below 10 flatten handles, above 13 it
         // cannot reach). Gate-validated on constructed-rank tensors.
-        if self.strassen && (9..=13).contains(&remaining) {
-            if strassen_bound3(r, 8) > remaining {
+        if self.strassen && (9..=13).contains(&remaining)
+            && strassen_bound3(r, 8) > remaining {
                 self.prune_strassen += 1;
                 self.shared.prune_strassen.fetch_add(1, Ordering::Relaxed);
                 return false;
             }
-        }
-        if self.sub_probe && remaining >= self.probe_min_remaining {
-            if sub_bound3(r, self.masks, fr, remaining + 1) > remaining {
+        if self.sub_probe && remaining >= self.probe_min_remaining
+            && sub_bound3(r, self.masks, fr, remaining + 1) > remaining {
                 self.prune_sub += 1;
                 return false;
             }
-        }
-        if self.koszul > 0 && remaining >= self.koszul_min_remaining {
-            if koszul_bound3(r, self.koszul) > remaining {
+        if self.koszul > 0 && remaining >= self.koszul_min_remaining
+            && koszul_bound3(r, self.koszul) > remaining {
                 self.prune_koszul += 1;
                 self.shared.prune_koszul.fetch_add(1, Ordering::Relaxed);
                 return false;
             }
-        }
-        if self.deep_probe > 0 && remaining >= self.koszul_min_remaining {
-            if deep_probe(r, self.masks, remaining + 1, self.deep_probe) {
+        if self.deep_probe > 0 && remaining >= self.koszul_min_remaining
+            && deep_probe(r, self.masks, remaining + 1, self.deep_probe) {
                 self.prune_koszul += 1;
                 self.shared.prune_koszul.fetch_add(1, Ordering::Relaxed);
                 return false;
             }
-        }
         let at_level2 = remaining == self.level2_remaining;
         let mut id = max;
         while id > 0 {
@@ -3192,7 +3194,7 @@ pub fn main() {
                         continue;
                     }
                     let pc = popcount3(&nr.abc);
-                    if best.as_ref().map_or(true, |(bp, _, _)| pc < *bp) {
+                    if best.as_ref().is_none_or(|(bp, _, _)| pc < *bp) {
                         best = Some((pc, (al, be, ga), nr));
                     }
                 }
@@ -3503,7 +3505,7 @@ pub fn main() {
         // other element with v1's pivot clear; fold v1 then v2.
         let rref2 = |a: u16, b: u16| -> (u32, u32) {
             let els = [a, b, a ^ b];
-            let lead = |x: u16| 15 - (x as u16).leading_zeros();
+            let lead = |x: u16| 15 - x.leading_zeros();
             let v1 = *els.iter().max_by_key(|&&x| lead(x)).unwrap();
             let p1 = lead(v1);
             let v2 = *els.iter().find(|&&x| x != v1 && x >> p1 & 1 == 0).unwrap();
@@ -3610,11 +3612,10 @@ pub fn main() {
         let mut grand_leaf = 0u128;
         let mut grand_all = 0u128;
         for (ci, c) in classes.iter().enumerate() {
-            if let Some(f) = &class_filter {
-                if !f.contains(&ci) {
+            if let Some(f) = &class_filter
+                && !f.contains(&ci) {
                     continue;
                 }
-            }
             let t0 = Instant::now();
             let reps = staged_reps(&c.stab, &gl, &inv);
             let (a, b) = c.rep;
@@ -4412,7 +4413,7 @@ pub fn main() {
                         }
                         els.sort();
                         els.dedup();
-                        if best.as_ref().map_or(true, |b| els < *b) { best = Some(els); }
+                        if best.as_ref().is_none_or(|b| els < *b) { best = Some(els); }
                     }
                 }
                 best.unwrap()
@@ -4497,7 +4498,7 @@ pub fn main() {
                             let val = tab3.get(&key).copied();
                             if val.is_none() { missing3.fetch_add(1, Ordering::Relaxed); }
                             out3.lock().unwrap().push_str(&format!("3 {a} {b} {c} {}\n", val.unwrap_or(0)));
-                            if i % 50000 == 0 { eprintln!("  dim3 {i}/{} [{:.0}s]", trips.len(), t0.elapsed().as_secs_f64()); }
+                            if i.is_multiple_of(50000) { eprintln!("  dim3 {i}/{} [{:.0}s]", trips.len(), t0.elapsed().as_secs_f64()); }
                         });
                     }
                 });
@@ -4872,7 +4873,7 @@ pub fn main() {
                     let best = ply2_root(&r3, &masks);
                     *hist_m.lock().unwrap().entry(best).or_insert(0u32) += 1;
                     let d = done.fetch_add(1, Ordering::Relaxed) + 1;
-                    if d % 16 == 0 {
+                    if d.is_multiple_of(16) {
                         eprintln!("  {d}/211 done ({:.0}s)", t0.elapsed().as_secs_f64());
                     }
                 });
@@ -5047,7 +5048,7 @@ pub fn main() {
                 }
             }
             let lem = learn_lemma(&kt1, best_side, 4).unwrap();
-            let fresh1 = (lem.v + 69) / 70;
+            let fresh1 = lem.v.div_ceil(70);
             eprintln!(
                 "root {ri}: rep=({al},{be},{ga}) |stab|={} lemma side {} v={} (koszul1={})",
                 stab.len(),

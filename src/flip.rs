@@ -235,11 +235,11 @@ pub fn merge_if_available(s: &mut Vec<Summand>) -> bool {
 
 /// one guided flip: sample K legal candidates, apply the one with the
 /// best agreement-score delta (Metropolis acceptance for non-improving).
-pub fn guided_flip(s: &mut Vec<Summand>, rng: &mut Rng, k: usize) -> bool {
+pub fn guided_flip(s: &mut [Summand], rng: &mut Rng, k: usize) -> bool {
     let r = s.len();
     let mut best: Option<(i64, usize, usize, usize, usize)> = None;
     for _ in 0..k * 8 {
-        if best.as_ref().map_or(false, |_| false) {
+        if best.as_ref().is_some_and(|_| false) {
             break;
         }
         let slot = rng.below(3);
@@ -267,10 +267,10 @@ pub fn guided_flip(s: &mut Vec<Summand>, rng: &mut Rng, k: usize) -> bool {
         s[j][o2] ^= s[i][o2];
         s[i][o1] ^= s[j][o1];
         let d = after - before;
-        if best.map_or(true, |(bd, ..)| d > bd) {
+        if best.is_none_or(|(bd, ..)| d > bd) {
             best = Some((d, i, j, o1, o2));
         }
-        if best.map_or(false, |(bd, ..)| bd > 0) && rng.f64() < 0.35 {
+        if best.is_some_and(|(bd, ..)| bd > 0) && rng.f64() < 0.35 {
             break; // good enough, keep moving
         }
     }
@@ -362,13 +362,10 @@ fn try_equalize_inner(s: &mut Vec<Summand>, rng: &mut Rng) -> bool {
                 // 1-step
                 if let Some(&(k, t, _)) =
                     adj.iter().find(|&&(_, _, p)| p == d)
-                {
-                    if payload_flip(s, i, k, t, o) {
-                        if merge_if_available(s) || s.len() < r {
+                    && payload_flip(s, i, k, t, o)
+                        && (merge_if_available(s) || s.len() < r) {
                             return true;
                         }
-                    }
-                }
                 // 2-step: payloads p1 ^ p2 == d
                 if adj.len() >= 2 {
                     let mut seen: HashMap<u32, (usize, usize)> =
@@ -463,14 +460,13 @@ where
     let frontier_rank = seed_summands.len().min(cfg.save_at + 4);
 
     std::thread::scope(|scope| {
-        let result: (HashMap<usize, usize>, usize);
+        
         for w in 0..cfg.threads {
             let seed = seed_summands.clone();
             let tx = tx.clone();
             let stop = &stop;
             let stats = &stats;
             let frontier = &frontier;
-            let cfg = cfg;
             scope.spawn(move || {
                 let mut rng =
                     Rng::new(cfg.seed.wrapping_add(w as u64).wrapping_mul(
@@ -481,7 +477,7 @@ where
                 let mut nf = 0u64;
                 let mut deposited = usize::MAX;
                 loop {
-                    if nf % 512 == 0 && stop.load(Ordering::Relaxed) {
+                    if nf.is_multiple_of(512) && stop.load(Ordering::Relaxed) {
                         break;
                     }
                     // rank-adaptive effort: guided descent at the funnel
@@ -633,7 +629,7 @@ where
             }
         }
         stop.store(true, Ordering::Relaxed);
-        result = (counts, min_rank);
+        let result: (HashMap<usize, usize>, usize) = (counts, min_rank);
         result
     })
 }

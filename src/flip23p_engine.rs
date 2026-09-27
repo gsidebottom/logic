@@ -144,7 +144,7 @@ impl Summand {
     }
 }
 
-fn fac<'s>(t: &'s Summand, slot: usize) -> &'s FVec {
+fn fac(t: &Summand, slot: usize) -> &FVec {
     match slot {
         0 => &t.a,
         1 => &t.b,
@@ -175,7 +175,7 @@ fn verify(scheme: &[Summand]) -> bool {
 // ---------- moves ----------
 /// flip on shared slot-`slot` factor of i, j (post-gauge EQUAL there):
 /// transfer slot t1 of i gains lam*f_j; t2 of j loses lam*f_i.
-fn try_flip(scheme: &mut Vec<Summand>, i: usize, j: usize, slot: usize, lam: u64) -> bool {
+fn try_flip(scheme: &mut [Summand], i: usize, j: usize, slot: usize, lam: u64) -> bool {
     if i == j || lam == 0 || fac(&scheme[i], slot) != fac(&scheme[j], slot) {
         return false;
     }
@@ -287,8 +287,8 @@ fn try_reduce(scheme: &mut Vec<Summand>) -> bool {
                 return true;
             }
             // a shared + c proportional -> merge b
-            if sa {
-                if let Some(rho) = prop_ratio(&scheme[j].c, &scheme[i].c) {
+            if sa
+                && let Some(rho) = prop_ratio(&scheme[j].c, &scheme[i].c) {
                     let b = scheme[i].b.add_scaled(&scheme[j].b, rho);
                     let (a, c) = (scheme[i].a.clone(), scheme[i].c.clone());
                     scheme.swap_remove(j);
@@ -301,9 +301,8 @@ fn try_reduce(scheme: &mut Vec<Summand>) -> bool {
                     }
                     return true;
                 }
-            }
-            if sb {
-                if let Some(rho) = prop_ratio(&scheme[j].c, &scheme[i].c) {
+            if sb
+                && let Some(rho) = prop_ratio(&scheme[j].c, &scheme[i].c) {
                     let a = scheme[i].a.add_scaled(&scheme[j].a, rho);
                     let (b, c) = (scheme[i].b.clone(), scheme[i].c.clone());
                     scheme.swap_remove(j);
@@ -316,7 +315,6 @@ fn try_reduce(scheme: &mut Vec<Summand>) -> bool {
                     }
                     return true;
                 }
-            }
         }
     }
     false
@@ -738,7 +736,7 @@ fn rand_gl(next: &mut dyn FnMut() -> u64) -> [[u64; DIM]; DIM] {
                         0 => 0,
                         1 => 1,
                         2 => P - 1,
-                        _ => u64::from(next() & 1),
+                        _ => next() & 1,
                     }
                 };
             }
@@ -1127,7 +1125,7 @@ pub fn run(args: Vec<String>) {
                                 ts.push((u, v, w));
                             }
                             debug_assert!(rr.iter().all(|&e| e == 0));
-                            if best.as_ref().map_or(true, |b| ts.len() < b.len()) {
+                            if best.as_ref().is_none_or(|b| ts.len() < b.len()) {
                                 best = Some(ts);
                             }
                         }
@@ -1261,7 +1259,7 @@ pub fn run(args: Vec<String>) {
                         }
                     }
                 }
-                if done % 100_000 == 0 {
+                if done.is_multiple_of(100_000) {
                     println!(
                         "[{:.0}s] repair: {done}/{total} subsets",
                         t0.elapsed().as_secs_f32()
@@ -1338,7 +1336,7 @@ pub fn run(args: Vec<String>) {
                                 ts.push((u, v, w));
                             }
                             debug_assert!(rr.iter().all(|&e| e == 0));
-                            if finished.as_ref().map_or(true, |f| ts.len() < f.len()) {
+                            if finished.as_ref().is_none_or(|f| ts.len() < f.len()) {
                                 finished = Some(ts);
                             }
                             // fall through: keep improving on this state
@@ -1457,7 +1455,7 @@ pub fn run(args: Vec<String>) {
                                 let mut d = built23.lock().unwrap();
                                 if d.insert(h) {
                                     let nn = d.len();
-                                    if nn <= 2000 || nn % 1000 == 0 {
+                                    if nn <= 2000 || nn.is_multiple_of(1000) {
                                         use std::io::Write;
                                         if let Ok(mut fpool) = std::fs::OpenOptions::new()
                                             .create(true).append(true)
@@ -1518,15 +1516,14 @@ pub fn run(args: Vec<String>) {
             if let Ok(rd) = std::fs::read_dir(pd) {
                 for e in rd.flatten() {
                     let p = e.path();
-                    if p.extension().map_or(true, |x| x != "txt") {
+                    if p.extension().is_none_or(|x| x != "txt") {
                         continue;
                     }
-                    if let Some(sch) = load_dump(p.to_str().unwrap()) {
-                        if verify(&sch) {
+                    if let Some(sch) = load_dump(p.to_str().unwrap())
+                        && verify(&sch) {
                             init.entry(sch.len()).or_default().push(sch);
                             n_ok += 1;
                         }
-                    }
                 }
             }
             if n_ok > 0 {
@@ -1585,12 +1582,11 @@ pub fn run(args: Vec<String>) {
                     let gp = rand_gl(&mut next);
                     let gq = rand_gl(&mut next);
                     let gr = rand_gl(&mut next);
-                    if let Some(sw) = sandwich(&s, &gp, &gq, &gr) {
-                        if verify(&sw) {
+                    if let Some(sw) = sandwich(&s, &gp, &gq, &gr)
+                        && verify(&sw) {
                             s = sw;
                             n_sw.fetch_add(1, Ordering::Relaxed);
                         }
-                    }
                 }
                 let mut can_reduce = true;
                 let mut steps = 0u64;
@@ -1634,7 +1630,7 @@ pub fn run(args: Vec<String>) {
                         bank(&s);
                         continue;
                     }
-                    if steps % qevery == 0 {
+                    if steps.is_multiple_of(qevery) {
                         loop {
                             if try_reduce(&mut s) {
                                 bank(&s);
@@ -1695,7 +1691,7 @@ pub fn run(args: Vec<String>) {
                             1 => P - 1,
                             2 => 2 % P,
                             3 => P - 2 % P,
-                            4 => (P + 1) / 2,
+                            4 => P.div_ceil(2),
                             _ => (P - 1) / 2,
                         }
                     } else {
@@ -1822,7 +1818,7 @@ pub fn run(args: Vec<String>) {
                             1 => P - 1,
                             2 => 2 % P,
                             3 => P - 2 % P,
-                            4 => (P + 1) / 2,     // 1/2 mod odd p
+                            4 => P.div_ceil(2),     // 1/2 mod odd p
                             _ => (P - 1) / 2,     // -1/2 mod odd p
                         }
                     } else {
@@ -1986,7 +1982,7 @@ pub fn run(args: Vec<String>) {
                     let mut d = land23.lock().unwrap();
                     if d.insert(h) {
                         let nn = d.len();
-                        if nn <= 2000 || nn % 1000 == 0 {
+                        if nn <= 2000 || nn.is_multiple_of(1000) {
                             use std::io::Write;
                             if let Ok(mut f) = std::fs::OpenOptions::new()
                                 .create(true)
@@ -2128,7 +2124,7 @@ pub fn run(args: Vec<String>) {
                         let mut d = distinct23.lock().unwrap();
                         if d.insert(h) {
                             let n = d.len();
-                            if n <= 2000 || n % 1000 == 0 {
+                            if n <= 2000 || n.is_multiple_of(1000) {
                                 use std::io::Write;
                                 if let Ok(mut f) = std::fs::OpenOptions::new()
                                     .create(true)
@@ -2142,7 +2138,7 @@ pub fn run(args: Vec<String>) {
                                     writeln!(f, "---").ok();
                                 }
                             }
-                            if n % 500 == 0 {
+                            if n.is_multiple_of(500) {
                                 println!("[{:.0}s] distinct rank-{RANK0} forms (F_p): {}",
                                          t0.elapsed().as_secs_f32(), n);
                             }

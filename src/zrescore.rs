@@ -31,7 +31,10 @@ pub const R: usize = 23;
 /// (va, vb, vg, rhs) monomials grouped per equation; alpha var of
 /// summand m cell (i,l) at m*9+3i+l, beta at NA+m*9+3lp+j, gamma at
 /// NA+NB+m*9+3ip+jp; rhs = delta(l,lp)delta(i,ip)delta(j,jp).
-pub fn brent_equations() -> Vec<(Vec<(usize, usize, usize)>, u8)> {
+/// One Brent equation: (va, vb, vg) monomial triples plus the rhs bit.
+pub type BrentEq = (Vec<(usize, usize, usize)>, u8);
+
+pub fn brent_equations() -> Vec<BrentEq> {
     let mut eqs = Vec::with_capacity(729);
     for i in 0..3 {
         for l in 0..3 {
@@ -62,7 +65,7 @@ pub fn brent_equations() -> Vec<(Vec<(usize, usize, usize)>, u8)> {
 }
 
 /// mod-2 Brent violations of a bit vector (0 = valid scheme).
-pub fn mod2_bad(bits: &[u8], eqs: &[(Vec<(usize, usize, usize)>, u8)]) -> usize {
+pub fn mod2_bad(bits: &[u8], eqs: &[BrentEq]) -> usize {
     eqs.iter()
         .filter(|(mons, rhs)| {
             let s: u8 = mons
@@ -75,7 +78,7 @@ pub fn mod2_bad(bits: &[u8], eqs: &[(Vec<(usize, usize, usize)>, u8)]) -> usize 
 }
 
 /// exact integer Brent violations for signed coefficients in {-1,0,1}.
-pub fn z_bad(coef: &[i32], eqs: &[(Vec<(usize, usize, usize)>, u8)]) -> usize {
+pub fn z_bad(coef: &[i32], eqs: &[BrentEq]) -> usize {
     eqs.iter()
         .filter(|(mons, rhs)| {
             let s: i32 = mons
@@ -96,7 +99,7 @@ pub fn z_bad(coef: &[i32], eqs: &[(Vec<(usize, usize, usize)>, u8)]) -> usize {
 pub fn sign_models(
     bits: &[u8],
     nmodels: usize,
-    eqs: &[(Vec<(usize, usize, usize)>, u8)],
+    eqs: &[BrentEq],
 ) -> Vec<Vec<i32>> {
     let support: Vec<usize> = (0..NV).filter(|&v| bits[v] == 1).collect();
     let svar: HashMap<usize, i32> = support
@@ -554,7 +557,7 @@ pub struct Score {
 /// best (exact A + exact B + greedy C) over sign models.
 pub fn score_bits(
     bits: &[u8],
-    eqs: &[(Vec<(usize, usize, usize)>, u8)],
+    eqs: &[BrentEq],
     nmodels: usize,
     crestarts: u32,
     max_slack: u32,
@@ -598,7 +601,7 @@ pub fn score_bits(
             model: mi,
             exact_sides: ra.exact && rb.exact,
         };
-        if best.as_ref().map_or(true, |b| sc.total < b.total) {
+        if best.as_ref().is_none_or(|b| sc.total < b.total) {
             best = Some(sc);
         }
     }
@@ -825,7 +828,7 @@ pub fn asym_score_model(
             model: mi,
             exact: rb.exact && rc.exact,
         };
-        if best.as_ref().map_or(true, |b| sc.online < b.online) {
+        if best.as_ref().is_none_or(|b| sc.online < b.online) {
             best = Some(sc);
         }
     }
@@ -835,7 +838,7 @@ pub fn asym_score_model(
 /// best asymmetric (free-weight-side) score over sign models.
 pub fn asym_score_bits(
     bits: &[u8],
-    eqs: &[(Vec<(usize, usize, usize)>, u8)],
+    eqs: &[BrentEq],
     nmodels: usize,
     max_slack: u32,
     node_cap: u64,
@@ -844,7 +847,7 @@ pub fn asym_score_bits(
     let mut best: Option<AsymScore> = None;
     for (mi, coef) in models.iter().enumerate() {
         let sc = asym_score_model(coef, mi, max_slack, node_cap);
-        if best.as_ref().map_or(true, |b| sc.online < b.online) {
+        if best.as_ref().is_none_or(|b| sc.online < b.online) {
             best = Some(sc);
         }
     }

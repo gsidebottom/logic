@@ -384,8 +384,7 @@ fn recognise_structure(nvars: usize, clauses: &[Vec<i32>]) -> Result<Structure, 
     while let Some(x) = stack.pop() {
         let sx = side[&x];
         for &y in co.get(&x).map(|s| s.iter().collect::<Vec<_>>()).unwrap_or_default() {
-            if !side.contains_key(&y) { side.insert(y, 1 - sx); stack.push(y); }
-            else if side[&y] == sx { return Err("factor-bit co-occurrence is not bipartite".into()); }
+            if let std::collections::hash_map::Entry::Vacant(e) = side.entry(y) { e.insert(1 - sx); stack.push(y); } else if side[&y] == sx { return Err("factor-bit co-occurrence is not bipartite".into()); }
         }
     }
     if side.len() != inputs.len() { return Err("factor bits do not form one bipartite component".into()); }
@@ -401,9 +400,8 @@ fn recognise_structure(nvars: usize, clauses: &[Vec<i32>]) -> Result<Structure, 
         let ys: Vec<i32> = vs.iter().copied().filter(|&v| is_input(v) && side[&v] == 1).collect();
         if xs.len() != 1 || ys.len() != 1 { continue; }
         let cols: Vec<usize> = vs.iter().filter_map(|&v| col_of.get(&(v as u32)).copied()).collect();
-        if let Some(&cid) = cols.first() {
-            if cols.iter().all(|&c| c == cid) { col_pair.entry((xs[0], ys[0])).or_insert(cid); }
-        }
+        if let Some(&cid) = cols.first()
+            && cols.iter().all(|&c| c == cid) { col_pair.entry((xs[0], ys[0])).or_insert(cid); }
     }
     // the addition table: level sets are the columns; label from an end by induction
     let pairs_in = |cid: usize| -> Vec<(i32, i32)> { col_pair.iter().filter(|(_, c)| **c == cid).map(|(p, _)| *p).collect() };
@@ -464,6 +462,7 @@ fn recognise_structure(nvars: usize, clauses: &[Vec<i32>]) -> Result<Structure, 
     // gate over (x, y, p) with four clauses whose output table is an AND up to
     // polarities; the one input combination with the odd output value is where
     // both arithmetic bits are 1
+    #[allow(clippy::type_complexity)]
     let mut gate: std::collections::HashMap<(i32, i32, i32), Vec<(bool, bool, bool)>> = std::collections::HashMap::new();   // forbidden (x, y, p) values
     for c in clauses {
         if c.len() != 3 { continue; }
@@ -650,6 +649,7 @@ pub fn factoring_tactic(nvars: usize, clauses: &[Vec<i32>], rho_budget: u64) -> 
     // clause of a folded carry) and is left to the model check.  A reading
     // is accepted when at most a few bits of N are left unread.
     struct Reading { orientation: bool, ia: bool, ib: bool }
+    #[allow(clippy::type_complexity)]
     let mut candidates: Vec<(BigUint, Reading, Vec<(usize, i32)>, usize)> = Vec::new();   // N, reading, (weight, pin) of the matched pins, unread bits
     for orientation in [false, true] { for ia in [false, true] { for ib in [false, true] {
         let oriented = |raw: &[bool]| -> Vec<bool> { if orientation { raw.iter().rev().copied().collect() } else { raw.to_vec() } };

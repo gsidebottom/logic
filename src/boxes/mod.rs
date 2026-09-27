@@ -482,7 +482,7 @@ fn cur_footprint_bytes() -> usize {
 
 /// Bytes a `Vec` holds, counting capacity: slack is resident once it has
 /// been written through, and a doubled buffer's slack is the cost.
-fn vec_bytes<T>(v: &[T]) -> usize { v.len() * std::mem::size_of::<T>() }
+fn vec_bytes<T>(v: &[T]) -> usize { std::mem::size_of_val(v) }
 fn vec_cap_bytes<T>(v: &Vec<T>) -> usize { v.capacity() * std::mem::size_of::<T>() }
 /// A `Vec<Vec<T>>`: the outer buffer of 24-byte headers plus every inner
 /// buffer's capacity.  Returns (bytes, inner vecs).
@@ -581,7 +581,7 @@ impl Lists {
         debug_assert!(self.len.iter().all(|&n| n == 0), "layout_exact over non-empty lists");
         debug_assert_eq!(counts.len(), self.n());
         let mut total = 0u64;
-        for l in 0..self.n() { self.start[l] = total as u32; self.cap[l] = counts[l]; total += counts[l] as u64; }
+        for ((st, cp), &cnt) in self.start.iter_mut().zip(self.cap.iter_mut()).zip(counts) { *st = total as u32; *cp = cnt; total += cnt as u64; }
         assert!(total <= u32::MAX as u64, "watch arena exceeds u32 indexing");
         self.data = vec![(0, 0); total as usize];
         self.holes = 0;
@@ -1890,9 +1890,9 @@ impl Engine {
                     if target[..nw].iter().all(|&w| w == 0) { break; }
                     let kb = kb as usize;
                     let mut hit = false;
-                    for w in 0..nw {
-                        let x = target[w] & self.kill_all[kb + w];
-                        if x != 0 { target[w] &= !x; hit = true; }
+                    for (t, &k) in target[..nw].iter_mut().zip(&self.kill_all[kb..]) {
+                        let x = *t & k;
+                        if x != 0 { *t &= !x; hit = true; }
                     }
                     if hit { picked.push((li, kb as u32, class)); }
                 }
@@ -1911,7 +1911,7 @@ impl Engine {
                     let Some((_, ci)) = best else { break };
                     used[ci] = true;
                     let (class, _, _, li, kb) = cands[ci];
-                    for w in 0..nw { target[w] &= !self.kill_all[kb as usize + w]; }
+                    for (t, &k) in target[..nw].iter_mut().zip(&self.kill_all[kb as usize..]) { *t &= !k; }
                     picked.push((li, kb, class));
                 }
             }
@@ -1926,10 +1926,10 @@ impl Engine {
             for i in (0..picked.len()).rev() {
                 if picked[i].2 < 2 { continue; }
                 let mut covered = true;
-                for w in 0..nw {
+                for (w, &o) in orig[..nw].iter().enumerate() {
                     let mut c = 0u64;
                     for (j, p) in picked.iter().enumerate() { if j != i && keep[j] { c |= self.kill_all[p.1 as usize + w]; } }
-                    if c & orig[w] != orig[w] { covered = false; break; }
+                    if c & o != o { covered = false; break; }
                 }
                 if covered { keep[i] = false; self.stats.explanation_dropped += 1; }
             }
@@ -2184,8 +2184,8 @@ impl Engine {
             if self.reason[v as usize] == Reason::None { break; }   // cannot happen with open > 1; be safe
             lits.clear();
             self.reason_lits(v, &mut lits);
-            for i in 0..lits.len() {
-                let u = (lits[i] >> 1) as usize;
+            for &l in &lits {
+                let u = (l >> 1) as usize;
                 let lu = self.level[u];
                 if lu == 0 { continue; }
                 if lu == lvl {
@@ -2520,7 +2520,7 @@ impl Engine {
         // The store was freed above; size it exactly for the survivors so
         // the rebuild does not double its way back up.
         let (mut kept_n, mut kept_lits) = (0usize, 0usize);
-        for i in 0..cls.n() { if alive[i] { kept_n += 1; kept_lits += cls.len[i] as usize; } }
+        for (i, &a) in alive.iter().enumerate() { if a { kept_n += 1; kept_lits += cls.len[i] as usize; } }
         let (lit_cap, cl_cap) = (with_headroom(kept_lits, 1 << 20), with_headroom(kept_n, 1 << 17));
         self.arena.reserve_exact(lit_cap); self.cstart.reserve_exact(cl_cap); self.clen.reserve_exact(cl_cap);
         self.deleted.clear(); self.learnt_lbd.clear(); self.learnt_act.clear(); self.learnt_used.clear();
@@ -2536,8 +2536,8 @@ impl Engine {
         // per-literal list is in the same order as a one-pass rebuild.
         let mut kept = 0u64;
         let mut lits: Vec<Lit> = Vec::new();
-        for i in 0..cls.n() {
-            if !alive[i] { continue; }
+        for (i, &a) in alive.iter().enumerate() {
+            if !a { continue; }
             kept += 1;
             lits.clear();
             lits.extend(cls.get(i).iter().map(|&l| Lit { var: l >> 1, neg: l & 1 == 1 }));
@@ -2790,7 +2790,7 @@ impl Engine {
         let mut cands: Vec<u32> = Vec::new();
         for ci in 0..n {
             let len = self.clen[ci] as usize;
-            if self.deleted[ci] || len < 2 || len > LEN_CAP { continue; }
+            if self.deleted[ci] || !(2..=LEN_CAP).contains(&len) { continue; }
             let st = self.cstart[ci] as usize;
             let mut sg = 0u64;
             let mut vg = 0u64;
@@ -2823,9 +2823,9 @@ impl Engine {
             let l0 = e.arena[e.cstart[ci] as usize];
             e.vals[(l0 >> 1) as usize] != Val::U && e.reason[(l0 >> 1) as usize] == Reason::Clause(ci as u32)
         };
-        for idx in 0..cands.len() {
+        for &ci in &cands {
             if work > budget { break; }
-            let ci = cands[idx] as usize;
+            let ci = ci as usize;
             if self.deleted[ci] { continue; }
             let len = self.clen[ci] as usize;
             let st = self.cstart[ci] as usize;
@@ -2910,7 +2910,7 @@ impl Engine {
         if self.proof.is_some() { if c.is_empty() { if let Some(p) = &mut self.proof { p.empty(); } } else { self.log_learned(&c); } }
         match c.len() {
             0 => self.unsat_at_init = true,
-            1 => { let l = c[0]; if !self.assign(l >> 1, if l & 1 == 1 { Val::F } else { Val::T }, Reason::None) { self.unsat_at_init = true; } else if self.propagate().is_some() { self.unsat_at_init = true; } }
+            1 => { let l = c[0]; if !self.assign(l >> 1, if l & 1 == 1 { Val::F } else { Val::T }, Reason::None) || self.propagate().is_some() { self.unsat_at_init = true; } }
             _ => {
                 let ci = self.cstart.len() as u32;
                 if c.len() == 2 {
@@ -3027,9 +3027,8 @@ impl Engine {
                         self.backjump(0);
                         self.subsume_round();
                         if self.unsat_at_init { return Verdict::Unsat; }
-                        if std::env::var("BOXES_DEBUG_WATCHES").is_ok() && self.propagate().is_none() {
-                            if let Some(v) = self.debug_watch_violation() { panic!("watch invariant broken after a subsumption round: {v}"); }
-                        }
+                        if std::env::var("BOXES_DEBUG_WATCHES").is_ok() && self.propagate().is_none()
+                            && let Some(v) = self.debug_watch_violation() { panic!("watch invariant broken after a subsumption round: {v}"); }
                     }
                     if self.inprocess && !self.chrono && base == 0 && self.stats.conflicts >= self.inprocess_at {
                         self.inprocess_at = self.stats.conflicts + self.inprocess_interval;
@@ -3043,9 +3042,8 @@ impl Engine {
             }
             if self.cancelled { return Verdict::Unknown; }
             if let Some(max) = self.max_decisions && self.stats.decisions >= max { return Verdict::Unknown; }
-            if self.debug_watches && self.stats.decisions % 64 == 0 {
-                if let Some(v) = self.debug_watch_violation() { panic!("watch invariant broken at a decision (conflicts {}): {v}", self.stats.conflicts); }
-            }
+            if self.debug_watches && self.stats.decisions.is_multiple_of(64)
+                && let Some(v) = self.debug_watch_violation() { panic!("watch invariant broken at a decision (conflicts {}): {v}", self.stats.conflicts); }
             if self.stats.decisions & 255 == 0 && let Some(c) = &self.cancel && c.load(std::sync::atomic::Ordering::Relaxed) { return Verdict::Unknown; }
             // assumptions first, one level each
             let lvl = self.decision_level();

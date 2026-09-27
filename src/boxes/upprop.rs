@@ -91,7 +91,7 @@ impl BoxPropagator {
         }
         let (off, nw) = (self.off[b], self.nw[b]);
         let k = self.boxes[b].kill_rows(li, value);
-        for w in 0..nw { self.live[off + w] &= !k[w]; }
+        for (l, &kw) in self.live[off..off + nw].iter_mut().zip(k.iter()) { *l &= !kw; }
         if !self.in_touched[b] { self.in_touched[b] = true; self.touched.push(b as u32); }
     }
 

@@ -389,7 +389,7 @@ impl<Inner: PathSearchController> EffectiveCountWrapper<Inner> {
         self
     }
 
-    fn sync_to_prefix(&mut self, prefix_literals: &Vec<&Lit>) {
+    fn sync_to_prefix(&mut self, prefix_literals: &[&Lit]) {
         // ── Pop branch ──
         // Each pop reverses the count layer's leaf updates AND
         // decrements `pruned_paths_current` by the credit we charged

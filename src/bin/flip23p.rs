@@ -11,6 +11,7 @@
 //! --census, --native, --lams, and --pursue7 (mix-and-quench descent
 //! with closing moves — see the engine header).
 
+#[allow(clippy::needless_range_loop, clippy::type_complexity)] // engine include: index loops mirror the field math
 mod goldilocks {
     pub const DIM: usize = 3;
     pub const RANK0: usize = 23;
@@ -24,6 +25,7 @@ mod goldilocks {
     include!("../flip23p_engine.rs");
 }
 
+#[allow(clippy::needless_range_loop, clippy::type_complexity)]
 mod babybear {
     pub const DIM: usize = 3;
     pub const RANK0: usize = 23;
@@ -37,6 +39,7 @@ mod babybear {
     include!("../flip23p_engine.rs");
 }
 
+#[allow(clippy::needless_range_loop, clippy::type_complexity)]
 mod m31 {
     pub const DIM: usize = 3;
     pub const RANK0: usize = 23;
@@ -50,6 +53,7 @@ mod m31 {
     include!("../flip23p_engine.rs");
 }
 
+#[allow(clippy::needless_range_loop, clippy::type_complexity)]
 mod f2 {
     pub const DIM: usize = 3;
     pub const RANK0: usize = 23;

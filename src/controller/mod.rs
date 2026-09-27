@@ -94,6 +94,10 @@ pub trait PathSearchController {
     ///   non-chronological backjumping when the controller knows that no
     ///   choice in the recent stack frames can resolve the current
     ///   conflict.
+    // &Vec is the trait's established signature; switching it to &[_] for
+    // the style lint would ripple across 8 impls.  (The allow must sit on
+    // the method — parameter-position allows don't reach this lint.)
+    #[allow(clippy::ptr_arg)]
     fn should_continue_on_prefix(
         &mut self,
         prefix_literals: &Vec<&Lit>,

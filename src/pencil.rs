@@ -23,6 +23,11 @@
 //! Matrices are rows of bits (`u16`, column j = bit j), m rows, n columns,
 //! m, n <= 9.  Polynomials over F_2 are `u64` bit masks (bit i = x^i).
 
+// Elimination loops index rows and columns explicitly (pivot swap + XOR
+// on the same matrix); the iterator forms clippy suggests obscure the
+// pivoting, so the style lint is opted out module-wide.
+#![allow(clippy::needless_range_loop)]
+
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
@@ -31,7 +36,7 @@ pub const L_BRUTE_MAX: usize = 4;
 
 // ---------------------------------------------------------------- F_2 linear algebra
 
-fn rank_rows_u128(rows: &mut Vec<u128>) -> usize {
+fn rank_rows_u128(rows: &mut [u128]) -> usize {
     let mut rank = 0;
     let mut bit = 127i32;
     while bit >= 0 && rank < rows.len() {
@@ -212,7 +217,7 @@ fn smith_invariants(mut mat: Vec<Vec<u64>>, m: usize, n: usize) -> Vec<u64> {
             for j in r0..n {
                 if mat[i][j] != 0 {
                     let d = pdeg(mat[i][j]);
-                    if best.map_or(true, |b| d < b.2) {
+                    if best.is_none_or(|b| d < b.2) {
                         best = Some((i, j, d));
                     }
                 }

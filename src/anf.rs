@@ -226,7 +226,7 @@ pub const STRASSEN_BITS: &str =
     "100100111000000111001010010110011000010110100001110000111001001101011010110000011000";
 
 pub fn bits_of(s: &str) -> Vec<u8> {
-    s.bytes().map(|b| (b - b'0') as u8).collect()
+    s.bytes().map(|b| b - b'0').collect()
 }
 
 // ---------------------------------------------------------------- pairing
@@ -533,7 +533,7 @@ fn luby(mut k: u64) -> u64 {
     // standard Luby sequence, 1-indexed
     loop {
         if (k + 1).is_power_of_two() {
-            return (k + 1) / 2;
+            return k.div_ceil(2);
         }
         let p = (u64::BITS - 1 - k.leading_zeros()) as u64; // floor log2
         k -= (1 << p) - 1;
@@ -705,10 +705,10 @@ impl<'a> Sls<'a> {
             let mut tot = 0.0;
             let mut ws = [0.0f64; 128];
             let ncand = self.cands.len().min(128);
-            for ci in 0..ncand {
+            for (ci, slot) in ws[..ncand].iter_mut().enumerate() {
                 let b = self.break_of(self.cands[ci]).min(31);
                 let w = self.pow_cb[b as usize];
-                ws[ci] = w;
+                *slot = w;
                 tot += w;
             }
             let mut x = self.rng.f64() * tot;
@@ -770,7 +770,7 @@ impl<'a> Sls<'a> {
         let mut next_hook = cfg.closure_every;
         let mut hook_k = 0u64;
         loop {
-            if cfg.pert > 0.0 && restart % 2 == 0 && !self.best_bits.is_empty()
+            if cfg.pert > 0.0 && restart.is_multiple_of(2) && !self.best_bits.is_empty()
             {
                 let bb = std::mem::take(&mut self.best_bits);
                 self.bits.copy_from_slice(&bb);
@@ -797,8 +797,8 @@ impl<'a> Sls<'a> {
                 if !self.step(cfg) {
                     return self.unsat.is_empty();
                 }
-                if let Some(h) = hook {
-                    if cfg.closure_every > 0 && self.flips >= next_hook {
+                if let Some(h) = hook
+                    && cfg.closure_every > 0 && self.flips >= next_hook {
                         h(&mut self.bits, &self.frozen, hook_k);
                         hook_k += 1;
                         next_hook = self.flips + cfg.closure_every;
@@ -807,7 +807,6 @@ impl<'a> Sls<'a> {
                             return true;
                         }
                     }
-                }
                 if self.unsat.len() < self.best_n {
                     self.best_n = self.unsat.len();
                     let mut bb = std::mem::take(&mut self.best_bits);
@@ -820,7 +819,7 @@ impl<'a> Sls<'a> {
                 if left == 0 {
                     break;
                 }
-                if self.flips % 4096 == 0
+                if self.flips.is_multiple_of(4096)
                     && (stop.load(Ordering::Relaxed)
                         || t0.elapsed().as_secs_f64() > cfg.max_secs)
                 {
@@ -832,6 +831,9 @@ impl<'a> Sls<'a> {
     }
 }
 
+/// One portfolio outcome; [`solve_portfolio`] documents the fields.
+pub type SlsOutcome = (Option<Vec<u8>>, u64, usize, Vec<u8>);
+
 /// Portfolio: `threads` independent Luby chains (seeds `cfg.seed + i`),
 /// first solution wins.  Returns (solution bits, total flips, best unsat
 /// seen, best-assignment bits across chains — empty when solved).
@@ -841,10 +843,10 @@ pub fn solve_portfolio(
     cfg: &SlsCfg,
     threads: usize,
     hook: Option<Hook>,
-) -> (Option<Vec<u8>>, u64, usize, Vec<u8>) {
+) -> SlsOutcome {
     let stop = AtomicBool::new(false);
     let t0 = Instant::now();
-    let results: Vec<(Option<Vec<u8>>, u64, usize, Vec<u8>)> = (0..threads)
+    let results: Vec<SlsOutcome> = (0..threads)
         .into_par_iter()
         .map(|i| {
             let mut c = *cfg;

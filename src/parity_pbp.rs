@@ -13,8 +13,8 @@
 //!   - a chain of 1-bit full adders introduced by reification (`red`),
 //!     whose pol-derived equalities give  Σx = 2·Σcarries + y'
 //!   - y' = b by brute force: 2^k `rup` leaves + a `pol` resolution tree
-//!   - folds producing   GEQ:  Σx − 2·Σcarries ≥ b
-//!                       LEQ: −Σx + 2·Σcarries ≥ −b
+//!   - folds producing GEQ: Σx − 2·Σcarries ≥ b
+//!     and LEQ: −Σx + 2·Σcarries ≥ −b
 //!
 //! and the closing step: the pol-sum of the GEQs has all-even variable
 //! coefficients but an odd RHS, so divide-by-2 rounds up; multiply by 2 and

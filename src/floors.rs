@@ -363,7 +363,7 @@ pub fn gf2_c_greedy(forms0: &[u64; 9]) -> u32 {
         let mut best: Option<(u64, u32)> = None;
         for &key in &order {
             let k = counts[&key];
-            if best.map_or(true, |(_, bk)| k > bk) {
+            if best.is_none_or(|(_, bk)| k > bk) {
                 best = Some((key, k));
             }
         }
@@ -456,6 +456,7 @@ pub fn side_tables_screened(
         *over += usize::from(!sc.exact);
         sc.adds as u16
     };
+    #[allow(clippy::type_complexity)] // (a, b, c, adds) gate rows
     let rows: Vec<(Vec<u16>, Vec<u16>, Vec<u16>, usize)> = (0..NG)
         .into_par_iter()
         .map(|li| {
@@ -482,9 +483,9 @@ pub fn side_tables_screened(
                     let mut forms = [0u64; 9];
                     for (m, &g) in lc.iter().enumerate() {
                         let gm = mat_mul(g, inv);
-                        for j in 0..9 {
+                        for (j, f) in forms.iter_mut().enumerate() {
                             if gm >> j & 1 == 1 {
-                                forms[j] |= 1 << m;
+                                *f |= 1 << m;
                             }
                         }
                     }

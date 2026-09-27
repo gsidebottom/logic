@@ -20,6 +20,11 @@
 //!
 //! Usage: cse48 [--seconds N] [--dir matmul/dps48] [--threads N]
 
+// Slot and coordinate loops index parallel arrays of the tensor math,
+// and the searches hand back tuple bundles; the iterator and alias
+// rewrites clippy suggests would obscure both.
+#![allow(clippy::needless_range_loop, clippy::type_complexity)]
+
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::Instant;
@@ -365,8 +370,8 @@ fn kernel_prephase(
                 continue;
             }
             let v0 = (0..nv).find(|&v| rc[v] != 0).unwrap();
-            if let Some((_, k)) = dyadic(rc[v0] as i128, ra[v0] as i128) {
-                if (0..nv).all(|v| {
+            if let Some((_, k)) = dyadic(rc[v0] as i128, ra[v0] as i128)
+                && (0..nv).all(|v| {
                     ra[v] == 0 || rc[v] as i128 * ra[v0] as i128 == ra[v] as i128 * rc[v0] as i128
                 }) {
                     if k != 0 {
@@ -376,7 +381,6 @@ fn kernel_prephase(
                     done = true;
                     break;
                 }
-            }
         }
         if done {
             continue;
@@ -885,8 +889,8 @@ fn kernel_plan(
                 continue;
             }
             let v0 = (0..nv).find(|&v| rc[v] != 0).unwrap();
-            if let Some(cc) = dyadic(rc[v0] as i128, ra[v0] as i128) {
-                if (0..nv).all(|v| {
+            if let Some(cc) = dyadic(rc[v0] as i128, ra[v0] as i128)
+                && (0..nv).all(|v| {
                     ra[v] == 0
                         || rc[v] as i128 * ra[v0] as i128
                             == ra[v] as i128 * rc[v0] as i128
@@ -896,7 +900,6 @@ fn kernel_plan(
                     done = true;
                     break;
                 }
-            }
         }
         if done {
             continue;
@@ -1163,13 +1166,12 @@ fn bp_traced(forms: &[Form], nv: usize, rng: &mut Rng) -> Option<(Vec<TOp>, Vec<
                         if r.iter().all(|&x| x == 0) {
                             continue;
                         }
-                        if let Some((bj, c2)) = find(&r, &base, &bh) {
-                            if bj != bi {
+                        if let Some((bj, c2)) = find(&r, &base, &bh)
+                            && bj != bi {
                                 *cands
                                     .entry((bi, bj, e, neg, c2.exp, c2.neg))
                                     .or_insert(0) += 1;
                             }
-                        }
                     }
                 }
             }
@@ -1276,7 +1278,7 @@ fn bp_traced(forms: &[Form], nv: usize, rng: &mut Rng) -> Option<(Vec<TOp>, Vec<
             .iter()
             .zip(deltas.iter())
             .min_by_key(|(_, d)| d.0)
-            .map(|(&t, d)| (t, d.clone()))
+            .map(|(&t, d)| (t, *d))
             .unwrap();
         let (v, i) = (targets[ti].0.clone(), targets[ti].1);
         let (_, wbi, wc) = delta(&v, &base);

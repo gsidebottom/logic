@@ -52,6 +52,12 @@
 //! solver and for inputs where the SmartController's propagation-driven
 //! search wins.
 
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
+
+#![allow(clippy::needless_range_loop)]
+
+#![allow(clippy::doc_lazy_continuation)]
+
 use std::collections::HashSet;
 // `IsTerminal` is needed for the `.is_terminal()` method calls below
 // but rustc occasionally flags it as unused in this edition; the
@@ -67,6 +73,8 @@ use logic::matrix::{
     Lit, NNF, PathClassificationHandle, PathParams, PathsClass, Var,
     CdclController, DynOnClass, SmartController, cdcl_controller_builder, smart_controller_builder,
 };
+use logic::cadical;
+use logic::cnf::Cnf;
 
 // ─── DIMACS parser ─────────────────────────────────────────────────────────
 
@@ -77,10 +85,55 @@ use logic::matrix::{
 /// integers terminated by `0`.  Whitespace (including newlines) inside a
 /// clause is ignored, so a clause may span multiple lines.  Trailing
 /// content with no terminating `0` is silently included as a final clause.
-fn parse_dimacs<R: BufRead>(r: R) -> Result<(usize, Vec<Vec<i32>>), String> {
+/// Bytes the clause list and the engine's copy of it will need, given
+/// `clauses` clauses holding `lits` literals in total.
+///
+/// `Vec<Vec<i32>>` is a heap allocation *per clause*: 24 bytes for the
+/// `Vec` in the outer buffer, plus the allocator's metadata and 16-byte
+/// alignment on the clause's own block — about 40 bytes of overhead
+/// against 12 bytes of payload for a ternary clause.  The engine then
+/// copies the literals into its flat arena, so both representations are
+/// live at once (4 more bytes per literal, 8 per clause for the index).
+///
+/// Measured 2026-09-20 on a 7.5 GB md5-equivalence-checking instance: the
+/// parser grew at 250 MB/s, dead linear, and was still parsing — zero
+/// conflicts — when it passed 8 GB.  Left alone it reached past this
+/// machine's 64 GB and drove it into swap.  This is an estimate rather
+/// than a measurement because it has to be known *before* the memory is
+/// committed, and because `ulimit -v` does nothing on macOS.
+/// This process's peak resident size, in bytes.  Resident undercounts a
+/// footprint the kernel has compressed or swapped — which is exactly how a
+/// 64 GB process read as 8 GB in `ps` — but during a parse nothing has gone
+/// cold yet, so here it tracks the real cost closely and costs a syscall.
+fn peak_rss_bytes() -> u64 {
+    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) } != 0 { return 0; }
+    // macOS reports bytes, Linux kilobytes.
+    if cfg!(target_os = "macos") { ru.ru_maxrss as u64 } else { ru.ru_maxrss as u64 * 1024 }
+}
+
+/// 60 % of physical RAM, or 8 GB if the machine will not say.
+fn default_max_memory() -> u64 {
+    let out = std::process::Command::new("sysctl").args(["-n", "hw.memsize"]).output();
+    match out {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).trim().parse::<u64>()
+            .map(|b| b * 3 / 5).unwrap_or(8_000_000_000),
+        Err(_) => 8_000_000_000,
+    }
+}
+
+fn clause_list_bytes(clauses: usize, lits: usize) -> u64 {
+    // The flat `Cnf` (4 per literal, 4 per clause) plus the engine's arena
+    // copy (4 per literal, 8 per clause of index) that is live beside it.
+    lits as u64 * 8 + clauses as u64 * 12
+}
+
+fn parse_dimacs<R: BufRead>(r: R, max_bytes: u64) -> Result<(usize, Cnf), String> {
     let mut nvars: usize = 0;
-    let mut clauses: Vec<Vec<i32>> = Vec::new();
+    let mut clauses = Cnf::new();
     let mut current: Vec<i32> = Vec::new();
+    let mut lits: usize = 0;
+    let mut check_at: usize = 1 << 20;
 
     for (lineno, line) in r.lines().enumerate() {
         let line = line.map_err(|e| format!("read error at line {}: {}", lineno + 1, e))?;
@@ -96,22 +149,51 @@ fn parse_dimacs<R: BufRead>(r: R) -> Result<(usize, Vec<Vec<i32>>), String> {
             }
             nvars = parts[2].parse()
                 .map_err(|e| format!("bad variable count {:?}: {}", parts[2], e))?;
+            // Reserve from the header so the arrays never double while
+            // parsing -- the doubling was the spike that reached 64 GB.
+            // Over-reserving literals is free: untouched capacity is
+            // address space, not resident memory.
+            if let Ok(m) = parts[3].parse::<usize>() { clauses.reserve(m, 4 * m); }
             continue;
         }
         for tok in trimmed.split_whitespace() {
             let n: i32 = tok.parse().map_err(|e|
                 format!("bad token {:?} at line {}: {}", tok, lineno + 1, e))?;
             if n == 0 {
-                clauses.push(std::mem::take(&mut current));
+                clauses.push(&current);
+                current.clear();
             } else {
                 let abs = n.unsigned_abs() as usize;
                 if abs > nvars { nvars = abs; }
                 current.push(n);
+                lits += 1;
+                // Cheap, and it has to happen while parsing: by the time the
+                // file is read the memory is already committed.
+                if lits >= check_at {
+                    check_at = lits + (1 << 20);
+                    // Two checks, because neither alone is enough.  The
+                    // estimate sees what the clause list *will* cost and can
+                    // stop before it is committed; the measurement catches
+                    // what the estimate cannot model — chiefly the outer
+                    // `Vec`'s doubling, which at 400 M clauses transiently
+                    // needs the old 10 GB buffer and a new 20 GB one at the
+                    // same time.  Calibrated 2026-09-20: at an 8 GB estimate
+                    // the real peak was 4.85 GB, so the estimate leads early
+                    // in a parse and the measurement takes over late.
+                    let need = clause_list_bytes(clauses.len(), lits).max(peak_rss_bytes());
+                    if max_bytes > 0 && need > max_bytes {
+                        return Err(format!(
+                            "input needs about {:.1} GB for the clause list after {} clauses \
+                             and {} literals, over the {:.1} GB --max-memory limit; \
+                             raise it or pass --max-memory 0 to disable",
+                            need as f64 / 1e9, clauses.len(), lits, max_bytes as f64 / 1e9));
+                    }
+                }
             }
         }
     }
     if !current.is_empty() {
-        clauses.push(current);
+        clauses.push(&current);
     }
     Ok((nvars, clauses))
 }
@@ -419,10 +501,10 @@ impl CoverWriter {
         let (pos_pos, neg_pos) = if !na { (&cpp.cover.0, &cpp.cover.1) }
                                  else  { (&cpp.cover.1, &cpp.cover.0) };
         self.positive.entry(va)
-            .or_insert_with(std::collections::HashSet::new)
+            .or_default()
             .insert((pos_pos[0], pos_pos[1]));
         self.negative.entry(va)
-            .or_insert_with(std::collections::HashSet::new)
+            .or_default()
             .insert((neg_pos[0], neg_pos[1]));
         Ok(())
     }
@@ -1624,7 +1706,255 @@ fn spawn_dual_matrix_search(
 /// time.  The Rust binding doesn't expose CaDiCaL's full statistics
 /// counters, so this is the most useful proxy we can render without
 /// extending the bindings.
-fn cadical_search(nvars: usize, clauses: Vec<Vec<i32>>, show_progress: bool) -> SearchOutcome {
+/// Box-matrix engine (`-b boxes`): every clause a table box, DPLL over rows
+/// with table propagation.  See `logic::boxes` and `doc/box_backend_design.md`.
+fn boxes_search(nvars: usize, cnf: &Cnf, boxes_path: Option<&std::path::Path>, timeout_secs: u64,
+                proof_path: Option<&std::path::Path>, source_path: Option<&std::path::Path>) -> SearchOutcome {
+    let t = Instant::now();
+    let mut eng = logic::boxes::Engine::from_cnf_sized(nvars, cnf.len(), cnf.num_lits(), cnf.iter());
+    eng.mem_report("engine built from the parsed clauses");
+    // Proof mode (§4 of the design doc): the refutation is logged as DRAT.
+    // It certifies the clauses handed in plus, with boxes, the clauses they
+    // stand for — check against the concatenation, i.e. the original CNF.
+    if let Some(out) = proof_path {
+        match logic::boxes::proof::Proof::to_file(out) {
+            Ok(p) => eng.set_proof(p),
+            Err(e) => { eprintln!("c ERROR: cannot create proof {}: {}", out.display(), e); std::process::exit(2); }
+        }
+        if let Some(src) = source_path {
+            match std::fs::File::open(src).map_err(|e| e.to_string()).and_then(|f| parse_dimacs(io::BufReader::new(f), default_max_memory())) {
+                Ok((_, cls)) => { eprintln!("c boxes: {} box source clauses from {}", cls.len(), src.display()); eng.set_box_source(&cls.to_vecs()); }
+                Err(e) => { eprintln!("c ERROR: --boxes-source {}: {}", src.display(), e); std::process::exit(2); }
+            }
+        }
+    }
+    // Cooperative timeout a second ahead of the hard watchdog, so the
+    // statistics line is printed on a timeout too.
+    if timeout_secs > 1 {
+        let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        eng.cancel = Some(flag.clone());
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(timeout_secs - 1));
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        });
+    }
+    let mut n_inst = 0usize;
+    // kept for the model self-check below
+    let mut checked_boxes: Vec<logic::boxes::TableBox> = Vec::new();
+    if let Some(path) = boxes_path {
+        match load_box_instances(path) {
+            Ok(boxes) => { n_inst = boxes.len(); checked_boxes = boxes.clone(); for b in boxes { eng.add_box(b); } }
+            Err(e) => { eprintln!("c ERROR: --boxes {}: {}", path.display(), e); std::process::exit(2); }
+        }
+        // explanation-only gate clauses beside the instances (cnf2boxes writes them for cones with visible outputs)
+        let xpath = path.parent().map(|d| d.join("explain.cnf")).unwrap_or_default();
+        if xpath.exists() && !matches!(std::env::var("BOXES_GATE_EXPLAIN").as_deref(), Ok("0") | Ok("off")) {
+            if let Ok(text) = std::fs::read_to_string(&xpath) {
+                for line in text.lines() {
+                    if line.starts_with('p') || line.starts_with('c') || line.trim().is_empty() { continue; }
+                    let lits = line.split_whitespace().filter_map(|t| t.parse::<i32>().ok()).take_while(|&l| l != 0).map(logic::boxes::lit_of_dimacs).collect::<Vec<_>>();
+                    eng.add_explain_clause(&lits);
+                }
+            }
+            eprintln!("c boxes: {} explanation-only gate clauses loaded from {}", eng.nexplain(), xpath.display());
+        }
+    }
+    if !matches!(std::env::var("BOXES_PREPROCESS").as_deref(), Ok("0") | Ok("none") | Ok("off")) {
+        let tp = Instant::now();
+        let ok = eng.simplify();
+        eprintln!("c boxes: preprocessing eliminated {} variables, {} clauses -> {}, {:.3}s{}",
+                  eng.stats.eliminated, eng.stats.clauses_before, eng.stats.clauses_after, tp.elapsed().as_secs_f64(), if ok { "" } else { " (unsatisfiable)" });
+    }
+    let verdict = eng.solve();
+    let s = &eng.stats;
+    eprintln!("c boxes: {} boxes ({} compiled instances), {} decisions, {} propagations, {} conflicts, {:.3}s; {:?} explanations: {} of {:.2} literals ({} dropped); learned {} clauses of {:.1} literals ({:.1} before minimisation{})",
+              eng.nboxes(), n_inst, s.decisions, s.propagations, s.conflicts, t.elapsed().as_secs_f64(),
+              eng.explain, s.explanations, s.explanation_lits as f64 / s.explanations.max(1) as f64, s.explanation_dropped,
+              s.learned, s.learned_lits as f64 / s.learned.max(1) as f64, s.learned_lits_raw as f64 / s.learned.max(1) as f64,
+              if eng.minimize { "" } else { ", off" });
+    eprintln!("c boxes: learned DB {} clauses kept of {} ({} deleted in {} reductions); {} explanation cache hits; {} restarts ({:?}); {} rephases; {} inprocessing rounds: {} variables eliminated, {} clauses vivified (-{} literals)",
+              s.learned - s.deleted, s.learned, s.deleted, s.reductions, s.explanation_hits, s.restarts, eng.restart, s.rephases, s.inprocess_rounds, s.inprocess_eliminated, s.vivified, s.vivified_lits);
+    eprintln!("c boxes: {} subsumption rounds: {} clauses subsumed, {} strengthened ({} literals dropped){}",
+              s.subsume_rounds, s.subsumed, s.strengthened, s.strengthened_lits, if eng.subsume { "" } else { ", off" });
+    eprintln!("c boxes: shrinking: {} of {} level blocks replaced by their UIP, {} literals removed{}",
+              s.shrink_blocks, s.shrink_tried, s.shrunk_lits, if eng.shrink { "" } else { ", off" });
+    eprintln!("c boxes: chronological backtracking: {} chronological backtracks, {} literals kept out of order{}",
+              s.chrono_backtracks, s.chrono_kept, if eng.chrono { format!(" (threshold {} levels)", eng.chrono_levels) } else { ", off".to_string() });
+    if eng.nexplain() > 0 { eprintln!("c boxes: {} table reasons taken from gate clauses", s.explanation_gate); }
+    // Where the search actually fails, and — with BOXES_EFF_STUDY=1 — where
+    // the failing box ranked by live rows when the last decision was made.
+    // The first line alone bounds what a box-guided decision heuristic
+    // (design doc §3.4) could steer; the rest says whether the ranking
+    // carries any signal to steer it with.
+    {
+        let f = &s.eff;
+        let box_pct = 100.0 * f.box_conflicts as f64 / (f.box_conflicts + f.clause_conflicts).max(1) as f64;
+        let orig = f.clause_conflicts - f.clause_conflicts_learned;
+        eprintln!("c boxes: conflicts by source: {} in tables ({:.1}%), {} in original clauses, \
+                   {} in learned clauses (absorbable by no translator)",
+                  f.box_conflicts, box_pct, orig, f.clause_conflicts_learned);
+        // BOXES_EFF_DUMP=<path>: the clauses the search kept failing on, for
+        // `tools/mine_boxes.py` to group into box candidates and score.
+        if let Ok(path) = std::env::var("BOXES_EFF_DUMP") {
+            let top: usize = std::env::var("BOXES_EFF_DUMP_TOP").ok()
+                .and_then(|v| v.parse().ok()).unwrap_or(2000);
+            let dump = eng.eff_clause_dump(top);
+            let mut j = String::with_capacity(64 * dump.len() + 256);
+            j.push_str(&format!("{{\n \"conflicts\": {{\"table\": {}, \"original\": {}, \"learned\": {}}},\n \"clauses\": [\n",
+                                f.box_conflicts, orig, f.clause_conflicts_learned));
+            for (i, c) in dump.iter().enumerate() {
+                let lits: Vec<String> = c.lits.iter().map(|l| l.to_string()).collect();
+                j.push_str(&format!("  {{\"lits\": [{}], \"conflicts\": {}, \"learned\": {}, \"lbd\": {}, \"activity\": {:.6}, \"deleted\": {}}}{}\n",
+                                    lits.join(","), c.conflicts, c.learned, c.lbd, c.activity, c.deleted,
+                                    if i + 1 == dump.len() { "" } else { "," }));
+            }
+            j.push_str(" ],\n \"box_conflicts\": [");
+            let hits = eng.eff_box_hits();
+            for (i, h) in hits.iter().enumerate() {
+                j.push_str(&format!("{}{}", h, if i + 1 == hits.len() { "" } else { "," }));
+            }
+            j.push_str("]\n}\n");
+            match std::fs::write(&path, j) {
+                Ok(()) => eprintln!("c boxes: eff study: wrote {} conflict-carrying clauses to {}", dump.len(), path),
+                Err(e) => eprintln!("c boxes: eff study: could not write {path}: {e}"),
+            }
+        }
+        if let Some((t1, t10, hit, all)) = eng.eff_concentration() {
+            eprintln!("c boxes: eff study: table conflicts concentrate {:.1}% in the busiest 1% of boxes, \
+                       {:.1}% in the busiest 10%; {} of {} boxes ever failed", 100.0 * t1, 100.0 * t10, hit, all);
+        }
+        if f.sampled > 0 {
+            let pct = |x: u64| 100.0 * x as f64 / f.sampled as f64;
+            eprintln!("c boxes: eff study: {} table conflicts ranked ({} at level 0 unranked); \
+                       failing box had {:.1} live rows against a {:.1} mean; \
+                       most constrained {:.1}% of the time, in the ten most constrained {:.1}%",
+                      f.sampled, f.unsampled,
+                      f.conflict_rows as f64 / f.sampled as f64,
+                      f.population_rows / f.sampled as f64,
+                      pct(f.top1), pct(f.top10));
+            let d: Vec<String> = f.deciles.iter().map(|&x| format!("{:.1}", pct(x))).collect();
+            eprintln!("c boxes: eff study: rank deciles by live rows (most constrained first), % of conflicts: {} \
+                       [uniform = 10.0 each, i.e. no signal]", d.join(" "));
+            let df: Vec<String> = f.deciles_frac.iter().map(|&x| format!("{:.1}", pct(x))).collect();
+            eprintln!("c boxes: eff study: rank deciles by fraction of rows live: {} \
+                       (failing box {:.3} alive against a {:.3} mean; most constrained {:.1}%)",
+                      df.join(" "), f.conflict_frac / f.sampled as f64,
+                      f.population_frac / f.sampled as f64, pct(f.top1_frac));
+            eprintln!("c boxes: eff study: failing box started with {:.1} rows against a {:.1} mean table",
+                      f.conflict_nrows as f64 / f.sampled as f64, f.population_nrows / f.sampled as f64);
+        }
+    }
+    if let Some(p) = &mut eng.proof {
+        p.flush();
+        let (steps, dels, lemmas, lsteps) = (p.steps, p.deletions, p.lemmas, p.lemma_steps);
+        let why = p.incomplete.clone();
+        let out = proof_path.expect("a proof exists only when one was asked for");
+        match (&why, verdict == logic::boxes::Verdict::Unsat) {
+            (None, true) => {
+                eprintln!("c boxes: proof-format=drat");
+                eprintln!("c boxes: wrote DRAT proof {} ({} clause additions, {} deletions; {} box lemmas derived in {} steps)",
+                          out.display(), steps, dels, lemmas, lsteps);
+                match source_path {
+                    None => eprintln!("c boxes: the proof certifies the input CNF (drat-trim <input.cnf> {})", out.display()),
+                    Some(src) => eprintln!("c boxes: the proof certifies the input CNF together with {} — check against their concatenation (cat input.cnf {} > original.cnf; drat-trim original.cnf {})",
+                                           src.display(), src.display(), out.display()),
+                }
+            }
+            (Some(w), _) => {
+                let _ = std::fs::remove_file(out);
+                eprintln!("c boxes: proof-format=none");
+                eprintln!("c boxes: UNCERTIFIED — {} ({} steps written and discarded)", w, steps);
+            }
+            (None, false) => { let _ = std::fs::remove_file(out); }
+        }
+    }
+    match verdict {
+        logic::boxes::Verdict::Sat(m) => {
+            // A model that violates the formula is a solver bug, never an answer:
+            // the engine's trail and watch invariants are what make SAT
+            // trustworthy, and they are exactly what search-quality changes
+            // (chronological backtracking above all) put at risk.  Checking
+            // is linear in the formula; a failure refuses to answer.
+            let holds = |l: i32| m.get(l.unsigned_abs() as usize - 1).copied().unwrap_or(false) == (l > 0);
+            if let Some(bad) = cnf.iter().position(|c| !c.iter().any(|&l| holds(l))) {
+                eprintln!("c ERROR: boxes produced a model violating input clause {} {:?} — refusing to answer", bad, cnf.get(bad));
+                std::process::exit(3);
+            }
+            for (i, b) in checked_boxes.iter().enumerate() {
+                if !b.rows.iter().any(|r| r.iter().all(|l| m.get(l.var as usize).copied().unwrap_or(false) == !l.neg)) {
+                    eprintln!("c ERROR: boxes produced a model no row of box instance {} accepts — refusing to answer", i);
+                    std::process::exit(3);
+                }
+            }
+            SearchOutcome::Sat(m)
+        }
+        logic::boxes::Verdict::Unsat    => SearchOutcome::Unsat,
+        logic::boxes::Verdict::Unknown  => {
+            eprintln!("c TIMEOUT after {}s", timeout_secs);
+            std::process::exit(124);
+        }
+    }
+}
+
+/// Load `--boxes` instances: a JSON array of `{"table": "<file>", "args": [dimacs
+/// vars...]}` where each table file (written by `box-compile`) is
+/// `{"vars": [...], "rows": [[1|0|null, ...], ...]}`; `args[i]` is the DIMACS
+/// variable bound to the table's i-th column.
+fn load_box_instances(path: &std::path::Path) -> Result<Vec<logic::boxes::TableBox>, String> {
+    use logic::boxes::compile::Table;
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let insts: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    let mut cache: std::collections::HashMap<String, Table> = Default::default();
+    let mut out = Vec::new();
+    for inst in insts.as_array().ok_or("instances: expected a JSON array")? {
+        // The direct form: the rows themselves, over DIMACS literals (the
+        // web app's `/boxes/export` writes it).
+        if let Some(rows) = inst.get("rows").and_then(|r| r.as_array()) {
+            let mut table_rows: Vec<Vec<logic::matrix::Lit>> = Vec::with_capacity(rows.len());
+            for r in rows {
+                let mut row = Vec::new();
+                for l in r.as_array().ok_or("instance: a row must be an array")? {
+                    let x = l.as_i64().ok_or("instance: a row literal must be an integer")?;
+                    if x == 0 { return Err("instance: 0 is not a literal".into()); }
+                    row.push(logic::matrix::Lit { var: (x.unsigned_abs() - 1) as u32, neg: x < 0 });
+                }
+                table_rows.push(row);
+            }
+            out.push(logic::boxes::TableBox::new(table_rows));
+            continue;
+        }
+        let table = inst["table"].as_str().ok_or("instance: missing \"table\"")?.to_string();
+        let args: Vec<i64> = inst["args"].as_array().ok_or("instance: missing \"args\"")?
+            .iter().map(|v| v.as_i64().unwrap_or(0)).collect();
+        if args.iter().any(|&a| a < 1) { return Err(format!("{table}: args must be DIMACS variables >= 1")); }
+        if !cache.contains_key(&table) {
+            let t = std::fs::read_to_string(dir.join(&table)).map_err(|e| format!("{table}: {e}"))?;
+            let v: serde_json::Value = serde_json::from_str(&t).map_err(|e| format!("{table}: {e}"))?;
+            cache.insert(table.clone(), Table::from_json(&v).map_err(|e| format!("{table}: {e}"))?);
+        }
+        let zero_based: Vec<u32> = args.iter().map(|&a| (a - 1) as u32).collect();
+        out.push(cache[&table].instantiate(&zero_based)?);
+    }
+    Ok(out)
+}
+
+/// `NAME=VALUE` for `--cadical-opt`.  CaDiCaL takes `bool` options as
+/// 0/1, so `true`/`false` are accepted for them.
+fn parse_cadical_opt(s: &str) -> Result<(String, i32), String> {
+    let (name, value) = s.split_once('=').ok_or_else(||
+        format!("--cadical-opt wants NAME=VALUE, got {s:?}"))?;
+    let value = match value {
+        "true" => 1,
+        "false" => 0,
+        v => v.parse().map_err(|e| format!("--cadical-opt {name}: bad value {v:?}: {e}"))?,
+    };
+    Ok((name.to_string(), value))
+}
+
+fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
+                  extra_opts: &[(String, i32)], boxes_path: Option<&std::path::Path>,
+                  freeze_from: Option<&std::path::Path>, boxes_native: bool) -> SearchOutcome {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -1633,6 +1963,20 @@ fn cadical_search(nvars: usize, clauses: Vec<Vec<i32>>, show_progress: bool) -> 
 
     let want_progress = show_progress && io::stderr().is_terminal();
     let start = Instant::now();
+    let opts = extra_opts.to_vec();
+    // `--boxes` with this backend: the tables ride inside CaDiCaL as an
+    // external propagator (IPASIR-UP), the residual CNF as its clauses.
+    let boxes: Vec<logic::boxes::TableBox> = match boxes_path {
+        None => Vec::new(),
+        Some(p) => match load_box_instances(p) { Ok(b) => b, Err(e) => { eprintln!("error: --boxes: {e}"); std::process::exit(2); } },
+    };
+    let frozen: Vec<i32> = match freeze_from {
+        None => Vec::new(),
+        Some(p) => match load_box_instances(p) {
+            Ok(b) => { let mut v: Vec<i32> = b.iter().flat_map(|t| t.vars.iter().map(|&x| x as i32 + 1)).collect(); v.sort_unstable(); v.dedup(); v }
+            Err(e) => { eprintln!("error: --freeze-from: {e}"); std::process::exit(2); }
+        },
+    };
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -1644,6 +1988,45 @@ fn cadical_search(nvars: usize, clauses: Vec<Vec<i32>>, show_progress: bool) -> 
 
         let solver_task = tokio::task::spawn_blocking(move || {
             let mut solver: cadical::Solver<CadicalProgressCallbacks> = cadical::Solver::new();
+            // The vendored release's own defaults, plus whatever
+            // `--cadical-opt` asked for (options have to be set before the
+            // first clause).  Both are printed, because a reference
+            // solver's version *and* configuration are part of every
+            // number it produces — this repo has already published two
+            // "wins" that turned out to be against a different solver than
+            // the one the certification scripts ran.
+            //
+            // Nothing is forced on top of the defaults.  Release 3.0.0 had
+            // `factor` and `preprocesslight` on and is faster than 3.0.1
+            // for it on some instances, but 3.0.1 *with* them on is slower
+            // than 3.0.1 without on four of the six measured
+            // (`doc/data/boxes_cadical_vendored_options_2026-09-18.txt`),
+            // so there is no configuration here that is simply better —
+            // and picking one by hand is how a baseline stops meaning
+            // anything.  `RELEASE_3_0_0_DEFAULTS` names the 3.0.0 set for
+            // anyone who wants to reproduce it.
+            let mut applied: Vec<String> = Vec::new();
+            for (name, value) in opts.iter() {
+                let ok = match name.strip_prefix("limit:") {
+                    Some(l) => solver.limit(l, *value),
+                    None => solver.set_option(name, *value),
+                };
+                if ok {
+                    applied.push(format!("{name}={value}"));
+                } else {
+                    eprintln!("c ERROR: cadical rejected option {name}={value}");
+                    std::process::exit(2);
+                }
+            }
+            if applied.is_empty() {
+                eprintln!("c {} (release defaults)", cadical::solver::signature());
+            } else {
+                eprintln!("c {} ({})", cadical::solver::signature(), applied.join(" "));
+            }
+            // What the standalone binary's parser does from the `p cnf`
+            // line.  Required, not optional, once `--cadical-opt factor=1`
+            // is in play: BVA has to know which indices are ours.
+            solver.reserve(nvars as i32);
             solver.set_callbacks(Some(CadicalProgressCallbacks {
                 cancel: cancel_for_solver,
                 learned: 0,
@@ -1651,18 +2034,68 @@ fn cadical_search(nvars: usize, clauses: Vec<Vec<i32>>, show_progress: bool) -> 
                 last_render: start,
                 show_progress: want_progress,
             }));
-            for clause in &clauses {
+            for clause in cnf.iter() {
                 solver.add_clause(clause.iter().copied());
             }
+            if !frozen.is_empty() {
+                for &v in &frozen { solver.freeze(v); }
+                eprintln!("c cadical: {} variables frozen (the boxes' variables, no boxes)", frozen.len());
+            }
+            if !boxes.is_empty() && boxes_native {
+                let (mut nrows, mut nvars_t) = (0usize, 0usize);
+                for b in &boxes {
+                    let vars: Vec<i32> = b.vars.iter().map(|&v| v as i32 + 1).collect();
+                    let rows: Vec<Vec<i32>> = b.rows.iter().map(|r| r.iter().map(|l| if l.neg { -(l.var as i32 + 1) } else { l.var as i32 + 1 }).collect()).collect();
+                    nrows += rows.len(); nvars_t += vars.len();
+                    solver.add_table(&vars, &rows);
+                }
+                eprintln!("c cadical: {} boxes as native tables ({} rows, {} variable slots)", boxes.len(), nrows, nvars_t);
+            } else if !boxes.is_empty() {
+                let prop = logic::boxes::upprop::BoxPropagator::new(boxes.clone());
+                let observed = prop.observed_vars();
+                solver.connect_propagator(Box::new(prop));
+                for v in &observed { solver.add_observed_var(*v); }
+                eprintln!("c cadical: {} boxes as an external propagator over {} observed variables", boxes.len(), observed.len());
+            }
             let result = solver.solve();
+            eprintln!("c cadical: {} conflicts, {} decisions, {} propagations",
+                      solver.conflicts(), solver.decisions(), solver.propagations());
+            if !boxes.is_empty() && !boxes_native { eprintln!("{}", solver.propagator_report()); }
+            // CaDiCaL counts learned literals at the first UIP, BEFORE
+            // minimisation and shrinking (analyze.cpp: the statistics are
+            // updated as the UIP is pushed); the stored size is that less
+            // what the two removed.
+            let (lc, ll, mn, sh) = (solver.learned_clauses(), solver.learned_literals(), solver.minimized(), solver.shrunken());
+            eprintln!("c cadical: learned {} clauses of {:.1} literals ({:.1} before minimisation: {} minimised, {} shrunken); \
+                       inprocessing: {} clauses vivified, {} subsumed, {} strengthened, {} recently learned eagerly subsumed",
+                      lc, (ll - mn - sh) as f64 / lc.max(1) as f64, ll as f64 / lc.max(1) as f64,
+                      mn, sh, solver.vivified(), solver.subsumed(), solver.strengthened(), solver.eagersub());
             match result {
                 Some(true) => {
-                    // Extract truth values for each variable.  Free
-                    // variables (`solver.value` returns None) default to
-                    // `true` so the output stays a complete assignment.
+                    // Extract truth values for each variable.  CaDiCaL 3
+                    // values declared-but-unused variables by default, so
+                    // the `unwrap_or` is only for indices it never saw.
                     let asgn: Vec<bool> = (1..=nvars).map(|v|
                         solver.value(v as i32).unwrap_or(true)
                     ).collect();
+                    // A model that violates the formula is a solver bug,
+                    // never an answer — the same refusal the boxes backend
+                    // makes.  Linear in the formula, and it is what lets us
+                    // turn options like `factor` (which adds variables and
+                    // reconstructs their values) on without taking the
+                    // solver's word for the result.
+                    let holds = |l: i32| asgn.get(l.unsigned_abs() as usize - 1).copied().unwrap_or(false) == (l > 0);
+                    if let Some(bad) = cnf.iter().position(|c| !c.iter().any(|&l| holds(l))) {
+                        eprintln!("c ERROR: cadical produced a model violating input clause {} {:?} — refusing to answer",
+                                  bad, cnf.get(bad));
+                        std::process::exit(3);
+                    }
+                    for (i, b) in boxes.iter().enumerate() {
+                        if !b.rows.iter().any(|r| r.iter().all(|l| asgn.get(l.var as usize).copied().unwrap_or(false) == !l.neg)) {
+                            eprintln!("c ERROR: cadical produced a model no row of box instance {} accepts — refusing to answer", i);
+                            std::process::exit(3);
+                        }
+                    }
                     SolverResult::Sat(asgn)
                 }
                 Some(false) => SolverResult::Unsat,
@@ -1717,7 +2150,11 @@ struct CadicalProgressCallbacks {
 }
 
 impl cadical::Callbacks for CadicalProgressCallbacks {
-    fn max_length(&self) -> i32 { i32::MAX }
+    /// Only the progress line counts learned clauses, so with progress off
+    /// we decline them: a disconnected learner keeps CaDiCaL's clause-export
+    /// path out of the conflict loop, which is what makes `-b cadical` a
+    /// fair proxy for the standalone solver in benchmarks.
+    fn max_length(&self) -> i32 { if self.show_progress { i32::MAX } else { 0 } }
 
     fn learn(&mut self, _clause: &[i32]) {
         self.learned = self.learned.saturating_add(1);
@@ -2179,6 +2616,11 @@ fn write_v_line<W: io::Write>(w: &mut W, asgn: &[bool]) -> io::Result<()> {
 enum BackendChoice {
     Matrix(MatrixBackend),
     Cadical,
+    /// Box-matrix engine (`doc/box_backend_design.md`): DPLL over table-box
+    /// rows with table propagation.  In M1 every clause is a box; compiled
+    /// boxes plug in alongside (M1c).  Verdict only — certification goes
+    /// through the primitive cover of the expanded CNF (phase 1).
+    Boxes,
     /// Verified portfolio: first try the standalone Cook PB-prover (a
     /// structure pattern-match → polynomial VeriPB PB proof for PHP /
     /// RoundRobin / MVRoundRobin / clique-coloring / mutilated-chessboard),
@@ -2189,15 +2631,20 @@ enum BackendChoice {
     /// announced as `c pb-cadical: proof-format=pbp|lrat`).  Short-circuits
     /// before the matrix search.
     PbCadical,
-    /// Hydra: the structure-dispatch portfolio — pb-cadical plus an
-    /// XOR/parity stage between the Cook prover and CaDiCaL.  Stages:
-    /// (1) Cook shape → polynomial VeriPB PB proof; (2) XOR recovery +
-    /// GF(2) Gaussian elimination → decides pure-parity formulas outright
-    /// (SAT with a checkable witness; UNSAT currently uncertified) and
-    /// simplifies mixed formulas via GE-forced units; (3) residual →
-    /// CaDiCaL with native LRAT (cake_lpr-checkable).  Every stage's
-    /// verdict is sound; certificates per stage (`proof-format=pbp|lrat|
-    /// none`).
+    /// Hydra: the structure-dispatch portfolio — pb-cadical plus the
+    /// factoring and XOR/parity stages between the Cook prover and
+    /// CaDiCaL.  Stages: (1) Cook shape → polynomial VeriPB PB proof;
+    /// (2) factoring (`logic::factoring`): a multiplier circuit with its
+    /// product pinned to N is recognised, N factored numerically and the
+    /// model rebuilt by propagation (SAT with the model as witness; a
+    /// number with no fitting factor pair is a numeric UNSAT that only
+    /// annotates the run — the proof comes from a later stage); (3) XOR
+    /// recovery + GF(2) Gaussian elimination → decides pure-parity
+    /// formulas outright (SAT with a checkable witness; UNSAT currently
+    /// uncertified) and simplifies mixed formulas via GE-forced units;
+    /// (4) residual → CaDiCaL with native LRAT (cake_lpr-checkable).
+    /// Every stage's verdict is sound; certificates per stage
+    /// (`proof-format=pbp|witness|lrat|none`).
     Hydra,
     /// Hydra plus the symmetry-breaking stage (`logic::symbreak`)
     /// between the Cook/XOR preprocessing and the CaDiCaL handoff.
@@ -2216,6 +2663,14 @@ enum BackendChoice {
     /// dsr-trim (in-container) verifies the COMPOSED proof against the
     /// ORIGINAL formula — certified UNSAT even when symmetries fired.
     HydraSatsuma,
+    /// Hydra's structure stages (Cook shape, factoring, XOR/parity) with
+    /// the box-matrix engine as the fall-through instead of CaDiCaL: a
+    /// verdict from a stage is printed as for `hydra` (SAT models are
+    /// witnesses; a numeric factoring UNSAT is not a verdict and only
+    /// annotates the run), otherwise the formula — GE-simplified when the
+    /// XOR stage forced units — goes to `boxes_search` exactly as the
+    /// `boxes` backend would run it.
+    HydraBox,
     /// Bare satsuma-iter+kissat (the SAT Competition 2026 main-track
     /// winner) with NO hydra preprocessing — no Cook shapes, no XOR/GE:
     /// the raw formula goes straight to the Docker pipeline. The
@@ -2229,10 +2684,12 @@ impl BackendChoice {
         match self {
             BackendChoice::Matrix(m) => m.name(),
             BackendChoice::Cadical   => "cadical",
+            BackendChoice::Boxes     => "boxes",
             BackendChoice::PbCadical => "pb-cadical",
             BackendChoice::Hydra     => "hydra",
             BackendChoice::HydraSymBreak => "hydra_sym_break",
             BackendChoice::HydraSatsuma  => "hydra_satsuma",
+            BackendChoice::HydraBox      => "hydra_box",
             BackendChoice::Satsuma       => "satsuma",
         }
     }
@@ -2250,6 +2707,7 @@ impl BackendChoice {
     /// trusted backend before trusting any UNSAT.
     fn parse(s: &str) -> Result<Self, String> {
         match s {
+            "boxes"      | "matrix.boxes"  => Ok(BackendChoice::Boxes),
             "smart"      | "matrix.smart"  => Ok(BackendChoice::Matrix(MatrixBackend::Smart)),
             "cdcl"       | "matrix.cdcl"   => Ok(BackendChoice::Matrix(MatrixBackend::Cdcl)),
             "eff"        | "matrix.eff"    => Ok(BackendChoice::Matrix(MatrixBackend::Eff)),
@@ -2274,11 +2732,13 @@ impl BackendChoice {
                          | "hydrasymbreak"  => Ok(BackendChoice::HydraSymBreak),
             "hydra_satsuma" | "hydra-satsuma"
                          | "hydrasatsuma"   => Ok(BackendChoice::HydraSatsuma),
+            "hydra_box" | "hydra-box"
+                         | "hydrabox"       => Ok(BackendChoice::HydraBox),
             "satsuma"                      => Ok(BackendChoice::Satsuma),
             _ => Err(format!(
                 "unknown backend {:?}; expected one of: smart, cdcl, eff, eff_cover, effb, \
                  greedy_cdcl, greedy_eff, greedy_effb, basic_eff, basic_effb, cadical, \
-                 pb-cadical, hydra, hydra_sym_break, hydra_satsuma, satsuma", s
+                 pb-cadical, hydra, hydra_sym_break, hydra_satsuma, hydra_box, satsuma", s
             )),
         }
     }
@@ -2288,6 +2748,22 @@ impl BackendChoice {
 struct Args {
     show_progress: bool,
     backend:       BackendChoice,
+    /// `-b boxes` only: compiled box instances (JSON written by `box-compile`;
+    /// see doc/box_backend_design.md §5).
+    boxes:         Option<std::path::PathBuf>,
+    /// `-b cadical --freeze-from boxes.json`: freeze every variable of these
+    /// boxes without adding them -- the cost of frozen variables alone.
+    freeze_from:   Option<std::path::PathBuf>,
+    /// `-b cadical --boxes ... --boxes-native`: the tables propagated inside
+    /// CaDiCaL's own loop (Solver::add_table) instead of as an external
+    /// propagator.
+    boxes_native:  bool,
+    /// `-b boxes --proof` only: the clauses the boxes stand for in the
+    /// original formula (`cnf2boxes.py` writes them as `absorbed.cnf`).
+    /// Every box propagation is derived from these, so the DRAT proof
+    /// certifies the ORIGINAL formula — residual plus absorbed — not the
+    /// residual the engine was handed.
+    boxes_source:  Option<std::path::PathBuf>,
     /// Hard wall-clock limit in seconds.  When the search runs longer
     /// than this, the binary prints `c TIMEOUT after Ns` and exits
     /// with status 124 (the GNU `timeout` exit code for "command
@@ -2341,6 +2817,10 @@ struct Args {
     /// Run the Cook PB-prover shape detector (hydra/pb-cadical). Default
     /// `true`; `--no-cook` disables it (isolates later stages for A/B).
     cook: bool,
+    /// Run the factoring stage (hydra variants): recognise a multiplier
+    /// circuit with a pinned product and factor the number numerically.
+    /// Default `true`; `--no-factoring` disables it.
+    factoring: bool,
     /// Skip the XOR-GE pass when the input has more than this many
     /// clauses (0 = no cap).  Like `preprocess_max_clauses`, this guards
     /// against the recovery pass — which groups every clause by its
@@ -2388,6 +2868,19 @@ struct Args {
     /// as `c pb-cadical: proof-format=pbp|lrat`.  Optional: without it,
     /// `pb-cadical` still solves and prints the verdict but writes no proof.
     proof: Option<std::path::PathBuf>,
+    /// Abort rather than let the clause list exhaust the machine, in
+    /// bytes; 0 disables.  Defaults to 60 % of physical RAM — enough for
+    /// any instance this solver can actually search, and short of the
+    /// point where the kernel starts compressing and swapping, which is
+    /// where a run stops being slow and starts taking the machine with it.
+    max_memory: u64,
+    /// CaDiCaL options for the `cadical` backend, `NAME=VALUE`, in
+    /// command-line order, on top of the vendored release's own defaults.
+    /// For ablating the reference solver, which is how a gap to it gets
+    /// attributed to a technique, and for reproducing another release's
+    /// configuration
+    /// ([`logic::cadical::solver::RELEASE_3_0_0_DEFAULTS`]).
+    cadical_opts: Vec<(String, i32)>,
     /// CDCL engine for the pb-cadical / hydra final stage: "cadical"
     /// (default; native LRAT) or "kissat" (binary DRAT, elaborated to LRAT
     /// via `drat-trim -L` when a proof is requested).
@@ -2438,6 +2931,8 @@ const DEFAULT_PREPROCESS_MAX_CLAUSES: usize = 250_000;
 
 fn parse_args() -> Result<Args, String> {
     let mut a = Args {
+        boxes: None, freeze_from: None, boxes_native: false,
+        boxes_source: None,
         show_progress: false,
         backend: BackendChoice::Matrix(MatrixBackend::Eff),
         timeout_secs: DEFAULT_TIMEOUT_SECS,
@@ -2448,6 +2943,9 @@ fn parse_args() -> Result<Args, String> {
         satsuma_verify_secs: None,
         satsuma_mem_gb: 0,
         cook: true,
+        factoring: true,
+        max_memory: default_max_memory(),
+        cadical_opts: Vec::new(),
         xor_gauss_max_clauses: 1_000_000,
         emit_cover: None,
         emit_drat: None,
@@ -2468,6 +2966,19 @@ fn parse_args() -> Result<Args, String> {
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--progress" | "-p" => a.show_progress = true,
+            "--boxes" => {
+                let v = iter.next().ok_or_else(|| "--boxes requires a path".to_string())?;
+                a.boxes = Some(std::path::PathBuf::from(v));
+            }
+            "--freeze-from" => {
+                let v = iter.next().ok_or_else(|| "--freeze-from requires a path".to_string())?;
+                a.freeze_from = Some(std::path::PathBuf::from(v));
+            }
+            "--boxes-native" => { a.boxes_native = true; }
+            "--boxes-source" => {
+                let v = iter.next().ok_or_else(|| "--boxes-source requires a path".to_string())?;
+                a.boxes_source = Some(std::path::PathBuf::from(v));
+            }
             // Unified backend selector — preferred form.
             "--backend"  | "-b" => {
                 let v = iter.next().ok_or_else(||
@@ -2534,6 +3045,8 @@ fn parse_args() -> Result<Args, String> {
             "--no-symbreak"     => { a.symbreak = Some(false); }
             "--cook"            => { a.cook = true;  }
             "--no-cook"         => { a.cook = false; }
+            "--factoring"       => { a.factoring = true; }
+            "--no-factoring"    => { a.factoring = false; }
             "--satsuma-verify-secs" => {
                 let v = iter.next().ok_or_else(||
                     "--satsuma-verify-secs requires a value (seconds; 0 = unlimited)".to_string())?;
@@ -2611,6 +3124,30 @@ fn parse_args() -> Result<Args, String> {
             }
             s if s.starts_with("--emit-cook-pbp=") => {
                 a.emit_cook_pbp = Some(s["--emit-cook-pbp=".len()..].to_string().into());
+            }
+            "--max-memory" => {
+                let v = iter.next().ok_or_else(|| "--max-memory requires a size in GB".to_string())?;
+                a.max_memory = (v.parse::<f64>().map_err(|_| format!("--max-memory: bad size {v:?}"))?
+                                * 1e9) as u64;
+            }
+            s if s.starts_with("--max-memory=") => {
+                let v = &s["--max-memory=".len()..];
+                a.max_memory = (v.parse::<f64>().map_err(|_| format!("--max-memory: bad size {v:?}"))?
+                                * 1e9) as u64;
+            }
+            "--cadical-limit" => {
+                let v = iter.next().ok_or_else(||
+                    "--cadical-limit requires NAME=VALUE (conflicts, decisions, preprocessing, localsearch)".to_string())?;
+                let (name, value) = parse_cadical_opt(&v)?;
+                a.cadical_opts.push((format!("limit:{name}"), value));
+            }
+            "--cadical-opt" => {
+                let v = iter.next().ok_or_else(||
+                    "--cadical-opt requires NAME=VALUE".to_string())?;
+                a.cadical_opts.push(parse_cadical_opt(&v)?);
+            }
+            s if s.starts_with("--cadical-opt=") => {
+                a.cadical_opts.push(parse_cadical_opt(&s["--cadical-opt=".len()..])?);
             }
             "--proof" => {
                 let v = iter.next().ok_or_else(||
@@ -2693,11 +3230,23 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                      pb-cadical   — verified portfolio: Cook PB-prover");
                 eprintln!("                                     for structured shapes, else CaDiCaL");
                 eprintln!("                                     (--lrat); every proof machine-checkable");
-                eprintln!("  --proof FILE      Proof output for pb-cadical (UNSAT verdicts).");
+                eprintln!("  --boxes-source FILE  `-b boxes --proof` only: the clauses the boxes stand
+                    for (cnf2boxes.py writes them as absorbed.cnf; the
+                    original CNF also works).  Every box propagation is
+                    derived from these, so the DRAT proof certifies the
+                    input CNF together with this file.
+  --proof FILE      Proof output for pb-cadical (UNSAT verdicts).");
                 eprintln!("                    Cook path: VeriPB pbp (veripb <cnf> FILE);");
                 eprintln!("                    CaDiCaL path: LRAT (cake_lpr <cnf> FILE);");
                 eprintln!("                    kissat path: GRAT (gratchk unsat <cnf> FILE).");
                 eprintln!("                    The format is on stderr: c pb-cadical: proof-format=…");
+                eprintln!("  --max-memory GB  Abort if the clause list would exceed this (default 60%");
+                eprintln!("                    of RAM, 0 disables).  A 7.5 GB CNF needs tens of GB as");
+                eprintln!("                    Vec<Vec<i32>> and will otherwise swap the machine.");
+                eprintln!("  --cadical-opt N=V CaDiCaL option for the cadical backend, repeatable.");
+                eprintln!("                    The backend otherwise runs the vendored 3.0.1's own");
+                eprintln!("                    defaults; release 3.0.0's stronger preprocessing is");
+                eprintln!("                    --cadical-opt factor=1 --cadical-opt preprocesslight=1.");
                 eprintln!("  --engine NAME     CDCL engine for pb-cadical/hydra: cadical (default,");
                 eprintln!("                    native LRAT), kissat (binary DRAT, elaborated to GRAT");
                 eprintln!("                    via gratgen and checked by gratchk), or portfolio[:pct]");
@@ -2794,14 +3343,32 @@ fn main() {
 
     // Parse stdin (buffered) into a clause set.
     let stdin = io::stdin();
-    let (nvars, mut clauses) = match parse_dimacs(stdin.lock()) {
+    let (nvars, parsed) = match parse_dimacs(stdin.lock(), args.max_memory) {
         Ok(x) => x,
         Err(e) => {
             eprintln!("c parse error: {}", e);
             std::process::exit(1);
         }
     };
-    eprintln!("c parsed {} variables, {} clauses", nvars, clauses.len());
+    eprintln!("c parsed {} variables, {} clauses", nvars, parsed.len());
+    if matches!(std::env::var("BOXES_MEM_REPORT").as_deref(), Ok("1") | Ok("on")) {
+        eprintln!("c boxes: mem [parsed]: peak RSS {:.0} MB (the flat clause list: {:.0} MB)",
+                  peak_rss_bytes() as f64 / 1e6, (parsed.num_lits() * 4 + parsed.len() * 4) as f64 / 1e6);
+    }
+    // Two facts every backend needs, taken once here so neither form of
+    // the clause list has to be consulted for them later.
+    let has_empty_clause = parsed.iter().any(|c| c.is_empty());
+    let no_clauses = parsed.is_empty();
+    // The flat form is the one that scales.  The structural stages below
+    // (hydra, cook, xor-gauss, the matrix preprocessing) are written
+    // against `Vec<Vec<i32>>` and run only for the backends that use them,
+    // so on the two backends that take large instances the per-clause form
+    // is never built -- 40 bytes of container per clause, and a doubling
+    // outer buffer, that the parser used to hand every backend.
+    let flat = args.emit_cook_pbp.is_none()
+        && matches!(args.backend, BackendChoice::Boxes | BackendChoice::Cadical);
+    let mut clauses: Vec<Vec<i32>> = if flat { Vec::new() } else { parsed.to_vecs() };
+    let cnf: Cnf = if flat { parsed } else { drop(parsed); Cnf::new() };
 
     // Neural warm-start (--initial-phases): load the predicted per-variable
     // phase seed once and stash it for the cdcl/eff controller builders.
@@ -2872,7 +3439,10 @@ fn main() {
     // shell out to the CaDiCaL binary with --veripb so its proof is also
     // VeriPB-checkable.  Either way a solved instance carries a verifiable
     // certificate.  Short-circuits before the matrix search.
-    if matches!(args.backend, BackendChoice::PbCadical | BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma | BackendChoice::Satsuma) {
+    // XOR-GE forced constants overlaid on the final model (set by the XOR
+    // stage of hydra_box or of the matrix backends below).
+    let mut xor_forced: Option<Vec<Option<bool>>> = None;
+    if matches!(args.backend, BackendChoice::PbCadical | BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma | BackendChoice::HydraBox | BackendChoice::Satsuma) { 'hydra: {
         use logic::cook_pbp::{detect_shape, emit_proof, CnfShape};
         use std::io::Write as _;
         let bk = args.backend.name();
@@ -2963,10 +3533,46 @@ fn main() {
             println!("s UNSATISFIABLE");
             return;
         }
+        // Factoring stage (`logic::factoring`): a multiplier circuit with its
+        // product pinned to N is solved numerically — recognise the circuit,
+        // read N off the pins, factor N (Pollard–Brent) and rebuild the model
+        // by propagation through the full CNF.  SAT is self-certifying (the
+        // model); a number with no factor pair of the circuit's widths is a
+        // numeric UNSAT that is NOT a proof — the instance goes on to the
+        // proof-producing stages with the verdict only annotated.
+        let hydra_stages = matches!(args.backend, BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma | BackendChoice::HydraBox);
+        if hydra_stages && args.factoring && clauses.len() <= 5_000_000 {
+            use logic::factoring::{factoring_tactic, Tactic};
+            let t_f = Instant::now();
+            match factoring_tactic(nvars, &clauses, 20_000_000) {
+                Tactic::Sat { model, info } => {
+                    eprintln!("c {}: prover=factoring", bk);
+                    eprintln!("c {}: proof-format=witness", bk);
+                    eprintln!("c {}: {} — factored numerically ({:.1}ms); the model is the certificate",
+                              bk, info.describe(), t_f.elapsed().as_secs_f64() * 1000.0);
+                    if let Some(out) = args.proof.as_ref() { let _ = std::fs::remove_file(out); }
+                    verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
+                    eprintln!("c SAT in {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
+                    println!("s SATISFIABLE");
+                    let stdout = io::stdout();
+                    let mut w = stdout.lock();
+                    write_v_line(&mut w, &model).unwrap();
+                    return;
+                }
+                Tactic::NoFactorPair { info } => {
+                    eprintln!("c {}: factoring stage: {} has no factor pair of the circuit's widths — numeric UNSAT, uncertified ({:.1}ms); continuing for a proof",
+                              bk, info.describe(), t_f.elapsed().as_secs_f64() * 1000.0);
+                    eprintln!("c {}: factoring-verdict=unsat", bk);
+                }
+                Tactic::NotRecognised(why) => {
+                    eprintln!("c {}: factoring stage: not a multiplier ({}, {:.1}ms)", bk, why, t_f.elapsed().as_secs_f64() * 1000.0);
+                }
+            }
+        }
         // No structural shape.  Hydra inserts the XOR/parity stage here;
         // pb-cadical goes straight to CaDiCaL.
         let mut xor_simplified: Option<(Vec<Vec<i32>>, Vec<Option<bool>>)> = None;
-        if matches!(args.backend, BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma) && clauses.len() <= 5_000_000 {
+        if hydra_stages && clauses.len() <= 5_000_000 {
             use logic::xor_gauss::{solve_xor_system, XorGaussResult};
             let t_x = Instant::now();
             eprintln!("c {}: structure analysis (xor stage)…", bk);
@@ -2990,8 +3596,8 @@ fn main() {
                         // A BCP refutation has the simplest certificate of
                         // all: VeriPB unit-propagates the formula to the
                         // conflict, so the whole proof is one `rup >= 1`.
-                        if let Some(out) = args.proof.as_ref() {
-                            if let Ok(f) = std::fs::File::create(out) {
+                        if let Some(out) = args.proof.as_ref()
+                            && let Ok(f) = std::fs::File::create(out) {
                                 let mut w = io::BufWriter::new(f);
                                 let ok = writeln!(w, "pseudo-Boolean proof version 3.0")
                                     .and_then(|_| writeln!(w, "f {};", clauses.len()))
@@ -3006,7 +3612,6 @@ fn main() {
                                               out.display());
                                 }
                             }
-                        }
                     }
                     if let (false, Some(out)) = (certified, args.proof.as_ref()) {
                         use logic::parity_pbp::{detect_parity_refutation, emit_parity_proof};
@@ -3085,6 +3690,22 @@ fn main() {
                     }
                 }
             }
+        }
+        if matches!(args.backend, BackendChoice::HydraBox) {
+            // hydra_box: no verdict from the structure stages — the box engine
+            // below searches the formula (GE-simplified when the XOR stage
+            // forced units; the final model overlays the forced values).
+            // Certified mode keeps the original instead: the engine's DRAT
+            // proof certifies the formula it was handed, and a refutation of
+            // the residual does not certify the original (the same trade the
+            // CaDiCaL fall-through makes above).
+            if args.proof.is_some() && xor_simplified.is_some() {
+                eprintln!("c {}: xor stage: GE simplification ignored in certified mode", bk);
+                xor_simplified = None;
+            }
+            if let Some((simp, forced)) = xor_simplified.take() { clauses = simp; xor_forced = Some(forced); }
+            eprintln!("c {}: no structure verdict -> boxes engine ({:.1}ms)", bk, t0.elapsed().as_secs_f64() * 1000.0);
+            break 'hydra;
         }
         let solve_clauses: &[Vec<i32>] =
             xor_simplified.as_ref().map(|(s, _)| s.as_slice()).unwrap_or(&clauses);
@@ -3195,9 +3816,9 @@ fn main() {
             if let Ok(entries) = std::fs::read_dir("/tmp") {
                 for e in entries.flatten() {
                     let name = e.file_name().to_string_lossy().into_owned();
-                    if let Some(pid_s) = name.strip_prefix("pbsatsuma-") {
-                        if let Ok(pid) = pid_s.parse::<u32>() {
-                            if pid != std::process::id() {
+                    if let Some(pid_s) = name.strip_prefix("pbsatsuma-")
+                        && let Ok(pid) = pid_s.parse::<u32>()
+                            && pid != std::process::id() {
                                 let alive = std::process::Command::new("kill")
                                     .args(["-0", &pid.to_string()])
                                     .output()
@@ -3209,8 +3830,6 @@ fn main() {
                                     cleanup_satsuma_dir(&e.path());
                                 }
                             }
-                        }
-                    }
                 }
             }
             // Mount dir under /tmp: Docker Desktop's default file sharing
@@ -3323,9 +3942,8 @@ fn main() {
                     if v == "SATISFIABLE" || v == "UNSATISFIABLE" { verdict = Some(if v == "SATISFIABLE" { "SAT" } else { "UNSAT" }); }
                 } else if let Some(rest) = line.strip_prefix("v ") {
                     for tok in rest.split_whitespace() {
-                        if let Ok(l) = tok.parse::<i32>() {
-                            if l != 0 { vline.push(l); }
-                        }
+                        if let Ok(l) = tok.parse::<i32>()
+                            && l != 0 { vline.push(l); }
                     }
                 }
             }
@@ -3415,9 +4033,8 @@ fn main() {
                     }
                     if let Some(f) = forced {
                         for (i, ov) in f.iter().enumerate() {
-                            if let Some(b) = ov {
-                                if i + 1 <= nvars { sign[i + 1] = *b; }
-                            }
+                            if let Some(b) = ov
+                                && i < nvars { sign[i + 1] = *b; }
                         }
                     }
                     let mut line = String::from("v");
@@ -3472,11 +4089,7 @@ fn main() {
         // risk.  Single-engine modes are a 1-phase schedule.
         let portfolio_pct: Option<u64> = if args.engine == "portfolio" {
             Some(10)
-        } else if let Some(p) = args.engine.strip_prefix("portfolio:") {
-            Some(p.parse::<u64>().unwrap_or(10).clamp(1, 99))
-        } else {
-            None
-        };
+        } else { args.engine.strip_prefix("portfolio:").map(|p| p.parse::<u64>().unwrap_or(10).clamp(1, 99)) };
         let schedule: Vec<bool> = match portfolio_pct {
             Some(_) => vec![true, false],            // kissat slice, cadical rest
             None => vec![args.engine == "kissat"],
@@ -3509,7 +4122,7 @@ fn main() {
         // "c " a single non-space phase marker, then whitespace, then a digit.
         // The 2-/3-line column headers ("c  seconds …") and banner don't match.
         let is_report = |line: &str| -> bool {
-            line.strip_prefix("c ").map_or(false, |r| {
+            line.strip_prefix("c ").is_some_and(|r| {
                 let mut ch = r.chars();
                 matches!(ch.next(), Some(m) if !m.is_whitespace())
                     && ch.as_str().trim_start().starts_with(|c: char| c.is_ascii_digit())
@@ -3615,9 +4228,8 @@ fn main() {
                             // Transformed (residual / symmetry-augmented) model:
                             // collect, reconstruct + print below over original vars.
                             for tok in line[2..].split_whitespace() {
-                                if let Ok(l) = tok.parse::<i32>() {
-                                    if l != 0 { vline.push(l); }
-                                }
+                                if let Ok(l) = tok.parse::<i32>()
+                                    && l != 0 { vline.push(l); }
                             }
                         } else {
                             println!("{}", line);
@@ -3658,14 +4270,13 @@ fn main() {
             // CaDiCaL has no clean stat lines; scrape its last report row
             // (column positions are CaDiCaL-specific).
             let f: Vec<&str> = row.trim_start_matches("c ").split_whitespace().collect();
-            if f.len() >= 8 {
-                if let (Ok(restarts), Ok(conflicts)) =
+            if f.len() >= 8
+                && let (Ok(restarts), Ok(conflicts)) =
                     (f[5].parse::<u64>(), f[7].parse::<u64>())
                 {
                     eprintln!("c {}: stats conflicts={} restarts={}", bk,
                               conflicts, restarts);
                 }
-            }
         }
         // Standard timing line (stderr) so run_benchmark's parser records
         // the time; the verdict comes from the relayed `s` line on stdout.
@@ -3832,9 +4443,8 @@ fn main() {
                     }
                     if let Some(f) = forced {
                         for (i, ov) in f.iter().enumerate() {
-                            if let Some(b) = ov {
-                                if i + 1 <= nvars { sign[i + 1] = *b; }
-                            }
+                            if let Some(b) = ov
+                                && i < nvars { sign[i + 1] = *b; }
                         }
                     }
                     let mut line = String::from("v");
@@ -3860,19 +4470,19 @@ fn main() {
         let _ = std::fs::remove_file(&tmp);
         let _ = std::fs::remove_file(&drat_tmp);
         return;
-    }
+    } }
 
     // Quick edge cases handled before invoking either backend.  We
     // still emit the standard `c UNSAT|SAT in 0.0ms` timing line on
     // these fast paths so downstream consumers (the
     // doc/competition-benchmarks.sh parser, etc.) get a uniform
     // result format regardless of which path the solver took.
-    if clauses.iter().any(|c| c.is_empty()) {
+    if has_empty_clause {
         eprintln!("c UNSAT in 0.0ms");
         println!("s UNSATISFIABLE");
         return;
     }
-    if clauses.is_empty() {
+    if no_clauses {
         eprintln!("c SAT in 0.0ms");
         println!("s SATISFIABLE");
         let stdout = io::stdout();
@@ -3905,8 +4515,15 @@ fn main() {
         // calls `restore_terminal()` before exit so the cursor
         // stays sane when `--progress` was used.
         let limit = args.timeout_secs;
+        // The box engine stops cooperatively a second before this and
+        // prints its statistics and, under BOXES_MEM_REPORT, its memory
+        // report; on a 7 M-variable instance the second was not enough
+        // (2026-09-21).  Reporting mode therefore gets a minute of grace
+        // -- the reports are the point of such a run, and the wall-clock
+        // limit is still what the search was told.
+        let grace = if matches!(std::env::var("BOXES_MEM_REPORT").as_deref(), Ok("1") | Ok("on")) { 60 } else { 0 };
         std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(limit));
+            std::thread::sleep(std::time::Duration::from_secs(limit + grace));
             restore_terminal();
             // Stats first (so the canonical line is present before
             // the timeout marker), then the human-readable timeout
@@ -3930,7 +4547,6 @@ fn main() {
     // mixed formula: the matrix search runs on the residual (which no
     // longer mentions the forced vars), so on SAT we must overlay these
     // constants back onto the search's model before printing it.
-    let mut xor_forced: Option<Vec<Option<bool>>> = None;
 
     // Structure-based visit-order routing for eff backends.  Detect an
     // "exactly-one" cardinality CSP (PHP / RoundRobin / MVRoundRobin /
@@ -4001,7 +4617,15 @@ fn main() {
 
     let t = Instant::now();
     let outcome = match args.backend {
-        BackendChoice::Cadical => cadical_search(nvars, clauses, args.show_progress),
+        BackendChoice::Cadical => cadical_search(nvars, cnf, args.show_progress, &args.cadical_opts, args.boxes.as_deref(), args.freeze_from.as_deref(), args.boxes_native),
+        BackendChoice::Boxes =>
+            boxes_search(nvars, &cnf, args.boxes.as_deref(), args.timeout_secs,
+                         args.proof.as_deref(), args.boxes_source.as_deref()),
+        // hydra_box arrives here with the formula its tactics left, in the
+        // per-clause form those tactics work in.
+        BackendChoice::HydraBox =>
+            boxes_search(nvars, &Cnf::from_vecs(&clauses), args.boxes.as_deref(), args.timeout_secs,
+                         args.proof.as_deref(), args.boxes_source.as_deref()),
         BackendChoice::PbCadical => unreachable!("pb-cadical is handled before the search dispatch"),
         BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma
         | BackendChoice::Satsuma =>
@@ -4208,7 +4832,7 @@ mod tests {
     fn solve_cadical(nvars: usize, clauses: &[Vec<i32>]) -> Result<Vec<bool>, ()> {
         if clauses.iter().any(|c| c.is_empty()) { return Err(()); }
         if clauses.is_empty() { return Ok(vec![true; nvars]); }
-        match cadical_search(nvars, clauses.to_vec(), /*show_progress=*/ false) {
+        match cadical_search(nvars, Cnf::from_vecs(clauses), /*show_progress=*/ false, &[], None, None, false) {
             SearchOutcome::Sat(asgn) => Ok(asgn),
             SearchOutcome::Unsat => Err(()),
             SearchOutcome::Interrupted => panic!("test cadical_search reported interrupted"),
@@ -4243,41 +4867,41 @@ mod tests {
     #[test]
     fn parse_simple() {
         let input = b"c hello\np cnf 3 2\n1 -2 0\n2 3 0\n" as &[_];
-        let (nvars, clauses) = parse_dimacs(input).unwrap();
+        let (nvars, clauses) = parse_dimacs(input, 0).unwrap();
         assert_eq!(nvars, 3);
-        assert_eq!(clauses, vec![vec![1, -2], vec![2, 3]]);
+        assert_eq!(clauses.to_vecs(), vec![vec![1, -2], vec![2, 3]]);
     }
 
     #[test]
     fn parse_clause_spans_lines() {
         // Whitespace inside a clause is ignored; clauses can wrap.
         let input = b"p cnf 3 1\n1\n-2\n3 0\n" as &[_];
-        let (nvars, clauses) = parse_dimacs(input).unwrap();
+        let (nvars, clauses) = parse_dimacs(input, 0).unwrap();
         assert_eq!(nvars, 3);
-        assert_eq!(clauses, vec![vec![1, -2, 3]]);
+        assert_eq!(clauses.to_vecs(), vec![vec![1, -2, 3]]);
     }
 
     #[test]
     fn parse_no_problem_line_infers_nvars() {
         // No `p cnf ...` header; nvars is inferred from max abs literal.
         let input = b"3 -7 0\n2 -1 0\n" as &[_];
-        let (nvars, clauses) = parse_dimacs(input).unwrap();
+        let (nvars, clauses) = parse_dimacs(input, 0).unwrap();
         assert_eq!(nvars, 7);
-        assert_eq!(clauses, vec![vec![3, -7], vec![2, -1]]);
+        assert_eq!(clauses.to_vecs(), vec![vec![3, -7], vec![2, -1]]);
     }
 
     #[test]
     fn parse_trailing_clause_without_zero() {
         // A trailing fragment with no `0` is still kept as a final clause.
         let input = b"p cnf 2 2\n1 -2 0\n1 2" as &[_];
-        let (_, clauses) = parse_dimacs(input).unwrap();
-        assert_eq!(clauses, vec![vec![1, -2], vec![1, 2]]);
+        let (_, clauses) = parse_dimacs(input, 0).unwrap();
+        assert_eq!(clauses.to_vecs(), vec![vec![1, -2], vec![1, 2]]);
     }
 
     #[test]
     fn parse_rejects_garbage() {
         let input = b"p cnf 1 1\n1 banana 0\n" as &[_];
-        assert!(parse_dimacs(input).is_err());
+        assert!(parse_dimacs(input, 0).is_err());
     }
 
     // ── End-to-end SAT/UNSAT ─────────────────────────────────────────────
@@ -4519,11 +5143,11 @@ mod tests {
     fn cadical_search_smoke() {
         // Same shape as `matrix_search_smoke` but going through the
         // CaDiCaL backend.
-        match cadical_search(3, vec![vec![1, -2], vec![2, 3], vec![-1, -3]], false) {
+        match cadical_search(3, Cnf::from_vecs(vec![vec![1, -2], vec![2, 3], vec![-1, -3]]), false, &[], None, None, false) {
             SearchOutcome::Sat(_) => {}
             other => panic!("expected Sat, got {:?}", outcome_kind(&other)),
         }
-        match cadical_search(1, vec![vec![1], vec![-1]], false) {
+        match cadical_search(1, Cnf::from_vecs(vec![vec![1], vec![-1]]), false, &[], None, None, false) {
             SearchOutcome::Unsat => {}
             other => panic!("expected Unsat, got {:?}", outcome_kind(&other)),
         }

@@ -243,8 +243,8 @@ impl<F: FnMut(PathsClass, bool) -> bool> SmartController<F> {
                     // and continue draining the queue.
                     continue;
                 }
-                if blocked == total - 1 {
-                    if let Some(rem_alt) = self.find_remaining_alt(prod_id) {
+                if blocked == total - 1
+                    && let Some(rem_alt) = self.find_remaining_alt(prod_id) {
                         let rl = self.prod_alts[prod_id][rem_alt].clone();
                         let r_idx      = (rl.var as usize) * 2 + (rl.neg as usize);
                         let r_comp_idx = r_idx ^ 1;
@@ -262,7 +262,6 @@ impl<F: FnMut(PathsClass, bool) -> bool> SmartController<F> {
                             queue.push(r_idx);
                         }
                     }
-                }
             }
         }
         Ok(())

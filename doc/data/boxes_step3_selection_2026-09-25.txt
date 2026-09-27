@@ -1,0 +1,61 @@
+# Step 3: the selection rule on the factoring family (2026-09-25)
+#
+# 19 instances, cones K = 12, CaDiCaL 3.0.1 core throughout, four arms one
+# at a time, 300 s cap: plain CNF; residual + all cones as the external
+# propagator; residual + the cones whose table wins on >= 5% / >= 15% of
+# sampled interface assignments (tools/select_cones.py), the rest restored
+# as clauses.  All verdicts agree; no model refused.
+#
+# binary /private/tmp/claude-501/-Users-greg-projects-logic/fdf9efe8-cc23-466a-af28-b22f9fdc339a/scratchpad/mem/sat_up2, K 12, cap 300 s, thresholds [0.05, 0.15]
+# instance                           | cones kept@0.05 kept@0.15 |         cadical plain |           + all cones |            + sel@0.05 |            + sel@0.15 | check
+# ezfact32_3.shuffled                |    30         0         0 | SATIS    0.0s      195 | SATIS    0.0s      202 | SATIS    0.0s      195 | SATIS    0.0s      195 | ok
+# ezfact32_4.shuffled                |    38         0         0 | SATIS    0.0s      327 | SATIS    0.0s      273 | SATIS    0.0s      327 | SATIS    0.0s      327 | ok
+# ezfact32_7.shuffled                |    37         0         0 | SATIS    0.0s      405 | SATIS    0.0s      673 | SATIS    0.0s      463 | SATIS    0.0s      463 | ok
+# ezfact32_10.shuffled               |    37         0         0 | SATIS    0.0s      215 | SATIS    0.0s      550 | SATIS    0.0s      215 | SATIS    0.0s      215 | ok
+# ezfact64_5.sat05-452.reshuffled-07 |   146         0         0 | SATIS   26.6s   557380 | SATIS   60.5s  1095247 | SATIS   45.5s   942549 | SATIS   45.9s   942549 | ok
+# ezfact64_6.shuffled-as.sat05-453   |   152         0         0 | SATIS   20.4s   444532 | SATIS   13.9s   269544 | SATIS   55.8s  1060749 | SATIS   56.0s  1060749 | ok
+# ezfact64_9.shuffled-as.sat03-1525  |   147         0         0 | SATIS  145.6s  2484172 | SATIS   27.4s   508531 | SATIS   45.6s   890344 | SATIS   45.7s   890344 | ok
+# toughsat_factoring_148s            |   173       157        21 | SATIS   23.6s   586320 | SATIS   46.8s   985735 | SATIS   50.7s  1054050 | SATIS    8.7s   241559 | ok
+# toughsat_factoring_428s            |   173       157        21 | SATIS   28.8s   694220 | SATIS   29.4s   580442 | SATIS   38.4s   795642 | SATIS   32.3s   711346 | ok
+# toughsat_factoring_895s            |   194       182        37 | SATIS  107.6s  2047858 | SATIS   49.5s   891231 | SATIS  164.5s  2529509 | SATIS  154.9s  2603124 | ok
+# toughsat_factoring_958s            |   174       164        40 | SATIS   10.2s   266526 | SATIS   28.6s   525210 | SATIS   78.0s  1183506 | SATIS   51.9s  1048446 | ok
+# toughsat_22bits_1                  |     9         0         0 | SATIS   13.4s   353600 | SATIS    9.2s   266653 | SATIS    7.4s   233160 | SATIS    7.5s   233160 | ok
+# toughsat_23bits_2                  |    13         0         0 | SATIS  151.9s  2390344 | SATIS   96.5s  1702146 | SATIS  151.9s  2384539 | SATIS  152.2s  2384539 | ok
+# toughsat_24bits_0                  |    13         0         0 | SATIS  101.8s  1702904 | SATIS   76.4s  1396870 | SATIS   24.9s   636856 | SATIS   24.9s   636856 | ok
+# factoring29986577x29986577         |   194       182        37 | SATIS  137.4s  2428890 | SATIS  145.7s  2345931 | SATIS  155.2s  2355646 | SATIS  150.7s  2541209 | ok
+# factoring94418953x321534781        |   263       251        53 |    TO  300.0s        - |    TO  300.0s        - |    TO  300.0s        - |    TO  300.0s        - | ok
+# pyhala-braun-sat-40-4-01.shuffled  |   852       362        10 | SATIS   32.9s   588925 | SATIS   77.2s   764986 | SATIS   15.7s   179048 | SATIS   14.2s   266490 | ok
+# pyhala-braun-sat-40-4-02.shuffled  |   852       368         6 | SATIS   44.4s   776177 | SATIS   52.5s   527611 | SATIS   97.0s  1322791 | SATIS    7.9s   158301 | ok
+# pyhala-braun-unsat-40-4-02.shuffle |   855       397        10 | UNSAT   53.3s   976129 | UNSAT  158.9s  1771687 | UNSAT   81.0s  1171959 | UNSAT   57.5s   980260 | ok
+# STEP3 EXIT
+#
+# === Reading it ===
+#
+# The control is built in: on ezfact, toughsat_NNbits and the two
+# factoringAxB rows the selection kept NO cones, so the "selected" arms are
+# the plain CNF with its clauses in the residual's order.  Those arms
+# differ from "plain" by 2-4x either way on the same formula -- ezfact64_9
+# 145.6 s -> 45.6 s, toughsat_24bits_0 101.8 -> 24.9, ezfact64_6 20.4 ->
+# 55.8 -- which is the size of a trajectory effect on these satisfiable
+# instances, and the yardstick every other column must be read against.
+#
+# Within that noise: all cones better on 7 of 12 non-trivial rows (ezfact64_6
+# 20 -> 14 s, ezfact64_9 146 -> 27, toughsat_895s 108 -> 50 reproduced,
+# 22/23/24 bits 13 -> 9, 152 -> 97, 102 -> 76) and worse on 5 (ezfact64_5
+# 27 -> 61, toughsat_148s 24 -> 47, 958s 10 -> 29, pyhala-sat-01 33 -> 77,
+# pyhala-unsat 53 -> 159).  Selected at 0.15: pyhala-sat 33 -> 14 and 44 ->
+# 8, toughsat_148s 24 -> 9, pyhala-unsat back to 58 (10 cones instead of
+# 855); but toughsat_895s 108 -> 155 and 958s 10 -> 52.  Neither the whole
+# set nor the selection is consistently better than the plain CNF, and no
+# arm beats the spread the 0-cone controls show.
+#
+# One robust reading survives: on the UNSAT instance the fewer cones the
+# better (855 -> 159 s, 397 -> 81 s, 10 -> 58 s, 0 -> 53 s), the cost of
+# observed variables frozen against CaDiCaL's elimination.
+#
+# The selection's scores: toughsat cones win on 10-20% of samples, pyhala's
+# on up to ~20%, ezfact's on under 5% -- the multiplier cones of ezfact add
+# no interface propagation over their own clauses, by this measure, yet
+# "all cones" helped two of three ezfact64 rows.  Single runs on satisfiable
+# factoring instances cannot separate propagation from trajectory; settling
+# it needs several clause shuffles per arm and medians, ~12 h for this set.

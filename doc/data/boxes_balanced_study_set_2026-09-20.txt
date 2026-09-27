@@ -1,0 +1,97 @@
+# A family-balanced study set, and what this engine can do on it (2026-09-20)
+#
+# WHY.  Every engine A/B in this repo -- chrono, shrinking, restarts, the
+# reduce grace period, the gap decomposition -- was measured on the 22
+# classic instances in the A/B corpus.  Those cover about 10 families, 14 of
+# the 22 come from just TWO (ISCAS circuits and random 3-SAT), none are
+# drawn from a competition set, and the median solve time is 0.91 s against
+# the 2026 main track's 85.5 s.  Neutral on that sample is not neutral.
+#
+# THE SET.  tools/gbd/study_set.py selects from the competition index
+# already on disk, ranking within each family by RECORDED SOLVE TIME from a
+# previous portfolio run and taking the slowest in a band -- the opposite of
+# curate_balanced.py's smallest-first, which is right for a fitness loop and
+# wrong for measuring search quality.  Per-family hard cap, alternating
+# SAT/UNSAT.
+#
+#   97 instances across 69 of the competition's 117 families
+#   53 SAT / 44 UNSAT, portfolio time median 68 s (range 2-295 s)
+#   41 families contribute a single instance -- inherent, since the
+#   competition's own median family size is 2 with 55 singletons of 117
+
+=== What this engine can solve, 120 s cap, 8 in parallel ===
+
+  solved 18 of 97  (19%)   across 16 of 69 families  (23%)
+  verdicts agree with the competition's recorded answer on all 18
+
+   ours  conflicts  verdict  portfolio  family
+   0.3s         72   SAT        6.9s    relational-dependencies
+   0.4s         10   UNSAT     10.7s    multiplier-verification
+   0.6s         10   UNSAT      8.0s    multiplier-verification
+   0.7s        453   SAT       66.2s    ramseycube
+   0.8s         12   SAT        3.1s    cryptography
+   0.9s      31567   SAT        2.4s    software-bmc
+   1.3s       4349   SAT        6.1s    petrinet-concurrency
+   3.9s        945   SAT      164.5s    graph-isomorphism
+   7.0s      16689   SAT      241.5s    argumentation
+  14.7s     531071   UNSAT      7.0s    planning
+  18.0s        942   UNSAT     35.6s    software-verification
+  30.4s       6516   SAT       79.7s    floodit-puzzle
+  33.6s     562141   SAT       10.4s    subgraph-isomorphism
+  58.7s          0   SAT       17.0s    software-bmc
+  70.8s     365172   SAT       15.7s    agile
+  87.9s      16640   UNSAT    138.6s    hashtable-safety
+ 103.6s     808883   UNSAT     84.8s    cryptography-cbmc
+ 107.5s      65581   UNSAT     95.0s    cryptography-ascon
+
+# (our times are contaminated by 8-way parallelism; they are for selection,
+#  not for comparison.  The A/B that uses this set re-times serially.)
+
+=== The 53 families we solve NOTHING in, at 120 s ===
+  2d-strip-packing              alloy-vpn-models              antibandwidth
+  at-least-two-sol              baseball-lineup               battleship
+  belpyramid-puzzle             bioinformatics                bitvector
+  cardinality-constraints       cellular-automata             circuit-multiplier
+  coloring                      core-based-generator          dimacs-sorter
+  equivalence-chain-principle   equivalence-checking          graceful-production
+  hamiltonian                   hardware-model-checking       hardware-verification
+  heule-folkman                 hgen                          hidoku
+  hypertree-decomposition       karatsuba-multiplication      lam-discrete-geometry
+  matrix-multiplication         md5-equivalence-checking      minimum-disagreement-parity
+  miter                         oddball-weighing              or_randxor
+  ordering-principle            pebbling                      philips
+  prime-factoring               profitable-robust-production  puzzle
+  quantum-kochen-specker        quasigroup-completion         relativized-pigeon-hole
+  rooks                         scheduling                    school-timetabling
+  set-covering                  sgen                          station-repacking
+  stedman-triples               stone                         summle
+  tseitin-formulas              unknown-cases
+
+=== What this means ===
+#
+# The engine can be measured on under a quarter of the competition's
+# families, and one fifth of a balanced sample, at a budget we can afford.
+# Everything concluded from the 22-instance corpus describes behaviour on
+# the easiest tail of the easiest families.
+#
+# The sharpest illustration is `belpyramid-puzzle`.  It is the family the
+# old corpus had EIGHT instances of -- c3540_k8 and c5315_k8 with three
+# shuffles each -- and it appears above in the list of families we solve
+# nothing in.  The label lumps ISCAS-85 c3540/c5315 (2-4 K variables) in
+# with the pyramid puzzles proper (75-380 K variables), so the old corpus
+# was sampling the two smallest, least typical members of a family whose
+# real instances are out of reach.  A "family" of eight was one circuit,
+# shuffled.
+#
+# Note also what is NOT solvable here: circuit-multiplier,
+# karatsuba-multiplication, matrix-multiplication, equivalence-checking,
+# miter, prime-factoring, tseitin-formulas, cardinality-constraints,
+# relativized-pigeon-hole.  Those are the families the box thesis is aimed
+# at, and at 120 s the engine cannot reach any of them.
+#
+# Where it does well is worth recording too: it beats the portfolio's
+# recorded time on ramseycube (0.7 s vs 66 s), graph-isomorphism (3.9 vs
+# 164), argumentation (7.0 vs 241) and floodit-puzzle (30 vs 80), and
+# trails badly on agile, subgraph-isomorphism and planning.  Those are
+# different families from the ones the old corpus contained, which is the
+# point of building this.

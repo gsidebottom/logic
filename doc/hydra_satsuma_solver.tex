@@ -1,7 +1,8 @@
 % hydra_satsuma: solver description — certified structure dispatch with a
 % satsuma-iter+kissat fall-through.  Build: tectonic doc/hydra_satsuma_solver.tex
-% Performance sections are placeholders until the three-way A/B on the
-% official 2026 set completes (hydra vs satsuma vs hydra_satsuma, M4 Pro Mac mini).
+% Revised 2026-09-16: third structural stage (multiplier recognition +
+% numeric factoring, src/factoring.rs) and its effect on the official-set
+% comparison (sec:factoring, sec:factoring-results).
 \documentclass[10pt]{article}
 \usepackage[margin=2.4cm]{geometry}
 \usepackage{amsmath,amssymb}
@@ -27,11 +28,14 @@
 \vspace{-3em}
 \begin{center}
 \itshape Research note --- logic repo
-(\url{https://github.com/gsidebottom/logic}), SAT track, 2026-08-12.
+(\url{https://github.com/gsidebottom/logic}), SAT track, 2026-08-12;
+revised 2026-09-16 with the factoring stage
+(\S\ref{sec:factoring}, \S\ref{sec:factoring-results}).
 Solver description for the \texttt{hydra\_satsuma} backend of
 \texttt{sat}: the certified \texttt{hydra} structure-dispatch pipeline
-(Cook-shape prover, XOR/GF(2) stage) whose fall-through engine is
-satsuma-iter+kissat, winner of the SAT Competition 2026 main track.
+(Cook-shape prover, factoring stage, XOR/GF(2) stage) whose fall-through
+engine is satsuma-iter+kissat, winner of the SAT Competition 2026 main
+track.
 Includes the completed three-way apples-to-apples comparison
 (\texttt{hydra} / \texttt{satsuma} / \texttt{hydra\_satsuma}) on the
 official 2026 benchmark set, all on one Mac~mini (M4~Pro,
@@ -43,12 +47,19 @@ official 2026 benchmark set, all on one Mac~mini (M4~Pro,
 \texttt{hydra\_satsuma} is a structure-dispatch SAT solver: before any
 CDCL search, it tests the input for algebraic structure that admits a
 \emph{polynomial-size certificate}, and only when no structure applies
-does it hand the formula to a general-purpose engine. Two structural
+does it hand the formula to a general-purpose engine. Three structural
 stages run in order: (1) a \emph{Cook-shape prover} that recognizes
 five cardinality-contradiction families (pigeonhole and its
 generalizations) and emits the Cook-1976 extension-variable refutation
 as a VeriPB proof --- families on which resolution, and hence any
-DRAT-based route without new variables, is exponential; (2) an
+DRAT-based route without new variables, is exponential; (2) a
+\emph{factoring stage} that recognizes a multiplier circuit whose
+product is pinned to a number $N$, reads $N$ off the circuit by probing
+it, factors $N$ numerically and rebuilds the model by propagation ---
+the satisfiable instances of the ezfact and pyhala-braun families in
+milliseconds, the model as witness; a number with no fitting factor
+pair is recorded but never reported as a verdict, because primality has
+no short certificate in any accepted proof system; (3) an
 \emph{XOR/GF(2) stage} that recovers parity constraints from their
 clausal encodings and runs Gaussian elimination, certifying parity
 refutations in VeriPB by Gocht--Nordstr\"om's division-based method
@@ -68,7 +79,11 @@ original variables. On the official 2026 main-track benchmark set,
 \texttt{hydra\_satsuma} exceeds the bare winner by a small margin ---
 335 vs.\ 334 solved, and PAR-2 2037 vs.\ 2064 under competition
 certification scoring --- with the whole margin traceable to the
-structural stages.
+structural stages. The factoring stage, added after that run, turns the
+set's two satisfiable multiplier instances from 30 and 42\,s into
+0.07 and 0.20\,s at a measured cost of at most 0.45\,s on any other
+instance (7\,s over the whole run); it moves the PAR-2 by $-0.18$ and
+leaves the headline unchanged.
 
 \section{Pipeline}
 \label{sec:pipeline}
@@ -114,7 +129,78 @@ for resolution: a solver-emitted DRAT proof (which cannot introduce
 variables the solver never used) is out of reach at scale, while the
 extension-variable route is short, and VeriPB is one of the three
 checkers on the SAT Competition 2026 menu
-(\S\ref{sec:compliance}).
+(\S\ref{sec:compliance}). Every detector verifies the clauses its
+proof consumes, not only the at-least-one layers: the clique-coloring
+detector once accepted the two positive layers alone, and the
+unit-propagated residual of a \emph{satisfiable} $6\times 6$
+multiplier matched its arity profile (found 2026-09-15 while building
+the factoring stage; no competition instance was affected). It now
+looks up every mutex its rup steps use, directly or through the
+standard encoding's edge variables.
+
+\subsection{Factoring stage}
+\label{sec:factoring}
+
+For inputs up to $5\times 10^6$ clauses, the stage tests for a
+multiplier circuit $\mathit{out} = a \cdot b$ whose output bits are
+pinned by unit clauses to a number $N$ with the factor bits free --- the
+shape of the ezfact and pyhala-braun competition families. The structure
+is read from the clauses and the encoding conventions from the circuit's
+own behaviour:
+
+\begin{itemize}
+\item \textbf{Structure.} Parity relations (a 3- or 4-variable set
+  carrying every clause of one parity) are the sum cells; union-find
+  over their unpinned members gives the product columns. The factor
+  bits are the unpinned, relation-free variables that meet at least
+  four others in gate clauses (the 4-core of the co-occurrence graph:
+  a factor bit meets every bit of the other factor in its
+  partial-product gates, a gate output only its few inputs); a
+  bipartite split separates the factors and the addition table (which
+  pairs meet in which column) labels the bits by weight. Each bit's
+  polarity is read off its AND gates, because a shuffled instance flips
+  every variable independently.
+\item \textbf{Conventions.} 48 random factor assignments are propagated
+  through the pin-free CNF. Pins the factor bits never determine and
+  that never conflict are the circuit's constants; pins that never
+  vary are side constraints (pyhala-braun pins ``the factor is not
+  1''); every other pin is matched against the bits of the product
+  under the readings of the factor bits --- orientation of the
+  labelling and an implicit odd low bit per factor --- and a reading
+  that explains the pins fixes $N$. The pyhala-braun labelling comes
+  out mirrored; the orientation reading absorbs it.
+\item \textbf{Numbers.} Pollard--Brent with Miller--Rabin on $N$;
+  every divisor pair of the circuit's widths is tried by propagation
+  through the \emph{full} CNF, and the resulting model is checked
+  against every clause --- a wrong reading can only miss, never
+  mislead.
+\end{itemize}
+
+Verdicts: a fitting pair gives SAT with the model as witness
+(self-certifying, like the pure-XOR path). A number with no fitting
+pair is a \emph{numeric} UNSAT --- reported in the log
+(\texttt{factoring-verdict=unsat}) but never as the verdict, because
+the primality of $N$ has no short certificate in DRAT, LRAT, SR or
+VeriPB; the instance proceeds to the later stages and the engine's
+refutation is the certificate. Anything unrecognized falls through at
+the structure pass. On the benchmark families the stage reads and
+solves ezfact16/32/64 ($N$ the square of a 16- or 32-bit prime, or a
+16-bit prime) and pyhala-braun 30/35/40 (satisfiable and
+unsatisfiable, $N = 23173\times 23197$, $131101\times 131113$,
+$741457\times 741469$); toughsat is not recognized --- its product
+bits are folded into the last cells as constants that unit propagation
+reads backwards, and the \texttt{toughsat\_}$n$\texttt{bits} encoding is
+not an array multiplier at all.
+
+The stage is bounded on every input. Before anything superlinear it
+checks plausibility in linear time --- at least eight pins, at most 4096
+candidate factor bits, and parity-relation and pin counts consistent
+with a multiplier of that many bits (a verification circuit with
+thousands of units or hundreds of thousands of candidates is rejected
+here) --- and a wall-clock budget of 1\,s
+(\texttt{FACTORING\_BUDGET\_MS}) backstops the rest; a multiplier of
+competition size is read in well under 200\,ms
+(\S\ref{sec:factoring-results}).
 
 \subsection{XOR/GF(2) stage}
 \label{sec:xor}
@@ -253,6 +339,8 @@ Path & Verdict & Certificate & Checker \\
 Cook shape & UNSAT & Cook-1976 extension proof (VeriPB) & \texttt{veripb} \\
 XOR inconsistent & UNSAT & GN21 parity proof (VeriPB) & \texttt{veripb} \\
 Pure-XOR solvable & SAT & model witness & --- \\
+Multiplier factored & SAT & model witness (propagated from the pair) & --- \\
+Multiplier, no factor pair & (none: annotated) & the engine's, below & \\
 satsuma+kissat & UNSAT & composed binary SR & \texttt{dsr-trim} \\
 satsuma+kissat & SAT & model (projected) & --- \\
 GE residual (uncert.\ mode) & UNSAT & none for the original & --- \\
@@ -502,7 +590,10 @@ Arm & Solved/400 & SAT & UNSAT & UNSAT certified & PAR-2$^{\ast}$ \\
 
 {\footnotesize $^{\ast}$competition scoring: SAT instances and
 \emph{certified} UNSAT instances contribute their solve time;
-uncertified UNSATs and timeouts contribute $2\times 5000$\,s.}
+uncertified UNSATs and timeouts contribute $2\times 5000$\,s. The
+\texttt{hydra\_satsuma} figure is 2037.35 exactly; with the factoring
+stage (\S\ref{sec:factoring-results}, added after this run) it is
+2037.17.}
 \end{center}
 
 All three runs use the identical protocol on all 400 official
@@ -521,7 +612,10 @@ almost everywhere --- that near-total overlap is itself the finding
 (\S\ref{sec:structval}): with a symmetry-capable engine, the
 structural front-end changes the curve only at the chessboard pair,
 while the engine swap separates both from \texttt{hydra} from
-$\sim$250 instances on.}
+$\sim$250 instances on. Drawn before the factoring stage: that stage
+moves two \texttt{hydra\_satsuma} dots, ezfact64\_6 and
+pyhala-braun-sat-40-4-03, from 30 and 42\,s to under 0.2\,s ---
+invisible at this scale.}
 \label{fig:cactus}
 \end{figure}
 
@@ -580,6 +674,53 @@ solve time, the wrong shape for a fixed prefix, and consistent with
 wall-clock load variance between runs; kissat's search on identical
 input is deterministic.) Detection never caused a flip: no instance
 was lost to overhead.
+
+\subsection{The factoring stage on the official set}
+\label{sec:factoring-results}
+
+The official set has four prime-factoring benchmarks. Re-run through the
+same harness (official index, 5000\,s, \texttt{hydra\_satsuma} with
+the stage) on 2026-09-16, against the official \texttt{hydra\_satsuma}
+run above:
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrrp{6.1cm}@{}}
+\toprule
+Benchmark & official run & with the stage & \\
+\midrule
+ezfact64\_6 & SAT 30.0\,s & SAT 0.07\,s & factored; witness re-evaluated on all 19{,}785 clauses \\
+pyhala-braun-sat-40-4-03 & SAT 42.5\,s & SAT 0.20\,s & factored; witness re-evaluated on all 31{,}795 clauses \\
+pyhala-braun-unsat-40-4-02 & UNSAT 43.2\,s & UNSAT 36.9\,s & numeric UNSAT annotated in 0.2\,s; the certificate is kissat's SR proof, \texttt{dsr-trim} verified \\
+toughsat\_factoring\_895s & SAT 279.9\,s & SAT 225.8\,s & not recognized; engine path unchanged \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Only the two satisfiable multiplier instances change hands: they are
+decided by the stage in milliseconds, $-72.3$\,s over the run,
+$-0.18$ PAR-2 points (2037.35 to 2037.17). The unsatisfiable one
+gains nothing real --- the stage knows the answer in 0.2\,s, but the
+certificate is still the engine's refutation, so its time is the same
+within run-to-run variation, as is toughsat's. Solved counts and
+certified counts are unchanged.
+
+\textbf{Cost elsewhere.} The stage is a structure pass on every other
+instance, and its cost was measured directly on all 391 unique official
+instances rather than inferred from paired runs. The 57 instances above
+the $5\times 10^6$-clause cap skip it. On the other 331 (three of them
+the recognized multipliers) the median is 0.2\,ms, the 90th percentile
+70\,ms and the maximum 0.45\,s (\texttt{q\_query\_3\_L200\_coli},
+$3.5\times 10^6$ clauses): 218 are rejected by the pin count before any
+superlinear work, and the rest pay the parity-relation pass, linear in
+the formula. The total is 7.0\,s over the run --- 0.017 PAR-2 points,
+below the resolution of the paired-difference measurement of
+\S\ref{sec:structval}. The bounds of \S\ref{sec:factoring} earned
+their place: the first, unbounded version of the stage cost 238\,s over
+the same set, 44\,s of it on one verification circuit
+(\texttt{x-epic\_a19-p16\_step}) whose 427{,}000 candidate bits sent the
+candidate filter into a quadratic peel --- the measurement that produced
+the plausibility bounds, the incremental peel and the 1\,s budget.
 
 \subsection{Certification economics: the three proof chains}
 \label{sec:budgetnote}
@@ -653,7 +794,8 @@ $+16$/$+17$ verdicts over CaDiCaL on this set; the structural
 front-end is worth $+1$ verdict, $+1$ certified instance, and 27
 PAR-2 points against the strongest available engine --- at a measured
 cost of $\approx 1$ PAR-2 point of detection prefix and zero lost
-instances. Its deeper contributions are invariants the count does
+instances; the factoring stage adds two millisecond solves where the
+engine needed 30--42\,s, for a prefix of at most 0.45\,s (7\,s over the run). Its deeper contributions are invariants the count does
 not show: instant polynomial certificates on structured families
 (against engine-time SR proofs that are expensive to check --- and
 on this set twice uncheckable even at the official budget), and a

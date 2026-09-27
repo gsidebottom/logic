@@ -234,4 +234,211 @@ produces an UNSAT certificate at rank 22 --- which is exactly why the
 certified tree splits the problem by symmetry instead of asking a
 solver to swallow it whole.
 
+\appendix
+\section{The tractable case: $2\times2$ in \texttt{lib/matmul.jq}}
+\label{app:matmul}
+
+\emph{Added 2026-09-14.} The same sentence for $\langle 2,2,2\rangle$ ---
+$n=2$, so $2^6 = 64$ Brent equations over $12r$ unknowns, $8$ of them
+target equations --- is small enough to decide in seconds, and it is the
+benchmark family on which the \emph{box} backend of the web app (the
+matrix-method solver with compiled table constraints,
+\texttt{doc/box\_backend\_design.md}) is compared with CaDiCaL. Rank 7 is
+Strassen's scheme and 7 is the rank over $\F$, so rank 6 is UNSAT --- and
+with it every smaller rank, a summand with $\al{m}=0$ being allowed.
+
+\paragraph{Variables and equations.}
+The library \texttt{lib/matmul.jq} (deps: \texttt{expr.jq},
+\texttt{math.jq}) writes the unknowns as \texttt{a\_m\_k}, \texttt{b\_m\_k},
+\texttt{c\_m\_k} for product $m = 1..r$ and entry $k = 0..n^2-1$, $k$ the
+row-major index of the entry ($k = n(i-1) + (j-1)$). \texttt{brent\_eqs(n)}
+enumerates the tuples $(a,b,c,d,p,q)$ and yields one record per equation,
+$\{e,\;k_a,\;k_b,\;k_c,\;\mathrm{rhs}\}$: the equation number, the entry
+indices of the three factors (the same for every $m$), and
+$\mathrm{rhs} = \iv{b=c}\iv{a=p}\iv{d=q}$. Every generator below is a
+\texttt{prod} over these records; \texttt{t\_e\_m} names the term
+$\al{m}_{k_a}\be{m}_{k_b}\ga{m}_{k_c}$ of equation $e$.
+
+\paragraph{Box forms.}
+A \emph{box} is a compiled table constraint called by name in the formula
+language, \texttt{name(arg;\,\ldots)}; the backend propagates a box's table
+to arc consistency, or --- when both the table and its negation are tiny
+--- as the equivalent clauses. Two encodings:
+\begin{itemize}
+\item \texttt{mm\_boxes(n; r)}: each term is an \texttt{and3} box,
+  $\texttt{and3(a;b;c;t)} := t = abc$, and each equation one parity box
+  with its right-hand side as a constant argument,
+  \texttt{xor\{r\}(t\_e\_1;\ldots;t\_e\_r;\,rhs)}. The parity boxes
+  \texttt{xor3}\ldots\texttt{xor8} are declared as chains of
+  $\texttt{xor2(p;t;q)} := q = p\oplus t$ with the running parities hidden
+  --- \texttt{xor\_chain(r)} generates
+  \texttt{xor2(t\_1;t\_2;p\_2) xor2(p\_2;t\_3;p\_3) \ldots xor2(p\_\{r-1\};t\_r;d)}
+  --- and are compiled by composition (joining the \texttt{xor2} tables and
+  projecting the hidden parities), $2^{r-1}$ rows over $r+1$ columns. For
+  $r=8$: 512 calls, 532 variables.
+\item \texttt{mm\_chain(n; r)}: each equation is a chain of
+  $\texttt{xstep(p;a;b;c;q)} := q = p \oplus abc$ boxes, the running parity
+  \texttt{p\_e\_m} an ordinary variable, the first $p$ the constant 0 and
+  the last $q$ the right-hand side --- $64r$ boxes of 5 columns.
+\end{itemize}
+
+\paragraph{CNF forms (for CaDiCaL).}
+CaDiCaL is given exact clauses rather than the Tseitin encoding of a
+parity DNF: \texttt{mm\_cnf(n; r)} writes each term as the four clauses of
+$t = abc$ and each equation as an \texttt{xor2} chain
+($p_2 = t_1\oplus t_2$, $p_m = p_{m-1}\oplus t_m$, $p_r = \mathrm{rhs}$,
+four clauses per step, two where the constant absorbs $q$);
+\texttt{mm\_cnf\_direct(n; r)} writes the parity as one clause per wrong
+assignment of the $r$ term variables ($2^{r-1}$ clauses of $r$ literals).
+
+\paragraph{Symmetry breaking.}
+\texttt{mm\_sym\_boxes(r)} is
+$\bigwedge_{m<r}\texttt{le\_4(a\_m;\,a\_\{m+1\})}$ --- the products in
+non-decreasing order of their $\alpha$ vectors read as 4-bit numbers
+(\texttt{le\_4} is the $\le$ box of \texttt{math.jq}); \texttt{mm\_sym(r)}
+is the same as a formula for CaDiCaL. It is the product-relabelling
+symmetry $S_r$ of \S3: the sum does not depend on the order of its terms,
+so every scheme has a reordering that obeys it and satisfiability is
+preserved. \texttt{mm\_boxes\_sym}, \texttt{mm\_chain\_sym} and
+\texttt{mm\_cnf\_sym} attach it. The examples bar of the web app has
+``2x2 rank 8 boxes'', ``2x2 rank 7 boxes'' and ``2x2 rank 6 boxes'' (the
+last with the symmetry breaking); any of the generators can be typed into
+the jq filter box, e.g.\ \texttt{mm\_boxes\_sym(2; 6)}.
+
+\begin{small}
+\begin{verbatim}
+def mm_boxes(n; r):
+  prod(brent_eqs(n)[] | . as $q |
+    (range(r) + 1 | "and3(\(mm_a($q; .));\(mm_b($q; .));\(mm_c($q; .));\(mm_t($q; .)))"),
+    "xor\(r)(\([range(r) + 1 | mm_t($q; .)] | join(";"));\($q.rhs))");
+
+def mm_sym_boxes(r): prod(range(1; r) | "le_4(a_\(.);a_\(. + 1))");
+\end{verbatim}
+\end{small}
+The box declarations of the library's \texttt{\# === boxes ===} block:
+\begin{itemize}
+\item \texttt{and3(a;b;c;t) := "t = a b c"}
+\item \texttt{xstep(p;a;b;c;q) := "q = p $\oplus$ a b c"}
+\item \texttt{xor2(p;t;q) := "q = p $\oplus$ t"}
+\item \texttt{xor7(t\_1;t\_2;t\_3;t\_4;t\_5;t\_6;t\_7;d) := xor\_chain(7)}, and likewise
+  \texttt{xor3}\ldots\texttt{xor8}
+\end{itemize}
+
+\paragraph{How the box backend decides it.}
+The formula is a conjunction of calls, so the collapsed matrix has one
+path and the work is the completion engine's: a conflict-driven search in
+which table boxes are propagated to arc consistency with bit-parallel
+live-row masks, tiny boxes (\texttt{and3}: 4 rows, 4 rows of negation) as
+watched clauses, conflicts and forced literals explained lazily from the
+tables' kill masks, with 1-UIP learning, backjumping, VSIDS, Luby restarts
+and LBD-based clause deletion. The parity tables give it exactly the
+propagation of an XOR constraint --- which, on this family, is no more
+than unit propagation on the exact CNF has.
+
+\paragraph{Results.}
+Times as the web app reports them (the job's wall-clock, including
+building the tables), 60-second cap, best of one run per cell; boxes with
+the learned-clause budget 4000. ``sym'' is the symmetry breaking attached.
+\begin{center}
+\small
+\begin{tabular}{@{}c c rrrr rrrr@{}}
+\toprule
+& & \multicolumn{4}{c}{boxes backend} & \multicolumn{4}{c}{CaDiCaL} \\
+\cmidrule(lr){3-6}\cmidrule(lr){7-10}
+$r$ & verdict & \texttt{mm\_chain} & +sym & \texttt{mm\_boxes} & +sym & \texttt{mm\_cnf} & +sym & \texttt{mm\_cnf\_direct} & +sym \\
+\midrule
+8 & SAT   & 0.06\,s & 0.12\,s & 0.41\,s & 6.5\,s  & 0.07\,s & 0.01\,s & 0.02\,s & 0.07\,s \\
+7 & SAT   & 4.3\,s  & 4.4\,s  & 19.3\,s & 30.7\,s & 0.13\,s & 0.39\,s & 0.04\,s & 0.06\,s \\
+6 & UNSAT & $>60$\,s & 1.8\,s & $>60$\,s & 3.0\,s & 52.8\,s & 0.26\,s & 55.9\,s & 0.37\,s \\
+5 & UNSAT & 2.4\,s  & 0.11\,s & 4.1\,s  & 0.14\,s & 0.59\,s & 0.04\,s & 0.35\,s & 0.07\,s \\
+\bottomrule
+\end{tabular}
+\end{center}
+(Rank-5 box times are from the run before the deletion budget was raised.)
+Rank 8 and 7 SAT and rank 6 UNSAT are all decided within a minute by both
+engines; the UNSAT proof needs the symmetry breaking on both --- without
+it CaDiCaL takes 53--56\,s and the box engine does not finish. CaDiCaL is
+10--100$\times$ faster on this family, and SAT times are search luck (the
+four box variants of rank 7 span 4--31\,s). The benchmark exposed two
+defects in the box backend, both fixed: cancellation did not reach the
+completion engine, and the learned database grew without bound
+(propagation fell to a seventh of its speed on long runs).
+
+\paragraph{Reading a scheme off the witness.}
+A satisfying assignment \emph{is} a scheme: \texttt{a\_m\_k} are the
+entries of $\al{m}$, likewise $\be{m}$, $\ga{m}$, so product $m$ is
+$\big(\sum_k \al{m}_k A_k\big)\big(\sum_k \be{m}_k B_k\big)$ and
+$C_{pq} = \bigoplus_m \ga{m}_{pq} M_m$. \texttt{tools/mm\_scheme.py} runs
+a formula of the library against the web app (the boxes backend, or CaDiCaL
+with \texttt{-{}-cadical}; \texttt{-{}-url} for a port other than 3001),
+reads $n$ and $r$ off the witness's variable names, prints the scheme and
+checks it twice --- every Brent equation, and $C = AB$ on 200 random pairs
+over $\F$. In the printout \texttt{+} is addition in $\F$ (XOR). The same
+formula serves both engines: for CaDiCaL the box calls are expanded to
+their definitions (\texttt{and3}, the \texttt{xor2} chains, \texttt{le\_4})
+and Tseitin-encoded, which is even smaller than the explicit CNF forms
+(30K characters against 93K for rank 8) and solves as fast; the results
+table used \texttt{mm\_cnf} for its CaDiCaL columns only so that those
+numbers do not depend on our expansion.
+\begin{small}
+\begin{verbatim}
+$ tools/mm_scheme.py 'mm_boxes_sym(2; 7)'
+boxes backend: SAT in 30.56s
+2x2 matrices, 7 products
+M1 = (A11) (B11 + B21)
+M2 = (A11 + A12) (B21)
+M3 = (A21) (B11 + B12)
+M4 = (A22) (B21 + B22)
+M5 = (A12 + A22) (B12 + B22)
+M6 = (A11 + A12 + A22) (B12 + B21)
+M7 = (A11 + A12 + A21 + A22) (B12)
+C11 = M1 + M2
+C12 = M2 + M4 + M5 + M6
+C21 = M2 + M3 + M6 + M7
+C22 = M2 + M4 + M6 + M7
+Brent equations: all satisfied
+C = AB on 200 random pairs over GF(2): ok; 7 non-zero products
+
+$ tools/mm_scheme.py 'mm_boxes_sym(2; 7)' --cadical
+CaDiCaL: SAT in 0.12s
+2x2 matrices, 7 products
+M1 = (A12) (B11 + B12 + B21 + B22)
+M2 = (A11 + A12) (B11 + B12)
+M3 = (A21) (B11)
+M4 = (A11 + A21) (B12 + B22)
+M5 = (A11 + A12 + A21) (B11 + B12 + B22)
+M6 = (A22) (B21)
+M7 = (A11 + A12 + A21 + A22) (B22)
+C11 = M1 + M3 + M4 + M5
+C12 = M2 + M3 + M4 + M5
+C21 = M3 + M6
+C22 = M2 + M3 + M5 + M7
+Brent equations: all satisfied
+C = AB on 200 random pairs over GF(2): ok; 7 non-zero products
+
+$ tools/mm_scheme.py 'mm_boxes_sym(2; 6)'
+boxes backend: UNSAT in 2.92s
+$ tools/mm_scheme.py 'mm_boxes_sym(2; 6)' --cadical
+CaDiCaL: UNSAT in 0.30s
+\end{verbatim}
+\end{small}
+(The two engines return different 7-product schemes; each is checked as
+above.)
+
+\paragraph{Reading it against rank 22.}
+Everything above scales by the formula: \texttt{brent\_eqs(3)} is the 729
+equations; \texttt{mm\_boxes(3; 22)} the 16{,}038 \texttt{and3} boxes and,
+per equation, the 22-term parity as a chain of three \texttt{xor8} blocks
+carrying intermediate parities (a single \texttt{xor22} table would have
+$2^{21}$ rows; the blocks propagate exactly as it would);
+\texttt{mm\_sym\_boxes(3; 22)} the $S_{22}$ ordering over 9-bit $\alpha$
+vectors (\texttt{le\_9}, whose negative table comes from the declaration's
+\texttt{negation lt(b; a; 9)} clause). The rank-21 instance
+\texttt{mm\_boxes\_sym(3; 21)} --- 17{,}516 calls --- parses in 4\,ms,
+builds its tables in 0.2\,s and searches; it is the $S_0$ stratum of \S4,
+which ran for two hours without a verdict, so no verdict is expected. What
+does not scale is the solving: with the 2$\times$2 UNSAT proof already
+needing the symmetry breaking for both engines, the rank-22 instance is the
+stratum-and-cube programme of \S4--\S5, not a single solver call.
+
 \end{document}

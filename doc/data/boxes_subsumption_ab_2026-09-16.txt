@@ -1,0 +1,26 @@
+# Subsumption A/B for the box engine (2026-09-16, Apple M4 Pro Mac mini).
+# BOXES_SUBSUME=0 against =1, same binary, same instance; _s1.._s3 are shuffles
+# (variable renaming, polarity flips, clause and literal reordering).
+# Verdicts are compared in both arms and every UNSAT was independently
+# proof-checked with drat-trim and cake_lpr: 0 mismatches.
+# Conflict-ratio geomean 1.076x, time-ratio geomean 1.084x over the 14 solved;
+# total wall clock is worse (160.1s -> 176.9s) because pyhala_unsat40 regresses 16s.
+# cadical column: standalone cadical on the same file.
+
+instance                                 v_off   v_on      conf_off    conf_on   ratio    t_off     t_on  cadical
+Steiner-45-16-bce                        UNSAT   UNSAT       170019     158842   1.07x    1.653    1.501     2.85
+c3540_k8                                 UNSAT   UNSAT       142805     130703   1.09x    1.828    1.624     0.45
+c3540_k8_s1                              UNSAT   UNSAT       151138     145393   1.04x    1.914    1.829     0.40
+c3540_k8_s2                              UNSAT   UNSAT       152134     129765   1.17x    1.918    1.564     0.54
+c3540_k8_s3                              UNSAT   UNSAT       144470     156979   0.92x    1.816    1.976     0.48
+c5315_k8                                 UNSAT   UNSAT        29030      18821   1.54x    0.217    0.143     0.18
+c5315_k8_s1                              UNSAT   UNSAT        31799      22957   1.39x    0.233    0.173     0.15
+c5315_k8_s2                              UNSAT   UNSAT        32229      25268   1.28x    0.233    0.194     0.14
+c5315_k8_s3                              UNSAT   UNSAT        33564      31574   1.06x    0.253    0.236     0.12
+dlx1c.ucl.sat.chaff.4.1.bryant           UNSAT   UNSAT          761        761   1.00x    0.027    0.028     0.05
+eq.atree.braun.13.unsat                  TO      TO         4370432    4323795   1.01x  299.013  299.012   400.01
+php9_8                                   UNSAT   UNSAT        12219      11292   1.08x    0.116    0.108     0.01
+pyhala_unsat40                           UNSAT   UNSAT      1519001    1628890   0.93x  139.562  155.869    64.17
+rr10_8                                   UNSAT   UNSAT        14291      18832   0.76x    0.193    0.197     0.05
+w55_178                                  UNSAT   UNSAT       622398     647200   0.96x   10.151   11.493    17.86
+AB EXIT

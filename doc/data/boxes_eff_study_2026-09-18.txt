@@ -1,0 +1,88 @@
+# Does box constrainedness predict where the search fails?  (2026-09-18)
+#
+# §3.4 of doc/box_backend_design.md specifies branching on the box with the
+# fewest live rows -- fail-first / MRV, lifted to tables.  It was never
+# built; the engine decides by VSIDS.  This measures the premise before
+# building it: `BOXES_EFF_STUDY=1` records, at every conflict, where the
+# failing box ranked among ALL boxes by live rows at the moment of the
+# preceding decision (the per-level snapshot already holds that state).
+#
+# Observational, and that is the point: it samples the trajectory VSIDS
+# takes, so it cannot prove an EFF-driven search would lose.  It can and
+# does remove the reason to expect it to win, for the price of a counter.
+#
+# Columns.  tbl% = share of conflicts inside a table at all (the ceiling on
+# what ANY box-guided decision rule could steer).  rows f/p = the failing
+# box's live rows against the all-box mean.  frac f/p = the same normalised
+# by the box's own table size.  size f/p = the failing box's initial table
+# size against the mean.  top1% = how often the failing box was (tied for)
+# most constrained by fraction -- ties counted in its favour, so an upper
+# bound.  tight half% = share of conflicts in the five most-constrained
+# deciles by fraction alive; 50.0 = no signal.
+
+instance                        boxes   tbl%     rows f/p      frac f/p     size f/p  top1% tight half%
+16_16_booth_dadda_origin_and_a    458  23.0%   9.6/4.1    0.591/0.533    44.8/9.9      1.9       40.6
+16_16_booth_dadda_origin_and_a    477  21.4%   5.3/3.5    0.652/0.551    10.9/6.7      1.4       34.3
+16_16_booth_dadda_origin_and_a    466  22.1%   8.4/3.9    0.596/0.513    21.9/8.5      0.8       37.9
+16_16_booth_dadda_origin_and_a    485  21.6%   4.8/3.4    0.639/0.537     9.3/6.6      0.4       33.7
+c3540-k12                         301  78.6%   3.4/4.9    0.547/0.485     8.1/11.2     0.0       34.8
+c3540-k8                          272  84.5%   7.6/5.9    0.322/0.370    28.1/18.8     0.1       57.7
+c3540-k8-big                      221  58.2%   3.8/4.5    0.445/0.448     9.3/10.0     0.1       50.5
+c5315-k12                         543  81.5%   4.2/4.7    0.576/0.647     8.1/7.6      0.1       56.6
+c5315-k8                          330  85.7%  10.5/12.9   0.336/0.532    39.1/27.4     1.2       70.4
+c5315-k8-big                      297  66.1%   4.7/6.1    0.470/0.612    10.5/10.3     0.3       66.1
+eq.atree.braun.13.unsat-k12       308  16.2%   5.7/4.1    0.610/0.552    10.1/7.7      0.2       40.4
+eq.atree.braun.13.unsat-k8        308  15.7%   6.1/4.0    0.616/0.542    10.8/7.6      0.3       38.1
+ezfact64_6.shuffled-as.sat05-4    152  18.8%  11.7/13.1   0.242/0.285    56.8/54.5     0.2       44.8
+ezfact64_6.shuffled-as.sat05-4    152  23.9%   9.2/11.2   0.206/0.267    52.9/44.4     0.1       48.3
+lec_mult_CvW_11x10.sanitized-k    559  67.8%   3.5/2.9    0.675/0.557     5.6/5.4      0.2       30.6
+lec_mult_CvW_11x10.sanitized-k    559  67.8%   3.5/2.9    0.675/0.557     5.6/5.4      0.2       30.6
+pyhala-braun-sat-40-4-03.shuff    853  77.8%  24.9/10.0   0.336/0.188    81.4/73.0     0.0       15.9
+pyhala-braun-sat-40-4-03.shuff    852  75.5%  19.5/7.4    0.275/0.142    77.1/67.7     0.0       11.5
+pyhala-braun-unsat-40-4-02.shu    853  74.3%  21.5/6.3    0.291/0.137    84.4/73.6     0.0       10.3
+pyhala-braun-unsat-40-4-02.shu    861  74.8%  21.2/6.1    0.311/0.129    75.1/67.7     0.0        7.9
+sum_of_3_cubes_108_bits_52-k8   22909  90.6%   9.4/29.2   0.120/0.393    87.4/78.4     0.0       72.6
+sum_of_3_cubes_145_bits_74-k8   41646  92.2%   8.5/44.9   0.108/0.610    91.2/78.0     0.0       97.2
+sum_of_3_cubes_37_bits_87-k12    3914  89.0%  15.8/10.1   0.187/0.120   112.7/86.0     0.0       26.2
+sum_of_3_cubes_37_bits_87-k8     3978  87.8%  15.0/10.4   0.195/0.136    84.6/77.2     0.0       21.3
+sum_of_3_cubes_94_bits_30-k8    17245  89.7%  10.0/25.4   0.130/0.337    85.3/79.3     0.0       60.8
+toughsat_factoring_895s-k12       194  72.7%  25.0/22.5   0.117/0.102   247.9/234.6    0.1       35.3
+toughsat_factoring_895s-k8        248  67.9%  19.8/14.7   0.167/0.152   136.7/107.3    0.0       36.5
+verify-k8                         477  21.5%   5.3/3.5    0.652/0.552    10.9/6.7      1.4       34.3
+verify-k8b                        363  82.3%   3.3/3.7    0.567/0.502     6.6/7.7      0.1       35.4
+
+(tight half% = share of conflicts in the five most-constrained deciles by fraction alive; 50.0 = no signal)
+
+# Verdict over the 29 instances:
+#
+#   failing box had MORE live rows than the mean (§3.4's rule backwards)  18/29
+#   tighter-half concentration by fraction alive (for the premise)         8/29
+#   failing box was a BIGGER table than the mean                          26/29
+#   top1 by fraction: max 1.9%, median 0.1%
+#   conflicts inside tables: min 16%, median 73%, max 92%
+#
+# So the raw rule §3.4 names is contradicted; the normalised version it
+# does not name survives on under a third of instances and flips sign
+# within a family (c3540 K=8 concentrates 57.7% of conflicts in the tighter
+# half, K=12 only 34.8%); and an argmin rule is hopeless either way.  The
+# one consistent pattern is that failing boxes are BIGGER tables (26/29),
+# which is an exposure effect -- a bigger table touches more variables and
+# so takes part in more conflicts -- not a constrainedness effect.  That is
+# the term dom/wdeg normalises away, and it is static information already
+# available without any of this machinery.
+#
+# Scope worth keeping in view: on eq.atree.braun, ezfact64_6 and the
+# 16_16_booth multipliers only 16-24% of conflicts happen in a table at
+# all.  On those families -- the factoring and multiplier ones the backend
+# most wants to win -- four conflicts in five are in clauses, where a box
+# heuristic has nothing to say whatever its quality.
+
+# Cost of the instrumentation, cone corpus, study off, best of 3:
+#
+#   maintaining live_count unconditionally      1.019x  (5 instances)
+#   gated behind BOXES_EFF_STUDY (as shipped)   0.997x  (4 instances, i.e. noise)
+#
+# Maintaining the counter is cheap -- every writer of `live` already
+# touches each word, and it turned the dead-box test from a scan into a
+# counter read -- but it is not free, and after this result nothing reads
+# it in a normal run, so it is gated.

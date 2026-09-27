@@ -24,6 +24,8 @@
 //! x2_64/x2_72, tseitingrid6x185, tseitin_n188_d3, tseitin_grid_n250
 //! (62.5k XORs), tseitin_d3_n100000 (100k XORs)).
 
+#![allow(clippy::needless_range_loop, clippy::doc_lazy_continuation)]
+
 use std::collections::HashMap;
 use std::io::{self, Write};
 

@@ -1,15 +1,35 @@
 import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, useMemo } from "react";
-import { parse, complementAst, astToString, resolvePosition, VarLabel } from "./formula.jsx";
+import { parse, complementAst, astToString, resolvePosition, VarLabel, expandBoxCalls, expandBoxCallsPerCall, atomizeBoxCalls, relabelBoxAtoms, familyOf } from "./formula.jsx";
 
 // Base URL for API calls.  In `vite dev` we hit the separate Rust service on
 // :3001 (same as before).  In a production build — e.g. the Docker image —
 // the Rust backend also serves the built frontend static files, so relative
 // URLs keep everything same-origin no matter what hostname/port the user
 // reaches the container on.
-const API_BASE = import.meta.env.PROD ? '' : 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_API_BASE ?? (import.meta.env.PROD ? '' : 'http://localhost:3001');
 
 // ─── Cover context (for highlighting complementary pairs in diagrams) ──────────
 const CoverContext = createContext(null);
+// Box registry for the diagram: { byName: Map<name, box>, open(name) } — a box
+// leaf shows the box's definition as a tooltip and opens it on click.
+const BoxInfoContext = createContext(null);
+
+// Interface of a compiled box as `name(p1;p2;…)` (parameters, then exposed families).
+const boxInterface = b => `${b.name}(${[...(b.params ?? b.vars), ...(b.expose ?? [])].join(';')})`;
+// Multi-line definition summary, for tooltips.
+function boxTooltip(b) {
+  const lines = [`${boxInterface(b)}   —   ${b.lib}`];
+  if (b.decl) lines.push(b.decl);
+  lines.push(`= ${b.formula}`);
+  lines.push(`columns: ${b.vars.join(', ')}`);
+  if (b.internals?.length) lines.push(`hidden (∃): ${b.internals.join(', ')}`);
+  const st = (ok, ms) => `${ok ? 'minimum' : 'irredundant'}${ms != null ? `, ${ms} ms` : ''}`;
+  lines.push(`${b.rows} rows (${st(b.exact_min_pos ?? b.exact_min, b.minimize_ms_pos)}); negation: ${b.rows_neg ?? '?'} rows (${st(b.exact_min_neg ?? b.exact_min, b.minimize_ms_neg)}); ${b.uncovered_paths} uncovered paths`);
+  if (b.budget_cubes != null) lines.push(`minimization budget: ${b.budget_cubes} cubes, ${b.budget_ms} ms (took ${b.minimize_ms ?? '?'} ms)`);
+  if (b.composed) lines.push('compiled by composition: the callees\' tables joined, hidden variables projected');
+  lines.push('click for the full definition');
+  return lines.join('\n');
+}
 
 const PAIR_COLORS = ['#e63946', '#1d7cc4', '#2a9d8f', '#e07c00', '#8e44ad', '#555'];
 
@@ -94,9 +114,18 @@ function fmtClause(clause, vars) {
 // Format a formula with one top-level expression per line.
 // If a top-level operator (⇒, ⊕, =, +) is present, split at the loosest one
 // (each operand on its own line). Otherwise, split at every top-level factor
-// boundary (implicit AND between groups / variables).
-function formatFormula(s) {
+// boundary (implicit AND between groups / variables).  Box calls
+// `f(a, b, …)` are one factor: they are swapped for placeholder tokens while
+// splitting and put back verbatim (lenient — the box need not be loaded).
+function formatFormula(s, boxes) {
   if (!s || !s.trim()) return s;
+  let text = s, calls = [];
+  try { ({ text, calls } = atomizeBoxCalls(s, boxes, { lenient: true })); } catch { text = s; calls = []; }
+  const out = formatFormulaCore(text);
+  return calls.length ? out.replace(/BOXCALL_(\d+)/g, (m, k) => calls[k - 1]?.text ?? m) : out;
+}
+
+function formatFormulaCore(s) {
   const prec = { '⇒': 1, '⊕': 2, '≠': 2, '=': 3, '⇔': 3, '⊙': 3, '+': 4 };
   const isVarChar = ch => /[A-Za-z0-9_,]/.test(ch);
 
@@ -152,14 +181,20 @@ const compName = n => n?.endsWith("'") ? n.slice(0, -1) : (n ? n + "'" : n);
 
 // Evaluate an AST against a variable assignment { varName: '0'|'1' }.
 // Returns a Map<positionKey, 'true'|'false'|'undetermined'> for every node.
-function evaluateAst(node, assignment, position = []) {
+// `boxValue(idx)`, when given, values a box-call leaf (box-aware diagram)
+// that the assignment does not name directly: the call's definition under
+// the assignment — 'true' | 'false' | 'undetermined'.
+function evaluateAst(node, assignment, position = [], boxValue = null) {
   const result = new Map();
   const posKey = position.join(',');
 
   if (node.t === 'VAR') {
     const neg = node.n.endsWith("'");
     const base = neg ? node.n.slice(0, -1) : node.n;
-    if (base === '1') {
+    if (node.box && boxValue && !(base in assignment)) {
+      const v = boxValue(node.box.idx);
+      result.set(posKey, !neg || v === 'undetermined' ? v : (v === 'true' ? 'false' : 'true'));
+    } else if (base === '1') {
       // Constant 1: true; 1': false
       result.set(posKey, neg ? 'false' : 'true');
     } else if (base === '0') {
@@ -174,7 +209,7 @@ function evaluateAst(node, assignment, position = []) {
   } else if (node.t === 'OR') {
     let hasTrue = false, hasUndetermined = false;
     node.c.forEach((child, i) => {
-      const childResult = evaluateAst(child, assignment, [...position, i]);
+      const childResult = evaluateAst(child, assignment, [...position, i], boxValue);
       childResult.forEach((v, k) => result.set(k, v));
       const cv = childResult.get([...position, i].join(','));
       if (cv === 'true') hasTrue = true;
@@ -184,7 +219,7 @@ function evaluateAst(node, assignment, position = []) {
   } else if (node.t === 'AND') {
     let hasFalse = false, hasUndetermined = false;
     node.c.forEach((child, i) => {
-      const childResult = evaluateAst(child, assignment, [...position, i]);
+      const childResult = evaluateAst(child, assignment, [...position, i], boxValue);
       childResult.forEach((v, k) => result.set(k, v));
       const cv = childResult.get([...position, i].join(','));
       if (cv === 'false') hasFalse = true;
@@ -315,7 +350,7 @@ function extractVars(node) {
     if (n.t === 'VAR') {
       const name = n.n;
       const base = name.endsWith("'") ? name.slice(0, -1) : name;
-      vars.add(base);
+      if (base !== '0' && base !== '1') vars.add(base);   // constants are not variables
     } else if (n.c) {
       n.c.forEach(walk);
     }
@@ -347,12 +382,40 @@ function parseSubscript(name) {
   return { rank: 2, nums, sub };
 }
 
-// Comparator for variable names. Groups by baseOf() alphabetically, then orders
-// within a base: bare name first, integer-list subscripts lexicographic, then
-// non-integer subscripts alphabetic.
+// A box-call label `name(a1,a2,…)` (possibly primed).
+const isBoxLabel = name => name.includes('(');
+// The arguments of a box-call label `name(a1;a2;…)` (labels join with `;`,
+// which never continues a name — an argument may carry a subscript comma
+// itself, as in `d_0,1`).
+function argsOfLabel(name) {
+  const noPrime = name.endsWith("'") ? name.slice(0, -1) : name;
+  const i = noPrime.indexOf('('), j = noPrime.lastIndexOf(')');
+  if (i === -1 || j <= i) return [];
+  return noPrime.slice(i + 1, j).split(';').map(a => a.trim());
+}
+
+// Comparator for variable names. Variables come first, then box calls.
+// Variables group by baseOf() alphabetically, then order within a base: bare
+// name first, integer-list subscripts lexicographic, then non-integer
+// subscripts alphabetic.  Box calls group by box name alphabetically, then
+// order within a box by their arguments (argument by argument, with the
+// variable ordering) — the arguments play the role of subscripts, so ⇅
+// reverses that order just as it reverses subscript order.
 function cmpVarName(a, b, reverse = false) {
+  const boxA = isBoxLabel(a), boxB = isBoxLabel(b);
+  if (boxA !== boxB) return boxA ? 1 : -1;
   const ba = baseOf(a), bb = baseOf(b);
   if (ba !== bb) return ba < bb ? -1 : 1;
+  if (boxA) {
+    const pa = argsOfLabel(a), pb = argsOfLabel(b);
+    let r = 0;
+    for (let i = 0; i < Math.max(pa.length, pb.length) && r === 0; i++) {
+      if (pa[i] === undefined) r = -1;
+      else if (pb[i] === undefined) r = 1;
+      else r = cmpVarName(pa[i], pb[i]);
+    }
+    return reverse ? -r : r;
+  }
   const sa = parseSubscript(a), sb = parseSubscript(b);
   let r = 0;
   if (sa.rank !== sb.rank) r = sa.rank - sb.rank;
@@ -373,6 +436,10 @@ function cmpVarName(a, b, reverse = false) {
 // e.g. "a_5'" → "a", "c_0" → "c", "x" → "x".
 function baseOf(name) {
   const noPrime = name.endsWith("'") ? name.slice(0, -1) : name;
+  // A box-call label `name(args)`: the arguments act like subscripts, so the
+  // base is the box name — one filter chip for every call of that box.
+  const paren = noPrime.indexOf('(');
+  if (paren !== -1) return noPrime.slice(0, paren);
   const ui = noPrime.indexOf('_');
   return ui === -1 ? noPrime : noPrime.slice(0, ui);
 }
@@ -403,15 +470,21 @@ function spacedVals(entries, decimal = false, reverseBaseOrder = false) {
   }).join(' ');
 }
 
-function formulaBases(ast) {
-  if (!ast) return [];
-  return [...new Set(extractVars(ast).map(baseOf))].sort();
+// Bases for the filter chips: variables first, then box names.  `extraAst`
+// (the expanded formula) adds the bases of variables that only occur inside
+// box calls, so every assignment entry has a chip in box-aware mode.
+function formulaBases(ast, extraAst = null) {
+  if (!ast && !extraAst) return [];
+  const vars = [...(ast ? extractVars(ast) : []), ...(extraAst ? extractVars(extraAst) : [])];
+  const boxNames = new Set(vars.filter(isBoxLabel).map(baseOf));
+  return [...new Set(vars.map(baseOf))]
+    .sort((x, y) => (boxNames.has(x) !== boxNames.has(y)) ? (boxNames.has(x) ? 1 : -1) : (x < y ? -1 : x > y ? 1 : 0));
 }
 
 // Filter chip strip used next to the expanded/factored/value link in assignment
 // displays. Toggles inclusion of variables matching a given base name.
-function AsgnFilter({ ast, hiddenBases, setHiddenBases, reverseBaseOrder, setReverseBaseOrder, decimalValues, setDecimalValues }) {
-  const bases = formulaBases(ast);
+function AsgnFilter({ ast, hiddenBases, setHiddenBases, reverseBaseOrder, setReverseBaseOrder, decimalValues, setDecimalValues, extraAst = null }) {
+  const bases = formulaBases(ast, extraAst);
   if (bases.length === 0) return null;
   return <>
     {' · '}
@@ -463,6 +536,7 @@ const BORDER_COLORS = ['#111', '#1a6bcc', '#b35000', '#2a7a2a', '#7a1a7a'];
 
 function BoxNode({ node, depth = 0, position = [], complementView = false }) {
   const cover = useContext(CoverContext);
+  const boxInfo = useContext(BoxInfoContext);
   const compView = cover?.complementView ?? complementView;
   if (!node) return null;
 
@@ -586,6 +660,8 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
     return (
       <div
         data-position={posKey}
+        title={node.box ? (boxInfo?.byName.get(node.box.name) ? boxTooltip(boxInfo.byName.get(node.box.name)) : node.n) : undefined}
+        onClick={node.box && boxInfo ? (e => { e.stopPropagation(); boxInfo.open(node.box.name); }) : undefined}
         style={{
           position: 'relative',
           minWidth: compView ? undefined : 26,
@@ -595,6 +671,9 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
           padding: compView ? '6px 4px' : '4px 6px',
           fontSize: 17, fontFamily: 'Georgia, serif',
           fontWeight: 'bold', lineHeight: 1, userSelect: 'none',
+          // A box leaf is laid out un-rotated (flex-centered label) and turns with
+          // the diagram in complement view, so its label reads top-to-bottom.
+          ...(node.box ? { border: '2px solid #5a5a9a', borderRadius: 5, background: '#eef0fb', padding: '6px 10px', fontSize: 15, minWidth: undefined, minHeight: undefined, cursor: boxInfo ? 'pointer' : undefined } : {}),
           ...(bgColor ? { background: bgColor, borderRadius: 3 } : {}),
         }}
       >
@@ -602,7 +681,7 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
         {uncovBars}
         <span style={{
           display: 'inline-block',
-          transform: compView ? 'rotate(-90deg)' : 'rotate(0deg)',
+          transform: compView && !node.box ? 'rotate(-90deg)' : 'rotate(0deg)',
           transition: 'transform 0.4s ease',
         }}>
           <VarLabel name={displayName} />
@@ -636,7 +715,7 @@ function BoxNode({ node, depth = 0, position = [], complementView = false }) {
 }
 
 // ─── Diagram with SVG arc connections for covering pairs ──────────────────────
-function DiagramWithConnections({ node, coverGroups, selectedGroups, highlightedPaths, assignmentEval = null, complementView = false, coverProdType = 'AND' }) {
+function DiagramWithConnections({ node, coverGroups, selectedGroups, highlightedPaths, assignmentEval = null, complementView = false, coverProdType = 'AND', boxInfo = null }) {
   const containerRef = useRef(null);
   const [arcs, setArcs] = useState([]);
   const [pathLines, setPathLines] = useState([]);
@@ -886,6 +965,7 @@ function DiagramWithConnections({ node, coverGroups, selectedGroups, highlighted
   });
 
   return (
+    <BoxInfoContext.Provider value={boxInfo}>
     <CoverContext.Provider value={(Object.keys(posToPairIndices).length || Object.keys(posToPrefixIndices).length || Object.keys(posToHighlightIndices).length || Object.keys(posToCoveredPathIndices).length || assignmentEval || complementView) ? { posToPairIndices, posToPrefixIndices, posToHighlightIndices, posToCoveredPathIndices, maxBarCount, idxToGroupColor, assignmentEval, complementView } : null}>
       <div ref={containerRef} style={{
         position: 'relative', display: 'inline-block',
@@ -930,11 +1010,12 @@ function DiagramWithConnections({ node, coverGroups, selectedGroups, highlighted
         )}
       </div>
     </CoverContext.Provider>
+    </BoxInfoContext.Provider>
   );
 }
 
 // ─── Zoom / Pan wrapper ────────────────────────────────────────────────────────
-function ZoomPanWrapper({ children, bg = '#f8f9fc', border = '1px solid #dde', opacity = 1, rotated = false }) {
+function ZoomPanWrapper({ children, bg = '#f8f9fc', border = '1px solid #dde', opacity = 1, rotated = false, recenterKey }) {
   const viewRef    = useRef(null);
   const contentRef = useRef(null);
   const scaleRef   = useRef(1);
@@ -956,13 +1037,36 @@ function ZoomPanWrapper({ children, bg = '#f8f9fc', border = '1px solid #dde', o
     if (!view || !content) return;
     const vw = view.offsetWidth,  vh = view.offsetHeight;
     const cw = content.offsetWidth, ch = content.offsetHeight;
-    if (!cw || !ch) return;
+    // No size yet (e.g. the pane is hidden): keep scale 1 rather than fitting to 0.
+    if (!cw || !ch || !vw || !vh) return;
     const s  = Math.min(vw / cw, vh / ch, 1);
     const tx = (vw - cw * s) / 2;
     const ty = (vh - ch * s) / 2;
     fitRef.current = { scale: s, x: tx, y: ty };
     commit(s, tx, ty);
   }, []); // runs once on mount; key prop remounts on formula change
+
+  // A re-layout without a remount (e.g. the box-aware toggle swaps the
+  // collapsed and expanded renditions): keep the content's visual center
+  // where it was, at the current zoom, so the new rendition is centered on
+  // the old one instead of landing at the old top-left corner.
+  const lastRawRef = useRef(null);
+  const prevKeyRef = useRef(recenterKey);
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    const w = content.offsetWidth, h = content.offsetHeight;
+    if (prevKeyRef.current !== recenterKey) {
+      prevKeyRef.current = recenterKey;
+      const prev = lastRawRef.current;
+      if (prev && w && h) {
+        const s = scaleRef.current;
+        const cx = txRef.current + (prev.w / 2) * s, cy = tyRef.current + (prev.h / 2) * s;
+        commit(s, cx - (w / 2) * s, cy - (h / 2) * s);
+      }
+    }
+    lastRawRef.current = { w, h };
+  });
 
   // Non-passive wheel for zoom-to-cursor
   useEffect(() => {
@@ -1143,7 +1247,9 @@ export default function App() {
   // One of: 'smart', 'cdcl', 'eff', 'greedy_cdcl', 'greedy_eff'.  Default
   // 'greedy_eff' — currently the strongest matrix-method configuration on
   // most rows of the focused 27-bit bench.
-  const [matrixBackend,         setMatrixBackend]         = useState('greedy_eff');
+  // Default: compiled box tables where the formula has box calls; without
+  // calls the server runs greedy×eff (the previous default) unchanged.
+  const [matrixBackend,         setMatrixBackend]         = useState('boxes');
   const [cadicalValidResult,    setCadicalValidResult]    = useState(null); // {assignment, learnedClauses, elapsedSecs, error}
   const [cadicalSatResult,      setCadicalSatResult]      = useState(null);
   const [cadicalValidRunning,   setCadicalValidRunning]   = useState(false);
@@ -1160,12 +1266,20 @@ export default function App() {
   const [cadicalSatClausesExpanded,   setCadicalSatClausesExpanded]   = useState(false);
   const [pathsResult,    setPathsResult]    = useState(null); // {uncoveredPaths, coverGroups, totalPrefixCount} | {error}
   const [pathsLimit,     setPathsLimit]     = useState(100);
+  // Box aware: draw each box call as one labelled rectangle and compute paths
+  // through the collapsed matrix (server checks candidates against the tables).
+  const [pathsBoxAware,  setPathsBoxAware]  = useState(true);
   const [pathsComp,      setPathsComp]      = useState(false); // show paths of complement
   const [pathsSelected,  setPathsSelected]  = useState(new Set());
   const [pathsExpanded,  setPathsExpanded]  = useState(new Set());
   const [pathsUncovSel,  setPathsUncovSel]  = useState(new Set()); // selected uncovered path indices
   const [pathsRunning,   setPathsRunning]   = useState(false); // server-side path generation in progress
   const [pathsTreeExpanded, setPathsTreeExpanded] = useState(new Set()); // Set<nodeKey> of expanded prefix-tree nodes
+  // Selections are indices into the current paths result; a mode switch
+  // (complement, box aware) recomputes the paths against a different matrix,
+  // so the old selections would highlight the wrong things.
+  const clearPathsSelection = () => { setPathsSelected(new Set()); setPathsUncovSel(new Set()); setPathsExpanded(new Set()); };
+  const [pathsCanonical, setPathsCanonical] = useState(false); // uncovered-path tree: trace order (false) or canonical (sorted/deduped) form
   const pathsPollRef = useRef(null);
   const [loading,        setLoading]        = useState(false);
   const [jqFilter,       setJqFilter]       = useState('');
@@ -1182,6 +1296,66 @@ export default function App() {
   const [jqLibTestRunning, setJqLibTestRunning] = useState(false);
   const [jqLibTestResult,  setJqLibTestResult]  = useState(null); // {ok: bool, message: string} | null
   const [jqLibClosePrompt, setJqLibClosePrompt] = useState(false); // unsaved-changes confirm
+  const [boxes,          setBoxes]          = useState([]);    // compiled boxes from /boxes
+  // Box definition popup: the box being shown and its compiled table (fetched on open).
+  const [boxInfoName,    setBoxInfoName]    = useState(null);
+  const [boxInfoTable,   setBoxInfoTable]   = useState(null);
+  const [boxBudgetEdit,  setBoxBudgetEdit]  = useState({ cubes: '', ms: '' });   // popup inputs
+  const [boxRecompute,   setBoxRecompute]   = useState({ busy: false, error: '' });
+  const openBoxInfo = async name => {
+    setBoxInfoName(name); setBoxInfoTable(null); setBoxRecompute({ busy: false, error: '' });
+    const b0 = boxes.find(x => x.name === name);
+    if (b0) setBoxBudgetEdit({ cubes: String(b0.budget_cubes ?? 2000000), ms: String(b0.budget_ms ?? 1500) });
+    try {
+      const res = await fetch(API_BASE + '/boxes/table?name=' + encodeURIComponent(name));
+      const data = await res.json();
+      if (!data.error) setBoxInfoTable(data);
+    } catch { /* table stays unavailable */ }
+  };
+  const boxInfoCtx = useMemo(() => ({ byName: new Map(boxes.map(b => [b.name, b])), open: openBoxInfo }), [boxes]);
+  // Recompute a box with an edited minimization budget: the budget lives in
+  // the declaration (`budget cubes=N ms=M`), so rewrite that line and save
+  // the library — the server recompiles its boxes — then refresh.
+  const BUDGET_DEFAULTS = { cubes: 2000000, ms: 1500 };
+  const declWithBudget = (decl, cubes, ms) => {
+    const base = decl.replace(/\s+budget\s.*$/, '').trim();
+    return (cubes === BUDGET_DEFAULTS.cubes && ms === BUDGET_DEFAULTS.ms) ? base : `${base} budget cubes=${cubes} ms=${ms}`;
+  };
+  const recomputeBox = async b => {
+    const cubes = parseInt(boxBudgetEdit.cubes, 10), ms = parseInt(boxBudgetEdit.ms, 10);
+    if (!(cubes > 0) || !(ms >= 0)) { setBoxRecompute({ busy: false, error: 'budget: cubes must be a positive number, ms a non-negative number' }); return; }
+    const lib = jqLibs.find(l => l.path === b.lib);
+    if (!lib) { setBoxRecompute({ busy: false, error: `library ${b.lib} is not loaded` }); return; }
+    const newDecl = declWithBudget(b.decl, cubes, ms);
+    const lines = (lib.boxes ?? []).map(line => line.trim() === b.decl.trim() ? newDecl : line);
+    setBoxRecompute({ busy: true, error: '' });
+    try {
+      const res = await fetch(API_BASE + '/jq-lib', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: lib.path, deps: lib.deps ?? [], content: lib.content ?? '', tests: lib.tests ?? '', boxes: lines }),
+      });
+      const data = await res.json();
+      if (data.error) { setBoxRecompute({ busy: false, error: data.error }); return; }
+      if (data.boxes) applyBoxStatuses(data.boxes);
+      await refreshJqLibs(); await fetchBoxes();
+      setBoxRecompute({ busy: false, error: '' });
+      // refresh the table grid
+      try { const t = await (await fetch(API_BASE + '/boxes/table?name=' + encodeURIComponent(b.name))).json(); if (!t.error) setBoxInfoTable(t); } catch {}
+    } catch { setBoxRecompute({ busy: false, error: 'Could not reach Rust service' }); }
+  };
+  const [boxStatus,      setBoxStatus]      = useState({});    // name -> {rows|error} from the last load/save
+  const [jqLibBoxes,     setJqLibBoxes]     = useState([]);    // editor buffer: box declarations
+  // The declaration list scrolls within a few rows; after "Add box" (one new,
+  // empty row — not the list filling when a library is opened) show the new row.
+  const jqLibBoxListRef = useRef(null);
+  const jqLibBoxCountRef = useRef(0);
+  useEffect(() => {
+    const el = jqLibBoxListRef.current;
+    const added = jqLibBoxes.length === jqLibBoxCountRef.current + 1 && jqLibBoxes[jqLibBoxes.length - 1] === '';
+    if (el && added) el.scrollTop = el.scrollHeight;
+    jqLibBoxCountRef.current = jqLibBoxes.length;
+  }, [jqLibBoxes]);
+  const [boxesMsg,       setBoxesMsg]       = useState('');
   const [jqLibDeps,      setJqLibDeps]      = useState([]);    // editable dep list
   const [jqLibDepInput,  setJqLibDepInput]  = useState('');    // dep picker input
   const [jqLibFiles,     setJqLibFiles]     = useState([]);   // available .jq filenames
@@ -1189,10 +1363,30 @@ export default function App() {
   const inputRef = useRef(null);
 
   // Parse synchronously so ast is always current on the same render as input
+  // Box calls (`full_adder(a, b, …)`): expanded to their definitions for the
+  // diagram (the server does the same), or — box-aware mode — kept as single
+  // leaves labelled with the call, mirroring the server's atomized matrix so
+  // path positions line up.  An unknown box is a syntax error right here.
+  const boxCalls = useMemo(() => { try { return atomizeBoxCalls(input, boxes).calls; } catch { return []; } }, [input, boxes]);
+  // Box aware applies to Valid?, Satisfiable? and Paths, and needs the boxes
+  // backend (the only one that can use the compiled tables).
+  const canBoxAware = matrixBackend === 'boxes' && boxCalls.length > 0;
+  const boxAware = pathsBoxAware && canBoxAware;
+  // The expanded formula's AST, whatever the mode: CaDiCaL always solves the
+  // expanded formula, so its variable order and names come from here.
+  const expandedAst = useMemo(() => { try { return parse(expandBoxCalls(input, boxes)); } catch { return null; } }, [input, boxes]);
+  // each top-level call's own expansion (box-aware highlighting of an assignment over the expanded formula)
+  const perCallExpansions = useMemo(() => { try { return expandBoxCallsPerCall(input, boxes).perCall; } catch { return []; } }, [input, boxes]);
   const [ast, error] = useMemo(() => {
-    try { return [parse(input), '']; }
+    try {
+      if (boxAware) {
+        const at = atomizeBoxCalls(input, boxes);
+        return [relabelBoxAtoms(parse(at.text), at.calls), ''];
+      }
+      return [parse(expandBoxCalls(input, boxes)), ''];
+    }
     catch (e) { return [null, e.message]; }
-  }, [input]);
+  }, [input, boxes, boxAware]);
 
   // Run jq filter live as it is typed; push result into formula input
   useEffect(() => {
@@ -1210,7 +1404,7 @@ export default function App() {
           const out = data.results;
           if (out && out.length > 0) {
             const val = out[0];
-            setInput(formatFormula(typeof val === 'string' ? val : JSON.stringify(val)));
+            setInput(formatFormula(typeof val === 'string' ? val : JSON.stringify(val), boxes));
             setJqError('');
           } else {
             setJqError('Filter produced no output');
@@ -1242,20 +1436,45 @@ export default function App() {
       });
       const data = await res.json();
       if (data.error) { setJqLibError(data.error); }
-      else { setJqLibPath(''); await refreshJqLibs(); }
+      else { setJqLibPath(''); applyBoxStatuses(data.boxes); await refreshJqLibs(); await fetchBoxes(); }
     } catch {
       setJqLibError('Could not reach Rust service');
     }
     setJqLibLoading(false);
   };
 
+  const fetchBoxes = async () => {
+    try {
+      const res  = await fetch(API_BASE + '/boxes');
+      const data = await res.json();
+      setBoxes(data.boxes ?? []);
+      // Declarations that did not compile (any library, loaded or a
+      // dependency) keep their error status across reloads of the page.
+      if (Array.isArray(data.failed)) setBoxStatus(prev => {
+        const next = { ...prev };
+        for (const st of data.failed) if (st.name) next[st.name] = { error: st.error };
+        return next;
+      });
+    } catch { /* backend unreachable */ }
+  };
+  // Per-box compile statuses come back from library load and save.
+  const applyBoxStatuses = (statuses) => {
+    if (!Array.isArray(statuses)) return;
+    setBoxStatus(prev => {
+      const next = { ...prev };
+      for (const st of statuses) if (st.name) next[st.name] = st.error ? { error: st.error } : { rows: st.rows };
+      return next;
+    });
+    const errs = statuses.filter(st => st.error).map(st => (st.name ? st.name + ': ' : '') + st.error);
+    setBoxesMsg(errs.length ? '✗ ' + errs.join('; ') : '');
+  };
   const handleUnloadJqLib = async (path) => {
     try {
       await fetch(API_BASE + '/jq-lib', {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path }),
       });
-      await refreshJqLibs();
+      await refreshJqLibs(); await fetchBoxes();
     } catch {}
   };
 
@@ -1315,6 +1534,7 @@ export default function App() {
   // Load jq lib list and available files from server on mount
   useEffect(() => {
     refreshJqLibs();
+    fetchBoxes();
     fetch(API_BASE + '/jq-lib/files')
       .then(r => r.json())
       .then(data => { if (data.files) setJqLibFiles(data.files); })
@@ -1374,7 +1594,7 @@ export default function App() {
         } else {
           setSimplifyMsg({ text: `✓ Simplified ${form}!`, ok: true });
           setSimplified({ formula: result, ast: parse(result) });
-          setInput(formatFormula(result));
+          setInput(formatFormula(result, boxes));
         }
       }
     } catch (e) {
@@ -1439,7 +1659,7 @@ export default function App() {
     try {
       const res = await fetch(API_BASE + '/paths', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input, paths_class_limit: pathsLimit, complement: complementFlag }),
+        body: JSON.stringify({ formula: input, paths_class_limit: pathsLimit, complement: complementFlag, box_aware: boxAware }),
       });
       if (!res.ok) throw new Error('start failed');
     } catch (e) {
@@ -1520,7 +1740,7 @@ export default function App() {
     try {
       const res = await fetch(API_BASE + '/valid', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input, no_cover: noCoverEnabled, backend: matrixBackend }),
+        body: JSON.stringify({ formula: input, no_cover: noCoverEnabled, backend: matrixBackend, box_aware: boxAware }),
       });
       if (!res.ok) throw new Error('start failed');
     } catch (e) {
@@ -1573,6 +1793,7 @@ export default function App() {
       hitLimit: data.hit_limit,
       isComplement: true,
       preprocessedTo: data.preprocessed_to ?? null,
+      solvedBy: data.solved_by ?? null,
     });
     setSatRunning(!!data.running);
     if (!data.running) stopSatPolling();
@@ -1601,7 +1822,7 @@ export default function App() {
     try {
       const res = await fetch(API_BASE + '/satisfiable', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formula: input, no_cover: noCoverEnabled, backend: matrixBackend }),
+        body: JSON.stringify({ formula: input, no_cover: noCoverEnabled, backend: matrixBackend, box_aware: boxAware }),
       });
       if (!res.ok) throw new Error('start failed');
     } catch (e) {
@@ -1646,6 +1867,7 @@ export default function App() {
       const r = data.result;
       setCadicalValidResult(r ? {
         assignment: r.assignment,
+        vars: r.vars,
         learnedClauses: r.learned_clauses,
         elapsedSecs: r.elapsed_secs,
       } : { assignment: null, learnedClauses: [], elapsedSecs: 0 });
@@ -1717,6 +1939,7 @@ export default function App() {
       const r = data.result;
       setCadicalSatResult(r ? {
         assignment: r.assignment,
+        vars: r.vars,
         learnedClauses: r.learned_clauses,
         elapsedSecs: r.elapsed_secs,
       } : { assignment: null, learnedClauses: [], elapsedSecs: 0 });
@@ -1793,10 +2016,11 @@ export default function App() {
   // Stop polling on unmount.
   useEffect(() => () => { stopPathsPolling(); stopValidPolling(); stopSatPolling(); stopCadicalValidPolling(); stopCadicalSatPolling(); }, []);
 
-  // Re-fetch paths when the limit or complement checkbox changes while the display is open
+  // Re-fetch paths when the limit, complement or box-aware checkbox changes
+  // while the display is open (the paths panel stays up and is recomputed).
   useEffect(() => {
     if (pathsResult && !pathsResult.error) fetchPaths();
-  }, [pathsLimit, pathsComp]);
+  }, [pathsLimit, pathsComp, boxAware]);
 
   // Auto-rotate to complement when sat selections are active, rotate back when none
   useEffect(() => {
@@ -1895,7 +2119,7 @@ export default function App() {
       fetchSat();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matrixBackend]);
+  }, [matrixBackend, boxAware]);
 
   // When "CaDiCaL" toggles while a valid/sat display is open, start or stop
   // the cadical-side job to match the checkbox.
@@ -2111,7 +2335,7 @@ export default function App() {
                     background: '#e8f5e9', border: '1px solid #a5d6a7',
                     borderRadius: 4, padding: '1px 6px', fontSize: 11,
                   }}>
-                    <button onClick={() => { setJqLibViewing(lib); setJqLibEditContent(lib.content); setJqLibTest(lib.tests ?? ''); setJqLibDeps(lib.deps ?? []); setJqLibDepInput(''); setJqLibSaveError(''); setJqLibTestResult(null); setJqLibClosePrompt(false); }} title={lib.path} style={{
+                    <button onClick={() => { setJqLibViewing(lib); setJqLibEditContent(lib.content); setJqLibTest(lib.tests ?? ''); setJqLibDeps(lib.deps ?? []); setJqLibBoxes(lib.boxes ?? []); setJqLibDepInput(''); setJqLibSaveError(''); setJqLibTestResult(null); setJqLibClosePrompt(false); }} title={lib.path} style={{
                       border: 'none', background: 'none', cursor: 'pointer',
                       fontFamily: 'monospace', color: '#2a7a2a', padding: 0,
                       fontSize: 11, textDecoration: 'underline dotted',
@@ -2125,13 +2349,100 @@ export default function App() {
               </div>
             )}
 
+            {(boxes.length > 0 || boxesMsg) && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: 4 }}>
+                <span style={{ color: '#aaa', flex: 'none', paddingTop: 2 }} title="Boxes declared in the loaded libraries, compiled on load and on save">boxes:</span>
+                {/* the chips scroll within about three rows, so a library with many boxes
+                    does not push the editor, save and test areas off the bottom */}
+                <div style={{ display: 'flex', alignItems: 'center', alignContent: 'flex-start', flexWrap: 'wrap', gap: 4,
+                              flex: 1, minWidth: 0, maxHeight: 76, overflowY: 'auto', paddingRight: 2 }}>
+                  {boxes.map(b => (
+                    <span key={b.name} title={boxTooltip(b)} onClick={() => openBoxInfo(b.name)} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e3f2fd', cursor: 'pointer',
+                      border: '1px solid #90caf9', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontFamily: 'monospace',
+                    }}>
+                      {b.name}({[...(b.params ?? b.vars), ...(b.expose ?? [])].join(';')}) <span style={{ color: '#666' }}>· {b.rows} rows</span>
+                    </span>
+                  ))}
+                  {boxesMsg && <span style={{ color: '#c00' }}>{boxesMsg}</span>}
+                </div>
+              </div>
+            )}
+
+            {boxInfoName && (() => {
+              const b = boxes.find(x => x.name === boxInfoName);
+              if (!b) return null;
+              const families = [...(b.params ?? b.vars), ...(b.expose ?? [])];
+              const t = boxInfoTable;
+              const cell = c => c === 1 || c === true ? '1' : c === 0 || c === false ? '0' : '·';
+              return (
+                <div onClick={() => setBoxInfoName(null)} style={{
+                  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+                  zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <div onClick={e => e.stopPropagation()} style={{
+                    background: '#fff', borderRadius: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+                    width: 'min(780px, 92vw)', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                  }}>
+                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <b style={{ fontFamily: 'monospace', fontSize: 15 }}>{boxInterface(b)}</b>
+                      <span style={{ color: '#888', fontSize: 12 }}>{b.lib}</span>
+                      <span style={{ flex: 1 }} />
+                      <button onClick={() => setBoxInfoName(null)} title="Close" style={{ border: 'none', background: 'none', fontSize: 16, cursor: 'pointer', color: '#666' }}>✕</button>
+                    </div>
+                    <div style={{ padding: '10px 14px', overflow: 'auto', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {b.decl && <div><span style={{ color: '#888' }}>declaration&nbsp; </span><code style={{ fontSize: 13 }}>{b.decl}</code></div>}
+                      <div>
+                        <span style={{ color: '#888' }}>definition</span>
+                        <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', fontFamily: 'Georgia, serif', fontSize: 14 }}>{formatFormula(b.formula)}</pre>
+                      </div>
+                      <div>
+                        <span style={{ color: '#888' }}>interface&nbsp; </span>
+                        {families.map((f, fi) => {
+                          const members = b.vars.filter(v => familyOf(v, families) === fi);
+                          return <span key={f} style={{ marginRight: 12 }}><b>{f}</b>{members.length ? <>: {members.map((m, i) => <span key={m}>{i > 0 && ', '}<VarLabel name={m} /></span>)}</> : ' (no variables)'}</span>;
+                        })}
+                      </div>
+                      {b.internals?.length > 0 && <div><span style={{ color: '#888' }}>hidden (∃)&nbsp; </span>{b.internals.map((m, i) => <span key={m}>{i > 0 && ', '}<VarLabel name={m} /></span>)}</div>}
+                      <div><span style={{ color: '#888' }}>table&nbsp; </span>{b.rows} rows over {b.vars.length} columns — {(b.exact_min_pos ?? b.exact_min) ? 'minimum cover (exact Quine–McCluskey)' : 'irredundant prime cover (over budget)'}{b.minimize_ms_pos != null && `, ${b.minimize_ms_pos} ms`}; {b.composed ? 'compiled by composition (the callees\' tables joined, hidden variables projected)' : `from ${b.uncovered_paths} uncovered paths of the complement`}</div>
+          <div><span style={{ color: '#888' }}>negation&nbsp; </span>{b.rows_neg ?? '?'} rows — {(b.exact_min_neg ?? b.exact_min) ? 'minimum cover' : 'irredundant prime cover (over budget)'}{b.minimize_ms_neg != null && `, ${b.minimize_ms_neg} ms`}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ color: '#888' }}>minimization&nbsp; </span>
+            <span>budget: cubes</span>
+            <input type="number" min={1} step={100000} value={boxBudgetEdit.cubes} onChange={e => setBoxBudgetEdit(v => ({ ...v, cubes: e.target.value }))}
+                   style={{ width: 110, fontSize: 12, padding: '1px 4px' }} title="Cubes the Quine–McCluskey prime enumeration may generate before falling back to the heuristic cover" />
+            <span>· time</span>
+            <input type="number" min={0} step={500} value={boxBudgetEdit.ms} onChange={e => setBoxBudgetEdit(v => ({ ...v, ms: e.target.value }))}
+                   style={{ width: 80, fontSize: 12, padding: '1px 4px' }} title="Wall-clock budget (ms) for the exact cover search before falling back to the heuristic cover" />
+            <span>ms</span>
+            <button onClick={() => recomputeBox(b)} disabled={boxRecompute.busy}
+                    style={{ padding: '2px 10px', fontSize: 12, border: '1px solid #1a6bcc', borderRadius: 4, background: '#fff', color: '#1a6bcc', cursor: boxRecompute.busy ? 'wait' : 'pointer' }}
+                    title="Rewrite the declaration's budget clause, save the library and recompile its boxes">{boxRecompute.busy ? 'recomputing…' : 'Recompute'}</button>
+            <span style={{ color: '#888' }}>took {b.minimize_ms ?? '?'} ms — table {(b.exact_min_pos ?? b.exact_min) ? 'minimum' : 'over budget'}, negation {(b.exact_min_neg ?? b.exact_min) ? 'minimum' : 'over budget'}</span>
+            {boxRecompute.error && <span style={{ color: '#c00' }}>{boxRecompute.error}</span>}
+          </div>
+                      {t?.rows && (t.rows.length <= 256 ? (
+                        <table style={{ borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 12, alignSelf: 'flex-start' }}>
+                          <thead><tr>{t.vars.map(v => <th key={v} style={{ padding: '2px 7px', borderBottom: '1px solid #bbb', fontWeight: 'normal', fontFamily: 'Georgia, serif', fontSize: 13 }}><VarLabel name={v} /></th>)}</tr></thead>
+                          <tbody>{t.rows.map((r, ri) => <tr key={ri} style={{ background: ri % 2 ? '#f7f7fb' : undefined }}>{r.map((c, ci) => <td key={ci} style={{ padding: '1px 7px', textAlign: 'center', color: c === null ? '#bbb' : undefined }}>{cell(c)}</td>)}</tr>)}</tbody>
+                        </table>
+                      ) : <div style={{ color: '#888' }}>{t.rows.length} rows — too many to list here</div>)}
+                      {!t && <div style={{ color: '#aaa' }}>loading table…</div>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
             {jqLibViewing && (() => {
               const savedDeps = jqLibViewing.deps ?? [];
               const depsChanged = jqLibDeps.length !== savedDeps.length
                 || jqLibDeps.some((d, i) => d !== savedDeps[i]);
+              const savedBoxes = jqLibViewing.boxes ?? [];
+              const boxesChanged = jqLibBoxes.length !== savedBoxes.length
+                || jqLibBoxes.some((b, i) => b !== savedBoxes[i]);
               const dirty = jqLibEditContent !== jqLibViewing.content
                           || jqLibTest         !== (jqLibViewing.tests ?? '')
-                          || depsChanged;
+                          || depsChanged || boxesChanged;
               const closeNow = () => { setJqLibClosePrompt(false); setJqLibViewing(null); };
               const attemptClose = () => { if (dirty) setJqLibClosePrompt(true); else closeNow(); };
               // Run the current tests against the current editor buffer.
@@ -2179,12 +2490,14 @@ export default function App() {
                 try {
                   const res = await fetch(API_BASE + '/jq-lib', {
                     method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path: jqLibViewing.path, deps: jqLibDeps, content: jqLibEditContent, tests: jqLibTest }),
+                    body: JSON.stringify({ path: jqLibViewing.path, deps: jqLibDeps, content: jqLibEditContent, tests: jqLibTest, boxes: jqLibBoxes }),
                   });
                   const data = await res.json();
                   if (data.error) { setJqLibSaveError(data.error); setJqLibSaving(false); return false; }
-                  setJqLibViewing(v => v && { ...v, deps: [...jqLibDeps], content: jqLibEditContent, tests: jqLibTest });
+                  setJqLibViewing(v => v && { ...v, deps: [...jqLibDeps], content: jqLibEditContent, tests: jqLibTest, boxes: [...jqLibBoxes] });
+                  applyBoxStatuses(data.boxes);
                   await refreshJqLibs();
+                  await fetchBoxes();
                   setJqLibSaving(false);
                   // Auto-run tests on every successful save.
                   setJqLibTestRunning(true);
@@ -2299,6 +2612,67 @@ export default function App() {
                       }}
                     >Add</button>
                   </div>
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', gap: 4,
+                    padding: '8px 16px', borderBottom: '1px solid #e0e0e0',
+                    background: '#fff', fontSize: 12,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ color: '#666', fontWeight: 600 }}>Boxes:</span>
+                      <span style={{ color: '#aaa' }}
+                            title="One declaration per line: name(p1;p2;…) [:= jq expression] [negation jq expression] [expose v1,v2] [budget cubes=N ms=M]. The parameters are the box's interface; any other variable its definition introduces is projected out unless exposed. `negation` defines the negative table directly (for a definition whose falsifying branches are too many to enumerate). Boxes are compiled when the library is loaded and whenever it is saved.">
+                        name(p1;p2;…) [:= …] [negation …] [expose v1,v2] [budget …] — compiled on load and save
+                      </span>
+                      <span style={{ flex: 1 }} />
+                      <button
+                        onClick={() => { setJqLibBoxes([...jqLibBoxes, '']); setJqLibSaveError(''); }}
+                        style={{
+                          padding: '3px 10px', fontSize: 12,
+                          border: '1px solid #1a6bcc', borderRadius: 4,
+                          background: '#fff', color: '#1a6bcc', cursor: 'pointer',
+                        }}
+                      >Add box</button>
+                    </div>
+                    {jqLibBoxes.length === 0 && (
+                      <span style={{ color: '#aaa', fontStyle: 'italic' }}>(no boxes declared)</span>
+                    )}
+                    {/* about five declarations visible; the rest scroll, so a library with
+                        many boxes keeps the code, tests and save controls in view */}
+                    <div ref={jqLibBoxListRef} style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 150, overflowY: 'auto', paddingRight: 2 }}>
+                    {jqLibBoxes.map((decl, i) => {
+                      const nm = decl.split('(')[0].trim();
+                      const st = boxStatus[nm];
+                      const compiled = boxes.find(b => b.name === nm);
+                      const status = st?.error ? '✗ ' + st.error : compiled ? `✓ ${compiled.rows} rows` : (nm ? 'not compiled' : '');
+                      return (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <input
+                            value={decl}
+                            spellCheck={false}
+                            onChange={e => { const next = [...jqLibBoxes]; next[i] = e.target.value; setJqLibBoxes(next); setJqLibSaveError(''); }}
+                            placeholder="full_adder(x;y;c_in;s;c_out)  or  eq4(a;b) := eq(a;b;4) expose c"
+                            style={{
+                              flex: 1, padding: '3px 8px', fontSize: 12, fontFamily: 'monospace',
+                              border: '1px solid #ccc', borderRadius: 4,
+                            }}
+                          />
+                          <span style={{ fontSize: 11, minWidth: 100, color: st?.error ? '#c00' : '#2a7a2a' }}
+                                title={st?.error || (compiled ? `${compiled.formula}\n${compiled.uncovered_paths} uncovered paths → ${compiled.rows} rows` : '')}>
+                            {status}
+                          </span>
+                          <button
+                            onClick={() => { setJqLibBoxes(jqLibBoxes.filter((_, j) => j !== i)); setJqLibSaveError(''); }}
+                            title="Remove this declaration"
+                            style={{
+                              border: 'none', background: 'none', cursor: 'pointer',
+                              color: '#888', padding: '0 2px', fontSize: 13, lineHeight: 1,
+                            }}
+                          >×</button>
+                        </div>
+                      );
+                    })}
+                    </div>
+                  </div>
                   <textarea
                     value={jqLibEditContent}
                     onChange={e => { setJqLibEditContent(e.target.value); setJqLibSaveError(''); }}
@@ -2324,7 +2698,7 @@ export default function App() {
                     )}
                     {!jqLibSaveError && !dirty && <span style={{ flex: 1 }} />}
                     <button
-                      onClick={() => { setJqLibEditContent(jqLibViewing.content); setJqLibTest(jqLibViewing.tests ?? ''); setJqLibDeps(jqLibViewing.deps ?? []); setJqLibSaveError(''); }}
+                      onClick={() => { setJqLibEditContent(jqLibViewing.content); setJqLibTest(jqLibViewing.tests ?? ''); setJqLibDeps(jqLibViewing.deps ?? []); setJqLibBoxes(jqLibViewing.boxes ?? []); setJqLibSaveError(''); }}
                       disabled={jqLibSaving || !dirty}
                       style={{
                         padding: '5px 12px', fontSize: 12,
@@ -2495,7 +2869,7 @@ export default function App() {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6, alignItems: 'center' }}>
               {examples.map(({ label, f }, i) => (
                 <span key={i} style={{ display: 'inline-flex', alignItems: 'center' }}>
-                  <button onClick={() => setInput(formatFormula(f))} style={{
+                  <button onClick={() => setInput(formatFormula(f, boxes))} style={{
                     padding: '4px 11px', fontSize: 12, fontFamily: 'Georgia, serif',
                     border: '1px solid #ccc', borderRadius: '4px 0 0 4px', cursor: 'pointer',
                     background: input === f ? '#e8eeff' : '#fafafa', color: '#333',
@@ -2598,7 +2972,7 @@ export default function App() {
             ))}
           </span>
           {btn("A'  Complement", handleComplement,  '#2a6a6a', !ast,            !ast ? "Fix syntax errors first" : "Show the complement as a nested box diagram")}
-          {btn("Format", () => setInput(formatFormula(input)), '#6a4a8a', !input.trim(), !input.trim() ? "Enter a formula first" : "Reformat the formula with one top-level expression per line")}
+          {btn("Format", () => setInput(formatFormula(input, boxes)), '#6a4a8a', !input.trim(), !input.trim() ? "Enter a formula first" : "Reformat the formula with one top-level expression per line")}
         </div>
       </div>
 
@@ -2645,8 +3019,9 @@ export default function App() {
           <div style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
             {complementData ? 'Complement' : simplified ? 'Original' : 'Diagram'}{error ? ' (last valid formula)' : ''} — border colors show nesting depth:
           </div>
-          <ZoomPanWrapper key={input} bg={complementData ? '#f0fafa' : '#f8f9fc'} border={complementData ? '1px solid #a0d4d4' : '1px solid #dde'} opacity={error ? 0.5 : 1} rotated={!!complementData}>
+          <ZoomPanWrapper key={input} bg={complementData ? '#f0fafa' : '#f8f9fc'} border={complementData ? '1px solid #a0d4d4' : '1px solid #dde'} opacity={error ? 0.5 : 1} rotated={!!complementData} recenterKey={boxAware}>
             <DiagramWithConnections
+              boxInfo={boxInfoCtx}
               node={ast}
               complementView={!!complementData}
               coverGroups={pathsResult?.coverGroups ?? (complementData ? satResult?.coverGroups : validResult?.coverGroups) ?? null}
@@ -2685,16 +3060,30 @@ export default function App() {
                   });
                   return asgn;
                 };
-                // Build assignment from cadical [var_index, is_negated] pairs
+                // Build assignment from cadical [var_index, is_negated] pairs — the
+                // names come with the result (the expanded formula's variables).
                 const buildCadicalAsgn = (cadResult) => {
                   if (!cadResult?.assignment) return null;
-                  const allVars = extractVars(ast);
+                  const allVars = cadResult.vars ?? extractVars(expandedAst ?? ast);
                   const asgn = {};
                   cadResult.assignment.forEach(([varIdx, neg]) => {
                     const varName = allVars[varIdx];
                     if (varName) asgn[varName] = neg ? '0' : '1';
                   });
                   return asgn;
+                };
+                // In the box-aware diagram a leaf is a call: its value is its
+                // definition's under the assignment (internals included).
+                const boxValueFor = (asgn) => {
+                  if (!perCallExpansions.length) return null;
+                  const cache = new Map();
+                  return idx => {
+                    if (cache.has(idx)) return cache.get(idx);
+                    let v = 'undetermined';
+                    try { const txt = perCallExpansions[idx]; if (txt) v = evaluateAst(parse(txt), asgn).get('') ?? 'undetermined'; } catch { /* leave undetermined */ }
+                    cache.set(idx, v);
+                    return v;
+                  };
                 };
                 if (validAsgnOn && validResult?.path) {
                   const asgn = buildAsgn(validResult.path);
@@ -2706,11 +3095,11 @@ export default function App() {
                 }
                 if (cadicalValidAsgnOn && cadicalValidResult?.assignment) {
                   const asgn = buildCadicalAsgn(cadicalValidResult);
-                  return asgn ? evaluateAst(ast, asgn) : null;
+                  return asgn ? evaluateAst(ast, asgn, [], boxValueFor(asgn)) : null;
                 }
                 if (cadicalSatAsgnOn && cadicalSatResult?.assignment) {
                   const asgn = buildCadicalAsgn(cadicalSatResult);
-                  return asgn ? evaluateAst(ast, asgn) : null;
+                  return asgn ? evaluateAst(ast, asgn, [], boxValueFor(asgn)) : null;
                 }
                 return null;
               })()}
@@ -2726,7 +3115,7 @@ export default function App() {
                 <DiagramWithConnections node={simplified.ast} coverGroups={null} selectedGroups={new Set()} highlightedPaths={null} />
               </ZoomPanWrapper>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
-                {btn('Use simplified formula', () => setInput(formatFormula(simplified.formula)), '#2a7a2a')}
+                {btn('Use simplified formula', () => setInput(formatFormula(simplified.formula, boxes)), '#2a7a2a')}
               </div>
             </>
           )}
@@ -2738,19 +3127,26 @@ export default function App() {
           backend:
           <select
             value={matrixBackend}
-            onChange={e => setMatrixBackend(e.target.value)}
+            onChange={e => { clearPathsSelection(); setMatrixBackend(e.target.value); }}
             style={{
               fontSize: 12, padding: '2px 4px',
               border: '1px solid #c8c8c8', borderRadius: 4,
               background: 'white',
             }}
           >
+            <option value="boxes">boxes (compiled tables)</option>
             <option value="smart">matrix.smart</option>
             <option value="cdcl">matrix.cdcl</option>
             <option value="eff">matrix.eff</option>
             <option value="greedy_cdcl">greedy×cdcl</option>
             <option value="greedy_eff">greedy×eff</option>
           </select>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: canBoxAware ? 'pointer' : 'default', fontSize: 13, color: canBoxAware ? undefined : '#aaa' }}
+                 title={canBoxAware ? "Box aware: each box call is one unit — drawn as a labelled rectangle, and Valid?, Satisfiable? and Paths run on the collapsed matrix with the boxes' compiled tables" : matrixBackend !== 'boxes' ? "Box aware needs the boxes backend" : "No box calls in the formula"}>
+            <input type="checkbox" checked={boxAware} disabled={!canBoxAware}
+                   onChange={e => { clearPathsSelection(); setPathsBoxAware(e.target.checked); }} />
+            box aware
+          </label>
         </label>
         {btn('✓ Valid?',       handleValid,       '#6a2a9a', !ast || loading, !ast ? "Fix syntax errors first" : "Check if formula is a tautology")}
         {validRunning && (
@@ -2855,7 +3251,7 @@ export default function App() {
         {btn('ρ  Paths',       handlePaths,       '#4a4a8a', !ast || loading, !ast ? "Fix syntax errors first" : "Show paths through the matrix")}
         <label style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 13 }}
                title="Show paths of the complement">
-          <input type="checkbox" checked={pathsComp} onChange={e => setPathsComp(e.target.checked)} />
+          <input type="checkbox" checked={pathsComp} onChange={e => { clearPathsSelection(); setPathsComp(e.target.checked); }} />
           <span style={{ fontFamily: 'Georgia, serif', fontWeight: 'bold' }}>'</span>
         </label>
         <input
@@ -2932,7 +3328,7 @@ export default function App() {
                     const total = validResult.totalPathCount ?? 0;
                     const elapsed = validResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((validResult.classifiedCount ?? 0) / elapsed) : 0;
-                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
+                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)}${matrixBackend !== 'boxes' && rate > 0 ? ` at ${fmtNum(rate)} paths/s` : ''}` : '';
                     if (validResult.preprocessedTo) {
                       return `✓ Valid — decided by preprocessing alone, no search of the ${fmtNum(total)} path matrix needed${ratePart}`;
                     }
@@ -3044,7 +3440,7 @@ export default function App() {
                     const total = validResult.totalPathCount ?? 0;
                     const elapsed = validResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((validResult.classifiedCount ?? 0) / elapsed) : 0;
-                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
+                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)}${matrixBackend !== 'boxes' && rate > 0 ? ` at ${fmtNum(rate)} paths/s` : ''}` : '';
                     const ppNote = validResult.preprocessedTo ? ' (decided by preprocessing alone)' : '';
                     return `✗ Not valid — falsifying assignment and uncovered path in ${fmtNum(total)} path matrix${ratePart}${ppNote}:`;
                   })()}
@@ -3064,7 +3460,13 @@ export default function App() {
                       .filter(v => !hiddenBases.has(baseOf(v)))
                       .map(v => ({ name: v, val: asgn[v] }));
                     const aLong = asgnEntries.length > 10;
-                    const allVars = ast ? extractVars(ast).filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder)) : [];
+                    // Numeric views group bits by base; a box atom is a single boolean, not a bit — keep it to the entry list.
+                    const numEntries = asgnEntries.filter(e => !isBoxLabel(e.name));
+                    // Value string over the formula's real variables (the expanded
+                    // formula: in box-aware mode the diagram AST holds box atoms, not
+                    // the call arguments the witness assigns); box atoms are listed as
+                    // `name(args)=1` entries above, not as number groups.
+                    const allVars = expandedAst ? extractVars(expandedAst).filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder)) : [];
                     const valueStr = spacedVals(allVars.map(v => ({ name: v, val: v in asgn ? asgn[v] : '-' })), decimalValues, reverseBaseOrder);
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
@@ -3082,14 +3484,14 @@ export default function App() {
                             style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
                         </>}
                         {validAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
-                          {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
-                          {' = '}{spacedVals(asgnEntries, decimalValues, reverseBaseOrder)}
+                          {numEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
+                          {' = '}{spacedVals(numEntries, decimalValues, reverseBaseOrder)}
                         </b>}
                         {validAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
                       </span>
                       {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setValidAsgnFmt(f => (f + 1) % 3); }}
                         style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][validAsgnFmt]}</a>
-                      <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
+                      <AsgnFilter ast={ast} extraAst={expandedAst} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
                       <br />
                       <span onClick={() => setValidUncovOn(prev => !prev)}
                         style={{ cursor: 'pointer', opacity: validUncovOn ? 1 : 0.35 }}>
@@ -3226,18 +3628,20 @@ export default function App() {
                     {cadicalValidClausesExpanded ? '▾' : '▸'} {cadicalValidResult.learnedClauses.length} learned clause{cadicalValidResult.learnedClauses.length !== 1 ? 's' : ''}
                   </span>
                   {cadicalValidClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
-                    {cadicalValidResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, ast ? extractVars(ast) : [])}</div>)}
+                    {cadicalValidResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, cadicalValidResult.vars ?? (expandedAst ? extractVars(expandedAst) : []))}</div>)}
                   </div>}
                 </span>}
               </span>
             : <span>
                 CaDiCaL: not valid in {(cadicalValidResult.elapsedSecs * 1000).toFixed(0)}ms
                 {cadicalValidResult.assignment && (() => {
-                  const allVarsRaw = ast ? extractVars(ast) : [];
+                  const allVarsRaw = cadicalValidResult.vars ?? (expandedAst ? extractVars(expandedAst) : []);
                   const asgnEntries = cadicalValidResult.assignment.map(([varIdx, neg]) => ({
                     name: allVarsRaw[varIdx] ?? `v${varIdx}`, val: neg ? '0' : '1',
                   })).filter(e => !hiddenBases.has(baseOf(e.name))).sort((a, b) => cmpVarName(a.name, b.name, reverseBaseOrder));
                   const aLong = asgnEntries.length > 10;
+                    // Numeric views group bits by base; a box atom is a single boolean, not a bit — keep it to the entry list.
+                    const numEntries = asgnEntries.filter(e => !isBoxLabel(e.name));
                   const allVars = allVarsRaw.filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder));
                   const valueStr = spacedVals(allVars.map(v => {
                     const e = asgnEntries.find(a => a.name === v);
@@ -3266,7 +3670,7 @@ export default function App() {
                     </span>
                     {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setCadicalValidAsgnFmt(f => (f + 1) % 3); }}
                       style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][cadicalValidAsgnFmt]}</a>
-                    <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
+                    <AsgnFilter ast={expandedAst} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
                   </span>;
                 })()}
                 {cadicalValidResult.learnedClauses?.length > 0 && <span style={{ fontWeight: 'normal' }}>
@@ -3276,7 +3680,7 @@ export default function App() {
                     {cadicalValidClausesExpanded ? '▾' : '▸'} {cadicalValidResult.learnedClauses.length} learned clause{cadicalValidResult.learnedClauses.length !== 1 ? 's' : ''}
                   </span>
                   {cadicalValidClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
-                    {cadicalValidResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, ast ? extractVars(ast) : [])}</div>)}
+                    {cadicalValidResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, cadicalValidResult.vars ?? (expandedAst ? extractVars(expandedAst) : []))}</div>)}
                   </div>}
                 </span>}
               </span>}
@@ -3295,16 +3699,17 @@ export default function App() {
           {satResult.error
             ? `✗ ${satResult.error}`
             : satResult.satisfiable === null
-              ? <span>Checking satisfiability{satResult.totalPathCount > 0 ? ` — ${fmtNum(satResult.classifiedCount ?? 0)} / ${fmtNum(satResult.totalPathCount)} paths classified` : ''}...</span>
+              ? <span>Checking satisfiability{satResult.totalPathCount > 0 ? ` — ${fmtNum(satResult.classifiedCount ?? 0)} / ${fmtNum(satResult.totalPathCount)} paths classified` : ''}{satResult.solvedBy ? ` — ${satResult.solvedBy}` : ''}...</span>
               : satResult.satisfiable
               ? <span>
                   {(() => {
                     const total = satResult.totalPathCount ?? 0;
                     const elapsed = satResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((satResult.classifiedCount ?? 0) / elapsed) : 0;
-                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
+                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)}${matrixBackend !== 'boxes' && rate > 0 ? ` at ${fmtNum(rate)} paths/s` : ''}` : '';
                     const ppNote = satResult.preprocessedTo ? ' (decided by preprocessing alone)' : '';
-                    return `✓ Satisfiable — satisfying assignment and uncovered path in complement of ${fmtNum(total)} path matrix${ratePart}${ppNote}:`;
+                    const hydraNote = satResult.solvedBy ? ` (${satResult.solvedBy})` : '';
+                    return `✓ Satisfiable — satisfying assignment and uncovered path in complement of ${fmtNum(total)} path matrix${ratePart}${ppNote}${hydraNote}:`;
                   })()}
                   {satResult.path && (() => {
                     const p = satResult.path;
@@ -3322,7 +3727,13 @@ export default function App() {
                       .filter(v => !hiddenBases.has(baseOf(v)))
                       .map(v => ({ name: v, val: asgn[v] }));
                     const aLong = asgnEntries.length > 10;
-                    const allVars = ast ? extractVars(ast).filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder)) : [];
+                    // Numeric views group bits by base; a box atom is a single boolean, not a bit — keep it to the entry list.
+                    const numEntries = asgnEntries.filter(e => !isBoxLabel(e.name));
+                    // Value string over the formula's real variables (the expanded
+                    // formula: in box-aware mode the diagram AST holds box atoms, not
+                    // the call arguments the witness assigns); box atoms are listed as
+                    // `name(args)=1` entries above, not as number groups.
+                    const allVars = expandedAst ? extractVars(expandedAst).filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder)) : [];
                     const valueStr = spacedVals(allVars.map(v => ({ name: v, val: v in asgn ? asgn[v] : '-' })), decimalValues, reverseBaseOrder);
                     return <span style={{ fontWeight: 'normal' }}>
                       <br />
@@ -3340,14 +3751,14 @@ export default function App() {
                             style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>less</a>}
                         </>}
                         {satAsgnFmt === 1 && <b style={{ fontFamily: 'Georgia, serif' }}>
-                          {asgnEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
-                          {' = '}{spacedVals(asgnEntries, decimalValues, reverseBaseOrder)}
+                          {numEntries.map((e, ei) => <span key={ei}>{ei > 0 && ' '}<VarLabel name={e.name} /></span>)}
+                          {' = '}{spacedVals(numEntries, decimalValues, reverseBaseOrder)}
                         </b>}
                         {satAsgnFmt === 2 && <b style={{ fontFamily: 'Georgia, serif' }}>{valueStr}</b>}
                       </span>
                       {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setSatAsgnFmt(f => (f + 1) % 3); }}
                         style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][satAsgnFmt]}</a>
-                      <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
+                      <AsgnFilter ast={ast} extraAst={expandedAst} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
                       <br />
                       <span onClick={() => setSatUncovOn(prev => !prev)}
                         style={{ cursor: 'pointer', opacity: satUncovOn ? 1 : 0.35 }}>
@@ -3468,11 +3879,14 @@ export default function App() {
                     const total = satResult.totalPathCount ?? 0;
                     const elapsed = satResult.elapsedSecs ?? 0;
                     const rate = elapsed > 0 ? Math.round((satResult.classifiedCount ?? 0) / elapsed) : 0;
-                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
+                    const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)}${matrixBackend !== 'boxes' && rate > 0 ? ` at ${fmtNum(rate)} paths/s` : ''}` : '';
                     if (satResult.preprocessedTo) {
                       return `✗ Unsatisfiable — decided by preprocessing alone, no search of the ${fmtNum(total)} path complement matrix needed${ratePart}`;
                     }
-                    return `✗ Unsatisfiable — all ${fmtNum(total)} paths in the complement are covered${ratePart}`;
+                    if (satResult.solvedBy && !satResult.solvedBy.includes('the box search supplies')) {
+                      return `✗ Unsatisfiable — decided without searching the ${fmtNum(total)} path complement matrix${ratePart} (${satResult.solvedBy})`;
+                    }
+                    return `✗ Unsatisfiable — all ${fmtNum(total)} paths in the complement are covered${ratePart}${satResult.solvedBy ? ` (${satResult.solvedBy})` : ''}`;
                   })()}
                   {satResult.coverGroups?.length > 0 && ast && (() => {
                     const resName = pos => compName(resolvePosition(ast, pos)?.n) ?? pos.join(',');
@@ -3595,11 +4009,13 @@ export default function App() {
             ? <span>
                 CaDiCaL: satisfiable in {(cadicalSatResult.elapsedSecs * 1000).toFixed(0)}ms
                 {(() => {
-                  const allVarsRaw = ast ? extractVars(ast) : [];
+                  const allVarsRaw = cadicalSatResult.vars ?? (expandedAst ? extractVars(expandedAst) : []);
                   const asgnEntries = cadicalSatResult.assignment.map(([varIdx, neg]) => ({
                     name: allVarsRaw[varIdx] ?? `v${varIdx}`, val: neg ? '0' : '1',
                   })).filter(e => !hiddenBases.has(baseOf(e.name))).sort((a, b) => cmpVarName(a.name, b.name, reverseBaseOrder));
                   const aLong = asgnEntries.length > 10;
+                    // Numeric views group bits by base; a box atom is a single boolean, not a bit — keep it to the entry list.
+                    const numEntries = asgnEntries.filter(e => !isBoxLabel(e.name));
                   const allVars = allVarsRaw.filter(v => !hiddenBases.has(baseOf(v))).sort((a, b) => cmpVarName(a, b, reverseBaseOrder));
                   const valueStr = spacedVals(allVars.map(v => {
                     const e = asgnEntries.find(a => a.name === v);
@@ -3628,7 +4044,7 @@ export default function App() {
                     </span>
                     {' '}<a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); setCadicalSatAsgnFmt(f => (f + 1) % 3); }}
                       style={{ fontSize: 11, color: '#888' }}>{['factored', 'value', 'expanded'][cadicalSatAsgnFmt]}</a>
-                    <AsgnFilter ast={ast} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
+                    <AsgnFilter ast={expandedAst} hiddenBases={hiddenBases} setHiddenBases={setHiddenBases} reverseBaseOrder={reverseBaseOrder} setReverseBaseOrder={setReverseBaseOrder} decimalValues={decimalValues} setDecimalValues={setDecimalValues} />
                   </span>;
                 })()}
                 {cadicalSatResult.learnedClauses?.length > 0 && <span style={{ fontWeight: 'normal' }}>
@@ -3638,7 +4054,7 @@ export default function App() {
                     {cadicalSatClausesExpanded ? '▾' : '▸'} {cadicalSatResult.learnedClauses.length} learned clause{cadicalSatResult.learnedClauses.length !== 1 ? 's' : ''}
                   </span>
                   {cadicalSatClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
-                    {cadicalSatResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, ast ? extractVars(ast) : [])}</div>)}
+                    {cadicalSatResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, cadicalSatResult.vars ?? (expandedAst ? extractVars(expandedAst) : []))}</div>)}
                   </div>}
                 </span>}
               </span>
@@ -3650,7 +4066,7 @@ export default function App() {
                     {cadicalSatClausesExpanded ? '▾' : '▸'} {cadicalSatResult.learnedClauses.length} learned clause{cadicalSatResult.learnedClauses.length !== 1 ? 's' : ''}
                   </span>
                   {cadicalSatClausesExpanded && <div style={{ marginLeft: 16, fontSize: 11, color: '#666', maxHeight: '8em', overflowY: 'auto' }}>
-                    {cadicalSatResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, ast ? extractVars(ast) : [])}</div>)}
+                    {cadicalSatResult.learnedClauses.map((cl, ci) => <div key={ci}>{fmtClause(cl, cadicalSatResult.vars ?? (expandedAst ? extractVars(expandedAst) : []))}</div>)}
                   </div>}
                 </span>}
               </span>}
@@ -3674,7 +4090,7 @@ export default function App() {
                   const total = pathsResult.totalPathCount ?? 0;
                   const elapsed = pathsResult.elapsedSecs ?? 0;
                   const rate = elapsed > 0 ? Math.round(classified / elapsed) : 0;
-                  const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)} at ${fmtNum(rate)} paths/s` : '';
+                  const ratePart = elapsed > 0 ? ` in ${fmtTime(elapsed)}${matrixBackend !== 'boxes' && rate > 0 ? ` at ${fmtNum(rate)} paths/s` : ''}` : '';
                   if (pathsResult.hitLimit) {
                     const pct = total > 0 ? ((classified / total) * 100).toFixed(1) : '0';
                     return `${fmtNum(classified)} of ${fmtNum(total)} paths (${pct}%) through the ${pathsResult.isComplement ? 'complement ' : ''}matrix${ratePart}`;
@@ -3686,33 +4102,52 @@ export default function App() {
                     const n = resolvePosition(ast, pos)?.n ?? pos.join(',');
                     return pathsResult.isComplement ? compName(n) : n;
                   };
-                  // Build a trie of uncovered paths keyed on literal positions.
-                  const root = { children: new Map(), pathIndex: null, key: '', position: null };
+                  // Literal name minus its complement mark — the sort key of the
+                  // canonical view (numeric-aware, so x2 sorts before x10).
+                  const varName = n => n.endsWith("'") ? n.slice(0, -1) : n;
+                  const byVar = (a, b) =>
+                    varName(a).localeCompare(varName(b), undefined, { numeric: true, sensitivity: 'base' })
+                    || a.localeCompare(b);
+                  // Canonical form of one path: literals sorted by variable name,
+                  // duplicate literals dropped.
+                  const canonicalize = names => {
+                    const sorted = [...names].sort(byVar);
+                    return sorted.filter((n, i) => i === 0 || n !== sorted[i - 1]);
+                  };
+                  // Build a trie of uncovered paths.  Trace mode keys on literal
+                  // positions (the paths exactly as the algorithm produced them);
+                  // canonical mode keys on literal names, so paths that
+                  // canonicalize identically share one leaf.  Every node carries
+                  // the ORIGINAL path indices that end there (several per leaf in
+                  // canonical mode).  Selection and highlighting work on those
+                  // indices, so clicking a canonical path lights up every literal
+                  // occurrence of every original path it stands for.
+                  const mkNode = (key, position, name) => ({ children: new Map(), pathIndices: [], key, position, name });
+                  const root = mkNode('', null, null);
                   (pathsResult.uncoveredPositions || []).forEach((posList, i) => {
                     let node = root;
                     let chain = '';
-                    posList.forEach(pos => {
-                      const k = pos.join(',');
-                      chain = chain ? chain + '|' + k : k;
-                      if (!node.children.has(k)) {
-                        node.children.set(k, { children: new Map(), pathIndex: null, key: chain, position: pos });
-                      }
+                    const steps = pathsCanonical
+                      ? canonicalize(posList.map(resName)).map(n => ({ k: n, position: null, name: n }))
+                      : posList.map(pos => ({ k: pos.join(','), position: pos, name: null }));
+                    steps.forEach(({ k, position, name }) => {
+                      chain = chain ? chain + '|' + k : (pathsCanonical ? 'c:' + k : k);
+                      if (!node.children.has(k)) node.children.set(k, mkNode(chain, position, name));
                       node = node.children.get(k);
                     });
-                    node.pathIndex = i;
+                    node.pathIndices.push(i);
                   });
+                  // Distinct paths in the tree (== uncovered paths in trace mode;
+                  // fewer in canonical mode when paths merge).
+                  let treePathCount = 0;
+                  { const walk = n => { if (n.pathIndices.length) treePathCount++; n.children.forEach(walk); }; walk(root); }
+                  const labelOf = cn => cn.name ?? resName(cn.position);
                   const toggleExpand = key => setPathsTreeExpanded(prev => {
                     const s = new Set(prev); if (s.has(key)) s.delete(key); else s.add(key); return s;
                   });
-                  const toggleSel = i => setPathsUncovSel(prev => {
-                    const s = new Set(prev); if (s.has(i)) s.delete(i); else s.add(i); return s;
-                  });
                   const collectIndices = node => {
                     const out = [];
-                    const walk = n => {
-                      if (n.pathIndex !== null) out.push(n.pathIndex);
-                      n.children.forEach(walk);
-                    };
+                    const walk = n => { out.push(...n.pathIndices); n.children.forEach(walk); };
                     walk(node);
                     return out;
                   };
@@ -3722,7 +4157,7 @@ export default function App() {
                   const collapseChain = startNode => {
                     const chain = [startNode];
                     let cur = startNode;
-                    while (cur.children.size === 1 && cur.pathIndex === null) {
+                    while (cur.children.size === 1 && cur.pathIndices.length === 0) {
                       cur = cur.children.values().next().value;
                       chain.push(cur);
                     }
@@ -3735,12 +4170,14 @@ export default function App() {
                       const chainKey = end.key;
                       const hasChildren = end.children.size > 0;
                       const expanded = pathsTreeExpanded.has(chainKey);
-                      const isLeaf = end.pathIndex !== null && !hasChildren;
+                      const isLeaf = end.pathIndices.length > 0 && !hasChildren;
                       const subIdxs = collectIndices(end);
-                      const allSel = subIdxs.length > 0 && subIdxs.every(i => pathsUncovSel.has(i));
-                      const opacity = isLeaf
-                        ? (pathsUncovSel.has(end.pathIndex) ? 1 : 0.35)
-                        : (allSel ? 1 : 0.6);
+                      const selCount = subIdxs.filter(i => pathsUncovSel.has(i)).length;
+                      const allSel = subIdxs.length > 0 && selCount === subIdxs.length;
+                      // A single-path leaf is bright when selected, dim when not;
+                      // a multi-path node (canonical leaf or internal node) is
+                      // bright only when every path under it is selected.
+                      const opacity = allSel ? 1 : (isLeaf && selCount === 0 ? 0.35 : 0.6);
                       return (
                         <div key={child.key} style={{ marginLeft: depth === 0 ? 0 : 14, lineHeight: 1.5 }}>
                           <span>
@@ -3753,23 +4190,22 @@ export default function App() {
                               <span style={{ display: 'inline-block', width: 12 }} />
                             )}
                             <span
-                              onClick={() => {
-                                if (isLeaf) toggleSel(end.pathIndex);
-                                else {
-                                  setPathsUncovSel(prev => {
-                                    const s = new Set(prev);
-                                    if (allSel) subIdxs.forEach(i => s.delete(i));
-                                    else subIdxs.forEach(i => s.add(i));
-                                    return s;
-                                  });
-                                }
-                              }}
+                              onClick={() => setPathsUncovSel(prev => {
+                                // Toggle every original path under this node (a
+                                // canonical leaf may stand for several): deselect
+                                // them all if all are selected, else select all.
+                                const s = new Set(prev);
+                                if (allSel) subIdxs.forEach(i => s.delete(i));
+                                else subIdxs.forEach(i => s.add(i));
+                                return s;
+                              })}
                               style={{ cursor: 'pointer', opacity }}>
                               <b style={{ fontFamily: 'Georgia, serif' }}>
-                                {chain.map((cn, ci) => <span key={ci}>{ci > 0 && ' '}<VarLabel name={resName(cn.position)} /></span>)}
+                                {chain.map((cn, ci) => <span key={ci}>{ci > 0 && ' '}<VarLabel name={labelOf(cn)} /></span>)}
                               </b>
-                              {!isLeaf && (
-                                <span style={{ fontWeight: 'normal', color: '#888', fontSize: 11 }}>
+                              {(!isLeaf || subIdxs.length > 1) && (
+                                <span style={{ fontWeight: 'normal', color: '#888', fontSize: 11 }}
+                                      title={isLeaf ? `${subIdxs.length} uncovered paths canonicalize to this one` : undefined}>
                                   {' '}({subIdxs.length})
                                 </span>
                               )}
@@ -3784,7 +4220,15 @@ export default function App() {
                     <span>
                       <br />
                       <span style={{ fontWeight: 'normal' }}>
-                        {fmtNum(pathsResult.uncoveredPaths.length)} uncovered {pathsResult.uncoveredPaths.length === 1 ? 'path' : 'paths'}{' '}
+                        {pathsCanonical
+                          ? `${fmtNum(treePathCount)} canonical ${treePathCount === 1 ? 'path' : 'paths'} from ${fmtNum(pathsResult.uncoveredPaths.length)} uncovered`
+                          : `${fmtNum(pathsResult.uncoveredPaths.length)} uncovered ${pathsResult.uncoveredPaths.length === 1 ? 'path' : 'paths'}`}{' '}
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 11, color: '#888' }}
+                               title="Canonical view: each path's literals sorted by variable name with duplicate literals removed, and identical paths merged. Clicking a canonical path highlights every literal occurrence of each original path it stands for.">
+                          <input type="checkbox" checked={pathsCanonical}
+                                 onChange={e => { setPathsCanonical(e.target.checked); setPathsTreeExpanded(new Set()); }} />
+                          canonical
+                        </label>{' '}
                         <a href="#" onClick={e => { e.preventDefault();
                           // Expand all internal nodes.
                           const all = new Set();

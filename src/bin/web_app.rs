@@ -1,10 +1,18 @@
+#![allow(clippy::type_complexity)]
+
 use axum::{
-    extract::{Json, State},
+    extract::{Json, Query, State},
     http::Method,
     routing::{delete, get, post},
     Router,
 };
-use logic::matrix::PathClassificationHandle;
+use logic::matrix::{PathClassificationHandle, Matrix, Lit};
+use logic::jqlib::{split_file, join_file, split_boxes, join_boxes, resolve_preamble, resolve_lib_order, parse_box_decl, box_formula, box_negation_formula};
+use logic::boxes::compile::{compile_box, Table};
+use logic::boxes::expand::{expand_box_calls_with, atomize_box_calls_with, family_of, Arg, BoxCall, BoxSig};
+use logic::boxes::compile::{compile_box_polarity, compile_box_by_join, ArgBinding, MinimizeBudget};
+use logic::boxes::controller::{BoxAwareController, BoxTables, CallBoxes};
+use logic::boxes::TableBox;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, sync::{Arc, Mutex}};
 use tower_http::cors::{Any, CorsLayer};
@@ -24,195 +32,9 @@ struct JqLibEntry {
     content: String,
     /// Saved test filter.  Empty string if there are no tests.
     tests:   String,
-}
-
-/// Markers inside a `.jq` file that bracket structured sections.  They are
-/// jq comment lines so a file that contains them is still a legal preamble
-/// if something ever reads the whole file raw without splitting.
-const DEPS_MARKER:     &str = "# === deps ===";
-const DEPS_END_MARKER: &str = "# === end deps ===";
-const TESTS_MARKER:    &str = "# === tests ===";
-
-/// Parse a `.jq` file's raw contents into `(deps, library_code, tests)`.
-///
-/// Layout:
-///   # === deps ===
-///   # expr.jq         ← one per line, `# name` form (jq comment)
-///   # adder.jq
-///   # === end deps ===
-///   ...library code...
-///   # === tests ===
-///   ...test filter...
-///
-/// Any section may be absent.  The deps block, if present, must be at the
-/// start; the tests block, if present, must be after the library code.
-fn split_file(raw: &str) -> (Vec<String>, String, String) {
-    // Split tests off first (reuse the old logic).
-    let (body, tests) = {
-        let mut lib_end: Option<usize> = None;
-        let mut tests_start: Option<usize> = None;
-        let mut offset = 0usize;
-        for line in raw.split_inclusive('\n') {
-            let trimmed = line.trim_end_matches('\n').trim_end_matches('\r').trim_end();
-            if trimmed == TESTS_MARKER {
-                lib_end = Some(offset);
-                tests_start = Some(offset + line.len());
-                break;
-            }
-            offset += line.len();
-        }
-        match (lib_end, tests_start) {
-            (Some(le), Some(ts)) => (raw[..le].to_string(), raw[ts..].to_string()),
-            _ => (raw.to_string(), String::new()),
-        }
-    };
-
-    // Look for a leading deps block, skipping any purely-blank lines before
-    // it.  We iterate with `split_inclusive('\n')` so `line.len()` is the
-    // real on-disk byte count including any `\r` — which matters on CRLF
-    // files, where plain `lines()` would leave our byte offsets short and
-    // slice `content` mid-way through the end marker.
-    let mut deps: Vec<String> = Vec::new();
-    let mut content = body.clone();
-    let pieces: Vec<&str> = body.split_inclusive('\n').collect();
-    let mut header_end: Option<usize> = None; // byte just past `# === end deps ===\n`
-    let mut offset = 0usize;
-    let mut i = 0;
-    while i < pieces.len() {
-        let line = pieces[i];
-        let trimmed = line.trim_end_matches('\n').trim_end_matches('\r').trim_end();
-        if trimmed.is_empty() {
-            offset += line.len();
-            i += 1;
-            continue;
-        }
-        if trimmed == DEPS_MARKER {
-            offset += line.len();
-            i += 1;
-            let mut closed = false;
-            while i < pieces.len() {
-                let inner = pieces[i];
-                let t = inner.trim_end_matches('\n').trim_end_matches('\r').trim_end();
-                offset += inner.len();
-                i += 1;
-                if t == DEPS_END_MARKER {
-                    closed = true;
-                    break;
-                }
-                // Expect "# name.jq" (jq comment with name).
-                let cleaned = t.trim_start();
-                let cleaned = cleaned.strip_prefix('#').unwrap_or(cleaned).trim();
-                if !cleaned.is_empty() {
-                    deps.push(cleaned.to_string());
-                }
-            }
-            if closed {
-                header_end = Some(offset);
-            } else {
-                // No closing marker — treat the file as all-content.
-                deps.clear();
-            }
-        }
-        break;
-    }
-    if let Some(end) = header_end {
-        let end = end.min(body.len());
-        content = body[end..].to_string();
-    }
-    (deps, content, tests)
-}
-
-/// Serialize a library to its on-disk form, writing only the sections that
-/// have content.  Deps block goes at the top, tests block at the bottom.
-fn join_file(deps: &[String], content: &str, tests: &str) -> String {
-    let mut out = String::new();
-    if !deps.is_empty() {
-        out.push_str(DEPS_MARKER);
-        out.push('\n');
-        for d in deps {
-            out.push_str("# ");
-            out.push_str(d);
-            out.push('\n');
-        }
-        out.push_str(DEPS_END_MARKER);
-        out.push('\n');
-    }
-    out.push_str(content);
-    if !tests.trim().is_empty() {
-        if !out.ends_with('\n') { out.push('\n'); }
-        out.push_str(TESTS_MARKER);
-        out.push('\n');
-        out.push_str(tests);
-    }
-    out
-}
-
-/// Build a concatenated jq preamble from a set of root libraries, pulling in
-/// their transitive dependencies in topological order.  Each library
-/// contributes its `content` (not its tests).  Cycles are reported.
-///
-/// `roots` are the libraries the caller starts from, in order.  `overrides`
-/// maps `path` → `(deps, content)` — typically the currently-loaded
-/// in-memory libs plus any editor preamble override.  Unknown paths fall
-/// through to a disk read from `lib_dir`.
-fn resolve_preamble(
-    roots: &[String],
-    overrides: &HashMap<String, (Vec<String>, String)>,
-    lib_dir: &std::path::Path,
-) -> Result<String, String> {
-    enum State { InProgress, Done }
-    let mut state: HashMap<String, State> = HashMap::new();
-    let mut out = String::new();
-
-    fn visit(
-        path: &str,
-        overrides: &HashMap<String, (Vec<String>, String)>,
-        lib_dir: &std::path::Path,
-        state: &mut HashMap<String, State>,
-        stack: &mut Vec<String>,
-        out: &mut String,
-    ) -> Result<(), String> {
-        match state.get(path) {
-            Some(State::Done) => return Ok(()),
-            Some(State::InProgress) => {
-                // Format a readable cycle report.
-                let start = stack.iter().position(|p| p == path).unwrap_or(0);
-                let cycle: Vec<String> = stack[start..].iter().cloned()
-                    .chain(std::iter::once(path.to_string()))
-                    .collect();
-                return Err(format!("dependency cycle: {}", cycle.join(" → ")));
-            }
-            None => {}
-        }
-        if path.contains('/') || path.contains('\\') || path.contains("..") {
-            return Err(format!("invalid dependency path: {}", path));
-        }
-        let (deps, content) = match overrides.get(path) {
-            Some(v) => v.clone(),
-            None => {
-                let raw = std::fs::read_to_string(lib_dir.join(path))
-                    .map_err(|e| format!("reading dependency {}: {}", path, e))?;
-                let (d, c, _t) = split_file(&raw);
-                (d, c)
-            }
-        };
-        state.insert(path.to_string(), State::InProgress);
-        stack.push(path.to_string());
-        for d in &deps {
-            visit(d, overrides, lib_dir, state, stack, out)?;
-        }
-        stack.pop();
-        out.push_str(&content);
-        if !content.ends_with('\n') { out.push('\n'); }
-        state.insert(path.to_string(), State::Done);
-        Ok(())
-    }
-
-    let mut stack = Vec::new();
-    for r in roots {
-        visit(r, overrides, lib_dir, &mut state, &mut stack, &mut out)?;
-    }
-    Ok(out)
+    /// Box declarations (`name(p1;p2;…) [expose …]`) from the `# === boxes ===`
+    /// block, kept out of `content`; compiled on load and on save.
+    boxes:   Vec<String>,
 }
 
 const PREFIX_DETAIL_LIMIT: usize = 1000;
@@ -257,9 +79,15 @@ struct ClassifySnapshot {
 }
 
 struct ClassifyJob {
+    /// Incremented by every start; a drainer only writes while its own
+    /// generation is current, so a job cancelled and replaced (its search
+    /// may still be winding down) never overwrites its successor's state.
+    generation: u64,
     snapshot: ClassifySnapshot,
     total_path_count:         f64,
     start_time:               Option<std::time::Instant>,
+    /// Elapsed seconds frozen when the job finished (status reads it instead of the clock).
+    finished_secs:            Option<f64>,
     cancel:   Option<PathClassificationHandle>,
     running:  bool,
     error:    Option<String>,
@@ -271,19 +99,26 @@ struct ClassifyJob {
     /// the original formula's diagram; this flag is informational
     /// (e.g. for the cover-group display to label lemma covers).
     preprocessed: bool,
+    /// A note from hydra's structure stages (`hydra_then_boxes`): the stage
+    /// that decided the job, or — while the box search runs — a numeric
+    /// verdict the search is asked to prove.
+    solved_by: Option<String>,
 }
 
 impl Default for ClassifyJob {
     fn default() -> Self {
         Self {
+            generation: 0,
             snapshot: ClassifySnapshot::default(),
             cancel: None,
             running: false,
             error: None,
             is_complement: false,
             preprocessed: false,
+            solved_by: None,
             total_path_count: 0.0,
             start_time: None,
+            finished_secs: None,
         }
     }
 }
@@ -293,11 +128,15 @@ impl Default for ClassifyJob {
 struct CaDiCaLJobResult {
     /// The assignment (if any). Each entry is [var_index, neg_bool].
     assignment:      Option<Vec<(u32, bool)>>,
+    /// The variable names the indices refer to (the expanded formula's,
+    /// constants excluded) — the client must not rebuild this order itself.
+    vars:            Vec<String>,
     /// Learned clauses as raw cadical literal vectors.
     learned_clauses: Vec<Vec<i32>>,
     elapsed_secs:    f64,
 }
 
+#[derive(Default)]
 struct CaDiCaLJob {
     result:   Option<CaDiCaLJobResult>,
     cancel:   Option<PathClassificationHandle>,
@@ -305,11 +144,6 @@ struct CaDiCaLJob {
     error:    Option<String>,
 }
 
-impl Default for CaDiCaLJob {
-    fn default() -> Self {
-        Self { result: None, cancel: None, running: false, error: None }
-    }
-}
 
 #[derive(Serialize)]
 struct CaDiCaLStatusResponse {
@@ -321,12 +155,187 @@ struct CaDiCaLStatusResponse {
 #[derive(Clone)]
 struct AppState {
     jq_libs:     Arc<Mutex<Vec<JqLibEntry>>>,
+    /// Boxes compiled from the `# === boxes ===` declarations of the loaded
+    /// libraries and of the libraries they depend on.
+    compiled_boxes: Arc<Mutex<Vec<CompiledBox>>>,
+    /// Per library whose boxes were compiled (loaded, or pulled in as a
+    /// dependency): the source key they were compiled from and the statuses;
+    /// see [`ensure_boxes_compiled`].
+    compiled_libs: Arc<Mutex<HashMap<String, CompiledLib>>>,
     server_root: PathBuf,
     valid_job:   Arc<Mutex<ClassifyJob>>,
     sat_job:     Arc<Mutex<ClassifyJob>>,
     paths_job:   Arc<Mutex<ClassifyJob>>,
     cadical_valid_job: Arc<Mutex<CaDiCaLJob>>,
     cadical_sat_job:   Arc<Mutex<CaDiCaLJob>>,
+}
+
+
+/// Expand box calls (`name(a, b, …)`) against the compiled boxes.  Every
+/// formula-taking handler runs this first, so the backends and the client's
+/// live parser agree on what a formula with boxes means.
+fn expand_formula(state: &AppState, formula: &str) -> Result<String, String> {
+    let store = state.compiled_boxes.lock().unwrap().clone();
+    expand_box_calls_with(formula, &|name| store.iter().find(|b| b.name == name).map(|b| BoxSig {
+        params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone(),
+    }), &|name| unknown_box_hint(state, name))
+}
+
+/// The library whose boxes were compiled (loaded, or a dependency) that
+/// declares box `name`, with the declaration's compile error if it failed.
+fn declaring_compiled_lib(state: &AppState, name: &str) -> Option<(String, Option<String>)> {
+    let declares = |decls: &[String]| decls.iter().any(|d| parse_box_decl(d).is_ok_and(|b| b.name == name));
+    let libs = state.jq_libs.lock().unwrap().clone();
+    let compiled = state.compiled_libs.lock().unwrap().clone();
+    let mut paths: Vec<&String> = compiled.keys().collect();
+    paths.sort();
+    for path in paths {
+        let c = &compiled[path];
+        let declared = libs.iter().find(|l| &l.path == path).map(|l| declares(&l.boxes))
+            .unwrap_or_else(|| c.statuses.iter().any(|st| st["name"] == name));
+        if declared {
+            let error = c.statuses.iter().find(|st| st["name"] == name).and_then(|st| st["error"].as_str()).map(String::from);
+            return Some((path.clone(), error));
+        }
+    }
+    None
+}
+
+/// Why `name` is not a compiled box, when the server can tell: declared in a
+/// loaded library whose compile failed, or declared in a library file that
+/// is neither loaded nor a dependency of a loaded one.
+fn unknown_box_hint(state: &AppState, name: &str) -> Option<String> {
+    let declares = |decls: &[String]| decls.iter().any(|d| parse_box_decl(d).is_ok_and(|b| b.name == name));
+    // A library whose boxes were compiled (loaded or dependency): its statuses say why.
+    if let Some((path, error)) = declaring_compiled_lib(state, name) {
+        return Some(match error {
+            Some(e) => format!("declared in {path}, but it did not compile: {e}"),
+            None => format!("declared in {path}, but not compiled — reload the library"),
+        });
+    }
+    // Otherwise a library on disk that nothing loaded depends on.
+    let compiled = state.compiled_libs.lock().unwrap().clone();
+    let lib_dir = state.server_root.join("lib");
+    let mut files: Vec<String> = std::fs::read_dir(&lib_dir).ok()?.filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok()).filter(|n| n.ends_with(".jq")).collect();
+    files.sort();
+    for file in files {
+        if compiled.contains_key(&file) { continue; }
+        let Ok(raw) = std::fs::read_to_string(lib_dir.join(&file)) else { continue };
+        let (_deps, content, _tests) = split_file(&raw);
+        let (_content, decls) = split_boxes(&content);
+        if declares(&decls) {
+            return Some(format!("declared in {file}, which is not loaded — load it, or list it in the deps of the library that uses it"));
+        }
+    }
+    None
+}
+
+
+/// A formula's box calls turned into atoms, with the compiled boxes they name.
+#[derive(Clone)]
+struct BoxContext {
+    calls: Vec<BoxCall>,
+    boxes: HashMap<String, CompiledBox>,
+}
+
+/// Atomize the box calls of `formula` (`BOXCALL_k` per call) and collect the
+/// compiled boxes involved.  Returns the atomized text and the context.
+fn build_box_context(state: &AppState, formula: &str) -> Result<(String, BoxContext), String> {
+    let store = state.compiled_boxes.lock().unwrap().clone();
+    let at = atomize_box_calls_with(formula, &|name| store.iter().find(|b| b.name == name).map(|b| BoxSig {
+        params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone(),
+    }), &|name| unknown_box_hint(state, name))?;
+    let mut boxes = HashMap::new();
+    for c in &at.calls {
+        if !boxes.contains_key(&c.name) {
+            let cb = store.iter().find(|b| b.name == c.name).cloned().ok_or_else(|| format!("unknown box `{}`", c.name))?;
+            boxes.insert(c.name.clone(), cb);
+        }
+    }
+    Ok((at.text, BoxContext { calls: at.calls, boxes }))
+}
+
+/// Variable ids for a box-aware run: the atomized formula's variables plus
+/// fresh ids for call arguments that occur only inside calls.
+struct VarAlloc { index: HashMap<String, u32>, names: Vec<String> }
+impl VarAlloc {
+    fn new(m: &Matrix) -> VarAlloc { VarAlloc { index: m.ast.var_index.clone(), names: m.ast.vars.clone() } }
+    fn id(&mut self, name: &str) -> u32 {
+        if let Some(&i) = self.index.get(name) { return i; }
+        let i = self.names.len() as u32;
+        self.names.push(name.to_string());
+        self.index.insert(name.to_string(), i);
+        i
+    }
+    /// One binding per table column: the call's argument for the column's
+    /// family, with the column's subscript carried over (`a_3` bound to `x`
+    /// is `x_3`; a constant applies to every member).
+    fn bind_columns(&mut self, table: &Table, args: &[Arg]) -> Result<Vec<ArgBinding>, String> {
+        let mut out = Vec::with_capacity(table.vars.len());
+        for col in &table.vars {
+            let fi = family_of(col, &table.params).ok_or_else(|| format!("{}: column {col} belongs to no parameter", table.name))?;
+            let a = args.get(fi).ok_or_else(|| format!("{}: no argument for {}", table.name, table.params[fi]))?;
+            out.push(match a {
+                Arg::Const(b) => ArgBinding::Const(*b),
+                Arg::Var { name, neg } => {
+                    let suffix = &col[table.params[fi].len()..];
+                    ArgBinding::Var { id: self.id(&format!("{name}{suffix}")), neg: *neg }
+                }
+            });
+        }
+        Ok(out)
+    }
+}
+
+/// Instantiate every call of `ctx` as a pair of row-tables over the problem's
+/// variables (call arguments that occur only inside calls get fresh ids), and
+/// relabel the atoms in `m.ast.vars` with the call text so path strings read
+/// `full_adder(x,y,c_in,s,c_out)`.  Returns the tables, the extended variable
+/// names, and the ids of the call-argument variables (for the witness).
+fn build_box_tables(ctx: &BoxContext, m: &mut Matrix) -> Result<(BoxTables, Vec<String>, Vec<u32>), String> {
+    let mut alloc = VarAlloc::new(m);
+    let mut calls = Vec::new();
+    let mut arg_vars: Vec<u32> = Vec::new();
+    for call in &ctx.calls {
+        let cb = ctx.boxes.get(&call.name).ok_or_else(|| format!("unknown box `{}`", call.name))?;
+        let atom = *m.ast.var_index.get(&call.atom).ok_or_else(|| format!("internal: atom {} missing", call.atom))?;
+        m.ast.vars[atom as usize] = call.label.clone();
+        alloc.names[atom as usize] = call.label.clone();
+        let b = alloc.bind_columns(&cb.table, &call.args)?;
+        for a in &b { if let ArgBinding::Var { id, .. } = a && !arg_vars.contains(id) { arg_vars.push(*id); } }
+        let pos = TableBox::new(cb.table.instantiate_args(&b)?);
+        let neg = TableBox::new(cb.table_neg.as_ref()
+            .ok_or_else(|| format!("box `{}`: negative table unavailable (too many columns?)", call.name))?
+            .instantiate_args(&b)?);
+        calls.push(CallBoxes { atom, pos, neg });
+    }
+    let nvars = alloc.names.len();
+    Ok((BoxTables { calls, nvars, memo: std::sync::Mutex::new(None) }, alloc.names, arg_vars))
+}
+
+/// For an uncovered path of the collapsed matrix: the values of the call
+/// arguments that are not on the path (display polarity), from the tables'
+/// joint witness — `None` if the path is table-inconsistent (the search
+/// already prunes those; this is the safety net).
+fn box_witness(tables: Arc<BoxTables>, arg_vars: Vec<u32>) -> Arc<dyn Fn(&[Lit]) -> Option<Vec<Lit>> + Send + Sync> {
+    Arc::new(move |path: &[Lit]| {
+        let refs: Vec<&Lit> = path.iter().collect();
+        let Some(asg) = BoxTables::assignment(&refs) else { return Some(Vec::new()) };
+        let model = tables.witness(&asg)?;
+        Some(arg_vars.iter().filter(|v| !asg.contains_key(v))
+            .map(|&v| Lit { var: v, neg: model[v as usize] }).collect())
+    })
+}
+
+#[derive(Deserialize)]
+struct ExpandRequest { formula: String }
+
+async fn expand_handler(State(state): State<AppState>, Json(req): Json<ExpandRequest>) -> Json<serde_json::Value> {
+    match expand_formula(&state, &req.formula) {
+        Ok(expanded) => Json(serde_json::json!({ "expanded": expanded })),
+        Err(e) => Json(serde_json::json!({ "error": e })),
+    }
 }
 
 // ── jq handlers ───────────────────────────────────────────────────────────────
@@ -397,7 +406,7 @@ async fn jq_handler(
             for item in iter {
                 match item {
                     Err(e) => { err_msg = Some(e.to_string()); break; }
-                    Ok(v)  => match serde_json::from_str::<serde_json::Value>(&v.to_string()) {
+                    Ok(v)  => match serde_json::to_value(&v) {
                         Err(e) => { err_msg = Some(e.to_string()); break; }
                         Ok(jv) => results.push(jv),
                     },
@@ -409,6 +418,373 @@ async fn jq_handler(
             }
         }
     }
+}
+
+
+// ── boxes: compile declared jq boxes into tables (doc/box_backend_design.md §5) ──
+
+/// A box compiled from a loaded library, held in memory for this server.
+#[derive(Clone, Serialize)]
+struct CompiledBox {
+    name: String,
+    lib: String,
+    /// The declaration line as written in the library's boxes section.
+    decl: String,
+    /// Compiled by composition (joining the callees' tables) rather than by
+    /// enumerating the expanded matrix.
+    composed: bool,
+    params: Vec<String>,
+    expose: Vec<String>,
+    vars: Vec<String>,
+    rows: usize,
+    uncovered_paths: usize,
+    formula: String,
+    /// Projected internals of the definition (renamed per call site on expansion).
+    internals: Vec<String>,
+    /// Rows of the negative table (models of ¬box over the same columns).
+    rows_neg: usize,
+    /// Both tables are proven minimum covers (exact Quine–McCluskey).
+    exact_min: bool,
+    /// Per table: proven minimum, and milliseconds spent minimizing.
+    exact_min_pos: bool,
+    exact_min_neg: bool,
+    minimize_ms_pos: u64,
+    minimize_ms_neg: u64,
+    /// Effective minimization budget (declaration override or default).
+    budget_cubes: usize,
+    budget_ms: u64,
+    /// Milliseconds spent minimizing both tables.
+    minimize_ms: u64,
+    #[serde(skip)]
+    table: Table,
+    /// The negative table — compiled from the definition's own NNF when nothing
+    /// is projected, else the complement of `table` (¬∃U.B = ∀U.¬B).
+    #[serde(skip)]
+    table_neg: Option<Table>,
+}
+
+#[derive(Deserialize)]
+struct BoxesCompileRequest {
+    /// Only these libraries (paths); default: every loaded library.
+    #[serde(default)] libs: Vec<String>,
+    #[serde(default = "BoxesCompileRequest::default_max")] max_uncovered_paths: usize,
+    #[serde(default = "BoxesCompileRequest::default_timeout")] timeout_secs: u64,
+    /// Also write `<server_root>/boxes/<name>.json` (the `sat --boxes` table format).
+    #[serde(default)] save: bool,
+}
+impl BoxesCompileRequest {
+    fn default_max() -> usize { 1_000_000 }
+    fn default_timeout() -> u64 { 120 }
+}
+
+/// A library whose boxes have been compiled: the key of the source they were
+/// compiled from ([`lib_key`]) and the per-declaration statuses.
+#[derive(Clone)]
+struct CompiledLib { key: u64, statuses: Vec<serde_json::Value> }
+
+/// A library's source: the loaded copy if it is loaded, else `lib/<path>` on
+/// disk — a dependency that is not loaded, whose jq definitions the preamble
+/// pulls in the same way (`resolve_preamble`).
+fn lib_source(state: &AppState, path: &str) -> Result<JqLibEntry, String> {
+    if let Some(l) = state.jq_libs.lock().unwrap().iter().find(|l| l.path == path) { return Ok(l.clone()); }
+    if path.is_empty() || path.contains('/') || path.contains('\\') || path.contains("..") {
+        return Err(format!("invalid dependency path: {path}"));
+    }
+    let raw = std::fs::read_to_string(state.server_root.join("lib").join(path))
+        .map_err(|e| format!("reading dependency {path}: {e}"))?;
+    lib_entry_from_raw(path, &raw)
+}
+
+/// What a library's compiled boxes depend on: its deps list, its jq content,
+/// its box declarations, and the keys of its dependencies' compiled boxes
+/// (so a change deep in a dependency recompiles every dependant).
+fn lib_key(entry: &JqLibEntry, dep_keys: &HashMap<String, u64>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    entry.deps.hash(&mut h);
+    entry.content.hash(&mut h);
+    entry.boxes.hash(&mut h);
+    for d in &entry.deps { dep_keys.get(d).copied().unwrap_or(0).hash(&mut h); }
+    h.finish()
+}
+
+/// Bring the boxes of `roots` and of every library they (transitively)
+/// depend on up to date, in dependency order — a definition may call boxes
+/// of a dependency, and a dependency's boxes are available whether or not it
+/// is loaded, exactly like its jq definitions.  A library is (re)compiled when
+/// it is listed in `force` or its [`lib_key`] differs from the one its boxes
+/// were compiled from; the rest are left alone.  First, the boxes of every
+/// library that no loaded library depends on any more are dropped
+/// ([`prune_unreachable_boxes`]) — a dependency's boxes come and go with its
+/// dependants, and a definition must not compile against a table that is
+/// about to disappear.  Returns the statuses of the libraries compiled in
+/// this pass, in that order, each tagged with `lib`.
+async fn ensure_boxes_compiled(state: &AppState, roots: &[String], force: &[String], max_paths: usize, timeout_secs: u64) -> Vec<serde_json::Value> {
+    prune_unreachable_boxes(state);
+    compile_stale_boxes(state, roots, force, max_paths, timeout_secs).await
+}
+
+/// Drop the compiled boxes (and the compile record) of every library outside
+/// the loaded libraries' dependency closure — a dependency that was pulled in
+/// for a library since unloaded, or removed from a library's deps.  Left alone
+/// when the closure cannot be resolved (a cycle, a missing file): nothing is
+/// dropped on an error.  Returns the paths pruned.
+fn prune_unreachable_boxes(state: &AppState) -> Vec<String> {
+    let deps_of = |path: &str| lib_source(state, path).map(|l| l.deps);
+    let Ok(reachable) = resolve_lib_order(&loaded_paths(state), &deps_of) else { return Vec::new() };
+    let mut compiled = state.compiled_libs.lock().unwrap();
+    let mut pruned: Vec<String> = compiled.keys().filter(|p| !reachable.contains(p)).cloned().collect();
+    pruned.sort();
+    for p in &pruned { compiled.remove(p); }
+    state.compiled_boxes.lock().unwrap().retain(|b| reachable.contains(&b.lib));
+    pruned
+}
+
+/// The compile part of [`ensure_boxes_compiled`].
+async fn compile_stale_boxes(state: &AppState, roots: &[String], force: &[String], max_paths: usize, timeout_secs: u64) -> Vec<serde_json::Value> {
+    // Read every library once (the order resolver asks for deps; the loop
+    // below for the rest) — finished before the first await so the handler
+    // futures stay `Send`.
+    let (order, sources) = {
+        let sources: std::cell::RefCell<HashMap<String, Result<JqLibEntry, String>>> = std::cell::RefCell::new(HashMap::new());
+        let source = |path: &str| -> Result<JqLibEntry, String> {
+            sources.borrow_mut().entry(path.to_string()).or_insert_with(|| lib_source(state, path)).clone()
+        };
+        let order = resolve_lib_order(roots, &|path| source(path).map(|l| l.deps));
+        (order, sources.into_inner())
+    };
+    let order = match order {
+        Ok(o) => o,
+        Err(e) => return vec![serde_json::json!({ "error": e })],
+    };
+    let (mut keys, mut out) = (HashMap::<String, u64>::new(), Vec::new());
+    for path in &order {
+        let entry = match sources.get(path).cloned().unwrap_or_else(|| lib_source(state, path)) {
+            Ok(e) => e,
+            Err(e) => { out.push(serde_json::json!({ "lib": path, "error": e })); continue; }
+        };
+        let key = lib_key(&entry, &keys);
+        let current = state.compiled_libs.lock().unwrap().get(path).map(|c| c.key);
+        if force.contains(path) || current != Some(key) {
+            let statuses = compile_lib_boxes(state, &entry, max_paths, timeout_secs).await;
+            state.compiled_libs.lock().unwrap().insert(path.clone(), CompiledLib { key, statuses: statuses.clone() });
+            out.extend(statuses.into_iter().map(|mut st| { st["lib"] = serde_json::json!(path); st }));
+        }
+        keys.insert(path.clone(), key);
+    }
+    out
+}
+
+/// The loaded libraries' paths, in load order.
+fn loaded_paths(state: &AppState) -> Vec<String> {
+    state.jq_libs.lock().unwrap().iter().map(|l| l.path.clone()).collect()
+}
+
+/// Forget a library: its loaded copy, its compiled boxes and their record.
+/// (A following [`ensure_boxes_compiled`] pulls it back in from disk if a
+/// loaded library still depends on it, and drops the boxes of dependencies
+/// only it needed.)
+fn unload_lib(state: &AppState, path: &str) {
+    state.jq_libs.lock().unwrap().retain(|e| e.path != path);
+    state.compiled_boxes.lock().unwrap().retain(|b| b.lib != path);
+    state.compiled_libs.lock().unwrap().remove(path);
+}
+
+/// Compile (or recompile) the boxes declared by one library (loaded, or a
+/// dependency read from disk), replacing that library's entries in the store
+/// — so a declaration that was removed or now fails disappears.  A definition
+/// may call the boxes of the library's dependency closure (compiled first:
+/// [`ensure_boxes_compiled`]) and those declared earlier in its own block —
+/// not the boxes of an unrelated loaded library: only declared deps trigger
+/// recompilation.  Returns one status per declaration.
+async fn compile_lib_boxes(state: &AppState, lib: &JqLibEntry, max_paths: usize, timeout_secs: u64) -> Vec<serde_json::Value> {
+    if lib.boxes.is_empty() {
+        state.compiled_boxes.lock().unwrap().retain(|b| b.lib != lib.path);
+        return Vec::new();
+    }
+    // This library and its transitive deps (empty only if unresolvable —
+    // then every compiled box is visible, as a fallback).
+    let closure: Vec<String> = resolve_lib_order(std::slice::from_ref(&lib.path), &|p| lib_source(state, p).map(|l| l.deps)).unwrap_or_default();
+    // The jq preamble: every loaded library plus this one (and their deps).
+    let libs = state.jq_libs.lock().unwrap().clone();
+    let mut roots: Vec<String> = libs.iter().map(|l| l.path.clone()).collect();
+    if !roots.contains(&lib.path) { roots.push(lib.path.clone()); }
+    let mut overrides = HashMap::new();
+    for l in &libs { overrides.insert(l.path.clone(), (l.deps.clone(), l.content.clone())); }
+    overrides.insert(lib.path.clone(), (lib.deps.clone(), lib.content.clone()));
+    let preamble = match resolve_preamble(&roots, &overrides, &state.server_root.join("lib")) {
+        Ok(p) => p,
+        Err(e) => return vec![serde_json::json!({ "error": e })],
+    };
+    let (mut statuses, mut compiled_now) = (Vec::new(), Vec::new());
+    for line in &lib.boxes {
+        let d = match parse_box_decl(line) {
+            Ok(d) => d,
+            Err(e) => { statuses.push(serde_json::json!({ "decl": line, "name": line.split('(').next().unwrap_or("").trim(), "error": e })); continue; }
+        };
+        let formula = match box_formula(&preamble, &d, None) {
+            Ok(f) => f,
+            Err(e) => { statuses.push(serde_json::json!({ "name": d.name, "error": e })); continue; }
+        };
+        let neg_formula = match box_negation_formula(&preamble, &d) {
+            Ok(f) => f,
+            Err(e) => { statuses.push(serde_json::json!({ "name": d.name, "error": format!("negation: {e}") })); continue; }
+        };
+        let budget = MinimizeBudget::new(d.budget.cubes, d.budget.ms);
+        // A definition may call boxes declared earlier (in this library or a
+        // loaded one).  A conjunction of calls is compiled by composition —
+        // joining the callees' tables, hidden variables projected as the
+        // join proceeds — which never touches the expanded matrix; anything
+        // else expands the calls and enumerates paths.
+        let (formula, composed): (String, Option<Table>) = {
+            // This library's previous tables are stale (being replaced): only
+            // the declarations compiled so far in this pass count for it.
+            let store = state.compiled_boxes.lock().unwrap().clone();
+            let visible = |b: &&CompiledBox| b.lib != lib.path && (closure.is_empty() || closure.contains(&b.lib));
+            let find = |name: &str| compiled_now.iter().chain(store.iter().filter(visible)).find(|b: &&CompiledBox| b.name == name);
+            let lookup = |name: &str| find(name).map(|b| BoxSig { params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone() });
+            let lookup_t = |name: &str| find(name).map(|b| (BoxSig { params: b.table.params.clone(), internals: b.internals.clone(), formula: b.formula.clone() }, b.table.clone()));
+            let hint = |name: &str| {
+                if lib.boxes.iter().any(|l| parse_box_decl(l).is_ok_and(|b| b.name == name)) {
+                    Some(format!("declared later in {} — a definition may only call boxes declared before it", lib.path))
+                } else if let Some((other, _)) = declaring_compiled_lib(state, name) && !closure.contains(&other) {
+                    Some(format!("declared in {other}, which is not a dependency of {} — list it in the deps block", lib.path))
+                } else { unknown_box_hint(state, name) }
+            };
+            let composed = compile_box_by_join(&d.name, &formula, &d.params, &d.expose, &lookup_t, &budget).ok();
+            match expand_box_calls_with(&formula, &lookup, &hint) {
+                Ok(f) => (f, composed),
+                Err(e) => { statuses.push(serde_json::json!({ "name": d.name, "error": format!("definition: {e}") })); continue; }
+            }
+        };
+        let dur = std::time::Duration::from_secs(timeout_secs);
+        let is_composed = composed.is_some();
+        let result: Result<Table, String> = match composed {
+            Some(t) => Ok(t),
+            None => match tokio::time::timeout(dur, compile_box(&d.name, &formula, &d.params, &d.expose, max_paths, &budget)).await {
+                Err(_) => Err(format!("compile timed out after {timeout_secs} s")),
+                Ok(r) => r,
+            },
+        };
+        match result {
+            Err(e) => statuses.push(serde_json::json!({ "name": d.name, "error": e })),
+            Ok(table) => {
+                // The negative table (§2.2: two tables per box): from the
+                // declaration's `negation` clause when it has one (compiled like a
+                // positive table, over the same interface), else exact from the
+                // definition's own NNF when nothing is projected (and the box was
+                // not composed — its expansion may be enormous), else the complement.
+                let table_neg: Option<Table> = if let Some(nf) = &neg_formula {
+                    match tokio::time::timeout(dur, compile_box(&format!("{}'", d.name), nf, &d.params, &d.expose, max_paths, &budget)).await {
+                        Ok(Ok(t)) if t.vars == table.vars => Some(t),
+                        Ok(Ok(t)) => { statuses.push(serde_json::json!({ "name": d.name, "error": format!("negation: its variables {:?} differ from the definition's {:?}", t.vars, table.vars) })); continue; }
+                        Ok(Err(e)) => { statuses.push(serde_json::json!({ "name": d.name, "error": format!("negation: {e}") })); continue; }
+                        Err(_) => { statuses.push(serde_json::json!({ "name": d.name, "error": format!("negation: compile timed out after {timeout_secs} s") })); continue; }
+                    }
+                } else if table.internals_projected.is_empty() && !is_composed {
+                    match tokio::time::timeout(dur, compile_box_polarity(&d.name, &formula, &d.params, &d.expose, max_paths, true, &budget)).await {
+                        Ok(Ok(t)) => Some(t),
+                        Ok(Err(e)) => { eprintln!("{}: negative table from the definition failed ({e}); using the complement", d.name); table.complement(20, &budget).ok() }
+                        Err(_) => { eprintln!("{}: negative table from the definition timed out after {timeout_secs} s; using the complement", d.name); table.complement(20, &budget).ok() }
+                    }
+                } else { table.complement(20, &budget).ok() };
+                let rows_neg = table_neg.as_ref().map_or(0, |t| t.rows.len());
+                let exact_min = table.exact_min && table_neg.as_ref().is_none_or(|t| t.exact_min);
+                let (exact_min_pos, exact_min_neg) = (table.exact_min, table_neg.as_ref().is_none_or(|t| t.exact_min));
+                let (minimize_ms_pos, minimize_ms_neg) = (table.minimize_ms, table_neg.as_ref().map_or(0, |t| t.minimize_ms));
+                let minimize_ms = minimize_ms_pos + minimize_ms_neg;
+                statuses.push(serde_json::json!({
+                    "name": d.name, "params": table.params, "vars": table.vars, "rows": table.rows.len(), "rows_neg": rows_neg,
+                    "exact_min": exact_min, "minimize_ms": minimize_ms, "budget_cubes": budget.max_cubes, "budget_ms": budget.time.as_millis() as u64,
+                    "exact_min_pos": exact_min_pos, "exact_min_neg": exact_min_neg, "minimize_ms_pos": minimize_ms_pos, "minimize_ms_neg": minimize_ms_neg,
+                    "composed": is_composed,
+                    "uncovered_paths": table.uncovered_paths, "formula": table.formula,
+                }));
+                compiled_now.push(CompiledBox {
+                    name: d.name.clone(), lib: lib.path.clone(), decl: line.trim().to_string(), composed: is_composed, params: d.params.clone(), expose: d.expose.clone(),
+                    vars: table.vars.clone(), rows: table.rows.len(), uncovered_paths: table.uncovered_paths,
+                    formula: table.formula.clone(), internals: table.internals_projected.clone(), rows_neg, exact_min,
+                    exact_min_pos, exact_min_neg, minimize_ms_pos, minimize_ms_neg,
+                    budget_cubes: budget.max_cubes, budget_ms: budget.time.as_millis() as u64, minimize_ms, table, table_neg,
+                });
+            }
+        }
+    }
+    let mut store = state.compiled_boxes.lock().unwrap();
+    store.retain(|b| b.lib != lib.path);
+    store.extend(compiled_now);
+    statuses
+}
+
+/// Recompile the boxes of the loaded libraries (all, or `libs`).  Boxes are
+/// compiled automatically on library load and save; this is the manual /
+/// scripted entry point, and the one that can `save` the tables to disk.
+async fn boxes_compile_handler(
+    State(state): State<AppState>,
+    Json(req): Json<BoxesCompileRequest>,
+) -> Json<serde_json::Value> {
+    let paths: Vec<String> = loaded_paths(&state).into_iter().filter(|p| req.libs.is_empty() || req.libs.contains(p)).collect();
+    let (mut compiled, mut errors) = (Vec::new(), Vec::new());
+    for st in ensure_boxes_compiled(&state, &paths, &paths, req.max_uncovered_paths, req.timeout_secs).await {
+        let lib = st["lib"].as_str().unwrap_or("").to_string();
+        if let Some(e) = st.get("error").and_then(|e| e.as_str()) { errors.push(format!("{lib}: {e}")); } else { compiled.push(st); }
+    }
+    if req.save {
+        let dir = state.server_root.join("boxes");
+        let _ = std::fs::create_dir_all(&dir);
+        let store = state.compiled_boxes.lock().unwrap();
+        for b in store.iter().filter(|b| paths.contains(&b.lib)) {
+            if let Err(e) = std::fs::write(dir.join(format!("{}.json", b.name)), serde_json::to_string_pretty(&b.table.to_json()).unwrap()) {
+                errors.push(format!("{}: save: {}", b.name, e));
+            }
+        }
+    }
+    Json(serde_json::json!({ "compiled": compiled, "errors": errors }))
+}
+
+/// The compiled boxes, plus the declarations that failed to compile
+/// (`failed: [{name, lib, error}]`) so a client can tell "not a box" from
+/// "a box that did not compile".
+async fn boxes_list_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let boxes = state.compiled_boxes.lock().unwrap().clone();
+    let compiled = state.compiled_libs.lock().unwrap().clone();
+    let mut failed: Vec<serde_json::Value> = Vec::new();
+    for (lib, c) in &compiled {
+        for st in &c.statuses {
+            if let Some(e) = st["error"].as_str() {
+                failed.push(serde_json::json!({ "name": st["name"], "lib": lib, "error": e }));
+            }
+        }
+    }
+    failed.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+    Json(serde_json::json!({ "boxes": boxes, "failed": failed }))
+}
+
+async fn boxes_table_handler(
+    State(state): State<AppState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Json<serde_json::Value> {
+    let name = q.get("name").cloned().unwrap_or_default();
+    let store = state.compiled_boxes.lock().unwrap();
+    match store.iter().find(|b| b.name == name) {
+        Some(b) => Json(b.table.to_json()),
+        None => Json(serde_json::json!({ "error": format!("no compiled box named {name}") })),
+    }
+}
+
+async fn boxes_delete_handler(
+    State(state): State<AppState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Json<serde_json::Value> {
+    let name = q.get("name").cloned().unwrap_or_default();
+    let mut store = state.compiled_boxes.lock().unwrap();
+    let before = store.len();
+    let libs: Vec<String> = store.iter().filter(|b| b.name == name).map(|b| b.lib.clone()).collect();
+    store.retain(|b| b.name != name);
+    // The library's boxes are no longer complete: the next load/save/compile recompiles it.
+    let mut compiled = state.compiled_libs.lock().unwrap();
+    for lib in libs { compiled.remove(&lib); }
+    Json(serde_json::json!({ "ok": true, "removed": before - store.len() }))
 }
 
 // ── jq-lib handlers ───────────────────────────────────────────────────────────
@@ -439,39 +815,48 @@ async fn jq_lib_files_handler(State(state): State<AppState>) -> Json<serde_json:
     }
 }
 
+/// Build a library entry from a `.jq` file's raw text: split off deps, tests
+/// and the box declarations.
+fn lib_entry_from_raw(path: &str, raw: &str) -> Result<JqLibEntry, String> {
+    let (deps, content_raw, tests) = split_file(raw);
+    let (content, boxes) = split_boxes(&content_raw);
+    let name = std::path::Path::new(path).file_stem().and_then(|s| s.to_str())
+        .ok_or_else(|| "invalid file path".to_string())?.to_string();
+    Ok(JqLibEntry { path: path.to_string(), name, deps, content, tests, boxes })
+}
+
 async fn jq_lib_load_handler(
     State(state): State<AppState>,
     Json(req): Json<JqLibRequest>,
 ) -> Json<serde_json::Value> {
     let full_path = state.server_root.join("lib").join(&req.path);
-
     let raw = match std::fs::read_to_string(&full_path) {
-        Ok(c)   => c,
-        Err(e)  => return Json(serde_json::json!({ "error": e.to_string() })),
+        Ok(c)  => c,
+        Err(e) => return Json(serde_json::json!({ "error": e.to_string() })),
     };
-    let (deps, content, tests) = split_file(&raw);
-
-    let name = match full_path.file_stem().and_then(|s| s.to_str()) {
-        Some(n) => n.to_string(),
-        None    => return Json(serde_json::json!({ "error": "invalid file path" })),
+    let entry = match lib_entry_from_raw(&req.path, &raw) {
+        Ok(e)  => e,
+        Err(e) => return Json(serde_json::json!({ "error": e })),
     };
-
-    let mut libs = state.jq_libs.lock().unwrap();
-    if let Some(pos) = libs.iter().position(|e| e.path == req.path) {
-        libs[pos] = JqLibEntry { path: req.path, name, deps, content, tests };
-    } else {
-        libs.push(JqLibEntry { path: req.path, name, deps, content, tests });
+    {
+        let mut libs = state.jq_libs.lock().unwrap();
+        if let Some(pos) = libs.iter().position(|e| e.path == req.path) { libs[pos] = entry; } else { libs.push(entry); }
     }
-
-    Json(serde_json::json!({ "ok": true }))
+    // Boxes follow the libraries: compile what changed — this library's
+    // declarations, first its dependencies' if they are new, then those of
+    // any loaded library that depends on it.
+    let boxes = ensure_boxes_compiled(&state, &loaded_paths(&state), &[], BoxesCompileRequest::default_max(), BoxesCompileRequest::default_timeout()).await;
+    Json(serde_json::json!({ "ok": true, "boxes": boxes }))
 }
 
 async fn jq_lib_unload_handler(
     State(state): State<AppState>,
     Json(req): Json<JqLibRequest>,
 ) -> Json<serde_json::Value> {
-    state.jq_libs.lock().unwrap().retain(|e| e.path != req.path);
-    Json(serde_json::json!({ "ok": true }))
+    unload_lib(&state, &req.path);
+    // A loaded library may still depend on it: then its boxes come back from disk.
+    let boxes = ensure_boxes_compiled(&state, &loaded_paths(&state), &[], BoxesCompileRequest::default_max(), BoxesCompileRequest::default_timeout()).await;
+    Json(serde_json::json!({ "ok": true, "boxes": boxes }))
 }
 
 /// Delete a `.jq` file from `lib/` on disk.  Refuses if any other `.jq` file
@@ -524,8 +909,8 @@ async fn jq_lib_delete_handler(
     if let Err(e) = std::fs::remove_file(&full_path) {
         return Json(serde_json::json!({ "error": e.to_string() }));
     }
-    // Drop from in-memory loaded libs if present.
-    state.jq_libs.lock().unwrap().retain(|e| e.path != req.path);
+    // Drop from in-memory loaded libs (and the compiled boxes) if present.
+    unload_lib(&state, &req.path);
     Json(serde_json::json!({ "ok": true }))
 }
 
@@ -537,6 +922,8 @@ struct JqLibSaveRequest {
     content: String,
     #[serde(default)]
     tests:   String,
+    #[serde(default)]
+    boxes:   Vec<String>,
 }
 
 /// Write a library's deps / content / tests back to `lib/{path}` on disk and
@@ -560,19 +947,32 @@ async fn jq_lib_save_handler(
             return Json(serde_json::json!({ "error": "a library cannot depend on itself" }));
         }
     }
+    // Validate the box declarations before anything touches the disk.
+    let boxes: Vec<String> = req.boxes.iter().map(|b| b.trim().to_string()).filter(|b| !b.is_empty()).collect();
+    for b in &boxes {
+        if let Err(e) = parse_box_decl(b) {
+            return Json(serde_json::json!({ "error": format!("box declaration {b:?}: {e}") }));
+        }
+    }
     let full_path = state.server_root.join("lib").join(&req.path);
-    let on_disk = join_file(&req.deps, &req.content, &req.tests);
+    let on_disk = join_file(&req.deps, &join_boxes(&req.content, &boxes), &req.tests);
     if let Err(e) = std::fs::write(&full_path, &on_disk) {
         return Json(serde_json::json!({ "error": e.to_string() }));
     }
-    // Update any loaded in-memory copy.
-    let mut libs = state.jq_libs.lock().unwrap();
-    if let Some(entry) = libs.iter_mut().find(|e| e.path == req.path) {
-        entry.deps = req.deps;
-        entry.content = req.content;
-        entry.tests = req.tests;
-    }
-    Json(serde_json::json!({ "ok": true }))
+    // Update any loaded in-memory copy, then recompile its boxes.
+    let loaded = {
+        let mut libs = state.jq_libs.lock().unwrap();
+        match libs.iter_mut().find(|e| e.path == req.path) {
+            Some(entry) => { entry.deps = req.deps; entry.content = req.content; entry.tests = req.tests; entry.boxes = boxes; true }
+            None => false,
+        }
+    };
+    // Recompile its boxes and those of every loaded library that depends on
+    // it (a dependency read from disk is refreshed by the same rule).
+    let statuses = if loaded || state.compiled_libs.lock().unwrap().contains_key(&req.path) {
+        ensure_boxes_compiled(&state, &loaded_paths(&state), &[], BoxesCompileRequest::default_max(), BoxesCompileRequest::default_timeout()).await
+    } else { Vec::new() };
+    Json(serde_json::json!({ "ok": true, "boxes": statuses }))
 }
 
 // ── Examples handlers ─────────────────────────────────────────────────────────
@@ -608,18 +1008,84 @@ async fn save_examples_handler(Json(list): Json<Vec<Example>>) -> Json<serde_jso
 // ── Logic handlers ────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
+struct ExportRequest {
+    formula: String,
+    dir: String,
+}
+
+/// Write a box formula as files for the CLI: `residual.cnf` (Tseitin of
+/// the formula with its box calls atomized, satisfiability form),
+/// `boxes.json` (each call's two implication tables as rows over DIMACS
+/// variables, the direct form `sat --boxes` reads), and `expanded.cnf`
+/// (Tseitin of the formula with every call expanded -- the plain CNF).
+async fn boxes_export_handler(State(state): State<AppState>, Json(req): Json<ExportRequest>) -> Json<serde_json::Value> {
+    match boxes_export(&state, &req.formula, std::path::Path::new(&req.dir)) {
+        Ok(v) => Json(v),
+        Err(e) => Json(serde_json::json!({ "error": e })),
+    }
+}
+
+fn write_dimacs(path: &std::path::Path, nvars: i32, clauses: &[Vec<i32>]) -> Result<(), String> {
+    let mut s = String::with_capacity(clauses.len() * 16 + 32);
+    s.push_str(&format!("p cnf {} {}\n", nvars, clauses.len()));
+    for c in clauses { for l in c { s.push_str(&l.to_string()); s.push(' '); } s.push_str("0\n"); }
+    std::fs::write(path, s).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn boxes_export(state: &AppState, formula: &str, dir: &std::path::Path) -> Result<serde_json::Value, String> {
+    use logic::cadical::tseitin_encode;
+    use logic::boxes::compile::implication_box;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let (text, ctx) = build_box_context(state, formula)?;
+    let mut m = Matrix::try_from(text.as_str())?;
+    let (tables, names, _) = build_box_tables(&ctx, &mut m)?;
+    let mut next = names.len() as i32 + 1;
+    let (root, mut clauses) = tseitin_encode(&m.nnf, &mut next);
+    clauses.push(vec![root]);
+    write_dimacs(&dir.join("residual.cnf"), next - 1, &clauses)?;
+    let mut insts = Vec::new();
+    let (mut nrows, mut nb) = (0usize, 0usize);
+    for c in &tables.calls {
+        for b in [implication_box(c.pos.rows.clone(), c.atom, true), implication_box(c.neg.rows.clone(), c.atom, false)] {
+            let rows: Vec<Vec<i32>> = b.rows.iter()
+                .map(|r| r.iter().map(|l| if l.neg { -(l.var as i32 + 1) } else { l.var as i32 + 1 }).collect()).collect();
+            nrows += rows.len(); nb += 1;
+            insts.push(serde_json::json!({ "rows": rows }));
+        }
+    }
+    std::fs::write(dir.join("boxes.json"), serde_json::to_string(&insts).unwrap()).map_err(|e| e.to_string())?;
+    let expanded = expand_formula(state, formula)?;
+    let me = Matrix::try_from(expanded.as_str())?;
+    let mut next_e = me.ast.vars.len() as i32 + 1;
+    let (root_e, mut clauses_e) = tseitin_encode(&me.nnf, &mut next_e);
+    clauses_e.push(vec![root_e]);
+    write_dimacs(&dir.join("expanded.cnf"), next_e - 1, &clauses_e)?;
+    Ok(serde_json::json!({ "calls": tables.calls.len(), "boxes": nb, "rows": nrows,
+                            "residual_vars": next - 1, "residual_clauses": clauses.len(),
+                            "expanded_vars": next_e - 1, "expanded_clauses": clauses_e.len() }))
+}
+
+#[derive(Deserialize)]
 struct FormulaRequest {
     formula: String,
     #[serde(default)]
     no_cover: bool,
-    /// Backend selector — one of "smart", "cdcl", "eff",
-    /// "greedy_cdcl", "greedy_eff".  Defaults to `greedy_eff`
-    /// (matches the UI selector's initial value).
+    /// Backend selector — one of "boxes", "smart", "cdcl", "eff",
+    /// "greedy_cdcl", "greedy_eff".  Defaults to `boxes` (matches the UI
+    /// selector's initial value); `boxes` falls back to `greedy_eff` when the
+    /// formula has no box calls.
     #[serde(default = "default_backend")]
     backend: String,
+    /// With the `boxes` backend: keep box calls as units (collapsed matrix +
+    /// compiled tables).  Off, the boxes backend runs `greedy_eff` on the
+    /// expanded formula like any other backend.
+    #[serde(default = "default_true")]
+    box_aware: bool,
 }
 
-fn default_backend() -> String { "greedy_eff".to_string() }
+fn default_true() -> bool { true }
+
+fn default_backend() -> String { "boxes".to_string() }
 
 /// Internal enum form of the request's `backend` string.  Constructed
 /// in the handler via `parse_backend(&req.backend)`; on unknown
@@ -628,6 +1094,10 @@ fn default_backend() -> String { "greedy_eff".to_string() }
 /// send anything).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Backend {
+    /// Row engine over compiled box tables (`logic::boxes::Engine`): box
+    /// calls stay atoms, the residual is Tseitin-encoded, each atom is tied
+    /// to its box by `atom ⇒ table` / `¬atom ⇒ ¬table` rows.
+    Boxes,
     /// Single-DFS `BacktrackWhenCoveredController`.  Used by the
     /// `paths` view (it needs the full cover certificates).  Not
     /// exposed in the UI selector.
@@ -655,6 +1125,7 @@ enum Backend {
 
 fn parse_backend(s: &str) -> Backend {
     match s {
+        "boxes"       => Backend::Boxes,
         "smart"       => Backend::Smart,
         "cdcl"        => Backend::Cdcl,
         "eff"         => Backend::Eff,
@@ -678,6 +1149,10 @@ struct PathsRequest {
     paths_class_limit: usize,
     #[serde(default)]
     complement: bool,
+    /// Keep box calls as units: paths of the collapsed matrix, each checked
+    /// against the box tables.
+    #[serde(default)]
+    box_aware: bool,
 }
 
 fn default_paths_class_limit() -> usize { 100 }
@@ -703,6 +1178,7 @@ struct ClassifyStatusResponse {
     is_complement:              bool,
     error:                      Option<String>,
     preprocessed_to:            Option<String>,
+    solved_by:                  Option<String>,
 }
 
 fn classify_status(job: &ClassifyJob) -> ClassifyStatusResponse {
@@ -722,20 +1198,25 @@ fn classify_status(job: &ClassifyJob) -> ClassifyStatusResponse {
         total_prefix_count:       job.snapshot.total_prefix_count,
         classified_count:         classified,
         total_path_count:         job.total_path_count,
-        elapsed_secs:             job.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64()),
+        elapsed_secs:             job.finished_secs.unwrap_or_else(|| job.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64())),
         hit_limit:                job.snapshot.hit_limit,
         running:                  job.running,
         is_complement:            job.is_complement,
         error:                    job.error.clone(),
         preprocessed_to:          job.snapshot.preprocessed_to.clone(),
+        solved_by:                job.solved_by.clone(),
     }
 }
 
-async fn simplify_handler(Json(req): Json<SimplifyRequest>) -> Json<SimplifyResponse> {
+async fn simplify_handler(State(state): State<AppState>, Json(req): Json<SimplifyRequest>) -> Json<SimplifyResponse> {
+    let formula = match expand_formula(&state, &req.formula) {
+        Ok(f) => f,
+        Err(e) => return Json(SimplifyResponse { result: None, error: Some(e) }),
+    };
     let result = if req.cnf {
-        logic::simplify_cnf(&req.formula)
+        logic::simplify_cnf(&formula)
     } else {
-        logic::simplify_dnf(&req.formula)
+        logic::simplify_dnf(&formula)
     };
     match result {
         Ok(r)  => Json(SimplifyResponse { result: Some(r), error: None }),
@@ -767,6 +1248,7 @@ fn start_classify_job(
     params: Option<logic::matrix::PathParams>,
     backend: Backend,
     preprocess: bool,
+    boxctx: Option<BoxContext>,
 ) -> Result<(), String> {
     use logic::matrix::{
         Matrix, DynOnClass, PathsClass, NNF, Lit,
@@ -868,7 +1350,23 @@ fn start_classify_job(
         ctx.count
     }
 
-    let matrix = Matrix::try_from(formula).map_err(|e| e)?;
+    let timing = std::env::var_os("LOGIC_BOX_TIMING").is_some();
+    let mut matrix = Matrix::try_from(formula)?;
+    if timing && boxctx.is_some() { eprintln!("[box-timing] parse done at {:?}", job_start.elapsed()); }
+    // Box-aware search (`boxes` backend, box-aware paths): the matrix search
+    // runs on the collapsed NNF and `BoxAwareController` prunes prefixes by
+    // the box tables; the drainer decorates each uncovered path with the
+    // call-argument values of the tables' witness.
+    type Witness = Arc<dyn Fn(&[Lit]) -> Option<Vec<Lit>> + Send + Sync>;
+    let (box_tables, box_witness_for_drainer, box_names): (Option<Arc<BoxTables>>, Option<Witness>, Option<Vec<String>>) = match &boxctx {
+        Some(ctx) => {
+            let (t, names, arg_vars) = build_box_tables(ctx, &mut matrix)?;
+            if timing { eprintln!("[box-timing] tables built at {:?} ({} calls)", job_start.elapsed(), t.calls.len()); }
+            let t = Arc::new(t);
+            (Some(t.clone()), Some(box_witness(t, arg_vars)), Some(names))
+        }
+        None => (None, None, None),
+    };
     // Snapshot of the original NNF needed for lemma-cover sizing
     // (we count leaves on covered paths through the *original*
     // matrix, not the preprocessed one).  Kept separately so the
@@ -918,7 +1416,7 @@ fn start_classify_job(
         matrix.nnf_complement.path_count()
     };
     let target = target_nnf.clone();
-    let vars = matrix.ast.vars.clone();
+    let vars = box_names.clone().unwrap_or_else(|| matrix.ast.vars.clone());
 
     // Detect whether preprocessing already reduced the search target
     // to a constant — `Prod([])` (TRUE) means the search will find no
@@ -953,7 +1451,7 @@ fn start_classify_job(
     // can display them; `for_nnf` is the cheaper uncovered-only
     // variant that suppresses `Covered` events.  Pick based on the
     // request's `no_cover` flag.
-    let want_cover = params.as_ref().map_or(true, |p| !p.no_cover);
+    let want_cover = params.as_ref().is_none_or(|p| !p.no_cover);
     let buffer_size = 64usize;
 
     // Dispatch by backend.  Single-DFS backends (smart, cdcl, eff,
@@ -964,7 +1462,31 @@ fn start_classify_job(
     let (handle, mut rx, cancel) = match backend {
         Backend::Backtrack => {
             let p = params_for_builder.clone();
-            target_nnf.classify_paths(buffer_size, move |tx| default_classify_controller(p, tx))
+            match box_tables.clone() {
+                Some(t) => target_nnf.classify_paths(buffer_size, move |tx|
+                    BoxAwareController::new(default_classify_controller(p, tx), t)),
+                None => target_nnf.classify_paths(buffer_size, move |tx| default_classify_controller(p, tx)),
+            }
+        }
+        Backend::Boxes => {
+            // Matrix-native boxes: the single-DFS SmartController on the
+            // collapsed NNF, with table propagation from the box tables.
+            let t = box_tables.clone().ok_or_else(|| "boxes backend: the formula has no box calls".to_string())?;
+            let nnf_for_builder = target.clone();
+            let p = params_for_builder.clone();
+            if want_cover {
+                target_nnf.classify_paths(buffer_size, move |tx| {
+                    let on_class: DynOnClass = Box::new(move |class, hit_limit|
+                        tx.blocking_send((class, hit_limit)).is_ok());
+                    BoxAwareController::new(SmartController::for_nnf_with_cover(&nnf_for_builder, p, on_class), t)
+                })
+            } else {
+                target_nnf.classify_paths_uncovered_only(buffer_size, move |tx| {
+                    let on_class: DynOnClass = Box::new(move |class, hit_limit|
+                        tx.blocking_send((class, hit_limit)).is_ok());
+                    BoxAwareController::new(SmartController::for_nnf(&nnf_for_builder, p, on_class), t)
+                })
+            }
         }
         Backend::Smart => {
             let nnf_for_builder = target.clone();
@@ -1036,17 +1558,19 @@ fn start_classify_job(
             spawn_dual_classify_job(backend, target_nnf.clone(), buffer_size)
         }
     };
-    {
+    let my_gen = {
         let mut job = job_state.lock().unwrap();
         job.cancel = Some(cancel);
         job.total_path_count = total_path_count;
         // Use the timer started at the very top of this function so
         // preprocessing + search-setup are included in `elapsed_secs`
-        // (the UI's "at N paths/s in T ms" reading).
-        job.start_time = Some(job_start);
+        // (the UI's "at N paths/s in T ms" reading) — unless a pre-stage
+        // (`hydra_then_boxes`) started the clock earlier.
+        if job.start_time.is_none() { job.start_time = Some(job_start); }
         job.preprocessed = preprocess;
         job.snapshot.preprocessed_to = preprocessed_to;
-    }
+        job.generation
+    };
 
     let js = job_state.clone();
     tokio::spawn(async move {
@@ -1063,6 +1587,7 @@ fn start_classify_job(
                 Ok(g)  => g,
                 Err(p) => p.into_inner(),
             };
+            if job.generation != my_gen { break; }   // a newer job owns this state
             // Catch panics inside the per-event processing so a
             // single bad event (e.g. an Uncovered ProdPath that
             // doesn't resolve under declaration-order
@@ -1119,6 +1644,12 @@ fn start_classify_job(
                     }
                 }
                 PathsClass::Uncovered(up) => {
+                    let box_lits: Vec<Lit> = if !up.lits.is_empty() { up.lits.clone() }
+                        else { target.lits_on_path(&up.prod_path).iter().map(|&l| l.clone()).collect() };
+                    let (keep, extra_lits): (bool, Vec<Lit>) = match &box_witness_for_drainer {
+                        None => (true, Vec::new()),
+                        Some(f) => match f(&box_lits) { Some(extra) => (true, extra), None => (false, Vec::new()) },
+                    };
                     // Use the engine-provided positions and lits when
                     // they're populated (positions-ON engines —
                     // matrix.eff / greedy×eff in particular).  Fall
@@ -1179,9 +1710,17 @@ fn start_classify_job(
                     } else {
                         format_path(&up.prod_path, &target, &vars)
                     };
-                    job.snapshot.classified_count += 1.0;
-                    job.snapshot.uncovered_paths.push(path_str);
-                    job.snapshot.uncovered_path_positions.push(translated);
+                    // Box-aware: append the call-argument values the tables fix.
+                    let path_str = if extra_lits.is_empty() { path_str } else {
+                        let mut all = box_lits.clone();
+                        all.extend(extra_lits.iter().cloned());
+                        format_lits(&all, &vars)
+                    };
+                    if keep {
+                        job.snapshot.classified_count += 1.0;
+                        job.snapshot.uncovered_paths.push(path_str);
+                        job.snapshot.uncovered_path_positions.push(translated);
+                    }
                 }
             }
             if hit_limit { job.snapshot.hit_limit = true; }
@@ -1215,6 +1754,7 @@ fn start_classify_job(
             Ok(g)  => g,
             Err(p) => p.into_inner(),
         };
+        if job.generation != my_gen { return; }   // a newer job owns this state
         // Append preprocessing-derived lemma covers to the cover-group
         // list.  Their positions are already in the original NNF; for
         // each lemma cover we simulate the matrix-method search's DFS
@@ -1254,6 +1794,7 @@ fn start_classify_job(
             g.prefix_length_max = g.prefix_length_max.max(leaf_count);
         }
         job.running = false;
+        if job.finished_secs.is_none() { job.finished_secs = job.start_time.map(|t| t.elapsed().as_secs_f64()); }
         let cancelled = job.cancel.as_ref().is_some_and(|c| c.is_cancelled());
         job.cancel = None;
         // On clean completion every path has been classified — even in
@@ -1315,7 +1856,7 @@ fn spawn_dual_classify_job(
                     external_cancel,
                 )
             }
-            Backend::GreedyEff => {
+            Backend::GreedyEff | Backend::Boxes => {
                 let cover = GreedyMaxCoverController::default();
                 let path  = EffectivePathController::<BasicCoverState>::with_stream(tx);
                 solve_dual_with_cancel(
@@ -1337,6 +1878,7 @@ fn reset_and_start(
     params: Option<logic::matrix::PathParams>,
     backend: Backend,
     preprocess: bool,
+    boxctx: Option<BoxContext>,
 ) -> Json<serde_json::Value> {
     {
         let mut job = match job_state.lock() {
@@ -1344,18 +1886,21 @@ fn reset_and_start(
             Err(p) => p.into_inner(),
         };
         if let Some(c) = job.cancel.take() { c.cancel(); }
+        let generation = job.generation + 1;
         *job = ClassifyJob::default();
+        job.generation = generation;
         job.running = true;
         job.is_complement = complement;
     }
     if let Err(e) = start_classify_job(
-        job_state.clone(), formula, complement, params, backend, preprocess,
+        job_state.clone(), formula, complement, params, backend, preprocess, boxctx,
     ) {
         let mut job = match job_state.lock() {
             Ok(g)  => g,
             Err(p) => p.into_inner(),
         };
         job.running = false;
+        if job.finished_secs.is_none() { job.finished_secs = job.start_time.map(|t| t.elapsed().as_secs_f64()); }
         job.error = Some(e);
     }
     Json(serde_json::json!({ "ok": true }))
@@ -1379,6 +1924,7 @@ fn cancel_handler(job_state: &Arc<Mutex<ClassifyJob>>) -> Json<serde_json::Value
     };
     if let Some(c) = job.cancel.take() { c.cancel(); }
     job.running = false;
+        if job.finished_secs.is_none() { job.finished_secs = job.start_time.map(|t| t.elapsed().as_secs_f64()); }
     Json(serde_json::json!({ "ok": true }))
 }
 
@@ -1394,8 +1940,23 @@ async fn valid_handler(
         no_cover: req.no_cover,
     });
     let backend = parse_backend(&req.backend);
-    reset_and_start(&state.valid_job, &req.formula, false, params,
-                    backend, /*preprocess=*/ true)
+    let backend = if matches!(backend, Backend::Boxes) && !req.box_aware { Backend::GreedyEff } else { backend };
+    if matches!(backend, Backend::Boxes) {
+        return match build_box_context(&state, &req.formula) {
+            // No box calls: nothing for the tables to do — run greedy×eff (the
+            // previous default, with preprocessing) exactly as before.
+            Ok((_, ctx)) if ctx.calls.is_empty() =>
+                reset_and_start(&state.valid_job, &req.formula, false, params, Backend::GreedyEff, /*preprocess=*/ true, None),
+            Ok((text, ctx)) => reset_and_start(&state.valid_job, &text, false, params, Backend::Boxes, /*preprocess=*/ false, Some(ctx)),
+            Err(e) => Json(serde_json::json!({ "error": e })),
+        };
+    }
+    let formula = match expand_formula(&state, &req.formula) {
+        Ok(f) => f,
+        Err(e) => return Json(serde_json::json!({ "error": e })),
+    };
+    reset_and_start(&state.valid_job, &formula, false, params,
+                    backend, /*preprocess=*/ true, None)
 }
 
 async fn valid_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {
@@ -1412,8 +1973,19 @@ async fn paths_handler(
 ) -> Json<serde_json::Value> {
     use logic::matrix::PathParams;
     let params = Some(PathParams { paths_class_limit: req.paths_class_limit, ..Default::default() });
-    reset_and_start(&state.paths_job, &req.formula, req.complement, params,
-                    Backend::Backtrack, /*preprocess=*/ false)
+    if req.box_aware {
+        return match build_box_context(&state, &req.formula) {
+            Ok((text, ctx)) => reset_and_start(&state.paths_job, &text, req.complement, params,
+                                               Backend::Backtrack, /*preprocess=*/ false, Some(ctx)),
+            Err(e) => Json(serde_json::json!({ "error": e })),
+        };
+    }
+    let formula = match expand_formula(&state, &req.formula) {
+        Ok(f) => f,
+        Err(e) => return Json(serde_json::json!({ "error": e })),
+    };
+    reset_and_start(&state.paths_job, &formula, req.complement, params,
+                    Backend::Backtrack, /*preprocess=*/ false, None)
 }
 
 async fn paths_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {
@@ -1436,8 +2008,246 @@ async fn satisfiable_handler(
         no_cover: req.no_cover,
     });
     let backend = parse_backend(&req.backend);
-    reset_and_start(&state.sat_job, &req.formula, true, params,
-                    backend, /*preprocess=*/ true)
+    let backend = if matches!(backend, Backend::Boxes) && !req.box_aware { Backend::GreedyEff } else { backend };
+    if matches!(backend, Backend::Boxes) {
+        return match build_box_context(&state, &req.formula) {
+            // No box calls: nothing for the tables to do — run greedy×eff (the
+            // previous default, with preprocessing) exactly as before.
+            Ok((_, ctx)) if ctx.calls.is_empty() =>
+                hydra_then_boxes(&state, &req.formula, req.formula.clone(), ctx, params, Backend::GreedyEff, /*preprocess=*/ true),
+            Ok((text, ctx)) => hydra_then_boxes(&state, &req.formula, text, ctx, params, Backend::Boxes, /*preprocess=*/ false),
+            Err(e) => Json(serde_json::json!({ "error": e })),
+        };
+    }
+    let formula = match expand_formula(&state, &req.formula) {
+        Ok(f) => f,
+        Err(e) => return Json(serde_json::json!({ "error": e })),
+    };
+    reset_and_start(&state.sat_job, &formula, true, params,
+                    backend, /*preprocess=*/ true, None)
+}
+
+// ── hydra before the box search ──────────────────────────────────────────────
+
+/// What hydra's structure stages made of the formula.
+enum HydraOutcome {
+    /// A model: its uncovered path through the collapsed complement matrix
+    /// (display polarity, box-call argument values appended) and the leaf
+    /// positions, plus the stage's note.
+    Sat { path: String, positions: Vec<Vec<usize>>, note: String },
+    Unsat { note: String },
+    /// No verdict; the note (if any) is a numeric finding the search should prove.
+    Fallthrough { note: Option<String> },
+}
+
+/// The `boxes` backend's `satisfiable` route: hydra's structure stages on
+/// the CNF of the expanded formula first (Cook shape, factoring, XOR), the
+/// search (`backend`: the box search with calls, greedy×eff without) only
+/// when they reach no verdict.  A stage's model is turned into the
+/// path the UI expects — the uncovered path of the collapsed complement
+/// matrix that the model falsifies, with the tables' argument values — so
+/// the result reads exactly like a searched one.
+fn hydra_then_boxes(state: &AppState, original: &str, text: String, ctx: BoxContext, params: Option<logic::matrix::PathParams>, backend: Backend, preprocess: bool) -> Json<serde_json::Value> {
+    let job_state = state.sat_job.clone();
+    let my_gen = {
+        let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+        if let Some(c) = job.cancel.take() { c.cancel(); }
+        let generation = job.generation + 1;
+        *job = ClassifyJob::default();
+        job.generation = generation;
+        job.running = true;
+        job.is_complement = true;
+        job.start_time = Some(std::time::Instant::now());
+        generation
+    };
+    let expanded = match expand_formula(state, original) {
+        Ok(f) => f,
+        Err(e) => {
+            let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+            job.running = false; job.error = Some(e);
+            return Json(serde_json::json!({ "ok": true }));
+        }
+    };
+    let (text_for_stage, ctx_for_stage) = (text.clone(), ctx.clone());
+    tokio::spawn(async move {
+        let stage = tokio::task::spawn_blocking(move || hydra_stage(&expanded, &text_for_stage, &ctx_for_stage)).await;
+        let outcome = match stage {
+            Ok(Ok(o)) => o,
+            Ok(Err(e)) => { eprintln!("[hydra] stage error, falling through to the box search: {e}"); HydraOutcome::Fallthrough { note: None } }
+            Err(e) => { eprintln!("[hydra] stage panicked, falling through to the box search: {e}"); HydraOutcome::Fallthrough { note: None } }
+        };
+        {
+            let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+            if job.generation != my_gen { return; }   // a newer job owns this state
+            match outcome {
+                HydraOutcome::Sat { path, positions, note } => {
+                    job.snapshot.uncovered_paths.push(path);
+                    job.snapshot.uncovered_path_positions.push(positions);
+                    job.snapshot.classified_count = 1.0;
+                    job.total_path_count = collapsed_path_count(&text).unwrap_or(0.0);
+                    job.solved_by = Some(note);
+                    job.running = false;
+                    job.finished_secs = job.start_time.map(|t| t.elapsed().as_secs_f64());
+                    return;
+                }
+                HydraOutcome::Unsat { note } => {
+                    job.total_path_count = collapsed_path_count(&text).unwrap_or(0.0);
+                    job.snapshot.classified_count = job.total_path_count;
+                    job.solved_by = Some(note);
+                    job.running = false;
+                    job.finished_secs = job.start_time.map(|t| t.elapsed().as_secs_f64());
+                    return;
+                }
+                HydraOutcome::Fallthrough { note } => { job.solved_by = note; }
+            }
+        }
+        let boxctx = if ctx.calls.is_empty() { None } else { Some(ctx) };
+        if let Err(e) = start_classify_job(job_state.clone(), &text, true, params, backend, preprocess, boxctx) {
+            let mut job = match job_state.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+            if job.generation != my_gen { return; }
+            job.running = false;
+            if job.finished_secs.is_none() { job.finished_secs = job.start_time.map(|t| t.elapsed().as_secs_f64()); }
+            job.error = Some(e);
+        }
+    });
+    Json(serde_json::json!({ "ok": true }))
+}
+
+/// The path count the UI shows for a satisfiable job on `text` (as
+/// `start_classify_job` computes it: the complement's, or the formula's own
+/// when the complement collapsed to zero paths).
+fn collapsed_path_count(text: &str) -> Result<f64, String> {
+    let m = logic::matrix::Matrix::try_from(text)?;
+    let c = m.nnf_complement.path_count();
+    Ok(if c > 0.0 { c } else { m.nnf.path_count() })
+}
+
+/// Run hydra's structure stages on the CNF of the expanded formula.
+fn hydra_stage(expanded: &str, text: &str, ctx: &BoxContext) -> Result<HydraOutcome, String> {
+    use logic::matrix::Matrix;
+    let t0 = std::time::Instant::now();
+    let m_e = Matrix::try_from(expanded)?;
+    let n_base = m_e.ast.vars.len() as i32;
+    let mut next_var = n_base + 1;
+    let (clauses, nvars) = clausal_cnf(&m_e.nnf, &mut next_var);
+    let overlay = |model: Vec<bool>| -> Vec<bool> { model };
+    // Cook shapes: a polynomial refutation of a known cardinality structure
+    if clauses.len() <= 1_000_000 {
+        let shape = logic::cook_pbp::detect_shape(&clauses, nvars);
+        if !matches!(shape, logic::cook_pbp::CnfShape::Unknown) {
+            return Ok(HydraOutcome::Unsat { note: format!("hydra: Cook shape {} ({:.0} ms)", shape.describe(), t0.elapsed().as_secs_f64() * 1000.0) });
+        }
+    }
+    // factoring: a multiplier with a pinned product, solved numerically
+    match logic::factoring::factoring_tactic(nvars, &clauses, 20_000_000) {
+        logic::factoring::Tactic::Sat { model, info } => {
+            let (path, positions) = path_of_model(&m_e, &overlay(model), text, ctx)?;
+            return Ok(HydraOutcome::Sat { path, positions, note: format!("hydra factoring: {} — factored numerically ({:.0} ms)", info.describe(), t0.elapsed().as_secs_f64() * 1000.0) });
+        }
+        logic::factoring::Tactic::NoFactorPair { info } => {
+            return Ok(HydraOutcome::Fallthrough { note: Some(format!("hydra factoring: {} has no factor pair of the circuit's widths (numeric, unproven) — the box search supplies the proof", info.describe())) });
+        }
+        logic::factoring::Tactic::NotRecognised(_) => {}
+    }
+    // XOR / parity: pure parity systems are decided by Gaussian elimination
+    if clauses.len() <= 5_000_000 {
+        match logic::xor_gauss::solve_xor_system(nvars, &clauses, 50_000_000) {
+            logic::xor_gauss::XorGaussResult::Unsat { by_bcp } => {
+                return Ok(HydraOutcome::Unsat { note: format!("hydra xor stage: {} ({:.0} ms)", if by_bcp { "unit propagation refutes the formula" } else { "the XOR system is inconsistent (GF(2) elimination)" }, t0.elapsed().as_secs_f64() * 1000.0) });
+            }
+            logic::xor_gauss::XorGaussResult::Sat(model) => {
+                let (path, positions) = path_of_model(&m_e, &overlay(model), text, ctx)?;
+                return Ok(HydraOutcome::Sat { path, positions, note: format!("hydra xor stage: pure-XOR formula solved by Gaussian elimination ({:.0} ms)", t0.elapsed().as_secs_f64() * 1000.0) });
+            }
+            _ => {}
+        }
+    }
+    Ok(HydraOutcome::Fallthrough { note: None })
+}
+
+/// The CNF of an NNF for the structure stages: a formula that is already a
+/// conjunction of clauses (a product of sums of literals) is emitted as those
+/// clauses — a full Tseitin encoding would hide every clause behind a gate
+/// variable and the recognisers would see gates, not the multiplier — and any
+/// other subformula is Tseitin-encoded with its gate variable asserted.
+fn clausal_cnf(nnf: &logic::matrix::NNF, next_var: &mut i32) -> (Vec<Vec<i32>>, usize) {
+    use logic::matrix::NNF;
+    let lit = |l: &logic::matrix::Lit| -> i32 { let v = l.var as i32 + 1; if l.neg { -v } else { v } };
+    let mut clauses: Vec<Vec<i32>> = Vec::new();
+    let emit = |n: &NNF, clauses: &mut Vec<Vec<i32>>, next_var: &mut i32| {
+        match n {
+            NNF::Lit(l) => clauses.push(vec![lit(l)]),
+            NNF::Sum(ch) if ch.iter().all(|c| matches!(c, NNF::Lit(_))) =>
+                clauses.push(ch.iter().map(|c| if let NNF::Lit(l) = c { lit(l) } else { unreachable!() }).collect()),
+            other => { let (root, mut cc) = logic::cadical::tseitin_encode(other, next_var); clauses.append(&mut cc); clauses.push(vec![root]); }
+        }
+    };
+    match nnf {
+        NNF::Prod(ch) => for c in ch { emit(c, &mut clauses, next_var); },
+        other => emit(other, &mut clauses, next_var),
+    }
+    let nvars = (*next_var - 1) as usize;
+    (clauses, nvars)
+}
+
+/// The uncovered path of the collapsed complement matrix that a model of the
+/// expanded formula stands for: every variable of the collapsed formula takes
+/// its value from the model (a box-call atom from its table on the call's
+/// arguments), and the path descends into the false nodes of the complement
+/// — one false child of every Prod, every child of a Sum — exactly the path
+/// the search would report for this model.  Returns the display string
+/// (path literals, then the call arguments the tables fix) and the leaf
+/// positions.
+fn path_of_model(m_e: &logic::matrix::Matrix, model: &[bool], text: &str, ctx: &BoxContext) -> Result<(String, Vec<Vec<usize>>), String> {
+    use logic::matrix::{Matrix, NNF, Lit, format_lits};
+    let mut m_c = Matrix::try_from(text)?;
+    let (tables, names, arg_vars) = build_box_tables(ctx, &mut m_c)?;
+    let atoms: HashMap<u32, usize> = tables.calls.iter().enumerate().map(|(i, c)| (c.atom, i)).collect();
+    // values of the collapsed variables: base variables by name, atoms by table
+    let mut vals: Vec<Option<bool>> = vec![None; names.len()];
+    for (v, name) in names.iter().enumerate() {
+        if atoms.contains_key(&(v as u32)) { continue; }
+        if let Some(&i) = m_e.ast.var_index.get(name) { vals[v] = model.get(i as usize).copied(); }
+    }
+    for (v, name) in names.iter().enumerate() {
+        if let Some(&i) = atoms.get(&(v as u32)) {
+            let c = &tables.calls[i];
+            let holds = c.pos.has_live_row(&|u| vals.get(u as usize).copied().flatten());
+            let fails = c.neg.has_live_row(&|u| vals.get(u as usize).copied().flatten());
+            vals[v] = match (holds, fails) {
+                (true, false) => Some(true),
+                (false, true) => Some(false),
+                _ => return Err(format!("box call {name}: the model does not decide it (holds={holds}, fails={fails})")),
+            };
+        }
+    }
+    let asg: Vec<Lit> = vals.iter().enumerate().filter_map(|(v, b)| b.map(|b| if b { Lit::pos(v as u32) } else { Lit::neg(v as u32) })).collect();
+    fn walk(n: &NNF, asg: &[Lit], pos: &mut Vec<usize>, positions: &mut Vec<Vec<usize>>, lits: &mut Vec<Lit>) -> Result<(), String> {
+        match n {
+            NNF::Lit(l) => {
+                if n.evaluate(asg) != Ok(false) { return Err("the model does not falsify a path literal of the complement".into()); }
+                positions.push(pos.clone()); lits.push(l.clone()); Ok(())
+            }
+            NNF::Prod(ch) => {
+                let k = ch.iter().position(|c| c.evaluate(asg) == Ok(false)).ok_or_else(|| "the model falsifies no child of a Prod node of the complement".to_string())?;
+                pos.push(k); let r = walk(&ch[k], asg, pos, positions, lits); pos.pop(); r
+            }
+            NNF::Sum(ch) => {
+                for (k, c) in ch.iter().enumerate() { pos.push(k); let r = walk(c, asg, pos, positions, lits); pos.pop(); r?; }
+                Ok(())
+            }
+        }
+    }
+    let (mut positions, mut lits) = (Vec::new(), Vec::new());
+    walk(&m_c.nnf_complement, &asg, &mut Vec::new(), &mut positions, &mut lits)?;
+    // the call arguments the path leaves open, in display polarity (the user
+    // negates path literals to read the witness), as the drainer appends them
+    let on_path: std::collections::HashSet<u32> = lits.iter().map(|l| l.var).collect();
+    let mut all = lits.clone();
+    for &v in &arg_vars {
+        if !on_path.contains(&v) && let Some(b) = vals[v as usize] { all.push(Lit { var: v, neg: b }); }
+    }
+    Ok((format_lits(&all, &names), positions))
 }
 
 async fn satisfiable_status_handler(State(state): State<AppState>) -> Json<ClassifyStatusResponse> {
@@ -1478,6 +2288,7 @@ fn start_cadical_job(
     let start = std::time::Instant::now();
 
     if is_valid {
+        let vars = matrix.ast.vars.clone();
         let (handle, cancel) = matrix.cadical_valid();
         { job_state.lock().unwrap().cancel = Some(cancel); }
         tokio::spawn(async move {
@@ -1491,6 +2302,7 @@ fn start_cadical_job(
                     };
                     job.result = Some(CaDiCaLJobResult {
                         assignment: asgn,
+                        vars: vars.clone(),
                         learned_clauses: r.learned_clauses,
                         elapsed_secs: elapsed,
                     });
@@ -1511,11 +2323,11 @@ fn start_cadical_job(
             job.running = false;
             job.cancel = None;
             // Store elapsed if not already set
-            if let Some(ref mut r) = job.result {
-                if r.elapsed_secs == 0.0 { r.elapsed_secs = elapsed; }
-            }
+            if let Some(ref mut r) = job.result
+                && r.elapsed_secs == 0.0 { r.elapsed_secs = elapsed; }
         });
     } else {
+        let vars = matrix.ast.vars.clone();
         let (handle, cancel) = matrix.cadical_satisfiable();
         { job_state.lock().unwrap().cancel = Some(cancel); }
         tokio::spawn(async move {
@@ -1529,6 +2341,7 @@ fn start_cadical_job(
                     };
                     job.result = Some(CaDiCaLJobResult {
                         assignment: asgn,
+                        vars: vars.clone(),
                         learned_clauses: r.learned_clauses,
                         elapsed_secs: elapsed,
                     });
@@ -1548,9 +2361,8 @@ fn start_cadical_job(
             let mut job = js.lock().unwrap();
             job.running = false;
             job.cancel = None;
-            if let Some(ref mut r) = job.result {
-                if r.elapsed_secs == 0.0 { r.elapsed_secs = elapsed; }
-            }
+            if let Some(ref mut r) = job.result
+                && r.elapsed_secs == 0.0 { r.elapsed_secs = elapsed; }
         });
     }
 
@@ -1561,7 +2373,11 @@ async fn cadical_valid_handler(
     State(state): State<AppState>,
     Json(req): Json<FormulaRequest>,
 ) -> Json<serde_json::Value> {
-    start_cadical_job(&state.cadical_valid_job, &req.formula, true)
+    let formula = match expand_formula(&state, &req.formula) {
+        Ok(f) => f,
+        Err(e) => return Json(serde_json::json!({ "error": e })),
+    };
+    start_cadical_job(&state.cadical_valid_job, &formula, true)
 }
 
 async fn cadical_valid_status_handler(State(state): State<AppState>) -> Json<CaDiCaLStatusResponse> {
@@ -1580,7 +2396,11 @@ async fn cadical_sat_handler(
     State(state): State<AppState>,
     Json(req): Json<FormulaRequest>,
 ) -> Json<serde_json::Value> {
-    start_cadical_job(&state.cadical_sat_job, &req.formula, false)
+    let formula = match expand_formula(&state, &req.formula) {
+        Ok(f) => f,
+        Err(e) => return Json(serde_json::json!({ "error": e })),
+    };
+    start_cadical_job(&state.cadical_sat_job, &formula, false)
 }
 
 async fn cadical_sat_status_handler(State(state): State<AppState>) -> Json<CaDiCaLStatusResponse> {
@@ -1597,8 +2417,23 @@ async fn cadical_sat_cancel_handler(State(state): State<AppState>) -> Json<serde
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-#[tokio::main]
-async fn main() {
+/// Thread stack size for the runtime: the path search nests a frame set
+/// per Sum child it descends into (`traverse_sum`), so deep formulas need
+/// far more than the 2 MB default.  Virtual reservation only; pages are
+/// committed as touched.
+const THREAD_STACK: usize = 256 << 20;
+
+fn main() {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(THREAD_STACK)
+        .max_blocking_threads(64)
+        .build()
+        .expect("tokio runtime")
+        .block_on(async_main());
+}
+
+async fn async_main() {
     let server_root = std::env::var("SERVER_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().expect("cannot determine working directory"));
@@ -1609,18 +2444,16 @@ async fn main() {
     let expr_path = server_root.join("lib").join("expr.jq");
     if let Ok(raw) = std::fs::read_to_string(&expr_path) {
         println!("Auto-loaded: {}", expr_path.display());
-        let (deps, content, tests) = split_file(&raw);
-        default_libs.push(JqLibEntry {
-            path:    "expr.jq".to_string(),
-            name:    "expr".to_string(),
-            deps,
-            content,
-            tests,
-        });
+        match lib_entry_from_raw("expr.jq", &raw) {
+            Ok(entry) => default_libs.push(entry),
+            Err(e) => eprintln!("expr.jq: {e}"),
+        }
     }
 
     let state = AppState {
         jq_libs: Arc::new(Mutex::new(default_libs)),
+        compiled_boxes: Arc::new(Mutex::new(Vec::new())),
+        compiled_libs: Arc::new(Mutex::new(HashMap::new())),
         server_root,
         valid_job: Arc::new(Mutex::new(ClassifyJob::default())),
         sat_job:   Arc::new(Mutex::new(ClassifyJob::default())),
@@ -1628,6 +2461,11 @@ async fn main() {
         cadical_valid_job: Arc::new(Mutex::new(CaDiCaLJob::default())),
         cadical_sat_job:   Arc::new(Mutex::new(CaDiCaLJob::default())),
     };
+    {
+        for st in ensure_boxes_compiled(&state, &loaded_paths(&state), &[], BoxesCompileRequest::default_max(), BoxesCompileRequest::default_timeout()).await {
+            if let Some(e) = st.get("error").and_then(|e| e.as_str()) { eprintln!("{}: box: {e}", st["lib"].as_str().unwrap_or("")); }
+        }
+    }
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -1655,6 +2493,7 @@ async fn main() {
         .route("/cadical/valid/cancel", post(cadical_valid_cancel_handler))
         .route("/cadical/sat",          get(cadical_sat_status_handler).post(cadical_sat_handler))
         .route("/cadical/sat/cancel",   post(cadical_sat_cancel_handler))
+        .route("/boxes/export",         post(boxes_export_handler))
         .route("/jq",          post(jq_handler))
         .route("/jq-lib",      get(jq_lib_list_handler)
                                    .post(jq_lib_load_handler)
@@ -1662,6 +2501,10 @@ async fn main() {
                                    .delete(jq_lib_unload_handler))
         .route("/jq-lib/file",  delete(jq_lib_delete_handler))
         .route("/jq-lib/files", get(jq_lib_files_handler))
+        .route("/expand",        post(expand_handler))
+        .route("/boxes",         get(boxes_list_handler))
+        .route("/boxes/compile", post(boxes_compile_handler))
+        .route("/boxes/table",   get(boxes_table_handler).delete(boxes_delete_handler))
         .route("/examples",    get(load_examples_handler).post(save_examples_handler))
         .with_state(state);
 

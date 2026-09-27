@@ -1,0 +1,22 @@
+# The box engine's refutations, certified end to end (2026-09-16, Apple M4 Pro Mac mini).
+# tools/boxes_certify_corpus.sh: sat -b boxes --proof -> drat-trim (verify + elaborate) -> cake_lpr.
+# add8u/add16 are boxed (full-adder tables + --boxes-source); the rest are plain CNF.
+
+instance                           verdict  solve_s     proof_B   trim_s   cake_s   lemmas checkers
+add8u_boxed                        UNSAT      0.02         107     0.04     0.02        7 trim=ok,cake=ok
+add16_boxed                        UNSAT      0.02         538     0.05     0.02       30 trim=ok,cake=ok
+Steiner-15-7-bce                   UNSAT      0.02        3448     0.04     0.02        0 trim=ok,cake=ok
+Steiner-27-10-bce                  UNSAT      0.07      303669     0.11     0.06        0 trim=ok,cake=ok
+Steiner-45-16-bce                  UNSAT      1.94    12669215     3.29     1.00        0 trim=ok,cake=ok
+Steiner-9-5-bce                    UNSAT      0.03         246     0.04     0.02        0 trim=ok,cake=ok
+dlx1c.ucl.sat.chaff.4.1.bryant     UNSAT      0.06       87593     0.08     0.06        0 trim=ok,cake=ok
+php5_4                             UNSAT      0.02         323     0.04     0.02        0 trim=ok,cake=ok
+php6_5                             UNSAT      0.03        2908     0.05     0.03        0 trim=ok,cake=ok
+php7_6                             UNSAT      0.03       20409     0.05     0.03        0 trim=ok,cake=ok
+php8_7                             UNSAT      0.05      158403     0.07     0.04        0 trim=ok,cake=ok
+php9_8                             UNSAT      0.23     1565396     0.25     0.08        0 trim=ok,cake=ok
+rr10_8                             UNSAT      0.24     1526168     0.27     0.08        0 trim=ok,cake=ok
+rr6_4                              UNSAT      0.03         323     0.04     0.02        0 trim=ok,cake=ok
+rr8_6                              UNSAT      0.03       22944     0.05     0.03        0 trim=ok,cake=ok
+w55_178                            UNSAT     11.17    62970881    14.19     2.52        0 trim=ok,cake=ok
+CORPUS EXIT

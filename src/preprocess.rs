@@ -428,7 +428,7 @@ fn substitute_units(
     match n {
         NnfP::Lit { lit, orig_pos } => {
             if let Some(&value) = values.get(&lit.var) {
-                let lit_true = (!lit.neg) == value;
+                let lit_true = lit.neg != value;
                 if lit_true {
                     *n = NnfP::Prod(vec![]); // true
                 } else {
@@ -639,7 +639,7 @@ fn substitute_units_no_cover(
     match n {
         NnfP::Lit { lit, .. } => {
             if let Some(&value) = values.get(&lit.var) {
-                let lit_true = (!lit.neg) == value;
+                let lit_true = lit.neg != value;
                 if lit_true {
                     *n = NnfP::Prod(vec![]); // true
                 } else {

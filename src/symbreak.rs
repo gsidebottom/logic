@@ -40,8 +40,11 @@
 //!   * Phase 5: hydra stage integration before the CaDiCaL handoff.
 //!   * Phase 6: SR + VeriPB proof emission for symmetry-broken UNSAT.
 
+#![allow(clippy::needless_range_loop)]
+
 /// A vertex-colored undirected graph (simple; parallel edges allowed
 /// but the CNF encoding never creates them on clean input).
+
 #[derive(Clone)]
 pub struct Graph {
     pub n: usize,
@@ -205,8 +208,8 @@ fn orbit_transversal(p: usize, gens: &[Vec<usize>]) -> std::collections::HashMap
         let rep_x = trans[&x].clone();
         for g in gens {
             let y = g[x];
-            if !trans.contains_key(&y) {
-                trans.insert(y, perm_compose(g, &rep_x));
+            if let std::collections::hash_map::Entry::Vacant(e) = trans.entry(y) {
+                e.insert(perm_compose(g, &rep_x));
                 queue.push(y);
             }
         }
@@ -339,14 +342,12 @@ pub fn find_generators_timed(g: &Graph, deadline: Option<std::time::Instant>) ->
         s.nodes += 1;
         // Wall-clock safety valve: checked every 256 nodes (Instant::now is
         // not free). Once tripped, unwind the whole search.
-        if s.nodes & 0xff == 0 {
-            if let Some(dl) = s.deadline {
-                if std::time::Instant::now() >= dl {
+        if s.nodes & 0xff == 0
+            && let Some(dl) = s.deadline
+                && std::time::Instant::now() >= dl {
                     s.aborted = true;
                     return;
                 }
-            }
-        }
         // First-path invariant pruning: the partition shape (sorted cell
         // sizes) at each depth. Any automorphism maps the first descent to
         // an isomorphic path, so a branch whose shape diverges from the
@@ -451,7 +452,7 @@ pub fn to_variable_perm(gamma: &[usize], nvars: usize) -> Option<Vec<usize>> {
     let mut pi = vec![0usize; nvars];
     for v in 0..nvars {
         let img = gamma[2 * v];
-        if img % 2 != 0 {
+        if !img.is_multiple_of(2) {
             return None; // positive literal maps to a negative literal
         }
         let w = img / 2;
@@ -519,11 +520,10 @@ pub fn reduce_generators(
     let mut kept: Vec<Vec<usize>> = Vec::new();
     let mut order: u128 = 1;
     for g in gens {
-        if let Some(dl) = deadline {
-            if std::time::Instant::now() >= dl {
+        if let Some(dl) = deadline
+            && std::time::Instant::now() >= dl {
                 break; // partial reduction is still a sound generating subset
             }
-        }
         if perm_is_identity(g) {
             continue;
         }

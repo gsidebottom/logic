@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity, clippy::result_unit_err, clippy::redundant_closure, clippy::doc_lazy_continuation)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -641,12 +643,11 @@ impl NNF {
             'found: for pos_a in positions {
                 if let Some(lit_a) = self.lit_at(pos_a) {
                     for pos_b in positions {
-                        if let Some(lit_b) = self.lit_at(pos_b) {
-                            if lit_a.is_complement_of(lit_b) {
+                        if let Some(lit_b) = self.lit_at(pos_b)
+                            && lit_a.is_complement_of(lit_b) {
                                 result.push((pos_a.clone(), pos_b.clone()));
                                 break 'found;
                             }
-                        }
                     }
                 }
             }
@@ -761,7 +762,8 @@ impl NNF {
         let cancel = PathClassificationHandle::new();
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            let inner = controller_builder(tx);
+            let mut inner = controller_builder(tx);
+            inner.set_cancel(cancel_for_thread.cancel_flag());
             let cancel_check = cancel_for_thread.clone();
             let mut ctrl = crate::controller::CancelController::new(inner, cancel_for_thread);
             // Restart loop — mirror of `run_uncovered_only_dfs` for
@@ -818,7 +820,8 @@ impl NNF {
         let cancel = PathClassificationHandle::new();
         let cancel_for_thread = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            let inner = controller_builder(&self, tx);
+            let mut inner = controller_builder(&self, tx);
+            inner.set_cancel(cancel_for_thread.cancel_flag());
             // Need an extra clone of the cancel handle: `cancel_for_thread`
             // moves into CancelController below, but the outer restart
             // loop still needs to poll for cancellation between
@@ -886,7 +889,8 @@ impl NNF {
         let cancel = PathClassificationHandle::new();
         let cancel_for_step = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            let ctrl = controller_builder(&m, tx);
+            let mut ctrl = controller_builder(&m, tx);
+            ctrl.set_cancel(cancel_for_step.cancel_flag());
             run_uncovered_only_dfs(m, ctrl, cancel_for_step);
             Ok::<(), Box<dyn std::error::Error + Send>>(())
         });
@@ -911,7 +915,8 @@ impl NNF {
         let cancel = PathClassificationHandle::new();
         let cancel_for_step = cancel.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            let ctrl = controller_builder(tx);
+            let mut ctrl = controller_builder(tx);
+            ctrl.set_cancel(cancel_for_step.cancel_flag());
             run_uncovered_only_dfs(m, ctrl, cancel_for_step);
             Ok::<(), Box<dyn std::error::Error + Send>>(())
         });
@@ -1142,7 +1147,11 @@ impl NNF {
                 }
                 NNF::Sum(children) => {
                     let order_opt = ctrl.sum_ord(m, children);
-                    traverse_sum(children, order_opt.as_deref(), 0, mult, counts,
+                    let lit_tail = match &order_opt {
+                        Some(o) => literal_tail(o.iter().map(|(_, c)| *c)),
+                        None    => literal_tail(children.iter()),
+                    };
+                    traverse_sum(children, order_opt.as_deref(), 0, lit_tail, mult, counts,
                         path, lits, positions, pos, ctrl, post_hook, bubble_up, then)
                 }
             }
@@ -1153,6 +1162,7 @@ impl NNF {
             children: &'a [NNF],
             order:    Option<&[(usize, &'a NNF)]>,
             ord_idx:  usize,
+            lit_tail: usize,
             base_mult: f64,
             counts: &Counts,
             path: &mut ProdPath,
@@ -1171,6 +1181,40 @@ impl NNF {
             let len = order.map_or(children.len(), |o| o.len());
             if ord_idx >= len {
                 return then(base_mult, path, lits, positions, pos, ctrl, post_hook);
+            }
+            if ord_idx >= lit_tail {
+                // Every remaining child is a literal: extend the path by each in
+                // a loop.  A prune `Some(k)` ("back up k levels") from a literal,
+                // or from the completion, passes through one `traverse_sum`
+                // frame per literal pushed so far in the nested form, each
+                // taking a level off — the same arithmetic, applied at once.
+                let (lits_len, positions_len, pos_len) = (lits.len(), positions.len(), pos.len());
+                let levels = |r: Option<usize>, frames: usize| -> Option<usize> {
+                    match r { Some(k) if bubble_up && k >= frames => Some(k - frames), _ => None }
+                };
+                let mut result: Option<usize> = None;
+                let mut pushed = 0usize;
+                let mut complete = true;
+                for k in ord_idx..len {
+                    let (child_idx, child) = match order { Some(o) => o[k], None => (k, &children[k]) };
+                    let NNF::Lit(l) = child else { unreachable!("literal tail") };
+                    pos.push(child_idx);
+                    lits.push(l);
+                    positions.push(pos.clone());
+                    pos.pop();
+                    pushed += 1;
+                    let cont = ctrl.should_continue_on_prefix(lits, positions, path, false);
+                    let r = if !post_hook(ctrl, base_mult) { Some(0) } else { cont };
+                    if r.is_some() { result = levels(r, pushed); complete = false; break; }
+                }
+                if complete {
+                    let r = then(base_mult, path, lits, positions, pos, ctrl, post_hook);
+                    result = levels(r, pushed);
+                }
+                lits.truncate(lits_len);
+                positions.truncate(positions_len);
+                pos.truncate(pos_len);
+                return result;
             }
             let (child_idx, child) = match order {
                 Some(o) => o[ord_idx],
@@ -1195,7 +1239,7 @@ impl NNF {
                 &mut |_m, path, lits, positions, pos, ctrl, post_hook| {
                     let saved_pos = pos.clone();
                     pos.truncate(pos_len);
-                    let r = traverse_sum(children, order, ord_idx + 1, base_mult, counts,
+                    let r = traverse_sum(children, order, ord_idx + 1, lit_tail, base_mult, counts,
                         path, lits, positions, pos, ctrl, post_hook, bubble_up, then);
                     if r.is_none() { *pos = saved_pos; }
                     r
@@ -1484,7 +1528,11 @@ impl NNF {
                 }
                 NNF::Sum(children) => {
                     let order_opt = sum_ord(m, children);
-                    traverse_sum(children, order_opt.as_deref(), 0, mult, path, lits, counts, f, sum_ord, prod_ord, then);
+                    let lit_tail = match &order_opt {
+                        Some(o) => literal_tail(o.iter().map(|(_, c)| *c)),
+                        None    => literal_tail(children.iter()),
+                    };
+                    traverse_sum(children, order_opt.as_deref(), 0, lit_tail, mult, path, lits, counts, f, sum_ord, prod_ord, then);
                 }
             }
         }
@@ -1494,6 +1542,7 @@ impl NNF {
             children: &'a [NNF],
             order:    Option<&[(usize, &'a NNF)]>,
             ord_idx:  usize,
+            lit_tail: usize,
             base_mult: f64,
             path: &mut ProdPath,
             lits: &mut Lits<'a>,
@@ -1511,6 +1560,21 @@ impl NNF {
             let len = order.map_or(children.len(), |o| o.len());
             if ord_idx >= len {
                 then(base_mult, path, lits, counts, f, sum_ord, prod_ord);
+            } else if ord_idx >= lit_tail {
+                // Every remaining child is a literal: extend the path by each
+                // in a loop (each later sibling is one path, so the multiplier
+                // stays `base_mult`), exactly what the nested continuations
+                // below would do one frame set per child.
+                let lits_len = lits.len();
+                let mut complete = true;
+                for k in ord_idx..len {
+                    let child = match order { Some(o) => o[k].1, None => &children[k] };
+                    let NNF::Lit(l) = child else { unreachable!("literal tail") };
+                    lits.push(l);
+                    if !f(lits, path, false, base_mult) { complete = false; break; }
+                }
+                if complete { then(base_mult, path, lits, counts, f, sum_ord, prod_ord); }
+                lits.truncate(lits_len);
             } else {
                 let child = match order {
                     Some(o) => o[ord_idx].1,
@@ -1530,7 +1594,7 @@ impl NNF {
                 let inner = base_mult * after_mult;
                 traverse(child, inner, path, lits, counts, f, sum_ord, prod_ord,
                     &mut |_m, path, lits, counts, f, sum_ord, prod_ord| {
-                        traverse_sum(children, order, ord_idx + 1, base_mult, path, lits, counts, f, sum_ord, prod_ord, then);
+                        traverse_sum(children, order, ord_idx + 1, lit_tail, base_mult, path, lits, counts, f, sum_ord, prod_ord, then);
                     },
                 );
             }
@@ -1545,6 +1609,16 @@ impl NNF {
         );
     }
 
+}
+
+/// The first index `t` such that every child at traversal position ≥ `t`
+/// is a literal — the "literal tail" of a Sum.  The traversal extends the
+/// path by all of a Sum's children; a run of literal children needs no
+/// nested continuation per child (which nests one stack frame set per child
+/// — a Sum of 4 000 atoms overflowed a 2 MB stack).
+fn literal_tail<'a>(children: impl DoubleEndedIterator<Item = &'a NNF> + ExactSizeIterator) -> usize {
+    let n = children.len();
+    n - children.rev().take_while(|c| matches!(c, NNF::Lit(_))).count()
 }
 
 // ─── Formula → NNF conversion ──────────────────────────────────────────────

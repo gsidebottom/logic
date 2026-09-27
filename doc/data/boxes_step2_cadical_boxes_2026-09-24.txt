@@ -1,0 +1,104 @@
+# Step 2: the box technology inside CaDiCaL (2026-09-24)
+#
+# The cone compilations of step 1, with the cones as CaDiCaL's external
+# propagator (IPASIR-UP; src/boxes/upprop.rs) against CaDiCaL on the plain
+# CNF; one at a time, idle machine, 200 s cap.  Box work: propagations the
+# tables made, dead-table conflicts, reasons served at analysis and their
+# mean length.
+#
+# binary /private/tmp/claude-501/-Users-greg-projects-logic/fdf9efe8-cc23-466a-af28-b22f9fdc339a/scratchpad/mem/sat_up2, cap 200 s, 12 cone compilations
+# instance                                        K |              cadical plain |            cadical + cones  box work | check
+# 16_16_booth_dadda_mapped_and_booth_wallace_ori  8 |    TO   200.0s         - |    TO   200.0s         -  - | ok
+# c3540                                          12 | UNSAT     0.3s     28007 | UNSAT     1.6s     91091  187K props, 2866 box confl, reasons 6.44 lits | ok
+# c3540                                           8 | UNSAT     0.3s     28007 | UNSAT     1.2s     70441  142K props, 2109 box confl, reasons 5.31 lits | ok
+# c5315                                          12 | UNSAT     0.2s     14537 | UNSAT     0.9s     46766  200K props, 17451 box confl, reasons 7.58 lits | ok
+# c5315                                           8 | UNSAT     0.2s     14537 | UNSAT     0.6s     30229  185K props, 8022 box confl, reasons 5.76 lits | ok
+# eq.atree.braun.13.unsat                        12 |    TO   200.0s         - |    TO   200.0s         -  - | ok
+# eq.atree.braun.13.unsat                         8 |    TO   200.0s         - |    TO   200.0s         -  - | ok
+# ezfact64_6.shuffled-as.sat05-453                8 | SATIS    21.0s    444532 | SATIS    17.9s    336280  117K props, 531 box confl, reasons 6.11 lits | ok
+# lec_mult_CvW_11x10.sanitized                    8 |    TO   200.0s         - |    TO   200.0s         -  - | ok
+# pyhala-braun-sat-40-4-03.shuffled-as.sat03-154  8 | SATIS    25.7s    455202 | SATIS   145.3s   1486553  1175K props, 4904 box confl, reasons 6.60 lits | ok
+# pyhala-braun-unsat-40-4-02.shuffled-as.sat05-4  8 | UNSAT    53.3s    976129 | UNSAT   121.1s   1429969  920K props, 5373 box confl, reasons 6.52 lits | ok
+# toughsat_factoring_895s                        12 | SATIS   108.8s   2047858 | SATIS    50.2s    891231  2018K props, 8739 box confl, reasons 8.70 lits | ok
+# STEP2 CONES EXIT
+#
+# === Reading the cone half ===
+#
+# Inside CaDiCaL the same cones win where they never won in our engine and
+# lose where they won.  Wins: toughsat_factoring 108.8 s -> 50.2 s (2.05 M
+# -> 891 K conflicts, 2.0 M table propagations), ezfact64_6 21.0 -> 17.9 s
+# (445 K -> 336 K).  Losses: pyhala-braun-sat 25.7 -> 145.3 s (455 K ->
+# 1.49 M conflicts) -- the instance our engine's cones took from 143 s to
+# 29 s -- pyhala-unsat 53 -> 121 s, the ISCAS pair 4x.  Timeouts unchanged.
+# Two costs are structural to the interface: every observed variable is
+# frozen, so CaDiCaL's elimination and inprocessing cannot touch the cone
+# variables (853 cones on pyhala), and each table propagation is a callback
+# with a lazily built reason of 5-9 literals against a watched clause.
+# The factoring instances (multiplier cones, long UNSAT-ish searches) pay
+# for the propagator; pyhala, which our engine solves through the tables'
+# conflicts (77% of them), CaDiCaL solves better on the clauses alone.
+
+# === The box-native half: SLP windows, matmul schemes, waerden ===
+#
+# Each jq formula exported by the web app (/boxes/export): residual.cnf +
+# boxes.json for the two boxed arms, expanded.cnf for CaDiCaL plain.  One
+# at a time, 200 s cap.  boxes = implication tables (two per call), rows =
+# their rows, exp.cls = clauses of the expanded CNF.
+#
+# binary /private/tmp/claude-501/-Users-greg-projects-logic/fdf9efe8-cc23-466a-af28-b22f9fdc339a/scratchpad/mem/sat_up2, cap 200 s
+# instance             |   boxes    rows  exp.cls |             engine+boxes |            cadical+boxes |            cadical plain | check
+# sun56[0,5,7] k=7     |    1298    7425    17419 | UNSAT     0.44s    15305 | UNSAT     0.34s    15537 | UNSAT     0.27s    16314 | ok
+# sun56[0,5,7] k=8     |    1588    9233    21770 | SATIS     0.07s     2553 | SATIS     0.08s     2221 | SATIS     0.23s    10942 | ok
+# cn120[0,6,8] k=7     |    1078    6137    14567 | UNSAT     0.30s    12209 | UNSAT     0.26s    12746 | UNSAT     0.25s    17002 | ok
+# cn120[0,6,8] k=8     |    1320    7643    18222 | SATIS     2.91s    80732 | SATIS     0.32s    13423 | SATIS     0.44s    28282 | ok
+# sun56[0,3,7] k=6     |     862    4809    11386 | SATIS     0.03s     1627 | SATIS     0.03s      972 | SATIS     0.05s     1436 | ok
+# i12[0,1,3] k=?       |    1588    9233    21770 | SATIS     0.23s     7740 | SATIS     0.13s     4172 | SATIS     0.22s     9720 | ok
+# i19[4,6,7] k=?       |    1588    9233    21770 | SATIS     0.21s     7424 | SATIS     0.15s     5172 | SATIS     0.20s     8189 | ok
+# sun56[1,2,4] k=14    |    4756   29420    69584 |    TO   199.01s  2259219 | SATIS    33.54s   595196 | SATIS     0.83s    29286 | ok
+# sun56[1,2,4] k=15    |    5328   33168    78605 |    TO   199.03s  2535591 | SATIS    21.09s   358796 | SATIS    17.12s   650187 | ok
+# strassen_out k=7     |     944    5020    11649 | UNSAT     0.20s     9560 | UNSAT     0.20s    10731 | UNSAT     0.22s    15691 | ok
+# mm_boxes_sym(2;7)    |    1036   13040    19794 | SATIS     4.34s   171971 | SATIS     0.03s      479 | SATIS     0.10s     4408 | ok
+# mm_boxes_sym(2;6)    |     906    8264    16730 | UNSAT     0.74s    36033 | UNSAT     0.66s    40978 | UNSAT     0.22s    21093 | ok
+# w5_ap(177)           |    7656   34452    53594 | SATIS    35.26s   340686 | SATIS    11.96s   229431 | SATIS     0.59s    54859 | ok
+# w5_ap(178)           |    7744   34848    54210 | UNSAT   129.58s  1226167 | UNSAT    45.55s   876333 | UNSAT    17.53s   658944 | ok
+# STEP2 NATIVE EXIT
+#
+# === Reading the native half ===
+#
+# Against our own engine on the same residual + boxes, CaDiCaL with the
+# boxes wins 13 of 14, often by an order of magnitude and more: cn120 k=8
+# 2.9 s -> 0.3 s, mm_boxes_sym(2;7) 4.3 s -> 0.03 s, w5_ap(177) 35 s ->
+# 12 s, w5_ap(178) 130 s -> 46 s, sun56[1,2,4] from the cap to 21-34 s.
+# The CDCL core is the difference, on box-native instances as on cones.
+#
+# Against CaDiCaL on the expanded CNF, the propagator wins only the small
+# satisfiable rows, by tenths of a second (sun56[0,5,7] k=8 0.08 vs 0.23,
+# cn120 k=8 0.32 vs 0.44, mm(2;7) 0.03 vs 0.10, i12/i19), and loses the
+# harder ones by 2-40x: sun56[1,2,4] k=14 33.5 s against 0.83 s, w5_ap(177)
+# 12 s against 0.6 s, w5_ap(178) 46 s against 18 s, mm(2;6) 0.66 against
+# 0.22.  These tables are small -- 4-13 rows per box on average -- and a
+# four-row table over five variables is four clauses' worth of structure:
+# CaDiCaL's watched propagation over the expanded CNF, with elimination
+# and inprocessing free to act on every variable, beats a callback-driven
+# table oracle whose variables are frozen.
+#
+# A caution on the record: the box-native rows in doc/box_backend_design.md
+# ("boxes 2-25x faster than CaDiCaL on the satisfiable windows") came from
+# the web app's hybrid -- matrix-method path enumeration over the residual
+# with the engine completing prefixes against the tables -- not from a CDCL
+# search over residual + boxes, which is what the CLI runs here and what
+# loses to CaDiCaL plain on the same rows.  The two are different searches.
+#
+# === Answer ===
+#
+# Adding the box technology to CaDiCaL is a win over our own engine
+# everywhere it was tried, and a win over plain CaDiCaL exactly where the
+# tables absorb structure that clause propagation loses: the multiplier
+# cones of the factoring instances (toughsat 108.8 -> 50.2 s, ezfact64_6
+# 21.0 -> 17.9 s) -- the adder of s1 of the design doc, at last measured
+# end to end -- and nowhere else.  Small tables are clauses; the interface
+# costs (frozen variables, a callback per propagation, reasons of 5-9
+# literals built at analysis) are paid on every row.  If the box idea has a
+# future in a CDCL core, it is as a propagator for arithmetic cones with
+# wide tables, chosen per box by the propagation it adds over the clauses
+# it replaces -- not as a general encoding.

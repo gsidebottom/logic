@@ -43,6 +43,8 @@
 //! the at-most-1-from-pairwise-mutex subroutine.  See the module's
 //! `emit_php` / `emit_roundrobin` functions for details.
 
+#![allow(clippy::needless_range_loop)]
+
 use std::io::{self, Write};
 
 // ─── Shape detection ───────────────────────────────────────────────────────
@@ -211,7 +213,7 @@ fn detect_php(clauses: &[Vec<i32>], nvars: usize) -> Option<CnfShape> {
     if clauses.is_empty() { return None; }
     let m = clauses[0].len();
     if m < 2 { return None; }
-    if nvars % m != 0 { return None; }
+    if !nvars.is_multiple_of(m) { return None; }
     let n = nvars / m;
     if n <= m { return None; }   // PHP UNSAT requires N > M
     // Expected clause count: N pigeons + M * C(N, 2) mutex.
@@ -243,7 +245,7 @@ fn detect_roundrobin(clauses: &[Vec<i32>], nvars: usize) -> Option<CnfShape> {
     let d = clauses[0].len();
     if d < 1 { return None; }
     // nvars = n_pairs * d.  Find n such that nvars = C(n, 2) * d.
-    if nvars % d != 0 { return None; }
+    if !nvars.is_multiple_of(d) { return None; }
     let n_pairs = nvars / d;
     // n_pairs = n*(n-1)/2 → solve for n: n = (1 + sqrt(1 + 8*n_pairs)) / 2
     let disc = 1 + 8 * n_pairs;
@@ -813,12 +815,11 @@ fn recover_component(
     let p = pigeons.len();
     let mut adj: HashMap<i32, HashSet<i32>> = HashMap::new();
     for &(la, lb) in mutex_ids.keys() {
-        if let (Some(&pa), Some(&pb)) = (lit2pig.get(&la), lit2pig.get(&lb)) {
-            if pa != pb {
+        if let (Some(&pa), Some(&pb)) = (lit2pig.get(&la), lit2pig.get(&lb))
+            && pa != pb {
                 adj.entry(la).or_default().insert(lb);
                 adj.entry(lb).or_default().insert(la);
             }
-        }
     }
     let mut seen: HashSet<i32> = HashSet::new();
     let mut holes: Vec<Vec<i32>> = Vec::new();
@@ -850,7 +851,7 @@ fn recover_component(
         }
         for i in 0..comp.len() {
             for j in (i + 1)..comp.len() {
-                if !adj.get(&comp[i]).map_or(false, |ns| ns.contains(&comp[j])) {
+                if !adj.get(&comp[i]).is_some_and(|ns| ns.contains(&comp[j])) {
                     return None;
                 }
             }
@@ -1070,6 +1071,54 @@ pub fn detect_clique_coloring(clauses: &[Vec<i32>], nvars: usize) -> Option<Cliq
         }
     }
     color.sort_by_key(|cl| cl[0]); // order vertices by ascending min var
+    // The refutation's composed at-most-1 step (N) derives, for every colour
+    // j, slot pair i < i' and vertex pair (v, w), that slot i holding v with
+    // colour j and slot i' holding w with colour j contradict.  Check that
+    // the formula carries what that rup step consumes: for v = w the mutex
+    // ~clique_{i,v} v ~clique_{i',v}; for v != w either the colour mutex
+    // ~col_{v,j} v ~col_{w,j} or the edge-variable route of the standard
+    // encoding — (e v ~clique_{i,v} v ~clique_{i',w}) and (~e v ~col_{v,j}
+    // v ~col_{w,j}).  A formula carrying only the at-least-one layers is
+    // satisfiable (a unit-propagated multiplier residual matched the arity
+    // profile and the disjointness test, 2026-09-15).
+    {
+        use std::collections::{HashMap, HashSet};
+        let mut mutex: HashSet<(i32, i32)> = HashSet::new();
+        let mut tern: HashMap<(i32, i32), Vec<i32>> = HashMap::new();
+        for cl in clauses {
+            match cl.len() {
+                2 if cl[0] < 0 && cl[1] < 0 => { mutex.insert(((-cl[0]).min(-cl[1]), (-cl[0]).max(-cl[1]))); }
+                3 => {
+                    let negs: Vec<i32> = cl.iter().filter(|&&l| l < 0).map(|&l| -l).collect();
+                    if negs.len() == 2 {
+                        // (e v ~a v ~b): index the pair, remember e
+                        let e = *cl.iter().find(|&&l| l > 0).unwrap();
+                        tern.entry((negs[0].min(negs[1]), negs[0].max(negs[1]))).or_default().push(e);
+                    } else if negs.len() == 3 {
+                        // (~e v ~col v ~col): index on each pair, third = the remaining negative literal
+                        for t in 0..3 {
+                            let (a, b) = (negs[(t + 1) % 3], negs[(t + 2) % 3]);
+                            tern.entry((a.min(b), a.max(b))).or_default().push(-negs[t]);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        let has = |a: i32, b: i32| mutex.contains(&(a.min(b), a.max(b)));
+        let third = |a: i32, b: i32| -> &[i32] { tern.get(&(a.min(b), a.max(b))).map(|v| v.as_slice()).unwrap_or(&[]) };
+        for j in 0..c {
+            for i in 0..k { for ii in (i + 1)..k { for v in 0..n { for w in 0..n {
+                if v == w {
+                    if !has(clique[i][v], clique[ii][v]) { return None; }
+                } else if !has(color[v][j], color[w][j]) {
+                    let route = third(clique[i][v], clique[ii][w]).iter()
+                        .any(|&e| third(color[v][j], color[w][j]).contains(&-e));
+                    if !route { return None; }
+                }
+            } } } }
+        }
+    }
     Some(CliqueColoring { clique, color, nvars })
 }
 

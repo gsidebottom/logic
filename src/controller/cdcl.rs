@@ -1023,8 +1023,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
     fn phase_matches(&self, lit: &Lit) -> bool {
         self.saved_phase.get(lit.var as usize)
             .copied()
-            .flatten()
-            .map_or(false, |saved| saved == lit.neg)
+            .flatten() == Some(lit.neg)
     }
 
     /// Look up the decision level of `lit` on the trail.  If multiple
@@ -1067,7 +1066,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
         // Clone the reason to release the trail borrow before recursing.
         let reason = self.trail.iter().rev()
             .find(|t| t.lit == *l)
-            .map(|t| t.reason.clone());
+            .map(|t| t.reason);
         let result = match reason {
             Some(Reason::Implied(rid)) => {
                 let mut redundant = true;
@@ -1155,7 +1154,7 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
             trail_lit_idx.iter().rposition(|&x| x == comp).unwrap_or(0)
         };
         // w0 = deepest alt, w1 = second-deepest (w1 == w0 for arity 1).
-        let depths: Vec<usize> = alts.iter().map(|a| depth_of(a)).collect();
+        let depths: Vec<usize> = alts.iter().map(depth_of).collect();
         let mut w0 = 0usize;
         let mut w1 = if n > 1 { 1 } else { 0 };
         if n >= 2 {
@@ -2192,11 +2191,10 @@ impl<F: FnMut(PathsClass, bool) -> bool> CdclController<F> {
                             // `--emit-cover` for guaranteed-sound
                             // matrix-method UNSAT certificates;
                             // `--emit-drat` is best-effort.
-                            if learned.pure_resolution {
-                                if let Some(hook) = &self.drat_hook {
+                            if learned.pure_resolution
+                                && let Some(hook) = &self.drat_hook {
                                     hook(&learned.alts);
                                 }
-                            }
                             self.learned_clauses.push(learned);
                             want_backjump = true;
                             self.conflicts_since_last_restart += 1;

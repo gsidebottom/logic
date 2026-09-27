@@ -1,0 +1,80 @@
+# CaDiCaL's reduce grace period, ported and A/B'd (2026-09-19)
+#
+# Ported from vendor/cadical-3.0.1 (reduce.cpp, analyze.cpp, clause.cpp):
+#
+#   BOXES_USED=1     `bump_clause` sets used = MAX_USED (31) on every clause
+#                    conflict analysis resolves.  reduce_db decays it once
+#                    per reduction, spares a tier-1 clause (LBD <= keep_lbd)
+#                    that was used within the last 31 reductions and a
+#                    tier-2 clause (LBD <= BOXES_TIER2_LBD, default 6) only
+#                    if used since the PREVIOUS reduction, then drops
+#                    BOXES_REDUCE_TARGET% (75) of what is left as CANDIDATES
+#                    -- not a fraction of the whole database, which is the
+#                    blunter pool our default uses.
+#   BOXES_PROMOTE=1  also recomputes a resolved clause's LBD against the
+#                    current trail and promotes it when the glue shrank, so
+#                    a clause is not judged once, at birth.
+#
+# Both default OFF.  120 s cap, one solver at a time, all 21 instances in
+# the A/B corpus except eq.atree.braun.13 (times out in every arm).
+# Verdicts captured and identical everywhere -- a reduce bug shows up as a
+# wrong answer, not a slow one.
+
+instance                            off               used          used+prom   verdicts
+Steiner-45-16-bce            2.02s/189k         1.91s/172k         2.40s/181k   UNSAT/UNSAT/UNSAT
+c3540_k8                      1.20s/99k         1.25s/105k         1.47s/113k   UNSAT/UNSAT/UNSAT
+c3540_k8_s1                  1.96s/152k         1.94s/154k         2.10s/157k   UNSAT/UNSAT/UNSAT
+c3540_k8_s2                  1.70s/138k         1.56s/134k         1.62s/126k   UNSAT/UNSAT/UNSAT
+c3540_k8_s3                  1.64s/132k         1.98s/160k         1.68s/130k   UNSAT/UNSAT/UNSAT
+c5315_k8                      0.14s/16k          0.13s/13k          0.13s/13k   UNSAT/UNSAT/UNSAT
+c5315_k8_s1                   0.13s/13k          0.12s/11k          0.12s/11k   UNSAT/UNSAT/UNSAT
+c5315_k8_s2                   0.15s/15k          0.12s/12k          0.15s/13k   UNSAT/UNSAT/UNSAT
+c5315_k8_s3                   0.14s/13k          0.14s/12k          0.15s/13k   UNSAT/UNSAT/UNSAT
+dlx1c.ucl.sat.chaff.4.1.bryant           0.03s/0k           0.03s/0k           0.03s/0k   UNSAT/UNSAT/UNSAT
+php9_8                         0.07s/9k          0.11s/11k          0.11s/12k   UNSAT/UNSAT/UNSAT
+pyhala_unsat40                       TO                 TO                 TO   TO/TO/TO
+r3sat_0                      2.65s/178k         2.28s/151k         2.80s/160k   UNSAT/UNSAT/UNSAT
+r3sat_1                      3.42s/212k         3.78s/215k         3.85s/198k   UNSAT/UNSAT/UNSAT
+r3sat_2                       0.53s/46k          0.58s/49k          0.51s/42k   SATIS/SATIS/SATIS
+r3sat_3                      2.78s/180k         2.40s/155k         2.48s/144k   UNSAT/UNSAT/UNSAT
+r3sat_4                       0.49s/44k          0.28s/27k          0.54s/45k   SATIS/SATIS/SATIS
+r3sat_5                       0.98s/76k          0.71s/58k          0.31s/27k   SATIS/SATIS/SATIS
+rr10_8                        0.32s/27k          0.20s/19k          0.21s/19k   UNSAT/UNSAT/UNSAT
+w55_177                       0.89s/73k          0.61s/56k          0.33s/31k   SATIS/SATIS/SATIS
+w55_178                     23.67s/868k       27.99s/1088k        22.35s/784k   UNSAT/UNSAT/UNSAT
+pyhala_unsat40                       TO                 TO                 TO   TO/TO/TO
+
+                    n     used    used+prom
+all                20   0.927x      0.918x
+UNSAT only         16   0.978x      1.023x
+SAT only            4   0.746x      0.594x
+
+=== What this says ===
+#
+# NEUTRAL.  The 8% headline is carried entirely by the four SAT instances
+# (w55_177 0.89s -> 0.33s, r3sat_5 0.98s -> 0.31s), which is the same
+# trajectory volatility that produced a 0.489x artifact in the CaDiCaL-side
+# ablation and reversed on an UNSAT-weighted set.  On the sixteen
+# refutations, whose times are stable enough to read, the port is worth
+# 0.978x with the counter alone and 1.023x with promotion -- nothing.
+#
+# The 1.30x that motivated building this measured what CaDiCaL LOSES by
+# giving up a grace period its whole reduce machinery is tuned around
+# (dynamic percentile tiers, its own target, its interval schedule).  What
+# our engine GAINS by adopting one piece is a different quantity, and this
+# is it.
+#
+# One sub-finding that is consistent and worth keeping: the two halves are
+# ONE mechanism.  Sparing clauses without re-judging their glue keeps the
+# wrong ones --
+#
+#   instance        off      used   used+prom      (conflicts)
+#   w55_178         868k     1088k       784k
+#   c3540_k8_s3     132k      160k       130k
+#
+# -- and promotion recovers it.  That is why CaDiCaL sets `used` inside
+# `bump_clause`, in the same breath as recomputing the glue, rather than in
+# two places.  If this is ever turned on, it goes on as a pair.
+#
+# Default stays off: no measured benefit, and it costs an LBD recomputation
+# per resolved clause in conflict analysis.

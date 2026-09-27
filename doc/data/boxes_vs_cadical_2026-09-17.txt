@@ -1,0 +1,18 @@
+# Boxes standing against CaDiCaL (2026-09-17), current defaults, one solver at a time on a quiet machine.
+# Verdicts agree everywhere; 240 s cap. 'cadical' is standalone CaDiCaL 3.0.0.
+# The cone forms come from tools/cnf2boxes.py at K=8 and K=12.
+
+instance                  cadical   plain engine    cones K=8   cones K=12   verdicts
+c3540                        0.4s           1.2s         4.2s         2.5s   UNSAT/UNSAT/UNSAT/UNSAT
+c5315                        0.1s           0.1s         0.3s         0.2s   UNSAT/UNSAT/UNSAT/UNSAT
+toughsat_fact_895s          17.4s             TO           TO       162.1s   SATIS/TO/TO/SATIS
+pyhala-braun-sat-40          8.0s         147.1s       131.2s        58.6s   SATIS/SATIS/SATIS/SATIS
+ezfact64_6                  28.8s             TO           TO           TO   SATIS/TO/TO/TO
+16_16_booth bit28              TO             TO           TO           TO   TO/TO/TO/TO
+lec_mult_CvW_11x10             TO             TO           TO           TO   TO/TO/TO/TO
+BOXWIN EXIT
+
+# CaDiCaL version matters for every historical comparison in these docs:
+cadical 1.9.5 (bundled, -b cadical): s SATISFIABLE in 170.3s
+cadical 3.0.0 (standalone):          s SATISFIABLE in 19.3s
+VER EXIT

@@ -19,6 +19,8 @@
 //! exactly, after which VeriPB verifies independently.  So an i128 overflow can
 //! only cause a fallback, never an unsound proof.
 
+#![allow(clippy::type_complexity, clippy::too_many_arguments, clippy::needless_range_loop)]
+
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_rational::BigRational;
@@ -470,8 +472,8 @@ fn two_phase<S: Scalar>(
     }
     // drive artificials still basic (at 0) out of the basis
     for i in 0..nrows {
-        if basis[i] >= ncols {
-            if let Some(pc) = (0..ncols).find(|&j| !t[i][j].is_zero()) {
+        if basis[i] >= ncols
+            && let Some(pc) = (0..ncols).find(|&j| !t[i][j].is_zero()) {
                 let piv = t[i][pc].clone();
                 for x in t[i].iter_mut() {
                     *x = x.clone() / piv.clone();
@@ -490,7 +492,6 @@ fn two_phase<S: Scalar>(
                 }
                 basis[i] = pc;
             }
-        }
     }
     // drop redundant rows (artificial still basic on an all-zero row) + artificials
     let keep: Vec<usize> = (0..nrows).filter(|&i| basis[i] < ncols).collect();
@@ -929,7 +930,7 @@ impl<S: Scalar> Warm<S> {
                         }
                     }
                     let ratio = rc / (-self.t[leave][j].clone());
-                    if best.as_ref().map_or(true, |bv| ratio < *bv) {
+                    if best.as_ref().is_none_or(|bv| ratio < *bv) {
                         best = Some(ratio);
                         enter = j;
                     }
@@ -1083,11 +1084,10 @@ fn gmi_loop_warm<S: Scalar>(
                 cuts.push(recipe);
                 warm.add_cut(&cut, ci);
             }
-            if recording && !cand_idx_snap.is_empty() {
-                if let Some(r) = rec.as_deref_mut() {
+            if recording && !cand_idx_snap.is_empty()
+                && let Some(r) = rec.as_deref_mut() {
                     r.push((x_snap, cons_len_snap, cand_idx_snap));
                 }
-            }
             if warm.dual_resolve() == Status::Infeasible {
                 return (cons, true, cuts);
             }
@@ -1585,7 +1585,7 @@ fn bestofk_rollout(inputs: &[Pb], nvars: usize, cap: usize, mut seed: u64) -> Op
                 *c = Q::zero();
             }
             for v in 1..=nvars as u32 {
-                warm.cost[s.cx(v)] = obj[(v - 1) as usize].clone();
+                warm.cost[s.cx(v)] = obj[(v - 1) as usize];
             }
             let cost = warm.cost.clone();
             optimize(&mut warm.t, &mut warm.b, &mut warm.basis, &cost);

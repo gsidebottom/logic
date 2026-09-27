@@ -164,7 +164,7 @@ impl<S: CoverState + 'static> DualPathSearchController for CdclDualPathControlle
         let with_progress = crate::dual::wrapper::ProgressWrapper::new(inner, progress_atom)
             .with_publish_disabled();
         let mut composite = StateQueryWrapper::new(with_progress, state, cancel);
-        run_dfs_with_restarts_weighted(&mut composite, nnf, &*uncovered, atoms)
+        run_dfs_with_restarts_weighted(&mut composite, nnf, &uncovered, atoms)
     }
 }
 

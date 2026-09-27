@@ -84,11 +84,16 @@
 //!
 //! Exits 0 on valid, 1 on cert error, 2 on usage / I/O error.
 
+#![allow(clippy::needless_range_loop)]
+
+#![allow(clippy::doc_lazy_continuation)]
+
 use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use logic::cadical;
 
 // ─── CNF parsing ────────────────────────────────────────────────────────────
 
@@ -302,7 +307,7 @@ fn sat_verify(f: &Cnf, cert: &Cert) -> SatVerdict {
             continue;
         }
         // at-least-one
-        let alo: Vec<i32> = var_map[c].iter().copied().collect();
+        let alo: Vec<i32> = var_map[c].to_vec();
         solver.add_clause(alo);
         n_clauses_added += 1;
         // at-most-one (pairwise)

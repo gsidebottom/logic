@@ -1,0 +1,97 @@
+# What is a better reduce policy worth?  (2026-09-18)
+#
+# The 2026-09-17 ablation ranked reduce second at 1.28x, but that arm turned
+# CaDiCaL's reduce OFF, so it prices a feature this engine already has
+# (`reduce_db`: worst-first by LBD then activity, drop len/reduce_frac,
+# protect glue <= keep_lbd, binaries, reasons and the LBD-0 permanence
+# marking).  These runs try to price the REFINEMENT instead.
+#
+# METHOD WARNING, learned the hard way three times over: every geomean
+# below is dominated by one or two instances that swing 7-28x on trajectory
+# luck.  Read the per-instance columns, not the summary lines.  In
+# particular `w55_177` is SATISFIABLE -- it should never have been in a set
+# I described as UNSAT-weighted -- and it alone drives most of the geomeans
+# it appears in.
+
+=== 1. CaDiCaL coarsened, SAT-heavy set (DISCARD: artifact) ===
+
+instance                   default     tier2=2   target=50      coarse
+c3540                        0.30s       0.27s       0.34s       0.25s
+c5315                        0.14s       0.14s       0.13s       0.13s
+Steiner-45-16-bce            3.25s       3.24s       2.61s       3.02s
+w55_178                     16.57s      16.88s      16.25s      18.07s
+pyhala-braun-sat-40         25.01s      25.16s       1.56s      51.59s
+toughsat_895s              107.86s     108.61s      29.49s          TO
+
+# target=50 "0.489x faster" -- carried entirely by two SAT factoring
+# instances known to swing 3-16x, and contradicted inside its own table:
+# the `coarse` arm CONTAINS target=50 and was slower on both.  Discarded.
+#
+# `tier2=2` reproduced default to the hundredth of a second because it is
+# INERT: CaDiCaL 3 recomputes tiers dynamically from usage percentiles
+# (tier.cpp), and reducetier1glue/reducetier2glue are only the fallback for
+# before usage data exists.  An arm that changes nothing is not a null.
+
+=== 2. CaDiCaL, corrected arms, 10 instances ===
+
+instance                   default static-tiers tier2->tier1   target=50
+c3540                        0.28s       0.27s       0.28s       0.36s
+c5315                        0.15s       0.13s       0.15s       0.13s
+Steiner-45-16-bce            3.42s       3.09s       3.07s       2.76s
+w55_177                      0.06s       0.06s       1.70s       0.92s
+w55_178                     17.23s      10.24s      12.32s      16.61s
+php9_8                       0.24s       0.17s       0.20s       0.22s
+rr10_8                       0.20s       0.34s       0.20s       0.23s
+dlx1c                        0.04s       0.04s       0.04s       0.04s
+pyhala-braun-unsat-40       53.06s      50.40s      53.06s      48.18s
+ezfact16_5                   0.00s       0.00s       0.00s       0.00s
+
+static-tiers / default: 0.917x   (recomputetier=false -- FREEZING the
+                                  dynamic tiers did not hurt CaDiCaL)
+tier2->tier1 / default: 1.300x   (tier2limit=50 -- removing the grace
+                                  period for recently-used mid-glue clauses)
+   target=50 / default: 1.280x   (reproduced 1.262x in a third run)
+
+=== 3. OUR engine's own deletion knob, same instances ===
+
+instance                   frac=1     frac=2     frac=3     frac=4   verdicts
+c3540                       3.64s      1.26s      1.02s      1.37s   UNSAT
+c5315                       0.16s      0.10s      0.12s      0.13s   UNSAT
+Steiner-45-16-bce           4.13s      1.97s      2.15s      2.35s   UNSAT
+w55_177                     0.08s      0.85s      0.12s      0.11s   SATIS
+w55_178                        TO     23.28s     29.57s     31.40s   TO/UNSAT
+php9_8                      0.18s      0.07s      0.09s      0.09s   UNSAT
+rr10_8                      0.25s      0.32s      0.27s      0.28s   UNSAT
+dlx1c                       0.03s      0.03s      0.03s      0.03s   UNSAT
+ezfact16_5                  0.00s      0.00s      0.00s      0.00s   UNSAT
+
+frac=1 / frac=2: 1.085x slower     (frac is a DIVISOR: 1 drops every
+frac=3 / frac=2: 0.842x faster      unprotected clause, 2 half, 4 a quarter)
+frac=4 / frac=2: 0.877x faster
+
+# But drop w55_177 and frac=3 becomes 1.05x SLOWER than the default -- the
+# whole apparent win is that one volatile SAT instance.  The most
+# informative row is w55_178, a 23 s refutation where the default wins
+# clearly (23.3s against 29.6s, 31.4s, and a timeout).
+
+=== Conclusion ===
+#
+# Deletion AGGRESSION is not the lever.  Our default frac=2 is at or near a
+# local optimum: frac=1 is clearly worse (a timeout on w55_178, 2-3x on the
+# circuits) and frac=3/4 are neutral once the volatile instance is removed.
+# And "delete more" does not transfer from CaDiCaL anyway, because the two
+# knobs act on different pools: CaDiCaL's 75% applies to CANDIDATES, with
+# tier1 never a candidate and recently-used tier2 clauses granted a grace
+# period, while our frac applies to the whole database behind only
+# glue<=2/binary/reason protection.
+#
+# What the CaDiCaL side points at is WHAT IT PROTECTS.  The one arm that
+# consistently hurt was collapsing tier2 into tier1 (1.30x) -- removing the
+# grace period for recently-used mid-glue clauses -- while freezing the
+# dynamic tier recomputation entirely did NOT hurt (0.917x).  So if this
+# lever gets built, build the `used`-counter grace period, not the dynamic
+# percentile tiering and not a blunter deletion fraction.
+#
+# Confidence: low.  Ten instances cannot price an effect whose per-instance
+# swings reach 28x.  This says what to build FIRST if we build it, not that
+# it is worth building.

@@ -27,6 +27,8 @@
 //!          the caller falls through to the matrix search.  Forcing the
 //!          GE-derived units into the residual is a future extension.
 
+#![allow(clippy::needless_range_loop)]
+
 use std::collections::HashMap;
 
 /// An XOR constraint `vars[0] ⊕ vars[1] ⊕ … = rhs` (vars 1-indexed).

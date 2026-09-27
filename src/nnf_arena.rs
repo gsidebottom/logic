@@ -46,6 +46,8 @@
 //! Construction `debug_assert!`s on this; a release build with an
 //! oversized `var` would silently lose the top bits.
 
+#![allow(clippy::type_complexity, clippy::too_many_arguments)]
+
 use crate::matrix::{Lit, NNF, PathClassificationHandle, PathsClass, ProdPath, Var};
 
 /// Identifier for a node within an [`NnfArena`].  `u32` (not

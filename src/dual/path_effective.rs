@@ -242,9 +242,9 @@ impl<S: CoverState + 'static> DualPathSearchController for EffectivePathControll
             .with_publish_disabled();
         let mut composite = StateQueryWrapper::new(with_progress, state, cancel);
         if self.bubble_up {
-            run_dfs_with_restarts_weighted_bubble_up(&mut composite, nnf, &*uncovered, atoms)
+            run_dfs_with_restarts_weighted_bubble_up(&mut composite, nnf, &uncovered, atoms)
         } else {
-            run_dfs_with_restarts_weighted(&mut composite, nnf, &*uncovered, atoms)
+            run_dfs_with_restarts_weighted(&mut composite, nnf, &uncovered, atoms)
         }
     }
 }
@@ -1043,11 +1043,11 @@ impl<Inner: crate::nnf_arena::ArenaPathSearchController + PathSearchController>
                 use crate::nnf_arena::NnfKind;
                 match arena.kind(id) {
                     NnfKind::Lit => crate::nnf_arena::ArenaPathSearchController::decision_activity(
-                        &self.inner, arena.lit(id).var as u32).unwrap_or(0.0),
+                        &self.inner, arena.lit(id).var).unwrap_or(0.0),
                     _ => arena.children(id).iter().fold(0.0f64, |m, &c| {
                         if matches!(arena.kind(c), NnfKind::Lit) {
                             m.max(crate::nnf_arena::ArenaPathSearchController::decision_activity(
-                                &self.inner, arena.lit(c).var as u32).unwrap_or(0.0))
+                                &self.inner, arena.lit(c).var).unwrap_or(0.0))
                         } else { m }
                     }),
                 }
@@ -1126,7 +1126,7 @@ impl<Inner: crate::nnf_arena::ArenaPathSearchController + PathSearchController>
                         let id = base[idx];
                         if matches!(arena.kind(id), crate::nnf_arena::NnfKind::Lit) {
                             crate::nnf_arena::ArenaPathSearchController::decision_activity(
-                                &self.inner, arena.lit(id).var as u32).unwrap_or(0.0)
+                                &self.inner, arena.lit(id).var).unwrap_or(0.0)
                         } else {
                             0.0
                         }

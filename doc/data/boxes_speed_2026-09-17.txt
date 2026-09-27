@@ -1,0 +1,30 @@
+# Wall-clock comparison, plain CNF and boxed circuit forms (2026-09-17), current defaults.
+# boxes/cad3 = box engine time / CaDiCaL 3.0.0 time (>1 = CaDiCaL faster); cadical1.9 is the bundled crate behind 'sat -b cadical'.
+
+instance                         verdict    boxes_s  cadical3_s  cadical1.9_s  boxes/cad3  boxes/cad1.9
+c3540_k8                         UNSAT        1.138       0.402         0.405       2.83x         2.81x
+c3540_k8_s1                      UNSAT        1.838       0.360         0.341       5.10x         5.40x
+c3540_k8_s2                      UNSAT        1.616       0.481         0.616       3.36x         2.62x
+c3540_k8_s3                      UNSAT        1.550       0.423         0.528       3.67x         2.93x
+c5315_k8                         UNSAT        0.135       0.163         0.138       0.83x         0.98x
+c5315_k8_s1                      UNSAT        0.127       0.133         0.152       0.96x         0.84x
+c5315_k8_s2                      UNSAT        0.141       0.124         0.107       1.13x         1.31x
+c5315_k8_s3                      UNSAT        0.133       0.109         0.138       1.22x         0.96x
+Steiner-45-16-bce                UNSAT        1.935       2.518         2.350       0.77x         0.82x
+dlx1c.ucl.sat.chaff.4.1.bryant   UNSAT        0.032       0.051         0.032       0.64x         1.00x
+php9_8                           UNSAT        0.070       0.010         0.129       6.86x         0.54x
+rr10_8                           UNSAT        0.305       0.047         0.126       6.44x         2.42x
+w55_177                          SATIS        0.839       0.116         0.148       7.21x         5.67x
+w55_178                          UNSAT       22.061      16.382         9.732       1.35x         2.27x
+pyhala_unsat40                   UNSAT      201.093      61.639        51.257       3.26x         3.92x
+r3sat_0                          UNSAT        2.605       3.120         2.997       0.83x         0.87x
+r3sat_1                          UNSAT        3.389       8.498         3.517       0.40x         0.96x
+r3sat_2                          SATIS        0.519       0.169         1.561       3.07x         0.33x
+r3sat_3                          UNSAT        2.755       3.842         2.900       0.72x         0.95x
+r3sat_4                          SATIS        0.481       0.277         0.012       1.74x        40.37x
+r3sat_5                          SATIS        0.975       1.084         0.435       0.90x         2.24x
+c3540 boxed K=8                  UNSAT        4.080       0.442         0.481       9.22x         8.48x
+c3540 boxed K=12                 UNSAT        3.878       0.445         0.486       8.72x         7.97x
+c5315 boxed K=8                  UNSAT        0.387       0.116         0.154       3.34x         2.52x
+c5315 boxed K=12                 UNSAT        0.458       0.114         0.149       4.03x         3.07x
+SPEED EXIT

@@ -1,0 +1,14 @@
+# Boxed refutations certified end to end (2026-09-16, Apple M4 Pro Mac mini).
+# ISCAS c3540 and c5315 through tools/cnf2boxes.py at K=8 and K=12: the engine is given
+# residual.cnf + boxes.json, the proof is checked against residual+absorbed = the original CNF.
+# 'lemmas' counts the box propagations derived by sub-refutation -- none is a unit-propagation
+# consequence of the gate clauses, which is what makes them worth deriving.
+# Unproved baselines: c3540 K=8 3.62s, K=12 3.92s; c5315 K=8 0.73s, K=12 0.66s.
+# CaDiCaL on the same formulas: c3540 0.41s, c5315 0.14s.
+
+instance                           verdict  solve_s     proof_B   trim_s   cake_s   lemmas checkers
+c3540_k8                           UNSAT      3.77    26015482     5.69     1.46    10353 trim=ok,cake=ok
+c3540_k12                          UNSAT      3.36    21359190     4.90     1.19    12427 trim=ok,cake=ok
+c5315_k8                           UNSAT      1.31    13671102     0.98     0.34    16317 trim=ok,cake=ok
+c5315_k12                          UNSAT      1.90    18568091     1.05     0.32    28417 trim=ok,cake=ok
+CORPUS EXIT

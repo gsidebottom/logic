@@ -274,13 +274,11 @@ impl Checker {
         if false_count == n {
             return Err(());
         }
-        if let Some(l) = unassigned {
-            if false_count == n - 1 {
-                if self.enqueue(l).is_err() {
+        if let Some(l) = unassigned
+            && false_count == n - 1
+                && self.enqueue(l).is_err() {
                     return Err(());
                 }
-            }
-        }
         Ok(cid)
     }
 
@@ -423,11 +421,10 @@ impl Checker {
                 if conflict {
                     return Err(());
                 }
-                if need_unit {
-                    if self.enqueue(unit_lit).is_err() {
+                if need_unit
+                    && self.enqueue(unit_lit).is_err() {
                         return Err(());
                     }
-                }
                 i += 1;
             }
         }

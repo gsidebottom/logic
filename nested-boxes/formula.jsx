@@ -144,7 +144,7 @@ export function parse(str) {
 export function complementAst(node) {
   if (node.t === 'VAR') {
     const n = node.n.endsWith("'") ? node.n.slice(0, -1) : node.n + "'";
-    return { t: 'VAR', n };
+    return { ...node, n };
   }
   if (node.t === 'AND') return { t: 'OR',  c: node.c.map(complementAst) };
   if (node.t === 'OR')  return { t: 'AND', c: node.c.map(complementAst) };
@@ -180,9 +180,201 @@ export function resolvePosition(ast, pos) {
 // ─── Variable label with subscript support ────────────────────────────────────
 // Renders "x_1'" as x<sub>1</sub>' (splits on first underscore).
 export function VarLabel({ name }) {
+  const paren = name.indexOf('(');
+  if (paren !== -1) {                       // a box-call label: name(a,b,…)[']
+    const close = name.lastIndexOf(')');
+    const primes = close !== -1 ? name.slice(close + 1) : '';
+    const parsed = close !== -1 ? parseArgs(name.slice(paren, close + 1), 0) : null;
+    if (parsed) {
+      return <>{name.slice(0, paren)}(<span style={{ fontSize: '0.85em' }}>{parsed[0].map((a, i) => <span key={i}>{i > 0 && ','}<VarLabel name={a} /></span>)}</span>){primes}</>;
+    }
+    return <>{name}</>;
+  }
   const primes = name.match(/'+$/)?.[0] ?? '';
   const base   = name.slice(0, name.length - primes.length);
   const uscore = base.indexOf('_');
   if (uscore === -1) return <>{name}</>;
   return <>{base.slice(0, uscore)}<span style={{ fontSize: '0.55em', position: 'relative', top: '0.5em' }}>{base.slice(uscore + 1)}</span>{primes}</>;
+}
+
+// ─── Box calls ─────────────────────────────────────────────────────────────────
+// `name(a1, a2, …)` (or `name(a1; a2; …)`) refers to a compiled box (see
+// doc/box_backend_design.md §5.2).  Expansion substitutes the arguments for the
+// box's parameters in its definition, renames its projected internals per call
+// site, and recurses — the server does exactly the same (logic::boxes::expand),
+// so the diagram and the backends agree.  Unknown box / wrong arity ⇒ error.
+// `name(` is a call whenever the parenthesised text is an argument list
+// (names and constants separated by `,` or `;`, or empty); an unknown name
+// there is an error, never a silent AND — a one-argument call to a box that
+// is not loaded would otherwise become two free variables.  `A(B+C)` and
+// `A (B)` stay ANDs.  In an argument list a comma continues a name only
+// inside a numeric subscript (`d_0,1`); elsewhere it separates arguments.
+const isNameChar = c => /[\p{L}\p{N}_,]/u.test(c);
+function readName(str, i, inArgs) {
+  let name = '', inSub = false;
+  while (i < str.length) {
+    const c = str[i];
+    if (c === '_') inSub = true;
+    else if (c === ',') { if (inArgs && !(inSub && /[0-9]/.test(str[i + 1] ?? ''))) break; }
+    else if (!/[\p{L}\p{N}]/u.test(c)) break;
+    name += c; i++;
+  }
+  return [name, i];
+}
+function parseArgs(str, i) {           // str[i] === '('
+  i++;
+  const args = []; let semi = false;
+  for (;;) {
+    while (i < str.length && /\s/.test(str[i])) i++;
+    if (i >= str.length) return null;
+    if (str[i] === ')') return args.length === 0 ? [args, i + 1, semi] : null;
+    let name;
+    if (/[A-Za-z]/.test(str[i])) { [name, i] = readName(str, i, true); }
+    else if (str[i] === '0' || str[i] === '1') { name = str[i]; i++; }
+    else return null;
+    let k = i; while (k < str.length && /\s/.test(str[k])) k++;
+    let primes = 0; while (k < str.length && str[k] === "'") { primes++; k++; }
+    if (primes > 0) { i = k; if (primes % 2 === 1) name += "'"; }
+    args.push(name);
+    while (i < str.length && /\s/.test(str[i])) i++;
+    if (i >= str.length) return null;
+    if (str[i] === ')') return [args, i + 1, semi];
+    if (str[i] === ',') i++;
+    else if (str[i] === ';') { semi = true; i++; }
+    else return null;
+  }
+}
+/** The interface family a variable belongs to: the longest parameter `p` with
+ *  name === p or name starting with `p_` (a parameter is a name prefix — a bit
+ *  vector `a` owns a_0, a_1, …; a plain variable is a family of one). */
+export function familyOf(name, params) {
+  let best = -1;
+  params.forEach((p, i) => {
+    const member = name === p || (name.length > p.length && name.startsWith(p) && name[p.length] === '_');
+    if (member && (best === -1 || p.length > params[best].length)) best = i;
+  });
+  return best;
+}
+// Substitute the call's arguments for the parameter families (`a_3` with
+// a := x becomes x_3; a primed argument primes each member; a constant
+// replaces every member); hidden internals get call-site-unique names.
+function substitute(sig, args, k) {
+  const internals = new Set(sig.internals);
+  let out = '', i = 0;
+  const f = sig.formula;
+  while (i < f.length) {
+    const prevIsName = i > 0 && (isNameChar(f[i - 1]) || f[i - 1] === "'");
+    if (/[A-Za-z]/.test(f[i]) && !prevIsName) {
+      const [name, j] = readName(f, i, false);
+      const fi = familyOf(name, sig.params);
+      let rep;
+      if (fi !== -1) {
+        const suffix = name.slice(sig.params[fi].length), a = args[fi];
+        rep = (a === '0' || a === '1') ? a : a.endsWith("'") ? a.slice(0, -1) + suffix + "'" : a + suffix;
+      } else rep = internals.has(name) ? `${name}__${k}` : name;
+      out += rep; i = j;
+    }
+    else { out += f[i]; i++; }
+  }
+  return out;
+}
+function walkCalls(text, lookup, onCall, lenient = false) {
+  let out = '', i = 0;
+  while (i < text.length) {
+    const prevIsName = i > 0 && (isNameChar(text[i - 1]) || text[i - 1] === "'");
+    if (/[A-Za-z]/.test(text[i]) && !prevIsName) {
+      const [name, j] = readName(text, i, false);
+      if (text[j] === '(') {
+        const parsed = parseArgs(text, j);
+        if (parsed) {
+          const [args, after] = parsed;
+          const sig = lookup(name);
+          if (!lenient) {
+            if (!sig) {
+              const and = args.length === 1 ? ` (an AND of \`${name}\` and \`${args[0]}\` is written \`${name} ${args[0]}\` or \`${name} (${args[0]})\`, not \`${name}(${args[0]})\`)` : '';
+              throw new Error(`unknown box \`${name}\` — load and compile its library (jq panel), or check the spelling${and}`);
+            }
+            if (args.length !== sig.params.length) {
+              const hint = args.some(a => a.includes(',')) ? ' — a comma directly followed by a digit continues a subscript (`b_0,0` is one two-index name); write `b_0, 0` or separate arguments with `;`' : '';
+              throw new Error(`box \`${name}\` expects ${sig.params.length} argument${sig.params.length === 1 ? '' : 's'} (${sig.params.join('; ')}), got ${args.length}${hint}`);
+            }
+          }
+          out += onCall(name, args, sig, text.slice(i, after));
+          i = after; continue;
+        }
+      }
+      out += name; i = j;
+    } else { out += text[i]; i++; }
+  }
+  return out;
+}
+function expandRec(text, lookup, counter, depth) {
+  if (depth > 16) throw new Error('box expansion nested more than 16 levels — is a box defined in terms of itself?');
+  return walkCalls(text, lookup, (name, args, sig) => {
+    counter.n++;
+    return '(' + expandRec(substitute(sig, args, counter.n), lookup, counter, depth + 1) + ')';
+  });
+}
+const lookupOf = boxes => {
+  // `params` (+ `expose`) are the call's families; `vars` are the table columns.
+  const m = new Map((boxes ?? []).map(b => [b.name, { params: b.params ? [...b.params, ...(b.expose ?? [])] : b.vars, internals: b.internals ?? [], formula: b.formula }]));
+  return name => m.get(name);
+};
+/** Expand box calls against `boxes` ([{name, vars, internals, formula}], as served by GET /boxes). */
+export function expandBoxCalls(str, boxes) {
+  return expandRec(str, lookupOf(boxes), { n: 0 }, 0);
+}
+/** Like expandBoxCalls, also returning each top-level call's own expansion
+ *  (document order, the counter shared with the full expansion, so hidden
+ *  internals carry the same `__k` names as in `text`): {text, perCall}. */
+export function expandBoxCallsPerCall(str, boxes) {
+  const lookup = lookupOf(boxes), counter = { n: 0 }, perCall = [];
+  const text = walkCalls(str, lookup, (name, args, sig) => {
+    counter.n++;
+    const expanded = '(' + expandRec(substitute(sig, args, counter.n), lookup, counter, 1) + ')';
+    perCall.push(expanded);
+    return expanded;
+  });
+  return { text, perCall };
+}
+export const BOX_ATOM_PREFIX = 'BOXCALL_';
+/** Replace each box call by an atom `BOXCALL_k` (mirrors logic::boxes::expand::atomize_box_calls).
+ *  Returns {text, calls: [{atom, name, args, label}]}; `label` is `name(a;b;…)`. */
+/** With `lenient`, unknown boxes and arity mismatches are not errors: anything
+ *  that reads as a call (a name directly followed by an argument list) is
+ *  atomized — for text-level tools like the formatter that must keep
+ *  `f(a, b)` together even before the box is loaded.  Each call records its
+ *  source `text`. */
+export function atomizeBoxCalls(str, boxes, { lenient = false } = {}) {
+  if (str.includes(BOX_ATOM_PREFIX)) {
+    if (lenient) return { text: str, calls: [] };
+    throw new Error(`variable names starting with \`${BOX_ATOM_PREFIX}\` are reserved for box calls`);
+  }
+  const calls = [];
+  const text = walkCalls(str, lookupOf(boxes), (name, args, _sig, src) => {
+    const atom = `${BOX_ATOM_PREFIX}${calls.length + 1}`;
+    calls.push({ atom, name, args, label: `${name}(${args.join(';')})`, text: src });   // `;` never continues a name
+    return atom;
+  }, lenient);
+  return { text, calls };
+}
+/** In an AST parsed from atomized text, turn the atom leaves into box leaves:
+ *  {t:'VAR', n: label(+primes), box: {name, args}} — same tree shape as the
+ *  server's atomized matrix, so path positions line up. */
+export function relabelBoxAtoms(ast, calls) {
+  if (!calls.length) return ast;
+  const byAtom = new Map(calls.map((c, k) => [c.atom, { ...c, idx: k }]));
+  const walk = node => {
+    if (node.t === 'VAR') {
+      const primes = node.n.match(/'+$/)?.[0] ?? '';
+      const base = node.n.slice(0, node.n.length - primes.length);
+      const c = byAtom.get(base);
+      // `idx` is the call's position in document order — the same order the
+      // expansion numbers calls, so expandBoxCallsPerCall(...).perCall[idx] is
+      // this leaf's definition with the internals named as in the expansion.
+      return c ? { t: 'VAR', n: c.label + primes, box: { name: c.name, args: c.args, idx: c.idx } } : node;
+    }
+    return { ...node, c: node.c.map(walk) };
+  };
+  return walk(ast);
 }

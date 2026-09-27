@@ -200,8 +200,8 @@ impl CoverSearchController for GreedyDynamicCoverController {
         let mut reevals = 0usize;
         loop {
             // If we hit the cap, fall back to the best we've seen.
-            if reevals >= self.reeval_cap {
-                if let Some((tg, cg, tb, idx)) = best {
+            if reevals >= self.reeval_cap
+                && let Some((tg, cg, tb, idx)) = best {
                     // Re-add anything we popped but didn't return —
                     // they're still candidates with their re-evaluated
                     // true gain (a tighter upper bound than they had).
@@ -211,7 +211,6 @@ impl CoverSearchController for GreedyDynamicCoverController {
                 }
                 // No best (heap was empty) — fall through to heap
                 // pop, which will return None.
-            }
             let (cached_gain, tiebreak, idx) = match self.heap.pop() {
                 Some(x) => x,
                 None => return best.map(|(_, _, _, i)| i),
@@ -237,9 +236,8 @@ impl CoverSearchController for GreedyDynamicCoverController {
                     true_gain, cached_gain, idx);
                 // Re-insert any "best" we were tracking so it stays
                 // available for next call.
-                if let Some((bg, _bcg, btb, bidx)) = best {
-                    if bidx != idx { self.heap.push((bg, btb, bidx)); }
-                }
+                if let Some((bg, _bcg, btb, bidx)) = best
+                    && bidx != idx { self.heap.push((bg, btb, bidx)); }
                 return Some(idx);
             }
 

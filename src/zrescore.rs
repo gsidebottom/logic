@@ -19,6 +19,7 @@
 //! trajectory bit for bit, including its str()-key ordering).
 
 use std::collections::{HashMap, HashSet};
+use crate::cadical;
 
 pub const NA: usize = 207;
 pub const NB: usize = 207;

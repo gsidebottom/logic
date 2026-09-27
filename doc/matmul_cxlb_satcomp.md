@@ -138,6 +138,125 @@ notes are public at **github.com/gsidebottom/logic**. The submitted
 instances may be used freely under the competition's standard
 terms.
 
+## Appendix: a box-constraint realization, and tractable windows
+
+The formulation of §2 is also realized, constraint for constraint, as a
+formula over *box constraints* for the repository's matrix-method solver
+(`lib/slp.jq`; the web app's *boxes* backend, `doc/box_backend_design.md`).
+A box is a compiled table constraint called by name in the formula
+language, `name(args)`, propagated to arc consistency — or, when the
+table and its negation are tiny, as the equivalent clauses. Five boxes
+suffice:
+
+- `cnt2(u1;u2;s;v1;v2)` — one step of the sequential counter,
+  v1 = u1 ∨ s, v2 = u2 ∨ (u1 ∧ s), ¬(u2 ∧ s); a chain from the constants
+  (0,0) to (1,1) over the selectors s_t,0 … s_t,n+t−1 is "exactly two
+  sources".
+- `gx(p;s;x;q)` — q = p ⊕ (s ∧ x); a chain from s_t,i through the earlier
+  steps is the AND-guarded parity
+  x_t,i = s_t,i ⊕ ⊕_{u<t} (s_t,n+u ∧ x_u,i) (step 0's value bits are its
+  input selectors).
+- `imp(a;b)` — a ⇒ b; `imp(o_f_t; x_t_i)` or `imp(o_f_t; x_t_i')` per bit
+  is the selector-guarded equality of form f with step t's value.
+- `orb(p;o1;…;o7;q)` — q = p ∨ o1 ∨ … ∨ o7; a chain ending in the
+  constant 1 is "at least one" (some step matches the form; every step
+  value nonzero).
+- `lexstep(e;g;a;b;e2;g2)` — e2 = e ∧ (a = b), g2 = g ∨ (e ∧ ¬a ∧ b); a
+  chain over the bits from n−1 down, from (1,0), then
+  `imp(s_{t+1}_{n+t}'; g)`, is the lexicographic symmetry breaking of
+  adjacent independent steps.
+
+Forms of weight 1 are dropped (an input computes them). An instance is
+`{n, forms}`; `slp(inst; k)` generates SLP(k) with symmetry breaking,
+`slp(inst; k; false)` without. The seed cells' output forms are embedded
+as data (`sun56_cell`, `cn120_cell`, `i19_cell`, `i12_cell`, read from
+the `.bits` files as `cxlb.py` reads them) together with Strassen's output
+side over GF(2) (`strassen_out`: 4 forms over 7 products);
+`slp_window(cell; [indices])` restricts a cell to the chosen forms over
+the inputs they use. The same formula serves CaDiCaL: the web app expands
+the calls into their definitions and Tseitin-encodes them, so both engines
+see the identical constraint set (for the main instances the generator's
+own CNF remains the reference).
+
+**Reading a program off a witness.** `tools/slp_program.py` runs an
+instance on either engine, reads each step's two sources from the s_t,j
+of the witness, replays the program over GF(2)^n and checks that every
+form is the value of some step (the replay verification of §3). Three
+runs — Strassen's output side needs exactly 8 additions over GF(2):
+
+```
+$ tools/slp_program.py strassen_out 8
+boxes backend: SLP(8) on strassen_out (n = 7, 4 forms of weight >= 2, 576 boxes): SAT in 0.06s
+y1 = x1 + x5    = 1000100
+y2 = x3 + x5    = 0010100
+y3 = y1 + y2    = 1010000
+y4 = x2 + y3    = 1110000
+y5 = x2 + x4    = 0101000
+y6 = x4 + y1    = 1001100
+y7 = x6 + y4    = 1110010
+y8 = x7 + y6    = 1001101
+form 1001101: y8
+form 0010100: y2
+form 0101000: y5
+form 1110010: y7
+replay: every form computed
+
+$ tools/slp_program.py strassen_out 7
+boxes backend: SLP(7) on strassen_out (n = 7, 4 forms of weight >= 2, 472 boxes): UNSAT in 0.35s
+
+$ tools/slp_program.py 'slp_window(sun56_cell; [0, 5, 7])' 8 --cadical
+CaDiCaL: SLP(8) on slp_window(sun56_cell; [0, 5, 7]) (n = 11, 3 forms of weight >= 2, 794 boxes): SAT in 0.27s
+y1 = x5 + x6    = 00001100000
+y2 = x9 + y1    = 00001100100
+y3 = x7 + x10    = 00000010010
+y4 = x3 + y3    = 00100010010
+y5 = x1 + x11    = 10000000001
+y6 = x8 + y5    = 10000001001
+y7 = x2 + y6    = 11000001001
+y8 = x4 + y7    = 11010001001
+form 00001100100: y2
+form 11010001001: y8
+form 00100010010: y4
+replay: every form computed
+```
+
+**Tractable windows.** `tools/slp_bench.py` descends k with CaDiCaL to
+each instance's minimum and times both engines at min−1, min, min+1
+under a 60-second cap (run of 2026-09-15 with the engine's minimal
+hitting-set explanations, decision heap, learned-clause minimisation and
+Glucose restarts; Apple M4 Pro, one core per solver, times as the web
+app reports them). Each cell is k = min−1 / min / min+1.
+
+| instance | n | weights | k | boxes backend | CaDiCaL |
+|---|---|---|---|---|---|
+| strassen_out | 7 | 4,2,2,4 | 7 / 8 / 9 | UNSAT 0.3 s / SAT 0.04 s / SAT 0.05 s | UNSAT 0.2 s / SAT 0.01 s / SAT 0.04 s |
+| sun56[0,3,7] | 9 | 3,3,3 | 5 / 6 / 7 | UNSAT 0.01 s / SAT 0.03 s / SAT 0.00 s | UNSAT 0.02 s / SAT 0.01 s / SAT 0.02 s |
+| sun56[0,5,7] | 11 | 3,5,3 | 7 / 8 / 9 | UNSAT 1.1 s / SAT 0.08 s / SAT 0.03 s | UNSAT 0.4 s / SAT 0.2 s / SAT 0.1 s |
+| i12[0,1,3] | 11 | 3,5,3 | 7 / 8 / 9 | UNSAT 2.0 s / SAT 7.1 s / SAT 0.1 s | UNSAT 0.3 s / SAT 0.4 s / SAT 0.2 s |
+| i19[4,6,7] | 11 | 3,5,3 | 7 / 8 / 9 | UNSAT 0.9 s / SAT 0.1 s / SAT 0.09 s | UNSAT 0.3 s / SAT 0.3 s / SAT 0.2 s |
+| cn120[0,6,8] | 9 | 5,5,3 | 7 / 8 / 9 | UNSAT 0.4 s / SAT 0.02 s / SAT 0.01 s | UNSAT 0.2 s / SAT 0.5 s / SAT 0.2 s |
+| i12[0,3,4] | 12 | 3,3,7 | 9 / 10 / 11 | > 60 s / SAT 5.8 s / SAT 5.7 s | UNSAT 10.3 s / SAT 0.4 s / SAT 0.4 s |
+| sun56[1,2,4] | 14 | 7,7,7 | 13 / 14 / 15 | > 60 s / > 60 s / > 60 s | > 60 s / SAT 15.9 s / SAT 59.1 s |
+
+Windows of three forms with n ≤ 12 and minimum ≤ 10 are decidable by
+both engines within the budget, which places them well below the seed
+cells of §3 on the hardness dial. The box engine refutes the min−1 rows
+in 0.3–2.0 s where CaDiCaL needs 0.2–0.36 s; on the satisfiable rows it
+is 2–25× faster than CaDiCaL on eight (cn120[0,6,8] at k = 8 in 0.02 s
+against 0.50 s) and 13–17× slower on three (i12[0,1,3] at k = 8 in
+7.1 s against 0.42 s); the n = 12 boundary (CaDiCaL 10 s) and the window
+of three weight-7 forms are beyond it (its k = 15 row, 23 s under the
+engine's Luby restarts where CaDiCaL takes 58 s, is not reached in 60 s
+under the default policy). The
+AND-guarded parities defeat table *propagation* exactly as they defeat
+Gaussian elimination — arc consistency on the `gx` chains forces nothing
+that unit propagation on the same clauses does not — and with the
+engine's earlier trail-order explanations the satisfiable rows were
+30–150× slower than CaDiCaL. What the tables contribute is the
+*explanation*: a minimal hitting-set reason of two or three literals
+where the trail-order one was longer, and correspondingly stronger
+learned clauses.
+
 ## Acknowledgments
 
 This work was carried out in an extended interactive collaboration

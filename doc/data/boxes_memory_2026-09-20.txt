@@ -1,0 +1,426 @@
+# Why a single solve reached 64 GB, and what was done about it (2026-09-20)
+#
+# Found the hard way: an 8-way parallel probe over the balanced study set
+# drove a 64 GB machine into swap.  `ps -o rss` showed the worst process at
+# 7.9 GB, which was wrong -- resident size drops pages the kernel has
+# compressed or swapped, and the corroborating state was 5.4 GB of swap in
+# use with 949,297 pages in the compressor and 80 M compressions.  The
+# metric that tells the truth on macOS is phys_footprint (`vmmap -summary`,
+# and what Activity Monitor shows).  `ulimit -v` does nothing here.
+
+=== 1. Where the memory goes ===
+
+# 7.5 GB md5-equivalence-checking instance, footprint sampled every 1.5 s,
+# hard-killed at 8 GB:
+#
+#   t=0.4s   11 MB      t=14.1s  4096 MB
+#   t=2.4s  727 MB      t=22.6s  6042 MB
+#   t=4.5s 1434 MB      t=32.1s  7987 MB
+#   t=6.7s 2048 MB      t=35.5s  8704 MB  -> killed
+#
+#   parsed: NEVER REACHED.  conflicts: 0.
+#
+# Dead linear at ~250 MB/s, entirely before search starts.  A clause-database
+# bound -- the fix originally proposed -- would not have helped at all.
+#
+# Search-phase baseline, cryptography-cbmc (33 MB file, 266 K vars,
+# 1.58 M clauses, solved UNSAT in 88 s over 808,883 conflicts):
+#
+#   410 MB by t=2.3s (the parse), then 410 -> 471 MB across the whole search
+#
+#   parse and setup   410 MB   (87% of peak, ~12x the CNF file size)
+#   808 K conflicts    60 MB   (13%)
+#
+# So: not a leak, and not the learned-clause database.  It is the INPUT
+# REPRESENTATION.  `parse_dimacs` builds Vec<Vec<i32>> -- a heap allocation
+# per clause, ~24 bytes for the Vec in the outer buffer plus allocator
+# metadata and 16-byte alignment on the clause's own block, against 12 bytes
+# of payload for a ternary clause -- and `Engine::from_cnf` then copies the
+# literals into its flat arena, so both representations are live at once.
+# The outer Vec's doubling is the late-parse hazard: at ~400 M clauses that
+# buffer alone is ~10 GB, and a realloc transiently needs the old one and a
+# new one twice its size.
+
+=== 2. The bound ===
+
+# `--max-memory GB` (default 60% of physical RAM; 0 disables), checked
+# during the parse every 1 M literals, against the greater of:
+#
+#   an ESTIMATE, clauses*48 + lits*8, which sees what the clause list will
+#   cost before it is committed; and
+#   a MEASUREMENT, getrusage's peak RSS, which catches what the estimate
+#   cannot model.
+#
+# Calibration on the md5 instance: at an 8 GB estimate real peak RSS was
+# 4.85 GB, so the estimate leads early in a parse and the measurement takes
+# over late.  Neither alone is enough.
+#
+# Effect on the instance that started this:
+#
+#   before   climbed past 64 GB, swapped the machine, never finished parsing
+#   after    aborts in 3.3 s at 1.2 GB peak with
+#            "input needs about 2.0 GB for the clause list after 30,340,222
+#             clauses and 69,206,016 literals, over the 2.0 GB --max-memory
+#             limit; raise it or pass --max-memory 0 to disable"
+#
+# Normal instances are untouched (c3540_k8 parses and refutes as before).
+
+=== 3. What this does NOT fix ===
+#
+# The guard makes a hopeless instance fail fast and legibly instead of
+# taking the machine down.  It does not make the instance solvable.  The
+# real fix is flat clause storage -- parse into (lits: Vec<i32>, ends:
+# Vec<u32>) and hand the engine slices, instead of a Vec per clause --
+# which would cut the input representation by roughly 3x for ternary
+# clauses and remove the doubling hazard entirely.  That is a refactor
+# across a dozen signatures in sat.rs and every stage that mutates the
+# clause list (preprocessing, xor-gauss, factoring, the cook detector), so
+# it is its own piece of work rather than a footnote to this one.
+#
+# Worth noting for the competition claims: SAT Competition enforces a hard
+# per-solve memory limit, and nothing in doc/box_candidates_satcomp.md was
+# measured under one.  On the large instances of the balanced set this
+# solver would be killed on memory before its search quality mattered.
+
+=== 4. Re-run of the balanced probe, bounded (step 3) ===
+#
+# 97 instances / 69 families, 4 workers x 4 GB, 120 s cap, with a watchdog
+# killing the job if total solver footprint crossed 20 GB.
+#
+#   solved            21  (22%)  across 18 of 69 families (26%)
+#   timeout           73
+#   memory bound       3  across 2 families
+#   verdict mismatches 0
+#
+#   total solver footprint held at ~3.2 GB; system stayed at 94% free.
+#   (The unbounded 8-way run had taken all 64 GB and swapped.)
+#
+# Two results worth keeping:
+#
+# The bounded run SOLVED MORE than the unbounded one -- 21 against 18 --
+# because the machine was not thrashing.  The earlier probe was degrading
+# its own measurements, which is a reason to bound runs even when memory
+# is not the object of study.
+#
+# And the three-way split separates two problems that the first probe
+# conflated.  Only 3 instances (3%) cannot be LOADED -- two
+# md5-equivalence-checking and one hashtable-safety.  The other 73 failures
+# are genuine: the engine loads them and cannot search them in 120 s.  So
+# the memory defect, dramatic as its symptom was, blocks a small slice of
+# the balanced set; the engine's real limitation here is search capability,
+# and fixing the parser would move 3 instances, not 73.
+#
+# The A/B set this leaves: 21 instances across 18 families, against the 22
+# instances / ~10 families (14 of them from two) that every engine A/B in
+# this repo has used.
+
+=== 5. Flattening the parser's clause list (2026-09-21) ===
+#
+# `src/cnf.rs`: a CNF as one literal array plus one array of clause ends --
+# 4 bytes per literal and 4 per clause, reserved from the `p cnf` header so
+# neither array ever reallocates.  `-b boxes` and `-b cadical` consume it
+# directly; the structural stages (hydra, cook, xor-gauss, matrix
+# preprocessing) keep their Vec<Vec<i32>> behind a lazy conversion, so no
+# other path changed.
+#
+# Correctness: conflict counts and verdicts identical to the pre-flattening
+# binary on five instances (72 / 10 / 10 / 453 / 12 conflicts) -- the clause
+# stream reaching the engine is unchanged.  427 tests pass.
+#
+# Effect, exact kernel-reported peak RSS, parse + 5 s of search, one solver
+# at a time (an earlier sampled comparison, and a first exact one whose
+# "before" arm had silently exited on a flag it predates, were both wrong):
+#
+#   instance                        file     before      after
+#   4d6e18e5 7.3M vars 40.7M cls  1288 MB   9506 MB    8924 MB   -6%
+#   a0bbdb34 180K vars 24.9M cls   594 MB   4818 MB    4831 MB   noise
+#   3a07646b 266K vars  1.6M cls    32 MB    545 MB     486 MB  -11%
+#
+# Not the 3x predicted for the clause list -- because the clause list is not
+# where the steady peak is.  The 0.58 GB saved on the 40.7M-clause instance
+# is exactly what the per-clause overhead should give (calibrated ~29 B per
+# clause = 1.18 GB, less the flat form's 0.54 GB); the remaining ~8 GB is the
+# ENGINE: per-literal watch lists and per-variable occurrence lists as
+# Vec<Vec<_>> (a 24-byte header per literal and per variable before a single
+# entry), the arena and its index, the per-variable arrays, and the
+# occurrence structures that level-0 simplification builds.
+#
+# What the parser change does buy is the spike: the doubling of an outer
+# Vec<Vec<i32>> at hundreds of millions of clauses -- old buffer and a new
+# one twice its size live at once -- is what reached 64 GB, and a flat form
+# reserved from the header cannot do it.  Verified structurally rather than
+# measured, since the only instance that shows it does not fit in any form
+# (a micro-test confirms a 1.6 GB reservation costs 1.6 MB resident until
+# written).
+#
+# Next target, now measured rather than guessed: the engine's own
+# Vec<Vec<_>> structures, ~90% of the peak on large instances, and the same
+# layout the balanced-set suite implicates in the 1.69x throughput gap.
+
+=== 6. Where the engine's memory goes (2026-09-21, BOXES_MEM_REPORT=1) ===
+#
+# Peak RSS at three points and the retained size of each structure.  The
+# parser's flat list is now a small share; this is the rest.
+#
+# 4d6e18e5, 7.3 M variables, 40.7 M clauses (1288 MB file):
+#   parsed          peak  785 MB   (the flat clause list: 782 MB)
+#   engine built    peak 4189 MB   4312 MB retained:
+#       1191 MB  watches   14.6 M inner vecs = 350 MB of headers
+#       1074 MB  arena
+#        437 MB  bins      14.6 M inner vecs = 350 MB of headers
+#        350 MB  xidx      14.6 M inner vecs, ALL EMPTY -- headers only
+#        268 MB  cstart      268 MB  clen
+#        175 MB  occ        7.3 M inner vecs, ALL EMPTY
+#        175 MB  expl_cache 7.3 M inner vecs, ALL EMPTY
+#         67 MB  deleted      58 MB  reason
+#   after init      not reached in 20 s.  The 8.9 GB peak measured in §5
+#                   is therefore INSIDE level-0 simplification.
+#
+# 3a07646b, 266 K variables, 1.58 M clauses (32 MB file):
+#   parsed          peak  26 MB    (flat list 23)
+#   engine built    peak 158 MB    155 retained: bins 40, arena 34,
+#                   watches 24, xidx 13 (empty), cstart 8, clen 8,
+#                   occ 6 (empty), expl_cache 6 (empty)
+#   after init      peak 379 MB    207 retained (elim 45, the clauses of
+#                   116 K eliminated variables) -- so ~170 MB of transient
+#                   inside simplify, more than doubling the peak.
+#
+# First free win: `xidx`, `occ` and `expl_cache` are now created only when
+# a box or an explain clause exists (`grow` keeps them in step after that).
+# On a plain CNF they were 24 bytes of empty header per literal or
+# variable -- 700 MB here, 22 GB at the 117 M variables of the instance
+# that started this.  Re-measured on 4d6e18e5:
+#
+#   engine built    peak 4189 -> 3488 MB   retained 4312 -> 3612 MB
+#
+# Search unchanged (400 tests, including the boxed-with and boxed-without
+# explain-clause paths that exercise the lazy creation).
+#
+# What remains, by size:
+#   1. simplify's transient -- the actual peak on both instances; it builds
+#      a Vec<Vec<u32>> copy of every clause plus per-literal occurrence
+#      lists, then rebuilds the store.
+#   2. headers inside watches and bins: 700 MB of 24-byte per-literal
+#      headers at 7.3 M variables -- a CSR layout, and the hot path, so
+#      last and with throughput measured.
+#   3. arena + cstart + clen: 1.6 GB, inherent to the clause set.
+
+=== 7. Level-0 simplification's transient, first cut (2026-09-21) ===
+#
+# eliminate_round copied every live clause into a Vec<Vec<u32>>, built
+# per-literal occurrence lists of usize with doubling growth, and kept the
+# whole old store -- arena, index, watches, bins -- alive until the rebuild.
+# Now: the copy is a flat pool (one literal array, start and length per
+# clause); the old store's buffers are freed as soon as the copy exists
+# (nothing in the round reads them again); the occurrence lists are u32,
+# sized exactly by a counting pass, and dropped before the rebuild; the
+# rebuild reserves the store exactly for the survivors.  Same algorithm,
+# same order, so the search is unchanged.
+#
+# Identity, on an instance that actually eliminates (cryptography-cbmc):
+#   old  1006433 clauses -> 545033, 808883 conflicts, UNSAT
+#   new  1006433 clauses -> 545033, 808883 conflicts, UNSAT      IDENTICAL
+# (The "0 variables eliminated" on the stats line is the INPROCESSING
+#  counter; preprocessing's own line reads "eliminated N variables".)
+#
+# Checkpoints through the round, 4d6e18e5 (7.3 M vars, 40.7 M clauses,
+# 268 M literals -- 6.6 per clause, not the 2.3 of the md5 instance):
+#
+#   engine built                              3488 MB
+#   elim: working copy built                  5171     (+1683: the pool)
+#   elim: old store freed                     5171
+#   elim: occurrence lists built              5171     fits in the freed store
+#   elim: passes done, lists dropped          6755     (+1584: the pool DOUBLES
+#                                                       when resolvents push past
+#                                                       its exact capacity; elim
+#                                                       retains 507)
+#   elim: store rebuilt                       7349     (+594: new store on top of
+#                                                       the still-live pool)
+#   after init                                7382     3173 retained
+#
+#   peak through init: 8.9 GB (before) -> 7.35 GB.  Init completes in 25 s,
+#   eliminating 1.88 M variables, 36.3 M -> 32.9 M clauses.
+#
+# Next two cuts, both located by the checkpoints: reserve the pool with
+# headroom up front (untouched capacity is free, a doubling copy is not),
+# and split the rebuild so the pool is dropped before the watch lists --
+# the largest part of the new store -- are allocated.
+
+=== 8. Second cut: split rebuild, exact watch lists, sized store, honest
+       checkpoints (2026-09-21) ===
+#
+# Four changes, search unchanged (verified below):
+#   - the rebuild after elimination is two halves: the clauses go into the
+#     store first, the pool is dropped, THEN the watch lists are sized by a
+#     counting pass and filled from the store (attach_watches).  Per-literal
+#     order is the same as before -- increasing clause index -- so
+#     propagation visits the same clauses in the same order.
+#   - from_cnf uses the same counting pass: every watch list allocated once
+#     at its exact size instead of doubling from 4 entries (in isolation on
+#     the big instance's lists: 1449 MB vs 1777, 1.1 s vs 2.7 s).
+#   - the store is reserved from the parsed sizes (from_cnf_sized), so
+#     arena/cstart/clen never double; the working pool is reserved at 2x
+#     (untouched capacity is free, see below).
+#   - checkpoints print the current footprint and malloc's live/freed-and-
+#     kept bytes, after malloc_zone_pressure_relief.
+#
+# Two accounting traps found on the way (reproducers: scratchpad
+# mem/charge*.rs; memory note macos-memory-accounting):
+#   - a large Vec that libmalloc doubles by vm_copy leaves the copied prefix
+#     UNCHARGED until the pages are next touched: 512 MB written +604,
+#     right after the doubling push +67, after a strided read +604.  The
+#     old binary's "engine built" 3488 MB was this: the same physical
+#     memory read 4222 once a pass had touched the pages.  Not a regression.
+#   - a freed large block stays charged until reuse or pressure: a 1.2 GB
+#     pool dropped, footprint moved 0.  Pressure relief before reading
+#     fixes the checkpoint; the peak-RSS column still carries the ghosts
+#     (reclaimable, so not pressure).
+#   - reserved, untouched capacity is free: with_capacity(1.2 GB) reads +0.
+#
+# 4d6e18e5 (7.3 M vars, 40.7 M clauses, 155 M literals -- 3.8 per clause,
+# not the 6.6 §7 inferred from a doubled capacity), old (94b26fe) and new,
+# run back to back alone on the machine, peak RSS / footprint after relief:
+#
+#                                   old 94b26fe      new
+#   parsed                           785               785
+#   engine built                    3488 (uncharged) 3609 / 3610  (2638 MB of
+#                                                                  capacity, 2629 in use)
+#   elim: working copy built        5171             4533 / 4533
+#   elim: old store freed           5171             4533 / 2839
+#   elim: occurrence lists built    5171             4533 / 3644
+#   elim: passes done, lists gone   6792             5780 / 4349  (malloc keeps 1734
+#                                                                  of freed fragments)
+#   elim: clauses rebuilt, pool gone   -             6395 / 5176
+#   elim: watch lists attached      7332 (rebuilt)   6554 / 5335  (fragments reused: 1193 left)
+#   after init                      7366             6554 / 5335
+#
+#   peak through init 7366 -> 6554 MB (-11%); footprint after init 5335,
+#   of which 2909 engine (2888 in use), 782 the parsed CNF kept for the
+#   model check, ~1200 allocator fragments.
+#
+# Identity: 14 balanced-set instances the probe solves in < 60 s (conflicts,
+# eliminated-variable counts, clause counts, verdict, exit code) and the
+# eliminating cryptography-cbmc instance (116,008 vars eliminated, 808,883
+# conflicts): all IDENTICAL to 94b26fe.  400 lib tests pass.
+#
+# What the checkpoints now point at, in order of size:
+#   - 1.7 GB of allocator fragments after the passes: the occurrence lists
+#     double as resolvents are pushed, interleaved with the eliminated
+#     clauses' small allocations, so the freed halves are stranded in
+#     partly-used regions.  A CSR occurrence structure with an ordered
+#     overflow list for resolvents would keep the passes flat.
+#   - the 1.1 GB pool and 1.0 GB occurrence lists themselves (transients).
+#   - watches/bins headers, 700 MB retained (the CSR-watch item).
+#   - elim, 507 MB retained as Vec<Vec<u32>> per eliminated variable.
+#   - the parsed CNF, 782 MB retained through the search for the model check.
+
+=== 9. Flat elimination store (2026-09-21) ===
+#
+# elim was a Vec<Vec<u32>> per eliminated variable: 9.1 M small clauses
+# behind 1.88 M variables, 507 MB, most of it 24-byte headers and
+# allocator rounding, allocated one clause at a time in the middle of the
+# passes.  Now one literal array with two levels of end offsets (variable
+# -> clauses -> literals), pushed in the same order; reconstruct walks it
+# in reverse as before.
+#
+#   elim after init, 4d6e18e5:   507 MB  ->  319 MB capacity, 259 in use
+#   footprint after init         5335    ->  5217
+#   engine structures            2909    ->  2721 capacity (2647 in use)
+#   peak RSS through init        6554    ->  6535
+#
+# Identity vs 94b26fe: 14/14 fast instances and cryptography-cbmc IDENTICAL
+# (the SAT ones exercise reconstruct through the harness's model check).
+#
+# The end-of-search report added with it did NOT print on this instance:
+# the cooperative stop is checked every 256 conflicts or decisions, and on
+# 7.3 M variables that took longer than the second between the flag and
+# the hard watchdog.  Fixed next (a check every 4096 propagated literals).
+
+=== 10. The search phase, from the end-of-search report (2026-09-21) ===
+#
+# The cooperative stop is now also checked every 4096 propagated literals,
+# and under BOXES_MEM_REPORT the hard watchdog waits a minute longer, so a
+# timeout reaches the statistics and the memory report even on 7 M
+# variables (256 decisions took longer than the old one-second grace).
+#
+# 4d6e18e5, --timeout 60: 96,038 conflicts, 22.8 M decisions, 261 M
+# propagations, 10,906 restarts, 15 reductions (18,252 learned kept):
+#
+#                       after init     end of search
+#   peak RSS               6272           8363   (+2091)
+#   footprint              5034           5986   (+952)
+#   malloc live            3660           4043   (+383)
+#   malloc freed-and-kept  1292           2042   (+750)
+#   engine capacity        2721           3039   (+318: cstart/clen doubled
+#                                                 past their exact reservation
+#                                                 on the first learned clause)
+#   engine in use          2647           2671   (+24)
+#
+# The search added 24 MB of engine data.  The two gigabytes of peak RSS are
+# compact_arena: every reduce_db allocates a fresh arena the size of the old
+# one and copies EVERY clause into it -- 15 x 561 MB here, for a learned
+# region of a few MB -- leaving the freed arena charged until reuse (s8's
+# second trap) and 750 MB more of allocator fragments.  Compacting only the
+# learned tail, in place, removes the copies and the transient.
+
+=== 11. compact_arena in place from the learned tail; store headroom (2026-09-21) ===
+#
+# compact_arena copied every clause into a fresh arena on each reduction.
+# Storage is monotone in clause index (push_clause appends, compaction
+# keeps the order), so the learned tail is now compacted in place with
+# copy_within and the originals are left alone.  And both store
+# reservations -- from the parse and the post-elimination rebuild -- now
+# carry a quarter of headroom (with_headroom): the first learned clause no
+# longer doubles arena/cstart/clen (the rebuild's exact reservation had
+# undone the parse-time headroom; a first attempt shadowed the pool's name
+# and the measurement ran on the previous binary -- caught by the absent
+# signature, memory note updated).
+#
+# 4d6e18e5, --timeout 60 (~96 K conflicts, 15 reductions), peak RSS /
+# engine capacity at the end of the search:
+#
+#   before (f2df748)                 8363 MB   3039 MB capacity (arena 1128, cstart/clen 263 each)
+#   tail-only compaction             7488      3607 (the store then doubled once)
+#   + headroom in both reservations  7282      3002 (arena 709 for 586 in use, cstart/clen 165)
+#
+#   after init -> end of search now +1180 MB of peak RSS for +50 MB of
+#   engine data; the rest is allocator fragments (freed-and-kept 1137 ->
+#   1664) and RSS ghosts.
+#
+# Identity vs 94b26fe (compaction binary): 14/14 fast instances and
+# cryptography-cbmc IDENTICAL; 400 lib tests.
+
+=== 12. Flat watch and binary lists (2026-09-21) ===
+#
+# watches and bins were a Vec per literal: 14.6 M literals x 2 lists x
+# 24-byte header, plus a malloc block each.  Now each is one arena with
+# (start, len, cap) per literal -- 12 bytes -- a list that outgrows its slot
+# moving to the end of the arena with twice the room, the holes reclaimed
+# by defrag at reduce_db when they reach a third of the arena; a bulk load
+# (from_cnf, the rebuild) lays every list out at its exact size.  Order
+# within a list is exactly a Vec's, so the search is identical.
+#
+# 4d6e18e5:                     before (87385de)    flat
+#   engine built, peak RSS         3609              3190
+#   after init: watches            837                662  (175 MB of headers)
+#               bins               389                214
+#               engine capacity   2943               2593  (2297 in use)
+#               peak RSS          6102               5919
+#   end of 60 s search: peak RSS  7282               6521
+#               conflicts in 60 s 96123              97019
+#
+# Identity vs 94b26fe: 14/14 fast instances and cryptography-cbmc IDENTICAL.
+#
+# Throughput, equal search (conflicts identical per instance, each instance
+# run under both binaries with alternating order, machine otherwise idle),
+# 18 balanced-set instances the probe solves in < 120 s, wall time B/A:
+#
+#   median 0.976, geomean 0.968, B faster on 13/18 (sign test p = 0.096);
+#   largest: subgraph-isomorphism 0.865, cryptography-cbmc 0.885,
+#   floodit 0.908; none slower than 1.054.
+#
+# So the per-literal headers were worth ~3% of throughput, not the 1.69x
+# conflict-rate gap to CaDiCaL: that gap is not the watch-list layout.
+# Attributing it needs a profile of both solvers on the same instance
+# (where propagation time goes: the deleted[ci] lookup per blocked watch,
+# lvals, the chrono level check, analysis), not another layout guess.

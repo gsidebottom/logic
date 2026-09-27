@@ -102,7 +102,7 @@ impl<S: CoverState + 'static> DualPathSearchController for BasicDualPathControll
         // Drive with the restart loop (no-op for Basic — it never
         // requests a restart — but keeps the call shape uniform
         // with Smart and CDCL).
-        run_dfs_with_restarts(&mut composite, nnf, &*uncovered)
+        run_dfs_with_restarts(&mut composite, nnf, &uncovered)
     }
 }
 

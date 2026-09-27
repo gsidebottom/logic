@@ -29,6 +29,7 @@ use crate::dual::{
 };
 use crate::matrix::Matrix;
 use crate::matrix::{Lit, NNF, PathParams, PathsClass, Var};
+use crate::cadical;
 
 const PER_CONFIG_TIMEOUT: Duration = Duration::from_secs(60);
 

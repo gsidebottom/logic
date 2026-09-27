@@ -237,6 +237,35 @@ def test_eq_w1: eq("a"; "b"; 1) == "(a_0 = b_0)";
 def test_eq_w2: eq("a"; "b"; 2) == "(a_0 = b_0) (a_1 = b_1)";
 def test_eq_w3: eq("a"; "b"; 3) == "(a_0 = b_0) (a_1 = b_1) (a_2 = b_2)";
 
+# a < b as w-bit unsigned bit-vectors: at some bit i, a_i = 0 and b_i = 1
+# while every higher bit agrees.  One summand per bit, most significant
+# first: a_{w-1}' b_{w-1} + (a_{w-1} = b_{w-1}) a_{w-2}' b_{w-2} + ….
+# Returns "0" for w=0 (nothing is less than the empty vector).
+def lt(a; b; w):
+  if w <= 0 then "0"
+  else
+    [ width(w) | . as $i |
+      prod((range($i + 1; w) | "(\(lit(a; .; true)) = \(lit(b; .; true)))"),
+           "\(lit(a; $i; false)) \(lit(b; $i; true))") ] |
+    sum(.[])
+  end
+;
+def test_lt_w0: lt("a"; "b"; 0) == "0";
+def test_lt_w1: lt("a"; "b"; 1) == "a_0' b_0";
+def test_lt_w2: lt("a"; "b"; 2) == "a_1' b_1 + (a_1 = b_1) a_0' b_0";
+def test_lt_w3: lt("a"; "b"; 3) == "a_2' b_2 + (a_2 = b_2) a_1' b_1 + (a_1 = b_1) (a_2 = b_2) a_0' b_0";
+
+# a <= b as w-bit unsigned bit-vectors: a < b or a = b.
+# Returns "1" for w=0 (the empty vectors are equal).
+def le(a; b; w):
+  if w <= 0 then "1"
+  else sum(lt(a; b; w), eq(a; b; w))
+  end
+;
+def test_le_w0: le("a"; "b"; 0) == "1";
+def test_le_w1: le("a"; "b"; 1) == "a_0' b_0 + (a_0 = b_0)";
+def test_le_w2: le("a"; "b"; 2) == "a_1' b_1 + (a_1 = b_1) a_0' b_0 + (a_0 = b_0) (a_1 = b_1)";
+
 # a + 1 = b, where a and b are w-bit unsigned bit-vectors.  No
 # extra variables; specializes `plus` to the constant 1 (b₀ = 1,
 # bᵢ = 0 for i ≥ 1) so the carry into bit i collapses from the
@@ -331,6 +360,17 @@ def test_at_most: [range(4) | vi("x";.)] | at_most(2) ==
 
 # tests
 
+
+# === boxes ===
+# eq_4(a;b) := eq(a;b;4)
+# v_eq_0_4(x) := prod(v_eq(x; 0; 4))
+# v_eq_1_4(x) := prod(v_eq(x; 1; 4))
+# plus_4(a;b;c) := plus(a; b; c; 4)
+# lt_4(a;b) := lt(a; b; 4)
+# le_4(a;b) := le(a; b; 4)
+# le_9(a;b) := le(a; b; 9) negation lt(b; a; 9)
+# plus1_4(a;b) := plus1(a; b; 4)
+# === end boxes ===
 # === tests ===
 test_x_eq_5,
 test_v_le_5_3,
@@ -352,6 +392,13 @@ test_eq_w0,
 test_eq_w1,
 test_eq_w2,
 test_eq_w3,
+test_lt_w0,
+test_lt_w1,
+test_lt_w2,
+test_lt_w3,
+test_le_w0,
+test_le_w1,
+test_le_w2,
 test_plus1_w0,
 test_plus1_w1,
 test_plus1_w2,

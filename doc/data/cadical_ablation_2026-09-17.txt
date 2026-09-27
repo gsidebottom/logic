@@ -1,0 +1,72 @@
+# CaDiCaL ablation (2026-09-17): one feature off at a time; ratio = conflicts off / default (>1 = the feature helps).
+# cadical 2.x standalone, seven instances; drove the choice of what to build in the box engine.
+
+option                        c3540_k8 c3540_k8_s1 c3540_k8_s2    c5315_k8 c5315_k8_s1 Steiner-45-     w55_178   geomean  (conflict ratio vs default; >1 = option matters)
+default                          39303       33420       45535       18250       13662      223933      641860
+--plain                          0.69x       0.81x       0.77x       0.95x       1.44x       1.16x       1.04x     0.95x
+--inprocessing=0                 1.12x       0.96x       1.75x       0.86x       1.23x       1.10x       1.01x     1.12x
+--chrono=0                       2.03x       1.06x       1.42x       0.66x       0.98x       1.10x       0.94x     1.11x
+--shrink=0                       1.00x       0.77x       0.97x       0.89x       1.13x       1.20x       0.96x     0.98x
+--subsume=0                      0.75x       1.05x       1.14x       0.86x       1.01x       1.12x       1.49x     1.04x
+--eagersubsume=0                 1.10x       1.07x       1.21x       0.75x       1.13x       1.23x       1.05x     1.06x
+--otfs=0                         1.26x       0.75x       0.70x       0.90x       1.10x       0.98x       1.02x     0.94x
+--elim=0                         0.82x       0.97x       0.94x       0.78x       1.33x       1.20x       0.99x     0.99x
+--probe=0                        0.84x       0.91x       1.01x       0.96x       1.00x       1.04x       1.00x     0.96x
+--vivify=0                       1.32x       0.78x       0.93x       0.92x       0.99x       1.22x       1.08x     1.02x
+--ternary=0                      1.05x       0.98x       1.00x       1.00x       1.00x       1.10x       1.00x     1.02x
+--decompose=0                    0.94x       0.74x       1.08x       0.81x       0.99x       1.00x       1.00x     0.93x
+--congruence=0                   1.01x       0.94x       1.05x       0.94x       1.07x       1.15x       1.00x     1.02x
+--sweep=0                        1.09x       0.97x       1.06x       0.85x       1.18x       1.02x       1.00x     1.02x
+--factor=0                       0.90x       0.64x       1.17x       0.83x       1.14x       1.33x       0.97x     0.97x
+--minimize=0                     1.43x       1.42x       0.99x       0.89x       1.33x       1.14x       1.07x     1.16x
+--stabilize=0                    0.72x       0.57x       0.68x       0.58x       0.87x       1.32x       1.17x     0.80x
+--walk=0                         0.85x       0.86x       1.10x       0.84x       1.26x       1.27x       0.98x     1.01x
+--lucky=0                        1.17x       1.34x       0.95x       0.67x       1.11x       1.07x       1.05x     1.03x
+--restart=0                      3.66x       4.26x       2.70x       1.05x       1.85x       0.89x       1.02x     1.85x
+--reduce=0                       2.26x       1.14x       2.09x       0.86x       1.26x       0.96x       0.98x     1.28x
+--score=0                        1.07x       1.05x       0.84x       0.81x       1.01x       1.24x       1.11x     1.01x
+--bumpreason=0                   0.68x       0.71x       0.49x       0.91x       1.18x       1.20x       2.02x     0.93x
+--reluctant=0                    1.12x       1.07x       0.69x       0.79x       0.91x       1.08x       1.04x     0.94x
+--transred=0                     1.22x       0.75x       1.18x       0.93x       1.01x       1.00x       1.00x     1.00x
+--backbone=0                     1.15x       1.00x       1.01x       0.98x       1.00x       1.15x       1.00x     1.04x
+--deduplicate=0                  1.16x       0.92x       0.85x       0.98x       1.02x       1.00x       1.00x     0.99x
+--warmup=0                       1.18x       0.99x       1.09x       1.00x       1.00x       0.98x       0.97x     1.03x
+--restartreusetrail=0            1.22x       1.54x       0.76x       0.97x       1.09x       1.15x       1.07x     1.09x
+--chronoreusetrail=0             2.03x       0.91x       1.42x       0.75x       1.16x       1.09x       0.94x     1.13x
+--phase=0                        0.98x       1.58x       0.83x       1.03x       1.10x       1.03x       1.18x     1.08x
+--exteagerreasons=0              1.00x       1.00x       1.00x       1.00x       1.00x       1.00x       1.00x     1.00x
+
+ranked by geomean (conflicts with the feature OFF / default):
+     1.85x  --restart=0
+     1.28x  --reduce=0
+     1.16x  --minimize=0
+     1.13x  --chronoreusetrail=0
+     1.12x  --inprocessing=0
+     1.11x  --chrono=0
+     1.09x  --restartreusetrail=0
+     1.08x  --phase=0
+     1.06x  --eagersubsume=0
+     1.04x  --backbone=0
+     1.04x  --subsume=0
+     1.03x  --lucky=0
+     1.03x  --warmup=0
+     1.02x  --vivify=0
+     1.02x  --congruence=0
+     1.02x  --sweep=0
+     1.02x  --ternary=0
+     1.01x  --walk=0
+     1.01x  --score=0
+     1.00x  --transred=0
+     1.00x  --exteagerreasons=0
+     0.99x  --elim=0
+     0.99x  --deduplicate=0
+     0.98x  --shrink=0
+     0.97x  --factor=0
+     0.96x  --probe=0
+     0.95x  --plain
+     0.94x  --reluctant=0
+     0.94x  --otfs=0
+     0.93x  --bumpreason=0
+     0.93x  --decompose=0
+     0.80x  --stabilize=0
+ABLATE EXIT

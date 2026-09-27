@@ -84,7 +84,7 @@ impl<S: CoverState + 'static> DualPathSearchController for SmartDualPathControll
         // factory we added in `controller/smart.rs`.
         let inner = SmartController::for_nnf_with_cover(nnf, Some(params), on_class);
         let mut composite = StateQueryWrapper::new(inner, state, cancel);
-        run_dfs_with_restarts(&mut composite, nnf, &*uncovered)
+        run_dfs_with_restarts(&mut composite, nnf, &uncovered)
     }
 }
 

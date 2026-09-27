@@ -28,3 +28,12 @@ The source is byte-identical to the copy in the `mrs-cadical-sys` 0.2.3
 crate, which is where it was taken from (no network needed); that crate is
 not a dependency — its shim exposes no learner callback, which the web UI
 needs.
+
+## Local modifications (2026-09-26)
+
+`src/` is no longer pristine: the native table-constraint propagator
+(`sat -b cadical --boxes … --boxes-native`) lives in it.  The complete
+diff against the import is kept next to this tree as
+`vendor/cadical-3.0.1-native-tables.patch` (8 files, ~360 lines, every
+change inert until `Solver::add_table` is called; the patch's header lists
+them).  Re-apply it with `git apply --3way` after taking a newer upstream.

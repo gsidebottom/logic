@@ -34,6 +34,6 @@ needs.
 `src/` is no longer pristine: the native table-constraint propagator
 (`sat -b cadical --boxes … --boxes-native`) lives in it.  The complete
 diff against the import is kept next to this tree as
-`vendor/cadical-3.0.1-native-tables.patch` (9 files, ~470 lines, every
+`vendor/cadical-3.0.1-native-tables.patch` (10 files, ~560 lines, every
 change inert until `Solver::add_table` is called; the patch's header lists
 them).  Re-apply it with `git apply --3way` after taking a newer upstream.

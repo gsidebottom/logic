@@ -110,7 +110,7 @@ void Internal::backtrack_without_updating_phases (int new_level) {
 
   notify_backtrack (new_level);
   if (!ttables.empty ())
-    tables_backtrack (new_level);
+    tables_backtrack (new_level, assigned);
   if (external_prop && !external_prop_is_lazy && !private_steps &&
       notified > assigned) {
     LOG ("external propagator is notified about some unassignments (trail: "

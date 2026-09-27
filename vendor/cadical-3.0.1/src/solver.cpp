@@ -859,6 +859,11 @@ int Solver::solve () {
   TRACE ("solve");
   REQUIRE_READY_STATE ();
   const int res = call_external_solve_and_check_results (false);
+  if (res == 10 && !internal->ttables.empty () && !internal->tables_satisfied (true)) {
+    fprintf (stderr, "c TABLE CHECK: a native table is violated by the model -- aborting\n");
+    fflush (stderr);
+    abort ();
+  }
   LOG_API_CALL_RETURNS ("solve", res);
   if (tracing_nb_lidrup_env_var_method)
     flush_proof_trace (true);

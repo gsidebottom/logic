@@ -420,10 +420,19 @@ void Internal::compact () {
     old.swap (ttables);
     size_t folded = 0, dropped = 0;
     for (auto &T : old) {
+      // the root rows from the values themselves (old indices: 'vals' is
+      // remapped below), independent of what the loop applied
+      T.words = T.full;
       std::vector<int> keep;
-      for (size_t li = 0; li < T.vars.size (); li++)
-        if (!val (T.vars[li]))
-          keep.push_back ((int) li);
+      for (size_t li = 0; li < T.vars.size (); li++) {
+        const signed char x = val (T.vars[li]);
+        if (!x) { keep.push_back ((int) li); continue; }
+        const uint64_t *k = &T.kill[(2 * li + (x > 0 ? 1 : 0)) * T.nwords];
+        for (int w = 0; w < T.nwords; w++) T.words[w] &= ~k[w];
+      }
+      T.limit = 0;
+      for (int w = 0; w < T.nwords; w++) if (T.words[w]) T.index[T.limit++] = w;
+      for (int w = 0, i = T.limit; w < T.nwords; w++) if (!T.words[w]) T.index[i++] = w;
       if (!T.limit) { // dead at the root: caught at its last visit, but be safe
         if (!unsat)
           learn_empty_clause ();
@@ -464,6 +473,7 @@ void Internal::compact () {
     PHASE ("compact", stats.compacts,
            "tables: %zd variable slots folded, %zd tables dropped, %zd kept",
            folded, dropped, ttables.size ());
+    tassigned = trail.size (); // the recompute above covers the (remapped) trail
   }
 
   {

@@ -301,6 +301,7 @@ void Internal::add_table (const std::vector<int> &vars,
   ttouched_flag.resize (ttables.size () + 1, 0);
   ttouched_flag[t] = 1;
   ttouched.push_back (t); // examined once before any assignment: it may force at the root
+  tassigned = trail.size (); // the fold above covers the trail so far
 }
 
 // AND the assigned literal's kill masks into the non-zero words of its
@@ -345,7 +346,20 @@ void Internal::table_assign (int lit) {
   }
 }
 
-void Internal::tables_backtrack (int new_level) {
+// Apply every trail literal not yet applied.  The trail is the source of
+// truth, not the propagate loop: probing, vivification and the other
+// inprocessors assign root units through their own propagation, past the
+// loop's pointer (an external propagator is told through its own
+// 'notified' pointer for the same reason).
+void Internal::table_sync () {
+  while (tassigned < trail.size ())
+    table_assign (trail[tassigned++]);
+}
+
+// Restore the words saved above 'new_level'; literals kept by the
+// backtrack (out of order, below the level) are re-applied from
+// 'assigned' on, as CaDiCaL re-propagates and re-notifies them.
+void Internal::tables_backtrack (int new_level, size_t assigned) {
   while (!tundo.empty () && tundo.back ().level > new_level) {
     const TUndo &u = tundo.back ();
     TTable &T = ttables[u.table];
@@ -353,6 +367,8 @@ void Internal::tables_backtrack (int new_level) {
     else { T.words[u.word] = u.old; T.stamp[u.word] = -1; }
     tundo.pop_back ();
   }
+  if (tassigned > assigned)
+    tassigned = assigned;
 }
 
 // A trail-order cover: literals of the assigned variables (trail position
@@ -525,6 +541,53 @@ void Internal::propagate_touched_tables () {
   if (tstats.on) tstats.ns_hook += tnow () - t0;
 }
 
+// Every table has a row all of whose literals hold under the current
+// assignment (a diagnostic; the model check in the driver is the gate).
+bool Internal::tables_satisfied (bool verbose) {
+  bool ok = true;
+  for (size_t t = 0; t < ttables.size (); t++) {
+    TTable &T = ttables[t];
+    // recompute the live rows from the values, independent of 'words'
+    std::vector<uint64_t> live (T.full);
+    for (size_t li = 0; li < T.vars.size (); li++) {
+      const signed char x = val (T.vars[li]);
+      if (!x) continue;
+      const uint64_t *k = &T.kill[(2 * li + (x > 0 ? 1 : 0)) * T.nwords];
+      for (int w = 0; w < T.nwords; w++) live[w] &= ~k[w];
+    }
+    bool any = false, all_assigned = true;
+    for (int w = 0; w < T.nwords; w++) if (live[w]) any = true;
+    for (size_t li = 0; li < T.vars.size (); li++) if (!val (T.vars[li])) all_assigned = false;
+    bool words_any = T.limit > 0;
+    if (any && all_assigned && words_any) continue;
+    ok = false;
+    if (!verbose) return false;
+    fprintf (stderr, "c TABLE CHECK: table %zu %s (live-from-values %s, words limit %d, %s):",
+             t, any ? "alive" : "DEAD", any ? "yes" : "no", T.limit, all_assigned ? "all assigned" : "NOT all assigned");
+    for (size_t li = 0; li < T.vars.size (); li++) {
+      const int v = T.vars[li];
+      Flags &f = flags (v);
+      fprintf (stderr, " %d=%d[%s%s%s%s%s lvl %d]", v, (int) val (v), f.active () ? "A" : "", f.fixed () ? "F" : "",
+               f.eliminated () ? "E" : "", f.substituted () ? "S" : "", f.pure () ? "P" : "", val (v) ? var (v).level : -1);
+    }
+    fprintf (stderr, "\n");
+    // which assigned literals' kills are missing from 'words'?
+    for (size_t li = 0; li < T.vars.size (); li++) {
+      const signed char x = val (T.vars[li]);
+      if (!x) continue;
+      const uint64_t *k = &T.kill[(2 * li + (x > 0 ? 1 : 0)) * T.nwords];
+      bool missing = false;
+      for (int w = 0; w < T.nwords; w++) if (T.words[w] & k[w]) missing = true;
+      if (missing) fprintf (stderr, "c TABLE CHECK:   kill of %d=%d (level %d, trail %d, reason %s) NOT applied to words\n",
+                            T.vars[li], (int) x, var (T.vars[li]).level, (int) var (T.vars[li]).trail,
+                            var (T.vars[li]).reason == external_reason ? "table" : var (T.vars[li]).reason ? "clause" : "decision/unit");
+    }
+    fprintf (stderr, "c TABLE CHECK:   trail size %zu, propagated %zu, level %d, undo entries %zu, touched %zu\n",
+             trail.size (), (size_t) propagated, level, tundo.size (), ttouched.size ());
+  }
+  return ok;
+}
+
 /*------------------------------------------------------------------------*/
 
 bool Internal::propagate () {
@@ -540,6 +603,11 @@ bool Internal::propagate () {
   //
   int64_t before = propagated;
   int64_t ticks = 0;
+
+  // Native tables: clause propagation to its fixpoint, then the trail
+  // synced into the tables and the touched ones visited; their forced
+  // literals extend the trail and the round repeats.
+  for (;;) {
 
   while (!conflict && propagated != trail.size ()) {
 
@@ -762,14 +830,20 @@ bool Internal::propagate () {
 
       ws.resize (j - ws.begin ());
     }
-    if (!conflict && !ttables.empty ()) {
-      table_assign (-lit);
-      if (propagated == trail.size () && !ttouched.empty ())
-        propagate_touched_tables ();
-      if (unsat)
-        break;
-    }
+
   }
+
+  if (conflict || unsat || ttables.empty ())
+    break;
+  table_sync ();
+  if (ttouched.empty ())
+    break;
+  propagate_touched_tables ();
+  if (conflict || unsat)
+    break;
+  if (propagated == trail.size () && ttouched.empty ())
+    break;
+  } // for (;;)
 
   if (searching_lucky_phases) {
 

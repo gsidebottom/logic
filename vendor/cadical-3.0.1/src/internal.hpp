@@ -275,6 +275,7 @@ struct Internal {
   std::vector<std::vector<std::pair<int, int>>> tocc; // per variable index: (table, local index)
   std::vector<int> treason;       // per variable index: the table that propagated it, else -1
   std::vector<TUndo> tundo;
+  size_t tassigned = 0;           // trail literals below this are applied to the tables
   std::vector<int> tclause;
   std::vector<int> ttouched;      // tables whose rows changed since their last visit
   std::vector<char> ttouched_flag;
@@ -852,10 +853,12 @@ struct Internal {
                             bool no_backtrack = false);
   void add_table (const std::vector<int> &vars, const std::vector<std::vector<int>> &rows);
   void table_assign (int lit);
-  void tables_backtrack (int new_level);
+  void table_sync ();
+  void tables_backtrack (int new_level, size_t assigned);
   void propagate_touched_tables ();
   void propagate_table (int t);
   bool table_forced (TTable &T, int li, int value);
+  bool tables_satisfied (bool verbose);
   void table_cover (int t, const uint64_t *target, size_t limit);
   Clause *install_table_clause (bool no_backtrack);
   Clause *learn_table_reason_clause (int ilit, bool no_backtrack);

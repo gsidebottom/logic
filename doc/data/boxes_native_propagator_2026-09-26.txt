@@ -234,3 +234,106 @@
 # representation; that is the table's cost, not the hook's.  v2 is level
 # with or better than v1 everywhere and is the version the wide-cone
 # experiment runs on.
+#
+# === 6. The wide-cone experiment (2026-09-27): K=12 cones on the balanced set's arithmetic instances ===
+#
+# The "76 unsolved balanced instances" are the ones OUR engine failed at
+# 120 s (doc/data/boxes_memory_2026-09-20.txt); nothing had recorded
+# CaDiCaL on them, and the kissat portfolio solves all 97 in 1-300 s.  A
+# scan with cnf2boxes' gate extractor picked the 15 whose clauses are
+# gate-structured (11 where K=12 cones absorb 75-99.9% of the clauses:
+# both prime-factoring rows, md5_48_3, ascon, bitvector 31.smt2, agile
+# bench_5078, the hwmcc10 miter, oski equivalence checking, the DIMACS
+# sorter, philips, the squ_ali counter circuit; and 4 partial ones:
+# hardware-verification k40 (9.6% absorbed, 44K gates dropped on cycles),
+# summle, bvsub, case18).  Plain CaDiCaL 3.0.1 (same binary) at 600 s,
+# 6 at a time, solves every one of the 15 (4.6-532 s), so the experiment
+# scores time, verdict-checked against the portfolio's answers.  K=12 is
+# the tool's limit (14 columns per table): the tables average 190-235
+# rows (4 words), not thousands -- cones with 12 free inputs are rare and
+# the row covers compress.  Compiling took 5 s to 16 min per instance in
+# Python; the 1.5M-clause oski and the 0.9-1.1M-clause bvsub/case18 hit
+# the 30 min cap.
+#
+# 6a. Per conflict, at an equal budget of 100K conflicts (us per conflict,
+# the same binary; plain on the full CNF, native on residual + tables;
+# "absorbed" is the share of clauses the K=12 cones took into tables;
+# forced, reasons and propagations per conflict):
+#
+# instance          absorbed  plain us/c  native us/c  ratio   tables  rows/table  forced/c  reasons/c  hook share   props/c plain -> native   learned lits plain -> native
+# md5_48_3              98.6%       40.8         36.1   0.88x    7530         191        27        0.2        15%         196 ->     70       28.6 ->  16.6
+# ascon_m2_6            99.2%      129.5        145.5   1.12x   11002         376        45        0.2         9%         557 ->    170       30.6 ->  19.3
+# agile_5078            99.5%       51.1         76.6   1.50x    3306         212       130        0.2        25%         474 ->    236       30.9 ->  26.4
+# miter_goodbakery      99.9%       70.3        114.3   1.63x    8738          46        90        0.2        21%         414 ->    440       24.4 ->  39.7
+# dimacs_sorter         83.9%       64.9        104.1   1.60x    1390          31       115        0.0        17%         653 ->    817       41.4 ->  54.3
+# card_squ_ali            93%       19.1         29.2   1.53x     268          40         8        0.0         9%         119 ->    178       26.2 ->  29.5
+# philips               80.3%       32.3         45.7   1.41x     140          61         1        0.0         5%         159 ->    197       46.4 ->  43.5
+# pyhala_unsat            78%       62.8        133.7   2.13x     855          74         8        0.0         7%         484 ->    755       49.3 ->  53.9
+# toughsat_895s           98%       39.1         54.4   1.39x     194         235         7        0.1         6%         266 ->    126       32.8 ->  31.0
+# hwverif_k40            9.6%       50.7         58.6   1.16x    1162          15        13        0.0         3%         390 ->    436       29.8 ->  22.5
+# summle                28.7%       92.1        167.3   1.82x    6972          10       162        0.0         9%         938 ->   1399       36.4 ->  34.9
+# bvsub             (53% gates)      266.9        106.4   0.40x   32623          11        82        0.2         6%        6975 ->    605       51.1 ->  91.8
+# case18            (69% gates)      196.0        197.2   1.01x   10212          18        43        0.0         2%         887 ->    901       19.0 ->  20.6
+#
+# Where the cones absorb nearly everything and the tables do all the
+# propagating, the per-conflict cost reaches parity or better: md5 0.88x
+# (2.8x fewer propagations per conflict, learned clauses 40% shorter),
+# case18 1.01x, ascon 1.12x, and bvsub 0.40x, where plain CaDiCaL spends
+# 7,000 propagations per conflict through the bit-vector subtraction
+# circuits and the tables 600.  Elsewhere the tables cost 1.2-2.1x per
+# conflict; the hook itself is 5-25% of a run, the rest is CaDiCaL doing
+# more work per conflict on the residual (pyhala, dimacs: 30-55% more
+# propagations and longer learned clauses).
+#
+# 6b. Wall clock, 600 s cap, 6 at a time, verdict-checked against the
+# portfolio (every native answer agreed; bitvector 31.smt2 and oski have
+# no cones: their compilation hit the 30 min cap):
+#
+# instance           family                 truth |                  plain |     native K=12 tables | ratio | tables: forced / conflicts / reasons
+# toughsat_895s      prime-factoring        SAT   | SATIS   152.1s  2047858 | SATIS   300.1s  3435478 |  1.97x | forced   5642546 tconf   12466 reasons   379737
+# pyhala_unsat       prime-factoring        UNSAT | UNSAT    68.1s   976129 | UNSAT   181.8s  1762346 |  2.67x | forced   2872488 tconf    5104 reasons   175203
+# md5_48_3           cryptography           SAT   | SATIS    22.0s   424498 | SATIS   175.1s  1230175 |  7.96x | forced  36356737 tconf  159841 reasons  2113116
+# ascon_m2_6         cryptography-ascon     SAT   | SATIS    29.1s   258966 |    TO   600.0s        - | 20.62x | forced 102591314 tconf  177130 reasons  7558911 (native unsolved)
+# bitvector_31       bitvector              SAT   | SATIS   195.9s  2737484 | NOCONES     0.0s        - |  0.00x |  (native unsolved)
+# agile_5078         agile                  SAT   | SATIS    91.6s  1330822 | SATIS   363.8s  2332154 |  3.97x | forced 288868447 tconf   47584 reasons   332126
+# miter_goodbakery   miter                  UNSAT | UNSAT    67.5s   694975 | UNSAT   362.4s  1607588 |  5.37x | forced 130334462 tconf   52805 reasons   750181
+# eqchk_oski         equivalence-checking   UNSAT | UNSAT   532.2s  3056799 | NOCONES     0.0s        - |  0.00x |  (native unsolved)
+# dimacs_sorter      dimacs-sorter          SAT   | SATIS    92.6s  1235455 | SATIS   351.5s  2864077 |  3.80x | forced 148975103 tconf     766 reasons   135829
+# philips            philips                UNSAT | UNSAT   138.4s  2611843 | UNSAT   158.7s  2702232 |  1.15x | forced    794675 tconf    1732 reasons    48334
+# card_squ_ali       cardinality-constraint SAT   | SATIS     4.6s   213177 | SATIS   208.5s  5360756 | 45.33x | forced   7695945 tconf     608 reasons    23197
+# hwverif_k40        hardware-verification  UNSAT | UNSAT   269.9s  3002194 | UNSAT   309.1s  3395026 |  1.15x | forced  20661676 tconf    3259 reasons    17065
+# summle             summle                 SAT   | SATIS    64.6s   741279 | SATIS    86.2s   636776 |  1.33x | forced  78472307 tconf    3419 reasons    74028
+# bvsub              bitvector              UNSAT | UNSAT    30.3s   197823 | UNSAT   248.3s  3992090 |  8.19x | forced 216041526 tconf  629456 reasons  2161418
+# case18             unknown-cases          UNSAT | UNSAT   394.4s  2082845 | UNSAT   150.6s   720148 |  0.38x | forced  41777222 tconf    6448 reasons    86730
+# native faster (<0.9x) on 1, slower (>1.1x) on 11 of 15 rows
+#
+# The wide cones found the third defect of the native path: the hwmcc10
+# miter (UNSAT) came back SAT with a model violating three tables, each
+# missing the kill of one root-fixed variable with no reason -- a unit
+# found by probing, propagated by probing's own loop past the propagate
+# loop's pointer, so the hook riding on that loop never applied it.  The
+# tables are now fed from the trail through their own pointer, as an
+# external propagator is through 'notified' (commit fc68bd8); the random
+# stress instances are too small to reach probing's units, so the
+# corpus is the gate, and Solver::solve now checks every table against a
+# model before answering.
+#
+# 6c. Verdict.  On instances where K=12 cones absorb nearly all the
+# clauses, native tables reach per-conflict parity with plain CaDiCaL
+# (md5 0.88x, ascon 1.12x, case18 1.01x, bvsub 0.40x) -- the first table
+# arm to do so -- and still lose the wall clock on 11 of 13, because the
+# search takes 1.2-20x the conflicts: pyhala 1.8x, miter 2.3x, dimacs
+# 2.3x, bvsub 20x, card 25x.  The residual plus tables is a worse
+# formula to learn from than the clauses: the cone clauses' Tseitin
+# variables, gone from the residual, were the literals the learned
+# clauses were made of (bvsub's learned clauses grow from 51 to 92
+# literals, the miter's from 24 to 40), and a table's reason is a cover
+# of its rows in trail order, not a resolution over gates.  The one win,
+# case18 (0.38x, 720K conflicts against 2.08M), is an UNSAT row where the
+# tables' propagation is level with plain's and the search happens to be
+# shorter; nothing distinguishes it in advance.  Compaction and the
+# incremental masks were worth having (the hook is 2-25% of a run, down
+# from 72% on the waerden windows, and the trajectory confound is gone),
+# and they do not change the answer: tables inside CaDiCaL do not beat
+# CaDiCaL's clauses on gate-structured instances CaDiCaL can already
+# solve, at any cone width the compiler can produce.

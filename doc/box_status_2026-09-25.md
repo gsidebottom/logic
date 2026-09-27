@@ -120,9 +120,24 @@ row loses 2–4×.  The hook is 4–28 % of a cone run and 72 % of a waerden run
 (1900 table visits per conflict at 20 ns), so a compact-table hook would
 trim it, not close it: the rest is the search doing 1.4× the propagations
 per conflict through a residual whose structure the learned clauses
-rediscover.  Small tables are clauses.  What remains open for tables is the
-one thing this corpus cannot show — a trajectory that never converges
-changed by cones on the 76 unsolved balanced instances, scored on solves.
+rediscover.  Small tables are clauses.
+
+*Follow-up (2026-09-27).*  The tables were rebuilt as reversible sparse
+bitsets with per-level undo and residues, fed from the trail through their
+own pointer (a third defect: probing's root units never reached the
+propagate-loop hook, and the hwmcc10 miter came back SAT), and compaction
+folds root-fixed variables into them; the hook is now 2–25 % of a run.  The
+"76 unsolved balanced instances" turned out to be our engine's 120 s
+timeouts: plain CaDiCaL solves all 15 gate-structured ones within 600 s.
+With K=12 cones (the compiler's limit) absorbing 78–99.9 % of their clauses,
+native tables reach per-conflict parity with plain CaDiCaL where they absorb
+nearly everything (md5 0.88×, ascon 1.12×, bvsub 0.40×) and still lose the
+wall clock on 11 of 13, because the search needs 1.2–20× the conflicts: the
+cone clauses' Tseitin variables were what the learned clauses were made of.
+One win (case18, 0.38×), nothing that predicts it.  Data in
+`doc/data/boxes_native_propagator_2026-09-26.txt` §5–6.  **The box track's
+question is answered: tables do not beat CaDiCaL's clauses on
+gate-structured instances, at any cone width the compiler can produce.**
 
 ## What to keep regardless
 

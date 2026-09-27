@@ -677,7 +677,7 @@ mod group_tests {
         assert_eq!(group_order(n, &gens), 120);
         // 5-cycle -> order 5
         let cyc: Vec<usize> = (0..n).map(|x| (x + 1) % n).collect();
-        assert_eq!(group_order(n, &[cyc.clone()]), 5);
+        assert_eq!(group_order(n, std::slice::from_ref(&cyc)), 5);
         // dihedral: 5-cycle + reflection -> 10
         let refl: Vec<usize> = (0..n).map(|x| (n - x) % n).collect();
         assert_eq!(group_order(n, &[cyc, refl]), 10);

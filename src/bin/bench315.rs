@@ -66,7 +66,7 @@ fn main() {
     // verify INV2POW
     let inv2 = {
         // 1/2 = (P+1)/2
-        (P + 1) / 2
+        P.div_ceil(2)
     };
     assert_eq!(INV2POW[1], inv2, "INV2POW[1]");
     assert_eq!(INV2POW[2], fmul(inv2, inv2), "INV2POW[2]");

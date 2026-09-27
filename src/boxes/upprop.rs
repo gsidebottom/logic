@@ -259,7 +259,7 @@ mod tests {
             }
             let nclauses = (rnd() % 4) as usize;
             let cls: Vec<Vec<i32>> = (0..nclauses).map(|_| (0..3).map(|_| { let v = (rnd() % n as u64) as i32 + 1; if rnd() % 2 == 0 { v } else { -v } }).collect()).collect();
-            let row_holds = |row: &[Lit], m: &[bool]| row.iter().all(|l| m[l.var as usize] == !l.neg);
+            let row_holds = |row: &[Lit], m: &[bool]| row.iter().all(|l| m[l.var as usize] != l.neg);
             let holds = |m: &[bool]| boxes.iter().all(|rows| rows.iter().any(|r| row_holds(r, m))) && check_model(&cls, m);
             let brute = (0..1u32 << n).any(|bits| holds(&(0..n).map(|i| bits >> i & 1 == 1).collect::<Vec<_>>()));
             let mut solver: cadical::Solver = cadical::Solver::new();
@@ -308,7 +308,7 @@ mod tests {
             }
             let nclauses = (rnd() % 4) as usize;
             let cls: Vec<Vec<i32>> = (0..nclauses).map(|_| (0..3).map(|_| { let v = (rnd() % n as u64) as i32 + 1; if rnd() % 2 == 0 { v } else { -v } }).collect()).collect();
-            let row_holds = |row: &[Lit], m: &[bool]| row.iter().all(|l| m[l.var as usize] == !l.neg);
+            let row_holds = |row: &[Lit], m: &[bool]| row.iter().all(|l| m[l.var as usize] != l.neg);
             let holds = |m: &[bool]| boxes.iter().all(|rows| rows.iter().any(|r| row_holds(r, m))) && check_model(&cls, m);
             let brute = (0..1u32 << n).any(|bits| holds(&(0..n).map(|i| bits >> i & 1 == 1).collect::<Vec<_>>()));
             let tables: Vec<TableBox> = boxes.iter().map(|rows| TableBox::new(rows.clone())).collect();

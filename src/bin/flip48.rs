@@ -31,6 +31,7 @@
 //!               to OUT/fringe_done.txt; --resume skips exactly those
 //!               (sound under work-stealing: done-set is not a prefix)
 
+#![allow(clippy::needless_range_loop, clippy::type_complexity)] // index loops mirror the scheme math; (a, b, c, adds) tuples
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -180,7 +181,7 @@ fn verify(scheme: &[Summand]) -> bool {
                     let v = t.a.nums[x] as i128 * t.b.nums[y] as i128
                         * t.c.nums[z] as i128;
                     let sh = e + 24;
-                    if sh < 0 || sh > 100 {
+                    if !(0..=100).contains(&sh) {
                         if v != 0 {
                             return false; // out of verification range
                         }
@@ -222,7 +223,7 @@ const LAMS: [(bool, i32); 6] =
 
 /// slot accessor: 0 = a, 1 = b (flips on the c slot are covered by the
 /// symmetric identities through a/b; splits cover all three via c too)
-fn fac<'s>(t: &'s Summand, slot: usize) -> &'s Vec16 {
+fn fac(t: &Summand, slot: usize) -> &Vec16 {
     match slot {
         0 => &t.a,
         1 => &t.b,
@@ -234,7 +235,7 @@ fn fac<'s>(t: &'s Summand, slot: usize) -> &'s Vec16 {
 /// (the other non-c slot or c), lambda = (neg, k).
 /// identity (shared A): Bi' = Bi + lam Bj ; Cj' = Cj - lam Ci.
 fn try_flip(
-    scheme: &mut Vec<Summand>,
+    scheme: &mut [Summand],
     i: usize,
     j: usize,
     slot: usize,
@@ -431,17 +432,15 @@ fn try_reduce(scheme: &mut Vec<Summand>, cap: i64) -> bool {
                 None
             };
             // exact-cancellation rank -2 case (ab pattern)
-            if si.a == sj.a && si.b == sj.b {
-                if let Some(c) = sj.c.add_scaled(&si.c, false, 0) {
-                    if c.is_zero() {
+            if si.a == sj.a && si.b == sj.b
+                && let Some(c) = sj.c.add_scaled(&si.c, false, 0)
+                    && c.is_zero() {
                         scheme.remove(j);
                         scheme.remove(i);
                         return true;
                     }
-                }
-            }
-            if let Some(m) = merged {
-                if m.a.max_abs() <= cap
+            if let Some(m) = merged
+                && m.a.max_abs() <= cap
                     && m.b.max_abs() <= cap
                     && m.c.max_abs() <= cap
                 {
@@ -449,7 +448,6 @@ fn try_reduce(scheme: &mut Vec<Summand>, cap: i64) -> bool {
                     scheme.remove(i);
                     return true;
                 }
-            }
         }
     }
     false
@@ -705,13 +703,12 @@ fn pursue(seed: &[Summand], cap: i64, outdir: &str) {
                             }
                         } else if rank == 48 {
                             let h = scheme_hash(&s2);
-                            if h != seed_hash && verify(&s2) && new48.insert(h) {
-                                if saved < 50 {
+                            if h != seed_hash && verify(&s2) && new48.insert(h)
+                                && saved < 50 {
                                     let p = format!("{outdir}/new48_{saved}.txt");
                                     dump(&s2, &p);
                                     saved += 1;
                                 }
-                            }
                         }
                     }
                 }
@@ -838,6 +835,7 @@ fn pursue3(seed: &[Summand], cap: i64, depth_max: u32, outdir: &str) {
 }
 
     // closure of `root` under solved flips + reduction-continuations;
+#[allow(clippy::too_many_arguments)] // search knobs, individually meaningful
 // returns closure states; records findings.
 fn closure(
     root: Vec<Summand>,
@@ -947,6 +945,7 @@ fn pursue4(seed: &[Summand], cap: i64, splits: u32, outdir: &str) {
 
     // (closure lifted to a free fn below)
 
+    #[allow(clippy::too_many_arguments)] // search knobs, individually meaningful
     // recursive split levels
     fn level(
         states: Vec<Vec<Summand>>,
@@ -1013,7 +1012,7 @@ fn pursue4(seed: &[Summand], cap: i64, splits: u32, outdir: &str) {
 
 /// export the full 1-split solved-move component as a JSON graph:
 /// full per-state metrics: (shared, coinc, copl, maxc, nearmiss)
-fn state_metrics(st: &Vec<Summand>) -> (usize, usize, usize, i64, usize) {
+fn state_metrics(st: &[Summand]) -> (usize, usize, usize, i64, usize) {
     let n = st.len();
     let mut shared = 0usize;
     let mut coinc = 0usize;
@@ -1659,7 +1658,7 @@ fn pursue5(seed: &[Summand], cap: i64, k_sample: usize, budget: u64,
             f.flush().ok();
         }
         let d = done.fetch_add(1, Ordering::Relaxed) + 1;
-        if d % 200 == 0 {
+        if d.is_multiple_of(200) {
             println!(
                 "[tick] parents {}/{}  states {}  new48 {}  sub48 {}  max-nm2 {}",
                 d,
@@ -1725,6 +1724,7 @@ fn parse_frontier(path: &str) -> Vec<Vec<Summand>> {
 /// depths.  frontier := fringe parents; each level: sample K splits
 /// per frontier state, close under solved flips, score every closure
 /// state by nearmiss, keep the global top-B; repeat to depth D.
+#[allow(clippy::too_many_arguments)] // search knobs, individually meaningful
 fn pursue6(seed: &[Summand], cap: i64, beam: usize, k_sample: usize,
            depth: u32, budget: u64, outdir: &str,
            resume: Option<&str>, start_level: u32) {
@@ -2048,7 +2048,7 @@ fn main() {
                     // exists (this is what makes Q-flips productive);
                     // fall back to a random small lambda
                     let cands = coincidence_lams(&s, i, j, slot);
-                    let targeted = !cands.is_empty() && rng.next() % 4 != 0;
+                    let targeted = !cands.is_empty() && !rng.next().is_multiple_of(4);
                     let lam = if targeted {
                         cands[rng.below(cands.len())].1
                     } else {
@@ -2091,7 +2091,7 @@ fn main() {
                     if rank == 48 {
                         let h = scheme_hash(&s);
                         let mut d = distinct48.lock().unwrap();
-                        if d.insert(h) && d.len() % 500 == 0 {
+                        if d.insert(h) && d.len().is_multiple_of(500) {
                             println!("[{:.0}s] distinct rank-48 forms: {}",
                                      t0.elapsed().as_secs_f32(), d.len());
                         }
@@ -2099,7 +2099,7 @@ fn main() {
                 }
             }
             // paranoia: verify a sample of end states
-            if rng.next() % 64 == 0 && !verify(&s) {
+            if rng.next().is_multiple_of(64) && !verify(&s) {
                 println!("WALK END VERIFY FAILED (bug!)");
             }
         }

@@ -7,8 +7,10 @@
 //!   1. Montgomery mul vs (a*b) % p on 1M randoms
 //!   2. scalar fast4-284 == scalar naive4 on 10k tiles
 //!   3. batched (Bb4) naive4/fast4 == 4x scalar on 10k tile-quads
+//!
 //! Then ns/tile for {naive4, 284} x {scalar, 4-lane}.
 #![allow(non_camel_case_types)]
+#![allow(clippy::needless_range_loop)] // index loops mirror the field math
 
 const P: u32 = 0x7800_0001; // BabyBear 2^31 - 2^27 + 1
 const P64: u64 = P as u64;
@@ -60,7 +62,7 @@ fn ctx() -> Ctx {
         inv = inv.wrapping_mul(2u32.wrapping_sub(P.wrapping_mul(inv)));
     }
     let np = inv.wrapping_neg();
-    assert_eq!(P.wrapping_mul(np), u32::MAX - 0, "np check"); // p*np ≡ -1 mod 2^32
+    assert_eq!(P.wrapping_mul(np), u32::MAX, "np check"); // p*np ≡ -1 mod 2^32
     let r2 = ((1u128 << 64) % P as u128) as u32;
     let inv2 = pow_mod(2, P64 - 2);
     let mut inv2m = [0u32; 5];
@@ -83,6 +85,7 @@ static NP_G: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
 static INV2M_G: std::sync::OnceLock<[u32; 5]> = std::sync::OnceLock::new();
 
 #[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Default)]
 struct Bb(u32);
 impl El for Bb {
     fn add(&self, o: &Self) -> Self {
@@ -110,6 +113,7 @@ impl El for Bb {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Default)]
 struct Bb4([u32; 4]);
 impl El for Bb4 {
     #[inline(always)]
@@ -228,16 +232,6 @@ fn fast4_g<T: El + Default + Copy>(mul: &dyn Fn(&T, &T) -> T, a: &[T], b: &[T]) 
     c
 }
 
-impl Default for Bb {
-    fn default() -> Self {
-        Bb(0)
-    }
-}
-impl Default for Bb4 {
-    fn default() -> Self {
-        Bb4([0; 4])
-    }
-}
 
 fn main() {
     let cx = ctx();

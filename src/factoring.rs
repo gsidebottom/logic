@@ -744,6 +744,7 @@ mod tests {
     /// A Tseitin array multiplier: partial products as AND gates, ripple
     /// rows of full adders (XOR3 + majority), outputs pinned to `n`.
     fn fresh(next: &mut i32) -> i32 { *next += 1; *next }
+    #[allow(clippy::type_complexity)] // (nvars, clauses, p bits, q bits, product bits)
     fn tseitin_multiplier(bits: usize, n: u64, pin: bool) -> (usize, Vec<Vec<i32>>, Vec<i32>, Vec<i32>, Vec<i32>) {
         let mut next = 0i32;
         let a: Vec<i32> = (0..bits).map(|_| fresh(&mut next)).collect();

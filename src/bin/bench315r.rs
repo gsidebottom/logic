@@ -4,6 +4,7 @@
 //! phases run on scalars and on (n/4)x(n/4) blocks; recursion uses
 //! rank-48 block structure down to a cutoff tile, then naive tiles.
 //! Correctness gate at every size (vs plain naive).
+#![allow(clippy::needless_range_loop)] // index loops mirror the field math
 const P: u64 = 0xFFFF_FFFF_0000_0001;
 
 #[inline(always)]
@@ -58,7 +59,7 @@ fn fneg_s(a: u64) -> u64 {
 #[allow(dead_code)]
 fn pow2c(k: i32) -> u64 {
     // 2^k mod P for k in -4..=4
-    let inv2 = (P + 1) / 2;
+    let inv2 = P.div_ceil(2);
     let mut v = 1u64;
     if k >= 0 {
         for _ in 0..k {
@@ -229,7 +230,7 @@ fn main() {
             let a = r % P;
             let b = r.rotate_left(17) % P;
             assert_eq!(fmul(a, b), fmul_slow(a, b));
-            assert_eq!(fdiv2(a), fmul_slow(a, (P + 1) / 2));
+            assert_eq!(fdiv2(a), fmul_slow(a, P.div_ceil(2)));
         }
         println!("fast reduction + fdiv2 gated against division on 1M randoms");
     }

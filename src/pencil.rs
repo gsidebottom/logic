@@ -672,9 +672,7 @@ mod tests {
                     continue;
                 }
                 let dd = pdeg(q) as usize;
-                for i in 0..dd {
-                    full[o + i] = rows[o + i];
-                }
+                full[o..o + dd].copy_from_slice(&rows[o..o + dd]);
                 o += dd;
             }
             let ident: Vec<u16> = (0..d).map(|i| 1u16 << i).collect();

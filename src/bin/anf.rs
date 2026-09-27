@@ -49,16 +49,17 @@ fn main() {
         n3: args[2].parse().unwrap(),
         r: args[3].parse().unwrap(),
     };
-    let mut cfg = SlsCfg::default();
-    cfg.max_secs = arg_val(&args, "--seconds").unwrap_or(10.0);
-    cfg.seed = arg_val(&args, "--seed").unwrap_or(1);
-    cfg.noise = arg_val(&args, "--noise").unwrap_or(0.2);
-    cfg.cb = arg_val(&args, "--cb").unwrap_or(2.5);
-    cfg.density = arg_val(&args, "--density").unwrap_or(0.25);
-    cfg.luby_unit = arg_val(&args, "--luby-unit").unwrap_or(1 << 20);
-    cfg.pert = arg_val(&args, "--pert").unwrap_or(0.06);
-    cfg.closure_every = arg_val(&args, "--closure-every").unwrap_or(0);
-    cfg.probsat = args.iter().any(|a| a == "--probsat");
+    let cfg = SlsCfg {
+        max_secs: arg_val(&args, "--seconds").unwrap_or(10.0),
+        seed: arg_val(&args, "--seed").unwrap_or(1),
+        noise: arg_val(&args, "--noise").unwrap_or(0.2),
+        cb: arg_val(&args, "--cb").unwrap_or(2.5),
+        density: arg_val(&args, "--density").unwrap_or(0.25),
+        luby_unit: arg_val(&args, "--luby-unit").unwrap_or(1 << 20),
+        pert: arg_val(&args, "--pert").unwrap_or(0.06),
+        closure_every: arg_val(&args, "--closure-every").unwrap_or(0),
+        probsat: args.iter().any(|a| a == "--probsat"),
+    };
     let threads: usize = arg_val(&args, "--threads").unwrap_or(1);
     let quiet = args.iter().any(|a| a == "--quiet");
 

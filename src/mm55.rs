@@ -224,6 +224,7 @@ mod tests {
     }
     impl Sub for Counted {
         type Output = Counted;
+        #[allow(clippy::suspicious_arithmetic_impl)] // the `+` is the operation counter
         fn sub(self, o: Counted) -> Counted {
             ADDS.with(|c| c.set(c.get() + 1));
             Counted(self.0 - o.0)
@@ -237,6 +238,7 @@ mod tests {
     }
     impl Mul for Counted {
         type Output = Counted;
+        #[allow(clippy::suspicious_arithmetic_impl)] // the `+` is the operation counter
         fn mul(self, o: Counted) -> Counted {
             MULS.with(|c| c.set(c.get() + 1));
             Counted(self.0 * o.0)

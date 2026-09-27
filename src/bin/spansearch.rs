@@ -21,6 +21,7 @@
 //! against the Brent equations from scratch.
 //!
 //!   spansearch --n 3 --r 11 [--max-t T] [--cap NODES] [--threads K]
+#![allow(clippy::needless_range_loop)] // index loops mirror the span math
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
@@ -177,7 +178,7 @@ fn orbit_reps(g: &Geo) -> Vec<(u32, u32)> {
     let idx = |a: u32, b: u32| ((a as usize) - 1) * nz + (b as usize - 1);
     let total = nz * nz;
     let mut parent: Vec<u32> = (0..total as u32).collect();
-    fn find(p: &mut Vec<u32>, mut x: u32) -> u32 {
+    fn find(p: &mut [u32], mut x: u32) -> u32 {
         while p[x as usize] != x {
             p[x as usize] = p[p[x as usize] as usize];
             x = p[x as usize];
@@ -373,6 +374,7 @@ fn main() {
                 return;
             }
             // recursive brute-force extenders v_2 < v_3 < ... (indices into `all`)
+            #[allow(clippy::too_many_arguments)] // the enumeration state, individually meaningful
             fn rec(
                 g: &Geo,
                 wbasis: &[M],

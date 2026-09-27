@@ -84,7 +84,7 @@ fn main() {
             let cfl = rc.adds + nzp - 9;
             let fl = rb.adds + cfl;
             let ex = rb.exact && rc.exact;
-            if best.map_or(true, |b| fl < b.0) {
+            if best.is_none_or(|b| fl < b.0) {
                 best = Some((fl, rb.adds, cfl, oi, ex));
             }
         }
@@ -96,7 +96,7 @@ fn main() {
             let _ = o.flush();
         }
         let d = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-        if d % 5000 == 0 {
+        if d.is_multiple_of(5000) {
             eprintln!("progress: {d}/{n_total} in {:.0}s", t0.elapsed().as_secs_f64());
         }
     });

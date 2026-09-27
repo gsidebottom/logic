@@ -20,6 +20,7 @@
 //!
 //! Run: `cargo run --release --bin gmi_mcgs`   (env: SIMS, NTE, CAP, CPUCT)
 
+#![allow(clippy::needless_range_loop)] // index loops mirror the weight tables
 use logic::gmi::{self, Pb};
 use std::collections::HashMap;
 
@@ -144,12 +145,11 @@ fn mcgs(
             let mut pick = |v: &[f64]| rng.sample(v);
             step(inputs, nvars, &added, cap, &mut pick)
         };
-        if let Some(ref pr) = proof {
-            if pr.len() < best {
+        if let Some(ref pr) = proof
+            && pr.len() < best {
                 best = pr.len();
                 best_cuts = Some(pr.clone());
             }
-        }
         let value = if term {
             let nd = dag.entry(leaf).or_default();
             nd.terminal = true;

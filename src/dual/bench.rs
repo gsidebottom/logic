@@ -139,14 +139,13 @@ fn faulty_add_at_most_nnf(jq_args: &str) -> Option<NNF> {
         let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
         for _ in 0..peek.len() { lines.next(); }
         let mut rest = lines.clone();
-        if let Some(first) = rest.next() {
-            if first.trim_end() == "# === deps ===" {
+        if let Some(first) = rest.next()
+            && first.trim_end() == "# === deps ===" {
                 lines.next();
-                while let Some(l) = lines.next() {
+                for l in lines.by_ref() {
                     if l.trim_end() == "# === end deps ===" { break; }
                 }
             }
-        }
         for l in lines { out.push_str(l); out.push('\n'); }
         out
     };
@@ -183,14 +182,13 @@ fn faulty_add_at_most_full(jq_args: &str) -> Option<(NNF, Matrix)> {
         let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
         for _ in 0..peek.len() { lines.next(); }
         let mut rest = lines.clone();
-        if let Some(first) = rest.next() {
-            if first.trim_end() == "# === deps ===" {
+        if let Some(first) = rest.next()
+            && first.trim_end() == "# === deps ===" {
                 lines.next();
-                while let Some(l) = lines.next() {
+                for l in lines.by_ref() {
                     if l.trim_end() == "# === end deps ===" { break; }
                 }
             }
-        }
         for l in lines { out.push_str(l); out.push('\n'); }
         out
     };
@@ -230,14 +228,13 @@ fn bmc_nnf(expression: &str) -> Option<NNF> {
         let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
         for _ in 0..peek.len() { lines.next(); }
         let mut rest = lines.clone();
-        if let Some(first) = rest.next() {
-            if first.trim_end() == "# === deps ===" {
+        if let Some(first) = rest.next()
+            && first.trim_end() == "# === deps ===" {
                 lines.next();
-                while let Some(l) = lines.next() {
+                for l in lines.by_ref() {
                     if l.trim_end() == "# === end deps ===" { break; }
                 }
             }
-        }
         for l in lines { out.push_str(l); out.push('\n'); }
         out
     };
@@ -271,14 +268,13 @@ fn bmc_full(expression: &str) -> Option<(NNF, Matrix)> {
         let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
         for _ in 0..peek.len() { lines.next(); }
         let mut rest = lines.clone();
-        if let Some(first) = rest.next() {
-            if first.trim_end() == "# === deps ===" {
+        if let Some(first) = rest.next()
+            && first.trim_end() == "# === deps ===" {
                 lines.next();
-                while let Some(l) = lines.next() {
+                for l in lines.by_ref() {
                     if l.trim_end() == "# === end deps ===" { break; }
                 }
             }
-        }
         for l in lines { out.push_str(l); out.push('\n'); }
         out
     };
@@ -523,15 +519,13 @@ where F: FnOnce() -> bool + Send + 'static
         match r {
             Some((is_sat, dt)) => {
                 answers.push(Some(is_sat));
-                eprintln!("{}  {:>10.3} ms   {}",
-                          "cadical                  ",
+                eprintln!("cadical                    {:>10.3} ms   {}",
                           dt.as_secs_f64() * 1000.0,
                           if is_sat { "SAT" } else { "UNSAT" });
             }
             None => {
                 answers.push(None);
-                eprintln!("{}     TIMEOUT (>{:.0}s)",
-                          "cadical                  ",
+                eprintln!("cadical                       TIMEOUT (>{:.0}s)",
                           PER_CONFIG_TIMEOUT.as_secs_f64());
             }
         }
@@ -579,13 +573,11 @@ where F: FnOnce() -> bool + Send + 'static
     }
     // Sanity: every (non-timed-out) configuration should agree.
     let mut baseline: Option<bool> = None;
-    for a in &answers {
-        if let Some(v) = a {
-            match baseline {
-                None    => baseline = Some(*v),
-                Some(b) => assert_eq!(*v, b,
-                    "configurations disagree on {}: {:?}", name, answers),
-            }
+    for v in answers.iter().flatten() {
+        match baseline {
+            None    => baseline = Some(*v),
+            Some(b) => assert_eq!(*v, b,
+                "configurations disagree on {}: {:?}", name, answers),
         }
     }
 }
@@ -729,15 +721,13 @@ where F: FnOnce() -> bool + Send + 'static
         match r {
             Some((is_sat, dt)) => {
                 answers.push(Some(is_sat));
-                eprintln!("{}  {:>10.3} ms   {}",
-                          "cadical                  ",
+                eprintln!("cadical                    {:>10.3} ms   {}",
                           dt.as_secs_f64() * 1000.0,
                           if is_sat { "SAT" } else { "UNSAT" });
             }
             None => {
                 answers.push(None);
-                eprintln!("{}     TIMEOUT (>{:.0}s)",
-                          "cadical                  ",
+                eprintln!("cadical                       TIMEOUT (>{:.0}s)",
                           PER_CONFIG_TIMEOUT.as_secs_f64());
             }
         }
@@ -771,20 +761,17 @@ where F: FnOnce() -> bool + Send + 'static
         }
     }
     let mut baseline: Option<bool> = None;
-    for a in &answers {
-        if let Some(v) = a {
-            match baseline {
-                None    => baseline = Some(*v),
-                Some(b) => assert_eq!(*v, b,
-                    "configurations disagree: {:?}", answers),
-            }
+    for v in answers.iter().flatten() {
+        match baseline {
+            None    => baseline = Some(*v),
+            Some(b) => assert_eq!(*v, b,
+                "configurations disagree: {:?}", answers),
         }
     }
-    if expect_unsat {
-        if let Some(true) = baseline {
+    if expect_unsat
+        && let Some(true) = baseline {
             panic!("formula should be UNSAT but at least one config returned SAT");
         }
-    }
 }
 
 /// `plus(a;b;c;w) ∧ a=max ∧ b=max ∧ c=2·max` for `w ∈ {3, 4, 5, 6}`.
@@ -802,14 +789,13 @@ fn bench_dual_plus_pinning_sweep() {
         let mut out = String::new();
         let mut lines = head.lines();
         let mut rest = lines.clone();
-        if let Some(first) = rest.next() {
-            if first.trim_end() == "# === deps ===" {
+        if let Some(first) = rest.next()
+            && first.trim_end() == "# === deps ===" {
                 lines.next();
-                while let Some(l) = lines.next() {
+                for l in lines.by_ref() {
                     if l.trim_end() == "# === end deps ===" { break; }
                 }
             }
-        }
         for l in lines { out.push_str(l); out.push('\n'); }
         out
     };

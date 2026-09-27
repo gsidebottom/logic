@@ -951,9 +951,7 @@ mod tests {
             (Block::Beta, 207, 414),
         ] {
             let mut bits = lb.clone();
-            for v in lo..hi {
-                bits[v] = 0; // wipe the tensor entirely
-            }
+            bits[lo..hi].fill(0); // wipe the tensor entirely
             let (ok, contra, changed) =
                 closure_tensor(d, &mut bits, &nofrz, block);
             assert_eq!(ok, 9, "{block:?}: all 9 groups must be consistent");

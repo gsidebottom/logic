@@ -2456,12 +2456,11 @@ mod tests {
         let mut saw_implied_nb = false;
         for snap in &snapshots {
             for (lit, reason, _level) in snap {
-                if lit.var == 1 && lit.neg {
-                    if let Reason::Implied(clause_id) = reason {
+                if lit.var == 1 && lit.neg
+                    && let Reason::Implied(clause_id) = reason {
                         assert_eq!(*clause_id, 0, "expected clause_id=0 (the only indexed cube)");
                         saw_implied_nb = true;
                     }
-                }
             }
         }
         assert!(saw_implied_nb,
@@ -2719,10 +2718,10 @@ mod tests {
         // Its clause_id is `initial_clauses + 0` = 3.  2WL watches its
         // single alt, so watch_clauses[c.lit_idx] should contain 3.
         let learned_id = 3;     // 3 original cubes + this is the first learned
-        let c_lit_idx  = 2 * 2 + 0;     // var=2 (c), neg=false
+        let c_lit_idx  = 2 * 2;     // var=2 (c), neg=false
         let watch_entries = &ctrl.watch_clauses[c_lit_idx];
         assert!(
-            watch_entries.iter().any(|&cid| cid == learned_id),
+            watch_entries.contains(&learned_id),
             "expected watch_clauses[{}] to contain the learned clause's id ({}); \
              got {:?}",
             c_lit_idx, learned_id, watch_entries,
@@ -3256,7 +3255,7 @@ mod tests {
         // Pushing ¬c falsifies the `c` watch; were the clause live it
         // would go unit and imply `d`.  Deleted, process_push must skip
         // it entirely — no implication, no conflict.
-        let d_idx = 3 * 2 + 0; // var=3 (d), neg=false
+        let d_idx = 3 * 2; // var=3 (d), neg=false
         let mut frame2 = PushFrame::default();
         let r = ctrl.process_push(&Lit::neg(2), 0, &mut frame2);
         assert!(r.is_ok(), "a deleted clause must not raise a conflict");

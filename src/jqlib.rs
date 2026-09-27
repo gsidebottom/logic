@@ -508,7 +508,7 @@ mod tests {
             let raw = std::fs::read_to_string(lib_dir.join(name)).unwrap();
             let (_deps, _content, tests) = split_file(&raw);
             if tests.trim().is_empty() { summary.push(format!("{name}: no tests block")); continue; }
-            let preamble = resolve_preamble(&[name.clone()], &std::collections::HashMap::new(), lib_dir)
+            let preamble = resolve_preamble(std::slice::from_ref(name), &std::collections::HashMap::new(), lib_dir)
                 .unwrap_or_else(|e| panic!("{name}: cannot resolve the library and its deps: {e}"));
             let results = run_filter(&preamble, &tests)
                 .unwrap_or_else(|e| panic!("{name}: the tests block failed to evaluate: {e}"));

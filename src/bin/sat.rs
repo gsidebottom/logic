@@ -1881,7 +1881,7 @@ fn boxes_search(nvars: usize, cnf: &Cnf, boxes_path: Option<&std::path::Path>, t
                 std::process::exit(3);
             }
             for (i, b) in checked_boxes.iter().enumerate() {
-                if !b.rows.iter().any(|r| r.iter().all(|l| m.get(l.var as usize).copied().unwrap_or(false) == !l.neg)) {
+                if !b.rows.iter().any(|r| r.iter().all(|l| m.get(l.var as usize).copied().unwrap_or(false) != l.neg)) {
                     eprintln!("c ERROR: boxes produced a model no row of box instance {} accepts — refusing to answer", i);
                     std::process::exit(3);
                 }
@@ -2091,7 +2091,7 @@ fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
                         std::process::exit(3);
                     }
                     for (i, b) in boxes.iter().enumerate() {
-                        if !b.rows.iter().any(|r| r.iter().all(|l| asgn.get(l.var as usize).copied().unwrap_or(false) == !l.neg)) {
+                        if !b.rows.iter().any(|r| r.iter().all(|l| asgn.get(l.var as usize).copied().unwrap_or(false) != l.neg)) {
                             eprintln!("c ERROR: cadical produced a model no row of box instance {} accepts — refusing to answer", i);
                             std::process::exit(3);
                         }
@@ -3742,7 +3742,7 @@ fn main() {
             // CaDiCaL), so the stage is a strict Pareto safety.
             let sb_budget = if args.timeout_secs > 0 {
                 let remain = args.timeout_secs.saturating_sub(t0.elapsed().as_secs()).max(1);
-                std::time::Duration::from_secs_f64((remain as f64 * 0.10).min(3.0).max(0.2))
+                std::time::Duration::from_secs_f64((remain as f64 * 0.10).clamp(0.2, 3.0))
             } else {
                 std::time::Duration::from_secs(3)
             };
@@ -4223,11 +4223,11 @@ fn main() {
                             verdict = Some(v.to_string());
                             println!("{}", line);
                         }
-                    } else if line.starts_with("v ") {
+                    } else if let Some(vals) = line.strip_prefix("v ") {
                         if reconstruct_model {
                             // Transformed (residual / symmetry-augmented) model:
                             // collect, reconstruct + print below over original vars.
-                            for tok in line[2..].split_whitespace() {
+                            for tok in vals.split_whitespace() {
                                 if let Ok(l) = tok.parse::<i32>()
                                     && l != 0 { vline.push(l); }
                             }
@@ -5236,7 +5236,7 @@ mod tests {
         for line in &lines {
             assert!(line.starts_with("v "),
                 "value line must start with 'v ': {:?}", line);
-            assert!(line.len() + 1 <= 4096,  // +1 for the \n
+            assert!(line.len() < 4096,  // +1 for the \n
                 "value line exceeds 4096 chars (got {}): {}", line.len() + 1, line);
         }
 

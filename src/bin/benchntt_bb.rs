@@ -4,6 +4,7 @@
 //! arithmetic; generator 31. Same gates as benchntt_g: root orders,
 //! naive-DFT cross-check, round-trip identity, polynomial product
 //! vs schoolbook. Usage: benchntt_bb [max_log2 (default 25)]
+#![allow(clippy::needless_range_loop)] // index loops mirror the NTT math
 const P: u32 = 0x7800_0001; // 2^31 - 2^27 + 1
 const P64: u64 = P as u64;
 

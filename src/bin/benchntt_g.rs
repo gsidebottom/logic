@@ -3,6 +3,7 @@
 //! root-order checks, inverse round-trip, naive-DFT cross-check at
 //! n=8, and negacyclic-free polynomial-product check at n=16 vs
 //! schoolbook convolution.
+#![allow(clippy::needless_range_loop)] // index loops mirror the NTT math
 const P: u64 = 0xFFFF_FFFF_0000_0001;
 
 #[inline(always)]

@@ -38,6 +38,7 @@
 //!
 //! Certificates (the proof DAG: side + phi per prover node, all adversary
 //! children, leaf facts) replay in matmul/r22/subgame_verify.py.
+#![allow(clippy::needless_range_loop, clippy::type_complexity)] // index loops mirror the tensor math; row/rank tuples
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -176,7 +177,7 @@ fn quotient(t0: &Tensor, u: &[V], v: &[V], x: &[V]) -> Tensor {
     Tensor { da: phi.len(), db: psi.len(), dc: chi.len(), t }
 }
 
-fn rank_u128(rows: &mut Vec<u128>) -> usize {
+fn rank_u128(rows: &mut [u128]) -> usize {
     let mut rk = 0;
     let mut col = 127i32;
     while col >= 0 && rk < rows.len() {
@@ -272,7 +273,7 @@ fn coset_bound(t: &Tensor) -> usize {
             continue;
         }
         let mut r = w;
-        while !(r <= (1usize << (r - w)) - 1) {
+        while r > (1usize << (r - w)) - 1 {
             r += 1;
         }
         best = best.max(r);
@@ -281,7 +282,7 @@ fn coset_bound(t: &Tensor) -> usize {
 }
 
 /// rank over F_2 of a wide 0/1 matrix given as rows of u64 bitsets
-fn rank_wide(rows: &mut Vec<Vec<u64>>, words: usize) -> usize {
+fn rank_wide(rows: &mut [Vec<u64>], words: usize) -> usize {
     let mut rk = 0;
     let nrows = rows.len();
     for w in (0..words).rev() {
@@ -341,7 +342,7 @@ fn koszul_side(t: &Tensor, p: usize) -> usize {
     }
     let ncols = idx_p.len() * db;
     let nrows = idx_q.len() * dc;
-    let words = (ncols + 63) / 64;
+    let words = ncols.div_ceil(64);
     let mut rows = vec![vec![0u64; words]; nrows];
     for (&sm, &si) in &idx_p {
         for i in 0..da {
@@ -365,7 +366,7 @@ fn koszul_side(t: &Tensor, p: usize) -> usize {
     }
     let rk = rank_wide(&mut rows, words);
     let denom = binom(da - 1, p);
-    (rk + denom - 1) / denom
+    rk.div_ceil(denom)
 }
 
 /// the tensor with the roles of the sides permuted so that `side` becomes A
@@ -527,7 +528,7 @@ struct GState {
 
 /// rank of a 3x3 bit matrix (9-bit row-major)
 fn rank3(m: V) -> u8 {
-    let mut rows = [(m & 7) as u16, (m >> 3 & 7) as u16, (m >> 6 & 7) as u16];
+    let mut rows = [(m & 7), (m >> 3 & 7), (m >> 6 & 7)];
     let mut rk = 0u8;
     for c in (0..3).rev() {
         if let Some(pi) = (rk as usize..3).find(|&i| rows[i] >> c & 1 == 1) {
@@ -1073,13 +1074,11 @@ impl Game {
         if self.pencil {
             best = best.max(pencil_bound(&t) as u32);
         }
-        if let Some(wt) = &self.wang {
-            if s.v.is_empty() && s.x.is_empty() {
-                if let Some(&b) = wt.get(&self.canon(&s)) {
+        if let Some(wt) = &self.wang
+            && s.v.is_empty() && s.x.is_empty()
+                && let Some(&b) = wt.get(&self.canon(&s)) {
                     best = best.max(b);
                 }
-            }
-        }
         let mut choice = 0u8;
         let mut best_phi: V = 0;
         let dims = (t.da, t.db, t.dc);
@@ -1107,7 +1106,7 @@ impl Game {
                     }
                     let cv = self.val(&GState { s: s.with(side, e), rmin: gs.rmin });
                     worst = worst.min(cv);
-                    if 1 + worst <= best {
+                    if worst < best {
                         break;
                     }
                 }
@@ -1200,6 +1199,7 @@ impl Game {
     fn get_hi(&self, s: &GState) -> u32 {
         *self.hi.lock().unwrap().get(s).unwrap_or(&u32::MAX)
     }
+    #[allow(clippy::too_many_arguments)] // the node's coordinates, individually meaningful
     fn dump_state(&self, gs: &GState, kind: &str, k: u32, lb: u32, leaf: [usize; 3], dims: (usize, usize, usize), t: &Tensor) {
         let Some(dm) = &self.dump else { return };
         let mut g = dm.lock().unwrap();
@@ -1292,8 +1292,8 @@ impl Game {
         if self.pencil && lb < k {
             lb = lb.max(pencil_bound(&t) as u32);
         }
-        if self.probe_depth > 0 && lb < k && t.da.min(t.db).min(t.dc) <= self.probe_min_dim && t.da <= 9 && t.db <= 9 && t.dc <= 9 {
-            if let Some(masks) = &self.probe_masks {
+        if self.probe_depth > 0 && lb < k && t.da.min(t.db).min(t.dc) <= self.probe_min_dim && t.da <= 9 && t.db <= 9 && t.dc <= 9
+            && let Some(masks) = &self.probe_masks {
                 let mut tt = [0u64; logic::probe::W];
                 for a in 0..t.da {
                     for b in 0..t.db {
@@ -1312,16 +1312,12 @@ impl Game {
                     lb = k;
                 }
             }
-        }
-        if lb < k {
-            if let Some(wt) = &self.wang {
-                if s.v.is_empty() && s.x.is_empty() {
-                    if let Some(&b) = wt.get(&self.canon(s)) {
+        if lb < k
+            && let Some(wt) = &self.wang
+                && s.v.is_empty() && s.x.is_empty()
+                    && let Some(&b) = wt.get(&self.canon(s)) {
                         lb = lb.max(b);
                     }
-                }
-            }
-        }
         if lb > lo {
             self.set_lo(gs, lb);
             self.record(gs, Proof { value: lb, choice: 0, phi: 0, leaf, dims });
@@ -1480,17 +1476,14 @@ impl Game {
                 let mut kids: Vec<(u32, GState)> = Vec::new();
                 for (rep, members) in reps {
                     let c = self.canon(&rep);
-                    if self.want_cert {
-                        if let Some(sym) = &self.sym {
+                    if self.want_cert
+                        && let Some(sym) = &self.sym {
                             let g_rep = self.canon_cache.lock().unwrap()[&rep].1;
                             let mut is = self.isos.lock().unwrap();
                             for (raw, t) in members {
-                                if !is.contains_key(&raw) {
-                                    is.insert(raw, (c.clone(), sym.compose(t, g_rep)));
-                                }
+                                is.entry(raw).or_insert_with(|| (c.clone(), sym.compose(t, g_rep)));
                             }
                         }
-                    }
                     let gc = GState { s: c, rmin: gs.rmin };
                     let known = self.get_lo(&gc);
                     let q = if known >= k - 1 {
@@ -1670,12 +1663,11 @@ fn certificate(g: &Game, n: usize, root: &GState, proofs: &HashMap<GState, Proof
 }
 
 fn main() {
-    if let Some(i) = std::env::args().position(|a| a == "--probe-cap") {
-        if let Some(v) = std::env::args().nth(i + 1) {
+    if let Some(i) = std::env::args().position(|a| a == "--probe-cap")
+        && let Some(v) = std::env::args().nth(i + 1) {
             // single-threaded here (before any worker starts): sound to set
             unsafe { std::env::set_var("POOL_TASK_CAP", v) };
         }
-    }
     let args: Vec<String> = std::env::args().collect();
     let get = |k: &str| args.iter().position(|a| a == k).and_then(|i| args.get(i + 1).cloned());
     let flag = |k: &str| args.iter().any(|a| a == k);
@@ -1868,8 +1860,8 @@ fn main() {
                 g.lo.lock().unwrap().len(), g.hi.lock().unwrap().len(), g.stab_cache.lock().unwrap().len()
             );
         }
-        if let Some(path) = cert {
-            if proven > 0 {
+        if let Some(path) = cert
+            && proven > 0 {
                 let proofs = g.proofs.lock().unwrap().clone();
                 let max_records: usize = get("--cert-max").and_then(|v| v.parse().ok()).unwrap_or(3_000_000);
                 if proofs.len() > max_records {
@@ -1880,7 +1872,6 @@ fn main() {
                     println!("certificate: {} ({} bytes)", path, c.len());
                 }
             }
-        }
     } else {
         let t = Instant::now();
         let value = g.val(&root);

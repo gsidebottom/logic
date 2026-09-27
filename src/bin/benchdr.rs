@@ -51,7 +51,7 @@ fn dr_dot(a: &[u64], b: &[u64]) -> u64 {
     for (&x, &y) in a.iter().zip(b) {
         let p = x as u128 * y as u128;
         slo += p as u64 as u128;
-        shi += (p >> 64) as u128;
+        shi += p >> 64;
     }
     // total = slo + 2^64 * shi  (mod p);  2^64 ≡ 2^32 − 1 (mod p)
     let r_lo = reduce128(slo);
@@ -122,7 +122,7 @@ fn main() {
         for _ in 0..16 {
             let p = xv as u128 * y as u128;
             acc_lo += p as u64 as u128;
-            acc_hi += (p >> 64) as u128;
+            acc_hi += p >> 64;
             xv ^= acc_lo as u64;
         }
         xv

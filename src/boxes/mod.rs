@@ -3184,7 +3184,7 @@ mod tests {
             }
             let nclauses = (rnd() % 4) as usize;
             let cls: Vec<Vec<i32>> = (0..nclauses).map(|_| (0..3).map(|_| { let v = (rnd() % n as u64) as i32 + 1; if rnd() % 2 == 0 { v } else { -v } }).collect()).collect();
-            let row_holds = |row: &[Lit], m: &[bool]| row.iter().all(|l| m[l.var as usize] == !l.neg);
+            let row_holds = |row: &[Lit], m: &[bool]| row.iter().all(|l| m[l.var as usize] != l.neg);
             let holds = |m: &[bool]| boxes.iter().all(|rows| rows.iter().any(|r| row_holds(r, m))) && check_model(&cls, m);
             let brute = (0..1u32 << n).any(|bits| holds(&(0..n).map(|i| bits >> i & 1 == 1).collect::<Vec<_>>()));
             let mut e = Engine::new(n, boxes.iter().map(|rows| TableBox::new(rows.clone())).collect());
@@ -3231,7 +3231,7 @@ mod tests {
                 for _ in 0..len { let v = (rnd() % n as u64) as i32 + 1; c.push(if rnd() % 2 == 0 { v } else { -v }); }
                 cls.push(c);
             }
-            let row_holds = |row: &[Lit], m: &[bool]| row.iter().all(|l| m[l.var as usize] == !l.neg);
+            let row_holds = |row: &[Lit], m: &[bool]| row.iter().all(|l| m[l.var as usize] != l.neg);
             let holds = |m: &[bool]| boxes.iter().all(|rows| rows.iter().any(|r| row_holds(r, m))) && check_model(&cls, m);
             let brute = (0..1u32 << n).any(|bits| holds(&(0..n).map(|i| bits >> i & 1 == 1).collect::<Vec<_>>()));
             let mut e = Engine::from_cnf(n, &cls);
@@ -3250,7 +3250,7 @@ mod tests {
     /// clauses, eliminated variables included.
     #[test]
     fn simplify_vs_bruteforce() {
-        let mut seed: u64 = 0x5EED_0F_E11A_1234;
+        let mut seed: u64 = 0x5E_ED0F_E11A_1234;
         let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
         let mut eliminated_total = 0u64;
         for trial in 0..300 {
@@ -3277,7 +3277,7 @@ mod tests {
                 }
                 vec![rows]
             } else { Vec::new() };
-            let row_holds = |row: &[Lit], m: &[bool]| row.iter().all(|l| m[l.var as usize] == !l.neg);
+            let row_holds = |row: &[Lit], m: &[bool]| row.iter().all(|l| m[l.var as usize] != l.neg);
             let holds = |m: &[bool]| boxes.iter().all(|rows| rows.iter().any(|r| row_holds(r, m))) && check_model(&cls, m);
             let brute = (0..1u32 << n).any(|bits| holds(&(0..n).map(|i| bits >> i & 1 == 1).collect::<Vec<_>>()));
             let mut e = Engine::from_cnf(n, &cls);
@@ -3322,7 +3322,7 @@ mod tests {
     /// the reconstructed model must still satisfy.
     #[test]
     fn subsumption_with_elimination_vs_bruteforce() {
-        let mut seed: u64 = 0xB0_5E_1234_9ABC;
+        let mut seed: u64 = 0xB05E_1234_9ABC;
         let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
         let mut subsumed_total = 0u64;
         for trial in 0..400 {
@@ -3375,7 +3375,7 @@ mod tests {
     /// (`chrono_levels = 0`), against brute force on tables and clauses.
     #[test]
     fn chrono_vs_bruteforce() {
-        let mut seed: u64 = 0xC4_0E0_BAC4_7EAC;
+        let mut seed: u64 = 0xC_40E0_BAC4_7EAC;
         let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
         let mut chrono_total = 0u64; let mut kept_total = 0u64;
         for trial in 0..500 {
@@ -3400,7 +3400,7 @@ mod tests {
                 }
                 boxes.push(rows);
             }
-            let row_holds = |row: &[Lit], mm: &[bool]| row.iter().all(|l| mm[l.var as usize] == !l.neg);
+            let row_holds = |row: &[Lit], mm: &[bool]| row.iter().all(|l| mm[l.var as usize] != l.neg);
             let holds = |mm: &[bool]| boxes.iter().all(|rows| rows.iter().any(|r| row_holds(r, mm))) && check_model(&cls, mm);
             let brute = (0..1u32 << n).any(|bits| holds(&(0..n).map(|i| bits >> i & 1 == 1).collect::<Vec<_>>()));
             let mut e = Engine::new(n, boxes.iter().map(|rows| TableBox::new(rows.clone())).collect());
@@ -3549,7 +3549,7 @@ mod tests {
     /// 3-SAT near the threshold, checked against brute force.
     #[test]
     fn deletion_keeps_answers() {
-        let mut seed: u64 = 0xC0FFEE_1234_5678;
+        let mut seed: u64 = 0xC0_FFEE_1234_5678;
         let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
         let (n, m) = (16usize, 76usize);   // ratio 4.75: mostly UNSAT, hundreds of conflicts
         let mut deletions_seen = false;
@@ -3648,8 +3648,6 @@ mod tests {
         }
     }
 
-    /// The full-adder table from doc/box_backend_design.md §1 (model polarity),
-    /// vars X=0 Y=1 C1=2 Z=3 C=4 U1=5 U2=6 U3=7.
     // ── certified refutations (§4 of the design doc; `proof.rs`) ──────
 
     /// Replay a DRAT proof: every step must be RUP over the clauses before

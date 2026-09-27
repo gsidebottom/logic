@@ -72,8 +72,10 @@ fn rank_of(vs: &[Vec<i64>]) -> usize {
             for i in 0..m.len() {
                 if i != rank && m[i][c] != 0 {
                     let (a, b) = (m[rank][c], m[i][c]);
-                    for j in 0..cols {
-                        m[i][j] = m[i][j] * a - m[rank][j] * b;
+                    let (lo, hi) = m.split_at_mut(i.max(rank));
+                    let (row_i, row_r) = if i < rank { (&mut lo[i], &hi[0]) } else { (&mut hi[0], &lo[rank]) };
+                    for (x, &y) in row_i.iter_mut().zip(row_r.iter()) {
+                        *x = *x * a - y * b;
                     }
                 }
             }
@@ -102,7 +104,7 @@ fn lower_bound(wires: &[Vec<i64>], inst: &Inst) -> i64 {
     }
     let lb2 = classes.len() as i64;
     // span deficit
-    let base = rank_of(&wires.to_vec());
+    let base = rank_of(wires);
     let mut all: Vec<Vec<i64>> = wires.to_vec();
     for t in &inst.targets {
         all.push((*t).clone());
@@ -114,6 +116,7 @@ fn lower_bound(wires: &[Vec<i64>], inst: &Inst) -> i64 {
 struct Search {
     inst: Inst,
     deadline: Instant,
+    #[allow(clippy::type_complexity)] // (rows, value)
     best: Option<(Vec<(i64, usize, i64, usize)>, i64)>,
     timed_out: bool,
 }

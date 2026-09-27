@@ -5,6 +5,7 @@
 //! control, correctness gates at every size). The El-generic 284
 //! networks (slp284g.rs) run on u32 scalars and on (n/4)x(n/4)
 //! blocks unchanged.
+#![allow(clippy::needless_range_loop)] // index loops mirror the field math
 const P: u32 = 0x7800_0001;
 const P64: u64 = P as u64;
 

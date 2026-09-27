@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)] // index loops mirror the scheme math
 // CDCL(T) prototype, stage 1: product-level exhaustive scheme search for
 // 2x2 matrix multiplication over F_2 with a residual-rank theory propagator.
 //
@@ -125,7 +126,7 @@ fn sub_bound(r: u64) -> u32 {
                     }
                 }
                 worst = worst.min(*flatten_ranks(m).iter().max().unwrap());
-                if worst + 1 <= best {
+                if worst < best {
                     break; // cannot improve best
                 }
             }
@@ -198,7 +199,7 @@ impl Search {
             return false;
         }
         self.nodes += 1;
-        if self.nodes % (1 << 22) == 0 && self.start.elapsed().as_secs_f64() > self.cap {
+        if self.nodes.is_multiple_of(1 << 22) && self.start.elapsed().as_secs_f64() > self.cap {
             self.capped = true;
             return false;
         }

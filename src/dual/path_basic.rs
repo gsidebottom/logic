@@ -222,7 +222,7 @@ mod tests {
         let outcome = ctrl.run(&nnf, SearchMode::Satisfiable,
                                pool.clone(), state, cancel);
         assert!(matches!(outcome, PathOutcome::Exhausted));
-        assert!(pool.len() > 0,
+        assert!(!pool.is_empty(),
             "expected at least one pair in the pool after exhaustive UNSAT search");
     }
 }

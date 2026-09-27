@@ -1236,9 +1236,8 @@ mod tests {
             search_target.paths(&mut ctrl);
         }
         for c in &pp_classes {
-            if let PathsClass::Uncovered(up) = c {
-                if pp_uncov.is_none() { pp_uncov = Some(up.prod_path.clone()); }
-            }
+            if let PathsClass::Uncovered(up) = c
+                && pp_uncov.is_none() { pp_uncov = Some(up.prod_path.clone()); }
         }
         let pp_sat = pp_uncov.is_some();
         assert_eq!(pp_sat, expected_sat,

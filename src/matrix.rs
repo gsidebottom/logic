@@ -2630,7 +2630,7 @@ mod tests {
     // ── paths vs paths_reference ─────────────────────────────────
 
     fn assert_paths_matches(m: &NNF) {
-        let fast = collect_paths(&m, Some(PathParams { paths_class_limit: usize::MAX, uncovered_path_limit: usize::MAX, covered_prefix_limit: usize::MAX, no_cover: false }));
+        let fast = collect_paths(m, Some(PathParams { paths_class_limit: usize::MAX, uncovered_path_limit: usize::MAX, covered_prefix_limit: usize::MAX, no_cover: false }));
         let reference = m.paths_reference();
         let fast_uncovered: Vec<&ProdPath> = fast.uncovered_paths().collect();
         let ref_uncovered: Vec<&ProdPath> = reference.uncovered_paths().collect();
@@ -3087,7 +3087,7 @@ mod tests {
         // well past f64::MAX.
         let one_prod = prod(vec![v(0), v(1)]); // 2 paths each
         let n = 2000;
-        let big = sum(std::iter::repeat(one_prod).take(n).collect());
+        let big = sum(std::iter::repeat_n(one_prod, n).collect());
         let pc = big.path_count();
         let lpc = big.log_path_count();
         // Literal path_count overflows to inf:
@@ -3351,16 +3351,15 @@ mod tests {
             let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
             for _ in 0..peek.len() { lines.next(); }
             let mut rest = lines.clone();
-            if let Some(first) = rest.next() {
-                if first.trim_end() == "# === deps ===" {
+            if let Some(first) = rest.next()
+                && first.trim_end() == "# === deps ===" {
                     // advance original iterator past the block
                     for _ in 0..peek.len() { /* already skipped */ }
                     lines.next(); // consume the deps marker
-                    while let Some(l) = lines.next() {
+                    for l in lines.by_ref() {
                         if l.trim_end() == "# === end deps ===" { break; }
                     }
                 }
-            }
             for l in lines { out.push_str(l); out.push('\n'); }
             out
         };
@@ -3534,14 +3533,13 @@ mod tests {
             let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
             for _ in 0..peek.len() { lines.next(); }
             let mut rest = lines.clone();
-            if let Some(first) = rest.next() {
-                if first.trim_end() == "# === deps ===" {
+            if let Some(first) = rest.next()
+                && first.trim_end() == "# === deps ===" {
                     lines.next();
-                    while let Some(l) = lines.next() {
+                    for l in lines.by_ref() {
                         if l.trim_end() == "# === end deps ===" { break; }
                     }
                 }
-            }
             for l in lines { out.push_str(l); out.push('\n'); }
             out
         };
@@ -3637,14 +3635,13 @@ mod tests {
             let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
             for _ in 0..peek.len() { lines.next(); }
             let mut rest = lines.clone();
-            if let Some(first) = rest.next() {
-                if first.trim_end() == "# === deps ===" {
+            if let Some(first) = rest.next()
+                && first.trim_end() == "# === deps ===" {
                     lines.next();
-                    while let Some(l) = lines.next() {
+                    for l in lines.by_ref() {
                         if l.trim_end() == "# === end deps ===" { break; }
                     }
                 }
-            }
             for l in lines { out.push_str(l); out.push('\n'); }
             out
         };
@@ -3690,14 +3687,13 @@ mod tests {
             let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
             for _ in 0..peek.len() { lines.next(); }
             let mut rest = lines.clone();
-            if let Some(first) = rest.next() {
-                if first.trim_end() == "# === deps ===" {
+            if let Some(first) = rest.next()
+                && first.trim_end() == "# === deps ===" {
                     lines.next();
-                    while let Some(l) = lines.next() {
+                    for l in lines.by_ref() {
                         if l.trim_end() == "# === end deps ===" { break; }
                     }
                 }
-            }
             for l in lines { out.push_str(l); out.push('\n'); }
             out
         };
@@ -3803,14 +3799,13 @@ mod tests {
             let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
             for _ in 0..peek.len() { lines.next(); }
             let mut rest = lines.clone();
-            if let Some(first) = rest.next() {
-                if first.trim_end() == "# === deps ===" {
+            if let Some(first) = rest.next()
+                && first.trim_end() == "# === deps ===" {
                     lines.next();
-                    while let Some(l) = lines.next() {
+                    for l in lines.by_ref() {
                         if l.trim_end() == "# === end deps ===" { break; }
                     }
                 }
-            }
             for l in lines { out.push_str(l); out.push('\n'); }
             out
         };
@@ -3886,14 +3881,13 @@ mod tests {
             let peek: Vec<&str> = lines.clone().take_while(|l| l.trim().is_empty()).collect();
             for _ in 0..peek.len() { lines.next(); }
             let mut rest = lines.clone();
-            if let Some(first) = rest.next() {
-                if first.trim_end() == "# === deps ===" {
+            if let Some(first) = rest.next()
+                && first.trim_end() == "# === deps ===" {
                     lines.next();
-                    while let Some(l) = lines.next() {
+                    for l in lines.by_ref() {
                         if l.trim_end() == "# === end deps ===" { break; }
                     }
                 }
-            }
             for l in lines { out.push_str(l); out.push('\n'); }
             out
         };

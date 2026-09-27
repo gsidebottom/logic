@@ -137,6 +137,7 @@ fn main() {
     println!("field-gated: 284-scalar, ours-scalar, ours-DELAYED all == naive on 20k random tiles");
 
     let reps = 2_000_000u64;
+    #[allow(clippy::type_complexity)]
     let mut run = |name: &str, f: &dyn Fn(&[u64; 16], &[u64; 16], &mut [u64; 16])| -> f64 {
         let mut a = [0u64; 16];
         let mut b = [0u64; 16];

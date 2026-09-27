@@ -91,15 +91,14 @@ fn main() {
             }
             let _ = o.flush();
         }
-        if let Some(s) = sc {
-            if s.online <= jackpot {
+        if let Some(s) = sc
+            && s.online <= jackpot {
                 eprintln!("JACKPOT {path}: online {} = b{}+c{} (a{} free, o{}, m{})",
                           s.online, s.b_side, s.c_side, s.free_a,
                           s.orientation, s.model);
             }
-        }
         let d = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-        if d % 2000 == 0 {
+        if d.is_multiple_of(2000) {
             eprintln!("progress: {d}/{n_total} in {:.0}s", t0.elapsed().as_secs_f64());
         }
     });

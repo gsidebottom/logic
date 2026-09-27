@@ -16,6 +16,7 @@
 //! --emit-cands writes candidate representatives (est <= cutoff) as
 //! .bits files for exact Z re-scoring in Python (matmul/sidemin.py).
 
+#![allow(clippy::needless_range_loop)] // index loops mirror the form tables
 use logic::floors::*;
 use std::time::Instant;
 

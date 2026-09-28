@@ -31,6 +31,113 @@ SCRIPTS = {
     "compress2": "balance -l; rewrite -l; refactor -l; balance -l; rewrite -l; rewrite -zl; balance -l; refactor -zl; rewrite -zl; balance -l",
 }
 
+def simplify_root(nv, clauses):
+    """Unit propagation to its fixpoint and tautology removal, before gate
+    extraction: some encodings pad binary clauses to three literals with a
+    constant-true variable (the multiplier-verification family), which
+    hides every gate from the pattern matcher.  Returns (clauses, units,
+    unsat): the simplified clauses without the units, the unit literals
+    (kept in the output), and whether the units contradict."""
+    val = {}
+    queue = [c[0] for c in clauses if len(c) == 1]
+    units = []
+    while queue:
+        l = queue.pop()
+        v = abs(l)
+        if v in val:
+            if val[v] != (l > 0): return clauses, units, True
+            continue
+        val[v] = l > 0; units.append(l)
+        # (a full occurrence list would be faster; the fixpoint below reruns instead)
+    changed = True; cur = clauses
+    while changed:
+        changed = False; out = []
+        for c in cur:
+            if len(c) == 1: continue
+            seen = set(c)
+            if any(-l in seen for l in c): continue        # tautology
+            keep = []; sat = False
+            for l in c:
+                v = abs(l)
+                if v in val:
+                    if val[v] == (l > 0): sat = True; break
+                    continue
+                keep.append(l)
+            if sat: continue
+            if not keep: return clauses, units, True         # empty clause
+            if len(keep) == 1:
+                l = keep[0]; v = abs(l)
+                if v in val and val[v] != (l > 0): return clauses, units, True
+                if v not in val: val[v] = l > 0; units.append(l); changed = True
+                continue
+            if len(keep) != len(c): changed = True
+            out.append(keep)
+        cur = out
+    return cur, units, False
+
+def extract_gates_generic(clauses, gates, max_inputs=3):
+    """Gates of any encoding: a variable o with candidate inputs In (the
+    up to 'max_inputs' variables that co-occur with it most) is a gate when
+    the clauses over {o} + In, and only those, say exactly "o = f(In)":
+    every clause is satisfied by every row of f (so none constrains the
+    inputs) and for every input assignment the clauses forbid the other
+    value of o.  Then those clauses are equivalent to the definition and
+    can be replaced by it.  Catches multiplexers, NAND/NOR, buffers and
+    the padded encodings that the fixed patterns miss.  Clauses already
+    claimed by a gate are not reused."""
+    from cnf2boxes import Gate
+    defined = {g.out for g in gates}
+    used = set()
+    for g in gates: used.update(g.clauses)
+    occ = collections.defaultdict(list)
+    for i, c in enumerate(clauses):
+        if i in used or len(c) > 4: continue
+        for l in c: occ[abs(l)].append(i)
+    found = []
+    # fewest occurrences first: a gate's output occurs in its definition
+    # and a few uses, a circuit input in thousands of clauses (the 16x16
+    # multiplier extracts to exactly its 32 inputs this way)
+    for o in sorted(occ, key=lambda v: len(occ[v])):
+        if o in defined: continue
+        idxs = [i for i in occ[o] if i not in used]
+        if not idxs: continue
+        cnt = collections.Counter(abs(l) for i in idxs for l in clauses[i] if abs(l) != o)
+        ranked = [v for v, _ in cnt.most_common(max_inputs + 2)]
+        # the inputs of o's own definition tie in count with the outputs of
+        # gates that use o: try every small subset of the best candidates,
+        # largest first, and keep the first that defines o
+        tried = set(); hit = None
+        for k in range(min(max_inputs, len(ranked)), 0, -1):
+          for In in itertools.combinations(ranked, k):
+            inset = set(In)
+            cidx = [i for i in idxs if all(abs(l) == o or abs(l) in inset for l in clauses[i])]
+            key = frozenset(cidx)
+            if not cidx or key in tried: continue
+            tried.add(key)
+            cls = [clauses[i] for i in cidx]
+            pos = {v: j for j, v in enumerate(In)}
+            table = []; ok = True
+            for bits in itertools.product([False, True], repeat=k):
+                vals = {In[j]: bits[j] for j in range(k)}
+                allowed = []
+                for ov in (False, True):
+                    vals[o] = ov
+                    if all(any((l > 0) == vals[abs(l)] for l in c) for c in cls): allowed.append(ov)
+                if len(allowed) != 1: ok = False; break
+                table.append(allowed[0])
+            if not ok: continue
+            # the rows satisfying these clauses are exactly the definition's
+            # rows, so the clauses and "o = f(In)" are the same constraint
+            hit = (list(In), cidx, table); break
+          if hit: break
+        if hit:
+            In, cidx, tbl = hit
+            # the table is in itertools.product order: the first input is the
+            # most significant bit of the row index
+            found.append(Gate("gen", o, In, cidx, (lambda vals, tbl=tbl, k=len(In): tbl[sum(int(v) << (k - 1 - j) for j, v in enumerate(vals))])))
+            defined.add(o); used.update(cidx)
+    return found
+
 def build_aig(nv, clauses, gates):
     """Keep the acyclic gates; return (residual clause indices, pis, pos, ands, lit_of)."""
     out_gate = {}
@@ -240,9 +347,25 @@ def main():
     ap.add_argument("--backend", default="tseitin", choices=["tseitin", "abc"],
                     help="CNF of the rewritten AIG: one AND at a time (tseitin) or ABC's cut-based generator (abc)")
     a = ap.parse_args()
-    nv, clauses = read_cnf(a.cnf)
+    nv, clauses0 = read_cnf(a.cnf)
+    clauses, units, unsat = simplify_root(nv, clauses0)
+    if unsat:
+        print(f"{os.path.basename(a.cnf)}: the unit clauses contradict -- writing the empty clause", flush=True)
+        if a.out: write_cnf(a.out, nv, [[]])
+        return
+    print(f"{os.path.basename(a.cnf)}: root simplification: {len(units)} units, {len(clauses0)} -> {len(clauses)} clauses", flush=True)
     gates = extract_gates(clauses)
+    # the pattern matcher orients a symmetric XOR group towards its
+    # highest-numbered variable, which is the Tseitin convention but not
+    # every encoder's (gus-md5: 65K of 67K gates on cycles); leave those
+    # groups to the generic detector, which orients towards the variable
+    # with the fewest occurrences
+    gates = [g for g in gates if g.kind not in ("xor2", "xor3")]
+    n_pattern = len(gates)
+    gates += extract_gates_generic(clauses, gates)
     residual, pis, pos, ands, lit_of, ncyclic = build_aig(nv, clauses, gates)
+    residual_units = [[l] for l in units]
+    print(f"  gates: {n_pattern} by pattern + {len(gates) - n_pattern} generic", flush=True)
     print(f"{os.path.basename(a.cnf)}: {nv} vars, {len(clauses)} clauses; {len(gates)} gates ({ncyclic} on cycles), "
           f"AIG {len(pis)} inputs, {len(pos)} outputs, {len(ands)} ands; residual {len(residual)} clauses", flush=True)
     tmp = a.keep or tempfile.mkdtemp(prefix="cnf2aig_")
@@ -256,12 +379,12 @@ def main():
     if not a.out: return
     if a.abc and not ands:
         print("nothing to rewrite (no gates): the output is the input", flush=True)
-        write_cnf(a.out, nv, [list(c) for c in clauses]); return
+        write_cnf(a.out, nv, [list(c) for c in clauses] + residual_units); return
     if not pos:
         # no gate output is mentioned outside its definition: the whole
         # circuit is dead logic, its definitions always satisfiable
         print("no observable gate output: the output is the residual", flush=True)
-        write_cnf(a.out, nv, [list(clauses[i]) for i in residual]); return
+        write_cnf(a.out, nv, [list(clauses[i]) for i in residual] + residual_units); return
     if a.abc:
         script = SCRIPTS.get(a.script, a.script)
         rewritten = os.path.join(tmp, "out.aig"); abccnf = os.path.join(tmp, "out.abc.cnf"); gia = os.path.join(tmp, "out.gia.aig")
@@ -280,6 +403,7 @@ def main():
         nv2, cls = abc_cnf_to_cnf(nv, clauses, residual, pis, pos, abccnf, g[1], g[4])
     else:
         nv2, cls = aig_to_cnf(nv, clauses, residual, pis, pos, aig)
+    cls += residual_units
     write_cnf(a.out, nv2, cls)
     print(f"-> {a.out}: {nv2} vars, {len(cls)} clauses", flush=True)
 

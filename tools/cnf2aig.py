@@ -354,19 +354,25 @@ def main():
         if a.out: write_cnf(a.out, nv, [[]])
         return
     print(f"{os.path.basename(a.cnf)}: root simplification: {len(units)} units, {len(clauses0)} -> {len(clauses)} clauses", flush=True)
-    gates = extract_gates(clauses)
-    # the pattern matcher orients a symmetric XOR group towards its
-    # highest-numbered variable, which is the Tseitin convention but not
-    # every encoder's (gus-md5: 65K of 67K gates on cycles); leave those
-    # groups to the generic detector, which orients towards the variable
-    # with the fewest occurrences
-    gates = [g for g in gates if g.kind not in ("xor2", "xor3")]
-    n_pattern = len(gates)
-    gates += extract_gates_generic(clauses, gates)
-    residual, pis, pos, ands, lit_of, ncyclic = build_aig(nv, clauses, gates)
+    # A symmetric XOR group can be oriented towards any of its variables.
+    # The pattern matcher takes the highest-numbered one (the Tseitin
+    # convention: sum-of-3-cubes, 1K of 113K gates on cycles that way, 82K
+    # of 82K the other), the generic detector the least-used one (right for
+    # other encoders); the wrong choice puts most gates on cycles, so both
+    # are tried and the orientation with fewer cyclic gates kept.
+    pattern = extract_gates(clauses)
+    variants = []
+    for name, base in (("highest-variable", pattern), ("fewest-occurrences", [g for g in pattern if g.kind not in ("xor2", "xor3")])):
+        gs = base + extract_gates_generic(clauses, base)
+        built = build_aig(nv, clauses, gs)
+        variants.append((built[5], name, len(base), len(gs), built))
+        print(f"  orientation {name}: {len(base)} by pattern + {len(gs) - len(base)} generic, {built[5]} on cycles", flush=True)
+    variants.sort(key=lambda t: t[0])
+    ncyclic, name, n_pattern, n_gates, built = variants[0]
+    residual, pis, pos, ands, lit_of, ncyclic = built
     residual_units = [[l] for l in units]
-    print(f"  gates: {n_pattern} by pattern + {len(gates) - n_pattern} generic", flush=True)
-    print(f"{os.path.basename(a.cnf)}: {nv} vars, {len(clauses)} clauses; {len(gates)} gates ({ncyclic} on cycles), "
+    print(f"  orientation kept: {name}", flush=True)
+    print(f"{os.path.basename(a.cnf)}: {nv} vars, {len(clauses)} clauses; {n_gates} gates ({ncyclic} on cycles), "
           f"AIG {len(pis)} inputs, {len(pos)} outputs, {len(ands)} ands; residual {len(residual)} clauses", flush=True)
     tmp = a.keep or tempfile.mkdtemp(prefix="cnf2aig_")
     os.makedirs(tmp, exist_ok=True)

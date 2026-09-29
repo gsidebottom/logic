@@ -132,3 +132,132 @@
 # What would settle its worth is the same protocol on the full circuit
 # classes of the competition set (290 instances), with the re-encoding
 # alone and with fraig, scored on solves at the competition cap.
+#
+# ======================================================================
+# 2026-09-28: the unsolved instances, a native bridge, a proof-carrying re-encoding
+# ======================================================================
+#
+# === 5. Which circuits are unsolved at 5000 s ===
+#
+# The "290 circuit instances" of the September scan are a structural
+# class (>= 80% of clauses in gate definitions, two instances per family
+# scanned), not a competition family.  Against the three 5000 s records
+# on the 2026 main track -- satsuma (satsuma-iter symmetry breaking with
+# kissat, the 2026 winner), hydra (our structure stages with CaDiCaL) and
+# hydra_satsuma -- the class is essentially solved: hardware-model-
+# checking 12/12, equivalence-checking 15/15, md5-equivalence 13/13,
+# multiplier-equivalence-checking 12/12, belpyramid 28/28, bitvector 3/3,
+# hardware-verification 3/3; one timeout, the multiplier miter.  But a
+# gate scan of all 66 timeouts found circuits the class had missed
+# because their families do not say so: multiplier-verification (6 of 6
+# unsolved: every clause a gate relation, in an encoding the pattern
+# matcher did not know), sum-of-3-cubes (3 of 3: adders), gus-md5 x2,
+# slp-synthesis-aes, the sncf railway BMC, the safe-50 planning circuit.
+# All three recorded pipelines time out on all 15 of these.
+#
+# === 6. Reading the multiplier-verification encoding: a generic gate detector ===
+#
+# gm16spwtrc et al. pad every binary clause to three literals with a
+# constant-true variable and write their multiplexers as the full
+# six-clause relation over three scopes, plus tautological fillers.  Root
+# unit propagation and tautology removal expose the binaries; a generic
+# detector then takes a candidate output o and small subsets of its most
+# co-occurring variables and accepts the clauses over that scope as a
+# definition exactly when, by truth table, every input row leaves one
+# value of o and no clause constrains the inputs -- an equivalence
+# whatever the encoding (multiplexers, NAND/NOR, buffers).  Symmetric XOR
+# groups can be oriented towards any variable; the highest-numbered one
+# (Tseitin's convention) and the least-used one suit different encoders,
+# so both are tried and the orientation keeping the most acyclic gates is
+# used.  gm16spwtrc: 320,194 gates over exactly its 32 inputs, 2.4K
+# residual clauses.  gus-md5's XOR chains cycle under every rule tried
+# and stay in the residual, soundly.  Two defects the brute-force
+# self-test caught on the way: the truth table filled first-input-most-
+# significant and read the other way round (wrong for every asymmetric
+# function, invisible on XOR and majority), and an unsound run that had
+# to be killed and redone.  Self-tests on arbitrary random CNFs and padded
+# circuits of twelve gate types, both back-ends: 4,173 + 3,588 checks, 0
+# failures.
+#
+# === 7. A native bridge (src/bin/cnf2aig.rs) ===
+#
+# The Rust port of tools/cnf2aig.py: byte-level DIMACS parsing, a linear
+# root simplifier (occurrence lists and a unit queue; two defects the
+# self-test caught: repeated literals in a clause, and a clause whose last
+# literal is already true but still queued), the same extraction,
+# orientation choice, structural hashing while building the AIG, binary
+# AIGER, ABC's cut-based CNF back.  Gate for gate the Python tool's
+# result on toughsat and card_squ_ali, more on philips.  gm16spwtrc
+# extracts in 2.9 s (Python 93 s), gm32spctlf in 25 s (658 s) at 4.4 GB,
+# the sncf BMC in 62 s (1376 s).  Self-test 2,372 checks, 0 failures.
+#
+# === 8. A proof-carrying re-encoding (cnf2aig --recode/--proof) ===
+#
+# ABC emits no DRAT, so an UNSAT through its rewriting cannot be checked
+# against the original formula.  The native tool has a mode that needs
+# no ABC: root simplification, gate-level structural hashing with the
+# merged outputs substituted away, dead-cone removal -- and every output
+# clause is an original clause or a RUP lemma over the original
+# variables.  Its DRAT prefix derives the shortened clauses and units,
+# each merge equivalence (directly for AND gates; through a resolution
+# tree over the gate's inputs for table gates, 2^(k+1)-1 lemmas, k <= 3),
+# the substituted clauses, and deletes what is replaced; the prefix
+# followed by a solver's proof of the re-encoded formula refutes the
+# original.  Self-test: random CNFs and circuits with duplicated gates,
+# brute force on the input, CaDiCaL on the output, drat-trim on prefix +
+# proof against the original for every UNSAT, model extension for every
+# SAT: 982 checks, 186 proofs verified, 796 models extended, 0 failures;
+# philips end to end (138 s plain): VERIFIED.
+#
+# === 9. The proof-carrying re-encoding on the corpus, and a clause-order control ===
+#
+# The re-encoding (hashing + dead cones, no ABC) on the 15 instances,
+# 600 s cap, against plain CaDiCaL on the original (its time charged;
+# merged = gates substituted away, dead = cones dropped):
+#
+# == recode (hashing + dead cones, proof-carrying) vs plain, 600 s ==
+# toughsat_895s      SAT   | plain  152.1s  2047858 | recode   SAT   92.3s + 0.2s  1565804  0.61x ok | merged 0 dead 0 clauses 10745 -> 10452 lemmas 294
+# pyhala_unsat       UNSAT | plain   68.1s   976129 | recode UNSAT   65.7s + 0.2s  1005976  0.97x ok | merged 37 dead 0 clauses 31795 -> 31272 lemmas 898
+# md5_48_3           SAT   | plain   22.0s   424498 | recode   SAT  104.7s + 0.5s  1673930  4.78x ok | merged 242 dead 0 clauses 279258 -> 243491 lemmas 28100
+# ascon_m2_6         SAT   | plain   29.1s   258966 | recode   SAT   30.9s + 0.9s   253013  1.09x ok | merged 53 dead 1058 clauses 373656 -> 367413 lemmas 3853
+# bitvector_31       SAT   | plain  195.9s  2737484 | recode   SAT   64.8s + 0.4s  1590104  0.33x ok | merged 0 dead 88 clauses 270930 -> 270582 lemmas 85
+# agile_5078         SAT   | plain   91.6s  1330822 | recode   SAT  119.6s + 0.1s  1832876  1.31x ok | merged 4602 dead 16 clauses 103124 -> 77949 lemmas 80282
+# miter_goodbakery   UNSAT | plain   67.5s   694975 | recode UNSAT   54.2s + 0.4s   674415  0.81x ok | merged 0 dead 0 clauses 296405 -> 296403 lemmas 3
+# eqchk_oski         UNSAT | plain  532.2s  3056799 | recode UNSAT  266.6s + 2.9s  2232290  0.51x ok | merged 58368 dead 0 clauses 1550275 -> 1331766 lemmas 356143
+# dimacs_sorter      SAT   | plain   92.6s  1235455 | recode   SAT  456.5s + 0.0s  6271964  4.93x ok | merged 142 dead 844 clauses 28853 -> 25862 lemmas 978
+# philips            UNSAT | plain  138.4s  2611843 | recode UNSAT  124.8s + 0.0s  2792482  0.90x ok | merged 134 dead 0 clauses 4456 -> 4050 lemmas 935
+# card_squ_ali       SAT   | plain    4.6s   213177 | recode   SAT  117.5s + 0.0s  4167295 25.55x ok | merged 0 dead 0 clauses 5262 -> 5262 lemmas 0
+# hwverif_k40        UNSAT | plain  269.9s  3002194 | recode UNSAT  242.1s + 0.2s  3119488  0.90x ok | merged 96 dead 200 clauses 261916 -> 206819 lemmas 20595
+# summle             SAT   | plain   64.6s   741279 | recode   SAT   10.5s + 0.5s   149265  0.17x ok | merged 13896 dead 3076 clauses 234322 -> 181434 lemmas 119526
+# bvsub              UNSAT | plain   30.3s   197823 | recode UNSAT   11.1s + 1.4s   230207  0.41x ok | merged 1 dead 6 clauses 901810 -> 901775 lemmas 377519
+# case18             UNSAT | plain  394.4s  2082845 | recode UNSAT  159.5s + 2.3s   907381  0.41x ok | merged 1722 dead 0 clauses 1089830 -> 1085363 lemmas 11598
+#
+# On the seven unsatisfiable rows that is 0.41-0.97x, geometric mean
+# 0.66x -- the same figure as ABC's plain re-encoding (0.64x) with a
+# proof that checks.  But two rows changed nothing and still moved:
+# card_squ_ali (satisfiable) got its own 5,262 clauses back in a
+# different order and went from 4.6 s to 117 s; bvsub with one gate
+# merged went from 30 s to 12 s.  So plain CaDiCaL was run on three
+# random clause orders of each unsatisfiable original:
+#
+# instance          original |     three shuffles (s) | re-encoded | against the shuffles
+# pyhala_unsat          68.1 |    66.9   73.2   67.2 |       65.9 | ties the best
+# miter_goodbakery      67.5 |    58.2   52.0   50.1 |       54.6 | inside the band
+# eqchk_oski           532.2 |   401.7  441.8  273.8 |      269.5 | ties the best
+# philips              138.4 |   107.7  110.3  119.6 |      124.8 | slower than all three
+# hwverif_k40          269.9 |   293.1  265.5  228.7 |      242.3 | inside the band
+# bvsub                 30.3 |    19.7   28.1   13.2 |       12.5 | ties the best
+# case18               394.4 |   459.8  256.9  231.3 |      161.8 | 0.70x of the best
+#
+# Clause order alone moves these runs 1.1x (pyhala) to 2x (oski, bvsub,
+# case18), and the original file order is often a bad one.  Against the
+# best of three shuffles the re-encoding is a clear win only on case18
+# (1,722 merges), a tie on pyhala, oski and bvsub, and a loss on philips;
+# the honest geometric mean of re-encoded over best-shuffle is ~0.9x.
+# The same control applies to yesterday's "0.64x" for ABC's plain
+# re-encoding, which was measured against the original order too: most
+# of that was escaping the file order, not the re-encoding.  The single
+# SAT-row swings (summle 0.17x, bitvector 0.33x, card 26x, dimacs 4.9x)
+# are order effects entirely.  Protocol from here: every arm against the
+# median of shuffled originals, or the memory note about variance-
+# controlled runs applies in full.

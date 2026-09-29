@@ -203,6 +203,13 @@
 # blocks that cover several gates; ours is a gate per variable.  That, not
 # the rewriting, is what is left to gain.
 #
+# The two multipliers that dc2; fraig; dc2 solved near the limit, again, on
+# a machine with 6 to 9 jobs: --factor, then --sweep (125 s and 341 s),
+# then CaDiCaL 3.0.1 at 5000 s: both time out.  With 1.7-1.9 times ABC's
+# seconds per conflict the 3,660 s and 3,302 s of 2026-09-28 do not fit.
+# The native route solves one of the three instances that ABC's route
+# solves.
+#
 # The sweep on the other circuits that the 2026 main track leaves unsolved
 # (--seconds 300; in a window: no whole cone was needed):
 #                                   gates     merged  constant  refuted  clauses                  seconds

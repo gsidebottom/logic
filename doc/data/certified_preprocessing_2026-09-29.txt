@@ -1,0 +1,179 @@
+# Certified preprocessing: SAT sweeping and select factoring with DRAT proofs (2026-09-29)
+#
+# doc/data/aig_rewriting_2026-09-27.txt ended with three multiplier-
+# verification instances of the 2026 main track solved by ABC's dc2 + fraig
+# in front of CaDiCaL (every competition solver times out on them at
+# 5000 s), and with two gaps: ABC's step is not certifiable, and ABC fails
+# on the larger instances.  This file is the attempt to close both.
+#
+# === 1. Certified SAT sweeping: cnf2aig --sweep ===
+#
+# Functional equivalences between the gates of the input, each proved by
+# CaDiCaL, the derivation written as a DRAT prefix: prefix + the solver's
+# proof of the output refutes the input.  No ABC.
+#
+#   candidates   64-bit parallel random simulation of the gates (16 words);
+#                classes of nodes no pattern tells apart, up to complement
+#                (partition refinement); a counterexample is simulated at
+#                once with 63 patterns near it
+#   order        level by level; the first of a class is the representative
+#   the question the definitions below the pair, merged gates replaced by
+#                their representatives, in CaDiCaL (plain configuration,
+#                proof recorded in memory through a Tracer), two calls
+#                under assumptions, one per direction: first a window of 64
+#                gates in a throwaway solver, then the whole cones in a
+#                solver that is kept while it holds at most twice the cone
+#   the proof    the solver's derived clauses, then the clause of the
+#                negated assumptions; the solver's lemmas are deleted when
+#                it goes
+#   the ending   substituted clauses of the gates still read, as lemmas;
+#                everything replaced is deleted
+#
+# The proof argument and its hole.  The checker holds the definitions in
+# their original variables and follows the solver's unit propagation
+# through the equivalences already derived.  That fails where two literals
+# of a clause have become one: the solver's clause is unit while the
+# checker's still has two literals.  The self-test found it (17 of the
+# first 48 proofs rejected); those shortened clauses are now lemmas
+# themselves, written when the gate is reached.
+#
+# Gate (tools/selftest_cnf2aig.py): generated instances -- a random circuit
+# twice in different decompositions and a miter, the same with a planted
+# difference, and-heavy circuits of up to 250 nodes, parity constraints that
+# close definition cycles, nested multiplexers in three encodings -- under
+# 15 settings, from a window of one gate to unlimited.  Every UNSAT answer
+# with a proof that drat-trim accepts against the ORIGINAL, every SAT
+# answer with a model that extends to the original, every verdict the
+# original's.  0 failures in 15,000 checks (11,093 proofs, 3,907 models).
+#
+# === 2. What the sweep does on gm16spwtrc (320,194 gates) ===
+#
+#                                              seconds  merged constant refuted  no answer   proof
+#   windows of at most 1,024 gates                249   1,843     190     448     89,287    17 MB
+#   whole cones, a solver per attempt, 1,000      907*  6,345     327     189      3,628    31 MB
+#   the same, 50,000 conflicts                  2,408*  6,568     469     191        956   282 MB
+#   a solver that is kept, level order, 1,000     906*  6,433     393     189      4,274   238 MB
+#   the same, 100 conflicts                       606*  5,614     198     170      5,320    48 MB
+#   (* cut by --seconds; the last 10,000 gates, with cones of 100,000 gates
+#   and more, were not finished)
+#
+# - Windows alone decide little: a model of part of a cone refutes nothing,
+#   so a false candidate is tried again at every gate of its class.  95% of
+#   the attempts ended that way.  With whole cones 189 counterexamples
+#   settle what 87,401 window attempts could not.
+# - 2% of the gates merge.  Fifty times the conflict budget buys 4% more
+#   merges.  What is left is out of reach: two classes, the constant and
+#   one output, account for 1,238 of 3,740 failed attempts (--give-up).
+# - A call costs what the solver holds, not what the question is about:
+#   45 ms per call with 117,758 gates held for cones of 10,000.  Hence the
+#   bound on what the kept solver may hold.
+#
+# === 3. The ablation: it is the rewriting ===
+#
+# gm16spwtrc, ABC script in front of CaDiCaL 3.0.1, 5000 s:
+#   dc2               ABC 102 s    409,059 ANDs   UNSAT in 1,882 s   1,869,943 conflicts
+#   dc2; fraig; dc2   ABC 439 s    377,338 ANDs   UNSAT in 2,176 s
+#   fraig             ABC not done after 3,600 s
+#   none              (2026-09-28)                 timeout
+# A first run of this ablation was void: both arms were the input, byte
+# for byte (§5).
+#
+# What dc2 does.  gm16spwtrc is 320,194 multiplexers, each selected by a
+# primary input, one unit and one clause of 32 literals over 18 outputs: a
+# decision diagram that is not reduced.  Before dc2, 2 AND nodes of the
+# graph read two primary inputs; after it 310 do, 264 distinct pairs, 254
+# of them one input from each operand, with 170,481 readers between them,
+# and the primary inputs are read 16,420 times instead of 761,705.  dc2
+# recovers the partial products x_i * y_j, which the CNF spells as pairs of
+# nested multiplexers:  s ? (s2 ? a : e) : e.
+#
+# === 4. Select factoring with a proof: cnf2aig --factor ===
+#
+#   o = s ? (s2 ? a : e) : e     ->     o = (s and s2) ? a : e
+#
+# and the three variants.  The product is a new variable (three clauses,
+# each RAT on it), the outer gate's new clauses follow by unit propagation
+# from the two old definitions and the product's, the inner gate goes where
+# nothing else reads it.
+#
+#                gates rewritten  products  clauses                   seconds
+#   gm16spwtrc        140,523        265    1,921,166 -> 1,084,297       6
+#   gm16spwtcl        253,900        267    3,327,788 -> 1,810,185      13
+#   gm20spctrc        133,420        410    1,809,578 -> 1,018,654       6
+#   gm24spctbk        198,391        592    2,729,792 -> 1,553,172      10
+#   gm24spctrc        227,546        586    3,082,844 -> 1,732,126      11
+#   gm32spctlf      1,032,540      1,041   14,053,508 -> 7,884,690      57
+#
+# Gate: 0 failures in 6,000 checks of --factor (4,289 proofs verified
+# against the original, 1,711 models extended), 6,000 of --factor followed
+# by --sweep with the two prefixes concatenated, 3,000 of the same in
+# binary DRAT.
+#
+# === 5. Does CaDiCaL solve what comes out? ===
+#
+# gm16spwtrc, CaDiCaL 3.0.1 (the pinned binary, release defaults), 5000 s,
+# one run each.  The machine carried 8 to 11 jobs on 10 performance cores
+# during the native runs and 6 to 8 during the ABC ones: the seconds are
+# not comparable across the two groups, the conflicts are.
+#
+#   in front of CaDiCaL          preparation   CaDiCaL                conflicts
+#   nothing                           -        timeout
+#   --sweep (907 s budget)          907 s      timeout
+#   ABC none (2026-09-28)            93 s      timeout
+#   ABC dc2                         104 s      UNSAT in 1,882 s       1,869,943
+#   ABC dc2; fraig; dc2             442 s      UNSAT in 2,176 s
+#   --factor                          6 s      UNSAT in 3,288 s       1,585,181
+#   --factor, then --sweep      6 + 113 s      UNSAT in 2,608 s       1,377,659
+#   --factor, CaDiCaL 3.0.0           6 s      UNSAT in 4,503 s       2,954,844   (with a proof: 1.10 GB)
+#
+# Every route that recovers the partial products solves it, no route that
+# does not does.  The native routes need fewer conflicts than ABC's and
+# more seconds per conflict (1.9-2.1 ms against 1.0 ms), under a heavier
+# load and on a larger formula (1.05-1.08M clauses against 0.78M: ABC's
+# cut-based writer covers several gates with one block of clauses).
+#
+# The five other multipliers, --factor alone, the same 5000 s and the same
+# loaded machine: all five time out, the two that dc2; fraig; dc2 solved
+# near the limit included (gm16spwtcl 885 + 3,660 s, gm20spctrc 756 +
+# 3,302 s on 2026-09-28).  Not a clean negative: see the addendum.
+#
+# The certificate.  prefix (25 MB, binary DRAT) + CaDiCaL 3.0.0's proof of
+# the factored formula (1.10 GB) against the ORIGINAL gm16spwtrc.cnf:
+# drat-trim's verdict is in the addendum.
+#
+# === 6. Validating ABC by sweeping: no ===
+#
+# The other way to certify a rewriting: leave it to ABC, add the rewritten
+# circuit's AND gates to the formula as definitions of new variables, and
+# let the certified sweep bring the two circuits together.  gm16spwtrc with
+# dc2's result (729,251 gates, 100 conflicts per call, 1,510 s): 67,588
+# merges, 2,452 of the 3,526 output pairs proved equal -- and 2 of the 18
+# outputs the clause is about.  The pairs near the outputs are the ones no
+# budget reaches (§2).
+#
+# === 7. Defects found on the way ===
+#
+# - The gate detector invented inputs.  A gate found by truth table took as
+#   inputs every variable of the candidate subset, mentioned by its clauses
+#   or not; which one depended on the order of literals within the clauses.
+#   With the literals sorted by value (the linear root simplifier of
+#   bf960a3) the two base gates of gm16spwtrc got a gate downstream as an
+#   input, and all 320,194 gates were on a cycle: the tool wrote its input
+#   back, and an ablation ran CaDiCaL twice on the same file.  Caught by
+#   reading the bridge log while the solvers ran.  tools/cnf2aig.py had the
+#   same defect and the luckier order.
+# - Every gate downstream of a definition cycle was dropped with it.  Broken
+#   at one gate now.  Gates kept: gus-md5-14 5,463 -> 62,699 of 66,368,
+#   gus-md5-15 5,387 -> 62,826 of 66,446.
+#   For the experiment of 2026-09-28 this means that gus-md5 (two
+#   instances), sncf_model_ixl_bmc_depth_15 and slp-synthesis-aes-bottom22
+#   went to ABC with 7-80% of their gates: their timeouts say little.
+# - Tautologies were tested on literals sorted by value, where a literal
+#   and its negation are not neighbours.
+# - An empty clause in the input was dropped, which made the output
+#   satisfiable.  Found by chaining two modes.
+# - ABC.  The old `fraig` dies with SIGBUS in Msat_ClauseCreate (its own
+#   SAT solver's memory manager) after 31 minutes and 3.0 GB on gm24spctrc:
+#   reproduced, with a crash report.  `&fraig` has a default of 1,000,000
+#   conflicts per node and was not done after an hour.  Neither is needed
+#   for these instances.

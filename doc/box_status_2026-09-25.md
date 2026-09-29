@@ -168,6 +168,21 @@ proof-carrying re-encoding mode (`--recode/--proof`, hashing and dead cones,
 DRAT prefix verified by drat-trim against the original).  Data:
 `doc/data/aig_rewriting_2026-09-27.txt` §5–10.
 
+*2026-09-29.*  The rewriting is certifiable after all, and ABC is not needed
+for it.  An ablation on gm16spwtrc shows that the sweeping contributes
+nothing (dc2 alone: UNSAT in 1,882 s; `fraig` alone: ABC not done after an
+hour) and that what dc2 does is recover the partial products, which the CNF
+spells as pairs of nested multiplexers on primary inputs.  `cnf2aig --factor`
+does that natively in 6 s with a DRAT prefix (the products are definitions,
+RAT on the new variable), and CaDiCaL proves the factored formula
+unsatisfiable in 3,288 s, 2,608 s after a certified sweep (`--sweep`) of it.
+The sweep itself (simulation, CaDiCaL on whole cones, the derivation in the
+proof) is gated by `tools/selftest_cnf2aig.py`, where drat-trim checks every
+UNSAT answer against the original, and merges 2% of the gates.  Two defects
+of the gate extraction were found on the way (invented inputs, whole cones
+lost to one cycle); they had starved four of the fifteen instances of the
+2026-09-28 experiment.  Data: `doc/data/certified_preprocessing_2026-09-29.txt`.
+
 ## What to keep regardless
 
 The measurement infrastructure paid for itself this fortnight and is worth

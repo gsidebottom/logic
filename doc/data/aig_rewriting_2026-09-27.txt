@@ -261,3 +261,86 @@
 # are order effects entirely.  Protocol from here: every arm against the
 # median of shuffled originals, or the memory note about variance-
 # controlled runs applies in full.
+#
+# === 10. The unsolved circuits at 5000 s: three multipliers fall ===
+#
+# The 15 gate-structured 2026 timeouts, two arms (ABC's plain
+# re-encoding; dc2 + fraig + dc2, ABC's cut-based CNF), plain CaDiCaL
+# 3.0.1 at 5000 s and 12 GB on each output, four at a time; then plain
+# CaDiCaL on the original of whatever was solved.  Bridge time is the
+# Python tool's (the native one is 26-32x faster).
+#
+# == solve: plain CaDiCaL, 5000 s, 12 GB ==
+# multiplier_16bits__miter_19  none/abc     TO   5000.0s (+0s prep)          -  c TIMEOUT after 5000s
+# multiplier_16bits__miter_19  dc2f/abc     TO   5000.0s (+0s prep)          -  c TIMEOUT after 5000s
+# gus-md5-14-sc2009            none/abc     TO   5000.0s (+3s prep)          -  c TIMEOUT after 5000s
+# gus-md5-14-sc2009            dc2f/abc     TO   5000.0s (+3s prep)          -  c TIMEOUT after 5000s
+# gus-md5-15                   none/abc     TO   5000.0s (+3s prep)          -  c TIMEOUT after 5000s
+# gus-md5-15                   dc2f/abc     TO   5000.0s (+3s prep)          -  c TIMEOUT after 5000s
+# slp-synthesis-aes-bottom22   none/abc     TO   5000.0s (+2s prep)          -  c TIMEOUT after 5000s
+# slp-synthesis-aes-bottom22   dc2f/abc     TO   5000.0s (+3s prep)          -  c TIMEOUT after 5000s
+# sum_of_3_cubes_94_bits_30    none/abc     TO   5000.0s (+13s prep)          -  c TIMEOUT after 5000s
+# sum_of_3_cubes_94_bits_30    dc2f/abc     TO   5000.1s (+18s prep)          -  c TIMEOUT after 5000s
+# sum_of_3_cubes_108_bits_52   none/abc     TO   5000.0s (+18s prep)          -  c TIMEOUT after 5000s
+# sum_of_3_cubes_108_bits_52   dc2f/abc     TO   5000.1s (+24s prep)          -  c TIMEOUT after 5000s
+# sum_of_3_cubes_145_bits_74   none/abc     TO   5000.1s (+32s prep)          -  c TIMEOUT after 5000s
+# sum_of_3_cubes_145_bits_74   dc2f/abc     TO   5000.1s (+47s prep)          -  c TIMEOUT after 5000s
+# gm16spwtrc                   none/abc     TO   5000.1s (+93s prep)          -  c TIMEOUT after 5000s
+# gm16spwtrc                   dc2f/abc  UNSAT   1394.4s (+441s prep)    1563018  
+# gm20spctrc                   none/abc     TO   5000.1s (+78s prep)          -  c TIMEOUT after 5000s
+# gm20spctrc                   dc2f/abc  UNSAT   3302.0s (+756s prep)    4025088  
+# gm16spwtcl                   none/abc     TO   5000.2s (+161s prep)          -  c TIMEOUT after 5000s
+# gm16spwtcl                   dc2f/abc  UNSAT   3659.7s (+885s prep)    2338866  
+# gm24spctbk                   none/abc     TO   5000.1s (+119s prep)          -  c TIMEOUT after 5000s
+# gm24spctbk                   dc2f/abc     TO   5000.1s (+2055s prep)          -  c TIMEOUT after 5000s
+# gm24spctrc                   none/abc     TO   5000.2s (+131s prep)          -  c TIMEOUT after 5000s
+# gm24spctrc                   dc2f/abc  NOCNF      0.0s (+1853s prep)          -  
+# gm32spctlf                   none/abc     TO   5000.7s (+658s prep)          -  c TIMEOUT after 5000s
+# gm32spctlf                   dc2f/abc  NOCNF      0.0s (+7200s prep)          -  
+# safe-50-h49-unsat            none/abc     TO   5000.1s (+23s prep)          -  c TIMEOUT after 5000s
+# safe-50-h49-unsat            dc2f/abc     TO   5000.0s (+164s prep)          -  c TIMEOUT after 5000s
+# sncf_model_ixl_bmc_depth_15  none/abc     TO   5000.6s (+1376s prep)          -  c TIMEOUT after 5000s
+# sncf_model_ixl_bmc_depth_15  dc2f/abc     TO   5000.6s (+1370s prep)          -  c TIMEOUT after 5000s
+# == plain CaDiCaL on the original, for the 3 solved: ['gm16spwtcl', 'gm16spwtrc', 'gm20spctrc'] ==
+# gm16spwtrc                   plain        TO   5000.2s          -
+# gm20spctrc                   plain        TO   5000.2s          -
+# gm16spwtcl                   plain        TO   5000.3s          -
+# UNSOLVED EXIT
+#
+# Three solves, all UNSAT, all multiplier-verification, all through
+# fraig, all inside the budget with preprocessing charged: gm16spwtrc
+# 441 + 1,394 s, gm20spctrc 756 + 3,302 s, gm16spwtcl 885 + 3,660 s.
+# Plain CaDiCaL 3.0.1 times out on their originals, as satsuma, hydra
+# and hydra_satsuma did at the same cap.  The other three multipliers:
+# gm24spctbk's fraig took 2,055 s and CaDiCaL still timed out; ABC
+# crashed silently on gm24spctrc's 5.6 M-gate graph and hit the 2 h
+# bridge cap on gm32spctlf's 22 M.  The re-encoding alone solved nothing
+# (12 of 15 ran to the cap; the two big multipliers and sncf too).  gus-
+# md5, the AES synthesis, the sum-of-3-cubes adders, the planning circuit
+# and the railway BMC stayed timeouts under both arms.
+#
+# Checks on gm16spwtrc: CaDiCaL 3.0.0 standalone re-proves the
+# preprocessed formula (1,592 s) with a DRAT proof that drat-trim
+# verifies in 23 min, so the formula CaDiCaL saw is unsatisfiable; the
+# rewriting itself is not proof-carrying (ABC emits no DRAT), and ABC's
+# own combinational equivalence check of the rewritten multiplier against
+# the original did not finish in 2 h -- it is a multiplier equivalence
+# problem.  Every gm instance with a recorded verdict is UNSAT, as a
+# correct-multiplier miter must be.
+#
+# === Verdict ===
+#
+# FRAIGing in front of CDCL solves three multiplier-verification
+# instances that no recorded pipeline solves at 5000 s: the win of this
+# line of work.  It is a family-level win (that family is 6 of the 66
+# timeouts) with two thirds of the family still out of reach, its UNSAT
+# answers are not certifiable against the original formula, and it is
+# expensive where it does not apply (gm24spctbk: 34 min for nothing).
+# The cheap part -- hashing plus re-encoding, with or without ABC -- is
+# certifiable but, against shuffled originals, worth ~0.9x rather than the
+# 0.64x the file order made it look.  A solver that runs the circuit
+# stages only on gate-rich instances, sweeps only when simulation finds
+# candidate equivalences, and budgets the sweep, would carry the win at
+# ~1% overhead elsewhere; certifying its UNSATs would need the sweep's
+# merges proved in the proof format, which fraig's per-pair SAT proofs
+# make possible in principle.

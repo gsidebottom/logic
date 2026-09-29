@@ -150,6 +150,24 @@ rewriting proper adds nothing consistent, and the satisfiable rows are
 trajectory either way.  The gain comes from a smaller, hashed, better-encoded
 clause set, not from changing the solver.
 
+*2026-09-28.*  A clause-order control (three shuffles of each unsatisfiable
+original) shrinks that 0.64× to about 0.9×: the file order alone moves
+plain CaDiCaL 1.1–2× on these rows and is often a bad order, so most of the
+re-encoding's apparent gain was escaping it (memory: clause order is a
+confound).  The real result of this line is elsewhere: a gate scan of the
+66 instances the 2026 main track leaves unsolved at 5000 s found 15
+circuits filed under non-circuit families, and dc2 + FRAIG in front of
+CaDiCaL solves three of them — multiplier-verification gm16spwtrc,
+gm20spctrc, gm16spwtcl, UNSAT, inside 5000 s with preprocessing charged —
+which satsuma, hydra, hydra_satsuma and plain CaDiCaL all time out on
+(drat-trim verifies CaDiCaL's proof of the preprocessed formula; the
+rewriting itself is not certifiable).  Tooling: `src/bin/cnf2aig.rs`, the
+bridge in Rust at 26–32× the Python tool, with a generic truth-table gate
+detector that reads the multiplier-verification encoding, and a
+proof-carrying re-encoding mode (`--recode/--proof`, hashing and dead cones,
+DRAT prefix verified by drat-trim against the original).  Data:
+`doc/data/aig_rewriting_2026-09-27.txt` §5–10.
+
 ## What to keep regardless
 
 The measurement infrastructure paid for itself this fortnight and is worth

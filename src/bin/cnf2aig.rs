@@ -6,13 +6,15 @@
 //! other function of up to three inputs by a truth-table check of the clauses
 //! over a candidate scope -- become an And-Inverter Graph (inputs: the
 //! undefined variables; outputs: the gate outputs that other clauses mention;
-//! definition cycles stay in the residual, unobserved cones are dropped).  ABC
-//! rewrites it, its cut-based CNF generator writes it back, inputs and outputs
-//! keep their variable numbers, the residual and the root units are appended.
-//! Equisatisfiable by construction.
+//! definition cycles are broken at one gate each, which stays in the residual;
+//! unobserved cones are dropped).  ABC rewrites it, its cut-based CNF
+//! generator writes it back, inputs and outputs keep their variable numbers,
+//! the residual and the root units are appended.  Equisatisfiable by
+//! construction.
 //!
 //!   cnf2aig in.cnf --out out.cnf --abc ABC [--script none|resyn2|resyn2f|dc2f|...]
-//!   cnf2aig in.cnf --aag in.aig            # the AIG only (binary AIGER)
+//!   cnf2aig in.cnf --aag in.aig [--map in.map]   # the AIG only (binary AIGER), and the
+//!                                                  # variable of each of its inputs and outputs
 //!
 //! Two modes need no ABC and carry a proof: `--recode out.cnf` (structural
 //! hashing and dead cones) and `--sweep out.cnf` (SAT sweeping: functional
@@ -21,7 +23,11 @@
 //! input; followed by a solver's proof of the output it refutes the input.
 //!
 //!   cnf2aig in.cnf --sweep out.cnf --proof prefix.drat
-//!           [--rounds 16] [--window GATES] [--conflicts 1000] [--tries 2] [--seconds S]
+//!           [--rounds 16] [--first 64] [--window GATES] [--conflicts 1000] [--tries 2]
+//!           [--recycle 1000] [--seconds S] [--order level|depth] [--give-up 32]
+//!
+//! (--give-up: a class of candidates is left alone after that many attempts
+//! in a row ran out of budget.)
 use logic::cadical::solver::Solver;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
@@ -395,6 +401,65 @@ impl Aig {
     fn or_list(&mut self, ls: &[u32]) -> u32 { let neg: Vec<u32> = ls.iter().map(|&l| l ^ 1).collect(); self.and_list(&neg) ^ 1 }
 }
 
+const NONE: u32 = u32::MAX;
+
+/// The gates in topological order, and for every variable the gate that
+/// defines it (NONE for an input).  A cycle of definitions is broken at one
+/// of its gates: that gate is given up, its output is an input and its
+/// clauses are plain clauses again; the gates that depend on it stay.
+/// Depth first over the definitions: a gate met again while its own
+/// definition is still being followed closes a cycle.
+fn acyclic_order(gates: &[Gate], nv: usize) -> (Vec<u32>, Vec<u32>) {
+    let mut gate_of: Vec<u32> = vec![NONE; nv + 1];
+    for (gi, g) in gates.iter().enumerate() { if gate_of[g.out as usize] == NONE { gate_of[g.out as usize] = gi as u32; } }
+    let mut state: Vec<u8> = vec![0; nv + 1];   // 0 new, 1 open, 2 closed
+    let mut order: Vec<u32> = Vec::new();
+    let mut stack: Vec<(u32, usize)> = Vec::new();
+    for root in 1..=nv {
+        if gate_of[root] == NONE || state[root] != 0 { continue; }
+        state[root] = 1;
+        stack.push((root as u32, 0));
+        while let Some(top) = stack.last_mut() {
+            let v = top.0 as usize;
+            if gate_of[v] == NONE { state[v] = 2; stack.pop(); continue; }   // given up while open
+            let ins = &gates[gate_of[v] as usize].inputs;
+            if top.1 < ins.len() {
+                let u = ins[top.1].unsigned_abs() as usize;
+                top.1 += 1;
+                if gate_of[u] == NONE { continue; }
+                match state[u] {
+                    0 => { state[u] = 1; stack.push((u as u32, 0)); }
+                    1 => { gate_of[u] = NONE; }
+                    _ => {}
+                }
+            } else {
+                state[v] = 2;
+                order.push(v as u32);
+                stack.pop();
+            }
+        }
+    }
+    (order, gate_of)
+}
+
+/// The same gates level by level (a gate's level is one more than the
+/// highest among its inputs): the first of a class of equal gates is then
+/// one of the shallowest.
+fn by_level(order: &mut [u32], gates: &[Gate], gate_of: &[u32]) {
+    let mut level: Vec<u32> = vec![0; gate_of.len()];
+    for &o in order.iter() {
+        let g = &gates[gate_of[o as usize] as usize];
+        level[o as usize] = 1 + g.inputs.iter().map(|l| level[l.unsigned_abs() as usize]).max().unwrap_or(0);
+    }
+    order.sort_by_key(|&o| level[o as usize]);
+}
+
+fn max_var(cls: &[Vec<i32>], gates: &[Gate]) -> usize {
+    let a = cls.iter().flat_map(|c| c.iter()).map(|l| l.unsigned_abs()).max().unwrap_or(0);
+    let b = gates.iter().map(|g| g.out).max().unwrap_or(0);
+    a.max(b) as usize
+}
+
 struct Built {
     residual: Vec<usize>,
     pis: Vec<u32>,
@@ -408,26 +473,7 @@ struct Built {
 fn build_aig(cls: &[Vec<i32>], gates: &[Gate]) -> Built {
     let mut out_gate: HashMap<u32, usize> = HashMap::new();
     for (gi, g) in gates.iter().enumerate() { out_gate.entry(g.out).or_insert(gi); }
-    // Kahn over the gate graph; gates on cycles are dropped
-    let mut indeg: HashMap<u32, usize> = HashMap::new();
-    let mut consumers: HashMap<u32, Vec<u32>> = HashMap::new();
-    for &gi in out_gate.values() {
-        let g = &gates[gi];
-        let d = g.inputs.iter().filter(|l| out_gate.contains_key(&l.unsigned_abs())).count();
-        indeg.insert(g.out, d);
-        for l in &g.inputs { let v = l.unsigned_abs(); if out_gate.contains_key(&v) { consumers.entry(v).or_default().push(g.out); } }
-    }
-    let mut queue: Vec<u32> = indeg.iter().filter(|(_, d)| **d == 0).map(|(o, _)| *o).collect();
-    queue.sort_unstable();
-    let mut order: Vec<u32> = Vec::new();
-    let mut qi = 0;
-    while qi < queue.len() {
-        let o = queue[qi]; qi += 1;
-        order.push(o);
-        if let Some(cs) = consumers.get(&o) {
-            for &c in cs { let d = indeg.get_mut(&c).unwrap(); *d -= 1; if *d == 0 { queue.push(c); } }
-        }
-    }
+    let (order, _) = acyclic_order(gates, max_var(cls, gates));
     let kept: HashSet<u32> = order.iter().copied().collect();
     let ncyclic = out_gate.len() - kept.len();
     let mut defcl: Vec<bool> = vec![false; cls.len()];
@@ -551,17 +597,7 @@ fn recode(cnf: &Cnf, root: &Root, gates: &[Gate], proof: &mut Proof) -> Recode {
     // 2. gates: topological order over the kept (acyclic) ones
     let mut out_gate: HashMap<u32, usize> = HashMap::new();
     for (gi, g) in gates.iter().enumerate() { out_gate.entry(g.out).or_insert(gi); }
-    let mut indeg: HashMap<u32, usize> = HashMap::new();
-    let mut consumers: HashMap<u32, Vec<u32>> = HashMap::new();
-    for &gi in out_gate.values() {
-        let g = &gates[gi];
-        indeg.insert(g.out, g.inputs.iter().filter(|l| out_gate.contains_key(&l.unsigned_abs())).count());
-        for l in &g.inputs { let v = l.unsigned_abs(); if out_gate.contains_key(&v) { consumers.entry(v).or_default().push(g.out); } }
-    }
-    let mut queue: Vec<u32> = indeg.iter().filter(|(_, d)| **d == 0).map(|(o, _)| *o).collect();
-    queue.sort_unstable();
-    let mut order = Vec::new(); let mut qi = 0;
-    while qi < queue.len() { let o = queue[qi]; qi += 1; order.push(o); if let Some(cs) = consumers.get(&o) { for &c in cs { let d = indeg.get_mut(&c).unwrap(); *d -= 1; if *d == 0 { queue.push(c); } } } }
+    let (order, _) = acyclic_order(gates, nv);
     let kept: HashSet<u32> = order.iter().copied().collect();
     let mut defcl: Vec<bool> = vec![false; cls.len()];
     for &o in &kept { for &i in &gates[out_gate[&o]].clauses { defcl[i] = true; } }
@@ -657,10 +693,10 @@ fn recode(cnf: &Cnf, root: &Root, gates: &[Gate], proof: &mut Proof) -> Recode {
 // window decides nothing.  The ending is the re-encoding's: substituted
 // clauses as lemmas, the replaced ones deleted.
 
-struct SweepParams { rounds: usize, first_window: usize, max_window: usize, conflicts: i32, tries: usize, seconds: f64 }
+struct SweepParams { rounds: usize, first_window: usize, max_window: usize, conflicts: i32, tries: usize, seconds: f64, recycle: usize, levels: bool, give_up: u32 }
 
 #[derive(Default)]
-struct SweepStats { attempts: usize, merged: usize, constants: usize, refuted: usize, window_sat: usize, unknown: usize, solver_lemmas: usize, splits: usize, shortened: usize, unreached: usize }
+struct SweepStats { attempts: usize, merged: usize, constants: usize, refuted: usize, window_sat: usize, unknown: usize, solver_lemmas: usize, splits: usize, shortened: usize, unreached: usize, given_up: usize, whole: usize, solvers: usize, clock: [f64; 4] }
 
 /// The candidate classes: nodes (0 is the constant false, the others are
 /// variables) that no pattern simulated so far tells apart, up to
@@ -669,6 +705,7 @@ struct Classes {
     id: Vec<u32>,
     members: Vec<Vec<u32>>,
     reps: Vec<Vec<u32>>,   // the settled representatives of a class, oldest first
+    fails: Vec<u32>,       // attempts in a row that ran out of budget
 }
 
 impl Classes {
@@ -687,7 +724,11 @@ impl Classes {
                 let w = word[v as usize];
                 let t = match groups.get(&w) {
                     Some(&t) => t,
-                    None => { self.members.push(Vec::new()); self.reps.push(Vec::new()); let t = (self.members.len() - 1) as u32; groups.insert(w, t); t }
+                    None => {
+                        self.members.push(Vec::new()); self.reps.push(Vec::new());
+                        let f = self.fails[c]; self.fails.push(f);
+                        let t = (self.members.len() - 1) as u32; groups.insert(w, t); t
+                    }
                 };
                 self.members[t as usize].push(v);
                 self.id[v as usize] = t;
@@ -698,8 +739,6 @@ impl Classes {
         self.members.len() - n0
     }
 }
-
-const NONE: u32 = u32::MAX;
 
 fn mix(k: u64, w: u64) -> u64 {
     let mut x = (k ^ w).wrapping_mul(0x9E37_79B9_7F4A_7C15);
@@ -768,12 +807,122 @@ fn substitute(c: &[i32], rep: &[i32], cval: &[i8]) -> Option<(Vec<i32>, bool)> {
 }
 
 enum Outcome {
-    /// The DRAT lines of the derivation, and how many solver lemmas they hold.
-    Proved(Vec<u8>, usize),
+    Proved,
     /// A counterexample over the circuit's inputs.
     Refuted(Vec<(u32, bool)>),
     WindowSat,
     Unknown,
+}
+
+fn drat_line(out: &mut Vec<u8>, delete: bool, c: &[i32]) {
+    let mut line = String::with_capacity(8 * c.len() + 4);
+    if delete { line.push_str("d "); }
+    for x in c { let _ = write!(line, "{x} "); }
+    line.push_str("0\n");
+    out.extend_from_slice(line.as_bytes());
+}
+
+/// The variables one solver has seen, numbered in the order it saw them.
+struct Numbering { id: Vec<i32>, stamp: Vec<u32>, generation: u32, vars: Vec<u32> }
+
+impl Numbering {
+    fn new(nv: usize) -> Numbering { Numbering { id: vec![0; nv + 1], stamp: vec![0; nv + 1], generation: 0, vars: Vec::new() } }
+    fn local(&mut self, l: i32) -> i32 {
+        let v = l.unsigned_abs() as usize;
+        if self.stamp[v] != self.generation {
+            self.stamp[v] = self.generation;
+            self.vars.push(v as u32);
+            self.id[v] = self.vars.len() as i32;
+        }
+        if l > 0 { self.id[v] } else { -self.id[v] }
+    }
+    fn global(&self, l: i32) -> i32 {
+        let v = self.vars[l.unsigned_abs() as usize - 1] as i32;
+        if l > 0 { v } else { -v }
+    }
+}
+
+/// A CaDiCaL without preprocessing that records its proof, the gate
+/// definitions it holds, and the lemmas of that proof the checker still
+/// holds.
+struct Session {
+    solver: Solver,
+    num: Numbering,
+    live: HashMap<Vec<i32>, u32>,
+    gates: usize,
+    queries: usize,
+}
+
+impl Session {
+    fn new(mut num: Numbering) -> Session {
+        num.generation += 1;
+        num.vars.clear();
+        let mut solver: Solver = Solver::new();
+        // no preprocessing: what the solver derives must follow from the clauses alone
+        assert!(solver.configure("plain"), "CaDiCaL refused the plain configuration");
+        assert!(solver.trace_proof_in_memory(), "CaDiCaL refused the proof tracer");
+        Session { solver, num, live: HashMap::new(), gates: 0, queries: 0 }
+    }
+
+    /// The definition of a gate as it stands after the merges so far.
+    fn load(&mut self, g: &Gate, cls: &[Vec<i32>], rep: &[i32], cval: &[i8]) -> bool {
+        for &ci in &g.clauses {
+            let Some((nc, _)) = substitute(&cls[ci], rep, cval) else { continue };
+            if nc.is_empty() { return false; }
+            let c: Vec<i32> = nc.iter().map(|&x| self.num.local(x)).collect();
+            self.solver.add_clause(c.iter().copied());
+        }
+        self.gates += 1;
+        true
+    }
+
+    fn ask(&mut self, assumptions: &[i32], budget: i32) -> Option<bool> {
+        self.queries += 1;
+        self.solver.limit("conflicts", budget);
+        for &a in assumptions { let l = self.num.local(a); self.solver.assume(l); }
+        self.solver.solve()
+    }
+
+    /// What the solver derived and deleted since the last time, as DRAT
+    /// lines in the variables of the input; how many lemmas that is.
+    fn drain(&mut self, out: &mut Vec<u8>) -> usize {
+        assert!(!self.solver.proof_has_rat(), "CaDiCaL derived a clause that is not implied");
+        let ev = self.solver.proof_events();
+        let mut lemmas = 0usize;
+        let mut i = 0;
+        while i < ev.len() {
+            let tag = ev[i]; i += 1;
+            let mut c: Vec<i32> = Vec::new();
+            while ev[i] != 0 { c.push(self.num.global(ev[i])); i += 1; }
+            i += 1;
+            drat_line(out, tag != 1, &c);
+            c.sort_unstable();
+            if tag == 1 {
+                lemmas += 1;
+                *self.live.entry(c).or_insert(0) += 1;
+            } else if let Some(n) = self.live.get_mut(&c) {
+                *n -= 1;
+                if *n == 0 { self.live.remove(&c); }
+            }
+        }
+        self.solver.proof_events_clear();
+        lemmas
+    }
+
+    /// The solver goes, and with it the lemmas the checker still holds.
+    fn retire(mut self, out: &mut Vec<u8>) -> (usize, Numbering) {
+        let lemmas = self.drain(out);
+        let mut rest: Vec<(&Vec<i32>, &u32)> = self.live.iter().collect();
+        rest.sort();
+        for (c, &n) in rest { for _ in 0..n { drat_line(out, true, c); } }
+        (lemmas, self.num)
+    }
+
+    /// The values of the circuit's inputs in the model.
+    fn inputs(&self, gate_of: &[u32]) -> Vec<(u32, bool)> {
+        self.num.vars.iter().enumerate().filter(|(_, v)| gate_of[**v as usize] == NONE)
+            .map(|(k, &v)| (v, self.solver.value(k as i32 + 1) == Some(true))).collect()
+    }
 }
 
 struct Sweeper<'a> {
@@ -784,29 +933,18 @@ struct Sweeper<'a> {
     cval: Vec<i8>,
     seen: Vec<u32>,
     stamp: u32,
-    lid: Vec<i32>,
-    lstamp: Vec<u32>,
-    lgen: u32,
-    lvars: Vec<u32>,
+    spare: Option<Numbering>,      // of the solver for windows, between two of them
+    cones: Option<Session>,        // the solver for whole cones
+    rested: Option<Numbering>,     // its numbering, between two of them
+    loaded: Vec<u32>,              // gate -> the whole-cone solver that holds it (by the generation of its numbering)
+    whole: usize,
+    solvers: usize,
+    last_cone: usize,              // gates put to the solver in the last attempt
+    clock: [f64; 4],               // seconds: windows, loading whole cones, solving on them, simulation
     p: &'a SweepParams,
 }
 
 impl Sweeper<'_> {
-    fn local(&mut self, v: u32) -> i32 {
-        let vu = v as usize;
-        if self.lstamp[vu] != self.lgen {
-            self.lstamp[vu] = self.lgen;
-            self.lvars.push(v);
-            self.lid[vu] = self.lvars.len() as i32;
-        }
-        self.lid[vu]
-    }
-
-    fn global(&self, l: i32) -> i32 {
-        let v = self.lvars[l.unsigned_abs() as usize - 1] as i32;
-        if l > 0 { v } else { -v }
-    }
-
     /// The gates whose definitions are loaded, breadth first from the pair,
     /// and whether that is every gate below it.
     fn window(&mut self, o: u32, r: u32, limit: usize) -> (Vec<u32>, bool) {
@@ -831,102 +969,102 @@ impl Sweeper<'_> {
         (q, complete)
     }
 
-    /// o == r (or not r when `neg`); r = 0 is the constant false.
-    fn prove(&mut self, o: u32, r: u32, neg: bool) -> Outcome {
-        let mut limit = self.p.first_window;
-        loop {
-            let (wg, complete) = self.window(o, r, limit);
-            // a conflict costs what the cone weighs: the budget is for a cone of 4096 gates
-            let budget = ((self.p.conflicts as u64 * 4096 / wg.len().max(4096) as u64) as i32).max(20).min(self.p.conflicts);
-            self.lgen += 1;
-            self.lvars.clear();
-            let mut solver: Solver = Solver::new();
-            // no preprocessing: what the solver derives must follow from the clauses alone
-            assert!(solver.configure("plain"), "CaDiCaL refused the plain configuration");
-            assert!(solver.trace_proof_in_memory(), "CaDiCaL refused the proof tracer");
-            for &gv in &wg {
-                let gi = self.gate_of[gv as usize] as usize;
-                for k in 0..self.gates[gi].clauses.len() {
-                    let ci = self.gates[gi].clauses[k];
-                    let Some((nc, _)) = substitute(&self.cls[ci], &self.rep, &self.cval) else { continue };
-                    if nc.is_empty() { return Outcome::Unknown; }
-                    let c: Vec<i32> = nc.iter().map(|&x| { let lv = self.local(x.unsigned_abs()); if x > 0 { lv } else { -lv } }).collect();
-                    solver.add_clause(c.iter().copied());
-                }
-            }
-            let lo = self.local(o);
-            let calls: Vec<Vec<i32>> = if r == 0 {
-                vec![vec![if neg { -lo } else { lo }]]          // refute the value o does not take
-            } else {
-                let lr = self.local(r);
-                let lrp = if neg { -lr } else { lr };
-                vec![vec![lo, -lrp], vec![-lo, lrp]]
-            };
-            let mut marks: Vec<usize> = Vec::with_capacity(2);
-            let mut verdict = Some(false);
+    /// The whole-cone solver goes; its lemmas leave the proof.
+    fn rest(&mut self, proof: &mut Proof) {
+        if let Some(s) = self.cones.take() {
+            let (lemmas, num) = s.retire(&mut proof.buf);
+            proof.lemmas += lemmas;
+            self.rested = Some(num);
+        }
+    }
+
+    /// o == r (or not r when `neg`); r = 0 is the constant false.  A proof
+    /// goes to `proof`: what the solver derived, then the clause of the
+    /// negated assumptions, once per direction.
+    fn prove(&mut self, o: u32, r: u32, neg: bool, proof: &mut Proof) -> Outcome {
+        let lo = o as i32;
+        let lr = if neg { -(r as i32) } else { r as i32 };
+        // to refute: o without r, r without o; for the constant, the value o does not take
+        let calls: Vec<Vec<i32>> = if r == 0 { vec![vec![if neg { -lo } else { lo }]] } else { vec![vec![lo, -lr], vec![-lo, lr]] };
+        let negated = |a: &Vec<i32>| -> Vec<i32> { a.iter().map(|&x| -x).collect() };
+
+        // 1. a window below the pair, in a solver of its own: what it proves
+        // holds whatever is below the window
+        let t = std::time::Instant::now();
+        let (wg, complete) = self.window(o, r, self.p.first_window);
+        self.last_cone = wg.len();
+        let mut s = Session::new(self.spare.take().expect("the numbering of the window solver"));
+        let mut sound = true;
+        for &g in &wg { sound &= s.load(&self.gates[self.gate_of[g as usize] as usize], self.cls, &self.rep, &self.cval); }
+        let mut lines: Vec<u8> = Vec::new();
+        let mut lemmas = 0usize;
+        let mut verdict = if sound { Some(false) } else { None };
+        if sound {
             for a in &calls {
-                solver.limit("conflicts", budget);
-                for &x in a { solver.assume(x); }
-                verdict = solver.solve();
+                verdict = s.ask(a, self.p.conflicts);
                 if verdict != Some(false) { break; }
-                marks.push(solver.proof_events().len());
+                lemmas += s.drain(&mut lines);
+                drat_line(&mut lines, false, &negated(a));
+                lemmas += 1;
             }
-            match verdict {
-                Some(false) => {
-                    if solver.proof_has_rat() { return Outcome::Unknown; }
-                    // the derivation: what the solver learned, then the clause of the negated assumptions
-                    let ev = solver.proof_events().to_vec();
-                    let mut out: Vec<u8> = Vec::new();
-                    let mut live: HashMap<Vec<i32>, usize> = HashMap::new();
-                    let mut lemmas = 0usize;
-                    let mut line = String::new();
-                    let mut write = |del: bool, c: &[i32], out: &mut Vec<u8>| {
-                        line.clear();
-                        if del { line.push_str("d "); }
-                        for x in c { let _ = write!(line, "{x} "); }
-                        line.push_str("0\n");
-                        out.extend_from_slice(line.as_bytes());
-                    };
-                    let mut i = 0; let mut call = 0;
-                    loop {
-                        while call < marks.len() && i >= marks[call] {
-                            let c: Vec<i32> = calls[call].iter().map(|&x| self.global(-x)).collect();
-                            write(false, &c, &mut out);
-                            call += 1;
-                        }
-                        if i >= ev.len() { break; }
-                        let tag = ev[i]; i += 1;
-                        let mut c: Vec<i32> = Vec::new();
-                        while ev[i] != 0 { c.push(self.global(ev[i])); i += 1; }
-                        i += 1;
-                        if tag == 1 {
-                            write(false, &c, &mut out); lemmas += 1;
-                            c.sort_unstable(); *live.entry(c).or_insert(0) += 1;
-                        } else {
-                            write(true, &c, &mut out);
-                            c.sort_unstable();
-                            if let Some(n) = live.get_mut(&c) { *n -= 1; if *n == 0 { live.remove(&c); } }
-                        }
-                    }
-                    // the solver is gone after this: so are its lemmas
-                    let mut rest: Vec<(&Vec<i32>, &usize)> = live.iter().collect();
-                    rest.sort();
-                    for (c, &n) in rest { for _ in 0..n { write(true, c, &mut out); } }
-                    return Outcome::Proved(out, lemmas);
-                }
-                Some(true) => {
-                    if complete {
-                        let mut model = Vec::new();
-                        for (k, &v) in self.lvars.iter().enumerate() {
-                            if self.gate_of[v as usize] == NONE { model.push((v, solver.value(k as i32 + 1) == Some(true))); }
-                        }
-                        return Outcome::Refuted(model);
-                    }
-                    // a model of part of the cone decides nothing: the whole cone, if that is allowed
-                    if limit >= self.p.max_window { return Outcome::WindowSat; }
-                    limit = self.p.max_window;
-                }
-                None => return Outcome::Unknown,
+        }
+        let first = match verdict {
+            Some(false) => Outcome::Proved,
+            Some(true) if complete => Outcome::Refuted(s.inputs(&self.gate_of)),
+            Some(true) => Outcome::WindowSat,
+            None => Outcome::Unknown,
+        };
+        let (more, num) = s.retire(&mut lines);
+        self.spare = Some(num);
+        self.clock[0] += t.elapsed().as_secs_f64();
+        match first {
+            Outcome::Proved => { proof.buf.extend_from_slice(&lines); proof.lemmas += lemmas + more; return Outcome::Proved; }
+            Outcome::Refuted(_) => return first,
+            _ => if !sound || self.p.max_window <= self.p.first_window { return first; }
+        }
+
+        // 2. the whole cones, in the solver that holds the cones of the gates
+        // before -- unless it holds much else: a call costs what the solver
+        // holds, not what the question is about
+        let t = std::time::Instant::now();
+        let (cone, _) = self.window(o, r, usize::MAX);
+        self.last_cone = cone.len();
+        if cone.len() > self.p.max_window { return Outcome::WindowSat; }
+        if let Some(s) = &self.cones
+            && (s.gates > 2 * cone.len() + 1000 || s.queries >= self.p.recycle) { self.rest(proof); }
+        if self.cones.is_none() {
+            self.cones = Some(Session::new(self.rested.take().expect("the numbering of the whole-cone solver")));
+            self.solvers += 1;
+        }
+        let s = self.cones.as_mut().unwrap();
+        let generation = s.num.generation;
+        for &g in &cone {
+            if self.loaded[g as usize] == generation { continue; }
+            if !s.load(&self.gates[self.gate_of[g as usize] as usize], self.cls, &self.rep, &self.cval) { return Outcome::Unknown; }
+            self.loaded[g as usize] = generation;
+        }
+        self.whole += 1;
+        self.clock[1] += t.elapsed().as_secs_f64();
+        let t = std::time::Instant::now();
+        // a conflict costs what the cone weighs: the budget is for a cone of 4096 gates
+        let budget = ((self.p.conflicts as u64 * 4096 / cone.len().max(4096) as u64) as i32).max(20).min(self.p.conflicts);
+        let mut done: Vec<Vec<i32>> = Vec::new();
+        let mut verdict = Some(false);
+        for a in &calls {
+            verdict = s.ask(a, budget);
+            proof.lemmas += s.drain(&mut proof.buf);    // whatever the answer: the solver keeps what it learned
+            if verdict != Some(false) { break; }
+            let c = negated(a);
+            drat_line(&mut proof.buf, false, &c);
+            proof.lemmas += 1;
+            done.push(c);
+        }
+        self.clock[2] += t.elapsed().as_secs_f64();
+        match verdict {
+            Some(false) => Outcome::Proved,
+            other => {
+                for c in &done { drat_line(&mut proof.buf, true, c); }   // one direction alone is of no use
+                if other == Some(true) { Outcome::Refuted(s.inputs(&self.gate_of)) } else { Outcome::Unknown }
             }
         }
     }
@@ -936,28 +1074,9 @@ fn sweep(cnf: &Cnf, root: &Root, gates: &[Gate], p: &SweepParams, proof: &mut Pr
     let nv = cnf.nv;
     let cls = &root.cls;
     for &u in &root.units { proof.add(&[u]); }
-    // the acyclic gates in topological order
-    let mut gate_of: Vec<u32> = vec![NONE; nv + 1];
-    for (gi, g) in gates.iter().enumerate() { if gate_of[g.out as usize] == NONE { gate_of[g.out as usize] = gi as u32; } }
-    let mut indeg: Vec<u32> = vec![0; nv + 1];
-    let mut consumers: Vec<Vec<u32>> = vec![Vec::new(); nv + 1];
-    for v in 1..=nv {
-        if gate_of[v] == NONE { continue; }
-        for l in &gates[gate_of[v] as usize].inputs {
-            let u = l.unsigned_abs() as usize;
-            if gate_of[u] != NONE { indeg[v] += 1; consumers[u].push(v as u32); }
-        }
-    }
-    let mut order: Vec<u32> = (1..=nv as u32).filter(|&v| gate_of[v as usize] != NONE && indeg[v as usize] == 0).collect();
-    let mut qi = 0;
-    while qi < order.len() {
-        let o = order[qi] as usize; qi += 1;
-        for &c in &consumers[o] { let c = c as usize; indeg[c] -= 1; if indeg[c] == 0 { order.push(c as u32); } }
-    }
-    drop(consumers);
-    let mut kept: Vec<bool> = vec![false; nv + 1];
-    for &o in &order { kept[o as usize] = true; }
-    for v in 1..=nv { if gate_of[v] != NONE && !kept[v] { gate_of[v] = NONE; } }   // a gate on a cycle is an input here
+    // the gates in topological order; one given up to break a cycle is an input here
+    let (mut order, gate_of) = acyclic_order(gates, nv);
+    if p.levels { by_level(&mut order, gates, &gate_of); }
     let mut defcl: Vec<bool> = vec![false; cls.len()];
     for &o in &order { for &i in &gates[gate_of[o as usize] as usize].clauses { defcl[i] = true; } }
     let residual: Vec<usize> = (0..cls.len()).filter(|&i| !defcl[i]).collect();
@@ -980,11 +1099,11 @@ fn sweep(cnf: &Cnf, root: &Root, gates: &[Gate], p: &SweepParams, proof: &mut Pr
         }
         key[0] = mix(key[0], 0);
     }
-    let mut classes = Classes { id: vec![NONE; nv + 1], members: Vec::new(), reps: Vec::new() };
+    let mut classes = Classes { id: vec![NONE; nv + 1], members: Vec::new(), reps: Vec::new(), fails: Vec::new() };
     {
         let mut by_key: HashMap<u64, u32> = HashMap::new();
         for v in (0..=nv).filter(|&v| in_circuit(v)) {
-            let c = *by_key.entry(key[v]).or_insert_with(|| { classes.members.push(Vec::new()); classes.reps.push(Vec::new()); (classes.members.len() - 1) as u32 });
+            let c = *by_key.entry(key[v]).or_insert_with(|| { classes.members.push(Vec::new()); classes.reps.push(Vec::new()); classes.fails.push(0); (classes.members.len() - 1) as u32 });
             classes.members[c as usize].push(v as u32);
             classes.id[v] = c;
         }
@@ -994,12 +1113,15 @@ fn sweep(cnf: &Cnf, root: &Root, gates: &[Gate], p: &SweepParams, proof: &mut Pr
     drop(key);
 
     let mut sw = Sweeper { cls, gates, gate_of, rep: vec![0; nv + 1], cval: vec![0; nv + 1], seen: vec![0; nv + 1], stamp: 0,
-                           lid: vec![0; nv + 1], lstamp: vec![0; nv + 1], lgen: 0, lvars: Vec::new(), p };
+                           spare: Some(Numbering::new(nv)), cones: None, rested: Some(Numbering::new(nv)), loaded: vec![0; nv + 1],
+                           whole: 0, solvers: 0, last_cone: 0, clock: [0.0; 4], p };
     let mut st = SweepStats::default();
     let mut const_units: Vec<i32> = Vec::new();
     let mut shortened: HashMap<usize, Vec<i32>> = HashMap::new();
     let mut in_model: Vec<u32> = vec![0; nv + 1];
     let mut model_stamp = 0u32;
+    // SWEEP_TRACE=file: one line per attempt (position, gate, candidate, outcome, gates in the cone, size of the class)
+    let mut trace = std::env::var("SWEEP_TRACE").ok().map(|f| std::io::BufWriter::new(std::fs::File::create(f).expect("SWEEP_TRACE")));
     let started = std::time::Instant::now();
     let mut last = std::time::Instant::now();
     for (n, &o) in order.iter().enumerate() {
@@ -1018,15 +1140,19 @@ fn sweep(cnf: &Cnf, root: &Root, gates: &[Gate], p: &SweepParams, proof: &mut Pr
         while !out_of_time && undecided < p.tries && tried.len() < p.tries + 8 {
             // the oldest representative the patterns cannot tell from this gate
             let c = classes.id[ou] as usize;
+            if classes.fails[c] >= p.give_up { if !classes.reps[c].is_empty() { st.given_up += 1; } break; }
             let Some(r) = classes.reps[c].iter().copied().find(|r| !tried.contains(r)) else { break };
             tried.push(r);
             st.attempts += 1;
             let neg = phase[ou] != (r != 0 && phase[r as usize]);
-            match sw.prove(o, r, neg) {
-                Outcome::Proved(lines, lemmas) => {
-                    proof.buf.extend_from_slice(&lines);
-                    proof.lemmas += lemmas + if r == 0 { 1 } else { 2 };
-                    st.solver_lemmas += lemmas;
+            let outcome = sw.prove(o, r, neg, proof);
+            if let Some(f) = trace.as_mut() {
+                let what = match &outcome { Outcome::Proved => "proved", Outcome::Refuted(_) => "refuted", Outcome::WindowSat => "window", Outcome::Unknown => "budget" };
+                let _ = writeln!(f, "{n} {o} {r} {what} {} {}", sw.last_cone, classes.members[classes.id[ou] as usize].len());
+            }
+            match outcome {
+                Outcome::Proved => {
+                    classes.fails[c] = 0;
                     if r == 0 {
                         sw.cval[ou] = if neg { 1 } else { -1 };
                         const_units.push(if neg { o as i32 } else { -(o as i32) });
@@ -1040,6 +1166,7 @@ fn sweep(cnf: &Cnf, root: &Root, gates: &[Gate], p: &SweepParams, proof: &mut Pr
                 }
                 Outcome::Refuted(model) => {
                     // the counterexample and 63 patterns near it, through the whole circuit
+                    let t = std::time::Instant::now();
                     st.refuted += 1;
                     model_stamp += 1;
                     for &(v, b) in &model {
@@ -1052,17 +1179,35 @@ fn sweep(cnf: &Cnf, root: &Root, gates: &[Gate], p: &SweepParams, proof: &mut Pr
                     for v in 1..=nv { if phase[v] { val[v] = !val[v]; } }
                     val[0] = 0;
                     st.splits += classes.refine(&val);
+                    sw.clock[3] += t.elapsed().as_secs_f64();
                 }
-                Outcome::WindowSat => { st.window_sat += 1; undecided += 1; }
-                Outcome::Unknown => { st.unknown += 1; undecided += 1; }
+                Outcome::WindowSat => { st.window_sat += 1; undecided += 1; classes.fails[c] += 1; }
+                Outcome::Unknown => { st.unknown += 1; undecided += 1; classes.fails[c] += 1; }
             }
         }
         if !done { let c = classes.id[ou] as usize; classes.reps[c].push(o); }
         if last.elapsed().as_secs() >= 30 {
             last = std::time::Instant::now();
-            println!("  sweep: {}/{} gates, {} attempts: {} merged, {} constant, {} refuted, {} undecided ({:.0}s)", n + 1, order.len(), st.attempts, st.merged, st.constants, st.refuted, st.window_sat + st.unknown, t0.elapsed().as_secs_f64());
+            println!("  sweep: {}/{} gates, {} attempts: {} merged, {} constant, {} refuted, {} undecided ({:.0}s: windows {:.0}, loading {:.0}, whole cones {:.0} ({} calls, {} gates held), simulation {:.0})",
+                     n + 1, order.len(), st.attempts, st.merged, st.constants, st.refuted, st.window_sat + st.unknown, t0.elapsed().as_secs_f64(),
+                     sw.clock[0], sw.clock[1], sw.clock[2], sw.whole, sw.cones.as_ref().map(|s| s.gates).unwrap_or(0), sw.clock[3]);
         }
     }
+
+    sw.rest(proof);
+    if let Ok(f) = std::env::var("SWEEP_REPS") {
+        // what was merged: a variable and the literal it equals, or its value
+        let mut t = String::new();
+        for v in 1..=nv {
+            if sw.cval[v] != 0 { let _ = writeln!(t, "{v} = {}", if sw.cval[v] > 0 { "true" } else { "false" }); }
+            else if sw.rep[v] != 0 { let _ = writeln!(t, "{v} = {}", sw.rep[v]); }
+        }
+        std::fs::write(f, t).expect("SWEEP_REPS");
+    }
+    st.whole = sw.whole;
+    st.solvers = sw.solvers;
+    st.clock = sw.clock;
+    st.solver_lemmas = proof.lemmas - root.units.len() - st.shortened - 2 * st.merged - st.constants;
 
     // the output: what the observed outputs depend on, substituted
     let (rep, cval, gate_of) = (sw.rep, sw.cval, sw.gate_of);
@@ -1204,8 +1349,8 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 { eprintln!("usage: cnf2aig in.cnf [--out out.cnf] [--abc ABC] [--script S] [--aag file.aig] [--keep dir]"); std::process::exit(2); }
     let mut input = None; let mut out = None; let mut abc = None; let mut script = "resyn2".to_string(); let mut aag = None; let mut keep = None;
-    let mut recode_out = None; let mut proof_out = None; let mut dropped_out = None; let mut sweep_out = None;
-    let mut sp = SweepParams { rounds: 16, first_window: 64, max_window: usize::MAX, conflicts: 1000, tries: 2, seconds: 0.0 };
+    let mut recode_out = None; let mut proof_out = None; let mut dropped_out = None; let mut sweep_out = None; let mut map_out: Option<String> = None;
+    let mut sp = SweepParams { rounds: 16, first_window: 64, max_window: usize::MAX, conflicts: 1000, tries: 2, seconds: 0.0, recycle: 1000, levels: true, give_up: 32 };
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -1218,11 +1363,16 @@ fn main() {
             "--proof" => { proof_out = Some(args[i + 1].clone()); i += 2; }
             "--dropped" => { dropped_out = Some(args[i + 1].clone()); i += 2; }
             "--sweep" => { sweep_out = Some(args[i + 1].clone()); i += 2; }
+            "--map" => { map_out = Some(args[i + 1].clone()); i += 2; }
             "--rounds" => { sp.rounds = args[i + 1].parse().expect("--rounds N"); i += 2; }
             "--window" => { sp.max_window = args[i + 1].parse().expect("--window N"); i += 2; }
             "--conflicts" => { sp.conflicts = args[i + 1].parse().expect("--conflicts N"); i += 2; }
             "--tries" => { sp.tries = args[i + 1].parse().expect("--tries N"); i += 2; }
             "--seconds" => { sp.seconds = args[i + 1].parse().expect("--seconds S"); i += 2; }
+            "--first" => { sp.first_window = args[i + 1].parse().expect("--first N"); i += 2; }
+            "--give-up" => { sp.give_up = args[i + 1].parse::<u32>().expect("--give-up N").max(1); i += 2; }
+            "--order" => { sp.levels = match args[i + 1].as_str() { "level" => true, "depth" => false, _ => { eprintln!("--order level|depth"); std::process::exit(2) } }; i += 2; }
+            "--recycle" => { sp.recycle = args[i + 1].parse::<usize>().expect("--recycle N").max(2); i += 2; }
             s if s.starts_with("--") => { eprintln!("unknown option {s}"); std::process::exit(2); }
             _ => { input = Some(args[i].clone()); i += 1; }
         }
@@ -1251,7 +1401,7 @@ fn main() {
         let np = gates.len();
         extract_generic(&cls, &mut gates, 3);
         let built = build_aig(&cls, &gates);
-        println!("  orientation {name}: {np} by pattern + {} generic, {} on cycles ({:.1}s)", gates.len() - np, built.ncyclic, t0.elapsed().as_secs_f64());
+        println!("  orientation {name}: {np} by pattern + {} generic, {} given up to break cycles ({:.1}s)", gates.len() - np, built.ncyclic, t0.elapsed().as_secs_f64());
         let kept = built.ngates - built.ncyclic;
         if best.as_ref().map(|b| kept > b.0).unwrap_or(true) { best = Some((kept, name, built)); }
         if best.as_ref().map(|b| b.2.ncyclic == 0).unwrap_or(false) { break; }
@@ -1266,8 +1416,10 @@ fn main() {
         write_cnf(wp, nv, &r.cls).unwrap();
         if let Some(pp) = &proof_out { std::fs::write(pp, &proof.buf).unwrap(); }
         if let Some(dp) = &dropped_out { write_cnf(dp, nv, &r.dropped).unwrap(); }
-        println!("{base}: sweep: {} attempts: {} merged, {} constant, {} refuted ({} refinements), {} undecided in the window, {} out of budget; {} dead; {} candidates not reached in time",
-                 st.attempts, st.merged, st.constants, st.refuted, st.splits, st.window_sat, st.unknown, r.dead, st.unreached);
+        println!("{base}: sweep: {} attempts: {} merged, {} constant, {} refuted ({} refinements), {} undecided in the window, {} out of budget; {} dead; {} candidates not reached in time, {} in classes given up",
+                 st.attempts, st.merged, st.constants, st.refuted, st.splits, st.window_sat, st.unknown, r.dead, st.unreached, st.given_up);
+        println!("{base}: sweep: {} of the attempts went to whole cones, in {} solvers; seconds: windows {:.1}, loading {:.1}, whole cones {:.1}, simulation {:.1}",
+                 st.whole, st.solvers, st.clock[0], st.clock[1], st.clock[2], st.clock[3]);
         println!("{base}: sweep: {} -> {} clauses, {} proof lemmas ({} from the solver, {} shortened clauses), {:.1} MB of proof ({:.1}s)",
                  cnf.len(), r.cls.len(), proof.lemmas, st.solver_lemmas, st.shortened, proof.buf.len() as f64 / 1e6, t0.elapsed().as_secs_f64());
         if out.is_none() && recode_out.is_none() { return; }
@@ -1284,10 +1436,17 @@ fn main() {
         println!("{base}: recode: {} gates merged, {} dead, {} -> {} clauses, {} proof lemmas ({:.1}s)", r.merged, r.dead, cnf.len(), r.cls.len(), proof.lemmas, t0.elapsed().as_secs_f64());
         if out.is_none() { return; }
     }
-    println!("{base}: {nv} vars, {} clauses; {} gates ({} on cycles), AIG {} inputs, {} outputs, {} ands; residual {} clauses ({:.1}s)",
+    println!("{base}: {nv} vars, {} clauses; {} gates ({} given up to break cycles), AIG {} inputs, {} outputs, {} ands; residual {} clauses ({:.1}s)",
              cls.len(), b.ngates, b.ncyclic, b.pis.len(), b.pos.len(), b.aig.ands.len(), b.residual.len(), t0.elapsed().as_secs_f64());
     let units: Vec<Vec<i32>> = root.units.iter().map(|&l| vec![l]).collect();
     if let Some(p) = &aag { write_aig(p, &b).unwrap(); }
+    if let Some(p) = &map_out {
+        // the variable of every input and output of the AIG, in its order
+        let mut t = String::new();
+        for (k, v) in b.pis.iter().enumerate() { let _ = writeln!(t, "i {k} {v}"); }
+        for (k, v) in b.pos.iter().enumerate() { let _ = writeln!(t, "o {k} {v}"); }
+        std::fs::write(p, t).unwrap();
+    }
     let Some(outp) = out else { return; };
     if b.aig.ands.is_empty() || b.pos.is_empty() {
         println!("nothing to rewrite (no gates, or none observed): the output is the residual");

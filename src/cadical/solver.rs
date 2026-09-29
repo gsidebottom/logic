@@ -128,6 +128,7 @@ unsafe extern "C" {
     fn c3_assume(s: *mut c_void, lit: c_int);
     fn c3_trace_begin(s: *mut c_void);
     fn c3_trace_data(s: *mut c_void, len: *mut usize) -> *const c_int;
+    fn c3_trace_clear(s: *mut c_void);
     fn c3_trace_rat(s: *mut c_void) -> c_int;
     fn c3_connect(
         s: *mut c_void,
@@ -478,6 +479,11 @@ impl<C: Callbacks> Solver<C> {
         let mut len: usize = 0;
         let p = unsafe { c3_trace_data(self.ptr, &mut len) };
         if p.is_null() || len == 0 { &[] } else { unsafe { std::slice::from_raw_parts(p, len) } }
+    }
+
+    /// Forget the events read so far; the recording goes on.
+    pub fn proof_events_clear(&mut self) {
+        unsafe { c3_trace_clear(self.ptr) };
     }
 
     /// Whether a derived clause came with a witness (RAT rather than RUP).

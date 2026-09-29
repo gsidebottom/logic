@@ -194,6 +194,13 @@ const int *c3_trace_data (void *s, size_t *len) {
   return w->tracer->events.data ();
 }
 
+// Forget the events read so far (the solver goes on recording).
+void c3_trace_clear (void *s) {
+  Wrapper *w = self (s);
+  if (w->tracer)
+    w->tracer->events.clear ();
+}
+
 int c3_trace_rat (void *s) {
   Wrapper *w = self (s);
   return w->tracer && w->tracer->rat ? 1 : 0;

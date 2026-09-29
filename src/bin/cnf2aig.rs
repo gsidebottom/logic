@@ -81,60 +81,82 @@ fn write_cnf(path: &str, nv: usize, cls: &[Vec<i32>]) -> Result<(), String> {
 
 struct Root {
     cls: Vec<Vec<i32>>,
+    origin: Vec<usize>, // cls[j] came from the input clause origin[j]
     units: Vec<i32>,
     unsat: bool,
 }
 
 fn simplify_root(cnf: &Cnf) -> Root {
+    // linear unit propagation over occurrence lists; tautologies dropped
     let nv = cnf.nv;
+    let n = cnf.len();
     let mut val: Vec<i8> = vec![0; nv + 1];
-    let mut units = Vec::new();
-    let set = |l: i32, val: &mut Vec<i8>, units: &mut Vec<i32>| -> bool {
-        let v = l.unsigned_abs() as usize;
-        let s = if l > 0 { 1 } else { -1 };
-        if val[v] == 0 { val[v] = s; units.push(l); true } else { val[v] == s }
+    let mut units: Vec<i32> = Vec::new();
+    let mut alive: Vec<bool> = vec![true; n];
+    let mut nfree: Vec<u32> = vec![0; n];
+    // each clause's distinct literals (a repeated literal would be counted twice)
+    let mut dedup: Vec<Vec<i32>> = Vec::with_capacity(n);
+    let mut occ_start: Vec<usize> = vec![0; nv + 2];
+    for (i, a) in alive.iter_mut().enumerate() {
+        let mut c: Vec<i32> = cnf.clause(i).to_vec();
+        c.sort_unstable(); c.dedup();
+        let taut = c.windows(2).any(|w| w[0] == -w[1]);
+        if taut { *a = false; c.clear(); }
+        for &l in &c { occ_start[l.unsigned_abs() as usize + 1] += 1; }
+        dedup.push(c);
+    }
+    for v in 1..=nv + 1 { occ_start[v] += occ_start[v - 1]; }
+    let mut occ: Vec<u32> = vec![0; occ_start[nv + 1]];
+    let mut fill = occ_start.clone();
+    for (i, c) in dedup.iter().enumerate() {
+        nfree[i] = c.len() as u32;
+        for &l in c { let v = l.unsigned_abs() as usize; occ[fill[v]] = i as u32; fill[v] += 1; }
+    }
+    let mut queue: Vec<i32> = Vec::new();
+    let mut unsat = false;
+    let assign = |l: i32, val: &mut Vec<i8>, units: &mut Vec<i32>, queue: &mut Vec<i32>| -> bool {
+        let v = l.unsigned_abs() as usize; let s: i8 = if l > 0 { 1 } else { -1 };
+        if val[v] == 0 { val[v] = s; units.push(l); queue.push(l); true } else { val[v] == s }
     };
-    let mut cur: Vec<Vec<i32>> = Vec::with_capacity(cnf.len());
-    for i in 0..cnf.len() {
-        let c = cnf.clause(i);
-        if c.len() == 1 {
-            if !set(c[0], &mut val, &mut units) { return Root { cls: Vec::new(), units, unsat: true }; }
-        } else {
-            cur.push(c.to_vec());
+    for (i, &a) in alive.iter().enumerate() { if a && dedup[i].len() == 1 && !assign(dedup[i][0], &mut val, &mut units, &mut queue) { unsat = true; } }
+    let mut qi = 0;
+    while qi < queue.len() && !unsat {
+        let l = queue[qi]; qi += 1;
+        let v = l.unsigned_abs() as usize;
+        for &ci in &occ[occ_start[v]..occ_start[v + 1]] {
+            let i = ci as usize;
+            if !alive[i] { continue; }
+            let c = &dedup[i];
+            if c.contains(&l) { alive[i] = false; continue; }   // satisfied
+            nfree[i] -= 1;
+            if nfree[i] == 0 { unsat = true; break; }
+            if nfree[i] == 1 {
+                // the one literal not yet processed: free, or already true and
+                // still in the queue (then the clause is satisfied)
+                let mut rem = None; let mut sat = false;
+                for &x in c {
+                    let vv = val[x.unsigned_abs() as usize];
+                    if vv == 0 { rem = Some(x); } else if (x > 0) == (vv > 0) { sat = true; break; }
+                }
+                alive[i] = false;
+                if sat { continue; }
+                match rem {
+                    Some(x) => { if !assign(x, &mut val, &mut units, &mut queue) { unsat = true; break; } }
+                    None => { unsat = true; break; }
+                }
+            }
         }
     }
-    loop {
-        let mut changed = false;
-        let mut out: Vec<Vec<i32>> = Vec::with_capacity(cur.len());
-        for c in cur.iter() {
-            // tautology
-            let mut taut = false;
-            'outer: for (a, &x) in c.iter().enumerate() {
-                for &y in &c[a + 1..] { if x == -y { taut = true; break 'outer; } }
-            }
-            if taut { changed = true; continue; }
-            let mut keep: Vec<i32> = Vec::with_capacity(c.len());
-            let mut sat = false;
-            for &l in c {
-                let v = l.unsigned_abs() as usize;
-                let s = if l > 0 { 1 } else { -1 };
-                if val[v] == s { sat = true; break; }
-                if val[v] == 0 { keep.push(l); }
-            }
-            if sat { changed = true; continue; }
-            if keep.is_empty() { return Root { cls: Vec::new(), units, unsat: true }; }
-            if keep.len() == 1 {
-                if !set(keep[0], &mut val, &mut units) { return Root { cls: Vec::new(), units, unsat: true }; }
-                changed = true;
-                continue;
-            }
-            if keep.len() != c.len() { changed = true; }
-            out.push(keep);
-        }
-        cur = out;
-        if !changed { break; }
+    if unsat { return Root { cls: Vec::new(), origin: Vec::new(), units, unsat: true }; }
+    let mut cls: Vec<Vec<i32>> = Vec::new();
+    let mut origin: Vec<usize> = Vec::new();
+    for (i, &a) in alive.iter().enumerate() {
+        if !a { continue; }
+        let c = &dedup[i];
+        let keep: Vec<i32> = c.iter().copied().filter(|&x| val[x.unsigned_abs() as usize] == 0).collect();
+        if keep.len() >= 2 { cls.push(keep); origin.push(i); }
     }
-    Root { cls: cur, units, unsat: false }
+    Root { cls, origin, units, unsat: false }
 }
 
 // ── gates ─────────────────────────────────────────────────────────────────
@@ -420,6 +442,178 @@ fn build_aig(cls: &[Vec<i32>], gates: &[Gate]) -> Built {
     Built { residual, pis, pos, aig, lit_of, ncyclic, ngates: out_gate.len() }
 }
 
+// ── proof-carrying re-encoding: hashing and dead cones, no ABC ────────────
+//
+// Output clauses are original clauses or RUP lemmas over the original
+// variables; the DRAT prefix derives them and deletes the rest, so that the
+// prefix followed by a solver's proof of the re-encoded formula refutes the
+// original one.  Merged gates (same function of the same canonical inputs)
+// are substituted away: the equivalence of two AND gates is RUP directly, a
+// table gate's through a resolution tree over its inputs (2^(k+1)-1 lemmas,
+// k <= 3).  A dead cone (no observed output depends on it) is deleted.
+
+struct Proof { buf: Vec<u8>, lemmas: usize }
+impl Proof {
+    fn add(&mut self, c: &[i32]) { let mut l = String::new(); for x in c { let _ = write!(l, "{x} "); } l.push_str("0\n"); self.buf.extend_from_slice(l.as_bytes()); self.lemmas += 1; }
+    fn del(&mut self, c: &[i32]) { let mut l = String::from("d "); for x in c { let _ = write!(l, "{x} "); } l.push_str("0\n"); self.buf.extend_from_slice(l.as_bytes()); }
+}
+
+/// Add `target` (a clause over the gate outputs and `vars`) by a resolution
+/// tree over full assignments of `vars`: every leaf (not row, target) is RUP by
+/// forward propagation through the gate definitions, every inner node from
+/// its two children.  The intermediate lemmas are deleted again.
+fn derive_by_rows(target: &[i32], vars: &[u32], proof: &mut Proof) {
+    fn rec(target: &[i32], vars: &[u32], depth: usize, prefix: &mut Vec<i32>, proof: &mut Proof) {
+        if depth == vars.len() {
+            let mut c: Vec<i32> = prefix.iter().map(|&l| -l).collect(); c.extend_from_slice(target); proof.add(&c); return;
+        }
+        let v = vars[depth] as i32;
+        for val in [-v, v] { prefix.push(val); rec(target, vars, depth + 1, prefix, proof); prefix.pop(); }
+        let mut c: Vec<i32> = prefix.iter().map(|&l| -l).collect(); c.extend_from_slice(target); proof.add(&c);
+        for val in [-v, v] { prefix.push(val); let mut d: Vec<i32> = prefix.iter().map(|&l| -l).collect(); d.extend_from_slice(target); proof.del(&d); prefix.pop(); }
+    }
+    let mut prefix = Vec::new();
+    rec(target, vars, 0, &mut prefix, proof);
+}
+
+fn apply_rep(l: i32, rep: &[i32]) -> i32 { let r = rep[l.unsigned_abs() as usize]; if r == 0 { l } else if l > 0 { r } else { -r } }
+
+/// Canonical key of a gate under the current substitution: None when the
+/// canonical inputs collapse (a variable twice, or with its negation).
+#[derive(Hash, PartialEq, Eq)]
+enum Key { And(Vec<i32>), Table(Vec<u32>, Vec<bool>) }
+fn canonical(g: &Gate, rep: &[i32]) -> Option<(Key, bool)> {
+    match &g.kind {
+        Kind::And { pos } => {
+            let mut ins: Vec<i32> = g.inputs.iter().map(|&l| apply_rep(l, rep)).collect();
+            ins.sort_unstable(); ins.dedup();
+            for w in ins.windows(2) { if w[0] == -w[1] { return None; } }
+            let vars: HashSet<u32> = ins.iter().map(|l| l.unsigned_abs()).collect();
+            if vars.len() != ins.len() { return None; }
+            Some((Key::And(ins), *pos))
+        }
+        Kind::Table(t) => {
+            let k = g.inputs.len();
+            let lits: Vec<i32> = g.inputs.iter().map(|&l| apply_rep(l, rep)).collect();
+            let mut vars: Vec<u32> = lits.iter().map(|l| l.unsigned_abs()).collect();
+            vars.sort_unstable();
+            if vars.windows(2).any(|w| w[0] == w[1]) { return None; }
+            // the table over the sorted canonical variables (first most significant)
+            let pos_of: HashMap<u32, usize> = vars.iter().enumerate().map(|(j, &v)| (v, j)).collect();
+            let mut nt = vec![false; 1 << k];
+            for (row, slot) in nt.iter_mut().enumerate() {
+                // original row bits: input i has canonical literal lits[i]; its value is the canonical var's bit, flipped if negated
+                let mut orig = 0usize;
+                for &l in lits.iter() {
+                    let j = pos_of[&l.unsigned_abs()];
+                    let bit = ((row >> (k - 1 - j)) & 1 == 1) != (l < 0);
+                    orig = (orig << 1) | bit as usize;
+                }
+                *slot = t[orig];
+            }
+            let sign = nt[0];
+            if sign { for b in nt.iter_mut() { *b = !*b; } }
+            Some((Key::Table(vars, nt), !sign))
+        }
+    }
+}
+
+struct Recode { cls: Vec<Vec<i32>>, dropped: Vec<Vec<i32>>, merged: usize, dead: usize }
+
+fn recode(cnf: &Cnf, root: &Root, gates: &[Gate], proof: &mut Proof) -> Recode {
+    let nv = cnf.nv;
+    let cls = &root.cls;
+    // 1. root simplification: derived units and shortened clauses are RUP; the rest is deleted at the end
+    for &u in &root.units { proof.add(&[u]); }
+    let mut keep_original: Vec<bool> = vec![false; cnf.len()];      // input clauses that survive unchanged
+    // 2. gates: topological order over the kept (acyclic) ones
+    let mut out_gate: HashMap<u32, usize> = HashMap::new();
+    for (gi, g) in gates.iter().enumerate() { out_gate.entry(g.out).or_insert(gi); }
+    let mut indeg: HashMap<u32, usize> = HashMap::new();
+    let mut consumers: HashMap<u32, Vec<u32>> = HashMap::new();
+    for &gi in out_gate.values() {
+        let g = &gates[gi];
+        indeg.insert(g.out, g.inputs.iter().filter(|l| out_gate.contains_key(&l.unsigned_abs())).count());
+        for l in &g.inputs { let v = l.unsigned_abs(); if out_gate.contains_key(&v) { consumers.entry(v).or_default().push(g.out); } }
+    }
+    let mut queue: Vec<u32> = indeg.iter().filter(|(_, d)| **d == 0).map(|(o, _)| *o).collect();
+    queue.sort_unstable();
+    let mut order = Vec::new(); let mut qi = 0;
+    while qi < queue.len() { let o = queue[qi]; qi += 1; order.push(o); if let Some(cs) = consumers.get(&o) { for &c in cs { let d = indeg.get_mut(&c).unwrap(); *d -= 1; if *d == 0 { queue.push(c); } } } }
+    let kept: HashSet<u32> = order.iter().copied().collect();
+    let mut defcl: Vec<bool> = vec![false; cls.len()];
+    for &o in &kept { for &i in &gates[out_gate[&o]].clauses { defcl[i] = true; } }
+    let residual: Vec<usize> = (0..cls.len()).filter(|&i| !defcl[i]).collect();
+    // 3. hashing with substitution, in topological order
+    let mut rep: Vec<i32> = vec![0; nv + 1];
+    let mut table: HashMap<Key, (u32, bool)> = HashMap::new();
+    let mut merged = 0usize;
+    let mut live_gate: Vec<u32> = Vec::new();
+    for &o in &order {
+        let g = &gates[out_gate[&o]];
+        match canonical(g, &rep) {
+            None => { live_gate.push(o); }
+            Some((key, sign)) => {
+                if let Some(&(o1, sign1)) = table.get(&key) {
+                    // o == o1 when the signs agree, else o == not o1
+                    let neg = sign != sign1;
+                    let e1 = if neg { -(o1 as i32) } else { o1 as i32 };
+                    let o2 = o as i32;
+                    match &g.kind {
+                        Kind::And { .. } => { proof.add(&[-e1, o2]); proof.add(&[e1, -o2]); }
+                        Kind::Table(_) => {
+                            let vars: Vec<u32> = match &key { Key::Table(v, _) => v.clone(), _ => unreachable!() };
+                            derive_by_rows(&[-e1, o2], &vars, proof);
+                            derive_by_rows(&[e1, -o2], &vars, proof);
+                        }
+                    }
+                    rep[o as usize] = e1; merged += 1;
+                } else {
+                    table.insert(key, (o, sign)); live_gate.push(o);
+                }
+            }
+        }
+    }
+    // 4. dead cones: live = observed outputs and everything they depend on
+    let mut mentioned: HashSet<u32> = HashSet::new();
+    for &i in &residual { for &l in &cls[i] { mentioned.insert(apply_rep(l, &rep).unsigned_abs()); } }
+    let mut needed: HashSet<u32> = HashSet::new();
+    let mut stack: Vec<u32> = live_gate.iter().copied().filter(|o| mentioned.contains(o)).collect();
+    while let Some(o) = stack.pop() {
+        if !needed.insert(o) { continue; }
+        for l in &gates[out_gate[&o]].inputs { let v = apply_rep(*l, &rep).unsigned_abs(); if kept.contains(&v) && rep[v as usize] == 0 { stack.push(v); } }
+    }
+    let dead = live_gate.iter().filter(|o| !needed.contains(o)).count();
+    // 5. the output: substituted clauses of the needed gates and the residual, each an original or a RUP lemma
+    let mut out: Vec<Vec<i32>> = Vec::new();
+    let mut dropped: Vec<Vec<i32>> = Vec::new();
+    let emit = |c: &Vec<i32>, orig: usize, out: &mut Vec<Vec<i32>>, proof: &mut Proof, keep_original: &mut Vec<bool>| {
+        let mut nc: Vec<i32> = c.iter().map(|&l| apply_rep(l, &rep)).collect();
+        nc.sort_unstable(); nc.dedup();
+        for w in nc.windows(2) { if w[0] == -w[1] { return; } }   // tautology after substitution
+        let mut oc: Vec<i32> = cnf.clause(orig).to_vec(); oc.sort_unstable();
+        if nc == oc { keep_original[orig] = true; out.push(cnf.clause(orig).to_vec()); return; }
+        proof.add(&nc); out.push(nc);
+    };
+    for &o in &live_gate {
+        let g = &gates[out_gate[&o]];
+        if needed.contains(&o) { for &i in &g.clauses { emit(&cls[i], root.origin[i], &mut out, proof, &mut keep_original); } }
+        else { for &i in &g.clauses { dropped.push(cls[i].clone()); } }
+    }
+    for &i in &residual { emit(&cls[i], root.origin[i], &mut out, proof, &mut keep_original); }
+    for &u in &root.units { out.push(vec![u]); }
+    // units that were original clauses stay; everything else original is deleted
+    let unit_set: HashSet<i32> = root.units.iter().copied().collect();
+    for (i, &kept_as_is) in keep_original.iter().enumerate() {
+        let c = cnf.clause(i);
+        if c.len() == 1 && unit_set.contains(&c[0]) { continue; }
+        if !kept_as_is { proof.del(c); }
+    }
+    // the merge equivalences served their purpose
+    for (v, &r) in rep.iter().enumerate() { if r != 0 { proof.del(&[-r, v as i32]); proof.del(&[r, -(v as i32)]); } }
+    Recode { cls: out, dropped, merged, dead }
+}
+
 fn enc7(mut x: u32, out: &mut Vec<u8>) {
     loop { let b = (x & 0x7f) as u8; x >>= 7; if x != 0 { out.push(b | 0x80); } else { out.push(b); return; } }
 }
@@ -511,6 +705,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 { eprintln!("usage: cnf2aig in.cnf [--out out.cnf] [--abc ABC] [--script S] [--aag file.aig] [--keep dir]"); std::process::exit(2); }
     let mut input = None; let mut out = None; let mut abc = None; let mut script = "resyn2".to_string(); let mut aag = None; let mut keep = None;
+    let mut recode_out = None; let mut proof_out = None; let mut dropped_out = None;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -519,6 +714,9 @@ fn main() {
             "--script" => { script = args[i + 1].clone(); i += 2; }
             "--aag" => { aag = Some(args[i + 1].clone()); i += 2; }
             "--keep" => { keep = Some(args[i + 1].clone()); i += 2; }
+            "--recode" => { recode_out = Some(args[i + 1].clone()); i += 2; }
+            "--proof" => { proof_out = Some(args[i + 1].clone()); i += 2; }
+            "--dropped" => { dropped_out = Some(args[i + 1].clone()); i += 2; }
             s if s.starts_with("--") => { eprintln!("unknown option {s}"); std::process::exit(2); }
             _ => { input = Some(args[i].clone()); i += 1; }
         }
@@ -532,10 +730,11 @@ fn main() {
     let root = simplify_root(&cnf);
     if root.unsat {
         println!("{base}: the unit clauses contradict -- writing the empty clause");
-        if let Some(o) = out { write_cnf(&o, nv, &[vec![]]).unwrap(); }
+        if let Some(o) = out.clone().or(recode_out.clone()) { write_cnf(&o, nv, &[vec![]]).unwrap(); }
+        if let Some(p) = proof_out { std::fs::write(p, "0\n").unwrap(); }  // the empty clause is RUP from the contradicting units
         return;
     }
-    let cls = root.cls;
+    let cls = root.cls.clone();
     println!("{base}: root simplification: {} units, {} -> {} clauses ({:.1}s)", root.units.len(), cnf.len(), cls.len(), t0.elapsed().as_secs_f64());
     // both orientations of the symmetric groups; keep the one with fewer cycles
     let mut best: Option<(usize, &str, Built)> = None;
@@ -551,6 +750,18 @@ fn main() {
     }
     let (_, name, b) = best.unwrap();
     println!("  orientation kept: {name}");
+    if let Some(rp) = &recode_out {
+        // the gates of the kept orientation, extracted again (cheap)
+        let mut gates = extract_pattern(&cls, name == "highest-variable");
+        extract_generic(&cls, &mut gates, 3);
+        let mut proof = Proof { buf: Vec::new(), lemmas: 0 };
+        let r = recode(&cnf, &root, &gates, &mut proof);
+        write_cnf(rp, nv, &r.cls).unwrap();
+        if let Some(pp) = &proof_out { std::fs::write(pp, &proof.buf).unwrap(); }
+        if let Some(dp) = &dropped_out { write_cnf(dp, nv, &r.dropped).unwrap(); }
+        println!("{base}: recode: {} gates merged, {} dead, {} -> {} clauses, {} proof lemmas ({:.1}s)", r.merged, r.dead, cnf.len(), r.cls.len(), proof.lemmas, t0.elapsed().as_secs_f64());
+        if out.is_none() { return; }
+    }
     println!("{base}: {nv} vars, {} clauses; {} gates ({} on cycles), AIG {} inputs, {} outputs, {} ands; residual {} clauses ({:.1}s)",
              cls.len(), b.ngates, b.ncyclic, b.pis.len(), b.pos.len(), b.aig.ands.len(), b.residual.len(), t0.elapsed().as_secs_f64());
     let units: Vec<Vec<i32>> = root.units.iter().map(|&l| vec![l]).collect();

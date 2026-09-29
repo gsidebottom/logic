@@ -228,7 +228,10 @@
 #   of the 327 s.  Random patterns go on while they split classes, 48 and
 #   235 words here, and do not reach these classes.)
 # The sum-of-three-cubes formulas lose 57% of their clauses in seconds,
-# every merge decided in a window of 64 gates.
+# every merge decided in a window of 64 gates.  It does not make them
+# solvable: CaDiCaL 3.0.1 at 5000 s on the swept sum_of_3_cubes_94_bits_30,
+# sum_of_3_cubes_108_bits_52, multiplier_16bits__miter_19 and
+# slp-synthesis-aes-bottom22 times out on all four.
 #
 # To reproduce the certificate (about 2 h 5 min; the proof is 1.1 GB):
 #   cnf2aig gm16spwtrc.cnf --factor factored.cnf --proof prefix.drat --binary

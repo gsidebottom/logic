@@ -238,3 +238,29 @@
 #   cadical factored.cnf solver.drat
 #   cat prefix.drat solver.drat > full.drat
 #   drat-trim gm16spwtrc.cnf full.drat -t 20000
+#
+# === 9. Addendum: what is left is the encoding ===
+#
+# The natively factored circuit through ABC's CNF writer and nothing else
+# (script "none": strash, &write_cnf), then CaDiCaL 3.0.1 at 5000 s, on a
+# machine with 3 to 7 jobs.  Not certified: the writer is ABC's.
+#
+#                --factor  writer  clauses      CaDiCaL             conflicts   propagations   dc2; fraig; dc2 (2026-09-28)
+#   gm16spwtrc      6 s     9 s      768,506    UNSAT in 1,836 s    3,056,166     15.54e9       441 s + 1,394 s
+#   gm16spwtcl     13 s    16 s    1,303,582    UNSAT in 3,509 s    3,753,567     35.17e9       885 s + 3,660 s
+#   gm20spctrc      6 s     8 s      741,620    UNSAT in 2,109 s    3,603,192     18.59e9       756 s + 3,302 s
+#
+# All three, with half a minute of preparation where ABC's rewriting took
+# 7 to 15.  The same circuit in our own clauses (a gate per variable, six
+# clauses per multiplexer) solves the first and times out on the other two
+# (§5, §8).  On gm16spwtrc:
+#                              clauses    conflicts   propagations/conflict   ms/conflict
+#   our clauses              1,084,297    1,585,181        12,709               1.94
+#   ABC's writer               768,506    3,056,166         5,084               0.60
+# twice the conflicts at a third of the price.  So of what ABC does to
+# these instances the rewriting is the recovery of the partial products,
+# which --factor does with a proof, and the rest is the cut-based writer,
+# which has no proof yet: blocks of clauses that cover several gates (the
+# prime implicants of a function of up to 8 inputs), derivable from the
+# gate definitions by cases on the inputs, the way --recode derives its
+# merges.  That is the step between one certified solve and three.

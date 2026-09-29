@@ -16,12 +16,17 @@
 //!   cnf2aig in.cnf --aag in.aig [--map in.map]   # the AIG only (binary AIGER), and the
 //!                                                  # variable of each of its inputs and outputs
 //!
-//! Two modes need no ABC and carry a proof: `--recode out.cnf` (structural
-//! hashing and dead cones) and `--sweep out.cnf` (SAT sweeping: functional
-//! equivalences found by simulation, each proved by CaDiCaL).  With `--proof
-//! prefix.drat` they write a DRAT prefix that derives the output from the
-//! input; followed by a solver's proof of the output it refutes the input.
+//! Three modes need no ABC and carry a proof: `--recode out.cnf` (structural
+//! hashing and dead cones), `--sweep out.cnf` (SAT sweeping: functional
+//! equivalences found by simulation, each proved by CaDiCaL) and `--factor
+//! out.cnf` (nested multiplexers on two inputs become one on their product).
+//! With `--proof prefix.drat` they write a DRAT prefix that derives the
+//! output from the input; followed by a solver's proof of the output it
+//! refutes the input.  The modes chain: one's output is the next one's
+//! input, and the prefixes are concatenated in that order.  `--binary`
+//! writes the prefix in the binary DRAT format, for a solver's binary proof.
 //!
+//!   cnf2aig in.cnf --factor out.cnf --proof prefix.drat     (select factoring, below)
 //!   cnf2aig in.cnf --sweep out.cnf --proof prefix.drat
 //!           [--rounds 16] [--first 64] [--window GATES] [--conflicts 1000] [--tries 2]
 //!           [--recycle 1000] [--seconds S] [--order level|depth] [--give-up 32]
@@ -136,7 +141,8 @@ fn simplify_root(cnf: &Cnf) -> Root {
         for &l in c { let v = l.unsigned_abs() as usize; occ[fill[v]] = i as u32; fill[v] += 1; }
     }
     let mut queue: Vec<i32> = Vec::new();
-    let mut unsat = false;
+    // an empty clause in the input is a contradiction already
+    let mut unsat = alive.iter().zip(&dedup).any(|(&a, c)| a && c.is_empty());
     let assign = |l: i32, val: &mut Vec<i8>, units: &mut Vec<i32>, queue: &mut Vec<i32>| -> bool {
         let v = l.unsigned_abs() as usize; let s: i8 = if l > 0 { 1 } else { -1 };
         if val[v] == 0 { val[v] = s; units.push(l); queue.push(l); true } else { val[v] == s }
@@ -524,6 +530,33 @@ struct Proof { buf: Vec<u8>, lemmas: usize }
 impl Proof {
     fn add(&mut self, c: &[i32]) { let mut l = String::new(); for x in c { let _ = write!(l, "{x} "); } l.push_str("0\n"); self.buf.extend_from_slice(l.as_bytes()); self.lemmas += 1; }
     fn del(&mut self, c: &[i32]) { let mut l = String::from("d "); for x in c { let _ = write!(l, "{x} "); } l.push_str("0\n"); self.buf.extend_from_slice(l.as_bytes()); }
+}
+
+/// The same proof in the binary DRAT format ('a' or 'd', the literals as
+/// 2*variable + sign in groups of seven bits, 0): what a solver's binary
+/// proof is appended to.
+fn binary_drat(text: &[u8]) -> Vec<u8> {
+    let mut out: Vec<u8> = Vec::with_capacity(text.len() / 2);
+    for line in text.split(|&b| b == b'\n') {
+        if line.is_empty() { continue; }
+        let (tag, rest) = if line.starts_with(b"d ") { (b'd', &line[2..]) } else { (b'a', line) };
+        out.push(tag);
+        for tok in rest.split(|&b| b == b' ') {
+            if tok.is_empty() { continue; }
+            let l: i64 = std::str::from_utf8(tok).unwrap().parse().unwrap();
+            if l == 0 { break; }
+            let mut u: u64 = 2 * l.unsigned_abs() + (l < 0) as u64;
+            while u >= 128 { out.push((u & 127) as u8 | 128); u >>= 7; }
+            out.push(u as u8);
+        }
+        out.push(0);
+    }
+    out
+}
+
+fn write_proof(path: &str, proof: &Proof, binary: bool) {
+    let r = if binary { std::fs::write(path, binary_drat(&proof.buf)) } else { std::fs::write(path, &proof.buf) };
+    r.unwrap_or_else(|e| { eprintln!("{path}: {e}"); std::process::exit(2) });
 }
 
 /// Add `target` (a clause over the gate outputs and `vars`) by a resolution
@@ -1258,6 +1291,276 @@ fn sweep(cnf: &Cnf, root: &Root, gates: &[Gate], p: &SweepParams, proof: &mut Pr
     (Recode { cls: out, dropped, merged: st.merged + st.constants, dead }, st)
 }
 
+// ── select factoring ─────────────────────────────────────────────────────
+//
+//   o = s ? (s2 ? a : e) : e      is      o = (s and s2) ? a : e
+//
+// A circuit written as multiplexers on its inputs hides the products of
+// inputs it computes with: the 256 partial products of a 16x16 multiplier
+// appear nowhere in gm16spwtrc, and 140,525 of its 320,194 gates are the
+// outer half of such a pair.  The product becomes a variable of its own (a
+// definition: three clauses, each RAT on the new variable), the outer gate
+// a multiplexer on it (clauses that follow from the two old definitions and
+// the product's), and the inner gate is dropped where nothing else reads
+// it.  A test repeated below itself, o = s ? (s ? a : b) : e, loses the
+// branch that cannot be taken.  Only selects that no gate defines are
+// paired, so products are of inputs, never of products.
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Branch { Lit(i32), Const(bool) }
+
+fn negated(b: Branch) -> Branch { match b { Branch::Lit(l) => Branch::Lit(-l), Branch::Const(c) => Branch::Const(!c) } }
+
+/// A gate as a multiplexer (select literal, then, else): every way it is one.
+fn mux_forms(g: &Gate) -> Vec<(i32, Branch, Branch)> {
+    let mut out = Vec::new();
+    match &g.kind {
+        Kind::And { pos } => {
+            if g.inputs.len() != 2 { return out; }
+            let (a, b) = (g.inputs[0], g.inputs[1]);
+            for (sel, x) in [(a, b), (b, a)] {
+                // and(s, x) = s ? x : false
+                let f = (sel, Branch::Lit(x), Branch::Const(false));
+                out.push(if *pos { f } else { (f.0, negated(f.1), negated(f.2)) });
+            }
+        }
+        Kind::Table(t) => {
+            let k = g.inputs.len();
+            if !(2..=3).contains(&k) { return out; }
+            let value = |assign: &[(usize, usize)]| -> bool {
+                let mut row = 0usize;
+                for &(j, v) in assign { row |= v << (k - 1 - j); }
+                t[row]
+            };
+            for j in 0..k {
+                let others: Vec<usize> = (0..k).filter(|&i| i != j).collect();
+                let mut branches = [Branch::Const(false); 2];
+                let mut ok = true;
+                for (slot, sv) in [(0usize, 1usize), (1, 0)] {
+                    // the cofactor: a constant or a literal of one of the other inputs
+                    let rows: Vec<Vec<usize>> = if others.len() == 1 { vec![vec![0], vec![1]] } else { vec![vec![0, 0], vec![0, 1], vec![1, 0], vec![1, 1]] };
+                    let vals: Vec<bool> = rows.iter().map(|r| {
+                        let mut a: Vec<(usize, usize)> = vec![(j, sv)];
+                        for (i, &o) in others.iter().enumerate() { a.push((o, r[i])); }
+                        value(&a)
+                    }).collect();
+                    if vals.iter().all(|&v| v == vals[0]) { branches[slot] = Branch::Const(vals[0]); continue; }
+                    let mut found = false;
+                    for (i, &o) in others.iter().enumerate() {
+                        let same = rows.iter().zip(&vals).all(|(r, &v)| v == (r[i] == 1));
+                        let flip = rows.iter().zip(&vals).all(|(r, &v)| v == (r[i] == 0));
+                        if same { branches[slot] = Branch::Lit(g.inputs[o]); found = true; break; }
+                        if flip { branches[slot] = Branch::Lit(-g.inputs[o]); found = true; break; }
+                    }
+                    if !found { ok = false; break; }
+                }
+                if ok { out.push((g.inputs[j], branches[0], branches[1])); }
+            }
+        }
+    }
+    out
+}
+
+/// The clauses of o = sel ? x : y, the two that make o follow from equal
+/// branches included; constants evaluated, nothing subsumed left in.
+fn mux_clauses(o: i32, sel: i32, x: Branch, y: Branch) -> Vec<Vec<i32>> {
+    let lit = |b: Branch, positive: bool| -> Option<Option<i32>> {   // None: the literal is true; Some(None): false
+        match b {
+            Branch::Const(c) => if c == positive { None } else { Some(None) },
+            Branch::Lit(l) => Some(Some(if positive { l } else { -l })),
+        }
+    };
+    let mut raw: Vec<Vec<Option<Option<i32>>>> = vec![
+        vec![Some(Some(-sel)), lit(x, false), Some(Some(o))],
+        vec![Some(Some(-sel)), lit(x, true), Some(Some(-o))],
+        vec![Some(Some(sel)), lit(y, false), Some(Some(o))],
+        vec![Some(Some(sel)), lit(y, true), Some(Some(-o))],
+        vec![lit(x, false), lit(y, false), Some(Some(o))],
+        vec![lit(x, true), lit(y, true), Some(Some(-o))],
+    ];
+    let mut cls: Vec<Vec<i32>> = Vec::new();
+    for c in raw.drain(..) {
+        if c.iter().any(|l| l.is_none()) { continue; }
+        let mut d: Vec<i32> = c.iter().filter_map(|l| l.unwrap()).collect();
+        if normalize(&mut d) { continue; }
+        if !cls.contains(&d) { cls.push(d); }
+    }
+    let keep: Vec<bool> = (0..cls.len()).map(|i| !(0..cls.len()).any(|j| j != i && cls[j].len() < cls[i].len() && cls[j].iter().all(|l| cls[i].contains(l)))).collect();
+    cls.into_iter().zip(keep).filter(|(_, k)| *k).map(|(c, _)| c).collect()
+}
+
+/// Whether unit propagation over these clauses refutes the lemma's negation.
+fn follows_by_propagation(clauses: &[&Vec<i32>], lemma: &[i32]) -> bool {
+    let mut val: HashMap<u32, bool> = HashMap::new();
+    for &l in lemma {
+        if let Some(old) = val.insert(l.unsigned_abs(), l < 0) && old != (l < 0) { return true; }
+    }
+    loop {
+        let mut changed = false;
+        for c in clauses {
+            let mut open = None; let mut n = 0; let mut sat = false;
+            for &l in c.iter() {
+                match val.get(&l.unsigned_abs()) {
+                    Some(&b) => if b == (l > 0) { sat = true; break; },
+                    None => { n += 1; open = Some(l); }
+                }
+            }
+            if sat { continue; }
+            if n == 0 { return true; }
+            if n == 1 { let l = open.unwrap(); val.insert(l.unsigned_abs(), l > 0); changed = true; }
+        }
+        if !changed { return false; }
+    }
+}
+
+#[derive(Default)]
+struct FactorStats { paired: usize, repeated: usize, products: usize, dead: usize, by_rows: usize }
+
+/// What a gate is rewritten to: select ? then : otherwise.
+struct Mux { select: i32, then: Branch, otherwise: Branch, clauses: Vec<Vec<i32>> }
+
+/// A gate that a rule applies to: the gate below it that the rule reads,
+/// the two selects to multiply (none for a repeated test, whose select
+/// stays), and the branches left.
+struct Match { inner: u32, pair: Option<(i32, i32)>, select: i32, then: Branch, otherwise: Branch }
+
+fn factor(cnf: &Cnf, root: &Root, gates: &[Gate], proof: &mut Proof) -> (Vec<Vec<i32>>, usize, FactorStats) {
+    let nv = cnf.nv;
+    let cls = &root.cls;
+    for &u in &root.units { proof.add(&[u]); }
+    let (order, gate_of) = acyclic_order(gates, nv);
+    let is_gate = |l: i32| (l.unsigned_abs() as usize) <= nv && gate_of[l.unsigned_abs() as usize] != NONE;
+    let gate = |v: u32| &gates[gate_of[v as usize] as usize];
+    let forms_of = |l: i32| -> Vec<(i32, Branch, Branch)> {
+        let f = mux_forms(gate(l.unsigned_abs()));
+        if l > 0 { f } else { f.into_iter().map(|(s, a, b)| (s, negated(a), negated(b))).collect() }
+    };
+    let mut defcl: Vec<bool> = vec![false; cls.len()];
+    for &o in &order { for &i in &gate(o).clauses { defcl[i] = true; } }
+    let residual: Vec<usize> = (0..cls.len()).filter(|&i| !defcl[i]).collect();
+
+    let mut st = FactorStats::default();
+    let mut next = nv;
+    let mut product: HashMap<(i32, i32), i32> = HashMap::new();
+    let mut product_list: Vec<(i32, [Vec<i32>; 3])> = Vec::new();
+    let mut newdef: HashMap<u32, Mux> = HashMap::new();
+    for &o in &order {
+        let g = gate(o);
+        let mut found: Option<Match> = None;
+        'forms: for (s, t, e) in mux_forms(g) {
+            for (inner, on_then) in [(t, true), (e, false)] {
+                let Branch::Lit(il) = inner else { continue };
+                if !is_gate(il) { continue; }
+                let other = if on_then { e } else { t };
+                for (s2, a, b) in forms_of(il) {
+                    if s2.unsigned_abs() == s.unsigned_abs() {
+                        // the same test again: the branch that can be taken
+                        let taken = if (s2 == s) == on_then { a } else { b };
+                        found = Some(Match { inner: il.unsigned_abs(), pair: None, select: s, then: if on_then { taken } else { t }, otherwise: if on_then { e } else { taken } });
+                        break 'forms;
+                    }
+                    if is_gate(s) || is_gate(s2) { continue; }
+                    let inner = il.unsigned_abs();
+                    let hit = |pair: (i32, i32), then: Branch, otherwise: Branch| Some(Match { inner, pair: Some(pair), select: 0, then, otherwise });
+                    if on_then {
+                        // s ? (s2 ? a : b) : e
+                        if b == other { found = hit((s, s2), a, e); break 'forms; }
+                        if a == other { found = hit((s, -s2), b, e); break 'forms; }
+                    } else {
+                        // s ? t : (s2 ? a : b): with a = t it is (s or s2) ? t : b, that is (not s and not s2) ? b : t
+                        if a == other { found = hit((-s, -s2), b, t); break 'forms; }
+                        if b == other { found = hit((-s, s2), a, t); break 'forms; }
+                    }
+                }
+            }
+        }
+        let Some(Match { inner, pair, select: sel, then: x, otherwise: y }) = found else { continue };
+        if x == y { continue; }   // the gate is one of its inputs: left to the sweep
+        let mut support: Vec<&Vec<i32>> = Vec::new();
+        for &i in &g.clauses { support.push(&cls[i]); }
+        for &i in &gate(inner).clauses { support.push(&cls[i]); }
+        let sel = match pair {
+            None => { st.repeated += 1; sel }
+            Some((l1, l2)) => {
+                st.paired += 1;
+                let key = if l1.unsigned_abs() < l2.unsigned_abs() { (l1, l2) } else { (l2, l1) };
+                *product.entry(key).or_insert_with(|| {
+                    next += 1;
+                    let p = next as i32;
+                    let d = [vec![-p, key.0], vec![-p, key.1], vec![p, -key.0, -key.1]];
+                    for c in &d { proof.add(c); }    // each RAT on the new variable, which comes first
+                    product_list.push((p, d));
+                    p
+                })
+            }
+        };
+        let own: Vec<Vec<i32>> = if pair.is_some() { product_list.iter().find(|(p, _)| *p == sel).map(|(_, d)| d.to_vec()).unwrap() } else { Vec::new() };
+        for c in &own { support.push(c); }
+        let new = mux_clauses(o as i32, sel, x, y);
+        for c in &new {
+            if follows_by_propagation(&support, c) { proof.add(c); continue; }
+            // an encoding that propagation does not see through: by cases on what the gates read
+            st.by_rows += 1;
+            let mut vars: Vec<u32> = g.inputs.iter().chain(gate(inner).inputs.iter()).map(|l| l.unsigned_abs()).filter(|&v| v != inner).collect();
+            vars.sort_unstable(); vars.dedup();
+            let vars: Vec<u32> = vars.into_iter().filter(|v| !c.iter().any(|l| l.unsigned_abs() == *v)).collect();
+            derive_by_rows(c, &vars, proof);
+        }
+        newdef.insert(o, Mux { select: sel, then: x, otherwise: y, clauses: new });
+    }
+    st.products = product_list.len();
+
+    // what the clauses outside the gates read, and what that reads
+    let mut needed: Vec<bool> = vec![false; nv + 1];
+    let mut stack: Vec<u32> = Vec::new();
+    for &i in &residual { for &l in &cls[i] { if is_gate(l) { stack.push(l.unsigned_abs()); } } }
+    while let Some(o) = stack.pop() {
+        if needed[o as usize] { continue; }
+        needed[o as usize] = true;
+        match newdef.get(&o) {
+            Some(m) => {
+                if is_gate(m.select) { stack.push(m.select.unsigned_abs()); }   // a repeated test may be on a gate
+                for b in [m.then, m.otherwise] { if let Branch::Lit(l) = b && is_gate(l) { stack.push(l.unsigned_abs()); } }
+            }
+            None => for &l in &gate(o).inputs { if is_gate(l) { stack.push(l.unsigned_abs()); } },
+        }
+    }
+    let mut keep_original: Vec<bool> = vec![false; cnf.len()];
+    let mut out: Vec<Vec<i32>> = Vec::new();
+    let mut emit = |i: usize, out: &mut Vec<Vec<i32>>, proof: &mut Proof| {
+        let orig = root.origin[i];
+        let mut nc = cls[i].clone(); normalize(&mut nc);
+        let mut oc: Vec<i32> = cnf.clause(orig).to_vec(); normalize(&mut oc);
+        if nc == oc { keep_original[orig] = true; out.push(cnf.clause(orig).to_vec()); return; }
+        proof.add(&nc); out.push(nc);
+    };
+    let mut used: HashSet<i32> = HashSet::new();
+    let mut spent: Vec<Vec<i32>> = Vec::new();
+    for &o in &order {
+        let alive = needed[o as usize];
+        if !alive { st.dead += 1; }
+        match newdef.get(&o) {
+            Some(m) => {
+                if alive { used.insert(m.select); out.extend(m.clauses.iter().cloned()); } else { spent.extend(m.clauses.iter().cloned()); }
+            }
+            None => if alive { for &i in &gate(o).clauses { emit(i, &mut out, proof); } },
+        }
+    }
+    for (p, d) in &product_list {
+        if used.contains(p) { out.extend(d.iter().cloned()); } else { spent.extend(d.iter().cloned()); }
+    }
+    for &i in &residual { emit(i, &mut out, proof); }
+    for &u in &root.units { out.push(vec![u]); }
+    let unit_set: HashSet<i32> = root.units.iter().copied().collect();
+    for (i, &kept_as_is) in keep_original.iter().enumerate() {
+        let c = cnf.clause(i);
+        if c.len() == 1 && unit_set.contains(&c[0]) { continue; }
+        if !kept_as_is { proof.del(c); }
+    }
+    for c in &spent { proof.del(c); }
+    (out, next, st)
+}
+
 fn enc7(mut x: u32, out: &mut Vec<u8>) {
     loop { let b = (x & 0x7f) as u8; x >>= 7; if x != 0 { out.push(b | 0x80); } else { out.push(b); return; } }
 }
@@ -1350,6 +1653,8 @@ fn main() {
     if args.len() < 2 { eprintln!("usage: cnf2aig in.cnf [--out out.cnf] [--abc ABC] [--script S] [--aag file.aig] [--keep dir]"); std::process::exit(2); }
     let mut input = None; let mut out = None; let mut abc = None; let mut script = "resyn2".to_string(); let mut aag = None; let mut keep = None;
     let mut recode_out = None; let mut proof_out = None; let mut dropped_out = None; let mut sweep_out = None; let mut map_out: Option<String> = None;
+    let mut factor_out: Option<String> = None;
+    let mut binary = false;
     let mut sp = SweepParams { rounds: 16, first_window: 64, max_window: usize::MAX, conflicts: 1000, tries: 2, seconds: 0.0, recycle: 1000, levels: true, give_up: 32 };
     let mut i = 1;
     while i < args.len() {
@@ -1364,6 +1669,8 @@ fn main() {
             "--dropped" => { dropped_out = Some(args[i + 1].clone()); i += 2; }
             "--sweep" => { sweep_out = Some(args[i + 1].clone()); i += 2; }
             "--map" => { map_out = Some(args[i + 1].clone()); i += 2; }
+            "--factor" => { factor_out = Some(args[i + 1].clone()); i += 2; }
+            "--binary" => { binary = true; i += 1; }
             "--rounds" => { sp.rounds = args[i + 1].parse().expect("--rounds N"); i += 2; }
             "--window" => { sp.max_window = args[i + 1].parse().expect("--window N"); i += 2; }
             "--conflicts" => { sp.conflicts = args[i + 1].parse().expect("--conflicts N"); i += 2; }
@@ -1387,9 +1694,9 @@ fn main() {
     let nv = cnf.nv;
     let root = simplify_root(&cnf);
     if root.unsat {
-        println!("{base}: the unit clauses contradict -- writing the empty clause");
-        if let Some(o) = out.clone().or(recode_out.clone()).or(sweep_out.clone()) { write_cnf(&o, nv, &[vec![]]).unwrap(); }
-        if let Some(p) = proof_out { std::fs::write(p, "0\n").unwrap(); }  // the empty clause is RUP from the contradicting units
+        println!("{base}: contradictory at the root (unit clauses, or an empty clause) -- writing the empty clause");
+        if let Some(o) = out.clone().or(recode_out.clone()).or(sweep_out.clone()).or(factor_out.clone()) { write_cnf(&o, nv, &[vec![]]).unwrap(); }
+        if let Some(p) = proof_out { write_proof(&p, &Proof { buf: b"0\n".to_vec(), lemmas: 1 }, binary); }  // the empty clause is RUP from the contradicting units
         return;
     }
     let cls = root.cls.clone();
@@ -1408,13 +1715,26 @@ fn main() {
     }
     let (_, name, b) = best.unwrap();
     println!("  orientation kept: {name}");
+    if let Some(fp) = &factor_out {
+        let mut gates = extract_pattern(&cls, name == "highest-variable");
+        extract_generic(&cls, &mut gates, 3);
+        let mut proof = Proof { buf: Vec::new(), lemmas: 0 };
+        let (fcls, fnv, st) = factor(&cnf, &root, &gates, &mut proof);
+        write_cnf(fp, fnv, &fcls).unwrap();
+        if let Some(pp) = &proof_out { write_proof(pp, &proof, binary); }
+        println!("{base}: factor: {} gates on a product of two selects, {} products; {} repeated tests; {} gates no longer read; {} clauses by cases",
+                 st.paired, st.products, st.repeated, st.dead, st.by_rows);
+        println!("{base}: factor: {} variables, {} clauses -> {} variables, {} clauses; {} proof lemmas, {:.1} MB of proof ({:.1}s)",
+                 nv, cnf.len(), fnv, fcls.len(), proof.lemmas, proof.buf.len() as f64 / 1e6, t0.elapsed().as_secs_f64());
+        return;
+    }
     if let Some(wp) = &sweep_out {
         let mut gates = extract_pattern(&cls, name == "highest-variable");
         extract_generic(&cls, &mut gates, 3);
         let mut proof = Proof { buf: Vec::new(), lemmas: 0 };
         let (r, st) = sweep(&cnf, &root, &gates, &sp, &mut proof, t0);
         write_cnf(wp, nv, &r.cls).unwrap();
-        if let Some(pp) = &proof_out { std::fs::write(pp, &proof.buf).unwrap(); }
+        if let Some(pp) = &proof_out { write_proof(pp, &proof, binary); }
         if let Some(dp) = &dropped_out { write_cnf(dp, nv, &r.dropped).unwrap(); }
         println!("{base}: sweep: {} attempts: {} merged, {} constant, {} refuted ({} refinements), {} undecided in the window, {} out of budget; {} dead; {} candidates not reached in time, {} in classes given up",
                  st.attempts, st.merged, st.constants, st.refuted, st.splits, st.window_sat, st.unknown, r.dead, st.unreached, st.given_up);
@@ -1431,7 +1751,7 @@ fn main() {
         let mut proof = Proof { buf: Vec::new(), lemmas: 0 };
         let r = recode(&cnf, &root, &gates, &mut proof);
         write_cnf(rp, nv, &r.cls).unwrap();
-        if let Some(pp) = &proof_out { std::fs::write(pp, &proof.buf).unwrap(); }
+        if let Some(pp) = &proof_out { write_proof(pp, &proof, binary); }
         if let Some(dp) = &dropped_out { write_cnf(dp, nv, &r.dropped).unwrap(); }
         println!("{base}: recode: {} gates merged, {} dead, {} -> {} clauses, {} proof lemmas ({:.1}s)", r.merged, r.dead, cnf.len(), r.cls.len(), proof.lemmas, t0.elapsed().as_secs_f64());
         if out.is_none() { return; }

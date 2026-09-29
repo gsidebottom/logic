@@ -28,7 +28,8 @@
 //!
 //!   cnf2aig in.cnf --factor out.cnf --proof prefix.drat     (select factoring, below)
 //!   cnf2aig in.cnf --sweep out.cnf --proof prefix.drat
-//!           [--rounds 16] [--first 64] [--window GATES] [--conflicts 1000] [--tries 2]
+//!           [--rounds 16 (words of random patterns to start with; more follow
+//!           while they split classes)] [--first 64] [--window GATES] [--conflicts 1000] [--tries 2]
 //!           [--recycle 1000] [--seconds S] [--order level|depth] [--give-up 32]
 //!
 //! (--give-up: a class of candidates is left alone after that many attempts
@@ -729,7 +730,7 @@ fn recode(cnf: &Cnf, root: &Root, gates: &[Gate], proof: &mut Proof) -> Recode {
 struct SweepParams { rounds: usize, first_window: usize, max_window: usize, conflicts: i32, tries: usize, seconds: f64, recycle: usize, levels: bool, give_up: u32 }
 
 #[derive(Default)]
-struct SweepStats { attempts: usize, merged: usize, constants: usize, refuted: usize, window_sat: usize, unknown: usize, solver_lemmas: usize, splits: usize, shortened: usize, unreached: usize, given_up: usize, whole: usize, solvers: usize, clock: [f64; 4] }
+struct SweepStats { attempts: usize, merged: usize, constants: usize, refuted: usize, window_sat: usize, unknown: usize, solver_lemmas: usize, splits: usize, shortened: usize, unreached: usize, given_up: usize, whole: usize, solvers: usize, clock: [f64; 4], rounds: usize }
 
 /// The candidate classes: nodes (0 is the constant false, the others are
 /// variables) that no pattern simulated so far tells apart, up to
@@ -745,30 +746,35 @@ impl Classes {
     /// Split by one more word of patterns; how many classes that made.
     fn refine(&mut self, word: &[u64]) -> usize {
         let n0 = self.members.len();
+        for c in 0..n0 { self.refine_one(c, word); }
+        self.members.len() - n0
+    }
+
+    /// Split one class by a word of patterns (the others do not need to
+    /// have been simulated); how many classes that made.
+    fn refine_one(&mut self, c: usize, word: &[u64]) -> usize {
+        if self.members[c].len() < 2 { return 0; }
+        let w0 = word[self.members[c][0] as usize];
+        if self.members[c].iter().all(|&v| word[v as usize] == w0) { return 0; }
+        let n0 = self.members.len();
         let mut groups: HashMap<u64, u32> = HashMap::new();
-        for c in 0..n0 {
-            if self.members[c].len() < 2 { continue; }
-            let w0 = word[self.members[c][0] as usize];
-            if self.members[c].iter().all(|&v| word[v as usize] == w0) { continue; }
-            groups.clear();
-            groups.insert(w0, c as u32);
-            let old = std::mem::take(&mut self.members[c]);
-            for v in old {
-                let w = word[v as usize];
-                let t = match groups.get(&w) {
-                    Some(&t) => t,
-                    None => {
-                        self.members.push(Vec::new()); self.reps.push(Vec::new());
-                        let f = self.fails[c]; self.fails.push(f);
-                        let t = (self.members.len() - 1) as u32; groups.insert(w, t); t
-                    }
-                };
-                self.members[t as usize].push(v);
-                self.id[v as usize] = t;
-            }
-            let old = std::mem::take(&mut self.reps[c]);
-            for r in old { let t = self.id[r as usize] as usize; self.reps[t].push(r); }
+        groups.insert(w0, c as u32);
+        let old = std::mem::take(&mut self.members[c]);
+        for v in old {
+            let w = word[v as usize];
+            let t = match groups.get(&w) {
+                Some(&t) => t,
+                None => {
+                    self.members.push(Vec::new()); self.reps.push(Vec::new());
+                    let f = self.fails[c]; self.fails.push(f);
+                    let t = (self.members.len() - 1) as u32; groups.insert(w, t); t
+                }
+            };
+            self.members[t as usize].push(v);
+            self.id[v as usize] = t;
         }
+        let old = std::mem::take(&mut self.reps[c]);
+        for r in old { let t = self.id[r as usize] as usize; self.reps[t].push(r); }
         self.members.len() - n0
     }
 }
@@ -1144,6 +1150,25 @@ fn sweep(cnf: &Cnf, root: &Root, gates: &[Gate], p: &SweepParams, proof: &mut Pr
         for v in (0..=nv).filter(|&v| v == 0 || is_input[v]) { classes.reps[classes.id[v] as usize].push(v as u32); }
     }
     drop(key);
+    // more random patterns while they still split classes: a pattern costs
+    // one pass over the circuit, a counterexample a call to the solver and
+    // the same pass
+    let mut quiet = 0;
+    let mut extra = 0usize;
+    let simulating = std::time::Instant::now();
+    while extra < 240 && quiet < 3 {
+        for v in 1..=nv { if gate_of[v] == NONE { val[v] = rng.next(); } }
+        for &o in &order { val[o as usize] = eval_gate(&gates[gate_of[o as usize] as usize], &val); }
+        for v in 1..=nv { if phase[v] { val[v] = !val[v]; } }
+        val[0] = 0;
+        let shared = classes.members.iter().filter(|m| m.len() > 1).count();
+        let splits = classes.refine(&val);
+        if splits * 1000 < shared.max(1000) { quiet += 1; } else { quiet = 0; }
+        extra += 1;
+    }
+    let rounds = p.rounds.max(1) + extra;
+    // what a pass over the whole circuit costs
+    let pass = simulating.elapsed().as_secs_f64() / extra.max(1) as f64;
 
     let mut sw = Sweeper { cls, gates, gate_of, rep: vec![0; nv + 1], cval: vec![0; nv + 1], seen: vec![0; nv + 1], stamp: 0,
                            spare: Some(Numbering::new(nv)), cones: None, rested: Some(Numbering::new(nv)), loaded: vec![0; nv + 1],
@@ -1153,6 +1178,11 @@ fn sweep(cnf: &Cnf, root: &Root, gates: &[Gate], p: &SweepParams, proof: &mut Pr
     let mut shortened: HashMap<usize, Vec<i32>> = HashMap::new();
     let mut in_model: Vec<u32> = vec![0; nv + 1];
     let mut model_stamp = 0u32;
+    let mut in_cone: Vec<u32> = vec![0; nv + 1];
+    let mut cone_stamp = 0u32;
+    let mut word: Vec<u64> = vec![0; nv + 1];
+    let mut position: Vec<u32> = vec![0; nv + 1];
+    for (k, &o) in order.iter().enumerate() { position[o as usize] = k as u32; }
     // SWEEP_TRACE=file: one line per attempt (position, gate, candidate, outcome, gates in the cone, size of the class)
     let mut trace = std::env::var("SWEEP_TRACE").ok().map(|f| std::io::BufWriter::new(std::fs::File::create(f).expect("SWEEP_TRACE")));
     let started = std::time::Instant::now();
@@ -1198,8 +1228,14 @@ fn sweep(cnf: &Cnf, root: &Root, gates: &[Gate], p: &SweepParams, proof: &mut Pr
                     break;
                 }
                 Outcome::Refuted(model) => {
-                    // the counterexample and 63 patterns near it, through the whole circuit
+                    // the counterexample and 63 patterns near it.  Through the
+                    // whole circuit, and every class gets the word, while that
+                    // costs no more than a few attempts (it saves some: 897
+                    // counterexamples instead of 6,067 on slp-synthesis-aes);
+                    // else through what the members of this class depend on.
                     let t = std::time::Instant::now();
+                    let attempt = (sw.clock[0] + sw.clock[1] + sw.clock[2]) / st.attempts.max(1) as f64;
+                    let everywhere = pass <= 4.0 * attempt;
                     st.refuted += 1;
                     model_stamp += 1;
                     for &(v, b) in &model {
@@ -1207,11 +1243,38 @@ fn sweep(cnf: &Cnf, root: &Root, gates: &[Gate], p: &SweepParams, proof: &mut Pr
                         let flips = rng.next() & rng.next() & rng.next() & !1;
                         val[v as usize] = (if b { !0u64 } else { 0 }) ^ flips;
                     }
-                    for v in 1..=nv { if sw.gate_of[v] == NONE && in_model[v] != model_stamp { val[v] = rng.next(); } }
-                    for &g in &order { val[g as usize] = eval_gate(&gates[sw.gate_of[g as usize] as usize], &val); }
-                    for v in 1..=nv { if phase[v] { val[v] = !val[v]; } }
-                    val[0] = 0;
-                    st.splits += classes.refine(&val);
+                    cone_stamp += 1;
+                    let mut cone: Vec<u32> = Vec::new();
+                    let mut stack: Vec<u32> = classes.members[c].iter().copied().filter(|&v| v != 0).collect();
+                    let mut whole = everywhere;
+                    if everywhere { stack.clear(); }
+                    while let Some(v) = stack.pop() {
+                        let vu = v as usize;
+                        if in_cone[vu] == cone_stamp { continue; }
+                        in_cone[vu] = cone_stamp;
+                        if sw.gate_of[vu] == NONE {
+                            if in_model[vu] != model_stamp { val[vu] = rng.next(); }
+                            continue;
+                        }
+                        cone.push(v);
+                        if cone.len() * 4 > order.len() { whole = true; break; }
+                        for &l in &gates[sw.gate_of[vu] as usize].inputs { stack.push(l.unsigned_abs()); }
+                    }
+                    if whole {
+                        for v in 1..=nv { if sw.gate_of[v] == NONE && in_model[v] != model_stamp && in_cone[v] != cone_stamp { val[v] = rng.next(); } }
+                        for &g in &order { val[g as usize] = eval_gate(&gates[sw.gate_of[g as usize] as usize], &val); }
+                        for v in 1..=nv { if phase[v] { val[v] = !val[v]; } }
+                        val[0] = 0;
+                        st.splits += classes.refine(&val);
+                    } else {
+                        cone.sort_unstable_by_key(|&g| position[g as usize]);
+                        for &g in &cone { val[g as usize] = eval_gate(&gates[sw.gate_of[g as usize] as usize], &val); }
+                        // the members read complemented where their first pattern was 1; the
+                        // gates between them are left as computed, for the ones above
+                        let members: Vec<u32> = classes.members[c].clone();
+                        for &m in &members { if m != 0 && phase[m as usize] { word[m as usize] = !val[m as usize]; } else { word[m as usize] = if m == 0 { 0 } else { val[m as usize] }; } }
+                        st.splits += classes.refine_one(c, &word);
+                    }
                     sw.clock[3] += t.elapsed().as_secs_f64();
                 }
                 Outcome::WindowSat => { st.window_sat += 1; undecided += 1; classes.fails[c] += 1; }
@@ -1240,6 +1303,7 @@ fn sweep(cnf: &Cnf, root: &Root, gates: &[Gate], p: &SweepParams, proof: &mut Pr
     st.whole = sw.whole;
     st.solvers = sw.solvers;
     st.clock = sw.clock;
+    st.rounds = rounds;
     st.solver_lemmas = proof.lemmas - root.units.len() - st.shortened - 2 * st.merged - st.constants;
 
     // the output: what the observed outputs depend on, substituted
@@ -1738,8 +1802,8 @@ fn main() {
         if let Some(dp) = &dropped_out { write_cnf(dp, nv, &r.dropped).unwrap(); }
         println!("{base}: sweep: {} attempts: {} merged, {} constant, {} refuted ({} refinements), {} undecided in the window, {} out of budget; {} dead; {} candidates not reached in time, {} in classes given up",
                  st.attempts, st.merged, st.constants, st.refuted, st.splits, st.window_sat, st.unknown, r.dead, st.unreached, st.given_up);
-        println!("{base}: sweep: {} of the attempts went to whole cones, in {} solvers; seconds: windows {:.1}, loading {:.1}, whole cones {:.1}, simulation {:.1}",
-                 st.whole, st.solvers, st.clock[0], st.clock[1], st.clock[2], st.clock[3]);
+        println!("{base}: sweep: {} words of random patterns; {} of the attempts went to whole cones, in {} solvers; seconds: windows {:.1}, loading {:.1}, whole cones {:.1}, simulation {:.1}",
+                 st.rounds, st.whole, st.solvers, st.clock[0], st.clock[1], st.clock[2], st.clock[3]);
         println!("{base}: sweep: {} -> {} clauses, {} proof lemmas ({} from the solver, {} shortened clauses), {:.1} MB of proof ({:.1}s)",
                  cnf.len(), r.cls.len(), proof.lemmas, st.solver_lemmas, st.shortened, proof.buf.len() as f64 / 1e6, t0.elapsed().as_secs_f64());
         if out.is_none() && recode_out.is_none() { return; }

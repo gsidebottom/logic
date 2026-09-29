@@ -177,3 +177,54 @@
 #   reproduced, with a crash report.  `&fraig` has a default of 1,000,000
 #   conflicts per node and was not done after an hour.  Neither is needed
 #   for these instances.
+#
+# === 8. Addendum: the certificate, clean timings, other families ===
+#
+# The certificate.  drat-trim, the ORIGINAL gm16spwtrc.cnf (1,921,166
+# clauses) against the prefix of --factor (25 MB) followed by CaDiCaL
+# 3.0.0's proof of the factored formula (1.10 GB), binary DRAT:
+#     c 672792 of 1921166 clauses in core
+#     c 1877480 of 45686900 lemmas in core using 629545382 resolution steps
+#     c 25988 RAT lemmas in core; 671404 redundant literals in core lemmas
+#     s VERIFIED
+#     c verification time: 2957.556 seconds
+# 6 s + 4,503 s + 2,958 s: a checked refutation of an instance the 2026
+# main track left unsolved at 5000 s.
+#
+# Clean timings.  gm16spwtrc, CaDiCaL 3.0.1, at most 7 jobs on the machine:
+#                         conflicts   propagations   seconds   ms/conflict   propagations/conflict
+#   ABC dc2               1,869,943      15.01e9      1,872       1.00            8,025
+#   --factor              1,585,181      20.15e9      3,071       1.94           12,709
+#   --factor, --sweep     1,377,659      15.47e9      2,398       1.74           11,231
+# (the conflict counts are those of the loaded runs: the solver is
+# deterministic.)  The native formulas need fewer conflicts and half again
+# as many propagations for each; a propagation costs 125 ns on ABC's
+# formula and 152-155 ns on ours.  ABC's cut-based writer hands CaDiCaL
+# blocks that cover several gates; ours is a gate per variable.  That, not
+# the rewriting, is what is left to gain.
+#
+# The sweep on the other circuits that the 2026 main track leaves unsolved
+# (--seconds 300; in a window: no whole cone was needed):
+#                                   gates     merged  constant  refuted  clauses                  seconds
+#   multiplier_16bits__miter_19     5,740        407       15        5     17,202 ->    10,498        1
+#   gus-md5-14-sc2009              66,368      3,068        3       63    227,010 ->   220,399        1
+#   gus-md5-15                     66,446      3,071        4       58    227,171 ->   220,565        1
+#   slp-synthesis-aes-bottom22     50,281      5,444        0      897    178,062 ->   149,932        1
+#   sum_of_3_cubes_94_bits_30     113,366     60,065    7,187        0    764,638 ->   329,954        9
+#   sum_of_3_cubes_108_bits_52    149,528     79,217    9,385        0  1,010,065 ->   435,815       11
+#   sum_of_3_cubes_145_bits_74    270,665    143,426   16,406        0  1,829,989 ->   791,519       20
+#   safe-50-h49-unsat             612,537     17,608        0   20,017  2,098,249 -> 2,040,529      304*
+#   sncf_model_ixl_bmc_depth_15 1,718,788    184,208   21,132    7,031  7,742,049 -> 5,636,752      327*
+#   (* cut by --seconds: 551,355 and 444,071 candidates not reached.  A
+#   counterexample costs a pass over what its class depends on, which for
+#   the classes of these two is most of the circuit: 282 of the 304 s, 234
+#   of the 327 s.  Random patterns go on while they split classes, 48 and
+#   235 words here, and do not reach these classes.)
+# The sum-of-three-cubes formulas lose 57% of their clauses in seconds,
+# every merge decided in a window of 64 gates.
+#
+# To reproduce the certificate (about 2 h 5 min; the proof is 1.1 GB):
+#   cnf2aig gm16spwtrc.cnf --factor factored.cnf --proof prefix.drat --binary
+#   cadical factored.cnf solver.drat
+#   cat prefix.drat solver.drat > full.drat
+#   drat-trim gm16spwtrc.cnf full.drat -t 20000

@@ -115,6 +115,11 @@ def extract_gates_generic(clauses, gates, max_inputs=3):
             if not cidx or key in tried: continue
             tried.add(key)
             cls = [clauses[i] for i in cidx]
+            # the inputs are the variables these clauses mention: a candidate
+            # none of them mentions would be a dependency the gate does not
+            # have (and can close a cycle through a gate downstream)
+            mentioned = {abs(l) for c in cls for l in c}
+            In = tuple(v for v in In if v in mentioned); k = len(In)
             pos = {v: j for j, v in enumerate(In)}
             table = []; ok = True
             for bits in itertools.product([False, True], repeat=k):
@@ -367,7 +372,7 @@ def main():
         built = build_aig(nv, clauses, gs)
         variants.append((built[5], name, len(base), len(gs), built))
         print(f"  orientation {name}: {len(base)} by pattern + {len(gs) - len(base)} generic, {built[5]} on cycles", flush=True)
-    variants.sort(key=lambda t: t[0])
+    variants.sort(key=lambda t: -(t[3] - t[0]))   # most acyclic gates kept
     ncyclic, name, n_pattern, n_gates, built = variants[0]
     residual, pis, pos, ands, lit_of, ncyclic = built
     residual_units = [[l] for l in units]

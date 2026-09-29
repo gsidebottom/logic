@@ -13,6 +13,16 @@
 //!
 //!   cnf2aig in.cnf --out out.cnf --abc ABC [--script none|resyn2|resyn2f|dc2f|...]
 //!   cnf2aig in.cnf --aag in.aig            # the AIG only (binary AIGER)
+//!
+//! Two modes need no ABC and carry a proof: `--recode out.cnf` (structural
+//! hashing and dead cones) and `--sweep out.cnf` (SAT sweeping: functional
+//! equivalences found by simulation, each proved by CaDiCaL).  With `--proof
+//! prefix.drat` they write a DRAT prefix that derives the output from the
+//! input; followed by a solver's proof of the output it refutes the input.
+//!
+//!   cnf2aig in.cnf --sweep out.cnf --proof prefix.drat
+//!           [--rounds 16] [--window GATES] [--conflicts 1000] [--tries 2] [--seconds S]
+use logic::cadical::solver::Solver;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::io::Write;
@@ -77,6 +87,14 @@ fn write_cnf(path: &str, nv: usize, cls: &[Vec<i32>]) -> Result<(), String> {
     w.flush().map_err(|e| e.to_string())
 }
 
+/// Sort by variable and drop repeated literals; true for a tautology.  (By
+/// value a literal and its negation are not neighbours.)
+fn normalize(c: &mut Vec<i32>) -> bool {
+    c.sort_unstable_by_key(|l| (l.unsigned_abs(), *l));
+    c.dedup();
+    c.windows(2).any(|w| w[0] == -w[1])
+}
+
 // ── root simplification: units to a fixpoint, tautologies out ─────────────
 
 struct Root {
@@ -99,8 +117,7 @@ fn simplify_root(cnf: &Cnf) -> Root {
     let mut occ_start: Vec<usize> = vec![0; nv + 2];
     for (i, a) in alive.iter_mut().enumerate() {
         let mut c: Vec<i32> = cnf.clause(i).to_vec();
-        c.sort_unstable(); c.dedup();
-        let taut = c.windows(2).any(|w| w[0] == -w[1]);
+        let taut = normalize(&mut c);
         if taut { *a = false; c.clear(); }
         for &l in &c { occ_start[l.unsigned_abs() as usize + 1] += 1; }
         dedup.push(c);
@@ -295,6 +312,11 @@ fn extract_generic(cls: &[Vec<i32>], gates: &mut Vec<Gate>, max_inputs: usize) {
                 let mut key: Vec<u32> = cidx.iter().map(|&i| i as u32).collect();
                 key.sort_unstable();
                 if !tried.insert(key) { continue; }
+                // the inputs are the variables these clauses mention: a candidate none
+                // of them mentions would be a dependency the gate does not have (and
+                // can close a cycle through a gate downstream)
+                let combo: Vec<u32> = combo.into_iter().filter(|&v| cidx.iter().any(|&i| cls[i].iter().any(|l| l.unsigned_abs() == v))).collect();
+                let k = combo.len();
                 // truth table over In (first input most significant)
                 let mut table = Vec::with_capacity(1 << k);
                 let mut ok = true;
@@ -589,9 +611,8 @@ fn recode(cnf: &Cnf, root: &Root, gates: &[Gate], proof: &mut Proof) -> Recode {
     let mut dropped: Vec<Vec<i32>> = Vec::new();
     let emit = |c: &Vec<i32>, orig: usize, out: &mut Vec<Vec<i32>>, proof: &mut Proof, keep_original: &mut Vec<bool>| {
         let mut nc: Vec<i32> = c.iter().map(|&l| apply_rep(l, &rep)).collect();
-        nc.sort_unstable(); nc.dedup();
-        for w in nc.windows(2) { if w[0] == -w[1] { return; } }   // tautology after substitution
-        let mut oc: Vec<i32> = cnf.clause(orig).to_vec(); oc.sort_unstable();
+        if normalize(&mut nc) { return; }   // tautology after substitution
+        let mut oc: Vec<i32> = cnf.clause(orig).to_vec(); normalize(&mut oc);
         if nc == oc { keep_original[orig] = true; out.push(cnf.clause(orig).to_vec()); return; }
         proof.add(&nc); out.push(nc);
     };
@@ -612,6 +633,484 @@ fn recode(cnf: &Cnf, root: &Root, gates: &[Gate], proof: &mut Proof) -> Recode {
     // the merge equivalences served their purpose
     for (v, &r) in rep.iter().enumerate() { if r != 0 { proof.del(&[-r, v as i32]); proof.del(&[r, -(v as i32)]); } }
     Recode { cls: out, dropped, merged, dead }
+}
+
+// ── certified SAT sweeping ────────────────────────────────────────────────
+//
+// Candidate equivalences come from random simulation of the gates.  Each is
+// put to CaDiCaL on a window of the two cones: gates already merged are
+// replaced by their representatives, and the window's boundary is left
+// free, so an unsatisfiable answer holds for the whole circuit.  Two calls
+// under assumptions, one per direction.  What the solver derives is implied
+// by the window's clauses whatever the assumptions, and after an
+// unsatisfiable call the clause of the negated assumptions follows by unit
+// propagation: its learned clauses followed by that clause are a DRAT
+// derivation of the equivalence from the gate definitions.  The checker
+// holds the definitions in their original variables; propagating through
+// the equivalences derived so far it follows every step the solver makes
+// on the substituted ones, with one exception: where two literals of a
+// clause have become one, the solver's clause is unit when the checker's
+// still has two literals left.  Those shortened clauses are lemmas
+// themselves, written when the gate is reached.  A satisfiable window that
+// holds the whole cone is a real
+// counterexample and refines the candidate classes; a satisfiable partial
+// window decides nothing.  The ending is the re-encoding's: substituted
+// clauses as lemmas, the replaced ones deleted.
+
+struct SweepParams { rounds: usize, first_window: usize, max_window: usize, conflicts: i32, tries: usize, seconds: f64 }
+
+#[derive(Default)]
+struct SweepStats { attempts: usize, merged: usize, constants: usize, refuted: usize, window_sat: usize, unknown: usize, solver_lemmas: usize, splits: usize, shortened: usize, unreached: usize }
+
+/// The candidate classes: nodes (0 is the constant false, the others are
+/// variables) that no pattern simulated so far tells apart, up to
+/// complement.  A pattern that separates two of them splits their class.
+struct Classes {
+    id: Vec<u32>,
+    members: Vec<Vec<u32>>,
+    reps: Vec<Vec<u32>>,   // the settled representatives of a class, oldest first
+}
+
+impl Classes {
+    /// Split by one more word of patterns; how many classes that made.
+    fn refine(&mut self, word: &[u64]) -> usize {
+        let n0 = self.members.len();
+        let mut groups: HashMap<u64, u32> = HashMap::new();
+        for c in 0..n0 {
+            if self.members[c].len() < 2 { continue; }
+            let w0 = word[self.members[c][0] as usize];
+            if self.members[c].iter().all(|&v| word[v as usize] == w0) { continue; }
+            groups.clear();
+            groups.insert(w0, c as u32);
+            let old = std::mem::take(&mut self.members[c]);
+            for v in old {
+                let w = word[v as usize];
+                let t = match groups.get(&w) {
+                    Some(&t) => t,
+                    None => { self.members.push(Vec::new()); self.reps.push(Vec::new()); let t = (self.members.len() - 1) as u32; groups.insert(w, t); t }
+                };
+                self.members[t as usize].push(v);
+                self.id[v as usize] = t;
+            }
+            let old = std::mem::take(&mut self.reps[c]);
+            for r in old { let t = self.id[r as usize] as usize; self.reps[t].push(r); }
+        }
+        self.members.len() - n0
+    }
+}
+
+const NONE: u32 = u32::MAX;
+
+fn mix(k: u64, w: u64) -> u64 {
+    let mut x = (k ^ w).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    x ^= x >> 29;
+    x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x ^ (x >> 32)
+}
+
+struct Rng(u64);
+impl Rng {
+    fn next(&mut self) -> u64 {
+        let mut x = self.0;
+        x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+        self.0 = x;
+        x.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    }
+}
+
+/// A gate on 64 patterns at once.
+fn eval_gate(g: &Gate, val: &[u64]) -> u64 {
+    let lit = |l: i32| -> u64 { let w = val[l.unsigned_abs() as usize]; if l < 0 { !w } else { w } };
+    match &g.kind {
+        Kind::And { pos } => {
+            let mut acc = !0u64;
+            for &l in &g.inputs { acc &= lit(l); }
+            if *pos { acc } else { !acc }
+        }
+        Kind::Table(t) => {
+            let k = g.inputs.len();
+            let mut out = 0u64;
+            for (row, &on) in t.iter().enumerate() {
+                if !on { continue; }
+                let mut term = !0u64;
+                for (j, &l) in g.inputs.iter().enumerate() {
+                    let w = lit(l);
+                    term &= if (row >> (k - 1 - j)) & 1 == 1 { w } else { !w };
+                }
+                out |= term;
+            }
+            out
+        }
+    }
+}
+
+enum Canon { Lit(i32), Const(bool) }
+
+fn canon(l: i32, rep: &[i32], cval: &[i8]) -> Canon {
+    let v = l.unsigned_abs() as usize;
+    if cval[v] != 0 { let t = cval[v] > 0; return Canon::Const(if l > 0 { t } else { !t }); }
+    let r = rep[v];
+    Canon::Lit(if r == 0 { l } else if l > 0 { r } else { -r })
+}
+
+/// A clause as the solver sees it: representatives for merged variables,
+/// constants evaluated; nothing when that satisfies it.  The flag: two of
+/// its literals have become one.
+fn substitute(c: &[i32], rep: &[i32], cval: &[i8]) -> Option<(Vec<i32>, bool)> {
+    let mut nc: Vec<i32> = Vec::with_capacity(c.len());
+    for &l in c {
+        match canon(l, rep, cval) { Canon::Const(true) => return None, Canon::Const(false) => {}, Canon::Lit(x) => nc.push(x) }
+    }
+    let n = nc.len();
+    if normalize(&mut nc) { return None; }
+    let shortened = nc.len() < n;
+    Some((nc, shortened))
+}
+
+enum Outcome {
+    /// The DRAT lines of the derivation, and how many solver lemmas they hold.
+    Proved(Vec<u8>, usize),
+    /// A counterexample over the circuit's inputs.
+    Refuted(Vec<(u32, bool)>),
+    WindowSat,
+    Unknown,
+}
+
+struct Sweeper<'a> {
+    cls: &'a [Vec<i32>],
+    gates: &'a [Gate],
+    gate_of: Vec<u32>,
+    rep: Vec<i32>,
+    cval: Vec<i8>,
+    seen: Vec<u32>,
+    stamp: u32,
+    lid: Vec<i32>,
+    lstamp: Vec<u32>,
+    lgen: u32,
+    lvars: Vec<u32>,
+    p: &'a SweepParams,
+}
+
+impl Sweeper<'_> {
+    fn local(&mut self, v: u32) -> i32 {
+        let vu = v as usize;
+        if self.lstamp[vu] != self.lgen {
+            self.lstamp[vu] = self.lgen;
+            self.lvars.push(v);
+            self.lid[vu] = self.lvars.len() as i32;
+        }
+        self.lid[vu]
+    }
+
+    fn global(&self, l: i32) -> i32 {
+        let v = self.lvars[l.unsigned_abs() as usize - 1] as i32;
+        if l > 0 { v } else { -v }
+    }
+
+    /// The gates whose definitions are loaded, breadth first from the pair,
+    /// and whether that is every gate below it.
+    fn window(&mut self, o: u32, r: u32, limit: usize) -> (Vec<u32>, bool) {
+        self.stamp += 1;
+        let s = self.stamp;
+        let mut q: Vec<u32> = vec![o];
+        self.seen[o as usize] = s;
+        if r != 0 && self.gate_of[r as usize] != NONE && self.seen[r as usize] != s { self.seen[r as usize] = s; q.push(r); }
+        let mut i = 0;
+        while i < q.len() && i < limit {
+            let g = &self.gates[self.gate_of[q[i] as usize] as usize];
+            i += 1;
+            for &l in &g.inputs {
+                if let Canon::Lit(c) = canon(l, &self.rep, &self.cval) {
+                    let u = c.unsigned_abs() as usize;
+                    if self.gate_of[u] != NONE && self.seen[u] != s { self.seen[u] = s; q.push(u as u32); }
+                }
+            }
+        }
+        let complete = i >= q.len();
+        q.truncate(i);
+        (q, complete)
+    }
+
+    /// o == r (or not r when `neg`); r = 0 is the constant false.
+    fn prove(&mut self, o: u32, r: u32, neg: bool) -> Outcome {
+        let mut limit = self.p.first_window;
+        loop {
+            let (wg, complete) = self.window(o, r, limit);
+            // a conflict costs what the cone weighs: the budget is for a cone of 4096 gates
+            let budget = ((self.p.conflicts as u64 * 4096 / wg.len().max(4096) as u64) as i32).max(20).min(self.p.conflicts);
+            self.lgen += 1;
+            self.lvars.clear();
+            let mut solver: Solver = Solver::new();
+            // no preprocessing: what the solver derives must follow from the clauses alone
+            assert!(solver.configure("plain"), "CaDiCaL refused the plain configuration");
+            assert!(solver.trace_proof_in_memory(), "CaDiCaL refused the proof tracer");
+            for &gv in &wg {
+                let gi = self.gate_of[gv as usize] as usize;
+                for k in 0..self.gates[gi].clauses.len() {
+                    let ci = self.gates[gi].clauses[k];
+                    let Some((nc, _)) = substitute(&self.cls[ci], &self.rep, &self.cval) else { continue };
+                    if nc.is_empty() { return Outcome::Unknown; }
+                    let c: Vec<i32> = nc.iter().map(|&x| { let lv = self.local(x.unsigned_abs()); if x > 0 { lv } else { -lv } }).collect();
+                    solver.add_clause(c.iter().copied());
+                }
+            }
+            let lo = self.local(o);
+            let calls: Vec<Vec<i32>> = if r == 0 {
+                vec![vec![if neg { -lo } else { lo }]]          // refute the value o does not take
+            } else {
+                let lr = self.local(r);
+                let lrp = if neg { -lr } else { lr };
+                vec![vec![lo, -lrp], vec![-lo, lrp]]
+            };
+            let mut marks: Vec<usize> = Vec::with_capacity(2);
+            let mut verdict = Some(false);
+            for a in &calls {
+                solver.limit("conflicts", budget);
+                for &x in a { solver.assume(x); }
+                verdict = solver.solve();
+                if verdict != Some(false) { break; }
+                marks.push(solver.proof_events().len());
+            }
+            match verdict {
+                Some(false) => {
+                    if solver.proof_has_rat() { return Outcome::Unknown; }
+                    // the derivation: what the solver learned, then the clause of the negated assumptions
+                    let ev = solver.proof_events().to_vec();
+                    let mut out: Vec<u8> = Vec::new();
+                    let mut live: HashMap<Vec<i32>, usize> = HashMap::new();
+                    let mut lemmas = 0usize;
+                    let mut line = String::new();
+                    let mut write = |del: bool, c: &[i32], out: &mut Vec<u8>| {
+                        line.clear();
+                        if del { line.push_str("d "); }
+                        for x in c { let _ = write!(line, "{x} "); }
+                        line.push_str("0\n");
+                        out.extend_from_slice(line.as_bytes());
+                    };
+                    let mut i = 0; let mut call = 0;
+                    loop {
+                        while call < marks.len() && i >= marks[call] {
+                            let c: Vec<i32> = calls[call].iter().map(|&x| self.global(-x)).collect();
+                            write(false, &c, &mut out);
+                            call += 1;
+                        }
+                        if i >= ev.len() { break; }
+                        let tag = ev[i]; i += 1;
+                        let mut c: Vec<i32> = Vec::new();
+                        while ev[i] != 0 { c.push(self.global(ev[i])); i += 1; }
+                        i += 1;
+                        if tag == 1 {
+                            write(false, &c, &mut out); lemmas += 1;
+                            c.sort_unstable(); *live.entry(c).or_insert(0) += 1;
+                        } else {
+                            write(true, &c, &mut out);
+                            c.sort_unstable();
+                            if let Some(n) = live.get_mut(&c) { *n -= 1; if *n == 0 { live.remove(&c); } }
+                        }
+                    }
+                    // the solver is gone after this: so are its lemmas
+                    let mut rest: Vec<(&Vec<i32>, &usize)> = live.iter().collect();
+                    rest.sort();
+                    for (c, &n) in rest { for _ in 0..n { write(true, c, &mut out); } }
+                    return Outcome::Proved(out, lemmas);
+                }
+                Some(true) => {
+                    if complete {
+                        let mut model = Vec::new();
+                        for (k, &v) in self.lvars.iter().enumerate() {
+                            if self.gate_of[v as usize] == NONE { model.push((v, solver.value(k as i32 + 1) == Some(true))); }
+                        }
+                        return Outcome::Refuted(model);
+                    }
+                    // a model of part of the cone decides nothing: the whole cone, if that is allowed
+                    if limit >= self.p.max_window { return Outcome::WindowSat; }
+                    limit = self.p.max_window;
+                }
+                None => return Outcome::Unknown,
+            }
+        }
+    }
+}
+
+fn sweep(cnf: &Cnf, root: &Root, gates: &[Gate], p: &SweepParams, proof: &mut Proof, t0: std::time::Instant) -> (Recode, SweepStats) {
+    let nv = cnf.nv;
+    let cls = &root.cls;
+    for &u in &root.units { proof.add(&[u]); }
+    // the acyclic gates in topological order
+    let mut gate_of: Vec<u32> = vec![NONE; nv + 1];
+    for (gi, g) in gates.iter().enumerate() { if gate_of[g.out as usize] == NONE { gate_of[g.out as usize] = gi as u32; } }
+    let mut indeg: Vec<u32> = vec![0; nv + 1];
+    let mut consumers: Vec<Vec<u32>> = vec![Vec::new(); nv + 1];
+    for v in 1..=nv {
+        if gate_of[v] == NONE { continue; }
+        for l in &gates[gate_of[v] as usize].inputs {
+            let u = l.unsigned_abs() as usize;
+            if gate_of[u] != NONE { indeg[v] += 1; consumers[u].push(v as u32); }
+        }
+    }
+    let mut order: Vec<u32> = (1..=nv as u32).filter(|&v| gate_of[v as usize] != NONE && indeg[v as usize] == 0).collect();
+    let mut qi = 0;
+    while qi < order.len() {
+        let o = order[qi] as usize; qi += 1;
+        for &c in &consumers[o] { let c = c as usize; indeg[c] -= 1; if indeg[c] == 0 { order.push(c as u32); } }
+    }
+    drop(consumers);
+    let mut kept: Vec<bool> = vec![false; nv + 1];
+    for &o in &order { kept[o as usize] = true; }
+    for v in 1..=nv { if gate_of[v] != NONE && !kept[v] { gate_of[v] = NONE; } }   // a gate on a cycle is an input here
+    let mut defcl: Vec<bool> = vec![false; cls.len()];
+    for &o in &order { for &i in &gates[gate_of[o as usize] as usize].clauses { defcl[i] = true; } }
+    let residual: Vec<usize> = (0..cls.len()).filter(|&i| !defcl[i]).collect();
+    let mut is_input: Vec<bool> = vec![false; nv + 1];
+    for &o in &order { for l in &gates[gate_of[o as usize] as usize].inputs { let u = l.unsigned_abs() as usize; if gate_of[u] == NONE { is_input[u] = true; } } }
+
+    // candidate classes by simulation.  A node's patterns are complemented
+    // when its first one is 1, so that a node and its complement agree.
+    let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
+    let mut key: Vec<u64> = vec![0; nv + 1];
+    let mut phase: Vec<bool> = vec![false; nv + 1];
+    let mut val: Vec<u64> = vec![0; nv + 1];
+    let in_circuit = |v: usize| v == 0 || is_input[v] || gate_of[v] != NONE;
+    for round in 0..p.rounds.max(1) {
+        for v in 1..=nv { if gate_of[v] == NONE { val[v] = rng.next(); } }
+        for &o in &order { val[o as usize] = eval_gate(&gates[gate_of[o as usize] as usize], &val); }
+        for v in 1..=nv {
+            if round == 0 { phase[v] = val[v] & 1 == 1; }
+            key[v] = mix(key[v], if phase[v] { !val[v] } else { val[v] });
+        }
+        key[0] = mix(key[0], 0);
+    }
+    let mut classes = Classes { id: vec![NONE; nv + 1], members: Vec::new(), reps: Vec::new() };
+    {
+        let mut by_key: HashMap<u64, u32> = HashMap::new();
+        for v in (0..=nv).filter(|&v| in_circuit(v)) {
+            let c = *by_key.entry(key[v]).or_insert_with(|| { classes.members.push(Vec::new()); classes.reps.push(Vec::new()); (classes.members.len() - 1) as u32 });
+            classes.members[c as usize].push(v as u32);
+            classes.id[v] = c;
+        }
+        // the constant and the inputs are settled from the start
+        for v in (0..=nv).filter(|&v| v == 0 || is_input[v]) { classes.reps[classes.id[v] as usize].push(v as u32); }
+    }
+    drop(key);
+
+    let mut sw = Sweeper { cls, gates, gate_of, rep: vec![0; nv + 1], cval: vec![0; nv + 1], seen: vec![0; nv + 1], stamp: 0,
+                           lid: vec![0; nv + 1], lstamp: vec![0; nv + 1], lgen: 0, lvars: Vec::new(), p };
+    let mut st = SweepStats::default();
+    let mut const_units: Vec<i32> = Vec::new();
+    let mut shortened: HashMap<usize, Vec<i32>> = HashMap::new();
+    let mut in_model: Vec<u32> = vec![0; nv + 1];
+    let mut model_stamp = 0u32;
+    let started = std::time::Instant::now();
+    let mut last = std::time::Instant::now();
+    for (n, &o) in order.iter().enumerate() {
+        let ou = o as usize;
+        // the inputs of this gate are settled: where two literals of a clause
+        // have become one the shorter clause is a lemma, and what is derived
+        // from here on may lean on it
+        for &ci in &gates[sw.gate_of[ou] as usize].clauses {
+            if let Some((nc, true)) = substitute(&cls[ci], &sw.rep, &sw.cval) { proof.add(&nc); shortened.insert(ci, nc); st.shortened += 1; }
+        }
+        let out_of_time = p.seconds > 0.0 && started.elapsed().as_secs_f64() > p.seconds;
+        if out_of_time && !classes.reps[classes.id[ou] as usize].is_empty() { st.unreached += 1; }
+        let mut tried: Vec<u32> = Vec::new();
+        let mut undecided = 0usize;
+        let mut done = false;
+        while !out_of_time && undecided < p.tries && tried.len() < p.tries + 8 {
+            // the oldest representative the patterns cannot tell from this gate
+            let c = classes.id[ou] as usize;
+            let Some(r) = classes.reps[c].iter().copied().find(|r| !tried.contains(r)) else { break };
+            tried.push(r);
+            st.attempts += 1;
+            let neg = phase[ou] != (r != 0 && phase[r as usize]);
+            match sw.prove(o, r, neg) {
+                Outcome::Proved(lines, lemmas) => {
+                    proof.buf.extend_from_slice(&lines);
+                    proof.lemmas += lemmas + if r == 0 { 1 } else { 2 };
+                    st.solver_lemmas += lemmas;
+                    if r == 0 {
+                        sw.cval[ou] = if neg { 1 } else { -1 };
+                        const_units.push(if neg { o as i32 } else { -(o as i32) });
+                        st.constants += 1;
+                    } else {
+                        sw.rep[ou] = if neg { -(r as i32) } else { r as i32 };
+                        st.merged += 1;
+                    }
+                    done = true;
+                    break;
+                }
+                Outcome::Refuted(model) => {
+                    // the counterexample and 63 patterns near it, through the whole circuit
+                    st.refuted += 1;
+                    model_stamp += 1;
+                    for &(v, b) in &model {
+                        in_model[v as usize] = model_stamp;
+                        let flips = rng.next() & rng.next() & rng.next() & !1;
+                        val[v as usize] = (if b { !0u64 } else { 0 }) ^ flips;
+                    }
+                    for v in 1..=nv { if sw.gate_of[v] == NONE && in_model[v] != model_stamp { val[v] = rng.next(); } }
+                    for &g in &order { val[g as usize] = eval_gate(&gates[sw.gate_of[g as usize] as usize], &val); }
+                    for v in 1..=nv { if phase[v] { val[v] = !val[v]; } }
+                    val[0] = 0;
+                    st.splits += classes.refine(&val);
+                }
+                Outcome::WindowSat => { st.window_sat += 1; undecided += 1; }
+                Outcome::Unknown => { st.unknown += 1; undecided += 1; }
+            }
+        }
+        if !done { let c = classes.id[ou] as usize; classes.reps[c].push(o); }
+        if last.elapsed().as_secs() >= 30 {
+            last = std::time::Instant::now();
+            println!("  sweep: {}/{} gates, {} attempts: {} merged, {} constant, {} refuted, {} undecided ({:.0}s)", n + 1, order.len(), st.attempts, st.merged, st.constants, st.refuted, st.window_sat + st.unknown, t0.elapsed().as_secs_f64());
+        }
+    }
+
+    // the output: what the observed outputs depend on, substituted
+    let (rep, cval, gate_of) = (sw.rep, sw.cval, sw.gate_of);
+    let is_rep_gate = |v: usize| gate_of[v] != NONE && rep[v] == 0 && cval[v] == 0;
+    let mut needed: Vec<bool> = vec![false; nv + 1];
+    let mut stack: Vec<u32> = Vec::new();
+    for &i in &residual { for &l in &cls[i] { if let Canon::Lit(c) = canon(l, &rep, &cval) { let u = c.unsigned_abs() as usize; if is_rep_gate(u) { stack.push(u as u32); } } } }
+    while let Some(o) = stack.pop() {
+        if needed[o as usize] { continue; }
+        needed[o as usize] = true;
+        for &l in &gates[gate_of[o as usize] as usize].inputs {
+            if let Canon::Lit(c) = canon(l, &rep, &cval) { let u = c.unsigned_abs() as usize; if is_rep_gate(u) && !needed[u] { stack.push(u as u32); } }
+        }
+    }
+    let mut keep_original: Vec<bool> = vec![false; cnf.len()];
+    let mut out: Vec<Vec<i32>> = Vec::new();
+    let mut dropped: Vec<Vec<i32>> = Vec::new();
+    let mut dead = 0usize;
+    let mut emit = |i: usize, out: &mut Vec<Vec<i32>>, proof: &mut Proof| {
+        let Some((nc, _)) = substitute(&cls[i], &rep, &cval) else { return };
+        let orig = root.origin[i];
+        let mut oc: Vec<i32> = cnf.clause(orig).to_vec(); normalize(&mut oc);
+        if nc == oc { keep_original[orig] = true; out.push(cnf.clause(orig).to_vec()); return; }
+        if !shortened.contains_key(&i) { proof.add(&nc); }   // the empty clause, if the circuit contradicts the rest
+        out.push(nc);
+    };
+    let mut spent: Vec<usize> = Vec::new();
+    for &o in &order {
+        let ou = o as usize;
+        let g = &gates[gate_of[ou] as usize];
+        if is_rep_gate(ou) && needed[ou] { for &i in &g.clauses { emit(i, &mut out, proof); } continue; }
+        // merged, constant or unobserved: the definition goes, and a model of
+        // the output extends through it
+        if is_rep_gate(ou) { dead += 1; }
+        for &i in &g.clauses { dropped.push(cls[i].clone()); if shortened.contains_key(&i) { spent.push(i); } }
+    }
+    for &i in &residual { emit(i, &mut out, proof); }
+    for &u in &root.units { out.push(vec![u]); }
+    for &u in &const_units { out.push(vec![u]); }
+    let unit_set: HashSet<i32> = root.units.iter().copied().collect();
+    for (i, &kept_as_is) in keep_original.iter().enumerate() {
+        let c = cnf.clause(i);
+        if c.len() == 1 && unit_set.contains(&c[0]) { continue; }
+        if !kept_as_is { proof.del(c); }
+    }
+    for (v, &r) in rep.iter().enumerate() { if r != 0 { proof.del(&[-r, v as i32]); proof.del(&[r, -(v as i32)]); } }
+    for i in spent { proof.del(&shortened[&i]); }
+    (Recode { cls: out, dropped, merged: st.merged + st.constants, dead }, st)
 }
 
 fn enc7(mut x: u32, out: &mut Vec<u8>) {
@@ -705,7 +1204,8 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 { eprintln!("usage: cnf2aig in.cnf [--out out.cnf] [--abc ABC] [--script S] [--aag file.aig] [--keep dir]"); std::process::exit(2); }
     let mut input = None; let mut out = None; let mut abc = None; let mut script = "resyn2".to_string(); let mut aag = None; let mut keep = None;
-    let mut recode_out = None; let mut proof_out = None; let mut dropped_out = None;
+    let mut recode_out = None; let mut proof_out = None; let mut dropped_out = None; let mut sweep_out = None;
+    let mut sp = SweepParams { rounds: 16, first_window: 64, max_window: usize::MAX, conflicts: 1000, tries: 2, seconds: 0.0 };
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -717,10 +1217,18 @@ fn main() {
             "--recode" => { recode_out = Some(args[i + 1].clone()); i += 2; }
             "--proof" => { proof_out = Some(args[i + 1].clone()); i += 2; }
             "--dropped" => { dropped_out = Some(args[i + 1].clone()); i += 2; }
+            "--sweep" => { sweep_out = Some(args[i + 1].clone()); i += 2; }
+            "--rounds" => { sp.rounds = args[i + 1].parse().expect("--rounds N"); i += 2; }
+            "--window" => { sp.max_window = args[i + 1].parse().expect("--window N"); i += 2; }
+            "--conflicts" => { sp.conflicts = args[i + 1].parse().expect("--conflicts N"); i += 2; }
+            "--tries" => { sp.tries = args[i + 1].parse().expect("--tries N"); i += 2; }
+            "--seconds" => { sp.seconds = args[i + 1].parse().expect("--seconds S"); i += 2; }
             s if s.starts_with("--") => { eprintln!("unknown option {s}"); std::process::exit(2); }
             _ => { input = Some(args[i].clone()); i += 1; }
         }
     }
+    sp.first_window = sp.first_window.min(sp.max_window).max(1);
+    sp.max_window = sp.max_window.max(1);
     let input = input.expect("input CNF");
     let base = std::path::Path::new(&input).file_name().unwrap().to_string_lossy().to_string();
     let t0 = std::time::Instant::now();
@@ -730,7 +1238,7 @@ fn main() {
     let root = simplify_root(&cnf);
     if root.unsat {
         println!("{base}: the unit clauses contradict -- writing the empty clause");
-        if let Some(o) = out.clone().or(recode_out.clone()) { write_cnf(&o, nv, &[vec![]]).unwrap(); }
+        if let Some(o) = out.clone().or(recode_out.clone()).or(sweep_out.clone()) { write_cnf(&o, nv, &[vec![]]).unwrap(); }
         if let Some(p) = proof_out { std::fs::write(p, "0\n").unwrap(); }  // the empty clause is RUP from the contradicting units
         return;
     }
@@ -750,6 +1258,20 @@ fn main() {
     }
     let (_, name, b) = best.unwrap();
     println!("  orientation kept: {name}");
+    if let Some(wp) = &sweep_out {
+        let mut gates = extract_pattern(&cls, name == "highest-variable");
+        extract_generic(&cls, &mut gates, 3);
+        let mut proof = Proof { buf: Vec::new(), lemmas: 0 };
+        let (r, st) = sweep(&cnf, &root, &gates, &sp, &mut proof, t0);
+        write_cnf(wp, nv, &r.cls).unwrap();
+        if let Some(pp) = &proof_out { std::fs::write(pp, &proof.buf).unwrap(); }
+        if let Some(dp) = &dropped_out { write_cnf(dp, nv, &r.dropped).unwrap(); }
+        println!("{base}: sweep: {} attempts: {} merged, {} constant, {} refuted ({} refinements), {} undecided in the window, {} out of budget; {} dead; {} candidates not reached in time",
+                 st.attempts, st.merged, st.constants, st.refuted, st.splits, st.window_sat, st.unknown, r.dead, st.unreached);
+        println!("{base}: sweep: {} -> {} clauses, {} proof lemmas ({} from the solver, {} shortened clauses), {:.1} MB of proof ({:.1}s)",
+                 cnf.len(), r.cls.len(), proof.lemmas, st.solver_lemmas, st.shortened, proof.buf.len() as f64 / 1e6, t0.elapsed().as_secs_f64());
+        if out.is_none() && recode_out.is_none() { return; }
+    }
     if let Some(rp) = &recode_out {
         // the gates of the kept orientation, extracted again (cheap)
         let mut gates = extract_pattern(&cls, name == "highest-variable");
@@ -777,6 +1299,8 @@ fn main() {
     let abc = abc.expect("--abc is required with --out");
     let dir = match &keep { Some(d) => { std::fs::create_dir_all(d).unwrap(); d.clone() }
                             None => { let d = std::env::temp_dir().join(format!("cnf2aig_{}", std::process::id())); std::fs::create_dir_all(&d).unwrap(); d.to_string_lossy().to_string() } };
+    // ABC runs in that directory (it leaves an abc.history where it runs)
+    let dir = std::fs::canonicalize(&dir).map(|d| d.to_string_lossy().to_string()).unwrap_or(dir);
     let in_aig = format!("{dir}/in.aig"); let out_aig = format!("{dir}/out.aig"); let gia = format!("{dir}/out.gia.aig"); let abccnf = format!("{dir}/out.abc.cnf");
     write_aig(&in_aig, &b).unwrap();
     let s = script_for(&script);
@@ -785,7 +1309,8 @@ fn main() {
     steps.push(format!("write_aiger {out_aig}"));
     steps.push("&get".to_string()); steps.push(format!("&w {gia}")); steps.push(format!("&write_cnf -i -o {abccnf}"));
     let t1 = std::time::Instant::now();
-    let r = Command::new(&abc).arg("-q").arg(steps.join("; ")).output().unwrap_or_else(|e| { eprintln!("abc: {e}"); std::process::exit(2) });
+    let abc = std::fs::canonicalize(&abc).map(|a| a.to_string_lossy().to_string()).unwrap_or(abc);
+    let r = Command::new(&abc).current_dir(&dir).arg("-q").arg(steps.join("; ")).output().unwrap_or_else(|e| { eprintln!("abc: {e}"); std::process::exit(2) });
     if !r.status.success() || !std::path::Path::new(&gia).exists() {
         eprintln!("abc failed: {} {}", String::from_utf8_lossy(&r.stdout), String::from_utf8_lossy(&r.stderr));
         std::process::exit(1);

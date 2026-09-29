@@ -18,6 +18,7 @@
 #undef private
 
 #include <cstddef>
+#include <unordered_set>
 #include <vector>
 
 namespace {
@@ -50,9 +51,46 @@ struct Hooks : public CaDiCaL::Terminator, public CaDiCaL::Learner {
   }
 };
 
+// A clausal proof kept in memory, for a caller that stitches many small
+// proofs into one DRAT stream (certified SAT sweeping: `cnf2aig --sweep`).
+// Flat encoding: a tag (1 = a derived clause, 2 = the deletion of a derived
+// clause), the literals, 0.  Deletions of clauses the caller added are not
+// recorded -- the caller owns those -- and a derived clause with a witness
+// (RAT, not RUP) raises `rat`.  CaDiCaL owns a connected tracer and
+// deletes it with the solver.
+struct MemTracer : public CaDiCaL::Tracer {
+  std::vector<int> events;
+  std::unordered_set<int64_t> derived;
+  bool rat = false;
+
+  void add_derived_clause (int64_t id, bool, int witness,
+                           const std::vector<int> &c,
+                           const std::vector<int64_t> &) override {
+    if (witness)
+      rat = true;
+    derived.insert (id);
+    events.push_back (1);
+    for (const int l : c)
+      events.push_back (l);
+    events.push_back (0);
+  }
+
+  void delete_clause (int64_t id, bool, const std::vector<int> &c) override {
+    auto it = derived.find (id);
+    if (it == derived.end ())
+      return;
+    derived.erase (it);
+    events.push_back (2);
+    for (const int l : c)
+      events.push_back (l);
+    events.push_back (0);
+  }
+};
+
 struct Wrapper {
   CaDiCaL::Solver solver;
   Hooks hooks;
+  MemTracer *tracer = 0; // owned by the solver once connected
 };
 
 inline Wrapper *self (void *s) { return static_cast<Wrapper *> (s); }
@@ -128,6 +166,39 @@ int c3_set_option (void *s, const char *name, int val) {
 
 // CaDiCaL::Solver::limit: "conflicts", "decisions", "preprocessing",
 // "localsearch"; a budget for one 'solve' call (equal-budget A/Bs).
+// A named configuration ("plain": no preprocessing; "sat", "unsat",
+// "default"); only while configuring.
+int c3_configure (void *s, const char *name) {
+  return self (s)->solver.configure (name) ? 1 : 0;
+}
+
+// An assumption for the next 'solve' only.
+void c3_assume (void *s, int lit) { self (s)->solver.assume (lit); }
+
+// Start recording the clausal proof in memory; only while configuring.
+void c3_trace_begin (void *s) {
+  Wrapper *w = self (s);
+  if (w->tracer)
+    return;
+  w->tracer = new MemTracer ();
+  w->solver.connect_proof_tracer (w->tracer, false);
+}
+
+const int *c3_trace_data (void *s, size_t *len) {
+  Wrapper *w = self (s);
+  if (!w->tracer) {
+    *len = 0;
+    return 0;
+  }
+  *len = w->tracer->events.size ();
+  return w->tracer->events.data ();
+}
+
+int c3_trace_rat (void *s) {
+  Wrapper *w = self (s);
+  return w->tracer && w->tracer->rat ? 1 : 0;
+}
+
 int c3_limit (void *s, const char *name, int val) {
   return self (s)->solver.limit (name, val) ? 1 : 0;
 }

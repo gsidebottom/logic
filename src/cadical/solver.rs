@@ -124,6 +124,11 @@ unsafe extern "C" {
     fn c3_declare_vars(s: *mut c_void, n: c_int) -> c_int;
     fn c3_set_option(s: *mut c_void, name: *const c_char, val: c_int) -> c_int;
     fn c3_limit(s: *mut c_void, name: *const c_char, val: c_int) -> c_int;
+    fn c3_configure(s: *mut c_void, name: *const c_char) -> c_int;
+    fn c3_assume(s: *mut c_void, lit: c_int);
+    fn c3_trace_begin(s: *mut c_void);
+    fn c3_trace_data(s: *mut c_void, len: *mut usize) -> *const c_int;
+    fn c3_trace_rat(s: *mut c_void) -> c_int;
     fn c3_connect(
         s: *mut c_void,
         data: *mut c_void,
@@ -436,6 +441,49 @@ impl<C: Callbacks> Solver<C> {
         let Ok(name) = CString::new(name) else { return false };
         unsafe { c3_limit(self.ptr, name.as_ptr(), value) != 0 }
     }
+
+    /// One of CaDiCaL's named configurations (`"plain"`: no preprocessing,
+    /// so every derived clause is a learned one; `"sat"`, `"unsat"`,
+    /// `"default"`).  Only before the first clause, like the options.
+    pub fn configure(&mut self, name: &str) -> bool {
+        if !self.configuring {
+            return false;
+        }
+        let Ok(name) = CString::new(name) else { return false };
+        unsafe { c3_configure(self.ptr, name.as_ptr()) != 0 }
+    }
+
+    /// Assume a literal for the next `solve` only.
+    pub fn assume(&mut self, lit: i32) {
+        self.configuring = false;
+        unsafe { c3_assume(self.ptr, lit) };
+    }
+
+    /// Record the clausal proof in memory from here on.  Only before the
+    /// first clause; answers `false` afterwards.
+    pub fn trace_proof_in_memory(&mut self) -> bool {
+        if !self.configuring {
+            return false;
+        }
+        unsafe { c3_trace_begin(self.ptr) };
+        true
+    }
+
+    /// The proof so far, flat: a tag (1 = a derived clause, 2 = the
+    /// deletion of a derived clause), its literals, 0.  Everything derived
+    /// is implied by the clauses added, assumptions or not, and after an
+    /// unsatisfiable call the clause of the negated assumptions follows
+    /// from them by unit propagation.
+    pub fn proof_events(&self) -> &[i32] {
+        let mut len: usize = 0;
+        let p = unsafe { c3_trace_data(self.ptr, &mut len) };
+        if p.is_null() || len == 0 { &[] } else { unsafe { std::slice::from_raw_parts(p, len) } }
+    }
+
+    /// Whether a derived clause came with a witness (RAT rather than RUP).
+    pub fn proof_has_rat(&self) -> bool {
+        unsafe { c3_trace_rat(self.ptr) != 0 }
+    }
 }
 
 /// CaDiCaL's IPASIR status codes.
@@ -460,6 +508,32 @@ impl<C: Callbacks> Drop for Solver<C> {
 
 #[cfg(test)]
 mod tests {
+    /// The in-memory proof: a pigeonhole-like core under assumptions is
+    /// unsatisfiable, and what was derived parses as tagged clauses.
+    #[test]
+    fn memory_proof_under_assumptions() {
+        let mut s: Solver = Solver::new();
+        assert!(s.configure("plain"));
+        assert!(s.trace_proof_in_memory());
+        // x1 xor x2 xor x3 = 0 and the same parity = 1 once a4 is assumed
+        for c in [[-1, -2, -3], [-1, 2, 3], [1, -2, 3], [1, 2, -3]] { s.add_clause(c); }
+        for c in [[1, 2, 3, -4], [1, -2, -3, -4], [-1, 2, -3, -4], [-1, -2, 3, -4]] { s.add_clause(c); }
+        s.assume(4);
+        assert_eq!(s.solve(), Some(false));
+        assert!(!s.proof_has_rat());
+        let ev = s.proof_events();
+        let mut i = 0; let mut n = 0;
+        while i < ev.len() {
+            assert!(ev[i] == 1 || ev[i] == 2, "tag {}", ev[i]);
+            i += 1;
+            while ev[i] != 0 { i += 1; }
+            i += 1; n += 1;
+        }
+        assert!(n > 0, "a parity contradiction needs learned clauses");
+        // without the assumption the formula is satisfiable
+        assert_eq!(s.solve(), Some(true));
+    }
+
     use super::*;
 
     /// The reason this module exists: a silent downgrade to the 1.9.x that

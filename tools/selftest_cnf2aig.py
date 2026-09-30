@@ -20,6 +20,8 @@ for every one of them
   MODE=cuts              cnf2aig --cuts, under a rotation of settings
   MODE=all               --factor, --sweep, --cuts: three prefixes
   MODE=row               the same three in one run (--chain factor,sweep,cuts)
+  MODE=solve             --chain ... --certificate: the tool's own solve, its
+                         one-file certificate checked against the original
   MODE=abc               cnf2aig --abc: ABC is not certified, so for UNSAT
                          only the verdicts are compared (ABC=path/to/abc)
 
@@ -260,6 +262,21 @@ def check(seed):
         elif MODE == "cuts":
             opts = CUT_SETTINGS[(seed // 6) % len(CUT_SETTINGS)]
             cmd = [RS, inp, "--cuts", out, "--proof", pre, "--dropped", drp] + opts
+        elif MODE == "solve":
+            copts = CUT_SETTINGS[(seed // 6) % len(CUT_SETTINGS)]
+            cert = f"{d}/full.drat"
+            r = subprocess.run([RS, inp, "--chain", ["factor,cuts", "factor,sweep,cuts", "sweep", "cuts"][seed % 4], "--certificate", cert, "--timeout", "60"] + opts + copts, capture_output=True, text=True, timeout=300)
+            if r.returncode != 0: return (seed, "TOOL FAILED", (r.stderr or r.stdout)[-400:], None)
+            g = subprocess.run([CADICAL, "-q", inp], capture_output=True, text=True, timeout=300)
+            truth = {10: True, 20: False}.get(g.returncode)
+            got = True if "s SATISFIABLE" in r.stdout else False if "s UNSATISFIABLE" in r.stdout else None
+            if got is None: return (seed, "NO ANSWER", r.stdout[-300:], None)
+            if got != truth: return (seed, "VERDICT DIFFERS", f"in={truth} out={got}", None)
+            if not got:
+                t = subprocess.run([DRAT, inp, cert], capture_output=True, text=True, timeout=600)
+                if "s VERIFIED" not in t.stdout: return (seed, "CERTIFICATE REJECTED", t.stdout[-500:], None)
+                return (seed, "ok-unsat", [], opts)
+            return (seed, "ok-sat", [], opts)
         elif MODE == "row":
             copts = CUT_SETTINGS[(seed // 6) % len(CUT_SETTINGS)]
             cmd = [RS, inp, "--chain", ["factor,sweep,cuts", "sweep,factor,cuts", "recode,factor", "factor,cuts", "sweep,sweep"][seed % 5], "--to", out, "--proof", pre, "--dropped", drp] + opts + copts

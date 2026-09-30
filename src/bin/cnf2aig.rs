@@ -30,7 +30,12 @@
 //!
 //!   cnf2aig in.cnf --chain factor,sweep,cuts --to out.cnf --proof prefix.drat --binary
 //!
-//! runs them in a row and writes one prefix.
+//! runs them in a row and writes one prefix, and
+//!
+//!   cnf2aig in.cnf --chain factor,cuts --certificate full.drat [--timeout S]
+//!
+//! goes on to run the vendored CaDiCaL on the result and, on UNSAT, writes
+//! the prefix and the solver's proof as one refutation of in.cnf.
 //!
 //!   cnf2aig in.cnf --factor out.cnf --proof prefix.drat     (select factoring, below)
 //!   cnf2aig in.cnf --cuts out.cnf --proof prefix.drat       (the cut-based writer, below; the last
@@ -2124,6 +2129,19 @@ fn pass(mode: &str, cnf: &Cnf, base: &str, sp: &SweepParams, cp: &CutParams, pro
     }
 }
 
+/// The vendored CaDiCaL, release defaults, on a formula: the verdict (None
+/// when the time ran out) and its conflicts; the proof to a file when asked.
+fn solve_with_cadical(cnf: &Cnf, timeout: f32, proof: Option<&str>) -> (Option<bool>, i64) {
+    let mut s: Solver = Solver::new();
+    if let Some(p) = proof && !s.trace_proof_to(p) { eprintln!("{p}: cannot write the proof there"); std::process::exit(2); }
+    if timeout > 0.0 { s.set_callbacks(Some(logic::cadical::solver::Timeout::new(timeout))); }
+    s.reserve(cnf.nv as i32);
+    for i in 0..cnf.len() { s.add_clause(cnf.clause(i).iter().copied()); }
+    let v = s.solve();
+    if proof.is_some() { s.close_proof(); }
+    (v, s.conflicts())
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 { eprintln!("usage: cnf2aig in.cnf [--out out.cnf] [--abc ABC] [--script S] [--aag file.aig] [--keep dir]"); std::process::exit(2); }
@@ -2133,6 +2151,7 @@ fn main() {
     let mut cuts_out: Option<String> = None;
     let mut chain: Option<String> = None;
     let mut chain_to: Option<String> = None;
+    let mut solve = false; let mut certificate: Option<String> = None; let mut timeout = 0.0f32;
     let mut cp = CutParams { leaves: 6, limit: 8 };
     let mut binary = false;
     let mut sp = SweepParams { rounds: 16, first_window: 64, max_window: usize::MAX, conflicts: 1000, tries: 2, seconds: 0.0, recycle: 1000, levels: true, give_up: 32 };
@@ -2154,6 +2173,9 @@ fn main() {
             "--cuts" => { cuts_out = Some(args[i + 1].clone()); i += 2; }
             "--chain" => { chain = Some(args[i + 1].clone()); i += 2; }
             "--to" => { chain_to = Some(args[i + 1].clone()); i += 2; }
+            "--solve" => { solve = true; i += 1; }
+            "--certificate" => { certificate = Some(args[i + 1].clone()); solve = true; i += 2; }
+            "--timeout" => { timeout = args[i + 1].parse().expect("--timeout SECONDS"); i += 2; }
             "--leaves" => { cp.leaves = args[i + 1].parse().expect("--leaves K"); i += 2; }
             "--cuts-per-gate" => { cp.limit = args[i + 1].parse().expect("--cuts-per-gate N"); i += 2; }
             "--rounds" => { sp.rounds = args[i + 1].parse().expect("--rounds N"); i += 2; }
@@ -2206,6 +2228,23 @@ fn main() {
         }
         if let Some(pp) = &proof_out { write_proof(pp, &proof, binary); }
         if let Some(dp) = &dropped_out { write_cnf(dp, cnf.nv, &dropped).unwrap(); }
+        if solve {
+            // CaDiCaL on what the passes leave; its proof after the prefix is a
+            // refutation of the input, in one file
+            let solver_proof = certificate.as_ref().map(|c| format!("{c}.solver"));
+            let (verdict, conflicts) = solve_with_cadical(&cnf, timeout, solver_proof.as_deref());
+            println!("{base}: cadical-3.0.1 on the {} clauses: {} after {} conflicts ({:.1}s)",
+                     cnf.len(), match verdict { Some(false) => "UNSAT", Some(true) => "SAT", None => "no answer" }, conflicts, t0.elapsed().as_secs_f64());
+            if let (Some(false), Some(c)) = (verdict, &certificate) {
+                let mut f = std::fs::File::create(c).unwrap_or_else(|e| { eprintln!("{c}: {e}"); std::process::exit(2) });
+                f.write_all(&binary_drat(&proof.buf)).unwrap();
+                let mut g = std::fs::File::open(solver_proof.as_ref().unwrap()).unwrap();
+                std::io::copy(&mut g, &mut f).unwrap();
+                let _ = std::fs::remove_file(solver_proof.as_ref().unwrap());
+                println!("{base}: certificate {c}: the prefix and the solver's proof, binary DRAT, against {input}");
+            } else if let Some(sp) = &solver_proof { let _ = std::fs::remove_file(sp); }
+            match verdict { Some(false) => println!("s UNSATISFIABLE"), Some(true) => println!("s SATISFIABLE (of what the passes leave; the model extends through --dropped)"), None => println!("s UNKNOWN") }
+        }
         return;
     }
     let nv = cnf.nv;

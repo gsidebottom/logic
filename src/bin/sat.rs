@@ -2667,6 +2667,19 @@ enum BackendChoice {
     /// dsr-trim (in-container) verifies the COMPOSED proof against the
     /// ORIGINAL formula — certified UNSAT even when symmetries fired.
     HydraSatsuma,
+    /// hydra_satsuma with the circuit stage in front of the fall-through
+    /// (`logic::circuit`): when the formula is a circuit whose factoring
+    /// finds products of inputs (the GenMul multiplier encoding), the stage
+    /// probes the original with a bounded CaDiCaL, then factors it, writes it
+    /// as blocks of cut covers (each step with a DRAT prefix) and runs the
+    /// vendored CaDiCaL on the result with its own proof.  An UNSAT is
+    /// certified by drat-trim against the formula the stage saw (prefix +
+    /// solver proof), after the verdict, in its own budget.  Where the stage
+    /// does not apply the run is hydra_satsuma's.
+    HydraCircuitSatsuma,
+    /// The circuit stage with hydra's CaDiCaL fall-through instead of
+    /// satsuma: the same stage, no Docker (for tests and A/B).
+    HydraCircuit,
     /// Hydra's structure stages (Cook shape, factoring, XOR/parity) with
     /// the box-matrix engine as the fall-through instead of CaDiCaL: a
     /// verdict from a stage is printed as for `hydra` (SAT models are
@@ -2693,6 +2706,8 @@ impl BackendChoice {
             BackendChoice::Hydra     => "hydra",
             BackendChoice::HydraSymBreak => "hydra_sym_break",
             BackendChoice::HydraSatsuma  => "hydra_satsuma",
+            BackendChoice::HydraCircuitSatsuma => "hydra_circuit_satsuma",
+            BackendChoice::HydraCircuit  => "hydra_circuit",
             BackendChoice::HydraBox      => "hydra_box",
             BackendChoice::Satsuma       => "satsuma",
         }
@@ -2736,6 +2751,8 @@ impl BackendChoice {
                          | "hydrasymbreak"  => Ok(BackendChoice::HydraSymBreak),
             "hydra_satsuma" | "hydra-satsuma"
                          | "hydrasatsuma"   => Ok(BackendChoice::HydraSatsuma),
+            "hydra_circuit_satsuma" | "hydra-circuit-satsuma" => Ok(BackendChoice::HydraCircuitSatsuma),
+            "hydra_circuit" | "hydra-circuit" => Ok(BackendChoice::HydraCircuit),
             "hydra_box" | "hydra-box"
                          | "hydrabox"       => Ok(BackendChoice::HydraBox),
             "satsuma"                      => Ok(BackendChoice::Satsuma),
@@ -2818,6 +2835,26 @@ struct Args {
     /// capped container that OOMs fails only that instance, recorded
     /// as TIMEOUT/unknown rather than destabilizing neighbors.
     satsuma_mem_gb: u64,
+    /// hydra_circuit*: the passes of the circuit stage, in order
+    /// (`logic::circuit`: factor, sweep, recode, cuts).
+    circuit_passes: String,
+    /// hydra_circuit*: the stage applies when factoring finds at least this
+    /// many products of inputs, puts at least `circuit_min_share` percent
+    /// of the gates on them, and at least `circuit_min_sharing` gates on
+    /// each product on average (a multiplier shares a few hundred partial
+    /// products among tens of thousands of gates; a hash or an equivalence
+    /// miter has a product per gate, and the passes do nothing for it).
+    circuit_min_products: usize,
+    circuit_min_share: usize,
+    circuit_min_sharing: usize,
+    /// hydra_circuit*: conflicts for the probe of the original formula
+    /// before the passes (array multipliers fall to it in a few hundred).
+    circuit_probe_conflicts: i32,
+    /// hydra_circuit*: the circuit stage is skipped above this many clauses.
+    circuit_max_clauses: usize,
+    /// hydra_circuit*: drat-trim's budget for the certificate, after the
+    /// verdict (unset = --timeout; 0 = unlimited).
+    circuit_verify_secs: Option<u64>,
     /// Run the Cook PB-prover shape detector (hydra/pb-cadical). Default
     /// `true`; `--no-cook` disables it (isolates later stages for A/B).
     cook: bool,
@@ -2946,6 +2983,13 @@ fn parse_args() -> Result<Args, String> {
         symbreak: None,
         satsuma_verify_secs: None,
         satsuma_mem_gb: 0,
+        circuit_passes: "factor,cuts".into(),
+        circuit_min_products: 64,
+        circuit_min_share: 5,
+        circuit_min_sharing: 20,
+        circuit_probe_conflicts: 20_000,
+        circuit_max_clauses: 10_000_000,
+        circuit_verify_secs: None,
         cook: true,
         factoring: true,
         max_memory: default_max_memory(),
@@ -3047,6 +3091,33 @@ fn parse_args() -> Result<Args, String> {
             "--no-xor-gauss"    => { a.xor_gauss = false; }
             "--symbreak"        => { a.symbreak = Some(true);  }
             "--no-symbreak"     => { a.symbreak = Some(false); }
+            "--circuit-passes" => {
+                a.circuit_passes = iter.next().ok_or_else(|| "--circuit-passes requires a list (factor,cuts)".to_string())?;
+            }
+            "--circuit-min-products" => {
+                let v = iter.next().ok_or_else(|| "--circuit-min-products requires a count".to_string())?;
+                a.circuit_min_products = v.parse::<usize>().map_err(|_| format!("--circuit-min-products expects an integer; got {:?}", v))?;
+            }
+            "--circuit-min-share" => {
+                let v = iter.next().ok_or_else(|| "--circuit-min-share requires a percentage".to_string())?;
+                a.circuit_min_share = v.parse::<usize>().map_err(|_| format!("--circuit-min-share expects an integer; got {:?}", v))?;
+            }
+            "--circuit-min-sharing" => {
+                let v = iter.next().ok_or_else(|| "--circuit-min-sharing requires a count".to_string())?;
+                a.circuit_min_sharing = v.parse::<usize>().map_err(|_| format!("--circuit-min-sharing expects an integer; got {:?}", v))?;
+            }
+            "--circuit-probe-conflicts" => {
+                let v = iter.next().ok_or_else(|| "--circuit-probe-conflicts requires a count".to_string())?;
+                a.circuit_probe_conflicts = v.parse::<i32>().map_err(|_| format!("--circuit-probe-conflicts expects an integer; got {:?}", v))?;
+            }
+            "--circuit-max-clauses" => {
+                let v = iter.next().ok_or_else(|| "--circuit-max-clauses requires a count".to_string())?;
+                a.circuit_max_clauses = v.parse::<usize>().map_err(|_| format!("--circuit-max-clauses expects an integer; got {:?}", v))?;
+            }
+            "--circuit-verify-secs" => {
+                let v = iter.next().ok_or_else(|| "--circuit-verify-secs requires a value (seconds; 0 = unlimited)".to_string())?;
+                a.circuit_verify_secs = Some(v.parse::<u64>().map_err(|_| format!("--circuit-verify-secs expects a non-negative integer; got {:?}", v))?);
+            }
             "--cook"            => { a.cook = true;  }
             "--no-cook"         => { a.cook = false; }
             "--factoring"       => { a.factoring = true; }
@@ -3252,6 +3323,16 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("  --max-memory GB  Abort if the clause list would exceed this (default 60%");
                 eprintln!("                    of RAM, 0 disables).  A 7.5 GB CNF needs tens of GB as");
                 eprintln!("                    Vec<Vec<i32>> and will otherwise swap the machine.");
+                eprintln!("  -b hydra_circuit_satsuma / hydra_circuit");
+                eprintln!("                    hydra_satsuma (or hydra) with the circuit stage in front");
+                eprintln!("                    of the fall-through: where factoring finds products of");
+                eprintln!("                    inputs, a bounded probe of the original, then factor +");
+                eprintln!("                    cut covers (DRAT prefix) and the vendored CaDiCaL with its");
+                eprintln!("                    proof; UNSAT checked by drat-trim after the verdict.");
+                eprintln!("                    --circuit-passes LIST (factor,cuts) --circuit-min-products N (64)");
+                eprintln!("                    --circuit-min-share PCT (5) --circuit-min-sharing N (20)");
+                eprintln!("                    --circuit-probe-conflicts N (20000)");
+                eprintln!("                    --circuit-max-clauses N (10000000) --circuit-verify-secs S");
                 eprintln!("  --cadical-proof FILE");
                 eprintln!("                    The cadical backend's own proof of an UNSAT verdict,");
                 eprintln!("                    binary DRAT, for drat-trim.  After a prefix written");
@@ -3330,6 +3411,254 @@ fn parse_args() -> Result<Args, String> {
     Ok(a)
 }
 
+
+/// The circuit stage of hydra_circuit_satsuma (`logic::circuit`).  Where
+/// the formula is a circuit whose factoring finds products of inputs -- the
+/// GenMul multiplier encoding: pairs of multiplexers on primary inputs --
+/// it decides the instance with the rest of the budget: a probe of the
+/// original with a bounded CaDiCaL first (the array multipliers fall to it
+/// in a few hundred conflicts, and the passes below would cost them
+/// seconds to minutes), then the passes (factor, cut covers; a DRAT prefix
+/// derives their output from the input) and the vendored CaDiCaL on what
+/// they leave, with its own proof.  UNSAT: `c UNSAT in`, then, in a budget
+/// of its own, drat-trim checks prefix + proof against the formula the
+/// stage saw (`drat-trim VERIFIED UNSAT`; on a GE residual the certificate
+/// covers the residual only).  SAT: the model extended through the dropped
+/// definitions, checked against the formula, printed over the original
+/// variables.  True when a verdict (or the stage's own timeout) was
+/// printed; false when the stage does not apply and the run goes on.
+fn circuit_stage(args: &Args, bk: &str, nvars: usize, clauses: &[Vec<i32>], forced: Option<&Vec<Option<bool>>>,
+                 t0: Instant, verdict_done: &std::sync::Arc<std::sync::atomic::AtomicBool>) -> bool {
+    use logic::circuit as ck;
+    use logic::cadical::solver::{Solver, Timeout};
+    use std::io::Write as _;
+    let t_c = Instant::now();
+    if clauses.len() > args.circuit_max_clauses {
+        eprintln!("c {}: circuit stage: {} clauses, over --circuit-max-clauses {}: skipped", bk, clauses.len(), args.circuit_max_clauses);
+        return false;
+    }
+    // Does it apply?  What factoring finds.
+    let cnf = ck::Cnf::from_clauses(nvars, clauses);
+    let root = ck::simplify_root(&cnf);
+    if root.unsat { return false; }   // the fall-through refutes that in no time
+    let mut quiet = |_: &str| {};
+    let xor = ck::orientation(&root.cls, t_c, &mut quiet);
+    let mut gates = ck::extract_pattern(&root.cls, xor);
+    ck::extract_generic(&root.cls, &mut gates, 3);
+    let mut trial = ck::Proof { buf: Vec::new(), lemmas: 0 };
+    let (_, _, _, fst) = ck::factor(&cnf, &root, &gates, &mut trial);
+    drop(trial);
+    eprintln!("c {}: circuit stage: {} gates in {} clauses; factoring finds {} products of inputs on {} gates ({:.1}s)",
+              bk, gates.len(), root.cls.len(), fst.products, fst.paired, t_c.elapsed().as_secs_f64());
+    if fst.products < args.circuit_min_products || fst.paired * 100 < gates.len() * args.circuit_min_share
+        || fst.paired < fst.products * args.circuit_min_sharing {
+        eprintln!("c {}: circuit stage: does not apply (--circuit-min-products {}, --circuit-min-share {}%, --circuit-min-sharing {} gates per product)",
+                  bk, args.circuit_min_products, args.circuit_min_share, args.circuit_min_sharing);
+        return false;
+    }
+    let remaining = |margin: u64| -> Option<f32> {
+        if args.timeout_secs == 0 { None } else { Some(args.timeout_secs.saturating_sub(t0.elapsed().as_secs()).saturating_sub(margin).max(1) as f32) }
+    };
+    let dir = std::path::PathBuf::from(format!("/tmp/pbcircuit-{}", std::process::id()));
+    if let Err(e) = std::fs::create_dir_all(&dir) { eprintln!("c ERROR: circuit stage: work dir: {}", e); std::process::exit(2); }
+    let cleanup = |dir: &std::path::Path| { let _ = std::fs::remove_dir_all(dir); };
+    let cert_path = dir.join("certificate.drat");
+
+    // The verdict and its certificate.  `prefix` is the passes' derivation
+    // (text DRAT), `solver_proof` CaDiCaL's file; the certificate is the two
+    // in one binary file, checked by drat-trim against the formula the stage
+    // saw, after the verdict.
+    let finish_unsat = |prefix: &[u8], solver_proof: &std::path::Path, what: &str| {
+        let el_ms = t0.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("c {}: prover=circuit-cadical", bk);
+        eprintln!("c {}: proof-format=drat", bk);
+        eprintln!("c UNSAT in {:.1}ms", el_ms);
+        verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
+        eprintln!("c {}: circuit stage decided ({}) UNSAT", bk, what);
+        let written = (|| -> std::io::Result<()> {
+            let mut f = std::io::BufWriter::new(std::fs::File::create(&cert_path)?);
+            f.write_all(&ck::binary_drat(prefix))?;
+            let mut g = std::fs::File::open(solver_proof)?;
+            std::io::copy(&mut g, &mut f)?;
+            f.flush()
+        })();
+        let _ = std::fs::remove_file(solver_proof);
+        if let Err(e) = written {
+            eprintln!("c {}: WARNING the certificate could not be written ({}) -- UNSAT sound-if-cadical-correct but UNCERTIFIED", bk, e);
+        } else if forced.is_some() {
+            eprintln!("c {}: UNSAT of GE residual (sound; the DRAT certificate covers the residual only -- uncertified for the original)", bk);
+        } else {
+            // the formula the stage saw, for the checker
+            let cnf_path = dir.join("f.cnf");
+            let mut ok = false;
+            if let Ok(f) = std::fs::File::create(&cnf_path) {
+                let mut w = std::io::BufWriter::new(f);
+                let _ = writeln!(w, "p cnf {} {}", nvars, clauses.len());
+                for c in clauses { for &l in c { let _ = write!(w, "{} ", l); } let _ = writeln!(w, "0"); }
+                ok = w.flush().is_ok();
+            }
+            let vb = args.circuit_verify_secs.unwrap_or(args.timeout_secs);
+            eprintln!("c {}: verifying the certificate (drat-trim{})...", bk, if vb > 0 { format!(", budget {}s", vb) } else { ", unbounded".into() });
+            let t_v = Instant::now();
+            let verdict = if !ok { "cannot write the formula".to_string() } else {
+                match std::process::Command::new("drat-trim").arg(&cnf_path).arg(&cert_path)
+                        .args(if vb > 0 { vec!["-t".to_string(), vb.to_string()] } else { Vec::new() })
+                        .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn() {
+                    Ok(child) => {
+                        // its own budget, a little over drat-trim's -t
+                        let killer = if vb > 0 {
+                            let pid = child.id();
+                            Some(std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_secs(vb + 30));
+                                let _ = std::process::Command::new("kill").arg(pid.to_string()).output();
+                            }))
+                        } else { None };
+                        let out = child.wait_with_output();
+                        drop(killer);
+                        match out {
+                            Ok(o) => {
+                                let text = String::from_utf8_lossy(&o.stdout);
+                                if text.contains("s VERIFIED") { "VERIFIED".to_string() }
+                                else if text.contains("s NOT VERIFIED") { "NOT VERIFIED".to_string() }
+                                else if t_v.elapsed().as_secs() >= vb.max(1) && vb > 0 { "TIMEOUT".to_string() }
+                                else { format!("no verdict ({})", text.lines().last().unwrap_or("").trim()) }
+                            }
+                            Err(e) => format!("failed: {}", e),
+                        }
+                    }
+                    Err(e) => format!("drat-trim not run: {}", e),
+                }
+            };
+            eprintln!("c {}: drat-trim verify {:.1}s total", bk, t_v.elapsed().as_secs_f64());
+            match verdict.as_str() {
+                "VERIFIED" => eprintln!("c {}: drat-trim VERIFIED UNSAT (prefix + CaDiCaL proof checks against the input formula)", bk),
+                "TIMEOUT" => eprintln!("c {}: drat-trim verification TIMEOUT (>{}s) -- UNSAT is sound-if-cadical-correct but UNCERTIFIED", bk, vb),
+                other => eprintln!("c {}: WARNING drat-trim did NOT verify the proof ({}) -- verdict sound-if-cadical-correct but UNCERTIFIED", bk, other),
+            }
+            let _ = std::fs::remove_file(&cnf_path);
+        }
+        if let Some(p) = args.proof.as_ref() {
+            match std::fs::copy(&cert_path, p) {
+                Ok(_) => eprintln!("c {}: DRAT certificate copied to {} (binary DRAT -- check with drat-trim against the input formula)", bk, p.display()),
+                Err(e) => eprintln!("c {}: certificate copy failed: {}", bk, e),
+            }
+        }
+        cleanup(&dir);
+        println!("s UNSATISFIABLE");
+    };
+    let finish_sat = |sign: &[bool], what: &str| {
+        // the model against the formula the stage saw: a wrong one is a bug, never an answer
+        let holds = |l: i32| sign[l.unsigned_abs() as usize] == (l > 0);
+        if let Some(bad) = clauses.iter().position(|c| !c.iter().any(|&l| holds(l))) {
+            eprintln!("c ERROR: circuit stage: the model violates clause {} {:?} -- refusing to answer", bad, clauses[bad]);
+            cleanup(&dir);
+            std::process::exit(3);
+        }
+        let el_ms = t0.elapsed().as_secs_f64() * 1000.0;
+        eprintln!("c {}: prover=circuit-cadical", bk);
+        eprintln!("c {}: proof-format=witness", bk);
+        eprintln!("c SAT in {:.1}ms", el_ms);
+        verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
+        eprintln!("c {}: circuit stage decided ({}) SAT; the model is the certificate", bk, what);
+        if let Some(p) = args.proof.as_ref() { let _ = std::fs::remove_file(p); }
+        cleanup(&dir);
+        println!("s SATISFIABLE");
+        let mut line = String::from("v");
+        for v in 1..=nvars {
+            line.push(' ');
+            if !sign[v] { line.push('-'); }
+            line.push_str(&v.to_string());
+            if line.len() > 70 { println!("{}", line); line = String::from("v"); }
+        }
+        println!("{} 0", line);
+    };
+    let overlay = |sign: &mut Vec<bool>| {
+        if let Some(f) = forced {
+            for (i, ov) in f.iter().enumerate() { if let Some(b) = ov && i < nvars { sign[i + 1] = *b; } }
+        }
+    };
+
+    // The probe: the original, a bounded CaDiCaL, its own proof.
+    let probe_proof = dir.join("probe.drat");
+    {
+        let mut s: Solver<Timeout> = Solver::new();
+        if !s.trace_proof_to(probe_proof.to_str().unwrap()) { eprintln!("c ERROR: circuit stage: cannot write {}", probe_proof.display()); cleanup(&dir); std::process::exit(2); }
+        s.limit("conflicts", args.circuit_probe_conflicts.max(1));
+        if let Some(secs) = remaining(2) { s.set_callbacks(Some(Timeout::new(secs))); }
+        s.reserve(nvars as i32);
+        for c in clauses { s.add_clause(c.iter().copied()); }
+        let v = s.solve();
+        s.close_proof();
+        eprintln!("c {}: circuit stage: probe of the original, {} conflicts: {} ({:.1}s)", bk, s.conflicts(),
+                  match v { Some(false) => "UNSAT", Some(true) => "SAT", None => "undecided" }, t_c.elapsed().as_secs_f64());
+        match v {
+            Some(false) => { finish_unsat(&[], &probe_proof, "probe"); return true; }
+            Some(true) => {
+                let mut sign = vec![true; nvars + 1];
+                for v in 1..=nvars { sign[v] = s.value(v as i32).unwrap_or(true); }
+                overlay(&mut sign);
+                finish_sat(&sign, "probe");
+                return true;
+            }
+            None => { let _ = std::fs::remove_file(&probe_proof); }
+        }
+    }
+    if remaining(0).map(|r| r <= 3.0).unwrap_or(false) {
+        eprintln!("c TIMEOUT after {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
+        verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
+        cleanup(&dir);
+        return true;
+    }
+
+    // The passes, then CaDiCaL on what they leave.
+    let passes: Vec<&str> = args.circuit_passes.split(',').map(|x| x.trim()).filter(|x| !x.is_empty()).collect();
+    let params = ck::Params::default();
+    let mut log = |line: &str| eprintln!("c {}: {}", bk, line.trim_start());
+    let chain = ck::chain(cnf, &passes, "circuit", &params, t_c, &mut log);
+    let solver_proof = dir.join("solver.drat");
+    let mut s: Solver<Timeout> = Solver::new();
+    if !s.trace_proof_to(solver_proof.to_str().unwrap()) { eprintln!("c ERROR: circuit stage: cannot write {}", solver_proof.display()); cleanup(&dir); std::process::exit(2); }
+    let budget = remaining(2);
+    if let Some(secs) = budget { s.set_callbacks(Some(Timeout::new(secs))); }
+    s.reserve(chain.cnf.nv as i32);
+    for i in 0..chain.cnf.len() { s.add_clause(chain.cnf.clause(i).iter().copied()); }
+    eprintln!("c {}: circuit stage: {} -> cadical-3.0.1 on {} variables, {} clauses{}", bk, passes.join(", "), chain.cnf.nv, chain.cnf.len(),
+              budget.map(|b| format!(" (budget {:.0}s)", b)).unwrap_or_default());
+    let v = s.solve();
+    s.close_proof();
+    eprintln!("c {}: circuit stage: cadical: {} conflicts, {} decisions, {} propagations", bk, s.conflicts(), s.decisions(), s.propagations());
+    match v {
+        Some(false) => finish_unsat(&chain.proof.buf, &solver_proof, &format!("{} + cadical", passes.join(", "))),
+        Some(true) => {
+            // the model over what the passes left, extended through what they dropped
+            // only what the passes left mentions is fixed: the solver gives every
+            // declared variable a value, and the dropped definitions decide the rest
+            let nv_all = chain.cnf.nv.max(nvars);
+            let mut model: Vec<Option<bool>> = vec![None; nv_all + 1];
+            let mut occurs = vec![false; nv_all + 1];
+            for i in 0..chain.cnf.len() { for &l in chain.cnf.clause(i) { occurs[l.unsigned_abs() as usize] = true; } }
+            for v in 1..=chain.cnf.nv { if occurs[v] { model[v] = s.value(v as i32); } }
+            if !ck::extend_model(nv_all, &chain.dropped, &mut model) {
+                eprintln!("c ERROR: circuit stage: the model does not extend through the dropped definitions -- refusing to answer");
+                cleanup(&dir);
+                std::process::exit(3);
+            }
+            let mut sign = vec![true; nvars + 1];
+            for v in 1..=nvars { sign[v] = model[v].unwrap_or(true); }
+            overlay(&mut sign);
+            let _ = std::fs::remove_file(&solver_proof);
+            finish_sat(&sign, &format!("{} + cadical", passes.join(", ")));
+        }
+        None => {
+            eprintln!("c TIMEOUT after {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
+            verdict_done.store(true, std::sync::atomic::Ordering::Relaxed);
+            eprintln!("c {}: circuit stage: cadical reached no verdict in its budget", bk);
+            if let Some(p) = args.proof.as_ref() { let _ = std::fs::remove_file(p); }
+            cleanup(&dir);
+        }
+    }
+    true
+}
 
 /// Remove a satsuma mount dir, truncating every file first: Docker's
 /// file-sharing server can hold a deleted file's handle open past
@@ -3456,7 +3785,8 @@ fn main() {
     // XOR-GE forced constants overlaid on the final model (set by the XOR
     // stage of hydra_box or of the matrix backends below).
     let mut xor_forced: Option<Vec<Option<bool>>> = None;
-    if matches!(args.backend, BackendChoice::PbCadical | BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma | BackendChoice::HydraBox | BackendChoice::Satsuma) { 'hydra: {
+    if matches!(args.backend, BackendChoice::PbCadical | BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma
+                              | BackendChoice::HydraCircuitSatsuma | BackendChoice::HydraCircuit | BackendChoice::HydraBox | BackendChoice::Satsuma) { 'hydra: {
         use logic::cook_pbp::{detect_shape, emit_proof, CnfShape};
         use std::io::Write as _;
         let bk = args.backend.name();
@@ -3492,11 +3822,13 @@ fn main() {
             // the _2 run: verify never had more than 5060s - solve). 0 =
             // unlimited verify gets a day.
             let verify_budget = if matches!(args.backend,
-                    BackendChoice::HydraSatsuma | BackendChoice::Satsuma) {
+                    BackendChoice::HydraSatsuma | BackendChoice::Satsuma | BackendChoice::HydraCircuitSatsuma) {
                 match args.satsuma_verify_secs.unwrap_or(args.timeout_secs) {
                     0 => 86_400,
                     v => v,
                 }
+            } else if matches!(args.backend, BackendChoice::HydraCircuit) {
+                match args.circuit_verify_secs.unwrap_or(args.timeout_secs) { 0 => 86_400, v => v }
             } else {
                 0
             };
@@ -3554,7 +3886,8 @@ fn main() {
         // model); a number with no factor pair of the circuit's widths is a
         // numeric UNSAT that is NOT a proof — the instance goes on to the
         // proof-producing stages with the verdict only annotated.
-        let hydra_stages = matches!(args.backend, BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma | BackendChoice::HydraBox);
+        let hydra_stages = matches!(args.backend, BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma
+                                                  | BackendChoice::HydraCircuitSatsuma | BackendChoice::HydraCircuit | BackendChoice::HydraBox);
         if hydra_stages && args.factoring && clauses.len() <= 5_000_000 {
             use logic::factoring::{factoring_tactic, Tactic};
             let t_f = Instant::now();
@@ -3742,7 +4075,7 @@ fn main() {
         let want_symbreak = args
             .symbreak
             .unwrap_or(matches!(args.backend, BackendChoice::HydraSymBreak));
-        if matches!(args.backend, BackendChoice::Hydra | BackendChoice::HydraSymBreak)
+        if matches!(args.backend, BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraCircuit)
             && want_symbreak
             && forced.is_none()
             && nvars <= SB_VAR_CAP
@@ -3803,6 +4136,17 @@ fn main() {
             (solve_clauses, nvars)
         };
 
+        // The circuit stage (hydra_circuit*): where it applies it takes the
+        // rest of the budget and decides; where it does not, the run goes on
+        // as hydra_satsuma's or hydra's.  It sees the original formula, not
+        // the GE residual: its certificate is then one of the original, and a
+        // GE-forced unit is nothing to the stage's own root simplification
+        // and the solver behind it.
+        if matches!(args.backend, BackendChoice::HydraCircuitSatsuma | BackendChoice::HydraCircuit) && !symbroke
+            && circuit_stage(&args, bk, nvars, &clauses, None, t0, &verdict_done) {
+            return;
+        }
+
         // hydra_satsuma / satsuma fall-through: hand the formula to the SAT
         // Comp 2026 winner satsuma-iter+kissat inside its Docker image, in
         // TWO bounded container runs so nothing here is ever unwatched:
@@ -3819,7 +4163,7 @@ fn main() {
         // uncapped, competition-faithful — the Docker VM allocation still
         // binds overall. A dsr-trim timeout/failure downgrades the UNSAT to
         // sound-but-UNCERTIFIED; the verdict itself is never lost.
-        if matches!(args.backend, BackendChoice::HydraSatsuma | BackendChoice::Satsuma) {
+        if matches!(args.backend, BackendChoice::HydraSatsuma | BackendChoice::Satsuma | BackendChoice::HydraCircuitSatsuma) {
             // Self-healing sweep: remove pbsatsuma-<pid> dirs whose owning
             // sat process is gone (crashed/killed runs leak them, each
             // holding a multi-GB proof). `kill -0` succeeding means the pid
@@ -4642,7 +4986,7 @@ fn main() {
                          args.proof.as_deref(), args.boxes_source.as_deref()),
         BackendChoice::PbCadical => unreachable!("pb-cadical is handled before the search dispatch"),
         BackendChoice::Hydra | BackendChoice::HydraSymBreak | BackendChoice::HydraSatsuma
-        | BackendChoice::Satsuma =>
+        | BackendChoice::HydraCircuitSatsuma | BackendChoice::HydraCircuit | BackendChoice::Satsuma =>
             unreachable!("hydra is handled before the search dispatch"),
         BackendChoice::Matrix(m) => {
             // Auto-skip preprocess on very large inputs.  Empirically

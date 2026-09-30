@@ -23,6 +23,7 @@ pub mod simplify;
 pub mod symbreak;
 pub mod xor_gauss;
 pub mod factoring;
+pub mod circuit;
 
 pub use preprocess::{preprocess, Preprocessed, ReconstructionStack, PositionMap};
 pub use prove::{check_satisfiable, check_valid, get_paths};

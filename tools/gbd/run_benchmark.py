@@ -1559,7 +1559,8 @@ def solve_one(
         # below).  So we write to a temp file, not proof_dir itself.
         proof_stem = None
         if proof_dir is not None and backend in ("pb-cadical", "pb_cadical", "hydra",
-                                                 "hydra_satsuma", "satsuma"):
+                                                 "hydra_satsuma", "satsuma",
+                                                 "hydra_circuit_satsuma", "hydra_circuit"):
             proof_stem = rec.get("hash") or re.sub(r"[^A-Za-z0-9._-]", "_", display)
             proof_path = Path(tempfile.gettempdir()) / f"pbproof-{proof_stem}.pbp"
             cmd.extend(["--proof", str(proof_path)])
@@ -1632,7 +1633,29 @@ def solve_one(
         # docker call, against the exact CNF handed over.  No --proof is
         # passed (binary SR would be misrouted to cake_lpr here), so credit
         # the in-solver verification from the solver's own markers.
-        if backend in ("hydra_satsuma", "satsuma") and result == "UNSAT":
+        # hydra_circuit*: the circuit stage composes its DRAT prefix with
+        # CaDiCaL's proof and runs drat-trim itself, against the formula it
+        # was given; credit that from its markers the same way.  Where the
+        # stage did not decide, the run is hydra_satsuma's (or hydra's) and
+        # the branches below apply.
+        circuit_decided = (backend in ("hydra_circuit_satsuma", "hydra_circuit")
+                           and "circuit stage decided" in stderr_text)
+        if circuit_decided and result == "UNSAT":
+            if "drat-trim VERIFIED UNSAT" in stderr_text:
+                pb_proof_ok, pb_proof_reason = True, "drat-trim (in-solver)"
+            elif "UNSAT of GE residual" in stderr_text:
+                pb_proof_ok, pb_proof_reason = None, "DRAT covers GE residual only"
+            elif "drat-trim verification TIMEOUT" in stderr_text:
+                pb_proof_ok, pb_proof_reason = None, "drat-trim timeout (unchecked)"
+            elif "drat-trim did NOT verify" in stderr_text:
+                pb_proof_ok, pb_proof_reason = False, "drat-trim rejected/failed"
+            else:
+                pb_proof_ok, pb_proof_reason = None, "verification incomplete (no marker)"
+            m = re.search(r"drat-trim verify ([0-9.]+)s total", stderr_text)
+            if m:
+                pb_proof_time = float(m.group(1))
+        if (backend in ("hydra_satsuma", "satsuma", "hydra_circuit_satsuma") and result == "UNSAT"
+                and not circuit_decided):
             if "dsr-trim VERIFIED UNSAT" in stderr_text:
                 pb_proof_ok, pb_proof_reason = True, "dsr-trim (in-solver)"
             elif "UNSAT of GE residual" in stderr_text:
@@ -1651,7 +1674,8 @@ def solve_one(
         # pb-cadical: VeriPB-check the proof the solver just emitted.
         if (proof_path is not None and result == "UNSAT"
                 and tmp_path is not None
-                and pb_proof_prover != "satsuma-kissat"):
+                and pb_proof_prover not in ("satsuma-kissat", "circuit-cadical")
+                and not circuit_decided):
             tui.update_worker(worker_idx, display, "verifying proof…")
             # Which checker the proof needs, keyed off the deciding engine
             # (reliable; the generic "proof-format=lrat" pre-announcement would
@@ -2162,7 +2186,7 @@ def main() -> int:
     global _giant_sem
     if args.giant_slots > 0:
         _giant_sem = threading.BoundedSemaphore(args.giant_slots)
-    if args.backend in ("hydra_satsuma", "satsuma"):
+    if args.backend in ("hydra_satsuma", "satsuma", "hydra_circuit_satsuma"):
         if shutil.which("docker") is None:
             print("c WARNING: docker not found — hydra_satsuma cannot run its "
                   "satsuma-iter+kissat fall-through (build: tools/satsuma/build.sh).",
@@ -2186,8 +2210,11 @@ def main() -> int:
                           "lower -j.", file=sys.stderr)
             except Exception:
                 pass
+    if args.backend in ("hydra_circuit_satsuma", "hydra_circuit") and shutil.which("drat-trim") is None:
+        print("c WARNING: drat-trim not found on the PATH -- the circuit stage's "
+              "certificates will go UNCHECKED.", file=sys.stderr)
     if args.backend in ("pb-cadical", "pb_cadical", "hydra", "hydra_sym_break",
-                        "hydra_satsuma"):
+                        "hydra_satsuma", "hydra_circuit_satsuma", "hydra_circuit"):
         if CAKELPR_BIN is None:
             print("c WARNING: cake_lpr not found (PATH or ~/.cargo/bin) — "
                   "CaDiCaL-path LRAT proofs will go UNCHECKED. Build it from "

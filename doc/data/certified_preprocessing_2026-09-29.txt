@@ -349,3 +349,28 @@
 # and after --factor, --sweep, --cuts, the seven of the other unsolved
 # circuits above that were run (all but safe-50 and sncf): timeout, all
 # seven.  The route pays where ABC's paid, and nowhere else so far.
+#
+# === 12. Addendum (2026-09-30): the unsolved-circuit experiment, rerun with the fixed extraction ===
+#
+# The seven instances of 2026-09-28 that the two extraction defects (§7)
+# had starved, through the same arms as then -- strash and ABC's writer
+# ("none"), dc2, dc2 + fraig + dc2 -- and CaDiCaL 3.0.1 at 5000 s; sncf and
+# safe-50 also through the native chain (factor, sweep with 600 s, cuts).
+# Ten jobs at a time on the 10-core machine; ABC capped at 3600 s.
+#
+#                                 to ABC: ANDs (2026-09-28)     none          dc2           dc2f          native
+#   gus-md5-14-sc2009               99,060  (1,204)           timeout       timeout       timeout
+#   gus-md5-15                      99,609  (1,426)           timeout       timeout       timeout
+#   slp-synthesis-aes-bottom22      72,575  (58,634)          timeout       timeout       timeout
+#   sum_of_3_cubes_94_bits_30      288,700  (751,247*)        timeout       timeout       timeout
+#   sum_of_3_cubes_108_bits_52     382,171  (993,671*)        timeout       timeout       timeout
+#   sum_of_3_cubes_145_bits_74     697,837  (1,812,399*)      timeout       timeout       timeout
+#   sncf_model_ixl_bmc_depth_15  2,339,341  (364,795)         timeout       timeout       ABC > 3600 s  timeout
+#   safe-50-h49-unsat                                                                                   timeout
+#   (* the sum-of-3-cubes graphs are smaller now because the tables are
+#   no longer expanded as sums of minterms by the Python bridge.)
+#
+# The circuits reach ABC whole now: gus-md5 with 82 times the graph, sncf
+# with 6 times.  Nothing changes: 21 timeouts of 21 solver runs, one ABC
+# run that did not finish.  The verdicts of 2026-09-28 stand, and are
+# tests this time.

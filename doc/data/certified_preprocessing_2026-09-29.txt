@@ -374,3 +374,40 @@
 # with 6 times.  Nothing changes: 21 timeouts of 21 solver runs, one ABC
 # run that did not finish.  The verdicts of 2026-09-28 stand, and are
 # tests this time.
+#
+# === 13. Addendum (2026-09-30): sat -b hydra_circuit_satsuma under competition conditions ===
+#
+# The pipeline moved into the library (logic::circuit) and became a stage
+# of the solver (commit f97be01, tools/circuit/README.md): where factoring
+# finds products of inputs with sharing (>= 64 products, >= 5% of the
+# gates, >= 20 gates per product), a probe of the original (CaDiCaL, 20,000
+# conflicts, its own proof), then factor + cuts and CaDiCaL on the rest of
+# the budget; drat-trim on the certificate after the verdict.  The array
+# multipliers are the reason for the probe: plain CaDiCaL refutes
+# gm36sparrc in 6 s where the passes turn it into 2,614 s.  A scan of the
+# 400 instances of the 2026 main track: the stage fires on 14 (the 12
+# multipliers, x-epic_a10-p53_transition, PRP_40_40); md5, oski, b19,
+# case18 have products without sharing and are left alone.
+#
+# The 14 through tools/gbd/run_benchmark.py, 5000 s, ten in parallel
+# (doc/competition-benchmark_circuit14_5000_hydra_circuit_satsuma.md):
+#
+#                              hydra_satsuma (09-28 run)   hydra_circuit_satsuma        certificate (after the verdict)
+#   gm16spwtrc                     timeout                 UNSAT   1,549 s              drat-trim   548 s
+#   gm20spctrc                     timeout                 UNSAT   2,135 s              drat-trim   179 s
+#   gm16spwtcl                     timeout                 UNSAT   4,324 s              drat-trim   954 s
+#   gm16spctrc                     UNSAT     511 s         UNSAT      77 s              drat-trim     8 s
+#   gm20sparrc                     UNSAT     0.7 s         UNSAT     0.8 s   (probe)    drat-trim   0.1 s
+#   gm24sparrc                     UNSAT     7.4 s         UNSAT     2.9 s   (probe)    drat-trim   0.3 s
+#   gm28sparrc                     UNSAT    11.5 s         UNSAT    10.4 s   (probe)    drat-trim   0.7 s
+#   gm32sparrc                     UNSAT     7.6 s         UNSAT     6.9 s   (probe)    drat-trim   0.6 s
+#   gm36sparrc                     UNSAT     5.2 s         UNSAT    15.7 s   (probe)    drat-trim   0.9 s
+#   x-epic_a10-p53_transition      UNSAT     9.5 s         UNSAT    39.8 s              drat-trim   172 s
+#   PRP_40_40                      SAT      29.2 s         SAT      36.8 s              the model
+#   gm24spctbk, gm24spctrc         timeout                 timeout
+#   gm32spctlf                     timeout                 timeout (over the clause cap: satsuma)
+#
+# 11 of 14 against 8: the three tree multipliers that no solver of the
+# competition solved, every UNSAT with a certificate drat-trim accepted
+# against the original file, and seconds lost where the stage's own work
+# is the overhead.  The full run over the 400 followed.

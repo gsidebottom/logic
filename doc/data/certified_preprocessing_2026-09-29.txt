@@ -339,3 +339,13 @@
 # The writer's derivation check refused such a gate.  On generated
 # instances with repeated clauses the build before the fix had 4 proofs of
 # --factor rejected by drat-trim in 1,500; no wrong verdict.
+#
+# === 11. Addendum: what the writer does not do ===
+#
+# CaDiCaL 3.0.1 at 5000 s, on the loaded machine, after --factor and --cuts:
+#   gm24spctbk   455,014 variables, 2,729,792 clauses ->   921,412 clauses    timeout
+#   gm24spctrc   513,856,           3,082,844        -> 1,035,092             timeout
+#   gm32spctlf 2,342,316,          14,053,508        -> 4,850,359             timeout
+# and after --factor, --sweep, --cuts, the seven of the other unsolved
+# circuits above that were run (all but safe-50 and sncf): timeout, all
+# seven.  The route pays where ABC's paid, and nowhere else so far.

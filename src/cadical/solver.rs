@@ -129,6 +129,8 @@ unsafe extern "C" {
     fn c3_trace_begin(s: *mut c_void);
     fn c3_trace_data(s: *mut c_void, len: *mut usize) -> *const c_int;
     fn c3_trace_clear(s: *mut c_void);
+    fn c3_trace_file(s: *mut c_void, path: *const c_char) -> c_int;
+    fn c3_trace_file_close(s: *mut c_void);
     fn c3_trace_rat(s: *mut c_void) -> c_int;
     fn c3_connect(
         s: *mut c_void,
@@ -481,6 +483,22 @@ impl<C: Callbacks> Solver<C> {
         if p.is_null() || len == 0 { &[] } else { unsafe { std::slice::from_raw_parts(p, len) } }
     }
 
+    /// Write the clausal proof to a file (binary DRAT, CaDiCaL's own
+    /// writer).  Only before the first clause; answers `false` afterwards
+    /// or when the file cannot be written.
+    pub fn trace_proof_to(&mut self, path: &str) -> bool {
+        if !self.configuring {
+            return false;
+        }
+        let Ok(c) = std::ffi::CString::new(path) else { return false };
+        unsafe { c3_trace_file(self.ptr, c.as_ptr()) != 0 }
+    }
+
+    /// Flush and close the proof file.
+    pub fn close_proof(&mut self) {
+        unsafe { c3_trace_file_close(self.ptr) };
+    }
+
     /// Forget the events read so far; the recording goes on.
     pub fn proof_events_clear(&mut self) {
         unsafe { c3_trace_clear(self.ptr) };
@@ -516,6 +534,23 @@ impl<C: Callbacks> Drop for Solver<C> {
 mod tests {
     /// The in-memory proof: a pigeonhole-like core under assumptions is
     /// unsatisfiable, and what was derived parses as tagged clauses.
+    #[test]
+    fn a_proof_file_is_written() {
+        // the pigeonhole principle for 4 pigeons and 3 holes, refuted with the proof on disk
+        let path = std::env::temp_dir().join(format!("c3_proof_{}.drat", std::process::id()));
+        let mut s: Solver = Solver::new();
+        assert!(s.trace_proof_to(path.to_str().unwrap()));
+        let var = |p: i32, h: i32| p * 3 + h + 1;
+        for p in 0..4 { s.add_clause((0..3).map(|h| var(p, h))); }
+        for h in 0..3 { for p in 0..4 { for q in p + 1..4 { s.add_clause([-var(p, h), -var(q, h)]); } } }
+        assert!(!s.trace_proof_to("/nonexistent/late"), "only before the first clause");
+        assert_eq!(s.solve(), Some(false));
+        s.close_proof();
+        let bytes = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(!bytes.is_empty() && (bytes[0] == b'a' || bytes[0] == b'd'), "a binary DRAT proof starts with 'a' or 'd'");
+    }
+
     #[test]
     fn memory_proof_under_assumptions() {
         let mut s: Solver = Solver::new();

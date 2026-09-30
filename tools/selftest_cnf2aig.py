@@ -4,7 +4,7 @@
 Generated instances (a random circuit twice, in different decompositions,
 and a miter; the same with a planted difference; larger and-heavy circuits;
 parity constraints that close definition cycles; multiplexers nested on two
-inputs, in three encodings) go through the tool, and
+inputs, in three encodings; clauses repeated) go through the tool, and
 for every one of them
 
   * an UNSAT answer on the output must come with a proof that drat-trim
@@ -17,6 +17,9 @@ for every one of them
   MODE=factor            cnf2aig --factor
   MODE=chain             --factor, then --sweep on its output: the two
                          prefixes and the solver's proof, against the original
+  MODE=cuts              cnf2aig --cuts, under a rotation of settings
+  MODE=all               --factor, --sweep, --cuts: three prefixes
+  MODE=row               the same three in one run (--chain factor,sweep,cuts)
   MODE=abc               cnf2aig --abc: ABC is not certified, so for UNSAT
                          only the verdicts are compared (ABC=path/to/abc)
 
@@ -59,7 +62,7 @@ class Bld:
     def maj(self, a, b, c): o = self.new(); self.cls += [[-a, -b, o], [-a, -c, o], [-b, -c, o], [a, b, -o], [a, c, -o], [b, c, -o]]; return o
     def andw(self, ls): o = self.new(); self.cls += [[-o, x] for x in ls] + [[o] + [-x for x in ls]]; return o
 
-ARITY = {"and": 2, "or": 2, "xor": 2, "xor3": 3, "maj": 3, "ite": 3, "and3": 3}
+ARITY = {"and": 2, "or": 2, "xor": 2, "xor3": 3, "maj": 3, "ite": 3, "and3": 3, "and5": 5}
 
 def node(b, op, a, style):
     if op == "and":  return b.and_(a[0], a[1]) if style == 0 else -b.or_(-a[0], -a[1])
@@ -82,9 +85,28 @@ def node(b, op, a, style):
     if op == "and3":
         if style == 0: return b.andw(a)
         return b.and_(a[0], b.and_(a[1], a[2]))
+    if op == "and5":
+        if style == 0: return b.andw(a)
+        if style == 1: return b.and_(b.and_(a[0], a[1]), b.andw(a[2:]))
+        return b.andw([b.and_(a[0], a[4])] + a[1:4])
     raise ValueError(op)
 
 def instance(seed):
+    """An instance, and now and then clauses repeated in it: some of its
+    own, or half the clauses of a parity twice (four clauses of one scope
+    and one parity that do not define anything)."""
+    nv, cls = instance0(seed)
+    rng = random.Random(seed * 7919 + 1)
+    if rng.random() < 0.2:
+        for c in rng.sample(cls, min(len(cls), rng.randint(1, 6))): cls.append(rng.sample(c, len(c)))
+    if rng.random() < 0.15 and nv >= 3:
+        for _ in range(rng.randint(1, 3)):
+            a, b, c = rng.sample(range(1, nv + 1), 3)
+            two = [[a, b, c], [-a, b, -c]] if rng.random() < 0.5 else [[a, -b, c], [-a, -b, -c]]
+            cls += [list(x) for x in two] + [list(x) for x in two]
+    return nv, cls
+
+def instance0(seed):
     rng = random.Random(seed)
     kind = seed % 6
     if kind == 4:
@@ -104,7 +126,8 @@ def instance(seed):
     ops = list(ARITY) if kind != 2 else ["and", "and", "and3", "or", "xor", "ite", "maj"]
     spec = []
     for j in range(n_nodes):
-        op = rng.choice(ops); pool = n_in + j
+        pool = n_in + j
+        op = rng.choice([o for o in ops if ARITY[o] <= pool])
         args = [(rng.randrange(pool), rng.random() < 0.3) for _ in range(ARITY[op])]
         if len({i for i, _ in args}) < len(args): args = [(i, n) for i, n in zip(rng.sample(range(pool), ARITY[op]), [x[1] for x in args])]
         spec.append((op, args))
@@ -116,8 +139,9 @@ def instance(seed):
         for j, (op, args) in enumerate(spec):
             a = [(-sig[i] if n else sig[i]) for i, n in args]
             if copy == 1 and bug == j:
-                op2 = rng.choice([o for o in ARITY if ARITY[o] == ARITY[op] and o != op])
-                sig.append(node(b, op2, a, 0))
+                others = [o for o in ARITY if ARITY[o] == ARITY[op] and o != op]
+                if others: sig.append(node(b, rng.choice(others), a, 0))
+                else: sig.append(node(b, op, [-a[0]] + a[1:], 0))      # the same gate on a complemented input
             else:
                 sig.append(node(b, op, a, 0 if copy == 0 else rng.randrange(3)))
         sigs.append(sig)
@@ -191,7 +215,8 @@ def cyclic_instance(rng):
     b = Bld(n_in, rng)
     sig = list(range(1, n_in + 1))
     for j in range(n_nodes):
-        op = rng.choice(list(ARITY)); pool = len(sig)
+        pool = len(sig)
+        op = rng.choice([o for o in ARITY if ARITY[o] <= pool])
         idx = rng.sample(range(pool), ARITY[op])
         a = [(-sig[i] if rng.random() < 0.3 else sig[i]) for i in idx]
         sig.append(node(b, op, a, rng.randrange(3)))
@@ -219,6 +244,9 @@ SETTINGS = [[], ["--window", "1"], ["--window", "3", "--conflicts", "2"], ["--ro
             ["--order", "depth"], ["--order", "depth", "--first", "2", "--rounds", "1"],
             ["--give-up", "1", "--conflicts", "2", "--first", "1"]]
 
+CUT_SETTINGS = [[], ["--leaves", "2"], ["--leaves", "3"], ["--leaves", "4", "--cuts-per-gate", "1"], ["--leaves", "5", "--cuts-per-gate", "2"],
+                ["--leaves", "6", "--cuts-per-gate", "50"], ["--leaves", "3", "--cuts-per-gate", "3"]]
+
 def check(seed):
     nv, cls = instance(seed)
     opts = SETTINGS[(seed // 6) % len(SETTINGS)]
@@ -229,20 +257,42 @@ def check(seed):
         if MODE == "sweep": cmd = [RS, inp, "--sweep", out, "--proof", pre, "--dropped", drp] + opts
         elif MODE == "recode": cmd = [RS, inp, "--recode", out, "--proof", pre, "--dropped", drp]; opts = []
         elif MODE == "factor": cmd = [RS, inp, "--factor", out, "--proof", pre]; opts = []
+        elif MODE == "cuts":
+            opts = CUT_SETTINGS[(seed // 6) % len(CUT_SETTINGS)]
+            cmd = [RS, inp, "--cuts", out, "--proof", pre, "--dropped", drp] + opts
+        elif MODE == "row":
+            copts = CUT_SETTINGS[(seed // 6) % len(CUT_SETTINGS)]
+            cmd = [RS, inp, "--chain", ["factor,sweep,cuts", "sweep,factor,cuts", "recode,factor", "factor,cuts", "sweep,sweep"][seed % 5], "--to", out, "--proof", pre, "--dropped", drp] + opts + copts
+            opts = opts + copts
+        elif MODE == "all":
+            mid = f"{d}/mid.cnf"; mid2 = f"{d}/mid2.cnf"; pre1 = f"{d}/prefix1.drat"; pre2 = f"{d}/prefix2.drat"; pre3 = f"{d}/prefix3.drat"
+            bin_ = ["--binary"] if BINARY else []
+            r = subprocess.run([RS, inp, "--factor", mid, "--proof", pre1] + bin_, capture_output=True, text=True, timeout=300)
+            if r.returncode != 0: return (seed, "TOOL FAILED", (r.stderr or r.stdout)[-400:], None)
+            r2 = subprocess.run([RS, mid, "--sweep", mid2, "--proof", pre2] + opts + bin_, capture_output=True, text=True, timeout=300)
+            if r2.returncode != 0: return (seed, "TOOL FAILED", (r2.stderr or r2.stdout)[-400:], None)
+            r.stdout += r2.stdout
+            copts = CUT_SETTINGS[(seed // 6) % len(CUT_SETTINGS)]
+            cmd = [RS, mid2, "--cuts", out, "--proof", pre3] + copts
+            opts = opts + copts
         elif MODE == "chain":
             mid = f"{d}/mid.cnf"; pre1 = f"{d}/prefix1.drat"; pre2 = f"{d}/prefix2.drat"
             r = subprocess.run([RS, inp, "--factor", mid, "--proof", pre1] + (["--binary"] if BINARY else []), capture_output=True, text=True, timeout=300)
             if r.returncode != 0: return (seed, "TOOL FAILED", (r.stderr or r.stdout)[-400:], None)
             cmd = [RS, mid, "--sweep", out, "--proof", pre2] + opts
         else: cmd = [RS, inp, "--abc", ABC, "--script", ["none", "dc2f", "resyn2f", "fraig"][seed % 4], "--out", out, "--keep", f"{d}/abc"]; opts = []
-        first = r.stdout if MODE == "chain" else ""
+        first = r.stdout if MODE in ("chain", "all") else ""
         if BINARY and MODE != "abc": cmd.append("--binary")
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if r.returncode != 0: return (seed, "TOOL FAILED", (r.stderr or r.stdout)[-400:], None)
         if MODE == "chain":
             with open(pre, "wb") as f: f.write(open(pre1, "rb").read()); f.write(open(pre2, "rb").read())
+        if MODE == "all":
+            with open(pre, "wb") as f: f.write(open(pre1, "rb").read()); f.write(open(pre2, "rb").read()); f.write(open(pre3, "rb").read())
+        cutl = [l for l in r.stdout.splitlines() if "cuts:" in l]
+        if MODE == "row": first = ""
         fact = [l for l in (first + r.stdout).splitlines() if "factor:" in l and "products" in l]
-        stats = [l for l in r.stdout.splitlines() if "sweep:" in l and "attempts" in l]   # the counts, then the whole cones
+        stats = [l for l in (first + r.stdout).splitlines() if "sweep:" in l and "attempts" in l]   # the counts, then the whole cones
         g = subprocess.run([CADICAL, "-q", inp], capture_output=True, text=True, timeout=300)
         truth = {10: True, 20: False}.get(g.returncode)
         c = subprocess.run([CADICAL, "-q", "--binary=" + ("true" if BINARY else "false"), out, prf], capture_output=True, text=True, timeout=300)
@@ -256,14 +306,14 @@ def check(seed):
             with open(comp, "wb") as f: f.write(open(pre, "rb").read()); f.write(open(prf, "rb").read())
             t = subprocess.run([DRAT, inp, comp], capture_output=True, text=True, timeout=600)
             if "s VERIFIED" not in t.stdout: return (seed, "PROOF REJECTED", f"opts={opts} " + t.stdout[-500:], None)
-            return (seed, "ok-unsat", stats + fact, opts)
+            return (seed, "ok-unsat", stats + fact + cutl, opts)
         used = {abs(int(t)) for l in open(out) if not l.startswith("p") and not l.startswith("c") for t in l.split() if int(t) != 0}
         model = [int(t) for l in c.stdout.splitlines() if l.startswith("v") for t in l.split()[1:] if int(t) != 0 and abs(int(t)) in used and abs(int(t)) <= nv]
         ext = f"{d}/ext.cnf"; write_cnf(ext, nv, cls + [[l] for l in model])
         e = subprocess.run([CADICAL, "-q", ext], capture_output=True, text=True, timeout=300)
         if e.returncode != 10: return (seed, "MODEL DOES NOT EXTEND", f"opts={opts}", None)
         # and by propagation alone through the dropped definitions
-        return (seed, "ok-sat", stats + fact, opts)
+        return (seed, "ok-sat", stats + fact + cutl, opts)
     except subprocess.TimeoutExpired as ex:
         return (seed, "TIMEOUT", str(ex)[:200], None)
     finally:
@@ -273,7 +323,7 @@ if __name__ == "__main__":
     lo, hi = int(sys.argv[1]), int(sys.argv[2])
     procs = int(sys.argv[3]) if len(sys.argv) > 3 else 12
     bad = 0; n = 0; unsat = 0; sat = 0
-    whole = [0, 0]; fac = [0, 0, 0, 0, 0]
+    whole = [0, 0]; fac = [0, 0, 0, 0, 0]; cut = [0] * 8
     tot = {"attempts": 0, "merged": 0, "constant": 0, "refuted": 0, "refinements": 0, "undecided": 0, "budget": 0}
     with Pool(procs) as pool:
         for seed, verdict, info, opts in pool.imap_unordered(check, range(lo, hi), chunksize=4):
@@ -291,8 +341,15 @@ if __name__ == "__main__":
                     m = re.search(r"factor: (\d+) gates on a product of two selects, (\d+) products; (\d+) repeated tests; (\d+) gates no longer read; (\d+) clauses by cases", line)
                     if m:
                         for k, x in enumerate(m.groups()): fac[k] += int(x)
+                    m = re.search(r"cuts: (\d+) gates, (\d+) keep their variable \((\d+) over other gates, (\d+) with their own clauses\)", line)
+                    if m:
+                        for k, x in enumerate(m.groups()): cut[k] += int(x)
+                    m = re.search(r"cuts: (\d+) clauses kept, (\d+) derived \((\d+) by cases, (\d+) lemmas for them\)", line)
+                    if m:
+                        for k, x in enumerate(m.groups()): cut[4 + k] += int(x)
     proved = "UNSAT verdicts agreed (no proof: ABC is not certified)" if MODE == "abc" else "proofs verified against the original"
     print(f"{MODE} self-test: {bad} failures in {n} checks ({unsat} {proved}, {sat} models extended)")
+    if MODE in ("cuts", "all", "row"): print(f"  over all instances: {cut[0]} gates, {cut[1]} keep their variable ({cut[2]} over other gates, {cut[3]} with their own clauses); {cut[4]} clauses kept, {cut[5]} derived ({cut[6]} by cases, {cut[7]} lemmas for them)")
+    if MODE in ("sweep", "chain", "all", "row"): print(f"  over all instances: {tot}; {whole[0]} attempts on whole cones in {whole[1]} solvers")
+    if MODE in ("factor", "chain", "all", "row"): print(f"  over all instances: {fac[0]} gates put on a product, {fac[1]} products, {fac[2]} repeated tests, {fac[3]} gates no longer read, {fac[4]} clauses derived by cases")
     sys.exit(1 if bad else 0)
-    if MODE in ("sweep", "chain"): print(f"  over all instances: {tot}; {whole[0]} attempts on whole cones in {whole[1]} solvers")
-    if MODE in ("factor", "chain"): print(f"  over all instances: {fac[0]} gates put on a product, {fac[1]} products, {fac[2]} repeated tests, {fac[3]} gates no longer read, {fac[4]} clauses derived by cases")

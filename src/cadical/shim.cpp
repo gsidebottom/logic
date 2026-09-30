@@ -194,6 +194,14 @@ const int *c3_trace_data (void *s, size_t *len) {
   return w->tracer->events.data ();
 }
 
+// The clausal proof to a file, in CaDiCaL's own writer (binary DRAT unless
+// the option `binary` says otherwise); only while configuring.
+int c3_trace_file (void *s, const char *path) {
+  return self (s)->solver.trace_proof (path) ? 1 : 0;
+}
+
+void c3_trace_file_close (void *s) { self (s)->solver.close_proof_trace (); }
+
 // Forget the events read so far (the solver goes on recording).
 void c3_trace_clear (void *s) {
   Wrapper *w = self (s);

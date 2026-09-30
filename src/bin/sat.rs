@@ -2007,9 +2007,12 @@ fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
             // anyone who wants to reproduce it.
             let mut applied: Vec<String> = Vec::new();
             for (name, value) in opts.iter() {
-                let ok = match name.strip_prefix("limit:") {
-                    Some(l) => solver.limit(l, *value),
-                    None => solver.set_option(name, *value),
+                let ok = if let Some(l) = name.strip_prefix("limit:") {
+                    solver.limit(l, *value)
+                } else if let Some(path) = name.strip_prefix("proof:") {
+                    solver.trace_proof_to(path)
+                } else {
+                    solver.set_option(name, *value)
                 };
                 if ok {
                     applied.push(format!("{name}={value}"));
@@ -2058,6 +2061,7 @@ fn cadical_search(nvars: usize, cnf: Cnf, show_progress: bool,
                 eprintln!("c cadical: {} boxes as an external propagator over {} observed variables", boxes.len(), observed.len());
             }
             let result = solver.solve();
+            if opts.iter().any(|(n, _)| n.starts_with("proof:")) { solver.close_proof(); }
             eprintln!("c cadical: {} conflicts, {} decisions, {} propagations",
                       solver.conflicts(), solver.decisions(), solver.propagations());
             if !boxes.is_empty() && !boxes_native { eprintln!("{}", solver.propagator_report()); }
@@ -3135,6 +3139,11 @@ fn parse_args() -> Result<Args, String> {
                 a.max_memory = (v.parse::<f64>().map_err(|_| format!("--max-memory: bad size {v:?}"))?
                                 * 1e9) as u64;
             }
+            "--cadical-proof" => {
+                // CaDiCaL's own proof of an UNSAT verdict, binary DRAT
+                let v = iter.next().ok_or_else(|| "--cadical-proof requires a file".to_string())?;
+                a.cadical_opts.push((format!("proof:{v}"), 0));
+            }
             "--cadical-limit" => {
                 let v = iter.next().ok_or_else(||
                     "--cadical-limit requires NAME=VALUE (conflicts, decisions, preprocessing, localsearch)".to_string())?;
@@ -3243,6 +3252,11 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("  --max-memory GB  Abort if the clause list would exceed this (default 60%");
                 eprintln!("                    of RAM, 0 disables).  A 7.5 GB CNF needs tens of GB as");
                 eprintln!("                    Vec<Vec<i32>> and will otherwise swap the machine.");
+                eprintln!("  --cadical-proof FILE");
+                eprintln!("                    The cadical backend's own proof of an UNSAT verdict,");
+                eprintln!("                    binary DRAT, for drat-trim.  After a prefix written");
+                eprintln!("                    by cnf2aig (--proof, --binary) it refutes the formula");
+                eprintln!("                    cnf2aig was given.");
                 eprintln!("  --cadical-opt N=V CaDiCaL option for the cadical backend, repeatable.");
                 eprintln!("                    The backend otherwise runs the vendored 3.0.1's own");
                 eprintln!("                    defaults; release 3.0.0's stronger preprocessing is");

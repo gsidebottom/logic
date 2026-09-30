@@ -16,17 +16,25 @@
 //!   cnf2aig in.cnf --aag in.aig [--map in.map]   # the AIG only (binary AIGER), and the
 //!                                                  # variable of each of its inputs and outputs
 //!
-//! Three modes need no ABC and carry a proof: `--recode out.cnf` (structural
+//! Four modes need no ABC and carry a proof: `--recode out.cnf` (structural
 //! hashing and dead cones), `--sweep out.cnf` (SAT sweeping: functional
-//! equivalences found by simulation, each proved by CaDiCaL) and `--factor
-//! out.cnf` (nested multiplexers on two inputs become one on their product).
+//! equivalences found by simulation, each proved by CaDiCaL), `--factor
+//! out.cnf` (nested multiplexers on two inputs become one on their product)
+//! and `--cuts out.cnf` (fewer variables, each a function of up to six
+//! below it, written as the cubes of its covers).
 //! With `--proof prefix.drat` they write a DRAT prefix that derives the
 //! output from the input; followed by a solver's proof of the output it
 //! refutes the input.  The modes chain: one's output is the next one's
 //! input, and the prefixes are concatenated in that order.  `--binary`
 //! writes the prefix in the binary DRAT format, for a solver's binary proof.
 //!
+//!   cnf2aig in.cnf --chain factor,sweep,cuts --to out.cnf --proof prefix.drat --binary
+//!
+//! runs them in a row and writes one prefix.
+//!
 //!   cnf2aig in.cnf --factor out.cnf --proof prefix.drat     (select factoring, below)
+//!   cnf2aig in.cnf --cuts out.cnf --proof prefix.drat       (the cut-based writer, below; the last
+//!           [--leaves 6] [--cuts-per-gate 8]                  of a chain: its blocks are not gates)
 //!   cnf2aig in.cnf --sweep out.cnf --proof prefix.drat
 //!           [--rounds 16 (words of random patterns to start with; more follow
 //!           while they split classes)] [--first 64] [--window GATES] [--conflicts 1000] [--tries 2]
@@ -49,6 +57,13 @@ struct Cnf {
 }
 
 impl Cnf {
+    fn from_clauses(nv: usize, cls: &[Vec<i32>]) -> Cnf {
+        let mut lits = Vec::with_capacity(cls.iter().map(|c| c.len()).sum());
+        let mut start = Vec::with_capacity(cls.len() + 1);
+        start.push(0);
+        for c in cls { lits.extend_from_slice(c); start.push(lits.len()); }
+        Cnf { nv, lits, start }
+    }
     fn len(&self) -> usize { self.start.len() - 1 }
     fn clause(&self, i: usize) -> &[i32] { &self.lits[self.start[i]..self.start[i + 1]] }
 }
@@ -259,6 +274,9 @@ fn extract_pattern(cls: &[Vec<i32>], xor: bool) -> Vec<Gate> {
             if group.len() != want || idxs.len() != want { continue; }
             let par: HashSet<usize> = group.iter().map(|c| c.iter().filter(|&&l| l > 0).count() % 2).collect();
             if par.len() != 1 { continue; }
+            // every sign pattern of that parity once: four clauses, not two of them twice
+            let signs: HashSet<u32> = group.iter().map(|c| c.iter().fold(0u32, |m, &l| if l > 0 { m | 1 << scope.iter().position(|&v| v == l.unsigned_abs()).unwrap() } else { m })).collect();
+            if signs.len() != want { continue; }
             let p = *par.iter().next().unwrap();
             let out = *scope.iter().max().unwrap();
             if defined.contains(&out) { continue; }
@@ -1625,6 +1643,328 @@ fn factor(cnf: &Cnf, root: &Root, gates: &[Gate], proof: &mut Proof) -> (Vec<Vec
     (out, next, st)
 }
 
+// ── the cut-based writer ──────────────────────────────────────────────────
+//
+// A variable for every gate and the clauses of its definition is one way to
+// write a circuit.  Another (Een, Mishchenko, Sorensson 2007; ABC's
+// &write_cnf): choose the gates that keep their variable, the roots, each a
+// function of at most K roots and inputs below it, its cut; write that
+// function as the cubes of an irredundant cover of it and of one of its
+// complement, a clause each; the gates between a root and its cut lose
+// their variable.  The roots are chosen for the fewest clauses: every gate
+// gets its cuts from the cuts of what it reads, a cut costs its clauses and
+// a share of what its leaves cost (area flow), and the choice starts at
+// what the clauses outside the gates read.
+//
+// The proof.  A clause of a root follows from the definitions of the gates
+// between the root and its cut: by unit propagation (checked here), else by
+// cases on the cut's variables that the clause does not mention, until
+// propagation does it -- with all of them given, every gate in between is
+// propagated in turn.  The definitions are deleted after the last clause.
+// A cover's clause that is one of the root's own is kept as it is: for a
+// cut of the root's own inputs the proof is deletions only.
+//
+// For that to hold the function of a cut is the function of the gates
+// between: a cut put together from the cuts of what a gate reads may hold a
+// gate and, through another path, what that gate reads, and the function
+// put together the same way is then right where the two agree and
+// arbitrary elsewhere -- enough for a sound formula, not for a derivation
+// from the gates between.  So the leaves are those that are reached from
+// the root without passing another, and the function is evaluated from
+// them.
+
+const VARS: [u64; 6] = [0xAAAA_AAAA_AAAA_AAAA, 0xCCCC_CCCC_CCCC_CCCC, 0xF0F0_F0F0_F0F0_F0F0,
+                        0xFF00_FF00_FF00_FF00, 0xFFFF_0000_FFFF_0000, 0xFFFF_FFFF_0000_0000];
+const MAXK: usize = 6;
+
+fn cof0(t: u64, v: usize) -> u64 { let lo = t & !VARS[v]; lo | (lo << (1u32 << v)) }
+fn cof1(t: u64, v: usize) -> u64 { let hi = t & VARS[v]; hi | (hi >> (1u32 << v)) }
+
+/// An irredundant cover of a function between `l` and `u` (Minato-Morreale),
+/// of the variables below `top`: its cubes as (variables, polarities) are
+/// added to `cubes`, the function it covers is returned.
+fn isop(l: u64, u: u64, top: usize, cubes: &mut Vec<(u8, u8)>) -> u64 {
+    if l == 0 { return 0; }
+    if u == !0 { cubes.push((0, 0)); return !0; }
+    let Some(v) = (0..top).rev().find(|&v| cof0(l, v) != cof1(l, v) || cof0(u, v) != cof1(u, v)) else {
+        cubes.push((0, 0));
+        return !0;
+    };
+    let (l0, l1, u0, u1) = (cof0(l, v), cof1(l, v), cof0(u, v), cof1(u, v));
+    let a = cubes.len();
+    let r0 = isop(l0 & !u1, u0, v, cubes);
+    let b = cubes.len();
+    let r1 = isop(l1 & !u0, u1, v, cubes);
+    let c = cubes.len();
+    let r2 = isop((l0 & !r0) | (l1 & !r1), u0 & u1, v, cubes);
+    for q in &mut cubes[a..b] { q.0 |= 1 << v; }
+    for q in &mut cubes[b..c] { q.0 |= 1 << v; q.1 |= 1 << v; }
+    (r0 & !VARS[v]) | (r1 & VARS[v]) | r2
+}
+
+/// The covers of a function and of its complement.
+type Cover = (Vec<(u8, u8)>, Vec<(u8, u8)>);
+
+fn cover(memo: &mut HashMap<u64, Cover>, tt: u64) -> &Cover {
+    memo.entry(tt).or_insert_with(|| {
+        let (mut on, mut off) = (Vec::new(), Vec::new());
+        let f = isop(tt, tt, MAXK, &mut on);
+        let g = isop(!tt, !tt, MAXK, &mut off);
+        assert!(f == tt && g == !tt, "the cover is not the function");
+        (on, off)
+    })
+}
+
+#[derive(Clone, Copy)]
+struct Cut { n: u8, leaves: [u32; MAXK], tt: u64, cost: u32, flow: f32 }
+
+impl Cut {
+    fn leaves(&self) -> &[u32] { &self.leaves[..self.n as usize] }
+    fn trivial(v: u32) -> Cut { let mut leaves = [0; MAXK]; leaves[0] = v; Cut { n: 1, leaves, tt: VARS[0], cost: 0, flow: 0.0 } }
+    /// The leaves the function depends on.
+    fn used(&self) -> impl Iterator<Item = u32> + '_ {
+        let tt = self.tt;
+        self.leaves().iter().enumerate().filter(move |(i, _)| cof0(tt, *i) != cof1(tt, *i)).map(|(_, &v)| v)
+    }
+}
+
+struct CutParams { leaves: usize, limit: usize }
+
+#[derive(Default)]
+struct CutStats { gates: usize, roots: usize, own: usize, merged: usize, kept: usize, derived: usize, by_cases: usize, case_lemmas: usize, functions: usize }
+
+/// A clause that follows from `support`: by unit propagation, or by cases on
+/// the variables of `split` until propagation does it.  The lines of the
+/// derivation go to `lines` (the lemmas for the cases are deleted again);
+/// false, and nothing written, when no such case analysis does it.
+fn derive_by_cases(target: &[i32], split: &[u32], support: &[&Vec<i32>], lines: &mut Vec<(bool, Vec<i32>)>) -> bool {
+    if follows_by_propagation(support, target) { lines.push((false, target.to_vec())); return true; }
+    let Some((&v, rest)) = split.split_first() else { return false };
+    let mark = lines.len();
+    let mut halves: Vec<Vec<i32>> = Vec::with_capacity(2);
+    for l in [v as i32, -(v as i32)] {
+        let mut c = target.to_vec();
+        c.push(l);
+        if !derive_by_cases(&c, rest, support, lines) { lines.truncate(mark); return false; }
+        halves.push(c);
+    }
+    lines.push((false, target.to_vec()));
+    for c in halves { lines.push((true, c)); }
+    true
+}
+
+struct Written { cls: Vec<Vec<i32>>, dropped: Vec<Vec<i32>>, stats: CutStats }
+
+fn write_cuts(cnf: &Cnf, root: &Root, gates: &[Gate], p: &CutParams, proof: &mut Proof) -> Written {
+    let nv = cnf.nv;
+    let cls = &root.cls;
+    let k = p.leaves.clamp(2, MAXK);
+    for &u in &root.units { proof.add(&[u]); }
+    let (order, gate_of) = acyclic_order(gates, nv);
+    let gate = |v: u32| &gates[gate_of[v as usize] as usize];
+    let is_gate = |v: u32| gate_of[v as usize] != NONE;
+    let mut defcl: Vec<bool> = vec![false; cls.len()];
+    for &o in &order { for &i in &gate(o).clauses { defcl[i] = true; } }
+    let residual: Vec<usize> = (0..cls.len()).filter(|&i| !defcl[i]).collect();
+    let mut observed: Vec<bool> = vec![false; nv + 1];
+    for &i in &residual { for &l in &cls[i] { if is_gate(l.unsigned_abs()) { observed[l.unsigned_abs() as usize] = true; } } }
+    let mut st = CutStats { gates: order.len(), ..Default::default() };
+
+    // who reads whom, to begin with: every gate a root
+    let mut refs: Vec<f32> = vec![0.0; nv + 1];
+    for &o in &order { for l in &gate(o).inputs { refs[l.unsigned_abs() as usize] += 1.0; } }
+    for v in 1..=nv { if observed[v] { refs[v] += 1.0; } }
+
+    // the cuts of every gate, from the cuts of what it reads
+    let mut memo: HashMap<u64, Cover> = HashMap::new();
+    let mut start: Vec<u32> = vec![0; nv + 2];       // the cuts of a gate: all[start[v]..start[v] + count[v]], its own variable first
+    let mut count: Vec<u8> = vec![0; nv + 1];
+    let mut all: Vec<Cut> = Vec::new();
+    let mut flow: Vec<f32> = vec![0.0; nv + 1];       // what a gate costs as a leaf; nothing for an input
+    let mut val: Vec<u64> = vec![0; nv + 1];
+    let mut leaf: Vec<u32> = vec![0; nv + 1];
+    let mut seen: Vec<u32> = vec![0; nv + 1];
+    let mut stamp = 0u32;
+    let own_cost = |o: u32| gate(o).clauses.len() as f32;
+    for &o in &order {
+        let g = gate(o);
+        let mut fanins: Vec<u32> = g.inputs.iter().map(|l| l.unsigned_abs()).collect();
+        fanins.sort_unstable(); fanins.dedup();
+        let first = all.len();
+        all.push(Cut::trivial(o));
+        let mut found: Vec<Cut> = Vec::new();
+        if fanins.len() <= 3 && fanins.len() <= k {
+            // one cut of every gate it reads, in every combination
+            let lists: Vec<Vec<Cut>> = fanins.iter().map(|&f| {
+                if is_gate(f) { all[start[f as usize] as usize..start[f as usize] as usize + count[f as usize] as usize].to_vec() } else { vec![Cut::trivial(f)] }
+            }).collect();
+            let mut pick = vec![0usize; lists.len()];
+            let mut tried: Vec<Vec<u32>> = Vec::new();
+            'combos: loop {
+                let mut merged: Vec<u32> = Vec::with_capacity(3 * MAXK);
+                for (j, &i) in pick.iter().enumerate() { merged.extend_from_slice(lists[j][i].leaves()); }
+                merged.sort_unstable(); merged.dedup();
+                if merged.len() <= k && !tried.contains(&merged) {
+                    // the gates between, first to last, and the leaves they reach
+                    stamp += 1;
+                    for &l in &merged { leaf[l as usize] = stamp; }
+                    let mut between: Vec<u32> = Vec::new();
+                    let mut reached: Vec<u32> = Vec::new();
+                    let mut walk: Vec<(u32, usize)> = vec![(o, 0)];
+                    seen[o as usize] = stamp;
+                    let mut cuts_it = true;
+                    while let Some(top) = walk.last_mut() {
+                        let ins = &gate(top.0).inputs;
+                        if top.1 == ins.len() { between.push(top.0); walk.pop(); continue; }
+                        let v = ins[top.1].unsigned_abs();
+                        top.1 += 1;
+                        if seen[v as usize] == stamp { continue; }
+                        seen[v as usize] = stamp;
+                        if leaf[v as usize] == stamp { reached.push(v); continue; }
+                        if !is_gate(v) || between.len() + walk.len() > 64 { cuts_it = false; break; }
+                        walk.push((v, 0));
+                    }
+                    tried.push(merged);
+                    reached.sort_unstable();
+                    if cuts_it && !found.iter().any(|c| c.leaves().iter().all(|l| reached.contains(l))) {
+                        for (i, &l) in reached.iter().enumerate() { val[l as usize] = VARS[i]; }
+                        for &b in &between { val[b as usize] = eval_gate(gate(b), &val); }
+                        let tt = val[o as usize];
+                        let cv = cover(&mut memo, tt);
+                        let mut c = Cut { n: reached.len() as u8, leaves: [0; MAXK], tt, cost: (cv.0.len() + cv.1.len()) as u32, flow: 0.0 };
+                        c.leaves[..reached.len()].copy_from_slice(&reached);
+                        c.flow = c.cost as f32 + c.used().map(|l| flow[l as usize] / refs[l as usize].max(1.0)).sum::<f32>();
+                        found.retain(|d| !c.leaves().iter().all(|l| d.leaves().contains(l)));   // a cut within another makes it useless
+                        found.push(c);
+                    }
+                }
+                // the next combination
+                let mut j = 0;
+                loop {
+                    if j == pick.len() { break 'combos; }
+                    pick[j] += 1;
+                    if pick[j] < lists[j].len() { break; }
+                    pick[j] = 0;
+                    j += 1;
+                }
+            }
+            found.sort_by(|a, b| a.flow.total_cmp(&b.flow).then(a.n.cmp(&b.n)));
+            found.truncate(p.limit.clamp(1, 200));
+        }
+        flow[o as usize] = match found.first() {
+            Some(c) => c.flow,
+            None => own_cost(o) + fanins.iter().map(|&l| flow[l as usize] / refs[l as usize].max(1.0)).sum::<f32>(),
+        };
+        all.extend(found);
+        start[o as usize] = first as u32;
+        count[o as usize] = (all.len() - first) as u8;
+    }
+    st.functions = memo.len();
+
+    // the roots: what is read from outside the gates, and the cuts of the roots;
+    // then the flows again with the readers this choice gives, three times
+    let mut best: Vec<u32> = vec![NONE; nv + 1];       // the cut a root is written with; NONE: with its own clauses
+    let mut is_root: Vec<bool> = vec![false; nv + 1];
+    let mut total = usize::MAX;
+    for _ in 0..4 {
+        let mut choice: Vec<u32> = vec![NONE; nv + 1];
+        for &o in &order {
+            let (a, n) = (start[o as usize] as usize, count[o as usize] as usize);
+            let mut least = f32::INFINITY;
+            for (i, c) in all.iter_mut().enumerate().take(a + n).skip(a + 1) {
+                c.flow = c.cost as f32 + c.used().map(|l| flow[l as usize] / refs[l as usize].max(1.0)).sum::<f32>();
+                if c.flow < least { least = c.flow; choice[o as usize] = i as u32; }
+            }
+            flow[o as usize] = if n > 1 { least } else {
+                own_cost(o) + gate(o).inputs.iter().map(|l| flow[l.unsigned_abs() as usize] / refs[l.unsigned_abs() as usize].max(1.0)).sum::<f32>()
+            };
+        }
+        let mut wanted: Vec<bool> = observed.clone();
+        let mut readers: Vec<f32> = vec![0.0; nv + 1];
+        for v in 1..=nv { if observed[v] { readers[v] += 1.0; } }
+        let mut clauses = 0usize;
+        for &o in order.iter().rev() {
+            if !wanted[o as usize] { continue; }
+            let mut read = |l: u32| { readers[l as usize] += 1.0; if is_gate(l) { wanted[l as usize] = true; } };
+            match choice[o as usize] {
+                NONE => { clauses += gate(o).clauses.len(); for l in &gate(o).inputs { read(l.unsigned_abs()); } }
+                i => { clauses += all[i as usize].cost as usize; for l in all[i as usize].used() { read(l); } }
+            }
+        }
+        if clauses < total { total = clauses; best = choice; is_root = wanted; }
+        for v in 1..=nv { refs[v] = (refs[v] + 2.0 * readers[v]) / 3.0; }
+    }
+
+    // the clauses
+    let mut keep_original: Vec<bool> = vec![false; cnf.len()];
+    let mut out: Vec<Vec<i32>> = Vec::new();
+    let mut dropped: Vec<Vec<i32>> = Vec::new();
+    let mut emit = |i: usize, out: &mut Vec<Vec<i32>>, proof: &mut Proof| {
+        let orig = root.origin[i];
+        let mut nc = cls[i].clone(); normalize(&mut nc);
+        let mut oc: Vec<i32> = cnf.clause(orig).to_vec(); normalize(&mut oc);
+        if nc == oc { keep_original[orig] = true; out.push(cnf.clause(orig).to_vec()); return; }
+        proof.add(&nc); out.push(nc);
+    };
+    let mut lines: Vec<(bool, Vec<i32>)> = Vec::new();
+    for &o in &order {
+        let g = gate(o);
+        if !is_root[o as usize] { for &i in &g.clauses { dropped.push(cls[i].clone()); } continue; }
+        st.roots += 1;
+        if best[o as usize] == NONE {
+            st.own += 1;
+            for &i in &g.clauses { emit(i, &mut out, proof); }
+            continue;
+        }
+        let cut = all[best[o as usize] as usize];
+        // the gates between the root and its cut
+        stamp += 1;
+        for &l in cut.leaves() { seen[l as usize] = stamp; }
+        let mut between: Vec<u32> = vec![o];
+        seen[o as usize] = stamp;
+        let mut i = 0;
+        while i < between.len() {
+            for l in &gate(between[i]).inputs {
+                let v = l.unsigned_abs();
+                if seen[v as usize] != stamp { seen[v as usize] = stamp; assert!(is_gate(v), "a cut that does not cut"); between.push(v); }
+            }
+            i += 1;
+        }
+        if between.len() > 1 { st.merged += 1; }
+        let support: Vec<&Vec<i32>> = between.iter().flat_map(|&b| gate(b).clauses.iter().map(|&i| &cls[i])).collect();
+        let own: Vec<(usize, Vec<i32>)> = g.clauses.iter().map(|&i| { let mut c = cls[i].clone(); normalize(&mut c); (i, c) }).collect();
+        let cv = cover(&mut memo, cut.tt).clone();
+        for (cubes, head) in [(&cv.0, o as i32), (&cv.1, -(o as i32))] {
+            for &(vars, signs) in cubes.iter() {
+                let mut c: Vec<i32> = vec![head];
+                for (j, &leaf) in cut.leaves().iter().enumerate() {
+                    if vars >> j & 1 == 1 { c.push(if signs >> j & 1 == 1 { -(leaf as i32) } else { leaf as i32 }); }
+                }
+                normalize(&mut c);
+                if let Some((i, _)) = own.iter().find(|(_, d)| *d == c) { st.kept += 1; emit(*i, &mut out, proof); continue; }
+                let split: Vec<u32> = cut.leaves().iter().copied().filter(|&l| !c.iter().any(|x| x.unsigned_abs() == l)).collect();
+                lines.clear();
+                assert!(derive_by_cases(&c, &split, &support, &mut lines),
+                        "a clause of a cover that does not follow from the gates it covers: root {o}, cut {:?}, function {:#018x}, clause {c:?}, gates between {between:?}, their clauses {support:?}",
+                        cut.leaves(), cut.tt);
+                if lines.len() > 1 { st.by_cases += 1; st.case_lemmas += lines.iter().filter(|l| !l.0).count() - 1; }
+                for (delete, l) in &lines { if *delete { proof.del(l); } else { proof.add(l); } }
+                st.derived += 1;
+                out.push(c);
+            }
+        }
+    }
+    for &i in &residual { emit(i, &mut out, proof); }
+    for &u in &root.units { out.push(vec![u]); }
+    let unit_set: HashSet<i32> = root.units.iter().copied().collect();
+    for (i, &kept_as_is) in keep_original.iter().enumerate() {
+        let c = cnf.clause(i);
+        if c.len() == 1 && unit_set.contains(&c[0]) { continue; }
+        if !kept_as_is { proof.del(c); }
+    }
+    Written { cls: out, dropped, stats: st }
+}
+
 fn enc7(mut x: u32, out: &mut Vec<u8>) {
     loop { let b = (x & 0x7f) as u8; x >>= 7; if x != 0 { out.push(b | 0x80); } else { out.push(b); return; } }
 }
@@ -1712,12 +2052,88 @@ fn abc_cnf_to_cnf(nv: usize, path: &str, pis: &[u32], pos: &[u32], gi: usize, ga
     Ok((next as usize, out))
 }
 
+/// Both orientations of the symmetric groups: the one that keeps more gates.
+fn orientation(cls: &[Vec<i32>], t0: std::time::Instant) -> (bool, Built) {
+    let mut best: Option<(usize, &str, Built)> = None;
+    for (name, xor) in [("highest-variable", true), ("fewest-occurrences", false)] {
+        let mut gates = extract_pattern(cls, xor);
+        let np = gates.len();
+        extract_generic(cls, &mut gates, 3);
+        let built = build_aig(cls, &gates);
+        println!("  orientation {name}: {np} by pattern + {} generic, {} given up to break cycles ({:.1}s)", gates.len() - np, built.ncyclic, t0.elapsed().as_secs_f64());
+        let kept = built.ngates - built.ncyclic;
+        if best.as_ref().map(|b| kept > b.0).unwrap_or(true) { best = Some((kept, name, built)); }
+        if best.as_ref().map(|b| b.2.ncyclic == 0).unwrap_or(false) { break; }
+    }
+    let (_, name, b) = best.unwrap();
+    println!("  orientation kept: {name}");
+    (name == "highest-variable", b)
+}
+
+/// One pass that carries its proof: the clauses it leaves, the number of
+/// variables, and the definitions it dropped (a model of what it leaves
+/// extends through them).
+fn pass(mode: &str, cnf: &Cnf, base: &str, sp: &SweepParams, cp: &CutParams, proof: &mut Proof, t0: std::time::Instant) -> (Vec<Vec<i32>>, usize, Vec<Vec<i32>>) {
+    let nv = cnf.nv;
+    let before = (proof.lemmas, proof.buf.len());
+    let root = simplify_root(cnf);
+    if root.unsat {
+        println!("{base}: contradictory at the root (unit clauses, or an empty clause) -- writing the empty clause");
+        proof.add(&[]);    // follows by unit propagation
+        return (vec![vec![]], nv, Vec::new());
+    }
+    println!("{base}: root simplification: {} units, {} -> {} clauses ({:.1}s)", root.units.len(), cnf.len(), root.cls.len(), t0.elapsed().as_secs_f64());
+    let (xor, _) = orientation(&root.cls, t0);
+    let mut gates = extract_pattern(&root.cls, xor);
+    extract_generic(&root.cls, &mut gates, 3);
+    let lemmas = |proof: &Proof| (proof.lemmas - before.0, (proof.buf.len() - before.1) as f64 / 1e6);
+    match mode {
+        "cuts" => {
+            let w = write_cuts(cnf, &root, &gates, cp, proof);
+            let st = &w.stats;
+            println!("{base}: cuts: {} gates, {} keep their variable ({} over other gates, {} with their own clauses); {} functions",
+                     st.gates, st.roots, st.merged, st.own, st.functions);
+            println!("{base}: cuts: {} clauses kept, {} derived ({} by cases, {} lemmas for them)", st.kept, st.derived, st.by_cases, st.case_lemmas);
+            println!("{base}: cuts: {} clauses -> {} clauses; {} proof lemmas, {:.1} MB of proof ({:.1}s)",
+                     cnf.len(), w.cls.len(), lemmas(proof).0, lemmas(proof).1, t0.elapsed().as_secs_f64());
+            (w.cls, nv, w.dropped)
+        }
+        "factor" => {
+            let (fcls, fnv, st) = factor(cnf, &root, &gates, proof);
+            println!("{base}: factor: {} gates on a product of two selects, {} products; {} repeated tests; {} gates no longer read; {} clauses by cases",
+                     st.paired, st.products, st.repeated, st.dead, st.by_rows);
+            println!("{base}: factor: {} variables, {} clauses -> {} variables, {} clauses; {} proof lemmas, {:.1} MB of proof ({:.1}s)",
+                     nv, cnf.len(), fnv, fcls.len(), lemmas(proof).0, lemmas(proof).1, t0.elapsed().as_secs_f64());
+            (fcls, fnv, Vec::new())
+        }
+        "sweep" => {
+            let (r, st) = sweep(cnf, &root, &gates, sp, proof, t0);
+            println!("{base}: sweep: {} attempts: {} merged, {} constant, {} refuted ({} refinements), {} undecided in the window, {} out of budget; {} dead; {} candidates not reached in time, {} in classes given up",
+                     st.attempts, st.merged, st.constants, st.refuted, st.splits, st.window_sat, st.unknown, r.dead, st.unreached, st.given_up);
+            println!("{base}: sweep: {} words of random patterns; {} of the attempts went to whole cones, in {} solvers; seconds: windows {:.1}, loading {:.1}, whole cones {:.1}, simulation {:.1}",
+                     st.rounds, st.whole, st.solvers, st.clock[0], st.clock[1], st.clock[2], st.clock[3]);
+            println!("{base}: sweep: {} -> {} clauses, {} proof lemmas ({} from the solver, {} shortened clauses), {:.1} MB of proof ({:.1}s)",
+                     cnf.len(), r.cls.len(), lemmas(proof).0, st.solver_lemmas, st.shortened, lemmas(proof).1, t0.elapsed().as_secs_f64());
+            (r.cls, nv, r.dropped)
+        }
+        _ => {
+            let r = recode(cnf, &root, &gates, proof);
+            println!("{base}: recode: {} gates merged, {} dead, {} -> {} clauses, {} proof lemmas ({:.1}s)", r.merged, r.dead, cnf.len(), r.cls.len(), lemmas(proof).0, t0.elapsed().as_secs_f64());
+            (r.cls, nv, r.dropped)
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 { eprintln!("usage: cnf2aig in.cnf [--out out.cnf] [--abc ABC] [--script S] [--aag file.aig] [--keep dir]"); std::process::exit(2); }
     let mut input = None; let mut out = None; let mut abc = None; let mut script = "resyn2".to_string(); let mut aag = None; let mut keep = None;
     let mut recode_out = None; let mut proof_out = None; let mut dropped_out = None; let mut sweep_out = None; let mut map_out: Option<String> = None;
     let mut factor_out: Option<String> = None;
+    let mut cuts_out: Option<String> = None;
+    let mut chain: Option<String> = None;
+    let mut chain_to: Option<String> = None;
+    let mut cp = CutParams { leaves: 6, limit: 8 };
     let mut binary = false;
     let mut sp = SweepParams { rounds: 16, first_window: 64, max_window: usize::MAX, conflicts: 1000, tries: 2, seconds: 0.0, recycle: 1000, levels: true, give_up: 32 };
     let mut i = 1;
@@ -1735,6 +2151,11 @@ fn main() {
             "--map" => { map_out = Some(args[i + 1].clone()); i += 2; }
             "--factor" => { factor_out = Some(args[i + 1].clone()); i += 2; }
             "--binary" => { binary = true; i += 1; }
+            "--cuts" => { cuts_out = Some(args[i + 1].clone()); i += 2; }
+            "--chain" => { chain = Some(args[i + 1].clone()); i += 2; }
+            "--to" => { chain_to = Some(args[i + 1].clone()); i += 2; }
+            "--leaves" => { cp.leaves = args[i + 1].parse().expect("--leaves K"); i += 2; }
+            "--cuts-per-gate" => { cp.limit = args[i + 1].parse().expect("--cuts-per-gate N"); i += 2; }
             "--rounds" => { sp.rounds = args[i + 1].parse().expect("--rounds N"); i += 2; }
             "--window" => { sp.max_window = args[i + 1].parse().expect("--window N"); i += 2; }
             "--conflicts" => { sp.conflicts = args[i + 1].parse().expect("--conflicts N"); i += 2; }
@@ -1755,71 +2176,48 @@ fn main() {
     let t0 = std::time::Instant::now();
     let bytes = std::fs::read(&input).unwrap_or_else(|e| { eprintln!("{input}: {e}"); std::process::exit(2) });
     let cnf = parse_dimacs(&bytes).unwrap_or_else(|e| { eprintln!("{e}"); std::process::exit(2) });
+    // the modes that carry a proof, one or several in a row
+    let single = [("cuts", &cuts_out), ("factor", &factor_out), ("sweep", &sweep_out), ("recode", &recode_out)];
+    let passes: Vec<(String, Option<String>)> = match &chain {
+        Some(list) => {
+            let names: Vec<String> = list.split(',').map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).collect();
+            for n in &names { if !["cuts", "factor", "sweep", "recode"].contains(&n.as_str()) { eprintln!("--chain: {n} is not one of factor, sweep, recode, cuts"); std::process::exit(2); } }
+            if names.iter().rev().skip(1).any(|n| n == "cuts") { eprintln!("--chain: cuts is the last pass (its blocks are not gates)"); std::process::exit(2); }
+            let last = names.len().saturating_sub(1);
+            names.into_iter().enumerate().map(|(k, n)| (n, if k == last { chain_to.clone() } else { None })).collect()
+        }
+        None => single.iter().filter(|(_, o)| o.is_some()).map(|(n, o)| (n.to_string(), (*o).clone())).take(1).collect(),
+    };
+    if !passes.is_empty() {
+        let mut proof = Proof { buf: Vec::new(), lemmas: 0 };
+        let mut dropped: Vec<Vec<i32>> = Vec::new();
+        let mut cnf = cnf;
+        let (nv0, n0) = (cnf.nv, cnf.len());
+        for (mode, to) in &passes {
+            let (cls, nv, gone) = pass(mode, &cnf, &base, &sp, &cp, &mut proof, t0);
+            dropped.extend(gone);
+            if let Some(o) = to { write_cnf(o, nv, &cls).unwrap(); }
+            cnf = Cnf::from_clauses(nv, &cls);
+        }
+        if passes.len() > 1 {
+            println!("{base}: {}: {} variables, {} clauses -> {} variables, {} clauses; {} proof lemmas, {:.1} MB of proof ({:.1}s)",
+                     passes.iter().map(|(m, _)| m.as_str()).collect::<Vec<_>>().join(", "), nv0, n0, cnf.nv, cnf.len(),
+                     proof.lemmas, proof.buf.len() as f64 / 1e6, t0.elapsed().as_secs_f64());
+        }
+        if let Some(pp) = &proof_out { write_proof(pp, &proof, binary); }
+        if let Some(dp) = &dropped_out { write_cnf(dp, cnf.nv, &dropped).unwrap(); }
+        return;
+    }
     let nv = cnf.nv;
     let root = simplify_root(&cnf);
     if root.unsat {
         println!("{base}: contradictory at the root (unit clauses, or an empty clause) -- writing the empty clause");
-        if let Some(o) = out.clone().or(recode_out.clone()).or(sweep_out.clone()).or(factor_out.clone()) { write_cnf(&o, nv, &[vec![]]).unwrap(); }
-        if let Some(p) = proof_out { write_proof(&p, &Proof { buf: b"0\n".to_vec(), lemmas: 1 }, binary); }  // the empty clause is RUP from the contradicting units
+        if let Some(o) = &out { write_cnf(o, nv, &[vec![]]).unwrap(); }
         return;
     }
     let cls = root.cls.clone();
     println!("{base}: root simplification: {} units, {} -> {} clauses ({:.1}s)", root.units.len(), cnf.len(), cls.len(), t0.elapsed().as_secs_f64());
-    // both orientations of the symmetric groups; keep the one with fewer cycles
-    let mut best: Option<(usize, &str, Built)> = None;
-    for (name, xor) in [("highest-variable", true), ("fewest-occurrences", false)] {
-        let mut gates = extract_pattern(&cls, xor);
-        let np = gates.len();
-        extract_generic(&cls, &mut gates, 3);
-        let built = build_aig(&cls, &gates);
-        println!("  orientation {name}: {np} by pattern + {} generic, {} given up to break cycles ({:.1}s)", gates.len() - np, built.ncyclic, t0.elapsed().as_secs_f64());
-        let kept = built.ngates - built.ncyclic;
-        if best.as_ref().map(|b| kept > b.0).unwrap_or(true) { best = Some((kept, name, built)); }
-        if best.as_ref().map(|b| b.2.ncyclic == 0).unwrap_or(false) { break; }
-    }
-    let (_, name, b) = best.unwrap();
-    println!("  orientation kept: {name}");
-    if let Some(fp) = &factor_out {
-        let mut gates = extract_pattern(&cls, name == "highest-variable");
-        extract_generic(&cls, &mut gates, 3);
-        let mut proof = Proof { buf: Vec::new(), lemmas: 0 };
-        let (fcls, fnv, st) = factor(&cnf, &root, &gates, &mut proof);
-        write_cnf(fp, fnv, &fcls).unwrap();
-        if let Some(pp) = &proof_out { write_proof(pp, &proof, binary); }
-        println!("{base}: factor: {} gates on a product of two selects, {} products; {} repeated tests; {} gates no longer read; {} clauses by cases",
-                 st.paired, st.products, st.repeated, st.dead, st.by_rows);
-        println!("{base}: factor: {} variables, {} clauses -> {} variables, {} clauses; {} proof lemmas, {:.1} MB of proof ({:.1}s)",
-                 nv, cnf.len(), fnv, fcls.len(), proof.lemmas, proof.buf.len() as f64 / 1e6, t0.elapsed().as_secs_f64());
-        return;
-    }
-    if let Some(wp) = &sweep_out {
-        let mut gates = extract_pattern(&cls, name == "highest-variable");
-        extract_generic(&cls, &mut gates, 3);
-        let mut proof = Proof { buf: Vec::new(), lemmas: 0 };
-        let (r, st) = sweep(&cnf, &root, &gates, &sp, &mut proof, t0);
-        write_cnf(wp, nv, &r.cls).unwrap();
-        if let Some(pp) = &proof_out { write_proof(pp, &proof, binary); }
-        if let Some(dp) = &dropped_out { write_cnf(dp, nv, &r.dropped).unwrap(); }
-        println!("{base}: sweep: {} attempts: {} merged, {} constant, {} refuted ({} refinements), {} undecided in the window, {} out of budget; {} dead; {} candidates not reached in time, {} in classes given up",
-                 st.attempts, st.merged, st.constants, st.refuted, st.splits, st.window_sat, st.unknown, r.dead, st.unreached, st.given_up);
-        println!("{base}: sweep: {} words of random patterns; {} of the attempts went to whole cones, in {} solvers; seconds: windows {:.1}, loading {:.1}, whole cones {:.1}, simulation {:.1}",
-                 st.rounds, st.whole, st.solvers, st.clock[0], st.clock[1], st.clock[2], st.clock[3]);
-        println!("{base}: sweep: {} -> {} clauses, {} proof lemmas ({} from the solver, {} shortened clauses), {:.1} MB of proof ({:.1}s)",
-                 cnf.len(), r.cls.len(), proof.lemmas, st.solver_lemmas, st.shortened, proof.buf.len() as f64 / 1e6, t0.elapsed().as_secs_f64());
-        if out.is_none() && recode_out.is_none() { return; }
-    }
-    if let Some(rp) = &recode_out {
-        // the gates of the kept orientation, extracted again (cheap)
-        let mut gates = extract_pattern(&cls, name == "highest-variable");
-        extract_generic(&cls, &mut gates, 3);
-        let mut proof = Proof { buf: Vec::new(), lemmas: 0 };
-        let r = recode(&cnf, &root, &gates, &mut proof);
-        write_cnf(rp, nv, &r.cls).unwrap();
-        if let Some(pp) = &proof_out { write_proof(pp, &proof, binary); }
-        if let Some(dp) = &dropped_out { write_cnf(dp, nv, &r.dropped).unwrap(); }
-        println!("{base}: recode: {} gates merged, {} dead, {} -> {} clauses, {} proof lemmas ({:.1}s)", r.merged, r.dead, cnf.len(), r.cls.len(), proof.lemmas, t0.elapsed().as_secs_f64());
-        if out.is_none() { return; }
-    }
+    let (_, b) = orientation(&cls, t0);
     println!("{base}: {nv} vars, {} clauses; {} gates ({} given up to break cycles), AIG {} inputs, {} outputs, {} ands; residual {} clauses ({:.1}s)",
              cls.len(), b.ngates, b.ncyclic, b.pis.len(), b.pos.len(), b.aig.ands.len(), b.residual.len(), t0.elapsed().as_secs_f64());
     let units: Vec<Vec<i32>> = root.units.iter().map(|&l| vec![l]).collect();

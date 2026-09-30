@@ -70,7 +70,8 @@ def extract_gates(clauses):
         group = [clauses[i] for i in idxs]
         if k == 3 and len(group) == 4 and all(len(c) == 3 for c in group):
             par = {sum(1 for l in c if l > 0) % 2 for c in group}
-            if len(par) == 1:
+            # four clauses, not two of them twice: every sign pattern of the parity once
+            if len(par) == 1 and len({frozenset(c) for c in group}) == 4:
                 # the forbidden assignments have (#true lits ... ) — the clauses forbid the
                 # assignments with parity of true variables == p:  x⊕y⊕z = 1-p
                 p = par.pop()
@@ -88,7 +89,7 @@ def extract_gates(clauses):
             terns = [i for i in idxs if len(clauses[i]) == 3]
             if len(quads) == 8:
                 par = {sum(1 for l in clauses[i] if l > 0) % 2 for i in quads}
-                if len(par) == 1:
+                if len(par) == 1 and len({frozenset(clauses[i]) for i in quads}) == 8:
                     p = par.pop(); out = max(scope)
                     if out not in defined:
                         ins = [v for v in sorted(scope) if v != out]

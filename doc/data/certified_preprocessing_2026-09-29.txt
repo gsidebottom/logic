@@ -264,3 +264,78 @@
 # prime implicants of a function of up to 8 inputs), derivable from the
 # gate definitions by cases on the inputs, the way --recode derives its
 # merges.  That is the step between one certified solve and three.
+#
+# === 10. The cut-based writer with a proof: cnf2aig --cuts (evening) ===
+#
+# What ABC's &write_cnf does, natively and with a derivation (commit
+# 2a31456).  The gates that keep their variable are chosen for the fewest
+# clauses: every gate gets its cuts from the cuts of what it reads (at most
+# 6 leaves; functions as 64-bit truth tables), a cut costs the cubes of an
+# irredundant cover of its function and of its complement (Minato-Morreale)
+# plus a share of what its leaves cost (area flow, four rounds), and the
+# choice starts at what the clauses outside the gates read.  A clause of a
+# root follows from the definitions of the gates between the root and its
+# cut: by unit propagation, else by cases on the cut's variables the
+# clause does not mention.  A clause that is one of the root's own is kept.
+# For that the function of a cut has to be the function of the gates
+# between: put together from the cuts of what a gate reads, a cut can hold
+# a gate and, on another path, what that gate reads, and the function put
+# together the same way is right only where the two agree -- sound as a
+# formula, not derivable from the gates between; the self-test found it.
+#
+# The factored gm16spwtrc (181,983 gates, 1,084,297 clauses):
+#     leaves   variables kept   clauses    literals    seconds
+#       3        181,971        727,025    2,174,445     2.6
+#       5        139,284        630,622    2,033,696     3.2
+#       6        130,692        613,496    2,016,846     4.5
+#     ABC's writer on the same circuit: 143,410, 638,908, 2,050,058.
+# With 3 leaves a gate keeps its own inputs and the writer only drops
+# clauses: a multiplexer's cover is four clauses, not six.
+#
+# CaDiCaL 3.0.1 at 5000 s, on a machine carrying 6 to 10 jobs on 10 cores
+# (the runs of §8 carried at most 7):
+#   gm16spwtrc, --factor then --cuts, 3 leaves     UNSAT in 1,583 s   2,463,113 conflicts
+#   gm16spwtrc, --factor then --cuts, 6 leaves     UNSAT in 1,423 s   2,305,949
+#   gm16spwtcl, the same, 6 leaves                 UNSAT in 4,400 s   3,263,594
+#   gm20spctrc, the same, 6 leaves                 UNSAT in 1,969 s   3,149,606
+# All three that ABC's route solves (§9), through a native route with a
+# proof, with 10 to 30 s of preparation.  Most of the gain over our own
+# clauses is the cover: 3 leaves is already 1,583 s where the six-clause
+# multiplexers took 3,071 s; the blocks add a tenth.
+#
+# Clause order, since order alone moves CaDiCaL (2026-09-28): two shuffles
+# of the written formula 1,707 s and 1,760 s (2.35M and 2.30M conflicts),
+# two of the factored one 2,486 s and 2,765 s (1.14M and 1.31M), all on the
+# loaded machine.  The written formula wins in every order.
+#
+# The certificate, from the solver the timings come from.  sat now writes
+# the cadical backend's own proof (--cadical-proof; the search is the same:
+# 2,305,949 conflicts with and without).  gm16spwtrc:
+#     cnf2aig gm16spwtrc.cnf --chain factor,cuts --to out.cnf --proof prefix.drat --binary     10 s
+#     sat -b cadical --cadical-proof solver.drat < out.cnf                                   1,734 s
+#     cat prefix.drat solver.drat > full.drat; drat-trim gm16spwtrc.cnf full.drat             595 s
+#     c 342838 of 1921166 clauses in core
+#     c 1212174 of 23012477 lemmas in core using 437641937 resolution steps
+#     c 772 RAT lemmas in core; 440191 redundant literals in core lemmas
+#     s VERIFIED
+# 39 minutes from the competition file to a checked refutation.
+#
+# The three passes on the other unsolved circuits (--seconds 300 for the
+# sweep), clauses before -> after:
+#   multiplier_16bits__miter_19       17,202 ->     4,861     0.4 s
+#   gus-md5-14-sc2009                227,010 ->   164,127     3.0 s
+#   gus-md5-15                       227,171 ->   164,142     2.9 s
+#   slp-synthesis-aes-bottom22       178,062 ->   106,376     3.3 s
+#   sum_of_3_cubes_94_bits_30        764,638 ->   328,269    12.7 s
+#   sum_of_3_cubes_108_bits_52     1,010,065 ->   433,906    16.5 s
+#   sum_of_3_cubes_145_bits_74     1,829,989 ->   789,024    29.8 s
+#   safe-50-h49-unsat              2,098,249 -> 1,060,598   314 s      (587,277 gates, 108,275 keep their variable)
+#   sncf_model_ixl_bmc_depth_15    7,742,049 -> 4,144,482   374 s
+# Whether CaDiCaL solves any of them, and the 24- and 32-bit multipliers
+# (factored and written in 15, 17 and 101 s): see the addendum below.
+#
+# A defect found by the writer: the XOR detector counted clauses of one
+# scope and parity, so two clauses twice were an XOR that defines nothing.
+# The writer's derivation check refused such a gate.  On generated
+# instances with repeated clauses the build before the fix had 4 proofs of
+# --factor rejected by drat-trim in 1,500; no wrong verdict.

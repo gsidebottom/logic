@@ -119,7 +119,7 @@ def main() -> None:
             else:
                 phase = "solve: container starting"
         p = prev.get(s["hash"])
-        prv = f"{p.get('result', '?')} {p.get('time_s', 0):.0f}s" if p else ""
+        prv = f"{p.get('result', '?')} {fmt(p.get('time_s', 0))}" if p else ""
         rows.append((name, rec.get("family", "?"), phase, s["elapsed"], phase_elapsed, prv))
 
     idle = max(0, args.parallel - len(rows) - decompressing)

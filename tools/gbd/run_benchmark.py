@@ -1611,6 +1611,8 @@ def solve_one(
             pb_proof_prover = "satsuma-kissat"
         elif "prover=circuit-cadical" in stderr_text:
             pb_proof_prover = "circuit-cadical"
+        elif "prover=factoring" in stderr_text:
+            pb_proof_prover = "factoring"
         m = re.search(r"elaborated to (?:LRAT|GRAT) at .* \(([0-9.]+)s\)", stderr_text)
         if m:
             elab_s = float(m.group(1))

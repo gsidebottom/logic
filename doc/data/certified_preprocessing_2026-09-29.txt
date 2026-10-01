@@ -411,3 +411,84 @@
 # competition solved, every UNSAT with a certificate drat-trim accepted
 # against the original file, and seconds lost where the stage's own work
 # is the overhead.  The full run over the 400 followed.
+#
+# === 14. Addendum (2026-10-01): the full 2026 main track as hydra_circuit_satsuma ===
+#
+# All 400 instances of the official 2026 main track (391 after the
+# harness drops the 9 duplicate hashes), 5000 s per instance, ten in
+# parallel, 2026-09-30 10:18 to 2026-10-01 06:32, against the recorded
+# hydra_satsuma run of 2026-08-13 and the satsuma run of 2026-08-15, on
+# the same 391 (doc/competition-benchmark_main_track_2026_official_5000_*):
+#
+#                            solved    SAT   UNSAT   timeout   checked  unchecked  rejected   PAR-2
+#   hydra_circuit_satsuma      328     136    192      63        174       18         0       1992
+#   hydra_satsuma              326     136    190      65        165       25         0       2027
+#   satsuma                    325     136    189      66        171       18         0       2055
+#
+# Against hydra_satsuma: +2, -0.  The timeout set is hydra_satsuma's minus
+# gm16spwtrc (UNSAT 1,789 s, drat-trim 585 s after the verdict) and
+# gm20spctrc (UNSAT 2,308 s, drat-trim 197 s), both decided by the circuit
+# stage, both certificates accepted against the original file.  Against
+# satsuma: +3, the third being mchess_20 by the Cook stage, hydra's own.
+# No verdict disagrees with either run.
+#
+# gm16spwtcl, which the targeted run of section 13 solved at 4,324 s, timed
+# out here: under the full load the circuit rows ran 10 to 15% slower
+# (gm16spwtrc 1,549 -> 1,789 s, gm20spctrc 2,135 -> 2,308 s), enough to
+# push it over the cliff.  The gain under competition conditions is +2,
+# not the targeted run's +3.
+#
+# Deciding engine of the 328: satsuma-kissat 278, cook 27, xor 11, circuit
+# 10 (the 9 UNSATs below and PRP_40_40, SAT by factor + cuts + CaDiCaL in
+# 31 s), factoring 2 (ezfact64_6 in 0.08 s and pyhala-braun-sat-40-4-03 in
+# 0.2 s, which satsuma-kissat took 30 s and 42 s over; the tactic of
+# 2026-09-15 postdates both recorded runs).  The circuit stage fired on
+# its 14 and on nothing else that changed a verdict.
+#
+#                              hydra_satsuma (08-13)   hydra_circuit_satsuma     certificate (after the verdict)
+#   gm16spwtrc                     timeout             UNSAT   1,789 s           drat-trim   585 s
+#   gm20spctrc                     timeout             UNSAT   2,308 s           drat-trim   197 s
+#   gm16spctrc                     UNSAT    511 s      UNSAT      60 s           drat-trim     7 s
+#   gm20sparrc                     UNSAT    0.7 s      UNSAT     0.8 s  (probe)  drat-trim   0.1 s
+#   gm24sparrc                     UNSAT    7.4 s      UNSAT     3.1 s  (probe)  drat-trim   0.2 s
+#   gm28sparrc                     UNSAT   11.5 s      UNSAT     8.4 s  (probe)  drat-trim   0.4 s
+#   gm32sparrc                     UNSAT    7.6 s      UNSAT     6.4 s  (probe)  drat-trim   0.5 s
+#   gm36sparrc                     UNSAT    5.2 s      UNSAT    10.7 s  (probe)  drat-trim   0.8 s
+#   x-epic_a10-p53_transition      UNSAT    9.5 s      UNSAT    30.7 s           drat-trim   174 s
+#   PRP_40_40                      SAT     29.2 s      SAT      30.7 s           the model
+#   gm16spwtcl, gm24spctbk,        timeout             timeout
+#   gm24spctrc, gm32spctlf
+#
+# Certificates.  Every UNSAT the circuit stage claimed carries a drat-trim
+# verdict; none was rejected.  The 18 unchecked rows are satsuma-kissat
+# proofs whose dsr-trim run exceeded the harness's check budget, which is
+# the solve budget, 5000 s (--satsuma-verify-secs); they are 18 of
+# hydra_satsuma's 25 and 17 of satsuma's 18 (the swap: oddball_29_4_ttf
+# unchecked here, mchess_17 unchecked there), from solves of 63 to 3,787 s
+# whose checks run at three to five times the solve.  The competition's
+# checker budget was 45,000 s in 2022 (the organisers' results slides);
+# under it they would almost certainly all check, for all three backends.
+# A correct answer with a timed-out certificate counts as unsolved there,
+# and a wrong certificate disqualifies, which is why the stage checks its
+# own certificates before claiming credit.
+#
+# Conditions.  On the 206 rows >= 20 s that all three runs solved outside
+# the circuit stage, this run is 5% slower than hydra_satsuma's and 8%
+# slower than satsuma's by geometric mean (median 3% and 5%), where those
+# two differ from each other by 2 to 3%.  The cause is the Docker VM: its
+# guest caches the proof files kissat streams through the bind mount
+# (44.6 GB of page cache at 21:00), inflating the VM to its 47 GiB cap,
+# and the host compresses and swaps it (38 GB in the compressor, swap
+# full, 50 MB/s of decompression and 9 MB/s of swap-ins while the guest
+# recycles cache pages); the ten solver threads received 893% of the
+# 1000% they asked for.  The same mechanism applied to the recorded runs;
+# the host was busier this time.  Rows within 10% of either 5000 s cliff
+# are ties.  Before the next run: cap the VM at 24 to 32 GB so the guest
+# evicts its own cache, after measuring dsr-trim's peak on the largest
+# proofs, and drop the guest cache periodically from the runner.
+#
+# Harness.  This run's report predates the prover tags for the circuit and
+# factoring rows (commit 4a22caf and the one carrying this addendum), so
+# its circuit UNSAT rows are the ones with pb_proof_reason "drat-trim
+# (in-solver)" and its three untagged SAT rows are PRP_40_40 (circuit) and
+# the two factoring rows above, each confirmed by rerunning the instance.

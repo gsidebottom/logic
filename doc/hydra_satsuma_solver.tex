@@ -291,11 +291,12 @@ line). It is a certified preprocessor for one encoding family, the
 GenMul multiplier-verification instances, and it was found by
 measurement: on gm16spwtrc --- a 320{,}000-gate decision diagram of
 multiplexers, each selected by a primary input --- ABC's \texttt{dc2}
-rewriting in front of CaDiCaL turned a 5000\,s timeout into an
-1{,}872\,s refutation, and what the rewriting did was recover the
-partial products, which the CNF spells as two nested multiplexers on the
-inputs per product; SAT sweeping, the usual circuit tool, merged 2\% of
-the gates and changed nothing. The stage reproduces that effect
+rewriting~\cite{abc,dagaware} in front of CaDiCaL turned a 5000\,s
+timeout into an 1{,}872\,s refutation, and what the rewriting did was
+recover the partial products, which the CNF spells as two nested
+multiplexers on the inputs per product; SAT sweeping, the usual circuit
+tool~\cite{kuehlmann02,fraig}, merged 2\% of the gates and changed
+nothing. The stage reproduces that effect
 natively, with a proof:
 
 \begin{itemize}
@@ -331,12 +332,13 @@ natively, with a proof:
   again from cuts of up to six leaves chosen by area flow over four
   rounds: each cut's function, a 64-row truth table evaluated from the
   gates between root and leaves, is covered by its irredundant
-  prime-implicant covers (Minato--Morreale) in both polarities, and each
-  resulting clause is derived by cases from those gates' definitions; a
-  clause identical to an original one is kept rather than re-derived.
-  This is the lean cover ABC's CNF writer gives the solver --- a
-  multiplexer is four clauses, not six, and a cover spans the gates
-  inside a cut --- and it is where most of the gain lives: factoring
+  prime-implicant covers (Minato--Morreale~\cite{morreale70,minato93})
+  in both polarities, and each resulting clause is derived by cases from
+  those gates' definitions; a clause identical to an original one is
+  kept rather than re-derived. This is the lean cover ABC's CNF writer
+  gives the solver~\cite{een07} --- a multiplexer is four clauses, not
+  six, and a cover spans the gates inside a cut --- and it is where most
+  of the gain lives: factoring
   alone refutes gm16spwtrc in 3{,}071\,s, factoring then cuts in
   1{,}423\,s.
 \item \textbf{Solve and certify.} CaDiCaL (the vendored 3.0.1) takes
@@ -356,9 +358,9 @@ natively, with a proof:
 \end{itemize}
 
 What the stage is \emph{not}: a general circuit preprocessor. Certified
-SAT sweeping --- simulation-refined candidate classes, whole cones in a
-persistent CaDiCaL, the solver's lemmas as the proof --- is in the same
-module and was built first; on the unsolved circuits of the set
+SAT sweeping --- the fraiging of~\cite{fraig}: simulation-refined
+candidate classes, whole cones in a persistent CaDiCaL, the solver's
+lemmas as the proof --- is in the same module and was built first; on the unsolved circuits of the set
 (gus-md5, slp-aes, sncf, sum\_of\_3\_cubes) neither sweeping nor
 ABC's rewriting changes a 5000\,s verdict, and on the multipliers
 sweeping adds nothing to factoring. The stage is a hard floor under one
@@ -1017,7 +1019,7 @@ Nordstr\"om, et al. The satsuma-iter+kissat components are built
 unmodified from the official SAT Competition 2026 submission archive
 and run as-is in a container.
 
-\begin{thebibliography}{9}
+\begin{thebibliography}{99}
 \setlength{\itemsep}{2pt}
 
 \bibitem{cook71} S.~A. Cook.
@@ -1056,6 +1058,40 @@ and run as-is in a container.
 \newblock \url{https://satcompetition.github.io/2026/output.html};
   winner submission archive
   \url{https://satcompetition.github.io/2026/downloads/solvers/anders.tar.xz}.
+
+\bibitem{kuehlmann02} A.~Kuehlmann, V.~Paruthi, F.~Krohm, and M.~K. Ganai.
+\newblock Robust Boolean reasoning for equivalence checking and
+  functional property verification.
+\newblock \emph{IEEE Trans.\ CAD}, 21(12):1377--1394, 2002.
+
+\bibitem{fraig} A.~Mishchenko, S.~Chatterjee, R.~Jiang, and R.~Brayton.
+\newblock FRAIGs: A unifying representation for logic synthesis and
+  verification.
+\newblock ERL Technical Report, EECS Dept., UC Berkeley, March 2005.
+
+\bibitem{dagaware} A.~Mishchenko, S.~Chatterjee, and R.~Brayton.
+\newblock DAG-aware AIG rewriting: A fresh look at combinational logic
+  synthesis.
+\newblock \emph{DAC}, 2006.
+
+\bibitem{abc} R.~Brayton and A.~Mishchenko.
+\newblock ABC: An academic industrial-strength verification tool.
+\newblock \emph{CAV}, LNCS 6174, pp.~24--40, 2010.
+\newblock \url{https://github.com/berkeley-abc/abc}
+
+\bibitem{een07} N.~Een, A.~Mishchenko, and N.~S\"orensson.
+\newblock Applying logic synthesis for speeding up SAT.
+\newblock \emph{SAT}, LNCS 4501, pp.~272--286, 2007.
+
+\bibitem{morreale70} E.~Morreale.
+\newblock Recursive operators for prime implicant and irredundant normal
+  form determination.
+\newblock \emph{IEEE Trans.\ Computers}, C-19(6):504--509, 1970.
+
+\bibitem{minato93} S.~Minato.
+\newblock Fast generation of prime-irredundant covers from binary
+  decision diagrams.
+\newblock \emph{IEICE Trans.\ Fundamentals}, E76-A(6):967--973, 1993.
 
 \bibitem{sbr} M.~Anders, C.~Codel, and M.~J.~H. Heule.
 \newblock Simplify, order, break, repeat.

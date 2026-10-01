@@ -139,6 +139,132 @@ DISK_BRAKE_GB = 50
 GIANT_CLAUSES = 4_000_000
 GIANT_VARS    = 2_000_000
 _giant_sem: Optional[threading.BoundedSemaphore] = None
+
+# The memory budget that replaces giant slots when it is on (the default):
+# every instance is sized at startup (`size_records`: the .xz index for the
+# uncompressed bytes, its first block for the `p cnf` header -- 5 ms each),
+# its footprint estimated from measurements of 2026-10-01 (doc/data/
+# certified_preprocessing_2026-09-29.txt section 15), and an instance starts
+# only when the running set's estimates leave room for it in BOTH the Docker
+# VM (kissat; satsuma; dsr-trim after the verdict) and the host (the sat
+# process holding the parsed formula and running the circuit trigger), or
+# when nothing is running.  FIFO, so a giant cannot be starved by small
+# instances slipping past it; the price is that workers idle while the
+# running set drains for it, which on the official set happens once, at
+# the md5 block (17.normalised: 315M clauses, kissat 20.3 GB, host 13.9 GB).
+_mem_budget: Optional["MemoryBudget"] = None
+
+
+def mem_estimate(rec: dict) -> Tuple[float, float]:
+    """(VM GB, host GB) an instance may need, from its uncompressed size and
+    clause count.  Measured: kissat 20.3 GB on 7.48 GB of CNF (17.normalised),
+    4.1 on 1.42 (2.normalised), 9.4 on 1.41 (hash_table: a long search grows
+    the clause database, the one case this underestimates); satsuma at most
+    6.2 GB; dsr-trim 1.7x the proof.  Host: 13.9 GB on 7.48 GB of CNF, 2 to
+    3 GB of circuit trigger on 8-10M-clause formulas (skipped above 10M)."""
+    gb = (rec.get("bytes") or 0) / 1e9
+    ncl = rec.get("nclauses") or 0
+    vm = 1.0 + 3.0 * gb
+    host = 0.3 + 2.0 * gb + (min(3.0, 12.0 * gb) if 0 < ncl <= 10_000_000 else 0.0)
+    return vm, host
+
+
+class MemoryBudget:
+    """FIFO admission of instances by estimated memory, see `_mem_budget`."""
+
+    def __init__(self, vm_gb: float, host_gb: float) -> None:
+        self.vm_gb, self.host_gb = vm_gb, host_gb
+        self.used_vm = self.used_host = 0.0
+        self.running = 0
+        self.cv = threading.Condition()
+        self.queue: List[int] = []
+        self.next_ticket = 0
+
+    def acquire(self, vm: float, host: float, on_wait=None) -> bool:
+        """Block until the instance fits (or nothing runs); False on shutdown."""
+        with self.cv:
+            t = self.next_ticket
+            self.next_ticket += 1
+            self.queue.append(t)
+            waited = False
+            while True:
+                head = self.queue[0] == t
+                fits = (self.used_vm + vm <= self.vm_gb
+                        and self.used_host + host <= self.host_gb)
+                if head and (fits or self.running == 0):
+                    break
+                if _shutdown.is_set():
+                    self.queue.remove(t)
+                    self.cv.notify_all()
+                    return False
+                if on_wait is not None and not waited:
+                    on_wait()
+                    waited = True
+                self.cv.wait(5)
+            self.queue.pop(0)
+            self.used_vm += vm
+            self.used_host += host
+            self.running += 1
+            self.cv.notify_all()
+            return True
+
+    def release(self, vm: float, host: float) -> None:
+        with self.cv:
+            self.used_vm -= vm
+            self.used_host -= host
+            self.running -= 1
+            self.cv.notify_all()
+
+
+def size_record(rec: dict) -> None:
+    """Fill `bytes`, `nvars`, `nclauses` from the .xz without decompressing
+    it: the uncompressed size from the xz index, the header from the first
+    block."""
+    xz = rec.get("xz_path")
+    if not xz or not Path(xz).exists():
+        return
+    try:
+        out = subprocess.run(["xz", "--robot", "--list", xz],
+                             capture_output=True, text=True, timeout=30).stdout
+        for line in out.splitlines():
+            if line.startswith("file\t"):
+                rec["bytes"] = int(line.split("\t")[4])
+        p = subprocess.Popen(["xz", "-dc", xz], stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL)
+        head = p.stdout.read(65536)
+        p.stdout.close()
+        p.kill()
+        p.wait()
+        m = re.search(rb"^p cnf (\d+) (\d+)", head, re.M)
+        if m:
+            rec["nvars"], rec["nclauses"] = int(m.group(1)), int(m.group(2))
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+
+
+def size_records(records: List[dict], cache: Path) -> int:
+    """Size every record lacking `bytes`, through a cache next to the index
+    keyed by hash.  Returns how many were sized afresh."""
+    cached: dict = {}
+    if cache.exists():
+        try: cached = json.loads(cache.read_text())
+        except (OSError, ValueError): cached = {}
+    fresh = 0
+    for r in records:
+        if r.get("bytes"):
+            continue
+        h = r.get("hash") or r.get("xz_path")
+        if h in cached:
+            r.update(cached[h])
+            continue
+        size_record(r)
+        if r.get("bytes"):
+            cached[h] = {k: r[k] for k in ("bytes", "nvars", "nclauses") if k in r}
+            fresh += 1
+    if fresh:
+        try: cache.write_text(json.dumps(cached))
+        except OSError: pass
+    return fresh
 PLOT_PY    = REPO_ROOT / "doc" / "competition-benchmarks-plot.py"
 OUT_DIR    = REPO_ROOT / "doc"
 
@@ -1500,9 +1626,11 @@ def solve_one(
 
     is_giant = ((rec.get("nclauses") or 0) > GIANT_CLAUSES
                 or (rec.get("nvars") or 0) > GIANT_VARS)
-    if is_giant and _giant_sem is not None:
+    if is_giant and _giant_sem is not None and _mem_budget is None:
         tui.update_worker(worker_idx, display, "waiting (giant slot)…")
         _giant_sem.acquire()
+    mem_vm, mem_host = mem_estimate(rec)
+    mem_held = False
     # Disk brake: a full /tmp does not fail cleanly — xz and the solver
     # error at launch and the row records as a bogus fast TIMEOUT (the
     # 2026-08-12 incident). Hold the launch until space recovers; live
@@ -1543,6 +1671,17 @@ def solve_one(
         with tmp_path.open("wb") as f_out:
             subprocess.run(["xz", "-d", "-k", "-c", str(xz)],
                            stdout=f_out, check=True)
+
+        # Memory admission (see `_mem_budget`): after the decompression,
+        # which costs disk only, before the solver and its container.
+        if _mem_budget is not None:
+            mem_held = _mem_budget.acquire(
+                mem_vm, mem_host,
+                on_wait=lambda: tui.update_worker(
+                    worker_idx, display,
+                    f"waiting (memory: {mem_vm:.1f} GB VM, {mem_host:.1f} GB host)…"))
+            if not mem_held:
+                return {"hash": rec.get("hash"), "result": "INTERRUPTED"}
 
         tui.update_worker(worker_idx, display, "starting sat…")
 
@@ -1741,7 +1880,9 @@ def solve_one(
                 else:
                     proof_kept = proof_path
     finally:
-        if is_giant and _giant_sem is not None:
+        if mem_held and _mem_budget is not None:
+            _mem_budget.release(mem_vm, mem_host)
+        if is_giant and _giant_sem is not None and _mem_budget is None:
             _giant_sem.release()
         # Delete the temp proof unless it was kept (a verification failure).
         if proof_path is not None and proof_path != proof_kept:
@@ -1960,8 +2101,17 @@ def main() -> int:
                          "--timeout.")
     ap.add_argument("--giant-slots", type=int, default=2,
                     help="Max concurrent giant instances (>4M clauses or >2M "
-                         "vars) — each costs 10-25 GB in the engine alone.  "
-                         "0 = unlimited.  Default: 2.")
+                         "vars) when the memory budget is OFF "
+                         "(--mem-budget-vm 0).  0 = unlimited.  Default: 2.")
+    ap.add_argument("--mem-budget-vm", type=float, default=26.0, metavar="GB",
+                    help="Memory admission: the running instances' estimated "
+                         "Docker-VM footprint (kissat, satsuma, dsr-trim) may "
+                         "not exceed this; size the VM 6 GB above it.  "
+                         "0 = off (giant slots instead).  Default: 26.")
+    ap.add_argument("--mem-budget-host", type=float, default=20.0, metavar="GB",
+                    help="Memory admission: the running sat processes' "
+                         "estimated host footprint (the parsed formula, the "
+                         "circuit trigger) may not exceed this.  Default: 20.")
     ap.add_argument("--resume", type=str, default=None, metavar="REPORT_MD",
                     help="Skip instances that already have a per-problem "
                          "row in this (partial) report from an interrupted "
@@ -2187,9 +2337,21 @@ def main() -> int:
     args.proof_dir.mkdir(parents=True, exist_ok=True)
     if args.proof_timeout is None:
         args.proof_timeout = args.timeout
-    global _giant_sem
+    global _giant_sem, _mem_budget
     if args.giant_slots > 0:
         _giant_sem = threading.BoundedSemaphore(args.giant_slots)
+    if args.mem_budget_vm > 0:
+        t_size = time.time()
+        fresh = size_records(records, args.index.with_suffix(".sizes.json"))
+        sized = sum(1 for r in records if r.get("bytes"))
+        _mem_budget = MemoryBudget(args.mem_budget_vm, args.mem_budget_host)
+        big = sorted(records, key=lambda r: -(r.get("bytes") or 0))[:3]
+        print(f"memory admission: {sized}/{len(records)} instances sized "
+              f"({fresh} afresh, {time.time() - t_size:.1f}s); budgets "
+              f"{args.mem_budget_vm:g} GB VM, {args.mem_budget_host:g} GB host; "
+              f"largest " + ", ".join(
+                  f"{short_name(r)} {mem_estimate(r)[0]:.1f}/{mem_estimate(r)[1]:.1f} GB"
+                  for r in big), file=sys.stderr)
     if args.backend in ("hydra_satsuma", "satsuma", "hydra_circuit_satsuma"):
         if shutil.which("docker") is None:
             print("c WARNING: docker not found — hydra_satsuma cannot run its "

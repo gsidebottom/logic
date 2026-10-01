@@ -149,9 +149,14 @@ _giant_sem: Optional[threading.BoundedSemaphore] = None
 # VM (kissat; satsuma; dsr-trim after the verdict) and the host (the sat
 # process holding the parsed formula and running the circuit trigger), or
 # when nothing is running.  FIFO, so a giant cannot be starved by small
-# instances slipping past it; the price is that workers idle while the
-# running set drains for it, which on the official set happens once, at
-# the md5 block (17.normalised: 315M clauses, kissat 20.3 GB, host 13.9 GB).
+# instances slipping past it.  Admission happens BEFORE decompression, so
+# the queue is index order rather than the order files finish inflating,
+# and main() moves the instances estimated above half the VM budget to the
+# front, largest first: a giant admitted into an empty budget drains in
+# the minutes it takes to solve, whereas one that arrives after small
+# long-running instances have taken the workers waits for them (the first
+# rerun of 2026-10-01: 17.normalised, 23.4 GB estimated, queued behind
+# five 5000 s school-timetabling instances, four workers idle for 80 min).
 _mem_budget: Optional["MemoryBudget"] = None
 
 
@@ -180,12 +185,18 @@ class MemoryBudget:
         self.queue: List[int] = []
         self.next_ticket = 0
 
-    def acquire(self, vm: float, host: float, on_wait=None) -> bool:
-        """Block until the instance fits (or nothing runs); False on shutdown."""
+    def acquire(self, vm: float, host: float, on_wait=None,
+                ticket: Optional[int] = None) -> bool:
+        """Block until the instance fits (or nothing runs); False on shutdown.
+        `ticket` orders the queue (main() hands out the index position), so
+        the first batch of workers cannot reorder it; else arrival order."""
         with self.cv:
-            t = self.next_ticket
-            self.next_ticket += 1
+            if ticket is None:
+                ticket = 1_000_000_000 + self.next_ticket
+                self.next_ticket += 1
+            t = ticket
             self.queue.append(t)
+            self.queue.sort()
             waited = False
             while True:
                 head = self.queue[0] == t
@@ -1631,6 +1642,17 @@ def solve_one(
         _giant_sem.acquire()
     mem_vm, mem_host = mem_estimate(rec)
     mem_held = False
+    # Memory admission (see `_mem_budget`): before the decompression, so
+    # the queue is index order; the budget is held through the check phase.
+    if _mem_budget is not None:
+        mem_held = _mem_budget.acquire(
+            mem_vm, mem_host,
+            on_wait=lambda: tui.update_worker(
+                worker_idx, display,
+                f"waiting (memory: {mem_vm:.1f} GB VM, {mem_host:.1f} GB host)…"),
+            ticket=rec.get("_order"))
+        if not mem_held:
+            return {"hash": rec.get("hash"), "result": "INTERRUPTED"}
     # Disk brake: a full /tmp does not fail cleanly — xz and the solver
     # error at launch and the row records as a bogus fast TIMEOUT (the
     # 2026-08-12 incident). Hold the launch until space recovers; live
@@ -1671,17 +1693,6 @@ def solve_one(
         with tmp_path.open("wb") as f_out:
             subprocess.run(["xz", "-d", "-k", "-c", str(xz)],
                            stdout=f_out, check=True)
-
-        # Memory admission (see `_mem_budget`): after the decompression,
-        # which costs disk only, before the solver and its container.
-        if _mem_budget is not None:
-            mem_held = _mem_budget.acquire(
-                mem_vm, mem_host,
-                on_wait=lambda: tui.update_worker(
-                    worker_idx, display,
-                    f"waiting (memory: {mem_vm:.1f} GB VM, {mem_host:.1f} GB host)…"))
-            if not mem_held:
-                return {"hash": rec.get("hash"), "result": "INTERRUPTED"}
 
         tui.update_worker(worker_idx, display, "starting sat…")
 
@@ -2345,6 +2356,15 @@ def main() -> int:
         fresh = size_records(records, args.index.with_suffix(".sizes.json"))
         sized = sum(1 for r in records if r.get("bytes"))
         _mem_budget = MemoryBudget(args.mem_budget_vm, args.mem_budget_host)
+        giants = [r for r in records if mem_estimate(r)[0] > args.mem_budget_vm / 2]
+        giants.sort(key=lambda r: -mem_estimate(r)[0])
+        records = giants + [r for r in records if mem_estimate(r)[0] <= args.mem_budget_vm / 2]
+        for i, r in enumerate(records):
+            r["_order"] = i
+        if giants:
+            print(f"memory admission: {len(giants)} instance(s) above half the VM "
+                  f"budget go first, largest first: "
+                  + ", ".join(short_name(r) for r in giants), file=sys.stderr)
         big = sorted(records, key=lambda r: -(r.get("bytes") or 0))[:3]
         print(f"memory admission: {sized}/{len(records)} instances sized "
               f"({fresh} afresh, {time.time() - t_size:.1f}s); budgets "

@@ -125,10 +125,14 @@ def main() -> None:
     idle = max(0, args.parallel - len(rows) - decompressing)
     print(f"{time.strftime('%H:%M:%S')}  {len(rows)} solving, {decompressing} decompressing, "
           f"{idle} waiting for memory or between instances (of {args.parallel} workers)")
-    print(f"{'instance':44s} {'family':22s} {'phase':40s} {'running':>8s} {'phase':>7s}"
-          + ("  previous run" if prev else ""))
+    # running = the worker's whole time on the instance; phase = the current
+    # container's; solve = the verdict's time once the check has begun (the
+    # verify container starts at the verdict), which is what a report records.
+    print(f"{'instance':44s} {'family':22s} {'phase':40s} {'running':>8s} {'phase':>7s} {'solve':>7s}"
+          + ("  previous solve" if prev else ""))
     for name, fam, phase, el, ph_el, prv in rows:
-        print(f"{name[:44]:44s} {fam[:22]:22s} {phase[:40]:40s} {fmt(el):>8s} {fmt(ph_el):>7s}  {prv}")
+        solve = el - ph_el if (phase.startswith("verify") and ph_el is not None) else None
+        print(f"{name[:44]:44s} {fam[:22]:22s} {phase[:40]:40s} {fmt(el):>8s} {fmt(ph_el):>7s} {fmt(solve):>7s}  {prv}")
 
 
 if __name__ == "__main__":

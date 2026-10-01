@@ -468,6 +468,41 @@ and auto-numbers (`_2`, `_3`, …) so consecutive runs don't clobber.
 Exit code: `0` on success, `1` if any MISMATCH was recorded, `2` for
 preflight failures (missing binary, missing index, etc.).
 
+### `status.py`
+
+The progress display's worker lines for a run whose stderr is a file (a
+detached run: the TUI only draws on a terminal). Each worker is a `sat`
+process; its container says whether it is in the solve or the dsr-trim
+verify phase, `docker top` says which of satsuma, kissat or dsr-trim is
+running inside, and the hydra stages and the circuit stage, which run
+inside the `sat` process, show as "in-process". Times from `ps`.
+
+```bash
+tools/gbd/status.py
+tools/gbd/status.py --prev doc/competition-benchmark_<index>_<timeout>_<backend>.json
+```
+
+The second form adds the previous run's verdict and time per instance.
+The index and the worker count are read from the running
+`run_benchmark.py`'s command line.
+
+### Memory admission in `run_benchmark.py`
+
+Every instance is sized at startup without decompressing it (the xz index
+for the uncompressed bytes, the first block for the `p cnf` header; 2 s
+for 391, cached in `<index>.sizes.json`), and an instance starts only when
+the running set's estimated footprints leave room for it in both the
+Docker VM (`--mem-budget-vm`, default 26 GB: size the VM 6 GB above it)
+and the host (`--mem-budget-host`, default 20 GB), or when nothing is
+running. The queue is in index order with the instances estimated above
+half the VM budget first, largest first, so a giant drains the budget in
+the minutes it takes to solve rather than waiting behind long small
+instances. The estimates come from measurements recorded in
+`doc/data/certified_preprocessing_2026-09-29.txt` section 15 (kissat
+about 65 MB per million clauses, 20 GB on the largest md5 instance; the
+host's `sat` process about 44 MB per million). `--mem-budget-vm 0` turns
+it off and restores the older `--giant-slots` gate.
+
 ### `sweep_eff_tau.py`
 
 Sweeps the new `sat --eff-tau` variance threshold over a curated index

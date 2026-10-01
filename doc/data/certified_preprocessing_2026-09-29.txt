@@ -495,3 +495,42 @@
 # its circuit UNSAT rows are the ones with pb_proof_reason "drat-trim
 # (in-solver)" and its three untagged SAT rows are PRP_40_40 (circuit) and
 # the two factoring rows above, each confirmed by rerunning the instance.
+#
+# === 15. Addendum (2026-10-01): what the Docker VM needs, measured ===
+#
+# Peak resident memory inside the satsuma container, polled from /proc every
+# 2 s (VmHWM), one instance at a time, as sat.rs runs it (kissat direct
+# above the size guard of 1M variables or 25M clauses, satsuma + kissat
+# below it); dsr-trim on the proof for up to 15 minutes.  Host side: the
+# sat process itself (/usr/bin/time -l), which holds the parsed formula and
+# runs the circuit trigger before the container starts.
+#
+#   instance                         clauses   VM solve peak                proof    dsr-trim peak        host sat
+#   17.normalised (md5)              315.6M    kissat 20.3 GB               193 MB   (SAT)                13.9 GB
+#   2.normalised (md5)                63.0M    kissat  4.1 GB                38 MB   (SAT)                 3.7 GB
+#   g2-T122.1.0 *                      9.6M    satsuma 6.2 GB, kissat 1.7   673 MB   1.9 GB, verified 254 s  2.9 GB
+#   abw-T-dwt__592.mtx-w98 *           8.6M    satsuma 1.8 GB, kissat 0.6   353 MB   (SAT)                 2.0 GB
+#   hash_table_find_safety_size_21     (1.3 GB CNF) kissat 9.4, satsuma 5.3  3,665 MB 6.3 GB at 2 min, flat after
+#   x-epic_a19-p16_step                         satsuma 1.7, kissat 1.0      721 MB   0.6 -> 0.8 GB over 15 min
+#   stone-width3chain-nmarkers-13               satsuma 1.1                  321 MB   0.26 GB
+#   * above the variable guard: the real run sends these to kissat direct.
+#
+# Rules of thumb: kissat ~65 MB per million clauses, the host's sat process
+# ~44 MB per million, dsr-trim ~1.7x the proof, reached early.  The md5
+# family (positions 1-12 of the index, all started in the first minute
+# under -j 10) is the peak of the whole run: 17.normalised alone costs
+# 34 GB across host and VM, and the block together exceeds the machine;
+# the 47 GiB cap and the host's compressor/swap are what let it survive.
+# A 32 GB cap would OOM-kill kissats there and lose SAT instances every
+# arm solves.  Dropping the guest page cache (echo 3 > drop_caches) freed
+# 16 GB in the guest and changed the VM's host footprint by nothing (29.7
+# GB before and after): the VM does not report freed pages, so the cap is
+# the only lever against the inflation of section 14.
+#
+# Hence: keep 47 GiB until the runner admits instances by estimated memory
+# (~0.11 GB per million clauses, host and VM, with a floor for satsuma and
+# the check), which would let the md5 block run two or three at a time;
+# then 32 GB suffices (20 GB for the largest single kissat and room beside
+# it).  Not measured: satsuma on the two largest formulas it actually gets,
+# Kakuro-easy-138 (24.9M clauses) and oddball_56 (22.8M), hour-long solves.
+# Scripts and polls: the session scratchpad, mem/.

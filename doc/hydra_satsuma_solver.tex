@@ -3,6 +3,10 @@
 % Revised 2026-09-16: third structural stage (multiplier recognition +
 % numeric factoring, src/factoring.rs) and its effect on the official-set
 % comparison (sec:factoring, sec:factoring-results).
+% Revised 2026-10-01: fourth stage (the circuit stage: certified select
+% factoring + cut-based re-encoding with DRAT prefixes, src/circuit.rs), the
+% hydra_circuit_satsuma arm on the full official set (sec:circuit,
+% sec:circuit-results), cactus redrawn with four arms.
 \documentclass[10pt]{article}
 \usepackage[margin=2.4cm]{geometry}
 \usepackage{amsmath,amssymb}
@@ -30,14 +34,18 @@
 \itshape Research note --- logic repo
 (\url{https://github.com/gsidebottom/logic}), SAT track, 2026-08-12;
 revised 2026-09-16 with the factoring stage
-(\S\ref{sec:factoring}, \S\ref{sec:factoring-results}).
+(\S\ref{sec:factoring}, \S\ref{sec:factoring-results}) and 2026-10-01
+with the circuit stage and the \texttt{hydra\_circuit\_satsuma} arm
+(\S\ref{sec:circuit}, \S\ref{sec:circuit-results}).
 Solver description for the \texttt{hydra\_satsuma} backend of
 \texttt{sat}: the certified \texttt{hydra} structure-dispatch pipeline
-(Cook-shape prover, factoring stage, XOR/GF(2) stage) whose fall-through
+(Cook-shape prover, factoring stage, XOR/GF(2) stage and, in
+\texttt{hydra\_circuit\_satsuma}, a circuit stage) whose fall-through
 engine is satsuma-iter+kissat, winner of the SAT Competition 2026 main
 track.
-Includes the completed three-way apples-to-apples comparison
-(\texttt{hydra} / \texttt{satsuma} / \texttt{hydra\_satsuma}) on the
+Includes the completed apples-to-apples comparison
+(\texttt{hydra} / \texttt{satsuma} / \texttt{hydra\_satsuma} /
+\texttt{hydra\_circuit\_satsuma}) on the
 official 2026 benchmark set, all on one Mac~mini (M4~Pro,
 64\,GB; \S\ref{sec:checkercost}).
 \end{center}
@@ -47,7 +55,7 @@ official 2026 benchmark set, all on one Mac~mini (M4~Pro,
 \texttt{hydra\_satsuma} is a structure-dispatch SAT solver: before any
 CDCL search, it tests the input for algebraic structure that admits a
 \emph{polynomial-size certificate}, and only when no structure applies
-does it hand the formula to a general-purpose engine. Three structural
+does it hand the formula to a general-purpose engine. Four structural
 stages run in order: (1) a \emph{Cook-shape prover} that recognizes
 five cardinality-contradiction families (pigeonhole and its
 generalizations) and emits the Cook-1976 extension-variable refutation
@@ -63,7 +71,14 @@ no short certificate in any accepted proof system; (3) an
 \emph{XOR/GF(2) stage} that recovers parity constraints from their
 clausal encodings and runs Gaussian elimination, certifying parity
 refutations in VeriPB by Gocht--Nordstr\"om's division-based method
-(GN21). The fall-through
+(GN21); (4) in the \texttt{hydra\_circuit\_satsuma} variant, a
+\emph{circuit stage} that reads the gates off the clauses and, where a
+multiplier's partial products lie hidden in nested multiplexers on the
+inputs, recovers them as extension variables and re-encodes the circuit
+from cuts of up to six leaves --- each pass emitting a DRAT prefix that
+derives its output from its input, so that CaDiCaL's refutation of the
+rewritten formula, appended to the prefixes, is a
+\texttt{drat-trim}-checked refutation of the original. The fall-through
 engine is satsuma-iter+kissat (Anders et al.), the SAT Competition
 2026 main-track winner, run unmodified in a container: satsuma
 iterates simplify--order--break rounds, adding only unit and binary
@@ -83,7 +98,12 @@ structural stages. The factoring stage, added after that run, turns the
 set's two satisfiable multiplier instances from 30 and 42\,s into
 0.07 and 0.20\,s at a measured cost of at most 0.45\,s on any other
 instance (7\,s over the whole run); it moves the PAR-2 by $-0.18$ and
-leaves the headline unchanged.
+leaves the headline unchanged. The circuit stage, run over the whole set
+as \texttt{hydra\_circuit\_satsuma} under the same protocol, refutes
+two tree multipliers that no arm had reached --- gm16spwtrc in
+1{,}789\,s and gm20spctrc in 2{,}308\,s, both certificates checked
+after the verdict --- and loses nothing: 337 solved, 196 certified,
+PAR-2 2002.
 
 \section{Pipeline}
 \label{sec:pipeline}
@@ -261,6 +281,90 @@ VeriPB) would close this gap and is well-understood machinery; it is
 deliberately deferred because measurement shows nothing is currently
 lost (\S\ref{sec:ge-value}).
 
+\subsection{Circuit stage}
+\label{sec:circuit}
+
+The \texttt{hydra\_circuit\_satsuma} variant adds a fourth stage
+between the structural stages and the fall-through, from the library
+module \texttt{logic::circuit} (also the \texttt{cnf2aig} command
+line). It is a certified preprocessor for one encoding family, the
+GenMul multiplier-verification instances, and it was found by
+measurement: on gm16spwtrc --- a 320{,}000-gate decision diagram of
+multiplexers, each selected by a primary input --- ABC's \texttt{dc2}
+rewriting in front of CaDiCaL turned a 5000\,s timeout into an
+1{,}872\,s refutation, and what the rewriting did was recover the
+partial products, which the CNF spells as two nested multiplexers on the
+inputs per product; SAT sweeping, the usual circuit tool, merged 2\% of
+the gates and changed nothing. The stage reproduces that effect
+natively, with a proof:
+
+\begin{itemize}
+\item \textbf{Does it apply?} The gates are read off the clauses
+  (AND/OR of any width by pattern, XOR groups, any function of up to
+  three inputs by truth table), oriented and ordered with each cycle of
+  definitions broken at one gate, and the select factoring below is
+  tried without writing anything. The stage applies when factoring finds
+  at least 64 products of inputs, put on at least 5\% of the gates and
+  shared by at least 20 gates each on average; a hash or an equivalence
+  miter has products without sharing and is left alone, and inputs over
+  $10^7$ clauses skip the stage. On the official set it fires on 14
+  instances (\S\ref{sec:circuit-results}). The trial is bounded by the
+  full factoring pass, measured on the 353 official instances under the
+  cap: median under a second, 90th percentile 7\,s, maximum 50\,s,
+  844\,s in all.
+\item \textbf{Probe.} CaDiCaL on the original for 20{,}000 conflicts,
+  logging its proof. Array multipliers fall here in a few hundred
+  conflicts, and the passes would cost them seconds to minutes; a probe
+  verdict is a verdict, CaDiCaL's DRAT its certificate.
+\item \textbf{Select factoring.} Where a gate selects between an inner
+  multiplexer and that multiplexer's own else-branch,
+  $o = s\,?\,(s_2\,?\,a : e) : e$ becomes $o = (s \wedge s_2)\,?\,a : e$.
+  The product $s \wedge s_2$ is one extension variable shared by every
+  gate that tests the same pair, defined by three clauses that are RAT
+  on the new literal; the rewritten gate's clauses are derived from the
+  old ones by unit propagation or by cases on the selects, and a gate
+  that tests the same variable twice folds. Gates nothing reads any more
+  are dropped, their definitions kept aside for model extension. On
+  gm16spwtrc: 140{,}523 gates rewritten onto 265 products in 6\,s,
+  1.92\,M clauses to 1.08\,M.
+\item \textbf{Cut-based re-encoding.} The rewritten circuit is written
+  again from cuts of up to six leaves chosen by area flow over four
+  rounds: each cut's function, a 64-row truth table evaluated from the
+  gates between root and leaves, is covered by its irredundant
+  prime-implicant covers (Minato--Morreale) in both polarities, and each
+  resulting clause is derived by cases from those gates' definitions; a
+  clause identical to an original one is kept rather than re-derived.
+  This is the lean cover ABC's CNF writer gives the solver --- a
+  multiplexer is four clauses, not six, and a cover spans the gates
+  inside a cut --- and it is where most of the gain lives: factoring
+  alone refutes gm16spwtrc in 3{,}071\,s, factoring then cuts in
+  1{,}423\,s.
+\item \textbf{Solve and certify.} CaDiCaL (the vendored 3.0.1) takes
+  what the passes leave, with the rest of the budget and its own proof.
+  Each pass emits a DRAT prefix deriving its output clauses from its
+  input and deleting what it replaced; the prefixes concatenate, the
+  solver's proof appends, and \texttt{drat-trim} checks the one file
+  against the formula the stage was given --- after the verdict, in a
+  second bounded phase (\texttt{--circuit-verify-secs}, default the
+  solve timeout), exactly as the SR chain's. A SAT model is extended to
+  the original variables through the dropped definitions by a CaDiCaL
+  call that fixes only the variables of the final formula, and is
+  checked against every original clause before it is printed.
+\item \textbf{Certified mode.} The stage is handed the original
+  formula, never the GE residual of \S\ref{sec:certified}, so its
+  certificate covers the input.
+\end{itemize}
+
+What the stage is \emph{not}: a general circuit preprocessor. Certified
+SAT sweeping --- simulation-refined candidate classes, whole cones in a
+persistent CaDiCaL, the solver's lemmas as the proof --- is in the same
+module and was built first; on the unsolved circuits of the set
+(gus-md5, slp-aes, sncf, sum\_of\_3\_cubes) neither sweeping nor
+ABC's rewriting changes a 5000\,s verdict, and on the multipliers
+sweeping adds nothing to factoring. The stage is a hard floor under one
+family, with a certificate, and the trigger keeps it off everything
+else.
+
 \subsection{Fall-through: satsuma-iter+kissat}
 \label{sec:satsuma}
 
@@ -341,6 +445,9 @@ XOR inconsistent & UNSAT & GN21 parity proof (VeriPB) & \texttt{veripb} \\
 Pure-XOR solvable & SAT & model witness & --- \\
 Multiplier factored & SAT & model witness (propagated from the pair) & --- \\
 Multiplier, no factor pair & (none: annotated) & the engine's, below & \\
+Circuit stage, probe & UNSAT & CaDiCaL DRAT & \texttt{drat-trim} \\
+Circuit stage, passes & UNSAT & DRAT prefixes + CaDiCaL DRAT & \texttt{drat-trim} \\
+Circuit stage & SAT & model, extended to the input & --- \\
 satsuma+kissat & UNSAT & composed binary SR & \texttt{dsr-trim} \\
 satsuma+kissat & SAT & model (projected) & --- \\
 GE residual (uncert.\ mode) & UNSAT & none for the original & --- \\
@@ -352,7 +459,9 @@ Verification of the SR path happens \emph{in-solver} (the second
 container phase), and the harness credits it from the solver's
 \texttt{dsr-trim VERIFIED UNSAT} marker rather than re-checking ---
 binary SR is not readable by the LRAT/GRAT/VeriPB checkers, and
-routing it to one of them would produce a spurious rejection.
+routing it to one of them would produce a spurious rejection. The
+circuit stage's \texttt{drat-trim} check is credited the same way,
+from its \texttt{drat-trim VERIFIED UNSAT} marker.
 
 \subsection{Checker cost: hinted vs.\ unhinted}
 \label{sec:checkercost}
@@ -398,7 +507,9 @@ SAT Competition 2026 accepts three proof checkers in the main track:
 DPR (\texttt{dpr-trim}), GRAT (\texttt{gratgen}), and VeriPB
 (\texttt{veripb}). The Cook and GN21 certificates are VeriPB proofs
 and verify under the same \texttt{veripb} the competition runs; the SR
-chain is the 2026 winner's own. One gap separates
+chain is the 2026 winner's own; the circuit stage's certificates are
+plain DRAT, the RAT fragment of DPR, which \texttt{dpr-trim} reads
+unchanged. One gap separates
 \texttt{hydra\_satsuma} from literal entry shape: the rules have a
 solver declare a \emph{single} checker and write one
 \texttt{proof.out}, whereas this backend emits per-path formats.
@@ -551,7 +662,7 @@ competition's own conditions --- the 45{,}000\,s-per-proof checking
 budget ($9\times$ the solve timeout; stated for SC2020 and SC2025,
 the standing convention) with ample checker memory --- so no
 checking-budget asymmetry remains. The comparisons this note will
-report (\S\ref{sec:results}) are therefore \emph{internal}: all three
+report (\S\ref{sec:results}) are therefore \emph{internal}: all four
 arms under one fixed protocol on one machine, where hardware and
 scheduling effects cancel and only the solver pipelines differ. The
 official figures are quoted for context only.
@@ -562,7 +673,7 @@ official figures are quoted for context only.
 We report these results \emph{as if the competition were run on an
 Apple M4~Pro Mac~mini} (\S\ref{sec:checkercost}), with
 the satsuma-toolchain components (satsuma, kissat, \texttt{dsr-trim})
-executing under Ubuntu~24.04 in Docker containers. All three arms
+executing under Ubuntu~24.04 in Docker containers. All four arms
 completed the official 400-benchmark set at 5000\,s per instance in
 certified mode, running ten benchmark processes in parallel
 (\texttt{-j 10}) so as to fully utilize the machine's ten
@@ -572,7 +683,7 @@ only if its proof verifies within the official 45{,}000\,s checking
 budget, with checker memory ample for the chain
 (\S\ref{sec:budgetnote}); a check that exceeds the budget leaves the
 instance \emph{not solved} for scoring, per the official rule.
-Soundness was clean across all three runs: zero expected-status
+Soundness was clean across all four runs: zero expected-status
 mismatches, zero witness failures, zero contradictory verdicts
 between any pair of arms, and no proof \emph{rejected} by any
 checker anywhere in the study.
@@ -584,7 +695,8 @@ Arm & Solved/400 & SAT & UNSAT & UNSAT certified & PAR-2$^{\ast}$ \\
 \midrule
 \texttt{hydra} & 318 & 132 & 186 & 185 & 2483 \\
 \texttt{satsuma} & 334 & 139 & 195 & 193 & 2064 \\
-\texttt{hydra\_satsuma} & \textbf{335} & 139 & 196 & \textbf{194} & \textbf{2037} \\
+\texttt{hydra\_satsuma} & 335 & 139 & 196 & 194 & 2037 \\
+\texttt{hydra\_circuit\_satsuma} & \textbf{337} & 139 & 198 & \textbf{196} & \textbf{2002} \\
 \bottomrule
 \end{tabular}
 
@@ -593,29 +705,34 @@ Arm & Solved/400 & SAT & UNSAT & UNSAT certified & PAR-2$^{\ast}$ \\
 uncertified UNSATs and timeouts contribute $2\times 5000$\,s. The
 \texttt{hydra\_satsuma} figure is 2037.35 exactly; with the factoring
 stage (\S\ref{sec:factoring-results}, added after this run) it is
-2037.17.}
+2037.17. The \texttt{hydra\_circuit\_satsuma} row (2026-09-30,
+\S\ref{sec:circuit-results}) is scored by the same rule, the
+official-budget re-check of \S\ref{sec:budgetnote} carried over to
+the same instances; the script that scores it reproduces the three
+rows above to within 0.2 PAR-2 points.}
 \end{center}
 
-All three runs use the identical protocol on all 400 official
+All four runs use the identical protocol on all 400 official
 benchmarks (the selection's nine duplicate hashes each appear as two
-benchmarks and count twice, as in official scoring).
+benchmarks and count twice, as in official scoring); the first three
+ran in August 2026, the fourth on 2026-09-30.
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.86\linewidth]{hydra_satsuma_solver_cactus.pdf}
 \caption{Cactus plot on the official 400-benchmark set: cumulative
 instances solved within a given per-instance time budget; one dot per
-solved instance. \texttt{hydra} is aligned to the official benchmarks per
+solved instance, every arm aligned to the official benchmarks per
 hash. \texttt{satsuma} is drawn as a wide translucent band beneath
 \texttt{hydra\_satsuma}'s thin line because the two curves coincide
 almost everywhere --- that near-total overlap is itself the finding
 (\S\ref{sec:structval}): with a symmetry-capable engine, the
 structural front-end changes the curve only at the chessboard pair,
 while the engine swap separates both from \texttt{hydra} from
-$\sim$250 instances on. Drawn before the factoring stage: that stage
-moves two \texttt{hydra\_satsuma} dots, ezfact64\_6 and
-pyhala-braun-sat-40-4-03, from 30 and 42\,s to under 0.2\,s ---
-invisible at this scale.}
+$\sim$250 instances on. \texttt{hydra\_circuit\_satsuma} runs along
+\texttt{hydra\_satsuma} and leaves it only at its two multiplier
+refutations, 1{,}789 and 2{,}308\,s (\S\ref{sec:circuit-results});
+it includes the factoring stage, whose two dots sit under 0.2\,s.}
 \label{fig:cactus}
 \end{figure}
 
@@ -722,16 +839,99 @@ the same set, 44\,s of it on one verification circuit
 candidate filter into a quadratic peel --- the measurement that produced
 the plausibility bounds, the incremental peel and the 1\,s budget.
 
-\subsection{Certification economics: the three proof chains}
+\subsection{The circuit stage on the official set}
+\label{sec:circuit-results}
+
+\texttt{hydra\_circuit\_satsuma} ran the official index under the
+protocol of \S\ref{sec:results} on 2026-09-30, twenty hours for the
+391 unique instances. The stage fires on 14 of them: the twelve GenMul
+multiplier-verification instances, \texttt{x-epic\_a10-p53\_transition}
+and \texttt{PRP\_40\_40}. On the other 377 it looks and steps aside,
+and their verdicts are \texttt{hydra\_satsuma}'s to the instance ---
+no flip in either direction, the August run's 65 timeouts reduced to 63
+by exactly the two gains below.
+
+\begin{center}
+\small
+\begin{tabular}{@{}llrrl@{}}
+\toprule
+Benchmark & \texttt{hydra\_satsuma} & \multicolumn{2}{l}{\texttt{hydra\_circuit\_satsuma}} & certificate \\
+\midrule
+gm16spwtrc & timeout & UNSAT & 1{,}789\,s & \texttt{drat-trim} 585\,s \\
+gm20spctrc & timeout & UNSAT & 2{,}308\,s & \texttt{drat-trim} 197\,s \\
+gm16spctrc & UNSAT 511\,s & UNSAT & 60\,s & \texttt{drat-trim} 7\,s \\
+gm20sparrc, gm24sparrc, gm28sparrc & UNSAT 0.7--11.5\,s & UNSAT & 0.6--8.1\,s & probe; \texttt{drat-trim} $<$1\,s \\
+gm32sparrc, gm36sparrc & UNSAT 5.2--7.6\,s & UNSAT & 6.4--11.2\,s & probe; \texttt{drat-trim} $<$1\,s \\
+x-epic\_a10-p53\_transition & UNSAT 9.5\,s & UNSAT & 30.9\,s & \texttt{drat-trim} 174\,s \\
+PRP\_40\_40 & SAT 29.2\,s & SAT & 30.7\,s & the model \\
+gm16spwtcl, gm24spctbk & timeout & timeout & & \\
+gm24spctrc, gm32spctlf & timeout & timeout & & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Two refutations no arm had reached.} gm16spwtrc and gm20spctrc
+are tree multipliers, 16 and 20 bits, where the array multipliers of the
+family fall to the probe in a few hundred conflicts; neither the winner's
+pipeline nor \texttt{hydra}'s CaDiCaL reaches them in 5000\,s here, at
+the $7.7\times$ effective budget of \S\ref{sec:benchset-comparability},
+and the competition's selection lists their status as unknown. Both
+certificates --- the passes' prefixes followed by CaDiCaL's refutation,
+one file --- were accepted by \texttt{drat-trim} against the original
+files; under the competition's accounting they are solved instances. A
+third, gm16spwtcl, was refuted at 4{,}324\,s in a run of the 14 alone
+(\path{doc/competition-benchmark_circuit14_5000_hydra_circuit_satsuma.md})
+and timed out in the full run: with ten heavy neighbours the circuit
+rows ran 10 to 15\% slower (gm16spwtrc 1{,}549 to 1{,}789\,s,
+gm20spctrc 2{,}135 to 2{,}308\,s), enough to carry it over the cliff.
+The gain under competition conditions is $+2$, not the targeted run's
+$+3$.
+
+\textbf{Where the stage costs.} gm16spctrc, the one tree multiplier
+the engine solves, goes from 511 to 60\,s. \texttt{x-epic\_a10-p53} is
+the one instance the stage makes slower: the trigger fires, the probe is
+undecided, and the passes plus CaDiCaL take 31\,s against satsuma's
+9.5\,s, with 174\,s of checking after. \texttt{PRP\_40\_40} is the
+stage's one SAT, found by CaDiCaL on the rewritten formula in 31\,s
+against the engine's 29\,s, the model extended to the original
+variables through the dropped definitions and checked against every
+clause. Where the stage does not fire, its trial is the
+only cost (\S\ref{sec:circuit}), and no instance was lost to it.
+
+\textbf{Engines.} Of the 337 benchmarks solved: satsuma-iter+kissat
+287, the Cook prover 27, GN21 11, the circuit stage 10 (nine UNSAT, one
+SAT), the factoring stage 2.
+
+\textbf{Certification.} Every UNSAT the stage claimed checked in-run.
+Eighteen satsuma proofs exceeded the harness's 5000\,s check budget ---
+the same instances, handed the same CNF, as 18 of \texttt{hydra\_satsuma}'s
+25 in August; sixteen of them verified under the official 45{,}000\,s
+budget in the re-check of \S\ref{sec:budgetnote}, and the two that did
+not are the two proofs uncertifiable in every arm. Hence 196 certified
+of 198.
+
+\textbf{Conditions.} On the 206 instances above 20\,s that this run
+and the August \texttt{hydra\_satsuma} run both solved outside the
+stage, this run is 5\% slower by geometric mean (median 3\%), where
+the two August runs differ from each other by 2--3\%. The cause is the
+Docker VM: its guest caches the proof files kissat streams through the
+bind mount (44\,GB of page cache at one reading), inflating the VM to
+its 47\,GB cap, and the host compresses and swaps it. Rows within 10\%
+of either 5000\,s cliff should be read as ties; the two gains are not
+near one.
+
+\subsection{Certification economics: the proof chains}
 \label{sec:budgetnote}
 
-The three arms emit certificates through three chains with sharply
+The arms emit certificates through four chains with sharply
 different cost profiles; which chains an arm can use is set by its
 pipeline. \texttt{hydra} certifies structural verdicts with VeriPB
 proofs and engine verdicts with CaDiCaL's native LRAT;
 \texttt{satsuma} certifies everything with binary SR;
 \texttt{hydra\_satsuma} uses VeriPB for its 38 structural verdicts
-and SR for the 158 engine verdicts.
+and SR for the 158 engine verdicts; \texttt{hydra\_circuit\_satsuma}
+adds a fourth chain, plain DRAT checked by \texttt{drat-trim}, for the
+circuit stage's nine.
 
 \begin{center}
 \begin{tabular}{@{}lllll@{}}
@@ -741,6 +941,7 @@ Chain & Producer & Checker & Check speed & Check memory \\
 VeriPB (Cook/GN21) & structural stages & \texttt{veripb} & ms--s & negligible \\
 LRAT (hinted) & CaDiCaL & \texttt{cake\_lpr} & s--min & \textbf{the binding axis} \\
 SR (unhinted) & satsuma+kissat & \texttt{dsr-trim} & \textbf{the binding axis} & light \\
+DRAT (unhinted) & circuit stage + CaDiCaL & \texttt{drat-trim} & s--min & the proof's size \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -789,14 +990,17 @@ never sees it, and the Cook prover certifies it in a millisecond ---
 on structured instances, the structural chain dominates both engine
 chains on every axis at once.
 
-\textbf{Reading.} The three-way resolves cleanly. The engine is worth
+\textbf{Reading.} The comparison resolves cleanly. The engine is worth
 $+16$/$+17$ verdicts over CaDiCaL on this set; the structural
 front-end is worth $+1$ verdict, $+1$ certified instance, and 27
 PAR-2 points against the strongest available engine --- at a measured
 cost of $\approx 1$ PAR-2 point of detection prefix and zero lost
 instances; the factoring stage adds two millisecond solves where the
-engine needed 30--42\,s, for a prefix of at most 0.45\,s (7\,s over the run). Its deeper contributions are invariants the count does
-not show: instant polynomial certificates on structured families
+engine needed 30--42\,s, for a prefix of at most 0.45\,s (7\,s over
+the run); the circuit stage adds two certified refutations no arm had
+reached and 35 PAR-2 points, on the one family it is built for, for a
+trial of at most 50\,s on any instance and no instance lost. Its
+deeper contributions are invariants the count does not show: instant polynomial certificates on structured families
 (against engine-time SR proofs that are expensive to check --- and
 on this set twice uncheckable even at the official budget), and a
 hard floor that is unbounded in the direction the engine's weakness

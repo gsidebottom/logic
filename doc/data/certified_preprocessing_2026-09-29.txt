@@ -2,8 +2,10 @@
 #
 # doc/data/aig_rewriting_2026-09-27.txt ended with three multiplier-
 # verification instances of the 2026 main track solved by ABC's dc2 + fraig
-# in front of CaDiCaL (every competition solver times out on them at
-# 5000 s), and with two gaps: ABC's step is not certifiable, and ABC fails
+# in front of CaDiCaL (every arm of our 5000 s records times out on them,
+# the 2026 winner's pipeline included; the competition's selection lists
+# their status as unknown), and with two gaps: ABC's step is not
+# certifiable, and ABC fails
 # on the larger instances.  This file is the attempt to close both.
 #
 # === 1. Certified SAT sweeping: cnf2aig --sweep ===
@@ -407,8 +409,9 @@
 #   gm24spctbk, gm24spctrc         timeout                 timeout
 #   gm32spctlf                     timeout                 timeout (over the clause cap: satsuma)
 #
-# 11 of 14 against 8: the three tree multipliers that no solver of the
-# competition solved, every UNSAT with a certificate drat-trim accepted
+# 11 of 14 against 8: the three tree multipliers that none of our arms,
+# the winner's pipeline included, had solved (the competition's selection
+# lists them as unknown), every UNSAT with a certificate drat-trim accepted
 # against the original file, and seconds lost where the stage's own work
 # is the overhead.  The full run over the 400 followed.
 #

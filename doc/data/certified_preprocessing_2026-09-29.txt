@@ -534,3 +534,51 @@
 # it).  Not measured: satsuma on the two largest formulas it actually gets,
 # Kakuro-easy-138 (24.9M clauses) and oddball_56 (22.8M), hour-long solves.
 # Scripts and polls: the session scratchpad, mem/.
+#
+# === 16. Addendum (2026-10-02): the full run again, under memory admission and a 32 GB VM ===
+#
+# The same 391, the same protocol (5000 s solve, 5000 s check, -j 10),
+# 2026-10-01 10:56 to 2026-10-02 07:39, with the runner admitting instances
+# by estimated memory (commit a3b9bea; the giants-first ordering of 3560c08
+# came after this run started, so 17.normalised waited 80 min behind five
+# timetabling timeouts with four workers idle, a one-time stall that changed
+# no per-instance time) and the Docker VM at 32 GB instead of 48
+# (doc/competition-benchmark_main_track_2026_official_5000_hydra_circuit_satsuma_2.*).
+#
+#                            solved    SAT   UNSAT   timeout   checked  unchecked   PAR-2
+#   this run                   329     136    193      62        175       18       1970
+#   2026-09-30 run             328     136    192      63        174       18       1992
+#   hydra_satsuma (08-13)      326     136    190      65        165       25       2027
+#   satsuma (08-15)            325     136    189      66        171       18       2055
+#
+# Every verdict agrees with the 09-30 run except gm16spwtcl: UNSAT in
+# 4,957 s (drat-trim 1,319 s after the verdict), 43 s inside the budget it
+# missed by 2 s then, 4,324 s in the targeted run of section 13: a cliff
+# row, a tie. The circuit stage's other rows are within seconds of 09-30.
+# Engines (the runner tags them now): satsuma-kissat 278, Cook 27, circuit
+# 11 (10 UNSAT, PRP_40_40 SAT), GN21 11, factoring 2. The 18 unchecked
+# rows are the same 18 dsr-trim timeouts.
+#
+# Solve times on the 247 rows >= 5 s solved in both: 0.946 of the 09-30
+# run by geometric mean (median 0.970; 123 faster, 114 within 3%, 10
+# slower). The three families that ran during the 09-30 crunch gained 16%
+# (md5 30%: 17.normalised 88 s against 117, the 150M-clause ones half),
+# everything else 4%. Against the August hydra_satsuma run: 0.994, level;
+# against the August satsuma run: 1.043, the spread the paper noted
+# between those two August runs, to be settled by their reruns under
+# these conditions (queued after the kissat/CaDiCaL A/B of the next
+# section). Kissat and satsuma are deterministic on identical input
+# (checked: identical SR output and proof twice, identical kissat proof
+# and model twice), so these are speed differences, not search
+# differences; two identical kissat runs beside ten solvers differed by
+# 9%, the per-row noise band, and a row at 1.10 (SC25_Timetable_C_495_E_50,
+# 4,446 s against 4,038) is that band plus a share of time on the four
+# efficiency cores, which macOS uses whenever more than ten threads are
+# runnable (load average 12 during the run).
+#
+# Memory, sampled every minute: the containers' total peaked at 20.1 GB
+# (17.normalised alone), the host compressor averaged 4.1 GB after the
+# first hour against 38 GB on 09-30, peaking at 28 GB for the minutes
+# 17.normalised ran (its host-side sat process at 14 GB), swap flat at
+# 5 GB. The md5 block alone under admission control: all 13 solved, 19.9 GB
+# peak, five minutes.

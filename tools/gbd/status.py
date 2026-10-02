@@ -120,7 +120,19 @@ def main() -> None:
                 phase = "solve: container starting"
         p = prev.get(s["hash"])
         prv = f"{p.get('result', '?')} {fmt(p.get('time_s', 0))}" if p else ""
-        rows.append((name, rec.get("family", "?"), phase, s["elapsed"], phase_elapsed, prv))
+        # the previous run's check, for an UNSAT: its time and whether it verified
+        pchk = ""
+        if p and p.get("result") == "UNSAT":
+            ok, t, why = p.get("pb_proof_ok"), p.get("pb_proof_time_s"), p.get("pb_proof_reason") or ""
+            if ok is True:
+                pchk = f"✓ {fmt(t)}"
+            elif ok is False:
+                pchk = "✗ rejected"
+            elif "timeout" in why:
+                pchk = f"timeout {fmt(t)}" if t else "timeout"
+            else:
+                pchk = "unchecked"
+        rows.append((name, rec.get("family", "?"), phase, s["elapsed"], phase_elapsed, prv, pchk))
 
     idle = max(0, args.parallel - len(rows) - decompressing)
     print(f"{time.strftime('%H:%M:%S')}  {len(rows)} solving, {decompressing} decompressing, "
@@ -129,10 +141,11 @@ def main() -> None:
     # container's; solve = the verdict's time once the check has begun (the
     # verify container starts at the verdict), which is what a report records.
     print(f"{'instance':44s} {'family':22s} {'phase':40s} {'running':>8s} {'phase':>7s} {'solve':>7s}"
-          + ("  previous solve" if prev else ""))
-    for name, fam, phase, el, ph_el, prv in rows:
+          + (f"  {'previous solve':15s} previous verify" if prev else ""))
+    for name, fam, phase, el, ph_el, prv, pchk in rows:
         solve = el - ph_el if (phase.startswith("verify") and ph_el is not None) else None
-        print(f"{name[:44]:44s} {fam[:22]:22s} {phase[:40]:40s} {fmt(el):>8s} {fmt(ph_el):>7s} {fmt(solve):>7s}  {prv}")
+        print(f"{name[:44]:44s} {fam[:22]:22s} {phase[:40]:40s} {fmt(el):>8s} {fmt(ph_el):>7s} {fmt(solve):>7s}"
+              + (f"  {prv:15s} {pchk}" if prev else ""))
 
 
 if __name__ == "__main__":

@@ -158,6 +158,11 @@ _giant_sem: Optional[threading.BoundedSemaphore] = None
 # rerun of 2026-10-01: 17.normalised, 23.4 GB estimated, queued behind
 # five 5000 s school-timetabling instances, four workers idle for 80 min).
 _mem_budget: Optional["MemoryBudget"] = None
+# Backends whose engine runs in a Docker container.  For every other backend
+# (hydra, cadical, ...) the engine runs in the sat process on the host, so the
+# engine's estimate is charged to the host budget and the VM budget is idle.
+DOCKER_BACKENDS = ("hydra_satsuma", "satsuma", "hydra_circuit_satsuma")
+_mem_engine_on_host = False
 
 
 def mem_estimate(rec: dict) -> Tuple[float, float]:
@@ -171,6 +176,8 @@ def mem_estimate(rec: dict) -> Tuple[float, float]:
     ncl = rec.get("nclauses") or 0
     vm = 1.0 + 3.0 * gb
     host = 0.3 + 2.0 * gb + (min(3.0, 12.0 * gb) if 0 < ncl <= 10_000_000 else 0.0)
+    if _mem_engine_on_host:
+        return 0.0, vm + host
     return vm, host
 
 
@@ -2348,21 +2355,31 @@ def main() -> int:
     args.proof_dir.mkdir(parents=True, exist_ok=True)
     if args.proof_timeout is None:
         args.proof_timeout = args.timeout
-    global _giant_sem, _mem_budget
+    global _giant_sem, _mem_budget, _mem_engine_on_host
     if args.giant_slots > 0:
         _giant_sem = threading.BoundedSemaphore(args.giant_slots)
     if args.mem_budget_vm > 0:
         t_size = time.time()
         fresh = size_records(records, args.index.with_suffix(".sizes.json"))
         sized = sum(1 for r in records if r.get("bytes"))
+        _mem_engine_on_host = args.backend not in DOCKER_BACKENDS
         _mem_budget = MemoryBudget(args.mem_budget_vm, args.mem_budget_host)
-        giants = [r for r in records if mem_estimate(r)[0] > args.mem_budget_vm / 2]
-        giants.sort(key=lambda r: -mem_estimate(r)[0])
-        records = giants + [r for r in records if mem_estimate(r)[0] <= args.mem_budget_vm / 2]
+        # a giant: above half its budget in either dimension (for the Docker
+        # backends that is the VM's; for the others the host's, where the
+        # engine is charged); giants first, largest first
+        def share(r):
+            vm, host = mem_estimate(r)
+            return max(vm / args.mem_budget_vm, host / max(args.mem_budget_host, 1e-9))
+        giants = [r for r in records if share(r) > 0.5]
+        giants.sort(key=lambda r: -share(r))
+        records = giants + [r for r in records if share(r) <= 0.5]
         for i, r in enumerate(records):
             r["_order"] = i
+        if _mem_engine_on_host:
+            print(f"memory admission: {args.backend} runs its engine on the host; "
+                  f"its estimate is charged to the host budget", file=sys.stderr)
         if giants:
-            print(f"memory admission: {len(giants)} instance(s) above half the VM "
+            print(f"memory admission: {len(giants)} instance(s) above half a "
                   f"budget go first, largest first: "
                   + ", ".join(short_name(r) for r in giants), file=sys.stderr)
         big = sorted(records, key=lambda r: -(r.get("bytes") or 0))[:3]

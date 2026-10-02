@@ -582,3 +582,54 @@
 # 17.normalised ran (its host-side sat process at 14 GB), swap flat at
 # 5 GB. The md5 block alone under admission control: all 13 solved, 19.9 GB
 # peak, five minutes.
+#
+# === 17. Addendum (2026-10-02): kissat against CaDiCaL on the rewritten circuits ===
+#
+# Is CaDiCaL the right engine after the passes?  The nine instances the
+# stage's passes run on (the seven tree multipliers and the two others it
+# fires on; the five array multipliers are decided by the probe), each
+# rewritten once by cnf2aig --chain factor,cuts with a binary DRAT prefix,
+# then one wave of kissat 4.0.4 (the satsuma image's, no satsuma: dejavu
+# finds zero symmetry generators on gm16spwtrc both before and after the
+# rewrite, so satsuma's only effect would be deduplication) and one wave
+# of the vendored CaDiCaL 3.0.1 (sat -b cadical), nine in parallel per
+# wave, 4,800 s each, the budget the stage's solver gets after trigger,
+# probe and rewrite.  Every UNSAT certified by drat-trim as prefix +
+# solver proof against the ORIGINAL file.
+#
+#                              kissat             CaDiCaL            drat-trim (kissat / CaDiCaL)
+#   gm16spctrc                 UNSAT    115 s     UNSAT     38 s     VERIFIED 65 s / 6 s
+#   gm16spwtrc                 UNSAT  3,949 s     UNSAT  1,356 s     VERIFIED 1,058 s / 482 s
+#   gm20spctrc                 timeout            UNSAT  1,844 s     - / VERIFIED 174 s
+#   gm16spwtcl                 timeout            UNSAT  3,841 s     - / VERIFIED 912 s
+#   gm24spctbk, gm24spctrc,    timeout            timeout
+#   gm32spctlf
+#   x-epic_a10-p53_transition  UNSAT     10 s     UNSAT     12 s     VERIFIED 189 s / 169 s
+#   PRP_40_40                  SAT        8 s     SAT       12 s     (models)
+#
+# CaDiCaL refutes four tree multipliers, kissat two, and on the two both
+# refute CaDiCaL is three times faster (115/38, 3,949/1,356).  Kissat's
+# refutations are the longer arguments: drat-trim's cores hold 653K
+# lemmas against 109K on gm16spctrc and 3.0M against 1.2M on gm16spwtrc
+# (the image's kissat is built without statistics, so conflicts cannot be
+# compared directly; the proofs' total lemma counts do not track
+# conflicts, CaDiCaL's 23.0M on gm16spwtrc against kissat's 11.5M being
+# mostly inprocessing).  The two easy instances differ by 2-4 s.  So on
+# this family the stage's choice of CaDiCaL stands; handing the rewritten
+# formula to the container would lose gm20spctrc and gm16spwtcl.  The
+# CaDiCaL times here are 25% under the same instances' times in the
+# competition runs (1,356 against 1,796 s on gm16spwtrc), from the wave's
+# lighter load: nine processes falling to three as the easy ones finish,
+# against ten busy workers throughout; both waves had that profile.
+#
+# All eight certificates verified (drat-trim prints its verdict after a
+# carriage-return progress line, so '^s ' does not match it in the raw
+# log; the experiment's first summary said "no verdict" for that reason).
+#
+# Also from 2026-10-02: tools/gbd/run_benchmark.py charges the engine's
+# estimate to the host for backends that do not use Docker (hydra,
+# cadical, ...), and a giant is an instance above half either budget; the
+# Docker backends' ordering is unchanged (17.normalised alone first).  The
+# hydra arm reruns after satsuma with --mem-budget-host 36 and Docker
+# Desktop quit for its duration, so that all four of the paper's arms
+# share the harness and conditions.

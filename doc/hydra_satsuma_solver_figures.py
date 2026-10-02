@@ -41,7 +41,8 @@ ARMS = {
     "hydra": "competition-benchmark_main_track_2026_official_5000_hydra.json",
     "satsuma": "competition-benchmark_main_track_2026_official_5000_satsuma.json",
     "hydra_satsuma": "competition-benchmark_main_track_2026_official_5000_hydra_satsuma_2.json",
-    "hydra_circuit_satsuma": "competition-benchmark_main_track_2026_official_5000_hydra_circuit_satsuma.json",
+    # the 2026-10-01/02 run (memory-aware scheduling, 32 GB VM); the 09-30 run is the file without _2
+    "hydra_circuit_satsuma": "competition-benchmark_main_track_2026_official_5000_hydra_circuit_satsuma_2.json",
 }
 
 def score(arm, path, timeout=5000):

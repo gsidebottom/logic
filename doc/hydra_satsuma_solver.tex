@@ -7,6 +7,9 @@
 % factoring + cut-based re-encoding with DRAT prefixes, src/circuit.rs), the
 % hydra_circuit_satsuma arm on the full official set (sec:circuit,
 % sec:circuit-results), cactus redrawn with four arms.
+% Revised 2026-10-02: the hydra_circuit_satsuma run repeated under
+% memory-aware scheduling and a 32 GB VM (the conditions paragraph of
+% sec:circuit-results); its figures replace the 09-30 run's throughout.
 \documentclass[10pt]{article}
 \usepackage[margin=2.4cm]{geometry}
 \usepackage{amsmath,amssymb}
@@ -34,7 +37,7 @@
 \itshape Research note --- logic repo
 (\url{https://github.com/gsidebottom/logic}), SAT track, 2026-08-12;
 revised 2026-09-16 with the factoring stage
-(\S\ref{sec:factoring}, \S\ref{sec:factoring-results}) and 2026-10-01
+(\S\ref{sec:factoring}, \S\ref{sec:factoring-results}) and 2026-10-02
 with the circuit stage and the \texttt{hydra\_circuit\_satsuma} arm
 (\S\ref{sec:circuit}, \S\ref{sec:circuit-results}).
 Solver description for the \texttt{hydra\_satsuma} backend of
@@ -100,10 +103,10 @@ set's two satisfiable multiplier instances from 30 and 42\,s into
 instance (7\,s over the whole run); it moves the PAR-2 by $-0.18$ and
 leaves the headline unchanged. The circuit stage, run over the whole set
 as \texttt{hydra\_circuit\_satsuma} under the same protocol, refutes
-two tree multipliers that no arm had reached --- gm16spwtrc in
-1{,}789\,s and gm20spctrc in 2{,}308\,s, both certificates checked
-after the verdict --- and loses nothing: 337 solved, 196 certified,
-PAR-2 2002.
+three tree multipliers that no arm had reached --- gm16spwtrc in
+1{,}796\,s, gm20spctrc in 2{,}307\,s and gm16spwtcl in 4{,}957\,s, the
+last at the edge of the budget, every certificate checked after the
+verdict --- and loses nothing: 338 solved, 197 certified, PAR-2 1981.
 
 \section{Pipeline}
 \label{sec:pipeline}
@@ -606,7 +609,9 @@ satsuma-iter+kissat, scored \textbf{276/400} (PAR-2 3647.02) under
 cluster hardware. Our protocol runs 5000\,s \emph{wall-clock} per
 instance with \emph{ten instances concurrently} on one 14-core Apple
 Silicon machine (64\,GB host; the satsuma-based arms execute inside a
-$\sim$47\,GB Linux VM). Per-core, per-second compute on the M4~Pro
+Linux VM: 47\,GB for the August runs, 32\,GB with memory-aware
+scheduling for the October one, \S\ref{sec:circuit-results}). Per-core,
+per-second compute on the M4~Pro
 substantially exceeds the competition nodes'. For reference:
 
 \begin{center}
@@ -698,7 +703,7 @@ Arm & Solved/400 & SAT & UNSAT & UNSAT certified & PAR-2$^{\ast}$ \\
 \texttt{hydra} & 318 & 132 & 186 & 185 & 2483 \\
 \texttt{satsuma} & 334 & 139 & 195 & 193 & 2064 \\
 \texttt{hydra\_satsuma} & 335 & 139 & 196 & 194 & 2037 \\
-\texttt{hydra\_circuit\_satsuma} & \textbf{337} & 139 & 198 & \textbf{196} & \textbf{2002} \\
+\texttt{hydra\_circuit\_satsuma} & \textbf{338} & 139 & 199 & \textbf{197} & \textbf{1981} \\
 \bottomrule
 \end{tabular}
 
@@ -707,17 +712,19 @@ Arm & Solved/400 & SAT & UNSAT & UNSAT certified & PAR-2$^{\ast}$ \\
 uncertified UNSATs and timeouts contribute $2\times 5000$\,s. The
 \texttt{hydra\_satsuma} figure is 2037.35 exactly; with the factoring
 stage (\S\ref{sec:factoring-results}, added after this run) it is
-2037.17. The \texttt{hydra\_circuit\_satsuma} row (2026-09-30,
+2037.17. The \texttt{hydra\_circuit\_satsuma} row (2026-10-01/02,
 \S\ref{sec:circuit-results}) is scored by the same rule, the
 official-budget re-check of \S\ref{sec:budgetnote} carried over to
 the same instances; the script that scores it reproduces the three
-rows above to within 0.2 PAR-2 points.}
+rows above to within 0.2 PAR-2 points. A first run of the arm on
+2026-09-30, before the memory-aware scheduling described there, gave
+337 / 139 / 198 / 196 / 2002, gm16spwtcl 2\,s over the budget.}
 \end{center}
 
 All four runs use the identical protocol on all 400 official
 benchmarks (the selection's nine duplicate hashes each appear as two
 benchmarks and count twice, as in official scoring); the first three
-ran in August 2026, the fourth on 2026-09-30.
+ran in August 2026, the fourth on 2026-10-01/02.
 
 \begin{figure}[h]
 \centering
@@ -732,8 +739,8 @@ almost everywhere --- that near-total overlap is itself the finding
 structural front-end changes the curve only at the chessboard pair,
 while the engine swap separates both from \texttt{hydra} from
 $\sim$250 instances on. \texttt{hydra\_circuit\_satsuma} runs along
-\texttt{hydra\_satsuma} and leaves it only at its two multiplier
-refutations, 1{,}789 and 2{,}308\,s (\S\ref{sec:circuit-results});
+\texttt{hydra\_satsuma} and leaves it only at its three multiplier
+refutations, 1{,}796, 2{,}307 and 4{,}957\,s (\S\ref{sec:circuit-results});
 it includes the factoring stage, whose two dots sit under 0.2\,s.}
 \label{fig:cactus}
 \end{figure}
@@ -845,13 +852,16 @@ the plausibility bounds, the incremental peel and the 1\,s budget.
 \label{sec:circuit-results}
 
 \texttt{hydra\_circuit\_satsuma} ran the official index under the
-protocol of \S\ref{sec:results} on 2026-09-30, twenty hours for the
-391 unique instances. The stage fires on 14 of them: the twelve GenMul
-multiplier-verification instances, \texttt{x-epic\_a10-p53\_transition}
-and \texttt{PRP\_40\_40}. On the other 377 it looks and steps aside,
-and their verdicts are \texttt{hydra\_satsuma}'s to the instance ---
-no flip in either direction, the August run's 65 timeouts reduced to 63
-by exactly the two gains below.
+protocol of \S\ref{sec:results} twice: on 2026-09-30, and again on
+2026-10-01/02 after the memory problem described under
+\emph{Conditions} below was found and fixed; the figures here are the
+second run's, twenty-one hours for the 391 unique instances. The stage
+fires on 14 of them: the twelve GenMul multiplier-verification
+instances, \texttt{x-epic\_a10-p53\_transition} and
+\texttt{PRP\_40\_40}. On the other 377 it looks and steps aside, and
+their verdicts are \texttt{hydra\_satsuma}'s to the instance --- no
+flip in either direction, the August run's 65 timeouts reduced to 62 by
+exactly the three gains below.
 
 \begin{center}
 \small
@@ -859,49 +869,51 @@ by exactly the two gains below.
 \toprule
 Benchmark & \texttt{hydra\_satsuma} & \multicolumn{2}{l}{\texttt{hydra\_circuit\_satsuma}} & certificate \\
 \midrule
-gm16spwtrc & timeout & UNSAT & 1{,}789\,s & \texttt{drat-trim} 585\,s \\
-gm20spctrc & timeout & UNSAT & 2{,}308\,s & \texttt{drat-trim} 197\,s \\
-gm16spctrc & UNSAT 511\,s & UNSAT & 60\,s & \texttt{drat-trim} 7\,s \\
-gm20sparrc, gm24sparrc, gm28sparrc & UNSAT 0.7--11.5\,s & UNSAT & 0.6--8.1\,s & probe; \texttt{drat-trim} $<$1\,s \\
-gm32sparrc, gm36sparrc & UNSAT 5.2--7.6\,s & UNSAT & 6.4--11.2\,s & probe; \texttt{drat-trim} $<$1\,s \\
-x-epic\_a10-p53\_transition & UNSAT 9.5\,s & UNSAT & 30.9\,s & \texttt{drat-trim} 174\,s \\
-PRP\_40\_40 & SAT 29.2\,s & SAT & 30.7\,s & the model \\
-gm16spwtcl, gm24spctbk & timeout & timeout & & \\
-gm24spctrc, gm32spctlf & timeout & timeout & & \\
+gm16spwtrc & timeout & UNSAT & 1{,}796\,s & \texttt{drat-trim} 598\,s \\
+gm20spctrc & timeout & UNSAT & 2{,}307\,s & \texttt{drat-trim} 195\,s \\
+gm16spwtcl & timeout & UNSAT & 4{,}957\,s & \texttt{drat-trim} 1{,}319\,s \\
+gm16spctrc & UNSAT 511\,s & UNSAT & 60\,s & \texttt{drat-trim} 8\,s \\
+gm20sparrc, gm24sparrc, gm28sparrc & UNSAT 0.7--11.5\,s & UNSAT & 0.6--8.2\,s & probe; \texttt{drat-trim} $<$1\,s \\
+gm32sparrc, gm36sparrc & UNSAT 5.2--7.6\,s & UNSAT & 6.4--11.3\,s & probe; \texttt{drat-trim} $<$1\,s \\
+x-epic\_a10-p53\_transition & UNSAT 9.5\,s & UNSAT & 29.5\,s & \texttt{drat-trim} 172\,s \\
+PRP\_40\_40 & SAT 29.2\,s & SAT & 29.9\,s & the model \\
+gm24spctbk, gm24spctrc, gm32spctlf & timeout & timeout & & \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\textbf{Two refutations no arm had reached.} gm16spwtrc and gm20spctrc
-are tree multipliers, 16 and 20 bits, where the array multipliers of the
-family fall to the probe in a few hundred conflicts; neither the winner's
-pipeline nor \texttt{hydra}'s CaDiCaL reaches them in 5000\,s here, at
-the $7.7\times$ effective budget of \S\ref{sec:benchset-comparability},
-and the competition's selection lists their status as unknown. Both
-certificates --- the passes' prefixes followed by CaDiCaL's refutation,
-one file --- were accepted by \texttt{drat-trim} against the original
-files; under the competition's accounting they are solved instances. A
-third, gm16spwtcl, was refuted at 4{,}324\,s in a run of the 14 alone
-(\path{doc/competition-benchmark_circuit14_5000_hydra_circuit_satsuma.md})
-and timed out in the full run: with ten heavy neighbours the circuit
-rows ran 10 to 15\% slower (gm16spwtrc 1{,}549 to 1{,}789\,s,
-gm20spctrc 2{,}135 to 2{,}308\,s), enough to carry it over the cliff.
-The gain under competition conditions is $+2$, not the targeted run's
-$+3$.
+\textbf{Three refutations no arm had reached.} gm16spwtrc, gm20spctrc
+and gm16spwtcl are tree multipliers, 16 and 20 bits, where the array
+multipliers of the family fall to the probe in a few hundred conflicts;
+neither the winner's pipeline nor \texttt{hydra}'s CaDiCaL reaches them
+in 5000\,s here, at the $7.7\times$ effective budget of
+\S\ref{sec:benchset-comparability}, and the competition's selection
+lists their status as unknown. All three certificates --- the passes'
+prefixes followed by CaDiCaL's refutation, one file --- were accepted by
+\texttt{drat-trim} against the original files; under the competition's
+accounting they are solved instances. The third is a cliff row and
+should be read as one: gm16spwtcl was refuted at 4{,}324\,s in a run of
+the 14 alone
+(\path{doc/competition-benchmark_circuit14_5000_hydra_circuit_satsuma.md}),
+timed out by 2\,s in the full run of 2026-09-30, when its neighbours'
+memory traffic slowed the circuit rows by 10 to 15\%, and came in at
+4{,}957\,s in the run reported here. The firm gain under competition
+conditions is $+2$, with a third instance that lands on either side of
+the budget by a percent.
 
 \textbf{Where the stage costs.} gm16spctrc, the one tree multiplier
 the engine solves, goes from 511 to 60\,s. \texttt{x-epic\_a10-p53} is
 the one instance the stage makes slower: the trigger fires, the probe is
-undecided, and the passes plus CaDiCaL take 31\,s against satsuma's
-9.5\,s, with 174\,s of checking after. \texttt{PRP\_40\_40} is the
-stage's one SAT, found by CaDiCaL on the rewritten formula in 31\,s
+undecided, and the passes plus CaDiCaL take 30\,s against satsuma's
+9.5\,s, with 172\,s of checking after. \texttt{PRP\_40\_40} is the
+stage's one SAT, found by CaDiCaL on the rewritten formula in 30\,s
 against the engine's 29\,s, the model extended to the original
 variables through the dropped definitions and checked against every
 clause. Where the stage does not fire, its trial is the
 only cost (\S\ref{sec:circuit}), and no instance was lost to it.
 
-\textbf{Engines.} Of the 337 benchmarks solved: satsuma-iter+kissat
-287, the Cook prover 27, GN21 11, the circuit stage 10 (nine UNSAT, one
+\textbf{Engines.} Of the 338 benchmarks solved: satsuma-iter+kissat
+287, the Cook prover 27, GN21 11, the circuit stage 11 (ten UNSAT, one
 SAT), the factoring stage 2.
 
 \textbf{Certification.} Every UNSAT the stage claimed checked in-run.
@@ -909,18 +921,32 @@ Eighteen satsuma proofs exceeded the harness's 5000\,s check budget ---
 the same instances, handed the same CNF, as 18 of \texttt{hydra\_satsuma}'s
 25 in August; sixteen of them verified under the official 45{,}000\,s
 budget in the re-check of \S\ref{sec:budgetnote}, and the two that did
-not are the two proofs uncertifiable in every arm. Hence 196 certified
-of 198.
+not are the two proofs uncertifiable in every arm. Hence 197 certified
+of 199.
 
-\textbf{Conditions.} On the 206 instances above 20\,s that this run
-and the August \texttt{hydra\_satsuma} run both solved outside the
-stage, this run is 5\% slower by geometric mean (median 3\%), where
-the two August runs differ from each other by 2--3\%. The cause is the
-Docker VM: its guest caches the proof files kissat streams through the
-bind mount (44\,GB of page cache at one reading), inflating the VM to
-its 47\,GB cap, and the host compresses and swaps it. Rows within 10\%
-of either 5000\,s cliff should be read as ties; the two gains are not
-near one.
+\textbf{Conditions.} The 2026-09-30 run came out 5\% slower per
+instance than the August \texttt{hydra\_satsuma} run by geometric mean
+on the 206 rows above 20\,s both solved outside the stage, where the two
+August runs differ from each other by 2--3\%. The cause was memory, not
+the stage: the Docker VM's guest caches the proof files kissat streams
+through the bind mount, inflating the VM to its 47\,GB cap, and the
+host compresses and swaps it; worse, the twelve md5 instances, up to
+315M clauses, all start in the first minute, and kissat on the largest
+alone takes 20\,GB while the host's own \texttt{sat} process holds
+14\,GB of parsed formula. Measured, the fix was two things: the harness
+now admits instances by their estimated footprint, sized from the file
+without decompressing it, so the big ones run two or three at a time
+rather than ten, and the VM is capped at 32\,GB. Under those conditions
+the run reported here is 5\% faster per instance than the first
+(median 3\%; the md5 family 30\%), level with the August
+\texttt{hydra\_satsuma} run at 0.994, and the host compressor averaged
+4\,GB against 38. The remaining spread is the machine, not the search:
+satsuma and kissat are deterministic on identical input (checked:
+identical output and proofs twice), two identical kissat runs beside ten
+solvers differed by 9\%, and macOS puts a runnable thread on one of the
+four efficiency cores whenever more than ten are runnable, as they were
+throughout. Rows within 10\% of either 5000\,s cliff should be read as
+ties; the two firm gains are not near one.
 
 \subsection{Certification economics: the proof chains}
 \label{sec:budgetnote}
@@ -999,9 +1025,10 @@ PAR-2 points against the strongest available engine --- at a measured
 cost of $\approx 1$ PAR-2 point of detection prefix and zero lost
 instances; the factoring stage adds two millisecond solves where the
 engine needed 30--42\,s, for a prefix of at most 0.45\,s (7\,s over
-the run); the circuit stage adds two certified refutations no arm had
-reached and 35 PAR-2 points, on the one family it is built for, for a
-trial of at most 50\,s on any instance and no instance lost. Its
+the run); the circuit stage adds three certified refutations no arm had
+reached, one of them at the budget's edge, and 56 PAR-2 points, on the
+one family it is built for, for a trial of at most 50\,s on any
+instance and no instance lost. Its
 deeper contributions are invariants the count does not show: instant polynomial certificates on structured families
 (against engine-time SR proofs that are expensive to check --- and
 on this set twice uncheckable even at the official budget), and a

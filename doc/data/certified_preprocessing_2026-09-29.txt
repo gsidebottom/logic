@@ -630,6 +630,7 @@
 # estimate to the host for backends that do not use Docker (hydra,
 # cadical, ...), and a giant is an instance above half either budget; the
 # Docker backends' ordering is unchanged (17.normalised alone first).  The
-# hydra arm reruns after satsuma with --mem-budget-host 36 and Docker
-# Desktop quit for its duration, so that all four of the paper's arms
-# share the harness and conditions.
+# reruns under these conditions are hydra_satsuma and satsuma; the hydra
+# arm keeps its August run (a hydra rerun would want --mem-budget-host 36
+# and Docker Desktop quit for its duration, the VM holding memory hydra
+# never uses).

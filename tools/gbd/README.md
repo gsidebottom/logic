@@ -506,7 +506,18 @@ tools/gbd/duo.py pause --drain
 tools/gbd/duo.py resume
 tools/gbd/duo.py stop
 tools/gbd/duo.py start --dir RUN
+tools/gbd/duo.py report [--out-dir DIR]
 ```
+
+`report` writes, by default into `doc/`, one report per backend in
+`run_benchmark.py`'s format (`competition-benchmark_<index>_<timeout>_<backend>.md`,
+`.json` and a cactus `.png`; `doc/competition-benchmarks-plot.py` and the
+comparison scripts read them) and a comparison,
+`duo_<index>_<timeout>_<backend>_vs_<backend>.md` with its cactus: the score
+on the instances all backends finished, the instances only one solved, the
+largest time differences each way, a table by family, and mismatches and
+errors. Run while the scheduler works, it writes partial reports, marked as
+such; the scheduler writes the final ones itself when the last job finishes.
 
 The scheduler runs detached and reads its controls every two seconds.
 `cores N` takes effect as jobs finish; `--now` stops the newest jobs above

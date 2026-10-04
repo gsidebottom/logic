@@ -14,6 +14,7 @@ one of them solved, the time ratio.
     tools/gbd/duo.py pause [--drain]       # default: stop the running jobs now
     tools/gbd/duo.py resume
     tools/gbd/duo.py stop                  # end the scheduler; `start --dir RUN` resumes
+    tools/gbd/duo.py report [--out-dir D]  # markdown + JSON + cactus, partial while running
 
 Timing is the solver's own wall clock, so a job is never suspended: pausing
 (or `cores N --now`, or `stop`) kills the running jobs, their containers and
@@ -467,6 +468,12 @@ class Scheduler:
             if not self.queue and not self.running:
                 log_event(self.run, "all jobs done")
                 self.keep_awake(False)
+                try:
+                    out = Path(self.cfg.get("report_dir") or (REPO / "doc"))
+                    for p in write_reports(self.run, out):
+                        log_event(self.run, f"report written: {p}")
+                except Exception as e:                    # the results are safe in results.jsonl
+                    log_event(self.run, f"report failed: {e!r}")
                 return
             time.sleep(2)
 
@@ -602,6 +609,185 @@ def _pid_alive(pid: int) -> bool:
         return True
     except (ProcessLookupError, PermissionError):
         return False
+
+
+# --------------------------------------------------------------------------
+# reports: run_benchmark-style markdown + JSON + cactus per backend, and a
+# comparison of the instances every backend has finished
+# --------------------------------------------------------------------------
+CHECK_REASON = {"verified": "{} (in-solver)", "skipped": "skipped (--no-verify)",
+                "timeout": "{} timeout (unchecked)", "rejected": "{} rejected/failed",
+                "residual only": "SR covers GE residual only", "no marker": "verification incomplete (no marker)"}
+
+
+def report_row(r: dict) -> dict:
+    checker = "drat-trim" if r.get("prover") == "circuit-cadical" else "dsr-trim"
+    ck = r.get("check")
+    reason = CHECK_REASON.get(ck, ck or "")
+    reason = reason.format(checker) if "{}" in reason else reason
+    return dict(name=r["name"], hash=r["hash"], family=r.get("family"), result=r["result"],
+                time_s=r.get("time_s"), time_str=(f"{r['time_s']}s" if r.get("time_s") is not None else "n/a"),
+                expected=r.get("expected"), mismatch=r.get("mismatch", False),
+                pb_proof_prover=r.get("prover"),
+                pb_proof_ok=(True if ck == "verified" else False if ck == "rejected" else None),
+                pb_proof_reason=(reason or None) if r["result"] == "UNSAT" else None,
+                pb_proof_time_s=r.get("check_s"), wall_s=r.get("wall_s"), started=r.get("started"),
+                finished=r.get("finished"), cores=r.get("cores"), rc=r.get("rc"))
+
+
+def cactus_png(path: Path, curves: Dict[str, List[float]], timeout: int, title: str) -> None:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    colors = ["#2fb37a", "#8e2bb5", "#3a6fd8", "#b5651d"]
+    fig, ax = plt.subplots(figsize=(6.4, 3.9), dpi=150)
+    for i, (label, ts) in enumerate(curves.items()):
+        ts = sorted(ts)
+        ax.plot(ts, range(1, len(ts) + 1), "-", lw=1.0, color=colors[i % 4], label=f"{label}, {len(ts)} solved")
+        ax.plot(ts, range(1, len(ts) + 1), "o", ms=1.6, mew=0, alpha=0.5, color=colors[i % 4])
+    ax.axvline(timeout, color="#999", lw=0.8, ls="--")
+    ax.set_xlim(0, timeout * 1.03)
+    ax.set_xlabel("solve time per instance (s, wall)", fontsize=9)
+    ax.set_ylabel("solved instances (cumulative)", fontsize=9)
+    ax.set_title(title, fontsize=9)
+    ax.tick_params(labelsize=8)
+    ax.grid(True, color="#e5e5e5", lw=0.6)
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    ax.legend(loc="lower right", fontsize=8, frameon=False)
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+
+
+def write_reports(run: Path, out_dir: Path) -> List[Path]:
+    cfg = read_json(run / "config.json", None)
+    res = load_results(run)
+    backends, timeout, order = cfg["backends"], cfg["timeout"], cfg["order"]
+    stem = Path(cfg["index"]).stem
+    out_dir.mkdir(parents=True, exist_ok=True)
+    total = len(order)
+    complete = all((h, b) in res for h in order for b in backends)
+    written: List[Path] = []
+    meta_common = dict(index=cfg["index"], timeout_s=timeout, checks=cfg.get("verify", True),
+                       duo_run=str(run), created=cfg["created"], sat_commit=cfg.get("sat_version"),
+                       complete=complete, generated=now_iso())
+    # per backend, in the harness's format (doc/competition-benchmarks-plot.py and the
+    # comparison scripts read it)
+    for b in backends:
+        rows = [report_row(res[(h, b)]) for h in order if (h, b) in res]
+        base = out_dir / f"competition-benchmark_{stem}_{timeout}_{b}"
+        n = len(rows)
+        cnt = {k: sum(r["result"] == k for r in rows) for k in ("SAT", "UNSAT", "TIMEOUT", "ERROR")}
+        json.dump(dict(metadata=dict(backend=b, parallel=read_json(run / "control.json", {}).get("cores"),
+                                     instances_done=n, instances_total=total, **meta_common),
+                       summary=dict(by_verdict=cnt), results=rows),
+                  open(base.with_suffix(".json"), "w"), indent=1)
+        cactus_png(base.with_suffix(".png"), {b: [r["time_s"] for r in rows if r["result"] in ("SAT", "UNSAT")]},
+                   timeout, f"{stem}, {b}" + ("" if complete else f" (partial: {n} of {total})"))
+        L = [f"# Competition Benchmark Results (index={Path(cfg['index']).name}, timeout={timeout}s, backend={b}, "
+             f"parallel={read_json(run / 'control.json', {}).get('cores')})", ""]
+        if not complete:
+            L += [f"Partial: {n} of {total} instances done ({now_iso()[:16].replace('T', ' ')}).", ""]
+        L += [f"From the duo run in `{run}`, alongside {', '.join(x for x in backends if x != b)}; "
+              f"checks {'on' if cfg.get('verify', True) else 'off'}; sat at {cfg.get('sat_version')}.", "",
+              "## Summary", "", "| Result | Count | % |", "|--------|-------|---|"]
+        for k in ("SAT", "UNSAT", "TIMEOUT", "ERROR"):
+            if cnt[k] or k != "ERROR":
+                L.append(f"| {k} | {cnt[k]} | {100 * cnt[k] / max(1, n):.1f}% |")
+        L += [f"| **Total** | {n} | 100% |", "", "## Cactus plot", "", f"![cactus plot]({base.with_suffix('.png').name})", "",
+              "## Per-problem results", "",
+              "| Problem | Result | Solve time | UNSAT proof time | Paths | Total | Conf | Rst |",
+              "|---------|--------|------------|------------------|-------|-------|------|-----|"]
+        for r in rows:
+            pt = ("—" if r["result"] != "UNSAT" else
+                  f"{r['pb_proof_time_s']:.1f}s" if r["pb_proof_ok"] and r["pb_proof_time_s"] is not None
+                  else (r["pb_proof_reason"] or "—"))
+            L.append(f"| {r['name']} | {r['result']}{' MISMATCH' if r['mismatch'] else ''} | {r['time_str']} | {pt} | — | — | — | — |")
+        base.with_suffix(".md").write_text("\n".join(L) + "\n")
+        written += [base.with_suffix(".md"), base.with_suffix(".json"), base.with_suffix(".png")]
+    # the comparison
+    both = [h for h in order if all((h, b) in res for b in backends)]
+    cbase = out_dir / f"duo_{stem}_{timeout}_{'_vs_'.join(backends)}"
+    n = len(both)
+    L = [f"# {' vs '.join(backends)} on {Path(cfg['index']).name}, {timeout} s", "",
+         f"{n} of {total} instances done by both" + ("" if complete else f" (partial, {now_iso()[:16].replace('T', ' ')})")
+         + f"; checks {'on' if cfg.get('verify', True) else 'off'}; sat at {cfg.get('sat_version')}; "
+         f"duo run `{run}`, started {cfg['created'][:16].replace('T', ' ')}.", ""]
+    solved = {b: {h for h in both if res[(h, b)]["result"] in ("SAT", "UNSAT")} for b in backends}
+    if n:
+        L += ["## Score on the instances done by both", "",
+              "| backend | solved | SAT | UNSAT | timeout | other | PAR-2 | only it |",
+              "|---|---|---|---|---|---|---|---|"]
+        for b in backends:
+            rows = [res[(h, b)] for h in both]
+            sat = sum(r["result"] == "SAT" for r in rows)
+            uns = sum(r["result"] == "UNSAT" for r in rows)
+            to = sum(r["result"] == "TIMEOUT" for r in rows)
+            par2 = sum(scored(r, timeout, False)[1] for r in rows) / n
+            only = len(solved[b] - set.union(*(solved[x] for x in backends if x != b))) if len(backends) > 1 else 0
+            L.append(f"| {b} | {sat + uns} | {sat} | {uns} | {to} | {n - sat - uns - to} | {par2:.1f} | {only} |")
+        L.append("")
+        if len(backends) == 2:
+            a, b = backends
+            pairs = [(h, res[(h, a)]["time_s"], res[(h, b)]["time_s"]) for h in both
+                     if h in solved[a] and h in solved[b]
+                     and min(res[(h, a)]["time_s"] or 0, res[(h, b)]["time_s"] or 0) >= 5]
+            if pairs:
+                g = math.exp(sum(math.log(y / x) for _, x, y in pairs) / len(pairs))
+                L += [f"Time {b} / {a} on the {len(pairs)} instances both solved in at least 5 s: "
+                      f"geometric mean {g:.3f}.", ""]
+            for x, y in ((a, b), (b, a)):
+                only = sorted(solved[x] - solved[y], key=lambda h: res[(h, x)]["time_s"] or 0)
+                if only:
+                    L += [f"### Solved by {x} only ({len(only)})", "", f"| instance | family | {x} | {y} |", "|---|---|---|---|"]
+                    for h in only:
+                        L.append(f"| {cfg['records'][h]['name']} | {cfg['records'][h].get('family')} | "
+                                 f"{res[(h, x)]['result']} {res[(h, x)]['time_s']:.1f} s | {res[(h, y)]['result']} |")
+                    L.append("")
+            if pairs:
+                pairs.sort(key=lambda t: t[2] / t[1])
+                for faster, sel in ((b, [p for p in pairs if p[2] < p[1]][:10]),
+                                    (a, [p for p in pairs[::-1] if p[2] > p[1]][:10])):
+                    if not sel:
+                        continue
+                    L += [f"### Where {faster} is fastest relative to the other (both solved, at least 5 s)", "",
+                          f"| instance | family | {a} | {b} | {b} / {a} |", "|---|---|---|---|---|"]
+                    for h, x, y in sel:
+                        L.append(f"| {cfg['records'][h]['name']} | {cfg['records'][h].get('family')} | {x:.1f} s | {y:.1f} s | {y / x:.2f} |")
+                    L.append("")
+        fams: Dict[str, List[str]] = {}
+        for h in both:
+            fams.setdefault(cfg["records"][h].get("family") or "?", []).append(h)
+        L += ["## By family", "", "| family | n | " + " | ".join(f"{b} solved | {b} PAR-2" for b in backends) + " |",
+              "|---|---|" + "---|---|" * len(backends)]
+        for f, hs in sorted(fams.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+            cells = []
+            for b in backends:
+                cells.append(str(sum(h in solved[b] for h in hs)))
+                cells.append(f"{sum(scored(res[(h, b)], timeout, False)[1] for h in hs) / len(hs):.0f}")
+            L.append(f"| {f} | {len(hs)} | " + " | ".join(cells) + " |")
+        L.append("")
+        mism = [r for r in res.values() if r.get("mismatch")]
+        errs = [r for r in res.values() if r["result"] == "ERROR"]
+        L += ["## Soundness", "", f"Mismatches with the recorded status: {len(mism) or 'none'}."
+              + ("" if not mism else " " + ", ".join(f"{r['name']} ({r['backend']}: {r['result']}, recorded {r['expected']})" for r in mism)),
+              f"Runs without a verdict and a nonzero exit: {len(errs) or 'none'}."
+              + ("" if not errs else " " + ", ".join(f"{r['name']} ({r['backend']}, rc {r['rc']})" for r in errs[:20])), ""]
+        cactus_png(cbase.with_suffix(".png"), {b: [res[(h, b)]["time_s"] for h in both if h in solved[b]] for b in backends},
+                   timeout, f"{stem}: the {n} instances done by both" + ("" if complete else " (partial)"))
+        L += ["## Cactus plot", "", f"![cactus plot]({cbase.with_suffix('.png').name})", ""]
+        written.append(cbase.with_suffix(".png"))
+    cbase.with_suffix(".md").write_text("\n".join(L) + "\n")
+    written.append(cbase.with_suffix(".md"))
+    return written
+
+
+def cmd_report(args) -> None:
+    run = run_dir(args.dir)
+    out = Path(args.out_dir).resolve() if args.out_dir else REPO / "doc"
+    for p in write_reports(run, out):
+        print(p)
 
 
 # --------------------------------------------------------------------------
@@ -756,6 +942,9 @@ def main() -> None:
             p.add_argument("--running", action="store_true")
         if name == "pause":
             p.add_argument("--drain", action="store_true", help="let the running jobs finish")
+    rp = sub.add_parser("report", help="write the markdown, JSON and cactus reports (partial while running)")
+    rp.add_argument("--dir")
+    rp.add_argument("--out-dir", help="default: the repository's doc/")
     c = sub.add_parser("cores", help="change the number of cores")
     c.add_argument("n", type=int)
     c.add_argument("--now", action="store_true", help="stop the newest jobs above N at once")
@@ -767,7 +956,7 @@ def main() -> None:
         args.cores_given = args.cores is not None
         if args.cores is None:
             args.cores = 8
-    {"start": cmd_start, "_loop": cmd_loop, "status": cmd_status, "cores": cmd_cores,
+    {"start": cmd_start, "_loop": cmd_loop, "status": cmd_status, "cores": cmd_cores, "report": cmd_report,
      "pause": cmd_pause, "resume": cmd_resume, "stop": cmd_stop}[args.cmd](args)
 
 

@@ -510,19 +510,24 @@ def load_reference(run: Path) -> Optional[dict]:
         verdict[r["hash"]] = v if v in ("SAT", "UNSAT") else (r.get("claimed-result") or "").upper()
     def solved(h, sv):
         return times.get(h, {}).get(sv, 2 * limit) < limit
-    best = max(solvers, key=lambda sv: (sum(solved(h, sv) for h in times),
-                                        -sum(min(times[h].get(sv, 2 * limit), 2 * limit) for h in times)))
+    def par2_sum(sv):
+        return sum(min(times[h].get(sv, 2 * limit), 2 * limit) for h in times)
+    # the competition ranks by PAR-2; the solver with the most solves can differ
+    winner = min(solvers, key=par2_sum)
+    best = max(solvers, key=lambda sv: (sum(solved(h, sv) for h in times), -par2_sum(sv)))
     return dict(label=meta.get("label", Path(meta["csv"]).name), solvers=solvers, times=times, limit=limit,
-                verdict=verdict, best=best, solved=solved,
+                verdict=verdict, best=best, winner=winner, solved=solved,
                 n_all=len(times), vbs_all=sum(any(solved(h, sv) for sv in solvers) for h in times),
-                best_all=sum(solved(h, best) for h in times))
+                best_all=sum(solved(h, best) for h in times), winner_all=sum(solved(h, winner) for h in times),
+                winner_par2=par2_sum(winner) / max(1, len(times)))
 
 
 def reference_scores(ref: dict, hs: List[str]) -> Dict[str, Tuple[int, int, int, float]]:
-    """name -> (solved, SAT, UNSAT, PAR-2) on these instances: the virtual best and the best single solver."""
+    """name -> (solved, SAT, UNSAT, PAR-2) on these instances: the virtual best, the winner by
+    PAR-2 and, if another, the solver with the most solves."""
     lim = ref["limit"]
     out = {}
-    for name in ("VBS", ref["best"]):
+    for name in dict.fromkeys(("VBS", ref["winner"], ref["best"])):
         sol = sat = uns = 0
         par = 0.0
         for h in hs:
@@ -553,7 +558,8 @@ def cmd_reference(args) -> None:
     write_json(run / "reference.json", dict(csv=csv_path, label=args.label, timeout=args.timeout))
     ref = load_reference(run)
     print(f"reference attached: {ref['label']}: {len(ref['solvers'])} solvers on {ref['n_all']} instances; "
-          f"virtual best {ref['vbs_all']}, best single {ref['best']} {ref['best_all']}")
+          f"virtual best {ref['vbs_all']}; winner by PAR-2 {ref['winner']} ({ref['winner_all']} solved, "
+          f"PAR-2 {ref['winner_par2']:.2f}); most solved {ref['best']} ({ref['best_all']})")
 
 
 # --------------------------------------------------------------------------
@@ -636,7 +642,8 @@ def cmd_status(args) -> None:
     if both:
         n = len(both)
         print(f"\non the {n} done by both" + (" (PAR-2 certified: unchecked UNSATs count as unsolved)" if cfg.get("verify", True) else "") + ":")
-        print(f"  {'backend':24s} {'solved':>6s} {'SAT':>5s} {'UNSAT':>5s} {'timeout':>7s} {'other':>5s} "
+        W = 38 if (run / "reference.json").exists() else 24
+        print(f"  {'backend':{W}s} {'solved':>6s} {'SAT':>5s} {'UNSAT':>5s} {'timeout':>7s} {'other':>5s} "
               f"{'PAR-2':>8s} {'unique':>7s}" + (f" {'cert PAR-2':>10s} {'unchecked':>9s}" if cfg.get('verify', True) else ""))
         solved = {b: {h for h in both if res[(h, b)]["result"] in ("SAT", "UNSAT")} for b in backends}
         for b in backends:
@@ -647,7 +654,7 @@ def cmd_status(args) -> None:
             other = n - sat - uns - to
             par2 = sum(scored(r, timeout, False)[1] for r in rows) / n
             only = len(solved[b] - set.union(*(solved[x] for x in backends if x != b))) if len(backends) > 1 else 0
-            line = f"  {b:24s} {sat + uns:6d} {sat:5d} {uns:5d} {to:7d} {other:5d} {par2:8.1f} {only:7d}"
+            line = f"  {b:{W}s} {sat + uns:6d} {sat:5d} {uns:5d} {to:7d} {other:5d} {par2:8.1f} {only:7d}"
             if cfg.get("verify", True):
                 cpar2 = sum(scored(r, timeout, True)[1] for r in rows) / n
                 unch = sum(r["result"] == "UNSAT" and r.get("check") != "verified" for r in rows)
@@ -656,9 +663,11 @@ def cmd_status(args) -> None:
         ref = load_reference(run)
         if ref:
             sc = reference_scores(ref, both)
+            pre = "2022" if "2022" in ref["label"] else "ref"
             for name, (sol, sat, uns, par) in sc.items():
-                label = f"{'2022 ' if '2022' in ref['label'] else 'ref '}{'virtual best' if name == 'VBS' else name}"
-                print(f"  {label[:24]:24s} {sol:6d} {sat:5d} {uns:5d} {n - sol:7d} {'':5s} {par:8.1f}")
+                label = (f"{pre} virtual best" if name == "VBS" else
+                         f"{pre} winner {name}" if name == ref["winner"] else f"{pre} most solved {name}")
+                print(f"  {label[:W]:{W}s} {sol:6d} {sat:5d} {uns:5d} {n - sol:7d} {'':5s} {par:8.1f}")
             beyond = {b: [h for h in both if h in solved[b] and not any(ref["solved"](h, sv) for sv in ref["solvers"])]
                       for b in backends}
             missed = {b: [h for h in both if h not in solved[b] and any(ref["solved"](h, sv) for sv in ref["solvers"])]
@@ -871,14 +880,17 @@ def write_reports(run: Path, out_dir: Path) -> List[Path]:
             L += [f"## Against the reference field: {ref['label']}", "",
                   f"The same {n} instances; its times are on the competition's machines, so the counts compare "
                   f"and the PAR-2 values only roughly. Over the whole set its virtual best solved {ref['vbs_all']} "
-                  f"of {ref['n_all']} and its best single solver, {ref['best']}, {ref['best_all']}.", "",
+                  f"of {ref['n_all']}; its winner by PAR-2, {ref['winner']}, {ref['winner_all']}; its most "
+                  f"solved, {ref['best']}, {ref['best_all']}.", "",
                   "| solver | solved | SAT | UNSAT | PAR-2 |", "|---|---|---|---|---|"]
             for b in backends:
                 rows = [res[(h, b)] for h in both]
                 L.append(f"| {b} (here) | {len(solved[b])} | {sum(r['result'] == 'SAT' for r in rows)} | "
                          f"{sum(r['result'] == 'UNSAT' for r in rows)} | {sum(scored(r, timeout, False)[1] for r in rows) / n:.1f} |")
             for name, (sol, sat, uns, par) in sc.items():
-                L.append(f"| {'virtual best' if name == 'VBS' else name} (reference) | {sol} | {sat} | {uns} | {par:.1f} |")
+                role = ("virtual best" if name == "VBS" else f"{name}, winner" if name == ref["winner"]
+                        else f"{name}, most solved")
+                L.append(f"| {role} (reference) | {sol} | {sat} | {uns} | {par:.1f} |")
             L.append("")
             for b in backends:
                 beyond = [h for h in both if h in solved[b] and not any(ref["solved"](h, sv) for sv in ref["solvers"])]

@@ -634,3 +634,44 @@
 # arm keeps its August run (a hydra rerun would want --mem-budget-host 36
 # and Docker Desktop quit for its duration, the VM holding memory hydra
 # never uses).
+#
+# === 18. Addendum (2026-10-04): the three October runs, and the trial timed directly ===
+#
+# Back to back under memory admission and the 32 GB VM:
+# hydra_circuit_satsuma 10-01/02 (report _2), hydra_satsuma 10-02/03
+# (report without suffix; August's is _2), satsuma 10-03/04 (report _2;
+# August's has no suffix).  Paper scoring (400 benchmarks, the August
+# official-budget re-check carried over by instance, sound because satsuma
+# and kissat are deterministic):
+#
+#                            solved   SAT  UNSAT  certified   PAR-2
+#   hydra (August)             318    132   186     185       2483
+#   satsuma                    334    139   195     193       2062   (August 2064)
+#   hydra_satsuma              335    139   196     194       2026   (August 2037)
+#   hydra_circuit_satsuma      338    139   199     197       1981
+#
+# Every verdict of each rerun matches its August run.  Per instance on rows
+# >= 5 s: hydra_satsuma 0.960 of August (md5 0.83), satsuma 0.992, and the
+# two October runs within 1% of each other where the August pair differed
+# by 2-3%.  Each run after the first began on a fuller host (the VM keeps
+# the memory it grew into), visible in its md5 block: restart Docker
+# Desktop between chained runs next time.
+#
+# Structural front-end, satsuma against hydra_satsuma in October: 360
+# non-structural benchmarks, zero flips, paired median +0.01 s and sum
+# +20 s (August's +1.16 s and +3,684 s were the runs' conditions); 40
+# structural benchmarks (27 Cook, 11 GN21, 2 factoring) decided in 1.2 s
+# total, satsuma 39 of 40 at a PAR-2 cost of 14,489 s.
+#
+# The circuit stage's trial, timed from the stage's own clock on all 391
+# instances, four at a time on the idle machine (sat -b hydra_circuit
+# with the trigger out of reach, killed at the stage's timing line): 296
+# pay it, median 0.30 s, p90 4.5 s, max 42.9 s (baseballcover12with25);
+# 42 skip it above the 10M-clause cap, 40 are decided before it; 569 s
+# over the 400 benchmarks, 1.4 PAR-2 points.  Against October
+# hydra_satsuma the circuit run is 4% slower per instance on the 287
+# benchmarks the engine decides in both, but the excess grows with solve
+# time (median +0.4 s under a minute, +4.8 s for 1-10 min, +24.5 s above),
+# which a fixed prefix cannot do; not attributed further.  Correction: the
+# stage runs on 13 instances, not 14 -- gm32spctlf (14M clauses) meets its
+# criteria but is over the cap and goes to the engine.

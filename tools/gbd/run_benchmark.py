@@ -174,8 +174,12 @@ def mem_estimate(rec: dict) -> Tuple[float, float]:
     3 GB of circuit trigger on 8-10M-clause formulas (skipped above 10M)."""
     gb = (rec.get("bytes") or 0) / 1e9
     ncl = rec.get("nclauses") or 0
-    vm = 1.0 + 3.0 * gb
-    host = 0.3 + 2.0 * gb + (min(3.0, 12.0 * gb) if 0 < ncl <= 10_000_000 else 0.0)
+    # by size, or by clause count for files dense in short clauses (kissat
+    # ~65 MB and the parsed formula ~44 MB per million clauses), whichever
+    # is larger
+    vm = 1.0 + max(3.0 * gb, 0.065 * ncl / 1e6)
+    host = (0.3 + max(2.0 * gb, 0.044 * ncl / 1e6)
+            + (min(3.0, 12.0 * gb) if 0 < ncl <= 10_000_000 else 0.0))
     if _mem_engine_on_host:
         return 0.0, vm + host
     return vm, host

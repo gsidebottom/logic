@@ -486,6 +486,42 @@ The second form adds the previous run's verdict and time per instance.
 The index and the worker count are read from the running
 `run_benchmark.py`'s command line.
 
+### `duo.py`
+
+Two solvers (or more) through one benchmark set side by side, for long runs
+on a shared machine. Every instance is solved by every backend in the
+index's order, the backends of one instance started together, so at any time
+`status` can score the instances all of them have finished: solved, SAT,
+UNSAT, timeouts, PAR-2, the instances only one solved, the time ratio, and,
+with checks on, PAR-2 with unchecked UNSATs counted as unsolved. Mismatches
+with the index's recorded status are flagged.
+
+```bash
+tools/gbd/duo.py start --dir RUN --index I.jsonl --cores 8 [--no-verify]
+tools/gbd/duo.py status
+tools/gbd/duo.py cores 6
+tools/gbd/duo.py cores 4 --now
+tools/gbd/duo.py pause
+tools/gbd/duo.py pause --drain
+tools/gbd/duo.py resume
+tools/gbd/duo.py stop
+tools/gbd/duo.py start --dir RUN
+```
+
+The scheduler runs detached and reads its controls every two seconds.
+`cores N` takes effect as jobs finish; `--now` stops the newest jobs above
+N. Times are the solver's own wall clock, so jobs are never suspended:
+`pause` (and `cores --now`, and `stop`) kills the running jobs with their
+containers and temporary files and puts them back at the front of the queue,
+to rerun from the start; `pause --drain` lets them finish instead. Finished
+jobs are appended to `RUN/results.jsonl` and never rerun, so a restart after
+`stop`, a crash or a reboot carries on. Memory admission is
+`run_benchmark.py`'s; launches hold below 50 GB of free disk; instances not
+yet downloaded are skipped until they arrive; `caffeinate -i` holds off idle
+sleep while jobs run. `--no-verify` passes `sat --no-verify`: UNSAT
+certificates are still written, so solving is unchanged, but not checked.
+The last RUN started is remembered in `~/.duo_current`.
+
 ### Memory admission in `run_benchmark.py`
 
 Every instance is sized at startup without decompressing it (the xz index

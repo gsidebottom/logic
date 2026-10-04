@@ -2829,6 +2829,11 @@ struct Args {
     /// --proof-timeout convention so hydra and hydra_satsuma proofs get
     /// equal checking budgets; 0 = unlimited.
     satsuma_verify_secs: Option<u64>,
+    /// satsuma backends and the circuit stage: skip the check of an UNSAT's
+    /// certificate after the verdict (`--no-verify`).  Solving is unchanged
+    /// (the proof is still written, so the search runs as it does when
+    /// checked); the UNSAT is reported unchecked, with its own marker.
+    no_verify: bool,
     /// hydra_satsuma/satsuma: per-container hard memory cap in GiB
     /// (docker --memory/--memory-swap). 0 = uncapped (competition-
     /// faithful; the Docker VM's total allocation still binds). A
@@ -2982,6 +2987,7 @@ fn parse_args() -> Result<Args, String> {
         xor_gauss: true,
         symbreak: None,
         satsuma_verify_secs: None,
+        no_verify: false,
         satsuma_mem_gb: 0,
         circuit_passes: "factor,cuts".into(),
         circuit_min_products: 64,
@@ -3122,6 +3128,7 @@ fn parse_args() -> Result<Args, String> {
             "--no-cook"         => { a.cook = false; }
             "--factoring"       => { a.factoring = true; }
             "--no-factoring"    => { a.factoring = false; }
+            "--no-verify" => { a.no_verify = true; }
             "--satsuma-verify-secs" => {
                 let v = iter.next().ok_or_else(||
                     "--satsuma-verify-secs requires a value (seconds; 0 = unlimited)".to_string())?;
@@ -3333,6 +3340,9 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    --circuit-min-share PCT (5) --circuit-min-sharing N (20)");
                 eprintln!("                    --circuit-probe-conflicts N (20000)");
                 eprintln!("                    --circuit-max-clauses N (10000000) --circuit-verify-secs S");
+                eprintln!("  --no-verify       satsuma backends and the circuit stage: skip the check of");
+                eprintln!("                    an UNSAT's certificate after the verdict (solving unchanged;");
+                eprintln!("                    the UNSAT is reported unchecked).");
                 eprintln!("  --cadical-proof FILE");
                 eprintln!("                    The cadical backend's own proof of an UNSAT verdict,");
                 eprintln!("                    binary DRAT, for drat-trim.  After a prefix written");
@@ -3487,6 +3497,8 @@ fn circuit_stage(args: &Args, bk: &str, nvars: usize, clauses: &[Vec<i32>], forc
             eprintln!("c {}: WARNING the certificate could not be written ({}) -- UNSAT sound-if-cadical-correct but UNCERTIFIED", bk, e);
         } else if forced.is_some() {
             eprintln!("c {}: UNSAT of GE residual (sound; the DRAT certificate covers the residual only -- uncertified for the original)", bk);
+        } else if args.no_verify {
+            eprintln!("c {}: verification skipped (--no-verify) -- UNSAT is sound-if-cadical-correct but UNCHECKED", bk);
         } else {
             // the formula the stage saw, for the checker
             let cnf_path = dir.join("f.cnf");
@@ -4318,6 +4330,10 @@ fn main() {
                     if forced.is_some() {
                         eprintln!("c {}: UNSAT of GE residual (sound; SR certificate covers \
                                    the residual only — uncertified for the original)", bk);
+                        if let Some(p) = args.proof.as_ref() { let _ = std::fs::remove_file(p); }
+                    } else if args.no_verify {
+                        eprintln!("c {}: verification skipped (--no-verify) — UNSAT is \
+                                   sound-if-kissat-correct but UNCHECKED", bk);
                         if let Some(p) = args.proof.as_ref() { let _ = std::fs::remove_file(p); }
                     } else {
                         // Phase B: bounded in-container dsr-trim verification.

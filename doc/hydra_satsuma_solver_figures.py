@@ -37,13 +37,23 @@ for f in ("competition-benchmark_unchecked26_5000_hydra_satsuma.json",
         if r.get("pb_proof_ok") is True:
             recheck[h] = r
 
+# The paper's rows.  hydra is the August 2026 run; the three satsuma-based
+# arms are the October reruns under memory-aware scheduling and a 32 GB VM.
+# Report names are first come, first served, so the suffixes do not follow
+# the dates: satsuma August = no suffix, October = _2; hydra_satsuma August
+# = _2, October = no suffix; hydra_circuit_satsuma 09-30 = no suffix,
+# October = _2.
 ARMS = {
     "hydra": "competition-benchmark_main_track_2026_official_5000_hydra.json",
-    "satsuma": "competition-benchmark_main_track_2026_official_5000_satsuma.json",
-    "hydra_satsuma": "competition-benchmark_main_track_2026_official_5000_hydra_satsuma_2.json",
-    # the 2026-10-01/02 run (memory-aware scheduling, 32 GB VM); the 09-30 run is the file without _2
+    "satsuma": "competition-benchmark_main_track_2026_official_5000_satsuma_2.json",
+    "hydra_satsuma": "competition-benchmark_main_track_2026_official_5000_hydra_satsuma.json",
     "hydra_circuit_satsuma": "competition-benchmark_main_track_2026_official_5000_hydra_circuit_satsuma_2.json",
 }
+AUGUST = {
+    "satsuma": "competition-benchmark_main_track_2026_official_5000_satsuma.json",
+    "hydra_satsuma": "competition-benchmark_main_track_2026_official_5000_hydra_satsuma_2.json",
+}
+MONTH = {"hydra": "August"}
 
 def score(arm, path, timeout=5000):
     res = by_hash(path)
@@ -66,10 +76,12 @@ def score(arm, path, timeout=5000):
 
 
 def table():
-    print(f"{'arm':22s} {'solved':>6s} {'SAT':>4s} {'UNSAT':>5s} {'cert':>5s} {'PAR-2':>8s}  uncertified UNSATs")
-    for arm, f in ARMS.items():
-        s = score(arm, D / f)
-        print(f"{arm:22s} {s['solved']:6d} {s['sat']:4d} {s['unsat']:5d} {s['certified']:5d} {s['par2']:8.2f}  {', '.join(s['uncertified'])}")
+    print(f"{'arm':30s} {'solved':>6s} {'SAT':>4s} {'UNSAT':>5s} {'cert':>5s} {'PAR-2':>8s}  uncertified UNSATs")
+    rows = [(arm + (f" ({MONTH[arm]})" if arm in MONTH else " (October)"), f) for arm, f in ARMS.items()]
+    rows += [(arm + " (August)", f) for arm, f in AUGUST.items()]
+    for label, f in rows:
+        s = score(label, D / f)
+        print(f"{label:30s} {s['solved']:6d} {s['sat']:4d} {s['unsat']:5d} {s['certified']:5d} {s['par2']:8.2f}  {', '.join(s['uncertified'])}")
 
 def cactus(out):
     import matplotlib
@@ -89,7 +101,7 @@ def cactus(out):
     for arm, path in ARMS.items():
         ts, ns = curve(path); st = style[arm]
         ax.plot(ts, ns, "-", color=st["color"], lw=st["lw"], alpha=st.get("alpha", 1.0), zorder=st["zorder"],
-                label=f"{arm} ({len(ts)} solved)")
+                label=f"{arm}{' (' + MONTH[arm] + ')' if arm in MONTH else ''}, {len(ts)} solved")
         if st["ms"]:
             ax.plot(ts, ns, "o", color=st["color"], ms=st["ms"], mew=0, alpha=0.6, zorder=st["zorder"])
     ax.axvline(5000, color="#999", lw=0.8, ls="--", zorder=0)

@@ -212,8 +212,30 @@ def read_outcome(stderr: str, stdout: str) -> dict:
                 check=check, check_s=check_s)
 
 
+def handoff_s(stderr: str, timeout: int) -> Optional[float]:
+    """When the engine took over, in seconds on the solver's own clock: the
+    hand-off line of sat (2026-10-04 on), else the budget the satsuma block
+    announced (timeout - 2 - budget, to the second), else None."""
+    m = re.search(r"engine hand-off at ([0-9.]+)ms", stderr)
+    if m:
+        return float(m.group(1)) / 1000.0
+    m = re.search(r"-> satsuma-iter\+kissat \(docker\)[^\n]*?budget=(\d+)s", stderr)
+    if m:
+        return float(max(0, timeout - 2 - int(m.group(1))))
+    return None
+
+
 # --------------------------------------------------------------------------
 # the scheduler
+#
+# Reuse mode (config "reuse": {target: source}, e.g. hydra_circuit_satsuma ->
+# satsuma): the target runs with --stop-at-fallthrough, i.e. only its own
+# stages.  If a stage decides the instance, that is its result.  If it hands
+# the formula on, the engine would run on the identical formula the source
+# backend gives it (byte-identical f.cnf, deterministic satsuma and kissat),
+# so the target's result is the source's, its time the target's prefix plus
+# the source's engine time; recorded with reused_from, prefix_s and
+# source_prefix_s.  Hand-offs wait in fallthrough.jsonl for the source.
 # --------------------------------------------------------------------------
 class Job:
     def __init__(self, h: str, backend: str, order: int):
@@ -240,13 +262,17 @@ class Scheduler:
         self.backends: List[str] = self.cfg["backends"]
         (run / "logs").mkdir(exist_ok=True)
         (run / "work").mkdir(exist_ok=True)
-        done = set()
-        for line in open(run / "results.jsonl") if (run / "results.jsonl").exists() else []:
-            try:
-                r = json.loads(line)
-                done.add((r["hash"], r["backend"]))
-            except (ValueError, KeyError):
-                pass
+        self.reuse: Dict[str, str] = self.cfg.get("reuse", {})
+        self.results: Dict[Tuple[str, str], dict] = load_results(run)
+        self.fall: Dict[Tuple[str, str], dict] = {}
+        if (run / "fallthrough.jsonl").exists():
+            for line in open(run / "fallthrough.jsonl"):
+                try:
+                    r = json.loads(line)
+                    self.fall[(r["hash"], r["backend"])] = r
+                except (ValueError, KeyError):
+                    pass
+        done = set(self.results) | set(self.fall)
         self.queue: List[Job] = []
         for i, h in enumerate(self.cfg["order"]):
             for b in self.backends:
@@ -265,6 +291,7 @@ class Scheduler:
         write_json(run / "running.json", [])
         for f in (run / "work").glob("*.part"):
             f.unlink(missing_ok=True)
+        self.reconcile()
 
     # ---- control
     def control(self) -> dict:
@@ -323,6 +350,8 @@ class Scheduler:
         cmd = [str(SAT_BIN), "-b", j.backend, "-t", str(self.cfg["timeout"]), "--proof", str(j.proof)]
         if not self.cfg.get("verify", True):
             cmd.append("--no-verify")
+        if j.backend in self.reuse:
+            cmd.append("--stop-at-fallthrough")
         cmd += self.cfg.get("sat_args", [])
         j.proc = subprocess.Popen(cmd, stdin=open(self.cnf_path(j.h), "rb"),
                                   stdout=open(j.out, "w"), stderr=open(j.err, "w"),
@@ -346,6 +375,8 @@ class Scheduler:
             if pick is None:
                 return
             vm, host = rb.mem_estimate(self.recs[pick.h])
+            if pick.backend in self.reuse:
+                vm, host = 0.0, vm + host
             if self.running and (self.used_vm + vm > c["mem_budget_vm"]
                                  or self.used_host + host > c["mem_budget_host"]):
                 return                                   # first in, first out
@@ -395,6 +426,20 @@ class Scheduler:
             cleanup_tmp(j.proc.pid, j.proof)
             j.out.unlink(missing_ok=True)       # the model; the verdict is in the record
             rec = self.recs[j.h]
+            if j.backend in self.reuse and "fall-through: stopping before the engine" in stderr:
+                fr = dict(hash=j.h, backend=j.backend, source=self.reuse[j.backend],
+                          prefix_s=handoff_s(stderr, self.cfg["timeout"]), rc=rc,
+                          started=dt.datetime.fromtimestamp(j.started).isoformat(timespec="seconds"),
+                          finished=now_iso(), wall_s=round(time.time() - j.started, 1))
+                with open(self.run / "fallthrough.jsonl", "a") as f:
+                    f.write(json.dumps(fr) + "\n")
+                self.fall[(j.h, j.backend)] = fr
+                log_event(self.run, f"hand-off {rec['name']} {j.backend} after {fr['prefix_s']} s; "
+                                    f"result from {fr['source']}")
+                self.release(j)
+                self.drop_instance_if_done(j.h)
+                self.reconcile(j.h)
+                continue
             if o["result"] in ("UNKNOWN", "INTERRUPTED") and rc != 0:
                 o["result"] = "ERROR"
             expected = (rec.get("status") or "").upper()
@@ -407,10 +452,43 @@ class Scheduler:
                        cores=self.control()["cores"])
             with open(self.run / "results.jsonl", "a") as f:
                 f.write(json.dumps(row) + "\n")
+            self.results[(j.h, j.backend)] = row
             log_event(self.run, f"done {rec['name']} {j.backend} {o['result']} {o['time_s']}"
                                 + (" MISMATCH" if row["mismatch"] else ""))
             self.release(j)
             self.drop_instance_if_done(j.h)
+            self.reconcile(j.h)
+
+    def reconcile(self, h: Optional[str] = None) -> None:
+        """Turn hand-offs whose source result exists into result rows."""
+        T = self.cfg["timeout"]
+        for (hh, tgt), fr in list(self.fall.items()):
+            if (h is not None and hh != h) or (hh, tgt) in self.results:
+                continue
+            src = fr.get("source") or self.reuse.get(tgt)
+            srow = self.results.get((hh, src))
+            if srow is None:
+                continue
+            serr = self.run / "logs" / f"{hh}.{src}.err"
+            spre = handoff_s(serr.read_text(errors="replace"), T) if serr.exists() else None
+            tpre = fr.get("prefix_s") or 0.0
+            result, t = srow["result"], srow.get("time_s")
+            if result in ("SAT", "UNSAT") and t is not None:
+                t = tpre + (t - (spre or 0.0))
+                if t > T:
+                    result, t = "TIMEOUT", float(T)
+            row = dict(srow)
+            row.update(backend=tgt, result=result, time_s=(round(t, 4) if t is not None else None),
+                       reused_from=src, prefix_s=tpre, source_prefix_s=spre, rc=fr.get("rc", 0),
+                       started=fr.get("started"), finished=now_iso(), wall_s=fr.get("wall_s"))
+            if result != srow["result"]:
+                row.update(prover=None, check=None, check_s=None)
+            exp = (row.get("expected") or "").upper()
+            row["mismatch"] = bool(exp in ("SAT", "UNSAT") and result in ("SAT", "UNSAT") and result != exp)
+            with open(self.run / "results.jsonl", "a") as f:
+                f.write(json.dumps(row) + "\n")
+            self.results[(hh, tgt)] = row
+            log_event(self.run, f"done {self.recs[hh]['name']} {tgt} {result} {row['time_s']} (from {src})")
 
     # ---- bookkeeping for status
     def publish(self, c: dict) -> None:
@@ -636,6 +714,22 @@ def cmd_status(args) -> None:
           f"{max(0.0, st.get('used_host', 0)):.1f}/{c.get('mem_budget_host', cfg.get('mem_budget_host'))} GB host")
     per = {b: sum(1 for (h, bb) in res if bb == b) for b in backends}
     missing = sum(1 for h in order if find_xz(cfg["records"][h]) is None)
+    reuse = cfg.get("reuse", {})
+    for tgt, src in reuse.items():
+        nre = sum(1 for (h, b), r in res.items() if b == tgt and r.get("reused_from"))
+        nrun = sum(1 for (h, b), r in res.items() if b == tgt and not r.get("reused_from"))
+        npend = 0
+        if (run / "fallthrough.jsonl").exists():
+            for line in open(run / "fallthrough.jsonl"):
+                try:
+                    fr = json.loads(line)
+                except ValueError:
+                    continue
+                if fr.get("backend") == tgt and (fr["hash"], tgt) not in res:
+                    npend += 1
+        print(f"reuse since {cfg.get('reuse_since', '?')[:16].replace('T', ' ')}: {tgt} runs its own stages only; "
+              f"{nre} results taken from {src} (stages handed on), {nrun} run in full or decided by its stages, "
+              f"{npend} waiting for {src}")
     print(f"done by both: {len(both)} of {len(order)} ({100 * len(both) / max(1, len(order)):.1f}%); "
           + ", ".join(f"{b} {n}" for b, n in per.items())
           + (f"; {missing} instances not on disk yet" if missing else ""))
@@ -983,6 +1077,16 @@ def cmd_start(args) -> None:
         set_control(run, stop=False)
         if args.cores_given:
             set_control(run, cores=args.cores)
+    if getattr(args, "reuse", None):
+        cfg = read_json(run / "config.json", {})
+        tgt, src = args.reuse.split("=", 1)
+        if tgt not in cfg["backends"] or src not in cfg["backends"] or tgt == src:
+            sys.exit(f"--reuse {args.reuse}: both must be backends of this run, and different")
+        if cfg.get("reuse", {}).get(tgt) != src:
+            cfg.setdefault("reuse", {})[tgt] = src
+            cfg["reuse_since"] = now_iso()
+            write_json(run / "config.json", cfg)
+            log_event(run, f"reuse: {tgt} runs its stages only and takes {src}'s result on a hand-off")
     CURRENT.write_text(str(run))
     log = open(run / "scheduler.log", "a")
     p = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "_loop", "--dir", str(run)],
@@ -1066,6 +1170,10 @@ def main() -> None:
     s.add_argument("--mem-budget-host", type=float, default=20.0)
     s.add_argument("--disk-brake-gb", type=float, default=50.0)
     s.add_argument("--sat-arg", action="append", default=[])
+    s.add_argument("--reuse", metavar="TARGET=SOURCE",
+                   help="TARGET runs only its own stages (sat --stop-at-fallthrough); when it hands the "
+                        "formula on, its result is SOURCE's on the identical formula, its time its own "
+                        "prefix plus SOURCE's engine time. Can be switched on when restarting a run.")
     for name, h in (("status", "score what both have finished, and what runs now"),
                     ("pause", "stop the running jobs (or --drain) and start none"),
                     ("resume", "carry on"), ("stop", "end the scheduler; start --dir resumes")):

@@ -2834,6 +2834,11 @@ struct Args {
     /// (the proof is still written, so the search runs as it does when
     /// checked); the UNSAT is reported unchecked, with its own marker.
     no_verify: bool,
+    /// satsuma backends: stop where the formula would go to the engine
+    /// (`--stop-at-fallthrough`), printing the hand-off time, and run no
+    /// engine.  For a caller that already has the engine's result on the
+    /// identical formula (tools/gbd/duo.py's reuse mode).
+    stop_at_fallthrough: bool,
     /// hydra_satsuma/satsuma: per-container hard memory cap in GiB
     /// (docker --memory/--memory-swap). 0 = uncapped (competition-
     /// faithful; the Docker VM's total allocation still binds). A
@@ -2988,6 +2993,7 @@ fn parse_args() -> Result<Args, String> {
         symbreak: None,
         satsuma_verify_secs: None,
         no_verify: false,
+        stop_at_fallthrough: false,
         satsuma_mem_gb: 0,
         circuit_passes: "factor,cuts".into(),
         circuit_min_products: 64,
@@ -3129,6 +3135,7 @@ fn parse_args() -> Result<Args, String> {
             "--factoring"       => { a.factoring = true; }
             "--no-factoring"    => { a.factoring = false; }
             "--no-verify" => { a.no_verify = true; }
+            "--stop-at-fallthrough" => { a.stop_at_fallthrough = true; }
             "--satsuma-verify-secs" => {
                 let v = iter.next().ok_or_else(||
                     "--satsuma-verify-secs requires a value (seconds; 0 = unlimited)".to_string())?;
@@ -3340,6 +3347,9 @@ fn parse_args() -> Result<Args, String> {
                 eprintln!("                    --circuit-min-share PCT (5) --circuit-min-sharing N (20)");
                 eprintln!("                    --circuit-probe-conflicts N (20000)");
                 eprintln!("                    --circuit-max-clauses N (10000000) --circuit-verify-secs S");
+                eprintln!("  --stop-at-fallthrough");
+                eprintln!("                    satsuma backends: stop where the formula would go to the");
+                eprintln!("                    engine, after printing the hand-off time; no engine runs.");
                 eprintln!("  --no-verify       satsuma backends and the circuit stage: skip the check of");
                 eprintln!("                    an UNSAT's certificate after the verdict (solving unchanged;");
                 eprintln!("                    the UNSAT is reported unchecked).");
@@ -4176,6 +4186,14 @@ fn main() {
         // binds overall. A dsr-trim timeout/failure downgrades the UNSAT to
         // sound-but-UNCERTIFIED; the verdict itself is never lost.
         if matches!(args.backend, BackendChoice::HydraSatsuma | BackendChoice::Satsuma | BackendChoice::HydraCircuitSatsuma) {
+            // Everything before this point (parsing, hydra's stages, the
+            // circuit stage) is this backend's prefix; the engine starts here.
+            eprintln!("c {}: engine hand-off at {:.1}ms", bk, t0.elapsed().as_secs_f64() * 1000.0);
+            if args.stop_at_fallthrough {
+                eprintln!("c {}: fall-through: stopping before the engine (--stop-at-fallthrough)", bk);
+                println!("s UNKNOWN");
+                std::process::exit(0);
+            }
             // Self-healing sweep: remove pbsatsuma-<pid> dirs whose owning
             // sat process is gone (crashed/killed runs leak them, each
             // holding a multi-GB proof). `kill -0` succeeding means the pid

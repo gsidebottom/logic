@@ -519,6 +519,17 @@ largest time differences each way, a table by family, and mismatches and
 errors. Run while the scheduler works, it writes partial reports, marked as
 such; the scheduler writes the final ones itself when the last job finishes.
 
+`start --reuse TARGET=SOURCE` (also when restarting a run) stops paying
+twice for the same computation: TARGET runs only its own stages
+(`sat --stop-at-fallthrough`). If a stage decides the instance, that is its
+result. If it hands the formula on, the engine would run on the formula
+SOURCE gives it, byte for byte (checked: identical `f.cnf`, deterministic
+satsuma and kissat), so TARGET's result is SOURCE's and its time is its own
+stage time plus SOURCE's engine time (`sat` prints `engine hand-off at Nms`).
+Such rows carry `reused_from`, `prefix_s` and `source_prefix_s`; hand-offs
+wait in `RUN/fallthrough.jsonl` for SOURCE's result, across restarts.
+`status` counts reused, run and waiting results.
+
 `reference --csv F --label L` attaches other solvers' per-instance times on
 the same set (columns `hash, benchmark, verified-result, claimed-result`,
 then seconds per solver, twice the timeout meaning unsolved, as in the SAT

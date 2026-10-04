@@ -519,6 +519,15 @@ largest time differences each way, a table by family, and mismatches and
 errors. Run while the scheduler works, it writes partial reports, marked as
 such; the scheduler writes the final ones itself when the last job finishes.
 
+`reference --csv F --label L` attaches other solvers' per-instance times on
+the same set (columns `hash, benchmark, verified-result, claimed-result`,
+then seconds per solver, twice the timeout meaning unsolved, as in the SAT
+Competition's detailed results, e.g. `anni-seq.csv` of
+`sc2022-detailed-results.zip`). `status` then adds the field's virtual best
+and its best single solver on the same instances, the instances solved here
+and by none of the field (and the reverse), and for each running job how the
+field did on it; `report` adds the same as a section.
+
 The scheduler runs detached and reads its controls every two seconds.
 `cores N` takes effect as jobs finish; `--now` stops the newest jobs above
 N. Times are the solver's own wall clock, so jobs are never suspended:

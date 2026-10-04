@@ -15,6 +15,7 @@ one of them solved, the time ratio.
     tools/gbd/duo.py resume
     tools/gbd/duo.py stop                  # end the scheduler; `start --dir RUN` resumes
     tools/gbd/duo.py report [--out-dir D]  # markdown + JSON + cactus, partial while running
+    tools/gbd/duo.py reference --csv F     # other solvers' times on the same set, shown beside ours
 
 Timing is the solver's own wall clock, so a job is never suspended: pausing
 (or `cores N --now`, or `stop`) kills the running jobs, their containers and
@@ -468,14 +469,91 @@ class Scheduler:
             if not self.queue and not self.running:
                 log_event(self.run, "all jobs done")
                 self.keep_awake(False)
-                try:
-                    out = Path(self.cfg.get("report_dir") or (REPO / "doc"))
-                    for p in write_reports(self.run, out):
-                        log_event(self.run, f"report written: {p}")
-                except Exception as e:                    # the results are safe in results.jsonl
-                    log_event(self.run, f"report failed: {e!r}")
+                # through the file on disk, so a long run reports with the latest code
+                out = str(self.cfg.get("report_dir") or (REPO / "doc"))
+                r = subprocess.run([sys.executable, str(Path(__file__).resolve()), "report", "--dir", str(self.run),
+                                    "--out-dir", out], capture_output=True, text=True)
+                log_event(self.run, "reports written: " + " ".join(r.stdout.split()) if r.returncode == 0
+                          else f"report failed (rc {r.returncode}): {r.stderr[-500:]}")
                 return
             time.sleep(2)
+
+
+# --------------------------------------------------------------------------
+# a reference field: per-instance times of other solvers on the same set, e.g.
+# the SAT Competition 2022 anniversary track (anni-seq.csv of
+# sc2022-detailed-results.zip: hash, benchmark, verified-result,
+# claimed-result, one column of seconds per solver, 2 x timeout = unsolved)
+# --------------------------------------------------------------------------
+def load_reference(run: Path) -> Optional[dict]:
+    meta = read_json(run / "reference.json", None)
+    if not meta:
+        return None
+    import csv
+    rows = list(csv.DictReader(open(meta["csv"])))
+    if not rows:
+        return None
+    solvers = [k for k in rows[0] if k not in ("hash", "benchmark", "verified-result", "claimed-result")]
+    limit = float(meta.get("timeout", 5000))
+    times: Dict[str, Dict[str, float]] = {}
+    verdict: Dict[str, str] = {}
+    for r in rows:
+        t = {}
+        for sv in solvers:
+            try:
+                x = float(r[sv])
+            except (TypeError, ValueError):
+                continue
+            t[sv] = x
+        times[r["hash"]] = t
+        v = (r.get("verified-result") or "").upper()
+        verdict[r["hash"]] = v if v in ("SAT", "UNSAT") else (r.get("claimed-result") or "").upper()
+    def solved(h, sv):
+        return times.get(h, {}).get(sv, 2 * limit) < limit
+    best = max(solvers, key=lambda sv: (sum(solved(h, sv) for h in times),
+                                        -sum(min(times[h].get(sv, 2 * limit), 2 * limit) for h in times)))
+    return dict(label=meta.get("label", Path(meta["csv"]).name), solvers=solvers, times=times, limit=limit,
+                verdict=verdict, best=best, solved=solved,
+                n_all=len(times), vbs_all=sum(any(solved(h, sv) for sv in solvers) for h in times),
+                best_all=sum(solved(h, best) for h in times))
+
+
+def reference_scores(ref: dict, hs: List[str]) -> Dict[str, Tuple[int, int, int, float]]:
+    """name -> (solved, SAT, UNSAT, PAR-2) on these instances: the virtual best and the best single solver."""
+    lim = ref["limit"]
+    out = {}
+    for name in ("VBS", ref["best"]):
+        sol = sat = uns = 0
+        par = 0.0
+        for h in hs:
+            ts = ref["times"].get(h, {})
+            t = min(ts.values()) if (name == "VBS" and ts) else ts.get(name, 2 * lim)
+            if t < lim:
+                sol += 1
+                sat += ref["verdict"].get(h) == "SAT"
+                uns += ref["verdict"].get(h) == "UNSAT"
+                par += t
+            else:
+                par += 2 * lim
+        out[name] = (sol, sat, uns, par / max(1, len(hs)))
+    return out
+
+
+def reference_note(ref: dict, h: str) -> str:
+    ts = ref["times"].get(h)
+    if ts is None:
+        return "not in the reference"
+    s = sorted(t for t in ts.values() if t < ref["limit"])
+    return (f"{len(s)}/{len(ts)} solved, best {s[0]:.0f} s" if s else f"unsolved by all {len(ts)}")
+
+
+def cmd_reference(args) -> None:
+    run = run_dir(args.dir)
+    csv_path = str(Path(args.csv).resolve())
+    write_json(run / "reference.json", dict(csv=csv_path, label=args.label, timeout=args.timeout))
+    ref = load_reference(run)
+    print(f"reference attached: {ref['label']}: {len(ref['solvers'])} solvers on {ref['n_all']} instances; "
+          f"virtual best {ref['vbs_all']}, best single {ref['best']} {ref['best_all']}")
 
 
 # --------------------------------------------------------------------------
@@ -575,6 +653,19 @@ def cmd_status(args) -> None:
                 unch = sum(r["result"] == "UNSAT" and r.get("check") != "verified" for r in rows)
                 line += f" {cpar2:10.1f} {unch:9d}"
             print(line)
+        ref = load_reference(run)
+        if ref:
+            sc = reference_scores(ref, both)
+            for name, (sol, sat, uns, par) in sc.items():
+                label = f"{'2022 ' if '2022' in ref['label'] else 'ref '}{'virtual best' if name == 'VBS' else name}"
+                print(f"  {label[:24]:24s} {sol:6d} {sat:5d} {uns:5d} {n - sol:7d} {'':5s} {par:8.1f}")
+            beyond = {b: [h for h in both if h in solved[b] and not any(ref["solved"](h, sv) for sv in ref["solvers"])]
+                      for b in backends}
+            missed = {b: [h for h in both if h not in solved[b] and any(ref["solved"](h, sv) for sv in ref["solvers"])]
+                      for b in backends}
+            print(f"  ({ref['label']}: its times are on the competition's machines, so compare counts, not PAR-2.)")
+            print("  beyond the reference's virtual best: " + ", ".join(f"{b} {len(beyond[b])}" for b in backends)
+                  + "; solved there but not here: " + ", ".join(f"{b} {len(missed[b])}" for b in backends))
         print("  unique: solved by that backend and not by the other" + ("s" if len(backends) > 2 else "")
               + "; PAR-2: mean over these instances of the solve time, 2 x the timeout if unsolved")
         if len(backends) == 2:
@@ -598,11 +689,13 @@ def cmd_status(args) -> None:
                   f"the remaining {len(order) - len(both)} at that pace: {fmt_dur((len(order) - len(both)) / rate)}")
     if running:
         ph = phase_of_running(running)
+        ref = load_reference(run)
         t = time.time()
-        print(f"\nrunning:")
+        print(f"\nrunning:" + (f"{'':104s}{'2022' if ref and '2022' in ref['label'] else 'reference'}" if ref else ""))
         for r in sorted(running, key=lambda r: r["started"]):
             what = "decompressing" if r["state"] == "decompress" else ph.get(r["pid"], "?")
-            print(f"  {r['name'][:44]:44s} {r['backend'][:22]:22s} {what:34s} {fmt_dur(t - r['started']):>9s}")
+            print(f"  {r['name'][:44]:44s} {r['backend'][:22]:22s} {what:34s} {fmt_dur(t - r['started']):>9s}"
+                  + (f"   {reference_note(ref, r['hash'])}" if ref else ""))
 
 
 def _pid_alive(pid: int) -> bool:
@@ -772,6 +865,30 @@ def write_reports(run: Path, out_dir: Path) -> List[Path]:
                 cells.append(f"{sum(scored(res[(h, b)], timeout, False)[1] for h in hs) / len(hs):.0f}")
             L.append(f"| {f} | {len(hs)} | " + " | ".join(cells) + " |")
         L.append("")
+        ref = load_reference(run)
+        if ref:
+            sc = reference_scores(ref, both)
+            L += [f"## Against the reference field: {ref['label']}", "",
+                  f"The same {n} instances; its times are on the competition's machines, so the counts compare "
+                  f"and the PAR-2 values only roughly. Over the whole set its virtual best solved {ref['vbs_all']} "
+                  f"of {ref['n_all']} and its best single solver, {ref['best']}, {ref['best_all']}.", "",
+                  "| solver | solved | SAT | UNSAT | PAR-2 |", "|---|---|---|---|---|"]
+            for b in backends:
+                rows = [res[(h, b)] for h in both]
+                L.append(f"| {b} (here) | {len(solved[b])} | {sum(r['result'] == 'SAT' for r in rows)} | "
+                         f"{sum(r['result'] == 'UNSAT' for r in rows)} | {sum(scored(r, timeout, False)[1] for r in rows) / n:.1f} |")
+            for name, (sol, sat, uns, par) in sc.items():
+                L.append(f"| {'virtual best' if name == 'VBS' else name} (reference) | {sol} | {sat} | {uns} | {par:.1f} |")
+            L.append("")
+            for b in backends:
+                beyond = [h for h in both if h in solved[b] and not any(ref["solved"](h, sv) for sv in ref["solvers"])]
+                if beyond:
+                    L += [f"### Solved by {b}, by no solver of the reference ({len(beyond)})", "",
+                          f"| instance | family | {b} |", "|---|---|---|"]
+                    for h in sorted(beyond, key=lambda h: res[(h, b)]["time_s"] or 0):
+                        L.append(f"| {cfg['records'][h]['name']} | {cfg['records'][h].get('family')} | "
+                                 f"{res[(h, b)]['result']} {res[(h, b)]['time_s']:.1f} s |")
+                    L.append("")
         mism = [r for r in res.values() if r.get("mismatch")]
         errs = [r for r in res.values() if r["result"] == "ERROR"]
         L += ["## Soundness", "", f"Mismatches with the recorded status: {len(mism) or 'none'}."
@@ -946,6 +1063,11 @@ def main() -> None:
             p.add_argument("--running", action="store_true")
         if name == "pause":
             p.add_argument("--drain", action="store_true", help="let the running jobs finish")
+    rf = sub.add_parser("reference", help="attach other solvers' per-instance times on the same set")
+    rf.add_argument("--csv", required=True, help="hash, benchmark, verified-result, claimed-result, then seconds per solver")
+    rf.add_argument("--label", default="reference")
+    rf.add_argument("--timeout", type=float, default=5000)
+    rf.add_argument("--dir")
     rp = sub.add_parser("report", help="write the markdown, JSON and cactus reports (partial while running)")
     rp.add_argument("--dir")
     rp.add_argument("--out-dir", help="default: the repository's doc/")
@@ -961,6 +1083,7 @@ def main() -> None:
         if args.cores is None:
             args.cores = 8
     {"start": cmd_start, "_loop": cmd_loop, "status": cmd_status, "cores": cmd_cores, "report": cmd_report,
+     "reference": cmd_reference,
      "pause": cmd_pause, "resume": cmd_resume, "stop": cmd_stop}[args.cmd](args)
 
 

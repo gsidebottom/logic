@@ -70,7 +70,8 @@ echo
 
 # Step 1: fetch the .uri file.
 wget --quiet -O "$uri_file" "$uri_url"
-n_uri=$(wc -l < "$uri_file" | tr -d ' ')
+# count lines, the last one included: the server ends the list without a newline
+n_uri=$(grep -c . "$uri_file" || true)
 echo "matched:    $n_uri instances"
 
 # Optional limit.
@@ -84,7 +85,7 @@ fi
 # <md5>-<original_basename>.cnf.xz; we match by md5 prefix.
 already=0
 declare -a need_urls
-while IFS= read -r url; do
+while IFS= read -r url || [ -n "$url" ]; do     # `|| [ -n ]`: the unterminated last line
     [ -z "$url" ] && continue
     # The md5 is in the URL path: /file/<md5>
     md5=$(echo "$url" | sed -E 's|.*/||; s|\?.*||')

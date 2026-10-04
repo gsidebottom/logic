@@ -559,7 +559,7 @@ def cmd_status(args) -> None:
         n = len(both)
         print(f"\non the {n} done by both" + (" (PAR-2 certified: unchecked UNSATs count as unsolved)" if cfg.get("verify", True) else "") + ":")
         print(f"  {'backend':24s} {'solved':>6s} {'SAT':>5s} {'UNSAT':>5s} {'timeout':>7s} {'other':>5s} "
-              f"{'PAR-2':>8s} {'only it':>7s}" + (f" {'cert PAR-2':>10s} {'unchecked':>9s}" if cfg.get('verify', True) else ""))
+              f"{'PAR-2':>8s} {'unique':>7s}" + (f" {'cert PAR-2':>10s} {'unchecked':>9s}" if cfg.get('verify', True) else ""))
         solved = {b: {h for h in both if res[(h, b)]["result"] in ("SAT", "UNSAT")} for b in backends}
         for b in backends:
             rows = [res[(h, b)] for h in both]
@@ -575,6 +575,8 @@ def cmd_status(args) -> None:
                 unch = sum(r["result"] == "UNSAT" and r.get("check") != "verified" for r in rows)
                 line += f" {cpar2:10.1f} {unch:9d}"
             print(line)
+        print("  unique: solved by that backend and not by the other" + ("s" if len(backends) > 2 else "")
+              + "; PAR-2: mean over these instances of the solve time, 2 x the timeout if unsolved")
         if len(backends) == 2:
             a, b = backends
             pairs = [(res[(h, a)]["time_s"], res[(h, b)]["time_s"]) for h in both
@@ -717,7 +719,7 @@ def write_reports(run: Path, out_dir: Path) -> List[Path]:
     solved = {b: {h for h in both if res[(h, b)]["result"] in ("SAT", "UNSAT")} for b in backends}
     if n:
         L += ["## Score on the instances done by both", "",
-              "| backend | solved | SAT | UNSAT | timeout | other | PAR-2 | only it |",
+              "| backend | solved | SAT | UNSAT | timeout | other | PAR-2 | unique |",
               "|---|---|---|---|---|---|---|---|"]
         for b in backends:
             rows = [res[(h, b)] for h in both]
@@ -727,7 +729,9 @@ def write_reports(run: Path, out_dir: Path) -> List[Path]:
             par2 = sum(scored(r, timeout, False)[1] for r in rows) / n
             only = len(solved[b] - set.union(*(solved[x] for x in backends if x != b))) if len(backends) > 1 else 0
             L.append(f"| {b} | {sat + uns} | {sat} | {uns} | {to} | {n - sat - uns - to} | {par2:.1f} | {only} |")
-        L.append("")
+        L += ["", "unique: solved by that backend and not by the other"
+              + ("s" if len(backends) > 2 else "") + "; PAR-2: the mean over these instances of the "
+              f"solve time, {2 * timeout} s for an unsolved one.", ""]
         if len(backends) == 2:
             a, b = backends
             pairs = [(h, res[(h, a)]["time_s"], res[(h, b)]["time_s"]) for h in both

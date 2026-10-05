@@ -31,7 +31,50 @@ long-learned-clauses 7/11, purdom-instances 7/15, prime-factoring 6/51.
 
 Not a 2022 solve is not a unique solve here: satsuma's symmetry breaking
 also cracks many of these (php-025-024 in 0.36 s, x2_128 in 0.43 s, both
-unsolved by all 28 in 2022); the duo run decides that instance by instance.
+unsolved by all 28 in 2022). The next section says which.
+
+## Which stage instances satsuma decides anyway (2026-10-05)
+
+In reuse mode a unique win for hydra_circuit_satsuma needs an instance one
+of its stages decides and satsuma fails. Every other instance takes
+satsuma's result. `tools/gbd/sym_probe.py` ran satsuma's symmetry step
+alone, with the competition flags and no kissat, on the 264 instances the
+stages decide. Per instance: `sat_benchmarks/runs/anni_2022_duo/sym_probe.jsonl`.
+
+| satsuma's symmetry step alone | instances | unsolved by all 28 in 2022 | satsuma in the duo run, first 654 instances |
+|---|---|---|---|
+| derives the empty clause | 207 | 107 | 35 of 35 solved, median 0.30 s, max 13.8 s |
+| fixes variables, does not refute | 30 | 20 | 2 of 2 solved, 11.5 s and 11.9 s |
+| finds no symmetry | 27 | 2 | 9 of 10 solved; the failure is pmg-14 |
+
+Structure decides which row an instance lands in, measured by reading the
+complete XOR encodings in each instance's clauses:
+
+- Tseitin, Urquhart and xor-chain instances encode their parities as plain
+  XOR clauses, and every variable sits in exactly two of them. Flipping the
+  variables around any cycle of the underlying graph is then a symmetry,
+  and breaking those flips leaves nothing to search. On the Tseitin grids
+  the step fixes 900 to 1,000 variables and kissat finishes in seconds.
+- pmg-N and eulcbip-N are Tseitin formulas inside cardinality encodings:
+  exactly one of three edges at each vertex in pmg, exactly two of four in
+  eulcbip, with one twisted pair making the total parity odd. Each vertex's
+  clauses hold a complete XOR encoding, which the XOR stage reads, and one or
+  two extra clauses, which destroy the cycle flips. satsuma finds no
+  symmetry on pmg-13 and pmg-14 and fixes at most one variable on the others,
+  so kissat meets a Tseitin formula at full strength.
+- The random parity systems, mod2-rand3bip and mod2-3g14, put every variable
+  in three equations, so no flips exist. Their satisfiable members come down
+  to search luck: satsuma beat 2022's best time on all five reached so far,
+  280-1 in 36 s against 278 s.
+
+Prediction for the rest of the run. Six instances no 2022 solver solved are
+both stage-decided and untouched by satsuma's symmetry step: pmg-13 #1774,
+pmg-12 #3673, eulcbip-8 #939, eulcbip-9 #3495, eulcbip-7 #4948 and mchess_19
+#5036. pmg-14, their sibling, was the run's first unique win. Next come
+mchess_20 #1674, which satsuma did not solve in our 2026 main-track runs, and
+mchess_17 #1110, which it solved there in 4,379 s. mod2-rand3bip-sat-300-3
+#3458, solved by 2 of 28 in 2022, is an outside chance. The 13 Tseitin grids
+left will be speed wins only.
 
 ## Misses: target families the stages do not recognise
 

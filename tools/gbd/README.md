@@ -539,6 +539,15 @@ and its best single solver on the same instances, the instances solved here
 and by none of the field (and the reverse), and for each running job how the
 field did on it; `report` adds the same as a section.
 
+Three companions predict a run's unique wins before it gets there. In reuse
+mode only an instance a stage decides can be one.
+`stage_scan.py INDEX OUTDIR` runs the stages alone on every instance and
+records what decides it. `sym_probe.py` runs satsuma's symmetry step alone
+on the instances the stages decide. Where that step derives the empty clause
+by itself, satsuma solves the instance in about a second, so the stage wins
+on time only. `watchlists.py` follows satsuma on the instances behind each
+idea in `doc/ideas_watchlist.md`.
+
 The scheduler runs detached and reads its controls every two seconds.
 `cores N` takes effect as jobs finish; `--now` stops the newest jobs above
 N. Times are the solver's own wall clock, so jobs are never suspended:

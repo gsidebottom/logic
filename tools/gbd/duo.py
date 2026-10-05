@@ -16,6 +16,7 @@ one of them solved, the time ratio.
     tools/gbd/duo.py stop                  # end the scheduler; `start --dir RUN` resumes
     tools/gbd/duo.py report [--out-dir D]  # markdown + JSON + cactus, partial while running
     tools/gbd/duo.py reference --csv F     # other solvers' times on the same set, shown beside ours
+    tools/gbd/duo.py note "TEXT"           # record a change made during the run (time + sat commit)
 
 Timing is the solver's own wall clock, so a job is never suspended: pausing
 (or `cores N --now`, or `stop`) kills the running jobs, their containers and
@@ -730,6 +731,8 @@ def cmd_status(args) -> None:
         print(f"reuse since {cfg.get('reuse_since', '?')[:16].replace('T', ' ')}: {tgt} runs its own stages only; "
               f"{nre} results taken from {src} (stages handed on), {nrun} run in full or decided by its stages, "
               f"{npend} waiting for {src}")
+    for nt in cfg.get("notes", []):
+        print(f"note {nt['at'][:16].replace('T', ' ')} (sat {nt.get('sat_commit', '?')}): {nt['text']}")
     print(f"done by both: {len(both)} of {len(order)} ({100 * len(both) / max(1, len(order)):.1f}%); "
           + ", ".join(f"{b} {n}" for b, n in per.items())
           + (f"; {missing} instances not on disk yet" if missing else ""))
@@ -913,6 +916,18 @@ def write_reports(run: Path, out_dir: Path) -> List[Path]:
          + f"; checks {'on' if cfg.get('verify', True) else 'off'}; sat at {cfg.get('sat_version')}; "
          f"duo run `{run}`, started {cfg['created'][:16].replace('T', ' ')}.", ""]
     solved = {b: {h for h in both if res[(h, b)]["result"] in ("SAT", "UNSAT")} for b in backends}
+    notes = cfg.get("notes", [])
+    if cfg.get("reuse") or notes:
+        L += ["## Changes during the run", ""]
+        if cfg.get("reuse"):
+            for tgt, src in cfg["reuse"].items():
+                L.append(f"- {cfg.get('reuse_since', '?')[:16].replace('T', ' ')}: reuse on; {tgt} runs its own stages "
+                         f"only and takes {src}'s result on a hand-off (rows marked reused_from).")
+        for nt in notes:
+            before = sum(1 for h in both if max(res[(h, b)].get("finished") or "" for b in backends) <= nt["at"])
+            L.append(f"- {nt['at'][:16].replace('T', ' ')} (sat {nt.get('sat_commit', '?')}, after {before} of these "
+                     f"instances were done by both; jobs started later use it): {nt['text']}")
+        L.append("")
     if n:
         L += ["## Score on the instances done by both", "",
               "| backend | solved | SAT | UNSAT | timeout | other | PAR-2 | unique |",
@@ -1107,6 +1122,19 @@ def cmd_loop(args) -> None:
     s.loop()
 
 
+def cmd_note(args) -> None:
+    """Record a change made during the run (a new solver build, say), stamped
+    with the time and the solver's commit, for status and the report."""
+    run = run_dir(args.dir)
+    cfg = read_json(run / "config.json", None)
+    commit = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"],
+                            capture_output=True, text=True).stdout.strip()
+    cfg.setdefault("notes", []).append(dict(at=now_iso(), text=args.text, sat_commit=commit))
+    write_json(run / "config.json", cfg)
+    log_event(run, f"note: {args.text} (sat {commit})")
+    print(f"noted at {cfg['notes'][-1]['at']} (sat {commit})")
+
+
 def cmd_cores(args) -> None:
     run = run_dir(args.dir)
     if args.n < 1:
@@ -1183,6 +1211,9 @@ def main() -> None:
             p.add_argument("--running", action="store_true")
         if name == "pause":
             p.add_argument("--drain", action="store_true", help="let the running jobs finish")
+    nt = sub.add_parser("note", help="record a change made during the run, for status and the report")
+    nt.add_argument("text")
+    nt.add_argument("--dir")
     rf = sub.add_parser("reference", help="attach other solvers' per-instance times on the same set")
     rf.add_argument("--csv", required=True, help="hash, benchmark, verified-result, claimed-result, then seconds per solver")
     rf.add_argument("--label", default="reference")
@@ -1203,7 +1234,7 @@ def main() -> None:
         if args.cores is None:
             args.cores = 8
     {"start": cmd_start, "_loop": cmd_loop, "status": cmd_status, "cores": cmd_cores, "report": cmd_report,
-     "reference": cmd_reference,
+     "reference": cmd_reference, "note": cmd_note,
      "pause": cmd_pause, "resume": cmd_resume, "stop": cmd_stop}[args.cmd](args)
 
 

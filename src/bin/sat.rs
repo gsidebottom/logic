@@ -3462,9 +3462,8 @@ fn circuit_stage(args: &Args, bk: &str, nvars: usize, clauses: &[Vec<i32>], forc
     let root = ck::simplify_root(&cnf);
     if root.unsat { return false; }   // the fall-through refutes that in no time
     let mut quiet = |_: &str| {};
-    let xor = ck::orientation(&root.cls, t_c, &mut quiet);
-    let mut gates = ck::extract_pattern(&root.cls, xor);
-    ck::extract_generic(&root.cls, &mut gates, 3);
+    // the gates of the kept orientation, extracted once
+    let (_xor, gates) = ck::orientation_with_gates(&root.cls, t_c, &mut quiet);
     let mut trial = ck::Proof { buf: Vec::new(), lemmas: 0 };
     let (_, _, _, fst) = ck::factor(&cnf, &root, &gates, &mut trial);
     drop(trial);

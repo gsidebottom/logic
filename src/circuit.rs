@@ -288,28 +288,31 @@ pub fn extract_generic(cls: &[Vec<i32>], gates: &mut Vec<Gate>, max_inputs: usiz
     for (i, c) in cls.iter().enumerate() { for &l in c { let v = l.unsigned_abs() as usize; if first[v] == u32::MAX { first[v] = i as u32; } } }
     let mut order: Vec<u32> = (1..=nv as u32).filter(|&v| !occ[v as usize].is_empty()).collect();
     order.sort_by_key(|&v| (occ[v as usize].len(), first[v as usize]));
-    let mut cnt: HashMap<u32, u32> = HashMap::new();
+    // per output: co-occurrence counts in a dense array (reset through the
+    // list of variables touched), first-seen order kept for the ties
+    let mut cnt: Vec<u32> = vec![0; nv + 1];
     let mut seen_order: Vec<u32> = Vec::new();
     for &o in &order {
         if defined.contains(&o) { continue; }
         let idxs: Vec<u32> = occ[o as usize].iter().copied().filter(|&i| !used[i as usize]).collect();
         if idxs.is_empty() { continue; }
-        cnt.clear(); seen_order.clear();
-        for &i in &idxs { for &l in &cls[i as usize] { let v = l.unsigned_abs(); if v != o { let e = cnt.entry(v).or_insert(0); if *e == 0 { seen_order.push(v); } *e += 1; } } }
-        let mut ranked: Vec<(u32, u32, u32)> = seen_order.iter().enumerate().map(|(k, &v)| (v, cnt[&v], k as u32)).collect();
+        for &v in &seen_order { cnt[v as usize] = 0; }
+        seen_order.clear();
+        for &i in &idxs { for &l in &cls[i as usize] { let v = l.unsigned_abs(); if v != o { if cnt[v as usize] == 0 { seen_order.push(v); } cnt[v as usize] += 1; } } }
+        let mut ranked: Vec<(u32, u32, u32)> = seen_order.iter().enumerate().map(|(k, &v)| (v, cnt[v as usize], k as u32)).collect();
         ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.2.cmp(&b.2)));
         let cand: Vec<u32> = ranked.iter().take(max_inputs + 2).map(|p| p.0).collect();
-        let mut tried: HashSet<Vec<u32>> = HashSet::new();
+        let mut tried: Vec<Vec<u32>> = Vec::new();          // at most 25 keys: a list will do
         let mut hit: Option<(Vec<u32>, Vec<usize>, Vec<bool>)> = None;
         'search: for k in (1..=max_inputs.min(cand.len())).rev() {
             for combo in combinations(&cand, k) {
-                let inset: HashSet<u32> = combo.iter().copied().collect();
                 let cidx: Vec<usize> = idxs.iter().map(|&i| i as usize)
-                    .filter(|&i| cls[i].iter().all(|l| l.unsigned_abs() == o || inset.contains(&l.unsigned_abs()))).collect();
+                    .filter(|&i| cls[i].iter().all(|l| { let v = l.unsigned_abs(); v == o || combo.contains(&v) })).collect();
                 if cidx.is_empty() { continue; }
                 let mut key: Vec<u32> = cidx.iter().map(|&i| i as u32).collect();
                 key.sort_unstable();
-                if !tried.insert(key) { continue; }
+                if tried.contains(&key) { continue; }
+                tried.push(key);
                 // the inputs are the variables these clauses mention: a candidate none
                 // of them mentions would be a dependency the gate does not have (and
                 // can close a cycle through a gate downstream)
@@ -318,9 +321,8 @@ pub fn extract_generic(cls: &[Vec<i32>], gates: &mut Vec<Gate>, max_inputs: usiz
                 // truth table over In (first input most significant)
                 let mut table = Vec::with_capacity(1 << k);
                 let mut ok = true;
-                let pos: HashMap<u32, usize> = combo.iter().enumerate().map(|(j, &v)| (v, j)).collect();
                 for row in 0..(1usize << k) {
-                    let bit = |v: u32| -> bool { let j = pos[&v]; (row >> (k - 1 - j)) & 1 == 1 };
+                    let bit = |v: u32| -> bool { let j = combo.iter().position(|&w| w == v).unwrap(); (row >> (k - 1 - j)) & 1 == 1 };
                     let mut allowed = [false, false];
                     for (ov, slot) in allowed.iter_mut().enumerate() {
                         let oval = ov == 1;
@@ -1863,8 +1865,15 @@ pub fn write_cuts(cnf: &Cnf, root: &Root, gates: &[Gate], p: &CutParams, proof: 
 /// (XOR groups towards their highest variable, or towards the variable
 /// with the fewest occurrences).
 pub fn orientation(cls: &[Vec<i32>], t0: std::time::Instant, log: &mut dyn FnMut(&str)) -> bool {
+    orientation_with_gates(cls, t0, log).0
+}
+
+/// The same, with the gates of the orientation kept (exactly what
+/// extract_pattern + extract_generic return for it), so a caller need not
+/// extract them a third time.
+pub fn orientation_with_gates(cls: &[Vec<i32>], t0: std::time::Instant, log: &mut dyn FnMut(&str)) -> (bool, Vec<Gate>) {
     let nv = cls.iter().flat_map(|c| c.iter()).map(|l| l.unsigned_abs()).max().unwrap_or(0) as usize;
-    let mut best: Option<(usize, bool)> = None;
+    let mut best: Option<(usize, bool, Vec<Gate>)> = None;
     for (name, xor) in [("highest-variable", true), ("fewest-occurrences", false)] {
         let mut gates = extract_pattern(cls, xor);
         let np = gates.len();
@@ -1872,12 +1881,13 @@ pub fn orientation(cls: &[Vec<i32>], t0: std::time::Instant, log: &mut dyn FnMut
         let (order, _) = acyclic_order(&gates, nv);
         let given_up = gates.iter().map(|g| g.out).collect::<HashSet<u32>>().len() - order.len();
         log(&format!("  orientation {name}: {np} by pattern + {} generic, {} given up to break cycles ({:.1}s)", gates.len() - np, given_up, t0.elapsed().as_secs_f64()));
-        if best.map(|b| order.len() > b.0).unwrap_or(true) { best = Some((order.len(), xor)); }
-        if given_up == 0 { break; }
+        let done = given_up == 0;
+        if best.as_ref().map(|b| order.len() > b.0).unwrap_or(true) { best = Some((order.len(), xor, gates)); }
+        if done { break; }
     }
-    let (_, xor) = best.unwrap();
+    let (_, xor, gates) = best.unwrap();
     log(&format!("  orientation kept: {}", if xor { "highest-variable" } else { "fewest-occurrences" }));
-    xor
+    (xor, gates)
 }
 
 /// One pass that carries its proof: the clauses it leaves, the number of

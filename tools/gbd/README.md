@@ -501,6 +501,7 @@ tools/gbd/duo.py start --dir RUN --index I.jsonl --cores 8 [--no-verify]
 tools/gbd/duo.py status
 tools/gbd/duo.py cores 6
 tools/gbd/duo.py cores 4 --now
+tools/gbd/duo.py budget --host 24
 tools/gbd/duo.py pause
 tools/gbd/duo.py pause --drain
 tools/gbd/duo.py resume
@@ -556,7 +557,8 @@ containers and temporary files and puts them back at the front of the queue,
 to rerun from the start; `pause --drain` lets them finish instead. Finished
 jobs are appended to `RUN/results.jsonl` and never rerun, so a restart after
 `stop`, a crash or a reboot carries on. Memory admission is
-`run_benchmark.py`'s; launches hold below 50 GB of free disk; instances not
+`run_benchmark.py`'s, with budgets `budget` changes while the run goes on, a
+reuse target's stage-only job charged its host side alone; launches hold below 50 GB of free disk; instances not
 yet downloaded are skipped until they arrive; `caffeinate -i` holds off idle
 sleep while jobs run. `--no-verify` passes `sat --no-verify`: UNSAT
 certificates are still written, so solving is unchanged, but not checked.

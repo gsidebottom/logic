@@ -11,6 +11,7 @@ one of them solved, the time ratio.
     tools/gbd/duo.py start --index I.jsonl --dir RUN [--cores 8] [--no-verify]
     tools/gbd/duo.py status [--dir RUN] [--running]
     tools/gbd/duo.py cores N [--now]       # --now: stop the newest jobs above N
+    tools/gbd/duo.py budget [--vm GB] [--host GB]   # memory budgets, read by a running scheduler too
     tools/gbd/duo.py pause [--drain]       # default: stop the running jobs now
     tools/gbd/duo.py resume
     tools/gbd/duo.py stop                  # end the scheduler; `start --dir RUN` resumes
@@ -27,8 +28,9 @@ reboot) carries on from there.  `pause --drain` instead lets the running jobs
 finish and starts no new ones.
 
 Memory: instances are admitted by the estimates of run_benchmark.py
-(`mem_estimate`, `--mem-budget-vm`, `--mem-budget-host`), first in, first
-out, one at a time when nothing else fits.  Disk: launches hold while the
+(`mem_estimate`, `--mem-budget-vm`, `--mem-budget-host`, changed later with
+`budget`), first in, first out, one at a time when nothing else fits.  A
+reuse target's stage-only job is charged the host side alone.  Disk: launches hold while the
 volume holding /tmp has less than --disk-brake-gb free.  Instances not yet on
 disk (a download still running) are skipped and picked up when they arrive.
 While jobs run, `caffeinate -i` keeps the machine from idle-sleeping.
@@ -377,7 +379,13 @@ class Scheduler:
                 return
             vm, host = rb.mem_estimate(self.recs[pick.h])
             if pick.backend in self.reuse:
-                vm, host = 0.0, vm + host
+                # A stage-only job stops at the engine hand-off: it parses and
+                # runs the stages on the host and never starts the engine, so
+                # it needs the host side alone.  Charged vm + host, the one for
+                # 6g_5color_166_100_01 (129M clauses) asked 15.4 GB beside its
+                # source job's 6.0 and held the whole queue for an hour; its
+                # footprint peaked at 3.2 GB for 14 s.
+                vm = 0.0
             if self.running and (self.used_vm + vm > c["mem_budget_vm"]
                                  or self.used_host + host > c["mem_budget_host"]):
                 return                                   # first in, first out
@@ -1145,6 +1153,15 @@ def cmd_cores(args) -> None:
                                else "; running jobs above it finish first"))
 
 
+def cmd_budget(args) -> None:
+    run = run_dir(args.dir)
+    kv = {k: v for k, v in (("mem_budget_vm", args.vm), ("mem_budget_host", args.host)) if v is not None}
+    c = set_control(run, **kv) if kv else read_json(run / "control.json", {})
+    if kv:
+        log_event(run, "memory budget -> " + ", ".join(f"{k[11:]} {v:g} GB" for k, v in kv.items()))
+    print(f"memory budget: {c.get('mem_budget_vm')} GB VM, {c.get('mem_budget_host')} GB host")
+
+
 def cmd_pause(args) -> None:
     run = run_dir(args.dir)
     set_control(run, paused=True, drain=bool(args.drain))
@@ -1226,6 +1243,10 @@ def main() -> None:
     c.add_argument("n", type=int)
     c.add_argument("--now", action="store_true", help="stop the newest jobs above N at once")
     c.add_argument("--dir")
+    bg = sub.add_parser("budget", help="show or change the memory budgets admission works to")
+    bg.add_argument("--vm", type=float, help="GB for the Docker VM's jobs")
+    bg.add_argument("--host", type=float, help="GB for the jobs' host-side processes")
+    bg.add_argument("--dir")
     lp = sub.add_parser("_loop")
     lp.add_argument("--dir", required=True)
     args = ap.parse_args()
@@ -1234,7 +1255,7 @@ def main() -> None:
         if args.cores is None:
             args.cores = 8
     {"start": cmd_start, "_loop": cmd_loop, "status": cmd_status, "cores": cmd_cores, "report": cmd_report,
-     "reference": cmd_reference, "note": cmd_note,
+     "reference": cmd_reference, "note": cmd_note, "budget": cmd_budget,
      "pause": cmd_pause, "resume": cmd_resume, "stop": cmd_stop}[args.cmd](args)
 
 

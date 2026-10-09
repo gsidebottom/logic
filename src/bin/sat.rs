@@ -3944,7 +3944,10 @@ fn main() {
             use logic::xor_gauss::{solve_xor_system, XorGaussResult};
             let t_x = Instant::now();
             eprintln!("c {}: structure analysis (xor stage)…", bk);
-            match solve_xor_system(nvars, &clauses, 50_000_000) {
+            // Certified mode uses only a refutation or a pure-XOR model from
+            // the stage; the GE-simplified residual would be solved against
+            // the original formula's proof obligation, so it is not computed.
+            match solve_xor_system(nvars, &clauses, 50_000_000, args.proof.is_none()) {
                 XorGaussResult::Unsat { by_bcp } => {
                     eprintln!("c {}: prover=xor", bk);
                     if by_bcp {
@@ -4969,7 +4972,7 @@ fn main() {
     }
     if args.xor_gauss && xg_ok && matches!(args.backend, BackendChoice::Matrix(_)) {
         let t_xg = Instant::now();
-        match logic::xor_gauss::solve_xor_system(nvars, &clauses, 50_000_000) {
+        match logic::xor_gauss::solve_xor_system(nvars, &clauses, 50_000_000, true) {
             logic::xor_gauss::XorGaussResult::Unsat { by_bcp } => {
                 let _ = by_bcp;
                 let ms = t_xg.elapsed().as_secs_f64() * 1000.0;

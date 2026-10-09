@@ -276,10 +276,21 @@ fn bcp(clauses: &[Vec<i32>], assign: &mut [Option<bool>]) -> bool {
 /// burning 30+ minutes here).  PURE-XOR formulas are never gated: GE
 /// outright decides them (e.g. tseitin_grid_n400, 319k vars, ~430s, +1
 /// certified).
+///
+/// `simplify_mixed`: on a MIXED formula whose XOR system is consistent,
+/// propagate the GE-forced units through the formula and return the
+/// residual (`Simplified`).  A caller that cannot use the residual — in
+/// certified mode the engine must refute the ORIGINAL formula — passes
+/// `false` and gets `Indeterminate` straight after the elimination.  The
+/// propagation is the expensive part: on the bitvector family a single
+/// recovered unit clause cascaded through 3.4M clauses for 200 s, kissat
+/// does the same propagation in under a second, and the result was then
+/// discarded (1,974 s over the SC2022 anniversary set, 2026-10-09).
 pub fn solve_xor_system(
     nvars: usize,
     clauses: &[Vec<i32>],
     mixed_work_cap: u64,
+    simplify_mixed: bool,
 ) -> XorGaussResult {
     let (xors, consumed) = recover_xors(clauses);
     let n_consumed = consumed.iter().filter(|&&c| c).count();
@@ -327,6 +338,9 @@ pub fn solve_xor_system(
     // MIXED formula: GE found variables forced to a constant (a global
     // linear consequence BCP can't see).  Propagate them through the
     // whole formula and eliminate the forced vars; search the residual.
+    if !simplify_mixed {
+        return indeterminate();
+    }
     let units = red.forced_units();
     if units.is_empty() {
         return indeterminate();
@@ -408,7 +422,7 @@ mod tests {
     #[test]
     fn pure_xor_sat_model_checks_out() {
         // a⊕b⊕c=1 alone is satisfiable.
-        match solve_xor_system(3, &xor3_eq1(), u64::MAX) {
+        match solve_xor_system(3, &xor3_eq1(), u64::MAX, true) {
             XorGaussResult::Sat(m) => assert!(model_satisfies(&m, &xor3_eq1())),
             other => panic!("expected Sat, got {other:?}"),
         }
@@ -425,7 +439,7 @@ mod tests {
             vec![1, -2, 3],
             vec![1, 2, -3],
         ]);
-        assert!(matches!(solve_xor_system(3, &cl, u64::MAX),
+        assert!(matches!(solve_xor_system(3, &cl, u64::MAX, true),
                          XorGaussResult::Unsat { by_bcp: false }));
     }
 
@@ -434,7 +448,7 @@ mod tests {
         // x=1 (1-XOR), y=1 (1-XOR), and x⊕y=1 (2-XOR, CNF {(x∨y),(¬x∨¬y)}).
         // x=1,y=1 force x⊕y=0, contradicting x⊕y=1 → GE finds UNSAT.
         let cl = vec![vec![1], vec![2], vec![1, 2], vec![-1, -2]];
-        assert!(matches!(solve_xor_system(2, &cl, u64::MAX),
+        assert!(matches!(solve_xor_system(2, &cl, u64::MAX, true),
                          XorGaussResult::Unsat { by_bcp: false }));
     }
 
@@ -442,7 +456,7 @@ mod tests {
     fn mixed_with_forced_unit_simplifies_and_reconstructs() {
         // x=1 (a 1-XOR ⇒ forced unit) + two non-XOR clauses.
         let orig = vec![vec![1], vec![-1, 2, 3], vec![2, -3, 4]];
-        match solve_xor_system(4, &orig, u64::MAX) {
+        match solve_xor_system(4, &orig, u64::MAX, true) {
             XorGaussResult::Simplified { clauses, forced, .. } => {
                 assert_eq!(forced[0], Some(true), "x forced true");
                 // `x` must not appear in the residual any more.
@@ -465,11 +479,11 @@ mod tests {
         // Simplified.  This is the Ascon-class guard: a costly mixed GE that
         // would only extract forced units is short-circuited.
         let mixed = vec![vec![1], vec![-1, 2, 3], vec![2, -3, 4]];
-        assert!(matches!(solve_xor_system(4, &mixed, 0),
+        assert!(matches!(solve_xor_system(4, &mixed, 0, true),
                          XorGaussResult::Indeterminate { .. }));
         // PURE-XOR is NEVER gated (every clause consumed): even at cap 0 the
         // system is still decided — here a⊕b⊕c=1 is satisfiable.
-        assert!(matches!(solve_xor_system(3, &xor3_eq1(), 0),
+        assert!(matches!(solve_xor_system(3, &xor3_eq1(), 0, true),
                          XorGaussResult::Sat(_)));
     }
 
@@ -479,8 +493,24 @@ mod tests {
         let mut cl = xor3_eq1();
         cl.push(vec![4, 5]); // length-2 over fresh vars, lone clause (not a full 2-XOR)
         assert!(matches!(
-            solve_xor_system(5, &cl, u64::MAX),
+            solve_xor_system(5, &cl, u64::MAX, true),
             XorGaussResult::Indeterminate { .. }
         ));
+    }
+
+    #[test]
+    fn without_simplification_a_consistent_mixed_system_stops_after_ge() {
+        // The mixed formula that Simplifies above: with simplification off
+        // (certified mode) the stage stops after the elimination.  The
+        // refutations are unchanged: an inconsistent system is still UNSAT,
+        // a pure-XOR formula still decided.
+        let mixed = vec![vec![1], vec![-1, 2, 3], vec![2, -3, 4]];
+        assert!(matches!(solve_xor_system(4, &mixed, u64::MAX, false),
+                         XorGaussResult::Indeterminate { recovered: 1, .. }));
+        let unsat = vec![vec![1], vec![2], vec![1, 2], vec![-1, -2]];
+        assert!(matches!(solve_xor_system(2, &unsat, u64::MAX, false),
+                         XorGaussResult::Unsat { by_bcp: false }));
+        assert!(matches!(solve_xor_system(3, &xor3_eq1(), u64::MAX, false),
+                         XorGaussResult::Sat(_)));
     }
 }

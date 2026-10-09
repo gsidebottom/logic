@@ -2151,7 +2151,7 @@ fn hydra_stage(expanded: &str, text: &str, ctx: &BoxContext) -> Result<HydraOutc
     }
     // XOR / parity: pure parity systems are decided by Gaussian elimination
     if clauses.len() <= 5_000_000 {
-        match logic::xor_gauss::solve_xor_system(nvars, &clauses, 50_000_000) {
+        match logic::xor_gauss::solve_xor_system(nvars, &clauses, 50_000_000, true) {
             logic::xor_gauss::XorGaussResult::Unsat { by_bcp } => {
                 return Ok(HydraOutcome::Unsat { note: format!("hydra xor stage: {} ({:.0} ms)", if by_bcp { "unit propagation refutes the formula" } else { "the XOR system is inconsistent (GF(2) elimination)" }, t0.elapsed().as_secs_f64() * 1000.0) });
             }

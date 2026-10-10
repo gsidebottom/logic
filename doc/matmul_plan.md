@@ -1297,6 +1297,25 @@ the two source papers for this track):
   without streamlining — yalsat gets 5/10; (2) prove one of 10
   hardcoded-pairing instances UNSAT; (3) find a scheme with one product
   having no type-3 term; (4) **r=22**.
+- **d-profile scan of the full DB (2026-10-10, `matmul/dprofile.py`,
+  6.5 s)**: per class, d = distinct factors per side (mod 2), giving the
+  basis-invariant Karstadt–Schwartz-model floor dA+dB+dC−13 (each input
+  leg ≥ d−9; output leg ≥ d−9+14 by transposition) — the cost model of
+  Nielsen's 52-add scheme (arXiv 2609.06588; our Lean check commit
+  db1217b). All 17,376 schemes: floor histogram 47:44 48:507 49:2450
+  50:5431 51:5645 52:2727 53:513 54:58 56:1 (Laderman (23,23,23)).
+  **Global floor = 47, attained by 44 schemes incl. our 55-record class
+  i19w225c4efh (d=(20,20,20) — matches flip23 census "shared 9" = 3
+  pairs/slot), Nielsen's own i12w195c23ci (also (20,20,20); his 52 has
+  5 adds of floor slack, output 28 vs leg-floor 25), Stapleton's
+  i2w201c26fi, and our 60-add i106/i107 classes (side d=19, the DB
+  max sharing).** Verdict: counting does NOT exclude ≤52 for our class
+  (pre-scan prediction of a 53–54 floor was wrong — the d≤22 inference
+  from exact side 13 only bounds one way; gate caught it). Next stage
+  if pursued: exact free-basis leg minimizer (min over invertible B of
+  adds(X·B), sidemin-style IDDFS from a chosen 9-basis) on the three
+  legs of ours + Nielsen's class; 51 anywhere = outright record in his
+  model. CSV regenerates from dbcache/schemes.tgz.
 
 ## 1. The thesis — why native representation should win
 

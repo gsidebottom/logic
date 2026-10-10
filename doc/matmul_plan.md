@@ -1316,6 +1316,24 @@ the two source papers for this track):
   adds(X·B), sidemin-style IDDFS from a chosen 9-basis) on the three
   legs of ours + Nielsen's class; 51 anywhere = outright record in his
   model. CSV regenerates from dbcache/schemes.tgz.
+- **Free-basis leg minimization EXACT on both 52-candidate classes
+  (2026-10-10, `src/bin/fbmin.rs` + `matmul/fbmin_legs.py`, 2 threads,
+  ~15 min)**: per leg (23×9, d=20), a = (d−k)+h over k basis-targets
+  and h helpers; tier sweeps (closure of 9-target bases; +1 helper at
+  the fixpoint / 8-target+free-vector; the a=13 tier with 2 helpers /
+  8T+g+h / 7T+2g) are complete by the fixpoint-injection lemma, every
+  "yes" carries a replayed chain certificate, every "no" is exhaustion.
+  **Our i19w225c4efh: A=13, B=13 (2 helpers), C=12 ⇒ exact KS-model
+  per-step minimum 13+13+(12+14) = 52, down from flat 55. Nielsen's
+  i12w195c23ci: A=12, B=12 (= his published sides, certs), C=14
+  (854 s exhaustion) ⇒ his 52 = 12+12+(14+14) is EXACTLY optimal for
+  his class.** Both tensors tie at 52; no 51 on either. Gates: his
+  published 12+12 reproduced + proven optimal; our flat A=13 proven
+  basis-optimal. Caveats: F₂ chains (sign-lift to general fields
+  pending, as in his §lifting); legs decouple so sums are exact.
+  OPEN: 51 needs another class — floor-47 club has 36 unswept names,
+  and the 2,528 schemes with a d≤19 side have leg floors of 10;
+  ~30 min/class at 2 threads with fbmin as-is.
 
 ## 1. The thesis — why native representation should win
 

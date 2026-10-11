@@ -29,6 +29,19 @@ The statement is over a general, not-necessarily-commutative ring: each
 product keeps its A-side factor on the left, so the scheme recurses on
 block matrices.  Variables `a00..a22`, `b00..b22` are the entries
 (row-major); `c11..c33` the outputs.
+
+**To run this proof** (force a genuine re-elaboration — a plain
+`lake build` replays the cached result of the last build):
+
+```
+cd proof && find .lake/build -name "Ring51.*" -delete && lake build Mm.Ring51
+```
+
+Expect `Built Mm.Ring51` (not `Replayed`) in ~6–8 s wall against the
+prebuilt Mathlib cache, followed by the two `#print axioms` lines below
+— `[propext]` for `correct` and the three standard axioms for
+`rank23_add51_scheme_eq_mul`, with no `sorryAx` in either.  A fresh
+checkout needs `lake exe cache get` in `proof/` once beforehand.
 -/
 
 namespace Ring51

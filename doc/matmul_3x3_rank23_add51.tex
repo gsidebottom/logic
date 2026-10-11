@@ -324,8 +324,18 @@ checked by the Lean~4 kernel against Mathlib's matrix product; the
 hypothesis-form theorem depends on \texttt{propext} alone, the
 Matrix-API form on Lean's three standard axioms, and the whole file
 re-elaborates in under ten seconds (the appendix header gives the
-exact command).  Artifacts --- certificates, sign model, generator,
-and proofs --- are in the repository accompanying this paper.
+exact command).
+
+\paragraph{Artifacts.}  All artifacts are in the repository
+\url{https://github.com/gsidebottom/logic}: the Lean proof
+\texttt{proof/Mm/Ring51.lean}; the leg certificates, sign model and
+signed chains in \texttt{matmul/external/ks51/}; the search tools
+(\texttt{src/bin/fbmin.rs}, \texttt{src/bin/fbsmin.rs}) and drivers
+(\texttt{matmul/fbsweep.py}, \texttt{matmul/fbsloop.py}); and the
+generator \texttt{matmul/gen\_ring51\_lean.py}, whose word-ring gate
+re-verifies the emitted program on every run.  An archival deposit
+with a DOI will accompany the final version, as for the flat-model
+record~\cite{Sidebottom26}.
 
 \section{Open problems}\label{sec:open}
 
@@ -403,7 +413,7 @@ below.  The ambient context is
 \texttt{variable \{R : Type \_\} [Ring R]}.
 
 {\footnotesize
-\verbatiminput{ring51_appendix_body.txt}
+\verbatiminput{matmul_3x3_rank23_add51_appendix.txt}
 }
 
 \end{document}

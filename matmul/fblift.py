@@ -28,7 +28,10 @@ Usage: fblift.py schemes.tgz certA certB certC
 import itertools, sys, tarfile
 from fractions import Fraction
 
-TAB = "schemes/18x2+51x+4y6+6y4+13y3+z32+z28+z27/i19w225c4efh-000.tab"
+import os
+TAB = os.environ.get(
+    "FBLIFT_TAB",
+    "schemes/18x2+51x+4y6+6y4+13y3+z32+z28+z27/i19w225c4efh-000.tab")
 
 def parse_tab(text):
     out, cur = [], []

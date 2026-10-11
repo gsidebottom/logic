@@ -136,8 +136,16 @@ for f2, dmin, family, cls in targets:
     legs = [run_leg(p) for p in paths]
     secs = time.time() - t0
     vals = [v for v, _, _ in legs]
+    digs = [v.lstrip(">=") for v in vals]
+    if not all(d.isdigit() for d in digs):
+        # a killed/unparsable fbmin run (e.g. timeout): record and move on
+        with open(RES, "a") as f:
+            f.write(f"{family},{cls},{f2},{vals[0]},{vals[1]},{vals[2]},?,"
+                    f"timeout-unknown,{secs:.0f}\n")
+        print(f"{cls} [{family}] leg unparsable -> timeout-unknown", flush=True)
+        continue
     exact = all(v.startswith("=") for v in vals)
-    nums = [int(v.lstrip(">=")) for v in vals]
+    nums = [int(d) for d in digs]
     s = sum(nums)
     if exact and s <= 37:
         verdict = f"ALERT-{s + 14}"

@@ -1334,6 +1334,18 @@ the two source papers for this track):
   OPEN: 51 needs another class — floor-47 club has 36 unswept names,
   and the 2,528 schemes with a d≤19 side have leg floors of 10;
   ~30 min/class at 2 threads with fbmin as-is.
+- **★ 51 FOUND (2026-10-11, fbsweep ~30 classes in): class
+  i12w211c23fg (HKS family 17x2+52x+4y6+5y4+14y3+z32+2z27, Nielsen's
+  own family) has exact free-basis legs 12+13+12 ⇒ per-step total
+  12+13+(12+14) = 51 over F₂ — one below Nielsen's 52, and EXACT for
+  the class (tier exhaustions per leg). Independently replayed
+  single-threaded, certificates archived matmul/external/ks51/.
+  Also so far: tie-52 classes i12w199c23ci (13+12+13), i12w211c26fi,
+  i12w239c28aj, i12w243c3bcf; 53s incl. Stapleton's i2w201c26fi
+  (13+13+13); the deep-sharing i106/i107 classes all ruled out
+  (sums ≥ 40). Sweep continues (50 would need legs 12+12+12).
+  PENDING for a ring-valid 51: sign-lift of this class's certs
+  (fblift pipeline; lift_models for alternative sign models).
 
 ## 1. The thesis — why native representation should win
 

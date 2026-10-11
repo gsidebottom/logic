@@ -35,9 +35,9 @@ re-encodes hidden multipliers. We ran it beside \sats{} itself on all
 of every application, crafted and main track since 2002, with a 5,000 s
 limit. \hcs{} solved 4,403 instances to \sats{}'s 4,395, with a \partwo{}
 of 1,982.7 against 1,999.3, and eight instances only it solved. Both beat
-the 2022 field's virtual best of 4,345 and, after correcting for this
-machine's measured 3.0-fold speed over the competition's, its winner by a
-wide margin. The \partwo{} gap of 16.65 points decomposes exactly: 14.9
+the 2022 field's virtual best of 4,345 and, after correcting for the Apple
+M4 Pro's measured 3.0-fold speed over the competition's StarExec nodes, its
+winner by a wide margin. The \partwo{} gap of 16.65 points decomposes exactly: 14.9
 points from the eight unique wins, 2.7 from 256 instances the stages
 decide in milliseconds where \sats{} searches, and 1.1 points paid as the
 stages' prefix on the 5,037 instances they hand on. Only 8 of the 264
@@ -161,7 +161,7 @@ check, with identical results, was installed after 164 instances.
 \bottomrule
 \end{tabular}
 \caption{All 5,355 instances. The 2022 rows are the competition's own
-times on its machines, so their counts compare with ours only after the
+times on StarExec, so their counts compare with ours only after the
 speed correction of Section~\ref{sec:field}. The virtual best takes the
 fastest of the 28 sequential entrants on each instance.}
 \label{tab:score}
@@ -202,9 +202,9 @@ instance.}
 \centering
 \includegraphics[width=0.8\linewidth]{hydra_satsuma_2022_anniversary_cactus.pdf}
 \caption{Instances solved within a per-instance time. Ours are wall-clock
-times on this machine; the 2022 curves are CPU seconds on StarExec, about
-three times slower per job, so they sit to the right of where they would
-on this machine.}
+times on the Apple M4 Pro; the 2022 curves are CPU seconds on StarExec's
+Xeon E5-2609 nodes, about three times slower per job, so they sit to the
+right of where they would on the M4 Pro.}
 \label{fig:cactus}
 \end{figure}
 
@@ -290,7 +290,7 @@ the circuit trial.
 ran in full, \hcs{} pays its prefix and then runs the same deterministic
 search; the net is $-64$ s, 43 of the 54 slightly in \sats{}'s favour.
 Their spread, a few seconds per instance, is the measurement noise of two
-jobs sharing a loaded machine.
+jobs sharing the M4 Pro with eight others.
 
 \section{Why only eight of 264}
 \label{sec:why}
@@ -407,7 +407,8 @@ nothing measurable.
 \label{sec:field}
 
 Both arms solved more instances than the 2022 virtual best, 4,403 and
-4,395 against 4,345, on a machine three times faster per job. Scaling our
+4,395 against 4,345, on an M4 Pro three times faster per job than the
+competition's Xeon E5-2609 nodes. Scaling our
 times by a factor $k$ and recounting under the 5,000 s limit says how much
 of that is the hardware. \sats{} keeps more solved instances than the 2022
 winner Kissat\_MAB\_ESA while $k \le 5.85$ and a lower \partwo{} while

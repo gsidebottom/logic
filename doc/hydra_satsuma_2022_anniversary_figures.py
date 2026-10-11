@@ -190,7 +190,7 @@ if "--figures" in sys.argv:
     cactus([t if t < T else None for t in bulky.values()], "kissat-sc2022-bulky", color="0.55", lw=1.0, ls=":")
     cactus([t if t < T else None for t in win.values()], "Kissat_MAB_ESA", color="0.7", lw=1.0, ls="-.")
     ax.set_xscale("log"); ax.set_xlim(1, T); ax.set_ylim(2500, 4500)
-    ax.set_xlabel("time per instance (s); ours is wall-clock here, 2022's is CPU time on StarExec", fontsize=8.5)
+    ax.set_xlabel("time per instance (s); ours is wall-clock on the Apple M4 Pro, 2022's is CPU time on StarExec", fontsize=8.5)
     ax.set_ylabel("instances solved within the time")
     ax.grid(alpha=0.3); ax.legend(loc="upper left", fontsize=8)
     fig.tight_layout(); fig.savefig(ROOT / "doc" / "hydra_satsuma_2022_anniversary_cactus.pdf"); plt.close(fig)

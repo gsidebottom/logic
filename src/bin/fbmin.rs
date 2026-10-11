@@ -188,7 +188,7 @@ impl Leg {
     }
 }
 
-fn solve(leg: &Leg, tier3: bool) -> (usize, Option<Cert>, String) {
+fn solve(leg: &Leg, tier3: bool, want: usize) -> (usize, Vec<Cert>, String) {
     let d = leg.d();
     let floor = d - 9;
 
@@ -208,11 +208,11 @@ fn solve(leg: &Leg, tier3: bool) -> (usize, Option<Cert>, String) {
         }
     });
     if let Some(c) = found.into_inner().unwrap() {
-        return (floor, Some(c), format!("tier1: 9-target basis closes ({} bases swept)", bases9.len()));
+        return (floor, vec![c], format!("tier1: 9-target basis closes ({} bases swept)", bases9.len()));
     }
 
     // ---- tier 2a: a = d-8 via 9-target basis + one helper ----
-    let found: Mutex<Option<Cert>> = Mutex::new(None);
+    let found: Mutex<Vec<Cert>> = Mutex::new(Vec::new());
     let hit = AtomicBool::new(false);
     bases9.par_iter().for_each(|bidx| {
         if hit.load(Ordering::Relaxed) {
@@ -240,14 +240,18 @@ fn solve(leg: &Leg, tier3: bool) -> (usize, Option<Cert>, String) {
                 let mut adds = steps0.clone();
                 adds.push((px, py, h));
                 adds.extend(steps1);
-                hit.store(true, Ordering::Relaxed);
-                *found.lock().unwrap() = Some(Cert { basis, adds });
-                return;
+                let mut v = found.lock().unwrap();
+                v.push(Cert { basis: basis.clone(), adds });
+                if v.len() >= want {
+                    hit.store(true, Ordering::Relaxed);
+                    return;
+                }
             }
         }
     });
-    if let Some(c) = found.into_inner().unwrap() {
-        return (floor + 1, Some(c), "tier2a: 9-target basis + 1 helper".into());
+    let v = found.into_inner().unwrap();
+    if !v.is_empty() {
+        return (floor + 1, v, "tier2a: 9-target basis + 1 helper".into());
     }
 
     // ---- tier 2b: a = d-8 via 8-target basis + one free vector ----
@@ -275,16 +279,16 @@ fn solve(leg: &Leg, tier3: bool) -> (usize, Option<Cert>, String) {
         }
     });
     if let Some(c) = found.into_inner().unwrap() {
-        return (floor + 1, Some(c), format!("tier2b: 8-target basis + free vector ({} bases)", bases8.len()));
+        return (floor + 1, vec![c], format!("tier2b: 8-target basis + free vector ({} bases)", bases8.len()));
     }
 
     if !tier3 {
-        return (floor + 2, None, "tiers 1-2 exhausted: min >= d-7 (run --tier3 to decide)".into());
+        return (floor + 2, Vec::new(), "tiers 1-2 exhausted: min >= d-7 (run --tier3 to decide)".into());
     }
 
     // ---- tier 3: a = d-7 ----
     // (9T, 2 helpers): helpers injected at successive fixpoints.
-    let found: Mutex<Option<Cert>> = Mutex::new(None);
+    let found: Mutex<Vec<Cert>> = Mutex::new(Vec::new());
     let hit = AtomicBool::new(false);
     bases9.par_iter().for_each(|bidx| {
         if hit.load(Ordering::Relaxed) {
@@ -319,19 +323,23 @@ fn solve(leg: &Leg, tier3: bool) -> (usize, Option<Cert>, String) {
                     adds.extend(steps1.clone());
                     adds.push((x2, y2, h2));
                     adds.extend(steps2);
-                    hit.store(true, Ordering::Relaxed);
-                    *found.lock().unwrap() = Some(Cert { basis, adds });
-                    return;
+                    let mut v = found.lock().unwrap();
+                    v.push(Cert { basis: basis.clone(), adds });
+                    if v.len() >= want {
+                        hit.store(true, Ordering::Relaxed);
+                        return;
+                    }
                 }
             }
         }
     });
-    if let Some(c) = found.into_inner().unwrap() {
-        return (floor + 2, Some(c), "tier3: 9-target basis + 2 helpers".into());
+    let v = found.into_inner().unwrap();
+    if !v.is_empty() {
+        return (floor + 2, v, "tier3: 9-target basis + 2 helpers".into());
     }
 
     // (8T + g, 1 helper)
-    let found: Mutex<Option<Cert>> = Mutex::new(None);
+    let found: Mutex<Vec<Cert>> = Mutex::new(Vec::new());
     let hit = AtomicBool::new(false);
     bases8.par_iter().for_each(|bidx| {
         if hit.load(Ordering::Relaxed) {
@@ -364,20 +372,24 @@ fn solve(leg: &Leg, tier3: bool) -> (usize, Option<Cert>, String) {
                     let mut adds = steps0.clone();
                     adds.push((px, py, h));
                     adds.extend(steps1);
-                    hit.store(true, Ordering::Relaxed);
-                    *found.lock().unwrap() = Some(Cert { basis, adds });
-                    return;
+                    let mut v = found.lock().unwrap();
+                    v.push(Cert { basis: basis.clone(), adds });
+                    if v.len() >= want {
+                        hit.store(true, Ordering::Relaxed);
+                        return;
+                    }
                 }
             }
         }
     });
-    if let Some(c) = found.into_inner().unwrap() {
-        return (floor + 2, Some(c), "tier3: 8-target basis + free vector + 1 helper".into());
+    let v = found.into_inner().unwrap();
+    if !v.is_empty() {
+        return (floor + 2, v, "tier3: 8-target basis + free vector + 1 helper".into());
     }
 
     // (7T + 2g, 0 helpers)
     let bases7 = leg.subsets(7);
-    let found: Mutex<Option<Cert>> = Mutex::new(None);
+    let found: Mutex<Vec<Cert>> = Mutex::new(Vec::new());
     let hit = AtomicBool::new(false);
     bases7.par_iter().for_each(|bidx| {
         if hit.load(Ordering::Relaxed) {
@@ -399,24 +411,29 @@ fn solve(leg: &Leg, tier3: bool) -> (usize, Option<Cert>, String) {
                 }
                 let (_, built, steps) = closure(&leg.targets, &leg.tidx, &basis, b0);
                 if built == leg.all_built {
-                    hit.store(true, Ordering::Relaxed);
-                    *found.lock().unwrap() = Some(Cert { basis, adds: steps });
-                    return;
+                    let mut v = found.lock().unwrap();
+                    v.push(Cert { basis: basis.clone(), adds: steps });
+                    if v.len() >= want {
+                        hit.store(true, Ordering::Relaxed);
+                        return;
+                    }
                 }
             }
         }
     });
-    if let Some(c) = found.into_inner().unwrap() {
-        return (floor + 2, Some(c), "tier3: 7-target basis + 2 free vectors".into());
+    let v = found.into_inner().unwrap();
+    if !v.is_empty() {
+        return (floor + 2, v, "tier3: 7-target basis + 2 free vectors".into());
     }
 
-    (floor + 3, None, "tiers 1-3 exhausted: min >= d-6".into())
+    (floor + 3, Vec::new(), "tiers 1-3 exhausted: min >= d-6".into())
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut threads = 2usize;
     let mut tier3 = false;
+    let mut want = 1usize;
     let mut files: Vec<String> = Vec::new();
     let mut i = 1;
     while i < args.len() {
@@ -424,6 +441,10 @@ fn main() {
             "--threads" => {
                 i += 1;
                 threads = args[i].parse().unwrap();
+            }
+            "--enum" => {
+                i += 1;
+                want = args[i].parse::<usize>().unwrap().max(1);
             }
             "--tier3" => tier3 = true,
             f => files.push(f.to_string()),
@@ -445,19 +466,21 @@ fn main() {
             .collect();
         let leg = Leg::new(&rows);
         let t0 = std::time::Instant::now();
-        let (a, cert, how) = solve(&leg, tier3);
+        let (a, certs, how) = solve(&leg, tier3, want);
         let dt = t0.elapsed().as_secs_f64();
-        match cert {
-            Some(c) => {
-                assert!(check_cert(&leg.targets, &c, a), "CERTIFICATE FAILED CHECK");
-                println!("{f}: d={} min_adds={a} [{how}] ({dt:.1} s) CERT-OK", leg.d());
+        if certs.is_empty() {
+            println!("{f}: d={} min_adds>={a} [{how}] ({dt:.1} s)", leg.d());
+        } else {
+            for c in &certs {
+                assert!(check_cert(&leg.targets, c, a), "CERTIFICATE FAILED CHECK");
+            }
+            println!("{f}: d={} min_adds={a} [{how}] ({dt:.1} s) {} cert(s), all CERT-OK",
+                     leg.d(), certs.len());
+            for c in &certs {
                 println!("  basis: {}", c.basis.iter().map(|m| format!("{m:09b}")).collect::<Vec<_>>().join(" "));
                 for (x, y, s) in &c.adds {
                     println!("  add {x:09b} ^ {y:09b} = {s:09b}");
                 }
-            }
-            None => {
-                println!("{f}: d={} min_adds>={a} [{how}] ({dt:.1} s)", leg.d());
             }
         }
     }

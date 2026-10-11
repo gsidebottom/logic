@@ -3,6 +3,9 @@ Copyright (c) 2026 Greg Sidebottom. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Greg Sidebottom
 -/
+import Mathlib.Data.Matrix.Mul
+import Mathlib.LinearAlgebra.Matrix.Notation
+import Mathlib.Tactic.FinCases
 import Mathlib.Tactic.NoncommRing
 
 /-!
@@ -163,7 +166,147 @@ theorem correct
   subst_vars
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> noncomm_ring
 
+/-- The 51-addition-per-step scheme as a map on `3×3` matrices, in the
+structure of `Matmul55.scheme`: the two UNCOUNTED unimodular input
+basis changes, the COUNTED 12- and 13-addition input chains, the 23
+products, the COUNTED 26-addition transposed output stage, and the
+UNCOUNTED output basis change.  Counted additions per recursive step:
+12 + 13 + 26 = **51**. -/
+def rank23_add51_scheme (A B : Matrix (Fin 3) (Fin 3) R) :
+    Matrix (Fin 3) (Fin 3) R :=
+  -- A-side basis change (UNCOUNTED, amortized): the 9 transformed
+  -- inputs, an invertible integer map applied once per matrix
+  let ab0 := A 1 0 - (A 2 2)
+  let ab1 := A 0 0
+  let ab2 := A 0 0 + A 2 0
+  let ab3 := A 0 1 + A 2 1
+  let ab4 := A 2 1
+  let ab5 := A 0 1 + A 0 2 + A 2 1
+  let ab6 := A 0 0 - (A 0 1) - (A 1 1)
+  let ab7 := A 2 2
+  let ab8 := A 0 2 - (A 1 0) + A 1 2
+  -- A-side chain: 12 COUNTED additions (paid per recursive step)
+  let aw0 := ab0 + ab7
+  let aw1 := ab1 + ab4
+  let aw2 := ab2 - ab7
+  let aw3 := ab3 - ab5
+  let aw4 := ab5 - aw1
+  let aw5 := ab5 - aw2
+  let aw6 := ab6 + aw4
+  let aw7 := ab8 - aw6
+  let aw8 := ab0 + aw7
+  let aw9 := aw3 + aw6
+  let aw10 := ab0 + aw1
+  let aw11 := aw2 - aw10
+  -- B-side basis change (UNCOUNTED)
+  let bb0 := B 0 0 + B 2 2
+  let bb1 := B 0 1 + B 1 1
+  let bb2 := B 0 2 + B 1 2
+  let bb3 := B 1 0 - (B 1 1) - (B 2 0) + B 2 1
+  let bb4 := B 1 1
+  let bb5 := B 1 2
+  let bb6 := B 1 1 - (B 1 2) - (B 2 1) + B 2 2
+  let bb7 := B 2 0 - (B 2 2)
+  let bb8 := B 1 1 - (B 2 1)
+  -- B-side chain: 13 COUNTED additions
+  let bw0 := bb0 + bb7
+  let bw1 := bb5 + bb6
+  let bw2 := bb7 + bw1
+  let bw3 := bb4 - bw2
+  let bw4 := bb8 - bw1
+  let bw5 := bb0 + bw4
+  let bw6 := bb2 - bw5
+  let bw7 := bb5 - bw6
+  let bw8 := bb0 - bw7
+  let bw9 := bb1 - bb2
+  let bw10 := bw2 - bw6
+  let bw11 := bb3 + bw10
+  let bw12 := bw9 - bw10
+  -- the 23 products (A factor on the left: recurses on blocks)
+  let m1 := aw1 * bw6
+  let m2 := ab0 * bb0
+  let m3 := aw2 * bw5
+  let m4 := ab1 * bb1
+  let m5 := aw0 * bw12
+  let m6 := ab2 * bw12
+  let m7 := ab1 * bb2
+  let m8 := aw0 * bw8
+  let m9 := aw11 * bw7
+  let m10 := ab3 * bb3
+  let m11 := aw9 * bb3
+  let m12 := ab4 * bw11
+  let m13 := aw4 * bb4
+  let m14 := aw6 * bw1
+  let m15 := ab5 * bw2
+  let m16 := ab6 * bb5
+  let m17 := aw9 * bb6
+  let m18 := aw8 * bb7
+  let m19 := ab7 * bw0
+  let m20 := aw3 * bb8
+  let m21 := aw7 * bw3
+  let m22 := aw5 * bw3
+  let m23 := ab8 * bw4
+  -- output stage: 26 COUNTED additions -- the Tellegen transpose
+  -- of the certified 12-addition C chain (12 + (23-9) fan-in = 26)
+  let z0 := m4 + m13
+  let z1 := m9 + m12
+  let z2 := m23 - m8
+  let z3 := m14 - z0
+  let z4 := z3 + z2
+  let z5 := m6 + m22
+  let z6 := m2 - m8
+  let z7 := z6 + z1
+  let z8 := m1 + m12
+  let z9 := z8 - m7
+  let z10 := m3 - z7
+  let z11 := z10 + z9
+  let z12 := m5 + m21
+  let z13 := z12 + m11
+  let z14 := m10 - z5
+  let z15 := m15 - z0
+  let z16 := z15 + z5
+  let z17 := z16 - z9
+  let z18 := m16 + z2
+  let z19 := z18 - m7
+  let z20 := m17 - z4
+  let z21 := m18 - z1
+  let z22 := z21 - z4
+  let z23 := z22 - m11
+  let z24 := m19 + z7
+  let z25 := m20 + z0
+  -- output basis change (UNCOUNTED): the inverse transform,
+  -- rows of the unimodular output basis
+  let c11 := z14 + z17 + z25
+  let c12 := z25
+  let c13 := -z19 - z20 + z25
+  let c21 := z23 + z24 - z25
+  let c22 := z13 + z23 + z24 - z25
+  let c23 := z20 - z25
+  let c31 := z11 + z24
+  let c32 := z11 + z17 + z24
+  let c33 := z11
+  !![c11, c12, c13;
+     c21, c22, c23;
+     c31, c32, c33]
+
+-- `rank23_add51_scheme` unfolds to a ~120-binding straight-line
+-- program; a single elaboration exceeds the default heartbeat budget.
+set_option maxHeartbeats 1600000 in
+-- Plain `simp` evaluates the concrete `!![..] i j` indexing via
+-- Mathlib's matrix simprocs; the explicit lemma set is version-fragile,
+-- so the flexible-`simp` lint is accepted here (as in Mm/Matrix.lean).
+set_option linter.flexible false in
+/-- The scheme computes the matrix product, in Mathlib's own terms. -/
+theorem rank23_add51_scheme_eq_mul (A B : Matrix (Fin 3) (Fin 3) R) :
+    rank23_add51_scheme A B = A * B := by
+  simp only [rank23_add51_scheme]
+  ext i j
+  fin_cases i <;> fin_cases j <;>
+    simp [Matrix.mul_apply, Fin.sum_univ_three] <;>
+    noncomm_ring
+
 end Ring51
 
 -- Axiom audit: a valid proof shows only Lean's standard axioms.
 #print axioms Ring51.correct
+#print axioms Ring51.rank23_add51_scheme_eq_mul

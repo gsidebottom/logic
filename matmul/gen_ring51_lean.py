@@ -307,6 +307,63 @@ for nm, rhs in couts:
 
 wires = [h[0] for h in hyps]
 
+# ---- Matrix-API def: same lets, matrix-entry basis, sectioned -------
+def lin_lean_M(vec, M):
+    terms = []
+    for k, co in enumerate(vec):
+        if not co:
+            continue
+        at = f"{M} {k // 3} {k % 3}"
+        if co == 1:
+            terms.append(("+", at))
+        elif co == -1:
+            terms.append(("-", f"({at})"))
+        else:
+            terms.append(("+", f"({co} : R) * {at}") if co > 0
+                         else ("-", f"({-co} : R) * {at}"))
+    s, first = "", True
+    for sign, t in terms:
+        s = (t if sign == "+" else f"-{t}") if first else f"{s} {sign} {t}"
+        first = False
+    return s
+
+def_lines = []
+def_lines.append("  -- A-side basis change (UNCOUNTED, amortized): the 9 transformed")
+def_lines.append("  -- inputs, an invertible integer map applied once per matrix")
+for nm, parents, vec in oA:
+    if parents is None:
+        def_lines.append(f"  let {nm} := {lin_lean_M(vec, 'A')}")
+def_lines.append("  -- A-side chain: 12 COUNTED additions (paid per recursive step)")
+for nm, parents, vec in oA:
+    if parents is not None:
+        px, py, s = parents
+        def_lines.append(f"  let {nm} := {px} {'+' if s == 1 else '-'} {py}")
+def_lines.append("  -- B-side basis change (UNCOUNTED)")
+for nm, parents, vec in oB:
+    if parents is None:
+        def_lines.append(f"  let {nm} := {lin_lean_M(vec, 'B')}")
+def_lines.append("  -- B-side chain: 13 COUNTED additions")
+for nm, parents, vec in oB:
+    if parents is not None:
+        px, py, s = parents
+        def_lines.append(f"  let {nm} := {px} {'+' if s == 1 else '-'} {py}")
+def_lines.append("  -- the 23 products (A factor on the left: recurses on blocks)")
+for m in range(23):
+    ua, _ = val_name(nA, rowsA[m])
+    vb, _ = val_name(nB, rowsB[m])
+    def_lines.append(f"  let m{m + 1} := {ua} * {vb}")
+def_lines.append("  -- output stage: 26 COUNTED additions -- the Tellegen transpose")
+def_lines.append("  -- of the certified 12-addition C chain (12 + (23-9) fan-in = 26)")
+for nm, l, r, s in out_adds:
+    def_lines.append(f"  let {nm} := {l} {'+' if s == 1 else '-'} {r}")
+def_lines.append("  -- output basis change (UNCOUNTED): the inverse transform,")
+def_lines.append("  -- rows of the unimodular output basis")
+for nm, rhs in couts:
+    def_lines.append(f"  let {nm} := {rhs}")
+def_body = "\n".join(def_lines)
+mat_rows = ";\n     ".join(
+    ", ".join(f"c{i}{j}" for j in range(1, 4)) for i in range(1, 4))
+
 def wrap(names, per=10, indent="     "):
     lines = [" ".join(names[i:i + per]) for i in range(0, len(names), per)]
     return ("\n" + indent).join(lines)
@@ -321,6 +378,9 @@ Copyright (c) 2026 Greg Sidebottom. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Greg Sidebottom
 -/
+import Mathlib.Data.Matrix.Mul
+import Mathlib.LinearAlgebra.Matrix.Notation
+import Mathlib.Tactic.FinCases
 import Mathlib.Tactic.NoncommRing
 
 /-!
@@ -363,10 +423,38 @@ theorem correct
   subst_vars
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> noncomm_ring
 
+/-- The 51-addition-per-step scheme as a map on `3×3` matrices, in the
+structure of `Matmul55.scheme`: the two UNCOUNTED unimodular input
+basis changes, the COUNTED 12- and 13-addition input chains, the 23
+products, the COUNTED 26-addition transposed output stage, and the
+UNCOUNTED output basis change.  Counted additions per recursive step:
+12 + 13 + 26 = **51**. -/
+def rank23_add51_scheme (A B : Matrix (Fin 3) (Fin 3) R) :
+    Matrix (Fin 3) (Fin 3) R :=
+{def_body}
+  !![{mat_rows}]
+
+-- `rank23_add51_scheme` unfolds to a ~120-binding straight-line
+-- program; a single elaboration exceeds the default heartbeat budget.
+set_option maxHeartbeats 1600000 in
+-- Plain `simp` evaluates the concrete `!![..] i j` indexing via
+-- Mathlib's matrix simprocs; the explicit lemma set is version-fragile,
+-- so the flexible-`simp` lint is accepted here (as in Mm/Matrix.lean).
+set_option linter.flexible false in
+/-- The scheme computes the matrix product, in Mathlib's own terms. -/
+theorem rank23_add51_scheme_eq_mul (A B : Matrix (Fin 3) (Fin 3) R) :
+    rank23_add51_scheme A B = A * B := by
+  simp only [rank23_add51_scheme]
+  ext i j
+  fin_cases i <;> fin_cases j <;>
+    simp [Matrix.mul_apply, Fin.sum_univ_three] <;>
+    noncomm_ring
+
 end Ring51
 
 -- Axiom audit: a valid proof shows only Lean's standard axioms.
 #print axioms Ring51.correct
+#print axioms Ring51.rank23_add51_scheme_eq_mul
 """
 
 OUT.write_text(out)

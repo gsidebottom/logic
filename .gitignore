@@ -148,3 +148,4 @@ matmul/asym/*.list
 nested-boxes/.env.*.local
 # compiled box tables written by /boxes/compile {save:true}
 /boxes/
+zenodo-upload-ks51/

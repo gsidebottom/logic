@@ -266,7 +266,7 @@ else
 
 To run a tool one-off (no activation needed):
   uv run tools/gbd/run_benchmark.py --index ...
-  uv run doc/competition-benchmarks-plot.py FILE.md -o OUT.png
+  uv run doc/competition/competition-benchmarks-plot.py FILE.md -o OUT.png
 
 To activate the venv for this shell:
   source $REPO_ROOT/.venv/bin/activate          # bash / zsh

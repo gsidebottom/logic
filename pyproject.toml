@@ -17,7 +17,7 @@ requires-python = ">=3.9,<3.14"
 # lower bounds: pin to versions we've tested with.  Tighten only when
 # we hit an actual incompatibility.
 dependencies = [
-    # Cactus plot for benchmark sweeps (doc/competition-benchmarks-plot.py).
+    # Cactus plot for benchmark sweeps (doc/competition/competition-benchmarks-plot.py).
     "matplotlib>=3.7",
     # SAT-competition benchmark database client used by tools/gbd/*
     # (installs the `gbd` CLI into the venv's bin/).

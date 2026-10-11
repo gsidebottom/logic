@@ -3,7 +3,7 @@
 # Run `target/release/sat -b <backend>` against every *.cnf.xz file in
 # $BENCH_DIR (default: /Users/greg/projects/sat_benchmarks), in
 # parallel, and record the result + elapsed time as table rows in a
-# fresh doc/competition-benchmark_<timeout>_<backend>[_<n>].md file.
+# fresh doc/competition/competition-benchmark_<timeout>_<backend>[_<n>].md file.
 #
 # Per-problem workflow:
 #   1. Decompress with `xz -d -k` — keeps the .xz on disk for safety,
@@ -22,9 +22,9 @@
 #   6. Delete the decompressed .cnf — disk state returns to the
 #      starting "only the .xz is present" layout.
 #
-# Output file: a fresh doc/competition-benchmark_<timeout>_<backend>.md
+# Output file: a fresh doc/competition/competition-benchmark_<timeout>_<backend>.md
 # is created each run.  If that path already exists,
-# doc/competition-benchmark_<timeout>_<backend>_2.md is used (then _3,
+# doc/competition/competition-benchmark_<timeout>_<backend>_2.md is used (then _3,
 # …) so no prior results are overwritten.
 #
 # Parallelism: workers are launched via `xargs -P` and re-invoke this
@@ -39,13 +39,13 @@
 # gracefully if Python or matplotlib is missing).
 #
 # Usage:
-#   doc/competition-benchmarks.sh                    # 600s timeout, 10 parallel, cadical
-#   doc/competition-benchmarks.sh -b eff             # use the eff backend
-#   doc/competition-benchmarks.sh -b eff --no-preprocess  # eff, preproc off
-#   doc/competition-benchmarks.sh -b greedy_eff 300  # eff backend, 300s timeout
-#   doc/competition-benchmarks.sh 300                # 300s timeout, 10 parallel
-#   doc/competition-benchmarks.sh 300 4              # 300s timeout, 4 parallel
-#   doc/competition-benchmarks.sh 300 10 5           # only first 5 problems
+#   doc/competition/competition-benchmarks.sh                    # 600s timeout, 10 parallel, cadical
+#   doc/competition/competition-benchmarks.sh -b eff             # use the eff backend
+#   doc/competition/competition-benchmarks.sh -b eff --no-preprocess  # eff, preproc off
+#   doc/competition/competition-benchmarks.sh -b greedy_eff 300  # eff backend, 300s timeout
+#   doc/competition/competition-benchmarks.sh 300                # 300s timeout, 10 parallel
+#   doc/competition/competition-benchmarks.sh 300 4              # 300s timeout, 4 parallel
+#   doc/competition/competition-benchmarks.sh 300 10 5           # only first 5 problems
 #   BENCH_DIR=/some/other/dir doc/...sh              # different bench dir
 #
 # Backend (-b / --backend): name passed to `sat -b NAME`.  Defaults to
@@ -65,7 +65,7 @@
 # No-op for the cadical backend (cadical has its own internal
 # preprocessor).
 #
-#   doc/competition-benchmarks.sh --finalize FILE.md [FILE.md …]
+#   doc/competition/competition-benchmarks.sh --finalize FILE.md [FILE.md …]
 #       Retroactively add the summary table + cactus plot to an
 #       existing results file (e.g. one produced by an interrupted run
 #       or an older version of the script).
@@ -361,11 +361,11 @@ command -v xz >/dev/null || { echo "xz not on PATH" >&2; exit 1; }
 # Pick an output filename that doesn't clobber a previous run.  The
 # backend is in the name so that, e.g., a `cadical` run and an `eff`
 # run at the same timeout produce distinct files.
-OUT_MD="$REPO_ROOT/doc/competition-benchmark_${TIMEOUT_SECS}_${BACKEND}${PREPROCESS_SUFFIX}.md"
+OUT_MD="$REPO_ROOT/doc/competition/competition-benchmark_${TIMEOUT_SECS}_${BACKEND}${PREPROCESS_SUFFIX}.md"
 n=1
 while [ -e "$OUT_MD" ]; do
   n=$((n + 1))
-  OUT_MD="$REPO_ROOT/doc/competition-benchmark_${TIMEOUT_SECS}_${BACKEND}${PREPROCESS_SUFFIX}_${n}.md"
+  OUT_MD="$REPO_ROOT/doc/competition/competition-benchmark_${TIMEOUT_SECS}_${BACKEND}${PREPROCESS_SUFFIX}_${n}.md"
 done
 
 # Seed the output file with a header + table separator.  Workers

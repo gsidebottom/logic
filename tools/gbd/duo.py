@@ -557,7 +557,7 @@ class Scheduler:
                 log_event(self.run, "all jobs done")
                 self.keep_awake(False)
                 # through the file on disk, so a long run reports with the latest code
-                out = str(self.cfg.get("report_dir") or (REPO / "doc"))
+                out = str(self.cfg.get("report_dir") or (REPO / "doc" / "competition"))
                 r = subprocess.run([sys.executable, str(Path(__file__).resolve()), "report", "--dir", str(self.run),
                                     "--out-dir", out], capture_output=True, text=True)
                 log_event(self.run, "reports written: " + " ".join(r.stdout.split()) if r.returncode == 0
@@ -881,7 +881,7 @@ def write_reports(run: Path, out_dir: Path) -> List[Path]:
     meta_common = dict(index=cfg["index"], timeout_s=timeout, checks=cfg.get("verify", True),
                        duo_run=str(run), created=cfg["created"], sat_commit=cfg.get("sat_version"),
                        complete=complete, generated=now_iso())
-    # per backend, in the harness's format (doc/competition-benchmarks-plot.py and the
+    # per backend, in the harness's format (doc/competition/competition-benchmarks-plot.py and the
     # comparison scripts read it)
     for b in backends:
         rows = [report_row(res[(h, b)]) for h in order if (h, b) in res]
@@ -1035,7 +1035,7 @@ def write_reports(run: Path, out_dir: Path) -> List[Path]:
 
 def cmd_report(args) -> None:
     run = run_dir(args.dir)
-    out = Path(args.out_dir).resolve() if args.out_dir else REPO / "doc"
+    out = Path(args.out_dir).resolve() if args.out_dir else REPO / "doc" / "competition"
     for p in write_reports(run, out):
         print(p)
 
@@ -1238,7 +1238,7 @@ def main() -> None:
     rf.add_argument("--dir")
     rp = sub.add_parser("report", help="write the markdown, JSON and cactus reports (partial while running)")
     rp.add_argument("--dir")
-    rp.add_argument("--out-dir", help="default: the repository's doc/")
+    rp.add_argument("--out-dir", help="default: the repository's doc/competition/")
     c = sub.add_parser("cores", help="change the number of cores")
     c.add_argument("n", type=int)
     c.add_argument("--now", action="store_true", help="stop the newest jobs above N at once")

@@ -4869,7 +4869,7 @@ fn main() {
     // Quick edge cases handled before invoking either backend.  We
     // still emit the standard `c UNSAT|SAT in 0.0ms` timing line on
     // these fast paths so downstream consumers (the
-    // doc/competition-benchmarks.sh parser, etc.) get a uniform
+    // doc/competition/competition-benchmarks.sh parser, etc.) get a uniform
     // result format regardless of which path the solver took.
     if has_empty_clause {
         eprintln!("c UNSAT in 0.0ms");

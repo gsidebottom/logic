@@ -32,7 +32,7 @@ import pathlib
 import sys
 
 DEFAULT_INDEX = "/Users/greg/projects/sat_benchmarks/main_track_2026_official.jsonl"
-DEFAULT_RESULTS = "doc/competition-benchmark_main_track_2026_official_5000_satsuma.json"
+DEFAULT_RESULTS = "doc/competition/competition-benchmark_main_track_2026_official_5000_satsuma.json"
 
 
 def main() -> int:

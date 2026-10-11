@@ -9,7 +9,7 @@ dsr-trim is running inside; the hydra stages and the circuit stage run inside
 the sat process and show as "in-process".  Elapsed times come from `ps`.
 
     tools/gbd/status.py                       # the running benchmark
-    tools/gbd/status.py --prev doc/competition-benchmark_<...>.json
+    tools/gbd/status.py --prev doc/competition/competition-benchmark_<...>.json
                                               # with the previous run's result per instance
 
 The index and the worker count are read from the running run_benchmark.py's

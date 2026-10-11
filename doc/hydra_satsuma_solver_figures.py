@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 IDX = Path("/Users/greg/projects/sat_benchmarks/main_track_2026_official.jsonl")
-D = ROOT / "doc"
+D = ROOT / "doc" / "competition"
 
 def rows(p):
     d = json.load(open(p)); return d["results"] if isinstance(d, dict) else d

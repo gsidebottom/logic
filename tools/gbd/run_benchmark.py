@@ -23,7 +23,7 @@ Per-instance workflow:
   7. Delete the per-worker tmpfile.
 
 Output:
-  doc/competition-benchmark_<index-stem>_<timeout>_<backend>[_pp|_nopp][_<n>].md
+  doc/competition/competition-benchmark_<index-stem>_<timeout>_<backend>[_pp|_nopp][_<n>].md
   (auto-numbered to avoid clobbering prior runs).
 
 Terminal (when stderr is a TTY and --no-progress wasn't passed):
@@ -287,8 +287,8 @@ def size_records(records: List[dict], cache: Path) -> int:
         try: cache.write_text(json.dumps(cached))
         except OSError: pass
     return fresh
-PLOT_PY    = REPO_ROOT / "doc" / "competition-benchmarks-plot.py"
-OUT_DIR    = REPO_ROOT / "doc"
+PLOT_PY    = REPO_ROOT / "doc" / "competition" / "competition-benchmarks-plot.py"
+OUT_DIR    = REPO_ROOT / "doc" / "competition"
 
 
 # ---------------------------------------------------------------------------
@@ -2335,7 +2335,7 @@ def main() -> int:
     elif args.preprocess == "--no-preprocess":
         pp_suffix = "_nopp"
     # `--output` (explicit .md path) wins outright.  Otherwise we
-    # auto-name into `--output-dir` (defaults to the repo's `doc/`).
+    # auto-name into `--output-dir` (defaults to the repo's `doc/competition/`).
     out_dir = args.output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     if args.output:

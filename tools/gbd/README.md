@@ -414,7 +414,7 @@ Once you have a curated index, `run_benchmark.py` runs an arbitrary
 multi-worker progress display, and incrementally builds a Markdown
 report (summary table + cactus plot) updated as each result lands.
 
-Per-instance pipeline mirrors `doc/competition-benchmarks.sh` (decompress
+Per-instance pipeline mirrors `doc/competition/competition-benchmarks.sh` (decompress
 → run sat → parse → atomic-append row → re-finalize) but adds:
 
 - **JSONL-driven**: processes records from a curated index, not "every
@@ -462,7 +462,7 @@ Key flags:
 | `--sat-arg ARG` | (none, repeatable) | extra args forwarded to sat verbatim |
 
 The output filename encodes the backend + timeout + preproc setting
-(`doc/competition-benchmark_<index-stem>_<timeout>_<backend>[_pp|_nopp].md`)
+(`doc/competition/competition-benchmark_<index-stem>_<timeout>_<backend>[_pp|_nopp].md`)
 and auto-numbers (`_2`, `_3`, …) so consecutive runs don't clobber.
 
 Exit code: `0` on success, `1` if any MISMATCH was recorded, `2` for
@@ -479,7 +479,7 @@ inside the `sat` process, show as "in-process". Times from `ps`.
 
 ```bash
 tools/gbd/status.py
-tools/gbd/status.py --prev doc/competition-benchmark_<index>_<timeout>_<backend>.json
+tools/gbd/status.py --prev doc/competition/competition-benchmark_<index>_<timeout>_<backend>.json
 ```
 
 The second form adds the previous run's verdict and time per instance.
@@ -512,7 +512,7 @@ tools/gbd/duo.py report [--out-dir DIR]
 
 `report` writes, by default into `doc/`, one report per backend in
 `run_benchmark.py`'s format (`competition-benchmark_<index>_<timeout>_<backend>.md`,
-`.json` and a cactus `.png`; `doc/competition-benchmarks-plot.py` and the
+`.json` and a cactus `.png`; `doc/competition/competition-benchmarks-plot.py` and the
 comparison scripts read them) and a comparison,
 `duo_<index>_<timeout>_<backend>_vs_<backend>.md` with its cactus: the score
 on the instances all backends finished, the instances only one solved, the
@@ -638,9 +638,9 @@ doesn't checkpoint within a tau run — that's a separate enhancement).
 - [GBD homepage](https://benchmark-database.de)
 - [GBD source code](https://github.com/Udopia/gbd)
 - [Iser & Jabs, SAT 2024 paper](https://doi.org/10.4230/LIPIcs.SAT.2024.18)
-- `doc/competition-benchmarks.sh` — runs an arbitrary backend across
+- `doc/competition/competition-benchmarks.sh` — runs an arbitrary backend across
   the full local CNF directory (uses `BENCH_DIR` env var the same way).
-- `doc/competition-benchmarks-plot.py` — the cactus plotter
+- `doc/competition/competition-benchmarks-plot.py` — the cactus plotter
   `run_benchmark.py` shells out to for the PNG inside the .md report.
 - `target/release/sat --backend cadical` — what curate.py invokes
   per instance to get the authoritative verdict.

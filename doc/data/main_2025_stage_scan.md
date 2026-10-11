@@ -7,7 +7,7 @@ stage decides, or the circuit stage rewrites, and satsuma fails.
 
 | set | instances | unique wins | density | source |
 |---|---|---|---|---|
-| SC2026 main track | 391 | 4 | 1.0% | October runs, `doc/competition-benchmark_main_track_2026_official_5000_{hydra_circuit_satsuma_2,satsuma_2}.json` |
+| SC2026 main track | 391 | 4 | 1.0% | October runs, `doc/competition/competition-benchmark_main_track_2026_official_5000_{hydra_circuit_satsuma_2,satsuma_2}.json` |
 | SC2022 anniversary, first 4,369 | 4,369 | 6 | 0.14% | duo run, 82% done; 8 expected of 5,355 (0.15%) |
 | SC2025 main track | 400 | 4 to 5 expected | about 1.1% | this scan |
 

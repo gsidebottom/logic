@@ -2,7 +2,7 @@
 """
 Cactus plot of competition-benchmark results.
 
-Reads one or more `doc/competition-benchmark_<timeout>[_<n>].md` table
+Reads one or more `doc/competition/competition-benchmark_<timeout>[_<n>].md` table
 files and plots, per file, the cumulative number of problems solved
 within t seconds — the standard SAT-competition "instances solved
 within CPU time" curve.
@@ -12,10 +12,10 @@ TIMEOUT and UNKNOWN rows are excluded (they're the tail of the
 distribution, not data points on the curve).
 
 Usage:
-    doc/competition-benchmarks-plot.py FILE [FILE ...] [-o OUT.png]
-    doc/competition-benchmarks-plot.py doc/competition-benchmark_600.md
-    doc/competition-benchmarks-plot.py doc/competition-benchmark_300.md \\
-                           doc/competition-benchmark_600.md \\
+    doc/competition/competition-benchmarks-plot.py FILE [FILE ...] [-o OUT.png]
+    doc/competition/competition-benchmarks-plot.py doc/competition/competition-benchmark_600.md
+    doc/competition/competition-benchmarks-plot.py doc/competition/competition-benchmark_300.md \\
+                           doc/competition/competition-benchmark_600.md \\
                            -o doc/benchmark_compare.png
 
 The default output is alongside the first input file, named

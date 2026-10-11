@@ -1,0 +1,409 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs}
+\usepackage{verbatim}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\hypersetup{pdftitle={51 Additions per Recursive Step for Rank-23 3x3 Matrix Multiplication},pdfauthor={Greg Sidebottom}}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newcommand{\F}{\mathbb{F}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\eps}{\varepsilon}
+\title{51 Additions per Recursive Step for Rank-23 $3\times3$\\
+Matrix Multiplication, Machine-Checked over Arbitrary Rings}
+\author{Greg Sidebottom}
+\date{October 11, 2026 --- draft}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present a rank-23 bilinear scheme for $3\times3$ matrix
+multiplication that uses $51$ additions per recursive step in the
+alternative-basis (Karstadt--Schwartz) cost model, improving the
+previous best of $52$ [Nielsen, arXiv:2609.06588].  The scheme is
+valid over every ring --- the products keep their left/right factor
+order, so it recurses on block matrices --- and its correctness is
+machine-checked in Lean~4/Mathlib down to the kernel
+(\texttt{Ring51.lean}; the core theorem depends on the axiom
+\texttt{propext} alone).  The count is exactly optimal for the
+scheme's equivalence class: we introduce an exact free-basis
+minimization procedure whose negative answers are exhaustion proofs,
+and use it to show that $51$ is the minimum for this class, that $52$
+is exactly optimal both for Nielsen's class and for the class of the
+current flat-model record, and to sweep the complete Heule--Kauers--Seidl
+database of rank-23 classes.  Separately, we document a systematic gap
+phenomenon between $\F_2$ and signed optima: the $\F_2$-optimal chains
+of a class typically admit no sign assignment under most of the
+class's integer sign models, and certificate lifting fails where a
+direct signed search succeeds.
+\end{abstract}
+
+\section{Introduction}\label{sec:intro}
+
+A rank-$r$ bilinear scheme for $3\times3$ matrix multiplication
+computes the $9$ entries of $C=AB$ using $r$ products of linear
+combinations of the entries of $A$ and of $B$.  Laderman's $r=23$
+scheme~\cite{Laderman76} remains the smallest known rank for the
+$3\times3$ format ($19\le R(\langle3,3,3\rangle)\le23$ over
+arbitrary fields~\cite{Blaser03}; over $\F_2$ the lower bound $20$ was
+shown by Wang~\cite{Wang26}, and two September 2026 preprints claim
+$21$~\cite{Wang26b,Qiushi26}).  With the rank fixed at $23$, attention
+has turned to the \emph{additive} cost of such schemes, in two
+distinct models.
+
+\paragraph{The flat model.}  Count every binary addition or
+subtraction of a standalone straight-line program (negation free, no
+preprocessing).  The published record chain runs
+Stapleton $60$~\cite{Stapleton25} $\to$
+M{\aa}rtensson--Wagner--Stapleton $59$~\cite{MWS26} $\to$
+Perminov $58$~\cite{Perminov25} $\to$ Sun $56$~\cite{Sun26} $\to$
+$55$ (the author, Zenodo deposit of July~7,
+2026~\cite{Sidebottom26}; independently rediscovered by Karunaratne
+and Idamekorala on arXiv on July~28~\cite{KI26} --- same tensor, same
+$13{+}14{+}28$ split, same transposed output construction).
+
+\paragraph{The alternative-basis model.}  Karstadt and
+Schwartz~\cite{KS20} observed that a scheme may be conjugated by
+invertible linear \emph{basis changes} on the two inputs and the
+output.  Used recursively, the basis changes are applied once per
+matrix, blockwise, at total cost $O(n^2\log n)$ --- asymptotically
+free --- while the additions \emph{inside} the changed basis are paid
+at every recursive step and multiply the leading constant of the
+$O(n^{\log_3 23})$ term.  Their flagship result reduced Strassen's
+$2\times2$ step from $15$ to $12$ additions.  For rank-23 $3\times3$,
+sparse-decomposition work of Beniamini and Schwartz~\cite{BS19} gave
+$61$ per step, and Nielsen~\cite{Nielsen26} recently gave $52$,
+searching random basis changes over $\F_2$ and lifting the result to
+general fields.  The two models price different objects and are not
+comparable entry-by-entry: a flat scheme is an alternative-basis
+scheme with identity bases, so the alternative-basis optimum can only
+be smaller, and conversely a per-step count omits the (amortized)
+basis-change additions that the flat model charges.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+\item \textbf{A $51$-addition-per-step scheme} (Section~\ref{sec:result}),
+  valid over every ring, on the Heule--Kauers--Seidl (HKS) class
+  \texttt{i12w211c23fg} --- one addition below the previous best in
+  the same model, found by exact search rather than random sampling.
+\item \textbf{Exact per-class optimality} (Section~\ref{sec:method}):
+  an exact \emph{free-basis minimization} procedure for one leg of a
+  scheme, with machine-checkable certificates for upper bounds and
+  finite exhaustions for lower bounds.  The three legs decouple, so
+  per-class per-step optima are exact: $51$ is optimal for its class;
+  $52$ is exactly optimal for Nielsen's class (his published count,
+  now with a matching lower bound) and for the class
+  \texttt{i19w225c4efh} of the flat-model record (down from $55$
+  flat).
+\item \textbf{A database-wide sweep} (Section~\ref{sec:sweep}): a
+  basis-invariant counting floor for every class of the HKS database
+  of $17{,}376$ rank-23 schemes, and an exact sweep of all classes
+  whose floor permits $\le 52$.  [Sweep in progress at the time of
+  this draft; the table below reports its current state.]
+\item \textbf{The $\F_2$--$\Z$ sign gap} (Section~\ref{sec:signs}): the
+  $\F_2$ optimum of a leg is often unattainable over $\Z$ under most
+  of the class's sign models.  For the $51$-class, $20$ of the first
+  $22$ sign models admit no signed chain matching the $\F_2$ counts,
+  and certificate lifting (the standard route, used by
+  Nielsen~\cite{Nielsen26}) fails on $900$ sampled certificates,
+  $64$ diagonal gauges and $128$ models --- while a direct signed
+  search succeeds, instantly, at sign model $21$.
+\item \textbf{End-to-end machine verification}
+  (Section~\ref{sec:verify}): search certificates with independent
+  replay; a word-ring verification of the assembled program over
+  $\Z\langle A,B\rangle$; and a Lean~4 proof over arbitrary
+  (non-commutative) rings, reproducible in seconds
+  (Appendix~\ref{app:lean}).
+\end{enumerate}
+
+\section{The cost model}\label{sec:model}
+
+A rank-23 scheme is a triple $(U,V,W)$ of $23\times9$ integer
+matrices with
+$C[p,q]=\sum_{m=1}^{23} W_{m,(p,q)}\,(U_m\!\cdot\!\operatorname{vec}A)\,
+(V_m\!\cdot\!\operatorname{vec}B)$.
+In the alternative-basis model one chooses invertible $9\times9$
+matrices $B_U,B_V,B_W$ (unimodular over $\Z$ for ring validity),
+computes $A'=B_U^{-1}\operatorname{vec}A$ and
+$B'=B_V^{-1}\operatorname{vec}B$ once per matrix, runs the recursion
+entirely in the primed coordinates, and decodes the output once.  The
+\emph{per-step cost} is the number of additions needed to evaluate the
+three in-basis linear maps: the two input legs $U\!B_U$, $V\!B_V$
+(each $23$ forms from $9$ inputs) and the output leg (the $9\times23$
+map $m\mapsto (WB_W^{\!\top})^{\!\top} m$, priced through the
+transposition principle).
+
+\begin{proposition}[transposition overhead]\label{prop:tellegen}
+For a $9\times23$ output map with no zero rows or columns, the minimal
+addition count equals that of its $23\times9$ transpose plus
+$23-9=14$.
+\end{proposition}
+
+This is Tellegen's principle, used constructively throughout (the
+flat record's $28$-addition output is a transposed $14$-addition
+chain~\cite{Sidebottom26,KI26}; the $51$ scheme's $26$-addition output
+is a transposed $12$-addition chain).  Hence a per-step total is
+$a_A+a_B+(a_C+14)$ where $a_A,a_B,a_C$ are the three $23\times9$ leg
+costs, and $51$ corresponds to legs $(12,13,12)$.
+
+\begin{lemma}[leg decoupling over rings]\label{lem:decouple}
+Over any ring, with negation free, the per-step optimum of a class is
+the sum of the three leg optima, and the per-product sign constraint
+$\eps_u\eps_v\eps_w=+1$ is vacuous: leg cost is invariant under
+per-row sign flips, and whatever signs the three chains realize are
+absorbed at the point of use (a $-1$ coefficient in the output
+assembly is free).
+\end{lemma}
+
+\begin{proof}
+A chain value used with a minus sign costs nothing extra in the
+negation-free model, so replacing any target row by its negation
+changes no leg cost.  Given chains realizing
+$\eps_u^{(m)}u_m,\ \eps_v^{(m)}v_m,\ \eps_w^{(m)}w_m$, use the output
+value of product $m$ with coefficient
+$\eps_u^{(m)}\eps_v^{(m)}\eps_w^{(m)}$; the composite computes
+$\sum_m (u_m A)(v_m B)\,w_m$ exactly.
+\end{proof}
+
+\section{Exact free-basis minimization}\label{sec:method}
+
+Fix one leg: a $23\times9$ matrix $X$ over $\F_2$ (or over $\Z$, with
+targets taken up to sign) with $d$ distinct nonzero rows.  The
+problem is to minimize, over invertible $B$, the number of additions
+needed to compute all rows of $XB$ from the $9$ transformed inputs.
+Equivalently: choose any $9$ linearly independent \emph{free} forms,
+then build every distinct target by pairwise additions.
+
+\begin{proposition}[structure of optimal chains]\label{prop:tiers}
+A chain with $a$ additions, $k$ of whose $9$ free forms are targets,
+and $h$ helper (non-target) additions, satisfies $a=(d-k)+h$.
+Consequently $a=d-9$ iff some independent $9$-target basis closes to
+all of $T$ under the waste-free closure (repeatedly add any pair-sum
+that is an unbuilt target); $a=d-8$ iff a $9$-target basis plus one
+helper, injectable at the closure fixpoint, suffices, or an
+independent $8$-target basis plus one arbitrary free vector; and so on.
+\end{proposition}
+
+Two facts make this an exact procedure.  The waste-free closure is
+\emph{monotone} --- available forms never hurt --- so greedy closure
+decides waste-free reachability.  And every form preceding the $i$-th
+helper lies in the pure closure of the basis and the earlier helpers,
+so helpers are enumerable at successive fixpoints: the case sweep is
+finite and complete for the $9$-target-basis configurations.  (The
+tiers with free non-target basis vectors are finite over $\F_2$ ---
+$511$ vectors --- and were swept there; over $\Z$ they are unbounded
+and are the one stated scope caveat of the signed lower bounds; see
+Section~\ref{sec:signs}.)  Every positive answer emits the chain,
+which an independent checker replays (basis independence and, over
+$\Z$, unimodularity by exact determinant; each addition; coverage)
+before it is reported; every negative answer is a finite exhaustion.
+
+\begin{proposition}[basis-invariant floor]\label{prop:floor}
+In every basis, an input leg needs at least $d-9$ additions ($d$ =
+distinct rows; invariant under invertible column action), and the
+output leg at least $(d-9)+14$.  Hence the per-step total of a class
+is at least $d_A+d_B+d_C-13$.
+\end{proposition}
+
+\section{The 51-addition scheme}\label{sec:result}
+
+Running the procedure on the class \texttt{i12w211c23fg} (HKS family
+\texttt{17x2+52x+4y6+5y4+14y3+z32+2z27}) over $\F_2$ gives exact leg
+minima
+\[
+a_A = 12,\qquad a_B = 13,\qquad a_C = 12,
+\]
+each with a certificate, and with $a{=}11$ exhausted on all three legs
+and $a{=}12$ exhausted on the $B$ leg.  By
+Lemma~\ref{lem:decouple} the class's per-step optimum is exactly
+\[
+12+13+(12+14) \;=\; \mathbf{51}.
+\]
+The ring-valid realization comes from the class's integer sign model
+$21$ (Section~\ref{sec:signs}): signed chains with the same counts,
+from unimodular signed bases, assembled into the scheme that
+Appendix~\ref{app:lean} exhibits in full as a Lean definition,
+together with the kernel-checked theorem that it computes $AB$ over
+every ring.
+
+For calibration, the same exact procedure gives: for Nielsen's base
+class \texttt{i12w195c23ci}, legs $(12,12,14)$ --- so his published
+$52$~\cite{Nielsen26} is \emph{exactly optimal} for his class, a lower
+bound his sampling-based search could not provide; and for
+\texttt{i19w225c4efh} (the class of the flat-model record), legs
+$(13,13,12)$, i.e.\ per-step $52$, down from $55$ flat --- with the
+curious feature that its \emph{output} leg, at $14$ flat, is the leg
+that drops to $12$ under basis change.
+
+\section{Database sweep}\label{sec:sweep}
+
+Computing $(d_A,d_B,d_C)$ for all $17{,}376$ schemes of the HKS
+database takes seconds and yields the floor distribution of
+Proposition~\ref{prop:floor}: minimum $47$, attained by $44$ schemes
+(including the three classes above); $507$ schemes at $48$; Laderman
+alone at $56$ ($d=(23,23,23)$: no shared factors, maximally unsuited
+to the model).  The exact sweep of every class with floor $\le48$
+($303$ classes after deduplication) is running at the time of this
+draft; its current state:
+
+\begin{center}
+\begin{tabular}{lrl}
+\toprule
+per-step total & classes & note\\
+\midrule
+$51$ & $1$ & \texttt{i12w211c23fg} (exact; Section~\ref{sec:result})\\
+$52$ (tie) & $4$ & \texttt{i12w199c23ci} $(13,12,13)$ and three others\\
+$53$ & $3$ & incl.\ Stapleton's class at $(13,13,13)$\\
+ruled out for $\le51$ & $45$ & exhaustions\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+[To be replaced by the complete table; $53$ of $303$ classes decided.]
+A $50$ would require exact legs $(12,12,12)$; no class has yet come
+within $+3$ of its counting floor.  Because leg minima only rise with
+$d$ and floor-$49$ classes would need slack $+1$ --- never observed
+--- the floor-$\le48$ sweep settles the $\le51$ question for the
+entire database.
+
+\section{The sign gap}\label{sec:signs}
+
+An $\F_2$ result lifts to the ring-valid statement only if the
+chains admit consistent signs.  A mask scheme has many integer
+\emph{sign models} --- solutions of the signed Brent equations, which
+we enumerate by SAT with blocking clauses --- and the lift target is
+model-dependent.  Empirically the dependence is drastic:
+
+\begin{itemize}
+\item \textbf{Certificate lifting fails systematically.}  For
+  \texttt{i19w225c4efh}'s $B$ leg, none of $301$ $\F_2$-optimal
+  certificates admits any sign assignment under the database
+  representative's model ($256$ basis signings each, all unimodular,
+  all DFS-obstructed), nor under all $64$ diagonal sign gauges, nor
+  under $128$ SAT-enumerated models.  The same held for the
+  $51$-class's $A$ and $B$ legs.
+\item \textbf{Direct signed search succeeds.}  A signed variant of the
+  free-basis procedure (targets up to sign; both signs tried per
+  addition; $|\det|$ checked once per basis, as row signs do not
+  change it) decides each model exactly.  For the $51$-class, models
+  $0$--$20$ fail ($18$ cannot reach $a_A=12$; two reach it and
+  exhaust $a_B=13$) --- and model $21$ clears all three legs in
+  seconds, $B$ included.
+\item \textbf{The gap is real but model-local.}  For
+  \texttt{i19w225c4efh}, signed $a_A=13$ and $a_C=12$ hold with
+  certificates, but $a_B\ge14$ over all $9$-target-basis
+  configurations: the class's ring-valid per-step value is $52$ or
+  $53$, with $52$ confined to the unbounded free-vector-basis
+  configurations (an SMT attack on a bounded version is in progress).
+  Certificate lifting is thus doubly incomplete: it samples chains,
+  and it misses signed chains whose mod-$2$ shadow is degenerate.
+  Only the direct signed search decides.
+\end{itemize}
+
+\section{Verification}\label{sec:verify}
+
+Four independent layers check the $51$ claim.  (i)~Every search
+certificate is replayed by a checker sharing no code with the search
+(chain validity, coverage, basis independence/unimodularity).
+(ii)~The sign model is verified against the signed Brent equations.
+(iii)~The generator that assembles the full scheme re-verifies the
+\emph{emitted} program end-to-end over the word ring
+$\Z\langle A,B\rangle$ --- all nine outputs equal $AB$ as
+non-commutative polynomials, with the additions counted
+($12+13+26=51$); this gate caught a genuine sign-bookkeeping bug on
+its first run.  (iv)~The Lean theorem of Appendix~\ref{app:lean} is
+checked by the Lean~4 kernel against Mathlib's matrix product; the
+hypothesis-form theorem depends on \texttt{propext} alone, the
+Matrix-API form on Lean's three standard axioms, and the whole file
+re-elaborates in under ten seconds (the appendix header gives the
+exact command).  Artifacts --- certificates, sign model, generator,
+and proofs --- are in the repository accompanying this paper.
+
+\section{Open problems}\label{sec:open}
+
+(1)~Is the ring-valid optimum of \texttt{i19w225c4efh} $52$ or $53$?
+Equivalently: can a free-vector basis beat every $9$-target basis over
+$\Z$?  (2)~Does any rank-23 class reach per-step $50$, i.e.\ exact
+legs $(12,12,12)$?  The sweep will settle this for the known database;
+a structural lower bound better than Proposition~\ref{prop:floor}
+would settle it in general.  (3)~Characterize the sign models under
+which a class's signed leg minima match its $\F_2$ minima --- model
+$21$'s success after twenty failures invites explanation.  (4)~The
+same machinery applies verbatim to $4\times4$ rank-$47/48/49$ schemes.
+
+\begin{thebibliography}{99}
+\bibitem{Laderman76} J.~Laderman, \emph{A noncommutative algorithm for
+multiplying $3\times3$ matrices using $23$ multiplications}, Bull.\
+AMS 82 (1976) 126--128.
+\bibitem{Blaser03} M.~Bl\"aser, \emph{On the complexity of the
+multiplication of matrices of small formats}, J.\ Complexity 19
+(2003) 43--60.
+\bibitem{Wang26} C.~Wang, \emph{A lower bound of 20 for the rank of
+$3\times3$ matrix multiplication over $\F_2$}, arXiv:2603.07280.
+\bibitem{Wang26b} C.~Wang, \emph{A lower bound of 21 for $3\times3$
+matrix multiplication over $\F_2$}, arXiv:2609.06725.
+\bibitem{Qiushi26} S.~Yang et al., \emph{A structural proof of the
+lower bound 21 for $3\times3$ matrix multiplication over $\F_2$},
+arXiv:2609.18722.
+\bibitem{Stapleton25} D.~Stapleton, \emph{A 60-addition, rank-23
+scheme for exact $3\times3$ matrix multiplication}, arXiv:2508.03857.
+\bibitem{MWS26} M{\aa}rtensson, Wagner, Stapleton, \emph{A rank 23
+algorithm for multiplying $3\times3$ matrices with an arithmetic
+complexity of 59}, arXiv:2601.05272.
+\bibitem{Perminov25} Perminov, \emph{A 58-addition, rank-23 scheme for
+general $3\times3$ matrix multiplication}, arXiv:2512.21980.
+\bibitem{Sun26} Y.~Sun, \emph{An exact 56-addition, rank-23 scheme for
+general $3\times3$ matrix multiplication}, arXiv:2604.27645.
+\bibitem{Sidebottom26} G.~Sidebottom, \emph{A 55-addition rank-23
+scheme for $3\times3$ matrix multiplication --- artifacts, verifier,
+and machine-checked proof}, Zenodo, July 7, 2026,
+doi:10.5281/zenodo.21240904.
+\bibitem{KI26} S.~Karunaratne, A.~Idamekorala, \emph{55 additions
+suffice for $3\times3$ matrix multiplication at rank 23},
+arXiv:2607.28676.
+\bibitem{KS20} E.~Karstadt, O.~Schwartz, \emph{Matrix multiplication,
+a little faster}, J.\ ACM 67 (2020); SPAA 2017.
+\bibitem{BS19} G.~Beniamini, O.~Schwartz, \emph{Faster matrix
+multiplication via sparse decomposition}, SPAA 2019.
+\bibitem{Nielsen26} H.~M.~Nielsen, \emph{A 52-addition, rank-23 scheme
+for exact $3\times3$ matrix multiplication}, arXiv:2609.06588.
+\end{thebibliography}
+
+\appendix
+
+\section{The Lean definition and theorem}\label{app:lean}
+
+The following is the complete scheme definition and the
+matrix-product theorem, verbatim from \texttt{proof/Mm/Ring51.lean}
+(comments lightly ASCII-folded for typesetting; the repository file is
+authoritative).  Sections marked \texttt{UNCOUNTED} are the amortized
+basis changes; the \texttt{COUNTED} sections contain the
+$12+13+26=51$ per-step additions.  To re-check the proof from the
+repository (forcing re-elaboration rather than a cached replay):
+
+\begin{verbatim}
+cd proof && find .lake/build -name "Ring51.*" -delete && lake build Mm.Ring51
+\end{verbatim}
+
+\noindent
+Expected: \texttt{Built Mm.Ring51} in 6--8 seconds against the
+prebuilt Mathlib cache, with axiom audits
+\texttt{[propext]} (for the hypothesis-form theorem
+\texttt{Ring51.correct}, not reproduced here) and
+\texttt{[propext, Classical.choice, Quot.sound]} for the theorem
+below.  The ambient context is
+\texttt{variable \{R : Type \_\} [Ring R]}.
+
+{\footnotesize
+\verbatiminput{ring51_appendix_body.txt}
+}
+
+\end{document}

@@ -246,6 +246,20 @@ Appendix~\ref{app:lean} exhibits in full as a Lean definition,
 together with the kernel-checked theorem that it computes $AB$ over
 every ring.
 
+The conversions of this realization cost $4+7+3=14$ additions ---
+minimized \emph{exactly}, by sweeping every feasible basis at the
+optimal leg counts and scoring $\sum(\mathrm{weight}-1)$ over the nine
+basis rows; the unconstrained envelope from the class's row weights is
+$11$.  The complete one-shot algorithm therefore costs $51+14=65$
+additions in ordinary coordinates; for comparison, Stapleton and
+Perminov's conversion-optimized class achieves $51+5=56$~\cite{SP26},
+and the flat-model record is $55$~\cite{Sidebottom26,KI26}.  At the
+optimal counts the accounting $a=(d-k)+h$ forces at least eight basis
+rows to be target rows, so conversion cost is governed by the class's
+light-row supply rather than by free design --- near-identity
+conversions like~\cite{SP26}'s exist exactly when the class has many
+weight-one rows.
+
 The second class, \texttt{i12w219c23fg}, has exact legs
 $(11,13,13)$: its $A$ leg \emph{achieves the counting floor} $d-9$ ---
 a $9$-target unimodular basis whose waste-free closure covers all $20$

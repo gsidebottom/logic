@@ -139,8 +139,12 @@ def parse_model(z3out):
     import re
     vals = {}
     txt = open(z3out).read()
-    if "unsat" in txt.split("\n")[0]:
+    first = txt.split("\n")[0].strip()
+    if first == "unsat":
         return None
+    if first in ("timeout", "unknown") or first != "sat":
+        print(f"no verdict: solver said '{first}'")
+        sys.exit(3)
     for m in re.finditer(r"\(define-fun (f\d+c\d+) \(\) \(_ BitVec \d+\)\s+#([bx])([0-9a-f]+)\)", txt):
         name, kind, digits = m.groups()
         v = int(digits, 2 if kind == "b" else 16)

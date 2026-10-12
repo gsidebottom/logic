@@ -286,28 +286,37 @@ Proposition~\ref{prop:floor}: minimum $47$, attained by $44$ schemes
 alone at $56$ ($d=(23,23,23)$: no shared factors, maximally unsuited
 to the model).  The exact sweep of every class with floor $\le48$
 ($303$ classes after deduplication) is running at the time of this
-draft; its current state:
+draft; its state as of October~12 ($186$ of $303$ classes decided):
 
 \begin{center}
 \begin{tabular}{lrl}
 \toprule
 per-step total & classes & note\\
 \midrule
-$51$ & $1$ & \texttt{i12w211c23fg} (exact; Section~\ref{sec:result})\\
-$52$ (tie) & $4$ & \texttt{i12w199c23ci} $(13,12,13)$ and three others\\
-$53$ & $3$ & incl.\ Stapleton's class at $(13,13,13)$\\
-ruled out for $\le51$ & $45$ & exhaustions\\
+$51$ & $2$ & \texttt{i12w211c23fg}, \texttt{i12w219c23fg} (exact; \S\ref{sec:result})\\
+$52$ (tie) & $13$ & eleven in the \texttt{i12} family\\
+$53$ & $17$ & incl.\ Stapleton's class at $(13,13,13)$\\
+$54$ & $14$ & \\
+$55$ & $3$ & \\
+ruled out for $\le51$ & $136$ & leg-sum lower bounds $\ge38$\\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent
-[To be replaced by the complete table; $53$ of $303$ classes decided.]
-A $50$ would require exact legs $(12,12,12)$; no class has yet come
-within $+3$ of its counting floor.  Because leg minima only rise with
-$d$ and floor-$49$ classes would need slack $+1$ --- never observed
---- the floor-$\le48$ sweep settles the $\le51$ question for the
-entire database.
+[Final table to follow; the sweep is exact on each decided class.]
+We also profiled and swept our own corpus of $123$ rank-23 schemes
+absent from the database ($53$ walk-discovered classes certified
+inequivalent to all of it, and $70$ later finds): $16$ were eligible
+at floor $\le48$, and all $16$ are ruled out for $\le51$ --- the
+database's optimum stands across every class known to us.
+A $50$ would require exact leg sum $36$.  The closest approach so far
+is slack $+2$ over the leg floors (the $(11,13,13)$ class); exact
+$11$-legs exist, so sum $36$ is not excluded by any per-leg
+phenomenon observed to date.  Because leg minima only rise with $d$
+and floor-$49$ classes would need slack $+1$ --- never observed ---
+the floor-$\le48$ sweep settles the $\le51$ question for the entire
+database.
 
 \section{The sign gap}\label{sec:signs}
 

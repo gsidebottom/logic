@@ -129,6 +129,9 @@ A rank-23 scheme is a triple $(U,V,W)$ of $23\times9$ integer
 matrices with
 $C[p,q]=\sum_{m=1}^{23} W_{m,(p,q)}\,(U_m\!\cdot\!\operatorname{vec}A)\,
 (V_m\!\cdot\!\operatorname{vec}B)$.
+Here $\operatorname{vec}$ flattens a $3\times3$ matrix row-major
+into a $9$-vector (coordinate $k$ is entry
+$(\lfloor k/3\rfloor,\,k\bmod 3)$).
 In the alternative-basis model one chooses invertible $9\times9$
 matrices $B_U,B_V,B_W$ (unimodular over $\Z$ for ring validity),
 computes $A'=B_U^{-1}\operatorname{vec}A$ and

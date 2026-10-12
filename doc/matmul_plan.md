@@ -1347,6 +1347,14 @@ the two source papers for this track):
   PENDING for a ring-valid 51: sign-lift of this class's certs
   (fblift pipeline; lift_models for alternative sign models).
 
+- **TODO (when cores free): measure leg stabilizers** — for each
+  51/52-tier class, compute the column-action stabilizer of each leg's
+  target set; if nontrivial, orbit-quotient the subset sweeps in
+  fbmin/fbsmin (win = stabilizer order). Full gate discipline per
+  [[gate-symmetry-actions-on-the-object]]: assert the action fixes the
+  target set and orbit sizes sum to C(d,9) before trusting any
+  speedup.
+
 ## 1. The thesis — why native representation should win
 
 The CNF costs local search a 43× variable blowup (26,541 vs 621) — flips

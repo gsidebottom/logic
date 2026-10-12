@@ -55,7 +55,9 @@ def run_leg(path, max_helpers):
     return (val if op == "=" else -val), d, out
 
 models = lift_models(bits, NMODELS, DIMS)
-print(f"{len(models)} sign models; leg targets {TARGETS} "
+from gaugecanon import dedup_models
+models = dedup_models(models, bits)
+print(f"{len(models)} gauge-distinct sign models; leg targets {TARGETS} "
       f"(ring total {sum(TARGETS) + 14})", flush=True)
 
 best = None

@@ -26,8 +26,12 @@ Matrix Multiplication, Machine-Checked over Arbitrary Rings}
 \begin{abstract}
 We present a rank-23 bilinear scheme for $3\times3$ matrix
 multiplication that uses $51$ additions per recursive step in the
-alternative-basis (Karstadt--Schwartz) cost model, improving the
-previous best of $52$ [Nielsen, arXiv:2609.06588].  The scheme is
+alternative-basis (Karstadt--Schwartz) cost model, one below
+Nielsen's $52$ (arXiv:2609.06588).  The count $51$ itself was first
+posted, on a different scheme, by Stapleton and Perminov
+(arXiv:2609.32388, September~26, 2026), found by heuristic sparse-basis
+search; the present work is independent and complementary: exactness
+and breadth rather than a single construction.  The scheme is
 valid over every ring --- the products keep their left/right factor
 order, so it recurses on block matrices --- and its correctness is
 machine-checked in Lean~4/Mathlib down to the kernel
@@ -79,9 +83,12 @@ at every recursive step and multiply the leading constant of the
 $O(n^{\log_3 23})$ term.  Their flagship result reduced Strassen's
 $2\times2$ step from $15$ to $12$ additions.  For rank-23 $3\times3$,
 sparse-decomposition work of Beniamini and Schwartz~\cite{BS19} gave
-$61$ per step, and Nielsen~\cite{Nielsen26} recently gave $52$,
-searching random basis changes over $\F_2$ and lifting the result to
-general fields.  The two models price different objects and are not
+$61$ per step; Nielsen~\cite{Nielsen26} gave $52$, searching random
+basis changes over $\F_2$ and lifting to general fields; and Stapleton
+and Perminov~\cite{SP26} gave $51$ on a flip-graph-derived scheme,
+with remarkably sparse conversions (five additions in total, so their
+complete one-shot algorithm costs $56$ in ordinary coordinates).  We
+prove below that their kernel, too, is exactly optimal for its class.  The two models price different objects and are not
 comparable entry-by-entry: a flat scheme is an alternative-basis
 scheme with identity bases, so the alternative-basis optimum can only
 be smaller, and conversely a per-step count omits the (amortized)
@@ -89,10 +96,13 @@ basis-change additions that the flat model charges.
 
 \paragraph{Contributions.}
 \begin{enumerate}
-\item \textbf{A $51$-addition-per-step scheme} (Section~\ref{sec:result}),
-  valid over every ring, on the Heule--Kauers--Seidl (HKS) class
-  \texttt{i12w211c23fg} --- one addition below the previous best in
-  the same model, found by exact search rather than random sampling.
+\item \textbf{Two further $51$-addition-per-step classes}
+  (Section~\ref{sec:result}), valid over every ring: the
+  Heule--Kauers--Seidl (HKS) classes \texttt{i12w211c23fg} and
+  \texttt{i12w219c23fg}, found by exact search rather than sampling,
+  and inequivalent to each other and to the scheme of Stapleton and
+  Perminov~\cite{SP26} --- so at least three distinct classes attain
+  $51$.
 \item \textbf{Exact per-class optimality} (Section~\ref{sec:method}):
   an exact \emph{free-basis minimization} procedure for one leg of a
   scheme, with machine-checkable certificates for upper bounds and
@@ -236,10 +246,18 @@ Appendix~\ref{app:lean} exhibits in full as a Lean definition,
 together with the kernel-checked theorem that it computes $AB$ over
 every ring.
 
+The second class, \texttt{i12w219c23fg}, has exact legs
+$(11,13,13)$: its $A$ leg \emph{achieves the counting floor} $d-9$ ---
+a $9$-target unimodular basis whose waste-free closure covers all $20$
+targets, the only floor-achieving leg observed in the database so far.
+
 For calibration, the same exact procedure gives: for Nielsen's base
 class \texttt{i12w195c23ci}, legs $(12,12,14)$ --- so his published
 $52$~\cite{Nielsen26} is \emph{exactly optimal} for his class, a lower
-bound his sampling-based search could not provide; and for
+bound his sampling-based search could not provide; for the scheme of
+Stapleton and Perminov~\cite{SP26}, legs $(13,12,12)$ --- their
+heuristically-found $51$ kernel is likewise exactly optimal for its
+class, which is inequivalent to both of ours; and for
 \texttt{i19w225c4efh} (the class of the flat-model record), legs
 $(13,13,12)$, i.e.\ per-step $52$, down from $55$ flat --- with the
 curious feature that its \emph{output} leg, at $14$ flat, is the leg
@@ -390,6 +408,9 @@ a little faster}, J.\ ACM 67 (2020); SPAA 2017.
 multiplication via sparse decomposition}, SPAA 2019.
 \bibitem{Nielsen26} H.~M.~Nielsen, \emph{A 52-addition, rank-23 scheme
 for exact $3\times3$ matrix multiplication}, arXiv:2609.06588.
+\bibitem{SP26} J.~Stapleton, A.~I.~Perminov, \emph{A 51-addition
+alternative-basis kernel for rank-23 $3\times3$ matrix multiplication},
+arXiv:2609.32388.
 \end{thebibliography}
 
 \appendix

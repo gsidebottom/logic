@@ -1346,6 +1346,21 @@ the two source papers for this track):
   (sums ≥ 40). Sweep continues (50 would need legs 12+12+12).
   PENDING for a ring-valid 51: sign-lift of this class's certs
   (fblift pipeline; lift_models for alternative sign models).
+- **S-P 51 Lean-verified (2026-10-13, commit 783d433,
+  proof/Mm/SP51.lean)**: Stapleton–Perminov's published scheme
+  (arXiv:2609.32388) transcribed verbatim from their paper listing
+  (matmul/external/sp51/), gated by gen_sp51_lean.py on the published
+  accounting (counted 13+12+26 = 51, conversions 1+3+1 = 5 uncounted,
+  one-shot 56), P/Q/R unimodularity, and a word-ring ℤ⟨A,B⟩ replay;
+  axioms [propext] / standard, abel fallback needed (pure-reorder
+  outputs). Both ring-valid 51-packages with known conversions are now
+  kernel-checked (ours 51+11, theirs 51+5). QUEUED on supplemental
+  sweep completion: paper update — four-51 table (lift status +
+  conversion minima), family analysis (all four in i12 =
+  17x2+52x+4y6+5y4+14y3+z32+2z27; name grammar verified: i = family
+  index, w = cubic-term count, family string = rank invariants
+  x/y/z), final sweep census, SP51.lean in §verify, plus any new 51s
+  the sweep's tail yields.
 
 - **TODO (when cores free): measure leg stabilizers** — for each
   51/52-tier class, compute the column-action stabilizer of each leg's

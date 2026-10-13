@@ -18,7 +18,7 @@
 \title{51 Additions per Recursive Step for Rank-23 $3\times3$\\
 Matrix Multiplication, Machine-Checked over Arbitrary Rings}
 \author{Greg Sidebottom}
-\date{October 11, 2026 --- draft}
+\date{October 13, 2026 --- draft}
 
 \begin{document}
 \maketitle
@@ -42,7 +42,13 @@ minimization procedure whose negative answers are exhaustion proofs,
 and use it to show that $51$ is the minimum for this class, that $52$
 is exactly optimal both for Nielsen's class and for the class of the
 current flat-model record, and to sweep the complete Heule--Kauers--Seidl
-database of rank-23 classes.  Separately, we document a systematic gap
+database of rank-23 classes.  The sweep, made variant-aware after a
+name-collision blind spot surfaced, knows four distinct classes at
+$51$ --- and all four lie in a single HKS invariant family, whose
+rank-spectrum signature we decode and analyze.  We machine-check
+Stapleton and Perminov's scheme as well, so every ring-valid
+$51$-package with known conversions is now kernel-checked.
+Separately, we document a systematic gap
 phenomenon between $\F_2$ and signed optima: the $\F_2$-optimal chains
 of a class typically admit no sign assignment under most of the
 class's integer sign models, and certificate lifting fails where a
@@ -96,13 +102,16 @@ basis-change additions that the flat model charges.
 
 \paragraph{Contributions.}
 \begin{enumerate}
-\item \textbf{Two further $51$-addition-per-step classes}
-  (Section~\ref{sec:result}), valid over every ring: the
-  Heule--Kauers--Seidl (HKS) classes \texttt{i12w211c23fg} and
-  \texttt{i12w219c23fg}, found by exact search rather than sampling,
-  and inequivalent to each other and to the scheme of Stapleton and
-  Perminov~\cite{SP26} --- so at least three distinct classes attain
-  $51$.
+\item \textbf{Three further $51$-addition-per-step classes}
+  (Section~\ref{sec:result}), found by exact search rather than
+  sampling and pairwise inequivalent to each other and to the scheme
+  of Stapleton and Perminov~\cite{SP26} --- so at least four distinct
+  classes attain $51$.  Two of the three are realized over every
+  ring: \texttt{i12w211c23fg} (sign model $21$, conversions $11$,
+  Lean-checked) and \texttt{i12w227c23ci-012} (sign model $15$); the
+  third, \texttt{i12w219c23fg}, so far stands over $\F_2$ only
+  (Section~\ref{sec:signs}).  All four classes lie in a single HKS
+  invariant family (Section~\ref{sec:family}).
 \item \textbf{Exact per-class optimality} (Section~\ref{sec:method}):
   an exact \emph{free-basis minimization} procedure for one leg of a
   scheme, with machine-checkable certificates for upper bounds and
@@ -113,10 +122,14 @@ basis-change additions that the flat model charges.
   \texttt{i19w225c4efh} of the flat-model record (down from $55$
   flat).
 \item \textbf{A database-wide sweep} (Section~\ref{sec:sweep}): a
-  basis-invariant counting floor for every class of the HKS database
+  basis-invariant counting floor for every scheme of the HKS database
   of $17{,}376$ rank-23 schemes, and an exact sweep of all classes
-  whose floor permits $\le 52$.  [Sweep in progress at the time of
-  this draft; the table below reports its current state.]
+  whose floor permits $\le 51$: a $303$-class main pass (complete),
+  plus a variant-aware supplemental pass over the name-collision
+  blind spot that the main pass's deduplication created --- the pass
+  that recovered Stapleton and Perminov's class and found the fourth.
+  [Supplemental in progress at this draft; its table reports the
+  state at drafting and will be frozen on completion.]
 \item \textbf{The $\F_2$--$\Z$ sign gap} (Section~\ref{sec:signs}): the
   $\F_2$ optimum of a leg is often unattainable over $\Z$ under most
   of the class's sign models.  For the $51$-class, $20$ of the first
@@ -130,7 +143,10 @@ basis-change additions that the flat model charges.
   replay; a word-ring verification of the assembled program over
   $\Z\langle A,B\rangle$; and a Lean~4 proof over arbitrary
   (non-commutative) rings, reproducible in seconds
-  (Appendix~\ref{app:lean}).
+  (Appendix~\ref{app:lean}).  We extend the same treatment to
+  Stapleton and Perminov's published program
+  (\texttt{proof/Mm/SP51.lean}), so both ring-valid $51$-packages
+  with known conversions are kernel-checked.
 \end{enumerate}
 
 \section{The cost model}\label{sec:model}
@@ -268,24 +284,66 @@ The second class, \texttt{i12w219c23fg}, has exact legs
 $(11,13,13)$: its $A$ leg \emph{achieves the counting floor} $d-9$ ---
 a $9$-target basis whose waste-free closure covers all $20$ targets.
 Floor-achieving legs are uncommon but not unique ($19$ of the $432$
-legs decided exactly so far), and they share a sharp structural
+legs decided exactly so far [recount at census freeze]), and they
+share a sharp structural
 signature: every row participates in an internal addition triple
 (rows $x,y,z$ of the leg with $x+y=\pm z$), and the triple count is at
 least $d-9$ --- both conditions are provably necessary for the floor,
 and empirically the leg's slack above its floor grows almost linearly
 with its number of triple-isolated rows.
 
+The third class, \texttt{i12w227c23ci-012}, was found by the
+variant-aware supplemental sweep (Section~\ref{sec:sweep}) in the
+name-collision blind spot: it is the thirteenth stored variant under
+a name whose first variant is a different de~Groote class.  Its exact
+legs are $(14,12,11)$ --- the \emph{output} leg achieves the counting
+floor $d-9=11$, the second floor-achieving leg observed and the first
+on the output side.  Direct signed search over its gauge-deduped sign
+models (Section~\ref{sec:signs}) clears all three legs at model $15$:
+the class is ring-valid at $51$, with exact-in-scope conversions
+$3+9+5=17$ and a one-shot total of $68$.
+
 For calibration, the same exact procedure gives: for Nielsen's base
 class \texttt{i12w195c23ci}, legs $(12,12,14)$ --- so his published
 $52$~\cite{Nielsen26} is \emph{exactly optimal} for his class, a lower
 bound his sampling-based search could not provide; for the scheme of
-Stapleton and Perminov~\cite{SP26}, legs $(13,12,12)$ --- their
+Stapleton and Perminov~\cite{SP26} --- which the sweep identifies as
+database class \texttt{i12w219c23ci-008}, itself hidden in the same
+name-collision blind spot --- legs $(13,12,12)$: their
 heuristically-found $51$ kernel is likewise exactly optimal for its
-class, which is inequivalent to both of ours; and for
+class, which is inequivalent to all three of ours; and for
 \texttt{i19w225c4efh} (the class of the flat-model record), legs
 $(13,13,12)$, i.e.\ per-step $52$, down from $55$ flat --- with the
 curious feature that its \emph{output} leg, at $14$ flat, is the leg
 that drops to $12$ under basis change.
+
+Table~\ref{tab:four51} summarizes the four known $51$-classes.
+
+\begin{table}[ht]
+\centering
+\caption{The four known $51$-addition-per-step classes (all in HKS
+family \texttt{i12}; Section~\ref{sec:family}).  Legs are the exact
+free-basis minima $(a_A,a_B,a_C)$; per-step $=a_A+a_B+a_C+14$;
+conversion counts are exact within the swept configuration space
+(Section~\ref{sec:result}); one-shot $=51+$conversions.}
+\label{tab:four51}
+\small
+\begin{tabular}{llllrl}
+\toprule
+class & legs & ring-valid & conversions & one-shot & Lean\\
+\midrule
+\texttt{i12w211c23fg} & $(12,13,12)$ & yes (model $21$) & $4{+}4{+}3=11$ & $62$ & \texttt{Ring51.lean}\\
+\texttt{i12w219c23fg} & $(11,13,13)^{\dagger}$ & open ($\F_2$ only) & --- & --- & ---\\
+\texttt{i12w219c23ci-008}~\cite{SP26} & $(13,12,12)$ & yes (published) & $1{+}3{+}1=5$ & $\mathbf{56}$ & \texttt{SP51.lean}\\
+\texttt{i12w227c23ci-012} & $(14,12,11)^{\dagger}$ & yes (model $15$) & $3{+}9{+}5=17$ & $68$ & ---\\
+\bottomrule
+\end{tabular}
+
+\smallskip
+{\footnotesize $\dagger$: contains a floor-achieving leg ($a=d-9$):
+the $11$-legs, on the input side for \texttt{i12w219c23fg} and the
+output side for \texttt{i12w227c23ci-012}.}
+\end{table}
 
 \section{Database sweep}\label{sec:sweep}
 
@@ -294,9 +352,9 @@ database takes seconds and yields the floor distribution of
 Proposition~\ref{prop:floor}: minimum $47$, attained by $44$ schemes
 (including the three classes above); $507$ schemes at $48$; Laderman
 alone at $56$ ($d=(23,23,23)$: no shared factors, maximally unsuited
-to the model).  The exact sweep of every class with floor $\le48$
-($303$ classes after deduplication) is running at the time of this
-draft; its state as of October~12 ($186$ of $303$ classes decided):
+to the model).  The exact \emph{main} sweep of every class with floor
+$\le48$ ($303$ classes, deduplicated by family and class name) is
+complete:
 
 \begin{center}
 \begin{tabular}{lrl}
@@ -304,17 +362,43 @@ draft; its state as of October~12 ($186$ of $303$ classes decided):
 per-step total & classes & note\\
 \midrule
 $51$ & $2$ & \texttt{i12w211c23fg}, \texttt{i12w219c23fg} (exact; \S\ref{sec:result})\\
-$52$ (tie) & $13$ & eleven in the \texttt{i12} family\\
-$53$ & $17$ & incl.\ Stapleton's class at $(13,13,13)$\\
-$54$ & $14$ & \\
-$55$ & $3$ & \\
-ruled out for $\le51$ & $136$ & leg-sum lower bounds $\ge38$\\
+$52$ (tie) & $14$ & \\
+$53$ & $21$ & incl.\ Stapleton's class at $(13,13,13)$\\
+$54$ & $21$ & \\
+$55$ & $5$ & \\
+$56$ & $1$ & \\
+ruled out for $\le51$ & $238$ & leg-sum lower bounds $\ge38$\\
+timeout (one leg open) & $1$ & \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\noindent
-[Final table to follow; the sweep is exact on each decided class.]
+\paragraph{The name-collision blind spot and the supplemental sweep.}
+The main sweep's deduplication assumed that stored variants sharing a
+name (\texttt{-000}, \texttt{-001}, \dots) represent one equivalence
+class.  They need not: the HKS name is an invariant-plus-hash, and
+distinct de~Groote classes collide under it.  Both Stapleton and
+Perminov's class (\texttt{i12w219c23ci-008}) and the fourth
+$51$-class (\texttt{i12w227c23ci-012}) sit in exactly this blind
+spot.  A \emph{supplemental} sweep therefore re-enumerates every
+stored variant tab individually ($258$ eligible at floor $\le48$
+beyond the main pass) and runs the same exact per-leg procedure.  Its
+state at drafting ($148$ of $258$ decided; table to be frozen on
+completion):
+
+\begin{center}
+\begin{tabular}{lrl}
+\toprule
+per-step total & variants & note\\
+\midrule
+$51$ & $2$ & \texttt{i12w219c23ci-008}~\cite{SP26}, \texttt{i12w227c23ci-012}\\
+$52$ (tie) & $13$ & \\
+$53$ & $31$ & \\
+$54$ & $10$ & \\
+ruled out for $\le51$ & $92$ & \\
+\bottomrule
+\end{tabular}
+\end{center}
 We also profiled and swept our own corpus of $123$ rank-23 schemes
 outside the sweep above: $53$ walk-discovered classes certified
 inequivalent to the entire database, plus $70$ later finds (not yet
@@ -322,12 +406,53 @@ equivalence-checked against it).  Of these, $16$ were eligible at
 floor $\le48$, and all $16$ are ruled out for $\le51$ --- the
 database's optimum stands across every class known to us.
 A $50$ would require exact leg sum $36$.  The closest approach so far
-is slack $+2$ over the leg floors (the $(11,13,13)$ class); exact
-$11$-legs exist, so sum $36$ is not excluded by any per-leg
-phenomenon observed to date.  Because leg minima only rise with $d$
-and floor-$49$ classes would need slack $+1$ --- never observed ---
-the floor-$\le48$ sweep settles the $\le51$ question for the entire
+is slack $+2$ over the leg floors (the $(11,13,13)$ and $(14,12,11)$
+classes); exact $11$-legs exist on both the input and the output
+side, so sum $36$ is not excluded by any per-leg phenomenon observed
+to date.  Because leg minima only rise with $d$ and floor-$49$
+classes would need slack $+1$ --- never observed --- the
+floor-$\le48$ sweeps settle the $\le51$ question for the entire
 database.
+
+\section{The \texttt{i12} family}\label{sec:family}
+
+All four known $51$-classes lie in one HKS invariant family.  The
+database groups its $17{,}376$ schemes into $237$ families (plus four
+classically named schemes) by a rank-spectrum string; the family of
+the four is
+\begin{center}
+\texttt{17x2+52x+4y6+5y4+14y3+z32+2z27},
+\end{center}
+whose grammar we verified computationally against the data.  The
+$x$-part is the rank distribution of the $69$ coefficient matrices
+($23$ products $\times$ $3$ slots): $17$ of rank~$2$ and $52$ of
+rank~$1$.  The $y$-part is the per-product rank-sum distribution:
+$4$ products of shape $(2,2,2)$, $5$ summing to $4$, and $14$ of
+shape $(1,1,1)$.  The $z$-part is the total rank per slot:
+$(32,27,27)$.  In the scheme names themselves, \texttt{i}$N$ indexes
+the family ($1{:}1$ with the invariant string across the database),
+\texttt{w}$N$ is the scheme's weight as a trilinear form (the number
+of cubic terms $\sum_m |U_m||V_m||W_m|$ --- not its nonzero-entry
+count), \texttt{c}$XXXX$ is a four-character disambiguating hash, and
+\texttt{-}$NNN$ counts stored variants under the same full name ---
+variants that, as Section~\ref{sec:sweep} shows, need not be
+equivalent.
+
+The concentration is striking: the floor-$47/48$ region spans dozens
+of families, but every exact $51$ is \texttt{i12} --- schemes rich in
+rank-one coefficient matrices ($52$ of $69$) with one heavy slot
+($z_A=32$).  The contrast with \texttt{i19} --- the family of the
+flat-model record, signature
+\texttt{18x2+51x+4y6+6y4+13y3+z32+z28+z27}, one fewer rank-one
+matrix --- is sharp in the sweep data: its variants repeatedly reach
+$(13,13,12)$-type profiles but stall with one leg proved $\ge14$,
+yielding ties at $52$ and a wall of ruled-outs, never a $51$.
+Whether the rank spectrum \emph{explains} the $51$s (rank-one-rich
+legs have many coincident rows, hence small $d$ and dense internal
+addition triples --- the floor-achieving signature of
+Section~\ref{sec:result}) or merely correlates with them is open; the
+family statistics make it a natural target for a structural lower
+bound.
 
 \section{The sign gap}\label{sec:signs}
 
@@ -356,7 +481,9 @@ model-dependent.  Empirically the dependence is drastic:
   change it) decides each model exactly.  For the $51$-class, models
   $0$--$20$ fail ($18$ cannot reach $a_A=12$; two reach it and
   exhaust $a_B=13$) --- and model $21$ clears all three legs in
-  seconds, $B$ included.
+  seconds, $B$ included.  The fourth class repeats the pattern:
+  its models, quotiented by the $512$ diagonal sign gauges to $64$
+  orbits, fail until orbit $15$ clears $(14,12,11)$.
 \item \textbf{The gap is real but model-local.}  For
   \texttt{i19w225c4efh}, signed $a_A=13$ and $a_C=12$ hold with
   certificates, but $a_B\ge14$ over all $9$-target-basis
@@ -386,14 +513,31 @@ Matrix-API form on Lean's three standard axioms, and the whole file
 re-elaborates in under ten seconds (the appendix header gives the
 exact command).
 
+\paragraph{Stapleton and Perminov's scheme, kernel-checked.}
+We applied the same pipeline to the \emph{published} program of
+\cite{SP26}, transcribed verbatim from the verification listing in
+their paper (their reused variables SSA-renamed): the generator
+asserts their addition accounting (counted $13+12+26=51$, uncounted
+conversions $1+3+1=5$, one-shot $56$), checks their $P,Q,R$ basis
+matrices are unimodular (the amortization requirement), replays the
+program over $\Z\langle A,B\rangle$, and emits
+\texttt{proof/Mm/SP51.lean}, whose theorems carry the same axiom
+profile as ours.  Both ring-valid $51$-packages with known
+conversions are thus checked down to the Lean kernel.
+
 \paragraph{Artifacts.}  All artifacts are in the repository
-\url{https://github.com/gsidebottom/logic}: the Lean proof
-\texttt{proof/Mm/Ring51.lean}; the leg certificates, sign model and
-signed chains in \texttt{matmul/external/ks51/}; the search tools
+\url{https://github.com/gsidebottom/logic}: the Lean proofs
+\texttt{proof/Mm/Ring51.lean} and \texttt{proof/Mm/SP51.lean}; the leg
+certificates, sign models and
+signed chains in \texttt{matmul/external/ks51/} and the transcribed
+Stapleton--Perminov program and certificate in
+\texttt{matmul/external/sp51/}; the search tools
 (\texttt{src/bin/fbmin.rs}, \texttt{src/bin/fbsmin.rs}) and drivers
-(\texttt{matmul/fbsweep.py}, \texttt{matmul/fbsloop.py}); and the
-generator \texttt{matmul/gen\_ring51\_lean.py}, whose word-ring gate
-re-verifies the emitted program on every run.  An archival deposit of
+(\texttt{matmul/fbsweep.py}, \texttt{matmul/fbsweep2.py},
+\texttt{matmul/fbsloop.py}); and the
+generators \texttt{matmul/gen\_ring51\_lean.py} and
+\texttt{matmul/gen\_sp51\_lean.py}, whose word-ring gates
+re-verify the emitted programs on every run.  An archival deposit of
 these artifacts (paper draft, standalone proof, Lake project,
 certificates, tools, and a repository snapshot at tag
 \texttt{v1.0-ks51}) is published at
@@ -408,7 +552,12 @@ legs $(12,12,12)$?  The sweep will settle this for the known database;
 a structural lower bound better than Proposition~\ref{prop:floor}
 would settle it in general.  (3)~Characterize the sign models under
 which a class's signed leg minima match its $\F_2$ minima --- model
-$21$'s success after twenty failures invites explanation.  (4)~The
+$21$'s success after twenty failures (and orbit $15$'s for the fourth
+class) invites explanation, and \texttt{i12w219c23fg}'s $128$
+straight failures ask whether its $51$ lifts at all.  (4)~Explain or
+refute the \texttt{i12} concentration of Section~\ref{sec:family}:
+does a rank-one-rich spectrum with a heavy slot \emph{force} small
+legs?  (5)~The
 same machinery applies verbatim to $4\times4$ rank-$47/48/49$ schemes.
 
 \begin{thebibliography}{99}

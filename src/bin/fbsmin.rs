@@ -92,25 +92,20 @@ fn abs_det(rows: &[V9]) -> i128 {
 struct Leg {
     rows: Vec<V9>,          // the 23 signed rows, input order
     reps: Vec<V9>,          // distinct rows up to sign (canonical), d of them
-    row_rep: Vec<(usize, i32)>, // row i = sign * reps[idx]
     exact: bool,
 }
 
 impl Leg {
     fn new(rows: Vec<V9>, exact: bool) -> Self {
         let mut reps: Vec<V9> = Vec::new();
-        let mut row_rep = Vec::new();
         for r in &rows {
             assert!(!is_zero(r), "zero row");
-            let (c, s) = if exact { (*r, 1) } else { canon(*r) };
-            if let Some(i) = reps.iter().position(|x| *x == c) {
-                row_rep.push((i, s));
-            } else {
+            let (c, _s) = if exact { (*r, 1) } else { canon(*r) };
+            if !reps.contains(&c) {
                 reps.push(c);
-                row_rep.push((reps.len() - 1, s));
             }
         }
-        Leg { rows, reps, row_rep, exact }
+        Leg { rows, reps, exact }
     }
 
     fn d(&self) -> usize {
@@ -129,26 +124,29 @@ impl Leg {
     }
 
     fn subsets9(&self) -> Vec<Vec<usize>> {
+        self.subsets_k(9)
+    }
+
+    fn subsets_k(&self, kk: usize) -> Vec<Vec<usize>> {
         let d = self.d();
         let mut out = Vec::new();
-        if d < 9 {
+        if d < kk {
             return out;
         }
-        let mut idx: Vec<usize> = (0..9).collect();
+        let mut idx: Vec<usize> = (0..kk).collect();
         loop {
-            let rows: Vec<V9> = idx.iter().map(|&i| self.reps[i]).collect();
-            if abs_det(&rows) == 1 {
+            if kk < 9 || abs_det(&idx.iter().map(|&i| self.reps[i]).collect::<Vec<_>>()) == 1 {
                 out.push(idx.clone());
             }
-            let mut i = 9;
+            let mut i = kk;
             loop {
                 if i == 0 {
                     return out;
                 }
                 i -= 1;
-                if idx[i] != i + d - 9 {
+                if idx[i] != i + d - kk {
                     idx[i] += 1;
-                    for j in i + 1..9 {
+                    for j in i + 1..kk {
                         idx[j] = idx[j - 1] + 1;
                     }
                     break;
@@ -177,14 +175,14 @@ fn closure(leg: &Leg, st: &mut State) {
                     if is_zero(&v) {
                         continue;
                     }
-                    if let Some((t, _)) = leg.rep_of(&v) {
-                        if st.built >> t & 1 == 0 {
-                            st.built |= 1 << t;
-                            st.steps.push((st.avail[i], st.avail[j], s, v));
-                            st.avail.push(v);
-                            grew = true;
-                            break 'outer;
-                        }
+                    if let Some((t, _)) = leg.rep_of(&v)
+                        && st.built >> t & 1 == 0
+                    {
+                        st.built |= 1 << t;
+                        st.steps.push((st.avail[i], st.avail[j], s, v));
+                        st.avail.push(v);
+                        grew = true;
+                        break 'outer;
                     }
                 }
             }
@@ -260,7 +258,129 @@ fn start_state(leg: &Leg, bidx: &[usize]) -> State {
     }
 }
 
-fn solve(leg: &Leg, max_helpers: usize) -> (usize, Option<Cert>, String) {
+/// Exact conversion-cost minimization at a GIVEN leg count `a`,
+/// over bases of k target rows (k = 9, 8, 7) with the remaining slots
+/// filled by UNIT VECTORS (cost-0 free rows -- the Stapleton-Perminov
+/// conversion shape); helper budget h = a - (d - k) per configuration,
+/// helpers injected at closure fixpoints as usual.  Scope: free rows
+/// restricted to unit vectors; a cheaper basis using non-unit free
+/// rows is not excluded (but any free row costs weight-1 >= 1, so
+/// only weight-2 frees could ever beat a unit-filled optimum by
+/// trading against heavier target rows).
+fn solve_minbasis_units(leg: &Leg, target: usize) -> (usize, Option<Cert>, String) {
+    let d = leg.d();
+    let done = all_built(leg);
+    let best: Mutex<Option<Cert>> = Mutex::new(None);
+    let units: Vec<V9> = (0..9).map(|i| {
+        let mut v = [0i32; 9];
+        v[i] = 1;
+        v
+    }).collect();
+
+    fn tcost(rows: &[V9]) -> usize {
+        rows.iter().map(|r| r.iter().filter(|&&x| x != 0).count().saturating_sub(1)).sum()
+    }
+
+    fn consider(best: &Mutex<Option<Cert>>, c: Cert) {
+        let mut g = best.lock().unwrap();
+        match g.as_ref() {
+            Some(b) if tcost(&b.basis) <= tcost(&c.basis) => {}
+            _ => *g = Some(c),
+        }
+    }
+
+    // recursive helper injection up to depth h
+    fn search(leg: &Leg, st: &State, h: usize, done: u32,
+              basis: &[V9], best: &Mutex<Option<Cert>>) {
+        if st.built == done {
+            consider(best, Cert { basis: basis.to_vec(), steps: st.steps.clone() });
+            return;
+        }
+        if h == 0 {
+            return;
+        }
+        for hv in helpers(leg, st) {
+            let (px, py, ps) = find_parent(&st.avail, &hv);
+            let mut st2 = st.clone();
+            st2.steps.push((px, py, ps, hv));
+            st2.avail.push(hv);
+            closure(leg, &mut st2);
+            search(leg, &st2, h - 1, done, basis, best);
+        }
+    }
+
+    for k in (7..=9).rev() {
+        if target + k < d || target + k > d + 2 * 9 {
+            // h = target - (d - k) must be >= 0; skip infeasible k
+        }
+        let h = match (target + k).checked_sub(d) {
+            Some(h) if h <= 3 => h,
+            _ => continue,
+        };
+        let subs = leg.subsets_k(k);
+        let nfree = 9 - k;
+        // all nfree-subsets of the 9 unit vectors
+        let mut freesets: Vec<Vec<V9>> = Vec::new();
+        let idxs: Vec<usize> = (0..9).collect();
+        fn combos(idxs: &[usize], n: usize) -> Vec<Vec<usize>> {
+            if n == 0 { return vec![Vec::new()]; }
+            let mut out = Vec::new();
+            for (i, &x) in idxs.iter().enumerate() {
+                for mut rest in combos(&idxs[i + 1..], n - 1) {
+                    rest.insert(0, x);
+                    out.push(rest);
+                }
+            }
+            out
+        }
+        for c in combos(&idxs, nfree) {
+            freesets.push(c.into_iter().map(|i| units[i]).collect());
+        }
+        subs.par_iter().for_each(|bidx| {
+            let trows: Vec<V9> = bidx.iter().map(|&i| leg.reps[i]).collect();
+            for fs in &freesets {
+                let mut basis = trows.clone();
+                basis.extend(fs.iter().cloned());
+                if abs_det(&basis) != 1 {
+                    continue;
+                }
+                let mut st = State {
+                    avail: basis.clone(),
+                    built: bidx.iter().fold(0u32, |m, &i| m | 1 << i),
+                    steps: Vec::new(),
+                };
+                closure(leg, &mut st);
+                search(leg, &st, h, done, &basis, &best);
+            }
+        });
+    }
+    match best.into_inner().unwrap() {
+        Some(c) => {
+            let cost = tcost(&c.basis);
+            (target, Some(c), format!("min-basis-at {target}: conversion cost {cost} (k=9,8,7; unit free rows)"))
+        }
+        None => (target, None, "no basis at this count within k>=7 + unit frees".into()),
+    }
+}
+
+fn basis_cost(c: &Cert) -> usize {
+    c.basis.iter().map(|r| r.iter().filter(|&&x| x != 0).count() - 1).sum()
+}
+
+/// record a success: early-exit normally; in min-basis mode keep
+/// sweeping the whole tier and remember the cheapest-conversion cert.
+fn take(found: &Mutex<Option<Cert>>, hit: &AtomicBool, min_basis: bool, c: Cert) {
+    let mut g = found.lock().unwrap();
+    match g.as_ref() {
+        Some(b) if min_basis && basis_cost(b) <= basis_cost(&c) => {}
+        _ => *g = Some(c),
+    }
+    if !min_basis {
+        hit.store(true, Ordering::Relaxed);
+    }
+}
+
+fn solve(leg: &Leg, max_helpers: usize, min_basis: bool) -> (usize, Option<Cert>, String) {
     let d = leg.d();
     let bases = leg.subsets9();
     let done = all_built(leg);
@@ -278,8 +398,7 @@ fn solve(leg: &Leg, max_helpers: usize) -> (usize, Option<Cert>, String) {
         let mut st = start_state(leg, b);
         closure(leg, &mut st);
         if st.built == done {
-            hit.store(true, Ordering::Relaxed);
-            *found.lock().unwrap() = Some(Cert {
+            take(&found, &hit, min_basis, Cert {
                 basis: b.iter().map(|&i| leg.reps[i]).collect(),
                 steps: st.steps,
             });
@@ -308,11 +427,11 @@ fn solve(leg: &Leg, max_helpers: usize) -> (usize, Option<Cert>, String) {
             st.avail.push(h);
             closure(leg, &mut st);
             if st.built == done {
-                hit.store(true, Ordering::Relaxed);
-                *found.lock().unwrap() = Some(Cert {
+                take(&found, &hit, min_basis, Cert {
                     basis: b.iter().map(|&i| leg.reps[i]).collect(),
                     steps: st.steps,
                 });
+                if min_basis { continue; }
                 return;
             }
         }
@@ -349,11 +468,11 @@ fn solve(leg: &Leg, max_helpers: usize) -> (usize, Option<Cert>, String) {
                 st.avail.push(h2);
                 closure(leg, &mut st);
                 if st.built == done {
-                    hit.store(true, Ordering::Relaxed);
-                    *found.lock().unwrap() = Some(Cert {
+                    take(&found, &hit, min_basis, Cert {
                         basis: b.iter().map(|&i| leg.reps[i]).collect(),
                         steps: st.steps,
                     });
+                    if min_basis { continue; }
                     return;
                 }
             }
@@ -436,6 +555,8 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut threads = 2usize;
     let mut exact = false;
+    let mut min_basis = false;
+    let mut min_basis_at: Option<usize> = None;
     let mut max_helpers = 2usize;
     let mut files: Vec<String> = Vec::new();
     let mut i = 1;
@@ -446,6 +567,11 @@ fn main() {
                 threads = args[i].parse().unwrap();
             }
             "--exact" => exact = true,
+            "--min-basis" => min_basis = true,
+            "--min-basis-at" => {
+                i += 1;
+                min_basis_at = Some(args[i].parse().unwrap());
+            }
             "--max-helpers" => {
                 i += 1;
                 max_helpers = args[i].parse().unwrap();
@@ -472,7 +598,11 @@ fn main() {
             .collect();
         let leg = Leg::new(rows, exact);
         let t0 = std::time::Instant::now();
-        let (a, cert, how) = solve(&leg, max_helpers);
+        let (a, cert, how) = if let Some(target) = min_basis_at {
+            solve_minbasis_units(&leg, target)
+        } else {
+            solve(&leg, max_helpers, min_basis)
+        };
         let dt = t0.elapsed().as_secs_f64();
         match cert {
             Some(c) => {

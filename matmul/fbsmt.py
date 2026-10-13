@@ -89,9 +89,15 @@ def gen(slegs, a, B, out, blockfile=None):
         allz = " ".join(f"(= f{t}c{k} {bv(0)})" for k in range(9))
         L.append(f"(assert (or {' '.join(nz)}))")
         _ = allz
+    # full lexicographic order between consecutive basis vectors via
+    # 54-bit concatenations -- the strong slot-symmetry breaker
+    for t in range(9):
+        cc = "f" + str(t) + "c0"
+        for c in range(1, 9):
+            cc = f"(concat {cc} f{t}c{c})"
+        L.append(f"(define-fun cat{t} () (_ BitVec {9 * W}) {cc})")
     for t in range(8):
-        # lex <= between basis t and t+1 (coarse: first coord)
-        L.append(f"(assert (bvsle f{t}c0 f{t + 1}c0))")
+        L.append(f"(assert (bvule cat{t} cat{t + 1}))")
     # chain steps
     for t in range(9, nf):
         for i in range(t):

@@ -179,6 +179,7 @@ if "--figures" in sys.argv:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    META = {"CreationDate": None, "ModDate": None}   # no timestamps: regenerating gives identical bytes
     # cactus: ours and the 2022 field's best entrants
     fig, ax = plt.subplots(figsize=(6.4, 4.0))
     def cactus(times, label, **kw):
@@ -193,7 +194,7 @@ if "--figures" in sys.argv:
     ax.set_xlabel("time per instance (s); ours is wall-clock on the Apple M4 Pro, 2022's is CPU time on StarExec", fontsize=8.5)
     ax.set_ylabel("instances solved within the time")
     ax.grid(alpha=0.3); ax.legend(loc="upper left", fontsize=8)
-    fig.tight_layout(); fig.savefig(ROOT / "doc" / "hydra_satsuma_2022_anniversary_cactus.pdf"); plt.close(fig)
+    fig.tight_layout(); fig.savefig(ROOT / "doc" / "hydra_satsuma_2022_anniversary_cactus.pdf", metadata=META); plt.close(fig)
     # contributions bar chart
     fig, ax = plt.subplots(figsize=(6.4, 3.2))
     items = [("XOR stage: 6 unique wins", sum(r["d"] for r in uniq if r["stage"] == "xor")),
@@ -210,5 +211,5 @@ if "--figures" in sys.argv:
     ax.axvline(0, color="k", lw=0.8)
     ax.set_xlabel("PAR-2 points over the 5,355 instances\n(positive favours hydra_circuit_satsuma)", fontsize=8.5)
     ax.set_xlim(min(vals) * 1.3 - 0.2, max(vals) * 1.2 + 0.3)
-    fig.tight_layout(); fig.savefig(ROOT / "doc" / "hydra_satsuma_2022_anniversary_contributions.pdf"); plt.close(fig)
+    fig.tight_layout(); fig.savefig(ROOT / "doc" / "hydra_satsuma_2022_anniversary_contributions.pdf", metadata=META); plt.close(fig)
     print("figures written")

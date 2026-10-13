@@ -181,23 +181,23 @@ basis change. -/
 def scheme (A B : Matrix (Fin 3) (Fin 3) R) : Matrix (Fin 3) (Fin 3) R :=
   -- A-side basis change (not counted in the 52)
     let ap0 := A 2 0 + A 2 2
-    let ap1 := -(A 0 0) - A 0 2
+    let ap1 := -A 0 0 - A 0 2
     let ap2 := A 2 1
-    let ap3 := -(A 1 1)
+    let ap3 := -A 1 1
     let ap4 := A 0 2
     let ap5 := A 2 2
     let ap6 := A 0 0 + A 0 1 + A 0 2
     let ap7 := A 1 0 + A 1 1 + A 1 2
-    let ap8 := -(A 1 0)
+    let ap8 := -A 1 0
   -- B-side basis change (not counted in the 52)
     let bp0 := B 1 0
-    let bp1 := -(B 0 0) + B 0 2
+    let bp1 := -B 0 0 + B 0 2
     let bp2 := B 0 1
     let bp3 := B 1 2
     let bp4 := B 1 1 - B 2 1
     let bp5 := B 0 0
     let bp6 := B 2 0
-    let bp7 := -(B 1 2) + B 2 2
+    let bp7 := -B 1 2 + B 2 2
     let bp8 := B 2 1
   -- 12 adds on the A side
     let u1 := ap2 + ap6

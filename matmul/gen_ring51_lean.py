@@ -33,7 +33,11 @@ Usage: gen_ring51_lean.py ks51dir out.lean
 """
 import pathlib, re, sys
 
-KDIR = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "matmul/external/ks51")
+# Default input: the conversion-minimized (v3, 4+4+3=11) certificates.
+# The top-level ks51/ holds the ORIGINAL model-21 certs; regenerating
+# from them silently reverts the minimized basis sections.
+KDIR = pathlib.Path(sys.argv[1] if len(sys.argv) > 1
+                    else "matmul/external/ks51/minconv3")
 OUT = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else "proof/Mm/Ring51.lean")
 
 def read_rows(p):
@@ -317,7 +321,7 @@ def lin_lean_M(vec, M):
         if co == 1:
             terms.append(("+", at))
         elif co == -1:
-            terms.append(("-", f"({at})"))
+            terms.append(("-", at))
         else:
             terms.append(("+", f"({co} : R) * {at}") if co > 0
                          else ("-", f"({-co} : R) * {at}"))

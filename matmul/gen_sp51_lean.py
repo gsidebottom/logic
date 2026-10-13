@@ -193,8 +193,6 @@ def rhs_str(terms, style, kind="lin"):
     s, first = "", True
     for sg, n in terms:
         e = entry(n, style) if re.fullmatch(r"[ab]\d", n) else n
-        if style == "def" and sg == -1 and " " in e:
-            e = f"({e})"
         if first:
             s = e if sg == 1 else f"-{e}"
             first = False

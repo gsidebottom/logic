@@ -240,7 +240,7 @@ def lin_text_M(row, pre):
     s, first = "", True
     for sign, nm in terms:
         if first:
-            s = nm if sign == "+" else f"-({nm})"
+            s = nm if sign == "+" else f"-{nm}"
             first = False
         else:
             s += f" {sign} {nm}"

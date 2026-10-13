@@ -214,7 +214,7 @@ def rank23_add51_scheme (A B : Matrix (Fin 3) (Fin 3) R) :
   let x5 := A 1 2
   let x6 := A 2 0
   let x7 := A 2 1
-  let x8 := A 2 2 - (A 2 0)
+  let x8 := A 2 2 - A 2 0
   -- B-side basis change (UNCOUNTED): y = Q·vec B; 3 additions
   let y0 := B 0 0
   let y1 := B 0 1
@@ -222,7 +222,7 @@ def rank23_add51_scheme (A B : Matrix (Fin 3) (Fin 3) R) :
   let y3 := B 1 0
   let y4 := B 1 1
   let y5 := B 1 2
-  let y6 := B 2 0 - (B 2 1)
+  let y6 := B 2 0 - B 2 1
   let y7 := B 2 1
   let y8 := B 2 2 + B 1 2
   -- A-side chain: 13 COUNTED additions (paid per recursive step)

@@ -195,7 +195,7 @@ def rank23_add51_scheme (A B : Matrix (Fin 3) (Fin 3) R) :
   let ab3 := A 0 1 + A 2 1
   let ab4 := A 1 1
   let ab5 := A 2 1
-  let ab6 := A 1 1 + A 1 2 - (A 2 2)
+  let ab6 := A 1 1 + A 1 2 - A 2 2
   let ab7 := A 2 2
   let ab8 := A 0 2
   -- A-side chain: 12 COUNTED additions (paid per recursive step)
@@ -217,8 +217,8 @@ def rank23_add51_scheme (A B : Matrix (Fin 3) (Fin 3) R) :
   let bb2 := B 0 2 + B 1 2
   let bb3 := B 1 1
   let bb4 := B 1 2
-  let bb5 := B 2 0 - (B 2 2)
-  let bb6 := B 1 1 - (B 2 1)
+  let bb5 := B 2 0 - B 2 2
+  let bb6 := B 1 1 - B 2 1
   let bb7 := B 2 2
   let bb8 := B 1 0
   -- B-side chain: 13 COUNTED additions

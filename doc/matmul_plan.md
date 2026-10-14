@@ -1372,6 +1372,18 @@ the two source papers for this track):
   mint50 auto-started (11 threads, 28 seeds). Remaining paper items:
   overnight race verdicts (due ~7:20 AM Oct 14) into §signs +
   open-problem (1), then Zenodo v2 (final PDF + frozen CSVs).
+- **2026-10-14 morning (9810e0e +)**: free-vector race CONCLUDED —
+  all three 24 h arms timeout, 0 verdicts, 8 configs total; §signs
+  final. **No 50 in the DB at ANY floor**: 0/2,450 floor-49 schemes
+  all-legs triple-clean (necessary condition), floor ≥50 arithmetic,
+  floor ≤48 swept — any 50 lives outside the published DB; paper
+  §sweep carries the argument. Walk-52 census: 59 mint 52s = 20
+  classes, 17 of the DB's 27 tie-52 classes + 3 NOT in the DB (novel;
+  reps walk-00123/01012/+1, exact IDs pending). Mint v2: screen keeps
+  floor-49 all-clean shapes; 27 DB tie-52 reps added (55 seeds);
+  relaunched after clean STOP. TODO: archive novel-52 reps to
+  external/ks51/new52/ + equivalence-crawl them vs our 123-corpus;
+  Zenodo v2.
 
 - **TODO (when cores free): measure leg stabilizers** — for each
   51/52-tier class, compute the column-action stabilizer of each leg's

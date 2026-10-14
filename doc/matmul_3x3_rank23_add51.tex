@@ -495,7 +495,12 @@ that enumeration order and encodes nothing.  Empirically the dependence is drast
   certificates, but $a_B\ge14$ over all $9$-target-basis
   configurations: the class's ring-valid per-step value is $52$ or
   $53$, with $52$ confined to the unbounded free-vector-basis
-  configurations (an SMT attack on a bounded version is in progress).
+  configurations.  A bounded version (QF\_BV, form entries $\le12$,
+  basis entries $\le2$, full-lexicographic symmetry breaking,
+  bit-blasted to CNF) resisted eight solver configurations, the last
+  three being $24$-hour runs of CaDiCaL and Kissat on plain and
+  symmetry-broken instances: a documented open question
+  (Section~\ref{sec:open}).
   Certificate lifting is thus doubly incomplete: it samples chains,
   and it misses signed chains whose mod-$2$ shadow is degenerate.
   Only the direct signed search decides.

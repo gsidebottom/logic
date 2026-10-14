@@ -4,9 +4,11 @@ walk.py batches (pool-based scheme discovery, archive-deduped,
 Brent-reverified) with the additive-structure screen and exact fbmin
 tier evaluation.
 
-Screen per leg: d (distinct rows), floor = sum d - 13 kept <= 48;
+Screen per leg: d (distinct rows), floor = sum d - 13 kept <= 48, plus
+floor-49 schemes with all three legs triple-clean (the only floor-49
+shape that can host a 50: all legs at floor needs isolation 0);
 triple-isolated row count (rows in no internal addition triple) -- the
-empirical law says floor-achieving legs have isolation 0, and slack
+law says floor-achieving legs have isolation 0, and slack
 grows ~isolated/2, so keepers are ranked by total isolation then
 floor.  Exact evaluation: fbmin --tier3 per leg; ALERT at leg-sum <=
 37 (per-step 51), klaxon at <= 36 (the 50).
@@ -90,7 +92,11 @@ while not (WORK / "STOP").exists():
         st = [stats(l) for l in legs]
         floor = sum(x[0] for x in st) - 13
         iso = [x[1] for x in st]
-        if floor > 48:
+        # floor <= 48 as before; ALSO keep floor-49 schemes whose three
+        # legs are all triple-clean -- the only floor-49 shape that can
+        # host a 50 (all legs would have to achieve their floors, and
+        # floor-achievement requires isolation 0; the DB has 0/2450)
+        if floor > 49 or (floor == 49 and any(iso)):
             continue
         news.append((sum(iso), floor, p.stem, st))
     news.sort()

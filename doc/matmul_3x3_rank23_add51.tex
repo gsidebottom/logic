@@ -448,10 +448,17 @@ bound.
 \section{The sign gap}\label{sec:signs}
 
 An $\F_2$ result lifts to the ring-valid statement only if the
-chains admit consistent signs.  A mask scheme has many integer
-\emph{sign models} --- solutions of the signed Brent equations, which
-we enumerate by SAT with blocking clauses --- and the lift target is
-model-dependent.  Empirically the dependence is drastic:
+chains admit consistent signs.  A mask scheme fixes only the
+\emph{support} of the coefficients; an integer \emph{sign model}
+assigns $\pm1$ to every nonzero coefficient of $(U,V,W)$ so that each
+of the $729$ Brent equations holds over $\Z$ --- spurious terms
+cancelling in pairs, true terms summing to $+1$ --- i.e.\ it is a
+genuine integer algorithm whose entrywise absolute value is the
+stored scheme.  A mask typically admits many sign models, and they
+are genuinely different algorithms: mod~$2$, $x+y$ and $x-y$
+coincide, so leg minima are model-dependent over $\Z$.  We enumerate
+models by SAT with blocking clauses; a model's \emph{index} is just
+that enumeration order and encodes nothing.  Empirically the dependence is drastic:
 
 \begin{itemize}
 \item \textbf{Certificate lifting fails systematically.}  For

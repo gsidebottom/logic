@@ -323,17 +323,21 @@ Table~\ref{tab:four51} summarizes the four known $51$-classes.
 family \texttt{i12}; Section~\ref{sec:family}).  Legs are the exact
 free-basis minima $(a_A,a_B,a_C)$; per-step $=a_A+a_B+a_C+14$;
 conversion counts are exact within the swept configuration space
-(Section~\ref{sec:result}); one-shot $=51+$conversions.}
+(Section~\ref{sec:result}); one-shot $=51+$conversions.
+``Sign model $n$'' names the $n$-th SAT-enumerated integer signing of
+the mask scheme (Section~\ref{sec:signs}) --- the first under which a
+signed chain realizes the legs; the index is enumeration order, for
+\texttt{-012} after quotienting by the $512$ diagonal sign gauges.}
 \label{tab:four51}
 \small
 \begin{tabular}{llllrl}
 \toprule
 class & legs & ring-valid & conversions & one-shot & Lean\\
 \midrule
-\texttt{i12w211c23fg} & $(12,13,12)$ & yes (model $21$) & $4{+}4{+}3=11$ & $62$ & \texttt{Ring51.lean}\\
+\texttt{i12w211c23fg} & $(12,13,12)$ & yes (sign model $21$) & $4{+}4{+}3=11$ & $62$ & \texttt{Ring51.lean}\\
 \texttt{i12w219c23fg} & $(11,13,13)^{\dagger}$ & open ($\F_2$ only) & --- & --- & ---\\
 \texttt{i12w219c23ci-008}~\cite{SP26} & $(13,12,12)$ & yes (published) & $1{+}3{+}1=5$ & $\mathbf{56}$ & \texttt{SP51.lean}\\
-\texttt{i12w227c23ci-012} & $(14,12,11)^{\dagger}$ & yes (model $15$) & $3{+}9{+}5=17$ & $68$ & ---\\
+\texttt{i12w227c23ci-012} & $(14,12,11)^{\dagger}$ & yes (sign model $15$) & $3{+}9{+}5=17$ & $68$ & ---\\
 \bottomrule
 \end{tabular}
 

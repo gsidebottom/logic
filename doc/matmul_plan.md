@@ -1384,6 +1384,16 @@ the two source papers for this track):
   relaunched after clean STOP. TODO: archive novel-52 reps to
   external/ks51/new52/ + equivalence-crawl them vs our 123-corpus;
   Zenodo v2.
+- **2026-10-14 (52-stratum transform bounds, queued for paper)**:
+  light-row lower bound (at slack s the basis needs k ≥ 9−s target
+  rows; conversion ≥ Σ(weight−1) of the k lightest targets) gives
+  conversions ≥ 8 for ALL 27 DB tie-52 classes (min 8 =
+  i2w205c38hj) and ≥ 5/≥ 8/≥ 7 for the three novel classes ⇒ no
+  52-class known can convert for ≤ 3; one-shots ≥ 57 everywhere ⇒
+  the 52-stratum cannot threaten flat-55 or S-P's 56 one-shot.
+  walk-00123 class ring-valid at 52 (model 3 of 32 orbits; exact-mode
+  conversions A=4 B=4, C + free-mode sweep running); 01012/01852
+  lifts still looping.
 
 - **TODO (when cores free): measure leg stabilizers** — for each
   51/52-tier class, compute the column-action stabilizer of each leg's

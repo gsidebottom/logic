@@ -42,8 +42,8 @@ minimization procedure whose negative answers are exhaustion proofs,
 and use it to show that $51$ is the minimum for this class, that $52$
 is exactly optimal both for Nielsen's class and for the class of the
 current flat-model record, and to sweep the complete Heule--Kauers--Seidl
-database of rank-23 classes.  The sweeps --- a main pass and a variant-aware pass over the
-name-collision blind spot it exposed --- are complete: exactly four
+database of rank-23 classes.  The sweep --- made variant-aware after a name-collision blind spot
+surfaced --- is complete: exactly four
 classes attain $51$, and all four lie in a single HKS invariant
 family, whose rank-spectrum signature we decode and analyze.  We machine-check
 Stapleton and Perminov's scheme as well, so every ring-valid
@@ -123,12 +123,11 @@ basis-change additions that the flat model charges.
   flat).
 \item \textbf{A database-wide sweep} (Section~\ref{sec:sweep}): a
   basis-invariant counting floor for every scheme of the HKS database
-  of $17{,}376$ rank-23 schemes, and an exact sweep of all classes
-  whose floor permits $\le 51$: a $303$-class main pass (complete),
-  plus a variant-aware supplemental pass over the name-collision
-  blind spot that the main pass's deduplication created --- the pass
-  that recovered Stapleton and Perminov's class and found the fourth.
-  Both passes are complete; the database's $\le51$ census is final.
+  of $17{,}376$ rank-23 schemes, and a complete exact sweep of all
+  $561$ stored variants whose floor permits $\le 51$ --- run
+  variant-aware after a name-collision blind spot surfaced, the
+  completion that recovered Stapleton and Perminov's class and found
+  the fourth.  The database's $\le51$ census is final.
 \item \textbf{The $\F_2$--$\Z$ sign gap} (Section~\ref{sec:signs}): the
   $\F_2$ optimum of a leg is often unattainable over $\Z$ under most
   of the class's sign models.  For the $51$-class, $20$ of the first
@@ -292,8 +291,8 @@ and empirically the leg's slack above its floor grows almost linearly
 with its number of triple-isolated rows.
 
 The third class, \texttt{i12w227c23ci-012}, was found by the
-variant-aware supplemental sweep (Section~\ref{sec:sweep}) in the
-name-collision blind spot: it is the thirteenth stored variant under
+variant-aware completion of the database sweep
+(Section~\ref{sec:sweep}) in the name-collision blind spot: it is the thirteenth stored variant under
 a name whose first variant is a different de~Groote class.  Its exact
 legs are $(14,12,11)$ --- the \emph{output} leg achieves the counting
 floor $d-9=11$, the second floor-achieving leg observed and the first
@@ -351,63 +350,40 @@ database takes seconds and yields the floor distribution of
 Proposition~\ref{prop:floor}: minimum $47$, attained by $44$ schemes
 (including the three classes above); $507$ schemes at $48$; Laderman
 alone at $56$ ($d=(23,23,23)$: no shared factors, maximally unsuited
-to the model).  The exact \emph{main} sweep of every class with floor
-$\le48$ ($303$ classes, deduplicated by family and class name) is
-complete:
-
-\begin{center}
-\begin{tabular}{lrl}
-\toprule
-per-step total & classes & note\\
-\midrule
-$51$ & $2$ & \texttt{i12w211c23fg}, \texttt{i12w219c23fg} (exact; \S\ref{sec:result})\\
-$52$ (tie) & $14$ & \\
-$53$ & $21$ & incl.\ Stapleton's class at $(13,13,13)$\\
-$54$ & $21$ & \\
-$55$ & $5$ & \\
-$56$ & $1$ & \\
-ruled out for $\le51$ & $239$ & leg-sum lower bounds $\ge38$\\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\noindent
-(One class, \texttt{i110w205c238h}, timed out on its third leg; it is
-nonetheless ruled out rigorously by the floor of the open leg:
-$15 + {\ge}14 + {\ge}(d_C-9{=}10) = 39 > 37$.)
-
-\paragraph{The name-collision blind spot and the supplemental sweep.}
-The main sweep's deduplication assumed that stored variants sharing a
-name (\texttt{-000}, \texttt{-001}, \dots) represent one equivalence
-class.  They need not: the HKS name is an invariant-plus-hash, and
-distinct de~Groote classes collide under it.  Both Stapleton and
-Perminov's class (\texttt{i12w219c23ci-008}) and the fourth
-$51$-class (\texttt{i12w227c23ci-012}) sit in exactly this blind
-spot.  A \emph{supplemental} sweep therefore re-enumerates every
-stored variant tab individually ($258$ eligible at floor $\le48$
-beyond the main pass) and runs the same exact per-leg procedure.  It
-is complete --- all $258$ variants decided, none timing out:
+to the model).  The exact sweep covers every stored scheme whose
+floor permits $\le51$.  One subtlety shaped its execution: schemes
+sharing a name (\texttt{-000}, \texttt{-001}, \dots) need not be
+equivalent --- the HKS name is an invariant-plus-hash, and distinct
+de~Groote classes collide under it --- so a first, name-deduplicated
+pass was completed by a second, variant-aware pass over the blind
+spot; both Stapleton and Perminov's class
+(\texttt{i12w219c23ci-008}) and the fourth $51$-class
+(\texttt{i12w227c23ci-012}) sat in exactly that collision shadow.
+Together the passes decide all $561$ floor-$\le48$ variant tabs,
+spanning $23$ families:
 
 \begin{center}
 \begin{tabular}{lrl}
 \toprule
 per-step total & variants & note\\
 \midrule
-$51$ & $2$ & \texttt{i12w219c23ci-008}~\cite{SP26}, \texttt{i12w227c23ci-012}\\
-$52$ (tie) & $13$ & \\
-$53$ & $35$ & \\
-$54$ & $18$ & \\
-ruled out for $\le51$ & $190$ & \\
+$51$ & $4$ & the four classes of Table~\ref{tab:four51}, pairwise inequivalent\\
+$52$ (tie) & $27$ & \\
+$53$ & $56$ & incl.\ Stapleton's class at $(13,13,13)$\\
+$54$ & $39$ & \\
+$55$ & $5$ & \\
+$56$ & $1$ & \\
+ruled out for $\le51$ & $429$ & leg-sum lower bounds $\ge38$\\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent
-The supplemental pass covered ten families ($84$ \texttt{i12}, $84$
-\texttt{i19}, $35$ \texttt{i30}, $22$ \texttt{i31}, $15$ \texttt{i45},
-and $18$ across \texttt{i62}/\texttt{i107}/\texttt{i110}/%
-\texttt{i113}/\texttt{i133}): outside \texttt{i12}, no variant
-reaches $51$ in either pass.
+(One variant, \texttt{i110w205c238h-000}, timed out on its third leg;
+it is nonetheless ruled out rigorously by the floor of the open leg:
+$15 + {\ge}14 + {\ge}(d_C-9{=}10) = 39 > 37$.  No other leg timed
+out.)  Of the $561$ variants, $159$ are \texttt{i12} and $402$ are
+not: outside \texttt{i12}, none reaches $51$.
 We also profiled and swept our own corpus of $123$ rank-23 schemes
 outside the sweep above: $53$ walk-discovered classes certified
 inequivalent to the entire database, plus $70$ later finds (not yet
@@ -421,7 +397,7 @@ classes); exact $11$-legs exist on both the input and the output
 side, so sum $36$ is not excluded by any per-leg phenomenon observed
 to date.  Because leg minima only rise with $d$ and floor-$49$
 classes would need slack $+1$ --- never observed --- the
-floor-$\le48$ sweeps settle the $\le51$ question for the entire
+floor-$\le48$ sweep settles the $\le51$ question for the entire
 database.
 
 \section{The \texttt{i12} family}\label{sec:family}
@@ -454,7 +430,7 @@ rank-one coefficient matrices ($52$ of $69$) with one heavy slot
 ($z_A=32$).  The contrast with \texttt{i19} --- the family of the
 flat-model record, signature
 \texttt{18x2+51x+4y6+6y4+13y3+z32+z28+z27}, one fewer rank-one
-matrix --- is sharp in the completed sweep data ($84$ variants
+matrix --- is sharp in the completed sweep data ($173$ variants
 decided, zero $51$s): its variants repeatedly reach
 $(13,13,12)$-type profiles but stall with one leg proved $\ge14$,
 yielding ties at $52$ and a wall of ruled-outs, never a $51$.

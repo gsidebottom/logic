@@ -1361,6 +1361,17 @@ the two source papers for this track):
   index, w = cubic-term count, family string = rank invariants
   x/y/z), final sweep census, SP51.lean in §verify, plus any new 51s
   the sweep's tail yields.
+- **SWEEPS COMPLETE + CENSUS FROZEN (2026-10-13 evening, ac4cd9f;
+  CSVs archived matmul/external/ks51/fbsweep*_final.csv)**:
+  supplemental 258/258, no new 51s beyond the four (2×51 = S-P -008 +
+  -012, 13 tie-52, 35×53, 18×54, 190 ruled-out; ten families, no 51
+  outside i12); main timeout class i110w205c238h closed by leg-floor
+  arithmetic (15+14+(d_C−9=10) = 39 > 37) ⇒ database ≤51 settled
+  unconditionally, no 50 anywhere (min non-51 leg sum 38);
+  floor-achieving legs now 32 of 1,079 exact (d = 20, 21, 22).
+  mint50 auto-started (11 threads, 28 seeds). Remaining paper items:
+  overnight race verdicts (due ~7:20 AM Oct 14) into §signs +
+  open-problem (1), then Zenodo v2 (final PDF + frozen CSVs).
 
 - **TODO (when cores free): measure leg stabilizers** — for each
   51/52-tier class, compute the column-action stabilizer of each leg's

@@ -42,10 +42,10 @@ minimization procedure whose negative answers are exhaustion proofs,
 and use it to show that $51$ is the minimum for this class, that $52$
 is exactly optimal both for Nielsen's class and for the class of the
 current flat-model record, and to sweep the complete Heule--Kauers--Seidl
-database of rank-23 classes.  The sweep, made variant-aware after a
-name-collision blind spot surfaced, knows four distinct classes at
-$51$ --- and all four lie in a single HKS invariant family, whose
-rank-spectrum signature we decode and analyze.  We machine-check
+database of rank-23 classes.  The sweeps --- a main pass and a variant-aware pass over the
+name-collision blind spot it exposed --- are complete: exactly four
+classes attain $51$, and all four lie in a single HKS invariant
+family, whose rank-spectrum signature we decode and analyze.  We machine-check
 Stapleton and Perminov's scheme as well, so every ring-valid
 $51$-package with known conversions is now kernel-checked.
 Separately, we document a systematic gap
@@ -128,8 +128,7 @@ basis-change additions that the flat model charges.
   plus a variant-aware supplemental pass over the name-collision
   blind spot that the main pass's deduplication created --- the pass
   that recovered Stapleton and Perminov's class and found the fourth.
-  [Supplemental in progress at this draft; its table reports the
-  state at drafting and will be frozen on completion.]
+  Both passes are complete; the database's $\le51$ census is final.
 \item \textbf{The $\F_2$--$\Z$ sign gap} (Section~\ref{sec:signs}): the
   $\F_2$ optimum of a leg is often unattainable over $\Z$ under most
   of the class's sign models.  For the $51$-class, $20$ of the first
@@ -283,9 +282,9 @@ exist exactly when the class is rich in weight-one rows.
 The second class, \texttt{i12w219c23fg}, has exact legs
 $(11,13,13)$: its $A$ leg \emph{achieves the counting floor} $d-9$ ---
 a $9$-target basis whose waste-free closure covers all $20$ targets.
-Floor-achieving legs are uncommon but not unique ($19$ of the $432$
-legs decided exactly so far [recount at census freeze]), and they
-share a sharp structural
+Floor-achieving legs are uncommon but not unique ($32$ of the
+$1{,}079$ legs decided exactly across the completed sweeps, occurring
+at $d=20$, $21$ and $22$), and they share a sharp structural
 signature: every row participates in an internal addition triple
 (rows $x,y,z$ of the leg with $x+y=\pm z$), and the triple count is at
 least $d-9$ --- both conditions are provably necessary for the floor,
@@ -367,11 +366,15 @@ $53$ & $21$ & incl.\ Stapleton's class at $(13,13,13)$\\
 $54$ & $21$ & \\
 $55$ & $5$ & \\
 $56$ & $1$ & \\
-ruled out for $\le51$ & $238$ & leg-sum lower bounds $\ge38$\\
-timeout (one leg open) & $1$ & \\
+ruled out for $\le51$ & $239$ & leg-sum lower bounds $\ge38$\\
 \bottomrule
 \end{tabular}
 \end{center}
+
+\noindent
+(One class, \texttt{i110w205c238h}, timed out on its third leg; it is
+nonetheless ruled out rigorously by the floor of the open leg:
+$15 + {\ge}14 + {\ge}(d_C-9{=}10) = 39 > 37$.)
 
 \paragraph{The name-collision blind spot and the supplemental sweep.}
 The main sweep's deduplication assumed that stored variants sharing a
@@ -382,9 +385,8 @@ Perminov's class (\texttt{i12w219c23ci-008}) and the fourth
 $51$-class (\texttt{i12w227c23ci-012}) sit in exactly this blind
 spot.  A \emph{supplemental} sweep therefore re-enumerates every
 stored variant tab individually ($258$ eligible at floor $\le48$
-beyond the main pass) and runs the same exact per-leg procedure.  Its
-state at drafting ($148$ of $258$ decided; table to be frozen on
-completion):
+beyond the main pass) and runs the same exact per-leg procedure.  It
+is complete --- all $258$ variants decided, none timing out:
 
 \begin{center}
 \begin{tabular}{lrl}
@@ -393,19 +395,27 @@ per-step total & variants & note\\
 \midrule
 $51$ & $2$ & \texttt{i12w219c23ci-008}~\cite{SP26}, \texttt{i12w227c23ci-012}\\
 $52$ (tie) & $13$ & \\
-$53$ & $31$ & \\
-$54$ & $10$ & \\
-ruled out for $\le51$ & $92$ & \\
+$53$ & $35$ & \\
+$54$ & $18$ & \\
+ruled out for $\le51$ & $190$ & \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+\noindent
+The supplemental pass covered ten families ($84$ \texttt{i12}, $84$
+\texttt{i19}, $35$ \texttt{i30}, $22$ \texttt{i31}, $15$ \texttt{i45},
+and $18$ across \texttt{i62}/\texttt{i107}/\texttt{i110}/%
+\texttt{i113}/\texttt{i133}): outside \texttt{i12}, no variant
+reaches $51$ in either pass.
 We also profiled and swept our own corpus of $123$ rank-23 schemes
 outside the sweep above: $53$ walk-discovered classes certified
 inequivalent to the entire database, plus $70$ later finds (not yet
 equivalence-checked against it).  Of these, $16$ were eligible at
 floor $\le48$, and all $16$ are ruled out for $\le51$ --- the
 database's optimum stands across every class known to us.
-A $50$ would require exact leg sum $36$.  The closest approach so far
+A $50$ would require exact leg sum $36$; none exists in the database
+--- the minimum outside the four $51$s is $38$.  The closest approach
 is slack $+2$ over the leg floors (the $(11,13,13)$ and $(14,12,11)$
 classes); exact $11$-legs exist on both the input and the output
 side, so sum $36$ is not excluded by any per-leg phenomenon observed
@@ -444,7 +454,8 @@ rank-one coefficient matrices ($52$ of $69$) with one heavy slot
 ($z_A=32$).  The contrast with \texttt{i19} --- the family of the
 flat-model record, signature
 \texttt{18x2+51x+4y6+6y4+13y3+z32+z28+z27}, one fewer rank-one
-matrix --- is sharp in the sweep data: its variants repeatedly reach
+matrix --- is sharp in the completed sweep data ($84$ variants
+decided, zero $51$s): its variants repeatedly reach
 $(13,13,12)$-type profiles but stall with one leg proved $\ge14$,
 yielding ties at $52$ and a wall of ruled-outs, never a $51$.
 Whether the rank spectrum \emph{explains} the $51$s (rank-one-rich
@@ -549,7 +560,8 @@ certificates, tools, and a repository snapshot at tag
 (1)~Is the ring-valid optimum of \texttt{i19w225c4efh} $52$ or $53$?
 Equivalently: can a free-vector basis beat every $9$-target basis over
 $\Z$?  (2)~Does any rank-23 class reach per-step $50$, i.e.\ exact
-legs $(12,12,12)$?  The sweep will settle this for the known database;
+leg sum $36$?  The completed sweeps exclude it for the entire known
+database (minimum sum outside the four $51$s: $38$);
 a structural lower bound better than Proposition~\ref{prop:floor}
 would settle it in general.  (3)~Characterize the sign models under
 which a class's signed leg minima match its $\F_2$ minima --- model

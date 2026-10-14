@@ -1391,9 +1391,12 @@ the two source papers for this track):
   i2w205c38hj) and ≥ 5/≥ 8/≥ 7 for the three novel classes ⇒ no
   52-class known can convert for ≤ 3; one-shots ≥ 57 everywhere ⇒
   the 52-stratum cannot threaten flat-55 or S-P's 56 one-shot.
-  walk-00123 class ring-valid at 52 (model 3 of 32 orbits; exact-mode
-  conversions A=4 B=4, C + free-mode sweep running); 01012/01852
-  lifts still looping.
+  walk-00123 class ring-valid at 52 (model 3 of 32 orbits);
+  **free-mode conversions EXACT: 4+3+3 = 10, one-shot 62** (free beat
+  exact on B, 3 vs 4; C cleared in 40 s once free-d=20 applied — the
+  exact-mode d=22 block was two sign-paired rows). walk-01852 class
+  ring-valid at 52 too (model 36 of 62! deepest obstruction streak
+  yet), minconv at (12,13,13) running; 01012 lift still looping.
 
 - **TODO (when cores free): measure leg stabilizers** — for each
   51/52-tier class, compute the column-action stabilizer of each leg's

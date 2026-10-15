@@ -1418,8 +1418,12 @@ the two source papers for this track):
   exact-mode d=22 block was two sign-paired rows). walk-01852 class
   ring-valid at 52 too (model 36 of 62! deepest obstruction streak
   yet), **conversions EXACT 5+4+3 = 12, one-shot 64**; 01012 lift
-  still looping. Novel-trio scoreboard: 00123 = 52+10 (one-shot 62),
-  01852 = 52+12 (64), 01012 TBD.
+  still looping. Novel-trio scoreboard COMPLETE
+  (2026-10-15): 00123 = 52+10 (one-shot 62, model 3), 01852 = 52+12
+  (64, model 36), 01012 = 52+13 (65, model 18; conversions 3+4+6,
+  the floor 11-leg forces a 9-target basis). All three ring-valid;
+  sign gap model-local at 3/36/18 of 32/62/58 orbits. Ready for the
+  paper's next revision with the flip-hunt results.
 
 - **TODO (when cores free): measure leg stabilizers** — for each
   51/52-tier class, compute the column-action stabilizer of each leg's

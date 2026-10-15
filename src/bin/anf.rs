@@ -173,9 +173,21 @@ fn main() {
     } else {
         None
     };
+    let init_bits = args
+        .iter()
+        .position(|a| a == "--init-file")
+        .and_then(|i| args.get(i + 1))
+        .map(|path| {
+            let txt = std::fs::read_to_string(path).expect("init file");
+            let s = txt.split_whitespace().last().expect("bits in init file");
+            let b = bits_of(s);
+            assert_eq!(b.len(), anf.nvars, "init dims mismatch");
+            eprintln!("c init: warm start from {path} (restarts perturb at density)");
+            b
+        });
     let t0 = Instant::now();
     let (sol, flips, best, best_bits) =
-        solve_portfolio(&anf, &frozen, &cfg, threads, hook);
+        solve_portfolio(&anf, &frozen, &cfg, threads, hook, init_bits.as_deref());
     let dt = t0.elapsed().as_secs_f64();
     let emit_best = args.iter().any(|a| a == "--emit-best");
     let rate = flips as f64 / dt / 1e6;

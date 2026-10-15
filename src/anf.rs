@@ -548,6 +548,9 @@ pub struct Sls<'a> {
     pos: Vec<u32>,
     frozen: Vec<u8>,
     frozen_val: Vec<(u32, u8)>,
+    /// optional warm-start assignment: restarts perturb from it
+    /// (flip prob = cfg.density) instead of sampling uniformly
+    pub init: Option<Vec<u8>>,
     pub flips: u64,
     /// chain-best assignment (fewest unsat seen) and its unsat count
     pub best_bits: Vec<u8>,
@@ -577,6 +580,7 @@ impl<'a> Sls<'a> {
             pos: vec![SAT_POS; anf.neqs()],
             frozen: fz,
             frozen_val: frozen.to_vec(),
+            init: None,
             flips: 0,
             best_bits: Vec::new(),
             best_n: usize::MAX,
@@ -587,8 +591,17 @@ impl<'a> Sls<'a> {
     }
 
     pub fn init_random(&mut self, density: f64) {
-        for v in 0..self.anf.nvars {
-            self.bits[v] = (self.rng.f64() < density) as u8;
+        if let Some(init) = &self.init {
+            self.bits.copy_from_slice(init);
+            for v in 0..self.anf.nvars {
+                if self.frozen[v] == 0 && self.rng.f64() < density {
+                    self.bits[v] ^= 1;
+                }
+            }
+        } else {
+            for v in 0..self.anf.nvars {
+                self.bits[v] = (self.rng.f64() < density) as u8;
+            }
         }
         for &(v, b) in &self.frozen_val {
             self.bits[v as usize] = b;
@@ -843,6 +856,7 @@ pub fn solve_portfolio(
     cfg: &SlsCfg,
     threads: usize,
     hook: Option<Hook>,
+    init: Option<&[u8]>,
 ) -> SlsOutcome {
     let stop = AtomicBool::new(false);
     let t0 = Instant::now();
@@ -852,6 +866,7 @@ pub fn solve_portfolio(
             let mut c = *cfg;
             c.seed = cfg.seed.wrapping_add(i as u64).wrapping_mul(0x9e37);
             let mut sls = Sls::new(anf, frozen, &c);
+            sls.init = init.map(<[u8]>::to_vec);
             let mut best = usize::MAX;
             let ok = sls.run(&c, t0, &stop, &mut best, hook);
             if ok {
@@ -934,7 +949,7 @@ mod tests {
         let d = Dims { n1: 2, n2: 2, n3: 2, r: 7 };
         let anf = brent(d);
         let cfg = SlsCfg { max_secs: 30.0, seed: 3, ..Default::default() };
-        let (sol, _, _, _) = solve_portfolio(&anf, &[], &cfg, 1, None);
+        let (sol, _, _, _) = solve_portfolio(&anf, &[], &cfg, 1, None, None);
         let bits = sol.expect("2x2x2 r=7 should solve fast");
         assert_eq!(verify(&anf, &bits), 0);
     }
@@ -1000,7 +1015,7 @@ mod tests {
         let frozen: Vec<(u32, u8)> =
             idx[..414].iter().map(|&v| (v, lb[v as usize])).collect();
         let cfg = SlsCfg { max_secs: 30.0, seed: 5, ..Default::default() };
-        let (sol, flips, _, _) = solve_portfolio(&anf, &frozen, &cfg, 1, None);
+        let (sol, flips, _, _) = solve_portfolio(&anf, &frozen, &cfg, 1, None, None);
         let bits = sol.expect("414-seeded repair should solve");
         assert_eq!(verify(&anf, &bits), 0);
         assert!(flips < 5_000_000, "repair took {flips} flips");

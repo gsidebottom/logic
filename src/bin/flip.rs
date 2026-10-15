@@ -17,6 +17,12 @@
 //! example:
 //!   flip 4 4 4 --seed-file matmul/seeds4triv/trivial64.bits \
 //!        --minutes 90 --threads 10
+//!
+//! WALK mode (fixed-rank wander, the 3x3 50-hunt generator):
+//!   flip 3 3 3 --walk --seeds-dir D --out ARCH [--minutes M]
+//!        [--threads T] [--max-excess 8] [--hard-excess 14] [--kick 20]
+//!   loads every *.bits in D as rank-23 seeds, pre-seeds dedup from
+//!   ARCH, writes new distinct landings as ARCH/flip-NNNNN.bits.
 //! ```
 
 use logic::flip::*;
@@ -46,6 +52,71 @@ fn main() {
         stall_limit: arg_val(&args, "--stall").unwrap_or(16),
         seed: arg_val(&args, "--seed").unwrap_or(1),
     };
+    if args.iter().any(|a| a == "--walk") {
+        let seeds_dir: String =
+            arg_val(&args, "--seeds-dir").expect("--seeds-dir required");
+        let out: String = arg_val(&args, "--out").expect("--out required");
+        let max_excess: usize = arg_val(&args, "--max-excess").unwrap_or(8);
+        let hard_excess: usize =
+            arg_val(&args, "--hard-excess").unwrap_or(14);
+        let kick: usize = arg_val(&args, "--kick").unwrap_or(20);
+        std::fs::create_dir_all(&out).unwrap();
+        let load_dir = |dir: &str| -> Vec<Vec<Summand>> {
+            let mut v = Vec::new();
+            let mut names: Vec<_> = std::fs::read_dir(dir)
+                .unwrap()
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| {
+                    p.extension().map(|x| x == "bits").unwrap_or(false)
+                })
+                .collect();
+            names.sort();
+            for path in names {
+                let txt = std::fs::read_to_string(&path).unwrap();
+                let bits: Vec<u8> = txt
+                    .split_whitespace()
+                    .last()
+                    .unwrap()
+                    .bytes()
+                    .map(|b| b - b'0')
+                    .collect();
+                if bits.len()
+                    == (cfg.n1 * cfg.n2 + cfg.n2 * cfg.n3 + cfg.n1 * cfg.n3)
+                        * 23
+                {
+                    v.push(bits_to_summands(&bits, &cfg));
+                }
+            }
+            v
+        };
+        let seeds = load_dir(&seeds_dir);
+        let pool_init = load_dir(&out);
+        let nseq0 = std::fs::read_dir(&out)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_name().to_string_lossy().starts_with("flip-")
+            })
+            .count();
+        println!(
+            "c flip WALK: <{},{},{}> rank 23, {} seeds, {} archived, {} threads, {} min",
+            cfg.n1, cfg.n2, cfg.n3, seeds.len(), pool_init.len(),
+            cfg.threads, cfg.minutes
+        );
+        let outdir = out.clone();
+        let n = walk_campaign(
+            seeds, pool_init, cfg, max_excess, hard_excess, kick,
+            |bits, seq| {
+                let s: String =
+                    bits.iter().map(|b| (b + b'0') as char).collect();
+                let path =
+                    format!("{outdir}/flip-{:05}.bits", nseq0 + seq - 1);
+                std::fs::write(&path, format!("{s}\n")).unwrap();
+            },
+        );
+        println!("c walk done: {n} new distinct schemes");
+        return;
+    }
     let seed_file: String = arg_val(&args, "--seed-file")
         .expect("--seed-file required");
     let out: String =

@@ -5,9 +5,11 @@ parallel Kauers-Moosbauer flip walks (flip.py) -- the move set
 Stapleton-Perminov's scheme came from, structurally different from
 SLS repair, so it reaches basins the SLS walk cannot.
 
-Each batch runs N single-threaded flip.py instances (distinct rngs,
-per-instance archives), merges their finds into the main archive
-content-deduped (flip.py's canon_key), then screens every new scheme
+Each batch runs the RUST walk engine (target/release/flip --walk:
+walk_campaign in src/flip.rs -- 135x the Python walker at equal
+single-core budget), which canon-dedupes in-process against the
+archive and writes new distinct schemes directly; the driver then
+screens every new scheme
 (floor <= 48, or floor-49 with >= 2 isolation-0 legs, or floor-50
 with 3 -- the only shapes that can host a 50) and runs fbmin tiers on
 keepers ranked by triple isolation.  ALERT at per-step 51, KLAXON at
@@ -15,7 +17,7 @@ keepers ranked by triple isolation.  ALERT at per-step 51, KLAXON at
 any rank < 23 event (that would be the open problem).
 
 Usage: flipmint.py workdir fbmin [--walkers N] [--threads T]
-         [--batch-min M]
+         [--batch-min M]   (walkers = Rust walk threads)
 Stop: touch <workdir>/STOP.
 """
 import pathlib
@@ -23,10 +25,6 @@ import re
 import subprocess
 import sys
 import time
-
-sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from canon import canon_key  # noqa: E402
-from flip import load as flip_load  # noqa: E402
 
 args = sys.argv[1:]
 flags = {"--walkers": 8, "--threads": 8, "--batch-min": 15}
@@ -48,7 +46,7 @@ for d in (WORK, ARCH, LEGS):
 if not RES.exists():
     RES.write_text("scheme,floor,isoA,isoB,isoC,legA,legB,legC,sum,verdict,secs\n")
 
-DIMS = (3, 3, 3, 23)
+FLIP = str(pathlib.Path(__file__).parent.parent / "target/release/flip")
 
 
 def leg_rows(bits, off):
@@ -86,50 +84,18 @@ screened = set()
 for ln in RES.read_text().splitlines()[1:]:
     screened.add(ln.split(",")[0])
 
-# content keys of everything already in the main archive
-known = set()
-for p in sorted(ARCH.glob("*.bits")):
-    known.add(canon_key(flip_load(str(p), DIMS), *DIMS))
-
 batch = 0
-nseq = len(list(ARCH.glob("*.bits")))
 while not (WORK / "STOP").exists():
     batch += 1
-    print(f"== flip batch {batch} ({flags['--walkers']} walkers x "
+    print(f"== flip batch {batch} (rust walk, {flags['--walkers']} threads x "
           f"{flags['--batch-min']} min) ==", flush=True)
-    procs = []
-    for w in range(flags["--walkers"]):
-        sub = WORK / f"w{w:02d}"
-        sub.mkdir(exist_ok=True)
-        procs.append(subprocess.Popen(
-            [sys.executable, "flip.py", "--dims", "3,3,3,23",
-             "--seeds", str(WORK / "seeds"), "--archive", str(sub),
-             "--minutes", str(flags["--batch-min"]),
-             "--lift-every", "1000000",
-             "--rng", str(batch * 100 + w)],
-            cwd=pathlib.Path(__file__).parent,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
-    for p in procs:
-        p.wait()
-    merged = 0
-    for w in range(flags["--walkers"]):
-        sub = WORK / f"w{w:02d}"
-        for p in sorted(sub.glob("*.bits")):
-            if p.name.startswith("RANK"):
-                dst = ARCH / f"RANK-{p.name}"
-                p.rename(dst)
-                print("!" * 60 + f"\nRANK EVENT archived: {dst}\n" + "!" * 60,
-                      flush=True)
-                continue
-            key = canon_key(flip_load(str(p), DIMS), *DIMS)
-            if key in known:
-                p.unlink()
-                continue
-            known.add(key)
-            dst = ARCH / f"flip-{nseq:05d}.bits"
-            nseq += 1
-            p.rename(dst)
-            merged += 1
+    subprocess.run(
+        [FLIP, "3", "3", "3", "--walk",
+         "--seeds-dir", str(WORK / "seeds"), "--out", str(ARCH),
+         "--minutes", str(flags["--batch-min"]),
+         "--threads", str(flags["--walkers"]),
+         "--seed", str(batch)],
+        stdout=subprocess.DEVNULL)
     news = []
     for p in sorted(ARCH.glob("flip-*.bits")):
         if p.stem in screened:
@@ -148,8 +114,8 @@ while not (WORK / "STOP").exists():
             continue
         news.append((sum(iso), floor, p.stem, st))
     news.sort()
-    print(f"batch {batch}: merged {merged} new schemes, "
-          f"{len(news)} keepers", flush=True)
+    print(f"batch {batch}: {len(news)} new keepers "
+          f"(archive {len(list(ARCH.glob('flip-*.bits')))})", flush=True)
     for toti, floor, stem, st in news:
         if (WORK / "STOP").exists():
             break

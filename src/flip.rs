@@ -634,6 +634,149 @@ where
     })
 }
 
+
+/// the parallel fixed-rank WALK campaign (the 3x3 50-hunt generator,
+/// port of matmul/flip.py's walk mode): from a random seed, split up
+/// to `max_excess` above the target rank with diffusion flips between
+/// splits, then descend back; every landing at exactly the target
+/// rank streams to the collector (verify + canon-dedupe + on_new) and
+/// the walk continues FROM the landing.  On a descent stall past
+/// `hard_excess`, restart from a random seed.  `pool_init` pre-seeds
+/// the dedup pool (the existing archive).  Returns distinct-landing
+/// count.
+#[allow(clippy::too_many_arguments)]
+pub fn walk_campaign<F>(
+    seeds: Vec<Vec<Summand>>,
+    pool_init: Vec<Vec<Summand>>,
+    cfg: FlipCfg,
+    max_excess: usize,
+    hard_excess: usize,
+    kick: usize,
+    mut on_new: F,
+) -> usize
+where
+    F: FnMut(&[u8], usize), // (bits, seq); called after verify + dedupe
+{
+    let r = seeds[0].len();
+    assert!(seeds.iter().all(|s| s.len() == r), "seed rank mismatch");
+    let stop = AtomicBool::new(false);
+    let nland = AtomicU64::new(0);
+    let (tx, rx) = mpsc::channel::<Vec<Summand>>();
+    let t0 = Instant::now();
+
+    std::thread::scope(|scope| {
+        for w in 0..cfg.threads {
+            let seeds = &seeds;
+            let tx = tx.clone();
+            let stop = &stop;
+            let nland = &nland;
+            scope.spawn(move || {
+                let mut rng = Rng::new(
+                    cfg.seed
+                        .wrapping_add(w as u64)
+                        .wrapping_mul(0x9e3779b97f4a7c15),
+                );
+                let mut cur = seeds[rng.below(seeds.len())].clone();
+                let mut rounds = 0u64;
+                loop {
+                    rounds += 1;
+                    if rounds.is_multiple_of(8)
+                        && stop.load(Ordering::Relaxed)
+                    {
+                        break;
+                    }
+                    // phase 1: up + diffuse
+                    while cur.len() < r + max_excess {
+                        split_toward(&mut cur, &mut rng);
+                        let n = 40 + rng.below(kick * 20);
+                        for _ in 0..n {
+                            random_flip(&mut cur, &mut rng, false);
+                        }
+                    }
+                    // phase 2: descend to target
+                    let mut stalled = false;
+                    while cur.len() > r {
+                        if seek_reduction(&mut cur, &mut rng, 400) {
+                            let n = 10 + rng.below(70);
+                            for _ in 0..n {
+                                random_flip(&mut cur, &mut rng, false);
+                            }
+                        } else if cur.len() < r + hard_excess {
+                            split_toward(&mut cur, &mut rng);
+                            let n = 40 + rng.below(160);
+                            for _ in 0..n {
+                                random_flip(&mut cur, &mut rng, false);
+                            }
+                        } else {
+                            stalled = true;
+                            break;
+                        }
+                    }
+                    if stalled || cur.len() != r {
+                        cur = seeds[rng.below(seeds.len())].clone();
+                        continue;
+                    }
+                    nland.fetch_add(1, Ordering::Relaxed);
+                    let _ = tx.send(cur.clone());
+                }
+            });
+        }
+        drop(tx);
+
+        // collector (this thread)
+        let anf = brent(Dims { n1: cfg.n1, n2: cfg.n2, n3: cfg.n3, r });
+        let mut pool: HashSet<Vec<Summand>> = HashSet::new();
+        for s in pool_init {
+            let mut k = s;
+            k.sort_unstable();
+            pool.insert(k);
+        }
+        let known0 = pool.len();
+        let mut seq = 0usize;
+        let mut last_report = Instant::now();
+        loop {
+            let el = t0.elapsed().as_secs_f64();
+            if el > cfg.minutes * 60.0 {
+                stop.store(true, Ordering::Relaxed);
+                break;
+            }
+            match rx.recv_timeout(std::time::Duration::from_millis(500)) {
+                Ok(summ) => {
+                    let mut key = summ.clone();
+                    key.sort_unstable();
+                    if pool.contains(&key) {
+                        continue;
+                    }
+                    let bits = summands_to_bits(&summ, &cfg);
+                    if verify(&anf, &bits) != 0 {
+                        eprintln!("c FLIP BUG: landing fails Brent, dropped");
+                        continue;
+                    }
+                    pool.insert(key);
+                    seq += 1;
+                    on_new(&bits, seq);
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+            if last_report.elapsed().as_secs() >= 60 {
+                last_report = Instant::now();
+                println!(
+                    "c [{:7.0}s] landings {} | new distinct {} | pool {} (+{})",
+                    t0.elapsed().as_secs_f64(),
+                    nland.load(Ordering::Relaxed),
+                    seq,
+                    pool.len(),
+                    pool.len() - known0,
+                );
+                let _ = std::io::stdout().flush();
+            }
+        }
+        stop.store(true, Ordering::Relaxed);
+        seq
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

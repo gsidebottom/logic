@@ -1403,6 +1403,15 @@ the two source papers for this track):
   special. Remaining 50 routes: flip-move walking (held) or a
   structural lower bound. Tools kept: design50.py modes a/ab/abfix,
   anf --init-file.
+- **FLIP-ADJACENCY HUNT LIVE (2026-10-15, commits 8054e9a+ad520fc)**:
+  flipmint.py = the mint funnel over Kauers-Moosbauer flips (the S-P
+  move set) with the widened 50-host screen; generator ported to Rust
+  (src/flip.rs walk_campaign + flip --walk): **135x measured** (135
+  vs 1 new distinct schemes at equal 2-min single-core budget, same
+  55 seeds). Running 8 walk + 8 eval threads; mint demoted to a
+  3-thread lottery; 01012 lift at 3 threads. Greg's process question
+  also flushed a 27 h runaway heredoc (the string-bug novel-52 job);
+  killed, core reclaimed.
   walk-00123 class ring-valid at 52 (model 3 of 32 orbits);
   **free-mode conversions EXACT: 4+3+3 = 10, one-shot 62** (free beat
   exact on B, 3 vs 4; C cleared in 40 s once free-d=20 applied — the

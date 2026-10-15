@@ -31,7 +31,16 @@ solve hands us the C leg to screen.
 
 Usage: design50.py workdir anf-binary [--trials N] [--dA D] [--dB D]
          [--seconds S] [--threads T] [--mult MAX] [--mode a|ab]
-         [--donors dir]
+         [--donors dir] [--mutate-cert cert --mutate-bits scheme.bits
+         --mutations K]
+
+--mutate-cert seeds the design sampler from a KNOWN floor-achieving
+leg: the fbmin certificate's basis+adds DAG is re-coordinatized over
+unit generators (GL-invariance), the scheme's A-block supplies the
+product->node multiplicity, and each trial applies K random DAG
+mutations (re-parent a sum / move a duplicate product), keeping
+distinctness and triple saturation.  Design-space walk around a
+realizable design instead of uniform sampling.
 Stop: touch <workdir>/STOP.
 """
 import pathlib
@@ -42,7 +51,8 @@ import time
 
 args = sys.argv[1:]
 flags = {"--trials": 200, "--dA": 20, "--dB": 20, "--seconds": 30.0,
-         "--threads": 2, "--mult": 4, "--mode": "a", "--donors": ""}
+         "--threads": 2, "--mult": 4, "--mode": "a", "--donors": "",
+         "--mutate-cert": "", "--mutate-bits": "", "--mutations": 2}
 pos = []
 i = 0
 while i < len(args):
@@ -114,7 +124,94 @@ def freeze_lines(rows, off=0):
     return "\n".join(out) + "\n"
 
 
+def parse_cert(path):
+    """fbmin cert -> (DAG over generator indices, in emission order).
+    Returns nodes as frozensets of generator indices (coordinates)."""
+    basis, adds = [], []
+    for ln in pathlib.Path(path).read_text().splitlines():
+        ln = ln.strip()
+        if ln.startswith("basis:"):
+            basis = ln.split()[1:]
+        elif ln.startswith("add "):
+            _, x, _, y, _, z = ln.split()
+            adds.append((x, y, z))
+    coords = {b: frozenset([i]) for i, b in enumerate(basis)}
+    order = []
+    for x, y, z in adds:
+        coords[z] = coords[x] ^ coords[y]
+        order.append((coords[x], coords[y]))
+    return coords, order
+
+
+def dag_nodes(order):
+    """Rebuild node set (as generator-coordinate frozensets) from the
+    parent list; returns None on a collision/zero."""
+    nodes = [frozenset([i]) for i in range(9)]
+    seen = set(nodes)
+    for x, y in order:
+        z = x ^ y
+        if not z or z in seen or x not in seen or y not in seen:
+            return None
+        nodes.append(z)
+        seen.add(z)
+    return nodes
+
+
+def saturated(nodes):
+    s = set(nodes)
+    iso = set(nodes)
+    for i, a in enumerate(nodes):
+        for b in nodes[i + 1:]:
+            c = a ^ b
+            if c in s:
+                iso -= {a, b, c}
+    return not iso
+
+
+def mutate_order(order, rng, k):
+    """k random re-parentings; parents drawn from nodes earlier than
+    the mutated position."""
+    order = list(order)
+    for _ in range(k):
+        j = rng.randrange(len(order))
+        pool = [frozenset([i]) for i in range(9)]
+        nodes = dag_nodes(order[:j])
+        if nodes is None:
+            return None
+        for _ in range(60):
+            x, y = rng.choice(nodes), rng.choice(nodes)
+            if x != y:
+                order[j] = (x, y)
+                if dag_nodes(order) is not None:
+                    break
+        else:
+            return None
+        _ = pool
+    return order
+
+
+def coords_to_int(c):
+    v = 0
+    for i in c:
+        v |= 1 << i
+    return v
+
+
 rng = random.Random(20261014)
+MUT = None
+if flags["--mutate-cert"]:
+    coords, base_order = parse_cert(flags["--mutate-cert"])
+    bits = pathlib.Path(flags["--mutate-bits"]).read_text().split()[-1].strip()
+    arows = [bits[9 * m: 9 * m + 9] for m in range(23)]
+    # map each product's row string to node coordinates
+    assign = []
+    for r in arows:
+        if r not in coords:
+            sys.exit(f"product row {r} not covered by cert nodes")
+        assign.append(coords[r])
+    MUT = (base_order, assign)
+    print(f"mutation seed: {len(base_order)} adds, "
+          f"{len(set(assign))} distinct rows over 23 products", flush=True)
 donors = []
 if flags["--donors"]:
     donors = sorted(pathlib.Path(flags["--donors"]).glob("*.bits"))
@@ -123,12 +220,29 @@ for t in range(flags["--trials"]):
     if (WORK / "STOP").exists():
         print("STOP file present -- halting.", flush=True)
         break
-    nodes = sample_design(flags["--dA"], rng)
-    if nodes is None:
-        continue
-    rows = assign_products(nodes, rng, flags["--mult"])
-    if rows is None:
-        continue
+    if MUT is not None:
+        base_order, base_assign = MUT
+        order = mutate_order(base_order, rng, flags["--mutations"])
+        if order is None:
+            continue
+        nodes = dag_nodes(order)
+        if nodes is None or not saturated(nodes):
+            continue
+        # keep the product->position multiplicity pattern; nodes moved
+        old_nodes = dag_nodes(base_order)
+        remap = dict(zip(old_nodes, nodes))
+        rows = [coords_to_int(remap[a]) for a in base_assign]
+    else:
+        nodes = sample_design(flags["--dA"], rng)
+        if nodes is None:
+            continue
+        nodes = [frozenset(i for i in range(9) if n >> i & 1)
+                 for n in nodes]
+        rows_f = assign_products([coords_to_int(n) for n in nodes],
+                                 rng, flags["--mult"])
+        if rows_f is None:
+            continue
+        rows = rows_f
     lines = freeze_lines(rows)
     if flags["--mode"] == "ab":
         nodesB = sample_design(flags["--dB"], rng)

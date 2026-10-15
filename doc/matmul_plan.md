@@ -1391,6 +1391,18 @@ the two source papers for this track):
   i2w205c38hj) and ≥ 5/≥ 8/≥ 7 for the three novel classes ⇒ no
   52-class known can convert for ≤ 3; one-shots ≥ 57 everywhere ⇒
   the 52-stratum cannot threaten flat-55 or S-P's 56 one-shot.
+- **DESIGN-FIRST PROBE CONCLUDED (2026-10-15, three measured
+  negatives)**: (1) completion machinery sound — a known frozen
+  A-design completes in 3 ms warm-started (anf --init-file; cold
+  >80 s); (2) design mutation 0/300 — single re-parents of the known
+  11-leg DAG leave a tight ~9-equation defect (floor-achieving
+  designs are ISOLATED, cf. Q-flip rigidity); (3) abfix 0/5,000 —
+  uniform B-designs never pair with the true A (defect ~25, linear-C
+  decided). VERDICT: legs cannot be decoupled; Brent's cross-leg
+  coupling binds, which is why i12's coincidence structure is
+  special. Remaining 50 routes: flip-move walking (held) or a
+  structural lower bound. Tools kept: design50.py modes a/ab/abfix,
+  anf --init-file.
   walk-00123 class ring-valid at 52 (model 3 of 32 orbits);
   **free-mode conversions EXACT: 4+3+3 = 10, one-shot 62** (free beat
   exact on B, 3 vs 4; C cleared in 40 s once free-d=20 applied — the

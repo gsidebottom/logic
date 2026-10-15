@@ -34,6 +34,13 @@ Usage: design50.py workdir anf-binary [--trials N] [--dA D] [--dB D]
          [--donors dir] [--mutate-cert cert --mutate-bits scheme.bits
          --mutations K]
 
+--mode abfix freezes the TRUE A-block of --mutate-bits verbatim (its
+own coordinates) plus a unit-instantiated SAMPLED B design at --dB
+(B's GL action is independent of A's, so unit coordinates are WLOG):
+Brent is then linear in C and the closure hook decides each candidate
+in seconds -- a direct search for structured partners of a known
+floor-achieving leg.
+
 --mutate-cert seeds the design sampler from a KNOWN floor-achieving
 leg: the fbmin certificate's basis+adds DAG is re-coordinatized over
 unit generators (GL-invariance), the scheme's A-block supplies the
@@ -220,7 +227,15 @@ for t in range(flags["--trials"]):
     if (WORK / "STOP").exists():
         print("STOP file present -- halting.", flush=True)
         break
-    if MUT is not None:
+    if flags["--mode"] == "abfix":
+        bits = pathlib.Path(flags["--mutate-bits"]).read_text().split()[-1].strip()
+        lines = "\n".join(f"{i} {bits[i]}" for i in range(207)) + "\n"
+        nodesB = sample_design(flags["--dB"], rng)
+        rowsB = assign_products(nodesB, rng, flags["--mult"]) if nodesB else None
+        if rowsB is None:
+            continue
+        lines += freeze_lines(rowsB, off=207)
+    elif MUT is not None:
         base_order, base_assign = MUT
         order = mutate_order(base_order, rng, flags["--mutations"])
         if order is None:
@@ -232,6 +247,8 @@ for t in range(flags["--trials"]):
         old_nodes = dag_nodes(base_order)
         remap = dict(zip(old_nodes, nodes))
         rows = [coords_to_int(remap[a]) for a in base_assign]
+    elif flags["--mode"] == "abfix":
+        rows = []
     else:
         nodes = sample_design(flags["--dA"], rng)
         if nodes is None:
@@ -243,7 +260,8 @@ for t in range(flags["--trials"]):
         if rows_f is None:
             continue
         rows = rows_f
-    lines = freeze_lines(rows)
+    if flags["--mode"] != "abfix":
+        lines = freeze_lines(rows)
     if flags["--mode"] == "ab":
         nodesB = sample_design(flags["--dB"], rng)
         rowsB = assign_products(nodesB, rng, flags["--mult"]) if nodesB else None
@@ -254,7 +272,8 @@ for t in range(flags["--trials"]):
     fz.write_text(lines)
     cmd = [ANF, "3", "3", "3", "23", "--seconds", str(flags["--seconds"]),
            "--threads", str(flags["--threads"]),
-           "--closure-every", "512" if flags["--mode"] == "ab" else "4096",
+           "--closure-every",
+           "256" if flags["--mode"] in ("ab", "abfix") else "4096",
            "--freeze-file", str(fz), "--seed", str(1000 + t), "--quiet"]
     if flags["--mode"] == "a" and donors:
         cmd += ["--noise", "0.2", "--density", "0.05",

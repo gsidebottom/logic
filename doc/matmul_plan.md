@@ -1396,7 +1396,9 @@ the two source papers for this track):
   exact on B, 3 vs 4; C cleared in 40 s once free-d=20 applied — the
   exact-mode d=22 block was two sign-paired rows). walk-01852 class
   ring-valid at 52 too (model 36 of 62! deepest obstruction streak
-  yet), minconv at (12,13,13) running; 01012 lift still looping.
+  yet), **conversions EXACT 5+4+3 = 12, one-shot 64**; 01012 lift
+  still looping. Novel-trio scoreboard: 00123 = 52+10 (one-shot 62),
+  01852 = 52+12 (64), 01012 TBD.
 
 - **TODO (when cores free): measure leg stabilizers** — for each
   51/52-tier class, compute the column-action stabilizer of each leg's

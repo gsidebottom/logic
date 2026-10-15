@@ -5,8 +5,9 @@ Brent-reverified) with the additive-structure screen and exact fbmin
 tier evaluation.
 
 Screen per leg: d (distinct rows), floor = sum d - 13 kept <= 48, plus
-floor-49 schemes with all three legs triple-clean (the only floor-49
-shape that can host a 50: all legs at floor needs isolation 0);
+floor-49 schemes with >= 2 isolation-0 legs and floor-50 schemes with
+all three (the only higher-floor shapes that can host a 50: slack is
+50 - floor, and floor-achieving legs need isolation 0);
 triple-isolated row count (rows in no internal addition triple) -- the
 law says floor-achieving legs have isolation 0, and slack
 grows ~isolated/2, so keepers are ranked by total isolation then
@@ -92,11 +93,14 @@ while not (WORK / "STOP").exists():
         st = [stats(l) for l in legs]
         floor = sum(x[0] for x in st) - 13
         iso = [x[1] for x in st]
-        # floor <= 48 as before; ALSO keep floor-49 schemes whose three
-        # legs are all triple-clean -- the only floor-49 shape that can
-        # host a 50 (all legs would have to achieve their floors, and
-        # floor-achievement requires isolation 0; the DB has 0/2450)
-        if floor > 49 or (floor == 49 and any(iso)):
+        # floor <= 48 as before; ALSO keep the only higher-floor shapes
+        # that can host a 50 (slack 50-floor): floor-49 with >= 2
+        # isolation-0 legs (two legs must achieve their floors), and
+        # floor-50 with all three (floor >= 51 is arithmetic).  The DB
+        # has 0/2450 and 0/5431 respectively.
+        nclean = sum(1 for x in iso if x == 0)
+        if not (floor <= 48 or (floor == 49 and nclean >= 2)
+                or (floor == 50 and nclean == 3)):
             continue
         news.append((sum(iso), floor, p.stem, st))
     news.sort()

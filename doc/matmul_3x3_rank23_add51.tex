@@ -395,14 +395,17 @@ equivalence-checked against it).  Of these, $16$ were eligible at
 floor $\le48$, and all $16$ are ruled out for $\le51$ --- the
 database's optimum stands across every class known to us.
 A $50$ would require exact leg sum $36$; none exists in the database,
-at \emph{any} floor.  At floor $\le48$ the completed sweep gives
-minimum sum $38$ outside the four $51$s.  A floor-$49$ class could
-host a $50$ only with all three legs floor-achieving, and
-floor-achievement provably requires every row of the leg to lie in an
-internal addition triple (Section~\ref{sec:result}); screening all
-$2{,}450$ floor-$49$ schemes finds \emph{none} with all three legs
-triple-clean.  Floor $\ge50$ is arithmetically incompatible with sum
-$36$.  The closest approach
+at \emph{any} floor.  Writing $f$ for the per-step floor, a $50$
+leaves total slack $50-f$ across the three legs.  At floor $\le48$
+the completed sweep gives minimum sum $38$ outside the four $51$s.  A
+floor-$49$ class could host a $50$ only with at least two legs
+floor-achieving (one unit of slack remains), a floor-$50$ class only
+with all three, and floor $\ge51$ is arithmetically incompatible.
+Floor-achievement provably requires every row of the leg to lie in an
+internal addition triple, with at least $d-9$ triples
+(Section~\ref{sec:result}); screening all $2{,}450$ floor-$49$
+schemes finds \emph{none} with even two triple-clean legs, and all
+$5{,}431$ floor-$50$ schemes \emph{none} with three.  The closest approach
 is slack $+2$ over the leg floors (the $(11,13,13)$ and $(14,12,11)$
 classes); exact $11$-legs exist on both the input and the output
 side, so sum $36$ is not excluded by any per-leg phenomenon observed

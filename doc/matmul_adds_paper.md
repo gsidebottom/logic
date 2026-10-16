@@ -71,6 +71,12 @@ independently confirms **Sun's own representative is output-optimal**
 (56 exact): 56 was optimal for his class, and 55 lives on a different
 class that had never been exactly output-minimized.
 
+*Update (October 2026).* An exact orbit-wide flat computation closes
+the one region the original argument left open: the record class is
+the **only** class in the database that attains 55, and Sun's 56 and
+Perminov's cn119 56 are each exactly optimal for their whole class,
+fat-sided representatives included (§5).
+
 ## 1. Notation and terminology
 
 - **Sides.** A scheme's additive cost splits into two *input sides* —
@@ -248,7 +254,8 @@ against the HKS database; "published" = the count in the source paper):
   representative. The bound is ≥ 55 everywhere, and equals 55 only on
   864 representatives of this one class.
 - **56 on two classes** (`i46w213c23ci` = Sun's, and
-  `i12w219c23ci`); before the exact re-score these read 56/58 under
+  `i12w219c23ci`), both exactly optimal for their classes (see the
+  2026-10-16 update below); before the exact re-score these read 56/58 under
   greedy. The exact output side beats greedy by one addition on the
   two Perminov classes (cn122 29→28, cn119 30→29) and by one on the
   cn120 representative (28→27).
@@ -273,6 +280,22 @@ against the HKS database; "published" = the count in the source paper):
   Exactly 620 slots (616 classes, including the record class and
   Sun's) reach cover 13 — output side 27 — so those are the only
   places further (record-tying, never record-beating) 55s could live.
+
+  *Update (2026-10-16): the frontier is closed.* The exact GF(2) flat
+  minimum of a class over **all** its representatives is computable
+  directly. Each of the three sides depends on only two of the
+  sandwich factors (P, Q, R), so three exact 168×168 side tables (the
+  output side exact by transposition, replacing the greedy estimate)
+  and a min-plus scan over all 168³ triples cover the whole orbit
+  (`floors --exact-total`). As a gate it returns exactly 55 on the
+  record class. Over all 616 frontier classes the minimum is ≥ 56
+  except the record class itself: **the record class is the only
+  class in the database that attains 55.** Six frontier classes have
+  floor exactly 56, among them Sun's `i46w213c23ci` and Perminov's
+  cn119 class `i12w219c23ci`. Both already attain 56 over ℤ (table
+  above), so **both 56s are exactly optimal for their classes**,
+  closing the fat region the slim-tier argument left open. Per-class
+  results: `matmul/external/flat55/`.
 
   *Scope extension (2026-07-11).* Rational flip-walk exploration (the
   `flip23` engine; companion notes in this repository) later produced
@@ -378,11 +401,11 @@ Both sides are now minimized exactly, so the total for any given
 representative is its true additive complexity in this model. The
 open question is **whether 54 exists**:
 
-- **More 55s (never fewer) inside the catalogue.** The 616 classes
-  whose γ-orbit reaches output side 27 (§5) are the only places a
-  further, fat-sided 55 = 28 + 27 could live; pairing each with exact
-  input sides at its cover-13 images is a bounded, well-defined hunt
-  for record-*tying* schemes.
+- **More 55s inside the catalogue — resolved (2026-10-16).** The 616
+  classes whose γ-orbit reaches output side 27 were the only places a
+  further, fat-sided 55 = 28 + 27 could live. The exact orbit-wide
+  flat computation (§5) shows none does: the record class is the
+  unique 55-class in the database.
 - **Beyond the published catalogue.** The optimality theorem is
   relative to the 17,376 published classes; our own 53 novel classes
   clear it with margin (every representative has output side ≥ 28 and

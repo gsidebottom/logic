@@ -677,6 +677,24 @@ where
                         .wrapping_mul(0x9e3779b97f4a7c15),
                 );
                 let mut cur = seeds[rng.below(seeds.len())].clone();
+                // slack-descent bias: remember the lowest-floor landing
+                // (sum of per-slot distinct rows) and preferentially
+                // continue walks from it
+                let floor_of = |s: &[Summand]| -> usize {
+                    let mut tot = 0usize;
+                    for slot in 0..3 {
+                        let mut rows: Vec<u32> = s
+                            .iter()
+                            .map(|m| m[slot])
+                            .filter(|&r| r != 0)
+                            .collect();
+                        rows.sort_unstable();
+                        rows.dedup();
+                        tot += rows.len();
+                    }
+                    tot
+                };
+                let mut best_state: Option<(usize, Vec<Summand>)> = None;
                 let mut rounds = 0u64;
                 loop {
                     rounds += 1;
@@ -718,6 +736,17 @@ where
                     }
                     nland.fetch_add(1, Ordering::Relaxed);
                     let _ = tx.send(cur.clone());
+                    let fl = floor_of(&cur);
+                    let better = best_state
+                        .as_ref()
+                        .map(|(bf, _)| fl < *bf)
+                        .unwrap_or(true);
+                    if better {
+                        best_state = Some((fl, cur.clone()));
+                    } else if rng.f64() < 0.5 {
+                        // half the time resume from the best landing
+                        cur = best_state.as_ref().unwrap().1.clone();
+                    }
                 }
             });
         }

@@ -63,7 +63,8 @@ def stats(rows):
             z = ints[a] ^ ints[b]
             if z in s:
                 in_tri |= {ints[a], ints[b], z}
-    return len(uniq), len(ints) - len(in_tri), uniq
+    ws = sorted(r.count("1") for r in uniq)
+    return len(uniq), len(ints) - len(in_tri), uniq, ws
 
 
 LEG_RE = re.compile(r"min_adds(>?=)(\d+) \[")
@@ -120,7 +121,7 @@ while not (WORK / "STOP").exists():
         if (WORK / "STOP").exists():
             break
         paths = []
-        for (d_, i_, uniq), nm in zip(st, "ABC"):
+        for (d_, i_, uniq, _ws), nm in zip(st, "ABC"):
             pp = LEGS / f"{stem}_{nm}.legs"
             pp.write_text("\n".join(uniq) + "\n")
             paths.append(pp)
@@ -151,4 +152,15 @@ while not (WORK / "STOP").exists():
               flush=True)
         if str(verdict).startswith(("ALERT", "KLAXON")):
             print(f"*** {verdict}: {stem} ***", flush=True)
+        if all(x.isdigit() for x in digs) and all(
+                v.startswith("=") for v in vals):
+            lbs = []
+            for (d_, i_, uniq, ws), a in zip(st, (int(x) for x in digs)):
+                k = max(9 - (a - (d_ - 9)), 0)
+                lbs.append(sum(w - 1 for w in ws[:k]))
+            oneshot_lb = sum(int(x) for x in digs) + 14 + sum(lbs)
+            if oneshot_lb <= 55:
+                print(f"*** LIGHT-{oneshot_lb}: {stem} one-shot bound "
+                      f"{sum(int(x) for x in digs) + 14}+{sum(lbs)} "
+                      f"<= 55 -- flat-record threat ***", flush=True)
 print("flipmint stopped.", flush=True)

@@ -63,7 +63,7 @@ fn main() {
     let threads: usize = arg_val(&args, "--threads").unwrap_or(1);
     let quiet = args.iter().any(|a| a == "--quiet");
 
-    let anf = brent(d);
+    let mut anf = brent(d);
     eprintln!(
         "c brent <{},{},{}> r={}: {} vars, {} eqs ({} odd)",
         d.n1,
@@ -173,6 +173,43 @@ fn main() {
     } else {
         None
     };
+    // --orbit-file: symmetric-quotient mode. Each variable is mapped
+    // to its orbit representative; monomials are rewritten through the
+    // map and equal monomials cancel mod 2. The solver then works on
+    // orbit representatives only; the solution is expanded back and
+    // re-verified against the ORIGINAL Brent system before printing.
+    let orbit: Option<Vec<u32>> = args
+        .iter()
+        .position(|a| a == "--orbit-file")
+        .and_then(|i| args.get(i + 1))
+        .map(|path| {
+            let txt = std::fs::read_to_string(path).expect("orbit file");
+            let mut map: Vec<u32> = (0..anf.nvars as u32).collect();
+            for line in txt.lines() {
+                let mut it = line.split_whitespace();
+                if let (Some(v), Some(r)) = (it.next(), it.next()) {
+                    let v: usize = v.parse().unwrap();
+                    map[v] = r.parse().unwrap();
+                }
+            }
+            map
+        });
+    let full_anf = orbit.as_ref().map(|map| {
+        let quotient = quotient_anf(&anf, map);
+        eprintln!(
+            "c orbit-file: {} vars -> {} reps; quotient {} eqs",
+            anf.nvars,
+            {
+                let mut reps: Vec<u32> = map.clone();
+                reps.sort_unstable();
+                reps.dedup();
+                reps.len()
+            },
+            quotient.neqs()
+        );
+        std::mem::replace(&mut anf, quotient)
+    });
+
     let init_bits = args
         .iter()
         .position(|a| a == "--init-file")
@@ -191,6 +228,19 @@ fn main() {
     let dt = t0.elapsed().as_secs_f64();
     let emit_best = args.iter().any(|a| a == "--emit-best");
     let rate = flips as f64 / dt / 1e6;
+    let sol = sol.map(|mut bits| {
+        if let (Some(map), Some(orig)) = (&orbit, &full_anf) {
+            for v in 0..bits.len() {
+                bits[v] = bits[map[v] as usize];
+            }
+            let bad = verify(orig, &bits);
+            assert_eq!(
+                bad, 0,
+                "QUOTIENT BUG: expanded solution fails the full Brent system"
+            );
+        }
+        bits
+    });
     match sol {
         Some(bits) => {
             let bad = verify(&anf, &bits);

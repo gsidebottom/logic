@@ -844,6 +844,39 @@ impl<'a> Sls<'a> {
     }
 }
 
+/// Rewrite an ANF system through a variable-orbit map: every monomial's
+/// variables are replaced by their orbit representatives (triple sorted)
+/// and equal monomials cancel mod 2. Solving the quotient and copying
+/// each representative's value to its orbit yields a symmetric solution
+/// of the original system (callers re-verify the expansion).
+pub fn quotient_anf(anf: &Anf, map: &[u32]) -> Anf {
+    let mut eqs: Vec<(Vec<[u32; 3]>, u8)> = Vec::with_capacity(anf.neqs());
+    for e in 0..anf.neqs() {
+        let mut mons: Vec<[u32; 3]> = Vec::new();
+        for i in anf.eq_off[e]..anf.eq_off[e + 1] {
+            let [x, y, z] = anf.mons[i as usize];
+            let mut m = [map[x as usize], map[y as usize], map[z as usize]];
+            m.sort_unstable();
+            mons.push(m);
+        }
+        mons.sort_unstable();
+        let mut kept: Vec<[u32; 3]> = Vec::with_capacity(mons.len());
+        let mut i = 0;
+        while i < mons.len() {
+            let mut j = i;
+            while j < mons.len() && mons[j] == mons[i] {
+                j += 1;
+            }
+            if (j - i) % 2 == 1 {
+                kept.push(mons[i]);
+            }
+            i = j;
+        }
+        eqs.push((kept, anf.rhs[e]));
+    }
+    Anf::new(anf.nvars, eqs)
+}
+
 /// One portfolio outcome; [`solve_portfolio`] documents the fields.
 pub type SlsOutcome = (Option<Vec<u8>>, u64, usize, Vec<u8>);
 

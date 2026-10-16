@@ -62,19 +62,25 @@ CONV_RE = re.compile(r"conversion cost (\d+)")
 
 
 def leg_min(path, target):
-    out = subprocess.run(
-        [FBSMIN, "--threads", str(flags["--threads"]),
-         "--max-helpers", "3", str(path)],
-        capture_output=True, text=True, timeout=3600).stdout
+    try:
+        out = subprocess.run(
+            [FBSMIN, "--threads", str(flags["--threads"]),
+             "--max-helpers", "3", str(path)],
+            capture_output=True, text=True, timeout=3600).stdout
+    except subprocess.TimeoutExpired:
+        return False   # undecided at budget -> treat as not cleared
     m = CLEAR_RE.search(out)
     return (m.group(1) == "=" and int(m.group(2)) == target) if m else False
 
 
 def leg_conv(path, target):
-    out = subprocess.run(
-        [FBSMIN, "--threads", str(flags["--threads"]),
-         "--min-basis-at", str(target), str(path)],
-        capture_output=True, text=True, timeout=6 * 3600).stdout
+    try:
+        out = subprocess.run(
+            [FBSMIN, "--threads", str(flags["--threads"]),
+             "--min-basis-at", str(target), str(path)],
+            capture_output=True, text=True, timeout=6 * 3600).stdout
+    except subprocess.TimeoutExpired:
+        return None
     m = CONV_RE.search(out)
     return int(m.group(1)) if m and "CERT-OK" in out else None
 

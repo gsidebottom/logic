@@ -1414,6 +1414,16 @@ the two source papers for this track):
   exact 2x2x2 values (SAT@7/UNSAT@6). symenum.py enumerates with
   blocking on the 207-rep projection, screens each leg: d=21 iso-0 =
   a 50; d=20 floor leg = a 47. HUNT RUNNING.
+- **★ FLAT-55 RECORD UNIQUE TO ITS CLASS ACROSS THE DB (2026-10-16,
+  b86a1a4)**: new floors --exact-total (exact transposed C table,
+  min-plus over 168^3 sandwiches) gated on the record class (=55).
+  S-P's class flat min 56 => their one-shot 56 class-optimal
+  (7120608). All 616 fat-frontier schemes (cfloor regenerated, exact
+  July match): one 55 (record class), rest >= 56; with the July
+  slim-sides exhaustive => uniqueness DB-wide. Closes the July
+  paper's open item. Six classes at 56 (S-P's among them).
+  Basis-change bounds corrected (3b46f4a/dd43672): per
+  representative; ours [7,11] for our rep, >= 6 class-wide.
 - **FLIP-ADJACENCY HUNT LIVE (2026-10-15, commits 8054e9a+ad520fc)**:
   flipmint.py = the mint funnel over Kauers-Moosbauer flips (the S-P
   move set) with the widened 50-host screen; generator ported to Rust

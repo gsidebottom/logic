@@ -1403,6 +1403,17 @@ the two source papers for this track):
   special. Remaining 50 routes: flip-move walking (held) or a
   structural lower bound. Tools kept: design50.py modes a/ab/abfix,
   anf --init-file.
+- **★ FIRST CYCLIC-INVARIANT RANK-23 SCHEME OVER F2 (2026-10-15,
+  commit 182fd57)**: the symmetric-quotient attack (cyclic 3-cycle,
+  207 orbit vars, product ansatz 7 3-orbits + 2 fixed with a=b=c)
+  is SATISFIABLE -- kissat decides it in ~1 min where the full
+  621-var Brent CNF is classically CDCL-hostile; the quotient makes
+  3x3 tractable. Solution full-verified (0/729) + invariance
+  confirmed; NO cyclic-invariant scheme existed among all 37,204
+  known. Sol-1 legs d=21 iso=3 => per-step >= 53. Encoder gated on
+  exact 2x2x2 values (SAT@7/UNSAT@6). symenum.py enumerates with
+  blocking on the 207-rep projection, screens each leg: d=21 iso-0 =
+  a 50; d=20 floor leg = a 47. HUNT RUNNING.
 - **FLIP-ADJACENCY HUNT LIVE (2026-10-15, commits 8054e9a+ad520fc)**:
   flipmint.py = the mint funnel over Kauers-Moosbauer flips (the S-P
   move set) with the widened 50-host screen; generator ported to Rust

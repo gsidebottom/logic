@@ -266,24 +266,30 @@ feasible configuration at the optimal leg counts: bases of
 $k\in\{9,8,7\}$ target rows with the remaining slots filled by unit
 vectors (cost-free rows, with the helper budget $h=a-(d-k)$ adjusted
 accordingly), scored by $\sum(\mathrm{weight}-1)$ over the basis rows.
-Across the class's other sign models the minimum is only bracketed.
-A leg with slack $s$ over its floor needs at least $9-s$ target rows
-in its basis; those rows must be independent over $\F_2$ (a necessary
+Conversion cost depends on the representative (its target rows' raw
+weights), so we state it per representative.  Over the other signings
+of this representative the minimum is only bracketed.  A leg with
+slack $s$ over its floor needs at least $9-s$ target rows in its
+basis; those rows must be independent over $\F_2$ (a necessary
 condition for unimodularity), and row weights do not depend on signs.
-The lightest such choice gives a model-independent lower bound of
-$2+3+2=7$, so the class optimum lies in $[7,11]$.  Two further
-gauge-distinct sign models that lift also cost exactly $11$; the
-sweep of the remaining models is in progress.  The complete one-shot
+The lightest such choice gives a sign-independent lower bound of
+$2+3+2=7$, so this representative's optimum lies in $[7,11]$.  Its
+$4096$ sign models fall into $64$ gauge orbits; two further orbits
+that lift also cost exactly $11$, and the sweep of the remaining
+orbits is in progress.  The complete one-shot
 algorithm costs $51+11=62$ additions in ordinary coordinates; for
 comparison, Stapleton and Perminov's class achieves
 $51+5=56$~\cite{SP26}, and the flat-model record is
 $55$~\cite{Sidebottom26,KI26}.  The same sweep applied to \emph{their}
-published signing returns conversion costs $1+3+1=5$, so their
-conversions are exactly optimal for that realization.  Across their
-class, the database-wide flat floor of $55$ gives at least $4$, and $4$
-is not excluded: each of the three lifted $51$-classes contains a
-representative whose $\F_2$ output side reaches $27$, the frontier on
-which a flat $55$ remains possible.  A conversion of $4$ would give a
+published signing returns conversion costs $1+3+1=5$.  Their
+representative has exactly $128$ sign models (exhaustive enumeration),
+in two gauge orbits; both lift, at conversions $5$ and $6$.  So $5$ is
+the minimum over every $\Z$-lift of their representative within the
+swept configurations.  Across their whole class (other
+representatives), the database-wide flat floor of $55$ gives at least
+$4$, and $4$ is not excluded: each of the three lifted $51$-classes
+contains a representative whose $\F_2$ output side reaches $27$, the
+frontier on which a flat $55$ remains possible.  A conversion of $4$ would give a
 one-shot $55$, tying the flat record.  Conversion cost at optimal
 counts is bounded below by the class's light-row supply (the
 accounting $a=(d-k)+h$ keeps most basis rows among the targets), so

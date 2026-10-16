@@ -405,19 +405,20 @@ output side for \texttt{i12w227c23ci-012}.}
 Computing $(d_A,d_B,d_C)$ for all $17{,}376$ schemes of the HKS
 database takes seconds and yields the floor distribution of
 Proposition~\ref{prop:floor}: minimum $47$, attained by $44$ schemes
-(including the three classes above); $507$ schemes at $48$; Laderman
-alone at $56$ ($d=(23,23,23)$: no shared factors, maximally unsuited
-to the model).  The exact sweep covers every stored scheme whose
-floor permits $\le51$.  One subtlety shaped its execution: schemes
-sharing a name (\texttt{-000}, \texttt{-001}, \dots) need not be
-equivalent --- the HKS name is an invariant-plus-hash, and distinct
-de~Groote classes collide under it --- so a first, name-deduplicated
-pass was completed by a second, variant-aware pass over the blind
-spot; both Stapleton and Perminov's class
-(\texttt{i12w219c23ci-008}) and the fourth $51$-class
-(\texttt{i12w227c23ci-012}) sat in exactly that collision shadow.
-Together the passes decide all $561$ floor-$\le48$ variant tabs,
-spanning $23$ families:
+(including two of the four $51$-classes, ours and Stapleton and
+Perminov's; the other two sit at $48$); $507$ schemes at $48$;
+Laderman alone at $56$ ($d=(23,23,23)$: no shared factors, maximally
+unsuited to the model).  The exact sweep covers every stored scheme
+whose floor permits $\le51$.  Stored schemes that share a name
+(suffixes \texttt{-000}, \texttt{-001}, \dots) need not be
+equivalent: an HKS name is an invariant string plus a hash, and
+distinct de~Groote classes can share one.  A first pass,
+deduplicated by name, therefore missed some classes, and a second
+pass evaluated every stored variant individually.  The second pass
+is where Stapleton and Perminov's class (\texttt{i12w219c23ci-008})
+and the fourth $51$-class (\texttt{i12w227c23ci-012}) turned up.
+Together the two passes decide all $561$ stored schemes with floor
+$\le48$, spanning $23$ families:
 
 \begin{center}
 \begin{tabular}{lrl}
@@ -635,38 +636,42 @@ AMS 82 (1976) 126--128.
 \bibitem{Blaser03} M.~Bl\"aser, \emph{On the complexity of the
 multiplication of matrices of small formats}, J.\ Complexity 19
 (2003) 43--60.
-\bibitem{Wang26} C.~Wang, \emph{A lower bound of 20 for the rank of
-$3\times3$ matrix multiplication over $\F_2$}, arXiv:2603.07280.
+\bibitem{Wang26} C.~Wang, \emph{Automated lower bounds for bilinear
+complexity over finite fields}, arXiv:2603.07280 (March 7, 2026).
 \bibitem{Wang26b} C.~Wang, \emph{A lower bound of 21 for $3\times3$
-matrix multiplication over $\F_2$}, arXiv:2609.06725.
+matrix multiplication over $\F_2$}, arXiv:2609.06725 (September 6, 2026).
 \bibitem{Qiushi26} S.~Yang et al., \emph{A structural proof of the
 lower bound 21 for $3\times3$ matrix multiplication over $\F_2$},
-arXiv:2609.18722.
-\bibitem{Stapleton25} D.~Stapleton, \emph{A 60-addition, rank-23
-scheme for exact $3\times3$ matrix multiplication}, arXiv:2508.03857.
-\bibitem{MWS26} M{\aa}rtensson, Wagner, Stapleton, \emph{A rank 23
-algorithm for multiplying $3\times3$ matrices with an arithmetic
-complexity of 59}, arXiv:2601.05272.
-\bibitem{Perminov25} Perminov, \emph{A 58-addition, rank-23 scheme for
-general $3\times3$ matrix multiplication}, arXiv:2512.21980.
+arXiv:2609.18722 (September 16, 2026).
+\bibitem{Stapleton25} J.~Stapleton, \emph{A 60-addition, rank-23
+scheme for exact $3\times3$ matrix multiplication}, arXiv:2508.03857
+(August 5, 2025).
+\bibitem{MWS26} E.~M{\aa}rtensson, P.~Stankovski Wagner, J.~Stapleton,
+\emph{A rank 23 algorithm for multiplying $3\times3$ matrices with an
+arithmetic complexity of 59}, arXiv:2601.05272 (December 18, 2025).
+\bibitem{Perminov25} A.~I.~Perminov, \emph{A 58-addition, rank-23
+scheme for general $3\times3$ matrix multiplication}, arXiv:2512.21980
+(December 26, 2025).
 \bibitem{Sun26} Y.~Sun, \emph{An exact 56-addition, rank-23 scheme for
-general $3\times3$ matrix multiplication}, arXiv:2604.27645.
+general $3\times3$ matrix multiplication}, arXiv:2604.27645
+(April 30, 2026).
 \bibitem{Sidebottom26} G.~Sidebottom, \emph{A 55-addition rank-23
 scheme for $3\times3$ matrix multiplication --- artifacts, verifier,
 and machine-checked proof}, Zenodo, July 7, 2026,
 doi:10.5281/zenodo.21240904.
 \bibitem{KI26} S.~Karunaratne, A.~Idamekorala, \emph{55 additions
 suffice for $3\times3$ matrix multiplication at rank 23},
-arXiv:2607.28676.
+arXiv:2607.28676 (July 28, 2026).
 \bibitem{KS20} E.~Karstadt, O.~Schwartz, \emph{Matrix multiplication,
 a little faster}, J.\ ACM 67 (2020); SPAA 2017.
 \bibitem{BS19} G.~Beniamini, O.~Schwartz, \emph{Faster matrix
 multiplication via sparse decomposition}, SPAA 2019.
-\bibitem{Nielsen26} H.~M.~Nielsen, \emph{A 52-addition, rank-23 scheme
-for exact $3\times3$ matrix multiplication}, arXiv:2609.06588.
-\bibitem{SP26} J.~Stapleton, A.~I.~Perminov, \emph{A 51-addition
+\bibitem{Nielsen26} H.~Nielsen, \emph{A 52-addition, rank-23 scheme
+for exact $3\times3$ matrix multiplication}, arXiv:2609.06588
+(September 6, 2026).
+\bibitem{SP26} J.~Stapleton, A.~Perminov, \emph{A 51-addition
 alternative-basis kernel for rank-23 $3\times3$ matrix multiplication},
-arXiv:2609.32388.
+arXiv:2609.32388 (September 26, 2026).
 \end{thebibliography}
 
 \appendix

@@ -23,7 +23,8 @@ from gaugecanon import dedup_models  # noqa: E402
 from lift import lift_models, z_verify  # noqa: E402
 
 args = sys.argv[1:]
-flags = {"--nmodels": 128, "--threads": 4, "--best-known": 10 ** 9}
+flags = {"--nmodels": 128, "--threads": 4, "--best-known": 10 ** 9,
+         "--budget": 600}
 pos = []
 i = 0
 while i < len(args):
@@ -66,7 +67,8 @@ def leg_min(path, target):
         out = subprocess.run(
             [FBSMIN, "--threads", str(flags["--threads"]),
              "--max-helpers", "3", str(path)],
-            capture_output=True, text=True, timeout=3600).stdout
+            capture_output=True, text=True,
+            timeout=flags["--budget"]).stdout
     except subprocess.TimeoutExpired:
         return False   # undecided at budget -> treat as not cleared
     m = CLEAR_RE.search(out)
@@ -85,12 +87,17 @@ def leg_conv(path, target):
     return int(m.group(1)) if m and "CERT-OK" in out else None
 
 
+done_models = set()
+for ln in RES.read_text().splitlines()[1:]:
+    done_models.add(int(ln.split(",")[0]))
 models = lift_models(bits, flags["--nmodels"], DIMS)
 models = dedup_models(models, bits)
 print(f"{len(models)} gauge-distinct models; targets {TARGETS}, "
       f"best known {flags['--best-known']}", flush=True)
 best = flags["--best-known"]
 for mi, (signs, _) in enumerate(models):
+    if mi in done_models:
+        continue
     if (WORKD / "STOP").exists():
         print("STOP present -- halting.", flush=True)
         break

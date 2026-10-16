@@ -15,6 +15,10 @@
 //! floors only, ~2/3 the work) — the mode for database-wide sweeps.
 //! --emit-cands writes candidate representatives (est <= cutoff) as
 //! .bits files for exact Z re-scoring in Python (matmul/sidemin.py).
+//! --exact-total replaces the greedy C with the EXACT transposed GF(2)
+//! output cost (side of the 23 output rows + 14) and reports the exact
+//! orbit-wide GF(2) flat minimum (a sound floor for every Z signing),
+//! plus all (P,Q,R) at or under --cutoff (emittable via --emit-cands).
 
 #![allow(clippy::needless_range_loop)] // index loops mirror the form tables
 use logic::floors::*;
@@ -81,6 +85,14 @@ fn main() {
     } else {
         false
     };
+    let exact_total = if let Some(i) =
+        args.iter().position(|a| a == "--exact-total")
+    {
+        args.remove(i);
+        true
+    } else {
+        false
+    };
     let files: Vec<String> =
         args.into_iter().filter(|a| !a.starts_with("--")).collect();
     // (name, bits-string) work items from args and/or --list
@@ -133,6 +145,46 @@ fn main() {
         let mut seen = std::collections::HashSet::new();
         for &vi in &variants {
             let t0 = Instant::now();
+            if exact_total {
+                // exact orbit-wide GF(2) flat total: exact A, B tables +
+                // exact transposed C table (+14); every entry a sound
+                // lower bound, so the min is a sound flat floor for every
+                // Z signing of every representative in this variant.
+                let t = side_tables(&vlist[vi], &gl, max_slack, node_cap, false);
+                let (c, open_c) = exact_c_table(&vlist[vi], &gl, max_slack, node_cap);
+                let (best, hits) = scan_exact_total(&t.a, &t.b, &c, cutoff);
+                let floor_ab = {
+                    let mut f = u32::MAX;
+                    for q in 0..168 {
+                        let ma = (0..168).map(|p| t.a[p * 168 + q] as u32).min().unwrap();
+                        let mb = (0..168).map(|r| t.b[q * 168 + r] as u32).min().unwrap();
+                        f = f.min(ma + mb);
+                    }
+                    f
+                };
+                let min_c = c.iter().copied().min().unwrap() as u32;
+                println!(
+                    "{stem} v{vi} EXACT-TOTAL min={best} sides_floor={floor_ab} \
+                     C_min={min_c} triples<= {cutoff}: {} open_cells(ab={},c={}) ({:.1} s)",
+                    hits.len(), t.open_cells, open_c,
+                    t0.elapsed().as_secs_f64()
+                );
+                if let Some(d) = &emit_dir {
+                    let mut seen_bits = std::collections::HashSet::new();
+                    for &(tot, pi, qi, ri) in hits.iter().take(max_emit) {
+                        let rep = apply_pqr(&vlist[vi], &gl, pi as usize,
+                                            qi as usize, ri as usize);
+                        let rb = summands_to_bits(&rep);
+                        let s: String = rb.iter().map(|b| (b + b'0') as char).collect();
+                        if seen_bits.insert(s.clone()) {
+                            let path = format!("{d}/{stem}-v{vi}-t{tot}-{pi}-{qi}-{ri}.bits");
+                            std::fs::write(&path, format!("{s}\n")).unwrap();
+                        }
+                    }
+                    println!("{stem} v{vi} emitted {} distinct reps", seen_bits.len());
+                }
+                continue;
+            }
             if let Some((lo, hi)) = ccells {
                 let dir = emit_dir
                     .as_ref()

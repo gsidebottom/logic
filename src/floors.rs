@@ -510,6 +510,74 @@ pub fn side_tables_screened(
     t
 }
 
+/// exact output-side table via the transposition principle: the
+/// 9x23 output map costs (exact GF(2) side cost of its 23 rows) + 14.
+/// Indexed c[r*NG+p] like the greedy table; entries are sound lower
+/// bounds (max-slack-exhausted cells store their lower bound).
+pub fn exact_c_table(
+    sm: &[(u16, u16, u16)],
+    gl: &[u16],
+    max_slack: u32,
+    node_cap: u64,
+) -> (Vec<u16>, usize) {
+    use rayon::prelude::*;
+    let gli: Vec<u16> = gl.iter().map(|&g| mat_inv(g).unwrap()).collect();
+    let cmats: Vec<u16> = sm.iter().map(|s| s.2).collect();
+    let rows: Vec<(Vec<u16>, usize)> = (0..NG)
+        .into_par_iter()
+        .map(|li| {
+            let l = gl[li];
+            let lc: Vec<u16> = cmats.iter().map(|&m| mat_mul(l, m)).collect();
+            let mut rc = vec![0u16; NG];
+            let mut over = 0usize;
+            let mut rows9 = vec![0u16; 23];
+            for ri in 0..NG {
+                let inv = gli[ri];
+                for (k, &m) in lc.iter().enumerate() {
+                    rows9[k] = mat_mul(m, inv);
+                }
+                let sc = gf2_min_side(&rows9, max_slack, node_cap);
+                over += usize::from(!sc.exact);
+                rc[ri] = (sc.adds + 14) as u16;
+            }
+            (rc, over)
+        })
+        .collect();
+    let mut c = vec![0u16; NG * NG];
+    let mut open = 0usize;
+    for (li, (rc, over)) in rows.into_iter().enumerate() {
+        c[li * NG..(li + 1) * NG].copy_from_slice(&rc);
+        open += over;
+    }
+    (c, open)
+}
+
+/// exact orbit-wide GF(2) flat total: min over all (P,Q,R) of
+/// a[p,q] + b[q,r] + c[r,p], plus every triple at or under `cutoff`.
+pub fn scan_exact_total(
+    a: &[u16],
+    b: &[u16],
+    c: &[u16],
+    cutoff: u32,
+) -> (u32, Vec<(u32, u16, u16, u16)>) {
+    let mut best = u32::MAX;
+    let mut hits = Vec::new();
+    for q in 0..NG {
+        for p in 0..NG {
+            let base = a[p * NG + q] as u32;
+            for r in 0..NG {
+                let tot = base + b[q * NG + r] as u32 + c[r * NG + p] as u32;
+                best = best.min(tot);
+                if tot <= cutoff {
+                    hits.push((tot, p as u16, q as u16, r as u16));
+                }
+            }
+        }
+    }
+    hits.sort_unstable();
+    (best, hits)
+}
+
 pub struct ScanResult {
     /// orbit-wide lower bound on A+B side additions (sound)
     pub floor_sides: u32,

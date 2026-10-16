@@ -94,7 +94,9 @@ basis changes over $\F_2$ and lifting to general fields; and Stapleton
 and Perminov~\cite{SP26} gave $51$ on a flip-graph-derived scheme,
 with remarkably sparse conversions (five additions in total, so their
 complete one-shot algorithm costs $56$ in ordinary coordinates).  We
-prove below that their kernel, too, is exactly optimal for its class.  The two models price different objects and are not
+prove below that their kernel, too, is exactly optimal for its class,
+and that their one-shot $56$ is optimal for the class as well (its
+exact flat minimum).  The two models price different objects and are not
 comparable entry-by-entry: a flat scheme is an alternative-basis
 scheme with identity bases, so the alternative-basis optimum can only
 be smaller, and conversely a per-step count omits the (amortized)
@@ -285,12 +287,29 @@ published signing returns conversion costs $1+3+1=5$.  Their
 representative has exactly $128$ sign models (exhaustive enumeration),
 in two gauge orbits; both lift, at conversions $5$ and $6$.  So $5$ is
 the minimum over every $\Z$-lift of their representative within the
-swept configurations.  Across their whole class (other
-representatives), the database-wide flat floor of $55$ gives at least
-$4$, and $4$ is not excluded: each of the three lifted $51$-classes
-contains a representative whose $\F_2$ output side reaches $27$, the
-frontier on which a flat $55$ remains possible.  A conversion of $4$ would give a
-one-shot $55$, tying the flat record.  Conversion cost at optimal
+swept configurations.
+
+A stronger, class-wide statement follows from the flat model.  Any
+one-shot algorithm is itself a flat program, so a class's flat
+minimum bounds every one of its packages from below.  We compute the
+exact $\F_2$ flat minimum of a class over \emph{all} its
+representatives.  The flat cost is the sum of the three legs' exact
+addition-chain costs from unit vectors, plus $14$ for the output side
+by transposition.  Each leg's cost depends on only two of the three
+sandwich factors $(P,Q,R)\in\mathrm{GL}_3(\F_2)^3$, so three exact
+$168\times168$ tables and a min-plus scan over all $168^3$ triples,
+in each of the six slot variants, cover the whole orbit.  $\F_2$ costs
+bound every $\Z$ signing from below.  As a gate, the procedure
+returns exactly $55$ on the flat record's class, a value known from
+both sides.  On Stapleton and Perminov's class it returns $56$: no
+package on their class can cost less than $56$ one-shot, so their
+$51+5=56$ is exactly optimal for the class, conversions included, and
+it attains their class's flat optimum.  The same computation gives
+flat floors of $57$ for \texttt{i12w211c23fg} (so its conversions are
+at least $6$ class-wide, against the $11$ found) and for
+\texttt{i12w227c23ci-012}, and $58$ for \texttt{i12w219c23fg}.
+
+Conversion cost at optimal
 counts is bounded below by the class's light-row supply (the
 accounting $a=(d-k)+h$ keeps most basis rows among the targets), so
 near-identity conversions like~\cite{SP26}'s require a class rich in

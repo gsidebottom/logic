@@ -55,6 +55,45 @@ fn main() {
     reps.sort_unstable();
     reps.dedup();
 
+    if let Some(dir) = args
+        .iter()
+        .position(|a| a == "--preblock-dir")
+        .and_then(|i| args.get(i + 1))
+    {
+        let mut nb = 0usize;
+        let mut names: Vec<_> = std::fs::read_dir(dir)
+            .expect("preblock dir")
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|q| {
+                q.extension().map(|x| x == "bits").unwrap_or(false)
+            })
+            .collect();
+        names.sort();
+        for path in names {
+            let txt = std::fs::read_to_string(&path).unwrap();
+            let bits: Vec<u8> = txt
+                .split_whitespace()
+                .last()
+                .unwrap()
+                .bytes()
+                .map(|b| b - b'0')
+                .collect();
+            if bits.len() != 621 {
+                continue;
+            }
+            let block: Vec<i32> = reps
+                .iter()
+                .map(|&r| {
+                    let lit = (r + 1) as i32;
+                    if bits[r as usize] == 1 { -lit } else { lit }
+                })
+                .collect();
+            solver.add_clause(block.iter().copied());
+            nb += 1;
+        }
+        eprintln!("c preblocked {nb} archived solutions");
+    }
+
     let mut n = 0usize;
     while n < max {
         match solver.solve() {

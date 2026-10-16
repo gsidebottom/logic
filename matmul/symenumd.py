@@ -31,6 +31,7 @@ while i < len(args):
         pos.append(args[i])
         i += 1
 ENUM, CNF, MAPF, WORKD, FBMIN = pos[0], pos[1], pos[2], pathlib.Path(pos[3]), pos[4]
+PREBLOCK = pos[5] if len(pos) > 5 else None
 WORKD.mkdir(parents=True, exist_ok=True)
 RES = WORKD / "symenum_results.csv"
 if not RES.exists():
@@ -53,9 +54,18 @@ def leg_stats(bits):
     return uniq, len(uniq), len(ints) - len(tri)
 
 
-proc = subprocess.Popen([ENUM, CNF, MAPF], stdout=subprocess.PIPE, text=True)
-n = 0
+cmd = [ENUM, CNF, MAPF]
+if PREBLOCK:
+    cmd += ["--preblock-dir", PREBLOCK]
+proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
 seen = set()
+existing = sorted(WORKD.glob("sym-*.bits"))
+for q in existing:
+    b = [int(c) for c in q.read_text().strip()]
+    seen.add(tuple(sorted(bits_to_summands(b))))
+n = len(existing)
+if n:
+    print(f"resuming: {n} archived, {len(seen)} canon keys", flush=True)
 t_last = time.time()
 for line in proc.stdout:
     line = line.strip()
@@ -88,7 +98,7 @@ for line in proc.stdout:
     out.write_text("".join(map(str, bits)) + "\n")
     uniq, d, iso = leg_stats(bits)
     leg_val, perstep = "", ""
-    if d <= 21 and iso <= 2:
+    if d <= 20 or (d == 21 and iso <= 2):
         lp = WORKD / f"sym-{n:05d}_A.legs"
         lp.write_text("\n".join(uniq) + "\n")
         try:

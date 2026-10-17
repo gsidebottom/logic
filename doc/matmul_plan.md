@@ -1439,6 +1439,21 @@ the two source papers for this track):
   three census runs have A-leg >= 13, i.e. per-step >= 53 -- now exact
   (the 39 skipped included). Schemes archived (they lived only in
   /tmp): matmul/external/cyclic/census{1,2,3}/ + cyclic_check.csv.
+- **★ S-P 51 KERNEL CLASS-OPTIMAL, MACHINE-CHECKED (2026-10-17)**:
+  proof/Mm/SP51Optimal.lean. `kernel_optimal_for_class`: for all
+  invertible linear eA eB eC, chains (from ANY nine starting vectors,
+  sum-or-difference steps) listing S-P's legs (rows of U, V, columns of
+  W mod 2; d = 20 each) give 51 <= nA + nB + (nC + 14), and 13/12/12
+  are achieved from a basis; `kernel_optimal_over_int` for integer
+  programs via mod-2 reduction. Proof is NOT the fbmin tier search: a
+  sum-triple count -- each produced nonzero vector uses a distinct
+  triple {a, b, a+b} of listed vectors, so #listed <= 9 + #triples; the
+  legs have only 9, 9, 10 triples (floor needs 11). Leg A at 12 adds:
+  the one extra vector h needs 3 new triples; only 5 h qualify, each
+  with a 2-core (family covering its members twice) -> one triple
+  wasted. Kernel `decide` only, ~4 min, axioms standard three. Data:
+  matmul/gen_sp51_optimal_data.py. (The same counting may give short
+  proofs for other legs: sparse triple structure is common.)
 - **PROPOSE-AND-BLOCK (CEGAR) FOR THE CYCLIC 50 (2026-10-16 night,
   f56d622)**: src/bin/symcegar.rs (incremental CaDiCaL server: quotient
   CNF + indicators y_v + counter sum y_v <= 21 + optional relabeling lex

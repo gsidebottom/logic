@@ -12,6 +12,7 @@ module each and carry a `#print axioms` audit printed during the build.
 |---|---|---|
 | 55-addition 3×3 scheme computes `A * B` | [`Mm/Correct.lean`](Mm/Correct.lean), [`Mm/Matrix.lean`](Mm/Matrix.lean) | proved |
 | rank-48 4×4 scheme is rigid under solved flips | [`Mm/Rigid48.lean`](Mm/Rigid48.lean) | proved (`native_decide`) |
+| Stapleton–Perminov's 51-addition kernel is optimal for its class | [`Mm/SP51Optimal.lean`](Mm/SP51Optimal.lean) | proved (kernel `decide`) |
 | rank-22 root-strata covering | [`Mm/Rank22Covering.lean`](Mm/Rank22Covering.lean) | skeleton — 5 `sorry`s |
 
 ## Correctness of the 55-addition scheme
@@ -79,6 +80,27 @@ Neither proof uses `sorry`.
   ([`Probe48.lean`](Probe48.lean)) reruns the exploration and prints
   the component statistics (~3½ minutes).
 
+## Optimality of Stapleton and Perminov's 51-addition kernel
+
+- **`SP51Optimal.kernel_optimal_for_class`**
+  ([`Mm/SP51Optimal.lean`](Mm/SP51Optimal.lean)) — in the
+  Karstadt–Schwartz alternative-basis model a recursive step costs
+  `a_A + a_B + (a_C + 14)`, where `a_X` is the fewest additions that
+  list side X's distinct forms (its *leg*) after a free change of
+  basis. For Stapleton and Perminov's rank-23 3×3 scheme
+  (arXiv:2609.32388) the three legs need at least **13, 12 and 12**
+  additions — from *any* nine starting vectors, and after *any*
+  invertible linear change of coordinates, which is how every scheme
+  in the class sees them — and these counts are achieved, so their 51
+  is optimal for the class. `kernel_optimal_over_int` extends the lower
+  bound to integer programs (sums and differences), which reduce mod 2.
+  The proof counts *sum triples*: each new vector a chain produces uses
+  up a distinct triple of listed vectors adding to zero, and the legs
+  have only 9, 9 and 10 of them; leg A's last step is a five-case check.
+  All finite facts are checked in the kernel with `decide` — no
+  `native_decide` — in about 4 minutes; axioms: the standard three.
+  Data from [`matmul/gen_sp51_optimal_data.py`](../matmul/gen_sp51_optimal_data.py).
+
 ## Rank-22 root-strata covering (in progress)
 
 - [`Mm/Rank22Covering.lean`](Mm/Rank22Covering.lean) carries the
@@ -109,8 +131,9 @@ lake build              # elaborate the proofs; prints the #print axioms audits
 
 A successful `lake build` *is* the verification: Lean's kernel accepts
 the proof terms. Budget ~16 minutes for a cold build —
-`Mm/Rigid48.lean` is `native_decide`-heavy and dominates; the other
-modules take seconds.
+`Mm/Rigid48.lean` is `native_decide`-heavy and dominates,
+`Mm/SP51Optimal.lean` takes about 4 minutes of kernel `decide`, and the
+other modules take seconds.
 
 To regenerate the generated Lean sources from the Rust program:
 

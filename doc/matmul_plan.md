@@ -1414,6 +1414,15 @@ the two source papers for this track):
   exact 2x2x2 values (SAT@7/UNSAT@6). symenum.py enumerates with
   blocking on the 207-rep projection, screens each leg: d=21 iso-0 =
   a 50; d=20 floor leg = a 47. HUNT RUNNING.
+- **CORRECTION + closeout (2026-10-16 evening, 9ac7285)**: the
+  "isolation 0 is necessary for a floor leg" claim was false (5/32
+  floor legs have an isolated row); the floor-49/50 no-50 screen that
+  relied on it was re-run EXACTLY with fbmin --tier1-only over all
+  7,881 schemes: none qualifies, so no-50-at-any-floor stands. Hunts
+  wound down to a trickle (flipmint 2 threads, census 1). Cyclic-50
+  decisive instance (symshape.py) built; gate's UNSAT side intractable
+  for kissat. Zenodo v2 kits ready (ks51 v2.0, mm55 v1.1), awaiting
+  Greg's tags/upload.
 - **★ FLAT-55 RECORD UNIQUE TO ITS CLASS ACROSS THE DB (2026-10-16,
   b86a1a4)**: new floors --exact-total (exact transposed C table,
   min-plus over 168^3 sandwiches) gated on the record class (=55).

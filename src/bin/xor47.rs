@@ -20,6 +20,12 @@
 //!            [--slack K] [--p P] [--pilot W] [--out M.slp]
 //!     --pilot W: pilot method -- at each step try the top W candidates,
 //!     complete each greedily, commit to the shortest completion
+//!   xor47 orbit PREFIX [--restarts N] [--sweeps S] [--topk K]
+//!            [--final-runs F] [--anneal STEPS --t0 T0 --t1 T1] [opts]
+//!     symmetry-orbit search: coordinate descent over GL(4,2)^3 (each
+//!     step scans all 20160 values of one coordinate, shortlists topk by
+//!     a structural proxy, scores them by BP), or with --anneal,
+//!     simulated annealing by elementary-matrix moves
 //!   xor47 scheme PREFIX [--out OUTPREFIX] [--runs N] [--threads T]
 //!            [--seed S] [--slack K] [--p P]
 //!     (reads PREFIX_{L,R,P}.sms, writes OUTPREFIX_{L,R,P}.slp)
@@ -436,6 +442,9 @@ fn emit_transposed(prog: &Prog, cols: &[u16]) -> (String, usize) {
 }
 
 struct Opts {
+    cap: f64,
+    depth: usize,
+    maxsub: usize,
     runs: usize,
     threads: usize,
     seed: u64,
@@ -446,6 +455,9 @@ struct Opts {
 
 fn parse_opts(args: &[String]) -> Opts {
     let mut o = Opts {
+        cap: 30.0,
+        depth: 3,
+        maxsub: 200,
         runs: 2000,
         threads: 10,
         seed: 1,
@@ -469,6 +481,9 @@ fn parse_opts(args: &[String]) -> Opts {
             "--pilot" => o.prm.pilot = val().parse().unwrap(),
             "--out" => o.out = Some(val()),
             "--transpose" => o.transpose = true,
+            "--depth" => o.depth = val().parse().unwrap(),
+            "--cap" => o.cap = val().parse().unwrap(),
+            "--maxsub" => o.maxsub = val().parse().unwrap(),
             _ => panic!("unknown option {a}"),
         }
         i += 1;
@@ -780,6 +795,70 @@ struct OrbitOpts {
     sweeps: usize,
     topk: usize,
     final_runs: usize,
+    anneal: usize,
+    t0: f64,
+    t1: f64,
+    collect: usize,
+}
+
+/// side costs (BP, one run each) of the scheme at cur
+fn side_costs(base: &Scheme, cur: [(u16, u16); 3], ws: &mut Ws) -> [usize; 3] {
+    let s = base.act(cur[0], cur[1], cur[2]);
+    let g = Params { slack: 0, p: 0.0, pilot: 0 };
+    [ws.bp(&s.u, 1, g).xors(), ws.bp(&s.v, 1, g).xors(), ws.bp(&s.w, 1, g).xors()]
+}
+
+/// Simulated annealing over (X, Y, Z): a move multiplies one coordinate
+/// by an elementary transvection I + E_ij on the left or the right and
+/// re-scores the two sides it touches (X: L, P; Y: L, R; Z: R, P).
+fn anneal_restart(
+    base: &Scheme,
+    mut cur: [(u16, u16); 3],
+    oo: &OrbitOpts,
+    ws: &mut Ws,
+    keep: &mut Vec<([(u16, u16); 3], usize)>,
+) -> ([(u16, u16); 3], usize) {
+    let mut sc = side_costs(base, cur, ws);
+    let mut cost: usize = sc.iter().sum();
+    let mut best = (cur, cost);
+    let mut seen = std::collections::HashSet::new();
+    let touched = [[0usize, 2], [0, 1], [1, 2]];
+    let g = Params { slack: 0, p: 0.0, pilot: 0 };
+    for step in 0..oo.anneal {
+        let temp = oo.t0 * (oo.t1 / oo.t0).powf(step as f64 / oo.anneal.max(1) as f64);
+        let c = ws.rng.below(3);
+        let (i, j) = loop {
+            let (i, j) = (ws.rng.below(4), ws.rng.below(4));
+            if i != j {
+                break (i, j);
+            }
+        };
+        let tv = 0x8421u16 | (1 << (4 * i + j)); // its own inverse over F_2
+        let (gm, gi) = cur[c];
+        let nv = if ws.rng.below(2) == 0 { (m_mul(tv, gm), m_mul(gi, tv)) } else { (m_mul(gm, tv), m_mul(tv, gi)) };
+        let mut trial = cur;
+        trial[c] = nv;
+        let s = base.act(trial[0], trial[1], trial[2]);
+        let mut nsc = sc;
+        for &side in &touched[c] {
+            let m = match side { 0 => &s.u, 1 => &s.v, _ => &s.w };
+            nsc[side] = ws.bp(m, 1, g).xors();
+        }
+        let ncost: usize = nsc.iter().sum();
+        let d = ncost as f64 - cost as f64;
+        if d <= 0.0 || ws.rng.unit() < (-d / temp).exp() {
+            cur = trial;
+            sc = nsc;
+            cost = ncost;
+            if cost < best.1 {
+                best = (cur, cost);
+            }
+            if oo.collect > 0 && cost + 31 <= oo.collect && seen.insert((cur[0].0, cur[1].0, cur[2].0)) {
+                keep.push((cur, cost + 31));
+            }
+        }
+    }
+    best
 }
 
 fn orbit(pre: &str, o: &Opts, oo: &OrbitOpts) {
@@ -804,6 +883,7 @@ fn orbit(pre: &str, o: &Opts, oo: &OrbitOpts) {
     let outdir = o.out.clone().unwrap_or_else(|| ".".into());
     std::fs::create_dir_all(&outdir).unwrap();
     let best = std::sync::Mutex::new(usize::MAX);
+    let cands_lock = std::sync::Mutex::new(());
     let fprm = o.prm;
     (0..oo.restarts).into_par_iter().for_each(|rs| {
         let mut ws = Ws::new(o.seed ^ (rs as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15));
@@ -815,7 +895,23 @@ fn orbit(pre: &str, o: &Opts, oo: &OrbitOpts) {
             [g[ws.rng.below(g.len())], g[ws.rng.below(g.len())], g[ws.rng.below(g.len())]]
         };
         let (mut cost, _) = scheme_cost(&base.act(cur[0], cur[1], cur[2]), &mut ws, 1, Params { slack: 0, p: 0.0, pilot: 0 });
-        for _ in 0..oo.sweeps {
+        if oo.anneal > 0 {
+            let mut keep = Vec::new();
+            let (c2, q) = anneal_restart(base, cur, oo, &mut ws, &mut keep);
+            cur = c2;
+            cost = q + r - NIN;
+            if !keep.is_empty() {
+                let mut s = String::new();
+                for (c, q) in &keep {
+                    s += &format!("{sigma} {:04x} {:04x} {:04x} {q}\n", c[0].0, c[1].0, c[2].0);
+                }
+                let _g = cands_lock.lock().unwrap();
+                use std::io::Write;
+                let mut f = std::fs::OpenOptions::new().create(true).append(true).open(format!("{outdir}/cands.txt")).unwrap();
+                f.write_all(s.as_bytes()).unwrap();
+            }
+        }
+        for _ in 0..if oo.anneal > 0 { 0 } else { oo.sweeps } {
             let before = cost;
             for c in 0..3 {
                 let (gv, _) = coord_step(base, &g, cur, c, oo.topk, &mut ws);
@@ -855,6 +951,482 @@ fn orbit(pre: &str, o: &Opts, oo: &OrbitOpts) {
     println!("best {}", best.lock().unwrap());
 }
 
+// ------------------------------------------------- exact helper search
+//
+// A program for target set T costs |T| + h where h counts signals that
+// are not targets ("helpers").  Given the signals present, any target
+// that is the XOR of two of them can be added at cost 1 and never hurts,
+// so the state after adding helpers x1..xh is the closure of
+// inputs + {x_i} under "add every target that is a pair sum".  Helper x_i
+// must be a pair sum of the closure at its time.  Iterative deepening on
+// h decides the exact optimum for small overheads.  Adjacent helpers both
+// available at the earlier level are taken in increasing order (any
+// solution can be bubble-sorted into that form), and the last helper
+// must put some remaining target at distance one.
+
+fn bset(b: &[u64], v: u16) -> bool {
+    (b[v as usize >> 6] >> (v & 63)) & 1 == 1
+}
+fn bput(b: &mut [u64], v: u16) {
+    b[v as usize >> 6] |= 1 << (v & 63);
+}
+
+fn closure(inc: &mut [u64], cl: &mut Vec<u16>, rem: &mut Vec<u16>) {
+    loop {
+        let mut changed = false;
+        let mut i = 0;
+        while i < rem.len() {
+            let t = rem[i];
+            if cl.iter().any(|&c| bset(inc, t ^ c)) {
+                bput(inc, t);
+                cl.push(t);
+                rem.swap_remove(i);
+                changed = true;
+            } else {
+                i += 1;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+}
+
+fn pairsums(cl: &[u16]) -> Vec<u64> {
+    let mut ps = vec![0u64; NV / 64];
+    for i in 0..cl.len() {
+        for j in (i + 1)..cl.len() {
+            bput(&mut ps, cl[i] ^ cl[j]);
+        }
+    }
+    ps
+}
+
+/// candidates ordered by how many remaining targets they make pair sums
+fn helper_cands(inc: &[u64], cl: &[u16], rem: &[u16], ps: &[u64], last: bool) -> Vec<u16> {
+    let mut v = helper_cands_raw(inc, cl, rem, ps, last);
+    let score = |x: u16| rem.iter().filter(|&&t| bset(inc, t ^ x)).count();
+    let mut sc: Vec<(usize, u16)> = v.iter().map(|&x| (score(x), x)).collect();
+    sc.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    v.clear();
+    v.extend(sc.into_iter().map(|(_, x)| x));
+    v
+}
+
+fn helper_cands_raw(inc: &[u64], cl: &[u16], rem: &[u16], ps: &[u64], last: bool) -> Vec<u16> {
+    let mut seen = vec![0u64; NV / 64];
+    let mut out = Vec::new();
+    if last {
+        for &t in rem {
+            for &c in cl {
+                let x = t ^ c;
+                if x != 0 && bset(ps, x) && !bset(inc, x) && !bset(&seen, x) {
+                    bput(&mut seen, x);
+                    out.push(x);
+                }
+            }
+        }
+    } else {
+        for v in 1..NV {
+            let x = v as u16;
+            if bset(ps, x) && !bset(inc, x) {
+                out.push(x);
+            }
+        }
+    }
+    out
+}
+
+thread_local! {
+    static DEADLINE: std::cell::Cell<Option<std::time::Instant>> = const { std::cell::Cell::new(None) };
+    static TIMED_OUT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn past_deadline() -> bool {
+    DEADLINE.with(|d| d.get()).is_some_and(|t| std::time::Instant::now() > t)
+}
+
+/// Single-threaded exact search with a time cap: Ok(Some((cost, helpers)))
+/// if found within targets + hmax, Ok(None) if proved impossible, Err(h)
+/// on timeout with levels below h proved impossible.
+fn exact_seq(targets: &[u16], hmax: usize, cap: f64) -> Result<Option<(usize, Vec<u16>)>, usize> {
+    DEADLINE.with(|d| d.set(Some(std::time::Instant::now() + std::time::Duration::from_secs_f64(cap))));
+    TIMED_OUT.with(|f| f.set(false));
+    let mut t: Vec<u16> = targets.iter().copied().filter(|&x| x.count_ones() > 1).collect();
+    t.sort_unstable();
+    t.dedup();
+    let mut inc = vec![0u64; NV / 64];
+    let mut cl: Vec<u16> = (0..NIN).map(|i| 1u16 << i).collect();
+    for &c in &cl {
+        bput(&mut inc, c);
+    }
+    let mut rem = t.clone();
+    closure(&mut inc, &mut cl, &mut rem);
+    let nodes = std::sync::atomic::AtomicU64::new(0);
+    let mut out = Ok(None);
+    for h in 0..=hmax {
+        let found = if rem.is_empty() {
+            Some(Vec::new())
+        } else if h == 0 {
+            None
+        } else {
+            exact_dfs(&inc, &cl, &rem, h, None, &nodes)
+        };
+        if TIMED_OUT.with(|f| f.get()) {
+            out = Err(h);
+            break;
+        }
+        if let Some(hs) = found {
+            out = Ok(Some((t.len() + h, hs)));
+            break;
+        }
+    }
+    DEADLINE.with(|d| d.set(None));
+    out
+}
+
+fn exact_dfs(
+    inc: &[u64],
+    cl: &[u16],
+    rem: &[u16],
+    k: usize,
+    prev: Option<(u16, &[u64])>,
+    nodes: &std::sync::atomic::AtomicU64,
+) -> Option<Vec<u16>> {
+    nodes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if past_deadline() {
+        TIMED_OUT.with(|f| f.set(true));
+        return None;
+    }
+    if rem.is_empty() {
+        return Some(Vec::new());
+    }
+    if k == 0 {
+        return None;
+    }
+    let ps = pairsums(cl);
+    for x in helper_cands(inc, cl, rem, &ps, k == 1) {
+        if let Some((hp, pps)) = prev {
+            if bset(pps, x) && x < hp {
+                continue;
+            }
+        }
+        let (mut inc2, mut cl2, mut rem2) = (inc.to_vec(), cl.to_vec(), rem.to_vec());
+        bput(&mut inc2, x);
+        cl2.push(x);
+        closure(&mut inc2, &mut cl2, &mut rem2);
+        if k == 1 && !rem2.is_empty() {
+            continue;
+        }
+        if let Some(mut hs) = exact_dfs(&inc2, &cl2, &rem2, k - 1, Some((x, &ps)), nodes) {
+            hs.insert(0, x);
+            return Some(hs);
+        }
+    }
+    None
+}
+
+/// Exact minimum for small overheads: returns (cost, helpers) or None if
+/// no program with at most |T| + hmax XORs exists.
+fn exact(targets: &[u16], hmax: usize) -> Option<(usize, Vec<u16>)> {
+    let mut t: Vec<u16> = targets.iter().copied().filter(|&x| x.count_ones() > 1).collect();
+    t.sort_unstable();
+    t.dedup();
+    let mut inc = vec![0u64; NV / 64];
+    let mut cl: Vec<u16> = (0..NIN).map(|i| 1u16 << i).collect();
+    for &c in &cl {
+        bput(&mut inc, c);
+    }
+    let mut rem = t.clone();
+    closure(&mut inc, &mut cl, &mut rem);
+    println!("  {} targets, {} reachable with no helper", t.len(), t.len() - rem.len());
+    for h in 0..=hmax {
+        let t0 = std::time::Instant::now();
+        let nodes = std::sync::atomic::AtomicU64::new(0);
+        let found = if h == 0 {
+            if rem.is_empty() { Some(Vec::new()) } else { None }
+        } else {
+            let ps = pairsums(&cl);
+            let cands = helper_cands(&inc, &cl, &rem, &ps, h == 1);
+            cands.par_iter().find_map_any(|&x| {
+                let (mut inc2, mut cl2, mut rem2) = (inc.clone(), cl.clone(), rem.clone());
+                bput(&mut inc2, x);
+                cl2.push(x);
+                closure(&mut inc2, &mut cl2, &mut rem2);
+                if h == 1 && !rem2.is_empty() {
+                    return None;
+                }
+                exact_dfs(&inc2, &cl2, &rem2, h - 1, Some((x, &ps)), &nodes).map(|mut hs| {
+                    hs.insert(0, x);
+                    hs
+                })
+            })
+        };
+        println!(
+            "  h = {h}: {}  ({} nodes, {:.1}s)",
+            if found.is_some() { "FOUND" } else { "impossible" },
+            nodes.load(std::sync::atomic::Ordering::Relaxed),
+            t0.elapsed().as_secs_f64()
+        );
+        if let Some(hs) = found {
+            return Some((t.len() + h, hs));
+        }
+    }
+    None
+}
+
+// ------------------------------------------------- helper-pool LNS
+//
+// Large-neighbourhood search around BP solutions: keep f of a solution's
+// helpers as "extras" (added, at cost 1 each, whenever they become pair
+// sums -- like targets), and search the rest exactly with depth D.  A
+// hit needs one helper fewer than the best BP solution.
+
+/// Replay a solution: targets and extras join whenever they are pair
+/// sums; the free helpers join in order when stuck.  Returns the program
+/// or None if the helpers do not complete it.
+fn replay(targets: &[u16], extras: &[u16], free: &[u16]) -> Option<Prog> {
+    let mut st = St::new();
+    let mut rng = Rng(7);
+    let mut want: Vec<u16> = targets.iter().chain(extras).copied().filter(|&t| t.count_ones() > 1).collect();
+    want.sort_unstable();
+    want.dedup();
+    let mut fi = 0;
+    loop {
+        let mut progress = true;
+        while progress {
+            progress = false;
+            let mut i = 0;
+            while i < want.len() {
+                let t = want[i];
+                if st.has(t) {
+                    want.swap_remove(i);
+                    continue;
+                }
+                if st.val.iter().any(|&c| st.has(t ^ c) && (t ^ c) != c) {
+                    st.add(t, &mut rng);
+                    want.swap_remove(i);
+                    progress = true;
+                } else {
+                    i += 1;
+                }
+            }
+        }
+        if targets.iter().all(|&t| t == 0 || st.has(t)) {
+            return Some(dce(&st.prog(), targets));
+        }
+        if fi == free.len() {
+            return None;
+        }
+        let x = free[fi];
+        fi += 1;
+        if !st.val.iter().any(|&c| st.has(x ^ c) && (x ^ c) != c) {
+            return None;
+        }
+        st.add(x, &mut rng);
+    }
+}
+
+fn lns(targets: &[u16], o: &Opts, depth: usize, maxsub: usize) -> Option<Prog> {
+    let mut t: Vec<u16> = targets.iter().copied().filter(|&x| x.count_ones() > 1).collect();
+    t.sort_unstable();
+    t.dedup();
+    let tset: std::collections::HashSet<u16> = t.iter().copied().collect();
+    // pool of distinct BP helper sets
+    let sols: Vec<Prog> = (0..o.runs)
+        .into_par_iter()
+        .map(|r| {
+            let mut rng = Rng(o.seed ^ (r as u64).wrapping_mul(0xA24B_AED4_963E_E407));
+            dce(&bp_run(targets, &mut rng, o.prm), targets)
+        })
+        .collect();
+    let best = sols.iter().map(|p| p.xors()).min().unwrap();
+    let goal = best - 1;
+    let mut hsets: Vec<Vec<u16>> = sols
+        .iter()
+        .filter(|p| p.xors() <= best + 1)
+        .map(|p| {
+            let mut h: Vec<u16> = p.val[NIN..].iter().copied().filter(|v| !tset.contains(v)).collect();
+            h.sort_unstable();
+            h
+        })
+        .collect();
+    hsets.sort();
+    hsets.dedup();
+    let budget = goal - t.len(); // helpers allowed
+    println!("  {} targets, BP best {best}; {} distinct helper sets; goal {goal} = {} helpers", t.len(), hsets.len(), budget);
+    if budget < depth {
+        return exact(&t, budget).and_then(|(_, hs)| replay(&t, &[], &hs));
+    }
+    let f = budget - depth;
+    // (helper set, subset) work items; subsets sampled when too many
+    let mut items: Vec<Vec<u16>> = Vec::new();
+    let mut rng = Rng(o.seed);
+    for h in &hsets {
+        if h.len() < f {
+            continue;
+        }
+        let total = binom(h.len(), f);
+        if total <= maxsub as f64 {
+            for comb in combos(h.len(), f) {
+                items.push(comb.iter().map(|&i| h[i]).collect());
+            }
+        } else {
+            for _ in 0..maxsub {
+                let mut idx: Vec<usize> = (0..h.len()).collect();
+                for i in 0..f {
+                    let j = i + rng.below(h.len() - i);
+                    idx.swap(i, j);
+                }
+                items.push(idx[..f].iter().map(|&i| h[i]).collect());
+            }
+        }
+    }
+    items.sort();
+    items.dedup();
+    println!("  {} (fixed-subset) neighbourhoods of {} kept helpers, exact depth {depth}", items.len(), f);
+    let nodes = std::sync::atomic::AtomicU64::new(0);
+    let hit = items.par_iter().find_map_any(|ex| {
+        let mut inc = vec![0u64; NV / 64];
+        let mut cl: Vec<u16> = (0..NIN).map(|i| 1u16 << i).collect();
+        for &c in &cl {
+            bput(&mut inc, c);
+        }
+        let mut rem: Vec<u16> = t.iter().chain(ex.iter()).copied().collect();
+        closure(&mut inc, &mut cl, &mut rem);
+        let added = ex.iter().filter(|&&x| bset(&inc, x)).count();
+        let rem_t: Vec<u16> = rem.iter().copied().filter(|v| tset.contains(v)).collect();
+        let d = budget - added;
+        let free = exact_dfs(&inc, &cl, &rem_t, d, None, &nodes)?;
+        let used: Vec<u16> = ex.iter().copied().filter(|&x| bset(&inc, x)).collect();
+        replay(&t, &used, &free)
+    });
+    println!("  {} nodes", nodes.load(std::sync::atomic::Ordering::Relaxed));
+    hit
+}
+
+/// Exact refinement of collected orbit points: per side, BP with
+/// o.runs restarts, then an exact search one helper below BP (time cap
+/// o.cap per side).  Writes the best point's sms + programs.
+fn refine(pre: &str, cands: &str, o: &Opts) {
+    let s0 = Scheme::from_sms(pre);
+    assert!(s0.brent_ok(), "input scheme fails Brent");
+    let syms: Vec<Scheme> = (0..6).map(|i| s0.sym(i)).collect();
+    let g = gl42();
+    let inv: HashMap<u16, u16> = g.iter().copied().collect();
+    let mut pts: Vec<(usize, u16, u16, u16, usize)> = std::fs::read_to_string(cands)
+        .unwrap()
+        .lines()
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split_whitespace().collect();
+            if f.len() < 5 {
+                return None;
+            }
+            Some((
+                f[0].parse().ok()?,
+                u16::from_str_radix(f[1], 16).ok()?,
+                u16::from_str_radix(f[2], 16).ok()?,
+                u16::from_str_radix(f[3], 16).ok()?,
+                f[4].parse().ok()?,
+            ))
+        })
+        .collect();
+    pts.sort_by_key(|p| p.4);
+    pts.dedup_by_key(|p| (p.0, p.1, p.2, p.3));
+    println!("{} candidate points", pts.len());
+    let outdir = o.out.clone().unwrap_or_else(|| ".".into());
+    std::fs::create_dir_all(&outdir).unwrap();
+    let best = std::sync::Mutex::new(usize::MAX);
+    let r = s0.u.len();
+    // side results keyed by the sorted distinct non-unit target set
+    type SideRes = (usize, Prog, String);
+    let cache: std::sync::Mutex<HashMap<Vec<u16>, SideRes>> = std::sync::Mutex::new(HashMap::new());
+    let hits = std::sync::atomic::AtomicUsize::new(0);
+    pts.par_iter().enumerate().for_each(|(i, &(sg, x, y, z, q))| {
+        let s = syms[sg].act((x, inv[&x]), (y, inv[&y]), (z, inv[&z]));
+        let mut ws = Ws::new(o.seed ^ (i as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        let mut parts = Vec::new();
+        let mut total = r - NIN;
+        let mut progs = Vec::new();
+        for m in [&s.u, &s.v, &s.w] {
+            let mut tset: Vec<u16> = m.iter().copied().filter(|&v| v.count_ones() > 1).collect();
+            tset.sort_unstable();
+            tset.dedup();
+            if let Some((c, p, tg)) = cache.lock().unwrap().get(&tset).cloned() {
+                hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                total += c;
+                parts.push(format!("{c}{tg}"));
+                progs.push(p);
+                continue;
+            }
+            let bp = ws.bp(m, o.runs, o.prm);
+            let over = bp.xors() - tset.len();
+            let (cost, prog, tag) = if over == 0 {
+                (bp.xors(), bp, "=".to_string())
+            } else {
+                match exact_seq(m, over - 1, o.cap) {
+                    Ok(Some((c, hs))) => {
+                        let p = replay(m, &[], &hs).expect("replay");
+                        assert_eq!(p.xors(), c);
+                        (c, p, "!".to_string())
+                    }
+                    Ok(None) => (bp.xors(), bp, "=".to_string()),
+                    Err(h) => (bp.xors(), bp, format!("?{}", tset.len() + h)),
+                }
+            };
+            cache.lock().unwrap().insert(tset, (cost, prog.clone(), tag.clone()));
+            total += cost;
+            parts.push(format!("{cost}{tag}"));
+            progs.push(prog);
+        }
+        let mut b = best.lock().unwrap();
+        let tag = if total < *b { " NEW BEST" } else { "" };
+        println!("point {sg} {x:04x} {y:04x} {z:04x} (quick {q}): L {} R {} Pt {} -> total {total}{tag}", parts[0], parts[1], parts[2]);
+        if total < *b {
+            *b = total;
+            assert!(s.brent_ok());
+            let p = format!("{outdir}/refined_{total}");
+            s.write_sms(&p);
+            std::fs::write(format!("{p}_L.slp"), emit_direct(&progs[0], &s.u).0).unwrap();
+            std::fs::write(format!("{p}_R.slp"), emit_direct(&progs[1], &s.v).0).unwrap();
+            std::fs::write(format!("{p}_P.slp"), emit_transposed(&progs[2], &s.w).0).unwrap();
+        }
+    });
+    println!("best {}  (side cache hits {})", best.lock().unwrap(), hits.load(std::sync::atomic::Ordering::Relaxed));
+}
+
+fn binom(n: usize, k: usize) -> f64 {
+    (0..k).fold(1.0, |acc, i| acc * (n - i) as f64 / (i + 1) as f64)
+}
+
+fn combos(n: usize, k: usize) -> Vec<Vec<usize>> {
+    let mut out = Vec::new();
+    let mut c: Vec<usize> = (0..k).collect();
+    if k > n {
+        return out;
+    }
+    loop {
+        out.push(c.clone());
+        let mut i = k;
+        loop {
+            if i == 0 {
+                return out;
+            }
+            i -= 1;
+            if c[i] != i + n - k {
+                break;
+            }
+            if i == 0 && c[0] == n - k {
+                return out;
+            }
+        }
+        c[i] += 1;
+        for j in (i + 1)..k {
+            c[j] = c[j - 1] + 1;
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 3 {
@@ -864,7 +1436,7 @@ fn main() {
     if args[1] == "orbit" {
         // orbit-specific options are stripped before the shared parser
         let mut rest = Vec::new();
-        let mut oo = OrbitOpts { restarts: 24, sweeps: 6, topk: 200, final_runs: 64 };
+        let mut oo = OrbitOpts { restarts: 24, sweeps: 6, topk: 200, final_runs: 64, anneal: 0, t0: 2.0, t1: 0.2, collect: 0 };
         let mut i = 3;
         while i < args.len() {
             match args[i].as_str() {
@@ -872,6 +1444,10 @@ fn main() {
                 "--sweeps" => { oo.sweeps = args[i + 1].parse().unwrap(); i += 2; }
                 "--topk" => { oo.topk = args[i + 1].parse().unwrap(); i += 2; }
                 "--final-runs" => { oo.final_runs = args[i + 1].parse().unwrap(); i += 2; }
+                "--anneal" => { oo.anneal = args[i + 1].parse().unwrap(); i += 2; }
+                "--t0" => { oo.t0 = args[i + 1].parse().unwrap(); i += 2; }
+                "--t1" => { oo.t1 = args[i + 1].parse().unwrap(); i += 2; }
+                "--collect" => { oo.collect = args[i + 1].parse().unwrap(); i += 2; }
                 _ => { rest.push(args[i].clone()); i += 1; }
             }
         }
@@ -882,10 +1458,64 @@ fn main() {
         println!("({:.1}s)", t0.elapsed().as_secs_f64());
         return;
     }
+    if args[1] == "refine" {
+        // xor47 refine PREFIX CANDS [--runs BPRUNS] [--cap SECS] [--threads T] [--out DIR]
+        let o = parse_opts(&args[4..]);
+        rayon::ThreadPoolBuilder::new().num_threads(o.threads).build_global().unwrap();
+        let t0 = std::time::Instant::now();
+        refine(&args[2], &args[3], &o);
+        println!("({:.1}s)", t0.elapsed().as_secs_f64());
+        return;
+    }
     let o = parse_opts(&args[3..]);
     rayon::ThreadPoolBuilder::new().num_threads(o.threads).build_global().unwrap();
     let t0 = std::time::Instant::now();
     match args[1].as_str() {
+        "lns" => {
+            // xor47 lns M.sms [--transpose] [--runs POOL] [--depth D] [--maxsub S] [--out M.slp]
+            let (rows, cols, m) = read_sms(&args[2]);
+            let targets: Vec<u16> = if o.transpose {
+                transpose(rows, cols, &m).iter().map(|&v| v as u16).collect()
+            } else {
+                m.iter().map(|&v| v as u16).collect()
+            };
+            match lns(&targets, &o, o.depth, o.maxsub) {
+                Some(p) => {
+                    verify(&p, &targets);
+                    let (txt, x) = if o.transpose { emit_transposed(&p, &targets) } else { emit_direct(&p, &targets) };
+                    println!("{}: IMPROVED to {} XORs ({x} as emitted)", args[2], p.xors());
+                    if let Some(f) = &o.out {
+                        std::fs::write(f, txt).unwrap();
+                    }
+                }
+                None => println!("{}: no improvement found", args[2]),
+            }
+            println!("({:.1}s)", t0.elapsed().as_secs_f64());
+        }
+        "exact" => {
+            // xor47 exact M.sms [--transpose] --runs HMAX  (HMAX helpers at most)
+            let (rows, cols, m) = read_sms(&args[2]);
+            let targets: Vec<u16> = if o.transpose {
+                transpose(rows, cols, &m).iter().map(|&v| v as u16).collect()
+            } else {
+                m.iter().map(|&v| v as u16).collect()
+            };
+            match exact(&targets, o.runs) {
+                Some((c, hs)) => {
+                    println!("{}: exact minimum {c} XORs, helpers {:04x?}", args[2], hs);
+                    let p = replay(&targets, &[], &hs).expect("exact helpers must replay");
+                    verify(&p, &targets);
+                    assert_eq!(p.xors(), c, "replayed program size differs");
+                    let (txt, x) = if o.transpose { emit_transposed(&p, &targets) } else { emit_direct(&p, &targets) };
+                    println!("  program: {} XORs ({x} as emitted)", p.xors());
+                    if let Some(f) = &o.out {
+                        std::fs::write(f, txt).unwrap();
+                    }
+                }
+                None => println!("{}: more than (targets + {}) XORs needed", args[2], o.runs),
+            }
+            println!("({:.1}s)", t0.elapsed().as_secs_f64());
+        }
         "bp" => {
             let (rows, cols, m) = read_sms(&args[2]);
             let (txt, x, h) = side(&m, rows, cols, o.transpose, &o);

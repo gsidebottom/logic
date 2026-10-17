@@ -1472,6 +1472,19 @@ the two source papers for this track):
   disk, gitignored: matmul/found23flip/ (24,592 schemes),
   matmul/found23mint/ (9,931). Open questions are the KS-51 paper's
   §open list. Next track: 4×4 rank-47 F₂ XOR count (record 170).
+- **4×4 RANK-47 F₂ XOR COUNT: 168 < 170 (2026-10-17)**: record 170 =
+  PLinOpt data/4x4x4_47_mod_2 (L 44 + R 44 + P 82; cited by
+  arXiv:2609.12027). New src/bin/xor47.rs (randomized Boyar–Peralta,
+  exact 2^16 distance table, P side via its transpose + Tellegen, which
+  adds 31) gives **168 = 44 + 44 + 80 on the same scheme**, verified by
+  matmul/x47/x47check.py (matrices + 256-pair Brent) and PLinOpt
+  SLPchecker -q 2; files matmul/x47/best/x168/. Orbit search (GL(4,2)^3
+  + slot symmetries, coordinate descent): reference class 168,
+  AlphaTensor-47 169 (from 179), KM-47 169 (from 186). Pilot lookahead
+  (width 16) does not move the reference sides (44/44/49). All three
+  classes are flip-isolated; a rank-47 walk with ±2 excursions found
+  nothing new. Instance floor (distinct non-unit targets + 31) = 139 for
+  the reference.
 - **★ S-P 51 KERNEL CLASS-OPTIMAL, MACHINE-CHECKED (2026-10-17)**:
   proof/Mm/SP51Optimal.lean. `kernel_optimal_for_class`: for all
   invertible linear eA eB eC, chains (from ANY nine starting vectors,

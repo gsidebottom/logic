@@ -21,7 +21,8 @@
 //! WALK mode (fixed-rank wander, the 3x3 50-hunt generator):
 //!   flip 3 3 3 --walk --seeds-dir D --out ARCH [--minutes M]
 //!        [--threads T] [--max-excess 8] [--hard-excess 14] [--kick 20]
-//!   loads every *.bits in D as rank-23 seeds, pre-seeds dedup from
+//!        [--rank 23]
+//!   loads every *.bits in D of the given rank as seeds, pre-seeds dedup from
 //!   ARCH, writes new distinct landings as ARCH/flip-NNNNN.bits.
 //! ```
 
@@ -60,6 +61,7 @@ fn main() {
         let hard_excess: usize =
             arg_val(&args, "--hard-excess").unwrap_or(14);
         let kick: usize = arg_val(&args, "--kick").unwrap_or(20);
+        let rank: usize = arg_val(&args, "--rank").unwrap_or(23);
         std::fs::create_dir_all(&out).unwrap();
         let load_dir = |dir: &str| -> Vec<Vec<Summand>> {
             let mut v = Vec::new();
@@ -82,7 +84,7 @@ fn main() {
                     .collect();
                 if bits.len()
                     == (cfg.n1 * cfg.n2 + cfg.n2 * cfg.n3 + cfg.n1 * cfg.n3)
-                        * 23
+                        * rank
                 {
                     v.push(bits_to_summands(&bits, &cfg));
                 }
@@ -99,7 +101,7 @@ fn main() {
             })
             .count();
         println!(
-            "c flip WALK: <{},{},{}> rank 23, {} seeds, {} archived, {} threads, {} min",
+            "c flip WALK: <{},{},{}> rank {rank}, {} seeds, {} archived, {} threads, {} min",
             cfg.n1, cfg.n2, cfg.n3, seeds.len(), pool_init.len(),
             cfg.threads, cfg.minutes
         );

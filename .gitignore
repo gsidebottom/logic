@@ -156,3 +156,4 @@ arxiv-upload/
 # 3x3 flip-walk/mint corpora (Oct 2026), summarized in matmul/external/ks51/{flipmint,mint50}_results.csv
 matmul/found23flip/
 matmul/found23mint/
+matmul/found47walk/

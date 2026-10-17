@@ -1439,6 +1439,27 @@ the two source papers for this track):
   three census runs have A-leg >= 13, i.e. per-step >= 53 -- now exact
   (the 39 skipped included). Schemes archived (they lived only in
   /tmp): matmul/external/cyclic/census{1,2,3}/ + cyclic_check.csv.
+- **PROPOSE-AND-BLOCK (CEGAR) FOR THE CYCLIC 50 (2026-10-16 night,
+  f56d622)**: src/bin/symcegar.rs (incremental CaDiCaL server: quotient
+  CNF + indicators y_v + counter sum y_v <= 21 + optional relabeling lex
+  + budgeted solves) and matmul/symcegar.py (workers: propose, re-verify
+  Brent, fbmin decides A-leg <= 12, else shrink to certified cores and
+  block each core's 336 images under X -> P X P^-1 and transposition;
+  cores shared via cores.txt). Sound: leg cost monotone under inclusion,
+  invariant under invertible linear maps; lex removes only relabelings.
+  Gates passed: encoding (179/179 canonical census schemes accepted,
+  d=22 rejected, non-canonical relabelings rejected, blocks exact); SAT
+  side (L=13 finds exact leg 13 on its 3rd proposal); UNSAT side (pinned
+  3-free: UNSAT at 12, found at 13). Findings: the census CNF's
+  "satsuma" breaking was really unit propagation + 17 binaries; the 170
+  census schemes are only 9 A-row-set classes (5 at d=21, 3 at d=22,
+  1 at d=20); lex makes the UNSAT side tractable (pinned 4-free: 29 s
+  vs >13 min) but it still grows steeply (5-free lex >19 min); lex slows
+  proposals (>14 min vs 30-120 s). Production run:
+  matmul/external/cyclic/cegar12/ (8 workers: 3 lex, 5 no-lex; 3-day
+  cap). Census paused (152 archived). Endgame fallback if the final
+  UNSAT stalls: cube on the fixed pair {A21, A22} (639 orbits under the
+  336 maps), each cube pinned + lex + all cores.
 - **★ FLAT-55 RECORD UNIQUE TO ITS CLASS ACROSS THE DB (2026-10-16,
   b86a1a4)**: new floors --exact-total (exact transposed C table,
   min-plus over 168^3 sandwiches) gated on the record class (=55).

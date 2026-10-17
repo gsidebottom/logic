@@ -19,21 +19,17 @@
 \title{\bfseries A 55-Addition Rank-23 Scheme for $3\times 3$ Matrix
   Multiplication via Exact Two-Sided Minimization}
 \author{Greg Sidebottom}
-\date{}
+\date{July 5, 2026 (revised October 17, 2026)}
 
 \begin{document}
 \maketitle
-\vspace{-3em}
+\vspace{-1.5em}
 \begin{center}
-\itshape Research note --- logic repo
-(\url{https://github.com/gsidebottom/logic}), matmul track, 2026-07-05.
-The focused write-up of the 55-addition result and how to reproduce
-it; the earlier 56-era exploration (orbit-CSE search, database-wide
-side-floor census, SAT lower bounds) lives in the git history.
-Companion to \texttt{doc/matmul\_53\_3x3\_schemes.md}; every claim has
-a mechanical check (\S\ref{sec:repro}). Artifacts (program, verifier,
-Lean proof, repository snapshot) archived at
-DOI~\path{10.5281/zenodo.21240904}.
+\small Artifacts --- program, verifier, Lean proof and a repository
+snapshot --- are archived at
+\url{https://doi.org/10.5281/zenodo.21240904}; source at
+\url{https://github.com/gsidebottom/logic}.  Every claim has a
+mechanical check (\S\ref{sec:repro}).
 \end{center}
 
 \section*{Abstract}
@@ -41,8 +37,11 @@ DOI~\path{10.5281/zenodo.21240904}.
 \textbf{We multiply two $3\times 3$ matrices with 23 multiplications
 and 55 additions} --- one below the previous record of 56 (Yinqi Sun,
 arXiv:2604.27645, Apr 2026), and the first sub-56 scheme for exact
-non-commutative $3\times3$ multiplication without change of basis. The
-algorithm is short and concrete: form 13 signed combinations of the 9
+non-commutative $3\times3$ multiplication without change of basis
+(Zenodo deposit of July~7, 2026; independently rediscovered by
+Karunaratne and Idamekorala on arXiv on July~28, arXiv:2607.28676 ---
+same tensor, same $13{+}14{+}28$ split, same transposed output
+construction). The algorithm is short and concrete: form 13 signed combinations of the 9
 entries of $A$ and 14 of $B$, take 23 products (each one
 $A$-combination times one $B$-combination), and recombine them with 28
 further additions into the 9 entries of $C$ --- negation is free. It is
@@ -555,12 +554,17 @@ either the author or the tools.
 \begin{itemize}[label={},leftmargin=1.2em,itemsep=1pt]
 \item G. Sidebottom. \emph{A 55-Addition Rank-23 Scheme for
   $3\times3$ Matrix Multiplication --- artifacts, verifier, and
-  machine-checked proof.} Zenodo (2026).
-  DOI~\path{10.5281/zenodo.21240904}.
+  machine-checked proof.} Zenodo (July 7, 2026).
+  doi:10.5281/zenodo.21240904,
+  \url{https://doi.org/10.5281/zenodo.21240904}.
 \item Y.~Sun. \emph{An Exact 56-Addition, Rank-23 Scheme for General
   $3\times3$ Matrix Multiplication.} arXiv:2604.27645 (2026). Verifier
   and chain data cached at
   \path{matmul/perminov_cache/sun_verify.py}.
+\item S.~Karunaratne, A.~Idamekorala. \emph{55 Additions Suffice for
+  $3\times3$ Matrix Multiplication at Rank 23.} arXiv:2607.28676
+  (July 28, 2026) --- an independent rediscovery of the 55-addition
+  scheme.
 \item A.~I.~Perminov. \emph{A 58-Addition, Rank-23 Scheme for General
   $3\times3$ Matrix Multiplication.} arXiv:2512.21980 (2025). Method
   paper: \emph{Parallel Heuristic Exploration for Additive Complexity

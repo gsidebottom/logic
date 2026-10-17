@@ -10,9 +10,10 @@ walk_campaign in src/flip.rs -- 135x the Python walker at equal
 single-core budget), which canon-dedupes in-process against the
 archive and writes new distinct schemes directly; the driver then
 screens every new scheme
-(floor <= 48, or floor-49 with >= 2 isolation-0 legs, or floor-50
-with 3 -- the only shapes that can host a 50) and runs fbmin tiers on
-keepers ranked by triple isolation.  ALERT at per-step 51, KLAXON at
+(floor <= 48, or floor-49 with >= 2 legs at their floor, or floor-50
+with 3, decided exactly by fbmin --tier1-only -- the only shapes that
+can host a 50) and runs fbmin tiers on keepers ranked by triple
+isolation (a heuristic ranking only).  ALERT at per-step 51, KLAXON at
 <= 50.  A flip walk can also reduce RANK: flip.py saves and shouts
 any rank < 23 event (that would be the open problem).
 

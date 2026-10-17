@@ -1402,7 +1402,9 @@ the two source papers for this track):
   coupling binds, which is why i12's coincidence structure is
   special. Remaining 50 routes: flip-move walking (held) or a
   structural lower bound. Tools kept: design50.py modes a/ab/abfix,
-  anf --init-file.
+  anf --init-file. (Caveat added 2026-10-16: stage-1 sampling drew only
+  isolation-0 designs; floor legs with an unused generator exist, 5/32
+  observed, and were never sampled. The verdict is heuristic anyway.)
 - **★ FIRST CYCLIC-INVARIANT RANK-23 SCHEME OVER F2 (2026-10-15,
   commit 182fd57)**: the symmetric-quotient attack (cyclic 3-cycle,
   207 orbit vars, product ansatz 7 3-orbits + 2 fixed with a=b=c)
@@ -1410,10 +1412,12 @@ the two source papers for this track):
   621-var Brent CNF is classically CDCL-hostile; the quotient makes
   3x3 tractable. Solution full-verified (0/729) + invariance
   confirmed; NO cyclic-invariant scheme existed among all 37,204
-  known. Sol-1 legs d=21 iso=3 => per-step >= 53. Encoder gated on
-  exact 2x2x2 values (SAT@7/UNSAT@6). symenum.py enumerates with
-  blocking on the 207-rep projection, screens each leg: d=21 iso-0 =
-  a 50; d=20 floor leg = a 47. HUNT RUNNING.
+  known. Sol-1 legs d=21 iso=3 (the "iso=3 => per-step >= 53"
+  inference first written here was WRONG -- see the 2026-10-16
+  cyclic-screen correction below). Encoder gated on exact 2x2x2
+  values (SAT@7/UNSAT@6). symenum.py enumerates with blocking on the
+  207-rep projection, screens each leg: d=21 floor-attaining leg
+  (12 adds) = a 50; d=20 floor leg = a 47. HUNT RUNNING.
 - **CORRECTION + closeout (2026-10-16 evening, 9ac7285)**: the
   "isolation 0 is necessary for a floor leg" claim was false (5/32
   floor legs have an isolated row); the floor-49/50 no-50 screen that
@@ -1421,8 +1425,20 @@ the two source papers for this track):
   7,881 schemes: none qualifies, so no-50-at-any-floor stands. Hunts
   wound down to a trickle (flipmint 2 threads, census 1). Cyclic-50
   decisive instance (symshape.py) built; gate's UNSAT side intractable
-  for kissat. Zenodo v2 kits ready (ks51 v2.0, mm55 v1.1), awaiting
-  Greg's tags/upload.
+  for kissat (pinned to census schemes sym-00006/sym-00001, both
+  fbmin-certified leg 13: A=13 SAT in 8.6 s / 24.5 s, A=12 hit the
+  30-min cap on both, where fbmin decides the same question in ~6 s),
+  so the unpinned instance is out of reach for plain CDCL. Zenodo v2
+  kits ready (ks51 v2.0, mm55 v1.1), awaiting Greg's tags/upload.
+  CYCLIC-SCREEN CORRECTION: symenumd skipped d=21 schemes with iso>=3
+  (the same false isolation inference); a d=21 floor leg needs only
+  >= 12 non-isolated rows (iso <= 9). Fixed in symenumd (census
+  restarted with preblock, 140 kept). New matmul/symcheck.py decides
+  "A-leg <= 12" exactly per scheme (d=21 --tier1-only, d=20 tiers 1-2)
+  after a full-Brent re-check: all 170 distinct cyclic schemes from the
+  three census runs have A-leg >= 13, i.e. per-step >= 53 -- now exact
+  (the 39 skipped included). Schemes archived (they lived only in
+  /tmp): matmul/external/cyclic/census{1,2,3}/ + cyclic_check.csv.
 - **★ FLAT-55 RECORD UNIQUE TO ITS CLASS ACROSS THE DB (2026-10-16,
   b86a1a4)**: new floors --exact-total (exact transposed C table,
   min-plus over 168^3 sandwiches) gated on the record class (=55).

@@ -5,13 +5,13 @@ Brent-reverified) with the additive-structure screen and exact fbmin
 tier evaluation.
 
 Screen per leg: d (distinct rows), floor = sum d - 13 kept <= 48, plus
-floor-49 schemes with >= 2 isolation-0 legs and floor-50 schemes with
-all three (the only higher-floor shapes that can host a 50: slack is
-50 - floor, and floor-achieving legs need isolation 0);
-triple-isolated row count (rows in no internal addition triple) -- the
-law says floor-achieving legs have isolation 0, and slack
-grows ~isolated/2, so keepers are ranked by total isolation then
-floor.  Exact evaluation: fbmin --tier3 per leg; ALERT at leg-sum <=
+floor-49 schemes with >= 2 legs at their floor and floor-50 schemes
+with all three (the only higher-floor shapes that can host a 50: slack
+is 50 - floor; a leg attains its floor iff some 9-target basis closes,
+decided by fbmin --tier1-only).  Keepers are ranked by total
+triple-isolated row count (rows in no internal addition triple) then
+floor: slack grows ~isolated/2 empirically, but this is a ranking
+heuristic only -- floor legs can have isolated rows (5/32 observed).  Exact evaluation: fbmin --tier3 per leg; ALERT at leg-sum <=
 37 (per-step 51), klaxon at <= 36 (the 50).
 
 Usage: mint50.py workdir anf fbmin [--threads T] [--batch-min M]

@@ -5,12 +5,13 @@ repeat.  Every solution is expanded through the orbit map, verified
 against the FULL Brent system, archived, and screened on its (single)
 leg: per-step = 3a + 14 with a >= d-9, so
 
-    d=21 iso=0  -> floor a=12 possible -> 50 candidate (KLAXON check)
-    d=20        -> floor a=11 -> as low as 47 (!) if achievable
-    d<=21 any   -> worth exact evaluation when iso small
+    d=21  -> floor a=12 -> 50 candidate (KLAXON check); attaining it
+             needs >= 12 rows that are sums of two others (iso <= 9)
+    d=20  -> floor a=11 -> as low as 47 (!) if achievable
+    d>=22 -> floor >= 13 -> per-step >= 53, no 50 possible
 
-Candidates (d<=21 and iso<=2) get fbmin --tier3 immediately; the rest
-are archived for batch evaluation.
+Candidates (d <= 20, or d = 21 with iso <= 9) get fbmin --tier3
+immediately.  Superseded by symenumd.py (incremental CaDiCaL).
 
 Usage: symenum.py cnf map workdir fbmin [--max N] [--threads T]
 Stop: touch <workdir>/STOP.
@@ -104,7 +105,7 @@ while n < flags["--max"] and not (WORKD / "STOP").exists():
     out.write_text("".join(map(str, bits)) + "\n")
     uniq, d, iso = leg_stats(bits)
     leg_val, perstep = "", ""
-    if d <= 21 and iso <= 2:
+    if d <= 20 or (d == 21 and d - iso >= 12):
         lp = WORKD / f"sym-{n:05d}_A.legs"
         lp.write_text("\n".join(uniq) + "\n")
         try:

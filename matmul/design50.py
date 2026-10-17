@@ -10,9 +10,11 @@ at sum(d) <= 63 beats or ties 50 (61 -> 48!, 62 -> 49, 63 -> 50).
 
 Stage 1 (design sampling): a floor-achieving leg IS a waste-free
 closure -- 9 independent generators (WLOG unit vectors, by the GL
-action) plus d-9 pairwise XOR sums, all distinct, with every
-generator parenting at least one sum (isolation 0).  Sample such a
-DAG, then a surjection of the 23 products onto its d nodes.
+action) plus d-9 pairwise XOR sums, all distinct.  Sampling further
+requires every generator to parent at least one sum (isolation 0); that
+is a restriction, not a necessity (floor legs can leave a generator
+unused, 5/32 observed), so these designs are a subfamily.  Sample such
+a DAG, then a surjection of the 23 products onto its d nodes.
 
 Stage 2 (realization search): freeze the A-side to the instantiated
 design (207 bits) via anf --freeze-file and let the native-ANF SLS +

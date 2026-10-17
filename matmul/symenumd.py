@@ -3,8 +3,10 @@
 consume its stream of `b <621 bits>` lines; for each solution verify
 the FULL Brent system, canon-dedup (product relabelings can survive
 symmetry breaking), archive, screen the leg (d, isolation), and run
-fbmin --tier3 immediately on candidates (d<=21, iso<=2).  Per-step =
-3a+14: SYM-KLAXON at <= 50.
+fbmin --tier3 immediately on candidates.  Per-step = 3a+14:
+SYM-KLAXON at <= 50, which needs a <= 12.  The floor is d-9, so d >= 22
+is out; at d = 21 the floor must be attained, which needs at least 12
+rows that are sums of two others (non-isolated), i.e. iso <= 9.
 
 Usage: symenumd.py symenum-bin cnf map workdir fbmin [--threads T]
 Stop: touch <workdir>/STOP (kills the enumerator).
@@ -98,7 +100,7 @@ for line in proc.stdout:
     out.write_text("".join(map(str, bits)) + "\n")
     uniq, d, iso = leg_stats(bits)
     leg_val, perstep = "", ""
-    if d <= 20 or (d == 21 and iso <= 2):
+    if d <= 20 or (d == 21 and d - iso >= 12):
         lp = WORKD / f"sym-{n:05d}_A.legs"
         lp.write_text("\n".join(uniq) + "\n")
         try:

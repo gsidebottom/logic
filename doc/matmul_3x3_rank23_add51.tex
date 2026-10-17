@@ -19,7 +19,7 @@
 \title{51 Additions per Recursive Step for Rank-23 $3\times3$\\
 Matrix Multiplication, Machine-Checked over Arbitrary Rings}
 \author{Greg Sidebottom}
-\date{October 13, 2026 --- draft}
+\date{October 17, 2026}
 
 \begin{document}
 \maketitle
@@ -196,7 +196,7 @@ assembly is free).
 A chain value used with a minus sign costs nothing extra in the
 negation-free model, so replacing any target row by its negation
 changes no leg cost.  Given chains realizing
-$\eps_u^{(m)}u_m,\ \eps_v^{(m)}v_m,\ \eps_w^{(m)}w_m$, use the output
+$\eps_u^{(m)}u_m$, $\eps_v^{(m)}v_m$, $\eps_w^{(m)}w_m$, use the output
 value of product $m$ with coefficient
 $\eps_u^{(m)}\eps_v^{(m)}\eps_w^{(m)}$; the composite computes
 $\sum_m (u_m A)(v_m B)\,w_m$ exactly.
@@ -245,7 +245,7 @@ is at least $d_A+d_B+d_C-13$.
 \section{The 51-addition scheme}\label{sec:result}
 
 Running the procedure on the class \texttt{i12w211c23fg} (HKS family
-\texttt{17x2+52x+4y6+5y4+14y3+z32+2z27}) over $\F_2$ gives exact leg
+\texttt{17x2+\allowbreak 52x+\allowbreak 4y6+\allowbreak 5y4+\allowbreak 14y3+\allowbreak z32+\allowbreak 2z27}) over $\F_2$ gives exact leg
 minima
 \[
 a_A = 12,\qquad a_B = 13,\qquad a_C = 12,
@@ -479,7 +479,7 @@ database groups its $17{,}376$ schemes into $237$ families (plus four
 classically named schemes) by a rank-spectrum string; the family of
 the four is
 \begin{center}
-\texttt{17x2+52x+4y6+5y4+14y3+z32+2z27},
+\texttt{17x2+\allowbreak 52x+\allowbreak 4y6+\allowbreak 5y4+\allowbreak 14y3+\allowbreak z32+\allowbreak 2z27},
 \end{center}
 whose grammar we verified computationally against the data.  The
 $x$-part is the rank distribution of the $69$ coefficient matrices
@@ -501,7 +501,7 @@ of families, but every exact $51$ is \texttt{i12} --- schemes rich in
 rank-one coefficient matrices ($52$ of $69$) with one heavy slot
 ($z_A=32$).  The contrast with \texttt{i19} --- the family of the
 flat-model record, signature
-\texttt{18x2+51x+4y6+6y4+13y3+z32+z28+z27}, one fewer rank-one
+\texttt{18x2+\allowbreak 51x+\allowbreak 4y6+\allowbreak 6y4+\allowbreak 13y3+\allowbreak z32+\allowbreak z28+\allowbreak z27}, one fewer rank-one
 matrix --- is sharp in the completed sweep data ($173$ variants
 decided, zero $51$s): its variants repeatedly reach
 $(13,13,12)$-type profiles but stall with one leg proved $\ge14$,
@@ -623,10 +623,11 @@ generators \texttt{matmul/gen\_ring51\_lean.py} and
 re-verify the emitted programs on every run, and
 \texttt{matmul/gen\_sp51\_optimal\_data.py}, which emits the optimality
 proof's data from their certificate.  An archival deposit of
-these artifacts (paper draft, standalone proof, Lake project,
+these artifacts (this paper, the standalone proofs, the Lake project,
 certificates, tools, and a repository snapshot at tag
-\texttt{v1.0-ks51}) is published at
-\href{https://doi.org/10.5281/zenodo.23305912}{doi:10.5281/zenodo.23305912}.
+\texttt{v2.0-ks51}) is published at
+\href{https://doi.org/10.5281/zenodo.23305910}{doi:10.5281/zenodo.23305910},
+which resolves to its latest version.
 \end{sloppypar}
 
 \section{Open problems}\label{sec:open}

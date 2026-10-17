@@ -39,7 +39,7 @@ This writes `zenodo-upload-ks51-v2.0/` (gitignored).
 
 **Version:** v2.0-ks51
 
-**Publication date:** the day you publish
+**Publication date:** 2026-10-17 (or the day you publish)
 
 **Title (unchanged):** A 51-Addition-per-Step Rank-23 Scheme for 3×3
 Matrix Multiplication in the Karstadt–Schwartz Model — artifacts,
@@ -55,10 +55,12 @@ independent and complementary — exactness and breadth. A complete
 exact sweep of the Heule–Kauers–Seidl database finds exactly four
 51-classes, all in one invariant family, and no 50 at any floor. Our
 scheme (class i12w211c23fg) and Stapleton–Perminov's are both
-machine-checked in Lean 4 / Mathlib over arbitrary rings. Exact
-orbit-wide F2 flat floors prove Stapleton–Perminov's one-shot cost of
-56 optimal for their class, and show that the flat-55 record is unique
-to its class across the database.
+machine-checked in Lean 4 / Mathlib over arbitrary rings, and a further
+kernel-checked Lean proof (SP51Optimal.lean) shows that
+Stapleton–Perminov's 51 is optimal for its class. Exact orbit-wide F2
+flat floors prove their one-shot cost of 56 optimal for their class, and
+show that the flat-55 record is unique to its class across the
+database.
 
 (Keep the remaining v1 paragraphs on reproduction and verification;
 update the reproduction command to `lake build Mm.Ring51 Mm.SP51

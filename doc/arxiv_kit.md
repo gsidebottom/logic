@@ -6,9 +6,16 @@ two `\input` files) and `arxiv-upload/arxiv-mm55-source.tar.gz` (one
 file).  Both sources are pure ASCII with standard packages, so arXiv's
 pdflatex should compile them; check its PDF preview before submitting.
 
-Common choices: license **arXiv.org perpetual, non-exclusive license**;
-primary **cs.DS**, cross-lists **cs.SC**, **cs.CC** (Greg is endorsed in
-cs, which arXiv treats as one endorsement domain).
+**SUBMITTED 2026-10-17**: KS-51 as submit/8246158, the 55-addition paper
+as submit/8246196; expected announcement Monday 2026-10-19, 20:00 ET.
+
+Common choices, as submitted: license **arXiv.org perpetual,
+non-exclusive license**; primary **cs.MS**, cross-lists **cs.DS**,
+**cs.SC**, **cs.CC**.  arXiv endorses submitters per category: Greg is
+endorsed for cs.MS but not cs.DS; cross-lists need no endorsement.
+arXiv's file scan marks the `\verbatiminput` listing
+(`..._appendix.txt`) "Not used" and pre-ticks it for deletion; untick it
+before Accept and Continue.
 
 ## 1. KS-51 paper
 
@@ -21,12 +28,12 @@ Multiplication, Machine-Checked over Arbitrary Rings
 
 We present a rank-23 bilinear scheme for $3\times3$ matrix multiplication that uses 51 additions per recursive step in the alternative-basis (Karstadt-Schwartz) cost model, one below Nielsen's 52 (arXiv:2609.06588). The count 51 itself was first posted, on a different scheme, by Stapleton and Perminov (arXiv:2609.32388), found by heuristic sparse-basis search; the present work is independent and complementary: exactness and breadth rather than a single construction. The scheme is valid over every ring, so it recurses on block matrices, and its correctness is machine-checked in Lean 4/Mathlib. The count is exactly optimal for the scheme's equivalence class: we introduce an exact free-basis minimization procedure whose negative answers are exhaustion proofs, and use it to show that 51 is the minimum for this class, that 52 is exactly optimal both for Nielsen's class and for the class of the current flat-model record, and to sweep the complete Heule-Kauers-Seidl database of rank-23 classes. The sweep is complete: exactly four classes attain 51, all in a single HKS invariant family. We machine-check Stapleton and Perminov's scheme as well, and prove in Lean that their 51 is optimal for its class. Separately, we document a systematic gap between $\mathbb{F}_2$ and signed optima: the $\mathbb{F}_2$-optimal chains of a class typically admit no sign assignment under most of the class's integer sign models, and certificate lifting fails where a direct signed search succeeds.
 
-**Comments:** 14 pages, 2 tables. Artifacts (certificates, exact
-searcher, Lean 4 proofs): https://doi.org/10.5281/zenodo.23305910;
-source: https://github.com/gsidebottom/logic
+**Comments:** 14 pages. Artifacts (certificates, exact searcher, Lean 4
+proofs): https://doi.org/10.5281/zenodo.23305910; source:
+https://github.com/gsidebottom/logic
 
 **MSC class:** 68W30, 68Q25, 15A69, 68V15
-**ACM class:** F.2.1; I.1.2
+**ACM class:** F.2.1; G.4; I.1.2
 
 ## 2. 55-addition paper
 
@@ -44,4 +51,4 @@ https://doi.org/10.5281/zenodo.21240904; source:
 https://github.com/gsidebottom/logic
 
 **MSC class:** 68W30, 68Q25, 15A69
-**ACM class:** F.2.1; I.1.2
+**ACM class:** F.2.1; G.4; I.1.2

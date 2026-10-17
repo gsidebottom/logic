@@ -1445,6 +1445,14 @@ the two source papers for this track):
   2026-10-17, draft marker removed, Appendix A retitled, Appendix B
   (kernel_optimal_for_class sketch) added; tag v2.0-ks51 = da2b9c0
   pushed. mm55 v1.1 kit (doc/zenodo_mm55_v1.1.md) still pending.
+- **BOTH PAPERS SUBMITTED TO arXiv (2026-10-17)**: KS-51 as submit/8246158,
+  the 55-addition paper as submit/8246196; primary cs.MS (Greg's endorsed
+  category; cs.DS needs an endorsement he lacks), cross-listed cs.DS,
+  cs.SC, cs.CC; ACM F.2.1; G.4; I.1.2; arXiv non-exclusive license.
+  Expected announcement Mon 2026-10-19 20:00 ET. The KS-51 paper gained
+  an Acknowledgments section disclosing the AI-assisted collaboration
+  (492bfc7; arXiv policy requires reporting generative-AI use), which the
+  Zenodo v2 PDF lacks. Metadata as submitted: doc/arxiv_kit.md.
 - **★ S-P 51 KERNEL CLASS-OPTIMAL, MACHINE-CHECKED (2026-10-17)**:
   proof/Mm/SP51Optimal.lean. `kernel_optimal_for_class`: for all
   invertible linear eA eB eC, chains (from ANY nine starting vectors,

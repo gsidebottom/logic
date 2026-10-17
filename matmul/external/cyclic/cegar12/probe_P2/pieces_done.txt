@@ -1,0 +1,13 @@
+P2v011 TIMEOUT 900s piece P2v011: after 0 solutions, 900s
+P2v001 TIMEOUT 901s piece P2v001: after 0 solutions, 901s
+P2v002 TIMEOUT 901s piece P2v002: after 0 solutions, 901s
+P2v010 TIMEOUT 901s piece P2v010: after 0 solutions, 901s
+P2v012 TIMEOUT 901s piece P2v012: after 0 solutions, 901s
+P2v017 TIMEOUT 901s piece P2v017: after 0 solutions, 901s
+P2v084 TIMEOUT 901s piece P2v084: after 0 solutions, 901s
+P2v013 TIMEOUT 901s piece P2v013: after 0 solutions, 901s
+P2v085 TIMEOUT 900s piece P2v085: after 0 solutions, 900s
+P2v086 TIMEOUT 900s piece P2v086: after 0 solutions, 900s
+P2v094 TIMEOUT 900s piece P2v094: after 0 solutions, 900s
+P2v095 TIMEOUT 900s piece P2v095: after 0 solutions, 900s
+P2v273 TIMEOUT 900s piece P2v273: after 0 solutions, 900s

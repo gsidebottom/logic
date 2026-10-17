@@ -1468,6 +1468,22 @@ the two source papers for this track):
   (e7ec556; w10-w13, cube_reps.txt, cubes_done.txt). Census coincidence
   pattern: the repeated A-blocks always sit in two different orbits,
   never within an orbit or on a fixed product (a further split handle).
+  2026-10-17 morning: cube driver stopped at 0/639 (its first 4 cubes
+  unresolved after 8.5 h). Production: 11+ h, 5 discovery workers found
+  NO new scheme after the census classes were blocked (before: one per
+  1-6 min). FINER-SPLIT PROBE (99c01ca, pieces mode): every census
+  d=21 class has one orbit whose two blocks equal blocks of two other
+  orbits (d=20: a star, one orbit's three blocks matched to three
+  orbits); normalized to A0 = A3 = v, A1 = A6 (pos 2 -> 1 by
+  transposition), v over the 13 conjugation classes, lex on orbits 3-6
+  + fixed, all 244 cores: gate OK (census schemes in normal form valid
+  and accepted), but every piece hit the 15-min cap with no verdict and
+  no scheme. CryptoMiniSat with native XOR Brent constraints: small
+  pinned UNSAT in 44 s (CaDiCaL-like) but no scheme in 10 min on the
+  unblocked problem (CaDiCaL: 30-120 s) -- no lever. VERDICT: a proof of
+  "no cyclic 50" is out of reach for SAT at this scale; the result
+  stands as strong evidence (9 classes, all >= 53; nothing else found in
+  11+ h of blocked search).
 - **★ FLAT-55 RECORD UNIQUE TO ITS CLASS ACROSS THE DB (2026-10-16,
   b86a1a4)**: new floors --exact-total (exact transposed C table,
   min-plus over 168^3 sandwiches) gated on the record class (=55).

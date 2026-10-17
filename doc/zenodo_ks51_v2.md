@@ -20,8 +20,11 @@ This writes `zenodo-upload-ks51-v2.0/` (gitignored).
 - `matmul_3x3_rank23_add51.pdf` — the paper (v2)
 - `Ring51.lean` — our 51-addition scheme, machine-checked (standalone)
 - `SP51.lean` — Stapleton–Perminov's scheme, machine-checked (new)
+- `SP51Optimal.lean` — their 51 kernel is optimal for its class,
+  machine-checked (new; kernel `decide`, ~4 minutes)
 - `proof-lake-project.zip` — the full Lean/Lake project (no `.lake`;
-  reproduce with `lake exe cache get && lake build Mm.Ring51 Mm.SP51`)
+  reproduce with `lake exe cache get && lake build Mm.Ring51 Mm.SP51
+  Mm.SP51Optimal`)
 - `ks51-certificates.tar.gz` — `matmul/external/ks51/` (leg
   certificates, sign models, final sweep CSVs, the three novel
   52-class representatives), `matmul/external/sp51/` (S-P's published
@@ -58,7 +61,8 @@ orbit-wide F2 flat floors prove Stapleton–Perminov's one-shot cost of
 to its class across the database.
 
 (Keep the remaining v1 paragraphs on reproduction and verification;
-update the reproduction command to `lake build Mm.Ring51 Mm.SP51`.)
+update the reproduction command to `lake build Mm.Ring51 Mm.SP51
+Mm.SP51Optimal`.)
 
 **Related identifiers (add):**
 
@@ -77,7 +81,11 @@ update the reproduction command to `lake build Mm.Ring51 Mm.SP51`.)
   Perminov's earlier cn119 class) and a fourth (i12w227c23ci-012,
   ring-valid). All four lie in HKS family i12. No 50 exists in the
   database at any floor.
-- **Stapleton–Perminov's scheme Lean-verified** (`SP51.lean`).
+- **Stapleton–Perminov's scheme Lean-verified** (`SP51.lean`), and
+  its kernel's class-optimality machine-checked (`SP51Optimal.lean`:
+  from any nine starting vectors and after any invertible change of
+  coordinates, its legs need at least 13, 12 and 12 additions; proof by
+  counting sum triples, finite facts by kernel `decide`).
 - **Basis-change (conversion) costs, stated precisely:** per
   representative and sign model; Stapleton–Perminov's 5 is minimal
   over all 128 signings of their representative, and their one-shot

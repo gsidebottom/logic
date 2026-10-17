@@ -362,7 +362,8 @@ Stapleton and Perminov~\cite{SP26} --- which the sweep identifies as
 database class \texttt{i12w219c23ci-008}, itself hidden in the same
 name-collision blind spot --- legs $(13,12,12)$: their
 heuristically-found $51$ kernel is likewise exactly optimal for its
-class, which is inequivalent to all three of ours; and for
+class (machine-checked in Lean, Section~\ref{sec:verify}), which is
+inequivalent to all three of ours; and for
 \texttt{i19w225c4efh} (the class of the flat-model record), legs
 $(13,13,12)$, i.e.\ per-step $52$, down from $55$ flat --- with the
 curious feature that its \emph{output} leg, at $14$ flat, is the leg
@@ -592,11 +593,22 @@ matrices are unimodular (the amortization requirement), replays the
 program over $\Z\langle A,B\rangle$, and emits
 \texttt{proof/Mm/SP51.lean}, whose theorems carry the same axiom
 profile as ours.  Both ring-valid $51$-packages with known
-conversions are thus checked down to the Lean kernel.
+conversions are thus checked down to the Lean kernel.  Their kernel's
+class-optimality is kernel-checked too: \texttt{proof/Mm/SP51Optimal.lean}
+proves that, from any nine starting vectors and after any invertible
+change of coordinates, chains of sums and differences that list the
+three legs of their scheme need at least $13$, $12$ and $12$ additions
+--- so $13+12+(12+14)=51$ is optimal for the class, over $\F_2$ and
+over $\Z$ alike --- by counting sum triples: each new vector a chain
+produces uses up a distinct triple of listed vectors adding to zero,
+and the three legs have only $9$, $9$ and $10$; its finite facts are
+checked by \texttt{decide} in the kernel, on the three standard axioms.
 
+\begin{sloppypar}
 \paragraph{Artifacts.}  All artifacts are in the repository
 \url{https://github.com/gsidebottom/logic}: the Lean proofs
-\texttt{proof/Mm/Ring51.lean} and \texttt{proof/Mm/SP51.lean}; the leg
+\texttt{proof/Mm/Ring51.lean}, \texttt{proof/Mm/SP51.lean} and
+\texttt{proof/Mm/SP51Optimal.lean}; the leg
 certificates, sign models and
 signed chains in \texttt{matmul/external/ks51/} and the transcribed
 Stapleton--Perminov program and certificate in
@@ -606,11 +618,14 @@ Stapleton--Perminov program and certificate in
 \texttt{matmul/fbsloop.py}); and the
 generators \texttt{matmul/gen\_ring51\_lean.py} and
 \texttt{matmul/gen\_sp51\_lean.py}, whose word-ring gates
-re-verify the emitted programs on every run.  An archival deposit of
+re-verify the emitted programs on every run, and
+\texttt{matmul/gen\_sp51\_optimal\_data.py}, which emits the optimality
+proof's data from their certificate.  An archival deposit of
 these artifacts (paper draft, standalone proof, Lake project,
 certificates, tools, and a repository snapshot at tag
 \texttt{v1.0-ks51}) is published at
 \href{https://doi.org/10.5281/zenodo.23305912}{doi:10.5281/zenodo.23305912}.
+\end{sloppypar}
 
 \section{Open problems}\label{sec:open}
 

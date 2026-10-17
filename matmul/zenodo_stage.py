@@ -41,6 +41,7 @@ if kind == "ks51":
     show("doc/matmul_3x3_rank23_add51.pdf", "matmul_3x3_rank23_add51.pdf")
     show("proof/Mm/Ring51.lean", "Ring51.lean")
     show("proof/Mm/SP51.lean", "SP51.lean")
+    show("proof/Mm/SP51Optimal.lean", "SP51Optimal.lean")
     archive("proof-lake-project.zip", ["proof"], fmt="zip")
     archive("ks51-certificates.tar.gz", [
         "matmul/external/ks51", "matmul/external/sp51",
@@ -51,6 +52,7 @@ if kind == "ks51":
         "src/bin/flip.rs", "matmul/fbsweep.py", "matmul/fbsweep2.py",
         "matmul/fbsloop.py", "matmul/modelconv.py",
         "matmul/gen_ring51_lean.py", "matmul/gen_sp51_lean.py",
+        "matmul/gen_sp51_optimal_data.py",
         "matmul/gaugecanon.py", "matmul/lift.py", "matmul/equiv.py",
         "matmul/brent.py", "matmul/cfloor.py", "matmul/gf2min.py",
         "matmul/flat55_frontier.py", "matmul/symorbits.py",

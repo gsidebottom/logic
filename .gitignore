@@ -152,3 +152,4 @@ zenodo-upload-ks51/
 
 # Zenodo staging directories (built by matmul/zenodo_stage.py)
 zenodo-upload-*/
+arxiv-upload/

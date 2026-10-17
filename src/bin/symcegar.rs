@@ -27,6 +27,9 @@
 //!
 //! usage: symcegar cnf map [--dmax D] [--seed N] [--shuffle S] [--no-lex]
 //!          [--pin file]   (207 chars '0'/'1'/'-': fixes A-bits, for gates)
+//!          [--equal a=b,..] [--lex-orbits i,..] [--lex-pairs i:j,..]
+//!                         (pieces of a split: block equalities, lex on a
+//!                         subset of orbits, lex between orbit pairs)
 
 use logic::cadical;
 use std::io::{BufRead, Write};
@@ -204,19 +207,60 @@ fn main() {
 
     let mut next = nvars + 1;
     let block_of = |m: usize| (0..9).map(|k| avar(m, k)).collect::<Vec<i32>>();
+    let list = |key: &str, sep: char| -> Vec<(usize, usize)> {
+        args.iter()
+            .position(|a| a == key)
+            .and_then(|i| args.get(i + 1))
+            .map(|s| {
+                s.split(',')
+                    .filter(|t| !t.is_empty())
+                    .map(|t| {
+                        let (a, b) = t.split_once(sep).expect("pair");
+                        (a.parse().unwrap(), b.parse().unwrap())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    // --lex-orbits i,j,..: rotation + sorting only among these orbits (by
+    // index in the orbit list), plus the fixed order -- for pieces whose
+    // other orbits carry a pinned pattern.
+    let lex_orbits: Option<Vec<usize>> = args
+        .iter()
+        .position(|a| a == "--lex-orbits")
+        .and_then(|i| args.get(i + 1))
+        .map(|s| s.split(',').filter(|t| !t.is_empty()).map(|t| t.parse().unwrap()).collect());
     let mut nlex = 0usize;
+    let cat = |o: &[usize; 3]| o.iter().flat_map(|&m| block_of(m)).collect::<Vec<i32>>();
     if lex {
-        for o in &orbits {
+        let chosen: Vec<[usize; 3]> = match &lex_orbits {
+            Some(ix) => ix.iter().map(|&i| orbits[i]).collect(),
+            None => orbits.clone(),
+        };
+        for o in &chosen {
             nlex += lex_le(&mut solver, &block_of(o[0]), &block_of(o[1]), &mut next);
             nlex += lex_le(&mut solver, &block_of(o[0]), &block_of(o[2]), &mut next);
         }
-        let cat = |o: &[usize; 3]| o.iter().flat_map(|&m| block_of(m)).collect::<Vec<i32>>();
-        for w in orbits.windows(2) {
+        for w in chosen.windows(2) {
             nlex += lex_le(&mut solver, &cat(&w[0]), &cat(&w[1]), &mut next);
         }
         for w in fixed.windows(2) {
             nlex += lex_le(&mut solver, &block_of(w[0]), &block_of(w[1]), &mut next);
         }
+        // --lex-pairs i:j,..: orbit i <= orbit j as whole triples (for
+        // two orbits that a piece's pattern treats alike).
+        for (i, j) in list("--lex-pairs", ':') {
+            nlex += lex_le(&mut solver, &cat(&orbits[i]), &cat(&orbits[j]), &mut next);
+        }
+    }
+    // --equal a=b,..: A-block a equals A-block b.
+    let mut neq = 0usize;
+    for (a, b) in list("--equal", '=') {
+        for k in 0..9 {
+            solver.add_clause([-avar(a, k), avar(b, k)]);
+            solver.add_clause([avar(a, k), -avar(b, k)]);
+        }
+        neq += 1;
     }
 
     let mut npin = 0usize;
@@ -252,7 +296,7 @@ fn main() {
     eprintln!(
         "c symcegar: {nbase} base clauses, {} orbits + {} fixed, {nlex} lex clauses, \
          {} indicator clauses, {ncard} counter clauses (dmax {dmax}), {npin} pinned bits, \
-         seed {seed:?}, shuffle {shuffle:?}",
+         {neq} block equalities, seed {seed:?}, shuffle {shuffle:?}",
         orbits.len(),
         fixed.len(),
         23 * 511

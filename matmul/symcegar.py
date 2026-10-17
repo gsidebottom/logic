@@ -27,6 +27,7 @@ Usage: symcegar.py symcegar-bin cnf map workdir fbmin [--workers N]
          [--lex-workers K] [--threads T] [--leg L] [--seed-dirs d1,..]
          [--pin file] [--max-solutions M] [--core-timeout SECS]
          [--solve-budget SECS] [--cubes reps.txt] [--wid-offset K]
+         [--pieces FILE] [--piece-timeout SECS]
 Core-shrinking tests stop after SECS (an unproved subset is simply not
 used as a core); the decisive test on each proposed scheme has no limit.
 Each solve call is budgeted; on running out the worker loads the cores
@@ -41,6 +42,12 @@ the fixed blocks alone), with the same leg cost -- so all cubes UNSAT
 proves the claim.  Workers take cubes from a queue, each in a fresh lex
 solver with the pair pinned and every shared core loaded; UNSAT cubes
 go to cubes_done.txt (skipped on restart).
+
+Pieces mode (--pieces FILE, lines "name pin207 equal lexorbits lexpairs",
+"-" for none; --piece-timeout SECS): a general split -- each piece is a
+fresh solver with its pin pattern, block equalities (--equal) and the
+lex constraints its normalization leaves sound (--lex-orbits,
+--lex-pairs); outcomes (UNSAT or TIMEOUT) go to pieces_done.txt.
 Stop: touch workdir/STOP (checked between solves).
 """
 import fcntl
@@ -61,7 +68,8 @@ from brent import brent_equations  # noqa: E402
 args = sys.argv[1:]
 opts = {"--workers": "8", "--lex-workers": "0", "--threads": "3", "--leg": "12",
         "--seed-dirs": "", "--pin": "", "--max-solutions": "0", "--core-timeout": "20",
-        "--solve-budget": "600", "--cubes": "", "--wid-offset": "0"}
+        "--solve-budget": "600", "--cubes": "", "--wid-offset": "0",
+        "--pieces": "", "--piece-timeout": "0"}
 pos = []
 i = 0
 while i < len(args):
@@ -79,6 +87,9 @@ CORE_TO = float(opts["--core-timeout"])
 BUDGET = float(opts["--solve-budget"])
 CUBES = opts["--cubes"]
 WOFF = int(opts["--wid-offset"])
+PIECES = opts["--pieces"]
+PIECE_TO = float(opts["--piece-timeout"])
+PIECES_DONE = WORKD / "pieces_done.txt"
 CUBES_DONE = WORKD / "cubes_done.txt"
 NEED = L + 1
 PIN = opts["--pin"]
@@ -249,12 +260,13 @@ def stopped():
     return (WORKD / "DONE").exists() or (WORKD / "STOP").exists()
 
 
-def run_server(wi, lex, pin, tag, say, pool):
+def run_server(wi, lex, pin, tag, say, pool, extra=(), deadline=None):
     """One solver: load every shared core, then propose / verify / block
-    until UNSAT.  Returns ("UNSAT", text) for that formula, or None after
-    a global finish (KLAXON, UNDECIDED, ERROR) or a stop."""
+    until UNSAT.  Returns ("UNSAT", text) for that formula, ("TIMEOUT",
+    text) past `deadline`, or None after a global finish (KLAXON,
+    UNDECIDED, ERROR) or a stop."""
     cmd = [BIN, CNF, MAPF, "--dmax", str(L + 9), "--seed", str(wi + 1),
-           "--shuffle", str(wi + 1)]
+           "--shuffle", str(wi + 1), *extra]
     if not lex:
         cmd.append("--no-lex")
     if pin:
@@ -303,8 +315,16 @@ def run_server(wi, lex, pin, tag, say, pool):
     try:
         while not stopped():
             nb += sync()
+            budget = BUDGET
+            if deadline:
+                left = deadline - time.time()
+                if left <= 0:
+                    result = ("TIMEOUT", f"{tag}after {nsol} solutions, "
+                                         f"{time.time() - t_start:.0f}s")
+                    break
+                budget = max(1.0, min(BUDGET, left))
             t0 = time.time()
-            r = ask(f"solve {BUDGET:.0f}")
+            r = ask(f"solve {budget:.0f}")
             t_solve += time.time() - t0
             if r == "s UNKNOWN":
                 say(f"{tag}budget spent ({t_solve:.0f}s in this solve so far), "
@@ -357,16 +377,16 @@ def run_server(wi, lex, pin, tag, say, pool):
     return result
 
 
-def worker(wi, seed_files, cubeq):
+def worker(wi, seed_files, cubeq, pieceq=None):
     log = open(WORKD / f"w{wi:02d}.log", "a", buffering=1)
 
     def say(msg):
         log.write(time.strftime("%H:%M:%S ") + msg + "\n")
 
     pool = ThreadPoolExecutor(NT)
-    lex = cubeq is not None or wi - WOFF < NLEX
-    say(f"start: {'lex' if lex else 'no-lex'}, {len(seed_files)} seed schemes"
-        + (", cube mode" if cubeq is not None else ""))
+    lex = cubeq is not None or pieceq is not None or wi - WOFF < NLEX
+    mode = ", cube mode" if cubeq is not None else ", pieces mode" if pieceq is not None else ""
+    say(f"start: {'lex' if lex else 'no-lex'}, {len(seed_files)} seed schemes{mode}")
     done_seeds = {ln.split("| seed ")[1].split()[0] for ln in open(CORES)
                   if "| seed " in ln}
     for path in seed_files:
@@ -383,6 +403,32 @@ def worker(wi, seed_files, cubeq):
         publish(cores, f"seed {tag} d={len(S)}")
         say(f"seed {tag} d={len(S)}: cores {[len(c) for c in cores]}")
 
+    if pieceq is not None:
+        while not stopped():
+            try:
+                name, pat, eq, lexo, lexp = pieceq.get_nowait()
+            except queue.Empty:
+                break
+            pin = WORKD / "tmp" / f"piece-{name}.pin"
+            pin.write_text(pat + "\n")
+            extra = []
+            if eq != "-":
+                extra += ["--equal", eq]
+            if lexo != "-":
+                extra += ["--lex-orbits", lexo]
+            if lexp != "-":
+                extra += ["--lex-pairs", lexp]
+            t0 = time.time()
+            res = run_server(wi, True, str(pin), f"piece {name}: ", say, pool, extra,
+                             t0 + PIECE_TO if PIECE_TO else None)
+            if res is None:
+                break
+            with open(PIECES_DONE, "a") as f:
+                fcntl.flock(f, fcntl.LOCK_EX)
+                f.write(f"{name} {res[0]} {time.time() - t0:.0f}s {res[1]}\n")
+                fcntl.flock(f, fcntl.LOCK_UN)
+            say(f"piece {name}: {res[0]} ({time.time() - t0:.0f}s)")
+        return
     if cubeq is None:
         res = run_server(wi, lex, PIN, "", say, pool)
         if res:
@@ -433,7 +479,19 @@ if __name__ == "__main__":
             if i not in done:
                 cubeq.put((i, a, b))
         print(f"cube mode: {len(reps)} cubes, {len(done)} already UNSAT", flush=True)
-    procs = [mp.Process(target=worker, args=(w + WOFF, seeds[w::NW], cubeq))
+    pieceq = None
+    if PIECES:
+        PIECES_DONE.touch()
+        done = {ln.split()[0] for ln in open(PIECES_DONE) if ln.strip()}
+        pieceq = mp.Queue()
+        npc = 0
+        for ln in open(PIECES):
+            f = ln.split()
+            if f and not f[0].startswith("#") and f[0] not in done:
+                pieceq.put(tuple(f[:5]))
+                npc += 1
+        print(f"pieces mode: {npc} pieces queued, {len(done)} already recorded", flush=True)
+    procs = [mp.Process(target=worker, args=(w + WOFF, seeds[w::NW], cubeq, pieceq))
              for w in range(NW)]
     for p in procs:
         p.start()

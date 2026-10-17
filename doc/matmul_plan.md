@@ -1453,6 +1453,25 @@ the two source papers for this track):
   an Acknowledgments section disclosing the AI-assisted collaboration
   (492bfc7; arXiv policy requires reporting generative-AI use), which the
   Zenodo v2 PDF lacks. Metadata as submitted: doc/arxiv_kit.md.
+- **3×3 TRACK CLOSED (2026-10-17, Greg's call)**: all 3×3 compute
+  stopped (CEGAR production run, flipmint, waiters). Standing results:
+  flat 55 (unique in the HKS DB), KS-model 51 for our class
+  i12w211c23fg (ring-valid, model 21; exact for the class), exactly four
+  51-classes in the DB and no 50 at any floor, S-P's 51 class-optimal
+  in Lean (SP51Optimal), three novel ring-valid 52 classes; both papers
+  on Zenodo and submitted to arXiv. Final numbers of the last runs:
+  CEGAR cegar12 (outputs committed): 244 certified cores, 7 refuted
+  schemes (all in the first hour), then every worker's solve ran
+  72,600 s with no model; the 639-cube split closed none; cyclic-50
+  stays OPEN with strong negative evidence (census: 170 distinct cyclic
+  schemes, all per-step >= 53, exact). Flip hunt: flipmint 331 and
+  mint50 619 schemes evaluated exactly, min leg sum 37 (= 51); all 16
+  ALERT-51s are the four known classes (matmul/external/ks51/
+  alert51_classes.csv), no 50, no new 51 class. Result CSVs in
+  matmul/external/ks51/{flipmint,mint50}_results.csv; corpora kept on
+  disk, gitignored: matmul/found23flip/ (24,592 schemes),
+  matmul/found23mint/ (9,931). Open questions are the KS-51 paper's
+  §open list. Next track: 4×4 rank-47 F₂ XOR count (record 170).
 - **★ S-P 51 KERNEL CLASS-OPTIMAL, MACHINE-CHECKED (2026-10-17)**:
   proof/Mm/SP51Optimal.lean. `kernel_optimal_for_class`: for all
   invertible linear eA eB eC, chains (from ANY nine starting vectors,

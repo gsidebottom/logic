@@ -1,0 +1,11 @@
+21:59:28 start: no-lex, 1 seed schemes
+c symcegar: 86109 base clauses, 7 orbits + 2 fixed, 0 lex clauses, 11753 indicator clauses, 21909 counter clauses (dmax 21), 0 pinned bits, seed Some(3), shuffle Some(3)
+22:01:09 seed sym-00003.bits d=21: cores [21]
+22:06:25 sol 1: d=21 solve 107s, cores [20, 20, 20, 20] (209s), +8064 shared/+1344 own blocks, 9408 total
+22:17:39 start: lex, 1 seed schemes
+c symcegar: 86109 base clauses, 7 orbits + 2 fixed, 849 lex clauses, 11753 indicator clauses, 21909 counter clauses (dmax 21), 0 pinned bits, seed Some(3), shuffle Some(3)
+22:20:49 seed census1/sym-00003.bits d=21: cores [20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20]
+22:30:52 budget spent (600s in this solve so far), 37296 blocks loaded; resuming
+22:40:53 budget spent (1200s in this solve so far), 65016 blocks loaded; resuming
+22:50:53 budget spent (1800s in this solve so far), 65016 blocks loaded; resuming
+23:00:17 stopped lex worker to make room for the cube driver

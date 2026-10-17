@@ -1,0 +1,5 @@
+symcegar: leg <= 12 (dmax 21), 4 workers (0 lex) x 2 fbmin threads, 9 seed schemes, 336 symmetry maps, pin=-
+cube mode: 639 cubes, 0 already UNSAT
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/multiprocessing/resource_tracker.py:216: UserWarning: resource_tracker: There appear to be 3 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+2026-10-17 09:12:00 cube driver stopped (0/639 after 8.5 h; first 4 cubes unresolved)

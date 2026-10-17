@@ -1,0 +1,3 @@
+symcegar: leg <= 12 (dmax 21), 8 workers (2 lex) x 2 fbmin threads, 9 seed schemes, 336 symmetry maps, pin=-
+== restart 2026-10-16 22:17:36: budgeted solves, 3 lex + 5 no-lex, core timeout 30s
+symcegar: leg <= 12 (dmax 21), 8 workers (3 lex) x 2 fbmin threads, 9 seed schemes, 336 symmetry maps, pin=-

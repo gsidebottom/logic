@@ -1460,6 +1460,14 @@ the two source papers for this track):
   cap). Census paused (152 archived). Endgame fallback if the final
   UNSAT stalls: cube on the fixed pair {A21, A22} (639 orbits under the
   336 maps), each cube pinned + lex + all cores.
+  Status 23:00: after seeding all 9 census classes (244 cores, 65,016
+  blocks with images), 8 workers x 30+ min found NO new scheme and no
+  UNSAT -- the census classes may be all of them; the proof is the hard
+  part. Cube probes (2 cubes, all cores) > 15 min each. Now running
+  both: monolithic (w00 lex + w03-w07 no-lex) and the cube driver
+  (e7ec556; w10-w13, cube_reps.txt, cubes_done.txt). Census coincidence
+  pattern: the repeated A-blocks always sit in two different orbits,
+  never within an orbit or on a fixed product (a further split handle).
 - **★ FLAT-55 RECORD UNIQUE TO ITS CLASS ACROSS THE DB (2026-10-16,
   b86a1a4)**: new floors --exact-total (exact transposed C table,
   min-plus over 168^3 sandwiches) gated on the record class (=55).

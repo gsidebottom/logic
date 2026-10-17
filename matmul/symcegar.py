@@ -26,19 +26,28 @@ the same A-row set.
 Usage: symcegar.py symcegar-bin cnf map workdir fbmin [--workers N]
          [--lex-workers K] [--threads T] [--leg L] [--seed-dirs d1,..]
          [--pin file] [--max-solutions M] [--core-timeout SECS]
-         [--solve-budget SECS]
+         [--solve-budget SECS] [--cubes reps.txt] [--wid-offset K]
 Core-shrinking tests stop after SECS (an unproved subset is simply not
 used as a core); the decisive test on each proposed scheme has no limit.
 Each solve call is budgeted; on running out the worker loads the cores
 found meanwhile and resumes (learned clauses persist).  A restart in
 the same workdir reloads cores.txt and skips seeds already processed.
+
+Cube mode (--cubes reps.txt, lines "a b"): split the final proof by the
+fixed pair {A21, A22}, one cube per orbit under the 336 maps.  Every
+scheme has a symmetric image whose fixed pair is its orbit's
+representative (a <= b) and then a canonical relabeling (which leaves
+the fixed blocks alone), with the same leg cost -- so all cubes UNSAT
+proves the claim.  Workers take cubes from a queue, each in a fresh lex
+solver with the pair pinned and every shared core loaded; UNSAT cubes
+go to cubes_done.txt (skipped on restart).
 Stop: touch workdir/STOP (checked between solves).
 """
 import fcntl
-import itertools
 import multiprocessing as mp
 import os
 import pathlib
+import queue
 import re
 import subprocess
 import sys
@@ -52,7 +61,7 @@ from brent import brent_equations  # noqa: E402
 args = sys.argv[1:]
 opts = {"--workers": "8", "--lex-workers": "0", "--threads": "3", "--leg": "12",
         "--seed-dirs": "", "--pin": "", "--max-solutions": "0", "--core-timeout": "20",
-        "--solve-budget": "600"}
+        "--solve-budget": "600", "--cubes": "", "--wid-offset": "0"}
 pos = []
 i = 0
 while i < len(args):
@@ -68,6 +77,9 @@ NW, NT, L = int(opts["--workers"]), int(opts["--threads"]), int(opts["--leg"])
 NLEX = int(opts["--lex-workers"])
 CORE_TO = float(opts["--core-timeout"])
 BUDGET = float(opts["--solve-budget"])
+CUBES = opts["--cubes"]
+WOFF = int(opts["--wid-offset"])
+CUBES_DONE = WORKD / "cubes_done.txt"
 NEED = L + 1
 PIN = opts["--pin"]
 MAXSOL = int(opts["--max-solutions"])
@@ -226,19 +238,28 @@ def publish(cores, src):
 
 # --- a worker -----------------------------------------------------------------
 
-def worker(wi, seed_files):
-    log = open(WORKD / f"w{wi:02d}.log", "a", buffering=1)
+def finish(wi, say, kind, text):
+    with open(WORKD / "RESULT", "a") as f:
+        f.write(f"{kind} worker={wi} {text}\n")
+    (WORKD / "DONE").touch()
+    say(f"{kind}: {text}")
 
-    def say(msg):
-        log.write(time.strftime("%H:%M:%S ") + msg + "\n")
 
+def stopped():
+    return (WORKD / "DONE").exists() or (WORKD / "STOP").exists()
+
+
+def run_server(wi, lex, pin, tag, say, pool):
+    """One solver: load every shared core, then propose / verify / block
+    until UNSAT.  Returns ("UNSAT", text) for that formula, or None after
+    a global finish (KLAXON, UNDECIDED, ERROR) or a stop."""
     cmd = [BIN, CNF, MAPF, "--dmax", str(L + 9), "--seed", str(wi + 1),
            "--shuffle", str(wi + 1)]
-    if wi >= NLEX:
+    if not lex:
         cmd.append("--no-lex")
-    say(f"start: {'lex' if wi < NLEX else 'no-lex'}, {len(seed_files)} seed schemes")
-    if PIN:
-        cmd += ["--pin", PIN]
+    if pin:
+        cmd += ["--pin", pin]
+    log = open(WORKD / f"w{wi:02d}.log", "a", buffering=1)
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=log, text=True, bufsize=1)
 
@@ -248,7 +269,6 @@ def worker(wi, seed_files):
         return proc.stdout.readline().strip()
 
     blocked = set()
-    pool = ThreadPoolExecutor(NT)
     offset = 0
 
     def send(core):
@@ -275,12 +295,78 @@ def worker(wi, seed_files):
                 n += send(tuple(int(t) for t in ln.split("|")[0].split()[1:]))
         return n
 
-    def finish(kind, text):
-        with open(WORKD / "RESULT", "a") as f:
-            f.write(f"{kind} worker={wi} {text}\n")
-        (WORKD / "DONE").touch()
-        say(f"{kind}: {text}")
+    nsol = 0
+    t_start = time.time()
+    t_solve = 0.0
+    nb = 0
+    result = None
+    try:
+        while not stopped():
+            nb += sync()
+            t0 = time.time()
+            r = ask(f"solve {BUDGET:.0f}")
+            t_solve += time.time() - t0
+            if r == "s UNKNOWN":
+                say(f"{tag}budget spent ({t_solve:.0f}s in this solve so far), "
+                    f"{len(blocked)} blocks loaded; resuming")
+                continue
+            dt, t_solve = t_solve, 0.0
+            if r == "s UNSAT":
+                result = ("UNSAT", f"{tag}after {nsol} solutions, {len(blocked)} blocks "
+                                   f"loaded, {time.time() - t_start:.0f}s")
+                break
+            if not r.startswith("b "):
+                finish(wi, say, "ERROR", f"{tag}solver said {r!r}")
+                break
+            bits = [int(c) for c in r[2:]]
+            nsol += 1
+            assert brent_ok(bits), "solution fails full Brent"
+            S = arows(bits)
+            sm = mask(S)
+            assert len(S) <= L + 9, f"d={len(S)} exceeds dmax"
+            assert rank9(S) == 9, "A-rows do not span"
+            assert not any((b & sm) == b for b in blocked), "solution contains a blocked core"
+            name = f"w{wi:02d}-{tag.strip().replace(' ', '').rstrip(':')}-{nsol:05d}.bits" \
+                if tag else f"w{wi:02d}-{nsol:05d}.bits"
+            sched = WORKD / "schemes" / name
+            sched.write_text("".join(map(str, bits)) + "\n")
+            if not leg_ge(S, NEED):
+                exact, a = exact_or_bound(S)
+                if exact and a <= L:
+                    finish(wi, say, "KLAXON",
+                           f"A-leg {a} (per-step {3 * a + 14}) d={len(S)} -> {sched}")
+                    break
+                if not exact or a < NEED:
+                    finish(wi, say, "UNDECIDED",
+                           f"leg {'=' if exact else '>='}{a} d={len(S)} -> {sched}")
+                    break
+            t1 = time.time()
+            cores = extract_cores(S, pool)
+            publish(cores, f"w{wi} {tag}sol{nsol} d={len(S)}")
+            nown = sum(send(c) for c in cores)
+            say(f"{tag}sol {nsol}: d={len(S)} solve {dt:.0f}s, cores "
+                f"{[len(c) for c in cores]} ({time.time() - t1:.0f}s), "
+                f"+{nb} shared/+{nown} own blocks, {len(blocked)} total")
+            nb = 0
+            if MAXSOL and nsol >= MAXSOL:
+                say("max solutions reached")
+                break
+    finally:
+        proc.stdin.close()
+        proc.kill()
+    return result
 
+
+def worker(wi, seed_files, cubeq):
+    log = open(WORKD / f"w{wi:02d}.log", "a", buffering=1)
+
+    def say(msg):
+        log.write(time.strftime("%H:%M:%S ") + msg + "\n")
+
+    pool = ThreadPoolExecutor(NT)
+    lex = cubeq is not None or wi - WOFF < NLEX
+    say(f"start: {'lex' if lex else 'no-lex'}, {len(seed_files)} seed schemes"
+        + (", cube mode" if cubeq is not None else ""))
     done_seeds = {ln.split("| seed ")[1].split()[0] for ln in open(CORES)
                   if "| seed " in ln}
     for path in seed_files:
@@ -295,61 +381,30 @@ def worker(wi, seed_files):
             continue
         cores = extract_cores(S, pool)
         publish(cores, f"seed {tag} d={len(S)}")
-        say(f"seed {tag} d={len(S)}: cores "
-            f"{[len(c) for c in cores]}")
+        say(f"seed {tag} d={len(S)}: cores {[len(c) for c in cores]}")
 
-    nsol = 0
-    t_start = time.time()
-    t_solve = 0.0
-    nb = 0
-    while not (WORKD / "DONE").exists() and not (WORKD / "STOP").exists():
-        nb += sync()
-        t0 = time.time()
-        r = ask(f"solve {BUDGET:.0f}")
-        t_solve += time.time() - t0
-        if r == "s UNKNOWN":
-            say(f"budget spent ({t_solve:.0f}s in this solve so far), "
-                f"{len(blocked)} blocks loaded; resuming")
-            continue
-        dt, t_solve = t_solve, 0.0
-        if r == "s UNSAT":
-            finish("UNSAT", f"after {nsol} solutions, {len(blocked)} blocks loaded, "
-                            f"{time.time() - t_start:.0f}s")
+    if cubeq is None:
+        res = run_server(wi, lex, PIN, "", say, pool)
+        if res:
+            finish(wi, say, *res)
+        return
+    while not stopped():
+        try:
+            idx, a, b = cubeq.get_nowait()
+        except queue.Empty:
             break
-        if not r.startswith("b "):
-            finish("ERROR", f"solver said {r!r}")
+        base = open(PIN).read().strip() if PIN else "-" * 207
+        pat = base[:189] + format(a, "09b") + format(b, "09b")
+        pin = WORKD / "tmp" / f"cube{idx:03d}.pin"
+        pin.write_text(pat + "\n")
+        res = run_server(wi, True, str(pin), f"cube {idx}: ", say, pool)
+        if res is None:
             break
-        bits = [int(c) for c in r[2:]]
-        nsol += 1
-        assert brent_ok(bits), "solution fails full Brent"
-        S = arows(bits)
-        sm = mask(S)
-        assert len(S) <= L + 9, f"d={len(S)} exceeds dmax"
-        assert rank9(S) == 9, "A-rows do not span"
-        assert not any((b & sm) == b for b in blocked), "solution contains a blocked core"
-        sched = WORKD / "schemes" / f"w{wi:02d}-{nsol:05d}.bits"
-        sched.write_text("".join(map(str, bits)) + "\n")
-        if not leg_ge(S, NEED):
-            exact, a = exact_or_bound(S)
-            if exact and a <= L:
-                finish("KLAXON", f"A-leg {a} (per-step {3 * a + 14}) d={len(S)} -> {sched}")
-                break
-            if not exact or a < NEED:
-                finish("UNDECIDED", f"leg {'=' if exact else '>='}{a} d={len(S)} -> {sched}")
-                break
-        t1 = time.time()
-        cores = extract_cores(S, pool)
-        publish(cores, f"w{wi} sol{nsol} d={len(S)}")
-        nown = sum(send(c) for c in cores)
-        say(f"sol {nsol}: d={len(S)} solve {dt:.0f}s, cores {[len(c) for c in cores]} "
-            f"({time.time() - t1:.0f}s), +{nb} shared/+{nown} own blocks, "
-            f"{len(blocked)} total")
-        nb = 0
-        if MAXSOL and nsol >= MAXSOL:
-            say("max solutions reached")
-            break
-    proc.stdin.close()
-    proc.kill()
+        with open(CUBES_DONE, "a") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            f.write(f"{idx} {a} {b} UNSAT {res[1]}\n")
+            fcntl.flock(f, fcntl.LOCK_UN)
+        say(f"cube {idx} ({a},{b}) UNSAT")
 
 
 if __name__ == "__main__":
@@ -368,10 +423,27 @@ if __name__ == "__main__":
     print(f"symcegar: leg <= {L} (dmax {L + 9}), {NW} workers ({NLEX} lex) x {NT} fbmin threads, "
           f"{len(seeds)} seed schemes, {len(MAPS)} symmetry maps, pin={PIN or '-'}",
           flush=True)
-    procs = [mp.Process(target=worker, args=(w, seeds[w::NW])) for w in range(NW)]
+    cubeq = None
+    if CUBES:
+        reps = [tuple(map(int, ln.split())) for ln in open(CUBES) if ln.strip()]
+        CUBES_DONE.touch()
+        done = {int(ln.split()[0]) for ln in open(CUBES_DONE) if ln.strip()}
+        cubeq = mp.Queue()
+        for i, (a, b) in enumerate(reps):
+            if i not in done:
+                cubeq.put((i, a, b))
+        print(f"cube mode: {len(reps)} cubes, {len(done)} already UNSAT", flush=True)
+    procs = [mp.Process(target=worker, args=(w + WOFF, seeds[w::NW], cubeq))
+             for w in range(NW)]
     for p in procs:
         p.start()
     for p in procs:
         p.join()
+    if CUBES and not (WORKD / "DONE").exists():
+        done = {int(ln.split()[0]) for ln in open(CUBES_DONE) if ln.strip()}
+        if len(done) == len(reps):
+            with open(WORKD / "RESULT", "a") as f:
+                f.write(f"UNSAT all {len(reps)} cubes (fixed-pair orbits) UNSAT\n")
+            (WORKD / "DONE").touch()
     res = (WORKD / "RESULT").read_text() if (WORKD / "RESULT").exists() else "no result"
     print(res, flush=True)

@@ -1,0 +1,19 @@
+\begin{alltt}
+def IsChain \{n : \(\mathbb{N}\)\} (s : Fin 9 \(\to\) G) (v : Fin (9 + n) \(\to\) G) : Prop :=
+  (\(\forall\) i, v (Fin.castAdd n i) = s i) \(\land\)
+    \(\forall\) k : Fin n, \(\exists\) i j : Fin (9 + n), i < Fin.natAdd 9 k \(\land\) j < Fin.natAdd 9 k \(\land\)
+      (v (Fin.natAdd 9 k) = v i + v j \(\lor\) v (Fin.natAdd 9 k) = v i - v j)
+
+def Computable (T : Finset G) (n : \(\mathbb{N}\)) : Prop :=
+  \(\exists\) (s : Fin 9 \(\to\) G) (v : Fin (9 + n) \(\to\) G), IsChain s v \(\land\) \(\forall\) t \(\in\) T, \(\exists\) i, v i = t
+
+def ComputableFromBasis (T : Finset Form) (n : \(\mathbb{N}\)) : Prop :=
+  \(\exists\) (s : Fin 9 \(\to\) Form) (v : Fin (9 + n) \(\to\) Form),
+    LinearIndependent (ZMod 2) s \(\land\) IsChain s v \(\land\) \(\forall\) t \(\in\) T, \(\exists\) i, v i = t
+
+theorem kernel_optimal_for_class (eA eB eC : Form \(\simeq\sb{l}\)[ZMod 2] Form) :
+    (\(\forall\) nA nB nC : \(\mathbb{N}\), Computable (legA.image eA) nA \(\to\) Computable (legB.image eB) nB \(\to\)
+        Computable (legC.image eC) nC \(\to\) 51 \(\le\) nA + nB + (nC + 14)) \(\land\)
+      ComputableFromBasis (legA.image eA) 13 \(\land\) ComputableFromBasis (legB.image eB) 12 \(\land\)
+      ComputableFromBasis (legC.image eC) 12
+\end{alltt}

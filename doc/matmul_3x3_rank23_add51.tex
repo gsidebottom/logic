@@ -3,6 +3,7 @@
 \usepackage{amsmath,amssymb,amsthm,mathtools}
 \usepackage{booktabs}
 \usepackage{verbatim}
+\usepackage{alltt}
 \usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
 \hypersetup{pdftitle={51 Additions per Recursive Step for Rank-23 3x3 Matrix Multiplication},pdfauthor={Greg Sidebottom}}
 \newtheorem{theorem}{Theorem}[section]
@@ -362,7 +363,7 @@ Stapleton and Perminov~\cite{SP26} --- which the sweep identifies as
 database class \texttt{i12w219c23ci-008}, itself hidden in the same
 name-collision blind spot --- legs $(13,12,12)$: their
 heuristically-found $51$ kernel is likewise exactly optimal for its
-class (machine-checked in Lean, Section~\ref{sec:verify}), which is
+class (machine-checked in Lean; Appendix~\ref{app:optimal}), which is
 inequivalent to all three of ours; and for
 \texttt{i19w225c4efh} (the class of the flat-model record), legs
 $(13,13,12)$, i.e.\ per-step $52$, down from $55$ flat --- with the
@@ -602,7 +603,8 @@ three legs of their scheme need at least $13$, $12$ and $12$ additions
 over $\Z$ alike --- by counting sum triples: each new vector a chain
 produces uses up a distinct triple of listed vectors adding to zero,
 and the three legs have only $9$, $9$ and $10$; its finite facts are
-checked by \texttt{decide} in the kernel, on the three standard axioms.
+checked by \texttt{decide} in the kernel, on the three standard axioms
+(Appendix~\ref{app:optimal} sketches the statement and the proof).
 
 \begin{sloppypar}
 \paragraph{Artifacts.}  All artifacts are in the repository
@@ -692,7 +694,7 @@ arXiv:2609.32388 (September 26, 2026).
 
 \appendix
 
-\section{The Lean definition and theorem}\label{app:lean}
+\section{Lean formalization: our $51$-addition scheme computes $AB$}\label{app:lean}
 
 The following is the complete scheme definition and the
 matrix-product theorem, verbatim from \texttt{proof/Mm/Ring51.lean}
@@ -718,5 +720,110 @@ below.  The ambient context is
 {\footnotesize
 \verbatiminput{matmul_3x3_rank23_add51_appendix.txt}
 }
+
+\section{Lean formalization: Stapleton and Perminov's $51$ is optimal for its class}\label{app:optimal}
+
+The file \texttt{proof/Mm/SP51Optimal.lean} machine-checks the claim of
+Section~\ref{sec:result} that the $51$-addition kernel of
+Stapleton and Perminov~\cite{SP26} is exactly optimal for its class.
+This appendix sketches the statement and the proof; the repository file
+is authoritative.  To re-check it:
+
+\begin{verbatim}
+cd proof && lake build Mm.SP51Optimal
+\end{verbatim}
+
+\noindent
+Expected: \texttt{Built Mm.SP51Optimal} in about four minutes, nearly
+all of it kernel \texttt{decide}; both headline theorems depend only on
+the standard axioms \texttt{propext}, \texttt{Classical.choice} and
+\texttt{Quot.sound}, with no \texttt{native\_decide} and no
+\texttt{sorry}.
+
+\paragraph{The statement.}  A linear form on $3\times3$ matrices over
+$\F_2$ is its coefficient matrix (\texttt{Form}).  A \emph{chain of $n$
+additions} from nine starting vectors is a list of $9+n$ vectors that
+begins with them, each later entry the sum or the difference of two
+earlier entries; a finite set is \emph{computable with $n$ additions} if
+some chain, from some nine starting vectors, lists all of it, and
+\emph{computable after a change of basis} if the starting vectors can be
+taken linearly independent.  Verbatim from the file (the ambient
+\texttt{G} is any additive commutative group):
+
+{\footnotesize
+\input{matmul_3x3_rank23_add51_appendixB.tex}
+}
+
+\noindent
+Here \texttt{legA}, \texttt{legB}, \texttt{legC} are the legs of their
+scheme, written out in the file as literal matrices: the $20$ distinct
+nonzero rows of $U$ and of $V$ and columns of $W$ of their certificate,
+mod~$2$.  The maps \texttt{eA}, \texttt{eB}, \texttt{eC} range over all
+invertible linear changes of coordinates.  The symmetries of matrix
+multiplication act on each side of a scheme by such a map (and may
+permute the sides), so every scheme in the class presents its legs in
+this form, and the per-step cost $a_A + a_B + (a_C + 14)$ is symmetric
+in the three legs.  The lower bounds hold from \emph{any} nine starting
+vectors, a basis or not; the upper bounds start from a basis, as the
+Karstadt--Schwartz model requires.  A companion theorem,
+\texttt{kernel\_optimal\_over\_int}, gives the same lower bound for chains
+over $\Z$ whose entries reduce mod~$2$ to the legs.  Two ingredients come
+from the cost model rather than from the formalization: the output
+side's $+14$ (the transposition principle) and the description of the
+class action just given.
+
+\paragraph{The counting lemma.}  For a chain whose nonzero entries form
+the set $S$, call a three-element subset of $S$ that sums to zero a
+\emph{sum triple}, and let $\tau(S)$ be their number.  An entry $c\in S$
+that is not a starting vector is first listed as $c=a\pm b$ with $a$ and
+$b$ listed earlier; over $\F_2$ this makes $a$ and $b$ nonzero, distinct
+and different from $c$, so $\{a,b,c\}$ is a sum triple, and
+$c\mapsto\{a,b,c\}$ is injective because a triple yields only its
+last-listed member.  Hence
+\[
+  |S| \le 9 + \tau(S),
+\]
+and $|S|+1 \le 9 + \tau(S)$ whenever some nonempty family $K$ of sum
+triples covers each of its members at least twice: the last-listed
+member of $\bigcup K$ completes two triples of $K$ at once, so one triple
+of $K$ produces nothing (\texttt{card\_vals\_le}).
+
+\paragraph{The three legs.}  Each leg has $20$ forms but few sum
+triples:
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+leg & forms $d$ & sum triples $\tau$ & floor $d-9$ & exact cost\\
+\midrule
+$A$ (rows of $U$) & $20$ & $9$ & $11$ & $13$\\
+$B$ (rows of $V$) & $20$ & $9$ & $11$ & $12$\\
+$C$ (columns of $W$) & $20$ & $10$ & $11$ & $12$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+A chain of at most $11$ additions lists at most $20$ vectors, hence
+exactly the leg, and the lemma would need $20\le 9+\tau$, that is
+$\tau\ge 11$; so every leg needs at least $12$ additions, which settles
+$B$ and $C$.  For $A$ with $12$ additions, the chain lists the leg and
+at most one further nonzero vector $h$, and $21\le 9+\tau(A\cup\{h\})$.
+A sum triple through $h$ has the form $\{h,a,a+h\}$, so
+$\tau(A\cup\{h\}) \le 9 + \lfloor m_h/2\rfloor$ with
+$m_h=\#\{a\in A : a+h\in A\}$, which forces $m_h\ge 6$.  Exactly five
+vectors have $m_h\ge 6$, and for each of them $\tau(A\cup\{h\})=12$ and
+a nonempty family of its triples covers each of its members at least
+twice, so the lemma gives $22\le 21$.  So leg $A$ needs at least $13$ additions.
+
+\paragraph{What the kernel checks.}  The finite facts --- each leg's
+size, the absence of zero, and its triple count; the five vectors (a
+check over all $512$ forms) and their families; and three optimal chains
+with linearly independent starting vectors, of $13$, $12$ and $12$
+additions --- are decided by \texttt{decide} in the kernel, from data
+emitted from their certificate by \texttt{matmul/gen\_sp51\_optimal\_data.py}.
+Invertible linear maps carry chains to chains, which gives the class
+statement; reduction mod~$2$ carries integer chains to chains over
+$\F_2$, which gives \texttt{kernel\_optimal\_over\_int}.
 
 \end{document}

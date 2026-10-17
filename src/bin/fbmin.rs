@@ -188,7 +188,7 @@ impl Leg {
     }
 }
 
-fn solve(leg: &Leg, tier3: bool, want: usize) -> (usize, Vec<Cert>, String) {
+fn solve(leg: &Leg, tier3: bool, want: usize, tier1_only: bool) -> (usize, Vec<Cert>, String) {
     let d = leg.d();
     let floor = d - 9;
 
@@ -209,6 +209,10 @@ fn solve(leg: &Leg, tier3: bool, want: usize) -> (usize, Vec<Cert>, String) {
     });
     if let Some(c) = found.into_inner().unwrap() {
         return (floor, vec![c], format!("tier1: 9-target basis closes ({} bases swept)", bases9.len()));
+    }
+    if tier1_only {
+        // the floor d-9 is attained iff some 9-target basis closes
+        return (floor + 1, Vec::new(), format!("tier1 exhausted: floor not attained ({} bases swept)", bases9.len()));
     }
 
     // ---- tier 2a: a = d-8 via 9-target basis + one helper ----
@@ -433,6 +437,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut threads = 2usize;
     let mut tier3 = false;
+    let mut tier1_only = false;
     let mut want = 1usize;
     let mut files: Vec<String> = Vec::new();
     let mut i = 1;
@@ -447,6 +452,7 @@ fn main() {
                 want = args[i].parse::<usize>().unwrap().max(1);
             }
             "--tier3" => tier3 = true,
+            "--tier1-only" => tier1_only = true,
             f => files.push(f.to_string()),
         }
         i += 1;
@@ -466,7 +472,7 @@ fn main() {
             .collect();
         let leg = Leg::new(&rows);
         let t0 = std::time::Instant::now();
-        let (a, certs, how) = solve(&leg, tier3, want);
+        let (a, certs, how) = solve(&leg, tier3, want, tier1_only);
         let dt = t0.elapsed().as_secs_f64();
         if certs.is_empty() {
             println!("{f}: d={} min_adds>={a} [{how}] ({dt:.1} s)", leg.d());

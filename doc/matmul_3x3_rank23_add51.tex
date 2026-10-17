@@ -335,12 +335,13 @@ $(11,13,13)$: its $A$ leg \emph{achieves the counting floor} $d-9$ ---
 a $9$-target basis whose waste-free closure covers all $20$ targets.
 Floor-achieving legs are uncommon but not unique ($32$ of the
 $1{,}079$ legs decided exactly across the completed sweeps, occurring
-at $d=20$, $21$ and $22$), and they share a sharp structural
-signature: every row participates in an internal addition triple
-(rows $x,y,z$ of the leg with $x+y=\pm z$), and the triple count is at
-least $d-9$ --- both conditions are provably necessary for the floor,
-and empirically the leg's slack above its floor grows almost linearly
-with its number of triple-isolated rows.
+at $d=20$, $21$ and $22$).  They share a necessary structure: a
+floor chain has $d-9$ additions, each producing a target from two
+targets, so at least $d-9$ of the leg's rows are each the sum of two
+other rows (rows $x,y,z$ with $x+y=\pm z$).  Most observed floor legs
+also have every row in such a triple, but not all: five of the $32$
+have an isolated row, which must then be a basis row never used as an
+operand.
 
 The third class, \texttt{i12w227c23ci-012}, was found by the
 variant-aware completion of the database sweep
@@ -455,11 +456,12 @@ the completed sweep gives minimum sum $38$ outside the four $51$s.  A
 floor-$49$ class could host a $50$ only with at least two legs
 floor-achieving (one unit of slack remains), a floor-$50$ class only
 with all three, and floor $\ge51$ is arithmetically incompatible.
-Floor-achievement provably requires every row of the leg to lie in an
-internal addition triple, with at least $d-9$ triples
-(Section~\ref{sec:result}); screening all $2{,}450$ floor-$49$
-schemes finds \emph{none} with even two triple-clean legs, and all
-$5{,}431$ floor-$50$ schemes \emph{none} with three.  The closest approach
+Whether a leg attains its floor is decided exhaustively by the first
+tier of our procedure: the floor $d-9$ is attained exactly when some
+basis of $9$ targets closes over all targets.  Run on every one of
+the $2{,}450$ floor-$49$ and $5{,}431$ floor-$50$ schemes, it finds
+\emph{no} floor-$49$ scheme with two floor-attaining legs and
+\emph{no} floor-$50$ scheme with three.  The closest approach
 is slack $+2$ over the leg floors (the $(11,13,13)$ and $(14,12,11)$
 classes); exact $11$-legs exist on both the input and the output
 side, so sum $36$ is not excluded by any per-leg phenomenon observed
@@ -502,12 +504,11 @@ matrix --- is sharp in the completed sweep data ($173$ variants
 decided, zero $51$s): its variants repeatedly reach
 $(13,13,12)$-type profiles but stall with one leg proved $\ge14$,
 yielding ties at $52$ and a wall of ruled-outs, never a $51$.
-Whether the rank spectrum \emph{explains} the $51$s (rank-one-rich
-legs have many coincident rows, hence small $d$ and dense internal
-addition triples --- the floor-achieving signature of
-Section~\ref{sec:result}) or merely correlates with them is open; the
-family statistics make it a natural target for a structural lower
-bound.
+Whether the rank spectrum \emph{explains} the $51$s or merely
+correlates with them is open.  Rank-one-rich legs have many coincident
+rows, hence small $d$ and dense internal addition triples, which floor
+chains need (Section~\ref{sec:result}); the family statistics make
+this a natural target for a structural lower bound.
 
 \section{The sign gap}\label{sec:signs}
 

@@ -67,6 +67,31 @@ def stats(rows):
     return len(uniq), len(ints) - len(in_tri), uniq, ws
 
 
+def floor_legs(st, need):
+    """True iff at least `need` legs attain their floor (exact,
+    fbmin --tier1-only), stopping early either way."""
+    import tempfile, os
+    hits = misses = 0
+    for (d_, i_, uniq, *_rest) in st:
+        with tempfile.NamedTemporaryFile("w", suffix=".legs", delete=False) as f:
+            f.write("\n".join(uniq) + "\n")
+            path = f.name
+        try:
+            o = subprocess.run([FBMIN, "--tier1-only", "--threads", "1", path],
+                               capture_output=True, text=True).stdout
+        finally:
+            os.unlink(path)
+        if "tier1: 9-target basis closes" in o:
+            hits += 1
+        else:
+            misses += 1
+        if hits >= need:
+            return True
+        if misses > len(st) - need:
+            return False
+    return hits >= need
+
+
 LEG_RE = re.compile(r"min_adds(>?=)(\d+) \[")
 
 
@@ -109,9 +134,14 @@ while not (WORK / "STOP").exists():
         st = [stats(l) for l in legs]
         floor = sum(x[0] for x in st) - 13
         iso = [x[1] for x in st]
-        nclean = sum(1 for x in iso if x == 0)
-        if not (floor <= 48 or (floor == 49 and nclean >= 2)
-                or (floor == 50 and nclean == 3)):
+        # floor <= 48 as before; floor 49/50 can host a 50 only with
+        # >= 2 / 3 legs attaining their floor d-9 (slack 50-floor),
+        # decided exactly by fbmin --tier1-only (the earlier
+        # isolation-0 shortcut was unsound: 5/32 floor legs have an
+        # isolated row).  floor >= 51 is arithmetic.
+        if floor > 50:
+            continue
+        if floor >= 49 and floor_legs(st, 2 if floor == 49 else 3) is False:
             continue
         news.append((sum(iso), floor, p.stem, st))
     news.sort()

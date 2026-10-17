@@ -149,3 +149,6 @@ nested-boxes/.env.*.local
 # compiled box tables written by /boxes/compile {save:true}
 /boxes/
 zenodo-upload-ks51/
+
+# Zenodo staging directories (built by matmul/zenodo_stage.py)
+zenodo-upload-*/

@@ -1,5 +1,11 @@
 # Zenodo new-version kit — KS-51 deposit, v2.0
 
+**PUBLISHED 2026-10-17:** https://zenodo.org/records/23441986,
+doi:10.5281/zenodo.23441986 (concept doi:10.5281/zenodo.23305910 now
+resolves to it). Eight files, all MD5-matched to the staging from tag
+`v2.0-ks51` (da2b9c0); description, Notes (changes since v1) and both
+related works as below.
+
 Existing record: **doi:10.5281/zenodo.23305912** (v1.0-ks51, 2026-10-11).
 Publish this as a **New version** of that record (zenodo.org → the
 record → "New version"), so the concept DOI keeps resolving to the

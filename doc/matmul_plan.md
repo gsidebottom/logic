@@ -1439,6 +1439,12 @@ the two source papers for this track):
   three census runs have A-leg >= 13, i.e. per-step >= 53 -- now exact
   (the 39 skipped included). Schemes archived (they lived only in
   /tmp): matmul/external/cyclic/census{1,2,3}/ + cyclic_check.csv.
+- **ZENODO KS-51 v2.0 PUBLISHED (2026-10-17)**: doi:10.5281/zenodo.23441986
+  (https://zenodo.org/records/23441986), a new version under concept
+  doi:10.5281/zenodo.23305910, which the paper cites. Paper dated
+  2026-10-17, draft marker removed, Appendix A retitled, Appendix B
+  (kernel_optimal_for_class sketch) added; tag v2.0-ks51 = da2b9c0
+  pushed. mm55 v1.1 kit (doc/zenodo_mm55_v1.1.md) still pending.
 - **★ S-P 51 KERNEL CLASS-OPTIMAL, MACHINE-CHECKED (2026-10-17)**:
   proof/Mm/SP51Optimal.lean. `kernel_optimal_for_class`: for all
   invertible linear eA eB eC, chains (from ANY nine starting vectors,

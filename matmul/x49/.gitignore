@@ -1,0 +1,7 @@
+# Regenerable (see README.md): scan/refine/anneal outputs, the 200 mixed
+# schemes (python3 mixed.py random 200 mix), their SMS copies, and the
+# SMS sample of the gitignored July corpus.
+out/
+mix/
+mixsms/
+sample/

@@ -1,0 +1,6 @@
+  U table done (136s)
+  V table done (274s)
+  W table done (411s)
+orbit minimum (BP x1 side costs): 156 = sides + 33; per-X minima histogram [(156, 9), (158, 36), (160, 72), (161, 72), (162, 36), (163, 72), (164, 156), (165, 36), (166, 90), (167, 72), (168, 36), (170, 72), (171, 72), (174, 9)]  (411s)
+wrote 1291 candidate triples within +2 of the minimum to out/scan49/scan_cands.txt
+(410.9s)

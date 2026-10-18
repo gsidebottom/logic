@@ -1662,6 +1662,59 @@ fn scan(pre: &str, o: &Opts) {
     println!("wrote {cnt} candidate triples within +{} of the minimum to {outdir}/scan_cands.txt", o.depth);
 }
 
+/// Batch orbit screen: for each .bits scheme (anf.rs order: alpha, beta,
+/// gamma blocks of 16 bits each), a few short annealing chains from random
+/// orbit points; prints the best BP total per scheme.  Parallel over schemes.
+fn screen(list: &str, o: &Opts, steps: usize, chains: usize) {
+    let names: Vec<String> = std::fs::read_to_string(list).unwrap().lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+    let g = gl42();
+    let oo = OrbitOpts { restarts: chains, sweeps: 0, topk: 0, final_runs: 16, anneal: steps, t0: 2.0, t1: 0.2, collect: 0 };
+    let done = std::sync::atomic::AtomicUsize::new(0);
+    let out = std::sync::Mutex::new(Vec::new());
+    names.par_iter().enumerate().for_each(|(i, nm)| {
+        let txt = std::fs::read_to_string(nm).unwrap();
+        let b: Vec<u8> = txt.trim().bytes().map(|c| c - b'0').collect();
+        assert_eq!(b.len() % 48, 0, "{nm}: not a 4x4x4 bits file");
+        let r = b.len() / 48;
+        let blk = |off: usize, m: usize| (0..16).fold(0u16, |a, k| a | ((b[off + 16 * m + k] as u16) << k));
+        let s0 = Scheme {
+            u: (0..r).map(|m| blk(0, m)).collect(),
+            v: (0..r).map(|m| blk(16 * r, m)).collect(),
+            w: (0..r).map(|m| blk(32 * r, m)).collect(),
+        };
+        if !s0.brent_ok() {
+            println!("{nm}: FAILS Brent, skipped");
+            return;
+        }
+        let mut ws = Ws::new(o.seed ^ (i as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        let mut best = (usize::MAX, 0usize, [(0u16, 0u16); 3]);
+        for _ in 0..chains {
+            let sg = ws.rng.below(6);
+            let base = s0.sym(sg);
+            let st = [g[ws.rng.below(g.len())], g[ws.rng.below(g.len())], g[ws.rng.below(g.len())]];
+            let mut keep = Vec::new();
+            let (cur, _) = anneal_restart(&base, st, &oo, &mut ws, &mut keep);
+            let (c, _) = scheme_cost(&base.act(cur[0], cur[1], cur[2]), &mut ws, oo.final_runs, Params { slack: 0, p: 0.0, pilot: 0 });
+            if c < best.0 {
+                best = (c, sg, cur);
+            }
+        }
+        let k = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        println!("{nm} best {} (sigma {} X {:04x} Y {:04x} Z {:04x})  [{k}/{}]", best.0, best.1, best.2[0].0, best.2[1].0, best.2[2].0, names.len());
+        out.lock().unwrap().push((best.0, nm.clone()));
+    });
+    let mut v = out.into_inner().unwrap();
+    v.sort();
+    let mut hist: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
+    for (c, _) in &v {
+        *hist.entry(*c).or_default() += 1;
+    }
+    println!("screen done: histogram {:?}", hist);
+    if let Some(f) = &o.out {
+        std::fs::write(f, v.iter().map(|(c, n)| format!("{c} {n}\n")).collect::<String>()).unwrap();
+    }
+}
+
 /// Exact refinement of collected orbit points: per side, BP with
 /// o.runs restarts, then an exact search one helper below BP (time cap
 /// o.cap per side).  Writes the best point's sms + programs.
@@ -1996,6 +2049,15 @@ fn main() {
         rayon::ThreadPoolBuilder::new().num_threads(o.threads).build_global().unwrap();
         let t0 = std::time::Instant::now();
         scan(&args[2], &o);
+        println!("({:.1}s)", t0.elapsed().as_secs_f64());
+        return;
+    }
+    if args[1] == "screen" {
+        // xor47 screen LIST --runs STEPS --depth CHAINS [--threads T] [--out RANKED.txt]
+        let o = parse_opts(&args[3..]);
+        rayon::ThreadPoolBuilder::new().num_threads(o.threads).build_global().unwrap();
+        let t0 = std::time::Instant::now();
+        screen(&args[2], &o, o.runs, o.depth.max(1));
         println!("({:.1}s)", t0.elapsed().as_secs_f64());
         return;
     }

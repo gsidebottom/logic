@@ -1509,6 +1509,20 @@ the two source papers for this track):
   needs >= 7 helpers): KM 7, AT 0, ref 78. S3-symmetric SAT (s3cnf.py):
   rank 49 (4,8,0,1) SAT in 6 min; rank 47: 8 h pool over 144 shapes, no
   scheme, 53 UNSAT (cadical, unchecked), 91 open. Paper draft updated.
+- **4×4 RANK-49 ALL-RINGS SCREEN (2026-10-18): no point below 156**
+  (matmul/x49/README.md).  Target: PLinOpt's 156 (5+8/11), valid over
+  every ring; F₂ costs bound signed programs from below.  Strassen²
+  class: orbit-scan minimum 156; all 1291 coset triples within +2
+  refined exactly (36 at 156, rest 158, BP optimal on every side; not
+  settled outside the window).  July F₂ corpus: 5 sampled schemes not
+  ±1-liftable; screen stopped at 36/2012 (best 156, r49-20127, lift
+  untested).  New integral family, mixed-inner Strassen (mixed.py: each
+  outer product gets its own inner scheme from Strassen's 36-element
+  orbit): 200 members, `xor47 screen` histogram 156:1 157:22 158:82
+  159:79 160:13 161:3; exact orbit scans of the top five: 156, 157×4.
+  The 167 went to PLinOpt as jgdumas/plinopt PR #22.  MMchecker -q 2 is
+  one random F₂ test per run (a corrupted copy passed 31/40), so
+  correctness rests on x47check.py's 256 basis pairs.
 - **★ S-P 51 KERNEL CLASS-OPTIMAL, MACHINE-CHECKED (2026-10-17)**:
   proof/Mm/SP51Optimal.lean. `kernel_optimal_for_class`: for all
   invertible linear eA eB eC, chains (from ANY nine starting vectors,

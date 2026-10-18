@@ -850,14 +850,24 @@ impl<'a> Sls<'a> {
 /// each representative's value to its orbit yields a symmetric solution
 /// of the original system (callers re-verify the expansion).
 pub fn quotient_anf(anf: &Anf, map: &[u32]) -> Anf {
+    // A monomial whose factors share a representative is x*x*y = x*y over
+    // F2: reduce to distinct variables and pad with a constant-1 variable
+    // (index anf.nvars; callers must freeze it to 1).  Without this,
+    // x*x*y and x*y*y fail to cancel and the incremental flip deltas count
+    // the repeated factor twice.
+    let one = anf.nvars as u32;
     let mut eqs: Vec<(Vec<[u32; 3]>, u8)> = Vec::with_capacity(anf.neqs());
     for e in 0..anf.neqs() {
         let mut mons: Vec<[u32; 3]> = Vec::new();
         for i in anf.eq_off[e]..anf.eq_off[e + 1] {
             let [x, y, z] = anf.mons[i as usize];
-            let mut m = [map[x as usize], map[y as usize], map[z as usize]];
-            m.sort_unstable();
-            mons.push(m);
+            let mut v = vec![map[x as usize], map[y as usize], map[z as usize]];
+            v.sort_unstable();
+            v.dedup();
+            while v.len() < 3 {
+                v.push(one);
+            }
+            mons.push([v[0], v[1], v[2]]);
         }
         mons.sort_unstable();
         let mut kept: Vec<[u32; 3]> = Vec::with_capacity(mons.len());
@@ -874,7 +884,7 @@ pub fn quotient_anf(anf: &Anf, map: &[u32]) -> Anf {
         }
         eqs.push((kept, anf.rhs[e]));
     }
-    Anf::new(anf.nvars, eqs)
+    Anf::new(anf.nvars + 1, eqs)
 }
 
 /// One portfolio outcome; [`solve_portfolio`] documents the fields.

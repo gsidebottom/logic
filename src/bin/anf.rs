@@ -209,6 +209,10 @@ fn main() {
         );
         std::mem::replace(&mut anf, quotient)
     });
+    if let Some(orig) = &full_anf {
+        // the quotient's constant-1 padding variable
+        frozen.push((orig.nvars as u32, 1));
+    }
 
     let init_bits = args
         .iter()
@@ -228,19 +232,20 @@ fn main() {
     let dt = t0.elapsed().as_secs_f64();
     let emit_best = args.iter().any(|a| a == "--emit-best");
     let rate = flips as f64 / dt / 1e6;
-    let sol = sol.map(|mut bits| {
+    let sol = sol.map(|bits| {
         if let (Some(map), Some(orig)) = (&orbit, &full_anf) {
-            for v in 0..bits.len() {
-                bits[v] = bits[map[v] as usize];
-            }
-            let bad = verify(orig, &bits);
+            let full: Vec<u8> = (0..orig.nvars).map(|v| bits[map[v] as usize]).collect();
+            let bad = verify(orig, &full);
             assert_eq!(
                 bad, 0,
                 "QUOTIENT BUG: expanded solution fails the full Brent system"
             );
+            full
+        } else {
+            bits
         }
-        bits
     });
+    let anf = full_anf.unwrap_or(anf);
     match sol {
         Some(bits) => {
             let bad = verify(&anf, &bits);

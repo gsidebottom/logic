@@ -1,0 +1,508 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs}
+\usepackage{verbatim}
+\usepackage{multicol}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\hypersetup{pdftitle={167 XORs for Rank-47 4x4 Matrix Multiplication over F2},pdfauthor={Greg Sidebottom}}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newcommand{\F}{\mathbb{F}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\XOR}{\operatorname{X}}
+\title{167 XORs for Rank-47 $4\times4$ Matrix Multiplication\\
+in Characteristic Two}
+\author{Greg Sidebottom}
+\date{Draft --- October 17, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Rank-47 bilinear schemes multiply $4\times4$ matrices with $47$
+multiplications over any ring of characteristic two; at least three
+inequivalent ones are publicly available.  Applied recursively, a
+scheme whose three linear maps use $q$ additions (XORs) costs
+$(1+q/31)\,n^{\log_4 47}+o(n^{\log_4 47})$ operations, so $q$ fixes
+the leading constant.  The best count known for a rank-47 scheme was
+$170$ (Dumas, Pernet, Sedoglavic, Stapleton and Tichavsk\'y, 2026).  We
+give a rank-47 scheme over $\F_2$ whose maps cost
+$44+49+74=167$ XORs, leading constant $6+12/31$, and $168$ for the
+published scheme itself.  The new scheme lies in the symmetry orbit of
+Kauers and Moosbauer's rank-47 scheme.  It was found by simulated
+annealing over the orbit, scored by a Boyar--Peralta heuristic with
+exact distances, followed by an exact search for the minimum number of
+non-target XORs on each side; for this scheme all three counts are
+proved minimal.  Across the three known classes, every annealing
+chain ends at $168$ under the heuristic, and only the Kauers--Moosbauer
+class reaches $167$ after exact refinement.  All programs are checked
+by an independent verifier and by PLinOpt's \texttt{SLPchecker}.  We
+also summarize the current rank and addition records for $4\times4$
+matrix multiplication with and without change of basis.
+\end{abstract}
+
+\section{Introduction}
+
+Strassen's algorithm applied to $2\times2$ blocks of $2\times2$
+matrices multiplies $4\times4$ matrices with $49$ multiplications over
+any ring~\cite{Strassen69}.  AlphaTensor lowered this to $47$ in
+characteristic two~\cite{Fawzi22}; Kauers and Moosbauer found an
+inequivalent rank-47 scheme with flip graphs~\cite{KM23}; and a third,
+attributed in~\cite{DPSST26} to AlphaEvolve~\cite{Novikov25}, is the
+one whose programs PLinOpt distributes~\cite{PLinOpt}.  Outside
+characteristic two the record is $48$, over the complex numbers by
+AlphaEvolve and over any ring containing $1/2$ by Dumas, Pernet and
+Sedoglavic~\cite{DPS25}.
+
+Used recursively, a scheme's multiplication count fixes the exponent
+and its additions fix the constant.  For an
+$\langle n_0\times n_0\times n_0:r\rangle$ scheme whose linear maps use
+$q$ additions and scalings in total,
+\[
+F(n) = r\,F(n/n_0) + q\,(n/n_0)^2
+\quad\Longrightarrow\quad
+F(n) = \Bigl(1+\frac{q}{r-n_0^2}\Bigr)n^{\log_{n_0} r} + o\bigl(n^{\log_{n_0} r}\bigr),
+\]
+so at $r=47$, $n_0=4$ the constant is $1+q/31$.  Over $\F_2$ every
+addition is an XOR and no scalings occur.  Recent work drove the
+rank-48 count from $315$ operations~\cite{DPS25} down to
+$204$~\cite{DPSST26}; for rank $47$, the same paper reports the best
+known program at $170$ XORs, constant $6+15/31$.
+
+\paragraph{Contributions.}
+\begin{itemize}
+\item A rank-47 scheme over $\F_2$ with $167=44+49+74$ XORs (constant
+  $6+12/31\approx6.387$), given in full in Appendix~A, and $168$ for
+  the published scheme (Section~\ref{sec:results}).  For the new
+  scheme each side's count is proved minimal.
+\item An exact method for the minimum XOR count of a side with few
+  non-target signals (Section~\ref{sec:exact}): the problem reduces to
+  choosing those signals, and iterative deepening over their number is
+  exact and fast up to four of them.
+\item A search over each scheme's symmetry orbit by simulated annealing,
+  and the observation that all three known classes plateau at $168$
+  under heuristic scoring (Section~\ref{sec:results}).
+\item A summary of the current $4\times4$ records
+  (Section~\ref{sec:records}).
+\end{itemize}
+
+\section{Records for $4\times4$ matrix multiplication}\label{sec:records}
+
+Table~\ref{tab:rank} lists the best known ranks; Tables~\ref{tab:flat}
+and~\ref{tab:alt} the best known addition counts, without and with a
+change of basis.  The leading constants compare only within one rank,
+since each rank recurses with its own exponent.
+
+\begin{table}[ht]
+\centering
+\caption{Best known rank of $\langle4,4,4\rangle$.}\label{tab:rank}
+\begin{tabular}{llp{7.6cm}}
+\toprule
+setting & rank & source \\
+\midrule
+characteristic $2$ (e.g.\ $\F_2$) & $47$ & AlphaTensor~\cite{Fawzi22}; inequivalent
+  schemes by Kauers--Moosbauer~\cite{KM23} and AlphaEvolve~\cite{Novikov25,DPSST26} \\
+rings containing $1/2$ & $48$ & AlphaEvolve (over $\mathbb{C}$)~\cite{Novikov25};
+  rational coefficients~\cite{DPS25} \\
+all rings & $49$ & Strassen applied twice~\cite{Strassen69} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Best known additions (with scalings) without change of basis;
+constant of $n^{\log_4 r}$.}\label{tab:flat}
+\small
+\begin{tabular}{lllll}
+\toprule
+rank (valid over) & exponent & ops & constant & source \\
+\midrule
+$47$ (char.\ $2$) & $\log_4 47\approx2.777$ & $170$ & $6+15/31$ & \cite{PLinOpt}, cited in~\cite{DPSST26} \\
+                  &                       & $\mathbf{167}$ & $\mathbf{6+12/31}$ & this paper \\
+$48$ (rings with $1/2$) & $\log_4 48\approx2.792$ & $315$ & $10+27/32$ & \cite{DPS25} \\
+                  &                       & $204$ & $7+3/8$ & \cite{DPSST26}\,$^{a}$ \\
+$49$ (all rings)  & $\log_2 7\approx2.807$ & $165$ & $6$ & \cite{Winograd71}, applied twice \\
+                  &                       & $156$ & $5+8/11$ & \cite{PLinOpt}, cited in~\cite{DPSST26} \\
+\bottomrule
+\end{tabular}
+
+\smallskip
+\footnotesize $^{a}$ The PLinOpt repository also holds a $202$-operation
+variant (data file \texttt{4x4x4\_48\_202}, contributed by R.~Patel,
+October~2026).
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Best known constants with a change of basis (conversion
+costs are lower order).  $d$ is the encoding dimension; $d=16$ is a
+square basis change.}\label{tab:alt}
+\small
+\begin{tabular}{lllll}
+\toprule
+rank & basis change & recursive ops & constant & source \\
+\midrule
+$49$ & square ($2\times2$, twice) & $12$ per $2\times2$ step & $5$ & \cite{KS17} \\
+$48$ & square ($d=16$) & $173$ & $6+13/32$ & \cite{DPSST26} \\
+$48$ & rectangular ($d=24$) & $122$ & $6+1/12$ & \cite{DPSST26} \\
+$48$ & rect.\ ($d=24$: $A,B$; $32$: $C$) & $32+32+32$ & $5+2/3$ & \cite{DPSST26} \\
+$47$ & --- & --- & --- & none published \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two remarks.  First, the rectangular encodings of Beniamini and
+Schwartz~\cite{BS19,BCHKS20} are a different cost model from
+Karstadt and Schwartz's square basis change~\cite{KS17}: with them a
+$3\times3$ rank-23 base already reaches constant $2$~\cite{BS19}, the
+constant of the classical algorithm.  Second, the $3\times3$ analogue
+of this paper's question has seen a run of improvements:
+$60$~\cite{Stapleton25}, $59$~\cite{MSWS26}, $58$~\cite{Perminov25a},
+$56$~\cite{Sun26} and
+$55$ additions~\cite{Sidebottom26a,KI26} without change of basis, and
+$52$~\cite{Nielsen26} then $51$ additions per step~\cite{SP26,Sidebottom26b}
+with a square basis change.  M{\aa}rtensson and Stankovski
+Wagner~\cite{MW24,MW26} and Perminov~\cite{Perminov25b} study
+addition reduction for many formats; Dumas, Pernet and
+Sedoglavic~\cite{DPS25,DPS26a,DPSST26} and the PLinOpt
+tools~\cite{PLinOpt} are the reference for $4\times4$.
+
+\section{Model, lower bounds and symmetry}\label{sec:model}
+
+A rank-$r$ scheme for $\langle4,4,4\rangle$ over $\F_2$ is a triple of
+matrices $L\in\F_2^{r\times16}$, $R\in\F_2^{r\times16}$,
+$P\in\F_2^{16\times r}$ with
+\[
+\operatorname{vec}(AB) = P\bigl((L\operatorname{vec}A)\odot(R\operatorname{vec}B)\bigr)
+\]
+for all $A,B$, where $\operatorname{vec}$ lists entries row by row and
+$\odot$ is the entrywise product.  Equivalently, product $k$ is
+$m_k=\langle U_k,A\rangle\langle V_k,B\rangle$ for $4\times4$ matrices
+$U_k,V_k$ (rows $k$ of $L$ and $R$) and $AB=\sum_k m_kW_k$ ($W_k$ is
+column $k$ of $P$).  Since the identity holds over the field $\F_2$, it
+holds for entries in any ring of characteristic two, commutative or not,
+so the scheme recurses on blocks.
+
+\paragraph{Cost.}  For a matrix $M$ with rows over the inputs, let
+$\XOR(M)$ be the fewest XOR gates of a straight-line program computing
+all rows of $M$ from the inputs (copies are free).  The cost of a scheme
+is $\XOR(L)+\XOR(R)+\XOR(P)$.  The output side is handled through its
+transpose: by the transposition principle~\cite{BCS97} a linear program
+for a matrix without zero rows or columns can be reversed into one for
+its transpose, and $\XOR(P)=\XOR(P^{\mathsf T})+(r-16)$.  All three
+sides are therefore instances of one problem: compute a set of $r$
+vectors of $\F_2^{16}$ from the $16$ unit vectors.  Over $\F_2$ the
+shortest such program is NP-hard to find in general~\cite{BMP08}.
+
+\paragraph{Floor.}  Every target that is not a unit vector needs a gate
+of its own, so $\XOR(M)\ge|T(M)|$, where $T(M)$ is the set of distinct
+non-unit rows.  For a scheme this gives the floor
+$|T(L)|+|T(R)|+|T(P^{\mathsf T})|+31$.
+
+\paragraph{Symmetry.}  If $(U_k,V_k,W_k)_k$ is a scheme, so is
+$(X^{\mathsf T}U_kY^{-\mathsf T},\;Y^{\mathsf T}V_kZ^{-\mathsf T},\;
+X^{-1}W_kZ)_k$ for invertible $X,Y,Z$ (substitute $A\mapsto XAY^{-1}$,
+$B\mapsto YBZ^{-1}$), and so are the images under the cyclic symmetry
+$(U,V,W)\mapsto(V,W^{\mathsf T},U^{\mathsf T})$ and the transposition
+$(U,V,W)\mapsto(V^{\mathsf T},U^{\mathsf T},W^{\mathsf T})$ of the
+matrix multiplication tensor~\cite{deGroote78}.  Over $\F_2$ the orbit
+of a scheme has up to $6\cdot20160^3\approx4.9\cdot10^{13}$ points, all
+with the same multiplications but different linear maps, and hence
+different XOR counts.  The multiset of rank triples
+$(\operatorname{rank}U_k,\operatorname{rank}V_k,\operatorname{rank}W_k)$,
+taken up to a common permutation of the three coordinates, is constant
+on an orbit; it separates the three published rank-47 schemes, which
+are therefore pairwise inequivalent.  None of the three has two
+products sharing a factor, so each is an isolated vertex of the flip
+graph~\cite{KM23} and flip walks cannot leave it.
+
+\section{Method}\label{sec:method}
+
+\subsection{Boyar--Peralta with exact distances}
+
+Boyar and Peralta's heuristic~\cite{BP10,BMP13} keeps a base $S$ of
+computed signals, initially the unit vectors, and the distance
+$\delta(t)$ of each target: one less than the fewest elements of $S$
+summing to $t$.  Each step adds a target at distance one if there is
+one, and otherwise the sum of two base elements that minimizes the
+total distance, ties broken by the larger sum of squared distances.
+With $16$ inputs the distances are exact and cheap: a table of the
+$2^{16}$ values $k(v)$ (fewest base elements summing to $v$) starts at
+the Hamming weights and is updated in one pass per new signal $s$ by
+$k(v)\leftarrow\min(k(v),\,1+k(v+s))$.  We add random tie breaking and
+optional slack, in the spirit of Tan and Peyrin~\cite{TP20}, run many
+restarts, delete unused gates, and reverse the program for $P^{\mathsf T}$
+into one for $P$.  A pilot variant (complete greedily after each of the
+best few candidates and commit to the best completion) never improved
+on the plain heuristic in our instances.
+
+\subsection{Searching the symmetry orbit}
+
+A point of the orbit is a slot symmetry together with $(X,Y,Z)\in
+GL_4(\F_2)^3$; $X$ affects the $L$ and $P$ sides, $Y$ the $L$ and $R$
+sides, $Z$ the $R$ and $P$ sides.  We tried coordinate descent (each
+step scans all $20160$ values of one coordinate, shortlists the best by
+floor and weight, and scores the shortlist with the heuristic) and
+simulated annealing whose moves multiply one coordinate by an
+elementary matrix $I+E_{ij}$ on either side and rescore the two
+affected sides.  Annealing was clearly better: on the AlphaTensor class
+two chains of $3000$ moves reached $168$, where $240$ coordinate-descent
+restarts reached $169$ once.  Every orbit point that is written out is
+checked against all $256$ basis products.
+
+\subsection{Exact minimization with few helper signals}\label{sec:exact}
+
+Call the gates of a program that compute targets \emph{target gates}
+and the others \emph{helpers}.  A program for $T$ has $|T|+h$ gates
+when it uses $h$ helpers.  The following lemma removes all choices
+except the helpers.  For $S\subseteq\F_2^{16}$ let $\operatorname{cl}(S)$
+be the least superset of $S$ that contains every target equal to the
+sum of two of its elements.
+
+\begin{lemma}\label{lem:closure}
+A program computing $T$ with exactly $h$ helpers exists if and only if
+there are $x_1,\dots,x_h$ such that, with
+$S_0=\operatorname{cl}(\{e_1,\dots,e_{16}\})$ and
+$S_i=\operatorname{cl}(S_{i-1}\cup\{x_i\})$, each $x_i$ is a sum of two
+elements of $S_{i-1}$ and $T\subseteq S_h$.
+\end{lemma}
+
+\begin{proof}
+Given such $x_i$, build the program by adding targets as soon as they
+are sums of two available signals and the $x_i$ in order: every gate is
+a target or one of the $h$ helpers.  Conversely, take a program with $h$
+helpers, listed in program order as $x_1,\dots,x_h$.  By induction on
+the position in the program, every signal before $x_i$ lies in
+$S_{i-1}$: a target gate is the sum of two earlier signals, which lie
+in the current closure, so the closure contains it; hence each $x_i$ is
+a sum of two elements of $S_{i-1}$, and finally $T\subseteq S_h$.
+\end{proof}
+
+Two observations prune the search over helper sequences without losing
+solutions.  The last helper must make some missing target a sum of two
+available signals, so $x_h\in(T\setminus S_{h-1})+S_{h-1}$.  And if
+$x_{i+1}$ is already a sum of two elements of $S_{i-1}$, the two
+helpers can be exchanged without changing $S_{i+1}$; bubble-sorting any
+solution therefore yields one in which such adjacent pairs are
+increasing (as integers), and only those are explored.  Iterative
+deepening over $h$ returns the exact minimum.  Candidates are tried in
+order of how many targets they make immediately available.  With $16$
+inputs and $41$--$45$ targets, refuting $h\le3$ takes milliseconds to
+seconds and finding or refuting $h=4$ takes seconds to a minute; each
+further level costs roughly a hundred times more.
+
+\subsection{Pipeline}
+
+Annealing chains record every distinct point whose heuristic total is at
+most $169$ (about $14{,}500$ points over the three classes); each point
+is then refined side by side, searching exactly for a program one helper
+shorter than the heuristic's within a time limit.  Side results are
+cached by target set, since neighbouring points share two of their
+three sides.
+
+\section{Results}\label{sec:results}
+
+\paragraph{The published scheme.}  PLinOpt's programs for its rank-47
+scheme cost $44+44+82=170$.  The heuristic alone gives $44+44+80=168$
+for the same scheme: $P^{\mathsf T}$ needs $49$ XORs, not $51$.  Here the
+floor is low ($37+37+34+31=139$) but each side carries many helpers.
+The exact search rules out five or fewer helpers on $L$, so
+$\XOR(L)\ge43$ against the heuristic's $44$; deeper levels were out of
+reach.
+
+\paragraph{The orbit plateau.}  Table~\ref{tab:classes} lists the best
+orbit points.  Under heuristic scoring every class stops at $168$:
+$24$ of $24$ annealing chains for the AlphaTensor and published
+classes, $23$ of $24$ for the Kauers--Moosbauer class.  At an
+AlphaTensor-class point with sides $44+48+45$ (the last counted for
+$P^{\mathsf T}$) the exact search proves all three sides optimal, so that
+scheme costs exactly $168$.
+
+\begin{table}[ht]
+\centering
+\caption{Best orbit points per class (total XORs, sides $L+R+P$).}\label{tab:classes}
+\small
+\begin{tabular}{lccc}
+\toprule
+class & as given & heuristic, best point & exact refinement \\
+\midrule
+published~\cite{PLinOpt} (AlphaEvolve) & $170$ & $168=44+44+80$ & not refined \\
+AlphaTensor~\cite{Fawzi22} & $179$ & $168=44+48+76$ & $168$ ($0$ of $1203$ below) \\
+Kauers--Moosbauer~\cite{KM23} & $186$ & $168=44+50+74$ & $\mathbf{167=44+49+74}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The 167 scheme.}  Exact refinement lowers the most expensive
+side of many Kauers--Moosbauer-class points by one: of the first $537$
+points refined, $211$ reach $167$, $234$ stay at $168$ and $92$ at $169$;
+none reaches $166$.  The scheme of Appendix~A is one of them.  It is the
+image of Kauers and Moosbauer's scheme under the slot symmetry
+$(U,V,W)\mapsto(W,V^{\mathsf T},U)$ followed by the substitution with
+$(X,Y,Z)$ given by \texttt{54a8}, \texttt{59f8}, \texttt{a512} in
+Appendix~A's encoding (recomputing this image reproduces the appendix
+exactly).  Its sides have $41$, $45$ and
+$41$ distinct non-unit targets (floor $158$), and the exact search
+gives
+\[
+\XOR(L)=44\ (3\text{ helpers}),\qquad
+\XOR(R)=49\ (4\text{ helpers}),\qquad
+\XOR(P^{\mathsf T})=43\ (2\text{ helpers}),
+\]
+each with the next smaller helper count refuted, so
+$\XOR(P)=43+31=74$ and $167$ is the exact minimum for this scheme
+without change of basis.  The heuristic finds $50$ for $R$; the exact
+search finds the four-helper program.
+
+\paragraph{Leading constant.}  The scheme gives
+$F(n)=\tfrac{198}{31}\,n^{\log_4 47}+o(n^{\log_4 47})$ ring
+operations (additions and multiplications) over rings of characteristic
+two, against $\tfrac{201}{31}$ before.
+
+\section{Verification and artifacts}
+
+The scheme and programs are in the repository
+\url{https://github.com/gsidebottom/logic}, directory
+\texttt{matmul/x47/} (\texttt{best/x167/}: \texttt{x167\_\{L,R,P\}.sms}
+and \texttt{.slp} in PLinOpt formats).  Two independent checks pass:
+\begin{itemize}
+\item \texttt{x47check.py} (written for this purpose, independent of
+  the search code) evaluates each program over $\F_2$, compares every
+  output with the corresponding matrix row, counts XORs as the number of
+  terms minus one per line, and checks the scheme on all $256$ pairs of
+  basis matrices, which by bilinearity proves
+  $P((L\operatorname{vec}A)\odot(R\operatorname{vec}B))=\operatorname{vec}(AB)$;
+  it reports \texttt{OK rank 47: L 44 + R 49 + P 74 = 167 XORs
+  (Brent 256/256 basis pairs)}.
+\item PLinOpt's \texttt{SLPchecker -q 2 -M x167\_S.sms < x167\_S.slp}
+  reports \texttt{<44, 0>}, \texttt{<49, 0>} and \texttt{<74, 0>}
+  for $S=L,R,P$.
+\end{itemize}
+The search tool (\texttt{src/bin/xor47.rs}: \texttt{bp}, \texttt{scheme},
+\texttt{orbit}, \texttt{exact}, \texttt{refine}) regenerates every
+number in Section~\ref{sec:results}.
+
+\section{Outlook}
+
+The three known classes all stop at $168$ under the heuristic and the
+best refined point is $167$, so further progress most likely needs new
+rank-47 classes.  All known classes are flip-isolated, which rules out
+plain flip walks.  SAT-based search found thousands of $3\times3$
+schemes~\cite{HKS19}; we are running a SAT search for $4\times4$ schemes
+invariant under the cyclic symmetry, which divides the unknowns by three
+and made the analogous $3\times3$ search tractable.  Other directions are an exact
+search reaching five or six helpers (it would settle, for example,
+whether the published scheme's $L$ side admits $43$), the first
+alternative-basis constants for rank $47$, and rectangular encodings in
+the sense of~\cite{BS19}.
+
+\section*{Acknowledgments}
+
+This work was carried out in an extended interactive collaboration
+with Claude (Anthropic), which implemented the search and verification
+tools and much of this text under the author's direction and review.
+Every claim is checked mechanically by the tools above; the results
+rest on those checks rather than on trust in either the author or the
+tools.
+
+\begin{thebibliography}{99}
+\bibitem{BCHKS20} G.~Beniamini, N.~Cheng, O.~Holtz, E.~Karstadt,
+O.~Schwartz, \emph{Sparsifying the operators of fast matrix
+multiplication algorithms}, arXiv:2008.03759 (2020).
+\bibitem{BS19} G.~Beniamini, O.~Schwartz, \emph{Fast matrix
+multiplication via sparse decomposition}, Proc.\ SPAA 2019, 11--22.
+\bibitem{BMP08} J.~Boyar, P.~Matthews, R.~Peralta, \emph{On the
+shortest linear straight-line program for computing linear forms},
+Proc.\ MFCS 2008, LNCS 5162, 168--179.
+\bibitem{BMP13} J.~Boyar, P.~Matthews, R.~Peralta, \emph{Logic
+minimization techniques with applications to cryptology}, J.\
+Cryptology 26 (2013) 280--312.
+\bibitem{BP10} J.~Boyar, R.~Peralta, \emph{A new combinational logic
+minimization technique with applications to cryptology}, Proc.\ SEA
+2010, LNCS 6049, 178--189.
+\bibitem{BCS97} P.~B\"urgisser, M.~Clausen, M.~A.~Shokrollahi,
+\emph{Algebraic Complexity Theory}, Springer, 1997.
+\bibitem{deGroote78} H.~F.~de~Groote, \emph{On varieties of optimal
+algorithms for the computation of bilinear mappings I. The isotropy
+group of a bilinear mapping}, Theoret.\ Comput.\ Sci.\ 7 (1978) 1--24.
+\bibitem{DPS25} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, \emph{A
+non-commutative algorithm for multiplying $4\times4$ matrices using
+$48$ non-complex multiplications}, arXiv:2506.13242 (2025).
+\bibitem{DPS26a} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, \emph{A more
+accurate rational non-commutative algorithm for multiplying $4\times4$
+matrices using $48$ multiplications}, arXiv:2603.18699 (2026).
+\bibitem{DPSST26} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, J.~Stapleton,
+P.~Tichavsk\'y, \emph{Fast matrix multiplication via recursive
+$\langle4\times4\times4:48\rangle$ algorithms into practice},
+arXiv:2609.12027 (2026).
+\bibitem{PLinOpt} J.-G.~Dumas, B.~Grenet, C.~Pernet, A.~Sedoglavic,
+\emph{PLinOpt, a collection of C++ routines handling linear \&
+bilinear programs}, \url{https://github.com/jgdumas/plinopt} (data
+file \texttt{4x4x4\_47\_mod\_2}, September 2026).
+\bibitem{Fawzi22} A.~Fawzi et al., \emph{Discovering faster matrix
+multiplication algorithms with reinforcement learning}, Nature 610
+(2022) 47--53.
+\bibitem{HKS19} M.~J.~H.~Heule, M.~Kauers, M.~Seidl, \emph{Local search
+for fast matrix multiplication}, Proc.\ SAT 2019, LNCS 11628, 155--163.
+\bibitem{KS17} E.~Karstadt, O.~Schwartz, \emph{Matrix multiplication, a
+little faster}, Proc.\ SPAA 2017, 101--110; J.\ ACM 67 (2020).
+\bibitem{KI26} S.~Karunaratne, A.~Idamekorala, \emph{55 additions
+suffice for $3\times3$ matrix multiplication at rank 23},
+arXiv:2607.28676 (2026).
+\bibitem{KM23} M.~Kauers, J.~Moosbauer, \emph{Flip graphs for matrix
+multiplication}, Proc.\ ISSAC 2023; arXiv:2212.01175.
+\bibitem{MSWS26} E.~M{\aa}rtensson, P.~Stankovski Wagner, J.~Stapleton,
+\emph{A rank 23 algorithm for multiplying $3\times3$ matrices with an
+arithmetic complexity of 59}, arXiv:2601.05272 (2026).
+\bibitem{MW24} E.~M{\aa}rtensson, P.~Stankovski Wagner, \emph{The number
+of the beast: reducing additions in fast matrix multiplication
+algorithms for dimensions up to 666}, IACR ePrint 2024/2063.
+\bibitem{MW26} E.~M{\aa}rtensson, P.~Stankovski Wagner, \emph{On why and
+how to minimize the arithmetic complexity of fast matrix multiplication
+algorithms}, IACR ePrint 2026/849.
+\bibitem{Nielsen26} H.~Nielsen, \emph{A 52-addition, rank-23 scheme for
+exact $3\times3$ matrix multiplication}, arXiv:2609.06588 (2026).
+\bibitem{Novikov25} A.~Novikov et al., \emph{AlphaEvolve: a coding agent
+for scientific and algorithmic discovery}, arXiv:2506.13131 (2025).
+\bibitem{Perminov25a} A.~I.~Perminov, \emph{A 58-addition, rank-23
+scheme for general $3\times3$ matrix multiplication}, arXiv:2512.21980
+(2025).
+\bibitem{Perminov25b} A.~I.~Perminov, \emph{Parallel heuristic
+exploration for additive complexity reduction in fast matrix
+multiplication}, arXiv:2512.13365 (2025).
+\bibitem{Sidebottom26a} G.~Sidebottom, \emph{A 55-addition rank-23
+scheme for $3\times3$ matrix multiplication via exact two-sided
+minimization}, Zenodo,
+\href{https://doi.org/10.5281/zenodo.21240904}{doi:10.5281/zenodo.21240904}
+(July 2026).
+\bibitem{Sidebottom26b} G.~Sidebottom, \emph{51 additions per recursive
+step for rank-23 $3\times3$ matrix multiplication, machine-checked over
+arbitrary rings}, Zenodo,
+\href{https://doi.org/10.5281/zenodo.23305910}{doi:10.5281/zenodo.23305910}
+(October 2026).
+\bibitem{SP26} J.~Stapleton, A.~Perminov, \emph{A 51-addition
+alternative-basis kernel for rank-23 $3\times3$ matrix
+multiplication}, arXiv:2609.32388 (2026).
+\bibitem{Stapleton25} J.~Stapleton, \emph{A 60-addition, rank-23 scheme
+for exact $3\times3$ matrix multiplication}, arXiv:2508.03857 (2025).
+\bibitem{Strassen69} V.~Strassen, \emph{Gaussian elimination is not
+optimal}, Numer.\ Math.\ 13 (1969) 354--356.
+\bibitem{Sun26} Y.~Sun, \emph{An exact 56-addition, rank-23 scheme for
+general $3\times3$ matrix multiplication}, arXiv:2604.27645 (2026).
+\bibitem{TP20} Q.~Q.~Tan, T.~Peyrin, \emph{Improved heuristics for short
+linear programs}, IACR Trans.\ Cryptogr.\ Hardw.\ Embed.\ Syst.\
+2020(1) 203--230.
+\bibitem{Winograd71} S.~Winograd, \emph{On multiplication of $2\times2$
+matrices}, Linear Algebra Appl.\ 4 (1971) 381--388.
+\end{thebibliography}
+
+\appendix
+\section{The 167-XOR scheme}\label{app:scheme}
+\input{matmul_4x4_rank47_xor167_appendix.tex}
+
+\end{document}

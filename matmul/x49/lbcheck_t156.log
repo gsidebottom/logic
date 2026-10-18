@@ -1,0 +1,10 @@
+rank 49; |GL(4,2)| = 20160, 840 cosets; side-sum goal 123
+action check: 12/12 random orbit points pass Brent; wrong formula fails 12 / 12
+  U table: floors 39..49
+  V table: floors 39..49
+  W table: floors 39..49
+coset check: 40/40 random orbit points match their coset entries
+22284 coset triples have floor sum <= 123
+closure bits computed for 11340 sides; triples with lower bound < 123: 0, = 123: 36
+VERIFIED: every point of the orbit costs at least 156 (36 coset triples meet the bound)
+exit 0

@@ -1,0 +1,12 @@
+side 0: 488208 distinct target sets so far; floor histogram 39:36 40:720 41:2412 42:9720 43:22272 44:56412 45:90909 46:152652  (0s)
+side 1: 488208 distinct target sets so far; floor histogram 39:36 40:720 41:2412 42:9720 43:22272 44:56412 45:90909 46:152652  (0s)
+side 2: 937567 distinct target sets so far; floor histogram 39:36 40:720 41:2412 42:9720 43:22272 44:56412 45:90909 46:152652  (1s)
+level 0: 15855 of 937567 sets exact at their floor (1s)
+round 1: deficient entries U 36 V 36 W 36; deficient sets 28 (exact 0, stuck 0, to raise 28)  (1s)
+  level 1: 28 sets: 0 refuted (bound +1), 28 exact, 0 timed out (1s)
+round 2: deficient entries U 36 V 36 W 36; deficient sets 28 (exact 28, stuck 0, to raise 0)  (1s)
+helper levels refuted per set: 0:15855 1:921712
+NOT PROVED: 36 coset triples may cost less than 157: 36 with all three sides exact (genuine points), 0 with an open side  (1s)
+wrote up to 200 triples per X to out/lb49/t157/lbscan_triples.txt and the open sides to out/lb49/t157/lbscan_open_sides.txt
+(1.0s)
+exit 0

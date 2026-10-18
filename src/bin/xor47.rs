@@ -1805,6 +1805,300 @@ fn refine(pre: &str, cands: &str, o: &Opts) {
     println!("best {}  (side cache hits {})", best.lock().unwrap(), hits.load(std::sync::atomic::Ordering::Relaxed));
 }
 
+// ------------------------------------------------- whole-orbit lower bounds
+//
+// `scan` scores every coset pair with Boyar-Peralta (upper bounds);
+// `lbscan` proves lower bounds on all of them.  A side with targets T
+// costs |T| + h (h = helpers), and refuting one more helper level raises
+// its bound by one.  A coset triple can cost less than `target` only if
+// its three lower bounds allow it, so levels are refuted only for target
+// sets that sit in such a triple, lowest level first, until no triple is
+// left (a proof for the whole orbit), or the triples left have only exact
+// sides (genuine points below `target`) or sides the search could not
+// decide within the cap and depth.
+
+struct LbSet {
+    key: Vec<u16>,
+    lev: u8,
+    exact: bool,
+    stuck: bool,
+}
+
+/// One helper level of the exact search on the calling thread, with a time
+/// cap: Some(true) if |T| + h XORs suffice, Some(false) if refuted, None on
+/// timeout.  Lower levels must already be refuted.
+fn level_test(key: &[u16], h: usize, cap: f64, ws: &mut ExactWs) -> Option<bool> {
+    let mut inc = vec![0u64; NV / 64];
+    let mut cl: Vec<u16> = (0..NIN).map(|i| 1u16 << i).collect();
+    for &c in &cl {
+        bput(&mut inc, c);
+    }
+    let mut rem = key.to_vec();
+    closure(&mut inc, &mut cl, &mut rem);
+    if rem.is_empty() {
+        return Some(true);
+    }
+    if h == 0 {
+        return Some(false);
+    }
+    DEADLINE.with(|d| d.set(Some(std::time::Instant::now() + std::time::Duration::from_secs_f64(cap))));
+    TIMED_OUT.with(|f| f.set(false));
+    let nodes = std::sync::atomic::AtomicU64::new(0);
+    ws.mark_ps(0, &cl);
+    let tops = cands_v2(&inc, &cl, &rem, 0, h == 1, ws, &[]);
+    let mut found = false;
+    for &x in &tops {
+        ws.mark_ps(0, &cl);
+        let len0 = cl.len();
+        closure_add(&mut inc, &mut cl, &mut rem, x);
+        let ok = if h == 1 {
+            rem.is_empty()
+        } else {
+            let mut path = vec![(x, 0usize)];
+            dfs_v2(&mut inc, &mut cl, &mut rem, h - 1, 1, &mut path, ws, &nodes).is_some()
+        };
+        closure_undo(&mut inc, &mut cl, &mut rem, len0);
+        if ok {
+            found = true;
+            break;
+        }
+        if TIMED_OUT.with(|f| f.get()) {
+            break;
+        }
+    }
+    let to = TIMED_OUT.with(|f| f.get());
+    DEADLINE.with(|d| d.set(None));
+    if found {
+        Some(true)
+    } else if to {
+        None
+    } else {
+        Some(false)
+    }
+}
+
+fn lbscan(pre: &str, o: &Opts) {
+    let s0 = Scheme::from_sms(pre);
+    assert!(s0.brent_ok(), "input scheme fails Brent");
+    let r = s0.u.len();
+    assert!(o.target > r - NIN, "lbscan needs --target T: prove every orbit point costs at least T");
+    let goal = (o.target - (r - NIN)) as u16; // what the three side costs must reach together
+    let g = gl42();
+    let reps = coset_reps(&g);
+    let n = reps.len();
+    assert_eq!(n, 840, "expected 840 right cosets");
+    let t0 = std::time::Instant::now();
+    let el = || t0.elapsed().as_secs_f64();
+    let fams = [&s0.u, &s0.v, &s0.w];
+    // same layout as scan: U[x][y] = {X^T U Y^-T}, V[y][z] = {Y^T V Z^-T}, W[z][x] = {X^-1 W Z}
+    let targets = |which: usize, xi: (u16, u16), xj: (u16, u16)| -> Vec<u16> {
+        let mut t: Vec<u16> = fams[which]
+            .iter()
+            .map(|&m| if which < 2 { m_mul(m_mul(m_t(xi.0), m), m_t(xj.1)) } else { m_mul(m_mul(xj.1, m), xi.0) })
+            .filter(|v| v.count_ones() > 1)
+            .collect();
+        t.sort_unstable();
+        t.dedup();
+        t
+    };
+    // gate: a permutation on the right of either factor keeps the target count
+    {
+        let perms = perm_mats();
+        let mut rng = Rng(o.seed ^ 91);
+        for _ in 0..200 {
+            let which = rng.below(3);
+            let (i, j) = (rng.below(n), rng.below(n));
+            let q = perms[rng.below(24)];
+            let (a, b) = (reps[i], reps[j]);
+            let aq = (m_mul(a.0, q), m_mul(m_t(q), a.1));
+            let bq = (m_mul(b.0, q), m_mul(m_t(q), b.1));
+            let base = targets(which, a, b).len();
+            assert_eq!(base, targets(which, aq, b).len(), "coset gate failed (first factor)");
+            assert_eq!(base, targets(which, a, bq).len(), "coset gate failed (second factor)");
+        }
+    }
+    let mut index: HashMap<Vec<u16>, u32> = HashMap::new();
+    let mut sets: Vec<LbSet> = Vec::new();
+    let mut ids: Vec<Vec<u32>> = Vec::new();
+    for which in 0..3 {
+        let keys: Vec<Vec<u16>> = (0..n * n).into_par_iter().map(|e| targets(which, reps[e / n], reps[e % n])).collect();
+        let mut tab = Vec::with_capacity(n * n);
+        for t in keys {
+            let id = match index.get(&t) {
+                Some(&id) => id,
+                None => {
+                    let id = sets.len() as u32;
+                    index.insert(t.clone(), id);
+                    sets.push(LbSet { key: t, lev: 0, exact: false, stuck: false });
+                    id
+                }
+            };
+            tab.push(id);
+        }
+        let mut fl = vec![0usize; 64];
+        for &id in &tab {
+            fl[sets[id as usize].key.len().min(63)] += 1;
+        }
+        println!("side {which}: {} distinct target sets so far; floor histogram {}  ({:.0}s)", sets.len(), hist_str(&fl), el());
+        ids.push(tab);
+    }
+    drop(index);
+    // level 0: the inputs alone reach every target
+    sets.par_iter_mut().for_each(|s| {
+        let mut inc = vec![0u64; NV / 64];
+        let mut cl: Vec<u16> = (0..NIN).map(|i| 1u16 << i).collect();
+        for &c in &cl {
+            bput(&mut inc, c);
+        }
+        let mut rem = s.key.clone();
+        closure(&mut inc, &mut cl, &mut rem);
+        if rem.is_empty() {
+            s.exact = true;
+        } else {
+            s.lev = 1;
+        }
+    });
+    println!("level 0: {} of {} sets exact at their floor ({:.0}s)", sets.iter().filter(|s| s.exact).count(), sets.len(), el());
+    // c[p][q] = min_m a[p][m] + b[m][q]
+    let mp = |a: &[u8], b: &[u8]| -> Vec<u16> {
+        (0..n)
+            .into_par_iter()
+            .flat_map_iter(|p| {
+                let mut row = vec![u16::MAX; n];
+                for m in 0..n {
+                    let am = a[p * n + m] as u16;
+                    for (q, &bv) in b[m * n..(m + 1) * n].iter().enumerate() {
+                        let v = am + bv as u16;
+                        if v < row[q] {
+                            row[q] = v;
+                        }
+                    }
+                }
+                row
+            })
+            .collect()
+    };
+    let lb_tables = |sets: &[LbSet]| -> Vec<Vec<u8>> {
+        ids.iter().map(|tab| tab.par_iter().map(|&id| (sets[id as usize].key.len() + sets[id as usize].lev as usize).min(255) as u8).collect()).collect()
+    };
+    let mut round = 0usize;
+    loop {
+        round += 1;
+        let lbt = lb_tables(&sets);
+        // partner minima: U[x][y] <- (V*W)[y][x], V[y][z] <- (W*U)[z][y], W[z][x] <- (U*V)[x][z]
+        let part = [mp(&lbt[1], &lbt[2]), mp(&lbt[2], &lbt[0]), mp(&lbt[0], &lbt[1])];
+        let mut req = vec![0u16; sets.len()];
+        let mut deficient = [0usize; 3];
+        for k in 0..3 {
+            for e in 0..n * n {
+                let need = goal.saturating_sub(part[k][(e % n) * n + e / n]);
+                if (lbt[k][e] as u16) < need {
+                    deficient[k] += 1;
+                    let id = ids[k][e] as usize;
+                    req[id] = req[id].max(need);
+                }
+            }
+        }
+        let open: Vec<usize> = (0..sets.len()).filter(|&i| req[i] > 0).collect();
+        let todo: Vec<usize> = open.iter().copied().filter(|&i| !sets[i].exact && !sets[i].stuck).collect();
+        println!(
+            "round {round}: deficient entries U {} V {} W {}; deficient sets {} (exact {}, stuck {}, to raise {})  ({:.0}s)",
+            deficient[0], deficient[1], deficient[2], open.len(),
+            open.iter().filter(|&&i| sets[i].exact).count(),
+            open.iter().filter(|&&i| sets[i].stuck).count(),
+            todo.len(), el()
+        );
+        if todo.is_empty() {
+            break;
+        }
+        let minlev = todo.iter().map(|&i| sets[i].lev).min().unwrap();
+        let batch: Vec<usize> = todo.into_iter().filter(|&i| sets[i].lev == minlev).collect();
+        if minlev as usize > o.depth {
+            for &i in &batch {
+                sets[i].stuck = true;
+            }
+            println!("  level {minlev}: {} sets beyond --depth {}, left open", batch.len(), o.depth);
+            continue;
+        }
+        let res: Vec<(usize, Option<bool>)> = batch
+            .par_iter()
+            .map_init(ExactWs::new, |ws, &i| (i, level_test(&sets[i].key, sets[i].lev as usize, o.cap, ws)))
+            .collect();
+        let (mut up, mut ex, mut to) = (0usize, 0usize, 0usize);
+        for (i, rv) in res {
+            match rv {
+                Some(true) => {
+                    sets[i].exact = true;
+                    ex += 1;
+                }
+                Some(false) => {
+                    sets[i].lev += 1;
+                    up += 1;
+                }
+                None => {
+                    sets[i].stuck = true;
+                    to += 1;
+                }
+            }
+        }
+        println!("  level {minlev}: {} sets: {up} refuted (bound +1), {ex} exact, {to} timed out ({:.0}s)", batch.len(), el());
+    }
+    // final pass over all 840^3 triples
+    let lbt = lb_tables(&sets);
+    let ex_t: Vec<Vec<bool>> = ids.iter().map(|tab| tab.iter().map(|&id| sets[id as usize].exact).collect()).collect();
+    let rows: Vec<(usize, usize, Vec<String>)> = (0..n)
+        .into_par_iter()
+        .map(|x| {
+            let (mut bad, mut genuine, mut lines) = (0usize, 0usize, Vec::new());
+            for y in 0..n {
+                let a = lbt[0][x * n + y] as u16;
+                for z in 0..n {
+                    let s = a + lbt[1][y * n + z] as u16 + lbt[2][z * n + x] as u16;
+                    if s < goal {
+                        bad += 1;
+                        let real = ex_t[0][x * n + y] && ex_t[1][y * n + z] && ex_t[2][z * n + x];
+                        genuine += real as usize;
+                        if lines.len() < 200 {
+                            lines.push(format!(
+                                "0 {:04x} {:04x} {:04x} {} {}",
+                                reps[x].0, reps[y].0, reps[z].0, s as usize + r - NIN, if real { "exact" } else { "open" }
+                            ));
+                        }
+                    }
+                }
+            }
+            (bad, genuine, lines)
+        })
+        .collect();
+    let bad: usize = rows.iter().map(|t| t.0).sum();
+    let genuine: usize = rows.iter().map(|t| t.1).sum();
+    let mut hist = vec![0usize; 64];
+    for s in &sets {
+        hist[s.lev as usize] += 1;
+    }
+    println!("helper levels refuted per set: {}", hist_str(&hist));
+    if bad == 0 {
+        println!("PROVED: every point of the orbit costs at least {} ({:.0}s)", o.target, el());
+    } else {
+        println!(
+            "NOT PROVED: {bad} coset triples may cost less than {}: {genuine} with all three sides exact (genuine points), {} with an open side  ({:.0}s)",
+            o.target, bad - genuine, el()
+        );
+        if let Some(dir) = &o.out {
+            std::fs::create_dir_all(dir).unwrap();
+            let txt: String = rows.iter().flat_map(|t| t.2.iter()).map(|l| format!("{l}\n")).collect();
+            std::fs::write(format!("{dir}/lbscan_triples.txt"), txt).unwrap();
+            let stuck: String = sets
+                .iter()
+                .filter(|s| s.stuck)
+                .map(|s| format!("{} lb {} {}\n", s.key.iter().map(|v| format!("{v:04x}")).collect::<Vec<_>>().join(","), s.key.len() + s.lev as usize, s.key.len()))
+                .collect();
+            std::fs::write(format!("{dir}/lbscan_open_sides.txt"), stuck).unwrap();
+            println!("wrote up to 200 triples per X to {dir}/lbscan_triples.txt and the open sides to {dir}/lbscan_open_sides.txt");
+        }
+    }
+}
+
 /// Settle the open sides of refined orbit points (a `refine` log): for each
 /// distinct open side (target set), search exactly one helper below the
 /// BP count, and lower while found; then recompute every point's total.
@@ -2058,6 +2352,15 @@ fn main() {
         rayon::ThreadPoolBuilder::new().num_threads(o.threads).build_global().unwrap();
         let t0 = std::time::Instant::now();
         screen(&args[2], &o, o.runs, o.depth.max(1));
+        println!("({:.1}s)", t0.elapsed().as_secs_f64());
+        return;
+    }
+    if args[1] == "lbscan" {
+        // xor47 lbscan PREFIX --target T [--depth HMAX] [--cap SECS] [--threads T] [--out DIR]
+        let o = parse_opts(&args[3..]);
+        rayon::ThreadPoolBuilder::new().num_threads(o.threads).build_global().unwrap();
+        let t0 = std::time::Instant::now();
+        lbscan(&args[2], &o);
         println!("({:.1}s)", t0.elapsed().as_secs_f64());
         return;
     }

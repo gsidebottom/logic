@@ -1513,8 +1513,8 @@ the two source papers for this track):
   (matmul/x49/README.md).  Target: PLinOpt's 156 (5+8/11), valid over
   every ring; F₂ costs bound signed programs from below.  Strassen²
   class: orbit-scan minimum 156; all 1291 coset triples within +2
-  refined exactly (36 at 156, rest 158, BP optimal on every side; not
-  settled outside the window).  July F₂ corpus: 5 sampled schemes not
+  refined exactly (36 at 156, rest 158, BP optimal on every side; the
+  whole orbit is proved in the next bullet).  July F₂ corpus: 5 sampled schemes not
   ±1-liftable; screen stopped at 36/2012 (best 156, r49-20127, lift
   untested).  New integral family, mixed-inner Strassen (mixed.py: each
   outer product gets its own inner scheme from Strassen's 36-element
@@ -1523,6 +1523,19 @@ the two source papers for this track):
   The 167 went to PLinOpt as jgdumas/plinopt PR #22.  MMchecker -q 2 is
   one random F₂ test per run (a corrupted copy passed 31/40), so
   correctness rests on x47check.py's 256 basis pairs.
+- **★ STRASSEN² CLASS PROVED >= 156 (2026-10-18)**: new `xor47 lbscan`
+  (whole-orbit lower bounds: per coset pair, distinct non-unit targets
+  plus one if the inputs' closure misses a target, then exact helper
+  levels only for target sets in a triple that could still fall below
+  the target; min-plus over all 840^3 triples).  Strassen², rank 49:
+  PROVED in 1 s with no exact search: 22,284 triples have target counts
+  summing to <= 123, the closure term lifts all but 36, and those 36 are
+  exactly refine49's 156 points.  Independent matmul/x49/lbcheck.py (own
+  GL/cosets/closure, Brent check of the action with a negative control,
+  coset-table check) agrees; both tools fail at target 157.  So the
+  all-rings 156 cannot be beaten inside this class without a change of
+  basis.  Correction: `settle` cannot close a window gap (it only
+  re-solves open sides inside the refined window); lbscan does.
 - **★ S-P 51 KERNEL CLASS-OPTIMAL, MACHINE-CHECKED (2026-10-17)**:
   proof/Mm/SP51Optimal.lean. `kernel_optimal_for_class`: for all
   invertible linear eA eB eC, chains (from ANY nine starting vectors,

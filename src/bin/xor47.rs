@@ -1305,6 +1305,171 @@ fn lns(targets: &[u16], o: &Opts, depth: usize, maxsub: usize) -> Option<Prog> {
     hit
 }
 
+// ------------------------------------------------- exhaustive orbit scan
+//
+// The 3x3 orbitscan.py idea at 4x4.  Side costs depend on two sandwich
+// factors each -- L on (X, Y), R on (Y, Z), P on (Z, X) -- and are
+// unchanged when a factor is multiplied on the right by a permutation
+// matrix (that only permutes the rows or columns of every target, i.e.
+// relabels the inputs).  So X, Y, Z range over the 840 right cosets of
+// the permutation matrices in GL(4,2); three 840 x 840 side tables (BP
+// costs) and a min-plus pass over all 840^3 triples cover the whole
+// orbit.  The slot symmetries only permute and transpose the three
+// families, which a relabelling undoes, so the plain variant suffices.
+
+fn perm_mats() -> Vec<u16> {
+    let mut out = Vec::new();
+    for a in 0..4 {
+        for b in 0..4 {
+            for c in 0..4 {
+                for d in 0..4 {
+                    let p = [a, b, c, d];
+                    let mut s = [false; 4];
+                    if p.iter().all(|&v| !std::mem::replace(&mut s[v], true)) {
+                        out.push((0..4).fold(0u16, |m, i| m | (1 << (4 * i + p[i]))));
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// right-coset representatives X.S4 of GL(4,2) (minimum u16 of each coset)
+fn coset_reps(g: &[(u16, u16)]) -> Vec<(u16, u16)> {
+    let perms = perm_mats();
+    assert_eq!(perms.len(), 24);
+    let inv: HashMap<u16, u16> = g.iter().copied().collect();
+    let mut reps: Vec<u16> = g
+        .iter()
+        .map(|&(x, _)| perms.iter().map(|&q| m_mul(x, q)).min().unwrap())
+        .collect();
+    reps.sort_unstable();
+    reps.dedup();
+    reps.into_iter().map(|x| (x, inv[&x])).collect()
+}
+
+fn scan(pre: &str, o: &Opts) {
+    let s0 = Scheme::from_sms(pre);
+    assert!(s0.brent_ok(), "input scheme fails Brent");
+    let g = gl42();
+    let reps = coset_reps(&g);
+    let n = reps.len();
+    assert_eq!(n, 840, "expected 840 right cosets");
+    // invariance gate: a permutation on the right of any factor keeps every side cost
+    {
+        let perms = perm_mats();
+        let mut ws = Ws::new(o.seed);
+        let gp = Params { slack: 0, p: 0.0, pilot: 0 };
+        let mut rng = Rng(o.seed ^ 77);
+        for _ in 0..5 {
+            let (x, y) = (reps[rng.below(n)], reps[rng.below(n)]);
+            let q = perms[rng.below(24)];
+            let xq = (m_mul(x.0, q), m_mul(m_t(q), x.1)); // (XQ)^-1 = Q^T X^-1
+            let side = |x: (u16, u16), ws: &mut Ws| {
+                let t: Vec<u16> = s0.u.iter().map(|&m| m_mul(m_mul(m_t(x.0), m), m_t(y.1))).collect();
+                let mut tt: Vec<u16> = t.iter().copied().filter(|v| v.count_ones() > 1).collect();
+                tt.sort_unstable();
+                tt.dedup();
+                (tt.len(), ws.bp(&t, 8, gp).xors())
+            };
+            let (a, b) = (side(x, &mut ws), side(xq, &mut ws));
+            assert_eq!(a.0, b.0, "coset invariance gate failed (target count)");
+            assert!(a.1.abs_diff(b.1) <= 1, "coset invariance gate failed (BP cost {} vs {})", a.1, b.1);
+        }
+    }
+    let t0 = std::time::Instant::now();
+    let gp = Params { slack: 0, p: 0.0, pilot: 0 };
+    let runs = o.runs.max(1);
+    // T_U[x][y] = cost{X^T U Y^-T}, T_V[y][z] = cost{Y^T V Z^-T}, T_W[z][x] = cost{X^-1 W Z}
+    let table = |fam: &Vec<u16>, which: usize| -> Vec<u8> {
+        let rows: Vec<Vec<u8>> = (0..n)
+            .into_par_iter()
+            .map(|i| {
+                let mut ws = Ws::new(o.seed ^ ((which * n + i) as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15));
+                (0..n)
+                    .map(|j| {
+                        let t: Vec<u16> = fam
+                            .iter()
+                            .map(|&m| match which {
+                                0 => m_mul(m_mul(m_t(reps[i].0), m), m_t(reps[j].1)),
+                                1 => m_mul(m_mul(m_t(reps[i].0), m), m_t(reps[j].1)),
+                                _ => m_mul(m_mul(reps[j].1, m), reps[i].0),
+                            })
+                            .collect();
+                        ws.bp(&t, runs, gp).xors().min(255) as u8
+                    })
+                    .collect()
+            })
+            .collect();
+        rows.concat()
+    };
+    let tu = table(&s0.u, 0); // [x][y]
+    println!("  U table done ({:.0}s)", t0.elapsed().as_secs_f64());
+    let tv = table(&s0.v, 1); // [y][z]
+    println!("  V table done ({:.0}s)", t0.elapsed().as_secs_f64());
+    let tw = table(&s0.w, 2); // [z][x]
+    println!("  W table done ({:.0}s)", t0.elapsed().as_secs_f64());
+    let r = s0.u.len();
+    // min-plus over all triples, parallel over x
+    let res: Vec<(u32, Vec<(usize, usize, usize)>)> = (0..n)
+        .into_par_iter()
+        .map(|x| {
+            let mut best = u32::MAX;
+            let mut keep = Vec::new();
+            for y in 0..n {
+                let a = tu[x * n + y] as u32;
+                for z in 0..n {
+                    let s = a + tv[y * n + z] as u32 + tw[z * n + x] as u32;
+                    if s < best {
+                        best = s;
+                        keep.clear();
+                    }
+                    if s <= best + o.depth as u32 && keep.len() < 2000 {
+                        keep.push((x, y, z));
+                    }
+                }
+            }
+            (best, keep)
+        })
+        .collect();
+    let gbest = res.iter().map(|r| r.0).min().unwrap();
+    let mut hist: HashMap<u32, usize> = HashMap::new();
+    for (b, _) in &res {
+        *hist.entry(*b).or_default() += 1;
+    }
+    let mut hv: Vec<_> = hist.into_iter().collect();
+    hv.sort();
+    println!(
+        "orbit minimum (BP x{runs} side costs): {} = sides + {}; per-X minima histogram {:?}  ({:.0}s)",
+        gbest as usize + r - NIN,
+        r - NIN,
+        hv.iter().map(|(b, c)| (*b as usize + r - NIN, *c)).collect::<Vec<_>>(),
+        t0.elapsed().as_secs_f64()
+    );
+    let outdir = o.out.clone().unwrap_or_else(|| ".".into());
+    std::fs::create_dir_all(&outdir).unwrap();
+    let mut s = String::new();
+    let mut cnt = 0;
+    for (_, keep) in &res {
+        for &(x, y, z) in keep {
+            let tot = tu[x * n + y] as u32 + tv[y * n + z] as u32 + tw[z * n + x] as u32;
+            if tot <= gbest + o.depth as u32 {
+                s += &format!("0 {:04x} {:04x} {:04x} {}\n", reps[x].0, reps[y].0, reps[z].0, tot as usize + r - NIN);
+                cnt += 1;
+            }
+        }
+    }
+    std::fs::write(format!("{outdir}/scan_cands.txt"), s).unwrap();
+    // tables for reuse
+    let mut raw = Vec::with_capacity(3 * n * n);
+    raw.extend_from_slice(&tu);
+    raw.extend_from_slice(&tv);
+    raw.extend_from_slice(&tw);
+    std::fs::write(format!("{outdir}/scan_tables.u8"), raw).unwrap();
+    println!("wrote {cnt} candidate triples within +{} of the minimum to {outdir}/scan_cands.txt", o.depth);
+}
+
 /// Exact refinement of collected orbit points: per side, BP with
 /// o.runs restarts, then an exact search one helper below BP (time cap
 /// o.cap per side).  Writes the best point's sms + programs.
@@ -1455,6 +1620,15 @@ fn main() {
         rayon::ThreadPoolBuilder::new().num_threads(o.threads).build_global().unwrap();
         let t0 = std::time::Instant::now();
         orbit(&args[2], &o, &oo);
+        println!("({:.1}s)", t0.elapsed().as_secs_f64());
+        return;
+    }
+    if args[1] == "scan" {
+        // xor47 scan PREFIX [--runs BP_PER_ENTRY] [--depth SLACK] [--threads T] [--out DIR]
+        let o = parse_opts(&args[3..]);
+        rayon::ThreadPoolBuilder::new().num_threads(o.threads).build_global().unwrap();
+        let t0 = std::time::Instant::now();
+        scan(&args[2], &o);
         println!("({:.1}s)", t0.elapsed().as_secs_f64());
         return;
     }

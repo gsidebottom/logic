@@ -353,22 +353,31 @@ refine to $167$ with sides $43+49+44$ (the last counted for
 $P^{\mathsf T}$), the multiset of the appendix scheme's sides, and the
 other $168$-triple stays at $168$ with one side open.  At an
 AlphaTensor-class point with sides $44+48+45$ the exact search proves
-all three sides optimal, so that scheme costs exactly $168$.  Triples
-with a side that needs five or more helpers below the heuristic remain
-open; the last column of Table~\ref{tab:classes} counts them.
+all three sides optimal, so that scheme costs exactly $168$.  For the
+triples that could still reach $166$, the exact search settled every
+open side needing at most six helpers below the heuristic: of these
+$144$ sides it confirmed the heuristic count on $137$, improved it by
+exactly one on $4$ (all in the Kauers--Moosbauer class) and left $3$
+unresolved within a one-hour limit.  The heuristic is rarely wrong here,
+and then by one.  No triple of any class drops below $167$.  In the AlphaTensor class no
+near-minimal triple can reach $166$ at all; the triples still open
+(last column of Table~\ref{tab:classes}) each have a side that needs
+seven or more helpers, beyond the exact search.
 
 \begin{table}[ht]
 \centering
 \caption{Exhaustive orbit scans (heuristic side costs) and exact
-refinement of the triples within $2$ of the minimum.}\label{tab:classes}
+refinement of the triples within $2$ of the minimum.  \emph{Open}: triples
+whose proved lower bound still allows $166$ or less; each has a side
+that needs at least seven helpers below the heuristic.}\label{tab:classes}
 \small
 \begin{tabular}{lcccccc}
 \toprule
 class & as given & orbit min & triples at min & refined & best exact & open \\
 \midrule
-published~\cite{PLinOpt} (AlphaEvolve) & $170$ & $168$ & $2$ & $216$ & $168$ & $122$ \\
-AlphaTensor~\cite{Fawzi22} & $179$ & $168$ & $13$ & $195$ & $168$ & $47$ \\
-Kauers--Moosbauer~\cite{KM23} & $186$ & $168$ & $2$ & $100$ & $\mathbf{167}$ & $34$ \\
+published~\cite{PLinOpt} (AlphaEvolve) & $170$ & $168$ & $2$ & $216$ & $168$ & $78$ \\
+AlphaTensor~\cite{Fawzi22} & $179$ & $168$ & $13$ & $195$ & $168$ & $0$ \\
+Kauers--Moosbauer~\cite{KM23} & $186$ & $168$ & $2$ & $100$ & $\mathbf{167}$ & $7$ \\
 \bottomrule
 \end{tabular}
 \end{table}

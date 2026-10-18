@@ -1497,6 +1497,18 @@ the two source papers for this track):
   side, cached by target set). First 136 KM refinements: 44 at 167, none
   at 166 yet. Reference L: exact h <= 5 impossible (L >= 43, BP 44); h = 6
   out of reach; helper-pool LNS inconclusive.
+- **4×4 XOR: EXHAUSTIVE ORBIT SCANS + EXACT SETTLING (2026-10-18)**:
+  xor47 scan (side costs invariant under permutation matrices on each
+  sandwich factor → 840 cosets; three 840² BP tables + min-plus over
+  840³; slot symmetries redundant): orbit minimum under BP = 168 in ALL
+  three classes (KM 2, AT 13, ref 2 coset triples). Exact core v2
+  (incremental closure, full canonical helper order, undo; ref L h<=5 in
+  23 s vs 282 s) + xor47 settle (side cache): depth-6 pass on triples
+  that could reach 166: 144 sides, 137 BP-optimal, 4 improved by one (KM),
+  3 unresolved. No triple below 167 anywhere; open (lb <= 166, a side
+  needs >= 7 helpers): KM 7, AT 0, ref 78. S3-symmetric SAT (s3cnf.py):
+  rank 49 (4,8,0,1) SAT in 6 min; rank 47: 8 h pool over 144 shapes, no
+  scheme, 53 UNSAT (cadical, unchecked), 91 open. Paper draft updated.
 - **★ S-P 51 KERNEL CLASS-OPTIMAL, MACHINE-CHECKED (2026-10-17)**:
   proof/Mm/SP51Optimal.lean. `kernel_optimal_for_class`: for all
   invertible linear eA eB eC, chains (from ANY nine starting vectors,

@@ -442,6 +442,7 @@ fn emit_transposed(prog: &Prog, cols: &[u16]) -> (String, usize) {
 }
 
 struct Opts {
+    target: usize,
     cap: f64,
     depth: usize,
     maxsub: usize,
@@ -455,6 +456,7 @@ struct Opts {
 
 fn parse_opts(args: &[String]) -> Opts {
     let mut o = Opts {
+        target: 0,
         cap: 30.0,
         depth: 3,
         maxsub: 200,
@@ -483,6 +485,7 @@ fn parse_opts(args: &[String]) -> Opts {
             "--transpose" => o.transpose = true,
             "--depth" => o.depth = val().parse().unwrap(),
             "--cap" => o.cap = val().parse().unwrap(),
+            "--target" => o.target = val().parse().unwrap(),
             "--maxsub" => o.maxsub = val().parse().unwrap(),
             _ => panic!("unknown option {a}"),
         }
@@ -1778,6 +1781,21 @@ fn settle(pre: &str, logf: &str, o: &Opts) {
         pts.push(Pt { sg, x, y, z, toks: [tok(f[li + 1]), tok(f[li + 3]), tok(f[li + 5])] });
     }
     let best0 = pts.iter().map(|p| p.toks.iter().map(|t| t.1).sum::<usize>() + r - NIN).min().unwrap();
+    // only points that could reach below `goal` matter
+    let goal = if o.target > 0 { o.target } else { best0 };
+    let outdir = o.out.clone().unwrap_or_else(|| ".".into());
+    std::fs::create_dir_all(&outdir).unwrap();
+    let cache_path = format!("{outdir}/settled_sides.txt");
+    let key_str = |k: &Vec<u16>| k.iter().map(|v| format!("{v:04x}")).collect::<Vec<_>>().join(",");
+    let mut cached: HashMap<String, (usize, usize)> = HashMap::new();
+    if let Ok(txt) = std::fs::read_to_string(&cache_path) {
+        for ln in txt.lines() {
+            let f: Vec<&str> = ln.split_whitespace().collect();
+            if f.len() == 3 {
+                cached.insert(f[0].to_string(), (f[1].parse().unwrap(), f[2].parse().unwrap()));
+            }
+        }
+    }
     let syms: Vec<Scheme> = (0..6).map(|i| s0.sym(i)).collect();
     // collect open sides: (sorted target set, raw rows, BP ub, lb)
     let mut sides: HashMap<Vec<u16>, (Vec<u16>, usize, usize)> = HashMap::new();
@@ -1792,7 +1810,7 @@ fn settle(pre: &str, logf: &str, o: &Opts) {
             ts.dedup();
             keys[k] = ts.clone();
             let (lb, ub) = p.toks[k];
-            if lb < ub && lbsum < best0 {
+            if lb < ub && lbsum < goal {
                 let e = sides.entry(ts).or_insert((m.clone(), ub, lb));
                 e.1 = e.1.min(ub);
                 e.2 = e.2.max(lb);
@@ -1812,6 +1830,11 @@ fn settle(pre: &str, logf: &str, o: &Opts) {
     let t0 = std::time::Instant::now();
     for (i, (h, key)) in work.iter().enumerate() {
         let (_rows, ub, _lb) = sides[key].clone();
+        if let Some(&(cu, cl_)) = cached.get(&key_str(key)) {
+            res.insert(key.clone(), (cu, cl_));
+            println!("side {}/{}: {} targets, BP {} -> {} (lb {}) [cached]", i + 1, work.len(), key.len(), ub, cu, cl_);
+            continue;
+        }
         let mut inc = vec![0u64; NV / 64];
         let mut cl: Vec<u16> = (0..NIN).map(|i| 1u16 << i).collect();
         for &c in &cl {
@@ -1847,6 +1870,11 @@ fn settle(pre: &str, logf: &str, o: &Opts) {
         }
         let lb = proved_lb.unwrap_or(sides[key].2);
         res.insert(key.clone(), (cur_ub, lb));
+        {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&cache_path).unwrap();
+            writeln!(f, "{} {} {}", key_str(key), cur_ub, lb).unwrap();
+        }
         println!(
             "side {}/{}: {} targets, BP {} -> {}{}  ({:.0}s)",
             i + 1, work.len(), key.len(), ub, cur_ub,
@@ -1870,6 +1898,25 @@ fn settle(pre: &str, logf: &str, o: &Opts) {
     totals.sort();
     let best = totals[0].0;
     let open = totals.iter().filter(|t| t.1 < best).count();
+    // dump points that could still go below `goal`, with each side's status
+    let mut dump = String::new();
+    for &(ub, lb, pi) in &totals {
+        if lb >= goal {
+            continue;
+        }
+        let p = &pts[pi];
+        dump += &format!("point {} {:04x} {:04x} {:04x} total {ub} lb {lb}:", p.sg, p.x, p.y, p.z);
+        for k in 0..3 {
+            let (l0, u0) = p.toks[k];
+            let (u, l) = match res.get(&point_sides[pi][k]) {
+                Some(&(u, l)) => (u.min(u0), l.max(l0)),
+                None => (u0, l0),
+            };
+            dump += &format!(" [{} targets, ub {u}, lb {l}, need {}]", point_sides[pi][k].len(), u.saturating_sub(1).saturating_sub(point_sides[pi][k].len()));
+        }
+        dump += "\n";
+    }
+    std::fs::write(format!("{outdir}/settle_open.txt"), dump).unwrap();
     println!("best total {best}; points still open below it: {open}");
     for &(ub, lb, pi) in totals.iter().take(8) {
         let p = &pts[pi];

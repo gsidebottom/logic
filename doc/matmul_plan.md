@@ -1485,6 +1485,18 @@ the two source papers for this track):
   classes are flip-isolated; a rank-47 walk with ±2 excursions found
   nothing new. Instance floor (distinct non-unit targets + 31) = 139 for
   the reference.
+- **4×4 RANK-47 XOR: 167 (2026-10-17, c4e4243)**: simulated annealing on
+  the orbit (elementary-matrix moves, BP-scored) reaches 168 in every
+  chain of every class (24/24 ref, 24/24 AlphaTensor, 23/24 KM) -- a
+  universal BP plateau. New exact helper search (cost = |targets| + h
+  non-target signals; closure + iterative deepening on h; exact) proves
+  BP optimal at an AlphaTensor 168 point (44/48/45) but finds BP 50 -> 49
+  on the expensive side of KM points: **167 = 44 + 49 + 74**
+  (matmul/x47/best/x167, both checkers). Pipeline now: anneal with
+  --collect (all points <= 169: ~14k collected) -> refine (exact per
+  side, cached by target set). First 136 KM refinements: 44 at 167, none
+  at 166 yet. Reference L: exact h <= 5 impossible (L >= 43, BP 44); h = 6
+  out of reach; helper-pool LNS inconclusive.
 - **★ S-P 51 KERNEL CLASS-OPTIMAL, MACHINE-CHECKED (2026-10-17)**:
   proof/Mm/SP51Optimal.lean. `kernel_optimal_for_class`: for all
   invertible linear eA eB eC, chains (from ANY nine starting vectors,

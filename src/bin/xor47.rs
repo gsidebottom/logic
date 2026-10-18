@@ -1042,7 +1042,19 @@ thread_local! {
     static TIMED_OUT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+static GLOBAL_DEADLINE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static GLOBAL_TIMED_OUT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn epoch_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
+}
+
 fn past_deadline() -> bool {
+    let g = GLOBAL_DEADLINE_MS.load(std::sync::atomic::Ordering::Relaxed);
+    if g != 0 && epoch_ms() > g {
+        GLOBAL_TIMED_OUT.store(true, std::sync::atomic::Ordering::Relaxed);
+        return true;
+    }
     DEADLINE.with(|d| d.get()).is_some_and(|t| std::time::Instant::now() > t)
 }
 
@@ -1065,13 +1077,7 @@ fn exact_seq(targets: &[u16], hmax: usize, cap: f64) -> Result<Option<(usize, Ve
     let nodes = std::sync::atomic::AtomicU64::new(0);
     let mut out = Ok(None);
     for h in 0..=hmax {
-        let found = if rem.is_empty() {
-            Some(Vec::new())
-        } else if h == 0 {
-            None
-        } else {
-            exact_dfs(&inc, &cl, &rem, h, None, &nodes)
-        };
+        let found = exact_level(&inc, &cl, &rem, h, false, &nodes);
         if TIMED_OUT.with(|f| f.get()) {
             out = Err(h);
             break;
@@ -1126,6 +1132,207 @@ fn exact_dfs(
     None
 }
 
+// ---- exact core v2: in-place state with undo, incremental closure,
+// full canonical helper order (each helper SET is enumerated once, in
+// "smallest available first" order: x_j available when x_i was chosen,
+// i < j, forces x_i < x_j), candidates from pairs, stamp arrays.
+
+const MAXD: usize = 16;
+
+struct ExactWs {
+    stamp: Vec<u32>,
+    tick: u32,
+    ps: Vec<Vec<u32>>,
+    pstick: [u32; MAXD],
+}
+
+impl ExactWs {
+    fn new() -> ExactWs {
+        ExactWs { stamp: vec![0; NV], tick: 0, ps: (0..MAXD).map(|_| vec![0; NV]).collect(), pstick: [0; MAXD] }
+    }
+    fn mark_ps(&mut self, depth: usize, cl: &[u16]) {
+        self.pstick[depth] += 1;
+        let pt = self.pstick[depth];
+        let row = &mut self.ps[depth];
+        for i in 0..cl.len() {
+            let a = cl[i];
+            for &b in &cl[i + 1..] {
+                row[(a ^ b) as usize] = pt;
+            }
+        }
+    }
+    fn in_ps(&self, depth: usize, x: u16) -> bool {
+        self.ps[depth][x as usize] == self.pstick[depth]
+    }
+}
+
+fn bclear(b: &mut [u64], v: u16) {
+    b[v as usize >> 6] &= !(1 << (v & 63));
+}
+
+/// add x to a closed state and cascade: only targets using a new signal as
+/// an operand can become pair sums
+fn closure_add(inc: &mut [u64], cl: &mut Vec<u16>, rem: &mut Vec<u16>, x: u16) {
+    bput(inc, x);
+    cl.push(x);
+    let mut q = cl.len() - 1;
+    while q < cl.len() {
+        let s = cl[q];
+        q += 1;
+        let mut i = 0;
+        while i < rem.len() {
+            let tt = rem[i];
+            if bset(inc, tt ^ s) {
+                bput(inc, tt);
+                cl.push(tt);
+                rem.swap_remove(i);
+            } else {
+                i += 1;
+            }
+        }
+    }
+}
+
+fn closure_undo(inc: &mut [u64], cl: &mut Vec<u16>, rem: &mut Vec<u16>, len0: usize) {
+    for idx in (len0..cl.len()).rev() {
+        let v = cl[idx];
+        bclear(inc, v);
+        if idx > len0 {
+            rem.push(v);
+        }
+    }
+    cl.truncate(len0);
+}
+
+fn cands_v2(inc: &[u64], cl: &[u16], rem: &[u16], depth: usize, last: bool, ws: &mut ExactWs, path: &[(u16, usize)]) -> Vec<u16> {
+    ws.tick = ws.tick.wrapping_add(1);
+    if ws.tick == 0 {
+        ws.stamp.iter_mut().for_each(|s| *s = 0);
+        ws.tick = 1;
+    }
+    let tk = ws.tick;
+    let mut out = Vec::new();
+    if last {
+        for &tt in rem {
+            for &c in cl {
+                let x = tt ^ c;
+                if ws.stamp[x as usize] != tk && ws.in_ps(depth, x) && !bset(inc, x) {
+                    ws.stamp[x as usize] = tk;
+                    out.push(x);
+                }
+            }
+        }
+    } else {
+        for i in 0..cl.len() {
+            let a = cl[i];
+            for &b in &cl[i + 1..] {
+                let x = a ^ b;
+                if ws.stamp[x as usize] != tk && !bset(inc, x) {
+                    ws.stamp[x as usize] = tk;
+                    out.push(x);
+                }
+            }
+        }
+    }
+    out.retain(|&x| path.iter().all(|&(xi, di)| !(x < xi && ws.in_ps(di, x))));
+    if !last {
+        let mut sc: Vec<(usize, u16)> = out.iter().map(|&x| (rem.iter().filter(|&&tt| bset(inc, tt ^ x)).count(), x)).collect();
+        sc.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        out = sc.into_iter().map(|(_, x)| x).collect();
+    }
+    out
+}
+
+#[allow(clippy::too_many_arguments)]
+fn dfs_v2(
+    inc: &mut [u64],
+    cl: &mut Vec<u16>,
+    rem: &mut Vec<u16>,
+    k: usize,
+    depth: usize,
+    path: &mut Vec<(u16, usize)>,
+    ws: &mut ExactWs,
+    nodes: &std::sync::atomic::AtomicU64,
+) -> Option<Vec<u16>> {
+    nodes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if past_deadline() {
+        TIMED_OUT.with(|f| f.set(true));
+        return None;
+    }
+    if rem.is_empty() {
+        return Some(Vec::new());
+    }
+    if k == 0 || depth >= MAXD {
+        return None;
+    }
+    ws.mark_ps(depth, cl);
+    for x in cands_v2(inc, cl, rem, depth, k == 1, ws, path) {
+        let len0 = cl.len();
+        closure_add(inc, cl, rem, x);
+        if k == 1 {
+            let ok = rem.is_empty();
+            closure_undo(inc, cl, rem, len0);
+            if ok {
+                return Some(vec![x]);
+            }
+            continue;
+        }
+        path.push((x, depth));
+        let r = dfs_v2(inc, cl, rem, k - 1, depth + 1, path, ws, nodes);
+        path.pop();
+        closure_undo(inc, cl, rem, len0);
+        if let Some(mut hs) = r {
+            hs.insert(0, x);
+            return Some(hs);
+        }
+        if TIMED_OUT.with(|f| f.get()) {
+            return None;
+        }
+    }
+    None
+}
+
+/// one depth h of the exact search from a closed state; parallel over the
+/// first helper when `par`
+fn exact_level(inc: &[u64], cl: &[u16], rem: &[u16], h: usize, par: bool, nodes: &std::sync::atomic::AtomicU64) -> Option<Vec<u16>> {
+    if rem.is_empty() {
+        return Some(Vec::new());
+    }
+    if h == 0 {
+        return None;
+    }
+    let mut ws0 = ExactWs::new();
+    ws0.mark_ps(0, cl);
+    let tops = cands_v2(inc, cl, rem, 0, h == 1, &mut ws0, &[]);
+    let run = |x: u16, ws: &mut ExactWs| -> Option<Vec<u16>> {
+        ws.mark_ps(0, cl);
+        let (mut inc2, mut cl2, mut rem2) = (inc.to_vec(), cl.to_vec(), rem.to_vec());
+        closure_add(&mut inc2, &mut cl2, &mut rem2, x);
+        if h == 1 {
+            return rem2.is_empty().then(|| vec![x]);
+        }
+        let mut path = vec![(x, 0usize)];
+        dfs_v2(&mut inc2, &mut cl2, &mut rem2, h - 1, 1, &mut path, ws, nodes).map(|mut hs| {
+            hs.insert(0, x);
+            hs
+        })
+    };
+    if par {
+        tops.par_iter().map_init(ExactWs::new, |ws, &x| run(x, ws)).find_map_any(|r| r)
+    } else {
+        let mut ws = ws0;
+        for &x in &tops {
+            if let Some(r) = run(x, &mut ws) {
+                return Some(r);
+            }
+            if TIMED_OUT.with(|f| f.get()) {
+                return None;
+            }
+        }
+        None
+    }
+}
+
 /// Exact minimum for small overheads: returns (cost, helpers) or None if
 /// no program with at most |T| + hmax XORs exists.
 fn exact(targets: &[u16], hmax: usize) -> Option<(usize, Vec<u16>)> {
@@ -1143,25 +1350,7 @@ fn exact(targets: &[u16], hmax: usize) -> Option<(usize, Vec<u16>)> {
     for h in 0..=hmax {
         let t0 = std::time::Instant::now();
         let nodes = std::sync::atomic::AtomicU64::new(0);
-        let found = if h == 0 {
-            if rem.is_empty() { Some(Vec::new()) } else { None }
-        } else {
-            let ps = pairsums(&cl);
-            let cands = helper_cands(&inc, &cl, &rem, &ps, h == 1);
-            cands.par_iter().find_map_any(|&x| {
-                let (mut inc2, mut cl2, mut rem2) = (inc.clone(), cl.clone(), rem.clone());
-                bput(&mut inc2, x);
-                cl2.push(x);
-                closure(&mut inc2, &mut cl2, &mut rem2);
-                if h == 1 && !rem2.is_empty() {
-                    return None;
-                }
-                exact_dfs(&inc2, &cl2, &rem2, h - 1, Some((x, &ps)), &nodes).map(|mut hs| {
-                    hs.insert(0, x);
-                    hs
-                })
-            })
-        };
+        let found = exact_level(&inc, &cl, &rem, h, true, &nodes);
         println!(
             "  h = {h}: {}  ({} nodes, {:.1}s)",
             if found.is_some() { "FOUND" } else { "impossible" },
@@ -1560,6 +1749,137 @@ fn refine(pre: &str, cands: &str, o: &Opts) {
     println!("best {}  (side cache hits {})", best.lock().unwrap(), hits.load(std::sync::atomic::Ordering::Relaxed));
 }
 
+/// Settle the open sides of refined orbit points (a `refine` log): for each
+/// distinct open side (target set), search exactly one helper below the
+/// BP count, and lower while found; then recompute every point's total.
+fn settle(pre: &str, logf: &str, o: &Opts) {
+    let s0 = Scheme::from_sms(pre);
+    assert!(s0.brent_ok(), "input scheme fails Brent");
+    let g = gl42();
+    let inv: HashMap<u16, u16> = g.iter().copied().collect();
+    let r = s0.u.len();
+    // parse "point S X Y Z (quick Q): L tok R tok Pt tok -> total T"
+    struct Pt { sg: usize, x: u16, y: u16, z: u16, toks: [(usize, usize); 3] }
+    let mut pts = Vec::new();
+    for ln in std::fs::read_to_string(logf).unwrap().lines() {
+        if !ln.starts_with("point ") {
+            continue;
+        }
+        let f: Vec<&str> = ln.split_whitespace().collect();
+        let sg: usize = f[1].parse().unwrap();
+        let (x, y, z) = (u16::from_str_radix(f[2], 16).unwrap(), u16::from_str_radix(f[3], 16).unwrap(), u16::from_str_radix(f[4], 16).unwrap());
+        let tok = |s: &str| -> (usize, usize) {
+            // "44=" "49!" "50?49" -> (lb, ub)
+            let cut = s.find(|c: char| !c.is_ascii_digit()).unwrap();
+            let ub: usize = s[..cut].parse().unwrap();
+            if &s[cut..cut + 1] == "?" { (s[cut + 1..].parse().unwrap(), ub) } else { (ub, ub) }
+        };
+        let li = f.iter().position(|&w| w == "L").unwrap();
+        pts.push(Pt { sg, x, y, z, toks: [tok(f[li + 1]), tok(f[li + 3]), tok(f[li + 5])] });
+    }
+    let best0 = pts.iter().map(|p| p.toks.iter().map(|t| t.1).sum::<usize>() + r - NIN).min().unwrap();
+    let syms: Vec<Scheme> = (0..6).map(|i| s0.sym(i)).collect();
+    // collect open sides: (sorted target set, raw rows, BP ub, lb)
+    let mut sides: HashMap<Vec<u16>, (Vec<u16>, usize, usize)> = HashMap::new();
+    let mut point_sides: Vec<[Vec<u16>; 3]> = Vec::new();
+    for p in &pts {
+        let s = syms[p.sg].act((p.x, inv[&p.x]), (p.y, inv[&p.y]), (p.z, inv[&p.z]));
+        let lbsum: usize = p.toks.iter().map(|t| t.0).sum::<usize>() + r - NIN;
+        let mut keys: [Vec<u16>; 3] = Default::default();
+        for (k, m) in [&s.u, &s.v, &s.w].into_iter().enumerate() {
+            let mut ts: Vec<u16> = m.iter().copied().filter(|v| v.count_ones() > 1).collect();
+            ts.sort_unstable();
+            ts.dedup();
+            keys[k] = ts.clone();
+            let (lb, ub) = p.toks[k];
+            if lb < ub && lbsum < best0 {
+                let e = sides.entry(ts).or_insert((m.clone(), ub, lb));
+                e.1 = e.1.min(ub);
+                e.2 = e.2.max(lb);
+            }
+        }
+        point_sides.push(keys);
+    }
+    let mut work: Vec<(usize, Vec<u16>)> = sides
+        .iter()
+        .map(|(k, v)| (v.1 - 1 - k.len(), k.clone()))
+        .filter(|(h, _)| *h <= o.depth)
+        .collect();
+    work.sort();
+    println!("{} points (best {best0}); {} open sides, {} within {} helpers", pts.len(), sides.len(), work.len(), o.depth);
+    // exact results per side key: (exact value or improved ub, proved lb)
+    let mut res: HashMap<Vec<u16>, (usize, usize)> = HashMap::new();
+    let t0 = std::time::Instant::now();
+    for (i, (h, key)) in work.iter().enumerate() {
+        let (_rows, ub, _lb) = sides[key].clone();
+        let mut inc = vec![0u64; NV / 64];
+        let mut cl: Vec<u16> = (0..NIN).map(|i| 1u16 << i).collect();
+        for &c in &cl {
+            bput(&mut inc, c);
+        }
+        let mut rem = key.clone();
+        closure(&mut inc, &mut cl, &mut rem);
+        let mut cur_ub = ub;
+        let mut proved_lb = None;
+        let mut hh = *h;
+        loop {
+            GLOBAL_TIMED_OUT.store(false, std::sync::atomic::Ordering::Relaxed);
+            GLOBAL_DEADLINE_MS.store(epoch_ms() + (o.cap * 1000.0) as u64, std::sync::atomic::Ordering::Relaxed);
+            let nodes = std::sync::atomic::AtomicU64::new(0);
+            let found = exact_level(&inc, &cl, &rem, hh, true, &nodes);
+            GLOBAL_DEADLINE_MS.store(0, std::sync::atomic::Ordering::Relaxed);
+            let to = GLOBAL_TIMED_OUT.load(std::sync::atomic::Ordering::Relaxed);
+            match found {
+                Some(hs) => {
+                    cur_ub = key.len() + hs.len();
+                    if hs.is_empty() || hh == 0 {
+                        proved_lb = Some(cur_ub);
+                        break;
+                    }
+                    hh = hs.len() - 1;
+                }
+                None if to => break,
+                None => {
+                    proved_lb = Some(key.len() + hh + 1);
+                    break;
+                }
+            }
+        }
+        let lb = proved_lb.unwrap_or(sides[key].2);
+        res.insert(key.clone(), (cur_ub, lb));
+        println!(
+            "side {}/{}: {} targets, BP {} -> {}{}  ({:.0}s)",
+            i + 1, work.len(), key.len(), ub, cur_ub,
+            if proved_lb == Some(cur_ub) { " exact".to_string() } else { format!(" (lb {lb})") },
+            t0.elapsed().as_secs_f64()
+        );
+    }
+    // recompute totals
+    let mut totals: Vec<(usize, usize, usize)> = Vec::new(); // (ub, lb, point index)
+    for (pi, p) in pts.iter().enumerate() {
+        let (mut ub, mut lb) = (r - NIN, r - NIN);
+        for k in 0..3 {
+            let (l0, u0) = p.toks[k];
+            match res.get(&point_sides[pi][k]) {
+                Some(&(u, l)) => { ub += u.min(u0); lb += l.max(l0); }
+                None => { ub += u0; lb += l0; }
+            }
+        }
+        totals.push((ub, lb, pi));
+    }
+    totals.sort();
+    let best = totals[0].0;
+    let open = totals.iter().filter(|t| t.1 < best).count();
+    println!("best total {best}; points still open below it: {open}");
+    for &(ub, lb, pi) in totals.iter().take(8) {
+        let p = &pts[pi];
+        println!("  point {} {:04x} {:04x} {:04x}: total {ub} (lb {lb})", p.sg, p.x, p.y, p.z);
+    }
+    if best < best0 {
+        println!("IMPROVED: {best} < {best0} -- rerun `refine` on the point above to emit and verify its programs");
+    }
+}
+
 fn binom(n: usize, k: usize) -> f64 {
     (0..k).fold(1.0, |acc, i| acc * (n - i) as f64 / (i + 1) as f64)
 }
@@ -1629,6 +1949,15 @@ fn main() {
         rayon::ThreadPoolBuilder::new().num_threads(o.threads).build_global().unwrap();
         let t0 = std::time::Instant::now();
         scan(&args[2], &o);
+        println!("({:.1}s)", t0.elapsed().as_secs_f64());
+        return;
+    }
+    if args[1] == "settle" {
+        // xor47 settle PREFIX REFINE_LOG [--depth HMAX] [--cap SECS] [--threads T]
+        let o = parse_opts(&args[4..]);
+        rayon::ThreadPoolBuilder::new().num_threads(o.threads).build_global().unwrap();
+        let t0 = std::time::Instant::now();
+        settle(&args[2], &args[3], &o);
         println!("({:.1}s)", t0.elapsed().as_secs_f64());
         return;
     }

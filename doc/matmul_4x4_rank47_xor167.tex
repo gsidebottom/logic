@@ -37,9 +37,13 @@ Kauers and Moosbauer's rank-47 scheme.  It was found by simulated
 annealing over the orbit, scored by a Boyar--Peralta heuristic with
 exact distances, followed by an exact search for the minimum number of
 non-target XORs on each side; for this scheme all three counts are
-proved minimal.  Across the three known classes, every annealing
-chain ends at $168$ under the heuristic, and only the Kauers--Moosbauer
-class reaches $167$ after exact refinement.  All programs are checked
+proved minimal.  Each side depends on only two of the three basis
+changes and is unchanged by permutation matrices, so a class's whole
+orbit reduces to three $840\times840$ cost tables and a min-plus scan
+over $840^3$ triples.  The scan shows that the heuristic minimum is
+exactly $168$ in all three known classes; exact refinement of the
+near-minimum triples reaches $167$ only in the Kauers--Moosbauer class.
+All programs are checked
 by an independent verifier and by PLinOpt's \texttt{SLPchecker}.  We
 also summarize the current rank and addition records for $4\times4$
 matrix multiplication with and without change of basis.
@@ -82,10 +86,11 @@ known program at $170$ XORs, constant $6+15/31$.
 \item An exact method for the minimum XOR count of a side with few
   non-target signals (Section~\ref{sec:exact}): the problem reduces to
   choosing those signals, and iterative deepening over their number is
-  exact and fast up to four of them.
-\item A search over each scheme's symmetry orbit by simulated annealing,
-  and the observation that all three known classes plateau at $168$
-  under heuristic scoring (Section~\ref{sec:results}).
+  exact and fast up to five of them.
+\item An exhaustive scan of each scheme's symmetry orbit, the $4\times4$
+  form of the orbit scan used for $3\times3$ in~\cite{Sidebottom26a},
+  showing that all three known classes bottom out at $168$ under
+  heuristic scoring (Section~\ref{sec:results}).
 \item A summary of the current $4\times4$ records
   (Section~\ref{sec:records}).
 \end{itemize}
@@ -255,6 +260,23 @@ two chains of $3000$ moves reached $168$, where $240$ coordinate-descent
 restarts reached $169$ once.  Every orbit point that is written out is
 checked against all $256$ basis products.
 
+\paragraph{Exhaustive scan.}  The orbit can also be covered completely.
+Multiplying $X$ on the right by a permutation matrix $Q$ permutes the
+rows of every $L$ target ($X^{\mathsf T}U_kY^{-\mathsf T}\mapsto
+Q^{\mathsf T}X^{\mathsf T}U_kY^{-\mathsf T}$) and of every $P^{\mathsf T}$
+target, a relabelling of the inputs that leaves both XOR counts
+unchanged; the same holds for $Y$ and $Z$.  So $X,Y,Z$ range over the
+$20160/24=840$ right cosets of the permutation matrices, the three side
+costs fill three $840\times840$ tables (about two million heuristic
+evaluations), and a min-plus pass over all $840^3\approx5.9\cdot10^8$
+triples finds the orbit minimum and every near-minimal triple.  The slot
+symmetries add nothing: they permute and transpose the three factor
+families, and transposing the targets is again a relabelling, so their
+costs are those of points in the untransformed orbit.  This is the
+$4\times4$ form of the $168^3$ scan used for $3\times3$
+in~\cite{Sidebottom26a}; one class takes about $25$ minutes on six
+cores.
+
 \subsection{Exact minimization with few helper signals}\label{sec:exact}
 
 Call the gates of a program that compute targets \emph{target gates}
@@ -291,19 +313,23 @@ helpers can be exchanged without changing $S_{i+1}$; bubble-sorting any
 solution therefore yields one in which such adjacent pairs are
 increasing (as integers), and only those are explored.  Iterative
 deepening over $h$ returns the exact minimum.  Candidates are tried in
-order of how many targets they make immediately available.  With $16$
-inputs and $41$--$45$ targets, refuting $h\le3$ takes milliseconds to
-seconds and finding or refuting $h=4$ takes seconds to a minute; each
-further level costs roughly a hundred times more.
+order of how many targets they make immediately available.  The
+implementation updates the closure incrementally (adding one signal can
+only create targets that use it as an operand), enumerates each helper
+set once in its smallest-available-first order, and undoes changes in
+place.  With $16$ inputs and $37$--$45$ targets, $h\le4$ is decided in
+seconds and $h=5$ in about twenty seconds on twelve cores; each further
+level costs roughly a hundred times more.
 
 \subsection{Pipeline}
 
-Annealing chains record every distinct point whose heuristic total is at
-most $169$ (about $14{,}500$ points over the three classes); each point
-is then refined side by side, searching exactly for a program one helper
-shorter than the heuristic's within a time limit.  Side results are
-cached by target set, since neighbouring points share two of their
-three sides.
+The scan lists every coset triple within $2$ of its class's minimum;
+each is then refined side by side, searching exactly for a program one
+helper shorter than the heuristic's, and lower while that succeeds.
+Side results are cached by target set, since neighbouring points share
+two of their three sides.  Sides that need more helpers than the search
+can reach in its time limit stay open, with the lower bound proved so
+far.
 
 \section{Results}\label{sec:results}
 
@@ -315,25 +341,34 @@ The exact search rules out five or fewer helpers on $L$, so
 $\XOR(L)\ge43$ against the heuristic's $44$; deeper levels were out of
 reach.
 
-\paragraph{The orbit plateau.}  Table~\ref{tab:classes} lists the best
-orbit points.  Under heuristic scoring every class stops at $168$:
-$24$ of $24$ annealing chains for the AlphaTensor and published
-classes, $23$ of $24$ for the Kauers--Moosbauer class.  At an
-AlphaTensor-class point with sides $44+48+45$ (the last counted for
-$P^{\mathsf T}$) the exact search proves all three sides optimal, so that
-scheme costs exactly $168$.
+\paragraph{The orbit plateau.}  Table~\ref{tab:classes} summarizes the
+exhaustive scans.  In every class the heuristic orbit minimum is exactly
+$168$, reached by very few coset triples (each coset triple stands for
+$24^3$ orbit points with identical costs).  Annealing agrees: $24$ of
+$24$ chains end at $168$ for the AlphaTensor and published classes, $23$
+of $24$ for the Kauers--Moosbauer class.  Exact refinement of all
+triples within $2$ of the minimum lowers the total only in the
+Kauers--Moosbauer class: two triples, one scored $168$ and one $169$,
+refine to $167$ with sides $43+49+44$ (the last counted for
+$P^{\mathsf T}$), the multiset of the appendix scheme's sides, and the
+other $168$-triple stays at $168$ with one side open.  At an
+AlphaTensor-class point with sides $44+48+45$ the exact search proves
+all three sides optimal, so that scheme costs exactly $168$.  Triples
+with a side that needs five or more helpers below the heuristic remain
+open; the last column of Table~\ref{tab:classes} counts them.
 
 \begin{table}[ht]
 \centering
-\caption{Best orbit points per class (total XORs, sides $L+R+P$).}\label{tab:classes}
+\caption{Exhaustive orbit scans (heuristic side costs) and exact
+refinement of the triples within $2$ of the minimum.}\label{tab:classes}
 \small
-\begin{tabular}{lccc}
+\begin{tabular}{lcccccc}
 \toprule
-class & as given & heuristic, best point & exact refinement \\
+class & as given & orbit min & triples at min & refined & best exact & open \\
 \midrule
-published~\cite{PLinOpt} (AlphaEvolve) & $170$ & $168=44+44+80$ & not refined \\
-AlphaTensor~\cite{Fawzi22} & $179$ & $168=44+48+76$ & $168$ ($0$ of $1203$ below) \\
-Kauers--Moosbauer~\cite{KM23} & $186$ & $168=44+50+74$ & $\mathbf{167=44+49+74}$ \\
+published~\cite{PLinOpt} (AlphaEvolve) & $170$ & $168$ & $2$ & $216$ & $168$ & $122$ \\
+AlphaTensor~\cite{Fawzi22} & $179$ & $168$ & $13$ & $195$ & $168$ & $47$ \\
+Kauers--Moosbauer~\cite{KM23} & $186$ & $168$ & $2$ & $100$ & $\mathbf{167}$ & $34$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -384,22 +419,30 @@ and \texttt{.slp} in PLinOpt formats).  Two independent checks pass:
   for $S=L,R,P$.
 \end{itemize}
 The search tool (\texttt{src/bin/xor47.rs}: \texttt{bp}, \texttt{scheme},
-\texttt{orbit}, \texttt{exact}, \texttt{refine}) regenerates every
-number in Section~\ref{sec:results}.
+\texttt{orbit}, \texttt{scan}, \texttt{exact}, \texttt{refine},
+\texttt{settle}) regenerates every number in
+Section~\ref{sec:results}; the symmetric SAT instances come from
+\texttt{matmul/x47/s3cnf.py}.
 
 \section{Outlook}
 
-The three known classes all stop at $168$ under the heuristic and the
-best refined point is $167$, so further progress most likely needs new
-rank-47 classes.  All known classes are flip-isolated, which rules out
-plain flip walks.  SAT-based search found thousands of $3\times3$
-schemes~\cite{HKS19}; we are running a SAT search for $4\times4$ schemes
-invariant under the cyclic symmetry, which divides the unknowns by three
-and made the analogous $3\times3$ search tractable.  Other directions are an exact
-search reaching five or six helpers (it would settle, for example,
-whether the published scheme's $L$ side admits $43$), the first
-alternative-basis constants for rank $47$, and rectangular encodings in
-the sense of~\cite{BS19}.
+The three known classes all bottom out at $168$ under the heuristic,
+and the best refined point is $167$, so further progress most likely
+needs new rank-47 classes.  All known classes are flip-isolated, which
+rules out plain flip walks.  SAT-based search found thousands of
+$3\times3$ schemes~\cite{HKS19}; we tried SAT on schemes invariant under
+the slot symmetries.  Invariance under the cyclic symmetry alone divides
+the unknowns by three, but no solver found a rank-49 cyclic scheme
+(which exists: the square of a cyclic Strassen scheme) in two hours.
+Adding the transposition symmetry ($S_3$-invariance, products in orbits
+of size $6$, $3$, $2$, $1$) brings the rank-49 instance to $410$ unknowns,
+and CaDiCaL solves it in six minutes; at rank $47$, eight hours over the
+$144$ orbit shapes found no scheme, with $53$ shapes refuted by the
+solver (unverified) and $91$ open.  Other directions are an exact search
+reaching six or more helpers (it would settle, for example, whether the
+published scheme's $L$ side admits $43$), the first alternative-basis
+constants for rank $47$, and rectangular encodings in the sense
+of~\cite{BS19}.
 
 \section*{Acknowledgments}
 

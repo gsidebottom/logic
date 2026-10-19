@@ -91,6 +91,9 @@ known program at $170$ XORs, constant $6+15/31$.
   form of the orbit scan used for $3\times3$ in~\cite{Sidebottom26a},
   showing that all three known classes bottom out at $168$ under
   heuristic scoring (Section~\ref{sec:results}).
+\item A lower bound for a whole orbit: every point of the
+  Kauers--Moosbauer orbit costs at least $162$ XORs
+  (Section~\ref{sec:results}).
 \item A summary of the current $4\times4$ records
   (Section~\ref{sec:records}).
 \end{itemize}
@@ -359,10 +362,29 @@ open side needing at most six helpers below the heuristic: of these
 $144$ sides it confirmed the heuristic count on $137$, improved it by
 exactly one on $4$ (all in the Kauers--Moosbauer class) and left $3$
 unresolved within a one-hour limit.  The heuristic is rarely wrong here,
-and then by one.  No triple of any class drops below $167$.  In the AlphaTensor class no
-near-minimal triple can reach $166$ at all; the triples still open
-(last column of Table~\ref{tab:classes}) each have a side that needs
-seven or more helpers, beyond the exact search.
+and then by one.  No near-minimal triple of any class drops below
+$167$.  In the AlphaTensor class no near-minimal triple can reach $166$
+at all; the triples still open (last column of Table~\ref{tab:classes})
+each have a side that needs seven or more helpers, beyond the exact
+search.
+
+\paragraph{A bound for the whole orbit.}  The scans are exhaustive only
+under the heuristic, and the refinement is exact only near each
+minimum.  A lower bound for every point of an orbit needs a lower bound
+for every coset pair.  A side costs at least its number of distinct
+non-unit targets, plus one when the closure of the inputs misses a
+target (some gate must then compute a non-target), and each helper
+level that the exact search refutes adds one more.  We check all $840^3$
+coset triples against these bounds and refute helper levels only for
+sides that lie in a triple that could still fall below the target,
+raising the target one step at a time so that each step needs deep
+searches on only a few dozen sides.  For the Kauers--Moosbauer class
+this proves that \emph{every point of the orbit costs at least $162$
+XORs}.  The last steps needed proofs that some sides need at least six
+or seven helpers; such searches took up to an hour each on twelve
+cores, so $167$ is out of reach this way.  An older implementation of
+the exact search, with weaker pruning, re-proved a random sample of
+$208$ of the refutations and $51$ of the exact side values.
 
 \begin{table}[ht]
 \centering

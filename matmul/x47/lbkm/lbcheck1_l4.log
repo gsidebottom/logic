@@ -1,0 +1,4 @@
+1019242 sets in checkpoint; re-checking 200 refutations at level 4 and 51 exact sets at level 3
+refutations: 200 confirmed, 0 CONTRADICTED, 0 timed out; exact: 51 confirmed, 0 CONTRADICTED, 0 timed out  (308s)
+refutations re-checked by level (lev: checked, confirmed): {4: (200, 200)}
+exit 0

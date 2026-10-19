@@ -1536,6 +1536,17 @@ the two source papers for this track):
   all-rings 156 cannot be beaten inside this class without a change of
   basis.  Correction: `settle` cannot close a window gap (it only
   re-solves open sides inside the refined window); lbscan does.
+- **KM CLASS WHOLE-ORBIT BOUND >= 161 (2026-10-19)**: lbscan on
+  seeds/km47 (matmul/x47/README.md, lbkm/).  Cheap bounds 144; levels
+  1-2 on 1.5M sets 150; aiming at 167 directly needs ~10^5 level-3 sets,
+  so lbclimb.sh raises the target one step at a time on a shared
+  checkpoint (tens of deep sets per step): 151..161 proved, the last
+  steps with level-5/6 refutations (3-60 min each, parallel search; 1-
+  thread level-5 tests timed out, hence one-at-a-time parallel mode).
+  Older-search cross-check (lbcheck1): 200/200 level-4, 8/8 level-5
+  refutations, 51/51 exact sets.  162+ running overnight.  The 167
+  paper's "no triple of any class drops below 167" is window-scoped:
+  reword as "near-minimal triples" plus the whole-orbit bound.
 - **★ S-P 51 KERNEL CLASS-OPTIMAL, MACHINE-CHECKED (2026-10-17)**:
   proof/Mm/SP51Optimal.lean. `kernel_optimal_for_class`: for all
   invertible linear eA eB eC, chains (from ANY nine starting vectors,

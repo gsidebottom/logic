@@ -45,6 +45,27 @@ proves Boyar–Peralta optimal on every side (44, 48, 45).
 - `scheme47.py`: .bits ↔ sms conversion, Brent check, class invariant
   (rank-triple multiset up to slot permutation).
 
+## Whole-orbit lower bounds (`xor47 lbscan`)
+
+The scans and refinements above are exhaustive under Boyar–Peralta but
+exact only near each scan minimum.  `lbscan` proves lower bounds on
+every coset pair (distinct non-unit targets, plus one when the inputs'
+closure misses a target, then the exact helper search one level at a
+time, only for target sets in a coset triple that could still fall
+below the target) and checks all 840³ triples, which covers the whole
+orbit.  `lbclimb.sh` raises the target one step at a time on a shared
+checkpoint: each step needs deep search on only tens of sets, where
+aiming at 167 directly would raise about 10⁵ sets per level.
+
+**Kauers–Moosbauer class (`seeds/km47`): every orbit point costs at
+least 161** (2026-10-19; the class contains the 167).  Cheap bounds
+give 144; levels 1–2 on 1.5·10⁶ sets give 150; the climb then proved
+151–161, the later steps needing level-5 and level-6 refutations of
+3 to 60 minutes each with the parallel search (`lbkm/climb.txt`).  The
+older search (`xor47 lbcheck1`, `exact_dfs`) re-proved a seeded sample
+of the refutations: 200/200 at level 4, 8/8 at level 5, and 51/51
+exact sets (`lbkm/lbcheck1_*.log`).
+
 ## Classes tried (best orbit point found)
 
 | class | given | best | sides L + R + P |

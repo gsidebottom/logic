@@ -1,0 +1,13 @@
+# xor47 lbscan climb on seeds/km47 (whole orbit), one line per target
+# per target: levels used, sets tested, time; from out/lbkm/t167/climb_t*.log
+T=152  PROVED: every point of the orbit costs at least 152 (1s)  sets per level: L3=2   (1.5s)
+T=153  PROVED: every point of the orbit costs at least 153 (1s)  sets per level:   (1.5s)
+T=154  PROVED: every point of the orbit costs at least 154 (13s)  sets per level: L3=1 L4=3   (13.5s)
+T=155  PROVED: every point of the orbit costs at least 155 (2s)  sets per level: L3=12   (1.9s)
+T=156  PROVED: every point of the orbit costs at least 156 (11s)  sets per level: L3=14 L4=2   (10.7s)
+T=157  PROVED: every point of the orbit costs at least 157 (283s)  sets per level: L5=1   (282.7s)
+T=158  PROVED: every point of the orbit costs at least 158 (47s)  sets per level: L3=14 L5=1   (47.3s)
+T=159  PROVED: every point of the orbit costs at least 159 (1038s)  sets per level: L3=231 L4=35 L5=3   (1038.1s)
+T=160  PROVED: every point of the orbit costs at least 160 (510s)  sets per level: L5=2   (509.7s)
+T=161  PROVED: every point of the orbit costs at least 161 (6850s)  sets per level: L3=351 L4=67 L5=8 L6=1   (6850.5s)
+T=162  (stopped by the per-run cap; resumed later)  sets per level:   round 1: proved so far: every point costs >= 161; deficient entries U 5 V 13 W 4; deficient sets 22 (exact 0, stuck 0, to raise 22)  (1s)

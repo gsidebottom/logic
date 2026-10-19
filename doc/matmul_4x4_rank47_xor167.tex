@@ -92,7 +92,7 @@ known program at $170$ XORs, constant $6+15/31$.
   showing that all three known classes bottom out at $168$ under
   heuristic scoring (Section~\ref{sec:results}).
 \item A lower bound for a whole orbit: every point of the
-  Kauers--Moosbauer orbit costs at least $162$ XORs
+  Kauers--Moosbauer orbit costs at least $163$ XORs
   (Section~\ref{sec:results}).
 \item A summary of the current $4\times4$ records
   (Section~\ref{sec:records}).
@@ -379,10 +379,11 @@ coset triples against these bounds and refute helper levels only for
 sides that lie in a triple that could still fall below the target,
 raising the target one step at a time so that each step needs deep
 searches on only a few dozen sides.  For the Kauers--Moosbauer class
-this proves that \emph{every point of the orbit costs at least $162$
+this proves that \emph{every point of the orbit costs at least $163$
 XORs}.  The last steps needed proofs that some sides need at least six
-or seven helpers; such searches took up to an hour each on twelve
-cores, so $167$ is out of reach this way.  An older implementation of
+to eight helpers; such searches took up to an hour each on twelve
+cores, and the step from $162$ to $163$ took $6.6$ hours, so $167$ is
+out of reach this way.  An older implementation of
 the exact search, with weaker pruning, re-proved a random sample of
 $208$ of the refutations and $51$ of the exact side values.
 

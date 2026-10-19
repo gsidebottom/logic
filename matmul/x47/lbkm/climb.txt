@@ -11,4 +11,4 @@ T=159  PROVED: every point of the orbit costs at least 159 (1038s)  sets per lev
 T=160  PROVED: every point of the orbit costs at least 160 (510s)  sets per level: L5=2 
 T=161  PROVED: every point of the orbit costs at least 161 (6850s)  sets per level: L3=351 L4=67 L5=8 L6=1 
 T=162  PROVED: every point of the orbit costs at least 162 (11537s)  sets per level: L5=11 L6=3 
-T=163  (running)  sets per level: L3=1275 L4=428 L5=10 
+T=163  PROVED: every point of the orbit costs at least 163 (23657s)  sets per level: L3=1275 L4=428 L5=55 L6=9 L7=1 

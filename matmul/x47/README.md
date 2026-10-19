@@ -58,11 +58,12 @@ checkpoint: each step needs deep search on only tens of sets, where
 aiming at 167 directly would raise about 10⁵ sets per level.
 
 **Kauers–Moosbauer class (`seeds/km47`): every orbit point costs at
-least 162** (2026-10-19; the class contains the 167).  Cheap bounds
+least 163** (2026-10-19; the class contains the 167).  Cheap bounds
 give 144; levels 1–2 on 1.5·10⁶ sets give 150; the climb then proved
-151–162, the later steps needing level-5 and level-6 refutations of
+151–163, the later steps needing level-5 to level-7 refutations of
 up to an hour each with the parallel search (`lbkm/climb.txt`; 161
-took 1.9 h, 162 took 3.2 h, and 163 needs level-5 tests on ~150 sets).  The
+took 1.9 h, 162 3.2 h and 163 6.6 h, so each step costs about twice
+the last).  The
 older search (`xor47 lbcheck1`, `exact_dfs`) re-proved a seeded sample
 of the refutations: 200/200 at level 4, 8/8 at level 5, and 51/51
 exact sets (`lbkm/lbcheck1_*.log`).

@@ -452,6 +452,8 @@ struct Opts {
     prm: Params,
     out: Option<String>,
     transpose: bool,
+    budget: f64,
+    chunk: usize,
 }
 
 fn parse_opts(args: &[String]) -> Opts {
@@ -466,6 +468,8 @@ fn parse_opts(args: &[String]) -> Opts {
         prm: Params { slack: 0, p: 0.0, pilot: 0 },
         out: None,
         transpose: false,
+        budget: 0.0,
+        chunk: 2000,
     };
     let mut i = 0;
     while i < args.len() {
@@ -487,6 +491,8 @@ fn parse_opts(args: &[String]) -> Opts {
             "--cap" => o.cap = val().parse().unwrap(),
             "--target" => o.target = val().parse().unwrap(),
             "--maxsub" => o.maxsub = val().parse().unwrap(),
+            "--budget" => o.budget = val().parse().unwrap(),
+            "--chunk" => o.chunk = val().parse().unwrap(),
             _ => panic!("unknown option {a}"),
         }
         i += 1;
@@ -1877,6 +1883,35 @@ fn level_test(key: &[u16], h: usize, cap: f64, ws: &mut ExactWs) -> Option<bool>
     }
 }
 
+/// level_test with the search itself parallel (one set at a time, global
+/// deadline), for batches too small to keep the threads busy.
+fn level_test_par(key: &[u16], h: usize, cap: f64) -> Option<bool> {
+    let mut inc = vec![0u64; NV / 64];
+    let mut cl: Vec<u16> = (0..NIN).map(|i| 1u16 << i).collect();
+    for &c in &cl {
+        bput(&mut inc, c);
+    }
+    let mut rem = key.to_vec();
+    closure(&mut inc, &mut cl, &mut rem);
+    if rem.is_empty() {
+        return Some(true);
+    }
+    if h == 0 {
+        return Some(false);
+    }
+    GLOBAL_TIMED_OUT.store(false, std::sync::atomic::Ordering::Relaxed);
+    GLOBAL_DEADLINE_MS.store(epoch_ms() + (cap * 1000.0) as u64, std::sync::atomic::Ordering::Relaxed);
+    let nodes = std::sync::atomic::AtomicU64::new(0);
+    let found = exact_level(&inc, &cl, &rem, h, true, &nodes);
+    GLOBAL_DEADLINE_MS.store(0, std::sync::atomic::Ordering::Relaxed);
+    let to = GLOBAL_TIMED_OUT.load(std::sync::atomic::Ordering::Relaxed);
+    match found {
+        Some(_) => Some(true),
+        None if to => None,
+        None => Some(false),
+    }
+}
+
 fn lbscan(pre: &str, o: &Opts) {
     let s0 = Scheme::from_sms(pre);
     assert!(s0.brent_ok(), "input scheme fails Brent");
@@ -1959,6 +1994,34 @@ fn lbscan(pre: &str, o: &Opts) {
         }
     });
     println!("level 0: {} of {} sets exact at their floor ({:.0}s)", sets.iter().filter(|s| s.exact).count(), sets.len(), el());
+    // checkpoint: "id hash lev exact" per settled set; ids are deterministic for a given scheme
+    let khash = |k: &[u16]| k.iter().fold(0xcbf2_9ce4_8422_2325u64 ^ k.len() as u64, |h, &v| (h ^ v as u64).wrapping_mul(0x0000_0100_0000_01b3));
+    let cache_path = o.out.as_ref().map(|d| {
+        std::fs::create_dir_all(d).unwrap();
+        format!("{d}/lbscan_cache.txt")
+    });
+    if let Some(cp) = &cache_path {
+        if let Ok(txt) = std::fs::read_to_string(cp) {
+            let (mut used, mut bad) = (0usize, 0usize);
+            for ln in txt.lines() {
+                let f: Vec<&str> = ln.split_whitespace().collect();
+                if f.len() != 4 {
+                    continue;
+                }
+                let (id, h, lev, ex): (usize, u64, u8, bool) = (f[0].parse().unwrap(), u64::from_str_radix(f[1], 16).unwrap(), f[2].parse().unwrap(), f[3] == "1");
+                if id < sets.len() && khash(&sets[id].key) == h {
+                    let st = &mut sets[id];
+                    st.lev = st.lev.max(lev);
+                    st.exact |= ex;
+                    used += 1;
+                } else {
+                    bad += 1;
+                }
+            }
+            println!("checkpoint {cp}: {used} records applied, {bad} rejected");
+        }
+    }
+    let budget_hit = |t: f64| o.budget > 0.0 && t > o.budget;
     // c[p][q] = min_m a[p][m] + b[m][q]
     let mp = |a: &[u8], b: &[u8]| -> Vec<u16> {
         (0..n)
@@ -1988,6 +2051,7 @@ fn lbscan(pre: &str, o: &Opts) {
         // partner minima: U[x][y] <- (V*W)[y][x], V[y][z] <- (W*U)[z][y], W[z][x] <- (U*V)[x][z]
         let part = [mp(&lbt[1], &lbt[2]), mp(&lbt[2], &lbt[0]), mp(&lbt[0], &lbt[1])];
         let mut req = vec![0u16; sets.len()];
+        let mut cnt = vec![0u32; sets.len()];
         let mut deficient = [0usize; 3];
         for k in 0..3 {
             for e in 0..n * n {
@@ -1996,14 +2060,16 @@ fn lbscan(pre: &str, o: &Opts) {
                     deficient[k] += 1;
                     let id = ids[k][e] as usize;
                     req[id] = req[id].max(need);
+                    cnt[id] += 1;
                 }
             }
         }
         let open: Vec<usize> = (0..sets.len()).filter(|&i| req[i] > 0).collect();
         let todo: Vec<usize> = open.iter().copied().filter(|&i| !sets[i].exact && !sets[i].stuck).collect();
+        let cur = (0..n * n).map(|e| lbt[0][e] as usize + part[0][(e % n) * n + e / n] as usize).min().unwrap();
         println!(
-            "round {round}: deficient entries U {} V {} W {}; deficient sets {} (exact {}, stuck {}, to raise {})  ({:.0}s)",
-            deficient[0], deficient[1], deficient[2], open.len(),
+            "round {round}: proved so far: every point costs >= {}; deficient entries U {} V {} W {}; deficient sets {} (exact {}, stuck {}, to raise {})  ({:.0}s)",
+            cur + r - NIN, deficient[0], deficient[1], deficient[2], open.len(),
             open.iter().filter(|&&i| sets[i].exact).count(),
             open.iter().filter(|&&i| sets[i].stuck).count(),
             todo.len(), el()
@@ -2011,8 +2077,27 @@ fn lbscan(pre: &str, o: &Opts) {
         if todo.is_empty() {
             break;
         }
+        if budget_hit(el()) {
+            println!("budget of {:.0}s reached; stopping", o.budget);
+            break;
+        }
         let minlev = todo.iter().map(|&i| sets[i].lev).min().unwrap();
-        let batch: Vec<usize> = todo.into_iter().filter(|&i| sets[i].lev == minlev).collect();
+        let mut batch: Vec<usize> = todo.into_iter().filter(|&i| sets[i].lev == minlev).collect();
+        // from level 3 on, tests are costly: take the sets in the most deficient
+        // entries first, a chunk at a time, and recompute needs in between
+        let at_level = batch.len();
+        if minlev >= 3 && batch.len() > o.chunk {
+            batch.sort_by_key(|&i| (std::cmp::Reverse(cnt[i]), i));
+            batch.truncate(o.chunk);
+        }
+        // deep tests: one at a time with the search itself parallel (most
+        // deficient entries first, then fewest targets), since one raised side
+        // often settles a whole triple and a single-thread search at level 5+
+        // rarely finishes within the cap
+        if minlev >= 5 || (minlev >= 4 && batch.len() < o.threads) {
+            batch.sort_by_key(|&i| (std::cmp::Reverse(cnt[i]), sets[i].key.len(), i));
+            batch.truncate(1);
+        }
         if minlev as usize > o.depth {
             for &i in &batch {
                 sets[i].stuck = true;
@@ -2020,40 +2105,66 @@ fn lbscan(pre: &str, o: &Opts) {
             println!("  level {minlev}: {} sets beyond --depth {}, left open", batch.len(), o.depth);
             continue;
         }
-        let res: Vec<(usize, Option<bool>)> = batch
-            .par_iter()
-            .map_init(ExactWs::new, |ws, &i| (i, level_test(&sets[i].key, sets[i].lev as usize, o.cap, ws)))
-            .collect();
-        let (mut up, mut ex, mut to) = (0usize, 0usize, 0usize);
-        for (i, rv) in res {
-            match rv {
-                Some(true) => {
-                    sets[i].exact = true;
-                    ex += 1;
+        let (mut up, mut ex, mut to, mut done) = (0usize, 0usize, 0usize, 0usize);
+        let tb = std::time::Instant::now();
+        for chunk in batch.chunks(20_000) {
+            let res: Vec<(usize, Option<bool>)> = if chunk.len() < o.threads {
+                chunk.iter().map(|&i| (i, level_test_par(&sets[i].key, sets[i].lev as usize, o.cap))).collect()
+            } else {
+                chunk.par_iter().map_init(ExactWs::new, |ws, &i| (i, level_test(&sets[i].key, sets[i].lev as usize, o.cap, ws))).collect()
+            };
+            let mut log = String::new();
+            for (i, rv) in res {
+                match rv {
+                    Some(true) => {
+                        sets[i].exact = true;
+                        ex += 1;
+                    }
+                    Some(false) => {
+                        sets[i].lev += 1;
+                        up += 1;
+                    }
+                    None => {
+                        sets[i].stuck = true;
+                        to += 1;
+                        continue;
+                    }
                 }
-                Some(false) => {
-                    sets[i].lev += 1;
-                    up += 1;
-                }
-                None => {
-                    sets[i].stuck = true;
-                    to += 1;
-                }
+                log += &format!("{i} {:016x} {} {}\n", khash(&sets[i].key), sets[i].lev, sets[i].exact as u8);
+            }
+            if let Some(cp) = &cache_path {
+                use std::io::Write;
+                let mut f = std::fs::OpenOptions::new().create(true).append(true).open(cp).unwrap();
+                f.write_all(log.as_bytes()).unwrap();
+            }
+            done += chunk.len();
+            if done < batch.len() {
+                println!(
+                    "    level {minlev}: {done}/{} ({up} refuted, {ex} exact, {to} timed out; {:.0}s, {:.1} ms/set)",
+                    batch.len(), el(), 1000.0 * tb.elapsed().as_secs_f64() / done as f64
+                );
+            }
+            if budget_hit(el()) {
+                break;
             }
         }
-        println!("  level {minlev}: {} sets: {up} refuted (bound +1), {ex} exact, {to} timed out ({:.0}s)", batch.len(), el());
+        println!(
+            "  level {minlev}: {done} of {} sets ({at_level} deficient at this level): {up} refuted (bound +1), {ex} exact, {to} timed out ({:.0}s)",
+            batch.len(), el()
+        );
     }
     // final pass over all 840^3 triples
     let lbt = lb_tables(&sets);
     let ex_t: Vec<Vec<bool>> = ids.iter().map(|tab| tab.iter().map(|&id| sets[id as usize].exact).collect()).collect();
-    let rows: Vec<(usize, usize, Vec<String>)> = (0..n)
+    let rows: Vec<(usize, usize, Vec<String>, u16)> = (0..n)
         .into_par_iter()
         .map(|x| {
-            let (mut bad, mut genuine, mut lines) = (0usize, 0usize, Vec::new());
+            let (mut bad, mut genuine, mut lines, mut lo) = (0usize, 0usize, Vec::new(), u16::MAX);
             for y in 0..n {
                 let a = lbt[0][x * n + y] as u16;
                 for z in 0..n {
                     let s = a + lbt[1][y * n + z] as u16 + lbt[2][z * n + x] as u16;
+                    lo = lo.min(s);
                     if s < goal {
                         bad += 1;
                         let real = ex_t[0][x * n + y] && ex_t[1][y * n + z] && ex_t[2][z * n + x];
@@ -2067,11 +2178,13 @@ fn lbscan(pre: &str, o: &Opts) {
                     }
                 }
             }
-            (bad, genuine, lines)
+            (bad, genuine, lines, lo)
         })
         .collect();
     let bad: usize = rows.iter().map(|t| t.0).sum();
     let genuine: usize = rows.iter().map(|t| t.1).sum();
+    let lo = rows.iter().map(|t| t.3).min().unwrap() as usize;
+    println!("orbit lower bound proved: every point costs at least {}", lo + r - NIN);
     let mut hist = vec![0usize; 64];
     for s in &sets {
         hist[s.lev as usize] += 1;
@@ -2096,6 +2209,101 @@ fn lbscan(pre: &str, o: &Opts) {
             std::fs::write(format!("{dir}/lbscan_open_sides.txt"), stuck).unwrap();
             println!("wrote up to 200 triples per X to {dir}/lbscan_triples.txt and the open sides to {dir}/lbscan_open_sides.txt");
         }
+    }
+}
+
+/// Cross-check lbscan's refutations with the older search (exact_dfs:
+/// at most k helpers, pairwise order rule only, copied state): the deepest
+/// non-exact sets of a checkpoint must have no program with lev-1 helpers,
+/// and a sample of exact sets must have one with lev helpers.
+fn lbcheck1(pre: &str, cache: &str, o: &Opts) {
+    let s0 = Scheme::from_sms(pre);
+    let reps = coset_reps(&gl42());
+    let n = reps.len();
+    let fams = [&s0.u, &s0.v, &s0.w];
+    // rebuild the set numbering exactly as lbscan does
+    let mut index: HashMap<Vec<u16>, u32> = HashMap::new();
+    let mut keys: Vec<Vec<u16>> = Vec::new();
+    for which in 0..3 {
+        let ks: Vec<Vec<u16>> = (0..n * n)
+            .into_par_iter()
+            .map(|e| {
+                let (xi, xj) = (reps[e / n], reps[e % n]);
+                let mut t: Vec<u16> = fams[which]
+                    .iter()
+                    .map(|&m| if which < 2 { m_mul(m_mul(m_t(xi.0), m), m_t(xj.1)) } else { m_mul(m_mul(xj.1, m), xi.0) })
+                    .filter(|v| v.count_ones() > 1)
+                    .collect();
+                t.sort_unstable();
+                t.dedup();
+                t
+            })
+            .collect();
+        for t in ks {
+            if !index.contains_key(&t) {
+                index.insert(t.clone(), keys.len() as u32);
+                keys.push(t);
+            }
+        }
+    }
+    let khash = |k: &[u16]| k.iter().fold(0xcbf2_9ce4_8422_2325u64 ^ k.len() as u64, |h, &v| (h ^ v as u64).wrapping_mul(0x0000_0100_0000_01b3));
+    let mut st: HashMap<usize, (u8, bool)> = HashMap::new();
+    for ln in std::fs::read_to_string(cache).unwrap().lines() {
+        let f: Vec<&str> = ln.split_whitespace().collect();
+        let (id, h, lev, ex): (usize, u64, u8, bool) = (f[0].parse().unwrap(), u64::from_str_radix(f[1], 16).unwrap(), f[2].parse().unwrap(), f[3] == "1");
+        assert!(id < keys.len() && khash(&keys[id]) == h, "checkpoint does not match this scheme");
+        let e = st.entry(id).or_insert((0, false));
+        e.0 = e.0.max(lev);
+        e.1 |= ex;
+    }
+    // a seeded sample at exactly level --depth (refuted) and --depth - 1 (exact)
+    let mut rng = Rng(o.seed ^ 0x5eed);
+    let mut sample = |want_exact: bool, lev: usize, k: usize| -> Vec<(usize, u8)> {
+        let mut v: Vec<(usize, u8)> = st.iter().filter(|(_, x)| x.1 == want_exact && x.0 as usize == lev).map(|(&i, x)| (i, x.0)).collect();
+        v.sort();
+        for a in (1..v.len()).rev() {
+            v.swap(a, rng.below(a + 1));
+        }
+        v.truncate(k);
+        v
+    };
+    let refuted = sample(false, o.depth, o.maxsub);
+    let exact = sample(true, o.depth.saturating_sub(1), o.maxsub / 4 + 1);
+    println!("{} sets in checkpoint; re-checking {} refutations at level {} and {} exact sets at level {}", st.len(), refuted.len(), o.depth, exact.len(), o.depth.saturating_sub(1));
+    let run = |key: &[u16], k: usize| -> Option<bool> {
+        DEADLINE.with(|d| d.set(Some(std::time::Instant::now() + std::time::Duration::from_secs_f64(o.cap))));
+        TIMED_OUT.with(|f| f.set(false));
+        let mut inc = vec![0u64; NV / 64];
+        let mut cl: Vec<u16> = (0..NIN).map(|i| 1u16 << i).collect();
+        for &c in &cl {
+            bput(&mut inc, c);
+        }
+        let mut rem = key.to_vec();
+        closure(&mut inc, &mut cl, &mut rem);
+        let nodes = std::sync::atomic::AtomicU64::new(0);
+        let r = exact_dfs(&inc, &cl, &rem, k, None, &nodes);
+        let to = TIMED_OUT.with(|f| f.get());
+        DEADLINE.with(|d| d.set(None));
+        if r.is_some() { Some(true) } else if to { None } else { Some(false) }
+    };
+    let t0 = std::time::Instant::now();
+    let a: Vec<(usize, u8, Option<bool>)> = refuted.par_iter().map(|&(i, l)| (i, l, run(&keys[i], l as usize - 1))).collect();
+    let b: Vec<(usize, u8, Option<bool>)> = exact.par_iter().map(|&(i, l)| (i, l, run(&keys[i], l as usize))).collect();
+    let cnt = |v: &[(usize, u8, Option<bool>)], w: Option<bool>| v.iter().filter(|t| t.2 == w).count();
+    println!(
+        "refutations: {} confirmed, {} CONTRADICTED, {} timed out; exact: {} confirmed, {} CONTRADICTED, {} timed out  ({:.0}s)",
+        cnt(&a, Some(false)), cnt(&a, Some(true)), cnt(&a, None), cnt(&b, Some(true)), cnt(&b, Some(false)), cnt(&b, None),
+        t0.elapsed().as_secs_f64()
+    );
+    let mut hist: std::collections::BTreeMap<u8, (usize, usize)> = std::collections::BTreeMap::new();
+    for t in &a {
+        let e = hist.entry(t.1).or_default();
+        e.0 += 1;
+        e.1 += (t.2 == Some(false)) as usize;
+    }
+    println!("refutations re-checked by level (lev: checked, confirmed): {:?}", hist);
+    for t in a.iter().filter(|t| t.2 == Some(true)) {
+        println!("CONTRADICTION: set {} ({} targets) lev {}", t.0, keys[t.0].len(), t.1);
     }
 }
 
@@ -2353,6 +2561,13 @@ fn main() {
         let t0 = std::time::Instant::now();
         screen(&args[2], &o, o.runs, o.depth.max(1));
         println!("({:.1}s)", t0.elapsed().as_secs_f64());
+        return;
+    }
+    if args[1] == "lbcheck1" {
+        // xor47 lbcheck1 PREFIX CHECKPOINT [--depth LEV] [--maxsub N] [--cap SECS] [--threads T]
+        let o = parse_opts(&args[4..]);
+        rayon::ThreadPoolBuilder::new().num_threads(o.threads).build_global().unwrap();
+        lbcheck1(&args[2], &args[3], &o);
         return;
     }
     if args[1] == "lbscan" {

@@ -20,6 +20,11 @@ and 55 without (our `external/i19` class, Karunaratne–Idamekorala).
 Controls through the same code paths: our 51 class comes out
 `legs 12/13/12 → TIE-51` (as in the original sweep), and the class holding
 our 55 gets a flat bound of exactly 55, met by one coset triple.
+Cross-check of the flat bound on the lowest-floor new class (class0160,
+bound 56): the exact orbit scan (`../orbitscan.py`, all six slot
+variants, 51 min) finds an orbit-wide GF(2) input-side minimum of 29–31,
+best estimated total 61 and no point at or below 56, consistent with the
+bound.
 
 ## Pipeline
 

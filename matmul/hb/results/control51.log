@@ -1,0 +1,2 @@
+CONTROL i12w211c23fg: floor2=47 d=[20, 20, 20] legs=['=12', '=13', '=12'] total=51 -> TIE-51 (12 s); how=['tier2a: 9-target basis + 1 helper', 'tier3: 9-target basis + 2 helpers', 'tier2a: 9-target basis + 1 helper']
+exit 0

@@ -1556,6 +1556,19 @@ the two source papers for this track):
   reports its 156 point.  Together with the Strassen^2 proof: nothing
   tensor-like we can generate beats 156; a record needs a new integral
   rank-49 class.  AT and published rank-47 climbs chained next.
+- **HELL'S BELLS 3x3 DATASET SWEPT (2026-10-19): no improvement.**
+  Martensson et al., ePrint 2026/1688, 15,316 rank-23 ternary schemes
+  (their best 59; no local search/strong reduction applied).  All pass
+  integer Brent.  8,977 equivalent to HKS DB schemes (997 classes; all
+  480 floor-47 schemes are DB classes), 6,339 NEW in 1,736 classes
+  (floor2 48:11 49:63 50:178 51:312 ...).  Basis change: exact fbmin
+  leg screen of the 564 new classes with floor <= 51 -> all ruled out
+  for 51 (375 s; control: our 51 class -> TIE-51, legs 12/13/12).
+  Flat: new 3x3 whole-orbit bound (hbflat.py: distinct non-unit rows +
+  closure bit per leg, LEFT cosets of the permutation matrices, 28 per
+  factor, min-plus over 28^3) -> 0 of 1,736 classes can go below 55;
+  35 classes bound exactly 55 (possible ties, unverified); control: our
+  55 class bounds at exactly 55.  matmul/hb/README.md.
 - **★ S-P 51 KERNEL CLASS-OPTIMAL, MACHINE-CHECKED (2026-10-17)**:
   proof/Mm/SP51Optimal.lean. `kernel_optimal_for_class`: for all
   invertible linear eA eB eC, chains (from ANY nine starting vectors,

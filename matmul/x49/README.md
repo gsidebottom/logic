@@ -11,7 +11,7 @@ the integers.  An F₂ orbit minimum of at least 156 therefore rules a
 class out.  Costs are XOR(L) + XOR(R) + XOR(Pᵀ) + 33 (transposition
 principle, rank 49), all computed with `../../src/bin/xor47.rs`.
 
-## Results (2026-10-18): Strassen² class proved; nothing below 156 elsewhere
+## Results (2026-10-18/19): Strassen² class proved; nothing below 156 elsewhere
 
 - **Strassen² class** (`ref/` mod 2 = `f2/s49`): **proved that no point
   of its orbit costs fewer than 156 XORs over F₂.**  So no scheme whose
@@ -44,6 +44,15 @@ principle, rank 49), all computed with `../../src/bin/xor47.rs`.
   For the top five, exhaustive orbit scans plus exact refinement of
   each scan's +2 window (`scan_top.sh` → `scan_top.log`): mix-00084
   156; mix-00002, -00009, -00029, -00037 157, with no open sides.
+- **Whole-orbit screen of the mixed family** (`lbscreen.sh`, 2026-10-19):
+  1,200 members (the 200 above plus 1,000 more, `mixed.py random 1000
+  mixb 2`), each run through `xor47 lbscan --target 156`.  **All 1,200
+  are proved to cost at least 156 everywhere in their orbits**
+  (`lbscreen_results.txt`; 1.5 s per scheme, 32 min in all; the closure
+  test and one-helper refutations suffice for every member).  Control:
+  at target 157 the same test on mix-00084 reports its 156 point as a
+  genuine triple.  So none of these members beats 156 without a change
+  of basis; a rank-49 record needs a different integral class.
 
 ## Files
 
@@ -57,6 +66,9 @@ principle, rank 49), all computed with `../../src/bin/xor47.rs`.
   mixed schemes.
 - `lbcheck.py`: independent check of an `lbscan` lower bound (target
   counts plus the closure term over all coset triples).
+- `lbscreen.sh`: `lbscan --target 156` over a list of `.bits` schemes,
+  resumable; `lbscreen_list.txt` is the 1,200-member batch and
+  `lbscreen_results.txt` its verdicts (bound and PROVED per scheme).
 - `ref/`: PLinOpt's signed 156 scheme and programs.  `f2/`: mod-2
   SMS inputs for the scans (`s49` and the five mixed schemes).
 - `lift/`: sign-SAT lifts to {−1, 0, 1} of mix-00000..00002 and of
@@ -76,6 +88,7 @@ python3 mixed.py random 200 mix
 sh scan_top.sh
 ../../target/release/xor47 lbscan f2/s49 --target 156 --depth 8 --cap 600 --threads 12 --out out/lb49/t156
 ../../.venv/bin/python lbcheck.py f2/s49 156
+sh lbscreen.sh lbscreen_list.txt out/lbscreen --depth 6 --cap 300 --threads 12 --budget 600
 ```
 
 `screen` reads a list of `.bits` paths and runs CHAINS annealing chains

@@ -1548,6 +1548,14 @@ the two source papers for this track):
   refutations, 51/51 exact sets.  The 167
   paper's "no triple of any class drops below 167" is window-scoped:
   reword as "near-minimal triples" plus the whole-orbit bound.
+- **RANK-49 MIXED FAMILY SCREEN (2026-10-19): no candidate.**  1,200
+  mixed-inner Strassen members (200 + 1,000 new, seed 2) each through
+  `lbscan --target 156` (matmul/x49/lbscreen.sh): all 1,200 PROVED >=
+  156 over their whole orbits, 1.5 s each (closure test + one-helper
+  refutations suffice), 32 min total; control at 157 on mix-00084
+  reports its 156 point.  Together with the Strassen^2 proof: nothing
+  tensor-like we can generate beats 156; a record needs a new integral
+  rank-49 class.  AT and published rank-47 climbs chained next.
 - **★ S-P 51 KERNEL CLASS-OPTIMAL, MACHINE-CHECKED (2026-10-17)**:
   proof/Mm/SP51Optimal.lean. `kernel_optimal_for_class`: for all
   invertible linear eA eB eC, chains (from ANY nine starting vectors,

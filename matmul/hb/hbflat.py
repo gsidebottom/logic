@@ -21,6 +21,10 @@ symmetries permute the legs and leave the total unchanged, so one
 variant covers the whole de Groote orbit.  The coset invariance is
 checked on random elements before the tables are trusted.
 
+Columns of OUT_CSV: bound_targets (distinct non-unit targets only),
+bound_closure (with the closure bits; the bound to quote), and the number
+of coset triples at or below the target under the refined bound.
+
 Usage: hbflat.py BITS_TXT VERDICTS_CSV OUT_CSV [--jobs N] [--target 54]
        hbflat.py --one BITSFILE            (one scheme, verbose)
 """
@@ -119,8 +123,8 @@ def bound(bits, target=54, verbose=False):
     b1, c1 = minplus(ta, tb, tc, target)
     if verbose:
         print(f"  target counts alone: orbit bound {b1}, {c1} coset triples <= {target}")
-    if b1 > target:
-        return b1, b1, 0
+    # the closure bits are always added: an early return here once reported
+    # the weaker target-count bound as if it were the refined one
     ca, cb, cc = tables(summ, closure_misses)
     n = len(REPS)
     ta2 = [[ta[p][q] + ca[p][q] for q in range(n)] for p in range(n)]

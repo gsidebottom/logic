@@ -15,7 +15,7 @@ and 55 without (our `external/i19` class, Karunaratne–Idamekorala).
 | question | method | outcome |
 |---|---|---|
 | ≤ 50 with basis change (or a new 51) | exact free-basis leg minima (`fbmin`), 564 new classes with floor ≤ 51 | **none reaches 51**; every class ruled out (375 s) |
-| ≤ 54 without basis change | whole-orbit lower bound (`hbflat.py`), all 1,736 new classes | **none can go below 55**; 35 classes have bound exactly 55 (possible ties, unverified) |
+| ≤ 55 without basis change (record or tie) | whole-orbit lower bound (`hbflat.py`), all 1,736 new classes | **none reaches 55**: every class is proved ≥ 56 (lowest bound 56, one class) |
 
 Controls through the same code paths: our 51 class comes out
 `legs 12/13/12 → TIE-51` (as in the original sweep), and the class holding
@@ -57,8 +57,12 @@ bound.
    total is symmetric in the legs.  A random-element gate checks the coset
    invariance before the tables are trusted (it caught a right/left coset
    mistake in the first version).  Results in `results/hbflat.csv`: bounds
-   55: 35, 56: 82, 57: 186, 58: 362, 59: 494, 60: 357, 61: 165, 62: 42,
-   63: 11, 64: 2; about 0.5 s per class.
+   56: 1, 57: 14, 58: 65, 59: 156, 60: 308, 61: 486, 62: 402, 63: 210,
+   64: 65, 65: 23, 66: 5, 67: 1; about 1 s per class.  Correction
+   (2026-10-20): the first run returned early with the target-count
+   bound whenever that already exceeded the target, and its CSV listed
+   35 classes "at 55"; with the closure bits those are 57 and 58.  The
+   refinement is now always applied.
 
 `out/` (bits, verdicts, legs, logs) is gitignored and regenerable; the
 dataset itself is fetched with a sparse clone of the repository.
@@ -81,8 +85,5 @@ Results in `results/overlap_with_our_finds.csv`.
 
 ## Open
 
-- The 35 classes with flat bound 55 could tie the record; deciding them
-  needs the exact orbit scan (`../orbitscan.py`, about an hour per class
-  with its 168×168 exact tables, or far less with the coset reduction).
 - The dataset's remaining 1,172 new classes with floor ≥ 52 cannot beat
   51 by the floor alone (a class costs at least its floor per step).

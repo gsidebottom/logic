@@ -1576,8 +1576,10 @@ the two source papers for this track):
   for 51 (375 s; control: our 51 class -> TIE-51, legs 12/13/12).
   Flat: new 3x3 whole-orbit bound (hbflat.py: distinct non-unit rows +
   closure bit per leg, LEFT cosets of the permutation matrices, 28 per
-  factor, min-plus over 28^3) -> 0 of 1,736 classes can go below 55;
-  35 classes bound exactly 55 (possible ties, unverified); control: our
+  factor, min-plus over 28^3) -> 0 of 1,736 classes can reach 55 at all
+  (CORRECTED 2026-10-20: the first run reported "35 classes at exactly
+  55" -- an early exit returned the target-count bound without the
+  closure bits; refined, those 35 are 57 (13) and 58 (22)); control: our
   55 class bounds at exactly 55.  matmul/hb/README.md.
 - **★ S-P 51 KERNEL CLASS-OPTIMAL, MACHINE-CHECKED (2026-10-17)**:
   proof/Mm/SP51Optimal.lean. `kernel_optimal_for_class`: for all

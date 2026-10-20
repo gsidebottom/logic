@@ -19,7 +19,7 @@
 \title{\bfseries A 55-Addition Rank-23 Scheme for $3\times 3$ Matrix
   Multiplication via Exact Two-Sided Minimization}
 \author{Greg Sidebottom}
-\date{July 5, 2026 (revised October 17, 2026)}
+\date{July 5, 2026 (revised October 19, 2026)}
 
 \begin{document}
 \maketitle
@@ -32,7 +32,29 @@ snapshot --- are archived at
 mechanical check (\S\ref{sec:repro}).
 \end{center}
 
-\section*{Abstract}
+\begin{abstract}
+We give a scheme that multiplies two $3\times3$ matrices with 23
+multiplications and 55 additions over any ring, one addition below the
+previous record of 56 (Sun, 2026) and the first below 56 for exact
+non-commutative $3\times3$ multiplication without a change of basis.  The
+scheme forms 13 signed combinations of the entries of $A$ and 14 of $B$,
+takes 23 products, and recombines them with 28 further additions; its
+correctness is machine-checked in Lean~4.  The previous records, from 60
+down to 56, were obtained by greedy common-subexpression elimination,
+which only bounds each side of a scheme from above.  We minimize both
+input sides exactly by chain covering, and the output side exactly
+through the transposition principle: the $9\times23$ output map costs
+its transpose plus 14, and the transpose is a 9-input map that the
+input-side minimizer solves exactly.  Applied to Perminov's cn122 scheme
+(class i19w225c4efh, published at 58 additions) this gives
+$55 = 13 + 14 + 28$, where greedy elimination reaches only 29 on the
+output side.  The same method shows that Sun's representative is
+output-optimal at 56, and an exact orbit-wide computation over the
+Heule--Kauers--Seidl database shows that the record class is the only
+database class attaining 55.
+\end{abstract}
+
+\section{Overview}\label{sec:overview}
 
 \textbf{We multiply two $3\times 3$ matrices with 23 multiplications
 and 55 additions} --- one below the previous record of 56 (Yinqi Sun,

@@ -42,8 +42,12 @@ standard abstract ("the abstract in the pdf is long and does not read like
 an abstract").  Fixed in the tex: a ~190-word `abstract` environment after
 the title; the former long "Abstract" section is now Section 1, Overview
 (content unchanged); date line "revised October 19, 2026".  Metadata
-abstract above replaced by the same text.  Tarball rebuilt; resubmitted
-from the user dashboard.
+abstract above replaced by the same text.  Tarball rebuilt; RESUBMITTED
+2026-10-19 ~21:10 ET from the user dashboard (pdflatex SUCCEEDED, HTML
+rendering checked, PDF previewed by Greg): status "processing".  KS-51
+(submit/8246158) was "on hold" at the time with no change request.  The
+monthly counter reads 2 submitted, 0 remaining (the resubmission did not
+use an extra slot).
 
 
 **Title:** A 55-Addition Rank-23 Scheme for $3\times3$ Matrix

@@ -1326,7 +1326,41 @@ fn exact_level(inc: &[u64], cl: &[u16], rem: &[u16], h: usize, par: bool, nodes:
             hs
         })
     };
-    if par {
+    if par && h >= 2 {
+        // split two helpers deep: one first-helper subtree often dominates
+        // the search, so splitting on the first helper alone leaves most
+        // threads idle; (x, y) pairs balance the load.  The candidate
+        // rules are exactly those dfs_v2 would apply at depths 0 and 1.
+        let mut pairs: Vec<(u16, u16)> = Vec::new();
+        for &x in &tops {
+            let (mut inc2, mut cl2, mut rem2) = (inc.to_vec(), cl.to_vec(), rem.to_vec());
+            closure_add(&mut inc2, &mut cl2, &mut rem2, x);
+            if rem2.is_empty() {
+                return Some(vec![x]);
+            }
+            ws0.mark_ps(1, &cl2);
+            for y in cands_v2(&inc2, &cl2, &rem2, 1, h == 2, &mut ws0, &[(x, 0)]) {
+                pairs.push((x, y));
+            }
+        }
+        let run2 = |x: u16, y: u16, ws: &mut ExactWs| -> Option<Vec<u16>> {
+            ws.mark_ps(0, cl);
+            let (mut inc2, mut cl2, mut rem2) = (inc.to_vec(), cl.to_vec(), rem.to_vec());
+            closure_add(&mut inc2, &mut cl2, &mut rem2, x);
+            ws.mark_ps(1, &cl2);
+            closure_add(&mut inc2, &mut cl2, &mut rem2, y);
+            if h == 2 {
+                return rem2.is_empty().then(|| vec![x, y]);
+            }
+            let mut path = vec![(x, 0usize), (y, 1usize)];
+            dfs_v2(&mut inc2, &mut cl2, &mut rem2, h - 2, 2, &mut path, ws, nodes).map(|mut hs| {
+                hs.insert(0, y);
+                hs.insert(0, x);
+                hs
+            })
+        };
+        pairs.par_iter().map_init(ExactWs::new, |ws, &(x, y)| run2(x, y, ws)).find_map_any(|r| r)
+    } else if par {
         tops.par_iter().map_init(ExactWs::new, |ws, &x| run(x, ws)).find_map_any(|r| r)
     } else {
         let mut ws = ws0;

@@ -62,7 +62,9 @@ bound.
    (2026-10-20): the first run returned early with the target-count
    bound whenever that already exceeded the target, and its CSV listed
    35 classes "at 55"; with the closure bits those are 57 and 58.  The
-   refinement is now always applied.
+   refinement is now always applied.  Both histograms (flat bound and
+   basis-change floor per class) are in `results/lower_bound_histograms.png`
+   (and `.svg`).
 
 `out/` (bits, verdicts, legs, logs) is gitignored and regenerable; the
 dataset itself is fetched with a sparse clone of the repository.

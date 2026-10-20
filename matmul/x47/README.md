@@ -57,6 +57,17 @@ orbit.  `lbclimb.sh` raises the target one step at a time on a shared
 checkpoint: each step needs deep search on only tens of sets, where
 aiming at 167 directly would raise about 10⁵ sets per level.
 
+**Published class (`seeds/ref47`, the AlphaEvolve scheme): every orbit
+point costs at least 160** (2026-10-19, `lbclass.sh ref47 143`: pre-raise
+142 → 148, climb 149–160 in 3 h; the 161 step left one coset triple open,
+the published scheme itself, whose output side (34 targets, heuristic 49)
+the exact search could not decide at level 7 within an hour;
+`lbref47/climb.txt`).  As a by-product the climb settles the published
+scheme's input sides: six helpers are refuted on L and on R and
+seven-helper programs exist, so XOR(L) = XOR(R) = 44 exactly (L does not
+admit 43); its output side is proved ≥ 41 (heuristic 49), so the scheme
+itself costs between 160 and 168.
+
 **Kauers–Moosbauer class (`seeds/km47`): every orbit point costs at
 least 163** (2026-10-19; the class contains the 167).  Cheap bounds
 give 144; levels 1–2 on 1.5·10⁶ sets give 150; the climb then proved

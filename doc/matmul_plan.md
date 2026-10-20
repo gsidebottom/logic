@@ -1556,6 +1556,16 @@ the two source papers for this track):
   reports its 156 point.  Together with the Strassen^2 proof: nothing
   tensor-like we can generate beats 156; a record needs a new integral
   rank-49 class.  AT and published rank-47 climbs chained next.
+- **ALL THREE RANK-47 CLASSES BOUNDED (2026-10-19 23:10)**: whole-orbit
+  lower bounds by lbclass.sh (pre-raise + climb): KM 163 (6.6 h for the
+  last step), AlphaTensor 162 (163 step hit its 3.5 h budget, 35 triples
+  open), published 160 (161 step: one triple open = the published scheme
+  itself, output side Pt (34 targets, BP 49) undecided at level 7 within
+  1 h; its L and R sides settled EXACTLY at 44 (6 helpers refuted, 7
+  found) -> the paper's open question 'does L admit 43' is answered NO;
+  Pt >= 41, so the published scheme costs 160..168).  xor47's parallel exact search now splits two helpers deep
+  (balanced; same verdicts on the benchmarks).  Paper: Table 4 gains an
+  "orbit >=" column; whole-orbit paragraph covers all three classes.
 - **HELL'S BELLS 3x3 DATASET SWEPT (2026-10-19): no improvement.**
   Martensson et al., ePrint 2026/1688, 15,316 rank-23 ternary schemes
   (their best 59; no local search/strong reduction applied).  All pass

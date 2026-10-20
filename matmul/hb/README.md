@@ -63,6 +63,22 @@ bound.
 `out/` (bits, verdicts, legs, logs) is gitignored and regenerable; the
 dataset itself is fetched with a sparse clone of the repository.
 
+## Overlap with our own finds
+
+`hbours.py` indexes every 3×3 rank-23 scheme we found ourselves (201,701
+files under `../found`, `../new23`, `../found23flip`, `../found23mint`,
+`../found55`, `../external`; 24,512 distinct fingerprints; each
+Brent-checked on load) and tests the 1,736 new Hell's Bells classes
+against them: **601 coincide with a scheme of ours** (539 in the
+flip-walk corpus, 56 in the mint corpus, 6 in `found/`), **1,135 do not**.
+By floor (matched / new classes): 48: 10/11, 49: 37/63, 50: 83/178,
+51: 124/312, 52: 145/474, 53: 152/499, 54: 46/178, 55: 4/19, 56: 0/2.
+So about a third of what the neural generator produces outside the HKS
+database is reachable by flip walks from it; the other two thirds are
+new to everything we have.  None of this changes the verdict: the leg
+screen and the flat bound covered all 1,736 classes regardless.
+Results in `results/overlap_with_our_finds.csv`.
+
 ## Open
 
 - The 35 classes with flat bound 55 could tie the record; deciding them

@@ -50,6 +50,7 @@ name = "zrescore"
 path = "src/bin/zrescore.rs"
 
 [features]
+n48 = []  # lns48 compiled for 48-input maps (the output map P searched directly)
 # `evolve_guard` — runtime enforcement of the eff-layer ordering
 # contracts (sum_visit_order is a permutation; prod_visit_order keeps
 # all reachable alts).  OFF by default → zero overhead in production

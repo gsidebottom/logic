@@ -31,10 +31,13 @@ use std::hash::{BuildHasherDefault, Hasher};
 use std::io::Write;
 use std::time::{Duration, Instant};
 
-const N: usize = 16;
+#[cfg(not(feature = "n48"))]
+const N: usize = 16; // inputs: the 16 entries of a 4x4 matrix (L, R, P^T)
+#[cfg(feature = "n48")]
+const N: usize = 48; // inputs: the 48 products (the output map P searched directly)
 const SCAL: i64 = 64;
 const MAXNUM: i64 = 16 * SCAL;
-const MAXD: usize = 256;
+const MAXD: usize = 512;
 const NONE: u16 = u16::MAX;
 
 type V = [i64; N];
@@ -144,7 +147,7 @@ fn gcd(a: i64, b: i64) -> i64 {
 
 // ------------------------------------------------------------------ bitsets
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
-struct Bits([u64; 4]);
+struct Bits([u64; 8]);
 impl Bits {
     fn get(&self, i: usize) -> bool {
         self.0[i >> 6] >> (i & 63) & 1 == 1
@@ -156,25 +159,25 @@ impl Bits {
         self.0[i >> 6] &= !(1 << (i & 63));
     }
     fn subset_of(&self, o: &Bits) -> bool {
-        (0..4).all(|k| self.0[k] & !o.0[k] == 0)
+        (0..8).all(|k| self.0[k] & !o.0[k] == 0)
     }
     fn and(&self, o: &Bits) -> Bits {
         let mut r = *self;
-        for k in 0..4 {
+        for k in 0..8 {
             r.0[k] &= o.0[k];
         }
         r
     }
     fn and_not(&self, o: &Bits) -> Bits {
         let mut r = *self;
-        for k in 0..4 {
+        for k in 0..8 {
             r.0[k] &= !o.0[k];
         }
         r
     }
     fn or(&self, o: &Bits) -> Bits {
         let mut r = *self;
-        for k in 0..4 {
+        for k in 0..8 {
             r.0[k] |= o.0[k];
         }
         r
@@ -186,7 +189,7 @@ impl Bits {
         self.0.iter().map(|w| w.count_ones() as usize).sum()
     }
     fn iter(&self) -> impl Iterator<Item = usize> + '_ {
-        (0..4).flat_map(move |k| {
+        (0..8).flat_map(move |k| {
             let mut w = self.0[k];
             std::iter::from_fn(move || {
                 if w == 0 {
@@ -1209,6 +1212,9 @@ struct Search {
     tabu: VecDeque<u64>,
     recent: FxSet<u64>,
     tabu_size: usize,
+    kmax: usize,
+    metropolis: bool,
+    maxworse: usize,
     iterations: u64,
     moves: [u64; 3], // descent, plateau, annealing
     improvements: u64,
@@ -1226,7 +1232,7 @@ fn target_bits(dict: &Dict, targets: &[V]) -> Bits {
 }
 
 impl Search {
-    fn new(prog: &Program, seed: u64, reps: usize, temperature: f64, tabu_size: usize) -> Search {
+    fn new(prog: &Program, seed: u64, reps: usize, temperature: f64, tabu_size: usize, kmax: usize, metropolis: bool, maxworse: usize) -> Search {
         let mut rng = Rng(seed.wrapping_mul(0x9e3779b97f4a7c15) ^ 0xd1b54a32d192ed03);
         let mut dict = Dict::new();
         for v in &prog.values {
@@ -1264,6 +1270,9 @@ impl Search {
             tabu,
             recent,
             tabu_size,
+            kmax,
+            metropolis,
+            maxworse,
             iterations: 0,
             moves: [0; 3],
             improvements: 0,
@@ -1272,7 +1281,7 @@ impl Search {
 
     fn step(&mut self) -> bool {
         self.iterations += 1;
-        let k = 1 + self.rng.below(8);
+        let k = 1 + self.rng.below(self.kmax);
         let tdict_targets: Vec<V> = self.targets.clone();
         // dictionary of the current set, for the proposal reachability checks
         let mut d0 = Dict::new();
@@ -1313,6 +1322,15 @@ impl Search {
             Some(0)
         } else if cost == self.current_cost && !self.recent.contains(&fp) {
             Some(1)
+        } else if self.metropolis {
+            // Metropolis on the current cost: worse sets accepted with probability
+            // exp(-(cost - current) / T), but never beyond best + maxworse
+            let d = (cost - self.current_cost) as f64;
+            if cost <= self.best_cost + self.maxworse && !self.recent.contains(&fp) && self.temperature > 0.0 && self.rng.f64() < (-d / self.temperature).exp() {
+                Some(2)
+            } else {
+                None
+            }
         } else if cost == self.best_cost + 1 && !self.recent.contains(&fp) && self.temperature > 0.0 && self.rng.f64() < (-1.0 / self.temperature).exp() {
             Some(2)
         } else {
@@ -1376,6 +1394,14 @@ fn main() {
     let tabu: usize = opt(&mut args, "--tabu").map(|s| s.parse().unwrap()).unwrap_or(256);
     let reps: usize = opt(&mut args, "--orders").map(|s| s.parse().unwrap()).unwrap_or(4);
     let log_every: f64 = opt(&mut args, "--log").map(|s| s.parse().unwrap()).unwrap_or(30.0);
+    let kmax: usize = opt(&mut args, "--kmax").map(|s| s.parse().unwrap()).unwrap_or(8);
+    let maxworse: usize = opt(&mut args, "--maxworse").map(|s| s.parse().unwrap()).unwrap_or(3);
+    let metropolis = if let Some(i) = args.iter().position(|a| a == "--metropolis") {
+        args.remove(i);
+        true
+    } else {
+        false
+    };
     assert!(args.is_empty(), "unknown arguments: {:?}", args);
     std::fs::create_dir_all(&out).unwrap();
 
@@ -1394,7 +1420,8 @@ fn main() {
     };
     let seed_cost = prog.values.iter().filter(|v| canon(v).0.iter().filter(|x| **x != 0).count() > 1 || v.iter().any(|x| *x != 0 && x.abs() != SCAL)).count();
     eprintln!(
-        "lns48: {} targets, {} seed values (about {} ops), wall {}s x {} seeds, T {}, tabu {}, orders {}",
+        "lns48 (N = {}): {} targets, {} seed values (about {} ops), wall {}s x {} seeds, T {}, tabu {}, orders {}, kmax {}, metropolis {} (maxworse {})",
+        N,
         prog.targets.len(),
         prog.values.len(),
         seed_cost,
@@ -1402,7 +1429,10 @@ fn main() {
         seeds,
         temperature,
         tabu,
-        reps
+        reps,
+        kmax,
+        metropolis,
+        maxworse
     );
     let start = Instant::now();
     let results: Vec<(u64, usize, u64, Plan)> = std::thread::scope(|sc| {
@@ -1412,7 +1442,7 @@ fn main() {
                 let out = out.clone();
                 sc.spawn(move || {
                     let seed = seed0 + s as u64;
-                    let mut search = Search::new(prog, seed, reps, temperature, tabu);
+                    let mut search = Search::new(prog, seed, reps, temperature, tabu, kmax, metropolis, maxworse);
                     let path = format!("{}/seed{}.slp", out, seed);
                     let (a, sc_) = verify_and_write(&search.best_plan, &search.targets, &path);
                     eprintln!("  seed {}: start {} = {}+{}", seed, search.best_cost, a, sc_);

@@ -1572,6 +1572,27 @@ the two source papers for this track):
   singular mod 3 or an unknown class escapes.  Our own mod-2 corpora are
   unsigned and were not scanned.  Boundary rows are re-scanned at target+1
   (the early-exit lesson, applied before reporting this time).
+- **RANK-48 CAMPAIGN, STEP 2 DONE (2026-10-21 04:20)**: orbit annealing
+  (matmul/dps48/orbit48.py, GL(4,Z[1/2])^3, floor + sparsity penalty)
+  finds three profiles: Patel's point (floor 150, 104 non-units), the
+  DPSST26 canonical profile (146, 38/38/38, 136 non-units) and SPARSE
+  points (156-159, 68-72 non-units).  Under every measure the sparse
+  points lead: quick optimizer 263 vs 297 (Patel) / 307 (DPSST26);
+  Martensson greedy potential 250 vs 278 / 292; pair-level refinement
+  (prune_loop.py) 238 = 70+67+101 vs Patel's own point 253 = 68+74+111
+  (stored 202).  Saved: matmul/dps48/cand48/sparse68 (MMchecker/SLPchecker
+  verified).  The HEAVY STAGE that produced the stored programs is NOT:
+  random restarts (5 seeds -> 67-72 on L), triples (71 -> 67 fixed point),
+  chartreuse (nothing), long random walks (77 at 10k loops), nullspace
+  (81), Martensson brute force (infeasible), PLinOpt -E exhaustive greedy
+  (2 h, no program).  Open: Patel's/DPSST26's own method (unknown).
+  STEP 3 DESIGN (pending Greg's go): exact sub-program solver over Q --
+  for each sub-program that mirabelle would re-optimize (its targets as
+  Z[1/2]-vectors over its inputs), iterative deepening on helper count
+  with the closure rule generalized to scalars {+-1, +-1/2, +-2}
+  (target free if +-a +-b or c*a of available signals), verified splice
+  via prune_loop.py; apply to sparse68 first (largest expected payoff),
+  then to Patel's point.  Estimate 2-3 days; success = any total < 202.
 - **RANK-48 RECORD CAMPAIGN, STEP 1 DONE (2026-10-20 evening)**: target
   = Patel's 202 (PLinOpt data; DPSST26 paper 204).  Base optimizer gives
   78-81 adds on the 202 L side vs stored 54+2: the published counts come

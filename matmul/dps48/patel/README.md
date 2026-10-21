@@ -1,5 +1,16 @@
 # Drivers around Patel's circuit LNS (rank-48 campaign, 2026-10-21)
 
+**Engines.**  `../../../src/bin/lns48.rs` (`cargo build --release --bin lns48`)
+is our Rust reimplementation of the value-set LNS with PLinOpt's objective:
+~80 iterations/s per thread, 20x the z3-free Python; it reads PLinOpt or
+Patel-syntax seed programs (`--slp`) or seeds itself from the matrix
+(`--sms` alone, a naive chain program), runs several seeds in threads and
+re-verifies every program it writes.  The drivers below call it by default
+(`LNS_ENGINE=rust`, `LNS48_BIN`); `LNS_NAIVE=1` skips the PLinOpt seed
+pass; `LNS_ENGINE=python` uses `patel_phase.py` on his code instead.
+`restarts.sh PREFIX OUT [SEEDS] [WALL] [SEED0]` is the naive-seed restart
+campaign (L, R, P^T, assembly, SLPchecker + exact check).
+
 R. Patel's search code for the 202-operation rational `<4x4x4:48>` circuits
 (https://github.com/rp440/matmul-4x4-48-202, directory `search/`, CC0;
 Python >= 3.10 and `z3-solver`) is a value-set large-neighbourhood search:

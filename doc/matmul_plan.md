@@ -1576,6 +1576,32 @@ the two source papers for this track):
   (listed "Submitted on 20 Oct 2026", the post-moderation resubmission).
   KS-51 (submit/8246158) still on hold, no request.  Zenodo mm55 related
   identifier still to add (v1.1 kit).
+- **RANK-48: RUST PORT lns48 -> sparse68 at 203 = 55 + 58 + 90 (2026-10-21
+  10:15; record 202)**.  Profile of Patel's Python LNS: 72% of a step is
+  z3's Python wrapper building ~66 sign-planning problems, and the planner
+  only minimizes negations, which PLinOpt does not charge -> `--plinopt-model`
+  (greedy signs, no z3) gives 3.3x more iterations and the right objective.
+  Then `src/bin/lns48.rs` (Greg: "start the rust port"): fixed-point
+  [i64;16] vectors over 1/64, 256-bit catalog/closure bitsets, his six
+  proposal families, reverse deletion, descent/plateau/annealing + tabu,
+  exact self-verification of every emitted program; ~80 iterations/s per
+  thread = 20x the z3-free Python, 70x the original.  Results on sparse68:
+  P^T 59 -> 58 (P 90) where Python stalled; L 56 -> 55 from a NAIVE
+  matrix-only seed (`--sms`; the chain program is reverse-deleted before
+  the search) -- every PLinOpt-seeded run, Python and Rust, had converged
+  to 56, and 5-min Rust runs from the 56 program also reach 55: the seed
+  decides the basin.  R stays 58 and P^T 58 over 40k iterations and 6+
+  seeds (saturated).  Stored: cand48/sparse68_204_* and sparse68_203_*,
+  each verified by SLPchecker per side, transpozer for P^T, slp48check.py
+  (exact Brent) -- Patel-model count of the 203 triple is 228 (15 output
+  negations in L, absorbable into P's input signs; normalize before any
+  publication).  Python sweep (patel_phase engine) stopped after stage B:
+  best 205 at pool_l0.5_cand115 (L 58, R 56, P 91); L+R = 114 at almost
+  every point, P 91-94 decides.  Running 10:00-11:00: restarts.sh on
+  sparse68 (12 naive seeds x 180 s per side), then sweep.py with
+  LNS_ENGINE=rust LNS_NAIVE=1 over the 90 pool points (30 s / 120 s / 600 s
+  x 2).  Next: orbitclimb48.py with the Rust engine from the best point; a
+  larger orbit48 pool; cross-phase sign normalization.
 - **RANK-48: PATEL'S LNS ON sparse68 -> 205 (2026-10-21 09:00, Greg's go)**:
   his code (CC0) cloned into the session scratchpad, read in full (stdlib +
   z3; `df` is the only subprocess), smoke tests pass, his 203 -> 202

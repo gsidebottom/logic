@@ -1619,7 +1619,15 @@ the two source papers for this track):
   proxy-optimal points each in 90 s; the proxy saturates at 177.6) -> 120
   candidates, sweep 2 running; depth-2 proxy-optimal neighbourhood of
   cand005 (19 points) queued; hot-annealing 20-min runs on cand005's R and
-  P^T.  Then Greg's call on publication (PLinOpt data PR + note).
+  P^T: both unchanged after 20 min x 2 seeds (330k iterations) -> cand005
+  saturated at 201.  SWEEP 2 (120 new lambda = 0.3 points, Rust engine,
+  matrix-only seeds; done 12:34): stage A one 201 + 33 at 202; stage C seven
+  of the top eight at 201 (L 55 R 57 P 89 or the L/R mirror), none below --
+  the proxy-optimal family saturates at 201 at ~15 distinct points over both
+  sweeps.  Depth-2 proxy-optimal neighbourhood of cand005 (19 points) being
+  swept (ends ~13:10).  Then Greg's call on publication (PLinOpt data PR +
+  note) and on whether to keep searching for 200 (deeper per-point budgets,
+  non-proxy-optimal regions, or LNS neighbourhood changes).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21
   10:07)**: matmul/dps48/patel/restarts.sh (lns48, 12 naive matrix-only
   seeds x 180 s per side): L 55 on all 12 seeds, R 58 on all 12, P^T 57 on

@@ -14,3 +14,16 @@ comparison the same pipeline on Patel's own representative converges at
 so the published counts come from a further "heavy" refinement stage that
 the base optimizer, random restarts, triples, chartreuse and long random
 walks do not reproduce (2026-10-21 calibration).  Not a record: 238 > 202.
+
+Step 3 (exact window LNS, `../qexact.py` + `../exactlns.py`, 2026-10-21):
+two improvements on L (70 -> 68, 16-line windows with up to four helpers;
+total 236, program to be stored when the run ends) and none on R, P or on
+any side of Patel's point; the other consecutive windows of up to 16 lines
+are provably optimal with at most two helpers each, so most of the slack
+is in the choice of computed signals, not in how a window computes them.
+The heavy stage is now known: Patel's own search code is public
+(github.com/rp440/matmul-4x4-48-202, `search/`, CC0) -- a value-set LNS
+(propose new signal vectors, reverse-delete while the set stays closed
+under one-gate productions, accept equal-cost and best+1 moves, z3 sign
+planning) that takes his point from PLinOpt's programs to 56 + 56 + 90.
+Next: apply that search to `sparse68`.

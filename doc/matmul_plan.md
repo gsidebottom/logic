@@ -1572,6 +1572,46 @@ the two source papers for this track):
   singular mod 3 or an unknown class escapes.  Our own mod-2 corpora are
   unsigned and were not scanned.  Boundary rows are re-scanned at target+1
   (the early-exit lesson, applied before reporting this time).
+- **arXiv: 55-ADDITION PAPER ANNOUNCED (2026-10-21 check)**: arXiv:2610.27451
+  (listed "Submitted on 20 Oct 2026", the post-moderation resubmission).
+  KS-51 (submit/8246158) still on hold, no request.  Zenodo mm55 related
+  identifier still to add (v1.1 kit).
+- **RANK-48 CAMPAIGN, STEP 3 DONE -- NEGATIVE, AND PATEL'S METHOD FOUND
+  (2026-10-21 08:00)**: exact window LNS (matmul/dps48/qexact.py +
+  exactlns.py; windows of 6-16 consecutive lines, independent local basis
+  with dependent inputs as free signals, per-window helper budget,
+  mirabelle-style pair neighbourhoods `--mode pairs`, plateau moves
+  `--plateau p` with randomized exact search) finds 0 improvements on
+  Patel's L (56), R, P (90) and on sparse68's R (67), P (101); on
+  sparse68's L the hmax-4 run gains 2 (70 -> 68 at W=16; total 236; run
+  still going at 08:05); a diagnostic proves the other consecutive
+  windows (W=16) locally optimal with <= 2 helpers each.  So most of the
+  slack is GLOBAL (which signals are computed), not local (how a window
+  computes them).  Patel's repository
+  (github.com/rp440/matmul-4x4-48-202, created Oct 10, `search/` pushed
+  Oct 13, code CC0) documents exactly that kind of search: a program is
+  identified with its SET OF SIGNAL VECTORS (cost = |set| - inputs + sign
+  fixes); each LNS step proposes 1-8 new vectors from six families
+  (target residuals t-v, coordinated residual packages, sparse pivots,
+  internal residuals, dyadic half/double, broad random combinations),
+  adds them to the dictionary, then REVERSE-DELETES removable vectors in
+  random order while the set stays closed under one-gate productions
+  (x = u +- v, 2u, u/2, proportional rescalings), keeping the cheapest
+  state; accepts descent, PLATEAU (equal cost, not in a 256-1024 tabu
+  list) and best+1 annealing moves (T = 0.2-0.35); a z3 planner assigns
+  signs (negations cost 1 in his model).  Driver: orbit moves (tau, scale
+  product k by (a,b) in {+-1,+-2,+-1/2}, elementary shears c in {+-1,
+  +-2, +-1/2}) to depth 4 with successive halving (60 s / 300 s / 1200 s
+  per phase per seed), 8 processes.  His path: PLinOpt 204 -> scale
+  product 20 by (1,-1) + shear Y = I + E_12 -> 203 -> re-optimize L
+  (57 -> 56, seed 1803, 60 s) -> 202 = 56 + 56 + 90.  Our PLinOpt
+  pipeline reaches only 253 on his point, so his LNS is worth ~50 ops
+  there; sparse68 stands at 238 under our pipeline.  NEXT (Greg's call):
+  run his rebuild3.py on sparse68's three phases (z3 4.16 is installed
+  for Homebrew python3.14), re-verify any result with OUR checkers, and
+  if it pays, port the value-set LNS into matmul/dps48 and feed it the
+  orbit48 sparse points.  Runs still finishing: exactlns sparse_L2,
+  patel_P2, sparse_P2 (2 h caps, expected 0).
 - **RANK-48 CAMPAIGN, STEP 2 DONE (2026-10-21 04:20)**: orbit annealing
   (matmul/dps48/orbit48.py, GL(4,Z[1/2])^3, floor + sparsity penalty)
   finds three profiles: Patel's point (floor 150, 104 non-units), the

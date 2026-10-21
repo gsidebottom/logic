@@ -31,6 +31,12 @@ import time
 from fractions import Fraction as Fr
 
 DEN = 64  # all vectors hold numerators over 1/64
+RNG = None
+
+
+def set_rng(rng):
+    global RNG
+    RNG = rng
 SCALARS = [Fr(2), Fr(1, 2), Fr(4), Fr(1, 4)]
 
 
@@ -132,7 +138,10 @@ class Solver:
         rem = set(self.targets) - avail
         if h == 1:
             # the helper must make every remaining target producible next
-            for k, rec in prods.items():
+            items = list(prods.items())
+            if RNG is not None:
+                RNG.shuffle(items)
+            for k, rec in items:
                 if k in self.targets or (prev is not None and k < prev[0] and k in prev[1]):
                     continue
                 av2 = set(avail)
@@ -148,7 +157,10 @@ class Solver:
             av2.add(k)
             p2 = self.one_op(av2)
             return sum(1 for t in rem if t in p2)
-        order = sorted(prods.items(), key=lambda kv: (-score(kv[0]), kv[0]))
+        if RNG is not None:
+            order = sorted(prods.items(), key=lambda kv: (-score(kv[0]), RNG.random()))
+        else:
+            order = sorted(prods.items(), key=lambda kv: (-score(kv[0]), kv[0]))
         for k, rec in order:
             if k in self.targets or (prev is not None and k < prev[0] and k in prev[1]):
                 continue

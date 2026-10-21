@@ -9,6 +9,13 @@ pdflatex should compile them; check its PDF preview before submitting.
 **SUBMITTED 2026-10-17**: KS-51 as submit/8246158, the 55-addition paper
 as submit/8246196; expected announcement Monday 2026-10-19, 20:00 ET.
 
+**STATUS 2026-10-21**: the 55-addition paper is announced as
+**arXiv:2610.27451** (https://arxiv.org/abs/2610.27451, listed
+"Submitted on 20 Oct 2026", i.e. the resubmission below).  KS-51
+(submit/8246158) is still not announced (on hold in moderation, no
+request received).  To do when convenient: add the arXiv identifier to
+the Zenodo mm55 record's related identifiers (part of the pending v1.1).
+
 Common choices, as submitted: license **arXiv.org perpetual,
 non-exclusive license**; primary **cs.MS**, cross-lists **cs.DS**,
 **cs.SC**, **cs.CC**.  arXiv endorses submitters per category: Greg is

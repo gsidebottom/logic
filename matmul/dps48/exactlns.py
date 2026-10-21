@@ -173,7 +173,17 @@ def main():
     ap.add_argument("--nodes", type=int, default=300000)
     ap.add_argument("--seconds", type=float, default=20)
     ap.add_argument("--passes", type=int, default=6)
+    ap.add_argument("--mode", default="window", help="window | pairs (mirabelle-style: definitions of two temporaries plus every line using them)")
+    ap.add_argument("--maxsub", type=int, default=24, help="pairs mode: largest sub-program size")
+    ap.add_argument("--plateau", type=float, default=0.0, help="probability of accepting an equal-cost rewrite (plateau move)")
+    ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--budget", type=float, default=0, help="stop after this many seconds (0 = no limit)")
+    ap.add_argument("--maxtries", type=int, default=0, help="sub-programs examined per pass and mode (0 = all; bounds a plateau walk in pairs mode, where every move restarts the enumeration)")
     a = ap.parse_args()
+    import random
+    rng = random.Random(a.seed)
+    Q.set_rng(rng if a.plateau > 0 else None)
+    t_start = time.time()
     os.makedirs(a.out, exist_ok=True)
     env_os = dict(os.environ)
     sms = os.path.abspath(a.sms)
@@ -192,20 +202,92 @@ def main():
                 return nm
 
     improved_total = 0
+    plateau_moves = [0]
+
+    def sigset(prog):
+        """the set of signals a program computes, up to sign (plateau moves
+        must change this set; renaming or reordering lines is not a move)."""
+        out = set()
+        for name, v in program_vectors(prog).items():
+            items = tuple(sorted((k, x) for k, x in v.items() if x))
+            if not items:
+                continue
+            sg = -1 if items[0][1] < 0 else 1
+            out.add(tuple((k, sg * x) for k, x in items))
+        return out
+
+    def subsets_pairs(prog):
+        """mirabelle-style sub-programs: for each pair of temporaries, the
+        indices of their defining lines and of every line using either
+        (shuffled when the search is randomized)."""
+        temps = [l for l, _, _ in prog if not l.startswith("o") and not l.startswith("i")]
+        users = {}
+        for i, (l, r, ops) in enumerate(prog):
+            for o in ops:
+                users.setdefault(o, set()).add(i)
+        where = {l: i for i, (l, _, _) in enumerate(prog)}
+        seen = set()
+        keys = []
+        for x in temps:
+            for y in temps:
+                if y <= x:
+                    continue
+                idx = {where[x], where[y]} | users.get(x, set()) | users.get(y, set())
+                key = tuple(sorted(idx))
+                if key in seen or len(key) > a.maxsub or len(key) < 3:
+                    continue
+                seen.add(key)
+                keys.append(key)
+        if a.plateau > 0:
+            rng.shuffle(keys)
+        return iter(keys)
+
     for ps in range(a.passes):
         gained = 0
-        for W in [int(w) for w in a.windows.split(",")]:
+        if a.mode == "pairs":
+            schedule = [("pairs", None)]
+        else:
+            schedule = [("window", int(w)) for w in a.windows.split(",")]
+        for mode, W in schedule:
             start = 0
-            while start + 2 <= len(program):
-                used = {l for l, _, _ in program}
-                env = program_vectors(program)
-                wm = window_map(program, start, W, env, outputs)
+            tries = 0
+            pair_iter = subsets_pairs(program) if mode == "pairs" else None
+            while True:
+                tries += 1
+                if (a.budget and time.time() - t_start > a.budget) or (a.maxtries and tries > a.maxtries):
+                    break
+                if mode == "pairs":
+                    try:
+                        idx = next(pair_iter)
+                    except StopIteration:
+                        break
+                    # relocate the sub-program's lines to a contiguous block right after their last predecessor
+                    block = [program[i] for i in idx]
+                    rest = [ln for i, ln in enumerate(program) if i not in set(idx)]
+                    program_view = rest[:min(idx)] + block + rest[min(idx):]
+                    try:
+                        program_view = PL.toposort(program_view)
+                    except ValueError:
+                        continue
+                    names = {l for l, _, _ in block}
+                    start = min(i for i, (l, _, _) in enumerate(program_view) if l in names)
+                    W = max(i for i, (l, _, _) in enumerate(program_view) if l in names) - start + 1
+                    if any(program_view[start + j][0] not in names for j in range(W)):
+                        continue  # the relocated block did not stay contiguous
+                    program_cur = program_view
+                else:
+                    if start + 2 > len(program):
+                        break
+                    program_cur = program
+                used = {l for l, _, _ in program_cur}
+                env = program_vectors(program_cur)
+                wm = window_map(program_cur, start, W, env, outputs)
                 if wm is None:
                     start += 1
                     continue
                 local_in, free, targets, wcost = wm
-                win_defined = {l for l, _, _ in program[start:start + W]}
-                free_names = [o for _, _, ops in program[start:start + W] for o in sorted(ops) if o not in win_defined and o not in local_in]
+                win_defined = {l for l, _, _ in program_cur[start:start + W]}
+                free_names = [o for _, _, ops in program_cur[start:start + W] for o in sorted(ops) if o not in win_defined and o not in local_in]
                 free_names = list(dict.fromkeys(free_names))
                 m = len(local_in)
                 freev = [tuple(int(x * Q.DEN) for x in f) for f in free]
@@ -226,8 +308,9 @@ def main():
                     start += 1
                     continue
                 t0 = time.time()
-                res = Q.solve(m, tv, hmax=min(a.hmax, helpers - 1), node_cap=a.nodes, seconds=a.seconds, free=freev)
-                if res is not None and res[0] < wcost:
+                hbudget = helpers - 1 if a.plateau <= 0 or rng.random() >= a.plateau else helpers
+                res = Q.solve(m, tv, hmax=min(a.hmax, hbudget), node_cap=a.nodes, seconds=a.seconds, free=freev)
+                if res is not None and (res[0] < wcost or (res[0] == wcost and hbudget == helpers)):
                     cost, prog = res
                     # emit: produce each program signal into a fresh temp, then free copies for the outputs
                     tn = {}
@@ -266,7 +349,7 @@ def main():
                     if not ok:
                         start += 1
                         continue
-                    keep = program[:start] + program[start + W:]
+                    keep = program_cur[:start] + program_cur[start + W:]
                     new_lines = [(l, r, {t for t in PL.IDENT.findall(r)}) for l, r in lines_new]
                     try:
                         cand = PL.toposort(keep + new_lines)
@@ -275,15 +358,25 @@ def main():
                         continue
                     res2 = PL.check(a.bin, sms, PL.emit(cand), env_os)
                     if res2 and sum(res2) < sum(cur):
-                        print(f"  pass {ps + 1} W={W} @{start}: window {wcost} -> {cost} ops ({len(targets)} targets, {m} inputs, {time.time() - t0:.1f}s): total {sum(cur)} -> {sum(res2)}", flush=True)
+                        print(f"  pass {ps + 1} {mode} W={W} @{start}: sub-program {wcost} -> {cost} ops ({len(targets)} targets, {m} inputs, {time.time() - t0:.1f}s): total {sum(cur)} -> {sum(res2)}", flush=True)
                         program, cur = cand, res2
                         gained += 1
                         improved_total += 1
-                        continue  # re-examine the same position
-                start += 1
+                        if mode == "pairs":
+                            pair_iter = subsets_pairs(program)
+                        continue  # re-examine
+                    if res2 and sum(res2) == sum(cur) and sigset(cand) != sigset(program):
+                        program = cand  # plateau move: a different signal set at the same cost
+                        plateau_moves[0] += 1
+                        if mode == "pairs":
+                            pair_iter = subsets_pairs(program)
+                if mode != "pairs":
+                    start += 1
         open(os.path.join(a.out, f"pass{ps + 1}.slp"), "w").write(PL.emit(program))
-        print(f"pass {ps + 1}: {gained} improvements -> {cur[0]}+{cur[1]} = {sum(cur)} ops", flush=True)
-        if gained == 0:
+        print(f"pass {ps + 1}: {gained} improvements, {plateau_moves[0]} plateau moves so far -> {cur[0]}+{cur[1]} = {sum(cur)} ops ({time.time() - t_start:.0f}s)", flush=True)
+        if gained == 0 and a.plateau <= 0:
+            break
+        if a.budget and time.time() - t_start > a.budget:
             break
     open(os.path.join(a.out, "best.slp"), "w").write(PL.emit(program))
     print(f"final: {cur[0]}+{cur[1]} = {sum(cur)} ops ({improved_total} improvements) -> {a.out}/best.slp", flush=True)

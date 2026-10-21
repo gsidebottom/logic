@@ -1646,7 +1646,15 @@ the two source papers for this track):
   55 would be 200) -- focused restarts.sh running; 42/42/42 -> 203 = L 55 +
   R 55 + P 93 (L+R 110 but P floor 42 -> 93: P costs floor + 51 everywhere);
   42/40/38 -> 204; 44/44/38 -> 204; random non-proxy-optimal samples 212+
-  (the proxy-optimal region is the right one).
+  (the proxy-optimal region is the right one).  FINAL (14:52): stage C six
+  of eight at 201 (the balanced point 56+56+89 and five 42/44/38 points
+  55+57+89), two at 202; the balanced point's P^T (57) and R (56) did not
+  move in 20 min x 4 seeds.  Stored: cand48/lam01c0_201_*.  CONCLUSION:
+  three structures (55/57/89, 57/55/89, 56/56/89) at exactly 201; P = floor
+  + 51 and L + R = 112 across floor-150/156 points; 42/42/42 points give
+  L + R = 110 but P 93.  A 200 would need a richer LNS neighbourhood
+  (experiment 3: exact sub-problem solves on the value set, P side first),
+  a separate project.
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21
   10:07)**: matmul/dps48/patel/restarts.sh (lns48, 12 naive matrix-only
   seeds x 180 s per side): L 55 on all 12 seeds, R 58 on all 12, P^T 57 on

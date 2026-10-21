@@ -1479,9 +1479,71 @@ fn main() {
     } else {
         false
     };
+    let merge = opt(&mut args, "--merge");
     assert!(args.is_empty(), "unknown arguments: {:?}", args);
     std::fs::create_dir_all(&out).unwrap();
 
+    // --merge A.slp,B.slp,...: union of the programs' signal sets (same targets), then the
+    // exact minimum closed subset (MIP) and the greedy reverse deletion over that union
+    if let Some(list) = merge {
+        let mut progs = Vec::new();
+        for path in list.split(',') {
+            let text = std::fs::read_to_string(path).expect("slp readable");
+            progs.push((path.to_string(), parse_slp(&text).unwrap_or_else(|e| panic!("parse {}: {}", path, e))));
+        }
+        let targets = progs[0].1.targets.clone();
+        for (path, p) in &progs {
+            assert!(p.targets == targets, "{} has different targets", path);
+        }
+        let mut dict = Dict::new();
+        let mut witness: FxMap<V, ProdV> = FxMap::default();
+        let mut costs = Vec::new();
+        for (_, p) in &progs {
+            let mut own = 0;
+            for v in &p.values {
+                let (i, _) = dict.insert(v);
+                if i >= N {
+                    own += 1;
+                }
+            }
+            costs.push(own);
+            for (k, w) in &p.witness {
+                witness.entry(*k).or_insert(w.clone());
+            }
+        }
+        for t in &targets {
+            dict.insert(t);
+        }
+        let tb = target_bits(&dict, &targets);
+        let cat = Catalog::build(&dict, &tb, &witness).expect("union dictionary within MAXD");
+        assert!(cat.closure(&Bits::full(dict.vals.len()), None), "union not closed");
+        let mut rng = Rng(12345);
+        let greedy = reverse_delete(&cat, &mut rng, 8, &Bits::default());
+        let gcost = greedy.count() - N;
+        eprintln!("merge: {} programs with signal counts {:?}; union dictionary {} vectors; greedy minimum {}", progs.len(), costs, dict.vals.len(), gcost);
+        let t0 = Instant::now();
+        let exact = mip_select(&cat, mip_time);
+        let (sel, label) = match exact {
+            Some(s) => (s, "exact (MIP)"),
+            None => (greedy, "greedy (MIP failed)"),
+        };
+        let mut trace = Vec::new();
+        assert!(cat.closure(&sel, Some(&mut trace)));
+        let plan = plan_from_trace(&cat, &dict, &trace);
+        let (a, sc) = verify_and_write(&plan, &targets, &format!("{}/best.slp", out));
+        println!(
+            "merge result: {} minimum {} = {} adds + {} scalings over the union of {} programs (best single {}; MIP {:.0}s) -> {}/best.slp",
+            label,
+            plan_cost(&plan),
+            a,
+            sc,
+            progs.len(),
+            costs.iter().min().unwrap(),
+            t0.elapsed().as_secs_f64(),
+            out
+        );
+        return;
+    }
     let prog = match (&slp, &sms) {
         (Some(p), _) => {
             let text = std::fs::read_to_string(p).expect("slp readable");

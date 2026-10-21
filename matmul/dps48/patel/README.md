@@ -28,6 +28,10 @@ and `PLINOPT_BIN` to a directory with PLinOpt's `SLPchecker`, `optimizer`,
   by PLinOpt's optimizer and evaluated with his LNS at a fixed budget per
   side (L, R, P^T); the incumbent is re-evaluated at the same budget.  Runs
   under the system python3 (numpy); the LNS subprocesses use Homebrew's.
+- `deepen.py` -- several seeds x a long budget on one point's three sides
+  (L, R from their best programs, P from its best P^T program; his
+  annealing temperature and tabu size as options), then SLPchecker counts,
+  cheapest triple, exact check.
 - `sweep.py` -- successive-halving sweep (60 s all / 300 s top 20 / 900 s x
   2 seeds top 6) over the orbit48 pool points, L and R seeded by PLinOpt's
   optimizer, P through P^T.

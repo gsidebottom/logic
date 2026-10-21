@@ -92,3 +92,8 @@ checker ("Total linear ops: 201", 4096 tensor identities, typed DAG
 verified).  The raw triple verifies the same way against the point's
 original matrices (count 201 in PLinOpt's model; 227 in Patel's, the
 difference being free output negations).
+
+**Contributed to PLinOpt (2026-10-21 13:10)**: https://github.com/jgdumas/plinopt/pull/23
+(`data/4x4x4_48_201_{L,R,P}.{sms,slp}` = the normalized `p005_201n` triple with
+PLinOpt-style title comments; the PR cites the Lean proof
+`proof/Mm/Ring_4x4_48_201.lean`).

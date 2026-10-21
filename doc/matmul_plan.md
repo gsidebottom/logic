@@ -1576,6 +1576,13 @@ the two source papers for this track):
   (listed "Submitted on 20 Oct 2026", the post-moderation resubmission).
   KS-51 (submit/8246158) still on hold, no request.  Zenodo mm55 related
   identifier still to add (v1.1 kit).
+- **PLINOPT PR #23 OPENED (2026-10-21 13:10, Greg: "make the PR for our 201
+  now")**: https://github.com/jgdumas/plinopt/pull/23 from fork branch
+  gsidebottom/plinopt:rational-48-201 (data/4x4x4_48_201_{L,R,P}.{sms,slp},
+  title line "# <4x4x4:48|201> by Greg Sidebottom" mirroring Patel's);
+  body: counts, checks (SLPchecker, MMchecker, Brent, Patel's checker), the
+  Lean proofs (master + permalink e6f8534), provenance and sources.  PR #22
+  (the 167) was merged by Dumas on 2026-10-19 (he then compacted its L slp).
 - **LEAN, MATRIX FORM (2026-10-21 12:30, Greg's ask)**: proof/Mm/
   Ring_4x4_48_201.lean in the style of Ring51.lean: `rank48_op201_scheme h A B`
   (201 commented lets on Matrix (Fin 4) (Fin 4) R; h = one half) and

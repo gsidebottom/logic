@@ -122,10 +122,15 @@ def ident():
 
 
 def mat_mul(A, B):
-    """product of two matrices held over SCAL: (A B)/SCAL, must stay integral."""
+    """product of two matrices held over SCAL: (A B)/SCAL, or None when it
+    would need a finer denominator or leave the entry range."""
     C = A @ B
-    assert (C % SCAL == 0).all(), "denominator overflow"
-    return C // SCAL
+    if (C % SCAL != 0).any():
+        return None
+    C //= SCAL
+    if np.abs(C).max() > 16 * SCAL:
+        return None
+    return C
 
 
 def apply(U0, V0, W0, X, Xi, Y, Yi, Z, Zi):
@@ -189,6 +194,8 @@ def anneal(U0, V0, W0, steps, t0, t1, lam, rng, log=None):
         mats = [X, Xi, Y, Yi, Z, Zi]
         M, Mi = mats[2 * f], mats[2 * f + 1]
         M2, Mi2 = mat_mul(E, M), mat_mul(Mi, Ei)
+        if M2 is None or Mi2 is None:
+            continue
         mats2 = list(mats)
         mats2[2 * f], mats2[2 * f + 1] = M2, Mi2
         new = apply(U0, V0, W0, *mats2)
@@ -256,6 +263,20 @@ def main():
     rng = np.random.default_rng(seed)
     found = {}
     t0s = time.time()
+    def dump():
+        ranked = sorted(found.items(), key=lambda kv: kv[1][0])[:keep]
+        rows = ["rank,floor,fl,fr,fp,nonunit,objective,prefix"]
+        for n, (key, (obj, X, Y, Z)) in enumerate(ranked):
+            Xi, Yi, Zi = (np.rint(np.linalg.inv(M / SCAL) * SCAL).astype(np.int64) for M in (X, Y, Z))
+            res = apply(U0, V0, W0, X, Xi, Y, Yi, Z, Zi)
+            assert res is not None and brent_ok(*res), "candidate fails Brent"
+            pre = os.path.join(outdir, f"cand{n:02d}")
+            write_sms(pre, *res)
+            floor, nonu, sides = key
+            rows.append(f"{n},{floor},{sides[0]},{sides[1]},{sides[2]},{nonu},{obj:.1f},{pre}")
+        open(os.path.join(outdir, "candidates.csv"), "w").write("\n".join(rows) + "\n")
+        return rows
+
     for rs in range(restarts):
         best = anneal(U0, V0, W0, steps, t0, t1, lam, rng, log=lambda s: print(s, flush=True))
         obj, floor, sides, nonu, (X, Y, Z) = best
@@ -263,18 +284,8 @@ def main():
         print(f"restart {rs}: best floor {floor} sides {sides} non-unit {nonu} obj {obj:.1f} ({time.time() - t0s:.0f}s)", flush=True)
         if key not in found or found[key][0] > obj:
             found[key] = (obj, X, Y, Z)
-    ranked = sorted(found.items(), key=lambda kv: kv[1][0])[:keep]
-    rows = ["rank,floor,fl,fr,fp,nonunit,objective,prefix"]
-    for n, (key, (obj, X, Y, Z)) in enumerate(ranked):
-        Xi, Yi, Zi = (np.rint(np.linalg.inv(M / SCAL) * SCAL).astype(np.int64) for M in (X, Y, Z))
-        res = apply(U0, V0, W0, X, Xi, Y, Yi, Z, Zi)
-        assert res is not None and brent_ok(*res), "candidate fails Brent"
-        pre = os.path.join(outdir, f"cand{n:02d}")
-        write_sms(pre, *res)
-        floor, nonu, sides = key
-        rows.append(f"{n},{floor},{sides[0]},{sides[1]},{sides[2]},{nonu},{obj:.1f},{pre}")
-    open(os.path.join(outdir, "candidates.csv"), "w").write("\n".join(rows) + "\n")
-    print("\n".join(rows), flush=True)
+        dump()
+    print("\n".join(dump()), flush=True)
 
 
 if __name__ == "__main__":

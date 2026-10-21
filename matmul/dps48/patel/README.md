@@ -38,4 +38,10 @@ and `PLINOPT_BIN` to a directory with PLinOpt's `SLPchecker`, `optimizer`,
 
 Counts are PLinOpt's (additions + scalings; copies and negations free);
 his model also charges negations, so his numbers are upper bounds on ours.
+`patel_phase.py --plinopt-model` (the default in the drivers) replaces his
+z3 sign planner -- 72% of the step time in a profile, and it only
+minimizes paid negations -- by his greedy plan and prices a value set by
+its number of produced values: 3.3x more iterations per second (233 vs 70
+in 60 s on sparse68's L, same verified result), and moves that save an
+operation at the price of a negation become descents instead of plateaus.
 Result on `../cand48/sparse68`: 235 -> 205 = 56 + 58 + 91 (record 202).

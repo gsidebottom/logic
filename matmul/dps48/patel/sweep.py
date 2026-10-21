@@ -99,7 +99,7 @@ class Cand:
 def job(cand, side, seed, wall, stage):
     out = os.path.join(cand.dir, f"{stage}_{side}_s{seed}")
     cmd = [PY, PHASE, "--slp", cand.seed_prog[side], "--n", "16", "--seed", str(seed), "--wall", str(wall),
-           "--out", out, "--log-seconds", "3600"]
+           "--out", out, "--log-seconds", "3600", "--plinopt-model"]
     try:
         subprocess.run(cmd, capture_output=True, text=True, timeout=wall + 600)
     except subprocess.TimeoutExpired:

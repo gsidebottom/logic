@@ -50,7 +50,8 @@ def main():
         side, seed = job
         out = os.path.join(a.out, f"{side}_s{seed}")
         cmd = [S.PY, S.PHASE, "--slp", progs[side], "--n", "16", "--seed", str(seed), "--wall", str(a.wall),
-               "--out", out, "--log-seconds", "300", "--temperature", str(a.temperature), "--tabu", str(a.tabu)]
+               "--out", out, "--log-seconds", "300", "--temperature", str(a.temperature), "--tabu", str(a.tabu),
+               "--plinopt-model"]
         with open(out + ".log", "w") as log:
             subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, text=True, timeout=a.wall + 900)
         best = os.path.join(out, "best.slp")

@@ -7,3 +7,4 @@ import Mm.Rigid48
 import Mm.SP51
 import Mm.SP51Optimal
 import Mm.Correct48_201
+import Mm.Ring_4x4_48_201

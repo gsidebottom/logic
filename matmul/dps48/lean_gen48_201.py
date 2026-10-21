@@ -125,6 +125,8 @@ class Side:
         self.env = {}       # program name -> (lean expr, form)  form: var -> hpoly
         self.wires = []     # (wire, hyp_name, hyp_rhs, form, proof_tactic)
         self.outputs = {}   # k -> (lean expr, form)
+        self.raw = {}       # program name -> raw form (h-polynomials as computed, not canonical)
+        self.outputs_raw = {}
         self.adds = self.scalings = 0
         n = 0
         for lhs, rhs in prog:
@@ -134,8 +136,10 @@ class Side:
             if m:
                 assert m.group(1) == "", f"negated copy {lhs}:={rhs} (normalize first)"
                 e, f = self.ref(m.group(2))
+                self.raw[lhs] = self.raw_of(m.group(2))
                 if is_out:
                     self.outputs[int(lhs[1:])] = (e, f)
+                    self.outputs_raw[int(lhs[1:])] = self.raw[lhs]
                 self.env[lhs] = (e, f)
                 continue
             n += 1
@@ -152,6 +156,12 @@ class Side:
                     p = hp_add(fu.get(i, {}), fv.get(i, {}), sg)
                     if p:
                         raw[i] = p
+                ru, rv = self.raw_of(m.group(2)), self.raw_of(m.group(4))
+                rawraw = {}
+                for i in set(ru) | set(rv):
+                    p = hp_add(ru.get(i, {}), rv.get(i, {}), sg)
+                    if p:
+                        rawraw[i] = p
                 hyp = f"{w} = {eu} {m.group(3)} {ev}"
                 operands = [m.group(2), m.group(4)]
             else:
@@ -162,12 +172,15 @@ class Side:
                 k = int(m.group(4))
                 assert k in (2, 4), k
                 s = {2: 1, 4: 2}[k]
+                ru = self.raw_of(m.group(2))
                 if m.group(3) == "*":
                     raw = {i: hp_scale(p, k) for i, p in fu.items()}
+                    rawraw = {i: hp_scale(p, k) for i, p in ru.items()}
                     hyp = f"{w} = {eu} * {k}"
                 else:
                     assert not integer_only, "halving on the P side"
                     raw = {i: hp_shift(p, s) for i, p in fu.items()}
+                    rawraw = {i: hp_shift(p, s) for i, p in ru.items()}
                     hyp = f"{w} = {eu} * " + " * ".join(["h"] * s)
                 operands = [m.group(2)]
             form = {i: canonical(hp_value(p)) for i, p in raw.items() if hp_value(p) != 0}
@@ -199,8 +212,17 @@ class Side:
                 tactic = f"rw [{', '.join(rewrites)}]; ring"
             self.wires.append((w, f"h{w}", hyp, form, tactic))
             self.env[lhs] = (w, form, f"e{w}")
+            self.raw[lhs] = rawraw
             if is_out:
                 self.outputs[int(lhs[1:])] = (w, form)
+                self.outputs_raw[int(lhs[1:])] = rawraw
+
+    def raw_of(self, name):
+        if name in self.raw:
+            return self.raw[name]
+        m = re.fullmatch(r"i(\d+)", name)
+        assert m, f"undefined {name}"
+        return {int(m.group(1)): {0: 1}}
 
     def ref(self, name):
         if name in self.env:

@@ -1576,6 +1576,16 @@ the two source papers for this track):
   (listed "Submitted on 20 Oct 2026", the post-moderation resubmission).
   KS-51 (submit/8246158) still on hold, no request.  Zenodo mm55 related
   identifier still to add (v1.1 kit).
+- **LEAN, MATRIX FORM (2026-10-21 12:30, Greg's ask)**: proof/Mm/
+  Ring_4x4_48_201.lean in the style of Ring51.lean: `rank48_op201_scheme h A B`
+  (201 commented lets on Matrix (Fin 4) (Fin 4) R; h = one half) and
+  `rank48_op201_scheme_eq_mul (h) (h2 : 2 * h = 1) (A B) : scheme = A * B`,
+  proved by ext/fin_cases/simp + one linear_combination per entry whose
+  coefficient comes from the RAW h-polynomial expansion (the canonical-form
+  coefficients of Correct48_201 fail on the 4 entries whose cone recombines
+  halves).  ~90 s, axioms [propext, Classical.choice, Quot.sound].
+  Generator matmul/dps48/lean_gen_ring48_201.py (shares lean_gen48_201.py's
+  program analysis, which now tracks raw forms too).
 - **LEAN CERTIFICATE FOR THE 201 SCHEME (2026-10-21 12:05)**: proof/Mm/
   Correct48_201.lean, `Matmul48_201.correct`: over any commutative ring with
   `2 * h = 1`, the exact programs (201 operation wires, halvings as `u * h`,

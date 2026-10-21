@@ -1494,6 +1494,7 @@ fn main() {
     };
     let merge = opt(&mut args, "--merge");
     let cap: Option<usize> = opt(&mut args, "--cap").map(|s| s.parse().unwrap());
+    let propose: usize = opt(&mut args, "--propose").map(|s| s.parse().unwrap()).unwrap_or(0);
     assert!(args.is_empty(), "unknown arguments: {:?}", args);
     std::fs::create_dir_all(&out).unwrap();
 
@@ -1531,6 +1532,42 @@ fn main() {
         }
         for t in &targets {
             dict.insert(t);
+        }
+        if propose > 0 {
+            // a plan for the first program (its own closure order), to seed the proposal families
+            let mut d0 = Dict::new();
+            for v in &progs[0].1.values {
+                d0.insert(v);
+            }
+            for t in &targets {
+                d0.insert(t);
+            }
+            let tb0 = target_bits(&d0, &targets);
+            let cat0 = Catalog::build(&d0, &tb0, &progs[0].1.witness).expect("first program within MAXD");
+            let mut trace = Vec::new();
+            assert!(cat0.closure(&Bits::full(d0.vals.len()), Some(&mut trace)));
+            let plan0 = plan_from_trace(&cat0, &d0, &trace);
+            let mut props = Proposals::new(&plan0, &targets);
+            let mut rng = Rng(777);
+            let mut current: Vec<V> = dict.vals.clone();
+            let mut added = 0;
+            while added < propose {
+                let mut dcur = Dict::new();
+                for v in &current {
+                    dcur.insert(v);
+                }
+                let tbc = target_bits(&dcur, &targets);
+                let (new, _) = props.draw(&current, &tbc, &mut rng, 8.min(propose - added));
+                if new.is_empty() {
+                    break;
+                }
+                for v in &new {
+                    dict.insert(v);
+                    current.push(*v);
+                }
+                added += new.len();
+            }
+            eprintln!("merge: added {} proposals from the six families", added);
         }
         let tb = target_bits(&dict, &targets);
         let cat = Catalog::build(&dict, &tb, &witness).expect("union dictionary within MAXD");

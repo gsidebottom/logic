@@ -522,12 +522,17 @@ fn reverse_delete(cat: &Catalog, rng: &mut Rng, reps: usize, novel: &Bits) -> Bi
 /// continuous levels with a big-M on selected productions.  Returns the set
 /// (verified closed) even when HiGHS stopped at the time limit.
 fn mip_select(cat: &Catalog, time_limit: f64) -> Option<Bits> {
+    mip_select_cap(cat, time_limit, None)
+}
+
+/// with `cap`: feasibility only -- sum of selected non-inputs <= cap (zero objective)
+fn mip_select_cap(cat: &Catalog, time_limit: f64, cap: Option<usize>) -> Option<Bits> {
     let d = cat.n;
     let mut pb = highs::RowProblem::default();
     let x: Vec<highs::Col> = (0..d)
         .map(|v| {
             let fixed = v < N || cat.required.get(v);
-            pb.add_integer_column(if v < N { 0.0 } else { 1.0 }, if fixed { 1.0..=1.0 } else { 0.0..=1.0 })
+            pb.add_integer_column(if v < N || cap.is_some() { 0.0 } else { 1.0 }, if fixed { 1.0..=1.0 } else { 0.0..=1.0 })
         })
         .collect();
     let mut prods: Vec<(usize, usize, Option<usize>)> = Vec::new();
@@ -556,11 +561,19 @@ fn mip_select(cat: &Catalog, time_limit: f64) -> Option<Bits> {
         row.push((x[v], -1.0));
         pb.add_row(0.0.., row);
     }
+    if let Some(c) = cap {
+        let row: Vec<(highs::Col, f64)> = (N..d).map(|v| (x[v], 1.0)).collect();
+        pb.add_row(..=(c as f64), row);
+    }
     let mut model = pb.optimise(highs::Sense::Minimise);
     model.make_quiet();
     model.set_threads(NonZeroU32::new(1).unwrap());
     model.set_option("time_limit", time_limit);
     let solved = model.solve();
+    let status = solved.status();
+    if cap.is_some() {
+        eprintln!("  feasibility MIP (cap {}): status {:?}", cap.unwrap(), status);
+    }
     let cols = solved.get_solution().columns().to_vec();
     if cols.len() < d {
         return None;
@@ -1480,6 +1493,7 @@ fn main() {
         false
     };
     let merge = opt(&mut args, "--merge");
+    let cap: Option<usize> = opt(&mut args, "--cap").map(|s| s.parse().unwrap());
     assert!(args.is_empty(), "unknown arguments: {:?}", args);
     std::fs::create_dir_all(&out).unwrap();
 
@@ -1526,7 +1540,17 @@ fn main() {
         let gcost = greedy.count() - N;
         eprintln!("merge: {} programs with signal counts {:?}; union dictionary {} vectors; greedy minimum {}", progs.len(), costs, dict.vals.len(), gcost);
         let t0 = Instant::now();
-        let exact = mip_select(&cat, mip_time);
+        let exact = match cap {
+            Some(c) => {
+                eprintln!("merge: feasibility question -- is there a closed set of at most {} non-input signals? (time limit {} s)", c, mip_time);
+                mip_select_cap(&cat, mip_time, Some(c))
+            }
+            None => mip_select(&cat, mip_time),
+        };
+        if cap.is_some() && exact.is_none() {
+            println!("merge result: no closed set of at most {} signals found over the union of {} programs (best single {}; MIP {:.0}s)", cap.unwrap(), progs.len(), costs.iter().min().unwrap(), t0.elapsed().as_secs_f64());
+            return;
+        }
         let (sel, label) = match exact {
             Some(s) => (s, "exact (MIP)"),
             None => (greedy, "greedy (MIP failed)"),

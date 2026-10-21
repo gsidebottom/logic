@@ -73,3 +73,22 @@ normalized `sparse68_202n_*`: zero negations, 202 in both cost models).
 others 58-59) -> P = 89.  Verified: SLPchecker on each side (53+2, 56+2,
 89+0; the normalized triple against its own sms), MMchecker x5 (rational
 mode) and the exact Brent check.
+
+## 2026-10-21 10:30 -- **201 = 55 + 57 + 89: a new record (Patel's 202)**
+
+`p005_201_{L,R,P}.{sms,slp}` (+ `p005_201_Pt.slp`, the 57-operation P^T
+program) and the sign-normalized `p005_201n_{L,R,P}.{slp,sms}`; a second
+point, `p010_201_*`, reaches the same 201.  Both points come from the
+orbit48 annealer's lambda = 0.3 pool (pool_l0.3 cand005 / cand010: floor 156
+= 42/44/38 + 32, 72 non-unit coefficients), found by `../patel/sweep.py`
+with the Rust engine (`src/bin/lns48.rs`, matrix-only seeds): stage A (30 s
+per side) 202, stage B (120 s per side) 201 = L 55 + R 57 + P (P^T 57 + 32).
+
+Verification of the normalized triple (zero negations, so the count is 201
+in Patel's model as well as PLinOpt's): SLPchecker against its own matrices
+(53+2, 55+2, 89+0); MMchecker x5 default and x3 at 40-bit values; the exact
+Brent check (`../slp48check.py`, 0/4096 failures); Patel's own `slp.py`
+checker ("Total linear ops: 201", 4096 tensor identities, typed DAG
+verified).  The raw triple verifies the same way against the point's
+original matrices (count 201 in PLinOpt's model; 227 in Patel's, the
+difference being free output negations).

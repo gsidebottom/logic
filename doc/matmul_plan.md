@@ -1576,6 +1576,20 @@ the two source papers for this track):
   (listed "Submitted on 20 Oct 2026", the post-moderation resubmission).
   KS-51 (submit/8246158) still on hold, no request.  Zenodo mm55 related
   identifier still to add (v1.1 kit).
+- **RANK-48: NEW RECORD 201 = 55 + 57 + 89 (2026-10-21 10:30; Patel's 202)**:
+  matmul/dps48/patel/sweep.py with the Rust engine (lns48, matrix-only
+  seeds) over the 90 orbit48 pool points: stage A (30 s per side) nine
+  points at 202, stage B (120 s) pool_l0.3 cand005 and cand010 at 201 = L 55
+  + R 57 + P 89 (P^T 57).  Stored as cand48/p005_201_* (point sms + raw
+  programs), p005_201n_* (sign-normalized: zero negations, 201 in Patel's
+  model too) and p010_201_*.  Verified: SLPchecker per side on both the
+  point's and the normalized matrices, MMchecker x5 (+ x3 at 40 bits), exact
+  Brent (slp48check.py), and Patel's own slp.py checker (201, 4096
+  identities, DAG).  Stage C (600 s x 2 seeds, top 6) still running.  The
+  winners are lambda = 0.3 annealer points (floor 156, 72 non-units); the
+  floor-159 sparse68 family tops out at 202.  Next: deepen cand005/cand010
+  (restarts.sh), orbit climb from cand005, a larger lambda = 0.3 pool, then
+  Greg's call on publication (PLinOpt data PR + note).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21
   10:07)**: matmul/dps48/patel/restarts.sh (lns48, 12 naive matrix-only
   seeds x 180 s per side): L 55 on all 12 seeds, R 58 on all 12, P^T 57 on

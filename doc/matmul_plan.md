@@ -1572,6 +1572,18 @@ the two source papers for this track):
   singular mod 3 or an unknown class escapes.  Our own mod-2 corpora are
   unsigned and were not scanned.  Boundary rows are re-scanned at target+1
   (the early-exit lesson, applied before reporting this time).
+- **RANK-48 RECORD CAMPAIGN, STEP 1 DONE (2026-10-20 evening)**: target
+  = Patel's 202 (PLinOpt data; DPSST26 paper 204).  Base optimizer gives
+  78-81 adds on the 202 L side vs stored 54+2: the published counts come
+  from PLinOpt's refinement stack (mirabelle/prune sub-program
+  re-optimization; needs bash 5.3 + GNU grep/sed/coreutils, installed via
+  Homebrew; run dir in the session scratchpad plinopt-run/).  At the 202
+  point: pair sweeps L/R/P and triple sweeps L (10,192) / R (8,112): ZERO
+  improvements -> no cheap slack.  Fresh-start calibration
+  (matmul/dps48/prune_loop.py splices verified improvements, toposort,
+  SLPchecker-checked): 87 -> 71 ops by pairs (fixed point, 10 rounds),
+  triple continuation running.  Next: step 2 (GL(4,Z) orbit annealing on
+  cheap floors) and/or step 3 (exact sub-program solver over Q).
 - **RANK-48 (rings with 1/2) MOD-3 POINT BOUNDS (2026-10-20,
   matmul/dps48/f3point48.py)**: at PLinOpt's 202 representative (L 54+2,
   R 54+2, P 90 ops) the F_3 bounds are L >= 42, R >= 42, Pt >= 40 (+32):

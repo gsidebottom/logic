@@ -540,37 +540,56 @@ fn plan_cost(plan: &Plan) -> usize {
 
 /// emit PLinOpt/SLPchecker syntax; returns (text, adds, scalings)
 fn emit(plan: &Plan, targets: &[V]) -> (String, usize, usize) {
-    let mut names: FxMap<V, String> = FxMap::default();
+    // each stored signal is sigma * (canonical direction); signs are chosen so
+    // that no binary operation needs both operands negated and no scaling is
+    // negative (free in PLinOpt's count, but Patel's model charges them)
+    let mut names: FxMap<V, (String, i64)> = FxMap::default();
     for j in 0..N {
-        names.insert(unit(j), format!("i{}", j));
+        names.insert(unit(j), (format!("i{}", j), 1));
+    }
+    // preferred stored sign of a target direction: the target's own sign
+    let mut want: FxMap<V, i64> = FxMap::default();
+    for tv in targets {
+        if !is_zero(tv) {
+            let (c, sg) = canon(tv);
+            want.entry(c).or_insert(sg);
+        }
     }
     let mut out = String::new();
     let (mut adds, mut scalings) = (0, 0);
     for (t, (x, p)) in plan.steps.iter().enumerate() {
         let name = format!("t{}", t + 1);
-        let un = names.get(&p.u).expect("operand defined").clone();
-        let rhs = match &p.v {
+        let pref = *want.get(x).unwrap_or(&1);
+        let (un, su) = names.get(&p.u).expect("operand defined").clone();
+        let (rhs, sx) = match &p.v {
             None => {
                 scalings += 1;
-                let (num, den) = (p.num, p.den);
-                let s = if num < 0 { "-" } else { "" };
-                let num = num.abs();
-                if den == 1 {
-                    format!("{}{}*{}", s, un, num)
+                let c_neg = (p.num < 0) != (su < 0);
+                let (num, den) = (p.num.abs(), p.den);
+                let r = if den == 1 {
+                    format!("{}*{}", un, num)
                 } else if num == 1 {
-                    format!("{}{}/{}", s, un, den)
+                    format!("{}/{}", un, den)
                 } else {
-                    format!("{}{}*{}/{}", s, un, num, den)
-                }
+                    format!("{}*{}/{}", un, num, den)
+                };
+                (r, if c_neg { -1 } else { 1 })
             }
             Some(v) => {
                 adds += 1;
-                let vn = names.get(v).expect("operand defined").clone();
-                format!("{}{}{}{}", if p.a < 0 { "-" } else { "" }, un, if p.b < 0 { "-" } else { "+" }, vn)
+                let (vn, sv) = names.get(v).expect("operand defined").clone();
+                let (ca, cb) = (p.a * su, p.b * sv);
+                match (ca > 0, cb > 0) {
+                    (true, true) => (format!("{}+{}", un, vn), 1),
+                    (false, false) => (format!("{}+{}", un, vn), -1),
+                    // a single subtraction can be written either way round: take the target's sign
+                    (true, false) => (if pref > 0 { format!("{}-{}", un, vn) } else { format!("{}-{}", vn, un) }, pref),
+                    (false, true) => (if pref > 0 { format!("{}-{}", vn, un) } else { format!("{}-{}", un, vn) }, pref),
+                }
             }
         };
         out.push_str(&format!("{}:={};\n", name, rhs));
-        names.insert(*x, name);
+        names.insert(*x, (name, sx));
     }
     for (k, tv) in targets.iter().enumerate() {
         if is_zero(tv) {
@@ -578,8 +597,8 @@ fn emit(plan: &Plan, targets: &[V]) -> (String, usize, usize) {
             continue;
         }
         let (c, s) = canon(tv);
-        let nm = names.get(&c).expect("target produced");
-        out.push_str(&format!("o{}:={}{};\n", k, if s < 0 { "-" } else { "" }, nm));
+        let (nm, sx) = names.get(&c).expect("target produced");
+        out.push_str(&format!("o{}:={}{};\n", k, if s * sx < 0 { "-" } else { "" }, nm));
     }
     (out, adds, scalings)
 }

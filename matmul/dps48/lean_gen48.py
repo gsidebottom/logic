@@ -353,7 +353,30 @@ variable {{R : Type _}} [CommRing R]
         else:
             emit("    ring")
     emit(f"\nend {name}\n")
-    open(out, "w").write("\n".join(lines))
+    # wrap lines longer than Mathlib's 100-column linter limit at term boundaries
+    def wrap_long(line, width=100):
+        if len(line) <= width:
+            return [line]
+        indent = len(line) - len(line.lstrip(" "))
+        cont = " " * (indent + 4)
+        parts = []
+        cur = ""
+        # split on ' + ' (sums) or ', ' (rw lists), keeping the separator at the end of a chunk
+        import re as _re
+        tokens = _re.split(r"( \+ |, )", line)
+        pieces = ["".join(tokens[i:i + 2]) for i in range(0, len(tokens), 2)]
+        for piece in pieces:
+            if cur and len(cur) + len(piece) > width:
+                parts.append(cur.rstrip())
+                cur = cont + piece
+            else:
+                cur += piece
+        parts.append(cur.rstrip())
+        return parts
+    wrapped = []
+    for line in "\n".join(lines).split("\n"):
+        wrapped += wrap_long(line)
+    open(out, "w").write("\n".join(wrapped))
     print(f"wrote {out}: L {L.adds}+{L.scalings}, R {Rs.adds}+{Rs.scalings}, P {P.adds}+{P.scalings}, total {total}; {len(L.wires) + len(Rs.wires) + len(P.wires)} wires, {r} products")
 
 

@@ -379,13 +379,15 @@ theorem correct (h : R) (h2 : 2 * h = 1)
     rw [hal27, eal5, eal24]; ring
   have eal28 : al28 = h * a03 + -(a11) + a12 + h * a13 := by
     rw [hal28, eal4, eal18]; linear_combination (-(a13)) * h2
-  have eal29 : al29 = -(a02) + -(a03) + a11 + -(a12) + -(a13) + h * a21 + -(h * a31) + a32 + a33 := by
+  have eal29 : al29 = -(a02) + -(a03) + a11 + -(a12) + -(a13) + h * a21 + -(h * a31) + a32 +
+      a33 := by
     rw [hal29, eal26, eal28]; linear_combination (-(a03) + -(a13)) * h2
   have eal30 : al30 = a02 + a11 + -(a12) + h * a21 + -(a22) + -(h * a31) := by
     rw [hal30, eal22, eal25]; ring
   have eal31 : al31 = a02 + h * a03 + h * a13 + -(a22) + -(a32) + -(a33) := by
     rw [hal31, eal17, eal26]; ring
-  have eal32 : al32 = -(h * a03) + a11 + -(a12) + -(h * a13) + a21 + -(a22) + -(a31) + a32 + a33 := by
+  have eal32 : al32 = -(h * a03) + a11 + -(a12) + -(h * a13) + a21 + -(a22) + -(a31) + a32 +
+      a33 := by
     rw [hal32, eal30, eal26]; linear_combination (a21 + -(a31)) * h2
   have eal33 : al33 = a01 + -(h * a21) + -(h * a31) := by
     rw [hal33, eal27]; ring
@@ -407,13 +409,16 @@ theorem correct (h : R) (h2 : 2 * h = 1)
     rw [hal41, eal30, eal33]; linear_combination (a21) * h2
   have eal42 : al42 = h * a03 + -(a10) + a11 + h * a13 + h * a21 + a30 + -(h * a31) + -(a33) := by
     rw [hal42, eal16, eal40]; ring
-  have eal43 : al43 = a00 + -(a01) + -(h * a03) + a10 + -(a11) + -(h * a13) + -(a30) + a31 + a33 := by
+  have eal43 : al43 = a00 + -(a01) + -(h * a03) + a10 + -(a11) + -(h * a13) + -(a30) + a31 +
+      a33 := by
     rw [hal43, eal27, eal42]; linear_combination (a31) * h2
   have eal44 : al44 = a00 + -(a01) + a10 + -(a11) + -(a30) + a31 := by
     rw [hal44, eal43, eal34]; ring
-  have eal45 : al45 = a10 + -(a11) + -(a13) + a20 + -(h * a21) + -(a23) + -(a30) + h * a31 + a33 := by
+  have eal45 : al45 = a10 + -(a11) + -(a13) + a20 + -(h * a21) + -(a23) + -(a30) + h * a31 +
+      a33 := by
     rw [hal45, eal19, eal42]; linear_combination (-(a13)) * h2
-  have eal46 : al46 = a00 + -(a01) + -(a03) + a10 + -(a11) + -(a13) + (-2) * a30 + a31 + (2) * a33 := by
+  have eal46 : al46 = a00 + -(a01) + -(a03) + a10 + -(a11) + -(a13) + (-2) * a30 + a31 +
+      (2) * a33 := by
     rw [hal46, eal43, eal40]; linear_combination (-(a03) + -(a13)) * h2
   have eal47 : al47 = a10 + -(a13) + a20 + -(a23) + -(a30) + a33 := by
     rw [hal47, eal45, eal25]; ring
@@ -499,13 +504,15 @@ theorem correct (h : R) (h2 : 2 * h = 1)
     rw [hbl32, ebl28, ebl21]; ring
   have ebl33 : bl33 = -(b00) + h * b01 + h * b03 + -(b30) + b32 + b33 := by
     rw [hbl33, ebl29, ebl32]; ring
-  have ebl34 : bl34 = b00 + -(h * b01) + -(h * b03) + -(b20) + b21 + -(b22) + b30 + -(b31) + b32 := by
+  have ebl34 : bl34 = b00 + -(h * b01) + -(h * b03) + -(b20) + b21 + -(b22) + b30 + -(b31) +
+      b32 := by
     rw [hbl34, ebl24, ebl32]; linear_combination (-(b20) + -(b22)) * h2
   have ebl35 : bl35 = b00 + -(b02) + -(b03) + b30 + -(b32) + -(b33) := by
     rw [hbl35, ebl30, ebl33]; linear_combination (-(b03)) * h2
   have ebl36 : bl36 = b21 + -(b22) + -(b23) + -(b31) + b32 + b33 := by
     rw [hbl36, ebl24, ebl31]; linear_combination (-(b22)) * h2
-  have ebl37 : bl37 = b00 + -(b01) + -(b03) + -(h * b20) + b21 + -(h * b22) + b30 + -(b31) + -(b33) := by
+  have ebl37 : bl37 = b00 + -(b01) + -(b03) + -(h * b20) + b21 + -(h * b22) + b30 + -(b31) +
+      -(b33) := by
     rw [hbl37, ebl25, ebl32]; linear_combination (-(b01) + -(b03)) * h2
   have ebl38 : bl38 = b00 + -(b01) + -(b03) + b30 + -(b31) + -(b33) := by
     rw [hbl38, ebl23, ebl37]; ring
@@ -577,153 +584,218 @@ theorem correct (h : R) (h2 : 2 * h = 1)
     rw [hcl14, ecl9, ecl13]; ring
   have ecl15 : cl15 = m3 + -(m11) + m13 + -(m19) + m21 + m25 + m27 + -(m31) + m35 + m40 := by
     rw [hcl15, ecl10, ecl14]; ring
-  have ecl16 : cl16 = (2) * m3 + -(m11) + (2) * m13 + -(m19) + m21 + (2) * m25 + (2) * m27 + -(m31) + m35 + m40 := by
+  have ecl16 : cl16 = (2) * m3 + -(m11) + (2) * m13 + -(m19) + m21 + (2) * m25 + (2) * m27 +
+      -(m31) + m35 + m40 := by
     rw [hcl16, ecl12, ecl15]; ring
-  have ecl17 : cl17 = (2) * m3 + -(m11) + (2) * m13 + m17 + -(m19) + m21 + (2) * m25 + (2) * m27 + -(m31) + m35 + m40 := by
+  have ecl17 : cl17 = (2) * m3 + -(m11) + (2) * m13 + m17 + -(m19) + m21 + (2) * m25 + (2) * m27 +
+      -(m31) + m35 + m40 := by
     rw [hcl17, ecl16]; ring
-  have ecl18 : cl18 = (2) * m3 + -(m11) + (2) * m13 + m17 + -(m18) + -(m19) + m21 + (2) * m25 + (2) * m27 + -(m31) + m35 + m40 := by
+  have ecl18 : cl18 = (2) * m3 + -(m11) + (2) * m13 + m17 + -(m18) + -(m19) + m21 + (2) * m25 +
+      (2) * m27 + -(m31) + m35 + m40 := by
     rw [hcl18, ecl17]; ring
-  have ecl19 : cl19 = (-2) * m3 + m11 + (-2) * m13 + -(m17) + m18 + m19 + m20 + -(m21) + (-2) * m25 + (-2) * m27 + m31 + -(m35) + -(m40) := by
+  have ecl19 : cl19 = (-2) * m3 + m11 + (-2) * m13 + -(m17) + m18 + m19 + m20 + -(m21) +
+      (-2) * m25 + (-2) * m27 + m31 + -(m35) + -(m40) := by
     rw [hcl19, ecl18]; ring
   have ecl20 : cl20 = m0 + m25 := by
     rw [hcl20]; ring
-  have ecl21 : cl21 = -(m0) + (2) * m3 + -(m11) + (2) * m13 + m17 + -(m18) + -(m19) + m21 + m25 + (2) * m27 + -(m31) + m35 + m40 := by
+  have ecl21 : cl21 = -(m0) + (2) * m3 + -(m11) + (2) * m13 + m17 + -(m18) + -(m19) + m21 + m25 +
+      (2) * m27 + -(m31) + m35 + m40 := by
     rw [hcl21, ecl18, ecl20]; ring
-  have ecl22 : cl22 = (-2) * m3 + m11 + (-2) * m13 + -(m17) + m18 + m19 + m20 + -(m21) + (-2) * m25 + (-2) * m27 + m31 + m33 + -(m35) + -(m40) := by
+  have ecl22 : cl22 = (-2) * m3 + m11 + (-2) * m13 + -(m17) + m18 + m19 + m20 + -(m21) +
+      (-2) * m25 + (-2) * m27 + m31 + m33 + -(m35) + -(m40) := by
     rw [hcl22, ecl19]; ring
-  have ecl23 : cl23 = -(m3) + m11 + m12 + -(m13) + m19 + -(m21) + -(m25) + -(m27) + m31 + -(m35) + -(m40) + m43 := by
+  have ecl23 : cl23 = -(m3) + m11 + m12 + -(m13) + m19 + -(m21) + -(m25) + -(m27) + m31 + -(m35) +
+      -(m40) + m43 := by
     rw [hcl23, ecl1, ecl15]; ring
   have ecl24 : cl24 = m3 + m8 + -(m11) + m13 + -(m19) + m25 + m27 + -(m31) + m40 := by
     rw [hcl24, ecl14]; ring
   have ecl25 : cl25 = m3 + m8 + -(m11) + m13 + -(m19) + -(m23) + m25 + m27 + -(m31) + m40 := by
     rw [hcl25, ecl24]; ring
-  have ecl26 : cl26 = m3 + m8 + -(m11) + m13 + m16 + -(m19) + -(m23) + m25 + m27 + -(m31) + m40 := by
+  have ecl26 : cl26 = m3 + m8 + -(m11) + m13 + m16 + -(m19) + -(m23) + m25 + m27 + -(m31) +
+      m40 := by
     rw [hcl26, ecl25]; ring
-  have ecl27 : cl27 = (-2) * m3 + m11 + (-2) * m13 + -(m17) + m18 + m19 + m20 + -(m21) + (-2) * m25 + (-2) * m27 + m31 + m33 + m34 + -(m35) + -(m40) := by
+  have ecl27 : cl27 = (-2) * m3 + m11 + (-2) * m13 + -(m17) + m18 + m19 + m20 + -(m21) +
+      (-2) * m25 + (-2) * m27 + m31 + m33 + m34 + -(m35) + -(m40) := by
     rw [hcl27, ecl22]; ring
-  have ecl28 : cl28 = (3) * m3 + m8 + (-2) * m11 + (3) * m13 + m17 + -(m18) + (-2) * m19 + -(m20) + m21 + -(m23) + (3) * m25 + (3) * m27 + (-2) * m31 + -(m33) + m35 + (2) * m40 := by
+  have ecl28 : cl28 = (3) * m3 + m8 + (-2) * m11 + (3) * m13 + m17 + -(m18) + (-2) * m19 + -(m20) +
+      m21 + -(m23) + (3) * m25 + (3) * m27 + (-2) * m31 + -(m33) + m35 + (2) * m40 := by
     rw [hcl28, ecl25, ecl22]; ring
-  have ecl29 : cl29 = (2) * m3 + m8 + -(m11) + m12 + (2) * m13 + m17 + -(m18) + -(m19) + -(m20) + -(m23) + (2) * m25 + (2) * m27 + -(m31) + -(m33) + m40 + m43 := by
+  have ecl29 : cl29 = (2) * m3 + m8 + -(m11) + m12 + (2) * m13 + m17 + -(m18) + -(m19) + -(m20) +
+      -(m23) + (2) * m25 + (2) * m27 + -(m31) + -(m33) + m40 + m43 := by
     rw [hcl29, ecl28, ecl23]; ring
-  have ecl30 : cl30 = -(m3) + m11 + m12 + -(m13) + m19 + -(m21) + -(m25) + -(m27) + m31 + -(m35) + -(m40) + m43 + -(m47) := by
+  have ecl30 : cl30 = -(m3) + m11 + m12 + -(m13) + m19 + -(m21) + -(m25) + -(m27) + m31 + -(m35) +
+      -(m40) + m43 + -(m47) := by
     rw [hcl30, ecl23]; ring
-  have ecl31 : cl31 = m3 + m8 + m9 + -(m11) + m13 + m17 + -(m18) + -(m19) + -(m20) + -(m23) + m25 + m27 + -(m31) + -(m33) + m40 + m43 := by
+  have ecl31 : cl31 = m3 + m8 + m9 + -(m11) + m13 + m17 + -(m18) + -(m19) + -(m20) + -(m23) + m25 +
+      m27 + -(m31) + -(m33) + m40 + m43 := by
     rw [hcl31, ecl13, ecl29]; ring
-  have ecl32 : cl32 = -(m3) + -(m8) + m11 + -(m13) + -(m16) + m19 + m23 + -(m25) + -(m27) + m31 + -(m40) + m46 := by
+  have ecl32 : cl32 = -(m3) + -(m8) + m11 + -(m13) + -(m16) + m19 + m23 + -(m25) + -(m27) + m31 +
+      -(m40) + m46 := by
     rw [hcl32, ecl26]; ring
-  have ecl33 : cl33 = -(m3) + -(m8) + m11 + -(m13) + -(m16) + m19 + m23 + -(m25) + m26 + -(m27) + m31 + -(m40) := by
+  have ecl33 : cl33 = -(m3) + -(m8) + m11 + -(m13) + -(m16) + m19 + m23 + -(m25) + m26 + -(m27) +
+      m31 + -(m40) := by
     rw [hcl33, ecl26]; ring
-  have ecl34 : cl34 = m3 + -(m8) + m13 + -(m16) + m17 + -(m18) + m21 + m23 + m25 + m27 + m35 + m46 := by
+  have ecl34 : cl34 = m3 + -(m8) + m13 + -(m16) + m17 + -(m18) + m21 + m23 + m25 + m27 + m35 +
+      m46 := by
     rw [hcl34, ecl18, ecl32]; ring
   have ecl35 : cl35 = m3 + m12 + m13 + m43 := by
     rw [hcl35, ecl6, ecl1]; ring
-  have ecl36 : cl36 = (2) * m3 + m8 + m9 + -(m11) + m12 + (2) * m13 + m17 + -(m18) + -(m19) + -(m20) + -(m23) + m25 + m27 + -(m31) + -(m33) + m40 + (2) * m43 := by
+  have ecl36 : cl36 = (2) * m3 + m8 + m9 + -(m11) + m12 + (2) * m13 + m17 + -(m18) + -(m19) +
+      -(m20) + -(m23) + m25 + m27 + -(m31) + -(m33) + m40 + (2) * m43 := by
     rw [hcl36, ecl35, ecl31]; ring
   have ecl37 : cl37 = -(m9) + m11 + m12 + m37 + -(m40) := by
     rw [hcl37, ecl4]; ring
-  have ecl38 : cl38 = m3 + m8 + m12 + m13 + m17 + -(m18) + -(m19) + -(m20) + -(m23) + m25 + m27 + -(m31) + -(m33) + m37 + m43 := by
+  have ecl38 : cl38 = m3 + m8 + m12 + m13 + m17 + -(m18) + -(m19) + -(m20) + -(m23) + m25 + m27 +
+      -(m31) + -(m33) + m37 + m43 := by
     rw [hcl38, ecl37, ecl31]; ring
-  have ecl39 : cl39 = (2) * m3 + m8 + m9 + -(m11) + m12 + (2) * m13 + m17 + -(m18) + -(m19) + -(m20) + -(m23) + m25 + m27 + -(m31) + -(m33) + m39 + m40 + (2) * m43 := by
+  have ecl39 : cl39 = (2) * m3 + m8 + m9 + -(m11) + m12 + (2) * m13 + m17 + -(m18) + -(m19) +
+      -(m20) + -(m23) + m25 + m27 + -(m31) + -(m33) + m39 + m40 + (2) * m43 := by
     rw [hcl39, ecl36]; ring
-  have ecl40 : cl40 = (2) * m3 + m8 + m9 + -(m11) + m12 + (2) * m13 + m17 + -(m18) + -(m19) + -(m20) + -(m23) + m24 + m25 + m27 + -(m31) + -(m33) + m40 + (2) * m43 := by
+  have ecl40 : cl40 = (2) * m3 + m8 + m9 + -(m11) + m12 + (2) * m13 + m17 + -(m18) + -(m19) +
+      -(m20) + -(m23) + m24 + m25 + m27 + -(m31) + -(m33) + m40 + (2) * m43 := by
     rw [hcl40, ecl36]; ring
   have ecl41 : cl41 = -(m23) + m28 := by
     rw [hcl41]; ring
-  have ecl42 : cl42 = m3 + -(m8) + m13 + -(m16) + m17 + -(m18) + m21 + m25 + m27 + m28 + m35 + m46 := by
+  have ecl42 : cl42 = m3 + -(m8) + m13 + -(m16) + m17 + -(m18) + m21 + m25 + m27 + m28 + m35 +
+      m46 := by
     rw [hcl42, ecl41, ecl34]; ring
-  have ecl43 : cl43 = -(m1) + m3 + -(m8) + m13 + -(m16) + m17 + -(m18) + m21 + m23 + m25 + m27 + m35 + m46 := by
+  have ecl43 : cl43 = -(m1) + m3 + -(m8) + m13 + -(m16) + m17 + -(m18) + m21 + m23 + m25 + m27 +
+      m35 + m46 := by
     rw [hcl43, ecl34]; ring
-  have ecl44 : cl44 = -(m1) + (3) * m3 + m9 + -(m11) + m12 + (3) * m13 + -(m16) + (2) * m17 + (-2) * m18 + -(m19) + -(m20) + m21 + (2) * m25 + (2) * m27 + -(m31) + -(m33) + m35 + m39 + m40 + (2) * m43 + m46 := by
+  have ecl44 : cl44 = -(m1) + (3) * m3 + m9 + -(m11) + m12 + (3) * m13 + -(m16) + (2) * m17 +
+      (-2) * m18 + -(m19) + -(m20) + m21 + (2) * m25 + (2) * m27 + -(m31) + -(m33) + m35 + m39 +
+      m40 + (2) * m43 + m46 := by
     rw [hcl44, ecl43, ecl39]; ring
-  have ecl45 : cl45 = (-2) * m3 + m11 + (-2) * m13 + -(m17) + m18 + m19 + m20 + -(m21) + (-2) * m25 + (-2) * m27 + m31 + m33 + m34 + -(m35) + -(m40) + -(m45) := by
+  have ecl45 : cl45 = (-2) * m3 + m11 + (-2) * m13 + -(m17) + m18 + m19 + m20 + -(m21) +
+      (-2) * m25 + (-2) * m27 + m31 + m33 + m34 + -(m35) + -(m40) + -(m45) := by
     rw [hcl45, ecl27]; ring
-  have ecl46 : cl46 = (2) * m3 + m4 + m8 + m9 + -(m11) + m12 + (2) * m13 + m17 + -(m18) + -(m19) + -(m20) + -(m23) + m24 + m25 + m27 + -(m31) + -(m33) + m40 + (2) * m43 := by
+  have ecl46 : cl46 = (2) * m3 + m4 + m8 + m9 + -(m11) + m12 + (2) * m13 + m17 + -(m18) + -(m19) +
+      -(m20) + -(m23) + m24 + m25 + m27 + -(m31) + -(m33) + m40 + (2) * m43 := by
     rw [hcl46, ecl40]; ring
-  have ecl47 : cl47 = -(m1) + m3 + m9 + m12 + m13 + -(m16) + m17 + (-2) * m18 + -(m20) + -(m33) + m39 + (2) * m43 + m46 := by
+  have ecl47 : cl47 = -(m1) + m3 + m9 + m12 + m13 + -(m16) + m17 + (-2) * m18 + -(m20) + -(m33) +
+      m39 + (2) * m43 + m46 := by
     rw [hcl47, ecl44, ecl17]; ring
-  have ecl48 : cl48 = -(m1) + m3 + m5 + m9 + m12 + m13 + -(m16) + m17 + (-2) * m18 + -(m20) + -(m33) + m39 + (2) * m43 + m46 := by
+  have ecl48 : cl48 = -(m1) + m3 + m5 + m9 + m12 + m13 + -(m16) + m17 + (-2) * m18 + -(m20) +
+      -(m33) + m39 + (2) * m43 + m46 := by
     rw [hcl48, ecl47]; ring
   have ecl49 : cl49 = m9 + m10 + -(m11) + -(m12) + -(m31) + m40 := by
     rw [hcl49, ecl8]; ring
-  have ecl50 : cl50 = (-2) * m3 + m9 + m10 + -(m12) + (-2) * m13 + -(m17) + m18 + m19 + m20 + -(m21) + (-2) * m25 + (-2) * m27 + m33 + m34 + -(m35) + -(m45) := by
+  have ecl50 : cl50 = (-2) * m3 + m9 + m10 + -(m12) + (-2) * m13 + -(m17) + m18 + m19 + m20 +
+      -(m21) + (-2) * m25 + (-2) * m27 + m33 + m34 + -(m35) + -(m45) := by
     rw [hcl50, ecl49, ecl45]; ring
-  have ecl51 : cl51 = -(m1) + m3 + (2) * m9 + m10 + -(m11) + m13 + -(m16) + m17 + -(m18) + -(m31) + m34 + m39 + m40 + (2) * m43 + -(m45) + m46 := by
+  have ecl51 : cl51 = -(m1) + m3 + (2) * m9 + m10 + -(m11) + m13 + -(m16) + m17 + -(m18) + -(m31) +
+      m34 + m39 + m40 + (2) * m43 + -(m45) + m46 := by
     rw [hcl51, ecl50, ecl44]; ring
-  have ecl52 : cl52 = -(m1) + -(m3) + -(m4) + -(m8) + m9 + m10 + -(m12) + -(m13) + -(m16) + m19 + m20 + m23 + -(m24) + -(m25) + -(m27) + m33 + m34 + m39 + -(m45) + m46 := by
+  have ecl52 : cl52 = -(m1) + -(m3) + -(m4) + -(m8) + m9 + m10 + -(m12) + -(m13) + -(m16) + m19 +
+      m20 + m23 + -(m24) + -(m25) + -(m27) + m33 + m34 + m39 + -(m45) + m46 := by
     rw [hcl52, ecl51, ecl46]; ring
   have ecl53 : cl53 = m9 + -(m11) + -(m12) + m14 + m40 := by
     rw [hcl53, ecl4]; ring
-  have ecl54 : cl54 = (2) * m3 + m8 + m9 + (-2) * m11 + (2) * m13 + m14 + m17 + -(m18) + -(m19) + -(m20) + -(m23) + (2) * m25 + (2) * m27 + -(m31) + -(m33) + (2) * m40 + m43 := by
+  have ecl54 : cl54 = (2) * m3 + m8 + m9 + (-2) * m11 + (2) * m13 + m14 + m17 + -(m18) + -(m19) +
+      -(m20) + -(m23) + (2) * m25 + (2) * m27 + -(m31) + -(m33) + (2) * m40 + m43 := by
     rw [hcl54, ecl53, ecl29]; ring
-  have ecl55 : cl55 = m3 + m9 + -(m11) + m13 + m14 + -(m16) + m17 + -(m18) + -(m20) + m25 + m27 + -(m33) + m40 + m43 + m46 := by
+  have ecl55 : cl55 = m3 + m9 + -(m11) + m13 + m14 + -(m16) + m17 + -(m18) + -(m20) + m25 + m27 +
+      -(m33) + m40 + m43 + m46 := by
     rw [hcl55, ecl54, ecl32]; ring
   have ecl56 : cl56 = m7 + m21 := by
     rw [hcl56]; ring
-  have ecl57 : cl57 = (-2) * m3 + -(m4) + m7 + -(m8) + -(m9) + m11 + -(m12) + (-2) * m13 + -(m17) + m18 + m19 + m20 + m21 + m23 + -(m24) + -(m25) + -(m27) + m31 + m33 + -(m40) + (-2) * m43 := by
+  have ecl57 : cl57 = (-2) * m3 + -(m4) + m7 + -(m8) + -(m9) + m11 + -(m12) + (-2) * m13 + -(m17) +
+      m18 + m19 + m20 + m21 + m23 + -(m24) + -(m25) + -(m27) + m31 + m33 + -(m40) + (-2) * m43 := by
     rw [hcl57, ecl56, ecl46]; ring
-  have ecl58 : cl58 = -(m4) + m7 + -(m8) + -(m9) + -(m12) + (2) * m21 + m23 + -(m24) + m25 + m27 + -(m34) + m35 + (-2) * m43 + m45 := by
+  have ecl58 : cl58 = -(m4) + m7 + -(m8) + -(m9) + -(m12) + (2) * m21 + m23 + -(m24) + m25 + m27 +
+      -(m34) + m35 + (-2) * m43 + m45 := by
     rw [hcl58, ecl57, ecl45]; ring
-  have ecl59 : cl59 = m3 + m9 + -(m11) + m13 + m14 + -(m16) + m17 + -(m18) + -(m20) + m25 + m27 + -(m33) + m40 + -(m42) + m43 + m46 := by
+  have ecl59 : cl59 = m3 + m9 + -(m11) + m13 + m14 + -(m16) + m17 + -(m18) + -(m20) + m25 + m27 +
+      -(m33) + m40 + -(m42) + m43 + m46 := by
     rw [hcl59, ecl55]; ring
   have ecl60 : cl60 = -(m2) + m21 + m35 := by
     rw [hcl60, ecl10]; ring
-  have ecl61 : cl61 = -(m2) + m3 + m9 + -(m11) + m13 + m14 + -(m16) + m17 + -(m18) + -(m20) + m21 + m25 + m27 + -(m33) + m35 + m40 + m43 + m46 := by
+  have ecl61 : cl61 = -(m2) + m3 + m9 + -(m11) + m13 + m14 + -(m16) + m17 + -(m18) + -(m20) + m21 +
+      m25 + m27 + -(m33) + m35 + m40 + m43 + m46 := by
     rw [hcl61, ecl60, ecl55]; ring
-  have ecl62 : cl62 = -(m3) + m9 + -(m13) + m14 + -(m16) + m19 + -(m21) + -(m25) + -(m27) + m31 + m34 + -(m35) + -(m42) + m43 + -(m45) + m46 := by
+  have ecl62 : cl62 = -(m3) + m9 + -(m13) + m14 + -(m16) + m19 + -(m21) + -(m25) + -(m27) + m31 +
+      m34 + -(m35) + -(m42) + m43 + -(m45) + m46 := by
     rw [hcl62, ecl59, ecl45]; ring
-  have ecl63 : cl63 = (-2) * m3 + m11 + (-2) * m13 + m19 + -(m21) + (-2) * m25 + (-2) * m27 + m31 + -(m35) + m36 + -(m40) := by
+  have ecl63 : cl63 = (-2) * m3 + m11 + (-2) * m13 + m19 + -(m21) + (-2) * m25 + (-2) * m27 + m31 +
+      -(m35) + m36 + -(m40) := by
     rw [hcl63, ecl16]; ring
-  have ecl64 : cl64 = (-3) * m3 + -(m8) + m11 + -(m12) + (-3) * m13 + -(m17) + m18 + (2) * m19 + m20 + -(m21) + m23 + (-3) * m25 + (-3) * m27 + (2) * m31 + m33 + -(m35) + m36 + -(m37) + -(m40) + -(m43) := by
+  have ecl64 : cl64 = (-3) * m3 + -(m8) + m11 + -(m12) + (-3) * m13 + -(m17) + m18 + (2) * m19 +
+      m20 + -(m21) + m23 + (-3) * m25 + (-3) * m27 + (2) * m31 + m33 + -(m35) + m36 + -(m37) +
+      -(m40) + -(m43) := by
     rw [hcl64, ecl63, ecl38]; ring
-  have ecl65 : cl65 = m3 + m8 + m12 + m13 + m17 + -(m18) + -(m19) + -(m20) + -(m22) + -(m23) + m25 + m27 + -(m31) + -(m33) + m37 + m43 := by
+  have ecl65 : cl65 = m3 + m8 + m12 + m13 + m17 + -(m18) + -(m19) + -(m20) + -(m22) + -(m23) +
+      m25 + m27 + -(m31) + -(m33) + m37 + m43 := by
     rw [hcl65, ecl38]; ring
-  have ecl66 : cl66 = -(m1) + -(m8) + m9 + -(m16) + m17 + -(m18) + m19 + m23 + -(m25) + -(m27) + m31 + m36 + -(m37) + m39 + m43 + m46 := by
+  have ecl66 : cl66 = -(m1) + -(m8) + m9 + -(m16) + m17 + -(m18) + m19 + m23 + -(m25) + -(m27) +
+      m31 + m36 + -(m37) + m39 + m43 + m46 := by
     rw [hcl66, ecl44, ecl64]; ring
-  have ecl67 : cl67 = (2) * m3 + m12 + (2) * m13 + -(m16) + m17 + -(m18) + -(m19) + -(m20) + m21 + (2) * m25 + m26 + (2) * m27 + -(m31) + -(m33) + m35 + -(m36) + m37 + m43 := by
+  have ecl67 : cl67 = (2) * m3 + m12 + (2) * m13 + -(m16) + m17 + -(m18) + -(m19) + -(m20) + m21 +
+      (2) * m25 + m26 + (2) * m27 + -(m31) + -(m33) + m35 + -(m36) + m37 + m43 := by
     rw [hcl67, ecl33, ecl64]; ring
-  have ecl68 : cl68 = (-2) * m8 + m11 + (-2) * m16 + m17 + -(m18) + m19 + m21 + m23 + m26 + m28 + m31 + m35 + -(m40) + m46 := by
+  have ecl68 : cl68 = (-2) * m8 + m11 + (-2) * m16 + m17 + -(m18) + m19 + m21 + m23 + m26 + m28 +
+      m31 + m35 + -(m40) + m46 := by
     rw [hcl68, ecl42, ecl33]; ring
-  have ecl69 : cl69 = m3 + m8 + m12 + (2) * m13 + m17 + -(m18) + -(m19) + -(m20) + -(m22) + -(m23) + m25 + m27 + m29 + -(m31) + -(m33) + m37 + m43 := by
+  have ecl69 : cl69 = m3 + m8 + m12 + (2) * m13 + m17 + -(m18) + -(m19) + -(m20) + -(m22) +
+      -(m23) + m25 + m27 + m29 + -(m31) + -(m33) + m37 + m43 := by
     rw [hcl69, ecl65, ecl7]; ring
   have ecl70 : cl70 = m2 + -(m8) + -(m9) + m11 + -(m14) + m20 + m28 + m33 + -(m40) + -(m43) := by
     rw [hcl70, ecl42, ecl61]; ring
-  have ecl71 : cl71 = -(m2) + -(m3) + -(m4) + -(m8) + -(m12) + -(m13) + m14 + -(m16) + m19 + m21 + m23 + -(m24) + m31 + m35 + -(m43) + m46 := by
+  have ecl71 : cl71 = -(m2) + -(m3) + -(m4) + -(m8) + -(m12) + -(m13) + m14 + -(m16) + m19 + m21 +
+      m23 + -(m24) + m31 + m35 + -(m43) + m46 := by
     rw [hcl71, ecl61, ecl46]; ring
-  have ecl72 : cl72 = -(m0) + (3) * m3 + m9 + (-2) * m11 + (3) * m13 + m14 + -(m16) + (2) * m17 + (-2) * m18 + -(m19) + -(m20) + m21 + (2) * m25 + (3) * m27 + -(m31) + -(m33) + m35 + (2) * m40 + -(m42) + m43 + m46 := by
+  have ecl72 : cl72 = -(m0) + (3) * m3 + m9 + (-2) * m11 + (3) * m13 + m14 + -(m16) + (2) * m17 +
+      (-2) * m18 + -(m19) + -(m20) + m21 + (2) * m25 + (3) * m27 + -(m31) + -(m33) + m35 +
+      (2) * m40 + -(m42) + m43 + m46 := by
     rw [hcl72, ecl59, ecl21]; ring
-  have ecl73 : cl73 = -(m0) + (2) * m3 + -(m11) + m13 + m17 + -(m18) + -(m19) + m21 + m25 + (2) * m27 + -(m29) + -(m31) + m35 + m40 := by
+  have ecl73 : cl73 = -(m0) + (2) * m3 + -(m11) + m13 + m17 + -(m18) + -(m19) + m21 + m25 +
+      (2) * m27 + -(m29) + -(m31) + m35 + m40 := by
     rw [hcl73, ecl21, ecl7]; ring
-  have ecl74 : cl74 = (2) * m3 + m8 + m9 + -(m11) + m12 + (2) * m13 + m17 + -(m18) + -(m19) + -(m20) + -(m23) + m24 + m25 + m27 + -(m31) + m32 + -(m33) + m40 + (2) * m43 := by
+  have ecl74 : cl74 = (2) * m3 + m8 + m9 + -(m11) + m12 + (2) * m13 + m17 + -(m18) + -(m19) +
+      -(m20) + -(m23) + m24 + m25 + m27 + -(m31) + m32 + -(m33) + m40 + (2) * m43 := by
     rw [hcl74, ecl40]; ring
-  have ecl75 : cl75 = m3 + m9 + m12 + m13 + -(m16) + m17 + -(m18) + -(m20) + m24 + m32 + -(m33) + (2) * m43 + m46 := by
+  have ecl75 : cl75 = m3 + m9 + m12 + m13 + -(m16) + m17 + -(m18) + -(m20) + m24 + m32 + -(m33) +
+      (2) * m43 + m46 := by
     rw [hcl75, ecl74, ecl32]; ring
-  have ecl76 : cl76 = m2 + m3 + -(m8) + m11 + m12 + m13 + -(m14) + -(m16) + m17 + -(m18) + m24 + m28 + m32 + -(m40) + m43 + m46 := by
+  have ecl76 : cl76 = m2 + m3 + -(m8) + m11 + m12 + m13 + -(m14) + -(m16) + m17 + -(m18) + m24 +
+      m28 + m32 + -(m40) + m43 + m46 := by
     rw [hcl76, ecl75, ecl70]; ring
-  have ecl77 : cl77 = (-2) * m3 + -(m8) + -(m9) + m11 + -(m12) + (-2) * m13 + -(m17) + m18 + m19 + m20 + m23 + -(m25) + -(m27) + m30 + m31 + m33 + -(m39) + -(m40) + (-2) * m43 := by
+  have ecl77 : cl77 = (-2) * m3 + -(m8) + -(m9) + m11 + -(m12) + (-2) * m13 + -(m17) + m18 + m19 +
+      m20 + m23 + -(m25) + -(m27) + m30 + m31 + m33 + -(m39) + -(m40) + (-2) * m43 := by
     rw [hcl77, ecl39]; ring
-  have ecl78 : cl78 = -(m8) + -(m9) + m11 + -(m16) + m21 + m23 + m25 + m26 + m27 + m30 + m35 + -(m36) + m37 + -(m39) + -(m40) + -(m43) := by
+  have ecl78 : cl78 = -(m8) + -(m9) + m11 + -(m16) + m21 + m23 + m25 + m26 + m27 + m30 + m35 +
+      -(m36) + m37 + -(m39) + -(m40) + -(m43) := by
     rw [hcl78, ecl77, ecl67]; ring
-  have ecl79 : cl79 = (-2) * m3 + m11 + (-2) * m13 + -(m17) + m18 + m19 + m20 + -(m21) + (-2) * m25 + (-2) * m27 + m31 + m33 + m34 + -(m35) + -(m40) + -(m44) := by
+  have ecl79 : cl79 = (-2) * m3 + m11 + (-2) * m13 + -(m17) + m18 + m19 + m20 + -(m21) +
+      (-2) * m25 + (-2) * m27 + m31 + m33 + m34 + -(m35) + -(m40) + -(m44) := by
     rw [hcl79, ecl27]; ring
-  have ecl80 : cl80 = -(m0) + m3 + m9 + -(m11) + m13 + m14 + -(m16) + m17 + -(m18) + m27 + m34 + m40 + -(m42) + m43 + -(m44) + m46 := by
+  have ecl80 : cl80 = -(m0) + m3 + m9 + -(m11) + m13 + m14 + -(m16) + m17 + -(m18) + m27 + m34 +
+      m40 + -(m42) + m43 + -(m44) + m46 := by
     rw [hcl80, ecl79, ecl72]; ring
-  have ecl81 : cl81 = (-2) * m3 + m11 + (-2) * m13 + -(m17) + m18 + m19 + m20 + -(m21) + (-2) * m25 + (-2) * m27 + m31 + -(m35) + -(m40) + -(m41) := by
+  have ecl81 : cl81 = (-2) * m3 + m11 + (-2) * m13 + -(m17) + m18 + m19 + m20 + -(m21) +
+      (-2) * m25 + (-2) * m27 + m31 + -(m35) + -(m40) + -(m41) := by
     rw [hcl81, ecl19]; ring
-  have ecl82 : cl82 = -(m3) + m8 + m11 + m12 + -(m21) + -(m22) + -(m23) + -(m25) + -(m27) + m29 + -(m33) + -(m35) + m37 + -(m40) + -(m41) + m43 := by
+  have ecl82 : cl82 = -(m3) + m8 + m11 + m12 + -(m21) + -(m22) + -(m23) + -(m25) + -(m27) + m29 +
+      -(m33) + -(m35) + m37 + -(m40) + -(m41) + m43 := by
     rw [hcl82, ecl81, ecl69]; ring
-  have ecl83 : cl83 = (-2) * m3 + -(m12) + (-2) * m13 + m16 + -(m17) + m18 + m19 + m20 + -(m21) + (-2) * m25 + -(m26) + (-2) * m27 + m31 + m33 + -(m35) + m36 + -(m37) + m38 + -(m43) := by
+  have ecl83 : cl83 = (-2) * m3 + -(m12) + (-2) * m13 + m16 + -(m17) + m18 + m19 + m20 + -(m21) +
+      (-2) * m25 + -(m26) + (-2) * m27 + m31 + m33 + -(m35) + m36 + -(m37) + m38 + -(m43) := by
     rw [hcl83, ecl67]; ring
-  have ecl84 : cl84 = -(m0) + m3 + m9 + (-2) * m11 + -(m12) + m13 + m14 + m17 + -(m18) + -(m26) + m27 + m36 + -(m37) + m38 + (2) * m40 + -(m42) + m46 := by
+  have ecl84 : cl84 = -(m0) + m3 + m9 + (-2) * m11 + -(m12) + m13 + m14 + m17 + -(m18) + -(m26) +
+      m27 + m36 + -(m37) + m38 + (2) * m40 + -(m42) + m46 := by
     rw [hcl84, ecl83, ecl72]; ring
-  have ecl85 : cl85 = -(m0) + m9 + -(m11) + m14 + m17 + -(m18) + m19 + -(m21) + -(m25) + -(m26) + m31 + -(m35) + m36 + -(m37) + m38 + m40 + -(m42) + m43 + m46 + -(m47) := by
+  have ecl85 : cl85 = -(m0) + m9 + -(m11) + m14 + m17 + -(m18) + m19 + -(m21) + -(m25) + -(m26) +
+      m31 + -(m35) + m36 + -(m37) + m38 + m40 + -(m42) + m43 + m46 + -(m47) := by
     rw [hcl85, ecl84, ecl30]; ring
   have ecl86 : cl86 = m6 + m9 + -(m11) + -(m12) + -(m19) + -(m31) + m40 := by
     rw [hcl86, ecl9]; ring
-  have ecl87 : cl87 = m2 + m6 + -(m8) + -(m12) + -(m14) + -(m19) + m20 + m28 + -(m31) + m33 + -(m43) := by
+  have ecl87 : cl87 = m2 + m6 + -(m8) + -(m12) + -(m14) + -(m19) + m20 + m28 + -(m31) + m33 +
+      -(m43) := by
     rw [hcl87, ecl86, ecl70]; ring
-  have ecl88 : cl88 = m2 + m3 + m6 + (2) * m13 + -(m14) + m17 + -(m18) + (-2) * m19 + -(m22) + -(m23) + m25 + m27 + m28 + m29 + (-2) * m31 + m37 := by
+  have ecl88 : cl88 = m2 + m3 + m6 + (2) * m13 + -(m14) + m17 + -(m18) + (-2) * m19 + -(m22) +
+      -(m23) + m25 + m27 + m28 + m29 + (-2) * m31 + m37 := by
     rw [hcl88, ecl87, ecl69]; ring
-  have ecl89 : cl89 = m2 + m6 + m11 + m12 + m13 + -(m14) + m17 + -(m18) + -(m19) + -(m21) + -(m22) + -(m23) + m28 + m29 + -(m31) + -(m35) + m37 + -(m40) + m43 + -(m47) := by
+  have ecl89 : cl89 = m2 + m6 + m11 + m12 + m13 + -(m14) + m17 + -(m18) + -(m19) + -(m21) +
+      -(m22) + -(m23) + m28 + m29 + -(m31) + -(m35) + m37 + -(m40) + m43 + -(m47) := by
     rw [hcl89, ecl88, ecl30]; ring
   have pm0 : m0 = (a21 + -(a22)) * (b10 + -(b12) + -(b13)) := by
     rw [hm0, eal1, ebl48]
@@ -731,55 +803,67 @@ theorem correct (h : R) (h2 : 2 * h = 1)
     rw [hm1, eal2, ebl42]
   have pm2 : m2 = (-(a11) + a12 + a13) * (-(b31) + b32 + b33) := by
     rw [hm2, eal4, ebl15]
-  have pm3 : m3 = (a00 + -(a01) + -(h * a03) + -(a10) + a11 + h * a13 + -(a20) + a21 + a23) * (h * b01 + h * b03 + b33) := by
+  have pm3 : m3 = (a00 + -(a01) + -(h * a03) + -(a10) + a11 + h * a13 + -(a20) + a21 +
+      a23) * (h * b01 + h * b03 + b33) := by
     rw [hm3, eal51, ebl21]
   have pm4 : m4 = (-(a02) + -(a03) + -(a12) + -(a13) + a32 + a33) * (b01 + b11 + b21) := by
     rw [hm4, eal35, ebl2]
   have pm5 : m5 = (a00 + -(a03) + -(a20) + a23 + -(a30) + a33) * (b00 + b10) := by
     rw [hm5, eal52, ebl3]
-  have pm6 : m6 = (a11 + -(a12) + -(a13) + a21 + -(a22) + -(a23) + -(a31) + a32 + a33) * (b00 + -(b01) + -(b03) + b30 + -(b31) + -(b33)) := by
+  have pm6 : m6 = (a11 + -(a12) + -(a13) + a21 + -(a22) + -(a23) + -(a31) + a32 + a33) * (b00 +
+      -(b01) + -(b03) + b30 + -(b31) + -(b33)) := by
     rw [hm6, eal36, ebl38]
   have pm7 : m7 = (a10) * (-(b01) + b02 + b03 + -(b11) + b12 + b13 + -(b21) + b22 + b23) := by
     rw [hm7, ebl56]
-  have pm8 : m8 = (h * a21 + -(h * a31) + a32 + a33) * (b10 + -(b11) + b12 + h * b20 + -(b21) + h * b22) := by
+  have pm8 : m8 = (h * a21 + -(h * a31) + a32 + a33) * (b10 + -(b11) + b12 + h * b20 + -(b21) +
+      h * b22) := by
     rw [hm8, eal15, ebl49]
   have pm9 : m9 = (a02) * (-(b22) + b32) := by
     rw [hm9, ebl4]
-  have pm10 : m10 = (a10 + -(a13) + a20 + -(a23) + -(a30) + a33) * (b00 + -(b01) + -(b03) + b10 + -(b11) + -(b13) + b20 + -(b21) + -(b23)) := by
+  have pm10 : m10 = (a10 + -(a13) + a20 + -(a23) + -(a30) + a33) * (b00 + -(b01) + -(b03) + b10 +
+      -(b11) + -(b13) + b20 + -(b21) + -(b23)) := by
     rw [hm10, eal47, ebl50]
   have pm11 : m11 = (a00 + -(a01) + h * a21 + h * a31) * (h * b01 + -(h * b03) + b12) := by
     rw [hm11, eal27, ebl22]
   have pm12 : m12 = (a02 + a03) * (b32) := by
     rw [hm12, eal6]
-  have pm13 : m13 = (-(a00) + a01 + a03 + a10 + -(a11) + -(a13) + a20 + -(a21) + -(a23)) * (b33) := by
+  have pm13 : m13 = (-(a00) + a01 + a03 + a10 + -(a11) + -(a13) + a20 + -(a21) +
+      -(a23)) * (b33) := by
     rw [hm13, eal53]
-  have pm14 : m14 = (h * a03 + -(a11) + a12 + h * a13) * (-(h * b20) + b21 + -(h * b22) + -(b31) + b32 + b33) := by
+  have pm14 : m14 = (h * a03 + -(a11) + a12 + h * a13) * (-(h * b20) + b21 + -(h * b22) + -(b31) +
+      b32 + b33) := by
     rw [hm14, eal28, ebl24]
   have pm15 : m15 = (a00) * (b02 + b12) := by
     rw [hm15, ebl5]
-  have pm16 : m16 = (a00 + -(a01) + -(h * a03) + a10 + -(a11) + -(h * a13) + -(a30) + a31 + a33) * (-(h * b01) + -(h * b03) + b21 + -(b31)) := by
+  have pm16 : m16 = (a00 + -(a01) + -(h * a03) + a10 + -(a11) + -(h * a13) + -(a30) + a31 +
+      a33) * (-(h * b01) + -(h * b03) + b21 + -(b31)) := by
     rw [hm16, eal43, ebl25]
   have pm17 : m17 = (a00 + -(a01) + -(a03) + -(a20) + a21 + a23 + -(a30) + a31 + a33) * (b10) := by
     rw [hm17, eal54]
-  have pm18 : m18 = (a00 + -(a01) + -(a03) + -(a20) + h * a21 + a23 + -(a30) + h * a31 + a33) * (h * b01 + h * b03 + b10) := by
+  have pm18 : m18 = (a00 + -(a01) + -(a03) + -(a20) + h * a21 + a23 + -(a30) + h * a31 +
+      a33) * (h * b01 + h * b03 + b10) := by
     rw [hm18, eal48, ebl43]
-  have pm19 : m19 = (-(a10) + a11 + a13 + -(a20) + a21 + a23 + a30 + -(a31) + -(a33)) * (b10 + -(b11) + -(b13) + b20 + -(b21) + -(b23)) := by
+  have pm19 : m19 = (-(a10) + a11 + a13 + -(a20) + a21 + a23 + a30 + -(a31) + -(a33)) * (b10 +
+      -(b11) + -(b13) + b20 + -(b21) + -(b23)) := by
     rw [hm19, eal49, ebl51]
   have pm20 : m20 = (-(a20) + a23) * (-(b30) + b32 + b33) := by
     rw [hm20, eal8, ebl16]
-  have pm21 : m21 = (-(a10) + a11 + h * a21 + -(h * a31)) * (-(h * b01) + h * b03 + -(b11) + b12 + b13 + -(b21) + b22 + b23) := by
+  have pm21 : m21 = (-(a10) + a11 + h * a21 + -(h * a31)) * (-(h * b01) + h * b03 + -(b11) + b12 +
+      b13 + -(b21) + b22 + b23) := by
     rw [hm21, eal16, ebl52]
   have pm22 : m22 = (a02 + a03 + -(a22) + -(a23) + -(a32) + -(a33)) * (b00 + b30) := by
     rw [hm22, eal37, ebl6]
   have pm23 : m23 = (a32 + a33) * (b10 + -(b11) + b12 + b20 + -(b21) + b22) := by
     rw [hm23, eal9, ebl53]
-  have pm24 : m24 = (-(a02) + -(a03) + a11 + -(a12) + -(a13) + h * a21 + -(h * a31) + a32 + a33) * (-(b01) + -(b11) + h * b20 + -(b21) + h * b22) := by
+  have pm24 : m24 = (-(a02) + -(a03) + a11 + -(a12) + -(a13) + h * a21 + -(h * a31) + a32 +
+      a33) * (-(b01) + -(b11) + h * b20 + -(b21) + h * b22) := by
     rw [hm24, eal29, ebl26]
   have pm25 : m25 = (a22) * (b10 + -(b12) + -(b13) + b20 + -(b22) + -(b23)) := by
     rw [hm25, ebl54]
   have pm26 : m26 = (a00 + -(a01) + a10 + -(a11) + -(a30) + a31) * (-(b01) + b21 + -(b31)) := by
     rw [hm26, eal44, ebl17]
-  have pm27 : m27 = (h * a21 + -(a22) + -(h * a31)) * (b10 + -(b12) + -(b13) + h * b20 + -(h * b22) + -(b23)) := by
+  have pm27 : m27 = (h * a21 + -(a22) + -(h * a31)) * (b10 + -(b12) + -(b13) + h * b20 +
+      -(h * b22) + -(b23)) := by
     rw [hm27, eal17, ebl45]
   have pm28 : m28 = (-(a31) + a32 + a33) * (b10 + -(b11) + b12) := by
     rw [hm28, eal10, ebl57]
@@ -787,23 +871,30 @@ theorem correct (h : R) (h2 : 2 * h = 1)
     rw [hm29, eal55, ebl7]
   have pm30 : m30 = (a30) * (b00 + -(b01) + b02 + -(b20) + b21 + -(b22) + b30 + -(b31) + b32) := by
     rw [hm30, ebl39]
-  have pm31 : m31 = (a10 + -(a11) + -(a13) + a20 + -(h * a21) + -(a23) + -(a30) + h * a31 + a33) * (-(h * b01) + -(h * b03) + b10 + -(b11) + -(b13) + b20 + -(b21) + -(b23)) := by
+  have pm31 : m31 = (a10 + -(a11) + -(a13) + a20 + -(h * a21) + -(a23) + -(a30) + h * a31 +
+      a33) * (-(h * b01) + -(h * b03) + b10 + -(b11) + -(b13) + b20 + -(b21) + -(b23)) := by
     rw [hm31, eal45, ebl46]
-  have pm32 : m32 = (a01 + -(a02) + -(a03) + a11 + -(a12) + -(a13) + -(a31) + a32 + a33) * (b01 + b11) := by
+  have pm32 : m32 = (a01 + -(a02) + -(a03) + a11 + -(a12) + -(a13) + -(a31) + a32 + a33) * (b01 +
+      b11) := by
     rw [hm32, eal38, ebl1]
-  have pm33 : m33 = (h * a03 + -(h * a13) + a20 + -(a23)) * (-(b00) + h * b01 + h * b03 + -(b30) + b32 + b33) := by
+  have pm33 : m33 = (h * a03 + -(h * a13) + a20 + -(a23)) * (-(b00) + h * b01 + h * b03 + -(b30) +
+      b32 + b33) := by
     rw [hm33, eal19, ebl33]
-  have pm34 : m34 = (a02 + a11 + -(a12) + h * a21 + -(a22) + -(h * a31)) * (b03 + b13 + -(h * b20) + h * b22 + b23) := by
+  have pm34 : m34 = (a02 + a11 + -(a12) + h * a21 + -(a22) + -(h * a31)) * (b03 + b13 +
+      -(h * b20) + h * b22 + b23) := by
     rw [hm34, eal30, ebl27]
   have pm35 : m35 = (a10 + -(a11)) * (-(b11) + b12 + b13 + -(b21) + b22 + b23) := by
     rw [hm35, eal7, ebl55]
   have pm36 : m36 = (a02 + -(a22) + -(a32)) * (b00 + -(b20) + b30) := by
     rw [hm36, eal20, ebl9]
-  have pm37 : m37 = (a02 + h * a03 + h * a13 + -(a22) + -(a32) + -(a33)) * (b00 + -(h * b20) + -(h * b22) + b30) := by
+  have pm37 : m37 = (a02 + h * a03 + h * a13 + -(a22) + -(a32) + -(a33)) * (b00 + -(h * b20) +
+      -(h * b22) + b30) := by
     rw [hm37, eal31, ebl28]
-  have pm38 : m38 = (a11 + -(a12) + a21 + -(a22) + -(a31) + a32) * (b00 + -(b01) + -(b03) + -(b20) + b21 + b23 + b30 + -(b31) + -(b33)) := by
+  have pm38 : m38 = (a11 + -(a12) + a21 + -(a22) + -(a31) + a32) * (b00 + -(b01) + -(b03) +
+      -(b20) + b21 + b23 + b30 + -(b31) + -(b33)) := by
     rw [hm38, eal39, ebl41]
-  have pm39 : m39 = (h * a03 + h * a13 + a30 + -(a33)) * (b00 + -(h * b01) + -(h * b03) + -(b20) + b21 + -(b22) + b30 + -(b31) + b32) := by
+  have pm39 : m39 = (h * a03 + h * a13 + a30 + -(a33)) * (b00 + -(h * b01) + -(h * b03) + -(b20) +
+      b21 + -(b22) + b30 + -(b31) + b32) := by
     rw [hm39, eal40, ebl34]
   have pm40 : m40 = (a00 + -(a01)) * (b12) := by
     rw [hm40, eal5]
@@ -817,42 +908,125 @@ theorem correct (h : R) (h2 : 2 * h = 1)
     rw [hm44, eal41, ebl8]
   have pm45 : m45 = (a02 + -(a12) + -(a22)) * (b03 + b13 + b23) := by
     rw [hm45, eal22, ebl10]
-  have pm46 : m46 = (a00 + -(a01) + -(a03) + a10 + -(a11) + -(a13) + -(a30) + a31 + a33) * (b21 + -(b31)) := by
+  have pm46 : m46 = (a00 + -(a01) + -(a03) + a10 + -(a11) + -(a13) + -(a30) + a31 + a33) * (b21 +
+      -(b31)) := by
     rw [hm46, eal50, ebl11]
-  have pm47 : m47 = (-(h * a03) + a11 + -(a12) + -(h * a13) + a21 + -(a22) + -(a31) + a32 + a33) * (b00 + -(b01) + -(b03) + -(h * b20) + b21 + -(h * b22) + b30 + -(b31) + -(b33)) := by
+  have pm47 : m47 = (-(h * a03) + a11 + -(a12) + -(h * a13) + a21 + -(a22) + -(a31) + a32 +
+      a33) * (b00 + -(b01) + -(b03) + -(h * b20) + b21 + -(h * b22) + b30 + -(b31) + -(b33)) := by
     rw [hm47, eal32, ebl37]
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · rw [ecl48, pm1, pm3, pm5, pm9, pm12, pm13, pm16, pm17, pm18, pm20, pm33, pm39, pm43, pm46]
-    linear_combination (a02 * b20 + a02 * b22 + a03 * b00 + (-2) * h * a03 * b01 + (-2) * h * a03 * b03 + h * a03 * b20 + a03 * b21 + h * a03 * b22 + a03 * b30 + -(a03 * b31) + -(a03 * b32) + -(a03 * b33) + h * a13 * b20 + a13 * b21 + h * a13 * b22 + -(a13 * b31) + a13 * b33 + -(h * a21 * b01) + -(h * a21 * b03) + -(a21 * b10) + -(h * a31 * b01) + -(h * a31 * b03) + -(a31 * b10)) * h2
-  · rw [ecl76, pm2, pm3, pm8, pm11, pm12, pm13, pm14, pm16, pm17, pm18, pm24, pm28, pm32, pm40, pm43, pm46]
-    linear_combination (a00 * b01 + -(a01 * b01) + -(h * a03 * b01) + -(h * a03 * b03) + h * a03 * b20 + h * a03 * b22 + -(a03 * b32) + -(a03 * b33) + h * a13 * b20 + h * a13 * b22 + -(a13 * b32) + -(h * a21 * b03) + -(a21 * b10) + a31 * b01 + -(h * a31 * b03) + a31 * b12) * h2
+    linear_combination (a02 * b20 + a02 * b22 + a03 * b00 + (-2) * h * a03 * b01 +
+        (-2) * h * a03 * b03 + h * a03 * b20 + a03 * b21 + h * a03 * b22 + a03 * b30 +
+        -(a03 * b31) + -(a03 * b32) + -(a03 * b33) + h * a13 * b20 + a13 * b21 + h * a13 * b22 +
+        -(a13 * b31) + a13 * b33 + -(h * a21 * b01) + -(h * a21 * b03) + -(a21 * b10) +
+        -(h * a31 * b01) + -(h * a31 * b03) + -(a31 * b10)) * h2
+  · rw [ecl76, pm2, pm3, pm8, pm11, pm12, pm13, pm14, pm16, pm17, pm18, pm24, pm28, pm32, pm40,
+      pm43, pm46]
+    linear_combination (a00 * b01 + -(a01 * b01) + -(h * a03 * b01) + -(h * a03 * b03) +
+        h * a03 * b20 + h * a03 * b22 + -(a03 * b32) + -(a03 * b33) + h * a13 * b20 +
+        h * a13 * b22 + -(a13 * b32) + -(h * a21 * b03) + -(a21 * b10) + a31 * b01 +
+        -(h * a31 * b03) + a31 * b12) * h2
   · rw [ecl5, pm9, pm12, pm15, pm40]
     ring
-  · rw [ecl80, pm0, pm3, pm9, pm11, pm13, pm14, pm16, pm17, pm18, pm27, pm34, pm40, pm42, pm43, pm44, pm46]
-    linear_combination (a00 * b03 + -(a01 * b03) + a02 * b22 + -(h * a03 * b01) + -(h * a03 * b03) + a03 * b21 + -(a03 * b31) + a11 * b22 + -(a12 * b22) + a13 * b21 + -(a13 * b31) + a13 * b33 + -(h * a21 * b01) + a21 * b03 + -(a21 * b12) + -(h * a31 * b01) + -(a31 * b10)) * h2
-  · rw [ecl52, pm1, pm3, pm4, pm8, pm9, pm10, pm12, pm13, pm16, pm19, pm20, pm23, pm24, pm25, pm27, pm33, pm34, pm39, pm45, pm46]
-    linear_combination (a02 * b22 + a03 * b21 + -(a03 * b31) + a03 * b32 + a03 * b33 + a10 * b01 + a10 * b03 + -(a11 * b01) + -(a11 * b03) + -(a11 * b20) + a12 * b20 + a13 * b00 + -(a13 * b01) + (-2) * h * a13 * b01 + -(a13 * b03) + (-2) * h * a13 * b03 + a13 * b21 + a13 * b30 + -(a13 * b31) + -(a13 * b33) + a20 * b01 + a20 * b03 + -(a21 * b10) + a21 * b11 + a21 * b13 + -(a21 * b20) + (-2) * h * a21 * b20 + a21 * b21 + a21 * b23 + a22 * b20 + -(a22 * b22) + -(a23 * b01) + -(a23 * b03) + -(a30 * b01) + -(a30 * b03) + a31 * b10 + -(a31 * b11) + -(a31 * b13) + a31 * b20 + (2) * h * a31 * b20 + -(a31 * b21) + -(a31 * b23) + -(a32 * b20) + -(a32 * b22) + a33 * b01 + a33 * b03 + -(a33 * b20) + -(a33 * b22)) * h2
-  · rw [ecl71, pm2, pm3, pm4, pm8, pm12, pm13, pm14, pm16, pm19, pm21, pm23, pm24, pm31, pm35, pm43, pm46]
-    linear_combination (-(h * a03 * b20) + a03 * b21 + -(h * a03 * b22) + -(a03 * b31) + a03 * b32 + a03 * b33 + a10 * b01 + -(a11 * b01) + -(h * a13 * b01) + -(h * a13 * b03) + -(h * a13 * b20) + a13 * b21 + -(h * a13 * b22) + -(a13 * b31) + a13 * b32 + h * a21 * b03 + -(a21 * b10) + a21 * b11 + a21 * b13 + -(a21 * b20) + -(h * a21 * b20) + a21 * b21 + -(h * a21 * b22) + a21 * b23 + -(h * a31 * b03) + a31 * b10 + -(a31 * b11) + -(a31 * b13) + a31 * b20 + h * a31 * b20 + -(a31 * b21) + h * a31 * b22 + -(a31 * b23) + -(a32 * b20) + -(a32 * b22) + -(a33 * b20) + -(a33 * b22)) * h2
+  · rw [ecl80, pm0, pm3, pm9, pm11, pm13, pm14, pm16, pm17, pm18, pm27, pm34, pm40, pm42, pm43,
+      pm44, pm46]
+    linear_combination (a00 * b03 + -(a01 * b03) + a02 * b22 + -(h * a03 * b01) +
+        -(h * a03 * b03) + a03 * b21 + -(a03 * b31) + a11 * b22 + -(a12 * b22) + a13 * b21 +
+        -(a13 * b31) + a13 * b33 + -(h * a21 * b01) + a21 * b03 + -(a21 * b12) + -(h * a31 * b01) +
+        -(a31 * b10)) * h2
+  · rw [ecl52, pm1, pm3, pm4, pm8, pm9, pm10, pm12, pm13, pm16, pm19, pm20, pm23, pm24, pm25, pm27,
+      pm33, pm34, pm39, pm45, pm46]
+    linear_combination (a02 * b22 + a03 * b21 + -(a03 * b31) + a03 * b32 + a03 * b33 + a10 * b01 +
+        a10 * b03 + -(a11 * b01) + -(a11 * b03) + -(a11 * b20) + a12 * b20 + a13 * b00 +
+        -(a13 * b01) + (-2) * h * a13 * b01 + -(a13 * b03) + (-2) * h * a13 * b03 + a13 * b21 +
+        a13 * b30 + -(a13 * b31) + -(a13 * b33) + a20 * b01 + a20 * b03 + -(a21 * b10) +
+        a21 * b11 + a21 * b13 + -(a21 * b20) + (-2) * h * a21 * b20 + a21 * b21 + a21 * b23 +
+        a22 * b20 + -(a22 * b22) + -(a23 * b01) + -(a23 * b03) + -(a30 * b01) + -(a30 * b03) +
+        a31 * b10 + -(a31 * b11) + -(a31 * b13) + a31 * b20 + (2) * h * a31 * b20 + -(a31 * b21) +
+        -(a31 * b23) + -(a32 * b20) + -(a32 * b22) + a33 * b01 + a33 * b03 + -(a33 * b20) +
+        -(a33 * b22)) * h2
+  · rw [ecl71, pm2, pm3, pm4, pm8, pm12, pm13, pm14, pm16, pm19, pm21, pm23, pm24, pm31, pm35,
+      pm43, pm46]
+    linear_combination (-(h * a03 * b20) + a03 * b21 + -(h * a03 * b22) + -(a03 * b31) +
+        a03 * b32 + a03 * b33 + a10 * b01 + -(a11 * b01) + -(h * a13 * b01) + -(h * a13 * b03) +
+        -(h * a13 * b20) + a13 * b21 + -(h * a13 * b22) + -(a13 * b31) + a13 * b32 +
+        h * a21 * b03 + -(a21 * b10) + a21 * b11 + a21 * b13 + -(a21 * b20) + -(h * a21 * b20) +
+        a21 * b21 + -(h * a21 * b22) + a21 * b23 + -(h * a31 * b03) + a31 * b10 + -(a31 * b11) +
+        -(a31 * b13) + a31 * b20 + h * a31 * b20 + -(a31 * b21) + h * a31 * b22 + -(a31 * b23) +
+        -(a32 * b20) + -(a32 * b22) + -(a33 * b20) + -(a33 * b22)) * h2
   · rw [ecl58, pm4, pm7, pm8, pm9, pm12, pm21, pm23, pm24, pm25, pm27, pm34, pm35, pm43, pm45]
-    linear_combination (-(a02 * b22) + -(h * a03 * b20) + -(h * a03 * b22) + a03 * b32 + a10 * b01 + -(a10 * b03) + -(a11 * b01) + a11 * b03 + -(a11 * b22) + a12 * b22 + -(h * a13 * b20) + -(h * a13 * b22) + a13 * b32 + -(h * a21 * b01) + h * a21 * b03 + (-2) * h * a21 * b22 + -(a22 * b20) + a22 * b22 + h * a31 * b01 + -(h * a31 * b03) + (2) * h * a31 * b22 + -(a32 * b20) + -(a32 * b22) + -(a33 * b20) + -(a33 * b22)) * h2
-  · rw [ecl62, pm3, pm9, pm13, pm14, pm16, pm19, pm21, pm25, pm27, pm31, pm34, pm35, pm42, pm43, pm45, pm46]
-    linear_combination (a02 * b22 + a03 * b21 + -(a03 * b31) + a03 * b33 + a10 * b03 + -(a11 * b03) + a11 * b22 + -(a12 * b22) + -(h * a13 * b01) + -(h * a13 * b03) + a13 * b21 + -(a13 * b31) + h * a21 * b01 + -(a21 * b10) + a21 * b11 + a21 * b13 + -(a21 * b20) + -(h * a21 * b20) + a21 * b21 + h * a21 * b22 + a21 * b23 + a22 * b20 + -(a22 * b22) + -(h * a31 * b01) + a31 * b10 + -(a31 * b11) + -(a31 * b13) + a31 * b20 + h * a31 * b20 + -(a31 * b21) + -(h * a31 * b22) + -(a31 * b23)) * h2
-  · rw [ecl65, pm3, pm8, pm12, pm13, pm17, pm18, pm19, pm20, pm22, pm23, pm25, pm27, pm31, pm33, pm37, pm43]
-    linear_combination (a03 * b00 + -(h * a03 * b01) + -(h * a03 * b03) + a03 * b30 + -(a03 * b32) + -(a03 * b33) + h * a13 * b01 + h * a13 * b03 + a13 * b33 + -(h * a21 * b01) + -(h * a21 * b03) + a21 * b10 + -(a21 * b11) + -(a21 * b13) + a21 * b20 + h * a21 * b20 + -(a21 * b21) + -(a21 * b23) + a22 * b22 + (-2) * a31 * b10 + a31 * b11 + a31 * b13 + -(a31 * b20) + -(h * a31 * b20) + a31 * b21 + a31 * b23 + a32 * b20 + a32 * b22 + a33 * b20 + a33 * b22) * h2
-  · rw [ecl89, pm2, pm6, pm11, pm12, pm13, pm14, pm17, pm18, pm19, pm21, pm22, pm23, pm28, pm29, pm31, pm35, pm37, pm40, pm43, pm47]
-    linear_combination (-(a00 * b03) + a01 * b03 + a03 * b00 + a03 * b30 + -(a03 * b32) + -(a03 * b33) + a10 * b03 + -(a11 * b03) + a13 * b00 + -(a13 * b01) + -(a13 * b03) + a13 * b30 + -(a13 * b32) + -(a13 * b33) + a20 * b01 + a20 * b03 + -(a21 * b03) + (-2) * h * a21 * b03 + -(a21 * b13) + a21 * b20 + -(a21 * b23) + -(a23 * b01) + -(a23 * b03) + -(a31 * b10) + a31 * b12 + a31 * b13 + -(a31 * b20) + a31 * b23 + a32 * b20 + a32 * b22 + a33 * b20 + a33 * b22) * h2
-  · rw [ecl82, pm3, pm8, pm11, pm12, pm21, pm22, pm23, pm25, pm27, pm29, pm33, pm35, pm37, pm40, pm41, pm43]
-    linear_combination (-(a00 * b03) + a01 * b03 + a03 * b00 + a03 * b30 + -(a03 * b32) + a10 * b03 + -(a11 * b03) + h * a21 * b01 + -(a21 * b03) + -(h * a21 * b03) + a21 * b12 + h * a21 * b22 + a22 * b20 + -(h * a31 * b22) + a32 * b20 + a32 * b22 + a33 * b20 + a33 * b22) * h2
+    linear_combination (-(a02 * b22) + -(h * a03 * b20) + -(h * a03 * b22) + a03 * b32 +
+        a10 * b01 + -(a10 * b03) + -(a11 * b01) + a11 * b03 + -(a11 * b22) + a12 * b22 +
+        -(h * a13 * b20) + -(h * a13 * b22) + a13 * b32 + -(h * a21 * b01) + h * a21 * b03 +
+        (-2) * h * a21 * b22 + -(a22 * b20) + a22 * b22 + h * a31 * b01 + -(h * a31 * b03) +
+        (2) * h * a31 * b22 + -(a32 * b20) + -(a32 * b22) + -(a33 * b20) + -(a33 * b22)) * h2
+  · rw [ecl62, pm3, pm9, pm13, pm14, pm16, pm19, pm21, pm25, pm27, pm31, pm34, pm35, pm42, pm43,
+      pm45, pm46]
+    linear_combination (a02 * b22 + a03 * b21 + -(a03 * b31) + a03 * b33 + a10 * b03 +
+        -(a11 * b03) + a11 * b22 + -(a12 * b22) + -(h * a13 * b01) + -(h * a13 * b03) + a13 * b21 +
+        -(a13 * b31) + h * a21 * b01 + -(a21 * b10) + a21 * b11 + a21 * b13 + -(a21 * b20) +
+        -(h * a21 * b20) + a21 * b21 + h * a21 * b22 + a21 * b23 + a22 * b20 + -(a22 * b22) +
+        -(h * a31 * b01) + a31 * b10 + -(a31 * b11) + -(a31 * b13) + a31 * b20 + h * a31 * b20 +
+        -(a31 * b21) + -(h * a31 * b22) + -(a31 * b23)) * h2
+  · rw [ecl65, pm3, pm8, pm12, pm13, pm17, pm18, pm19, pm20, pm22, pm23, pm25, pm27, pm31, pm33,
+      pm37, pm43]
+    linear_combination (a03 * b00 + -(h * a03 * b01) + -(h * a03 * b03) + a03 * b30 +
+        -(a03 * b32) + -(a03 * b33) + h * a13 * b01 + h * a13 * b03 + a13 * b33 +
+        -(h * a21 * b01) + -(h * a21 * b03) + a21 * b10 + -(a21 * b11) + -(a21 * b13) + a21 * b20 +
+        h * a21 * b20 + -(a21 * b21) + -(a21 * b23) + a22 * b22 + (-2) * a31 * b10 + a31 * b11 +
+        a31 * b13 + -(a31 * b20) + -(h * a31 * b20) + a31 * b21 + a31 * b23 + a32 * b20 +
+        a32 * b22 + a33 * b20 + a33 * b22) * h2
+  · rw [ecl89, pm2, pm6, pm11, pm12, pm13, pm14, pm17, pm18, pm19, pm21, pm22, pm23, pm28, pm29,
+      pm31, pm35, pm37, pm40, pm43, pm47]
+    linear_combination (-(a00 * b03) + a01 * b03 + a03 * b00 + a03 * b30 + -(a03 * b32) +
+        -(a03 * b33) + a10 * b03 + -(a11 * b03) + a13 * b00 + -(a13 * b01) + -(a13 * b03) +
+        a13 * b30 + -(a13 * b32) + -(a13 * b33) + a20 * b01 + a20 * b03 + -(a21 * b03) +
+        (-2) * h * a21 * b03 + -(a21 * b13) + a21 * b20 + -(a21 * b23) + -(a23 * b01) +
+        -(a23 * b03) + -(a31 * b10) + a31 * b12 + a31 * b13 + -(a31 * b20) + a31 * b23 +
+        a32 * b20 + a32 * b22 + a33 * b20 + a33 * b22) * h2
+  · rw [ecl82, pm3, pm8, pm11, pm12, pm21, pm22, pm23, pm25, pm27, pm29, pm33, pm35, pm37, pm40,
+      pm41, pm43]
+    linear_combination (-(a00 * b03) + a01 * b03 + a03 * b00 + a03 * b30 + -(a03 * b32) +
+        a10 * b03 + -(a11 * b03) + h * a21 * b01 + -(a21 * b03) + -(h * a21 * b03) + a21 * b12 +
+        h * a21 * b22 + a22 * b20 + -(h * a31 * b22) + a32 * b20 + a32 * b22 + a33 * b20 +
+        a33 * b22) * h2
   · rw [ecl73, pm0, pm3, pm11, pm13, pm17, pm18, pm19, pm21, pm25, pm27, pm29, pm31, pm35, pm40]
-    linear_combination (a00 * b03 + -(a01 * b03) + -(h * a03 * b01) + -(h * a03 * b03) + -(a03 * b33) + -(a10 * b03) + a11 * b03 + h * a13 * b01 + h * a13 * b03 + a13 * b33 + (-2) * h * a21 * b01 + a21 * b03 + a21 * b10 + -(a21 * b11) + -(a21 * b12) + -(a21 * b13) + a21 * b20 + h * a21 * b20 + -(a21 * b21) + -(h * a21 * b22) + -(a21 * b23) + -(a22 * b20) + a22 * b22 + (-2) * a31 * b10 + a31 * b11 + a31 * b13 + -(a31 * b20) + -(h * a31 * b20) + a31 * b21 + h * a31 * b22 + a31 * b23) * h2
-  · rw [ecl66, pm1, pm8, pm9, pm16, pm17, pm18, pm19, pm23, pm25, pm27, pm31, pm36, pm37, pm39, pm43, pm46]
-    linear_combination (a02 * b20 + a02 * b22 + -(h * a03 * b01) + -(h * a03 * b03) + h * a03 * b20 + a03 * b21 + h * a03 * b22 + -(a03 * b31) + -(h * a13 * b01) + -(h * a13 * b03) + h * a13 * b20 + a13 * b21 + h * a13 * b22 + -(a13 * b31) + (-2) * a21 * b10 + a21 * b11 + a21 * b13 + -(a21 * b20) + -(h * a21 * b20) + a21 * b21 + a21 * b23 + -(a22 * b22) + -(h * a31 * b01) + -(h * a31 * b03) + a31 * b10 + -(a31 * b11) + -(a31 * b13) + a31 * b20 + h * a31 * b20 + -(a31 * b21) + -(a31 * b23) + -(a32 * b20) + -(a32 * b22) + -(a33 * b20) + -(a33 * b22)) * h2
+    linear_combination (a00 * b03 + -(a01 * b03) + -(h * a03 * b01) + -(h * a03 * b03) +
+        -(a03 * b33) + -(a10 * b03) + a11 * b03 + h * a13 * b01 + h * a13 * b03 + a13 * b33 +
+        (-2) * h * a21 * b01 + a21 * b03 + a21 * b10 + -(a21 * b11) + -(a21 * b12) + -(a21 * b13) +
+        a21 * b20 + h * a21 * b20 + -(a21 * b21) + -(h * a21 * b22) + -(a21 * b23) + -(a22 * b20) +
+        a22 * b22 + (-2) * a31 * b10 + a31 * b11 + a31 * b13 + -(a31 * b20) + -(h * a31 * b20) +
+        a31 * b21 + h * a31 * b22 + a31 * b23) * h2
+  · rw [ecl66, pm1, pm8, pm9, pm16, pm17, pm18, pm19, pm23, pm25, pm27, pm31, pm36, pm37, pm39,
+      pm43, pm46]
+    linear_combination (a02 * b20 + a02 * b22 + -(h * a03 * b01) + -(h * a03 * b03) +
+        h * a03 * b20 + a03 * b21 + h * a03 * b22 + -(a03 * b31) + -(h * a13 * b01) +
+        -(h * a13 * b03) + h * a13 * b20 + a13 * b21 + h * a13 * b22 + -(a13 * b31) +
+        (-2) * a21 * b10 + a21 * b11 + a21 * b13 + -(a21 * b20) + -(h * a21 * b20) + a21 * b21 +
+        a21 * b23 + -(a22 * b22) + -(h * a31 * b01) + -(h * a31 * b03) + a31 * b10 + -(a31 * b11) +
+        -(a31 * b13) + a31 * b20 + h * a31 * b20 + -(a31 * b21) + -(a31 * b23) + -(a32 * b20) +
+        -(a32 * b22) + -(a33 * b20) + -(a33 * b22)) * h2
   · rw [ecl68, pm8, pm11, pm16, pm17, pm18, pm19, pm21, pm23, pm26, pm28, pm31, pm35, pm40, pm46]
-    linear_combination (a00 * b01 + -(a01 * b01) + -(h * a03 * b01) + -(h * a03 * b03) + a03 * b21 + -(a03 * b31) + a10 * b01 + -(a11 * b01) + -(h * a13 * b01) + -(h * a13 * b03) + a13 * b21 + -(a13 * b31) + (-2) * a21 * b10 + a21 * b11 + a21 * b13 + -(a21 * b20) + -(h * a21 * b20) + a21 * b21 + -(h * a21 * b22) + a21 * b23 + a31 * b01 + (-2) * h * a31 * b03 + a31 * b10 + -(a31 * b11) + a31 * b12 + -(a31 * b13) + a31 * b20 + h * a31 * b20 + -(a31 * b21) + h * a31 * b22 + -(a31 * b23) + -(a32 * b20) + -(a32 * b22) + -(a33 * b20) + -(a33 * b22)) * h2
-  · rw [ecl78, pm8, pm9, pm11, pm16, pm21, pm23, pm25, pm26, pm27, pm30, pm35, pm36, pm37, pm39, pm40, pm43]
-    linear_combination (a00 * b01 + -(a01 * b01) + -(a02 * b20) + -(a02 * b22) + -(h * a03 * b20) + -(h * a03 * b22) + a10 * b01 + -(a11 * b01) + -(h * a13 * b20) + -(h * a13 * b22) + -(h * a21 * b22) + a22 * b22 + a31 * b01 + h * a31 * b01 + -(h * a31 * b03) + a31 * b12 + h * a31 * b22) * h2
-  · rw [ecl85, pm0, pm9, pm11, pm14, pm17, pm18, pm19, pm21, pm25, pm26, pm31, pm35, pm36, pm37, pm38, pm40, pm42, pm43, pm46, pm47]
-    linear_combination (-(a00 * b01) + a01 * b01 + a02 * b20 + a02 * b22 + a03 * b21 + -(a03 * b31) + -(a10 * b01) + a11 * b01 + a11 * b20 + a11 * b22 + -(a12 * b20) + -(a12 * b22) + a13 * b21 + -(a13 * b31) + -(a21 * b10) + a21 * b11 + -(a21 * b12) + a21 * b21 + -(a22 * b20) + -(a22 * b22) + a30 * b01 + a30 * b03 + -(a31 * b01) + (-2) * h * a31 * b01 + -(a31 * b11) + -(a31 * b21) + -(a33 * b01) + -(a33 * b03)) * h2
+    linear_combination (a00 * b01 + -(a01 * b01) + -(h * a03 * b01) + -(h * a03 * b03) +
+        a03 * b21 + -(a03 * b31) + a10 * b01 + -(a11 * b01) + -(h * a13 * b01) + -(h * a13 * b03) +
+        a13 * b21 + -(a13 * b31) + (-2) * a21 * b10 + a21 * b11 + a21 * b13 + -(a21 * b20) +
+        -(h * a21 * b20) + a21 * b21 + -(h * a21 * b22) + a21 * b23 + a31 * b01 +
+        (-2) * h * a31 * b03 + a31 * b10 + -(a31 * b11) + a31 * b12 + -(a31 * b13) + a31 * b20 +
+        h * a31 * b20 + -(a31 * b21) + h * a31 * b22 + -(a31 * b23) + -(a32 * b20) + -(a32 * b22) +
+        -(a33 * b20) + -(a33 * b22)) * h2
+  · rw [ecl78, pm8, pm9, pm11, pm16, pm21, pm23, pm25, pm26, pm27, pm30, pm35, pm36, pm37, pm39,
+      pm40, pm43]
+    linear_combination (a00 * b01 + -(a01 * b01) + -(a02 * b20) + -(a02 * b22) + -(h * a03 * b20) +
+        -(h * a03 * b22) + a10 * b01 + -(a11 * b01) + -(h * a13 * b20) + -(h * a13 * b22) +
+        -(h * a21 * b22) + a22 * b22 + a31 * b01 + h * a31 * b01 + -(h * a31 * b03) + a31 * b12 +
+        h * a31 * b22) * h2
+  · rw [ecl85, pm0, pm9, pm11, pm14, pm17, pm18, pm19, pm21, pm25, pm26, pm31, pm35, pm36, pm37,
+      pm38, pm40, pm42, pm43, pm46, pm47]
+    linear_combination (-(a00 * b01) + a01 * b01 + a02 * b20 + a02 * b22 + a03 * b21 +
+        -(a03 * b31) + -(a10 * b01) + a11 * b01 + a11 * b20 + a11 * b22 + -(a12 * b20) +
+        -(a12 * b22) + a13 * b21 + -(a13 * b31) + -(a21 * b10) + a21 * b11 + -(a21 * b12) +
+        a21 * b21 + -(a22 * b20) + -(a22 * b22) + a30 * b01 + a30 * b03 + -(a31 * b01) +
+        (-2) * h * a31 * b01 + -(a31 * b11) + -(a31 * b21) + -(a33 * b01) + -(a33 * b03)) * h2
 
 end Matmul48_201

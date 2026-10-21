@@ -97,3 +97,11 @@ difference being free output negations).
 (`data/4x4x4_48_201_{L,R,P}.{sms,slp}` = the normalized `p005_201n` triple with
 PLinOpt-style title comments; the PR cites the Lean proof
 `proof/Mm/Ring_4x4_48_201.lean`).
+
+**14:20: a third 201 structure, `lam01c0_201_*`**: the annealer at lambda = 0.1
+(non-unit coefficients cheap) reaches floor-150 points with side floors
+40/40/38 and 104 non-unit coefficients (Patel's kind of point, balanced);
+`pool3/lam01_p005/cand000` gives **201 = L 56 + R 56 + P 89** (restarts.sh, 6
+seeds x 300 s: L 56 x6, R 56 x5, P^T 57 x2).  With the 55/57/89 family
+(p005, p010, ...) and its L/R mirror, every proxy-optimal structure tried
+lands on exactly 201.

@@ -85,6 +85,17 @@ new to everything we have.  None of this changes the verdict: the leg
 screen and the flat bound covered all 1,736 classes regardless.
 Results in `results/overlap_with_our_finds.csv`.
 
+## Mod-3 bounds (rings with ½)
+
+`../f3scan.py hb` bounds the additions of any Z[½] program for the new
+classes from their signed originals, over F₃ (where ½ = −1 and scalings
+are free): all 1,736 classes are ≥ 56 (refined bounds 56: 88, 57: 184,
+58: 320, 59: 493, 60: 392, 61: 183, 62: 60, 63: 13, 64: 2, 65: 1;
+`results/hb_f3.csv`, boundary rows re-scanned in
+`results/hb_f3_recheck55.csv`).  The same scan over the 17,376 signed
+database schemes gives ≥ 56 everywhere (`../db_f3_census.csv`), while the
+55 scheme's own point bounds at exactly 55.
+
 ## Open
 
 - The dataset's remaining 1,172 new classes with floor ≥ 52 cannot beat

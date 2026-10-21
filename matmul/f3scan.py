@@ -328,6 +328,12 @@ def work(item):
     name, legs, target = item
     t0 = time.time()
     b1, b2, cnt, ncl = scan(legs, target)
+    if b2 == target + 1:
+        # at the boundary the target-count bound may have been returned
+        # unrefined: re-scan at target + 1 so the recorded bound is the
+        # refined one and cnt counts the triples that could tie it
+        _, b2, cnt, ncl2 = scan(legs, target + 1)
+        ncl += ncl2
     return name, b1, b2, cnt, ncl, time.time() - t0
 
 
@@ -389,6 +395,36 @@ def main():
         gate(items[0][1], random.Random(5))
         print("coset gate ok", flush=True)
         run(items, out, jobs, target)
+    elif cmd == "recheck":
+        # re-scan the rows of a finished CSV whose bound equals target + 1 at target + 1
+        src, csv_in, out = sys.argv[2], sys.argv[3], sys.argv[4]
+        names = [ln.split(",")[0] for ln in open(csv_in) if not ln.startswith("name,") and int(ln.split(",")[2]) == target + 1]
+        legs = {}
+        if src == "db":
+            want = set(names)
+            tf = tarfile.open(f"{M}/dbcache/schemes.tgz", "r:gz")
+            for mem in tf:
+                nm = mem.name.rsplit("/", 1)[-1][:-4] if mem.name.endswith(".tab") else None
+                if nm in want:
+                    legs[nm] = legs_from_tab(tf.extractfile(mem).read().decode())
+        else:  # src = Hell's Bells data dir; names are class ids -> rep file via the verdicts csv
+            datadir, verdicts = src.split(":")
+            rep = {}
+            for ln in open(verdicts):
+                f = ln.rstrip("\n").split(",")
+                if f[1] == "NEW" and f[2] not in rep:
+                    rep[f[2]] = f[0]
+            for nm in names:
+                legs[nm] = legs_from_hb(os.path.join(datadir, rep[nm] + ".txt"))
+        with open(out, "w") as f:
+            f.write("name,bound_refined,triples_at_bound,closures,secs\n")
+            hist = {}
+            for nm in names:
+                t0 = time.time()
+                _, b2, cnt, ncl = scan(legs[nm], target + 1)
+                f.write(f"{nm},{b2},{cnt},{ncl},{time.time() - t0:.1f}\n")
+                hist[(b2, cnt > 0)] = hist.get((b2, cnt > 0), 0) + 1
+        print(f"rechecked {len(names)} rows at target {target + 1}: (refined bound, has triples at it) -> {dict(sorted(hist.items()))}")
     else:
         print(__doc__)
 

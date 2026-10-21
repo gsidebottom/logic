@@ -1556,6 +1556,22 @@ the two source papers for this track):
   reports its 156 point.  Together with the Strassen^2 proof: nothing
   tensor-like we can generate beats 156; a record needs a new integral
   rank-49 class.  AT and published rank-47 climbs chained next.
+- **MOD-3 ORBIT SCAN: NO Z[1/2] 3x3 PROGRAM BELOW 55 FOR ANY KNOWN SIGNED
+  SCHEME (2026-10-20, matmul/f3scan.py)**: Greg asked whether 1/2
+  coefficients could beat 55.  A Z[1/2] program reduces mod 3 with the
+  same additions (scalings become free signs), so the F_3 orbit minimum
+  (GL(3,3)^3 sandwich, 234 monomial cosets per factor, targets up to sign
+  + closure bits) bounds every representative reachable by a basis change
+  invertible mod 3.  Inputs must be SIGNED: mod-2 classes split into several
+  F_3 orbits (the DB's stored i19 member bounds at 56 while the 55 program's
+  own point bounds at exactly 55, one coset triple -- the control).  Results:
+  all 17,376 DB schemes >= 56 (refined: 56:924 57:2452 58:4293 ...), all
+  1,736 new Hell's Bells classes >= 56; Sun's 56 bounds at 56, Perminov's 56
+  at 55 (same orbit as the 55), i106's 60 at 56.  So no 1/2-coefficient
+  representative of any known scheme goes below 55; only a basis change
+  singular mod 3 or an unknown class escapes.  Our own mod-2 corpora are
+  unsigned and were not scanned.  Boundary rows are re-scanned at target+1
+  (the early-exit lesson, applied before reporting this time).
 - **ALL THREE RANK-47 CLASSES BOUNDED (2026-10-19 23:10)**: whole-orbit
   lower bounds by lbclass.sh (pre-raise + climb): KM 163 (6.6 h for the
   last step), AlphaTensor 162 (163 step hit its 3.5 h budget, 35 triples

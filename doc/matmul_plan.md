@@ -1576,6 +1576,18 @@ the two source papers for this track):
   (listed "Submitted on 20 Oct 2026", the post-moderation resubmission).
   KS-51 (submit/8246158) still on hold, no request.  Zenodo mm55 related
   identifier still to add (v1.1 kit).
+- **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21
+  10:07)**: matmul/dps48/patel/restarts.sh (lns48, 12 naive matrix-only
+  seeds x 180 s per side): L 55 on all 12 seeds, R 58 on all 12, P^T 57 on
+  one seed (others 58-59) -> P 89.  cand48/sparse68_202_* and the
+  sign-normalized sparse68_202n_* (signnorm48.py: zero negations, 202 in
+  Patel's model too; sms of the flipped matrices included) verified by
+  SLPchecker per side, MMchecker x5 (rational mode) and slp48check.py (exact
+  Brent).  Follow-ups: P^T 57 -> 56 would give 201 (a 6 x 300 s naive
+  campaign gave six 58s; deepening from the 57 program at T 0.35 / tabu 1024
+  running); the Rust-engine pool sweep (90 points) and the orbit climb from
+  sparse68 (R = 58 is the side 2 above Patel's and has never varied across
+  24+ seeds, so a neighbouring point with a cheaper R is the other route).
 - **RANK-48: RUST PORT lns48 -> sparse68 at 203 = 55 + 58 + 90 (2026-10-21
   10:15; record 202)**.  Profile of Patel's Python LNS: 72% of a step is
   z3's Python wrapper building ~66 sign-planning problems, and the planner

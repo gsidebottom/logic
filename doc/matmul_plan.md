@@ -1576,6 +1576,26 @@ the two source papers for this track):
   (listed "Submitted on 20 Oct 2026", the post-moderation resubmission).
   KS-51 (submit/8246158) still on hold, no request.  Zenodo mm55 related
   identifier still to add (v1.1 kit).
+- **RANK-48: PATEL'S LNS ON sparse68 -> 205 (2026-10-21 09:00, Greg's go)**:
+  his code (CC0) cloned into the session scratchpad, read in full (stdlib +
+  z3; `df` is the only subprocess), smoke tests pass, his 203 -> 202
+  calibration reproduces in 60 s, and his exact checker independently
+  verifies sparse68.  His `rebuild3.py` on sparse68: L 67 -> 56, R 67 ->
+  58 (4 workers x 30 min, all converged); his direct-P search stuck at 101,
+  but driving his `Search` on P^T (48x16, `matmul/dps48/patel/
+  patel_phase.py`) gives P^T 63 -> P 91 via PLinOpt's transpozer (+32).
+  TOTAL 205 = 56 + 58 + 91 (PLinOpt count; 213 in his model, which charges
+  the 8 output negations), three above the 202 record; stored as
+  cand48/sparse68_205_{L,R,P}.slp, verified by SLPchecker, MMchecker and
+  the new independent matmul/dps48/slp48check.py (exact Brent over Q, both
+  cost models, plus a translator from his `a*(1/2)` syntax, which
+  SLPchecker rejects, to `a/2`).  Running: matmul/dps48/patel/sweep.py --
+  successive halving (60 s all / 300 s top 20 / 900 s x 2 seeds top 6)
+  over the 90 orbit48 pool points, each side seeded by PLinOpt's
+  optimizer (P through P^T).  Next: a true-cost hill climb over single
+  elementary orbit moves (GL shears, dyadic diagonal scalings, per-product
+  (a, b, 1/ab) rescalings) from the best point, proxy-filtered, 60 s per
+  side.
 - **RANK-48 CAMPAIGN, STEP 3 DONE -- NEGATIVE, AND PATEL'S METHOD FOUND
   (2026-10-21 08:00)**: exact window LNS (matmul/dps48/qexact.py +
   exactlns.py; windows of 6-16 consecutive lines, independent local basis

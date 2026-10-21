@@ -27,4 +27,17 @@ The heavy stage is now known: Patel's own search code is public
 (propose new signal vectors, reverse-delete while the set stays closed
 under one-gate productions, accept equal-cost and best+1 moves, z3 sign
 planning) that takes his point from PLinOpt's programs to 56 + 56 + 90.
-Next: apply that search to `sparse68`.
+
+**Patel's LNS applied to sparse68 (2026-10-21, `../patel/`): 205 = 56 + 58 +
+91**, stored as `sparse68_205_{L,R,P}.slp` (SLPchecker syntax; counts are
+PLinOpt's additions + scalings).  L and R: his `rebuild3.py`, 4 workers x
+30 min each, every worker converging to the same cost (L 59, R 61 in his
+model, which also charges the 4 + 4 output negations that PLinOpt counts
+as free).  P: his direct search never left 101, so P was optimized through
+its transpose (a 48x16 map like L and R; `../patel/patel_phase.py` drives
+his `Search` class on one map): P^T 63 -> P = 59 + 32 = 91 by the
+transposition principle (PLinOpt's `transpozer`).  Verified three ways:
+SLPchecker against the sms matrices, MMchecker on the matrices, and
+`../slp48check.py` (exact Brent over Q; also counts Patel's model: 213).
+Three operations above Patel's 202.  Running next: the same pipeline over
+the 90 annealer pool points (`../patel/sweep.py`, successive halving).

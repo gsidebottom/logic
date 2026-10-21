@@ -177,7 +177,20 @@ def in_range(U, V, W):
     return max(int(np.abs(U).max()), int(np.abs(V).max()), int(np.abs(W).max())) <= MAXENT
 
 
-def anneal(U0, V0, W0, steps, t0, t1, lam, rng, log=None):
+def point_key(U, V, W):
+    """identity of a point up to row order and row signs on each side."""
+    out = []
+    for F in (U, V, W):
+        rows = []
+        for row in F.reshape(F.shape[0], 16):
+            nz = np.flatnonzero(row)
+            sign = 1 if nz.size == 0 or row[nz[0]] > 0 else -1
+            rows.append(tuple((sign * row).tolist()))
+        out.append(tuple(sorted(rows)))
+    return hash(tuple(out))
+
+
+def anneal(U0, V0, W0, steps, t0, t1, lam, rng, log=None, pool=None, pool_floor=10 ** 9, pool_max=400):
     X, Xi, Y, Yi, Z, Zi = (ident() for _ in range(6))
     cur = apply(U0, V0, W0, X, Xi, Y, Yi, Z, Zi)
     obj, floor, sides, nonu = objective(*cur, lam)
@@ -206,6 +219,16 @@ def anneal(U0, V0, W0, steps, t0, t1, lam, rng, log=None):
         if d <= 0 or rng.random() < np.exp(-d / T):
             X, Xi, Y, Yi, Z, Zi = mats2
             cur, obj, floor, sides, nonu = new, obj2, floor2, sides2, nonu2
+            if pool is not None and floor <= pool_floor:
+                k = point_key(*cur)
+                if k not in pool:
+                    if len(pool) < pool_max:
+                        pool[k] = (obj, floor, sides, nonu, X.copy(), Y.copy(), Z.copy())
+                    else:
+                        worst = max(pool, key=lambda kk: (pool[kk][0], pool[kk][1]))
+                        if (obj, floor) < (pool[worst][0], pool[worst][1]):
+                            del pool[worst]
+                            pool[k] = (obj, floor, sides, nonu, X.copy(), Y.copy(), Z.copy())
             if obj < best[0]:
                 best = (obj, floor, sides, nonu, (X.copy(), Y.copy(), Z.copy()))
                 if log:
@@ -254,6 +277,7 @@ def main():
     t0, t1 = opt("--t0", 2.0), opt("--t1", 0.2)
     lam = opt("--lam", 0.1)
     keep = opt("--keep", 8, int)
+    pool_floor = opt("--pool-floor", 150, int)
     prefix, outdir = args[0], args[1]
     os.makedirs(outdir, exist_ok=True)
     U0, V0, W0 = load(prefix)
@@ -261,31 +285,29 @@ def main():
     obj0, floor0, sides0, nonu0 = objective(U0, V0, W0, lam)
     print(f"input: floor {floor0} = {sides0} + 32, non-unit coefficients {nonu0}, objective {obj0:.1f}", flush=True)
     rng = np.random.default_rng(seed)
-    found = {}
+    pool = {}
     t0s = time.time()
+
     def dump():
-        ranked = sorted(found.items(), key=lambda kv: kv[1][0])[:keep]
+        ranked = sorted(pool.values(), key=lambda v: (v[0], v[1]))[:keep]
         rows = ["rank,floor,fl,fr,fp,nonunit,objective,prefix"]
-        for n, (key, (obj, X, Y, Z)) in enumerate(ranked):
+        for n, (obj, floor, sides, nonu, X, Y, Z) in enumerate(ranked):
             Xi, Yi, Zi = (np.rint(np.linalg.inv(M / SCAL) * SCAL).astype(np.int64) for M in (X, Y, Z))
             res = apply(U0, V0, W0, X, Xi, Y, Yi, Z, Zi)
             assert res is not None and brent_ok(*res), "candidate fails Brent"
-            pre = os.path.join(outdir, f"cand{n:02d}")
+            pre = os.path.join(outdir, f"cand{n:03d}")
             write_sms(pre, *res)
-            floor, nonu, sides = key
             rows.append(f"{n},{floor},{sides[0]},{sides[1]},{sides[2]},{nonu},{obj:.1f},{pre}")
         open(os.path.join(outdir, "candidates.csv"), "w").write("\n".join(rows) + "\n")
         return rows
 
     for rs in range(restarts):
-        best = anneal(U0, V0, W0, steps, t0, t1, lam, rng, log=lambda s: print(s, flush=True))
+        best = anneal(U0, V0, W0, steps, t0, t1, lam, rng, log=None, pool=pool, pool_floor=pool_floor)
         obj, floor, sides, nonu, (X, Y, Z) = best
-        key = (floor, nonu, tuple(sides))
-        print(f"restart {rs}: best floor {floor} sides {sides} non-unit {nonu} obj {obj:.1f} ({time.time() - t0s:.0f}s)", flush=True)
-        if key not in found or found[key][0] > obj:
-            found[key] = (obj, X, Y, Z)
+        print(f"restart {rs}: best floor {floor} sides {sides} non-unit {nonu} obj {obj:.1f}; pool {len(pool)} distinct points ({time.time() - t0s:.0f}s)", flush=True)
         dump()
-    print("\n".join(dump()), flush=True)
+    rows = dump()
+    print(f"pool: {len(pool)} distinct points with floor <= {pool_floor}; wrote {len(rows) - 1} candidates", flush=True)
 
 
 if __name__ == "__main__":

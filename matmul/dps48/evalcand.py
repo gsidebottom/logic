@@ -68,6 +68,9 @@ def main():
     cands = [ln.rstrip("\n").split(",") for ln in open(csv_in) if not ln.startswith("rank,")]
     rows = ["prefix,floor,quickL,quickR,quickP,quick_total"]
     quick = []
+    def tag(pre):  # unique file tag: parent directory + basename
+        return os.path.basename(os.path.dirname(pre)) + "_" + os.path.basename(pre)
+
     for c in cands:
         pre, floor = c[-1], c[1]
         t0 = time.time()
@@ -76,27 +79,27 @@ def main():
             sms = f"{pre}_{side}.sms"
             b = best_program(bin_dir, sms, runs, loops, env, transposed_modes=(side == "P"))
             res[side] = b
-            open(os.path.join(outdir, f"{os.path.basename(pre)}_{side}.slp"), "w").write(b[1] if b else "")
+            open(os.path.join(outdir, f"{tag(pre)}_{side}.slp"), "w").write(b[1] if b else "")
         tot = sum(sum(res[s][0]) for s in "LRP") if all(res[s] for s in "LRP") else None
         cells = [f"{sum(res[s][0])}" if res[s] else "?" for s in "LRP"]
         rows.append(f"{pre},{floor},{cells[0]},{cells[1]},{cells[2]},{tot}")
         quick.append((tot if tot is not None else 10 ** 9, pre, res))
-        print(f"{os.path.basename(pre)}: floor {floor}, quick L/R/P {cells} total {tot} ({time.time() - t0:.0f}s)", flush=True)
+        print(f"{tag(pre)}: floor {floor}, quick L/R/P {cells} total {tot} ({time.time() - t0:.0f}s)", flush=True)
     open(os.path.join(outdir, "eval.csv"), "w").write("\n".join(rows) + "\n")
     quick.sort(key=lambda t: t[0])
     rows2 = ["prefix,refinedL,refinedR,refinedP,refined_total"]
     for tot, pre, res in quick[:nref]:
         parts = []
         for side in "LRP":
-            slp = os.path.join(outdir, f"{os.path.basename(pre)}_{side}.slp")
-            wd = os.path.join(outdir, f"refine_{os.path.basename(pre)}_{side}")
+            slp = os.path.join(outdir, f"{tag(pre)}_{side}.slp")
+            wd = os.path.join(outdir, f"refine_{tag(pre)}_{side}")
             subprocess.run([sys.executable, f"{H}/prune_loop.py", "--slp", slp, "--sms", f"{pre}_{side}.sms", "--bin", bin_dir, "--out", wd, "--rounds", str(rounds), "--loops", "100", "--mode", "p", "--path", gnu], capture_output=True, text=True, env=env, timeout=14400)
             best = os.path.join(wd, "best.slp")
             c = count(bin_dir, f"{pre}_{side}.sms", open(best).read(), env) if os.path.exists(best) else None
             parts.append(sum(c) if c else None)
         total = sum(parts) if all(p is not None for p in parts) else None
         rows2.append(f"{pre},{parts[0]},{parts[1]},{parts[2]},{total}")
-        print(f"refined {os.path.basename(pre)}: {parts} total {total}", flush=True)
+        print(f"refined {tag(pre)}: {parts} total {total}", flush=True)
     open(os.path.join(outdir, "refined.csv"), "w").write("\n".join(rows2) + "\n")
 
 

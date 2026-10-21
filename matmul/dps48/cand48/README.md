@@ -58,3 +58,10 @@ seconds -- below the 56 that every run seeded with PLinOpt's optimizer output
 and cheap restarts from different seeds now matter more than long runs.
 Verified by SLPchecker (53 + 2) and the exact Brent check.  One above the
 202 record.
+
+`sparse68_203n_{L,R,P}.{slp,sms}`: the same 203 triple after `../signnorm48.py`
+(sign-aware re-emission; L and R output negations absorbed into the signs of
+P's inputs, so rows of L and R and columns of P may be negated together --
+the sms files are the normalized matrices): **zero negations, 203 in Patel's
+model as well as PLinOpt's**.  SLPchecker on its own matrices (53+2, 56+2,
+90+0), MMchecker (rational mode) and the exact Brent check all pass.

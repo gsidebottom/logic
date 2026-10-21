@@ -41,3 +41,11 @@ SLPchecker against the sms matrices, MMchecker on the matrices, and
 `../slp48check.py` (exact Brent over Q; also counts Patel's model: 213).
 Three operations above Patel's 202.  Running next: the same pipeline over
 the 90 annealer pool points (`../patel/sweep.py`, successive halving).
+
+**Rust port, 2026-10-21 10:00: 204 = 56 + 58 + 90** (`sparse68_204_{L,R,P}.slp`;
+`sparse68_204_Pt.slp` is the 58-operation P^T program).  `src/bin/lns48.rs`
+reimplements the value-set LNS with PLinOpt's objective at ~80 iterations/s
+per thread (20x the z3-free Python, 70x the original); on P^T it found 58
+where the Python runs had stalled at 59 (P = 58 + 32 = 90).  Verified by
+SLPchecker on each side, by the exact Brent check (`../slp48check.py`), and
+the P^T program's transposition by PLinOpt's `transpozer`.

@@ -1675,6 +1675,21 @@ the two source papers for this track):
   show it cannot be done, a different decomposition class, or proposals
   built from the target structure rather than sampled); experiment 3 is
   CLOSED.  Machine was at ~1200% CPU for the final run (Greg's ask).
+- **RECOMBINATION + FEASIBILITY PROOFS (2026-10-21 18:00-19:15, Greg: "be
+  creative ... proposals derived from the target structure")**: lns48
+  --merge A.slp,B.slp,... (union of independent optima's signal sets ->
+  exact minimum closed subset by MIP) and --cap K (feasibility form: "a
+  closed set of <= K signals?", zero objective -- 'no 54' over three L
+  programs proved in 24 s where the optimality form had not closed its gap
+  in 20 min).  Optimality merges (20-min limits, incumbents only): record
+  P^T union of 32 programs (137 vectors) 57; balanced point L/R/P^T unions
+  56/56/57; greedy deletion on unions is poor (60-61).  FEASIBILITY
+  VERDICTS: record R: no <= 56 over the union of 32 programs (81 vectors),
+  INFEASIBLE in 51 s; record L: no <= 54 over 12 programs (82 vectors),
+  INFEASIBLE in 90 s.  Pending: record P^T <= 56 (137 vectors), balanced
+  L <= 55 / R <= 55 / P^T <= 56 (1-h limits); 6-thread exact LNS on R.
+  Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
+  Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21
   10:07)**: matmul/dps48/patel/restarts.sh (lns48, 12 naive matrix-only
   seeds x 180 s per side): L 55 on all 12 seeds, R 58 on all 12, P^T 57 on

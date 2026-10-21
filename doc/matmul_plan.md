@@ -1588,9 +1588,17 @@ the two source papers for this track):
   identities, DAG).  Stage C (600 s x 2 seeds, top 6): ALL SIX at 201 (L 55
   R 57 P 89, or L 57 R 55 P 89 at pool_l0.5 cand110) -- a plateau.  The
   winners are lambda = 0.3 annealer points (floor 156, 72 non-units); the
-  floor-159 sparse68 family tops out at 202.  Next: deepen cand005/cand010
-  (restarts.sh), orbit climb from cand005, a larger lambda = 0.3 pool, then
-  Greg's call on publication (PLinOpt data PR + note).
+  floor-159 sparse68 family tops out at 202.  Follow-ups (11:00-11:40):
+  cand005 restarts (12 naive seeds x 180 s): L 55 (11/12), R 57 (12/12),
+  P^T 57 (8/12) -> 201 again; orbit climb from cand005 (45 s/side, 36
+  proxy-best of 512 neighbours): no neighbour below the incumbent at that
+  budget; exactlns (exact windows <= 16, hmax 4) on the 201 programs: 0
+  improvements (locally optimal); mod-3 bounds weak (L >= 44, R >= 46, P^T
+  >= 40 additions).  Two new lambda = 0.3 annealer pools (400 distinct
+  proxy-optimal points each in 90 s; the proxy saturates at 177.6) -> 120
+  candidates, sweep 2 running; depth-2 proxy-optimal neighbourhood of
+  cand005 (19 points) queued; hot-annealing 20-min runs on cand005's R and
+  P^T.  Then Greg's call on publication (PLinOpt data PR + note).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21
   10:07)**: matmul/dps48/patel/restarts.sh (lns48, 12 naive matrix-only
   seeds x 180 s per side): L 55 on all 12 seeds, R 58 on all 12, P^T 57 on

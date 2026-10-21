@@ -1663,8 +1663,18 @@ the two source papers for this track):
   patel/mipselect.py (scipy/HiGHS MIP = exact minimum closed subset vs
   greedy reverse deletion on the same dictionary, current + 40 proposals):
   MIP optimal in 4-81 s, optimum 57 in 6/6 trials, greedy 58 in 2/6 -> the
-  repair is near-exact; the PROPOSALS are the limit.  Running: 3d
-  (Metropolis T 0.7/1.2) and 3e with 300 proposals per dictionary.
+  repair is near-exact; the PROPOSALS are the limit.  3d Metropolis (T 0.7
+  and 1.2, best+3, tabu 1024): 57/57 x3 each.  3e in Rust (lns48 --exact:
+  HiGHS MIP minimum closed subset in place of greedy deletion, 60 proposals
+  per step, 30 s MIP limit, 12 threads x 30 min, ~2000 exact steps): R 57
+  x6, P^T 57 x6.  (The Python 300-proposal test was superseded and stopped.)
+  CONCLUSION (16:35): the 201 value-set optimum is robust under every
+  neighbourhood tried -- wider proposals, exact repair, excursions, direct P
+  -- and under every proxy-optimal orbit profile found.  Beating 201 would
+  need a genuinely different idea (a lower-bound argument over Z[1/2] to
+  show it cannot be done, a different decomposition class, or proposals
+  built from the target structure rather than sampled); experiment 3 is
+  CLOSED.  Machine was at ~1200% CPU for the final run (Greg's ask).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21
   10:07)**: matmul/dps48/patel/restarts.sh (lns48, 12 naive matrix-only
   seeds x 180 s per side): L 55 on all 12 seeds, R 58 on all 12, P^T 57 on

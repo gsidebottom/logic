@@ -43,6 +43,10 @@ and `PLINOPT_BIN` to a directory with PLinOpt's `SLPchecker`, `optimizer`,
   (L, R from their best programs, P from its best P^T program; his
   annealing temperature and tabu size as options), then SLPchecker counts,
   cheapest triple, exact check.
+- `neighbours48.py` -- write a point's proxy-filtered single-move (or
+  depth-2) orbit neighbourhood as an orbit48-format pool for `sweep.py`.
+- `assemble.py` -- cheapest verified triple of a sweep/climb candidate from
+  its stage directories, with the point's matrices, checked exactly.
 - `sweep.py` -- successive-halving sweep (60 s all / 300 s top 20 / 900 s x
   2 seeds top 6) over the orbit48 pool points, L and R seeded by PLinOpt's
   optimizer, P through P^T.

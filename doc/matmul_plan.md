@@ -1585,7 +1585,8 @@ the two source papers for this track):
   model too) and p010_201_*.  Verified: SLPchecker per side on both the
   point's and the normalized matrices, MMchecker x5 (+ x3 at 40 bits), exact
   Brent (slp48check.py), and Patel's own slp.py checker (201, 4096
-  identities, DAG).  Stage C (600 s x 2 seeds, top 6) still running.  The
+  identities, DAG).  Stage C (600 s x 2 seeds, top 6): ALL SIX at 201 (L 55
+  R 57 P 89, or L 57 R 55 P 89 at pool_l0.5 cand110) -- a plateau.  The
   winners are lambda = 0.3 annealer points (floor 156, 72 non-units); the
   floor-159 sparse68 family tops out at 202.  Next: deepen cand005/cand010
   (restarts.sh), orbit climb from cand005, a larger lambda = 0.3 pool, then

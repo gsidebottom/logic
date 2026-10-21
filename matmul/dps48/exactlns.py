@@ -128,7 +128,10 @@ def to_local(vec_over_inputs, local_basis_vecs, local_names):
 
 
 def window_map(lines, start, W, env, outputs_needed):
-    """targets of lines[start:start+W] over its local inputs."""
+    """targets of lines[start:start+W] over a maximal independent subset of
+    its inputs (the local basis); the other inputs come back as free
+    signals expressed in that basis.  Returns (basis_names, free_vectors,
+    targets, cost) or None."""
     win = lines[start:start + W]
     defined = {l for l, _, _ in win}
     local_in = []
@@ -136,16 +139,27 @@ def window_map(lines, start, W, env, outputs_needed):
         for o in sorted(ops):
             if o not in defined and o not in local_in:
                 local_in.append(o)
-    outs = [l for l, _, _ in win if l in outputs_needed or any(l in ops for ln2 in lines[start + W:] for (_, _, ops) in [ln2])]
-    basis = [env[n] if n in env else {n: Fr(1)} for n in local_in]
+    later = lines[start + W:]
+    outs = [l for l, _, _ in win if l in outputs_needed or any(l in ops for (_, _, ops) in later)]
+    vec = lambda n: env[n] if n in env else {n: Fr(1)}
+    basis_names, basis = [], []
+    free = []
+    for n in local_in:
+        sol = to_local(vec(n), basis, basis_names) if basis else None
+        if sol is None:
+            basis_names.append(n)
+            basis.append(vec(n))
+        else:
+            free.append(sol)
+    free = [f + [Fr(0)] * (len(basis) - len(f)) for f in free]
     targets = {}
     for o in outs:
-        sol = to_local(env[o], basis, local_in)
+        sol = to_local(vec(o), basis, basis_names)
         if sol is None:
             return None
         targets[o] = sol
     cost = sum(line_cost(r) for _, r, _ in win)
-    return local_in, targets, cost
+    return basis_names, free, targets, cost
 
 
 def main():
@@ -189,8 +203,12 @@ def main():
                 if wm is None:
                     start += 1
                     continue
-                local_in, targets, wcost = wm
+                local_in, free, targets, wcost = wm
+                win_defined = {l for l, _, _ in program[start:start + W]}
+                free_names = [o for _, _, ops in program[start:start + W] for o in sorted(ops) if o not in win_defined and o not in local_in]
+                free_names = list(dict.fromkeys(free_names))
                 m = len(local_in)
+                freev = [tuple(int(x * Q.DEN) for x in f) for f in free]
                 tv = []
                 for o, sol in targets.items():
                     v = tuple(int(x * Q.DEN) if (x * Q.DEN).denominator == 1 else None for x in sol)
@@ -201,14 +219,24 @@ def main():
                 if tv is None or m == 0 or wcost <= 1:
                     start += 1
                     continue
+                inkeys = {Q.norm(Q.unit(m, i))[0] for i in range(m)} | {Q.norm(f)[0] for f in freev if any(f)}
+                ntar = len({Q.norm(t)[0] for t in tv if any(t)} - inkeys)
+                helpers = wcost - ntar
+                if helpers <= 0:
+                    start += 1
+                    continue
                 t0 = time.time()
-                res = Q.solve(m, tv, hmax=a.hmax, node_cap=a.nodes, seconds=a.seconds)
+                res = Q.solve(m, tv, hmax=min(a.hmax, helpers - 1), node_cap=a.nodes, seconds=a.seconds, free=freev)
                 if res is not None and res[0] < wcost:
                     cost, prog = res
                     # emit: produce each program signal into a fresh temp, then free copies for the outputs
                     tn = {}
                     lines_new = []
                     name_of = {Q.norm(Q.unit(m, i))[0]: (local_in[i], 1) for i in range(m)}
+                    for fi, f in enumerate(freev):
+                        if any(f):
+                            k, sg = Q.norm(f)
+                            name_of.setdefault(k, (free_names[fi], sg))
                     for key, rec in prog:
                         nm = fresh()
                         used.add(nm)

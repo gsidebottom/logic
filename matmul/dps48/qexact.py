@@ -67,9 +67,9 @@ def unit(m, i):
 
 
 class Solver:
-    def __init__(self, m, targets, node_cap=2_000_000, deadline=None):
+    def __init__(self, m, targets, node_cap=2_000_000, deadline=None, free=()):
         self.m = m
-        self.inputs = [unit(m, i) for i in range(m)]
+        self.inputs = [unit(m, i) for i in range(m)] + [tuple(f) for f in free if any(f)]
         inkeys = {norm(u)[0] for u in self.inputs}
         self.targets = {norm(t)[0] for t in targets if any(t)} - inkeys
         self.node_cap = node_cap
@@ -142,7 +142,14 @@ class Solver:
                 if not self.closure(av2, pr2):
                     return pr2
             return None
-        for k, rec in sorted(prods.items()):
+        # candidates ordered by how many remaining targets they put one op away
+        def score(k):
+            av2 = set(avail)
+            av2.add(k)
+            p2 = self.one_op(av2)
+            return sum(1 for t in rem if t in p2)
+        order = sorted(prods.items(), key=lambda kv: (-score(kv[0]), kv[0]))
+        for k, rec in order:
             if k in self.targets or (prev is not None and k < prev[0] and k in prev[1]):
                 continue
             av2 = set(avail)
@@ -158,8 +165,8 @@ class Solver:
         return None
 
 
-def solve(m, targets, hmax=3, node_cap=2_000_000, seconds=None):
-    s = Solver(m, targets, node_cap, time.time() + seconds if seconds else None)
+def solve(m, targets, hmax=3, node_cap=2_000_000, seconds=None, free=()):
+    s = Solver(m, targets, node_cap, time.time() + seconds if seconds else None, free=free)
     return s.search(hmax)
 
 

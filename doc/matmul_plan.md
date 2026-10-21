@@ -1655,6 +1655,16 @@ the two source papers for this track):
   L + R = 110 but P 93.  A 200 would need a richer LNS neighbourhood
   (experiment 3: exact sub-problem solves on the value set, P side first),
   a separate project.
+- **EXPERIMENT 3 (2026-10-21 15:00-, Greg: "then do experiment 3")**: lns48
+  gained --kmax, --metropolis/--maxworse, 512-bit sets and an n48 feature
+  build (P searched directly, 48 inputs).  3a kmax 16/24 + 8 orders on
+  p005's R and P^T: 57/57 x3 each (baseline 57/57 x3) -- nothing.  3b
+  direct P from the 89-op program: 89 x2 (6 it/s).  3e prototype
+  patel/mipselect.py (scipy/HiGHS MIP = exact minimum closed subset vs
+  greedy reverse deletion on the same dictionary, current + 40 proposals):
+  MIP optimal in 4-81 s, optimum 57 in 6/6 trials, greedy 58 in 2/6 -> the
+  repair is near-exact; the PROPOSALS are the limit.  Running: 3d
+  (Metropolis T 0.7/1.2) and 3e with 300 proposals per dictionary.
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21
   10:07)**: matmul/dps48/patel/restarts.sh (lns48, 12 naive matrix-only
   seeds x 180 s per side): L 55 on all 12 seeds, R 58 on all 12, P^T 57 on

@@ -107,13 +107,18 @@ def side_floor(rows, lam):
     return len(keys), nonunit
 
 
+# side weights and an L/R balance penalty in the objective (defaults: the plain floor)
+WEIGHTS = {"wl": 1.0, "wr": 1.0, "wp": 1.0, "wbal": 0.0}
+
+
 def objective(U, V, W, lam):
     r = U.shape[0]
     fl, nl = side_floor(U.reshape(r, 16), lam)
     fr, nr = side_floor(V.reshape(r, 16), lam)
     fp, np_ = side_floor(W.reshape(r, 16), lam)
     floor = fl + fr + fp + 32
-    return floor + lam * (nl + nr + np_), floor, (fl, fr, fp), nl + nr + np_
+    obj = WEIGHTS["wl"] * fl + WEIGHTS["wr"] * fr + WEIGHTS["wp"] * fp + 32 + lam * (nl + nr + np_) + WEIGHTS["wbal"] * abs(fl - fr)
+    return obj, floor, (fl, fr, fp), nl + nr + np_
 
 
 # ---------------------------------------------------------------- group
@@ -278,6 +283,8 @@ def main():
     lam = opt("--lam", 0.1)
     keep = opt("--keep", 8, int)
     pool_floor = opt("--pool-floor", 150, int)
+    for k in ("wl", "wr", "wp", "wbal"):
+        WEIGHTS[k] = opt("--" + k, WEIGHTS[k])
     prefix, outdir = args[0], args[1]
     os.makedirs(outdir, exist_ok=True)
     U0, V0, W0 = load(prefix)

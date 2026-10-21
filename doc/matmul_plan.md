@@ -1632,9 +1632,12 @@ the two source papers for this track):
   of the top eight at 201 (L 55 R 57 P 89 or the L/R mirror), none below --
   the proxy-optimal family saturates at 201 at ~15 distinct points over both
   sweeps.  Depth-2 proxy-optimal neighbourhood of cand005 (19 points) being
-  swept (ends ~13:10).  Then Greg's call on publication (PLinOpt data PR +
-  note) and on whether to keep searching for 200 (deeper per-point budgets,
-  non-proxy-optimal regions, or LNS neighbourhood changes).
+  swept: stage C 201 at the three Y-shear neighbours, 203 elsewhere (13:25).
+  EXPERIMENTS 1+2 (Greg, 13:30, running): orbit48 gained --wl/--wr/--wp/
+  --wbal (side weights, L/R balance penalty); pools from four annealer
+  variants (balanced and P-weighted from p005, lambda 0.1, balanced from
+  Patel's point) plus patel/orbitsample48.py (40 random walks of depth 12,
+  not proxy-optimized) -> pool3 -> sweep_rust3 (30 s / 120 s / 600 s x 2).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21
   10:07)**: matmul/dps48/patel/restarts.sh (lns48, 12 naive matrix-only
   seeds x 180 s per side): L 55 on all 12 seeds, R 58 on all 12, P^T 57 on

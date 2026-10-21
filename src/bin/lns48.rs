@@ -29,6 +29,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{BuildHasherDefault, Hasher};
 use std::io::Write;
+use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
 
 #[cfg(not(feature = "n48"))]
@@ -513,6 +514,64 @@ fn reverse_delete(cat: &Catalog, rng: &mut Rng, reps: usize, novel: &Bits) -> Bi
         }
     }
     best.unwrap().1
+}
+
+/// exact repair: the minimum closed subset of the dictionary containing the
+/// inputs and targets, as a MIP (HiGHS): x_v selects a vector, y_p a
+/// production of v (both operands selected), sum_p y_p >= x_v, acyclicity by
+/// continuous levels with a big-M on selected productions.  Returns the set
+/// (verified closed) even when HiGHS stopped at the time limit.
+fn mip_select(cat: &Catalog, time_limit: f64) -> Option<Bits> {
+    let d = cat.n;
+    let mut pb = highs::RowProblem::default();
+    let x: Vec<highs::Col> = (0..d)
+        .map(|v| {
+            let fixed = v < N || cat.required.get(v);
+            pb.add_integer_column(if v < N { 0.0 } else { 1.0 }, if fixed { 1.0..=1.0 } else { 0.0..=1.0 })
+        })
+        .collect();
+    let mut prods: Vec<(usize, usize, Option<usize>)> = Vec::new();
+    for v in N..d {
+        for p in &cat.opts[v] {
+            prods.push((v, p.u as usize, if p.v == NONE { None } else { Some(p.v as usize) }));
+        }
+    }
+    let y: Vec<highs::Col> = prods.iter().map(|_| pb.add_integer_column(0.0, 0.0..=1.0)).collect();
+    let lv: Vec<highs::Col> = (0..d).map(|v| pb.add_column(0.0, 0.0..=(if v < N { 0.0 } else { d as f64 }))).collect();
+    let m = (d + 1) as f64;
+    for (pi, &(v, u, w)) in prods.iter().enumerate() {
+        pb.add_row(..=0.0, [(y[pi], 1.0), (x[u], -1.0)]);
+        pb.add_row((1.0 - m).., [(lv[v], 1.0), (lv[u], -1.0), (y[pi], -m)]);
+        if let Some(w) = w {
+            pb.add_row(..=0.0, [(y[pi], 1.0), (x[w], -1.0)]);
+            pb.add_row((1.0 - m).., [(lv[v], 1.0), (lv[w], -1.0), (y[pi], -m)]);
+        }
+    }
+    let mut by_v: Vec<Vec<usize>> = vec![Vec::new(); d];
+    for (pi, &(v, _, _)) in prods.iter().enumerate() {
+        by_v[v].push(pi);
+    }
+    for v in N..d {
+        let mut row: Vec<(highs::Col, f64)> = by_v[v].iter().map(|&pi| (y[pi], 1.0)).collect();
+        row.push((x[v], -1.0));
+        pb.add_row(0.0.., row);
+    }
+    let mut model = pb.optimise(highs::Sense::Minimise);
+    model.make_quiet();
+    model.set_threads(NonZeroU32::new(1).unwrap());
+    model.set_option("time_limit", time_limit);
+    let solved = model.solve();
+    let cols = solved.get_solution().columns().to_vec();
+    if cols.len() < d {
+        return None;
+    }
+    let mut sel = Bits::default();
+    for v in 0..d {
+        if cols[v] > 0.5 {
+            sel.set(v);
+        }
+    }
+    if cat.closure(&sel, None) { Some(sel) } else { None }
 }
 
 // ------------------------------------------------------------------ programs
@@ -1215,6 +1274,9 @@ struct Search {
     kmax: usize,
     metropolis: bool,
     maxworse: usize,
+    exact: bool,
+    mip_time: f64,
+    mip_solves: u64,
     iterations: u64,
     moves: [u64; 3], // descent, plateau, annealing
     improvements: u64,
@@ -1232,7 +1294,7 @@ fn target_bits(dict: &Dict, targets: &[V]) -> Bits {
 }
 
 impl Search {
-    fn new(prog: &Program, seed: u64, reps: usize, temperature: f64, tabu_size: usize, kmax: usize, metropolis: bool, maxworse: usize) -> Search {
+    fn new(prog: &Program, seed: u64, reps: usize, temperature: f64, tabu_size: usize, kmax: usize, metropolis: bool, maxworse: usize, exact: bool, mip_time: f64) -> Search {
         let mut rng = Rng(seed.wrapping_mul(0x9e3779b97f4a7c15) ^ 0xd1b54a32d192ed03);
         let mut dict = Dict::new();
         for v in &prog.values {
@@ -1273,6 +1335,9 @@ impl Search {
             kmax,
             metropolis,
             maxworse,
+            exact,
+            mip_time,
+            mip_solves: 0,
             iterations: 0,
             moves: [0; 3],
             improvements: 0,
@@ -1311,7 +1376,12 @@ impl Search {
         if !cat.closure(&Bits::full(dict.vals.len()), None) {
             return false;
         }
-        let selected = reverse_delete(&cat, &mut self.rng, self.reps, &novel);
+        let selected = if self.exact {
+            self.mip_solves += 1;
+            mip_select(&cat, self.mip_time).unwrap_or_else(|| reverse_delete(&cat, &mut self.rng, self.reps, &novel))
+        } else {
+            reverse_delete(&cat, &mut self.rng, self.reps, &novel)
+        };
         let mut trace = Vec::new();
         assert!(cat.closure(&selected, Some(&mut trace)));
         let plan = plan_from_trace(&cat, &dict, &trace);
@@ -1396,6 +1466,13 @@ fn main() {
     let log_every: f64 = opt(&mut args, "--log").map(|s| s.parse().unwrap()).unwrap_or(30.0);
     let kmax: usize = opt(&mut args, "--kmax").map(|s| s.parse().unwrap()).unwrap_or(8);
     let maxworse: usize = opt(&mut args, "--maxworse").map(|s| s.parse().unwrap()).unwrap_or(3);
+    let mip_time: f64 = opt(&mut args, "--mip-time").map(|s| s.parse().unwrap()).unwrap_or(60.0);
+    let exact = if let Some(i) = args.iter().position(|a| a == "--exact") {
+        args.remove(i);
+        true
+    } else {
+        false
+    };
     let metropolis = if let Some(i) = args.iter().position(|a| a == "--metropolis") {
         args.remove(i);
         true
@@ -1420,7 +1497,7 @@ fn main() {
     };
     let seed_cost = prog.values.iter().filter(|v| canon(v).0.iter().filter(|x| **x != 0).count() > 1 || v.iter().any(|x| *x != 0 && x.abs() != SCAL)).count();
     eprintln!(
-        "lns48 (N = {}): {} targets, {} seed values (about {} ops), wall {}s x {} seeds, T {}, tabu {}, orders {}, kmax {}, metropolis {} (maxworse {})",
+        "lns48 (N = {}): {} targets, {} seed values (about {} ops), wall {}s x {} seeds, T {}, tabu {}, orders {}, kmax {}, metropolis {} (maxworse {}), exact {} (mip time {})",
         N,
         prog.targets.len(),
         prog.values.len(),
@@ -1432,7 +1509,9 @@ fn main() {
         reps,
         kmax,
         metropolis,
-        maxworse
+        maxworse,
+        exact,
+        mip_time
     );
     let start = Instant::now();
     let results: Vec<(u64, usize, u64, Plan)> = std::thread::scope(|sc| {
@@ -1442,7 +1521,7 @@ fn main() {
                 let out = out.clone();
                 sc.spawn(move || {
                     let seed = seed0 + s as u64;
-                    let mut search = Search::new(prog, seed, reps, temperature, tabu, kmax, metropolis, maxworse);
+                    let mut search = Search::new(prog, seed, reps, temperature, tabu, kmax, metropolis, maxworse, exact, mip_time);
                     let path = format!("{}/seed{}.slp", out, seed);
                     let (a, sc_) = verify_and_write(&search.best_plan, &search.targets, &path);
                     eprintln!("  seed {}: start {} = {}+{}", seed, search.best_cost, a, sc_);
@@ -1458,14 +1537,15 @@ fn main() {
                         let el = start.elapsed().as_secs_f64();
                         if el >= next_log {
                             eprintln!(
-                                "  seed {}: {:.0}s best {} current {} iterations {} ({:.1}/s) moves d/p/a {:?}",
+                                "  seed {}: {:.0}s best {} current {} iterations {} ({:.1}/s) moves d/p/a {:?} mip solves {}",
                                 seed,
                                 el,
                                 search.best_cost,
                                 search.current_cost,
                                 search.iterations,
                                 search.iterations as f64 / el,
-                                search.moves
+                                search.moves,
+                                search.mip_solves
                             );
                             next_log = el + log_every;
                         }

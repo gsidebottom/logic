@@ -1572,6 +1572,13 @@ the two source papers for this track):
   singular mod 3 or an unknown class escapes.  Our own mod-2 corpora are
   unsigned and were not scanned.  Boundary rows are re-scanned at target+1
   (the early-exit lesson, applied before reporting this time).
+- **RANK-48 (rings with 1/2) MOD-3 POINT BOUNDS (2026-10-20,
+  matmul/dps48/f3point48.py)**: at PLinOpt's 202 representative (L 54+2,
+  R 54+2, P 90 ops) the F_3 bounds are L >= 42, R >= 42, Pt >= 40 (+32):
+  156 vs 198 additions; the 204: 152 vs 200.  Sides sit 12-18 helpers
+  above their floors, so closure-level bounds cannot decide slack; an
+  exhaustive F_3 orbit scan is infeasible (63,180 cosets per factor).
+  Improving 202 needs search over Q (heuristic + small exact), not bounds.
 - **ALL THREE RANK-47 CLASSES BOUNDED (2026-10-19 23:10)**: whole-orbit
   lower bounds by lbclass.sh (pre-raise + climb): KM 163 (6.6 h for the
   last step), AlphaTensor 162 (163 step hit its 3.5 h budget, 35 triples

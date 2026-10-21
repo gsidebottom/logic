@@ -49,3 +49,12 @@ per thread (20x the z3-free Python, 70x the original); on P^T it found 58
 where the Python runs had stalled at 59 (P = 58 + 32 = 90).  Verified by
 SLPchecker on each side, by the exact Brent check (`../slp48check.py`), and
 the P^T program's transposition by PLinOpt's `transpozer`.
+
+**10:10: 203 = 55 + 58 + 90** (`sparse68_203_{L,R,P}.slp`).  `lns48` seeded
+from the MATRIX ALONE (`--sms`, a naive chain program of 163 values that the
+reverse deletion prunes to 85 before the search starts) reached L = 55 in 20
+seconds -- below the 56 that every run seeded with PLinOpt's optimizer output
+(Python and Rust, 4 x 30 min) had converged to: the seed decides the basin,
+and cheap restarts from different seeds now matter more than long runs.
+Verified by SLPchecker (53 + 2) and the exact Brent check.  One above the
+202 record.

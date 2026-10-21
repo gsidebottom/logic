@@ -849,10 +849,9 @@ fn naive_program(rows: &[V]) -> Program {
             if row[j] == 0 {
                 continue;
             }
-            let mut term = unit(j);
+            let g = gcd(row[j], SCAL);
+            let term = vscale(&unit(j), row[j] / g, SCAL / g).unwrap(); // the signed, scaled input
             if row[j].abs() != SCAL {
-                let g = gcd(row[j], SCAL);
-                term = vscale(&unit(j), row[j] / g, SCAL / g).unwrap();
                 push(term, Some(ProdV { u: unit(j), v: None, a: 0, b: 0, num: row[j] / g, den: SCAL / g }), &mut values);
             }
             acc = Some(match acc {

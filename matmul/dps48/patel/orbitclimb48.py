@@ -90,9 +90,15 @@ class Point:
         self.ok = True
 
     def stage(self):
-        """PLinOpt seeds: L and R directly, P^T from the transposed matrix."""
+        """PLinOpt seeds: L and R directly, P^T from the transposed matrix
+        (skipped with the rust engine and LNS_NAIVE=1: lns48 seeds itself)."""
         _, t = S.run([f"{S.BIN}/matrix-transpose", self.sms["P"]])
         open(self.sms["Pt"], "w").write(t)
+        if S.ENGINE == "rust" and S.NAIVE:
+            for side in ("L", "R", "Pt"):
+                self.seed_prog[side] = None
+                self.cost[side] = 10 ** 6
+            return
         for side in ("L", "R", "Pt"):
             best = None
             for _ in range(2):
@@ -197,7 +203,10 @@ def main():
     for s in "LRP":
         shutil.copy(inc.sms[s], os.path.join(best, f"best_{s}.sms"))
     for side in ("L", "R", "Pt"):
-        text = S.translate(inc.seed_prog[side]) if inc.seed_prog[side].endswith("best.slp") else open(inc.seed_prog[side]).read()
+        if not inc.seed_prog[side]:
+            say(f"final: no program for {side}")
+            continue
+        text = S.translate(inc.seed_prog[side])
         if side == "Pt":
             text = S.transpose(text)
         open(os.path.join(best, f"best_{side[0]}.slp"), "w").write(text)

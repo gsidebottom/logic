@@ -23,6 +23,9 @@ from concurrent.futures import ThreadPoolExecutor
 SP = os.environ.get("R48_SCRATCH", "/private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad")  # run directories (scratch)
 BIN = os.environ.get("PLINOPT_BIN", f"{SP}/plinopt-run/bin")  # SLPchecker, transpozer, optimizer, matrix-transpose
 PY = "/opt/homebrew/bin/python3"
+ENGINE = os.environ.get("LNS_ENGINE", "rust")  # "rust": ../../../target/release/lns48; "python": patel_phase.py on Patel's code
+LNS48 = os.environ.get("LNS48_BIN", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "target", "release", "lns48"))
+NAIVE = os.environ.get("LNS_NAIVE", "0") == "1"  # rust engine: seed from the matrix alone (no PLinOpt optimizer pass)
 HERE = os.path.dirname(os.path.abspath(__file__))
 PHASE = os.path.join(HERE, "patel_phase.py")
 sys.path.insert(0, os.path.dirname(HERE))
@@ -67,6 +70,13 @@ class Cand:
         self.ok = True
 
     def stage_inputs(self, evaldir):
+        if ENGINE == "rust" and NAIVE:
+            _, t = run([f"{BIN}/matrix-transpose", self.sms["P"]])
+            open(self.sms["Pt"], "w").write(t)
+            for side in ("L", "R", "Pt"):
+                self.seed_prog[side] = None
+                self.cost[side] = 10 ** 6
+            return
         for s in "LR":
             src = f"{evaldir}/{self.tag}_{s}.slp"
             dst = os.path.join(self.dir, f"seed_{s}.slp")
@@ -98,10 +108,18 @@ class Cand:
 
 def job(cand, side, seed, wall, stage):
     out = os.path.join(cand.dir, f"{stage}_{side}_s{seed}")
-    cmd = [PY, PHASE, "--slp", cand.seed_prog[side], "--n", "16", "--seed", str(seed), "--wall", str(wall),
-           "--out", out, "--log-seconds", "3600", "--plinopt-model"]
+    if ENGINE == "rust":
+        cmd = [LNS48, "--sms", cand.sms[side], "--out", out, "--wall", str(wall), "--seeds", "1", "--seed", str(seed), "--log", "1e9"]
+        if cand.seed_prog.get(side):
+            cmd += ["--slp", cand.seed_prog[side]]
+    else:
+        cmd = [PY, PHASE, "--slp", cand.seed_prog[side], "--n", "16", "--seed", str(seed), "--wall", str(wall),
+               "--out", out, "--log-seconds", "3600", "--plinopt-model"]
     try:
-        subprocess.run(cmd, capture_output=True, text=True, timeout=wall + 600)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=wall + 600)
+        if r.returncode != 0:
+            open(out + ".err", "w").write(r.stdout + r.stderr)
+            return cand, side, None, None
     except subprocess.TimeoutExpired:
         return cand, side, None, None
     best = os.path.join(out, "best.slp")

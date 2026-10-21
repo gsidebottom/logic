@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate a Lean 4 / Mathlib correctness proof for a rank-r 4x4 scheme given
-as three straight-line programs (PLinOpt syntax: `t:=u+v;`, `t:=u-v;`,
+as three straight-line programs (named for the 201-operation scheme it certifies,
+proof/Mm/Correct48_201.lean; PREFIX and --name make it reusable for any triple) (PLinOpt syntax: `t:=u+v;`, `t:=u-v;`,
 `t:=u*2;`, `t:=u/2;`, output copies `oK:=name;`).
 
 Statement: over ANY commutative ring `R` with an element `h` such that
@@ -15,7 +16,7 @@ recombine; `e` is computed here by exact division by `2h - 1`), a `have` per
 product, then each output by `linear_combination e_c * h2` on the expanded
 bilinear identity.
 
-Usage: lean_gen48.py PREFIX OUT.lean [--name Matmul48_201]   (PREFIX_{L,R,P}.slp)
+Usage: lean_gen48_201.py PREFIX OUT.lean [--name Matmul48_201]   (PREFIX_{L,R,P}.slp)
 """
 import re
 import sys
@@ -249,7 +250,7 @@ multiplication with coefficients in `ℤ[1/2]`, whose three linear programs
 use {L.adds + L.scalings} + {Rs.adds + Rs.scalings} + {P.adds + P.scalings} = {total} operations
 ({L.adds} + {Rs.adds} + {P.adds} additions/subtractions and {L.scalings} + {Rs.scalings} + {P.scalings} halvings;
 copies are free).  Generated from
-`matmul/dps48/cand48/{prefix.split('/')[-1]}_{{L,R,P}}.slp` by `matmul/dps48/lean_gen48.py`.
+`matmul/dps48/cand48/{prefix.split('/')[-1]}_{{L,R,P}}.slp` by `matmul/dps48/lean_gen48_201.py`.
 
 The statement is over an arbitrary **commutative ring** `R` with an
 element `h` satisfying `2 * h = 1` -- i.e. any ring in which 2 is

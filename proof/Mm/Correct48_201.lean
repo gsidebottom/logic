@@ -14,7 +14,7 @@ multiplication with coefficients in `ℤ[1/2]`, whose three linear programs
 use 55 + 57 + 89 = 201 operations
 (53 + 55 + 89 additions/subtractions and 2 + 2 + 0 halvings;
 copies are free).  Generated from
-`matmul/dps48/cand48/p005_201n_{L,R,P}.slp` by `matmul/dps48/lean_gen48.py`.
+`matmul/dps48/cand48/p005_201n_{L,R,P}.slp` by `matmul/dps48/lean_gen48_201.py`.
 
 The statement is over an arbitrary **commutative ring** `R` with an
 element `h` satisfying `2 * h = 1` -- i.e. any ring in which 2 is

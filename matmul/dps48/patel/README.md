@@ -21,6 +21,13 @@ and `PLINOPT_BIN` to a directory with PLinOpt's `SLPchecker`, `optimizer`,
   of the P^T runs, translate his syntax (`a*(1/2)`, which SLPchecker
   rejects) with `../slp48check.py`, verify each side with SLPchecker
   against our matrices, assemble the cheapest triple and check it exactly.
+- `orbitclimb48.py` -- true-cost hill climb over single orbit moves of a
+  point (GL shears with c in +-1, +-1/2, +-2 and dyadic diagonal scalings
+  on X, Y, Z; per-product (a, b, 1/ab) rescalings): neighbours are
+  proxy-filtered (orbit48 floor + lam * non-units), each kept one is seeded
+  by PLinOpt's optimizer and evaluated with his LNS at a fixed budget per
+  side (L, R, P^T); the incumbent is re-evaluated at the same budget.  Runs
+  under the system python3 (numpy); the LNS subprocesses use Homebrew's.
 - `sweep.py` -- successive-halving sweep (60 s all / 300 s top 20 / 900 s x
   2 seeds top 6) over the orbit48 pool points, L and R seeded by PLinOpt's
   optimizer, P through P^T.

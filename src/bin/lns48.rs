@@ -1491,9 +1491,13 @@ fn main() {
             let text = std::fs::read_to_string(path).expect("slp readable");
             progs.push((path.to_string(), parse_slp(&text).unwrap_or_else(|e| panic!("parse {}: {}", path, e))));
         }
+        // programs may have been optimized against sign-flipped copies of the same rows
+        // (negations are free): compare target directions, emit the first program's signs
         let targets = progs[0].1.targets.clone();
+        let dirs: Vec<V> = targets.iter().map(|t| canon(t).0).collect();
         for (path, p) in &progs {
-            assert!(p.targets == targets, "{} has different targets", path);
+            let d2: Vec<V> = p.targets.iter().map(|t| canon(t).0).collect();
+            assert!(d2 == dirs, "{} has different targets (even up to sign)", path);
         }
         let mut dict = Dict::new();
         let mut witness: FxMap<V, ProdV> = FxMap::default();

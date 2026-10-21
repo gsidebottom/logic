@@ -159,3 +159,6 @@ arxiv-upload/
 matmul/found23flip/
 matmul/found23mint/
 matmul/found47walk/
+
+# matmul/out: scratch output of orbit-representative dumps (e.g. matmul/out/reps/*.bits); regenerable
+matmul/out/

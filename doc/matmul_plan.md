@@ -1637,7 +1637,16 @@ the two source papers for this track):
   --wbal (side weights, L/R balance penalty); pools from four annealer
   variants (balanced and P-weighted from p005, lambda 0.1, balanced from
   Patel's point) plus patel/orbitsample48.py (40 random walks of depth 12,
-  not proxy-optimized) -> pool3 -> sweep_rust3 (30 s / 120 s / 600 s x 2).
+  not proxy-optimized) -> pool3 (320 points) -> sweep_rust3 (30 s / 120 s /
+  600 s x 2).  STAGE A (14:00): new profiles exist and matter -- lambda 0.1
+  gives 42/40/38 (floor 152, 47 pts) and 40/40/38 (floor 150, 3 pts); the
+  balanced objective gives 44/44/38 from p005 and 42/42/42 from Patel's
+  point; P never below floor 38.  Stage-A costs: 40/40/38 ->
+  lam01_p005_cand000 at 201 = L 56 + R 56 + P 89 (BALANCED; either side at
+  55 would be 200) -- focused restarts.sh running; 42/42/42 -> 203 = L 55 +
+  R 55 + P 93 (L+R 110 but P floor 42 -> 93: P costs floor + 51 everywhere);
+  42/40/38 -> 204; 44/44/38 -> 204; random non-proxy-optimal samples 212+
+  (the proxy-optimal region is the right one).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21
   10:07)**: matmul/dps48/patel/restarts.sh (lns48, 12 naive matrix-only
   seeds x 180 s per side): L 55 on all 12 seeds, R 58 on all 12, P^T 57 on

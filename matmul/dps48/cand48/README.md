@@ -65,3 +65,11 @@ P's inputs, so rows of L and R and columns of P may be negated together --
 the sms files are the normalized matrices): **zero negations, 203 in Patel's
 model as well as PLinOpt's**.  SLPchecker on its own matrices (53+2, 56+2,
 90+0), MMchecker (rational mode) and the exact Brent check all pass.
+
+**10:07: 202 = 55 + 58 + 89 -- a tie with Patel's record** (`sparse68_202_*`,
+normalized `sparse68_202n_*`: zero negations, 202 in both cost models).
+`../patel/restarts.sh` (12 naive seeds x 180 s per side, lns48): L 55 on all
+12 seeds, R 58 on all 12, P^T 57 on one seed (`sparse68_202_Pt.slp`; the
+others 58-59) -> P = 89.  Verified: SLPchecker on each side (53+2, 56+2,
+89+0; the normalized triple against its own sms), MMchecker x5 (rational
+mode) and the exact Brent check.

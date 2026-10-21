@@ -7,8 +7,9 @@
 equations verified over Q (orbit48) and by PLinOpt's MMchecker.
 
 Programs `sparse68_{L,R,P}.slp` are PLinOpt-optimizer outputs refined to
-a pair-level fixed point by `../prune_loop.py`: L 70, R 67, P 101 =
-**238 operations** (SLPchecker-counted, additions + scalings).  For
+a pair-level fixed point by `../prune_loop.py` (L 70, R 67, P 101 = 238),
+with L further reduced to 67 by the exact window LNS below: **235
+operations** = 67 + 67 + 101 (SLPchecker-counted, additions + scalings).  For
 comparison the same pipeline on Patel's own representative converges at
 68 + 74 + 111 = 253 (final), while his stored programs total 202 (54+2, 54+2, 90),
 so the published counts come from a further "heavy" refinement stage that
@@ -16,9 +17,9 @@ the base optimizer, random restarts, triples, chartreuse and long random
 walks do not reproduce (2026-10-21 calibration).  Not a record: 238 > 202.
 
 Step 3 (exact window LNS, `../qexact.py` + `../exactlns.py`, 2026-10-21):
-two improvements on L (70 -> 68, 16-line windows with up to four helpers;
-total 236, program to be stored when the run ends) and none on R, P or on
-any side of Patel's point; the other consecutive windows of up to 16 lines
+three improvements on L (70 -> 67 = 65 adds + 2 scalings, 16-line windows
+with up to four helpers; log `sparse68_L_exactlns.log`; total 235) and
+none on R, P or on any side of Patel's point; the other consecutive windows of up to 16 lines
 are provably optimal with at most two helpers each, so most of the slack
 is in the choice of computed signals, not in how a window computes them.
 The heavy stage is now known: Patel's own search code is public

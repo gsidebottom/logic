@@ -1,0 +1,8 @@
+start: 68+2 = 70 ops, 71 lines
+  pass 1 W=16 @12: window 16 -> 15 ops (13 targets, 8 inputs, 0.9s): total 70 -> 69
+  pass 1 W=16 @14: window 15 -> 14 ops (14 targets, 8 inputs, 0.1s): total 69 -> 68
+  pass 1 W=16 @84: window 14 -> 13 ops (11 targets, 11 inputs, 4.3s): total 68 -> 67
+pass 1: 3 improvements -> 65+2 = 67 ops
+pass 2: 0 improvements -> 65+2 = 67 ops
+final: 65+2 = 67 ops (3 improvements) -> /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/r48/lns/sparse_L2/best.slp
+exit 0

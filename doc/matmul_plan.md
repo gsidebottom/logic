@@ -1583,8 +1583,8 @@ the two source papers for this track):
   mirabelle-style pair neighbourhoods `--mode pairs`, plateau moves
   `--plateau p` with randomized exact search) finds 0 improvements on
   Patel's L (56), R, P (90) and on sparse68's R (67), P (101); on
-  sparse68's L the hmax-4 run gains 2 (70 -> 68 at W=16; total 236; run
-  still going at 08:05); a diagnostic proves the other consecutive
+  sparse68's L the hmax-4 run gains 3 (70 -> 67 at W=16, stored as
+  cand48/sparse68_L.slp; total 235); a diagnostic proves the other consecutive
   windows (W=16) locally optimal with <= 2 helpers each.  So most of the
   slack is GLOBAL (which signals are computed), not local (how a window
   computes them).  Patel's repository

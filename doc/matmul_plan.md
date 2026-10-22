@@ -1576,6 +1576,16 @@ the two source papers for this track):
   (listed "Submitted on 20 Oct 2026", the post-moderation resubmission).
   KS-51 (submit/8246158) still on hold, no request.  Zenodo mm55 related
   identifier still to add (v1.1 kit).
+- **167 PAPER UPDATED (2026-10-22, Greg's ask)**: doc/matmul_4x4_rank47_xor167
+  .tex/.pdf (11 pages, clean build): PLinOpt distribution of the scheme
+  (data/4x4x4_47_mod_2_167_{L,R,P}.{sms,slp}, PR #22 merged 2026-10-19;
+  matrices identical, programs renamed, L compacted by Dumas to 48 lines,
+  still 44; x47check and SLPchecker -q 2 re-run on PLinOpt master: OK 167);
+  rank-48 rows 202 (Patel) and 201 (ours) in Table 2, footnote now marks
+  the rank-49 156 as optimal on the Strassen^2 orbit; new "Rank 49 over all
+  rings" results paragraph (Strassen^2 whole-orbit >= 156, 1,200 mixed-inner
+  schemes >= 156) and contributions/abstract lines; 55-addition paper
+  arXiv:2610.27451 and the 201 draft cited; Table 4 column spacing fixed.
 - **PAPER DRAFT (2026-10-22 08:50, Greg's ask)**: doc/matmul_4x4_rank48_201ops
   .tex/.pdf (12 pages, tectonic, clean build): records table (315/204/202/
   201), model (PLinOpt cost, transposition, floor, orbit), the scheme

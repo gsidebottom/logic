@@ -17,7 +17,7 @@
 \title{167 XORs for Rank-47 $4\times4$ Matrix Multiplication\\
 in Characteristic Two}
 \author{Greg Sidebottom}
-\date{Draft --- October 17, 2026}
+\date{Draft --- October 22, 2026}
 
 \begin{document}
 \maketitle
@@ -44,7 +44,11 @@ over $840^3$ triples.  The scan shows that the heuristic minimum is
 exactly $168$ in all three known classes; exact refinement of the
 near-minimum triples reaches $167$ only in the Kauers--Moosbauer class.
 All programs are checked
-by an independent verifier and by PLinOpt's \texttt{SLPchecker}.  We
+by an independent verifier and by PLinOpt's \texttt{SLPchecker}, and
+the scheme is distributed with PLinOpt as data file
+\texttt{4x4x4\_47\_mod\_2\_167}.  The same whole-orbit bound shows that
+for rank $49$ over all rings no point of the orbit of Strassen's
+algorithm applied twice beats the best known $156$ operations.  We
 also summarize the current rank and addition records for $4\times4$
 matrix multiplication with and without change of basis.
 \end{abstract}
@@ -74,15 +78,18 @@ F(n) = \Bigl(1+\frac{q}{r-n_0^2}\Bigr)n^{\log_{n_0} r} + o\bigl(n^{\log_{n_0} r}
 so at $r=47$, $n_0=4$ the constant is $1+q/31$.  Over $\F_2$ every
 addition is an XOR and no scalings occur.  Recent work drove the
 rank-48 count from $315$ operations~\cite{DPS25} down to
-$204$~\cite{DPSST26}; for rank $47$, the same paper reports the best
-known program at $170$ XORs, constant $6+15/31$.
+$204$~\cite{DPSST26}, and in October 2026 to $202$ (R.~Patel,
+\cite{PLinOpt,Patel26}) and $201$~\cite{Sidebottom26c}; for rank $47$,
+\cite{DPSST26} reports the best known program at $170$ XORs, constant
+$6+15/31$.
 
 \paragraph{Contributions.}
 \begin{itemize}
 \item A rank-47 scheme over $\F_2$ with $167=44+49+74$ XORs (constant
-  $6+12/31\approx6.387$), given in full in Appendix~A, and $168$ for
-  the published scheme (Section~\ref{sec:results}).  For the new
-  scheme each side's count is proved minimal.
+  $6+12/31\approx6.387$), given in full in Appendix~A and distributed
+  with PLinOpt~\cite{PLinOpt}, and $168$ for the published scheme
+  (Section~\ref{sec:results}).  For the new scheme each side's count is
+  proved minimal.
 \item An exact method for the minimum XOR count of a side with few
   non-target signals (Section~\ref{sec:exact}): the problem reduces to
   choosing those signals, and iterative deepening over their number is
@@ -95,6 +102,10 @@ known program at $170$ XORs, constant $6+15/31$.
   Kauers--Moosbauer orbit costs at least $163$ XORs, of the AlphaTensor
   orbit at least $162$, and of the published scheme's orbit at least
   $160$ (Section~\ref{sec:results}).
+\item For rank $49$ over all rings, a proof that no point of the orbit
+  of Strassen's algorithm applied twice, and none of the orbits of
+  $1{,}200$ schemes that mix Strassen's inner schemes, costs fewer than
+  the best known $156$ operations (Section~\ref{sec:results}).
 \item A summary of the current $4\times4$ records
   (Section~\ref{sec:records}).
 \end{itemize}
@@ -134,16 +145,17 @@ rank (valid over) & exponent & ops & constant & source \\
 $47$ (char.\ $2$) & $\log_4 47\approx2.777$ & $170$ & $6+15/31$ & \cite{PLinOpt}, cited in~\cite{DPSST26} \\
                   &                       & $\mathbf{167}$ & $\mathbf{6+12/31}$ & this paper \\
 $48$ (rings with $1/2$) & $\log_4 48\approx2.792$ & $315$ & $10+27/32$ & \cite{DPS25} \\
-                  &                       & $204$ & $7+3/8$ & \cite{DPSST26}\,$^{a}$ \\
+                  &                       & $204$ & $7+3/8$ & \cite{DPSST26} \\
+                  &                       & $202$ & $7+5/16$ & R.~Patel~\cite{PLinOpt,Patel26} \\
+                  &                       & $201$ & $7+9/32$ & \cite{Sidebottom26c,PLinOpt} \\
 $49$ (all rings)  & $\log_2 7\approx2.807$ & $165$ & $6$ & \cite{Winograd71}, applied twice \\
-                  &                       & $156$ & $5+8/11$ & \cite{PLinOpt}, cited in~\cite{DPSST26} \\
+                  &                       & $156$ & $5+8/11$ & \cite{PLinOpt}, cited in~\cite{DPSST26}\,$^{a}$ \\
 \bottomrule
 \end{tabular}
 
 \smallskip
-\footnotesize $^{a}$ The PLinOpt repository also holds a $202$-operation
-variant (data file \texttt{4x4x4\_48\_202}, contributed by R.~Patel,
-October~2026).
+\footnotesize $^{a}$ Optimal without change of basis on the whole orbit
+of Strassen's algorithm applied twice (Section~\ref{sec:results}).
 \end{table}
 
 \begin{table}[ht]
@@ -405,6 +417,7 @@ lower bound for the whole orbit.  \emph{Open}: near-minimal triples
 whose proved lower bound still allows $166$ or less; each has a side
 that needs at least seven helpers below the heuristic.}\label{tab:classes}
 \small
+\setlength{\tabcolsep}{4pt}
 \begin{tabular}{lccccccc}
 \toprule
 class & as given & orbit min & triples at min & refined & best exact & open & orbit $\ge$ \\
@@ -442,6 +455,30 @@ $F(n)=\tfrac{198}{31}\,n^{\log_4 47}+o(n^{\log_4 47})$ ring
 operations (additions and multiplications) over rings of characteristic
 two, against $\tfrac{201}{31}$ before.
 
+\paragraph{Rank 49 over all rings.}  The whole-orbit bound applies at
+any rank; at rank $49$ the output side adds $49-16=33$.  The best known
+count for rank $49$, $156$ operations over every ring (constant
+$5+8/11$), comes from PLinOpt~\cite{PLinOpt}.  A program with integer
+coefficients reduces modulo $2$ to an XOR program with no more
+operations, so a bound over $\F_2$ for a class bounds every integral
+representative whose reduction lies in that class.  For the class of
+Strassen's algorithm applied twice, the closure bound alone proves that
+\emph{no point of the orbit costs fewer than $156$}.  Every coset
+triple whose target counts leave room below $157$ is lifted past it by
+the closure term except $36$, whose bound is exactly $156$; these are
+the $36$ triples at which the orbit scan and exact refinement had
+already found $156$-operation programs.  No helper search is needed,
+and an independent implementation, with its own group enumeration,
+coset representatives and closure, agrees.  We also built $1{,}200$
+rank-49 schemes by giving each of the seven products of an outer
+Strassen-type scheme its own inner scheme, outer and inner schemes
+drawn from the $36$-element $\F_2$ orbit of Strassen's scheme, so that
+every member lifts to the integers.  The same test, with at most
+one-helper refutations, proves the bound $156$ on the whole orbit of
+each of them in about $1.5$ seconds.  So PLinOpt's $156$ cannot be
+beaten in these classes without a change of basis; a better rank-49
+count needs a different integral class.
+
 \section{Verification and artifacts}
 
 The scheme and programs are in the repository
@@ -461,6 +498,15 @@ and \texttt{.slp} in PLinOpt formats).  Two independent checks pass:
   reports \texttt{<44, 0>}, \texttt{<49, 0>} and \texttt{<74, 0>}
   for $S=L,R,P$.
 \end{itemize}
+The scheme is also distributed with PLinOpt~\cite{PLinOpt}, in
+\url{https://github.com/jgdumas/plinopt}, as
+\path{data/4x4x4_47_mod_2_167_{L,R,P}.{sms,slp}} (pull request~\#22,
+merged October 19, 2026).  Its matrices are identical to ours, and its
+programs differ only in the names of temporary signals, except that
+J.-G.~Dumas compacted the $L$ program after the merge by inlining two
+single-use temporaries ($48$ lines, still $44$ XORs).  Both checks above
+pass on PLinOpt's current files.
+
 The search tool (\texttt{src/bin/xor47.rs}: \texttt{bp}, \texttt{scheme},
 \texttt{orbit}, \texttt{scan}, \texttt{exact}, \texttt{refine},
 \texttt{settle}) regenerates every number in
@@ -529,7 +575,9 @@ arXiv:2609.12027 (2026).
 \bibitem{PLinOpt} J.-G.~Dumas, B.~Grenet, C.~Pernet, A.~Sedoglavic,
 \emph{PLinOpt, a collection of C++ routines handling linear \&
 bilinear programs}, \url{https://github.com/jgdumas/plinopt} (data
-file \texttt{4x4x4\_47\_mod\_2}, September 2026).
+files \texttt{4x4x4\_47\_mod\_2}, September 2026, and
+\texttt{4x4x4\_47\_mod\_2\_167}, \texttt{4x4x4\_48\_202},
+\texttt{4x4x4\_48\_201}, October 2026).
 \bibitem{Fawzi22} A.~Fawzi et al., \emph{Discovering faster matrix
 multiplication algorithms with reinforcement learning}, Nature 610
 (2022) 47--53.
@@ -555,6 +603,9 @@ algorithms}, IACR ePrint 2026/849.
 exact $3\times3$ matrix multiplication}, arXiv:2609.06588 (2026).
 \bibitem{Novikov25} A.~Novikov et al., \emph{AlphaEvolve: a coding agent
 for scientific and algorithmic discovery}, arXiv:2506.13131 (2025).
+\bibitem{Patel26} R.~Patel, \emph{matmul-4x4-48-202}, search code and
+programs, \url{https://github.com/rp440/matmul-4x4-48-202} (October
+2026).
 \bibitem{Perminov25a} A.~I.~Perminov, \emph{A 58-addition, rank-23
 scheme for general $3\times3$ matrix multiplication}, arXiv:2512.21980
 (2025).
@@ -565,12 +616,15 @@ multiplication}, arXiv:2512.13365 (2025).
 scheme for $3\times3$ matrix multiplication via exact two-sided
 minimization}, Zenodo,
 \href{https://doi.org/10.5281/zenodo.21240904}{doi:10.5281/zenodo.21240904}
-(July 2026).
+(July 2026); arXiv:2610.27451 (2026).
 \bibitem{Sidebottom26b} G.~Sidebottom, \emph{51 additions per recursive
 step for rank-23 $3\times3$ matrix multiplication, machine-checked over
 arbitrary rings}, Zenodo,
 \href{https://doi.org/10.5281/zenodo.23305910}{doi:10.5281/zenodo.23305910}
 (October 2026).
+\bibitem{Sidebottom26c} G.~Sidebottom, \emph{201 operations for rank-48
+$4\times4$ matrix multiplication over rings containing $1/2$}, draft
+(October 2026); programs in PLinOpt, data file \texttt{4x4x4\_48\_201}.
 \bibitem{SP26} J.~Stapleton, A.~Perminov, \emph{A 51-addition
 alternative-basis kernel for rank-23 $3\times3$ matrix
 multiplication}, arXiv:2609.32388 (2026).

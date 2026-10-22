@@ -1847,7 +1847,14 @@ the two source papers for this track):
   exclusions) is open: halves and CaDiCaL whole from 12:12 (limits
   20:12), plus an eight-way split on x76, x32, x79 from 16:47 (6-h
   limits); the redundant CaDiCaL runs on c03 and c07 stopped.  Scratchpad
-  backed up without CNFs to matmul/out/scratch_backup_2026-10-22/.
+  backed up without CNFs to matmul/out/scratch_backup_2026-10-22/.  18:41 RESULT: c00 UNSAT by
+  its eight-way split (parts 47 min to 1 h 55 min; one x76 half alone took
+  5 h 56 min) -> ALL 12 CASES UNSAT, so with the 125-vector part the record
+  P^T <= 56 over the 137-vector union of 32 programs is UNSAT.  With record
+  L <= 54 and R <= 56 (and balanced L 55, R 55, P^T 56) refuted: NO
+  RECOMBINATION OF THE PROGRAMS FOUND REACHES 200 AT EITHER POINT.  Unchecked
+  (no DRAT yet); scope = these dictionaries.  201 paper updated (abstract,
+  verdicts, Table 4, next steps).
   Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
   Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21

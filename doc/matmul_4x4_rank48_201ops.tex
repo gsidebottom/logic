@@ -47,12 +47,13 @@ $201$, and about twenty reach it exactly.  To test whether the programs
 found so far can be recombined into a $200$, we pose that question
 exactly, as the existence of a closed subset of the union of their
 signal sets with one element fewer, and encode it for SAT solvers.  The
-answer is no for both input maps at the record point and for all three
-maps at a second, balanced $201$ point.  The record's output map is the
-open case: a $125$-vector part of its $137$-vector dictionary is
-refuted, and the remainder is being decided.  Encoding acyclicity by a
-total order instead of by depth levels made these refutations up to
-$17$ times faster.
+answer is no for all three maps, both at the record point and at a
+second, balanced $201$ point, so no recombination of the programs found
+so far reaches $200$.  The hardest question, the record's output map,
+was settled by refuting a $125$-vector part of its $137$-vector
+dictionary and then twelve cases, one for each remaining vector.
+Encoding acyclicity by a total order instead of by depth levels made
+these refutations up to $17$ times faster.
 \end{abstract}
 
 \section{Introduction}
@@ -104,7 +105,8 @@ it~\cite{Patel26}.
 \item Evidence that $201$ is a plateau for this class under value-set
   search, and an exact formulation of the question whether the programs
   found so far can be recombined into a cheaper one, with SAT
-  encodings, verdicts, and the work still in progress
+  encodings and verdicts (no recombination reaches $200$ at either
+  point), and the work still in progress
   (Section~\ref{sec:lower}).
 \end{itemize}
 
@@ -465,11 +467,11 @@ The solvers are CaDiCaL~3.0.0~\cite{CaDiCaL} and kissat~4.0.4~\cite{Kissat}.
 
 \subsection{Verdicts}
 
-Table~\ref{tab:verdicts} lists the verdicts so far.  At the record point
-no recombination of the programs found lowers $L$ or $R$, for $R$ even
-with $200$ added proposals; at the balanced point none lowers any of the
+Table~\ref{tab:verdicts} lists the verdicts.  At the record point no
+recombination of the programs found lowers $L$ or $R$, for $R$ even with
+$200$ added proposals; at the balanced point none lowers any of the
 three sides, so $201=56+56+89$ is final there for this question.  The
-record's $\Pt$ is the open case.  Its programs are deep, with chains of
+record's $\Pt$ was the hard case.  Its programs are deep, with chains of
 $21$ dependent operations against $13$ on $L$ and $R$, because rows of
 $\Pt$ are built from one another in long chains.  The level encoding
 pays for that depth.  Bounded depth is easy: no $56$-operation program of
@@ -488,8 +490,17 @@ $125$ vectors admit no closed set of $56$, any solution over all $137$
 must select at least one of the $12$ vectors added by the last four
 programs.  We split that condition into $12$ disjoint cases (vector $i$
 selected, vectors $1,\dots,i-1$ not), each a smaller question with one
-vector forced in; these are running now, beside whole-instance runs as a
-baseline.
+vector forced in.  All twelve are refuted.  Seven fell to a single kissat
+run, in $27$ minutes to $2$ hours $51$ minutes; the later cases, which
+exclude more of the new vectors, were the easiest.  Four needed a further
+split into two or four parts on the most frequent free selection
+variables, each part refuted in at most $3$ hours $32$ minutes.  The
+first case, which forces one vector and excludes none, was refuted by an
+eight-way split whose parts took $47$ minutes to $1$ hour $55$ minutes,
+while one half of a two-way split took almost six hours.  The whole question, run directly under
+both solvers and as four cubes, stayed undecided after four hours.  So
+the record's $\Pt$ cannot reach $56$ from these programs either: at both
+points, no recombination of the programs found lowers any side.
 
 \begin{table}[ht]
 \centering
@@ -512,7 +523,7 @@ balanced & $\Pt$ & $112$ & $56$ & no & order $306$\,s; levels $88$\,min (kissat)
 record & $\Pt$ & $97$ & $56$ & no & order $33$\,s; levels $98$\,s \\
 record & $\Pt$ & $111$ & $56$ & no & order $406$\,s \\
 record & $\Pt$ & $125$ & $56$ & no & order $5000$\,s \\
-record & $\Pt$ & $137$ & $56$ & running & split into $12$ cases \\
+record & $\Pt$ & $137$ & $56$ & no & $125$-vector part, then $12$ cases \\
 record & $\Pt$ & $337$ & $56$ & open & $+200$ proposals; $8$\,h, levels \\
 record & $\Pt$ & $3295$ & $56$ & open & structured; $8$\,h, $\ell=24$ \\
 \bottomrule
@@ -526,9 +537,10 @@ from those vectors is cheaper.  A $200$ could still exist that computes a
 vector no search has produced, and these verdicts are unchecked solver
 output so far.  The next steps are:
 \begin{enumerate}
-\item finish the record's $\Pt$ question, and if it is refuted, enlarge
-  the dictionary by proposals and structured vectors, using the same
-  incremental split;
+\item enlarge the dictionaries by proposals and structured vectors,
+  starting from the open rows of Table~\ref{tab:verdicts}, with the same
+  incremental split: each refuted dictionary forces any solution of a
+  larger one to use a new vector;
 \item certify every refutation used in a claim with a DRAT proof checked
   by an independent checker~\cite{DRATtrim};
 \item try cutting-planes pseudo-Boolean solving~\cite{RoundingSat}, which

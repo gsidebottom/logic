@@ -1576,6 +1576,23 @@ the two source papers for this track):
   (listed "Submitted on 20 Oct 2026", the post-moderation resubmission).
   KS-51 (submit/8246158) still on hold, no request.  Zenodo mm55 related
   identifier still to add (v1.1 kit).
+- **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
+  'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
+  arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit
+  one-parameter curve s(t) (48 triples, their Appendix A, entries rational
+  in t); invariant phi = 64 + 4/t^2 + 1024 t^2 is strictly monotone on
+  [1/4, inf), so every t >= 1/4 is a different isotropy class; t = 2^k keeps
+  the coefficients in Z[1/2] -> infinitely many inequivalent schemes valid
+  over rings with 1/2.  Agarwal, arXiv:2609.13596 (Sep 2026, Zenodo
+  22684265): at t = 2 a 12-summand exact rational replacement whose factor
+  rank triples (2,3,2)/(2,3,3)/(2,2,3) put it outside the whole curve (all
+  s(t) factors have rank <= 2).  DPS 2026 (2603.18699) is in the DPS orbit;
+  fmm.univ-lille.fr lists only DPS.  Opportunity: run the 201 pipeline
+  (orbit48 + lns48 sweep) on s(2^k) and on Agarwal's scheme -- different
+  classes, so different operation counts.  Pending Greg's OK to download
+  the LWH TeX source (29.8 KB) and/or Agarwal's bundle (30.7 MB).  Outdated
+  'only known class' claims: 201 paper (intro, next step 5), proof/README,
+  Rigid48.lean docstring.
 - **167 PAPER UPDATED (2026-10-22, Greg's ask)**: doc/matmul_4x4_rank47_xor167
   .tex/.pdf (11 pages, clean build): PLinOpt distribution of the scheme
   (data/4x4x4_47_mod_2_167_{L,R,P}.{sms,slp}, PR #22 merged 2026-10-19;
@@ -1855,8 +1872,9 @@ the two source papers for this track):
   RECOMBINATION OF THE PROGRAMS FOUND REACHES 200 AT EITHER POINT.  Unchecked
   (no DRAT yet); scope = these dictionaries.  201 paper updated (abstract,
   verdicts, Table 4, next steps).
-  Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
-  Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
+  Classes: [CORRECTED Oct 22: other rational classes exist -- see the
+  OTHER RANK-48 CLASSES bullet] Kaporin's needs cbrt(2) and i (MSY: no
+  real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21
   10:07)**: matmul/dps48/patel/restarts.sh (lns48, 12 naive matrix-only
   seeds x 180 s per side): L 55 on all 12 seeds, R 58 on all 12, P^T 57 on

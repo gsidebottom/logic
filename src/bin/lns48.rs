@@ -38,7 +38,7 @@ const N: usize = 16; // inputs: the 16 entries of a 4x4 matrix (L, R, P^T)
 const N: usize = 48; // inputs: the 48 products (the output map P searched directly)
 const SCAL: i64 = 64;
 const MAXNUM: i64 = 16 * SCAL;
-const MAXD: usize = 512;
+const MAXD: usize = 4096;
 const NONE: u16 = u16::MAX;
 
 type V = [i64; N];
@@ -147,8 +147,13 @@ fn gcd(a: i64, b: i64) -> i64 {
 }
 
 // ------------------------------------------------------------------ bitsets
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
-struct Bits([u64; 8]);
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Bits([u64; 64]);
+impl Default for Bits {
+    fn default() -> Self {
+        Bits([0; 64])
+    }
+}
 impl Bits {
     fn get(&self, i: usize) -> bool {
         self.0[i >> 6] >> (i & 63) & 1 == 1
@@ -160,25 +165,25 @@ impl Bits {
         self.0[i >> 6] &= !(1 << (i & 63));
     }
     fn subset_of(&self, o: &Bits) -> bool {
-        (0..8).all(|k| self.0[k] & !o.0[k] == 0)
+        (0..64).all(|k| self.0[k] & !o.0[k] == 0)
     }
     fn and(&self, o: &Bits) -> Bits {
         let mut r = *self;
-        for k in 0..8 {
+        for k in 0..64 {
             r.0[k] &= o.0[k];
         }
         r
     }
     fn and_not(&self, o: &Bits) -> Bits {
         let mut r = *self;
-        for k in 0..8 {
+        for k in 0..64 {
             r.0[k] &= !o.0[k];
         }
         r
     }
     fn or(&self, o: &Bits) -> Bits {
         let mut r = *self;
-        for k in 0..8 {
+        for k in 0..64 {
             r.0[k] |= o.0[k];
         }
         r
@@ -190,7 +195,7 @@ impl Bits {
         self.0.iter().map(|w| w.count_ones() as usize).sum()
     }
     fn iter(&self) -> impl Iterator<Item = usize> + '_ {
-        (0..8).flat_map(move |k| {
+        (0..64).flat_map(move |k| {
             let mut w = self.0[k];
             std::iter::from_fn(move || {
                 if w == 0 {
@@ -590,9 +595,9 @@ fn mip_select_cap(cat: &Catalog, time_limit: f64, cap: Option<usize>) -> Option<
 /// the feasibility question as a CNF (DIMACS): x_v selects vector v, y_p a production,
 /// order-encoded levels g_{v,j} = [level(v) >= j] for acyclicity (inputs at level 0),
 /// a sequential counter for sum x_v <= cap.  Returns (text, variable index of x_v per vector).
-fn feasibility_cnf(cat: &Catalog, cap: usize) -> (String, Vec<usize>) {
+fn feasibility_cnf(cat: &Catalog, cap: usize, lmax_opt: Option<usize>) -> (String, Vec<usize>) {
     let d = cat.n;
-    let lmax = cap.max(1);
+    let lmax = lmax_opt.unwrap_or(cap).max(1);
     let mut nv = 0usize;
     let mut fresh = || {
         nv += 1;
@@ -1629,6 +1634,8 @@ fn main() {
     let cap: Option<usize> = opt(&mut args, "--cap").map(|s| s.parse().unwrap());
     let propose: usize = opt(&mut args, "--propose").map(|s| s.parse().unwrap()).unwrap_or(0);
     let cnf_out = opt(&mut args, "--cnf");
+    let universal: usize = opt(&mut args, "--universal").map(|s| s.parse().unwrap()).unwrap_or(0);
+    let lmax_opt: Option<usize> = opt(&mut args, "--lmax").map(|s| s.parse().unwrap());
     let model_in = opt(&mut args, "--model");
     assert!(args.is_empty(), "unknown arguments: {:?}", args);
     std::fs::create_dir_all(&out).unwrap();
@@ -1667,6 +1674,42 @@ fn main() {
         }
         for t in &targets {
             dict.insert(t);
+        }
+        if universal > 0 {
+            // structured candidates: every sub-vector of <= `universal` terms of every target
+            // (with the target's coefficients) and every pairwise sum/difference of targets
+            let mut added = 0usize;
+            let before = dict.vals.len();
+            for t in &targets {
+                let supp: Vec<usize> = (0..N).filter(|&j| t[j] != 0).collect();
+                let m = supp.len();
+                // subsets of size 1..=universal (and all sizes when the target has <= universal terms)
+                for mask in 1u32..(1u32 << m) {
+                    let size = mask.count_ones() as usize;
+                    if size > universal || size == m {
+                        continue;
+                    }
+                    let mut v = [0i64; N];
+                    for (b, &j) in supp.iter().enumerate() {
+                        if mask >> b & 1 == 1 {
+                            v[j] = t[j];
+                        }
+                    }
+                    dict.insert(&v);
+                }
+            }
+            for (i, a) in targets.iter().enumerate() {
+                for b in &targets[i + 1..] {
+                    for (s_, w) in [(1, vadd(a, b)), (-1, vsub(a, b))] {
+                        let _ = s_;
+                        if !is_zero(&w) && in_range(&w) {
+                            dict.insert(&w);
+                        }
+                    }
+                }
+            }
+            added += dict.vals.len() - before;
+            eprintln!("merge: universal dictionary added {} structured vectors (sub-vectors of <= {} terms, pairwise target sums/differences)", added, universal);
         }
         if propose > 0 {
             // a plan for the first program (its own closure order), to seed the proposal families
@@ -1713,7 +1756,7 @@ fn main() {
         eprintln!("merge: {} programs with signal counts {:?}; union dictionary {} vectors; greedy minimum {}", progs.len(), costs, dict.vals.len(), gcost);
         if let Some(path) = &cnf_out {
             let c = cap.expect("--cnf needs --cap K");
-            let (text, xvar) = feasibility_cnf(&cat, c);
+            let (text, xvar) = feasibility_cnf(&cat, c, lmax_opt);
             std::fs::write(path, &text).expect("write cnf");
             let map: String = xvar.iter().enumerate().filter(|(v, _)| *v >= N).map(|(v, x)| format!("{} {}\n", v, x)).collect();
             std::fs::write(format!("{}.xvar", path), map).expect("write xvar map");

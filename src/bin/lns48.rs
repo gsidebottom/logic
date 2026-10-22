@@ -594,7 +594,9 @@ fn mip_select_cap(cat: &Catalog, time_limit: f64, cap: Option<usize>) -> Option<
 
 /// the feasibility question as a CNF (DIMACS): x_v selects vector v, y_p a production,
 /// order-encoded levels g_{v,j} = [level(v) >= j] for acyclicity (inputs at level 0),
-/// a sequential counter for sum x_v <= cap.  Returns (text, variable index of x_v per vector).
+/// a sequential counter for sum x_v <= cap, plus the sound strengthenings y_p -> x_v,
+/// at most one production per vector, and every selected non-target vector used.
+/// Returns (text, variable index of x_v per vector).
 fn feasibility_cnf(cat: &Catalog, cap: usize, lmax_opt: Option<usize>) -> (String, Vec<usize>) {
     let d = cat.n;
     let lmax = lmax_opt.unwrap_or(cap).max(1);
@@ -663,6 +665,52 @@ fn feasibility_cnf(cat: &Catalog, cap: usize, lmax_opt: Option<usize>) -> (Strin
             c.push(yvar[pi] as i64);
         }
         clauses.push(c);
+    }
+    // strengthenings, sound for the feasibility question: a closed set of <= cap vectors
+    // has a derivation of the targets in which every vector used has exactly one
+    // production, every production is of a selected vector, and every selected non-target
+    // vector is an operand of some selected production (unused vectors can be dropped and
+    // the rest stays closed and within the cap).  Hence: y_p -> x_v; at most one y_p per v
+    // (ladder encoding); x_v -> target(v) or some selected production uses v.
+    let mut used_by: Vec<Vec<usize>> = vec![Vec::new(); d];
+    for (pi, &(v, u, w)) in prods.iter().enumerate() {
+        clauses.push(vec![-(yvar[pi] as i64), xvar[v] as i64]);
+        if u >= N {
+            used_by[u].push(pi);
+        }
+        if let Some(w) = w {
+            if w >= N && w != u {
+                used_by[w].push(pi);
+            }
+        }
+    }
+    for v in N..d {
+        let ys: Vec<i64> = by_v[v].iter().map(|&pi| yvar[pi] as i64).collect();
+        if ys.len() <= 5 {
+            for i in 0..ys.len() {
+                for j in i + 1..ys.len() {
+                    clauses.push(vec![-ys[i], -ys[j]]);
+                }
+            }
+        } else {
+            // s_i = [some of y_1..y_i is true]
+            let s: Vec<usize> = (0..ys.len() - 1).map(|_| fresh()).collect();
+            clauses.push(vec![-ys[0], s[0] as i64]);
+            for i in 1..ys.len() {
+                if i < ys.len() - 1 {
+                    clauses.push(vec![-ys[i], s[i] as i64]);
+                    clauses.push(vec![-(s[i - 1] as i64), s[i] as i64]);
+                }
+                clauses.push(vec![-ys[i], -(s[i - 1] as i64)]);
+            }
+        }
+        if !cat.required.get(v) {
+            let mut c: Vec<i64> = vec![-(xvar[v] as i64)];
+            for &pi in &used_by[v] {
+                c.push(yvar[pi] as i64);
+            }
+            clauses.push(c);
+        }
     }
     // sequential counter: at most cap of the x_v (Sinz 2005)
     let xs: Vec<usize> = (N..d).map(|v| xvar[v]).collect();

@@ -1704,7 +1704,29 @@ the two source papers for this track):
   P^T <= 56, CaDiCaL + kissat, 2-h limits; 6-h MIPs still running as a
   cross-check.  Next: a structured universal dictionary (all <= 3-term
   sub-vectors of targets + pairwise target sums/differences) as the SAT
-  question's candidate set.
+  question's candidate set.  22:20 VERDICTS: all three P^T questions
+  (record 137 vectors / 653 productions, record + 200 proposals 337 / 1823,
+  balanced 112 / 402) TIMED OUT at 2 h in BOTH CaDiCaL and kissat, and so
+  did the structured-dictionary questions at cap 56 (R: 2862 vectors /
+  257k productions / 13.4M clauses at lmax 24; P^T: 3295 / 300k / 15.5M).
+  The richness check passed: R's structured dictionary at cap 57 is SAT
+  (kissat, 5 min) and the decoded model is a verified 57-op program
+  (SLPchecker) -- with exactly the record's own signal set (union of the
+  two = 73 vectors), so the 2789 structured vectors add no second 57.
+  Why P^T is the hard side: P has only 10 unit columns, so 38 of P^T's 48
+  targets cost an operation each and the 57-op programs carry ~19
+  intermediates chosen from ~83 dictionary candidates (L: ~10 from ~21) --
+  a budget-one-below-optimum refutation over a space that is many orders
+  of magnitude larger, which is what both SAT and the big-M MIP choke on.
+  Encoding strengthened (lns48 v9, sound for the feasibility question:
+  y_p -> x_v, at most one production per vector, every selected
+  non-target vector used by a selected production): L 54 UNSAT 0.4 s / 55
+  SAT with the decoded program SLPchecker-verified; record R + 200 at cap
+  56 UNSAT in 34 s (no speedup over the plain encoding's 30 s).  Overnight
+  batch launched 22:21 (8-h limits, 10 solver processes + the 4 MIPs =
+  14 cores): record P^T x4 (CaDiCaL/kissat, default and --unsat presets),
+  balanced P^T x2, record P^T + 200 x2, structured R and P^T at cap 56 x1
+  each (scratchpad sat9/).
   Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
   Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21

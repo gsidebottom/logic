@@ -1576,6 +1576,28 @@ the two source papers for this track):
   (listed "Submitted on 20 Oct 2026", the post-moderation resubmission).
   KS-51 (submit/8246158) still on hold, no request.  Zenodo mm55 related
   identifier still to add (v1.1 kit).
+- **LWH FAMILY SCREEN SET UP (2026-10-22 20:30, Greg: 'download both and start
+  the screen')**: downloads in scratchpad dl_lwh/ (arXiv-2607.15069v2.tar.gz) and
+  dl_agarwal_zip/ (Zenodo 22684265, md5 checked).  matmul/dps48/lwh_family.py
+  parses Appendix A (restricted evaluator), verifies s(t) on all 4096 Brent
+  equations at 17 values of t (an identity in Q(t): entries are Laurent in t
+  of degree <= 1), output factor transposed (cyclic convention), and
+  reproduces the paper's invariant phi = 64 + 4/t^2 + 1024 t^2 (t = 1/4,
+  1/2, 2).  OUR DPS CLASS IS s(1/4): phi = 192 on p005_201n, r202 and r204.
+  agarwal_replacement.py rebuilds Agarwal's 12-term replacement of s(2)
+  exactly from his construction: Brent 4096/4096, new rank triples (2,3,2),
+  (2,3,3), (2,2,3) x4 as stated, coefficients dyadic up to 32 (valid over
+  rings with 1/2).  The first screen (anneal from the family's own dense
+  coordinates) was INVALID: every member, even the t = 1/4 control, stuck at
+  floor 176 (a density weight, orbit48 --wnz, reaches only 174); stopped.
+  lwh_transport.py instead finds the isotropy s(1/4) -> p005_201n exactly
+  (S3 reversal, X, Y, Z in {0, +-1}, layer permutation and scalings; layers
+  matched by pair-rank invariants) and applies it to s(t): Brent and phi
+  check for t = 1/2..8, and P IS THE RECORD'S P FOR EVERY t (the family's
+  t-independent factor lands on our output side), so each member costs
+  L(t) + R(t) + 89 at these points.  Floors: t = 1/2 160 (46/44/38), t >= 1
+  166.  Running: restarts.sh (12 seeds x 180 s per side, the protocol that
+  gave 201 at p005) on t = 1/2, 1, 2, 4.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

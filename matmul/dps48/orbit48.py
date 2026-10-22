@@ -29,7 +29,7 @@ denominator 2^DEN (numpy int64); a move that would need a finer
 denominator or exceed the entry range is rejected.
 
 Usage: orbit48.py PREFIX OUTDIR [--steps N] [--restarts R] [--seed S]
-         [--t0 2.0] [--t1 0.2] [--lam 0.1] [--keep K] [--den 6]
+         [--t0 2.0] [--t1 0.2] [--lam 0.1] [--keep K] [--den 6] [--maxent 4]
 """
 import itertools
 import os
@@ -108,7 +108,7 @@ def side_floor(rows, lam):
 
 
 # side weights and an L/R balance penalty in the objective (defaults: the plain floor)
-WEIGHTS = {"wl": 1.0, "wr": 1.0, "wp": 1.0, "wbal": 0.0}
+WEIGHTS = {"wl": 1.0, "wr": 1.0, "wp": 1.0, "wbal": 0.0, "wnz": 0.0}  # wnz: weight on nonzero coefficients
 
 
 def objective(U, V, W, lam):
@@ -118,6 +118,8 @@ def objective(U, V, W, lam):
     fp, np_ = side_floor(W.reshape(r, 16), lam)
     floor = fl + fr + fp + 32
     obj = WEIGHTS["wl"] * fl + WEIGHTS["wr"] * fr + WEIGHTS["wp"] * fp + 32 + lam * (nl + nr + np_) + WEIGHTS["wbal"] * abs(fl - fr)
+    if WEIGHTS["wnz"]:
+        obj += WEIGHTS["wnz"] * int(np.count_nonzero(U) + np.count_nonzero(V) + np.count_nonzero(W))
     return obj, floor, (fl, fr, fp), nl + nr + np_
 
 
@@ -283,7 +285,9 @@ def main():
     lam = opt("--lam", 0.1)
     keep = opt("--keep", 8, int)
     pool_floor = opt("--pool-floor", 150, int)
-    for k in ("wl", "wr", "wp", "wbal"):
+    global MAXENT
+    MAXENT = int(opt("--maxent", MAXENT // SCAL, float) * SCAL)  # entry cap (default 4)
+    for k in ("wl", "wr", "wp", "wbal", "wnz"):
         WEIGHTS[k] = opt("--" + k, WEIGHTS[k])
     prefix, outdir = args[0], args[1]
     os.makedirs(outdir, exist_ok=True)

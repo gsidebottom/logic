@@ -1742,7 +1742,21 @@ the two source papers for this track):
   formulation is not a tool for these questions beyond ~82-vector unions;
   the record P^T question is open in both.  The record P^T question is also
   running split in half on its most frequent free selection variable
-  (CaDiCaL --unsat, 6-h limits, from 00:30).
+  (CaDiCaL --unsat, 6-h limits, from 00:30).  06:23 FINAL: record P^T <=
+  56 UNDECIDED after 8 h in all four whole-instance configurations
+  (CaDiCaL/kissat, default and --unsat), 4 h on each of its four cubes
+  (kissat --unsat; not one cube refuted), and 6 h on each half (CaDiCaL
+  --unsat); record P^T + 200 proposals undecided (8 h x 2); structured
+  dictionaries R and P^T at cap 56 undecided (8 h x 1).  So the SAT
+  formulation settles every L and R question in seconds-minutes and the
+  balanced P^T in 1.5 h, but the record P^T question (137 vectors / 653
+  productions, ~18 intermediates to choose from 83 candidates) is beyond
+  CDCL at the 8-hour scale, cubes included -- the signature of a
+  cardinality ('one below the optimum') refutation that resolution cannot
+  do compactly.  Next: diagnostics to locate the hardness (union size,
+  depth bound, cardinality encoding), then a cutting-planes
+  pseudo-Boolean solver (RoundingSat) for the refutation if Greg approves
+  the download.
   Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
   Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21

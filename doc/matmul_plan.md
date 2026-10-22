@@ -1823,7 +1823,14 @@ the two source papers for this track):
   (kissat --unsat, 4-h limits) from 08:15; the default-setting whole runs
   were stopped for the cores, the --unsat whole runs and the (76, 32) cubes
   continue as the baseline.  Caveat for any final claim: these UNSAT
-  verdicts are unchecked (no DRAT proofs yet).
+  verdicts are unchecked (no DRAT proofs yet).  Oct 22 10:45: the baseline
+  (whole question under kissat and CaDiCaL --unsat, order encoding, and the
+  four (76, 32) cubes) hit its 4-h limits undecided; chain cases c01 and
+  c06 UNSAT in 2 h 21 min and 2 h 30 min (each harder than the whole
+  125-vector part, 83 min).  The queue (7 at a time) was stopped by PID with
+  its running cases left alone, and c09-c11 started on the freed cores with
+  6-h limits (results in chain/run_chain_rest.log).  Limits: c00 and
+  c02-c05 12:07, c07 14:28, c08 14:37, c09-c11 16:46.
   Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
   Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21

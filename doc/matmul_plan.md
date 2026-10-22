@@ -1830,7 +1830,14 @@ the two source papers for this track):
   125-vector part, 83 min).  The queue (7 at a time) was stopped by PID with
   its running cases left alone, and c09-c11 started on the freed cores with
   6-h limits (results in chain/run_chain_rest.log).  Limits: c00 and
-  c02-c05 12:07, c07 14:28, c08 14:37, c09-c11 16:46.
+  c02-c05 12:07, c07 14:28, c08 14:37, c09-c11 16:46.  12:07: c04 UNSAT (2 h 51 min),
+  c10 (43 min) and c11 (27 min) UNSAT -- later cases exclude more new
+  vectors and are easier -- so 5/12 refuted, none SAT; c00, c02, c03, c05
+  timed out at 4 h.  Second pass from 12:12 (8-h limits): each of the
+  four split in two on x76 (cube.py --pick, now --nx and header carry-
+  over; the chain cubes had lost lns48's header) under kissat --unsat, plus
+  CaDiCaL --unsat on c00, c02, c03 whole; chain/chain_status.py decides
+  each case from all its runs.
   Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
   Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21

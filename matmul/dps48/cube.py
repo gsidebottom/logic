@@ -20,18 +20,23 @@ outside it).
 
 With --pick K (and no VAR) it prints the K selection variables (x_v, numbered
 1..D-16 in lns48's encoding) that occur most often in IN.cnf and are not
-fixed by a unit clause -- the natural split variables.
+fixed by a unit clause -- the natural split variables.  D comes from lns48's
+header comment, which the cube writers copy into every cube; for a file
+without it pass --nx D-16.
 """
 import sys
 from collections import Counter
 
 
-def read_cnf(path):
+def read_cnf(path, comments=None):
+    """-> (nvars, clauses); the comment lines are appended to `comments` if given."""
     header = None
     clauses = []
     with open(path) as f:
         for line in f:
             if line.startswith("c"):
+                if comments is not None:
+                    comments.append(line.rstrip("\n"))
                 continue
             if line.startswith("p cnf"):
                 header = line.split()
@@ -51,12 +56,16 @@ def main():
     if "--pick" in args:
         k = int(args[args.index("--pick") + 1])
         path = args[0]
-        nvars, clauses = read_cnf(path)
-        # x_v variables: the first (D - 16) variables; read D from the comment header
-        with open(path) as f:
-            first = f.readline()
-        d = int(first.split("feasibility:")[1].split()[0])
-        nx = d - 16
+        comments = []
+        nvars, clauses = read_cnf(path, comments)
+        # x_v variables: the first (D - 16) variables; D from lns48's comment header
+        # (kept by the cube writers below), or --nx N for files written without it
+        if "--nx" in args:
+            nx = int(args[args.index("--nx") + 1])
+        else:
+            heads = [c for c in comments if "lns48 feasibility:" in c]
+            assert heads, f"{path}: no 'lns48 feasibility' header comment; pass --nx N"
+            nx = int(heads[0].split("feasibility:")[1].split()[0]) - 16
         fixed = {abs(c[0]) for c in clauses if len(c) == 1}
         occ = Counter()
         for c in clauses:
@@ -72,7 +81,11 @@ def main():
     if chain:
         args.remove("--chain")
     inp, prefix, vars_ = args[0], args[1], [int(v) for v in args[2:]]
-    nvars, clauses = read_cnf(inp)
+    assert vars_, "no split variables given"
+    comments = []
+    nvars, clauses = read_cnf(inp, comments)
+    # carry the input's comments (lns48's header among them) into every cube
+    kept = "".join(c + "\n" for c in comments)
     body = "".join(" ".join(map(str, c)) + " 0\n" for c in clauses)
     k = len(vars_)
     if chain:
@@ -80,6 +93,7 @@ def main():
             units = [v] + [-u for u in vars_[:i]]
             with open(f"{prefix}_c{i:02d}.cnf", "w") as f:
                 f.write(f"c chain cube {i} of {inp}: {v} true, {vars_[:i]} false\n")
+                f.write(kept)
                 f.write(f"p cnf {nvars} {len(clauses) + len(units)}\n")
                 f.write(body)
                 f.write("".join(f"{u} 0\n" for u in units))
@@ -90,6 +104,7 @@ def main():
         units = "".join(f"{v if bits[i] == '1' else -v} 0\n" for i, v in enumerate(vars_))
         with open(f"{prefix}_{bits}.cnf", "w") as f:
             f.write(f"c cube {bits} of {inp} on variables {vars_}\n")
+            f.write(kept)
             f.write(f"p cnf {nvars} {len(clauses) + k}\n")
             f.write(body)
             f.write(units)

@@ -1,0 +1,654 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs}
+\usepackage{verbatim}
+\usepackage{multicol}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\hypersetup{pdftitle={201 Operations for Rank-48 4x4 Matrix Multiplication over Rings Containing 1/2},pdfauthor={Greg Sidebottom}}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\F}{\mathbb{F}}
+\newcommand{\Zh}{\Z[\tfrac12]}
+\newcommand{\Pt}{P^{\mathsf T}}
+\newcommand{\ops}{\operatorname{ops}}
+\title{201 Operations for Rank-48 $4\times4$ Matrix Multiplication\\
+over Rings Containing $1/2$}
+\author{Greg Sidebottom}
+\date{Draft --- October 22, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Rank-48 bilinear schemes multiply $4\times4$ matrices with $48$
+multiplications over any ring in which $2$ is invertible.  Applied
+recursively, a scheme whose three linear maps use $q$ additions and
+scalings costs $(1+q/32)\,n^{\log_4 48}+o(n^{\log_4 48})$ operations,
+so $q$ fixes the leading constant.  The best published count was $204$
+(Dumas, Pernet, Sedoglavic, Stapleton and Tichavsk\'y, 2026), lowered to
+$202$ by R.~Patel's value-set search.  We give a scheme in the same
+class whose maps use $55+57+89=201$ operations, leading constant
+$7+9/32$, with no negations, so the count is the same whether or not
+sign changes are charged.  It was found by annealing over the class's
+symmetry orbit for representatives with a low operation floor and few
+non-unit coefficients, then running a fast reimplementation of Patel's
+large-neighbourhood search seeded from the matrices alone, with the
+output map optimized through its transpose.  The scheme is checked by
+PLinOpt's tools, by an independent exact verifier, by Patel's checker,
+and by two Lean~4 proofs that it computes $AB$ over every commutative
+ring in which $2$ is invertible.  No representative we tried goes below
+$201$, and about twenty reach it exactly.  To test whether the programs
+found so far can be recombined into a $200$, we pose that question
+exactly, as the existence of a closed subset of the union of their
+signal sets with one element fewer, and encode it for SAT solvers.  The
+answer is no for both input maps at the record point and for all three
+maps at a second, balanced $201$ point.  The record's output map is the
+open case: a $125$-vector part of its $137$-vector dictionary is
+refuted, and the remainder is being decided.  Encoding acyclicity by a
+total order instead of by depth levels made these refutations up to
+$17$ times faster.
+\end{abstract}
+
+\section{Introduction}
+
+Strassen's algorithm applied to $2\times2$ blocks of $2\times2$
+matrices multiplies $4\times4$ matrices with $49$ multiplications over
+any ring~\cite{Strassen69}.  In characteristic two the record is
+$47$~\cite{Fawzi22,KM23}.  In characteristic zero it is $48$: AlphaEvolve
+found a rank-48 scheme with complex coefficients~\cite{Novikov25}, and
+Dumas, Pernet and Sedoglavic turned it into one with rational
+coefficients, valid over any ring containing $1/2$~\cite{DPS25,DPS26a}.
+The rational schemes known today all descend from AlphaEvolve's complex
+one; Kaporin's independent complex rank-48 scheme~\cite{Kaporin24} has
+no real equivalent~\cite{MSY26}.
+
+Used recursively, a scheme's multiplication count fixes the exponent and
+its additions fix the constant.  For an
+$\langle n_0\times n_0\times n_0:r\rangle$ scheme whose linear maps use
+$q$ additions and scalings in total,
+\[
+F(n) = r\,F(n/n_0) + q\,(n/n_0)^2
+\quad\Longrightarrow\quad
+F(n) = \Bigl(1+\frac{q}{r-n_0^2}\Bigr)n^{\log_{n_0} r} + o\bigl(n^{\log_{n_0} r}\bigr),
+\]
+so at $r=48$, $n_0=4$ the constant is $1+q/32$.  For rank $48$, $q$
+fell from $315$~\cite{DPS25,PLinOpt} to $204$~\cite{DPSST26}, and to
+$202$ in October 2026, when
+Ruchit Patel contributed a $202$-operation program to
+PLinOpt~\cite{PLinOpt} and published the search that found
+it~\cite{Patel26}.
+
+\paragraph{Contributions.}
+\begin{itemize}
+\item A rank-48 scheme over $\Zh$ whose linear maps use
+  $55+57+89=201$ operations (constant $7+9/32\approx7.281$), with no
+  negations; Appendix~\ref{app:scheme} lists its programs.  It was
+  contributed to PLinOpt (data file \texttt{4x4x4\_48\_201}) and
+  merged on October 22, 2026 (Section~\ref{sec:scheme}).
+\item The method (Section~\ref{sec:found}): orbit annealing for a
+  representative with a low operation floor and few non-unit
+  coefficients; Patel's value-set large-neighbourhood search,
+  reimplemented in Rust with PLinOpt's objective and seeded from the
+  matrices alone; and a successive-halving sweep over the
+  representatives.  Applied to a sparser representative, seeded from the
+  matrix, and run many times over many representatives, Patel's method
+  reaches $201$.
+\item Five independent checks, including two Lean~4 proofs over every
+  commutative ring with $2$ invertible (Section~\ref{sec:verify}).
+\item Evidence that $201$ is a plateau for this class under value-set
+  search, and an exact formulation of the question whether the programs
+  found so far can be recombined into a cheaper one, with SAT
+  encodings, verdicts, and the work still in progress
+  (Section~\ref{sec:lower}).
+\end{itemize}
+
+\section{Records}\label{sec:records}
+
+Table~\ref{tab:rank48} lists the operation counts for rank-48 schemes
+without change of basis.  With a change of basis the recursive cost
+drops further, to constants between $5+2/3$ and $6+13/32$ depending on
+the encoding~\cite{DPSST26}; that is a different cost model, and this
+paper does not use it.
+
+\begin{table}[ht]
+\centering
+\caption{Operations (additions and scalings) of rank-48 schemes for
+$\langle4,4,4\rangle$ over rings containing $1/2$, without change of
+basis, and the resulting constant of $n^{\log_4 48}$.}\label{tab:rank48}
+\begin{tabular}{rlll}
+\toprule
+operations & constant & split $L+R+P$ & source \\
+\midrule
+$315$ & $10+27/32$ & & \cite{DPS25}, PLinOpt data~\cite{PLinOpt} \\
+$204$ & $7+3/8$ & & \cite{DPSST26} \\
+$202$ & $7+5/16$ & $56+56+90$ & R.~Patel, PLinOpt data~\cite{PLinOpt,Patel26} \\
+$\mathbf{201}$ & $\mathbf{7+9/32}$ & $55+57+89$ & this paper, PLinOpt data~\cite{PLinOpt} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Model}\label{sec:model}
+
+A rank-$r$ scheme for $\langle4,4,4\rangle$ is a triple of matrices
+$L\in\Zh^{r\times16}$, $R\in\Zh^{r\times16}$, $P\in\Zh^{16\times r}$
+with
+\[
+\operatorname{vec}(AB) = P\bigl((L\operatorname{vec}A)\odot(R\operatorname{vec}B)\bigr),
+\]
+where $\operatorname{vec}$ lists entries row by row and $\odot$ is the
+entrywise product.  Product $k$ is
+$m_k=\langle U_k,A\rangle\langle V_k,B\rangle$ with $U_k,V_k$ the
+$4\times4$ matrices in row $k$ of $L$ and $R$, and $AB=\sum_k m_kW_k$
+with $W_k$ in column $k$ of $P$.  The identity is equivalent to the
+$16^3=4096$ Brent equations
+$\sum_k P_{c,k}L_{k,a}R_{k,b}=[\,a,b\text{ contribute to }c\,]$, a
+statement over $\Q$.  When they hold, the identity holds for matrices
+over any ring in which $2$ is invertible, commutative or not, because
+each product keeps its $A$-factor on the left; the scheme therefore
+recurses on blocks.
+
+\paragraph{Cost.}  We use PLinOpt's model~\cite{PLinOpt}.  A linear
+straight-line program computes the rows of a matrix $M$ from its inputs
+by lines $t\coloneqq u\pm v$ (one operation) and $t\coloneqq c\,u$ for a
+constant $c\ne\pm1$ (one operation, a \emph{scaling}); copies and
+negations are free.  $\ops(M)$ is the fewest operations of such a
+program, and a scheme costs $\ops(L)+\ops(R)+\ops(P)$.  Patel's model
+also charges each negation; the programs in this paper contain none, so
+their counts agree in the two models.
+
+\paragraph{Transposition.}  The output side is handled through its
+transpose.  By the transposition principle~\cite{BCS97} a linear program
+for a matrix without zero rows or columns reverses into one for its
+transpose with the same scalings, and for $\Pt\in\Zh^{48\times16}$
+\[
+\ops(P)=\ops(\Pt)+(48-16)=\ops(\Pt)+32 .
+\]
+All three sides are then instances of one problem: compute $48$ vectors
+of $\Zh^{16}$ from the $16$ unit vectors.
+
+\paragraph{Floor.}  A row that is, up to sign, not a unit vector needs an
+operation of its own, so $\ops(M)\ge|T(M)|$, where $T(M)$ is the set of
+distinct such rows up to sign.  The \emph{floor} of a scheme is
+$|T(L)|+|T(R)|+|T(\Pt)|+32$.
+
+\paragraph{Symmetry.}  If $(U_k,V_k,W_k)_k$ is a scheme, so are
+\[
+(X^{\mathsf T}U_kY^{-\mathsf T},\;Y^{\mathsf T}V_kZ^{-\mathsf T},\;
+X^{-1}W_kZ)_k
+\qquad\text{and}\qquad
+(a_kU_k,\;b_kV_k,\;(a_kb_k)^{-1}W_k)_k
+\]
+for invertible $X,Y,Z$ (substitute $A\mapsto XAY^{-1}$,
+$B\mapsto YBZ^{-1}$)~\cite{deGroote78} and nonzero scalars $a_k,b_k$
+(rescale product $k$).  If $X,Y,Z\in\mathrm{GL}_4(\Zh)$, that is, with
+determinant $\pm2^e$, and each $a_k,b_k$ is $\pm$ a power of $2$, every
+coefficient stays in $\Zh$.  All points of an orbit have
+the same $48$ multiplications but different linear maps, and therefore
+different floors and operation counts; choosing the point is half of the
+optimization.
+
+\section{The 201-operation scheme}\label{sec:scheme}
+
+Table~\ref{tab:sides} summarizes the scheme.  Its coefficients are
+small: $L$ and $R$ have entries in $\{0,\pm1,\pm\tfrac12\}$, with $32$
+entries $\pm\frac12$ each, and $P$ has entries in $\{0,\pm1,\pm2\}$,
+with $8$ entries $\pm2$; $72$ coefficients in all are not in
+$\{0,\pm1\}$.  The floor is $156=42+44+38+32$, and the programs spend
+$45$ operations above it, $13$ on each input side and $19$ on the
+output side.  Each program line is one operation: a binary addition or
+subtraction, or, four times in all, a halving.
+
+\begin{table}[ht]
+\centering
+\caption{The 201-operation scheme, side by side.  \emph{Unit rows} are
+rows that are a single coefficient $\pm1$ (free); \emph{targets} are the
+remaining rows, all distinct; \emph{depth} is the longest chain of
+dependent operations.}\label{tab:sides}
+\begin{tabular}{lrrrrrr}
+\toprule
+side & unit rows & targets & additions & halvings & operations & depth \\
+\midrule
+$L$ & $6$ & $42$ & $53$ & $2$ & $55$ & $13$ \\
+$R$ & $4$ & $44$ & $55$ & $2$ & $57$ & $13$ \\
+$\Pt$ & $10$ & $38$ & $57$ & $0$ & $57$ & $21$ \\
+$P$ & & & $89$ & $0$ & $89=57+32$ & $21$ \\
+\midrule
+total & & & $197$ & $4$ & $\mathbf{201}$ & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Signs.}  Negating row $k$ of $L$ (or of $R$) together with
+column $k$ of $P$ gives another valid scheme, so the sign of every
+product's factors is free.  The programs as found contain output
+negations, which PLinOpt does not charge but Patel's model does; we
+re-emitted them with signs chosen so that no line negates anything.
+The resulting triple, a point of the same orbit, costs $201$ in both
+models, and it is the one in Appendix~\ref{app:scheme} and in PLinOpt.
+
+\paragraph{Other 201s.}  The count is not tied to one point.  About
+twenty annealed points reach $201$, in one of three splits:
+$55+57+89$, its mirror image $57+55+89$, and $56+56+89$.  The last
+appears at a balanced point with floor $150=40+40+38+32$ and $104$
+non-unit coefficients, the profile of Patel's own representative
+(Section~\ref{sec:lower}).
+
+\section{How the scheme was found}\label{sec:found}
+
+The search ran on October 20--21, 2026, on one Apple M4~Pro machine.
+Table~\ref{tab:history} lists the milestones.
+
+\subsection{Choosing a representative}
+
+The annealer moves through the orbit by elementary steps on one of
+$X,Y,Z$: add $c$ times one row to another with $c\in\{\pm1,\pm\frac12,
+\pm2\}$, swap or negate rows, or scale a row by $2$ or $\frac12$, keeping
+every coefficient in $\{0,\pm\frac14,\pm\frac12,\pm1,\pm2,\pm4\}$.  It
+minimizes the floor plus $\lambda$ times the number of coefficients not in
+$\{0,\pm1\}$ (Metropolis acceptance, restarts, a pool of the best
+distinct points, each re-verified on all $4096$ Brent equations).  The
+penalty matters: a low floor with many halves and doubles is expensive
+to program.  The runs found three kinds of points: the profile of the
+published $204$ representative (floor $146$ but $136$ non-unit
+coefficients), that of Patel's $202$ representative (floor $150$, $104$),
+and \emph{sparse} points (floor $156$--$159$, $68$--$72$).  The 201 comes
+from the $\lambda=0.3$ pool of sparse points.
+
+\subsection{Local refinement is not enough}
+
+Our first pipeline refined PLinOpt's optimizer output at a fixed point
+by re-solving small sub-programs.  It settled at $238$ on the best
+sparse point and at $253$ on Patel's point, whose stored programs cost
+$202$.  An exact solver for windows of up to $16$ consecutive program
+lines, with up to four helper values, gained $3$ more ($235$), found
+nothing on the other sides, and showed the other windows optimal among
+programs with at most two helpers.  So most of the gap was not in how
+a sub-program computes its values but in which values are computed at
+all, which is what Patel's method searches over.
+
+\subsection{Value-set search}
+
+Patel's search~\cite{Patel26} identifies a program with its set of
+signal vectors: the inputs, the targets, and the intermediate values,
+each a vector of $\Zh^{16}$.  A set is \emph{closed} if its members can
+be computed one at a time from the inputs, each by one operation on
+members already computed ($u\pm v$, $2u$, $u/2$, or a rescaling of a
+proportional member); a closed set yields a program with one operation
+per non-input member, so the cost is the set's size minus $16$.  Each step of the search is a large-neighbourhood
+move~\cite{Shaw98}: it proposes one to eight new vectors from six
+families (residuals of targets against members, coordinated packages of
+residuals, sparse pivots, residuals among members, halvings and
+doublings, and broad random combinations), adds them, and then deletes
+members in random order while the set stays closed.  Steps that lower
+the cost are accepted, steps that keep it are accepted unless the new
+set is in a tabu list of recent sets, and steps that raise it by one are
+accepted with a small probability.
+
+\subsection{A faster implementation, and seeds from the matrix}
+
+Patel's Python spends most of a step in a sign planner for his cost
+model, which charges negations; PLinOpt's model does not need it.  We
+reimplemented the search in Rust (\texttt{src/bin/lns48.rs}): vectors in
+fixed point over $1/64$, closure and deletion on bitsets, PLinOpt's
+objective, and an exact re-verification of every program written.  It
+runs about $80$ steps per second per thread, $70$ times the original.
+
+The second change was the seed.  Every run seeded with programs derived
+from PLinOpt's optimizer, Python or Rust, converged to $56$ on the
+sparse point's $L$; seeded instead with the naive program that computes each
+row of the matrix as a chain of additions (pruned by the same deletion
+before the search starts), the search reached $55$ in twenty seconds.
+The seed decides the basin, so we replaced long runs by many short
+restarts from matrix-only seeds: twelve seeds of three minutes per side
+reached $202=55+58+89$ on the sparse point.  The output side is always
+searched as $\Pt$, a $48\times16$ map like $L$ and $R$, and transposed
+back with PLinOpt's \texttt{transpozer}.
+
+\subsection{The sweep}
+
+The last step was a successive-halving sweep~\cite{JT16} over $90$
+annealed points: $30$ seconds per side for every point, then $120$
+seconds for the best $20$, then $600$ seconds with two seeds for the
+best $6$.  Two points reached $201$ in the second stage, and all six
+finalists ended at exactly $201$.
+
+\begin{table}[ht]
+\centering
+\caption{Milestones of the search, October 20--21, 2026.  Counts are
+PLinOpt's (additions and scalings).}\label{tab:history}
+\small
+\begin{tabular}{rlp{8.8cm}}
+\toprule
+total & $L+R+P$ & step \\
+\midrule
+$238$ & $70+67+101$ & sparse point, PLinOpt optimizer plus pair-level re-solving \\
+$235$ & $67+67+101$ & exact window search on $L$ \\
+$205$ & $56+58+91$ & Patel's search~\cite{Patel26} on the same point, $P$ through $\Pt$ \\
+$204$ & $56+58+90$ & Rust reimplementation \\
+$203$ & $55+58+90$ & seeded from the matrix alone \\
+$202$ & $55+58+89$ & twelve short restarts per side (ties Patel's 202) \\
+$\mathbf{201}$ & $55+57+89$ & sweep over $90$ annealed points \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Verification}\label{sec:verify}
+
+The triple in Appendix~\ref{app:scheme} passes five independent checks.
+\begin{enumerate}
+\item PLinOpt's \texttt{SLPchecker} accepts each program against its
+  matrix and reports $53+2$, $55+2$ and $89+0$ additions plus scalings.
+\item PLinOpt's \texttt{MMchecker} accepts the three matrices as a
+  matrix multiplication scheme, in rational mode, on random inputs
+  (five runs, three more with $40$-bit values).
+\item Our verifier \texttt{matmul/dps48/slp48check.py} evaluates the
+  programs exactly over $\Q$ and checks all $4096$ Brent equations
+  ($0$ failures), counting operations in both cost models.
+\item Patel's own checker~\cite{Patel26} reports $201$ linear
+  operations, $4096$ tensor identities, and a well-formed program DAG.
+\item Two Lean~4~\cite{Lean4} proofs with Mathlib~\cite{Mathlib}, checked
+  by Lean's kernel.  \texttt{Matmul48\_201.correct}
+  (\texttt{proof/Mm/Correct48\_201.lean}) takes the three programs line
+  by line as hypotheses, $201$ operation wires and $48$ products with
+  each halving written $u\cdot h$, and proves that the $16$ outputs are
+  the entries of $AB$.  \texttt{rank48\_op201\_scheme\_eq\_mul}
+  (\texttt{proof/Mm/Ring\_4x4\_48\_201.lean}) states the result in
+  Mathlib's own terms:
+\begin{verbatim}
+theorem rank48_op201_scheme_eq_mul (h : R) (h2 : 2 * h = 1)
+    (A B : Matrix (Fin 4) (Fin 4) R) :
+    rank48_op201_scheme h A B = A * B
+\end{verbatim}
+  for every commutative ring \texttt{R}, where the scheme is a function
+  of $201$ commented \texttt{let} bindings and $48$ products.  Each
+  entry is closed by \texttt{linear\_combination}~$e\cdot(2h-1)$, with
+  the polynomial $e$ computed by the generator through exact division by
+  $2h-1$.  The proofs check in about $15$ and $90$ seconds and use only
+  Lean's three standard axioms.
+\end{enumerate}
+Validity over non-commutative rings follows from check~3, since the
+Brent equations are exactly the condition for the bilinear identity with
+non-commuting entries.
+
+\section{Can 201 be lowered? Work in progress}\label{sec:lower}
+
+\subsection{A plateau}
+
+No route we tried goes below $201$:
+\begin{itemize}
+\item about twenty distinct annealed points with near-minimal penalized
+  floor reach exactly $201$, in one of the three splits above, and none
+  goes lower; of the $19$ such points within two orbit moves of the
+  record point, three reach $201$ and the rest $203$;
+\item other profiles, from annealer variants that weight the three sides
+  differently: points with side floors $42/42/42$ reach $L+R=110$ but
+  $P=93$ ($203$), and random orbit walks that ignore the floor cost
+  $212$ or more;
+\item longer and wider searches at the record point: hot annealing
+  ($330{,}000$ steps), proposal batches of $16$ and $24$ vectors with
+  eight deletion orders, Metropolis acceptance at two temperatures,
+  searching $P$ directly as a $16\times48$ map, and replacing the random
+  deletion by an exact minimum closed subset (a mixed-integer program
+  solved by HiGHS~\cite{HiGHS} over the set plus $60$ proposals, about
+  $2000$ exact steps): $R$ and $\Pt$ stay at $57$ and $P$ at $89$
+  throughout.
+\end{itemize}
+Two regularities hold at the floor-$150$ and floor-$156$ points:
+$\ops(\Pt)=|T(\Pt)|+19$, so $P$ costs $|T(\Pt)|+51$ (also at the
+$42/42/42$ points), and $\ops(L)+\ops(R)=112$.
+
+\subsection{Recombination as an exact question}
+
+Independent runs end in different programs with the same cost.  Could a
+mixture of them do better?  Let the \emph{dictionary} $D$ be the union
+of the signal sets of a collection of programs for one side, and let a
+\emph{production} of $v\in D$ be one operation that computes $v$ from
+other members, found by enumerating all pairs of members (sums,
+differences, proportional rescalings).  The question
+\begin{quote}
+is there a closed set $S$ with inputs $\subseteq S\subseteq D$, all
+targets in $S$, and at most $c$ non-input members?
+\end{quote}
+asks whether the side can be programmed in $c$ operations using only
+vectors that some program in the collection computes.  Because the
+productions of a subset are determined by its own members, a negative
+answer for a dictionary is also a negative answer for every subset of
+it.  The question can be enlarged by adding vectors to $D$ that no
+program used: search proposals, or a \emph{structured} family, all
+sub-vectors of at most three terms of each target (with the target's
+coefficients) together with all pairwise sums and differences of
+targets.
+
+\subsection{Encodings}
+
+The first formulation was a mixed-integer program with a selection
+variable $x_v$ per vector, a variable $y_p$ per production, and
+continuous levels with big-M constraints for acyclicity, solved by
+HiGHS~\cite{HiGHS}.  Its feasibility form proves small cases in a
+minute, but its relaxation is weak: four runs on dictionaries of
+$86$--$137$ vectors reached their six-hour limits undecided.
+
+The SAT encoding (\texttt{lns48 --merge ... --cap c --cnf}) uses the same
+$x_v$ and $y_p$ with clauses
+\[
+x_t\ (t\text{ a target}),\qquad
+y_p\to x_u\ (u\text{ an operand of }p),\qquad
+x_v\to\textstyle\bigvee_{p\text{ produces }v}y_p,
+\]
+a sequential counter for $\sum x_v\le c$~\cite{Sinz05}, and three
+strengthenings that are sound because any solution can be reduced to
+one that satisfies them: $y_p\to x_v$, at most one production per
+vector, and every selected non-target is an operand of a selected
+production.  Acyclicity is encoded in one of two ways.
+\begin{itemize}
+\item \emph{Levels}: $g_{v,j}$ means that $v$ has depth at least $j$, for
+  $j\le\ell$, with clauses that place each selected production's result
+  above its operands.  This is complete only if $\ell$ is at least the
+  depth of some optimal program; $\ell=c$ always is.
+\item \emph{Order}: one variable per pair of non-input vectors and two
+  transitivity clauses per triple encode a total order, and each
+  selected production puts its operands before its result.  There is no
+  depth bound.
+\end{itemize}
+A satisfying assignment is decoded into a program and re-verified.  We
+validated the encoding on questions with known answers: on the record
+point's $L$ dictionary it answers no at $54$ and yes at $55$, decoding to
+a correct $55$-operation program; and the structured dictionary for $R$
+at $c=57$ is satisfiable, with the record's own program as the model.
+The solvers are CaDiCaL~3.0.0~\cite{CaDiCaL} and kissat~4.0.4~\cite{Kissat}.
+
+\subsection{Verdicts}
+
+Table~\ref{tab:verdicts} lists the verdicts so far.  At the record point
+no recombination of the programs found lowers $L$ or $R$, for $R$ even
+with $200$ added proposals; at the balanced point none lowers any of the
+three sides, so $201=56+56+89$ is final there for this question.  The
+record's $\Pt$ is the open case.  Its programs are deep, with chains of
+$21$ dependent operations against $13$ on $L$ and $R$, because rows of
+$\Pt$ are built from one another in long chains.  The level encoding
+pays for that depth.  Bounded depth is easy: no $56$-operation program of
+depth at most $6$ exists ($0.09$ seconds), nor of depth at most $10$
+($748$ seconds).  With the full depth the question stayed open for eight
+hours under both solvers and every split we tried.  The order encoding
+removes the depth variables altogether, and it refutes the balanced
+point's $\Pt$ in $306$ seconds, against $88$ minutes with levels.
+
+On the record's $\Pt$ dictionary, built from $32$ programs, the order
+encoding refutes the parts contributed by the first $22$, $24$ and $28$
+programs in $33$, $406$ and $5000$ seconds.  The time grows about
+twelvefold per $14$ vectors, which puts the whole $137$-vector question
+near twelve hours.  The refuted parts give a shortcut.  Since the first
+$125$ vectors admit no closed set of $56$, any solution over all $137$
+must select at least one of the $12$ vectors added by the last four
+programs.  We split that condition into $12$ disjoint cases (vector $i$
+selected, vectors $1,\dots,i-1$ not), each a smaller question with one
+vector forced in; these are running now, beside whole-instance runs as a
+baseline.
+
+\begin{table}[ht]
+\centering
+\caption{Recombination questions.  \emph{Vectors} counts the dictionary
+including the $16$ inputs; $c$ is the operation budget, one below the
+side's best program.  Times are wall-clock on a machine running other
+solver jobs in parallel.}\label{tab:verdicts}
+\small
+\begin{tabular}{llrrll}
+\toprule
+point & side & vectors & $c$ & verdict & how \\
+\midrule
+record & $L$ & $82$ & $54$ & no & MIP $90$\,s; SAT $0.4$\,s \\
+record & $R$ & $81$ & $56$ & no & MIP $51$\,s \\
+record & $R$ & $281$ & $56$ & no & $+200$ proposals; CaDiCaL ${\approx}30$\,s \\
+record & $R$ & $2862$ & $56$ & open & structured; kissat $8$\,h, $\ell=24$ \\
+balanced & $L$ & $86$ & $55$ & no & CaDiCaL ${\approx}30$\,s; MIP open at $6$\,h \\
+balanced & $R$ & $92$ & $55$ & no & CaDiCaL ${\approx}30$\,s; MIP open at $6$\,h \\
+balanced & $\Pt$ & $112$ & $56$ & no & order $306$\,s; levels $88$\,min (kissat) \\
+record & $\Pt$ & $97$ & $56$ & no & order $33$\,s; levels $98$\,s \\
+record & $\Pt$ & $111$ & $56$ & no & order $406$\,s \\
+record & $\Pt$ & $125$ & $56$ & no & order $5000$\,s \\
+record & $\Pt$ & $137$ & $56$ & running & split into $12$ cases \\
+record & $\Pt$ & $337$ & $56$ & open & $+200$ proposals; $8$\,h, levels \\
+record & $\Pt$ & $3295$ & $56$ & open & structured; $8$\,h, $\ell=24$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{What a no means, and what comes next}
+
+A refutation is a statement about a dictionary: no program built only
+from those vectors is cheaper.  A $200$ could still exist that computes a
+vector no search has produced, and these verdicts are unchecked solver
+output so far.  The next steps are:
+\begin{enumerate}
+\item finish the record's $\Pt$ question, and if it is refuted, enlarge
+  the dictionary by proposals and structured vectors, using the same
+  incremental split;
+\item certify every refutation used in a claim with a DRAT proof checked
+  by an independent checker~\cite{DRATtrim};
+\item try cutting-planes pseudo-Boolean solving~\cite{RoundingSat}, which
+  reasons about the budget $\sum x_v\le c$ directly instead of through a
+  counter's clauses; the converter to OPB is written;
+\item seek lower bounds that apply to every program, not only to a
+  dictionary: the floor of the record point is $156$, and a closure-level
+  bound after reduction modulo $3$, where halvings become free sign
+  changes, raises it only to $162$ (for programs whose scalings are
+  powers of $2$), far below $201$;
+\item look beyond this class.  Every operation count in
+  Table~\ref{tab:rank48} belongs to the class descending from
+  AlphaEvolve's scheme, and a second rank-48 class over $\Q$ would be a
+  new starting point.
+\end{enumerate}
+
+\section{Data and code}
+
+Everything is in the public repository
+\url{https://github.com/gsidebottom/logic}; paths below are relative to
+it.
+\begin{itemize}
+\item The scheme: \path{matmul/dps48/cand48/p005_201n_{L,R,P}.{slp,sms}},
+  with \path{p005_201_Pt.slp}, the $57$-operation program for $\Pt$.  The
+  same files are in PLinOpt as \path{data/4x4x4_48_201_{L,R,P}.{slp,sms}}.
+\item Orbit annealing: \path{matmul/dps48/orbit48.py}.
+\item Value-set search, recombination, and the SAT and MIP encodings:
+  \path{src/bin/lns48.rs}.
+\item Sweep and restarts: \path{matmul/dps48/patel/sweep.py} and
+  \path{restarts.sh}.
+\item Sign normalization and the exact verifier:
+  \path{matmul/dps48/signnorm48.py} and \path{slp48check.py}.
+\item Case splits and OPB conversion: \path{matmul/dps48/cube.py} and
+  \path{cnf2opb.py}.
+\item The Lean proofs: \path{proof/Mm/Correct48_201.lean} and
+  \path{proof/Mm/Ring_4x4_48_201.lean}.  One of them runs alone with
+\begin{verbatim}
+cd proof && lake build Mm.Ring_4x4_48_201
+\end{verbatim}
+\item Appendix~\ref{app:scheme}: generated by
+  \path{matmul/dps48/mk_paper_appendix48.py}, which re-checks the Brent
+  equations first.
+\end{itemize}
+
+\section*{Acknowledgments}
+
+This work was carried out in an extended interactive collaboration
+with Claude (Anthropic), which implemented the search and verification
+tools and much of this text under the author's direction and review.
+Every claim is checked mechanically by the tools above; the results
+rest on those checks rather than on trust in either the author or the
+tools.  The method that found the scheme is Ruchit Patel's, whose
+search code is public domain.
+
+\begin{thebibliography}{99}
+\bibitem{CaDiCaL} A.~Biere, T.~Faller, K.~Fazekas, M.~Fleury,
+N.~Froleyks, F.~Pollitt, \emph{CaDiCaL 2.0}, Proc.\ CAV 2024, LNCS
+14681, 133--152.
+\bibitem{Kissat} A.~Biere, M.~Fleury et al., \emph{Kissat SAT solver},
+\url{https://github.com/arminbiere/kissat} (version 4.0.4).
+\bibitem{BCS97} P.~B\"urgisser, M.~Clausen, M.~A.~Shokrollahi,
+\emph{Algebraic Complexity Theory}, Springer, 1997.
+\bibitem{deGroote78} H.~F.~de~Groote, \emph{On varieties of optimal
+algorithms for the computation of bilinear mappings I. The isotropy
+group of a bilinear mapping}, Theoret.\ Comput.\ Sci.\ 7 (1978) 1--24.
+\bibitem{Lean4} L.~de~Moura, S.~Ullrich, \emph{The Lean~4 theorem prover
+and programming language}, Proc.\ CADE-28 (2021), LNCS 12699, 625--635.
+\bibitem{DPS25} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, \emph{A
+non-commutative algorithm for multiplying $4\times4$ matrices using
+$48$ non-complex multiplications}, arXiv:2506.13242 (2025).
+\bibitem{DPS26a} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, \emph{A more
+accurate rational non-commutative algorithm for multiplying $4\times4$
+matrices using $48$ multiplications}, arXiv:2603.18699 (2026).
+\bibitem{DPSST26} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, J.~Stapleton,
+P.~Tichavsk\'y, \emph{Fast matrix multiplication via recursive
+$\langle4\times4\times4:48\rangle$ algorithms into practice},
+arXiv:2609.12027 (2026).
+\bibitem{PLinOpt} J.-G.~Dumas, B.~Grenet, C.~Pernet, A.~Sedoglavic,
+\emph{PLinOpt, a collection of C++ routines handling linear \&
+bilinear programs}, \url{https://github.com/jgdumas/plinopt} (data
+files \texttt{4x4x4\_48\_202} and \texttt{4x4x4\_48\_201}, October 2026).
+\bibitem{RoundingSat} J.~Elffers, J.~Nordstr\"om, \emph{Divide and
+conquer: towards faster pseudo-Boolean solving}, Proc.\ IJCAI 2018,
+1291--1299.
+\bibitem{Fawzi22} A.~Fawzi et al., \emph{Discovering faster matrix
+multiplication algorithms with reinforcement learning}, Nature 610
+(2022) 47--53.
+\bibitem{HiGHS} Q.~Huangfu, J.~A.~J.~Hall, \emph{Parallelizing the dual
+revised simplex method}, Math.\ Program.\ Comput.\ 10 (2018) 119--142.
+\bibitem{JT16} K.~Jamieson, A.~Talwalkar, \emph{Non-stochastic best arm
+identification and hyperparameter optimization}, Proc.\ AISTATS 2016,
+240--248.
+\bibitem{Kaporin24} I.~E.~Kaporin, \emph{Finding complex-valued
+solutions of Brent equations using nonlinear least squares}, Comput.\
+Math.\ Math.\ Phys.\ 64 (2024) 1881--1891.
+\bibitem{KM23} M.~Kauers, J.~Moosbauer, \emph{Flip graphs for matrix
+multiplication}, Proc.\ ISSAC 2023; arXiv:2212.01175.
+\bibitem{Mathlib} The mathlib Community, \emph{The Lean mathematical
+library}, Proc.\ CPP 2020, 367--381.
+\bibitem{MSY26} Y.~Moran, O.~Schwartz, S.~Yuan, \emph{Complex to
+rational fast matrix multiplication}, arXiv:2602.13171 (2026).
+\bibitem{Novikov25} A.~Novikov et al., \emph{AlphaEvolve: a coding agent
+for scientific and algorithmic discovery}, arXiv:2506.13131 (2025).
+\bibitem{Patel26} R.~Patel, \emph{matmul-4x4-48-202}, search code and
+programs, \url{https://github.com/rp440/matmul-4x4-48-202} (October
+2026, CC0).
+\bibitem{Shaw98} P.~Shaw, \emph{Using constraint programming and local
+search methods to solve vehicle routing problems}, Proc.\ CP 1998, LNCS
+1520, 417--431.
+\bibitem{Sinz05} C.~Sinz, \emph{Towards an optimal CNF encoding of
+Boolean cardinality constraints}, Proc.\ CP 2005, LNCS 3709, 827--831.
+\bibitem{Strassen69} V.~Strassen, \emph{Gaussian elimination is not
+optimal}, Numer.\ Math.\ 13 (1969) 354--356.
+\bibitem{DRATtrim} N.~Wetzler, M.~J.~H.~Heule, W.~A.~Hunt Jr.,
+\emph{DRAT-trim: efficient checking and trimming using expressive
+clausal proofs}, Proc.\ SAT 2014, LNCS 8561, 422--429.
+\end{thebibliography}
+
+\appendix
+\section{The 201-operation programs}\label{app:scheme}
+\input{matmul_4x4_rank48_201ops_appendix.tex}
+
+\end{document}

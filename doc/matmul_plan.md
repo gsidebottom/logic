@@ -1576,6 +1576,21 @@ the two source papers for this track):
   (listed "Submitted on 20 Oct 2026", the post-moderation resubmission).
   KS-51 (submit/8246158) still on hold, no request.  Zenodo mm55 related
   identifier still to add (v1.1 kit).
+- **PAPER DRAFT (2026-10-22 08:50, Greg's ask)**: doc/matmul_4x4_rank48_201ops
+  .tex/.pdf (12 pages, tectonic, clean build): records table (315/204/202/
+  201), model (PLinOpt cost, transposition, floor, orbit), the scheme
+  (side table: unit rows, targets, adds, halvings, depth), how it was found
+  (orbit annealing, local refinement 238/235, Patel's value-set LNS, Rust
+  port + matrix-only seeds, successive-halving sweep; milestone table),
+  five verifications incl. both Lean theorems, and the work in progress
+  (plateau evidence, recombination as an exact feasibility question, MIP
+  and SAT encodings, levels vs order, verdict table, chain split, next
+  steps).  Appendix generated from cand48/p005_201n_* by
+  matmul/dps48/mk_paper_appendix48.py (re-checks Brent, asserts 201 and
+  zero negations).  Update the verdict table when the record P^T settles.
+- **PLINOPT PR #23 MERGED (2026-10-22 08:18 UTC)**: the 201 triple is in
+  PLinOpt's data directory as data/4x4x4_48_201_{L,R,P}.{sms,slp} (the 202
+  data file's title line names its author as Ruchit Patel).
 - **PLINOPT PR #23 OPENED (2026-10-21 13:10, Greg: "make the PR for our 201
   now")**: https://github.com/jgdumas/plinopt/pull/23 from fork branch
   gsidebottom/plinopt:rational-48-201 (data/4x4x4_48_201_{L,R,P}.{sms,slp},

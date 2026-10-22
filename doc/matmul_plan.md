@@ -1841,7 +1841,13 @@ the two source papers for this track):
   c09 (1 h 46 min), and c02 by both halves (2 h 1 min, 2 h 5 min); c05's
   first half 46 min.  c07 timed out at 4 h: split four ways on x76, x32
   (kissat --unsat) plus CaDiCaL --unsat whole, 8-h limits; the redundant
-  CaDiCaL on c02 stopped.  Open: c00, c03, c05 (second half), c07.
+  CaDiCaL on c02 stopped.  Open: c00, c03, c05 (second half), c07.  16:45: 11/12 UNSAT, none SAT -- c03 by
+  halves (3 h 15 min, 3 h 25 min), c05 second half (3 h 31 min), c07 by
+  all four quarters (58 min to 1 h 47 min).  Only c00 (x110 forced, no
+  exclusions) is open: halves and CaDiCaL whole from 12:12 (limits
+  20:12), plus an eight-way split on x76, x32, x79 from 16:47 (6-h
+  limits); the redundant CaDiCaL runs on c03 and c07 stopped.  Scratchpad
+  backed up without CNFs to matmul/out/scratch_backup_2026-10-22/.
   Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
   Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21

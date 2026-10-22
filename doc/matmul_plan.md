@@ -1837,7 +1837,11 @@ the two source papers for this track):
   four split in two on x76 (cube.py --pick, now --nx and header carry-
   over; the chain cubes had lost lns48's header) under kissat --unsat, plus
   CaDiCaL --unsat on c00, c02, c03 whole; chain/chain_status.py decides
-  each case from all its runs.
+  each case from all its runs.  14:28: 8/12 refuted, none SAT -- c08 (1 h 41 min),
+  c09 (1 h 46 min), and c02 by both halves (2 h 1 min, 2 h 5 min); c05's
+  first half 46 min.  c07 timed out at 4 h: split four ways on x76, x32
+  (kissat --unsat) plus CaDiCaL --unsat whole, 8-h limits; the redundant
+  CaDiCaL on c02 stopped.  Open: c00, c03, c05 (second half), c07.
   Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
   Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21

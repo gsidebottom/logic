@@ -592,14 +592,24 @@ fn mip_select_cap(cat: &Catalog, time_limit: f64, cap: Option<usize>) -> Option<
     if cat.closure(&sel, None) { Some(sel) } else { None }
 }
 
+/// acyclicity encoding of the feasibility CNF
+#[derive(Clone, Copy)]
+enum Acyc {
+    /// order-encoded levels g_{v,j} = [level(v) >= j], j <= lmax (inputs at level 0);
+    /// complete only when lmax bounds the depth of every program (lmax = cap always does)
+    Levels(usize),
+    /// a total order on the non-input vectors (one variable per pair, transitivity on
+    /// every triple); each production puts its operands before its result -- no depth bound
+    Order,
+}
+
 /// the feasibility question as a CNF (DIMACS): x_v selects vector v, y_p a production,
-/// order-encoded levels g_{v,j} = [level(v) >= j] for acyclicity (inputs at level 0),
-/// a sequential counter for sum x_v <= cap, plus the sound strengthenings y_p -> x_v,
-/// at most one production per vector, and every selected non-target vector used.
+/// acyclicity by levels or by a total order (`Acyc`), a sequential counter for
+/// sum x_v <= cap, plus the sound strengthenings y_p -> x_v, at most one production per
+/// vector, and every selected non-target vector used.
 /// Returns (text, variable index of x_v per vector).
-fn feasibility_cnf(cat: &Catalog, cap: usize, lmax_opt: Option<usize>) -> (String, Vec<usize>) {
+fn feasibility_cnf(cat: &Catalog, cap: usize, acyc: Acyc) -> (String, Vec<usize>) {
     let d = cat.n;
-    let lmax = lmax_opt.unwrap_or(cap).max(1);
     let mut nv = 0usize;
     let mut fresh = || {
         nv += 1;
@@ -616,22 +626,11 @@ fn feasibility_cnf(cat: &Catalog, cap: usize, lmax_opt: Option<usize>) -> (Strin
         }
     }
     let yvar: Vec<usize> = prods.iter().map(|_| fresh()).collect();
-    // levels: g[v][j], j = 1..=lmax, for non-inputs
-    let mut g = vec![Vec::new(); d];
-    for v in N..d {
-        g[v] = (0..lmax).map(|_| fresh()).collect();
-    }
     let mut clauses: Vec<Vec<i64>> = Vec::new();
     // inputs and targets selected
     for v in N..d {
         if cat.required.get(v) {
             clauses.push(vec![xvar[v] as i64]);
-        }
-    }
-    // level monotonicity: g_{v,j+1} -> g_{v,j}
-    for v in N..d {
-        for j in 1..lmax {
-            clauses.push(vec![-(g[v][j] as i64), g[v][j - 1] as i64]);
         }
     }
     let mut by_v: Vec<Vec<usize>> = vec![Vec::new(); d];
@@ -647,17 +646,75 @@ fn feasibility_cnf(cat: &Catalog, cap: usize, lmax_opt: Option<usize>) -> (Strin
                 clauses.push(vec![-y, xvar[w] as i64]);
             }
         }
-        // level(v) > level(operand): y -> g_{v,1}; y & g_{u,j} -> g_{v,j+1}; y -> not g_{u,lmax}
-        clauses.push(vec![-y, g[v][0] as i64]);
-        for &o in [Some(u), w].iter().flatten() {
-            if o >= N {
-                for j in 1..lmax {
-                    clauses.push(vec![-y, -(g[o][j - 1] as i64), g[v][j] as i64]);
-                }
-                clauses.push(vec![-y, -(g[o][lmax - 1] as i64)]);
-            }
-        }
     }
+    let acyc_desc = match acyc {
+        Acyc::Levels(lmax0) => {
+            let lmax = lmax0.max(1);
+            // levels: g[v][j], j = 1..=lmax, for non-inputs
+            let mut g = vec![Vec::new(); d];
+            for v in N..d {
+                g[v] = (0..lmax).map(|_| fresh()).collect();
+            }
+            // level monotonicity: g_{v,j+1} -> g_{v,j}
+            for v in N..d {
+                for j in 1..lmax {
+                    clauses.push(vec![-(g[v][j] as i64), g[v][j - 1] as i64]);
+                }
+            }
+            for (pi, &(v, u, w)) in prods.iter().enumerate() {
+                let y = yvar[pi] as i64;
+                // level(v) > level(operand): y -> g_{v,1}; y & g_{u,j} -> g_{v,j+1}; y -> not g_{u,lmax}
+                clauses.push(vec![-y, g[v][0] as i64]);
+                for &o in [Some(u), w].iter().flatten() {
+                    if o >= N {
+                        for j in 1..lmax {
+                            clauses.push(vec![-y, -(g[o][j - 1] as i64), g[v][j] as i64]);
+                        }
+                        clauses.push(vec![-y, -(g[o][lmax - 1] as i64)]);
+                    }
+                }
+            }
+            format!("lmax {}", lmax)
+        }
+        Acyc::Order => {
+            // o[a][b] for a < b (non-input indices): "a is produced before b";
+            // before(a, b) = o[a][b] if a < b, else not o[b][a]
+            let m = d - N;
+            let mut o = vec![0usize; m * m];
+            for a in 0..m {
+                for b in a + 1..m {
+                    o[a * m + b] = fresh();
+                }
+            }
+            let before = |a: usize, b: usize| -> i64 {
+                if a < b {
+                    o[a * m + b] as i64
+                } else {
+                    -(o[b * m + a] as i64)
+                }
+            };
+            // transitivity: forbid both cyclic orientations of every triple
+            for a in 0..m {
+                for b in a + 1..m {
+                    for c in b + 1..m {
+                        let (ab, bc, ac) = (o[a * m + b] as i64, o[b * m + c] as i64, o[a * m + c] as i64);
+                        clauses.push(vec![-ab, -bc, ac]);
+                        clauses.push(vec![ab, bc, -ac]);
+                    }
+                }
+            }
+            // a selected production puts its non-input operands before its result
+            for (pi, &(v, u, w)) in prods.iter().enumerate() {
+                let y = yvar[pi] as i64;
+                for &op in [Some(u), w].iter().flatten() {
+                    if op >= N {
+                        clauses.push(vec![-y, before(op - N, v - N)]);
+                    }
+                }
+            }
+            "order".to_string()
+        }
+    };
     // x_v -> some production
     for v in N..d {
         let mut c: Vec<i64> = vec![-(xvar[v] as i64)];
@@ -737,7 +794,7 @@ fn feasibility_cnf(cat: &Catalog, cap: usize, lmax_opt: Option<usize>) -> (Strin
         }
     }
     let mut out = String::new();
-    out.push_str(&format!("c lns48 feasibility: {} vectors ({} inputs), {} productions, cap {}, lmax {}\n", d, N, prods.len(), cap, lmax));
+    out.push_str(&format!("c lns48 feasibility: {} vectors ({} inputs), {} productions, cap {}, {}\n", d, N, prods.len(), cap, acyc_desc));
     out.push_str(&format!("p cnf {} {}\n", nv, clauses.len()));
     for c in &clauses {
         for l in c {
@@ -1684,6 +1741,7 @@ fn main() {
     let cnf_out = opt(&mut args, "--cnf");
     let universal: usize = opt(&mut args, "--universal").map(|s| s.parse().unwrap()).unwrap_or(0);
     let lmax_opt: Option<usize> = opt(&mut args, "--lmax").map(|s| s.parse().unwrap());
+    let acyc_order = opt(&mut args, "--acyc").map(|s| s == "order").unwrap_or(false);
     let model_in = opt(&mut args, "--model");
     assert!(args.is_empty(), "unknown arguments: {:?}", args);
     std::fs::create_dir_all(&out).unwrap();
@@ -1804,7 +1862,8 @@ fn main() {
         eprintln!("merge: {} programs with signal counts {:?}; union dictionary {} vectors; greedy minimum {}", progs.len(), costs, dict.vals.len(), gcost);
         if let Some(path) = &cnf_out {
             let c = cap.expect("--cnf needs --cap K");
-            let (text, xvar) = feasibility_cnf(&cat, c, lmax_opt);
+            let acyc = if acyc_order { Acyc::Order } else { Acyc::Levels(lmax_opt.unwrap_or(c)) };
+            let (text, xvar) = feasibility_cnf(&cat, c, acyc);
             std::fs::write(path, &text).expect("write cnf");
             let map: String = xvar.iter().enumerate().filter(|(v, _)| *v >= N).map(|(v, x)| format!("{} {}\n", v, x)).collect();
             std::fs::write(format!("{}.xvar", path), map).expect("write xvar map");

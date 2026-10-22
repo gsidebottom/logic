@@ -1756,7 +1756,27 @@ the two source papers for this track):
   do compactly.  Next: diagnostics to locate the hardness (union size,
   depth bound, cardinality encoding), then a cutting-planes
   pseudo-Boolean solver (RoundingSat) for the refutation if Greg approves
-  the download.
+  the download.  DIAGNOSTIC FACT (06:30): the 12 naive-seed restarts and
+  the 4 long runs on p005's P^T all reached the SAME 57-vector signal set
+  (union of the 16 = 73 vectors) -- the P^T optimum found from matrix-only
+  seeds is unique; all the dictionary diversity (137 vectors) comes from
+  the experiment-3 variants started from that program.  Scaling runs on
+  unions of 18-28 programs (15-min limits) locate where CDCL gives out.
+  matmul/dps48/cnf2opb.py converts the feasibility CNF to OPB with a native
+  cardinality constraint (counter clauses dropped; verified count) for a
+  PB solver.  DIAGNOSTICS (06:30-06:45): (a) depth: the P^T programs are
+  DEEP -- the record P^T has depth 21 (longest operand chain; L and R 13),
+  the 32 union programs 13-23 -- because P^T's rows telescope (support 9 =
+  support 8 + unit); with --lmax 6 the record question is UNSAT in 0.09 s
+  (no shallow 56), lmax 10 open after 15 min: the level encoding's cost is
+  the depth freedom.  (b) size: unions of the first 20 programs are the
+  record's own 57-set (UNSAT instantly); 22 programs = 97 vectors UNSAT in
+  98 s; 24 = 111 and 28 = 125 open at 15 min -- CDCL gives out between 97
+  and 111 vectors on this side.  (c) lns48 v10 --acyc order: acyclicity by
+  a total order (one variable per pair of non-input vectors, two
+  transitivity clauses per triple, no depth bound; L union 54 UNSAT 0.14 s
+  / 55 SAT + verified decode) -- running on the 97/111/112/137-vector P^T
+  questions against the level encoding.
   Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
   Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21

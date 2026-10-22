@@ -1686,8 +1686,14 @@ the two source papers for this track):
   56/56/57; greedy deletion on unions is poor (60-61).  FEASIBILITY
   VERDICTS: record R: no <= 56 over the union of 32 programs (81 vectors),
   INFEASIBLE in 51 s; record L: no <= 54 over 12 programs (82 vectors),
-  INFEASIBLE in 90 s.  Pending: record P^T <= 56 (137 vectors), balanced
-  L <= 55 / R <= 55 / P^T <= 56 (1-h limits); 6-thread exact LNS on R.
+  INFEASIBLE in 90 s.  Record P^T <= 56 (137 vectors) and balanced L <= 55
+  (86), R <= 55 (92), P^T <= 56 (112): 1-h limits reached with NO feasible
+  point (undecided -- the big-M acyclicity relaxation is weak; 81-82-vector
+  unions prove in a minute, 86+ do not in an hour).  Relaunched with 6-h
+  limits (overnight).  Also running: unions + 200 family proposals at cap 56
+  (R, P^T) and a 6-thread exact LNS on R.  If the MIPs stay undecided, a
+  SAT formulation (CaDiCaL, cardinality + depth bits) is the natural next
+  tool for these feasibility questions.
   Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
   Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21

@@ -1693,7 +1693,18 @@ the two source papers for this track):
   limits (overnight).  Also running: unions + 200 family proposals at cap 56
   (R, P^T) and a 6-thread exact LNS on R.  If the MIPs stay undecided, a
   SAT formulation (CaDiCaL, cardinality + depth bits) is the natural next
-  tool for these feasibility questions.
+  tool for these feasibility questions.  DONE 20:15 (Greg: "build the SAT
+  encoding"): lns48 --merge --cap K --cnf F writes DIMACS (x_v, y_p,
+  order-encoded levels, Sinz counter), --model decodes a solver model into
+  a verified program; agrees with the MIP (54 UNSAT / 55 SAT instantly).
+  CaDiCaL VERDICTS within 30 s: record R <= 56 over 32 programs + 200
+  proposals (281 vectors): UNSAT; balanced L <= 55: UNSAT; balanced R <=
+  55: UNSAT (the MIP had left all three open after 1 h).  Pending: record
+  P^T <= 56 (137 vectors; also + 200 proposals, 337 vectors) and balanced
+  P^T <= 56, CaDiCaL + kissat, 2-h limits; 6-h MIPs still running as a
+  cross-check.  Next: a structured universal dictionary (all <= 3-term
+  sub-vectors of targets + pairwise target sums/differences) as the SAT
+  question's candidate set.
   Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
   Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21

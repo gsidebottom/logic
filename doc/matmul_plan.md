@@ -1727,14 +1727,22 @@ the two source papers for this track):
   14 cores): record P^T x4 (CaDiCaL/kissat, default and --unsat presets),
   balanced P^T x2, record P^T + 200 x2, structured R and P^T at cap 56 x1
   each (scratchpad sat9/).  23:49: balanced P^T <= 56 UNSAT (kissat --unsat,
-  88 min; 112 vectors / 402 productions) -> the balanced point is proven
+  88 min; CaDiCaL confirms at 00:28 after 2 h 7 min; 112 vectors / 402
+  productions) -> the balanced point is proven
   unimprovable by recombination on all three sides (L 55, R 55, P^T 56 all
   UNSAT): 56 + 56 + 89 = 201 stands there.  Cube-and-conquer added
   (matmul/dps48/cube.py: split a feasibility CNF on its most frequent free
   selection variables; validated on the L union -- cap 54: 4/4 cubes UNSAT,
   cap 55: exactly one cube SAT); a deferred launcher splits the record P^T
   question into 4 cubes (kissat --unsat, 4-h limits) on the cores the MIPs
-  release at ~02:20 if it is still open then.
+  release at ~02:20 if it is still open then.  02:00: the four 6-h MIPs
+  (record P^T <= 56, balanced L <= 55 / R <= 55 / P^T <= 56) ALL reached
+  their time limit undecided -- SAT had settled three of the four in <= 2 h
+  (balanced L, R in 30 s; balanced P^T in 88 min).  The HiGHS big-M
+  formulation is not a tool for these questions beyond ~82-vector unions;
+  the record P^T question is open in both.  The record P^T question is also
+  running split in half on its most frequent free selection variable
+  (CaDiCaL --unsat, 6-h limits, from 00:30).
   Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
   Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21

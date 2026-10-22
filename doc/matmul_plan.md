@@ -1776,7 +1776,13 @@ the two source papers for this track):
   a total order (one variable per pair of non-input vectors, two
   transitivity clauses per triple, no depth bound; L union 54 UNSAT 0.14 s
   / 55 SAT + verified decode) -- running on the 97/111/112/137-vector P^T
-  questions against the level encoding.
+  questions against the level encoding.  06:38 RESULTS: the order encoding
+  is the fix -- 97 vectors UNSAT in 33 s (levels: 98 s); balanced P^T (112
+  vectors) UNSAT in 306 s (levels: 88 min kissat / 2 h 7 min CaDiCaL, a
+  17x speedup); record P^T with lmax 10 (levels) UNSAT in 748 s.  Record
+  P^T (137 vectors, order: 15k vars / 594k clauses) running under kissat
+  --unsat and CaDiCaL --unsat (4-h limits), plus default configurations
+  and 4 order-encoding cubes on the free cores.
   Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
   Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21

@@ -2,13 +2,25 @@
 """Cube-and-conquer splitting for the lns48 feasibility CNFs.
 
     cube.py IN.cnf OUTPREFIX VAR [VAR ...]
+    cube.py IN.cnf OUTPREFIX --chain VAR [VAR ...]
 
-writes 2^k CNFs OUTPREFIX_<bits>.cnf, each IN.cnf plus one unit clause per
-split variable (bit 1 = positive literal), with the header's clause count
-adjusted.  UNSAT on every cube proves IN.cnf UNSAT; a model of any cube is a
-model of IN.cnf.  With --pick K (and no VAR) it prints the K selection
-variables (x_v, numbered 1..D-16 in lns48's encoding) that occur most often
-in IN.cnf and are not fixed by a unit clause -- the natural split variables.
+The first form writes 2^k CNFs OUTPREFIX_<bits>.cnf, each IN.cnf plus one unit
+clause per split variable (bit 1 = positive literal), with the header's clause
+count adjusted.  UNSAT on every cube proves IN.cnf UNSAT; a model of any cube
+is a model of IN.cnf.
+
+--chain writes k CNFs OUTPREFIX_c<i>.cnf partitioning "at least one of the
+VARs is true": cube i has VAR_i true and VAR_1..VAR_{i-1} false.  UNSAT on
+every chain cube proves IN.cnf + (VAR_1 or ... or VAR_k) UNSAT.  This is the
+incremental step for a grown dictionary: if the dictionary without the new
+vectors is already proven to have no closed set within the cap, a solution of
+the grown one must select a new vector (the catalog lists every production
+among dictionary members, so a subset's productions never depend on vectors
+outside it).
+
+With --pick K (and no VAR) it prints the K selection variables (x_v, numbered
+1..D-16 in lns48's encoding) that occur most often in IN.cnf and are not
+fixed by a unit clause -- the natural split variables.
 """
 import sys
 from collections import Counter
@@ -56,10 +68,23 @@ def main():
         print(" ".join(str(v) for v in best))
         print("# occurrences:", " ".join(f"{v}:{occ[v]}" for v in best), file=sys.stderr)
         return
+    chain = "--chain" in args
+    if chain:
+        args.remove("--chain")
     inp, prefix, vars_ = args[0], args[1], [int(v) for v in args[2:]]
     nvars, clauses = read_cnf(inp)
     body = "".join(" ".join(map(str, c)) + " 0\n" for c in clauses)
     k = len(vars_)
+    if chain:
+        for i, v in enumerate(vars_):
+            units = [v] + [-u for u in vars_[:i]]
+            with open(f"{prefix}_c{i:02d}.cnf", "w") as f:
+                f.write(f"c chain cube {i} of {inp}: {v} true, {vars_[:i]} false\n")
+                f.write(f"p cnf {nvars} {len(clauses) + len(units)}\n")
+                f.write(body)
+                f.write("".join(f"{u} 0\n" for u in units))
+        print(f"wrote {k} chain cubes {prefix}_c*.cnf (partition of 'at least one of {vars_}')")
+        return
     for mask in range(1 << k):
         bits = format(mask, f"0{k}b")
         units = "".join(f"{v if bits[i] == '1' else -v} 0\n" for i, v in enumerate(vars_))

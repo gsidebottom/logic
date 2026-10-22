@@ -1779,10 +1779,26 @@ the two source papers for this track):
   questions against the level encoding.  06:38 RESULTS: the order encoding
   is the fix -- 97 vectors UNSAT in 33 s (levels: 98 s); balanced P^T (112
   vectors) UNSAT in 306 s (levels: 88 min kissat / 2 h 7 min CaDiCaL, a
-  17x speedup); record P^T with lmax 10 (levels) UNSAT in 748 s.  Record
+  17x speedup); 111 vectors UNSAT in 406 s (levels: open at 15 min);
+  record P^T with lmax 10 (levels) UNSAT in 748 s.  Record
   P^T (137 vectors, order: 15k vars / 594k clauses) running under kissat
   --unsat and CaDiCaL --unsat (4-h limits), plus default configurations
-  and 4 order-encoding cubes on the free cores.
+  and 4 order-encoding cubes on the free cores.  08:03: the 125-vector
+  union (first 28 programs) UNSAT in 5000 s (order) -- scaling 97: 33 s,
+  111: 406 s, 125: 5000 s, i.e. ~12x per 14 vectors, so the whole
+  137-vector question extrapolates to ~12 h.  INCREMENTAL SPLIT (cube.py
+  --chain): Catalog::build enumerates every one-gate production among
+  dictionary members (pairwise sums/differences, proportional scalings), so
+  the productions available to a subset do not depend on vectors outside
+  it; hence 125 UNSAT implies any 56 over the 137 must select one of the 12
+  vectors programs 29-32 added (x 110-121; prefix order and target units
+  checked identical).  The 12 chain cubes (x_i true, x_1..x_{i-1} false)
+  partition that; forcing a new vector in leaves 55 for the rest, nearer a
+  two-below refutation.  None trivial at 60 s; running 7 at a time
+  (kissat --unsat, 4-h limits) from 08:15; the default-setting whole runs
+  were stopped for the cores, the --unsat whole runs and the (76, 32) cubes
+  continue as the baseline.  Caveat for any final claim: these UNSAT
+  verdicts are unchecked (no DRAT proofs yet).
   Classes: over Q only the AlphaEvolve/DPS class is known (MSY: no
   Z-equivalent); Kaporin's needs cbrt(2) and i (MSY: no real equivalent).
 - **RANK-48: 202 = 55 + 58 + 89 -- TIE WITH PATEL'S RECORD (2026-10-21

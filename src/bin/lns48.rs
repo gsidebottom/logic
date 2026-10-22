@@ -587,6 +587,139 @@ fn mip_select_cap(cat: &Catalog, time_limit: f64, cap: Option<usize>) -> Option<
     if cat.closure(&sel, None) { Some(sel) } else { None }
 }
 
+/// the feasibility question as a CNF (DIMACS): x_v selects vector v, y_p a production,
+/// order-encoded levels g_{v,j} = [level(v) >= j] for acyclicity (inputs at level 0),
+/// a sequential counter for sum x_v <= cap.  Returns (text, variable index of x_v per vector).
+fn feasibility_cnf(cat: &Catalog, cap: usize) -> (String, Vec<usize>) {
+    let d = cat.n;
+    let lmax = cap.max(1);
+    let mut nv = 0usize;
+    let mut fresh = || {
+        nv += 1;
+        nv
+    };
+    let mut xvar = vec![0usize; d];
+    for v in N..d {
+        xvar[v] = fresh();
+    }
+    let mut prods: Vec<(usize, usize, Option<usize>)> = Vec::new();
+    for v in N..d {
+        for p in &cat.opts[v] {
+            prods.push((v, p.u as usize, if p.v == NONE { None } else { Some(p.v as usize) }));
+        }
+    }
+    let yvar: Vec<usize> = prods.iter().map(|_| fresh()).collect();
+    // levels: g[v][j], j = 1..=lmax, for non-inputs
+    let mut g = vec![Vec::new(); d];
+    for v in N..d {
+        g[v] = (0..lmax).map(|_| fresh()).collect();
+    }
+    let mut clauses: Vec<Vec<i64>> = Vec::new();
+    // inputs and targets selected
+    for v in N..d {
+        if cat.required.get(v) {
+            clauses.push(vec![xvar[v] as i64]);
+        }
+    }
+    // level monotonicity: g_{v,j+1} -> g_{v,j}
+    for v in N..d {
+        for j in 1..lmax {
+            clauses.push(vec![-(g[v][j] as i64), g[v][j - 1] as i64]);
+        }
+    }
+    let mut by_v: Vec<Vec<usize>> = vec![Vec::new(); d];
+    for (pi, &(v, u, w)) in prods.iter().enumerate() {
+        by_v[v].push(pi);
+        let y = yvar[pi] as i64;
+        // operands selected
+        if u >= N {
+            clauses.push(vec![-y, xvar[u] as i64]);
+        }
+        if let Some(w) = w {
+            if w >= N {
+                clauses.push(vec![-y, xvar[w] as i64]);
+            }
+        }
+        // level(v) > level(operand): y -> g_{v,1}; y & g_{u,j} -> g_{v,j+1}; y -> not g_{u,lmax}
+        clauses.push(vec![-y, g[v][0] as i64]);
+        for &o in [Some(u), w].iter().flatten() {
+            if o >= N {
+                for j in 1..lmax {
+                    clauses.push(vec![-y, -(g[o][j - 1] as i64), g[v][j] as i64]);
+                }
+                clauses.push(vec![-y, -(g[o][lmax - 1] as i64)]);
+            }
+        }
+    }
+    // x_v -> some production
+    for v in N..d {
+        let mut c: Vec<i64> = vec![-(xvar[v] as i64)];
+        for &pi in &by_v[v] {
+            c.push(yvar[pi] as i64);
+        }
+        clauses.push(c);
+    }
+    // sequential counter: at most cap of the x_v (Sinz 2005)
+    let xs: Vec<usize> = (N..d).map(|v| xvar[v]).collect();
+    let n = xs.len();
+    if n > cap {
+        let mut sreg = vec![vec![0usize; cap]; n];
+        for i in 0..n {
+            for j in 0..cap {
+                sreg[i][j] = fresh();
+            }
+        }
+        for i in 0..n {
+            let xi = xs[i] as i64;
+            clauses.push(vec![-xi, sreg[i][0] as i64]);
+            if i > 0 {
+                for j in 0..cap {
+                    clauses.push(vec![-(sreg[i - 1][j] as i64), sreg[i][j] as i64]);
+                }
+                for j in 1..cap {
+                    clauses.push(vec![-xi, -(sreg[i - 1][j - 1] as i64), sreg[i][j] as i64]);
+                }
+                clauses.push(vec![-xi, -(sreg[i - 1][cap - 1] as i64)]);
+            }
+        }
+    }
+    let mut out = String::new();
+    out.push_str(&format!("c lns48 feasibility: {} vectors ({} inputs), {} productions, cap {}, lmax {}\n", d, N, prods.len(), cap, lmax));
+    out.push_str(&format!("p cnf {} {}\n", nv, clauses.len()));
+    for c in &clauses {
+        for l in c {
+            out.push_str(&format!("{} ", l));
+        }
+        out.push_str("0\n");
+    }
+    (out, xvar)
+}
+
+/// read a DIMACS solver output ("s SATISFIABLE" / "v ..." lines); the selected set
+fn read_model(path: &str, xvar: &[usize]) -> Option<Bits> {
+    let text = std::fs::read_to_string(path).ok()?;
+    if !text.lines().any(|l| l.starts_with("s SATISFIABLE")) {
+        return None;
+    }
+    let mut truth: FxSet<i64> = FxSet::default();
+    for l in text.lines().filter(|l| l.starts_with("v ")) {
+        for tok in l[2..].split_whitespace() {
+            if let Ok(x) = tok.parse::<i64>() {
+                if x > 0 {
+                    truth.insert(x);
+                }
+            }
+        }
+    }
+    let mut sel = Bits::full(N);
+    for (v, &xv) in xvar.iter().enumerate() {
+        if v >= N && truth.contains(&(xv as i64)) {
+            sel.set(v);
+        }
+    }
+    Some(sel)
+}
+
 // ------------------------------------------------------------------ programs
 /// a plan: produced values in order with their productions (as vectors)
 #[derive(Clone)]
@@ -1495,6 +1628,8 @@ fn main() {
     let merge = opt(&mut args, "--merge");
     let cap: Option<usize> = opt(&mut args, "--cap").map(|s| s.parse().unwrap());
     let propose: usize = opt(&mut args, "--propose").map(|s| s.parse().unwrap()).unwrap_or(0);
+    let cnf_out = opt(&mut args, "--cnf");
+    let model_in = opt(&mut args, "--model");
     assert!(args.is_empty(), "unknown arguments: {:?}", args);
     std::fs::create_dir_all(&out).unwrap();
 
@@ -1576,6 +1711,32 @@ fn main() {
         let greedy = reverse_delete(&cat, &mut rng, 8, &Bits::default());
         let gcost = greedy.count() - N;
         eprintln!("merge: {} programs with signal counts {:?}; union dictionary {} vectors; greedy minimum {}", progs.len(), costs, dict.vals.len(), gcost);
+        if let Some(path) = &cnf_out {
+            let c = cap.expect("--cnf needs --cap K");
+            let (text, xvar) = feasibility_cnf(&cat, c);
+            std::fs::write(path, &text).expect("write cnf");
+            let map: String = xvar.iter().enumerate().filter(|(v, _)| *v >= N).map(|(v, x)| format!("{} {}\n", v, x)).collect();
+            std::fs::write(format!("{}.xvar", path), map).expect("write xvar map");
+            let header = text.lines().nth(1).unwrap_or("").to_string();
+            eprintln!("merge: wrote {} ({}) for the question: closed set of <= {} non-input signals?", path, header, c);
+            if let Some(mpath) = &model_in {
+                match read_model(mpath, &xvar) {
+                    Some(sel) => {
+                        if cat.closure(&sel, None) {
+                            let mut trace = Vec::new();
+                            assert!(cat.closure(&sel, Some(&mut trace)));
+                            let plan = plan_from_trace(&cat, &dict, &trace);
+                            let (a, sc) = verify_and_write(&plan, &targets, &format!("{}/best.slp", out));
+                            println!("model result: closed set of {} = {} adds + {} scalings (cap {}) -> {}/best.slp", plan_cost(&plan), a, sc, c, out);
+                        } else {
+                            println!("model result: the model's selection is NOT closed (encoding bug?)");
+                        }
+                    }
+                    None => println!("model result: no satisfying model in {}", mpath),
+                }
+            }
+            return;
+        }
         let t0 = Instant::now();
         let exact = match cap {
             Some(c) => {

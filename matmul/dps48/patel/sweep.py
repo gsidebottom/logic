@@ -25,7 +25,11 @@ BIN = os.environ.get("PLINOPT_BIN", f"{SP}/plinopt-run/bin")  # SLPchecker, tran
 PY = "/opt/homebrew/bin/python3"
 ENGINE = os.environ.get("LNS_ENGINE", "rust")  # "rust": ../../../target/release/lns48; "python": patel_phase.py on Patel's code
 LNS48 = os.environ.get("LNS48_BIN", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "target", "release", "lns48"))
-NAIVE = os.environ.get("LNS_NAIVE", "0") == "1"  # rust engine: seed from the matrix alone (no PLinOpt optimizer pass)
+NAIVE = os.environ.get("LNS_NAIVE", "0") == "1"
+# FIXED_P = cost: the output map is fixed (e.g. P carried with a known program), so only
+# L and R are searched and P is charged this cost
+FIXED_P = int(os.environ.get("FIXED_P", "0"))
+SIDES = ("L", "R") if FIXED_P else ("L", "R", "Pt")  # rust engine: seed from the matrix alone (no PLinOpt optimizer pass)
 HERE = os.path.dirname(os.path.abspath(__file__))
 PHASE = os.path.join(HERE, "patel_phase.py")
 sys.path.insert(0, os.path.dirname(HERE))
@@ -76,6 +80,8 @@ class Cand:
             for side in ("L", "R", "Pt"):
                 self.seed_prog[side] = None
                 self.cost[side] = 10 ** 6
+            if FIXED_P:
+                self.cost["Pt"] = FIXED_P
             return
         for s in "LR":
             src = f"{evaldir}/{self.tag}_{s}.slp"
@@ -136,7 +142,7 @@ def job(cand, side, seed, wall, stage):
 
 
 def stage(cands, name, wall, seeds, pool, log):
-    jobs = [(c, s, sd) for c in cands for s in ("L", "R", "Pt") for sd in seeds]
+    jobs = [(c, s, sd) for c in cands for s in SIDES for sd in seeds]
     t0 = time.time()
     done = 0
     for cand, side, cost, best in pool.map(lambda j: job(j[0], j[1], j[2], wall, name), jobs):

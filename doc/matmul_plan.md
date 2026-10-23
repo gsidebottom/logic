@@ -1660,6 +1660,15 @@ the two source papers for this track):
   plateau.  Untried: the other t = 1 orbit points with P = 88 (sweep stage C
   cand002, cand013, cand028) carried into our class + Y-only pools; or joint
   X, Y, Z annealing in our class rewarding the 4-non-unit P.
+  WIDENING (Greg: 'let's widen the lead', Oct 23): 10 of the 90 t = 1 points
+  reached P = 88 in some sweep stage (cand000, 002, 009, 011, 013, 020, 028,
+  030, 032, 034; ten byte-distinct P matrices).  The nine new ones carried
+  into our class (carry2/dps_cNNN): Brent OK, phi 192, P identical to the
+  source, SLPchecker <88,0> with each source's transposed P^T program.
+  sweep.py FIXED_P=88 searches only L and R and charges P 88.  Running:
+  Y-only annealing (lambda 0.3/0.5, keep 15 each -> 270 points), then the
+  fixed-P sweep (30 s / 120 s best 30 / 600 s x2 best 8).  A 200 needs
+  L + R <= 112 at any of these points.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

@@ -1728,7 +1728,7 @@ the two source papers for this track):
   stops at 49 except the return to our scheme -- the pattern of the
   rigidity theorem (doc/matmul_rigid48_paper), now for multi-bud splits.
   Not tried: unsolved flips beyond the first step, random walks,
-  Alexandre's generalized 2x2 flips (his idea 1).  Line closed.
+  Alexandre's generalized 2x2 flips (his items 2-3).  Line closed.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

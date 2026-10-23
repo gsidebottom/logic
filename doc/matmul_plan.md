@@ -1669,6 +1669,24 @@ the two source papers for this track):
   Y-only annealing (lambda 0.3/0.5, keep 15 each -> 270 points), then the
   fixed-P sweep (30 s / 120 s best 30 / 600 s x2 best 8).  A 200 needs
   L + R <= 112 at any of these points.
+  RESULT (Oct 23 08:19): every one of the ten P = 88 points gives the same
+  plateau -- 202 = 55 + 59 + 88 (cand001 type: c002, c009, c011, c013,
+  c032 in stage C) and 203 = 57 + 58 + 88 (cand000 type); Y-only pools all
+  floor 159/161.  The ten P matrices behave as one (likely equivalent under
+  cost-preserving symmetries).  With P = 88, L + R >= 114 here: the lead is
+  closed at 202 for Y-only moves.  Alexandre (email Oct 23) sent the
+  'sparsest known' decomposition (Downloads/[L,R,P]_res_4x4x4_48_202_4_4_
+  116_364_288_624.sms): our class (phi 192), 624 nonzeros (ours 696) but
+  floor 162 = 44/44/42 and 104 non-units (ours 156, 72); restarts queued.
+  His ideas: generalized 2x2 flips on buds; IMPLICIT buds (kernel vectors
+  of L^T, R^T, P^T) as rank-raising jumps that create several explicit
+  buds at once -- a richer jump than our rigidity search's single splits;
+  a route to new rank-48 classes (and rank 47 over Q).
+  08:29: restarts on Alexandre's point: 213 = 60 + 60 + 93 (58+2, 58+2,
+  93+0; verified; all 12 seeds identical) -- fewer nonzeros, more operations:
+  its floor (162) and P^T targets (42 -> P = 42 + 51 = 93, the regularity
+  again) decide.  Not a better start for our pipeline; his implicit-bud
+  jumps are the idea worth pursuing.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

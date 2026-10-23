@@ -2077,28 +2077,50 @@ fn bud_split(
     Some(out)
 }
 
+/// queue a state the first time it is generated, while the closure is open;
+/// `capped` records that a closed closure turned away a state it had never
+/// queued (the closure is then incomplete)
+fn push_capped(
+    stack: &mut std::collections::VecDeque<Vec<Summand>>,
+    queued: &mut std::collections::HashSet<u64>,
+    open: bool,
+    capped: &mut bool,
+    state: Vec<Summand>,
+) {
+    let h = scheme_hash(&state);
+    if queued.contains(&h) {
+        return;
+    }
+    if open {
+        queued.insert(h);
+        stack.push_back(state);
+    } else {
+        *capped = true;
+    }
+}
+
 /// closure under solved flips with reductions as moves (as `closure`), but
 /// returning the states it finds at rank 48 (other than the seed) and below
 /// Breadth-first, so under the state cap the nearest reductions are found first.
 /// Also returns (number of states that reduced, lowest rank a reduction reached
-/// other than the seed itself).
+/// other than the seed itself, whether the cap cut the closure short).
 fn closure_collect(
     root: Vec<Summand>,
     seed_hash: u64,
     cap: i64,
     max_seen: usize,
-) -> (u64, Vec<Vec<Summand>>, Vec<Vec<Summand>>, u64, usize) {
+) -> (u64, Vec<Vec<Summand>>, Vec<Vec<Summand>>, u64, usize, bool) {
     use std::collections::{HashSet, VecDeque};
-    let mut seen: HashSet<u64> = HashSet::new();
+    let mut queued: HashSet<u64> = HashSet::from([scheme_hash(&root)]);
     let (mut found48, mut sub48) = (Vec::new(), Vec::new());
     let mut stack: VecDeque<Vec<Summand>> = VecDeque::from([root]);
     let mut states = 0u64;
     let (mut n_red, mut min_rank) = (0u64, usize::MAX);
+    let mut capped = false;
     while let Some(state) = stack.pop_front() {
-        if !seen.insert(scheme_hash(&state)) {
-            continue;
-        }
         states += 1;
+        // successors are queued while fewer than max_seen states have been taken
+        let open = (states as usize) < max_seen;
         let mut r = state.clone();
         let mut reduced = false;
         while try_reduce(&mut r, cap * 4) {
@@ -2117,9 +2139,14 @@ fn closure_collect(
             } else if r.len() == 48 && !is_seed && verify(&r) {
                 found48.push(r.clone());
             }
-            if r.len() >= 48 && seen.len() < max_seen {
-                stack.push_back(r);
+            if r.len() >= 48 {
+                push_capped(&mut stack, &mut queued, open, &mut capped, r);
             }
+        }
+        if !open && capped {
+            // nothing more can be queued and the closure is already known to be
+            // incomplete, so this state's flips cannot change any result
+            continue;
         }
         let n = state.len();
         for ss in 0..3usize {
@@ -2141,8 +2168,8 @@ fn closure_collect(
                             } else {
                                 try_flip(&mut s2, oj, oi, ss, (!lam.0, lam.1), cap)
                             };
-                            if ok && seen.len() < max_seen {
-                                stack.push_back(s2);
+                            if ok {
+                                push_capped(&mut stack, &mut queued, open, &mut capped, s2);
                             }
                         }
                     }
@@ -2150,14 +2177,53 @@ fn closure_collect(
             }
         }
     }
-    (states, found48, sub48, n_red, min_rank)
+    (states, found48, sub48, n_red, min_rank, capped)
+}
+
+/// the new bud pairs of a split as (piece index, partner index): bud_split puts
+/// the first piece at the pivot's index and appends the rest in support order
+fn bud_pairs(n: usize, support: &[usize], pivot: usize) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    for (q, &j) in support.iter().enumerate() {
+        if q == pivot {
+            continue;
+        }
+        let piece = if out.is_empty() { support[pivot] } else { n + out.len() - 1 };
+        out.push((piece, j));
+    }
+    out
+}
+
+/// one fixed-scalar flip (lambda in +-{1, 2, 1/2}, both transfer directions) on
+/// each new bud pair: an unsolved first step, for buds that have no solved flip
+fn bud_step_children(root: &[Summand], pairs: &[(usize, usize)], slot: usize,
+                     cap: i64) -> Vec<Vec<Summand>> {
+    use std::collections::HashSet;
+    let mut seen: HashSet<u64> = HashSet::new();
+    let mut out = Vec::new();
+    for &(p, j) in pairs {
+        assert!(fac(&root[p], slot) == fac(&root[j], slot), "bud pair does not share its factor");
+        for &(oi, oj) in &[(p, j), (j, p)] {
+            for neg in [false, true] {
+                for k in [-1, 0, 1] {
+                    let mut s2 = root.to_vec();
+                    if try_flip(&mut s2, oi, oj, slot, (neg, k), cap)
+                        && seen.insert(scheme_hash(&s2)) {
+                        out.push(s2);
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 /// the implicit-bud pilot: census of circuits per slot, then for every
 /// circuit and every pivot with dyadic coefficient ratios, split and explore
+/// (with `step`, explore from every fixed-scalar flip of a new bud pair instead)
 #[allow(clippy::too_many_arguments)]
 fn pursue_buds(seed: &[Summand], cap: i64, kmin: usize, kmax: usize, max_seen: usize,
-               slots: &[usize], max_roots: usize, outdir: &str) {
+               slots: &[usize], max_roots: usize, step: bool, outdir: &str) {
     use std::collections::HashMap;
     let seed_hash = scheme_hash(seed);
     let mut roots: Vec<(usize, Vec<usize>, Vec<i128>, usize)> = Vec::new();
@@ -2192,6 +2258,9 @@ fn pursue_buds(seed: &[Summand], cap: i64, kmin: usize, kmax: usize, max_seen: u
     let total_states = AtomicU64::new(0);
     let total_red = AtomicU64::new(0);
     let min_rank = AtomicU64::new(u64::MAX);
+    let n_starts = AtomicU64::new(0);
+    let n_moving = AtomicU64::new(0); // starts whose closure explored more than two states
+    let n_closed = AtomicU64::new(0); // starts whose closure the state cap never cut short
     let new48: Mutex<HashMap<u64, Vec<Summand>>> = Mutex::new(HashMap::new());
     let sub48: Mutex<Vec<Vec<Summand>>> = Mutex::new(Vec::new());
     let nroots = roots.len() as u64;
@@ -2201,26 +2270,41 @@ fn pursue_buds(seed: &[Summand], cap: i64, kmin: usize, kmax: usize, max_seen: u
             None => return,
         };
         assert!(verify(&root), "bud split broke the decomposition");
-        let (st, f48, s48, nr, mr) = closure_collect(root, seed_hash, cap, max_seen);
-        total_states.fetch_add(st, Ordering::Relaxed);
-        total_red.fetch_add(nr, Ordering::Relaxed);
-        min_rank.fetch_min(mr as u64, Ordering::Relaxed);
-        if !f48.is_empty() {
-            let mut m = new48.lock().unwrap();
-            for x in f48 {
-                m.entry(scheme_hash(&x)).or_insert(x);
+        let starts = if step {
+            bud_step_children(&root, &bud_pairs(seed.len(), sup, *p), *s, cap)
+        } else {
+            vec![root]
+        };
+        n_starts.fetch_add(starts.len() as u64, Ordering::Relaxed);
+        starts.into_par_iter().for_each(|start| {
+            assert!(verify(&start), "fixed-scalar bud flip broke the decomposition");
+            let (st, f48, s48, nr, mr, capped) = closure_collect(start, seed_hash, cap, max_seen);
+            total_states.fetch_add(st, Ordering::Relaxed);
+            total_red.fetch_add(nr, Ordering::Relaxed);
+            min_rank.fetch_min(mr as u64, Ordering::Relaxed);
+            if st > 2 {
+                n_moving.fetch_add(1, Ordering::Relaxed);
             }
-        }
-        if !s48.is_empty() {
-            let mut m = sub48.lock().unwrap();
-            for x in s48 {
-                println!("*** RANK {} VERIFIED from a bud split (slot {}, support {:?}) ***",
-                         x.len(), SLOT[*s], sup);
-                m.push(x);
+            if !capped {
+                n_closed.fetch_add(1, Ordering::Relaxed);
             }
-        }
+            if !f48.is_empty() {
+                let mut m = new48.lock().unwrap();
+                for x in f48 {
+                    m.entry(scheme_hash(&x)).or_insert(x);
+                }
+            }
+            if !s48.is_empty() {
+                let mut m = sub48.lock().unwrap();
+                for x in s48 {
+                    println!("*** RANK {} VERIFIED from a bud split (slot {}, support {:?}) ***",
+                             x.len(), SLOT[*s], sup);
+                    m.push(x);
+                }
+            }
+        });
         let d = done.fetch_add(1, Ordering::Relaxed) + 1;
-        if d % 24 == 0 || d == nroots {
+        if d.is_multiple_of(24) || d == nroots {
             println!("  {}/{} roots, {} states, {} distinct new rank-48, {:.0}s",
                      d, nroots, total_states.load(Ordering::Relaxed),
                      new48.lock().unwrap().len(), t0.elapsed().as_secs_f64());
@@ -2235,6 +2319,10 @@ fn pursue_buds(seed: &[Summand], cap: i64, kmin: usize, kmax: usize, max_seen: u
         dump(st, &format!("{outdir}/RANK{}_bud_{k}.txt", st.len()));
     }
     let mr = min_rank.load(Ordering::Relaxed);
+    println!("starts: {} ({} per root), {} explored more than two states, {} closures complete (the cap never cut them short)",
+             n_starts.load(Ordering::Relaxed),
+             if step { "fixed-scalar flips of new bud pairs" } else { "the split itself" },
+             n_moving.load(Ordering::Relaxed), n_closed.load(Ordering::Relaxed));
     println!("buds: {} roots, {} states, {} reductions (lowest rank reached {}), {} distinct NEW rank-48 (dumped {}), {} below 48, {:.0}s",
              nroots, total_states.load(Ordering::Relaxed), total_red.load(Ordering::Relaxed),
              if mr == u64::MAX { "none".to_string() } else { mr.to_string() },
@@ -2306,7 +2394,8 @@ fn main() {
     }
     if args.iter().any(|a| a == "--buds") {
         // implicit-bud pilot: --buds [--kmin 3] [--kmax 5] [--max-seen 5000]
-        //                     [--slots ab] [--max-roots N]
+        //                     [--slots ab] [--max-roots N] [--step]
+        // --step: start from each fixed-scalar flip of a new bud pair
         let kmin = get("--kmin", 3) as usize;
         let kmax = get("--kmax", 5) as usize;
         let max_seen = get("--max-seen", 5000) as usize;
@@ -2317,7 +2406,8 @@ fn main() {
             .and_then(|i| args.get(i + 1))
             .map(|s| s.chars().filter_map(|ch| "abc".find(ch)).collect())
             .unwrap_or_else(|| vec![0, 1]);
-        pursue_buds(&seed, cap, kmin, kmax, max_seen, &slots, max_roots, &outdir);
+        let step = args.iter().any(|a| a == "--step");
+        pursue_buds(&seed, cap, kmin, kmax, max_seen, &slots, max_roots, step, &outdir);
         return;
     }
     if let Some(pi) = args.iter().position(|a| a == "--graph") {

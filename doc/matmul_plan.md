@@ -1687,8 +1687,8 @@ the two source papers for this track):
   its floor (162) and P^T targets (42 -> P = 42 + 51 = 93, the regularity
   again) decide.  Not a better start for our pipeline; his implicit-bud
   jumps are the idea worth pursuing.
-- **IMPLICIT-BUD PILOT: NULL ON L/R, VACUOUS ON P (2026-10-23, Greg
-  asked; Alexandre's idea)**: flip48 --buds (f623bdd, f583937).  Circuits
+- **IMPLICIT-BUD PILOT: NULL ON ALL THREE FACTOR MATRICES (2026-10-23,
+  Greg asked; Alexandre's idea)**: flip48 --buds (f623bdd, f583937).  Circuits
   (minimal dependent sets) of the record point's slot factors, by exact
   integer elimination: L and R each have 88 of size 4, 112 of size 5, 1,184
   of size 6 and NONE of size 3; P (slot b of the rotated seed rec1 =
@@ -1710,11 +1710,25 @@ the two source papers for this track):
   P (rec1): 2,944 roots (64 / 240 / 2,640), 7,424 states, 0 reductions:
   VACUOUS -- a solved flip on a P bud needs a three-term relation among L
   or R factors and there is none, so each root merges straight back.
-  Verdict: within solved flips near each split (~6,400-30,000 states per
-  root, nearest first), implicit buds do not connect our point to any other
-  rank-48 decomposition.  Untested: P buds, and buds explored with unsolved
-  flips (fixed dyadic lambda, e.g. random walks as in the original flip48
-  walker) or deeper than breadth-first reaches.
+  P BUDS MADE REAL (option 1, Greg 13:05; flip48 --buds --step): from each
+  P split, one fixed-scalar flip (lambda in +-{1, 2, 1/2}, both transfer
+  directions) on each new bud pair, then the same solved-flip closure from
+  each result: 2,944 splits -> 171,648 starts (every flip valid), 457.1M
+  states, 374.2M reductions, lowest rank 49, 0 new rank-48, 0 below 48
+  (13:49-15:01).  Sizes 3-4: 1,728 starts at 2,000 states each; the 1,152
+  size-3 starts were explored COMPLETELY (closed components of ~8 states,
+  no reduction except back to our scheme).  Size 5: 11,520 starts at 2,000.
+  Size 6: 158,400 starts at 300 (2,000 would have taken ~6.6 h).  New in
+  flip48: --step; the closure queues each state once (same states, same
+  order: the calibration counts reproduce exactly) and reports whether the
+  cap cut it short; a capped closure stops generating flips once nothing
+  more can be queued.
+  Verdict: implicit buds of sizes 3-6 on L, R and P give no new rank-48
+  decomposition and nothing below 48 within these bounds; every reduction
+  stops at 49 except the return to our scheme -- the pattern of the
+  rigidity theorem (doc/matmul_rigid48_paper), now for multi-bud splits.
+  Not tried: unsolved flips beyond the first step, random walks,
+  Alexandre's generalized 2x2 flips (his idea 1).  Line closed.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

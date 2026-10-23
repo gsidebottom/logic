@@ -1636,8 +1636,19 @@ the two source papers for this track):
   chained constant factors into one scaling (unit-tested; the record still
   201; Agarwal now 648 in both tools).  No earlier result changes: every other
   reported program had no combined fractions or equal totals in both tools
-  (201, 215, 230, 263, 271, 269).  Running: t = 1 full orbit search (anneal
-  from the transported point -> floor 163, sweep), then t = 8 rerun.
+  (201, 215, 230, 263, 271, 269).  23:10 SCREEN FINISHED: t = 1 orbit search
+  236 = 74 + 74 + 88 (65+9, 66+8, 88+0; verified; floor 163, non-units L 96
+  R 94 P 4); t = 8 264 = 87 + 88 + 89 (verified).  Default lns48 rebuilt with
+  the parser fix; regression p005 L 55 (11/12).  201 paper Table 5 complete.
+  NEW LEAD: the t = 1 point's P costs 88, and P depends only on X, Z (the
+  family's t-independent factor) -> carry_isotropy.py recovers the annealer's
+  isotropy tr_1 -> cand000 and applies it to p005: a DPS-CLASS point (phi 192)
+  whose P is that 88 matrix (SLPchecker <88,0> with the t = 1 program).  So
+  our class has P = 88 points (the 'P = floor + 51' regularity was local).
+  orbit48 --factors Y anneals Y only, so P stays fixed (smoke: 5/5 identical,
+  non-units 212 -> 68 in seconds).  Running: restarts on the carried point,
+  then Y-only pool (lambda 0.3/0.5) + the 201 sweep: a 200 needs L + R <= 112
+  with this P.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

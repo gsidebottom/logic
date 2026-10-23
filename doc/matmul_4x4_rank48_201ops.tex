@@ -58,8 +58,8 @@ is the member $t=1/4$ of Li, Wang and Hu's one-parameter curve of
 pairwise inequivalent rational rank-48 classes.  An explicit isotropy
 carries our coordinates to every member of the curve; there the record's
 output program still applies, but the input maps cost more.  The full
-search on the nearest member, $t=1/2$, stops at $215$, and $t=1$ costs
-$263$ at matching coordinates.
+search stops at $215$ on the nearest member, $t=1/2$, and at $236$ on
+$t=1$, and the other members and Agarwal's scheme cost more still.
 \end{abstract}
 
 \section{Introduction}
@@ -619,32 +619,40 @@ applies unchanged; each member then costs its two input maps plus $89$.
 \paragraph{A first screen.}  Table~\ref{tab:classes} gives the members at
 these points, optimized with the restart protocol that gives
 $55+57+89=201$ for our class: twelve matrix-seeded searches of three
-minutes per side.  The cost grows with $t$.  Coefficients that vanish at
-$t=1/4$, such as the entries $(4t-1)/4$, become nonzero non-unit numbers
-elsewhere, and each one needs a scaling: $L$ and $R$ need $7$ scalings
-each at $t=1/2$ and $11$ to $14$ at $t\ge1$, against $2$ at the record.
-Our class is the sparsest point of the curve.  At $t=2$ the input map $L$
-alone costs $88$; the remaining runs at $t\ge2$ stopped on a limitation
-of our search tool, which cannot yet re-read some of the programs it
-emits for these coefficients.
+minutes per side.  The cost grows with $t$ up to $t=1$ and then levels
+off: from $t=2$ on, the transported points share one profile and cost
+$264$ to $271$.  Coefficients that vanish at $t=1/4$, such as the entries
+$(4t-1)/4$, become nonzero non-unit numbers elsewhere, and each one needs
+a scaling: $L$ and $R$ need $7$ scalings each at $t=1/2$ and $11$ to $17$
+at $t\ge1$, against $2$ at the record.  Our class is the sparsest point of
+the curve.  These runs use a corrected version of our search, which
+admits only rescalings with power-of-$2$ denominators, the ones valid
+over every ring containing $1/2$; every reported program passed the
+same exact check.
 
 \begin{table}[ht]
 \centering
-\caption{Members of the Li--Wang--Hu curve in the coordinates of our
-record, and for $t=1/2$ also the best point of a full orbit search.
+\caption{Other classes in the coordinates of our record: members of the
+Li--Wang--Hu curve at their transported points, the best points of full
+orbit searches for $t=1/2$ and $t=1$, and Agarwal's scheme.
 \emph{Non-unit} counts the coefficients of $L$ and $R$ outside
-$\{0,\pm1\}$; at the transported points $P$ is the record's for every
-$t$.  All programs pass SLPchecker and the exact Brent
-check.}\label{tab:classes}
-\begin{tabular}{rrrrrr}
+$\{0,\pm1\}$.  Runs at $t\ge2$ and on Agarwal's scheme use a build of the
+search that admits coefficients up to $64$.  All programs pass
+SLPchecker and the exact Brent check.}\label{tab:classes}
+\small
+\begin{tabular}{llrrrrrr}
 \toprule
-$t$ & floor & non-unit $L$, $R$ & $L$ & $R$ & total \\
+scheme & point & floor & non-unit $L$, $R$ & $L$ & $R$ & $P$ & total \\
 \midrule
-$1/4$ & $156$ & $32$, $32$ & $55$ & $57$ & $201$ \\
-$1/2$ & $160$ & $93$, $80$ & $70$ & $71$ & $230$ \\
-$1/2$, orbit search & $158$ & $57$, $56$ & $65$ & $61$ & $215$ \\
-$1$ & $166$ & $195$, $172$ & $86$ & $87$ & $263$ \\
-$2$ & $166$ & $203$, $182$ & $88$ & --- & --- \\
+$t=1/4$ & our record & $156$ & $32$, $32$ & $55$ & $57$ & $89$ & $201$ \\
+$t=1/2$ & transported & $160$ & $93$, $80$ & $70$ & $71$ & $89$ & $230$ \\
+$t=1/2$ & orbit search & $158$ & $57$, $56$ & $65$ & $61$ & $89$ & $215$ \\
+$t=1$ & transported & $166$ & $195$, $172$ & $86$ & $87$ & $89$ & $263$ \\
+$t=1$ & orbit search & $163$ & $96$, $94$ & $74$ & $74$ & $88$ & $236$ \\
+$t=2$ & transported & $166$ & $203$, $182$ & $88$ & $90$ & $89$ & $271$ \\
+$t=4$ & transported & $166$ & $203$, $182$ & $87$ & $89$ & $89$ & $269$ \\
+$t=8$ & transported & $166$ & $203$, $182$ & $87$ & $88$ & $89$ & $264$ \\
+Agarwal & transported & $166$ & $231$, $225$ & $230$ & $290$ & $128$ & $648$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -658,6 +666,9 @@ points then stops at $215=65+61+89$, with all six finalists at exactly
 $215$, the same kind of plateau as our class's $201$.  The best triple
 passes SLPchecker on every side and the exact Brent check.  So the
 nearest other class costs $14$ more under the search that found $201$.
+The same search on $t=1$ stops at $236=74+74+88$.  Its output map
+costs $88$, one below the $89$ of every point of our class we had
+optimized.
 
 \paragraph{Agarwal's scheme.}  Agarwal's replacement~\cite{Agarwal26}
 removes twelve products of $s(2)$, three of its four groups of rank-two
@@ -668,7 +679,9 @@ triples he states, $(2,3,2)$, $(2,3,3)$ and $(2,2,3)$, four of each, and
 every denominator is a power of $2$.  In our coordinates its floor is
 $166$, it has more non-unit coefficients than $s(2)$ on every side ($231$,
 $225$ and $46$ against $203$, $182$ and $8$), and its coefficients reach
-$48$.  We have not yet optimized it.
+$48$.  The restart protocol gives $230+290+128=648$ there, with $190$
+scalings: its new products bring many coefficients such as $37/8$ and
+$43/8$, and each one needs its own scaling.
 
 \section{Data and code}
 

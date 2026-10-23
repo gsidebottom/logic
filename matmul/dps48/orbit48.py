@@ -29,7 +29,7 @@ denominator 2^DEN (numpy int64); a move that would need a finer
 denominator or exceed the entry range is rejected.
 
 Usage: orbit48.py PREFIX OUTDIR [--steps N] [--restarts R] [--seed S]
-         [--t0 2.0] [--t1 0.2] [--lam 0.1] [--keep K] [--den 6] [--maxent 4]
+         [--t0 2.0] [--t1 0.2] [--lam 0.1] [--keep K] [--den 6] [--maxent 4] [--factors XYZ]
 """
 import itertools
 import os
@@ -178,6 +178,7 @@ def elementary(kind, i, j, c_num):
 
 
 MAXENT = 4 * SCAL  # entries confined to [-4, 4]
+FACTORS = [0, 1, 2]  # which of X, Y, Z the annealer may move (--factors XYZ)
 
 
 def in_range(U, V, W):
@@ -205,7 +206,7 @@ def anneal(U0, V0, W0, steps, t0, t1, lam, rng, log=None, pool=None, pool_floor=
     adds = [SCAL, -SCAL, SCAL // 2, -SCAL // 2, 2 * SCAL, -2 * SCAL]
     for step in range(steps):
         T = t0 * (t1 / t0) ** (step / max(1, steps - 1))
-        f = rng.integers(3)
+        f = int(rng.choice(FACTORS))
         kind = rng.choice(["add", "add", "add", "add", "swap", "sign", "scale2", "scaleh"])
         i, j = rng.integers(4), rng.integers(4)
         if kind in ("add", "swap") and i == j:
@@ -285,7 +286,8 @@ def main():
     lam = opt("--lam", 0.1)
     keep = opt("--keep", 8, int)
     pool_floor = opt("--pool-floor", 150, int)
-    global MAXENT
+    global MAXENT, FACTORS
+    FACTORS = ["XYZ".index(ch) for ch in opt("--factors", "XYZ", str)]  # e.g. Y: keep P fixed
     MAXENT = int(opt("--maxent", MAXENT // SCAL, float) * SCAL)  # entry cap (default 4)
     for k in ("wl", "wr", "wp", "wbal", "wnz"):
         WEIGHTS[k] = opt("--" + k, WEIGHTS[k])

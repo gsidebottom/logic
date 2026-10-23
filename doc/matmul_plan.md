@@ -1687,6 +1687,34 @@ the two source papers for this track):
   its floor (162) and P^T targets (42 -> P = 42 + 51 = 93, the regularity
   again) decide.  Not a better start for our pipeline; his implicit-bud
   jumps are the idea worth pursuing.
+- **IMPLICIT-BUD PILOT: NULL ON L/R, VACUOUS ON P (2026-10-23, Greg
+  asked; Alexandre's idea)**: flip48 --buds (f623bdd, f583937).  Circuits
+  (minimal dependent sets) of the record point's slot factors, by exact
+  integer elimination: L and R each have 88 of size 4, 112 of size 5, 1,184
+  of size 6 and NONE of size 3; P (slot b of the rotated seed rec1 =
+  (V, W^T, U^T), since the engine detects shared factors up to scale only
+  in slots a, b) has 16 of size 3, 4 of size 4, 48 of size 5, 440 of size 6.
+  Every pivot with power-of-2 coefficient ratios was split (rank
+  48 + |S| - 2, |S| - 1 explicit buds at once; every root Brent-verified)
+  and explored breadth-first under solved flips (each flip must create a
+  new shared factor) with greedy reductions as moves: 20,000 states per
+  root at sizes 3-5, 2,000 at size 6 (the 20,000 size-6 run hit its 3-h
+  timeout with its output stuck in a pipe buffer; rerun 12:12-12:51 logging
+  straight to file, 2,328 s).
+  L/R (rec0): 16,032 roots (704 / 1,120 / 14,208), 141.1M states, 110.1M
+  reductions, lowest rank reached 49 at every size, 0 new rank-48, 0 below
+  48.  A root's own reduction gives back exactly our scheme (checked on all
+  18,976 roots at one state each); the reductions that stop at 49 are
+  partial re-merges where a flip moved one piece.  Every solved flip the
+  buds get uses one of the 16 three-term relations among P's factors.
+  P (rec1): 2,944 roots (64 / 240 / 2,640), 7,424 states, 0 reductions:
+  VACUOUS -- a solved flip on a P bud needs a three-term relation among L
+  or R factors and there is none, so each root merges straight back.
+  Verdict: within solved flips near each split (~6,400-30,000 states per
+  root, nearest first), implicit buds do not connect our point to any other
+  rank-48 decomposition.  Untested: P buds, and buds explored with unsolved
+  flips (fixed dyadic lambda, e.g. random walks as in the original flip48
+  walker) or deeper than breadth-first reaches.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

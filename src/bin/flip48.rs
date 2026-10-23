@@ -2220,7 +2220,7 @@ fn pursue_buds(seed: &[Summand], cap: i64, kmin: usize, kmax: usize, max_seen: u
             }
         }
         let d = done.fetch_add(1, Ordering::Relaxed) + 1;
-        if d % 200 == 0 || d == nroots {
+        if d % 24 == 0 || d == nroots {
             println!("  {}/{} roots, {} states, {} distinct new rank-48, {:.0}s",
                      d, nroots, total_states.load(Ordering::Relaxed),
                      new48.lock().unwrap().len(), t0.elapsed().as_secs_f64());

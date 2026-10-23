@@ -7,7 +7,7 @@
 set -u
 PREFIX=$1; OUT=$2; SEEDS=${3:-12}; WALL=${4:-180}; SEED0=${5:-100}
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
-LNS=$ROOT/target/release/lns48
+LNS=${LNS48_BIN:-$ROOT/target/release/lns48}
 BIN=${PLINOPT_BIN:-/private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/plinopt-run/bin}
 mkdir -p "$OUT"
 $BIN/matrix-transpose "${PREFIX}_P.sms" > "$OUT/Pt.sms"

@@ -395,6 +395,11 @@ impl Catalog {
                         continue;
                     }
                     let (num, den) = if den < 0 { (-num, -den) } else { (num, den) };
+                    // only ratios valid over every ring containing 1/2: the denominator must
+                    // be a power of 2 (a ratio such as 7/6 would divide by 3)
+                    if (den as u64) & (den as u64 - 1) != 0 {
+                        continue;
+                    }
                     if (num == 1 || num == -1) && den == 1 {
                         continue; // a copy, not a production of a new direction
                     }
@@ -1704,7 +1709,11 @@ fn opt(args: &mut Vec<String>, name: &str) -> Option<String> {
 
 fn verify_and_write(plan: &Plan, targets: &[V], path: &str) -> (usize, usize) {
     let (text, adds, scalings) = emit(plan, targets);
-    let outs = eval_outputs(&text).expect("emitted program parses");
+    let outs = eval_outputs(&text).unwrap_or_else(|e| {
+        let dump = format!("{}.unparsed", path);
+        let _ = std::fs::write(&dump, &text);
+        panic!("emitted program does not parse: {} (program written to {})", e, dump)
+    });
     assert!(outs.len() == targets.len() && outs.iter().zip(targets).all(|(a, b)| a == b), "emitted program does not compute the targets");
     assert!(adds + scalings == plan_cost(plan), "count mismatch");
     std::fs::write(path, text).expect("write program");

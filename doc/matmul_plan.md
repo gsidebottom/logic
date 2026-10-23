@@ -1616,6 +1616,16 @@ the two source papers for this track):
   So the nearest other class costs 14 more under the same search; the DPS
   member t = 1/4 is the best of the curve so far.  201 paper updated
   (Section 8 'Other rational rank-48 classes', abstract, Table 5).
+  21:45 lns48 FIX: its catalog allowed proportional rescalings by any ratio
+  num/den up to 64/64; with coefficients like 6 and 7 that admits x 7/6,
+  which divides by 3 and is NOT valid over Z[1/2].  The self-check caught it
+  (verify_and_write re-parses programs over 1/64; that was the t >= 2
+  'crash').  Now only power-of-2 denominators are allowed.  Earlier results
+  are unaffected: every reported program passed the same check (t = 1/2,
+  1 scalings all dyadic; the DPS class only has ratios +-2^k).  Regression:
+  p005 L still 55 (11/12 seeds, 40 s).  Self-check now dumps unparsable
+  programs.  restarts.sh takes LNS48_BIN; bigcoef build in target/bigcoef.
+  Running: restarts on t = 2, 4, 8 and Agarwal (bigcoef build).
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

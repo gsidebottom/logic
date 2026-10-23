@@ -675,14 +675,15 @@ fn load_seed(dir: &str) -> Vec<Summand> {
     };
     let l = parse(&format!("{dir}/L.sms"));
     let r = parse(&format!("{dir}/R.sms"));
-    let p = parse(&format!("{dir}/P.sms")); // 9 x 23 -> transpose
-    let mut pt: Vec<Vec<(usize, i64, i32)>> = vec![Vec::new(); 23];
+    let p = parse(&format!("{dir}/P.sms")); // 9 x rank -> transpose
+    let rank = l.len();
+    let mut pt: Vec<Vec<(usize, i64, i32)>> = vec![Vec::new(); rank];
     for (z, row) in p.iter().enumerate() {
         for &(i, n, e) in row {
             pt[i].push((z, n, e));
         }
     }
-    (0..23)
+    (0..rank)
         .map(|i| {
             Summand::gauge(mk(&l[i]), mk(&r[i]), mk(&pt[i])).expect("seed")
         })
@@ -1944,6 +1945,634 @@ fn dump(s: &[Summand], path: &str) {
     std::fs::write(path, txt).ok();
 }
 
+// ---------- descent from any seed rank (A. Sedoglavic's items 2-6) ----------
+
+/// rank of a factor as a 3x3 matrix (its numerators, row-major)
+fn mat_rank(v: &Vec9) -> usize {
+    let m = |r: usize, c: usize| v.nums[3 * r + c] as i128;
+    let det = m(0, 0) * (m(1, 1) * m(2, 2) - m(1, 2) * m(2, 1))
+        - m(0, 1) * (m(1, 0) * m(2, 2) - m(1, 2) * m(2, 0))
+        + m(0, 2) * (m(1, 0) * m(2, 1) - m(1, 1) * m(2, 0));
+    if det != 0 {
+        return 3;
+    }
+    for (r1, r2) in [(0, 1), (0, 2), (1, 2)] {
+        for (c1, c2) in [(0, 1), (0, 2), (1, 2)] {
+            if m(r1, c1) * m(r2, c2) - m(r1, c2) * m(r2, c1) != 0 {
+                return 2;
+            }
+        }
+    }
+    usize::from(!v.is_zero())
+}
+
+/// Sedoglavic's type of a summand, summed: the ranks of its three factor matrices
+fn summand_type(t: &Summand) -> usize {
+    mat_rank(&t.a) + mat_rank(&t.b) + mat_rank(&t.c)
+}
+
+fn type_sum(s: &[Summand]) -> usize {
+    s.iter().map(summand_type).sum()
+}
+
+/// the cyclic symmetry of <3x3x3> in our convention, (X, Y, Z) -> (Y, Z^T, X^T):
+/// it brings slot-c factors (compared only exactly) into slots a and b (compared
+/// up to scale), so buds in every slot become flippable
+fn rotate(s: &[Summand]) -> Vec<Summand> {
+    let tr = |v: &Vec9| -> Vec9 {
+        let mut nums = [0i64; 9];
+        for r in 0..3 {
+            for c in 0..3 {
+                nums[3 * c + r] = v.nums[3 * r + c];
+            }
+        }
+        Vec9 { nums, exp: v.exp }
+    };
+    s.iter()
+        .map(|t| Summand::gauge(t.b.clone(), tr(&t.c), tr(&t.a)).expect("rotation keeps factors"))
+        .collect()
+}
+
+/// a dyadic scalar: None = 0, Some((neg, k)) = (-1)^neg 2^k
+type Dy = Option<(bool, i32)>;
+
+fn dy_mul(x: Dy, y: Dy) -> Dy {
+    Some((x?.0 ^ y?.0, x?.1 + y?.1))
+}
+
+fn dy_neg(x: Dy) -> Dy {
+    x.map(|(n, k)| (!n, k))
+}
+
+/// x - y if it is 0 or +-2^k, else None (it would leave Z[1/2])
+fn dy_sub(x: Dy, y: Dy) -> Option<Dy> {
+    let (x, y) = match (x, y) {
+        (None, y) => return Some(dy_neg(y)),
+        (x, None) => return Some(x),
+        (Some(x), Some(y)) => (x, y),
+    };
+    let e = x.1.min(y.1);
+    let iv = |(n, k): (bool, i32)| -> i128 { if n { -(1i128 << (k - e)) } else { 1i128 << (k - e) } };
+    let d = iv(x) - iv(y);
+    if d == 0 {
+        Some(None)
+    } else if d.unsigned_abs().is_power_of_two() {
+        Some(Some((d < 0, d.unsigned_abs().trailing_zeros() as i32 + e)))
+    } else {
+        None
+    }
+}
+
+/// alpha v + beta w for dyadic alpha, beta (not both 0)
+fn dy_lin(v: &Vec9, alpha: Dy, w: &Vec9, beta: Dy) -> Option<Vec9> {
+    let scale = |u: &Vec9, (n, k): (bool, i32)| -> Vec9 {
+        let mut s = Vec9 { nums: u.nums, exp: u.exp + k };
+        if n {
+            for x in s.nums.iter_mut() {
+                *x = -*x;
+            }
+        }
+        s
+    };
+    match (alpha, beta) {
+        (None, None) => None,
+        (None, Some(b)) => Some(scale(w, b)),
+        (Some(a), None) => Some(scale(v, a)),
+        (Some(a), Some((bn, bk))) => scale(v, a).add_scaled(w, bn, bk),
+    }
+}
+
+/// points of the line spanned by x_p, x_j for the generalized flip (as in flip48):
+/// x_p, x_j and x_p + t x_j for t in +-{1, 2, 1/2}
+const GEN_POINTS: [(Dy, Dy); 8] = [
+    (Some((false, 0)), None),
+    (None, Some((false, 0))),
+    (Some((false, 0)), Some((false, 0))),
+    (Some((false, 0)), Some((true, 0))),
+    (Some((false, 0)), Some((false, 1))),
+    (Some((false, 0)), Some((true, 1))),
+    (Some((false, 0)), Some((false, -1))),
+    (Some((false, 0)), Some((true, -1))),
+];
+
+/// Sedoglavic's generalized flip of the bud p, j (shared slot-`slot` factor):
+/// X' = X M, Y' = Y M^-T with M's columns the points c1, c2 (see flip48)
+fn gen_flip(scheme: &[Summand], p: usize, j: usize, slot: usize, c1: (Dy, Dy), c2: (Dy, Dy),
+            cap: i64) -> Option<Vec<Summand>> {
+    let others: [usize; 2] = match slot {
+        0 => [1, 2],
+        1 => [0, 2],
+        _ => [0, 1],
+    };
+    let (t1, t2) = (others[0], others[1]);
+    let ((m11, m21), (m12, m22)) = (c1, c2);
+    let det = dy_sub(dy_mul(m11, m22), dy_mul(m12, m21))??;
+    let inv = |x: Dy| dy_mul(x, Some((det.0, -det.1)));
+    let (xp, xj) = (fac(&scheme[p], t1), fac(&scheme[j], t1));
+    let (yp, yj) = (fac(&scheme[p], t2), fac(&scheme[j], t2));
+    let x1 = dy_lin(xp, m11, xj, m21)?;
+    let x2 = dy_lin(xp, m12, xj, m22)?;
+    let y1 = dy_lin(yp, inv(m22), yj, inv(dy_neg(m12)))?;
+    let y2 = dy_lin(yp, inv(dy_neg(m21)), yj, inv(m11))?;
+    if [&x1, &x2, &y1, &y2].iter().any(|v| v.is_zero() || v.max_abs() > cap) {
+        return None;
+    }
+    let f = fac(&scheme[p], slot).clone();
+    let mk = |x: Vec9, y: Vec9| -> Option<Summand> {
+        let mut abc = [f.clone(), f.clone(), f.clone()];
+        abc[t1] = x;
+        abc[t2] = y;
+        let [a, b, c] = abc;
+        Summand::gauge(a, b, c)
+    };
+    let (s1, s2) = (mk(x1, y1)?, mk(x2, y2)?);
+    let (s1, s2) = if m11.is_none() { (s2, s1) } else { (s1, s2) };
+    let mut out = scheme.to_vec();
+    out[p] = s1;
+    out[j] = s2;
+    Some(out)
+}
+
+fn gcd128(a: i128, b: i128) -> i128 {
+    let (mut a, mut b) = (a.abs(), b.abs());
+    while b != 0 {
+        let t = a % b;
+        a = b;
+        b = t;
+    }
+    a
+}
+
+/// slot-`slot` factors of all summands as integer vectors at one common
+/// power-of-two scale (so linear relations among them are exact)
+fn slot_ints(scheme: &[Summand], slot: usize) -> Option<Vec<[i128; 9]>> {
+    let emin = scheme.iter().map(|t| fac(t, slot).exp).min()?;
+    let mut out = Vec::with_capacity(scheme.len());
+    for t in scheme {
+        let f = fac(t, slot);
+        let sh = (f.exp - emin) as u32;
+        if sh > 40 {
+            return None;
+        }
+        let mut v = [0i128; 9];
+        for x in 0..9 {
+            v[x] = (f.nums[x] as i128).checked_shl(sh)?;
+        }
+        out.push(v);
+    }
+    Some(out)
+}
+
+/// exact elimination on the given rows: (rank, alpha) with alpha the primitive
+/// generator of the row-kernel when the rank is k - 1 (empty otherwise)
+fn kernel1(rows: &[&[i128; 9]]) -> Option<(usize, Vec<i128>)> {
+    let k = rows.len();
+    let w = 9 + k;
+    let mut m: Vec<Vec<i128>> = rows
+        .iter()
+        .enumerate()
+        .map(|(r, v)| {
+            let mut x = v.to_vec();
+            for c in 0..k {
+                x.push(if c == r { 1 } else { 0 });
+            }
+            x
+        })
+        .collect();
+    let mut row = 0usize;
+    for col in 0..9 {
+        if row == k {
+            break;
+        }
+        let p = match (row..k).find(|&r| m[r][col] != 0) {
+            Some(p) => p,
+            None => continue,
+        };
+        m.swap(row, p);
+        for r in 0..k {
+            if r != row && m[r][col] != 0 {
+                let (a, b) = (m[row][col], m[r][col]);
+                let mut g = 0i128;
+                for c in 0..w {
+                    let v = m[r][c].checked_mul(a)?.checked_sub(m[row][c].checked_mul(b)?)?;
+                    m[r][c] = v;
+                    g = gcd128(g, v);
+                }
+                if g > 1 {
+                    for c in 0..w {
+                        m[r][c] /= g;
+                    }
+                }
+            }
+        }
+        row += 1;
+    }
+    if row + 1 == k {
+        let mut alpha: Vec<i128> = m[k - 1][9..].to_vec();
+        let g = alpha.iter().fold(0i128, |g, &x| gcd128(g, x));
+        if g > 1 {
+            for x in alpha.iter_mut() {
+                *x /= g;
+            }
+        }
+        Some((row, alpha))
+    } else {
+        Some((row, Vec::new()))
+    }
+}
+
+/// advance a sorted combination of indices in 0..n; false after the last one
+fn next_comb(idx: &mut [usize], n: usize) -> bool {
+    let m = idx.len();
+    let mut p = m;
+    while p > 0 {
+        p -= 1;
+        if idx[p] < n - (m - p) {
+            idx[p] += 1;
+            for q in p + 1..m {
+                idx[q] = idx[q - 1] + 1;
+            }
+            return true;
+        }
+    }
+    false
+}
+
+/// every circuit (minimal dependent set, all coefficients nonzero) of size
+/// 3..=kmax through vector i; the support lists i first
+fn circuits_through(vecs: &[[i128; 9]], i: usize, kmax: usize) -> Vec<(Vec<usize>, Vec<i128>)> {
+    let others: Vec<usize> = (0..vecs.len()).filter(|&j| j != i).collect();
+    let mut out = Vec::new();
+    for k in 3..=kmax {
+        if others.len() < k - 1 {
+            break;
+        }
+        let mut idx: Vec<usize> = (0..k - 1).collect();
+        loop {
+            let mut sup = vec![i];
+            sup.extend(idx.iter().map(|&q| others[q]));
+            let rows: Vec<&[i128; 9]> = sup.iter().map(|&j| &vecs[j]).collect();
+            if let Some((rank, alpha)) = kernel1(&rows)
+                && rank + 1 == k
+                && alpha.iter().all(|&x| x != 0)
+            {
+                out.push((sup, alpha));
+            }
+            if !next_comb(&mut idx, others.len()) {
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// |x| = odd * 2^tz
+fn odd_part(x: i128) -> (i128, i32) {
+    let a = x.abs();
+    let tz = a.trailing_zeros() as i32;
+    (a >> tz, tz)
+}
+
+/// split summand support[pivot] along the circuit (Sedoglavic's implicit bud):
+/// rank + |S| - 2, |S| - 1 explicit buds; None if a coefficient ratio is not
+/// +-2^k (the result would leave Z[1/2]) or exceeds the cap
+fn bud_split(scheme: &[Summand], slot: usize, support: &[usize], alpha: &[i128], pivot: usize,
+             cap: i64) -> Option<Vec<Summand>> {
+    let i = support[pivot];
+    let (op, tp) = odd_part(alpha[pivot]);
+    let mut news = Vec::new();
+    for (q, &j) in support.iter().enumerate() {
+        if q == pivot {
+            continue;
+        }
+        let (oj, tj) = odd_part(alpha[q]);
+        if oj != op {
+            return None;
+        }
+        // coefficient -alpha_j/alpha_p = sign * 2^(tj - tp)
+        let neg = (alpha[q] < 0) == (alpha[pivot] < 0);
+        let fj = fac(&scheme[j], slot);
+        let mut f = Vec9 { nums: fj.nums, exp: fj.exp + (tj - tp) };
+        if neg {
+            for x in f.nums.iter_mut() {
+                *x = -*x;
+            }
+        }
+        if f.max_abs() > cap {
+            return None;
+        }
+        let t = &scheme[i];
+        news.push(match slot {
+            0 => Summand::gauge(f, t.b.clone(), t.c.clone()),
+            1 => Summand::gauge(t.a.clone(), f, t.c.clone()),
+            _ => Summand::gauge(t.a.clone(), t.b.clone(), f),
+        }?);
+    }
+    let mut out = scheme.to_vec();
+    out[i] = news[0].clone();
+    out.extend(news.into_iter().skip(1));
+    Some(out)
+}
+
+/// Kauers-Moosbauer plus transition: a_i b_i c_i + a_j b_j c_j =
+/// (a_i - mu a_j) b_i c_i + mu a_j (b_i - b_j) c_i + mu a_j b_j (c_i + c_j / mu):
+/// rank + 1 with two new buds and, unlike a split, no pair sharing two slots
+fn try_plus(s: &mut Vec<Summand>, i: usize, j: usize, mu: (bool, i32), cap: i64) -> bool {
+    if i == j {
+        return false;
+    }
+    let (ti, tj) = (s[i].clone(), s[j].clone());
+    let one = Some((false, 0));
+    let m = Some(mu);
+    let minv = Some((mu.0, -mu.1));
+    let parts = (|| {
+        let a1 = dy_lin(&ti.a, one, &tj.a, dy_neg(m))?;
+        let a2 = dy_lin(&tj.a, m, &tj.a, None)?;
+        let b2 = dy_lin(&ti.b, one, &tj.b, Some((true, 0)))?;
+        let c3 = dy_lin(&ti.c, one, &tj.c, minv)?;
+        if [&a1, &b2, &c3].iter().any(|v| v.is_zero() || v.max_abs() > cap) {
+            return None;
+        }
+        Some((Summand::gauge(a1, ti.b.clone(), ti.c.clone())?,
+              Summand::gauge(a2.clone(), b2, ti.c.clone())?,
+              Summand::gauge(a2, tj.b.clone(), c3)?))
+    })();
+    match parts {
+        Some((p1, p2, p3)) => {
+            s[i] = p1;
+            s[j] = p2;
+            s.push(p3);
+            true
+        }
+        None => false,
+    }
+}
+
+/// the new bud pairs of a split as (piece index, partner index): bud_split puts
+/// the first piece at the pivot's index and appends the rest in support order
+fn bud_pairs(n: usize, support: &[usize], pivot: usize) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    for (q, &j) in support.iter().enumerate() {
+        if q == pivot {
+            continue;
+        }
+        let piece = if out.is_empty() { support[pivot] } else { n + out.len() - 1 };
+        out.push((piece, j));
+    }
+    out
+}
+
+/// every solved flip of the state: (i, j, slot, lambda) applied as try_flip(i, j, ...)
+fn solved_flips(s: &[Summand], pairs: &[(usize, usize, usize)]) -> Vec<(usize, usize, usize, (bool, i32))> {
+    let mut out = Vec::new();
+    for &(x, y, slot) in pairs {
+        let others: [usize; 2] = match slot {
+            0 => [1, 2],
+            1 => [0, 2],
+            _ => [0, 1],
+        };
+        for (i, j) in [(x, y), (y, x)] {
+            for (t, lam, _) in coincidence_lams(s, i, j, slot) {
+                out.push(if t == others[0] { (i, j, slot, lam) } else { (j, i, slot, (!lam.0, lam.1)) });
+            }
+        }
+    }
+    out
+}
+
+/// all pairs of summands sharing a factor (exactly; slots a and b are canonical,
+/// so that is up to scale there)
+fn shared_pairs(s: &[Summand]) -> Vec<(usize, usize, usize)> {
+    use std::collections::HashMap;
+    let mut groups: [HashMap<&Vec9, Vec<usize>>; 3] = Default::default();
+    for (idx, t) in s.iter().enumerate() {
+        for slot in 0..3 {
+            groups[slot].entry(fac(t, slot)).or_default().push(idx);
+        }
+    }
+    let mut out = Vec::new();
+    for (slot, g) in groups.iter().enumerate() {
+        for members in g.values() {
+            for x in 0..members.len() {
+                for y in x + 1..members.len() {
+                    out.push((members[x], members[y], slot));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// descent from any seed rank.  Each thread walks.  A flip step first looks,
+/// among up to 64 of the state's solved flips (lambda solved so that the flip
+/// creates a new coincidence), for one after which a reduction applies, and
+/// takes it; otherwise it takes a solved flip 3 times in 4 (with `type_bias`
+/// +1 / -1: of 4 candidates the one raising / lowering Sedoglavic's type, the
+/// summed factor ranks, most), else a flip with a fixed small lambda (+-1, or
+/// +-{1, 2, 1/2} with `wide_lams`; with `gen_pct`, that percentage of these are
+/// two-point generalized flips instead).  Greedy reductions follow every move.
+/// A cyclic rotation 2% of the time; once the walk has not improved for
+/// `patience` moves, a plus transition 6% of the time (Kauers-Moosbauer's; with
+/// `plus_bud` a split along a circuit through a summand, Sedoglavic's implicit
+/// bud, followed by one fixed-scalar flip on a new bud pair so the pieces do not
+/// simply merge back), never more than 2 above the walk's best; after 40 x
+/// `patience` idle moves a restart from the walk's best state or the seed.
+/// Reports, per rank, how many threads reached it and when, with the type sum.
+#[allow(clippy::too_many_arguments)]
+fn descend(seed: &[Summand], cap: i64, seconds: u64, threads: usize, plus_bud: bool,
+           gen_pct: u64, type_bias: i64, wide_lams: bool, patience: u64, outdir: &str) {
+    use std::collections::{BTreeMap, HashSet};
+    let base = seed.len();
+    let r1 = rotate(seed);
+    assert!(verify(&r1), "the rotated seed must verify");
+    assert_eq!(scheme_hash(&rotate(&rotate(&r1))), scheme_hash(seed), "three rotations must be the identity");
+    let best = AtomicU32::new(base as u32);
+    let hits: Mutex<BTreeMap<usize, Vec<(f64, usize)>>> = Mutex::new(BTreeMap::new());
+    let distinct23: Mutex<HashSet<u64>> = Mutex::new(HashSet::new());
+    // solved flips taken, of them reducing, fixed-lambda flips, generalized flips,
+    // plus transitions, reductions, rotations, restarts
+    let counters: [AtomicU64; 8] = Default::default();
+    let t0 = Instant::now();
+    let lams: &[(bool, i32)] = if wide_lams { &LAMS } else { &LAMS[..2] };
+    let sp = shared_pairs(seed);
+    println!("descent from rank {base} (type sum {}; {} shared pairs, {} solved flips): plus transition {}, \
+              generalized flips {gen_pct}%, type bias {type_bias}, fixed lambdas {}, patience {patience}; \
+              {threads} threads x {seconds} s",
+             type_sum(seed), sp.len(), solved_flips(seed, &sp).len(),
+             if plus_bud { "implicit bud" } else { "Kauers-Moosbauer" },
+             if wide_lams { "+-{1,2,1/2}" } else { "+-1" });
+    (0..threads as u64).into_par_iter().for_each(|tid| {
+        let mut rng = Rng(0x9e3779b97f4a7c15 ^ (tid.wrapping_mul(0xa54ff53a5f1d36f1) + 1));
+        let mut s = seed.to_vec();
+        let mut local_best = base;
+        let mut best_state = s.clone();
+        let mut stuck = 0u64;
+        let mut reached: HashSet<usize> = HashSet::new();
+        let mut steps = 0u64;
+        while t0.elapsed().as_secs() < seconds {
+            stuck += 1;
+            steps += 1;
+            let r = rng.next() % 100;
+            let pairs = shared_pairs(&s);
+            if r < 2 {
+                s = rotate(&s);
+                counters[6].fetch_add(1, Ordering::Relaxed);
+            } else if (r < 8 && stuck > patience) || pairs.is_empty() {
+                let i = rng.below(s.len());
+                if plus_bud {
+                    let slot = rng.below(3);
+                    if let Some(vecs) = slot_ints(&s, slot) {
+                        let cs = circuits_through(&vecs, i, 4);
+                        if !cs.is_empty() {
+                            let (sup, alpha) = &cs[rng.below(cs.len())];
+                            if s.len() + 1 <= local_best + 2
+                                && let Some(s2) = bud_split(&s, slot, sup, alpha, 0, cap)
+                            {
+                                let bp = bud_pairs(s.len(), sup, 0);
+                                let (pc, pj) = bp[rng.below(bp.len())];
+                                let (oi, oj) = if rng.next() & 1 == 0 { (pc, pj) } else { (pj, pc) };
+                                let mut s3 = s2;
+                                if try_flip(&mut s3, oi, oj, slot, LAMS[rng.below(6)], cap) {
+                                    s = s3;
+                                    counters[4].fetch_add(1, Ordering::Relaxed);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    let j = rng.below(s.len());
+                    if s.len() < local_best + 2 && try_plus(&mut s, i, j, LAMS[rng.below(6)], cap) {
+                        counters[4].fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            } else {
+                let mut solved = solved_flips(&s, &pairs);
+                let mut took = false;
+                // reduction lookahead over (a sample of) the solved flips
+                if solved.len() > 64 {
+                    for q in 0..64 {
+                        let w = q + rng.below(solved.len() - q);
+                        solved.swap(q, w);
+                    }
+                }
+                let mut reducing: Vec<Vec<Summand>> = Vec::new();
+                for &(i, j, slot, lam) in solved.iter().take(64) {
+                    let mut s2 = s.clone();
+                    if try_flip(&mut s2, i, j, slot, lam, cap) && try_reduce(&mut s2, cap * 4) {
+                        reducing.push(s2);
+                    }
+                }
+                if !reducing.is_empty() {
+                    s = reducing.swap_remove(rng.below(reducing.len()));
+                    counters[0].fetch_add(1, Ordering::Relaxed);
+                    counters[1].fetch_add(1, Ordering::Relaxed);
+                    counters[5].fetch_add(1, Ordering::Relaxed);
+                    took = true;
+                } else if !solved.is_empty() && !rng.next().is_multiple_of(4) {
+                    let ncand = if type_bias != 0 { 4 } else { 1 };
+                    let mut chosen: Option<(i64, Vec<Summand>)> = None;
+                    for _ in 0..ncand {
+                        let (i, j, slot, lam) = solved[rng.below(solved.len())];
+                        let mut s2 = s.clone();
+                        if try_flip(&mut s2, i, j, slot, lam, cap) {
+                            let d = (summand_type(&s2[i]) + summand_type(&s2[j])) as i64
+                                - (summand_type(&s[i]) + summand_type(&s[j])) as i64;
+                            if chosen.as_ref().is_none_or(|(sc, _)| type_bias * d > *sc) {
+                                chosen = Some((type_bias * d, s2));
+                            }
+                        }
+                    }
+                    if let Some((_, s2)) = chosen {
+                        s = s2;
+                        counters[0].fetch_add(1, Ordering::Relaxed);
+                        took = true;
+                    }
+                }
+                if !took {
+                    let (i, j, slot) = pairs[rng.below(pairs.len())];
+                    if gen_pct > 0 && rng.next() % 100 < gen_pct {
+                        for _ in 0..8 {
+                            let (u, v) = (2 + rng.below(6), 2 + rng.below(6));
+                            if u != v
+                                && let Some(s2) = gen_flip(&s, i, j, slot, GEN_POINTS[u], GEN_POINTS[v], cap)
+                            {
+                                s = s2;
+                                counters[3].fetch_add(1, Ordering::Relaxed);
+                                break;
+                            }
+                        }
+                    } else {
+                        let (i, j) = if rng.next() & 1 == 0 { (i, j) } else { (j, i) };
+                        if try_flip(&mut s, i, j, slot, lams[rng.below(lams.len())], cap) {
+                            counters[2].fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                }
+            }
+            while try_reduce(&mut s, cap * 4) {
+                counters[5].fetch_add(1, Ordering::Relaxed);
+            }
+            let rank = s.len();
+            if rank < local_best {
+                local_best = rank;
+                best_state = s.clone();
+                stuck = 0;
+            }
+            if rank < base && reached.insert(rank) {
+                hits.lock().unwrap().entry(rank).or_default()
+                    .push((t0.elapsed().as_secs_f64(), type_sum(&s)));
+            }
+            if (rank as u32) < best.load(Ordering::Relaxed) {
+                if verify(&s) {
+                    best.fetch_min(rank as u32, Ordering::Relaxed);
+                    println!("[{:.1}s] rank {rank} (thread {tid}, type sum {})",
+                             t0.elapsed().as_secs_f64(), type_sum(&s));
+                } else {
+                    println!("rank {rank} FAILED verify (bug!)");
+                }
+            }
+            if rank <= 22 && verify(&s) {
+                let path = format!("{outdir}/RANK{rank}_t{tid}_{steps}.txt");
+                dump(&s, &path);
+                println!("*** RANK {rank} VERIFIED, below the 3x3 record -> {path} ***");
+            }
+            if rank == 23 {
+                let h = scheme_hash(&s);
+                let mut d = distinct23.lock().unwrap();
+                if d.insert(h) && d.len() <= 200 {
+                    dump(&s, &format!("{outdir}/rank23_{}.txt", d.len()));
+                }
+            }
+            if steps.is_multiple_of(5_000) && !verify(&s) {
+                println!("WALK VERIFY FAILED at step {steps} (bug!)");
+            }
+            if stuck > 40 * patience {
+                s = if rng.next() & 1 == 0 { best_state.clone() } else { seed.to_vec() };
+                local_best = s.len();
+                stuck = 0;
+                counters[7].fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        if !verify(&s) {
+            println!("WALK END VERIFY FAILED (bug!)");
+        }
+    });
+    let c: Vec<u64> = counters.iter().map(|x| x.load(Ordering::Relaxed)).collect();
+    println!("moves: {} solved flips ({} reducing), {} fixed-lambda flips, {} generalized flips, \
+              {} plus transitions, {} reductions, {} rotations, {} restarts",
+             c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]);
+    println!("best rank {}; distinct rank-23 schemes {}", best.load(Ordering::Relaxed),
+             distinct23.lock().unwrap().len());
+    for (rank, v) in hits.lock().unwrap().iter_mut() {
+        v.sort_by(|x, y| x.0.total_cmp(&y.0));
+        let mut ty: Vec<usize> = v.iter().map(|x| x.1).collect();
+        ty.sort_unstable();
+        println!("  rank {rank}: reached by {}/{threads} threads, first at {:.1} s, median {:.1} s, \
+                  type sum at arrival median {} (range {}-{})",
+                 v.len(), v[0].0, v[v.len() / 2].0, ty[ty.len() / 2], ty[0], ty[ty.len() - 1]);
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let get = |flag: &str, default: i64| -> i64 {
@@ -1976,9 +2605,20 @@ fn main() {
         .unwrap();
 
     let seed = load_seed(&dir);
-    assert_eq!(seed.len(), 23);
     assert!(verify(&seed), "seed must verify");
-    println!("seed loaded + exactly verified (23 summands)");
+    println!("seed loaded + exactly verified ({} summands)", seed.len());
+    if args.iter().any(|a| a == "--descend") {
+        // descent from any seed rank: [--plus-bud] [--gen-pct P] [--type-bias -1|0|1]
+        // [--wide-lams] [--patience N]
+        let plus_bud = args.iter().any(|a| a == "--plus-bud");
+        let gen_pct = get("--gen-pct", 0) as u64;
+        let type_bias = get("--type-bias", 0);
+        let wide_lams = args.iter().any(|a| a == "--wide-lams");
+        let patience = get("--patience", 500) as u64;
+        descend(&seed, cap, seconds, threads, plus_bud, gen_pct, type_bias, wide_lams, patience, &outdir);
+        return;
+    }
+    assert_eq!(seed.len(), 23, "the other modes assume a rank-23 seed");
     if args.iter().any(|a| a == "--emit-lean") {
         // dump the gauged seed as a Lean literal (List (V16 x V16 x V16))
         let v = |x: &Vec9| -> String {

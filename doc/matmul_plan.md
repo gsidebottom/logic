@@ -1759,6 +1759,48 @@ the two source papers for this track):
   scheme: 32 x [1,1,1] + 4 x [2,2,2] + 4 each of [2,2,3], [2,3,2], [2,3,3]
   (sum 208).  The type separates Agarwal's class from the curve but cannot
   steer a search inside our class; its use as a guide is tested on 3x3.
+- **3x3 FROM THE CLASSICAL 27 AND GROCHOW-MOORE'S 25 (Alexandre's items
+  5-6, 2026-10-23)**: matmul/mm3/seeds.py builds std27 and gm25 (their
+  arXiv:1612.01527 Eq. (36) at n = 3: I (x) I (x) I plus 24 terms
+  (1/64) v_i(v_j - v_i)^T (x) v_j(v_k - v_j)^T (x) v_k(v_i - v_k)^T over
+  distinct (i, j, k), v the simplex corners (-1,1,1), (1,-1,1), (1,1,-1),
+  (-1,-1,-1)); both pass all 729 Brent equations.  flip23 --descend (any
+  seed rank).  Neither seed has a solved flip (std27: 81 shared pairs,
+  gm25: 32; no three-term relations), and with free coefficients the walk
+  never reduces (the rigidity paper's 'no chance coincidences over Q'
+  again: every reduction undid a plus transition).  With coefficients
+  capped at magnitude 1 (the F2-like regime: numerators in {-1,0,1} up to
+  a power of 2) the classical start descends.  Moves: a solved flip after
+  which a reduction applies (lookahead over up to 64 solved flips), else a
+  solved flip 3 times in 4, else lambda = +-1; greedy reductions after
+  every move; Kauers-Moosbauer plus transitions (2 -> 3 summands, no pair
+  sharing two slots -- a split merges straight back under greedy
+  reduction) once 500 moves pass without improvement; the cyclic rotation
+  (X, Y, Z) -> (Y, Z^T, X^T) 2% of the time (slot-c buds become
+  flippable); restarts.  Equal budgets, 12 threads x 300 s each
+  (18:31-19:11):
+  std27 baseline: rank 23 reached by 4/12 threads (first 42 s, median
+  138 s), 36,462 distinct rank-23 decompositions;
+  implicit-bud jumps as the plus transition (item 4: circuit split + one
+  fixed flip on a new bud pair): 2/12 (median 229 s), 12,978;
+  generalized flips (items 2-3: 25% of the fixed flips two-point): 4/12
+  (median 123 s), 29,280;
+  TYPE BIAS +1 (item 5: of 4 candidate solved flips take the one raising
+  the summed factor ranks most): 12/12 (first 2.2 s, median 89 s), 209,580
+  -- also per move (1.7x more moves in the same time; median arrival after
+  ~0.78M flips per thread, while 8 baseline threads had not arrived after
+  1.55M);
+  type bias -1: never below 26 (1/12 threads).
+  gm25 at cap 2: baseline and bud jumps stay at 25; type bias +1 reaches
+  24 once (1/12 threads, 214 s).
+  Nothing below 23.  300 saved rank-23 decompositions re-checked by an
+  independent exact Brent check (Python): all pass.  Under the +1 bias the
+  type climbs early (type sum on arrival at 26: median 103 against 86) and
+  is back to ~88-89 on arrival at 23 in every variant.  So: Alexandre's
+  type is the idea that clearly helps (a guide toward collisions on 3x3);
+  generalized flips are neutral; implicit-bud jumps are no better per move
+  and cost a circuit search; his Grochow-Moore start is harder for this
+  walk than the classical one.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

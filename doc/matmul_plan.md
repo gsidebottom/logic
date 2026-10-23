@@ -1625,7 +1625,19 @@ the two source papers for this track):
   1 scalings all dyadic; the DPS class only has ratios +-2^k).  Regression:
   p005 L still 55 (11/12 seeds, 40 s).  Self-check now dumps unparsable
   programs.  restarts.sh takes LNS48_BIN; bigcoef build in target/bigcoef.
-  Running: restarts on t = 2, 4, 8 and Agarwal (bigcoef build).
+  22:10 restarts at transported points (bigcoef build): t = 2: 88 + 90 + 89
+  = 271; t = 4: 87 + 89 + 89 = 269 (both SLPchecker + Brent verified); t = 8:
+  L 87, R crashed again; Agarwal: 230 + 290 + 128 = 648 (SLPchecker; 190
+  scalings).  SECOND TOOL BUG: lns48's parser and slp48check read x*31/32 as
+  (x*31)/32 -- two scalings, and the intermediate x*31 can exceed the
+  coefficient cap (the t = 8 crash); slp48check thus over-counted Agarwal
+  (735: +39/+42/+6 = exactly the combined-fraction lines).  PLinOpt counts a
+  constant fraction as ONE scaling, as the cost model does.  Fixed: both fold
+  chained constant factors into one scaling (unit-tested; the record still
+  201; Agarwal now 648 in both tools).  No earlier result changes: every other
+  reported program had no combined fractions or equal totals in both tools
+  (201, 215, 230, 263, 271, 269).  Running: t = 1 full orbit search (anneal
+  from the transported point -> floor 163, sweep), then t = 8 rerun.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

@@ -36,27 +36,29 @@ def linear(expr, env):
     """exact value of a linear expression as {input: coefficient}; also returns
     (adds, scalings, negations) in the syntactic model used by both tools:
     binary +/- = 1 add, multiply/divide by a constant of modulus != 1 = 1
-    scaling, unary minus or multiply by -1 = 1 negation (free in PLinOpt)."""
+    scaling, unary minus or multiply by -1 = 1 negation (free in PLinOpt).
+    A chain of constant factors on one signal (x*7/16) is ONE scaling by the
+    combined constant, as PLinOpt's SLPchecker counts it."""
     counts = [0, 0, 0]
 
     def ev(node):
         if isinstance(node, ast.Name):
             if node.id not in env:
                 raise ValueError(f"undefined {node.id}")
-            return dict(env[node.id]), None
+            return dict(env[node.id]), None, None
         if isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool):
-            return None, Fr(node.value)
+            return None, Fr(node.value), None
         if isinstance(node, ast.UnaryOp):
-            v, c = ev(node.operand)
+            v, c, _ = ev(node.operand)
             if isinstance(node.op, ast.UAdd):
-                return v, c
+                return v, c, None
             if c is not None:
-                return None, -c
+                return None, -c, None
             counts[2] += 1
-            return {k: -x for k, x in v.items()}, None
+            return {k: -x for k, x in v.items()}, None, None
         if isinstance(node, ast.BinOp):
-            lv, lc = ev(node.left)
-            rv, rc = ev(node.right)
+            lv, lc, lf = ev(node.left)
+            rv, rc, rf = ev(node.right)
             if isinstance(node.op, (ast.Add, ast.Sub)):
                 if lv is None or rv is None:
                     raise ValueError("affine term")
@@ -68,29 +70,30 @@ def linear(expr, env):
                 out = dict(lv)
                 for k, x in rv.items():
                     out[k] = out.get(k, Fr(0)) + sg * x
-                return {k: x for k, x in out.items() if x}, None
+                return {k: x for k, x in out.items() if x}, None, None
             if isinstance(node.op, ast.Mult):
                 if lc is not None and rc is not None:
-                    return None, lc * rc
-                v, c = (lv, rc) if lv is not None else (rv, lc)
+                    return None, lc * rc, None
+                v, c, f = (lv, rc, lf) if lv is not None else (rv, lc, rf)
             elif isinstance(node.op, ast.Div):
                 if lc is not None and rc is not None:
-                    return None, lc / rc
+                    return None, lc / rc, None
                 if lv is None:
                     raise ValueError("constant / signal")
-                v, c = lv, 1 / rc
+                v, c, f = lv, 1 / rc, lf
             else:
                 raise ValueError("operator")
             if c is None or v is None:
                 raise ValueError("nonlinear")
-            if abs(c) != 1:
-                counts[1] += 1
-            if c < 0:
-                counts[2] += 1
-            return {k: c * x for k, x in v.items() if c * x}, None
+            # fold into the scaling already applied to this signal, if any
+            prev = f if f is not None else Fr(1)
+            comb = prev * c
+            counts[1] += int(abs(comb) != 1) - int(abs(prev) != 1)
+            counts[2] += int(comb < 0) - int(prev < 0)
+            return {k: c * x for k, x in v.items() if c * x}, None, comb
         raise ValueError(f"unsupported node {ast.dump(node)}")
 
-    v, c = ev(ast.parse(expr, mode="eval").body)
+    v, c, _ = ev(ast.parse(expr, mode="eval").body)
     if v is None:
         raise ValueError(f"scalar expression {expr}")
     return v, counts

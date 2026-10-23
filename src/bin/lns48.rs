@@ -986,26 +986,51 @@ impl<'a> Parser<'a> {
             _ => Err("affine expression".into()),
         }
     }
+    /// a product term: at most one signal times any number of constant factors.  The
+    /// constants are folded into one fraction and applied once, so `x*31/32` is a single
+    /// scaling by 31/32 (as PLinOpt counts it), with no intermediate value `x*31`.
     fn term(&mut self) -> Result<Lin, String> {
-        let mut acc = self.factor()?;
+        let (mut vec, mut num, mut den): (Option<V>, i64, i64) = match self.factor()? {
+            Lin::Vec(u) => (Some(u), 1, 1),
+            Lin::Const(a, b) => (None, a, b),
+        };
         loop {
             self.skip_ws();
             match self.peek() {
                 Some(b'*') | Some(b'/') => {
                     let op = self.peek().unwrap();
                     self.i += 1;
-                    let rhs = self.factor()?;
-                    acc = match (acc, rhs, op) {
-                        (Lin::Const(a, b), Lin::Const(c, d), b'*') => Lin::Const(a * c, b * d),
-                        (Lin::Const(a, b), Lin::Const(c, d), _) => Lin::Const(a * d, b * c),
-                        (Lin::Vec(u), Lin::Const(c, d), b'*') => self.scaled(u, c, d)?,
-                        (Lin::Vec(u), Lin::Const(c, d), _) => self.scaled(u, d, c)?,
-                        (Lin::Const(c, d), Lin::Vec(u), b'*') => self.scaled(u, c, d)?,
-                        _ => return Err("nonlinear term".into()),
-                    };
+                    match self.factor()? {
+                        Lin::Const(c, d) => {
+                            if op == b'*' {
+                                num *= c;
+                                den *= d;
+                            } else {
+                                num *= d;
+                                den *= c;
+                            }
+                        }
+                        Lin::Vec(u) => {
+                            if vec.is_some() || op != b'*' {
+                                return Err("nonlinear term".into());
+                            }
+                            vec = Some(u);
+                        }
+                    }
+                    if den == 0 {
+                        return Err("division by zero".into());
+                    }
+                    let g = gcd(num, den).max(1);
+                    num /= g;
+                    den /= g;
                 }
-                _ => return Ok(acc),
+                _ => break,
             }
+        }
+        match vec {
+            None => Ok(Lin::Const(num, den)),
+            Some(u) if num == 1 && den == 1 => Ok(Lin::Vec(u)),
+            Some(u) => self.scaled(u, num, den),
         }
     }
     fn scaled(&mut self, u: V, num: i64, den: i64) -> Result<Lin, String> {

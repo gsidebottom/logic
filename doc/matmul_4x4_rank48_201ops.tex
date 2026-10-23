@@ -57,8 +57,9 @@ these refutations up to $17$ times faster.  Finally, the record's class
 is the member $t=1/4$ of Li, Wang and Hu's one-parameter curve of
 pairwise inequivalent rational rank-48 classes.  An explicit isotropy
 carries our coordinates to every member of the curve; there the record's
-output program still applies, but the input maps cost more, giving $230$
-operations at $t=1/2$ and $263$ at $t=1$.
+output program still applies, but the input maps cost more.  The full
+search on the nearest member, $t=1/2$, stops at $215$, and $t=1$ costs
+$263$ at matching coordinates.
 \end{abstract}
 
 \section{Introduction}
@@ -630,15 +631,18 @@ emits for these coefficients.
 \begin{table}[ht]
 \centering
 \caption{Members of the Li--Wang--Hu curve in the coordinates of our
-record.  \emph{Non-unit} counts the coefficients of $L$ and $R$ outside
-$\{0,\pm1\}$; $P$ is the record's for every $t$.  All programs pass
-SLPchecker and the exact Brent check.}\label{tab:classes}
+record, and for $t=1/2$ also the best point of a full orbit search.
+\emph{Non-unit} counts the coefficients of $L$ and $R$ outside
+$\{0,\pm1\}$; at the transported points $P$ is the record's for every
+$t$.  All programs pass SLPchecker and the exact Brent
+check.}\label{tab:classes}
 \begin{tabular}{rrrrrr}
 \toprule
 $t$ & floor & non-unit $L$, $R$ & $L$ & $R$ & total \\
 \midrule
 $1/4$ & $156$ & $32$, $32$ & $55$ & $57$ & $201$ \\
 $1/2$ & $160$ & $93$, $80$ & $70$ & $71$ & $230$ \\
+$1/2$, orbit search & $158$ & $57$, $56$ & $65$ & $61$ & $215$ \\
 $1$ & $166$ & $195$, $172$ & $86$ & $87$ & $263$ \\
 $2$ & $166$ & $203$, $182$ & $88$ & --- & --- \\
 \bottomrule
@@ -646,10 +650,14 @@ $2$ & $166$ & $203$, $182$ & $88$ & --- & --- \\
 \end{table}
 
 These numbers come from one point of each orbit, the image of a point
-tuned for $t=1/4$.  For the nearest member, $t=1/2$, we are running the
-full search of Section~\ref{sec:found}: annealing from its transported
-point lowers the floor to $158$, two above our class, and the
-successive-halving sweep over $90$ annealed points is in progress.
+tuned for $t=1/4$.  For the nearest member, $t=1/2$, we also ran the full
+search of Section~\ref{sec:found}.  Annealing from its transported point
+lowers the floor to $158$, two above our class, and roughly halves the
+non-unit coefficients; the successive-halving sweep over $90$ annealed
+points then stops at $215=65+61+89$, with all six finalists at exactly
+$215$, the same kind of plateau as our class's $201$.  The best triple
+passes SLPchecker on every side and the exact Brent check.  So the
+nearest other class costs $14$ more under the search that found $201$.
 
 \paragraph{Agarwal's scheme.}  Agarwal's replacement~\cite{Agarwal26}
 removes twelve products of $s(2)$, three of its four groups of rank-two

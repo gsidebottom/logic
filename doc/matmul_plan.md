@@ -1609,8 +1609,13 @@ the two source papers for this track):
   166, non-units L 231 R 225 P 46, coefficients up to 48 -- denser than
   s(2); not measured (tool limits).  Fair test of the closest member:
   orbit48 from the transported t = 1/2 point (floor 160 -> 158 for 85 of
-  90 pool points, ~105-110 non-units), then the 201 sweep on that pool,
-  running from 20:33.
+  90 pool points, ~105-110 non-units), then the 201 sweep on that pool:
+  21:25 RESULT t = 1/2 = 215 = 65 + 61 + 89 (58+7, 55+6, 89+0; all six
+  stage-C finalists at 215, a plateau like our 201; SLPchecker + exact
+  Brent verified; best point floor 158 = 46/42/38, non-units L 57 R 56).
+  So the nearest other class costs 14 more under the same search; the DPS
+  member t = 1/4 is the best of the curve so far.  201 paper updated
+  (Section 8 'Other rational rank-48 classes', abstract, Table 5).
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

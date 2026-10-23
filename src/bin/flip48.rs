@@ -2079,18 +2079,22 @@ fn bud_split(
 
 /// closure under solved flips with reductions as moves (as `closure`), but
 /// returning the states it finds at rank 48 (other than the seed) and below
+/// Breadth-first, so under the state cap the nearest reductions are found first.
+/// Also returns (number of states that reduced, lowest rank a reduction reached
+/// other than the seed itself).
 fn closure_collect(
     root: Vec<Summand>,
     seed_hash: u64,
     cap: i64,
     max_seen: usize,
-) -> (u64, Vec<Vec<Summand>>, Vec<Vec<Summand>>) {
-    use std::collections::HashSet;
+) -> (u64, Vec<Vec<Summand>>, Vec<Vec<Summand>>, u64, usize) {
+    use std::collections::{HashSet, VecDeque};
     let mut seen: HashSet<u64> = HashSet::new();
     let (mut found48, mut sub48) = (Vec::new(), Vec::new());
-    let mut stack = vec![root];
+    let mut stack: VecDeque<Vec<Summand>> = VecDeque::from([root]);
     let mut states = 0u64;
-    while let Some(state) = stack.pop() {
+    let (mut n_red, mut min_rank) = (0u64, usize::MAX);
+    while let Some(state) = stack.pop_front() {
         if !seen.insert(scheme_hash(&state)) {
             continue;
         }
@@ -2101,15 +2105,20 @@ fn closure_collect(
             reduced = true;
         }
         if reduced {
+            let is_seed = r.len() == 48 && scheme_hash(&r) == seed_hash;
+            if !is_seed {
+                n_red += 1;
+                min_rank = min_rank.min(r.len());
+            }
             if r.len() < 48 {
                 if verify(&r) {
                     sub48.push(r.clone());
                 }
-            } else if r.len() == 48 && scheme_hash(&r) != seed_hash && verify(&r) {
+            } else if r.len() == 48 && !is_seed && verify(&r) {
                 found48.push(r.clone());
             }
             if r.len() >= 48 && seen.len() < max_seen {
-                stack.push(r);
+                stack.push_back(r);
             }
         }
         let n = state.len();
@@ -2133,7 +2142,7 @@ fn closure_collect(
                                 try_flip(&mut s2, oj, oi, ss, (!lam.0, lam.1), cap)
                             };
                             if ok && seen.len() < max_seen {
-                                stack.push(s2);
+                                stack.push_back(s2);
                             }
                         }
                     }
@@ -2141,7 +2150,7 @@ fn closure_collect(
             }
         }
     }
-    (states, found48, sub48)
+    (states, found48, sub48, n_red, min_rank)
 }
 
 /// the implicit-bud pilot: census of circuits per slot, then for every
@@ -2181,6 +2190,8 @@ fn pursue_buds(seed: &[Summand], cap: i64, kmin: usize, kmax: usize, max_seen: u
     let t0 = Instant::now();
     let done = AtomicU64::new(0);
     let total_states = AtomicU64::new(0);
+    let total_red = AtomicU64::new(0);
+    let min_rank = AtomicU64::new(u64::MAX);
     let new48: Mutex<HashMap<u64, Vec<Summand>>> = Mutex::new(HashMap::new());
     let sub48: Mutex<Vec<Vec<Summand>>> = Mutex::new(Vec::new());
     let nroots = roots.len() as u64;
@@ -2190,8 +2201,10 @@ fn pursue_buds(seed: &[Summand], cap: i64, kmin: usize, kmax: usize, max_seen: u
             None => return,
         };
         assert!(verify(&root), "bud split broke the decomposition");
-        let (st, f48, s48) = closure_collect(root, seed_hash, cap, max_seen);
+        let (st, f48, s48, nr, mr) = closure_collect(root, seed_hash, cap, max_seen);
         total_states.fetch_add(st, Ordering::Relaxed);
+        total_red.fetch_add(nr, Ordering::Relaxed);
+        min_rank.fetch_min(mr as u64, Ordering::Relaxed);
         if !f48.is_empty() {
             let mut m = new48.lock().unwrap();
             for x in f48 {
@@ -2221,9 +2234,11 @@ fn pursue_buds(seed: &[Summand], cap: i64, kmin: usize, kmax: usize, max_seen: u
     for (k, st) in sub48.iter().enumerate() {
         dump(st, &format!("{outdir}/RANK{}_bud_{k}.txt", st.len()));
     }
-    println!("buds: {} roots, {} states, {} distinct NEW rank-48 (dumped {}), {} below 48, {:.0}s",
-             nroots, total_states.load(Ordering::Relaxed), new48.len(),
-             new48.len().min(2000), sub48.len(), t0.elapsed().as_secs_f64());
+    let mr = min_rank.load(Ordering::Relaxed);
+    println!("buds: {} roots, {} states, {} reductions (lowest rank reached {}), {} distinct NEW rank-48 (dumped {}), {} below 48, {:.0}s",
+             nroots, total_states.load(Ordering::Relaxed), total_red.load(Ordering::Relaxed),
+             if mr == u64::MAX { "none".to_string() } else { mr.to_string() },
+             new48.len(), new48.len().min(2000), sub48.len(), t0.elapsed().as_secs_f64());
 }
 
 fn dump(s: &[Summand], path: &str) {

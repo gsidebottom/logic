@@ -1596,8 +1596,21 @@ the two source papers for this track):
   check for t = 1/2..8, and P IS THE RECORD'S P FOR EVERY t (the family's
   t-independent factor lands on our output side), so each member costs
   L(t) + R(t) + 89 at these points.  Floors: t = 1/2 160 (46/44/38), t >= 1
-  166.  Running: restarts.sh (12 seeds x 180 s per side, the protocol that
-  gave 201 at p005) on t = 1/2, 1, 2, 4.
+  166.  restarts.sh (12 seeds x 180 s per side, the protocol that gave 201
+  at p005) on the transported points: t = 1/2: 70 + 71 + 89 = 230 (63+7,
+  64+7, 89+0; SLPchecker + Brent verified); t = 1: 86 + 87 + 89 = 263
+  (verified); t = 2: L 88 (74+14), R and t = 4 L/R crashed in lns48's
+  self-check (emitted scalings like 7/2, 13/2 do not re-parse -- a tool
+  limit; also MAXNUM 16; bigcoef feature added, not yet built).  Cost
+  rises steeply with t: each member's extra non-unit coefficients cost
+  scalings (7 per side at t = 1/2, 11-14 at t >= 1); the DPS member t = 1/4
+  is the sparsest point of the curve ((4t-1)/4 entries vanish).  Agarwal's
+  scheme, transported the same way (agarwal_transport.py, Brent OK): floor
+  166, non-units L 231 R 225 P 46, coefficients up to 48 -- denser than
+  s(2); not measured (tool limits).  Fair test of the closest member:
+  orbit48 from the transported t = 1/2 point (floor 160 -> 158 for 85 of
+  90 pool points, ~105-110 non-units), then the 201 sweep on that pool,
+  running from 20:33.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

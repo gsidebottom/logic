@@ -37,7 +37,10 @@ const N: usize = 16; // inputs: the 16 entries of a 4x4 matrix (L, R, P^T)
 #[cfg(feature = "n48")]
 const N: usize = 48; // inputs: the 48 products (the output map P searched directly)
 const SCAL: i64 = 64;
+#[cfg(not(feature = "bigcoef"))]
 const MAXNUM: i64 = 16 * SCAL;
+#[cfg(feature = "bigcoef")]
+const MAXNUM: i64 = 64 * SCAL; // schemes with coefficients up to 64 (Li-Wang-Hu t >= 4, Agarwal)
 const MAXD: usize = 4096;
 const NONE: u16 = u16::MAX;
 

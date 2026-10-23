@@ -1874,6 +1874,358 @@ fn pursue6(seed: &[Summand], cap: i64, beam: usize, k_sample: usize,
     );
 }
 
+// ---------- implicit buds (A. Sedoglavic's suggestion, Oct 2026) ----------
+// A circuit -- a minimal linearly dependent set S of slot-s factors with
+// sum_{k in S} alpha_k f_k = 0 -- is an "implicit bud".  Splitting the pivot
+// summand i in S along it,
+//     f_i (x) g_i (x) h_i = sum_{k in S, k != i} (-alpha_k/alpha_i) f_k (x) g_i (x) h_i,
+// raises the rank by |S| - 2 and makes every new summand share its slot-s
+// factor (up to scalar) with a member of S: |S| - 1 explicit buds at once.
+// A universal split (try_split) is the |S| = 2 analogue against one partner.
+
+fn gcd128(a: i128, b: i128) -> i128 {
+    let (mut a, mut b) = (a.abs(), b.abs());
+    while b != 0 {
+        let t = a % b;
+        a = b;
+        b = t;
+    }
+    a
+}
+
+/// slot-`slot` factors of all summands as integer vectors at one common
+/// power-of-two scale (so linear relations among them are exact)
+fn slot_ints(scheme: &[Summand], slot: usize) -> Option<Vec<[i128; 16]>> {
+    let emin = scheme.iter().map(|t| fac(t, slot).exp).min()?;
+    let mut out = Vec::with_capacity(scheme.len());
+    for t in scheme {
+        let f = fac(t, slot);
+        let sh = (f.exp - emin) as u32;
+        if sh > 40 {
+            return None;
+        }
+        let mut v = [0i128; 16];
+        for x in 0..16 {
+            v[x] = (f.nums[x] as i128).checked_shl(sh)?;
+        }
+        out.push(v);
+    }
+    Some(out)
+}
+
+/// exact elimination on the given rows: returns (rank, alpha) where alpha is
+/// the primitive generator of the row-kernel when the rank is k - 1 (empty
+/// otherwise).  None on arithmetic overflow.
+fn kernel1(rows: &[&[i128; 16]]) -> Option<(usize, Vec<i128>)> {
+    let k = rows.len();
+    let w = 16 + k;
+    let mut m: Vec<Vec<i128>> = rows
+        .iter()
+        .enumerate()
+        .map(|(r, v)| {
+            let mut x = v.to_vec();
+            for c in 0..k {
+                x.push(if c == r { 1 } else { 0 });
+            }
+            x
+        })
+        .collect();
+    let mut row = 0usize;
+    for col in 0..16 {
+        if row == k {
+            break;
+        }
+        let p = match (row..k).find(|&r| m[r][col] != 0) {
+            Some(p) => p,
+            None => continue,
+        };
+        m.swap(row, p);
+        for r in 0..k {
+            if r != row && m[r][col] != 0 {
+                let (a, b) = (m[row][col], m[r][col]);
+                let mut g = 0i128;
+                for c in 0..w {
+                    let v = m[r][c].checked_mul(a)?.checked_sub(m[row][c].checked_mul(b)?)?;
+                    m[r][c] = v;
+                    g = gcd128(g, v);
+                }
+                if g > 1 {
+                    for c in 0..w {
+                        m[r][c] /= g;
+                    }
+                }
+            }
+        }
+        row += 1;
+    }
+    let rank = row;
+    if rank + 1 == k {
+        let mut alpha: Vec<i128> = m[k - 1][16..].to_vec();
+        let g = alpha.iter().fold(0i128, |g, &x| gcd128(g, x));
+        if g > 1 {
+            for x in alpha.iter_mut() {
+                *x /= g;
+            }
+        }
+        Some((rank, alpha))
+    } else {
+        Some((rank, Vec::new()))
+    }
+}
+
+/// all circuits of size kmin..=kmax among the vectors: (support, alpha) with
+/// sum alpha_r * vecs[support[r]] == 0 and every alpha_r != 0
+fn circuits(vecs: &[[i128; 16]], kmin: usize, kmax: usize) -> Vec<(Vec<usize>, Vec<i128>)> {
+    let n = vecs.len();
+    let mut out: Vec<(Vec<usize>, Vec<i128>)> = Vec::new();
+    for k in kmin..=kmax {
+        let found: Vec<(Vec<usize>, Vec<i128>)> = (0..n)
+            .into_par_iter()
+            .flat_map_iter(|first| {
+                let mut res = Vec::new();
+                // combinations of k-1 further indices > first
+                let mut idx: Vec<usize> = (first + 1..first + k).collect();
+                if idx.last().map_or(k > 1, |&l| l >= n) && k > 1 {
+                    return res.into_iter();
+                }
+                loop {
+                    let mut sup = vec![first];
+                    sup.extend_from_slice(&idx);
+                    let rows: Vec<&[i128; 16]> = sup.iter().map(|&j| &vecs[j]).collect();
+                    if let Some((rank, alpha)) = kernel1(&rows)
+                        && rank + 1 == k
+                        && alpha.iter().all(|&x| x != 0)
+                    {
+                        res.push((sup, alpha));
+                    }
+                    // next combination of idx over (first+1..n)
+                    let mut p = idx.len();
+                    loop {
+                        if p == 0 {
+                            return res.into_iter();
+                        }
+                        p -= 1;
+                        if idx[p] < n - (idx.len() - p) {
+                            idx[p] += 1;
+                            for q in p + 1..idx.len() {
+                                idx[q] = idx[q - 1] + 1;
+                            }
+                            break;
+                        }
+                    }
+                }
+            })
+            .collect();
+        out.extend(found);
+    }
+    out
+}
+
+/// |x| = odd * 2^tz
+fn odd_part(x: i128) -> (i128, i32) {
+    let a = x.abs();
+    let tz = a.trailing_zeros() as i32;
+    (a >> tz, tz)
+}
+
+/// split summand support[pivot] along the circuit; None if a coefficient
+/// ratio is not +-2^k (the result would leave Z[1/2]) or exceeds the cap
+fn bud_split(
+    scheme: &[Summand],
+    slot: usize,
+    support: &[usize],
+    alpha: &[i128],
+    pivot: usize,
+    cap: i64,
+) -> Option<Vec<Summand>> {
+    let i = support[pivot];
+    let ap = alpha[pivot];
+    let (op, tp) = odd_part(ap);
+    let mut news = Vec::new();
+    for (q, &j) in support.iter().enumerate() {
+        if q == pivot {
+            continue;
+        }
+        let aj = alpha[q];
+        let (oj, tj) = odd_part(aj);
+        if oj != op {
+            return None;
+        }
+        // coefficient -aj/ap = sign * 2^(tj - tp)
+        let neg = (aj < 0) == (ap < 0);
+        let fj = fac(&scheme[j], slot);
+        let mut f = Vec16 { nums: fj.nums, exp: fj.exp + (tj - tp) };
+        if neg {
+            for x in f.nums.iter_mut() {
+                *x = -*x;
+            }
+        }
+        if f.max_abs() > cap {
+            return None;
+        }
+        let t = &scheme[i];
+        let s = match slot {
+            0 => Summand::gauge(f, t.b.clone(), t.c.clone()),
+            1 => Summand::gauge(t.a.clone(), f, t.c.clone()),
+            _ => Summand::gauge(t.a.clone(), t.b.clone(), f),
+        }?;
+        news.push(s);
+    }
+    let mut out = scheme.to_vec();
+    out[i] = news[0].clone();
+    out.extend(news.into_iter().skip(1));
+    Some(out)
+}
+
+/// closure under solved flips with reductions as moves (as `closure`), but
+/// returning the states it finds at rank 48 (other than the seed) and below
+fn closure_collect(
+    root: Vec<Summand>,
+    seed_hash: u64,
+    cap: i64,
+    max_seen: usize,
+) -> (u64, Vec<Vec<Summand>>, Vec<Vec<Summand>>) {
+    use std::collections::HashSet;
+    let mut seen: HashSet<u64> = HashSet::new();
+    let (mut found48, mut sub48) = (Vec::new(), Vec::new());
+    let mut stack = vec![root];
+    let mut states = 0u64;
+    while let Some(state) = stack.pop() {
+        if !seen.insert(scheme_hash(&state)) {
+            continue;
+        }
+        states += 1;
+        let mut r = state.clone();
+        let mut reduced = false;
+        while try_reduce(&mut r, cap * 4) {
+            reduced = true;
+        }
+        if reduced {
+            if r.len() < 48 {
+                if verify(&r) {
+                    sub48.push(r.clone());
+                }
+            } else if r.len() == 48 && scheme_hash(&r) != seed_hash && verify(&r) {
+                found48.push(r.clone());
+            }
+            if r.len() >= 48 && seen.len() < max_seen {
+                stack.push(r);
+            }
+        }
+        let n = state.len();
+        for ss in 0..3usize {
+            let others: [usize; 2] = match ss {
+                0 => [1, 2],
+                1 => [0, 2],
+                _ => [0, 1],
+            };
+            for x in 0..n {
+                for y in x + 1..n {
+                    if fac(&state[x], ss) != fac(&state[y], ss) {
+                        continue;
+                    }
+                    for &(oi, oj) in &[(x, y), (y, x)] {
+                        for &(t, lam, _m) in &coincidence_lams(&state, oi, oj, ss) {
+                            let mut s2 = state.clone();
+                            let ok = if t == others[0] {
+                                try_flip(&mut s2, oi, oj, ss, lam, cap)
+                            } else {
+                                try_flip(&mut s2, oj, oi, ss, (!lam.0, lam.1), cap)
+                            };
+                            if ok && seen.len() < max_seen {
+                                stack.push(s2);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    (states, found48, sub48)
+}
+
+/// the implicit-bud pilot: census of circuits per slot, then for every
+/// circuit and every pivot with dyadic coefficient ratios, split and explore
+#[allow(clippy::too_many_arguments)]
+fn pursue_buds(seed: &[Summand], cap: i64, kmin: usize, kmax: usize, max_seen: usize,
+               slots: &[usize], max_roots: usize, outdir: &str) {
+    use std::collections::HashMap;
+    let seed_hash = scheme_hash(seed);
+    let mut roots: Vec<(usize, Vec<usize>, Vec<i128>, usize)> = Vec::new();
+    for &s in slots {
+        let vecs = slot_ints(seed, s).expect("slot vectors");
+        let cs = circuits(&vecs, kmin, kmax);
+        let mut by_size: HashMap<usize, (usize, usize)> = HashMap::new();
+        for (sup, alpha) in &cs {
+            let e = by_size.entry(sup.len()).or_insert((0, 0));
+            e.0 += 1;
+            for p in 0..sup.len() {
+                if bud_split(seed, s, sup, alpha, p, cap).is_some() {
+                    e.1 += 1;
+                    roots.push((s, sup.clone(), alpha.clone(), p));
+                }
+            }
+        }
+        let mut sizes: Vec<_> = by_size.into_iter().collect();
+        sizes.sort();
+        println!("slot {}: {} circuits of size {}..={}; by size (circuits, dyadic pivots): {:?}",
+                 SLOT[s], cs.len(), kmin, kmax, sizes);
+        if let Some((sup, alpha)) = cs.first() {
+            println!("  e.g. support {:?} alpha {:?}", sup, alpha);
+        }
+    }
+    if roots.len() > max_roots {
+        roots.truncate(max_roots);
+    }
+    println!("{} split roots (max-seen {} states per root)", roots.len(), max_seen);
+    let t0 = Instant::now();
+    let done = AtomicU64::new(0);
+    let total_states = AtomicU64::new(0);
+    let new48: Mutex<HashMap<u64, Vec<Summand>>> = Mutex::new(HashMap::new());
+    let sub48: Mutex<Vec<Vec<Summand>>> = Mutex::new(Vec::new());
+    let nroots = roots.len() as u64;
+    roots.par_iter().for_each(|(s, sup, alpha, p)| {
+        let root = match bud_split(seed, *s, sup, alpha, *p, cap) {
+            Some(r) => r,
+            None => return,
+        };
+        assert!(verify(&root), "bud split broke the decomposition");
+        let (st, f48, s48) = closure_collect(root, seed_hash, cap, max_seen);
+        total_states.fetch_add(st, Ordering::Relaxed);
+        if !f48.is_empty() {
+            let mut m = new48.lock().unwrap();
+            for x in f48 {
+                m.entry(scheme_hash(&x)).or_insert(x);
+            }
+        }
+        if !s48.is_empty() {
+            let mut m = sub48.lock().unwrap();
+            for x in s48 {
+                println!("*** RANK {} VERIFIED from a bud split (slot {}, support {:?}) ***",
+                         x.len(), SLOT[*s], sup);
+                m.push(x);
+            }
+        }
+        let d = done.fetch_add(1, Ordering::Relaxed) + 1;
+        if d % 200 == 0 || d == nroots {
+            println!("  {}/{} roots, {} states, {} distinct new rank-48, {:.0}s",
+                     d, nroots, total_states.load(Ordering::Relaxed),
+                     new48.lock().unwrap().len(), t0.elapsed().as_secs_f64());
+        }
+    });
+    let new48 = new48.into_inner().unwrap();
+    let sub48 = sub48.into_inner().unwrap();
+    for (k, (_, st)) in new48.iter().enumerate().take(2000) {
+        dump(st, &format!("{outdir}/bud48_{k}.txt"));
+    }
+    for (k, st) in sub48.iter().enumerate() {
+        dump(st, &format!("{outdir}/RANK{}_bud_{k}.txt", st.len()));
+    }
+    println!("buds: {} roots, {} states, {} distinct NEW rank-48 (dumped {}), {} below 48, {:.0}s",
+             nroots, total_states.load(Ordering::Relaxed), new48.len(),
+             new48.len().min(2000), sub48.len(), t0.elapsed().as_secs_f64());
+}
+
 fn dump(s: &[Summand], path: &str) {
     let mut txt = String::new();
     for t in s {
@@ -1935,6 +2287,22 @@ fn main() {
     }
     if args.iter().any(|a| a == "--pursue") {
         pursue(&seed, cap, &outdir);
+        return;
+    }
+    if args.iter().any(|a| a == "--buds") {
+        // implicit-bud pilot: --buds [--kmin 3] [--kmax 5] [--max-seen 5000]
+        //                     [--slots ab] [--max-roots N]
+        let kmin = get("--kmin", 3) as usize;
+        let kmax = get("--kmax", 5) as usize;
+        let max_seen = get("--max-seen", 5000) as usize;
+        let max_roots = get("--max-roots", 1_000_000) as usize;
+        let slots: Vec<usize> = args
+            .iter()
+            .position(|a| a == "--slots")
+            .and_then(|i| args.get(i + 1))
+            .map(|s| s.chars().filter_map(|ch| "abc".find(ch)).collect())
+            .unwrap_or_else(|| vec![0, 1]);
+        pursue_buds(&seed, cap, kmin, kmax, max_seen, &slots, max_roots, &outdir);
         return;
     }
     if let Some(pi) = args.iter().position(|a| a == "--graph") {

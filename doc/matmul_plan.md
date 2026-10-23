@@ -1649,6 +1649,17 @@ the two source papers for this track):
   non-units 212 -> 68 in seconds).  Running: restarts on the carried point,
   then Y-only pool (lambda 0.3/0.5) + the 201 sweep: a 200 needs L + R <= 112
   with this P.
+  RESULTS (Oct 23 00:15): restarts at the raw carried point 66 + 68 + 88 =
+  222 (P^T found 56 directly on 4/12 seeds); Y-only pool (floors 156-163,
+  ~68 non-units) + sweep: 202 = 55 + 59 + 88 at ypool_l0.3_cand001 (floor
+  159; verified: 53+2, 57+2, 88+0, Brent 0/4096, phi 192), 203 = 57 + 58 +
+  88 at cand000.  So with this P (88) the best L + R is 114 vs 112 at the
+  P = 89 record points: a 200 needs R 57 here.  R deepening (12 seeds x 600
+  s, 715k iterations): 59 on all 12; recombination of its 16 R programs at
+  cap 58 (79 vectors, order encoding): UNSAT in 0.09 s -> the 202 point is a
+  plateau.  Untried: the other t = 1 orbit points with P = 88 (sweep stage C
+  cand002, cand013, cand028) carried into our class + Y-only pools; or joint
+  X, Y, Z annealing in our class rewarding the 4-non-unit P.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

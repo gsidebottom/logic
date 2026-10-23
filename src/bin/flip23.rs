@@ -2425,7 +2425,7 @@ fn descend(seed: &[Summand], cap: i64, seconds: u64, threads: usize, plus_bud: b
                         let cs = circuits_through(&vecs, i, 4);
                         if !cs.is_empty() {
                             let (sup, alpha) = &cs[rng.below(cs.len())];
-                            if s.len() + 1 <= local_best + 2
+                            if s.len() < local_best + 2
                                 && let Some(s2) = bud_split(&s, slot, sup, alpha, 0, cap)
                             {
                                 let bp = bud_pairs(s.len(), sup, 0);

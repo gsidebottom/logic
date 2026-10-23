@@ -53,7 +53,12 @@ so far reaches $200$.  The hardest question, the record's output map,
 was settled by refuting a $125$-vector part of its $137$-vector
 dictionary and then twelve cases, one for each remaining vector.
 Encoding acyclicity by a total order instead of by depth levels made
-these refutations up to $17$ times faster.
+these refutations up to $17$ times faster.  Finally, the record's class
+is the member $t=1/4$ of Li, Wang and Hu's one-parameter curve of
+pairwise inequivalent rational rank-48 classes.  An explicit isotropy
+carries our coordinates to every member of the curve; there the record's
+output program still applies, but the input maps cost more, giving $230$
+operations at $t=1/2$ and $263$ at $t=1$.
 \end{abstract}
 
 \section{Introduction}
@@ -65,9 +70,14 @@ $47$~\cite{Fawzi22,KM23}.  In characteristic zero it is $48$: AlphaEvolve
 found a rank-48 scheme with complex coefficients~\cite{Novikov25}, and
 Dumas, Pernet and Sedoglavic turned it into one with rational
 coefficients, valid over any ring containing $1/2$~\cite{DPS25,DPS26a}.
-The rational schemes known today all descend from AlphaEvolve's complex
-one; Kaporin's independent complex rank-48 scheme~\cite{Kaporin24} has
-no real equivalent~\cite{MSY26}.
+There is more than one rational class.  Li, Wang and Hu showed that the
+Dumas--Pernet--Sedoglavic solution lies on an explicit one-parameter
+curve of rank-48 schemes with rational coefficients, whose members are
+pairwise inequivalent for $t\ge1/4$~\cite{LWH26}.  Agarwal built a
+further rational scheme outside that curve by replacing twelve of the
+$48$ products of one of its members~\cite{Agarwal26}.  Kaporin's
+independent complex rank-48 scheme~\cite{Kaporin24} has no real
+equivalent~\cite{MSY26}.
 
 Used recursively, a scheme's multiplication count fixes the exponent and
 its additions fix the constant.  For an
@@ -108,15 +118,20 @@ it~\cite{Patel26}.
   encodings and verdicts (no recombination reaches $200$ at either
   point), and the work still in progress
   (Section~\ref{sec:lower}).
+\item The record's class located on the Li--Wang--Hu curve, as its
+  member $t=1/4$; an explicit isotropy that carries our coordinates to
+  every member; a first screen of the other members; and Agarwal's
+  scheme rebuilt and verified (Section~\ref{sec:classes}).
 \end{itemize}
 
 \section{Records}\label{sec:records}
 
 Table~\ref{tab:rank48} lists the operation counts for rank-48 schemes
-without change of basis.  With a change of basis the recursive cost
-drops further, to constants between $5+2/3$ and $6+13/32$ depending on
-the encoding~\cite{DPSST26}; that is a different cost model, and this
-paper does not use it.
+without change of basis.  All four belong to one isotropy class, the
+member $t=1/4$ of the Li--Wang--Hu curve (Section~\ref{sec:classes}).
+With a change of basis the recursive cost drops further, to constants
+between $5+2/3$ and $6+13/32$ depending on the encoding~\cite{DPSST26};
+that is a different cost model, and this paper does not use it.
 
 \begin{table}[ht]
 \centering
@@ -551,11 +566,101 @@ output so far.  The next steps are:
   bound after reduction modulo $3$, where halvings become free sign
   changes, raises it only to $162$ (for programs whose scalings are
   powers of $2$), far below $201$;
-\item look beyond this class.  Every operation count in
-  Table~\ref{tab:rank48} belongs to the class descending from
-  AlphaEvolve's scheme, and a second rank-48 class over $\Q$ would be a
-  new starting point.
+\item look beyond this class.  Section~\ref{sec:classes} places our
+  class on the Li--Wang--Hu curve and screens other members and
+  Agarwal's scheme; so far they cost more, but a sparser rational class,
+  or a better region of these orbits, would be a new starting point.
 \end{enumerate}
+
+\section{Other rational rank-48 classes}\label{sec:classes}
+
+\paragraph{The Li--Wang--Hu curve.}  Li, Wang and Hu~\cite{LWH26} list
+$48$ triples $(U_i(t),V_i(t),W_i(t))$ of $4\times4$ matrices with entries
+rational in $t$ that decompose the matrix multiplication tensor for every
+nonzero $t$; the curve passes through the Dumas--Pernet--Sedoglavic
+solution.  Their invariant sums, over all four-element sets $H$ of the
+sixteen layers whose three factors have rank two, the product of the
+coefficients of $x_1x_2x_3x_4$ in $\det\sum_j x_jU_{i_j}$,
+$\det\sum_j x_jV_{i_j}$ and $\det\sum_j x_jW_{i_j}$ over $i_j\in H$.  On
+the curve it equals
+\[
+\varphi(t)=64+\frac4{t^2}+1024\,t^2,
+\]
+which is strictly increasing for $t\ge1/4$, so the members with
+$t\ge1/4$ are pairwise inequivalent.  When $t$ is a power of $2$ every
+coefficient lies in $\Zh$, so infinitely many of these classes are valid
+over every ring containing $1/2$.
+
+\paragraph{Verification and location.}  We parsed the family from the
+paper's source and checked all $4096$ Brent equations at $17$ values of
+$t$.  Every entry contains $t$ at most twice, and the coefficients lie in
+$\Z[\frac12,t,t^{-1}]$~\cite{Agarwal26}, so each equation is a Laurent
+polynomial with at most $13$ coefficients; the identity therefore holds
+in $\Q(t)$.  Our implementation of $\varphi$ reproduces the paper's
+values at $t=1/4$, $1/2$ and $2$.  On our $201$ point, on Patel's $202$
+point and on the published $204$ point it gives $\varphi=192$, the
+minimum of $\varphi$: every count in Table~\ref{tab:rank48} belongs to
+the member $t=1/4$.
+
+\paragraph{One coordinate system for all members.}  We matched the
+layers of $s(1/4)$ with those of our $201$ point by isotropy invariants
+(factor rank triples, and the ranks of side-by-side and stacked pairs of
+factors) and solved exactly for the basis changes.  This gives an
+explicit isotropy that carries $s(1/4)$ to our point: a reversal of the
+three factors, basis changes with entries $0$ and $\pm1$, a permutation
+of the products and scalings.  Applied to $s(t)$ it gives every member in
+the coordinates of our record, and each image passes all $4096$ Brent
+equations and has the expected $\varphi(t)$.  The family's
+$t$-independent factor lands on our output side, so $P$ is the same
+matrix for every $t$ and the record's $89$-operation output program
+applies unchanged; each member then costs its two input maps plus $89$.
+
+\paragraph{A first screen.}  Table~\ref{tab:classes} gives the members at
+these points, optimized with the restart protocol that gives
+$55+57+89=201$ for our class: twelve matrix-seeded searches of three
+minutes per side.  The cost grows with $t$.  Coefficients that vanish at
+$t=1/4$, such as the entries $(4t-1)/4$, become nonzero non-unit numbers
+elsewhere, and each one needs a scaling: $L$ and $R$ need $7$ scalings
+each at $t=1/2$ and $11$ to $14$ at $t\ge1$, against $2$ at the record.
+Our class is the sparsest point of the curve.  At $t=2$ the input map $L$
+alone costs $88$; the remaining runs at $t\ge2$ stopped on a limitation
+of our search tool, which cannot yet re-read some of the programs it
+emits for these coefficients.
+
+\begin{table}[ht]
+\centering
+\caption{Members of the Li--Wang--Hu curve in the coordinates of our
+record.  \emph{Non-unit} counts the coefficients of $L$ and $R$ outside
+$\{0,\pm1\}$; $P$ is the record's for every $t$.  All programs pass
+SLPchecker and the exact Brent check.}\label{tab:classes}
+\begin{tabular}{rrrrrr}
+\toprule
+$t$ & floor & non-unit $L$, $R$ & $L$ & $R$ & total \\
+\midrule
+$1/4$ & $156$ & $32$, $32$ & $55$ & $57$ & $201$ \\
+$1/2$ & $160$ & $93$, $80$ & $70$ & $71$ & $230$ \\
+$1$ & $166$ & $195$, $172$ & $86$ & $87$ & $263$ \\
+$2$ & $166$ & $203$, $182$ & $88$ & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These numbers come from one point of each orbit, the image of a point
+tuned for $t=1/4$.  For the nearest member, $t=1/2$, we are running the
+full search of Section~\ref{sec:found}: annealing from its transported
+point lowers the floor to $158$, two above our class, and the
+successive-halving sweep over $90$ annealed points is in progress.
+
+\paragraph{Agarwal's scheme.}  Agarwal's replacement~\cite{Agarwal26}
+removes twelve products of $s(2)$, three of its four groups of rank-two
+layers, and adds twelve new ones, some with rank-three factors, which
+puts it outside the curve.  We rebuilt it exactly from his construction.
+It satisfies all $4096$ Brent equations, its new factors have the rank
+triples he states, $(2,3,2)$, $(2,3,3)$ and $(2,2,3)$, four of each, and
+every denominator is a power of $2$.  In our coordinates its floor is
+$166$, it has more non-unit coefficients than $s(2)$ on every side ($231$,
+$225$ and $46$ against $203$, $182$ and $8$), and its coefficients reach
+$48$.  We have not yet optimized it.
 
 \section{Data and code}
 
@@ -580,6 +685,11 @@ it.
 \begin{verbatim}
 cd proof && lake build Mm.Ring_4x4_48_201
 \end{verbatim}
+\item Other classes: \path{matmul/dps48/lwh_family.py} (the Li--Wang--Hu
+  family from the paper's source, its verification and the invariant),
+  \path{lwh_transport.py} (the isotropy and the transported members), and
+  \path{agarwal_replacement.py} and \path{agarwal_transport.py}
+  (Agarwal's scheme).
 \item Appendix~\ref{app:scheme}: generated by
   \path{matmul/dps48/mk_paper_appendix48.py}, which re-checks the Brent
   equations first.
@@ -596,6 +706,10 @@ tools.  The method that found the scheme is Ruchit Patel's, whose
 search code is public domain.
 
 \begin{thebibliography}{99}
+\bibitem{Agarwal26} A.~Agarwal, \emph{Certified local rank and
+uniqueness barriers for a 48-term matrix-multiplication decomposition},
+arXiv:2609.13596 (2026); evidence bundle
+\href{https://doi.org/10.5281/zenodo.22684265}{doi:10.5281/zenodo.22684265}.
 \bibitem{CaDiCaL} A.~Biere, T.~Faller, K.~Fazekas, M.~Fleury,
 N.~Froleyks, F.~Pollitt, \emph{CaDiCaL 2.0}, Proc.\ CAV 2024, LNCS
 14681, 133--152.
@@ -638,6 +752,8 @@ solutions of Brent equations using nonlinear least squares}, Comput.\
 Math.\ Math.\ Phys.\ 64 (2024) 1881--1891.
 \bibitem{KM23} M.~Kauers, J.~Moosbauer, \emph{Flip graphs for matrix
 multiplication}, Proc.\ ISSAC 2023; arXiv:2212.01175.
+\bibitem{LWH26} X.~Li, Y.~Wang, S.~Hu, \emph{Substitution and quotient
+of the isotropy group action}, arXiv:2607.15069 (2026).
 \bibitem{Mathlib} The mathlib Community, \emph{The Lean mathematical
 library}, Proc.\ CPP 2020, 367--381.
 \bibitem{MSY26} Y.~Moran, O.~Schwartz, S.~Yuan, \emph{Complex to

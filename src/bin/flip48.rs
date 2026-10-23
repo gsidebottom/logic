@@ -2218,12 +2218,150 @@ fn bud_step_children(root: &[Summand], pairs: &[(usize, usize)], slot: usize,
     out
 }
 
+/// a dyadic scalar: None = 0, Some((neg, k)) = (-1)^neg 2^k
+type Dy = Option<(bool, i32)>;
+
+fn dy_mul(x: Dy, y: Dy) -> Dy {
+    Some((x?.0 ^ y?.0, x?.1 + y?.1))
+}
+
+fn dy_neg(x: Dy) -> Dy {
+    x.map(|(n, k)| (!n, k))
+}
+
+/// x - y if it is 0 or +-2^k, else None (it would leave Z[1/2])
+fn dy_sub(x: Dy, y: Dy) -> Option<Dy> {
+    let (x, y) = match (x, y) {
+        (None, y) => return Some(dy_neg(y)),
+        (x, None) => return Some(x),
+        (Some(x), Some(y)) => (x, y),
+    };
+    let e = x.1.min(y.1);
+    let iv = |(n, k): (bool, i32)| -> i128 { if n { -(1i128 << (k - e)) } else { 1i128 << (k - e) } };
+    let d = iv(x) - iv(y);
+    if d == 0 {
+        Some(None)
+    } else if d.unsigned_abs().is_power_of_two() {
+        Some(Some((d < 0, d.unsigned_abs().trailing_zeros() as i32 + e)))
+    } else {
+        None
+    }
+}
+
+/// alpha v + beta w for dyadic alpha, beta (not both 0)
+fn dy_lin(v: &Vec16, alpha: Dy, w: &Vec16, beta: Dy) -> Option<Vec16> {
+    let scale = |u: &Vec16, (n, k): (bool, i32)| -> Vec16 {
+        let mut s = Vec16 { nums: u.nums, exp: u.exp + k };
+        if n {
+            for x in s.nums.iter_mut() {
+                *x = -*x;
+            }
+        }
+        s
+    };
+    match (alpha, beta) {
+        (None, None) => None,
+        (None, Some(b)) => Some(scale(w, b)),
+        (Some(a), None) => Some(scale(v, a)),
+        (Some(a), Some((bn, bk))) => scale(v, a).add_scaled(w, bn, bk),
+    }
+}
+
+/// Alexandre Sedoglavic's generalized flip on a bud: two summands sharing the
+/// slot-`slot` factor f carry f (x) (x_p (x) y_p + x_j (x) y_j), and every
+/// re-decomposition into two summands sharing f is X' = X M, Y' = Y M^-T (x on
+/// the first free slot, y on the second).  Up to scaling its columns, M is two
+/// distinct points of the line spanned by x_p, x_j; our lambda-flip moves one of
+/// them.  Points used: x_p, x_j and x_p + t x_j for t in +-{1, 2, 1/2}, so 27
+/// re-decompositions per bud of which 19 have det M = +-2^k (valid over Z[1/2]):
+/// the 12 that move one point (our fixed-scalar flips) and 7 that move both.
+const GEN_POINTS: [(Dy, Dy); 8] = [
+    (Some((false, 0)), None),                // x_p
+    (None, Some((false, 0))),                // x_j
+    (Some((false, 0)), Some((false, 0))),    // x_p + x_j
+    (Some((false, 0)), Some((true, 0))),     // x_p - x_j
+    (Some((false, 0)), Some((false, 1))),    // x_p + 2 x_j
+    (Some((false, 0)), Some((true, 1))),     // x_p - 2 x_j
+    (Some((false, 0)), Some((false, -1))),   // x_p + x_j / 2
+    (Some((false, 0)), Some((true, -1))),    // x_p - x_j / 2
+];
+
+fn gen_flip(scheme: &[Summand], p: usize, j: usize, slot: usize, c1: (Dy, Dy), c2: (Dy, Dy),
+            cap: i64) -> Option<Vec<Summand>> {
+    let others: [usize; 2] = match slot {
+        0 => [1, 2],
+        1 => [0, 2],
+        _ => [0, 1],
+    };
+    let (t1, t2) = (others[0], others[1]);
+    let ((m11, m21), (m12, m22)) = (c1, c2);
+    let det = dy_sub(dy_mul(m11, m22), dy_mul(m12, m21))??;
+    let inv = |x: Dy| dy_mul(x, Some((det.0, -det.1)));
+    let (xp, xj) = (fac(&scheme[p], t1), fac(&scheme[j], t1));
+    let (yp, yj) = (fac(&scheme[p], t2), fac(&scheme[j], t2));
+    let x1 = dy_lin(xp, m11, xj, m21)?;
+    let x2 = dy_lin(xp, m12, xj, m22)?;
+    let y1 = dy_lin(yp, inv(m22), yj, inv(dy_neg(m12)))?;
+    let y2 = dy_lin(yp, inv(dy_neg(m21)), yj, inv(m11))?;
+    if [&x1, &x2, &y1, &y2].iter().any(|v| v.is_zero() || v.max_abs() > cap) {
+        return None;
+    }
+    let f = fac(&scheme[p], slot).clone();
+    let mk = |x: Vec16, y: Vec16| -> Option<Summand> {
+        let mut abc = [f.clone(), f.clone(), f.clone()];
+        abc[t1] = x;
+        abc[t2] = y;
+        let [a, b, c] = abc;
+        Summand::gauge(a, b, c)
+    };
+    let (s1, s2) = (mk(x1, y1)?, mk(x2, y2)?);
+    // keep x_j's summand at j, as the lambda-flip does (a capped closure
+    // depends on the summand order)
+    let (s1, s2) = if m11.is_none() { (s2, s1) } else { (s1, s2) };
+    let mut out = scheme.to_vec();
+    out[p] = s1;
+    out[j] = s2;
+    Some(out)
+}
+
+/// every valid generalized flip of each new bud pair (`doubles`: only those
+/// moving both points, the ones our fixed-scalar step cannot make)
+fn bud_gen_children(root: &[Summand], pairs: &[(usize, usize)], slot: usize, cap: i64,
+                    doubles: bool) -> Vec<Vec<Summand>> {
+    use std::collections::HashSet;
+    let mut seen: HashSet<u64> = HashSet::new();
+    let mut out = Vec::new();
+    for &(p, j) in pairs {
+        assert!(fac(&root[p], slot) == fac(&root[j], slot), "bud pair does not share its factor");
+        for u in 0..GEN_POINTS.len() {
+            for v in u + 1..GEN_POINTS.len() {
+                if (u, v) == (0, 1) || (doubles && u < 2) {
+                    continue; // the pair itself; or a move of one point only
+                }
+                if let Some(s2) = gen_flip(root, p, j, slot, GEN_POINTS[u], GEN_POINTS[v], cap)
+                    && seen.insert(scheme_hash(&s2)) {
+                    out.push(s2);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// what each bud root starts from
+#[derive(Clone, Copy, PartialEq)]
+enum BudStep {
+    None,          // the split itself
+    Fixed,         // each fixed-scalar flip of a new bud pair
+    Gen(bool),     // each generalized flip of a new bud pair (true: two-point moves only)
+}
+
 /// the implicit-bud pilot: census of circuits per slot, then for every
 /// circuit and every pivot with dyadic coefficient ratios, split and explore
-/// (with `step`, explore from every fixed-scalar flip of a new bud pair instead)
+/// (with `step`, explore from flips of the new bud pairs instead)
 #[allow(clippy::too_many_arguments)]
 fn pursue_buds(seed: &[Summand], cap: i64, kmin: usize, kmax: usize, max_seen: usize,
-               slots: &[usize], max_roots: usize, step: bool, outdir: &str) {
+               slots: &[usize], max_roots: usize, stride: usize, step: BudStep, outdir: &str) {
     use std::collections::HashMap;
     let seed_hash = scheme_hash(seed);
     let mut roots: Vec<(usize, Vec<usize>, Vec<i128>, usize)> = Vec::new();
@@ -2249,10 +2387,14 @@ fn pursue_buds(seed: &[Summand], cap: i64, kmin: usize, kmax: usize, max_seen: u
             println!("  e.g. support {:?} alpha {:?}", sup, alpha);
         }
     }
+    if stride > 1 {
+        roots = roots.into_iter().step_by(stride).collect();
+    }
     if roots.len() > max_roots {
         roots.truncate(max_roots);
     }
-    println!("{} split roots (max-seen {} states per root)", roots.len(), max_seen);
+    println!("{} split roots{} (max-seen {} states per root)", roots.len(),
+             if stride > 1 { format!(", every {stride}th") } else { String::new() }, max_seen);
     let t0 = Instant::now();
     let done = AtomicU64::new(0);
     let total_states = AtomicU64::new(0);
@@ -2270,14 +2412,27 @@ fn pursue_buds(seed: &[Summand], cap: i64, kmin: usize, kmax: usize, max_seen: u
             None => return,
         };
         assert!(verify(&root), "bud split broke the decomposition");
-        let starts = if step {
-            bud_step_children(&root, &bud_pairs(seed.len(), sup, *p), *s, cap)
-        } else {
-            vec![root]
+        let pairs = bud_pairs(seed.len(), sup, *p);
+        let starts = match step {
+            BudStep::None => vec![root],
+            BudStep::Fixed => bud_step_children(&root, &pairs, *s, cap),
+            BudStep::Gen(doubles) => {
+                let gens = bud_gen_children(&root, &pairs, *s, cap, doubles);
+                if !doubles {
+                    // the generalized flips that move one point are exactly our
+                    // fixed-scalar flips: check it on every root
+                    use std::collections::HashSet;
+                    let fixed: HashSet<u64> = bud_step_children(&root, &pairs, *s, cap)
+                        .iter().map(|x| scheme_hash(x)).collect();
+                    let all: HashSet<u64> = gens.iter().map(|x| scheme_hash(x)).collect();
+                    assert!(fixed.is_subset(&all), "a fixed-scalar flip is not a generalized flip");
+                }
+                gens
+            }
         };
         n_starts.fetch_add(starts.len() as u64, Ordering::Relaxed);
         starts.into_par_iter().for_each(|start| {
-            assert!(verify(&start), "fixed-scalar bud flip broke the decomposition");
+            assert!(verify(&start), "bud flip broke the decomposition");
             let (st, f48, s48, nr, mr, capped) = closure_collect(start, seed_hash, cap, max_seen);
             total_states.fetch_add(st, Ordering::Relaxed);
             total_red.fetch_add(nr, Ordering::Relaxed);
@@ -2321,7 +2476,12 @@ fn pursue_buds(seed: &[Summand], cap: i64, kmin: usize, kmax: usize, max_seen: u
     let mr = min_rank.load(Ordering::Relaxed);
     println!("starts: {} ({} per root), {} explored more than two states, {} closures complete (the cap never cut them short)",
              n_starts.load(Ordering::Relaxed),
-             if step { "fixed-scalar flips of new bud pairs" } else { "the split itself" },
+             match step {
+                 BudStep::None => "the split itself",
+                 BudStep::Fixed => "fixed-scalar flips of new bud pairs",
+                 BudStep::Gen(false) => "generalized flips of new bud pairs",
+                 BudStep::Gen(true) => "two-point generalized flips of new bud pairs",
+             },
              n_moving.load(Ordering::Relaxed), n_closed.load(Ordering::Relaxed));
     println!("buds: {} roots, {} states, {} reductions (lowest rank reached {}), {} distinct NEW rank-48 (dumped {}), {} below 48, {:.0}s",
              nroots, total_states.load(Ordering::Relaxed), total_red.load(Ordering::Relaxed),
@@ -2394,8 +2554,10 @@ fn main() {
     }
     if args.iter().any(|a| a == "--buds") {
         // implicit-bud pilot: --buds [--kmin 3] [--kmax 5] [--max-seen 5000]
-        //                     [--slots ab] [--max-roots N] [--step]
+        //                     [--slots ab] [--max-roots N] [--root-stride K]
+        //                     [--step | --gen [--doubles]]
         // --step: start from each fixed-scalar flip of a new bud pair
+        // --gen: from each generalized (2x2-matrix) flip; --doubles: two-point ones only
         let kmin = get("--kmin", 3) as usize;
         let kmax = get("--kmax", 5) as usize;
         let max_seen = get("--max-seen", 5000) as usize;
@@ -2406,8 +2568,15 @@ fn main() {
             .and_then(|i| args.get(i + 1))
             .map(|s| s.chars().filter_map(|ch| "abc".find(ch)).collect())
             .unwrap_or_else(|| vec![0, 1]);
-        let step = args.iter().any(|a| a == "--step");
-        pursue_buds(&seed, cap, kmin, kmax, max_seen, &slots, max_roots, step, &outdir);
+        let step = if args.iter().any(|a| a == "--gen") {
+            BudStep::Gen(args.iter().any(|a| a == "--doubles"))
+        } else if args.iter().any(|a| a == "--step") {
+            BudStep::Fixed
+        } else {
+            BudStep::None
+        };
+        let stride = get("--root-stride", 1).max(1) as usize;
+        pursue_buds(&seed, cap, kmin, kmax, max_seen, &slots, max_roots, stride, step, &outdir);
         return;
     }
     if let Some(pi) = args.iter().position(|a| a == "--graph") {

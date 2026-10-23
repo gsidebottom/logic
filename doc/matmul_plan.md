@@ -1729,6 +1729,36 @@ the two source papers for this track):
   rigidity theorem (doc/matmul_rigid48_paper), now for multi-bud splits.
   Not tried: unsolved flips beyond the first step, random walks,
   Alexandre's generalized 2x2 flips (his items 2-3).  Line closed.
+- **GENERALIZED 2x2 FLIPS (Alexandre's items 2-3): NULL (2026-10-23, Greg
+  asked)**: flip48 --buds --gen [--doubles].  On a bud (two summands
+  sharing f), every re-decomposition into two summands sharing f is
+  X' = X M, Y' = Y M^-T; up to scaling its columns, M is two distinct points
+  of the line spanned by x_p, x_j, and our lambda-flip moves ONE of them, so
+  a generalized flip is at most two lambda-flips (his n x n version is a
+  composition too; our bud roots only carry 2-buds).  His formula 2.2 has
+  c_i and c_j swapped (2.4 and 2.5 are right); det M divides the shared
+  factor and must be +-2^k over Z[1/2].  Points used: x_p, x_j and
+  x_p + t x_j (t in +-{1, 2, 1/2}): 19 valid re-decompositions per bud pair,
+  12 moving one point (our fixed-scalar flips: a built-in check on every
+  root finds them all among the generalized children, and the totals add up
+  exactly against --step plus --doubles) and 7 moving both.  Runs
+  (16:54-18:31), every move followed by the solved-flip closure: P, the 7
+  two-point moves on all 2,944 P splits (sizes 3-5 at 2,000 states per
+  start, size 6 at 300): 100,128 starts, 253.8M states; L/R, all 19 moves
+  (size 4 at 2,000, size 5 at 300, every 8th size-6 split at 100; L/R buds
+  never had a first step before): 293,968 starts, 385.0M states.  Lowest
+  rank 49 everywhere, 0 new rank-48, 0 below 48.  With the pilot and option
+  1: no move family tried (solved flips; fixed-scalar or generalized first
+  steps) gets below the rank-49 floor.  flip48 --root-stride K samples every
+  K-th split.
+- **SEDOGLAVIC'S TYPE (item 5) IS A CLASS INVARIANT (2026-10-23)**:
+  matmul/dps48/types48.py (ranks of each product's three factor matrices).
+  Our record point, Alexandre's sparsest point and every Li-Wang-Hu member
+  s(1/4) ... s(8): 32 x [1,1,1] + 16 x [2,2,2] (type sum 192), constant
+  along the whole curve (factor ranks are isotropy invariants); Agarwal's
+  scheme: 32 x [1,1,1] + 4 x [2,2,2] + 4 each of [2,2,3], [2,3,2], [2,3,3]
+  (sum 208).  The type separates Agarwal's class from the curve but cannot
+  steer a search inside our class; its use as a guide is tested on 3x3.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

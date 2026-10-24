@@ -1910,7 +1910,15 @@ the two source papers for this track):
   unit rows in one leg at a time, since the shared slot's basis cannot be
   primal for one leg and dual for the next); a construction aiming at
   orbits of classical products (units in all three slots) is the untried
-  route.
+  route.  CLOSED (Oct 24): an orbit of four [1,1,1] products can be made
+  classical (e_ab (x) e_bc (x) e_ca under the index shift) only if, within
+  the orbit, q_i . u_j, v_i . r_j and s_i . p_j vanish exactly off the
+  diagonal (each slot's basis must map a factor column and a factor row of
+  the orbit to unit vectors at once); for the 4 all-cycle elements none of
+  the 32 orbits satisfies even one of the three -- so no classical orbits,
+  and no two legs can share unit rows (the same conflict caps the
+  structured points at one leg of 40).  Symmetric route at this element
+  type: no chance of a record.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

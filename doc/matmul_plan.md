@@ -1860,6 +1860,31 @@ the two source papers for this track):
   the floor-47 class >= 53.  So the harvest threatens neither record: no
   Z[1/2] class below 55 (mod-3 bound), no F2 class at 51 or below with a
   basis change.
+- **STABILIZER OF lam01c0_201 (2026-10-24, Greg asked; Alexandre's
+  symmetry idea)**: Alexandre (reply of Oct 23) prefers the balanced 201
+  point lam01c0_201 (56 + 56 + 89; more unit rows, better for memory) and
+  proposes building circuits from the stabilizer: if an order-4 isotropy
+  acts by permutation matrices it splits the 48 products into 12 4-cycles
+  and each leg into 4 relabelled copies, so leg costs divisible by 4 --
+  best case 192 = 52 + 52 + 88.  matmul/dps48/stabilizer48.py (exact, via
+  lwh_transport's matcher and solver over all six S3 slot maps; 42 s):
+  order 64 = 32 with trivial slot map + 32 carrying L onto R (slot map
+  cyc2+rev), as Alexandre said; no other slot map admits a matching.
+  Trivial slot map: identity, 19 involutions (2 of cycle type 2^20 1^8, 17
+  of 2^24), 12 of order 4, all of cycle type 4^12 (his 12 orbits of 4:
+  4 of type [2,2,2], 8 of [1,1,1]).  L-onto-R part: 8 involutions (2^18
+  1^12, 2^22 1^4), 24 of order 4 (8 of 4^10 2^4, 16 of 4^12).  At lam01c0
+  only the identity acts by signed permutation matrices.  But for all 12
+  order-4 elements X^4 = Y^4 = Z^4 = I after normalizing, with char polys
+  X: (x-1)^2 (x^2+1), Y, Z: x^4 - 1 -- so each is conjugate over Q to an
+  element acting by signed permutations (Y, Z 4-cycles; X two fixed
+  coordinates and a signed swap, never an unsigned permutation; signs are
+  free in the cost model).  His perfect situation exists in the class:
+  points where an order-4 symmetry permutes products in 4-cycles and each
+  leg's rows exactly (per-layer scalings normalized along each cycle).
+  Next: construct such points over Z[1/2], search the symmetric family
+  (the centralizer is the freedom) for low floors, then cost symmetric
+  programs (a quarter leg is 12 rows: exact SAT territory).
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

@@ -1846,8 +1846,20 @@ the two source papers for this track):
   57-65: the other 365.  Mod-2 images: 22,192 in F2 families neither
   collection has (new F2 classes: the F2 record 51 with a basis change is
   untested on them), 11,957 in known F2 families, 7,143 need 1/2.
-  Open: whether the three bound-55 families reach 55 (a second 55 class);
-  the free-basis F2 check against 51 on the new F2 classes.
+  Open: whether the three bound-55 families reach 55 (a second 55 class).
+  F2 CHECK AGAINST 51 (Greg asked; 23:00-23:33): matmul/mm3/f2images.py
+  writes the mod-2 images in hbconvert's format (33,470 distinct; 7,143
+  decompositions need 1/2), then the Hell's Bells tools unchanged:
+  hbnovelty.py (fingerprints of the six slot variants against the
+  17,376-scheme database, exact equivalent() on collisions, exact
+  clustering): 3,378 equivalent to database schemes, 30,092 NEW in 3,066
+  exact F2 classes; floors 47: 1 class, 48: 49, 49: 288, 50: 579, 51: 940,
+  52+: 1,209.  hblegs.py (exact free-basis leg minima with fbmin, 6 jobs x
+  2 threads) on the 1,857 classes with floor <= 51: ALL ruled-out-51,
+  proved per-step totals >= 52 (291 classes), >= 53 (635), >= 54 (931);
+  the floor-47 class >= 53.  So the harvest threatens neither record: no
+  Z[1/2] class below 55 (mod-3 bound), no F2 class at 51 or below with a
+  basis change.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

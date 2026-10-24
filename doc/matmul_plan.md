@@ -1919,6 +1919,25 @@ the two source papers for this track):
   and no two legs can share unit rows (the same conflict caps the
   structured points at one leg of 40).  Symmetric route at this element
   type: no chance of a record.
+  CROSS-LEG AND MIXED-ELEMENT CHECKS (Oct 24, Greg asked;
+  matmul/dps48/symunits48.py): exact decision of which (leg, orbit) sets
+  of unit rows (up to scale) a symmetric point can have, for all 12
+  order-4 elements and every admissible signed-permutation form per slot
+  (x^4 - 1: the 4-cycle C or 1 + (-1) + J, the latter untried before;
+  (x -+ 1)^2 (x^2+1): 1 + 1 + J).  A product's L row is a unit iff
+  B_X^-1 u and B_Y^T v are (u primal on B_X, v dual on B_Y; R: r on B_Y,
+  s on B_Z; P: p on B_Z, q on B_X), and units spread over orbits of four.
+  Gate: element 4 reproduces the structured search's built point (two R
+  orbits); every maximal set confirmed by building the point; 0 undecided
+  generic choices.  RESULT: the 8 mixed-type elements admit no unit orbit
+  in any leg (floor >= 176 at their symmetric points); the 4 all-cycle
+  elements admit unit orbits in one leg only (R for elements 4 and 7, L
+  for 5 and 6), at most 2 at once (floor >= 168); never in two legs, and
+  the new 1 + (-1) + J form adds nothing.  Since the class is
+  flip-isolated, floor = 176 - #unit rows, so every symmetric point has
+  floor >= 168, attained.  Alexandre's perfect situation (canonical-vector
+  orbits in the circuits of L, R and P) does not exist in this class.  Not
+  a record bound (168 < 201).
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

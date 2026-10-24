@@ -1827,7 +1827,27 @@ the two source papers for this track):
   decompositions, all from the generalized-flip run).  A 30-s type-biased
   test walk found 7 more new families, all with rank-3 factors.  flip23
   --descend --known-families saves every decomposition of an unknown family
-  (5,000 per family); harvest running (5 variants x 600 s, from 21:42).
+  (5,000 per family).
+  HARVEST (21:42-22:32, 12 threads x 600 s per variant, classical start,
+  cap 1): generalized flips 21,775 distinct rank-23 decompositions, 2
+  unknown families, 5 saved; generalized flips + type bias 663,829, 226
+  unknown of 486, 20,776 saved; type bias 567,675, 272 unknown of 569,
+  19,045 saved; baseline 84,655, 30 unknown of 179, 1,437; bud jumps 35,314,
+  2 unknown of 57, 11.  41,292 saved, all distinct, all Brent-exact; 390
+  families absent from both collections (Python reclassification agrees).
+  CHECKS (matmul/mm3/check_new23.py, 22:42; controls: a database scheme
+  gives its census 58 through the new path, our 55 gives exactly 55): the
+  f3scan whole-orbit bound (additions over F3, 1/2 -> 2, scalings free;
+  covers every Z[1/2] representative) is >= 55 in all 390 families, 0
+  decompositions <= 54 -> NONE CAN BEAT 55.  Exactly 55 (a tie at best):
+  x3+20x2+48x+4y6+4y5+2y4+13y3+z33+2z29 (156 decs, 144 need 1/2),
+  23x2+46x+4y6+11y4+8y3+2z32+z28 (366), 2x3+17x2+50x+3y6+4y5+4y4+12y3+
+  z32+z30+z28 (132, mod-2 images in a new F2 family); 56: 22 families;
+  57-65: the other 365.  Mod-2 images: 22,192 in F2 families neither
+  collection has (new F2 classes: the F2 record 51 with a basis change is
+  untested on them), 11,957 in known F2 families, 7,143 need 1/2.
+  Open: whether the three bound-55 families reach 55 (a second 55 class);
+  the free-basis F2 check against 51 on the new F2 classes.
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

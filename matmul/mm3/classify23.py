@@ -12,7 +12,7 @@ the classification compares Q-strings with Q-strings.  With --hb, Hell's Bells' 
 schemes (Martensson et al., ePrint 2026/1688) count as known too; --known-out writes every
 known family string, one per line, for flip23 --descend --known-families.
 
-  classify23.py [--hb DIR] [--known-out FILE] DUMP ...
+  classify23.py [--hb DIR] [--known-out FILE] DUMP ... (or @FILE listing them)
   (flip23 dumps: lines '([n0..n8], e) | (...) | (...)')
 """
 import ast
@@ -135,8 +135,9 @@ def main():
         with open(known_out, "w") as f:
             f.write("".join(k + "\n" for k in sorted(known)))
         print(f"wrote {len(known)} known family strings to {known_out}")
+    paths = [q.strip() for a in args for q in (open(a[1:]) if a.startswith("@") else [a]) if q.strip()]
     ours = defaultdict(list)
-    for path in args:
+    for path in paths:
         s = parse_dump(path)
         assert len(s) == 23, path
         ours[family(s)].append(path)

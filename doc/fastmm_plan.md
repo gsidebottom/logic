@@ -1,7 +1,9 @@
 # Practical fast matrix multiplication: plan
 
 Started 2026-10-24.  Code and results: `matmul/fastmm/` (build with `make`; sweeps
-`run_bench.sh`, `run_blocked.sh`; results in `matmul/fastmm/results/`).
+`run_bench.sh`, `run_blocked.sh`, `run_hybrid.sh`, `run_auto.sh`, `run_probes.sh`; results in
+`matmul/fastmm/results/`).  `bench_fmm -m auto` picks the plan per size and precision from a
+calibrated cost model; `bench_fmm -n N -p` prints the planner's choices.
 
 ## Goal
 
@@ -71,6 +73,68 @@ of x*s - y), and the passes are bandwidth-bound: identical pass times, identical
 is exact).  FMA would matter for points with many single-use scalings, under a cost model where
 scalings fused into additions are free, and once the passes become compute-bound.
 
+Automatic plan choice (`results/auto_2026-10-24.txt`).  A plan is a sequence of fused levels
+from the top -- SW (Strassen-Winograd), D48 (ours) -- ending in a GEMM (G), or classical
+blocked 2x2 (B2) on its own.  `auto` runs the plan with the smallest predicted time:
+cost(n) = min(leaf, passes of a level at n/g + r * cost(n/g)), a dynamic program over the first
+level, each leaf GEMM priced by the level it sits in.  The calibration is measured once per
+machine and precision (about 75 s for n up to 16384; cached in `results/calib_f32.txt`,
+`calib_f64.txt` with the machine, padding and format, remeasured when any differs): one GEMM and
+one blocked call at each size, alone, with cold caches; and for each level type and block size,
+its three passes and its GEMM time per product, measured together by running the level.
+
+| n | precision | auto's plan | predicted (s) | measured (s) | best classical variant (s) | speedup |
+|---|---|---|---|---|---|---|
+| 2048 | f32 | G | 0.0052 | 0.0053 | 0.0052 (G) | 1.00 |
+| 4096 | f32 | SW/G | 0.041 | 0.045 | 0.048 (G) | 1.06 |
+| 8192 | f32 | D48/G | 0.277 | 0.275 | 0.330 (G) | 1.20 |
+| 16384 | f32 | SW/D48/G | 2.004 | 1.998 | 2.874 (B2) | 1.44 |
+| 2048 | f64 | SW/G | 0.020 | 0.021 | 0.022 (G) | 1.03 |
+| 4096 | f64 | D48/G | 0.143 | 0.141 | 0.165 (G) | 1.17 |
+| 8192 | f64 | SW/D48/G | 1.033 | 1.007 | 1.380 (G) | 1.37 |
+| 16384 | f64 | D48/D48/G | 7.098 | 6.942 | 10.832 (B2) | 1.56 |
+
+At every point auto's plan was the fastest method measured (against the named methods and the
+planner's runners-up, medians of 5-9 interleaved rounds; where auto's plan was also run under
+its own name, the two medians differ by 0.4-1.4%).  Predictions for the fast plans at
+8192-16384 are within 0.3-3%; the 4096 f32 run was slow throughout (classical 13% over its
+calibration).  What the planner found:
+
+1. Level order matters.  Strassen on top of ours (SW/D48/G) beats ours on top of Strassen
+   (D48/SW/G, our best hand-made hybrid) with the same 336 products: its passes move 9.75 n^2
+   elements per side against 12.25 n^2, because the larger expansion (ours writes 3x the data it
+   reads, Strassen 1.75x) belongs at the smaller level.  It is the new best at 16384 f32 (1.99 s
+   against 2.06 s) and 8192 f64 (1.01 s against 1.05 s).
+2. f64 rewards depth and f32 does not: the f64 GEMM keeps its rate down to 1024 (0.81 TFLOP/s
+   against 0.82-0.85 at 2048-8192), the f32 GEMM drops below 2048 (3.0 TFLOP/s at 1024, 2.6 at
+   512, against 3.2-3.3).  Two levels of ours win only at 16384 f64.
+3. A GEMM shorter than about 1 ms takes 13-27% longer called back to back, as inside a plan,
+   than called alone (f32 at 512-1024, f64 at 256-512; `bench_fmm -G` times it three ways).  The
+   first calibration timed single calls and picked two levels of ours at 8192 f64 (1.144 s)
+   where SW/D48/G runs in 1.017 s (`results/auto_2026-10-24_calib1.txt`); pricing each level's
+   GEMMs inside the level fixed every miss.
+
+How much of the machine the GEMMs use (`probe_threads.c`, `results/probes_2026-10-24.txt`).
+The M4 Pro has one SME matrix unit per cluster (two performance clusters of 5 cores, one
+efficiency cluster of 4), shared by the cluster's cores.  Accelerate drives each performance
+cluster's unit from one thread, so its GEMM keeps 2-3 cores busy and leaves the rest idle:
+
+| n = 2048 | f32 GFLOP/s | f64 GFLOP/s |
+|---|---|---|
+| Accelerate's GEMM (as bench_fmm calls it) | 3,295 | 800 |
+| one single-threaded GEMM stream | 1,652 | 380 |
+| two streams | 3,343 | 782 |
+| three streams | 3,631 | 863 |
+| NEON fused multiply-add peak, 10 performance cores, registers only | 1,077 | 540 |
+| two GEMM streams + 8 NEON threads (GEMM + NEON) | 3,225 + 837 = 4,062 | 725 + 394 = 1,119 |
+| Accelerate's GEMM + 12 NEON threads | 1,326 + 1,083 | 566 + 482 |
+
+The GEMMs are bound by the SME units: one stream gets half of Accelerate's rate, two get all
+of it.  Three single-threaded streams beat Accelerate's own threading by 10% (f32) and 8% (f64)
+-- the efficiency cluster's unit, or better overlap of packing with SME work; not yet separated.
+The vector units of the 8 cores left idle could add up to 25% (f32) and 50% (f64) at their
+register-only peak.  Oversubscribing the cores collapses the GEMM rate.
+
 Engineering lessons (each worth a large factor, each easy to miss):
 
 - The compiler did not vectorize the 64-stream fused loops (it gave up on overlap checks);
@@ -85,12 +149,12 @@ Engineering lessons (each worth a large factor, each easy to miss):
 
 For one fused level of an <g x g x g : r> scheme on n x n matrices (m = n/g):
 
-    T(n) ~ r * G(m)  +  3 (g^2 + r) m^2 w / B  +  overhead
+    T(n) ~ r * T_below(m)  +  3 (g^2 + r) m^2 w / B
 
-with G(m) the measured GEMM time at size m, w the word size and B the achieved streaming
-bandwidth (120-135 GB/s in our passes, against about 270 GB/s peak).  Recursion
-multiplies the terms.  Calibrate G and B once per machine, then choose scheme and depth by
-the smallest predicted T for each (n, precision).
+with T_below the time of the plan below (a GEMM, priced inside the level, or another level), w
+the word size and B the achieved streaming bandwidth (120-135 GB/s in our passes, against about
+270 GB/s peak).  The planner (`auto`) uses measured pass times per level type and block size in
+place of the bandwidth term; predictions hold to 0.3-3% at n = 8192-16384.
 
 Which operations matter depends on the implementation:
 
@@ -102,13 +166,17 @@ Which operations matter depends on the implementation:
 
 ## Plan
 
-1. **Hybrids and depth selection** (done 2026-10-24, see above).  Next: an automatic choice
-   of the level sequence (48, Strassen, classical) per size from the calibrated model.
-2. **Calibrate and validate the cost model.**  Measure G(m) for m = 512..8192 and B for
-   k-stream passes (k = 3..64) in both precisions; target predictions within 5% of measured.
-3. **Cheaper passes.**
-   - Overlap the passes with the GEMMs (pass for product k+1 while GEMM k runs) and keep the
-     temporaries for one product in cache instead of materializing all 48.
+1. **Hybrids and depth selection** (done 2026-10-24): automatic (`auto`), validated above.
+2. **Calibrate and validate the cost model** (done 2026-10-24): predictions within 0.3-3% at
+   8192-16384, the choice right at every tested point.
+3. **Use the whole machine** (next).  A level's r products are independent.  Run them as three
+   single-threaded SME streams (8-10% on the GEMM time in the probe); give some products to a
+   NEON GEMM on the idle performance cores (needs a kernel near 70-80% of the vector peak; f64
+   has the most to gain); overlap the passes with the GEMMs on the same idle cores (the passes
+   are 10-15% of the time).  The planner then prices a level by its products spread over the
+   units.
+4. **Cheaper passes.**
+   - Keep the temporaries for one product in cache instead of materializing all 48.
    - Accumulate each product straight into its C blocks (no stored M_k), trading the P pass
      for extra C traffic per product.
    - Fuse L and R into GEMM operand packing (S_k never written to memory), the "Strassen
@@ -116,7 +184,7 @@ Which operations matter depends on the implementation:
      intrinsics on this machine) or an open GEMM (BLIS) on another machine.
    - Non-temporal stores, prefetching, and placement across the two 5-core performance
      clusters (each has its own 16 MB L2).
-4. **Scheme search with practical objectives.**  Point the existing search machinery at
+5. **Scheme search with practical objectives.**  Point the existing search machinery at
    the costs that matter instead of operation counts:
    - for packing-fused implementations, minimize the nonzeros of L, R, P over the class
      (Alexandre's sparsest point, 624 nonzeros against our 696, is the natural start);
@@ -125,17 +193,18 @@ Which operations matter depends on the implementation:
      for sizes 3^k * m;
    - register pressure (live values) of the fused program, if the passes ever become
      compute-bound.
-5. **Other machines and precisions.**  x86-64 with MKL and BLIS (AVX-512, AMX), the Apple
+6. **Other machines and precisions.**  x86-64 with MKL and BLIS (AVX-512, AMX), the Apple
    GPU (Metal Performance Shaders) and NVIDIA tensor cores; bf16/fp16, where error growth
    matters (we measured about 2x error per level: f32 relative error 5e-6 one level, 1.6e-5
    for our 4x4 level, 3.7e-5 three levels at n = 16384).
-6. **A library entry point.**  `fmm_gemm(n, A, B, C)` choosing scheme and depth from the
-   calibrated model, with the correctness check against classical kept as a test.
+7. **A library entry point.**  `fmm_gemm(n, A, B, C)` running the planner's choice from the
+   cached calibration, with the correctness check against classical kept as a test.
 
 ## Milestones
 
 - M1 (done 2026-10-24): harness, correctness against classical, honest numbers.
-- M2: hybrids measured (done 2026-10-24; predictions within 1-2%); full calibration of G(m), B.
-- M3: pass overlap and product accumulation into C; measured gain.
+- M2 (done 2026-10-24): hybrids measured; calibrated planner (`auto`) validated at
+  2048-16384 in both precisions.
+- M3: the whole machine (three SME streams, NEON products, passes overlapped); measured gain.
 - M4: packing fusion prototype (own GEMM kernel or BLIS) and its gain.
 - M5: practical-objective scheme search and its measured effect.

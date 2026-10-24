@@ -1,0 +1,40 @@
+# probes 2026-10-24 16:07; Apple M4 Pro
+f32 n=2048 gemm-threads 0  neon-threads 0   GEMM  3295.1 GFLOP/s  NEON     0.0 GFLOP/s  cores busy 2.84
+f32 n=2048 gemm-threads 1  neon-threads 0   GEMM  1652.4 GFLOP/s  NEON     0.0 GFLOP/s  cores busy 1.00
+f32 n=2048 gemm-threads 2  neon-threads 0   GEMM  3343.2 GFLOP/s  NEON     0.0 GFLOP/s  cores busy 2.00
+f32 n=2048 gemm-threads 3  neon-threads 0   GEMM  3630.8 GFLOP/s  NEON     0.0 GFLOP/s  cores busy 2.99
+f32 n=2048 gemm-threads 4  neon-threads 0   GEMM  3442.1 GFLOP/s  NEON     0.0 GFLOP/s  cores busy 3.98
+f32 n=2048 gemm-threads 5  neon-threads 0   GEMM  3074.3 GFLOP/s  NEON     0.0 GFLOP/s  cores busy 4.98
+f32 n=2048 gemm-threads 10 neon-threads 0   GEMM  2868.4 GFLOP/s  NEON     0.0 GFLOP/s  cores busy 9.76
+f32 n=2048 gemm-threads -1 neon-threads 1   GEMM     0.0 GFLOP/s  NEON   114.2 GFLOP/s  cores busy 1.00
+f32 n=2048 gemm-threads -1 neon-threads 5   GEMM     0.0 GFLOP/s  NEON   559.0 GFLOP/s  cores busy 5.00
+f32 n=2048 gemm-threads -1 neon-threads 10  GEMM     0.0 GFLOP/s  NEON  1076.5 GFLOP/s  cores busy 9.95
+f32 n=2048 gemm-threads -1 neon-threads 14  GEMM     0.0 GFLOP/s  NEON  1204.8 GFLOP/s  cores busy 13.11
+f32 n=2048 gemm-threads 0  neon-threads 4   GEMM  3296.1 GFLOP/s  NEON   426.5 GFLOP/s  cores busy 6.92
+f32 n=2048 gemm-threads 0  neon-threads 8   GEMM  2811.7 GFLOP/s  NEON   837.3 GFLOP/s  cores busy 10.47
+f32 n=2048 gemm-threads 0  neon-threads 12  GEMM  1326.3 GFLOP/s  NEON  1083.2 GFLOP/s  cores busy 12.78
+f32 n=2048 gemm-threads 2  neon-threads 8   GEMM  3225.4 GFLOP/s  NEON   837.1 GFLOP/s  cores busy 9.92
+f64 n=2048 gemm-threads 0  neon-threads 0   GEMM   799.9 GFLOP/s  NEON     0.0 GFLOP/s  cores busy 2.89
+f64 n=2048 gemm-threads 1  neon-threads 0   GEMM   380.1 GFLOP/s  NEON     0.0 GFLOP/s  cores busy 1.00
+f64 n=2048 gemm-threads 2  neon-threads 0   GEMM   781.8 GFLOP/s  NEON     0.0 GFLOP/s  cores busy 1.99
+f64 n=2048 gemm-threads 3  neon-threads 0   GEMM   863.2 GFLOP/s  NEON     0.0 GFLOP/s  cores busy 2.98
+f64 n=2048 gemm-threads 4  neon-threads 0   GEMM   878.1 GFLOP/s  NEON     0.0 GFLOP/s  cores busy 3.97
+f64 n=2048 gemm-threads 5  neon-threads 0   GEMM   828.2 GFLOP/s  NEON     0.0 GFLOP/s  cores busy 4.97
+f64 n=2048 gemm-threads 10 neon-threads 0   GEMM   921.7 GFLOP/s  NEON     0.0 GFLOP/s  cores busy 9.79
+f64 n=2048 gemm-threads -1 neon-threads 1   GEMM     0.0 GFLOP/s  NEON    56.2 GFLOP/s  cores busy 1.00
+f64 n=2048 gemm-threads -1 neon-threads 5   GEMM     0.0 GFLOP/s  NEON   276.8 GFLOP/s  cores busy 4.99
+f64 n=2048 gemm-threads -1 neon-threads 10  GEMM     0.0 GFLOP/s  NEON   539.5 GFLOP/s  cores busy 9.96
+f64 n=2048 gemm-threads -1 neon-threads 14  GEMM     0.0 GFLOP/s  NEON   607.3 GFLOP/s  cores busy 13.25
+f64 n=2048 gemm-threads 0  neon-threads 4   GEMM   778.2 GFLOP/s  NEON   213.2 GFLOP/s  cores busy 6.90
+f64 n=2048 gemm-threads 0  neon-threads 8   GEMM   659.9 GFLOP/s  NEON   404.6 GFLOP/s  cores busy 10.12
+f64 n=2048 gemm-threads 0  neon-threads 12  GEMM   566.0 GFLOP/s  NEON   481.6 GFLOP/s  cores busy 13.02
+f64 n=2048 gemm-threads 2  neon-threads 8   GEMM   724.7 GFLOP/s  NEON   394.1 GFLOP/s  cores busy 9.82
+f32 m=256   single 0.000025  stream(K=48) 0.000028 (+11.8%)  in D48 level 0.000025 (+1.1%)
+f32 m=512   single 0.000106  stream(K=48) 0.000120 (+13.6%)  in D48 level 0.000120 (+13.7%)
+f32 m=1024  single 0.000699  stream(K=48) 0.000790 (+13.0%)  in D48 level 0.000792 (+13.2%)
+f32 m=2048  single 0.005283  stream(K=48) 0.005284 (+0.0%)  in D48 level 0.005309 (+0.5%)
+f64 m=256   single 0.000075  stream(K=48) 0.000095 (+26.8%)  in D48 level 0.000095 (+26.6%)
+f64 m=512   single 0.000332  stream(K=48) 0.000405 (+22.1%)  in D48 level 0.000405 (+22.2%)
+f64 m=1024  single 0.002660  stream(K=48) 0.002647 (-0.5%)  in D48 level 0.002654 (-0.2%)
+f64 m=2048  single 0.021023  stream(K=48) 0.021265 (+1.2%)  in D48 level 0.021232 (+1.0%)
+# done 16:09

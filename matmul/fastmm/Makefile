@@ -1,4 +1,6 @@
 # fast matrix multiplication benchmark (Apple silicon, Accelerate)
+all: build/bench_fmm build/probe_threads
+
 build/bench_fmm: bench_fmm.c bench_impl.h build/kernels.h
 	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild bench_fmm.c -framework Accelerate -o $@
 
@@ -12,3 +14,7 @@ build/bench_fmm_fma: bench_fmm.c bench_impl.h build/fma/kernels.h
 
 build/fma/kernels.h: gen_kernels.py ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp
 	mkdir -p build/fma && python3 gen_kernels.py $@ --fma
+
+# how much of the machine Accelerate's GEMM uses: SME streams, NEON peak, both at once
+build/probe_threads: probe_threads.c
+	mkdir -p build && clang -O3 -mcpu=apple-m4 -Wall probe_threads.c -framework Accelerate -o $@

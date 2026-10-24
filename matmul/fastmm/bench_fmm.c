@@ -113,16 +113,27 @@ static void evict(void) {
  * them one at a time with Accelerate's own threading, which drives each SME unit (one per
  * cluster) from one thread; two or three threads per unit keep it busier.  Adding j << 16
  * (written GkNj) gives the level's last j products to NEON GEMMs on fmm_neon_threads() more
- * cores, in row slabs, while the streams take the others. */
+ * cores, in row slabs, while the streams take the others.  A fused level whose sub-plan is a
+ * fused level over a G leaf may add 1 << 24 (written with +, e.g. D48+/D48/G6): its products
+ * are pipelined, the passes of the neighbouring products on fmm_pass_threads() cores (or on
+ * p cores, with p << 25, written D48+p) while the GEMMs of one product run. */
 enum { LV_NONE = -1, LV_G = 0, LV_B2, LV_B4, LV_B8, LV_SW, LV_D48, LV_SW2, LV_N };
 static const char *LV_NAME[LV_N] = {"G", "B2", "B4", "B8", "SW", "D48", "SW2"};
 #define PLAN_MAX 16
 #define PLV(e) ((e) < 0 ? (e) : (e) & 0xff)     /* the level code of a plan entry */
 #define PST(e) ((e) < 0 ? 0 : ((e) >> 8) & 0xff)  /* its GEMM streams */
-#define PNE(e) ((e) < 0 ? 0 : (e) >> 16)          /* its products on NEON */
+#define PNE(e) ((e) < 0 ? 0 : ((e) >> 16) & 0xff) /* its products on NEON */
+#define PPI(e) ((e) < 0 ? 0 : ((e) >> 24) & 1)    /* its sub-problems pipelined */
+#define PPW(e) ((e) < 0 ? 0 : ((e) >> 25) & 0xf)  /* on this many pass threads (0: the default) */
 static const int STREAMS[] = {0, 3, 4, 6};       /* the stream counts the planner considers */
 #define NSTREAMS ((int)(sizeof STREAMS / sizeof STREAMS[0]))
 static int lv_leaf(int lv) { return lv <= LV_B8; }
+
+/* pass threads beside the GEMM streams of a pipelined level (FMM_PASS_THREADS, default 2) */
+static int fmm_pass_threads(void) {
+    const char *e = getenv("FMM_PASS_THREADS");
+    return e ? atoi(e) : 2;
+}
 
 /* NEON GEMM threads beside the streams of a GkNj leaf (FMM_NEON_THREADS, default 4) */
 static int fmm_neon_threads(void) {
@@ -141,7 +152,8 @@ static size_t plan_work(const int *plan, size_t n) {
     int lv = PLV(plan[0]);
     if (lv_leaf(lv)) return 0;
     size_t m = n / lv_grid(lv);
-    return (size_t)3 * lv_rank(lv) * (m * m + fmm_pad()) + plan_work(plan + 1, m);
+    /* a pipelined level double-buffers the scratch of the level below */
+    return (size_t)3 * lv_rank(lv) * (m * m + fmm_pad()) + (PPI(plan[0]) ? 2 : 1) * plan_work(plan + 1, m);
 }
 
 static void plan_str(const int *plan, char *buf, size_t len) {
@@ -151,7 +163,8 @@ static void plan_str(const int *plan, char *buf, size_t len) {
         char e[16];
         if (PNE(plan[i])) snprintf(e, sizeof e, "%s%dN%d", LV_NAME[lv], PST(plan[i]), PNE(plan[i]));
         else if (PST(plan[i])) snprintf(e, sizeof e, "%s%d", LV_NAME[lv], PST(plan[i]));
-        else snprintf(e, sizeof e, "%s", lv < 0 ? "NONE" : LV_NAME[lv]);
+        else if (PPW(plan[i])) snprintf(e, sizeof e, "%s+%d", LV_NAME[lv], PPW(plan[i]));
+        else snprintf(e, sizeof e, "%s%s", lv < 0 ? "NONE" : LV_NAME[lv], PPI(plan[i]) ? "+" : "");
         strncat(buf, e, len - strlen(buf) - 1);
         if (lv_leaf(lv)) break;
         strncat(buf, "/", len - strlen(buf) - 1);
@@ -185,7 +198,13 @@ static int parse_plan(const char *meth, size_t n, int *plan) {
     size_t sz = n;
     char *save = NULL;
     for (char *t = strtok_r(buf, "/", &save); t && k < PLAN_MAX; t = strtok_r(NULL, "/", &save)) {
-        int found = -1, st = 0, ne = 0;
+        int found = -1, st = 0, ne = 0, pipe = 0, pw = 0;
+        char *plus = strchr(t, '+');
+        if (plus && plus > t) {
+            pipe = 1;
+            pw = atoi(plus + 1);
+            *plus = 0;
+        }
         for (int j = 0; j < LV_N; j++)
             if (!strcmp(t, LV_NAME[j])) found = j;
         if (found < 0 && t[0] == 'G' && isdigit((unsigned char)t[1])) {
@@ -199,7 +218,8 @@ static int parse_plan(const char *meth, size_t n, int *plan) {
         if (found == LV_G && streams >= 0 && k > 0) st = streams;
         if ((st || ne) && k == 0) return 0;     /* streams need a level whose products they share */
         if (ne && !st) return 0;
-        plan[k++] = found | (st << 8) | (ne << 16);
+        if (pipe && lv_leaf(found)) return 0;
+        plan[k++] = found | (st << 8) | (ne << 16) | (pipe << 24) | ((pw & 0xf) << 25);
         if (lv_leaf(found)) return 1;
     }
     return 0;
@@ -210,9 +230,13 @@ static int parse_plan(const char *meth, size_t n, int *plan) {
  * classical blocked 2x2 at size m (one call each, cold caches).  A fused level whose blocks have
  * size m: SW m, D48 m = its three passes; GSW m, GD48 m = its GEMM time per product run one at a
  * time (back to back: below about 1 ms a GEMM so takes 13-27% longer than alone), GkSW m, GkD48
- * m = the same with k streams */
+ * m = the same with k streams.  Sub-problems of a pipelined level, each a level Y with blocks m
+ * over k GEMM streams with p pass threads: PYkKpPs m = the steady time per sub-problem, PYkKpPo
+ * m = the pipeline's fill and drain (a pipeline of q sub-problems takes q s + o) */
 #define K_GIN 100   /* K_GIN + 16 k + level: GEMM per product inside that level, k streams */
-#define CALIB_FORMAT 3
+#define K_PIPE 1000 /* K_PIPE + ((16 k + p) 2 + part) 8 + level: pipelined sub-problems */
+#define CALIB_FORMAT 4
+static const int PIPE_K[] = {3, 6}, PIPE_P[] = {2, 4};  /* the pipelines the planner considers */
 #define CALIB_MAX 1024
 typedef struct {
     int kind[CALIB_MAX], n;
@@ -221,12 +245,20 @@ typedef struct {
 } calib_t;
 
 static int kind_gin(int lv, int streams) { return K_GIN + 16 * streams + lv; }
+static int kind_pipe(int lv, int streams, int passes, int over) {
+    return K_PIPE + ((16 * streams + passes) * 2 + over) * 8 + lv;
+}
 
 static const char *kind_name(int kind) {
-    static char buf[4][16];
+    static char buf[4][24];
     static int k;
     if (kind < K_GIN) return LV_NAME[kind];
     k = (k + 1) % 4;
+    if (kind >= K_PIPE) {
+        int x = kind - K_PIPE, lv = x % 8, over = (x / 8) % 2, sp = x / 16;
+        snprintf(buf[k], sizeof buf[k], "P%sk%dp%d%c", LV_NAME[lv], sp / 16, sp % 16, over ? 'o' : 's');
+        return buf[k];
+    }
     int st = (kind - K_GIN) / 16, lv = (kind - K_GIN) % 16;
     if (st) snprintf(buf[k], sizeof buf[k], "G%d%s", st, LV_NAME[lv]);
     else snprintf(buf[k], sizeof buf[k], "G%s", LV_NAME[lv]);
@@ -236,6 +268,19 @@ static const char *kind_name(int kind) {
 static int kind_parse(const char *s) {
     for (int v = 0; v < LV_N; v++)
         if (!strcmp(s, LV_NAME[v])) return v;
+    if (s[0] == 'P') {                      /* PD48k6p2s */
+        const char *kp = strchr(s, 'k');
+        if (!kp) return -1;
+        char name[8] = {0};
+        if (kp - s - 1 <= 0 || kp - s - 1 >= (int)sizeof name) return -1;
+        memcpy(name, s + 1, (size_t)(kp - s - 1));
+        int st, pw;
+        char part;
+        if (sscanf(kp, "k%dp%d%c", &st, &pw, &part) != 3 || (part != 's' && part != 'o')) return -1;
+        for (int v = 0; v < LV_N; v++)
+            if (!strcmp(name, LV_NAME[v])) return kind_pipe(v, st, pw, part == 'o');
+        return -1;
+    }
     if (s[0] != 'G') return -1;
     const char *p = s + 1;
     int st = 0;
@@ -271,6 +316,14 @@ static void calib_need(calib_t *need, size_t n) {
         if (n % g || n / g < fmm_minb()) continue;
         calib_put(need, lv, n / g, 0);
         for (int i = 0; i < NSTREAMS; i++) calib_put(need, kind_gin(lv, STREAMS[i]), n / g, 0);
+        /* a pipelined level at n: its sub-problems are levels ly with blocks n / g / gy */
+        for (int ly = LV_SW; ly <= LV_D48; ly++) {
+            size_t gy = lv_grid(ly), my = n / g / gy;
+            if ((n / g) % gy || my < fmm_minb()) continue;
+            for (int a = 0; a < 2; a++)
+                for (int b = 0; b < 2; b++)
+                    for (int o = 0; o < 2; o++) calib_put(need, kind_pipe(ly, PIPE_K[a], PIPE_P[b], o), my, 0);
+        }
         calib_need(need, n / g);
     }
 }
@@ -326,7 +379,7 @@ static void calib_save(const calib_t *c, int f64) {
                "same with k GEMM streams\n",
             f64 ? "f64" : "f32");
     fprintf(f, "# machine %s\n# pad %zu\n# format %d\n", machine(), fmm_pad(), CALIB_FORMAT);
-    for (int v = 0; v < K_GIN + 16 * 16; v++)   /* by kind, then size */
+    for (int v = 0; v < K_PIPE + 4096 + 8; v++)   /* by kind, then size */
         for (size_t m = 1; m < ((size_t)1 << 40); m *= 2)
             for (int i = 0; i < c->n; i++)
                 if (c->kind[i] == v && c->m[i] >= m && c->m[i] < 2 * m)
@@ -347,6 +400,19 @@ static double plan_cost_in(const calib_t *c, const int *plan, size_t n, int pare
     if (lv_leaf(lv)) return -1;
     size_t g = lv_grid(lv), m = n / g;
     if (n % g) return -1;
+    if (PPI(plan[0])) {     /* its passes, then a pipeline of r sub-problems Y over Gk */
+        int ly = PLV(plan[1]), lf = plan[2];
+        if (lv_leaf(ly) || PLV(lf) != LV_G || PST(lf) == 0 || PNE(lf) || m % lv_grid(ly)) return -1;
+        size_t my = m / lv_grid(ly);
+        int pw = PPW(plan[0]) ? PPW(plan[0]) : fmm_pass_threads();
+        double px = calib_get(c, lv, m), st = calib_get(c, kind_pipe(ly, PST(lf), pw, 0), my),
+               ov = calib_get(c, kind_pipe(ly, PST(lf), pw, 1), my);
+        /* sub-problems under 1 ms are not pipelined: each step costs tens of microseconds of
+         * dispatch and their calibration is noisy (2048 f64: 0.3 ms SW sub-problems were
+         * predicted 2% faster than the best plan and ran 10% slower) */
+        if (st >= 0 && st < 1e-3) return -1;
+        return px < 0 || st < 0 || ov < 0 ? -1 : px + lv_rank(lv) * st + ov;
+    }
     double p = calib_get(c, lv, m), below = plan_cost_in(c, plan + 1, m, lv);
     return p < 0 || below < 0 ? -1 : p + lv_rank(lv) * below;
 }
@@ -391,6 +457,18 @@ static double plan_best_in(const calib_t *c, size_t n, int parent, int *plan) {
             memcpy(plan, cand, sizeof cand);
         }
     }
+    /* pipelined levels: X+p over Y over Gk */
+    for (int lx = LV_SW; lx <= LV_D48; lx++)
+        for (int ly = LV_SW; ly <= LV_D48; ly++)
+            for (int a = 0; a < 2; a++)
+                for (int b = 0; b < 2; b++) {
+                    int cand[PLAN_MAX] = {lx | (1 << 24) | (PIPE_P[b] << 25), ly, LV_G | (PIPE_K[a] << 8)};
+                    double t = plan_cost_in(c, cand, n, parent);
+                    if (t >= 0 && (best < 0 || t < best)) {
+                        best = t;
+                        memcpy(plan, cand, sizeof cand);
+                    }
+                }
     return best;
 }
 
@@ -422,6 +500,18 @@ static void plan_enum_rec(const calib_t *c, size_t n0, size_t n, int *plan, int 
                 memcpy(out[*cnt].plan, plan, sizeof out[*cnt].plan);
                 out[(*cnt)++].t = t;
             }
+            /* the same with the level two above the leaf pipelined */
+            if (depth >= 2 && PST(firsts[f]) > 0 && !lv_leaf(PLV(plan[depth - 1])) && !lv_leaf(PLV(plan[depth - 2])))
+                for (int b = 0; b < 2 && *cnt < max; b++) {
+                    int keep = plan[depth - 2];
+                    plan[depth - 2] = PLV(keep) | (1 << 24) | (PIPE_P[b] << 25);
+                    double tp = plan_cost(c, plan, n0);
+                    if (tp > 0) {
+                        memcpy(out[*cnt].plan, plan, sizeof out[*cnt].plan);
+                        out[(*cnt)++].t = tp;
+                    }
+                    plan[depth - 2] = keep;
+                }
         } else if (n % lv_grid(lv) == 0 && n / lv_grid(lv) >= fmm_minb()) {
             plan_enum_rec(c, n0, n / lv_grid(lv), plan, depth + 1, out, cnt, max);
         }

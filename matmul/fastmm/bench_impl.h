@@ -101,6 +101,75 @@ static void FN(gemm_hybrid)(int r, size_t m, T *const *S, T *const *Tt, T *const
     });
 }
 
+/* the r products of a level, each a level Y (py[0]) over GEMM streams (py[1]), pipelined: in
+ * step q the streams compute the products of sub-problem q while w pass threads write the
+ * result of sub-problem q - 1 (Y's P pass) and the factors of sub-problem q + 1 (Y's L and R
+ * passes).  Y's scratch is double-buffered (sets q % 2): IN(q + 1) writes the S and T of the set
+ * GEMM(q - 1) has finished reading, OUT(q - 1) reads its M, which GEMM(q + 1) overwrites only in
+ * the next step.  Few pass threads: streaming passes starve the SME units (probe_overlap). */
+typedef struct {
+    const T *in[2][16];         /* Y's input blocks of sub-problems: A side, B side */
+    T *out[16];
+    T *S[2][64], *Tt[2][64], *M[2][64];
+} FN(pipe_t);
+
+static void FN(pipeline)(const int *py, size_t m, int r, T *const *SX, T *const *TX, T *const *MX, T *work,
+                         FN(split_t) *sp, int w) {
+    int ly = PLV(py[0]), gy = lv_grid(ly), ry = lv_rank(ly), k = PST(py[1]);
+    size_t my = m / gy, bs = my * my + fmm_pad(), set = (size_t)3 * ry * bs;
+    FN(kern_t) ky[3];
+    FN(kernels)(ly, ky);
+    FN(kern_t) kL = ky[0], kR = ky[1], kP = ky[2];  /* blocks cannot capture arrays */
+    FN(pipe_t) pp;
+    FN(pipe_t) *P = &pp;
+    for (int b = 0; b < 2; b++)
+        for (int j = 0; j < ry; j++) {
+            P->S[b][j] = work + b * set + (size_t)j * bs;
+            P->Tt[b][j] = work + b * set + (size_t)(ry + j) * bs;
+            P->M[b][j] = work + b * set + (size_t)(2 * ry + j) * bs;
+        }
+    int nch = 16;                               /* row chunks per pass */
+    size_t step = (my + nch - 1) / nch;
+    double t0 = now();
+    for (int q = -1; q <= r; q++) {
+        int qo = q - 1, qi = q + 1, gq = q >= 0 && q < r;
+        int have_out = qo >= 0, have_in = qi < r;
+        /* block pointers of sub-problem qi's inputs (blocks of SX[qi], TX[qi]) and qo's output */
+        T *in_s[16], *in_t[16], *out_c[16];
+        for (int b = 0; b < gy * gy; b++) {
+            size_t off = (size_t)(b / gy) * my * m + (size_t)(b % gy) * my;
+            if (have_in) { in_s[b] = SX[qi] + off; in_t[b] = TX[qi] + off; }
+            if (have_out) out_c[b] = MX[qo] + off;
+        }
+        int ntask = (have_out ? nch : 0) + (have_in ? 2 * nch : 0);
+        atomic_int next_p = 0, next_g = 0;
+        atomic_int *pnp = &next_p, *png = &next_g;
+        const T *const *ins = (const T *const *)in_s, *const *int_ = (const T *const *)in_t;
+        T *const *outc = out_c;
+        int si = qi & 1, sg = q & 1, so = qo & 1;
+        dispatch_apply((size_t)(k + w), dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t id) {
+            if ((int)id < k) {
+                if (!gq) return;
+                enum BLAS_THREADING old = BLASGetThreading();
+                BLASSetThreading(BLAS_THREADING_SINGLE_THREADED);
+                for (int j; (j = atomic_fetch_add(png, 1)) < ry;)
+                    FN(gemm)(my, P->S[sg][j], my, P->Tt[sg][j], my, P->M[sg][j], my);
+                BLASSetThreading(old);
+            } else {
+                for (int t; (t = atomic_fetch_add(pnp, 1)) < ntask;) {
+                    int pass = have_out ? (t < nch ? 2 : (t < 2 * nch ? 0 : 1)) : (t < nch ? 0 : 1);
+                    size_t c = (size_t)(t % nch), r0 = c * step, r1 = r0 + step < my ? r0 + step : my;
+                    if (r0 >= r1) continue;
+                    if (pass == 0) kL(my, m, my, ins, P->S[si], r0, r1);
+                    else if (pass == 1) kR(my, m, my, int_, P->Tt[si], r0, r1);
+                    else kP(my, my, m, (const T *const *)P->M[so], outc, r0, r1);
+                }
+            }
+        });
+    }
+    if (sp) sp->tG += now() - t0;   /* the pipeline: GEMMs with the passes below hidden in them */
+}
+
 /* C = A B at size n by a plan (plan[0] the top level); work holds plan_work(plan, n) elements.
  * A fused level splits A, B, C into a g x g grid of blocks of m = n / g, writes the r factors
  * S_k and T_k (one pass per side), computes M_k = S_k T_k by the rest of the plan (the scratch
@@ -146,7 +215,9 @@ static void FN(exec)(const int *plan, size_t n, const T *A, size_t lda, const T 
         sp->tL += t1 - t0;
         sp->tR += t2 - t1;
     }
-    if (PLV(plan[1]) == LV_G && PNE(plan[1]) > 0) {
+    if (PPI(plan[0]) && !lv_leaf(PLV(plan[1])) && PLV(plan[2]) == LV_G && PST(plan[2]) > 0) {
+        FN(pipeline)(plan + 1, m, r, S, Tt, M, deeper, sp, PPW(plan[0]) ? PPW(plan[0]) : fmm_pass_threads());
+    } else if (PLV(plan[1]) == LV_G && PNE(plan[1]) > 0) {
         double t = now();
         FN(gemm_hybrid)(r, m, S, Tt, M, PST(plan[1]), PNE(plan[1]), fmm_neon_threads());
         if (sp) sp->tG += now() - t;
@@ -282,6 +353,48 @@ static void FN(time_level)(int lv, size_t m, int streams, const T *A, const T *B
     *gemm = tg[(cnt - 1) / 2];
 }
 
+/* a pipeline of q sub-problems, each a level ly with blocks my over k GEMM streams with p pass
+ * threads, on synthetic inputs (every sub-problem reads A, B and writes C as my * g x my * g
+ * matrices), caches evicted before each run: the medians of the times for q = 2 and q = 10 give
+ * the steady time per sub-problem (their slope) and the fill and drain (with q = 2 and 4 the
+ * slope's noise was a few percent, as large as the differences between configurations, and a
+ * plan of 48 sub-problems multiplies it: 16384 f32 predicted 1.580 s, ran 1.718 s) */
+#define PIPE_Q1 2
+#define PIPE_Q2 10
+static void FN(time_pipe)(int ly, size_t my, int k, int p, const T *A, const T *B, T *C, T *work, double *steady,
+                          double *over) {
+    int py[2] = {ly, LV_G | (k << 8)};
+    size_t mx = my * lv_grid(ly);
+    T *SX[PIPE_Q2], *TX[PIPE_Q2], *MX[PIPE_Q2];
+    for (int q = 0; q < PIPE_Q2; q++) {
+        SX[q] = (T *)A;
+        TX[q] = (T *)B;
+        MX[q] = C;
+    }
+    double t1[5], t2[5], tot = 0;
+    int cnt = 0;
+    while (cnt < 5 && tot < 2.0 && !(cnt >= 3 && tot >= 0.3)) {
+        evict();
+        double t = now();
+        FN(pipeline)(py, mx, PIPE_Q1, SX, TX, MX, work, NULL, p);
+        t1[cnt] = now() - t;
+        evict();
+        t = now();
+        FN(pipeline)(py, mx, PIPE_Q2, SX, TX, MX, work, NULL, p);
+        t2[cnt] = now() - t;
+        tot += t1[cnt] + t2[cnt];
+        cnt++;
+    }
+    for (int a = 0; a < cnt; a++)
+        for (int b = a + 1; b < cnt; b++) {
+            if (t1[b] < t1[a]) { double x = t1[a]; t1[a] = t1[b]; t1[b] = x; }
+            if (t2[b] < t2[a]) { double x = t2[a]; t2[a] = t2[b]; t2[b] = x; }
+        }
+    double a1 = t1[(cnt - 1) / 2], a2 = t2[(cnt - 1) / 2], slope = (a2 - a1) / (PIPE_Q2 - PIPE_Q1);
+    *steady = slope > 0 ? slope : a2 / PIPE_Q2;
+    *over = a1 - PIPE_Q1 * *steady > 0 ? a1 - PIPE_Q1 * *steady : 0;
+}
+
 /* measure the entries plan_best needs for n that the cache lacks, and save the cache; A, B, C
  * hold n*n elements, smaller problems use their first m*m as contiguous m x m matrices */
 static void FN(calibrate)(calib_t *c, size_t n, const T *A, const T *B, T *C) {
@@ -294,6 +407,17 @@ static void FN(calibrate)(calib_t *c, size_t n, const T *A, const T *B, T *C) {
         int kind = need.kind[i];
         size_t m = need.m[i];
         todo[i] = 0;
+        if (kind >= K_PIPE) {               /* a pipeline: measured with its steady entry */
+            int x = kind - K_PIPE, ly = x % 8;
+            if ((x / 8) % 2) continue;
+            todo[i] = calib_get(c, kind, m) < 0 || calib_get(c, kind + 8, m) < 0;
+            if (!todo[i]) continue;
+            missing++;
+            int plan[2] = {ly, LV_G};
+            size_t w = 2 * plan_work(plan, m * lv_grid(ly));
+            if (w > wmax) wmax = w;
+            continue;
+        }
         if (kind >= K_GIN) continue;
         todo[i] = calib_get(c, kind, m) < 0;
         for (int k = 0; !lv_leaf(kind) && k < NSTREAMS; k++)
@@ -312,7 +436,14 @@ static void FN(calibrate)(calib_t *c, size_t n, const T *A, const T *B, T *C) {
         int kind = need.kind[i];
         size_t m = need.m[i];
         if (!todo[i]) continue;
-        if (lv_leaf(kind)) {
+        if (kind >= K_PIPE) {
+            int x = kind - K_PIPE, ly = x % 8, sp = x / 16;
+            double st, ov;
+            FN(time_pipe)(ly, m, sp / 16, sp % 16, A, B, C, work, &st, &ov);
+            calib_put(c, kind, m, st);
+            calib_put(c, kind + 8, m, ov);
+            printf("#   %-10s m=%-6zu %.6f s   fill+drain %.6f s\n", kind_name(kind), m, st, ov);
+        } else if (lv_leaf(kind)) {
             int plan[1] = {kind};
             double t = FN(time_plan)(plan, m, A, B, C, work);
             calib_put(c, kind, m, t);

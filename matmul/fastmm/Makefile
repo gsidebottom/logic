@@ -1,5 +1,5 @@
 # fast matrix multiplication benchmark (Apple silicon, Accelerate)
-all: build/bench_fmm build/probe_threads build/neon_test
+all: build/bench_fmm build/probe_threads build/neon_test build/probe_overlap
 
 build/bench_fmm: bench_fmm.c bench_impl.h neon_gemm.h build/kernels.h
 	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild bench_fmm.c -framework Accelerate -o $@
@@ -22,3 +22,7 @@ build/probe_threads: probe_threads.c
 # the NEON GEMM of neon_gemm.h: correctness, one core, several cores, beside SME streams
 build/neon_test: neon_test.c neon_gemm.h
 	mkdir -p build && clang -O3 -mcpu=apple-m4 -Wall neon_test.c -framework Accelerate -o $@
+
+# a fused pass beside SME GEMM streams: how much each slows the other
+build/probe_overlap: probe_overlap.c build/kernels.h
+	mkdir -p build && clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild probe_overlap.c -framework Accelerate -o $@

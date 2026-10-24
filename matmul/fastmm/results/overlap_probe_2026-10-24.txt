@@ -1,0 +1,37 @@
+# passes beside SME streams (probe_overlap) 2026-10-24 17:20; Apple M4 Pro
+f64 m=512  6 SME streams + 0 pass threads:  GEMM   986.5 GFLOP/s   pass    0.0 GB/s
+f64 m=512  0 SME streams + 2 pass threads:  GEMM     0.0 GFLOP/s   pass   62.3 GB/s
+f64 m=512  6 SME streams + 2 pass threads:  GEMM   858.4 GFLOP/s   pass   49.4 GB/s
+f64 m=512  6 SME streams + 0 pass threads:  GEMM  1003.0 GFLOP/s   pass    0.0 GB/s
+f64 m=512  0 SME streams + 4 pass threads:  GEMM     0.0 GFLOP/s   pass   92.8 GB/s
+f64 m=512  6 SME streams + 4 pass threads:  GEMM   714.3 GFLOP/s   pass   79.3 GB/s
+f64 m=512  6 SME streams + 0 pass threads:  GEMM  1005.2 GFLOP/s   pass    0.0 GB/s
+f64 m=512  0 SME streams + 7 pass threads:  GEMM     0.0 GFLOP/s   pass  108.7 GB/s
+f64 m=512  6 SME streams + 7 pass threads:  GEMM   613.1 GFLOP/s   pass   94.8 GB/s
+f64 m=1024  3 SME streams + 0 pass threads:  GEMM   914.5 GFLOP/s   pass    0.0 GB/s
+f64 m=1024  0 SME streams + 2 pass threads:  GEMM     0.0 GFLOP/s   pass   56.8 GB/s
+f64 m=1024  3 SME streams + 2 pass threads:  GEMM   680.7 GFLOP/s   pass   49.4 GB/s
+f64 m=1024  3 SME streams + 0 pass threads:  GEMM   930.9 GFLOP/s   pass    0.0 GB/s
+f64 m=1024  0 SME streams + 4 pass threads:  GEMM     0.0 GFLOP/s   pass   86.1 GB/s
+f64 m=1024  3 SME streams + 4 pass threads:  GEMM   382.8 GFLOP/s   pass   74.9 GB/s
+f64 m=1024  3 SME streams + 0 pass threads:  GEMM   937.5 GFLOP/s   pass    0.0 GB/s
+f64 m=1024  0 SME streams + 7 pass threads:  GEMM     0.0 GFLOP/s   pass  102.4 GB/s
+f64 m=1024  3 SME streams + 7 pass threads:  GEMM   128.4 GFLOP/s   pass   91.6 GB/s
+f32 m=1024  6 SME streams + 0 pass threads:  GEMM  3593.8 GFLOP/s   pass    0.0 GB/s
+f32 m=1024  0 SME streams + 2 pass threads:  GEMM     0.0 GFLOP/s   pass   57.4 GB/s
+f32 m=1024  6 SME streams + 2 pass threads:  GEMM  2641.6 GFLOP/s   pass   44.7 GB/s
+f32 m=1024  6 SME streams + 0 pass threads:  GEMM  3647.1 GFLOP/s   pass    0.0 GB/s
+f32 m=1024  0 SME streams + 4 pass threads:  GEMM     0.0 GFLOP/s   pass   85.4 GB/s
+f32 m=1024  6 SME streams + 4 pass threads:  GEMM  1779.9 GFLOP/s   pass   68.7 GB/s
+f32 m=2048  3 SME streams + 0 pass threads:  GEMM  3570.5 GFLOP/s   pass    0.0 GB/s
+f32 m=2048  0 SME streams + 2 pass threads:  GEMM     0.0 GFLOP/s   pass   57.0 GB/s
+f32 m=2048  3 SME streams + 2 pass threads:  GEMM  3091.6 GFLOP/s   pass   47.4 GB/s
+f32 m=2048  3 SME streams + 0 pass threads:  GEMM  3661.6 GFLOP/s   pass    0.0 GB/s
+f32 m=2048  0 SME streams + 4 pass threads:  GEMM     0.0 GFLOP/s   pass   81.1 GB/s
+f32 m=2048  3 SME streams + 4 pass threads:  GEMM  2211.5 GFLOP/s   pass   69.5 GB/s
+f32 m=2048  3 SME streams + 0 pass threads:  GEMM  3612.7 GFLOP/s   pass    0.0 GB/s
+f32 m=2048  0 SME streams + 7 pass threads:  GEMM     0.0 GFLOP/s   pass   98.7 GB/s
+f32 m=2048  3 SME streams + 7 pass threads:  GEMM   616.8 GFLOP/s   pass   90.3 GB/s
+f64 m=512  0 SME streams + 10 pass threads:  GEMM     0.0 GFLOP/s   pass  121.5 GB/s
+f32 m=2048  0 SME streams + 10 pass threads:  GEMM     0.0 GFLOP/s   pass  114.7 GB/s
+# done 17:22

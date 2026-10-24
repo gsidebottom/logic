@@ -1975,6 +1975,39 @@ fn type_sum(s: &[Summand]) -> usize {
     s.iter().map(summand_type).sum()
 }
 
+/// the Heule-Kauers-Seidl family string over Q, as matmul/mm3/classify23.py
+/// writes it: factor matrices counted by rank (x), products by the sum of their
+/// factor ranks (y), the three per-slot rank totals (z)
+fn family(s: &[Summand]) -> String {
+    use std::collections::BTreeMap;
+    let ranks: Vec<[usize; 3]> =
+        s.iter().map(|t| [mat_rank(&t.a), mat_rank(&t.b), mat_rank(&t.c)]).collect();
+    let (mut xs, mut ys, mut zs) = (BTreeMap::new(), BTreeMap::new(), BTreeMap::new());
+    for r in &ranks {
+        for &k in r {
+            *xs.entry(k).or_insert(0usize) += 1;
+        }
+        *ys.entry(r.iter().sum::<usize>()).or_insert(0usize) += 1;
+    }
+    for slot in 0..3 {
+        *zs.entry(ranks.iter().map(|r| r[slot]).sum::<usize>()).or_insert(0usize) += 1;
+    }
+    let term = |c: usize, v: &str, e: String| {
+        format!("{}{v}{e}", if c > 1 { c.to_string() } else { String::new() })
+    };
+    let mut parts: Vec<String> = Vec::new();
+    for (&k, &c) in xs.iter().rev() {
+        parts.push(term(c, "x", if k > 1 { k.to_string() } else { String::new() }));
+    }
+    for (&k, &c) in ys.iter().rev() {
+        parts.push(term(c, "y", k.to_string()));
+    }
+    for (&k, &c) in zs.iter().rev() {
+        parts.push(term(c, "z", k.to_string()));
+    }
+    parts.join("+")
+}
+
 /// the cyclic symmetry of <3x3x3> in our convention, (X, Y, Z) -> (Y, Z^T, X^T):
 /// it brings slot-c factors (compared only exactly) into slots a and b (compared
 /// up to scale), so buds in every slot become flippable
@@ -2380,8 +2413,9 @@ fn shared_pairs(s: &[Summand]) -> Vec<(usize, usize, usize)> {
 /// Reports, per rank, how many threads reached it and when, with the type sum.
 #[allow(clippy::too_many_arguments)]
 fn descend(seed: &[Summand], cap: i64, seconds: u64, threads: usize, plus_bud: bool,
-           gen_pct: u64, type_bias: i64, wide_lams: bool, patience: u64, outdir: &str) {
-    use std::collections::{BTreeMap, HashSet};
+           gen_pct: u64, type_bias: i64, wide_lams: bool, patience: u64,
+           known: &std::collections::HashSet<String>, outdir: &str) {
+    use std::collections::{BTreeMap, HashMap, HashSet};
     let base = seed.len();
     let r1 = rotate(seed);
     assert!(verify(&r1), "the rotated seed must verify");
@@ -2389,12 +2423,17 @@ fn descend(seed: &[Summand], cap: i64, seconds: u64, threads: usize, plus_bud: b
     let best = AtomicU32::new(base as u32);
     let hits: Mutex<BTreeMap<usize, Vec<(f64, usize)>>> = Mutex::new(BTreeMap::new());
     let distinct23: Mutex<HashSet<u64>> = Mutex::new(HashSet::new());
+    // family string -> (distinct rank-23 decompositions seen, of them saved); with a
+    // known-family list every decomposition of an unknown family is saved (5,000 per family)
+    let families: Mutex<HashMap<String, (u64, u64)>> = Mutex::new(HashMap::new());
+    let n_saved = AtomicU64::new(0);
     // solved flips taken, of them reducing, fixed-lambda flips, generalized flips,
     // plus transitions, reductions, rotations, restarts
     let counters: [AtomicU64; 8] = Default::default();
     let t0 = Instant::now();
     let lams: &[(bool, i32)] = if wide_lams { &LAMS } else { &LAMS[..2] };
     let sp = shared_pairs(seed);
+    println!("seed family {}; {} known family strings", family(seed), known.len());
     println!("descent from rank {base} (type sum {}; {} shared pairs, {} solved flips): plus transition {}, \
               generalized flips {gen_pct}%, type bias {type_bias}, fixed lambdas {}, patience {patience}; \
               {threads} threads x {seconds} s",
@@ -2538,9 +2577,27 @@ fn descend(seed: &[Summand], cap: i64, seconds: u64, threads: usize, plus_bud: b
             }
             if rank == 23 {
                 let h = scheme_hash(&s);
-                let mut d = distinct23.lock().unwrap();
-                if d.insert(h) && d.len() <= 200 {
-                    dump(&s, &format!("{outdir}/rank23_{}.txt", d.len()));
+                let fresh = {
+                    let mut d = distinct23.lock().unwrap();
+                    let fresh = d.insert(h);
+                    if fresh && d.len() <= 200 {
+                        dump(&s, &format!("{outdir}/rank23_{}.txt", d.len()));
+                    }
+                    fresh
+                };
+                if fresh {
+                    let fam = family(&s);
+                    let mut f = families.lock().unwrap();
+                    let e = f.entry(fam.clone()).or_insert((0, 0));
+                    e.0 += 1;
+                    if !known.is_empty() && !known.contains(&fam) && e.1 < 5000 {
+                        e.1 += 1;
+                        let k = n_saved.fetch_add(1, Ordering::Relaxed) + 1;
+                        dump(&s, &format!("{outdir}/new23_{k}.txt"));
+                        if e.1 == 1 {
+                            println!("[{:.1}s] NEW family {fam} (thread {tid})", t0.elapsed().as_secs_f64());
+                        }
+                    }
                 }
             }
             if steps.is_multiple_of(5_000) && !verify(&s) {
@@ -2563,6 +2620,17 @@ fn descend(seed: &[Summand], cap: i64, seconds: u64, threads: usize, plus_bud: b
              c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]);
     println!("best rank {}; distinct rank-23 schemes {}", best.load(Ordering::Relaxed),
              distinct23.lock().unwrap().len());
+    let f = families.lock().unwrap();
+    let mut fams: Vec<(&String, &(u64, u64))> = f.iter().collect();
+    fams.sort_by(|x, y| y.1.0.cmp(&x.1.0));
+    let unknown: Vec<_> = fams.iter().filter(|(k, _)| !known.contains(*k)).collect();
+    println!("rank-23 families: {} ({} known, {} unknown); {} decompositions of unknown families saved",
+             fams.len(), fams.len() - unknown.len(), unknown.len(), n_saved.load(Ordering::Relaxed));
+    if !known.is_empty() {
+        for (k, (seen, saved)) in unknown {
+            println!("  NEW {k}: {seen} distinct decompositions, {saved} saved");
+        }
+    }
     for (rank, v) in hits.lock().unwrap().iter_mut() {
         v.sort_by(|x, y| x.0.total_cmp(&y.0));
         let mut ty: Vec<usize> = v.iter().map(|x| x.1).collect();
@@ -2615,7 +2683,17 @@ fn main() {
         let type_bias = get("--type-bias", 0);
         let wide_lams = args.iter().any(|a| a == "--wide-lams");
         let patience = get("--patience", 500) as u64;
-        descend(&seed, cap, seconds, threads, plus_bud, gen_pct, type_bias, wide_lams, patience, &outdir);
+        // --known-families FILE: family strings (one per line, classify23.py --known-out);
+        // every rank-23 decomposition of any other family is saved as new23_K.txt
+        let known: std::collections::HashSet<String> = args
+            .iter()
+            .position(|a| a == "--known-families")
+            .and_then(|i| args.get(i + 1))
+            .map(|path| std::fs::read_to_string(path).expect("known families file")
+                .lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
+            .unwrap_or_default();
+        descend(&seed, cap, seconds, threads, plus_bud, gen_pct, type_bias, wide_lams, patience, &known,
+                &outdir);
         return;
     }
     assert_eq!(seed.len(), 23, "the other modes assume a rank-23 seed");

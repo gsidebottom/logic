@@ -242,8 +242,29 @@ fn try_flip(
     lam: (bool, i32),
     cap: i64,
 ) -> bool {
-    if i == j || fac(&scheme[i], slot) != fac(&scheme[j], slot) {
+    if i == j {
         return false;
+    }
+    match flip_pair(&scheme[i], &scheme[j], slot, lam, cap) {
+        Some((gi, gj)) => {
+            scheme[i] = gi;
+            scheme[j] = gj;
+            true
+        }
+        None => false,
+    }
+}
+
+/// the flip of try_flip as a pure function: the two new summands, if valid
+fn flip_pair(
+    si: &Summand,
+    sj: &Summand,
+    slot: usize,
+    lam: (bool, i32),
+    cap: i64,
+) -> Option<(Summand, Summand)> {
+    if fac(si, slot) != fac(sj, slot) {
+        return None;
     }
     // choose transfer slot: the two non-shared slots
     let others: [usize; 2] = match slot {
@@ -253,17 +274,13 @@ fn try_flip(
     };
     let (t1, t2) = (others[0], others[1]);
     let (neg, k) = lam;
-    let bi = fac(&scheme[i], t1).add_scaled(fac(&scheme[j], t1), neg, k);
-    let cj = fac(&scheme[j], t2).add_scaled(fac(&scheme[i], t2), !neg, k);
-    let (bi, cj) = match (bi, cj) {
-        (Some(x), Some(y)) => (x, y),
-        _ => return false,
-    };
+    let bi = fac(si, t1).add_scaled(fac(sj, t1), neg, k)?;
+    let cj = fac(sj, t2).add_scaled(fac(si, t2), !neg, k)?;
     if bi.is_zero() || cj.is_zero() || bi.max_abs() > cap || cj.max_abs() > cap {
-        return false;
+        return None;
     }
-    let mut ni = scheme[i].clone();
-    let mut nj = scheme[j].clone();
+    let mut ni = si.clone();
+    let mut nj = sj.clone();
     match t1 {
         0 => ni.a = bi,
         1 => ni.b = bi,
@@ -274,18 +291,7 @@ fn try_flip(
         1 => nj.b = cj,
         _ => nj.c = cj,
     }
-    let (gi, gj) = (
-        Summand::gauge(ni.a, ni.b, ni.c),
-        Summand::gauge(nj.a, nj.b, nj.c),
-    );
-    match (gi, gj) {
-        (Some(gi), Some(gj)) => {
-            scheme[i] = gi;
-            scheme[j] = gj;
-            true
-        }
-        _ => false,
-    }
+    Some((Summand::gauge(ni.a, ni.b, ni.c)?, Summand::gauge(nj.a, nj.b, nj.c)?))
 }
 
 /// split summand i against summand k in slot `slot` with mu = (neg, m):
@@ -615,14 +621,15 @@ fn load_seed(dir: &str) -> Vec<Summand> {
     };
     let l = parse(&format!("{dir}/L.sms"));
     let r = parse(&format!("{dir}/R.sms"));
-    let p = parse(&format!("{dir}/P.sms")); // 16 x 48 -> transpose
-    let mut pt: Vec<Vec<(usize, i64, i32)>> = vec![Vec::new(); 48];
+    let p = parse(&format!("{dir}/P.sms")); // 16 x rank -> transpose
+    let rank = l.len();
+    let mut pt: Vec<Vec<(usize, i64, i32)>> = vec![Vec::new(); rank];
     for (z, row) in p.iter().enumerate() {
         for &(i, n, e) in row {
             pt[i].push((z, n, e));
         }
     }
-    (0..48)
+    (0..rank)
         .map(|i| {
             Summand::gauge(mk(&l[i]), mk(&r[i]), mk(&pt[i])).expect("seed")
         })
@@ -2500,6 +2507,318 @@ fn dump(s: &[Summand], path: &str) {
     std::fs::write(path, txt).ok();
 }
 
+// ---------- descent from any seed rank (the type-bias test on 4x4; see flip23) ----------
+
+/// rank of a factor as a 4x4 matrix (its numerators, row-major)
+fn mat_rank(v: &Vec16) -> usize {
+    let mut m = [[0i128; 4]; 4];
+    for r in 0..4 {
+        for c in 0..4 {
+            m[r][c] = v.nums[4 * r + c] as i128;
+        }
+    }
+    let mut rank = 0;
+    for col in 0..4 {
+        let Some(p) = (rank..4).find(|&r| m[r][col] != 0) else {
+            continue;
+        };
+        m.swap(rank, p);
+        for r in 0..4 {
+            if r != rank && m[r][col] != 0 {
+                let (a, b) = (m[rank][col], m[r][col]);
+                for c in 0..4 {
+                    m[r][c] = m[r][c] * a - m[rank][c] * b;
+                }
+            }
+        }
+        rank += 1;
+    }
+    rank
+}
+
+/// Sedoglavic's type of a summand, summed: the ranks of its three factor matrices
+fn summand_type(t: &Summand) -> usize {
+    mat_rank(&t.a) + mat_rank(&t.b) + mat_rank(&t.c)
+}
+
+fn type_sum(s: &[Summand]) -> usize {
+    s.iter().map(summand_type).sum()
+}
+
+/// the cyclic symmetry of <4x4x4> in our convention, (X, Y, Z) -> (Y, Z^T, X^T):
+/// it brings slot-c factors (compared only exactly) into slots a and b
+fn rotate(s: &[Summand]) -> Vec<Summand> {
+    let tr = |v: &Vec16| -> Vec16 {
+        let mut nums = [0i64; 16];
+        for r in 0..4 {
+            for c in 0..4 {
+                nums[4 * c + r] = v.nums[4 * r + c];
+            }
+        }
+        Vec16 { nums, exp: v.exp }
+    };
+    s.iter()
+        .map(|t| Summand::gauge(t.b.clone(), tr(&t.c), tr(&t.a)).expect("rotation keeps factors"))
+        .collect()
+}
+
+/// Kauers-Moosbauer plus transition: a_i b_i c_i + a_j b_j c_j =
+/// (a_i - mu a_j) b_i c_i + mu a_j (b_i - b_j) c_i + mu a_j b_j (c_i + c_j / mu):
+/// rank + 1 with two new buds and, unlike a split, no pair sharing two slots
+fn try_plus(s: &mut Vec<Summand>, i: usize, j: usize, mu: (bool, i32), cap: i64) -> bool {
+    if i == j {
+        return false;
+    }
+    let (ti, tj) = (s[i].clone(), s[j].clone());
+    let one = Some((false, 0));
+    let m = Some(mu);
+    let minv = Some((mu.0, -mu.1));
+    let parts = (|| {
+        let a1 = dy_lin(&ti.a, one, &tj.a, dy_neg(m))?;
+        let a2 = dy_lin(&tj.a, m, &tj.a, None)?;
+        let b2 = dy_lin(&ti.b, one, &tj.b, Some((true, 0)))?;
+        let c3 = dy_lin(&ti.c, one, &tj.c, minv)?;
+        if [&a1, &b2, &c3].iter().any(|v| v.is_zero() || v.max_abs() > cap) {
+            return None;
+        }
+        Some((Summand::gauge(a1, ti.b.clone(), ti.c.clone())?,
+              Summand::gauge(a2.clone(), b2, ti.c.clone())?,
+              Summand::gauge(a2, tj.b.clone(), c3)?))
+    })();
+    match parts {
+        Some((p1, p2, p3)) => {
+            s[i] = p1;
+            s[j] = p2;
+            s.push(p3);
+            true
+        }
+        None => false,
+    }
+}
+
+/// all pairs of summands sharing a factor (exactly; slots a and b are canonical,
+/// so that is up to scale there)
+fn shared_pairs(s: &[Summand]) -> Vec<(usize, usize, usize)> {
+    use std::collections::HashMap;
+    let mut groups: [HashMap<&Vec16, Vec<usize>>; 3] = Default::default();
+    for (idx, t) in s.iter().enumerate() {
+        for slot in 0..3 {
+            groups[slot].entry(fac(t, slot)).or_default().push(idx);
+        }
+    }
+    let mut out = Vec::new();
+    for (slot, g) in groups.iter().enumerate() {
+        for members in g.values() {
+            for x in 0..members.len() {
+                for y in x + 1..members.len() {
+                    out.push((members[x], members[y], slot));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// whether two summands share two slots (a and b exactly, or one of them and c
+/// up to scale): the pairs try_reduce merges
+fn mergeable(x: &Summand, y: &Summand) -> bool {
+    match (x.a == y.a, x.b == y.b) {
+        (true, true) => true,
+        (false, false) => false,
+        _ => x.c.canon().0 == y.c.canon().0,
+    }
+}
+
+/// every solved flip of the state: (i, j, slot, lambda) applied as try_flip(i, j, ...)
+fn solved_flips(s: &[Summand], pairs: &[(usize, usize, usize)]) -> Vec<(usize, usize, usize, (bool, i32))> {
+    let mut out = Vec::new();
+    for &(x, y, slot) in pairs {
+        let others: [usize; 2] = match slot {
+            0 => [1, 2],
+            1 => [0, 2],
+            _ => [0, 1],
+        };
+        for (i, j) in [(x, y), (y, x)] {
+            for (t, lam, _) in coincidence_lams(s, i, j, slot) {
+                out.push(if t == others[0] { (i, j, slot, lam) } else { (j, i, slot, (!lam.0, lam.1)) });
+            }
+        }
+    }
+    out
+}
+
+/// descent from any seed rank, as flip23 --descend (without its bud and
+/// generalized-flip options; with 64 summands a step looks at the solved flips of
+/// up to 24 random shared pairs, not at all of them): per step, a solved flip
+/// after which a reduction applies, else a solved flip 3 times in 4
+/// (with `type_bias` +1 / -1: of 4 candidates the one raising / lowering
+/// Sedoglavic's type most), else lambda +-1 (+-{1, 2, 1/2} with `wide_lams`);
+/// greedy reductions after every move; the cyclic rotation 2% of the time;
+/// Kauers-Moosbauer plus transitions (never more than 2 above the walk's best)
+/// 6% of the time once `patience` moves pass without improvement; after 40 x
+/// `patience` idle moves a restart from the walk's best state or the seed.
+/// Rank 47 or lower is a characteristic-0 record: dumped and announced.
+#[allow(clippy::too_many_arguments)]
+fn descend(seed: &[Summand], cap: i64, seconds: u64, threads: usize, type_bias: i64,
+           wide_lams: bool, patience: u64, outdir: &str) {
+    use std::collections::{BTreeMap, HashSet};
+    let base = seed.len();
+    let r1 = rotate(seed);
+    assert!(verify(&r1), "the rotated seed must verify");
+    assert_eq!(scheme_hash(&rotate(&rotate(&r1))), scheme_hash(seed), "three rotations must be the identity");
+    let best = AtomicU32::new(base as u32);
+    let hits: Mutex<BTreeMap<usize, Vec<(f64, usize)>>> = Mutex::new(BTreeMap::new());
+    let distinct48: Mutex<HashSet<u64>> = Mutex::new(HashSet::new());
+    // solved flips taken, of them reducing, fixed-lambda flips, plus transitions,
+    // reductions, rotations, restarts
+    let counters: [AtomicU64; 7] = Default::default();
+    let t0 = Instant::now();
+    let lams: &[(bool, i32)] = if wide_lams { &LAMS } else { &LAMS[..2] };
+    let sp = shared_pairs(seed);
+    println!("descent from rank {base} (type sum {}; {} shared pairs, {} solved flips): type bias {type_bias}, \
+              fixed lambdas {}, cap {cap}, patience {patience}; {threads} threads x {seconds} s",
+             type_sum(seed), sp.len(), solved_flips(seed, &sp).len(),
+             if wide_lams { "+-{1,2,1/2}" } else { "+-1" });
+    (0..threads as u64).into_par_iter().for_each(|tid| {
+        let mut rng = Rng(0x9e3779b97f4a7c15 ^ (tid.wrapping_mul(0xa54ff53a5f1d36f1) + 1));
+        let mut s = seed.to_vec();
+        let mut local_best = base;
+        let mut best_state = s.clone();
+        let mut stuck = 0u64;
+        let mut reached: HashSet<usize> = HashSet::new();
+        let mut steps = 0u64;
+        while t0.elapsed().as_secs() < seconds {
+            stuck += 1;
+            steps += 1;
+            let r = rng.next() % 100;
+            let pairs = shared_pairs(&s);
+            if r < 2 {
+                s = rotate(&s);
+                counters[5].fetch_add(1, Ordering::Relaxed);
+            } else if (r < 8 && stuck > patience) || pairs.is_empty() {
+                let (i, j) = (rng.below(s.len()), rng.below(s.len()));
+                if s.len() < local_best + 2 && try_plus(&mut s, i, j, LAMS[rng.below(6)], cap) {
+                    counters[3].fetch_add(1, Ordering::Relaxed);
+                }
+            } else {
+                // the solved flips of (up to) 24 random shared pairs
+                let sample: Vec<(usize, usize, usize)> = if pairs.len() > 24 {
+                    (0..24).map(|_| pairs[rng.below(pairs.len())]).collect()
+                } else {
+                    pairs.clone()
+                };
+                let solved = solved_flips(&s, &sample);
+                let mut took = false;
+                // one after which a new summand merges with another (a flip changes
+                // two summands, so only they need checking)
+                let mut reducing: Vec<(usize, usize, Summand, Summand)> = Vec::new();
+                for &(i, j, slot, lam) in &solved {
+                    if let Some((ni, nj)) = flip_pair(&s[i], &s[j], slot, lam, cap)
+                        && (mergeable(&ni, &nj)
+                            || (0..s.len()).any(|m| m != i && m != j
+                                && (mergeable(&ni, &s[m]) || mergeable(&nj, &s[m]))))
+                    {
+                        reducing.push((i, j, ni, nj));
+                    }
+                }
+                if !reducing.is_empty() {
+                    let (i, j, ni, nj) = reducing.swap_remove(rng.below(reducing.len()));
+                    s[i] = ni;
+                    s[j] = nj;
+                    counters[0].fetch_add(1, Ordering::Relaxed);
+                    counters[1].fetch_add(1, Ordering::Relaxed);
+                    took = true;
+                } else if !solved.is_empty() && !rng.next().is_multiple_of(4) {
+                    let ncand = if type_bias != 0 { 4 } else { 1 };
+                    let mut chosen: Option<(i64, usize, usize, Summand, Summand)> = None;
+                    for _ in 0..ncand {
+                        let (i, j, slot, lam) = solved[rng.below(solved.len())];
+                        if let Some((ni, nj)) = flip_pair(&s[i], &s[j], slot, lam, cap) {
+                            let d = (summand_type(&ni) + summand_type(&nj)) as i64
+                                - (summand_type(&s[i]) + summand_type(&s[j])) as i64;
+                            if chosen.as_ref().is_none_or(|c| type_bias * d > c.0) {
+                                chosen = Some((type_bias * d, i, j, ni, nj));
+                            }
+                        }
+                    }
+                    if let Some((_, i, j, ni, nj)) = chosen {
+                        s[i] = ni;
+                        s[j] = nj;
+                        counters[0].fetch_add(1, Ordering::Relaxed);
+                        took = true;
+                    }
+                }
+                if !took {
+                    let (i, j, slot) = pairs[rng.below(pairs.len())];
+                    let (i, j) = if rng.next() & 1 == 0 { (i, j) } else { (j, i) };
+                    if try_flip(&mut s, i, j, slot, lams[rng.below(lams.len())], cap) {
+                        counters[2].fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            }
+            while try_reduce(&mut s, cap * 4) {
+                counters[4].fetch_add(1, Ordering::Relaxed);
+            }
+            let rank = s.len();
+            if rank < local_best {
+                local_best = rank;
+                best_state = s.clone();
+                stuck = 0;
+            }
+            if rank < base && reached.insert(rank) {
+                hits.lock().unwrap().entry(rank).or_default()
+                    .push((t0.elapsed().as_secs_f64(), type_sum(&s)));
+            }
+            if (rank as u32) < best.load(Ordering::Relaxed) {
+                if verify(&s) {
+                    best.fetch_min(rank as u32, Ordering::Relaxed);
+                    println!("[{:.1}s] rank {rank} (thread {tid}, type sum {})",
+                             t0.elapsed().as_secs_f64(), type_sum(&s));
+                } else {
+                    println!("rank {rank} FAILED verify (bug!)");
+                }
+            }
+            if rank <= 47 && verify(&s) {
+                let path = format!("{outdir}/RANK{rank}_t{tid}_{steps}.txt");
+                dump(&s, &path);
+                println!("*** RANK {rank} VERIFIED, a characteristic-0 record -> {path} ***");
+            }
+            if rank == 48 {
+                let h = scheme_hash(&s);
+                let mut d = distinct48.lock().unwrap();
+                if d.insert(h) && d.len() <= 200 {
+                    dump(&s, &format!("{outdir}/rank48_{}.txt", d.len()));
+                }
+            }
+            if steps.is_multiple_of(5_000) && !verify(&s) {
+                println!("WALK VERIFY FAILED at step {steps} (bug!)");
+            }
+            if stuck > 40 * patience {
+                s = if rng.next() & 1 == 0 { best_state.clone() } else { seed.to_vec() };
+                local_best = s.len();
+                stuck = 0;
+                counters[6].fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        if !verify(&s) {
+            println!("WALK END VERIFY FAILED (bug!)");
+        }
+    });
+    let c: Vec<u64> = counters.iter().map(|x| x.load(Ordering::Relaxed)).collect();
+    println!("moves: {} solved flips ({} reducing), {} fixed-lambda flips, {} plus transitions, \
+              {} reductions, {} rotations, {} restarts", c[0], c[1], c[2], c[3], c[4], c[5], c[6]);
+    println!("best rank {}; distinct rank-48 decompositions {}", best.load(Ordering::Relaxed),
+             distinct48.lock().unwrap().len());
+    for (rank, v) in hits.lock().unwrap().iter_mut() {
+        v.sort_by(|x, y| x.0.total_cmp(&y.0));
+        let mut ty: Vec<usize> = v.iter().map(|x| x.1).collect();
+        ty.sort_unstable();
+        println!("  rank {rank}: reached by {}/{threads} threads, first at {:.1} s, median {:.1} s, \
+                  type sum at arrival median {} (range {}-{})",
+                 v.len(), v[0].0, v[v.len() / 2].0, ty[ty.len() / 2], ty[0], ty[ty.len() - 1]);
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let get = |flag: &str, default: i64| -> i64 {
@@ -2530,9 +2849,17 @@ fn main() {
         .unwrap();
 
     let seed = load_seed(&dir);
-    assert_eq!(seed.len(), 48);
     assert!(verify(&seed), "seed must verify");
-    println!("seed loaded + exactly verified (48 summands)");
+    println!("seed loaded + exactly verified ({} summands)", seed.len());
+    if args.iter().any(|a| a == "--descend") {
+        // descent from any seed rank: [--type-bias -1|0|1] [--wide-lams] [--patience N]
+        let type_bias = get("--type-bias", 0);
+        let wide_lams = args.iter().any(|a| a == "--wide-lams");
+        let patience = get("--patience", 500) as u64;
+        descend(&seed, cap, seconds, threads, type_bias, wide_lams, patience, &outdir);
+        return;
+    }
+    assert_eq!(seed.len(), 48, "the other modes assume a rank-48 seed");
     if args.iter().any(|a| a == "--emit-lean") {
         // dump the gauged seed as a Lean literal (List (V16 x V16 x V16))
         let v = |x: &Vec16| -> String {

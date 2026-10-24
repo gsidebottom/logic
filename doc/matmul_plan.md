@@ -1801,6 +1801,33 @@ the two source papers for this track):
   generalized flips are neutral; implicit-bud jumps are no better per move
   and cost a circuit search; his Grochow-Moore start is harder for this
   walk than the classical one.
+- **TYPE BIAS ON 4x4: IT HURTS (2026-10-23, Greg asked)**: flip48
+  --descend (flip23's descent; a step looks at the solved flips of up to 24
+  random shared pairs and tests only the two changed summands for a merge;
+  try_flip split into the pure flip_pair, bud-pilot regression identical).
+  matmul/mm4/seeds.py: the classical <4x4x4:64> and Strassen^2 (the 49
+  Kronecker products of Strassen's 7), both 4096/4096 Brent.  Z[1/2],
+  cap 1, 12 threads.  Classical start, 1200 s per variant: no bias best 55
+  (58 reached by 10/12 threads), type bias +1 best 58 (2/12), -1 best 63
+  (3/12).  Strassen^2, 300 s: 49 with and without the bias (flip-isolated:
+  ~9.5M plus transitions, every one merged back).  The bias drives the type
+  sum to ~260-270 by rank 58 against ~200 without it.  (Rank descent does
+  not bear on the 201, an addition count at rank 48.)
+- **3x3 DESCENT OUTPUT VS THE KNOWN COLLECTIONS (2026-10-23, Greg
+  asked)**: matmul/mm3/classify23.py, the family string (factor matrices
+  by rank, products by rank sum, per-slot rank totals) over Q.  The
+  Heule-Kauers-Seidl database names its directories by ranks over F2
+  (recomputed over F2, 4 of 17,376 disagree; over Q, 5,979), so the
+  Q-strings are recomputed from its signed lifts: 298 families; Hell's
+  Bells (15,316 ternary schemes): 409 families, 250 not in the database;
+  548 known in all (matmul/mm3/known_families.txt).  A string absent from
+  both certifies a class neither contains; a known string decides nothing
+  (many classes share a family).  The 800 saved descent decompositions:
+  32 families, 31 known, 1 NEW, 23x2+46x+4y6+11y4+8y3+z33+z30+z29 (3
+  decompositions, all from the generalized-flip run).  A 30-s type-biased
+  test walk found 7 more new families, all with rank-3 factors.  flip23
+  --descend --known-families saves every decomposition of an unknown family
+  (5,000 per family); harvest running (5 variants x 600 s, from 21:42).
 - **OTHER RANK-48 CLASSES OVER Q EXIST (2026-10-22, Greg asked)**: our
   'only the AlphaEvolve/DPS class is known over Q' was wrong.  Li, Wang, Hu,
   arXiv:2607.15069 (Jul/Aug 2026): DPS's solution lies on an explicit

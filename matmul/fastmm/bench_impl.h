@@ -47,6 +47,19 @@ static void FN(kernels)(int lv, FN(kern_t) k[3]) {
     else { k[0] = FN(sw2_L_); k[1] = FN(sw2_R_); k[2] = FN(sw2_P_); }
 }
 
+/* the r products of a level as k single-threaded GEMM streams taking products in turn */
+static void FN(gemm_streams)(int r, size_t m, T *const *S, T *const *Tt, T *const *M, int k) {
+    atomic_int next = 0;
+    atomic_int *pn = &next;
+    dispatch_apply((size_t)k, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t w) {
+        (void)w;
+        enum BLAS_THREADING old = BLASGetThreading();
+        BLASSetThreading(BLAS_THREADING_SINGLE_THREADED);
+        for (int q; (q = atomic_fetch_add(pn, 1)) < r;) FN(gemm)(m, S[q], m, Tt[q], m, M[q], m);
+        BLASSetThreading(old);
+    });
+}
+
 /* C = A B at size n by a plan (plan[0] the top level); work holds plan_work(plan, n) elements.
  * A fused level splits A, B, C into a g x g grid of blocks of m = n / g, writes the r factors
  * S_k and T_k (one pass per side), computes M_k = S_k T_k by the rest of the plan (the scratch
@@ -54,7 +67,7 @@ static void FN(kernels)(int lv, FN(kern_t) k[3]) {
  * time is counted where the GEMMs run, pass time at every level. */
 static void FN(exec)(const int *plan, size_t n, const T *A, size_t lda, const T *B, size_t ldb, T *C,
                      size_t ldc, T *work, FN(split_t) *sp) {
-    int lv = plan[0];
+    int lv = PLV(plan[0]);
     if (lv == LV_NONE) return;
     if (lv_leaf(lv)) {
         double t = now();
@@ -92,7 +105,13 @@ static void FN(exec)(const int *plan, size_t n, const T *A, size_t lda, const T 
         sp->tL += t1 - t0;
         sp->tR += t2 - t1;
     }
-    for (int q = 0; q < r; q++) FN(exec)(plan + 1, m, S[q], m, Tt[q], m, M[q], m, deeper, sp);
+    if (PLV(plan[1]) == LV_G && PST(plan[1]) > 0) {
+        double t = now();
+        FN(gemm_streams)(r, m, S, Tt, M, PST(plan[1]));
+        if (sp) sp->tG += now() - t;
+    } else {
+        for (int q = 0; q < r; q++) FN(exec)(plan + 1, m, S[q], m, Tt[q], m, M[q], m, deeper, sp);
+    }
     double t3 = now();
     FN(pass)(k[2], m, m, ldc, (const T *const *)M, Cb);
     if (sp) sp->tP += now() - t3;
@@ -191,11 +210,12 @@ static double FN(time_plan)(const int *plan, size_t n, const T *A, const T *B, T
     return ts[(cnt - 1) / 2];
 }
 
-/* one fused level of type lv with blocks m and GEMM products, caches evicted before each run,
- * repeated as in time_plan: the medians of its pass time and of its GEMM time per product */
-static void FN(time_level)(int lv, size_t m, const T *A, const T *B, T *C, T *work, double *passes,
-                           double *gemm) {
-    int plan[2] = {lv, LV_G};
+/* one fused level of type lv with blocks m and GEMM products (as `streams` streams), caches
+ * evicted before each run, repeated as in time_plan: the medians of its pass time and of its
+ * GEMM time per product */
+static void FN(time_level)(int lv, size_t m, int streams, const T *A, const T *B, T *C, T *work,
+                           double *passes, double *gemm) {
+    int plan[2] = {lv, LV_G | (streams << 8)};
     size_t n = m * lv_grid(lv);
     double tp[15], tg[15], tot = 0;
     int cnt = 0;
@@ -228,7 +248,11 @@ static void FN(calibrate)(calib_t *c, size_t n, const T *A, const T *B, T *C) {
     for (int i = 0; i < need.n; i++) {
         int kind = need.kind[i];
         size_t m = need.m[i];
-        todo[i] = kind < K_GIN && (calib_get(c, kind, m) < 0 || (!lv_leaf(kind) && calib_get(c, K_GIN + kind, m) < 0));
+        todo[i] = 0;
+        if (kind >= K_GIN) continue;
+        todo[i] = calib_get(c, kind, m) < 0;
+        for (int k = 0; !lv_leaf(kind) && k < NSTREAMS; k++)
+            if (calib_get(c, kind_gin(kind, STREAMS[k]), m) < 0) todo[i] = 1;
         if (!todo[i]) continue;
         missing++;
         int plan[2] = {kind, LV_G};
@@ -249,11 +273,19 @@ static void FN(calibrate)(calib_t *c, size_t n, const T *A, const T *B, T *C) {
             calib_put(c, kind, m, t);
             printf("#   %-4s m=%-6zu %.6f s\n", kind_name(kind), m, t);
         } else {
-            double tp, tg;
-            FN(time_level)(kind, m, A, B, C, work, &tp, &tg);
-            calib_put(c, kind, m, tp);
-            calib_put(c, K_GIN + kind, m, tg);
-            printf("#   %-4s m=%-6zu %.6f s   %-5s %.6f s\n", kind_name(kind), m, tp, kind_name(K_GIN + kind), tg);
+            printf("#   %-4s m=%-6zu", kind_name(kind), m);
+            for (int k = 0; k < NSTREAMS; k++) {
+                double tp, tg;
+                FN(time_level)(kind, m, STREAMS[k], A, B, C, work, &tp, &tg);
+                if (k == 0) {
+                    calib_put(c, kind, m, tp);
+                    printf(" %.6f s ", tp);
+                }
+                calib_put(c, kind_gin(kind, STREAMS[k]), m, tg);
+                printf("  %s %.6f", kind_name(kind_gin(kind, STREAMS[k])), tg);
+                fflush(stdout);
+            }
+            printf("\n");
         }
         fflush(stdout);
     }
@@ -389,12 +421,12 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
             printf("unknown method %s\n", tok);
             continue;
         }
+        q->pred = q->is_plan ? plan_cost(cal, q->plan, n) : -1;
         nm++;
     }
     size_t wsz = 1024;
     for (int j = 0; j < nm; j++) {
         size_t w = ms[j].is_plan ? plan_work(ms[j].plan, n) : (size_t)3 * 48 * (nn / 16);
-        ms[j].pred = ms[j].is_plan ? plan_cost(cal, ms[j].plan, n) : -1;
         if (w > wsz) wsz = w;
     }
     free(cal);

@@ -1,8 +1,8 @@
 # Practical fast matrix multiplication: plan
 
 Started 2026-10-24.  Code and results: `matmul/fastmm/` (build with `make`; sweeps
-`run_bench.sh`, `run_blocked.sh`, `run_hybrid.sh`, `run_auto.sh`, `run_probes.sh`; results in
-`matmul/fastmm/results/`).  `bench_fmm -m auto` picks the plan per size and precision from a
+`run_bench.sh`, `run_blocked.sh`, `run_hybrid.sh`, `run_auto.sh`, `run_probes.sh`,
+`run_streams.sh`, `run_auto_streams.sh`; results in `matmul/fastmm/results/`).  `bench_fmm -m auto` picks the plan per size and precision from a
 calibrated cost model; `bench_fmm -n N -p` prints the planner's choices.
 
 ## Goal
@@ -135,6 +135,50 @@ of it.  Three single-threaded streams beat Accelerate's own threading by 10% (f3
 The vector units of the 8 cores left idle could add up to 25% (f32) and 50% (f64) at their
 register-only peak.  Oversubscribing the cores collapses the GEMM rate.
 
+GEMM streams (`results/streams_2026-10-24.txt`, `results/auto_streams_2026-10-24.txt`).  The
+third stream's gain is not the efficiency cluster: its SME unit is slow (136 GFLOP/s f32, 42
+f64 alone), and two performance streams plus one background-priority stream reach only 3,503
+(f32) / 813 (f64), against 3,676 / 874 for three normal streams.  The third stream shares a
+performance cluster's unit and keeps it busier (one thread leaves it idle while it packs
+operands, and between calls).  In a plan, the leaf Gk runs a level's products as k
+single-threaded GEMM streams taking products in turn.  Interleaved A/B against one product at a
+time with Accelerate's own threading (medians, s):
+
+| n | prec | plan (GEMM size) | G | G2 | G3 | G4 | G6 |
+|---|---|---|---|---|---|---|---|
+| 4096 | f32 | SW/G (2048) | 0.043 | 0.045 | 0.040 | 0.041 | 0.046 |
+| 4096 | f32 | D48/G (1024) | 0.046 | 0.042 | 0.040 | 0.039 | 0.038 |
+| 8192 | f32 | D48/G (2048) | 0.280 | 0.275 | 0.255 | 0.266 | 0.289 |
+| 16384 | f32 | SW/D48/G (2048) | 2.007 | 2.025 | 1.859 | 1.929 | 2.070 |
+| 4096 | f64 | D48/G (1024) | 0.142 | 0.142 | 0.131 | 0.149 | 0.190 |
+| 8192 | f64 | SW/D48/G (1024) | 1.007 | 1.023 | 0.966 | 1.103 | 1.353 |
+| 16384 | f64 | D48/D48/G (1024) | 7.064 | 7.268 | 6.613 | 7.374 | 8.919 |
+
+Three streams win at most sizes, more streams win for the smallest GEMMs (f32 at 1024, f64 at
+512 and below) and lose badly at larger ones (6 streams +26-34% in f64 at 1024).  The
+calibration now times each level's products with 0, 3, 4 and 6 streams (about 3 minutes per
+precision) and the planner chooses per plan.  Validation, same protocol as above (the best
+classical variant from the same run):
+
+| n | precision | auto's plan | predicted (s) | measured (s) | best classical (s) | speedup | best plan without streams (s) |
+|---|---|---|---|---|---|---|---|
+| 2048 | f32 | G | 0.0052 | 0.0054 | 0.0052 | 1.00 | -- |
+| 4096 | f32 | D48/G6 | 0.036 | 0.036 | 0.042 | 1.17 | 0.042 (G) |
+| 8192 | f32 | D48/G3 | 0.257 | 0.254 | 0.333 | 1.31 | 0.283 (D48/G) |
+| 16384 | f32 | D48/D48/G6 | 1.861 | 1.838 | 2.688 | 1.46 | 1.995 (SW/D48/G) |
+| 2048 | f64 | D48/G6 | 0.018 | 0.018 | 0.021 | 1.19 | 0.020 (SW/G) |
+| 4096 | f64 | SW/D48/G6 | 0.132 | 0.133 | 0.166 | 1.25 | 0.141 (D48/G) |
+| 8192 | f64 | D48/D48/G6 | 0.905 | 0.908 | 1.297 | 1.43 | 1.006 (SW/D48/G) |
+| 16384 | f64 | SW/D48/D48/G6 | 6.470 | 6.499 | 11.129 | 1.71 | 6.987 (D48/D48/G) |
+
+Auto's plan was the fastest measured or within 0.6% of it at every point (at 16384 f32
+SW/D48/G3 ran 1.830 s, predicted 0.0008 s slower; at 4096 f64 D48/G3 ran 0.132 s), and
+predictions are within 0.3-1.3% at 4096-16384.  Streams take 6-14% off the best plans and make
+fast multiplication pay from n = 2048 in f64 and 4096 in f32.  Small GEMMs become cheap, so the
+planner goes deeper; the price is accuracy: f64 error at 16384 is 2.0e-13 for SW/D48/D48 against
+1.0e-13 for D48/D48, and f32 error 5.9e-5 for D48/D48 against 3.3e-5 for SW/D48 (the planner
+does not price accuracy yet).
+
 Engineering lessons (each worth a large factor, each easy to miss):
 
 - The compiler did not vectorize the 64-stream fused loops (it gave up on overlap checks);
@@ -169,12 +213,12 @@ Which operations matter depends on the implementation:
 1. **Hybrids and depth selection** (done 2026-10-24): automatic (`auto`), validated above.
 2. **Calibrate and validate the cost model** (done 2026-10-24): predictions within 0.3-3% at
    8192-16384, the choice right at every tested point.
-3. **Use the whole machine** (next).  A level's r products are independent.  Run them as three
-   single-threaded SME streams (8-10% on the GEMM time in the probe); give some products to a
-   NEON GEMM on the idle performance cores (needs a kernel near 70-80% of the vector peak; f64
-   has the most to gain); overlap the passes with the GEMMs on the same idle cores (the passes
-   are 10-15% of the time).  The planner then prices a level by its products spread over the
-   units.
+3. **Use the whole machine.**  A level's r products are independent.  GEMM streams (done
+   2026-10-24): 6-14% off the best plans, chosen per plan by the planner.  Next: give some
+   products (or row slabs of them) to a NEON GEMM on the remaining idle performance cores
+   (`neon_gemm.h`; needs a kernel near 70-80% of the vector peak; f64 has the most to gain);
+   overlap the passes with the GEMMs on the same idle cores (the passes are 10-15% of the
+   time); an accuracy budget for the planner (error grows with depth).
 4. **Cheaper passes.**
    - Keep the temporaries for one product in cache instead of materializing all 48.
    - Accumulate each product straight into its C blocks (no stored M_k), trading the P pass
@@ -205,6 +249,7 @@ Which operations matter depends on the implementation:
 - M1 (done 2026-10-24): harness, correctness against classical, honest numbers.
 - M2 (done 2026-10-24): hybrids measured; calibrated planner (`auto`) validated at
   2048-16384 in both precisions.
-- M3: the whole machine (three SME streams, NEON products, passes overlapped); measured gain.
+- M3: the whole machine: GEMM streams (done 2026-10-24, 6-14%); NEON products and overlapped
+  passes; measured gain.
 - M4: packing fusion prototype (own GEMM kernel or BLIS) and its gain.
 - M5: practical-objective scheme search and its measured effect.

@@ -3,10 +3,12 @@
  *   -g G   G >= 1: G threads, each a stream of single-threaded GEMMs of size n on its own operands
  *          G = 0: one stream of Accelerate's own multi-threaded GEMM (as bench_fmm calls it)
  *          G = -1: no GEMM
+ *   -e E   E more single-threaded GEMM streams at background QoS (macOS keeps those on the
+ *          efficiency cores: their cluster's SME unit)
  *   -v V   V threads of register-only NEON fused multiply-adds (the vector units' peak, no memory)
  * Reports GEMM and NEON GFLOP/s and the cores kept busy (process CPU time / wall time).
  *
- *   probe_threads [-t f|d] [-n 2048] [-g 0] [-v 0] [-s 3]
+ *   probe_threads [-t f|d] [-n 2048] [-g 0] [-e 0] [-v 0] [-s 3]
  */
 #define ACCELERATE_NEW_LAPACK
 #include <Accelerate/Accelerate.h>
@@ -37,13 +39,13 @@ static int f64;
 static size_t n = 2048;
 
 typedef struct {
-    int single;
+    int single, background;
     double flops, secs;
 } worker_t;
 
 static void *gemm_worker(void *p) {
     worker_t *w = p;
-    pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+    pthread_set_qos_class_self_np(w->background ? QOS_CLASS_BACKGROUND : QOS_CLASS_USER_INTERACTIVE, 0);
     if (w->single) BLASSetThreading(BLAS_THREADING_SINGLE_THREADED);
     size_t bytes = n * n * (f64 ? 8 : 4);
     void *A, *B, *C;
@@ -110,21 +112,23 @@ static void *neon_worker(void *p) {
 }
 
 int main(int argc, char **argv) {
-    int g = 0, v = 0;
+    int g = 0, e = 0, v = 0;
     double secs = 3;
     for (int i = 1; i + 1 < argc; i += 2) {
         if (!strcmp(argv[i], "-t")) f64 = argv[i + 1][0] == 'd';
         else if (!strcmp(argv[i], "-n")) n = (size_t)atol(argv[i + 1]);
         else if (!strcmp(argv[i], "-g")) g = atoi(argv[i + 1]);
         else if (!strcmp(argv[i], "-v")) v = atoi(argv[i + 1]);
+        else if (!strcmp(argv[i], "-e")) e = atoi(argv[i + 1]);
         else if (!strcmp(argv[i], "-s")) secs = atof(argv[i + 1]);
     }
-    int ng = g < 0 ? 0 : g == 0 ? 1 : g;
+    int np = g < 0 ? 0 : g == 0 ? 1 : g, ng = np + e;
     worker_t ws[64] = {{0}};
     pthread_t th[64];
     double c0 = cpu_time(), t0 = now();
     for (int i = 0; i < ng; i++) {
-        ws[i].single = g > 0;
+        ws[i].single = i >= np || g > 0;
+        ws[i].background = i >= np;
         pthread_create(&th[i], NULL, gemm_worker, &ws[i]);
     }
     for (int i = 0; i < v; i++) pthread_create(&th[ng + i], NULL, neon_worker, &ws[ng + i]);
@@ -133,10 +137,13 @@ int main(int argc, char **argv) {
     atomic_store(&stop, 1);
     for (int i = 0; i < ng + v; i++) pthread_join(th[i], NULL);
     double wall = now() - t0, cpu = cpu_time() - c0;
-    double gr = 0, vr = 0;
-    for (int i = 0; i < ng; i++) gr += ws[i].flops / ws[i].secs / 1e9;
+    double gr = 0, er = 0, vr = 0;
+    for (int i = 0; i < np; i++) gr += ws[i].flops / ws[i].secs / 1e9;
+    for (int i = np; i < ng; i++) er += ws[i].flops / ws[i].secs / 1e9;
     for (int i = 0; i < v; i++) vr += ws[ng + i].flops / ws[ng + i].secs / 1e9;
-    printf("%s n=%zu gemm-threads %-2d neon-threads %-2d  GEMM %7.1f GFLOP/s  NEON %7.1f GFLOP/s  cores busy %.2f\n",
+    printf("%s n=%zu gemm-threads %-2d neon-threads %-2d  GEMM %7.1f GFLOP/s  NEON %7.1f GFLOP/s  cores busy %.2f",
            f64 ? "f64" : "f32", n, g, v, gr, vr, cpu / wall);
+    if (e) printf("  background GEMM streams %d: %.1f GFLOP/s", e, er);
+    printf("\n");
     return 0;
 }

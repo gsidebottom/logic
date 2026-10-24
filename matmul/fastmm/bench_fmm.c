@@ -15,6 +15,9 @@
  *   plan=...   any plan: fused levels from the top (SW, D48, SW2) ending in a leaf (G = one
  *              GEMM, B2/B4/B8 = classical blocked), e.g. plan=SW/D48/G
  *   auto       the plan the calibrated cost model picks for n
+ *   M@k        method M with the GEMMs of its lowest level as k single-threaded streams taking
+ *              products in turn (leaf Gk in a plan; G alone = Accelerate's own threading, one
+ *              product at a time)
  * A fused pass streams once over its input and output blocks with the scheme's linear program
  * evaluated per element position in registers (kernels.h, from gen_kernels.py).
  *
@@ -33,7 +36,9 @@
 #define ACCELERATE_NEW_LAPACK
 #include <Accelerate/Accelerate.h>
 #include <dispatch/dispatch.h>
+#include <ctype.h>
 #include <math.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -101,10 +106,18 @@ static void evict(void) {
 /* ---- plans: fused levels from the top, ending in a leaf -------------------------------- */
 /* leaves: G = one GEMM; B2, B4, B8 = classical as g^3 block GEMMs of n/g accumulating into C.
  * fused levels: SW = Strassen-Winograd <2x2x2:7>, D48 = our <4x4x4:48>, SW2 = Strassen^2
- * <4x4x4:49>.  NONE (calibration only) skips the products, leaving a level's passes. */
+ * <4x4x4:49>.  NONE (calibration only) skips the products, leaving a level's passes.  A plan
+ * entry is a level code; the G leaf below a fused level may add k << 8 (written Gk): the
+ * level's products as k single-threaded GEMM streams taking products in turn.  Plain G runs
+ * them one at a time with Accelerate's own threading, which drives each SME unit (one per
+ * cluster) from one thread; two or three threads per unit keep it busier. */
 enum { LV_NONE = -1, LV_G = 0, LV_B2, LV_B4, LV_B8, LV_SW, LV_D48, LV_SW2, LV_N };
 static const char *LV_NAME[LV_N] = {"G", "B2", "B4", "B8", "SW", "D48", "SW2"};
 #define PLAN_MAX 16
+#define PLV(e) ((e) < 0 ? (e) : (e) & 0xff)     /* the level code of a plan entry */
+#define PST(e) ((e) < 0 ? 0 : (e) >> 8)         /* its GEMM streams */
+static const int STREAMS[] = {0, 3, 4, 6};       /* the stream counts the planner considers */
+#define NSTREAMS ((int)(sizeof STREAMS / sizeof STREAMS[0]))
 static int lv_leaf(int lv) { return lv <= LV_B8; }
 static int lv_grid(int lv) {
     static const int g[LV_N] = {1, 2, 4, 8, 2, 4, 4};
@@ -115,22 +128,27 @@ static int lv_rank(int lv) { return lv == LV_SW ? 7 : lv == LV_D48 ? 48 : 49; }
 /* scratch elements a plan needs at size n: each fused level 3 r blocks of m*m + pad (S, T, M);
  * the levels below reuse their scratch product after product */
 static size_t plan_work(const int *plan, size_t n) {
-    if (lv_leaf(plan[0])) return 0;
-    size_t m = n / lv_grid(plan[0]);
-    return (size_t)3 * lv_rank(plan[0]) * (m * m + fmm_pad()) + plan_work(plan + 1, m);
+    int lv = PLV(plan[0]);
+    if (lv_leaf(lv)) return 0;
+    size_t m = n / lv_grid(lv);
+    return (size_t)3 * lv_rank(lv) * (m * m + fmm_pad()) + plan_work(plan + 1, m);
 }
 
 static void plan_str(const int *plan, char *buf, size_t len) {
     buf[0] = 0;
     for (int i = 0; i < PLAN_MAX; i++) {
-        strncat(buf, plan[i] < 0 ? "NONE" : LV_NAME[plan[i]], len - strlen(buf) - 1);
-        if (lv_leaf(plan[i])) break;
+        int lv = PLV(plan[i]);
+        char e[16];
+        if (PST(plan[i])) snprintf(e, sizeof e, "%s%d", LV_NAME[lv], PST(plan[i]));
+        else snprintf(e, sizeof e, "%s", lv < 0 ? "NONE" : LV_NAME[lv]);
+        strncat(buf, e, len - strlen(buf) - 1);
+        if (lv_leaf(lv)) break;
         strncat(buf, "/", len - strlen(buf) - 1);
     }
 }
 
-/* the named methods as plans, or "plan=D48/SW/G"; 0 if the method is not a plan or the plan
- * does not divide n */
+/* the named methods as plans, or "plan=D48/SW/G3"; a suffix @k gives the plan's G leaf k
+ * streams; 0 if the method is not a plan or the plan does not divide n */
 static int parse_plan(const char *meth, size_t n, int *plan) {
     static const struct { const char *name, *levels; } NAMED[] = {
         {"classical", "G"},        {"blk2", "B2"},         {"blk4", "B4"},
@@ -139,24 +157,35 @@ static int parse_plan(const char *meth, size_t n, int *plan) {
         {"sw2", "SW2/G"},          {"sw2sw", "SW2/SW/G"},  {"dps48", "D48/G"},
         {"dps48sw", "D48/SW/G"},   {"dps48x2", "D48/D48/G"},
     };
+    char name[128], buf[128];
+    strncpy(name, meth, sizeof name - 1);
+    name[sizeof name - 1] = 0;
+    char *at = strchr(name, '@');
+    int streams = at ? atoi(at + 1) : -1;
+    if (at) *at = 0;
     const char *lv = NULL;
     for (size_t i = 0; i < sizeof NAMED / sizeof NAMED[0]; i++)
-        if (!strcmp(meth, NAMED[i].name)) lv = NAMED[i].levels;
-    if (!lv && !strncmp(meth, "plan=", 5)) lv = meth + 5;
+        if (!strcmp(name, NAMED[i].name)) lv = NAMED[i].levels;
+    if (!lv && !strncmp(name, "plan=", 5)) lv = name + 5;
     if (!lv) return 0;
-    char buf[128];
     strncpy(buf, lv, sizeof buf - 1);
     buf[sizeof buf - 1] = 0;
     int k = 0;
     size_t sz = n;
     char *save = NULL;
     for (char *t = strtok_r(buf, "/", &save); t && k < PLAN_MAX; t = strtok_r(NULL, "/", &save)) {
-        int found = -1;
+        int found = -1, st = 0;
         for (int j = 0; j < LV_N; j++)
             if (!strcmp(t, LV_NAME[j])) found = j;
+        if (found < 0 && t[0] == 'G' && isdigit((unsigned char)t[1])) {
+            found = LV_G;
+            st = atoi(t + 1);
+        }
         if (found < 0 || sz % lv_grid(found)) return 0;
-        plan[k++] = found;
         sz /= lv_grid(found);
+        if (found == LV_G && streams >= 0 && k > 0) st = streams;
+        if (st && k == 0) return 0;     /* streams need a level whose products they share */
+        plan[k++] = found | (st << 8);
         if (lv_leaf(found)) return 1;
     }
     return 0;
@@ -165,31 +194,40 @@ static int parse_plan(const char *meth, size_t n, int *plan) {
 /* ---- calibration and the planner ------------------------------------------------------- */
 /* measured seconds per (kind, m).  A plan's top leaf alone: G m = one GEMM of size m, B2 m =
  * classical blocked 2x2 at size m (one call each, cold caches).  A fused level whose blocks have
- * size m: SW m, D48 m = its three passes; GSW m, GD48 m = its GEMM time per product (r GEMMs back
- * to back: below about 1 ms a GEMM in such a stream takes 13-27% longer than one alone) */
-#define K_GIN 100   /* K_GIN + level: GEMM per product inside that level */
-#define CALIB_FORMAT 2
-#define CALIB_MAX 512
+ * size m: SW m, D48 m = its three passes; GSW m, GD48 m = its GEMM time per product run one at a
+ * time (back to back: below about 1 ms a GEMM so takes 13-27% longer than alone), GkSW m, GkD48
+ * m = the same with k streams */
+#define K_GIN 100   /* K_GIN + 16 k + level: GEMM per product inside that level, k streams */
+#define CALIB_FORMAT 3
+#define CALIB_MAX 1024
 typedef struct {
     int kind[CALIB_MAX], n;
     size_t m[CALIB_MAX];
     double t[CALIB_MAX];
 } calib_t;
 
+static int kind_gin(int lv, int streams) { return K_GIN + 16 * streams + lv; }
+
 static const char *kind_name(int kind) {
     static char buf[4][16];
     static int k;
     if (kind < K_GIN) return LV_NAME[kind];
     k = (k + 1) % 4;
-    snprintf(buf[k], sizeof buf[k], "G%s", LV_NAME[kind - K_GIN]);
+    int st = (kind - K_GIN) / 16, lv = (kind - K_GIN) % 16;
+    if (st) snprintf(buf[k], sizeof buf[k], "G%d%s", st, LV_NAME[lv]);
+    else snprintf(buf[k], sizeof buf[k], "G%s", LV_NAME[lv]);
     return buf[k];
 }
 
 static int kind_parse(const char *s) {
-    for (int v = 0; v < LV_N; v++) {
+    for (int v = 0; v < LV_N; v++)
         if (!strcmp(s, LV_NAME[v])) return v;
-        if (s[0] == 'G' && !strcmp(s + 1, LV_NAME[v])) return K_GIN + v;
-    }
+    if (s[0] != 'G') return -1;
+    const char *p = s + 1;
+    int st = 0;
+    while (isdigit((unsigned char)*p)) st = 10 * st + (*p++ - '0');
+    for (int v = 0; v < LV_N; v++)
+        if (!strcmp(p, LV_NAME[v])) return kind_gin(v, st);
     return -1;
 }
 
@@ -209,7 +247,8 @@ static void calib_put(calib_t *c, int kind, size_t m, double t) {
 }
 
 /* the entries plan_best needs for n (t = 0 placeholders): the leaves alone at n, and for each
- * fused level its passes and per-product GEMM at blocks n/g, and the needs of n/g */
+ * fused level its passes and per-product GEMM (every stream count) at blocks n/g, and the
+ * needs of n/g */
 static void calib_need(calib_t *need, size_t n) {
     calib_put(need, LV_G, n, 0);
     if (n % 2 == 0 && n / 2 >= fmm_minb()) calib_put(need, LV_B2, n, 0);
@@ -217,7 +256,7 @@ static void calib_need(calib_t *need, size_t n) {
         size_t g = lv_grid(lv);
         if (n % g || n / g < fmm_minb()) continue;
         calib_put(need, lv, n / g, 0);
-        calib_put(need, K_GIN + lv, n / g, 0);
+        for (int i = 0; i < NSTREAMS; i++) calib_put(need, kind_gin(lv, STREAMS[i]), n / g, 0);
         calib_need(need, n / g);
     }
 }
@@ -269,10 +308,11 @@ static void calib_save(const calib_t *c, int f64) {
     if (!f) { perror(path); return; }
     fprintf(f, "# bench_fmm calibration, %s, seconds: G m = one GEMM of size m, B2 m = classical "
                "blocked 2x2 at size m (one call each); SW m, D48 m = the three passes of one such level "
-               "with blocks of size m; GSW m, GD48 m = its GEMM time per product\n",
+               "with blocks of size m; GSW m, GD48 m = its GEMM time per product, GkSW m, GkD48 m = the "
+               "same with k GEMM streams\n",
             f64 ? "f64" : "f32");
     fprintf(f, "# machine %s\n# pad %zu\n# format %d\n", machine(), fmm_pad(), CALIB_FORMAT);
-    for (int v = 0; v < K_GIN + LV_N; v++)  /* by kind, then size */
+    for (int v = 0; v < K_GIN + 16 * 16; v++)   /* by kind, then size */
         for (size_t m = 1; m < ((size_t)1 << 40); m *= 2)
             for (int i = 0; i < c->n; i++)
                 if (c->kind[i] == v && c->m[i] >= m && c->m[i] < 2 * m)
@@ -283,8 +323,11 @@ static void calib_save(const calib_t *c, int f64) {
 /* predicted seconds for a plan at size n below a fused level of type parent (-1: the top), -1
  * if the calibration lacks an entry it needs (B4, B8 and SW2 are not calibrated, B2 only on top) */
 static double plan_cost_in(const calib_t *c, const int *plan, size_t n, int parent) {
-    int lv = plan[0];
-    if (lv == LV_G) return calib_get(c, parent < 0 ? LV_G : K_GIN + parent, n);
+    int lv = PLV(plan[0]);
+    if (lv == LV_G) {
+        if (parent < 0) return PST(plan[0]) ? -1 : calib_get(c, LV_G, n);
+        return calib_get(c, kind_gin(parent, PST(plan[0])), n);
+    }
     if (lv == LV_B2) return parent < 0 ? calib_get(c, LV_B2, n) : -1;
     if (lv_leaf(lv)) return -1;
     size_t g = lv_grid(lv), m = n / g;
@@ -295,15 +338,28 @@ static double plan_cost_in(const calib_t *c, const int *plan, size_t n, int pare
 
 static double plan_cost(const calib_t *c, const int *plan, size_t n) { return plan_cost_in(c, plan, n, -1); }
 
+/* the first entries a plan below parent (-1: the top) can start with: G with every stream count
+ * (on top: G alone and B2), SW, D48; SW2 has the passes of D48 and one product more, and B4, B8
+ * are not calibrated */
+static int plan_firsts(int parent, int *out) {
+    int k = 0;
+    for (int i = 0; i < NSTREAMS; i++)
+        if (parent >= 0 || STREAMS[i] == 0) out[k++] = LV_G | (STREAMS[i] << 8);
+    if (parent < 0) out[k++] = LV_B2;
+    out[k++] = LV_SW;
+    out[k++] = LV_D48;
+    return k;
+}
+
 /* the cheapest plan for n below a level of type parent (-1: the top) under the calibration:
- * dynamic programming over the first level, a leaf or a fused level over the cheapest plan for
+ * dynamic programming over the first entry, a leaf or a fused level over the cheapest plan for
  * n/g below it; -1 if nothing is calibrated */
 static double plan_best_in(const calib_t *c, size_t n, int parent, int *plan) {
     double best = -1;
-    for (int lv = LV_G; lv < LV_N; lv++) {
-        /* SW2 has the passes of D48 and one product more: never cheaper */
-        if (lv == LV_SW2 || lv == LV_B4 || lv == LV_B8) continue;
-        int cand[PLAN_MAX] = {lv};
+    int firsts[16], nf = plan_firsts(parent, firsts);
+    for (int f = 0; f < nf; f++) {
+        int e = firsts[f], lv = PLV(e);
+        int cand[PLAN_MAX] = {e};
         double t;
         if (lv_leaf(lv)) {
             t = plan_cost_in(c, cand, n, parent);
@@ -332,8 +388,8 @@ typedef struct {
     double pred;
 } meth_t;
 
-/* every plan for n down to blocks of fmm_minb() (fused levels SW and D48, any leaf) with its
- * predicted time, cheapest first; returns the count (at most max) */
+/* every plan for n down to blocks of fmm_minb() with its predicted time, cheapest first;
+ * returns the count (at most max) */
 typedef struct {
     int plan[PLAN_MAX];
     double t;
@@ -341,9 +397,10 @@ typedef struct {
 
 static void plan_enum_rec(const calib_t *c, size_t n0, size_t n, int *plan, int depth, ranked_t *out, int *cnt,
                           int max) {
-    for (int lv = LV_G; lv < LV_N && *cnt < max; lv++) {
-        if (lv == LV_SW2 || depth >= PLAN_MAX - 1) continue;
-        plan[depth] = lv;
+    int firsts[16], nf = plan_firsts(depth ? PLV(plan[depth - 1]) : -1, firsts);
+    for (int f = 0; f < nf && *cnt < max && depth < PLAN_MAX - 1; f++) {
+        int lv = PLV(firsts[f]);
+        plan[depth] = firsts[f];
         if (lv_leaf(lv)) {
             double t = plan_cost(c, plan, n0);
             if (t > 0) {

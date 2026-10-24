@@ -1,0 +1,53 @@
+# bench_fmm streams 2026-10-24 16:32; Apple M4 Pro
+classical  n=4096   f32  min    0.042 s  med    0.044 s   3138.4 GFLOP/s(2n^3)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.045 P 0.000  plan G  pred 0.042 s (-4.5%)
+sw1        n=4096   f32  min    0.041 s  med    0.043 s   3173.7 GFLOP/s(2n^3)  speedup 1.011  relerr 5.22e-06  split L 0.001 R 0.001 gemm 0.040 P 0.001  plan SW/G  pred 0.041 s (-5.2%)
+sw1@2      n=4096   f32  min    0.045 s  med    0.045 s   3050.4 GFLOP/s(2n^3)  speedup 0.972  relerr 5.22e-06  split L 0.001 R 0.001 gemm 0.041 P 0.001  plan SW/G
+sw1@3      n=4096   f32  min    0.040 s  med    0.040 s   3411.0 GFLOP/s(2n^3)  speedup 1.087  relerr 5.22e-06  split L 0.001 R 0.001 gemm 0.037 P 0.001  plan SW/G
+sw1@4      n=4096   f32  min    0.040 s  med    0.041 s   3372.0 GFLOP/s(2n^3)  speedup 1.074  relerr 5.22e-06  split L 0.001 R 0.001 gemm 0.037 P 0.001  plan SW/G
+sw1@6      n=4096   f32  min    0.043 s  med    0.046 s   2991.1 GFLOP/s(2n^3)  speedup 0.953  relerr 5.22e-06  split L 0.001 R 0.001 gemm 0.041 P 0.001  plan SW/G
+dps48      n=4096   f32  min    0.045 s  med    0.046 s   2970.6 GFLOP/s(2n^3)  speedup 0.947  relerr 8.32e-06  split L 0.002 R 0.002 gemm 0.040 P 0.002  plan D48/G  pred 0.045 s (-1.8%)
+dps48@2    n=4096   f32  min    0.042 s  med    0.042 s   3249.6 GFLOP/s(2n^3)  speedup 1.035  relerr 8.32e-06  split L 0.002 R 0.003 gemm 0.036 P 0.002  plan D48/G
+dps48@3    n=4096   f32  min    0.039 s  med    0.040 s   3459.6 GFLOP/s(2n^3)  speedup 1.102  relerr 8.32e-06  split L 0.002 R 0.003 gemm 0.033 P 0.002  plan D48/G
+dps48@4    n=4096   f32  min    0.038 s  med    0.039 s   3539.6 GFLOP/s(2n^3)  speedup 1.128  relerr 8.32e-06  split L 0.002 R 0.002 gemm 0.032 P 0.002  plan D48/G
+dps48@6    n=4096   f32  min    0.037 s  med    0.038 s   3597.4 GFLOP/s(2n^3)  speedup 1.146  relerr 8.32e-06  split L 0.002 R 0.003 gemm 0.031 P 0.002  plan D48/G
+classical  n=8192   f32  min    0.328 s  med    0.337 s   3258.8 GFLOP/s(2n^3)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.349 P 0.000  plan G  pred 0.330 s (-2.3%)
+dps48      n=8192   f32  min    0.275 s  med    0.280 s   3923.9 GFLOP/s(2n^3)  speedup 1.204  relerr 1.14e-05  split L 0.009 R 0.009 gemm 0.256 P 0.008  plan D48/G  pred 0.277 s (-1.2%)
+dps48@2    n=8192   f32  min    0.271 s  med    0.275 s   3994.5 GFLOP/s(2n^3)  speedup 1.226  relerr 1.14e-05  split L 0.009 R 0.009 gemm 0.253 P 0.008  plan D48/G
+dps48@3    n=8192   f32  min    0.254 s  med    0.255 s   4315.0 GFLOP/s(2n^3)  speedup 1.324  relerr 1.14e-05  split L 0.009 R 0.009 gemm 0.232 P 0.007  plan D48/G
+dps48@4    n=8192   f32  min    0.264 s  med    0.266 s   4128.8 GFLOP/s(2n^3)  speedup 1.267  relerr 1.14e-05  split L 0.009 R 0.009 gemm 0.242 P 0.007  plan D48/G
+dps48@6    n=8192   f32  min    0.284 s  med    0.289 s   3806.4 GFLOP/s(2n^3)  speedup 1.168  relerr 1.14e-05  split L 0.009 R 0.009 gemm 0.265 P 0.007  plan D48/G
+plan=SW/D48/G n=16384  f32  min    2.002 s  med    2.007 s   4381.8 GFLOP/s(2n^3)  speedup 0.000  relerr 3.29e-05  split L 0.085 R 0.085 gemm 1.771 P 0.070  plan SW/D48/G  pred 2.004 s (-0.2%)
+plan=SW/D48/G@2 n=16384  f32  min    2.012 s  med    2.025 s   4343.2 GFLOP/s(2n^3)  speedup 0.000  relerr 3.29e-05  split L 0.085 R 0.084 gemm 1.782 P 0.070  plan SW/D48/G
+plan=SW/D48/G@3 n=16384  f32  min    1.849 s  med    1.859 s   4731.9 GFLOP/s(2n^3)  speedup 0.000  relerr 3.29e-05  split L 0.085 R 0.084 gemm 1.623 P 0.070  plan SW/D48/G
+plan=SW/D48/G@4 n=16384  f32  min    1.908 s  med    1.929 s   4559.1 GFLOP/s(2n^3)  speedup 0.000  relerr 3.29e-05  split L 0.086 R 0.085 gemm 1.687 P 0.070  plan SW/D48/G
+plan=SW/D48/G@6 n=16384  f32  min    2.051 s  med    2.070 s   4249.2 GFLOP/s(2n^3)  speedup 0.000  relerr 3.29e-05  split L 0.086 R 0.085 gemm 1.835 P 0.070  plan SW/D48/G
+dps48      n=16384  f32  min    2.369 s  med    2.383 s   3690.6 GFLOP/s(2n^3)  speedup 0.000  relerr 1.64e-05  split L 0.038 R 0.037 gemm 2.293 P 0.033  plan D48/G  pred 2.228 s (-6.5%)
+dps48@3    n=16384  f32  min    1.992 s  med    2.026 s   4340.8 GFLOP/s(2n^3)  speedup 0.000  relerr 1.64e-05  split L 0.039 R 0.038 gemm 1.916 P 0.032  plan D48/G
+classical  n=4096   f64  min    0.163 s  med    0.165 s    832.6 GFLOP/s(2n^3)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.169 P 0.000  plan G  pred 0.169 s (+2.1%)
+dps48      n=4096   f64  min    0.138 s  med    0.142 s    970.4 GFLOP/s(2n^3)  speedup 1.166  relerr 1.44e-14  split L 0.005 R 0.004 gemm 0.131 P 0.004  plan D48/G  pred 0.143 s (+1.1%)
+dps48@2    n=4096   f64  min    0.136 s  med    0.142 s    966.5 GFLOP/s(2n^3)  speedup 1.161  relerr 1.44e-14  split L 0.004 R 0.004 gemm 0.131 P 0.004  plan D48/G
+dps48@3    n=4096   f64  min    0.129 s  med    0.131 s   1046.8 GFLOP/s(2n^3)  speedup 1.257  relerr 1.44e-14  split L 0.004 R 0.005 gemm 0.120 P 0.003  plan D48/G
+dps48@4    n=4096   f64  min    0.145 s  med    0.149 s    919.3 GFLOP/s(2n^3)  speedup 1.104  relerr 1.44e-14  split L 0.004 R 0.004 gemm 0.137 P 0.004  plan D48/G
+dps48@6    n=4096   f64  min    0.176 s  med    0.190 s    724.2 GFLOP/s(2n^3)  speedup 0.870  relerr 1.44e-14  split L 0.004 R 0.004 gemm 0.178 P 0.004  plan D48/G
+classical  n=8192   f64  min    1.290 s  med    1.387 s    793.0 GFLOP/s(2n^3)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.439 P 0.000  plan G  pred 1.441 s (+3.9%)
+plan=SW/D48/G n=8192   f64  min    1.001 s  med    1.007 s   1092.0 GFLOP/s(2n^3)  speedup 1.377  relerr 4.17e-14  split L 0.043 R 0.042 gemm 0.893 P 0.034  plan SW/D48/G  pred 1.033 s (+2.6%)
+plan=SW/D48/G@2 n=8192   f64  min    1.005 s  med    1.023 s   1074.3 GFLOP/s(2n^3)  speedup 1.355  relerr 4.17e-14  split L 0.042 R 0.042 gemm 0.908 P 0.034  plan SW/D48/G
+plan=SW/D48/G@3 n=8192   f64  min    0.952 s  med    0.966 s   1138.0 GFLOP/s(2n^3)  speedup 1.435  relerr 4.17e-14  split L 0.042 R 0.043 gemm 0.853 P 0.035  plan SW/D48/G
+plan=SW/D48/G@4 n=8192   f64  min    1.081 s  med    1.103 s    996.6 GFLOP/s(2n^3)  speedup 1.257  relerr 4.17e-14  split L 0.042 R 0.042 gemm 0.982 P 0.034  plan SW/D48/G
+plan=SW/D48/G@6 n=8192   f64  min    1.341 s  med    1.353 s    812.8 GFLOP/s(2n^3)  speedup 1.025  relerr 4.17e-14  split L 0.042 R 0.042 gemm 1.240 P 0.034  plan SW/D48/G
+dps48      n=8192   f64  min    1.051 s  med    1.056 s   1041.0 GFLOP/s(2n^3)  speedup 1.313  relerr 2.20e-14  split L 0.019 R 0.019 gemm 1.008 P 0.015  plan D48/G  pred 1.071 s (+1.4%)
+dps48@3    n=8192   f64  min    0.996 s  med    1.004 s   1094.6 GFLOP/s(2n^3)  speedup 1.380  relerr 2.20e-14  split L 0.019 R 0.018 gemm 0.956 P 0.016  plan D48/G
+dps48x2    n=16384  f64  min    6.944 s  med    7.052 s   1247.4 GFLOP/s(2n^3)  speedup 0.000  relerr 1.02e-13  split L 0.295 R 0.293 gemm 6.236 P 0.234  plan D48/D48/G  pred 7.098 s (+0.7%)
+dps48x2@2  n=16384  f64  min    7.138 s  med    7.251 s   1213.2 GFLOP/s(2n^3)  speedup 0.000  relerr 1.02e-13  split L 0.298 R 0.292 gemm 6.454 P 0.233  plan D48/D48/G
+dps48x2@3  n=16384  f64  min    6.588 s  med    6.671 s   1318.5 GFLOP/s(2n^3)  speedup 0.000  relerr 1.02e-13  split L 0.295 R 0.296 gemm 5.829 P 0.233  plan D48/D48/G
+dps48x2@4  n=16384  f64  min    7.335 s  med    7.360 s   1195.1 GFLOP/s(2n^3)  speedup 0.000  relerr 1.02e-13  split L 0.294 R 0.292 gemm 6.800 P 0.236  plan D48/D48/G
+dps48x2@6  n=16384  f64  min    8.868 s  med    9.059 s    971.0 GFLOP/s(2n^3)  speedup 0.000  relerr 1.02e-13  split L 0.297 R 0.295 gemm 8.203 P 0.234  plan D48/D48/G
+# done 16:40
+# rerun of 16384 f64 (the run above overlapped a smoke test) 16:40
+# calibration results/calib_f64.txt is from another machine, padding or format: remeasuring
+dps48x2    n=16384  f64  min    7.050 s  med    7.064 s   1245.2 GFLOP/s(2n^3)  speedup 0.000  relerr 1.02e-13  split L 0.294 R 0.292 gemm 6.267 P 0.234  plan D48/D48/G
+dps48x2@2  n=16384  f64  min    7.225 s  med    7.268 s   1210.2 GFLOP/s(2n^3)  speedup 0.000  relerr 1.02e-13  split L 0.293 R 0.292 gemm 6.440 P 0.233  plan D48/D48/G2
+dps48x2@3  n=16384  f64  min    6.592 s  med    6.613 s   1330.0 GFLOP/s(2n^3)  speedup 0.000  relerr 1.02e-13  split L 0.293 R 0.291 gemm 5.808 P 0.234  plan D48/D48/G3
+dps48x2@4  n=16384  f64  min    7.320 s  med    7.374 s   1192.8 GFLOP/s(2n^3)  speedup 0.000  relerr 1.02e-13  split L 0.293 R 0.291 gemm 6.546 P 0.233  plan D48/D48/G4
+dps48x2@6  n=16384  f64  min    8.881 s  med    8.919 s    986.2 GFLOP/s(2n^3)  speedup 0.000  relerr 1.02e-13  split L 0.293 R 0.291 gemm 8.115 P 0.238  plan D48/D48/G6
+# done 16:44

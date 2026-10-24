@@ -60,6 +60,47 @@ static void FN(gemm_streams)(int r, size_t m, T *const *S, T *const *Tt, T *cons
     });
 }
 
+/* the r products of a level: the first r - j as k single-threaded GEMM streams taking products
+ * in turn, the last j by w NEON threads, all at once.  A NEON task is a slab of FMM_NEON_SLAB
+ * rows of a product (default 0: the whole product; each task packs all of B again, so small
+ * slabs multiply the traffic through the L2 the SME units share).  The packing buffers are
+ * allocated once, for the largest m seen. */
+static void FN(gemm_hybrid)(int r, size_t m, T *const *S, T *const *Tt, T *const *M, int k, int j, int w) {
+    static T *pa[64], *pb[64];
+    static size_t cap;
+    const char *e = getenv("FMM_NEON_SLAB");
+    size_t slab = e ? (size_t)atol(e) : 0;
+    if (slab == 0 || slab > m) slab = m;
+    if (m > cap) {
+        for (int q = 0; q < 64; q++) {
+            free(pa[q]); free(pb[q]);
+            pa[q] = alloc_t(m * NEON_KC * sizeof(T) + 64);
+            pb[q] = alloc_t(m * NEON_KC * sizeof(T) + 64);
+        }
+        cap = m;
+    }
+    if (j > r) j = r;
+    if (w > 64) w = 64;
+    int slabs = (int)((m + slab - 1) / slab), tasks = j * slabs;
+    atomic_int next = 0, ntask = 0;
+    atomic_int *pn = &next, *pt = &ntask;
+    dispatch_apply((size_t)(k + w), dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t id) {
+        if ((int)id < k) {
+            enum BLAS_THREADING old = BLASGetThreading();
+            BLASSetThreading(BLAS_THREADING_SINGLE_THREADED);
+            for (int q; (q = atomic_fetch_add(pn, 1)) < r - j;) FN(gemm)(m, S[q], m, Tt[q], m, M[q], m);
+            BLASSetThreading(old);
+        } else {
+            T *a = pa[id - k], *b = pb[id - k];
+            for (int t; (t = atomic_fetch_add(pt, 1)) < tasks;) {
+                int q = r - j + t / slabs;
+                size_t r0 = (size_t)(t % slabs) * slab, r1 = r0 + slab < m ? r0 + slab : m;
+                NEON_GEMM_ROWS(m, S[q], m, Tt[q], m, M[q], m, r0, r1, a, b);
+            }
+        }
+    });
+}
+
 /* C = A B at size n by a plan (plan[0] the top level); work holds plan_work(plan, n) elements.
  * A fused level splits A, B, C into a g x g grid of blocks of m = n / g, writes the r factors
  * S_k and T_k (one pass per side), computes M_k = S_k T_k by the rest of the plan (the scratch
@@ -105,7 +146,11 @@ static void FN(exec)(const int *plan, size_t n, const T *A, size_t lda, const T 
         sp->tL += t1 - t0;
         sp->tR += t2 - t1;
     }
-    if (PLV(plan[1]) == LV_G && PST(plan[1]) > 0) {
+    if (PLV(plan[1]) == LV_G && PNE(plan[1]) > 0) {
+        double t = now();
+        FN(gemm_hybrid)(r, m, S, Tt, M, PST(plan[1]), PNE(plan[1]), fmm_neon_threads());
+        if (sp) sp->tG += now() - t;
+    } else if (PLV(plan[1]) == LV_G && PST(plan[1]) > 0) {
         double t = now();
         FN(gemm_streams)(r, m, S, Tt, M, PST(plan[1]));
         if (sp) sp->tG += now() - t;

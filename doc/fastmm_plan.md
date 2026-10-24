@@ -2,7 +2,8 @@
 
 Started 2026-10-24.  Code and results: `matmul/fastmm/` (build with `make`; sweeps
 `run_bench.sh`, `run_blocked.sh`, `run_hybrid.sh`, `run_auto.sh`, `run_probes.sh`,
-`run_streams.sh`, `run_auto_streams.sh`; results in `matmul/fastmm/results/`).  `bench_fmm -m auto` picks the plan per size and precision from a
+`run_streams.sh`, `run_auto_streams.sh`, `run_neon.sh`, `run_neon2.sh`; results in
+`matmul/fastmm/results/`).  `bench_fmm -m auto` picks the plan per size and precision from a
 calibrated cost model; `bench_fmm -n N -p` prints the planner's choices.
 
 ## Goal
@@ -179,6 +180,29 @@ planner goes deeper; the price is accuracy: f64 error at 16384 is 2.0e-13 for SW
 1.0e-13 for D48/D48, and f32 error 5.9e-5 for D48/D48 against 3.3e-5 for SW/D48 (the planner
 does not price accuracy yet).
 
+NEON products on the idle cores (negative result; `neon_gemm.h`, `neon_test.c`,
+`results/neon_2026-10-24.txt`, `neon_products_2026-10-24.txt`, `neon_whole_2026-10-24.txt`).
+The NEON GEMM (GotoBLAS packing, 8 x 8 f32 and 4 x 8 f64 micro-kernels of lane-indexed fused
+multiply-adds) runs at 90-93% of one core's register peak (105-109 GFLOP/s f32, 54-55 f64) and
+82-87% on 7 cores.  Beside three SME streams it slows the SME units, which share each cluster's
+L2: the first loop order (all of A streamed from L2 for every 8-column panel of B) cost them
+28-42%; blocking A in L1 cut that to 3-33%.  Steady state, three SME streams plus NEON threads
+(GFLOP/s, total against SME alone):
+
+| | + 2 NEON | + 4 NEON | + 7 NEON |
+|---|---|---|---|
+| f32, n = 1024 | +3% | +6% | +3% |
+| f32, n = 2048 | +3% | +3% | 0% |
+| f64, n = 1024 | +5% | +2% | 0% |
+| f64, n = 2048 | +9% | +14% | +14% |
+
+In plans (leaf GkNj: the level's last j products on 4 NEON threads while k streams take the
+rest) the best share gained 1.3-2.7% at the median (8192 f32 D48/G3N2 0.251 s against 0.258;
+16384 f64 SW/D48/D48/G6N4 6.390 against 6.477), a wrong share lost up to 40%, and single rounds
+varied by 8-10% with core placement, which macOS does not let a program choose.  Not adopted:
+NEON is a small part of the machine's matrix throughput (0.7 of 4.3 TFLOP/s f32, 0.33 of 1.2 f64)
+and taking it costs the SME units most of what it adds.
+
 Engineering lessons (each worth a large factor, each easy to miss):
 
 - The compiler did not vectorize the 64-stream fused loops (it gave up on overlap checks);
@@ -214,11 +238,11 @@ Which operations matter depends on the implementation:
 2. **Calibrate and validate the cost model** (done 2026-10-24): predictions within 0.3-3% at
    8192-16384, the choice right at every tested point.
 3. **Use the whole machine.**  A level's r products are independent.  GEMM streams (done
-   2026-10-24): 6-14% off the best plans, chosen per plan by the planner.  Next: give some
-   products (or row slabs of them) to a NEON GEMM on the remaining idle performance cores
-   (`neon_gemm.h`; needs a kernel near 70-80% of the vector peak; f64 has the most to gain);
-   overlap the passes with the GEMMs on the same idle cores (the passes are 10-15% of the
-   time); an accuracy budget for the planner (error grows with depth).
+   2026-10-24): 6-14% off the best plans, chosen per plan by the planner.  NEON products on the
+   idle cores (tried 2026-10-24): at most 1-3%, fragile, not adopted (see above).  Next: overlap
+   the passes with the GEMMs (the passes are 10-15% of one- and two-level plans and 24% of
+   SW/D48/D48 at 16384 f64), watching the same L2 contention; an accuracy budget for the
+   planner (error grows with depth).
 4. **Cheaper passes.**
    - Keep the temporaries for one product in cache instead of materializing all 48.
    - Accumulate each product straight into its C blocks (no stored M_k), trading the P pass
@@ -249,7 +273,7 @@ Which operations matter depends on the implementation:
 - M1 (done 2026-10-24): harness, correctness against classical, honest numbers.
 - M2 (done 2026-10-24): hybrids measured; calibrated planner (`auto`) validated at
   2048-16384 in both precisions.
-- M3: the whole machine: GEMM streams (done 2026-10-24, 6-14%); NEON products and overlapped
-  passes; measured gain.
+- M3: the whole machine: GEMM streams (done 2026-10-24, 6-14%); NEON products (tried, at most
+  1-3%, not adopted); overlapped passes; measured gain.
 - M4: packing fusion prototype (own GEMM kernel or BLIS) and its gain.
 - M5: practical-objective scheme search and its measured effect.

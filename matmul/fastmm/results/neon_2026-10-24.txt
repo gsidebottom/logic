@@ -1,0 +1,66 @@
+# NEON GEMM beside SME streams 2026-10-24 16:58; Apple M4 Pro
+f32 n=1024  one core: 0.0198 s   108.6 GFLOP/s (93% of 117)  max rel err vs Accelerate 1.52e-06
+f32 n=1024  7 cores, row slabs: 0.0040 s   541.7 GFLOP/s (66% of 7 x 117)
+f32 n=1024  3 SME streams + 0 NEON threads: SME  3599.8 + NEON    0.0 =  3599.8 GFLOP/s
+f32 n=1024  0 SME streams + 7 NEON threads: SME     0.0 + NEON  704.4 =   704.4 GFLOP/s
+f32 n=1024  3 SME streams + 7 NEON threads: SME  3139.9 + NEON  659.0 =  3799.0 GFLOP/s
+f32 n=2048  one core: 0.1685 s   102.0 GFLOP/s (87% of 117)  max rel err vs Accelerate 1.95e-06
+f32 n=2048  7 cores, row slabs: 0.0241 s   713.7 GFLOP/s (87% of 7 x 117)
+f32 n=2048  3 SME streams + 0 NEON threads: SME  3633.7 + NEON    0.0 =  3633.7 GFLOP/s
+f32 n=2048  0 SME streams + 7 NEON threads: SME     0.0 + NEON  678.0 =   678.0 GFLOP/s
+f32 n=2048  3 SME streams + 7 NEON threads: SME  2628.7 + NEON  622.8 =  3251.5 GFLOP/s
+f32 n=1024  2 SME streams + 0 NEON threads: SME  3319.7 + NEON    0.0 =  3319.7 GFLOP/s
+f32 n=1024  0 SME streams + 8 NEON threads: SME     0.0 + NEON  791.4 =   791.4 GFLOP/s
+f32 n=1024  2 SME streams + 8 NEON threads: SME  2671.7 + NEON  688.3 =  3359.9 GFLOP/s
+f64 n=1024  one core: 0.0392 s    54.8 GFLOP/s (93% of 59)  max rel err vs Accelerate 2.56e-15
+f64 n=1024  7 cores, row slabs: 0.0063 s   340.4 GFLOP/s (82% of 7 x 59)
+f64 n=1024  3 SME streams + 0 NEON threads: SME   929.4 + NEON    0.0 =   929.4 GFLOP/s
+f64 n=1024  0 SME streams + 7 NEON threads: SME     0.0 + NEON  323.9 =   323.9 GFLOP/s
+f64 n=1024  3 SME streams + 7 NEON threads: SME   537.6 + NEON  290.4 =   828.1 GFLOP/s
+f64 n=2048  one core: 0.3221 s    53.3 GFLOP/s (90% of 59)  max rel err vs Accelerate 4.19e-15
+f64 n=2048  7 cores, row slabs: 0.0489 s   351.4 GFLOP/s (85% of 7 x 59)
+f64 n=2048  3 SME streams + 0 NEON threads: SME   859.0 + NEON    0.0 =   859.0 GFLOP/s
+f64 n=2048  0 SME streams + 7 NEON threads: SME     0.0 + NEON  328.0 =   328.0 GFLOP/s
+f64 n=2048  3 SME streams + 7 NEON threads: SME   451.6 + NEON  303.3 =   754.8 GFLOP/s
+f64 n=1024  2 SME streams + 0 NEON threads: SME   850.0 + NEON    0.0 =   850.0 GFLOP/s
+f64 n=1024  0 SME streams + 8 NEON threads: SME     0.0 + NEON  345.5 =   345.5 GFLOP/s
+f64 n=1024  2 SME streams + 8 NEON threads: SME   418.0 + NEON  287.3 =   705.3 GFLOP/s
+# done 16:59
+# NEON GEMM beside SME streams, L1-blocked loop order 2026-10-24 17:00
+f32 n=1024  3 SME streams + 0 NEON threads: SME  3584.1 + NEON    0.0 =  3584.1 GFLOP/s
+f32 n=1024  0 SME streams + 2 NEON threads: SME     0.0 + NEON  217.6 =   217.6 GFLOP/s
+f32 n=1024  3 SME streams + 2 NEON threads: SME  3520.5 + NEON  206.5 =  3727.0 GFLOP/s
+f32 n=1024  3 SME streams + 0 NEON threads: SME  3602.3 + NEON    0.0 =  3602.3 GFLOP/s
+f32 n=1024  0 SME streams + 4 NEON threads: SME     0.0 + NEON  432.4 =   432.4 GFLOP/s
+f32 n=1024  3 SME streams + 4 NEON threads: SME  3412.8 + NEON  405.9 =  3818.7 GFLOP/s
+f32 n=1024  3 SME streams + 0 NEON threads: SME  3606.6 + NEON    0.0 =  3606.6 GFLOP/s
+f32 n=1024  0 SME streams + 7 NEON threads: SME     0.0 + NEON  725.0 =   725.0 GFLOP/s
+f32 n=1024  3 SME streams + 7 NEON threads: SME  3064.8 + NEON  649.9 =  3714.7 GFLOP/s
+f32 n=2048  3 SME streams + 0 NEON threads: SME  3636.8 + NEON    0.0 =  3636.8 GFLOP/s
+f32 n=2048  0 SME streams + 2 NEON threads: SME     0.0 + NEON  219.4 =   219.4 GFLOP/s
+f32 n=2048  3 SME streams + 2 NEON threads: SME  3532.3 + NEON  209.1 =  3741.4 GFLOP/s
+f32 n=2048  3 SME streams + 0 NEON threads: SME  3661.3 + NEON    0.0 =  3661.3 GFLOP/s
+f32 n=2048  0 SME streams + 4 NEON threads: SME     0.0 + NEON  437.2 =   437.2 GFLOP/s
+f32 n=2048  3 SME streams + 4 NEON threads: SME  3343.6 + NEON  397.8 =  3741.3 GFLOP/s
+f32 n=2048  3 SME streams + 0 NEON threads: SME  3604.4 + NEON    0.0 =  3604.4 GFLOP/s
+f32 n=2048  0 SME streams + 7 NEON threads: SME     0.0 + NEON  693.4 =   693.4 GFLOP/s
+f32 n=2048  3 SME streams + 7 NEON threads: SME  2974.2 + NEON  624.6 =  3598.8 GFLOP/s
+f64 n=1024  3 SME streams + 0 NEON threads: SME   903.4 + NEON    0.0 =   903.4 GFLOP/s
+f64 n=1024  0 SME streams + 2 NEON threads: SME     0.0 + NEON  106.3 =   106.3 GFLOP/s
+f64 n=1024  3 SME streams + 2 NEON threads: SME   858.6 + NEON   99.0 =   957.5 GFLOP/s
+f64 n=1024  3 SME streams + 0 NEON threads: SME   913.5 + NEON    0.0 =   913.5 GFLOP/s
+f64 n=1024  0 SME streams + 4 NEON threads: SME     0.0 + NEON  208.2 =   208.2 GFLOP/s
+f64 n=1024  3 SME streams + 4 NEON threads: SME   743.6 + NEON  189.9 =   933.5 GFLOP/s
+f64 n=1024  3 SME streams + 0 NEON threads: SME   915.7 + NEON    0.0 =   915.7 GFLOP/s
+f64 n=1024  0 SME streams + 7 NEON threads: SME     0.0 + NEON  332.4 =   332.4 GFLOP/s
+f64 n=1024  3 SME streams + 7 NEON threads: SME   613.3 + NEON  299.0 =   912.3 GFLOP/s
+f64 n=2048  3 SME streams + 0 NEON threads: SME   869.5 + NEON    0.0 =   869.5 GFLOP/s
+f64 n=2048  0 SME streams + 2 NEON threads: SME     0.0 + NEON  109.0 =   109.0 GFLOP/s
+f64 n=2048  3 SME streams + 2 NEON threads: SME   840.0 + NEON  104.3 =   944.3 GFLOP/s
+f64 n=2048  3 SME streams + 0 NEON threads: SME   866.8 + NEON    0.0 =   866.8 GFLOP/s
+f64 n=2048  0 SME streams + 4 NEON threads: SME     0.0 + NEON  215.7 =   215.7 GFLOP/s
+f64 n=2048  3 SME streams + 4 NEON threads: SME   792.5 + NEON  198.6 =   991.1 GFLOP/s
+f64 n=2048  3 SME streams + 0 NEON threads: SME   866.7 + NEON    0.0 =   866.7 GFLOP/s
+f64 n=2048  0 SME streams + 7 NEON threads: SME     0.0 + NEON  340.3 =   340.3 GFLOP/s
+f64 n=2048  3 SME streams + 7 NEON threads: SME   680.5 + NEON  306.2 =   986.8 GFLOP/s
+# done 17:02

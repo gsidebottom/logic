@@ -47,6 +47,7 @@
 #include <time.h>
 
 #include "kernels.h"
+#include "neon_gemm.h"
 
 static double now(void) {
     struct timespec ts;
@@ -110,15 +111,24 @@ static void evict(void) {
  * entry is a level code; the G leaf below a fused level may add k << 8 (written Gk): the
  * level's products as k single-threaded GEMM streams taking products in turn.  Plain G runs
  * them one at a time with Accelerate's own threading, which drives each SME unit (one per
- * cluster) from one thread; two or three threads per unit keep it busier. */
+ * cluster) from one thread; two or three threads per unit keep it busier.  Adding j << 16
+ * (written GkNj) gives the level's last j products to NEON GEMMs on fmm_neon_threads() more
+ * cores, in row slabs, while the streams take the others. */
 enum { LV_NONE = -1, LV_G = 0, LV_B2, LV_B4, LV_B8, LV_SW, LV_D48, LV_SW2, LV_N };
 static const char *LV_NAME[LV_N] = {"G", "B2", "B4", "B8", "SW", "D48", "SW2"};
 #define PLAN_MAX 16
 #define PLV(e) ((e) < 0 ? (e) : (e) & 0xff)     /* the level code of a plan entry */
-#define PST(e) ((e) < 0 ? 0 : (e) >> 8)         /* its GEMM streams */
+#define PST(e) ((e) < 0 ? 0 : ((e) >> 8) & 0xff)  /* its GEMM streams */
+#define PNE(e) ((e) < 0 ? 0 : (e) >> 16)          /* its products on NEON */
 static const int STREAMS[] = {0, 3, 4, 6};       /* the stream counts the planner considers */
 #define NSTREAMS ((int)(sizeof STREAMS / sizeof STREAMS[0]))
 static int lv_leaf(int lv) { return lv <= LV_B8; }
+
+/* NEON GEMM threads beside the streams of a GkNj leaf (FMM_NEON_THREADS, default 4) */
+static int fmm_neon_threads(void) {
+    const char *e = getenv("FMM_NEON_THREADS");
+    return e ? atoi(e) : 4;
+}
 static int lv_grid(int lv) {
     static const int g[LV_N] = {1, 2, 4, 8, 2, 4, 4};
     return lv < 0 ? 1 : g[lv];
@@ -139,7 +149,8 @@ static void plan_str(const int *plan, char *buf, size_t len) {
     for (int i = 0; i < PLAN_MAX; i++) {
         int lv = PLV(plan[i]);
         char e[16];
-        if (PST(plan[i])) snprintf(e, sizeof e, "%s%d", LV_NAME[lv], PST(plan[i]));
+        if (PNE(plan[i])) snprintf(e, sizeof e, "%s%dN%d", LV_NAME[lv], PST(plan[i]), PNE(plan[i]));
+        else if (PST(plan[i])) snprintf(e, sizeof e, "%s%d", LV_NAME[lv], PST(plan[i]));
         else snprintf(e, sizeof e, "%s", lv < 0 ? "NONE" : LV_NAME[lv]);
         strncat(buf, e, len - strlen(buf) - 1);
         if (lv_leaf(lv)) break;
@@ -174,18 +185,21 @@ static int parse_plan(const char *meth, size_t n, int *plan) {
     size_t sz = n;
     char *save = NULL;
     for (char *t = strtok_r(buf, "/", &save); t && k < PLAN_MAX; t = strtok_r(NULL, "/", &save)) {
-        int found = -1, st = 0;
+        int found = -1, st = 0, ne = 0;
         for (int j = 0; j < LV_N; j++)
             if (!strcmp(t, LV_NAME[j])) found = j;
         if (found < 0 && t[0] == 'G' && isdigit((unsigned char)t[1])) {
             found = LV_G;
-            st = atoi(t + 1);
+            char *rest;
+            st = (int)strtol(t + 1, &rest, 10);
+            if (*rest == 'N') ne = atoi(rest + 1);
         }
         if (found < 0 || sz % lv_grid(found)) return 0;
         sz /= lv_grid(found);
         if (found == LV_G && streams >= 0 && k > 0) st = streams;
-        if (st && k == 0) return 0;     /* streams need a level whose products they share */
-        plan[k++] = found | (st << 8);
+        if ((st || ne) && k == 0) return 0;     /* streams need a level whose products they share */
+        if (ne && !st) return 0;
+        plan[k++] = found | (st << 8) | (ne << 16);
         if (lv_leaf(found)) return 1;
     }
     return 0;
@@ -325,6 +339,7 @@ static void calib_save(const calib_t *c, int f64) {
 static double plan_cost_in(const calib_t *c, const int *plan, size_t n, int parent) {
     int lv = PLV(plan[0]);
     if (lv == LV_G) {
+        if (PNE(plan[0])) return -1;    /* NEON products are not calibrated */
         if (parent < 0) return PST(plan[0]) ? -1 : calib_get(c, LV_G, n);
         return calib_get(c, kind_gin(parent, PST(plan[0])), n);
     }
@@ -425,17 +440,21 @@ static int plan_enum(const calib_t *c, size_t n, ranked_t *out, int max) {
 #define T float
 #define SUF f
 #define GEMM cblas_sgemm
+#define NEON_GEMM_ROWS neon_sgemm_rows
 #include "bench_impl.h"
 #undef T
 #undef SUF
 #undef GEMM
+#undef NEON_GEMM_ROWS
 #define T double
 #define SUF d
 #define GEMM cblas_dgemm
+#define NEON_GEMM_ROWS neon_dgemm_rows
 #include "bench_impl.h"
 #undef T
 #undef SUF
 #undef GEMM
+#undef NEON_GEMM_ROWS
 
 int main(int argc, char **argv) {
     size_t n = 4096;

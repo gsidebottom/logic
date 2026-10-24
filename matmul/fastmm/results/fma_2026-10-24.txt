@@ -1,0 +1,14 @@
+# FMA test 2026-10-24 (Apple M4 Pro): default build vs build/bench_fmm_fma (gen_kernels.py --fma:
+# every use of a halved value as fmaf(x, 0.5, y)); method dps48, f32, alternating runs
+# instruction counts in the f32 48-scheme kernels' vector loops:
+#   default: 197 fadd/fsub + 4 fmul = 201
+#   fma:     179 fadd/fsub + 18 fmla + 7 fneg = 204 (no vector FMLS form for x*s - y)
+# -ffp-contract=fast alone fuses nothing: each of the 4 halvings feeds 4-5 additions
+bench_fmm      n=1024  med 0.00200 s  relerr 4.22e-06   (3 alternating rounds, all identical)
+bench_fmm_fma  n=1024  med 0.00200 s  relerr 4.22e-06
+bench_fmm      n=16384 med 2.147 s  passes L 0.037 R 0.037 P 0.033  relerr 1.64e-05
+bench_fmm_fma  n=16384 med 2.204 s  passes L 0.038 R 0.037 P 0.033  relerr 1.64e-05
+bench_fmm      n=16384 med 2.132 s  passes L 0.037 R 0.037 P 0.033  relerr 1.64e-05
+bench_fmm_fma  n=16384 med 2.323 s  passes L 0.038 R 0.037 P 0.032  relerr 1.64e-05
+# verdict: identical results (halving is exact), identical pass times (bandwidth-bound);
+# the total-time spread is GEMM run-to-run variance

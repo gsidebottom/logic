@@ -39,11 +39,33 @@ typedef struct {
     double tL, tR, tG, tP;
 } FN(split_t);
 
-/* one level of a scheme with all of its products done by GEMM: grid g, nb = g*g blocks, rank r;
- * work holds 3 r blocks of m*m (S, T, M) */
+static void FN(sw_rec)(int depth, size_t n, const T *A, size_t lda, const T *B, size_t ldb, T *C,
+                       size_t ldc, T *work, FN(split_t) *sp);
 static void FN(fused_level)(FN(kern_t) kL, FN(kern_t) kR, FN(kern_t) kP, int g, int r, size_t n,
                             const T *A, size_t lda, const T *B, size_t ldb, T *C, size_t ldc, T *work,
-                            FN(split_t) *sp) {
+                            FN(split_t) *sp, sub_t sub);
+
+/* M = S T at size m: a GEMM, one fused Strassen level, or one fused level of our 48-scheme;
+ * work is the scratch below this level (reused product after product) */
+static void FN(product)(sub_t sub, size_t m, const T *S, const T *Tt, T *M, T *work, FN(split_t) *sp) {
+    if (sub == SUB_GEMM) {
+        double t = now();
+        FN(gemm)(m, S, m, Tt, m, M, m);
+        if (sp) sp->tG += now() - t;
+    } else if (sub == SUB_SW1) {
+        FN(sw_rec)(1, m, S, m, Tt, m, M, m, work, sp);
+    } else {
+        FN(fused_level)(FN(dps48_L_), FN(dps48_R_), FN(dps48_P_), 4, 48, m, S, m, Tt, m, M, m, work, sp,
+                        SUB_GEMM);
+    }
+}
+
+/* one level of a scheme: grid g, nb = g*g blocks, rank r; work holds 3 r blocks of m*m (S, T,
+ * M) followed by the scratch of the sub-method; GEMM time is counted where the GEMMs run, pass
+ * time at every level */
+static void FN(fused_level)(FN(kern_t) kL, FN(kern_t) kR, FN(kern_t) kP, int g, int r, size_t n,
+                            const T *A, size_t lda, const T *B, size_t ldb, T *C, size_t ldc, T *work,
+                            FN(split_t) *sp, sub_t sub) {
     size_t m = n / g;
     const T *Ab[16], *Bb[16];
     T *Cb[16], *S[64], *Tt[64], *M[64];
@@ -60,21 +82,20 @@ static void FN(fused_level)(FN(kern_t) kL, FN(kern_t) kR, FN(kern_t) kP, int g, 
         Tt[k] = work + (size_t)(r + k) * bs;
         M[k] = work + (size_t)(2 * r + k) * bs;
     }
+    T *deeper = work + (size_t)3 * r * bs;
     double t0 = now();
     FN(pass)(kL, m, lda, m, Ab, S);
     double t1 = now();
     FN(pass)(kR, m, ldb, m, Bb, Tt);
     double t2 = now();
-    for (int k = 0; k < r; k++) FN(gemm)(m, S[k], m, Tt[k], m, M[k], m);
-    double t3 = now();
-    FN(pass)(kP, m, m, ldc, (const T *const *)M, Cb);
-    double t4 = now();
     if (sp) {
         sp->tL += t1 - t0;
         sp->tR += t2 - t1;
-        sp->tG += t3 - t2;
-        sp->tP += t4 - t3;
     }
+    for (int k = 0; k < r; k++) FN(product)(sub, m, S[k], Tt[k], M[k], deeper, sp);
+    double t3 = now();
+    FN(pass)(kP, m, m, ldc, (const T *const *)M, Cb);
+    if (sp) sp->tP += now() - t3;
 }
 
 /* Strassen-Winograd, depth levels, each level one fused pass per side; work for level l at
@@ -203,10 +224,18 @@ static int FN(run_method)(const char *meth, size_t n, const T *A, const T *B, T 
         FN(sw_rec)(2, n, A, n, B, n, C, n, work, sp);
     } else if (!strcmp(meth, "sw3rec")) {
         FN(sw_rec)(3, n, A, n, B, n, C, n, work, sp);
+    } else if (!strcmp(meth, "sw4rec")) {
+        FN(sw_rec)(4, n, A, n, B, n, C, n, work, sp);
     } else if (!strcmp(meth, "sw2")) {
-        FN(fused_level)(FN(sw2_L_), FN(sw2_R_), FN(sw2_P_), 4, 49, n, A, n, B, n, C, n, work, sp);
+        FN(fused_level)(FN(sw2_L_), FN(sw2_R_), FN(sw2_P_), 4, 49, n, A, n, B, n, C, n, work, sp, SUB_GEMM);
+    } else if (!strcmp(meth, "sw2sw")) {
+        FN(fused_level)(FN(sw2_L_), FN(sw2_R_), FN(sw2_P_), 4, 49, n, A, n, B, n, C, n, work, sp, SUB_SW1);
     } else if (!strcmp(meth, "dps48")) {
-        FN(fused_level)(FN(dps48_L_), FN(dps48_R_), FN(dps48_P_), 4, 48, n, A, n, B, n, C, n, work, sp);
+        FN(fused_level)(FN(dps48_L_), FN(dps48_R_), FN(dps48_P_), 4, 48, n, A, n, B, n, C, n, work, sp, SUB_GEMM);
+    } else if (!strcmp(meth, "dps48sw")) {
+        FN(fused_level)(FN(dps48_L_), FN(dps48_R_), FN(dps48_P_), 4, 48, n, A, n, B, n, C, n, work, sp, SUB_SW1);
+    } else if (!strcmp(meth, "dps48x2")) {
+        FN(fused_level)(FN(dps48_L_), FN(dps48_R_), FN(dps48_P_), 4, 48, n, A, n, B, n, C, n, work, sp, SUB_DPS48);
     } else if (!strcmp(meth, "dps48ops")) {
         FN(dps48_opbyop)(n, A, B, C, work, temps, sp);
     } else {
@@ -220,8 +249,9 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
     T *A = alloc_t(nn * sizeof(T)), *B = alloc_t(nn * sizeof(T)), *C = alloc_t(nn * sizeof(T)),
       *Cref = alloc_t(nn * sizeof(T));
     /* workspace: 3 * 49 blocks of (n/4)^2 covers every method (sw recursion: 21 n^2/4 + 21 n^2/16 + ...) */
-    size_t wsz = (size_t)3 * 49 * (nn / 16 + fmm_pad());
-    size_t swz = (size_t)(21.0 * nn / 4 * 1.34) + 64 + 3 * 21 * fmm_pad();
+    size_t wsz = (size_t)3 * 49 * (nn / 16 + fmm_pad()) + (size_t)21 * (nn / 64 + fmm_pad())
+                 + (size_t)3 * 48 * (nn / 256 + fmm_pad()) + 1024;
+    size_t swz = (size_t)(21.0 * nn / 4 * 1.34) + 64 + 4 * 21 * fmm_pad();
     if (swz > wsz) wsz = swz;
     T *work = alloc_t(wsz * sizeof(T));
     uint64_t s = 0x9e3779b97f4a7c15ull;

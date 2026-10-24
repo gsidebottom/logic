@@ -47,6 +47,30 @@ What the numbers say:
 5. Run one block operation at a time (as most libraries do), our scheme's 201 passes cost
    about 2.5x the fused passes.
 
+Hybrids (`results/hybrid_2026-10-24.txt`, same protocol): the best method at every tested
+size and precision uses our 48-scheme.
+
+| n | precision | best method | speedup | runner-up |
+|---|---|---|---|---|
+| 8192 | f32 | ours, one fused level (48 GEMMs of n/4) | 1.20 | Strassen^2 fused 1.16 |
+| 8192 | f64 | ours + one Strassen level below (336 GEMMs of n/8) | 1.28 | ours alone 1.26 |
+| 16384 | f32 | ours + one Strassen level below | 1.375 | Strassen^2 + Strassen 1.36, three Strassen levels 1.31 |
+| 16384 | f64 | ours, two fused levels (2,304 GEMMs of n/16) | 1.54 | ours + Strassen 1.41, four Strassen levels 1.39 |
+
+The cost model's predictions held: ours + Strassen at 16384 was predicted at 2.06 s (f32)
+and 7.51 s (f64), measured 2.062 s and 7.59 s, beating three Strassen levels by 4.9% and 4.3%.
+Two levels of ours were predicted slower (1024-sized GEMMs) and were the fastest method in
+f64: their passes cost 0.81 s against 1.35 s for four Strassen levels, with 2,304 products
+against 2,401.  Error stays at rounding level and grows with depth (f64: 2.2e-14 one level of
+ours, 6.3e-14 ours + Strassen, 1.0e-13 two levels of ours vs 1.1e-13 four Strassen levels).
+
+Fused multiply-add (`results/fma_2026-10-24.txt`): no gain on this machine.  The program's 4
+halvings each feed 4-5 additions, so `-ffp-contract=fast` fuses nothing; folding every use into
+`fma(x, 0.5, y)` turns 4 multiplies into 18 FMLAs but adds 7 negations (NEON has no vector form
+of x*s - y), and the passes are bandwidth-bound: identical pass times, identical results (halving
+is exact).  FMA would matter for points with many single-use scalings, under a cost model where
+scalings fused into additions are free, and once the passes become compute-bound.
+
 Engineering lessons (each worth a large factor, each easy to miss):
 
 - The compiler did not vectorize the 64-stream fused loops (it gave up on overlap checks);
@@ -78,11 +102,8 @@ Which operations matter depends on the implementation:
 
 ## Plan
 
-1. **Hybrids and depth selection (next).**  Our 48-scheme fused on top with one Strassen
-   level below (336 products of n/8; one fused 4x4 level instead of two Strassen levels),
-   Strassen^2 fused plus Strassen (343), two fused 48 levels (2,304 products of n/16) for
-   very large n.  Predict with the cost model first, then measure.  Prediction: the
-   48+Strassen hybrid beats three Strassen levels at 16384 (fewer products and cheaper passes).
+1. **Hybrids and depth selection** (done 2026-10-24, see above).  Next: an automatic choice
+   of the level sequence (48, Strassen, classical) per size from the calibrated model.
 2. **Calibrate and validate the cost model.**  Measure G(m) for m = 512..8192 and B for
    k-stream passes (k = 3..64) in both precisions; target predictions within 5% of measured.
 3. **Cheaper passes.**
@@ -114,7 +135,7 @@ Which operations matter depends on the implementation:
 ## Milestones
 
 - M1 (done 2026-10-24): harness, correctness against classical, honest numbers.
-- M2: hybrids measured; cost model calibrated and predicting within 5%.
+- M2: hybrids measured (done 2026-10-24; predictions within 1-2%); full calibration of G(m), B.
 - M3: pass overlap and product accumulation into C; measured gain.
 - M4: packing fusion prototype (own GEMM kernel or BLIS) and its gain.
 - M5: practical-objective scheme search and its measured effect.

@@ -5,10 +5,13 @@
  *   blkG       classical as G^3 block GEMMs of size n/G (G = 2, 4, 8) accumulating into C
  *   sw1        Strassen-Winograd, one level (7 GEMMs of n/2), one fused pass per side
  *   sw2rec     Strassen-Winograd, two levels recursively (49 GEMMs of n/4), a pass per level
- *   sw3rec     three levels (343 GEMMs of n/8)
+ *   sw3rec     three levels (343 GEMMs of n/8); sw4rec four levels (2,401 of n/16)
  *   sw2        Strassen-Winograd squared as one <4x4x4:49> level: one fused pass per side
  *   dps48      our <4x4x4:48> (201 operations) as one level: one fused pass per side
  *   dps48ops   the same program one block operation at a time (a pass per operation)
+ *   dps48sw    hybrid: our 48 level on top, one Strassen level per product (336 GEMMs of n/8)
+ *   sw2sw      Strassen^2 level on top, one Strassen level per product (343 GEMMs of n/8)
+ *   dps48x2    two levels of our 48-scheme (2,304 GEMMs of n/16)
  * A fused pass streams once over its input and output blocks with the scheme's linear program
  * evaluated per element position in registers (kernels.h, from gen_kernels.py).
  *
@@ -63,6 +66,9 @@ static int max_temp(void) {
                     mx = lists[l][q][j] - 100000;
     return mx;
 }
+
+/* how the products of a fused level are computed */
+typedef enum { SUB_GEMM, SUB_SW1, SUB_DPS48 } sub_t;
 
 #define T float
 #define SUF f

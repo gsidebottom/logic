@@ -14,7 +14,8 @@
  *   dps48x2    two levels of our 48-scheme (2,304 GEMMs of n/16)
  *   plan=...   any plan: fused levels from the top (SW, D48, SW2) ending in a leaf (G = one
  *              GEMM, B2/B4/B8 = classical blocked), e.g. plan=SW/D48/G
- *   auto       the plan the calibrated cost model picks for n
+ *   auto       the plan the calibrated cost model picks for n; auto:g the fastest plan whose
+ *              error grows at most g-fold over the classical GEMM's (FMM_MAX_GROWTH=g for auto)
  *   M@k        method M with the GEMMs of its lowest level as k single-threaded streams taking
  *              products in turn (leaf Gk in a plan; G alone = Accelerate's own threading, one
  *              product at a time)
@@ -235,6 +236,8 @@ static int parse_plan(const char *meth, size_t n, int *plan) {
  * m = the pipeline's fill and drain (a pipeline of q sub-problems takes q s + o) */
 #define K_GIN 100   /* K_GIN + 16 k + level: GEMM per product inside that level, k streams */
 #define K_PIPE 1000 /* K_PIPE + ((16 k + p) 2 + part) 8 + level: pipelined sub-problems */
+#define K_ERR 9000  /* K_ERR + 0, 1, 2: errors of SW/G, D48/G, D48/D48/G at n = N_E */
+#define N_E 2048
 #define CALIB_FORMAT 4
 static const int PIPE_K[] = {3, 6}, PIPE_P[] = {2, 3, 4};  /* the pipelines the planner considers */
 #define NPIPE_K ((int)(sizeof PIPE_K / sizeof PIPE_K[0]))
@@ -256,6 +259,10 @@ static const char *kind_name(int kind) {
     static int k;
     if (kind < K_GIN) return LV_NAME[kind];
     k = (k + 1) % 4;
+    if (kind >= K_ERR) {
+        static const char *E[3] = {"ESW", "ED48", "ED48D48"};
+        return E[kind - K_ERR];
+    }
     if (kind >= K_PIPE) {
         int x = kind - K_PIPE, lv = x % 8, over = (x / 8) % 2, sp = x / 16;
         snprintf(buf[k], sizeof buf[k], "P%sk%dp%d%c", LV_NAME[lv], sp / 16, sp % 16, over ? 'o' : 's');
@@ -270,6 +277,9 @@ static const char *kind_name(int kind) {
 static int kind_parse(const char *s) {
     for (int v = 0; v < LV_N; v++)
         if (!strcmp(s, LV_NAME[v])) return v;
+    if (!strcmp(s, "ESW")) return K_ERR;
+    if (!strcmp(s, "ED48")) return K_ERR + 1;
+    if (!strcmp(s, "ED48D48")) return K_ERR + 2;
     if (s[0] == 'P') {                      /* PD48k6p2s */
         const char *kp = strchr(s, 'k');
         if (!kp) return -1;
@@ -311,6 +321,8 @@ static void calib_put(calib_t *c, int kind, size_t m, double t) {
  * fused level its passes and per-product GEMM (every stream count) at blocks n/g, and the
  * needs of n/g */
 static void calib_need(calib_t *need, size_t n) {
+    if (n >= N_E)                           /* the error model, measured at N_E */
+        for (int i = 0; i < 3; i++) calib_put(need, K_ERR + i, N_E, 0);
     calib_put(need, LV_G, n, 0);
     if (n % 2 == 0 && n / 2 >= fmm_minb()) calib_put(need, LV_B2, n, 0);
     for (int lv = LV_SW; lv <= LV_D48; lv++) {
@@ -381,11 +393,11 @@ static void calib_save(const calib_t *c, int f64) {
                "same with k GEMM streams\n",
             f64 ? "f64" : "f32");
     fprintf(f, "# machine %s\n# pad %zu\n# format %d\n", machine(), fmm_pad(), CALIB_FORMAT);
-    for (int v = 0; v < K_PIPE + 4096 + 8; v++)   /* by kind, then size */
+    for (int v = 0; v < K_ERR + 3; v++)   /* by kind, then size */
         for (size_t m = 1; m < ((size_t)1 << 40); m *= 2)
             for (int i = 0; i < c->n; i++)
                 if (c->kind[i] == v && c->m[i] >= m && c->m[i] < 2 * m)
-                    fprintf(f, "%s %zu %.9f\n", kind_name(v), c->m[i], c->t[i]);
+                    fprintf(f, "%s %zu %.9g\n", kind_name(v), c->m[i], c->t[i]);
     fclose(f);
 }
 
@@ -480,7 +492,7 @@ static double plan_best(const calib_t *c, size_t n, int *plan) { return plan_bes
 typedef struct {
     const char *name;
     int plan[PLAN_MAX], is_plan;
-    double pred;
+    double pred, perr;
 } meth_t;
 
 /* every plan for n down to blocks of fmm_minb() with its predicted time, cheapest first;
@@ -527,6 +539,61 @@ static int plan_enum(const calib_t *c, size_t n, ranked_t *out, int max) {
         for (int b = a + 1; b < cnt; b++)
             if (out[b].t < out[a].t) { ranked_t x = out[a]; out[a] = out[b]; out[b] = x; }
     return cnt;
+}
+
+/* ---- the accuracy budget ---------------------------------------------------------------- */
+/* a plan's error (max-norm, relative, against the classical GEMM on uniform random inputs) is
+ * the classical error scale times one factor per fused level, and grows like sqrt(n) with the
+ * size (measured: about 1.4x per doubling, the order of the levels immaterial: SW then D48 and
+ * D48 then SW within 2%); the factors come from three plans measured at n = N_E: SW/G, D48/G
+ * and D48/D48/G.  Streams and pipelines leave the arithmetic unchanged. */
+typedef struct {
+    double base, f[LV_N];
+    int ok;
+} errmod_t;
+
+static errmod_t err_model(const calib_t *c) {
+    errmod_t e;
+    memset(&e, 0, sizeof e);
+    double esw = calib_get(c, K_ERR, N_E), e1 = calib_get(c, K_ERR + 1, N_E), e2 = calib_get(c, K_ERR + 2, N_E);
+    if (esw <= 0 || e1 <= 0 || e2 <= 0) return e;
+    e.f[LV_D48] = e2 / e1;
+    e.base = e1 / e.f[LV_D48];
+    e.f[LV_SW] = esw / e.base;
+    e.f[LV_SW2] = e.f[LV_SW] * e.f[LV_SW];
+    e.ok = 1;
+    return e;
+}
+
+/* the factor by which a plan's error exceeds the classical GEMM's */
+static double plan_growth(const errmod_t *e, const int *plan) {
+    double g = 1;
+    for (int i = 0; i < PLAN_MAX && !lv_leaf(PLV(plan[i])); i++) g *= e->f[PLV(plan[i])];
+    return g;
+}
+
+static double plan_err(const errmod_t *e, const int *plan, size_t n) {
+    return e->base * sqrt((double)n / N_E) * plan_growth(e, plan);
+}
+
+static double fmm_max_growth(void) {
+    const char *v = getenv("FMM_MAX_GROWTH");
+    return v ? atof(v) : 0;
+}
+
+/* the cheapest plan whose error growth is at most gmax (0: no limit), -1 if none is calibrated */
+static double plan_best_budget(const calib_t *c, size_t n, double gmax, int *plan) {
+    if (gmax <= 0) return plan_best(c, n, plan);
+    errmod_t e = err_model(c);
+    if (!e.ok) return -1;
+    static ranked_t rk[8192];
+    int cnt = plan_enum(c, n, rk, 8192);
+    for (int i = 0; i < cnt; i++)
+        if (plan_growth(&e, rk[i].plan) <= gmax * (1 + 1e-9)) {
+            memcpy(plan, rk[i].plan, sizeof rk[i].plan);
+            return rk[i].t;
+        }
+    return -1;
 }
 
 #define T float

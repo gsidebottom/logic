@@ -495,6 +495,44 @@ static void FN(time_pipe)(int ly, size_t my, int k, int p, const T *A, const T *
     *over = a1 - PIPE_Q1 * *steady > 0 ? a1 - PIPE_Q1 * *steady : 0;
 }
 
+/* the error model's measurements: SW/G, D48/G and D48/D48/G at N_E on uniform random inputs,
+ * each against the classical GEMM */
+static void FN(calib_errors)(calib_t *c) {
+    size_t n = N_E, nn = n * n;
+    T *A = alloc_t(nn * sizeof(T)), *B = alloc_t(nn * sizeof(T)), *C = alloc_t(nn * sizeof(T)),
+      *R = alloc_t(nn * sizeof(T));
+    uint64_t s = 0x2545f4914f6cdd1dull;
+    for (size_t i = 0; i < nn; i++) {
+        s ^= s << 13; s ^= s >> 7; s ^= s << 17;
+        A[i] = (T)((double)(s >> 11) / 9007199254740992.0 * 2 - 1);
+        s ^= s << 13; s ^= s >> 7; s ^= s << 17;
+        B[i] = (T)((double)(s >> 11) / 9007199254740992.0 * 2 - 1);
+    }
+    FN(gemm)(n, A, n, B, n, R, n);
+    double rmax = 0;
+    for (size_t i = 0; i < nn; i++) rmax = fmax(rmax, fabs((double)R[i]));
+    static const char *NAMES[3] = {"sw1", "dps48", "dps48x2"};
+    int plans[3][PLAN_MAX];
+    size_t wmax = 16;
+    for (int i = 0; i < 3; i++) {
+        parse_plan(NAMES[i], n, plans[i]);
+        size_t w = plan_work(plans[i], n);
+        if (w > wmax) wmax = w;
+    }
+    T *work = alloc_t(wmax * sizeof(T));
+    memset(work, 0, wmax * sizeof(T));
+    for (int i = 0; i < 3; i++) {
+        FN(exec)(plans[i], n, A, n, B, n, C, n, work, NULL);
+        double e = 0;
+        for (size_t j = 0; j < nn; j++) e = fmax(e, fabs((double)C[j] - (double)R[j]));
+        calib_put(c, K_ERR + i, N_E, e / rmax);
+        printf("#   %-7s m=%-6d %.3e (error of %s against the classical GEMM)\n", kind_name(K_ERR + i), N_E,
+               e / rmax, NAMES[i]);
+    }
+    free(work);
+    free(A); free(B); free(C); free(R);
+}
+
 /* measure the entries plan_best needs for n that the cache lacks, and save the cache; A, B, C
  * hold n*n elements, smaller problems use their first m*m as contiguous m x m matrices */
 static void FN(calibrate)(calib_t *c, size_t n, const T *A, const T *B, T *C) {
@@ -507,6 +545,11 @@ static void FN(calibrate)(calib_t *c, size_t n, const T *A, const T *B, T *C) {
         int kind = need.kind[i];
         size_t m = need.m[i];
         todo[i] = 0;
+        if (kind >= K_ERR) {                /* the error model: measured together */
+            todo[i] = calib_get(c, kind, m) < 0;
+            missing += todo[i];
+            continue;
+        }
         if (kind >= K_PIPE) {               /* a pipeline: measured with its steady entry */
             int x = kind - K_PIPE, ly = x % 8;
             if ((x / 8) % 2) continue;
@@ -532,10 +575,15 @@ static void FN(calibrate)(calib_t *c, size_t n, const T *A, const T *B, T *C) {
     printf("# calibrating %d entries (%s)\n", missing, sizeof(T) == 4 ? "f32" : "f64");
     T *work = alloc_t((wmax + 16) * sizeof(T));
     memset(work, 0, (wmax + 16) * sizeof(T));
+    int errors_done = 0;
     for (int i = 0; i < need.n; i++) {
         int kind = need.kind[i];
         size_t m = need.m[i];
         if (!todo[i]) continue;
+        if (kind >= K_ERR) {
+            if (!errors_done++) FN(calib_errors)(c);
+            continue;
+        }
         if (kind >= K_PIPE) {
             int x = kind - K_PIPE, ly = x % 8, sp = x / 16;
             double st, ov;
@@ -646,6 +694,26 @@ static void FN(plan_table)(size_t n) {
             printf(" %s %.4f%s", ps, rk[i].t, i + 1 < cnt && i < 5 ? "," : "");
         }
         printf("  (%d plans)\n", cnt);
+        errmod_t e = err_model(cal);
+        if (e.ok) {
+            printf("         error growth over classical: best %.1f (pred. error %.1e);", plan_growth(&e, plan),
+                   plan_err(&e, plan, sz));
+            static const double BUDGET[] = {16, 8, 4, 2};
+            for (int b = 0; b < 4; b++) {
+                int pb[PLAN_MAX];
+                double t = plan_best_budget(cal, sz, BUDGET[b], pb);
+                if (t < 0) continue;
+                plan_str(pb, ps, sizeof ps);
+                printf(" <=%g: %s %.4f s%s", BUDGET[b], ps, t, b < 3 ? "," : "");
+            }
+            printf("\n");
+        }
+    }
+    if (n >= N_E) {
+        errmod_t e = err_model(cal);
+        if (e.ok)
+            printf("# error model: classical scale %.2e at n = %d (x sqrt(n / %d)); factor per level SW %.2f, "
+                   "D48 %.2f\n", e.base, N_E, N_E, e.f[LV_SW], e.f[LV_D48]);
     }
     free(cal);
     free(A); free(B); free(C);
@@ -683,13 +751,17 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
         meth_t *q = &ms[nm];
         memset(q, 0, sizeof *q);
         q->name = tok;
-        if (!strcmp(tok, "auto")) {
+        if (!strncmp(tok, "auto", 4) && (tok[4] == 0 || tok[4] == ':')) {
+            double gmax = tok[4] == ':' ? atof(tok + 5) : fmm_max_growth();
             FN(calibrate)(cal, n, A, B, C);
-            if (plan_best(cal, n, q->plan) < 0) { printf("auto: nothing calibrated for n=%zu\n", n); continue; }
+            if (plan_best_budget(cal, n, gmax, q->plan) < 0) {
+                printf("%s: nothing calibrated for n=%zu\n", tok, n);
+                continue;
+            }
             q->is_plan = 1;
             char ps[128];
             plan_str(q->plan, ps, sizeof ps);
-            printf("# auto n=%zu %s: plan %s, predicted %.3f s\n", n, f64 ? "f64" : "f32", ps,
+            printf("# %s n=%zu %s: plan %s, predicted %.3f s\n", tok, n, f64 ? "f64" : "f32", ps,
                    plan_cost(cal, q->plan, n));
         } else if (parse_plan(tok, n, q->plan)) {
             q->is_plan = 1;
@@ -698,6 +770,8 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
             continue;
         }
         q->pred = q->is_plan ? plan_cost(cal, q->plan, n) : -1;
+        errmod_t e = err_model(cal);
+        q->perr = q->is_plan && e.ok ? plan_err(&e, q->plan, n) : -1;
         nm++;
     }
     size_t wsz = 1024;
@@ -717,6 +791,18 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
     FN(gemm)(n, A, n, B, n, Cref, n);
     double cmax = 0;
     for (size_t i = 0; i < nn; i++) cmax = fmax(cmax, fabs((double)Cref[i]));
+    /* FMM_EXACT=1 in f32: also each method's error against an f64 product of the same inputs */
+    const char *ex = getenv("FMM_EXACT");
+    double *R64 = NULL, rmax64 = 0, err64[16] = {0};
+    if (ex && atoi(ex) && !f64) {
+        double *A64 = alloc_t(nn * 8), *B64 = alloc_t(nn * 8);
+        R64 = alloc_t(nn * 8);
+        for (size_t i = 0; i < nn; i++) { A64[i] = A[i]; B64[i] = B[i]; }
+        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, (int)n, (int)n, (int)n, 1.0, A64, (int)n, B64, (int)n,
+                    0.0, R64, (int)n);
+        for (size_t i = 0; i < nn; i++) rmax64 = fmax(rmax64, fabs(R64[i]));
+        free(A64); free(B64);
+    }
     for (int j = 0; j < nm; j++) FN(run_method)(&ms[j], n, A, B, C, work, temps, NULL);  /* warm-up */
     double times[16][32];
     FN(split_t) sp[16];
@@ -727,8 +813,11 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
             double t = now();
             FN(run_method)(&ms[j], n, A, B, C, work, temps, &sp[j]);
             times[j][q] = now() - t;
-            if (q == reps - 1)
+            if (q == reps - 1) {
                 for (size_t i = 0; i < nn; i++) err[j] = fmax(err[j], fabs((double)C[i] - (double)Cref[i]));
+                if (R64)
+                    for (size_t i = 0; i < nn; i++) err64[j] = fmax(err64[j], fabs((double)C[i] - R64[i]));
+            }
         }
     double tclass = 0;
     for (int j = 0; j < nm; j++) {
@@ -748,7 +837,9 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
             plan_str(ms[j].plan, ps, sizeof ps);
             printf("  plan %s", ps);
             if (ms[j].pred > 0) printf("  pred %.3f s (%+.1f%%)", ms[j].pred, 100 * (ms[j].pred / med - 1));
+            if (ms[j].perr > 0) printf("  perr %.2e", ms[j].perr);
         }
+        if (R64) printf("  err64 %.2e", err64[j] / rmax64);
         printf("\n");
         fflush(stdout);
     }
@@ -756,6 +847,7 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
         for (int k = 0; k < ntemps; k++) free(temps[k]);
         free(temps);
     }
+    free(R64);
     free(A); free(B); free(C); free(Cref); free(work);
 }
 

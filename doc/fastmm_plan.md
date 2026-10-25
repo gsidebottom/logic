@@ -3,8 +3,10 @@
 Started 2026-10-24.  Code and results: `matmul/fastmm/` (build with `make`; sweeps
 `run_bench.sh`, `run_blocked.sh`, `run_hybrid.sh`, `run_auto.sh`, `run_probes.sh`,
 `run_streams.sh`, `run_auto_streams.sh`, `run_neon.sh`, `run_neon2.sh`, `run_pipe.sh`,
-`run_auto_pipe.sh`, `run_pipe2.sh`; results in `matmul/fastmm/results/`).  `bench_fmm -m auto` picks the plan per size and precision from a
-calibrated cost model; `bench_fmm -n N -p` prints the planner's choices.
+`run_auto_pipe.sh`, `run_pipe2.sh`, `run_accuracy.sh`; results in `matmul/fastmm/results/`).
+`bench_fmm -m auto` picks the plan per size and precision from a calibrated cost model
+(`auto:g`: the fastest plan whose error grows at most g-fold over the classical GEMM's);
+`bench_fmm -n N -p` prints the planner's choices.
 
 ## Goal
 
@@ -285,6 +287,39 @@ s, the fastest plan measured there); where the pipeline below has little idle pa
 background passes only add interference.  Not in the planner (it would need two-level pipelines
 calibrated, about a minute per precision, for 2% at one size); the plan syntax runs it.
 
+Accuracy budget (`results/accuracy_2026-10-25.txt`).  Fast schemes trade accuracy for speed,
+and the deeper plans auto picks double or triple the error of a one-level plan.  A plan's error
+(max-norm, relative, against the classical GEMM on uniform random inputs) is well described by
+the classical error scale times one factor per fused level, growing like sqrt(n) with the size:
+the calibration measures SW/G, D48/G and D48/D48/G at n = 2048 and fits the factors (SW 2.49,
+D48 3.39 in f32; 2.51, 3.44 in f64; the order of the levels immaterial, streams and pipelines
+leave the arithmetic unchanged).  Predicted against measured, 16384:
+
+| plan | f32 measured | f32 predicted | f64 measured | f64 predicted |
+|---|---|---|---|---|
+| SW/G | 1.28e-5 | 1.13e-5 | 2.27e-14 | 1.92e-14 |
+| D48/G | 1.64e-5 | 1.53e-5 | 3.21e-14 | 2.64e-14 |
+| SW/SW/G | 1.85e-5 | 2.80e-5 | 3.82e-14 | 4.83e-14 |
+| SW/D48/G | 3.29e-5 | 3.81e-5 | 5.53e-14 | 6.63e-14 |
+| D48/D48/G | 5.86e-5 | 5.18e-5 | 1.02e-13 | 9.10e-14 |
+| SW/D48/D48/G | 1.08e-4 | 1.29e-4 | 1.98e-13 | 2.28e-13 |
+
+Within 25% across 4096-16384 except two Strassen levels (over-predicted by up to 50%, the safe
+side).  In f32 the same errors against an f64 product of the inputs agree with these to 2%, and
+the classical f32 GEMM's own error is 1.3-1.6x the model's classical scale (3.0e-6, 4.6e-6,
+7.2e-6 at 4096, 8192, 16384), so a growth g is about g / 1.5 times the classical GEMM's actual
+error.  `auto:g` (or `FMM_MAX_GROWTH=g`) takes the fastest plan with growth at most g:
+
+| n | prec | auto | auto:16 | auto:8 | auto:2 |
+|---|---|---|---|---|---|
+| 16384 | f32 | D48+3/D48/G6, 1.79 s, 5.9e-5 | same | D48/G3, 2.16 s, 1.6e-5 | B2, 3.14 s |
+| 16384 | f64 | SW/D48+3/D48/G6, 5.79 s, 2.0e-13 | D48/D48/G3, 6.50 s, 1.0e-13 | D48/G3, 7.73 s, 3.2e-14 | B2, 10.68 s |
+| 8192 | f64 | D48+3/D48/G6, 0.80 s, 7.3e-14 | same | D48/G3, 1.01 s, 2.2e-14 | G, 1.30 s |
+
+(times from this run, which ran 5-10% slow throughout).  Budgets 4 and 8 pick the same plans:
+nothing with growth between one level of ours (3.4) and 8 is faster than it.  One level of ours
+keeps a 1.3-1.4x speedup at about a quarter of the deepest plans' error.
+
 Engineering lessons (each worth a large factor, each easy to miss):
 
 - The compiler did not vectorize the 64-stream fused loops (it gave up on overlap checks);
@@ -325,9 +360,8 @@ Which operations matter depends on the implementation:
    deep plans; the planner chooses streams, pipelines and pass threads (2, 3, 4) per plan.
    The top levels' passes (tried 2026-10-24): two-level pipelines for three-level plans, -2.3%
    at 16384 f64, neutral or worse elsewhere, not in the planner; the top passes of two-level
-   plans would need output groups that re-read their inputs (est. 1-2%).  Open: an accuracy
-   budget for the planner (error grows with depth: f64 2.0e-13 at 16384 for SW/D48/D48 against
-   1.0e-13 for D48/D48).
+   plans would need output groups that re-read their inputs (est. 1-2%).  Accuracy budget
+   (done 2026-10-25): `auto:g`, from a per-level error model validated within 25%.
 4. **Cheaper passes.**
    - Keep the temporaries for one product in cache instead of materializing all 48.
    - Accumulate each product straight into its C blocks (no stored M_k), trading the P pass

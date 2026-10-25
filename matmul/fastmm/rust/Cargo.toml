@@ -1,0 +1,12 @@
+[package]
+name = "fmm"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Fast matrix multiplication on Apple silicon in Rust: fused fast-scheme passes in safe Rust over Accelerate's GEMM"
+
+# its own workspace, apart from the repository's crate
+[workspace]
+
+[profile.release]
+codegen-units = 1

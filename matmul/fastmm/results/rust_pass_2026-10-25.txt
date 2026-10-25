@@ -1,0 +1,23 @@
+# safe Rust vs C, D48 left-factor pass 2026-10-25 14:02; Apple M4 Pro
+# D48 left-factor pass (4x4x4_48_accurate, 284 operations in the whole program): safe Rust vs C
+f32 gemm m=2048  0.00568 s  3026 GFLOP/s (Accelerate through the safe wrapper)
+f64 gemm m=2048  0.02099 s  818 GFLOP/s (Accelerate through the safe wrapper)
+f32 n=8192  threads 10  rust  0.0097 s (110.2 GB/s)  c  0.0096 s (112.0 GB/s)  c-gcd  0.0090 s (118.9 GB/s)  rust/c-gcd 1.079  outputs identical
+f64 n=8192  threads 10  rust  0.0201 s (106.9 GB/s)  c  0.0195 s (110.3 GB/s)  c-gcd  0.0186 s (115.3 GB/s)  rust/c-gcd 1.079  outputs identical
+f32 n=16384 threads 10  rust  0.0382 s (112.4 GB/s)  c  0.0381 s (112.8 GB/s)  c-gcd  0.0361 s (118.8 GB/s)  rust/c-gcd 1.057  outputs identical
+f64 n=16384 threads 10  rust  0.0792 s (108.4 GB/s)  c  0.0786 s (109.3 GB/s)  c-gcd  0.0755 s (113.8 GB/s)  rust/c-gcd 1.049  outputs identical
+# D48 left-factor pass (4x4x4_48_accurate, 284 operations in the whole program): safe Rust vs C
+f32 gemm m=2048  0.00533 s  3221 GFLOP/s (Accelerate through the safe wrapper)
+f64 gemm m=2048  0.02133 s  805 GFLOP/s (Accelerate through the safe wrapper)
+f32 n=8192  threads 12  rust  0.0097 s (110.7 GB/s)  c  0.0098 s (109.6 GB/s)  c-gcd  0.0090 s (118.7 GB/s)  rust/c-gcd 1.072  outputs identical
+f64 n=8192  threads 12  rust  0.0199 s (107.9 GB/s)  c  0.0195 s (110.1 GB/s)  c-gcd  0.0190 s (113.1 GB/s)  rust/c-gcd 1.048  outputs identical
+f32 n=16384 threads 12  rust  0.0376 s (114.3 GB/s)  c  0.0365 s (117.8 GB/s)  c-gcd  0.0362 s (118.5 GB/s)  rust/c-gcd 1.037  outputs identical
+f64 n=16384 threads 12  rust  0.0752 s (114.2 GB/s)  c  0.0766 s (112.1 GB/s)  c-gcd  0.0743 s (115.5 GB/s)  rust/c-gcd 1.012  outputs identical
+# D48 left-factor pass (4x4x4_48_accurate, 284 operations in the whole program): safe Rust vs C
+f32 gemm m=2048  0.00529 s  3245 GFLOP/s (Accelerate through the safe wrapper)
+f64 gemm m=2048  0.02247 s  765 GFLOP/s (Accelerate through the safe wrapper)
+f32 n=8192  threads 14  rust  0.0101 s (106.2 GB/s)  c  0.0098 s (109.6 GB/s)  c-gcd  0.0090 s (118.9 GB/s)  rust/c-gcd 1.120  outputs identical
+f64 n=8192  threads 14  rust  0.0193 s (111.4 GB/s)  c  0.0196 s (109.7 GB/s)  c-gcd  0.0184 s (116.7 GB/s)  rust/c-gcd 1.047  outputs identical
+f32 n=16384 threads 14  rust  0.0376 s (114.2 GB/s)  c  0.0372 s (115.4 GB/s)  c-gcd  0.0362 s (118.7 GB/s)  rust/c-gcd 1.039  outputs identical
+f64 n=16384 threads 14  rust  0.0757 s (113.4 GB/s)  c  0.0765 s (112.3 GB/s)  c-gcd  0.0751 s (114.3 GB/s)  rust/c-gcd 1.008  outputs identical
+# done 14:02

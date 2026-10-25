@@ -1,0 +1,107 @@
+# gamma48 on other rank-48 classes 2026-10-25 17:42
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_1o4 role 0: start g(inf,2) 38.1621, gamma2 210.4997, g(inf,inf) 288.00; 2400 starts from seed 9000000 on 14 threads
+# 2400 starts in 113.9 s
+# local optima (value x count): 21.4073 x100  21.9438 x556  23.3137 x303  23.6544 x251  23.7198 x31  23.8960 x166  24.2533 x111  24.3824 x9  24.3977 x1  24.4490 x20  24.4698 x14  24.4824 x480
+# best: seed 9000074  g(inf,2) 21.407344  gamma2 157.2548  g(inf,inf) 209.151  brent err 5.6e-16
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_1o4_r0.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_1o4 role 1: start g(inf,2) 39.2820, gamma2 210.4997, g(inf,inf) 272.00; 2400 starts from seed 9010000 on 14 threads
+# 2400 starts in 88.5 s
+# local optima (value x count): 22.6274 x68  23.2432 x106  23.2703 x33  23.8030 x120  24.0231 x135  24.3645 x63  24.3901 x65  24.5382 x354  24.6223 x5  24.6496 x426  24.6608 x1  24.9253 x189
+# best: seed 9011123  g(inf,2) 22.627417  gamma2 154.5097  g(inf,inf) 217.644  brent err 4.4e-16
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_1o4_r1.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_1o4 role 2: start g(inf,2) 33.5405, gamma2 210.4997, g(inf,inf) 280.00; 2400 starts from seed 9020000 on 14 threads
+# 2400 starts in 86.2 s
+# local optima (value x count): 21.4073 x979  21.9438 x591  23.3137 x46  23.6544 x16  23.7204 x2  23.8960 x104  24.2533 x96  24.3824 x1  24.3977 x2  24.4490 x27  24.4698 x10  24.4824 x64
+# best: seed 9021813  g(inf,2) 21.407344  gamma2 157.2548  g(inf,inf) 219.571  brent err 6.7e-16
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_1o4_r2.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_1o2 role 0: start g(inf,2) 81.9476, gamma2 313.0394, g(inf,inf) 604.00; 2400 starts from seed 9000000 on 14 threads
+# 2400 starts in 110.6 s
+# local optima (value x count): 23.1441 x84  23.3394 x307  23.4682 x62  23.8995 x369  24.3597 x462  24.3745 x294  24.4901 x124  24.6183 x89  24.9672 x165  25.2793 x20  25.3142 x4  25.3966 x59
+# best: seed 9001359  g(inf,2) 23.144053  gamma2 166.3518  g(inf,inf) 210.112  brent err 6.8e-16
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_1o2_r0.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_1o2 role 1: start g(inf,2) 62.9019, gamma2 313.0394, g(inf,inf) 436.00; 2400 starts from seed 9010000 on 14 threads
+# 2400 starts in 89.8 s
+# local optima (value x count): 23.6544 x56  24.2649 x52  24.2829 x73  24.3023 x52  24.7930 x92  24.8904 x83  24.9276 x78  25.0775 x67  25.2340 x280  25.2988 x66  25.4771 x133  25.5187 x217
+# best: seed 9010590  g(inf,2) 23.654365  gamma2 161.5221  g(inf,inf) 217.406  brent err 6.7e-16
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_1o2_r1.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_1o2 role 2: start g(inf,2) 75.5959, gamma2 313.0394, g(inf,inf) 584.00; 2400 starts from seed 9020000 on 14 threads
+# 2400 starts in 96.1 s
+# local optima (value x count): 23.1441 x111  23.3394 x429  23.4682 x569  23.8995 x87  24.3597 x276  24.3745 x70  24.4901 x128  24.6183 x101  24.9672 x93  25.2793 x84  25.3142 x4  25.3966 x8
+# best: seed 9021392  g(inf,2) 23.144053  gamma2 166.3518  g(inf,inf) 213.646  brent err 8.5e-16
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_1o2_r2.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_1 role 0: start g(inf,2) 247.6282, gamma2 742.7790, g(inf,inf) 1724.00; 2400 starts from seed 9000000 on 14 threads
+# 2400 starts in 109.4 s
+# local optima (value x count): 25.1673 x1069  25.3320 x124  25.5496 x24  26.0084 x445  26.1519 x130  26.3261 x221  26.3489 x48  26.8751 x10  26.9701 x134  27.0995 x12  27.4081 x7  28.1363 x33
+# best: seed 9000405  g(inf,2) 25.167262  gamma2 184.3675  g(inf,inf) 218.034  brent err 1.1e-15
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_1_r0.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_1 role 1: start g(inf,2) 161.8894, gamma2 742.7790, g(inf,inf) 928.00; 2400 starts from seed 9010000 on 14 threads
+# 2400 starts in 96.8 s
+# local optima (value x count): 26.8328 x64  27.4470 x73  27.4874 x86  27.5007 x53  27.5690 x195  27.6178 x192  27.6421 x109  27.8705 x60  27.9579 x223  28.1685 x279  28.2757 x51  28.3026 x187
+# best: seed 9011540  g(inf,2) 26.832816  gamma2 183.2259  g(inf,inf) 234.814  brent err 8.6e-16
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_1_r1.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_1 role 2: start g(inf,2) 234.1790, gamma2 742.7790, g(inf,inf) 1632.00; 2400 starts from seed 9020000 on 14 threads
+# 2400 starts in 122.9 s
+# local optima (value x count): 25.1673 x507  25.3320 x216  25.5496 x91  25.7279 x38  26.0084 x464  26.1519 x272  26.3261 x218  26.3489 x104  26.8751 x20  26.9701 x111  27.0995 x6  27.4081 x63
+# best: seed 9022381  g(inf,2) 25.167262  gamma2 184.3675  g(inf,inf) 212.623  brent err 8.7e-16
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_1_r2.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_2 role 0: start g(inf,2) 871.0351, gamma2 2356.3306, g(inf,inf) 5596.00; 2400 starts from seed 9000000 on 14 threads
+# 2400 starts in 113.8 s
+# local optima (value x count): 27.8524 x1309  28.3485 x217  29.6333 x401  30.0778 x128  30.1513 x117  30.6250 x79  31.7877 x3  31.8631 x5  31.9358 x46  32.0242 x1  32.4507 x1  32.4544 x23
+# best: seed 9001166  g(inf,2) 27.852419  gamma2 222.2082  g(inf,inf) 238.429  brent err 2.3e-15
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_2_r0.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_2 role 1: start g(inf,2) 539.5693, gamma2 2356.3306, g(inf,inf) 2440.00; 2400 starts from seed 9010000 on 14 threads
+# 2400 starts in 104.6 s
+# local optima (value x count): 32.4853 x64  32.6960 x404  32.7779 x299  32.7837 x117  32.9116 x191  32.9272 x40  33.1225 x90  33.1946 x79  33.2032 x104  33.3922 x51  33.5321 x218  33.6094 x256
+# best: seed 9011714  g(inf,2) 32.485281  gamma2 221.8234  g(inf,inf) 417.562  brent err 2.2e-15
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_2_r1.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_2 role 2: start g(inf,2) 842.0307, gamma2 2356.3306, g(inf,inf) 5168.00; 2400 starts from seed 9020000 on 14 threads
+# 2400 starts in 132.9 s
+# local optima (value x count): 27.8524 x891  28.3485 x278  28.7600 x86  29.6333 x347  30.0778 x187  30.1513 x117  30.4906 x56  30.6250 x46  31.7877 x1  31.8631 x25  31.9358 x173  32.0242 x1
+# best: seed 9020878  g(inf,2) 27.852419  gamma2 222.2082  g(inf,inf) 228.970  brent err 2.3e-15
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_2_r2.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_4 role 0: start g(inf,2) 3281.5632, gamma2 8501.6610, g(inf,inf) 19868.00; 2400 starts from seed 9000000 on 14 threads
+# 2400 starts in 103.0 s
+# local optima (value x count): 32.6766 x1424  33.1900 x303  35.6050 x348  36.1650 x86  36.2391 x74  36.7634 x38  37.6306 x20  37.7464 x31  38.5346 x37  39.1147 x1  39.4298 x35  40.3526 x2
+# best: seed 9000354  g(inf,2) 32.676578  gamma2 281.6726  g(inf,inf) 254.156  brent err 1.4e-14
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_4_r0.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_4 role 1: start g(inf,2) 1996.2097, gamma2 8501.6610, g(inf,inf) 7576.00; 2400 starts from seed 9010000 on 14 threads
+# 2400 starts in 107.8 s
+# local optima (value x count): 40.3187 x251  40.3850 x61  40.7882 x412  40.8986 x135  40.9089 x276  41.2311 x57  41.8005 x174  41.9260 x97  42.0171 x56  42.0437 x83  42.0492 x110  42.1296 x266
+# best: seed 9011046  g(inf,2) 40.318717  gamma2 285.3884  g(inf,inf) 260.561  brent err 7.9e-15
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_4_r1.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_4 role 2: start g(inf,2) 3220.7723, gamma2 8501.6610, g(inf,inf) 18000.00; 2400 starts from seed 9020000 on 14 threads
+# 2400 starts in 139.9 s
+# local optima (value x count): 32.6766 x1121  33.1900 x439  35.6050 x282  36.1650 x132  36.2391 x87  36.7634 x9  37.6306 x32  37.7464 x177  38.5346 x53  39.4298 x39  39.5490 x4  40.3526 x1
+# best: seed 9021229  g(inf,2) 32.676578  gamma2 281.6726  g(inf,inf) 259.144  brent err 3.1e-15
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_4_r2.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_8 role 0: start g(inf,2) 12752.3605, gamma2 32412.4133, g(inf,inf) 74524.00; 2400 starts from seed 9000000 on 14 threads
+# 2400 starts in 92.6 s
+# local optima (value x count): 40.1340 x1469  40.6344 x424  44.6051 x284  45.2958 x72  45.3078 x31  46.0462 x5  46.4933 x13  46.7057 x28  47.6822 x36  48.8250 x37  49.9606 x1
+# best: seed 9000283  g(inf,2) 40.134036  gamma2 369.3287  g(inf,inf) 271.914  brent err 2.7e-14
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_8_r0.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_8 role 1: start g(inf,2) 7705.4474, gamma2 32412.4133, g(inf,inf) 26296.00; 2400 starts from seed 9010000 on 14 threads
+# 2400 starts in 110.4 s
+# local optima (value x count): 51.3512 x372  52.7291 x332  52.9121 x133  52.9345 x286  53.0324 x54  53.7116 x173  54.0805 x54  54.6985 x225  54.7736 x61  54.8820 x111  55.0650 x288  55.0882 x108
+# best: seed 9010652  g(inf,2) 51.351205  gamma2 375.2126  g(inf,inf) 270.665  brent err 2.1e-14
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_8_r1.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/s_8 role 2: start g(inf,2) 12627.6733, gamma2 32412.4133, g(inf,inf) 66704.00; 2400 starts from seed 9020000 on 14 threads
+# 2400 starts in 147.6 s
+# local optima (value x count): 40.1340 x1259  40.6344 x512  44.6051 x217  45.2958 x94  45.3078 x47  46.0462 x2  46.4933 x45  46.7057 x104  47.6822 x54  48.8250 x58  51.6398 x7  52.0654 x1
+# best: seed 9020921  g(inf,2) 40.134036  gamma2 369.3287  g(inf,inf) 306.813  brent err 9.5e-15
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_s_8_r2.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/agarwal role 0: start g(inf,2) 1299.7707, gamma2 3314.0582, g(inf,inf) 8476.00; 2400 starts from seed 9000000 on 14 threads
+# 2400 starts in 102.6 s
+# local optima (value x count): 39.6192 x329  39.7026 x175  40.0987 x1264  41.4248 x96  41.4454 x52  41.6098 x124  42.0457 x41  42.0543 x36  42.2126 x36  43.0838 x9  43.3418 x10  43.3833 x92
+# best: seed 9001677  g(inf,2) 39.619187  gamma2 280.3729  g(inf,inf) 342.436  brent err 3.2e-15
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_agarwal_r0.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/agarwal role 1: start g(inf,2) 771.9826, gamma2 3314.0582, g(inf,inf) 3662.25; 2400 starts from seed 9010000 on 14 threads
+# 2400 starts in 119.5 s
+# local optima (value x count): 42.9243 x175  43.3959 x102  43.4843 x85  44.2557 x328  44.4106 x89  44.5759 x95  44.6864 x27  44.7744 x29  44.8319 x56  45.0735 x294  45.2365 x80  45.2604 x71
+# best: seed 9010644  g(inf,2) 42.924312  gamma2 287.6843  g(inf,inf) 418.343  brent err 3.0e-15
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_agarwal_r1.txt
+# gamma48 /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/agarwal role 2: start g(inf,2) 1235.5176, gamma2 3314.0582, g(inf,inf) 8352.00; 2400 starts from seed 9020000 on 14 threads
+# 2400 starts in 132.0 s
+# local optima (value x count): 39.6192 x352  39.7026 x463  40.0987 x800  41.2009 x18  41.4248 x87  41.4454 x195  41.6098 x73  42.0457 x50  42.0543 x4  42.2126 x18  43.0838 x8  43.1614 x40
+# best: seed 9020491  g(inf,2) 39.619187  gamma2 280.3729  g(inf,inf) 350.423  brent err 3.5e-15
+# the best 50 points (gamma, seed, U V W row-major) in /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/lwh_members/pts_agarwal_r2.txt
+# done 18:21

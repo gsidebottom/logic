@@ -195,6 +195,8 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
     T *A = alloc_t(nn * sizeof(T)), *B = alloc_t(nn * sizeof(T)), *C = alloc_t(nn * sizeof(T)),
       *Cref = alloc_t(nn * sizeof(T));
     uint64_t s = 0x9e3779b97f4a7c15ull;
+    const char *seed = getenv("FMM_SEED");         /* another random instance */
+    if (seed) s ^= (uint64_t)strtoull(seed, NULL, 0) * 0xbf58476d1ce4e5b9ull;
     for (size_t i = 0; i < nn; i++) {
         s ^= s << 13; s ^= s >> 7; s ^= s << 17;
         A[i] = (T)((double)(s >> 11) / 9007199254740992.0 * 2 - 1);
@@ -275,17 +277,47 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
     FN(gemm)(n, A, n, B, n, Cref, n);
     double cmax = 0;
     for (size_t i = 0; i < nn; i++) cmax = fmax(cmax, fabs((double)Cref[i]));
-    /* FMM_EXACT=1 in f32: also each method's error against an f64 product of the same inputs */
+    /* FMM_EXACT=1: also each method's error against an exact reference: in f32 the f64 product of
+     * the same inputs, in f64 the compensated (double-double) product */
     const char *ex = getenv("FMM_EXACT");
     double *R64 = NULL, rmax64 = 0, err64[16] = {0};
-    if (ex && atoi(ex) && !f64) {
+    /* FMM_REFCACHE=DIR keeps each reference (it depends only on n, precision, distribution and
+     * seed) for the other builds measuring the same inputs */
+    const char *rc = getenv("FMM_REFCACHE");
+    char refpath[1024] = "";
+    if (ex && atoi(ex) && rc)
+        snprintf(refpath, sizeof refpath, "%s/ref_%s_%zu_%s_%s.bin", rc, f64 ? "f64" : "f32", n,
+                 (nrm && atoi(nrm)) ? "normal" : "uniform", seed ? seed : "0");
+    int cached = 0;
+    if (refpath[0]) {
+        FILE *fr = fopen(refpath, "rb");
+        if (fr) {
+            R64 = alloc_t(nn * 8);
+            cached = fread(R64, 8, nn, fr) == nn;
+            fclose(fr);
+            if (!cached) { free(R64); R64 = NULL; }
+        }
+    }
+    if (ex && atoi(ex) && f64 && !cached) {
+        R64 = alloc_t(nn * 8);
+        double t0 = now();
+        dd_gemm(n, (const double *)A, (const double *)B, R64);
+        printf("# compensated f64 reference in %.1f s\n", now() - t0);
+    }
+    if (ex && atoi(ex) && !f64 && !cached) {
         double *A64 = alloc_t(nn * 8), *B64 = alloc_t(nn * 8);
         R64 = alloc_t(nn * 8);
         for (size_t i = 0; i < nn; i++) { A64[i] = A[i]; B64[i] = B[i]; }
         cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, (int)n, (int)n, (int)n, 1.0, A64, (int)n, B64, (int)n,
                     0.0, R64, (int)n);
-        for (size_t i = 0; i < nn; i++) rmax64 = fmax(rmax64, fabs(R64[i]));
         free(A64); free(B64);
+    }
+    if (R64) {
+        for (size_t i = 0; i < nn; i++) rmax64 = fmax(rmax64, fabs(R64[i]));
+        if (refpath[0] && !cached) {
+            FILE *fw = fopen(refpath, "wb");
+            if (fw) { fwrite(R64, 8, nn, fw); fclose(fw); }
+        }
     }
     for (int j = 0; j < nm; j++) FN(run_method)(&ms[j], n, A, B, C, work, temps, NULL);  /* warm-up */
     double times[16][32];

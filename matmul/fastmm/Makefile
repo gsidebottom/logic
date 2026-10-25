@@ -57,3 +57,11 @@ build/var/%/kernels.h: gen_kernels.py ../dps48/gamma/slp/%_L.slp ../dps48/gamma/
 
 build/bench_fmm_var_%: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/var/%/kernels.h
 	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/var/$* bench_fmm.c -framework Accelerate -o $@
+
+# the same with dps48's fused kernels from DPS's 262-operation accurate programs (PLinOpt's
+# 4x4x4_48_accurate_262, equivalent to the gamma search's 16 sqrt2 point)
+build/bench_fmm_acc262: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/acc262/kernels.h
+	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/acc262 bench_fmm.c -framework Accelerate -o $@
+
+build/acc262/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_262_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_P.slp
+	mkdir -p build/acc262 && python3 gen_kernels.py $@ --dps48 ../dps48/plinopt/data/4x4x4_48_accurate_262

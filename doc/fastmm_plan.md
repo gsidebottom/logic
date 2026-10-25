@@ -525,6 +525,27 @@ gamma_{inf,2} alone is not the objective.  What paid was improving gamma_{inf,2}
 gamma_{inf,inf} together while staying dyadic, so that multiplying by the scheme's constants is
 exact.
 
+Paper (2026-10-25): `doc/matmul_4x4_rank48_accurate262.tex` / `.pdf`, "The 262-operation <4x4x4:48>
+algorithm is also the more accurate one".  Its growth factors are exact in Q(sqrt2) and agree with
+PLinOpt's `growthfactor`.  The other rational classes were searched as well: Li-Wang-Hu members
+s(2^k), k = -2..3, and Agarwal's scheme.  Their gamma_{inf,2} minima rise from 21.41 (t = 1/4, the
+DPS class) through 23.14, 25.17, 27.85, 32.68 to 40.13, with Agarwal's at 39.62, so none reaches
+22.63 (`results/gamma_classes_2026-10-25.txt`).
+
+Accuracy campaign (`results/accuracy_campaign_2026-10-25.txt`):
+- The setting: f32 and f64, n = 4096 and 8192, uniform and normal inputs, 3-5 seeds.  The f64
+  reference is compensated dot products (bench `dd_gemm`).
+- The 262 variant's error is 0.75-0.77 of Table 1's on average, 0.62-0.90 per instance, at the same
+  speed (0.977-1.007).
+- Two dyadic probe points, each worse than Table 1 in one growth factor, still beat Table 1.  The
+  measured order of the dyadic schemes is the Q0 order (80, 94, 144, 180).  The Q(sqrt2) point,
+  whose constants round, measures like Table 1.
+
+Deep recursion at n = 1024, 1-5 levels down to scalars (`results/accuracy_deep_2026-10-25.txt`):
+- The 262/Table 1 ratio falls from 0.80 at one level to 0.72 at five.
+- From four levels to five the errors grow 2.60 against 2.78 per level.
+- The program matters at depth: the same scheme with 445-operation programs is worse than Table 1.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

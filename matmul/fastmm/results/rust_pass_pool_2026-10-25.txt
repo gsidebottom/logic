@@ -1,0 +1,8 @@
+# passbench with the library's rayon pool driver, 2026-10-25; Apple M4 Pro (cargo run --release --features cbench --bin passbench)
+# D48 left-factor pass (4x4x4_48_accurate, 284 operations in the whole program): safe Rust vs C
+f32 gemm m=2048  0.00620 s  2772 GFLOP/s (Accelerate through the safe wrapper)
+f64 gemm m=2048  0.02101 s  818 GFLOP/s (Accelerate through the safe wrapper)
+f32 n=8192  threads 10  rust  0.0089 s (120.3 GB/s)  c  0.0094 s (113.9 GB/s)  c-gcd  0.0089 s (120.6 GB/s)  rust/c-gcd 1.002  outputs identical
+f64 n=8192  threads 10  rust  0.0189 s (113.7 GB/s)  c  0.0195 s (110.4 GB/s)  c-gcd  0.0187 s (115.0 GB/s)  rust/c-gcd 1.011  outputs identical
+f32 n=16384 threads 10  rust  0.0365 s (117.8 GB/s)  c  0.0376 s (114.2 GB/s)  c-gcd  0.0363 s (118.2 GB/s)  rust/c-gcd 1.004  outputs identical
+f64 n=16384 threads 10  rust  0.0782 s (109.8 GB/s)  c  0.0784 s (109.5 GB/s)  c-gcd  0.0762 s (112.7 GB/s)  rust/c-gcd 1.027  outputs identical

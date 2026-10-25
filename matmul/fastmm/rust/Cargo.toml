@@ -5,6 +5,21 @@ edition = "2024"
 license = "Apache-2.0"
 description = "Fast matrix multiplication on Apple silicon in Rust: fused fast-scheme passes in safe Rust over Accelerate's GEMM"
 
+[dependencies]
+rayon = "1"
+
+[features]
+# the benchmarks against the C library (links ../build/libfmm.a and its kernels)
+cbench = []
+
+[[bin]]
+name = "passbench"
+required-features = ["cbench"]
+
+[[bin]]
+name = "crosscheck"
+required-features = ["cbench"]
+
 # its own workspace, apart from the repository's crate
 [workspace]
 

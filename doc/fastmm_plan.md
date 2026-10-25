@@ -424,6 +424,73 @@ close it, and the passes are about 10% of the run time anyway.  Accuracy is iden
 construction (same operations in the same order; Rust contracts nothing into fused
 multiply-adds).
 
+The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
+`rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
+The whole library in Rust, module for module:
+- `plan.rs`: plans.
+- `calib.rs`: the calibration and its cache, in the C library's file format, so either library
+  reads the other's cache.
+- `planner.rs`: the planner, with pipelines, the error budget and padding.
+- `exec.rs`: the executor. Passes run as row chunks on a rayon pool; GEMM streams and pipelined
+  passes run as tasks on the same pool.
+- `measure.rs`: the calibration's measurements.
+- `lib.rs`: the entry points `sgemm`, `dgemm`, `plan`, `calibrate` and `release`.
+
+Binaries: `fmmcal` fills the cache, `fmmbench` runs test_fmm's cases, and, behind the feature
+`cbench`, `passbench` and `crosscheck` run against the linked C library.  Unsafe code is limited
+to the FFI declarations in `sys.rs` (Accelerate's two GEMMs and its threading switch, and the
+threads' scheduling class), behind safe wrappers that check the slices; everything else is
+`#![deny(unsafe_code)]`.  On the same cache:
+
+- Results: bit for bit identical to the C library's, with the same plans, in all 18 cases of
+  test_fmm (both precisions, 1000-9000, padded sizes, a leading dimension above n, a budget);
+  the calibration's three error measurements agree to all nine digits.
+- Speed: alternating rounds of test_fmm and its port, Rust/C 0.95-1.03 per case (best of two
+  rounds each, geometric mean 0.99); "over Accelerate" is against its best time in all runs:
+
+| case | C | Rust | Rust/C | over Accelerate |
+|---|---|---|---|---|
+| f32 4096 D48/G6 | 37.6 ms | 36.9 ms | 0.98 | 1.14x |
+| f32 8192 D48+4/D48/G6 | 0.240 s | 0.238 s | 0.99 | 1.39x |
+| f32 16384 D48+3/D48/G6 | 1.726 s | 1.694 s | 0.98 | 1.60x |
+| f64 2048 D48/G6 | 17.8 ms | 18.2 ms | 1.02 | 1.16x |
+| f64 4096 SW+4/D48/G6 | 0.1205 s | 0.1190 s | 0.99 | 1.41x |
+| f64 8192 D48+4/D48/G6 | 0.815 s | 0.814 s | 1.00 | 1.64x |
+| f64 9000 D48+4/D48/G6 at 9008 | 1.043 s | 1.016 s | 0.97 | 1.78x |
+| f64 16384 SW/D48+4/D48/G6 | 5.818 s | 5.835 s | 1.00 | 1.99x |
+
+- Passes: on the rayon pool the Rust pass driver is within 0.2-2.7% of GCD; the feasibility
+  test's thread per pass was 1-8% behind.
+- Calibration (three C and three Rust calibrations, alternating; the third Rust one after the
+  fix below): each library repeats itself to 2-4% per group of entries.  Rust is slower on small
+  passes (SW blocks of 256: 1.9-3x; 512: 1.4x; D48 256: 1.3-1.5x), the pool's dispatch where a
+  pass takes 0.1 ms, and 2-12% faster on SW passes from 4096 and D48 passes from 2048; GEMMs
+  inside a level and pipelines agree within 4%.  With the leaves
+  timed where the library runs them (see the traps below), the lone GEMMs agree with C's
+  (geometric means 0.98-1.00).  The exception is f32 4096 at 1.15, a size whose GEMM runs at
+  either 42 or 48-50 ms.  The Rust-made cache's plans then differ from the C-made one's only in
+  the pipelines' pass threads (2-3 against 3-4), a choice in which the C calibrations also vary
+  among themselves.  The Rust library on its own cache, against on the C-made cache, alternating:
+  0.98-1.02 per case (16384 f32 D48+2 1.6% faster than D48+3; 4096 and 8192 f64 three pass
+  threads 1% faster than four).
+
+Traps on the way:
+- A zeroed Vec gets its pages from the system only on first write.  The first Rust calibration
+  therefore timed page faults into the largest sizes, where a single run is timed (SW passes at
+  8192 +35%, one GEMM at 16384 +10%).  Timed buffers are now written first, as C's memset does.
+- A lone multi-threaded GEMM issued right after work on the rayon pool runs 15-25% slower once
+  GEMM streams have run on the pool (f32 2048 6.2-6.9 ms against 5.1 ms), and stays slower.
+  The same GEMM after work on fresh scoped threads runs at full speed.  The first Rust
+  calibration timed the lone GEMMs on the pool after an eviction on the pool, so it overstated
+  them by 15-20% and picked D48/G6 over the classical GEMM at 2048 f32.  The leaves are now
+  timed where the library runs a classical plan, on the calling thread, after an eviction by
+  scoped threads.  For the same reason fmmbench runs its Accelerate reference on the main
+  thread, as test_fmm does; on a pool thread it read up to 20% slow.  The cause is not
+  established: SME state left on pool threads that ran streams was tested and not confirmed.
+  The C library does not show it; GCD's threads park at once, where rayon's spin a while before
+  sleeping, which may be the difference.
+  `examples/gemm_after_level.rs` and `examples/reference_after_fmm.rs` reproduce it.
+
 Engineering lessons (each worth a large factor, each easy to miss):
 
 - The compiler did not vectorize the 64-stream fused loops (it gave up on overlap checks);
@@ -490,7 +557,9 @@ Which operations matter depends on the implementation:
    for our 4x4 level, 3.7e-5 three levels at n = 16384).
 7. **A library entry point** (done 2026-10-25): `fmm.h`, `libfmm.a`, tested against
    Accelerate; any size inside the calibrated range (interpolation and padding, done
-   2026-10-25).  Next for it: rectangular shapes, alpha / beta and transposes.
+   2026-10-25).  Rust port (done 2026-10-25): crate `fmm` in `rust/`, only FFI declarations
+   unsafe; same plans, speed and results (bit for bit) as the C library.  Next for both:
+   rectangular shapes, alpha / beta and transposes.
 
 ## Milestones
 

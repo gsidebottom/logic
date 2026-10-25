@@ -1,0 +1,132 @@
+# Rust and C calibrations compared, 2026-10-25, Apple M4 Pro (caches in rust_calib_2026-10-25/)
+# order: c1 14:47, rust1 14:54, c2 15:02, rust2 15:09 (Rust timing the leaves on the pool, the first version),
+# rust3 15:25 (leaves on the calling thread after an eviction by scoped threads), c3 15:32.
+# C: bench_fmm -n 16384 -t f|d -p; Rust: fmmcal 16384.  Machine in interactive use throughout.
+
+## plans each calibration picks (C: bench_fmm's table; Rust: fmmcal)
+# C calibration 1 14:47:08
+n=16384  f32  best D48+3/D48/G6       1.7263 s  classical 2.6566 blk2 
+n=8192   f32  best D48+4/D48/G6       0.2382 s  classical 0.3296 blk2 
+n=4096   f32  best SW+4/D48/G6        0.0366 s  classical 0.0419 blk2 
+n=2048   f32  best G                  0.0053 s  classical 0.0053 blk2 
+n=1024   f32  best G                  0.0007 s  classical 0.0007 blk2 
+n=16384  f64  best SW/D48+2/D48/G6    5.8059 s  classical 12.0265 blk2
+n=8192   f64  best D48+2/D48/G6       0.8102 s  classical 1.5073 blk2 
+n=4096   f64  best D48+4/D48/G6       0.1205 s  classical 0.1670 blk2 
+n=2048   f64  best D48/G6             0.0179 s  classical 0.0215 blk2 
+n=1024   f64  best G                  0.0027 s  classical 0.0027 blk2 
+# Rust calibration 1 14:54:34
+f32 n=1024   plan G                    predicted  0.0008 s  error 1.37
+f32 n=2048   plan D48/G6               predicted  0.0060 s  error 2.33
+f32 n=4096   plan SW+3/D48/G6          predicted  0.0360 s  error 6.76
+f32 n=8192   plan D48+3/D48/G6         predicted  0.2356 s  error 5.59
+f32 n=16384  plan D48+2/D48/G6         predicted  1.6708 s  error 7.90
+f64 n=1024   plan B2                   predicted  0.0030 s  error 2.55
+f64 n=2048   plan D48/G6               predicted  0.0181 s  error 4.07
+f64 n=4096   plan SW+2/D48/G6          predicted  0.1171 s  error 1.09
+f64 n=8192   plan D48+2/D48/G6         predicted  0.7901 s  error 9.19
+f64 n=16384  plan SW/D48+2/D48/G6      predicted  5.6539 s  error 2.45
+# C calibration 2 15:02:02
+n=16384  f32  best D48+3/D48/G6       1.6872 s  classical 3.0981 blk2 
+n=8192   f32  best D48+4/D48/G6       0.2342 s  classical 0.3331 blk2 
+n=4096   f32  best D48/G6             0.0363 s  classical 0.0418 blk2 
+n=2048   f32  best G                  0.0052 s  classical 0.0052 blk2 
+n=1024   f32  best G                  0.0007 s  classical 0.0007 blk2 
+n=16384  f64  best SW/D48+3/D48/G6    5.7526 s  classical 12.1488 blk2
+n=8192   f64  best D48+3/D48/G6       0.8029 s  classical 1.3189 blk2 
+n=4096   f64  best SW+4/D48/G6        0.1203 s  classical 0.1662 blk2 
+n=2048   f64  best D48/G6             0.0179 s  classical 0.0212 blk2 
+n=1024   f64  best G                  0.0027 s  classical 0.0027 blk2 
+# Rust calibration 2 15:09:26
+f32 n=1024   plan G                    predicted  0.0008 s  error 1.37
+f32 n=2048   plan D48/G6               predicted  0.0060 s  error 2.33
+f32 n=4096   plan SW+3/D48/G6          predicted  0.0359 s  error 6.76
+f32 n=8192   plan D48+3/D48/G6         predicted  0.2354 s  error 5.59
+f32 n=16384  plan SW/D48+3/D48/G6      predicted  1.7070 s  error 1.62
+f64 n=1024   plan G                    predicted  0.0030 s  error 2.55
+f64 n=2048   plan D48/G6               predicted  0.0181 s  error 4.07
+f64 n=4096   plan SW+2/D48/G6          predicted  0.1178 s  error 1.09
+f64 n=8192   plan D48+2/D48/G6         predicted  0.7959 s  error 9.19
+f64 n=16384  plan SW/D48+2/D48/G6      predicted  5.6891 s  error 2.45
+# Rust calibration 3 15:25:10
+f32 n=1024   plan G                    predicted  0.0007 s  error 1.37
+f32 n=2048   plan G                    predicted  0.0053 s  error 1.94
+f32 n=4096   plan SW+4/D48/G6          predicted  0.0368 s  error 6.76
+f32 n=8192   plan D48+4/D48/G6         predicted  0.2408 s  error 5.59
+f32 n=16384  plan D48+2/D48/G6         predicted  1.6926 s  error 7.90
+f64 n=1024   plan G                    predicted  0.0027 s  error 2.55
+f64 n=2048   plan D48/G6               predicted  0.0181 s  error 4.07
+f64 n=4096   plan SW+3/D48/G6          predicted  0.1187 s  error 1.09
+f64 n=8192   plan D48+3/D48/G6         predicted  0.8028 s  error 9.19
+f64 n=16384  plan SW/D48+3/D48/G6      predicted  5.7401 s  error 2.45
+# C calibration 3 15:32:37
+n=16384  f32  best D48+3/D48/G6       1.7045 s  classical 2.7440 blk2 
+n=8192   f32  best D48+4/D48/G6       0.2401 s  classical 0.3459 blk2 
+n=4096   f32  best SW+4/D48/G6        0.0368 s  classical 0.0421 blk2 
+n=2048   f32  best G                  0.0052 s  classical 0.0052 blk2 
+n=1024   f32  best G                  0.0007 s  classical 0.0007 blk2 
+n=16384  f64  best SW/D48+4/D48/G6    5.7580 s  classical 12.2314 blk2
+n=8192   f64  best D48+4/D48/G6       0.8034 s  classical 1.3107 blk2 
+n=4096   f64  best SW+4/D48/G6        0.1207 s  classical 0.1663 blk2 
+n=2048   f64  best D48/G6             0.0179 s  classical 0.0213 blk2 
+n=1024   f64  best G                  0.0027 s  classical 0.0027 blk2 
+
+## entries, rounds 1-2: run-to-run spread of each library against Rust/C (geometric means; fill+drain left out)
+== f32: entries 179 179 179 179; error entries identical in all four: True
+   group              n       C2/C1 geo [range]       R2/R1 geo [range]      Rust/C geo [range]
+   D48 passes         5       0.982 [0.97-1.00]       1.001 [0.96-1.07]       1.097 [0.96-1.45]
+   GEMM alone         7       1.019 [0.98-1.17]       1.041 [0.91-1.17]       1.143 [0.97-1.29]
+   GEMM in a level   44       0.996 [0.75-1.12]       1.005 [0.94-1.09]       0.970 [0.72-1.07]
+   SW passes          6       0.996 [0.96-1.03]       0.982 [0.90-1.02]       1.283 [0.89-3.05]
+   blocked 2x2        6       1.003 [0.97-1.03]       1.046 [0.98-1.12]       1.039 [0.99-1.09]
+   pipeline steady   54       0.995 [0.80-1.17]       1.008 [0.95-1.12]       1.033 [0.88-1.49]
+   SW passes: Rust/C by size 256:3.05  512:1.45  1024:1.23  2048:1.04  4096:0.89  8192:0.89
+   D48 passes: Rust/C by size 256:1.45  512:1.15  1024:1.03  2048:0.97  4096:0.96
+   GEMM alone: Rust/C by size 256:1.06  512:1.23  1024:1.09  2048:1.21  4096:1.18  8192:1.29  16384:0.97
+== f64: entries 179 179 179 179; error entries identical in all four: True
+   group              n       C2/C1 geo [range]       R2/R1 geo [range]      Rust/C geo [range]
+   D48 passes         5       1.001 [0.99-1.02]       1.008 [0.99-1.02]       1.060 [0.96-1.33]
+   GEMM alone         7       0.982 [0.87-1.03]       1.009 [0.95-1.10]       1.084 [0.95-1.17]
+   GEMM in a level   44       1.003 [0.90-1.56]       0.995 [0.92-1.05]       0.972 [0.60-1.07]
+   SW passes          6       1.014 [0.98-1.07]       0.962 [0.79-1.04]       1.128 [0.88-1.87]
+   blocked 2x2        6       1.001 [0.99-1.03]       1.000 [0.95-1.06]       1.023 [1.00-1.04]
+   pipeline steady   54       0.994 [0.87-1.07]       0.994 [0.94-1.06]       1.016 [0.88-1.22]
+   SW passes: Rust/C by size 256:1.87  512:1.36  1024:1.11  2048:0.91  4096:0.88  8192:0.90
+   D48 passes: Rust/C by size 256:1.33  512:1.09  1024:0.99  2048:0.96  4096:0.97
+   GEMM alone: Rust/C by size 256:1.08  512:1.08  1024:1.13  2048:1.17  4096:1.15  8192:1.04  16384:0.95
+
+## entries, rust3 against the geometric mean of c1-c3
+== f32
+   D48 passes         5  rust3/C geo 1.114  range 0.98-1.55   C max/min spread geo 1.066
+   GEMM alone         7  rust3/C geo 0.998  range 0.89-1.15   C max/min spread geo 1.045
+   GEMM in a level   44  rust3/C geo 0.975  range 0.75-1.09   C max/min spread geo 1.052
+   SW passes          6  rust3/C geo 1.287  range 0.88-3.06   C max/min spread geo 1.026
+   blocked 2x2        6  rust3/C geo 1.007  range 0.94-1.09   C max/min spread geo 1.029
+   pipeline steady   54  rust3/C geo 1.042  range 0.89-1.43   C max/min spread geo 1.032
+      GEMM alone by size: 256:1.07  512:0.89  1024:0.97  2048:1.00  4096:1.15  8192:0.99  16384:0.93
+      SW passes by size: 256:3.06  512:1.44  1024:1.25  2048:1.05  4096:0.88  8192:0.89
+      D48 passes by size: 256:1.55  512:1.17  1024:0.99  2048:0.98  4096:0.98
+== f64
+   D48 passes         5  rust3/C geo 1.080  range 0.97-1.40   C max/min spread geo 1.022
+   GEMM alone         7  rust3/C geo 0.983  range 0.90-1.04   C max/min spread geo 1.036
+   GEMM in a level   44  rust3/C geo 0.975  range 0.65-1.07   C max/min spread geo 1.050
+   SW passes          6  rust3/C geo 1.144  range 0.89-2.01   C max/min spread geo 1.029
+   blocked 2x2        6  rust3/C geo 0.994  range 0.95-1.04   C max/min spread geo 1.019
+   pipeline steady   54  rust3/C geo 1.022  range 0.89-1.23   C max/min spread geo 1.027
+      GEMM alone by size: 256:0.99  512:0.95  1024:0.99  2048:0.99  4096:1.03  8192:1.04  16384:0.90
+      SW passes by size: 256:2.01  512:1.37  1024:1.13  2048:0.90  4096:0.89  8192:0.90
+      D48 passes by size: 256:1.40  512:1.11  1024:0.99  2048:0.97  4096:0.99
+
+## the Rust library on the rust3 and c3 caches, alternating, two rounds (fmm times; best-of-two ratio)
+f32 2048               rust-made G                      0.0059/0.0054    C-made G                      0.0053/0.0053    ratio 1.019
+f32 4096               rust-made SW+4/D48/G6            0.0367/0.0366    C-made SW+4/D48/G6            0.0368/0.0364    ratio 1.005
+f32 4096 ld 4160       rust-made SW+4/D48/G6            0.0366/0.0366    C-made SW+4/D48/G6            0.0364/0.0367    ratio 1.005
+f32 8192               rust-made D48+4/D48/G6           0.2396/0.2396    C-made D48+4/D48/G6           0.2399/0.2384    ratio 1.005
+f32 8192 budget 4      rust-made D48+4/D48/G6           0.2389/0.2402    C-made D48+4/D48/G6           0.2387/0.2393    ratio 1.001
+f32 16384              rust-made D48+2/D48/G6           1.6885/1.6768    C-made D48+3/D48/G6           1.7122/1.7036    ratio 0.984
+f64 2048               rust-made D48/G6                 0.0184/0.0182    C-made D48/G6                 0.0181/0.0182    ratio 1.006
+f64 4096               rust-made SW+3/D48/G6            0.1187/0.1176    C-made SW+4/D48/G6            0.1193/0.1188    ratio 0.990
+f64 4096 ld 4160       rust-made SW+3/D48/G6            0.1190/0.1196    C-made SW+4/D48/G6            0.1200/0.1211    ratio 0.992
+f64 8192               rust-made D48+3/D48/G6           0.8010/0.8013    C-made D48+4/D48/G6           0.8094/0.8237    ratio 0.990
+f64 8192 budget 4      rust-made D48+3/D48/G6           0.8073/0.8064    C-made D48+4/D48/G6           0.8122/0.8157    ratio 0.993
+f64 16384              rust-made SW/D48+3/D48/G6        5.9558/5.7642    C-made SW/D48+4/D48/G6        5.7884/5.8286    ratio 0.996

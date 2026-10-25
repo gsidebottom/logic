@@ -1,0 +1,20 @@
+# crosscheck: the Rust library against the C library (build/libfmm.a) on test_fmm's inputs and the cache in results/, 2026-10-25 15:49; Apple M4 Pro
+f32 n=1000  ld=1000  budget 0    plan rust G                              c G                              results identical  rel. difference from Accelerate 0.00e+00
+f32 n=2048  ld=2048  budget 0    plan rust G                              c G                              results identical  rel. difference from Accelerate 0.00e+00
+f32 n=3000  ld=3000  budget 0    plan rust D48/G6                         c D48/G6                         results identical  rel. difference from Accelerate 2.80e-06
+f32 n=4096  ld=4096  budget 0    plan rust D48/G6                         c D48/G6                         results identical  rel. difference from Accelerate 3.53e-06
+f32 n=5000  ld=5000  budget 0    plan rust SW+4/D48/G6                    c SW+4/D48/G6                    results identical  rel. difference from Accelerate 6.86e-06
+f32 n=8192  ld=8192  budget 0    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   results identical  rel. difference from Accelerate 5.94e-06
+f32 n=9000  ld=9000  budget 0    plan rust D48+4/D48/G6 padded to 9008    c D48+4/D48/G6 padded to 9008    results identical  rel. difference from Accelerate 5.41e-06
+f32 n=4096  ld=4160  budget 0    plan rust D48/G6                         c D48/G6                         results identical  rel. difference from Accelerate 3.76e-06
+f32 n=8192  ld=8192  budget 4    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   results identical  rel. difference from Accelerate 5.32e-06
+f64 n=1000  ld=1000  budget 0    plan rust G                              c G                              results identical  rel. difference from Accelerate 0.00e+00
+f64 n=2048  ld=2048  budget 0    plan rust D48/G6                         c D48/G6                         results identical  rel. difference from Accelerate 4.25e-15
+f64 n=3000  ld=3000  budget 0    plan rust SW+4/D48/G6                    c SW+4/D48/G6                    results identical  rel. difference from Accelerate 9.31e-15
+f64 n=4096  ld=4096  budget 0    plan rust SW+4/D48/G6                    c SW+4/D48/G6                    results identical  rel. difference from Accelerate 1.26e-14
+f64 n=5000  ld=5000  budget 0    plan rust D48+4/D48/G6 padded to 5008    c D48+4/D48/G6 padded to 5008    results identical  rel. difference from Accelerate 8.81e-15
+f64 n=8192  ld=8192  budget 0    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   results identical  rel. difference from Accelerate 9.84e-15
+f64 n=9000  ld=9000  budget 0    plan rust D48+4/D48/G6 padded to 9008    c D48+4/D48/G6 padded to 9008    results identical  rel. difference from Accelerate 1.09e-14
+f64 n=4096  ld=4160  budget 0    plan rust SW+4/D48/G6                    c SW+4/D48/G6                    results identical  rel. difference from Accelerate 9.60e-15
+f64 n=8192  ld=8192  budget 4    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   results identical  rel. difference from Accelerate 1.02e-14
+all identical

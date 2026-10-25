@@ -1,0 +1,27 @@
+# test_fmm with the calibration in results/ 2026-10-25 12:54
+f32 n=1000  ld=1000  budget 0    plan G                  fmm   0.0006 s  Accelerate   0.0006 s  speedup  0.99  rel. difference 0.00e+00  ok
+f32 n=2048  ld=2048  budget 0    plan G                  fmm   0.0057 s  Accelerate   0.0056 s  speedup  0.99  rel. difference 0.00e+00  ok
+f32 n=3000  ld=3000  budget 0    plan G                  fmm   0.0190 s  Accelerate   0.0187 s  speedup  0.99  rel. difference 0.00e+00  ok
+f32 n=4096  ld=4096  budget 0    plan D48/G6             fmm   0.0372 s  Accelerate   0.0418 s  speedup  1.12  rel. difference 7.69e-06  ok
+f32 n=8192  ld=8192  budget 0    plan D48+4/D48/G6       fmm   0.2388 s  Accelerate   0.3318 s  speedup  1.39  rel. difference 4.28e-05  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6             fmm   0.0376 s  Accelerate   0.0400 s  speedup  1.06  rel. difference 1.03e-05  ok
+f32 n=8192  ld=8192  budget 4    plan D48/G3             fmm   0.2576 s  Accelerate   0.3875 s  speedup  1.50  rel. difference 1.17e-05  ok
+f64 n=1000  ld=1000  budget 0    plan G                  fmm   0.0023 s  Accelerate   0.0023 s  speedup  1.01  rel. difference 0.00e+00  ok
+f64 n=2048  ld=2048  budget 0    plan D48/G6             fmm   0.0179 s  Accelerate   0.0210 s  speedup  1.18  rel. difference 1.10e-14  ok
+f64 n=3000  ld=3000  budget 0    plan G                  fmm   0.0625 s  Accelerate   0.0625 s  speedup  1.00  rel. difference 0.00e+00  ok
+f64 n=4096  ld=4096  budget 0    plan D48+4/D48/G6       fmm   0.1211 s  Accelerate   0.1665 s  speedup  1.37  rel. difference 5.64e-14  ok
+f64 n=8192  ld=8192  budget 0    plan D48+3/D48/G6       fmm   0.8102 s  Accelerate   1.3955 s  speedup  1.72  rel. difference 8.25e-14  ok
+f64 n=4096  ld=4160  budget 0    plan D48+4/D48/G6       fmm   0.1213 s  Accelerate   0.1612 s  speedup  1.33  rel. difference 4.82e-14  ok
+f64 n=8192  ld=8192  budget 4    plan D48/G3             fmm   1.0128 s  Accelerate   1.2887 s  speedup  1.27  rel. difference 2.26e-14  ok
+all ok
+# test_fmm without a calibration (empty cache directory): the classical GEMM everywhere
+f32 n=2048  ld=2048  budget 0    plan G                  fmm   0.0061 s  Accelerate   0.0053 s  speedup  0.86  rel. difference 0.00e+00  ok
+f32 n=4096  ld=4096  budget 0    plan G                  fmm   0.0417 s  Accelerate   0.0418 s  speedup  1.00  rel. difference 0.00e+00  ok
+f32 n=4096  ld=4160  budget 0    plan G                  fmm   0.0398 s  Accelerate   0.0399 s  speedup  1.00  rel. difference 0.00e+00  ok
+f32 n=8192  ld=8192  budget 4    plan G                  fmm   0.3862 s  Accelerate   0.3863 s  speedup  1.00  rel. difference 0.00e+00  ok
+f64 n=2048  ld=2048  budget 0    plan G                  fmm   0.0212 s  Accelerate   0.0213 s  speedup  1.00  rel. difference 0.00e+00  ok
+f64 n=4096  ld=4096  budget 0    plan G                  fmm   0.1708 s  Accelerate   0.1729 s  speedup  1.01  rel. difference 0.00e+00  ok
+f64 n=4096  ld=4160  budget 0    plan G                  fmm   0.1657 s  Accelerate   0.1584 s  speedup  0.96  rel. difference 0.00e+00  ok
+f64 n=8192  ld=8192  budget 4    plan G                  fmm   1.5094 s  Accelerate   1.3501 s  speedup  0.89  rel. difference 0.00e+00  ok
+all ok
+# done

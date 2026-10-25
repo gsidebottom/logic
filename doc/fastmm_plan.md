@@ -6,7 +6,8 @@ Started 2026-10-24.  Code and results: `matmul/fastmm/` (build with `make`; swee
 `run_auto_pipe.sh`, `run_pipe2.sh`, `run_accuracy.sh`; results in `matmul/fastmm/results/`).
 `bench_fmm -m auto` picks the plan per size and precision from a calibrated cost model
 (`auto:g`: the fastest plan whose error grows at most g-fold over the classical GEMM's);
-`bench_fmm -n N -p` prints the planner's choices.
+`bench_fmm -n N -p` prints the planner's choices.  The library: `fmm.h` (`fmm_sgemm`,
+`fmm_dgemm`, `fmm_calibrate`, `fmm_plan`, `fmm_release`), `build/libfmm.a`.
 
 ## Goal
 
@@ -320,6 +321,33 @@ error.  `auto:g` (or `FMM_MAX_GROWTH=g`) takes the fastest plan with growth at m
 nothing with growth between one level of ours (3.4) and 8 is faster than it.  One level of ours
 keeps a 1.3-1.4x speedup at about a quarter of the deepest plans' error.
 
+Library (`fmm.h`, `fmm.c` + `fmm_impl.h`, `build/libfmm.a`; `test_fmm.c`,
+`results/test_fmm_2026-10-25.txt`).  `fmm_sgemm` / `fmm_dgemm(n, A, lda, B, ldb, C, ldc,
+max_growth)` compute C = A B for row-major n x n matrices with the planner's choice for this
+machine (optionally within an error-growth budget); plans are made once per (n, precision,
+budget) and kept, and the workspace is kept between calls until `fmm_release`.  The calibration
+cache is `FMM_CALIB_DIR`, default `~/Library/Caches/fmm` (bench_fmm keeps `results/`);
+`fmm_calibrate(n, f64)` fills it once per machine.  Where it does not cover n (no calibration,
+or a size that is not a power of two times the calibrated sizes) the classical GEMM runs, so a
+call is always correct and never slower than a few microseconds of planning.  Calls are
+serialized (each uses the whole machine).  The benchmark is now a driver on top of the library
+(`bench_fmm.c` includes `fmm.c`), so both run the same code.  The test, against Accelerate's
+GEMM (median of 3):
+
+| n | f32 plan | speedup | f64 plan | speedup |
+|---|---|---|---|---|
+| 1000, 3000 | G | 0.99 | G | 1.00 |
+| 2048 | G | 0.99 | D48/G6 | 1.18 |
+| 4096 | D48/G6 | 1.12 | D48+4/D48/G6 | 1.37 |
+| 8192 | D48+4/D48/G6 | 1.39 | D48+3/D48/G6 | 1.72 |
+| 4096 in ld 4160 | D48/G6 | 1.06 | D48+4/D48/G6 | 1.33 |
+| 8192, budget 4 | D48/G3 | 1.50 | D48/G3 | 1.27 |
+
+All results agree with Accelerate to rounding level (f32 1e-5, f64 1e-13 relative); with an
+empty cache every call runs the classical GEMM.  Limits: square matrices, C = A B (no alpha,
+beta or transposes), sizes that are not powers of two times the calibrated sizes fall back to
+classical (padding would cover them).
+
 Engineering lessons (each worth a large factor, each easy to miss):
 
 - The compiler did not vectorize the 64-stream fused loops (it gave up on overlap checks);
@@ -384,8 +412,9 @@ Which operations matter depends on the implementation:
    GPU (Metal Performance Shaders) and NVIDIA tensor cores; bf16/fp16, where error growth
    matters (we measured about 2x error per level: f32 relative error 5e-6 one level, 1.6e-5
    for our 4x4 level, 3.7e-5 three levels at n = 16384).
-7. **A library entry point.**  `fmm_gemm(n, A, B, C)` running the planner's choice from the
-   cached calibration, with the correctness check against classical kept as a test.
+7. **A library entry point** (done 2026-10-25): `fmm.h`, `libfmm.a`, tested against
+   Accelerate.  Next for it: rectangular shapes, alpha / beta and transposes, padding for
+   sizes the calibration does not cover.
 
 ## Milestones
 

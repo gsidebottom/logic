@@ -424,6 +424,56 @@ close it, and the passes are about 10% of the run time anyway.  Accuracy is iden
 construction (same operations in the same order; Rust contracts nothing into fused
 multiply-adds).
 
+Accuracy measures compared (2026-10-25; `growth.py`, `results/accuracy_exact_2026-10-25.txt`).
+Dumas, Pernet and Sedoglavic (arXiv:2603.18699v3; Table 1 of that paper is our D48, PLinOpt's
+4x4x4_48_accurate) measure accuracy in two ways.  The first is a worst-case bound from the
+[L; R; P] matrices alone: the (p, q)-growth factor
+gamma_{p,q} = || ( sum_i ||L_i||_{q*} ||R_i||_{q*} |P_ji| )_j ||_p.  The forward error after l
+levels is at most O(gamma^l) ||A||_q ||B||_q u; they favour p = inf, q = 2.  The second is the
+max-norm error against the exact product on normal inputs at n = 32-512.
+
+Our measure grew out of the harness's correctness check: the max-norm difference from
+Accelerate's classical product in the same precision, relative to max |C|, on uniform inputs.
+The accuracy budget fitted a factor per level to it.  `growth.py` computes the growth factors from
+the straight-line programs our kernels are generated from, checks each scheme against the matrix
+multiplication tensor first, and reproduces the paper's Table 2 exactly for Winograd (our SW: 18 /
+8 / 31.241 / 14 in (inf,inf) / (inf,2) / (2,inf) / (2,2)), Strassen, DPS25 rational (288 / 38.16
+/ 1032 / 139.9) and Table 1 accurate (148 / 25.46 / 514.9 / 91.21).  Our 201-operation point,
+not in the paper, is worst in every norm (399 / 75.85 / 1072 / 225.9; exponent log4 gamma_{inf,2}
+3.12 against 2.34).
+
+In f32 against an f64 product of the same inputs (effectively exact; bench_fmm `FMM_EXACT=1`;
+`FMM_NORMAL=1` for normal inputs), the error as a multiple of the classical f32 GEMM's own, at 8192:
+
+| scheme | gamma_{inf,2} per 4x | 1 level | 2 levels | 3 levels |
+|---|---|---|---|---|
+| Table 1 accurate | 25.5 | 0.89 / 0.82 | 0.97 / 0.94 | 1.42 / 1.41 |
+| DPS25 rational | 38.2 | 1.02 / 0.92 | 1.51 / 1.53 | 2.93 / 2.92 |
+| our 201 | 75.9 | 2.47 / 2.72 | 9.09 / 7.97 | 34.5 / 32.2 |
+| Winograd, two binary levels per 4x | 64 | 2.91 / 2.90 | 9.59 / 8.84 | |
+
+The table shows uniform / normal inputs.  At 4096 the picture is the same.  Within each scheme
+the classical and Winograd rows are identical across the three builds.
+
+- The ranking is the paper's gamma_{inf,2} ranking, as their Figure 1 found.
+- Once the leaves are small, the growth per level tracks gamma_{inf,2} / k^2 to within a factor
+  0.76-0.94: 1.47-1.50 measured against 1.59 predicted for Table 1, 1.92-1.93 against 2.39 for
+  DPS25, 3.8-4.0 against 4.7 for ours, and 3.1-3.3 against 4.0 for Winograd.  The divisor k^2
+  appears because each level splits A and B into k^2 blocks of 1/k^2 of the squared 2-norm.
+- On the first levels the leaf GEMM's own error dominates.  One or two levels of Table 1's
+  scheme are as accurate as the classical GEMM, or more so (0.82-1.11), because its products are
+  4x shorter dot products.
+
+Two consequences:
+- Our calibration's measure, the difference from the classical product, includes the classical
+  GEMM's own error.  It is right for schemes much worse than classical (ours: 8.3e-6 against
+  8.4e-6 exact), but overstates accurate ones by 1.1-1.4x (Table 1 at 8192: 5.14e-6 against
+  4.12e-6 for one level, 6.38e-6 against 4.47e-6 for two).  That is the safe side for a
+  budget, but too blunt to rank accurate schemes.  In f64 there is no exact reference yet.
+- A more accurate scheme pays only at depth (three or more levels, small leaves) or in low
+  precision.  At the library's one or two levels in f32, Table 1's scheme is already at
+  classical accuracy.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

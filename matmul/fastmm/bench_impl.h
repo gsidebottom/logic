@@ -201,6 +201,19 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
         s ^= s << 13; s ^= s >> 7; s ^= s << 17;
         B[i] = (T)((double)(s >> 11) / 9007199254740992.0 * 2 - 1);
     }
+    /* FMM_NORMAL=1: standard normal inputs instead (Box-Muller on the same stream), as in the
+     * experiments of Dumas, Pernet and Sedoglavic (arXiv:2603.18699, Figure 1) */
+    const char *nrm = getenv("FMM_NORMAL");
+    if (nrm && atoi(nrm))
+        for (size_t i = 0; i < nn; i++)
+            for (int w = 0; w < 2; w++) {
+                s ^= s << 13; s ^= s >> 7; s ^= s << 17;
+                double u1 = ((double)(s >> 11) + 1) / 9007199254740993.0;
+                s ^= s << 13; s ^= s >> 7; s ^= s << 17;
+                double u2 = (double)(s >> 11) / 9007199254740992.0;
+                double z = sqrt(-2 * log(u1)) * cos(2 * M_PI * u2);
+                if (w == 0) A[i] = (T)z; else B[i] = (T)z;
+            }
     /* the methods: plans (named, plan=..., auto) or the op-by-op program; the calibration is
      * measured for auto and otherwise read from the cache, if there is one, for predictions */
     calib_t *cal = calloc(1, sizeof(calib_t));

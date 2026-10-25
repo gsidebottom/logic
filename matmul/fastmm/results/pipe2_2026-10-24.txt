@@ -1,0 +1,16 @@
+# bench_fmm two-level pipelines 2026-10-24 23:29; Apple M4 Pro
+plan=D48+3/D48/G6 n=8192   f64  min    0.800 s  med    0.805 s   1366.2 GFLOP/s(2n^3)  speedup 0.000  relerr 7.29e-14  split L 0.019 R 0.019 gemm 0.751 P 0.016  plan D48+3/D48/G6  pred 0.799 s (-0.8%)
+plan=SW/D48+3/D48/G6 n=8192   f64  min    0.931 s  med    0.934 s   1177.1 GFLOP/s(2n^3)  speedup 0.000  relerr 1.38e-13  split L 0.043 R 0.043 gemm 0.816 P 0.035  plan SW/D48+3/D48/G6  pred 0.923 s (-1.2%)
+plan=SW+/D48+3/D48/G6 n=8192   f64  min    0.951 s  med    0.957 s   1148.6 GFLOP/s(2n^3)  speedup 0.000  relerr 1.38e-13  split L 0.011 R 0.011 gemm 0.930 P 0.009  plan SW+/D48+3/D48/G6
+plan=D48+3/D48/G6 n=16384  f32  min    1.672 s  med    1.678 s   5241.0 GFLOP/s(2n^3)  speedup 0.000  relerr 5.86e-05  split L 0.038 R 0.038 gemm 1.571 P 0.032  plan D48+3/D48/G6  pred 1.685 s (+0.4%)
+plan=SW/D48+3/D48/G6 n=16384  f32  min    1.874 s  med    1.886 s   4663.4 GFLOP/s(2n^3)  speedup 0.000  relerr 1.08e-04  split L 0.086 R 0.085 gemm 1.645 P 0.070  plan SW/D48+3/D48/G6  pred 1.890 s (+0.2%)
+plan=SW+/D48+3/D48/G6 n=16384  f32  min    1.911 s  med    1.928 s   4561.2 GFLOP/s(2n^3)  speedup 0.000  relerr 1.08e-04  split L 0.021 R 0.021 gemm 1.866 P 0.018  plan SW+/D48+3/D48/G6
+plan=SW/D48+4/D48/G6 n=16384  f32  min    1.708 s  med    1.711 s   5141.0 GFLOP/s(2n^3)  speedup 0.000  relerr 1.08e-04  split L 0.085 R 0.085 gemm 1.471 P 0.070  plan SW/D48+4/D48/G6  pred 1.694 s (-1.0%)
+plan=SW+/D48+4/D48/G6 n=16384  f32  min    1.706 s  med    1.713 s   5135.5 GFLOP/s(2n^3)  speedup 0.000  relerr 1.08e-04  split L 0.021 R 0.021 gemm 1.655 P 0.018  plan SW+/D48+4/D48/G6
+plan=SW/D48+3/D48/G6 n=16384  f64  min    5.734 s  med    5.742 s   1532.0 GFLOP/s(2n^3)  speedup 0.000  relerr 1.98e-13  split L 0.175 R 0.174 gemm 5.252 P 0.147  plan SW/D48+3/D48/G6  pred 5.721 s (-0.4%)
+plan=SW+/D48+3/D48/G6 n=16384  f64  min    5.631 s  med    5.649 s   1557.0 GFLOP/s(2n^3)  speedup 0.000  relerr 1.98e-13  split L 0.043 R 0.043 gemm 5.527 P 0.036  plan SW+/D48+3/D48/G6
+plan=SW/D48+4/D48/G6 n=16384  f64  min    5.726 s  med    5.727 s   1536.0 GFLOP/s(2n^3)  speedup 0.000  relerr 1.98e-13  split L 0.174 R 0.173 gemm 5.236 P 0.146  plan SW/D48+4/D48/G6  pred 5.755 s (+0.5%)
+plan=SW+/D48+4/D48/G6 n=16384  f64  min    5.581 s  med    5.594 s   1572.3 GFLOP/s(2n^3)  speedup 0.000  relerr 1.98e-13  split L 0.042 R 0.043 gemm 5.472 P 0.036  plan SW+/D48+4/D48/G6
+plan=D48/D48+4/D48/G6 n=16384  f64  min    5.995 s  med    6.007 s   1464.2 GFLOP/s(2n^3)  speedup 0.000  relerr 4.11e-13  split L 0.294 R 0.294 gemm 5.182 P 0.240  plan D48/D48+4/D48/G6  pred 5.967 s (-0.7%)
+plan=D48+/D48+4/D48/G6 n=16384  f64  min    5.925 s  med    5.936 s   1481.8 GFLOP/s(2n^3)  speedup 0.000  relerr 4.11e-13  split L 0.077 R 0.076 gemm 5.718 P 0.062  plan D48+/D48+4/D48/G6
+# done 23:34

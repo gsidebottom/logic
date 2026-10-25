@@ -113,8 +113,49 @@ typedef struct {
     T *S[2][64], *Tt[2][64], *M[2][64];
 } FN(pipe_t);
 
+/* background passes: up to three passes in row chunks, which the pass threads of a pipeline run
+ * when their own passes are done while the GEMMs of the step still run; the rest is drained
+ * after the pipeline */
+typedef struct {
+    int n, nch;
+    FN(kern_t) k[3];
+    size_t mb[3], ldi[3], ldo[3];
+    const T *in[3][64];
+    T *out[3][64];
+    atomic_int next;
+} FN(bg_t);
+
+static void FN(bg_add)(FN(bg_t) *bg, FN(kern_t) k, size_t mb, size_t ldi, size_t ldo, const T *const *in, int nin,
+                       T *const *out, int nout) {
+    int p = bg->n++;
+    bg->k[p] = k;
+    bg->mb[p] = mb;
+    bg->ldi[p] = ldi;
+    bg->ldo[p] = ldo;
+    for (int i = 0; i < nin; i++) bg->in[p][i] = in[i];
+    for (int i = 0; i < nout; i++) bg->out[p][i] = out[i];
+}
+
+/* run the next background chunk; 0 when none is left */
+static int FN(bg_chunk)(FN(bg_t) *bg) {
+    int t = atomic_fetch_add(&bg->next, 1);
+    if (t >= bg->n * bg->nch) return 0;
+    int p = t / bg->nch, c = t % bg->nch;
+    size_t step = (bg->mb[p] + bg->nch - 1) / bg->nch, r0 = (size_t)c * step,
+           r1 = r0 + step < bg->mb[p] ? r0 + step : bg->mb[p];
+    if (r0 < r1) bg->k[p](bg->mb[p], bg->ldi[p], bg->ldo[p], bg->in[p], bg->out[p], r0, r1);
+    return 1;
+}
+
+static void FN(bg_drain)(FN(bg_t) *bg) {
+    dispatch_apply(16, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t i) {
+        (void)i;
+        while (FN(bg_chunk)(bg)) {}
+    });
+}
+
 static void FN(pipeline)(const int *py, size_t m, int r, T *const *SX, T *const *TX, T *const *MX, T *work,
-                         FN(split_t) *sp, int w) {
+                         FN(split_t) *sp, int w, FN(bg_t) *bg) {
     int ly = PLV(py[0]), gy = lv_grid(ly), ry = lv_rank(ly), k = PST(py[1]);
     size_t my = m / gy, bs = my * my + fmm_pad(), set = (size_t)3 * ry * bs;
     FN(kern_t) ky[3];
@@ -147,6 +188,8 @@ static void FN(pipeline)(const int *py, size_t m, int r, T *const *SX, T *const 
         const T *const *ins = (const T *const *)in_s, *const *int_ = (const T *const *)in_t;
         T *const *outc = out_c;
         int si = qi & 1, sg = q & 1, so = qo & 1;
+        atomic_int gemm_active = gq ? k : 0;
+        atomic_int *pga = &gemm_active;
         dispatch_apply((size_t)(k + w), dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t id) {
             if ((int)id < k) {
                 if (!gq) return;
@@ -155,6 +198,7 @@ static void FN(pipeline)(const int *py, size_t m, int r, T *const *SX, T *const 
                 for (int j; (j = atomic_fetch_add(png, 1)) < ry;)
                     FN(gemm)(my, P->S[sg][j], my, P->Tt[sg][j], my, P->M[sg][j], my);
                 BLASSetThreading(old);
+                atomic_fetch_sub(pga, 1);
             } else {
                 for (int t; (t = atomic_fetch_add(pnp, 1)) < ntask;) {
                     int pass = have_out ? (t < nch ? 2 : (t < 2 * nch ? 0 : 1)) : (t < nch ? 0 : 1);
@@ -164,10 +208,63 @@ static void FN(pipeline)(const int *py, size_t m, int r, T *const *SX, T *const 
                     else if (pass == 1) kR(my, m, my, int_, P->Tt[si], r0, r1);
                     else kP(my, my, m, (const T *const *)P->M[so], outc, r0, r1);
                 }
+                if (bg)                                 /* the level above's passes, while GEMMs run */
+                    while (atomic_load(pga) > 0 && FN(bg_chunk)(bg)) {}
             }
         });
     }
     if (sp) sp->tG += now() - t0;   /* the pipeline: GEMMs with the passes below hidden in them */
+}
+
+/* the r products of a level, each a pipelined level Z (pz[0]) over Y (pz[1]) and GEMM streams
+ * (pz[2]): Z's own passes run in the background of the neighbouring products' pipelines.  While
+ * product i's pipeline runs, its pass threads, when free, write product i - 1's result (Z's P
+ * pass) and the factors of product i + 1 (Z's L and R passes); what is left runs on all cores
+ * before product i + 1.  Z's scratch is double-buffered (sets i % 2), the pipelines' shared. */
+static void FN(pipeline2)(const int *pz, size_t m, int r, T *const *SX, T *const *TX, T *const *MX, T *work,
+                          FN(split_t) *sp) {
+    int lz = PLV(pz[0]), gz = lv_grid(lz), rz = lv_rank(lz);
+    int w = PPW(pz[0]) ? PPW(pz[0]) : fmm_pass_threads();
+    size_t mz = m / gz, bs = mz * mz + fmm_pad(), set = (size_t)3 * rz * bs;
+    FN(kern_t) kz[3];
+    FN(kernels)(lz, kz);
+    T *SZ[2][64], *TZ[2][64], *MZ[2][64];
+    for (int b = 0; b < 2; b++)
+        for (int j = 0; j < rz; j++) {
+            SZ[b][j] = work + b * set + (size_t)j * bs;
+            TZ[b][j] = work + b * set + (size_t)(rz + j) * bs;
+            MZ[b][j] = work + b * set + (size_t)(2 * rz + j) * bs;
+        }
+    T *below = work + 2 * set;
+#define ZBLK(X, q, b) ((X)[q] + (size_t)((b) / gz) * mz * m + (size_t)((b) % gz) * mz)
+    double t0 = now();
+    const T *ia[16], *ib[16];
+    T *oc[16];
+    for (int b = 0; b < gz * gz; b++) { ia[b] = ZBLK(SX, 0, b); ib[b] = ZBLK(TX, 0, b); }
+    FN(pass)(kz[0], mz, m, mz, ia, SZ[0]);
+    FN(pass)(kz[1], mz, m, mz, ib, TZ[0]);
+    for (int i = 0; i < r; i++) {
+        FN(bg_t) bgv;
+        FN(bg_t) *bg = &bgv;
+        bg->n = 0;
+        bg->nch = 64;
+        atomic_init(&bg->next, 0);
+        if (i >= 1) {
+            for (int b = 0; b < gz * gz; b++) oc[b] = ZBLK(MX, i - 1, b);
+            FN(bg_add)(bg, kz[2], mz, mz, m, (const T *const *)MZ[(i - 1) & 1], rz, oc, gz * gz);
+        }
+        if (i + 1 < r) {
+            for (int b = 0; b < gz * gz; b++) { ia[b] = ZBLK(SX, i + 1, b); ib[b] = ZBLK(TX, i + 1, b); }
+            FN(bg_add)(bg, kz[0], mz, m, mz, ia, gz * gz, SZ[(i + 1) & 1], rz);
+            FN(bg_add)(bg, kz[1], mz, m, mz, ib, gz * gz, TZ[(i + 1) & 1], rz);
+        }
+        FN(pipeline)(pz + 1, mz, rz, SZ[i & 1], TZ[i & 1], MZ[i & 1], below, NULL, w, bg);
+        FN(bg_drain)(bg);
+    }
+    for (int b = 0; b < gz * gz; b++) oc[b] = ZBLK(MX, r - 1, b);
+    FN(pass)(kz[2], mz, mz, m, (const T *const *)MZ[(r - 1) & 1], oc);
+#undef ZBLK
+    if (sp) sp->tG += now() - t0;
 }
 
 /* C = A B at size n by a plan (plan[0] the top level); work holds plan_work(plan, n) elements.
@@ -215,8 +312,11 @@ static void FN(exec)(const int *plan, size_t n, const T *A, size_t lda, const T 
         sp->tL += t1 - t0;
         sp->tR += t2 - t1;
     }
-    if (PPI(plan[0]) && !lv_leaf(PLV(plan[1])) && PLV(plan[2]) == LV_G && PST(plan[2]) > 0) {
-        FN(pipeline)(plan + 1, m, r, S, Tt, M, deeper, sp, PPW(plan[0]) ? PPW(plan[0]) : fmm_pass_threads());
+    if (PPI(plan[0]) && !lv_leaf(PLV(plan[1])) && PPI(plan[1]) && !lv_leaf(PLV(plan[2])) && PLV(plan[3]) == LV_G &&
+        PST(plan[3]) > 0) {
+        FN(pipeline2)(plan + 1, m, r, S, Tt, M, deeper, sp);
+    } else if (PPI(plan[0]) && !lv_leaf(PLV(plan[1])) && PLV(plan[2]) == LV_G && PST(plan[2]) > 0) {
+        FN(pipeline)(plan + 1, m, r, S, Tt, M, deeper, sp, PPW(plan[0]) ? PPW(plan[0]) : fmm_pass_threads(), NULL);
     } else if (PLV(plan[1]) == LV_G && PNE(plan[1]) > 0) {
         double t = now();
         FN(gemm_hybrid)(r, m, S, Tt, M, PST(plan[1]), PNE(plan[1]), fmm_neon_threads());
@@ -376,11 +476,11 @@ static void FN(time_pipe)(int ly, size_t my, int k, int p, const T *A, const T *
     while (cnt < 5 && tot < 2.0 && !(cnt >= 3 && tot >= 0.3)) {
         evict();
         double t = now();
-        FN(pipeline)(py, mx, PIPE_Q1, SX, TX, MX, work, NULL, p);
+        FN(pipeline)(py, mx, PIPE_Q1, SX, TX, MX, work, NULL, p, NULL);
         t1[cnt] = now() - t;
         evict();
         t = now();
-        FN(pipeline)(py, mx, PIPE_Q2, SX, TX, MX, work, NULL, p);
+        FN(pipeline)(py, mx, PIPE_Q2, SX, TX, MX, work, NULL, p, NULL);
         t2[cnt] = now() - t;
         tot += t1[cnt] + t2[cnt];
         cnt++;

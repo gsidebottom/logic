@@ -3,7 +3,7 @@
 Started 2026-10-24.  Code and results: `matmul/fastmm/` (build with `make`; sweeps
 `run_bench.sh`, `run_blocked.sh`, `run_hybrid.sh`, `run_auto.sh`, `run_probes.sh`,
 `run_streams.sh`, `run_auto_streams.sh`, `run_neon.sh`, `run_neon2.sh`, `run_pipe.sh`,
-`run_auto_pipe.sh`; results in `matmul/fastmm/results/`).  `bench_fmm -m auto` picks the plan per size and precision from a
+`run_auto_pipe.sh`, `run_pipe2.sh`; results in `matmul/fastmm/results/`).  `bench_fmm -m auto` picks the plan per size and precision from a
 calibrated cost model; `bench_fmm -n N -p` prints the planner's choices.
 
 ## Goal
@@ -260,6 +260,31 @@ f64: 10.7-11.5 s), so read the speedups as +-5%.  Against the start of the day (
 of ours, 1.34x at 8192 f32 and 1.28x at 16384 f64 over the best classical variant) the
 whole-machine plans reach 1.42x and 1.95-2.01x (`results/auto_pipe_2026-10-24_p24.txt`: 2.01x).
 
+The top levels' passes (`results/pipe2_2026-10-24.txt`).  Pipelining hides only the passes of
+the level just above the GEMMs; the rest stays sequential: 6-12% of auto's two-level plans
+(the top level's first L/R pass and last P pass) and 8% of SW/D48+3/D48/G6 at 16384 f64 (the top
+SW passes and the seven middle D48 levels' own passes).  In a two-level plan nothing runs beside
+the top passes: the first sub-problem needs all of S and T, and the P pass needs every product,
+so hiding them means splitting each pass into output groups that re-read their inputs (estimated
+1-2% net; not built).  In a three-level plan the middle level's passes can run in the
+background of the neighbouring middle sub-problems' pipelines (written X+/Z+p/Y/Gk: the pass
+threads take chunks of sub-problem i - 1's P pass and i + 1's L and R passes when their own are
+done and GEMMs still run; the middle scratch double-buffered):
+
+| n | prec | plan | one-level pipeline | two-level |
+|---|---|---|---|---|
+| 16384 | f64 | SW/D48+4/D48/G6 | 5.727 | 5.594 (-2.3%) |
+| 16384 | f64 | SW/D48+3/D48/G6 | 5.742 | 5.649 (-1.6%) |
+| 16384 | f64 | D48/D48+4/D48/G6 | 6.007 | 5.936 (-1.2%) |
+| 16384 | f32 | SW/D48+4/D48/G6 | 1.711 | 1.713 |
+| 16384 | f32 | SW/D48+3/D48/G6 | 1.886 | 1.928 (+2.2%) |
+| 8192 | f64 | SW/D48+3/D48/G6 | 0.934 | 0.957 (+2.5%) |
+
+A 2% gain at the one point where a three-level plan wins (SW+/D48+4/D48/G6 at 16384 f64, 5.594
+s, the fastest plan measured there); where the pipeline below has little idle pass time the
+background passes only add interference.  Not in the planner (it would need two-level pipelines
+calibrated, about a minute per precision, for 2% at one size); the plan syntax runs it.
+
 Engineering lessons (each worth a large factor, each easy to miss):
 
 - The compiler did not vectorize the 64-stream fused loops (it gave up on overlap checks);
@@ -298,9 +323,11 @@ Which operations matter depends on the implementation:
    2026-10-24): 6-14% off the best plans.  NEON products on the idle cores (tried 2026-10-24):
    at most 1-3%, fragile, not adopted.  Pipelined passes (done 2026-10-24): 8-22% off the
    deep plans; the planner chooses streams, pipelines and pass threads (2, 3, 4) per plan.
-   Open: overlap the top levels' passes too (only the level just above the GEMMs is
-   pipelined); an accuracy budget for the planner (error grows with depth: f64 2.0e-13 at
-   16384 for SW/D48/D48 against 1.0e-13 for D48/D48).
+   The top levels' passes (tried 2026-10-24): two-level pipelines for three-level plans, -2.3%
+   at 16384 f64, neutral or worse elsewhere, not in the planner; the top passes of two-level
+   plans would need output groups that re-read their inputs (est. 1-2%).  Open: an accuracy
+   budget for the planner (error grows with depth: f64 2.0e-13 at 16384 for SW/D48/D48 against
+   1.0e-13 for D48/D48).
 4. **Cheaper passes.**
    - Keep the temporaries for one product in cache instead of materializing all 48.
    - Accumulate each product straight into its C blocks (no stored M_k), trading the P pass

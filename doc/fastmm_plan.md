@@ -502,7 +502,13 @@ optima.
   left, so there are 216 distinct points per role.  The 16 sqrt2 point with gamma_{inf,inf} 132
   is the unique best in both factors.
 
-The new scheme (`matmul/dps48/gamma/g16s2_{L,R,P}.sms`) is exact over Z[1/2], checked exactly
+The scheme at that point (`matmul/dps48/gamma/g16s2_{L,R,P}.sms`) turned out not to be new.  It is
+PLinOpt's `4x4x4_48_accurate_262` (DPS's 262-operation accurate variant, published in PLinOpt on
+2026-10-13 and cited for its operation count in arXiv:2609.12027 v2).  `equiv262.py` maps one onto
+the other through the input-swapping symmetry (X, Y, Z) -> (Y^T, X^T, Z^T), signed permutations of
+U, V, W, and a relabelling and rescaling of the products.  We rediscovered it; to our knowledge its
+growth factors and measured accuracy have not been reported, and the paper's Table 1 is still
+presented as the accurate variant.  It is exact over Z[1/2], checked exactly
 and by PLinOpt's SLPchecker; PLinOpt's programs `slp/g16s2o_*` take 445 operations: 339 additions
 and 106 multiplications by 2, 1/2 or 1/4.  Against Table 1: gamma_{inf,2} 22.627 against
 25.456, gamma_{inf,inf} 132 against 148, gamma_{2,2} 90.51 against 91.21, and gamma_2 154.51 for

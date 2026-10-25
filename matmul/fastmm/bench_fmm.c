@@ -14,8 +14,9 @@
  *   dps48x2    two levels of our 48-scheme (2,304 GEMMs of n/16)
  *   plan=...   any plan: fused levels from the top (SW, D48, SW2) ending in a leaf (G = one
  *              GEMM, B2/B4/B8 = classical blocked), e.g. plan=SW/D48/G
- *   auto       the plan the calibrated cost model picks for n; auto:g the fastest plan whose
- *              error grows at most g-fold over the classical GEMM's (FMM_MAX_GROWTH=g for auto)
+ *   auto       the plan the calibrated cost model picks for n (any n: padded to a size the
+ *              plan's levels divide when that pays); auto:g the fastest plan whose error grows
+ *              at most g-fold over the classical GEMM's (FMM_MAX_GROWTH=g for auto)
  *   M@k        method M with the GEMMs of its lowest level as k single-threaded streams taking
  *              products in turn (leaf Gk in a plan; G alone = Accelerate's own threading, one
  *              product at a time)
@@ -54,6 +55,7 @@ static int max_temp(void) {
 typedef struct {
     const char *name;
     int plan[PLAN_MAX], is_plan;
+    size_t npad;                    /* the size the plan runs at (n, or padded) */
     double pred, perr;
 } meth_t;
 
@@ -87,8 +89,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "-m")) methods = argv[++i];
         else if (!strcmp(argv[i], "-r")) reps = atoi(argv[++i]);
     }
-    if (n % 32 || reps < 1 || reps > 32) {
-        fprintf(stderr, "n must be a multiple of 32, reps 1..32\n");
+    if (n < 32 || reps < 1 || reps > 32) {
+        fprintf(stderr, "n must be at least 32, reps 1..32\n");
         return 1;
     }
     if (table == 2) {

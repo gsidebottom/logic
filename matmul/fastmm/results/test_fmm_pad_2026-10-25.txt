@@ -1,0 +1,21 @@
+# test_fmm with the calibration in results/ (padding for sizes that are not powers of two) 2026-10-25 13:12
+f32 n=1000  ld=1000  budget 0    plan G                              fmm   0.0010 s  Accelerate   0.0010 s  speedup  0.98  rel. difference 0.00e+00  ok
+f32 n=2048  ld=2048  budget 0    plan G                              fmm   0.0058 s  Accelerate   0.0055 s  speedup  0.95  rel. difference 0.00e+00  ok
+f32 n=3000  ld=3000  budget 0    plan D48/G6                         fmm   0.0152 s  Accelerate   0.0168 s  speedup  1.10  rel. difference 6.82e-06  ok
+f32 n=4096  ld=4096  budget 0    plan D48/G6                         fmm   0.0371 s  Accelerate   0.0423 s  speedup  1.14  rel. difference 7.69e-06  ok
+f32 n=5000  ld=5000  budget 0    plan SW+4/D48/G6                    fmm   0.0657 s  Accelerate   0.0885 s  speedup  1.35  rel. difference 1.81e-05  ok
+f32 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.2386 s  Accelerate   0.3334 s  speedup  1.40  rel. difference 3.91e-05  ok
+f32 n=9000  ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   0.3250 s  Accelerate   0.4494 s  speedup  1.38  rel. difference 3.75e-05  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6                         fmm   0.0373 s  Accelerate   0.0401 s  speedup  1.07  rel. difference 8.62e-06  ok
+f32 n=8192  ld=8192  budget 4    plan D48/G3                         fmm   0.2563 s  Accelerate   0.3869 s  speedup  1.51  rel. difference 1.15e-05  ok
+f64 n=1000  ld=1000  budget 0    plan G                              fmm   0.0021 s  Accelerate   0.0022 s  speedup  1.01  rel. difference 0.00e+00  ok
+f64 n=2048  ld=2048  budget 0    plan D48/G6                         fmm   0.0179 s  Accelerate   0.0212 s  speedup  1.18  rel. difference 1.27e-14  ok
+f64 n=3000  ld=3000  budget 0    plan SW+4/D48/G6                    fmm   0.0508 s  Accelerate   0.0630 s  speedup  1.24  rel. difference 2.27e-14  ok
+f64 n=4096  ld=4096  budget 0    plan D48+4/D48/G6                   fmm   0.1214 s  Accelerate   0.1661 s  speedup  1.37  rel. difference 4.66e-14  ok
+f64 n=5000  ld=5000  budget 0    plan D48+4/D48/G6 padded to 5008    fmm   0.2138 s  Accelerate   0.3002 s  speedup  1.40  rel. difference 5.36e-14  ok
+f64 n=8192  ld=8192  budget 0    plan D48+3/D48/G6                   fmm   0.8171 s  Accelerate   1.3216 s  speedup  1.62  rel. difference 7.16e-14  ok
+f64 n=9000  ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   1.0464 s  Accelerate   1.7130 s  speedup  1.64  rel. difference 7.47e-14  ok
+f64 n=4096  ld=4160  budget 0    plan D48+4/D48/G6                   fmm   0.1211 s  Accelerate   0.1628 s  speedup  1.34  rel. difference 5.15e-14  ok
+f64 n=8192  ld=8192  budget 4    plan D48/G3                         fmm   1.0283 s  Accelerate   1.4950 s  speedup  1.45  rel. difference 2.30e-14  ok
+all ok
+# done

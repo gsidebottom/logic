@@ -334,6 +334,37 @@ static void FN(exec)(const int *plan, size_t n, const T *A, size_t lda, const T 
     if (sp) sp->tP += now() - t3;
 }
 
+/* C = A B at size n through a plan at the padded size N >= n (fmm.c, padding): A and B copied
+ * into zeroed N x N matrices, the result's top-left n x n copied to C; work holds 3 N^2 elements
+ * and then plan_work(plan, N) */
+static void FN(exec_padded)(const int *plan, size_t n, size_t N, const T *A, size_t lda, const T *B, size_t ldb,
+                            T *C, size_t ldc, T *work, FN(split_t) *sp) {
+    if (N == n) {
+        FN(exec)(plan, n, A, lda, B, ldb, C, ldc, work, sp);
+        return;
+    }
+    T *Ap = work, *Bp = work + N * N, *Cp = work + 2 * N * N, *rest = work + 3 * N * N;
+    size_t chunks = 64, step = (N + chunks - 1) / chunks;
+    dispatch_apply(chunks, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t ch) {
+        for (size_t i = ch * step; i < (ch + 1) * step && i < N; i++) {
+            T *ra = Ap + i * N, *rb = Bp + i * N;
+            if (i < n) {
+                memcpy(ra, A + i * lda, n * sizeof(T));
+                memset(ra + n, 0, (N - n) * sizeof(T));
+                memcpy(rb, B + i * ldb, n * sizeof(T));
+                memset(rb + n, 0, (N - n) * sizeof(T));
+            } else {
+                memset(ra, 0, N * sizeof(T));
+                memset(rb, 0, N * sizeof(T));
+            }
+        }
+    });
+    FN(exec)(plan, N, Ap, N, Bp, N, Cp, N, rest, sp);
+    dispatch_apply(chunks, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t ch) {
+        for (size_t i = ch * step; i < (ch + 1) * step && i < n; i++) memcpy(C + i * ldc, Cp + i * N, n * sizeof(T));
+    });
+}
+
 /* calibration timing: caches evicted before each run; repeated until 3 runs and 0.3 s, or 2 s,
  * or 15 runs; the median (the lower middle for an even count) */
 static double FN(time_plan)(const int *plan, size_t n, const T *A, const T *B, T *C, T *work) {
@@ -547,9 +578,10 @@ static int FN(calibrate)(calib_t *c, size_t n, const T *A, const T *B, T *C) {
 /* ---- the entry points (fmm.h), this precision ------------------------------------------- */
 static int FN(api_gemm)(size_t n, const T *A, size_t lda, const T *B, size_t ldb, T *C, size_t ldc, double gmax) {
     int plan[PLAN_MAX];
+    size_t N;
     pthread_mutex_lock(&api_lock);
-    api_plan(n, sizeof(T) == 8, gmax, plan, NULL);
-    size_t bytes = plan_work(plan, n) * sizeof(T);
+    api_plan(n, sizeof(T) == 8, gmax, plan, &N, NULL);
+    size_t bytes = ((N != n ? 3 * N * N : 0) + plan_work(plan, N)) * sizeof(T);
     if (bytes > api_ws_bytes) {
         free(api_ws);
         api_ws = NULL;
@@ -561,7 +593,7 @@ static int FN(api_gemm)(size_t n, const T *A, size_t lda, const T *B, size_t ldb
         }
         api_ws_bytes = bytes;
     }
-    FN(exec)(plan, n, A, lda, B, ldb, C, ldc, (T *)api_ws, NULL);
+    FN(exec_padded)(plan, n, N, A, lda, B, ldb, C, ldc, (T *)api_ws, NULL);
     pthread_mutex_unlock(&api_lock);
     return 0;
 }

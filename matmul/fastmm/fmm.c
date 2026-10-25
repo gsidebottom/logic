@@ -279,6 +279,23 @@ static double calib_get(const calib_t *c, int kind, size_t m) {
     return -1;
 }
 
+/* a cost-model entry at any size m: the measured value, else log-log interpolation between the
+ * nearest measured sizes below and above (times go like m^3 for GEMMs and m^2 for passes, so a
+ * straight line in log-log); -1 outside the measured range */
+static double calib_cost(const calib_t *c, int kind, size_t m) {
+    size_t lo = 0, hi = 0;
+    double tlo = -1, thi = -1;
+    for (int i = 0; i < c->n; i++) {
+        if (c->kind[i] != kind) continue;
+        if (c->m[i] == m) return c->t[i];
+        if (c->m[i] < m && c->m[i] > lo) { lo = c->m[i]; tlo = c->t[i]; }
+        if (c->m[i] > m && (hi == 0 || c->m[i] < hi)) { hi = c->m[i]; thi = c->t[i]; }
+    }
+    if (lo == 0 || hi == 0 || tlo <= 0 || thi <= 0) return -1;
+    double x = log((double)m / lo) / log((double)hi / lo);
+    return tlo * pow(thi / tlo, x);
+}
+
 static void calib_put(calib_t *c, int kind, size_t m, double t) {
     for (int i = 0; i < c->n; i++)
         if (c->kind[i] == kind && c->m[i] == m) { c->t[i] = t; return; }
@@ -391,10 +408,10 @@ static double plan_cost_in(const calib_t *c, const int *plan, size_t n, int pare
     int lv = PLV(plan[0]);
     if (lv == LV_G) {
         if (PNE(plan[0])) return -1;    /* NEON products are not calibrated */
-        if (parent < 0) return PST(plan[0]) ? -1 : calib_get(c, LV_G, n);
-        return calib_get(c, kind_gin(parent, PST(plan[0])), n);
+        if (parent < 0) return PST(plan[0]) ? -1 : calib_cost(c, LV_G, n);
+        return calib_cost(c, kind_gin(parent, PST(plan[0])), n);
     }
-    if (lv == LV_B2) return parent < 0 ? calib_get(c, LV_B2, n) : -1;
+    if (lv == LV_B2) return parent < 0 ? calib_cost(c, LV_B2, n) : -1;
     if (lv_leaf(lv)) return -1;
     size_t g = lv_grid(lv), m = n / g;
     if (n % g) return -1;
@@ -403,15 +420,15 @@ static double plan_cost_in(const calib_t *c, const int *plan, size_t n, int pare
         if (lv_leaf(ly) || PLV(lf) != LV_G || PST(lf) == 0 || PNE(lf) || m % lv_grid(ly)) return -1;
         size_t my = m / lv_grid(ly);
         int pw = PPW(plan[0]) ? PPW(plan[0]) : fmm_pass_threads();
-        double px = calib_get(c, lv, m), st = calib_get(c, kind_pipe(ly, PST(lf), pw, 0), my),
-               ov = calib_get(c, kind_pipe(ly, PST(lf), pw, 1), my);
+        double px = calib_cost(c, lv, m), st = calib_cost(c, kind_pipe(ly, PST(lf), pw, 0), my),
+               ov = calib_cost(c, kind_pipe(ly, PST(lf), pw, 1), my);
         /* sub-problems under 1 ms are not pipelined: each step costs tens of microseconds of
          * dispatch and their calibration is noisy (2048 f64: 0.3 ms SW sub-problems were
          * predicted 2% faster than the best plan and ran 10% slower) */
         if (st >= 0 && st < 1e-3) return -1;
         return px < 0 || st < 0 || ov < 0 ? -1 : px + lv_rank(lv) * st + ov;
     }
-    double p = calib_get(c, lv, m), below = plan_cost_in(c, plan + 1, m, lv);
+    double p = calib_cost(c, lv, m), below = plan_cost_in(c, plan + 1, m, lv);
     return p < 0 || below < 0 ? -1 : p + lv_rank(lv) * below;
 }
 
@@ -446,7 +463,7 @@ static double plan_best_in(const calib_t *c, size_t n, int parent, int *plan) {
             size_t g = lv_grid(lv);
             if (n % g || n / g < fmm_minb()) continue;
             int sub[PLAN_MAX] = {0};
-            double below = plan_best_in(c, n / g, lv, sub), p = calib_get(c, lv, n / g);
+            double below = plan_best_in(c, n / g, lv, sub), p = calib_cost(c, lv, n / g);
             memcpy(cand + 1, sub, (PLAN_MAX - 1) * sizeof(int));
             t = below < 0 || p < 0 ? -1 : p + lv_rank(lv) * below;
         }
@@ -573,6 +590,42 @@ static double plan_best_budget(const calib_t *c, size_t n, double gmax, int *pla
     return -1;
 }
 
+/* ---- padding ------------------------------------------------------------------------------ */
+/* A plan runs at a size its levels divide; any other n is padded: A and B copied into zeroed
+ * N x N matrices, the plan run at N, the top-left n x n of the result copied to C.  The block
+ * sizes need no alignment (Accelerate's GEMM runs within 5% at sizes off multiples of 16, 32,
+ * 64), so N = n rounded up to a multiple of 8 * 2^j suffices, j = 0..7 covering plans of up to
+ * three 4x4 levels plus one 2x2; the copies cost about 6 N^2 elements of memory traffic. */
+#define PAD_BW 80e9     /* bytes per second of the padding copies */
+
+static double pad_cost(size_t n, size_t N, int f64) {
+    return N == n ? 0 : 6.0 * (double)N * (double)N * (f64 ? 8 : 4) / PAD_BW;
+}
+
+/* the cheapest plan for n over the padded sizes N >= n, with the padding priced; *npad = N */
+static double plan_best_padded(const calib_t *c, size_t n, double gmax, int f64, int *plan, size_t *npad) {
+    double best = -1;
+    size_t tried[9];
+    int nt = 0;
+    for (int j = -1; j < 8; j++) {
+        size_t a = (size_t)8 << (j < 0 ? 0 : j), N = j < 0 ? n : (n + a - 1) / a * a;
+        int seen = 0;
+        for (int i = 0; i < nt; i++) seen |= tried[i] == N;
+        if (seen) continue;
+        tried[nt++] = N;
+        int p[PLAN_MAX];
+        double t = plan_best_budget(c, N, gmax, p);
+        if (t < 0) continue;
+        t += pad_cost(n, N, f64);
+        if (best < 0 || t < best) {
+            best = t;
+            memcpy(plan, p, sizeof p);
+            *npad = N;
+        }
+    }
+    return best;
+}
+
 /* ---- the entry points (fmm.h) ---------------------------------------------------------- */
 static pthread_mutex_t api_lock = PTHREAD_MUTEX_INITIALIZER;
 static calib_t *api_cal[2];
@@ -580,7 +633,7 @@ static int api_loaded[2];
 static void *api_ws;
 static size_t api_ws_bytes;
 typedef struct {
-    size_t n;
+    size_t n, npad;
     int f64, plan[PLAN_MAX];
     double gmax, t;
 } api_entry;
@@ -596,31 +649,37 @@ static calib_t *api_calib(int f64) {
     return api_cal[f64];
 }
 
-/* the plan for (n, precision, budget): from the plans already made, else the planner (the
- * classical GEMM where the calibration does not cover n); t: its predicted time, -1 if none */
-static void api_plan(size_t n, int f64, double gmax, int *plan, double *t) {
+/* the plan for (n, precision, budget) and the size N >= n it runs at (padded if N > n): from
+ * the plans already made, else the planner (the classical GEMM at n where the calibration does
+ * not cover n); t: its predicted time, -1 if none */
+static void api_plan(size_t n, int f64, double gmax, int *plan, size_t *npad, double *t) {
     for (int i = 0; i < api_nplans; i++)
         if (api_plans[i].n == n && api_plans[i].f64 == f64 && api_plans[i].gmax == gmax) {
             memcpy(plan, api_plans[i].plan, sizeof api_plans[i].plan);
+            *npad = api_plans[i].npad;
             if (t) *t = api_plans[i].t;
             return;
         }
     calib_t *c = api_calib(f64);
     int p[PLAN_MAX] = {LV_G};
-    double tt = c ? plan_best_budget(c, n, gmax, p) : -1;
+    size_t N = n;
+    double tt = c ? plan_best_padded(c, n, gmax, f64, p, &N) : -1;
     if (tt < 0) {
         memset(p, 0, sizeof p);
         p[0] = LV_G;
+        N = n;
     }
     api_entry *e = &api_plans[api_next];
     api_next = (api_next + 1) % 64;
     if (api_nplans < 64) api_nplans++;
     e->n = n;
+    e->npad = N;
     e->f64 = f64;
     e->gmax = gmax;
     e->t = tt;
     memcpy(e->plan, p, sizeof p);
     memcpy(plan, p, sizeof p);
+    *npad = N;
     if (t) *t = tt;
 }
 
@@ -656,12 +715,14 @@ int fmm_dgemm(size_t n, const double *A, size_t lda, const double *B, size_t ldb
 int fmm_calibrate(size_t n, int f64) { return f64 ? api_calibrated(n) : api_calibratef(n); }
 
 const char *fmm_plan(size_t n, int f64, double max_growth, double *predicted) {
-    static char buf[128];
+    static char buf[160];
     int plan[PLAN_MAX];
+    size_t N;
     double t;
     pthread_mutex_lock(&api_lock);
-    api_plan(n, f64 != 0, max_growth, plan, &t);
+    api_plan(n, f64 != 0, max_growth, plan, &N, &t);
     plan_str(plan, buf, sizeof buf);
+    if (N != n) snprintf(buf + strlen(buf), sizeof buf - strlen(buf), " padded to %zu", N);
     pthread_mutex_unlock(&api_lock);
     if (predicted) *predicted = t;
     return buf;

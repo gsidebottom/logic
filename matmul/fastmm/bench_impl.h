@@ -185,7 +185,7 @@ static void FN(plan_table)(size_t n) {
 
 static void FN(run_method)(const meth_t *q, size_t n, const T *A, const T *B, T *C, T *work, T **temps,
                            FN(split_t) *sp) {
-    if (q->is_plan) FN(exec)(q->plan, n, A, n, B, n, C, n, work, sp);
+    if (q->is_plan) FN(exec_padded)(q->plan, n, q->npad, A, n, B, n, C, n, work, sp);
     else FN(dps48_opbyop)(n, A, B, C, work, temps, sp);
 }
 
@@ -215,32 +215,39 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
         meth_t *q = &ms[nm];
         memset(q, 0, sizeof *q);
         q->name = tok;
+        q->npad = n;
         if (!strncmp(tok, "auto", 4) && (tok[4] == 0 || tok[4] == ':')) {
             double gmax = tok[4] == ':' ? atof(tok + 5) : fmm_max_growth();
-            FN(calibrate)(cal, n, A, B, C);
-            if (plan_best_budget(cal, n, gmax, q->plan) < 0) {
+            size_t ncal = 1;                /* calibrate up to the largest power of two <= n; */
+            while (2 * ncal <= n) ncal *= 2;    /* other sizes interpolate */
+            FN(calibrate)(cal, ncal, A, B, C);
+            q->pred = plan_best_padded(cal, n, gmax, f64, q->plan, &q->npad);
+            if (q->pred < 0) {
                 printf("%s: nothing calibrated for n=%zu\n", tok, n);
                 continue;
             }
             q->is_plan = 1;
             char ps[128];
             plan_str(q->plan, ps, sizeof ps);
-            printf("# %s n=%zu %s: plan %s, predicted %.3f s\n", tok, n, f64 ? "f64" : "f32", ps,
-                   plan_cost(cal, q->plan, n));
+            printf("# %s n=%zu %s: plan %s%s%.0zu, predicted %.3f s\n", tok, n, f64 ? "f64" : "f32", ps,
+                   q->npad != n ? " padded to " : "", q->npad != n ? q->npad : (size_t)0, q->pred);
         } else if (parse_plan(tok, n, q->plan)) {
             q->is_plan = 1;
+            q->pred = plan_cost(cal, q->plan, n);
         } else if (strcmp(tok, "dps48ops") || n % 4) {
             printf("unknown method %s\n", tok);
             continue;
+        } else {
+            q->pred = -1;
         }
-        q->pred = q->is_plan ? plan_cost(cal, q->plan, n) : -1;
         errmod_t e = err_model(cal);
-        q->perr = q->is_plan && e.ok ? plan_err(&e, q->plan, n) : -1;
+        q->perr = q->is_plan && e.ok ? plan_err(&e, q->plan, q->npad) : -1;
         nm++;
     }
     size_t wsz = 1024;
     for (int j = 0; j < nm; j++) {
-        size_t w = ms[j].is_plan ? plan_work(ms[j].plan, n) : (size_t)3 * 48 * (nn / 16);
+        size_t N = ms[j].npad;
+        size_t w = ms[j].is_plan ? (N != n ? 3 * N * N : 0) + plan_work(ms[j].plan, N) : (size_t)3 * 48 * (nn / 16);
         if (w > wsz) wsz = w;
     }
     free(cal);
@@ -300,6 +307,7 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
             char ps[128];
             plan_str(ms[j].plan, ps, sizeof ps);
             printf("  plan %s", ps);
+            if (ms[j].npad != n) printf("@%zu", ms[j].npad);
             if (ms[j].pred > 0) printf("  pred %.3f s (%+.1f%%)", ms[j].pred, 100 * (ms[j].pred / med - 1));
             if (ms[j].perr > 0) printf("  perr %.2e", ms[j].perr);
         }

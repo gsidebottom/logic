@@ -3,7 +3,8 @@
 Started 2026-10-24.  Code and results: `matmul/fastmm/` (build with `make`; sweeps
 `run_bench.sh`, `run_blocked.sh`, `run_hybrid.sh`, `run_auto.sh`, `run_probes.sh`,
 `run_streams.sh`, `run_auto_streams.sh`, `run_neon.sh`, `run_neon2.sh`, `run_pipe.sh`,
-`run_auto_pipe.sh`, `run_pipe2.sh`, `run_accuracy.sh`; results in `matmul/fastmm/results/`).
+`run_auto_pipe.sh`, `run_pipe2.sh`, `run_accuracy.sh`, `run_pad.sh`; results in
+`matmul/fastmm/results/`).
 `bench_fmm -m auto` picks the plan per size and precision from a calibrated cost model
 (`auto:g`: the fastest plan whose error grows at most g-fold over the classical GEMM's);
 `bench_fmm -n N -p` prints the planner's choices.  The library: `fmm.h` (`fmm_sgemm`,
@@ -327,9 +328,9 @@ max_growth)` compute C = A B for row-major n x n matrices with the planner's cho
 machine (optionally within an error-growth budget); plans are made once per (n, precision,
 budget) and kept, and the workspace is kept between calls until `fmm_release`.  The calibration
 cache is `FMM_CALIB_DIR`, default `~/Library/Caches/fmm` (bench_fmm keeps `results/`);
-`fmm_calibrate(n, f64)` fills it once per machine.  Where it does not cover n (no calibration,
-or a size that is not a power of two times the calibrated sizes) the classical GEMM runs, so a
-call is always correct and never slower than a few microseconds of planning.  Calls are
+`fmm_calibrate(n, f64)` fills it once per machine.  Any size inside the calibrated range is
+planned (below), outside it or without a calibration the classical GEMM runs, so a call is
+always correct.  Calls are
 serialized (each uses the whole machine).  The benchmark is now a driver on top of the library
 (`bench_fmm.c` includes `fmm.c`), so both run the same code.  The test, against Accelerate's
 GEMM (median of 3):
@@ -345,8 +346,26 @@ GEMM (median of 3):
 
 All results agree with Accelerate to rounding level (f32 1e-5, f64 1e-13 relative); with an
 empty cache every call runs the classical GEMM.  Limits: square matrices, C = A B (no alpha,
-beta or transposes), sizes that are not powers of two times the calibrated sizes fall back to
-classical (padding would cover them).
+beta or transposes).
+
+Sizes that are not powers of two (`results/pad_2026-10-25.txt`, `test_fmm_pad_2026-10-25.txt`).
+The cost model interpolates its calibration (log-log between the measured powers of two), and a
+plan runs at the smallest size N >= n its levels divide: n rounded up to a multiple of 8 * 2^j,
+A and B copied into zeroed N x N matrices and the top-left n x n copied back (priced at 6 N^2
+elements of traffic); Accelerate's GEMM needs no alignment (within 5% off multiples of 16-64),
+so the padding is at most a few rows.  Against the best classical variant:
+
+| n | f32 plan | speedup | f64 plan | speedup |
+|---|---|---|---|---|
+| 3000 | D48/G6 | 1.08 | SW+4/D48/G6 | 1.26 |
+| 5000 | SW+4/D48/G6 | 1.20 | D48+4/D48/G6 at 5008 | 1.43 |
+| 6000 | SW+4/D48/G6 | 1.29 | D48+4/D48/G6 | 1.54 |
+| 7000 | SW+4/D48/G6 | 1.36 | D48+4/D48/G6 at 7008 | 1.56 |
+| 9000 | D48+4/D48/G6 at 9008 | 1.52 | D48+4/D48/G6 at 9008 | 1.66 |
+| 10000 | D48+4/D48/G6 | 1.66 | D48+4/D48/G3 | 1.72 |
+| 12000 | D48+4/D48/G6 | 1.55 | SW/D48+4/D48/G6 | 1.79 |
+
+Predictions within 5% at most sizes (8-13% pessimistic at 9000-10000 f64), results correct.
 
 Engineering lessons (each worth a large factor, each easy to miss):
 
@@ -413,8 +432,8 @@ Which operations matter depends on the implementation:
    matters (we measured about 2x error per level: f32 relative error 5e-6 one level, 1.6e-5
    for our 4x4 level, 3.7e-5 three levels at n = 16384).
 7. **A library entry point** (done 2026-10-25): `fmm.h`, `libfmm.a`, tested against
-   Accelerate.  Next for it: rectangular shapes, alpha / beta and transposes, padding for
-   sizes the calibration does not cover.
+   Accelerate; any size inside the calibrated range (interpolation and padding, done
+   2026-10-25).  Next for it: rectangular shapes, alpha / beta and transposes.
 
 ## Milestones
 

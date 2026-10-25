@@ -1,6 +1,7 @@
 /* test_fmm.c: the library entry points (fmm.h) against Accelerate's GEMM: the plan used,
  * correctness (max-norm relative difference), time (median of 3 after a warm-up), leading
- * dimensions larger than n, an error budget, and sizes the calibration does not cover.
+ * dimensions larger than n, an error budget, and sizes that are not powers of two (the plan
+ * runs on interpolated calibration, padded when that pays).
  *
  *   FMM_CALIB_DIR=results build/test_fmm [n ...]
  */
@@ -72,7 +73,7 @@ static void run(size_t n, size_t ld, int f64, double g) {
     double rel = err / mx, limit = f64 ? 1e-11 : 1e-3;   /* far above any plan's error, far below a wrong result */
     int ok = rel < limit;
     failures += !ok;
-    printf("%s n=%-5zu ld=%-5zu budget %-4g plan %-18s fmm %8.4f s  Accelerate %8.4f s  speedup %5.2f  "
+    printf("%s n=%-5zu ld=%-5zu budget %-4g plan %-30s fmm %8.4f s  Accelerate %8.4f s  speedup %5.2f  "
            "rel. difference %.2e  %s\n",
            f64 ? "f64" : "f32", n, ld, g, plan, tf[1], tr[1], tr[1] / tf[1], rel, ok ? "ok" : "WRONG");
     fflush(stdout);
@@ -80,8 +81,8 @@ static void run(size_t n, size_t ld, int f64, double g) {
 }
 
 int main(int argc, char **argv) {
-    size_t sizes[16] = {1000, 2048, 3000, 4096, 8192};
-    int ns = 5;
+    size_t sizes[16] = {1000, 2048, 3000, 4096, 5000, 8192, 9000};   /* 3000, 5000, 9000: not powers of two */
+    int ns = 7;
     if (argc > 1) {
         ns = 0;
         for (int i = 1; i < argc && ns < 16; i++) sizes[ns++] = (size_t)atol(argv[i]);

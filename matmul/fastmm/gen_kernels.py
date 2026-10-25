@@ -13,9 +13,12 @@ op-by-op comparison: the program as a list of block operations (one pass per ope
 
 Schemes: sw (Strassen-Winograd <2x2x2:7>, 15 additions), sw2 (its Kronecker square, one
 <4x4x4:49> scheme, 165 additions), dps48 (our <4x4x4:48> at 201 operations, from
-../dps48/cand48/p005_201n_{L,R,P}.slp).
+../dps48/cand48/p005_201n_{L,R,P}.slp).  --dps48 PREFIX takes dps48's fused kernels from
+PREFIX_{L,R,P}.slp instead, in PLinOpt's general syntax (compound expressions such as
+o36:=(x52+x48)/2;), e.g. the original rational scheme at 315 operations,
+../dps48/plinopt/data/4x4x4_48_rational; its op-by-op lists stay the 201-operation program's.
 
-  gen_kernels.py OUT.h [--fma]
+  gen_kernels.py OUT.h [--fma] [--dps48 PREFIX]
 """
 import os
 import re
@@ -186,6 +189,48 @@ def fused(name, text, T, in_ld, out_ld, fma=False):
     return "\n".join(s)
 
 
+def fused_expr(name, text, T):
+    """one streaming loop like fused(), for programs in PLinOpt's general syntax: every line
+    lhs:=expression; is emitted as C, inputs i<k> read at element c, constants cast to T"""
+    ni = no = 0
+    body = []
+    for ln in text.splitlines():
+        ln = ln.strip()
+        if not ln or ln.startswith("#") or ":=" not in ln:
+            continue
+        lhs, expr = ln.rstrip(";").split(":=", 1)
+        for v in re.findall(r"\bi(\d+)\b", expr):
+            ni = max(ni, int(v) + 1)
+        e = re.sub(r"\bi(\d+)\b", r"i\1[c]", expr)
+        e = re.sub(r"\bo(\d+)\b", r"ov\1", e)        # an output read back: its value
+        e = re.sub(r"(?<![\w.])(\d+(?:\.\d+)?)(?![\w.\[])", lambda m: f"(({T}){m.group(1)})", e)
+        if lhs.startswith("o"):
+            no = max(no, int(lhs[1:]) + 1)
+            body.append(f"            const {T} ov{lhs[1:]} = {e};")
+            body.append(f"            {lhs}[c] = ov{lhs[1:]};")
+        else:
+            body.append(f"            const {T} {lhs} = {e};")
+    s = [f"static void {name}(size_t m, size_t ld_in, size_t ld_out, const {T} *const *in, "
+         f"{T} *const *out, size_t r0, size_t r1) {{",
+         "    for (size_t r = r0; r < r1; r++) {"]
+    s += [f"        const {T} *restrict i{k} = in[{k}] + r * ld_in;" for k in range(ni)]
+    s += [f"        {T} *restrict o{k} = out[{k}] + r * ld_out;" for k in range(no)]
+    s.append("        _Pragma(\"clang loop vectorize(assume_safety) interleave(enable)\")")
+    s.append("        for (size_t c = 0; c < m; c++) {")
+    s += body
+    s += ["        }", "    }", "}", ""]
+    return "\n".join(s)
+
+
+def count_ops_expr(text):
+    """operations of a program in PLinOpt's general syntax (each +, -, *, / and negation)"""
+    n = 0
+    for ln in text.splitlines():
+        if ":=" in ln and not ln.strip().startswith("#"):
+            n += len(re.findall(r"[-+*/]", ln.split(":=", 1)[1]))
+    return n
+
+
 def opbyop(name, text):
     """the program as block operations: (dst, kind, a, b) with kinds copy/add/sub/scale"""
     ni, no, ops = parse(text)
@@ -207,6 +252,7 @@ def opbyop(name, text):
 def main():
     out = sys.argv[1]
     fma = "--fma" in sys.argv
+    dps48_src = sys.argv[sys.argv.index("--dps48") + 1] if "--dps48" in sys.argv else None
     schemes = {
         "sw": (SW_L, SW_R, SW_P),
         "sw2": (kron(SW_L, SW_L, True), kron(SW_R, SW_R, True), kron(SW_P, SW_P, False)),
@@ -218,6 +264,18 @@ def main():
     for name, (l, r, p) in schemes.items():
         (nl, rk, _), (_, _, _), (_, nc, _) = parse(l), parse(r), parse(p)
         nops = sum(1 for t in (l, r, p) for o in parse(t)[2] if o[3] is not None or o[1])
+        if name == "dps48" and dps48_src:
+            src = tuple(open(f"{dps48_src}_{s}.slp").read() for s in "LRP")
+            nops = sum(count_ops_expr(t) for t in src)
+            h.append(f"/* {name}: fused kernels from {os.path.basename(dps48_src)}, {nops} operations */")
+            h.append(f"enum {{ {name.upper()}_NB = {nl}, {name.upper()}_RANK = {rk}, {name.upper()}_OPS = {nops} }};")
+            for T, suf in (("float", "f"), ("double", "d")):
+                for side, t in zip("LRP", src):
+                    h.append(fused_expr(f"{name}_{side}_{suf}", t, T))
+            for side, t in (("L", l), ("R", r), ("P", p)):
+                h.append(opbyop(f"{name}_{side}_ops", t))
+            print(f"{name}: fused kernels from {dps48_src}, {nops} operations")
+            continue
         h.append(f"/* {name}: {nl} blocks -> {rk} products -> {nc} blocks, {nops} operations */")
         h.append(f"enum {{ {name.upper()}_NB = {nl}, {name.upper()}_RANK = {rk}, {name.upper()}_OPS = {nops} }};")
         for T, suf in (("float", "f"), ("double", "d")):

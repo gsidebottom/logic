@@ -34,3 +34,17 @@ build/libfmm.a: fmm.c fmm_impl.h fmm.h neon_gemm.h build/kernels.h
 # the library's entry points against Accelerate (FMM_CALIB_DIR=results build/test_fmm)
 build/test_fmm: test_fmm.c fmm.h build/libfmm.a
 	clang -O3 -mcpu=apple-m4 -Wall test_fmm.c build/libfmm.a -framework Accelerate -o $@
+
+# the same with dps48's fused kernels from the original rational rank-48 scheme (315 operations)
+build/bench_fmm_orig: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/orig/kernels.h
+	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/orig bench_fmm.c -framework Accelerate -o $@
+
+build/orig/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_rational_L.slp ../dps48/plinopt/data/4x4x4_48_rational_R.slp ../dps48/plinopt/data/4x4x4_48_rational_P.slp
+	mkdir -p build/orig && python3 gen_kernels.py $@ --dps48 ../dps48/plinopt/data/4x4x4_48_rational
+
+# the same with dps48's fused kernels from PLinOpt's accurate rank-48 scheme (284 operations)
+build/bench_fmm_acc: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/acc/kernels.h
+	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/acc bench_fmm.c -framework Accelerate -o $@
+
+build/acc/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_P.slp
+	mkdir -p build/acc && python3 gen_kernels.py $@ --dps48 ../dps48/plinopt/data/4x4x4_48_accurate

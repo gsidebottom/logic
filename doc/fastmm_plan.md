@@ -367,6 +367,27 @@ so the padding is at most a few rows.  Against the best classical variant:
 
 Predictions within 5% at most sizes (8-13% pessimistic at 9000-10000 f64), results correct.
 
+Which rank-48 program (`results/orig315_2026-10-25.txt`; `make build/bench_fmm_orig`,
+`build/bench_fmm_acc`, `gen_kernels.py --dps48 PREFIX`).  Our 201-operation point, PLinOpt's
+original rational scheme (315 operations) and its accurate variant (284) run at the same speed
+as fused passes: totals within 1% (alternating runs, three each); the 315-operation passes take
+2-8% longer, about 0.3% of the total, because the passes are bound by memory traffic, not
+arithmetic.  They differ in accuracy, at the same speed:
+
+| 8192 | ours, 201 | original, 315 | accurate, 284 |
+|---|---|---|---|
+| f32, one level (D48/G3) | 1.14e-5 | 5.55e-6 | 5.14e-6 |
+| f32, two levels (D48+4/D48/G6) | 4.19e-5 | 8.13e-6 | 6.38e-6 |
+| f64, one level | 2.20e-14 | 1.15e-14 | 9.32e-15 |
+| f64, two levels | 7.29e-14 | 1.35e-14 | 1.01e-14 |
+
+One level of ours has twice the error of the others and two levels five to seven times: its
+error grows by about 3.4 per level, the accurate scheme's by about 1.4.  So for this library
+the operation count our search minimized has no value, and the accurate scheme is strictly
+better (same speed, a fraction of the error, and under an error budget it admits deeper,
+faster plans).  For practice the objective to optimize in the class is the error growth (the
+size of the coefficients and of the intermediate sums), not the operation count.
+
 Engineering lessons (each worth a large factor, each easy to miss):
 
 - The compiler did not vectorize the 64-stream fused loops (it gave up on overlap checks);

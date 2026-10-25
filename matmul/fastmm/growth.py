@@ -16,7 +16,8 @@ def parse_slp(text, nin):
     outs = {}
     for s in stmts:
         name, expr = s.split(":=")
-        toks = re.findall(r"\d+/\d+|\d+|[A-Za-z_]\w*|[-+*/()]", expr)
+        toks = re.findall(r"\d+\.\d+|\d+/\d+|\d+|[A-Za-z_]\w*|[-+*/()]", expr)
+        assert "".join(toks) == expr.replace(" ", ""), f"unparsed characters in {s}"
         pos = [0]
         def peek():
             return toks[pos[0]] if pos[0] < len(toks) else None
@@ -41,7 +42,7 @@ def parse_slp(text, nin):
                 return v
             if t == "-":
                 return scale(atom(), -1)
-            if re.fullmatch(r"\d+/\d+|\d+", t):
+            if re.fullmatch(r"\d+\.\d+|\d+/\d+|\d+", t):
                 return {"1": F(t)}
             if re.fullmatch(r"i\d+", t):
                 return {int(t[1:]): F(1)}

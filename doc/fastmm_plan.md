@@ -474,6 +474,51 @@ Two consequences:
   precision.  At the library's one or two levels in f32, Table 1's scheme is already at
   classical accuracy.
 
+Search for more accurate schemes (2026-10-25; `matmul/dps48/gamma/`, `src/bin/gamma48.rs`,
+`results/gamma_search_2026-10-25.txt`).  The search space is Table 1's orbit under the De Groot
+isotropies (U, V, W) in GL(4)^3, together with the three role assignments of the scheme's cyclic
+symmetry.  gamma_{inf,2} treats L and R alike (row 2-norms) and P differently (the max over
+outputs), so the role, i.e. which factor set computes the outputs, matters: Table 1's three roles
+give 25.456, 32.97 and 28.14, and the published one is already the best.
+
+The objective is minimized from many random starts: a smoothed max and absolute value, BFGS with
+continuation, then an exact minimax polish.  It ran first in Python (scipy, 12 processes), then as
+the Rust binary `gamma48`.  `gamma48` uses the exact adjoint gradient (checked against finite
+differences to 1e-10), runs 240 starts in 8 s against Python's 230-270 s, and finds the same
+optima.
+
+- Orthogonal U, V, W keep gamma_2 at its minimum (154.51) and leave V without effect.  The
+  minimum there is 16 sqrt2 = 22.627 for the published role and 12 + 8 sqrt2 = 23.31 for the
+  others.
+- Over the whole orbit, 30,000 starts on Table 1 and 7,200 each on DPS25 and on our 201-operation
+  point all reach the same optima: the three schemes share one orbit.  The lowest value,
+  21.4073, is found thousands of times and nothing lower ever appears.  At that point one factor
+  has singular values (1, 1, s, s) with s = 2(sqrt2 - 1), so the coefficients lie in Q(sqrt2).
+  They cannot be dyadic: s enters R and 1/s enters P.
+- The dyadic orthogonal sub-orbit was enumerated exhaustively.  The group G of orthogonal 4x4
+  matrices with entries in Z[1/2] or Z[1/2]/sqrt2 has 2304 elements (W(F4), plus the 1152
+  matrices with entries 0 and +-1/sqrt2), and every (U, V, W) in G^3 gives a dyadic scheme
+  after per-term rescaling.  Both growth factors are unchanged by signed permutations on the
+  left, so there are 216 distinct points per role.  The 16 sqrt2 point with gamma_{inf,inf} 132
+  is the unique best in both factors.
+
+The new scheme (`matmul/dps48/gamma/g16s2_{L,R,P}.sms`) is exact over Z[1/2], checked exactly
+and by PLinOpt's SLPchecker; PLinOpt's programs `slp/g16s2o_*` take 445 operations: 339 additions
+and 106 multiplications by 2, 1/2 or 1/4.  Against Table 1: gamma_{inf,2} 22.627 against
+25.456, gamma_{inf,inf} 132 against 148, gamma_{2,2} 90.51 against 91.21, and gamma_2 154.51 for
+both.  In f32 against an f64 product (4096 and 8192, uniform and normal inputs) its error is
+0.74-0.86 of Table 1's at one level, 0.75-0.81 at two and 0.72-0.85 at three.  At the library's
+one or two levels that is 0.66-0.83 of the classical f32 GEMM's own error.  Speed is unchanged: alternating runs of the library's plans
+(4096 D48/G6, 8192 D48+4/D48/G6) and of single levels, f32 and f64, give 1.000-1.028 of Table 1's
+time at the best of three rounds.  The passes are bound by memory traffic, so 445 against 284
+operations does not show.
+
+The gamma_{inf,2} optimum itself does not pay.  The 21.407 scheme, with gamma_{inf,inf} 176.6
+and constants that round, measures level with Table 1 (0.98-1.01 at three levels).
+gamma_{inf,2} alone is not the objective.  What paid was improving gamma_{inf,2} and
+gamma_{inf,inf} together while staying dyadic, so that multiplying by the scheme's constants is
+exact.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

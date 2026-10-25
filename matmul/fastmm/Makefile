@@ -49,3 +49,11 @@ build/bench_fmm_201: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h
 
 build/201/kernels.h: gen_kernels.py ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp
 	mkdir -p build/201 && python3 gen_kernels.py $@ --dps48 ../dps48/cand48/p005_201n
+
+# the same with dps48's fused kernels from any scheme in ../dps48/gamma/slp/NAME_{L,R,P}.slp
+# (the accurate-scheme search): make build/bench_fmm_var_NAME
+build/var/%/kernels.h: gen_kernels.py ../dps48/gamma/slp/%_L.slp ../dps48/gamma/slp/%_R.slp ../dps48/gamma/slp/%_P.slp
+	mkdir -p build/var/$* && python3 gen_kernels.py $@ --dps48 ../dps48/gamma/slp/$*
+
+build/bench_fmm_var_%: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/var/%/kernels.h
+	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/var/$* bench_fmm.c -framework Accelerate -o $@

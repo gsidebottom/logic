@@ -235,7 +235,7 @@ Pipelining takes 8-22% off the plans over 6-stream leaves; one pass thread is to
 passes become the critical path) and plans over 3 streams of 1024-blocks in f64 gain nothing
 (those streams are the most sensitive to pass traffic, see the probe).  The calibration times a
 pipeline of 2 and of 10 synthetic sub-problems per level type, block size, stream count (3, 6)
-and pass threads (2, 4): the slope is the steady time per sub-problem, the rest the fill and
+and pass threads (2, 3, 4): the slope is the steady time per sub-problem, the rest the fill and
 drain (2 and 4 sub-problems left a few percent of noise in the slope, which a level of 48
 multiplies: one wrong pick at 16384 f32); sub-problems under 1 ms are not pipelined (per-step
 dispatch and noisy calibration: one wrong pick at 2048 f64).  Validation
@@ -243,19 +243,22 @@ dispatch and noisy calibration: one wrong pick at 2048 f64).  Validation
 
 | n | precision | auto's plan | predicted (s) | measured (s) | best classical (s) | speedup | fastest measured |
 |---|---|---|---|---|---|---|---|
-| 2048 | f32 | G | 0.0052 | 0.0055 | 0.0055 | 1.00 | auto |
-| 4096 | f32 | D48/G6 | 0.036 | 0.036 | 0.042 | 1.17 | auto (tie) |
-| 8192 | f32 | D48+4/D48/G6 | 0.233 | 0.237 | 0.330 | 1.39 | auto (tie) |
-| 16384 | f32 | D48+4/D48/G6 | 1.690 | 1.688 | 2.704 | 1.60 | D48+3/D48/G6 1.665 |
-| 2048 | f64 | D48/G6 | 0.018 | 0.018 | 0.021 | 1.19 | auto (tie) |
+| 2048 | f32 | G | 0.0052 | 0.0053 | 0.0053 | 1.00 | auto |
+| 4096 | f32 | D48/G6 | 0.036 | 0.039 | 0.049 | 1.26 | SW+4/D48/G6 0.037 |
+| 8192 | f32 | D48+4/D48/G6 | 0.233 | 0.237 | 0.336 | 1.42 | auto |
+| 16384 | f32 | D48+3/D48/G6 | 1.685 | 1.666 | 2.685 | 1.61 | auto |
+| 2048 | f64 | D48/G6 | 0.018 | 0.018 | 0.021 | 1.18 | auto |
 | 4096 | f64 | D48+4/D48/G6 | 0.120 | 0.121 | 0.164 | 1.36 | auto (tie) |
-| 8192 | f64 | D48+4/D48/G6 | 0.803 | 0.804 | 1.313 | 1.63 | auto |
-| 16384 | f64 | SW/D48+4/D48/G6 | 5.755 | 5.719 | 11.475 | 2.01 | auto |
+| 8192 | f64 | D48+3/D48/G6 | 0.799 | 0.805 | 1.370 | 1.70 | D48+4/D48/G6 0.799 |
+| 16384 | f64 | SW/D48+3/D48/G6 | 5.721 | 5.751 | 11.204 | 1.95 | SW/D48+4/D48/G6 5.712 |
 
-Predictions are within 0.1-1.7% at 4096-16384; the one plan faster than auto's uses 3 pass
-threads, which the calibration does not try (2 and 4).  Against the start of the day (one fused
-level of ours, 1.34x at 8192 f32 and 1.28x at 16384 f64 over the best classical variant) the
-whole-machine plans reach 1.39x and 2.01x.
+Predictions are within 0.5-1.8% at 8192-16384.  Auto's plan is the fastest measured or within
+0.75% everywhere but 4096 f32, a run 15% slow throughout, where it was 5% behind a plan predicted
+0.8% slower; with only 2 and 4 pass threads calibrated the 16384 f32 pick was D48+4/D48/G6 (1.682 s
+here), with 3 it is the fastest plan measured.  The classical variants drift between runs (16384
+f64: 10.7-11.5 s), so read the speedups as +-5%.  Against the start of the day (one fused level
+of ours, 1.34x at 8192 f32 and 1.28x at 16384 f64 over the best classical variant) the
+whole-machine plans reach 1.42x and 1.95-2.01x (`results/auto_pipe_2026-10-24_p24.txt`: 2.01x).
 
 Engineering lessons (each worth a large factor, each easy to miss):
 
@@ -294,10 +297,10 @@ Which operations matter depends on the implementation:
 3. **Use the whole machine.**  A level's r products are independent.  GEMM streams (done
    2026-10-24): 6-14% off the best plans.  NEON products on the idle cores (tried 2026-10-24):
    at most 1-3%, fragile, not adopted.  Pipelined passes (done 2026-10-24): 8-22% off the
-   deep plans; the planner chooses streams and pipelines per plan.  Open: 3 pass threads in the
-   calibration (1.4% at 16384 f32); overlap the top levels' passes too (only the level just
-   above the GEMMs is pipelined); an accuracy budget for the planner (error grows with depth:
-   f64 2.0e-13 at 16384 for SW/D48/D48 against 1.0e-13 for D48/D48).
+   deep plans; the planner chooses streams, pipelines and pass threads (2, 3, 4) per plan.
+   Open: overlap the top levels' passes too (only the level just above the GEMMs is
+   pipelined); an accuracy budget for the planner (error grows with depth: f64 2.0e-13 at
+   16384 for SW/D48/D48 against 1.0e-13 for D48/D48).
 4. **Cheaper passes.**
    - Keep the temporaries for one product in cache instead of materializing all 48.
    - Accumulate each product straight into its C blocks (no stored M_k), trading the P pass

@@ -231,12 +231,14 @@ static int parse_plan(const char *meth, size_t n, int *plan) {
  * size m: SW m, D48 m = its three passes; GSW m, GD48 m = its GEMM time per product run one at a
  * time (back to back: below about 1 ms a GEMM so takes 13-27% longer than alone), GkSW m, GkD48
  * m = the same with k streams.  Sub-problems of a pipelined level, each a level Y with blocks m
- * over k GEMM streams with p pass threads: PYkKpPs m = the steady time per sub-problem, PYkKpPo
+ * over k GEMM streams (3, 6) with p pass threads (2, 3, 4): PYkKpPs m = the steady time per sub-problem, PYkKpPo
  * m = the pipeline's fill and drain (a pipeline of q sub-problems takes q s + o) */
 #define K_GIN 100   /* K_GIN + 16 k + level: GEMM per product inside that level, k streams */
 #define K_PIPE 1000 /* K_PIPE + ((16 k + p) 2 + part) 8 + level: pipelined sub-problems */
 #define CALIB_FORMAT 4
-static const int PIPE_K[] = {3, 6}, PIPE_P[] = {2, 4};  /* the pipelines the planner considers */
+static const int PIPE_K[] = {3, 6}, PIPE_P[] = {2, 3, 4};  /* the pipelines the planner considers */
+#define NPIPE_K ((int)(sizeof PIPE_K / sizeof PIPE_K[0]))
+#define NPIPE_P ((int)(sizeof PIPE_P / sizeof PIPE_P[0]))
 #define CALIB_MAX 1024
 typedef struct {
     int kind[CALIB_MAX], n;
@@ -320,8 +322,8 @@ static void calib_need(calib_t *need, size_t n) {
         for (int ly = LV_SW; ly <= LV_D48; ly++) {
             size_t gy = lv_grid(ly), my = n / g / gy;
             if ((n / g) % gy || my < fmm_minb()) continue;
-            for (int a = 0; a < 2; a++)
-                for (int b = 0; b < 2; b++)
+            for (int a = 0; a < NPIPE_K; a++)
+                for (int b = 0; b < NPIPE_P; b++)
                     for (int o = 0; o < 2; o++) calib_put(need, kind_pipe(ly, PIPE_K[a], PIPE_P[b], o), my, 0);
         }
         calib_need(need, n / g);
@@ -460,8 +462,8 @@ static double plan_best_in(const calib_t *c, size_t n, int parent, int *plan) {
     /* pipelined levels: X+p over Y over Gk */
     for (int lx = LV_SW; lx <= LV_D48; lx++)
         for (int ly = LV_SW; ly <= LV_D48; ly++)
-            for (int a = 0; a < 2; a++)
-                for (int b = 0; b < 2; b++) {
+            for (int a = 0; a < NPIPE_K; a++)
+                for (int b = 0; b < NPIPE_P; b++) {
                     int cand[PLAN_MAX] = {lx | (1 << 24) | (PIPE_P[b] << 25), ly, LV_G | (PIPE_K[a] << 8)};
                     double t = plan_cost_in(c, cand, n, parent);
                     if (t >= 0 && (best < 0 || t < best)) {
@@ -502,7 +504,7 @@ static void plan_enum_rec(const calib_t *c, size_t n0, size_t n, int *plan, int 
             }
             /* the same with the level two above the leaf pipelined */
             if (depth >= 2 && PST(firsts[f]) > 0 && !lv_leaf(PLV(plan[depth - 1])) && !lv_leaf(PLV(plan[depth - 2])))
-                for (int b = 0; b < 2 && *cnt < max; b++) {
+                for (int b = 0; b < NPIPE_P && *cnt < max; b++) {
                     int keep = plan[depth - 2];
                     plan[depth - 2] = PLV(keep) | (1 << 24) | (PIPE_P[b] << 25);
                     double tp = plan_cost(c, plan, n0);

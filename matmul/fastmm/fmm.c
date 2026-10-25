@@ -1,7 +1,8 @@
 /* fmm.c: fast matrix multiplication on Apple silicon (fmm.h), and the core of bench_fmm.
  *
  * A plan is a sequence of fused levels from the top -- SW (Strassen-Winograd <2x2x2:7>), D48
- * (our <4x4x4:48>), SW2 (Strassen^2) -- ending in a leaf: G (one GEMM, Accelerate), its products
+ * (the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic, as its accurate program; see
+ * gen_kernels.py), SW2 (Strassen^2) -- ending in a leaf: G (one GEMM, Accelerate), its products
  * as k single-threaded GEMM streams (Gk) or with NEON products (GkNj), or classical blocked
  * (B2/B4/B8).  A fused level streams once over its input and output blocks with the scheme's
  * linear program evaluated per element position in registers (kernels.h, from gen_kernels.py);
@@ -350,7 +351,7 @@ static void calib_path(char *buf, size_t len, int f64) {
     snprintf(buf, len, "%s/calib_%s.txt", dir, f64 ? "f64" : "f32");
 }
 
-/* the cache, if it was measured on this machine with this padding and format */
+/* the cache, if it was measured on this machine with this padding, format and D48 program */
 static void calib_load(calib_t *c, int f64) {
     char path[256], line[256], kind[16];
     memset(c, 0, sizeof *c);
@@ -359,7 +360,9 @@ static void calib_load(calib_t *c, int f64) {
     calib_path(path, sizeof path, f64);
     FILE *f = fopen(path, "r");
     if (!f) return;
-    int ok_machine = 0, ok_pad = 0, ok_format = 0;
+    int ok_machine = 0, ok_pad = 0, ok_format = 0, ok_kernels = 0;
+    char kernels[96];
+    snprintf(kernels, sizeof kernels, "%s %d", DPS48_PROGRAM, (int)DPS48_OPS);
     size_t m;
     double t;
     while (fgets(line, sizeof line, f)) {
@@ -367,12 +370,13 @@ static void calib_load(calib_t *c, int f64) {
         if (!strncmp(line, "# machine ", 10)) ok_machine = !strcmp(line + 10, machine());
         else if (!strncmp(line, "# pad ", 6)) ok_pad = (size_t)atol(line + 6) == fmm_pad();
         else if (!strncmp(line, "# format ", 9)) ok_format = atoi(line + 9) == CALIB_FORMAT;
+        else if (!strncmp(line, "# kernels ", 10)) ok_kernels = !strcmp(line + 10, kernels);
         else if (line[0] != '#' && sscanf(line, "%15s %zu %lf", kind, &m, &t) == 3 && kind_parse(kind) >= 0)
             calib_put(c, kind_parse(kind), m, t);
     }
     fclose(f);
-    if (!ok_machine || !ok_pad || !ok_format) {
-        printf("# calibration %s is from another machine, padding or format: remeasuring\n", path);
+    if (!ok_machine || !ok_pad || !ok_format || !ok_kernels) {
+        printf("# calibration %s is from another machine, padding, format or D48 program: remeasuring\n", path);
         memset(c, 0, sizeof *c);
     }
 }
@@ -393,7 +397,8 @@ static void calib_save(const calib_t *c, int f64) {
                "with blocks of size m; GSW m, GD48 m = its GEMM time per product, GkSW m, GkD48 m = the "
                "same with k GEMM streams\n",
             f64 ? "f64" : "f32");
-    fprintf(f, "# machine %s\n# pad %zu\n# format %d\n", machine(), fmm_pad(), CALIB_FORMAT);
+    fprintf(f, "# machine %s\n# pad %zu\n# format %d\n# kernels %s %d\n", machine(), fmm_pad(), CALIB_FORMAT,
+            DPS48_PROGRAM, (int)DPS48_OPS);
     for (int v = 0; v < K_ERR + 3; v++)   /* by kind, then size */
         for (size_t m = 1; m < ((size_t)1 << 40); m *= 2)
             for (int i = 0; i < c->n; i++)

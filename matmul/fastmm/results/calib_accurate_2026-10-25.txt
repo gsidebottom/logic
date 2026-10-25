@@ -1,0 +1,40 @@
+# recalibration with the accurate D48 kernels 2026-10-25 13:43
+# calibration results/calib_f32.txt is from another machine, padding, format or D48 program: remeasuring
+# calibrating 81 entries (f32)
+n=16384  f32  best D48+3/D48/G6       1.6858 s  classical 2.9325 blk2 3.0276 sw1 2.6382 sw2rec 2.2186 sw3rec 2.1141 sw4rec 2.5797 dps48 2.2813 dps48sw 2.0145 dps48x2 2.2201
+         top: D48+3/D48/G6 1.6858, D48+2/D48/G6 1.6866, D48+4/D48/G6 1.7046, D48+3/D48/G3 1.7175, SW/D48+4/D48/G6 1.7184, D48+2/D48/G3 1.7398  (217 plans)
+         error growth over classical: best 1.4 (pred. error 7.9e-06); <=16: D48+3/D48/G6 1.6858 s, <=8: D48+3/D48/G6 1.6858 s, <=4: D48+3/D48/G6 1.6858 s, <=2: D48+3/D48/G6 1.6858 s
+n=8192   f32  best D48+4/D48/G6       0.2360 s  classical 0.3335 blk2 0.3424 sw1 0.3074 sw2rec 0.2925 sw3rec 0.3590 sw4rec 0.4448 dps48 0.2715 dps48sw 0.3366 dps48x2 0.3710
+         top: D48+4/D48/G6 0.2360, SW+3/D48/G6 0.2509, SW+2/D48/G6 0.2540, D48/G3 0.2542, SW+4/D48/G6 0.2543, D48+3/D48/G3 0.2552  (123 plans)
+         error growth over classical: best 1.4 (pred. error 5.6e-06); <=16: D48+4/D48/G6 0.2360 s, <=8: D48+4/D48/G6 0.2360 s, <=4: D48+4/D48/G6 0.2360 s, <=2: D48+4/D48/G6 0.2360 s
+n=4096   f32  best D48/G6             0.0357 s  classical 0.0421 blk2 0.0436 sw1 0.0397 sw2rec 0.0492 sw3rec 0.0614 sw4rec 0.1193 dps48 0.0439 dps48sw 0.0560 dps48x2 0.0831
+         top: D48/G6 0.0357, SW+4/D48/G6 0.0364, D48/G4 0.0369, D48/G3 0.0373, SW/G4 0.0385, SW/G3 0.0385  (64 plans)
+         error growth over classical: best 1.2 (pred. error 3.3e-06); <=16: D48/G6 0.0357 s, <=8: D48/G6 0.0357 s, <=4: D48/G6 0.0357 s, <=2: D48/G6 0.0357 s
+n=2048   f32  best G                  0.0051 s  classical 0.0051 blk2 0.0067 sw1 0.0065 sw2rec 0.0082 sw3rec 0.0165 dps48 0.0072 dps48sw 0.0150
+         top: G 0.0051, D48/G6 0.0057, SW/G6 0.0058, D48/G4 0.0058, SW/G3 0.0059, D48/G3 0.0059  (29 plans)
+         error growth over classical: best 1.0 (pred. error 1.9e-06); <=16: G 0.0051 s, <=8: G 0.0051 s, <=4: G 0.0051 s, <=2: G 0.0051 s
+n=1024   f32  best G                  0.0007 s  classical 0.0007 blk2 0.0009 sw1 0.0010 sw2rec 0.0022 dps48 0.0016
+         top: G 0.0007, SW/G4 0.0009, D48/G4 0.0009, B2 0.0009, D48/G6 0.0010, D48/G3 0.0010  (14 plans)
+         error growth over classical: best 1.0 (pred. error 1.4e-06); <=16: G 0.0007 s, <=8: G 0.0007 s, <=4: G 0.0007 s, <=2: G 0.0007 s
+# error model: classical scale 1.94e-06 at n = 2048 (x sqrt(n / 2048)); factor per level SW 2.05, D48 1.20
+# calibration results/calib_f64.txt is from another machine, padding, format or D48 program: remeasuring
+# calibrating 81 entries (f64)
+n=16384  f64  best SW/D48+4/D48/G6    5.7111 s  classical 11.8829 blk2 10.7955 sw1 9.5402 sw2rec 8.5948 sw3rec 7.8315 sw4rec 7.6433 dps48 8.7668 dps48sw 7.5746 dps48x2 6.8629
+         top: SW/D48+4/D48/G6 5.7111, SW/D48+3/D48/G6 5.7223, SW/D48+2/D48/G6 5.8535, D48/SW+4/D48/G6 5.9696, D48/D48+4/D48/G6 5.9886, D48/SW+3/D48/G6 6.0204  (262 plans)
+         error growth over classical: best 2.4 (pred. error 2.4e-14); <=16: SW/D48+4/D48/G6 5.7111 s, <=8: SW/D48+4/D48/G6 5.7111 s, <=4: SW/D48+4/D48/G6 5.7111 s, <=2: D48/D48+4/D48/G6 5.9886 s
+n=8192   f64  best D48+4/D48/G6       0.7975 s  classical 1.3677 blk2 1.3310 sw1 1.2094 sw2rec 1.1004 sw3rec 1.0735 sw4rec 1.2483 dps48 1.0532 dps48sw 1.0242 dps48x2 1.1144
+         top: D48+4/D48/G6 0.7975, D48+3/D48/G6 0.7991, D48+2/D48/G6 0.8178, D48+3/D48/G3 0.8603, SW/SW+4/D48/G6 0.8663, SW/D48+4/D48/G6 0.8691  (150 plans)
+         error growth over classical: best 1.3 (pred. error 9.2e-15); <=16: D48+4/D48/G6 0.7975 s, <=8: D48+4/D48/G6 0.7975 s, <=4: D48+4/D48/G6 0.7975 s, <=2: D48+4/D48/G6 0.7975 s
+n=4096   f64  best SW+4/D48/G6        0.1196 s  classical 0.1633 blk2 0.1688 sw1 0.1530 sw2rec 0.1491 sw3rec 0.1741 sw4rec 0.2944 dps48 0.1382 dps48sw 0.1629 dps48x2 0.2683
+         top: SW+4/D48/G6 0.1196, D48+4/D48/G6 0.1199, SW+3/D48/G6 0.1206, SW+2/D48/G6 0.1235, D48+3/D48/G3 0.1264, D48+3/D48/G6 0.1285  (82 plans)
+         error growth over classical: best 2.1 (pred. error 1.1e-14); <=16: SW+4/D48/G6 0.1196 s, <=8: SW+4/D48/G6 0.1196 s, <=4: SW+4/D48/G6 0.1196 s, <=2: D48+4/D48/G6 0.1199 s
+n=2048   f64  best D48/G6             0.0177 s  classical 0.0208 blk2 0.0220 sw1 0.0202 sw2rec 0.0238 sw3rec 0.0410 dps48 0.0221 dps48sw 0.0380
+         top: D48/G6 0.0177, D48/G4 0.0183, SW+4/D48/G6 0.0185, D48/G3 0.0188, SW+3/D48/G3 0.0195, SW+3/D48/G6 0.0195  (38 plans)
+         error growth over classical: best 1.1 (pred. error 4.1e-15); <=16: D48/G6 0.0177 s, <=8: D48/G6 0.0177 s, <=4: D48/G6 0.0177 s, <=2: D48/G6 0.0177 s
+n=1024   f64  best G                  0.0026 s  classical 0.0026 blk2 0.0029 sw1 0.0031 sw2rec 0.0056 dps48 0.0053
+         top: G 0.0026, D48/G6 0.0028, D48/G4 0.0028, D48/G3 0.0028, B2 0.0029, SW/G3 0.0029  (14 plans)
+         error growth over classical: best 1.0 (pred. error 2.6e-15); <=16: G 0.0026 s, <=8: G 0.0026 s, <=4: G 0.0026 s, <=2: G 0.0026 s
+# error model: classical scale 3.61e-15 at n = 2048 (x sqrt(n / 2048)); factor per level SW 1.88, D48 1.13
+# calibration done 13:50
+# accuracy done 13:59
+# test done 14:00

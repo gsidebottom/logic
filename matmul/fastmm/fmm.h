@@ -2,16 +2,18 @@
  *
  * C = A B for n x n row-major matrices with leading dimensions lda, ldb, ldc (in elements), by
  * the plan a calibrated cost model picks for this machine, size and precision: fused levels of
- * our <4x4x4:48> scheme and of Strassen-Winograd over Accelerate GEMMs, with GEMM streams and
- * pipelined passes.  max_growth > 0 limits the plan's error growth over the classical GEMM's
- * (an estimate, conservative by up to 1.5x; 0: the fastest plan).
+ * the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic (its accurate program) and of
+ * Strassen-Winograd over Accelerate GEMMs, with GEMM streams and pipelined passes.
+ * max_growth > 0 limits the plan's error growth over the classical GEMM's (an estimate,
+ * conservative by up to 1.5x; 0: the fastest plan).
  *
  * The plans come from the calibration cache (FMM_CALIB_DIR, default ~/Library/Caches/fmm, one
- * file per precision, keyed by machine).  Where it does not cover n (no calibration yet, or n
- * not a power-of-two multiple of the calibrated sizes) the classical GEMM runs, so results are
- * always correct; fmm_calibrate measures what the planner needs, once per machine (minutes).
- * Calls are serialized: each uses the whole machine.  The workspace (up to about 10 n^2
- * elements) is kept between calls until fmm_release.
+ * file per precision, keyed by machine and kernels); sizes between the calibrated ones are
+ * interpolated, and a plan runs padded to the next size its levels divide when that pays.
+ * Outside the calibrated range, or without a calibration, the classical GEMM runs, so results
+ * are always correct; fmm_calibrate measures what the planner needs, once per machine
+ * (minutes).  Calls are serialized: each uses the whole machine.  The workspace (up to about
+ * 10 n^2 elements) is kept between calls until fmm_release.
  *
  * Link: libfmm.a -framework Accelerate.
  */

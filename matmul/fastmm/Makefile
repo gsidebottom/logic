@@ -4,7 +4,8 @@ all: build/bench_fmm build/libfmm.a build/test_fmm build/probe_threads build/neo
 build/bench_fmm: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/kernels.h
 	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild bench_fmm.c -framework Accelerate -o $@
 
-build/kernels.h: gen_kernels.py ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp
+# the kernels: dps48 from the accurate DPS program (4x4x4_48_accurate), op-by-op lists from ours (201)
+build/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_P.slp ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp
 	mkdir -p build && python3 gen_kernels.py $@
 
 # the same with every use of a scaled value as a fused multiply-add (x * 0.5 + y -> one FMLA);
@@ -13,7 +14,7 @@ build/bench_fmm_fma: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h
 	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/fma bench_fmm.c -framework Accelerate -o $@
 
 build/fma/kernels.h: gen_kernels.py ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp
-	mkdir -p build/fma && python3 gen_kernels.py $@ --fma
+	mkdir -p build/fma && python3 gen_kernels.py $@ --fma --dps48 ../dps48/cand48/p005_201n
 
 # how much of the machine Accelerate's GEMM uses: SME streams, NEON peak, both at once
 build/probe_threads: probe_threads.c
@@ -42,9 +43,9 @@ build/bench_fmm_orig: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.
 build/orig/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_rational_L.slp ../dps48/plinopt/data/4x4x4_48_rational_R.slp ../dps48/plinopt/data/4x4x4_48_rational_P.slp
 	mkdir -p build/orig && python3 gen_kernels.py $@ --dps48 ../dps48/plinopt/data/4x4x4_48_rational
 
-# the same with dps48's fused kernels from PLinOpt's accurate rank-48 scheme (284 operations)
-build/bench_fmm_acc: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/acc/kernels.h
-	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/acc bench_fmm.c -framework Accelerate -o $@
+# the same with dps48's fused kernels from our 201-operation program
+build/bench_fmm_201: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/201/kernels.h
+	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/201 bench_fmm.c -framework Accelerate -o $@
 
-build/acc/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_P.slp
-	mkdir -p build/acc && python3 gen_kernels.py $@ --dps48 ../dps48/plinopt/data/4x4x4_48_accurate
+build/201/kernels.h: gen_kernels.py ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp
+	mkdir -p build/201 && python3 gen_kernels.py $@ --dps48 ../dps48/cand48/p005_201n

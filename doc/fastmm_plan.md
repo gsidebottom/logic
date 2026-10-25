@@ -388,6 +388,42 @@ better (same speed, a fraction of the error, and under an error budget it admits
 faster plans).  For practice the objective to optimize in the class is the error growth (the
 size of the coefficients and of the intermediate sums), not the operation count.
 
+The library's D48 level is the accurate DPS program (2026-10-25; `results/accuracy_accurate_2026-10-25.txt`,
+`calib_accurate_2026-10-25.txt`, `test_fmm_accurate_2026-10-25.txt`).  D48 is named for Dumas,
+Pernet and Sedoglavic, whose rank-48 scheme (arXiv:2506.13242) every program here belongs to;
+the kernels now come from their accurate rational program (PLinOpt's 4x4x4_48_accurate, 284
+operations) and the calibration cache records which program it was measured with.  Same plans
+and speed as before (16384 f32 D48+3/D48/G6 1.68 s, 8192 f64 D48+4/D48/G6 0.80 s, 16384 f64
+SW/D48+4/D48/G6 5.71 s predicted); the error model's factor per D48 level drops from 3.4 to 1.20
+(f32) and 1.13 (f64), so under any budget down to 2 the fastest plan qualifies.  Measured at
+8192 / 16384 f32 the fastest plans' error against an f64 product, 4.47e-6 / 6.87e-6, is below
+the classical f32 GEMM's own (4.61e-6 / 7.23e-6): the products are shorter dot products.  f64
+8192: 1.01e-14 (was 7.29e-14).  test_fmm passes (8192 f64 1.70x, 9000 f64 1.73x over Accelerate).
+
+Rust (`rust/`, crate `fmm`; `results/rust_pass_2026-10-25.txt`).  Feasibility of a Rust library
+with as little unsafe code as possible: the fused passes in safe Rust (`gen_kernels.py --rust`
+emits them from the same programs) over Accelerate's GEMM, whose three FFI declarations
+(`cblas_sgemm$NEWLAPACK`, `cblas_dgemm$NEWLAPACK`, `BLASSetThreading`, behind safe wrappers
+that check the slices) are the crate's only unsafe code.  The kernels cut every slice to the row
+length first, so no bounds checks remain, and take each slice as a separate parameter: Rust tells
+the compiler that &mut parameters overlap nothing, which vectorizes the loop as restrict does in
+C (slices inside an array argument carry no such promise and the loop stayed scalar).  The D48
+left-factor pass, 64 streams:
+
+| pass | safe Rust | C kernel, same threads | C library (GCD) |
+|---|---|---|---|
+| 8192 f32 | 9.7 ms | 9.6 ms | 9.0 ms |
+| 8192 f64 | 19.9 ms | 19.5 ms | 18.4-19.0 ms |
+| 16384 f32 | 37.6 ms | 36.5-38.1 ms | 36.2 ms |
+| 16384 f64 | 75.2 ms | 76.6 ms | 74.3 ms |
+
+The safe Rust kernel matches the C kernel (within 3%, outputs bit for bit identical); the 1-8% to
+the C library is the thread driver (a thread spawned per pass and a fixed split of the rows
+against GCD's pool and 64 chunks), not the kernel; a persistent pool with dynamic chunks should
+close it, and the passes are about 10% of the run time anyway.  Accuracy is identical by
+construction (same operations in the same order; Rust contracts nothing into fused
+multiply-adds).
+
 Engineering lessons (each worth a large factor, each easy to miss):
 
 - The compiler did not vectorize the 64-stream fused loops (it gave up on overlap checks);

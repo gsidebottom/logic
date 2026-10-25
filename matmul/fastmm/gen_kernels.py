@@ -12,13 +12,19 @@ registers, and the program's operation count costs only arithmetic.  Also emitte
 op-by-op comparison: the program as a list of block operations (one pass per operation).
 
 Schemes: sw (Strassen-Winograd <2x2x2:7>, 15 additions), sw2 (its Kronecker square, one
-<4x4x4:49> scheme, 165 additions), dps48 (our <4x4x4:48> at 201 operations, from
-../dps48/cand48/p005_201n_{L,R,P}.slp).  --dps48 PREFIX takes dps48's fused kernels from
-PREFIX_{L,R,P}.slp instead, in PLinOpt's general syntax (compound expressions such as
-o36:=(x52+x48)/2;), e.g. the original rational scheme at 315 operations,
-../dps48/plinopt/data/4x4x4_48_rational; its op-by-op lists stay the 201-operation program's.
+<4x4x4:49> scheme, 165 additions), dps48 (the rank-48 <4x4x4:48> scheme of Dumas, Pernet and
+Sedoglavic, arXiv:2506.13242; DPS = their initials).  dps48's fused kernels come from the
+accurate rational program in PLinOpt's data (../dps48/plinopt/data/4x4x4_48_accurate, 284
+operations): every program of the class runs at the same speed as fused passes, and this one
+has the smallest error (two levels: 7x below our 201-operation point, results/orig315_*.txt).
+--dps48 PREFIX takes them from PREFIX_{L,R,P}.slp instead, e.g. ../dps48/cand48/p005_201n
+(ours, 201 operations) or ../dps48/plinopt/data/4x4x4_48_rational (the original, 315); the
+programs may use PLinOpt's general syntax (compound expressions such as o36:=(x52+x48)/2;).
+dps48's op-by-op lists (bench_fmm's dps48ops) are our 201-operation program, where the
+operation count is what costs.
 
   gen_kernels.py OUT.h [--fma] [--dps48 PREFIX]
+  gen_kernels.py OUT.rs --rust [--dps48 PREFIX]     the same kernels as safe Rust (fmm-rs)
 """
 import os
 import re
@@ -26,6 +32,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CAND = os.path.join(HERE, "..", "dps48", "cand48")
+DPS48_FUSED = os.path.join(HERE, "..", "dps48", "plinopt", "data", "4x4x4_48_accurate")
 
 # Strassen-Winograd in PLinOpt's format.  Blocks row-major: A0 = A11, A1 = A12, A2 = A21, A3 = A22.
 # S1 = A21 + A22, S2 = S1 - A11, S3 = A11 - A21, S4 = A12 - S2; products M1..M7 =
@@ -222,6 +229,77 @@ def fused_expr(name, text, T):
     return "\n".join(s)
 
 
+def rust_kernel(name, text, doc):
+    """a fused kernel as safe Rust, a macro instantiated for f32 and f64: one row of every block as
+    slices.  The work is in an inner function taking every slice as its own parameter: the
+    compiler is told that &mut parameters overlap nothing (and that the shared ones are not
+    written), which lets it vectorize the loop as restrict and the pragma do for the C kernels;
+    references inside an array argument carry no such promise and leave the loop scalar.  Each
+    slice is cut to exactly m elements first, so the indexing needs no bounds checks.  The outer
+    function takes the slices as arrays for the drivers."""
+    ni = no = 0
+    body = []
+    for ln in text.splitlines():
+        ln = ln.strip()
+        if not ln or ln.startswith("#") or ":=" not in ln:
+            continue
+        lhs, expr = ln.rstrip(";").split(":=", 1)
+        for v in re.findall(r"\bi(\d+)\b", expr):
+            ni = max(ni, int(v) + 1)
+        e = re.sub(r"\bi(\d+)\b", r"i\1[c]", expr)
+        e = re.sub(r"\bo(\d+)\b", r"ov\1", e)
+        e = re.sub(r"(?<![\w.])(\d+(?:\.\d+)?)(?![\w.\[])",
+                   lambda m: f"({m.group(1)}{'' if '.' in m.group(1) else '.0'} as $t)", e)
+        if lhs.startswith("o"):
+            no = max(no, int(lhs[1:]) + 1)
+            body.append(f"                let ov{lhs[1:]} = {e};")
+            body.append(f"                {lhs}[c] = ov{lhs[1:]};")
+        else:
+            body.append(f"                let {lhs} = {e};")
+    ins = ", ".join(f"i{k}" for k in range(ni))
+    outs = ", ".join(f"o{k}" for k in range(no))
+    params = ", ".join([f"i{k}: &[$t]" for k in range(ni)] + [f"o{k}: &mut [$t]" for k in range(no)])
+    out = [f"/// {doc}", f"macro_rules! {name} {{", "    ($f:ident, $inner:ident, $t:ty) => {",
+           "        #[inline(always)]",
+           f"        pub fn $f(m: usize, i: [&[$t]; {ni}], o: [&mut [$t]; {no}]) {{",
+           f"            let [{ins}] = i;",
+           f"            let [{outs}] = o;",
+           f"            $inner(m, {ins}, {outs});",
+           "        }",
+           "",
+           "        #[inline(never)]",
+           "        #[allow(clippy::too_many_arguments, unused_parens)]",
+           f"        fn $inner(m: usize, {params}) {{"]
+    out += [f"            let i{k} = &i{k}[..m];" for k in range(ni)]
+    out += [f"            let o{k} = &mut o{k}[..m];" for k in range(no)]
+    out.append("            for c in 0..m {")
+    out += body
+    out += ["            }", "        }", "    };", "}",
+            f"{name}!({name}_f32, {name}_f32_inner, f32);", f"{name}!({name}_f64, {name}_f64_inner, f64);", ""]
+    return "\n".join(out), ni, no
+
+
+def write_rust(path, dps48_src):
+    """the kernels as safe Rust for fmm-rs: Strassen-Winograd and the D48 scheme's program"""
+    parts = ["// generated by gen_kernels.py --rust: fused kernels, one row of every block per call", ""]
+    progs = [("sw_l", SW_L, "Strassen-Winograd, left factors: 4 blocks of A -> 7"),
+             ("sw_r", SW_R, "Strassen-Winograd, right factors: 4 blocks of B -> 7"),
+             ("sw_p", SW_P, "Strassen-Winograd, products -> 4 blocks of C")]
+    base = os.path.basename(dps48_src)
+    src = [open(f"{dps48_src}_{s}.slp").read() for s in "LRP"]
+    for side, t in zip("lrp", src):
+        what = {"l": "left factors: 16 blocks of A -> 48", "r": "right factors: 16 blocks of B -> 48",
+                "p": "products -> 16 blocks of C"}[side]
+        progs.append((f"dps48_{side}", t, f"D48 ({base}, {count_ops_expr(t)} operations), {what}"))
+    for name, text, doc in progs:
+        code, ni, no = rust_kernel(name, text, doc)
+        parts.append(code)
+    parts.append(f'pub const DPS48_PROGRAM: &str = "{base}";')
+    parts.append(f"pub const DPS48_OPS: usize = {sum(count_ops_expr(t) for t in src)};")
+    open(path, "w").write("\n".join(parts) + "\n")
+    print(f"rust kernels: sw, dps48 from {base} -> {path}")
+
+
 def count_ops_expr(text):
     """operations of a program in PLinOpt's general syntax (each +, -, *, / and negation)"""
     n = 0
@@ -251,8 +329,11 @@ def opbyop(name, text):
 
 def main():
     out = sys.argv[1]
+    if "--rust" in sys.argv:
+        write_rust(out, sys.argv[sys.argv.index("--dps48") + 1] if "--dps48" in sys.argv else DPS48_FUSED)
+        return
     fma = "--fma" in sys.argv
-    dps48_src = sys.argv[sys.argv.index("--dps48") + 1] if "--dps48" in sys.argv else None
+    dps48_src = sys.argv[sys.argv.index("--dps48") + 1] if "--dps48" in sys.argv else DPS48_FUSED
     schemes = {
         "sw": (SW_L, SW_R, SW_P),
         "sw2": (kron(SW_L, SW_L, True), kron(SW_R, SW_R, True), kron(SW_P, SW_P, False)),
@@ -269,6 +350,7 @@ def main():
             nops = sum(count_ops_expr(t) for t in src)
             h.append(f"/* {name}: fused kernels from {os.path.basename(dps48_src)}, {nops} operations */")
             h.append(f"enum {{ {name.upper()}_NB = {nl}, {name.upper()}_RANK = {rk}, {name.upper()}_OPS = {nops} }};")
+            h.append(f'#define DPS48_PROGRAM "{os.path.basename(dps48_src)}"')
             for T, suf in (("float", "f"), ("double", "d")):
                 for side, t in zip("LRP", src):
                     h.append(fused_expr(f"{name}_{side}_{suf}", t, T))

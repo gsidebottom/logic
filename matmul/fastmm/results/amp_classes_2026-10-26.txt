@@ -1,0 +1,23 @@
+# leaf amplification minimized continuously (ampmin.py, scipy BFGS, 12 starts) over the orbit of each known rational rank-48 class, 2026-10-26
+# schemes in matmul/dps48/classes/ (Li-Wang-Hu members s(t), t = 1/4 (the DPS class), 1/2, 1, 2, 4, 8, and Agarwal's, rebuilt from the papers by lwh_family.py and agarwal_replacement.py)
+== class agarwal ==
+best continuous amp 5.7963 in 16 s; at the start: 180.8253
+singular values U [0.439 0.435 0.401 0.401] V [2.477 2.472 2.281 2.265] W [2.536 0.715 0.091 0.039]
+== class s_1 ==
+best continuous amp 3.5355 in 5 s; at the start: 31.6938
+singular values U [2.625 2.625 2.625 2.625] V [1.763 1.763 1.763 1.763] W [3.951 1.922 0.48  0.233]
+== class s_1o2 ==
+best continuous amp 3.0000 in 4 s; at the start: 9.0830
+singular values U [1.328 1.328 1.328 1.328] V [1.794 1.794 1.794 1.794] W [2.925 1.872 0.809 0.518]
+== class s_1o4 ==
+best continuous amp 2.8284 in 3 s; at the start: 4.0000
+singular values U [1.604 1.604 1.604 1.604] V [0.874 0.874 0.874 0.874] W [2.431 1.61  1.138 0.754]
+== class s_2 ==
+best continuous amp 4.5000 in 7 s; at the start: 127.8143
+singular values U [2.135 2.135 2.135 2.135] V [1.968 1.968 1.968 1.968] W [4.784 1.679 0.216 0.076]
+== class s_4 ==
+best continuous amp 6.0104 in 10 s; at the start: 523.7638
+singular values U [1.823 1.823 1.823 1.823] V [6.445 6.445 6.445 6.444] W [8.568 2.138 0.137 0.034]
+== class s_8 ==
+best continuous amp 8.2503 in 14 s; at the start: 2130.2940
+singular values U [4.215 4.214 4.213 4.213] V [5.849 5.848 5.847 5.847] W [3.3728e+01 5.9620e+00 1.8900e-01 3.3000e-02]

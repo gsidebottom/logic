@@ -640,9 +640,11 @@ B's family) -- not measurable with equal amp; (b) ampwalk.py (SA over non-orthog
 isotropies) and ampmin.py (continuous BFGS, 12 starts) both stay at 2.8284 = 2 sqrt2 at orthogonal
 points (results/amp_floor_2026-10-26.txt): 2 sqrt2 is the orbit's minimum amplification.  The
 Q(sqrt2) gamma_{inf,2} minimum has amp 3.14 (lower gamma != lower amp).  Conclusion: inside
-accurate_262's orbit no scheme beats it on the dominant term; what remains is other orbits
-(LWH, Agarwal: their gamma_{inf,2} minima are all worse; amp unchecked, scheme files need the
-TeX sources) or the precision level (compensated passes at a time cost; low-precision targets).
+accurate_262's orbit no scheme beats it on the dominant term; the other known orbits are
+worse on it too (ampmin.py over matmul/dps48/classes/, results/amp_classes_2026-10-26.txt: LWH
+s(1/4) = the DPS class 2.83, s(1/2) 3.00, s(1) 3.54, s(2) 4.50, s(4) 6.01, s(8) 8.25, Agarwal
+5.80).  What remains is the precision level: compensated passes at a time cost, or
+low-precision targets where the pass error is a larger share.
 
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).

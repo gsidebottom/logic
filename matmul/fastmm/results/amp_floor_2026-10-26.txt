@@ -1,0 +1,32 @@
+# leaf amplification amp = max_j sqrt(sum_i p_ji^2 |L_i|^2 |R_i|^2)/2 over 4x4x4_48_accurate_262's orbit, 2026-10-26
+# (1) ampwalk.py: simulated annealing over non-orthogonal dyadic isotropies (shears by +-1, +-1/2, +-2; row swaps; row scalings by 2^+-1; denominators <= 64)
+# ampwalk: accurate_262 amp 2.8284 (mean 2.8284); 10 restarts x 20000 steps
+restart 0: amp 2.8284 mean 2.8284  max |entry| U 1 V 1 W 1
+restart 1: amp 2.8284 mean 2.8284  max |entry| U 1 V 1 W 1
+restart 2: amp 2.8284 mean 2.8284  max |entry| U 1 V 1 W 1
+restart 3: amp 2.8284 mean 2.8284  max |entry| U 1 V 1 W 1
+restart 4: amp 2.8284 mean 2.8284  max |entry| U 1 V 1 W 1
+restart 5: amp 2.8284 mean 2.8284  max |entry| U 1 V 1 W 1
+restart 6: amp 2.8284 mean 2.8284  max |entry| U 1 V 1 W 1
+restart 7: amp 2.8284 mean 2.8284  max |entry| U 1 V 1 W 1
+restart 8: amp 2.8284 mean 2.8284  max |entry| U 1 V 1 W 1
+restart 9: amp 2.8284 mean 2.8284  max |entry| U 1 V 1 W 1
+best amp 2.8284 mean 2.8284 in 16 s
+gamma_inf2 of the best: 22.627416997969526  gamma_inf_inf: 132.0  brent: 0.0
+
+# (2) ampmin.py: continuous minimization (scipy BFGS, soft max over outputs) from the identity and 11 random isotropies
+scipy 1.13.1
+start 0: amp max 2.8284 mean 2.8284 (soft 2.9208, 0 it)
+start 1: amp max 2.8284 mean 2.8284 (soft 2.9208, 72 it)
+start 2: amp max 2.8284 mean 2.8284 (soft 2.9208, 68 it)
+start 3: amp max 2.8284 mean 2.8284 (soft 2.9208, 66 it)
+start 4: amp max 2.8284 mean 2.8284 (soft 2.9208, 67 it)
+start 5: amp max 2.8284 mean 2.8284 (soft 2.9208, 104 it)
+start 6: amp max 2.8284 mean 2.8284 (soft 2.9208, 52 it)
+start 7: amp max 2.8284 mean 2.8284 (soft 2.9208, 70 it)
+start 8: amp max 2.8284 mean 2.8284 (soft 2.9208, 45 it)
+start 9: amp max 2.8284 mean 2.8284 (soft 2.9208, 54 it)
+start 10: amp max 2.8284 mean 2.8284 (soft 2.9208, 71 it)
+start 11: amp max 2.8284 mean 2.8284 (soft 2.9208, 119 it)
+best continuous amp 2.8284 in 3 s; accurate_262: 2.8284
+singular values U [1. 1. 1. 1.] V [1. 1. 1. 1.] W [1. 1. 1. 1.]

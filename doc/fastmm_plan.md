@@ -632,6 +632,18 @@ program lever is nearly exhausted; a measurable gain needs a scheme with lower l
 (amp 2.83 = 2 sqrt2 is the scheme's) or a change at the precision level (compensated passes, at a
 time cost).
 
+Scheme-level lever, option 1 (2026-10-26): (a) all 648 dyadic orthogonal points scored by the
+realized model with greedy programs (`dyadic_points.py`, `slpopt realized`,
+results/dyadic_points_realized_2026-10-26.txt): amp takes five values, min 2 sqrt2 at 342 points
+incl. accurate_262's; realized pass error 6.7-8.6, accurate_262's point 6.96, lowest 6.73 (probe
+B's family) -- not measurable with equal amp; (b) ampwalk.py (SA over non-orthogonal dyadic
+isotropies) and ampmin.py (continuous BFGS, 12 starts) both stay at 2.8284 = 2 sqrt2 at orthogonal
+points (results/amp_floor_2026-10-26.txt): 2 sqrt2 is the orbit's minimum amplification.  The
+Q(sqrt2) gamma_{inf,2} minimum has amp 3.14 (lower gamma != lower amp).  Conclusion: inside
+accurate_262's orbit no scheme beats it on the dominant term; what remains is other orbits
+(LWH, Agarwal: their gamma_{inf,2} minima are all worse; amp unchecked, scheme files need the
+TeX sources) or the precision level (compensated passes at a time cost; low-precision targets).
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

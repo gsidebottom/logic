@@ -57,23 +57,24 @@ is $80$ against $180$.  Measured against exact references on random
 matrices, in single and double precision at one to three recursion
 levels, its error is $0.75$--$0.77$ of \acc's on average ($0.62$--$0.90$ for single instances), at the same speed in a
 fused-pass implementation over Apple's Accelerate.  In recursion down to scalars its advantage grows,
-to $0.72$ at five levels.  We found a scheme equivalent to \acct
-independently, by minimizing $\ginf$ over the de~Groote orbit and the
-scheme's three role assignments with an exact-gradient search: in the
-published role the lowest point the search finds is equivalent to it,
-and its coefficients are dyadic.  Among the orbit's
-$648$ dyadic orthogonal points, enumerated exhaustively, the points that
-minimize both $\ginf$ and $\giinf$ are all equivalent to it.  The
-orbit's global $\ginf$ minimum, $21.41$, needs another role assignment
-and coefficients in
-$\Q(\sqrt2)$, and its measured error is no lower than \acc's.  Dyadic probe points
-show that neither $\ginf$ nor $\giinf$ alone predicts the measured error,
-while $Q_0$ and exact dyadic coefficients matter.  The other known
+to $0.72$ at five levels.  We also minimize $\ginf$ over the whole
+de~Groote orbit of the scheme and its three role assignments, with an
+exact-gradient search.  The orbit's minimum is $\ginf=21.41$, exponent
+$2.210$, reached in the two other role assignments at points whose
+coefficients lie in $\Q(\sqrt2)$; in the published role the minimum is
+$16\sqrt2$, at points equivalent to \acct, which we found before we
+knew of it.  Among the orbit's $648$ dyadic orthogonal points, enumerated
+exhaustively, the points minimizing both $\ginf$ and $\giinf$ are all
+equivalent to \acct.  The $21.41$ point cannot be made dyadic, and in
+floating point, where its constants round, its measured error is no
+lower than \acc's.  Dyadic probe points show that neither $\ginf$ nor
+$\giinf$ alone predicts the measured error, while $Q_0$ and exact dyadic
+coefficients matter.  The other known
 rational classes, Li, Wang and Hu's curve and Agarwal's scheme, have
 larger $\ginf$ minima.
 \end{abstract}
 
-\section{Introduction}
+\section{Introduction}\label{sec:intro}
 
 Two $4\times4$ matrices can be multiplied with $48$ multiplications over
 any ring containing $1/2$.  AlphaEvolve found a rank-$48$ scheme with
@@ -113,7 +114,12 @@ published in PLinOpt on 13~October 2026 as \acct (commit
 \texttt{b441528}, by J.-G.~Dumas), described as ``accurate with 262
 operations, or (5+3/4) ALT/CoB''.  Neither source says how it was
 found or reports its growth factors, and \acc remains the accurate
-variant on record.
+variant on record.  After this paper's first draft, A.~Sedoglavic
+informed us that the point with $\ginf=16\sqrt2$ was found by Touko
+Ursin in mid-September 2026, by a construction with Hadamard matrices
+(a reduced form of the parametrization of Section~\ref{sec:search})
+rather than by search, and has not been published
+yet~\cite{Sedoglavic26}.
 
 We call schemes by their PLinOpt names: \acc for Table~1
 of~\cite{DPS26a}, \acct for the variant with $262$ operations, \rat for the
@@ -140,10 +146,12 @@ We show that \acct, the cheaper variant, is also the more accurate one:
 \end{itemize}
 
 Before we knew of \acct, which was first published in PLinOpt (commit
-\texttt{b441528}~\cite{PLinOpt}), our search found a scheme equivalent
+\texttt{b441528}~\cite{PLinOpt}) and first found by Ursin
+(Section~\ref{sec:intro}), our search found a scheme equivalent
 to it, that is, \acct written in another way (Section~\ref{sec:inv}).
 The search minimizes $\ginf$ over the orbit and the scheme's role
-assignments (Section~\ref{sec:search}).  That search is the paper's other
+assignments (Section~\ref{sec:search}).  That search, and the value of
+the orbit's $\ginf$ minimum it gives, are the paper's other
 contribution.  In the published role the lowest point the search finds
 is equivalent to \acct, and it is exact as found: its $U$ and $W$ have entries
 $0,\pm1/\sqrt2$, which rescaling turns into dyadic coefficients, so no
@@ -367,7 +375,30 @@ runs from all three.
 
 \subsection{Continuous search over the orbit}
 
-We minimize $\ginf$ over $(U,V,W)\in GL_4^3$.  The max over the $16$
+We minimize $\ginf$ over $(U,V,W)\in GL_4^3$, that is, over all $48$
+parameters, by brute force.  This is not how such a search should be
+done, and we describe the search as we ran it only so that its results
+can be checked.  The orbit has structure that the objective respects,
+and DPS's own searches use it~\cite[Section~4]{DPS24}: orthogonal
+isotropies leave $\gamma_2$ unchanged (their Lemma~13), so the search
+for the growth factor is restricted to the factorization of $GL_4$ by
+the orthogonal matrices, isotropies of the form $H_\rho P_\xi$ with
+$H_\rho$ a positive diagonal matrix and $P_\xi$ unipotent (their
+Lemma~14), and on that quotient, Sedoglavic tells us, a convexity result
+makes the minimum unique~\cite{Sedoglavic26}.  The norms that
+orthogonal isotropies do change, $\ginf$ among them, are then searched
+over the orthogonal matrices alone, with $SO(4)$ parametrized by Van
+Elfrinkhof's formula~\cite{vanElfrinkhof1897}, every rotation the
+product of a left- and a right-isoclinic rotation with three parameters
+each: $18$ parameters for $(U,V,W)$ instead of $48$.  (He also points to
+earlier work by Turner on this parametrization; reference to be
+supplied.)  Our brute-force search found the same minima (its optima
+have two orthogonal factors and one of the form orthogonal times
+diagonal, Section~\ref{sec:search}), at a cost that the restricted
+search would have divided by a large factor, and anyone repeating a
+search of this kind should start from the restricted form.
+
+The max over the $16$
 outputs is smoothed by a log-sum-exp with sharpness $\beta$ and
 $\lvert x\rvert$ by $\sqrt{x^2+\epsilon^2}$, the smoothed objective is
 minimized by BFGS with a backtracking line search, and $(\beta,\epsilon)$
@@ -886,7 +917,11 @@ the tools listed above; the results rest on those checks rather than on
 trust in either the author or the tools.  The algorithm comes from
 Dumas, Pernet and Sedoglavic's work and was published by J.-G.~Dumas in
 PLinOpt; our search found a scheme equivalent to it, and we learned
-that it was already there only after constructing ours.
+that it was already there only after constructing ours.  We thank
+Alexandre Sedoglavic for his comments on the first draft: the
+parametrization of the orbit search in Section~\ref{sec:search}, Touko
+Ursin's priority on the $16\sqrt2$ point, and the place of the orbit's
+$\ginf$ minimum in the abstract all come from them~\cite{Sedoglavic26}.
 
 {\small
 \begin{thebibliography}{99}
@@ -898,6 +933,9 @@ matrix multiplication}, Numer.\ Math.\ 36 (1980) 63--72.
 \bibitem{Brent70} R.~P.~Brent, \emph{Algorithms for matrix
 multiplication}, Technical Report STAN-CS-70-157, Stanford University
 (1970).
+\bibitem{vanElfrinkhof1897} L.~van Elfrinkhof, \emph{Eene eigenschap
+van de orthogonale substitutie van de vierde orde}, Handelingen van het
+6e Nederlandsch Natuurkundig en Geneeskundig Congres, Delft (1897).
 \bibitem{deGroote78} H.~F.~de~Groote, \emph{On varieties of optimal
 algorithms for the computation of bilinear mappings I. The isotropy
 group of a bilinear mapping}, Theoret.\ Comput.\ Sci.\ 7 (1978) 1--24.
@@ -934,6 +972,13 @@ of the isotropy group action}, arXiv:2607.15069 (2026).
 for scientific and algorithmic discovery}, arXiv:2506.13131 (2025).
 \bibitem{ORO05} T.~Ogita, S.~M.~Rump, S.~Oishi, \emph{Accurate sum and
 dot product}, SIAM J.\ Sci.\ Comput.\ 26 (2005) 1955--1988.
+\bibitem{Sedoglavic26} A.~Sedoglavic, private communication (e-mail
+to the author), 26~October 2026: comments on the first draft of this
+paper; the orbit search should be restricted to the factorization of
+$GL_4$ by the orthogonal matrices for the growth factor, where a
+convexity result ensures uniqueness, and to $SO(4)$ in Van Elfrinkhof's
+parametrization for the other norms; the $\ginf=16\sqrt2$ point was
+found by Touko Ursin in mid-September 2026 with Hadamard matrices.
 \bibitem{S26} G.~Sidebottom, \emph{201 operations for rank-48 $4\times4$
 matrix multiplication over rings containing $1/2$}, preprint (2026);
 PLinOpt data file \texttt{4x4x4\_48\_201}.

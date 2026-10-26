@@ -167,7 +167,8 @@ $q$, DPS's $(p,q)$-growth factor~\cite[Th.~18]{DPS26b} is
 and the forward error of $\ell$ recursive levels is at most
 $f_{p,q}\lVert A\rVert_q\lVert B\rVert_q\,\varepsilon+O(\varepsilon^2)$
 with $f_{p,q}=O(\gamma_{p,q}^{\ell})=O(n^{\log_4\gamma_{p,q}})$.  The
-classical algorithm has $\giinf=\ginf=4$.  DPS also use the
+classical algorithm has $\giinf=\ginf=4$ and
+$\gamma_{2,\infty}=\gamma_{2,2}=16$, exponents $1$ and $2$.  DPS also use the
 smooth bound $\gamma_2=\sum_i\lVert L_i\rVert_2\lVert R_i\rVert_2
 \lVert P_{*,i}\rVert_2\ge\gamma_{2,2}$~\cite[eq.~(5)]{DPS26a}.
 PLinOpt's \texttt{growthfactor} tool~\cite{PLinOpt} also reports a
@@ -233,6 +234,43 @@ Three facts organize the search.
   changes no $\gamma_{p,q}$ and not $Q_0$.
 \end{itemize}
 
+\begin{table}[t]
+\centering
+\caption{Growth factors, $\gamma_2$, $Q_0$ and the operations of the
+published straight-line programs.  In parentheses: the error-bound
+exponent $\log_k\gamma$ ($k=2$ for $\mm{2\times2\times2:7}$, $k=4$ for
+$\mm{4\times4\times4:48}$), the power of $n$ with which the error bound
+grows.  Classical multiplication has exponent $1$ in the first two
+columns and $2$ in the next two, whose output norm is the $2$-norm
+over all $n^2$ entries rather than the largest entry.  The first five rows are the algorithms
+of~\cite[Table~2]{DPS26a} (values for \texttt{DPS-accurate}, whose
+coefficients involve $\sqrt3$, from that table).  The sixth is \acct, in bold where it is
+the smallest among the $\mm{4\times4\times4:48}$ algorithms with dyadic
+coefficients.  The last two are points of the same orbit from our
+search and our earlier work~\cite{S26}.  Names
+are PLinOpt's without the prefixes \texttt{2x2x2\_7\_} and
+\texttt{4x4x4\_48\_}.}
+\label{tab:gamma}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrrrr}
+\toprule
+algorithm & $\giinf$ & $\ginf$ & $\gamma_{2,\infty}$ & $\gamma_{2,2}$ & $\gamma_2$ & $Q_0$ & ops\\
+\midrule
+\multicolumn{8}{l}{$\mm{2\times2\times2:7}$}\\
+\quad \texttt{Winograd} & 18 (4.170) & 8 (3.000) & 31.24 (4.965) & 14 (3.807) & 17.85 & 13 & 15\\
+\quad \texttt{Strassen} & 12 (3.585) & 6.83 (2.772) & 17.89 (4.161) & 10.45 (3.386) & 14.83 & 8 & 18\\
+\quad \texttt{DPS-accurate}~\cite{DPS24} & 17.48 (4.128) & 5.97 (2.577) & 27.71 (4.793) & 10.01 (3.323) & -- & 23 & --\\
+\multicolumn{8}{l}{$\mm{4\times4\times4:48}$}\\
+\quad \texttt{rational}~\cite{DPS25} & 288 (4.085) & 38.16 (2.627) & 1032.0 (5.006) & 139.9 (3.564) & 210.5 & 152 & 315\\
+\quad \texttt{accurate}~\cite{DPS26a} & 148 (3.605) & 25.46 (2.335) & 514.9 (4.504) & 91.21 (3.256) & 154.5 & 180 & 284\\
+\quad \texttt{accurate\_262} & \textbf{132} (3.522) & \textbf{22.63} (2.250) & \textbf{496.5} (4.478) & \textbf{90.51} (3.250) & 154.5 & \textbf{80} & 262\\
+\quad orbit's $\ginf$ min., $\Q(\sqrt2)$ & 176.6 (3.732) & 21.41 (2.210) & 583.8 (4.595) & 85.63 (3.210) & 157.3 & 146 & --\\
+\quad \texttt{201}~\cite{S26} & 399 (4.320) & 75.85 (3.123) & 1072.5 (5.033) & 225.9 (3.910) & 369.7 & 101 & 201\\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \section{The 262-operation variant}\label{sec:scheme}
 
 \acct was added to PLinOpt on 13~October 2026.  Its straight-line programs take $64$
@@ -273,40 +311,6 @@ search.  The error-bound exponents $\log_4\ginf$ and $\log_4\gamma_{2,2}$
 are exactly $9/4$ and $13/4$.  Both algorithms' published programs pass
 PLinOpt's \texttt{SLPchecker} against their matrices, and both pass our
 exact check against the matrix multiplication tensor.
-
-\begin{table}[t]
-\centering
-\caption{Growth factors with their error-bound exponents $\log_k\gamma$
-($k=2$ for $\mm{2\times2\times2:7}$, $k=4$ for $\mm{4\times4\times4:48}$),
-$\gamma_2$, $Q_0$ and the operations of the published straight-line
-programs.  The first five rows are the algorithms
-of~\cite[Table~2]{DPS26a} (values for \texttt{DPS-accurate}, whose
-coefficients involve $\sqrt3$, from that table).  The sixth is \acct, in bold where it is
-the smallest among the $\mm{4\times4\times4:48}$ algorithms with dyadic
-coefficients.  The last two are points of the same orbit from our
-search and our earlier work~\cite{S26}.  Names
-are PLinOpt's without the prefixes \texttt{2x2x2\_7\_} and
-\texttt{4x4x4\_48\_}.}
-\label{tab:gamma}
-\footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{lrrrrrrr}
-\toprule
-algorithm & $\giinf$ & $\ginf$ & $\gamma_{2,\infty}$ & $\gamma_{2,2}$ & $\gamma_2$ & $Q_0$ & ops\\
-\midrule
-\multicolumn{8}{l}{$\mm{2\times2\times2:7}$}\\
-\quad \texttt{Winograd} & 18 (4.170) & 8 (3.000) & 31.24 (4.965) & 14 (3.807) & 17.85 & 13 & 15\\
-\quad \texttt{Strassen} & 12 (3.585) & 6.83 (2.772) & 17.89 (4.161) & 10.45 (3.386) & 14.83 & 8 & 18\\
-\quad \texttt{DPS-accurate}~\cite{DPS24} & 17.48 (4.128) & 5.97 (2.577) & 27.71 (4.793) & 10.01 (3.323) & -- & 23 & --\\
-\multicolumn{8}{l}{$\mm{4\times4\times4:48}$}\\
-\quad \texttt{rational}~\cite{DPS25} & 288 (4.085) & 38.16 (2.627) & 1032.0 (5.006) & 139.9 (3.564) & 210.5 & 152 & 315\\
-\quad \texttt{accurate}~\cite{DPS26a} & 148 (3.605) & 25.46 (2.335) & 514.9 (4.504) & 91.21 (3.256) & 154.5 & 180 & 284\\
-\quad \texttt{accurate\_262} & \textbf{132} (3.522) & \textbf{22.63} (2.250) & \textbf{496.5} (4.478) & \textbf{90.51} (3.250) & 154.5 & \textbf{80} & 262\\
-\quad orbit's $\ginf$ min., $\Q(\sqrt2)$ & 176.6 (3.732) & 21.41 (2.210) & 583.8 (4.595) & 85.63 (3.210) & 157.3 & 146 & --\\
-\quad \texttt{201}~\cite{S26} & 399 (4.320) & 75.85 (3.123) & 1072.5 (5.033) & 225.9 (3.910) & 369.7 & 101 & 201\\
-\bottomrule
-\end{tabular}
-\end{table}
 
 \section{How we found it}\label{sec:search}
 

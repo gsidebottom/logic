@@ -11,16 +11,17 @@ import os
 import re
 import sys
 
-SCHEMES = [  # (build, label)
-    ("bench_fmm", "Table~1, published programs (284)"),
-    ("bench_fmm_acc262", "262-op.\\ variant, published programs"),
-    ("bench_fmm_var_g16s2o", "262-op.\\ variant, our programs (445)"),
-    ("bench_fmm_var_table1d", "Table~1, direct sums"),
+SCHEMES = [  # (build, label); bench_fmm used Table 1's programs when these logs were made (the
+              # library's default until 2026-10-25; now build/bench_fmm_acc284)
+    ("bench_fmm", "\\texttt{accurate}, published programs (284)"),
+    ("bench_fmm_acc262", "\\texttt{accurate\\_262}, published programs"),
+    ("bench_fmm_var_g16s2o", "\\texttt{accurate\\_262} point, our programs (445)"),
+    ("bench_fmm_var_table1d", "\\texttt{accurate}, direct sums"),
     ("bench_fmm_var_probeA", "probe A, direct sums"),
     ("bench_fmm_var_probeB", "probe B, direct sums"),
     ("bench_fmm_var_g214d", "orbit's $\\gamma_{\\infty,2}$ minimum, $\\mathbb{Q}(\\sqrt2)$"),
-    ("bench_fmm_orig", "DPS25 (315)"),
-    ("bench_fmm_201", "201-operation point"),
+    ("bench_fmm_orig", "\\texttt{rational} (315)"),
+    ("bench_fmm_201", "\\texttt{201}"),
 ]
 LEVELS = {"D48/G": 1, "D48/D48/G": 2, "D48/D48/D48/G": 3}
 WINO = {"SW/G": 1, "SW/SW/G": 2, "SW/SW/SW/SW/G": 4}
@@ -85,11 +86,11 @@ def main():
     wrow = []
     for t in ("f", "d"):
         wrow += ["--", cell(ratios(err, "bench_fmm", t, "SW/SW/G")), cell(ratios(err, "bench_fmm", t, "SW/SW/SW/SW/G"))]
-    lines += [r"\midrule", "Winograd, 2 and 4 binary levels & " + " & ".join(wrow) + r"\\",
+    lines += [r"\midrule", r"\texttt{2x2x2\_7\_Winograd}, 2 and 4 binary levels & " + " & ".join(wrow) + r"\\",
               r"\bottomrule", r"\end{tabular}", r"\end{table}", ""]
     # table: the 262 variant relative to Table 1, per setting
     lines += [r"\begin{table}[t]", r"\centering",
-              r"\caption{Error of the $262$-operation variant (published programs) divided by Table~1's on the"
+              r"\caption{Error of \texttt{accurate\_262} (published programs) divided by \texttt{accurate}'s on the"
               r" same inputs: mean over the seeds, with the range in brackets.}",
               r"\label{tab:ratio}", r"\small", r"\begin{tabular}{llrrr}", r"\toprule",
               r"precision & setting & 1 level & 2 levels & 3 levels\\", r"\midrule"]
@@ -111,15 +112,15 @@ def main():
     lines += [r"\bottomrule", r"\end{tabular}", r"\end{table}", ""]
     # table: the factors beside the measured error at three levels (single precision)
     FACT = {  # build: (name, gamma_inf2, gamma_infinf, Q0, program)
-        "bench_fmm_acc262": ("262-op.\\ variant", "22.63", "132", "80", "published, 262"),
-        "bench_fmm_var_g16s2o": ("262-op.\\ variant", "22.63", "132", "80", "PLinOpt, 445"),
+        "bench_fmm_acc262": ("\\texttt{accurate\\_262}", "22.63", "132", "80", "published, 262"),
+        "bench_fmm_var_g16s2o": ("\\texttt{accurate\\_262} point", "22.63", "132", "80", "ours, 445"),
         "bench_fmm_var_probeB": ("probe B", "28.97", "144", "94", "direct sums"),
         "bench_fmm_var_probeA": ("probe A", "22.63", "256", "144", "direct sums"),
-        "bench_fmm": ("Table~1", "25.46", "148", "180", "published, 284"),
-        "bench_fmm_var_table1d": ("Table~1", "25.46", "148", "180", "direct sums"),
+        "bench_fmm": ("\\texttt{accurate}", "25.46", "148", "180", "published, 284"),
+        "bench_fmm_var_table1d": ("\\texttt{accurate}", "25.46", "148", "180", "direct sums"),
         "bench_fmm_var_g214d": ("orbit's $\\gamma_{\\infty,2}$ min.", "21.41", "176.6", "146", "direct sums"),
-        "bench_fmm_orig": ("DPS25", "38.16", "288", "152", "published, 315"),
-        "bench_fmm_201": ("201-op.\\ point", "75.85", "399", "101", "published, 201"),
+        "bench_fmm_orig": ("\\texttt{rational}", "38.16", "288", "152", "published, 315"),
+        "bench_fmm_201": ("\\texttt{201}", "75.85", "399", "101", "published, 201"),
     }
     rows = []
     for b, (name, g2, gi, q0, prog) in FACT.items():
@@ -137,7 +138,7 @@ def main():
     lines += [r for _, r in rows]
     lines += [r"\bottomrule", r"\end{tabular}", r"\end{table}", ""]
     summary = {lv: (min(v), max(v), sum(v) / len(v)) for lv, v in allr.items() if v}
-    lines.append("% 262/Table1 overall (min, max, mean) by level: " +
+    lines.append("% accurate_262/accurate overall (min, max, mean) by level: " +
                  "; ".join(f"{lv}: {a:.3f} {b:.3f} {c:.3f}" for lv, (a, b, c) in sorted(summary.items())))
     # table: speed, Table 1's published programs against the 262-operation variant's, best of the
     # alternating rounds (each run's median of five)
@@ -156,7 +157,7 @@ def main():
                   r"\caption{Time of the published programs in our library: the best of three alternating rounds,"
                   r" each the median of five runs.}",
                   r"\label{tab:speed}", r"\small", r"\begin{tabular}{llrrr}", r"\toprule",
-                  r"precision & plan, $n$ & Table~1 & 262-op.\\ variant & ratio\\", r"\midrule"]
+                  r"precision & plan, $n$ & \texttt{accurate} & \texttt{accurate\_262} & ratio\\", r"\midrule"]
         for (t, n, plan) in sorted({k[:3] for k in sp}, key=lambda k: (k[0] != "f", k[1], k[2])):
             a, b2 = sp.get((t, n, plan, "bench_fmm")), sp.get((t, n, plan, "bench_fmm_acc262"))
             if a and b2:
@@ -172,9 +173,9 @@ def main():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(1, 2, figsize=(9, 4.0), sharey=True)
-    show = [("bench_fmm", "Table 1", "C0", "o-"), ("bench_fmm_acc262", "262-op. variant", "C3", "s-"),
+    show = [("bench_fmm", "accurate", "C0", "o-"), ("bench_fmm_acc262", "accurate_262", "C3", "s-"),
             ("bench_fmm_var_g214d", r"orbit's $\gamma_{\infty,2}$ min., $\mathbb{Q}(\sqrt{2})$", "C2", "^--"),
-            ("bench_fmm_orig", "DPS25", "C1", "v-"), ("bench_fmm_201", "201-op. point", "C7", "d:")]
+            ("bench_fmm_orig", "rational", "C1", "v-"), ("bench_fmm_201", "201", "C7", "d:")]
     for ax, (t, tn) in zip(axes, (("f", "single precision"), ("d", "double precision"))):
         for b, lab, col, sty in show:
             ys = [ratios(err, b, t, p) for p in LEVELS]
@@ -182,7 +183,7 @@ def main():
                 ax.plot([1, 2, 3], [sum(y) / len(y) for y in ys], sty, color=col, label=lab)
         w = [ratios(err, "bench_fmm", t, p) for p in ("SW/SW/G", "SW/SW/SW/SW/G")]
         if all(w):
-            ax.plot([1, 2], [sum(y) / len(y) for y in w], "x-.", color="C4", label="Winograd (2 binary levels per step)")
+            ax.plot([1, 2], [sum(y) / len(y) for y in w], "x-.", color="C4", label="2x2x2_7_Winograd (2 binary levels per step)")
         ax.axhline(1.0, color="0.6", lw=0.8)
         ax.set_yscale("log")
         ax.set_xticks([1, 2, 3])
@@ -217,16 +218,16 @@ def deep(log, outdir):
              r"\cmidrule(lr){2-6}\cmidrule(lr){7-11}",
              r"levels & 1 & 2 & 3 & 4 & 5 & 1 & 2 & 3 & 4 & 5\\", r"\midrule"]
     fmt = lambda x: "--" if x != x else (f"{x:.2f}" if x < 100 else f"{x:.0f}")
-    SHORT = {"bench_fmm": "Table~1 (284)", "bench_fmm_acc262": "262 variant (262)",
-             "bench_fmm_var_g16s2o": "262 variant (445)", "bench_fmm_var_table1d": "Table~1, direct sums",
+    SHORT = {"bench_fmm": "\\texttt{accurate} (284)", "bench_fmm_acc262": "\\texttt{accurate\\_262} (262)",
+             "bench_fmm_var_g16s2o": "\\texttt{accurate\\_262} point (445)", "bench_fmm_var_table1d": "\\texttt{accurate}, direct",
              "bench_fmm_var_probeA": "probe A", "bench_fmm_var_probeB": "probe B",
-             "bench_fmm_var_g214d": "$\\gamma_{\\infty,2}$ min., $\\mathbb{Q}(\\sqrt2)$", "bench_fmm_orig": "DPS25",
-             "bench_fmm_201": "201-op.\\ point"}
+             "bench_fmm_var_g214d": "$\\gamma_{\\infty,2}$ min., $\\mathbb{Q}(\\sqrt2)$", "bench_fmm_orig": "\\texttt{rational}",
+             "bench_fmm_201": "\\texttt{201}"}
     for b, lab in SCHEMES:
         row = [fmt(mean(ratios(err, b, t, p))) for t in ("f", "d") for p in DEEP]
         lines.append(f"{SHORT[b]} & " + " & ".join(row) + r"\\")
     row = [fmt(mean(ratios(err, "bench_fmm", t, p))) for t in ("f", "d") for p in WDEEP]
-    lines += [r"\midrule", "Winograd & " + " & ".join(row) + r"\\", r"\bottomrule", r"\end{tabular}", r"\end{table}", ""]
+    lines += [r"\midrule", r"\texttt{Winograd} & " + " & ".join(row) + r"\\", r"\bottomrule", r"\end{tabular}", r"\end{table}", ""]
     # 262 / Table 1 by level, and the growth from 4 levels to 5
     rat = {}
     for t in ("f", "d"):
@@ -238,7 +239,7 @@ def deep(log, outdir):
                     if p in r2:
                         v.append(r2[p] / r[p])
             rat[(t, lv)] = v
-    lines.append("% 262/Table1 by level (single; double): " + "; ".join(
+    lines.append("% accurate_262/accurate by level (single; double): " + "; ".join(
         f"{lv}: {mean(rat[('f', lv)]):.3f} [{min(rat[('f', lv)]):.3f},{max(rat[('f', lv)]):.3f}] {mean(rat[('d', lv)]):.3f}"
         for lv in range(1, 6) if rat[("f", lv)] and rat[("d", lv)]))
     for b, lab in SCHEMES:
@@ -254,10 +255,10 @@ def deep(log, outdir):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(1, 2, figsize=(9, 4.0), sharey=True)
-    show = [("bench_fmm", "Table 1", "C0", "o-"), ("bench_fmm_acc262", "262-op. variant", "C3", "s-"),
-            ("bench_fmm_var_g16s2o", "262-op. variant, our 445-op. programs", "C3", "s:"),
+    show = [("bench_fmm", "accurate", "C0", "o-"), ("bench_fmm_acc262", "accurate_262", "C3", "s-"),
+            ("bench_fmm_var_g16s2o", "accurate_262 point, our 445-op. programs", "C3", "s:"),
             ("bench_fmm_var_g214d", r"orbit's $\gamma_{\infty,2}$ min., $\mathbb{Q}(\sqrt{2})$", "C2", "^--"),
-            ("bench_fmm_orig", "DPS25", "C1", "v-"), ("bench_fmm_201", "201-op. point", "C7", "d:")]
+            ("bench_fmm_orig", "rational", "C1", "v-"), ("bench_fmm_201", "201", "C7", "d:")]
     for ax, (t, tn) in zip(axes, (("f", "single precision"), ("d", "double precision"))):
         for b, lab, col, sty in show:
             ys = [ratios(err, b, t, p) for p in DEEP]
@@ -265,7 +266,7 @@ def deep(log, outdir):
                 ax.plot(range(1, 6), [mean(y) for y in ys], sty, color=col, label=lab)
         w = [ratios(err, "bench_fmm", t, p) for p in WDEEP]
         if all(w):
-            ax.plot(range(1, 6), [mean(y) for y in w], "x-.", color="C4", label="Winograd (2 binary levels per step)")
+            ax.plot(range(1, 6), [mean(y) for y in w], "x-.", color="C4", label="2x2x2_7_Winograd (2 binary levels per step)")
         ax.axhline(1.0, color="0.6", lw=0.8)
         ax.set_yscale("log")
         ax.set_xticks(range(1, 6))

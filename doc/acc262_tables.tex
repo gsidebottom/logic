@@ -11,24 +11,24 @@
 \cmidrule(lr){2-4}\cmidrule(lr){5-7}
 levels & 1 & 2 & 3 & 1 & 2 & 3\\
 \midrule
-Table~1, published programs (284) & 0.94 & 1.05 & 1.54 & 0.94 & 1.03 & 1.57\\
-262-op.\ variant, published programs & 0.73 & 0.79 & 1.17 & 0.72 & 0.81 & 1.16\\
-262-op.\ variant, our programs (445) & 0.71 & 0.83 & 1.33 & 0.73 & 0.83 & 1.32\\
-Table~1, direct sums & 0.96 & 1.07 & 1.65 & 0.93 & 1.08 & 1.70\\
+\texttt{accurate}, published programs (284) & 0.94 & 1.05 & 1.54 & 0.94 & 1.03 & 1.57\\
+\texttt{accurate\_262}, published programs & 0.73 & 0.79 & 1.17 & 0.72 & 0.81 & 1.16\\
+\texttt{accurate\_262} point, our programs (445) & 0.71 & 0.83 & 1.33 & 0.73 & 0.83 & 1.32\\
+\texttt{accurate}, direct sums & 0.96 & 1.07 & 1.65 & 0.93 & 1.08 & 1.70\\
 probe A, direct sums & 0.74 & 0.82 & 1.32 & 0.71 & 0.85 & 1.36\\
 probe B, direct sums & 0.78 & 0.82 & 1.26 & 0.74 & 0.86 & 1.36\\
 orbit's $\gamma_{\infty,2}$ minimum, $\mathbb{Q}(\sqrt2)$ & 0.86 & 1.00 & 1.61 & 0.88 & 1.01 & 1.57\\
-DPS25 (315) & 1.06 & 1.60 & 3.27 & 1.03 & 1.56 & 3.23\\
-201-operation point & 2.78 & 8.72 & 36.84 & 2.59 & 8.74 & 36.77\\
+\texttt{rational} (315) & 1.06 & 1.60 & 3.27 & 1.03 & 1.56 & 3.23\\
+\texttt{201} & 2.78 & 8.72 & 36.84 & 2.59 & 8.74 & 36.77\\
 \midrule
-Winograd, 2 and 4 binary levels & -- & 3.11 & 10.25 & -- & 3.00 & 9.93\\
+\texttt{2x2x2\_7\_Winograd}, 2 and 4 binary levels & -- & 3.11 & 10.25 & -- & 3.00 & 9.93\\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{table}[t]
 \centering
-\caption{Error of the $262$-operation variant (published programs) divided by Table~1's on the same inputs: mean over the seeds, with the range in brackets.}
+\caption{Error of \texttt{accurate\_262} (published programs) divided by \texttt{accurate}'s on the same inputs: mean over the seeds, with the range in brackets.}
 \label{tab:ratio}
 \small
 \begin{tabular}{llrrr}
@@ -56,20 +56,20 @@ double & $n=8192$, normal & 0.75 [0.68, 0.81] & 0.78 [0.75, 0.81] & 0.76 [0.70, 
 \toprule
 scheme & $\gamma_{\infty,2}$ & $\gamma_{\infty,\infty}$ & $Q_0$ & program & 3 levels & growth\\
 \midrule
-262-op.\ variant & 22.63 & 132 & 80 & published, 262 & 1.17 & 1.47\\
+\texttt{accurate\_262} & 22.63 & 132 & 80 & published, 262 & 1.17 & 1.47\\
 probe B & 28.97 & 144 & 94 & direct sums & 1.26 & 1.53\\
 probe A & 22.63 & 256 & 144 & direct sums & 1.32 & 1.62\\
-262-op.\ variant & 22.63 & 132 & 80 & PLinOpt, 445 & 1.33 & 1.60\\
-Table~1 & 25.46 & 148 & 180 & published, 284 & 1.54 & 1.46\\
+\texttt{accurate\_262} point & 22.63 & 132 & 80 & ours, 445 & 1.33 & 1.60\\
+\texttt{accurate} & 25.46 & 148 & 180 & published, 284 & 1.54 & 1.46\\
 orbit's $\gamma_{\infty,2}$ min. & 21.41 & 176.6 & 146 & direct sums & 1.61 & 1.61\\
-Table~1 & 25.46 & 148 & 180 & direct sums & 1.65 & 1.55\\
-DPS25 & 38.16 & 288 & 152 & published, 315 & 3.27 & 2.05\\
-201-op.\ point & 75.85 & 399 & 101 & published, 201 & 36.84 & 4.22\\
+\texttt{accurate} & 25.46 & 148 & 180 & direct sums & 1.65 & 1.55\\
+\texttt{rational} & 38.16 & 288 & 152 & published, 315 & 3.27 & 2.05\\
+\texttt{201} & 75.85 & 399 & 101 & published, 201 & 36.84 & 4.22\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-% 262/Table1 overall (min, max, mean) by level: 1: 0.639 0.896 0.772; 2: 0.620 0.880 0.771; 3: 0.656 0.886 0.754
+% accurate_262/accurate overall (min, max, mean) by level: 1: 0.639 0.896 0.772; 2: 0.620 0.880 0.771; 3: 0.656 0.886 0.754
 \begin{table}[t]
 \centering
 \caption{Time of the published programs in our library: the best of three alternating rounds, each the median of five runs.}
@@ -77,7 +77,7 @@ DPS25 & 38.16 & 288 & 152 & published, 315 & 3.27 & 2.05\\
 \small
 \begin{tabular}{llrrr}
 \toprule
-precision & plan, $n$ & Table~1 & 262-op.\\ variant & ratio\\
+precision & plan, $n$ & \texttt{accurate} & \texttt{accurate\_262} & ratio\\
 \midrule
 single & \texttt{D48/G}, 4096 & 0.044 s & 0.044 s & 1.000\\
 single & \texttt{D48/G6}, 4096 & 0.036 s & 0.036 s & 1.000\\

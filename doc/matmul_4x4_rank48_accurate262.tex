@@ -21,6 +21,13 @@
 \newcommand{\ginf}{\gamma_{\infty,2}}
 \newcommand{\giinf}{\gamma_{\infty,\infty}}
 \newcommand{\mm}[1]{\langle #1\rangle}
+\usepackage{xspace}
+\setlength{\emergencystretch}{1em}
+% schemes by their PLinOpt names
+\newcommand{\acc}{\texttt{4x4x4\_\allowbreak 48\_\allowbreak accurate}\xspace}
+\newcommand{\acct}{\texttt{4x4x4\_\allowbreak 48\_\allowbreak accurate\_\allowbreak 262}\xspace}
+\newcommand{\rat}{\texttt{4x4x4\_\allowbreak 48\_\allowbreak rational}\xspace}
+\newcommand{\pto}{\texttt{4x4x4\_\allowbreak 48\_\allowbreak 201}\xspace}
 \title{The 262-operation $\mm{4\times4\times4:48}$ algorithm is also the\\
 more accurate one: error-bound exponent $9/4$ and about a quarter
 less error}
@@ -32,9 +39,10 @@ less error}
 
 \begin{abstract}
 Dumas, Pernet and Sedoglavic's accurate rational $\mm{4\times4\times4:48}$
-algorithm, Table~1 of their 2026 paper, has $(\infty,2)$-growth factor
+algorithm (Table~1 of their 2026 paper; \acc in PLinOpt) has
+$(\infty,2)$-growth factor
 $\ginf=18\sqrt2\approx25.46$, an error-bound exponent $\log_4\ginf\approx2.335$.
-Their later $262$-operation variant, in the same orbit, was published for
+Their later $262$-operation variant \acct, in the same orbit, was published for
 its lower operation count.  We show that it is also the more accurate
 algorithm.  Its growth factors are smaller in all four norms they
 consider: $\ginf=16\sqrt2$, an exponent of exactly $9/4$;
@@ -43,7 +51,7 @@ $8\sqrt{4142}$; and $\gamma_{2,2}=64\sqrt2$ against $8\sqrt{130}$.  Its
 $\gamma_2=64(1+\sqrt2)$ is the same, and its rounding-chain factor $Q_0$
 is $80$ against $180$.  Measured against exact references on random
 matrices, in single and double precision at one to three recursion
-levels, its error is $0.75$--$0.77$ of Table~1's on average ($0.62$--$0.90$ for single instances), at the same speed in a
+levels, its error is $0.75$--$0.77$ of \acc's on average ($0.62$--$0.90$ for single instances), at the same speed in a
 fused-pass implementation over Apple's Accelerate.  In recursion down to scalars its advantage grows,
 to $0.72$ at five levels.  We rediscovered the
 point by minimizing $\ginf$ over the de~Groote orbit and the scheme's
@@ -51,7 +59,7 @@ three role assignments with an exact-gradient search.  Among the orbit's
 $648$ dyadic orthogonal points, enumerated exhaustively, it is, up to
 symmetry, the unique point that minimizes both $\ginf$ and $\giinf$.  The
 orbit's global $\ginf$ minimum, $21.41$, needs coefficients in
-$\Q(\sqrt2)$ and measures no better than Table~1.  Dyadic probe points
+$\Q(\sqrt2)$, and its measured error is no lower than \acc's.  Dyadic probe points
 show that neither $\ginf$ nor $\giinf$ alone predicts the measured error,
 while $Q_0$ and exact dyadic coefficients matter.  The other known
 rational classes, Li, Wang and Hu's curve and Agarwal's scheme, have
@@ -76,7 +84,7 @@ practice.
 
 In~\cite{DPS26a} DPS proposed an accurate variant of their rational
 scheme, given as Table~1 of that paper and in PLinOpt as
-\texttt{4x4x4\_48\_accurate}~\cite{PLinOpt}.  They found it in the de
+\acc~\cite{PLinOpt}.  They found it in the de
 Groote isotropy orbit~\cite{deGroote78} of their first scheme: a point
 minimizing the smooth bound $\gamma_2\ge\gamma_{2,2}$ along the orbit,
 then moved by orthogonal isotropies, which keep $\gamma_2$, to get
@@ -84,29 +92,37 @@ sparse straight-line programs.  Its growth factor is $\ginf\approx25.456$,
 error-bound exponent $\log_4\ginf\approx2.335$, the smallest among the
 algorithms they compare, and its programs take $284$ operations.  The
 paper's versions run from 19~March 2026 (v1) to 29~July 2026 (v3, the
-current one), and Table~1's scheme entered PLinOpt on 23~June 2026.
+current one), and \acc entered PLinOpt on 23~June 2026.
 
 DPS then published a cheaper accurate variant with $262$ operations.
 It entered PLinOpt on 13~October 2026 as
-\texttt{4x4x4\_48\_accurate\_262} (commit \texttt{b441528}, by
+\acct (commit \texttt{b441528}, by
 J.-G.~Dumas), described as ``accurate with 262 operations''.  The second
 version of~\cite{DPSST26}, dated 2~October 2026, cites it as the accurate
 variant with the best leading term, $9+3/16$; the first version, of
 10~September 2026, presents a $216$-operation algorithm and gives no
 accurate variant in its abstract.  Neither source reports the new
-variant's growth factors, and Table~1 of~\cite{DPS26a} remains the
-accurate variant on record.
+variant's growth factors, and \acc remains the accurate variant on
+record.
 
-We show that the $262$-operation variant is also the more accurate one:
+We call schemes by their PLinOpt names: \acc for Table~1
+of~\cite{DPS26a}, \acct for the variant with $262$ operations, \rat for the
+first rational scheme~\cite{DPS25}, \pto for our $201$-operation
+point~\cite{S26}, and \texttt{2x2x2\_\allowbreak 7\_\allowbreak Winograd},
+\texttt{2x2x2\_\allowbreak 7\_\allowbreak Strassen} and \texttt{2x2x2\_\allowbreak 7\_\allowbreak DPS-accurate} for the
+$\mm{2\times2\times2:7}$ algorithms.  Tables drop the common prefixes.
+Points of our search that are not in PLinOpt have descriptive names.
+
+We show that \acct, the cheaper variant, is also the more accurate one:
 \begin{itemize}
-\item Its growth factors are smaller than Table~1's in all four norms
+\item Its growth factors are smaller than \acc's in all four norms
   of~\cite[Table~2]{DPS26a}, with the same $\gamma_2$: $\ginf=16\sqrt2$,
   an error-bound exponent of exactly $9/4$, against $25.456$;
   $\giinf=132$ against $148$; $\gamma_{2,2}=64\sqrt2$ against $91.21$;
   and $\gamma_{2,\infty}\approx496.5$ against $514.9$.  Its rounding-chain
   factor $Q_0$ is $80$ against $180$ (Section~\ref{sec:scheme}).
 \item Measured on random matrices against exact references, in single
-  and double precision, its error is $0.75$--$0.77$ of Table~1's on average at one to
+  and double precision, its error is $0.75$--$0.77$ of \acc's on average at one to
   three recursion levels, and never above $0.90$.  In recursion down to
   scalars the advantage grows, to $0.72$ at five levels.  It runs at the same speed in a fused-pass
   implementation over Apple's Accelerate (Sections~\ref{sec:acc}
@@ -118,15 +134,16 @@ minimizing $\ginf$ over the orbit and the scheme's role assignments
 (Section~\ref{sec:search}), and that search is the paper's other
 contribution.  Among the orbit's dyadic orthogonal points, which we
 enumerate exhaustively, the points minimizing $\giinf$ also minimize
-$\ginf$, and all of them are the $262$-operation variant up to
+$\ginf$, and all of them are \acct up to
 symmetry.  The orbit's global $\ginf$ minimum, $21.407$, is reached only
-at points with coefficients in $\Q(\sqrt2)$, and it measures no better
-than Table~1.  The other known rational classes, members of Li, Wang
+at points with coefficients in $\Q(\sqrt2)$, and its measured error is
+no lower than \acc's.  The other known rational classes, members of Li, Wang
 and Hu's curve~\cite{LWH26} and Agarwal's scheme~\cite{Agarwal26}, have
 larger $\ginf$ minima.  So $\ginf$ alone is not a sufficient objective
 for an accuracy search.  The rounding-chain factor $Q_0$ and exact
-dyadic coefficients matter as much, and the $262$-operation variant is
-the best in all of them.
+dyadic coefficients matter as much.  \acct has dyadic coefficients and
+the smallest $Q_0$ and $\giinf$ of the $\mm{4\times4\times4:48}$ schemes
+we measured.
 
 \section{Background}\label{sec:background}
 
@@ -218,13 +235,12 @@ Three facts organize the search.
 
 \section{The 262-operation variant}\label{sec:scheme}
 
-DPS's $262$-operation variant is PLinOpt's
-\texttt{4x4x4\_48\_accurate\_262}, added on 13~October 2026.  Its straight-line programs take $64$
+\acct was added to PLinOpt on 13~October 2026.  Its straight-line programs take $64$
 additions and $8$ scalings for $L$, $67$ and $11$ for $R$, and $112$
-additions and no scalings for $P$, against Table~1's $80+4$, $68+8$ and
+additions and no scalings for $P$, against \acc's $80+4$, $68+8$ and
 $108+16$.  Up to symmetry it is
-Table~1's scheme moved by an orthogonal isotropy with entries
-$0,\pm1/\sqrt2$.  Take Table~1's $(L,R,P)$ in its published role and
+\acc moved by an orthogonal isotropy with entries
+$0,\pm1/\sqrt2$.  Take \acc's $(L,R,P)$ in its published role and
 apply~(\ref{eq:act}) with $(U,V,W)=(Q_U,Q_V,Q_W)/\sqrt2$, where
 \[
 Q_U=\begin{pmatrix}0&-1&0&-1\\1&0&-1&0\\0&-1&0&1\\-1&0&-1&0\end{pmatrix},\quad
@@ -233,15 +249,15 @@ Q_W=\begin{pmatrix}1&0&-1&0\\0&-1&0&1\\0&1&0&1\\1&0&1&0\end{pmatrix}.
 \]
 Each Kronecker factor in~(\ref{eq:act}) is then a $\{0,\pm1\}$ matrix
 divided by $2$, so the result has coefficients in $\Zh$ with
-denominators at most $4$, like Table~1.  Mapping
-\texttt{4x4x4\_48\_accurate\_262} through the input swap and signed
+denominators at most $4$, like \acc.  Mapping
+\acct through the input swap and signed
 permutations of $U$, $V$, $W$, and relabelling and rescaling the
 products, gives exactly this scheme.
 
 \begin{proposition}\label{prop:gamma}
-The $262$-operation variant has $\giinf=132$, $\ginf=16\sqrt2$,
+\acct has $\giinf=132$, $\ginf=16\sqrt2$,
 $\gamma_{2,\infty}=16\sqrt{963}\approx496.52$, $\gamma_{2,2}=64\sqrt2$,
-$\gamma_2=64(1+\sqrt2)$ and $Q_0=80$.  Table~1's scheme has $148$,
+$\gamma_2=64(1+\sqrt2)$ and $Q_0=80$.  \acc has $148$,
 $18\sqrt2\approx25.456$, $8\sqrt{4142}\approx514.87$,
 $8\sqrt{130}\approx91.214$, $64(1+\sqrt2)$ and $180$.
 \end{proposition}
@@ -264,9 +280,13 @@ exact check against the matrix multiplication tensor.
 ($k=2$ for $\mm{2\times2\times2:7}$, $k=4$ for $\mm{4\times4\times4:48}$),
 $\gamma_2$, $Q_0$ and the operations of the published straight-line
 programs.  The first five rows are the algorithms
-of~\cite[Table~2]{DPS26a} (values for DPS24, whose coefficients involve
-$\sqrt3$, from that table).  The last two are points of the same orbit
-from our search and our earlier work~\cite{S26}.}
+of~\cite[Table~2]{DPS26a} (values for \texttt{DPS-accurate}, whose
+coefficients involve $\sqrt3$, from that table).  The sixth is \acct, in bold where it is
+the smallest among the $\mm{4\times4\times4:48}$ algorithms with dyadic
+coefficients.  The last two are points of the same orbit from our
+search and our earlier work~\cite{S26}.  Names
+are PLinOpt's without the prefixes \texttt{2x2x2\_7\_} and
+\texttt{4x4x4\_48\_}.}
 \label{tab:gamma}
 \footnotesize
 \setlength{\tabcolsep}{4pt}
@@ -275,15 +295,15 @@ from our search and our earlier work~\cite{S26}.}
 algorithm & $\giinf$ & $\ginf$ & $\gamma_{2,\infty}$ & $\gamma_{2,2}$ & $\gamma_2$ & $Q_0$ & ops\\
 \midrule
 \multicolumn{8}{l}{$\mm{2\times2\times2:7}$}\\
-\quad Winograd & 18 (4.170) & 8 (3.000) & 31.24 (4.965) & 14 (3.807) & 17.85 & 13 & 15\\
-\quad Strassen & 12 (3.585) & 6.83 (2.772) & 17.89 (4.161) & 10.45 (3.386) & 14.83 & 8 & 18\\
-\quad DPS24~\cite{DPS24} & 17.48 (4.128) & 5.97 (2.577) & 27.71 (4.793) & 10.01 (3.323) & -- & 23 & --\\
+\quad \texttt{Winograd} & 18 (4.170) & 8 (3.000) & 31.24 (4.965) & 14 (3.807) & 17.85 & 13 & 15\\
+\quad \texttt{Strassen} & 12 (3.585) & 6.83 (2.772) & 17.89 (4.161) & 10.45 (3.386) & 14.83 & 8 & 18\\
+\quad \texttt{DPS-accurate}~\cite{DPS24} & 17.48 (4.128) & 5.97 (2.577) & 27.71 (4.793) & 10.01 (3.323) & -- & 23 & --\\
 \multicolumn{8}{l}{$\mm{4\times4\times4:48}$}\\
-\quad DPS25~\cite{DPS25} & 288 (4.085) & 38.16 (2.627) & 1032.0 (5.006) & 139.9 (3.564) & 210.5 & 152 & 315\\
-\quad Table~1~\cite{DPS26a} & 148 (3.605) & 25.46 (2.335) & 514.9 (4.504) & 91.21 (3.256) & 154.5 & 180 & 284\\
-\quad $262$-op.\ variant & \textbf{132} (3.522) & \textbf{22.63} (2.250) & \textbf{496.5} (4.478) & \textbf{90.51} (3.250) & 154.5 & \textbf{80} & 262\\
+\quad \texttt{rational}~\cite{DPS25} & 288 (4.085) & 38.16 (2.627) & 1032.0 (5.006) & 139.9 (3.564) & 210.5 & 152 & 315\\
+\quad \texttt{accurate}~\cite{DPS26a} & 148 (3.605) & 25.46 (2.335) & 514.9 (4.504) & 91.21 (3.256) & 154.5 & 180 & 284\\
+\quad \texttt{accurate\_262} & \textbf{132} (3.522) & \textbf{22.63} (2.250) & \textbf{496.5} (4.478) & \textbf{90.51} (3.250) & 154.5 & \textbf{80} & 262\\
 \quad orbit's $\ginf$ min., $\Q(\sqrt2)$ & 176.6 (3.732) & 21.41 (2.210) & 583.8 (4.595) & 85.63 (3.210) & 157.3 & 146 & --\\
-\quad 201-op.\ point~\cite{S26} & 399 (4.320) & 75.85 (3.123) & 1072.5 (5.033) & 225.9 (3.910) & 369.7 & 101 & 201\\
+\quad \texttt{201}~\cite{S26} & 399 (4.320) & 75.85 (3.123) & 1072.5 (5.033) & 225.9 (3.910) & 369.7 & 101 & 201\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -292,9 +312,9 @@ algorithm & $\giinf$ & $\ginf$ & $\gamma_{2,\infty}$ & $\gamma_{2,2}$ & $\gamma_
 
 \subsection{Role assignments}
 
-The three role assignments of Table~1's scheme have $\ginf=25.456$,
+The three role assignments of \acc have $\ginf=25.456$,
 $32.971$ and $28.142$ ($\giinf=148$, $212$, $180$), so the published one
-is already the best.  For DPS25 they give $38.162$, $39.282$ and
+is already the best.  For \rat they give $38.162$, $39.282$ and
 $33.540$, and the published one is not the best.  Every search below
 runs from all three.
 
@@ -329,8 +349,8 @@ $154.51$; $12$ parameters, two Cayley-parametrized rotations), the
 minimum is $16\sqrt2\approx22.627$ for the published role and
 $12+8\sqrt2\approx23.314$ for the other two.  At the minimum $U$ and $W$
 have entries $0,\pm1/\sqrt2$.  Over the whole orbit, $30{,}000$ starts
-from Table~1 ($10{,}000$ per role) and $7{,}200$ each from DPS25 and from
-our 201-operation point give the same local optima, a direct sign that
+from \acc ($10{,}000$ per role) and $7{,}200$ each from \rat and from
+\pto give the same local optima, a direct sign that
 the three lie in one orbit.  The lowest, $21.4073$, is found thousands
 of times, and nothing lower appears.  Its points have two orthogonal
 factors and one with singular values $(1,1,s,s)$, $s=2(\sqrt2-1)$, so
@@ -361,20 +381,20 @@ permutations.  There are six classes of $384$, so the sub-orbit of each
 role has $216$ distinct points, $648$ in all, and we enumerate them.
 
 \begin{theorem}\label{thm:dyadic}
-Among the $648$ points of the dyadic orthogonal sub-orbit of Table~1's
+Among the $648$ points of the dyadic orthogonal sub-orbit of \acc's
 scheme, the minimum of $\ginf$ is $16\sqrt2$, attained at $42$ points.
 The minimum of $\giinf$ is $132$, attained at exactly eight points, all
 in the published role, and these eight also attain $\ginf=16\sqrt2$.
-Each of the eight is the $262$-operation variant up to signed
+Each of the eight is \acct up to signed
 permutations of $(U,V,W)$, the input swap, and a relabelling and
 rescaling of the products.
 \end{theorem}
 
 The proof is the enumeration together with an explicit equivalence for
-each of the eight points (\texttt{equiv.py}).  Table~1's own point has
+each of the eight points (\texttt{equiv.py}).  \acc's own point has
 the fourth smallest $\ginf$ in the sub-orbit ($25.456$, after $16\sqrt2$,
 $12+8\sqrt2$ and $24$).  So within the dyadic orthogonal moves of
-Table~1, the $262$-operation variant is, up to symmetry, the unique
+\acc, \acct is, up to symmetry, the unique
 point that is best for both growth factors.
 
 \subsection{Other classes}\label{sec:classes}
@@ -389,7 +409,7 @@ We rebuilt both exactly from the papers' statements (checked on all
 $4096$ Brent equations) and ran the continuous search from each,
 $2400$ starts per role (Table~\ref{tab:classes}).  The smallest $\ginf$
 grows steadily with $t$.  No other class has any point, dyadic or not,
-as low as the $262$-operation variant's $22.63$; the closest, $s(1/2)$,
+as low as \acct's $22.63$; the closest, $s(1/2)$,
 bottoms out at $23.14$.
 
 \begin{table}[t]
@@ -436,8 +456,8 @@ straight-line programs, operation by operation in the programs' order,
 so each program's rounding is the one measured.  Deeper levels recurse
 on the block products.  One, two and three levels at $n=4096$ leave
 GEMMs of size $1024$, $256$ and $64$, and at $n=8192$ sizes $2048$, $512$
-and $128$.  For comparison we include Winograd's
-$\mm{2\times2\times2:7}$ (Strassen--Winograd, $15$ additions) at one, two
+and $128$.  For comparison we include
+\texttt{2x2x2\_\allowbreak 7\_\allowbreak Winograd} (Strassen--Winograd, $15$ additions) at one, two
 and four levels.  Two of its levels reduce the size as much as one
 $\mm{4\times4\times4}$ level.
 
@@ -463,45 +483,44 @@ $\mm{4\times4\times4}$ level.
 
 The programs are:
 \begin{itemize}
-\item Table~1's published $284$-operation programs;
-\item the $262$-operation variant's published programs;
+\item \acc's published $284$-operation programs;
+\item \acct's published programs;
 \item our representative of the same point, with programs generated by
   PLinOpt's \texttt{optimizer} ($445$ operations);
-\item DPS25's $315$-operation programs and the $201$-operation
+\item \rat's $315$-operation programs and the $201$-operation
   programs of~\cite{S26};
 \item the orbit's $\ginf$ minimum, written as direct sums with its
   coefficients rounded to the working precision;
-\item Table~1 written as direct sums, a control for program style;
-\item two dyadic points of Table~1's orbit, written as direct sums,
+\item \acc written as direct sums, a control for program style;
+\item two dyadic points of \acc's orbit, written as direct sums,
   chosen from the enumeration of Section~\ref{sec:dyadic} to separate
-  the two growth factors.  Probe~A has the $262$-operation variant's
+  the two growth factors.  Probe~A has \acct's
   $\ginf=16\sqrt2$ but $\giinf=256$ (role~0, classes $5,2,3$); probe~B
-  has $\ginf=28.97$, larger than Table~1's, but $\giinf=144$, smaller
+  has $\ginf=28.97$, larger than \acc's, but $\giinf=144$, smaller
   (role~2, classes $4,4,2$).  Their $Q_0$ are $144$ and $94$.
 \end{itemize}
 
 \subsection{Results}
 
 Table~\ref{tab:acc} gives each scheme's mean error as a multiple of the
-classical GEMM's.  Table~\ref{tab:ratio} gives the $262$-operation
-variant's error divided by Table~1's on the same inputs, and
+classical GEMM's.  Table~\ref{tab:ratio} gives \acct's error divided by \acc's on the same inputs, and
 Figure~\ref{fig:levels} plots the means.
 \begin{itemize}
-\item The $262$-operation variant is the most accurate scheme at every
+\item \acct is the most accurate scheme at every
   depth, in both precisions and for both distributions.  Its error is
-  $0.73$--$0.83$ of Table~1's averaged over the seeds of each setting,
+  $0.73$--$0.83$ of \acc's averaged over the seeds of each setting,
   $0.75$--$0.77$ averaged over all instances, and $0.62$--$0.90$ for
   single instances.
 \item At one and two levels, where the library's plans run, it is more
   accurate than the classical GEMM itself ($0.72$--$0.81$ of its error),
-  while Table~1 is about as accurate as the classical GEMM
+  while \acc is about as accurate as the classical GEMM
   ($0.94$--$1.05$).  The block products are dot products a quarter or a
   sixteenth as long, which saves more than the passes add.
 \item Single and double precision agree within a few percent, and so do
   the two sizes and the two distributions.
 \item Over these depths the advantage is nearly constant: from two
   levels to three both errors grow by a factor of $1.46$--$1.47$ in
-  single precision ($1.52$ for Table~1 and $1.43$ for the variant in
+  single precision ($1.52$ for \acc and $1.43$ for the variant in
   double).  With
   large leaves the leaf GEMMs' error dominates, and the difference comes
   from the passes' constant ($Q_0$), not yet from the growth factor.
@@ -515,8 +534,8 @@ Figure~\ref{fig:levels} plots the means.
 \includegraphics[width=\textwidth]{acc262_levels.pdf}
 \caption{Mean error against the exact reference as a multiple of the
 classical GEMM's error, over all sizes, distributions and seeds of the
-main campaign ($n=4096$ and $8192$).  Winograd's points are two and four
-binary levels.}
+main campaign ($n=4096$ and $8192$).  The points for
+\texttt{2x2x2\_\allowbreak 7\_\allowbreak Winograd} are two and four binary levels.}
 \label{fig:levels}
 \end{figure}
 
@@ -527,24 +546,23 @@ with one to five levels (leaves $256$, $64$, $16$, $4$ and $1$), as in
 DPS's experiments~\cite[Fig.~1]{DPS26a}, ten instances per precision.
 Table~\ref{tab:deep} gives the results.
 \begin{itemize}
-\item The $262$-operation variant is the most accurate at every depth
-  again, and its advantage over Table~1 grows with depth: its error is
-  $0.80$--$0.83$ of Table~1's at one level and $0.72$ at five (single
+\item \acct is the most accurate at every depth
+  again, and its advantage over \acc grows with depth: its error is
+  $0.80$--$0.83$ of \acc's at one level and $0.72$ at five (single
   instances $0.67$--$0.80$), in both precisions.
-\item From four levels to five, the errors grow by $2.60$--$2.61$ for the
-  $262$-operation variant and $2.75$--$2.79$ for Table~1, about $6\%$ slower per
-  level.  That is the direction $\ginf$ predicts, but less than its ratio
+\item From four levels to five, the errors grow by $2.60$--$2.61$ for
+  \acct and $2.75$--$2.79$ for \acc, about $6\%$ slower per level.  That is the direction $\ginf$ predicts, but less than its ratio
   $16\sqrt2/18\sqrt2=8/9$ would give.
-\item Programs matter more at depth.  The $262$-operation variant's
-  $445$-operation programs fall behind Table~1's published programs from
+\item Programs matter more at depth.  Our $445$-operation programs for
+  the same point as \acct fall behind \acc's published programs from
   three levels on ($15.5$ against $13.3$ times the classical error at
-  five levels, single precision), while its published $262$-operation
+  five levels, single precision), while \acct's own $262$-operation
   programs are the best of all.
 \item Among the direct-sum programs, the dyadic probes stay $24$--$29\%$
-  below Table~1 at five levels and the orbit's $\ginf$ minimum only about
+  below \acc at five levels and the orbit's $\ginf$ minimum only about
   $8\%$: the rounding of its constants compounds with depth.
-\item DPS25 grows by about $3.6$ per level, the 201-operation point by
-  about $7.5$, and Winograd by about $7$ per two binary levels.
+\item \rat grows by about $3.6$ per level, \pto by
+  about $7.5$, and \texttt{2x2x2\_\allowbreak 7\_\allowbreak Winograd} by about $7$ per two binary levels.
 \end{itemize}
 
 \input{acc262_deep.tex}
@@ -552,7 +570,7 @@ Table~\ref{tab:deep} gives the results.
 \begin{figure}[t]
 \centering
 \includegraphics[width=\textwidth]{acc262_deep.pdf}
-\caption{Deep recursion at $n=1024$: mean error against the exact reference as a multiple of the classical GEMM's error, over ten instances per precision.  Winograd's points are two binary levels per step.}
+\caption{Deep recursion at $n=1024$: mean error against the exact reference as a multiple of the classical GEMM's error, over ten instances per precision.  The points for \texttt{2x2x2\_\allowbreak 7\_\allowbreak Winograd} are two binary levels per step.}
 \label{fig:deep}
 \end{figure}
 
@@ -567,7 +585,7 @@ pipelined passes (\texttt{D48/G6}, \texttt{D48+4/D48/G6}), in
 alternating rounds.  Both take the same time to within the timer's
 resolution ($0.977$--$1.007$).  The passes move the same data, and with
 $262$ against $284$ operations neither is bound by arithmetic.  Our
-representative's $445$-operation programs also ran at Table~1's speed
+representative's $445$-operation programs also ran at \acc's speed
 ($1.000$--$1.028$ in an earlier run).  So the more accurate algorithm
 costs nothing at run time, and it is the cheaper one in operation count.
 
@@ -576,44 +594,44 @@ costs nothing at run time, and it is the cheaper one in operation count.
 \paragraph{What predicts the measured error.}
 Table~\ref{tab:factors} sets the factors beside the error measured at
 three levels in single precision, where the schemes differ most.  The
-growth factors separate the distant schemes (DPS25, the 201-operation
-point, two Winograd levels), but no single factor orders the close ones.
+growth factors separate the distant schemes (\rat, \pto, two levels
+of \texttt{2x2x2\_\allowbreak 7\_\allowbreak Winograd}), but no single factor orders the close ones.
 \begin{itemize}
-\item Probe~A has the $262$-operation variant's $\ginf$ and measures
-  worse.
-\item Probe~B has a larger $\ginf$ than Table~1 and measures better.
-\item The orbit's $\ginf$ minimum has the smallest $\ginf$ of all and
-  measures like Table~1.
+\item Probe~A has \acct's $\ginf$ but a larger measured error.
+\item Probe~B has a larger $\ginf$ than \acc but a smaller measured
+  error.
+\item The orbit's $\ginf$ minimum has the smallest $\ginf$ of all but
+  about the same measured error as \acc.
 \end{itemize}
-Among the dyadic schemes, $Q_0$ comes closest to the measured order:
-$80$, $94$, $144$ and $180$ for the $262$-operation variant, probe~B,
-probe~A and Table~1.  The $262$-operation variant is best in every
-factor at once, and it is the most accurate.
+Among the dyadic schemes, $Q_0$ comes closest to the order of the measured errors:
+$80$, $94$, $144$ and $180$ for \acct, probe~B,
+probe~A and \acc.  Of the dyadic schemes, \acct is best
+or tied for best in every factor, and its measured error is the smallest.
 
 
 \paragraph{Dyadic coefficients.}
 The orbit's $\ginf$ minimum and probe~A have nearly the same $\ginf$
 ($21.41$ and $22.63$) and $Q_0$ ($146$ and $144$), and the former has
-the smaller $\giinf$ ($176.6$ against $256$).  Yet the former measures
-about $20\%$ worse at three levels: $1.61$ against $1.32$ times the
+the smaller $\giinf$ ($176.6$ against $256$).  Yet the former's measured
+error is about $20\%$ larger at three levels: $1.61$ against $1.32$ times the
 classical error in single precision, and $1.57$ against $1.36$ in double.  Its constants, such as $2(\sqrt2-1)$,
 are rounded to the working precision, so the scheme itself is inexact by
 a unit roundoff, and each multiplication by them rounds.  Multiplications
 by $\pm1/2^k$ are exact.  The gap compounds with depth: at five levels
-the probes are $24$--$29\%$ below Table~1's direct sums and the
+the probes are $24$--$29\%$ below \acc's direct sums and the
 $\Q(\sqrt2)$ point only $8\%$.  A search for accuracy should therefore
 stay in dyadic coordinates.
 
 \paragraph{Programs.}
-The same scheme measures differently with different programs.  The
-$262$-operation variant's published programs beat our $445$-operation
-ones, and Table~1's published programs beat its direct sums
+The same scheme has different measured errors with different
+programs.  \acct's published programs beat our $445$-operation
+ones, and \acc's published programs beat its direct sums
 ($1.17$ against $1.33$, and $1.54$ against $1.65$, times the classical
 error at three levels in single precision).  Fewer operations mean shorter rounding chains, so sparse
 programs are worth having for accuracy as well as for speed.
 
 \paragraph{Recommendation.}
-Wherever Table~1's algorithm is used, the $262$-operation variant is
+Wherever \acc is used, \acct is
 better on both counts: $22$ fewer operations and about a quarter less
 error, in the same orbit and with the same $\gamma_2$.
 
@@ -657,8 +675,12 @@ it.
   \path{agarwal_replacement.py}, which rebuild the Li--Wang--Hu members and
   Agarwal's scheme from the papers.
 \item Measurements: \path{matmul/fastmm} (\path{bench_fmm.c},
-  \path{bench_impl.h}, \path{gen_kernels.py}); the build for the
-  $262$-operation programs is \path{build/bench_fmm_acc262}.  \texttt{FMM\_EXACT}, \texttt{FMM\_NORMAL}
+  \path{bench_impl.h}, \path{gen_kernels.py}).  The builds are
+  \path{build/bench_fmm_acc262} for the $262$-operation programs and
+  \path{build/bench_fmm_acc284} for \acc's.  The runs labelled
+  \texttt{bench\_fmm} in the result files used \acc's programs, the
+  library's default until it switched to \acct
+  after these measurements.  \texttt{FMM\_EXACT}, \texttt{FMM\_NORMAL}
   and \texttt{FMM\_SEED} select the reference, the distribution and the
   instance, and \texttt{FMM\_REFCACHE} shares references between
   builds.  The probes' programs are in \path{matmul/dps48/gamma/slp/}.

@@ -590,6 +590,32 @@ distinct thread seeds 1.25x typical / 1.75x worst (20% of 14 threads share a clo
 reuse <= 1.2x (estimate), -E needs memoization (not a factor); parallel efficiency 57% at 10
 threads, 43% at 14, same with machine words.  Scratch builds only, nothing sent upstream.
 
+PLinOpt optimizer speed, as commits (2026-10-26): branch `optimizer-speed` of the fork
+github.com/gsidebottom/plinopt (remote `fork` in matmul/dps48/plinopt, base upstream main 7c20065;
+local only until pushed), one PR-sized commit per item, each verified byte-identical with `-s 1`
+where it should be, SLPchecker on every program, upstream's bin/FDT.sh (its own failures are
+clock-random, 0-5 of ~1860):
+1. 193fb48 one generator per thread, reseeded per random loop from a global seed; `-s #` fixes
+   it; ties broken by lowest loop index; compacter reseeded -- output byte-identical across runs
+   and OMP_NUM_THREADS = 1, 3, 5, 14 (item 3: a mean 20% of 14 clock-seeded threads repeated
+   another's draws).
+2. 965b0ed RemOneCSE without the per-CSE transpose: L 1.50 -> 1.06 s, R 3.08 -> 2.33, P 2.83 ->
+   2.38 (-O 200, single thread, best of 3).
+3. 3297fb1 OneSub returns false when exhausted (no redundant rebuild): 2-3%.
+4. a6b3eaa RemOneCSE direct row test + incremental pair-map updates: 1.29x / 1.48x / 1.69x;
+   cumulative over upstream 1.79x / 1.91x / 1.99x.
+5. f54f80f `-Q`: search over Modular<int64_t> (p = 4294967291), constants lifted by rational
+   reconstruction (int64 Euclid, per-thread cache), program checked over Q, fallback to the
+   rational search: 3.9x / 4.4x / 4.8x over commit 4, 7.1x / 8.7x / 9.7x over upstream; 207/207
+   data files correct, 4 fall back (DPS-integral/intermediate 2x2x2 schemes, big coefficients);
+   FDT gains a -Q pipeline.  (First version was 4-7x SLOWER: a 46k-iteration bound loop and GMP
+   rationals in every Fabs/Fsign; fixed before committing.)
+6. 87002e8 memoized exhaustive search `-E` with budget `-B` (canonical state key = temporaries' linear
+   forms over the inputs; replay of the best choices): same optima as the old -E where it finishes;
+   3x4x7_63_rational_L 72 additions vs 84 from -O 1000 (old -E never finishes); on the 48x16
+   <4x4x4:48> matrices no better than random restarts (see the commit message).
+Harness: matmul/dps48/plinopt_dev/{build.sh,bench.sh}; results/plinopt_optimizer_speed_2026-10-26.txt.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

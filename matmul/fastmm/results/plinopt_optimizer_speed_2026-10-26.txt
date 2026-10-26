@@ -1,0 +1,55 @@
+# PLinOpt optimizer speed, 2026-10-26: branch optimizer-speed of github.com/gsidebottom/plinopt (base: upstream main 7c20065)
+# bench: single-threaded (OMP_NUM_THREADS=1 unless noted), -O 200, best of three wall times, SLPchecker on every program (check 1 = correct),
+# md5 of the program text (byte-identity across commits and thread counts with -s 1). Built with plinopt_dev/build.sh (Apple clang, libomp, the LinBox stack in matmul/dps48/stack).
+
+## main: upstream main 7c20065 (clock seed)
+main 4x4x4_48_accurate_262_L  time 1.434 s  ops 97 17  check 1  md5 53e3435b5d1a0e1ef617f7da341734a8
+main 4x4x4_48_accurate_262_R  time 2.952 s  ops 107 37  check 1  md5 ff128139d1313bdabce64e1844fac7f9
+main g16s2_P  time 2.710 s  ops 119 48  check 1  md5 f1c519758fa181ae4782e07fd953cc99
+
+## c1: commit 1: per-thread generator reseeded per loop, -s (seed 1)
+c1 4x4x4_48_accurate_262_L  time 1.472 s  ops 89 24  check 1  md5 66ea1359988bad26f2e50b7e00563a98
+c1 4x4x4_48_accurate_262_R  time 2.970 s  ops 113 34  check 1  md5 84e22d3db2bbda7c5aa27010c24c7e64
+c1 g16s2_P  time 2.741 s  ops 115 46  check 1  md5 fa849d7d26d6ed651d5d6def2525f35e
+
+## c2: commit 2: RemOneCSE without the per-CSE transpose
+c2 4x4x4_48_accurate_262_L  time 1.063 s  ops 89 24  check 1  md5 74b4ebb93d0b3c7726777482d5ff9337
+c2 4x4x4_48_accurate_262_R  time 2.333 s  ops 113 34  check 1  md5 760c8e0bc01e70f5cb16d567403a435a
+c2 g16s2_P  time 2.383 s  ops 115 46  check 1  md5 e8e27d4dea5605eacc3c23d9b8f89ea4
+
+## c3: commit 3: OneSub does not rebuild the pair lists
+c3 4x4x4_48_accurate_262_L  time 1.033 s  ops 89 24  check 1  md5 74b4ebb93d0b3c7726777482d5ff9337
+c3 4x4x4_48_accurate_262_R  time 2.285 s  ops 113 34  check 1  md5 760c8e0bc01e70f5cb16d567403a435a
+c3 g16s2_P  time 2.310 s  ops 115 46  check 1  md5 e8e27d4dea5605eacc3c23d9b8f89ea4
+
+## c4: commit 4: RemOneCSE direct row test, incremental pair updates
+c4 4x4x4_48_accurate_262_L  time 0.800 s  ops 89 24  check 1  md5 74b4ebb93d0b3c7726777482d5ff9337
+c4 4x4x4_48_accurate_262_R  time 1.545 s  ops 113 34  check 1  md5 760c8e0bc01e70f5cb16d567403a435a
+c4 g16s2_P  time 1.363 s  ops 115 46  check 1  md5 e8e27d4dea5605eacc3c23d9b8f89ea4
+
+## c5: commit 5: rational path (unchanged)
+c5 4x4x4_48_accurate_262_L  time 0.789 s  ops 89 24  check 1  md5 74b4ebb93d0b3c7726777482d5ff9337
+c5 4x4x4_48_accurate_262_R  time 1.502 s  ops 113 34  check 1  md5 760c8e0bc01e70f5cb16d567403a435a
+c5 g16s2_P  time 1.336 s  ops 115 46  check 1  md5 e8e27d4dea5605eacc3c23d9b8f89ea4
+
+## c5q: commit 5: -Q, word-size field with lifting
+c5q 4x4x4_48_accurate_262_L  time 0.201 s  ops 89 24  check 1  md5 ad0015b62121b5f626ef669f32b84980
+c5q 4x4x4_48_accurate_262_R  time 0.341 s  ops 113 34  check 1  md5 760c8e0bc01e70f5cb16d567403a435a
+c5q g16s2_P  time 0.279 s  ops 115 49  check 1  md5 96035ea00ee28972fc359c0a04034cf8
+
+## c5qt: commit 5: -Q, 14 threads
+c5qt 4x4x4_48_accurate_262_L  time 0.058 s  ops 89 24  check 1  md5 ad0015b62121b5f626ef669f32b84980
+c5qt 4x4x4_48_accurate_262_R  time 0.078 s  ops 113 34  check 1  md5 760c8e0bc01e70f5cb16d567403a435a
+c5qt g16s2_P  time 0.066 s  ops 115 49  check 1  md5 96035ea00ee28972fc359c0a04034cf8
+
+## c6: commit 6 (87002e8): memoized -E with -B; rational path (unchanged)
+c6 4x4x4_48_accurate_262_L  time 0.810 s  ops 89 24  check 1  md5 74b4ebb93d0b3c7726777482d5ff9337
+c6 4x4x4_48_accurate_262_R  time 1.572 s  ops 113 34  check 1  md5 760c8e0bc01e70f5cb16d567403a435a
+c6 g16s2_P  time 1.387 s  ops 115 46  check 1  md5 e8e27d4dea5605eacc3c23d9b8f89ea4
+
+## c6q: commit 6: -Q (unchanged)
+c6q 4x4x4_48_accurate_262_L  time 0.210 s  ops 89 24  check 1  md5 ad0015b62121b5f626ef669f32b84980
+c6q 4x4x4_48_accurate_262_R  time 0.349 s  ops 113 34  check 1  md5 760c8e0bc01e70f5cb16d567403a435a
+c6q g16s2_P  time 0.281 s  ops 115 49  check 1  md5 96035ea00ee28972fc359c0a04034cf8
+
+## -E with budgets, direct method, seed 1 (commit 6): L 88+28 (20k: 9 s; 2M: 193 s), R 112+56 (41 s; 268 s), P 115+48 (44 s; 302 s); 3x4x7_63_rational_L 72 additions in 53 s vs 84 from -O 1000

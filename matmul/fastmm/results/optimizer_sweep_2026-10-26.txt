@@ -1,0 +1,85 @@
+# PLinOpt optimizer sweep, 2026-10-26 (matmul/dps48/gamma/optsweep.sh, scored by optsweep_score.py)
+# per run: optimizer options, wall time, additions, multiplications (stderr counts); -E timed out at 120 s everywhere
+dps_L_default status 0 time 0 s additions 86 multiplications 24
+dps_L_O1000 status 0 time 1 s additions 86 multiplications 22
+dps_L_O1000E status 0 time 120 s additions  multiplications 
+dps_L_O1000N status 0 time 1 s additions 89 multiplications 22
+dps_L_O1000A status 0 time 12 s additions 92 multiplications 16
+dps_L_O5000 status 0 time 6 s additions 85 multiplications 20
+dps_R_default status 0 time 0 s additions 118 multiplications 37
+dps_R_O1000 status 0 time 2 s additions 103 multiplications 31
+dps_R_O1000E status 0 time 120 s additions  multiplications 
+dps_R_O1000N status 0 time 2 s additions 97 multiplications 33
+dps_R_O1000A status 0 time 21 s additions 101 multiplications 34
+dps_R_O5000 status 0 time 10 s additions 102 multiplications 30
+dps_P_default status 0 time 0 s additions 117 multiplications 0
+dps_P_O1000 status 0 time 2 s additions 113 multiplications 0
+dps_P_O1000E status 0 time 120 s additions  multiplications 
+dps_P_O1000N status 0 time 2 s additions 115 multiplications 0
+dps_P_O1000A status 0 time 3 s additions 117 multiplications 0
+dps_P_O5000 status 0 time 9 s additions 114 multiplications 0
+dps_P_T_default status 0 time 0 s additions 132 multiplications 0
+dps_P_T_O1000 status 0 time 0 s additions 124 multiplications 0
+dps_P_T_O5000 status 0 time 2 s additions 124 multiplications 0
+ours_L_default status 0 time 1 s additions 112 multiplications 32
+ours_L_O1000 status 0 time 2 s additions 102 multiplications 37
+ours_L_O1000E status 0 time 120 s additions  multiplications 
+ours_L_O1000N status 0 time 2 s additions 103 multiplications 34
+ours_L_O1000A status 0 time 20 s additions 102 multiplications 33
+ours_L_O5000 status 0 time 9 s additions 98 multiplications 34
+ours_R_default status 0 time 1 s additions 88 multiplications 28
+ours_R_O1000 status 0 time 1 s additions 88 multiplications 28
+ours_R_O1000E status 0 time 120 s additions  multiplications 
+ours_R_O1000N status 0 time 1 s additions 98 multiplications 16
+ours_R_O1000A status 0 time 12 s additions 94 multiplications 20
+ours_R_O5000 status 0 time 6 s additions 93 multiplications 22
+ours_P_default status 0 time 0 s additions 116 multiplications 49
+ours_P_O1000 status 0 time 2 s additions 116 multiplications 50
+ours_P_O1000E status 0 time 120 s additions  multiplications 
+ours_P_O1000N status 0 time 2 s additions 116 multiplications 51
+ours_P_O1000A status 0 time 1 s additions  multiplications 
+ours_P_O5000 status 0 time 9 s additions 117 multiplications 45
+ours_P_T_default status 0 time 0 s additions 126 multiplications 59
+ours_P_T_O1000 status 0 time 0 s additions 133 multiplications 40
+ours_P_T_O5000 status 0 time 3 s additions 136 multiplications 39
+
+# scored: operations counted from the programs, SLPchecker verdicts, rounding model of the best complete sets
+  dps_L_O5000.slp                85 +  20 =  105  ok
+  dps_L_O1000.slp                86 +  22 =  108  ok
+  dps_L_O1000A.slp               92 +  16 =  108  ok
+  dps_L_default.slp              86 +  24 =  110  ok
+  dps_L_O1000N.slp               89 +  22 =  111  ok
+  dps_R_O1000N.slp               97 +  33 =  130  ok
+  dps_R_O5000.slp               102 +  32 =  134  ok
+  dps_R_O1000.slp               103 +  32 =  135  ok
+  dps_R_O1000A.slp              101 +  35 =  136  ok
+  dps_R_default.slp             118 +  39 =  157  ok
+  dps_P_O1000.slp               113 +   0 =  113  ok
+  dps_P_O5000.slp               114 +   0 =  114  ok
+  dps_P_O1000N.slp              115 +   0 =  115  ok
+  dps_P_O1000A.slp              117 +   0 =  117  ok
+  dps_P_default.slp             117 +   0 =  117  ok
+  dps_P_T_O1000.slp             124 +   0 =  124  ok
+  dps_P_T_O5000.slp             124 +   0 =  124  ok
+  dps_P_T_default.slp           132 +   0 =  132  ok
+  ours_L_O5000.slp               98 +  35 =  133  ok
+  ours_L_O1000A.slp             102 +  34 =  136  ok
+  ours_L_O1000N.slp             103 +  35 =  138  ok
+  ours_L_O1000.slp              102 +  39 =  141  ok
+  ours_L_default.slp            112 +  36 =  148  ok
+  ours_R_O1000A.slp              94 +  20 =  114  ok
+  ours_R_O1000N.slp              98 +  16 =  114  ok
+  ours_R_O5000.slp               93 +  22 =  115  ok
+  ours_R_O1000.slp               88 +  28 =  116  ok
+  ours_R_default.slp             88 +  28 =  116  ok
+  ours_P_O5000.slp              117 +  45 =  162  ok
+  ours_P_default.slp            116 +  49 =  165  ok
+  ours_P_O1000.slp              116 +  50 =  166  ok
+  ours_P_O1000N.slp             116 +  51 =  167  ok
+  ours_P_T_O1000.slp            133 +  40 =  173  ok
+  ours_P_T_O5000.slp            136 +  39 =  175  ok
+  ours_P_T_default.slp          126 +  59 =  185  ok
+best sweep programs, dps representative: 348 ops  model L+R 7.05 P 3.15 worst 8.95 count 15.0 size 0.81
+best sweep programs, ours representative: 409 ops  model L+R 7.39 P 3.40 worst 9.96 count 15.0 size 0.88
+DPS's published 262                      model L+R 5.74 P 3.09 worst 7.22 count 15.0 size 0.80
+our g16s2o 445                           model L+R 5.61 P 8.22 worst 12.51 count 35.6 size 1.39

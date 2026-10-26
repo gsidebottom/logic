@@ -296,6 +296,9 @@ MODEL = [  # (build, label, program prefix under matmul/dps48)
     ("bench_fmm_var_table1d", "\\texttt{accurate}, direct sums", "gamma/slp/table1d"),
     ("bench_fmm_orig", "\\texttt{rational}, DPS's programs (315)", "plinopt/data/4x4x4_48_rational"),
     ("bench_fmm_201", "\\texttt{201}, our programs (201)", "cand48/p005_201n"),
+    # the optimizer sweep's best program sets (optsweep.sh), modelled only
+    (None, "\\texttt{accurate\\_262}, DPS's scheme, sweep (348)", "gamma/slp/sweep_dps"),
+    (None, "\\texttt{accurate\\_262}, our scheme, sweep (409)", "gamma/slp/sweep_ours"),
 ]
 
 
@@ -315,7 +318,8 @@ def model(log, deep_log, outdir):
              r" rounding.  Count and size: the roundings of the P pass that reach an output and their RMS size"
              r" in output units (value times weight), means over the outputs; an output's P error is"
              r" $\sqrt{\mathrm{count}}$ times the size.  Amp.: how much the worst output amplifies the leaf"
-             r" products' own errors, a property of the scheme.  Measured:"
+             r" products' own errors, a property of the scheme.  The last two rows are the best program"
+             r" sets of the optimizer sweep (Section~\ref{sec:disc}), modelled but not measured.  Measured:"
              r" single-precision error as a multiple of the classical GEMM's at three levels"
              r" (Table~\ref{tab:acc}) and five (Table~\ref{tab:deep}).}",
              r"\label{tab:model}", r"\footnotesize", r"\setlength{\tabcolsep}{4pt}",
@@ -325,9 +329,13 @@ def model(log, deep_log, outdir):
              r"program & L+R & P & count & size & worst & amp. & 3 levels & 5 levels\\", r"\midrule"]
     for b, lab, pre in MODEL:
         a = slp_errmodel.analyse(os.path.join(DPS48, pre))
-        m3 = mean(ratios(e3, b, "f", "D48/D48/D48/G"))
-        m5 = mean(ratios(e5, b, "f", "D48/D48/D48/D48/D48/G"))
-        fmt = lambda x: f"{x:.2f}" if x < 100 else f"{x:.0f}"
+        if b is None:
+            lines.append(r"\midrule") if "sweep" not in "".join(lines[-1:]) else None
+            m3 = m5 = None
+        else:
+            m3 = mean(ratios(e3, b, "f", "D48/D48/D48/G"))
+            m5 = mean(ratios(e5, b, "f", "D48/D48/D48/D48/D48/G"))
+        fmt = lambda x: "--" if x is None else (f"{x:.2f}" if x < 100 else f"{x:.0f}")
         lines.append(f"{lab} & {a['lr']:.2f} & {a['p']:.2f} & {a['count']:.1f} & {a['size']:.2f} & "
                      f"{a['worst']:.2f} & {a['amp']:.2f} & {fmt(m3)} & {fmt(m5)}" + r"\\")
     lines += [r"\bottomrule", r"\end{tabular}", r"\end{table}", ""]

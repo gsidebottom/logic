@@ -562,10 +562,14 @@ The programs are:
   moved into $P$: no
   entry of its $P$ is $\pm1$, and its $L$ has $\pm2$, $\pm3$, $\pm3/2$
   and $\pm1/2$.  Its programs come from one default run of PLinOpt's
-  \texttt{optimizer}: $445$ operations.  The optimizer is randomized, and
-  a rerun gives $437$.  The same run on DPS's scheme gives $383$, so how
-  the scheme is written accounts for about $60$ of the $180$ operations
-  between our programs and DPS's;
+  \texttt{optimizer}, $L$ and $R$ directly and $P$ through PLinOpt's
+  transposition pipeline (\texttt{matrix-transpose}, \texttt{optimizer
+  -K}, \texttt{transpozer}): $445$ operations.  The optimizer is
+  randomized, and a rerun gives $437$.  The same run on DPS's scheme
+  gives $383$, so how the scheme is written accounts for about $60$ of
+  the $180$ operations between our programs and DPS's.  A sweep of the
+  optimizer's options on both schemes (Section~\ref{sec:disc}) reaches
+  $348$ and $409$;
 \item \rat's $315$-operation programs and the $201$-operation
   programs of~\cite{S26};
 \item the orbit's $\ginf$ minimum, in another role, written as direct
@@ -773,6 +777,26 @@ each rounding to the outputs gives the error each pass adds to a level.
   fall behind it at depth.
 \end{itemize}
 
+\paragraph{What the optimizer reaches.}
+To see whether more search would have given us DPS's programs, we swept
+PLinOpt's \texttt{optimizer} over both schemes and all three matrices:
+$1000$ and $5000$ random loops instead of $100$, its exhaustive
+nullspace permutations (\texttt{-N}), its factoring method (\texttt{-A}),
+and for $P$ both direct optimization and the transposition pipeline.
+Its exhaustive CSE search (\texttt{-E}) did not finish within $120$~s on
+any matrix.  The best complete sets have $348$ operations for DPS's
+scheme and $409$ for ours, against DPS's $262$ and our $445$.  So the
+$262$-operation programs did not come from this search alone, and the
+commit does not say how they were made.  The sweep did show where our
+$P$ pass went wrong: every $P$ program optimized directly, rather than
+through the transposition pipeline, has DPS's structure, $15$ roundings
+per output of RMS size $0.81$--$0.88$, and adds $3.15$--$3.40$ against
+their $3.09$ in the model (Table~\ref{tab:model}, last two rows).  Our
+$L$ and $R$ programs still add more than DPS's ($7.05$--$7.39$ against
+$5.74$), so the best sets model at $8.95$ and $9.96$ on the worst
+output, between our $12.51$ and DPS's $7.22$.  We have not measured
+these programs.
+
 \paragraph{Recommendation.}
 Wherever \acc is used, \acct is
 better on both counts: $22$ fewer operations and about a quarter less
@@ -798,9 +822,10 @@ the operation count over dyadic points, or uses the measured error of
 deep recursion directly; \texttt{gamma48} makes such searches cheap.
 PLinOpt's optimizer minimizes operations, and the rounding model gives
 a second objective, the error a program adds; it evaluates a program in
-well under a second.  DPS's $P$ programs already keep their partial sums
-small, and an optimizer that also limits how many roundings reach each
-output might give \acct programs more accurate than DPS's.
+well under a second.  Direct optimization already gives $P$ programs
+as good as DPS's in the model; the $L$ and $R$ passes are where an
+accuracy objective would act, and it might give \acct programs more
+accurate than DPS's.
 Lower precisions (bf16, fp16), where every level's error is a larger
 share of the result, are where an accurate scheme matters most.
 
@@ -841,6 +866,10 @@ it.
 \item The rounding model: \path{matmul/dps48/gamma/slp_errmodel.py}, with
   its output in \path{matmul/fastmm/results/slp_errmodel_2026-10-25.txt};
   \path{paper_acc262.py --model} writes Table~\ref{tab:model}.
+\item The optimizer sweep: \path{matmul/dps48/gamma/optsweep.sh} and
+  \path{optsweep_score.py}; its log and scores are in
+  \path{matmul/fastmm/results/optimizer_sweep_2026-10-26.txt} and its
+  best programs in \path{matmul/dps48/gamma/slp/sweep_{dps,ours}_{L,R,P}.slp}.
 \item The schemes: PLinOpt's \texttt{data/4x4x4\_48\_accurate\_262} and
   \texttt{data/4x4x4\_48\_accurate}~\cite{PLinOpt}; our scheme equivalent to \acct
   is \path{matmul/dps48/gamma/g16s2_{L,R,P}.sms} and our programs for it

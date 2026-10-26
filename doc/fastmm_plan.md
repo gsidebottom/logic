@@ -574,6 +574,22 @@ the measured errors exactly at three and five levels.  The direct sums' 3/4 mult
 negligible (11.14 vs 11.09).  Next: an accuracy-aware program optimizer (the model runs in well
 under a second per program).
 
+Optimizer sweep (2026-10-26; `matmul/dps48/gamma/optsweep.sh`, `optsweep_score.py`,
+`results/optimizer_sweep_2026-10-26.txt`, best programs `gamma/slp/sweep_{dps,ours}_{L,R,P}.slp`):
+PLinOpt's optimizer with 1000/5000 loops, -N, -A, and P direct or transposed, on both schemes.
+Best complete sets 348 (DPS's scheme) and 409 (ours) vs DPS's published 262 and our 445; -E never
+finishes in 120 s.  So the 262 programs did not come from `optimizer` alone (recipe not in the
+commit; prune.sh/mirabelle.sh or hand work are candidates).  Direct P optimization gives P
+programs with DPS's structure (15 roundings per output, size 0.81-0.88, P error 3.15-3.40 vs
+3.09): our 445's bad P pass (8.22) came from the transposition pipeline, not the optimizer.  L+R
+still worse (7.05-7.39 vs 5.74); best sets model at 8.95 / 9.96 worst-output vs 12.51 / 7.22.  Not
+benchmarked.  Optimizer speed (profile of a single-threaded run: 47% malloc/free, 17% Givaro
+ctor/dtor/compare, 12% GMP; RemOneCSE 77% inclusive, its per-CSE transpose 21%): machine-word
+field 3.4-4.3x (measured with Modular<int64_t>), dropping the transpose 1.2-1.4x (measured),
+distinct thread seeds 1.25x typical / 1.75x worst (20% of 14 threads share a clock seed), loop
+reuse <= 1.2x (estimate), -E needs memoization (not a factor); parallel efficiency 57% at 10
+threads, 43% at 14, same with machine words.  Scratch builds only, nothing sent upstream.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

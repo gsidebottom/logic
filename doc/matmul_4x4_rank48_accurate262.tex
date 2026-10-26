@@ -191,9 +191,13 @@ combinatorial factor,
 \[
 Q_0=\max_j\Bigl(\max_{i:\,p_{j,i}\ne0}\nnz{L_i}\,\nnz{R_i}+\nnz{P_j}\Bigr),
 \]
-where $\nnz{\cdot}$ counts nonzeros.  It bounds the length of the
-chain of roundings that feeds one output, and the tool combines it
-with the growth factors in the constants of its error bounds.
+where $\nnz{\cdot}$ counts nonzeros: for the worst output, the terms
+$a_kb_l$ of the worst product feeding it plus the products summed into
+it, a crude count of the roundings a level exposes an output to when the
+scheme is computed as direct sums.  It exceeds the length of the chain
+of roundings, $\nnz{L_i}+\nnz{R_i}+\nnz{P_j}-2$.  The tool multiplies it
+by $\gamma/(\gamma-k)$, which adds up the levels, to get the constants
+of its error bounds.
 
 \subsection{Isotropies and symmetries}
 

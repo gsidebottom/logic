@@ -559,6 +559,21 @@ Deep recursion at n = 1024, 1-5 levels down to scalars (`results/accuracy_deep_2
 - From four levels to five the errors grow 2.60 against 2.78 per level.
 - The program matters at depth: the same scheme with 445-operation programs is worse than Table 1.
 
+Why programs differ (2026-10-25; `matmul/dps48/gamma/slp_errmodel.py`,
+`results/slp_errmodel_2026-10-25.txt`, paper Table 8).  A first-order rounding model of one
+level: each addition (and each scaling by a non-power of two) rounds with error proportional to the
+exact value; inputs i.i.d., so every intermediate's size, cancellation included, is an exact
+second moment.  Program length and rounding-chain length do not explain the measured errors: DPS's
+262-operation programs have the longer chains (22 roundings through a level against 18 for our
+445), and the probes' direct sums (37, 39) beat our programs.  The P pass does: for
+accurate_262, L+R add the same error in both programs (5.74 / 5.61) but P adds 3.09 against 8.22.
+Each of DPS's outputs collects 15 roundings of RMS size 0.80 of the output (partial sums cancel
+early); each of ours collects 36 (more sharing between outputs) of size 1.39.  Among the four
+programs whose schemes amplify leaf errors equally (2 sqrt2), the model's worst-output error orders
+the measured errors exactly at three and five levels.  The direct sums' 3/4 multiplications are
+negligible (11.14 vs 11.09).  Next: an accuracy-aware program optimizer (the model runs in well
+under a second per program).
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

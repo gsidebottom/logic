@@ -23,6 +23,10 @@
 \newcommand{\mm}[1]{\langle #1\rangle}
 \usepackage{xspace}
 \setlength{\emergencystretch}{1em}
+\renewcommand{\topfraction}{0.85}
+\renewcommand{\bottomfraction}{0.5}
+\renewcommand{\textfraction}{0.15}
+\renewcommand{\floatpagefraction}{0.75}
 % schemes by their PLinOpt names
 \newcommand{\acc}{\texttt{4x4x4\_\allowbreak 48\_\allowbreak accurate}\xspace}
 \newcommand{\acct}{\texttt{4x4x4\_\allowbreak 48\_\allowbreak accurate\_\allowbreak 262}\xspace}
@@ -607,7 +611,8 @@ main campaign ($n=4096$ and $8192$).  The points for
 To see the growth factors at work we recursed down to scalars: $n=1024$
 with one to five levels (leaves $256$, $64$, $16$, $4$ and $1$), as in
 DPS's experiments~\cite[Fig.~1]{DPS26a}, ten instances per precision.
-Table~\ref{tab:deep} gives the results.
+Table~\ref{tab:deep} gives the results and Figure~\ref{fig:deep} plots
+them.
 \begin{itemize}
 \item \acct with DPS's programs is again the most accurate from two
   levels on, and at one level in double precision; at one level in
@@ -622,7 +627,7 @@ Table~\ref{tab:deep} gives the results.
   programs, \acct falls behind \acc with DPS's programs from three levels
   on ($15.5$ against $13.3$ times the classical error at five levels,
   single precision), while with DPS's $262$-operation programs it is the
-  best of all.
+  best of all.  Section~\ref{sec:disc} explains why.
 \item Among the direct-sum programs, the dyadic probes stay $24$--$29\%$
   below \acc's at five levels and the orbit's $\ginf$ minimum only about
   $8\%$: the rounding of its constants compounds with depth.
@@ -660,6 +665,8 @@ precision, but the passes take only $5$--$17\%$ of the time.  So the more accura
 costs nothing at run time, and it is the cheaper one in operation count.
 
 \section{Discussion}\label{sec:disc}
+
+\input{acc262_model.tex}
 
 \paragraph{What predicts the measured error.}
 Table~\ref{tab:factors} sets the factors beside the error measured at
@@ -700,12 +707,47 @@ The same scheme has different measured errors with different
 programs.  \acct with DPS's programs beats \acct with ours, and \acc
 with DPS's programs beats \acc as direct sums
 ($1.17$ against $1.33$, and $1.54$ against $1.65$, times the classical
-error at three levels in single precision).  In the first comparison
-both programs scale only by powers of two, so the difference lies in the
-programs themselves: fewer operations mean shorter rounding chains, and
-sparse programs are worth having for accuracy as well as for speed.  The
-second also includes the direct sums' multiplications by $3/4$, which
-DPS's programs avoid, so it mixes the two effects.
+error at three levels in single precision).  Our representative of \acct
+differs from DPS's only by relabelling and by scalings by powers of two,
+which are exact in floating point, so the first difference lies entirely
+in the programs.  It is not their length.  DPS's programs have the
+longer chains of roundings, up to $22$ through one level against $18$
+for ours, and the probes' direct sums have $37$ and $39$ yet beat our
+programs (Table~\ref{tab:model}).  Nor is the second difference the
+direct sums' multiplications by $3/4$: in the model below they change
+the result by under $1\%$.
+
+\paragraph{A rounding model.}
+Table~\ref{tab:model} models one level of each program to first order.
+Every addition, and every scaling by a constant that is not a power of
+two, rounds, with an error proportional to the exact value rounded, and
+the errors are independent.  The inputs are independent with unit
+variance, so the products have covariance
+$(L_i\cdot L_{i'})(R_i\cdot R_{i'})$ and the size of every intermediate
+value, cancellation included, is an exact second moment.  Propagating
+each rounding to the outputs gives the error each pass adds to a level.
+\begin{itemize}
+\item For \acct, DPS's programs and ours add about the same error in the
+  $L$ and $R$ passes ($5.74$ against $5.61$) but not in the $P$ pass
+  ($3.09$ against $8.22$).  The sixteen products that feed an output
+  are each $1/\sqrt2$ of its size and would sum to $2\sqrt2$ times its
+  size if they did not cancel.  DPS's $P$ pass keeps its partial sums
+  small: each output collects $15$ roundings whose RMS size is $0.80$ of
+  the output's.  Ours lets them grow: each output collects $36$
+  roundings, since our program shares more partial sums between
+  outputs, of RMS size $1.39$.
+\item At one level the leaf products' own errors dominate, and the two
+  programs measure the same.  Every further level amplifies those by the
+  same factor and adds a new pass error, so the gap grows with depth
+  (Table~\ref{tab:deep}).
+\item For the four programs whose schemes amplify leaf errors equally
+  ($2\sqrt2$ for the worst output), the model's worst-output error
+  orders the measured errors exactly, at three levels and at five.
+\item \acc, \rat and \pto amplify leaf errors more ($3.16$, $4$ and
+  $9.53$).  \acc's own programs add no more error than \acct's ($7.12$
+  against $7.22$); its larger measured error comes from its scheme's
+  larger amplification.
+\end{itemize}
 
 \paragraph{Recommendation.}
 Wherever \acc is used, \acct is
@@ -730,6 +772,11 @@ error, in the same orbit and with the same $\gamma_2$.
 The natural next objective combines the growth factors with $Q_0$ and
 the operation count over dyadic points, or uses the measured error of
 deep recursion directly; \texttt{gamma48} makes such searches cheap.
+PLinOpt's optimizer minimizes operations, and the rounding model gives
+a second objective, the error a program adds; it evaluates a program in
+well under a second.  DPS's $P$ programs already keep their partial sums
+small, and an optimizer that also limits how many roundings reach each
+output might give \acct programs more accurate than DPS's.
 Lower precisions (bf16, fp16), where every level's error is a larger
 share of the result, are where an accurate scheme matters most.
 
@@ -767,6 +814,9 @@ it.
   \path{gamma_classes_2026-10-25.txt}), and
   \path{matmul/fastmm/paper_acc262.py} turns them into this paper's
   tables and figures.
+\item The rounding model: \path{matmul/dps48/gamma/slp_errmodel.py}, with
+  its output in \path{matmul/fastmm/results/slp_errmodel_2026-10-25.txt};
+  \path{paper_acc262.py --model} writes Table~\ref{tab:model}.
 \item The schemes: PLinOpt's \texttt{data/4x4x4\_48\_accurate\_262} and
   \texttt{data/4x4x4\_48\_accurate}~\cite{PLinOpt}; our representative is
   \path{matmul/dps48/gamma/g16s2_{L,R,P}.sms} and our programs for it

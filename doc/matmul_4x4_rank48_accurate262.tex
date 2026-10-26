@@ -57,13 +57,13 @@ is $80$ against $180$.  Measured against exact references on random
 matrices, in single and double precision at one to three recursion
 levels, its error is $0.75$--$0.77$ of \acc's on average ($0.62$--$0.90$ for single instances), at the same speed in a
 fused-pass implementation over Apple's Accelerate.  In recursion down to scalars its advantage grows,
-to $0.72$ at five levels.  We rediscovered the
-point by minimizing $\ginf$ over the de~Groote orbit and the scheme's
-three role assignments with an exact-gradient search.  In the published
-role it is the lowest point the search finds, and its coefficients are
-dyadic.  Among the orbit's
-$648$ dyadic orthogonal points, enumerated exhaustively, it is, up to
-symmetry, the unique point that minimizes both $\ginf$ and $\giinf$.  The
+to $0.72$ at five levels.  We found a scheme equivalent to \acct
+independently, by minimizing $\ginf$ over the de~Groote orbit and the
+scheme's three role assignments with an exact-gradient search: in the
+published role the lowest point the search finds is equivalent to it,
+and its coefficients are dyadic.  Among the orbit's
+$648$ dyadic orthogonal points, enumerated exhaustively, the points that
+minimize both $\ginf$ and $\giinf$ are all equivalent to it.  The
 orbit's global $\ginf$ minimum, $21.41$, needs another role assignment
 and coefficients in
 $\Q(\sqrt2)$, and its measured error is no lower than \acc's.  Dyadic probe points
@@ -139,17 +139,17 @@ We show that \acct, the cheaper variant, is also the more accurate one:
   and~\ref{sec:speed}).
 \end{itemize}
 
-We rediscovered this point, first published in PLinOpt (commit
-\texttt{b441528}~\cite{PLinOpt}), by minimizing $\ginf$ over the orbit
-and the scheme's role assignments before we knew of it
-(Section~\ref{sec:search}).  That search is the paper's other
+Before we knew of \acct, which was first published in PLinOpt (commit
+\texttt{b441528}~\cite{PLinOpt}), our search found a scheme equivalent
+to it, that is, \acct written in another way (Section~\ref{sec:inv}).
+The search minimizes $\ginf$ over the orbit and the scheme's role
+assignments (Section~\ref{sec:search}).  That search is the paper's other
 contribution.  In the published role the lowest point the search finds
-is \acct's, and it is exact as found: its $U$ and $W$ have entries
+is equivalent to \acct, and it is exact as found: its $U$ and $W$ have entries
 $0,\pm1/\sqrt2$, which rescaling turns into dyadic coefficients, so no
 snapping to a dyadic grid is involved.  Among the orbit's dyadic orthogonal points, which we
 enumerate exhaustively, the points minimizing $\giinf$ also minimize
-$\ginf$, and all of them are \acct up to
-symmetry.  The orbit's global $\ginf$ minimum, $21.407$, is reached only
+$\ginf$, and all of them are equivalent to \acct.  The orbit's global $\ginf$ minimum, $21.407$, is reached only
 in the other two role assignments and only
 at points with coefficients in $\Q(\sqrt2)$, and its measured error is
 no lower than \acc's.  The other known rational classes, members of Li, Wang
@@ -248,6 +248,16 @@ Three facts organize the search.
   permutes rows and columns of the $A_i$, $B_i$, $Z_i$ with signs.  That
   changes no $\gamma_{p,q}$ and not $Q_0$.
 \end{itemize}
+We call the schemes of the orbit, in each role assignment, its
+\emph{points}.  Two points are \emph{equivalent} when scalings of $U$,
+$V$, $W$, left multiplication of them by signed permutations, a
+relabelling and rescaling of the products, and the input swap take one
+to the other.  Equivalent points have the same growth factors and the
+same $Q_0$, and when the rescalings are by powers of two, a program for
+one is, after the relabelling, a program for the other with the same
+roundings in its passes.  So equivalent points are one algorithm written
+in different ways.  We name a point after the published scheme it is
+equivalent to, if any.
 
 \begin{table}[t]
 \centering
@@ -316,8 +326,8 @@ instance, is
 \[
 \tfrac14\,(b_{11}-3b_{13}-b_{21}-b_{23}+b_{31}+b_{33}+b_{41}+b_{43}).
 \]
-Rescaling a product scales its whole row, so every representative of
-the scheme has this ratio.  DPS's programs never multiply by $3$ or
+Rescaling a product scales its whole row, so every scheme equivalent to
+\acct has this ratio.  DPS's programs never multiply by $3$ or
 $3/4$: their only scalings are $19$ halvings, so every coefficient is a
 sum of terms halved different numbers of times.
 
@@ -383,7 +393,7 @@ minimum is $16\sqrt2\approx22.627$ for the published role and
 $12+8\sqrt2\approx23.314$ for the other two.  At the minimum $U$ and $W$
 have entries $0,\pm1/\sqrt2$ to machine precision, so the optimum is an
 exact point.  Rescaling the products makes its coefficients dyadic
-(Section~\ref{sec:dyadic}), and it is \acct's point.  Over the whole
+(Section~\ref{sec:dyadic}), and it is equivalent to \acct.  Over the whole
 orbit, $30{,}000$ starts
 from \acc ($10{,}000$ per role) and $7{,}200$ each from \rat and from
 \pto give the same local optima, a direct sign that
@@ -391,8 +401,9 @@ the three lie in one orbit.  The role decides what the search finds:
 \begin{itemize}
 \item In the published role the lowest optimum is $16\sqrt2$, reached
   $248$ times in \acc's $10{,}000$ starts, and nothing lower appears.
-  The lowest point the search finds in this role is \acct's, exact as
-  found: we did not reach it by snapping a lower point to a dyadic grid.
+  The lowest point the search finds in this role is equivalent to
+  \acct, and exact as found: we did not reach it by snapping a lower
+  point to a dyadic grid.
 \item In the other two roles the lowest optimum, $21.4073$, is found
   thousands of times, and nothing lower appears; the next is $21.944$.
   Its points have two orthogonal factors and one with singular values
@@ -443,17 +454,15 @@ all in the published role; in each of the other two roles it is
 $12+8\sqrt2$, attained at $36$ points.
 The minimum of $\giinf$ is $132$, attained at exactly eight points, all
 in the published role, and these eight also attain $\ginf=16\sqrt2$.
-Each of the eight is \acct up to signed
-permutations of $(U,V,W)$, the input swap, and a relabelling and
-rescaling of the products.
+Each of the eight is equivalent to \acct.
 \end{theorem}
 
 The proof is the enumeration together with an explicit equivalence for
 each of the eight points (\texttt{equiv.py}).  \acc's own point has
 the fourth smallest $\ginf$ in the sub-orbit ($25.456$, after $16\sqrt2$,
 $12+8\sqrt2$ and $24$).  So within the dyadic orthogonal moves of
-\acc, \acct is, up to symmetry, the unique
-point that is best for both growth factors.
+\acc, the points that are best for both growth factors are all
+equivalent to \acct.
 
 \subsection{Other classes}\label{sec:classes}
 
@@ -543,14 +552,15 @@ The programs are:
 \begin{itemize}
 \item \acc with DPS's $284$-operation programs;
 \item \acct with DPS's $262$-operation programs;
-\item \acct with our programs.  Our representative of the scheme is
-  \acct up to the input swap, signed permutations and a rescaling of the
-  products, with its constants $\pm1/2$ and $\pm1/4$ moved into $P$: no
+\item \acct with our programs.  Our scheme is equivalent to \acct:
+  the input swap, signed permutations and a rescaling of the products
+  take one to the other.  Ours has its constants $\pm1/2$ and $\pm1/4$
+  moved into $P$: no
   entry of its $P$ is $\pm1$, and its $L$ has $\pm2$, $\pm3$, $\pm3/2$
   and $\pm1/2$.  Its programs come from one default run of PLinOpt's
   \texttt{optimizer}: $445$ operations.  The optimizer is randomized, and
-  a rerun gives $437$.  The same run on DPS's representative gives $383$,
-  so the representative accounts for about $60$ of the $180$ operations
+  a rerun gives $437$.  The same run on DPS's scheme gives $383$, so how
+  the scheme is written accounts for about $60$ of the $180$ operations
   between our programs and DPS's;
 \item \rat's $315$-operation programs and the $201$-operation
   programs of~\cite{S26};
@@ -627,11 +637,13 @@ them.
 \item From four levels to five, the errors grow by $2.60$--$2.61$ for
   \acct and $2.75$--$2.79$ for \acc, about $6\%$ slower per level.  That is the direction $\ginf$ predicts, but less than its ratio
   $16\sqrt2/18\sqrt2=8/9$ would give.
-\item Programs matter more at depth.  With our $445$-operation
-  programs, \acct falls behind \acc with DPS's programs from three levels
-  on ($15.5$ against $13.3$ times the classical error at five levels,
-  single precision), while with DPS's $262$-operation programs it is the
-  best of all.  Section~\ref{sec:disc} explains why.
+\item Programs matter more at depth.  \acct with our $445$-operation
+  programs and the two probes beat \acc in the main campaign, where the
+  leaves are larger, but at $n=1024$ they fall behind \acc with DPS's
+  programs from three levels on: $2.12$--$2.29$ against $2.00$ at three
+  levels and $13.96$--$15.45$ against $13.29$ at five, in single
+  precision.  Only \acct with DPS's programs beats \acc at every depth.
+  Section~\ref{sec:disc} explains why.
 \item Among the direct-sum programs, the dyadic probes stay $24$--$29\%$
   below \acc's at five levels and the orbit's $\ginf$ minimum only about
   $8\%$: the rounding of its constants compounds with depth.
@@ -711,8 +723,8 @@ The same scheme has different measured errors with different
 programs.  \acct with DPS's programs beats \acct with ours, and \acc
 with DPS's programs beats \acc as direct sums
 ($1.17$ against $1.33$, and $1.54$ against $1.65$, times the classical
-error at three levels in single precision).  Our representative of \acct
-differs from DPS's only by relabelling and by scalings by powers of two,
+error at three levels in single precision).  Our scheme for \acct is
+equivalent to DPS's by relabelling and by scalings by powers of two,
 which are exact in floating point, so the first difference lies entirely
 in the programs.  It is not their length.  DPS's programs have the
 longer chains of roundings, up to $22$ through one level against $18$
@@ -750,7 +762,11 @@ each rounding to the outputs gives the error each pass adds to a level.
 \item \acc, \rat and \pto amplify leaf errors more ($3.16$, $4$ and
   $9.53$).  \acc's own programs add no more error than \acct's ($7.12$
   against $7.22$); its larger measured error comes from its scheme's
-  larger amplification.
+  larger amplification.  The same trade-off explains the crossover of
+  Section~\ref{sec:deep}: the probes and our programs for \acct amplify
+  less than \acc but add more error per level ($10.75$--$12.51$ against
+  $7.12$), so they beat \acc while the leaves' own errors dominate and
+  fall behind it at depth.
 \end{itemize}
 
 \paragraph{Recommendation.}
@@ -822,8 +838,8 @@ it.
   its output in \path{matmul/fastmm/results/slp_errmodel_2026-10-25.txt};
   \path{paper_acc262.py --model} writes Table~\ref{tab:model}.
 \item The schemes: PLinOpt's \texttt{data/4x4x4\_48\_accurate\_262} and
-  \texttt{data/4x4x4\_48\_accurate}~\cite{PLinOpt}; our representative is
-  \path{matmul/dps48/gamma/g16s2_{L,R,P}.sms} and our programs for it
+  \texttt{data/4x4x4\_48\_accurate}~\cite{PLinOpt}; our scheme equivalent to \acct
+  is \path{matmul/dps48/gamma/g16s2_{L,R,P}.sms} and our programs for it
   \path{matmul/dps48/gamma/slp/g16s2o_{L,R,P}.slp}.
 \end{itemize}
 
@@ -836,9 +852,10 @@ author's direction and review.  Every claim is checked mechanically by
 the tools listed above; the results rest on those checks rather than on
 trust in either the author or the tools.  The algorithm comes from
 Dumas, Pernet and Sedoglavic's work and was published by J.-G.~Dumas in
-PLinOpt; we rediscovered it, and found that it was already there only
-after constructing it.
+PLinOpt; our search found a scheme equivalent to it, and we learned
+that it was already there only after constructing ours.
 
+{\small
 \begin{thebibliography}{99}
 \bibitem{Agarwal26} A.~Agarwal, \emph{Certified local rank and
 uniqueness barriers for a 48-term matrix-multiplication decomposition},
@@ -890,5 +907,6 @@ PLinOpt data file \texttt{4x4x4\_48\_201}.
 \bibitem{logic} G.~Sidebottom, \emph{logic}, source repository,
 \url{https://github.com/gsidebottom/logic} (2026).
 \end{thebibliography}
+}
 
 \end{document}

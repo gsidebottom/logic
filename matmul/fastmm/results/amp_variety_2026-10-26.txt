@@ -1,0 +1,60 @@
+# leaf amplification minimized over the whole variety of rank-48 decompositions of the 4x4x4 tensor (ampvariety.py: soft max of amp_j + penalty mu |Brent residual|^2, mu 1 -> 1e4, L-BFGS-B with analytic gradients, final projection), 2026-10-26
+# from 4x4x4_48_accurate_262 perturbed by Gaussian noise of 0.02, 0.1, 0.3 and 1.0 times the mean |coefficient|, 4 starts each ('NOT ON THE VARIETY' = residual above the 1e-9 threshold of that run; the residuals are 2e-9 to 7e-9, the projection's precision; the threshold is now 1e-7)
+# ampvariety: accurate_262 amp 2.8284 (mean 2.8284); 4 starts per scale
+scale 0.02 start 0: amp 2.8284 mean 2.8284 residual 1.7e-09 NOT ON THE VARIETY
+scale 0.02 start 1: amp 2.8284 mean 2.8284 residual 2.1e-09 NOT ON THE VARIETY
+scale 0.02 start 2: amp 2.8284 mean 2.8284 residual 1.5e-09 NOT ON THE VARIETY
+scale 0.02 start 3: amp 2.8284 mean 2.8284 residual 2.2e-09 NOT ON THE VARIETY
+scale 0.1  start 0: amp 2.8284 mean 2.8284 residual 2.5e-09 NOT ON THE VARIETY
+scale 0.1  start 1: amp 2.8284 mean 2.8284 residual 3.3e-09 NOT ON THE VARIETY
+scale 0.1  start 2: amp 2.8284 mean 2.8284 residual 2.3e-09 NOT ON THE VARIETY
+scale 0.1  start 3: amp 2.8284 mean 2.8284 residual 3.7e-09 NOT ON THE VARIETY
+scale 0.3  start 0: amp 2.8284 mean 2.8284 residual 6.2e-09 NOT ON THE VARIETY
+scale 0.3  start 1: amp 2.8284 mean 2.8284 residual 2.4e-09 NOT ON THE VARIETY
+scale 0.3  start 2: amp 2.8284 mean 2.8284 residual 2.1e-09 NOT ON THE VARIETY
+scale 0.3  start 3: amp 2.8284 mean 2.8284 residual 6.9e-09 NOT ON THE VARIETY
+scale 1.0  start 0: amp 2.8284 mean 2.8284 residual 2.8e-09 NOT ON THE VARIETY
+scale 1.0  start 1: amp 2.8284 mean 2.8284 residual 3.7e-09 NOT ON THE VARIETY
+scale 1.0  start 2: amp 2.8284 mean 2.8284 residual 2.6e-09 NOT ON THE VARIETY
+scale 1.0  start 3: amp 2.8284 mean 2.8284 residual 2.7e-09 NOT ON THE VARIETY
+best amp on the variety inf (accurate_262: 2.8284) in 96 s
+
+# one scale-1.0 start inspected (inspect_point.py): a generic point of the orthogonal sub-orbit of accurate_262 (all 16 outputs at 2 sqrt2, gamma_2 154.5097 as on that sub-orbit, dense irrational coefficients that snap to no dyadic scheme)
+1
+scale 1.0 start: amp 2.828434 mean 2.828427 residual 3.6e-09
+amp per output: max 2.8284 mean 2.8284  values [2.828 2.828 2.828 2.828 2.828 2.828 2.828 2.828 2.828 2.828 2.828 2.828
+ 2.828 2.828 2.828 2.828]
+gamma_inf2 23.0905 gamma_infinf 139.1678 gamma2 154.5097 brent 3.6e-09
+nonzeros 2304 (L 768, R 768, P 768)
+distinct |coefficients| (rounded to 1e-3), with counts: 0.0x344, 0.001x46, 0.002x209, 0.003x105, 0.004x98, 0.005x96, 0.006x80, 0.007x55, 0.008x35, 0.009x35, 0.01x20, 0.011x65, 0.012x8, 0.013x17, 0.014
+snapped to denominators 2^1: brent error 1.00e+00
+snapped to denominators 2^2: brent error 1.88e-01
+snapped to denominators 2^3: brent error 1.07e-01
+snapped to denominators 2^4: brent error 1.09e-01
+snapped to denominators 2^6: brent error 3.90e-02
+snapped to denominators 2^8: brent error 9.01e-03
+
+# the same search from the other classes' schemes (matmul/dps48/classes/), 2 starts per scale
+== from s_1o2 ==
+# ampvariety: start scheme s_1o2 amp 9.0830 (mean 5.9935); 2 starts per scale
+scale 0.02 start 0: amp 2.8285 mean 2.8284 residual 1.3e-08 NOT ON THE VARIETY
+scale 0.02 start 1: amp 2.8285 mean 2.8284 residual 8.0e-09 NOT ON THE VARIETY
+scale 0.1  start 0: amp 2.8285 mean 2.8284 residual 8.2e-09 NOT ON THE VARIETY
+scale 0.1  start 1: amp 2.8285 mean 2.8284 residual 6.5e-09 NOT ON THE VARIETY
+scale 0.3  start 0: amp 2.8285 mean 2.8284 residual 8.5e-09 NOT ON THE VARIETY
+scale 0.3  start 1: amp 2.8285 mean 2.8284 residual 9.8e-09 NOT ON THE VARIETY
+scale 1.0  start 0: amp 2.8293 mean 2.8284 residual 8.8e-09 NOT ON THE VARIETY
+scale 1.0  start 1: amp 2.8294 mean 2.8284 residual 8.8e-09 NOT ON THE VARIETY
+best amp on the variety inf (accurate_262: 9.0830) in 152 s
+== from agarwal ==
+# ampvariety: start scheme agarwal amp 180.8253 (mean 66.0750); 2 starts per scale
+scale 0.02 start 0: amp 7.2264 mean 5.0568 residual 1.6e-02 NOT ON THE VARIETY
+scale 0.02 start 1: amp 7.0577 mean 5.0526 residual 1.5e-02 NOT ON THE VARIETY
+scale 0.1  start 0: amp 7.7338 mean 5.2619 residual 1.5e-02 NOT ON THE VARIETY
+scale 0.1  start 1: amp 7.1374 mean 4.9863 residual 1.2e-02 NOT ON THE VARIETY
+scale 0.3  start 0: amp 60.6242 mean 20.6170 residual 7.3e-01 NOT ON THE VARIETY
+scale 0.3  start 1: amp 8.3865 mean 5.1641 residual 2.1e-02 NOT ON THE VARIETY
+scale 1.0  start 0: amp 23.3662 mean 7.2718 residual 8.7e-01 NOT ON THE VARIETY
+scale 1.0  start 1: amp 24.6766 mean 8.9494 residual 7.9e-01 NOT ON THE VARIETY
+best amp on the variety inf (accurate_262: 180.8253) in 167 s
+# from s(1/2) every start descends off its orbit to 2.8284-2.8294 (the floor; residuals 7e-9 to 1e-8); from Agarwal's scheme (|coefficients| large, amp 181 at the start) the penalty stages did not keep the decomposition (residuals 1e-2 to 0.9): inconclusive, and its own orbit bottoms at 5.80 (amp_classes)

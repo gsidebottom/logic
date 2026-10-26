@@ -646,6 +646,17 @@ s(1/4) = the DPS class 2.83, s(1/2) 3.00, s(1) 3.54, s(2) 4.50, s(4) 6.01, s(8) 
 5.80).  What remains is the precision level: compensated passes at a time cost, or
 low-precision targets where the pass error is a larger share.
 
+Off the known orbits (2026-10-26; `ampvariety.py`, `inspect_point.py`,
+results/amp_variety_2026-10-26.txt): the amplification minimized over the whole variety of rank-48
+decompositions (soft max + penalty on the Brent equations, L-BFGS, analytic gradients).  From
+accurate_262 perturbed by 0.02-1.0 of the coefficient size (16 starts) every run returns to
+2.8284 with all 16 outputs equal, at generic points of the orthogonal sub-orbit (gamma_2 154.51,
+dense irrational coefficients); from LWH s(1/2) it descends off that orbit to the same 2.8284;
+from Agarwal's scheme the penalty balance failed (large coefficients), inconclusive.  So 2 sqrt2
+is a local minimum of the variety around everything we can reach, not only of the orbit: option
+1 (a scheme with lower leaf amplification) finds nothing, and the realized-program target can
+only move through the passes' arithmetic.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

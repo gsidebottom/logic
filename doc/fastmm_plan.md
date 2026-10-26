@@ -657,6 +657,19 @@ is a local minimum of the variety around everything we can reach, not only of th
 1 (a scheme with lower leaf amplification) finds nothing, and the realized-program target can
 only move through the passes' arithmetic.
 
+f64 PASSES ON THE f32 PATH (2026-10-26, 2f31dc1; FMM_F64PASS=1): gen_kernels.py emits
+dps48_{L,R,P}_fd (float blocks, double arithmetic), fmm_impl.h selects them for D48 levels of
+the float instantiation when the switch is set.  MEASURED (campaign_f64pass.sh, results/
+accuracy_f64pass_*, accuracy_deep_f64pass_*, speed_f64pass_*, f64pass_summary_2026-10-26.txt),
+error ratio to the f32 passes: main campaign (n = 4096, 8192) 0.987 / 1.015 / 0.977 at 1-3
+levels (a tie, as predicted: leaf error dominates); deep n = 1024: 0.974 / 0.962 / 0.849 / 0.721
+/ 0.639 at 1-5 levels (f32 error/classical 9.79 -> 6.25 at five levels); speed 1.000-1.017 at
+4096/8192 (D48/G, D48/G6, D48+4/D48/G6), 1.057 on D48+2/D48/G6 at 16384, 1.000 on D48/G there.
+The first realized change that lowers Figure 2's line: the model's floor is the GEMM interface
+roundings (worst 4.1 vs 7.2), and the measured 36% at five levels is in line with that.
+Open: make it the default (costs <= 2% below 16384; the 16384 deep plan pays 6%); add the switch
+to the Rust port; the paper.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

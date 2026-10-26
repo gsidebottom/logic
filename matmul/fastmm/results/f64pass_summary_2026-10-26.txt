@@ -1,0 +1,23 @@
+# f64 passes on the f32 path (FMM_F64PASS=1) against the plain f32 passes, both with accurate_262's published programs (build/bench_fmm_acc262), 2026-10-26; campaign_f64pass.sh, summarized by summarize_var.py f64pass
+# ratios = error with the f64 passes / error with the f32 passes on the same inputs (mean [min, max] over seeds)
+== main campaign (f64pass / accurate_262) ==
+  f n=4096  normal   L1 0.982 [0.88,1.05]  L2 1.017 [0.92,1.11]  L3 0.983 [0.93,1.02]  L4 --  L5 --
+  f n=4096  uniform  L1 0.969 [0.86,1.04]  L2 1.037 [0.99,1.11]  L3 0.911 [0.87,0.95]  L4 --  L5 --
+  f n=8192  normal   L1 1.011 [0.94,1.06]  L2 1.019 [1.00,1.05]  L3 1.009 [0.89,1.12]  L4 --  L5 --
+  f n=8192  uniform  L1 0.984 [0.92,1.08]  L2 0.988 [0.95,1.02]  L3 1.006 [0.97,1.09]  L4 --  L5 --
+  overall: L1 0.987 [0.86,1.08] (n=20)  L2 1.015 [0.92,1.11] (n=20)  L3 0.977 [0.87,1.12] (n=20)
+  bench_fmm_acc262       f32 error / classical: L1 0.73  L2 0.79  L3 1.17
+  bench_fmm_var_f64pass  f32 error / classical: L1 0.72  L2 0.80  L3 1.14
+== deep recursion n=1024 (f64pass / accurate_262) ==
+  f n=1024  normal   L1 0.984 [0.97,1.02]  L2 0.978 [0.89,1.05]  L3 0.852 [0.79,0.94]  L4 0.735 [0.67,0.81]  L5 0.629 [0.61,0.65]
+  f n=1024  uniform  L1 0.964 [0.89,1.05]  L2 0.945 [0.84,1.07]  L3 0.845 [0.69,0.92]  L4 0.708 [0.65,0.76]  L5 0.649 [0.62,0.67]
+  overall: L1 0.974 [0.89,1.05] (n=10)  L2 0.962 [0.84,1.07] (n=10)  L3 0.849 [0.69,0.94] (n=10)  L4 0.721 [0.65,0.81] (n=10)  L5 0.639 [0.61,0.67] (n=10)
+  bench_fmm_acc262       f32 error / classical: L1 0.79  L2 0.97  L3 1.67  L4 3.75  L5 9.79
+  bench_fmm_var_f64pass  f32 error / classical: L1 0.77  L2 0.93  L3 1.42  L4 2.70  L5 6.25
+== speed (best of the rounds) ==
+  f n=16384 D48+2/D48/G6     acc262 1.688 s  f64pass 1.784 s  ratio 1.057
+  f n=16384 D48/G            acc262 2.114 s  f64pass 2.114 s  ratio 1.000
+  f n=4096 D48/G            acc262 0.044 s  f64pass 0.044 s  ratio 1.000
+  f n=4096 D48/G6           acc262 0.036 s  f64pass 0.036 s  ratio 1.000
+  f n=8192 D48+4/D48/G6     acc262 0.236 s  f64pass 0.240 s  ratio 1.017
+  f n=8192 D48/G            acc262 0.270 s  f64pass 0.272 s  ratio 1.007

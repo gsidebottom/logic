@@ -55,10 +55,13 @@ levels, its error is $0.75$--$0.77$ of \acc's on average ($0.62$--$0.90$ for sin
 fused-pass implementation over Apple's Accelerate.  In recursion down to scalars its advantage grows,
 to $0.72$ at five levels.  We rediscovered the
 point by minimizing $\ginf$ over the de~Groote orbit and the scheme's
-three role assignments with an exact-gradient search.  Among the orbit's
+three role assignments with an exact-gradient search.  In the published
+role it is the lowest point the search finds, and its coefficients are
+dyadic.  Among the orbit's
 $648$ dyadic orthogonal points, enumerated exhaustively, it is, up to
 symmetry, the unique point that minimizes both $\ginf$ and $\giinf$.  The
-orbit's global $\ginf$ minimum, $21.41$, needs coefficients in
+orbit's global $\ginf$ minimum, $21.41$, needs another role assignment
+and coefficients in
 $\Q(\sqrt2)$, and its measured error is no lower than \acc's.  Dyadic probe points
 show that neither $\ginf$ nor $\giinf$ alone predicts the measured error,
 while $Q_0$ and exact dyadic coefficients matter.  The other known
@@ -132,10 +135,14 @@ We show that \acct, the cheaper variant, is also the more accurate one:
 We found this point independently, before we knew of it, by
 minimizing $\ginf$ over the orbit and the scheme's role assignments
 (Section~\ref{sec:search}), and that search is the paper's other
-contribution.  Among the orbit's dyadic orthogonal points, which we
+contribution.  In the published role the lowest point the search finds
+is \acct's, and it is exact as found: its $U$ and $W$ have entries
+$0,\pm1/\sqrt2$, which rescaling turns into dyadic coefficients, so no
+snapping to a dyadic grid is involved.  Among the orbit's dyadic orthogonal points, which we
 enumerate exhaustively, the points minimizing $\giinf$ also minimize
 $\ginf$, and all of them are \acct up to
 symmetry.  The orbit's global $\ginf$ minimum, $21.407$, is reached only
+in the other two role assignments and only
 at points with coefficients in $\Q(\sqrt2)$, and its measured error is
 no lower than \acc's.  The other known rational classes, members of Li, Wang
 and Hu's curve~\cite{LWH26} and Agarwal's scheme~\cite{Agarwal26}, have
@@ -265,7 +272,7 @@ algorithm & $\giinf$ & $\ginf$ & $\gamma_{2,\infty}$ & $\gamma_{2,2}$ & $\gamma_
 \quad \texttt{rational}~\cite{DPS25} & 288 (4.085) & 38.16 (2.627) & 1032.0 (5.006) & 139.9 (3.564) & 210.5 & 152 & 315\\
 \quad \texttt{accurate}~\cite{DPS26a} & 148 (3.605) & 25.46 (2.335) & 514.9 (4.504) & 91.21 (3.256) & 154.5 & 180 & 284\\
 \quad \texttt{accurate\_262} & \textbf{132} (3.522) & \textbf{22.63} (2.250) & \textbf{496.5} (4.478) & \textbf{90.51} (3.250) & 154.5 & \textbf{80} & 262\\
-\quad orbit's $\ginf$ min., $\Q(\sqrt2)$ & 176.6 (3.732) & 21.41 (2.210) & 583.8 (4.595) & 85.63 (3.210) & 157.3 & 146 & --\\
+\quad $\ginf$ min.\ (other roles), $\Q(\sqrt2)$ & 176.6 (3.732) & 21.41 (2.210) & 583.8 (4.595) & 85.63 (3.210) & 157.3 & 146 & --\\
 \quad \texttt{201}~\cite{S26} & 399 (4.320) & 75.85 (3.123) & 1072.5 (5.033) & 225.9 (3.910) & 369.7 & 101 & 201\\
 \bottomrule
 \end{tabular}
@@ -352,21 +359,44 @@ Within the orthogonal sub-orbit ($\gamma_2$ fixed at its minimum
 $154.51$; $12$ parameters, two Cayley-parametrized rotations), the
 minimum is $16\sqrt2\approx22.627$ for the published role and
 $12+8\sqrt2\approx23.314$ for the other two.  At the minimum $U$ and $W$
-have entries $0,\pm1/\sqrt2$.  Over the whole orbit, $30{,}000$ starts
+have entries $0,\pm1/\sqrt2$ to machine precision, so the optimum is an
+exact point.  Rescaling the products makes its coefficients dyadic
+(Section~\ref{sec:dyadic}), and it is \acct's point.  Over the whole
+orbit, $30{,}000$ starts
 from \acc ($10{,}000$ per role) and $7{,}200$ each from \rat and from
 \pto give the same local optima, a direct sign that
-the three lie in one orbit.  The lowest, $21.4073$, is found thousands
-of times, and nothing lower appears.  Its points have two orthogonal
-factors and one with singular values $(1,1,s,s)$, $s=2(\sqrt2-1)$, so
-their coefficients lie in $\Q(\sqrt2)$.  They cannot be made dyadic:
-the scaling enters $R$ as $s$ and $P$ as $1/s$, and no dyadic value
-other than a power of two has a dyadic inverse.  The next optima are $21.944$ (roles 1
-and~2) and $22.627$ (role~0).
+the three lie in one orbit.  The role decides what the search finds:
+\begin{itemize}
+\item In the published role the lowest optimum is $16\sqrt2$, reached
+  $248$ times in \acc's $10{,}000$ starts, and nothing lower appears.
+  The lowest point the search finds in this role is \acct's, exact as
+  found: we did not reach it by snapping a lower point to a dyadic grid.
+\item In the other two roles the lowest optimum, $21.4073$, is found
+  thousands of times, and nothing lower appears; the next is $21.944$.
+  Its points have two orthogonal factors and one with singular values
+  $(1,1,s,s)$, $s=2(\sqrt2-1)$, so their coefficients lie in
+  $\Q(\sqrt2)$.  They cannot be made dyadic: the scaling enters $R$ as
+  $s$ and $P$ as $1/s$, and no dyadic value other than a power of two
+  has a dyadic inverse.  Snapping them to the dyadic orthogonal points
+  of their roles would not help either: those have $\ginf\ge12+8\sqrt2$
+  (Section~\ref{sec:dyadic}), more than \acct's $16\sqrt2$.
+\end{itemize}
 
 \subsection{The dyadic orthogonal sub-orbit, exhaustively}\label{sec:dyadic}
 
 A scheme is exact in binary floating point only if its coefficients are
-dyadic, and multiplications by powers of two do not round.  Let $G$ be
+dyadic, and a scaling is exact only if it is by a power of two:
+multiplying by another dyadic constant, such as $3/4$, rounds.  \acct's
+$R$ has eight coefficients $\pm3/4$ and \acc's has sixteen, but their
+published programs never multiply by $3/4$.  They build it from halvings
+and additions, so all their rounding is in additions.  Isotropies with
+dyadic entries and dyadic inverses keep a scheme dyadic, and up to scale
+they are dense in $\mathrm{GL}_4(\mathbb{R})$, since they include the
+elementary matrices $I+tE_{ij}$ for every dyadic $t$.  So dyadic points
+come arbitrarily close to the $\Q(\sqrt2)$ minimum, but only with
+coefficients of ever more bits, and multiplying by those rounds just as
+multiplying by $s$ does.  We look instead for points with small dyadic
+coefficients.  Let $G$ be
 the set of orthogonal $4\times4$ matrices whose entries lie in $\Zh$ or
 in $\Zh/\sqrt2$.  It has $2304$ elements:
 \begin{itemize}
@@ -386,7 +416,9 @@ role has $216$ distinct points, $648$ in all, and we enumerate them.
 
 \begin{theorem}\label{thm:dyadic}
 Among the $648$ points of the dyadic orthogonal sub-orbit of \acc's
-scheme, the minimum of $\ginf$ is $16\sqrt2$, attained at $42$ points.
+scheme, the minimum of $\ginf$ is $16\sqrt2$, attained at $42$ points,
+all in the published role; in each of the other two roles it is
+$12+8\sqrt2$, attained at $36$ points.
 The minimum of $\giinf$ is $132$, attained at exactly eight points, all
 in the published role, and these eight also attain $\ginf=16\sqrt2$.
 Each of the eight is \acct up to signed
@@ -493,15 +525,18 @@ The programs are:
   PLinOpt's \texttt{optimizer} ($445$ operations);
 \item \rat's $315$-operation programs and the $201$-operation
   programs of~\cite{S26};
-\item the orbit's $\ginf$ minimum, written as direct sums with its
-  coefficients rounded to the working precision;
-\item \acc written as direct sums, a control for program style;
+\item the orbit's $\ginf$ minimum, in another role, written as direct
+  sums with its coefficients rounded to the working precision;
+\item \acc written as direct sums, a control for program style; unlike
+  the published programs, these multiply by $3/4$ directly;
 \item two dyadic points of \acc's orbit, written as direct sums,
   chosen from the enumeration of Section~\ref{sec:dyadic} to separate
   the two growth factors.  Probe~A has \acct's
   $\ginf=16\sqrt2$ but $\giinf=256$ (role~0, classes $5,2,3$); probe~B
   has $\ginf=28.97$, larger than \acc's, but $\giinf=144$, smaller
-  (role~2, classes $4,4,2$).  Their $Q_0$ are $144$ and $94$.
+  (role~2, classes $4,4,2$).  Their $Q_0$ are $144$ and $94$, and their
+  coefficients are $\pm1$, $\pm1/2$ and $\pm1/4$, so their direct sums
+  scale only by powers of two.
 \end{itemize}
 
 \subsection{Results}
@@ -563,7 +598,7 @@ Table~\ref{tab:deep} gives the results.
   five levels, single precision), while \acct's own $262$-operation
   programs are the best of all.
 \item Among the direct-sum programs, the dyadic probes stay $24$--$29\%$
-  below \acc at five levels and the orbit's $\ginf$ minimum only about
+  below \acc's at five levels and the orbit's $\ginf$ minimum only about
   $8\%$: the rounding of its constants compounds with depth.
 \item \rat grows by about $3.6$ per level, \pto by
   about $7.5$, and \texttt{2x2x2\_\allowbreak 7\_\allowbreak Winograd} by about $7$ per two binary levels.
@@ -604,7 +639,8 @@ of \texttt{2x2x2\_\allowbreak 7\_\allowbreak Winograd}), but no single factor or
 \item Probe~A has \acct's $\ginf$ but a larger measured error.
 \item Probe~B has a larger $\ginf$ than \acc but a smaller measured
   error.
-\item The orbit's $\ginf$ minimum has the smallest $\ginf$ of all but
+\item The orbit's $\ginf$ minimum, in another role, has the smallest
+  $\ginf$ of all but
   about the same measured error as \acc.
 \end{itemize}
 Among the dyadic schemes, $Q_0$ comes closest to the order of the measured errors:
@@ -624,15 +660,20 @@ a unit roundoff, and each multiplication by them rounds.  Multiplications
 by $\pm1/2^k$ are exact.  The gap compounds with depth: at five levels
 the probes are $24$--$29\%$ below \acc's direct sums and the
 $\Q(\sqrt2)$ point only $8\%$.  A search for accuracy should therefore
-stay in dyadic coordinates.
+keep to small dyadic coefficients, and its programs to scalings by
+powers of two.
 
 \paragraph{Programs.}
 The same scheme has different measured errors with different
 programs.  \acct's published programs beat our $445$-operation
 ones, and \acc's published programs beat its direct sums
 ($1.17$ against $1.33$, and $1.54$ against $1.65$, times the classical
-error at three levels in single precision).  Fewer operations mean shorter rounding chains, so sparse
-programs are worth having for accuracy as well as for speed.
+error at three levels in single precision).  In the first comparison
+both programs scale only by powers of two, so the difference lies in the
+programs themselves: fewer operations mean shorter rounding chains, and
+sparse programs are worth having for accuracy as well as for speed.  The
+second also includes the direct sums' multiplications by $3/4$, which
+the published programs avoid, so it mixes the two effects.
 
 \paragraph{Recommendation.}
 Wherever \acc is used, \acct is

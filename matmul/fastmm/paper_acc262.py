@@ -19,7 +19,7 @@ SCHEMES = [  # (build, label); bench_fmm used Table 1's programs when these logs
     ("bench_fmm_var_table1d", "\\texttt{accurate}, direct sums"),
     ("bench_fmm_var_probeA", "probe A, direct sums"),
     ("bench_fmm_var_probeB", "probe B, direct sums"),
-    ("bench_fmm_var_g214d", "orbit's $\\gamma_{\\infty,2}$ minimum, $\\mathbb{Q}(\\sqrt2)$"),
+    ("bench_fmm_var_g214d", "orbit's $\\gamma_{\\infty,2}$ minimum (other roles), $\\mathbb{Q}(\\sqrt2)$"),
     ("bench_fmm_orig", "\\texttt{rational} (315)"),
     ("bench_fmm_201", "\\texttt{201}"),
 ]
@@ -118,7 +118,7 @@ def main():
         "bench_fmm_var_probeA": ("probe A", "22.63", "256", "144", "direct sums"),
         "bench_fmm": ("\\texttt{accurate}", "25.46", "148", "180", "published, 284"),
         "bench_fmm_var_table1d": ("\\texttt{accurate}", "25.46", "148", "180", "direct sums"),
-        "bench_fmm_var_g214d": ("orbit's $\\gamma_{\\infty,2}$ min.", "21.41", "176.6", "146", "direct sums"),
+        "bench_fmm_var_g214d": ("orbit's $\\gamma_{\\infty,2}$ min. (other roles)", "21.41", "176.6", "146", "direct sums"),
         "bench_fmm_orig": ("\\texttt{rational}", "38.16", "288", "152", "published, 315"),
         "bench_fmm_201": ("\\texttt{201}", "75.85", "399", "101", "published, 201"),
     }
@@ -174,7 +174,7 @@ def main():
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(1, 2, figsize=(9, 4.0), sharey=True)
     show = [("bench_fmm", "accurate", "C0", "o-"), ("bench_fmm_acc262", "accurate_262", "C3", "s-"),
-            ("bench_fmm_var_g214d", r"orbit's $\gamma_{\infty,2}$ min., $\mathbb{Q}(\sqrt{2})$", "C2", "^--"),
+            ("bench_fmm_var_g214d", r"orbit's $\gamma_{\infty,2}$ min. (other roles), $\mathbb{Q}(\sqrt{2})$", "C2", "^--"),
             ("bench_fmm_orig", "rational", "C1", "v-"), ("bench_fmm_201", "201", "C7", "d:")]
     for ax, (t, tn) in zip(axes, (("f", "single precision"), ("d", "double precision"))):
         for b, lab, col, sty in show:
@@ -221,7 +221,7 @@ def deep(log, outdir):
     SHORT = {"bench_fmm": "\\texttt{accurate} (284)", "bench_fmm_acc262": "\\texttt{accurate\\_262} (262)",
              "bench_fmm_var_g16s2o": "\\texttt{accurate\\_262} point (445)", "bench_fmm_var_table1d": "\\texttt{accurate}, direct",
              "bench_fmm_var_probeA": "probe A", "bench_fmm_var_probeB": "probe B",
-             "bench_fmm_var_g214d": "$\\gamma_{\\infty,2}$ min., $\\mathbb{Q}(\\sqrt2)$", "bench_fmm_orig": "\\texttt{rational}",
+             "bench_fmm_var_g214d": "$\\gamma_{\\infty,2}$ min. (other roles), $\\mathbb{Q}(\\sqrt2)$", "bench_fmm_orig": "\\texttt{rational}",
              "bench_fmm_201": "\\texttt{201}"}
     for b, lab in SCHEMES:
         row = [fmt(mean(ratios(err, b, t, p))) for t in ("f", "d") for p in DEEP]
@@ -257,7 +257,7 @@ def deep(log, outdir):
     fig, axes = plt.subplots(1, 2, figsize=(9, 4.0), sharey=True)
     show = [("bench_fmm", "accurate", "C0", "o-"), ("bench_fmm_acc262", "accurate_262", "C3", "s-"),
             ("bench_fmm_var_g16s2o", "accurate_262 point, our 445-op. programs", "C3", "s:"),
-            ("bench_fmm_var_g214d", r"orbit's $\gamma_{\infty,2}$ min., $\mathbb{Q}(\sqrt{2})$", "C2", "^--"),
+            ("bench_fmm_var_g214d", r"orbit's $\gamma_{\infty,2}$ min. (other roles), $\mathbb{Q}(\sqrt{2})$", "C2", "^--"),
             ("bench_fmm_orig", "rational", "C1", "v-"), ("bench_fmm_201", "201", "C7", "d:")]
     for ax, (t, tn) in zip(axes, (("f", "single precision"), ("d", "double precision"))):
         for b, lab, col, sty in show:

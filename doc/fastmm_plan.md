@@ -616,6 +616,22 @@ clock-random, 0-5 of ~1860):
    <4x4x4:48> matrices no better than random restarts (see the commit message).
 Harness: matmul/dps48/plinopt_dev/{build.sh,bench.sh}; results/plinopt_optimizer_speed_2026-10-26.txt.
 
+Realized-program accuracy search (2026-10-26; `src/bin/slpopt.rs`: the rounding model in Rust,
+validated digit for digit against slp_errmodel.py; programs as DAGs; `score`, `search` (simulated
+annealing over form-preserving moves, `--check`), `construct` (greedy model-scored CSE)).  Headroom
+for accurate_262's scheme (DPS's programs model at worst 7.22): PLinOpt's random programs
+(`optimizer -Q -D -O 1 -s k`, 3000 per matrix, scored with the other two fixed) give R 6.56, L
+7.27 (one program), P 7.22; other PLinOpt methods no better; greedy construction worse; annealing
+barely moves from good starts.  Candidate opt1 = DPS's L + polished sampled R + greedy P
+(`gamma/slp/opt1_*`), modelled 6.47.  MEASURED (campaign_var.sh / summarize_var.py,
+results/accuracy_opt1_*, accuracy_deep_opt1_*, speed_opt1_*, opt1_summary_2026-10-26.txt): ratios
+to accurate_262 1.001 / 1.007 / 1.014 at 1-3 levels (n = 4096, 8192; within the seed spread
+0.82-1.15), 0.95 at 4-5 levels (n = 1024), speed 0.97-1.01.  So an 11% smaller modelled pass error
+is invisible where the leaf GEMMs' error dominates and worth ~5% at depth: for this scheme the
+program lever is nearly exhausted; a measurable gain needs a scheme with lower leaf amplification
+(amp 2.83 = 2 sqrt2 is the scheme's) or a change at the precision level (compensated passes, at a
+time cost).
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

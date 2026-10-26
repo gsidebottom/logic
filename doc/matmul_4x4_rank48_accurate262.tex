@@ -101,16 +101,19 @@ algorithms they compare, and its programs take $284$ operations.  The
 paper's versions run from 19~March 2026 (v1) to 29~July 2026 (v3, the
 current one), and \acc entered PLinOpt on 23~June 2026.
 
-DPS then published a cheaper accurate variant with $262$ operations.
-It entered PLinOpt on 13~October 2026 as
-\acct (commit \texttt{b441528}, by
-J.-G.~Dumas), described as ``accurate with 262 operations''.  The second
-version of~\cite{DPSST26}, dated 2~October 2026, cites it as the accurate
-variant with the best leading term, $9+3/16$; the first version, of
-10~September 2026, presents a $216$-operation algorithm and gives no
-accurate variant in its abstract.  Neither source reports the new
-variant's growth factors, and \acc remains the accurate variant on
-record.
+A cheaper accurate variant, with $262$ operations, came next.  Its
+earliest trace is the second version of~\cite{DPSST26}, dated
+2~October 2026, whose introduction states, without a reference or
+coefficients, that the best currently known accurate variant has
+leading term $9+3/16$, or $5+3/4$ in an alternative basis.  The leading
+term is $1+q/32$ for $q$ additions, subtractions and scalings, so
+$9+3/16$ means $q=262$.  The first version, of 10~September 2026,
+mentions only \acc (leading term $9.875$).  The scheme itself was first
+published in PLinOpt on 13~October 2026 as \acct (commit
+\texttt{b441528}, by J.-G.~Dumas), described as ``accurate with 262
+operations, or (5+3/4) ALT/CoB''.  Neither source says how it was
+found or reports its growth factors, and \acc remains the accurate
+variant on record.
 
 We call schemes by their PLinOpt names: \acc for Table~1
 of~\cite{DPS26a}, \acct for the variant with $262$ operations, \rat for the
@@ -136,9 +139,10 @@ We show that \acct, the cheaper variant, is also the more accurate one:
   and~\ref{sec:speed}).
 \end{itemize}
 
-We found this point independently, before we knew of it, by
-minimizing $\ginf$ over the orbit and the scheme's role assignments
-(Section~\ref{sec:search}), and that search is the paper's other
+We rediscovered this point, first published in PLinOpt (commit
+\texttt{b441528}~\cite{PLinOpt}), by minimizing $\ginf$ over the orbit
+and the scheme's role assignments before we knew of it
+(Section~\ref{sec:search}).  That search is the paper's other
 contribution.  In the published role the lowest point the search finds
 is \acct's, and it is exact as found: its $U$ and $W$ have entries
 $0,\pm1/\sqrt2$, which rescaling turns into dyadic coefficients, so no
@@ -830,9 +834,10 @@ This work was carried out in an interactive collaboration with Claude
 measurement and verification tools and much of this text under the
 author's direction and review.  Every claim is checked mechanically by
 the tools listed above; the results rest on those checks rather than on
-trust in either the author or the tools.  The algorithm is Dumas, Pernet
-and Sedoglavic's: we rediscovered it, and found that it was already in
-PLinOpt only after constructing it.
+trust in either the author or the tools.  The algorithm comes from
+Dumas, Pernet and Sedoglavic's work and was published by J.-G.~Dumas in
+PLinOpt; we rediscovered it, and found that it was already there only
+after constructing it.
 
 \begin{thebibliography}{99}
 \bibitem{Agarwal26} A.~Agarwal, \emph{Certified local rank and

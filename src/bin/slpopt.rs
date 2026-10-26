@@ -1493,6 +1493,33 @@ fn main() {
                 print_row(&pair[0], &b);
             }
         }
+        "realized" => {
+            // slpopt realized PREFIX [PREFIX ...]: each scheme (PREFIX_{L,R,P}.sms) with greedy
+            // direct programs for all three matrices: the realized model, the amplification and
+            // the growth factors gamma_{inf,2} and gamma_{inf,inf}
+            println!("{:40} {:>6} {:>5} {:>5} {:>5} {:>6} {:>7} {:>5}", "scheme", "worst", "L+R", "P", "amp", "g_inf2", "g_infinf", "nodes");
+            for prefix in &args[2..] {
+                let sch = Scheme::from_sms(prefix);
+                let quad_p = |v: &[f64]| -> f64 { sch.quad(v) };
+                let quad_i = |v: &[f64]| -> f64 { v.iter().map(|x| x * x).sum() };
+                let dl = Dag::direct(16, &sch.l, &quad_i);
+                let dr = Dag::direct(16, &sch.r, &quad_i);
+                let dp = Dag::direct(48, &sch.p, &quad_p);
+                let (lr_l, _, _) = dag_pass(&sch, Which::L, &dl);
+                let (lr_r, _, _) = dag_pass(&sch, Which::R, &dr);
+                let (pe, count, size) = dag_pass(&sch, Which::P, &dp);
+                let a = summarize(&sch, lr_l, lr_r, pe, count, size, 0, (0, 0, 0));
+                let norm = |v: &[f64], p: f64| -> f64 {
+                    if p == 1.0 { v.iter().map(|x| x.abs()).sum() } else { v.iter().map(|x| x * x).sum::<f64>().sqrt() }
+                };
+                let g_inf2 = (0..16).map(|j| (0..48).map(|i| norm(&sch.l[i], 2.0) * norm(&sch.r[i], 2.0) * sch.p[j][i].abs()).sum::<f64>()).fold(0.0, f64::max);
+                let g_infinf = (0..16).map(|j| (0..48).map(|i| norm(&sch.l[i], 1.0) * norm(&sch.r[i], 1.0) * sch.p[j][i].abs()).sum::<f64>()).fold(0.0, f64::max);
+                println!(
+                    "{:40} {:6.3} {:5.2} {:5.2} {:5.3} {:6.3} {:7.2} {:5}",
+                    prefix.rsplit('/').next().unwrap_or(prefix), a.worst, a.lr, a.p, a.amp, g_inf2, g_infinf, dl.nodes.len() + dr.nodes.len() + dp.nodes.len()
+                );
+            }
+        }
         "score" => {
             // score programs of one matrix with the other two fixed: slpopt score --scheme PREFIX
             // --matrix M [--fixed PREFIX] FILE...

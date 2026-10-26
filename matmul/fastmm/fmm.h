@@ -2,7 +2,8 @@
  *
  * C = A B for n x n row-major matrices with leading dimensions lda, ldb, ldc (in elements), by
  * the plan a calibrated cost model picks for this machine, size and precision: fused levels of
- * the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic (its accurate program) and of
+ * the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic (their 262-operation accurate
+ * program, PLinOpt's 4x4x4_48_accurate_262) and of
  * Strassen-Winograd over Accelerate GEMMs, with GEMM streams and pipelined passes.
  * max_growth > 0 limits the plan's error growth over the classical GEMM's (an estimate,
  * conservative by up to 1.5x; 0: the fastest plan).

@@ -1,0 +1,21 @@
+# recalibration with the 262-operation D48 kernels 2026-10-25 20:59
+# calibration results/calib_f32.txt is from another machine, padding, format or D48 program: remeasuring
+# calibrating 81 entries (f32)
+#   ESW     m=2048   3.980e-06 (error of sw1 against the classical GEMM)
+#   ED48    m=2048   2.560e-06 (error of dps48 against the classical GEMM)
+#   ED48D48 m=2048   2.653e-06 (error of dps48x2 against the classical GEMM)
+n=16384  f32  best D48+2/D48/G6       1.6756 s  classical 3.0150 blk2 2.7968 sw1 2.5561 sw2rec 2.2345 sw3rec 2.1318 sw4rec 2.5844 dps48 2.2020 dps48sw 2.0331 dps48x2 2.2338
+n=8192   f32  best D48+4/D48/G6       0.2371 s  classical 0.3298 blk2 0.3499 sw1 0.3097 sw2rec 0.2951 sw3rec 0.3597 sw4rec 0.4784 dps48 0.2752 dps48sw 0.3372 dps48x2 0.3784
+n=4096   f32  best D48/G6             0.0362 s  classical 0.0419 blk2 0.0439 sw1 0.0400 sw2rec 0.0492 sw3rec 0.0662 sw4rec 0.1202 dps48 0.0442 dps48sw 0.0608 dps48x2 0.0883
+n=2048   f32  best G                  0.0052 s  classical 0.0052 blk2 0.0067 sw1 0.0065 sw2rec 0.0089 sw3rec 0.0166 dps48 0.0073 dps48sw 0.0151
+n=1024   f32  best G                  0.0007 s  classical 0.0007 blk2 0.0010 sw1 0.0011 sw2rec 0.0022 dps48 0.0017
+# calibration results/calib_f64.txt is from another machine, padding, format or D48 program: remeasuring
+# calibrating 81 entries (f64)
+#   ESW     m=2048   6.805e-15 (error of sw1 against the classical GEMM)
+#   ED48    m=2048   4.161e-15 (error of dps48 against the classical GEMM)
+#   ED48D48 m=2048   4.248e-15 (error of dps48x2 against the classical GEMM)
+n=16384  f64  best SW/D48+4/D48/G6    5.7378 s  classical 12.0335 blk2 10.5974 sw1 9.9393 sw2rec 8.4393 sw3rec 7.9858 sw4rec 7.7436 dps48 8.7422 dps48sw 7.7190 dps48x2 6.9700
+n=8192   f64  best D48+4/D48/G6       0.8008 s  classical 1.3139 blk2 1.3370 sw1 1.1868 sw2rec 1.1220 sw3rec 1.0874 sw4rec 1.3471 dps48 1.0768 dps48sw 1.0369 dps48x2 1.1423
+n=4096   f64  best SW+4/D48/G6        0.1204 s  classical 0.1674 blk2 0.1725 sw1 0.1560 sw2rec 0.1510 sw3rec 0.1881 sw4rec 0.3042 dps48 0.1404 dps48sw 0.1764 dps48x2 0.2753
+n=2048   f64  best D48/G6             0.0177 s  classical 0.0211 blk2 0.0225 sw1 0.0205 sw2rec 0.0258 sw3rec 0.0424 dps48 0.0227 dps48sw 0.0390
+n=1024   f64  best G                  0.0026 s  classical 0.0026 blk2 0.0030 sw1 0.0034 sw2rec 0.0058 dps48 0.0055

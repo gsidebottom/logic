@@ -2,9 +2,9 @@
 //!
 //! `sgemm` / `dgemm` compute C = A B for n x n row-major matrices with leading dimensions (in
 //! elements) by the plan a calibrated cost model picks for this machine, size and precision:
-//! fused levels of the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic (its accurate
-//! program) and of Strassen-Winograd over Accelerate's GEMM, with GEMM streams and pipelined
-//! passes; `max_growth > 0` limits the plan's error growth over the classical GEMM's.  A port of
+//! fused levels of the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic (their
+//! 262-operation accurate program) and of Strassen-Winograd over Accelerate's GEMM, with GEMM
+//! streams and pipelined passes; `max_growth > 0` limits the plan's error growth over the classical GEMM's.  A port of
 //! the C library in matmul/fastmm (fmm.h): the same planner and calibration cache file, so both
 //! pick the same plans.
 //!

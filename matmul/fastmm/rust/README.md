@@ -2,7 +2,8 @@
 
 The Rust port of the C library in `matmul/fastmm` (`fmm.h`): C = A B for n x n row-major f32 or
 f64 matrices, by fused levels of the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic
-(their accurate program) and of Strassen-Winograd over Accelerate's GEMM, with GEMM streams,
+(their 262-operation accurate program, PLinOpt's 4x4x4_48_accurate_262) and of
+Strassen-Winograd over Accelerate's GEMM, with GEMM streams,
 pipelined passes and padding, as a calibrated planner picks for this machine and size.  On an
 M4 Pro, from n = 3000 to 16384, it is 1.04-1.60x (f32) and 1.29-1.99x (f64) faster than
 Accelerate's GEMM, with the C library's plans, speed and results (bit for bit).

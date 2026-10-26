@@ -13,12 +13,14 @@ op-by-op comparison: the program as a list of block operations (one pass per ope
 
 Schemes: sw (Strassen-Winograd <2x2x2:7>, 15 additions), sw2 (its Kronecker square, one
 <4x4x4:49> scheme, 165 additions), dps48 (the rank-48 <4x4x4:48> scheme of Dumas, Pernet and
-Sedoglavic, arXiv:2506.13242; DPS = their initials).  dps48's fused kernels come from the
-accurate rational program in PLinOpt's data (../dps48/plinopt/data/4x4x4_48_accurate, 284
-operations): every program of the class runs at the same speed as fused passes, and this one
-has the smallest error (two levels: 7x below our 201-operation point, results/orig315_*.txt).
---dps48 PREFIX takes them from PREFIX_{L,R,P}.slp instead, e.g. ../dps48/cand48/p005_201n
-(ours, 201 operations) or ../dps48/plinopt/data/4x4x4_48_rational (the original, 315); the
+Sedoglavic, arXiv:2506.13242; DPS = their initials).  dps48's fused kernels come from DPS's
+262-operation accurate program in PLinOpt's data (../dps48/plinopt/data/4x4x4_48_accurate_262):
+every program of the class runs at the same speed as fused passes, and this one has the
+smallest error, 0.72-0.86 of the 284-operation accurate program of their paper's Table 1
+(doc/matmul_4x4_rank48_accurate262.tex).  --dps48 PREFIX takes them from PREFIX_{L,R,P}.slp
+instead, e.g. ../dps48/plinopt/data/4x4x4_48_accurate (Table 1, 284 operations),
+../dps48/cand48/p005_201n (ours, 201) or ../dps48/plinopt/data/4x4x4_48_rational (the
+original, 315); the
 programs may use PLinOpt's general syntax (compound expressions such as o36:=(x52+x48)/2;).
 dps48's op-by-op lists (bench_fmm's dps48ops) are our 201-operation program, where the
 operation count is what costs.
@@ -32,7 +34,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CAND = os.path.join(HERE, "..", "dps48", "cand48")
-DPS48_FUSED = os.path.join(HERE, "..", "dps48", "plinopt", "data", "4x4x4_48_accurate")
+DPS48_FUSED = os.path.join(HERE, "..", "dps48", "plinopt", "data", "4x4x4_48_accurate_262")
 
 # Strassen-Winograd in PLinOpt's format.  Blocks row-major: A0 = A11, A1 = A12, A2 = A21, A3 = A22.
 # S1 = A21 + A22, S2 = S1 - A11, S3 = A11 - A21, S4 = A12 - S2; products M1..M7 =

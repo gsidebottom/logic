@@ -4,8 +4,9 @@ all: build/bench_fmm build/libfmm.a build/test_fmm build/probe_threads build/neo
 build/bench_fmm: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/kernels.h
 	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild bench_fmm.c -framework Accelerate -o $@
 
-# the kernels: dps48 from the accurate DPS program (4x4x4_48_accurate), op-by-op lists from ours (201)
-build/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_P.slp ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp
+# the kernels: dps48 from DPS's 262-operation accurate program (4x4x4_48_accurate_262), op-by-op
+# lists from ours (201)
+build/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_262_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_P.slp ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp
 	mkdir -p build && python3 gen_kernels.py $@
 
 # the same with every use of a scaled value as a fused multiply-add (x * 0.5 + y -> one FMLA);
@@ -59,9 +60,19 @@ build/bench_fmm_var_%: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm
 	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/var/$* bench_fmm.c -framework Accelerate -o $@
 
 # the same with dps48's fused kernels from DPS's 262-operation accurate programs (PLinOpt's
-# 4x4x4_48_accurate_262, equivalent to the gamma search's 16 sqrt2 point)
+# 4x4x4_48_accurate_262, equivalent to the gamma search's 16 sqrt2 point; the default since
+# 2026-10-25, kept for the paper's commands)
 build/bench_fmm_acc262: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/acc262/kernels.h
 	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/acc262 bench_fmm.c -framework Accelerate -o $@
 
 build/acc262/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_262_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_P.slp
 	mkdir -p build/acc262 && python3 gen_kernels.py $@ --dps48 ../dps48/plinopt/data/4x4x4_48_accurate_262
+
+# the same with dps48's fused kernels from the 284-operation accurate program of DPS's paper
+# (Table 1 of arXiv:2603.18699, PLinOpt's 4x4x4_48_accurate; the library's default before
+# 2026-10-25)
+build/bench_fmm_acc284: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/acc284/kernels.h
+	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/acc284 bench_fmm.c -framework Accelerate -o $@
+
+build/acc284/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_P.slp
+	mkdir -p build/acc284 && python3 gen_kernels.py $@ --dps48 ../dps48/plinopt/data/4x4x4_48_accurate

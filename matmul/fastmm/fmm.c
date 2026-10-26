@@ -1,7 +1,8 @@
 /* fmm.c: fast matrix multiplication on Apple silicon (fmm.h), and the core of bench_fmm.
  *
  * A plan is a sequence of fused levels from the top -- SW (Strassen-Winograd <2x2x2:7>), D48
- * (the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic, as its accurate program; see
+ * (the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic, as their 262-operation
+ * accurate program; see
  * gen_kernels.py), SW2 (Strassen^2) -- ending in a leaf: G (one GEMM, Accelerate), its products
  * as k single-threaded GEMM streams (Gk) or with NEON products (GkNj), or classical blocked
  * (B2/B4/B8).  A fused level streams once over its input and output blocks with the scheme's

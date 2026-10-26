@@ -1,0 +1,47 @@
+## Rust fmmbench
+f32 n=1000  ld=1000  budget 0    plan G                              fmm   0.0011 s  Accelerate   0.0010 s  speedup  0.93  rel. difference 0.00e+00  ok
+f32 n=2048  ld=2048  budget 0    plan G                              fmm   0.0057 s  Accelerate   0.0055 s  speedup  0.95  rel. difference 0.00e+00  ok
+f32 n=3000  ld=3000  budget 0    plan D48/G6                         fmm   0.0165 s  Accelerate   0.0166 s  speedup  1.00  rel. difference 2.92e-06  ok
+f32 n=4096  ld=4096  budget 0    plan D48/G6                         fmm   0.0379 s  Accelerate   0.0482 s  speedup  1.27  rel. difference 3.39e-06  ok
+f32 n=5000  ld=5000  budget 0    plan SW+4/D48/G6                    fmm   0.0651 s  Accelerate   0.0862 s  speedup  1.32  rel. difference 4.80e-06  ok
+f32 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.2426 s  Accelerate   0.3888 s  speedup  1.60  rel. difference 5.47e-06  ok
+f32 n=9000  ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   0.3307 s  Accelerate   0.5467 s  speedup  1.65  rel. difference 5.12e-06  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6                         fmm   0.0373 s  Accelerate   0.0453 s  speedup  1.21  rel. difference 3.76e-06  ok
+f32 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2412 s  Accelerate   0.3880 s  speedup  1.61  rel. difference 4.96e-06  ok
+f64 n=1000  ld=1000  budget 0    plan G                              fmm   0.0021 s  Accelerate   0.0020 s  speedup  0.99  rel. difference 0.00e+00  ok
+f64 n=2048  ld=2048  budget 0    plan D48/G6                         fmm   0.0181 s  Accelerate   0.0247 s  speedup  1.37  rel. difference 4.16e-15  ok
+f64 n=3000  ld=3000  budget 0    plan SW+4/D48/G6                    fmm   0.0498 s  Accelerate   0.0740 s  speedup  1.49  rel. difference 7.18e-15  ok
+f64 n=4096  ld=4096  budget 0    plan SW+4/D48/G6                    fmm   0.1189 s  Accelerate   0.1657 s  speedup  1.39  rel. difference 8.46e-15  ok
+f64 n=5000  ld=5000  budget 0    plan D48+4/D48/G6 padded to 5008    fmm   0.2135 s  Accelerate   0.3376 s  speedup  1.58  rel. difference 7.34e-15  ok
+f64 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.8164 s  Accelerate   1.4954 s  speedup  1.83  rel. difference 9.67e-15  ok
+f64 n=9000  ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   1.0276 s  Accelerate   1.8360 s  speedup  1.79  rel. difference 1.05e-14  ok
+f64 n=4096  ld=4160  budget 0    plan SW+4/D48/G6                    fmm   0.1190 s  Accelerate   0.1853 s  speedup  1.56  rel. difference 7.90e-15  ok
+f64 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.8168 s  Accelerate   1.5378 s  speedup  1.88  rel. difference 8.25e-15  ok
+all ok
+f32 n=16384 ld=16384 budget 0    plan D48+2/D48/G6                   fmm   1.7775 s  Accelerate   2.9668 s  speedup  1.67  rel. difference 8.07e-06  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6                         fmm   0.0376 s  Accelerate   0.0464 s  speedup  1.23  rel. difference 3.03e-06  ok
+f32 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2436 s  Accelerate   0.3886 s  speedup  1.60  rel. difference 4.76e-06  ok
+f64 n=16384 ld=16384 budget 0    plan SW/D48+4/D48/G6                fmm   5.9208 s  Accelerate  11.8767 s  speedup  2.01  rel. difference 1.98e-14  ok
+f64 n=4096  ld=4160  budget 0    plan SW+4/D48/G6                    fmm   0.1199 s  Accelerate   0.1665 s  speedup  1.39  rel. difference 7.80e-15  ok
+f64 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.8194 s  Accelerate   1.4047 s  speedup  1.71  rel. difference 9.47e-15  ok
+all ok
+## crosscheck
+f32 n=1000  ld=1000  budget 0    plan rust G                              c G                              results identical  rel. difference from Accelerate 0.00e+00
+f32 n=2048  ld=2048  budget 0    plan rust G                              c G                              results identical  rel. difference from Accelerate 0.00e+00
+f32 n=3000  ld=3000  budget 0    plan rust D48/G6                         c D48/G6                         results identical  rel. difference from Accelerate 2.92e-06
+f32 n=4096  ld=4096  budget 0    plan rust D48/G6                         c D48/G6                         results identical  rel. difference from Accelerate 3.39e-06
+f32 n=5000  ld=5000  budget 0    plan rust SW+4/D48/G6                    c SW+4/D48/G6                    results identical  rel. difference from Accelerate 4.80e-06
+f32 n=8192  ld=8192  budget 0    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   results identical  rel. difference from Accelerate 5.47e-06
+f32 n=9000  ld=9000  budget 0    plan rust D48+4/D48/G6 padded to 9008    c D48+4/D48/G6 padded to 9008    results identical  rel. difference from Accelerate 5.12e-06
+f32 n=4096  ld=4160  budget 0    plan rust D48/G6                         c D48/G6                         results identical  rel. difference from Accelerate 3.76e-06
+f32 n=8192  ld=8192  budget 4    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   results identical  rel. difference from Accelerate 4.96e-06
+f64 n=1000  ld=1000  budget 0    plan rust G                              c G                              results identical  rel. difference from Accelerate 0.00e+00
+f64 n=2048  ld=2048  budget 0    plan rust D48/G6                         c D48/G6                         results identical  rel. difference from Accelerate 4.16e-15
+f64 n=3000  ld=3000  budget 0    plan rust SW+4/D48/G6                    c SW+4/D48/G6                    results identical  rel. difference from Accelerate 7.18e-15
+f64 n=4096  ld=4096  budget 0    plan rust SW+4/D48/G6                    c SW+4/D48/G6                    results identical  rel. difference from Accelerate 8.46e-15
+f64 n=5000  ld=5000  budget 0    plan rust D48+4/D48/G6 padded to 5008    c D48+4/D48/G6 padded to 5008    results identical  rel. difference from Accelerate 7.34e-15
+f64 n=8192  ld=8192  budget 0    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   results identical  rel. difference from Accelerate 9.67e-15
+f64 n=9000  ld=9000  budget 0    plan rust D48+4/D48/G6 padded to 9008    c D48+4/D48/G6 padded to 9008    results identical  rel. difference from Accelerate 1.05e-14
+f64 n=4096  ld=4160  budget 0    plan rust SW+4/D48/G6                    c SW+4/D48/G6                    results identical  rel. difference from Accelerate 7.90e-15
+f64 n=8192  ld=8192  budget 4    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   results identical  rel. difference from Accelerate 8.25e-15
+all identical

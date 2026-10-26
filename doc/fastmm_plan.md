@@ -525,6 +525,19 @@ gamma_{inf,2} alone is not the objective.  What paid was improving gamma_{inf,2}
 gamma_{inf,inf} together while staying dyadic, so that multiplying by the scheme's constants is
 exact.
 
+The library's D48 level is now DPS's 262-operation program (2026-10-25, PLinOpt's
+`4x4x4_48_accurate_262`; results in `results/calib_262_2026-10-25.txt`,
+`test_fmm_262_2026-10-25.txt`, `rust_262_2026-10-25.txt` and `accuracy_262_2026-10-25.txt`).
+- The plans and speed are the same.  Predicted: 16384 f32 D48+2/D48/G6 1.68 s, 8192 f64
+  D48+4/D48/G6 0.80 s, 16384 f64 SW/D48+4/D48/G6 5.74 s.
+- The library plans' error against the exact reference is 0.67-0.81 of the 284-operation
+  program's.  At f32 16384 it is 4.6e-6 against 6.3-6.9e-6, 0.64-0.65 of the classical f32 GEMM's
+  own error, which was 0.89-0.95.  At f64 8192 it is 6.5e-15, 0.77-0.79 of the classical error.
+- The error model's factor per D48 level is now 1.04 (f32) and 1.02 (f64).
+- test_fmm is all ok (8192 f64 1.66x, 16384 f64 1.93x over Accelerate), and the Rust crate
+  matches C bit for bit (crosscheck 18/18).
+- `build/bench_fmm_acc284` keeps the previous program, the paper's Table 1 scheme.
+
 Paper (2026-10-25): `doc/matmul_4x4_rank48_accurate262.tex` / `.pdf`, "The 262-operation <4x4x4:48>
 algorithm is also the more accurate one".  Its growth factors are exact in Q(sqrt2) and agree with
 PLinOpt's `growthfactor`.  The other rational classes were searched as well: Li-Wang-Hu members

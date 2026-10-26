@@ -44,6 +44,9 @@ typedef struct {
 /* the three kernels of a fused level type */
 static void FN(kernels)(int lv, FN(kern_t) k[3]) {
     if (lv == LV_SW) { k[0] = FN(sw_L_); k[1] = FN(sw_R_); k[2] = FN(sw_P_); }
+#ifdef FMM_FLOAT
+    else if (lv == LV_D48 && fmm_f64pass()) { k[0] = dps48_L_fd; k[1] = dps48_R_fd; k[2] = dps48_P_fd; }
+#endif
     else if (lv == LV_D48) { k[0] = FN(dps48_L_); k[1] = FN(dps48_R_); k[2] = FN(dps48_P_); }
     else { k[0] = FN(sw2_L_); k[1] = FN(sw2_R_); k[2] = FN(sw2_P_); }
 }

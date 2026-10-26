@@ -11,6 +11,9 @@
  * The plans come from the calibration cache (FMM_CALIB_DIR, default ~/Library/Caches/fmm, one
  * file per precision, keyed by machine and kernels); sizes between the calibrated ones are
  * interpolated, and a plan runs padded to the next size its levels divide when that pays.
+ * FMM_F64PASS=1 makes the 4x4 scheme's passes of the single-precision path add in double
+ * (float blocks in and out): the passes then round once per element stored, at the GEMM's
+ * interface, instead of at every addition; same plans, same speed, less error at depth.
  * Outside the calibrated range, or without a calibration, the classical GEMM runs, so results
  * are always correct; fmm_calibrate measures what the planner needs, once per machine
  * (minutes).  Calls are serialized: each uses the whole machine.  The workspace (up to about

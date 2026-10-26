@@ -59,6 +59,18 @@ static size_t fmm_pad(void) {
     return e ? (size_t)atol(e) : 1040;
 }
 
+/* the f64 passes of the f32 path (FMM_F64PASS=1): the 4x4 scheme's passes read and write float
+ * blocks but add in double, so a pass rounds only where it stores a block for the GEMM or the
+ * output, once per element, instead of at every addition; the GEMMs are unchanged */
+static int fmm_f64pass(void) {
+    static int v = -1;
+    if (v < 0) {
+        const char *e = getenv("FMM_F64PASS");
+        v = e && atoi(e) > 0;
+    }
+    return v;
+}
+
 /* the smallest block size the planner considers (FMM_MINB, default 256) */
 static size_t fmm_minb(void) {
     const char *e = getenv("FMM_MINB");
@@ -693,7 +705,9 @@ static void api_plan(size_t n, int f64, double gmax, int *plan, size_t *npad, do
 #define SUF f
 #define GEMM cblas_sgemm
 #define NEON_GEMM_ROWS neon_sgemm_rows
+#define FMM_FLOAT 1
 #include "fmm_impl.h"
+#undef FMM_FLOAT
 #undef T
 #undef SUF
 #undef GEMM

@@ -198,9 +198,13 @@ def fused(name, text, T, in_ld, out_ld, fma=False):
     return "\n".join(s)
 
 
-def fused_expr(name, text, T):
+def fused_expr(name, text, T, CT=None):
     """one streaming loop like fused(), for programs in PLinOpt's general syntax: every line
-    lhs:=expression; is emitted as C, inputs i<k> read at element c, constants cast to T"""
+    lhs:=expression; is emitted as C, inputs i<k> read at element c, constants cast to T.
+    With CT (a wider compute type, double for float blocks) every input is converted to CT on
+    reading, all temporaries and constants are CT, and each output is rounded to T once on
+    storing: the pass then rounds only at the GEMM's interface (the f64 passes, FMM_F64PASS)"""
+    CT = CT or T
     ni = no = 0
     body = []
     for ln in text.splitlines():
@@ -210,15 +214,15 @@ def fused_expr(name, text, T):
         lhs, expr = ln.rstrip(";").split(":=", 1)
         for v in re.findall(r"\bi(\d+)\b", expr):
             ni = max(ni, int(v) + 1)
-        e = re.sub(r"\bi(\d+)\b", r"i\1[c]", expr)
+        e = re.sub(r"\bi(\d+)\b", r"i\1[c]" if CT == T else rf"(({CT})i\1[c])", expr)
         e = re.sub(r"\bo(\d+)\b", r"ov\1", e)        # an output read back: its value
-        e = re.sub(r"(?<![\w.])(\d+(?:\.\d+)?)(?![\w.\[])", lambda m: f"(({T}){m.group(1)})", e)
+        e = re.sub(r"(?<![\w.])(\d+(?:\.\d+)?)(?![\w.\[])", lambda m: f"(({CT}){m.group(1)})", e)
         if lhs.startswith("o"):
             no = max(no, int(lhs[1:]) + 1)
-            body.append(f"            const {T} ov{lhs[1:]} = {e};")
-            body.append(f"            {lhs}[c] = ov{lhs[1:]};")
+            body.append(f"            const {CT} ov{lhs[1:]} = {e};")
+            body.append(f"            {lhs}[c] = ({T})ov{lhs[1:]};" if CT != T else f"            {lhs}[c] = ov{lhs[1:]};")
         else:
-            body.append(f"            const {T} {lhs} = {e};")
+            body.append(f"            const {CT} {lhs} = {e};")
     s = [f"static void {name}(size_t m, size_t ld_in, size_t ld_out, const {T} *const *in, "
          f"{T} *const *out, size_t r0, size_t r1) {{",
          "    for (size_t r = r0; r < r1; r++) {"]
@@ -356,6 +360,9 @@ def main():
             for T, suf in (("float", "f"), ("double", "d")):
                 for side, t in zip("LRP", src):
                     h.append(fused_expr(f"{name}_{side}_{suf}", t, T))
+            # the f64 passes of the f32 path: float blocks, double arithmetic (FMM_F64PASS=1)
+            for side, t in zip("LRP", src):
+                h.append(fused_expr(f"{name}_{side}_fd", t, "float", "double"))
             for side, t in (("L", l), ("R", r), ("P", p)):
                 h.append(opbyop(f"{name}_{side}_ops", t))
             print(f"{name}: fused kernels from {dps48_src}, {nops} operations")

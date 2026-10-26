@@ -13,14 +13,14 @@ import sys
 
 SCHEMES = [  # (build, label); bench_fmm used Table 1's programs when these logs were made (the
               # library's default until 2026-10-25; now build/bench_fmm_acc284)
-    ("bench_fmm", "\\texttt{accurate}, published programs (284)"),
-    ("bench_fmm_acc262", "\\texttt{accurate\\_262}, published programs"),
-    ("bench_fmm_var_g16s2o", "\\texttt{accurate\\_262} point, our programs (445)"),
+    ("bench_fmm", "\\texttt{accurate}, DPS's programs (284)"),
+    ("bench_fmm_acc262", "\\texttt{accurate\\_262}, DPS's programs (262)"),
+    ("bench_fmm_var_g16s2o", "\\texttt{accurate\\_262}, our programs (445)"),
     ("bench_fmm_var_table1d", "\\texttt{accurate}, direct sums"),
     ("bench_fmm_var_probeA", "probe A, direct sums"),
     ("bench_fmm_var_probeB", "probe B, direct sums"),
     ("bench_fmm_var_g214d", "orbit's $\\gamma_{\\infty,2}$ minimum (other roles), $\\mathbb{Q}(\\sqrt2)$"),
-    ("bench_fmm_orig", "\\texttt{rational} (315)"),
+    ("bench_fmm_orig", "\\texttt{rational}, DPS's programs (315)"),
     ("bench_fmm_201", "\\texttt{201}"),
 ]
 LEVELS = {"D48/G": 1, "D48/D48/G": 2, "D48/D48/D48/G": 3}
@@ -90,7 +90,7 @@ def main():
               r"\bottomrule", r"\end{tabular}", r"\end{table}", ""]
     # table: the 262 variant relative to Table 1, per setting
     lines += [r"\begin{table}[t]", r"\centering",
-              r"\caption{Error of \texttt{accurate\_262} (published programs) divided by \texttt{accurate}'s on the"
+              r"\caption{Error of \texttt{accurate\_262} (DPS's programs) divided by \texttt{accurate}'s on the"
               r" same inputs: mean over the seeds, with the range in brackets.}",
               r"\label{tab:ratio}", r"\small", r"\begin{tabular}{llrrr}", r"\toprule",
               r"precision & setting & 1 level & 2 levels & 3 levels\\", r"\midrule"]
@@ -112,15 +112,15 @@ def main():
     lines += [r"\bottomrule", r"\end{tabular}", r"\end{table}", ""]
     # table: the factors beside the measured error at three levels (single precision)
     FACT = {  # build: (name, gamma_inf2, gamma_infinf, Q0, program)
-        "bench_fmm_acc262": ("\\texttt{accurate\\_262}", "22.63", "132", "80", "published, 262"),
-        "bench_fmm_var_g16s2o": ("\\texttt{accurate\\_262} point", "22.63", "132", "80", "ours, 445"),
+        "bench_fmm_acc262": ("\\texttt{accurate\\_262}", "22.63", "132", "80", "DPS, 262"),
+        "bench_fmm_var_g16s2o": ("\\texttt{accurate\\_262}", "22.63", "132", "80", "ours, 445"),
         "bench_fmm_var_probeB": ("probe B", "28.97", "144", "94", "direct sums"),
         "bench_fmm_var_probeA": ("probe A", "22.63", "256", "144", "direct sums"),
-        "bench_fmm": ("\\texttt{accurate}", "25.46", "148", "180", "published, 284"),
+        "bench_fmm": ("\\texttt{accurate}", "25.46", "148", "180", "DPS, 284"),
         "bench_fmm_var_table1d": ("\\texttt{accurate}", "25.46", "148", "180", "direct sums"),
         "bench_fmm_var_g214d": ("orbit's $\\gamma_{\\infty,2}$ min. (other roles)", "21.41", "176.6", "146", "direct sums"),
-        "bench_fmm_orig": ("\\texttt{rational}", "38.16", "288", "152", "published, 315"),
-        "bench_fmm_201": ("\\texttt{201}", "75.85", "399", "101", "published, 201"),
+        "bench_fmm_orig": ("\\texttt{rational}", "38.16", "288", "152", "DPS, 315"),
+        "bench_fmm_201": ("\\texttt{201}", "75.85", "399", "101", "ours, 201"),
     }
     rows = []
     for b, (name, g2, gi, q0, prog) in FACT.items():
@@ -154,7 +154,7 @@ def main():
             sp[(cur[1], cur[2], m.group(2), cur[0])].append(float(m.group(1)))
     if sp:
         lines += [r"\begin{table}[t]", r"\centering",
-                  r"\caption{Time of the published programs in our library: the best of three alternating rounds,"
+                  r"\caption{Time of DPS's programs in our library: the best of three alternating rounds,"
                   r" each the median of five runs.}",
                   r"\label{tab:speed}", r"\small", r"\begin{tabular}{llrrr}", r"\toprule",
                   r"precision & plan, $n$ & \texttt{accurate} & \texttt{accurate\_262} & ratio\\", r"\midrule"]
@@ -173,7 +173,8 @@ def main():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(1, 2, figsize=(9, 4.0), sharey=True)
-    show = [("bench_fmm", "accurate", "C0", "o-"), ("bench_fmm_acc262", "accurate_262", "C3", "s-"),
+    show = [("bench_fmm", "accurate, DPS's programs (284)", "C0", "o-"),
+            ("bench_fmm_acc262", "accurate_262, DPS's programs (262)", "C3", "s-"),
             ("bench_fmm_var_g214d", r"orbit's $\gamma_{\infty,2}$ min. (other roles), $\mathbb{Q}(\sqrt{2})$", "C2", "^--"),
             ("bench_fmm_orig", "rational", "C1", "v-"), ("bench_fmm_201", "201", "C7", "d:")]
     for ax, (t, tn) in zip(axes, (("f", "single precision"), ("d", "double precision"))):
@@ -211,7 +212,7 @@ def deep(log, outdir):
              r"\begin{table}[t]", r"\centering",
              r"\caption{Deep recursion at $n=1024$: mean error against the exact reference as a multiple of the"
              r" classical GEMM's error, over ten instances per precision (uniform and normal, five seeds each);"
-             r" five levels reach scalar leaves.  Winograd: twice as many binary levels.}",
+             r" five levels reach scalar leaves.  In parentheses: operation counts of DPS's programs, or of ours where marked.  Winograd: twice as many binary levels.}",
              r"\label{tab:deep}", r"\footnotesize", r"\setlength{\tabcolsep}{3.5pt}",
              r"\begin{tabular}{l" + "r" * 10 + "}", r"\toprule",
              r" & \multicolumn{5}{c}{single precision} & \multicolumn{5}{c}{double precision}\\",
@@ -219,7 +220,7 @@ def deep(log, outdir):
              r"levels & 1 & 2 & 3 & 4 & 5 & 1 & 2 & 3 & 4 & 5\\", r"\midrule"]
     fmt = lambda x: "--" if x != x else (f"{x:.2f}" if x < 100 else f"{x:.0f}")
     SHORT = {"bench_fmm": "\\texttt{accurate} (284)", "bench_fmm_acc262": "\\texttt{accurate\\_262} (262)",
-             "bench_fmm_var_g16s2o": "\\texttt{accurate\\_262} point (445)", "bench_fmm_var_table1d": "\\texttt{accurate}, direct",
+             "bench_fmm_var_g16s2o": "\\texttt{accurate\\_262}, ours (445)", "bench_fmm_var_table1d": "\\texttt{accurate}, direct",
              "bench_fmm_var_probeA": "probe A", "bench_fmm_var_probeB": "probe B",
              "bench_fmm_var_g214d": "$\\gamma_{\\infty,2}$ min. (other roles), $\\mathbb{Q}(\\sqrt2)$", "bench_fmm_orig": "\\texttt{rational}",
              "bench_fmm_201": "\\texttt{201}"}
@@ -255,8 +256,9 @@ def deep(log, outdir):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(1, 2, figsize=(9, 4.0), sharey=True)
-    show = [("bench_fmm", "accurate", "C0", "o-"), ("bench_fmm_acc262", "accurate_262", "C3", "s-"),
-            ("bench_fmm_var_g16s2o", "accurate_262 point, our 445-op. programs", "C3", "s:"),
+    show = [("bench_fmm", "accurate, DPS's programs (284)", "C0", "o-"),
+            ("bench_fmm_acc262", "accurate_262, DPS's programs (262)", "C3", "s-"),
+            ("bench_fmm_var_g16s2o", "accurate_262, our programs (445)", "C3", "s:"),
             ("bench_fmm_var_g214d", r"orbit's $\gamma_{\infty,2}$ min. (other roles), $\mathbb{Q}(\sqrt{2})$", "C2", "^--"),
             ("bench_fmm_orig", "rational", "C1", "v-"), ("bench_fmm_201", "201", "C7", "d:")]
     for ax, (t, tn) in zip(axes, (("f", "single precision"), ("d", "double precision"))):

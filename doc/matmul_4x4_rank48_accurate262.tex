@@ -69,7 +69,15 @@ equivalent to \acct.  The $21.41$ point cannot be made dyadic, and in
 floating point, where its constants round, its measured error is no
 lower than \acc's.  Dyadic probe points show that neither $\ginf$ nor
 $\giinf$ alone predicts the measured error, while $Q_0$ and exact dyadic
-coefficients matter.  The other known
+coefficients matter.  A first-order rounding model of the programs,
+taken as a search objective, gives programs with $11\%$ less modelled
+rounding error that measure as a tie, because the leaf products' error,
+amplified by the scheme, dominates; that amplification, $2\sqrt2$ per
+level, is the minimum over the orbit, over the other known rank-$48$
+classes and over the variety of decompositions around them.  Adding in
+double precision inside the single-precision passes, at no cost below
+$n=16384$, cuts the error at five recursion levels by a third.  The
+other known
 rational classes, Li, Wang and Hu's curve and Agarwal's scheme, have
 larger $\ginf$ minima.
 \end{abstract}
@@ -851,16 +859,123 @@ error, in the same orbit and with the same $\gamma_2$.
 The natural next objective combines the growth factors with $Q_0$ and
 the operation count over dyadic points, or uses the measured error of
 deep recursion directly; \texttt{gamma48} makes such searches cheap.
-PLinOpt's optimizer minimizes operations, and the rounding model gives
-a second objective, the error a program adds; it evaluates a program in
-well under a second.  Direct optimization already gives $P$ programs
-as good as DPS's in the model; the $L$ and $R$ passes are where an
-accuracy objective would act, and it might give \acct programs more
-accurate than DPS's.
-Lower precisions (bf16, fp16), where every level's error is a larger
-share of the result, are where an accurate scheme matters most.
+Section~\ref{sec:beyond} carries the rounding model into a program
+search, finds the scheme's amplification of the leaf error at its
+floor, and lowers the deep-recursion error by a third with
+double-precision passes.  Lower precisions (bf16, fp16), where every
+level's error is a larger share of the result, are where an accurate
+scheme matters most.
 
-\section{Data and code}
+\section{Beyond the published programs}\label{sec:beyond}
+
+The model of Section~\ref{sec:disc} points to two ways to a realized
+algorithm more accurate than \acct with DPS's programs: programs that add
+less rounding error, and schemes that amplify the leaf products' error
+less.  We tried both; then the one lever that remained.
+
+\subsection{Programs found with the model}\label{sec:searchprog}
+
+\texttt{slpopt} (Rust) ports the model, exact to every printed digit of
+Table~\ref{tab:model}, and searches programs of one matrix with the other
+two fixed: programs are DAGs of sums and scalings, the moves keep every
+output's linear form (rebuilding a sum tree at random or by smallest
+partial sums, rotating, sharing and unsharing a sum, creating a common
+subexpression across trees), simulated annealing drives them, and every
+accepted move is checked against the matrix.  PLinOpt's
+\texttt{optimizer}, which we made $7$--$10$ times faster for this
+purpose (Section~\ref{sec:data}), supplies starting programs by the
+thousand.
+
+The headroom is small.  Of $3000$ random \texttt{optimizer} programs
+per matrix, scored with the other two matrices at DPS's programs, the
+best $R$ models at $6.56$ against DPS's $7.22$, $L$ gives one program
+($7.27$, no ties to break) and no $P$ beats DPS's; the optimizer's
+kernel and LU methods, annealing from DPS's programs, and a greedy
+construction that applies the model-best subexpression at each step do
+no better.  The best set we assembled, DPS's $L$, the best sampled $R$
+after annealing, and a $P$ built by pairing the smallest partial sums
+first, models at $6.47$ ($L$+$R$ $5.52$, $P$ $2.97$; $539$ operations;
+SLPchecker passes all three).  Measured with the protocol of
+Section~\ref{sec:acc} (the rows ``model-searched programs'' of
+Tables~\ref{tab:acc}, \ref{tab:deep} and~\ref{tab:model}), its error is
+$1.001$, $1.007$ and $1.014$ of \acct's at one to three levels, within
+the seed-to-seed spread, and $0.95$ at four and five levels, at the same
+speed.  Eleven percent less pass error is five percent at depth and
+nothing with large leaves: the error that dominates is the leaf
+products' own, amplified by the scheme.
+
+\subsection{The amplification of the leaf error is at its minimum}\label{sec:ampfloor}
+
+In the model, one level amplifies the leaf products' errors into output
+$j$ by
+\[
+\mathrm{amp}_j=\tfrac12\Bigl(\sum_i p_{j,i}^2\,\lVert L_i\rVert_2^2\,
+\lVert R_i\rVert_2^2\Bigr)^{1/2},
+\]
+the column ``amp.''\ of Table~\ref{tab:model}; \acct has $2\sqrt2$ for
+every output, \acc $3.16$.  We looked for less in every way we could:
+\begin{itemize}
+\item Over the $648$ dyadic orthogonal points of Section~\ref{sec:dyadic},
+  each scored with greedy programs, $\mathrm{amp}$ takes five values:
+  $2\sqrt2$ at $342$ points, \acct's among them, then $3.16$, $3.32$,
+  $3.46$ and $3.74$.  The realized pass error ranges from $6.7$ to $8.6$,
+  \acct's point at $6.96$ and the lowest, $6.73$, in probe~B's family.
+\item Simulated annealing over non-orthogonal dyadic isotropies (shears
+  by $\pm1$, $\pm\frac12$, $\pm2$, row swaps, scalings by $2^{\pm1}$)
+  never leaves $2\sqrt2$, and BFGS over all $48$ parameters of the orbit
+  from twelve random starts returns to $2\sqrt2$ at orthogonal points
+  with all sixteen outputs equal.  The orbit's $\ginf$ minimum, $21.41$,
+  has $\mathrm{amp}=3.14$: a smaller growth factor is not a smaller
+  amplification.
+\item Over the whole variety of rank-$48$ decompositions of the
+  $4\times4\times4$ tensor, minimizing a soft maximum of the
+  $\mathrm{amp}_j$ with the Brent equations as a penalty raised in
+  stages (L-BFGS on all $2304$ coefficients), every start returns to
+  $2\sqrt2$: sixteen starts from \acct perturbed by up to the size of
+  its coefficients land on generic points of its orthogonal sub-orbit
+  ($\gamma_2=154.51$, dense irrational coefficients), and starts from Li,
+  Wang and Hu's $s(1/2)$, whose own orbit bottoms at $3.00$, leave that
+  orbit for $2\sqrt2$ too.
+\item The other known classes, minimized over their orbits: $s(1/4)$,
+  the DPS class, $2.83$; $s(1/2)$ $3.00$; $s(1)$ $3.54$; $s(2)$ $4.50$;
+  $s(4)$ $6.01$; $s(8)$ $8.25$; Agarwal's scheme $5.80$.
+\end{itemize}
+The minimum set is the orthogonal sub-orbit on which $\gamma_2$ is
+minimal, which is where DPS looked first.  This is not a proof that
+$2\sqrt2$ is the floor for rank $48$, but it is every basin we have a
+foothold in, and it closes the scheme as a lever for this measurement:
+whatever the program, one level of a known rank-$48$ scheme multiplies
+the leaf error by at least $2\sqrt2$.
+
+\subsection{Double-precision passes}\label{sec:f64pass}
+
+The remaining lever is the passes' arithmetic.  With \texttt{FMM\_F64PASS=1}
+the library's $4\times4$ passes on the single-precision path read and
+write \texttt{float} blocks but add in \texttt{double} (a third kernel
+set, generated like the others), so a pass rounds once per element it
+stores, at the GEMM's interface, instead of at every addition; the GEMMs
+and the plans are unchanged.  The interface roundings are amplified
+like the leaf error, so the pass term cannot vanish: one rounding per
+stored element gives, in the model, $L$+$R$ $4.0$ and $P$ $1.0$, a worst
+output of $4.1$ against DPS's programs' $7.2$.
+
+Measured with DPS's programs both ways (the rows ``f64 passes'' of
+Tables~\ref{tab:acc} and~\ref{tab:deep}, and the dashed line of
+Figure~\ref{fig:deep}), the error with the double-precision passes is
+$0.99$, $1.02$ and $0.98$ of the single-precision passes' at one to
+three levels on $n=4096$ and $8192$, a tie where the leaves' error
+dominates, and $0.97$, $0.96$, $0.85$, $0.72$ and $0.64$ at one to five
+levels on $n=1024$: $6.25$ times the classical error at five levels
+instead of $9.79$.  The passes are memory-bound, so the double
+arithmetic is nearly free: $1.000$--$1.017$ of the time on the plans at
+$4096$ and $8192$ and on one level at $16384$, and $1.057$ on the
+three-level pipelined plan at $16384$, where the passes are the largest
+share.  This is the first change that lowers the deep-recursion line,
+and the model's floor accounts for its size.  The library leaves the
+switch off by default; the natural rule is to turn it on with the
+accuracy budget, for plans of three or more fast levels.
+
+\section{Data and code}\label{sec:data}
 
 Everything is in the public repository
 \url{https://github.com/gsidebottom/logic}; paths below are relative to
@@ -897,6 +1012,25 @@ it.
 \item The rounding model: \path{matmul/dps48/gamma/slp_errmodel.py}, with
   its output in \path{matmul/fastmm/results/slp_errmodel_2026-10-25.txt};
   \path{paper_acc262.py --model} writes Table~\ref{tab:model}.
+\item Section~\ref{sec:beyond}: \path{src/bin/slpopt.rs} (the model,
+  the program search, \texttt{realized} scoring); the program sets
+  \path{matmul/dps48/gamma/slp/opt1_{L,R,P}.slp}; the amplification
+  floor by \path{matmul/dps48/gamma/dyadic_points.py}, \path{ampwalk.py},
+  \path{ampmin.py}, \path{ampvariety.py} and \path{inspect_point.py},
+  with the other classes' schemes in \path{matmul/dps48/classes/} and
+  results in \path{matmul/fastmm/results/} (\path{dyadic_points_realized_},
+  \path{amp_floor_}, \path{amp_classes_} and \path{amp_variety_2026-10-26.txt});
+  the double-precision passes in
+  \path{matmul/fastmm/gen_kernels.py}, \path{fmm.c} and \path{fmm_impl.h}
+  (\texttt{FMM\_F64PASS}); the campaigns \path{campaign_var.sh},
+  \path{campaign_f64pass.sh} and \path{summarize_var.py}, with their logs
+  \path{accuracy_opt1_}, \path{accuracy_deep_opt1_}, \path{accuracy_f64pass_},
+  \path{accuracy_deep_f64pass_} and \path{speed_*_2026-10-26.txt}.  The
+  faster PLinOpt optimizer (one generator per thread with a seed option,
+  no transposed copy per subexpression, incremental pair bookkeeping, a
+  word-size prime field with rational reconstruction, $7$--$10$ times
+  faster on these matrices) is the branch \texttt{optimizer-speed} of
+  \url{https://github.com/gsidebottom/plinopt}.
 \item The optimizer sweep: \path{matmul/dps48/gamma/optsweep.sh} and
   \path{optsweep_score.py}; its log and scores are in
   \path{matmul/fastmm/results/optimizer_sweep_2026-10-26.txt} and its

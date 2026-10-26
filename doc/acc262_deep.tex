@@ -13,6 +13,8 @@ levels & 1 & 2 & 3 & 4 & 5 & 1 & 2 & 3 & 4 & 5\\
 \midrule
 \texttt{accurate} (284) & 0.95 & 1.10 & 2.00 & 4.77 & 13.29 & 0.91 & 1.18 & 2.09 & 4.91 & 13.50\\
 \texttt{accurate\_262} (262) & 0.79 & 0.97 & 1.67 & 3.75 & 9.79 & 0.76 & 0.98 & 1.63 & 3.68 & 9.58\\
+\texttt{accurate\_262}, f64 passes & 0.77 & 0.93 & 1.42 & 2.70 & 6.25 & -- & -- & -- & -- & --\\
+\texttt{accurate\_262}, searched (539) & 0.78 & 0.98 & 1.68 & 3.54 & 9.25 & 0.77 & 0.92 & 1.62 & 3.50 & 8.91\\
 \texttt{accurate\_262}, ours (445) & 0.78 & 1.10 & 2.29 & 5.71 & 15.45 & 0.78 & 1.09 & 2.20 & 5.48 & 15.62\\
 \texttt{accurate}, direct & 1.00 & 1.35 & 2.69 & 6.76 & 19.63 & 0.95 & 1.29 & 2.57 & 6.62 & 19.36\\
 probe A & 0.78 & 1.08 & 2.27 & 5.40 & 14.91 & 0.80 & 1.09 & 2.21 & 5.43 & 14.45\\
@@ -29,6 +31,8 @@ $\gamma_{\infty,2}$ min. (other roles), $\mathbb{Q}(\sqrt2)$ & 0.89 & 1.22 & 2.4
 % accurate_262/accurate by level (single; double): 1: 0.799 [0.670,0.889] 0.829; 2: 0.845 [0.748,0.948] 0.835; 3: 0.828 [0.706,0.959] 0.789; 4: 0.764 [0.646,0.822] 0.756; 5: 0.724 [0.670,0.803] 0.715
 % growth 3->4 4->5 (single; double) bench_fmm: 2.39 2.79; 2.35 2.75
 % growth 3->4 4->5 (single; double) bench_fmm_acc262: 2.24 2.61; 2.26 2.60
+% growth 3->4 4->5 (single; double) bench_fmm_var_f64pass: 1.90 2.31; nan nan
+% growth 3->4 4->5 (single; double) bench_fmm_var_opt1: 2.11 2.61; 2.17 2.55
 % growth 3->4 4->5 (single; double) bench_fmm_var_g16s2o: 2.50 2.70; 2.49 2.85
 % growth 3->4 4->5 (single; double) bench_fmm_var_table1d: 2.51 2.90; 2.57 2.92
 % growth 3->4 4->5 (single; double) bench_fmm_var_probeA: 2.38 2.76; 2.46 2.66

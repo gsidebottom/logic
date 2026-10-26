@@ -82,11 +82,20 @@ minimizing the smooth bound $\gamma_2\ge\gamma_{2,2}$ along the orbit,
 then moved by orthogonal isotropies, which keep $\gamma_2$, to get
 sparse straight-line programs.  Its growth factor is $\ginf\approx25.456$,
 error-bound exponent $\log_4\ginf\approx2.335$, the smallest among the
-algorithms they compare, and its programs take $284$ operations.  In
-October 2026 DPS published a cheaper accurate variant with $262$
-operations, \texttt{4x4x4\_48\_accurate\_262}, cited for its operation
-count in~\cite{DPSST26}.  Its growth factors were not reported, and
-Table~1 of~\cite{DPS26a} remains the accurate variant on record.
+algorithms they compare, and its programs take $284$ operations.  The
+paper's versions run from 19~March 2026 (v1) to 29~July 2026 (v3, the
+current one), and Table~1's scheme entered PLinOpt on 23~June 2026.
+
+DPS then published a cheaper accurate variant with $262$ operations.
+It entered PLinOpt on 13~October 2026 as
+\texttt{4x4x4\_48\_accurate\_262} (commit \texttt{b441528}, by
+J.-G.~Dumas), described as ``accurate with 262 operations''.  The second
+version of~\cite{DPSST26}, dated 2~October 2026, cites it as the accurate
+variant with the best leading term, $9+3/16$; the first version, of
+10~September 2026, presents a $216$-operation algorithm and gives no
+accurate variant in its abstract.  Neither source reports the new
+variant's growth factors, and Table~1 of~\cite{DPS26a} remains the
+accurate variant on record.
 
 We show that the $262$-operation variant is also the more accurate one:
 \begin{itemize}
@@ -210,7 +219,7 @@ Three facts organize the search.
 \section{The 262-operation variant}\label{sec:scheme}
 
 DPS's $262$-operation variant is PLinOpt's
-\texttt{4x4x4\_48\_accurate\_262}.  Its straight-line programs take $64$
+\texttt{4x4x4\_48\_accurate\_262}, added on 13~October 2026.  Its straight-line programs take $64$
 additions and $8$ scalings for $L$, $67$ and $11$ for $R$, and $112$
 additions and no scalings for $P$, against Table~1's $80+4$, $68+8$ and
 $108+16$.  Up to symmetry it is
@@ -697,18 +706,21 @@ non-commutative algorithm for multiplying $4\times4$ matrices using
 $48$ non-complex multiplications}, arXiv:2506.13242 (2025).
 \bibitem{DPS26a} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, \emph{A more
 accurate rational non-commutative algorithm for multiplying $4\times4$
-matrices using $48$ multiplications}, arXiv:2603.18699v3 (2026).
+matrices using $48$ multiplications}, arXiv:2603.18699 (v1 19~March
+2026, v3 29~July 2026).
 \bibitem{DPS26b} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, \emph{Towards
 automated generation of fast and accurate algorithms for recursive
 matrix multiplication}, J.\ Symbolic Comput.\ 134 (2026) 102524.
 \bibitem{DPSST26} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, J.~Stapleton,
 P.~Tichavsk\'y, \emph{Fast matrix multiplication via recursive
 $\langle4\times4\times4:48\rangle$ algorithms into practice},
-arXiv:2609.12027v2 (2026).
+arXiv:2609.12027 (v1 10~September 2026, v2 2~October 2026).
 \bibitem{PLinOpt} J.-G.~Dumas, B.~Grenet, C.~Pernet, A.~Sedoglavic,
 \emph{PLinOpt, a collection of C++ routines handling linear \&
-bilinear programs}, \url{https://github.com/jgdumas/plinopt} (data file
-\texttt{4x4x4\_48\_accurate\_262} added 13 October 2026).
+bilinear programs}, \url{https://github.com/jgdumas/plinopt}; data
+files \texttt{4x4x4\_48\_accurate} (commit \texttt{fb753b5}, 23~June
+2026) and \texttt{4x4x4\_48\_accurate\_262} (commit \texttt{b441528},
+13~October 2026).
 \bibitem{Higham02} N.~J.~Higham, \emph{Accuracy and Stability of
 Numerical Algorithms}, 2nd ed., SIAM, 2002.
 \bibitem{LWH26} X.~Li, Y.~Wang, S.~Hu, \emph{Substitution and quotient

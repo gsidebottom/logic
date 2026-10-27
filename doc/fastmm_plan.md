@@ -670,6 +670,25 @@ roundings (worst 4.1 vs 7.2), and the measured 36% at five levels is in line wit
 Open: make it the default (costs <= 2% below 16384; the 16384 deep plan pays 6%); add the switch
 to the Rust port; the paper.
 
+SEDOGLAVIC'S QUESTIONS (2026-10-26, on the pushed draft 4657bfe): what the "rounding-chain
+factor" is, and the gamma_{inf,2} = 21.4073 decomposition.  (1) Q0 is PLinOpt's own combinatorial
+factor (growthfactor): a term count, not a chain length; Section 2.1 had been corrected (e329ca1)
+but the name survived in the abstract and introduction, now "PLinOpt's combinatorial factor".
+(2) The point was public but unnamed in the paper: slp/g214d_{L,R,P}.slp (the measured direct
+sums, rounded constants) and rs_table1_r{1,2}.txt (line 1: the search's (U, V, W) that reach it
+from accurate in roles 1 and 2).  `exact_q214.py` snaps g214d to a + b sqrt2, a, b in Z/4 (unique;
+residuals <= 1.2e-8), checks the Brent equations exactly in Q(sqrt2) and writes
+g214_exact_{L,R,P}.txt ("row col a b") and the listing g214_exact.txt: L 304 x +-1/2; R 192 x
++-1/2, 192 x +-(sqrt2 - 1); P 80 x +-1/2, 40 x +-1, 24 x +-2, 16 x +-(1 + sqrt2)/4, 56 x
++-(1 + sqrt2)/2, 24 x +-(1 + sqrt2).  Every |R_i|^2 = 13 - 8 sqrt2 and every |L_i|^2 is rational,
+so gamma_{inf,2}(j) = (8 + 6 sqrt2) sqrt(13 - 8 sqrt2) = 2 sqrt(58 + 40 sqrt2) = 21.40734 on all
+16 outputs (degree 4 over Q; the search's 21.4073438 is its tolerance), gamma_{inf,inf} = 120 +
+40 sqrt2 = 176.57; gamma_{2,inf} 583.75, gamma_{2,2} 85.63, gamma_2 157.25, Q0 146, amp 3.135:
+Table 1's row and Section 8.2's 3.14.  Paper: Section 4.2 gives the exact point; Section 8.2
+says amp_j is the root-sum-square counterpart of gamma_{inf,2}'s per-output sum (the 21.41
+point minimizes the sum, 21.41 vs 22.63, not the root-sum-square, 3.14 vs 2.83, which is why the
+smallest growth factor did not measure best); the Data section names the files.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

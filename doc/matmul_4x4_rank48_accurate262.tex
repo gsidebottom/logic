@@ -52,7 +52,7 @@ algorithm.  Its growth factors are smaller in all four norms they
 consider: $\ginf=16\sqrt2$, an exponent of exactly $9/4$;
 $\giinf=132$ against $148$; $\gamma_{2,\infty}=16\sqrt{963}$ against
 $8\sqrt{4142}$; and $\gamma_{2,2}=64\sqrt2$ against $8\sqrt{130}$.  Its
-$\gamma_2=64(1+\sqrt2)$ is the same, and its rounding-chain factor $Q_0$
+$\gamma_2=64(1+\sqrt2)$ is the same, and PLinOpt's combinatorial factor $Q_0$
 is $80$ against $180$.  Measured against exact references on random
 matrices, in single and double precision at one to three recursion
 levels, its error is $0.75$--$0.77$ of \acc's on average ($0.62$--$0.90$ for single instances), at the same speed in a
@@ -143,7 +143,7 @@ We show that \acct, the cheaper variant, is also the more accurate one:
   of~\cite[Table~2]{DPS26a}, with the same $\gamma_2$: $\ginf=16\sqrt2$,
   an error-bound exponent of exactly $9/4$, against $25.456$;
   $\giinf=132$ against $148$; $\gamma_{2,2}=64\sqrt2$ against $91.21$;
-  and $\gamma_{2,\infty}\approx496.5$ against $514.9$.  Its rounding-chain
+  and $\gamma_{2,\infty}\approx496.5$ against $514.9$.  PLinOpt's combinatorial
   factor $Q_0$ is $80$ against $180$ (Section~\ref{sec:scheme}).
 \item Measured on random matrices against exact references, in single
   and double precision, its error is $0.75$--$0.77$ of \acc's on average at one to
@@ -171,7 +171,7 @@ at points with coefficients in $\Q(\sqrt2)$, and its measured error is
 no lower than \acc's.  The other known rational classes, members of Li, Wang
 and Hu's curve~\cite{LWH26} and Agarwal's scheme~\cite{Agarwal26}, have
 larger $\ginf$ minima.  So $\ginf$ alone is not a sufficient objective
-for an accuracy search.  The rounding-chain factor $Q_0$ and exact
+for an accuracy search.  The combinatorial factor $Q_0$ and exact
 dyadic coefficients matter as much.  \acct has dyadic coefficients and
 the smallest $Q_0$ and $\giinf$ of the $\mm{4\times4\times4:48}$ schemes
 we measured.
@@ -457,6 +457,28 @@ the three lie in one orbit.  The role decides what the search finds:
   of their roles would not help either: those have $\ginf\ge12+8\sqrt2$
   (Section~\ref{sec:dyadic}), more than \acct's $16\sqrt2$.
 \end{itemize}
+
+The point we measured (Section~\ref{sec:acc}) is exact in that field.
+Snapping each coefficient of its direct-sum programs to the nearest
+$a+b\sqrt2$ with $a,b\in\frac14\Z$ moves none by more than
+$1.2\cdot10^{-8}$, and the result satisfies the Brent equations exactly
+in $\Q(\sqrt2)$.  Its $L$ has $304$ nonzero coefficients, all
+$\pm\frac12$; its $R$ has $384$, half $\pm\frac12$ and half
+$\pm(\sqrt2-1)$; its $P$ has $240$: $\pm\frac12$, $\pm1$, $\pm2$,
+$\pm\frac14(1+\sqrt2)$, $\pm\frac12(1+\sqrt2)$ and $\pm(1+\sqrt2)$
+($80$, $40$, $24$, $16$, $56$ and $24$ of them).  Every
+$\lVert R_i\rVert_2^2$ is $13-8\sqrt2$ and every $\lVert L_i\rVert_2^2$
+is rational, so each output's sum
+$\sum_i\lvert p_{j,i}\rvert\,\lVert L_i\rVert_2\lVert R_i\rVert_2$
+collects to $(8+6\sqrt2)\sqrt{13-8\sqrt2}$, the same for all sixteen
+outputs:
+\[
+\ginf=(8+6\sqrt2)\sqrt{13-8\sqrt2}=2\sqrt{58+40\sqrt2}\approx21.40734,
+\]
+an algebraic number of degree four, with exponent
+$\log_4\ginf\approx2.2100$; and $\giinf=120+40\sqrt2\approx176.57$.
+The exact scheme, the programs we measured and the search's $(U,V,W)$
+are in the repository (Section~\ref{sec:data}).
 
 \subsection{The dyadic orthogonal sub-orbit, exhaustively}\label{sec:dyadic}
 
@@ -913,7 +935,15 @@ $j$ by
 \lVert R_i\rVert_2^2\Bigr)^{1/2},
 \]
 the column ``amp.''\ of Table~\ref{tab:model}; \acct has $2\sqrt2$ for
-every output, \acc $3.16$.  We looked for less in every way we could:
+every output, \acc $3.16$.  It is the root-sum-square counterpart of
+$\ginf$'s per-output sum
+$\sum_i\lvert p_{j,i}\rvert\,\lVert L_i\rVert_2\lVert R_i\rVert_2$: the
+growth factor bounds the error with every rounding aligned, the model
+adds independent roundings in quadrature.  For \acct each output
+collects sixteen products with $\lvert p_{j,i}\rvert=1$ and
+$\lVert L_i\rVert_2\lVert R_i\rVert_2=\sqrt2$, so the sum is $16\sqrt2$
+and the root-sum-square $\frac12\sqrt{16\cdot2}=2\sqrt2$.  We looked
+for less in every way we could:
 \begin{itemize}
 \item Over the $648$ dyadic orthogonal points of Section~\ref{sec:dyadic},
   each scored with greedy programs, $\mathrm{amp}$ takes five values:
@@ -925,8 +955,9 @@ every output, \acc $3.16$.  We looked for less in every way we could:
   never leaves $2\sqrt2$, and BFGS over all $48$ parameters of the orbit
   from twelve random starts returns to $2\sqrt2$ at orthogonal points
   with all sixteen outputs equal.  The orbit's $\ginf$ minimum, $21.41$,
-  has $\mathrm{amp}=3.14$: a smaller growth factor is not a smaller
-  amplification.
+  has $\mathrm{amp}=3.14$: it minimizes the sum ($21.41$ against
+  $22.63$) but not the root-sum-square ($3.14$ against $2.83$); a
+  smaller growth factor is not a smaller amplification.
 \item Over the whole variety of rank-$48$ decompositions of the
   $4\times4\times4$ tensor, minimizing a soft maximum of the
   $\mathrm{amp}_j$ with the Brent equations as a penalty raised in
@@ -1039,6 +1070,16 @@ it.
   \texttt{data/4x4x4\_48\_accurate}~\cite{PLinOpt}; our scheme equivalent to \acct
   is \path{matmul/dps48/gamma/g16s2_{L,R,P}.sms} and our programs for it
   \path{matmul/dps48/gamma/slp/g16s2o_{L,R,P}.slp}.
+\item The orbit's $\ginf$ minimum (Section~\ref{sec:search}): the
+  direct-sum programs we measured, with rounded constants,
+  \path{matmul/dps48/gamma/slp/g214d_{L,R,P}.slp}; the search's $(U,V,W)$
+  that reach it from \acc in roles~1 and~2, the first lines of
+  \path{matmul/dps48/gamma/rs_table1_r1.txt} and \path{rs_table1_r2.txt}
+  (the value, the start's seed, then $U$, $V$, $W$ row by row); and its
+  exact form in $\Q(\sqrt2)$, \path{matmul/dps48/gamma/g214_exact_{L,R,P}.txt}
+  (one entry $a+b\sqrt2$ per line as \texttt{row col a b}) with the
+  readable listing \path{g214_exact.txt}, both written and checked by
+  \path{exact_q214.py}.
 \end{itemize}
 
 \section*{Acknowledgments}

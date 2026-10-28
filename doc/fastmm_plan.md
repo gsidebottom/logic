@@ -716,6 +716,37 @@ provenance paragraph, Section 4.2 and the acknowledgments.  20 pages.  Still to 
 Alexandre the Oct 27 reply's point 1 was wrong (it attributed the product formula to him);
 tell Dumas the one-line fix (norm0(L[i]) + norm0(R[i])), e.g. with the optimizer-speed letter.
 
+3x3 ACCURACY SCREEN (2026-10-27/28; `matmul/gamma3/`, README there).  Greg asked whether the
+17,376 rank-23 3x3 classes of the HKS database can give a level that is fast AND more accurate
+than accurate_262.  No.  `screen3.py` scores every class in all three roles at its stored +-1
+representative (`db3_gamma.csv`): the best gamma_{inf,2} is 13.11 (69 classes; exponent log_3 =
+2.342 against accurate_262's log_4 = 2.250, so no class under the parity threshold 11.84), the
+best amp 2.693 (exponent 1.033 against 0.750; threshold 1.974, none under), gamma_2 59.1
+(Smirnov's class; 3.713 against 3.636, none under).  Only the inf,inf and 2,2 norms, which the
+measurements do not track, favor the sparse +-1 schemes (29 and 29.2: exponents 3.065 and 3.072
+against 3.522 and 3.250), and Q0 is 12-19 (median 15) against 34.  Our i19 class sits at 20.74 /
+4.15 / Q0 17.  `orbit3.py` minimizes gamma_{inf,2}, amp and gamma_2 over GL_3^3 (L-BFGS, 27
+parameters, smoothed maxima, 8 starts, every role) for the 124 classes in the top-40 union
+(`orbit3_minima.csv`, `.log`): gamma_{inf,2} 10.06-11.69 (best i107w191c34ef, exponent 2.102;
+all 124 under 11.84), amp 1.78-2.06 (119 under 1.974), gamma_2 49.3-56.8 (115 under 54.3);
+Smirnov 11.01 / 1.85 / 51.6, i19 11.13 / 1.84 / 50.6: the floor is within 15% for every class.
+But every minimizer is a dense irrational point (a factor keeps 71-207 of its 207 entries nonzero,
+mean 192; a point has 198-585 distinct coefficients, mean 489: the CSV's nnz/distinct fields; the
+local minima vary between runs by up to 0.28 in gamma_{inf,2} without moving any count), as
+DPS's gamma_2 minima are for Laderman and Smirnov, and the Hadamard route to an exact point is closed in three dimensions (a 3x3
+orthogonal matrix over Z[1/2] is a signed permutation: a^2 + b^2 + c^2 = 4^k forces a, b, c
+even).  At equal product saving (1.794 3x3 levels per 4x4 level) the excess growth over the
+classical algorithm, (gamma/3)^1.794 against 22.63/4, needs gamma_{inf,2} <= 7.88,
+gamma_{inf,inf} <= 21.1, amp <= 1.55: unmet even by the continuous minima (1.3-1.5x short).
+Speed (`cost3.py`, the fused-pass model at 8192 f32 without streams or pipelines): one 4x4 level
+16.8% off the GEMM, two 10.8%; one 3x3 level 7.5%, two 1.4%, three -35.6%; 4x4 then 3x3 5.9%,
+3x3 then 4x4 7.8%: a 3x3 level moves 32 blocks per 23 products against 64 per 48.  Where 3x3
+could pay: packing-fused implementations (item 4; the +-1 schemes have 139-186 nonzeros over the
+three factors against accurate_262's 696), sizes 3^k m, and the bounds' Q0.  Open: a discrete
+search over dyadic isotropies GL(3, Z[1/2])^3 for exact points below the representatives,
+bounded by the continuous minima; it could only lower a 3x3 level's error for the 3^k m sizes,
+not make one competitive.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:
@@ -840,7 +871,8 @@ Which operations matter depends on the implementation:
      (Alexandre's sparsest point, 624 nonzeros against our 696, is the natural start);
    - for fused passes, prefer shapes with the best ratio of saved products to blocks moved:
      rectangular schemes (<4x4x8>), product schemes (<8x8x8:336> = ours x Strassen), 3x3:23
-     for sizes 3^k * m;
+     for sizes 3^k * m (screened 2026-10-27, `matmul/gamma3/`: a 3x3 level is slower per saved
+     product and not more accurate than a 4x4 level, see the 3x3 ACCURACY SCREEN paragraph);
    - register pressure (live values) of the fused program, if the passes ever become
      compute-bound.
 6. **Other machines and precisions.**  x86-64 with MKL and BLIS (AVX-512, AMX), the Apple

@@ -6,7 +6,7 @@ build/bench_fmm: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h bui
 
 # the kernels: dps48 from DPS's 262-operation accurate program (4x4x4_48_accurate_262), op-by-op
 # lists from ours (201)
-build/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_262_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_P.slp ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp schemes/r336_L.slp schemes/r336_R.slp schemes/r336_P.slp schemes/r363_L.slp schemes/r363_R.slp schemes/r363_P.slp schemes/r633_L.slp schemes/r633_R.slp schemes/r633_P.slp
+build/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_262_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_P.slp ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp schemes/opt/r336_L.slp schemes/opt/r336_R.slp schemes/opt/r336_P.slp schemes/opt/r363_L.slp schemes/opt/r363_R.slp schemes/opt/r363_P.slp schemes/opt/r633_L.slp schemes/opt/r633_R.slp schemes/opt/r633_P.slp
 	mkdir -p build && python3 gen_kernels.py $@
 
 # the same with every use of a scaled value as a fused multiply-add (x * 0.5 + y -> one FMLA);
@@ -16,6 +16,14 @@ build/bench_fmm_fma: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h
 
 build/fma/kernels.h: gen_kernels.py ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp
 	mkdir -p build/fma && python3 gen_kernels.py $@ --fma --dps48 ../dps48/cand48/p005_201n
+
+# the same with the direct-sum programs for the R levels (schemes/) instead of the PLinOpt-optimized
+# ones (schemes/opt, the default): results/r336_opt_vs_direct_2026-10-28.txt
+build/bench_fmm_rdirect: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/rdirect/kernels.h
+	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/rdirect bench_fmm.c -framework Accelerate -o $@
+
+build/rdirect/kernels.h: gen_kernels.py schemes/r336_L.slp schemes/r336_R.slp schemes/r336_P.slp schemes/r363_L.slp schemes/r363_R.slp schemes/r363_P.slp schemes/r633_L.slp schemes/r633_R.slp schemes/r633_P.slp
+	mkdir -p build/rdirect && python3 gen_kernels.py $@ --rschemes schemes
 
 # how much of the machine Accelerate's GEMM uses: SME streams, NEON peak, both at once
 build/probe_threads: probe_threads.c

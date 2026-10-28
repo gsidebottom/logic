@@ -97,16 +97,20 @@ starts the control did not leave accurate_262 for the 4×4 orbit's γ∞,2 point
 `../gamma5/orbit5.py` reaches from DPS's `accurate` point, so these floors may be slightly
 high.
 
-## What it would take
+## Done: the library has the three orientations as levels (2026-10-28)
 
-The library executes square levels on square blocks (one block size per level); the
-3×3×6 family needs rectangular blocks (A blocks M/g1 × K/g2, B blocks K/g2 × N/g3, C blocks
-M/g1 × N/g3), a planner over (M, K, N) sub-problems instead of n, three level types, and
-kernels generated from DPS's three programs (`gen_kernels.py` is already shape-agnostic).
-That is the "rectangular shapes" item of plan item 7, a few days of work on the C library
-(the Rust port after), after which the three orientations are measured against the D48
-plans exactly as the 5×5 level was.  Sizes: one level needs n divisible by 6, the cycle by
-54; the library pads.
+`../fastmm` now tracks the shape (m × k)(k × n) of every level's products, and R336, R363
+and R633 (DPS's accurate ⟨3×3×6:40⟩ and its transposes, `../fastmm/schemes/`) sit beside
+SW and D48 in the planner's menu.  Measured (`../fastmm/results/r336_campaign_2026-10-28.txt`,
+plan-doc paragraph RECTANGULAR LEVELS IMPLEMENTED): as one level the 3×3×6 scheme ties the
+4×4 in time at 13824 and is 6 to 20% more accurate (f32 err64 3.93e-6 against 4.16e-6 at
+13824, 2.25e-6 against 2.81e-6 at 6912); the planner's new best plans put an R363 level on
+top of D48 (R363+3/D48/G6 at 13824 f32: 0.936 s against the old family's 0.946, with less
+error; SW/R363+3/D48/G6 at 13824 f64: 1.95× over Accelerate).  The direct-sum R and P passes
+cost more than their traffic (18 operations per output); PLinOpt-optimized programs
+(`schemes/opt`) are measured as a variant.  Perminov's catalogue (680 shapes) adds no other
+qualifying shape: only ⟨3×3×6:40⟩, ⟨4×4×4:48⟩ and ⟨3×4×6:54⟩ save a quarter of the products
+within 80 streams per pass.
 
 ## Files
 

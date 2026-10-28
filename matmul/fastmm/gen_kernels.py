@@ -25,8 +25,12 @@ programs may use PLinOpt's general syntax (compound expressions such as o36:=(x5
 dps48's op-by-op lists (bench_fmm's dps48ops) are our 201-operation program, where the
 operation count is what costs.
 
-  gen_kernels.py OUT.h [--fma] [--dps48 PREFIX]
+  gen_kernels.py OUT.h [--fma] [--dps48 PREFIX] [--rschemes DIR]
   gen_kernels.py OUT.rs --rust [--dps48 PREFIX]     the same kernels as safe Rust (fmm-rs)
+
+The R levels (DPS's accurate <3x3x6:40> in its three orientations) come from DIR/r336_{L,R,P}.slp,
+r363_*, r633_*: by default schemes/opt/, PLinOpt-optimized programs (a quarter less pass time
+than the direct sums, same accuracy); schemes/ holds the direct sums (--rschemes schemes).
 """
 import os
 import re
@@ -382,19 +386,20 @@ def main():
     # orientations (schemes/r336, r363, r633: direct-sum programs written from PLinOpt's
     # 3x3x6_40_DPS-accurate matrices and transposes; SLPchecker passes all nine), as fused kernels
     # in both precisions and as the f64 passes of the f32 path
+    rdir = sys.argv[sys.argv.index("--rschemes") + 1] if "--rschemes" in sys.argv else os.path.join(HERE, "schemes", "opt")
     for name in ("r336", "r363", "r633"):
-        src = tuple(open(os.path.join(HERE, "schemes", f"{name}_{s}.slp")).read() for s in "LRP")
+        src = tuple(open(os.path.join(rdir, f"{name}_{s}.slp")).read() for s in "LRP")
         nin = max(int(v) for v in re.findall(r"\bi(\d+)\b", src[0])) + 1
         nout = max(int(v) for v in re.findall(r"\bo(\d+)\b", src[0])) + 1
         nops = sum(count_ops_expr(t) for t in src)
-        h.append(f"/* {name}: fused kernels from schemes/{name}_{{L,R,P}}.slp, {nops} operations (scalings included) */")
+        h.append(f"/* {name}: fused kernels from {os.path.relpath(rdir, HERE)}/{name}_{{L,R,P}}.slp, {nops} operations (scalings included) */")
         h.append(f"enum {{ {name.upper()}_NB = {nin}, {name.upper()}_RANK = {nout}, {name.upper()}_OPS = {nops} }};")
         for T, suf in (("float", "f"), ("double", "d")):
             for side, t in zip("LRP", src):
                 h.append(fused_expr(f"{name}_{side}_{suf}", t, T))
         for side, t in zip("LRP", src):
             h.append(fused_expr(f"{name}_{side}_fd", t, "float", "double"))
-        print(f"{name}: fused kernels from schemes/{name}, {nin} blocks of A, rank {nout}, {nops} operations")
+        print(f"{name}: fused kernels from {os.path.relpath(rdir, HERE)}/{name}, {nin} blocks of A, rank {nout}, {nops} operations")
     open(out, "w").write("\n".join(h))
 
 

@@ -836,6 +836,57 @@ measured against the D48 plans as for the 5x5.  Caveats: amp predicted the measu
 only among 4x4 variants so far; the per-level error factor is measured once implemented; a
 better exact 3x6x3 point (DPS's is 14% above the amp floor) is worth a dyadic search first.
 
+RECTANGULAR LEVELS IMPLEMENTED (2026-10-28, 8af71bd; results/r336_campaign_2026-10-28.txt).  Greg
+said "go ahead and do what it would take", and asked about Perminov's catalogue
+(dronperminov/FastMatrixMultiplication, 680 shapes up to 16x16x16, the clone in
+matmul/perminov_cache): its ranks confirm that only <3x3x6:40>, <4x4x4:48> and <3x4x6:54> save a
+quarter of the products within 80 streams per pass, so the 3x3x6 cycle is the one target.  The
+library (fmm.c, fmm_impl.h) now tracks the shape (m x k)(k x n) of every level's products: a
+level is {g1, g2, g3, r}, A blocks are m/g1 x k/g2, B blocks k/g2 x n/g3, C blocks m/g1 x n/g3,
+the scratch is per operand shape, passes take rows and columns (the generated kernels already
+looped rows over `m` columns), GEMM streams and both pipelines carry the three block shapes, the
+calibration is keyed by (kind, shape) (format 5, calib5_{f32,f64}.txt; square shapes
+interpolate, rectangular ones must be measured), the error model measures six plans at N_E =
+2304 (16, 3 and 6 divide it), the padding candidates are multiples of 2^a 3^b.  DPS's accurate
+<3x3x6:40> and its 3x6x3 and 6x3x3 transposes are the levels R336, R363, R633 (schemes/r*_*.slp:
+direct sums from PLinOpt's sms, nine SLPchecker passes; coefficients 1, 1/2, 1/4), with the f64
+passes of the f32 path too; the planner's menu is SW, D48, R336, R363, R633.  Correct at 3456 in
+all plans incl. pipelined ones (f32 3.0-3.9e-6, f64 5-7e-15); the 4x4 plans unchanged (10240
+f32 D48/G 0.553 vs 0.543 s this morning, identical errors); test_fmm all ok with the new cache.
+Calibrated at 13824 (f32 408 entries, 13 min; f64 ~12 min) and timed at 6912 and 13824, five
+reps, FMM_EXACT for f32 (err64 against the f64 product):
+  f32 6912: classical 0.195 s (err64 3.85e-6); D48/G 0.154 (2.81e-6); R336/G 0.171 (2.25e-6, 20%
+  less error, 11% slower: its L pass 0.010 vs 0.006 s); SW+3/D48/G6 0.143 (auto); D48+4/D48/G6
+  0.147; R336/R363/G 0.266; SW/R336/G 0.197.
+  f32 13824: classical 1.572 (6.40e-6); D48/G 1.253 (4.16e-6); R336/G 1.253 (3.93e-6: a speed
+  tie with 6% less error); auto = R363+3/D48/G6 0.936 (3.34e-6) against the old family's best
+  D48+4/D48/G6 0.946 (1.1% faster, and less error); R336/R363/G 1.315; SW/D48/G 1.150;
+  SW/R336/G 1.253.
+  f64 6912: classical 0.774; D48/G 0.614 (7.8e-15); R336/G 0.610 (7.4e-15); auto = R363+3/D48/G6
+  0.464 (1.662x) against D48+4/D48/G6 0.480 and the old family's best D48+2/D48/G6 (predicted
+  0.4605 vs 0.4568, 0.8%).
+  f64 13824: classical 6.219; D48/G 4.996 (1.40e-14); R336/G 4.897 (1.22e-14, 2% faster, 13% less
+  error); auto = SW/R363+3/D48/G6 3.348 (1.950x) against D48+4/D48/G6 3.710 and the predicted old
+  best SW/D48+2/D48/G6 3.3153 vs 3.2895 (0.8%); R336/R363/G 3.959.
+So: as a single level the 3x3x6 scheme ties the 4x4 in time at 13824 (slower at 6912: its passes
+cost more than the traffic model says, 0.092 vs 0.070 s at 13824 f32 for 0.99x the words, the R
+and P programs being 18 operations per output as direct sums) and is 6-20% more accurate; the
+planner's new best plans put an R363 level on top of D48 and gain 0.8-1.2% over the old family
+at 13824 and at 6912 f64 with less error; the R336/R363 cycle alone trails D48/D48 at these
+sizes.  The error model's factors per level (f32, N_E 2304): SW 1.09, D48 0.91, R336 0.72, R363
+0.75, R633 0.72.  Next: PLinOpt-optimized programs for the R passes (schemes/opt, from the fork's
+optimizer: L 152 -> 59 additions, R 344+384 -> 117+22, P 366+384 -> 148+18; the -Q path printed
+NO program for 3x6x3_40_DPS-accurate_L.sms with -s 1 -O 500, kept in the scratchpad for the
+PLinOpt PR work; the exact path gave 114+24).  Measured on the same fixed plans
+(results/r336_opt_vs_direct_2026-10-28.txt): the optimized programs cut the R passes by a
+quarter (13824 f32 R336/G passes 0.098 -> 0.073 s, f64 0.179 -> 0.136) with the error unchanged
+(err64 3.93e-6 -> 3.80e-6; R336/R363/G 3.21 -> 3.34e-6), so plans gain 1-7%: 13824 f64
+R336/R363/G 3.971 -> 3.694 s, SW/R363+3/D48/G6 3.349 -> 3.240, R363+3/D48/G6 3.514 -> 3.435; f32
+13824 R363+3/D48/G6 0.938 -> 0.927; 6912 f32 R363+3/D48/G6 0.168 -> 0.159, f64 0.466 -> 0.449.
+They are now the default kernels (schemes/opt; build/bench_fmm_rdirect keeps the direct sums),
+with the calibration and the planner campaign redone on them below.  Still to do: the Rust port;
+rectangular top-level problems through the API.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

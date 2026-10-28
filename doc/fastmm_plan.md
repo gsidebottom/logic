@@ -689,6 +689,33 @@ says amp_j is the root-sum-square counterpart of gamma_{inf,2}'s per-output sum 
 point minimizes the sum, 21.41 vs 22.63, not the root-sum-square, 3.14 vs 2.83, which is why the
 smallest growth factor did not measure best); the Data section names the files.
 
+Q0 CORRECTED AND THE EQUATIONS NUMBERED (2026-10-27).  Sedoglavic's second message answered
+Greg's question on how accurate_262 was found (accurate = the orbit's gamma_2 minimum, unique
+modulo orthogonal isotropies by their convexity result, found numerically with pymanopt over the
+quotient of GL_4 by the orthogonal group, DPS26b Lemma 27; then Touko Ursin explored Hadamard
+matrices to lower gamma_{inf,2}) and asked for numbered equations, pointing at "section 2.1,
+unnumbered equation" (the growth-factor bound).  Locating it exposed a real error: DPS define
+Q0 = max_j(nnz(P_j) + max_{i: p_ji != 0}(nnz(L_i) + nnz(R_i))) (ISSAC 2024 Th. 12, JSC 2026
+Th. 18, after Ballard et al. 2016 Def. 1; their ISSAC table has Winograd 10, Strassen 8, their
+accurate 2x2 variant 15), but PLinOpt's growthfactor (include/plinopt_norms.inl, cf85c3f May
+2026, unchanged at 7c20065) computes the PRODUCT nnz(L_i) nnz(R_i) + nnz(P_j) and prints
+13/8/23 -- and the paper's Q0 column, Sections 1, 2.1, 3, 5.2, 7 and the Oct 27 reply to
+Alexandre had copied the tool's numbers (80/180/152/101/146, probes 144/94) and called them DPS's
+Q0.  Fixed: Section 2.1 defines Q0 as DPS do (eq. 3), says what it counts (Q0 - 3 additions and
+one multiplication feeding the worst output), and names the tool's quantity the term count T0
+(eq. 4) with the Winograd discrepancy stated; Table 1 and Table 5 (paper_acc262.py FACT
+constants, regenerated, only that column changed): Winograd 10, Strassen 8, DPS-accurate 15,
+rational 48, accurate 46, accurate_262 34 (still the smallest, bold kept), Q(sqrt2) point 42,
+201 38, probe A 40, probe B 46.  Section 7 now says Q0 does NOT order the dyadic schemes'
+measured errors (34, 46, 40, 46) while T0 does (80, 94, 144, 180) on those four points.
+Every display equation is numbered, (1)-(12): bilinear identity, gamma_{p,q}, Q0, T0, the
+isotropy action, its matrix form, the trace form, Q_{U,V,W}, product 32's B side, the adjoints,
+the exact gamma_{inf,2}, amp_j.  Citations: the growth factor is DPS26b Def. 11 (Th. 18 is
+the error bound); Ballard et al. 2016 added; Sedoglavic26b (27 Oct) cited in the introduction's
+provenance paragraph, Section 4.2 and the acknowledgments.  20 pages.  Still to do: tell
+Alexandre the Oct 27 reply's point 1 was wrong (it attributed the product formula to him);
+tell Dumas the one-line fix (norm0(L[i]) + norm0(R[i])), e.g. with the optimizer-speed letter.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

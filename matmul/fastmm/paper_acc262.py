@@ -130,16 +130,19 @@ def main():
                 lines.append(f"{tn} & $n={n}$, {dist} & " + " & ".join(cells) + r"\\")
     lines += [r"\bottomrule", r"\end{tabular}", r"\end{table}", ""]
     # table: the factors beside the measured error at three levels (single precision)
+    # Q0 as DPS define it (Ballard et al. 2016, Def. 1): max_j(nnz(P_j) + max_{i: p_ji != 0}(nnz(L_i) + nnz(R_i))).
+    # PLinOpt's growthfactor (cf85c3f..7c20065) prints the product nnz(L_i) nnz(R_i) instead: 80, 80, 94, 144,
+    # 180, 180, 146, 152, 101 for these rows (the paper's T0).
     FACT = {  # build: (name, gamma_inf2, gamma_infinf, Q0, program)
-        "bench_fmm_acc262": ("\\texttt{accurate\\_262}", "22.63", "132", "80", "DPS, 262"),
-        "bench_fmm_var_g16s2o": ("\\texttt{accurate\\_262}", "22.63", "132", "80", "ours, 445"),
-        "bench_fmm_var_probeB": ("probe B", "28.97", "144", "94", "direct sums"),
-        "bench_fmm_var_probeA": ("probe A", "22.63", "256", "144", "direct sums"),
-        "bench_fmm": ("\\texttt{accurate}", "25.46", "148", "180", "DPS, 284"),
-        "bench_fmm_var_table1d": ("\\texttt{accurate}", "25.46", "148", "180", "direct sums"),
-        "bench_fmm_var_g214d": ("orbit's $\\gamma_{\\infty,2}$ min. (other roles)", "21.41", "176.6", "146", "direct sums"),
-        "bench_fmm_orig": ("\\texttt{rational}", "38.16", "288", "152", "DPS, 315"),
-        "bench_fmm_201": ("\\texttt{201}", "75.85", "399", "101", "ours, 201"),
+        "bench_fmm_acc262": ("\\texttt{accurate\\_262}", "22.63", "132", "34", "DPS, 262"),
+        "bench_fmm_var_g16s2o": ("\\texttt{accurate\\_262}", "22.63", "132", "34", "ours, 445"),
+        "bench_fmm_var_probeB": ("probe B", "28.97", "144", "46", "direct sums"),
+        "bench_fmm_var_probeA": ("probe A", "22.63", "256", "40", "direct sums"),
+        "bench_fmm": ("\\texttt{accurate}", "25.46", "148", "46", "DPS, 284"),
+        "bench_fmm_var_table1d": ("\\texttt{accurate}", "25.46", "148", "46", "direct sums"),
+        "bench_fmm_var_g214d": ("orbit's $\\gamma_{\\infty,2}$ min. (other roles)", "21.41", "176.6", "42", "direct sums"),
+        "bench_fmm_orig": ("\\texttt{rational}", "38.16", "288", "48", "DPS, 315"),
+        "bench_fmm_201": ("\\texttt{201}", "75.85", "399", "38", "ours, 201"),
     }
     rows = []
     for b, (name, g2, gi, q0, prog) in FACT.items():

@@ -36,7 +36,7 @@
 more accurate one: error-bound exponent $9/4$ and about a quarter
 less error}
 \author{Greg Sidebottom}
-\date{Draft --- October 25, 2026}
+\date{Draft --- October 27, 2026}
 
 \begin{document}
 \maketitle
@@ -52,8 +52,8 @@ algorithm.  Its growth factors are smaller in all four norms they
 consider: $\ginf=16\sqrt2$, an exponent of exactly $9/4$;
 $\giinf=132$ against $148$; $\gamma_{2,\infty}=16\sqrt{963}$ against
 $8\sqrt{4142}$; and $\gamma_{2,2}=64\sqrt2$ against $8\sqrt{130}$.  Its
-$\gamma_2=64(1+\sqrt2)$ is the same, and PLinOpt's combinatorial factor $Q_0$
-is $80$ against $180$.  Measured against exact references on random
+$\gamma_2=64(1+\sqrt2)$ is the same, and the combinatorial factor $Q_0$
+of their error bounds is $34$ against $46$.  Measured against exact references on random
 matrices, in single and double precision at one to three recursion
 levels, its error is $0.75$--$0.77$ of \acc's on average ($0.62$--$0.90$ for single instances), at the same speed in a
 fused-pass implementation over Apple's Accelerate.  In recursion down to scalars its advantage grows,
@@ -127,7 +127,13 @@ informed us that the point with $\ginf=16\sqrt2$ was found by Touko
 Ursin in mid-September 2026, by a construction with Hadamard matrices
 (a reduced form of the parametrization of Section~\ref{sec:search})
 rather than by search, and has not been published
-yet~\cite{Sedoglavic26}.
+yet~\cite{Sedoglavic26}.  In a second message he describes the
+construction~\cite{Sedoglavic26b}: \acc is the orbit's $\gamma_2$
+minimum, unique modulo orthogonal isotropies by their convexity result
+and found by numerical optimization (pymanopt) over the quotient of
+$GL_4$ by the orthogonal group~\cite[Lemma~27]{DPS26b}; Ursin then
+explored the action of Hadamard matrices, orthogonal isotropies that
+leave $\gamma_2$ unchanged, to lower $\ginf$, which gave \acct.
 
 We call schemes by their PLinOpt names: \acc for Table~1
 of~\cite{DPS26a}, \acct for the variant with $262$ operations, \rat for the
@@ -143,8 +149,8 @@ We show that \acct, the cheaper variant, is also the more accurate one:
   of~\cite[Table~2]{DPS26a}, with the same $\gamma_2$: $\ginf=16\sqrt2$,
   an error-bound exponent of exactly $9/4$, against $25.456$;
   $\giinf=132$ against $148$; $\gamma_{2,2}=64\sqrt2$ against $91.21$;
-  and $\gamma_{2,\infty}\approx496.5$ against $514.9$.  PLinOpt's combinatorial
-  factor $Q_0$ is $80$ against $180$ (Section~\ref{sec:scheme}).
+  and $\gamma_{2,\infty}\approx496.5$ against $514.9$.  The combinatorial
+  factor $Q_0$ of DPS's error bounds is $34$ against $46$ (Section~\ref{sec:scheme}).
 \item Measured on random matrices against exact references, in single
   and double precision, its error is $0.75$--$0.77$ of \acc's on average at one to
   three recursion levels, and never above $0.90$.  In recursion down to
@@ -184,36 +190,47 @@ For an $m\times k$ matrix $A$, $\vect(A)$ is its row-major
 vectorization.  A bilinear algorithm with $r$ multiplications for
 $\mm{m\times k\times n}$ is a triple of matrices $L\in\Q^{r\times mk}$,
 $R\in\Q^{r\times kn}$, $P\in\Q^{mn\times r}$ with
-\[
+\begin{equation}\label{eq:bilinear}
 \vect(AB)=P\bigl((L\vect A)\odot(R\vect B)\bigr)
-\]
+\end{equation}
 for all $A$ and $B$, where $\odot$ is the entrywise product.  Here
 $m=k=n=4$ and $r=48$.  With $L_i$ the rows of $L$, $R_i$ the rows of
 $R$, $p_{j,i}$ the entries of $P$ and $q^\star$ the dual exponent of
-$q$, DPS's $(p,q)$-growth factor~\cite[Th.~18]{DPS26b} is
-\[
+$q$, DPS's $(p,q)$-growth factor~\cite[Def.~11]{DPS26b} is
+\begin{equation}\label{eq:gamma}
 \gamma_{p,q}=\Bigl\lVert\Bigl(\sum_{i=1}^{r}\lVert L_i\rVert_{q^\star}
 \lVert R_i\rVert_{q^\star}\,\lvert p_{j,i}\rvert\Bigr)_{j}\Bigr\rVert_p ,
-\]
+\end{equation}
 and the forward error of $\ell$ recursive levels is at most
 $f_{p,q}\lVert A\rVert_q\lVert B\rVert_q\,\varepsilon+O(\varepsilon^2)$
-with $f_{p,q}=O(\gamma_{p,q}^{\ell})=O(n^{\log_4\gamma_{p,q}})$.  The
+with $f_{p,q}=O(\gamma_{p,q}^{\ell})=O(n^{\log_4\gamma_{p,q}})$~\cite[Th.~18]{DPS26b}.  The
 classical algorithm has $\giinf=\ginf=4$ and
 $\gamma_{2,\infty}=\gamma_{2,2}=16$, exponents $1$ and $2$.  DPS also use the
 smooth bound $\gamma_2=\sum_i\lVert L_i\rVert_2\lVert R_i\rVert_2
 \lVert P_{*,i}\rVert_2\ge\gamma_{2,2}$~\cite[eq.~(5)]{DPS26a}.
-PLinOpt's \texttt{growthfactor} tool~\cite{PLinOpt} also reports a
-combinatorial factor,
-\[
-Q_0=\max_j\Bigl(\max_{i:\,p_{j,i}\ne0}\nnz{L_i}\,\nnz{R_i}+\nnz{P_j}\Bigr),
-\]
-where $\nnz{\cdot}$ counts nonzeros: for the worst output, the terms
-$a_kb_l$ of the worst product feeding it plus the products summed into
-it, a crude count of the roundings a level exposes an output to when the
-scheme is computed as direct sums.  It exceeds the length of the chain
-of roundings, $\nnz{L_i}+\nnz{R_i}+\nnz{P_j}-2$.  The tool multiplies it
-by $\gamma/(\gamma-k)$, which adds up the levels, to get the constants
-of its error bounds.
+The constant of their bounds also carries a combinatorial factor,
+after Ballard et al.~\cite[Def.~1]{BBDLS16} (\cite[Th.~12]{DPS24},
+\cite[Th.~18]{DPS26b}):
+\begin{equation}\label{eq:q0}
+Q_0=\max_j\Bigl(\nnz{P_j}+\max_{i:\,p_{j,i}\ne0}\bigl(\nnz{L_i}+\nnz{R_i}\bigr)\Bigr),
+\end{equation}
+where $\nnz{\cdot}$ counts nonzeros.  For the worst output it counts
+the nonzeros of the worst product's two linear forms and the products
+summed into the output, a crude count of the roundings a level exposes
+the output to when the scheme is computed as direct sums: $Q_0-3$
+additions and one multiplication.  The bounds multiply it by
+$\gamma/(\gamma-k)$, which adds up the levels.  PLinOpt's
+\texttt{growthfactor} tool~\cite{PLinOpt} (commit \texttt{cf85c3f}, May
+2026, unchanged at \texttt{7c20065}) prints under the name $Q_0$ a
+different quantity, the term count
+\begin{equation}\label{eq:t0}
+T_0=\max_j\Bigl(\max_{i:\,p_{j,i}\ne0}\nnz{L_i}\,\nnz{R_i}+\nnz{P_j}\Bigr),
+\end{equation}
+the terms $a_kb_l$ of the worst product feeding the output plus the
+products summed into it: for Winograd's $\mm{2\times2\times2:7}$
+algorithm it prints $13$ where \cite{DPS24} tabulates $Q_0=10$.
+Table~\ref{tab:gamma} reports $Q_0$ as in~(\ref{eq:q0});
+Section~\ref{sec:disc} uses $T_0$ once.
 
 \subsection{Isotropies and symmetries}
 
@@ -228,16 +245,16 @@ for row-major vectorization.  These are de~Groote's
 isotropies~\cite{deGroote78}; PLinOpt's orbit tool uses the same group.
 With $A_i=\Mat(L_i)$, $B_i=\Mat(R_i)$ and $Z_i$ the $4\times4$ matrix of
 column $i$ of $P$, (\ref{eq:act}) reads
-\[
+\begin{equation}\label{eq:actmat}
 A_i\mapsto U^{-\mathsf T}A_iV^{\mathsf T},\qquad
 B_i\mapsto V^{-\mathsf T}B_iW^{\mathsf T},\qquad
 Z_i\mapsto UZ_iW^{-1}.
-\]
+\end{equation}
 Two further symmetries come from the trace form
-\[
+\begin{equation}\label{eq:trace}
 \textstyle\sum_i\operatorname{tr}(X_iA)\operatorname{tr}(Y_iB)\operatorname{tr}(Z_iG)=\operatorname{tr}(ABG),
 \qquad X_i=A_i^{\mathsf T},\ Y_i=B_i^{\mathsf T}:
-\]
+\end{equation}
 \begin{itemize}
 \item the cyclic rotation $(X,Y,Z)\mapsto(Y,Z,X)$;
 \item the input swap $(X,Y,Z)\mapsto(Y^{\mathsf T},X^{\mathsf T},Z^{\mathsf T})$,
@@ -281,7 +298,7 @@ equivalent to, if any.
 
 \begin{table}[t]
 \centering
-\caption{Growth factors, $\gamma_2$, $Q_0$ and the operations of the
+\caption{Growth factors, $\gamma_2$, $Q_0$ as in~(\ref{eq:q0}) and the operations of the
 published straight-line programs.  In parentheses: the error-bound
 exponent $\log_k\gamma$ ($k=2$ for $\mm{2\times2\times2:7}$, $k=4$ for
 $\mm{4\times4\times4:48}$), the power of $n$ with which the error bound
@@ -303,15 +320,15 @@ are PLinOpt's without the prefixes \texttt{2x2x2\_7\_} and
 algorithm & $\giinf$ & $\ginf$ & $\gamma_{2,\infty}$ & $\gamma_{2,2}$ & $\gamma_2$ & $Q_0$ & ops\\
 \midrule
 \multicolumn{8}{l}{$\mm{2\times2\times2:7}$}\\
-\quad \texttt{Winograd} & 18 (4.170) & 8 (3.000) & 31.24 (4.965) & 14 (3.807) & 17.85 & 13 & 15\\
+\quad \texttt{Winograd} & 18 (4.170) & 8 (3.000) & 31.24 (4.965) & 14 (3.807) & 17.85 & 10 & 15\\
 \quad \texttt{Strassen} & 12 (3.585) & 6.83 (2.772) & 17.89 (4.161) & 10.45 (3.386) & 14.83 & 8 & 18\\
-\quad \texttt{DPS-accurate}~\cite{DPS24} & 17.48 (4.128) & 5.97 (2.577) & 27.71 (4.793) & 10.01 (3.323) & -- & 23 & --\\
+\quad \texttt{DPS-accurate}~\cite{DPS24} & 17.48 (4.128) & 5.97 (2.577) & 27.71 (4.793) & 10.01 (3.323) & -- & 15 & --\\
 \multicolumn{8}{l}{$\mm{4\times4\times4:48}$}\\
-\quad \texttt{rational}~\cite{DPS25} & 288 (4.085) & 38.16 (2.627) & 1032.0 (5.006) & 139.9 (3.564) & 210.5 & 152 & 315\\
-\quad \texttt{accurate}~\cite{DPS26a} & 148 (3.605) & 25.46 (2.335) & 514.9 (4.504) & 91.21 (3.256) & 154.5 & 180 & 284\\
-\quad \texttt{accurate\_262} & \textbf{132} (3.522) & \textbf{22.63} (2.250) & \textbf{496.5} (4.478) & \textbf{90.51} (3.250) & 154.5 & \textbf{80} & 262\\
-\quad $\ginf$ min.\ (other roles), $\Q(\sqrt2)$ & 176.6 (3.732) & 21.41 (2.210) & 583.8 (4.595) & 85.63 (3.210) & 157.3 & 146 & --\\
-\quad \texttt{201}~\cite{S26} & 399 (4.320) & 75.85 (3.123) & 1072.5 (5.033) & 225.9 (3.910) & 369.7 & 101 & 201\\
+\quad \texttt{rational}~\cite{DPS25} & 288 (4.085) & 38.16 (2.627) & 1032.0 (5.006) & 139.9 (3.564) & 210.5 & 48 & 315\\
+\quad \texttt{accurate}~\cite{DPS26a} & 148 (3.605) & 25.46 (2.335) & 514.9 (4.504) & 91.21 (3.256) & 154.5 & 46 & 284\\
+\quad \texttt{accurate\_262} & \textbf{132} (3.522) & \textbf{22.63} (2.250) & \textbf{496.5} (4.478) & \textbf{90.51} (3.250) & 154.5 & \textbf{34} & 262\\
+\quad $\ginf$ min.\ (other roles), $\Q(\sqrt2)$ & 176.6 (3.732) & 21.41 (2.210) & 583.8 (4.595) & 85.63 (3.210) & 157.3 & 42 & --\\
+\quad \texttt{201}~\cite{S26} & 399 (4.320) & 75.85 (3.123) & 1072.5 (5.033) & 225.9 (3.910) & 369.7 & 38 & 201\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -325,11 +342,11 @@ $108+16$.  Up to symmetry it is
 \acc moved by an orthogonal isotropy with entries
 $0,\pm1/\sqrt2$.  Take \acc's $(L,R,P)$ in its published role and
 apply~(\ref{eq:act}) with $(U,V,W)=(Q_U,Q_V,Q_W)/\sqrt2$, where
-\[
+\begin{equation}\label{eq:QUVW}
 Q_U=\begin{pmatrix}0&-1&0&-1\\1&0&-1&0\\0&-1&0&1\\-1&0&-1&0\end{pmatrix},\quad
 Q_V=\begin{pmatrix}-1&-1&0&0\\-1&1&0&0\\0&0&-1&-1\\0&0&-1&1\end{pmatrix},\quad
 Q_W=\begin{pmatrix}1&0&-1&0\\0&-1&0&1\\0&1&0&1\\1&0&1&0\end{pmatrix}.
-\]
+\end{equation}
 Each Kronecker factor in~(\ref{eq:act}) is then a $\{0,\pm1\}$ matrix
 divided by $2$, so the result has coefficients in $\Zh$ with
 denominators at most $4$, like \acc.  Mapping
@@ -343,9 +360,9 @@ entry of $P$ is $\pm1$.  The $\pm3/4$ belong to the scheme, not to this
 way of writing it.  In eight products one entry of the $B$ side is three
 times the others; the $B$ side of product~$32$ in PLinOpt's file, for
 instance, is
-\[
+\begin{equation}\label{eq:b32}
 \tfrac14\,(b_{11}-3b_{13}-b_{21}-b_{23}+b_{31}+b_{33}+b_{41}+b_{43}).
-\]
+\end{equation}
 Rescaling a product scales its whole row, so every scheme equivalent to
 \acct has this ratio.  DPS's programs never multiply by $3$ or
 $3/4$: their only scalings are $19$ halvings, so every coefficient is a
@@ -354,9 +371,9 @@ sum of terms halved different numbers of times.
 \begin{proposition}\label{prop:gamma}
 \acct has $\giinf=132$, $\ginf=16\sqrt2$,
 $\gamma_{2,\infty}=16\sqrt{963}\approx496.52$, $\gamma_{2,2}=64\sqrt2$,
-$\gamma_2=64(1+\sqrt2)$ and $Q_0=80$.  \acc has $148$,
+$\gamma_2=64(1+\sqrt2)$ and $Q_0=34$.  \acc has $148$,
 $18\sqrt2\approx25.456$, $8\sqrt{4142}\approx514.87$,
-$8\sqrt{130}\approx91.214$, $64(1+\sqrt2)$ and $180$.
+$8\sqrt{130}\approx91.214$, $64(1+\sqrt2)$ and $46$.
 \end{proposition}
 
 The values are exact.  Every weight $\lVert L_i\rVert_2\lVert
@@ -392,7 +409,7 @@ isotropies leave $\gamma_2$ unchanged (their Lemma~13), so the search
 for the growth factor is restricted to the factorization of $GL_4$ by
 the orthogonal matrices, isotropies of the form $H_\rho P_\xi$ with
 $H_\rho$ a positive diagonal matrix and $P_\xi$ unipotent (their
-Lemma~14), and on that quotient, Sedoglavic tells us, a convexity result
+Lemma~14; Lemma~27 of~\cite{DPS26b}), and on that quotient, Sedoglavic tells us, a convexity result
 makes the minimum unique~\cite{Sedoglavic26}.  The norms that
 orthogonal isotropies do change, $\ginf$ among them, are then searched
 over the orthogonal matrices alone, with $SO(4)$ parametrized by Van
@@ -417,11 +434,11 @@ gradient is exact: with $M_i=U^{-\mathsf T}A_iV^{\mathsf T}$,
 $N_i=V^{-\mathsf T}B_iW^{\mathsf T}$, $Z'_i=UZ_iW^{-1}$, $a_i=\lVert
 M_i\rVert_F$, $b_i=\lVert N_i\rVert_F$ and $\pi$ the softmax weights
 of the outputs, the adjoints are
-\[
+\begin{equation}\label{eq:adjoints}
 \frac{\partial f}{\partial Z'_i}=\pi\circ a_ib_i\,s'(Z'_i),\qquad
 \frac{\partial f}{\partial M_i}=\frac{b_iS_i}{a_i}M_i,\qquad
 \frac{\partial f}{\partial N_i}=\frac{a_iS_i}{b_i}N_i,
-\]
+\end{equation}
 with $S_i=\sum_{pq}\pi_{pq}s(Z'_{i,pq})$.  They are carried through the
 products and through each inverse by $\partial X=-X\,\partial M\,X$.
 The implementation (\texttt{gamma48}, in Rust) checks this gradient
@@ -472,9 +489,9 @@ is rational, so each output's sum
 $\sum_i\lvert p_{j,i}\rvert\,\lVert L_i\rVert_2\lVert R_i\rVert_2$
 collects to $(8+6\sqrt2)\sqrt{13-8\sqrt2}$, the same for all sixteen
 outputs:
-\[
+\begin{equation}\label{eq:g214}
 \ginf=(8+6\sqrt2)\sqrt{13-8\sqrt2}=2\sqrt{58+40\sqrt2}\approx21.40734,
-\]
+\end{equation}
 an algebraic number of degree four, with exponent
 $\log_4\ginf\approx2.2100$; and $\giinf=120+40\sqrt2\approx176.57$.
 The exact scheme, the programs we measured and the search's $(U,V,W)$
@@ -642,7 +659,7 @@ The programs are:
   the two growth factors.  Probe~A has \acct's
   $\ginf=16\sqrt2$ but $\giinf=256$ (role~0, classes $5,2,3$); probe~B
   has $\ginf=28.97$, larger than \acc's, but $\giinf=144$, smaller
-  (role~2, classes $4,4,2$).  Their $Q_0$ are $144$ and $94$, and their
+  (role~2, classes $4,4,2$).  Their $Q_0$ are $40$ and $46$, and their
   coefficients are $\pm1$, $\pm1/2$ and $\pm1/4$, so their direct sums
   scale only by powers of two.
 \end{itemize}
@@ -766,16 +783,17 @@ of \texttt{2x2x2\_\allowbreak 7\_\allowbreak Winograd}), but no single factor or
   $\ginf$ of all but
   about the same measured error as \acc.
 \end{itemize}
-Among the dyadic schemes, $Q_0$ comes closest to the order of the measured errors:
-$80$, $94$, $144$ and $180$ for \acct, probe~B,
-probe~A and \acc.  Of the dyadic schemes, \acct is best
+Among the dyadic schemes, $Q_0$ does not order the measured errors
+either: $34$, $46$, $40$ and $46$ for \acct, probe~B, probe~A and
+\acc.  The term count $T_0$ of~(\ref{eq:t0}) does, $80$, $94$, $144$
+and $180$, on these four points.  Of the dyadic schemes, \acct is best
 or tied for best in every factor, and with DPS's programs its measured
 error is the smallest.
 
 
 \paragraph{Dyadic coefficients.}
 The orbit's $\ginf$ minimum and probe~A have nearly the same $\ginf$
-($21.41$ and $22.63$) and $Q_0$ ($146$ and $144$), and the former has
+($21.41$ and $22.63$) and $Q_0$ ($42$ and $40$), and the former has
 the smaller $\giinf$ ($176.6$ against $256$).  Yet the former's measured
 error is about $20\%$ larger at three levels: $1.61$ against $1.32$ times the
 classical error in single precision, and $1.57$ against $1.36$ in double.  Its constants, such as $2(\sqrt2-1)$,
@@ -930,10 +948,10 @@ products' own, amplified by the scheme.
 
 In the model, one level amplifies the leaf products' errors into output
 $j$ by
-\[
+\begin{equation}\label{eq:amp}
 \mathrm{amp}_j=\tfrac12\Bigl(\sum_i p_{j,i}^2\,\lVert L_i\rVert_2^2\,
 \lVert R_i\rVert_2^2\Bigr)^{1/2},
-\]
+\end{equation}
 the column ``amp.''\ of Table~\ref{tab:model}; \acct has $2\sqrt2$ for
 every output, \acc $3.16$.  It is the root-sum-square counterpart of
 $\ginf$'s per-output sum
@@ -1096,13 +1114,18 @@ that it was already there only after constructing ours.  We thank
 Alexandre Sedoglavic for his comments on the first draft: the
 parametrization of the orbit search in Section~\ref{sec:search}, Touko
 Ursin's priority on the $16\sqrt2$ point, and the place of the orbit's
-$\ginf$ minimum in the abstract all come from them~\cite{Sedoglavic26}.
+$\ginf$ minimum in the abstract all come from them~\cite{Sedoglavic26};
+the account of how \acct was constructed and the numbering of the
+equations come from his second message~\cite{Sedoglavic26b}.
 
 {\small
 \begin{thebibliography}{99}
 \bibitem{Agarwal26} A.~Agarwal, \emph{Certified local rank and
 uniqueness barriers for a 48-term matrix-multiplication decomposition},
 arXiv:2609.13596 (2026).
+\bibitem{BBDLS16} G.~Ballard, A.~R.~Benson, A.~Druinsky, B.~Lipshitz,
+O.~Schwartz, \emph{Improving the numerical stability of fast matrix
+multiplication}, SIAM J.\ Matrix Anal.\ Appl.\ 37 (2016) 1382--1418.
 \bibitem{BL80} D.~Bini, G.~Lotti, \emph{Stability of fast algorithms for
 matrix multiplication}, Numer.\ Math.\ 36 (1980) 63--72.
 \bibitem{Brent70} R.~P.~Brent, \emph{Algorithms for matrix
@@ -1154,6 +1177,12 @@ $GL_4$ by the orthogonal matrices for the growth factor, where a
 convexity result ensures uniqueness, and to $SO(4)$ in Van Elfrinkhof's
 parametrization for the other norms; the $\ginf=16\sqrt2$ point was
 found by Touko Ursin in mid-September 2026 with Hadamard matrices.
+\bibitem{Sedoglavic26b} A.~Sedoglavic, private communication (e-mail
+to the author), 27~October 2026: how \acct was constructed (the
+orbit's $\gamma_2$ minimum by numerical optimization over the quotient
+of $GL_4$ by the orthogonal group, then Ursin's exploration of Hadamard
+matrices for $\ginf$), and that the equations of this paper should be
+numbered.
 \bibitem{S26} G.~Sidebottom, \emph{201 operations for rank-48 $4\times4$
 matrix multiplication over rings containing $1/2$}, preprint (2026);
 PLinOpt data file \texttt{4x4x4\_48\_201}.

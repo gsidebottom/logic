@@ -747,6 +747,40 @@ search over dyadic isotropies GL(3, Z[1/2])^3 for exact points below the represe
 bounded by the continuous minima; it could only lower a 3x3 level's error for the 3^k m sizes,
 not make one competitive.
 
+PLINOPT PULL REQUESTS OPENED (2026-10-28).  Dumas answered the Oct 27 letter the same day: he
+wants all six speed-ups upstream, one PR at a time so he can review and merge incrementally, the
+portability PR too, and any renames or README changes we find useful.  Two PRs are open on
+jgdumas/plinopt, both from the fork (github.com/gsidebottom/plinopt), both on upstream main
+7c20065.  (1) #26 `macos-build` (b2f21c0): a plain `make` on macOS failed for four reasons --
+Apple clang defaults to C++14 (the headers use CTAD and std::gcd), has no -fopenmp (libomp's
+-Xpreprocessor -fopenmp and -lomp), rejects givaro's std::make_signed specialization in
+recint/rrint.h (-Winvalid-specialization), and size_t is unsigned long there, distinct from
+uint64_t, so size_t arguments were ambiguous against Givaro's int32/uint32/int64/uint64 overloads
+(pow(Integer, size_t) in MMchecker and orbiter, size_t(Integer) and QField::init(Rational&,
+size_t) in plinopt_sparsify.inl, Integer(size_t) in dependency.cpp); libc++ also needs an explicit
+<sstream> in plinopt_polynomial.h, /bin/bash 3.2 has no |& (GDT.sh, mirabelle.sh, prune.sh), and,
+on any platform, ALTchecker.sh ran compacter from the PATH instead of bin/, so make check's
+altcheck failed in a plain checkout.  Makefile: -std=c++17; on Darwin the libomp flags via brew
+--prefix libomp (make LIBOMP=... overrides); with clang -Wno-invalid-specialization; casts
+through uint64_t (= size_t on Linux, so no change there); README gets the macOS requirements.
+Verified: make builds all 17 programs from clean; every target of make check passes (GDT.sh
+149/149, FDT.sh 1866/1872).  (2) #27 `optimizer-seed` (29d1aad = 193fb48, the seeding commit,
+alone on 7c20065): with -s 1 the output is byte-identical across OMP_NUM_THREADS 1/3/5/14 on
+accurate_262 L, R and g16s2 P (SLPchecker passes); make check passes every target, FDT.sh
+1869/1872 -- tested on a local branch combining #26 and the commit, the PR branch being the
+commit alone.  FDT.sh's residual failures are all in the optimizer | compacter | SLPchecker
+pipelines, differ between runs, and do NOT reproduce when their seed is replayed (-s 87 failed
+once in 300 seeds on 2o2o4_5_Toom3_L, then passed three replays; -s 195 likewise without the
+compacter): an upstream nondeterminism, present on main, not touched by these PRs, worth
+reporting to Dumas once understood.  Next: when #27 is merged, rebase 965b0ed (no per-CSE
+transpose) onto the new main and open PR 2, then 3297fb1, a6b3eaa, f54f80f (-Q), 87002e8
+(-E/-B), one at a time, each re-verified (build, bin/FDT.sh, byte-identity under -s 1 for 2-4);
+the growthfactor Q0 fix (norm0(L[i]) + norm0(R[i]) instead of the product) as its own small PR,
+with the explanation of DPS's definition.  Worktrees: the session scratchpad holds plinopt_macos
+(macos-build), plinopt_seed (optimizer-seed) and plinopt_seedtest (test branch), registered in
+matmul/dps48/plinopt (`git worktree prune` once the scratchpad is gone); the PR texts are in the
+PRs themselves.  The letter is doc/letter_dumas_optimizer_speed_2026-10-27.md (untracked).
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

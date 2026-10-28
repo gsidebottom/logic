@@ -806,6 +806,36 @@ slower at 10240 and 8-26% at 5120, the planner's best plans 17-22% slower (it av
 level at 5120 f32).  Verdict: no, on both counts; the only follow-up with value, grouping the
 passes of many-stream levels, would chase parity.
 
+SUB-SCHEME COMBINATIONS (2026-10-28; `matmul/levels/`, README there).  Greg asked whether a fast
+and accurate multiplication can be pieced together from the best-fitting square and rectangular
+sub-schemes.  In the fused-pass library a plan already is such a combination (one scheme per
+level on the current (M, K, N) sub-problem, a GEMM at the leaf), so the question is the menu.
+`levels.py` scores all 70 schemes on disk (AlphaEvolve's 15 shapes, Kauers-Wood's and Kemper's
+29 rectangular ones, PLinOpt's small and rectangular ones with DPS's accurate variants,
+Kronecker composites) by saving r/(g1 g2 g3), pass streams g1g2+r / g2g3+r / g1g3+r, pass
+traffic 3 + r sum 1/(gi gj) (n^2 words) and amp / gamma_{inf,2} normalized to the shape's
+classical algorithm per 4x4-equivalent saving.  Everything larger than 4x4 needs 110-225
+streams per pass and has 8-100x the classical amplification at its published points;
+Kronecker products add nothing (a composite keeps its pieces' per-saving amplification and
+multiplies their streams, so it is never better than the levels run one after the other).  The
+one winner: DPS's accurate <3x3x6:40> cycled 336 -> 363 -> 633, which returns to a square
+problem after three levels (dividing by 54): saving 0.741 against 0.75, traffic 11.89 against
+12 n^2, streams 49-58 (under 64), amplification per 4x4-equivalent saving 2.28 / 2.45 / 2.28
+against accurate_262's 2.83 at DPS's published points (gamma_{inf,2} 6.16 / 5.13 / 6.16 against
+5.66).  Orbit floors under GL_3 x GL_3 x GL_6 (`orbit_rect.py`): amp ratio 2.242 for every
+orientation (2.17 per 4x4-equivalent saving), DPS's 3x3x6 point 5% above it, their 3x6x3 point
+14% above (and 41% above that orientation's gamma_{inf,2} floor 3.90); the class's gamma_2
+minimum is DPS's point (104.09); the +-1 Smirnov point of the class reaches the same floors.
+Cost model (`cost_rect.py`): 336/G 17.8% off the GEMM against D48/G 16.8%, 336/363/G 13.9%
+against 10.8%, SW/336/G 15.3% against 14.3%.  Accelerate on the rectangular leaves at equal
+flops: within 5% of the square GEMM at one level, 13% ahead after two (larger leaves).  What it
+takes: rectangular levels in the library -- block shapes per operand, a planner over (M, K, N)
+instead of n, three level types, DPS's three programs through gen_kernels.py -- i.e. plan item
+7's "rectangular shapes", a few days on the C library (Rust after), then speed and error
+measured against the D48 plans as for the 5x5.  Caveats: amp predicted the measured errors
+only among 4x4 variants so far; the per-level error factor is measured once implemented; a
+better exact 3x6x3 point (DPS's is 14% above the amp floor) is worth a dyadic search first.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:
@@ -944,7 +974,9 @@ Which operations matter depends on the implementation:
    Accelerate; any size inside the calibrated range (interpolation and padding, done
    2026-10-25).  Rust port (done 2026-10-25): crate `fmm` in `rust/`, only FFI declarations
    unsafe; same plans, speed and results (bit for bit) as the C library.  Next for both:
-   rectangular shapes, alpha / beta and transposes.
+   rectangular shapes, alpha / beta and transposes.  Rectangular shapes now have a target:
+   DPS's accurate <3x3x6:40> cycled through its orientations (SUB-SCHEME COMBINATIONS
+   paragraph; `matmul/levels/`).
 
 ## Milestones
 

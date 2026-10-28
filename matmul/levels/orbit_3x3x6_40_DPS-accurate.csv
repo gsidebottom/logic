@@ -1,0 +1,4 @@
+objective,rep,min,start,at_min,nnz_of,total
+amp,2.0463,1.9419,1,amp 1.942 g_inf2 21.469 g_2 104.091 g_infinf 184.873,1800,1800
+g_inf2,19.9976,19.1153,1,amp 2.119 g_inf2 19.115 g_2 104.636 g_infinf 152.266,1742,1800
+g_2,104.0908,104.0908,0,amp 2.046 g_inf2 19.998 g_2 104.091 g_infinf 134.000,960,1800

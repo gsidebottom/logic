@@ -1,0 +1,17 @@
+3x3x6_40_DPS-accurate <3x3x6:40>: representative amp 2.046 (ratio 2.363) g_inf2 19.998 (ratio 6.666) g_2 104.091
+   amp     min    1.942 (ratio   2.242) at: amp 1.942 g_inf2 21.469 g_2 104.091 g_infinf 184.873; nonzeros 1800/1800
+   g_inf2  min   19.115 (ratio   6.372) at: amp 2.119 g_inf2 19.115 g_2 104.636 g_infinf 152.266; nonzeros 1742/1800
+   g_2     min  104.091 (ratio 104.091) at: amp 2.046 g_inf2 19.998 g_2 104.091 g_infinf 134.000; nonzeros 960/1800
+3x6x3_40_DPS-accurate <3x6x3:40>: representative amp 3.122 (ratio 2.550) g_inf2 33.000 (ratio 5.500) g_2 104.091
+   amp     min    2.746 (ratio   2.242) at: amp 2.746 g_inf2 28.513 g_2 104.091 g_infinf 361.345; nonzeros 1800/1800
+   g_inf2  min   23.402 (ratio   3.900) at: amp 3.389 g_inf2 23.402 g_2 113.949 g_infinf 311.933; nonzeros 1752/1800
+   g_2     min  104.091 (ratio 104.091) at: amp 3.122 g_inf2 33.000 g_2 104.091 g_infinf 312.000; nonzeros 960/1800
+3x3x6_40 <3x3x6:40>: representative amp 9.321 (ratio 10.763) g_inf2 90.164 (ratio 30.055) g_2 395.029
+   amp     min    1.942 (ratio   2.242) at: amp 1.942 g_inf2 21.277 g_2 104.091 g_infinf 183.869; nonzeros 1800/1800
+   g_inf2  min   16.873 (ratio   5.624) at: amp 2.050 g_inf2 16.873 g_2 104.107 g_infinf 119.312; nonzeros 1755/1800
+   g_2     min  104.091 (ratio 104.091) at: amp 2.046 g_inf2 19.998 g_2 104.091 g_infinf 134.000; nonzeros 1056/1800
+4x4x4_48_accurate_262 <4x4x4:48>: representative amp 2.828 (ratio 2.828) g_inf2 22.627 (ratio 5.657) g_2 154.510
+   amp     min    2.828 (ratio   2.828) at: amp 2.828 g_inf2 22.627 g_2 154.510 g_infinf 132.000; nonzeros 864/2304
+   g_inf2  min   22.627 (ratio   5.657) at: amp 2.828 g_inf2 22.627 g_2 154.510 g_infinf 132.000; nonzeros 864/2304
+   g_2     min  154.510 (ratio 154.510) at: amp 2.828 g_inf2 22.627 g_2 154.510 g_infinf 132.000; nonzeros 864/2304
+=== done Wed Oct 28 09:41:33 EDT 2026

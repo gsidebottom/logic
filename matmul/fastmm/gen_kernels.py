@@ -378,6 +378,23 @@ def main():
         print(f"{name}: {nl} blocks, rank {rk}, {nops} operations "
               f"(L {sum(1 for o in parse(l)[2] if o[3])}, R {sum(1 for o in parse(r)[2] if o[3])}, "
               f"P {sum(1 for o in parse(p)[2] if o[3])})")
+    # the R levels: the accurate <3x3x6:40> scheme of Dumas, Pernet and Sedoglavic in its three
+    # orientations (schemes/r336, r363, r633: direct-sum programs written from PLinOpt's
+    # 3x3x6_40_DPS-accurate matrices and transposes; SLPchecker passes all nine), as fused kernels
+    # in both precisions and as the f64 passes of the f32 path
+    for name in ("r336", "r363", "r633"):
+        src = tuple(open(os.path.join(HERE, "schemes", f"{name}_{s}.slp")).read() for s in "LRP")
+        nin = max(int(v) for v in re.findall(r"\bi(\d+)\b", src[0])) + 1
+        nout = max(int(v) for v in re.findall(r"\bo(\d+)\b", src[0])) + 1
+        nops = sum(count_ops_expr(t) for t in src)
+        h.append(f"/* {name}: fused kernels from schemes/{name}_{{L,R,P}}.slp, {nops} operations (scalings included) */")
+        h.append(f"enum {{ {name.upper()}_NB = {nin}, {name.upper()}_RANK = {nout}, {name.upper()}_OPS = {nops} }};")
+        for T, suf in (("float", "f"), ("double", "d")):
+            for side, t in zip("LRP", src):
+                h.append(fused_expr(f"{name}_{side}_{suf}", t, T))
+        for side, t in zip("LRP", src):
+            h.append(fused_expr(f"{name}_{side}_fd", t, "float", "double"))
+        print(f"{name}: fused kernels from schemes/{name}, {nin} blocks of A, rank {nout}, {nops} operations")
     open(out, "w").write("\n".join(h))
 
 

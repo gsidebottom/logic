@@ -1,0 +1,10 @@
+# P: products -> blocks of C: direct sums of DPS's accurate <3x6x3:40> (3x6x3_40_DPS-accurate, PLinOpt data), our convention vec(C) = P((L vecA) o (R vecB)), blocks row-major
+o0:=i0+i1+i2+i3-i4-i5-i6-i7-i8-i9+i10-i11+i12+i13-i14-i15+i16-i17+i18+i19+i20+i21+i22-i23-i36-i37+i38-i39;
+o1:=i20-i21+i22+i23+i32-i33+i34-i35;
+o2:=-i0+i1+i2-i3-i4-i5+i6+i7+i8-i9+i10+i11+i12+i13+i14+i15+i16-i17-i18-i19+i32+i33-i34-i35+i36-i37-i38-i39;
+o3:=-i24-i25-i26-i27+i36-i37+i38+i39;
+o4:=i0+i1+i2+i3+i4+i5+i6+i7+i8+i9-i10+i11+i12+i13-i14-i15-i24+i25+i26-i27-i28-i29-i30+i31+i32+i33+i34+i35;
+o5:=-i0-i1+i2+i3-i4+i5-i6+i7-i8+i9+i10+i11+i12-i13-i14+i15+i28-i29-i30-i31+i32-i33-i34+i35-i36-i37-i38+i39;
+o6:=-i0-i1+i2+i3+i4-i5+i6-i7-i8+i9+i10+i11-i12+i13+i14-i15-i16-i17+i18-i19-i20+i21+i22+i23-i24-i25+i26+i27;
+o7:=i0-i1-i2+i3+i4+i5-i6-i7+i8-i9+i10+i11+i12+i13+i14+i15-i20-i21+i22-i23-i24+i25-i26+i27-i28-i29+i30-i31;
+o8:=-i16-i17-i18+i19+i28-i29+i30+i31;

@@ -69,7 +69,7 @@ static void FN(dps48_opbyop)(size_t n, const T *A, const T *B, T *C, T *work, T 
     double t1 = now();
     FN(run_ops)(dps48_R_ops, dps48_R_ops_len, m, Bb, n, Tt, m, temps);
     double t2 = now();
-    for (int k = 0; k < r; k++) FN(gemm)(m, S[k], m, Tt[k], m, M[k], m);
+    for (int k = 0; k < r; k++) FN(gemm)(sq(m), S[k], m, Tt[k], m, M[k], m);
     double t3 = now();
     FN(run_ops)(dps48_P_ops, dps48_P_ops_len, m, (const T *const *)M, m, Cb, n, temps);
     double t4 = now();
@@ -90,12 +90,12 @@ static void FN(gemm_probe)(size_t n) {
     T *A = alloc_t(nn * sizeof(T)), *B = alloc_t(nn * sizeof(T)), *C = alloc_t(nn * sizeof(T));
     for (size_t i = 0; i < nn; i++) { A[i] = (T)1 / (T)(1 + i % 7); B[i] = (T)1 / (T)(1 + i % 5); C[i] = 0; }
     int top[2] = {LV_D48, LV_G};
-    size_t wsz = plan_work(top, n);
+    size_t wsz = plan_work(top, sq(n));
     T *work = alloc_t(wsz * sizeof(T));
     memset(work, 0, wsz * sizeof(T));
     for (size_t m = 256; 4 * m <= n; m *= 2) {
         int pg[2] = {LV_G, LV_NONE};
-        double single = FN(time_plan)(pg, m, A, B, C, work);
+        double single = FN(time_plan)(pg, sq(m), A, B, C, work);
         size_t bs = m * m + fmm_pad();
         int K = (int)(wsz / (3 * bs));
         if (K > 48) K = 48;
@@ -104,11 +104,11 @@ static void FN(gemm_probe)(size_t n) {
             evict();
             double t = now();
             for (int k = 0; k < K; k++)
-                FN(gemm)(m, work + (size_t)k * bs, m, work + (size_t)(K + k) * bs, m, work + (size_t)(2 * K + k) * bs, m);
+                FN(gemm)(sq(m), work + (size_t)k * bs, m, work + (size_t)(K + k) * bs, m, work + (size_t)(2 * K + k) * bs, m);
             ts[q] = (now() - t) / K;
             FN(split_t) sp = {0};
             evict();
-            FN(exec)(top, 4 * m, A, 4 * m, B, 4 * m, C, 4 * m, work, &sp);
+            FN(exec)(top, sq(4 * m), A, 4 * m, B, 4 * m, C, 4 * m, work, &sp);
             tl[q] = sp.tG / 48;
         }
         for (int a = 0; a < 9; a++)
@@ -136,22 +136,22 @@ static void FN(plan_table)(size_t n) {
     calib_load(cal, f64);
     FN(calibrate)(cal, n, A, B, C);
     static const char *NAMED[] = {"classical", "blk2", "sw1", "sw2rec", "sw3rec", "sw4rec", "dps48",
-                                  "dps48sw", "dps48x2"};
+                                  "dps48sw", "dps48x2", "r336", "r336x2", "r336x3", "swr336"};
     for (size_t sz = n; sz >= 1024 && sz % 2 == 0; sz /= 2) {
         int plan[PLAN_MAX];
         char ps[128];
-        double best = plan_best(cal, sz, plan);
+        double best = plan_best(cal, sq(sz), plan);
         if (best < 0) break;
         plan_str(plan, ps, sizeof ps);
         printf("n=%-6zu %s  best %-16s %8.4f s ", sz, f64 ? "f64" : "f32", ps, best);
         for (size_t i = 0; i < sizeof NAMED / sizeof NAMED[0]; i++) {
             int p2[PLAN_MAX];
-            double t = parse_plan(NAMED[i], sz, p2) ? plan_cost(cal, p2, sz) : -1;
+            double t = parse_plan(NAMED[i], sq(sz), p2) ? plan_cost(cal, p2, sq(sz)) : -1;
             if (t > 0) printf(" %s %.4f", NAMED[i], t);
         }
         printf("\n");
         static ranked_t rk[4096];
-        int cnt = plan_enum(cal, sz, rk, 4096);
+        int cnt = plan_enum(cal, sq(sz), rk, 4096);
         printf("         top:");
         for (int i = 0; i < cnt && i < 6; i++) {
             plan_str(rk[i].plan, ps, sizeof ps);
@@ -177,7 +177,8 @@ static void FN(plan_table)(size_t n) {
         errmod_t e = err_model(cal);
         if (e.ok)
             printf("# error model: classical scale %.2e at n = %d (x sqrt(n / %d)); factor per level SW %.2f, "
-                   "D48 %.2f\n", e.base, N_E, N_E, e.f[LV_SW], e.f[LV_D48]);
+                   "D48 %.2f, R336 %.2f, R363 %.2f, R633 %.2f\n", e.base, N_E, N_E, e.f[LV_SW], e.f[LV_D48],
+                   e.f[LV_R336], e.f[LV_R363], e.f[LV_R633]);
     }
     free(cal);
     free(A); free(B); free(C);
@@ -233,9 +234,7 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
         q->npad = n;
         if (!strncmp(tok, "auto", 4) && (tok[4] == 0 || tok[4] == ':')) {
             double gmax = tok[4] == ':' ? atof(tok + 5) : fmm_max_growth();
-            size_t ncal = 1;                /* calibrate up to the largest power of two <= n; */
-            while (2 * ncal <= n) ncal *= 2;    /* other sizes interpolate */
-            FN(calibrate)(cal, ncal, A, B, C);
+            FN(calibrate)(cal, n, A, B, C);  /* exactly for n: rectangular sub-shapes do not interpolate */
             q->pred = plan_best_padded(cal, n, gmax, f64, q->plan, &q->npad);
             if (q->pred < 0) {
                 printf("%s: nothing calibrated for n=%zu\n", tok, n);
@@ -246,9 +245,9 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
             plan_str(q->plan, ps, sizeof ps);
             printf("# %s n=%zu %s: plan %s%s%.0zu, predicted %.3f s\n", tok, n, f64 ? "f64" : "f32", ps,
                    q->npad != n ? " padded to " : "", q->npad != n ? q->npad : (size_t)0, q->pred);
-        } else if (parse_plan(tok, n, q->plan)) {
+        } else if (parse_plan(tok, sq(n), q->plan)) {
             q->is_plan = 1;
-            q->pred = plan_cost(cal, q->plan, n);
+            q->pred = plan_cost(cal, q->plan, sq(n));
         } else if (strcmp(tok, "dps48ops") || n % 4) {
             printf("unknown method %s\n", tok);
             continue;
@@ -262,7 +261,7 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
     size_t wsz = 1024;
     for (int j = 0; j < nm; j++) {
         size_t N = ms[j].npad;
-        size_t w = ms[j].is_plan ? (N != n ? 3 * N * N : 0) + plan_work(ms[j].plan, N) : (size_t)3 * 48 * (nn / 16);
+        size_t w = ms[j].is_plan ? (N != n ? 3 * N * N : 0) + plan_work(ms[j].plan, sq(N)) : (size_t)3 * 48 * (nn / 16);
         if (w > wsz) wsz = w;
     }
     free(cal);
@@ -274,7 +273,7 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
         temps = calloc(ntemps, sizeof(T *));
         for (int k = 0; k < ntemps; k++) temps[k] = alloc_t((nn / 16) * sizeof(T));
     }
-    FN(gemm)(n, A, n, B, n, Cref, n);
+    FN(gemm)(sq(n), A, n, B, n, Cref, n);
     double cmax = 0;
     for (size_t i = 0; i < nn; i++) cmax = fmax(cmax, fabs((double)Cref[i]));
     /* FMM_EXACT=1: also each method's error against an exact reference: in f32 the f64 product of

@@ -3,14 +3,19 @@
  * C = A B for n x n row-major matrices with leading dimensions lda, ldb, ldc (in elements), by
  * the plan a calibrated cost model picks for this machine, size and precision: fused levels of
  * the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic (their 262-operation accurate
- * program, PLinOpt's 4x4x4_48_accurate_262) and of
- * Strassen-Winograd over Accelerate GEMMs, with GEMM streams and pipelined passes.
+ * program, PLinOpt's 4x4x4_48_accurate_262), of their accurate <3x3x6:40> scheme in its three
+ * orientations (R336, R363, R633: rectangular levels whose products are rectangular sub-problems,
+ * so a plan tracks the shape (m x k)(k x n) of each level's products; the three orientations in
+ * turn return to square blocks, dividing n by 54) and of Strassen-Winograd, over Accelerate GEMMs,
+ * with GEMM streams and pipelined passes.
  * max_growth > 0 limits the plan's error growth over the classical GEMM's (an estimate,
  * conservative by up to 1.5x; 0: the fastest plan).
  *
  * The plans come from the calibration cache (FMM_CALIB_DIR, default ~/Library/Caches/fmm, one
- * file per precision, keyed by machine and kernels); sizes between the calibrated ones are
- * interpolated, and a plan runs padded to the next size its levels divide when that pays.
+ * file per precision, calib5_f32.txt and calib5_f64.txt, keyed by machine and kernels); square
+ * sizes between the calibrated ones are interpolated (rectangular sub-problems must have been
+ * calibrated), and a plan runs padded to the next size its levels divide when that pays
+ * (multiples of 2^a 3^b).
  * FMM_F64PASS=1 makes the 4x4 scheme's passes of the single-precision path add in double
  * (float blocks in and out): the passes then round once per element stored, at the GEMM's
  * interface, instead of at every addition; same plans, same speed, less error at depth.

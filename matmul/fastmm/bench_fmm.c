@@ -12,8 +12,12 @@
  *   dps48sw    hybrid: our 48 level on top, one Strassen level per product (336 GEMMs of n/8)
  *   sw2sw      Strassen^2 level on top, one Strassen level per product (343 GEMMs of n/8)
  *   dps48x2    two levels of our 48-scheme (2,304 GEMMs of n/16)
- *   plan=...   any plan: fused levels from the top (SW, D48, SW2) ending in a leaf (G = one
- *              GEMM, B2/B4/B8 = classical blocked), e.g. plan=SW/D48/G
+ *   r336       the accurate <3x3x6:40> scheme of Dumas, Pernet and Sedoglavic as one level (40
+ *              GEMMs of (n/3, n/3, n/6)); r336x2 = R336/R363/G, r336x3 = R336/R363/R633/G (the
+ *              three orientations cycle back to square blocks, dividing n by 54); swr336
+ *   plan=...   any plan: fused levels from the top (SW, D48, SW2, R336, R363, R633) ending in a
+ *              leaf (G = one GEMM, B2/B4/B8 = classical blocked), e.g. plan=SW/D48/G; a level
+ *              must divide the current (M, K, N) shape
  *   auto       the plan the calibrated cost model picks for n (any n: padded to a size the
  *              plan's levels divide when that pays); auto:g the fastest plan whose error grows
  *              at most g-fold over the classical GEMM's (FMM_MAX_GROWTH=g for auto)

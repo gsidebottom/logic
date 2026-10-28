@@ -6,7 +6,7 @@ build/bench_fmm: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h bui
 
 # the kernels: dps48 from DPS's 262-operation accurate program (4x4x4_48_accurate_262), op-by-op
 # lists from ours (201)
-build/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_262_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_P.slp ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp
+build/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_262_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_P.slp ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp schemes/r336_L.slp schemes/r336_R.slp schemes/r336_P.slp schemes/r363_L.slp schemes/r363_R.slp schemes/r363_P.slp schemes/r633_L.slp schemes/r633_R.slp schemes/r633_P.slp
 	mkdir -p build && python3 gen_kernels.py $@
 
 # the same with every use of a scaled value as a fused multiply-add (x * 0.5 + y -> one FMLA);

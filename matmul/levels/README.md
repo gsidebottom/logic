@@ -85,6 +85,8 @@ two, so the assumption holds.
 | ⟨3×6×3:40⟩ DPS-accurate point | 3.122 (2.550) | 33.0 (5.50) | 104.09 |
 | ⟨3×6×3:40⟩ orbit minima | 2.746 (2.242) | 23.4 (3.90) | 104.09, DPS's point |
 | ⟨4×4×4:48⟩ accurate_262, control | 2.828 (2.828), its orbit's amp minimum | 22.63 (5.66) | 154.51 |
+| ⟨3×3×6:42⟩ ternary (Perminov's 3x3x6_m42_cr139), published ±1 point | 4.387 (5.066) | 24.50 (8.17) | 184.63 |
+| ⟨3×3×6:42⟩ ternary class, orbit minima | 2.447 (2.825) | 15.35 (5.12) | 131.41 |
 
 DPS's 3×3×6 point sits 5% above its class's amp floor and 5% above its γ∞,2 floor; their
 3×6×3 point 14% and 41% above (that orientation's γ∞,2 floor, ratio 3.90, is far below
@@ -96,6 +98,12 @@ floor) is worth a search with the dyadic tools of `../gamma3` and `../gamma5`.  
 starts the control did not leave accurate_262 for the 4×4 orbit's γ∞,2 point at 21.41 that
 `../gamma5/orbit5.py` reaches from DPS's `accurate` point, so these floors may be slightly
 high.
+
+The ternary ⟨3×3×6:42⟩ class (Perminov's catalogue, 2026-10-28, `../fastmm/results/t42_campaign_2026-10-28.txt`):
+its amplification floor is the 4×4 class's 2√2 in both orientations tried (2.825 / 2.831), 26% above
+the accurate ⟨3×3×6:40⟩ class's 2.242, and the published ±1 point is 1.8× above its own floor; as
+levels its passes cost exactly the R levels' time (bandwidth-bound) and its two extra products
+make it 4–5% slower per level with 2–4× the error, so it is not in the menu.
 
 ## Done: the library has the three orientations as levels (2026-10-28)
 

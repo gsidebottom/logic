@@ -30,7 +30,10 @@ operation count is what costs.
 
 The R levels (DPS's accurate <3x3x6:40> in its three orientations) come from DIR/r336_{L,R,P}.slp,
 r363_*, r633_*: by default schemes/opt/, PLinOpt-optimized programs (a quarter less pass time
-than the direct sums, same accuracy); schemes/ holds the direct sums (--rschemes schemes).
+than the direct sums, same accuracy); schemes/ holds the direct sums (--rschemes schemes).  The T
+levels (the ternary <3x3x6:42> scheme 3x3x6_m42_cr139 of Perminov's catalogue, three orientations;
+C kernels only, a trial) come from DIR/t336_*, t363_*, t633_*: Perminov's addition-reduced forms,
+transposed where an orientation needs the transposed map (schemes/, same files in schemes/opt).
 """
 import os
 import re
@@ -402,7 +405,9 @@ def main():
     # 3x3x6_40_DPS-accurate matrices and transposes; SLPchecker passes all nine), as fused kernels
     # in both precisions and as the f64 passes of the f32 path
     rdir = sys.argv[sys.argv.index("--rschemes") + 1] if "--rschemes" in sys.argv else os.path.join(HERE, "schemes", "opt")
-    for name in ("r336", "r363", "r633"):
+    # the T levels: the ternary <3x3x6:42> scheme of Perminov's catalogue (3x3x6_m42_cr139, coefficients
+    # 0, +-1) in the same three orientations, from DIR/t336_*, t363_*, t633_* (the trial of 2026-10-28)
+    for name in ("r336", "r363", "r633", "t336", "t363", "t633"):
         src = tuple(open(os.path.join(rdir, f"{name}_{s}.slp")).read() for s in "LRP")
         nin = max(int(v) for v in re.findall(r"\bi(\d+)\b", src[0])) + 1
         nout = max(int(v) for v in re.findall(r"\bo(\d+)\b", src[0])) + 1

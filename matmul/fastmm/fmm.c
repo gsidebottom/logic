@@ -103,15 +103,21 @@ static void evict(void) {
  * fused level over a G leaf may add 1 << 24 (written with +, e.g. D48+/D48/G6): its products
  * are pipelined, the passes of the neighbouring products on fmm_pass_threads() cores (or on
  * p cores, with p << 25, written D48+p) while the GEMMs of one product run. */
-enum { LV_NONE = -1, LV_G = 0, LV_B2, LV_B4, LV_B8, LV_SW, LV_D48, LV_SW2, LV_R336, LV_R363, LV_R633, LV_N };
-static const char *LV_NAME[LV_N] = {"G", "B2", "B4", "B8", "SW", "D48", "SW2", "R336", "R363", "R633"};
+enum { LV_NONE = -1, LV_G = 0, LV_B2, LV_B4, LV_B8, LV_SW, LV_D48, LV_SW2, LV_R336, LV_R363, LV_R633,
+       LV_T336, LV_T363, LV_T633, LV_N };
+static const char *LV_NAME[LV_N] = {"G", "B2", "B4", "B8", "SW", "D48", "SW2", "R336", "R363", "R633", "T336", "T363", "T633"};
 /* a level's grid g1 x g2 x g3 (A split into g1 x g2 blocks, B into g2 x g3, C into g1 x g3) and
  * its rank; the R levels are the three orientations of the accurate <3x3x6:40> scheme of
- * Dumas, Pernet and Sedoglavic (PLinOpt's 3x3x6_40_DPS-accurate and transposes; schemes/) */
+ * Dumas, Pernet and Sedoglavic (PLinOpt's 3x3x6_40_DPS-accurate and transposes; schemes/); the T
+ * levels the three orientations of the ternary <3x3x6:42> scheme 3x3x6_m42_cr139 of Perminov's
+ * catalogue (coefficients 0, +-1, 139 additions in its three programs: cheap passes, two products
+ * more and about 2.8x the amplification of the R levels), available to named plans as a trial */
 typedef struct { int g1, g2, g3, r; } lvdef_t;
 static const lvdef_t LVDEF[LV_N] = {{1, 1, 1, 1},  {2, 2, 2, 8},  {4, 4, 4, 64}, {8, 8, 8, 512}, {2, 2, 2, 7},
-                                    {4, 4, 4, 48}, {4, 4, 4, 49}, {3, 3, 6, 40}, {3, 6, 3, 40},  {6, 3, 3, 40}};
-/* the fused levels the planner uses (SW2 has D48's passes and one product more) */
+                                    {4, 4, 4, 48}, {4, 4, 4, 49}, {3, 3, 6, 40}, {3, 6, 3, 40},  {6, 3, 3, 40},
+                                    {3, 3, 6, 42}, {3, 6, 3, 42}, {6, 3, 3, 42}};
+/* the fused levels the planner uses (SW2 has D48's passes and one product more; the T levels are
+ * not in the menu: named plans only, until the trial says they pay) */
 static const int FUSED[] = {LV_SW, LV_D48, LV_R336, LV_R363, LV_R633};
 #define NFUSED ((int)(sizeof FUSED / sizeof FUSED[0]))
 /* the shape of a product: (m x k) (k x n); a level divides it by its grid */

@@ -959,7 +959,48 @@ ms; D48 at 864x864x432 3.5 vs 3.0 ms -- rayon dispatch and per-chunk allocation,
 2026-10-25 for m 256-512), and its plans at large sizes run as the C library's (f64 8192 0.801
 vs 0.815 s; f32 6912x6912x3456 0.0789 vs 0.0796).  Rust plans a new shape in 0.010 s (BTreeMap
 range scans).  Still to do: the Rust passes' small-block overhead; the C planner's 0.07 s (index
-the table by kind, or memoize the DP); the ternary 3x3x6_m42 screen; the dyadic 3x6x3 search.
+the table by kind, or memoize the DP); the dyadic 3x6x3 search (the ternary 3x3x6_m42 screen is the
+next paragraph: it loses).
+
+TERNARY <3x3x6:42> TRIAL (2026-10-28, after 5fa2198; results/t42_campaign_2026-10-28.txt; the report
+doc/matmul_mixed_levels.tex / .pdf).  Greg asked for the catalogue's ternary 3x3x6_m42 to be fetched and
+tried, and for a .tex/.pdf report on the mixed approach.  Fetched: the clone matmul/perminov_cache/repo
+is at 3ee3284 (Oct 28; 185 MB repo, untrusted data, read with python -I).  The catalogue has four
+rank-42 ternary 3x3x6 schemes reduced to 139/140/145/150 additions (addition_reduced_ZT/
+3x3x6_m42_cr139_cn287 etc.) and a rank-43 one; all expanded from the reduced JSON (an SLP: fresh
+variables then forms) and checked exactly against the Brent equations.  Screen (levels.py's metrics):
+the 139-addition scheme is the most accurate of the four by far but still amp ratio 5.07 / amp_eq
+6.41 in the 3x3x6 orientation (6.17 in 3x6x3, 8.06 in 6x3x3) against DPS's accurate scheme's 2.36 /
+2.28 and the 4x4's 2.83; saving 0.778 (two products more), streams 51/60/60, traffic 12.33.  Orbit
+floors (orbit_rect.py, 8 starts): amp ratio 2.825 (3x3x6) / 2.831 (3x6x3) = the 4x4 class's 2 sqrt 2,
+26% above the accurate 3x3x6 class's 2.242; the published point is 1.8x above its own floor.
+Programs: Perminov's reduced forms for the three maps the 3x3x6 orientation uses (L 33, R 39, P 67
+additions), re-indexed where another orientation reuses a map and transposed by PLinOpt's transpozer
+where it needs the transposed map (3x6x3: 39, 43+6 negations, 66; 6x3x3: 43+6, 33, 63), nine
+SLPchecker passes; the fork's optimizer -s 1 -Q -O 500 on the same matrices gives 1-4 more additions on
+every one (0.2 s each), so Perminov's forms are the kernels (schemes/t336_*, t363_*, t633_*, same in
+schemes/opt).  Library: levels T336/T363/T633 (LVDEF {3,3,6,42} etc.), kernels in both precisions and
+the f64 passes of the f32 path, named plans only (not in FUSED, so neither the calibration nor the
+Rust port changes); correct at 3456 in every plan tried incl. pipelined ones.  MEASURED on the same
+fixed plans as the R levels (run_t42.sh; 13824 and 6912, both precisions, 5/3 interleaved rounds,
+FMM_EXACT for f32): the T passes take exactly the R passes' time (13824 f32 L/R/P 0.036/0.020/0.017 s
+vs 0.034/0.019/0.017; 6912 0.009/0.005/0.005 for both: bandwidth-bound, two more streams), the two
+extra products cost 4-5% on a single level (13824 f32 T336/G 1.286 vs R336/G 1.228 s, f64 5.089 vs
+4.858; 6912 f32 0.173 vs 0.165, f64 0.626 vs 0.598), 8-10% on two-level plans (13824 f32 T363+4/T363/G6
+0.994 vs 0.906; f64 SW/T363+3/T633/G6 3.573 vs 3.236; 6912 f64 T363+3/T633/G6 0.497 vs 0.451) and
+13-16% on the cycle, and the error is 2.2-3.5x the R level's as a single level (13824 f32 err64 1.28e-5
+vs 3.80e-6, above the GEMM's own 6.40e-6 where every R plan is below it), 3.7-4x in two-level plans
+(9.04e-6 vs 2.46e-6) and 6.5-7x in the cycle.  Verdict: the cleanest confirmation of the cost model's
+premise -- two schemes of the same shape differing in rank by two and in pass arithmetic by 2.7x
+differ in time by the rank's share and not at all by the arithmetic -- so for a fused-pass library a
+scheme search's objectives are rank and amplification, and additive complexity is not one; the T
+levels stay out of the menu (no planner campaign needed: a level slower and less accurate than one
+already there on every plan cannot be chosen).  The report doc/matmul_mixed_levels.tex (tectonic ->
+.pdf, 14 pages) writes up the mixed approach end to end: fused levels and their cost in blocks moved,
+the menu screen, the accuracy model and orbit floors, the planner with streams, pipelines, padding,
+shape estimates and the error budget, the M4 Pro results (square, rectangular, the planner's
+choices), the ternary trial, the two implementations and what is next.  Still to do: the Rust
+passes' small-block overhead; the C planner's 0.07 s; the dyadic 3x6x3 search.
 
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
@@ -1104,7 +1145,9 @@ Which operations matter depends on the implementation:
    Rectangular problems through the API (done 2026-10-28, both libraries): `fmm_sgemm_mkn` /
    `fmm_dgemm_mkn`, `fmm_calibrate_mkn`, `fmm_plan_mkn` and the Rust `sgemm_mkn` etc., priced
    from the square calibration until calibrated for the shape (RECTANGULAR API paragraph).
-   Next for both: alpha / beta and transposes; the Rust passes' small-block overhead.
+   Next for both: alpha / beta and transposes; the Rust passes' small-block overhead.  The ternary
+   <3x3x6:42> levels (T336/T363/T633, 2026-10-28) are in the C library for named plans only: slower
+   and less accurate than the R levels on every plan (TERNARY paragraph); report doc/matmul_mixed_levels.pdf.
 
 ## Milestones
 

@@ -1,0 +1,908 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{url}
+\usepackage{xspace}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\hypersetup{pdftitle={Mixed fast matrix multiplication: fused levels of accurate square and rectangular schemes over a vendor GEMM},pdfauthor={Greg Sidebottom}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\mm}[1]{\langle #1\rangle}
+\newcommand{\ginf}{\gamma_{\infty,2}}
+\newcommand{\amp}{\operatorname{amp}}
+\newcommand{\vect}{\operatorname{vec}}
+\newcommand{\lv}[1]{\texttt{#1}}
+\setlength{\emergencystretch}{1em}
+\renewcommand{\topfraction}{0.85}
+\renewcommand{\bottomfraction}{0.5}
+\renewcommand{\textfraction}{0.15}
+\renewcommand{\floatpagefraction}{0.75}
+
+\title{Mixed fast matrix multiplication:\\
+fused levels of accurate square and rectangular schemes\\
+over a vendor GEMM, chosen by a calibrated planner}
+\author{Greg Sidebottom}
+\date{Draft --- October 28, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+A fast matrix multiplication in practice is a few levels of a Strassen-like
+scheme over a vendor GEMM.  We treat the levels as a menu: every level may use
+a different scheme, square or rectangular, and a plan is a sequence of levels
+ending in a GEMM leaf.  On Apple's M4~Pro, with Accelerate's GEMM at the
+leaves, the menu is Strassen--Winograd $\mm{2\times2\times2:7}$, the
+$262$-operation accurate $\mm{4\times4\times4:48}$ algorithm of Dumas, Pernet
+and Sedoglavic, and their accurate $\mm{3\times3\times6:40}$ algorithm in its
+three orientations, which bring a square problem back to square after three
+levels.  A level is three streaming passes whose cost is the number of blocks
+they move, so a scheme's worth is its saving of products per block moved and
+its amplification of the leaf error; a screen of 70 published schemes by these
+two measures leaves exactly this menu, and shows that nothing larger than
+$4\times4$ and no Kronecker composite can help.  A calibrated dynamic program
+chooses the plan per shape, precision and error budget; it prices GEMM streams
+and pipelined passes that use the whole machine, and prices rectangular
+problems from the square calibration until they are calibrated themselves.
+At $n=13824$ the planner's mixed plans run $1.73\times$ (f32) and $1.91\times$
+(f64) faster than Accelerate's GEMM, with 40\% less f32 error than the best
+plan from the $4\times4$ scheme alone and less error than the GEMM's own; at
+$n=6912$ they run $1.38\times$ and $1.71\times$.  As a test of the opposite
+design -- cheap passes instead of accurate ones -- a ternary
+$\mm{3\times3\times6:42}$ scheme from Perminov's catalogue, whose three
+programs need 139 additions against about 370 operations for the accurate
+scheme's, is measured as a level in the same library: its passes cost exactly
+the same (they are bound by the blocks they move), and its two extra products
+and $2.8\times$ amplification make it slower and less accurate than the
+accurate level at every size tried.  Two implementations of
+the library, in C and in Rust, agree bit for bit.
+\end{abstract}
+
+\section{Introduction}\label{sec:intro}
+
+A scheme for multiplying a $g_1\times g_2$ matrix by a $g_2\times g_3$ matrix
+in $r<g_1g_2g_3$ products, applied to blocks, saves products at every level of
+recursion.  On a real machine a level is not free: its linear combinations of
+blocks are passes over memory, and the products it hands down are GEMMs whose
+rate depends on their size and shape.  Libraries that use fast schemes
+therefore apply one to three levels on top of a tuned GEMM and stop
+\cite{HSvdG16,DPSST26}.  Which scheme, how many levels, in what order, and at
+what cost in accuracy, are the questions this report answers for one machine,
+Apple's M4~Pro with Accelerate's GEMM, by measurement.
+
+The approach is to mix.  A \emph{plan} is a sequence of \emph{levels} from the
+top of the problem down to a GEMM leaf, and every level may come from a
+different scheme: Strassen--Winograd's $\mm{2\times2\times2:7}$ (\lv{SW}), the
+accurate $\mm{4\times4\times4:48}$ algorithm of Dumas, Pernet and Sedoglavic
+\cite{DPS25,DPS26a} in its $262$-operation form \cite{PLinOpt,S26b} (\lv{D48}),
+and their accurate $\mm{3\times3\times6:40}$ algorithm \cite{DPS26b,PLinOpt} in
+its three orientations $3\times3\times6$, $3\times6\times3$ and $6\times3\times3$
+(\lv{R336}, \lv{R363}, \lv{R633}).  The three orientations applied in turn
+divide a square problem by $54$ and leave it square, where three $4\times4$
+levels divide by $64$.  A plan such as \lv{SW/R363+3/R633/G6} is one
+Strassen--Winograd level, then a $3\times6\times3$ level whose products are
+pipelined on three pass threads, then a $6\times3\times3$ level whose $40$
+products run as six single-threaded GEMM streams.  Mixing pays for three
+reasons that the measurements separate:
+
+\begin{enumerate}
+\item \emph{Order.}  A level writes more data than it reads (the $4\times4$
+  scheme three times as much, Strassen's $1.75$ times); the larger expansion
+  belongs at the smaller level, so \lv{SW/D48/G} moves $9.75\,n^2$ words per
+  side where \lv{D48/SW/G} moves $12.25\,n^2$ with the same $336$ products.
+\item \emph{Shape.}  A rectangular level hands down rectangular products; the
+  $3\times3\times6$ cycle keeps $0.741$ of the products per level against the
+  $4\times4$ scheme's $0.75$, moves $11.89\,n^2$ words against $12$, stays under
+  $58$ streams per pass against $64$, and after two levels its products are
+  larger, so Accelerate runs them 13\% faster.
+\item \emph{Accuracy.}  Each level multiplies the leaf error by a factor set by
+  the scheme and the point chosen in its orbit; the $3\times3\times6$
+  algorithm's factor is $0.74$--$0.79$ of the $4\times4$ algorithm's per level in
+  f32, and both are below one, because their products are shorter dot
+  products than the GEMM's.  Under an error budget an accurate level admits
+  deeper, faster plans.
+\end{enumerate}
+
+Two facts about the costs organize everything.  First, a fused pass is bound
+by memory traffic, not arithmetic: the $201$-operation program we found for the
+$4\times4$ scheme \cite{S26}, DPS's original $315$-operation program and their
+$284$-operation accurate program all run at the same speed as fused passes
+(totals within 1\%), so the operation counts that scheme searches minimize
+have little value here, while the error growth of the program matters
+\cite{S26b}.  Arithmetic shows only when a program is wasteful: the direct
+sums of the $3\times3\times6$ scheme's $R$ and $P$ matrices take $18$
+operations per output and their passes ran 30\% slower than the traffic
+predicts, which PLinOpt's optimizer removed.  Second, the leaf GEMM dominates
+the time (85--95\% of a plan), so a level pays only when its products are
+large enough for the GEMM to run near its peak, and a scheme that saves
+products beats one that saves additions.  The ternary $\mm{3\times3\times6:42}$
+scheme of Section~\ref{sec:ternary} is the controlled experiment: a third of
+the pass arithmetic, two products more, and it loses.
+
+\paragraph{Contributions.}
+(i)~A cost model of fused levels in blocks moved and GEMMs priced inside the
+level that sits on them, calibrated per machine and precision, with
+predictions within 0.3--3\% at $n\ge 8192$ (Section~\ref{sec:levels}).
+(ii)~A screen of 70 published schemes by saving per block moved and by leaf
+error amplification per $4\times4$-equivalent saving, which leaves the
+accurate $\mm{3\times3\times6:40}$ cycle as the one addition to the
+$4\times4$ menu and rules out every larger shape and every Kronecker composite
+(Section~\ref{sec:menu}).  (iii)~A per-level error model, validated within
+25\%, and the orbit floors of the amplification for the two accurate classes
+(Section~\ref{sec:accuracy}).  (iv)~A planner over $(m,k,n)$ shapes with GEMM
+streams, pipelines, padding to multiples of $2^a3^b$, an error budget, and
+shape estimates that price uncalibrated rectangular problems within 2\%
+(Section~\ref{sec:planner}).  (v)~Measurements on the M4~Pro:
+$1.73\times$ and $1.91\times$ over Accelerate at $n=13824$ in f32 and f64,
+with less f32 error than the GEMM; rectangular problems at $1.04$--$1.52\times$
+(Section~\ref{sec:results}).  (vi)~The ternary trial
+(Section~\ref{sec:ternary}).  (vii)~Two implementations, C and Rust, that
+agree in plans, predicted times and results bit for bit
+(Section~\ref{sec:impl}).  Code, programs, calibrations and raw results are
+in the repository \cite{logic}.
+
+\paragraph{Setting.}
+Row-major $A\in\R^{m\times k}$, $B\in\R^{k\times n}$, $C=AB$, in f32 or f64.
+The machine is an Apple M4~Pro (two performance clusters of five cores, one
+efficiency cluster of four, 64~GB) running macOS~26; Accelerate's GEMM runs on
+the SME matrix units, one per cluster, at about $3.3$~TFLOP/s in f32 and
+$0.85$ in f64 on large square problems.  Times are the best of five
+interleaved rounds (each round runs every method once; medians are within 2\%
+unless stated).  Errors are max-norm, relative to $\max|C|$, on uniform random
+inputs: ``relerr'' against Accelerate's GEMM in the same precision, ``err64''
+against the f64 product of the same inputs (for f32), so that the GEMM's own
+error appears too.
+
+\section{Fused levels and what they cost}\label{sec:levels}
+
+\subsection{Schemes as linear programs}
+
+A scheme $\mm{g_1\times g_2\times g_3:r}$ is three matrices $L\in\R^{r\times
+g_1g_2}$, $R\in\R^{r\times g_2g_3}$, $P\in\R^{g_1g_3\times r}$ with
+\begin{equation}\label{eq:scheme}
+\vect(AB) \;=\; P\bigl((L\,\vect A)\circ(R\,\vect B)\bigr)
+\qquad\text{for all } A\in\R^{g_1\times g_2},\ B\in\R^{g_2\times g_3},
+\end{equation}
+$\circ$ the entrywise product and $\vect$ row-major.  Applied to blocks, the
+same identity holds with $A$'s $g_1g_2$ blocks of size $\frac{m}{g_1}\times
+\frac{k}{g_2}$, $B$'s $g_2g_3$ blocks of $\frac{k}{g_2}\times\frac{n}{g_3}$,
+and $C$'s $g_1g_3$ blocks of $\frac{m}{g_1}\times\frac{n}{g_3}$: the $r$
+products are $(\frac{m}{g_1}\times\frac{k}{g_2})(\frac{k}{g_2}\times
+\frac{n}{g_3})$ matrix products, computed by the plan below.  A \emph{level} is
+the application of \eqref{eq:scheme} once; the matrices are realized as
+straight-line programs (PLinOpt's \texttt{.slp} syntax \cite{PLinOpt}), one
+per side, and the three programs are what a level executes:
+\begin{itemize}
+\item the $L$ pass reads the $g_1g_2$ blocks of $A$ and writes the $r$ left
+  factors $S_i$;
+\item the $R$ pass reads the $g_2g_3$ blocks of $B$ and writes the $r$ right
+  factors $T_i$;
+\item the products $M_i=S_iT_i$ run (GEMMs, or a level below);
+\item the $P$ pass reads the $r$ products and writes the $g_1g_3$ blocks of $C$.
+\end{itemize}
+Each pass is \emph{fused}: one loop over the element positions of a block,
+with the whole program evaluated on scalars in registers at each position.
+A pass therefore reads every input block once and writes every output block
+once, and the program's operation count costs only arithmetic, which the
+memory system hides.
+
+\subsection{The cost of a level}
+
+Write $w$ for the word size and $B$ for the streaming bandwidth the passes
+reach.  A level on an $(m\times k)(k\times n)$ problem moves
+\begin{equation}\label{eq:traffic}
+W(m,k,n) \;=\; (g_1g_2+r)\,\frac{mk}{g_1g_2} \;+\; (g_2g_3+r)\,\frac{kn}{g_2g_3}
+\;+\; (g_1g_3+r)\,\frac{mn}{g_1g_3}
+\end{equation}
+words through its three passes, that is $n^2\bigl(3 + r(\tfrac{1}{g_1g_2} +
+\tfrac{1}{g_2g_3} + \tfrac{1}{g_1g_3})\bigr)$ on a square problem, and costs
+\begin{equation}\label{eq:level}
+T(m,k,n) \;=\; r\,T_{\text{below}}\!\Bigl(\frac{m}{g_1},\frac{k}{g_2},
+\frac{n}{g_3}\Bigr) \;+\; \frac{w\,W(m,k,n)}{B}.
+\end{equation}
+Two numbers of a scheme decide the second term: its \emph{traffic}
+$W/n^2$ and its \emph{streams}, the number of blocks a pass reads and writes
+at once, $g_1g_2+r$, $g_2g_3+r$ and $g_1g_3+r$.  Beyond about $64$ streams a
+pass loses bandwidth: a $\mm{5\times5\times5:93}$ level's $118$-stream passes
+ran at half the bandwidth of the $64$-stream passes of the $4\times4$ scheme.
+Table~\ref{tab:levels} gives these numbers for the menu.  The first term is
+decided by the \emph{saving} $r/(g_1g_2g_3)$ and by the GEMM's rate on the
+products' shape and size: the f32 GEMM keeps $3.2$--$3.3$~TFLOP/s down to
+$2048$ and drops to $3.0$ at $1024$ and $2.6$ at $512$, where the f64 GEMM
+keeps its $0.81$--$0.85$~TFLOP/s down to $1024$, so f64 rewards depth and f32
+does not.
+
+\begin{table}[t]
+\centering\footnotesize
+\begin{tabular}{llrrrll}
+\toprule
+level & scheme & saving & streams $L/R/P$ & traffic ($n^2$) & amp$_{\text{eq}}$ & $\gamma_{\text{eq}}$\\
+\midrule
+\lv{SW} & Strassen--Winograd $\mm{2\times2\times2:7}$ & 0.875 & 11/11/11 & 8.25 & 10.66 & 19.8\\
+\lv{D48} & DPS accurate $\mm{4\times4\times4:48}$, 262-op.\ point & 0.750 & 64/64/64 & 12.00 & 2.828 & 5.657\\
+\lv{R336} & DPS accurate $\mm{3\times3\times6:40}$ & 0.741 & 49/58/58 & 11.89 & 2.280 & 6.162\\
+\lv{R363} & the same, orientation $3\times6\times3$ & 0.741 & 58/58/49 & 11.89 & 2.453 & 5.125\\
+\lv{R633} & the same, orientation $6\times3\times3$ & 0.741 & 58/49/58 & 11.89 & 2.280 & 6.162\\
+\midrule
+\lv{T336} & ternary $\mm{3\times3\times6:42}$ (Section~\ref{sec:ternary}) & 0.778 & 51/60/60 & 12.33 & 6.407 & 11.07\\
+\lv{T363} & orientation $3\times6\times3$ & 0.778 & 60/60/51 & 12.33 & 6.166 & 9.737\\
+\lv{T633} & orientation $6\times3\times3$ & 0.778 & 60/51/60 & 12.33 & 8.061 & 22.84\\
+\bottomrule
+\end{tabular}
+\caption{The levels: saving of products per level, blocks moved by each pass,
+pass traffic on a square problem in units of $n^2$ words, and the two
+accuracy measures of Section~\ref{sec:menu}, normalized to the classical
+algorithm of the shape and raised to the power $\ln0.75/\ln(\text{saving})$ so
+that they are comparable per $4\times4$-equivalent saving.}
+\label{tab:levels}
+\end{table}
+
+\subsection{What the implementation taught}
+
+The passes reach $120$--$135$~GB/s against a peak of about $270$.  Two
+details were each worth a large factor.  With $64$ streams the compiler gave
+up vectorizing the fused loop (it could not rule out overlap among $64$
+pointers); a \texttt{vectorize(assume\_safety)} pragma gave $4.3\times$ on the
+passes.  And scratch blocks of power-of-two size all start at the same offset
+modulo the cache's set span, so element $c$ of all $64$ streams fell into one
+cache set; padding each block by $1040$ elements gave another $2.5\times$.
+Operation counts did not matter: our $201$-operation program for the
+$4\times4$ scheme \cite{S26}, DPS's $315$-operation original and their
+$284$-operation accurate program run at the same speed as fused passes
+(totals within 1\%; the $315$-operation passes take 2--8\% longer, about
+0.3\% of the total).  The exception is a wasteful program: the direct sums of
+the $3\times3\times6$ scheme's $R$ and $P$ matrices cost $18$ operations per
+output, and their passes ran at $0.092$~s against $0.070$ for the $4\times4$
+level's at $13824$ in f32 for $0.99\times$ the words.  PLinOpt's optimizer
+\cite{PLinOpt} brought the nine programs of the three orientations from
+$152$, $344{+}384$ and $366{+}384$ operations ($L$, $R$, $P$ of the $3\times3\times6$
+orientation; additions plus scalings) to $59$, $117{+}22$ and $148{+}18$, which
+cut the $R$-level passes by a quarter and the plans by 1--7\% with the error
+unchanged.
+
+\subsection{Using the whole machine}\label{sec:machine}
+
+Accelerate drives each performance cluster's SME unit from one thread, so its
+GEMM keeps two or three cores busy and leaves the rest idle.  The $r$ products
+of a level are independent, and a leaf \lv{G}$k$ runs them as $k$
+single-threaded GEMM streams taking products in turn: three streams beat
+Accelerate's own threading by 10\% (f32) and 8\% (f64) at $2048$, more streams
+win for the smallest products (f32 at $1024$, f64 at $512$) and lose badly
+for large ones (six streams $+26$--$34$\% in f64 at $1024$).  The calibration
+times each level's products with $0$, $3$, $4$ and $6$ streams and the
+planner chooses per plan: 6--14\% off the best plans.
+
+A streaming pass beside the SME streams slows them, but less than the pass
+costs run alone: at f64 blocks of $512$ two pass threads slow six streams by
+14\% while the pass runs at $49$~GB/s, about 35\% of its stand-alone cost.  So
+a level whose products are themselves levels over GEMM streams can
+\emph{pipeline} them (written \lv{X+p}, $p$ pass threads): while the streams
+compute sub-problem $q$, the pass threads write sub-problem $q-1$'s result
+and the factors of $q+1$, the scratch below double-buffered.  Pipelining
+takes 8--22\% off the plans over six-stream leaves; one pass thread is too
+few, and sub-problems under $1$~ms are not pipelined.  The calibration times
+a pipeline of $2$ and of $10$ synthetic sub-problems per level, block size,
+stream count ($3$, $6$) and pass threads ($2$, $3$, $4$): the slope is the
+steady time per sub-problem, the rest the fill and drain.  NEON GEMMs on the
+idle cores were tried and not adopted: at most 1--3\%, fragile, and the SME
+units lose most of what the vector units add.
+
+\section{The menu: which schemes can help}\label{sec:menu}
+
+In a fused-pass library a plan already is a combination of sub-schemes, one
+per level on the current $(m,k,n)$ sub-problem, so the question of mixing is
+the question of the menu.  We scored every scheme on disk -- AlphaEvolve's 15
+shapes \cite{Novikov25}, the 29 rectangular schemes of Kauers and Wood
+\cite{KW} and the $5\times5\times6$ and $6\times6\times6$ schemes of
+Moosbauer, Poole and Kemper \cite{MP25}, both as distributed with the
+addition-reduction library of M\r{a}rtensson and Stankovski Wagner
+\cite{MSW25}, PLinOpt's small and rectangular schemes including DPS's
+accurate variants \cite{PLinOpt}, Smirnov's $\mm{3\times3\times6:40}$
+\cite{Smirnov13}, and Kronecker composites of the accurate pieces -- by the
+quantities that decide a level's cost and error in \eqref{eq:level}:
+\begin{itemize}
+\item saving $r/(g_1g_2g_3)$, streams $g_1g_2+r$, $g_2g_3+r$, $g_1g_3+r$, and
+  traffic $3 + r\sum 1/(g_ig_j)$;
+\item the amplification of the leaf error,
+\begin{equation}\label{eq:amp}
+\amp \;=\; \max_j\ \tfrac12\sqrt{\textstyle\sum_i P_{ji}^2\,\|L_i\|_2^2\,\|R_i\|_2^2},
+\end{equation}
+  the root-sum-square growth of independent rounding errors in the $r$
+  products through output $j$, normalized by the classical algorithm's
+  $\tfrac12\sqrt{g_2}$; and DPS's growth factor $\ginf=\max_j\sum_i
+  |P_{ji}|\,\|L_i\|_2\|R_i\|_2$ \cite{DPS24,DPS26a}, normalized by $g_2$.
+\end{itemize}
+Schemes of different shapes save different fractions per level, so the
+normalized factors are raised to the power $\ln0.75/\ln(\text{saving})$, the
+growth per $4\times4$-equivalent saving, and are then directly comparable with
+the $4\times4$ scheme's $2.828$ and $5.657$ (the columns amp$_{\text{eq}}$ and
+$\gamma_{\text{eq}}$ of Table~\ref{tab:levels}).  The complete table is
+\texttt{matmul/levels/levels.csv} \cite{logic}; Table~\ref{tab:menu} shows the
+candidates.
+
+\begin{table}[t]
+\centering\footnotesize
+\begin{tabular}{lrrrrl}
+\toprule
+scheme & saving & streams & traffic & amp$_{\text{eq}}$ & $\gamma_{\text{eq}}$\\
+\midrule
+$\mm{3\times3\times6:40}$ DPS accurate (and $6\times3\times3$) & \textbf{0.741} & 49/58/58 & \textbf{11.89} & \textbf{2.280} & 6.162\\
+$\mm{3\times6\times3:40}$ DPS accurate & 0.741 & 58/58/49 & 11.89 & 2.453 & \textbf{5.125}\\
+$\mm{4\times4\times4:48}$ accurate, 262-op.\ point & 0.750 & 64/64/64 & 12.00 & 2.828 & 5.657\\
+$\mm{3\times4\times6:54}$ AlphaEvolve ($\pm1$ point) & 0.750 & 66/78/72 & 12.75 & 4.637 & 6.784\\
+$\mm{3\times4\times7:63}$ rational & 0.750 & 75/91/84 & 13.50 & 5.734 & 11.13\\
+$\mm{5\times5\times5:93}$ AlphaEvolve & 0.744 & 118/118/118 & 14.16 & 8.560 & 17.46\\
+$\mm{5\times5\times6:110}$ Kemper & 0.733 & 135/140/140 & 14.73 & 10.38 & 22.9\\
+$\mm{6\times6\times6:153}$ Moosbauer--Poole & 0.708 & 189/189/189 & 15.75 & 9.229 & 18.3\\
+$\mm{2\times4\times5:32}$ AlphaEvolve & 0.800 & 40/52/42 & 11.80 & 4.962 & 10.95\\
+$\mm{2\times2\times2:7}$ DPS accurate (in $\mathbb{Q}(\sqrt3)$) & 0.875 & 11/11/11 & 8.25 & 3.855 & 10.53\\
+$\mm{2\times2\times2:7}$ Strassen / Winograd & 0.875 & 11/11/11 & 8.25 & 6.89 / 10.66 & 14.1 / 19.8\\
+$\mm{3\times3\times3:23}$ best of four & 0.852 & 32/32/32 & 10.67 & 12.7 & 34.1\\
+$\mm{3\times3\times6:40}$ Smirnov ($\pm1$ point, same class) & 0.741 & 49/58/58 & 11.89 & 9.754 & 26.1\\
+\bottomrule
+\end{tabular}
+\caption{The menu screen (\texttt{matmul/levels/levels.py}): the schemes that
+could matter, at their published points.  The accuracy columns are per
+$4\times4$-equivalent saving.}
+\label{tab:menu}
+\end{table}
+
+Three conclusions.  Everything larger than $4\times4$ saves more per level but
+needs $110$--$225$ streams per pass, where the passes run at half bandwidth,
+and has $8$--$100\times$ the classical amplification at its published points.
+Kronecker products add nothing: a composite keeps the per-saving
+amplification of its pieces ($\mm{3\times3\times6}\otimes\mm{3\times3\times6}$
+keeps $2.280$, the accurate $2\times2$ squared keeps $3.855$) and multiplies
+their stream counts, so it is never better than its two levels run one after
+the other and the stream explosion makes it worse.  And the one scheme that
+beats the $4\times4$ scheme on every count but $\gamma_{\text{eq}}$ is DPS's
+accurate $\mm{3\times3\times6:40}$: applied to a square problem, the
+$3\times3\times6$ orientation hands down $(n/3,n/3,n/6)$ products, the
+$3\times6\times3$ orientation on those gives $(n/9,n/18,n/18)$, and the
+$6\times3\times3$ orientation returns to the square $(n/54)^3$.  The cycle
+keeps $0.741$ of the products per level, moves $11.89\,n^2$ words, stays
+within $58$ streams, and amplifies the leaf error by $2.28$--$2.45$ per
+$4\times4$-equivalent saving against $2.83$.  Perminov's catalogue of
+$680$ shapes up to $16\times16\times16$ \cite{Perminov} confirms the menu: only
+$\mm{3\times3\times6:40}$, $\mm{4\times4\times4:48}$ and $\mm{3\times4\times6:54}$
+save a quarter of the products within $80$ streams per pass, and the new
+shapes that save a quarter, $\mm{3\times6\times8:108}$ and $\mm{4\times7\times9:187}$,
+need $126$--$215$ streams.
+
+The paper cost model \eqref{eq:level} with the GEMM at the lone $8192^3$ f32
+rate and the passes at the $4\times4$ level's bandwidth puts the cycle 1--3
+points ahead of the $4\times4$ plans at every depth (\lv{R336/G} 17.8\% off the
+GEMM against \lv{D48/G} 16.8\%; \lv{R336/R363/G} 13.9\% against 10.8\%), and
+the assumption behind it holds: Accelerate on the rectangular leaves at equal
+flops runs within 5\% of the square GEMM after one level and 13\% ahead after
+two, because the leaves are larger ($n/54$ against $n/64$ after three levels).
+
+\section{Accuracy}\label{sec:accuracy}
+
+\subsection{What a level does to the error}
+
+The rounding errors of the $r$ leaf products pass through $P$ into the
+outputs; the roundings of the passes themselves add to them.  Taking the leaf
+errors as independent and proportional to the sizes of the factors gives
+\eqref{eq:amp}: a level multiplies the leaf error by $\amp$, against
+$\tfrac12\sqrt{g_2}$ for the classical algorithm on the same blocks.  This
+root-sum-square measure, not the worst-case sum $\ginf$, is what the
+measurements follow: the $4\times4$ orbit's $\ginf$ minimum ($21.41$, in
+$\mathbb{Q}(\sqrt2)$) has $\amp=3.14$ and measures no better than DPS's
+Table~1 point, while the $262$-operation point, with $\amp=2\sqrt2$ the
+orbit's minimum and the smallest $\ginf$ among dyadic points, measures
+$0.75$--$0.77$ of it \cite{S26b}.
+
+Over its whole orbit under $GL_3\times GL_3\times GL_6$ the
+$\mm{3\times3\times6:40}$ class has amplification ratio at least $2.242$ in
+every orientation (L-BFGS from random starts, \texttt{orbit\_rect.py}); DPS's
+$3\times3\times6$ point is 5\% above that floor and 5\% above its $\ginf$
+floor, their $3\times6\times3$ point 14\% above (and 41\% above that
+orientation's $\ginf$ floor of $3.90$, far below the $4\times4$ class's
+$5.66$).  The $\pm1$ Smirnov point of the same class (amplification ratio
+$10.8$) reaches the same floors, so the class carries them, not the point.
+Per $4\times4$-equivalent saving the floor is $2.17$ against the $4\times4$
+class's $2.83$, which is its orbit's minimum and, as far as continuous search
+from many starts can tell, a local minimum of the whole variety of rank-48
+decompositions.  A better exact point for the $3\times6\times3$ orientation is
+worth a dyadic search.
+
+\subsection{The error model and its validation}
+
+A plan's error is well described by the classical error scale times one
+factor per fused level, growing like $\sqrt{k}$ with the inner dimension,
+\begin{equation}\label{eq:errmodel}
+\text{err}(\text{plan};\,m,k,n) \;=\; e_0\,\sqrt{k/N_E}\ \prod_{\text{levels }X} f_X,
+\end{equation}
+with the order of the levels immaterial (measured: \lv{SW} then \lv{D48} and
+\lv{D48} then \lv{SW} within 2\%) and streams and pipelines leaving the
+arithmetic unchanged.  The calibration measures six plans at $N_E=2304$
+(divisible by $16$, $3$ and $6$) against the classical GEMM and fits $e_0$ and
+the factors: in f32 \lv{SW} $1.09$, \lv{D48} $0.91$, \lv{R336} $0.74$, \lv{R363}
+$0.79$, \lv{R633} $0.76$; in f64 $1.99$, $1.20$, $1.25$, $1.27$, $1.42$.  The
+predictions hold within 25\% from $4096$ to $16384$ except for two Strassen
+levels, over-predicted by up to 50\% (the safe side).  The accurate levels'
+factors are below one in f32: against the GEMM their products are $k/g_2$-long
+dot products instead of $k$-long ones, and the GEMM's own accumulation error
+is the larger term.  Measured against the f64 product, one or two accurate
+levels have less error than Accelerate's f32 GEMM (Table~\ref{tab:results}).
+The budget \lv{auto:}$g$ takes the fastest plan whose predicted growth
+$\prod f_X$ is at most $g$; with the accurate levels every plan the planner
+likes qualifies down to $g=2$, where the first $4\times4$ program we used, our
+$201$-operation point with factor $3.4$ per level, forced the classical blocked
+GEMM at $g=2$ and one level at $g=8$.
+
+\subsection{Programs and precision}
+
+For a fixed scheme the program still matters, through the roundings of the
+$P$ pass: a first-order rounding model with exact second moments of every
+intermediate shows that DPS's $262$-operation programs collect $15$ roundings
+of RMS size $0.80$ of the output per output where our $445$-operation
+programs for the same point collect $36$ of size $1.39$, and among four
+programs of equal amplification the model's worst-output error orders the
+measured errors exactly at three and five levels \cite{S26b}.  The lever is
+nearly exhausted for the $4\times4$ class: an 11\% smaller modelled pass
+error was invisible at one to three levels and worth about 5\% at depth.  The
+precision lever remains: running the passes of the f32 path in f64 (the
+blocks stay f32, the arithmetic is f64, one rounding at the GEMM interface)
+costs $\le2$\% below $16384$ and cuts the error by 36\% at five levels, nothing
+at one to three, where the leaf GEMMs' error dominates.  It is a switch in the
+library (\texttt{FMM\_F64PASS}), not the default.
+
+\section{The planner}\label{sec:planner}
+
+A plan is a sequence of levels from the top, ending in a leaf: \lv{G} (one
+GEMM, Accelerate's threading), \lv{G}$k$ ($k$ GEMM streams), or the classical
+blocked GEMM \lv{B2} on its own.  The planner is a dynamic program over the
+first level:
+\begin{equation}\label{eq:dp}
+\text{cost}(s) \;=\; \min\Bigl(\text{leaf}(s),\ \min_X\bigl[\text{passes}_X(s)
++ r_X\,\text{cost}_X(s/g_X)\bigr]\Bigr),
+\end{equation}
+where $s=(m,k,n)$, $s/g_X$ is the shape of $X$'s products, and
+$\text{cost}_X(t)$ is the cheaper of a GEMM leaf \emph{priced inside level
+$X$} (with $0$, $3$, $4$ or $6$ streams) and a further level on $t$.  Pricing
+the leaf inside the level matters: a GEMM shorter than about $1$~ms takes
+13--27\% longer called back to back, as inside a plan, than called alone, and
+the first calibration, which timed single calls, picked a two-level plan at
+$8192$ f64 that ran 12\% slower than the right one.  A level whose
+sub-problems are a level over GEMM streams may instead be pipelined
+(Section~\ref{sec:machine}), priced from the calibrated steady time per
+sub-problem plus fill and drain.
+
+\paragraph{Calibration.}
+Everything the model needs is measured once per machine and precision and
+cached (format~5, \texttt{calib5\_f32.txt}, \texttt{calib5\_f64.txt}, keyed by
+the machine, the padding, the file format and the programs the kernels came
+from): the lone GEMM and the blocked GEMM at each size; for each level and
+product shape its three passes and the GEMM time per product at $0$, $3$, $4$
+and $6$ streams, measured together by running the level; the pipelines; and
+the six error-model plans at $N_E=2304$.  For $n$ up to $13824$ this is $408$
+entries and $13$ minutes per precision.  Square shapes interpolate (log-log
+between the measured sizes); rectangular shapes do not, and are either
+calibrated for the shape ($118$ entries, a few seconds) or priced by
+\emph{shape estimates} from the square calibration: GEMM-like entries at the
+square size of equal flops, $\sqrt[3]{mkn}$ (Accelerate runs rectangular shapes
+within 5\% of the square rate), and a level's passes at the square size of
+equal traffic,
+\begin{equation}\label{eq:equiv}
+n_{\text{eq}} \;=\; \sqrt{\frac{(g_1g_2+r)\,mk + (g_2g_3+r)\,kn + (g_1g_3+r)\,mn}
+{g_1g_2+g_2g_3+g_1g_3+3r}},
+\end{equation}
+the size at which a square problem moves the same words through the level's
+passes \eqref{eq:traffic}.  The estimates predicted every measured rectangular
+case within 2\% (Table~\ref{tab:rect}).
+
+\paragraph{Sizes and shapes the levels do not divide.}
+A plan runs at the smallest shape its levels divide: every dimension is
+rounded up to the same multiple of $2^a3^b$ ($a\le10$, $b\le3$; 44 candidates),
+the operands copied into zeroed matrices and the result copied back, priced at
+$2\times$ the words at $80$~GB/s.  The planner takes the cheapest padded
+candidate, so an $n$ that $3$ does not divide gets a $4\times4$ plan unless
+padding to a multiple of $54$ pays.  Planning a new shape costs $0.07$~s in C
+and $0.010$~s in Rust and is cached for $64$ shapes.
+
+\paragraph{Validation.}
+Predictions are within 0.3--3\% of the measured times at $n\ge8192$ in both
+precisions throughout the development (first with the $4\times4$ menu, then
+with streams, pipelines and the $3\times3\times6$ levels), and the planner's
+choice was the fastest plan measured, or within 1\% of it, at every size and
+precision tried, with two documented exceptions traced to noisy calibration
+entries (a pipeline slope from two and four sub-problems; a $4096$ f32 run 15\%
+slow throughout).  The classical variants themselves drift between runs
+(13824 f64: $6.2$--$6.7$~s), so speedups carry about $\pm5$\%.
+
+\section{Results}\label{sec:results}
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{llrrrr}
+\toprule
+$n$, precision & plan & time (s) & over GEMM & relerr & err64\\
+\midrule
+6912 f32 & \lv{G} (Accelerate) & 0.195 & 1.00 & -- & $3.85\cdot10^{-6}$\\
+ & \lv{D48/G} & 0.154 & 1.27 & $4.2\cdot10^{-6}$ & $2.81\cdot10^{-6}$\\
+ & \lv{R336/G} & 0.164 & 1.19 & $3.9\cdot10^{-6}$ & $2.27\cdot10^{-6}$\\
+ & \lv{D48+4/D48/G6} & 0.149 & 1.31 & $4.3\cdot10^{-6}$ & $2.94\cdot10^{-6}$\\
+ & \lv{R363+4/D48/G6} (auto) & \textbf{0.141} & \textbf{1.38} & $4.0\cdot10^{-6}$ & $2.26\cdot10^{-6}$\\
+\midrule
+13824 f32 & \lv{G} (Accelerate) & 1.565 & 1.00 & -- & $6.40\cdot10^{-6}$\\
+ & \lv{D48/G} & 1.255 & 1.25 & $7.1\cdot10^{-6}$ & $4.16\cdot10^{-6}$\\
+ & \lv{R336/G} & 1.244 & 1.26 & $6.7\cdot10^{-6}$ & $3.80\cdot10^{-6}$\\
+ & \lv{R336/R363/G} & 1.200 & 1.30 & $6.2\cdot10^{-6}$ & $3.34\cdot10^{-6}$\\
+ & \lv{D48+4/D48/G6} & 0.949 & 1.65 & $7.0\cdot10^{-6}$ & $4.35\cdot10^{-6}$\\
+ & \lv{R363+3/D48/G6} & 0.906 & 1.73 & $6.4\cdot10^{-6}$ & $3.49\cdot10^{-6}$\\
+ & \lv{R363+4/R363/G6} (auto) & \textbf{0.907} & \textbf{1.73} & $6.6\cdot10^{-6}$ & $\mathbf{2.46\cdot10^{-6}}$\\
+\midrule
+6912 f64 & \lv{G} (Accelerate) & 0.773 & 1.00 & -- & \\
+ & \lv{D48/G} & 0.612 & 1.26 & $7.8\cdot10^{-15}$ & \\
+ & \lv{R336/G} & 0.597 & 1.29 & $6.8\cdot10^{-15}$ & \\
+ & \lv{R336/R363/G} & 0.594 & 1.30 & $8.3\cdot10^{-15}$ & \\
+ & \lv{D48+4/D48/G6} & 0.478 & 1.62 & $7.9\cdot10^{-15}$ & \\
+ & \lv{R363+3/R633/G6} (auto) & \textbf{0.451} & \textbf{1.71} & $6.7\cdot10^{-15}$ & \\
+\midrule
+13824 f64 & \lv{G} (Accelerate) & 6.223 & 1.00 & -- & \\
+ & \lv{D48/G} & 4.970 & 1.25 & $1.40\cdot10^{-14}$ & \\
+ & \lv{R336/G} & 4.946 & 1.26 & $1.18\cdot10^{-14}$ & \\
+ & \lv{R336/R363/G} & 3.703 & 1.68 & $1.45\cdot10^{-14}$ & \\
+ & \lv{D48+4/D48/G6} & 3.703 & 1.68 & $1.38\cdot10^{-14}$ & \\
+ & \lv{SW/D48+2/D48/G6} & 3.407 & 1.83 & $1.85\cdot10^{-14}$ & \\
+ & \lv{SW/R363+3/R633/G6} (auto) & \textbf{3.251} & \textbf{1.91} & $1.51\cdot10^{-14}$ & \\
+\bottomrule
+\end{tabular}
+\caption{Square problems on the M4~Pro (\texttt{results/r336\_campaign2\_2026-10-28.txt}):
+best of five interleaved rounds; ``over GEMM'' is Accelerate's time divided by
+the plan's; relerr is the max-norm difference from Accelerate's product,
+err64 the f32 error against the f64 product (the GEMM's own error in the first
+row of each block).  ``auto'' is the planner's choice.}
+\label{tab:results}
+\end{table}
+
+Table~\ref{tab:results} compares, at two sizes and in both precisions, the
+single levels, the best plan the $4\times4$ menu offered, and the planner's
+mixed plan.  What the table says:
+
+\begin{itemize}
+\item As a single level the $3\times3\times6$ scheme ties the $4\times4$ scheme
+  at $13824$ and is 9--19\% more accurate; at $6912$ in f32 it is 6\% slower,
+  because the passes are a larger share there and its $L$ pass moves more
+  ($49$ streams of larger blocks).  The planner knows this and uses the
+  orientation whose cheapest pass faces the largest operand.
+\item The mixed plans win in both time and error at every size from $1728$
+  up.  At $13824$ f32, \lv{R363+4/R363/G6} is 4\% faster than the best $4\times4$
+  plan with 40\% less error; the planner's top six plans there are all
+  $3\times3\times6$-family plans.  At $13824$ f64, \lv{SW/R363+3/R633/G6} runs
+  $1.91\times$ over Accelerate against $1.83$ for the best $4\times4$ plan.
+\item In f32 the mixed plans' error against the exact product is below the
+  GEMM's own at every size ($2.26$ against $3.85\cdot10^{-6}$ at $6912$,
+  $2.46$ against $6.40\cdot10^{-6}$ at $13824$): a fast multiplication that is
+  also the more accurate one.
+\item The three-orientation cycle alone (\lv{R336/R363/R633/G}) does not pay at
+  these sizes: its leaves of $n/54$ are too small for the GEMM.  Depth pays
+  through the pipelined two-level plans.
+\end{itemize}
+
+The planner's choices by size, from the calibration at $13824$: f32 \lv{G} at
+$1728$, \lv{R363/G6} at $3456$, \lv{R363+4/D48/G6} at $6912$,
+\lv{R363+4/R363/G6} at $13824$; f64 \lv{R363/G6} at $1728$, \lv{SW+3/R363/G6}
+at $3456$, \lv{R363+3/R633/G6} at $6912$, \lv{SW/R363+3/R633/G6} at $13824$.
+Sizes that $3$ does not divide keep their $4\times4$ plans (\lv{D48+4/D48/G6}
+at $8192$ f32, $1.40\times$; \lv{D48+3/D48/G6} at $9000$ f64 padded to $9008$,
+$1.69\times$).
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{llllrr}
+\toprule
+$m\times k\times n$ & calibration & prec. & plan & predicted / measured (s) & over GEMM\\
+\midrule
+$3456\times3456\times1728$ & for the shape & f32 & \lv{R363/G6} & 0.0117 / 0.0115 & 1.05\\
+ & & f64 & \lv{R363/G6} & 0.0366 / 0.0367 & 1.30\\
+$1000\times3000\times2000$ & estimated & f32 & \lv{G} & -- & 1.00\\
+ & & f64 & \lv{SW/G4} & 0.0133 / 0.0144 & 1.04\\
+$2048\times4096\times1024$ & estimated & f32 & \lv{G} & -- & 1.00\\
+ & & f64 & \lv{D48/G6} & 0.0177 / 0.0180 & 1.10\\
+$6912\times6912\times3456$ & estimated & f32 & \lv{SW+4/D48/G6} & 0.0790 / 0.0796 & 1.26\\
+ & & f64 & \lv{D48+4/R363/G6} & 0.2578 / 0.2565 & 1.52\\
+\bottomrule
+\end{tabular}
+\caption{Rectangular problems through the library's entry points
+(\texttt{results/\allowbreak rect\_\allowbreak api\_\allowbreak 2026-10-28.txt}): the planner's plan, its predicted
+and measured time, and the speedup over Accelerate's GEMM on the same shape.
+``Estimated'' shapes are priced from the square calibration by
+\eqref{eq:equiv}.}
+\label{tab:rect}
+\end{table}
+
+Rectangular problems (Table~\ref{tab:rect}) go through the same planner over
+$(m,k,n)$: a level applies when its grid divides the current shape, so a
+$6912\times6912\times3456$ product gets a $4\times4$ level whose products are
+$1728\times1728\times864$ and then a $3\times6\times3$ level in f64.  The shape
+estimates are within 2\% of the measurements wherever a level pays, and where
+none does the planner correctly returns the GEMM (the first version of the
+estimates had none, and padded $1000\times3000\times2000$ to $3072^3$, 30
+times slower than Accelerate).
+
+\section{The ternary trial: cheap passes against accurate ones}\label{sec:ternary}
+
+Perminov's catalogue \cite{Perminov,Perminov25} lists, beside the ranks, the
+schemes with coefficients in $\{-1,0,1\}$ whose additive complexity his
+parallel common-subexpression search reduced; for $3\times3\times6$ it has four
+rank-$42$ ternary schemes reduced to $139$, $140$, $145$ and $150$ additions
+for the three linear forms together (file
+\texttt{3x3x6\_m42\_cr139\_cn287\_ZT\_reduced.json} and its siblings; the
+naive counts are $287$--$369$).  Against DPS's accurate rank-$40$ scheme,
+whose nine optimized programs take $374$, $383$ and $353$ operations per
+orientation, this is the opposite design: two products more (saving $0.778$
+against $0.741$), two more streams per pass ($51/60/60$), and a third of the
+pass arithmetic.  Is the arithmetic worth anything once the passes are fused,
+and what does the accuracy cost?
+
+\paragraph{The scheme.}
+The reduced JSON is a straight-line program already (fresh variables for the
+common subexpressions, then the forms); each of the four schemes was expanded
+to its matrices and checked exactly against the Brent equations.  The
+$139$-addition scheme is the most accurate of the four by far (amplification
+ratio $5.07$ in the $3\times3\times6$ orientation against $7.6$--$9.5$ for the
+others), so it is the one tried; Table~\ref{tab:levels} gives its three
+orientations.  Its programs are Perminov's forms for the three maps the
+$3\times3\times6$ orientation needs ($L$: $33$ additions, $R$: $39$, $P$: $67$),
+and for the other orientations the same forms re-indexed where an
+orientation reuses a map and transposed by PLinOpt's \texttt{transpozer}
+where it needs the transposed map ($3\times6\times3$: $39$, $43{+}6$ negations,
+$66$; $6\times3\times3$: $43{+}6$, $33$, $63$), all nine checked by
+\texttt{SLPchecker} against the matrices.  PLinOpt's optimizer (the fork's
+\texttt{-s 1 -Q -O 500}) on the same nine matrices finds $34$, $41$, $71$,
+$41$, $45$, $67$, $45$, $34$, $66$ additions: one to four more than Perminov's
+reduction on every matrix, in $0.2$~s each.  The levels \lv{T336}, \lv{T363},
+\lv{T633} went into the C library beside the R levels, outside the planner's
+menu, and every plan containing them computes the product (3456, both
+precisions, including pipelined plans).
+
+\begin{table}[t]
+\centering\footnotesize
+\begin{tabular}{llrrlrrl}
+\toprule
+$n$, prec. & plan & R (s) & T (s) & T/R & R error & T error & T/R\\
+\midrule
+13824 f32 & \lv{X336/G} & 1.228 & 1.286 & 1.05 & 3.80e-6 & 1.28e-5 & 3.4\\
+ & \lv{X363/G} & 1.242 & 1.304 & 1.05 & 2.73e-6 & 6.25e-6 & 2.3\\
+ & \lv{X633/G} & 1.276 & 1.339 & 1.05 & 3.95e-6 & 1.01e-5 & 2.6\\
+ & \lv{X336/X363/X633/G} & 2.538 & 2.874 & 1.13 & 4.95e-6 & 3.53e-5 & 7.1\\
+ & \lv{X363+4/D48/G6} & 0.909 & 0.954 & 1.05 & 3.49e-6 & 6.23e-6 & 1.8\\
+ & \lv{X363+4/X363/G6} & 0.906 & 0.994 & 1.10 & 2.46e-6 & 9.04e-6 & 3.7\\
+\midrule
+13824 f64 & \lv{X336/G} & 4.858 & 5.089 & 1.05 & 1.18e-14 & 2.62e-14 & 2.2\\
+ & \lv{X363/G} & 4.919 & 5.132 & 1.04 & 1.30e-14 & 1.34e-14 & 1.0\\
+ & \lv{X336/X363/X633/G} & 7.546 & 8.763 & 1.16 & 1.24e-14 & 8.08e-14 & 6.5\\
+ & \lv{SW/X363+3/X633/G6} & 3.236 & 3.573 & 1.10 & 1.51e-14 & 5.61e-14 & 3.7\\
+ & \lv{X363+3/X633/G6} & 5.624 & 6.188 & 1.10 & 1.26e-14 & 2.63e-14 & 2.1\\
+\midrule
+6912 f32 & \lv{X336/G} & 0.165 & 0.173 & 1.05 & 2.27e-6 & 8.00e-6 & 3.5\\
+ & \lv{X363/G} & 0.158 & 0.160 & 1.01 & 1.76e-6 & 3.87e-6 & 2.2\\
+ & \lv{X363+4/D48/G6} & 0.142 & 0.147 & 1.04 & 2.26e-6 & 4.07e-6 & 1.8\\
+ & \lv{X363+3/X633/G6} & 0.160 & 0.173 & 1.08 & 2.20e-6 & 8.72e-6 & 4.0\\
+\midrule
+6912 f64 & \lv{X336/G} & 0.598 & 0.626 & 1.05 & 6.78e-15 & 1.47e-14 & 2.2\\
+ & \lv{X363+4/D48/G6} & 0.453 & 0.478 & 1.06 & 7.03e-15 & 8.81e-15 & 1.3\\
+ & \lv{X363+3/X633/G6} & 0.451 & 0.497 & 1.10 & 6.74e-15 & 1.63e-14 & 2.4\\
+\bottomrule
+\end{tabular}
+\caption{The ternary $\mm{3\times3\times6:42}$ levels (T) against the accurate
+$\mm{3\times3\times6:40}$ levels (R) on the same plans
+(\texttt{results/t42\_campaign\_2026-10-28.txt}; \lv{X} stands for \lv{R} or
+\lv{T}): best of five (f32) or three (f64) interleaved rounds, seconds; the
+f32 error is against the f64 product, the f64 error against Accelerate's
+product.}
+\label{tab:ternary}
+\end{table}
+
+\paragraph{Measured.}
+Table~\ref{tab:ternary} answers both questions.  The pass arithmetic is worth
+nothing: the T levels' passes take exactly the R levels' times (at $13824$
+f32, $L/R/P$ $0.036/0.020/0.017$~s against $0.034/0.019/0.017$; at $6912$,
+$0.009/0.005/0.005$ for both), because a fused pass is bound by the blocks it
+moves and the T level moves two more per pass.  The two extra products cost
+what the rank says: the GEMM part of a single level is 5--7\% longer, a
+single T level is 4--5\% slower than its R counterpart at every size and
+precision (the one tie, \lv{T363/G} at $6912$ f32, is within the run's
+noise), a two-level T plan 8--10\% slower, and the three-orientation cycle
+13--16\% slower.  The accuracy cost is the amplification: $2.2$--$3.5\times$ the
+R level's error as a single level, $3.7$--$4\times$ in two-level plans and
+$6.5$--$7\times$ in the cycle, in line with the ratio of the amplification
+factors ($5.07/2.36 = 2.1$ for the $3\times3\times6$ orientation, the
+measured $2.2$--$3.5$ including the passes' own roundings).  In f32 every T
+plan's error is above the GEMM's own (\lv{T336/G} $1.28\cdot10^{-5}$ against
+$6.40\cdot10^{-6}$ at $13824$) where every R plan's is below it.  The
+planner's menu was left as it was: a level that is slower and less accurate
+than one already there on every plan cannot be chosen.
+
+\paragraph{What it shows.}
+The trial is the cleanest confirmation of the cost model's premise.  Two
+schemes of the same shape, with the same pass structure, differ in rank by
+two and in pass arithmetic by a factor of $2.7$; the measured difference is
+the rank's, to the percent, and none of the arithmetic's.  For a fused-pass
+library the objectives of a scheme search are rank and amplification, in
+that order, and additive complexity is not among them.  The caveat is the
+one stated in Section~\ref{sec:levels}: arithmetic shows when a program is
+wasteful enough to make a pass compute-bound, as the $18$-operation-per-output
+direct sums were; Perminov's $139$ additions and DPS's optimized programs are
+both well inside the bandwidth-bound regime.  Whether the class of the
+ternary scheme contains an accurate point is a separate question, and the
+answer is no: over $GL_3\times GL_3\times GL_6$ the class's amplification
+ratio is at least
+$2.825$ in the $3\times3\times6$ orientation and $2.831$ in $3\times6\times3$
+(eight starts each), the $4\times4$ class's $2\sqrt2$ and 26\% above the
+accurate $\mm{3\times3\times6:40}$ class's $2.242$; the $139$-addition point
+sits $1.8\times$ above its own floor, and its $\ginf$ floors ($5.12$ and $4.82$)
+are likewise above the accurate class's ($6.37$ and $3.90$) in the orientation
+that matters.  Even at its best point the class would match the $4\times4$
+scheme's accuracy with two products more than the accurate $3\times3\times6$
+scheme.
+
+\section{Two implementations}\label{sec:impl}
+
+The library is C (\texttt{fmm.h}, \texttt{libfmm.a}: \texttt{fmm\_sgemm},
+\texttt{fmm\_dgemm} and their \texttt{\_mkn} forms for an $m\times k$ times
+$k\times n$ product with separate leading dimensions, \texttt{fmm\_calibrate},
+\texttt{fmm\_plan}, \texttt{fmm\_release}) over Accelerate, with the kernels
+generated from the schemes' programs by \texttt{gen\_kernels.py}: every
+program in PLinOpt's syntax becomes one fused loop in f32 and in f64, plus an
+f64-arithmetic variant for f32 blocks.  Plans are made once per (shape,
+precision, budget) and kept; the workspace is kept between calls; a call
+outside the calibrated range or without a calibration runs the classical GEMM,
+so a call is always correct.  The benchmark driver includes the library, so
+both run the same code, and every plan prints its predicted time next to the
+measured one.
+
+The Rust port (crate \texttt{fmm}, \texttt{rust/}) is the same library module
+for module -- plans and shapes, the calibration in the C file format so that
+either library reads the other's cache, the planner with pipelines, budget
+and padding, the executor on a rayon pool, the entry points -- with the
+fused passes as safe Rust emitted by the same generator (each slice a
+separate parameter, cut to the row length first: the compiler then
+vectorizes as \texttt{restrict} and the pragma let it in C).  The only unsafe
+code is the three FFI declarations for Accelerate behind safe wrappers that
+check the slices.  Cross-checked against the C library on the shared
+calibration, 26 cases (square sizes from $1000$ to $9000$, a leading dimension
+above $n$, an error budget, four rectangular shapes, both precisions) give the
+same plans, the same predicted times to the digit and results bit for bit.
+Speeds match at large sizes (f64 $8192$: $0.801$ against $0.815$~s; f32
+$6912\times6912\times3456$: $0.0789$ against $0.0796$); the Rust passes on
+blocks under about $600$ are $1.2$--$2\times$ slower (dispatch and per-chunk
+allocation), which only shows when Rust calibrates for itself.  Two traps
+found on the way: a zeroed \texttt{Vec} gets its pages on first write, so
+timed buffers must be written first; and a lone multi-threaded GEMM issued
+right after GEMM streams on the rayon pool runs 15--25\% slower and stays so,
+which the leaves' timing avoids by running where the library runs a
+classical plan.
+
+\section{Discussion}\label{sec:disc}
+
+The mixed approach rests on two measurements that contradict the usual
+accounting.  A fused level's cost is the blocks it moves, so the right
+measure of a scheme is its saving per block moved and its stream count, not
+its rank or the length of its programs; and the accuracy of a level is set by
+the point in its orbit and, at depth, by the roundings of its $P$ program,
+not by the operation count.  Under these measures the menu is short: two
+accurate schemes and Strassen--Winograd for the top of deep f64 plans.  A
+scheme enters the menu only if a plan containing it beats every plan without
+it on this machine, and the planner decides that per shape and precision from
+measurements, which is why the library can take a new level (or a new
+machine) without any change but a calibration.
+
+The limits are also measured.  The GEMM is 85--95\% of every plan, so no menu
+can take more than the products it saves, and below $n\approx3000$ nothing
+pays in f32 ($1728$ in f64).  A level's passes must not fall behind the
+streams it feeds: six streams of $1024$-blocks in f64 are the most sensitive
+to pass traffic, and pipelining gains nothing there.  Shapes above
+$4\times4$ cannot help because of the stream count, whatever their rank, and
+Kronecker composites because they inherit their pieces' amplification and
+multiply their streams.  And the ternary trial (Section~\ref{sec:ternary})
+closes the remaining door on the cheap side: when the passes are already
+bandwidth-bound, a program with a third of the additions buys nothing, while
+two extra products and $2.8\times$ the amplification cost speed and accuracy
+at every size.
+
+What is next.  A dyadic point of the $3\times6\times3$ orientation closer to
+its class's amplification floor (DPS's is 14\% above it) would improve the
+plans that use it; the tools exist from the $4\times4$ search.  Fusing the $L$
+and $R$ passes into GEMM operand packing, the ``Strassen reloaded'' design,
+needs an open GEMM kernel; on this machine the vendor's SME kernels are
+closed, so it waits for another machine (x86-64 with BLIS, or the Apple GPU).
+The planner's $0.07$~s per new shape in C should be a millisecond.  The
+library takes $C=AB$ only: $\alpha$, $\beta$ and transposes are a day's work.
+And the Rust passes on small blocks should be brought to the C library's
+speed.
+
+\section{Data and code}\label{sec:data}
+
+Everything is in the repository \cite{logic}, directory
+\path{matmul/fastmm/}: the library (\path{fmm.c}, \path{fmm_impl.h},
+\path{fmm.h}), the kernel generator (\path{gen_kernels.py}), the programs
+of the $3\times3\times6$ levels (\path{schemes/opt/r*}, PLinOpt-optimized;
+\path{schemes/r*}, the direct sums) and of the ternary levels
+(\path{schemes/t*}), the Rust crate (\path{rust/}), the benchmark and the
+test (\path{bench_fmm.c}, \path{test_fmm.c}), the calibrations
+(\path{results/calib5_f32.txt}, \path{calib5_f64.txt}) and the raw
+results of every run quoted here:
+\path{results/r336_campaign_2026-10-28.txt},
+\path{r336_campaign2_2026-10-28.txt} (Table~\ref{tab:results}),
+\path{r336_opt_vs_direct_2026-10-28.txt},
+\path{rect_api_2026-10-28.txt} (Table~\ref{tab:rect}),
+\path{t42_campaign_2026-10-28.txt} (Table~\ref{tab:ternary}), and the
+earlier campaigns of October 24--26 (streams, pipelines, accuracy, the
+$4\times4$ programs).  The menu screen is \path{matmul/levels/}
+(\path{levels.py}, \path{levels.csv}, \path{orbit_rect.py},
+\path{cost_rect.py}, README).  The accuracy study of the $4\times4$ class
+is \path{doc/matmul_4x4_rank48_accurate262.pdf} \cite{S26b}.  The running
+log of the track, with every measurement in the order it was made, is
+\path{doc/fastmm_plan.md}.
+
+{\small
+\begin{thebibliography}{99}
+\bibitem{DPS24} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, \emph{Strassen's
+algorithm is not optimally accurate}, Proc.\ ISSAC 2024, 254--263.
+\bibitem{DPS25} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, \emph{A
+non-commutative algorithm for multiplying $4\times4$ matrices using
+$48$ non-complex multiplications}, arXiv:2506.13242 (2025).
+\bibitem{DPS26a} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, \emph{A more
+accurate rational non-commutative algorithm for multiplying $4\times4$
+matrices using $48$ multiplications}, arXiv:2603.18699 (v1 19~March
+2026, v3 29~July 2026).
+\bibitem{DPS26b} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, \emph{Towards
+automated generation of fast and accurate algorithms for recursive
+matrix multiplication}, J.\ Symbolic Comput.\ 134 (2026) 102524.
+\bibitem{DPSST26} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, J.~Stapleton,
+P.~Tichavsk\'y, \emph{Fast matrix multiplication via recursive
+$\langle4\times4\times4:48\rangle$ algorithms into practice},
+arXiv:2609.12027 (v1 10~September 2026, v2 2~October 2026).
+\bibitem{PLinOpt} J.-G.~Dumas, B.~Grenet, C.~Pernet, A.~Sedoglavic,
+\emph{PLinOpt, a collection of C++ routines handling linear \&
+bilinear programs}, \url{https://github.com/jgdumas/plinopt}; data
+files \texttt{4x4x4\_48\_accurate\_262} (commit \texttt{b441528},
+13~October 2026), \texttt{3x3x6\_40\_DPS-accurate}, \texttt{3x6x3\_40\_DPS-accurate},
+\texttt{6x3x3\_40\_DPS-accurate}; tools \texttt{optimizer}, \texttt{transpozer},
+\texttt{SLPchecker}.
+\bibitem{HSvdG16} J.~Huang, T.~M.~Smith, G.~M.~Henry, R.~A.~van de Geijn,
+\emph{Strassen's algorithm reloaded}, Proc.\ SC~'16 (International
+Conference for High Performance Computing, Networking, Storage and
+Analysis), 2016.
+\bibitem{KW} M.~Kauers, J.~Wood, \emph{Consequences of the Moosbauer--Poole
+algorithms}, preprint (2025).
+\bibitem{MP25} J.~Moosbauer, M.~Poole, \emph{Flip graphs with symmetry and
+new matrix multiplication schemes}, preprint (2025).
+\bibitem{MSW25} E.~M\r{a}rtensson, P.~Stankovski Wagner, \emph{The number of
+the beast: reducing additions in fast matrix multiplication algorithms
+for dimensions up to 666}, Proc.\ ACDA 2025; the library
+\texttt{fmm\_add\_reduction}, \url{https://github.com/werekorren/fmm_add_reduction}
+(commit \texttt{951cd93}, 8~May 2025), whose \texttt{algorithms/} directory
+distributes the Kauers--Wood, Moosbauer--Poole--Kemper and AlphaEvolve
+schemes used in the screen.
+\bibitem{Novikov25} A.~Novikov et al., \emph{AlphaEvolve: a coding agent
+for scientific and algorithmic discovery}, arXiv:2506.13131 (2025).
+\bibitem{Perminov} A.~I.~Perminov, \emph{FastMatrixMultiplication}: a
+catalogue of fast matrix multiplication schemes,
+\url{https://github.com/dronperminov/FastMatrixMultiplication}, commit
+\texttt{3ee3284} (28~October 2026); file
+\texttt{schemes/results/addition\_reduced\_ZT/3x3x6\_m42\_cr139\_cn287\_ZT\_reduced.json}.
+\bibitem{Perminov25} A.~I.~Perminov, \emph{Parallel heuristic exploration
+for additive complexity reduction in fast matrix multiplication},
+arXiv:2512.13365 (2025).
+\bibitem{Smirnov13} A.~V.~Smirnov, \emph{The bilinear complexity and
+practical algorithms for matrix multiplication}, Comput.\ Math.\ Math.\
+Phys.\ 53 (2013) 1781--1795.
+\bibitem{S26} G.~Sidebottom, \emph{201 operations for rank-48 $4\times4$
+matrix multiplication over rings containing $1/2$}, preprint (2026);
+PLinOpt data file \texttt{4x4x4\_48\_201}.
+\bibitem{S26b} G.~Sidebottom, \emph{The 262-operation
+$\langle4\times4\times4:48\rangle$ algorithm is also the more accurate one:
+error-bound exponent $9/4$ and about a quarter less error}, draft of
+27~October 2026, \texttt{doc/matmul\_4x4\_rank48\_accurate262.pdf} in \cite{logic}.
+\bibitem{logic} G.~Sidebottom, \emph{logic}, source repository,
+\url{https://github.com/gsidebottom/logic} (2026).
+\end{thebibliography}
+}
+
+\end{document}

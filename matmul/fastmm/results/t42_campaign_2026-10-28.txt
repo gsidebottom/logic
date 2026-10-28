@@ -1,0 +1,89 @@
+# T42 campaign: ternary <3x3x6:42> levels vs the accurate <3x3x6:40> levels and D48, fixed plans; 2026-10-28 18:30; Apple M4 Pro
+## n=13824 f32  18:30
+classical  n=13824  f32  min    1.553 s  med    1.554 s   3399.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.554 P 0.000  plan G  pred 1.561 s (+0.4%)  perr 7.13e-06  err64 6.40e-06
+plan=D48/G n=13824  f32  min    1.257 s  med    1.266 s   4172.9 GFLOP/s(2mkn)  speedup 1.227  relerr 7.11e-06  split L 0.024 R 0.025 gemm 1.195 P 0.020  plan D48/G  pred 1.253 s (-1.0%)  perr 6.46e-06  err64 4.16e-06
+plan=R336/G n=13824  f32  min    1.228 s  med    1.229 s   4300.1 GFLOP/s(2mkn)  speedup 1.265  relerr 6.70e-06  split L 0.034 R 0.019 gemm 1.170 P 0.017  plan R336/G  pred 1.301 s (+5.9%)  perr 5.25e-06  err64 3.80e-06
+plan=T336/G n=13824  f32  min    1.286 s  med    1.307 s   4041.0 GFLOP/s(2mkn)  speedup 1.189  relerr 1.27e-05  split L 0.036 R 0.020 gemm 1.256 P 0.017  plan T336/G  err64 1.28e-05
+plan=R363/G n=13824  f32  min    1.242 s  med    1.250 s   4226.0 GFLOP/s(2mkn)  speedup 1.243  relerr 6.70e-06  split L 0.019 R 0.019 gemm 1.214 P 0.028  plan R363/G  pred 1.237 s (-1.0%)  perr 5.65e-06  err64 2.73e-06
+plan=T363/G n=13824  f32  min    1.304 s  med    1.340 s   3944.3 GFLOP/s(2mkn)  speedup 1.160  relerr 7.18e-06  split L 0.020 R 0.020 gemm 1.277 P 0.026  plan T363/G  err64 6.25e-06
+plan=R633/G n=13824  f32  min    1.276 s  med    1.285 s   4112.5 GFLOP/s(2mkn)  speedup 1.210  relerr 6.53e-06  split L 0.019 R 0.034 gemm 1.235 P 0.018  plan R633/G  pred 1.278 s (-0.5%)  perr 5.45e-06  err64 3.95e-06
+plan=T633/G n=13824  f32  min    1.339 s  med    1.346 s   3926.6 GFLOP/s(2mkn)  speedup 1.155  relerr 1.12e-05  split L 0.020 R 0.036 gemm 1.307 P 0.017  plan T633/G  err64 1.01e-05
+plan=R336/R363/R633/G n=13824  f32  min    2.538 s  med    2.604 s   2029.4 GFLOP/s(2mkn)  speedup 0.597  relerr 6.98e-06  split L 0.371 R 0.340 gemm 1.608 P 0.305  plan R336/R363/R633/G  pred 2.345 s (-9.9%)  perr 3.18e-06  err64 4.95e-06
+plan=T336/T363/T633/G n=13824  f32  min    2.874 s  med    2.883 s   1832.9 GFLOP/s(2mkn)  speedup 0.539  relerr 3.55e-05  split L 0.403 R 0.370 gemm 1.853 P 0.319  plan T336/T363/T633/G  err64 3.53e-05
+plan=R363+4/D48/G6 n=13824  f32  min    0.909 s  med    0.915 s   5771.7 GFLOP/s(2mkn)  speedup 1.698  relerr 6.43e-06  split L 0.019 R 0.019 gemm 0.849 P 0.028  plan R363+4/D48/G6  pred 0.920 s (+0.5%)  perr 5.12e-06  err64 3.49e-06
+plan=T363+4/D48/G6 n=13824  f32  min    0.954 s  med    0.960 s   5506.5 GFLOP/s(2mkn)  speedup 1.620  relerr 7.80e-06  split L 0.020 R 0.020 gemm 0.892 P 0.027  plan T363+4/D48/G6  err64 6.23e-06
+plan=R363+4/R363/G6 n=13824  f32  min    0.906 s  med    0.911 s   5802.0 GFLOP/s(2mkn)  speedup 1.707  relerr 6.57e-06  split L 0.019 R 0.019 gemm 0.847 P 0.028  plan R363+4/R363/G6  pred 0.909 s (-0.1%)  perr 4.48e-06  err64 2.46e-06
+plan=T363+4/T363/G6 n=13824  f32  min    0.994 s  med    0.998 s   5295.0 GFLOP/s(2mkn)  speedup 1.558  relerr 9.27e-06  split L 0.020 R 0.020 gemm 0.931 P 0.027  plan T363+4/T363/G6  err64 9.04e-06
+## n=13824 f64  18:32
+classical  n=13824  f64  min    6.201 s  med    6.214 s    850.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 6.252 P 0.000  plan G  pred 6.689 s (+7.7%)  perr 7.83e-15
+plan=D48/G n=13824  f64  min    4.849 s  med    4.875 s   1083.9 GFLOP/s(2mkn)  speedup 1.275  relerr 1.40e-14  split L 0.049 R 0.049 gemm 4.773 P 0.039  plan D48/G  pred 4.877 s (+0.0%)  perr 9.40e-15
+plan=R336/G n=13824  f64  min    4.858 s  med    4.950 s   1067.3 GFLOP/s(2mkn)  speedup 1.255  relerr 1.18e-14  split L 0.067 R 0.038 gemm 4.818 P 0.032  plan R336/G  pred 5.030 s (+1.6%)  perr 9.77e-15
+plan=T336/G n=13824  f64  min    5.089 s  med    5.144 s   1027.2 GFLOP/s(2mkn)  speedup 1.208  relerr 2.62e-14  split L 0.070 R 0.040 gemm 5.025 P 0.031  plan T336/G
+plan=R363/G n=13824  f64  min    4.919 s  med    5.107 s   1034.6 GFLOP/s(2mkn)  speedup 1.217  relerr 1.30e-14  split L 0.038 R 0.038 gemm 4.942 P 0.047  plan R363/G  pred 4.870 s (-4.6%)  perr 9.96e-15
+plan=T363/G n=13824  f64  min    5.132 s  med    5.220 s   1012.2 GFLOP/s(2mkn)  speedup 1.190  relerr 1.34e-14  split L 0.040 R 0.041 gemm 5.106 P 0.050  plan T363/G
+plan=R633/G n=13824  f64  min    5.092 s  med    5.116 s   1032.9 GFLOP/s(2mkn)  speedup 1.215  relerr 1.35e-14  split L 0.038 R 0.067 gemm 5.005 P 0.032  plan R633/G  pred 5.009 s (-2.1%)  perr 1.11e-14
+plan=T633/G n=13824  f64  min    5.321 s  med    5.377 s    982.7 GFLOP/s(2mkn)  speedup 1.156  relerr 1.94e-14  split L 0.041 R 0.070 gemm 5.236 P 0.033  plan T633/G
+plan=R336/R363/R633/G n=13824  f64  min    7.546 s  med    7.597 s    695.5 GFLOP/s(2mkn)  speedup 0.818  relerr 1.24e-14  split L 0.606 R 0.588 gemm 5.873 P 0.520  plan R336/R363/R633/G  pred 7.517 s (-1.1%)  perr 1.76e-14
+plan=T336/T363/T633/G n=13824  f64  min    8.763 s  med    8.784 s    601.5 GFLOP/s(2mkn)  speedup 0.707  relerr 8.08e-14  split L 0.687 R 0.674 gemm 6.829 P 0.585  plan T336/T363/T633/G
+plan=SW/R363+3/R633/G6 n=13824  f64  min    3.236 s  med    3.240 s   1630.6 GFLOP/s(2mkn)  speedup 1.918  relerr 1.51e-14  split L 0.095 R 0.097 gemm 2.942 P 0.110  plan SW/R363+3/R633/G6  pred 3.244 s (+0.1%)  perr 2.81e-14
+plan=SW/T363+3/T633/G6 n=13824  f64  min    3.573 s  med    3.579 s   1476.3 GFLOP/s(2mkn)  speedup 1.736  relerr 5.61e-14  split L 0.099 R 0.102 gemm 3.267 P 0.112  plan SW/T363+3/T633/G6
+plan=R363+3/R633/G6 n=13824  f64  min    5.624 s  med    5.701 s    926.8 GFLOP/s(2mkn)  speedup 1.090  relerr 1.26e-14  split L 0.038 R 0.039 gemm 5.585 P 0.048  plan R363+3/R633/G6  pred 5.594 s (-1.9%)  perr 1.41e-14
+plan=T363+3/T633/G6 n=13824  f64  min    6.188 s  med    6.357 s    831.1 GFLOP/s(2mkn)  speedup 0.977  relerr 2.63e-14  split L 0.040 R 0.041 gemm 6.210 P 0.050  plan T363+3/T633/G6
+## n=6912 f32  18:37
+classical  n=6912   f32  min    0.195 s  med    0.197 s   3350.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.197 P 0.000  plan G  pred 0.196 s (-0.6%)  perr 5.04e-06  err64 3.85e-06
+plan=D48/G n=6912   f32  min    0.155 s  med    0.161 s   4094.2 GFLOP/s(2mkn)  speedup 1.222  relerr 4.18e-06  split L 0.006 R 0.006 gemm 0.143 P 0.005  plan D48/G  pred 0.153 s (-5.0%)  perr 4.57e-06  err64 2.81e-06
+plan=R336/G n=6912   f32  min    0.165 s  med    0.166 s   3969.5 GFLOP/s(2mkn)  speedup 1.185  relerr 3.91e-06  split L 0.009 R 0.005 gemm 0.149 P 0.005  plan R336/G  pred 0.165 s (-0.5%)  perr 3.71e-06  err64 2.27e-06
+plan=T336/G n=6912   f32  min    0.173 s  med    0.175 s   3780.6 GFLOP/s(2mkn)  speedup 1.128  relerr 7.93e-06  split L 0.009 R 0.005 gemm 0.156 P 0.005  plan T336/G  err64 8.00e-06
+plan=R363/G n=6912   f32  min    0.158 s  med    0.162 s   4070.8 GFLOP/s(2mkn)  speedup 1.215  relerr 4.18e-06  split L 0.005 R 0.005 gemm 0.145 P 0.007  plan R363/G  pred 0.150 s (-7.5%)  perr 4.00e-06  err64 1.76e-06
+plan=T363/G n=6912   f32  min    0.160 s  med    0.168 s   3924.5 GFLOP/s(2mkn)  speedup 1.171  relerr 4.55e-06  split L 0.005 R 0.005 gemm 0.149 P 0.007  plan T363/G  err64 3.87e-06
+plan=R633/G n=6912   f32  min    0.165 s  med    0.165 s   3999.8 GFLOP/s(2mkn)  speedup 1.194  relerr 3.91e-06  split L 0.005 R 0.009 gemm 0.149 P 0.005  plan R633/G  pred 0.162 s (-1.6%)  perr 3.85e-06  err64 2.27e-06
+plan=T633/G n=6912   f32  min    0.172 s  med    0.174 s   3801.5 GFLOP/s(2mkn)  speedup 1.135  relerr 5.92e-06  split L 0.005 R 0.009 gemm 0.156 P 0.004  plan T633/G  err64 6.10e-06
+plan=R363+4/D48/G6 n=6912   f32  min    0.142 s  med    0.142 s   4635.5 GFLOP/s(2mkn)  speedup 1.383  relerr 4.00e-06  split L 0.005 R 0.005 gemm 0.126 P 0.007  plan R363+4/D48/G6  pred 0.140 s (-1.4%)  perr 3.62e-06  err64 2.26e-06
+plan=T363+4/D48/G6 n=6912   f32  min    0.147 s  med    0.149 s   4437.4 GFLOP/s(2mkn)  speedup 1.324  relerr 5.23e-06  split L 0.005 R 0.005 gemm 0.132 P 0.007  plan T363+4/D48/G6  err64 4.07e-06
+plan=R363+3/R633/G6 n=6912   f32  min    0.160 s  med    0.161 s   4094.1 GFLOP/s(2mkn)  speedup 1.222  relerr 4.14e-06  split L 0.005 R 0.005 gemm 0.149 P 0.007  plan R363+3/R633/G6  pred 0.162 s (+0.3%)  perr 3.06e-06  err64 2.20e-06
+plan=T363+3/T633/G6 n=6912   f32  min    0.173 s  med    0.178 s   3716.5 GFLOP/s(2mkn)  speedup 1.109  relerr 8.93e-06  split L 0.005 R 0.005 gemm 0.159 P 0.007  plan T363+3/T633/G6  err64 8.72e-06
+## n=6912 f64  18:37
+classical  n=6912   f64  min    0.766 s  med    0.778 s    849.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.782 P 0.000  plan G  pred 0.790 s (+1.6%)  perr 5.54e-15
+plan=D48/G n=6912   f64  min    0.611 s  med    0.614 s   1075.6 GFLOP/s(2mkn)  speedup 1.266  relerr 7.79e-15  split L 0.012 R 0.012 gemm 0.579 P 0.010  plan D48/G  pred 0.617 s (+0.5%)  perr 6.65e-15
+plan=R336/G n=6912   f64  min    0.598 s  med    0.601 s   1099.7 GFLOP/s(2mkn)  speedup 1.295  relerr 6.78e-15  split L 0.017 R 0.010 gemm 0.568 P 0.008  plan R336/G  pred 0.603 s (+0.5%)  perr 6.91e-15
+plan=T336/G n=6912   f64  min    0.626 s  med    0.629 s   1049.3 GFLOP/s(2mkn)  speedup 1.235  relerr 1.47e-14  split L 0.017 R 0.010 gemm 0.601 P 0.008  plan T336/G
+plan=R363/G n=6912   f64  min    0.647 s  med    0.649 s   1017.5 GFLOP/s(2mkn)  speedup 1.198  relerr 6.78e-15  split L 0.009 R 0.010 gemm 0.620 P 0.012  plan R363/G  pred 0.658 s (+1.3%)  perr 7.04e-15
+plan=T363/G n=6912   f64  min    0.680 s  med    0.683 s    967.6 GFLOP/s(2mkn)  speedup 1.139  relerr 8.30e-15  split L 0.010 R 0.010 gemm 0.650 P 0.012  plan T363/G
+plan=R633/G n=6912   f64  min    0.628 s  med    0.633 s   1043.8 GFLOP/s(2mkn)  speedup 1.229  relerr 7.54e-15  split L 0.009 R 0.017 gemm 0.598 P 0.008  plan R633/G  pred 0.639 s (+1.0%)  perr 7.84e-15
+plan=T633/G n=6912   f64  min    0.661 s  med    0.665 s    992.8 GFLOP/s(2mkn)  speedup 1.169  relerr 1.10e-14  split L 0.010 R 0.018 gemm 0.629 P 0.008  plan T633/G
+plan=R363+4/D48/G6 n=6912   f64  min    0.453 s  med    0.457 s   1446.4 GFLOP/s(2mkn)  speedup 1.703  relerr 7.03e-15  split L 0.009 R 0.010 gemm 0.426 P 0.012  plan R363+4/D48/G6  pred 0.456 s (-0.1%)  perr 8.45e-15
+plan=T363+4/D48/G6 n=6912   f64  min    0.478 s  med    0.479 s   1380.1 GFLOP/s(2mkn)  speedup 1.625  relerr 8.81e-15  split L 0.010 R 0.010 gemm 0.447 P 0.013  plan T363+4/D48/G6
+plan=R363+3/R633/G6 n=6912   f64  min    0.451 s  med    0.452 s   1461.8 GFLOP/s(2mkn)  speedup 1.721  relerr 6.74e-15  split L 0.009 R 0.010 gemm 0.421 P 0.012  plan R363+3/R633/G6  pred 0.451 s (-0.1%)  perr 9.97e-15
+plan=T363+3/T633/G6 n=6912   f64  min    0.497 s  med    0.499 s   1323.1 GFLOP/s(2mkn)  speedup 1.558  relerr 1.63e-14  split L 0.010 R 0.010 gemm 0.467 P 0.013  plan T363+3/T633/G6
+# done 18:38
+exit 0
+
+## the screen before the campaign (scratchpad t42_screen.py, the menu's metrics; python3 -I; all Brent-checked exactly)
+# scheme (Perminov's addition_reduced_ZT)   orientation  saving streams  traffic  amp   amp/cl amp_eq g_inf2  g_eq  g_infinf Q0
+# 3x3x6_m42_cr139_cn287 (139 adds, naive 287) 3x3x6     0.7778 51/60/60 12.33  4.387 5.066  6.407  24.5  11.07   77   21
+#                                             3x6x3     0.7778 60/60/51 12.33  6.000 4.899  6.166  43.8   9.74  144   27
+#                                             6x3x3     0.7778 60/51/60 12.33  5.362 6.191  8.061  46.1  22.84  115   27
+# 3x3x6_m42_cr140_cn335 (140 adds)            3x3x6     0.7778 51/60/60 12.33  6.538 7.550 10.115  50.1  25.12  171   29
+# 3x3x6_m42_cr145_cn369 (145 adds)            3x3x6     0.7778 51/60/60 12.33  8.201 9.469 13.110  68.2  35.69  269   35
+# 3x3x6_m42_cr150_cn367 (150 adds)            3x3x6     0.7778 51/60/60 12.33  7.953 9.183 12.658  62.3  32.24  253   34
+# 3x3x6_m43_cr153_cn284 (rank 43, 153 adds)   3x3x6     0.7963 52/61/61 12.56  6.265 7.234 12.172  51.0  35.81  157   36
+# reference: DPS accurate <3x3x6:40> 0.7407 49/58/58 11.89 amp 2.046 amp/cl 2.363 amp_eq 2.280 g_inf2 20.0 g_eq 6.162 (3x6x3: 2.453 / 5.125);
+#            accurate_262 <4x4x4:48> 0.75 64/64/64 12.0 amp_eq 2.828 g_eq 5.657
+# programs (schemes/t336_*, t363_*, t633_*; same files in schemes/opt): Perminov's reduced forms for the maps the 3x3x6
+# orientation uses (L 33 adds, R 39, P 67 = 139), re-indexed where another orientation reuses a map and transposed by
+# PLinOpt's transpozer where it needs the transposed map (3x6x3: 39, 43+6 negations, 66; 6x3x3: 43+6, 33, 63); all nine
+# SLPchecker SUCCESS against the .sms written from the verified matrices.  The fork's optimizer -s 1 -Q -O 500 on the same
+# nine matrices: 34, 41, 71, 41, 45, 67, 45, 34, 66 additions (one to four more than Perminov's on every matrix, 0.2 s each).
+## verdict
+# The T levels' passes take exactly the R levels' times (bandwidth-bound; two more streams), the two extra products cost
+# 4-5% on a single level, 8-10% on two-level plans, 13-16% on the cycle, and the error is 2.2-3.5x the R level's as a single
+# level, 3.7-4x in two-level plans, 6.5-7x in the cycle (f32 err64 above the GEMM's own where every R plan is below it).
+# Not added to the planner's menu (named plans only).  Orbit floors of the class: see orbit_t42 below when done.
+## orbit floors of the ternary class (matmul/levels/orbit_rect.py, GL3 x GL3 x GL6, 8 starts, 12 jobs; 14 s)
+# 3x3x6 orientation: representative amp 4.387 (ratio 5.066) g_inf2 24.50 (ratio 8.17) g_2 184.63;
+#   amp min 2.447 (ratio 2.825) at g_inf2 28.08 g_2 131.52; g_inf2 min 15.35 (ratio 5.116) at amp 3.192; g_2 min 131.41
+# 3x6x3 orientation: representative amp 6.000 (ratio 4.899) g_inf2 43.81 (ratio 7.30);
+#   amp min 3.468 (ratio 2.831) at g_inf2 39.32; g_inf2 min 28.91 (ratio 4.818) at amp 4.266; g_2 min 131.41
+# So the class's amplification floor is the 4x4 class's 2 sqrt 2 (2.828), 26% above the accurate <3x3x6:40> class's 2.242,
+# and the 139-addition point is 1.8x above its own floor: even at its best the class would only match the 4x4 scheme's
+# accuracy with two products more than DPS's 3x3x6 scheme.  Scratch: t42/orbit_t42.log, orbit_t42_{336,363}.csv.

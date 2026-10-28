@@ -53,11 +53,17 @@ static void FN(kernels)(int lv, FN(kern_t) k[3]) {
     else if (lv == LV_R336 && fmm_f64pass()) { k[0] = r336_L_fd; k[1] = r336_R_fd; k[2] = r336_P_fd; }
     else if (lv == LV_R363 && fmm_f64pass()) { k[0] = r363_L_fd; k[1] = r363_R_fd; k[2] = r363_P_fd; }
     else if (lv == LV_R633 && fmm_f64pass()) { k[0] = r633_L_fd; k[1] = r633_R_fd; k[2] = r633_P_fd; }
+    else if (lv == LV_T336 && fmm_f64pass()) { k[0] = t336_L_fd; k[1] = t336_R_fd; k[2] = t336_P_fd; }
+    else if (lv == LV_T363 && fmm_f64pass()) { k[0] = t363_L_fd; k[1] = t363_R_fd; k[2] = t363_P_fd; }
+    else if (lv == LV_T633 && fmm_f64pass()) { k[0] = t633_L_fd; k[1] = t633_R_fd; k[2] = t633_P_fd; }
 #endif
     else if (lv == LV_D48) { k[0] = FN(dps48_L_); k[1] = FN(dps48_R_); k[2] = FN(dps48_P_); }
     else if (lv == LV_R336) { k[0] = FN(r336_L_); k[1] = FN(r336_R_); k[2] = FN(r336_P_); }
     else if (lv == LV_R363) { k[0] = FN(r363_L_); k[1] = FN(r363_R_); k[2] = FN(r363_P_); }
     else if (lv == LV_R633) { k[0] = FN(r633_L_); k[1] = FN(r633_R_); k[2] = FN(r633_P_); }
+    else if (lv == LV_T336) { k[0] = FN(t336_L_); k[1] = FN(t336_R_); k[2] = FN(t336_P_); }
+    else if (lv == LV_T363) { k[0] = FN(t363_L_); k[1] = FN(t363_R_); k[2] = FN(t363_P_); }
+    else if (lv == LV_T633) { k[0] = FN(t633_L_); k[1] = FN(t633_R_); k[2] = FN(t633_P_); }
     else { k[0] = FN(sw2_L_); k[1] = FN(sw2_R_); k[2] = FN(sw2_P_); }
 }
 

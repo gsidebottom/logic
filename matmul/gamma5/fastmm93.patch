@@ -1,0 +1,112 @@
+--- matmul/fastmm/fmm.c	2026-10-26 13:37:32
++++ matmul/fastmm93/fmm.c	2026-10-28 08:53:42
+@@ -127,10 +127,10 @@
+     return e ? atoi(e) : 4;
+ }
+ static int lv_grid(int lv) {
+-    static const int g[LV_N] = {1, 2, 4, 8, 2, 4, 4};
++    static const int g[LV_N] = {1, 2, 4, 8, 2, 5, 4};   /* EXPERIMENT: D48 slot holds a <5x5x5:93> scheme */
+     return lv < 0 ? 1 : g[lv];
+ }
+-static int lv_rank(int lv) { return lv == LV_SW ? 7 : lv == LV_D48 ? 48 : 49; }
++static int lv_rank(int lv) { return lv == LV_SW ? 7 : lv == LV_D48 ? 93 : 49; }   /* EXPERIMENT: 93 */
+ 
+ /* scratch elements a plan needs at size n: each fused level 3 r blocks of m*m + pad (S, T, M);
+  * the levels below reuse their scratch product after product */
+@@ -222,7 +222,7 @@
+ #define K_GIN 100   /* K_GIN + 16 k + level: GEMM per product inside that level, k streams */
+ #define K_PIPE 1000 /* K_PIPE + ((16 k + p) 2 + part) 8 + level: pipelined sub-problems */
+ #define K_ERR 9000  /* K_ERR + 0, 1, 2: errors of SW/G, D48/G, D48/D48/G at n = N_E */
+-#define N_E 2048
++#define N_E 6400   /* EXPERIMENT: divisible by 2 and 25 so SW/G, D48/G and D48/D48/G exist with a 5x5 D48 (2048 is not) */
+ #define CALIB_FORMAT 4
+ static const int PIPE_K[] = {3, 6}, PIPE_P[] = {2, 3, 4};  /* the pipelines the planner considers */
+ #define NPIPE_K ((int)(sizeof PIPE_K / sizeof PIPE_K[0]))
+--- matmul/fastmm/fmm_impl.h	2026-10-26 13:37:32
++++ matmul/fastmm93/fmm_impl.h	2026-10-28 08:56:07
+@@ -70,7 +70,7 @@
+  * slabs multiply the traffic through the L2 the SME units share).  The packing buffers are
+  * allocated once, for the largest m seen. */
+ static void FN(gemm_hybrid)(int r, size_t m, T *const *S, T *const *Tt, T *const *M, int k, int j, int w) {
+-    static T *pa[64], *pb[64];
++    static T *pa[128], *pb[128];   /* EXPERIMENT: 93 products */
+     static size_t cap;
+     const char *e = getenv("FMM_NEON_SLAB");
+     size_t slab = e ? (size_t)atol(e) : 0;
+@@ -112,9 +112,9 @@
+  * GEMM(q - 1) has finished reading, OUT(q - 1) reads its M, which GEMM(q + 1) overwrites only in
+  * the next step.  Few pass threads: streaming passes starve the SME units (probe_overlap). */
+ typedef struct {
+-    const T *in[2][16];         /* Y's input blocks of sub-problems: A side, B side */
+-    T *out[16];
+-    T *S[2][64], *Tt[2][64], *M[2][64];
++    const T *in[2][32];         /* Y's input blocks of sub-problems: A side, B side (EXPERIMENT: 25 blocks) */
++    T *out[32];
++    T *S[2][128], *Tt[2][128], *M[2][128];
+ } FN(pipe_t);
+ 
+ /* background passes: up to three passes in row chunks, which the pass threads of a pipeline run
+@@ -124,8 +124,8 @@
+     int n, nch;
+     FN(kern_t) k[3];
+     size_t mb[3], ldi[3], ldo[3];
+-    const T *in[3][64];
+-    T *out[3][64];
++    const T *in[3][128];
++    T *out[3][128];
+     atomic_int next;
+ } FN(bg_t);
+ 
+@@ -180,7 +180,7 @@
+         int qo = q - 1, qi = q + 1, gq = q >= 0 && q < r;
+         int have_out = qo >= 0, have_in = qi < r;
+         /* block pointers of sub-problem qi's inputs (blocks of SX[qi], TX[qi]) and qo's output */
+-        T *in_s[16], *in_t[16], *out_c[16];
++        T *in_s[32], *in_t[32], *out_c[32];
+         for (int b = 0; b < gy * gy; b++) {
+             size_t off = (size_t)(b / gy) * my * m + (size_t)(b % gy) * my;
+             if (have_in) { in_s[b] = SX[qi] + off; in_t[b] = TX[qi] + off; }
+@@ -232,7 +232,7 @@
+     size_t mz = m / gz, bs = mz * mz + fmm_pad(), set = (size_t)3 * rz * bs;
+     FN(kern_t) kz[3];
+     FN(kernels)(lz, kz);
+-    T *SZ[2][64], *TZ[2][64], *MZ[2][64];
++    T *SZ[2][128], *TZ[2][128], *MZ[2][128];
+     for (int b = 0; b < 2; b++)
+         for (int j = 0; j < rz; j++) {
+             SZ[b][j] = work + b * set + (size_t)j * bs;
+@@ -242,8 +242,8 @@
+     T *below = work + 2 * set;
+ #define ZBLK(X, q, b) ((X)[q] + (size_t)((b) / gz) * mz * m + (size_t)((b) % gz) * mz)
+     double t0 = now();
+-    const T *ia[16], *ib[16];
+-    T *oc[16];
++    const T *ia[32], *ib[32];
++    T *oc[32];
+     for (int b = 0; b < gz * gz; b++) { ia[b] = ZBLK(SX, 0, b); ib[b] = ZBLK(TX, 0, b); }
+     FN(pass)(kz[0], mz, m, mz, ia, SZ[0]);
+     FN(pass)(kz[1], mz, m, mz, ib, TZ[0]);
+@@ -291,8 +291,8 @@
+     FN(kern_t) k[3];
+     FN(kernels)(lv, k);
+     size_t m = n / g;
+-    const T *Ab[16], *Bb[16];
+-    T *Cb[16], *S[64], *Tt[64], *M[64];
++    const T *Ab[32], *Bb[32];
++    T *Cb[32], *S[128], *Tt[128], *M[128];
+     for (int q = 0; q < g * g; q++) {
+         Ab[q] = A + (q / g) * m * lda + (q % g) * m;
+         Bb[q] = B + (q / g) * m * ldb + (q % g) * m;
+--- matmul/fastmm/bench_impl.h	2026-10-25 17:45:59
++++ matmul/fastmm93/bench_impl.h	2026-10-28 08:56:07
+@@ -52,8 +52,8 @@
+ static void FN(dps48_opbyop)(size_t n, const T *A, const T *B, T *C, T *work, T **temps, FN(split_t) *sp) {
+     int g = 4, r = 48;
+     size_t m = n / g;
+-    const T *Ab[16], *Bb[16];
+-    T *Cb[16], *S[48], *Tt[48], *M[48];
++    const T *Ab[32], *Bb[32];
++    T *Cb[32], *S[128], *Tt[128], *M[128];
+     for (int k = 0; k < 16; k++) {
+         Ab[k] = A + (k / g) * m * n + (k % g) * m;
+         Bb[k] = B + (k / g) * m * n + (k % g) * m;

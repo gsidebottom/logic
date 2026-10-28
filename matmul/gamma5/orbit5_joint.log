@@ -1,0 +1,9 @@
+=== orbit5b joint objective (TG 29.7, TA 3.26), 16 starts, maxiter 500 Wed Oct 28 08:46:56 EDT 2026
+96 tasks on 12 processes
+AE93               role 0: joint    3.183 ->    1.055 (exp 0.033)   
+AE93               role 1: joint    3.183 ->    1.055 (exp 0.033)   
+AE93               role 2: joint    3.161 ->    1.042 (exp 0.026)   
+MPK93              role 0: joint    3.772 ->    1.334 (exp 0.179)   
+MPK93              role 1: joint    3.772 ->    1.343 (exp 0.183)   
+MPK93              role 2: joint    3.772 ->    1.326 (exp 0.175)   
+=== exit 0 Wed Oct 28 08:47:37 EDT 2026

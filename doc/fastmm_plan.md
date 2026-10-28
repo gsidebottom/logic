@@ -781,6 +781,31 @@ with the explanation of DPS's definition.  Worktrees: the session scratchpad hol
 matmul/dps48/plinopt (`git worktree prune` once the scratchpad is gone); the PR texts are in the
 PRs themselves.  The letter is doc/letter_dumas_optimizer_speed_2026-10-27.md (untracked).
 
+5x5 SCREEN (2026-10-28; `matmul/gamma5/`, README there).  Greg asked whether 5x5 schemes can give
+a fast and more accurate level than accurate_262.  No.  Both known rank-93 classes are on disk
+(the Hell's Bells backup, matmul/out/scratch_backup_2026-10-22): Moosbauer-Poole(-Kemper)'s and
+AlphaEvolve's, both +-1 (AlphaEvolve's converted to PLinOpt form in gamma5/slp/ae93, SLPchecker
+and MMchecker pass).  Accuracy: at equal product saving (0.973 5x5 levels per 4x4 level) a 5x5
+scheme needs gamma_{inf,2} <= 29.7, gamma_{inf,inf} <= 182, amp <= 3.26.  The representatives
+sit at 94-112 / 413-555 / 10.2-11.8, where DPS's +-1-type points of the 4x4 orbit sit (76-98
+and 9.5-12.0), which their construction brought down 3.4-4.3x.  The continuous orbit minima
+(orbit5.py, L-BFGS over GL_5^3, 24 starts; the code reproduces the 4x4 orbit's known 21.41 /
+2.828 / 154.51 from DPS's accurate point): AE93 gamma_{inf,2} 26.6, amp 3.160, gamma_2 295.9;
+MPK93 35.5 / 3.795 / 349.8 -- but at different points: the best point meeting both thresholds
+at once (orbit5b.py, joint objective) is 4-5% above them for AE93 and 33% for MPK93, and every
+minimizer is dense irrational (1400-2320 of 2325 entries nonzero per factor), so no exact point
+can beat accurate_262.  The Hadamard route exists in five dimensions (352 and 2912 unordered
+dyadic orthogonal row sets at denominators 2 and 4, against 32 signed permutations) but is
+moot.  Speed: the model puts one 5x5:93 level at 15.9% off the GEMM against the 4x4's 16.8%
+(118 blocks of n/5 per level against 64 of n/4).  Measured (a copy of the library with grid 5 /
+rank 93 in the D48 slot, N_E 6400, pointer tables widened -- gamma5/fastmm93.patch;
+AlphaEvolve's direct-sum kernels; results/fmm93_speed_2026-10-28.txt): the GEMM part equals
+the 4x4 level's (0.495 vs 0.510 s at 10240 f32) but the passes take 1.7-2.3x longer for 1.18x
+the traffic, i.e. 118 streams run at 50-70% of the 64-stream bandwidth; one level is 2-5%
+slower at 10240 and 8-26% at 5120, the planner's best plans 17-22% slower (it avoids the 5x5
+level at 5120 f32).  Verdict: no, on both counts; the only follow-up with value, grouping the
+passes of many-stream levels, would chase parity.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:
@@ -906,7 +931,9 @@ Which operations matter depends on the implementation:
    - for fused passes, prefer shapes with the best ratio of saved products to blocks moved:
      rectangular schemes (<4x4x8>), product schemes (<8x8x8:336> = ours x Strassen), 3x3:23
      for sizes 3^k * m (screened 2026-10-27, `matmul/gamma3/`: a 3x3 level is slower per saved
-     product and not more accurate than a 4x4 level, see the 3x3 ACCURACY SCREEN paragraph);
+     product and not more accurate than a 4x4 level, see the 3x3 ACCURACY SCREEN paragraph; 5x5:93
+     screened 2026-10-28, `matmul/gamma5/`: passes at half the bandwidth and no class more
+     accurate, see the 5x5 SCREEN paragraph);
    - register pressure (live values) of the fused program, if the passes ever become
      compute-bound.
 6. **Other machines and precisions.**  x86-64 with MKL and BLIS (AVX-512, AMX), the Apple

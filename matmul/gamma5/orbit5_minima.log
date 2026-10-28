@@ -1,0 +1,9 @@
+=== orbit5 run2: 24 starts, maxiter 500 Wed Oct 28 08:44:45 EDT 2026
+432 tasks on 12 processes
+AE93               role 0: g_inf2   94.549 ->   26.593 (exp 2.038)   amp   10.161 ->    3.160 (exp 0.645)   g_2  517.395 ->  295.854 (exp 3.535)   | at g_inf2 min: nnz 2136/2185/1705 of 2325/2325/2325 distinct 3392
+AE93               role 1: g_inf2   94.549 ->   26.567 (exp 2.038)   amp   10.161 ->    3.160 (exp 0.645)   g_2  517.395 ->  295.854 (exp 3.535)   | at g_inf2 min: nnz 2211/2267/1920 of 2325/2325/2325 distinct 3775
+AE93               role 2: g_inf2   93.867 ->   26.716 (exp 2.041)   amp   10.161 ->    3.160 (exp 0.646)   g_2  517.395 ->  295.854 (exp 3.535)   | at g_inf2 min: nnz 1867/1892/1383 of 2325/2325/2325 distinct 3301
+MPK93              role 0: g_inf2  112.041 ->   35.500 (exp 2.218)   amp   11.779 ->    3.795 (exp 0.759)   g_2  709.370 ->  349.821 (exp 3.639)   | at g_inf2 min: nnz 2317/2245/1996 of 2325/2325/2325 distinct 4661
+MPK93              role 1: g_inf2  112.041 ->   36.662 (exp 2.238)   amp   11.779 ->    3.795 (exp 0.759)   g_2  709.370 ->  349.821 (exp 3.639)   | at g_inf2 min: nnz 2196/2264/1931 of 2325/2325/2325 distinct 4481
+MPK93              role 2: g_inf2  112.041 ->   36.001 (exp 2.227)   amp   11.779 ->    3.795 (exp 0.759)   g_2  709.370 ->  349.821 (exp 3.639)   | at g_inf2 min: nnz 2163/2322/1895 of 2325/2325/2325 distinct 4572
+=== exit 0 Wed Oct 28 08:46:33 EDT 2026

@@ -301,13 +301,28 @@ def write_rust(path, dps48_src):
         what = {"l": "left factors: 16 blocks of A -> 48", "r": "right factors: 16 blocks of B -> 48",
                 "p": "products -> 16 blocks of C"}[side]
         progs.append((f"dps48_{side}", t, f"D48 ({base}, {count_ops_expr(t)} operations), {what}"))
+    # the R levels: DPS's accurate <3x3x6:40> in its three orientations, from the same programs as
+    # the C kernels (--rschemes DIR, default schemes/opt)
+    rdir = sys.argv[sys.argv.index("--rschemes") + 1] if "--rschemes" in sys.argv else os.path.join(HERE, "schemes", "opt")
+    r_ops = 0
+    for name, shape in (("r336", "3x3x6"), ("r363", "3x6x3"), ("r633", "6x3x3")):
+        rsrc = [open(os.path.join(rdir, f"{name}_{s}.slp")).read() for s in "LRP"]
+        g1, g2, g3 = (int(x) for x in shape.split("x"))
+        r_ops += sum(count_ops_expr(t) for t in rsrc)
+        for side, t in zip("lrp", rsrc):
+            what = {"l": f"left factors: {g1 * g2} blocks of A -> 40", "r": f"right factors: {g2 * g3} blocks of B -> 40",
+                    "p": f"products -> {g1 * g3} blocks of C"}[side]
+            progs.append((f"{name}_{side}", t, f"{name.upper()} (DPS's accurate <{shape}:40>, {os.path.relpath(rdir, HERE)}, "
+                                                f"{count_ops_expr(t)} operations), {what}"))
     for name, text, doc in progs:
         code, ni, no = rust_kernel(name, text, doc)
         parts.append(code)
     parts.append(f'pub const DPS48_PROGRAM: &str = "{base}";')
     parts.append(f"pub const DPS48_OPS: usize = {sum(count_ops_expr(t) for t in src)};")
+    parts.append(f"/// the operations of the three R levels' programs (the calibration cache's kernels key)")
+    parts.append(f"pub const R_OPS: usize = {r_ops};")
     open(path, "w").write("\n".join(parts) + "\n")
-    print(f"rust kernels: sw, dps48 from {base} -> {path}")
+    print(f"rust kernels: sw, dps48 from {base}, r336/r363/r633 from {os.path.relpath(rdir, HERE)} -> {path}")
 
 
 def count_ops_expr(text):

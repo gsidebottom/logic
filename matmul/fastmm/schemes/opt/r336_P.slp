@@ -1,4 +1,4 @@
-# r336 P: PLinOpt optimizer -s 1 -Q -O 500 on 3x3x6_40_DPS-accurate_P.sms (DPS's accurate <3x3x6:40>), checked by SLPchecker: SUCCESS: correct SLP for 18x40 (366+|384x) : <148, 18>
+# r336 P: PLinOpt optimizer -O 500 on 3x3x6_40_DPS-accurate_P.sms (DPS's accurate <3x3x6:40>), run on 2026-10-28 with upstream main 7c20065's optimizer built on macOS (its randomized search is unseeded, so the program is not reproducible bit for bit; the fork's `optimizer -s 1 -Q -O 500` gives programs of the same size); checked by SLPchecker: SUCCESS: correct SLP for 18x40 (366+|384x) : <148, 18>
 v12:=i10-i22;
 v13:=i35-i14;
 v14:=i34+i15;

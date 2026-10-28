@@ -4,7 +4,7 @@
 //!
 //!   cargo run --release --example gemm_after_level
 
-use fmm::{exec, Plan, Real};
+use fmm::{exec, Plan, Real, Shape};
 use rayon::prelude::*;
 use std::time::Instant;
 
@@ -27,7 +27,7 @@ fn evict_scoped(buf: &mut [u8], v: u8) {
 fn variants<T: Real>(m: usize, a: &[T], b: &[T], c: &mut [T], buf: &mut [u8]) -> [f64; 4] {
     let gt = |c: &mut [T]| {
         let t = Instant::now();
-        T::gemm(m, a, m, b, m, 0.0, c, m);
+        T::gemm(Shape::sq(m), a, m, b, m, 0.0, c, m);
         t.elapsed().as_secs_f64()
     };
     let v1 = fmm::in_pool(|| med((0..15u8).map(|r| { buf.par_chunks_mut(2 << 20).for_each(|ch| ch.fill(r)); gt(&mut *c) }).collect()));
@@ -50,10 +50,10 @@ fn main() {
     show("fresh process", variants(m, &a, &b, &mut c, &mut buf));
     for plan in ["D48/G", "D48/G6", "SW+3/D48/G6"] {
         let p = Plan::parse(plan).unwrap();
-        let mut work: Vec<f32> = vec![1.0; p.work(n)];
+        let mut work: Vec<f32> = vec![1.0; p.work(Shape::sq(n))];
         fmm::in_pool(|| {
             for _ in 0..3 {
-                exec::exec(&p.0, n, &a, n, &b, n, &mut c, n, &mut work);
+                exec::exec(&p.0, Shape::sq(n), &a, n, &b, n, &mut c, n, &mut work);
             }
         });
         show(&format!("after {plan} x3"), variants(m, &a, &b, &mut c, &mut buf));

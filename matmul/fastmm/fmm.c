@@ -248,7 +248,7 @@ static int parse_plan(const char *meth, shape_t n, int *plan) {
  * over k GEMM streams (3, 6) with p pass threads (2, 3, 4): PYkKpPs m = the steady time per sub-problem, PYkKpPo
  * m = the pipeline's fill and drain (a pipeline of q sub-problems takes q s + o) */
 #define K_GIN 100   /* K_GIN + 16 k + level: GEMM per product inside that level, k streams */
-#define K_PIPE 1000 /* K_PIPE + ((16 k + p) 2 + part) 8 + level: pipelined sub-problems */
+#define K_PIPE 1000 /* K_PIPE + ((16 k + p) 2 + part) 16 + level: pipelined sub-problems */
 #define K_ERR 9000  /* K_ERR + i: the error of ERR_PLANS[i] against the classical GEMM at n = N_E */
 #define N_E 2304    /* divisible by 16 (D48/D48) and by 3 and 6 (the R levels); blocks of 384 and up */
 #define NERR 6
@@ -258,7 +258,9 @@ static const char *ERR_NAMES[NERR] = {"ESW", "ED48", "ED48D48", "ER336", "ER363"
 static const int PIPE_K[] = {3, 6}, PIPE_P[] = {2, 3, 4};  /* the pipelines the planner considers */
 #define NPIPE_K ((int)(sizeof PIPE_K / sizeof PIPE_K[0]))
 #define NPIPE_P ((int)(sizeof PIPE_P / sizeof PIPE_P[0]))
-#define CALIB_MAX 1024
+/* the table's capacity: a square calibration to 13824 fills about 950 entries, each rectangular
+ * shape calibrated for adds about 120 */
+#define CALIB_MAX 4096
 typedef struct {
     int kind[CALIB_MAX], n;
     shape_t s[CALIB_MAX];
@@ -320,30 +322,52 @@ static double calib_get(const calib_t *c, int kind, shape_t s) {
     return -1;
 }
 
-/* a cost-model entry at any shape: the measured value, else, for a square shape, log-log
- * interpolation between the nearest measured square sizes below and above (times go like m^3
- * for GEMMs and m^2 for passes, so a straight line in log-log); -1 outside the measured range
- * and for rectangular shapes that were not measured */
+/* the square size whose entry of this kind costs what a rectangular shape's would, for a shape
+ * that was not measured: GEMM-like entries (a leaf, the GEMM per product, a pipeline's steady and
+ * fill times) go by flops, cbrt(m k n) (Accelerate runs rectangular shapes within 5% of the square
+ * rate), the passes of a level by their traffic, (g1 g2 + r) m k + (g2 g3 + r) k n + (g1 g3 + r) m n
+ * words for its blocks of each operand against (g1 g2 + g2 g3 + g1 g3 + 3 r) m'^2 for a square m' */
+static double shape_equiv(int kind, shape_t s) {
+    if (shape_sq(s)) return (double)s.m;
+    if (kind < K_GIN && !lv_leaf(kind)) {
+        lvdef_t d = LVDEF[kind];
+        double w = (d.g1 * d.g2 + d.r) * ((double)s.m * s.k) + (d.g2 * d.g3 + d.r) * ((double)s.k * s.n) +
+                   (d.g1 * d.g3 + d.r) * ((double)s.m * s.n);
+        return sqrt(w / (d.g1 * d.g2 + d.g2 * d.g3 + d.g1 * d.g3 + 3 * d.r));
+    }
+    return cbrt((double)s.m * s.k * s.n);
+}
+
+/* a cost-model entry at any shape: the measured value, else log-log interpolation between the
+ * nearest measured square sizes below and above the shape's equivalent square size (times go like
+ * m^3 for GEMMs and m^2 for passes, so a straight line in log-log; for a rectangular shape an
+ * estimate, which fmm_calibrate_mkn replaces by measurements); -1 outside the measured range */
 static double calib_cost(const calib_t *c, int kind, shape_t s) {
+    double m = shape_equiv(kind, s), tlo = -1, thi = -1, teq = -1;
     size_t lo = 0, hi = 0;
-    double tlo = -1, thi = -1;
     for (int i = 0; i < c->n; i++) {
         if (c->kind[i] != kind) continue;
         if (shape_eq(c->s[i], s)) return c->t[i];
-        if (!shape_sq(s) || !shape_sq(c->s[i])) continue;
-        size_t cm = c->s[i].m, m = s.m;
-        if (cm < m && cm > lo) { lo = cm; tlo = c->t[i]; }
-        if (cm > m && (hi == 0 || cm < hi)) { hi = cm; thi = c->t[i]; }
+        if (!shape_sq(c->s[i])) continue;
+        size_t cm = c->s[i].m;
+        if ((double)cm == m) { teq = c->t[i]; continue; }
+        if ((double)cm < m && cm > lo) { lo = cm; tlo = c->t[i]; }
+        if ((double)cm > m && (hi == 0 || cm < hi)) { hi = cm; thi = c->t[i]; }
     }
+    if (teq >= 0) return teq;
     if (lo == 0 || hi == 0 || tlo <= 0 || thi <= 0) return -1;
-    double x = log((double)s.m / lo) / log((double)hi / lo);
+    double x = log(m / (double)lo) / log((double)hi / (double)lo);
     return tlo * pow(thi / tlo, x);
 }
 
 static void calib_put(calib_t *c, int kind, shape_t s, double t) {
     for (int i = 0; i < c->n; i++)
         if (c->kind[i] == kind && shape_eq(c->s[i], s)) { c->t[i] = t; return; }
-    if (c->n == CALIB_MAX) return;
+    if (c->n == CALIB_MAX) {                /* dropped: the planner then lacks it (and re-measures it) */
+        static int warned;
+        if (!warned++) fprintf(stderr, "fmm: calibration table full (%d entries), entries dropped\n", CALIB_MAX);
+        return;
+    }
     c->kind[c->n] = kind;
     c->s[c->n] = s;
     c->t[c->n++] = t;
@@ -635,8 +659,8 @@ static double plan_growth(const errmod_t *e, const int *plan) {
     return g;
 }
 
-static double plan_err(const errmod_t *e, const int *plan, size_t n) {
-    return e->base * sqrt((double)n / N_E) * plan_growth(e, plan);
+static double plan_err(const errmod_t *e, const int *plan, shape_t s) {
+    return e->base * sqrt((double)s.k / N_E) * plan_growth(e, plan);   /* the inner dimension sums k products */
 }
 
 static double fmm_max_growth(void) {
@@ -645,12 +669,12 @@ static double fmm_max_growth(void) {
 }
 
 /* the cheapest plan whose error growth is at most gmax (0: no limit), -1 if none is calibrated */
-static double plan_best_budget(const calib_t *c, size_t n, double gmax, int *plan) {
-    if (gmax <= 0) return plan_best(c, sq(n), plan);
+static double plan_best_budget(const calib_t *c, shape_t s, double gmax, int *plan) {
+    if (gmax <= 0) return plan_best(c, s, plan);
     errmod_t e = err_model(c);
     if (!e.ok) return -1;
     static ranked_t rk[8192];
-    int cnt = plan_enum(c, sq(n), rk, 8192);
+    int cnt = plan_enum(c, s, rk, 8192);
     for (int i = 0; i < cnt; i++)
         if (plan_growth(&e, rk[i].plan) <= gmax * (1 + 1e-9)) {
             memcpy(plan, rk[i].plan, sizeof rk[i].plan);
@@ -660,23 +684,25 @@ static double plan_best_budget(const calib_t *c, size_t n, double gmax, int *pla
 }
 
 /* ---- padding ------------------------------------------------------------------------------ */
-/* A plan runs at a size its levels divide; any other n is padded: A and B copied into zeroed
- * N x N matrices, the plan run at N, the top-left n x n of the result copied to C.  The block
- * sizes need no alignment (Accelerate's GEMM runs within 5% at sizes off multiples of 16, 32,
- * 64), so N = n rounded up to a multiple of 8 * 2^j suffices, j = 0..7 covering plans of up to
- * three 4x4 levels plus one 2x2; the copies cost about 6 N^2 elements of memory traffic. */
+/* A plan runs at a shape its levels divide; any other shape is padded: A and B copied into
+ * zeroed matrices of the padded shape, the plan run there, the top-left m x n of the result
+ * copied to C.  The block sizes need no alignment (Accelerate's GEMM runs within 5% at sizes off
+ * multiples of 16, 32, 64), so each dimension rounded up to a multiple of 2^a 3^b (a <= 10, b <=
+ * 3) suffices: what plans of 2x2 and 4x4 levels and of the 3x3x6 family divide.  The copies
+ * cost about twice the padded matrices' elements of memory traffic (6 N^2 for a square). */
 #define PAD_BW 80e9     /* bytes per second of the padding copies */
 
-static double pad_cost(size_t n, size_t N, int f64) {
-    return N == n ? 0 : 6.0 * (double)N * (double)N * (f64 ? 8 : 4) / PAD_BW;
+static double pad_cost(shape_t s, shape_t S, int f64) {
+    if (shape_eq(s, S)) return 0;
+    double words = (double)S.m * S.k + (double)S.k * S.n + (double)S.m * S.n;
+    return 2.0 * words * (f64 ? 8 : 4) / PAD_BW;
 }
 
-/* the cheapest plan for n over the padded sizes N >= n, with the padding priced; *npad = N.  The
- * candidates are n rounded up to multiples of 2^a 3^b (a <= 10, b <= 3): what plans of 2x2 and
- * 4x4 levels and of the 3x3x6 family divide */
-static double plan_best_padded(const calib_t *c, size_t n, double gmax, int f64, int *plan, size_t *npad) {
+/* the cheapest plan for s over the padded shapes S >= s (every dimension rounded up to the same
+ * multiple), with the padding priced; *spad = S */
+static double plan_best_padded(const calib_t *c, shape_t s, double gmax, int f64, int *plan, shape_t *spad) {
     double best = -1;
-    size_t tried[64];
+    shape_t tried[64];
     int nt = 0;
     for (int j = -1; j < 44; j++) {
         size_t d = 1;
@@ -684,19 +710,24 @@ static double plan_best_padded(const calib_t *c, size_t n, double gmax, int f64,
             for (int a = 0; a < j % 11; a++) d *= 2;
             for (int b = 0; b < j / 11; b++) d *= 3;
         }
-        size_t N = j < 0 ? n : (n + d - 1) / d * d;
+        shape_t S = s;
+        if (j >= 0) {
+            S.m = (s.m + d - 1) / d * d;
+            S.k = (s.k + d - 1) / d * d;
+            S.n = (s.n + d - 1) / d * d;
+        }
         int seen = 0;
-        for (int i = 0; i < nt; i++) seen |= tried[i] == N;
+        for (int i = 0; i < nt; i++) seen |= shape_eq(tried[i], S);
         if (seen || nt == 64) continue;
-        tried[nt++] = N;
+        tried[nt++] = S;
         int p[PLAN_MAX];
-        double t = plan_best_budget(c, N, gmax, p);
+        double t = plan_best_budget(c, S, gmax, p);
         if (t < 0) continue;
-        t += pad_cost(n, N, f64);
+        t += pad_cost(s, S, f64);
         if (best < 0 || t < best) {
             best = t;
             memcpy(plan, p, sizeof p);
-            *npad = N;
+            *spad = S;
         }
     }
     return best;
@@ -709,7 +740,7 @@ static int api_loaded[2];
 static void *api_ws;
 static size_t api_ws_bytes;
 typedef struct {
-    size_t n, npad;
+    shape_t s, spad;
     int f64, plan[PLAN_MAX];
     double gmax, t;
 } api_entry;
@@ -725,37 +756,37 @@ static calib_t *api_calib(int f64) {
     return api_cal[f64];
 }
 
-/* the plan for (n, precision, budget) and the size N >= n it runs at (padded if N > n): from
- * the plans already made, else the planner (the classical GEMM at n where the calibration does
- * not cover n); t: its predicted time, -1 if none */
-static void api_plan(size_t n, int f64, double gmax, int *plan, size_t *npad, double *t) {
+/* the plan for (shape, precision, budget) and the shape S >= s it runs at (padded if S > s):
+ * from the plans already made, else the planner (the classical GEMM where the calibration does
+ * not cover the shape); t: its predicted time, -1 if none */
+static void api_plan(shape_t s, int f64, double gmax, int *plan, shape_t *spad, double *t) {
     for (int i = 0; i < api_nplans; i++)
-        if (api_plans[i].n == n && api_plans[i].f64 == f64 && api_plans[i].gmax == gmax) {
+        if (shape_eq(api_plans[i].s, s) && api_plans[i].f64 == f64 && api_plans[i].gmax == gmax) {
             memcpy(plan, api_plans[i].plan, sizeof api_plans[i].plan);
-            *npad = api_plans[i].npad;
+            *spad = api_plans[i].spad;
             if (t) *t = api_plans[i].t;
             return;
         }
     calib_t *c = api_calib(f64);
     int p[PLAN_MAX] = {LV_G};
-    size_t N = n;
-    double tt = c ? plan_best_padded(c, n, gmax, f64, p, &N) : -1;
+    shape_t S = s;
+    double tt = c ? plan_best_padded(c, s, gmax, f64, p, &S) : -1;
     if (tt < 0) {
         memset(p, 0, sizeof p);
         p[0] = LV_G;
-        N = n;
+        S = s;
     }
     api_entry *e = &api_plans[api_next];
     api_next = (api_next + 1) % 64;
     if (api_nplans < 64) api_nplans++;
-    e->n = n;
-    e->npad = N;
+    e->s = s;
+    e->spad = S;
     e->f64 = f64;
     e->gmax = gmax;
     e->t = tt;
     memcpy(e->plan, p, sizeof p);
     memcpy(plan, p, sizeof p);
-    *npad = N;
+    *spad = S;
     if (t) *t = tt;
 }
 
@@ -782,28 +813,57 @@ static void api_plan(size_t n, int f64, double gmax, int *plan, size_t *npad, do
 
 int fmm_sgemm(size_t n, const float *A, size_t lda, const float *B, size_t ldb, float *C, size_t ldc,
               double max_growth) {
-    return api_gemmf(n, A, lda, B, ldb, C, ldc, max_growth);
+    return api_gemmf(sq(n), A, lda, B, ldb, C, ldc, max_growth);
 }
 
 int fmm_dgemm(size_t n, const double *A, size_t lda, const double *B, size_t ldb, double *C, size_t ldc,
               double max_growth) {
-    return api_gemmd(n, A, lda, B, ldb, C, ldc, max_growth);
+    return api_gemmd(sq(n), A, lda, B, ldb, C, ldc, max_growth);
 }
 
-int fmm_calibrate(size_t n, int f64) { return f64 ? api_calibrated(n) : api_calibratef(n); }
+int fmm_sgemm_mkn(size_t m, size_t k, size_t n, const float *A, size_t lda, const float *B, size_t ldb, float *C,
+                  size_t ldc, double max_growth) {
+    shape_t s = {m, k, n};
+    return api_gemmf(s, A, lda, B, ldb, C, ldc, max_growth);
+}
 
-const char *fmm_plan(size_t n, int f64, double max_growth, double *predicted) {
+int fmm_dgemm_mkn(size_t m, size_t k, size_t n, const double *A, size_t lda, const double *B, size_t ldb, double *C,
+                  size_t ldc, double max_growth) {
+    shape_t s = {m, k, n};
+    return api_gemmd(s, A, lda, B, ldb, C, ldc, max_growth);
+}
+
+int fmm_calibrate(size_t n, int f64) { return f64 ? api_calibrated(sq(n)) : api_calibratef(sq(n)); }
+
+int fmm_calibrate_mkn(size_t m, size_t k, size_t n, int f64) {
+    shape_t s = {m, k, n};
+    return f64 ? api_calibrated(s) : api_calibratef(s);
+}
+
+static const char *plan_of_shape(shape_t s, int f64, double max_growth, double *predicted) {
     static char buf[160];
     int plan[PLAN_MAX];
-    size_t N;
+    shape_t S;
     double t;
     pthread_mutex_lock(&api_lock);
-    api_plan(n, f64 != 0, max_growth, plan, &N, &t);
+    api_plan(s, f64 != 0, max_growth, plan, &S, &t);
     plan_str(plan, buf, sizeof buf);
-    if (N != n) snprintf(buf + strlen(buf), sizeof buf - strlen(buf), " padded to %zu", N);
+    if (!shape_eq(S, s)) {
+        if (shape_sq(S)) snprintf(buf + strlen(buf), sizeof buf - strlen(buf), " padded to %zu", S.m);
+        else snprintf(buf + strlen(buf), sizeof buf - strlen(buf), " padded to %zux%zux%zu", S.m, S.k, S.n);
+    }
     pthread_mutex_unlock(&api_lock);
     if (predicted) *predicted = t;
     return buf;
+}
+
+const char *fmm_plan(size_t n, int f64, double max_growth, double *predicted) {
+    return plan_of_shape(sq(n), f64, max_growth, predicted);
+}
+
+const char *fmm_plan_mkn(size_t m, size_t k, size_t n, int f64, double max_growth, double *predicted) {
+    shape_t s = {m, k, n};
+    return plan_of_shape(s, f64, max_growth, predicted);
 }
 
 void fmm_release(void) {

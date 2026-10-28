@@ -13,9 +13,10 @@
  *
  * The plans come from the calibration cache (FMM_CALIB_DIR, default ~/Library/Caches/fmm, one
  * file per precision, calib5_f32.txt and calib5_f64.txt, keyed by machine and kernels); square
- * sizes between the calibrated ones are interpolated (rectangular sub-problems must have been
- * calibrated), and a plan runs padded to the next size its levels divide when that pays
- * (multiples of 2^a 3^b).
+ * sizes between the calibrated ones are interpolated, rectangular shapes that were not calibrated
+ * are priced from the square measurements (GEMMs by their flops, passes by their traffic: an
+ * estimate, which fmm_calibrate_mkn replaces by measurements), and a plan runs padded to the next
+ * shape its levels divide when that pays (every dimension to a multiple of 2^a 3^b).
  * FMM_F64PASS=1 makes the 4x4 scheme's passes of the single-precision path add in double
  * (float blocks in and out): the passes then round once per element stored, at the GEMM's
  * interface, instead of at every addition; same plans, same speed, less error at depth.
@@ -41,13 +42,24 @@ int fmm_sgemm(size_t n, const float *A, size_t lda, const float *B, size_t ldb, 
 int fmm_dgemm(size_t n, const double *A, size_t lda, const double *B, size_t ldb, double *C, size_t ldc,
               double max_growth);
 
-/* measure the calibration the planner needs for sizes up to n in one precision (f64: 0 or 1)
- * and add it to the cache; returns the number of entries measured */
+/* the same for an m x k matrix A and a k x n matrix B (C is m x n): a rectangular problem; its
+ * levels divide m, k and n by their grids; the planner prices its shapes from the square
+ * calibration (an estimate) unless they were calibrated (fmm_calibrate_mkn) */
+int fmm_sgemm_mkn(size_t m, size_t k, size_t n, const float *A, size_t lda, const float *B, size_t ldb, float *C,
+                  size_t ldc, double max_growth);
+int fmm_dgemm_mkn(size_t m, size_t k, size_t n, const double *A, size_t lda, const double *B, size_t ldb, double *C,
+                  size_t ldc, double max_growth);
+
+/* measure the calibration the planner needs for sizes up to n (square) or for the shape (m, k, n)
+ * in one precision (f64: 0 or 1) and add it to the cache; returns the number of entries measured */
 int fmm_calibrate(size_t n, int f64);
+int fmm_calibrate_mkn(size_t m, size_t k, size_t n, int f64);
 
 /* the plan fmm_sgemm (f64 = 0) or fmm_dgemm (f64 = 1) runs for n, e.g. "D48+3/D48/G6" ("G": the
- * classical GEMM), and its predicted time in seconds (-1 if not calibrated) */
+ * classical GEMM), and its predicted time in seconds (-1 if not calibrated); fmm_plan_mkn the same
+ * for a rectangular problem */
 const char *fmm_plan(size_t n, int f64, double max_growth, double *predicted);
+const char *fmm_plan_mkn(size_t m, size_t k, size_t n, int f64, double max_growth, double *predicted);
 
 /* free the workspace and the cached calibration and plans */
 void fmm_release(void);

@@ -12,7 +12,7 @@
 #![allow(unsafe_code)]
 
 use fmm::exec::{self, Side};
-use fmm::plan::Level;
+use fmm::plan::{Level, Shape};
 use fmm::kernels;
 use std::time::Instant;
 
@@ -86,7 +86,7 @@ fn run<T: Elem>(n: usize, threads: usize, reps: usize) {
     for rep in 0..=reps {
         // safe Rust kernel, the library's driver
         let t = Instant::now();
-        fmm::in_pool(|| exec::run_par(exec::factor_chunks::<T>(Level::D48, Side::L, &a, n, m, &mut out_r, bs, 64)));
+        fmm::in_pool(|| exec::run_par(exec::factor_chunks::<T>(Level::D48, Side::L, &a, n, Shape::sq(m), &mut out_r, bs, 64)));
         let dr = t.elapsed().as_secs_f64();
         // C kernel, same threads
         let p = ptrs(n, &a, &mut out_c, bs);
@@ -125,11 +125,11 @@ fn gemm_check<T: Elem>(m: usize) {
     let a: Vec<T> = (0..m * m).map(|i| T::from_f64(((i % 7) as f64) / 7.0)).collect();
     let b: Vec<T> = (0..m * m).map(|i| T::from_f64(((i % 5) as f64) / 5.0)).collect();
     let mut c: Vec<T> = vec![T::default(); m * m];
-    <T as fmm::Real>::gemm(m, &a, m, &b, m, 0.0, &mut c, m);
+    <T as fmm::Real>::gemm(Shape::sq(m), &a, m, &b, m, 0.0, &mut c, m);
     let mut ts = vec![];
     for _ in 0..7 {
         let t = Instant::now();
-        <T as fmm::Real>::gemm(m, &a, m, &b, m, 0.0, &mut c, m);
+        <T as fmm::Real>::gemm(Shape::sq(m), &a, m, &b, m, 0.0, &mut c, m);
         ts.push(t.elapsed().as_secs_f64());
     }
     let t = median(&mut ts);

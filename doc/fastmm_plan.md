@@ -875,9 +875,12 @@ planner's new best plans put an R363 level on top of D48 and gain 0.8-1.2% over 
 at 13824 and at 6912 f64 with less error; the R336/R363 cycle alone trails D48/D48 at these
 sizes.  The error model's factors per level (f32, N_E 2304): SW 1.09, D48 0.91, R336 0.72, R363
 0.75, R633 0.72.  Next: PLinOpt-optimized programs for the R passes (schemes/opt, from the fork's
-optimizer: L 152 -> 59 additions, R 344+384 -> 117+22, P 366+384 -> 148+18; the -Q path printed
-NO program for 3x6x3_40_DPS-accurate_L.sms with -s 1 -O 500, kept in the scratchpad for the
-PLinOpt PR work; the exact path gave 114+24).  Measured on the same fixed plans
+optimizer: L 152 -> 59 additions, R 344+384 -> 117+22, P 366+384 -> 148+18.  RETRACTED the
+same day: these runs used the upstream worktree's optimizer, which has neither -s nor -Q, so
+the programs are upstream's unseeded randomized search at -O 500 (valid, SLPchecker-checked,
+but not reproducible bit for bit), and the one empty output was that binary misreading the
+unknown options, not a -Q bug: the fork's `optimizer -s 1 -Q -O 500` gives nine correct
+programs of the same size, L 58, R 121+25, P 152+21 for 3x3x6).  Measured on the same fixed plans
 (results/r336_opt_vs_direct_2026-10-28.txt): the optimized programs cut the R passes by a
 quarter (13824 f32 R336/G passes 0.098 -> 0.073 s, f64 0.179 -> 0.136) with the error unchanged
 (err64 3.93e-6 -> 3.80e-6; R336/R363/G 3.21 -> 3.34e-6), so plans gain 1-7%: 13824 f64
@@ -899,8 +902,64 @@ R363+3/D48/G6 0.9103, R363+4/R336/G6 0.9141, ...), at 3456 f32 R363/G6 beats D48
 R363+3/R633/G6 at 6912 f64 (1.70x over Accelerate) while sizes 3 does not divide (8192, 9000)
 keep their D48 plans.  Error-model factors per level on the optimized kernels: f32 SW 1.09, D48
 0.91, R336 0.74, R363 0.79, R633 0.76; f64 SW 1.99, D48 1.20, R336 1.25, R363 1.27, R633 1.42.
-Still to do: the Rust port; rectangular top-level problems through the API; a dyadic search for
-a better exact 3x6x3 point (DPS's is 14% above the class's amp floor); the -Q optimizer case.
+Still to do: a dyadic search for a better exact 3x6x3 point (DPS's is 14% above the class's amp
+floor); the Rust port and the rectangular API are the next paragraph.
+
+RECTANGULAR API, SHAPE ESTIMATES AND THE RUST PORT (2026-10-28, after ab4d127;
+results/rect_api_2026-10-28.txt).  Greg asked for the latest Perminov commits, the fork's
+modular optimizer fixed, the C library to take rectangles and all of it ported to Rust.  (1) The
+optimizer was not broken (the empty output came from upstream's binary; retracted above).  (2)
+The catalogue: 50 commits since the July 4 clone (3b88e22 .. 3ee3284 of Oct 28): addition-reduced
+ternary (ZT) schemes for most shapes, near-optimal ZT schemes from mizopl and MerlijnW70, LITA and
+serendipitous-product improvements, .sms read/save (Oct 13), the large tables moved to docs/
+(results.md, ranks.md, additions.md); no new rank for 3x3x6, 4x4x4 or 3x4x6, and every new shape
+that saves at least a quarter of the products (3x6x8:108, 4x7x9:187) needs 126-215 streams per
+pass, so the menu's verdict stands.  One item to screen later: the ternary 3x3x6_m42 with 139
+additions (rank 42, two more products than DPS's 40, so +5% GEMM time, but passes a third of our
+optimized programs' 374/383/353 operations; accuracy unknown).  (3) The C library's rectangular
+API: fmm_sgemm_mkn / fmm_dgemm_mkn (an m x k matrix times a k x n matrix, each with its own
+leading dimension), fmm_calibrate_mkn, fmm_plan_mkn; a problem runs at a padded shape when that
+pays (every dimension rounded up to the same multiple of 2^a 3^b, the copies priced at 80 GB/s).
+test_fmm's new cases -- 3456x3456x1728 calibrated for its shape; 1000x3000x2000, 2048x4096x1024
+and 6912x6912x3456 uncalibrated -- are all correct, and the first run found three bugs: (a)
+after a calibration every call re-planned (api_nplans was reset without api_next, so the plan
+cache never hit): 0.07-0.09 s per call, f64 1000 at 0.089 s against Accelerate's 0.002; (b) an
+uncalibrated rectangular shape had no price at all, so the padding search took the only
+priceable candidate, 1000x3000x2000 padded to 3072^3 (D48/G6 at 0.12 s against Accelerate's
+0.0036); (c) the calibration table (CALIB_MAX 1024) overflowed silently once a rectangular
+shape's 118 entries joined the square calibration's 948, dropping entries that every run
+re-measured.  Fixes: the cache reset; CALIB_MAX 4096 with a warning; and the planner now prices
+an uncalibrated rectangular shape from the square calibration -- GEMM-like entries (leaves, the
+GEMM per product, pipelines) at the square size of equal flops, cbrt(m k n) (Accelerate runs
+rectangular shapes within 5% of the square rate), a level's passes at the square size of equal
+traffic, sqrt(((g1 g2 + r) m k + (g2 g3 + r) k n + (g1 g3 + r) m n) / (g1 g2 + g2 g3 + g1 g3 + 3 r))
+-- until fmm_calibrate_mkn replaces the estimates by measurements.  Measured (test_fmm): the
+estimates predict within 2%: 6912x6912x3456 f32 SW+4/D48/G6 predicted 0.0790 s, measured 0.0796
+(1.26x over Accelerate), f64 D48+4/R363/G6 0.2578 / 0.2565 (1.52x); 2048x4096x1024 f64 D48/G6
+0.0177 / 0.0180 (1.10x), f32 G; 1000x3000x2000 f32 G, f64 SW/G4 0.0133 / 0.0144 (1.04x); the
+calibrated 3456x3456x1728, once the table holds all its 118 entries: f32 R363/G6 0.0117 / 0.0115
+(1.05x), f64 R363/G6 0.0366 / 0.0367 (1.30x) (with the truncated calibration of the first runs
+the planner had G and R363/G4).  Planning a new shape costs 0.07 s in C (44 padded candidates x
+the DP, linear scans of the table), cached for 64 shapes.  The completed cache (1066 entries per
+precision) is copied to results/calib5_{f32,f64}.txt and installed in ~/Library/Caches/fmm, the
+library's default, so build/test_fmm runs without FMM_CALIB_DIR.  (4) The Rust port has everything: plan.rs (Shape, Level with
+grids, R336/R363/R633), calib.rs (format 5, shape-keyed entries, the six-plan error model, the
+same estimates), exec.rs (Split/Merge over rectangular blocks, const generics for the 9-, 16-
+and 18-block passes, pipelines over shapes, padding of all three dimensions), planner.rs,
+measure.rs, lib.rs (sgemm/dgemm plus sgemm_mkn/dgemm_mkn, plan/plan_mkn, calibrate/calibrate_mkn),
+bins and tests (21 square and 7 rectangular plans, padding, the entry points).  crosscheck
+against the C library on the shared cache: 26 cases (test_fmm's sizes, a leading dimension
+larger than n, an error budget, the four rectangular shapes, both precisions) all identical --
+the same plans, the same predicted times to the digit, results bit for bit -- on the capped cache
+and again on the completed one.  fmmbench on a copy
+of the cache without the rectangular entries made Rust calibrate 3456x3456x1728 itself (12 s
+f32, 17 s f64): its GEMM entries agree with the C library's within a few per cent, its passes at
+small blocks are slower (SW at products 576x288x288: 0.41 vs 0.18 ms; R363 there 1.24 vs 0.83
+ms; D48 at 864x864x432 3.5 vs 3.0 ms -- rayon dispatch and per-chunk allocation, as noted on
+2026-10-25 for m 256-512), and its plans at large sizes run as the C library's (f64 8192 0.801
+vs 0.815 s; f32 6912x6912x3456 0.0789 vs 0.0796).  Rust plans a new shape in 0.010 s (BTreeMap
+range scans).  Still to do: the Rust passes' small-block overhead; the C planner's 0.07 s (index
+the table by kind, or memoize the DP); the ternary 3x3x6_m42 screen; the dyadic 3x6x3 search.
 
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
@@ -1040,9 +1099,12 @@ Which operations matter depends on the implementation:
    Accelerate; any size inside the calibrated range (interpolation and padding, done
    2026-10-25).  Rust port (done 2026-10-25): crate `fmm` in `rust/`, only FFI declarations
    unsafe; same plans, speed and results (bit for bit) as the C library.  Rectangular levels
-   (done 2026-10-28 in the C library): plans track (m, k, n) and DPS's accurate <3x3x6:40> in
-   its three orientations is in the menu (RECTANGULAR LEVELS IMPLEMENTED paragraph); the Rust
-   port lacks them.  Next for both: rectangular top-level problems, alpha / beta and transposes.
+   (done 2026-10-28, both libraries): plans track (m, k, n) and DPS's accurate <3x3x6:40> in
+   its three orientations is in the menu (RECTANGULAR LEVELS IMPLEMENTED paragraph).
+   Rectangular problems through the API (done 2026-10-28, both libraries): `fmm_sgemm_mkn` /
+   `fmm_dgemm_mkn`, `fmm_calibrate_mkn`, `fmm_plan_mkn` and the Rust `sgemm_mkn` etc., priced
+   from the square calibration until calibrated for the shape (RECTANGULAR API paragraph).
+   Next for both: alpha / beta and transposes; the Rust passes' small-block overhead.
 
 ## Milestones
 
@@ -1056,4 +1118,6 @@ Which operations matter depends on the implementation:
 - M5 (first result 2026-10-28): the sub-scheme menu screened by the practical objectives
   (`matmul/levels/`), the 3x3x6 family added as rectangular levels, and the planner's best plans
   now 4% faster and 40% more accurate than the 4x4-only ones at 13824 f32, 1.91x over Accelerate
-  at 13824 f64.
+  at 13824 f64.  Later the same day: rectangular problems through both libraries' APIs, priced
+  by shape estimates until calibrated (within 2% of measurements), and the Rust port at parity
+  with the C library (plans, predicted times and results identical on 26 cases).

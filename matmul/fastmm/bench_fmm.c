@@ -37,6 +37,7 @@
  * Repetitions are interleaved (each round runs every method once) and the median is reported.
  *
  *   bench_fmm -n N [-t f|d] [-m m1,m2,...] [-r reps]
+ *   bench_fmm -M M -K K -N N [...]     the same on a rectangular problem (M x K)(K x N)
  *   bench_fmm -n N [-t f|d] -p        calibrate for N, print the planner's choice per size
  *   bench_fmm -n N [-t f|d] -G        block GEMM time alone, back to back, and inside a D48 level
  */
@@ -55,23 +56,24 @@ static int max_temp(void) {
     return mx;
 }
 
-/* R = A B (n x n, row-major) with every entry a compensated dot product (Ogita, Rump and Oishi's
- * Dot2: each product split exactly by an FMA, the sum accumulated with an error-free TwoSum),
- * as accurate as the product in twice the precision, then rounded to double: the f64 reference
- * for FMM_EXACT.  Blocks of 16 rows by 256 columns reuse each row of B across 16 rows of A. */
-static void dd_gemm(size_t n, const double *A, const double *B, double *R) {
+/* R = A B (A m x k, B k x n, row-major) with every entry a compensated dot product (Ogita, Rump
+ * and Oishi's Dot2: each product split exactly by an FMA, the sum accumulated with an error-free
+ * TwoSum), as accurate as the product in twice the precision, then rounded to double: the f64
+ * reference for FMM_EXACT.  Blocks of 16 rows by 256 columns reuse each row of B across 16 rows
+ * of A. */
+static void dd_gemm(size_t m, size_t kk, size_t n, const double *A, const double *B, double *R) {
     enum { IB = 16, JB = 256 };
-    dispatch_apply((n + IB - 1) / IB, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t bi) {
+    dispatch_apply((m + IB - 1) / IB, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t bi) {
         double *s = malloc(IB * JB * sizeof(double)), *c = malloc(IB * JB * sizeof(double));
-        size_t i0 = bi * IB, i1 = i0 + IB < n ? i0 + IB : n;
+        size_t i0 = bi * IB, i1 = i0 + IB < m ? i0 + IB : m;
         for (size_t j0 = 0; j0 < n; j0 += JB) {
             size_t w = j0 + JB < n ? JB : n - j0;
             memset(s, 0, IB * JB * sizeof(double));
             memset(c, 0, IB * JB * sizeof(double));
-            for (size_t k = 0; k < n; k++) {
+            for (size_t k = 0; k < kk; k++) {
                 const double *restrict b = B + k * n + j0;
                 for (size_t i = i0; i < i1; i++) {
-                    const double a = A[i * n + k];
+                    const double a = A[i * kk + k];
                     double *restrict si = s + (i - i0) * JB, *restrict ci = c + (i - i0) * JB;
                     for (size_t j = 0; j < w; j++) {
                         const double p = a * b[j], e = fma(a, b[j], -p);
@@ -93,7 +95,7 @@ static void dd_gemm(size_t n, const double *A, const double *B, double *R) {
 typedef struct {
     const char *name;
     int plan[PLAN_MAX], is_plan;
-    size_t npad;                    /* the size the plan runs at (n, or padded) */
+    shape_t spad;                   /* the shape the plan runs at (the problem's, or padded) */
     double pred, perr;
 } meth_t;
 
@@ -113,7 +115,7 @@ typedef struct {
 #undef GEMM
 
 int main(int argc, char **argv) {
-    size_t n = 4096;
+    size_t n = 4096, M = 0, K = 0, N = 0;
     char type = 'f';
     const char *methods = "classical,sw1,sw2rec,sw2,dps48,dps48ops";
     int reps = 3, table = 0;
@@ -123,12 +125,21 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "-G")) table = 2;
         else if (i + 1 == argc) break;
         else if (!strcmp(argv[i], "-n")) n = (size_t)atol(argv[++i]);
+        else if (!strcmp(argv[i], "-M")) M = (size_t)atol(argv[++i]);
+        else if (!strcmp(argv[i], "-K")) K = (size_t)atol(argv[++i]);
+        else if (!strcmp(argv[i], "-N")) N = (size_t)atol(argv[++i]);
         else if (!strcmp(argv[i], "-t")) type = argv[++i][0];
         else if (!strcmp(argv[i], "-m")) methods = argv[++i];
         else if (!strcmp(argv[i], "-r")) reps = atoi(argv[++i]);
     }
-    if (n < 32 || reps < 1 || reps > 32) {
-        fprintf(stderr, "n must be at least 32, reps 1..32\n");
+    shape_t s = sq(n);                      /* -M -K -N: a rectangular problem (M x K)(K x N) */
+    if (M || K || N) {
+        s.m = M ? M : n;
+        s.k = K ? K : n;
+        s.n = N ? N : n;
+    }
+    if (shape_min(s) < 32 || reps < 1 || reps > 32) {
+        fprintf(stderr, "sizes must be at least 32, reps 1..32\n");
         return 1;
     }
     if (table == 2) {
@@ -137,7 +148,7 @@ int main(int argc, char **argv) {
     } else if (table) {
         if (type == 'f') plan_tablef(n);
         else plan_tabled(n);
-    } else if (type == 'f') benchf(n, methods, reps);
-    else benchd(n, methods, reps);
+    } else if (type == 'f') benchf(s, methods, reps);
+    else benchd(s, methods, reps);
     return 0;
 }

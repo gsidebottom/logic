@@ -1,35 +1,35 @@
-//! The planner: a fused level costs its passes plus r times its sub-plan at n/g, a GEMM leaf its
-//! time inside the level above it (or alone, on top), a pipelined level its passes plus r times
-//! the steady time per sub-problem plus fill and drain; dynamic programming picks the cheapest
-//! plan, optionally within an error-growth budget, and pads n to a size the plan divides when
-//! that pays.  The same rules as the C library's, so both pick the same plans from one cache.
+//! The planner: a fused level costs its passes plus r times its sub-plan on its products' shape, a
+//! GEMM leaf its time inside the level above it (or alone, on top), a pipelined level its passes
+//! plus r times the steady time per sub-problem plus fill and drain; dynamic programming picks the
+//! cheapest plan, optionally within an error-growth budget, and pads the shape to one the plan
+//! divides when that pays.  The same rules as the C library's, so both pick the same plans from
+//! one cache.
 
 use crate::calib::{Calib, ErrModel, Kind, PIPE_K, PIPE_P, STREAMS};
-use crate::plan::{minb, Entry, Level, Plan};
+use crate::plan::{minb, Entry, Level, Plan, Shape};
 
-/// predicted seconds for a plan at size n below a fused level of type parent (None: the top)
-pub fn cost_in(c: &Calib, plan: &[Entry], n: usize, parent: Option<Level>) -> Option<f64> {
+/// predicted seconds for a plan on shape s below a fused level of type parent (None: the top)
+pub fn cost_in(c: &Calib, plan: &[Entry], s: Shape, parent: Option<Level>) -> Option<f64> {
     let e = *plan.first()?;
     match e.level {
         Level::G => match parent {
-            None if e.streams == 0 => c.cost(Kind::Leaf(Level::G), n),
+            None if e.streams == 0 => c.cost(Kind::Leaf(Level::G), s),
             None => None,
-            Some(p) => c.cost(Kind::Gin(p, e.streams), n),
+            Some(p) => c.cost(Kind::Gin(p, e.streams), s),
         },
-        Level::B2 => if parent.is_none() { c.cost(Kind::Leaf(Level::B2), n) } else { None },
+        Level::B2 => if parent.is_none() && s.is_sq() { c.cost(Kind::Leaf(Level::B2), s) } else { None },
         lv => {
-            let g = lv.grid();
-            if n % g != 0 {
+            if !lv.divides(s) {
                 return None;
             }
-            let m = n / g;
+            let m = lv.sub(s);
             if e.pipe.is_some() {
                 // its passes, then a pipeline of r sub-problems Y over Gk
                 let (ly, lf) = (plan.get(1)?.level, *plan.get(2)?);
-                if ly.is_leaf() || lf.level != Level::G || lf.streams == 0 || m % ly.grid() != 0 {
+                if ly.is_leaf() || lf.level != Level::G || lf.streams == 0 || !ly.divides(m) {
                     return None;
                 }
-                let my = m / ly.grid();
+                let my = ly.sub(m);
                 let pw = e.pass_threads() as u8;
                 let st = c.cost(Kind::Pipe { level: ly, streams: lf.streams, passes: pw, over: false }, my)?;
                 // sub-problems under 1 ms are not pipelined: tens of microseconds of dispatch per
@@ -45,8 +45,8 @@ pub fn cost_in(c: &Calib, plan: &[Entry], n: usize, parent: Option<Level>) -> Op
     }
 }
 
-pub fn cost(c: &Calib, plan: &Plan, n: usize) -> Option<f64> {
-    cost_in(c, &plan.0, n, None)
+pub fn cost(c: &Calib, plan: &Plan, s: Shape) -> Option<f64> {
+    cost_in(c, &plan.0, s, None)
 }
 
 /// the first entries a plan below parent (None: the top) can start with
@@ -55,14 +55,14 @@ fn firsts(parent: Option<Level>) -> Vec<Entry> {
     if parent.is_none() {
         v.push(Entry::new(Level::B2));
     }
-    v.push(Entry::new(Level::Sw));
-    v.push(Entry::new(Level::D48));
+    v.extend(Level::FUSED.into_iter().map(Entry::new));
     v
 }
 
-/// the cheapest plan for n below parent: dynamic programming over the first entry, a leaf or a
-/// fused level over the cheapest plan for n/g below it, and the pipelined levels X+p/Y/Gk
-fn best_in(c: &Calib, n: usize, parent: Option<Level>) -> Option<(Vec<Entry>, f64)> {
+/// the cheapest plan for shape s below parent: dynamic programming over the first entry, a leaf or
+/// a fused level over the cheapest plan for its products below it, and the pipelined levels
+/// X+p/Y/Gk
+fn best_in(c: &Calib, s: Shape, parent: Option<Level>) -> Option<(Vec<Entry>, f64)> {
     let mut best: Option<(Vec<Entry>, f64)> = None;
     let mut consider = |p: Vec<Entry>, t: f64| {
         if best.as_ref().is_none_or(|b| t < b.1) {
@@ -71,27 +71,27 @@ fn best_in(c: &Calib, n: usize, parent: Option<Level>) -> Option<(Vec<Entry>, f6
     };
     for e in firsts(parent) {
         if e.level.is_leaf() {
-            if let Some(t) = cost_in(c, &[e], n, parent) {
+            if let Some(t) = cost_in(c, &[e], s, parent) {
                 consider(vec![e], t);
             }
         } else {
-            let g = e.level.grid();
-            if n % g != 0 || n / g < minb() {
+            if !e.level.divides(s) || e.level.sub(s).min_dim() < minb() {
                 continue;
             }
-            if let (Some((sub, below)), Some(p)) = (best_in(c, n / g, Some(e.level)), c.cost(Kind::Passes(e.level), n / g)) {
+            let m = e.level.sub(s);
+            if let (Some((sub, below)), Some(p)) = (best_in(c, m, Some(e.level)), c.cost(Kind::Passes(e.level), m)) {
                 let mut v = vec![e];
                 v.extend(sub);
                 consider(v, p + e.level.rank() as f64 * below);
             }
         }
     }
-    for lx in [Level::Sw, Level::D48] {
-        for ly in [Level::Sw, Level::D48] {
+    for lx in Level::FUSED {
+        for ly in Level::FUSED {
             for k in PIPE_K {
                 for p in PIPE_P {
                     let v = vec![Entry { level: lx, streams: 0, pipe: Some(p) }, Entry::new(ly), Entry::gemm(k)];
-                    if let Some(t) = cost_in(c, &v, n, parent) {
+                    if let Some(t) = cost_in(c, &v, s, parent) {
                         consider(v, t);
                     }
                 }
@@ -101,18 +101,18 @@ fn best_in(c: &Calib, n: usize, parent: Option<Level>) -> Option<(Vec<Entry>, f6
     best
 }
 
-pub fn best(c: &Calib, n: usize) -> Option<(Plan, f64)> {
-    best_in(c, n, None).map(|(v, t)| (Plan(v), t))
+pub fn best(c: &Calib, s: Shape) -> Option<(Plan, f64)> {
+    best_in(c, s, None).map(|(v, t)| (Plan(v), t))
 }
 
-/// every plan for n down to blocks of minb() with its predicted time, cheapest first
-pub fn enumerate(c: &Calib, n: usize) -> Vec<(Plan, f64)> {
-    fn rec(c: &Calib, n0: usize, n: usize, plan: &mut Vec<Entry>, out: &mut Vec<(Plan, f64)>) {
+/// every plan for shape s down to blocks of minb() with its predicted time, cheapest first
+pub fn enumerate(c: &Calib, s: Shape) -> Vec<(Plan, f64)> {
+    fn rec(c: &Calib, s0: Shape, s: Shape, plan: &mut Vec<Entry>, out: &mut Vec<(Plan, f64)>) {
         let parent = plan.last().map(|e| e.level);
         for e in firsts(parent) {
             plan.push(e);
             if e.level.is_leaf() {
-                if let Some(t) = cost(c, &Plan(plan.clone()), n0) {
+                if let Some(t) = cost(c, &Plan(plan.clone()), s0) {
                     out.push((Plan(plan.clone()), t));
                 }
                 // the same with the level two above the leaf pipelined
@@ -121,64 +121,77 @@ pub fn enumerate(c: &Calib, n: usize) -> Vec<(Plan, f64)> {
                     for p in PIPE_P {
                         let keep = plan[d - 3];
                         plan[d - 3].pipe = Some(p);
-                        if let Some(t) = cost(c, &Plan(plan.clone()), n0) {
+                        if let Some(t) = cost(c, &Plan(plan.clone()), s0) {
                             out.push((Plan(plan.clone()), t));
                         }
                         plan[d - 3] = keep;
                     }
                 }
-            } else if n % e.level.grid() == 0 && n / e.level.grid() >= minb() {
-                rec(c, n0, n / e.level.grid(), plan, out);
+            } else if e.level.divides(s) && e.level.sub(s).min_dim() >= minb() {
+                rec(c, s0, e.level.sub(s), plan, out);
             }
             plan.pop();
         }
     }
     let mut out = vec![];
-    rec(c, n, n, &mut vec![], &mut out);
+    rec(c, s, s, &mut vec![], &mut out);
     out.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
     out
 }
 
 /// the factor by which a plan's error exceeds the classical GEMM's
 pub fn growth(e: &ErrModel, plan: &Plan) -> f64 {
-    plan.0.iter().take_while(|x| !x.level.is_leaf()).map(|x| if x.level == Level::Sw { e.f_sw } else { e.f_d48 }).product()
+    plan.0.iter().take_while(|x| !x.level.is_leaf()).map(|x| e.factor(x.level)).product()
 }
 
-pub fn predicted_error(e: &ErrModel, plan: &Plan, n: usize) -> f64 {
-    e.base * (n as f64 / crate::calib::N_E as f64).sqrt() * growth(e, plan)
+/// the predicted error of a plan on shape s: the classical scale grows with the inner dimension
+pub fn predicted_error(e: &ErrModel, plan: &Plan, s: Shape) -> f64 {
+    e.base * (s.k as f64 / crate::calib::N_E as f64).sqrt() * growth(e, plan)
 }
 
 /// the cheapest plan whose error growth is at most gmax (0: no limit)
-pub fn best_budget(c: &Calib, n: usize, gmax: f64) -> Option<(Plan, f64)> {
+pub fn best_budget(c: &Calib, s: Shape, gmax: f64) -> Option<(Plan, f64)> {
     if gmax <= 0.0 {
-        return best(c, n);
+        return best(c, s);
     }
     let e = c.err_model()?;
-    enumerate(c, n).into_iter().find(|(p, _)| growth(&e, p) <= gmax * (1.0 + 1e-9))
+    enumerate(c, s).into_iter().find(|(p, _)| growth(&e, p) <= gmax * (1.0 + 1e-9))
 }
 
 /// bytes per second of the padding copies
 const PAD_BW: f64 = 80e9;
 
-pub fn pad_cost(n: usize, npad: usize, f64: bool) -> f64 {
-    if npad == n { 0.0 } else { 6.0 * (npad * npad) as f64 * if f64 { 8.0 } else { 4.0 } / PAD_BW }
+/// the padding copies' cost: twice the padded matrices' elements of traffic
+pub fn pad_cost(s: Shape, sp: Shape, f64: bool) -> f64 {
+    if sp == s {
+        0.0
+    } else {
+        let words = (sp.m * sp.k + sp.k * sp.n + sp.m * sp.n) as f64;
+        2.0 * words * if f64 { 8.0 } else { 4.0 } / PAD_BW
+    }
 }
 
-/// the cheapest plan for n over the padded sizes N >= n (n rounded up to a multiple of 8 * 2^j,
-/// j = 0..7), the padding priced; returns (plan, N, predicted seconds)
-pub fn best_padded(c: &Calib, n: usize, gmax: f64, f64: bool) -> Option<(Plan, usize, f64)> {
-    let mut best: Option<(Plan, usize, f64)> = None;
+/// the cheapest plan for shape s over the padded shapes (every dimension rounded up to the same
+/// multiple of 2^a 3^b, a <= 10, b <= 3: what plans of 2x2 and 4x4 levels and of the 3x3x6 family
+/// divide), the padding priced; returns (plan, padded shape, predicted seconds)
+pub fn best_padded(c: &Calib, s: Shape, gmax: f64, f64: bool) -> Option<(Plan, Shape, f64)> {
+    let mut best: Option<(Plan, Shape, f64)> = None;
     let mut tried = vec![];
-    for j in -1i32..8 {
-        let npad = if j < 0 { n } else { let a = 8usize << j; n.div_ceil(a) * a };
-        if tried.contains(&npad) {
+    for j in -1i32..44 {
+        let sp = if j < 0 {
+            s
+        } else {
+            let d = 2usize.pow((j % 11) as u32) * 3usize.pow((j / 11) as u32);
+            Shape::new(s.m.div_ceil(d) * d, s.k.div_ceil(d) * d, s.n.div_ceil(d) * d)
+        };
+        if tried.contains(&sp) {
             continue;
         }
-        tried.push(npad);
-        if let Some((p, t)) = best_budget(c, npad, gmax) {
-            let t = t + pad_cost(n, npad, f64);
+        tried.push(sp);
+        if let Some((p, t)) = best_budget(c, sp, gmax) {
+            let t = t + pad_cost(s, sp, f64);
             if best.as_ref().is_none_or(|b| t < b.2) {
-                best = Some((p, npad, t));
+                best = Some((p, sp, t));
             }
         }
     }

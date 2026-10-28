@@ -1,7 +1,12 @@
 //! Plans: fused levels from the top, ending in a leaf.  Written as in the C library: G (one GEMM),
 //! Gk (a level's products as k single-threaded GEMM streams), B2 (classical blocked 2x2), SW
 //! (Strassen-Winograd <2x2x2:7>), D48 (the rank-48 <4x4x4:48> scheme of Dumas, Pernet and
-//! Sedoglavic), and D48+p / SW+p (the level's sub-problems pipelined on p pass threads).
+//! Sedoglavic), R336 / R363 / R633 (their accurate <3x3x6:40> scheme in its three orientations,
+//! rectangular levels), and X+p (the level's sub-problems pipelined on p pass threads).
+//!
+//! A problem has a shape (m x k)(k x n); a level of grid g1 x g2 x g3 splits A into g1 x g2 blocks
+//! of m/g1 x k/g2, B into g2 x g3 blocks of k/g2 x n/g3 and C into g1 x g3 blocks of m/g1 x n/g3,
+//! and its r products have the shape (m/g1, k/g2, n/g3).
 
 use std::fmt;
 
@@ -21,31 +26,72 @@ pub fn default_pass_threads() -> usize {
     std::env::var("FMM_PASS_THREADS").ok().and_then(|s| s.parse().ok()).unwrap_or(2)
 }
 
+/// the shape of a product: (m x k)(k x n)
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
+pub struct Shape {
+    pub m: usize,
+    pub k: usize,
+    pub n: usize,
+}
+
+impl Shape {
+    pub const fn sq(n: usize) -> Shape {
+        Shape { m: n, k: n, n }
+    }
+    pub const fn new(m: usize, k: usize, n: usize) -> Shape {
+        Shape { m, k, n }
+    }
+    pub fn is_sq(&self) -> bool {
+        self.m == self.k && self.k == self.n
+    }
+    pub fn min_dim(&self) -> usize {
+        self.m.min(self.k).min(self.n)
+    }
+}
+
+impl fmt::Display for Shape {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_sq() { write!(f, "{}", self.m) } else { write!(f, "{}x{}x{}", self.m, self.k, self.n) }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 pub enum Level {
     G,
     B2,
     Sw,
     D48,
+    R336,
+    R363,
+    R633,
 }
 
 impl Level {
+    pub const ALL: [Level; 7] = [Level::G, Level::B2, Level::Sw, Level::D48, Level::R336, Level::R363, Level::R633];
+    /// the fused levels the planner uses
+    pub const FUSED: [Level; 5] = [Level::Sw, Level::D48, Level::R336, Level::R363, Level::R633];
+
     pub fn is_leaf(self) -> bool {
         matches!(self, Level::G | Level::B2)
     }
-    pub fn grid(self) -> usize {
+    /// g1 x g2 x g3
+    pub fn grid(self) -> (usize, usize, usize) {
         match self {
-            Level::G => 1,
-            Level::B2 | Level::Sw => 2,
-            Level::D48 => 4,
+            Level::G => (1, 1, 1),
+            Level::B2 | Level::Sw => (2, 2, 2),
+            Level::D48 => (4, 4, 4),
+            Level::R336 => (3, 3, 6),
+            Level::R363 => (3, 6, 3),
+            Level::R633 => (6, 3, 3),
         }
     }
     pub fn rank(self) -> usize {
         match self {
+            Level::G => 1,
+            Level::B2 => 8,
             Level::Sw => 7,
             Level::D48 => 48,
-            Level::B2 => 8,
-            Level::G => 1,
+            Level::R336 | Level::R363 | Level::R633 => 40,
         }
     }
     pub fn name(self) -> &'static str {
@@ -54,10 +100,28 @@ impl Level {
             Level::B2 => "B2",
             Level::Sw => "SW",
             Level::D48 => "D48",
+            Level::R336 => "R336",
+            Level::R363 => "R363",
+            Level::R633 => "R633",
         }
     }
     pub fn from_name(s: &str) -> Option<Level> {
-        [Level::G, Level::B2, Level::Sw, Level::D48].into_iter().find(|l| l.name() == s)
+        Level::ALL.into_iter().find(|l| l.name() == s)
+    }
+    /// whether the level's grid divides the shape
+    pub fn divides(self, s: Shape) -> bool {
+        let (g1, g2, g3) = self.grid();
+        s.m % g1 == 0 && s.k % g2 == 0 && s.n % g3 == 0
+    }
+    /// the shape of the level's products
+    pub fn sub(self, s: Shape) -> Shape {
+        let (g1, g2, g3) = self.grid();
+        Shape::new(s.m / g1, s.k / g2, s.n / g3)
+    }
+    /// the problem whose products have shape t
+    pub fn up(self, t: Shape) -> Shape {
+        let (g1, g2, g3) = self.grid();
+        Shape::new(t.m * g1, t.k * g2, t.n * g3)
     }
 }
 
@@ -94,37 +158,41 @@ impl Plan {
         Plan(vec![Entry::new(Level::G)])
     }
 
-    /// scratch elements the plan needs at size n: each fused level 3 r blocks of m*m + pad (S,
-    /// T, M), the levels below reusing theirs product after product, a pipelined level twice
-    pub fn work(&self, n: usize) -> usize {
-        fn w(p: &[Entry], n: usize) -> usize {
+    /// scratch elements the plan needs on a problem of shape s: each fused level r blocks of each
+    /// of its three block shapes, pad apart (S, T, M), the levels below reusing theirs product
+    /// after product, a pipelined level twice
+    pub fn work(&self, s: Shape) -> usize {
+        fn w(p: &[Entry], s: Shape) -> usize {
             let e = p[0];
             if e.level.is_leaf() {
                 return 0;
             }
-            let m = n / e.level.grid();
-            3 * e.level.rank() * (m * m + pad()) + if e.pipe.is_some() { 2 } else { 1 } * w(&p[1..], m)
+            let t = e.level.sub(s);
+            let blocks = e.level.rank() * ((t.m * t.k + pad()) + (t.k * t.n + pad()) + (t.m * t.n + pad()));
+            blocks + if e.pipe.is_some() { 2 } else { 1 } * w(&p[1..], t)
         }
-        w(&self.0, n)
+        w(&self.0, s)
     }
 
-    /// whether every level divides the size it receives
-    pub fn divides(&self, n: usize) -> bool {
-        let mut s = n;
+    /// whether every level divides the shape it receives
+    pub fn divides(&self, s: Shape) -> bool {
+        let mut cur = s;
         for e in &self.0 {
-            if s % e.level.grid() != 0 {
+            if !e.level.divides(cur) {
                 return false;
             }
-            s /= e.level.grid();
+            cur = e.level.sub(cur);
         }
         true
     }
 
-    /// "D48+3/D48/G6", or a named method of bench_fmm ("dps48", "sw3rec", ...)
+    /// "D48+3/D48/G6", or a named method of bench_fmm ("dps48", "sw3rec", "r336x2", ...)
     pub fn parse(s: &str) -> Option<Plan> {
-        const NAMED: [(&str, &str); 9] = [("classical", "G"), ("blk2", "B2"), ("sw1", "SW/G"), ("sw2rec", "SW/SW/G"),
-                                          ("sw3rec", "SW/SW/SW/G"), ("sw4rec", "SW/SW/SW/SW/G"), ("dps48", "D48/G"),
-                                          ("dps48sw", "D48/SW/G"), ("dps48x2", "D48/D48/G")];
+        const NAMED: [(&str, &str); 16] = [("classical", "G"), ("blk2", "B2"), ("sw1", "SW/G"), ("sw2rec", "SW/SW/G"),
+                                           ("sw3rec", "SW/SW/SW/G"), ("sw4rec", "SW/SW/SW/SW/G"), ("dps48", "D48/G"),
+                                           ("dps48sw", "D48/SW/G"), ("dps48x2", "D48/D48/G"), ("r336", "R336/G"),
+                                           ("r363", "R363/G"), ("r633", "R633/G"), ("r336x2", "R336/R363/G"),
+                                           ("r336x3", "R336/R363/R633/G"), ("swr336", "SW/R336/G"), ("r336sw", "R336/SW/G")];
         let s = s.strip_prefix("plan=").unwrap_or(s);
         let s = NAMED.iter().find(|(n, _)| *n == s).map(|(_, l)| *l).unwrap_or(s);
         let parts: Vec<&str> = s.split('/').collect();
@@ -175,12 +243,14 @@ mod tests {
 
     #[test]
     fn names_round_trip() {
-        for s in ["G", "B2", "SW/G", "D48/G6", "D48+3/D48/G6", "SW/D48+4/D48/G6", "D48+/SW/G3", "SW+2/SW/B2"] {
+        for s in ["G", "B2", "SW/G", "D48/G6", "D48+3/D48/G6", "SW/D48+4/D48/G6", "D48+/SW/G3", "SW+2/SW/B2", "R336/R363/R633/G",
+                  "R363+3/D48/G6", "SW/R363+3/R633/G6"] {
             assert_eq!(Plan::parse(s).map(|p| p.to_string()), Some(s.to_string()));
         }
         assert_eq!(Plan::parse("dps48x2").map(|p| p.to_string()), Some("D48/D48/G".to_string()));
+        assert_eq!(Plan::parse("r336x3").map(|p| p.to_string()), Some("R336/R363/R633/G".to_string()));
         assert_eq!(Plan::parse("plan=sw1").map(|p| p.to_string()), Some("SW/G".to_string()));
-        for s in ["", "G/D48", "D48", "G6", "D48/X", "G+2", "D48+x/G", "D48//G", "SW/G/G"] {
+        for s in ["", "G/D48", "D48", "G6", "D48/X", "G+2", "D48+x/G", "D48//G", "SW/G/G", "R36/G"] {
             assert!(Plan::parse(s).is_none(), "{s}");
         }
     }
@@ -188,11 +258,22 @@ mod tests {
     #[test]
     fn work_and_divisibility() {
         let p = Plan::parse("D48/G").unwrap();
-        assert_eq!(p.work(4096), 3 * 48 * (1024 * 1024 + pad()));
+        assert_eq!(p.work(Shape::sq(4096)), 3 * 48 * (1024 * 1024 + pad()));
         let p = Plan::parse("D48+2/SW/G").unwrap();
-        assert_eq!(p.work(4096), 3 * 48 * (1024 * 1024 + pad()) + 2 * 3 * 7 * (512 * 512 + pad()));
-        assert!(Plan::parse("D48/D48/G").unwrap().divides(4096));
-        assert!(!Plan::parse("D48/D48/G").unwrap().divides(4100));
-        assert!(Plan::parse("SW/G").unwrap().divides(4100));
+        assert_eq!(p.work(Shape::sq(4096)), 3 * 48 * (1024 * 1024 + pad()) + 2 * 3 * 7 * (512 * 512 + pad()));
+        // R336 on 54^3: products (18, 18, 9): S blocks 18x18, T blocks 18x9, M blocks 18x9
+        let p = Plan::parse("R336/G").unwrap();
+        assert_eq!(p.work(Shape::sq(54)), 40 * ((18 * 18 + pad()) + (18 * 9 + pad()) + (18 * 9 + pad())));
+        assert!(Plan::parse("D48/D48/G").unwrap().divides(Shape::sq(4096)));
+        assert!(!Plan::parse("D48/D48/G").unwrap().divides(Shape::sq(4100)));
+        assert!(Plan::parse("SW/G").unwrap().divides(Shape::sq(4100)));
+        assert!(Plan::parse("R336/R363/R633/G").unwrap().divides(Shape::sq(54)));
+        assert!(!Plan::parse("R336/R363/R633/G").unwrap().divides(Shape::sq(36)));
+        assert!(Plan::parse("R336/G").unwrap().divides(Shape::new(3, 3, 6)));
+        assert!(!Plan::parse("R336/G").unwrap().divides(Shape::new(3, 6, 3)));
+        assert_eq!(Level::R363.sub(Shape::new(6, 12, 9)), Shape::new(2, 2, 3));
+        assert_eq!(Level::R363.up(Shape::new(2, 2, 3)), Shape::new(6, 12, 9));
+        assert_eq!(Shape::sq(7).to_string(), "7");
+        assert_eq!(Shape::new(1, 2, 3).to_string(), "1x2x3");
     }
 }

@@ -361,34 +361,46 @@ static void FN(exec)(const int *plan, shape_t s, const T *A, size_t lda, const T
     if (sp) sp->tP += now() - t3;
 }
 
-/* C = A B at size n through a plan at the padded size N >= n (fmm.c, padding): A and B copied
- * into zeroed N x N matrices, the result's top-left n x n copied to C; work holds 3 N^2 elements
- * and then plan_work(plan, N) */
-static void FN(exec_padded)(const int *plan, size_t n, size_t N, const T *A, size_t lda, const T *B, size_t ldb,
-                            T *C, size_t ldc, T *work, FN(split_t) *sp) {
-    if (N == n) {
-        FN(exec)(plan, sq(n), A, lda, B, ldb, C, ldc, work, sp);
-        return;
-    }
-    T *Ap = work, *Bp = work + N * N, *Cp = work + 2 * N * N, *rest = work + 3 * N * N;
-    size_t chunks = 64, step = (N + chunks - 1) / chunks;
+/* the workspace elements of a plan on shape s run at the padded shape S: the padded copies of A
+ * (S.m x S.k), B (S.k x S.n) and C (S.m x S.n), then the plan's scratch */
+static size_t FN(padded_work)(const int *plan, shape_t s, shape_t S) {
+    size_t copies = shape_eq(s, S) ? 0 : S.m * S.k + S.k * S.n + S.m * S.n;
+    return copies + plan_work(plan, S);
+}
+
+/* copy the top-left rows x cols of X (leading dimension ldx) into a zeroed R x Cc matrix Y
+ * (leading dimension Cc), rows split over the cores */
+static void FN(pad_copy)(const T *X, size_t ldx, size_t rows, size_t cols, T *Y, size_t R, size_t Cc) {
+    size_t chunks = 64, step = (R + chunks - 1) / chunks;
     dispatch_apply(chunks, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t ch) {
-        for (size_t i = ch * step; i < (ch + 1) * step && i < N; i++) {
-            T *ra = Ap + i * N, *rb = Bp + i * N;
-            if (i < n) {
-                memcpy(ra, A + i * lda, n * sizeof(T));
-                memset(ra + n, 0, (N - n) * sizeof(T));
-                memcpy(rb, B + i * ldb, n * sizeof(T));
-                memset(rb + n, 0, (N - n) * sizeof(T));
+        for (size_t i = ch * step; i < (ch + 1) * step && i < R; i++) {
+            T *ry = Y + i * Cc;
+            if (i < rows) {
+                memcpy(ry, X + i * ldx, cols * sizeof(T));
+                memset(ry + cols, 0, (Cc - cols) * sizeof(T));
             } else {
-                memset(ra, 0, N * sizeof(T));
-                memset(rb, 0, N * sizeof(T));
+                memset(ry, 0, Cc * sizeof(T));
             }
         }
     });
-    FN(exec)(plan, sq(N), Ap, N, Bp, N, Cp, N, rest, sp);
+}
+
+/* C = A B on shape s through a plan at the padded shape S >= s (fmm.c, padding): A and B copied
+ * into zeroed padded matrices, the result's top-left s.m x s.n copied to C; work holds
+ * padded_work(plan, s, S) elements */
+static void FN(exec_padded)(const int *plan, shape_t s, shape_t S, const T *A, size_t lda, const T *B, size_t ldb,
+                            T *C, size_t ldc, T *work, FN(split_t) *sp) {
+    if (shape_eq(S, s)) {
+        FN(exec)(plan, s, A, lda, B, ldb, C, ldc, work, sp);
+        return;
+    }
+    T *Ap = work, *Bp = Ap + S.m * S.k, *Cp = Bp + S.k * S.n, *rest = Cp + S.m * S.n;
+    FN(pad_copy)(A, lda, s.m, s.k, Ap, S.m, S.k);
+    FN(pad_copy)(B, ldb, s.k, s.n, Bp, S.k, S.n);
+    FN(exec)(plan, S, Ap, S.k, Bp, S.n, Cp, S.n, rest, sp);
+    size_t chunks = 64, step = (s.m + chunks - 1) / chunks, cols = s.n, Sn = S.n;
     dispatch_apply(chunks, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t ch) {
-        for (size_t i = ch * step; i < (ch + 1) * step && i < n; i++) memcpy(C + i * ldc, Cp + i * N, n * sizeof(T));
+        for (size_t i = ch * step; i < (ch + 1) * step && i < s.m; i++) memcpy(C + i * ldc, Cp + i * Sn, cols * sizeof(T));
     });
 }
 
@@ -520,17 +532,19 @@ static void FN(calib_errors)(calib_t *c) {
     free(A); free(B); free(C); free(R);
 }
 
-/* measure the entries plan_best needs for n that the cache lacks, and save the cache; A, B, C
- * hold n*n elements, smaller problems use their first elements as contiguous matrices */
-static int FN(calibrate)(calib_t *c, size_t n, const T *A, const T *B, T *C) {
-    calib_t need;
-    memset(&need, 0, sizeof need);
-    calib_need(&need, sq(n));
+/* measure the entries plan_best needs for the shape s that the cache lacks, and save the cache;
+ * A, B, C hold s.m*s.k, s.k*s.n and s.m*s.n elements, smaller problems use their first elements
+ * as contiguous matrices */
+static int FN(calibrate)(calib_t *c, shape_t s0, const T *A, const T *B, T *C) {
+    calib_t *need = calloc(1, sizeof(calib_t));     /* 150 KB: not on a possibly small stack */
+    int *todo = calloc(CALIB_MAX, sizeof(int));
+    if (!need || !todo) { free(need); free(todo); return -1; }
+    calib_need(need, s0);
     size_t wmax = 0;
-    int missing = 0, todo[CALIB_MAX];
-    for (int i = 0; i < need.n; i++) {
-        int kind = need.kind[i];
-        shape_t s = need.s[i];
+    int missing = 0;
+    for (int i = 0; i < need->n; i++) {
+        int kind = need->kind[i];
+        shape_t s = need->s[i];
         todo[i] = 0;
         if (kind >= K_ERR) {                /* the error model: measured together */
             todo[i] = calib_get(c, kind, s) < 0;
@@ -558,14 +572,14 @@ static int FN(calibrate)(calib_t *c, size_t n, const T *A, const T *B, T *C) {
         size_t w = lv_leaf(kind) ? 0 : plan_work(plan, lv_up(kind, s));
         if (w > wmax) wmax = w;
     }
-    if (!missing) return 0;
+    if (!missing) { free(need); free(todo); return 0; }
     printf("# calibrating %d entries (%s)\n", missing, sizeof(T) == 4 ? "f32" : "f64");
     T *work = alloc_t((wmax + 16) * sizeof(T));
     memset(work, 0, (wmax + 16) * sizeof(T));
     int errors_done = 0;
-    for (int i = 0; i < need.n; i++) {
-        int kind = need.kind[i];
-        shape_t s = need.s[i];
+    for (int i = 0; i < need->n; i++) {
+        int kind = need->kind[i];
+        shape_t s = need->s[i];
         if (!todo[i]) continue;
         if (kind >= K_ERR) {
             if (!errors_done++) FN(calib_errors)(c);
@@ -601,17 +615,24 @@ static int FN(calibrate)(calib_t *c, size_t n, const T *A, const T *B, T *C) {
         fflush(stdout);
     }
     free(work);
+    free(need);
+    free(todo);
     calib_save(c, sizeof(T) == 8);
     return missing;
 }
 
 /* ---- the entry points (fmm.h), this precision ------------------------------------------- */
-static int FN(api_gemm)(size_t n, const T *A, size_t lda, const T *B, size_t ldb, T *C, size_t ldc, double gmax) {
+static int FN(api_gemm)(shape_t s, const T *A, size_t lda, const T *B, size_t ldb, T *C, size_t ldc, double gmax) {
     int plan[PLAN_MAX];
-    size_t N;
+    shape_t S;
+    if (s.m == 0 || s.n == 0) return 0;
+    if (s.k == 0) {                         /* an empty sum: C = 0 */
+        for (size_t i = 0; i < s.m; i++) memset(C + i * ldc, 0, s.n * sizeof(T));
+        return 0;
+    }
     pthread_mutex_lock(&api_lock);
-    api_plan(n, sizeof(T) == 8, gmax, plan, &N, NULL);
-    size_t bytes = ((N != n ? 3 * N * N : 0) + plan_work(plan, sq(N))) * sizeof(T);
+    api_plan(s, sizeof(T) == 8, gmax, plan, &S, NULL);
+    size_t bytes = FN(padded_work)(plan, s, S) * sizeof(T);
     if (bytes > api_ws_bytes) {
         free(api_ws);
         api_ws = NULL;
@@ -623,19 +644,21 @@ static int FN(api_gemm)(size_t n, const T *A, size_t lda, const T *B, size_t ldb
         }
         api_ws_bytes = bytes;
     }
-    FN(exec_padded)(plan, n, N, A, lda, B, ldb, C, ldc, (T *)api_ws, NULL);
+    FN(exec_padded)(plan, s, S, A, lda, B, ldb, C, ldc, (T *)api_ws, NULL);
     pthread_mutex_unlock(&api_lock);
     return 0;
 }
 
-static int FN(api_calibrate)(size_t n) {
-    size_t nn = n * n;
-    T *A = alloc_t(nn * sizeof(T)), *B = alloc_t(nn * sizeof(T)), *C = alloc_t(nn * sizeof(T));
-    for (size_t i = 0; i < nn; i++) { A[i] = (T)1 / (T)(1 + i % 7); B[i] = (T)1 / (T)(1 + i % 5); C[i] = 0; }
+static int FN(api_calibrate)(shape_t s) {
+    size_t na = s.m * s.k, nb = s.k * s.n, nc = s.m * s.n;
+    T *A = alloc_t(na * sizeof(T)), *B = alloc_t(nb * sizeof(T)), *C = alloc_t(nc * sizeof(T));
+    for (size_t i = 0; i < na; i++) A[i] = (T)1 / (T)(1 + i % 7);
+    for (size_t i = 0; i < nb; i++) B[i] = (T)1 / (T)(1 + i % 5);
+    for (size_t i = 0; i < nc; i++) C[i] = 0;
     pthread_mutex_lock(&api_lock);
     calib_t *c = api_calib(sizeof(T) == 8);
-    int cnt = c ? FN(calibrate)(c, n, A, B, C) : 0;
-    api_nplans = 0;                         /* the plans may change */
+    int cnt = c ? FN(calibrate)(c, s, A, B, C) : 0;
+    api_nplans = api_next = 0;              /* the plans may change */
     pthread_mutex_unlock(&api_lock);
     free(A); free(B); free(C);
     return cnt;

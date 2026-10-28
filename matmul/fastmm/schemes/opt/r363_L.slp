@@ -1,4 +1,4 @@
-# r363 L: PLinOpt optimizer -s 1 -O 500 (exact rationals; the -Q run gave a wrong program, kept as /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/r336opt/r363_L_Qfail.slp) on 3x6x3_40_DPS-accurate_L.sms, checked by SLPchecker: SUCCESS: correct SLP for 40x18 (344+|384x) : <114, 24>
+# r363 L: PLinOpt optimizer -O 500 on 3x6x3_40_DPS-accurate_L.sms (DPS's accurate <3x6x3:40>), run on 2026-10-28 with upstream main 7c20065's optimizer built on macOS (its randomized search is unseeded, so the program is not reproducible bit for bit; the fork's `optimizer -s 1 -Q -O 500` gives programs of the same size); checked by SLPchecker: SUCCESS: correct SLP for 40x18 (344+|384x) : <114, 24>
 v31:=i0-i15;
 v32:=i6-i13;
 v33:=i4-i17;

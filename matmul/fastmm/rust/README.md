@@ -1,27 +1,33 @@
 # fmm: fast matrix multiplication on Apple silicon, in Rust
 
-The Rust port of the C library in `matmul/fastmm` (`fmm.h`): C = A B for n x n row-major f32 or
-f64 matrices, by fused levels of the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic
-(their 262-operation accurate program, PLinOpt's 4x4x4_48_accurate_262) and of
-Strassen-Winograd over Accelerate's GEMM, with GEMM streams,
-pipelined passes and padding, as a calibrated planner picks for this machine and size.  On an
-M4 Pro, from n = 3000 to 16384, it is 1.04-1.60x (f32) and 1.29-1.99x (f64) faster than
-Accelerate's GEMM, with the C library's plans, speed and results (bit for bit).
+The Rust port of the C library in `matmul/fastmm` (`fmm.h`): C = A B for row-major f32 or f64
+matrices, n x n or an m x k matrix A times a k x n matrix B, by fused levels of the rank-48
+<4x4x4:48> scheme of Dumas, Pernet and Sedoglavic (their 262-operation accurate program,
+PLinOpt's 4x4x4_48_accurate_262), of their accurate <3x3x6:40> scheme in its three orientations
+(rectangular levels: a plan tracks the shape of every level's products) and of
+Strassen-Winograd over Accelerate's GEMM, with GEMM streams, pipelined passes and padding, as a
+calibrated planner picks for this machine, shape and precision.  On an M4 Pro, from n = 3000 to
+16384, it is 1.04-1.60x (f32) and 1.29-1.99x (f64) faster than Accelerate's GEMM, with the C
+library's plans, speed and results (bit for bit).
 
 ```rust
 let mut c = vec![0.0f64; n * n];
 fmm::dgemm(n, &a, n, &b, n, &mut c, n, 0.0)?;   // max_growth 0: the fastest plan
 fmm::sgemm(n, &x, n, &y, n, &mut z, n, 4.0)?;   // error growth at most 4x the classical GEMM's
+fmm::sgemm_mkn(m, k, n, &x, k, &y, n, &mut z, n, 0.0)?;   // an m x k matrix times a k x n matrix
 ```
 
 Once per machine, calibrate (about 8 minutes, the machine otherwise idle):
 
     cargo run --release --bin fmmcal          # sizes up to 16384, both precisions
 
-The cache (`~/Library/Caches/fmm/calib_f32.txt`, `calib_f64.txt`, or `FMM_CALIB_DIR`) has the C
-library's format; either library reads the other's.  Without a calibration covering n every call
-runs Accelerate's GEMM, so results are always correct.  `fmm::plan(n, f64, max_growth)` tells
-which plan a call runs and its predicted time and error.
+The cache (`~/Library/Caches/fmm/calib5_f32.txt`, `calib5_f64.txt`, or `FMM_CALIB_DIR`) has the
+C library's format; either library reads the other's.  Square sizes between the calibrated ones
+are interpolated; a rectangular shape is priced from the square measurements (GEMMs by their
+flops, passes by their traffic: an estimate) until `fmm::calibrate_mkn(m, k, n, f64)` measures
+it.  Without a calibration covering a shape every call runs Accelerate's GEMM, so results are
+always correct.  `fmm::plan(n, f64, max_growth)` and `fmm::plan_mkn(m, k, n, f64, max_growth)`
+tell which plan a call runs and its predicted time and error.
 
 Unsafe code: only `src/sys.rs`, the FFI declarations of Accelerate's two GEMMs and its threading
 switch and of the threads' scheduling class, behind safe wrappers that check the slices.  The
@@ -31,7 +37,7 @@ programs as the C kernels; the rest of the crate is `#![deny(unsafe_code)]`.
 Tests and benchmarks:
 
     cargo test --release
-    FMM_CALIB_DIR=../results cargo run --release --bin fmmbench [n ...]    # against Accelerate (test_fmm's cases)
+    FMM_CALIB_DIR=... cargo run --release --bin fmmbench [n ...]    # against Accelerate (test_fmm's cases, rectangular ones included)
 
 With `--features cbench` (links the C library: run `make build/libfmm.a` in `matmul/fastmm`
 first): `passbench` (the D48 left-factor pass against the C kernel and driver) and `crosscheck`

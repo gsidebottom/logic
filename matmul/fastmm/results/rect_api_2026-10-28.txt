@@ -1,0 +1,660 @@
+Rectangular problems through the API, the planner's shape estimates and the Rust port's parity, 2026-10-28.
+Machine: Apple M4 Pro; cache: calib5_f32/f64.txt (format 5), square calibration to 13824 (948 entries) plus
+the shape 3456x3456x1728 calibrated by test_fmm (118 entries).  Sections: (1) test_fmm run 1, before the fixes: every call after the
+calibration re-planned (+0.07-0.09 s: api_nplans reset without api_next), uncalibrated rectangular shapes had no price so the padding search
+took 3072^3 for 1000x3000x2000, and the calibration table (1024) silently dropped 42 of the shape's entries; (2) run 2 after the plan-cache
+reset and the shape estimates (table still capped: 18 entries re-measured); (3) the Rust tests (one wrong test expectation, fixed after),
+the Rust-vs-C crosscheck on the capped cache, and fmmbench on a copy of the cache without the shape's entries, so the Rust library
+calibrated 3456x3456x1728 itself; (4) the final run with CALIB_MAX 4096 (the shape's calibration completes, 1066 entries), the Rust tests,
+and the crosscheck on the completed cache; (5) the Rust-measured against the C-measured entries of the shape (ratio Rust/C; a ratio is
+omitted where the C value is 0, a fill-and-drain time clamped at zero).
+
+===== (1) test_fmm run 1 (before the fixes)
+=== test_fmm with the rectangular cases, Wed Oct 28 12:05:06 EDT 2026
+f32 n=1000  ld=1000  budget 0    plan G                              fmm   0.0006 s  Accelerate   0.0006 s  speedup  1.00  rel. difference 0.00e+00  ok
+f32 n=2048  ld=2048  budget 0    plan G                              fmm   0.0054 s  Accelerate   0.0064 s  speedup  1.17  rel. difference 0.00e+00  ok
+f32 n=3000  ld=3000  budget 0    plan D48/G6                         fmm   0.0152 s  Accelerate   0.0164 s  speedup  1.08  rel. difference 2.92e-06  ok
+f32 n=3456  ld=3456  budget 0    plan R363/G6                        fmm   0.0208 s  Accelerate   0.0245 s  speedup  1.18  rel. difference 2.95e-06  ok
+f32 n=4096  ld=4096  budget 0    plan D48/G6                         fmm   0.0366 s  Accelerate   0.0419 s  speedup  1.15  rel. difference 3.26e-06  ok
+f32 n=5000  ld=5000  budget 0    plan SW+4/D48/G6                    fmm   0.0632 s  Accelerate   0.0765 s  speedup  1.21  rel. difference 5.21e-06  ok
+f32 n=6912  ld=6912  budget 0    plan R363+4/D48/G6                  fmm   0.1409 s  Accelerate   0.1950 s  speedup  1.38  rel. difference 4.15e-06  ok
+f32 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.2373 s  Accelerate   0.3286 s  speedup  1.38  rel. difference 5.03e-06  ok
+f32 n=9000  ld=9000  budget 0    plan SW+4/D48/G3                    fmm   0.3358 s  Accelerate   0.4696 s  speedup  1.40  rel. difference 7.15e-06  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6                         fmm   0.0368 s  Accelerate   0.0400 s  speedup  1.09  rel. difference 3.70e-06  ok
+f32 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2383 s  Accelerate   0.3287 s  speedup  1.38  rel. difference 5.48e-06  ok
+# calibrating 48 entries (f32)
+#   G    m=3456x3456x1728 0.011751 s
+#   SW   m=1728x1728x864 0.001839 s   GSW 0.001515  G3SW 0.001469  G4SW 0.001474  G6SW 0.001593
+#   PSWk3p2s   m=864x864x432 0.001645 s   fill+drain 0.000513 s
+#   PSWk3p3s   m=864x864x432 0.001652 s   fill+drain 0.000481 s
+#   PSWk3p4s   m=864x864x432 0.001718 s   fill+drain 0.000389 s
+#   PSWk6p2s   m=864x864x432 0.001559 s   fill+drain 0.000531 s
+#   PSWk6p3s   m=864x864x432 0.001622 s   fill+drain 0.000386 s
+#   PSWk6p4s   m=864x864x432 0.001651 s   fill+drain 0.000443 s
+#   PR363k3p2s m=576x288x288 0.002130 s   fill+drain 0.000365 s
+#   PR363k3p3s m=576x288x288 0.001817 s   fill+drain 0.000789 s
+#   PR363k3p4s m=576x288x288 0.001659 s   fill+drain 0.000919 s
+#   PR363k6p2s m=576x288x288 0.002170 s   fill+drain 0.000286 s
+#   PR363k6p3s m=576x288x288 0.001929 s   fill+drain 0.000240 s
+#   PR363k6p4s m=576x288x288 0.001554 s   fill+drain 0.000816 s
+#   PR633k3p2s m=288x576x288 0.002209 s   fill+drain 0.000576 s
+#   PR633k3p3s m=288x576x288 0.001854 s   fill+drain 0.000798 s
+#   PR633k3p4s m=288x576x288 0.001698 s   fill+drain 0.000987 s
+#   PR633k6p2s m=288x576x288 0.002073 s   fill+drain 0.000564 s
+#   PR633k6p3s m=288x576x288 0.001930 s   fill+drain 0.000517 s
+#   PR633k6p4s m=288x576x288 0.001592 s   fill+drain 0.000797 s
+#   G    m=1728x1728x864 0.001453 s
+#   SW   m=864x864x432 0.000461 s   GSW 0.000249  G3SW 0.000218  G4SW 0.000228  G6SW 0.000216
+#   G    m=864x864x432 0.000209 s
+#   R363 m=576x288x288 0.000825 s   GR363 0.000081  G3R363 0.000036  G4R363 0.000034  G6R363 0.000032
+#   G    m=576x288x288 0.000063 s
+#   R633 m=288x576x288 0.000760 s   GR633 0.000084  G3R633 0.000037  G4R633 0.000035  G6R633 0.000033
+#   G    m=288x576x288 0.000062 s
+#   D48  m=864x864x432 0.003016 s   GD48 0.000254  G3D48 0.000207  G4D48 0.000197  G6D48 0.000189
+#   R336 m=1152x1152x288 0.003359 s   GR336 0.000297  G3R336 0.000253  G4R336 0.000242  G6R336 0.000233
+#   G    m=1152x1152x288 0.000243 s
+#   R363 m=1152x576x576 0.002799 s   GR363 0.000274  G3R363 0.000233  G4R363 0.000225  G6R363 0.000219
+#   PSWk3p2s   m=576x288x288 0.000257 s   fill+drain 0.000141 s
+#   PSWk3p3s   m=576x288x288 0.000262 s   fill+drain 0.000110 s
+#   PSWk3p4s   m=576x288x288 0.000257 s   fill+drain 0.000121 s
+#   PSWk6p2s   m=576x288x288 0.000279 s   fill+drain 0.000148 s
+#   PSWk6p3s   m=576x288x288 0.000283 s   fill+drain 0.000123 s
+#   PSWk6p4s   m=576x288x288 0.000299 s   fill+drain 0.000052 s
+#   G    m=1152x576x576 0.000231 s
+#   SW   m=576x288x288 0.000184 s   GSW 0.000072  G3SW 0.000070  G4SW 0.000069  G6SW 0.000069
+#   R633 m=576x1152x576 0.002898 s   GR633 0.000289  G3R633 0.000239  G4R633 0.000229  G6R633 0.000223
+#   PSWk3p2s   m=288x576x288 0.000246 s   fill+drain 0.000188 s
+#   PSWk3p3s   m=288x576x288 0.000262 s   fill+drain 0.000098 s
+#   PSWk3p4s   m=288x576x288 0.000273 s   fill+drain 0.000069 s
+#   PSWk6p2s   m=288x576x288 0.000293 s   fill+drain 0.000088 s
+#   PSWk6p3s   m=288x576x288 0.000308 s   fill+drain 0.000037 s
+#   PSWk6p4s   m=288x576x288 0.000295 s   fill+drain 0.000071 s
+#   G    m=576x1152x576 0.000231 s
+#   SW   m=288x576x288 0.000177 s   GSW 0.000068  G3SW 0.000040  G4SW 0.000060  G6SW 0.000065
+f32 3456x3456x1728       budget 0    plan G                              fmm   0.1129 s  Accelerate   0.0121 s  speedup  0.11  rel. difference 0.00e+00  ok  (calibrated for this shape)
+   calibration 8 s
+f32 1000x3000x2000       budget 0    plan D48/G6 padded to 3072          fmm   0.1204 s  Accelerate   0.0036 s  speedup  0.03  rel. difference 2.52e-06  ok
+f32 2048x4096x1024       budget 0    plan D48/G4 padded to 4608          fmm   0.1558 s  Accelerate   0.0052 s  speedup  0.03  rel. difference 2.76e-06  ok
+f64 n=1000  ld=1000  budget 0    plan G                              fmm   0.0892 s  Accelerate   0.0022 s  speedup  0.02  rel. difference 0.00e+00  ok
+f64 n=2048  ld=2048  budget 0    plan D48/G6                         fmm   0.1060 s  Accelerate   0.0214 s  speedup  0.20  rel. difference 3.95e-15  ok
+f64 n=3000  ld=3000  budget 0    plan D48/G3                         fmm   0.1336 s  Accelerate   0.0625 s  speedup  0.47  rel. difference 5.57e-15  ok
+f64 n=3456  ld=3456  budget 0    plan SW+3/R363/G6                   fmm   0.1550 s  Accelerate   0.0958 s  speedup  0.62  rel. difference 6.41e-15  ok
+f64 n=4096  ld=4096  budget 0    plan SW+3/D48/G6                    fmm   0.2152 s  Accelerate   0.1632 s  speedup  0.76  rel. difference 8.49e-15  ok
+f64 n=5000  ld=5000  budget 0    plan SW+4/D48/G3                    fmm   0.3044 s  Accelerate   0.2869 s  speedup  0.94  rel. difference 8.97e-15  ok
+f64 n=6912  ld=6912  budget 0    plan R363+3/R633/G6                 fmm   0.5329 s  Accelerate   0.7745 s  speedup  1.45  rel. difference 7.64e-15  ok
+f64 n=8192  ld=8192  budget 0    plan D48+3/D48/G6                   fmm   0.9303 s  Accelerate   1.3780 s  speedup  1.48  rel. difference 8.96e-15  ok
+f64 n=9000  ld=9000  budget 0    plan D48+3/D48/G6 padded to 9008    fmm   1.0673 s  Accelerate   1.7035 s  speedup  1.60  rel. difference 8.63e-15  ok
+f64 n=4096  ld=4160  budget 0    plan SW+3/D48/G6                    fmm   0.1223 s  Accelerate   0.1598 s  speedup  1.31  rel. difference 7.72e-15  ok
+f64 n=8192  ld=8192  budget 4    plan D48+3/D48/G6                   fmm   0.8149 s  Accelerate   1.4044 s  speedup  1.72  rel. difference 9.68e-15  ok
+# calibrating 48 entries (f64)
+#   G    m=3456x3456x1728 0.047847 s
+#   SW   m=1728x1728x864 0.003677 s   GSW 0.005765  G3SW 0.006057  G4SW 0.006037  G6SW 0.006353
+#   PSWk3p2s   m=864x864x432 0.005757 s   fill+drain 0.000769 s
+#   PSWk3p3s   m=864x864x432 0.005845 s   fill+drain 0.000726 s
+#   PSWk3p4s   m=864x864x432 0.006098 s   fill+drain 0.000140 s
+#   PSWk6p2s   m=864x864x432 0.005677 s   fill+drain 0.000701 s
+#   PSWk6p3s   m=864x864x432 0.005845 s   fill+drain 0.000000 s
+#   PSWk6p4s   m=864x864x432 0.005942 s   fill+drain 0.000194 s
+#   PR363k3p2s m=576x288x288 0.005034 s   fill+drain 0.002510 s
+#   PR363k3p3s m=576x288x288 0.005008 s   fill+drain 0.002032 s
+#   PR363k3p4s m=576x288x288 0.005027 s   fill+drain 0.001549 s
+#   PR363k6p2s m=576x288x288 0.004975 s   fill+drain 0.002272 s
+#   PR363k6p3s m=576x288x288 0.004962 s   fill+drain 0.001836 s
+#   PR363k6p4s m=576x288x288 0.004855 s   fill+drain 0.001859 s
+#   PR633k3p2s m=288x576x288 0.005116 s   fill+drain 0.002728 s
+#   PR633k3p3s m=288x576x288 0.005132 s   fill+drain 0.002103 s
+#   PR633k3p4s m=288x576x288 0.005198 s   fill+drain 0.001868 s
+#   PR633k6p2s m=288x576x288 0.005155 s   fill+drain 0.002045 s
+#   PR633k6p3s m=288x576x288 0.004955 s   fill+drain 0.001956 s
+#   PR633k6p4s m=288x576x288 0.004911 s   fill+drain 0.001908 s
+#   G    m=1728x1728x864 0.005782 s
+#   SW   m=864x864x432 0.000920 s   GSW 0.000770  G3SW 0.000740  G4SW 0.000788  G6SW 0.000739
+#   G    m=864x864x432 0.000708 s
+#   R363 m=576x288x288 0.001389 s   GR363 0.000138  G3R363 0.000114  G4R363 0.000112  G6R363 0.000110
+#   G    m=576x288x288 0.000129 s
+#   R633 m=288x576x288 0.001366 s   GR633 0.000147  G3R633 0.000120  G4R633 0.000115  G6R633 0.000113
+#   G    m=288x576x288 0.000131 s
+#   D48  m=864x864x432 0.005786 s   GD48 0.000765  G3D48 0.000708  G4D48 0.000680  G6D48 0.000671
+#   R336 m=1152x1152x288 0.006505 s   GR336 0.000968  G3R336 0.000851  G4R336 0.000832  G6R336 0.000809
+#   G    m=1152x1152x288 0.000942 s
+#   R363 m=1152x576x576 0.005163 s   GR363 0.000878  G3R363 0.000810  G4R363 0.000807  G6R363 0.000787
+#   PSWk3p2s   m=576x288x288 0.000927 s   fill+drain 0.000183 s
+#   PSWk3p3s   m=576x288x288 0.000937 s   fill+drain 0.000171 s
+#   PSWk3p4s   m=576x288x288 0.000928 s   fill+drain 0.000199 s
+#   PSWk6p2s   m=576x288x288 0.000889 s   fill+drain 0.000156 s
+#   PSWk6p3s   m=576x288x288 0.000903 s   fill+drain 0.000128 s
+#   PSWk6p4s   m=576x288x288 0.000875 s   fill+drain 0.000268 s
+#   G    m=1152x576x576 0.000809 s
+#   SW   m=576x288x288 0.000286 s   GSW 0.000166  G3SW 0.000149  G4SW 0.000122  G6SW 0.000152
+#   R633 m=576x1152x576 0.005586 s   GR633 0.000950  G3R633 0.000834  G4R633 0.000825  G6R633 0.000844
+#   PSWk3p2s   m=288x576x288 0.000939 s   fill+drain 0.000261 s
+#   PSWk3p3s   m=288x576x288 0.000960 s   fill+drain 0.000199 s
+#   PSWk3p4s   m=288x576x288 0.000953 s   fill+drain 0.000231 s
+#   PSWk6p2s   m=288x576x288 0.000877 s   fill+drain 0.000274 s
+#   PSWk6p3s   m=288x576x288 0.000898 s   fill+drain 0.000186 s
+#   PSWk6p4s   m=288x576x288 0.000920 s   fill+drain 0.000249 s
+#   G    m=576x1152x576 0.000968 s
+#   SW   m=288x576x288 0.000303 s   GSW 0.000135  G3SW 0.000125  G4SW 0.000126  G6SW 0.000148
+f64 3456x3456x1728       budget 0    plan R363/G4                        fmm   0.0375 s  Accelerate   0.0476 s  speedup  1.27  rel. difference 5.66e-15  ok  (calibrated for this shape)
+   calibration 15 s
+f64 1000x3000x2000       budget 0    plan D48/G3 padded to 3072          fmm   0.0545 s  Accelerate   0.0145 s  speedup  0.27  rel. difference 3.95e-15  ok
+f64 2048x4096x1024       budget 0    plan SW+3/D48/G6 padded to 4608     fmm   0.1651 s  Accelerate   0.0193 s  speedup  0.12  rel. difference 5.48e-15  ok
+all ok
+exit 0
+
+===== (2) test_fmm run 2 (plan-cache reset, shape estimates; table capped)
+=== test_fmm after the plan-cache and estimate fixes, Wed Oct 28 12:22:03 EDT 2026
+f32 n=1000  ld=1000  budget 0    plan G                              fmm   0.0006 s  Accelerate   0.0006 s  speedup  0.99  rel. difference 0.00e+00  ok
+f32 n=2048  ld=2048  budget 0    plan G                              fmm   0.0055 s  Accelerate   0.0054 s  speedup  0.99  rel. difference 0.00e+00  ok
+f32 n=3000  ld=3000  budget 0    plan D48/G6                         fmm   0.0153 s  Accelerate   0.0165 s  speedup  1.08  rel. difference 2.92e-06  ok
+f32 n=3456  ld=3456  budget 0    plan R363/G6                        fmm   0.0210 s  Accelerate   0.0247 s  speedup  1.18  rel. difference 2.95e-06  ok
+f32 n=4096  ld=4096  budget 0    plan D48/G6                         fmm   0.0372 s  Accelerate   0.0422 s  speedup  1.14  rel. difference 3.26e-06  ok
+f32 n=5000  ld=5000  budget 0    plan SW+4/D48/G6                    fmm   0.0639 s  Accelerate   0.0764 s  speedup  1.20  rel. difference 5.21e-06  ok
+f32 n=6912  ld=6912  budget 0    plan R363+4/D48/G6                  fmm   0.1433 s  Accelerate   0.1976 s  speedup  1.38  rel. difference 4.15e-06  ok
+f32 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.2386 s  Accelerate   0.3333 s  speedup  1.40  rel. difference 5.03e-06  ok
+f32 n=9000  ld=9000  budget 0    plan SW+4/D48/G3                    fmm   0.3319 s  Accelerate   0.4536 s  speedup  1.37  rel. difference 7.15e-06  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6                         fmm   0.0373 s  Accelerate   0.0400 s  speedup  1.07  rel. difference 3.70e-06  ok
+f32 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2376 s  Accelerate   0.3315 s  speedup  1.40  rel. difference 5.48e-06  ok
+# calibrating 18 entries (f32)
+#   R363 m=1152x576x576 0.002856 s   GR363 0.000278  G3R363 0.000234  G4R363 0.000224  G6R363 0.000219
+#   PSWk3p2s   m=576x288x288 0.000262 s   fill+drain 0.000122 s
+#   PSWk3p3s   m=576x288x288 0.000260 s   fill+drain 0.000108 s
+#   PSWk3p4s   m=576x288x288 0.000258 s   fill+drain 0.000122 s
+#   PSWk6p2s   m=576x288x288 0.000284 s   fill+drain 0.000113 s
+#   PSWk6p3s   m=576x288x288 0.000281 s   fill+drain 0.000094 s
+#   PSWk6p4s   m=576x288x288 0.000298 s   fill+drain 0.000080 s
+#   G    m=1152x576x576 0.000269 s
+#   SW   m=576x288x288 0.000202 s   GSW 0.000068  G3SW 0.000063  G4SW 0.000064  G6SW 0.000063
+#   R633 m=576x1152x576 0.002926 s   GR633 0.000287  G3R633 0.000239  G4R633 0.000234  G6R633 0.000225
+#   PSWk3p2s   m=288x576x288 0.000303 s   fill+drain 0.000142 s
+#   PSWk3p3s   m=288x576x288 0.000268 s   fill+drain 0.000147 s
+#   PSWk3p4s   m=288x576x288 0.000329 s   fill+drain 0.000088 s
+#   PSWk6p2s   m=288x576x288 0.000313 s   fill+drain 0.000169 s
+#   PSWk6p3s   m=288x576x288 0.000304 s   fill+drain 0.000067 s
+#   PSWk6p4s   m=288x576x288 0.000275 s   fill+drain 0.000160 s
+#   G    m=576x1152x576 0.000268 s
+#   SW   m=288x576x288 0.000195 s   GSW 0.000068  G3SW 0.000069  G4SW 0.000042  G6SW 0.000062
+f32 3456x3456x1728       budget 0    plan G                              fmm   0.0121 s  Accelerate   0.0124 s  speedup  1.02  rel. difference 0.00e+00  ok  (predicted 0.0118 s, calibrated for this shape; planning 0.065 s)
+   calibration 2 s
+f32 1000x3000x2000       budget 0    plan G                              fmm   0.0036 s  Accelerate   0.0036 s  speedup  0.99  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.069 s)
+f32 2048x4096x1024       budget 0    plan G                              fmm   0.0051 s  Accelerate   0.0051 s  speedup  1.01  rel. difference 0.00e+00  ok  (predicted 0.0048 s, estimated; planning 0.068 s)
+f32 6912x6912x3456       budget 0    plan SW+4/D48/G6                    fmm   0.0796 s  Accelerate   0.1004 s  speedup  1.26  rel. difference 6.34e-06  ok  (predicted 0.0790 s, estimated; planning 0.064 s)
+f64 n=1000  ld=1000  budget 0    plan G                              fmm   0.0021 s  Accelerate   0.0020 s  speedup  0.99  rel. difference 0.00e+00  ok
+f64 n=2048  ld=2048  budget 0    plan D48/G6                         fmm   0.0180 s  Accelerate   0.0216 s  speedup  1.20  rel. difference 3.63e-15  ok
+f64 n=3000  ld=3000  budget 0    plan D48/G3                         fmm   0.0502 s  Accelerate   0.0646 s  speedup  1.29  rel. difference 5.30e-15  ok
+f64 n=3456  ld=3456  budget 0    plan SW+3/R363/G6                   fmm   0.0714 s  Accelerate   0.0984 s  speedup  1.38  rel. difference 6.14e-15  ok
+f64 n=4096  ld=4096  budget 0    plan SW+3/D48/G6                    fmm   0.1228 s  Accelerate   0.1697 s  speedup  1.38  rel. difference 7.89e-15  ok
+f64 n=5000  ld=5000  budget 0    plan SW+4/D48/G3                    fmm   0.2197 s  Accelerate   0.2985 s  speedup  1.36  rel. difference 9.17e-15  ok
+f64 n=6912  ld=6912  budget 0    plan R363+3/R633/G6                 fmm   0.4553 s  Accelerate   0.7982 s  speedup  1.75  rel. difference 8.46e-15  ok
+f64 n=8192  ld=8192  budget 0    plan D48+3/D48/G6                   fmm   0.8146 s  Accelerate   1.3431 s  speedup  1.65  rel. difference 9.12e-15  ok
+f64 n=9000  ld=9000  budget 0    plan D48+3/D48/G6 padded to 9008    fmm   1.0598 s  Accelerate   1.7898 s  speedup  1.69  rel. difference 1.02e-14  ok
+f64 n=4096  ld=4160  budget 0    plan SW+3/D48/G6                    fmm   0.1238 s  Accelerate   0.1689 s  speedup  1.36  rel. difference 8.26e-15  ok
+f64 n=8192  ld=8192  budget 4    plan D48+3/D48/G6                   fmm   0.8155 s  Accelerate   1.3697 s  speedup  1.68  rel. difference 9.65e-15  ok
+# calibrating 18 entries (f64)
+#   R363 m=1152x576x576 0.005201 s   GR363 0.001032  G3R363 0.000817  G4R363 0.000813  G6R363 0.000803
+#   PSWk3p2s   m=576x288x288 0.000960 s   fill+drain 0.000196 s
+#   PSWk3p3s   m=576x288x288 0.000980 s   fill+drain 0.000188 s
+#   PSWk3p4s   m=576x288x288 0.000969 s   fill+drain 0.000171 s
+#   PSWk6p2s   m=576x288x288 0.000891 s   fill+drain 0.000264 s
+#   PSWk6p3s   m=576x288x288 0.000900 s   fill+drain 0.000162 s
+#   PSWk6p4s   m=576x288x288 0.000911 s   fill+drain 0.000264 s
+#   G    m=1152x576x576 0.000837 s
+#   SW   m=576x288x288 0.000292 s   GSW 0.000165  G3SW 0.000125  G4SW 0.000148  G6SW 0.000143
+#   R633 m=576x1152x576 0.005684 s   GR633 0.000981  G3R633 0.000825  G4R633 0.000844  G6R633 0.000864
+#   PSWk3p2s   m=288x576x288 0.000941 s   fill+drain 0.000324 s
+#   PSWk3p3s   m=288x576x288 0.000967 s   fill+drain 0.000242 s
+#   PSWk3p4s   m=288x576x288 0.000996 s   fill+drain 0.000190 s
+#   PSWk6p2s   m=288x576x288 0.000913 s   fill+drain 0.000285 s
+#   PSWk6p3s   m=288x576x288 0.000917 s   fill+drain 0.000161 s
+#   PSWk6p4s   m=288x576x288 0.000940 s   fill+drain 0.000136 s
+#   G    m=576x1152x576 0.000964 s
+#   SW   m=288x576x288 0.000307 s   GSW 0.000166  G3SW 0.000150  G4SW 0.000149  G6SW 0.000148
+f64 3456x3456x1728       budget 0    plan R363/G4                        fmm   0.0380 s  Accelerate   0.0489 s  speedup  1.29  rel. difference 5.78e-15  ok  (predicted 0.0377 s, calibrated for this shape; planning 0.067 s)
+   calibration 4 s
+f64 1000x3000x2000       budget 0    plan SW/G4                          fmm   0.0144 s  Accelerate   0.0149 s  speedup  1.04  rel. difference 8.62e-15  ok  (predicted 0.0133 s, estimated; planning 0.071 s)
+f64 2048x4096x1024       budget 0    plan D48/G6                         fmm   0.0180 s  Accelerate   0.0198 s  speedup  1.10  rel. difference 6.36e-15  ok  (predicted 0.0177 s, estimated; planning 0.072 s)
+f64 6912x6912x3456       budget 0    plan D48+4/R363/G6                  fmm   0.2565 s  Accelerate   0.3907 s  speedup  1.52  rel. difference 8.06e-15  ok  (predicted 0.2578 s, estimated; planning 0.069 s)
+all ok
+exit 0
+
+===== (3) cargo test, crosscheck (capped cache), fmmbench with the Rust calibration of 3456x3456x1728
+=== cargo test, Wed Oct 28 12:24:39 EDT 2026
+running 6 tests
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 4 tests
+test entry_points ... FAILED
+thread 'entry_points' (4435823) panicked at tests/exec.rs:155:5:
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.49s
+error: test failed, to rerun pass `--test exec`
+=== crosscheck (Rust vs C, cache /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/calib5), Wed Oct 28 12:24:43 EDT 2026
+f32 1000           ld=1000  budget 0    plan rust G                              c G                              predicted 0.000576 / 0.000576  results identical  rel. difference from Accelerate 0.00e+00
+f32 2048           ld=2048  budget 0    plan rust G                              c G                              predicted 0.004831 / 0.004831  results identical  rel. difference from Accelerate 0.00e+00
+f32 3000           ld=3000  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.014878 / 0.014878  results identical  rel. difference from Accelerate 2.92e-06
+f32 4096           ld=4096  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.035107 / 0.035107  results identical  rel. difference from Accelerate 3.39e-06
+f32 5000           ld=5000  budget 0    plan rust SW+4/D48/G6                    c SW+4/D48/G6                    predicted 0.061429 / 0.061429  results identical  rel. difference from Accelerate 4.80e-06
+f32 8192           ld=8192  budget 0    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   predicted 0.234058 / 0.234058  results identical  rel. difference from Accelerate 5.47e-06
+f32 9000           ld=9000  budget 0    plan rust SW+4/D48/G3                    c SW+4/D48/G3                    predicted 0.314317 / 0.314317  results identical  rel. difference from Accelerate 6.16e-06
+f32 4096           ld=4160  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.035107 / 0.035107  results identical  rel. difference from Accelerate 3.76e-06
+f32 8192           ld=8192  budget 4    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   predicted 0.234058 / 0.234058  results identical  rel. difference from Accelerate 4.96e-06
+f32 3456x3456x1728 ld=3464  budget 0    plan rust G                              c G                              predicted 0.011751 / 0.011751  results identical  rel. difference from Accelerate 0.00e+00
+f32 1000x3000x2000 ld=3008  budget 0    plan rust G                              c G                              predicted 0.003333 / 0.003333  results identical  rel. difference from Accelerate 0.00e+00
+f32 2048x4096x1024 ld=4104  budget 0    plan rust G                              c G                              predicted 0.004831 / 0.004831  results identical  rel. difference from Accelerate 0.00e+00
+f32 6912x6912x3456 ld=6920  budget 0    plan rust SW+4/D48/G6                    c SW+4/D48/G6                    predicted 0.078951 / 0.078951  results identical  rel. difference from Accelerate 5.62e-06
+f64 1000           ld=1000  budget 0    plan rust G                              c G                              predicted 0.002132 / 0.002132  results identical  rel. difference from Accelerate 0.00e+00
+f64 2048           ld=2048  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.017156 / 0.017156  results identical  rel. difference from Accelerate 4.92e-15
+f64 3000           ld=3000  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.048836 / 0.048836  results identical  rel. difference from Accelerate 5.21e-15
+f64 4096           ld=4096  budget 0    plan rust SW+3/D48/G6                    c SW+3/D48/G6                    predicted 0.118370 / 0.118370  results identical  rel. difference from Accelerate 7.28e-15
+f64 5000           ld=5000  budget 0    plan rust SW+4/D48/G3                    c SW+4/D48/G3                    predicted 0.208541 / 0.208541  results identical  rel. difference from Accelerate 8.61e-15
+f64 8192           ld=8192  budget 0    plan rust D48+3/D48/G6                   c D48+3/D48/G6                   predicted 0.779937 / 0.779937  results identical  rel. difference from Accelerate 9.28e-15
+f64 9000           ld=9000  budget 0    plan rust D48+3/D48/G6 padded to 9008    c D48+3/D48/G6 padded to 9008    predicted 1.082204 / 1.082204  results identical  rel. difference from Accelerate 9.50e-15
+f64 4096           ld=4160  budget 0    plan rust SW+3/D48/G6                    c SW+3/D48/G6                    predicted 0.118370 / 0.118370  results identical  rel. difference from Accelerate 7.32e-15
+f64 8192           ld=8192  budget 4    plan rust D48+3/D48/G6                   c D48+3/D48/G6                   predicted 0.779937 / 0.779937  results identical  rel. difference from Accelerate 9.51e-15
+f64 3456x3456x1728 ld=3464  budget 0    plan rust R363/G4                        c R363/G4                        predicted 0.037704 / 0.037704  results identical  rel. difference from Accelerate 5.02e-15
+f64 1000x3000x2000 ld=3008  budget 0    plan rust SW/G4                          c SW/G4                          predicted 0.013290 / 0.013290  results identical  rel. difference from Accelerate 7.87e-15
+f64 2048x4096x1024 ld=4104  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.017654 / 0.017654  results identical  rel. difference from Accelerate 5.42e-15
+f64 6912x6912x3456 ld=6920  budget 0    plan rust D48+4/R363/G6                  c D48+4/R363/G6                  predicted 0.257776 / 0.257776  results identical  rel. difference from Accelerate 7.39e-15
+all identical
+exit 0
+=== fmmbench on the cache without the rectangular entries (/private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/calib5_rs): the Rust calibration of 3456x3456x1728, Wed Oct 28 12:25:17 EDT 2026
+f32 1000           ld=1000  budget 0    plan G                              fmm   0.0008 s  Accelerate   0.0008 s  speedup  0.90  rel. difference 0.00e+00  ok  (predicted 0.0006 s; planning 0.017 s)
+f32 2048           ld=2048  budget 0    plan G                              fmm   0.0054 s  Accelerate   0.0056 s  speedup  1.03  rel. difference 0.00e+00  ok  (predicted 0.0048 s; planning 0.010 s)
+f32 3000           ld=3000  budget 0    plan D48/G6                         fmm   0.0163 s  Accelerate   0.0184 s  speedup  1.13  rel. difference 2.92e-06  ok  (predicted 0.0149 s; planning 0.009 s)
+f32 4096           ld=4096  budget 0    plan D48/G6                         fmm   0.0378 s  Accelerate   0.0422 s  speedup  1.11  rel. difference 3.39e-06  ok  (predicted 0.0351 s; planning 0.010 s)
+f32 5000           ld=5000  budget 0    plan SW+4/D48/G6                    fmm   0.0668 s  Accelerate   0.0933 s  speedup  1.40  rel. difference 4.80e-06  ok  (predicted 0.0614 s; planning 0.010 s)
+f32 8192           ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.2419 s  Accelerate   0.3303 s  speedup  1.37  rel. difference 5.47e-06  ok  (predicted 0.2341 s; planning 0.011 s)
+f32 9000           ld=9000  budget 0    plan SW+4/D48/G3                    fmm   0.3195 s  Accelerate   0.4470 s  speedup  1.40  rel. difference 6.16e-06  ok  (predicted 0.3143 s; planning 0.010 s)
+f32 4096           ld=4160  budget 0    plan D48/G6                         fmm   0.0369 s  Accelerate   0.0456 s  speedup  1.23  rel. difference 3.76e-06  ok  (predicted 0.0351 s; planning 0.000 s)
+f32 8192           ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2391 s  Accelerate   0.3261 s  speedup  1.36  rel. difference 4.96e-06  ok  (predicted 0.2341 s; planning 0.002 s)
+# calibrating 48 entries (f32)
+#   G    m=3456x3456x1728 0.011673 s
+#   SW   m=1728x1728x864  0.002055 s   GSW 0.001552  G3SW 0.001473  G4SW 0.001514  G6SW 0.001568
+#   PSWk3p2s   m=864x864x432    0.001782 s   fill+drain 0.000461 s
+#   PSWk3p3s   m=864x864x432    0.001790 s   fill+drain 0.000538 s
+#   PSWk3p4s   m=864x864x432    0.001784 s   fill+drain 0.000472 s
+#   PSWk6p2s   m=864x864x432    0.001600 s   fill+drain 0.000533 s
+#   PSWk6p3s   m=864x864x432    0.001634 s   fill+drain 0.000487 s
+#   PSWk6p4s   m=864x864x432    0.001641 s   fill+drain 0.000582 s
+#   PR363k3p2s m=576x288x288    0.002792 s   fill+drain 0.000000 s
+#   PR363k3p3s m=576x288x288    0.002293 s   fill+drain 0.000060 s
+#   PR363k3p4s m=576x288x288    0.002026 s   fill+drain 0.000449 s
+#   PR363k6p2s m=576x288x288    0.002915 s   fill+drain 0.000000 s
+#   PR363k6p3s m=576x288x288    0.002207 s   fill+drain 0.000000 s
+#   PR363k6p4s m=576x288x288    0.001801 s   fill+drain 0.000345 s
+#   PR633k3p2s m=288x576x288    0.002407 s   fill+drain 0.000127 s
+#   PR633k3p3s m=288x576x288    0.001944 s   fill+drain 0.000723 s
+#   PR633k3p4s m=288x576x288    0.001936 s   fill+drain 0.000968 s
+#   PR633k6p2s m=288x576x288    0.002383 s   fill+drain 0.000000 s
+#   PR633k6p3s m=288x576x288    0.001860 s   fill+drain 0.000291 s
+#   PR633k6p4s m=288x576x288    0.001623 s   fill+drain 0.000813 s
+#   G    m=1728x1728x864  0.001484 s
+#   SW   m=864x864x432    0.000636 s   GSW 0.000237  G3SW 0.000217  G4SW 0.000221  G6SW 0.000206
+#   G    m=864x864x432    0.000197 s
+#   R363 m=576x288x288    0.001242 s   GR363 0.000075  G3R363 0.000035  G4R363 0.000034  G6R363 0.000032
+#   G    m=576x288x288    0.000063 s
+#   R633 m=288x576x288    0.001145 s   GR633 0.000078  G3R633 0.000038  G4R633 0.000035  G6R633 0.000034
+#   G    m=288x576x288    0.000062 s
+#   D48  m=864x864x432    0.003544 s   GD48 0.000252  G3D48 0.000209  G4D48 0.000200  G6D48 0.000193
+#   R336 m=1152x1152x288  0.004016 s   GR336 0.000296  G3R336 0.000261  G4R336 0.000245  G6R336 0.000234
+#   G    m=1152x1152x288  0.000231 s
+#   R363 m=1152x576x576   0.003635 s   GR363 0.000272  G3R363 0.000236  G4R363 0.000226  G6R363 0.000222
+#   PSWk3p2s   m=576x288x288    0.000329 s   fill+drain 0.000186 s
+#   PSWk3p3s   m=576x288x288    0.000337 s   fill+drain 0.000223 s
+#   PSWk3p4s   m=576x288x288    0.000329 s   fill+drain 0.000246 s
+#   PSWk6p2s   m=576x288x288    0.000319 s   fill+drain 0.000204 s
+#   PSWk6p3s   m=576x288x288    0.000311 s   fill+drain 0.000273 s
+#   PSWk6p4s   m=576x288x288    0.000314 s   fill+drain 0.000228 s
+#   G    m=1152x576x576   0.000218 s
+#   SW   m=576x288x288    0.000406 s   GSW 0.000065  G3SW 0.000037  G4SW 0.000038  G6SW 0.000036
+#   R633 m=576x1152x576   0.003474 s   GR633 0.000288  G3R633 0.000244  G4R633 0.000232  G6R633 0.000224
+#   PSWk3p2s   m=288x576x288    0.000325 s   fill+drain 0.000246 s
+#   PSWk3p3s   m=288x576x288    0.000345 s   fill+drain 0.000214 s
+#   PSWk3p4s   m=288x576x288    0.000317 s   fill+drain 0.000302 s
+#   PSWk6p2s   m=288x576x288    0.000322 s   fill+drain 0.000229 s
+#   PSWk6p3s   m=288x576x288    0.000320 s   fill+drain 0.000239 s
+#   PSWk6p4s   m=288x576x288    0.000304 s   fill+drain 0.000297 s
+#   G    m=576x1152x576   0.000216 s
+#   SW   m=288x576x288    0.000353 s   GSW 0.000065  G3SW 0.000037  G4SW 0.000036  G6SW 0.000037
+f32 3456x3456x1728 ld=3464  budget 0    plan G                              fmm   0.0120 s  Accelerate   0.0120 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0117 s, calibrated for this shape; planning 0.009 s)
+   calibration 12 s
+f32 1000x3000x2000 ld=3008  budget 0    plan G                              fmm   0.0037 s  Accelerate   0.0037 s  speedup  1.01  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.010 s)
+f32 2048x4096x1024 ld=4104  budget 0    plan G                              fmm   0.0052 s  Accelerate   0.0052 s  speedup  0.99  rel. difference 0.00e+00  ok  (predicted 0.0048 s, estimated; planning 0.010 s)
+f32 6912x6912x3456 ld=6920  budget 0    plan SW+4/D48/G6                    fmm   0.0789 s  Accelerate   0.1159 s  speedup  1.47  rel. difference 5.62e-06  ok  (predicted 0.0790 s, estimated; planning 0.010 s)
+f64 1000           ld=1000  budget 0    plan G                              fmm   0.0020 s  Accelerate   0.0020 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0021 s; planning 0.010 s)
+f64 2048           ld=2048  budget 0    plan D48/G6                         fmm   0.0183 s  Accelerate   0.0213 s  speedup  1.16  rel. difference 4.92e-15  ok  (predicted 0.0172 s; planning 0.009 s)
+f64 3000           ld=3000  budget 0    plan D48/G3                         fmm   0.0506 s  Accelerate   0.0627 s  speedup  1.24  rel. difference 5.21e-15  ok  (predicted 0.0488 s; planning 0.009 s)
+f64 4096           ld=4096  budget 0    plan SW+3/D48/G6                    fmm   0.1180 s  Accelerate   0.1710 s  speedup  1.45  rel. difference 7.28e-15  ok  (predicted 0.1184 s; planning 0.010 s)
+f64 5000           ld=5000  budget 0    plan SW+4/D48/G3                    fmm   0.2066 s  Accelerate   0.2945 s  speedup  1.43  rel. difference 8.61e-15  ok  (predicted 0.2085 s; planning 0.010 s)
+f64 8192           ld=8192  budget 0    plan D48+3/D48/G6                   fmm   0.8012 s  Accelerate   1.5029 s  speedup  1.88  rel. difference 9.28e-15  ok  (predicted 0.7799 s; planning 0.011 s)
+f64 9000           ld=9000  budget 0    plan D48+3/D48/G6 padded to 9008    fmm   1.0063 s  Accelerate   1.7936 s  speedup  1.78  rel. difference 9.50e-15  ok  (predicted 1.0822 s; planning 0.010 s)
+f64 4096           ld=4160  budget 0    plan SW+3/D48/G6                    fmm   0.1166 s  Accelerate   0.1844 s  speedup  1.58  rel. difference 7.32e-15  ok  (predicted 0.1184 s; planning 0.000 s)
+f64 8192           ld=8192  budget 4    plan D48+3/D48/G6                   fmm   0.8003 s  Accelerate   1.5024 s  speedup  1.88  rel. difference 9.51e-15  ok  (predicted 0.7799 s; planning 0.002 s)
+# calibrating 48 entries (f64)
+#   G    m=3456x3456x1728 0.047756 s
+#   SW   m=1728x1728x864  0.003773 s   GSW 0.005900  G3SW 0.005979  G4SW 0.006052  G6SW 0.006331
+#   PSWk3p2s   m=864x864x432    0.005860 s   fill+drain 0.001251 s
+#   PSWk3p3s   m=864x864x432    0.005889 s   fill+drain 0.000494 s
+#   PSWk3p4s   m=864x864x432    0.005905 s   fill+drain 0.000678 s
+#   PSWk6p2s   m=864x864x432    0.005831 s   fill+drain 0.000069 s
+#   PSWk6p3s   m=864x864x432    0.005647 s   fill+drain 0.000778 s
+#   PSWk6p4s   m=864x864x432    0.005904 s   fill+drain 0.000360 s
+#   PR363k3p2s m=576x288x288    0.005016 s   fill+drain 0.000941 s
+#   PR363k3p3s m=576x288x288    0.005166 s   fill+drain 0.001162 s
+#   PR363k3p4s m=576x288x288    0.005379 s   fill+drain 0.000829 s
+#   PR363k6p2s m=576x288x288    0.004838 s   fill+drain 0.001029 s
+#   PR363k6p3s m=576x288x288    0.004606 s   fill+drain 0.001551 s
+#   PR363k6p4s m=576x288x288    0.004656 s   fill+drain 0.001406 s
+#   PR633k3p2s m=288x576x288    0.005390 s   fill+drain 0.001149 s
+#   PR633k3p3s m=288x576x288    0.006025 s   fill+drain 0.000000 s
+#   PR633k3p4s m=288x576x288    0.005828 s   fill+drain 0.000407 s
+#   PR633k6p2s m=288x576x288    0.004939 s   fill+drain 0.001145 s
+#   PR633k6p3s m=288x576x288    0.004814 s   fill+drain 0.001336 s
+#   PR633k6p4s m=288x576x288    0.004768 s   fill+drain 0.001490 s
+#   G    m=1728x1728x864  0.005808 s
+#   SW   m=864x864x432    0.001130 s   GSW 0.000793  G3SW 0.000793  G4SW 0.000798  G6SW 0.000744
+#   G    m=864x864x432    0.000694 s
+#   R363 m=576x288x288    0.001737 s   GR363 0.000139  G3R363 0.000116  G4R363 0.000113  G6R363 0.000112
+#   G    m=576x288x288    0.000130 s
+#   R633 m=288x576x288    0.001693 s   GR633 0.000147  G3R633 0.000123  G4R633 0.000118  G6R633 0.000115
+#   G    m=288x576x288    0.000129 s
+#   D48  m=864x864x432    0.006275 s   GD48 0.001069  G3D48 0.000706  G4D48 0.000683  G6D48 0.000675
+#   R336 m=1152x1152x288  0.006786 s   GR336 0.001048  G3R336 0.000856  G4R336 0.000836  G6R336 0.000812
+#   G    m=1152x1152x288  0.000893 s
+#   R363 m=1152x576x576   0.005638 s   GR363 0.000878  G3R363 0.000819  G4R363 0.000808  G6R363 0.000790
+#   PSWk3p2s   m=576x288x288    0.000956 s   fill+drain 0.000369 s
+#   PSWk3p3s   m=576x288x288    0.000945 s   fill+drain 0.000320 s
+#   PSWk3p4s   m=576x288x288    0.000953 s   fill+drain 0.000298 s
+#   PSWk6p2s   m=576x288x288    0.000897 s   fill+drain 0.000363 s
+#   PSWk6p3s   m=576x288x288    0.000894 s   fill+drain 0.000391 s
+#   PSWk6p4s   m=576x288x288    0.000904 s   fill+drain 0.000348 s
+#   G    m=1152x576x576   0.000846 s
+#   SW   m=576x288x288    0.000387 s   GSW 0.000131  G3SW 0.000121  G4SW 0.000124  G6SW 0.000121
+#   R633 m=576x1152x576   0.005934 s   GR633 0.000996  G3R633 0.000828  G4R633 0.000836  G6R633 0.000861
+#   PSWk3p2s   m=288x576x288    0.001040 s   fill+drain 0.000282 s
+#   PSWk3p3s   m=288x576x288    0.001071 s   fill+drain 0.000357 s
+#   PSWk3p4s   m=288x576x288    0.001043 s   fill+drain 0.000210 s
+#   PSWk6p2s   m=288x576x288    0.000911 s   fill+drain 0.000352 s
+#   PSWk6p3s   m=288x576x288    0.000919 s   fill+drain 0.000398 s
+#   PSWk6p4s   m=288x576x288    0.000916 s   fill+drain 0.000382 s
+#   G    m=576x1152x576   0.000908 s
+#   SW   m=288x576x288    0.000482 s   GSW 0.000135  G3SW 0.000125  G4SW 0.000124  G6SW 0.000121
+f64 3456x3456x1728 ld=3464  budget 0    plan R363/G6                        fmm   0.0375 s  Accelerate   0.0482 s  speedup  1.28  rel. difference 5.02e-15  ok  (predicted 0.0372 s, calibrated for this shape; planning 0.010 s)
+   calibration 17 s
+f64 1000x3000x2000 ld=3008  budget 0    plan SW/G4                          fmm   0.0149 s  Accelerate   0.0146 s  speedup  0.98  rel. difference 7.87e-15  ok  (predicted 0.0133 s, estimated; planning 0.010 s)
+f64 2048x4096x1024 ld=4104  budget 0    plan D48/G6                         fmm   0.0188 s  Accelerate   0.0208 s  speedup  1.10  rel. difference 5.42e-15  ok  (predicted 0.0177 s, estimated; planning 0.012 s)
+f64 6912x6912x3456 ld=6920  budget 0    plan D48+3/R363/G6                  fmm   0.2479 s  Accelerate   0.3858 s  speedup  1.56  rel. difference 7.39e-15  ok  (predicted 0.2455 s, estimated; planning 0.010 s)
+all ok
+exit 0
+=== done Wed Oct 28 12:26:39 EDT 2026
+
+===== (4) CALIB_MAX 4096: test_fmm, cargo test, crosscheck on the completed cache
+=== make, Wed Oct 28 12:28:28 EDT 2026
+=== test_fmm (CALIB_MAX 4096: the rectangular calibration completes), Wed Oct 28 12:28:31 EDT 2026
+f32 n=1000  ld=1000  budget 0    plan G                              fmm   0.0010 s  Accelerate   0.0010 s  speedup  1.00  rel. difference 0.00e+00  ok
+f32 n=2048  ld=2048  budget 0    plan G                              fmm   0.0054 s  Accelerate   0.0052 s  speedup  0.97  rel. difference 0.00e+00  ok
+f32 n=3000  ld=3000  budget 0    plan D48/G6                         fmm   0.0151 s  Accelerate   0.0164 s  speedup  1.09  rel. difference 2.92e-06  ok
+f32 n=3456  ld=3456  budget 0    plan R363/G6                        fmm   0.0208 s  Accelerate   0.0246 s  speedup  1.18  rel. difference 2.95e-06  ok
+f32 n=4096  ld=4096  budget 0    plan D48/G6                         fmm   0.0366 s  Accelerate   0.0418 s  speedup  1.14  rel. difference 3.26e-06  ok
+f32 n=5000  ld=5000  budget 0    plan SW+4/D48/G6                    fmm   0.0634 s  Accelerate   0.0760 s  speedup  1.20  rel. difference 5.21e-06  ok
+f32 n=6912  ld=6912  budget 0    plan R363+4/D48/G6                  fmm   0.1553 s  Accelerate   0.1992 s  speedup  1.28  rel. difference 4.15e-06  ok
+f32 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.2375 s  Accelerate   0.3274 s  speedup  1.38  rel. difference 5.03e-06  ok
+f32 n=9000  ld=9000  budget 0    plan SW+4/D48/G3                    fmm   0.3324 s  Accelerate   0.4406 s  speedup  1.33  rel. difference 7.15e-06  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6                         fmm   0.0362 s  Accelerate   0.0398 s  speedup  1.10  rel. difference 3.70e-06  ok
+f32 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2372 s  Accelerate   0.3274 s  speedup  1.38  rel. difference 5.48e-06  ok
+# calibrating 18 entries (f32)
+#   R363 m=1152x576x576 0.002864 s   GR363 0.000270  G3R363 0.000232  G4R363 0.000223  G6R363 0.000220
+#   PSWk3p2s   m=576x288x288 0.000252 s   fill+drain 0.000152 s
+#   PSWk3p3s   m=576x288x288 0.000247 s   fill+drain 0.000156 s
+#   PSWk3p4s   m=576x288x288 0.000268 s   fill+drain 0.000071 s
+#   PSWk6p2s   m=576x288x288 0.000281 s   fill+drain 0.000114 s
+#   PSWk6p3s   m=576x288x288 0.000266 s   fill+drain 0.000166 s
+#   PSWk6p4s   m=576x288x288 0.000297 s   fill+drain 0.000062 s
+#   G    m=1152x576x576 0.000233 s
+#   SW   m=576x288x288 0.000186 s   GSW 0.000073  G3SW 0.000068  G4SW 0.000068  G6SW 0.000069
+#   R633 m=576x1152x576 0.002910 s   GR633 0.000285  G3R633 0.000238  G4R633 0.000229  G6R633 0.000222
+#   PSWk3p2s   m=288x576x288 0.000252 s   fill+drain 0.000158 s
+#   PSWk3p3s   m=288x576x288 0.000256 s   fill+drain 0.000113 s
+#   PSWk3p4s   m=288x576x288 0.000258 s   fill+drain 0.000120 s
+#   PSWk6p2s   m=288x576x288 0.000276 s   fill+drain 0.000118 s
+#   PSWk6p3s   m=288x576x288 0.000290 s   fill+drain 0.000093 s
+#   PSWk6p4s   m=288x576x288 0.000300 s   fill+drain 0.000039 s
+#   G    m=576x1152x576 0.000233 s
+#   SW   m=288x576x288 0.000181 s   GSW 0.000071  G3SW 0.000063  G4SW 0.000068  G6SW 0.000067
+f32 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0115 s  Accelerate   0.0121 s  speedup  1.05  rel. difference 2.71e-06  ok  (predicted 0.0117 s, calibrated for this shape; planning 0.065 s)
+   calibration 2 s
+f32 1000x3000x2000       budget 0    plan G                              fmm   0.0036 s  Accelerate   0.0036 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.068 s)
+f32 2048x4096x1024       budget 0    plan G                              fmm   0.0050 s  Accelerate   0.0050 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0048 s, estimated; planning 0.070 s)
+f32 6912x6912x3456       budget 0    plan SW+4/D48/G6                    fmm   0.0794 s  Accelerate   0.0996 s  speedup  1.25  rel. difference 6.34e-06  ok  (predicted 0.0790 s, estimated; planning 0.067 s)
+f64 n=1000  ld=1000  budget 0    plan G                              fmm   0.0020 s  Accelerate   0.0020 s  speedup  1.00  rel. difference 0.00e+00  ok
+f64 n=2048  ld=2048  budget 0    plan D48/G6                         fmm   0.0178 s  Accelerate   0.0208 s  speedup  1.17  rel. difference 3.63e-15  ok
+f64 n=3000  ld=3000  budget 0    plan D48/G3                         fmm   0.0493 s  Accelerate   0.0620 s  speedup  1.26  rel. difference 5.30e-15  ok
+f64 n=3456  ld=3456  budget 0    plan SW+3/R363/G6                   fmm   0.0724 s  Accelerate   0.0971 s  speedup  1.34  rel. difference 6.14e-15  ok
+f64 n=4096  ld=4096  budget 0    plan SW+3/D48/G6                    fmm   0.1223 s  Accelerate   0.1628 s  speedup  1.33  rel. difference 7.89e-15  ok
+f64 n=5000  ld=5000  budget 0    plan SW+4/D48/G3                    fmm   0.2139 s  Accelerate   0.3025 s  speedup  1.41  rel. difference 9.17e-15  ok
+f64 n=6912  ld=6912  budget 0    plan R363+3/R633/G6                 fmm   0.4583 s  Accelerate   0.7746 s  speedup  1.69  rel. difference 8.46e-15  ok
+f64 n=8192  ld=8192  budget 0    plan D48+3/D48/G6                   fmm   0.8148 s  Accelerate   1.4770 s  speedup  1.81  rel. difference 9.12e-15  ok
+f64 n=9000  ld=9000  budget 0    plan D48+3/D48/G6 padded to 9008    fmm   1.0806 s  Accelerate   1.6883 s  speedup  1.56  rel. difference 1.02e-14  ok
+f64 n=4096  ld=4160  budget 0    plan SW+3/D48/G6                    fmm   0.1220 s  Accelerate   0.1594 s  speedup  1.31  rel. difference 8.26e-15  ok
+f64 n=8192  ld=8192  budget 4    plan D48+3/D48/G6                   fmm   0.8162 s  Accelerate   1.2974 s  speedup  1.59  rel. difference 9.65e-15  ok
+# calibrating 18 entries (f64)
+#   R363 m=1152x576x576 0.005137 s   GR363 0.000897  G3R363 0.000813  G4R363 0.000806  G6R363 0.000786
+#   PSWk3p2s   m=576x288x288 0.000917 s   fill+drain 0.000218 s
+#   PSWk3p3s   m=576x288x288 0.000929 s   fill+drain 0.000177 s
+#   PSWk3p4s   m=576x288x288 0.000933 s   fill+drain 0.000221 s
+#   PSWk6p2s   m=576x288x288 0.000900 s   fill+drain 0.000160 s
+#   PSWk6p3s   m=576x288x288 0.000916 s   fill+drain 0.000163 s
+#   PSWk6p4s   m=576x288x288 0.000935 s   fill+drain 0.000124 s
+#   G    m=1152x576x576 0.000797 s
+#   SW   m=576x288x288 0.000270 s   GSW 0.000135  G3SW 0.000152  G4SW 0.000127  G6SW 0.000116
+#   R633 m=576x1152x576 0.005654 s   GR633 0.000956  G3R633 0.000827  G4R633 0.000824  G6R633 0.000848
+#   PSWk3p2s   m=288x576x288 0.000931 s   fill+drain 0.000261 s
+#   PSWk3p3s   m=288x576x288 0.000936 s   fill+drain 0.000211 s
+#   PSWk3p4s   m=288x576x288 0.000952 s   fill+drain 0.000198 s
+#   PSWk6p2s   m=288x576x288 0.000888 s   fill+drain 0.000276 s
+#   PSWk6p3s   m=288x576x288 0.000888 s   fill+drain 0.000367 s
+#   PSWk6p4s   m=288x576x288 0.000896 s   fill+drain 0.000269 s
+#   G    m=576x1152x576 0.000931 s
+#   SW   m=288x576x288 0.000293 s   GSW 0.000159  G3SW 0.000145  G4SW 0.000128  G6SW 0.000120
+f64 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0367 s  Accelerate   0.0477 s  speedup  1.30  rel. difference 5.78e-15  ok  (predicted 0.0366 s, calibrated for this shape; planning 0.064 s)
+   calibration 4 s
+f64 1000x3000x2000       budget 0    plan SW/G4                          fmm   0.0138 s  Accelerate   0.0145 s  speedup  1.05  rel. difference 8.62e-15  ok  (predicted 0.0133 s, estimated; planning 0.069 s)
+f64 2048x4096x1024       budget 0    plan D48/G6                         fmm   0.0179 s  Accelerate   0.0195 s  speedup  1.09  rel. difference 6.36e-15  ok  (predicted 0.0177 s, estimated; planning 0.070 s)
+f64 6912x6912x3456       budget 0    plan D48+4/R363/G6                  fmm   0.2592 s  Accelerate   0.3860 s  speedup  1.49  rel. difference 8.06e-15  ok  (predicted 0.2578 s, estimated; planning 0.067 s)
+all ok
+exit 0
+cache entries now: f32 1066 f64 1066
+=== cargo test, Wed Oct 28 12:29:37 EDT 2026
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.43s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+=== crosscheck on the completed cache, Wed Oct 28 12:29:46 EDT 2026
+f32 1000           ld=1000  budget 0    plan rust G                              c G                              predicted 0.000576 / 0.000576  results identical  rel. difference from Accelerate 0.00e+00
+f32 2048           ld=2048  budget 0    plan rust G                              c G                              predicted 0.004831 / 0.004831  results identical  rel. difference from Accelerate 0.00e+00
+f32 3000           ld=3000  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.014878 / 0.014878  results identical  rel. difference from Accelerate 2.92e-06
+f32 4096           ld=4096  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.035107 / 0.035107  results identical  rel. difference from Accelerate 3.39e-06
+f32 5000           ld=5000  budget 0    plan rust SW+4/D48/G6                    c SW+4/D48/G6                    predicted 0.061429 / 0.061429  results identical  rel. difference from Accelerate 4.80e-06
+f32 8192           ld=8192  budget 0    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   predicted 0.234058 / 0.234058  results identical  rel. difference from Accelerate 5.47e-06
+f32 9000           ld=9000  budget 0    plan rust SW+4/D48/G3                    c SW+4/D48/G3                    predicted 0.314317 / 0.314317  results identical  rel. difference from Accelerate 6.16e-06
+f32 4096           ld=4160  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.035107 / 0.035107  results identical  rel. difference from Accelerate 3.76e-06
+f32 8192           ld=8192  budget 4    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   predicted 0.234058 / 0.234058  results identical  rel. difference from Accelerate 4.96e-06
+f32 3456x3456x1728 ld=3464  budget 0    plan rust R363/G6                        c R363/G6                        predicted 0.011655 / 0.011655  results identical  rel. difference from Accelerate 2.50e-06
+f32 1000x3000x2000 ld=3008  budget 0    plan rust G                              c G                              predicted 0.003333 / 0.003333  results identical  rel. difference from Accelerate 0.00e+00
+f32 2048x4096x1024 ld=4104  budget 0    plan rust G                              c G                              predicted 0.004831 / 0.004831  results identical  rel. difference from Accelerate 0.00e+00
+f32 6912x6912x3456 ld=6920  budget 0    plan rust SW+4/D48/G6                    c SW+4/D48/G6                    predicted 0.078951 / 0.078951  results identical  rel. difference from Accelerate 5.62e-06
+f64 1000           ld=1000  budget 0    plan rust G                              c G                              predicted 0.002132 / 0.002132  results identical  rel. difference from Accelerate 0.00e+00
+f64 2048           ld=2048  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.017156 / 0.017156  results identical  rel. difference from Accelerate 4.92e-15
+f64 3000           ld=3000  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.048836 / 0.048836  results identical  rel. difference from Accelerate 5.21e-15
+f64 4096           ld=4096  budget 0    plan rust SW+3/D48/G6                    c SW+3/D48/G6                    predicted 0.118370 / 0.118370  results identical  rel. difference from Accelerate 7.28e-15
+f64 5000           ld=5000  budget 0    plan rust SW+4/D48/G3                    c SW+4/D48/G3                    predicted 0.208541 / 0.208541  results identical  rel. difference from Accelerate 8.61e-15
+f64 8192           ld=8192  budget 0    plan rust D48+3/D48/G6                   c D48+3/D48/G6                   predicted 0.779937 / 0.779937  results identical  rel. difference from Accelerate 9.28e-15
+f64 9000           ld=9000  budget 0    plan rust D48+3/D48/G6 padded to 9008    c D48+3/D48/G6 padded to 9008    predicted 1.082204 / 1.082204  results identical  rel. difference from Accelerate 9.50e-15
+f64 4096           ld=4160  budget 0    plan rust SW+3/D48/G6                    c SW+3/D48/G6                    predicted 0.118370 / 0.118370  results identical  rel. difference from Accelerate 7.32e-15
+f64 8192           ld=8192  budget 4    plan rust D48+3/D48/G6                   c D48+3/D48/G6                   predicted 0.779937 / 0.779937  results identical  rel. difference from Accelerate 9.51e-15
+f64 3456x3456x1728 ld=3464  budget 0    plan rust R363/G6                        c R363/G6                        predicted 0.036573 / 0.036573  results identical  rel. difference from Accelerate 5.02e-15
+f64 1000x3000x2000 ld=3008  budget 0    plan rust SW/G4                          c SW/G4                          predicted 0.013290 / 0.013290  results identical  rel. difference from Accelerate 7.87e-15
+f64 2048x4096x1024 ld=4104  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.017654 / 0.017654  results identical  rel. difference from Accelerate 5.42e-15
+f64 6912x6912x3456 ld=6920  budget 0    plan rust D48+4/R363/G6                  c D48+4/R363/G6                  predicted 0.257776 / 0.257776  results identical  rel. difference from Accelerate 7.39e-15
+all identical
+exit 0
+=== done Wed Oct 28 12:30:18 EDT 2026
+
+===== (5) Rust-measured (fmmbench, calib5_rs) against C-measured (test_fmm) entries of 3456x3456x1728, ratio Rust/C
+--- f32
+G              288   576   288  C 0.000062  Rust 0.000062  ratio 1.00
+G              576   288   288  C 0.000063  Rust 0.000063  ratio 1.00
+G              864   864   432  C 0.000209  Rust 0.000197  ratio 0.94
+G             1152  1152   288  C 0.000243  Rust 0.000231  ratio 0.95
+G             1728  1728   864  C 0.001453  Rust 0.001484  ratio 1.02
+G             3456  3456  1728  C 0.011751  Rust 0.011673  ratio 0.99
+SW             864   864   432  C 0.000461  Rust 0.000636  ratio 1.38
+SW            1728  1728   864  C 0.001839  Rust 0.002055  ratio 1.12
+D48            864   864   432  C 0.003016  Rust 0.003544  ratio 1.18
+R336          1152  1152   288  C 0.003359  Rust 0.004016  ratio 1.20
+R363           576   288   288  C 0.000825  Rust 0.001242  ratio 1.51
+R363          1152   576   576  C 0.002799  Rust 0.003635  ratio 1.30
+R633           288   576   288  C 0.000760  Rust 0.001145  ratio 1.51
+GSW            864   864   432  C 0.000249  Rust 0.000237  ratio 0.95
+GSW           1728  1728   864  C 0.001515  Rust 0.001552  ratio 1.02
+GD48           864   864   432  C 0.000254  Rust 0.000252  ratio 0.99
+GR336         1152  1152   288  C 0.000297  Rust 0.000296  ratio 1.00
+GR363          576   288   288  C 0.000081  Rust 0.000075  ratio 0.92
+GR363         1152   576   576  C 0.000274  Rust 0.000272  ratio 0.99
+GR633          288   576   288  C 0.000084  Rust 0.000078  ratio 0.94
+G3SW           864   864   432  C 0.000218  Rust 0.000217  ratio 1.00
+G3SW          1728  1728   864  C 0.001469  Rust 0.001473  ratio 1.00
+G3D48          864   864   432  C 0.000207  Rust 0.000209  ratio 1.01
+G3R336        1152  1152   288  C 0.000253  Rust 0.000261  ratio 1.03
+G3R363         576   288   288  C 0.000036  Rust 0.000035  ratio 0.98
+G3R363        1152   576   576  C 0.000233  Rust 0.000236  ratio 1.01
+G3R633         288   576   288  C 0.000037  Rust 0.000038  ratio 1.01
+G4SW           864   864   432  C 0.000228  Rust 0.000221  ratio 0.97
+G4SW          1728  1728   864  C 0.001474  Rust 0.001514  ratio 1.03
+G4D48          864   864   432  C 0.000197  Rust 0.000200  ratio 1.01
+G4R336        1152  1152   288  C 0.000242  Rust 0.000245  ratio 1.01
+G4R363         576   288   288  C 0.000034  Rust 0.000034  ratio 1.01
+G4R363        1152   576   576  C 0.000225  Rust 0.000226  ratio 1.00
+G4R633         288   576   288  C 0.000035  Rust 0.000035  ratio 0.99
+G6SW           864   864   432  C 0.000216  Rust 0.000206  ratio 0.95
+G6SW          1728  1728   864  C 0.001593  Rust 0.001568  ratio 0.98
+G6D48          864   864   432  C 0.000189  Rust 0.000193  ratio 1.02
+G6R336        1152  1152   288  C 0.000233  Rust 0.000234  ratio 1.01
+G6R363         576   288   288  C 0.000032  Rust 0.000032  ratio 1.02
+G6R633         288   576   288  C 0.000033  Rust 0.000034  ratio 1.02
+PSWk3p2s       864   864   432  C 0.001645  Rust 0.001782  ratio 1.08
+PR363k3p2s     576   288   288  C 0.002130  Rust 0.002792  ratio 1.31
+PR633k3p2s     288   576   288  C 0.002209  Rust 0.002407  ratio 1.09
+PSWk3p2o       864   864   432  C 0.000513  Rust 0.000461  ratio 0.90
+PR363k3p2o     576   288   288  C 0.000365  Rust 0.000000  ratio 0.00
+PR633k3p2o     288   576   288  C 0.000576  Rust 0.000127  ratio 0.22
+PSWk3p3s       864   864   432  C 0.001652  Rust 0.001790  ratio 1.08
+PR363k3p3s     576   288   288  C 0.001817  Rust 0.002293  ratio 1.26
+PR633k3p3s     288   576   288  C 0.001854  Rust 0.001944  ratio 1.05
+PSWk3p3o       864   864   432  C 0.000481  Rust 0.000538  ratio 1.12
+PR363k3p3o     576   288   288  C 0.000789  Rust 0.000060  ratio 0.08
+PR633k3p3o     288   576   288  C 0.000798  Rust 0.000723  ratio 0.91
+PSWk3p4s       864   864   432  C 0.001718  Rust 0.001784  ratio 1.04
+PR363k3p4s     576   288   288  C 0.001659  Rust 0.002026  ratio 1.22
+PR633k3p4s     288   576   288  C 0.001698  Rust 0.001936  ratio 1.14
+PSWk3p4o       864   864   432  C 0.000389  Rust 0.000472  ratio 1.21
+PR363k3p4o     576   288   288  C 0.000919  Rust 0.000449  ratio 0.49
+PR633k3p4o     288   576   288  C 0.000987  Rust 0.000968  ratio 0.98
+PSWk6p2s       864   864   432  C 0.001559  Rust 0.001600  ratio 1.03
+PR363k6p2s     576   288   288  C 0.002170  Rust 0.002915  ratio 1.34
+PR633k6p2s     288   576   288  C 0.002073  Rust 0.002383  ratio 1.15
+PSWk6p2o       864   864   432  C 0.000531  Rust 0.000533  ratio 1.00
+PR363k6p2o     576   288   288  C 0.000286  Rust 0.000000  ratio 0.00
+PR633k6p2o     288   576   288  C 0.000564  Rust 0.000000  ratio 0.00
+PSWk6p3s       864   864   432  C 0.001622  Rust 0.001634  ratio 1.01
+PR363k6p3s     576   288   288  C 0.001929  Rust 0.002207  ratio 1.14
+PR633k6p3s     288   576   288  C 0.001930  Rust 0.001860  ratio 0.96
+PSWk6p3o       864   864   432  C 0.000386  Rust 0.000487  ratio 1.26
+PR363k6p3o     576   288   288  C 0.000240  Rust 0.000000  ratio 0.00
+PR633k6p3o     288   576   288  C 0.000517  Rust 0.000291  ratio 0.56
+PSWk6p4s       864   864   432  C 0.001651  Rust 0.001641  ratio 0.99
+PR363k6p4s     576   288   288  C 0.001554  Rust 0.001801  ratio 1.16
+PR633k6p4s     288   576   288  C 0.001592  Rust 0.001623  ratio 1.02
+PSWk6p4o       864   864   432  C 0.000443  Rust 0.000582  ratio 1.31
+PR363k6p4o     576   288   288  C 0.000816  Rust 0.000345  ratio 0.42
+PR633k6p4o     288   576   288  C 0.000797  Rust 0.000813  ratio 1.02
+--- f64
+G              288   576   288  C 0.000131  Rust 0.000129  ratio 0.99
+G              576   288   288  C 0.000129  Rust 0.000130  ratio 1.01
+G              864   864   432  C 0.000708  Rust 0.000694  ratio 0.98
+G             1152  1152   288  C 0.000942  Rust 0.000893  ratio 0.95
+G             1728  1728   864  C 0.005782  Rust 0.005808  ratio 1.00
+G             3456  3456  1728  C 0.047847  Rust 0.047756  ratio 1.00
+SW             864   864   432  C 0.000920  Rust 0.001130  ratio 1.23
+SW            1728  1728   864  C 0.003677  Rust 0.003773  ratio 1.03
+D48            864   864   432  C 0.005786  Rust 0.006275  ratio 1.08
+R336          1152  1152   288  C 0.006505  Rust 0.006786  ratio 1.04
+R363           576   288   288  C 0.001389  Rust 0.001737  ratio 1.25
+R363          1152   576   576  C 0.005163  Rust 0.005638  ratio 1.09
+R633           288   576   288  C 0.001366  Rust 0.001693  ratio 1.24
+GSW            864   864   432  C 0.000770  Rust 0.000793  ratio 1.03
+GSW           1728  1728   864  C 0.005765  Rust 0.005900  ratio 1.02
+GD48           864   864   432  C 0.000765  Rust 0.001069  ratio 1.40
+GR336         1152  1152   288  C 0.000968  Rust 0.001048  ratio 1.08
+GR363          576   288   288  C 0.000138  Rust 0.000139  ratio 1.01
+GR363         1152   576   576  C 0.000878  Rust 0.000878  ratio 1.00
+GR633          288   576   288  C 0.000147  Rust 0.000147  ratio 1.00
+G3SW           864   864   432  C 0.000740  Rust 0.000793  ratio 1.07
+G3SW          1728  1728   864  C 0.006057  Rust 0.005979  ratio 0.99
+G3D48          864   864   432  C 0.000708  Rust 0.000706  ratio 1.00
+G3R336        1152  1152   288  C 0.000851  Rust 0.000856  ratio 1.01
+G3R363         576   288   288  C 0.000114  Rust 0.000116  ratio 1.02
+G3R363        1152   576   576  C 0.000810  Rust 0.000819  ratio 1.01
+G3R633         288   576   288  C 0.000120  Rust 0.000123  ratio 1.02
+G4SW           864   864   432  C 0.000788  Rust 0.000798  ratio 1.01
+G4SW          1728  1728   864  C 0.006037  Rust 0.006052  ratio 1.00
+G4D48          864   864   432  C 0.000680  Rust 0.000683  ratio 1.00
+G4R336        1152  1152   288  C 0.000832  Rust 0.000836  ratio 1.00
+G4R363         576   288   288  C 0.000112  Rust 0.000113  ratio 1.01
+G4R363        1152   576   576  C 0.000807  Rust 0.000808  ratio 1.00
+G4R633         288   576   288  C 0.000115  Rust 0.000118  ratio 1.02
+G6SW           864   864   432  C 0.000739  Rust 0.000744  ratio 1.01
+G6SW          1728  1728   864  C 0.006353  Rust 0.006331  ratio 1.00
+G6D48          864   864   432  C 0.000671  Rust 0.000675  ratio 1.01
+G6R336        1152  1152   288  C 0.000809  Rust 0.000812  ratio 1.00
+G6R363         576   288   288  C 0.000110  Rust 0.000112  ratio 1.02
+G6R633         288   576   288  C 0.000113  Rust 0.000115  ratio 1.02
+PSWk3p2s       864   864   432  C 0.005757  Rust 0.005860  ratio 1.02
+PR363k3p2s     576   288   288  C 0.005034  Rust 0.005016  ratio 1.00
+PR633k3p2s     288   576   288  C 0.005116  Rust 0.005390  ratio 1.05
+PSWk3p2o       864   864   432  C 0.000769  Rust 0.001251  ratio 1.63
+PR363k3p2o     576   288   288  C 0.002510  Rust 0.000941  ratio 0.37
+PR633k3p2o     288   576   288  C 0.002728  Rust 0.001149  ratio 0.42
+PSWk3p3s       864   864   432  C 0.005845  Rust 0.005889  ratio 1.01
+PR363k3p3s     576   288   288  C 0.005008  Rust 0.005166  ratio 1.03
+PR633k3p3s     288   576   288  C 0.005132  Rust 0.006025  ratio 1.17
+PSWk3p3o       864   864   432  C 0.000726  Rust 0.000494  ratio 0.68
+PR363k3p3o     576   288   288  C 0.002032  Rust 0.001162  ratio 0.57
+PR633k3p3o     288   576   288  C 0.002103  Rust 0.000000  ratio 0.00
+PSWk3p4s       864   864   432  C 0.006098  Rust 0.005905  ratio 0.97
+PR363k3p4s     576   288   288  C 0.005027  Rust 0.005379  ratio 1.07
+PR633k3p4s     288   576   288  C 0.005198  Rust 0.005828  ratio 1.12
+PSWk3p4o       864   864   432  C 0.000140  Rust 0.000678  ratio 4.83
+PR363k3p4o     576   288   288  C 0.001549  Rust 0.000829  ratio 0.53
+PR633k3p4o     288   576   288  C 0.001868  Rust 0.000407  ratio 0.22
+PSWk6p2s       864   864   432  C 0.005677  Rust 0.005831  ratio 1.03
+PR363k6p2s     576   288   288  C 0.004975  Rust 0.004838  ratio 0.97
+PR633k6p2s     288   576   288  C 0.005155  Rust 0.004939  ratio 0.96
+PSWk6p2o       864   864   432  C 0.000701  Rust 0.000069  ratio 0.10
+PR363k6p2o     576   288   288  C 0.002272  Rust 0.001029  ratio 0.45
+PR633k6p2o     288   576   288  C 0.002045  Rust 0.001145  ratio 0.56
+PSWk6p3s       864   864   432  C 0.005845  Rust 0.005647  ratio 0.97
+PR363k6p3s     576   288   288  C 0.004962  Rust 0.004606  ratio 0.93
+PR633k6p3s     288   576   288  C 0.004955  Rust 0.004814  ratio 0.97
+PSWk6p3o       864   864   432  C 0.000000  Rust 0.000778  ratio -
+PR363k6p3o     576   288   288  C 0.001836  Rust 0.001551  ratio 0.84
+PR633k6p3o     288   576   288  C 0.001956  Rust 0.001336  ratio 0.68
+PSWk6p4s       864   864   432  C 0.005942  Rust 0.005904  ratio 0.99
+PR363k6p4s     576   288   288  C 0.004855  Rust 0.004656  ratio 0.96
+PR633k6p4s     288   576   288  C 0.004911  Rust 0.004768  ratio 0.97
+PSWk6p4o       864   864   432  C 0.000194  Rust 0.000360  ratio 1.86
+PR363k6p4o     576   288   288  C 0.001859  Rust 0.001406  ratio 0.76
+PR633k6p4o     288   576   288  C 0.001908  Rust 0.001490  ratio 0.78

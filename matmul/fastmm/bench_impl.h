@@ -134,7 +134,7 @@ static void FN(plan_table)(size_t n) {
     for (size_t i = 0; i < nn; i++) { A[i] = (T)1 / (T)(1 + i % 7); B[i] = (T)1 / (T)(1 + i % 5); C[i] = 0; }
     calib_t *cal = calloc(1, sizeof(calib_t));
     calib_load(cal, f64);
-    FN(calibrate)(cal, n, A, B, C);
+    FN(calibrate)(cal, sq(n), A, B, C);
     static const char *NAMED[] = {"classical", "blk2", "sw1", "sw2rec", "sw3rec", "sw4rec", "dps48",
                                   "dps48sw", "dps48x2", "r336", "r336x2", "r336x3", "swr336"};
     for (size_t sz = n; sz >= 1024 && sz % 2 == 0; sz /= 2) {
@@ -161,11 +161,11 @@ static void FN(plan_table)(size_t n) {
         errmod_t e = err_model(cal);
         if (e.ok) {
             printf("         error growth over classical: best %.1f (pred. error %.1e);", plan_growth(&e, plan),
-                   plan_err(&e, plan, sz));
+                   plan_err(&e, plan, sq(sz)));
             static const double BUDGET[] = {16, 8, 4, 2};
             for (int b = 0; b < 4; b++) {
                 int pb[PLAN_MAX];
-                double t = plan_best_budget(cal, sz, BUDGET[b], pb);
+                double t = plan_best_budget(cal, sq(sz), BUDGET[b], pb);
                 if (t < 0) continue;
                 plan_str(pb, ps, sizeof ps);
                 printf(" <=%g: %s %.4f s%s", BUDGET[b], ps, t, b < 3 ? "," : "");
@@ -184,38 +184,44 @@ static void FN(plan_table)(size_t n) {
     free(A); free(B); free(C);
 }
 
-static void FN(run_method)(const meth_t *q, size_t n, const T *A, const T *B, T *C, T *work, T **temps,
+static void FN(run_method)(const meth_t *q, shape_t s, const T *A, const T *B, T *C, T *work, T **temps,
                            FN(split_t) *sp) {
-    if (q->is_plan) FN(exec_padded)(q->plan, n, q->npad, A, n, B, n, C, n, work, sp);
-    else FN(dps48_opbyop)(n, A, B, C, work, temps, sp);
+    if (q->is_plan) FN(exec_padded)(q->plan, s, q->spad, A, s.k, B, s.n, C, s.n, work, sp);
+    else FN(dps48_opbyop)(s.m, A, B, C, work, temps, sp);
 }
 
-static void FN(bench)(size_t n, const char *methods, int reps) {
-    size_t nn = n * n;
-    int f64 = sizeof(T) == 8;
-    T *A = alloc_t(nn * sizeof(T)), *B = alloc_t(nn * sizeof(T)), *C = alloc_t(nn * sizeof(T)),
+/* the timed comparison on a problem of shape s = (M x K)(K x N) (square: -n N; -M -K -N otherwise) */
+static void FN(bench)(shape_t s0, const char *methods, int reps) {
+    size_t n = s0.m, na = s0.m * s0.k, nb = s0.k * s0.n, nn = s0.m * s0.n;
+    int f64 = sizeof(T) == 8, square = shape_sq(s0);
+    char shp[48];
+    if (square) snprintf(shp, sizeof shp, "n=%-6zu", n);
+    else snprintf(shp, sizeof shp, "%zux%zux%zu", s0.m, s0.k, s0.n);
+    T *A = alloc_t(na * sizeof(T)), *B = alloc_t(nb * sizeof(T)), *C = alloc_t(nn * sizeof(T)),
       *Cref = alloc_t(nn * sizeof(T));
     uint64_t s = 0x9e3779b97f4a7c15ull;
     const char *seed = getenv("FMM_SEED");         /* another random instance */
     if (seed) s ^= (uint64_t)strtoull(seed, NULL, 0) * 0xbf58476d1ce4e5b9ull;
-    for (size_t i = 0; i < nn; i++) {
+    size_t nmax = na > nb ? na : nb;
+    for (size_t i = 0; i < nmax; i++) {          /* the same stream as the square case for A and B of equal size */
         s ^= s << 13; s ^= s >> 7; s ^= s << 17;
-        A[i] = (T)((double)(s >> 11) / 9007199254740992.0 * 2 - 1);
+        if (i < na) A[i] = (T)((double)(s >> 11) / 9007199254740992.0 * 2 - 1);
         s ^= s << 13; s ^= s >> 7; s ^= s << 17;
-        B[i] = (T)((double)(s >> 11) / 9007199254740992.0 * 2 - 1);
+        if (i < nb) B[i] = (T)((double)(s >> 11) / 9007199254740992.0 * 2 - 1);
     }
     /* FMM_NORMAL=1: standard normal inputs instead (Box-Muller on the same stream), as in the
      * experiments of Dumas, Pernet and Sedoglavic (arXiv:2603.18699, Figure 1) */
     const char *nrm = getenv("FMM_NORMAL");
     if (nrm && atoi(nrm))
-        for (size_t i = 0; i < nn; i++)
+        for (size_t i = 0; i < nmax; i++)
             for (int w = 0; w < 2; w++) {
                 s ^= s << 13; s ^= s >> 7; s ^= s << 17;
                 double u1 = ((double)(s >> 11) + 1) / 9007199254740993.0;
                 s ^= s << 13; s ^= s >> 7; s ^= s << 17;
                 double u2 = (double)(s >> 11) / 9007199254740992.0;
                 double z = sqrt(-2 * log(u1)) * cos(2 * M_PI * u2);
-                if (w == 0) A[i] = (T)z; else B[i] = (T)z;
+                if (w == 0 && i < na) A[i] = (T)z;
+                if (w == 1 && i < nb) B[i] = (T)z;
             }
     /* the methods: plans (named, plan=..., auto) or the op-by-op program; the calibration is
      * measured for auto and otherwise read from the cache, if there is one, for predictions */
@@ -231,37 +237,37 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
         meth_t *q = &ms[nm];
         memset(q, 0, sizeof *q);
         q->name = tok;
-        q->npad = n;
+        q->spad = s0;
         if (!strncmp(tok, "auto", 4) && (tok[4] == 0 || tok[4] == ':')) {
             double gmax = tok[4] == ':' ? atof(tok + 5) : fmm_max_growth();
-            FN(calibrate)(cal, n, A, B, C);  /* exactly for n: rectangular sub-shapes do not interpolate */
-            q->pred = plan_best_padded(cal, n, gmax, f64, q->plan, &q->npad);
+            FN(calibrate)(cal, s0, A, B, C);  /* exactly for this shape: rectangular sub-shapes do not interpolate */
+            q->pred = plan_best_padded(cal, s0, gmax, f64, q->plan, &q->spad);
             if (q->pred < 0) {
-                printf("%s: nothing calibrated for n=%zu\n", tok, n);
+                printf("%s: nothing calibrated for %s\n", tok, shp);
                 continue;
             }
             q->is_plan = 1;
             char ps[128];
             plan_str(q->plan, ps, sizeof ps);
-            printf("# %s n=%zu %s: plan %s%s%.0zu, predicted %.3f s\n", tok, n, f64 ? "f64" : "f32", ps,
-                   q->npad != n ? " padded to " : "", q->npad != n ? q->npad : (size_t)0, q->pred);
-        } else if (parse_plan(tok, sq(n), q->plan)) {
+            printf("# %s %s %s: plan %s", tok, shp, f64 ? "f64" : "f32", ps);
+            if (!shape_eq(q->spad, s0)) printf(" padded to %zux%zux%zu", q->spad.m, q->spad.k, q->spad.n);
+            printf(", predicted %.3f s\n", q->pred);
+        } else if (parse_plan(tok, s0, q->plan)) {
             q->is_plan = 1;
-            q->pred = plan_cost(cal, q->plan, sq(n));
-        } else if (strcmp(tok, "dps48ops") || n % 4) {
+            q->pred = plan_cost(cal, q->plan, s0);
+        } else if (strcmp(tok, "dps48ops") || !square || n % 4) {
             printf("unknown method %s\n", tok);
             continue;
         } else {
             q->pred = -1;
         }
         errmod_t e = err_model(cal);
-        q->perr = q->is_plan && e.ok ? plan_err(&e, q->plan, q->npad) : -1;
+        q->perr = q->is_plan && e.ok ? plan_err(&e, q->plan, q->spad) : -1;
         nm++;
     }
     size_t wsz = 1024;
     for (int j = 0; j < nm; j++) {
-        size_t N = ms[j].npad;
-        size_t w = ms[j].is_plan ? (N != n ? 3 * N * N : 0) + plan_work(ms[j].plan, sq(N)) : (size_t)3 * 48 * (nn / 16);
+        size_t w = ms[j].is_plan ? FN(padded_work)(ms[j].plan, s0, ms[j].spad) : (size_t)3 * 48 * (nn / 16);
         if (w > wsz) wsz = w;
     }
     free(cal);
@@ -273,7 +279,7 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
         temps = calloc(ntemps, sizeof(T *));
         for (int k = 0; k < ntemps; k++) temps[k] = alloc_t((nn / 16) * sizeof(T));
     }
-    FN(gemm)(sq(n), A, n, B, n, Cref, n);
+    FN(gemm)(s0, A, s0.k, B, s0.n, Cref, s0.n);
     double cmax = 0;
     for (size_t i = 0; i < nn; i++) cmax = fmax(cmax, fabs((double)Cref[i]));
     /* FMM_EXACT=1: also each method's error against an exact reference: in f32 the f64 product of
@@ -284,9 +290,12 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
      * seed) for the other builds measuring the same inputs */
     const char *rc = getenv("FMM_REFCACHE");
     char refpath[1024] = "";
-    if (ex && atoi(ex) && rc)
-        snprintf(refpath, sizeof refpath, "%s/ref_%s_%zu_%s_%s.bin", rc, f64 ? "f64" : "f32", n,
-                 (nrm && atoi(nrm)) ? "normal" : "uniform", seed ? seed : "0");
+    if (ex && atoi(ex) && rc) {
+        if (square) snprintf(refpath, sizeof refpath, "%s/ref_%s_%zu_%s_%s.bin", rc, f64 ? "f64" : "f32", n,
+                             (nrm && atoi(nrm)) ? "normal" : "uniform", seed ? seed : "0");
+        else snprintf(refpath, sizeof refpath, "%s/ref_%s_%zux%zux%zu_%s_%s.bin", rc, f64 ? "f64" : "f32", s0.m, s0.k, s0.n,
+                      (nrm && atoi(nrm)) ? "normal" : "uniform", seed ? seed : "0");
+    }
     int cached = 0;
     if (refpath[0]) {
         FILE *fr = fopen(refpath, "rb");
@@ -300,15 +309,16 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
     if (ex && atoi(ex) && f64 && !cached) {
         R64 = alloc_t(nn * 8);
         double t0 = now();
-        dd_gemm(n, (const double *)A, (const double *)B, R64);
+        dd_gemm(s0.m, s0.k, s0.n, (const double *)A, (const double *)B, R64);
         printf("# compensated f64 reference in %.1f s\n", now() - t0);
     }
     if (ex && atoi(ex) && !f64 && !cached) {
-        double *A64 = alloc_t(nn * 8), *B64 = alloc_t(nn * 8);
+        double *A64 = alloc_t(na * 8), *B64 = alloc_t(nb * 8);
         R64 = alloc_t(nn * 8);
-        for (size_t i = 0; i < nn; i++) { A64[i] = A[i]; B64[i] = B[i]; }
-        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, (int)n, (int)n, (int)n, 1.0, A64, (int)n, B64, (int)n,
-                    0.0, R64, (int)n);
+        for (size_t i = 0; i < na; i++) A64[i] = A[i];
+        for (size_t i = 0; i < nb; i++) B64[i] = B[i];
+        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, (int)s0.m, (int)s0.n, (int)s0.k, 1.0, A64, (int)s0.k, B64,
+                    (int)s0.n, 0.0, R64, (int)s0.n);
         free(A64); free(B64);
     }
     if (R64) {
@@ -318,7 +328,7 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
             if (fw) { fwrite(R64, 8, nn, fw); fclose(fw); }
         }
     }
-    for (int j = 0; j < nm; j++) FN(run_method)(&ms[j], n, A, B, C, work, temps, NULL);  /* warm-up */
+    for (int j = 0; j < nm; j++) FN(run_method)(&ms[j], s0, A, B, C, work, temps, NULL);  /* warm-up */
     double times[16][32];
     FN(split_t) sp[16];
     memset(sp, 0, sizeof sp);
@@ -326,7 +336,7 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
     for (int q = 0; q < reps; q++)          /* rounds: drift hits every method alike */
         for (int j = 0; j < nm; j++) {
             double t = now();
-            FN(run_method)(&ms[j], n, A, B, C, work, temps, &sp[j]);
+            FN(run_method)(&ms[j], s0, A, B, C, work, temps, &sp[j]);
             times[j][q] = now() - t;
             if (q == reps - 1) {
                 for (size_t i = 0; i < nn; i++) err[j] = fmax(err[j], fabs((double)C[i] - (double)Cref[i]));
@@ -342,16 +352,16 @@ static void FN(bench)(size_t n, const char *methods, int reps) {
                 if (tj[b] < tj[a]) { double x = tj[a]; tj[a] = tj[b]; tj[b] = x; }
         double med = tj[reps / 2], best = tj[0];
         if (!strcmp(ms[j].name, "classical")) tclass = med;
-        printf("%-10s n=%-6zu %s  min %8.3f s  med %8.3f s  %7.1f GFLOP/s(2n^3)  speedup %5.3f  "
+        printf("%-10s %s %s  min %8.3f s  med %8.3f s  %7.1f GFLOP/s(2mkn)  speedup %5.3f  "
                "relerr %.2e  split L %.3f R %.3f gemm %.3f P %.3f",
-               ms[j].name, n, f64 ? "f64" : "f32", best, med, 2.0 * n * n * (double)n / med / 1e9,
+               ms[j].name, shp, f64 ? "f64" : "f32", best, med, 2.0 * s0.m * s0.k * (double)s0.n / med / 1e9,
                tclass > 0 ? tclass / med : 0.0, err[j] / cmax, sp[j].tL / reps, sp[j].tR / reps,
                sp[j].tG / reps, sp[j].tP / reps);
         if (ms[j].is_plan) {
             char ps[128];
             plan_str(ms[j].plan, ps, sizeof ps);
             printf("  plan %s", ps);
-            if (ms[j].npad != n) printf("@%zu", ms[j].npad);
+            if (!shape_eq(ms[j].spad, s0)) printf("@%zux%zux%zu", ms[j].spad.m, ms[j].spad.k, ms[j].spad.n);
             if (ms[j].pred > 0) printf("  pred %.3f s (%+.1f%%)", ms[j].pred, 100 * (ms[j].pred / med - 1));
             if (ms[j].perr > 0) printf("  perr %.2e", ms[j].perr);
         }

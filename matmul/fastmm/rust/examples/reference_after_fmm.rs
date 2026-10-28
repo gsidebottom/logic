@@ -5,7 +5,7 @@
 //!
 //!   FMM_CALIB_DIR=../results cargo run --release --example reference_after_fmm
 
-use fmm::Real;
+use fmm::{Real, Shape};
 use std::time::Instant;
 
 fn med(mut v: Vec<f64>) -> f64 {
@@ -26,18 +26,18 @@ fn run<T: Real>(n: usize, fmm: fn(usize, &[T], &[T], &mut [T])) {
         let dt = match way {
             0 => {
                 let s = Instant::now();
-                T::gemm(n, &a, n, &b, n, 0.0, &mut r, n);
+                T::gemm(Shape::sq(n), &a, n, &b, n, 0.0, &mut r, n);
                 s.elapsed().as_secs_f64()
             }
             1 => fmm::in_pool(|| {
                 let s = Instant::now();
-                T::gemm(n, &a, n, &b, n, 0.0, &mut r, n);
+                T::gemm(Shape::sq(n), &a, n, &b, n, 0.0, &mut r, n);
                 s.elapsed().as_secs_f64()
             }),
             2 => std::thread::scope(|sc| {
                 sc.spawn(|| {
                     let s = Instant::now();
-                    T::gemm(n, &a, n, &b, n, 0.0, &mut r, n);
+                    T::gemm(Shape::sq(n), &a, n, &b, n, 0.0, &mut r, n);
                     s.elapsed().as_secs_f64()
                 })
                 .join()
@@ -51,7 +51,7 @@ fn run<T: Real>(n: usize, fmm: fn(usize, &[T], &[T], &mut [T])) {
                     }
                 });
                 let s = Instant::now();
-                T::gemm(n, &a, n, &b, n, 0.0, &mut r, n);
+                T::gemm(Shape::sq(n), &a, n, &b, n, 0.0, &mut r, n);
                 s.elapsed().as_secs_f64()
             }
         };

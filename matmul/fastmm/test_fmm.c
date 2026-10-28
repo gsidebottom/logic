@@ -1,7 +1,8 @@
 /* test_fmm.c: the library entry points (fmm.h) against Accelerate's GEMM: the plan used,
  * correctness (max-norm relative difference), time (median of 3 after a warm-up), leading
- * dimensions larger than n, an error budget, and sizes that are not powers of two (the plan
- * runs on interpolated calibration, padded when that pays).
+ * dimensions larger than n, an error budget, sizes that are not powers of two (the plan runs on
+ * interpolated calibration, padded when that pays), and rectangular problems, one calibrated for
+ * its shape, the others priced by the planner's estimates from the square calibration.
  *
  *   FMM_CALIB_DIR=results build/test_fmm [n ...]
  */
@@ -80,6 +81,57 @@ static void run(size_t n, size_t ld, int f64, double g) {
     free(A); free(B); free(C); free(R);
 }
 
+/* a rectangular case: A m x k (ld k + 8), B k x n (ld n + 8), C m x n (ld n + 8), calibrated for its
+ * shape first when calibrate is set (the planner knows rectangular shapes only from a calibration) */
+static void run_mkn(size_t m, size_t k, size_t n, int f64, int calibrate) {
+    size_t es = f64 ? 8 : 4, lda = k + 8, ldb = n + 8, ldc = n + 8;
+    char *A = malloc(m * lda * es), *B = malloc(k * ldb * es), *C = calloc(m * ldc, es), *R = calloc(m * ldc, es);
+    for (size_t i = 0; i < m * lda; i++) { double a = urand(); if (f64) ((double *)A)[i] = a; else ((float *)A)[i] = (float)a; }
+    for (size_t i = 0; i < k * ldb; i++) { double b = urand(); if (f64) ((double *)B)[i] = b; else ((float *)B)[i] = (float)b; }
+    double t0 = now(), tcal = 0;
+    if (calibrate) {
+        fmm_calibrate_mkn(m, k, n, f64);
+        tcal = now() - t0;
+    }
+    double pred, tplan = now();
+    const char *plan = fmm_plan_mkn(m, k, n, f64, 0, &pred);
+    tplan = now() - tplan;
+    double tf = 1e9, tr = 1e9;
+    for (int rep = -1; rep < 3; rep++) {
+        double t = now();
+        int rc = f64 ? fmm_dgemm_mkn(m, k, n, (double *)A, lda, (double *)B, ldb, (double *)C, ldc, 0)
+                     : fmm_sgemm_mkn(m, k, n, (float *)A, lda, (float *)B, ldb, (float *)C, ldc, 0);
+        if (rep >= 0 && now() - t < tf) tf = now() - t;
+        if (rc != 0) { printf("fmm returned %d\n", rc); failures++; }
+        t = now();
+        if (f64)
+            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, (int)m, (int)n, (int)k, 1.0, (double *)A, (int)lda,
+                        (double *)B, (int)ldb, 0.0, (double *)R, (int)ldc);
+        else
+            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, (int)m, (int)n, (int)k, 1.0f, (float *)A, (int)lda,
+                        (float *)B, (int)ldb, 0.0f, (float *)R, (int)ldc);
+        if (rep >= 0 && now() - t < tr) tr = now() - t;
+    }
+    double err = 0, mx = 0;
+    for (size_t i = 0; i < m; i++)
+        for (size_t j = 0; j < n; j++) {
+            double c = f64 ? ((double *)C)[i * ldc + j] : ((float *)C)[i * ldc + j];
+            double r = f64 ? ((double *)R)[i * ldc + j] : ((float *)R)[i * ldc + j];
+            err = fmax(err, fabs(c - r));
+            mx = fmax(mx, fabs(r));
+        }
+    double rel = err / mx, limit = f64 ? 1e-11 : 1e-3;
+    int ok = rel < limit;
+    failures += !ok;
+    printf("%s %zux%zux%zu       budget 0    plan %-30s fmm %8.4f s  Accelerate %8.4f s  speedup %5.2f  "
+           "rel. difference %.2e  %s  (predicted %.4f s%s; planning %.3f s)\n",
+           f64 ? "f64" : "f32", m, k, n, plan, tf, tr, tr / tf, rel, ok ? "ok" : "WRONG", pred,
+           calibrate ? ", calibrated for this shape" : ", estimated", tplan);
+    if (calibrate && tcal > 1) printf("   calibration %.0f s\n", tcal);
+    fflush(stdout);
+    free(A); free(B); free(C); free(R);
+}
+
 int main(int argc, char **argv) {
     size_t sizes[16] = {1000, 2048, 3000, 4096, 5000, 8192, 9000};   /* 3000, 5000, 9000: not powers of two */
     int ns = 7;
@@ -91,6 +143,10 @@ int main(int argc, char **argv) {
         for (int i = 0; i < ns; i++) run(sizes[i], sizes[i], f64, 0);
         run(4096, 4096 + 64, f64, 0);          /* leading dimensions larger than n */
         run(8192, 8192, f64, 4);               /* an error budget */
+        run_mkn(3456, 3456, 1728, f64, 1);     /* a rectangular problem, calibrated for its shape */
+        run_mkn(1000, 3000, 2000, f64, 0);     /* uncalibrated ones: the planner's estimates */
+        run_mkn(2048, 4096, 1024, f64, 0);
+        run_mkn(6912, 6912, 3456, f64, 0);
     }
     fmm_release();
     printf("%s\n", failures ? "FAILED" : "all ok");

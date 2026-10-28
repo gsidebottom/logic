@@ -883,9 +883,24 @@ quarter (13824 f32 R336/G passes 0.098 -> 0.073 s, f64 0.179 -> 0.136) with the 
 (err64 3.93e-6 -> 3.80e-6; R336/R363/G 3.21 -> 3.34e-6), so plans gain 1-7%: 13824 f64
 R336/R363/G 3.971 -> 3.694 s, SW/R363+3/D48/G6 3.349 -> 3.240, R363+3/D48/G6 3.514 -> 3.435; f32
 13824 R363+3/D48/G6 0.938 -> 0.927; 6912 f32 R363+3/D48/G6 0.168 -> 0.159, f64 0.466 -> 0.449.
-They are now the default kernels (schemes/opt; build/bench_fmm_rdirect keeps the direct sums),
-with the calibration and the planner campaign redone on them below.  Still to do: the Rust port;
-rectangular top-level problems through the API.
+They are now the default kernels (schemes/opt; build/bench_fmm_rdirect keeps the direct sums).
+Recalibrated and rerun on them (results/r336_campaign2_2026-10-28.txt): the planner's best plans
+are 3x3x6-family plans at every size from 1728 up, and they beat the old family's best in both
+time and error -- 13824 f32: auto = R363+4/R363/G6 0.907 s (1.73x over the GEMM's 1.565) with
+err64 2.46e-6, against D48+4/D48/G6 0.946 s and about 4.2e-6 (4% faster, 40% less error); 6912
+f32: R363+4/D48/G6 0.141 s, err64 2.26e-6, against SW+3/D48/G6 0.143 (5.00e-6) and D48+4/D48/G6
+0.147 (4.32e-6); 6912 f64: R363+3/R633/G6 0.451 s (1.71x) against D48+4/D48/G6 0.480; 13824
+f64: SW/R363+3/R633/G6 3.251 s (1.91x) against D48+4/D48/G6 3.710 and the old family's predicted
+best SW/D48+2/D48/G6 3.315.  One level: R336/G 1.244 vs D48/G 1.255 s at 13824 f32 (err64
+3.80e-6 vs 4.16e-6), 4.946 vs 4.970 at f64; at 6912 f32 D48/G keeps a 6% lead (0.154 vs 0.164).
+The planner's top six at 13824 f32 are all R plans (R363+4/R363/G6 0.9094 predicted,
+R363+3/D48/G6 0.9103, R363+4/R336/G6 0.9141, ...), at 3456 f32 R363/G6 beats D48/G6 (0.0208 vs
+0.0214), and test_fmm (all ok) picks R363/G6 at 3456, R363+4/D48/G6 at 6912 f32 and
+R363+3/R633/G6 at 6912 f64 (1.70x over Accelerate) while sizes 3 does not divide (8192, 9000)
+keep their D48 plans.  Error-model factors per level on the optimized kernels: f32 SW 1.09, D48
+0.91, R336 0.74, R363 0.79, R633 0.76; f64 SW 1.99, D48 1.20, R336 1.25, R363 1.27, R633 1.42.
+Still to do: the Rust port; rectangular top-level problems through the API; a dyadic search for
+a better exact 3x6x3 point (DPS's is 14% above the class's amp floor); the -Q optimizer case.
 
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
@@ -1024,10 +1039,10 @@ Which operations matter depends on the implementation:
 7. **A library entry point** (done 2026-10-25): `fmm.h`, `libfmm.a`, tested against
    Accelerate; any size inside the calibrated range (interpolation and padding, done
    2026-10-25).  Rust port (done 2026-10-25): crate `fmm` in `rust/`, only FFI declarations
-   unsafe; same plans, speed and results (bit for bit) as the C library.  Next for both:
-   rectangular shapes, alpha / beta and transposes.  Rectangular shapes now have a target:
-   DPS's accurate <3x3x6:40> cycled through its orientations (SUB-SCHEME COMBINATIONS
-   paragraph; `matmul/levels/`).
+   unsafe; same plans, speed and results (bit for bit) as the C library.  Rectangular levels
+   (done 2026-10-28 in the C library): plans track (m, k, n) and DPS's accurate <3x3x6:40> in
+   its three orientations is in the menu (RECTANGULAR LEVELS IMPLEMENTED paragraph); the Rust
+   port lacks them.  Next for both: rectangular top-level problems, alpha / beta and transposes.
 
 ## Milestones
 
@@ -1038,4 +1053,7 @@ Which operations matter depends on the implementation:
   1-3%, not adopted), pipelined passes (8-22%); auto at 1.17-1.60x (f32) and 1.19-2.01x (f64)
   over the best classical variant at 2048-16384.
 - M4: packing fusion prototype (own GEMM kernel or BLIS) and its gain.
-- M5: practical-objective scheme search and its measured effect.
+- M5 (first result 2026-10-28): the sub-scheme menu screened by the practical objectives
+  (`matmul/levels/`), the 3x3x6 family added as rectangular levels, and the planner's best plans
+  now 4% faster and 40% more accurate than the 4x4-only ones at 13824 f32, 1.91x over Accelerate
+  at 13824 f64.

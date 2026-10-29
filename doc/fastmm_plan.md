@@ -1035,6 +1035,38 @@ is 0.1 s; in f32 the f64 product) and re-validate the "within 25%" claim against
 at the GEMM's own accuracy as the default objective (every SW-free plan meets it).  The ternary table's
 f64 ratios (2.2-6.5x) are relerr ratios, not exact; the f32 ratios carry that comparison.
 
+GPU COMPARISON (2026-10-28, night; matmul/fastmm/gpu_gemm.m, run_gpu.sh, `make build/gpu_gemm`;
+results/gpu_gemm_2026-10-28.txt).  Greg asked how the best mixed plans compare with running the
+multiplications on the GPU.  The M4 Pro's 20-core GPU through MPSGraph's matrixMultiplication (the
+faster of Apple's two paths; MPSMatrixMultiplication is within 3% at 13824 and 10% slower at 3456),
+f32, the same inputs as bench_fmm wrapped as shared Metal buffers without a copy (unified memory),
+wall clock from encoding to completion, five rounds interleaved with Accelerate's sgemm on the same
+inputs.  No MLX or torch on this machine (not installed), and Metal, MPS and MPSGraph have no 64-bit
+floating type (MPSDataType: Float32, Float16, BFloat16), so f64 has no GPU counterpart.  TIME, f32:
+3456 GPU 0.013 s (6.3 TFLOP/s) vs Accelerate 0.025 and our R363/G6 0.021 -- the GPU 1.6x ahead of
+the plan; 6912 GPU 0.099-0.101 (6.6 TFLOP/s) vs Accelerate 0.195 and R363+4/D48/G6 0.141 -- GPU 1.4x
+ahead; 13824 GPU 0.946-0.949 (MPSMatrixMultiplication 0.911-0.926; 5.6-5.7 TFLOP/s, the GPU's
+throughput falls 15% from 6912) vs Accelerate 1.565 and R363+4/R363/G6 0.907 -- a tie, the CPU plan
+0-4% ahead.  The GPU's f16-input path (f32 result) is only 14% faster than its f32 at 13824
+(0.79-0.82 s) and its error is 2.5-2.8e-4, the f16 rounding of the inputs.  ACCURACY, f32: the GPU's
+product is bit for bit Accelerate's sgemm at every size (vs-sgemm 0; 64/64 sampled outputs equal the
+k-ordered FMA chain for the GPU and for Accelerate: both accumulate each output in k order with
+FMAs, no split-k), so the GPU's err64 is the GEMM's own -- 3.04e-6, 3.85e-6, 6.40e-6 -- against the
+mixed plans' 1.28e-6 (R363/G6 at 3456), 2.26e-6, 2.46e-6: 1.7-2.6x less error than the GPU at every
+size.  VERDICT: at 13824 f32 the CPU plan matches the GPU's speed with 2.6x less error; at 3456-6912
+the GPU is 1.4-1.6x faster and 1.7-2.4x less accurate; in f64 the GPU does not compete and the
+plans' 1.71-1.91x over dgemm stands alone.  Side observations: Accelerate's sgemm interleaved with
+the GPU bursts ran 1.81-1.88 s at 13824 instead of 1.565 (one run's min 1.556): the CPU and the GPU
+share the package's power and thermal budget, which any hybrid must reckon with; the GPU's wall time
+here is its best case (zero-copy shared buffers; a discrete GPU would add transfers).  ESTIMATE, not
+measured: a 3x3x6 level over GPU leaves at 13824 f32 would take about 40/54 x 0.95 + 0.07 s of CPU
+passes = 0.77 s, 1.2x over the GPU alone, if the leaf products (4608 x 2304 shapes) keep the GPU's
+throughput; the passes could overlap the products.  Also measured, the 3456 exact errors the
+campaigns lacked: f32 classical 3.04e-6, D48/G6 2.01e-6, R336/G6 1.68e-6, R363/G6 1.28e-6 (all
+0.021 s, Accelerate 0.025); f64 classical 4.75e-15, D48/G6 3.70e-15 (0.075 s), R363/G6 2.76e-15
+(0.073), SW+3/R363/G6 4.62e-15 (0.069): the planner's pick at 3456 f64 again spends the SW level on
+6% of time for 67% more error than R363/G6 (still below dgemm's own).
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

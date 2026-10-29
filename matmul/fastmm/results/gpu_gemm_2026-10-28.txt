@@ -1,0 +1,46 @@
+# GPU GEMM campaign; 2026-10-28 23:28; Apple M4 Pro; GPU:  Chipset Model: Apple M4 Pro; Total Number of Cores: 20;
+## n=3456  23:28
+gpu_graph  n=3456   f32  min    0.013 s  med    0.013 s  gpu-time min    0.000 med    0.000   6260.9 GFLOP/s(2n^3, med wall)  err64 3.04e-06  vs-sgemm 0.00e+00
+           n=3456     k-ordered FMA chain on 64 sampled outputs: equals the GPU's result at 64, Accelerate's at 64
+sgemm      n=3456   f32  min    0.025 s  med    0.028 s   2978.0 GFLOP/s(2n^3)  err64 3.04e-06  (Accelerate, same inputs; speedup gpu/sgemm 2.102 by medians)
+gpu_mps  n=3456   f32  min    0.013 s  med    0.015 s  gpu-time min    0.013 med    0.014   5687.7 GFLOP/s(2n^3, med wall)  err64 3.04e-06  vs-sgemm 0.00e+00
+           n=3456     k-ordered FMA chain on 64 sampled outputs: equals the GPU's result at 64, Accelerate's at 64
+sgemm      n=3456   f32  min    0.028 s  med    0.028 s   2905.5 GFLOP/s(2n^3)  err64 3.04e-06  (Accelerate, same inputs; speedup gpu/sgemm 1.958 by medians)
+gpu_mps16  n=3456   f32  min    0.011 s  med    0.015 s  gpu-time min    0.011 med    0.014   5546.7 GFLOP/s(2n^3, med wall)  err64 2.54e-04  vs-sgemm 2.54e-04
+           n=3456     k-ordered FMA chain on 64 sampled outputs: equals the GPU's result at 64, Accelerate's at 0
+gpu_mps16 n=3456     error against the product of the f16-rounded inputs 3.12e-06
+sgemm      n=3456   f32  min    0.025 s  med    0.028 s   2923.0 GFLOP/s(2n^3)  err64 3.04e-06  (Accelerate, same inputs; speedup gpu/sgemm 1.898 by medians)
+## n=6912  23:28
+gpu_graph  n=6912   f32  min    0.099 s  med    0.101 s  gpu-time min    0.000 med    0.000   6570.2 GFLOP/s(2n^3, med wall)  err64 3.85e-06  vs-sgemm 0.00e+00
+           n=6912     k-ordered FMA chain on 64 sampled outputs: equals the GPU's result at 64, Accelerate's at 64
+sgemm      n=6912   f32  min    0.197 s  med    0.200 s   3296.1 GFLOP/s(2n^3)  err64 3.85e-06  (Accelerate, same inputs; speedup gpu/sgemm 1.993 by medians)
+gpu_mps  n=6912   f32  min    0.100 s  med    0.101 s  gpu-time min    0.099 med    0.100   6547.4 GFLOP/s(2n^3, med wall)  err64 3.85e-06  vs-sgemm 0.00e+00
+           n=6912     k-ordered FMA chain on 64 sampled outputs: equals the GPU's result at 64, Accelerate's at 64
+sgemm      n=6912   f32  min    0.198 s  med    0.200 s   3308.3 GFLOP/s(2n^3)  err64 3.85e-06  (Accelerate, same inputs; speedup gpu/sgemm 1.979 by medians)
+gpu_mps16  n=6912   f32  min    0.090 s  med    0.090 s  gpu-time min    0.089 med    0.089   7309.4 GFLOP/s(2n^3, med wall)  err64 2.43e-04  vs-sgemm 2.43e-04
+           n=6912     k-ordered FMA chain on 64 sampled outputs: equals the GPU's result at 64, Accelerate's at 0
+gpu_mps16 n=6912     error against the product of the f16-rounded inputs 3.61e-06
+sgemm      n=6912   f32  min    0.196 s  med    0.197 s   3357.1 GFLOP/s(2n^3)  err64 3.85e-06  (Accelerate, same inputs; speedup gpu/sgemm 2.177 by medians)
+## n=13824  23:28
+gpu_graph  n=13824  f32  min    0.946 s  med    0.949 s  gpu-time min    0.000 med    0.000   5564.9 GFLOP/s(2n^3, med wall)  err64 6.40e-06  vs-sgemm 0.00e+00
+           n=13824    k-ordered FMA chain on 64 sampled outputs: equals the GPU's result at 64, Accelerate's at 64
+sgemm      n=13824  f32  min    1.836 s  med    1.878 s   2812.9 GFLOP/s(2n^3)  err64 6.40e-06  (Accelerate, same inputs; speedup gpu/sgemm 1.978 by medians)
+gpu_mps  n=13824  f32  min    0.911 s  med    0.926 s  gpu-time min    0.890 med    0.904   5705.4 GFLOP/s(2n^3, med wall)  err64 6.40e-06  vs-sgemm 0.00e+00
+           n=13824    k-ordered FMA chain on 64 sampled outputs: equals the GPU's result at 64, Accelerate's at 64
+sgemm      n=13824  f32  min    1.810 s  med    1.839 s   2873.6 GFLOP/s(2n^3)  err64 6.40e-06  (Accelerate, same inputs; speedup gpu/sgemm 1.985 by medians)
+gpu_mps16  n=13824  f32  min    0.790 s  med    0.816 s  gpu-time min    0.775 med    0.804   6472.2 GFLOP/s(2n^3, med wall)  err64 2.80e-04  vs-sgemm 2.80e-04
+           n=13824    k-ordered FMA chain on 64 sampled outputs: equals the GPU's result at 64, Accelerate's at 0
+gpu_mps16 n=13824    error against the product of the f16-rounded inputs 6.34e-06
+sgemm      n=13824  f32  min    1.556 s  med    1.843 s   2867.3 GFLOP/s(2n^3)  err64 6.40e-06  (Accelerate, same inputs; speedup gpu/sgemm 2.257 by medians)
+## bench_fmm n=3456 f32 exact errors  23:30
+classical  n=3456   f32  min    0.025 s  med    0.025 s   3353.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.025 P 0.000  plan G  pred 0.025 s (-0.4%)  perr 3.56e-06  err64 3.04e-06
+plan=D48/G6 n=3456   f32  min    0.021 s  med    0.021 s   3855.4 GFLOP/s(2mkn)  speedup 1.150  relerr 3.83e-06  split L 0.002 R 0.002 gemm 0.017 P 0.001  plan D48/G6  pred 0.021 s (-0.0%)  perr 3.23e-06  err64 2.01e-06
+plan=R363/G6 n=3456   f32  min    0.021 s  med    0.021 s   3964.9 GFLOP/s(2mkn)  speedup 1.182  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.016 P 0.002  plan R363/G6  pred 0.021 s (+0.0%)  perr 2.83e-06  err64 1.28e-06
+plan=R336/G6 n=3456   f32  min    0.021 s  med    0.022 s   3834.9 GFLOP/s(2mkn)  speedup 1.144  relerr 3.10e-06  split L 0.002 R 0.001 gemm 0.017 P 0.001  plan R336/G6  pred 0.021 s (-0.4%)  perr 2.62e-06  err64 1.68e-06
+## bench_fmm n=3456 f64 exact errors  23:30
+# compensated f64 reference in 1.6 s
+classical  n=3456   f64  min    0.098 s  med    0.098 s    841.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.098 P 0.000  plan G  pred 0.097 s (-0.7%)  perr 3.92e-15  err64 4.75e-15
+plan=D48/G6 n=3456   f64  min    0.075 s  med    0.076 s   1092.5 GFLOP/s(2mkn)  speedup 1.299  relerr 4.75e-15  split L 0.003 R 0.003 gemm 0.067 P 0.002  plan D48/G6  pred 0.075 s (-1.1%)  perr 4.70e-15  err64 3.70e-15
+plan=R363/G6 n=3456   f64  min    0.073 s  med    0.073 s   1123.9 GFLOP/s(2mkn)  speedup 1.336  relerr 4.89e-15  split L 0.002 R 0.002 gemm 0.066 P 0.003  plan R363/G6  pred 0.073 s (-0.3%)  perr 4.98e-15  err64 2.76e-15
+plan=SW+3/R363/G6 n=3456   f64  min    0.069 s  med    0.071 s   1166.9 GFLOP/s(2mkn)  speedup 1.387  relerr 5.91e-15  split L 0.002 R 0.002 gemm 0.065 P 0.002  plan SW+3/R363/G6  pred 0.071 s (+1.0%)  perr 9.92e-15  err64 4.62e-15
+# done 23:30

@@ -17,6 +17,11 @@ build/bench_fmm_fma: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h
 build/fma/kernels.h: gen_kernels.py ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp
 	mkdir -p build/fma && python3 gen_kernels.py $@ --fma --dps48 ../dps48/cand48/p005_201n
 
+# the GPU as a GEMM (MPSGraph / MPSMatrixMultiplication, f32 and f16 inputs), same inputs and error
+# metric as bench_fmm: results/gpu_gemm_2026-10-28.txt (run_gpu.sh)
+build/gpu_gemm: gpu_gemm.m
+	mkdir -p build && clang -O2 -fobjc-arc -Wall -Wno-deprecated-declarations gpu_gemm.m -framework Foundation -framework Metal -framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph -framework Accelerate -o $@
+
 # the same with the direct-sum programs for the R levels (schemes/) instead of the PLinOpt-optimized
 # ones (schemes/opt, the default): results/r336_opt_vs_direct_2026-10-28.txt
 build/bench_fmm_rdirect: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/rdirect/kernels.h

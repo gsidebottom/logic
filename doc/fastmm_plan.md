@@ -1002,6 +1002,39 @@ shape estimates and the error budget, the M4 Pro results (square, rectangular, t
 choices), the ternary trial, the two implementations and what is next.  Still to do: the Rust
 passes' small-block overhead; the C planner's 0.07 s; the dyadic 3x6x3 search.
 
+EXACT f64 ERRORS AND THE MATCHED-TIME STATEMENT (2026-10-28, late evening, after 5e460a5;
+results/f64exact_2026-10-28.txt, run_f64exact.sh).  Greg asked for a crisp statement of whether the
+report's best programs beat the best accurate_262-based programs of similar speed on accuracy.  Every
+f64 error column today was relerr (the difference from Accelerate's dgemm), and in f64 dgemm's own
+error is as large as a plan's -- exact, against the compensated (dd_gemm) product: dgemm 6.69e-15 at
+6912 and 1.23e-14 at 13824, D48/G 4.89e-15 / 7.80e-15 -- so relerr neither ranks nor measures plans
+(R336/G and R363/G at 6912 both relerr 6.78e-15; exact 4.53e-15 and 2.86e-15); the Oct 25 note that
+same-precision relerr overstates accurate schemes applies, and the f64 err64 columns were simply never
+run today.  Measured now with FMM_EXACT (reference 13 s at 6912, 110 s at 13824; three rounds).  Exact
+errors at matched time, the 3x3x6-family plan against the best 4x4-only plan D48+4/D48/G6: 6912 f32
+R363+4/D48/G6 2.26e-6 vs 2.94e-6 (-23%, 5% faster); 13824 f32 R363+4/R363/G6 2.46e-6 vs 4.35e-6
+(-43%, 4% faster); 6912 f64 R363+3/R633/G6 3.75e-15 vs 5.60e-15 (-33%, 6% faster); 13824 f64
+R363+3/D48/G6 5.81e-15 vs 8.28e-15 (-30%, 6% faster), and R336/R363/G at the same time 6.72e-15
+(-19%).  All four are also below one 4x4 level at 1.25x (D48/G: 2.81e-6, 4.16e-6, 4.89e-15, 7.80e-15)
+and below the GEMM's own error.  THE EXCEPTION: the planner's 13824 f64 choice SW/R363+3/R633/G6
+(3.251 s, 1.91x) has 1.25e-14, equal to dgemm's own 1.23e-14 and 51% MORE than D48+4/D48/G6 (3.703 s,
+8.28e-15); it beats the same design in the 4x4 family, SW/D48+2/D48/G6 (3.407 s, 1.72e-14), by 5% in
+time and 27% in error, but the planner optimizes time alone and takes the SW level because it pays.
+So the 11:12 paragraph's claim that the new plans beat the old family "in both time and error" at
+every size was true only at matched time without the SW level: CORRECTED in the report (Table 3's f64
+err64 column filled and R363/G rows added, the Results bullets rewritten as the statement, abstract,
+intro, Section 4.2, the ternary caption, Discussion, Data).  Single levels, exact: R363/G is the most
+accurate level by far, 34-41% below D48/G in both precisions (f32 1.76 vs 2.81e-6 at 6912, 2.73 vs
+4.16e-6 at 13824; f64 2.86 vs 4.89e-15, 4.97 vs 7.80e-15) at equal time in f32 and at 13824 f64 (6%
+slower at 6912 f64); R336/G 7-19% below; every SW plan is at or above dgemm's own error.  CONSEQUENCE
+for the error model: its six factors are fit to differences from the classical GEMM at N_E 2304 in
+both precisions, so they carry the GEMM's own error and misrank the accurate levels among themselves
+(f64 R363 1.27 > D48 1.20; f32 R336 0.74 < R363 0.79; exact: R363 best), and auto:g inherits it; the
+Strassen-vs-accurate separation survives.  To do: fit the model to the exact product (dd_gemm at 2304
+is 0.1 s; in f32 the f64 product) and re-validate the "within 25%" claim against err64; consider time
+at the GEMM's own accuracy as the default objective (every SW-free plan meets it).  The ternary table's
+f64 ratios (2.2-6.5x) are relerr ratios, not exact; the f32 ratios carry that comparison.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

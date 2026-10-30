@@ -1142,6 +1142,19 @@ none, the families' margin), Table 3 (+R363+3/R336/G3 row, SW plan marked "no bu
 (default vs none with predicted and measured growth), the exception bullet rewritten, the choices
 paragraph, Table 4's f32 row (D48/G3), Section 8 parity, Discussion, glossary, Data; 21 pages.
 
+REPORT: COMMERCIAL VALUE SECTION (2026-10-29, late night).  Greg asked for the chat's two assessments
+-- the commercial value of the software result, and whether the design could speed up a GPU or TPU in
+hardware -- as a section of the paper: new Section 10 "Commercial value, in software and in hardware"
+(who would use it: f32/f64 HPC with large inner dimensions; excluded: ML's bf16/fp8 and LAPACK/HPL's
+rank-k updates; what the result is worth: speed at no accuracy cost, answering Higham's objection;
+paths: vendor/open BLAS adoption (BLIS first), consulting, nothing proprietary; limits: f64 moving to
+GPUs with Ozaki-scheme emulation, the GPU tie at 13824 f32; in hardware: a kernel/compiler feature at
+the SRAM level, not the tensor core (block size), precedents Huang-Yu-van de Geijn GPU Strassen and
+Winograd convolution, yes for f64/f32 units (multiplier area), no for bf16/fp8 (operand combinations
+not representable), 20-45% per watt for an HPC part, the 1.6x estimate over the M4 GPU); contributions
+item (viii); references Higham 2002, Huang-Yu-van de Geijn 2020, Lavin-Gray 2016, Ozaki et al. 2012;
+23 pages.  Also earlier tonight: GEMM written out at first use; the direct-sum sentence clarified.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

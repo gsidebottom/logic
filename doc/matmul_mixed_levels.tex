@@ -155,8 +155,9 @@ the alternative, tied in time at $13824$ f32 with $2.6\times$ the error
 (Section~\ref{sec:results}).  (vi)~The ternary trial
 (Section~\ref{sec:ternary}).  (vii)~Two implementations, C and Rust, that
 agree in plans, predicted times and results bit for bit
-(Section~\ref{sec:impl}).  Code, programs, calibrations and raw results are
-in the repository \cite{logic}.
+(Section~\ref{sec:impl}).  (viii)~An assessment of the commercial value, in
+software and as a GPU or TPU feature (Section~\ref{sec:value}).  Code,
+programs, calibrations and raw results are in the repository \cite{logic}.
 
 \paragraph{The result in two tables.}
 Plans are written from the top of the problem down to the leaves, the levels
@@ -1085,6 +1086,91 @@ library takes $C=AB$ only: $\alpha$, $\beta$ and transposes are a day's work.
 And the Rust passes on small blocks should be brought to the C library's
 speed.
 
+\section{Commercial value, in software and in hardware}\label{sec:value}
+
+The accuracy gain by itself has little commercial value; it is what makes
+the speed gain sellable, and that combination has a real if narrow market.
+This section says where, and whether the design could be built into a GPU or
+a TPU.
+
+\paragraph{Who would use it.}
+Large dense products with a large inner dimension, in f32 or f64, whose
+accuracy is a concern, occur in scientific and engineering computing: Gram
+and covariance matrices over many samples, subspace orthogonalization in
+electronic-structure codes, tensor contractions in quantum chemistry,
+spectral transforms in weather and climate models, dense boundary-element and
+imaging matrices.  They are GEMM-dominated, mostly f64, and their inner
+dimensions run to the thousands, which is where the plans pay.  Two large
+markets are excluded.  Machine learning runs bf16 or fp8 inputs with f32
+accumulation, so its error is the input quantization, not the accumulation;
+a more accurate f32 or f64 product is worth nothing there, and that is the
+market that drives GEMM hardware.  And the dense factorizations of LAPACK and
+the HPL benchmark call GEMM as rank-$k$ updates with $k$ of a few hundred,
+where no level applies (Section~\ref{sec:planner}), so the most visible
+dense-linear-algebra workloads gain nothing.
+
+\paragraph{What the result is worth.}
+Not the last digit of a Gram matrix: the value is speed at no accuracy cost.
+Fast matrix multiplication has been known since 1969 and no production BLAS
+ships it; the standard objection is Higham's \cite{Higham02}, that the
+Strassen-type algorithms lose accuracy.  The mixed plans are
+$1.7$--$1.9\times$ faster than the vendor's GEMM with less error than it, in
+both precisions, under a default that guarantees no less accuracy than the
+GEMM.  That answers the objection in a form a library could adopt, and an
+HPC centre would take 40\% of its dense-contraction time back for free.  The
+realistic paths, in decreasing order of likelihood: adoption inside a vendor
+or open BLAS as a large-size path (the fused design needs an open kernel, so
+BLIS is the natural first target), with reputation rather than revenue as the
+return; consulting or a licensed library for codes with large contractions,
+a small market whose customers exist and pay; and nothing proprietary, since
+the schemes are published \cite{DPS26a,DPS26b} and the engineering is
+reproducible from this report.  Two trends limit all of it.  Dense f64 work
+is moving to GPUs, where accuracy is already sold in the other direction,
+f64 products emulated on low-precision tensor cores by the Ozaki scheme
+\cite{Ozaki12}; and on this machine the GPU already matches the f32 plan at
+$13824$ (Section~\ref{sec:gpu}), so the clean win is f64, the smallest
+market of all.  A port to an x86-64 server part with BLIS, measured, is what
+commercial traction would need.
+
+\paragraph{In hardware.}
+The design could speed up a GPU or a TPU in principle, but the right place
+for it is not the multiplier array.  A matrix unit is compute-bound on large
+products (cuBLAS reaches 70--80\% of peak), so a fused level of the accurate
+$4\times4$ scheme buys 25\% of the array's cycles, a $3\times3\times6$ level
+26\%, and two levels about 45\%, with passes of O($n^2$) work against the
+products' O($n^3$) -- once the blocks are large.  That condition rules the
+design out of the tensor core itself: for a $16\times16$ register tile the
+level's additions are comparable to its multiplies and the amplification is
+paid for nothing.  The level must sit where blocks of hundreds of rows are
+resident, which on a GPU is shared memory and L2 and on a TPU the vector unit
+and its SRAM beside the systolic array; so it is a kernel and compiler
+feature with modest hardware help (wider adders on the operand path, staging
+SRAM), not a new multiply-accumulate design.  The software form exists: the
+GPU kernels of Huang, Yu and van de Geijn \cite{HYvdG20} fuse a Strassen
+level's additions into the operand packing and gain 20--30\% at large sizes,
+and Winograd's minimal convolution \cite{LG16}, the same idea for
+convolutions, ships in several neural accelerators; vendors know the trick
+and have not applied it to GEMM.  Precision decides whether it is worth
+building.  For f64 and f32 units the answer is yes: an f64 multiplier is the
+most expensive arithmetic block on the chip, so trading a quarter of them per
+level for additions is an area and energy lever as well as a time one, and
+with the accurate schemes the level is more accurate than the plain product.
+For bf16 and fp8 units the answer is no: the operand combinations are not
+representable in the input format, so the $L$ and $R$ passes add a rounding
+per combination to inputs that already carry a 0.4\% or 6\% quantization
+error, and the scheme's amplification then costs more than the 25\% saves;
+nobody in that market buys accuracy, and its throughput is better bought with
+narrower formats and more multipliers.  Since that market pays for the
+silicon, the idea stays unbuilt.  What an HPC-class part would gain is
+20--45\% more effective f64 or f32 GEMM throughput per watt at large sizes
+with no accuracy loss, for a kernel change and some staging logic; on this
+machine, where the GPU and the CPU plan tie at $13824$ f32 and one
+$3\times3\times6$ level over the GPU's product is estimated at $1.2\times$
+(Section~\ref{sec:gpu}), fused passes and two levels would restore the GPU's
+lead at about $1.6\times$.  What this report changes is not the arithmetic
+saving, known for decades, but the evidence that it need not cost accuracy,
+which is the argument a hardware team would need before spending area on it.
+
 \section{Glossary: the machine, its software, and the report's terms}\label{sec:glossary}
 
 The report uses Apple's names for the hardware and the libraries, and a few
@@ -1282,12 +1368,18 @@ files \texttt{4x4x4\_48\_accurate\_262} (commit \texttt{b441528},
 13~October 2026), \texttt{3x3x6\_40\_DPS-accurate}, \texttt{3x6x3\_40\_DPS-accurate},
 \texttt{6x3x3\_40\_DPS-accurate}; tools \texttt{optimizer}, \texttt{transpozer},
 \texttt{SLPchecker}.
+\bibitem{Higham02} N.~J.~Higham, \emph{Accuracy and Stability of Numerical
+Algorithms}, 2nd ed., SIAM, 2002 (Chapter 23, fast matrix multiplication).
 \bibitem{HSvdG16} J.~Huang, T.~M.~Smith, G.~M.~Henry, R.~A.~van de Geijn,
 \emph{Strassen's algorithm reloaded}, Proc.\ SC~'16 (International
 Conference for High Performance Computing, Networking, Storage and
 Analysis), 2016.
+\bibitem{HYvdG20} J.~Huang, C.~D.~Yu, R.~A.~van de Geijn, \emph{Strassen's
+algorithm reloaded on GPUs}, ACM Trans.\ Math.\ Softw.\ 46 (2020), 1:1--1:22.
 \bibitem{KW} M.~Kauers, J.~Wood, \emph{Consequences of the Moosbauer--Poole
 algorithms}, preprint (2025).
+\bibitem{LG16} A.~Lavin, S.~Gray, \emph{Fast algorithms for convolutional
+neural networks}, Proc.\ CVPR 2016, 4013--4021.
 \bibitem{MP25} J.~Moosbauer, M.~Poole, \emph{Flip graphs with symmetry and
 new matrix multiplication schemes}, preprint (2025).
 \bibitem{MSW25} E.~M\r{a}rtensson, P.~Stankovski Wagner, \emph{The number of
@@ -1299,6 +1391,9 @@ distributes the Kauers--Wood, Moosbauer--Poole--Kemper and AlphaEvolve
 schemes used in the screen.
 \bibitem{Novikov25} A.~Novikov et al., \emph{AlphaEvolve: a coding agent
 for scientific and algorithmic discovery}, arXiv:2506.13131 (2025).
+\bibitem{Ozaki12} K.~Ozaki, T.~Ogita, S.~Oishi, S.~M.~Rump, \emph{Error-free
+transformations of matrix multiplication by using fast routines of matrix
+multiplication and its applications}, Numer.\ Algorithms 59 (2012), 95--118.
 \bibitem{Perminov} A.~I.~Perminov, \emph{FastMatrixMultiplication}: a
 catalogue of fast matrix multiplication schemes,
 \url{https://github.com/dronperminov/FastMatrixMultiplication}, commit

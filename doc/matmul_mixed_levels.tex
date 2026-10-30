@@ -195,7 +195,21 @@ plan built from the $4\times4$ scheme alone has 23--43\% less error, and is
 other engine on the machine, Apple's GPU through the vendor's MPSGraph GEMM,
 in f32, the only precision it has.
 
-\begin{table}[htb]
+
+\paragraph{Setting.}
+Row-major $A\in\R^{m\times k}$, $B\in\R^{k\times n}$, $C=AB$, in f32 or f64.
+The machine is an Apple M4~Pro (two performance clusters of five cores, one
+efficiency cluster of four, 64~GB) running macOS~26; Accelerate's GEMM runs on
+the SME matrix units, one per cluster, at about $3.3$~TFLOP/s in f32 and
+$0.85$ in f64 on large square problems.  Times are the best of five
+interleaved rounds (each round runs every method once; medians are within 2\%
+unless stated).  Errors are measured as defined above (``err64'' in the
+tables); the tables of Section~\ref{sec:results} also list ``relerr'', the
+same max-norm difference taken against Accelerate's product, which includes
+the GEMM's own error and is kept only for comparison with the earlier
+campaigns.
+
+\begin{table}[H]
 \centering\small
 \begin{tabular}{llrrlrr}
 \toprule
@@ -221,7 +235,7 @@ with $1.25\cdot10^{-14}$, the GEMM's own error (Section~\ref{sec:results}).}
 \label{tab:intro-matched}
 \end{table}
 
-\begin{table}[htb]
+\begin{table}[H]
 \centering\small
 \begin{tabular}{lrrrrrr}
 \toprule
@@ -241,19 +255,6 @@ buffers, wall clock; Accelerate's GEMM; and the best mixed plan (\lv{R363/G6},
 Accelerate's, so its error is the GEMM's (Section~\ref{sec:gpu}).}
 \label{tab:intro-gpu}
 \end{table}
-
-\paragraph{Setting.}
-Row-major $A\in\R^{m\times k}$, $B\in\R^{k\times n}$, $C=AB$, in f32 or f64.
-The machine is an Apple M4~Pro (two performance clusters of five cores, one
-efficiency cluster of four, 64~GB) running macOS~26; Accelerate's GEMM runs on
-the SME matrix units, one per cluster, at about $3.3$~TFLOP/s in f32 and
-$0.85$ in f64 on large square problems.  Times are the best of five
-interleaved rounds (each round runs every method once; medians are within 2\%
-unless stated).  Errors are measured as defined above (``err64'' in the
-tables); the tables of Section~\ref{sec:results} also list ``relerr'', the
-same max-norm difference taken against Accelerate's product, which includes
-the GEMM's own error and is kept only for comparison with the earlier
-campaigns.
 
 \section{Fused levels and what they cost}\label{sec:levels}
 

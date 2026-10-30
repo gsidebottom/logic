@@ -2,6 +2,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath,amssymb,mathtools}
 \usepackage{booktabs}
+\usepackage{float}
 \usepackage{array}
 \usepackage{url}
 \usepackage{xspace}
@@ -50,9 +51,10 @@ At $n=13824$ the planner's mixed plans run $1.73\times$ (f32) and $1.91\times$
 $1.71\times$.  Measured against the exact product, the $3\times3\times6$-family
 plan that runs in the time of the best plan from the $4\times4$ scheme alone
 has 23--43\% less error at every size and precision tried, and less than the
-GEMM's own; the one exception is the planner's fastest f64 plan at $13824$,
-which spends a Strassen--Winograd level on 12\% more speed at the price of
-51\% more error than the best $4\times4$ plan.  As a test of the opposite
+GEMM's own.  The planner's default budget, no less accurate than the GEMM,
+keeps every choice on that side: at $13824$ f64 it finds a plan as fast as
+the Strassen-topped one, $1.9\times$ over Accelerate, with half the GEMM's
+error.  As a test of the opposite
 design -- cheap passes instead of accurate ones -- a ternary
 $\mm{3\times3\times6:42}$ scheme from Perminov's catalogue, whose three
 programs need 139 additions against about 370 operations for the accurate
@@ -142,8 +144,8 @@ streams, pipelines, padding to multiples of $2^a3^b$, an error budget, and
 shape estimates that price uncalibrated rectangular problems within 2\%
 (Section~\ref{sec:planner}).  (v)~Measurements on the M4~Pro:
 $1.73\times$ and $1.91\times$ over Accelerate at $n=13824$ in f32 and f64,
-with less error than the GEMM in both precisions for every plan without a
-Strassen level and 23--43\% less than the best $4\times4$-only plan of the
+with less error than the GEMM in both precisions for every plan the default
+budget admits, and 23--43\% less than the best $4\times4$-only plan of the
 same speed; rectangular problems at $1.04$--$1.52\times$; and the GPU as
 the alternative, tied in time at $13824$ f32 with $2.6\times$ the error
 (Section~\ref{sec:results}).  (vi)~The ternary trial
@@ -196,7 +198,7 @@ $n$, prec. & mixed plan & time (s) & error & best $4\times4$-only & time (s) & e
 6912 f32 & \lv{R363+4/D48/G6} & 0.141 & $2.26\cdot10^{-6}$ & \lv{D48+4/D48/G6} & 0.149 & $2.94\cdot10^{-6}$\\
 13824 f32 & \lv{R363+4/R363/G6} & 0.907 & $2.46\cdot10^{-6}$ & \lv{D48+4/D48/G6} & 0.949 & $4.35\cdot10^{-6}$\\
 6912 f64 & \lv{R363+3/R633/G6} & 0.451 & $3.75\cdot10^{-15}$ & \lv{D48+4/D48/G6} & 0.478 & $5.60\cdot10^{-15}$\\
-13824 f64 & \lv{R363+3/D48/G6} & 3.467 & $5.81\cdot10^{-15}$ & \lv{D48+4/D48/G6} & 3.703 & $8.28\cdot10^{-15}$\\
+13824 f64 & \lv{R363+3/R336/G3} & 3.296 & $6.40\cdot10^{-15}$ & \lv{D48+4/D48/G6} & 3.801 & $8.28\cdot10^{-15}$\\
 \bottomrule
 \end{tabular}
 \caption{Matched time: the $3\times3\times6$-family plan against the best
@@ -204,10 +206,12 @@ plan from the $4\times4$ scheme alone (M4~Pro, square problems, best of
 three to five rounds, error against the exact product).  Accelerate alone
 takes $0.195$, $1.565$, $0.773$ and $6.223$~s on these four with errors
 $3.85\cdot10^{-6}$, $6.40\cdot10^{-6}$, $6.69\cdot10^{-15}$ and
-$1.23\cdot10^{-14}$.  The first three mixed plans are the planner's
-choices; at $13824$ f64 the planner's choice is the faster
-\lv{SW/R363+3/R633/G6} ($3.251$~s), whose error $1.25\cdot10^{-14}$ is the
-GEMM's own (Section~\ref{sec:results}).}
+$1.23\cdot10^{-14}$.  All four mixed plans are the planner's choices under its default budget.
+The $13824$ f64 row is from the budget campaign
+(\texttt{results/budget\_campaign\_2026-10-29.txt}), whose runs were 3\%
+slower throughout (Accelerate $6.30$~s), so both of its times are that run's;
+without a budget the planner takes \lv{SW/R363+3/R633/G6} there, $1$\% faster
+with $1.25\cdot10^{-14}$, the GEMM's own error (Section~\ref{sec:results}).}
 \label{tab:intro-matched}
 \end{table}
 
@@ -501,37 +505,37 @@ worth a dyadic search.
 
 \subsection{The error model and its validation}
 
-A plan's error is well described by the classical error scale times one
-factor per fused level, growing like $\sqrt{k}$ with the inner dimension,
+A plan's error is well described by the GEMM's own error scale times one
+factor per fused level and a depth factor per level after the first, growing
+like $\sqrt{k}$ with the inner dimension,
 \begin{equation}\label{eq:errmodel}
-\text{err}(\text{plan};\,m,k,n) \;=\; e_0\,\sqrt{k/N_E}\ \prod_{\text{levels }X} f_X,
+\text{err}(\text{plan};\,m,k,n) \;=\; e_0\,\sqrt{k/N_E}\ \rho^{\,L-1}\prod_{\text{levels }X} f_X,
 \end{equation}
 with the order of the levels immaterial (measured: \lv{SW} then \lv{D48} and
 \lv{D48} then \lv{SW} within 2\%) and streams and pipelines leaving the
-arithmetic unchanged.  The calibration measures six plans at $N_E=2304$
-(divisible by $16$, $3$ and $6$) against the classical GEMM and fits $e_0$ and
-the factors: in f32 \lv{SW} $1.09$, \lv{D48} $0.91$, \lv{R336} $0.74$, \lv{R363}
-$0.79$, \lv{R633} $0.76$; in f64 $1.99$, $1.20$, $1.25$, $1.27$, $1.42$.  The
-predictions hold within 25\% from $4096$ to $16384$ except for two Strassen
-levels, over-predicted by up to 50\% (the safe side).  The factors are fit
-to differences from Accelerate's product, which include the GEMM's own error,
-as large as an accurate level's (Table~\ref{tab:results}); they separate the
-Strassen level from the accurate ones but not the accurate levels from each
-other -- in f64 they put \lv{R363} ($1.27$) behind \lv{D48} ($1.20$) where
-the exact error puts it 36--41\% ahead -- and the budget \lv{auto:}$g$
-inherits this.  The fit should move to the exact product (the compensated
-product costs $0.1$~s at $N_E$); it has not yet.  The accurate levels'
-factors are below one in f32: against the GEMM their products are $k/g_2$-long
-dot products instead of $k$-long ones, and the GEMM's own accumulation error
-is the larger term.  Measured against the exact product, one or two accurate
-levels have less error than Accelerate's GEMM in both precisions
-(Table~\ref{tab:results}).
-The budget (\lv{max\_growth}, \lv{auto:}$g$; defined in
-Section~\ref{sec:planner}) takes the fastest plan whose predicted growth
-$\prod f_X$ is at most $g$; with these factors every plan the planner likes
-qualifies down to $g=2$, where the first $4\times4$ program we used, our
-$201$-operation point with factor $3.4$ per level, forced the classical blocked
-GEMM at $g=2$ and one level at $g=8$.
+arithmetic unchanged.  The calibration measures seven plans at $N_E=2304$ (divisible by $16$, $3$
+and $6$) against the exact product -- the f64 product of the f32 inputs, the
+compensated product of the f64 inputs: the GEMM alone, which gives $e_0$, one
+level of each scheme over the GEMM, which gives its factor, and \lv{D48/D48}.
+In f32 the factors are \lv{SW} $1.41$, \lv{D48} $0.62$, \lv{R336} $0.55$,
+\lv{R363} $0.45$, \lv{R633} $0.60$; in f64 $1.51$, $0.72$, $0.65$, $0.47$,
+$0.64$.  The accurate levels' factors are below one: their leaves accumulate
+$k/g_2$ products instead of $k$, and the GEMM's own accumulation error is the
+larger term.  A second level does not get that again, so the factors do not
+simply multiply; the two-level plan measures the shortfall, a depth factor
+$\rho$ ($2.19$ in f32, $1.53$ in f64) by which the product of the factors is
+multiplied once per level after the first, $\rho^{L-1}$ for $L$ fused levels
+in \eqref{eq:errmodel}.  Against the exact errors of the campaigns' plans at
+$3456$--$13824$ (Tables~\ref{tab:results} and \ref{tab:budget}) the model
+predicts the plans without a Strassen level within $0.66$--$1.12$ of the
+measurement (the under-predictions are at $13824$ f64, where the GEMM's own
+error exceeds its $\sqrt{k}$ extrapolation by $1.3\times$) and over-predicts
+the plans with one by up to $1.6\times$ in f32, the safe side; the growth
+over the GEMM, which the budget uses, is within 25\%.  Until this refit the
+factors were fit to differences from Accelerate's product, which include the
+GEMM's own error: they ranked the accurate levels wrongly and put every f64
+plan above the GEMM, which is why the campaigns before the budget's
+introduction ran without one.
 
 \subsection{Programs and precision}
 
@@ -574,30 +578,25 @@ sub-problem plus fill and drain.
 \paragraph{The error budget.}\label{par:budget}
 Every call takes a number $g$: \lv{max\_growth} in the C and Rust
 interfaces, \lv{auto:}$g$ in the benchmark.  For each candidate plan the
-planner computes its predicted \emph{error growth}, the product
-$\prod_X f_X$ of the error model \eqref{eq:errmodel}: the plan's predicted
+planner computes its predicted \emph{error growth}, the factor
+$\rho^{L-1}\prod_X f_X$ of the error model \eqref{eq:errmodel}: the plan's predicted
 error divided by the classical GEMM's predicted error on the same problem,
 so that a growth of $1$ means as accurate as the GEMM, $0.5$ twice as
 accurate, $2$ twice the error.  With $g>0$ the planner returns the fastest
 plan whose growth is at most $g$: $g=1$ asks for a plan no less accurate than
 the GEMM it replaces, $g<1$ for a more accurate one, and $g>1$ admits plans
 up to $g$ times the GEMM's error, which is where the plans with a Strassen
-level and the deep plans live.  $g=0$ is not ``no growth'' but ``no budget'':
-the fastest plan whatever its error, and the setting of every timing in this
-report unless a budget is named.  So $g=0$ can return a less accurate plan
-than a positive $g$ would: at $13824$ f64 it returns \lv{SW/R363+3/R633/G6},
-whose exact error is $1.02\times$ the GEMM's, where $g=1$ with a correctly
-fit model would return \lv{R363+3/D48/G6} at $0.47\times$
-(Table~\ref{tab:results}).  Two cautions.  The growth is the model's
-estimate, good to about 25\% (Section~\ref{sec:accuracy}), so a budget is a
-target rather than a guarantee, and near a boundary the choice is not
-robust.  And the factors of the present calibration are fit against
-Accelerate's result, which includes the GEMM's own error: in f64 they put
-every level above $1$ (one $4\times4$ level at $1.2$ where the exact figure
-is $0.63$), so until the model is refit to the exact product a budget of $1$
-in f64 returns the GEMM and the budgets that admit the accurate levels are
-$1.5$--$2$.  After the refit the sensible default is $g=1$, with $0$ for the
-users who want the Strassen plans' speed.
+level and the deep plans live.  $g=0$ means the default budget, $1$; a negative $g$ means no budget, the
+fastest plan whatever its error (\lv{auto:none} in the benchmark), which is
+how the campaigns before the budget's introduction ran.  So no budget can
+return a less accurate plan than the default: at $13824$ f64 it returns
+\lv{SW/R363+3/R633/G6}, whose exact error is $1.02\times$ the GEMM's, where
+the default returns \lv{R363+3/R336/G3} at $0.52\times$ in the same time
+(Table~\ref{tab:budget}).  The growth is the model's estimate, good to about
+25\% (Section~\ref{sec:accuracy}), so a budget is a target rather than a
+guarantee, and near a boundary the choice is not robust; the Strassen-topped
+plans sit at $1.0$--$1.1$ and the plans without one below $0.85$, so the
+default separates the two families with the margin the model has.
 
 \paragraph{Calibration.}
 Everything the model needs is measured once per machine and precision and
@@ -606,7 +605,7 @@ the machine, the padding, the file format and the programs the kernels came
 from): the lone GEMM and the blocked GEMM at each size; for each level and
 product shape its three passes and the GEMM time per product at $0$, $3$, $4$
 and $6$ streams, measured together by running the level; the pipelines; and
-the six error-model plans at $N_E=2304$.  For $n$ up to $13824$ this is $408$
+the seven error-model plans at $N_E=2304$, against the exact product.  For $n$ up to $13824$ this is $408$
 entries and $13$ minutes per precision.  Square shapes interpolate (log-log
 between the measured sizes); rectangular shapes do not, and are either
 calibrated for the shape ($118$ entries, a few seconds) or priced by
@@ -619,8 +618,8 @@ n_{\text{eq}} \;=\; \sqrt{\frac{(g_1g_2+r)\,mk + (g_2g_3+r)\,kn + (g_1g_3+r)\,mn
 {g_1g_2+g_2g_3+g_1g_3+3r}},
 \end{equation}
 the size at which a square problem moves the same words through the level's
-passes \eqref{eq:traffic}.  The estimates predicted every measured rectangular
-case within 2\% (Table~\ref{tab:rect}).
+passes \eqref{eq:traffic}.  The estimates predicted every measured rectangular case within 2\%
+(Table~\ref{tab:rect}; 5\% for the one plan the default budget changed).
 
 \paragraph{Sizes and shapes the levels do not divide.}
 A plan runs at the smallest shape its levels divide: every dimension is
@@ -679,9 +678,10 @@ $n$, precision & plan & time (s) & over GEMM & relerr & err64\\
  & \lv{R363/G} & 4.919 & 1.27 & $1.30\cdot10^{-14}$ & $4.97\cdot10^{-15}$\\
  & \lv{R336/R363/G} & 3.703 & 1.68 & $1.45\cdot10^{-14}$ & $6.72\cdot10^{-15}$\\
  & \lv{D48+4/D48/G6} & 3.703 & 1.68 & $1.38\cdot10^{-14}$ & $8.28\cdot10^{-15}$\\
- & \lv{R363+3/D48/G6} & 3.467 & 1.80 & $1.25\cdot10^{-14}$ & $5.81\cdot10^{-15}$\\
+  & \lv{R363+3/D48/G6} & 3.467 & 1.80 & $1.25\cdot10^{-14}$ & $5.81\cdot10^{-15}$\\
+ & \lv{R363+3/R336/G3} (auto) & 3.296 & 1.89 & $1.33\cdot10^{-14}$ & $6.40\cdot10^{-15}$\\
  & \lv{SW/D48+2/D48/G6} & 3.407 & 1.83 & $1.85\cdot10^{-14}$ & $1.72\cdot10^{-14}$\\
- & \lv{SW/R363+3/R633/G6} (auto) & \textbf{3.251} & \textbf{1.91} & $1.51\cdot10^{-14}$ & $1.25\cdot10^{-14}$\\
+  & \lv{SW/R363+3/R633/G6} (no budget) & \textbf{3.251} & \textbf{1.91} & $1.51\cdot10^{-14}$ & $1.25\cdot10^{-14}$\\
 \bottomrule
 \end{tabular}
 \caption{Square problems on the M4~Pro (\texttt{results/r336\_campaign2\_2026-10-28.txt};
@@ -691,8 +691,9 @@ to five interleaved rounds; ``over GEMM'' is Accelerate's time divided by the
 plan's; relerr is the max-norm difference from Accelerate's product; err64
 the max-norm error against the exact product -- the f64 product in f32, the
 compensated product in f64 (\texttt{results/f64exact\_2026-10-28.txt}) -- with
-the GEMM's own error in the first row of each block.  ``auto'' is the
-planner's choice.  Only err64 compares plans: the GEMM's own error is as
+the GEMM's own error in the first row of each block.  ``auto'' is the planner's choice under its default budget (the $13824$ f64
+\lv{R363+3/R336/G3} row is from the budget campaign, Table~\ref{tab:budget}).
+Only err64 compares plans: the GEMM's own error is as
 large as a level's, so relerr mixes the two (\lv{R336/G} and \lv{R363/G} at
 $6912$ f64 have the same relerr and exact errors $4.53$ and
 $2.86\cdot10^{-15}$).}
@@ -720,18 +721,20 @@ mixed plan.  What the table says:
   $6912$ f64 ($3.75$ against $5.60\cdot10^{-15}$) and \lv{R363+3/D48/G6} at
   $13824$ f64 ($5.81$ against $8.28\cdot10^{-15}$).  These plans, at
   $1.4$--$1.8\times$ over the GEMM, also have less error than a single
-  $4\times4$ level at $1.25\times$ (\lv{D48/G}).  The first three are the
-  planner's own choices, and its top six at $13824$ f32 are all
-  $3\times3\times6$-family plans.
-\item The exception is the planner's choice at $13824$ f64,
+  $4\times4$ level at $1.25\times$ (\lv{D48/G}).  All four are the planner's choices under its default budget (at $13824$
+f64 the default's own pick, \lv{R363+3/R336/G3}, is faster still: the next
+item), and its top six at $13824$ f32 are all $3\times3\times6$-family plans.
+\item Without a budget the planner's choice at $13824$ f64 is
   \lv{SW/R363+3/R633/G6}: a Strassen--Winograd level on top buys $1.91\times$
   against $1.68$ for the best $4\times4$ plan at the price of 51\% more error
   ($1.25\cdot10^{-14}$ against $8.28\cdot10^{-15}$; the GEMM's own is
-  $1.23\cdot10^{-14}$).  Against the $4\times4$ family's plan of the same
-  design and time, \lv{SW/D48+2/D48/G6}, it is 5\% faster with 27\% less
-  error, so the $3\times3\times6$ levels improve the trade at every point;
-  but the planner optimizes time and takes the Strassen level whenever it
-  pays, unless an error budget (\lv{auto:}$g$) forbids it.
+  $1.23\cdot10^{-14}$).  The default budget rejects it (predicted growth
+  $1.07$) and takes \lv{R363+3/R336/G3}, a plan no earlier campaign had
+  measured: $3.30$~s against the Strassen plan's $3.27$ in the same run, with
+  error $6.40\cdot10^{-15}$, half the GEMM's (Table~\ref{tab:budget}).  At
+  $3456$ f64 the same happens: \lv{R363/G4} at $0.072$~s and $0.58\times$ the
+  GEMM's error replaces \lv{SW+3/R363/G6} at $0.071$~s and $0.97\times$.  The
+  Strassen plans remain available under an explicit budget of $2$ or none.
 \item Every plan without a Strassen level has less error than the GEMM's own
   in both precisions ($2.26$ against $3.85\cdot10^{-6}$ at $6912$ f32, $2.46$
   against $6.40\cdot10^{-6}$ at $13824$ f32, $3.75$ against
@@ -745,10 +748,39 @@ mixed plan.  What the table says:
   through the pipelined two-level plans.
 \end{itemize}
 
-The planner's choices by size, from the calibration at $13824$: f32 \lv{G} at
-$1728$, \lv{R363/G6} at $3456$, \lv{R363+4/D48/G6} at $6912$,
-\lv{R363+4/R363/G6} at $13824$; f64 \lv{R363/G6} at $1728$, \lv{SW+3/R363/G6}
-at $3456$, \lv{R363+3/R633/G6} at $6912$, \lv{SW/R363+3/R633/G6} at $13824$.
+\begin{table}[H]
+\centering\small
+\begin{tabular}{llllrrr}
+\toprule
+$n$, prec. & plan & budget & time (s) & \multicolumn{2}{c}{growth over the GEMM} & error\\
+\cmidrule(lr){5-6}
+ & & & & predicted & measured & \\
+\midrule
+3456 f64 & \lv{R363/G4} & default & 0.072 & 0.47 & 0.58 & $2.76\cdot10^{-15}$\\
+ & \lv{SW+3/R363/G6} & none & 0.071 & 1.09 & 0.97 & $4.62\cdot10^{-15}$\\
+13824 f64 & \lv{R363+3/R336/G3} & default & 3.296 & 0.47 & 0.52 & $6.40\cdot10^{-15}$\\
+ & \lv{SW/R363+3/R633/G6} & none & 3.267 & 1.07 & 1.02 & $1.25\cdot10^{-14}$\\
+3456 f32 & \lv{R363/G6} & both & 0.021 & 0.45 & 0.42 & $1.28\cdot10^{-6}$\\
+6912 f32 & \lv{R363+4/D48/G6} & both & 0.141 & 0.60 & 0.59 & $2.26\cdot10^{-6}$\\
+6912 f64 & \lv{R363+3/R633/G6} & both & 0.451 & 0.46 & 0.56 & $3.75\cdot10^{-15}$\\
+13824 f32 & \lv{R363+4/R363/G6} & both & 0.916 & 0.44 & 0.38 & $2.46\cdot10^{-6}$\\
+\bottomrule
+\end{tabular}
+\caption{The planner's choices with the default budget ($1$: no less accurate
+than the GEMM) and without one
+(\texttt{results/budget\_campaign\_2026-10-29.txt}; best of three to five
+rounds, errors against the exact product).  ``Growth'' is the plan's error
+over the GEMM's on the same problem, as the model predicts it and as
+measured; ``both'' means the two budgets choose the same plan.}
+\label{tab:budget}
+\end{table}
+
+The planner's choices by size, from the calibration at $13824$ and under the
+default budget: f32 \lv{G} at $1728$, \lv{R363/G6} at $3456$,
+\lv{R363+4/D48/G6} at $6912$, \lv{R363+4/R363/G6} at $13824$; f64
+\lv{R363/G6} at $1728$, \lv{R363/G4} at $3456$, \lv{R363+3/R633/G6} at
+$6912$, \lv{R363+3/R336/G3} at $13824$ (without a budget, \lv{SW+3/R363/G6}
+at $3456$ and \lv{SW/R363+3/R633/G6} at $13824$).
 Sizes that $3$ does not divide keep their $4\times4$ plans (\lv{D48+4/D48/G6}
 at $8192$ f32, $1.40\times$; \lv{D48+3/D48/G6} at $9000$ f64 padded to $9008$,
 $1.69\times$).
@@ -765,7 +797,7 @@ $1000\times3000\times2000$ & estimated & f32 & \lv{G} & -- & 1.00\\
  & & f64 & \lv{SW/G4} & 0.0133 / 0.0144 & 1.04\\
 $2048\times4096\times1024$ & estimated & f32 & \lv{G} & -- & 1.00\\
  & & f64 & \lv{D48/G6} & 0.0177 / 0.0180 & 1.10\\
-$6912\times6912\times3456$ & estimated & f32 & \lv{SW+4/D48/G6} & 0.0790 / 0.0796 & 1.26\\
+$6912\times6912\times3456$ & estimated & f32 & \lv{D48/G3} & 0.0812 / 0.0777 & 1.30\\
  & & f64 & \lv{D48+4/R363/G6} & 0.2578 / 0.2565 & 1.52\\
 \bottomrule
 \end{tabular}
@@ -773,15 +805,17 @@ $6912\times6912\times3456$ & estimated & f32 & \lv{SW+4/D48/G6} & 0.0790 / 0.079
 (\texttt{results/\allowbreak rect\_\allowbreak api\_\allowbreak 2026-10-28.txt}): the planner's plan, its predicted
 and measured time, and the speedup over Accelerate's GEMM on the same shape.
 ``Estimated'' shapes are priced from the square calibration by
-\eqref{eq:equiv}.}
+\eqref{eq:equiv}.  The plans are the default budget's; without one the f32
+$6912\times6912\times3456$ plan is \lv{SW+4/D48/G6}, $0.0790$ / $0.0796$~s,
+$1.26\times$.}
 \label{tab:rect}
 \end{table}
 
 Rectangular problems (Table~\ref{tab:rect}) go through the same planner over
 $(m,k,n)$: a level applies when its grid divides the current shape, so a
 $6912\times6912\times3456$ product gets a $4\times4$ level whose products are
-$1728\times1728\times864$ and then a $3\times6\times3$ level in f64.  The shape
-estimates are within 2\% of the measurements wherever a level pays, and where
+$1728\times1728\times864$ and then a $3\times6\times3$ level in f64.  The shape estimates are within 2\% of the measurements wherever a level pays
+(5\% for the f32 plan the default budget changed), and where
 none does the planner correctly returns the GEMM (the first version of the
 estimates had none, and padded $1000\times3000\times2000$ to $3072^3$, 30
 times slower than Accelerate).
@@ -990,10 +1024,11 @@ fused passes as safe Rust emitted by the same generator (each slice a
 separate parameter, cut to the row length first: the compiler then
 vectorizes as \texttt{restrict} and the pragma let it in C).  The only unsafe
 code is the three FFI declarations for Accelerate behind safe wrappers that
-check the slices.  Cross-checked against the C library on the shared
-calibration, 26 cases (square sizes from $1000$ to $9000$, a leading dimension
-above $n$, an error budget, four rectangular shapes, both precisions) give the
-same plans, the same predicted times to the digit and results bit for bit.
+check the slices.  Cross-checked against the C library on the shared calibration, 26 cases
+(square sizes from $1000$ to $9000$, a leading dimension above $n$, an error
+budget, four rectangular shapes, both precisions) give the same plans, the
+same predicted times to the digit and results bit for bit, before and after
+the error model's refit and the default budget, which both ports carry.
 Speeds match at large sizes (f64 $8192$: $0.801$ against $0.815$~s; f32
 $6912\times6912\times3456$: $0.0789$ against $0.0796$); the Rust passes on
 blocks under about $600$ are $1.2$--$2\times$ slower (dispatch and per-chunk
@@ -1015,8 +1050,10 @@ not by the operation count.  Under these measures the menu is short: two
 accurate schemes and Strassen--Winograd for the top of deep f64 plans.  A
 scheme enters the menu only if a plan containing it beats every plan without
 it on this machine, and the planner decides that per shape and precision from
-measurements, which is why the library can take a new level (or a new
-machine) without any change but a calibration.
+measurements, which is why the library can take a new level (or a new machine) without
+any change but a calibration.  Its default objective is time at the GEMM's
+own accuracy or better; the Strassen plans, the only ones that breach it, are
+there for whoever asks.
 
 The limits are also measured.  The GEMM is 85--95\% of every plan, so no menu
 can take more than the products it saves, and below $n\approx3000$ nothing
@@ -1037,11 +1074,9 @@ plans that use it; the tools exist from the $4\times4$ search.  Fusing the $L$
 and $R$ passes into GEMM operand packing, the ``Strassen reloaded'' design,
 needs an open GEMM kernel; on this machine the vendor's SME kernels are
 closed, so it waits for another machine (x86-64 with BLIS, or the Apple GPU).
-The planner's $0.07$~s per new shape in C should be a millisecond.  The
-error model should be fit to the exact product instead of Accelerate's, whose
-own error it now includes (Section~\ref{sec:accuracy}); with that done the
-planner's default objective, time, could become time at the GEMM's own
-accuracy, which every plan without a Strassen level meets.  The
+The planner's $0.07$~s per new shape in C should be a millisecond.  The error model's depth factor is one number for all levels; a factor per
+level, or a model of the leaves' accumulation length, would tighten its
+25\%.  The
 library takes $C=AB$ only: $\alpha$, $\beta$ and transposes are a day's work.
 And the Rust passes on small blocks should be brought to the C library's
 speed.
@@ -1154,8 +1189,8 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
   for comparison with the earlier campaigns.
 \item[Error growth, \lv{max\_growth}, \lv{auto:}$g$.]  A plan's predicted
   error divided by the GEMM's, the product of the model's per-level factors
-  $f_X$; the budget $g$ a call sets on it, with $0$ meaning no budget
-  (Section~\ref{sec:planner}).
+  $f_X$; the budget $g$ a call sets on it: $0$ the default of $1$, a negative value
+no budget (Section~\ref{sec:planner}).
 \item[$\amp$, $\ginf$, $N_E$, $e_0$.]  The amplification measures of a
   scheme (root-sum-square and worst-case, Section~\ref{sec:accuracy}); the
   size at which the error model is calibrated ($2304$) and its classical
@@ -1208,8 +1243,8 @@ results of every run quoted here:
 \path{t42_campaign_2026-10-28.txt} (Table~\ref{tab:ternary}),
 \path{f64exact_2026-10-28.txt} (the f64 err64 column of
 Table~\ref{tab:results}), \path{gpu_gemm_2026-10-28.txt} (Table~\ref{tab:gpu};
-the tool is \path{gpu_gemm.m}, built by \texttt{make build/gpu\_gemm}, the
-script \path{run_gpu.sh}), and the
+the tool is \path{gpu_gemm.m}, built by \texttt{make build/gpu\_gemm}, the script \path{run_gpu.sh}), \path{budget_campaign_2026-10-29.txt}
+(Table~\ref{tab:budget}; \path{run_budget.sh}), and the
 earlier campaigns of October 24--26 (streams, pipelines, accuracy, the
 $4\times4$ programs).  The menu screen is \path{matmul/levels/}
 (\path{levels.py}, \path{levels.csv}, \path{orbit_rect.py},

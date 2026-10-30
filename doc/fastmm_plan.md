@@ -1101,6 +1101,47 @@ threads/FFI/JSON/C11, BLIS/CUDA/Vulkan/Core ML/PyTorch/MLX, GB/s and TFLOP/s.  A
 meaning "no budget" confused Greg; after the refit make 1 the default and give "no budget" an explicit
 value (negative or infinity) in both libraries.
 
+ERROR MODEL REFIT TO THE EXACT PRODUCT, DEPTH FACTOR, DEFAULT BUDGET 1 (2026-10-29, night;
+results/budget_campaign_2026-10-29.txt, run_budget.sh).  Greg asked for the afternoon's work: the refit,
+Rust parity, a recalibration, the report's exception rewritten.  C (fmm.c, fmm_impl.h, fmm.h): the
+calibration's error entries are measured against the exact product (f32: the f64 product of the f32
+inputs by cblas_dgemm; f64: dd_gemm, the compensated double-double product, moved from bench_fmm.c into
+fmm.c), a seventh entry EG = the classical GEMM's own error at N_E (a cache without EG has the old,
+GEMM-relative entries and re-measures all seven, a second; no format bump, the timing entries stay);
+the model: base = EG, f_X = E_X / EG (f32 SW 1.41 D48 0.62 R336 0.55 R363 0.45 R633 0.60; f64 1.51 0.72
+0.65 0.47 0.64).  FLAW FOUND: with exact factors the per-level product predicts multi-level plans far
+too optimistically (D48/D48 at N_E is 2.19x (f32) / 1.53x (f64) the product of two D48 factors: the
+first accurate level's benefit, leaves of k/g2, is not repeated), so a budget of 1 still accepted
+SW/R363+3/R633/G6 (predicted 0.45, exact 1.02).  Fix: the depth factor rho = E_D48D48 EG / E_D48^2,
+applied once per fused level after the first (growth = prod f_X rho^(L-1)); against the exact errors of
+the campaigns' plans at 3456-13824 the predictions are within 0.66-1.12 of the measurements for SW-free
+plans (the under-predictions at 13824 f64, where the GEMM's own error is 1.3x its sqrt(k) extrapolation)
+and over-predict SW plans by up to 1.6x in f32 (safe side); growth within 25%; every SW-topped plan
+lands at predicted growth 1.07-1.67 (> 1), every SW-free plan at <= 0.84.  BUDGET SEMANTICS:
+max_growth 0 = the default FMM_DEFAULT_GROWTH 1 (no less accurate than the GEMM), > 0 that budget,
+< 0 none (bench: auto = default, auto:g, auto:none); nothing within a budget below 1 -> the GEMM.
+Rust: calib.rs (ERR_PLANS/ERR_NAMES with "G"/EG, ErrModel.rho), measure.rs (dd_gemm ported with
+rayon, exact reference for both precisions), planner.rs (DEFAULT_GROWTH, resolve_growth, growth with
+rho, GEMM fallback), lib.rs/README docs; cargo test ok; crosscheck --features cbench: 26/26 identical
+plans, predictions to the digit, results bit for bit.  CAMPAIGN (default vs none, exact errors): 13824
+f64 default = R363+3/R336/G3 (never measured before): 3.296 s (2.16x over that run's Accelerate 6.30,
+1.9x over the usual 6.22), err 6.40e-15 = 0.52x the GEMM's, vs the SW plan 3.267 s 1.25e-14 (1.02x) and
+R363+3/D48/G6 3.560 s 5.81e-15; 3456 f64 default = R363/G4 0.072 s 2.76e-15 (0.58x) vs SW+3/R363/G6
+0.071 s 4.62e-15 (0.97x); f32 and 6912 f64 unchanged (R363/G6, R363+4/D48/G6, R363+3/R633/G6,
+R363+4/R363/G6).  The "exception" of the report is gone: the default is as fast as the SW plan with half
+the GEMM's error.  test_fmm all ok under the default: SW-topped picks replaced everywhere (5000 f32
+D48/G4; 9000 f32 D48+4/D48/G6; 4096/5000 f64 D48/G3, 13% slower than the SW plans there -- the price of
+the guarantee, -1 buys them back; 6912x6912x3456 f32 D48/G3 1.30x, faster than the old SW+4/D48/G6
+1.26x).  CACHE GOTCHA: bench_fmm sets FMM_CALIB_DIR=results (its cache is results/calib5_*.txt), the
+library reads ~/Library/Caches/fmm; the first campaign script copied the wrong way and test_fmm fell
+back to the GEMM everywhere (no EG -> no model -> budget 1 unsatisfiable); fixed, the bench's cache is
+installed for the library (results -> ~/Library).  Report: abstract, intro (v) and Table 1 (13824 f64
+row = the default's pick, both times from the budget run), Section 4.2 rewritten (exact fit, factors,
+depth factor, validation, the old fit's history), Section 5 budget paragraph (0 = default 1, negative =
+none, the families' margin), Table 3 (+R363+3/R336/G3 row, SW plan marked "no budget"), new Table 8
+(default vs none with predicted and measured growth), the exception bullet rewritten, the choices
+paragraph, Table 4's f32 row (D48/G3), Section 8 parity, Discussion, glossary, Data; 21 pages.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

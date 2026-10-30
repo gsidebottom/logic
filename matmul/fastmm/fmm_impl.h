@@ -498,8 +498,23 @@ static void FN(time_pipe)(int ly, shape_t ty, int k, int p, const T *A, const T 
     *over = a1 - PIPE_Q1 * *steady > 0 ? a1 - PIPE_Q1 * *steady : 0;
 }
 
+/* the exact product of the same inputs, in double: the f64 product of the f32 inputs, or the
+ * compensated (double-double) product of the f64 inputs */
+static void FN(exact_ref)(size_t n, const T *A, const T *B, double *R64) {
+#ifdef FMM_FLOAT
+    double *A64 = malloc(n * n * sizeof(double)), *B64 = malloc(n * n * sizeof(double));
+    for (size_t i = 0; i < n * n; i++) { A64[i] = A[i]; B64[i] = B[i]; }
+    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, (int)n, (int)n, (int)n, 1.0, A64, (int)n, B64, (int)n, 0.0,
+                R64, (int)n);
+    free(A64);
+    free(B64);
+#else
+    dd_gemm(n, n, n, A, B, R64);
+#endif
+}
+
 /* the error model's measurements: the ERR_PLANS at N_E on uniform random inputs, each against
- * the classical GEMM */
+ * the exact product, and the classical GEMM's own error (EG) against it */
 static void FN(calib_errors)(calib_t *c) {
     size_t n = N_E, nn = n * n;
     T *A = alloc_t(nn * sizeof(T)), *B = alloc_t(nn * sizeof(T)), *C = alloc_t(nn * sizeof(T)),
@@ -512,11 +527,14 @@ static void FN(calib_errors)(calib_t *c) {
         B[i] = (T)((double)(s >> 11) / 9007199254740992.0 * 2 - 1);
     }
     FN(gemm)(sq(n), A, n, B, n, R, n);
+    double *R64 = malloc(nn * sizeof(double));
+    FN(exact_ref)(n, A, B, R64);
     double rmax = 0;
-    for (size_t i = 0; i < nn; i++) rmax = fmax(rmax, fabs((double)R[i]));
+    for (size_t i = 0; i < nn; i++) rmax = fmax(rmax, fabs(R64[i]));
+    double v[NERR];
     int plans[NERR][PLAN_MAX];
     size_t wmax = 16;
-    for (int i = 0; i < NERR; i++) {
+    for (int i = 0; i < NERR - 1; i++) {
         if (!parse_plan(ERR_PLANS[i], sq(n), plans[i])) {
             fprintf(stderr, "calib_errors: plan %s does not parse at %zu\n", ERR_PLANS[i], n);
             exit(1);
@@ -527,14 +545,22 @@ static void FN(calib_errors)(calib_t *c) {
     T *work = alloc_t(wmax * sizeof(T));
     memset(work, 0, wmax * sizeof(T));
     for (int i = 0; i < NERR; i++) {
-        FN(exec)(plans[i], sq(n), A, n, B, n, C, n, work, NULL);
+        const T *X = R;                     /* EG: the classical GEMM's own result */
+        if (i < NERR - 1) {
+            FN(exec)(plans[i], sq(n), A, n, B, n, C, n, work, NULL);
+            X = C;
+        }
         double e = 0;
-        for (size_t j = 0; j < nn; j++) e = fmax(e, fabs((double)C[j] - (double)R[j]));
-        calib_put(c, K_ERR + i, sq(N_E), e / rmax);
-        printf("#   %-7s m=%-6d %.3e (error of %s against the classical GEMM)\n", kind_name(K_ERR + i), N_E,
-               e / rmax, ERR_PLANS[i]);
+        for (size_t j = 0; j < nn; j++) e = fmax(e, fabs((double)X[j] - R64[j]));
+        v[i] = e / rmax;
+        calib_put(c, K_ERR + i, sq(N_E), v[i]);
+        printf("#   %-7s m=%-6d %.3e (error of %s against the exact product)\n", kind_name(K_ERR + i), N_E, v[i],
+               ERR_PLANS[i]);
     }
+    printf("#   factors over the GEMM: SW %.3f D48 %.3f R336 %.3f R363 %.3f R633 %.3f; D48/D48 over D48^2 %.3f\n",
+           v[0] / v[6], v[1] / v[6], v[3] / v[6], v[4] / v[6], v[5] / v[6], v[2] * v[6] / (v[1] * v[1]));
     free(work);
+    free(R64);
     free(A); free(B); free(C); free(R);
 }
 

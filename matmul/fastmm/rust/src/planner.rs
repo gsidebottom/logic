@@ -139,9 +139,12 @@ pub fn enumerate(c: &Calib, s: Shape) -> Vec<(Plan, f64)> {
     out
 }
 
-/// the factor by which a plan's error exceeds the classical GEMM's
+/// the factor by which a plan's error exceeds the classical GEMM's: the levels' factors, times
+/// the depth factor once per fused level after the first
 pub fn growth(e: &ErrModel, plan: &Plan) -> f64 {
-    plan.0.iter().take_while(|x| !x.level.is_leaf()).map(|x| e.factor(x.level)).product()
+    let levels: Vec<Level> = plan.0.iter().take_while(|x| !x.level.is_leaf()).map(|x| x.level).collect();
+    let g: f64 = levels.iter().map(|lv| e.factor(*lv)).product();
+    g * e.rho.powi((levels.len() as i32 - 1).max(0))
 }
 
 /// the predicted error of a plan on shape s: the classical scale grows with the inner dimension
@@ -149,13 +152,29 @@ pub fn predicted_error(e: &ErrModel, plan: &Plan, s: Shape) -> f64 {
     e.base * (s.k as f64 / crate::calib::N_E as f64).sqrt() * growth(e, plan)
 }
 
-/// the cheapest plan whose error growth is at most gmax (0: no limit)
+/// the budget a call's max_growth = 0 means: no less accurate than the GEMM
+pub const DEFAULT_GROWTH: f64 = 1.0;
+
+/// a call's max_growth: a positive value is that budget, 0 the default, a negative value no
+/// budget (the fastest plan whatever its error)
+pub fn resolve_growth(g: f64) -> f64 {
+    if g == 0.0 { DEFAULT_GROWTH } else { g }
+}
+
+/// the cheapest plan whose error growth is at most the budget, else (a budget below 1 that no
+/// plan meets) the classical GEMM; None if nothing is calibrated
 pub fn best_budget(c: &Calib, s: Shape, gmax: f64) -> Option<(Plan, f64)> {
-    if gmax <= 0.0 {
+    let gmax = resolve_growth(gmax);
+    if gmax < 0.0 {
         return best(c, s);
     }
     let e = c.err_model()?;
-    enumerate(c, s).into_iter().find(|(p, _)| growth(&e, p) <= gmax * (1.0 + 1e-9))
+    if let Some(x) = enumerate(c, s).into_iter().find(|(p, _)| growth(&e, p) <= gmax * (1.0 + 1e-9)) {
+        return Some(x);
+    }
+    let p = Plan::classical();
+    let t = cost(c, &p, s)?;
+    Some((p, t))
 }
 
 /// bytes per second of the padding copies

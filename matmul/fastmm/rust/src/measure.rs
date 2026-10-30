@@ -151,8 +151,52 @@ fn time_pipe<T: Real>(ly: Level, ty: Shape, k: u8, p: usize, a: &[T], b: &[T], c
     (steady, (t2 - 2.0 * steady).max(0.0))
 }
 
+/// the compensated (double-double) product R = A B, as the C library's dd_gemm: each product split
+/// exactly by an FMA, the sum accumulated with an error-free TwoSum, rounded to double at the end;
+/// the f64 error model's exact reference.  Blocks of 16 rows by 256 columns.
+fn dd_gemm(m: usize, kk: usize, n: usize, a: &[f64], b: &[f64], r: &mut [f64]) {
+    use rayon::prelude::*;
+    const IB: usize = 16;
+    const JB: usize = 256;
+    r.par_chunks_mut(IB * n).enumerate().for_each(|(bi, rb)| {
+        let (i0, rows) = (bi * IB, rb.len() / n);
+        let mut s = vec![0.0f64; IB * JB];
+        let mut cc = vec![0.0f64; IB * JB];
+        let mut j0 = 0;
+        while j0 < n {
+            let w = JB.min(n - j0);
+            s.iter_mut().for_each(|x| *x = 0.0);
+            cc.iter_mut().for_each(|x| *x = 0.0);
+            for k in 0..kk {
+                let bk = &b[k * n + j0..k * n + j0 + w];
+                for ii in 0..rows {
+                    let av = a[(i0 + ii) * kk + k];
+                    let si = &mut s[ii * JB..ii * JB + w];
+                    let ci = &mut cc[ii * JB..ii * JB + w];
+                    for j in 0..w {
+                        let p = av * bk[j];
+                        let e = av.mul_add(bk[j], -p);
+                        let t = si[j] + p;
+                        let z = t - si[j];
+                        ci[j] += ((si[j] - (t - z)) + (p - z)) + e;
+                        si[j] = t;
+                    }
+                }
+            }
+            for ii in 0..rows {
+                for j in 0..w {
+                    rb[ii * n + j0 + j] = s[ii * JB + j] + cc[ii * JB + j];
+                }
+            }
+            j0 += JB;
+        }
+    });
+    let _ = m;
+}
+
 /// the error model's measurements: the ERR_PLANS at N_E on uniform random inputs (the C library's
-/// generator), each against the classical GEMM
+/// generator), each against the exact product (the f64 product of the f32 inputs, the compensated
+/// product of the f64 inputs), and the classical GEMM's own error (EG) against it
 fn calib_errors<T: Real>(c: &mut Calib) {
     let (n, nn) = (N_E, N_E * N_E);
     let mut s: u64 = 0x2545f4914f6cdd1d;
@@ -169,17 +213,32 @@ fn calib_errors<T: Real>(c: &mut Calib) {
     let sq = Shape::sq(n);
     let mut r = vec![T::default(); nn];
     T::gemm(sq, &a, n, &b, n, 0.0, &mut r, n);
-    let rmax = r.iter().fold(0.0f64, |m, x| m.max(x.to_f64().abs()));
-    let plans = ERR_PLANS.map(|s| Plan::parse(s).unwrap());
+    let a64: Vec<f64> = a.iter().map(|x| x.to_f64()).collect();
+    let b64: Vec<f64> = b.iter().map(|x| x.to_f64()).collect();
+    let mut r64 = vec![0.0f64; nn];
+    if T::F64 {
+        dd_gemm(n, n, n, &a64, &b64, &mut r64);
+    } else {
+        <f64 as Real>::gemm(sq, &a64, n, &b64, n, 0.0, &mut r64, n);
+    }
+    let rmax = r64.iter().fold(0.0f64, |m, x| m.max(x.abs()));
+    let plans: Vec<Plan> = ERR_PLANS[..ERR_PLANS.len() - 1].iter().map(|s| Plan::parse(s).unwrap()).collect();
     let mut work = vec![T::default(); plans.iter().map(|p| p.work(sq)).max().unwrap()];
     let mut cm = vec![T::default(); nn];
-    for (i, p) in plans.iter().enumerate() {
-        exec::exec(&p.0, sq, &a, n, &b, n, &mut cm, n, &mut work);
-        let e = cm.iter().zip(&r).fold(0.0f64, |m, (x, y)| m.max((x.to_f64() - y.to_f64()).abs()));
-        c.put(Kind::Err(i as u8), sq, e / rmax);
-        println!("#   {:<7} m={:<6} {} (error of {} against the classical GEMM)", Kind::Err(i as u8).name(), N_E,
-                 calib::fmt_e(e / rmax, 3), p);
+    let mut v = [0.0f64; 7];
+    for i in 0..ERR_PLANS.len() {
+        if i < plans.len() {
+            exec::exec(&plans[i].0, sq, &a, n, &b, n, &mut cm, n, &mut work);
+        }
+        let x: &[T] = if i < plans.len() { &cm } else { &r };
+        let e = x.iter().zip(&r64).fold(0.0f64, |m, (p, q)| m.max((p.to_f64() - q).abs()));
+        v[i] = e / rmax;
+        c.put(Kind::Err(i as u8), sq, v[i]);
+        println!("#   {:<7} m={:<6} {} (error of {} against the exact product)", Kind::Err(i as u8).name(), N_E,
+                 calib::fmt_e(v[i], 3), ERR_PLANS[i]);
     }
+    println!("#   factors over the GEMM: SW {:.3} D48 {:.3} R336 {:.3} R363 {:.3} R633 {:.3}; D48/D48 over D48^2 {:.3}",
+             v[0] / v[6], v[1] / v[6], v[3] / v[6], v[4] / v[6], v[5] / v[6], v[2] * v[6] / (v[1] * v[1]));
 }
 
 /// measure the entries the planner needs for the shape s0 that the calibration lacks, and save it;

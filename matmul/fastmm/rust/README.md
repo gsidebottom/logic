@@ -12,7 +12,7 @@ library's plans, speed and results (bit for bit).
 
 ```rust
 let mut c = vec![0.0f64; n * n];
-fmm::dgemm(n, &a, n, &b, n, &mut c, n, 0.0)?;   // max_growth 0: the fastest plan
+fmm::dgemm(n, &a, n, &b, n, &mut c, n, 0.0)?;   // max_growth 0: the default budget (no less accurate than the GEMM); -1.0: the fastest plan
 fmm::sgemm(n, &x, n, &y, n, &mut z, n, 4.0)?;   // error growth at most 4x the classical GEMM's
 fmm::sgemm_mkn(m, k, n, &x, k, &y, n, &mut z, n, 0.0)?;   // an m x k matrix times a k x n matrix
 ```
@@ -27,7 +27,12 @@ are interpolated; a rectangular shape is priced from the square measurements (GE
 flops, passes by their traffic: an estimate) until `fmm::calibrate_mkn(m, k, n, f64)` measures
 it.  Without a calibration covering a shape every call runs Accelerate's GEMM, so results are
 always correct.  `fmm::plan(n, f64, max_growth)` and `fmm::plan_mkn(m, k, n, f64, max_growth)`
-tell which plan a call runs and its predicted time and error.
+tell which plan a call runs and its predicted time and error.  `max_growth` is the error budget on the plan's
+predicted error over the GEMM's: 0 the default of 1 (a plan predicted no less accurate than the
+GEMM it replaces), a positive value that budget (2 admits the plans with a Strassen level on top,
+the fastest in deep f64), a negative value no budget (the fastest plan).  The model: the GEMM's
+own error against the exact product, one factor per level measured one level over the GEMM at
+2304, and a depth factor once per level after the first, all from the calibration.
 
 Unsafe code: only `src/sys.rs`, the FFI declarations of Accelerate's two GEMMs and its threading
 switch and of the threads' scheduling class, behind safe wrappers that check the slices.  The

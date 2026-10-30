@@ -6,7 +6,9 @@
 //! rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic (their 262-operation accurate
 //! program), of their accurate <3x3x6:40> scheme in its three orientations (rectangular levels, so
 //! a plan tracks the shape of every level's products) and of Strassen-Winograd over Accelerate's
-//! GEMM, with GEMM streams and pipelined passes; `max_growth > 0` limits the plan's error growth
+//! GEMM, with GEMM streams and pipelined passes; `max_growth` is the error budget (0: the default
+//! of 1, a plan predicted no less accurate than the GEMM; positive: that budget; negative: none,
+//! the fastest plan) on the plan's predicted error growth
 //! over the classical GEMM's.  A port of the C library in matmul/fastmm (fmm.h): the same planner
 //! and calibration cache file, so both pick the same plans.
 //!
@@ -163,8 +165,9 @@ fn gemm_with<T: Real>(s: Shape, a: &[T], lda: usize, b: &[T], ldb: usize, c: &mu
     Ok(())
 }
 
-/// C = A B for n x n row-major f32 matrices; max_growth > 0 bounds the error growth over the
-/// classical GEMM (0: the fastest plan)
+/// C = A B for n x n row-major f32 matrices; max_growth is the error budget (0 the default of 1,
+/// positive that budget, negative none) on the plan's predicted error growth over the
+/// classical GEMM's
 pub fn sgemm(n: usize, a: &[f32], lda: usize, b: &[f32], ldb: usize, c: &mut [f32], ldc: usize, max_growth: f64)
              -> Result<(), Error> {
     gemm_with(Shape::sq(n), a, lda, b, ldb, c, ldc, max_growth, |s| &mut s.ws32)

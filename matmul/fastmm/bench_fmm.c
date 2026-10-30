@@ -20,8 +20,10 @@
  *              in a leaf (G = one GEMM, B2/B4/B8 = classical blocked), e.g. plan=SW/D48/G; a level
  *              must divide the current (M, K, N) shape
  *   auto       the plan the calibrated cost model picks for n (any n: padded to a size the
- *              plan's levels divide when that pays); auto:g the fastest plan whose error grows
- *              at most g-fold over the classical GEMM's (FMM_MAX_GROWTH=g for auto)
+ *              plan's levels divide when that pays) under the default error budget, 1: a plan
+ *              predicted no less accurate than the classical GEMM (FMM_MAX_GROWTH=g changes
+ *              it); auto:g the fastest plan whose predicted error is at most g times the
+ *              GEMM's; auto:none the fastest plan whatever its error
  *   M@k        method M with the GEMMs of its lowest level as k single-threaded streams taking
  *              products in turn (leaf Gk in a plan; G alone = Accelerate's own threading, one
  *              product at a time)
@@ -57,40 +59,7 @@ static int max_temp(void) {
     return mx;
 }
 
-/* R = A B (A m x k, B k x n, row-major) with every entry a compensated dot product (Ogita, Rump
- * and Oishi's Dot2: each product split exactly by an FMA, the sum accumulated with an error-free
- * TwoSum), as accurate as the product in twice the precision, then rounded to double: the f64
- * reference for FMM_EXACT.  Blocks of 16 rows by 256 columns reuse each row of B across 16 rows
- * of A. */
-static void dd_gemm(size_t m, size_t kk, size_t n, const double *A, const double *B, double *R) {
-    enum { IB = 16, JB = 256 };
-    dispatch_apply((m + IB - 1) / IB, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t bi) {
-        double *s = malloc(IB * JB * sizeof(double)), *c = malloc(IB * JB * sizeof(double));
-        size_t i0 = bi * IB, i1 = i0 + IB < m ? i0 + IB : m;
-        for (size_t j0 = 0; j0 < n; j0 += JB) {
-            size_t w = j0 + JB < n ? JB : n - j0;
-            memset(s, 0, IB * JB * sizeof(double));
-            memset(c, 0, IB * JB * sizeof(double));
-            for (size_t k = 0; k < kk; k++) {
-                const double *restrict b = B + k * n + j0;
-                for (size_t i = i0; i < i1; i++) {
-                    const double a = A[i * kk + k];
-                    double *restrict si = s + (i - i0) * JB, *restrict ci = c + (i - i0) * JB;
-                    for (size_t j = 0; j < w; j++) {
-                        const double p = a * b[j], e = fma(a, b[j], -p);
-                        const double t = si[j] + p, z = t - si[j];
-                        ci[j] += ((si[j] - (t - z)) + (p - z)) + e;
-                        si[j] = t;
-                    }
-                }
-            }
-            for (size_t i = i0; i < i1; i++)
-                for (size_t j = 0; j < w; j++) R[i * n + j0 + j] = s[(i - i0) * JB + j] + c[(i - i0) * JB + j];
-        }
-        free(s);
-        free(c);
-    });
-}
+/* dd_gemm, the compensated reference product of FMM_EXACT in f64, is the library's (fmm.c) */
 
 /* a benchmarked method: a plan, or (is_plan 0) the 48-scheme's program op by op */
 typedef struct {

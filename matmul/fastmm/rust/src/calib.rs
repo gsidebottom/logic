@@ -21,8 +21,11 @@ pub const FORMAT: u32 = 5;
 /// the size of the error model's measurements: 16 (D48/D48), 3 and 6 (the R levels) divide it
 pub const N_E: usize = 2304;
 /// the error model's plans and their entry names
-pub const ERR_PLANS: [&str; 6] = ["SW/G", "D48/G", "D48/D48/G", "R336/G", "R363/G", "R633/G"];
-pub const ERR_NAMES: [&str; 6] = ["ESW", "ED48", "ED48D48", "ER336", "ER363", "ER633"];
+/// the error model's plans at N_E, each measured against the exact product; the last, the
+/// classical GEMM alone (EG), is the model's base, and a cache without it has the old entries
+/// (measured against the GEMM) and re-measures all of them
+pub const ERR_PLANS: [&str; 7] = ["SW/G", "D48/G", "D48/D48/G", "R336/G", "R363/G", "R633/G", "G"];
+pub const ERR_NAMES: [&str; 7] = ["ESW", "ED48", "ED48D48", "ER336", "ER363", "ER633", "EG"];
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 pub enum Kind {
@@ -298,12 +301,17 @@ fn fmt_g9(t: f64) -> String {
     }
 }
 
-/// the error model: a plan's error (max-norm, relative, against the classical GEMM on uniform
-/// random inputs) is the classical error scale times one factor per fused level, growing like
-/// the square root of the inner dimension; fitted from the ERR_PLANS at N_E
+/// the error model: a plan's error (max-norm, relative, against the exact product on uniform
+/// random inputs) is the classical GEMM's own error times one factor per fused level, growing
+/// like the square root of the inner dimension; the GEMM's error and the factors (one level over
+/// the GEMM, divided by the GEMM alone) are the ERR_PLANS' measurements at N_E; a factor below 1
+/// is a level more accurate than the GEMM, because its leaves sum k/g2 products instead of k; a
+/// second level does not get that again, so the two-level plan D48/D48 measures the depth factor
+/// rho by which the product of the factors is multiplied once per fused level after the first
 #[derive(Clone, Copy, Debug)]
 pub struct ErrModel {
     pub base: f64,
+    pub rho: f64,
     /// the factor of each fused level, by Level::ALL's order
     pub f: [f64; 7],
 }
@@ -316,23 +324,23 @@ impl ErrModel {
 
 impl Calib {
     pub fn err_model(&self) -> Option<ErrModel> {
-        let mut v = [0.0; 6];
+        let mut v = [0.0; 7];
         for (i, x) in v.iter_mut().enumerate() {
             *x = self.get(Kind::Err(i as u8), Shape::sq(N_E))?;
             if *x <= 0.0 {
                 return None;
             }
         }
-        let f_d48 = v[2] / v[1];                /* D48/D48 over D48: the growth of one D48 level */
-        let base = v[1] / f_d48;                /* so the classical scale is D48/G's error over that */
+        let base = v[6];                        /* the classical GEMM's own error at N_E */
+        let rho = v[2] * base / (v[1] * v[1]);  /* D48/D48 over the product of two D48 factors */
         let mut f = [1.0; 7];
         let set = |f: &mut [f64; 7], lv: Level, x: f64| f[Level::ALL.iter().position(|l| *l == lv).unwrap()] = x;
         set(&mut f, Level::Sw, v[0] / base);
-        set(&mut f, Level::D48, f_d48);
+        set(&mut f, Level::D48, v[1] / base);
         set(&mut f, Level::R336, v[3] / base);
         set(&mut f, Level::R363, v[4] / base);
         set(&mut f, Level::R633, v[5] / base);
-        Some(ErrModel { base, f })
+        Some(ErrModel { base, rho, f })
     }
 }
 

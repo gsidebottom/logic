@@ -8,8 +8,13 @@
  * so a plan tracks the shape (m x k)(k x n) of each level's products; the three orientations in
  * turn return to square blocks, dividing n by 54) and of Strassen-Winograd, over Accelerate GEMMs,
  * with GEMM streams and pipelined passes.
- * max_growth > 0 limits the plan's error growth over the classical GEMM's (an estimate,
- * conservative by up to 1.5x; 0: the fastest plan).
+ * max_growth is the error budget: the plan's predicted error over the classical GEMM's on the
+ * same problem, from per-level factors measured against the exact product at calibration (an
+ * estimate, good to about 25%).  0 means the default budget of 1, a plan predicted no less
+ * accurate than the GEMM it replaces (the accurate levels are more accurate, so the fast plans
+ * qualify); a positive value is that budget (2 admits the plans with a Strassen level on top, the
+ * fastest in deep f64, at up to twice the GEMM's error); a negative value means no budget, the
+ * fastest plan whatever its error.
  *
  * The plans come from the calibration cache (FMM_CALIB_DIR, default ~/Library/Caches/fmm, one
  * file per precision, calib5_f32.txt and calib5_f64.txt, keyed by machine and kernels); square

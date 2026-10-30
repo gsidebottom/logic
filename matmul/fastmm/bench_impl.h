@@ -239,7 +239,9 @@ static void FN(bench)(shape_t s0, const char *methods, int reps) {
         q->name = tok;
         q->spad = s0;
         if (!strncmp(tok, "auto", 4) && (tok[4] == 0 || tok[4] == ':')) {
-            double gmax = tok[4] == ':' ? atof(tok + 5) : fmm_max_growth();
+            /* auto: the default budget (FMM_MAX_GROWTH if set); auto:g that budget; auto:none the fastest plan */
+            double gmax = tok[4] != ':' ? fmm_max_growth()
+                          : (!strcmp(tok + 5, "none") || !strcmp(tok + 5, "fast")) ? -1 : atof(tok + 5);
             FN(calibrate)(cal, s0, A, B, C);  /* exactly for this shape: rectangular sub-shapes do not interpolate */
             q->pred = plan_best_padded(cal, s0, gmax, f64, q->plan, &q->spad);
             if (q->pred < 0) {

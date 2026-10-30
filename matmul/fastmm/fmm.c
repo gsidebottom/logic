@@ -36,6 +36,41 @@
 #include "kernels.h"
 #include "neon_gemm.h"
 
+/* R = A B (A m x k, B k x n, row-major) with every entry a compensated dot product (Ogita, Rump
+ * and Oishi's Dot2: each product split exactly by an FMA, the sum accumulated with an error-free
+ * TwoSum), as accurate as the product in twice the precision, then rounded to double: the exact
+ * reference of the f64 error model and of bench_fmm's FMM_EXACT.  Blocks of 16 rows by 256
+ * columns reuse each row of B across 16 rows of A. */
+static void dd_gemm(size_t m, size_t kk, size_t n, const double *A, const double *B, double *R) {
+    enum { IB = 16, JB = 256 };
+    dispatch_apply((m + IB - 1) / IB, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t bi) {
+        double *s = malloc(IB * JB * sizeof(double)), *c = malloc(IB * JB * sizeof(double));
+        size_t i0 = bi * IB, i1 = i0 + IB < m ? i0 + IB : m;
+        for (size_t j0 = 0; j0 < n; j0 += JB) {
+            size_t w = j0 + JB < n ? JB : n - j0;
+            memset(s, 0, IB * JB * sizeof(double));
+            memset(c, 0, IB * JB * sizeof(double));
+            for (size_t k = 0; k < kk; k++) {
+                const double *restrict b = B + k * n + j0;
+                for (size_t i = i0; i < i1; i++) {
+                    const double a = A[i * kk + k];
+                    double *restrict si = s + (i - i0) * JB, *restrict ci = c + (i - i0) * JB;
+                    for (size_t j = 0; j < w; j++) {
+                        const double p = a * b[j], e = fma(a, b[j], -p);
+                        const double t = si[j] + p, z = t - si[j];
+                        ci[j] += ((si[j] - (t - z)) + (p - z)) + e;
+                        si[j] = t;
+                    }
+                }
+            }
+            for (size_t i = i0; i < i1; i++)
+                for (size_t j = 0; j < w; j++) R[i * n + j0 + j] = s[(i - i0) * JB + j] + c[(i - i0) * JB + j];
+        }
+        free(s);
+        free(c);
+    });
+}
+
 static double now(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
@@ -255,11 +290,14 @@ static int parse_plan(const char *meth, shape_t n, int *plan) {
  * m = the pipeline's fill and drain (a pipeline of q sub-problems takes q s + o) */
 #define K_GIN 100   /* K_GIN + 16 k + level: GEMM per product inside that level, k streams */
 #define K_PIPE 1000 /* K_PIPE + ((16 k + p) 2 + part) 16 + level: pipelined sub-problems */
-#define K_ERR 9000  /* K_ERR + i: the error of ERR_PLANS[i] against the classical GEMM at n = N_E */
+#define K_ERR 9000  /* K_ERR + i: the error of ERR_PLANS[i] against the exact product at n = N_E; the last,
+                     * EG, is the classical GEMM's own (a cache without it has the old entries, measured
+                     * against the GEMM, and re-measures all of them) */
 #define N_E 2304    /* divisible by 16 (D48/D48) and by 3 and 6 (the R levels); blocks of 384 and up */
-#define NERR 6
-static const char *ERR_PLANS[NERR] = {"sw1", "dps48", "dps48x2", "r336", "r363", "r633"};
-static const char *ERR_NAMES[NERR] = {"ESW", "ED48", "ED48D48", "ER336", "ER363", "ER633"};
+#define NERR 7
+static const char *ERR_PLANS[NERR] = {"sw1", "dps48", "dps48x2", "r336", "r363", "r633", "classical"};
+static const char *ERR_NAMES[NERR] = {"ESW", "ED48", "ED48D48", "ER336", "ER363", "ER633", "EG"};
+#define FMM_DEFAULT_GROWTH 1.0  /* the budget max_growth = 0 means: no less accurate than the GEMM */
 #define CALIB_FORMAT 5
 static const int PIPE_K[] = {3, 6}, PIPE_P[] = {2, 3, 4};  /* the pipelines the planner considers */
 #define NPIPE_K ((int)(sizeof PIPE_K / sizeof PIPE_K[0]))
@@ -629,13 +667,21 @@ static int plan_enum(const calib_t *c, shape_t n, ranked_t *out, int max) {
 }
 
 /* ---- the accuracy budget ---------------------------------------------------------------- */
-/* a plan's error (max-norm, relative, against the classical GEMM on uniform random inputs) is
- * the classical error scale times one factor per fused level, and grows like sqrt(n) with the
- * size (measured: about 1.4x per doubling, the order of the levels immaterial: SW then D48 and
- * D48 then SW within 2%); the factors come from three plans measured at n = N_E: SW/G, D48/G
- * and D48/D48/G.  Streams and pipelines leave the arithmetic unchanged. */
+/* a plan's error (max-norm, relative, against the exact product on uniform random inputs: the
+ * f64 product of the f32 inputs, the compensated product of the f64 inputs) is the classical
+ * GEMM's own error times one factor per fused level, and grows like sqrt(k) with the inner
+ * dimension (measured: about 1.4x per doubling, the order of the levels immaterial: SW then D48
+ * and D48 then SW within 2%); the GEMM's error and each level's factor are measured at n = N_E
+ * (one level over the GEMM, divided by the GEMM alone).  A factor below 1 means more accurate
+ * than the GEMM, which the accurate levels are, because their leaves sum k/g2 products instead
+ * of k; a second level does not get that again, so the factors do not simply multiply: the
+ * two-level plan D48/D48 measures the depth factor rho (1.5 in f64, 2.2 in f32 on this machine)
+ * by which the product of the factors is multiplied once per fused level after the first.
+ * Against the exact errors of forty plans at 3456-13824 this predicts the plans without a
+ * Strassen level within 20% and over-predicts those with one by up to 1.6x (the safe side).
+ * Streams and pipelines leave the arithmetic unchanged. */
 typedef struct {
-    double base, f[LV_N];
+    double base, rho, f[LV_N];
     int ok;
 } errmod_t;
 
@@ -647,8 +693,9 @@ static errmod_t err_model(const calib_t *c) {
         v[i] = calib_get(c, K_ERR + i, sq(N_E));
         if (v[i] <= 0) return e;
     }
-    e.f[LV_D48] = v[2] / v[1];          /* D48/D48 over D48: the growth of one D48 level */
-    e.base = v[1] / e.f[LV_D48];        /* so the classical scale is D48/G's error over that */
+    e.base = v[6];                      /* the classical GEMM's own error at N_E */
+    e.rho = v[2] * e.base / (v[1] * v[1]);   /* D48/D48 over the product of two D48 factors */
+    e.f[LV_D48] = v[1] / e.base;
     e.f[LV_SW] = v[0] / e.base;
     e.f[LV_SW2] = e.f[LV_SW] * e.f[LV_SW];
     e.f[LV_R336] = v[3] / e.base;
@@ -661,7 +708,12 @@ static errmod_t err_model(const calib_t *c) {
 /* the factor by which a plan's error exceeds the classical GEMM's */
 static double plan_growth(const errmod_t *e, const int *plan) {
     double g = 1;
-    for (int i = 0; i < PLAN_MAX && !lv_leaf(PLV(plan[i])); i++) g *= e->f[PLV(plan[i])];
+    int levels = 0;
+    for (int i = 0; i < PLAN_MAX && !lv_leaf(PLV(plan[i])); i++, levels++) {
+        g *= e->f[PLV(plan[i])];
+        if (PLV(plan[i]) == LV_SW2) levels++;   /* two Strassen levels in one */
+    }
+    for (int i = 1; i < levels; i++) g *= e->rho;
     return g;
 }
 
@@ -674,9 +726,15 @@ static double fmm_max_growth(void) {
     return v ? atof(v) : 0;
 }
 
-/* the cheapest plan whose error growth is at most gmax (0: no limit), -1 if none is calibrated */
+/* a call's max_growth: a positive value is that budget, 0 the default FMM_DEFAULT_GROWTH, a
+ * negative value no budget (the fastest plan whatever its error) */
+static double resolve_growth(double g) { return g == 0 ? FMM_DEFAULT_GROWTH : g; }
+
+/* the cheapest plan whose error growth is at most the budget, else (a budget below 1 that no
+ * plan meets) the classical GEMM; -1 if nothing is calibrated */
 static double plan_best_budget(const calib_t *c, shape_t s, double gmax, int *plan) {
-    if (gmax <= 0) return plan_best(c, s, plan);
+    gmax = resolve_growth(gmax);
+    if (gmax < 0) return plan_best(c, s, plan);
     errmod_t e = err_model(c);
     if (!e.ok) return -1;
     static ranked_t rk[8192];
@@ -686,7 +744,9 @@ static double plan_best_budget(const calib_t *c, shape_t s, double gmax, int *pl
             memcpy(plan, rk[i].plan, sizeof rk[i].plan);
             return rk[i].t;
         }
-    return -1;
+    memset(plan, 0, PLAN_MAX * sizeof *plan);
+    plan[0] = LV_G;
+    return calib_cost(c, LV_G, s);
 }
 
 /* ---- padding ------------------------------------------------------------------------------ */

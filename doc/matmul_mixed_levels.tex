@@ -160,7 +160,7 @@ agree in plans, predicted times and results bit for bit
 software and as a GPU or TPU feature (Section~\ref{sec:value}).  Code,
 programs, calibrations and raw results are in the repository \cite{logic}.
 
-\paragraph{The result in two tables.}
+\paragraph{The result in three tables.}
 Plans are written from the top of the problem down to the leaves, the levels
 separated by slashes.  \lv{D48} is a level of the accurate
 $\mm{4\times4\times4:48}$ scheme: it cuts $A$, $B$ and $C$ into $4\times4$
@@ -188,10 +188,14 @@ $[-1,1)$; every method in a comparison sees the same inputs.  The difference
 from Accelerate's own result is not an error measure, because Accelerate's
 error is as large as a plan's (Section~\ref{sec:results}).
 
-Table~\ref{tab:intro-matched} is the accuracy claim: in each precision and
-size, the $3\times3\times6$-family plan that runs in the time of the best
-plan built from the $4\times4$ scheme alone has 23--43\% less error, and is
-4--6\% faster besides.  Table~\ref{tab:intro-gpu} is the comparison with the
+Table~\ref{tab:intro-acc} is the headline: the planner's own choice against
+Accelerate's GEMM alone on the same problem, in time and in error, at every
+size and precision tried -- faster by $1.2$--$1.9\times$ and more accurate by
+$1.7$--$2.6\times$ at once.  Table~\ref{tab:intro-matched} is the accuracy
+claim against the alternative: in each precision and size, the
+$3\times3\times6$-family plan that runs in the time of the best plan built
+from the $4\times4$ scheme alone has 23--43\% less error, and is 4--6\% faster
+besides.  Table~\ref{tab:intro-gpu} is the comparison with the
 other engine on the machine, Apple's GPU through the vendor's MPSGraph GEMM,
 in f32, the only precision it has.
 
@@ -208,6 +212,28 @@ tables); the tables of Section~\ref{sec:results} also list ``relerr'', the
 same max-norm difference taken against Accelerate's product, which includes
 the GEMM's own error and is kept only for comparison with the earlier
 campaigns.
+
+\begin{table}[H]
+\centering\footnotesize
+\begin{tabular}{llrrrrrr}
+\toprule
+$n$, prec. & mixed plan & time (s) & Accelerate (s) & faster & error & Accelerate's & less error\\
+\midrule
+3456 f32 & \lv{R363/G6} & 0.021 & 0.025 & $1.18\times$ & $1.28\cdot10^{-6}$ & $3.04\cdot10^{-6}$ & $2.4\times$\\
+6912 f32 & \lv{R363+4/D48/G6} & 0.141 & 0.195 & $1.38\times$ & $2.26\cdot10^{-6}$ & $3.85\cdot10^{-6}$ & $1.7\times$\\
+13824 f32 & \lv{R363+4/R363/G6} & 0.907 & 1.565 & $1.73\times$ & $2.46\cdot10^{-6}$ & $6.40\cdot10^{-6}$ & $2.6\times$\\
+3456 f64 & \lv{R363/G4} & 0.072 & 0.099 & $1.38\times$ & $2.76\cdot10^{-15}$ & $4.75\cdot10^{-15}$ & $1.7\times$\\
+6912 f64 & \lv{R363+3/R633/G6} & 0.451 & 0.773 & $1.71\times$ & $3.75\cdot10^{-15}$ & $6.69\cdot10^{-15}$ & $1.8\times$\\
+13824 f64 & \lv{R363+3/R336/G3} & 3.296 & 6.301 & $1.91\times$ & $6.40\cdot10^{-15}$ & $1.23\cdot10^{-14}$ & $1.9\times$\\
+\bottomrule
+\end{tabular}
+\caption{The planner's choice under its default budget against Accelerate's
+GEMM alone, square problems on the M4~Pro, best of three to five interleaved
+rounds, errors against the exact product on the same inputs (the GEMM's own
+error in the ``Accelerate's'' column).  The $3456$ and $13824$ f64 rows are
+from the budget campaign, the rest from the campaign of Table~\ref{tab:results}.}
+\label{tab:intro-acc}
+\end{table}
 
 \begin{table}[H]
 \centering\small

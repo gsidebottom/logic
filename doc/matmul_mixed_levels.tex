@@ -121,10 +121,12 @@ $4\times4$ scheme \cite{S26}, DPS's original $315$-operation program and their
 $284$-operation accurate program all run at the same speed as fused passes
 (totals within 1\%), so the operation counts that scheme searches minimize
 have little value here, while the error growth of the program matters
-\cite{S26b}.  Arithmetic shows only when a program is wasteful: the direct
-sums of the $3\times3\times6$ scheme's $R$ and $P$ matrices take $18$
-operations per output and their passes ran 30\% slower than the traffic
-predicts, which PLinOpt's optimizer removed.  Second, the leaf GEMM dominates
+\cite{S26b}.  Arithmetic shows only when a program is wasteful: our first
+programs for the $3\times3\times6$ scheme's $R$ and $P$ matrices, written as
+direct sums of the matrix rows, took $18$ operations per output and their
+passes ran 30\% slower than the traffic predicts; PLinOpt's optimizer, which
+finds the common subexpressions, cut those programs to a fifth of the
+operations and the passes to the predicted speed (Section~\ref{sec:levels}).  Second, the leaf GEMM dominates
 the time (85--95\% of a plan), so a level pays only when its products are
 large enough for the GEMM to run near its peak, and a scheme that saves
 products beats one that saves additions.  The ternary $\mm{3\times3\times6:42}$

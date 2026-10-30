@@ -447,6 +447,25 @@ cores, and one start takes about $0.5$~s on one core.  Starts are the
 identity, random near-identity points, and random rotations times
 random perturbations of the identity.
 
+The orthogonal part of the group is where our search differs from DPS's.
+Their objective is $\gamma_2$, which orthogonal $U$, $V$, $W$ leave
+unchanged (Section~\ref{sec:inv}), so their minimization discards that
+freedom by an Iwasawa-type reduction and keeps a scaling and a shear per
+factor \cite{DPS24,DPS26b}; orthogonal matrices enter their work only
+afterwards, to sparsify.  Neither of our measures is invariant: $\ginf$ and
+the amplification of Section~\ref{sec:ampfloor} depend on the entries of
+$UZ_iW^{\mathsf T}$, not on their 2-norms, so the orthogonal sub-orbit is
+not a degeneracy to be quotiented out but the place where the minimum can
+move.  To search it without constraints we write each rotation as a Cayley
+transform, $Q=(I-S)(I+S)^{-1}$ with $S$ skew-symmetric, Cayley's
+construction of 1846 \cite{Cayley1846}: $Q$ is orthogonal for every $S$,
+every rotation without a $-1$ eigenvalue arises from exactly one $S$, and
+the six free entries of $S$ replace six constrained ones of $Q$, so the
+optimizer over the twelve entries of two skew matrices stays on the
+sub-orbit at every step.  The transform is classical; its use here, as the
+coordinates of an accuracy search that DPS's measure cannot see, is what
+makes the sub-orbit minimum of the next paragraph findable.
+
 Within the orthogonal sub-orbit ($\gamma_2$ fixed at its minimum
 $154.51$; $12$ parameters, two Cayley-parametrized rotations), the
 minimum is $16\sqrt2\approx22.627$ for the published role and
@@ -957,7 +976,30 @@ every output, \acc $3.16$.  It is the root-sum-square counterpart of
 $\ginf$'s per-output sum
 $\sum_i\lvert p_{j,i}\rvert\,\lVert L_i\rVert_2\lVert R_i\rVert_2$: the
 growth factor bounds the error with every rounding aligned, the model
-adds independent roundings in quadrature.  For \acct each output
+adds independent roundings in quadrature.
+
+That puts the amplification on the probabilistic side of rounding-error
+analysis rather than the worst-case side the growth factors belong to.  The
+classical bounds for fast multiplication -- Brent's for Strassen
+\cite{Brent70}, Bini and Lotti's for bilinear algorithms \cite{BL80},
+Higham's \cite{Higham02}, the normwise stability of Demmel, Dumitriu, Holtz
+and Kleinberg \cite{DDHK07}, and the coefficient-sum constants of Ballard
+et al.\ \cite{BBDLS16} that DPS's $\gamma_{p,q}$ refine -- all take every
+rounding at its worst and aligned, which is why they bound \acc and \acct
+alike.  Higham and Mary \cite{HM19} showed that rounding errors modelled as
+independent zero-mean random variables give bounds that grow like $\sqrt n$
+instead of $n$ and track measured errors far better, and Ipsen and Zhou
+\cite{IZ20} did the same for inner products with explicit distributions.
+The amplification is that model applied to the structure of a scheme: the
+$r$ leaf products carry independent errors proportional to
+$\lVert L_i\rVert_2\lVert R_i\rVert_2$, and the $P$ pass adds them in
+quadrature, so an output's error grows as the root-sum-square
+of~(\ref{eq:amp}), not the sum.  It is a model, not a bound, and we treat
+it as one: the measurements of Section~\ref{sec:acc}, against the exact
+product, are what decide between it and $\ginf$, and they follow the
+amplification where the two disagree.
+
+For \acct each output
 collects sixteen products with $\lvert p_{j,i}\rvert=1$ and
 $\lVert L_i\rVert_2\lVert R_i\rVert_2=\sqrt2$, so the sum is $16\sqrt2$
 and the root-sum-square $\frac12\sqrt{16\cdot2}=2\sqrt2$.  We looked
@@ -1131,6 +1173,8 @@ matrix multiplication}, Numer.\ Math.\ 36 (1980) 63--72.
 \bibitem{Brent70} R.~P.~Brent, \emph{Algorithms for matrix
 multiplication}, Technical Report STAN-CS-70-157, Stanford University
 (1970).
+\bibitem{Cayley1846} A.~Cayley, \emph{Sur quelques propri\'et\'es des
+d\'eterminants gauches}, J.\ reine angew.\ Math.\ 32 (1846), 119--123.
 \bibitem{vanElfrinkhof1897} L.~van Elfrinkhof, \emph{Eene eigenschap
 van de orthogonale substitutie van de vierde orde}, Handelingen van het
 6e Nederlandsch Natuurkundig en Geneeskundig Congres, Delft (1897).
@@ -1164,6 +1208,10 @@ files \texttt{4x4x4\_48\_accurate} (commit \texttt{fb753b5}, 23~June
 13~October 2026).
 \bibitem{Higham02} N.~J.~Higham, \emph{Accuracy and Stability of
 Numerical Algorithms}, 2nd ed., SIAM, 2002.
+\bibitem{HM19} N.~J.~Higham, T.~Mary, \emph{A new approach to probabilistic
+rounding error analysis}, SIAM J.\ Sci.\ Comput.\ 41 (2019), A2815--A2835.
+\bibitem{IZ20} I.~C.~F.~Ipsen, H.~Zhou, \emph{Probabilistic error analysis for
+inner products}, SIAM J.\ Matrix Anal.\ Appl.\ 41 (2020), 1726--1741.
 \bibitem{LWH26} X.~Li, Y.~Wang, S.~Hu, \emph{Substitution and quotient
 of the isotropy group action}, arXiv:2607.15069 (2026).
 \bibitem{Novikov25} A.~Novikov et al., \emph{AlphaEvolve: a coding agent

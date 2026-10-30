@@ -1155,6 +1155,23 @@ not representable), 20-45% per watt for an HPC part, the 1.6x estimate over the 
 item (viii); references Higham 2002, Huang-Yu-van de Geijn 2020, Lavin-Gray 2016, Ozaki et al. 2012;
 23 pages.  Also earlier tonight: GEMM written out at first use; the direct-sum sentence clarified.
 
+4x4 ACCURACY PAPER: CAYLEY AND THE PROBABILISTIC MODEL (2026-10-30).  Greg asked whether the Cayley
+parameterization was ours (no: Cayley 1846; the use in the orthogonal sub-orbit search, search_orth.py,
+is ours), whether any referenced paper used it that way (no: DPS minimize gamma_2, which is
+orthogonally invariant, and drop the orthogonal part by an Iwasawa reduction, using rotations and
+Householder reflections only to sparsify; checked all four DPS papers on arXiv, DPSST26, Hell's Bells
+and Perminov locally), and whether max-norm growth and amplification are a standard way to look at the
+error (the worst-case coefficient-norm bounds are standard -- Brent, Bini-Lotti, Higham, DDHK, Ballard
+et al., DPS -- the root-sum-square amplification is a probabilistic model in the line of Higham-Mary
+2019 and Ipsen-Zhou 2020, and the full-group search including the orthogonal sub-orbit is ours).  Two
+paragraphs added to doc/matmul_4x4_rank48_accurate262.tex: before the sub-orbit paragraph of the search
+section (the contrast with DPS, the Cayley transform defined, why the sub-orbit is where the minimum can
+move) and after eq. (amp) in Section 8.2 (the amplification placed among the probabilistic analyses,
+with Brent70/BL80/Higham02/DDHK07/BBDLS16 as the worst-case side); references Cayley1846, HM19, IZ20
+added (page numbers to be verified); tectonic, 21 pages.  A possible further paper: a predictive error
+model for fast matrix multiplication (amp derived, the depth factor explained, the full-group orbit
+minimization, validation across schemes and precisions) -- noted, not started.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

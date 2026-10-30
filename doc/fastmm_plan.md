@@ -1082,6 +1082,25 @@ clusters, SME and AMX, NEON, Accelerate, BLAS/GEMM/sgemm/dgemm, FMA, f32/f64/f16
 memory, Metal, MPS, MPSGraph, Grand Central Dispatch, Apple clang/macOS 26, TFLOP/s); Data section lists
 gpu_gemm.m, run_gpu.sh, results/gpu_gemm_2026-10-28.txt.
 
+REPORT: THE ERROR BUDGET DEFINED, THE GLOSSARY EXTENDED (2026-10-29, night).  Greg asked what GEMM is,
+for every abbreviation to be in the glossary, and for the budget semantics to be defined in the paper
+(g = 0 can give more error than g > 0; is it growth <= g; smaller g = tighter; does g > 1 make sense).
+Added to doc/matmul_mixed_levels.tex (tectonic, 20 pages, no overfull boxes): Section 5 paragraph "The
+error budget" -- growth = the plan's predicted error over the GEMM's (prod f_X); g > 0 bounds it (1 = no
+worse than the GEMM, < 1 more accurate, > 1 admits plans up to g times the GEMM's error, where the SW
+and deep plans live); g = 0 is "no budget", the fastest plan, the setting of every timing in the report,
+so g = 0 can return a less accurate plan than a positive g (13824 f64: SW/R363+3/R633/G6 at 1.02x the
+GEMM's exact error vs R363+3/D48/G6 at 0.47x under g = 1 with a refit model); cautions: the model's
+25% and the contaminated f64 factors (budget 1 in f64 returns the GEMM until the refit; 1.5-2 admit the
+accurate levels); the sensible default after the refit is g = 1.  Section 4.2's sentence points to it.
+Glossary retitled "the machine, its software, and the report's terms" with a second list: GEMM (cross
+reference), scheme/rank, level/pass/plan/leaf, the level names incl. T and X, G/Gk/B2/+p, streams and
+pipelines, err64/relerr, error growth / max_growth / auto:g, amp / gamma / N_E / e_0, Kronecker
+composite, DPS and DPSST, PLinOpt/SLP/SLPchecker, orbit and GL_n and L-BFGS, RMS/IEEE 754/SIMD, POSIX
+threads/FFI/JSON/C11, BLIS/CUDA/Vulkan/Core ML/PyTorch/MLX, GB/s and TFLOP/s.  API note for later: g = 0
+meaning "no budget" confused Greg; after the refit make 1 the default and give "no budget" an explicit
+value (negative or infinity) in both libraries.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

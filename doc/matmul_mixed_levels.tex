@@ -57,9 +57,9 @@ GEMM's own.  The planner's default budget, no less accurate than the GEMM,
 keeps every choice on that side: at $13824$ f64 it finds a plan as fast as
 the Strassen-topped one, $1.9\times$ over Accelerate, with half the GEMM's
 error.  As a test of the opposite
-design -- cheap passes instead of accurate ones -- a ternary
-$\mm{3\times3\times6:42}$ scheme from Perminov's catalogue, whose three
-programs need 139 additions against about 370 operations for the accurate
+design -- cheap passes instead of accurate ones -- a ternary $\mm{3\times3\times6:42}$ scheme from Perminov's catalogue
+(ternary: every coefficient is $-1$, $0$ or $1$, so its passes need no
+scalings), whose three programs need 139 additions against about 370 operations for the accurate
 scheme's, is measured as a level in the same library: its passes cost exactly
 the same (they are bound by the blocks they move), and its two extra products
 and $2.8\times$ amplification make it slower and less accurate than the
@@ -130,8 +130,8 @@ finds the common subexpressions, cut those programs to a fifth of the
 operations and the passes to the predicted speed (Section~\ref{sec:levels}).  Second, the leaf GEMM dominates
 the time (85--95\% of a plan), so a level pays only when its products are
 large enough for the GEMM to run near its peak, and a scheme that saves
-products beats one that saves additions.  The ternary $\mm{3\times3\times6:42}$
-scheme of Section~\ref{sec:ternary} is the controlled experiment: a third of
+products beats one that saves additions.  The ternary $\mm{3\times3\times6:42}$ scheme of Section~\ref{sec:ternary},
+with coefficients $-1$, $0$ and $1$ only, is the controlled experiment: a third of
 the pass arithmetic, two products more, and it loses.
 
 \paragraph{Contributions.}
@@ -1289,8 +1289,8 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
 \item[\lv{D48}, \lv{R336}, \lv{R363}, \lv{R633}, \lv{SW}, \lv{T336},
   \lv{T363}, \lv{T633}, \lv{X}.]  The levels of the menu (Table~\ref{tab:levels}):
   the accurate $4\times4$ scheme, the accurate $3\times3\times6$ scheme in
-  its three orientations, Strassen--Winograd, and the ternary
-  $3\times3\times6$ scheme of Section~\ref{sec:ternary}; \lv{X} in
+  its three orientations, Strassen--Winograd, and the ternary $3\times3\times6$ scheme of Section~\ref{sec:ternary}
+(ternary: coefficients in $\{-1,0,1\}$, from Perminov's catalogue); \lv{X} in
   Table~\ref{tab:ternary} stands for \lv{R} or \lv{T}.
 \item[\lv{G}, \lv{G}$k$, \lv{B2}, \lv{+p}.]  The leaves and the pipeline
   mark: \lv{G} is one Accelerate GEMM with its own threading, \lv{G}$k$ the

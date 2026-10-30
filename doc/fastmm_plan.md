@@ -1067,6 +1067,21 @@ campaigns lacked: f32 classical 3.04e-6, D48/G6 2.01e-6, R336/G6 1.68e-6, R363/G
 (0.073), SW+3/R363/G6 4.62e-15 (0.069): the planner's pick at 3456 f64 again spends the SW level on
 6% of time for 67% more error than R363/G6 (still below dgemm's own).
 
+REPORT: INTRO TABLES, GPU SECTION, GLOSSARY (2026-10-29, evening).  Greg asked for the two chat tables in
+the report's introduction (the matched-time accuracy comparison against the best accurate_262-only plan,
+and the GPU comparison where it applies, i.e. f32), the plan notation (R363+4/D48/G6 etc.) and the
+error measure defined there, and a glossary of the Apple hardware and software terms.  Done in
+doc/matmul_mixed_levels.tex (tectonic, 18 pages, no overfull boxes): a paragraph "The result in two
+tables" in the introduction (notation; the max-norm error against the exact product; Tables 1-2),
+contributions item (v) and the abstract mention the GPU, the Setting paragraph defers to the definition;
+new Section 6.1 "The GPU as the alternative" (MPSGraph vs MPSMatrixMultiplication, zero-copy shared
+buffers, no f64 on Metal/MPS/MPSGraph, Table 7 with TFLOP/s, the bit-identity with Accelerate via the
+sequential FMA chain, the f16 note, the shared power budget, the 0.77 s hybrid estimate flagged as not
+measured); new Section 10 "Glossary: the machine and its software" (Apple silicon/M4 Pro, P/E cores and
+clusters, SME and AMX, NEON, Accelerate, BLAS/GEMM/sgemm/dgemm, FMA, f32/f64/f16/bf16, GPU and unified
+memory, Metal, MPS, MPSGraph, Grand Central Dispatch, Apple clang/macOS 26, TFLOP/s); Data section lists
+gpu_gemm.m, run_gpu.sh, results/gpu_gemm_2026-10-28.txt.
+
 The Rust port (2026-10-25; `rust/README.md`; `results/rust_vs_c_2026-10-25.txt`,
 `rust_crosscheck_2026-10-25.txt`, `rust_pass_pool_2026-10-25.txt`, `rust_calib_2026-10-25.txt`).
 The whole library in Rust, module for module:

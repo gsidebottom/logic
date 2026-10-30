@@ -59,8 +59,11 @@ programs need 139 additions against about 370 operations for the accurate
 scheme's, is measured as a level in the same library: its passes cost exactly
 the same (they are bound by the blocks they move), and its two extra products
 and $2.8\times$ amplification make it slower and less accurate than the
-accurate level at every size tried.  Two implementations of
-the library, in C and in Rust, agree bit for bit.
+accurate level at every size tried.  Apple's GPU, through the vendor's
+MPSGraph GEMM, ties the f32 plan at $13824$ in time with $2.6\times$ its
+error -- its product is bit for bit Accelerate's -- and is $1.4$--$1.6\times$
+faster below that size; it has no f64.  Two implementations of the library,
+in C and in Rust, agree bit for bit.
 \end{abstract}
 
 \section{Introduction}\label{sec:intro}
@@ -141,12 +144,93 @@ shape estimates that price uncalibrated rectangular problems within 2\%
 $1.73\times$ and $1.91\times$ over Accelerate at $n=13824$ in f32 and f64,
 with less error than the GEMM in both precisions for every plan without a
 Strassen level and 23--43\% less than the best $4\times4$-only plan of the
-same speed; rectangular problems at $1.04$--$1.52\times$
+same speed; rectangular problems at $1.04$--$1.52\times$; and the GPU as
+the alternative, tied in time at $13824$ f32 with $2.6\times$ the error
 (Section~\ref{sec:results}).  (vi)~The ternary trial
 (Section~\ref{sec:ternary}).  (vii)~Two implementations, C and Rust, that
 agree in plans, predicted times and results bit for bit
 (Section~\ref{sec:impl}).  Code, programs, calibrations and raw results are
 in the repository \cite{logic}.
+
+\paragraph{The result in two tables.}
+Plans are written from the top of the problem down to the leaves, the levels
+separated by slashes.  \lv{D48} is a level of the accurate
+$\mm{4\times4\times4:48}$ scheme: it cuts $A$, $B$ and $C$ into $4\times4$
+grids of blocks and forms the product with $48$ block products instead of
+$64$.  \lv{R336}, \lv{R363} and \lv{R633} are levels of the accurate
+$\mm{3\times3\times6:40}$ scheme in its three orientations, named by the grids
+they cut $A$ and $B$ into: \lv{R363} cuts $A$ $3\times6$ and $B$ $6\times3$
+and uses $40$ block products instead of $54$.  \lv{SW} is a Strassen--Winograd
+level ($2\times2$ grids, $7$ products instead of $8$).  \lv{G} is the leaf,
+Accelerate's GEMM on the block products that remain, and \lv{G6} runs those
+products as six concurrent single-threaded GEMM streams.  \lv{+p} after a
+level runs its passes -- the sums that form the operands and accumulate the
+outputs -- on $p$ threads overlapped with the products below.  So
+\lv{R363+4/D48/G6} at $n=13824$ is a $3\times6\times3$ level with four pass
+threads, whose $40$ products of $4608\times2304$ by $2304\times4608$ each get
+a $4\times4$ level, whose $40\times48 = 1920$ leaf products of $1152\times576$
+by $576\times1152$ go to Accelerate in six streams; the classical count would
+be $54\times64 = 3456$.
+
+The error of a product is the largest entry of $C - C_{\mathrm{exact}}$
+divided by the largest entry of $C_{\mathrm{exact}}$, where
+$C_{\mathrm{exact}}$ is the f64 product of the same inputs in f32 and a
+compensated double-double product in f64, on uniform random inputs in
+$[-1,1)$; every method in a comparison sees the same inputs.  The difference
+from Accelerate's own result is not an error measure, because Accelerate's
+error is as large as a plan's (Section~\ref{sec:results}).
+
+Table~\ref{tab:intro-matched} is the accuracy claim: in each precision and
+size, the $3\times3\times6$-family plan that runs in the time of the best
+plan built from the $4\times4$ scheme alone has 23--43\% less error, and is
+4--6\% faster besides.  Table~\ref{tab:intro-gpu} is the comparison with the
+other engine on the machine, Apple's GPU through the vendor's MPSGraph GEMM,
+in f32, the only precision it has.
+
+\begin{table}[htb]
+\centering\small
+\begin{tabular}{llrrlrr}
+\toprule
+$n$, prec. & mixed plan & time (s) & error & best $4\times4$-only & time (s) & error\\
+\midrule
+6912 f32 & \lv{R363+4/D48/G6} & 0.141 & $2.26\cdot10^{-6}$ & \lv{D48+4/D48/G6} & 0.149 & $2.94\cdot10^{-6}$\\
+13824 f32 & \lv{R363+4/R363/G6} & 0.907 & $2.46\cdot10^{-6}$ & \lv{D48+4/D48/G6} & 0.949 & $4.35\cdot10^{-6}$\\
+6912 f64 & \lv{R363+3/R633/G6} & 0.451 & $3.75\cdot10^{-15}$ & \lv{D48+4/D48/G6} & 0.478 & $5.60\cdot10^{-15}$\\
+13824 f64 & \lv{R363+3/D48/G6} & 3.467 & $5.81\cdot10^{-15}$ & \lv{D48+4/D48/G6} & 3.703 & $8.28\cdot10^{-15}$\\
+\bottomrule
+\end{tabular}
+\caption{Matched time: the $3\times3\times6$-family plan against the best
+plan from the $4\times4$ scheme alone (M4~Pro, square problems, best of
+three to five rounds, error against the exact product).  Accelerate alone
+takes $0.195$, $1.565$, $0.773$ and $6.223$~s on these four with errors
+$3.85\cdot10^{-6}$, $6.40\cdot10^{-6}$, $6.69\cdot10^{-15}$ and
+$1.23\cdot10^{-14}$.  The first three mixed plans are the planner's
+choices; at $13824$ f64 the planner's choice is the faster
+\lv{SW/R363+3/R633/G6} ($3.251$~s), whose error $1.25\cdot10^{-14}$ is the
+GEMM's own (Section~\ref{sec:results}).}
+\label{tab:intro-matched}
+\end{table}
+
+\begin{table}[htb]
+\centering\small
+\begin{tabular}{lrrrrrr}
+\toprule
+ & \multicolumn{2}{c}{GPU (MPSGraph)} & \multicolumn{2}{c}{Accelerate} & \multicolumn{2}{c}{best mixed plan}\\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+$n$, f32 & time (s) & error & time (s) & error & time (s) & error\\
+\midrule
+3456 & 0.013 & $3.04\cdot10^{-6}$ & 0.025 & $3.04\cdot10^{-6}$ & 0.021 & $1.28\cdot10^{-6}$\\
+6912 & 0.099 & $3.85\cdot10^{-6}$ & 0.195 & $3.85\cdot10^{-6}$ & 0.141 & $2.26\cdot10^{-6}$\\
+13824 & 0.946 & $6.40\cdot10^{-6}$ & 1.565 & $6.40\cdot10^{-6}$ & 0.907 & $2.46\cdot10^{-6}$\\
+\bottomrule
+\end{tabular}
+\caption{The GPU against the CPU in f32 (the GPU has no f64): the M4~Pro's
+20-core GPU through MPSGraph's matrix multiplication on zero-copy shared
+buffers, wall clock; Accelerate's GEMM; and the best mixed plan (\lv{R363/G6},
+\lv{R363+4/D48/G6}, \lv{R363+4/R363/G6}).  The GPU's product is bit for bit
+Accelerate's, so its error is the GEMM's (Section~\ref{sec:gpu}).}
+\label{tab:intro-gpu}
+\end{table}
 
 \paragraph{Setting.}
 Row-major $A\in\R^{m\times k}$, $B\in\R^{k\times n}$, $C=AB$, in f32 or f64.
@@ -155,13 +239,11 @@ efficiency cluster of four, 64~GB) running macOS~26; Accelerate's GEMM runs on
 the SME matrix units, one per cluster, at about $3.3$~TFLOP/s in f32 and
 $0.85$ in f64 on large square problems.  Times are the best of five
 interleaved rounds (each round runs every method once; medians are within 2\%
-unless stated).  Errors are max-norm, relative to $\max|C|$, on uniform random
-inputs: ``relerr'' against Accelerate's GEMM in the same precision, ``err64''
-against the exact product of the same inputs -- the f64 product in f32, a
-compensated double-double product in f64 -- so that the GEMM's own error
-appears too.  Only err64 measures a plan: the GEMM's own error is as large as
-an accurate level's in both precisions, so the difference from the GEMM mixes
-the two (Section~\ref{sec:results}).
+unless stated).  Errors are measured as defined above (``err64'' in the
+tables); the tables of Section~\ref{sec:results} also list ``relerr'', the
+same max-norm difference taken against Accelerate's product, which includes
+the GEMM's own error and is kept only for comparison with the earlier
+campaigns.
 
 \section{Fused levels and what they cost}\label{sec:levels}
 
@@ -675,6 +757,68 @@ none does the planner correctly returns the GEMM (the first version of the
 estimates had none, and padded $1000\times3000\times2000$ to $3072^3$, 30
 times slower than Accelerate).
 
+\subsection{The GPU as the alternative}\label{sec:gpu}
+
+The other engine on the machine is the 20-core GPU.  We measured Apple's own
+GEMM paths on it (\path{gpu_gemm.m}, Section~\ref{sec:glossary} for the
+names): MPSGraph's matrix multiplication, the faster of the two, and the
+older \lv{MPSMatrixMultiplication}, within 3\% of it at $13824$ and 10\%
+slower at $3456$; in f32, since Metal, MPS and MPSGraph have no 64-bit
+floating type.  The inputs are the benchmark's, wrapped as shared Metal
+buffers without a copy (the memory is unified), the time is the wall clock
+from encoding to completion, five rounds interleaved with Accelerate's GEMM on
+the same inputs, the error against the f64 product.  Neither MLX nor PyTorch
+was installed, so these are the vendor's GEMMs, as Accelerate is on the CPU
+side.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lrrrrlrr}
+\toprule
+ & \multicolumn{2}{c}{GPU, MPSGraph} & Accelerate & GPU and Acc. & \multicolumn{3}{c}{best mixed plan}\\
+\cmidrule(lr){2-3}\cmidrule(lr){6-8}
+$n$ (f32) & time (s) & TFLOP/s & time (s) & error & plan & time (s) & error\\
+\midrule
+3456 & 0.013 & 6.3 & 0.025 & $3.04\cdot10^{-6}$ & \lv{R363/G6} & 0.021 & $1.28\cdot10^{-6}$\\
+6912 & 0.099 & 6.6 & 0.195 & $3.85\cdot10^{-6}$ & \lv{R363+4/D48/G6} & 0.141 & $2.26\cdot10^{-6}$\\
+13824 & 0.946 & 5.6 & 1.565 & $6.40\cdot10^{-6}$ & \lv{R363+4/R363/G6} & 0.907 & $2.46\cdot10^{-6}$\\
+\bottomrule
+\end{tabular}
+\caption{The GPU as a GEMM (\texttt{results/gpu\_gemm\_2026-10-28.txt}): best
+of five rounds; the GPU's f32 error equals Accelerate's, hence one column.
+With f16 inputs and an f32 result the GPU takes $0.011$, $0.090$ and
+$0.790$~s with errors $2.5$--$2.8\cdot10^{-4}$.  Accelerate's and the plans'
+numbers are the campaigns' (Table~\ref{tab:results}, and the $3456$ exact
+errors of \texttt{results/f64exact\_2026-10-28.txt}).}
+\label{tab:gpu}
+\end{table}
+
+What Table~\ref{tab:gpu} says:
+\begin{itemize}
+\item The GPU's f32 product is bit for bit Accelerate's at every size.  Both
+  accumulate each output in increasing $k$ with fused multiply-adds and
+  neither splits the inner dimension, so both equal the sequential FMA chain
+  (64 sampled outputs recomputed as that chain agree with both), and the
+  GPU's error is the GEMM's.  The mixed plans have $1.7$--$2.6\times$ less
+  error than either.
+\item In time the GPU is $1.6\times$ ahead of the best plan at $3456$ and
+  $1.4\times$ at $6912$, and tied at $13824$, where its throughput falls to
+  $5.6$~TFLOP/s from $6.6$ at $6912$ and the CPU plan's $0.907$~s edges its
+  $0.946$.
+\item The GPU's f16-input path (f32 result) is only 14\% faster than its f32
+  at $13824$, and its error, $2.5$--$2.8\cdot10^{-4}$, is the rounding of the
+  inputs to 11 bits.
+\item In f64 the GPU does not compete, and the plans' $1.71$--$1.91\times$
+  over Accelerate's dgemm stands alone.
+\item The two engines share the package's power and thermal budget:
+  Accelerate's sgemm interleaved with GPU runs took $1.81$--$1.88$~s at
+  $13824$ against $1.565$ alone.  A hybrid that keeps both busy has to
+  reckon with that; by estimate a $3\times3\times6$ level over GPU leaves at
+  $13824$ f32 would run in about $0.77$~s ($40/54$ of the GPU's $0.946$ plus
+  $0.07$~s of CPU passes), $1.2\times$ over the GPU alone, if the leaf
+  products keep the GPU's throughput.  Not measured.
+\end{itemize}
+
 \section{The ternary trial: cheap passes against accurate ones}\label{sec:ternary}
 
 Perminov's catalogue \cite{Perminov,Perminov25} lists, beside the ranks, the
@@ -873,6 +1017,82 @@ library takes $C=AB$ only: $\alpha$, $\beta$ and transposes are a day's work.
 And the Rust passes on small blocks should be brought to the C library's
 speed.
 
+\section{Glossary: the machine and its software}\label{sec:glossary}
+
+The report uses Apple's names for the hardware and the libraries, and a few
+of Arm's.  In one place:
+
+\begin{description}
+\item[Apple silicon, M4~Pro.]  Apple's system on a chip for Macs.  The M4~Pro
+  of this report has 14 CPU cores in three clusters (two of five performance
+  cores, one of four efficiency cores), a 20-core GPU, and 64~GB of memory
+  that all of them share.  A cluster is Apple's group of
+  cores around one level-2 cache; each performance cluster of the M4 also
+  has one matrix unit.
+\item[Performance and efficiency cores.]  The two kinds of CPU core.  The
+  performance cores run the passes and the GEMM threads here; the efficiency
+  cores are slower and share a smaller cache, and the thread counts of
+  Section~\ref{sec:machine} are chosen so that timed work stays off them.
+\item[SME, Scalable Matrix Extension.]  Arm's instruction set extension for
+  matrix arithmetic, implemented in the M4 as a matrix coprocessor with a
+  large tile register and an outer-product instruction that multiplies a
+  column of $A$ by a row of $B$ and accumulates into the tile.  The M4~Pro has
+  one SME unit per performance cluster, shared by that cluster's cores; it
+  succeeds Apple's earlier undocumented AMX unit.  Accelerate's GEMM runs on
+  it: a GEMM call keeps about two cores busy and reaches $3.3$~TFLOP/s in
+  f32, far above what the cores' vector units could give, with the GPU's
+  utilization counter at zero.  It accumulates in the order of the
+  sequential FMA chain, which is why its result equals the GPU's bit for
+  bit.  Its kernels are Apple's and closed, which keeps the ``Strassen
+  reloaded'' design of fusing the passes into the GEMM's operand packing off
+  this machine.
+\item[NEON.]  Arm's 128-bit SIMD vector instruction set, on every core.
+  GEMMs on the idle cores with it were tried and not adopted
+  (Section~\ref{sec:machine}).
+\item[Accelerate.]  Apple's numerical library: BLAS and LAPACK, vDSP and
+  more, with the kernels for Apple silicon.  Its BLAS is the vendor GEMM of
+  this report, called through the C interface \lv{cblas\_sgemm} and
+  \lv{cblas\_dgemm}; the threading inside a call is Accelerate's own, and
+  the library's streams are several single-threaded calls side by side.
+\item[BLAS, GEMM, sgemm, dgemm.]  The Basic Linear Algebra Subprograms
+  interface; GEMM is its general matrix multiply $C \leftarrow \alpha AB +
+  \beta C$, sgemm in single precision (f32), dgemm in double (f64).  ``The
+  GEMM'' in this report is Accelerate's.
+\item[FMA, fused multiply-add.]  The instruction computing $a\cdot b + c$
+  with a single rounding; every modern GEMM is built from it.  One output
+  accumulated as $c \leftarrow \mathrm{fma}(a_k, b_k, c)$ for $k$ in order is
+  the sequential FMA chain that both Accelerate's SME kernels and Apple's GPU
+  kernels compute.
+\item[f32, f64, f16, bf16.]  IEEE single and double precision (24- and
+  53-bit significands), IEEE half precision (11 bits) and bfloat16 (8 bits).
+  The CPU paths of this report are f32 and f64; Apple's GPU has f32, f16 and
+  bf16 and no f64.
+\item[GPU, unified memory.]  The M4~Pro's 20-core graphics processor,
+  programmed through Metal.  It reads the same memory as the CPU, so a CPU
+  array is handed to it without a copy by wrapping it as a shared Metal
+  buffer; the GPU numbers of Section~\ref{sec:gpu} include no transfers.
+\item[Metal.]  Apple's GPU programming interface and shading language, the
+  counterpart of CUDA or Vulkan: devices, command queues, command buffers,
+  compute kernels, buffers.
+\item[MPS, Metal Performance Shaders.]  Apple's library of ready GPU kernels
+  on top of Metal, among them \lv{MPSMatrixMultiplication}, a GEMM on Metal
+  buffers.
+\item[MPSGraph.]  Metal Performance Shaders Graph: Apple's framework for
+  tensor computation on the GPU, in which a graph of operations (here two
+  placeholders and one matrix multiplication) is compiled to Metal kernels
+  and run.  It is what Core ML and PyTorch's Apple backend use underneath;
+  its GEMM is the faster of Apple's two.
+\item[Grand Central Dispatch.]  Apple's thread-pool interface (libdispatch);
+  \lv{dispatch\_apply} runs a block over an index range on the pool.
+  The library uses both it and POSIX threads; the benchmark's compensated reference product runs on the pool through \lv{dispatch\_apply}.
+\item[Apple clang, macOS~26.]  The compiler and operating system of the
+  measurements.  The C library is C11 with Accelerate; the GPU tool is
+  Objective-C, because the GPU frameworks have no C interface.
+\item[TFLOP/s.]  $10^{12}$ floating-point operations per second, counting
+  $2mkn$ for a product whatever the algorithm, so a plan's rate is the
+  classical count divided by its time.
+\end{description}
+
 \section{Data and code}\label{sec:data}
 
 Everything is in the repository \cite{logic}, directory
@@ -890,7 +1110,9 @@ results of every run quoted here:
 \path{rect_api_2026-10-28.txt} (Table~\ref{tab:rect}),
 \path{t42_campaign_2026-10-28.txt} (Table~\ref{tab:ternary}),
 \path{f64exact_2026-10-28.txt} (the f64 err64 column of
-Table~\ref{tab:results}), and the
+Table~\ref{tab:results}), \path{gpu_gemm_2026-10-28.txt} (Table~\ref{tab:gpu};
+the tool is \path{gpu_gemm.m}, built by \path{make build/gpu_gemm}, the
+script \path{run_gpu.sh}), and the
 earlier campaigns of October 24--26 (streams, pipelines, accuracy, the
 $4\times4$ programs).  The menu screen is \path{matmul/levels/}
 (\path{levels.py}, \path{levels.csv}, \path{orbit_rect.py},

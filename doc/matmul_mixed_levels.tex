@@ -31,7 +31,8 @@ over a vendor GEMM, chosen by a calibrated planner}
 
 \begin{abstract}
 A fast matrix multiplication in practice is a few levels of a Strassen-like
-scheme over a vendor GEMM.  We treat the levels as a menu: every level may use
+scheme over a vendor General Matrix Multiplication (GEMM) routine.  We treat
+the levels as a menu: every level may use
 a different scheme, square or rectangular, and a plan is a sequence of levels
 ending in a GEMM leaf.  On Apple's M4~Pro, with Accelerate's GEMM at the
 leaves, the menu is Strassen--Winograd $\mm{2\times2\times2:7}$, the
@@ -73,7 +74,8 @@ in C and in Rust, agree bit for bit.
 A scheme for multiplying a $g_1\times g_2$ matrix by a $g_2\times g_3$ matrix
 in $r<g_1g_2g_3$ products, applied to blocks, saves products at every level of
 recursion.  On a real machine a level is not free: its linear combinations of
-blocks are passes over memory, and the products it hands down are GEMMs whose
+blocks are passes over memory, and the products it hands down are General
+Matrix Multiplications (GEMMs, the BLAS routine) whose
 rate depends on their size and shape.  Libraries that use fast schemes
 therefore apply one to three levels on top of a tuned GEMM and stop
 \cite{HSvdG16,DPSST26}.  Which scheme, how many levels, in what order, and at

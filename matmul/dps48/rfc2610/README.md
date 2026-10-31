@@ -4,22 +4,39 @@ The note, its `4x4x4_48_203_{L,R,P}` files and `slp2matsprod.py` are his and are
 Scripts take the directory holding those files and PLinOpt's `data/` as arguments; `run*.sh` hold
 this session's scratchpad paths.  `results.txt`, `run.out` and `run_resc.out` are the raw output.
 
-| point | L | R | P | total | canonical L/R rows | amp |
+| point | L | R | P | total | canonical L, R | amp |
 |---|---|---|---|---|---|---|
-| Joshua's 204 | 57 | 57 | 90 | 204 | 10 / 10 | 10.44 |
-| his 203 (Joshua's L, R; our P) | 57 | 57 | 89 | 203 | 10 / 10 | 10.44 |
-| our 201 | 55 | 57 | 89 | 201 | 6 / 4 | 9.53 |
-| DPS accurate_262 (the library's) | | | | 262 | 0 / 8 | 2.83 |
+| Joshua's 204 | 57 | 57 | 90 | 204 | 10, 10 | 10.44 |
+| his 203 (Joshua's L, R, our P) | 57 | 57 | 89 | 203 | 10, 10 | 10.44 |
+| Ruchit's 202 | 56 | 56 | 90 | 202 | 8, 8 | 10.26 |
+| our lam01c0_201 (the note's "Greg"; October 21) | 56 | 56 | 89 | 201 | 8, 8 | 10.26 |
+| our 201 in PLinOpt (p005) | 55 | 57 | 89 | 201 | 6, 4 | 9.53 |
+| DPS accurate_262 (the library's) | | | | 262 | 0, 8 | 2.83 |
 
-L and R each take 55 additions + 2 halvings at the 203 point.
+`../cand48/lam01c0_201_*` matches the point (4) produces on all 48 products exactly (`lam01c0.py`): it is
+a signed permutation of Ruchit's point, and it is what the note calls Greg's decomposition.
 
-- **Program search** (`run.sh`, lns48, 12 seeds x 180 s): L and R 57 in 48 of 48 runs, naive or seeded
-  from his programs.
-- **Product rescalings** (`rescale.py`, `run_resc.sh`; all six Brent-checked exactly): the 16 products
-  with halves scaled by 2 give 226 (A, B: L x2 or R x2, P /2) and 238 (C: both, P /4); product 43
-  alone gives 204 (D, E, F).  Control: P^T 57, so P 89.  Halves in L and R are shared signals: o43 is
-  reused by four later lines, so scaling that output keeps the halving.  Heuristic search over 2 of
-  the 65,536 subsets of those products, not a lower bound.
-- **Map to our point** (`derive.py`): all 48 products match with scalars of exactly +-1 in L, R and P;
-  U and W signed permutations, V not, W equal to his.  rho as printed does not carry the 203 files to
-  the 201 files: 0 of 48 by Lemma 2.1 either way, at most 1 of 48 over all forms (`rho.py`, `rho2.py`).
+**Verified from the files alone** (`verify_note*.py`; every action gated on fixing the tensor):
+- The 203 circuit: 4096 Brent equations, SLPchecker on all three programs, ten canonical L and R rows.
+- (1) on the rational point and (3) on the 204 point, exactly, by Lemma 2.1 as written; (1) gives
+  canonical rows (10, 10, 10).
+- (9) fixes the (1) point, (10) the 204 point, (11), g2, g13, g14 the point (4) produces, with
+  permutations exactly pi2, pi3, pi4; {1, pi2, pi3, pi4} is a Klein four-group.
+- The numbering of the k in `∘ k` is not needed: all six elements tried, ∘3 is the input swap, ∘5 a
+  rotation, ∘6 a swap after a rotation.
+
+**To correct in the note:**
+- rho is printed as (3)(4); Lemma 2.1 needs (4)(3), V = [[0,0,1,0],[0,-1,1,0],[1,0,0,0],[0,0,0,1]]: 48
+  of 48 products against 6 of 48.  V does not touch P, so the 203 result is unaffected.
+- Section 3's 56 for Joshua's L and R should be 57; 56 is Ruchit's and lam01c0_201's.  The 56 + 56 + 89
+  before (5) is right: it is lam01c0_201.
+- The last sentence's second pi3 should be pi4 (pi3(8) = 29, pi4(8) = 1).
+
+**Checked earlier:** the stabilizer's order 64 and its 32 + 32 split, on lam01c0, 2026-10-24
+(`../stabilizer48.py`, plan doc).  **Not checked:** `slp2matsprod.py` (not run).
+
+**Search on the 203 point:** lns48, 12 seeds x 180 s: L and R 57 in 48 of 48 runs, naive or seeded.
+Six product rescalings, all exact: the 16 half-carrying products give 226, 226, 238, product 43 alone
+204 three times (its halved signal is reused four times, so the halving stays); control P 89.
+Heuristic over 2 of the 65,536 subsets, not a lower bound.  His point maps to our published 201 with
+all 48 product scalars exactly +-1 (`derive.py`), so his footnote's sign change is exact.

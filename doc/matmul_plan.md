@@ -2504,11 +2504,14 @@ the two source papers for this track):
   204, 204 (product 43 alone; its halved signal is reused, so the halving stays); control P 89.
   Derived from the data: his point maps to ours with all 48 product scalars exactly +-1 (U, W signed
   permutations, V not, which is why P carries over and L, R differ), so his footnote's sign change is
-  exact; rho as printed does not reproduce this map on the files (0/48; at most 1/48 over all forms).
-  The 56 in his Section 3 should be 57; the 56 + 56 + 89 before (5) is the 201 total with the split
-  off (ours is 55 + 57 + 89).  Canonical rows are no reason to change the library's scheme: amp 10.44
+  exact.  Every claim the files can decide verified without him (verify_note*.py): (1), (3), (9)-(11), g2,
+  g13, g14 and pi2-pi4 exactly, the ∘k by trying all six S3 elements.  To correct in the note: rho is
+  printed as (3)(4) and Lemma 2.1 needs (4)(3) (48/48 against 6/48; P unaffected); Section 3's 56 for
+  Joshua is 57; the last pi3 is pi4.  The note's "Greg's decomposition" is our lam01c0_201 (exact on all
+  48 products with (4) on 202), not the 55 + 57 + 89 file in PLinOpt, and its 56 + 56 + 89 is that file's
+  count.  Canonical rows are no reason to change the library's scheme: amp 10.44
   against accurate_262's 2.83, and accurate_262 itself has 0 and 8.  Line closed; a heuristic result
-  over 2 of the 65,536 product subsets, not a lower bound.  Open: Section 4's stabilizer test on our P.
+  over 2 of the 65,536 product subsets, not a lower bound.  Open: his Section 4 question on the Klein four-subgroup; the order-4 route closed Oct 24 (above).
 
 ## 1. The thesis — why native representation should win
 

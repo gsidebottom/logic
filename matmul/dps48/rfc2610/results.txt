@@ -35,3 +35,99 @@ per-product scalars of the image over our 201, (|L|, |R|, |P|), with count:
     (1.0, 1.0, 1.0) 48
 sign patterns: {(-1, 1, -1): 25, (1, 1, 1): 12, (-1, -1, 1): 10, (1, -1, -1): 1}
 maps with a consistent V and all 48 L and R rows matched: 1
+
+# verify_note.py: every isotropy and permutation of the note against the files
+== gate: every point and action fixes the matrix multiplication tensor ==
+   13 of 13 checks pass
+== where the printed isotropies lead (best match per isotropy and source; 48 = identical scheme) ==
+   (1)  rational -> 204      : 48/48  (S3 id on source, form M, S3 c2 on target)
+   (1)  rational -> 203      : 48/48  (S3 id on source, form M, S3 c2 on target)
+   (1)  204      -> rational : 48/48  (S3 c2 on source, form M^-1, S3 id on target)
+   (1)  203      -> rational : 48/48  (S3 c2 on source, form M^-1, S3 id on target)
+   (3)  204      -> 202      : 48/48  (S3 id on source, form M, S3 id on target)
+   (3)  202      -> 204      : 48/48  (S3 id on source, form M^-1, S3 id on target)
+   (3)  202      -> 203      : 48/48  (S3 id on source, form M^-1, S3 id on target)
+   (3)  203      -> 202      : 48/48  (S3 id on source, form M, S3 id on target)
+   id   204      -> 203      : 48/48  (S3 id on source, form M, S3 id on target)
+   id   203      -> 204      : 48/48  (S3 id on source, form M, S3 id on target)
+== canonical rows after (1) on the rational point (L, R, P columns) ==
+   form M: [10, 10, 10]
+   form M^-1: [0, 0, 0]
+   form M^T: [0, 0, 0]
+   form M^-T: [0, 0, 0]
+== stabilizers: printed element fixes a point (all forms and S3 tried) ==
+   pi are fixed-point-free involutions: True
+   pi2 pi3 == pi4: True | pi3(8) = 29 | pi4(8) = 1
+   (9)   best  4/48 on 204 (S3 t, form M)
+   (10)  best 48/48 on 204 (S3 t, form M); permutation equals none of the printed
+   (11)  best 0/48
+   g2    best 0/48
+   g13   best 0/48
+   g14   best 0/48
+
+# verify_note2.py: all maps between the points; stabilizer elements on the points his isotropies produce
+202 -> 201: 4 maps with a signed-permutation P part, 0 with V a signed permutation too
+   U [[0, 0, 0, -1], [0, 0, -1, 0], [1, 0, 0, 0], [0, -1, 0, 0]] 
+   V [[-1.0, 0.0, 0.0, 1.0], [1.0, -0.0, -0.0, -0.0], [0.0, -1.0, -0.0, 0.0], [-0.0, 0.0, 1.0, 0.0]] 
+   W [[0, -1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1], [1, 0, 0, 0]]
+   U [[0, 0, 0, -1], [0, 0, -1, 0], [1, 0, 0, 0], [0, -1, 0, 0]] 
+   V [[-1.0, 0.0, 0.0, 1.0], [1.0, -0.0, -0.0, -0.0], [0.0, -1.0, -0.0, 0.0], [-0.0, 0.0, 1.0, 0.0]] 
+   W [[0, 1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1], [-1, 0, 0, 0]]
+203 -> 201: 4 maps with a signed-permutation P part, 0 with V a signed permutation too
+   U [[0, 0, 0, -1], [0, 0, -1, 0], [1, 0, 0, 0], [0, -1, 0, 0]] 
+   V [[1.0, 0.0, 0.0, -1.0], [-1.0, 0.0, 0.0, 0.0], [-0.0, 1.0, -1.0, -0.0], [0.0, 0.0, -1.0, -0.0]] 
+   W [[0, -1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1], [1, 0, 0, 0]]
+   U [[0, 0, 0, -1], [0, 0, -1, 0], [1, 0, 0, 0], [0, -1, 0, 0]] 
+   V [[1.0, 0.0, 0.0, -1.0], [-1.0, 0.0, 0.0, 0.0], [-0.0, 1.0, -1.0, -0.0], [0.0, 0.0, -1.0, -0.0]] 
+   W [[0, 1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1], [-1, 0, 0, 0]]
+(4)202 -> 201: 4 maps with a signed-permutation P part, 0 with V a signed permutation too
+   U [[0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, -1], [1, 0, 0, 0]] 
+   V [[-0.0, 0.0, 1.0, -1.0], [-0.0, 0.0, -1.0, -0.0], [-0.0, -1.0, -0.0, -0.0], [-1.0, -0.0, -0.0, 0.0]] 
+   W [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+   U [[0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, -1], [1, 0, 0, 0]] 
+   V [[-0.0, 0.0, 1.0, -1.0], [-0.0, 0.0, -1.0, -0.0], [-0.0, -1.0, -0.0, -0.0], [-1.0, -0.0, -0.0, 0.0]] 
+   W [[-1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1]]
+rho204 -> 201: 4 maps with a signed-permutation P part, 0 with V a signed permutation too
+   U [[0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, -1], [1, 0, 0, 0]] 
+   V [[0.0, 0.0, 1.0, -1.0], [0.0, -0.0, -1.0, 0.0], [-1.0, -1.0, -1.0, -0.0], [-1.0, 0.0, 0.0, -0.0]] 
+   W [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+   U [[0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, -1], [1, 0, 0, 0]] 
+   V [[0.0, 0.0, 1.0, -1.0], [0.0, -0.0, -1.0, 0.0], [-1.0, -1.0, -1.0, -0.0], [-1.0, 0.0, 0.0, -0.0]] 
+   W [[-1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1]]
+(4) as printed: U [[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 0, 0, 0]] 
+                V [[0, 0, 1, 0], [0, -1, 0, 0], [1, 0, 0, 0], [0, 0, 0, 1]] 
+                W [[0, -1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1], [1, 0, 0, 0]]
+== stabilizer elements on every point, form M, all S3; 48 = fixes the point ==
+   (9)   best 48/48 on (1)rat (S3 tc2), order of the permutation 2, printed pi: -; also [(4, '204', 't'), (4, '203', 't'), (1, '204', 'id')]
+   (10)  best 48/48 on 204 (S3 t), order of the permutation 2, printed pi: -; also [(48, '203', 't'), (4, '(1)rat', 'tc2'), (3, '202', 't')]
+   (11)  best 48/48 on (4)202 (S3 t), order of the permutation 2, printed pi: -; also [(4, 'rho204', 't'), (4, '(3)(4)204', 't'), (3, '(4)204', 't')]
+   g2    best 48/48 on (4)202 (S3 id), order of the permutation 2, printed pi: -; also [(1, '(4)202', 't')]
+   g13   best 48/48 on (4)202 (S3 id), order of the permutation 2, printed pi: -; also [(4, 'rho204', 'id'), (4, '(3)(4)204', 'id'), (1, '(4)202', 't')]
+   g14   best 48/48 on (4)202 (S3 id), order of the permutation 2, printed pi: -; also [(8, '(4)204', 'id'), (1, '(4)202', 't'), (1, '(4)204', 't')]
+
+# verify_note3.py: rho's factor order, the 56 + 56 + 89 circuit, the pi numbering
+printed rho equals (3)(4) as a matrix product: True ; equals (4)(3): False
+rho' = (4)(3) on 204 vs (4) on 202: 48 /48; printed rho on 204 vs (4) on 202: 6 /48
+rho' V = [[0, 0, 1, 0], [0, -1, 1, 0], [1, 0, 0, 0], [0, 0, 0, 1]] ; U x W^-T a signed permutation: True
+== canonical rows (L, R, P columns), nonzeros, amp, gamma_inf,2 ==
+   204     canonical [10, 10, 10]  nonzeros [256, 256, 248]  amp 10.440  gamma 78.000
+   203     canonical [10, 10, 10]  nonzeros [256, 256, 248]  amp 10.440  gamma 78.000
+   202     canonical [8, 8, 10]  nonzeros [236, 236, 248]  amp 10.259  gamma 77.052
+   (4)202  canonical [8, 8, 10]  nonzeros [236, 236, 248]  amp 10.259  gamma 77.052
+   201     canonical [6, 4, 10]  nonzeros [232, 216, 248]  amp 9.526  gamma 75.850
+== P at Ruchit's point against P of the 203 files ==
+   same rows, columns equal up to sign and order: True
+   wrote the transported program: 4x4x4_48_202_P_89.slp 60 lines
+== the printed pi against each file's product numbering ==
+   g2   moves 48 products; printed pi by numbering: {'202 file': ['pi2'], '204 file': ['pi2'], '201 file': ['pi2']}
+   g13  moves 48 products; printed pi by numbering: {'202 file': ['pi3'], '204 file': ['pi3'], '201 file': ['pi3']}
+   g14  moves 48 products; printed pi by numbering: {'202 file': ['pi4'], '204 file': ['pi4'], '201 file': ['pi4']}
+
+# SLPchecker on the transported P against the published 202 P
+# SUCCESS: correct SLP for 16x48 (232+|8x) : <89, 0> Matrix-Vector multiplication!
+
+# lam01c0.py: our October lam01c0_201 against the point (4) produces
+exact matches of lam01c0_201 with: (4) on 202 48 /48; published 202 0 /48; published 201 0 /48
+best over S3 and forms of (4) on 202: (48, 'id', 'M^-T')
+   lam01c0_201: canonical [8, 8, 10]
+   (4) on 202: canonical [8, 8, 10]

@@ -2516,6 +2516,13 @@ the two source papers for this track):
   positive control 55/55 at the 203 point): g2, g13, g14 keep 8, 5, 5 of the P^T program's 19 internal forms
   (random at most 2) and 0 of the P program's 44; best of all 63 elements 11/19, so partly symmetric, far from
   invariant.  lam01c0_201's own L and R are related on 47 of 54 forms.  Line closed.
+  2026-10-31: Alexandre replied that he does not know what the X, Y, Z of our question 1 are.  Fair: his note has none,
+  and they were 4 x 4 matrices per product (rows of L and R and columns of P reshaped, the last transposed), not L, R, P.
+  Restated on [L; R; P] with K the commutation matrix (`rfc2610/s3_lrp.py`): ∘3 = [R K; L K; K P] swaps L and R,
+  ∘5 = [R; Pᵀ K; K Lᵀ] rotates, ∘6 = [L K; Pᵀ; Rᵀ] swaps R and P.  All six maps multiply matrices on all seven points
+  (16³ equations read directly), and each printed use, (2), (9), (10), (11), is reproduced by exactly one of them,
+  48 of 48 products against at most 1, only with the isotropy acting after the map; (10)'s triple is (9)'s rotated.
+  ∘2 and ∘4 are the other two, [Pᵀ K; L; K Rᵀ] and [Pᵀ; R K; Lᵀ]; which is which is his to say.
 
 ## 1. The thesis — why native representation should win
 

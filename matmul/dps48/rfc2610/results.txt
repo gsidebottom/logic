@@ -153,3 +153,25 @@ baseline, 200 random signed permutations: P mean 0.55 max 6; P^T mean 0.17 max 2
 == positive control: R's program onto L's ==
 203 point (should be nearly all): 55 forms of R, 55 of L, 32 elements carrying R onto L; best overlap 55/55; random signed permutations max 2
 lam01c0_201 (our two programs): 54 forms of R, 54 of L, 32 elements carrying R onto L; best overlap 47/54; random signed permutations max 2
+
+== s3_lrp.py (2026-10-31): the suffixes o k on [L; R; P], after his reply that X, Y, Z were undefined ==
+== gates ==
+   every point multiplies matrices, read directly: True (7 points)
+   each of the six maps, on every point, still multiplies matrices: True
+   each map equals its triad form exactly: True
+   Lemma 2.1 on [L; R; P] equals the triad action: True
+== which of the six maps reproduces each printed o k (48 = same scheme); isotropy after the map ==
+                                               [L; R; P]    [R K; L K; K P]  [R; P^T K; K L^T]    [L K; P^T; R^T]  [P^T K; L; K R^T]    [P^T; R K; L^T]
+   (2)  (1) point -> 204                               1                  1                 48                  1                  1                  1
+   (2)  (1) point -> 203 files                         1                  1                 48                  1                  1                  1
+   (9)  fixes the (1) point                            1                  1                  1                 48                  1                  1
+   (10) fixes 204                                      1                 48                  1                  1                  1                  1
+   (10) fixes 203 files                                1                 48                  1                  1                  1                  1
+   (11) fixes lam01c0_201                              1                 48                  0                  0                  0                  0
+== the other order: isotropy first, then the map ==
+                                               [L; R; P]    [R K; L K; K P]  [R; P^T K; K L^T]    [L K; P^T; R^T]  [P^T K; L; K R^T]    [P^T; R K; L^T]
+   (9)  fixes the (1) point                            1                  1                  1                  1                  1                  1
+   (10) fixes 204                                      1                  1                  1                  1                  1                  1
+   (11) fixes lam01c0_201                              1                  1                  0                  0                  0                  0
+== (10) is (9) conjugated by the rotation ==
+   (U, V, W) of (10) = (V, W, U) of (9): True

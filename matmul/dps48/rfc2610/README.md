@@ -24,6 +24,10 @@ a signed permutation of Ruchit's point, and it is what the note calls Greg's dec
   permutations exactly pi2, pi3, pi4; {1, pi2, pi3, pi4} is a Klein four-group.
 - The numbering of the k in `∘ k` is not needed: all six elements tried, ∘3 is the input swap, ∘5 a
   rotation, ∘6 a swap after a rotation.
+- The same six on his own [L; R; P] (`s3_lrp.py`, 2026-10-31), with K the commutation matrix: ∘3 = [R K; L K; K P]
+  swaps L and R, ∘5 = [R; Pᵀ K; K Lᵀ] rotates, ∘6 = [L K; Pᵀ; Rᵀ] swaps R and P.  Each printed use is reproduced by
+  exactly one of the six, 48 of 48 products against at most 1, and only with the isotropy acting after the map.
+  The other two are [Pᵀ K; L; K Rᵀ] and [Pᵀ; R K; Lᵀ]; which is ∘2 and which ∘4 is his to say.
 
 **To correct in the note:**
 - rho is printed as (3)(4); Lemma 2.1 needs (4)(3), V = [[0,0,1,0],[0,-1,1,0],[1,0,0,0],[0,0,0,1]]: 48

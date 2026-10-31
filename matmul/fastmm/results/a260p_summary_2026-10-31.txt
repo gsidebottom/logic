@@ -19,7 +19,7 @@
   bench_fmm_acc262       f32 error / classical: L1 0.79  L2 0.97  L3 1.67  L4 3.75  L5 9.79
   bench_fmm_var_a260p    f32 error / classical: L1 0.80  L2 0.96  L3 1.67  L4 3.61  L5 9.20
 
-== speed of the sign-normalized set a260n, identical errors to a260p (16 of 16 pairs), five alternating rounds, idle machine ==
+== speed of the sign-normalized set a260n, identical errors to a260p (16 of 16 pairs), five alternating rounds, NOT idle (a stray job held one core) ==
   d 4096  dps48                  best 0.140 0.139 ratio 0.993  mean ratio 0.996
   d 4096  plan=D48/G6            best 0.170 0.176 ratio 1.035  mean ratio 1.033
   d 8192  dps48                  best 1.054 1.054 ratio 1.000  mean ratio 1.002
@@ -28,3 +28,15 @@
   f 4096  plan=D48/G6            best 0.037 0.037 ratio 1.000  mean ratio 1.000
   f 8192  dps48                  best 0.271 0.270 ratio 0.996  mean ratio 0.996
   f 8192  plan=D48+4/D48/G6      best 0.236 0.236 ratio 1.000  mean ratio 0.997
+
+== speed rerun after stopping the stray job, nine rounds, order swapped each round, CPU logged (speed_a260n_rerun_2026-10-31.txt) ==
+setting                               262 mean   260 mean   mean ratio   s.e.   best ratio   rounds 260 slower
+f32 n=4096  dps48                  0.0440     0.0441        1.003  0.005      1.023        2/9
+f32 n=4096  plan=D48/G6            0.0369     0.0371        1.006  0.004      1.028        2/9
+f32 n=8192  dps48                  0.2750     0.2741        0.997  0.003      1.000        2/9
+f32 n=8192  plan=D48+4/D48/G6      0.2384     0.2373        0.995  0.002      0.996        0/9
+f64 n=4096  dps48                  0.1422     0.1424        1.002  0.003      1.007        4/9
+f64 n=4096  plan=D48/G6            0.1788     0.1800        1.007  0.014      1.000        5/9
+f64 n=8192  dps48                  1.0970     1.0840        0.988  0.005      0.983        1/9
+f64 n=8192  plan=D48+4/D48/G6      0.8136     0.8111        0.997  0.001      0.998        2/9
+overall geometric mean 0.9992, s.e. 0.0021, n=72

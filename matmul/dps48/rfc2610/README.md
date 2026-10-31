@@ -71,6 +71,7 @@ the 2026-10-31 paragraph in doc/matmul_plan.md.  His 160 decompositions are not 
 - `run_td.sh`, `td/score.py`: the sweep of his 160 points.
 - `stab_matrices.py`, `gamma_fixed.py`: the stabilizer with its matrices; orthogonality and the gamma_2 minimum.
 - `invcirc.py`: which programs are invariant, per side.
+- `lbfacts.py CAND48_DIR`: orbit invariants of the 201 record for judging lower-bound methods (lines, ranks, collinear triples, dependent 4-sets, additions and scalings).
 - `geometry.py`, `frames.py`, `perfect.py`, `td/quartic*.py`, `td/acc.py`, `td/outs.py`: the F4 frames and symmetric points.
 - `canon_enum.py`, `canon_classes.py`, `unit_lines.py`, `td/tri.py`, `td/t66.py`: exact canonical counts over the orbit.
 - `pclasses.py`, `pside.py`, `td/pdeep.py`: the P map.  `vlines.py`, `run_vl.sh`: every line-fixed V at the record P.

@@ -2566,6 +2566,16 @@ the two source papers for this track):
   merges scalings so its count agrees with PLinOpt's), 72 more seeds, 28 distinct 76-operation programs, each polished
   with L and P under budget: modelled 7.12 against the published 7.22 (the published programs polished at their own
   counts reach 7.04).  After signnorm48.py, 260 in Patel's model too.  cand48/accurate_260n_{L,R,P}.slp.
+  Measured results and the library decision (keep the published programs) are in doc/fastmm_plan.md.  (11) Can 201 be proved
+  optimal?  (Greg, Oct 31.)  No route seen.  All rank-48 schemes: no classification, so one orbit at most.  That orbit is
+  continuous; its floor is >= 146 additions, 38 + 38 + 38 + 32 from at most 10 canonical rows per side (enumeration, not in
+  Lean).  The record is 197 additions + 4 halvings (53 + 2, 55 + 2, 89 + 0) with floors 42 + 44 + 38 + 32 = 156 at that
+  point, so 11, 11 and 19 helpers above the floor on L, R and P^T.  The most helpers we have ever refuted is 6, over F2 at
+  rank 47 (7 undecided in 1 h); S-P's 51 needed 1 or 2.  `lbfacts.py`, orbit invariants: on each side 48 distinct lines, 32
+  rank-1 and 16 rank-2 rows; collinear triples 0, 0, 16 and dependent 4-sets 88, 88, 724 on L, R, P^T.  The sum-triple count
+  of SP51Optimal.lean does not bind: the record's L has 21 non-output values, so 210 pairs for the 53 triples needed.  At
+  the floor it has 6, so 15 pairs for 38, which might add a few per side.  146 is the Lean theorem in reach, and search
+  saturation says nothing about the minimum.
 
 ## 1. The thesis — why native representation should win
 

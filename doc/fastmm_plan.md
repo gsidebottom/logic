@@ -1340,12 +1340,18 @@ published programs took R from <67, 11> to <66, 10>, so the scheme costs 72 + 76
 and every growth factor unchanged.  Rounding model: L + R 5.74 to 5.94, worst output 7.22 to 7.59 (the five 76-operation
 programs score 7.52 to 8.50, none reaches 7.22).  Measured against exact references on identical inputs, new / published:
 n = 4096 and 8192 (36 pairs) 0.995, 1.018, 1.005 at 1-3 levels; n = 1024 (20 pairs) 0.987, 1.001, 1.028, 1.033, 1.028 at 1-5
-levels.  So within noise on large sizes and about 3% worse at depth, as the Oct 26 rule predicts from the model.  Speed on an
-idle machine, five alternating rounds: mean ratio 0.994-1.008.
+levels.  So within noise on large sizes and about 3% worse at depth, as the Oct 26 rule predicts from the model.  Speed, five
+alternating rounds: mean ratio 0.994-1.008 (not an idle machine; see the correction below).
 A better 260 the same day (`slpopt search --maxops`, 28 distinct 76-operation programs, all three sides polished under their
 budgets, then signnorm48.py; gamma/slp/a260n_*, identical errors to the set measured, 16 of 16 pairs): modelled 7.12.  Measured
 geometric mean ratios to the published programs: n = 4096, 8192 (36 pairs) 1.005, 1.020, 1.007 at 1-3 levels, standard errors
-0.008; n = 1024 (20 pairs) 1.019, 0.987, 0.995, 0.961, 0.951 at 1-5 levels.  So 4-5% better at depth, within noise elsewhere
-except a possible 2% at 2 levels on large sizes (the first 260 showed 1.6% there too).  Speed: seven of eight settings within
-1% by mean, one, f64 n = 4096 D48/G6, at +3.3%, the noisiest setting in the earlier test.  results/a260p_summary_2026-10-31.txt.
-The library still uses the published programs; switching is Greg's call.
+0.008; n = 1024 (20 pairs) 1.019, 0.987, 0.995, 0.961, 0.951 at 1-5 levels.  So 4-5% better at 4-5 levels on n = 1024, which no plan
+uses (error there is 3.6 to 9.2 times classical), and level to about 2% worse at the one or two D48 levels the plans do use, the
+2-level figure being 2.5 standard errors (the first 260 showed 1.8% there too, against the same baseline).
+results/a260p_summary_2026-10-31.txt.
+Correction, 2026-10-31 evening: both speed tests above ran with a hung job of mine holding one core (10:25 to 17:47), so "idle"
+was false, and they reported one setting, f64 n = 4096 D48/G6, at +3.3%.  Rerun after stopping it (nine rounds, order swapped each
+round, top CPU users logged each round; results/speed_a260n_rerun_2026-10-31.txt): all eight settings 0.988-1.007 by mean, overall
+0.999 +- 0.002, that setting 1.007 +- 0.014.  So the two operations save no measurable time, and the +3.3% was noise.  Load does
+not affect the error measurements.  Decision: the library keeps the published programs, no gain in time and none in error at the
+depths it uses.  The 260 stands as an operation count.

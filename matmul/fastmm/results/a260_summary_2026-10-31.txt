@@ -29,4 +29,4 @@
   f n=4096 D48/G6           acc262 0.037 s  a260 0.037 s  ratio 1.000
   f n=8192 D48+4/D48/G6     acc262 0.237 s  a260 0.236 s  ratio 0.996
   f n=8192 D48/G            acc262 0.273 s  a260 0.272 s  ratio 0.996
-(speed: five alternating rounds on an idle machine; mean-of-rounds ratios 0.994-1.008)
+(speed: five alternating rounds, NOT idle, a stray job held one core; mean-of-rounds ratios 0.994-1.008; rerun in a260p_summary)

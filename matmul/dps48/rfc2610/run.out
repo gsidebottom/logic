@@ -1,0 +1,63 @@
+# lns48 on 4x4x4_48_203 L and R, 2026-10-30 18:54
+## L, naive seeds, 12 x 180 s  18:54
+exit 0
+  seed 6: 180s best 57 current 57 iterations 15309 (85.0/s) moves d/p/a [108, 4012, 88] mip solves 0
+  seed 11: 180s best 57 current 57 iterations 15319 (85.1/s) moves d/p/a [88, 4009, 69] mip solves 0
+final: best 57 = 55 adds + 2 scalings (seed 1); per seed [57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57]; 183898 iterations in 180s (85.1/s/thread) -> naive_L/best.slp
+## R, naive seeds, 12 x 180 s  18:57
+exit 0
+  seed 2: 180s best 57 current 57 iterations 14936 (83.0/s) moves d/p/a [110, 3817, 81] mip solves 0
+  seed 9: 180s best 57 current 57 iterations 14859 (82.5/s) moves d/p/a [87, 3870, 67] mip solves 0
+final: best 57 = 55 adds + 2 scalings (seed 1); per seed [57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57]; 179706 iterations in 180s (83.2/s/thread) -> naive_R/best.slp
+## L, seeded from Alexandre's 57-operation program, 12 x 180 s  19:00
+exit 0
+  seed 1: 180s best 57 current 57 iterations 16017 (89.0/s) moves d/p/a [60, 4011, 60] mip solves 0
+  seed 12: 180s best 57 current 57 iterations 15831 (87.9/s) moves d/p/a [68, 4048, 68] mip solves 0
+final: best 57 = 55 adds + 2 scalings (seed 1); per seed [57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57]; 191095 iterations in 180s (88.5/s/thread) -> seeded_L/best.slp
+## R, seeded from Alexandre's 57-operation program, 12 x 180 s  19:03
+exit 0
+  seed 10: 180s best 57 current 57 iterations 15596 (86.6/s) moves d/p/a [76, 4186, 76] mip solves 0
+  seed 12: 180s best 57 current 57 iterations 15900 (88.3/s) moves d/p/a [78, 4020, 78] mip solves 0
+final: best 57 = 55 adds + 2 scalings (seed 1); per seed [57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57]; 189720 iterations in 180s (87.8/s/thread) -> seeded_R/best.slp
+## emitted programs:
+naive_L:
+total 104
+drwxr-xr-x@ 15 greg  wheel   480 Oct 30 18:57 .
+drwxr-xr-x@ 12 greg  wheel   384 Oct 30 19:03 ..
+-rw-r--r--@  1 greg  wheel  1220 Oct 30 18:57 best.slp
+-rw-r--r--@  1 greg  wheel  1220 Oct 30 18:57 seed1.slp
+-rw-r--r--@  1 greg  wheel  1215 Oct 30 18:57 seed10.slp
+-rw-r--r--@  1 greg  wheel  1219 Oct 30 18:57 seed11.slp
+-rw-r--r--@  1 greg  wheel  1218 Oct 30 18:57 seed12.slp
+-rw-r--r--@  1 greg  wheel  1218 Oct 30 18:57 seed2.slp
+-rw-r--r--@  1 greg  wheel  1220 Oct 30 18:57 seed3.slp
+-rw-r--r--@  1 greg  wheel  1218 Oct 30 18:57 seed4.slp
+-rw-r--r--@  1 greg  wheel  1218 Oct 30 18:57 seed5.slp
+-rw-r--r--@  1 greg  wheel  1223 Oct 30 18:57 seed6.slp
+-rw-r--r--@  1 greg  wheel  1216 Oct 30 18:57 seed7.slp
+-rw-r--r--@  1 greg  wheel  1218 Oct 30 18:57 seed8.slp
+-rw-r--r--@  1 greg  wheel  1218 Oct 30 18:57 seed9.slp
+
+naive_R:
+total 104
+drwxr-xr-x@ 15 greg  wheel   480 Oct 30 19:00 .
+drwxr-xr-x@ 12 greg  wheel   384 Oct 30 19:03 ..
+-rw-r--r--@  1 greg  wheel  1218 Oct 30 19:00 best.slp
+-rw-r--r--@  1 greg  wheel  1218 Oct 30 19:00 seed1.slp
+-rw-r--r--@  1 greg  wheel  1219 Oct 30 19:00 seed10.slp
+-rw-r--r--@  1 greg  wheel  1216 Oct 30 19:00 seed11.slp
+-rw-r--r--@  1 greg  wheel  1223 Oct 30 19:00 seed12.slp
+-rw-r--r--@  1 greg  wheel  1223 Oct 30 19:00 seed2.slp
+-rw-r--r--@  1 greg  wheel  1220 Oct 30 19:00 seed3.slp
+-rw-r--r--@  1 greg  wheel  1217 Oct 30 19:00 seed4.slp
+-rw-r--r--@  1 greg  wheel  1218 Oct 30 19:00 seed5.slp
+-rw-r--r--@  1 greg  wheel  1223 Oct 30 19:00 seed6.slp
+-rw-r--r--@  1 greg  wheel  1218 Oct 30 19:00 seed7.slp
+-rw-r--r--@  1 greg  wheel  1219 Oct 30 19:00 seed8.slp
+-rw-r--r--@  1 greg  wheel  1222 Oct 30 19:00 seed9.slp
+
+seeded_L:
+total 104
+drwxr-xr-x@ 15 greg  wheel   480 Oct 30 19:03 .
+drwxr-xr-x@ 12 greg  wheel   384 Oct 30 19:03 ..
+# done 19:06

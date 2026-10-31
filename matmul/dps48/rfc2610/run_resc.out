@@ -1,0 +1,11 @@
+# lns48 on the rescaled variants, 2026-10-30 20:07
+Pt_base exit 0 20:10: final: best 57 = 57 adds + 0 scalings (seed 3); per seed [58, 58, 57, 58, 57, 58, 57, 57, 57, 57, 58, 58]; 184
+L_all2 exit 0 20:13: final: best 65 = 65 adds + 0 scalings (seed 1); per seed [65, 65, 66, 65, 65, 65, 66, 65, 66, 66, 66, 65]; 154
+R_all2 exit 0 20:16: final: best 65 = 65 adds + 0 scalings (seed 1); per seed [65, 65, 65, 65, 65, 66, 65, 65, 66, 65, 65, 65]; 153
+Pt_all_d2 exit 0 20:19: final: best 72 = 61 adds + 11 scalings (seed 1); per seed [72, 73, 73, 73, 73, 73, 73, 74, 72, 73, 72, 74]; 10
+Pt_all_d4 exit 0 20:22: final: best 76 = 65 adds + 11 scalings (seed 3); per seed [84, 82, 76, 79, 80, 79, 79, 84, 83, 78, 78, 78]; 70
+L_p43x2 exit 0 20:25: final: best 57 = 55 adds + 2 scalings (seed 1); per seed [57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57]; 184
+R_p43x2 exit 0 20:28: final: best 57 = 55 adds + 2 scalings (seed 1); per seed [57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57, 57]; 174
+Pt_p43_d2 exit 0 20:31: final: best 58 = 57 adds + 1 scalings (seed 3); per seed [59, 59, 58, 59, 58, 59, 59, 58, 59, 58, 59, 58]; 182
+Pt_p43_d4 exit 0 20:34: final: best 58 = 57 adds + 1 scalings (seed 1); per seed [58, 58, 58, 59, 59, 58, 59, 59, 59, 59, 59, 59]; 167
+# done 20:34

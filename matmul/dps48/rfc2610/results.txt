@@ -1,0 +1,37 @@
+# check203.py: Brent, canonical rows, amp, gamma_inf,2
+203 (Alexandre): Brent equations violated 0 of 4096; canonical rows L 10, R 10, P columns 10; nonzeros L/R/P (256, 256, 248); amp 10.440, gamma_inf2 78.000
+201 (ours): Brent equations violated 0 of 4096; canonical rows L 6, R 4, P columns 10; nonzeros L/R/P (232, 216, 248); amp 9.526, gamma_inf2 75.850
+accurate_262 (DPS): Brent equations violated 0 of 4096; canonical rows L 0, R 8, P columns 0; nonzeros L/R/P (264, 344, 256); amp 2.828, gamma_inf2 22.627
+
+# match204.py: 203's L and R against Joshua's 204
+L: 48/48 rows match up to a scalar; |ratio 203/204| {'1': 48}
+R: 48/48 rows match up to a scalar; |ratio 203/204| {'1': 48}
+L203 vs R204: 13/48 rows match up to a scalar; |ratio 203/204| {'1': 13}
+R203 vs L204: 13/48 rows match up to a scalar; |ratio 203/204| {'1': 13}
+
+# rho.py: rho by Lemma 2.1 on the 203 point, exact
+rho on the 203 point: Brent violated 0 of 4096
+  rho(203) vs our 201: 0/48 products match; (|L ratio|, |R ratio|, |P ratio|) counts:
+  rho(203) with L,R swapped vs our 201: 0/48 products match; (|L ratio|, |R ratio|, |P ratio|) counts:
+rho^-1 on the 203 point: Brent violated 0 of 4096
+  rho^-1(203) vs our 201: 0/48 products match; (|L ratio|, |R ratio|, |P ratio|) counts:
+  rho^-1(203) with L,R swapped vs our 201: 0/48 products match; (|L ratio|, |R ratio|, |P ratio|) counts:
+U kron W^-T is a signed permutation: True
+
+# rho2.py: all orderings, inverses and transposes of rho
+best matches over 384 x 2 x 2 forms: [(1, '202', 'swapped', 'U,V,W'), (1, '202', 'swapped', 'U,V,W^-T'), (1, '202', 'swapped', 'U^-1,V,W^-1'), (1, '202', 'swapped', 'U^-1,V,W^T')]
+
+# derive.py: the isotropy from the 203 point to our 201 point, from the data
+P nonzeros per row, sorted: 203 [4, 14, 14, 14, 14, 16, 16, 16, 16, 16, 16, 16, 16, 20, 20, 20] 
+                            201 [4, 14, 14, 14, 14, 16, 16, 16, 16, 16, 16, 16, 16, 20, 20, 20]
+support isomorphisms of P (rows of 203 -> rows of 201): 4
+of these, of Kronecker form U x W^-T: 2
+signed Kronecker maps taking 203's P columns onto 201's: 8
+dimension of the solution space: 1
+U = [[0, 0, 0, -1], [0, 0, -1, 0], [1, 0, 0, 0], [0, -1, 0, 0]]
+W = [[0, -1, 0, 0], [0, 0, 1, 0], [0, 0, 0, -1], [1, 0, 0, 0]]
+V (scaled to max 1) = [[1.0, 0.0, 0.0, -1.0], [-1.0, 0.0, 0.0, 0.0], [-0.0, 1.0, -1.0, -0.0], [0.0, 0.0, -1.0, -0.0]]
+per-product scalars of the image over our 201, (|L|, |R|, |P|), with count:
+    (1.0, 1.0, 1.0) 48
+sign patterns: {(-1, 1, -1): 25, (1, 1, 1): 12, (-1, -1, 1): 10, (1, -1, -1): 1}
+maps with a consistent V and all 48 L and R rows matched: 1

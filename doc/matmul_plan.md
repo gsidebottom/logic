@@ -2496,6 +2496,20 @@ the two source papers for this track):
   target set and orbit sizes sum to C(d,9) before trusting any
   speedup.
 
+- **RFC 2610 (Sedoglavic's note, received 2026-10-30): the ten-canonical point stays at 203; our 201
+  stands.**  matmul/dps48/rfc2610/ (scripts, results; his note and files not committed).  His 203 =
+  Joshua's L and R (57 = 55 + 2 halvings each, ten canonical rows) + our 89-operation P, one better
+  than Joshua's 204 (57 + 57 + 90).  lns48 12 seeds x 180 s: L and R 57 in 48/48 runs, naive or seeded.
+  Six product rescalings, all Brent-checked: 226, 226, 238 (all 16 half-carrying products) and 204,
+  204, 204 (product 43 alone; its halved signal is reused, so the halving stays); control P 89.
+  Derived from the data: his point maps to ours with all 48 product scalars exactly +-1 (U, W signed
+  permutations, V not, which is why P carries over and L, R differ), so his footnote's sign change is
+  exact; rho as printed does not reproduce this map on the files (0/48; at most 1/48 over all forms).
+  The 56 in his Section 3 should be 57; the 56 + 56 + 89 before (5) is the 201 total with the split
+  off (ours is 55 + 57 + 89).  Canonical rows are no reason to change the library's scheme: amp 10.44
+  against accurate_262's 2.83, and accurate_262 itself has 0 and 8.  Line closed; a heuristic result
+  over 2 of the 65,536 product subsets, not a lower bound.  Open: Section 4's stabilizer test on our P.
+
 ## 1. The thesis — why native representation should win
 
 The CNF costs local search a 43× variable blowup (26,541 vs 621) — flips

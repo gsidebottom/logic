@@ -1,0 +1,30 @@
+== main campaign (a260p / accurate_262) ==
+  d n=4096  normal   L1 1.000 [0.92,1.07]  L2 1.028 [1.00,1.05]  L3 0.995 [0.91,1.08]  L4 --  L5 --
+  d n=4096  uniform  L1 0.978 [0.91,1.02]  L2 0.973 [0.88,1.02]  L3 1.001 [0.94,1.05]  L4 --  L5 --
+  d n=8192  normal   L1 1.037 [1.01,1.08]  L2 1.031 [0.97,1.07]  L3 1.031 [0.98,1.09]  L4 --  L5 --
+  d n=8192  uniform  L1 1.007 [0.98,1.06]  L2 1.017 [0.99,1.06]  L3 0.990 [0.95,1.03]  L4 --  L5 --
+  f n=4096  normal   L1 1.025 [0.95,1.14]  L2 1.041 [1.01,1.07]  L3 1.033 [0.97,1.07]  L4 --  L5 --
+  f n=4096  uniform  L1 0.991 [0.94,1.06]  L2 1.045 [1.00,1.14]  L3 1.014 [0.96,1.08]  L4 --  L5 --
+  f n=8192  normal   L1 1.017 [0.98,1.04]  L2 0.999 [0.97,1.03]  L3 0.983 [0.97,1.00]  L4 --  L5 --
+  f n=8192  uniform  L1 1.003 [0.99,1.03]  L2 1.039 [0.98,1.20]  L3 1.015 [0.97,1.04]  L4 --  L5 --
+  overall: L1 1.006 [0.91,1.14] (n=36)  L2 1.021 [0.88,1.20] (n=36)  L3 1.008 [0.91,1.09] (n=36)
+  bench_fmm_acc262       f32 error / classical: L1 0.73  L2 0.79  L3 1.17
+  bench_fmm_var_a260p    f32 error / classical: L1 0.74  L2 0.82  L3 1.18
+== deep recursion n=1024 (a260p / accurate_262) ==
+  d n=1024  normal   L1 1.018 [0.91,1.12]  L2 0.952 [0.87,1.03]  L3 1.029 [0.99,1.06]  L4 0.959 [0.87,1.06]  L5 0.976 [0.87,1.06]
+  d n=1024  uniform  L1 1.033 [0.98,1.09]  L2 1.000 [0.94,1.09]  L3 0.966 [0.87,1.06]  L4 0.968 [0.90,1.03]  L5 0.953 [0.90,0.99]
+  f n=1024  normal   L1 1.029 [0.97,1.09]  L2 0.999 [0.95,1.06]  L3 0.969 [0.89,1.02]  L4 0.956 [0.89,1.02]  L5 0.912 [0.89,0.95]
+  f n=1024  uniform  L1 1.002 [0.93,1.08]  L2 1.006 [0.87,1.17]  L3 1.031 [0.81,1.21]  L4 0.971 [0.87,1.09]  L5 0.969 [0.90,1.01]
+  overall: L1 1.021 [0.91,1.12] (n=20)  L2 0.989 [0.87,1.17] (n=20)  L3 0.999 [0.81,1.21] (n=20)  L4 0.964 [0.87,1.09] (n=20)  L5 0.953 [0.8
+  bench_fmm_acc262       f32 error / classical: L1 0.79  L2 0.97  L3 1.67  L4 3.75  L5 9.79
+  bench_fmm_var_a260p    f32 error / classical: L1 0.80  L2 0.96  L3 1.67  L4 3.61  L5 9.20
+
+== speed of the sign-normalized set a260n, identical errors to a260p (16 of 16 pairs), five alternating rounds, idle machine ==
+  d 4096  dps48                  best 0.140 0.139 ratio 0.993  mean ratio 0.996
+  d 4096  plan=D48/G6            best 0.170 0.176 ratio 1.035  mean ratio 1.033
+  d 8192  dps48                  best 1.054 1.054 ratio 1.000  mean ratio 1.002
+  d 8192  plan=D48+4/D48/G6      best 0.809 0.807 ratio 0.998  mean ratio 0.998
+  f 4096  dps48                  best 0.042 0.044 ratio 1.048  mean ratio 1.009
+  f 4096  plan=D48/G6            best 0.037 0.037 ratio 1.000  mean ratio 1.000
+  f 8192  dps48                  best 0.271 0.270 ratio 0.996  mean ratio 0.996
+  f 8192  plan=D48+4/D48/G6      best 0.236 0.236 ratio 1.000  mean ratio 0.997

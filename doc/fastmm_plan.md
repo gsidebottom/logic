@@ -1341,4 +1341,11 @@ and every growth factor unchanged.  Rounding model: L + R 5.74 to 5.94, worst ou
 programs score 7.52 to 8.50, none reaches 7.22).  Measured against exact references on identical inputs, new / published:
 n = 4096 and 8192 (36 pairs) 0.995, 1.018, 1.005 at 1-3 levels; n = 1024 (20 pairs) 0.987, 1.001, 1.028, 1.033, 1.028 at 1-5
 levels.  So within noise on large sizes and about 3% worse at depth, as the Oct 26 rule predicts from the model.  Speed on an
-idle machine, five alternating rounds: mean ratio 0.994-1.008.  The library keeps the published programs.
+idle machine, five alternating rounds: mean ratio 0.994-1.008.
+A better 260 the same day (`slpopt search --maxops`, 28 distinct 76-operation programs, all three sides polished under their
+budgets, then signnorm48.py; gamma/slp/a260n_*, identical errors to the set measured, 16 of 16 pairs): modelled 7.12.  Measured
+geometric mean ratios to the published programs: n = 4096, 8192 (36 pairs) 1.005, 1.020, 1.007 at 1-3 levels, standard errors
+0.008; n = 1024 (20 pairs) 1.019, 0.987, 0.995, 0.961, 0.951 at 1-5 levels.  So 4-5% better at depth, within noise elsewhere
+except a possible 2% at 2 levels on large sizes (the first 260 showed 1.6% there too).  Speed: seven of eight settings within
+1% by mean, one, f64 n = 4096 D48/G6, at +3.3%, the noisiest setting in the earlier test.  results/a260p_summary_2026-10-31.txt.
+The library still uses the published programs; switching is Greg's call.

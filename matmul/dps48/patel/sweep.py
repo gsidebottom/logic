@@ -81,7 +81,7 @@ class Cand:
                 self.seed_prog[side] = None
                 self.cost[side] = 10 ** 6
             if FIXED_P:
-                self.cost["Pt"] = FIXED_P
+                self.cost["Pt"] = getattr(self, "fixed", 0) or FIXED_P  # per-point P cost: pool column fixedp
             return
         for s in "LR":
             src = f"{evaldir}/{self.tag}_{s}.slp"
@@ -185,6 +185,7 @@ def main():
         pre = r["prefix"]
         tag = os.path.basename(os.path.dirname(pre)) + "_" + os.path.basename(pre)
         cands.append(Cand(pre, r["floor"], tag, a.out))
+        cands[-1].fixed = int(r.get("fixedp") or 0)
     print(f"{len(cands)} candidates; staging inputs (quick L/R programs, P^T seeds)...", flush=True)
     with ThreadPoolExecutor(a.procs) as pool:
         list(pool.map(lambda c: c.stage_inputs(a.evaldir), cands))

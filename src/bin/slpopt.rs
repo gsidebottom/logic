@@ -11,7 +11,7 @@
 //!   slpopt model NAME PREFIX [NAME PREFIX ...]     score PREFIX_{L,R,P}.slp (the Python table)
 //!   slpopt dagmodel NAME PREFIX [...]              the same through the DAG representation
 //!   slpopt search --scheme PREFIX --matrix L|R|P --out FILE.slp [--init FILE.slp]
-//!                 [--fixed PREFIX] [--steps N] [--restarts R] [--seed S] [--threads T]
+//!                 [--fixed PREFIX] [--steps N] [--restarts R] [--seed S] [--threads T] [--maxops N]
 //!     simulated annealing over programs of one matrix, the other two matrices' programs fixed
 //!     (PREFIX_{X}.slp of --fixed, default --scheme), objective the model's worst output error
 use rayon::prelude::*;
@@ -768,6 +768,51 @@ impl Dag {
         c
     }
 
+    /// Parsing folds each t := x/2 into its uses, so one scaling becomes a node per use and a
+    /// coefficient per output: merge equal scalings back into one node, as the program wrote them.
+    fn merge_scales(&mut self) {
+        self.compact();
+        let mut seen: HashMap<(usize, u64), usize> = HashMap::new();
+        let mut map: Vec<usize> = (0..self.nodes.len()).collect();
+        for n in self.nin..self.nodes.len() {
+            match self.nodes[n] {
+                Node::In(_) => {}
+                Node::Add { a, sa, b, sb } => self.nodes[n] = Node::Add { a: map[a], sa, b: map[b], sb },
+                Node::Scale { a, c } => {
+                    let a2 = map[a];
+                    self.nodes[n] = Node::Scale { a: a2, c };
+                    map[n] = *seen.entry((a2, c.to_bits())).or_insert(n);
+                }
+            }
+        }
+        for o in &mut self.outs {
+            o.0 = map[o.0];
+        }
+        for j in 0..self.outs.len() {
+            let (node, coef) = self.outs[j];
+            if coef.abs() != 1.0 {
+                let key = (node, coef.abs().to_bits());
+                let s = match seen.get(&key) {
+                    Some(&s) => s,
+                    None => {
+                        let s = self.push(Node::Scale { a: node, c: coef.abs() });
+                        seen.insert(key, s);
+                        s
+                    }
+                };
+                self.outs[j] = (s, coef.signum());
+            }
+        }
+        self.compact();
+    }
+
+    /// Operations in PLinOpt's count: live additions and distinct scalings
+    fn ops(&self) -> usize {
+        let mut d = self.clone();
+        d.merge_scales();
+        d.nodes.len() - d.nin
+    }
+
     /// Drop unreachable nodes, renumber in topological order (inputs first)
     fn compact(&mut self) {
         let order = self.order();
@@ -1283,7 +1328,7 @@ fn reaches(d: &Dag, from: usize, to: usize) -> bool {
 
 /// Simulated annealing from a start; returns the best DAG, its (objective, worst) and the
 /// move statistics (proposed, accepted, improved the best) per move kind
-fn anneal(start: &Dag, fixed: &Fixed, rows: &[Vec<f64>], check: bool, steps: usize, seed: u64, t0: f64, t1: f64) -> (Dag, (f64, f64), [[usize; 3]; 5]) {
+fn anneal(start: &Dag, fixed: &Fixed, rows: &[Vec<f64>], check: bool, steps: usize, seed: u64, t0: f64, t1: f64, maxops: usize) -> (Dag, (f64, f64), [[usize; 3]; 5]) {
     let mut rng = Rng::new(seed);
     let mut cur = start.clone();
     cur.compact();
@@ -1295,6 +1340,9 @@ fn anneal(start: &Dag, fixed: &Fixed, rows: &[Vec<f64>], check: bool, steps: usi
         let t = t0 * (t1 / t0).powf(step as f64 / steps.max(1) as f64);
         let Some((kind, cand)) = propose(&cur, fixed, &mut rng) else { continue };
         stats[kind][0] += 1;
+        if cand.ops() > maxops {
+            continue;
+        }
         let f = objective(fixed, &cand);
         if f.0 <= cur_f.0 || rng.unit() < ((cur_f.0 - f.0) / t).exp() {
             if check {
@@ -1645,6 +1693,9 @@ fn main() {
                 }
             };
             let check = args.iter().any(|a| a == "--check");
+            // --maxops N: reject any move that takes the program above N operations
+            let maxops: usize = arg(&args, "--maxops").map(|s| s.parse().unwrap()).unwrap_or(usize::MAX);
+            eprintln!("# start: {} operations, budget {}", start.ops(), if maxops == usize::MAX { "none".to_string() } else { maxops.to_string() });
             if let Err(e) = check_forms(&start, &rows) {
                 panic!("the start does not compute the matrix: {e}");
             }
@@ -1654,7 +1705,7 @@ fn main() {
             let t1 = 0.0002 * w0;
             let results: Vec<(Dag, (f64, f64), [[usize; 3]; 5])> = (0..restarts)
                 .into_par_iter()
-                .map(|k| anneal(&start, &fixed, &rows, check, steps, seed.wrapping_mul(1000).wrapping_add(k as u64), t0, t1))
+                .map(|k| anneal(&start, &fixed, &rows, check, steps, seed.wrapping_mul(1000).wrapping_add(k as u64), t0, t1, maxops))
                 .collect();
             for (k, (_, (f, w), st)) in results.iter().enumerate() {
                 let s: Vec<String> = MOVES.iter().zip(st).map(|(m, c)| format!("{m} {}/{}/{}", c[0], c[1], c[2])).collect();
@@ -1664,7 +1715,11 @@ fn main() {
             if let Err(e) = check_forms(&best, &rows) {
                 panic!("the result does not compute the matrix: {e}");
             }
-            eprintln!("# best: worst {wb:.4} (objective {fb:.4}), {} nodes", best.nodes.len());
+            eprintln!("# best: worst {wb:.4} (objective {fb:.4}), {} nodes, {} operations", best.nodes.len(), best.ops());
+            let mut best = best;
+            if maxops != usize::MAX {
+                best.merge_scales();
+            }
             std::fs::write(&out, best.to_slp()).unwrap();
             // check the written program reads back to the same error
             let back = Dag::parse(&out, nin);

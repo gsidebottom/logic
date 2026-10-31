@@ -2556,8 +2556,16 @@ the two source papers for this track):
   Joshua's 114.  A 200 needs 111.  Closed.  (8) 260: lns48 seeded from accurate_262's published programs takes R from
   78 to 76 (<66, 10>, 5 of 12 seeds), so that scheme costs 72 + 76 + 112 = 260, verified by SLPchecker, slp48check and
   MMchecker; cand48/accurate_260_R.slp.  Same matrices, same growth factors.  Costs from naive seeds are upper bounds
-  only: from a naive start R stalled at 93.  The proposal of a side-cost table (each side depends on two modes, so a
-  table over line selections prices every triple) is not started.
+  only: from a naive start R stalled at 93.  (9) The side-cost table (`table48.py`, `table48b.py`): each side depends on
+  two modes, so with the P classes of cost <= 90 and the 116 line-fixed bases B, 1,160 (class, B) pairs reduce to 1,889
+  distinct L and R matrices, priced at 10 s, the best 239 again at 60 s.  Best triple 205 = 59 + 57 + 89, no L or R below 57,
+  and min L + min R + P >= 202 in every class even mixing bases, so no 200 among fully determined B.  The freedom left in
+  the middle mode is what gives the 201s, so B was then annealed at the four cheap classes outside the record's
+  (`run_yclass.sh`, 180 points, P charged at its class cost): 202 = 55 + 59 + 88 in two classes and 56 + 58 + 88 in a third,
+  L + R 114 again, as on Oct 23.  201 stands.  (10) The 260 improved: `slpopt search --maxops` (a new budget; the DAG now
+  merges scalings so its count agrees with PLinOpt's), 72 more seeds, 28 distinct 76-operation programs, each polished
+  with L and P under budget: modelled 7.12 against the published 7.22 (the published programs polished at their own
+  counts reach 7.04).  After signnorm48.py, 260 in Patel's model too.  cand48/accurate_260n_{L,R,P}.slp.
 
 ## 1. The thesis — why native representation should win
 

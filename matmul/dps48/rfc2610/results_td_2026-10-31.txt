@@ -509,3 +509,51 @@ s8<67,9>                            6.24  3.09   7.86  2.83    15.0  0.80     23
 == deep P, the fifth class alone, 12 seeds x 300 s ==
 class            canonical  nnz  non-unit   P costs
 c10_n264_4        10      264    24     [88, 88, 89, 89, 89, 89, 89, 89, 89, 89, 90, 90]
+
+== side-cost table, 2026-10-31: table48.py (10 s), then table48b.py (matrices at <= 62 repriced at 60 s) ==
+10 classes, 116 candidate bases
+  class c10_n248_0 P 89: built, 7 s
+  class c10_n260_1 P 88: built, 14 s
+1160 (class, B) pairs, 1027 distinct L, 862 distinct R, 1889 matrices to price at 10.0 s
+239 matrices to reprice
+best triples:
+  205  L 59 R 57 P 89  canonical L,R 8,6  c10_n248_0 B46
+  206  L 58 R 60 P 88  canonical L,R 10,4  c10_n260_2 B88
+  206  L 59 R 58 P 89  canonical L,R 8,6  c10_n248_0 B52
+  208  L 60 R 58 P 90  canonical L,R 4,10  c10_n272_7 B56
+  208  L 61 R 58 P 89  canonical L,R 2,10  c10_n248_0 B66
+  209  L 57 R 63 P 89  canonical L,R 6,8  c10_n248_0 B104
+  209  L 57 R 64 P 88  canonical L,R 10,4  c10_n264_4 B103
+  209  L 59 R 60 P 90  canonical L,R 6,4  c9_n272_15 B43
+  209  L 59 R 60 P 90  canonical L,R 6,4  c9_n272_15 B70
+  209  L 60 R 60 P 89  canonical L,R 4,4  c10_n260_3 B88
+  209  L 60 R 61 P 88  canonical L,R 4,4  c10_n264_4 B98
+  209  L 61 R 60 P 88  canonical L,R 4,4  c10_n264_4 B97
+  209  L 62 R 59 P 88  canonical L,R 2,5  c10_n264_4 B62
+  209  L 63 R 57 P 89  canonical L,R 10,10  c10_n248_0 B56
+per class, best total, best L alone, best R alone:
+  c10_n248_0     P 89: total 205, min L 57, min R 57, min L + min R + P 203
+  c10_n260_1     P 88: total 210, min L 60, min R 57, min L + min R + P 205
+  c10_n260_2     P 88: total 206, min L 57, min R 58, min L + min R + P 203
+  c10_n260_3     P 89: total 209, min L 60, min R 58, min L + min R + P 207
+  c10_n264_4     P 88: total 209, min L 57, min R 57, min L + min R + P 202
+  c10_n272_7     P 90: total 208, min L 57, min R 57, min L + min R + P 204
+  c9_n268_10     P 90: total 211, min L 58, min R 57, min L + min R + P 205
+  c9_n268_12     P 90: total 213, min L 57, min R 58, min L + min R + P 205
+  c9_n272_15     P 90: total 209, min L 58, min R 57, min L + min R + P 205
+  c8_n244_23     P 90: total 211, min L 57, min R 60, min L + min R + P 207
+# done 1201 s
+
+== run_yclass.sh: annealed middle basis at four P classes, P charged at the class cost ==
+180 distinct points; floors [154, 155, 156, 157, 158, 159] by class {'c10_n264_4': 135, 'c10_n260_2': 135, 'c10_n260_1': 135, 'c10_n260_3': 
+stage C (300.0s x 2 seeds) leaderboard:
+   202  L  59  R  55  P  88  floor 159  y_c10_n260_1_l0.1_cand001
+   202  L  59  R  55  P  88  floor 159  y_c10_n260_1_l0.1_cand002
+   202  L  59  R  55  P  88  floor 159  y_c10_n260_1_l0.1_cand003
+   202  L  55  R  59  P  88  floor 159  y_c10_n260_2_l0.1_cand012
+   202  L  55  R  59  P  88  floor 159  y_c10_n260_2_l0.1_cand013
+   202  L  56  R  58  P  88  floor 154  y_c10_n264_4_l0.1_cand001
+done
+
+== polish76.py: 28 distinct 76-operation R programs from 84 seeds; each polished with L and P under budget ==
+best s79: model 7.16 raw with L, P published, 7.12 polished; published 7.22; first 260 7.59; published polished at its own counts 7.04

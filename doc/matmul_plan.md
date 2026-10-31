@@ -2511,7 +2511,11 @@ the two source papers for this track):
   48 products with (4) on 202), not the 55 + 57 + 89 file in PLinOpt, and its 56 + 56 + 89 is that file's
   count.  Canonical rows are no reason to change the library's scheme: amp 10.44
   against accurate_262's 2.83, and accurate_262 itself has 0 and 8.  Line closed; a heuristic result
-  over 2 of the 65,536 product subsets, not a lower bound.  Open: his Section 4 question on the Klein four-subgroup; the order-4 route closed Oct 24 (above).
+  over 2 of the 65,536 product subsets, not a lower bound.  V-only search with P fixed at 89 (orbit48 --factors Y + sweep FIXED_P=89, 180 points, 10.3 thread hours): L + R
+  stops at 112 at 38 points (55 + 57, 56 + 56, 57 + 55), controls correct; no 200.  Section 4 tested (symtest.py,
+  positive control 55/55 at the 203 point): g2, g13, g14 keep 8, 5, 5 of the P^T program's 19 internal forms
+  (random at most 2) and 0 of the P program's 44; best of all 63 elements 11/19, so partly symmetric, far from
+  invariant.  lam01c0_201's own L and R are related on 47 of 54 forms.  Line closed.
 
 ## 1. The thesis — why native representation should win
 

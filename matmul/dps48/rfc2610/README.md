@@ -40,3 +40,21 @@ Six product rescalings, all exact: the 16 half-carrying products give 226, 226, 
 204 three times (its halved signal is reused four times, so the halving stays); control P 89.
 Heuristic over 2 of the 65,536 subsets, not a lower bound.  His point maps to our published 201 with
 all 48 product scalars exactly +-1 (`derive.py`), so his footnote's sign change is exact.
+
+**V-only search with P fixed at 89** (`run_vonly.sh`, 10.3 thread hours): 180 points from four starts, P unchanged
+on all of them.  L + R stops at 112, at 38 points, as 55 + 57, 56 + 56 and 57 + 55; a 200 would need 111.
+Controls: 112, 112, 112 and 114 on the four known points.
+
+**The stabilizer on the 89-operation P program** (`symtest.py`; exact; every element gated on A P = P M).  A form
+counts as kept if the element sends it to a form of the same program.
+
+| | P program, 44 internal forms | P^T program, 19 internal forms | outputs onto outputs |
+|---|---|---|---|
+| g2, g13, g14 | 0, 0, 0 | 8, 5, 5 | 8 of 16 each |
+| best of all 63 elements | 8 | 11 | 16 of 16 |
+| 200 random signed permutations, max | 6 | 2 | |
+
+The transposed program is the cleaner test, with one operation per line; the direct one has multi-term lines
+whose partial sums are not compared.  It is partly symmetric, far from invariant.  Positive control: at the 203
+point R's 55 forms map onto L's completely, random at most 2.  Our own L and R at lam01c0_201, found by
+independent runs, are related on 47 of 54 forms.

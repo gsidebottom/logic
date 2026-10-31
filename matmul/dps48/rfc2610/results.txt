@@ -131,3 +131,25 @@ exact matches of lam01c0_201 with: (4) on 202 48 /48; published 202 0 /48; publi
 best over S3 and forms of (4) on 202: (48, 'id', 'M^-T')
    lam01c0_201: canonical [8, 8, 10]
    (4) on 202: canonical [8, 8, 10]
+
+# run_vonly.sh: V-only search with P fixed at 89 (best L + R per point over all stages)
+runs per stage: {'A': 360, 'B': 60, 'C': 32} ; thread hours 10.3; points 180
+L + R: [(112, 38), (113, 36), (114, 91), (115, 11), (116, 2), (118, 2)]
+(L, R) at L + R = 112: [((55, 57), 16), ((56, 56), 12), ((57, 55), 10)]
+best L anywhere 55 ; best R anywhere 55
+controls: {'cand48_lam01c0_201': {'L': 56, 'R': 56}, 'cand48_p005_201n': {'L': 55, 'R': 57}, 'cand48_p010_201': {'L': 55, 'R': 57}, 'files_4x4x4_48_203': {'L': 57, 'R': 57}}
+stage C points: [('cand48_lam01c0_201', 56, 56), ('cand48_p005_201n', 55, 57), ('cand48_p010_201', 55, 57), ('y_j203_l0.3_cand000', 57, 55), ('y_j203_l0.3_cand001', 55, 57), ('y_j203_l0.3_cand003', 57, 55), ('y_j203_l0.3_cand006', 57, 55), ('y_j203_l0.3_cand012', 57, 55)]
+
+# symtest.py: the stabilizer on the 89-operation P program
+P program: 60 distinct forms, 44 internal, 16 outputs; P^T program: 67 distinct forms, 19 internal
+stabilizer of lam01c0_201 keeping the P slot: 64 elements
+element                 outputs onto outputs  P internal forms kept  P^T internal forms kept
+  pi2   (his Klein group)    8 of 16              0 of 44                8 of 19
+  pi3   (his Klein group)    8 of 16              0 of 44                5 of 19
+  pi4   (his Klein group)    8 of 16              0 of 44                5 of 19
+all 63 non-identity elements: best P 8/44, best P^T 11/19; outputs onto outputs at most 16/16
+  by slot map and order, best (P, P^T): [('cyc2+rev', 2, 8, 11, 8), ('cyc2+rev', 4, 2, 5, 24), ('id', 2, 2, 8, 19), ('id', 4, 2, 3, 12)]
+baseline, 200 random signed permutations: P mean 0.55 max 6; P^T mean 0.17 max 2
+== positive control: R's program onto L's ==
+203 point (should be nearly all): 55 forms of R, 55 of L, 32 elements carrying R onto L; best overlap 55/55; random signed permutations max 2
+lam01c0_201 (our two programs): 54 forms of R, 54 of L, 32 elements carrying R onto L; best overlap 47/54; random signed permutations max 2

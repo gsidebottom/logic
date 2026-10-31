@@ -1334,3 +1334,11 @@ Which operations matter depends on the implementation:
   at 13824 f64.  Later the same day: rectangular problems through both libraries' APIs, priced
   by shape estimates until calibrated (within 2% of measurements), and the Rust port at parity
   with the C library (plans, predicted times and results identical on 26 cases).
+
+accurate_260 (2026-10-31, `campaign_var.sh a260`, results/a260_summary_2026-10-31.txt): lns48 seeded from accurate_262's
+published programs took R from <67, 11> to <66, 10>, so the scheme costs 72 + 76 + 112 = 260 with byte-identical matrices
+and every growth factor unchanged.  Rounding model: L + R 5.74 to 5.94, worst output 7.22 to 7.59 (the five 76-operation
+programs score 7.52 to 8.50, none reaches 7.22).  Measured against exact references on identical inputs, new / published:
+n = 4096 and 8192 (36 pairs) 0.995, 1.018, 1.005 at 1-3 levels; n = 1024 (20 pairs) 0.987, 1.001, 1.028, 1.033, 1.028 at 1-5
+levels.  So within noise on large sizes and about 3% worse at depth, as the Oct 26 rule predicts from the model.  Speed on an
+idle machine, five alternating rounds: mean ratio 0.994-1.008.  The library keeps the published programs.

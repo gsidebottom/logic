@@ -2523,6 +2523,41 @@ the two source papers for this track):
   (16³ equations read directly), and each printed use, (2), (9), (10), (11), is reproduced by exactly one of them,
   48 of 48 products against at most 1, only with the isotropy acting after the map; (10)'s triple is (9)'s rotated.
   ∘2 and ∘4 are the other two, [Pᵀ K; L; K Rᵀ] and [Pᵀ; R K; Lᵀ]; which is which is his to say.
+  2026-10-31: his next reply asked whether circuits can be invariant under the stabilizer, proposed an isotropy
+  expressing it by signed permutations, and pointed to 10,10,728, plus his Oct 23 tgz of 160 decompositions.  All
+  in `rfc2610/`, raw output `results_td_2026-10-31.txt`.  (1) The tgz was never swept: lns48 gives 10,10,728 207 =
+  57 + 57 + 93, 8,8,688 205, 6,6,656 209, 4,4,624 213 (controls 201, and 203 reached from the 204 point).  728 is
+  256 + 256 + 216 against 760's 256 + 256 + 248: the same L and R, 32 nonzeros saved in P at the price of 4 canonical
+  columns (6 against 10), P 93 against 89.  That is his mystery; nonzeros do not predict cost (624 is the worst).
+  (2) Corollary of DPS's uniqueness of the gamma_2 minimum modulo orthogonal isotropies: a stabilizer element sends a
+  minimizer to a minimizer, so at the minimum the whole stabilizer is orthogonal.  Exact: 64 of 64 at accurate and
+  accurate_262, of which 4 and 8 are signed permutations in all three modes.  So the 'coincidence' he asks about is
+  forced.  The group average of X^T X is the minimum with no search at 204 and at 728 (154.5097 in 0 steps), and needs
+  a short descent at the 8,8 points (159.58, then 12 steps): two invariant forms per mode (`gamma_fixed.py`).
+  (3) Geometry at the minimum (`geometry.py`, `frames.py`): the commutant splits each R^4 into two invariant planes,
+  all [1,1,1] vectors at 45 degrees to both; the 8 primal lines of a mode are two mutually unbiased orthonormal bases,
+  the 8 dual lines two others, all among the six F4 frames; the other two frames are exactly where the 32 elements
+  with trivial slot map act by signed permutations.  8 frame triples do that, 24 exact dyadic points with the three
+  roles: gamma_2 minimal, floor 176, no canonical vectors at all (Oct 24's floor, now explained), gamma_inf,2 22.63
+  to 45.25, best cost 305 against 277 for accurate_262 from the same naive start.  All 64 need a mixed frame in the
+  middle mode, entries 1/2 and 1/sqrt2, so a point over Q(sqrt2), gamma_inf,2 45.25, amp 3.46 (`td/quartic.py`).
+  (4) Invariance (`invcirc.py`): an element can only keep a program of the same cost if it acts by signed
+  permutations on that side's two modes.  accurate_262's L is invariant under 7 elements and its P under 15, every
+  internal form kept, R is not; accurate's L, R and P all are; 204's L and R are images under g51, 17 of 17, its P is
+  not; at lam01c0_201 one element qualifies for P (11 of 19 kept), none for L or R.
+  (5) Exact canonical counts over the whole orbit (`canon_enum.py`): a canonical row needs its [1,1,1] line in a
+  basis, so a choice per mode is a finite pair of line sets.  Side maxima 10, 10, 10, joint maximum 30, floor >= 146
+  anywhere in the orbit; (10,10,6) has 96 selection triples, his 96 files.  Every known point, both 201s included,
+  is a line point (`unit_lines.py`): modes X and Z fixed by lines, the middle mode keeping 0, 1 or 4 free parameters.
+  (6) P map (`pside.py`): 47 patterns with >= 8 canonical columns, 9 at 10, 2 seeds x 60 s, then the best 5 at 12 seeds
+  x 300 s: three classes reach 88 (two with 260 nonzeros, one with 264), the record class 89, nothing 87.  (7) V-lines (`vlines.py`): all 116
+  distinct line-fixed V at the record P, which include the 6,6 canonical points the V-only pool never sampled: first
+  build 209, a scaling bug the control caught (entries 2 and 1/4); rerun 204 = 58 + 57 + 89, control L + R 115 against
+  Joshua's 114.  A 200 needs 111.  Closed.  (8) 260: lns48 seeded from accurate_262's published programs takes R from
+  78 to 76 (<66, 10>, 5 of 12 seeds), so that scheme costs 72 + 76 + 112 = 260, verified by SLPchecker, slp48check and
+  MMchecker; cand48/accurate_260_R.slp.  Same matrices, same growth factors.  Costs from naive seeds are upper bounds
+  only: from a naive start R stalled at 93.  The proposal of a side-cost table (each side depends on two modes, so a
+  table over line selections prices every triple) is not started.
 
 ## 1. The thesis — why native representation should win
 

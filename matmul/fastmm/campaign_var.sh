@@ -44,7 +44,8 @@ export -f group
 for t in f d; do for dist in uniform normal; do for seed in 1 2 3 4 5; do echo "$t $dist $seed"; done; done; done | xargs -P 8 -L 1 bash -c 'group "$@"' _
 { echo "# deep recursion $NAME vs accurate_262 $(date '+%Y-%m-%d %H:%M')"; cat $SP/deep_parts_$NAME/*.log; echo "# done $(date '+%H:%M')"; } > $SP/deep_$NAME.log
 
-# speed: alternating rounds of the library's plans
+# speed: alternating rounds of the library's plans (NO_SPEED=1 skips them, for a busy machine)
+if [ -n "$NO_SPEED" ]; then echo "# campaign_var $NAME done, no speed $(date '+%H:%M')"; exit 0; fi
 unset FMM_EXACT FMM_REFCACHE
 {
 echo "# speed $NAME vs accurate_262, alternating rounds, $(date '+%H:%M')"

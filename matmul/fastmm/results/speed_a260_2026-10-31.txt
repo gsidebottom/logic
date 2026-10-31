@@ -1,0 +1,122 @@
+# speed a260 vs accurate_262, alternating rounds, 12:42, load 4.86 15.40 29.74
+## speed bench_fmm_acc262 round 1 f 4096
+dps48      n=4096   f32  min    0.044 s  med    0.046 s   2979.2 GFLOP/s(2mkn)  speedup 0.000  relerr 3.19e-06  split L 0.003 R 0.003 gemm 0.043 P 0.002  plan D48/G  pred 0.040 s (-13.0%)  perr 1.88e-06
+plan=D48/G6 n=4096   f32  min    0.038 s  med    0.039 s   3520.7 GFLOP/s(2mkn)  speedup 0.000  relerr 3.19e-06  split L 0.002 R 0.002 gemm 0.032 P 0.002  plan D48/G6  pred 0.035 s (-10.1%)  perr 1.88e-06
+## speed bench_fmm_acc262 round 1 f 8192
+dps48      n=8192   f32  min    0.273 s  med    0.276 s   3978.9 GFLOP/s(2mkn)  speedup 0.000  relerr 4.96e-06  split L 0.009 R 0.009 gemm 0.250 P 0.008  plan D48/G  pred 0.255 s (-7.6%)  perr 2.65e-06
+plan=D48+4/D48/G6 n=8192   f32  min    0.237 s  med    0.238 s   4613.0 GFLOP/s(2mkn)  speedup 0.000  relerr 4.91e-06  split L 0.009 R 0.009 gemm 0.213 P 0.008  plan D48+4/D48/G6  pred 0.234 s (-1.8%)  perr 3.59e-06
+## speed bench_fmm_acc262 round 1 d 4096
+dps48      n=4096   f64  min    0.141 s  med    0.144 s    954.3 GFLOP/s(2mkn)  speedup 0.000  relerr 6.50e-15  split L 0.005 R 0.005 gemm 0.131 P 0.004  plan D48/G  pred 0.129 s (-10.5%)  perr 3.68e-15
+plan=D48/G6 n=4096   f64  min    0.174 s  med    0.184 s    746.6 GFLOP/s(2mkn)  speedup 0.000  relerr 6.50e-15  split L 0.005 R 0.005 gemm 0.175 P 0.004  plan D48/G6  pred 0.123 s (-33.0%)  perr 3.68e-15
+## speed bench_fmm_acc262 round 1 d 8192
+dps48      n=8192   f64  min    1.078 s  med    1.079 s   1019.4 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.020 gemm 1.024 P 0.016  plan D48/G  pred 1.022 s (-5.2%)  perr 5.21e-15
+plan=D48+4/D48/G6 n=8192   f64  min    0.815 s  med    0.822 s   1337.9 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.020 gemm 0.766 P 0.016  plan D48+4/D48/G6  pred 0.797 s (-3.0%)  perr 5.75e-15
+## speed bench_fmm_var_a260 round 1 f 4096
+dps48      n=4096   f32  min    0.044 s  med    0.045 s   3079.3 GFLOP/s(2mkn)  speedup 0.000  relerr 3.39e-06  split L 0.002 R 0.002 gemm 0.039 P 0.002  plan D48/G
+plan=D48/G6 n=4096   f32  min    0.037 s  med    0.038 s   3646.1 GFLOP/s(2mkn)  speedup 0.000  relerr 3.39e-06  split L 0.002 R 0.002 gemm 0.031 P 0.002  plan D48/G6
+## speed bench_fmm_var_a260 round 1 f 8192
+dps48      n=8192   f32  min    0.277 s  med    0.282 s   3903.6 GFLOP/s(2mkn)  speedup 0.000  relerr 4.91e-06  split L 0.009 R 0.009 gemm 0.254 P 0.008  plan D48/G
+plan=D48+4/D48/G6 n=8192   f32  min    0.239 s  med    0.239 s   4594.8 GFLOP/s(2mkn)  speedup 0.000  relerr 5.23e-06  split L 0.009 R 0.009 gemm 0.213 P 0.008  plan D48+4/D48/G6
+## speed bench_fmm_var_a260 round 1 d 4096
+dps48      n=4096   f64  min    0.143 s  med    0.146 s    944.5 GFLOP/s(2mkn)  speedup 0.000  relerr 6.38e-15  split L 0.005 R 0.005 gemm 0.133 P 0.004  plan D48/G
+plan=D48/G6 n=4096   f64  min    0.167 s  med    0.188 s    731.7 GFLOP/s(2mkn)  speedup 0.000  relerr 6.38e-15  split L 0.005 R 0.005 gemm 0.176 P 0.004  plan D48/G6
+## speed bench_fmm_var_a260 round 1 d 8192
+dps48      n=8192   f64  min    1.061 s  med    1.082 s   1016.5 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.019 gemm 1.028 P 0.016  plan D48/G
+plan=D48+4/D48/G6 n=8192   f64  min    0.822 s  med    0.823 s   1336.3 GFLOP/s(2mkn)  speedup 0.000  relerr 1.03e-14  split L 0.020 R 0.019 gemm 0.768 P 0.016  plan D48+4/D48/G6
+## speed bench_fmm_acc262 round 2 f 4096
+dps48      n=4096   f32  min    0.044 s  med    0.044 s   3147.2 GFLOP/s(2mkn)  speedup 0.000  relerr 3.19e-06  split L 0.002 R 0.002 gemm 0.037 P 0.002  plan D48/G  pred 0.040 s (-8.1%)  perr 1.88e-06
+plan=D48/G6 n=4096   f32  min    0.037 s  med    0.037 s   3685.5 GFLOP/s(2mkn)  speedup 0.000  relerr 3.19e-06  split L 0.002 R 0.002 gemm 0.031 P 0.002  plan D48/G6  pred 0.035 s (-5.9%)  perr 1.88e-06
+## speed bench_fmm_acc262 round 2 f 8192
+dps48      n=8192   f32  min    0.274 s  med    0.286 s   3846.2 GFLOP/s(2mkn)  speedup 0.000  relerr 4.96e-06  split L 0.009 R 0.009 gemm 0.260 P 0.008  plan D48/G  pred 0.255 s (-10.7%)  perr 2.65e-06
+plan=D48+4/D48/G6 n=8192   f32  min    0.237 s  med    0.239 s   4604.4 GFLOP/s(2mkn)  speedup 0.000  relerr 4.91e-06  split L 0.009 R 0.009 gemm 0.213 P 0.008  plan D48+4/D48/G6  pred 0.234 s (-2.0%)  perr 3.59e-06
+## speed bench_fmm_acc262 round 2 d 4096
+dps48      n=4096   f64  min    0.142 s  med    0.144 s    954.1 GFLOP/s(2mkn)  speedup 0.000  relerr 6.50e-15  split L 0.005 R 0.005 gemm 0.131 P 0.004  plan D48/G  pred 0.129 s (-10.5%)  perr 3.68e-15
+plan=D48/G6 n=4096   f64  min    0.178 s  med    0.190 s    725.2 GFLOP/s(2mkn)  speedup 0.000  relerr 6.50e-15  split L 0.005 R 0.005 gemm 0.179 P 0.004  plan D48/G6  pred 0.123 s (-34.9%)  perr 3.68e-15
+## speed bench_fmm_acc262 round 2 d 8192
+dps48      n=8192   f64  min    1.107 s  med    1.130 s    973.4 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.020 gemm 1.073 P 0.016  plan D48/G  pred 1.022 s (-9.5%)  perr 5.21e-15
+plan=D48+4/D48/G6 n=8192   f64  min    0.816 s  med    0.818 s   1344.0 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.020 gemm 0.764 P 0.015  plan D48+4/D48/G6  pred 0.797 s (-2.5%)  perr 5.75e-15
+## speed bench_fmm_var_a260 round 2 f 4096
+dps48      n=4096   f32  min    0.044 s  med    0.044 s   3108.5 GFLOP/s(2mkn)  speedup 0.000  relerr 3.39e-06  split L 0.002 R 0.002 gemm 0.039 P 0.002  plan D48/G
+plan=D48/G6 n=4096   f32  min    0.037 s  med    0.037 s   3671.4 GFLOP/s(2mkn)  speedup 0.000  relerr 3.39e-06  split L 0.002 R 0.002 gemm 0.031 P 0.002  plan D48/G6
+## speed bench_fmm_var_a260 round 2 f 8192
+dps48      n=8192   f32  min    0.272 s  med    0.277 s   3968.4 GFLOP/s(2mkn)  speedup 0.000  relerr 4.91e-06  split L 0.009 R 0.009 gemm 0.252 P 0.008  plan D48/G
+plan=D48+4/D48/G6 n=8192   f32  min    0.237 s  med    0.238 s   4616.1 GFLOP/s(2mkn)  speedup 0.000  relerr 5.23e-06  split L 0.009 R 0.009 gemm 0.213 P 0.008  plan D48+4/D48/G6
+## speed bench_fmm_var_a260 round 2 d 4096
+dps48      n=4096   f64  min    0.142 s  med    0.144 s    953.2 GFLOP/s(2mkn)  speedup 0.000  relerr 6.38e-15  split L 0.005 R 0.005 gemm 0.131 P 0.004  plan D48/G
+plan=D48/G6 n=4096   f64  min    0.181 s  med    0.186 s    738.2 GFLOP/s(2mkn)  speedup 0.000  relerr 6.38e-15  split L 0.005 R 0.005 gemm 0.177 P 0.004  plan D48/G6
+## speed bench_fmm_var_a260 round 2 d 8192
+dps48      n=8192   f64  min    1.067 s  med    1.076 s   1021.5 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.019 gemm 1.024 P 0.015  plan D48/G
+plan=D48+4/D48/G6 n=8192   f64  min    0.812 s  med    0.816 s   1348.0 GFLOP/s(2mkn)  speedup 0.000  relerr 1.03e-14  split L 0.020 R 0.019 gemm 0.763 P 0.016  plan D48+4/D48/G6
+## speed bench_fmm_acc262 round 3 f 4096
+dps48      n=4096   f32  min    0.044 s  med    0.044 s   3122.5 GFLOP/s(2mkn)  speedup 0.000  relerr 3.19e-06  split L 0.002 R 0.002 gemm 0.039 P 0.002  plan D48/G  pred 0.040 s (-8.8%)  perr 1.88e-06
+plan=D48/G6 n=4096   f32  min    0.037 s  med    0.038 s   3663.0 GFLOP/s(2mkn)  speedup 0.000  relerr 3.19e-06  split L 0.002 R 0.002 gemm 0.031 P 0.002  plan D48/G6  pred 0.035 s (-6.4%)  perr 1.88e-06
+## speed bench_fmm_acc262 round 3 f 8192
+dps48      n=8192   f32  min    0.276 s  med    0.277 s   3967.4 GFLOP/s(2mkn)  speedup 0.000  relerr 4.96e-06  split L 0.009 R 0.009 gemm 0.252 P 0.008  plan D48/G  pred 0.255 s (-7.9%)  perr 2.65e-06
+plan=D48+4/D48/G6 n=8192   f32  min    0.237 s  med    0.239 s   4599.6 GFLOP/s(2mkn)  speedup 0.000  relerr 4.91e-06  split L 0.009 R 0.009 gemm 0.213 P 0.008  plan D48+4/D48/G6  pred 0.234 s (-2.1%)  perr 3.59e-06
+## speed bench_fmm_acc262 round 3 d 4096
+dps48      n=4096   f64  min    0.141 s  med    0.144 s    956.6 GFLOP/s(2mkn)  speedup 0.000  relerr 6.50e-15  split L 0.005 R 0.005 gemm 0.131 P 0.004  plan D48/G  pred 0.129 s (-10.3%)  perr 3.68e-15
+plan=D48/G6 n=4096   f64  min    0.177 s  med    0.193 s    711.1 GFLOP/s(2mkn)  speedup 0.000  relerr 6.50e-15  split L 0.005 R 0.005 gemm 0.178 P 0.004  plan D48/G6  pred 0.123 s (-36.2%)  perr 3.68e-15
+## speed bench_fmm_acc262 round 3 d 8192
+dps48      n=8192   f64  min    1.058 s  med    1.067 s   1030.8 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.020 gemm 1.015 P 0.017  plan D48/G  pred 1.022 s (-4.1%)  perr 5.21e-15
+plan=D48+4/D48/G6 n=8192   f64  min    0.814 s  med    0.817 s   1346.6 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.020 gemm 0.762 P 0.016  plan D48+4/D48/G6  pred 0.797 s (-2.3%)  perr 5.75e-15
+## speed bench_fmm_var_a260 round 3 f 4096
+dps48      n=4096   f32  min    0.044 s  med    0.044 s   3121.1 GFLOP/s(2mkn)  speedup 0.000  relerr 3.39e-06  split L 0.002 R 0.004 gemm 0.042 P 0.002  plan D48/G
+plan=D48/G6 n=4096   f32  min    0.037 s  med    0.037 s   3687.4 GFLOP/s(2mkn)  speedup 0.000  relerr 3.39e-06  split L 0.002 R 0.002 gemm 0.031 P 0.002  plan D48/G6
+## speed bench_fmm_var_a260 round 3 f 8192
+dps48      n=8192   f32  min    0.273 s  med    0.277 s   3966.6 GFLOP/s(2mkn)  speedup 0.000  relerr 4.91e-06  split L 0.009 R 0.009 gemm 0.251 P 0.008  plan D48/G
+plan=D48+4/D48/G6 n=8192   f32  min    0.238 s  med    0.239 s   4593.4 GFLOP/s(2mkn)  speedup 0.000  relerr 5.23e-06  split L 0.009 R 0.010 gemm 0.213 P 0.008  plan D48+4/D48/G6
+## speed bench_fmm_var_a260 round 3 d 4096
+dps48      n=4096   f64  min    0.140 s  med    0.142 s    969.1 GFLOP/s(2mkn)  speedup 0.000  relerr 6.38e-15  split L 0.005 R 0.005 gemm 0.129 P 0.004  plan D48/G
+plan=D48/G6 n=4096   f64  min    0.177 s  med    0.183 s    751.2 GFLOP/s(2mkn)  speedup 0.000  relerr 6.38e-15  split L 0.005 R 0.005 gemm 0.171 P 0.004  plan D48/G6
+## speed bench_fmm_var_a260 round 3 d 8192
+dps48      n=8192   f64  min    1.088 s  med    1.108 s    992.0 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.019 gemm 1.056 P 0.016  plan D48/G
+plan=D48+4/D48/G6 n=8192   f64  min    0.813 s  med    0.814 s   1350.4 GFLOP/s(2mkn)  speedup 0.000  relerr 1.03e-14  split L 0.020 R 0.019 gemm 0.762 P 0.016  plan D48+4/D48/G6
+## speed bench_fmm_acc262 round 4 f 4096
+dps48      n=4096   f32  min    0.044 s  med    0.044 s   3107.0 GFLOP/s(2mkn)  speedup 0.000  relerr 3.19e-06  split L 0.002 R 0.002 gemm 0.038 P 0.002  plan D48/G  pred 0.040 s (-9.2%)  perr 1.88e-06
+plan=D48/G6 n=4096   f32  min    0.037 s  med    0.038 s   3621.2 GFLOP/s(2mkn)  speedup 0.000  relerr 3.19e-06  split L 0.002 R 0.002 gemm 0.031 P 0.002  plan D48/G6  pred 0.035 s (-7.5%)  perr 1.88e-06
+## speed bench_fmm_acc262 round 4 f 8192
+dps48      n=8192   f32  min    0.274 s  med    0.280 s   3927.0 GFLOP/s(2mkn)  speedup 0.000  relerr 4.96e-06  split L 0.009 R 0.009 gemm 0.253 P 0.008  plan D48/G  pred 0.255 s (-8.8%)  perr 2.65e-06
+plan=D48+4/D48/G6 n=8192   f32  min    0.237 s  med    0.238 s   4611.4 GFLOP/s(2mkn)  speedup 0.000  relerr 4.91e-06  split L 0.009 R 0.010 gemm 0.212 P 0.008  plan D48+4/D48/G6  pred 0.234 s (-1.8%)  perr 3.59e-06
+## speed bench_fmm_acc262 round 4 d 4096
+dps48      n=4096   f64  min    0.141 s  med    0.143 s    962.5 GFLOP/s(2mkn)  speedup 0.000  relerr 6.50e-15  split L 0.005 R 0.005 gemm 0.130 P 0.004  plan D48/G  pred 0.129 s (-9.7%)  perr 3.68e-15
+plan=D48/G6 n=4096   f64  min    0.182 s  med    0.193 s    711.2 GFLOP/s(2mkn)  speedup 0.000  relerr 6.50e-15  split L 0.005 R 0.005 gemm 0.183 P 0.004  plan D48/G6  pred 0.123 s (-36.1%)  perr 3.68e-15
+## speed bench_fmm_acc262 round 4 d 8192
+dps48      n=8192   f64  min    1.074 s  med    1.081 s   1017.6 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.020 gemm 1.025 P 0.016  plan D48/G  pred 1.022 s (-5.4%)  perr 5.21e-15
+plan=D48+4/D48/G6 n=8192   f64  min    0.815 s  med    0.816 s   1348.3 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.020 gemm 0.763 P 0.017  plan D48+4/D48/G6  pred 0.797 s (-2.2%)  perr 5.75e-15
+## speed bench_fmm_var_a260 round 4 f 4096
+dps48      n=4096   f32  min    0.044 s  med    0.044 s   3112.6 GFLOP/s(2mkn)  speedup 0.000  relerr 3.39e-06  split L 0.002 R 0.002 gemm 0.039 P 0.002  plan D48/G
+plan=D48/G6 n=4096   f32  min    0.037 s  med    0.038 s   3635.7 GFLOP/s(2mkn)  speedup 0.000  relerr 3.39e-06  split L 0.002 R 0.002 gemm 0.031 P 0.002  plan D48/G6
+## speed bench_fmm_var_a260 round 4 f 8192
+dps48      n=8192   f32  min    0.272 s  med    0.281 s   3916.1 GFLOP/s(2mkn)  speedup 0.000  relerr 4.91e-06  split L 0.009 R 0.009 gemm 0.253 P 0.008  plan D48/G
+plan=D48+4/D48/G6 n=8192   f32  min    0.237 s  med    0.238 s   4621.6 GFLOP/s(2mkn)  speedup 0.000  relerr 5.23e-06  split L 0.009 R 0.009 gemm 0.212 P 0.008  plan D48+4/D48/G6
+## speed bench_fmm_var_a260 round 4 d 4096
+dps48      n=4096   f64  min    0.142 s  med    0.142 s    966.5 GFLOP/s(2mkn)  speedup 0.000  relerr 6.38e-15  split L 0.005 R 0.005 gemm 0.129 P 0.004  plan D48/G
+plan=D48/G6 n=4096   f64  min    0.189 s  med    0.194 s    710.0 GFLOP/s(2mkn)  speedup 0.000  relerr 6.38e-15  split L 0.005 R 0.005 gemm 0.180 P 0.004  plan D48/G6
+## speed bench_fmm_var_a260 round 4 d 8192
+dps48      n=8192   f64  min    1.077 s  med    1.085 s   1013.1 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.019 gemm 1.036 P 0.018  plan D48/G
+plan=D48+4/D48/G6 n=8192   f64  min    0.811 s  med    0.812 s   1353.9 GFLOP/s(2mkn)  speedup 0.000  relerr 1.03e-14  split L 0.020 R 0.019 gemm 0.759 P 0.017  plan D48+4/D48/G6
+## speed bench_fmm_acc262 round 5 f 4096
+dps48      n=4096   f32  min    0.043 s  med    0.044 s   3157.7 GFLOP/s(2mkn)  speedup 0.000  relerr 3.19e-06  split L 0.002 R 0.002 gemm 0.039 P 0.002  plan D48/G  pred 0.040 s (-7.7%)  perr 1.88e-06
+plan=D48/G6 n=4096   f32  min    0.037 s  med    0.037 s   3691.1 GFLOP/s(2mkn)  speedup 0.000  relerr 3.19e-06  split L 0.002 R 0.002 gemm 0.031 P 0.002  plan D48/G6  pred 0.035 s (-5.7%)  perr 1.88e-06
+## speed bench_fmm_acc262 round 5 f 8192
+dps48      n=8192   f32  min    0.277 s  med    0.279 s   3946.1 GFLOP/s(2mkn)  speedup 0.000  relerr 4.96e-06  split L 0.009 R 0.009 gemm 0.254 P 0.008  plan D48/G  pred 0.255 s (-8.4%)  perr 2.65e-06
+plan=D48+4/D48/G6 n=8192   f32  min    0.237 s  med    0.239 s   4597.2 GFLOP/s(2mkn)  speedup 0.000  relerr 4.91e-06  split L 0.009 R 0.010 gemm 0.213 P 0.008  plan D48+4/D48/G6  pred 0.234 s (-2.1%)  perr 3.59e-06
+## speed bench_fmm_acc262 round 5 d 4096
+dps48      n=4096   f64  min    0.141 s  med    0.143 s    962.1 GFLOP/s(2mkn)  speedup 0.000  relerr 6.50e-15  split L 0.005 R 0.005 gemm 0.130 P 0.004  plan D48/G  pred 0.129 s (-9.7%)  perr 3.68e-15
+plan=D48/G6 n=4096   f64  min    0.175 s  med    0.178 s    770.3 GFLOP/s(2mkn)  speedup 0.000  relerr 6.50e-15  split L 0.005 R 0.005 gemm 0.171 P 0.004  plan D48/G6  pred 0.123 s (-30.8%)  perr 3.68e-15
+## speed bench_fmm_acc262 round 5 d 8192
+dps48      n=8192   f64  min    1.087 s  med    1.106 s    993.8 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.020 gemm 1.046 P 0.015  plan D48/G  pred 1.022 s (-7.6%)  perr 5.21e-15
+plan=D48+4/D48/G6 n=8192   f64  min    0.815 s  med    0.818 s   1344.8 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.020 gemm 0.761 P 0.016  plan D48+4/D48/G6  pred 0.797 s (-2.5%)  perr 5.75e-15
+## speed bench_fmm_var_a260 round 5 f 4096
+dps48      n=4096   f32  min    0.044 s  med    0.044 s   3112.1 GFLOP/s(2mkn)  speedup 0.000  relerr 3.39e-06  split L 0.002 R 0.002 gemm 0.038 P 0.002  plan D48/G
+plan=D48/G6 n=4096   f32  min    0.037 s  med    0.037 s   3689.4 GFLOP/s(2mkn)  speedup 0.000  relerr 3.39e-06  split L 0.002 R 0.002 gemm 0.031 P 0.002  plan D48/G6
+## speed bench_fmm_var_a260 round 5 f 8192
+dps48      n=8192   f32  min    0.276 s  med    0.278 s   3956.7 GFLOP/s(2mkn)  speedup 0.000  relerr 4.91e-06  split L 0.009 R 0.009 gemm 0.251 P 0.008  plan D48/G
+plan=D48+4/D48/G6 n=8192   f32  min    0.236 s  med    0.238 s   4614.9 GFLOP/s(2mkn)  speedup 0.000  relerr 5.23e-06  split L 0.009 R 0.009 gemm 0.212 P 0.008  plan D48+4/D48/G6
+## speed bench_fmm_var_a260 round 5 d 4096
+dps48      n=4096   f64  min    0.141 s  med    0.142 s    965.7 GFLOP/s(2mkn)  speedup 0.000  relerr 6.38e-15  split L 0.005 R 0.005 gemm 0.130 P 0.004  plan D48/G
+plan=D48/G6 n=4096   f64  min    0.179 s  med    0.189 s    728.0 GFLOP/s(2mkn)  speedup 0.000  relerr 6.38e-15  split L 0.005 R 0.005 gemm 0.177 P 0.004  plan D48/G6
+## speed bench_fmm_var_a260 round 5 d 8192
+dps48      n=8192   f64  min    1.081 s  med    1.084 s   1014.0 GFLOP/s(2mkn)  speedup 0.000  relerr 9.06e-15  split L 0.020 R 0.019 gemm 1.031 P 0.017  plan D48/G
+plan=D48+4/D48/G6 n=8192   f64  min    0.811 s  med    0.813 s   1352.3 GFLOP/s(2mkn)  speedup 0.000  relerr 1.03e-14  split L 0.020 R 0.019 gemm 0.760 P 0.016  plan D48+4/D48/G6
+# done 12:45

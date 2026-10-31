@@ -62,3 +62,17 @@ The transposed program is the cleaner test, with one operation per line; the dir
 whose partial sums are not compared.  It is partly symmetric, far from invariant.  Positive control: at the 203
 point R's 55 forms map onto L's completely, random at most 2.  Our own L and R at lam01c0_201, found by
 independent runs, are related on 47 of 54 forms.
+
+## Follow-up, 2026-10-31
+
+His reply asked about invariant circuits and the 10,10,728 family.  Raw output: `results_td_2026-10-31.txt`; the summary is
+the 2026-10-31 paragraph in doc/matmul_plan.md.  His 160 decompositions are not committed; the scripts take paths.
+
+- `run_td.sh`, `td/score.py`: the sweep of his 160 points.
+- `stab_matrices.py`, `gamma_fixed.py`: the stabilizer with its matrices; orthogonality and the gamma_2 minimum.
+- `invcirc.py`: which programs are invariant, per side.
+- `geometry.py`, `frames.py`, `perfect.py`, `td/quartic*.py`, `td/acc.py`, `td/outs.py`: the F4 frames and symmetric points.
+- `canon_enum.py`, `canon_classes.py`, `unit_lines.py`, `td/tri.py`, `td/t66.py`: exact canonical counts over the orbit.
+- `pclasses.py`, `pside.py`, `td/pdeep.py`: the P map.  `vlines.py`, `run_vl.sh`: every line-fixed V at the record P.
+- `seeded262.py`, `td/score76.py`: the 76-operation R programs of accurate_262.
+

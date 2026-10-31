@@ -1,0 +1,511 @@
+# RFC 2610 follow-up, 2026-10-31: Sedoglavic's reply on invariant circuits and the 10,10,728 family
+
+== score.py: his 160 decompositions (TensorDecompositions.tgz) ==
+160 points scored, 0 unreadable, Brent exact on 160
+family         n       nnz      canon       side floors L/R/Pt     floor   nonunit plinopt L       R        P     total max|x|
+10_10_728     96       728    10/10/6             38 / 38 / 42       150       136     73-87   74-88  115-119   264-291   2.00
+4_4_624       16       624      4/4/6             44 / 44 / 42       162       104     79-81   79-81  115-119   275-281   2.00
+6_6_656       16       656      6/6/6             42 / 42 / 42       158       104     79-84   79-84  115-119   280-286   2.00
+8_8_688       32       688      8/8/6             40 / 40 / 42       154       104     74-83   73-84  116-120   267-284   2.00
+
+reference points:
+  lam01c0_201   nnz [236, 236, 248] sum 720 canon [8, 8, 10] floors (40, 40, 38) floor 150 nonunit 104
+  p005_201      nnz [232, 216, 248] sum 696 canon [6, 4, 10] floors (42, 44, 38) floor 156 nonunit 72
+  203 files     nnz [256, 256, 248] sum 760 canon [10, 10, 10] floors (38, 38, 38) floor 146 nonunit 136
+  204           nnz [256, 256, 248] sum 760 canon [10, 10, 10] floors (38, 38, 38) floor 146 nonunit 136
+  202           nnz [236, 236, 248] sum 720 canon [8, 8, 10] floors (40, 40, 38) floor 150 nonunit 104
+  accurate_262  nnz [264, 344, 256] sum 864 canon [0, 8, 0] floors (48, 40, 48) floor 168 nonunit 560
+
+== sweep of the 160 + controls, 30 s all, 120 s best 24, 300 s x 2 best 6 ==
+stage A (30.0s x 1 seeds) leaderboard:
+   201  L  56  R  56  P  89  floor 150  cand48_lam01c0_201
+   204  L  57  R  57  P  90  floor 146  data_4x4x4_48_204
+   205  L  56  R  56  P  93  floor 154  pts_8_8_18_173_67_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_18_186_67_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_18_455_111_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_18_50_111_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_299_84_2_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_371_370_111_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_371_406_111_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_371_740_202_688
+  B: 12/72 jobs, 120s
+  B: 24/72 jobs, 240s
+  B: 36/72 jobs, 360s
+  B: 48/72 jobs, 480s
+  B: 60/72 jobs, 600s
+  B: 72/72 jobs, 720s
+stage B (120.0s x 1 seeds) leaderboard:
+   201  L  56  R  56  P  89  floor 150  cand48_lam01c0_201
+   204  L  57  R  57  P  90  floor 146  data_4x4x4_48_204
+   205  L  56  R  56  P  93  floor 154  pts_8_8_18_173_67_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_18_186_67_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_18_455_111_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_18_50_111_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_18_740_391_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_18_92_288_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_299_364_202_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_299_370_25_688
+  C: 12/36 jobs, 300s
+  C: 24/36 jobs, 600s
+  C: 36/36 jobs, 900s
+stage C (300.0s x 2 seeds) leaderboard:
+   201  L  56  R  56  P  89  floor 150  cand48_lam01c0_201
+   203  L  57  R  57  P  89  floor 146  data_4x4x4_48_204
+   205  L  56  R  56  P  93  floor 154  pts_8_8_18_173_67_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_18_186_67_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_18_455_111_688
+   205  L  56  R  56  P  93  floor 154  pts_8_8_18_50_111_688
+done
+sweep exit 0
+# done 10:56
+
+== stabilizers (stab_matrices.py) ==
+4x4x4_48_accurate_262: stabilizer order 64, slot maps {'id': 32, 'cyc2+rev': 32}
+   all three matrices signed permutations: 8;  all three orthogonal up to scale: 64
+   X: signed permutation in 32, orthogonal up to scale in 64
+   Y: signed permutation in 16, orthogonal up to scale in 64
+   Z: signed permutation in 32, orthogonal up to scale in 64
+4x4x4_48_accurate: stabilizer order 64, slot maps {'id': 32, 'cyc2+rev': 32}
+   all three matrices signed permutations: 4;  all three orthogonal up to scale: 64
+   X: signed permutation in 32, orthogonal up to scale in 64
+   Y: signed permutation in 16, orthogonal up to scale in 64
+   Z: signed permutation in 32, orthogonal up to scale in 64
+4x4x4_48_204: stabilizer order 64, slot maps {'id': 32, 'cyc2+rev': 32}
+   all three matrices signed permutations: 2;  all three orthogonal up to scale: 2
+   X: signed permutation in 8, orthogonal up to scale in 8
+   Y: signed permutation in 8, orthogonal up to scale in 8
+   Z: signed permutation in 8, orthogonal up to scale in 8
+lam01c0_201: stabilizer order 64, slot maps {'id': 32, 'cyc2+rev': 32}
+   all three matrices signed permutations: 1;  all three orthogonal up to scale: 1
+   X: signed permutation in 8, orthogonal up to scale in 8
+   Y: signed permutation in 2, orthogonal up to scale in 2
+   Z: signed permutation in 8, orthogonal up to scale in 8
+10_10_116_168_288_728: stabilizer order 64, slot maps {'id': 32, 'cyc2+rev': 32}
+   all three matrices signed permutations: 2;  all three orthogonal up to scale: 2
+   X: signed permutation in 8, orthogonal up to scale in 8
+   Y: signed permutation in 8, orthogonal up to scale in 8
+   Z: signed permutation in 8, orthogonal up to scale in 8
+4_4_116_364_288_624: stabilizer order 64, slot maps {'id': 32, 'cyc2+rev': 32}
+   all three matrices signed permutations: 2;  all three orthogonal up to scale: 2
+   X: signed permutation in 8, orthogonal up to scale in 8
+   Y: signed permutation in 2, orthogonal up to scale in 2
+   Z: signed permutation in 8, orthogonal up to scale in 8
+6_6_116_406_67_656: stabilizer order 64, slot maps {'id': 32, 'cyc2+rev': 32}
+   all three matrices signed permutations: 2;  all three orthogonal up to scale: 2
+   X: signed permutation in 8, orthogonal up to scale in 8
+   Y: signed permutation in 2, orthogonal up to scale in 2
+   Z: signed permutation in 8, orthogonal up to scale in 8
+8_8_18_173_67_688: stabilizer order 64, slot maps {'id': 32, 'cyc2+rev': 32}
+   all three matrices signed permutations: 2;  all three orthogonal up to scale: 2
+   X: signed permutation in 8, orthogonal up to scale in 8
+   Y: signed permutation in 2, orthogonal up to scale in 2
+   Z: signed permutation in 8, orthogonal up to scale in 8
+
+== gamma_fixed.py ==
+4x4x4_48_accurate_262: gamma_2 here 154.5097, gamma_inf,2 22.6274; target minimum 64(1+sqrt 2) = 154.5097
+   invariant quadratic forms per mode (trivial slot part, 32 elements): [2, 2, 2];  mean |tr g|^2 per mode: [np.float64(2.0), np.f
+   at the group-average point: gamma_2 154.509668, gamma_inf,2 22.6274
+   after local minimization from there: gamma_2 154.509668 (0 iterations)
+   minimization from the point itself:  gamma_2 154.509668 (0 iterations)
+4x4x4_48_accurate: gamma_2 here 154.5097, gamma_inf,2 25.4558; target minimum 64(1+sqrt 2) = 154.5097
+   invariant quadratic forms per mode (trivial slot part, 32 elements): [2, 2, 2];  mean |tr g|^2 per mode: [np.float64(2.0), np.f
+   at the group-average point: gamma_2 154.509668, gamma_inf,2 25.4558
+   after local minimization from there: gamma_2 154.509668 (0 iterations)
+   minimization from the point itself:  gamma_2 154.509668 (0 iterations)
+lam01c0_201: gamma_2 here 357.9195, gamma_inf,2 77.0517; target minimum 64(1+sqrt 2) = 154.5097
+   invariant quadratic forms per mode (trivial slot part, 32 elements): [2, 2, 2];  mean |tr g|^2 per mode: [np.float64(2.0), np.f
+   at the group-average point: gamma_2 159.576899, gamma_inf,2 31.9863
+   after local minimization from there: gamma_2 154.509668 (12 iterations)
+   minimization from the point itself:  gamma_2 154.509668 (13 iterations)
+4x4x4_48_204: gamma_2 here 373.2103, gamma_inf,2 78.0000; target minimum 64(1+sqrt 2) = 154.5097
+   invariant quadratic forms per mode (trivial slot part, 32 elements): [2, 2, 2];  mean |tr g|^2 per mode: [np.float64(2.0), np.f
+   at the group-average point: gamma_2 154.509668, gamma_inf,2 30.9706
+   after local minimization from there: gamma_2 154.509668 (0 iterations)
+   minimization from the point itself:  gamma_2 154.509668 (12 iterations)
+10_10_116_168_288_728: gamma_2 here 351.2662, gamma_inf,2 83.0265; target minimum 64(1+sqrt 2) = 154.5097
+   invariant quadratic forms per mode (trivial slot part, 32 elements): [2, 2, 2];  mean |tr g|^2 per mode: [np.float64(2.0), np.f
+   at the group-average point: gamma_2 154.509668, gamma_inf,2 29.3137
+   after local minimization from there: gamma_2 154.509668 (0 iterations)
+   minimization from the point itself:  gamma_2 154.509668 (14 iterations)
+8_8_18_173_67_688: gamma_2 here 341.7235, gamma_inf,2 75.2117; target minimum 64(1+sqrt 2) = 154.5097
+   invariant quadratic forms per mode (trivial slot part, 32 elements): [2, 2, 2];  mean |tr g|^2 per mode: [np.float64(2.0), np.f
+   at the group-average point: gamma_2 159.576899, gamma_inf,2 30.2751
+   after local minimization from there: gamma_2 154.509668 (12 iterations)
+   minimization from the point itself:  gamma_2 154.509668 (13 iterations)
+
+== invcirc.py: are the circuits invariant? ==
+lam01c0_201: internal forms L 14, R 14, P^T 19; outputs L 40, R 40, P^T 38
+side  slot      acts by signed permutations   elements   internal forms kept: best, mean   outputs onto outputs: min
+  L   cyc2+rev  False                            32       9 of  14,    6.4       32 of 40
+  L   id        False                            31      11 of  14,    7.5       32 of 40
+  P   cyc2+rev  False                            31       5 of  19,    2.7       28 of 38
+  P   cyc2+rev  True                              1      11 of  19,   11.0       38 of 38
+  P   id        False                            31       8 of  19,    2.5       28 of 38
+  R   cyc2+rev  False                            32       9 of  14,    6.4       32 of 40
+  R   id        False                            31      10 of  14,    7.4       32 of 40
+accurate_262: internal forms L 16, R 17, P^T 16; outputs L 48, R 40, P^T 48
+side  slot      acts by signed permutations   elements   internal forms kept: best, mean   outputs onto outputs: min
+  L   cyc2+rev  False                            32       9 of  16,    8.0       40 of 48
+  L   id        False                            24      16 of  16,   10.7       48 of 48
+  L   id        True                              7      16 of  16,   16.0       48 of 48
+  P   cyc2+rev  False                            16       0 of  16,    0.0       48 of 48
+  P   cyc2+rev  True                             16       0 of  16,    0.0       48 of 48
+  P   id        False                            16       0 of  16,    0.0       48 of 48
+  P   id        True                             15      16 of  16,   16.0       48 of 48
+  R   cyc2+rev  False                            32       9 of  17,    8.0       40 of 40
+  R   id        False                            24      11 of  17,    5.6       32 of 40
+  R   id        True                              7      10 of  17,    5.9       40 of 40
+accurate: internal forms L 30, R 12, P^T 36; outputs L 48, R 48, P^T 40
+side  slot      acts by signed permutations   elements   internal forms kept: best, mean   outputs onto outputs: min
+  L   cyc2+rev  False                            32       8 of  30,    8.0       48 of 48
+  L   id        False                            24      24 of  30,   14.0       48 of 48
+  L   id        True                              7      30 of  30,   16.9       48 of 48
+  P   cyc2+rev  False                            24       4 of  36,    1.3       32 of 40
+  P   cyc2+rev  True                              8      36 of  36,   36.0       40 of 40
+  P   id        False                            24       4 of  36,    1.3       32 of 40
+  P   id        True                              7      36 of  36,   36.0       40 of 40
+  R   cyc2+rev  False                            32       8 of  12,    8.0       48 of 48
+  R   id        False                            24      12 of  12,    4.0       48 of 48
+  R   id        True                              7      12 of  12,   12.0       48 of 48
+204: internal forms L 17, R 17, P^T 11; outputs L 38, R 38, P^T 38
+side  slot      acts by signed permutations   elements   internal forms kept: best, mean   outputs onto outputs: min
+  L   cyc2+rev  False                            31      14 of  17,    8.1       28 of 38
+  L   cyc2+rev  True                              1      17 of  17,   17.0       38 of 38
+  L   id        False                            31      14 of  17,    8.1       28 of 38
+  P   cyc2+rev  False                            31       5 of  11,    2.8       28 of 38
+  P   cyc2+rev  True                              1       5 of  11,    5.0       38 of 38
+  P   id        False                            31       6 of  11,    2.6       28 of 38
+  R   cyc2+rev  False                            31      14 of  17,    8.1       28 of 38
+  R   cyc2+rev  True                              1      17 of  17,   17.0       38 of 38
+  R   id        False                            31      14 of  17,    8.1       28 of 38
+a260_R76: internal forms L 16, R 26, P^T 16; outputs L 48, R 40, P^T 48
+side  slot      acts by signed permutations   elements   internal forms kept: best, mean   outputs onto outputs: min
+  L   cyc2+rev  False                            32      13 of  16,   10.5       40 of 48
+  L   id        False                            24      16 of  16,   10.7       48 of 48
+  L   id        True                              7      16 of  16,   16.0       48 of 48
+  P   cyc2+rev  False                            16       0 of  16,    0.0       48 of 48
+  P   cyc2+rev  True                             16       0 of  16,    0.0       48 of 48
+  P   id        False                            16       0 of  16,    0.0       48 of 48
+  P   id        True                             15      16 of  16,   16.0       48 of 48
+  R   cyc2+rev  False                            32      13 of  26,   10.5       40 of 40
+  R   id        False                            24      15 of  26,    8.9       32 of 40
+  R   id        True                              7      18 of  26,   16.4       40 of 40
+
+== frames.py and geometry.py at accurate_262 ==
+frames holding the [1,1,1] vectors, with multiplicity (mode: role: frame counts):
+  mode X: u: {'H+': 16, 'e': 16};  q: {'14|23': 16, '13|24': 16}
+  mode Y: v: {'13|24': 16, '12|34': 16};  r: {'H+': 16, 'e': 16}
+  mode Z: s: {'e': 16, 'H-': 16};  p: {'13|24': 16, '14|23': 16}
+|inner product| between frames: e,H+: [0.5], e,H-: [0.5], e,12|34: [0.0, 0.707], e,13|24: [0.0, 0.707], e,14|23: [0.0, 0.707], H+,H-: [0.5], H+,12|34: [0.0, 0.707], H+,13|24: [0.0, 0.707], H+,14|23: [0.0, 0.707], H-,12|34: [0.0, 0.707], H-,13|24: [0.0, 0.707], H-,14|23: [0.0, 0.707], 12|34,13|24: [0.5], 12|34,14|23: [0.5], 13|24,14|23: [0.5]
+elements acting by signed permutations in each frame (id slot of 32, by mode):
+  mode X: e: 16, H+: 16, H-: 32, 12|34: 32, 13|24: 16, 14|23: 16
+  mode Y: e: 16, H+: 16, H-: 32, 12|34: 16, 13|24: 16, 14|23: 32
+  mode Z: e: 16, H+: 32, H-: 16, 12|34: 32, 13|24: 16, 14|23: 16
+frame triples (A, B, C) by the number of the 64 elements acting by signed permutations in all three modes:
+   [(32, 8), (16, 56), (8, 104), (4, 48)]
+    (32, 'H-', 'H-', 'H+')
+    (32, 'H-', 'H-', '12|34')
+    (32, 'H-', '14|23', 'H+')
+    (32, 'H-', '14|23', '12|34')
+    (32, '12|34', 'H-', 'H+')
+    (32, '12|34', 'H-', '12|34')
+    (32, '12|34', '14|23', 'H+')
+    (32, '12|34', '14|23', '12|34')
+    (16, 'e', 'H-', 'e')
+    (16, 'e', 'H-', 'H-')
+    (16, 'e', 'H-', 'H+')
+    (16, 'e', 'H-', '12|34')
+mode X: commutant eigenspaces of dimensions [2, 2]; image of the 32 elements modulo sign has 32 elements
+   16 distinct [1,1,1] vectors up to sign; used as {'u': 32, 'q': 32}
+   |inner products|: {0.0: 56, 0.5: 32, 0.7071: 32}
+   squared length on the first eigenspace: [(0.5, 16)]
+mode Y: commutant eigenspaces of dimensions [2, 2]; image of the 32 elements modulo sign has 32 elements
+   16 distinct [1,1,1] vectors up to sign; used as {'v': 32, 'r': 32}
+   |inner products|: {0.0: 56, 0.5: 32, 0.7071: 32}
+   squared length on the first eigenspace: [(0.5, 16)]
+mode Z: commutant eigenspaces of dimensions [2, 2]; image of the 32 elements modulo sign has 32 elements
+   16 distinct [1,1,1] vectors up to sign; used as {'s': 32, 'p': 32}
+   |inner products|: {0.0: 56, 0.5: 32, 0.7071: 32}
+   squared length on the first eigenspace: [(0.5, 16)]
+
+== quartic.py: any orthonormal frames ==
+id: best 384.0000 of bound 384; 40 restarts; top values [384.0, 336.0, 288.0, 240.0]
+all: best 768.0000 of bound 768; 40 restarts; top values [768.0, 704.0, 672.0, 656.0, 576.0]
+3 solutions at the bound in 6 s
+fourth-power sum 767.999999999977
+elements acting by signed permutations: 64 of 64
+A
+[[ 0.70711 -0.70711 -0.      -0.     ]
+ [ 0.      -0.       0.70711  0.70711]
+ [ 0.      -0.      -0.70711  0.70711]
+ [ 0.70711  0.70711 -0.       0.     ]]
+  distinct |entries|: [0.0, 0.7071]
+B
+[[ 0.5      0.5     -0.5      0.5    ]
+ [-0.70711  0.       0.       0.70711]
+ [-0.      -0.70711 -0.70711  0.     ]
+ [-0.5      0.5     -0.5     -0.5    ]]
+  distinct |entries|: [0.0, 0.5, 0.7071]
+C
+[[-0.      -0.      -0.70711  0.70711]
+ [ 0.70711  0.70711 -0.       0.     ]
+ [ 0.70711 -0.70711 -0.       0.     ]
+ [-0.      -0.       0.70711  0.70711]]
+  distinct |entries|: [0.0, 0.7071]
+
+== acc.py, outs.py: accuracy at the symmetric points ==
+accurate_262       gamma_2 154.5097  gamma_inf,2 22.6274  amp 2.8284  nnz 864
+24 dyadic points   gamma_2 154.5097-154.5097  gamma_inf,2 22.6274-45.2548  amp 2.8284-3.4641  nnz 1280-1568
+all-64 point Q(sqrt2): gamma_2 154.5097  gamma_inf,2 45.2548  amp 3.4641  nnz 2153
+rows of L with entries of two different magnitudes at the all-64 point: 48
+accurate_262: per-output gamma_inf,2 values [22.627]; per-output amp values [2.828]
+elements signed-permutation on P's two modes at 262: 32 (id slot 16)
+orbits of that group on the 16 outputs: [8, 8]
+the 24 dyadic points: gamma_inf,2 / amp / distinct per-output values of each:
+   gamma_inf,2  22.627  amp 2.828  distinct output values 1, 1  points 2
+   gamma_inf,2  27.314  amp 2.828  distinct output values 1, 1  points 8
+   gamma_inf,2  27.314  amp 2.828  distinct output values 2, 1  points 4
+   gamma_inf,2  32.000  amp 2.828  distinct output values 1, 1  points 4
+   gamma_inf,2  38.627  amp 2.828  distinct output values 1, 1  points 4
+   gamma_inf,2  45.255  amp 3.464  distinct output values 3, 3  points 2
+
+== perfect.py + sweep: the 24 dyadic symmetric points, accurate_262 and accurate as controls ==
+stage A (30.0s x 1 seeds) leaderboard:
+   321  L  93  R 115  P 113  floor 168  data_4x4x4_48_accurate_262
+   339  L 112  R  80  P 147  floor 176  perfect_hm_Hm_Hp_r1
+   348  L  98  R 117  P 133  floor 176  perfect_hm_Hm_Hp_r0
+   350  L  97  R  90  P 163  floor 176  perfect_hm_Hm_1234_r0
+   356  L  90  R 118  P 148  floor 176  perfect_hm_Hm_1234_r1
+   357  L  80  R  95  P 182  floor 176  perfect_hm_Hm_Hp_r2
+   358  L  92  R 115  P 151  floor 168  data_4x4x4_48_accurate
+   358  L  98  R  80  P 180  floor 176  perfect_hm_1423_Hp_r1
+   362  L 118  R  98  P 146  floor 176  perfect_hm_Hm_1234_r2
+   366  L  95  R  98  P 173  floor 176  perfect_1234_1423_Hp_r0
+  B: 12/18 jobs, 120s
+stage B (120.0s x 1 seeds) leaderboard:
+   282  L  72  R  97  P 113  floor 168  data_4x4x4_48_accurate_262
+   317  L  80  R  89  P 148  floor 176  perfect_hm_Hm_Hp_r2
+   319  L  91  R 100  P 128  floor 176  perfect_hm_Hm_Hp_r0
+   323  L 101  R  80  P 142  floor 176  perfect_hm_Hm_Hp_r1
+   325  L  89  R  90  P 146  floor 176  perfect_hm_Hm_1234_r0
+   334  L  90  R 103  P 141  floor 176  perfect_hm_Hm_1234_r1
+  C: 12/12 jobs, 300s
+stage C (300.0s x 2 seeds) leaderboard:
+   277  L  72  R  93  P 112  floor 168  data_4x4x4_48_accurate_262
+   305  L  91  R  80  P 134  floor 176  perfect_hm_Hm_Hp_r1
+done
+sweep exit 0
+# done 11:35
+
+== canon_enum.py on 204: exact canonical maxima over the orbit ==
+32 products of type [1,1,1]
+distinct lines per mode, columns of the inverse / rows: {'X': (8, 8), 'Y': (8, 8), 'Z': (8, 8)}
+mode X: 2764 feasible selections, 124 maximal; sizes [((0, 4), 2), ((2, 2), 16), ((2, 4), 48), ((4, 0), 2), ((4, 2), 48), ((4, 4), 8)]
+mode Y: 2764 feasible selections, 124 maximal; sizes [((0, 4), 2), ((2, 2), 16), ((2, 4), 48), ((4, 0), 2), ((4, 2), 48), ((4, 4), 8)]
+mode Z: 2764 feasible selections, 124 maximal; sizes [((0, 4), 2), ((2, 2), 16), ((2, 4), 48), ((4, 0), 2), ((4, 2), 48), ((4, 4), 8)]
+grids: products per (column line, row line): L entries Counter({1: 32, 0: 32})  R Counter({1: 32, 0: 32})  P Counter({1: 32, 0: 32})
+side maxima over the orbit: L 10, R 10, P 10
+maximum of L + R + P canonical over the orbit: 30   (0.0 s; 124 x 124 x 124 selections)
+achievable (c_L, c_R, c_P) near the maximum, with the number of selection triples:
+   (10, 10, 10) sum 30: 32
+598 distinct (c_L, c_R, c_P) from maximal selections; those with c_P >= 8 or sum >= 24:
+   (10, 10, 10)  sum 30: 32
+   (6, 10, 10)  sum 26: 96
+   (10, 6, 10)  sum 26: 96
+   (4, 10, 10)  sum 24: 384
+   (6, 8, 10)  sum 24: 192
+   (8, 6, 10)  sum 24: 192
+   (10, 4, 10)  sum 24: 384
+   (2, 10, 10)  sum 22: 576
+   (4, 8, 10)  sum 22: 384
+   (6, 6, 10)  sum 22: 800
+   (8, 4, 10)  sum 22: 384
+   (10, 2, 10)  sum 22: 576
+   (6, 10, 8)  sum 24: 192
+   (10, 6, 8)  sum 24: 192
+   (4, 10, 8)  sum 22: 384
+   (10, 4, 8)  sum 22: 384
+   (10, 10, 6)  sum 26: 96
+   (8, 10, 6)  sum 24: 192
+   (10, 8, 6)  sum 24: 192
+   (10, 10, 4)  sum 24: 384
+P side: number of (mode Z, mode X) selection pairs by canonical columns: [(10, 320), (9, 768), (8, 1188), (7, 
+selection pairs with >= 8 canonical but an underdetermined basis: 0
+distinct P patterns with full bases: 47
+   c_P 10  nnz 248  pairs 32  first (2, 28)
+   c_P 10  nnz 260  pairs 32  first (2, 34)
+   c_P 10  nnz 260  pairs 32  first (14, 28)
+   c_P 10  nnz 260  pairs 32  first (14, 34)
+   c_P 10  nnz 264  pairs 32  first (0, 67)
+   c_P 10  nnz 264  pairs 32  first (2, 64)
+   c_P 10  nnz 272  pairs 32  first (0, 28)
+   c_P 10  nnz 272  pairs 32  first (2, 10)
+   c_P 10  nnz 288  pairs 64  first (0, 9)
+   c_P 9  nnz 268  pairs 64  first (0, 8)
+   c_P 9  nnz 268  pairs 64  first (0, 19)
+   c_P 9  nnz 268  pairs 64  first (14, 1)
+   c_P 9  nnz 268  pairs 64  first (14, 46)
+   c_P 9  nnz 272  pairs 64  first (0, 1)
+   c_P 9  nnz 272  pairs 64  first (0, 34)
+   c_P 9  nnz 272  pairs 64  first (0, 43)
+   c_P 9  nnz 272  pairs 64  first (14, 9)
+   c_P 9  nnz 272  pairs 64  first (14, 14)
+   c_P 9  nnz 278  pairs 64  first (0, 26)
+   c_P 9  nnz 278  pairs 64  first (0, 55)
+   c_P 9  nnz 282  pairs 64  first (0, 53)
+   c_P 8  nnz 244  pairs 64  first (2, 8)
+   c_P 8  nnz 244  pairs 32  first (14, 8)
+   c_P 8  nnz 244  pairs 64  first (14, 18)
+   c_P 8  nnz 244  pairs 32  first (14, 72)
+   c_P 8  nnz 248  pairs 64  first (0, 18)
+   c_P 8  nnz 248  pairs 64  first (0, 70)
+   c_P 8  nnz 248  pairs 64  first (2, 1)
+   c_P 8  nnz 248  pairs 64  first (2, 3)
+   c_P 8  nnz 256  pairs 128  first (14, 19)
+   c_P 8  nnz 262  pairs 64  first (0, 33)
+   c_P 8  nnz 262  pairs 64  first (0, 48)
+   c_P 8  nnz 262  pairs 64  first (0, 66)
+   c_P 8  nnz 264  pairs 64  first (0, 14)
+   c_P 8  nnz 272  pairs 64  first (0, 10)
+   c_P 8  nnz 272  pairs 64  first (0, 68)
+   c_P 8  nnz 272  pairs 8  first (2, 61)
+   c_P 8  nnz 272  pairs 8  first (2, 105)
+   c_P 8  nnz 272  pairs 8  first (54, 18)
+   c_P 8  nnz 272  pairs 8  first (54, 28)
+   c_P 8  nnz 292  pairs 64  first (0, 61)
+   c_P 8  nnz 292  pairs 64  first (54, 1)
+   c_P 8  nnz 296  pairs 16  first (14, 61)
+   c_P 8  nnz 296  pairs 16  first (14, 105)
+   c_P 8  nnz 296  pairs 16  first (54, 8)
+   c_P 8  nnz 296  pairs 16  first (54, 34)
+   c_P 8  nnz 304  pairs 4  first (54, 61)
+(10, 10, 10) 32
+(8, 8, 10) 0
+(6, 6, 10) 800
+(6, 4, 10) 768
+(4, 6, 10) 768
+(10, 10, 6) 96
+(8, 8, 6) 0
+(6, 6, 6) 1824
+(4, 4, 6) 7808
+(8, 6, 10) 192
+(6, 8, 10) 192
+(10, 6, 10) 96
+(6, 10, 10) 96
+(c,c,10) all: [((2, 2, 10), 1536), ((3, 3, 10), 3072), ((4, 4, 10), 2432), ((6, 6, 10), 800), ((10, 10, 10), 32)]
+best c_L + c_R by c_P: {10: 20, 9: 10, 8: 16, 7: 12, 6: 20, 5: 14, 4: 20, 3: 18, 2: 20, 1: 20, 0: 20}
+(6,6,10) triples by P nnz, sizes of the Y, X, Z selections (|S|,|Q|), and a representative (x, y, z):
+   (248, (2, 4), (4, 4), (4, 4)) 192 (18, 15, 11)
+   (248, (4, 2), (4, 4), (4, 4)) 192 (18, 7, 11)
+   (248, (4, 4), (4, 4), (4, 4)) 32 (18, 17, 11)
+   (260, (4, 4), (2, 4), (4, 4)) 64 (8, 11, 12)
+   (260, (4, 4), (4, 4), (4, 2)) 64 (18, 11, 36)
+   (264, (4, 4), (2, 4), (4, 4)) 64 (1, 87, 17)
+   (264, (4, 4), (4, 4), (4, 2)) 64 (18, 11, 53)
+   (272, (4, 4), (2, 4), (4, 4)) 64 (1, 87, 12)
+   (272, (4, 4), (4, 4), (4, 2)) 64 (18, 11, 10)
+
+== unit_lines.py: every known point is a line point ==
+lam01c0_201                    canon (8,8,10) lines [8, 8, 8]/[8, 8, 8]  X: cols 4 rows 4 covered 4; Y: cols 3 rows 3 covered 4; Z: cols 4 rows 4 covered 4
+p005_201n                      canon (6,4,10) lines [8, 8, 8]/[8, 8, 8]  X: cols 4 rows 4 covered 4; Y: cols 2 rows 2 covered 4; Z: cols 4 rows 4 covered 4
+4x4x4_48_204                   canon (10,10,10) lines [8, 8, 8]/[8, 8, 8]  X: cols 4 rows 4 covered 4; Y: cols 4 rows 4 covered 4; Z: cols 4 rows 4 covered 4
+4x4x4_48_202                   canon (8,8,10) lines [8, 8, 8]/[8, 8, 8]  X: cols 4 rows 4 covered 4; Y: cols 3 rows 3 covered 4; Z: cols 4 rows 4 covered 4
+4x4x4_48_accurate_262          canon (0,8,0) lines [8, 8, 8]/[8, 8, 8]  X: cols 4 rows 0 covered 4; Y: cols 4 rows 0 covered 4; Z: cols 0 rows 4 covered 4
+
+== P map (pside.py): 47 patterns, 2 seeds x 60 s ==
+# P side start 11:35
+class            canonical  nnz  non-unit   P costs
+c10_n260_1        10      260     4     [88, 89]
+c10_n260_2        10      260     4     [89, 89]
+c10_n264_4        10      264    24     [89, 90]
+c10_n248_0        10      248     8     [90, 90]
+c10_n260_3        10      260     4     [90, 91]
+c10_n272_7        10      272    32     [90, 91]
+c9_n268_10         9      268    20     [90, 92]
+c9_n268_12         9      268    20     [90, 90]
+c9_n272_15         9      272    24     [90, 92]
+c8_n244_23         8      244     4     [90, 90]
+c10_n264_5        10      264    24     [91, 92]
+c10_n272_6        10      272    32     [91, 91]
+c9_n272_14         9      272    24     [91, 91]
+c9_n272_16         9      272    24     [91, 92]
+c9_n272_17         9      272    24     [91, 92]
+c9_n282_20         9      282    50     [91, 93]
+c8_n244_21         8      244     4     [91, 92]
+c8_n248_25         8      248    24     [91, 92]
+c8_n256_29         8      256     0     [91, 91]
+c10_n288_8        10      288    48     [92, 92]
+c9_n268_9          9      268    20     [92, 92]
+c9_n268_11         9      268    20     [92, 92]
+c9_n278_19         9      278    46     [92, 92]
+c8_n244_22         8      244     4     [92, 92]
+c8_n244_24         8      244     4     [92, 92]
+c8_n248_27         8      248    24     [92, 93]
+c8_n248_28         8      248    24     [92, 93]
+c8_n272_34         8      272    48     [92, 93]
+c8_n272_35         8      272    48     [92, 92]
+c9_n272_13         9      272    40     [93, 95]
+c9_n278_18         9      278    46     [93, 93]
+c8_n248_26         8      248    24     [93, 93]
+c8_n262_30         8      262    38     [93, 93]
+c8_n264_33         8      264    40     [93, 94]
+c8_n262_31         8      262    38     [94, 94]
+c8_n262_32         8      262    38     [95, 95]
+c8_n296_43         8      296     8     [101, 102]
+c8_n272_37         8      272    16     [102, 108]
+c8_n292_40         8      292    36     [103, 111]
+c8_n296_42         8      296     8     [104, 106]
+c8_n296_44         8      296     8     [106, 108]
+c8_n296_45         8      296     8     [107, 109]
+c8_n272_38         8      272    16     [108, 108]
+c8_n272_39         8      272    16     [108, 108]
+c8_n272_36         8      272    16     [110, 111]
+c8_n292_41         8      292    36     [112, 118]
+c8_n304_46         8      304     0     [114, 118]
+# done 11:43
+
+== deep P, 12 seeds x 300 s (pdeep.py; the job hit its limit before printing, results read from best.slp) ==
+c10_n248_0     seeds with a program 12 of 12: best 89  all [89, 89, 89, 89, 89, 89, 90, 90, 90, 90, 90, 90]
+c10_n260_1     seeds with a program 12 of 12: best 88  all [88, 88, 88, 88, 89, 89, 89, 89, 89, 89, 89, 90]
+c10_n260_2     seeds with a program 12 of 12: best 88  all [88, 88, 88, 88, 89, 89, 89, 89, 89, 89, 89, 89]
+c10_n260_3     seeds with a program 12 of 12: best 89  all [89, 89, 89, 89, 89, 89, 89, 89, 89, 89, 90, 90]
+c10_n264_4     seeds with a program 0 of 12: best -  all []
+
+== V-lines, first build (scaling minimized non-units; control 120) ==
+stage C (300.0s x 2 seeds) leaderboard:
+   209  L  59  R  61  P  89  floor 146  vl_b007_10_10
+   209  L  59  R  61  P  89  floor 146  vl_b069_10_10
+   212  L  63  R  60  P  89  floor 152  vl_b011_8_6
+   214  L  60  R  65  P  89  floor 150  vl_b012_10_6
+done
+sweep exit 0
+# done 11:22
+
+== V-lines rerun (scaling minimizes per-row scalings; control 115 against Joshua's 114) ==
+stage C (300.0s x 2 seeds) leaderboard:
+   204  L  58  R  57  P  89  floor 146  vl2_b069_10_10
+   205  L  58  R  58  P  89  floor 146  vl2_b007_10_10
+   205  L  59  R  57  P  89  floor 152  vl2_b011_8_6
+   206  L  58  R  59  P  89  floor 152  vl2_b009_10_4
+done
+sweep exit 0
+# done 12:41
+
+== seeded262.py and score76.py ==
+published L 72, R 78, P 112
+  L: best 72  all [72, 72, 72, 72, 72, 72, 72, 72, 72, 72, 72, 72]  failures 0
+  R: best 76  all [76, 76, 76, 76, 76, 77, 77, 77, 77, 77, 77, 77]  failures 0
+  Pt: best 112  all [112, 112, 112, 112, 112, 112, 112, 112, 112, 112, 112, 112]  failures 0
+# deep P start 11:50
+program                              L+R     P  worst   amp   count  size   chain   roundings L/R/P
+published                           5.74  3.09   7.22  2.83    15.0  0.80     22    64/67/112
+s12<66,10>                          5.94  3.09   7.59  2.83    15.0  0.80     22    64/66/112
+s2<66,10>                           6.15  3.09   8.31  2.83    15.0  0.80     20    64/66/112
+s3<66,10>                           5.74  3.09   7.52  2.83    15.0  0.80     20    64/66/112
+s6<66,10>                           6.21  3.09   8.50  2.83    15.0  0.80     19    64/66/112
+s8<67,9>                            6.24  3.09   7.86  2.83    15.0  0.80     23    64/67/112
+
+
+== deep P, the fifth class alone, 12 seeds x 300 s ==
+class            canonical  nnz  non-unit   P costs
+c10_n264_4        10      264    24     [88, 88, 89, 89, 89, 89, 89, 89, 89, 89, 90, 90]

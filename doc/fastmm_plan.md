@@ -1355,3 +1355,17 @@ round, top CPU users logged each round; results/speed_a260n_rerun_2026-10-31.txt
 0.999 +- 0.002, that setting 1.007 +- 0.014.  So the two operations save no measurable time, and the +3.3% was noise.  Load does
 not affect the error measurements.  Decision: the library keeps the published programs, no gain in time and none in error at the
 depths it uses.  The 260 stands as an operation count.
+
+Alternative bases (2026-10-31, Greg's question on Stapleton's 169 + 43 circuit, github.com/Joshua-Stapleton/fmm-helper-exchange,
+methods/basis/certificate_4x4_169_43; his files are not committed): no faster accurate plan.  `altsim.py` interprets the programs
+block by block in f32 against an f64 product (results/altbasis_sim_2026-10-31.txt).  Means of uniform and normal inputs at n = 4096,
+1-3 levels, as multiples of the classical f32 GEMM's error: accurate_262 0.71, 0.76, 1.14 (bench 0.73, 0.79, 1.17); our 201 2.6, 8.4,
+34 (bench at 8192 2.5-2.7, 8-9, 32-35); the ordinary 204 3.0, 10.4, 45; Stapleton's kernel 169 + conversions 43, cond(CoB) 12.2, 12.2,
+5.8, gives 3.1, 10.5, 47, so the error is the 204 scheme's, not the conversions'.  PLinOpt's alternative basis of accurate_262
+(-16ALT, -16CoB, kernel 184 + conversions 142, cond about 8) gives 0.69, 0.77, 1.26, and at n = 1024 0.83, 1.08, 2.1 against
+0.77, 1.00, 1.65.  Neither can be faster in this library, which was not modified for this test.  Passes are bound by memory
+traffic: 201 against 315 operations, 36% fewer at both levels of D48+4/D48/G6, moved the plan by under 1% on Oct 25.  At one level a
+fused pass computes L directly, so splitting it into CoB and ALT only adds work.  At two levels, using the kernels' 16 canonical rows
+in place would take inner passes from 48 writes to 32, and per side the traffic comes to 14 n^2 with both conversion levels in
+one pass or 16 n^2 with two, against 16 n^2 today (arithmetic, not measured); one pass over 256 sub-blocks is unrealistic, a 5x5
+level's 118 streams already run at half the bandwidth.

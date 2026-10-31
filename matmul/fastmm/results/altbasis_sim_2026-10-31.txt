@@ -1,0 +1,27 @@
+programs: name, kernel adds+scalings (L, R, P), conversions (L, R, P), total
+  accurate_262       kernel [(64, 8), (67, 11), (112, 0)] = 262   conversions [] = 0
+  204                kernel [(55, 2), (55, 2), (90, 0)] = 204   conversions [] = 0
+  201                kernel [(53, 2), (55, 2), (89, 0)] = 201   conversions [] = 0
+  Stapleton 169/43   kernel [(44, 0), (44, 0), (81, 0)] = 169   conversions [(14, 2), (14, 2), (11, 0)] = 43
+  204-16 alt         kernel [(44, 0), (44, 0), (83, 2)] = 173   conversions [(36, 5), (36, 5), (27, 0)] = 109
+  262-16 alt         kernel [(44, 0), (44, 0), (90, 6)] = 184   conversions [(37, 8), (43, 10), (44, 0)] = 142
+  Stapleton 169/43   cond(CoB_L, CoB_R, CoB_P) = 12.20, 12.20, 5.83
+  204-16 alt         cond(CoB_L, CoB_R, CoB_P) = 25.60, 25.60, 20.76
+  262-16 alt         cond(CoB_L, CoB_R, CoB_P) = 7.56, 8.00, 7.90
+gate: every scheme multiplies exactly at 1 and 2 levels
+
+error as a multiple of the classical f32 GEMM (geometric mean of seeds), uniform / normal
+n = 1024
+  accurate_262       L1    0.79 /   0.75   L2    1.08 /   0.92   L3    1.75 /   1.54
+  204                L1    3.49 /   2.99   L2   12.00 /  11.07   L3   63.68 /  64.46
+  201                L1    3.22 /   2.89   L2   10.02 /   9.83   L3   49.46 /  46.33
+  Stapleton 169/43   L1    3.33 /   3.09   L2   12.54 /  10.59   L3   67.00 /  54.65
+  204-16 alt         L1    3.37 /   3.10   L2   14.04 /  12.42   L3   65.12 /  58.43
+  262-16 alt         L1    0.91 /   0.74   L2    1.13 /   1.02   L3    2.23 /   2.00
+n = 4096
+  accurate_262       L1    0.69 /   0.72   L2    0.75 /   0.76   L3    1.15 /   1.12
+  204                L1    2.87 /   3.14   L2   10.59 /  10.18   L3   43.87 /  45.46
+  201                L1    2.56 /   2.70   L2    8.29 /   8.58   L3   35.04 /  33.39
+  Stapleton 169/43   L1    3.12 /   3.17   L2   10.14 /  10.84   L3   49.74 /  44.90
+  204-16 alt         L1    2.80 /   3.15   L2   10.11 /  11.16   L3   45.09 /  43.54
+  262-16 alt         L1    0.68 /   0.69   L2    0.76 /   0.78   L3    1.28 /   1.24

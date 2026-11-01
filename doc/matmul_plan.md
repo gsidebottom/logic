@@ -2586,6 +2586,14 @@ the two source papers for this track):
   8 at 262 are dihedral of order 8, all with trivial slot map; the two of order 4 have cycle type 4^12, the shape of his Oct 24 'wildest dream',
   with no canonical vectors in L or P here.  Draft doc/reply_alexandre_isotropy_262_2026-11-01.md; the matrices are in
   ~/Downloads/isotropy_315_to_262.txt.
+  Same email: he thinks the gamma_inf,2 search should be redone, because a first turn suiting the stabilizer (L and R symmetric) was not applied for accuracy.  Checked: it
+  was.  Stab(315) swaps R and P, Stab(accurate) and Stab(262) swap L and R, and all 64 isotropies send the 315's L mode to 262's P.  His ",3" must be (2), Id x Id x Id ∘5, since ∘3 alone is
+  the input swap, which changes no gamma_{p,q} (`turns.py`, all six orientations; gates: the paper's three roles of accurate and rational and the 21.41 point, every digit).  He is right that a turn
+  keeps the operation count and gamma_2: turned programs by transposition (`turned.py`) total 262 and 260, SLPchecker and 4096 equations.  But 262 is best in its published role on every factor:
+  gamma_inf,2 22.63 against 28.14, 28.14; gamma_inf,inf 132 against 172, 152; amp 2.83 against 3.32, 3.32.  Measured turned / published (altsim.py, f32, n = 1024, 4096): means 1.22-1.32,
+  1.37-1.39, 1.54-1.60 at 1-3 levels; amp predicts 1.17, 1.38, 1.61.  The 260's programs compute the published matrices (SLPchecker), so its growth factors stand and it turns the same way.  The
+  role search was already in the accuracy paper: 30,000 starts from accurate over all three roles, 16√2 and 21.41, exhaustive over the 648 dyadic orthogonal points.  Soft spot, unrelated to turning: the
+  abstract states 'the orbit's minimum' for what is a search result.  `results_turns_2026-11-01.txt`.
 
 ## 1. The thesis — why native representation should win
 

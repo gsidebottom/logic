@@ -88,3 +88,21 @@ He lost the isotropy from the original 315 (`4x4x4_48_rational`) to accurate_262
 
 g = (U x V x W)∘5, entries 0, ±1.  Stab(315) -> Stab(262) by conjugation, 64 of 64, one to one.  Signed permutations in all three modes: 315 4,
 accurate 4, 262 8, 204 2, lam01c0_201 1.  The 8 at 262 are dihedral of order 8, all with trivial slot map; the two of order 4 have cycle type 4^12.
+
+## Turning a scheme, 2026-11-01
+
+He wrote that the gamma_inf,2 search should be redone after a first turn that suits the stabilizer, because the accuracy points never had it.  They did:
+Stab(315) swaps R and P, Stab(accurate) and Stab(262) swap L and R, and all 64 isotropies from the 315 send its L mode to the P of 262.  His note's turn is (2),
+Id x Id x Id ∘5; ∘3 alone is the input swap, which changes no gamma_{p,q}.
+
+- `turns.py DATA NAME...`: every growth factor and the amplification in all six orientations, from the raw .sms, independent of gamma48.
+- `turned.py SMS_PREFIX SLP_PREFIX OUT_PREFIX`: the two turned forms with their programs, by transposition.  Output: `results_turns_2026-11-01.txt`.
+
+| | γ∞,∞ | γ∞,₂ | γ₂,∞ | γ₂,₂ | γ₂ | amp | ops |
+|---|---|---|---|---|---|---|---|
+| accurate_262 | 132 | 22.63 | 496.5 | 90.51 | 154.51 | 2.83 | 262 |
+| turned ∘5 | 172 | 28.14 | 531.9 | 91.09 | 154.51 | 3.32 | 262 |
+| turned ∘6 | 152 | 28.14 | 508.5 | 96.54 | 154.51 | 3.32 | 262 |
+
+The published role is best on every factor.  Measured turned / published (altsim.py, f32, n = 1024 and 4096): means 1.22-1.32, 1.37-1.39, 1.54-1.60 at 1-3 levels; the amplification
+predicts 1.17, 1.38, 1.61.  The 260 behaves the same, and its programs compute the published matrices, so its growth factors are the published ones.

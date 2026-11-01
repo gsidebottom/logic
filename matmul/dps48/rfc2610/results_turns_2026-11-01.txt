@@ -1,0 +1,68 @@
+# Turning a scheme, 2026-11-01: turns.py (growth factors in all six orientations, raw .sms, independent of gamma48), turned.py (turned programs), altsim.py (f32 error)
+
+point          orientation           g_inf,inf    g_inf,2    g_2,inf      g_2,2        g_2        amp  Brent
+rational       [L; R; P]              288.0000    38.1621  1031.9690   139.9057   210.4997     4.0000  0
+rational       [R K; L K; K P]        288.0000    38.1621  1031.9690   139.9057   210.4997     4.0000  0
+rational       [R; P^T K; K L^T]      272.0000    39.2820  1025.9981   153.0429   210.4997     4.0620  0
+rational       [P^T; R K; L^T]        272.0000    39.2820  1025.9981   153.0429   210.4997     4.0620  0
+rational       [L K; P^T; R^T]        280.0000    33.5405  1025.4989   128.0006   210.4997     4.1231  0
+rational       [P^T K; L; K R^T]      280.0000    33.5405  1025.4989   128.0006   210.4997     4.1231  0
+accurate       [L; R; P]              148.0000    25.4558   514.8670    91.2140   154.5097     3.1623  0
+accurate       [R K; L K; K P]        148.0000    25.4558   514.8670    91.2140   154.5097     3.1623  0
+accurate       [R; P^T K; K L^T]      212.0000    32.9706   557.0781    89.8801   154.5097     3.7417  0
+accurate       [P^T; R K; L^T]        212.0000    32.9706   557.0781    89.8801   154.5097     3.7417  0
+accurate       [L K; P^T; R^T]        180.0000    28.1421   529.5734    95.2338   154.5097     3.3166  0
+accurate       [P^T K; L; K R^T]      180.0000    28.1421   529.5734    95.2338   154.5097     3.3166  0
+accurate_262   [L; R; P]              132.0000    22.6274   496.5159    90.5097   154.5097     2.8284  0
+accurate_262   [R K; L K; K P]        132.0000    22.6274   496.5159    90.5097   154.5097     2.8284  0
+accurate_262   [R; P^T K; K L^T]      172.0000    28.1421   531.8646    91.0875   154.5097     3.3166  0
+accurate_262   [P^T; R K; L^T]        172.0000    28.1421   531.8646    91.0875   154.5097     3.3166  0
+accurate_262   [L K; P^T; R^T]        152.0000    28.1421   508.4880    96.5401   154.5097     3.3166  0
+accurate_262   [P^T K; L; K R^T]      152.0000    28.1421   508.4880    96.5401   154.5097     3.3166  0
+
+## the orbit's gamma_inf,2 minimum, gamma/g214_exact_*
+g214_exact     [L; R; P]              176.5685    21.4073   583.7542    85.6294   157.2548     3.1350  0
+g214_exact     [R K; L K; K P]        176.5685    21.4073   583.7542    85.6294   157.2548     3.1350  0
+g214_exact     [R; P^T K; K L^T]      159.9066    25.9081   578.6716    92.8346   157.2548     3.2185  0
+g214_exact     [P^T; R K; L^T]        159.9066    25.9081   578.6716    92.8346   157.2548     3.2185  0
+g214_exact     [L K; P^T; R^T]        157.2548    30.2745   577.5842   111.1960   157.2548     3.1350  0
+g214_exact     [P^T K; L; K R^T]      157.2548    30.2745   577.5842   111.1960   157.2548     3.1350  0
+
+## turned programs
+a262 o5: L (67, 11), R (80, 0), P (96, 8), total 262, Brent 0 of 4096
+a262 o6: L (64, 8), R (80, 0), P (99, 11), total 262, Brent 0 of 4096
+a260 o5: L (66, 10), R (80, 0), P (96, 8), total 260, Brent 0 of 4096
+a260 o6: L (64, 8), R (80, 0), P (98, 10), total 260, Brent 0 of 4096
+
+## altsim.py
+programs: name, kernel adds+scalings (L, R, P), conversions (L, R, P), total
+  262 published      kernel [(64, 8), (67, 11), (112, 0)] = 262   conversions [] = 0
+  262 turned o5      kernel [(67, 11), (80, 0), (96, 8)] = 262   conversions [] = 0
+  262 turned o6      kernel [(64, 8), (80, 0), (99, 11)] = 262   conversions [] = 0
+  260 published      kernel [(64, 8), (66, 10), (112, 0)] = 260   conversions [] = 0
+  260 turned o5      kernel [(66, 10), (80, 0), (96, 8)] = 260   conversions [] = 0
+  260 turned o6      kernel [(64, 8), (80, 0), (98, 10)] = 260   conversions [] = 0
+gate: every scheme multiplies exactly at 1 and 2 levels
+
+error as a multiple of the classical f32 GEMM (geometric mean of seeds), uniform / normal
+n = 1024
+  262 published      L1    0.79 /   0.75   L2    1.08 /   0.92   L3    1.75 /   1.54
+  262 turned o5      L1    1.05 /   0.91   L2    1.45 /   1.23   L3    2.74 /   2.39
+  262 turned o6      L1    1.11 /   1.00   L2    1.48 /   1.28   L3    2.78 /   2.62
+  260 published      L1    0.83 /   0.73   L2    1.00 /   0.90   L3    1.71 /   1.57
+  260 turned o5      L1    1.01 /   0.92   L2    1.44 /   1.42   L3    2.72 /   2.63
+  260 turned o6      L1    1.06 /   0.98   L2    1.42 /   1.30   L3    2.88 /   2.53
+n = 4096
+  262 published      L1    0.69 /   0.72   L2    0.75 /   0.76   L3    1.15 /   1.12
+  262 turned o5      L1    0.83 /   0.83   L2    1.05 /   1.06   L3    1.66 /   1.78
+  262 turned o6      L1    0.91 /   0.88   L2    1.03 /   1.09   L3    1.83 /   1.71
+  260 published      L1    0.66 /   0.72   L2    0.80 /   0.78   L3    1.12 /   1.14
+  260 turned o5      L1    0.87 /   0.85   L2    1.02 /   0.99   L3    1.70 /   1.88
+  260 turned o6      L1    0.93 /   0.88   L2    1.09 /   1.13   L3    1.83 /   1.75
+
+turned / published, error ratio at levels 1, 2, 3: range over n = 1024, 4096 and both distributions, and the mean
+  262 o5: L1 1.15-1.33 mean 1.22  L2 1.34-1.40 mean 1.37  L3 1.44-1.59 mean 1.54
+  262 o6: L1 1.22-1.41 mean 1.32  L2 1.37-1.43 mean 1.39  L3 1.53-1.70 mean 1.60
+  260 o5: L1 1.18-1.32 mean 1.24  L2 1.27-1.58 mean 1.39  L3 1.52-1.68 mean 1.61
+  260 o6: L1 1.22-1.41 mean 1.31  L2 1.36-1.45 mean 1.42  L3 1.54-1.68 mean 1.62
+amplification ratio 3.3166 / 2.8284 per level: 1.17 1.38 1.61

@@ -2593,7 +2593,9 @@ the two source papers for this track):
   gamma_inf,2 22.63 against 28.14, 28.14; gamma_inf,inf 132 against 172, 152; amp 2.83 against 3.32, 3.32.  Measured turned / published (altsim.py, f32, n = 1024, 4096): means 1.22-1.32,
   1.37-1.39, 1.54-1.60 at 1-3 levels; amp predicts 1.17, 1.38, 1.61.  The 260's programs compute the published matrices (SLPchecker), so its growth factors stand and it turns the same way.  The
   role search was already in the accuracy paper: 30,000 starts from accurate over all three roles, 16√2 and 21.41, exhaustive over the 648 dyadic orthogonal points.  Soft spot, unrelated to turning: the
-  abstract states 'the orbit's minimum' for what is a search result.  `results_turns_2026-11-01.txt`.
+  abstract states 'the orbit's minimum' for what is a search result.  His proposal was run literally on Oct 25: `gamma48` on rational in role 1 starts at the 315 turned by (2) (39.2820, rs_scale.log), 2,400 starts,
+  22.6274 x49 and nothing lower; accurate role 0, the same role, 22.6274 x248 of 10,000.  Not covered: whole-orbit searches on the other factors.  gamma_inf,2 is gamma48's only objective; gamma_inf,inf was
+  minimized only over the 648 dyadic points; gamma_2,inf and gamma_2,2 were never objectives.  `results_turns_2026-11-01.txt`.
 
 ## 1. The thesis — why native representation should win
 

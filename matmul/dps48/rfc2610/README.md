@@ -106,3 +106,6 @@ Id x Id x Id ∘5; ∘3 alone is the input swap, which changes no gamma_{p,q}.
 
 The published role is best on every factor.  Measured turned / published (altsim.py, f32, n = 1024 and 4096): means 1.22-1.32, 1.37-1.39, 1.54-1.60 at 1-3 levels; the amplification
 predicts 1.17, 1.38, 1.61.  The 260 behaves the same, and its programs compute the published matrices, so its growth factors are the published ones.
+
+His proposal was already run on Oct 25: `gamma48` on rational in role 1 starts at the 315 turned by (2) (39.2820, `../gamma/rs_scale.log`), 2,400 starts, 22.6274 x49 and nothing lower.
+gamma_inf,2 is the only whole-orbit objective we have searched.

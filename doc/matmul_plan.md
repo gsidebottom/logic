@@ -2576,6 +2576,16 @@ the two source papers for this track):
   of SP51Optimal.lean does not bind: the record's L has 21 non-output values, so 210 pairs for the 53 triples needed.  At
   the floor it has 6, so 15 pairs for 38, which might add a few per side.  146 is the Lean theorem in reach, and search
   saturation says nothing about the minimum.
+  2026-11-01: Sedoglavic wrote that he lost the isotropy from the original 315 (`4x4x4_48_rational`) to accurate_262, so he gets a single
+  signed permutation where we listed 8.  `iso_between.py` finds it in a minute: 64 isotropies, a coset of the stabilizer, in maps ∘5 =
+  [R; Pᵀ K; K Lᵀ] and [Pᵀ; R K; Lᵀ].  g = (U x V x W)∘5 has entries 0, ±1 only, 8 nonzeros per matrix, |det| 4, 2, 4.  Gates from the raw .sms
+  (`iso_gate.py`, `results_iso_2026-11-01.txt`): all 64, and the three other families, map the 48 terms exactly by Lemma 2.1; his recipe g s g⁻¹
+  is a bijection Stab(315) -> Stab(262), each computed separately, sending the 32 that swap R and P to the 32 that swap L and R, as he said on
+  Oct 24.  Accurate -> 262: all 64 orthogonal as uniqueness forces, the simplest (H x I x H), H = [[1,1],[1,-1]] ⊗ I₂, presumably Ursin's Hadamard
+  step.  315 -> accurate: entries 0, ±1 again.  Signed permutations in all three modes: 315 4, accurate 4, 262 8, 204 2, lam01c0_201 1.  The
+  8 at 262 are dihedral of order 8, all with trivial slot map; the two of order 4 have cycle type 4^12, the shape of his Oct 24 'wildest dream',
+  with no canonical vectors in L or P here.  Draft doc/reply_alexandre_isotropy_262_2026-11-01.md; the matrices are in
+  ~/Downloads/isotropy_315_to_262.txt.
 
 ## 1. The thesis — why native representation should win
 

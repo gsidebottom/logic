@@ -77,3 +77,14 @@ the 2026-10-31 paragraph in doc/matmul_plan.md.  His 160 decompositions are not 
 - `pclasses.py`, `pside.py`, `td/pdeep.py`: the P map.  `vlines.py`, `run_vl.sh`: every line-fixed V at the record P.
 - `seeded262.py`, `td/score76.py`: the 76-operation R programs of accurate_262.
 
+## Isotropies between the DPS points, 2026-11-01
+
+He lost the isotropy from the original 315 (`4x4x4_48_rational`) to accurate_262, so he cannot conjugate the known stabilizer onto it.
+
+- `iso_between.py SRC TGT OUT.json`: every isotropy between two points, exact, written as a map on [L; R; P], then Lemma 2.1 with primitive integer
+  U, V, W.  Run on rational -> 262, rational -> accurate, accurate -> 262, rational -> rational and 262 -> 262, about a minute each.
+- `iso_gate.py DATA WORK REPORT`: gates from the raw .sms, independent of the transport; his recipe g s g^-1; orthogonality of accurate -> 262; the
+  signed-permutation subgroup; the text for him.  Output: `results_iso_2026-11-01.txt`.
+
+g = (U x V x W)∘5, entries 0, ±1.  Stab(315) -> Stab(262) by conjugation, 64 of 64, one to one.  Signed permutations in all three modes: 315 4,
+accurate 4, 262 8, 204 2, lam01c0_201 1.  The 8 at 262 are dihedral of order 8, all with trivial slot map; the two of order 4 have cycle type 4^12.

@@ -105,3 +105,17 @@ PLinOpt-style title comments; the PR cites the Lean proof
 seeds x 300 s: L 56 x6, R 56 x5, P^T 57 x2).  With the 55/57/89 family
 (p005, p010, ...) and its L/R mirror, every proxy-optimal structure tried
 lands on exactly 201.
+
+## 2026-10-31 -- accurate_262's matrices in 260 operations
+
+`accurate_260_R.slp`: 76 operations (<66, 10>) for PLinOpt's `4x4x4_48_accurate_262_R.sms`, from lns48 seeded with the
+published R (78).  With the published L (72) and P (112): 260.  12 seeds x 120 s per side (`../rfc2610/seeded262.py`): L 72 and
+P 112 on all 12, R 76 on 5 and 77 on 7.  72 more seeds on R (`../rfc2610/seededR.py`): 76 on 23, 77 on 49.  From the matrices
+alone (the accuracy controls of the frame-point sweep, stage C, 300 s x 2 seeds; `../rfc2610/results_td_2026-10-31.txt`): L 72, P 112, R 93.
+
+`accurate_260n_{L,R,P}.slp`: the set the accuracy paper calls accurate_260, the same files as `../gamma/slp/a260n_*`.  Best of the
+28 distinct 76-operation R programs, each polished by `slpopt search --maxops` with L and P under their budgets
+(`../rfc2610/polish76.py`), then `../signnorm48.py`: <64, 8>, <66, 10>, <112, 0>, no negations, all 18 scalings halvings.  They
+pass SLPchecker against the published matrices, and `../slp48check.py` gives 0 failures of 4096.  Rounding model 7.12 (published
+7.22; the first 260 7.59; the published programs polished at their own counts 7.04).  Results:
+doc/matmul_4x4_rank48_accurate262.tex, Section "Two operations fewer"; doc/fastmm_plan.md.

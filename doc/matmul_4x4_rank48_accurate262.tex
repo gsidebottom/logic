@@ -32,11 +32,12 @@
 \newcommand{\acct}{\texttt{4x4x4\_\allowbreak 48\_\allowbreak accurate\_\allowbreak 262}\xspace}
 \newcommand{\rat}{\texttt{4x4x4\_\allowbreak 48\_\allowbreak rational}\xspace}
 \newcommand{\pto}{\texttt{4x4x4\_\allowbreak 48\_\allowbreak 201}\xspace}
+\newcommand{\aczs}{\texttt{accurate\_\allowbreak 260}\xspace}
 \title{The 262-operation $\mm{4\times4\times4:48}$ algorithm is also the\\
 more accurate one: error-bound exponent $9/4$ and about a quarter
 less error}
 \author{Greg Sidebottom}
-\date{Draft --- October 27, 2026}
+\date{Draft --- November 1, 2026}
 
 \begin{document}
 \maketitle
@@ -70,7 +71,7 @@ floating point, where its constants round, its measured error is no
 lower than \acc's.  Dyadic probe points show that neither $\ginf$ nor
 $\giinf$ alone predicts the measured error, while $Q_0$ and exact dyadic
 coefficients matter.  A first-order rounding model of the programs,
-taken as a search objective, gives programs with $11\%$ less modelled
+taken as a search objective, gives programs with $10\%$ less modelled
 rounding error that measure as a tie, because the leaf products' error,
 amplified by the scheme, dominates; that amplification, $2\sqrt2$ per
 level, is the minimum over the orbit, over the other known rank-$48$
@@ -79,7 +80,10 @@ double precision inside the single-precision passes, at no cost below
 $n=16384$, cuts the error at five recursion levels by a third.  The
 other known
 rational classes, Li, Wang and Hu's curve and Agarwal's scheme, have
-larger $\ginf$ minima.
+larger $\ginf$ minima.  Finally, a search seeded with DPS's programs
+computes the same matrices in $260$ operations instead of $262$, with
+the same growth factors, at the same speed, and with measured error
+within about $2\%$ at one to three levels.
 \end{abstract}
 
 \section{Introduction}\label{sec:intro}
@@ -142,6 +146,8 @@ point~\cite{S26}, and \texttt{2x2x2\_\allowbreak 7\_\allowbreak Winograd},
 \texttt{2x2x2\_\allowbreak 7\_\allowbreak Strassen} and \texttt{2x2x2\_\allowbreak 7\_\allowbreak DPS-accurate} for the
 $\mm{2\times2\times2:7}$ algorithms.  Tables drop the common prefixes.
 Points of our search that are not in PLinOpt have descriptive names.
+We write \aczs for \acct's matrices with our $260$-operation programs
+(Section~\ref{sec:260}); it is the same scheme, not a new one.
 
 We show that \acct, the cheaper variant, is also the more accurate one:
 \begin{itemize}
@@ -181,6 +187,12 @@ for an accuracy search.  The combinatorial factor $Q_0$ and exact
 dyadic coefficients matter as much.  \acct has dyadic coefficients and
 the smallest $Q_0$ and $\giinf$ of the $\mm{4\times4\times4:48}$ schemes
 we measured.
+
+DPS's programs are not the cheapest for their matrices.
+Section~\ref{sec:260} computes \acct's matrices in $260$ operations.
+That changes no growth factor and no measurable time, and the measured
+error stays within about $2\%$ at one to three levels, so it is a lower
+operation count and not a more accurate algorithm.
 
 \section{Background}\label{sec:background}
 
@@ -311,7 +323,9 @@ the smallest among the $\mm{4\times4\times4:48}$ algorithms with dyadic
 coefficients.  The last two are points of the same orbit from our
 search and our earlier work~\cite{S26}.  Names
 are PLinOpt's without the prefixes \texttt{2x2x2\_7\_} and
-\texttt{4x4x4\_48\_}.}
+\texttt{4x4x4\_48\_}.  Everything but the operations is a function of the
+matrices alone, so \texttt{accurate\_260} (Section~\ref{sec:260}) shares the
+row of \texttt{accurate\_262}, with $260$ operations.}
 \label{tab:gamma}
 \footnotesize
 \setlength{\tabcolsep}{4pt}
@@ -386,7 +400,9 @@ the other algorithms of~\cite[Table~2]{DPS26a} and two points from our
 search.  The error-bound exponents $\log_4\ginf$ and $\log_4\gamma_{2,2}$
 are exactly $9/4$ and $13/4$.  Both algorithms' published programs pass
 PLinOpt's \texttt{SLPchecker} against their matrices, and both pass our
-exact check against the matrix multiplication tensor.
+exact check against the matrix multiplication tensor.  The proposition
+depends on the matrices only, so it also holds for the $260$-operation
+programs of Section~\ref{sec:260}.
 
 \section{How we found it}\label{sec:search}
 
@@ -629,7 +645,7 @@ and $128$.  For comparison we include
 and four levels.  Two of its levels reduce the size as much as one
 $\mm{4\times4\times4}$ level.
 
-\subsection{Protocol}
+\subsection{Protocol}\label{sec:protocol}
 
 \begin{itemize}
 \item Inputs are uniform on $[-1,1)$ or standard normal, from a xorshift
@@ -693,8 +709,8 @@ Figure~\ref{fig:levels} plots the means.
   depth, in both precisions and for both distributions.  Its error is
   $0.73$--$0.83$ of \acc's averaged over the seeds of each setting,
   $0.75$--$0.77$ averaged over all instances, and $0.62$--$0.90$ for
-  single instances.  It has the lowest error of all at two and three
-  levels.  At one level \acct with our programs ($0.71$ in single
+  single instances.  Of the programs of Section~\ref{sec:protocol} it has
+  the lowest error at two and three levels.  At one level \acct with our programs ($0.71$ in single
   precision) and probe~A ($0.71$ in double) are slightly lower than its
   $0.73$ and $0.72$.
 \item At one and two levels, where the library's plans run, it is more
@@ -733,8 +749,9 @@ DPS's experiments~\cite[Fig.~1]{DPS26a}, ten instances per precision.
 Table~\ref{tab:deep} gives the results and Figure~\ref{fig:deep} plots
 them.
 \begin{itemize}
-\item \acct with DPS's programs is again the most accurate from two
-  levels on, and at one level in double precision; at one level in
+\item Of the programs of Section~\ref{sec:protocol}, \acct with DPS's
+  programs is again the most accurate from two levels on, and at one
+  level in double precision; at one level in
   single precision probe~A and our programs for \acct have $0.78$
   against its $0.79$.  Its advantage over \acc grows with depth: its error is
   $0.80$--$0.83$ of \acc's at one level and $0.72$ at five (single
@@ -747,7 +764,8 @@ them.
   leaves are larger, but at $n=1024$ they fall behind \acc with DPS's
   programs from three levels on: $2.12$--$2.29$ against $2.00$ at three
   levels and $13.96$--$15.45$ against $13.29$ at five, in single
-  precision.  Only \acct with DPS's programs beats \acc at every depth.
+  precision.  Of the programs of Section~\ref{sec:protocol}, only \acct
+  with DPS's programs beats \acc at every depth.
   Section~\ref{sec:disc} explains why.
 \item Among the direct-sum programs, the dyadic probes stay $24$--$29\%$
   below \acc's at five levels and the orbit's $\ginf$ minimum only about
@@ -862,9 +880,10 @@ each rounding to the outputs gives the error each pass adds to a level.
   programs measure the same.  Every further level amplifies those by the
   same factor and adds a new pass error, so the gap grows with depth
   (Table~\ref{tab:deep}).
-\item For the four programs whose schemes amplify leaf errors equally
-  ($2\sqrt2$ for the worst output), the model's worst-output error
-  orders the measured errors exactly, at three levels and at five.
+\item For the four programs of Section~\ref{sec:protocol} whose schemes
+  amplify leaf errors equally ($2\sqrt2$ for the worst output), the
+  model's worst-output error orders the measured errors exactly, at
+  three levels and at five.
 \item \acc, \rat and \pto amplify leaf errors more ($3.16$, $4$ and
   $9.53$).  \acc's own programs add no more error than \acct's ($7.12$
   against $7.22$); its larger measured error comes from its scheme's
@@ -898,7 +917,8 @@ these programs.
 \paragraph{Recommendation.}
 Wherever \acc is used, \acct is
 better on both counts: $22$ fewer operations and about a quarter less
-error, in the same orbit and with the same $\gamma_2$.
+error, in the same orbit and with the same $\gamma_2$.  With the programs
+of Section~\ref{sec:260} the saving is $24$ operations.
 
 \paragraph{Limitations.}
 \begin{itemize}
@@ -920,8 +940,8 @@ the operation count over dyadic points, or uses the measured error of
 deep recursion directly; \texttt{gamma48} makes such searches cheap.
 Section~\ref{sec:beyond} carries the rounding model into a program
 search, finds the scheme's amplification of the leaf error at its
-floor, and lowers the deep-recursion error by a third with
-double-precision passes.  Lower precisions (bf16, fp16), where every
+floor, lowers the deep-recursion error by a third with double-precision
+passes, and takes two operations off DPS's programs.  Lower precisions (bf16, fp16), where every
 level's error is a larger share of the result, are where an accurate
 scheme matters most.
 
@@ -930,7 +950,8 @@ scheme matters most.
 The model of Section~\ref{sec:disc} points to two ways to a realized
 algorithm more accurate than \acct with DPS's programs: programs that add
 less rounding error, and schemes that amplify the leaf products' error
-less.  We tried both; then the one lever that remained.
+less.  We tried both; then the one lever that remained.  The last
+subsection turns to the operation count.
 
 \subsection{Programs found with the model}\label{sec:searchprog}
 
@@ -959,7 +980,7 @@ Section~\ref{sec:acc} (the rows ``model-searched programs'' of
 Tables~\ref{tab:acc}, \ref{tab:deep} and~\ref{tab:model}), its error is
 $1.001$, $1.007$ and $1.014$ of \acct's at one to three levels, within
 the seed-to-seed spread, and $0.95$ at four and five levels, at the same
-speed.  Eleven percent less pass error is five percent at depth and
+speed.  Ten percent less pass error is five percent at depth and
 nothing with large leaves: the error that dominates is the leaf
 products' own, amplified by the scheme.
 
@@ -1066,6 +1087,62 @@ and the model's floor accounts for its size.  The library leaves the
 switch off by default; the natural rule is to turn it on with the
 accuracy budget, for plans of three or more fast levels.
 
+\subsection{Two operations fewer}\label{sec:260}
+
+We ran Patel's large-neighbourhood search~\cite{Patel26}, which moves
+through the sets of values a program computes, in our Rust
+port~\cite{S26}, starting from DPS's programs, with twelve seeds of
+$120$~s per matrix.  $L$ stays at
+$72$ operations and $P$ at $112$ on every seed, and $R$ goes from $78$ to
+$76$ on five seeds and to $77$ on the other seven.  Another $72$ seeds on
+$R$ give the same two values, $76$ on $23$ of them.  The start matters:
+from the matrices alone, $300$~s on two seeds, the same search reaches
+$72$ and $112$ but stops at $93$ on $R$.  So \acct's matrices cost
+$72+76+112=260$ operations, and the leading term of
+Section~\ref{sec:intro} falls from $9+3/16$ to $9+1/8$.  PLinOpt and the
+current version of~\cite{DPSST26} still give $262$.  The $260$ is an upper
+bound from a randomized search, and we have no proof that it is minimal.
+
+The search counts operations, not roundings.  The first set, DPS's $L$
+and $P$ with one of those $76$-operation programs for $R$, models at $7.59$
+against DPS's $7.22$ and measures about $3\%$ worse at four and five levels
+on $n=1024$.  So we took the $28$ distinct $76$-operation programs of the
+$84$ seeds and polished each with \texttt{slpopt}
+(Section~\ref{sec:searchprog}) under an operation budget, which rejects
+any move that takes a program above its count; $L$ and $P$ are polished
+too, at $72$ and $112$.  The best set, \aczs, models at $7.12$ ($L$+$R$
+$5.67$, $P$ $3.02$).  It has $64$ additions and $8$ scalings for $L$, $66$
+and $10$ for $R$, and $112$ and none for $P$.  Its $18$ scalings are all
+halvings and it has no negations, so the count is the same whether or not
+negations are charged.  DPS's programs polished the same way at their own
+counts reach $7.04$, so the lower model value comes from the polishing and
+not from the two operations.
+
+\aczs passes \texttt{SLPchecker} against \acct's published matrices and
+our exact check against the matrix multiplication tensor.  The matrices
+being the same, so are the growth factors, $Q_0$ and the amplification.
+
+Measured with the protocol of Section~\ref{sec:acc} on the same inputs as
+DPS's programs (the rows \aczs of Tables~\ref{tab:acc}, \ref{tab:deep}
+and~\ref{tab:model}), its error is $1.006$, $1.021$ and $1.008$ of theirs
+at one to three levels on $n=4096$ and $8192$ ($36$ pairs per level,
+standard errors about $0.008$), and $1.021$, $0.989$, $0.999$, $0.964$ and
+$0.953$ at one to five levels on $n=1024$ ($20$ pairs per level).  At the
+one or two levels where the library's plans run it is no more accurate;
+the $2\%$ at two levels on the large sizes is $2.4$ standard errors.  It
+is $4$--$5\%$ lower at four and five levels on $n=1024$, where the error
+is $3.6$ and $9.2$ times the classical error in single precision and no
+plan goes.  The model does not separate programs this close: \aczs has
+$1.4\%$ less modelled pass error than DPS's programs and the
+model-searched set $10\%$, yet at five levels they measure $9.20$ and
+$9.25$ against $9.79$.
+
+The two operations save no measurable time.  Over nine alternating rounds
+on an idle machine, with the order swapped each round, the eight settings
+of Table~\ref{tab:speed} give mean ratios of $0.988$--$1.007$, and
+$0.999\pm0.002$ overall.  The library keeps DPS's programs, and \aczs
+stands as an operation count.
+
 \section{Data and code}\label{sec:data}
 
 Everything is in the public repository
@@ -1122,6 +1199,20 @@ it.
   word-size prime field with rational reconstruction, $7$--$10$ times
   faster on these matrices) is the branch \texttt{optimizer-speed} of
   \url{https://github.com/gsidebottom/plinopt}.
+\item Section~\ref{sec:260}: the programs
+  \path{matmul/dps48/cand48/accurate_260n_{L,R,P}.slp}, identical to
+  \path{matmul/dps48/gamma/slp/a260n_{L,R,P}.slp}, from which the build
+  \path{build/bench_fmm_var_a260n} is generated; the first $76$-operation
+  $R$ program \path{matmul/dps48/cand48/accurate_260_R.slp}; the search
+  \path{src/bin/lns48.rs}, driven by \path{seeded262.py}, \path{seededR.py}
+  and \path{polish76.py} in \path{matmul/dps48/rfc2610/}, with their output
+  in \path{results_td_2026-10-31.txt} there; the budget in \texttt{slpopt
+  search --maxops}; \path{matmul/dps48/signnorm48.py}, which removes the
+  negations; the exact check \path{matmul/dps48/slp48check.py}.  The logs
+  are in \path{matmul/fastmm/results/}: \path{accuracy_a260n_} and
+  \path{accuracy_deep_a260n_2026-11-01.txt}, \path{accuracy_a260_} and
+  \path{accuracy_deep_a260_2026-10-31.txt} for the first set, and
+  \path{speed_a260n_rerun_2026-10-31.txt}.
 \item The optimizer sweep: \path{matmul/dps48/gamma/optsweep.sh} and
   \path{optsweep_score.py}; its log and scores are in
   \path{matmul/fastmm/results/optimizer_sweep_2026-10-26.txt} and its
@@ -1218,6 +1309,8 @@ of the isotropy group action}, arXiv:2607.15069 (2026).
 for scientific and algorithmic discovery}, arXiv:2506.13131 (2025).
 \bibitem{ORO05} T.~Ogita, S.~M.~Rump, S.~Oishi, \emph{Accurate sum and
 dot product}, SIAM J.\ Sci.\ Comput.\ 26 (2005) 1955--1988.
+\bibitem{Patel26} R.~Patel, \emph{matmul-4x4-48-202}, code and programs,
+\url{https://github.com/rp440/matmul-4x4-48-202} (October 2026, CC0).
 \bibitem{Sedoglavic26} A.~Sedoglavic, private communication (e-mail
 to the author), 26~October 2026: comments on the first draft of this
 paper; the orbit search should be restricted to the factorization of

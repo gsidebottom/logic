@@ -626,7 +626,7 @@ barely moves from good starts.  Candidate opt1 = DPS's L + polished sampled R + 
 (`gamma/slp/opt1_*`), modelled 6.47.  MEASURED (campaign_var.sh / summarize_var.py,
 results/accuracy_opt1_*, accuracy_deep_opt1_*, speed_opt1_*, opt1_summary_2026-10-26.txt): ratios
 to accurate_262 1.001 / 1.007 / 1.014 at 1-3 levels (n = 4096, 8192; within the seed spread
-0.82-1.15), 0.95 at 4-5 levels (n = 1024), speed 0.97-1.01.  So an 11% smaller modelled pass error
+0.82-1.15), 0.95 at 4-5 levels (n = 1024), speed 0.97-1.01.  So a 10% smaller modelled pass error
 is invisible where the leaf GEMMs' error dominates and worth ~5% at depth: for this scheme the
 program lever is nearly exhausted; a measurable gain needs a scheme with lower leaf amplification
 (amp 2.83 = 2 sqrt2 is the scheme's) or a change at the precision level (compensated passes, at a
@@ -1355,6 +1355,20 @@ round, top CPU users logged each round; results/speed_a260n_rerun_2026-10-31.txt
 0.999 +- 0.002, that setting 1.007 +- 0.014.  So the two operations save no measurable time, and the +3.3% was noise.  Load does
 not affect the error measurements.  Decision: the library keeps the published programs, no gain in time and none in error at the
 depths it uses.  The 260 stands as an operation count.
+Paper, 2026-11-01 (Greg asked): accurate_260 is in doc/matmul_4x4_rank48_accurate262.tex: Section 8.4 "Two operations fewer", rows in
+Tables 3, 7 and 8 (paper_acc262.py, build bench_fmm_var_a260n), a sentence each in the abstract, Sections 1 and 3, the Recommendation and
+the Outlook, Table 1's caption, Patel cited, date November 1.  The title stays, since accurate_262 is the scheme's name.  The rows are measured on the
+published set itself: `NO_SPEED=1 campaign_var.sh a260n`, 264 of 264 errors identical to a260p (the two differ only in negations, and
+rounding is sign-symmetric; binaries and programs checked to differ) and 264 of 264 baseline values identical to the Oct 25 campaign;
+results/accuracy_{,deep_}{a260,a260p}_2026-10-31.txt, accuracy_{,deep_}a260n_2026-11-01.txt.  Regenerating without the new rows reproduces
+the three table files byte for byte.  Re-verified from the files: SLPchecker against the published matrices with a corrupted control,
+slp48check 0 of 4096, all 18 scalings halvings, no negations; PLinOpt main (1302cc6) and arXiv:2609.12027v2 still give 262.  Corrections made
+on the way: "11% less modelled pass error" for the model-searched set was 7.22/6.47 - 1, it is 10% less (6.47 against 7.22), fixed in the
+paper's abstract and Section 8.1, matmul_mixed_levels and the entry above; Table 3's caption gave 16 double-precision instances to "the
+first five schemes" and 10 to the rest, wrong for the f64-pass row (none) and for the Q(sqrt2) point and rational (16); three statements of
+Sections 5 and 7 said "of all" or "the four programs" and now name the programs of Section 5.2, because the f64-pass and searched rows already
+broke them.  Not in the paper: the turning results, the abstract's "orbit's minimum" wording, and any line separating the error exponent
+9/4 from the recent bound omega <= 9/4 (unrelated, memory matmul-track).  Its Data section lists these files, which reach the public repository only with a push.
 
 Alternative bases (2026-10-31, Greg's question on Stapleton's 169 + 43 circuit, github.com/Joshua-Stapleton/fmm-helper-exchange,
 methods/basis/certificate_4x4_169_43; his files are not committed): no faster accurate plan.  `altsim.py` interprets the programs

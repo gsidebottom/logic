@@ -16,7 +16,7 @@ import re
 import sys
 
 # --extra LOG (repeatable): further logs merged into the main or deep log, for builds measured in
-# later campaigns (opt1, the f64 passes); entries already present are kept
+# later campaigns (opt1, the f64 passes, accurate_260); entries already present are kept
 EXTRA = [sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == "--extra"]
 sys.argv = [a for i, a in enumerate(sys.argv) if a != "--extra" and (i == 0 or sys.argv[i - 1] != "--extra")]
 
@@ -32,6 +32,7 @@ SCHEMES = [  # (build, label); bench_fmm used Table 1's programs when these logs
               # library's default until 2026-10-25; now build/bench_fmm_acc284)
     ("bench_fmm", "\\texttt{accurate}, DPS's programs (284)"),
     ("bench_fmm_acc262", "\\texttt{accurate\\_262}, DPS's programs (262)"),
+    ("bench_fmm_var_a260n", "\\texttt{accurate\\_260}, our programs (260)"),
     ("bench_fmm_var_f64pass", "\\texttt{accurate\\_262}, DPS's programs, f64 passes"),
     ("bench_fmm_var_opt1", "\\texttt{accurate\\_262}, model-searched programs (539)"),
     ("bench_fmm_var_g16s2o", "\\texttt{accurate\\_262}, our programs (445)"),
@@ -92,9 +93,10 @@ def main():
     lines += [r"\begin{table}[t]", r"\centering",
               r"\caption{Error against the exact reference as a multiple of the classical GEMM's own error,"
               rf" mean over all instances: single precision {counts['f']} instances ($n=4096$ and $8192$, uniform and"
-              rf" normal, five seeds each); double precision {counts['d']} for the first five schemes ($n=4096$, five"
-              r" seeds per distribution; $n=8192$, three) and 10 ($n=4096$ only) for the rest.  Winograd's levels are binary,"
-              r" so its columns are two and four levels; ``--'': not measured.}",
+              rf" normal, five seeds each); double precision {counts['d']} ($n=4096$, five seeds per distribution;"
+              r" $n=8192$, three), except \texttt{accurate}'s direct sums, the probes and \texttt{201}, which have the 10"
+              r" at $n=4096$ only.  Winograd's levels are binary, so its columns are two and four levels; ``--'': not"
+              r" measured.}",
               r"\label{tab:acc}", r"\small", r"\begin{tabular}{lrrrrrr}", r"\toprule",
               r" & \multicolumn{3}{c}{single precision} & \multicolumn{3}{c}{double precision}\\",
               r"\cmidrule(lr){2-4}\cmidrule(lr){5-7}",
@@ -242,6 +244,7 @@ def deep(log, outdir):
              r"levels & 1 & 2 & 3 & 4 & 5 & 1 & 2 & 3 & 4 & 5\\", r"\midrule"]
     fmt = lambda x: "--" if x != x else (f"{x:.2f}" if x < 100 else f"{x:.0f}")
     SHORT = {"bench_fmm": "\\texttt{accurate} (284)", "bench_fmm_acc262": "\\texttt{accurate\\_262} (262)",
+             "bench_fmm_var_a260n": "\\texttt{accurate\\_260}, ours (260)",
              "bench_fmm_var_f64pass": "\\texttt{accurate\\_262}, f64 passes", "bench_fmm_var_opt1": "\\texttt{accurate\\_262}, searched (539)",
              "bench_fmm_var_g16s2o": "\\texttt{accurate\\_262}, ours (445)", "bench_fmm_var_table1d": "\\texttt{accurate}, direct",
              "bench_fmm_var_probeA": "probe A", "bench_fmm_var_probeB": "probe B",
@@ -309,6 +312,7 @@ def deep(log, outdir):
 DPS48 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "dps48")
 MODEL = [  # (build, label, program prefix under matmul/dps48)
     ("bench_fmm_acc262", "\\texttt{accurate\\_262}, DPS's programs (262)", "plinopt/data/4x4x4_48_accurate_262"),
+    ("bench_fmm_var_a260n", "\\texttt{accurate\\_260}, our programs (260)", "cand48/accurate_260n"),
     ("bench_fmm_var_opt1", "\\texttt{accurate\\_262}, model-searched programs (539)", "gamma/slp/opt1"),
     ("bench_fmm_var_g16s2o", "\\texttt{accurate\\_262}, our programs (445)", "gamma/slp/g16s2o"),
     ("bench_fmm_var_probeB", "probe B, direct sums", "gamma/slp/probeB"),

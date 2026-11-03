@@ -211,7 +211,8 @@ the bottom.  Mixing pays for three reasons that the measurements separate:
 \end{tikzpicture}
 \caption{The plan \lv{SW/R363+3/R633/G6} at $n=13824$ in f64, from the
 problem at the top to the GEMM leaves at the bottom.  Each level cuts its
-operands into the grids shown.  Going down, its $L$ and $R$ passes write the
+operands into the grids shown and runs its scheme's three programs
+(Figure~\ref{fig:lrp}).  Going down, its $L$ and $R$ passes write the
 factors of the level below, linear combinations of those blocks with a block's
 shape ($7$ of each for the $2\times2$ scheme, $40$ for the $3\times3\times6$
 scheme); going up, its $P$ pass composes the products of the level below into
@@ -410,7 +411,8 @@ products are $(\frac{m}{g_1}\times\frac{k}{g_2})(\frac{k}{g_2}\times
 \frac{n}{g_3})$ matrix products, computed by the plan below.  A \emph{level} is
 the application of \eqref{eq:scheme} once; the matrices are realized as
 straight-line programs (PLinOpt's \texttt{.slp} syntax \cite{PLinOpt}), one
-per side, and the three programs are what a level executes:
+per side, and the three programs are what a level executes
+(Figure~\ref{fig:lrp} writes them out for the $2\times2$ scheme):
 \begin{itemize}
 \item the $L$ pass reads the $g_1g_2$ blocks of $A$ and writes the $r$ left
   factors $S_i$;
@@ -424,6 +426,73 @@ with the whole program evaluated on scalars in registers at each position.
 A pass therefore reads every input block once and writes every output block
 once, and the program's operation count costs only arithmetic, which the
 memory system hides.
+
+\begin{figure}[tp]
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm,scale=0.95,
+  every node/.style={font=\footnotesize},
+  box/.style={draw,rounded corners=3pt,inner sep=6pt,align=left},
+  flow/.style={-{Stealth[length=6pt]},line width=0.8pt},
+  lab/.style={font=\footnotesize,inner sep=2pt,fill=white}]
+\node (A) at (-4.6,3.6) {$A=\begin{pmatrix}a_{11}&a_{12}\\a_{21}&a_{22}\end{pmatrix}$};
+\node (B) at ( 4.6,3.6) {$B=\begin{pmatrix}b_{11}&b_{12}\\b_{21}&b_{22}\end{pmatrix}$};
+\node[box] (L) at (-4.6,1.0) {$L$ (Left): $t = L\,\vect A$\\[3pt]
+  \begin{tabular}{@{}l@{\qquad}l@{}}
+  $r_1 = \tfrac12 a_{22}$ & $t_2 = a_{21}-r_1$\\
+  $t_3 = a_{12}-r_1$ & $t_0 = t_2-t_3$\\
+  $t_4 = a_{21}+r_1$ & $r_2 = t_2-a_{12}$\\
+  $t_5 = a_{11}+\tfrac12 r_2$ & $t_1 = t_5-t_0$\\
+  $t_6 = t_4-t_0$ &
+  \end{tabular}};
+\node[box] (R) at (4.6,1.0) {$R$ (Right): $s = R\,\vect B$\\[3pt]
+  \begin{tabular}{@{}l@{\qquad}l@{}}
+  $u_1 = \tfrac12 b_{12}$ & $s_1 = b_{11}+u_1$\\
+  $s_2 = u_1-b_{22}$ & $u_2 = s_1-b_{22}$\\
+  $s_4 = b_{22}+u_1$ & $s_0 = s_1-s_4$\\
+  $s_3 = \tfrac12 u_2-b_{21}$ & $s_5 = s_0-s_2$\\
+  $s_6 = s_0-s_3$ &
+  \end{tabular}};
+\node[box,minimum width=10.8cm] (M) at (0,-2.4) {The products, $p_i = t_{i-1}\,s_{i-1}$: the only multiplications\\[3pt]
+  \begin{tabular}{@{}l@{\qquad}l@{\qquad}l@{\qquad}l@{}}
+  $p_1 = t_0\,s_0$ & $p_2 = t_1\,s_1$ & $p_3 = t_2\,s_2$ & $p_4 = t_3\,s_3$\\
+  $p_5 = t_4\,s_4$ & $p_6 = t_5\,s_5$ & $p_7 = t_6\,s_6$ &
+  \end{tabular}};
+\node[box,minimum width=10.8cm] (P) at (0,-5.0) {$P$ (Product): $\vect C = P\,p$\\[3pt]
+  \begin{tabular}{@{}l@{\quad}l@{\quad}l@{\quad}l@{}}
+  $c_{22} = p_5+p_3$ & $v_1 = p_1-p_6-p_3$ & $v_2 = p_7+p_6$ & $v_3 = p_4+v_1$\\
+  $v_4 = \tfrac12 c_{22}$ & $c_{12} = p_2+v_1+v_4$ & $c_{21} = v_2+v_3+v_4$ & $c_{11} = \tfrac12(c_{12}+v_2-v_3)$
+  \end{tabular}};
+\node (C) at (0,-7.1) {$C=AB=\begin{pmatrix}c_{11}&c_{12}\\c_{21}&c_{22}\end{pmatrix}$};
+\draw[flow] (A) -- (L) node[lab,midway,right] {the 4 blocks of $A$};
+\draw[flow] (B) -- (R) node[lab,midway,left] {the 4 blocks of $B$};
+\draw[flow] (L.south) -- (L.south |- M.north) node[lab,midway,right] {$t_0,\dots,t_6$: the 7 left factors};
+\draw[flow] (R.south) -- (R.south |- M.north) node[lab,midway,left] {$s_0,\dots,s_6$: the 7 right factors};
+\draw[flow] (M) -- (P) node[lab,midway,right] {$p_1,\dots,p_7$: the 7 products};
+\draw[flow] (P) -- (C) node[lab,midway,right] {the 4 blocks of $C$};
+\end{tikzpicture}
+\caption{The three programs of a level, for the $2\times2$ scheme the library
+runs (DPS's dyadic accurate point, Section~\ref{sec:sw}): the straight-line
+program of Table~4 of \cite{DPS24} in four boxes.  $L$ (Left) forms the $7$
+left factors $t_0,\dots,t_6$ from the $4$ blocks of $A$, and $R$ (Right) the
+$7$ right factors $s_0,\dots,s_6$ from the $4$ blocks of $B$: linear
+combinations of the blocks with coefficients in $\{0,\pm1,\pm\frac12,\pm\frac14\}$,
+the rows of $L$ and $R$ in \eqref{eq:scheme} ($t_0 = a_{21}-a_{12}$).  The
+products are the scheme's only multiplications, GEMMs or a level below.  $P$
+(Product) combines the $7$ products into the $4$ blocks of $C$, the rows of
+$P$.  On blocks, each box is one fused pass (Section~\ref{sec:levels}): the
+$L$ pass reads $4$ blocks and writes $7$, the $P$ pass reads $7$ and writes
+$4$.  Table~4's names ($r_1$, $r_2$ are scratch values of the left program),
+except that the factors of $p_7$, inline there, are $t_6$ and $s_6$; and one
+sign is corrected: the table prints $t_3 =
+a_{12}+r_1$, which returns $c_{21}$ and $c_{22}$ but not $c_{11}$ and
+$c_{12}$; with $t_3 = a_{12}-r_1$, the fourth row $(0,1,0,-\frac12)$ of the
+left matrix of their Eq.~(38), the program computes $AB$ exactly, its three
+matrices are Eq.~(38) row for row, and it is, term for term, PLinOpt's
+\texttt{2x2x2\_7\_DPS-evenpow-12.2034}, whose matrices the library's programs
+compute ($27$ additions and $6$ halvings here; $27$ and $9$ scalings in the
+library's cancellation-free programs).}
+\label{fig:lrp}
+\end{figure}
 
 \subsection{The cost of a level}
 
@@ -1452,7 +1521,8 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
   block products instead of $g_1g_2g_3$; $r$ is its rank.  Its three matrices
   $L$, $R$, $P$ are Section~\ref{sec:levels}'s.
 \item[Level, pass, plan, leaf.]  A level is one application of a scheme to
-  the current problem, executed as three fused passes ($L$, $R$, $P$) around
+  the current problem, executed as three fused passes ($L$, $R$, $P$;
+  Figure~\ref{fig:lrp}) around
   its products; a plan is the sequence of levels from the top down to the
   leaf, the GEMM; the notation is in Section~\ref{sec:intro}.
 \item[\lv{D48}, \lv{R336}, \lv{R363}, \lv{R633}, \lv{SW}, \lv{T336},

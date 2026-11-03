@@ -1428,3 +1428,25 @@ classical), gray down arrows for the L and R passes (7, 40, 40 factors) and blac
 products into the blocks above (C's 4, M_i's 9, M_ij's 18).  The caption gives the measured 3.25 s, 1.91x and 0.70 of the
 GEMM's error (Sections 4.4 and 6).  Macros \blockgrid, \matbox, \flatbox in the preamble; the figure is [tp], band pitch 3.3
 and scale 0.93, because at full size it exceeded \topfraction and fell to a float page at the end.  Date November 3; 25 pages.
+
+Figure 2, the three programs of a level (2026-11-03).  Greg asked for a figure explaining L (Left), R (Right) and P (Product)
+with the fast accurate 2x2 scheme as the example: the SLP of Table 4 of DPS's ISSAC 2024 paper (hal-04441653v2,
+~/Downloads/strassenaccurate.pdf) divided into four boxes with the data flow labelled: A into the L box (t_0..t_6), B into
+the R box (s_0..s_6), both into the products box (p_1..p_7), the products into the P box, C out.  Placed in Section 2.1
+(Figure 2, top of page 6), referenced from its text, from Figure 1's caption and from the glossary.  Transcribing the table
+exposed a typo in it: as printed (t_3 = a_12 + r_1) the program returns c_21 and c_22 but not c_11 and c_12, and no output
+matrix P fits its L and R (scratchpad t4/check_t4.py, solve_t4.py: exact rationals, Brent equations); with t_3 = a_12 - r_1
+it computes AB exactly on 200 random rational inputs, all 64 Brent equations hold, entries in {0, 1/4, 1/2, 1}, and its seven
+rank-one terms are PLinOpt's 2x2x2_7_DPS-evenpow-12.2034 term for term in the same order (the file the library's dps7
+programs compute), so the figure carries the corrected sign and its caption says so.  The table's scratch values r_1, r_2 of
+the left program are renamed q_1, q_2 in the figure (r would read as Right), and the factors of p_7, inline in the table,
+are t_6 and s_6, so that the products box holds the seven multiplications and nothing else.  Table 4 costs 27 additions and
+6 halvings; the library's cancellation-free programs 27 additions and 9 scalings.  Nothing in the library is affected (it
+never used Table 4).  Not told to DPS; Greg decides.  26 pages.
+Eq. (38) checked against it (2026-11-03, Greg asked whether an entry of (38) shows the sign, or whether (38) is off too):
+the three matrices of Eq. (38) (page 8 of hal-04441653v2, transcribed from the rendered PDF, scratchpad t4/eq38_check.py)
+equal the corrected table's L, R and P^T row for row; the fourth row of (38)'s left matrix is (0, 1, 0, -1/2) = a_12 - a_22/2,
+the minus sign, so (38) is right and only Table 4's t_3 is off (with the printed plus, t_3's row would be (0, 1, 0, 1/2), which
+is row 7, t_6's).  The caption now cites that row.
+Greg asked why the r's became q's: no reason beyond caution (r beside an L/R/P explanation); at his request the figure keeps
+Table 4's r_1, r_2, with a parenthesis in the caption that they are scratch values of the left program (2026-11-03).

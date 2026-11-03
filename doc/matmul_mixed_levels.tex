@@ -3,6 +3,8 @@
 \usepackage{amsmath,amssymb,mathtools}
 \usepackage{booktabs}
 \usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta}
 \hyphenation{macOS Accelerate MPSGraph PLinOpt}
 \usepackage{array}
 \usepackage{url}
@@ -15,6 +17,32 @@
 \newcommand{\amp}{\operatorname{amp}}
 \newcommand{\vect}{\operatorname{vec}}
 \newcommand{\lv}[1]{\texttt{#1}}
+% Figure 1 (the plan): block grids.  \blockgrid{x}{y}{w}{h}{rows}{cols} draws a rows x cols grid
+% of size w x h with its lower-left corner at (x,y); \matbox{xc}{ytop}{w}{h}{rows}{cols}{letter}{dims}
+% centres such a grid at x = xc in a band of height 1.6 whose top is ytop, the letter above the
+% band and the dimensions below it; \flatbox{xc}{ytop}{w}{h}{letter}{dims} is the same for a leaf
+% matrix without blocks.
+\newcommand{\blockgrid}[6]{%
+  \fill[black!5] (#1,#2) rectangle ++(#3,#4);
+  \foreach \i in {1,...,#5} {\draw[black!55,line width=0.3pt] (#1,{#2+#4*\i/#5}) -- ++(#3,0);}
+  \foreach \j in {1,...,#6} {\draw[black!55,line width=0.3pt] ({#1+#3*\j/#6},#2) -- ++(0,#4);}
+  \draw[black,line width=0.6pt] (#1,#2) rectangle ++(#3,#4);
+}
+\newcommand{\matbox}[8]{%
+  \pgfmathsetmacro{\mbx}{#1-#3/2}%
+  \pgfmathsetmacro{\mby}{#2-0.8-#4/2}%
+  \blockgrid{\mbx}{\mby}{#3}{#4}{#5}{#6}%
+  \node[anchor=south] at ({#1},{#2+0.05}) {#7};
+  \node[anchor=north,align=center] at ({#1},{#2-1.68}) {#8};
+}
+\newcommand{\flatbox}[6]{%
+  \pgfmathsetmacro{\mbx}{#1-#3/2}%
+  \pgfmathsetmacro{\mby}{#2-0.8-#4/2}%
+  \fill[black!15] (\mbx,\mby) rectangle ++(#3,#4);
+  \draw[black,line width=0.6pt] (\mbx,\mby) rectangle ++(#3,#4);
+  \node[anchor=south] at ({#1},{#2+0.05}) {#5};
+  \node[anchor=north,align=center] at ({#1},{#2-1.68}) {#6};
+}
 \setlength{\emergencystretch}{1em}
 \renewcommand{\topfraction}{0.85}
 \renewcommand{\bottomfraction}{0.5}
@@ -25,7 +53,7 @@
 fused levels of accurate square and rectangular schemes\\
 over a vendor GEMM, chosen by a calibrated planner}
 \author{Greg Sidebottom}
-\date{Draft --- November 2, 2026}
+\date{Draft --- November 3, 2026}
 
 \begin{document}
 \maketitle
@@ -100,8 +128,9 @@ divide a square problem by $54$ and leave it square, where three $4\times4$
 levels divide by $64$.  A plan such as \lv{SW/R363+3/R633/G6} is one
 $2\times2$ level, then a $3\times6\times3$ level whose products are
 pipelined on three pass threads, then a $6\times3\times3$ level whose $40$
-products run as six single-threaded GEMM streams.  Mixing pays for three
-reasons that the measurements separate:
+products run as six single-threaded GEMM streams; Figure~\ref{fig:plan} draws
+it at $n=13824$, from the problem at the top to its $11{,}200$ leaf GEMMs at
+the bottom.  Mixing pays for three reasons that the measurements separate:
 
 \begin{enumerate}
 \item \emph{Order.}  A level writes more data than it reads (the $4\times4$
@@ -120,6 +149,81 @@ reasons that the measurements separate:
   products than the GEMM's.  Under an error budget an accurate level admits
   deeper, faster plans.
 \end{enumerate}
+
+\begin{figure}[tp]
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm,scale=0.93,
+  every node/.style={font=\footnotesize,inner sep=1.5pt},
+  down/.style={-{Stealth[length=5pt]},black!45,line width=0.6pt},
+  up/.style={-{Stealth[length=6pt]},black,line width=1pt}]
+% band 1: the problem, cut by the 2x2 level
+\node[anchor=east,align=right] at (3.4,-0.8)
+  {Level 1: \lv{SW}\\ $\mm{2\times2\times2:7}$\\ $7$ products of $8$};
+\matbox{4.9}{0}{1.6}{1.6}{2}{2}{$A$}{$2\times2$ grid\\ blocks $6912^2$}
+\node at (6.25,-0.8) {$\times$};
+\matbox{7.6}{0}{1.6}{1.6}{2}{2}{$B$}{$2\times2$ grid\\ blocks $6912^2$}
+\node at (8.95,-0.8) {$=$};
+\matbox{10.3}{0}{1.6}{1.6}{2}{2}{$C=AB$}{$2\times2$ grid\\ blocks $6912^2$}
+\node[anchor=west,align=left] at (11.75,-0.8) {$1$ problem\\ $n=13824$, f64};
+% between bands 1 and 2
+\draw[down] (3.7,-1.75) -- (3.7,-3.1);
+\node[anchor=east,align=right] at (3.55,-2.42) {$L$, $R$ passes:\\ $7$ factors $S_i$, $T_i$};
+\draw[up] (11.6,-3.1) -- (11.6,-1.75);
+\node[anchor=west,align=left] at (11.75,-2.42) {$P$ pass: $C$'s $4$ blocks\\ from the $7$ products $M_i$};
+% band 2: the 3x6x3 level
+\node[anchor=east,align=right] at (3.4,-4.1)
+  {Level 2: \lv{R363+3}\\ $\mm{3\times6\times3:40}$\\ $40$ of $54$};
+\matbox{4.9}{-3.3}{1.6}{1.6}{3}{6}{$S_i$}{$3\times6$ grid\\ $2304\times1152$}
+\node at (6.25,-4.1) {$\times$};
+\matbox{7.6}{-3.3}{1.6}{1.6}{6}{3}{$T_i$}{$6\times3$ grid\\ $1152\times2304$}
+\node at (8.95,-4.1) {$=$};
+\matbox{10.3}{-3.3}{1.6}{1.6}{3}{3}{$M_i=S_iT_i$}{$3\times3$ grid\\ blocks $2304^2$}
+\node[anchor=west,align=left] at (11.75,-4.1) {$7$ sub-problems\\ $6912\times6912$};
+% between bands 2 and 3
+\draw[down] (3.7,-5.05) -- (3.7,-6.4);
+\node[anchor=east,align=right] at (3.55,-5.72) {$L$, $R$ passes:\\ $40$ factors $S_{ij}$, $T_{ij}$};
+\draw[up] (11.6,-6.4) -- (11.6,-5.05);
+\node[anchor=west,align=left] at (11.75,-5.72) {$P$ pass: $M_i$'s $9$ blocks\\ from the $40$ products $M_{ij}$};
+% band 3: the 6x3x3 level, on rectangular operands
+\node[anchor=east,align=right] at (3.4,-7.4)
+  {Level 3: \lv{R633}\\ $\mm{6\times3\times3:40}$\\ $40$ of $54$};
+\matbox{4.9}{-6.6}{0.8}{1.6}{6}{3}{$S_{ij}$}{$6\times3$ grid\\ blocks $384^2$}
+\node at (6.25,-7.4) {$\times$};
+\matbox{7.6}{-6.6}{1.6}{0.8}{3}{3}{$T_{ij}$}{$3\times3$ grid\\ $384\times768$}
+\node at (8.95,-7.4) {$=$};
+\matbox{10.3}{-6.6}{1.6}{1.6}{6}{3}{$M_{ij}$}{$6\times3$ grid\\ $384\times768$}
+\node[anchor=west,align=left] at (11.75,-7.4) {$7\cdot40=280$ sub-problems\\ $(2304\times1152)(1152\times2304)$};
+% between bands 3 and 4
+\draw[down] (3.7,-8.35) -- (3.7,-9.7);
+\node[anchor=east,align=right] at (3.55,-9.02) {$L$, $R$ passes:\\ $40$ factors $S_{ijk}$, $T_{ijk}$};
+\draw[up] (11.6,-9.7) -- (11.6,-8.35);
+\node[anchor=west,align=left] at (11.75,-9.02) {$P$ pass: $M_{ij}$'s $18$ blocks\\ from the $40$ products $M_{ijk}$};
+% band 4: the leaves, flat matrices multiplied by the GEMM
+\node[anchor=east,align=right] at (3.4,-10.7)
+  {Leaf: \lv{G6}\\ Accelerate's GEMM\\ six streams};
+\flatbox{4.9}{-9.9}{0.8}{0.8}{$S_{ijk}$}{$384\times384$\\ flat}
+\node at (6.25,-10.7) {$\times$};
+\flatbox{7.6}{-9.9}{1.6}{0.8}{$T_{ijk}$}{$384\times768$\\ flat}
+\node at (8.95,-10.7) {$=$};
+\flatbox{10.3}{-9.9}{1.6}{0.8}{$M_{ijk}=S_{ijk}T_{ijk}$}{$384\times768$\\ flat}
+\node[anchor=west,align=left] at (11.75,-10.7)
+  {$280\cdot40=11{,}200$ GEMMs\\ ($8\cdot54\cdot54=23{,}328$ classical)\\ 85--95\% of the time};
+\end{tikzpicture}
+\caption{The plan \lv{SW/R363+3/R633/G6} at $n=13824$ in f64, from the
+problem at the top to the GEMM leaves at the bottom.  Each level cuts its
+operands into the grids shown.  Going down, its $L$ and $R$ passes write the
+factors of the level below, linear combinations of those blocks with a block's
+shape ($7$ of each for the $2\times2$ scheme, $40$ for the $3\times3\times6$
+scheme); going up, its $P$ pass composes the products of the level below into
+the blocks of its own product.  The leaves are flat: $11{,}200$ products of
+$384\times384$ by $384\times768$ matrices, Accelerate's GEMM six at a time,
+where the classical algorithm on the same grids has $23{,}328$.  \lv{+3} runs
+the $3\times6\times3$ level's passes on three threads overlapped with the
+products below (Section~\ref{sec:levels}).  Measured (Sections~\ref{sec:sw}
+and~\ref{sec:results}): $3.25$~s, $1.91\times$ Accelerate's GEMM, $0.70$ of
+its error.}
+\label{fig:plan}
+\end{figure}
 
 Two facts about the costs organize everything.  First, a fused pass is bound
 by memory traffic, not arithmetic: the $201$-operation program we found for the

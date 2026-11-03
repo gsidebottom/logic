@@ -1416,3 +1416,15 @@ in results/sw_dps7_tests_2026-11-02.txt.  Report: Section 4.4 "The 2x2 level's p
 and the sentences that said the Strassen plans breach the budget; the accuracy paper's Data section notes that its Winograd rows
 need --sw winograd now.  Not done: a dyadic 2x2 point searched for our amplification measure rather than DPS's gamma_21 (the
 Q(sqrt3) minimum is 1.323, a 10% margin over 1.474 at most, at one level of one plan), and a depth factor fitted per level.
+
+Figure 1, the plan drawn (2026-11-03).  Greg asked for a diagram in the report's introduction showing three levels, from
+the flat matrices at the bottom composing up in blocks through the GEMM and the accurate schemes.  doc/matmul_mixed_levels.tex
+now loads TikZ and draws SW/R363+3/R633/G6 at n = 13824 f64, the plan the introduction's own example names (Figure 1, page 3,
+referenced from that paragraph): four bands from the problem at the top to the leaves at the bottom, each showing the operands
+and product (A B = C, then S_i T_i = M_i, S_ij T_ij = M_ij, S_ijk T_ijk = M_ijk, the notation of Section 2.1) cut into the
+level's grids with the block dimensions (2x2 of 6912^2; 3x6 of 2304x1152, 6x3 of 1152x2304, 3x3 of 2304^2; 6x3 of 384^2, 3x3
+of 384x768, 6x3 of 384x768; flat 384x384, 384x768, 384x768), the counts on the right (1, 7, 280, 11,200 GEMMs against 23,328
+classical), gray down arrows for the L and R passes (7, 40, 40 factors) and black up arrows for the P passes composing the
+products into the blocks above (C's 4, M_i's 9, M_ij's 18).  The caption gives the measured 3.25 s, 1.91x and 0.70 of the
+GEMM's error (Sections 4.4 and 6).  Macros \blockgrid, \matbox, \flatbox in the preamble; the figure is [tp], band pitch 3.3
+and scale 0.93, because at full size it exceeded \topfraction and fell to a float page at the end.  Date November 3; 25 pages.
